@@ -1,0 +1,3 @@
+# the lock lab/dataset.py holds while it writes labels, and the temporary file of a write that was killed
+*.lock
+.examples-*.tmp
