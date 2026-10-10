@@ -13,6 +13,9 @@ The search ran on 2026-10-10 from about 6:45 to 7:25 AM ET, well inside the two-
 of the live hub at 11:00 to 11:10 UTC (7:00 to 7:10 AM ET). It stopped when the last sources opened (terminal
 culling, JupyterLab's chunk size, the token-mint handler) only refined findings already made.
 
+Plumbing pass 1 (2026-10-10, 11:58 AM to 12:12 PM ET) added S44 to S48 and re-opened S15, S25, S27 and S36
+before a change rested on them; its search log is at the end of `hub-api-lifecycle.md`.
+
 ## Vendor and project documentation
 
 | Key | Source | Section | Type | URL | Opened | Cited in |
@@ -33,6 +36,7 @@ culling, JupyterLab's chunk size, the token-mint handler) only refined findings 
 | S15 | Cloudflare docs, "Connection limits" | limits table | vendor doc | https://developers.cloudflare.com/fundamentals/reference/connection-limits/ | 2026-10-10 | proxy |
 | S16 | Cloudflare docs, "Error 413" | Max upload size by plan | vendor doc | https://developers.cloudflare.com/support/troubleshooting/http-status-codes/4xx-client-error/error-413/ | 2026-10-10 | transfers |
 | S17 | Cloudflare docs, "Error 524" | cause and resolutions | vendor doc | https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-5xx-errors/error-524/ | 2026-10-10 | proxy |
+| S44 | Cloudflare docs, "Error 502 or 504" | 502/504 from Cloudflare; 502/504 from your origin web server | vendor doc | https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-5xx-errors/error-502-504/ | 2026-10-10 | hub |
 
 ## Source code at pinned versions
 
@@ -58,6 +62,8 @@ culling, JupyterLab's chunk size, the token-mint handler) only refined findings 
 | S37 | AMD AUP Learning Cloud at 9b4af19 | `runtime/chart/values.yaml` (`cull`, `singleuser.startTimeout`, `proxy.chp.image`); `runtime/chart/templates/proxy/deployment.yaml` | https://github.com/AMDResearch/aup-learning-cloud/blob/9b4af19/runtime/chart/values.yaml | 2026-10-10 | hub, proxy, idle |
 | S38 | AMD AUP Learning Cloud at 9b4af19 | `dockerfiles/Base/Dockerfile.rocm` (pins, `WORKDIR`, `CMD`); `dockerfiles/Hub/Dockerfile` (`HUB_IMAGE`) | https://github.com/AMDResearch/aup-learning-cloud/blob/9b4af19/dockerfiles/Base/Dockerfile.rocm | 2026-10-10 | hub, transfers |
 | S39 | AMD AUP Learning Cloud git history | 29b463a (2026-02-06, quota and timer code already present), 6e09fad (2026-06-25, `repo_persist`), b5b9b7f8 and 351cba34 (2026-07-06, `WORKDIR` and landing paths), cff8981 (2026-07-28, `restartPolicy: Never`) | https://github.com/AMDResearch/aup-learning-cloud/commits/main | 2026-10-10 | hub, transfers |
+| S45 | CPython v3.12.11 (also read at v3.13.7 and main) | `Lib/http/server.py`: `SimpleHTTPRequestHandler.send_head` (no Range handling, no 206 anywhere in the module) | https://github.com/python/cpython/blob/v3.12.11/Lib/http/server.py | 2026-10-10 | transfers |
+| S46 | Zero to JupyterHub 4.3.3 | `jupyterhub/files/hub/jupyterhub_config.py`: `hub_bind_url`, `hub_connect_url` | https://github.com/jupyterhub/zero-to-jupyterhub-k8s/blob/4.3.3/jupyterhub/files/hub/jupyterhub_config.py | 2026-10-10 | idle |
 
 ## Issues and pull requests
 
@@ -80,6 +86,8 @@ culling, JupyterLab's chunk size, the token-mint handler) only refined findings 
 | R6 | `runtime/llama.py` (`LlamaServerRuntime`) at bf482f4 | https://github.com/raohemdutt/Knighthacks26/blob/bf482f4/runtime/llama.py | 2026-10-10 | proxy |
 | R7 | `lab/refine/metrics.jsonl` line 13 (`trainer.samples_per_s` = 0.51, pod B) at 7c22c81 | https://github.com/raohemdutt/Knighthacks26/blob/7c22c81/lab/refine/metrics.jsonl#L13 | 2026-10-10 | idle |
 | R8 | O3 plumbing rubric, `lab/refine/plumbing/RUBRIC.md` (metric set and tests T1 to T8), merged as 936fb69 | https://github.com/raohemdutt/Knighthacks26/blob/936fb69/lab/refine/plumbing/RUBRIC.md | 2026-10-10 | hub, proxy, transfers, idle |
+| S47 | Read-only probes by plumbing pass 1, 2026-10-10 15:58 to 16:04 UTC (M16 front door, M17 clock) | `lab/refine/research/plumbing/measurements-2026-10-10.md` | 2026-10-10 | hub, idle |
+| S48 | R9 task page, lock line of Sat 11:24 AM ET (the hub answering 502) | https://app.notion.com/p/3f596ef5fec581579ba5c7a9c6d19230 | 2026-10-10 | hub |
 
 ## Opened but not cited
 

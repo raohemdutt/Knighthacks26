@@ -129,3 +129,21 @@ Hub `Date` header `Sat, 10 Oct 2026 11:03:23 GMT` against the workstation's UTC 
 11:04:47Z (M10), so the server stopped 68.9 minutes after its last activity, with nothing issuing a
 stop that we know of. Account A's balance fell from 59,960 to 59,296 (-664 = 166 minutes x 4);
 09:27:24 to 12:13:39 is 166.25 minutes. Account B was unchanged (59,628).
+
+## M16. The front door answers Cloudflare 502 on every path (plumbing pass 1, 15:58 to 16:04 UTC)
+
+`python -m lab ready` (about 15:58 UTC, workstation clock) reported `hub account A answered 502` and
+`hub account B answered 502` for its authenticated hub API reads. At 16:03:52 to 16:03:53 workstation
+time, unauthenticated GETs of `/hub/api/`, `/hub/static/spawn-ui/assets/index.js` and `/hub/login`
+each returned 502 in 0.36 to 0.39 s, with `Content-Type: text/plain; charset=UTF-8`,
+`Server: cloudflare`, a `CF-RAY` ending in `-ATL`, no `x-jupyterhub-version` header, and the 16-byte
+body `error code: 502`. The R9 task page's lock line of Sat 11:24 AM ET already says the hub is
+answering 502. No proxied call was made: both servers had stopped before the outage (M4, M15).
+
+## M17. The 46-second offset is the workstation's clock (plumbing pass 1, 16:04 UTC)
+
+At 16:04:03 workstation time the `Date` headers of `https://www.google.com`, `https://github.com` and
+`https://www.cloudflare.com` read 16:04:49, 16:04:47 and 16:04:50 GMT, and the Cloudflare 502
+responses of M16 carried 16:04:39 to 16:04:40 against 16:03:52 to 16:03:53 local. The workstation
+clock is 44 to 47 s behind all four, so the 46 s of M14 is this machine running slow, not the hub
+running fast.

@@ -169,3 +169,17 @@ Pod B's stop cause is unknown (M4). The cull timing, runtime-expiry timing and c
 pod stopped on purpose, which is Ilan's call and a queue slot. How much the vLLM compile cache saves on gfx1201 is
 undocumented and unmeasured, and the 270 s figure is not broken down into weight loading from NFS, compilation and
 graph capture.
+
+## 5. Activity and culling with the front door down (plumbing pass 1, 2026-10-10)
+
+### Takeaway
+On AMD's current config the culler is a service of the hub process and pods report their activity to the hub
+inside the cluster, so the public front door going down stops our box-side keep-alive pings but not the culler.
+A pod that has nothing of its own counting as activity is then stopped about an hour into the outage.
+
+### Cited findings
+- **[practitioner]** AUP's hub config sets `cleanup_servers = False` and `last_activity_interval = 60`, points `hub_connect_url` at the in-cluster hub service, and starts the idle culler as a hub-managed service that calls the hub at `localhost:8081`; z2jh 4.3.3 sets the same in-cluster `hub_connect_url`. Source: AUP `runtime/hub/core/jupyterhub_config.py` L85-L86, L204-L206 and L360-L400, https://github.com/AMDResearch/aup-learning-cloud/blob/9b4af19/runtime/hub/core/jupyterhub_config.py#L360-L400 [S36]; z2jh 4.3.3 `jupyterhub/files/hub/jupyterhub_config.py` L97-L107, https://github.com/jupyterhub/zero-to-jupyterhub-k8s/blob/4.3.3/jupyterhub/files/hub/jupyterhub_config.py#L97-L107 [S46]
+
+  Implies: on this config the hub polls the proxy's route activity every 60 s, not JupyterHub's default 300 s, so section 1's "up to about 5 minutes late" is an upper bound (M10's 127 s fits both), if the live build (M13) carries the line. More important for long sessions: with the hub up and the front door down (M16), proxied pings from the box cannot land while the culler keeps running, and a loaded model with no requests is not activity (M15), so a pod with nothing pod-side generating activity is stopped 60 to 70 minutes into such an outage; with the hub itself down nothing is culled, but its runtime timer can be lost (`hub-api-lifecycle.md` section 3). A keep-alive generated on the pod, an authenticated request to its own Jupyter API, would not depend on the front door (CPH, RT).
+
+  Experiment (IDL-12): during a long session on pod B, run a pod-side loop that makes an authenticated request to the pod's own Jupyter API every 10 minutes, pause the box-side ping for 80 minutes, and read the server's `last_activity` from the hub API every 10 minutes. Expected: `last_activity` advances about every 10 minutes and the server is not culled; credits per hour stay at 240. Minimum sample: one 80-minute window.
