@@ -201,3 +201,37 @@ def test_where_is_ignores_filler_words_around_the_item():
     assert item_name("snow globe") == "snow globe"  # only whole filler words are dropped
     q, _ = qa()
     assert asyncio.run(q.ask("Where is the wallet now?")).text == NO_EVIDENCE  # never seen: still says so
+
+
+def test_last_hour_cites_each_episode_and_keeps_only_the_named_camera():
+    """Round 2 (T3): the hour cited one desk frame and ignored that the question named the door."""
+    mem = FakeMemory(episodes=[
+        ep("d1", 0.8, ["A person types at the desk."]),
+        ep("door1", 0.6, ["A courier rings the bell."], camera="cam-door"),
+        ep("door2", 0.2, ["A neighbour knocks and leaves."], camera="cam-door"),
+    ])
+    rt = FakeRuntime(chat_replies=[ChatResult(content="Two people came to the door.", model_version="v1")])
+    a = asyncio.run(QA(rt, mem, clock=lambda: NOW).ask("Did anyone come to the door in the last hour?"))
+    assert [(c.episode_id, c.frame_ref) for c in a.citations] == [("door1", "frames:cam-door:door1"), ("door2", "frames:cam-door:door2")]
+    assert "types at the desk" not in evidence_prompt(rt)
+    rt = FakeRuntime(chat_replies=[ChatResult(content="Typing, then visitors.", model_version="v1")])
+    a = asyncio.run(QA(rt, mem, clock=lambda: NOW).ask("What happened in the last hour?"))
+    assert [c.episode_id for c in a.citations] == ["d1", "door1", "door2"]
+
+
+def test_yesterday_and_what_happened_to_are_answered_from_memory():
+    """Round 2 (T5): both went to the tool loop and the fake model said "I didn't see that"."""
+    from contexts.agent.application.qa import time_window
+
+    start, end = time_window("how many energy drinks did i have yesterday?", NOW)
+    assert (start, end) == (datetime(2026, 10, 10, 4, tzinfo=UTC), datetime(2026, 10, 11, 4, tzinfo=UTC))  # New York midnights
+    mem = FakeMemory(episodes=[ep("drink", 20, ["A person opens an energy drink can."]), ep("today", 1, ["Coffee."])])
+    rt = FakeRuntime(chat_replies=[ChatResult(content="One energy drink.", model_version="v1")])
+    a = asyncio.run(QA(rt, mem, clock=lambda: NOW).ask("How many energy drinks did I have yesterday?"))
+    assert a.text == "One energy drink." and "energy drink can" in evidence_prompt(rt) and "Coffee" not in evidence_prompt(rt)
+
+    mem = FakeMemory(episodes=[ep("p1", 2, ["A courier leaves a package at the door."], camera="cam-door"),
+                               ep("p2", 1, ["A person carries the package to the desk."])])
+    rt = FakeRuntime(chat_replies=[ChatResult(content="It was delivered, then moved to the desk.", model_version="v1")])
+    a = asyncio.run(QA(rt, mem, clock=lambda: NOW).ask("What happened to the package?"))
+    assert a.text.startswith("It was delivered") and [c.episode_id for c in a.citations] == ["p2", "p1"]  # newest first
