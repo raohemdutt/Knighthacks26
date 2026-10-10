@@ -229,7 +229,7 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         await atlas.bus.publish(QuestionAsked(question_id=qid, text=body.text))  # may answer before returning
         try:
             return await asyncio.wait_for(answer, ASK_TIMEOUT_S)
-        except TimeoutError:
+        except (TimeoutError, asyncio.TimeoutError):  # distinct classes on Python 3.10, which the Jetson runs
             raise HTTPException(504, "the model took too long") from None
         finally:
             waiting.pop(qid, None)

@@ -165,6 +165,7 @@ OUTSIDE = re.compile(
 
 WEB_BUDGET_S = 25.0  # a web question answers from what it has after this long (the 4B on the Jetson is slow)
 WEB_CALL_MIN_S = 3.0  # but one web call always gets at least this long
+WEB_CALL_MAX_S = 12.0  # and never longer than this (a page load that hangs)
 MAX_PAGES = 1  # pages read per question: each one is a slow browser load and a long prompt
 WEB_TOOL_NAMES = {"web_search", "reddit_search", "read_page"}
 NUMBER = re.compile(r"\d+")
@@ -652,8 +653,8 @@ class QA:
             return WEB_BUDGET_S - (self.monotonic() - started)
 
         for _ in range(MAX_WEB_TOOL_CALLS if self.web else MAX_TOOL_CALLS):
-            if self.web and ev and left() <= 0:
-                break  # out of time: answer from what was found so far
+            if self.web and left() <= 0:
+                break  # out of time (model calls count too): answer from what was found so far
             r = await self._chat(msgs, tools)
             if not r.tool_calls:
                 text = (r.content.strip() if ev else NO_EVIDENCE) or NO_EVIDENCE
@@ -696,8 +697,8 @@ class QA:
         """One web tool call inside the time budget. False when it ran out of time (nothing is added)."""
         found = Evidence()
         try:
-            await asyncio.wait_for(self._run_tool(call, found), timeout=max(WEB_CALL_MIN_S, left))
-        except TimeoutError:
+            await asyncio.wait_for(self._run_tool(call, found), timeout=min(WEB_CALL_MAX_S, max(WEB_CALL_MIN_S, left)))
+        except (TimeoutError, asyncio.TimeoutError):  # distinct classes on Python 3.10, which the Jetson runs
             return False
         ev.lines += found.lines
         ev.citations += found.citations
