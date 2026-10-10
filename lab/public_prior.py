@@ -16,7 +16,7 @@ The model is a bandwidth-bound decode model fitted by weighted least squares, no
    are its stated model file size (llama-bench prints it in GiB) scaled by active over total parameters for a
    mixture of experts; failing a size, active parameters times stated bits per weight over 8; failing those, active
    parameters times the format's nominal bits per weight (NOMINAL_BITS). A row with none of these is not used.
-2. Single stream: log(tok/s) = a[backend] - beta * log(GB) - g * (context depth in thousands) + m * [MoE], fitted on
+2. Single stream: log(tok/s) = a[backend] - beta * log(GB) - g * log(1 + context depth in thousands) + m * [MoE], fitted on
    rows at batch 1 with a decode rate. exp(a[backend]) is that backend's effective bandwidth in GB/s at 1 GB read per
    token; beta near 1 means decode really is bandwidth-bound across the rows. Each row is weighted 1/sqrt(n) where n
    is the number of rows its source contributed, so one large table does not outvote every other source.
@@ -35,6 +35,7 @@ import argparse
 import csv
 import json
 import math
+import re
 import sys
 from collections import defaultdict
 from dataclasses import dataclass
@@ -81,6 +82,7 @@ TARGETS = {
 }
 BATCHES = (1, 4, 8, 16)
 PREDICT_BACKENDS = ("vllm", "llama.cpp-rocm", "llama.cpp-vulkan")
+FIT_BACKENDS = ("vllm", "sglang", "llama.cpp-rocm", "llama.cpp-vulkan")
 
 
 def _num(text: str | None) -> float | None:
@@ -131,57 +133,152 @@ class Row:
     tg: float  # decode tok/s, summed over the batch when batch > 1
 
 
+# A row whose notes or settings say any of these is not a plain single-node decode measurement and stays out of
+# the fit: multi-node RPC or tensor-parallel clusters, speculative decoding (MTP or a draft model), and offline
+# throughput that counts prompt and output tokens together.
+EXCLUDE = re.compile(
+    r"\brpc\b|2-node|two-node|dual-server|multi-node|cluster|\bmtp\b|(?<!no )speculative|draft model|--model-draft|dflash(?! spec tokens n=0)"
+    r"|input\+output|holds total|not decode-only",
+    re.I,
+)
+_ACTIVE_IN_NAME = re.compile(r"(?:^|[-_. ])a(\d+(?:\.\d+)?)b(?:$|[-_. ])", re.I)  # Qwen3-30B-A3B: 3B active
+_EXPERTS_IN_NAME = re.compile(r"(\d+(?:\.\d+)?)b-(\d+)e(?:$|[-_. ])", re.I)  # Llama-4-Scout-17B-16E: 17B active
+# Families whose checkpoints are dense, matched on the model name when a row states no architecture. The family is
+# a fact about the model, not the run; a name that matches none of these and carries no active-parameter marker is
+# of unknown architecture and stays out of the fit rather than being guessed dense.
+DENSE_FAMILIES = (
+    "llama-2", "llama2", "llama-3", "llama3", "meta-llama-3", "shisa-v2-llama", "gemma-3-", "gemma3", "gemma-4-31b",
+    "mistral-small-3", "ministral", "devstral", "qwen3-32b", "qwen3-14b", "qwen3-8b", "qwen3-4b", "qwen3-1.7b",
+    "qwen3-0.6b", "qwen2.5", "qwen3.5-27b", "qwen3.6-27b", "qwen3.8-27b", "qwen3.5-4b", "qwen3.5-9b", "phi-4", "phi-3",
+)
+
+
+_EFFECTIVE_IN_NAME = re.compile(r"(?:^|[-_. ])e\d+(?:\.\d+)?b(?:$|[-_. ])", re.I)
+_PARAMS_IN_NAME = re.compile(r"(?:^|[-_/ ])(\d+(?:\.\d+)?)b(?:$|[-_. ])", re.I)  # Llama-3.1-8B: 8B total
+
+
+def total_params_b(rec: dict[str, str]) -> float | None:
+    """Total parameters in billions: the row's own column, else the size its model name states (Qwen3-0.6B)."""
+    stated = _num(rec.get("params_b"))
+    if stated:
+        return stated
+    match = _PARAMS_IN_NAME.search(rec.get("model") or "")
+    return float(match.group(1)) if match else None
+
+
+def nominal_bits(quant: str) -> float | None:
+    """Nominal bits per weight of a stated format: the table first, then the format's family by keyword."""
+    q = quant.strip().lower()
+    if q in NOMINAL_BITS:
+        return NOMINAL_BITS[q]
+    if any(word in q for word in ("bf16", "fp16", "f16")):
+        return 16.0
+    if any(word in q for word in ("awq", "gptq", "int4", "w4a16", "4bit", "int8", "w8a8", "8bit", "fp8")):
+        eight = any(word in q for word in ("int8", "w8a8", "8bit", "fp8"))
+        group = re.search(r"\bg(\d+)\b", q)
+        return (8.0 if eight else 4.0) + 16.0 / (int(group.group(1)) if group else 128)
+    return None
+
+
+def active_share(rec: dict[str, str]) -> float | None:
+    """Active over total parameters (1.0 for a dense model); None when the architecture is not known."""
+    total = total_params_b(rec)
+    active = _num(rec.get("active_params_b"))
+    arch = (rec.get("arch") or "").strip().lower()
+    name = (rec.get("model") or "").strip()
+    if _EFFECTIVE_IN_NAME.search(name):
+        return None  # Gemma's E2B and E4B count effective parameters; the bytes a token reads are not stated
+    if total and active and 0 < active <= total:
+        return active / total
+    marker = _ACTIVE_IN_NAME.search(name) or _EXPERTS_IN_NAME.search(name)
+    if marker and total:
+        return min(float(marker.group(1)) / total, 1.0)
+    if arch == "dense":
+        return 1.0
+    if arch == "moe":
+        return None
+    if any(family in name.lower() for family in DENSE_FAMILIES):
+        return 1.0
+    return None
+
+
 def bytes_per_token_gb(rec: dict[str, str]) -> float | None:
     """GB of weights one decoded token reads, from the row's own columns; None when they do not say."""
-    total = _num(rec.get("params_b"))
-    active = _num(rec.get("active_params_b")) or total
-    share = (active / total) if (total and active and active <= total) else 1.0
+    share = active_share(rec)
+    if share is None:
+        return None
+    total = total_params_b(rec)
     size = _num(rec.get("model_size_gb"))
     if size:
         if "size_unit=gib" in (rec.get("notes") or "").lower().replace(" ", ""):
             size *= GIB
         return size * share
+    if not total:
+        return None
     bits = _num(rec.get("bits_per_weight"))
-    if active and bits:
-        return active * bits / 8.0
-    nominal = NOMINAL_BITS.get((rec.get("quant_format") or "").strip().lower())
-    if active and nominal:
-        return active * nominal / 8.0
+    if bits:
+        return total * share * bits / 8.0
+    nominal = nominal_bits(rec.get("quant_format") or "")
+    if nominal:
+        return total * share * nominal / 8.0
     return None
 
 
 def _depth_k(rec: dict[str, str]) -> float:
-    notes = (rec.get("notes") or "").lower()
-    for token in notes.replace(";", " ").replace(",", " ").split():
-        if token.startswith("depth=") or (token.startswith("d") and token[1:].isdigit()):
-            value = _num(token.split("=", 1)[1] if "=" in token else token[1:])
-            if value is not None:
-                return value / 1000.0
+    text = (rec.get("notes") or "") + " " + (rec.get("settings") or "")
+    match = re.search(r"\bdepth(?: ctx)?[ =:]*d?(\d+)\b", text, re.I)
+    if match:
+        return float(match.group(1)) / 1000.0
+    # llama-bench's own label, as in "tg128 @ d4096"; never a commit hash such as "commit d674531"
+    for match in re.finditer(r"(?<![\w-])d(\d{3,6})\b", text):
+        before = text[max(0, match.start() - 8) : match.start()].lower()
+        if "commit" not in before and "fixes" not in before and int(match.group(1)) <= 262144:
+            return float(match.group(1)) / 1000.0
     return 0.0
 
 
+def source_group(url: str) -> str:
+    """The repository (or issue, PR or discussion) a row came from, for weighting: one sweep is one source."""
+    match = re.match(
+        r"https?://(?:raw\.githubusercontent\.com|github\.com|gist\.github\.com)/([^/]+)/([^/?#]+)(/(?:issues|pull|discussions)/\d+)?",
+        url,
+    )
+    if match:
+        return (match.group(1) + "/" + match.group(2) + (match.group(3) or "")).lower()
+    return url.split("#")[0].lower()
+
+
 def load_rows(path: Path = CSV_PATH) -> tuple[list[Row], list[dict[str, str]]]:
-    """(usable decode rows, every CSV record). A record is usable when it has a decode rate and known bytes."""
+    """(usable decode rows, every CSV record). A record is usable when it is a plain single-node decode rate on a
+    GPU backend with known bytes per token."""
     with open(path, newline="", encoding="utf-8") as handle:
         records = list(csv.DictReader(handle))
     rows: list[Row] = []
     for rec in records:
         tg = _num(rec.get("tg_tps"))
+        if not tg or tg <= 0:
+            continue
+        if EXCLUDE.search((rec.get("notes") or "") + " " + (rec.get("settings") or "")):
+            continue
+        backend = backend_key(rec.get("engine", ""), rec.get("backend", ""))
+        if backend not in FIT_BACKENDS:
+            continue
         gb = bytes_per_token_gb(rec)
-        if not tg or not gb or tg <= 0 or gb <= 0:
+        if not gb or gb <= 0:
             continue
         batch = max(int(_num(rec.get("concurrency")) or 1), 1)
         per_request = batch > 1 and "per-request" in (rec.get("notes") or "").lower()
+        share = active_share(rec)
         rows.append(
             Row(
-                source=rec.get("source_url", "").split("#")[0],
+                source=source_group(rec.get("source_url", "")),
                 model=rec.get("model", ""),
                 quant=(rec.get("quant_format") or "").lower(),
-                backend=backend_key(rec.get("engine", ""), rec.get("backend", "")),
+                backend=backend,
                 gb=gb,
                 batch=batch,
                 depth_k=_depth_k(rec),
-                moe=(rec.get("arch") or "").strip().lower() == "moe",
+                moe=share is not None and share < 0.999,
                 tg=tg * batch if per_request else tg,
             )
         )
@@ -217,7 +314,7 @@ class Fit:
     backends: list[str]
     a: dict[str, float]  # log effective GB/s at 1 GB per token, per backend
     beta: float
-    g: float  # per 1k tokens of context depth
+    g: float  # per unit of log(1 + context depth in thousands)
     m: float  # MoE offset
     k: dict[str, float]  # batch contention per backend
     k_pooled: float
@@ -232,7 +329,7 @@ class Fit:
     def single(self, gb: float, backend: str, depth_k: float = 0.0, moe: bool = False) -> float:
         if backend not in self.a:
             raise KeyError(f"no public batch-1 rows for backend {backend!r}; have {sorted(self.a)}")
-        return math.exp(self.a[backend] - self.beta * math.log(gb) - self.g * depth_k + (self.m if moe else 0.0))
+        return math.exp(self.a[backend] - self.beta * math.log(gb) - self.g * math.log1p(depth_k) + (self.m if moe else 0.0))
 
     def contention(self, backend: str) -> tuple[float, bool]:
         """(k, pooled): the backend's own k when it has batch rows, else the pooled k."""
@@ -242,14 +339,14 @@ class Fit:
 
     def as_dict(self) -> dict:
         return {
-            "model": "log(tok/s) = a[backend] - beta*log(GB per token) - g*depth_k + m*moe; aggregate(B) = B*single/(1+k*(B-1))",
+            "model": "log(tok/s) = a[backend] - beta*log(GB per token) - g*log(1+depth_k) + m*moe; aggregate(B) = B*single/(1+k*(B-1))",
             "method": "weighted least squares, weight 1/sqrt(rows from the same source)",
             "rows": self.rows,
             "sources": self.sources,
             "rows_per_backend": self.backend_rows,
             "effective_gb_s_at_1gb": {b: round(math.exp(v), 1) for b, v in self.a.items()},
             "beta": round(self.beta, 3),
-            "g_per_1k_depth": round(self.g, 4),
+            "g_log1p_depth_k": round(self.g, 4),
             "moe_factor": round(math.exp(self.m), 3),
             "batch_k": {b: round(v, 3) for b, v in self.k.items()},
             "batch_k_rows": self.k_rows,
@@ -267,7 +364,7 @@ def _single_fit(rows: list[Row], backends: list[str]) -> tuple[dict[str, float],
     for r in rows:
         per_source[r.source] += 1
     for r in rows:
-        x.append([1.0 if r.backend == b else 0.0 for b in backends] + [-math.log(r.gb), -r.depth_k, 1.0 if r.moe else 0.0])
+        x.append([1.0 if r.backend == b else 0.0 for b in backends] + [-math.log(r.gb), -math.log1p(r.depth_k), 1.0 if r.moe else 0.0])
         y.append(math.log(r.tg))
         w.append(1.0 / math.sqrt(per_source[r.source]))
     coef = _wls(x, y, w)
@@ -288,7 +385,7 @@ def fit(rows: list[Row], min_backend_rows: int = 1) -> Fit:
     a, beta, g, m = _single_fit(single, backends)
 
     def predict_log(r: Row, a_: dict[str, float], beta_: float, g_: float, m_: float) -> float:
-        return a_[r.backend] - beta_ * math.log(r.gb) - g_ * r.depth_k + (m_ if r.moe else 0.0)
+        return a_[r.backend] - beta_ * math.log(r.gb) - g_ * math.log1p(r.depth_k) + (m_ if r.moe else 0.0)
 
     ys = [math.log(r.tg) for r in single]
     resid = [ys[i] - predict_log(r, a, beta, g, m) for i, r in enumerate(single)]
