@@ -3,6 +3,10 @@
 Screenless, always-on AI box with eyes. Design, contracts and tasks live in
 Notion: Knighthacks > Atlas Design Doc / Task Board.
 
+**Using an AI coding agent on this repo? Read [AGENTS.md](AGENTS.md) first.**
+Notion is the source of truth and the team's communication channel, and your
+agent should check your Team Comms page for questions addressed to you.
+
 ## Layout
 
 ```
