@@ -1,32 +1,35 @@
 # Refinement goal for the plumbing track
 
-Created 2026-10-10 (Task Board O3). This file governs every refinement pass on the plumbing track: pod control on
-the two AUP Learning Cloud accounts (one R9700 each), the box-to-lab link through the hub proxy, and credits. A
-pass that does not follow it is invalid and its edits are reverted. The rules shared by all four tracks (triggers,
-the pass cap, the merge pass) live in `lab/refine/PASS_RULES.md`, and the file formats in `lab/refine/TEMPLATES.md`;
-where either disagrees with this file, that file wins and the pass records the disagreement in its log.
+Created 2026-10-10 (Task Board O3). This file says what the plumbing track is judged on: pod control on the two
+AUP Learning Cloud accounts (one R9700 each), the box-to-lab link through the hub proxy, and credits. A pass that
+does not follow it is invalid and its edits are reverted. How passes run (triggers, rounds, the cap, the merge
+pass) is set by `lab/refine/PASS_RULES.md`, and the file formats by `lab/refine/TEMPLATES.md`. Where PASS_RULES.md
+and this file disagree about process, PASS_RULES.md wins; where they disagree about what the track is judged on,
+this file wins (PASS_RULES.md, opening section).
 
 ## The goal
 
 Objective: pods that are reliable, cheap, and reachable with no hand steps (O3 task page).
 
-Refine the plumbing track (its tasks on the Task Board, its experiments on T0, and the scripts they produce) until
-all eight plumbing tests below pass, each backed by a measured number in the ledger. Target: the pass cap per run
-in `lab/refine/PASS_RULES.md` (10, O13 task page), or convergence, whichever comes first. Convergence = a pass that
-walks every track item and every failure scenario below against all eight tests and finds nothing left to change.
+Refine the plumbing track (the board tasks it covers, the experiments queued on T0 for its metrics, and what they
+produce) until all eight plumbing tests below pass, each backed by a measured number in the metrics file or the
+ledger. A run ends at convergence, at its tenth pass, or when Ilan ends it (PASS_RULES.md, "Runs, the cap and
+convergence"). Convergence = a pass that walks every task and queued experiment of the track, and every failure
+scenario in the walk list, against all eight tests and changes nothing: no board edit, no new queued experiment,
+and no new ruling.
 
-How passes are run (O13 task page; PASS_RULES.md governs): each pass is a fresh Opus agent started through the
-open-ticket skill with the pass as its task, one pass at a time in this track and strictly in sequence, because
-each pass edits what the next one reads. The four tracks run in parallel, and a Fable merge pass follows each round.
-A pass reads this file, the metrics (`lab/refine/metrics.jsonl` until the ledger `lab/state/ledger.jsonl` replaces
-it), the research notes in `lab/refine/research/plumbing/`, and the Task Board rows of the track. It may edit the
-board (split, merge, reorder within Ilan's lane, rewrite Done-when, fix blockers, set Tier), queue experiments on
-T0, and write `REFINE_LOG.md` and `refine_pass.txt` in this folder. It never writes `OWNER_RULINGS.md`: a question
-it cannot decide goes in its log entry, and the merge pass adds it there (O9 task page).
+How passes are run is set by PASS_RULES.md ("How passes are run", "When a pass is triggered", "The merge pass"):
+each pass is a fresh Opus agent on its own board task, started through the open-ticket skill; passes on this
+track run strictly in sequence, the four tracks run in parallel in rounds, and a Fable merge pass follows each
+round. A pass edits only the board rows of this track that are Ilan's alone, not Locked, and not Done; queues
+experiments on T0; and writes only `REFINE_LOG.md`, `refine_pass.txt`, and `pass_reports/` in this folder and the
+notes under `lab/refine/research/plumbing/`. It never writes `OWNER_RULINGS.md` or this file: it raises a ruling
+in its log entry, and the merge pass copies it into `OWNER_RULINGS.md`.
 
 ## The two universal rules
 
-These bind every pass in every track and are worded the same in all four rubrics (O1 task page).
+These bind every pass in every track (PASS_RULES.md, "The two universal rules") and read the same in all four
+rubrics (O1 task page).
 
 1. Old versus new. Every task and experiment names the metrics it is meant to move, reads their current values
    from the metrics file or ledger before starting, and ends by measuring them the same way. The pass log shows
@@ -43,24 +46,28 @@ account, the same port, and the same payload size; the conditions in the log nam
 
 ## Primary sources (the ONLY things that may justify a change)
 
-In this order of authority. When sources disagree, follow the higher one and record the disagreement in the log;
-never average.
+In the order PASS_RULES.md sets for every track ("What a pass reads"). When two disagree, the higher one wins and
+the disagreement is recorded in the log, never averaged.
 
-1. Owner rules. A filled `Answer:` in `OWNER_RULINGS.md` in this folder (a blank one is not a rule); Ilan's
-   decisions on the Task Board and on his Team Comms page; the GPU Queue rules (the GPU Queue database and the
-   open-ticket skill, section 4b); `AGENTS.md`; and the Design Doc, sections 4, 6, 6b, 8, and 13 for this track.
-2. Our own measurements on our hub, newest first: the ledger, `lab/refine/metrics.jsonl`, the verified lines on
-   the R2 and R9 task pages, the Q1 answer on Ilan's Team Comms page, and PR #37 with `lab/README.md`. The public
-   AUP repo shows a reference deployment, not the Dublin hub's own settings, so a measurement on our hub outranks
-   source code about what our hub does.
-3. Source code pinned to a tag or commit: JupyterHub 5.4.4 (the version our hub reports at `GET /hub/api/`), the
-   public AUP Learning Cloud repo at commit 9b4af19, vLLM b1388b1 (the commit pod A serves, `lab/pod_a_teacher.sh`
-   L11), and, for packages whose version on the pod is not yet confirmed, the newest release at the time of
-   writing: jupyter-server-proxy 4.6.0, Jupyter Server 2.21.1, Tornado 6.5.10, huggingface_hub 2.2.0 (open item 9).
-4. Vendor documentation for those versions. Unpinned "stable" docs are not enough: JupyterHub's stable REST
-   reference is already 6.0.1.
-5. Research notes in `lab/refine/research/plumbing/`. Their measured findings carry level-2 citations; practitioner,
-   anecdote, and opinion findings rank here and never outrank levels 1 to 4.
+1. A filled ruling from Ilan: an `Answer:` line in `OWNER_RULINGS.md` in this folder (a blank one is not a rule).
+   The owner rules that bind every pass sit at the same level: the GPU Queue rules (the GPU Queue database and the
+   open-ticket skill, section 4b) and `AGENTS.md`.
+2. The Design Doc for this track's ground: sections 4 (system overview), 6 and 6b (integration rules and failure
+   modes), 8 (network and GPU server lifecycle), and 13 (risks).
+3. The track's research notes in `lab/refine/research/plumbing/` with their `SOURCES.md`, ranked inside by label
+   (`lab/refine/RESEARCH_FORMAT.md`). For this track a finding measured on our hub (our own run, citing its ledger
+   line, PR, or verified task-page line) outranks a prediction read from source code or docs about the same
+   behavior, because the public AUP repo shows a reference deployment, not the Dublin hub's settings. Source code
+   is cited at a pinned tag or commit: JupyterHub 5.4.4 (the version our hub reports at `GET /hub/api/`), the AUP
+   repo at commit 9b4af19, vLLM b1388b1 (the commit pod A serves, `lab/pod_a_teacher.sh` L11), and, until the
+   pod's own versions are confirmed (open item 9), the newest releases at the time of writing:
+   jupyter-server-proxy 4.6.0, Jupyter Server 2.21.1, Tornado 6.5.10, and huggingface_hub 2.2.0. Unpinned "stable"
+   docs do not count: JupyterHub's stable REST reference is already 6.0.1.
+4. The metrics file `lab/refine/metrics.jsonl`, later the ledger `lab/state/ledger.jsonl`.
+
+Until the research notes exist, the sources at the end of this file, the verified lines on the R2 and R9 task
+pages, the Q1 answer on Ilan's Team Comms page, and PR #37 with `lab/README.md` stand at level 3 under the same
+rule.
 
 A pass MUST open the source before changing a plan item and MUST cite it in the log: file and line at a pinned tag
 or commit, doc URL and section, ledger line, or Notion page and line. No citation, no change. Nothing from memory.
@@ -70,10 +77,14 @@ or commit, doc URL and section, ledger line, or Notion page and line. No citatio
 Every pass checks all eight against the whole track. A finding under any test is logged whether or not it is fixed
 in that pass. Each test says what passing means, what the sources predict, how it is checked, which metric it
 moves, and where it stands today. A cycle is the controller's keep-alive and poll interval, 10 minutes (R9
-Done-when; Design Doc section 13), which is also the idle culler's check interval. The unit tests named under
-"Checked by" run on this machine against recorded hub and proxy answers under `fixtures/`, never a live call
-(`.claude/testing/AGENT_ANTIPATTERNS.md`, "Atlas harness facts"); the live checks are only those that "What a
-pass may NOT change" allows.
+Done-when; Design Doc section 13), which is also the idle culler's check interval.
+
+The checks under "Checked by" are carried out by the track's tasks and queued experiments, not by a pass: a pass
+starts no pod or model server, runs no GPU job, and takes no queue slot (PASS_RULES.md, "What a pass may never
+change"); it reads their results from the metrics file or the ledger. The unit tests run on this machine against
+recorded hub and proxy answers under `fixtures/`, never a live call (`.claude/testing/AGENT_ANTIPATTERNS.md`,
+"Atlas harness facts"). A live check takes a GPU Queue slot on pod B and Ilan's go, except read-only calls (hub API
+reads, requests to pod A, calls to an account whose server is stopped), which a pass may make itself.
 
 ### T1. Every controller command is safe to re-run
 
@@ -261,19 +272,26 @@ MB means 10^6 bytes. Every row in the metrics file or the ledger names its node 
 ## The walk list (track items and failure scenarios)
 
 Each pass walks every track item and at least two failure scenarios, rotating so that all fourteen are walked
-across a run; the log says which were walked. Walk each scenario through the items as they stand (code on main,
-open PRs, and each task's Done-when), step by step, and record every place with no automated step, no mapped
-response, or no number.
+across a run; a pass can only converge if it walked all fourteen. The log says which were walked. Walk each
+scenario through the items as they stand (code on main, open PRs, and each task's Done-when), step by step, and
+record every place with no automated step, no mapped response, or no number.
 
-Track items:
+Track items (the starting set in PASS_RULES.md, "The four tracks": R6, R9, R10, and the credit rules that T3
+judges):
 - R9 pod controller: launch, stop, keep-alive, long sessions, status (R9 task page).
 - R6 box-side transfers: push a dataset with the contents API, pull a package through the proxy (R6 task page).
+  R6 is shared with Xander, so a pass proposes changes to it and never edits it (PASS_RULES.md, "What a pass may
+  never change").
 - R10 pod-side package file server (R10 task page).
-- L6 deploy to the Jetson over the hub proxy, for its link half only; the task is Learning's (L6 task page).
-- The GPU Queue procedure as it applies to launches and stops on pod B (GPU Queue database; open-ticket skill 4b).
-- T0 experiments that touch the controller or the link: E1 decides the controller's stop and start policy (T0
-  task page).
+- Experiments queued on T0 whose metric is in this file's metric set (PASS_RULES.md, "The four tracks").
 - Any plumbing task a pass or the merge pass creates.
+
+Walked for context, owned elsewhere (a finding about them goes in the entry for the merge pass):
+- L6, deploy to the Jetson over the hub proxy: its pull step uses this track's link (learning track; L6 task page).
+- E1 on T0, senses contention: its result decides the controller's stop and start policy (T0 task page), but it
+  moves the serving and training metrics of other tracks.
+- The GPU Queue procedure for launches and stops on pod B (GPU Queue database; open-ticket skill, section 4b): an
+  owner rule that only Ilan changes.
 
 Failure scenarios:
 - P1 Launch while the server is up (400 "is already running"; T1).
@@ -294,11 +312,15 @@ Failure scenarios:
 
 ## What a pass may NOT change
 
-- Pod A's teacher server. A pass sends it requests and never stops, restarts, or relaunches it (GPU Queue rules:
-  pod A is a shared service all weekend).
-- Pods without a slot and a go. No launch, stop, long job, or server restart on pod B without a GPU Queue slot and
-  Ilan's explicit go naming the node and the job (open-ticket skill, sections 4b, 5, and 7). Probing an account
-  whose server is already stopped needs neither.
+Everything PASS_RULES.md lists under "What a pass may never change" holds here: other people's and shared tasks,
+the Demo Plan, priorities, Locked tasks, the rulings file, this file, other tracks' rows, an earlier pass's change
+without a newer source, and anything outside plans. For this track that means in particular:
+
+- Pod A's teacher server. Requests only; it is never stopped, restarted, or relaunched (GPU Queue rules: pod A is
+  a shared service all weekend).
+- Pods and slots. A pass starts no pod or model server, runs no GPU job, and takes no queue slot (PASS_RULES.md).
+  The track's tasks and experiments do the live work, each with a GPU Queue slot on pod B and Ilan's explicit go
+  naming the node and the job (open-ticket skill, sections 4b, 5, and 7).
 - Tokens. Never printed, logged, committed, posted, or written to the ledger; refer to the `.env` key name only
   (`AGENTS.md` L183; R9 Done-when).
 - What crosses the link. The 18 GB teacher checkpoint never crosses it (O3 task page, test 6). Raw frames never
@@ -311,44 +333,51 @@ Failure scenarios:
   `lab/README.md` L26-L28); a pass does not invent others.
 - Billing. Every elapsed minute of every session counts at the posted rate; a pass never plans around a gap in the
   hub's accounting (T3).
-- This file. The two universal rules, the eight tests, and the metric set change only through a ruling (O13 task
-  page); a pass that finds one wrong raises it in its log.
-- Other people's tasks, the Demo Plan, and P0 priorities: proposals only, posted on Dominick's Team Comms page
-  (O13 task page; `AGENTS.md` section 8.4).
-- `OWNER_RULINGS.md`: the merge pass's file; a pass reads it and never writes it (O9 task page).
+- This file. Only the merge pass edits it, and only to carry out a filled ruling that names the change
+  (PASS_RULES.md, "The merge pass"); a pass that finds a test, a metric, or a universal rule wrong raises a ruling.
 
 ## The pass procedure (every pass, in this order)
 
-1. Read `refine_pass.txt` in this folder. Let N = that number + 1. This is pass N.
-2. Read `REFINE_LOG.md` in this folder (in full until it has a "State at the end of the run" section, and from the
-   newest such section onward after that) and `OWNER_RULINGS.md`, so you neither redo nor undo a prior pass or a
-   ruling.
-3. Read this file, `lab/refine/PASS_RULES.md`, and `lab/refine/TEMPLATES.md`, fresh.
-4. Metrics before. For each metric in the set, copy its latest value, unit, node, conditions, and source line from
-   the ledger (or from `lab/refine/metrics.jsonl` until the ledger replaces it). A metric with no row is written
-   "unmeasured", never estimated.
-5. Research, bounded. Open the sources that bear on what you expect to change, within the search bound of
+PASS_RULES.md ("What a pass reads", "What a pass does") is the procedure; these are its steps with what they mean
+for this track.
+
+1. Read PASS_RULES.md, this file, and `lab/refine/TEMPLATES.md`, fresh. Read `refine_pass.txt` in this folder;
+   this is pass N, its value plus one.
+2. Read `REFINE_LOG.md` from the closing section of the latest run ("State at the end of the run") to the end, or
+   all of it if no run has closed; then `OWNER_RULINGS.md`, the metrics file, the notes under
+   `lab/refine/research/plumbing/` with their `SOURCES.md`, the board rows of the track, the experiment queue on
+   T0, and the latest entry of `lab/refine/MERGE_LOG.md`.
+3. Metrics before. For each metric in the set, copy its latest value, unit, node, conditions, and source line. A
+   metric with no value is listed as having no baseline, never estimated, and a measurement for it is queued on T0.
+4. Research, bounded. Open the sources that bear on what you expect to change, within the search bound of
    `lab/refine/RESEARCH_FORMAT.md` (until it exists: 30 minutes and at most six new sources). Write the findings
-   into `lab/refine/research/plumbing/` in that format, each labeled measured, practitioner, anecdote, or opinion,
-   with its citation.
-6. Walk every track item and at least two failure scenarios the previous pass did not walk. Record every place a
+   into `lab/refine/research/plumbing/` in that format, each labeled, with its citation.
+5. Walk every track item and at least two failure scenarios the previous pass did not walk. Record every place a
    path breaks, needs a hand step, has no mapped response, or has no number.
-7. Check all eight tests against the whole track. List EVERY finding with its location (task ID and Done-when
+6. Check all eight tests against the whole track. List EVERY finding with its location (task ID and Done-when
    clause, file and line at a commit, or experiment), whether or not you change it.
-8. Change at most 5 things, highest impact first: (a) a path that loses work or spends credits unnoticed, (b) a
-   hand step with no script, (c) a failure mode with no mapped response, (d) a metric with neither a measurement
-   nor a queued experiment, (e) wording precision. For each change record BEFORE verbatim, AFTER verbatim, SOURCE,
-   WHY in one sentence, and the metric it should move with the expected direction. An idea not yet tested is
-   queued on T0 with its expected movement, never logged as an improvement.
-9. Metrics after. If the pass measured anything (a slot, a probe), record the after values, measured the same way
-   under the same conditions. No movement is no improvement; a regression is reverted or raised for a ruling with
-   the trade-off stated.
+7. Make the changes the findings justify, highest impact first: (a) a path that loses work or spends credits
+   unnoticed, (b) a hand step with no script, (c) a failure mode with no mapped response, (d) a metric with
+   neither a measurement nor a queued experiment, (e) wording precision. Each change records BEFORE verbatim,
+   AFTER verbatim, SOURCE, WHY in one sentence, and the metric it should move with the expected direction, and
+   its line goes on the Plan changes post on Ilan's Team Comms page when the change is made (PASS_RULES.md,
+   "Telling Ilan what changed"). An idea not yet tested is queued on T0 with its expected movement, never logged
+   as an improvement. A finding about a task owned elsewhere goes in the entry for the merge pass.
+8. Raise a ruling in the entry for anything the sources cannot decide: Now, Recommend, Source of tension, and a
+   blank `Answer:` line.
+9. Metrics after. If the pass ran anything (a read-only call), record the after values, measured the same way
+   under the same conditions; if it ran nothing, the entry says so. No movement is no improvement; a regression is
+   reverted or raised for a ruling with the trade-off stated.
 10. Checks, pasting the real output: `python -m pytest -q` from the clone root is green; the token scan (T4) exits
     0, or until it exists `git grep -nE "(Authorization: token |token=)[0-9a-f]{32}"` prints nothing; and
     `grep -cP "[\x{2013}\x{2014}]" <file>` prints 0 for every file the pass wrote (plain hyphens only).
-11. Append the entry to `REFINE_LOG.md` in the format below.
-12. Write N to `refine_pass.txt`, overwriting. This is the last step; a pass that fails earlier does not increment.
-13. If steps 6 and 7 found nothing, the entry reads "CONVERGED at pass N". Still increment.
+11. Append the entry to `REFINE_LOG.md` in the `TEMPLATES.md` format (the minimum is below) and write the pass
+    report, which states the time the pass ended.
+12. Write N to `refine_pass.txt`, overwriting. This is the last step. A pass that fails before it does not move
+    the counter, reverts its board changes, and releases its task (PASS_RULES.md, "What a pass does").
+13. A pass that walked every track item and all fourteen scenarios and changed nothing ends its entry with
+    `CONVERGED at pass N`. The tenth pass of a run that does not converge ends with `CAP REACHED at pass N, not
+    converged` and raises the cap ruling (PASS_RULES.md, "The cap"). Either way the counter still moves.
 
 ## Log entry format
 
@@ -360,23 +389,26 @@ carries these blocks in this order:
 
 Research: <sources opened, one per line> :: <note file written under lab/refine/research/plumbing/>
 Metrics before:
-- <metric> = <value> <unit> (node, conditions) :: <ledger or metrics.jsonl line>
+- <metric> = <value> <unit> (node, conditions) :: <ledger or metrics.jsonl line>, or "no baseline; queued as E<n>"
 Walked: <track items>; scenarios P<a>, P<b> :: <where each broke, or "held">
 Findings (all, by test):
 - T<n> <location>: <what is wrong>
 
-Changes (max 5):
+Changes (highest impact first):
 1. <location> (T<n>, P<x> if a scenario)
    BEFORE: <verbatim>
    AFTER:  <verbatim>
    SOURCE: <file and line at a tag or commit / doc URL and section / ledger line / Notion page and line>
    WHY: <one sentence>
    MOVES: <metric>, expected <direction and size>
+   POSTED: <the Plan changes line, as posted>
 
-Rulings raised: <question; Now; Recommend; source of tension> or none
-Metrics after: <as above, or "nothing measured this pass">
+For the merge pass: <findings about tasks owned elsewhere> or none
+Rulings raised: <question>; Now: <...>; Recommend: <...>; Source of tension: <...>; Answer: (blank) - or none
+Metrics after: <as above, or "nothing run this pass">
 Checks: pytest <summary line>; token scan <exit code>; dashes 0
 Left for the next pass: <count> findings; scenarios not yet walked: <list>
+Pass report: <file under pass_reports/>, ended <time>
 ```
 
 ## Known open items for pass 1
@@ -397,8 +429,8 @@ Found on 2026-10-10 from the sources below; none is measured yet.
    token, where the task text says 404 and 401. Record what our hub returns; the observation goes in the failure
    map, and the task text is corrected through a ruling if it differs.
 5. Spend is invisible until a stop (T3). The balance moves only when a session ends (manager.py L354-L411), so the
-   tracker projects from launch time. Check it with two `quota/me` reads around one pod B stop, compared with
-   elapsed whole minutes x 4.
+   tracker projects from launch time. Queue the check for a pod B slot: two `quota/me` reads around one stop,
+   compared with elapsed whole minutes x 4.
 6. Keep-alive and the culler (T3, P4). Proxied requests are recorded as activity (handlers.py L236-L259, called on
    every request at L413; idle-culler README, "How it works"), and the hub refreshes `last_activity` every 300 s
    (`jupyterhub/app.py` L502-L504). Read-only check: `servers[""].last_activity` from `GET /hub/api/users/<name>`
@@ -412,8 +444,8 @@ Found on 2026-10-10 from the sources below; none is measured yet.
 9. Versions on the pod (sources level 3). The hub reports 5.4.4 (`GET https://dub.aupcloud.io/hub/api/`, read
    without a token on 2026-10-10), while JupyterHub's stable docs are 6.0.1, so cite 5.4.4 sources only.
    jupyter-server-proxy was installed with `pip install --user` on 2026-10-10 (Q1 answer), when PyPI's newest was
-   4.6.0 (released 2026-09-21). Confirm with `pip show jupyter-server-proxy jupyter-server tornado huggingface_hub`
-   on pod B in the next slot and correct any pinned citation that differs.
+   4.6.0 (released 2026-09-21). Queue `pip show jupyter-server-proxy jupyter-server tornado huggingface_hub` for
+   the start of the next pod B slot, and correct any pinned citation that differs.
 10. Acceptable transfer speed (T6) has no owner rule yet. Recommended for a ruling: a few-GB package pull within
     10 minutes (about 5 MB/s for 3 GB), because a trainer run finishes in tens of minutes (Design Doc section 8)
     and shipping should not take longer than training. Until it is answered, a pass records the numbers and does
@@ -439,11 +471,12 @@ Our own pages and repo:
 - Design Doc, sections 4, 6, 6b, 8, and 13: https://app.notion.com/p/3f596ef5fec5819ea5cdcaa015e69917
 - GPU Queue (R9700 pods) database: https://app.notion.com/p/c69762a396874e049a4af6819f762615
 - PR #37, R2 GPU lab setup with the measured numbers: https://github.com/raohemdutt/Knighthacks26/pull/37
-- `lab/README.md` on main: https://github.com/raohemdutt/Knighthacks26/blob/31352db113d181d7a05a44f260e644f8b6c764c4/lab/README.md
-- `lab/pod_a_teacher.sh` on main: https://github.com/raohemdutt/Knighthacks26/blob/31352db113d181d7a05a44f260e644f8b6c764c4/lab/pod_a_teacher.sh
-- `lab/pod_b_trainer.sh` on main: https://github.com/raohemdutt/Knighthacks26/blob/31352db113d181d7a05a44f260e644f8b6c764c4/lab/pod_b_trainer.sh
-- `contracts/events.py` L21, the event id shape: https://github.com/raohemdutt/Knighthacks26/blob/31352db113d181d7a05a44f260e644f8b6c764c4/contracts/events.py#L21
-- `AGENTS.md` L183, secrets: https://github.com/raohemdutt/Knighthacks26/blob/31352db113d181d7a05a44f260e644f8b6c764c4/AGENTS.md#L183
+- `lab/README.md` on main: https://github.com/raohemdutt/Knighthacks26/blob/5eebde3dbb806db664a2f86426af888ff0d5b565/lab/README.md
+- `lab/pod_a_teacher.sh` on main: https://github.com/raohemdutt/Knighthacks26/blob/5eebde3dbb806db664a2f86426af888ff0d5b565/lab/pod_a_teacher.sh
+- `lab/pod_b_trainer.sh` on main: https://github.com/raohemdutt/Knighthacks26/blob/5eebde3dbb806db664a2f86426af888ff0d5b565/lab/pod_b_trainer.sh
+- `lab/refine/PASS_RULES.md`, the pass rules every track follows: https://github.com/raohemdutt/Knighthacks26/blob/5eebde3dbb806db664a2f86426af888ff0d5b565/lab/refine/PASS_RULES.md
+- `contracts/events.py` L21, the event id shape: https://github.com/raohemdutt/Knighthacks26/blob/5eebde3dbb806db664a2f86426af888ff0d5b565/contracts/events.py#L21
+- `AGENTS.md` L183, secrets: https://github.com/raohemdutt/Knighthacks26/blob/5eebde3dbb806db664a2f86426af888ff0d5b565/AGENTS.md#L183
 
 JupyterHub (our hub runs 5.4.4):
 - Live version, read without a token: https://dub.aupcloud.io/hub/api/
