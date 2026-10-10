@@ -88,3 +88,25 @@ def test_invites_are_served_and_names_are_checked(tmp_path):
         assert r.status_code == 200 and r.headers["content-type"].startswith("text/calendar")
         assert c.get("/api/invites/..%2Fevents%2Fx.ics").status_code == 404
         assert c.get("/api/invites/secret.txt").status_code == 404
+
+
+def test_place_packs_routes_feasibility_and_friend_routes(tmp_path):
+    from datetime import UTC, datetime, timedelta
+
+    from contracts.circle import PlaceShared
+
+    with client(tmp_path) as c:
+        assert {p["name"] for p in c.get("/api/places").json()} >= {"ucf", "apartment"}
+        r = c.get("/api/play/campus-route", params={"from": "ucf.union", "to": "ucf.eng2"}).json()
+        assert r == {"path": ["ucf.union", "ucf.hec", "ucf.eng2"], "minutes": 6}
+        late = c.get("/api/play/campus-route", params={"from": "ucf.rwc", "to": "ucf.eng2",
+                                                       "depart": "2026-10-11T09:50:00-04:00", "due": "2026-10-11T10:00:00-04:00"}).json()
+        assert late["message"] == "you miss the 10:00 by 7 minutes"
+
+        bad = c.post("/api/places", content="name: x\nplaces: {a: {name: A}}\nedges: [[a, b, 2]]")
+        assert bad.status_code == 422 and "unknown place" in bad.json()["detail"]
+        ok = c.post("/api/places", content='{"name": "lab", "places": {"a": {"name": "A"}, "b": {"name": "B"}}, "edges": [["a", "b", 2]]}')
+        assert ok.status_code == 200 and (tmp_path / "places" / "lab.yaml").exists()
+        assert c.get("/api/play/campus-route", params={"from": "lab.a", "to": "lab.b"}).json()["minutes"] == 2
+
+        assert c.get("/api/play/campus-route", params={"from": "ucf.union", "to": "friend:hemdutt"}).status_code in (404,)

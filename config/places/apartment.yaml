@@ -1,0 +1,16 @@
+# Place pack (S5): a small apartment. Rooms are places; edges are doorways in minutes.
+# `entry` is where the parent pack's place (e.g. the dorm on campus) leads in.
+name: apartment
+kind: home
+entry: door
+places:
+  door:     {name: Front door, kind: door}
+  kitchen:  {name: Kitchen, kind: kitchen}
+  bedroom:  {name: Bedroom, kind: bed}
+  desk:     {name: Desk, kind: desk, zones: config/zones.yaml}
+  bathroom: {name: Bathroom, kind: bathroom}
+edges:
+  - [door, kitchen, 0.2]
+  - [kitchen, bedroom, 0.3]
+  - [bedroom, desk, 0.1]
+  - [kitchen, bathroom, 0.2]
