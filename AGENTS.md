@@ -68,6 +68,13 @@ Do this **at the start of every session**, **before you pick new work**, and
 **after every push**. Unattended (overnight), run it as the cycle in section 8.5. During long sessions, also do it at least every 30 to 60
 minutes or between tasks, because teammates keep changing the plan.
 
+**This file changes too.** Teammates may edit `AGENTS.md` to change how agents
+behave. After every `git pull`, check whether it changed
+(`git diff <previous HEAD> HEAD -- AGENTS.md`, or just re-read it). If it did,
+**accept the change and follow the new version from then on**. If two
+instructions conflict, the newer commit wins. Ask on Dominick ↔ Team if it is
+unclear.
+
 1. **Read your Team Comms page.** Handle every unticked item under *Open questions* (see section 4).
 2. **Read the FYI section** on your page for interfaces and ownership changes that affect you.
 3. **Skim the Build Log** for what landed since you last looked. Use what exists; don't rebuild it.
@@ -156,7 +163,7 @@ judges will actually see; it is the reason each P0 exists.
 ## 6. When you finish something
 
 1. **Tests pass first:** `pytest -q`. Commit only on green; chain them (`pytest -q && git commit ...`).
-2. **Pull, then push to `main`** (small, focused commits; message says what changed and why).
+2. **Ship through a feature branch and PR** (section 8.3), with small, focused commits whose messages say what changed and why.
 3. **Build Log:** add an entry at the top. Include what landed, the commit hash, how to use it (command, endpoint, file), and anything others must do differently.
 4. **Task Board:** set the task to **Done** and **uncheck Locked**, or keep it **In progress** (still locked) with a note saying which part of "Done when" is still open.
 5. **Tell the people it affects:** add an FYI on their Team Comms page if it changes an interface they use.
@@ -222,11 +229,23 @@ the Assignee and write `handed to <Person>` on the task page.
 person's folder, keep it minimal and post an FYI on their page with the commit
 hash. Anything bigger is a question for them.
 
-### 8.3 Git when four agents push to `main`
-- **Stay in your own folders** (`contexts/<your contexts>/`, your config files, your tests). Shared files (`contracts/`, `runtime/`, `bus/`, `contexts/gateway/bootstrap.py`, `pyproject.toml`) get small, additive edits only.
-- Every push: `git pull --rebase` → `pytest -q` → push. **Never** `--force`, never rewrite history, never `--no-verify`.
-- **Rebase conflict in your own files:** resolve it and re-run the tests. **Conflict in someone else's files:** abort the rebase (`git rebase --abort`), post on their page with the conflicting file and your commit, and work on something else until it is resolved.
-- **`main` is red because of someone else's commit:** don't fix their code. Post on their page (`🤖 … main fails: <test> since <commit>`), add it under *Blocked on* in Overnight Status, and keep working locally until it's fixed.
+### 8.3 Git: feature branches and pull requests
+Nobody commits straight to `main` any more. Every piece of work goes on a
+feature branch and lands through a pull request.
+
+1. **Branch from fresh `main`:** `git checkout main && git pull --rebase && git checkout -b ctx/<context>/<feature>` (e.g. `ctx/agent/keyframe-tool`, `ctx/memory/sqlite-store`; `ctx/docs/<topic>` for docs). One task per branch.
+2. **Commit small**, with messages that say what changed and why.
+3. **Before pushing:** `git fetch origin && git rebase origin/main`, then `pytest -q`. Push the branch: `git push -u origin <branch>`.
+4. **Open a PR** (`gh pr create --base main`) titled with the task ID, e.g. `A1: get_keyframe tool`. The body says what changed, how it was tested, and anything others must do.
+5. **Merging:**
+   - Your PR touches only **your own folders** (your `contexts/<context>/`, your config, your tests) and tests pass: merge it yourself (`gh pr merge --squash --delete-branch`).
+   - It touches **shared files** (`contracts/`, `runtime/`, `bus/`, `contexts/gateway/bootstrap.py`, `pyproject.toml`, `AGENTS.md`): additive changes (new optional fields, new events, a new wiring block) can be merged by you, with an FYI to everyone affected. Renames, removals, or behaviour changes need a second person's (or their agent's) OK on the PR or on Team Comms first.
+   - **Never** `--force` push to `main`, rewrite shared history, or use `--no-verify`.
+6. **After merging:** Build Log entry (with the PR number), Task Board status, release the lock if done.
+
+Conflicts and a red `main`:
+- **Rebase conflict in your own files:** resolve it and re-run the tests. **Conflict in someone else's files:** abort (`git rebase --abort`), post on their page with the file and your branch, and work on something else until it is resolved.
+- **`main` is red because of someone else's commit:** don't fix their code. Post on their page (`🤖 … main fails: <test> since <commit>`), add it under *Blocked on* in Overnight Status, and keep working on your branch.
 - **Contract changes overnight** are additive only (new optional fields, new event types), always with an FYI to everyone who uses that contract. Renames and removals wait for the people.
 
 ### 8.4 What an agent must not do unattended
@@ -239,9 +258,9 @@ hash. Anything bigger is a question for them.
 ### 8.5 The overnight cycle (run on a loop, about every 30 minutes)
 1. **Inbox:** read your person's Team Comms page and **Dominick ↔ Team**. Answer what you can (section 4A). Mark the rest `🙋 waiting on <Person>`.
 2. **Replies:** check the pages where *you* asked questions. Act on new answers.
-3. **Build Log + git:** `git pull --rebase`, skim what landed, and run `pytest -q` so you know `main` is green.
+3. **Build Log + git:** pull `main`, **re-read AGENTS.md if it changed** (follow the new rules), skim what landed, and run `pytest -q` so you know `main` is green.
 4. **Work:** continue the task you hold the lock on, or claim the next one: check the lock, then acquire it (sections 5 and 8.2). Work in small steps that can each be committed.
-5. **Ship:** tests, push, Build Log entry, Task Board status (release the lock when Done), FYIs to anyone affected (section 6).
+5. **Ship:** on your feature branch, rebase on `main`, run the tests, push, open the PR, merge per section 8.3, then do the Build Log entry, Task Board status (release the lock when Done), and FYIs to anyone affected (section 6).
 6. **Status:** rewrite your section of **Overnight Status**: last update, working on, done tonight, blocked on, needs a human.
 7. **Never idle:** if every task you hold or could claim is blocked or waiting on a human, create the next task (section 5, "Creating work when the backlog runs dry"), lock it, and build it. Only if nothing useful is left inside your person's areas, say so in Overnight Status and keep checking the inbox each cycle.
 
