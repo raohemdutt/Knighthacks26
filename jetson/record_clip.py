@@ -48,6 +48,7 @@ DEFAULT_OUT = "~/atlas/fixtures/clips"
 DEFAULT_CAMERA = "cam-desk"
 POLL_S = 0.02  # how often the snapshot is asked for; the gateway answers a repeated ask for the same frame from its cache
 MAX_GAP_S = 1.0  # a clip with a longer hole between two frames is refused: the camera or the gateway stalled
+RATE_TOLERANCE = 0.1  # the frames per second the camera really gave may differ from the clip's rate by this much
 GST_TIMEOUT_S = 180  # joining ten seconds of frames takes a few seconds at nice 19; this only ends a hung pipeline
 FRAME_NAME = "%05d.jpg"
 TASK = "desk-objects"
@@ -276,6 +277,10 @@ def record(gateway: Gateway, name: str, out_dir: Path, *, camera: str = DEFAULT_
     gaps = [later - earlier for earlier, later in zip(offsets, offsets[1:])] + [seconds - offsets[-1], offsets[0]]
     if max(gaps) > MAX_GAP_S:
         raise RecordError(f"the picture stalled for {max(gaps):.1f} s during the clip; nothing was kept")
+    measured = len(frames) / seconds
+    if abs(measured - fps) > RATE_TOLERANCE * fps:
+        raise RecordError(f"the camera gave {measured:.1f} frames a second, not about {fps}: joined at {fps} the clip would "
+                          f"play at the wrong speed, so nothing was kept (--fps {round(measured)} records it as it is)")
     width, height = jpeg_size(frames[0][1])
     try:
         (clip_dir / "frames").mkdir(parents=True)
@@ -291,7 +296,7 @@ def record(gateway: Gateway, name: str, out_dir: Path, *, camera: str = DEFAULT_
             after = {"error": str(err)}
         meta = {"name": name, "camera": camera, "source": SOURCE, "when": when, "started": started.isoformat(),
                 "seconds_requested": seconds, "frames": len(frames),
-                "fps_measured": round(len(frames) / seconds, 2), "fps_clip": fps, "width": width, "height": height,
+                "fps_measured": round(measured, 2), "fps_clip": fps, "width": width, "height": height,
                 "max_gap_s": round(max(gaps), 3), "blur_faces": True, "mp4": mp4.name, "mp4_bytes": mp4.stat().st_size,
                 "mp4_sha256": sha256_of(mp4), "gst": command, "gateway_before": before, "gateway_after": after,
                 "offsets_s": [round(offset, 3) for offset in offsets]}

@@ -129,7 +129,7 @@ def fake_gst(written: list) -> object:
 def record_one(gateway, out: Path, name: str = "keys-on-desk", seconds: float = 2.0, **options) -> dict:
     clock, written = FakeClock(), []
     return record_clip.record(gateway.client, name, out, seconds=seconds, clock=clock, sleep=clock.sleep,
-                              runner=fake_gst(written), **options)
+                              runner=fake_gst(written), **{"fps": 12, **options})
 
 
 # --- frames ---------------------------------------------------------------------------------
@@ -201,15 +201,15 @@ def test_walk_detector_looks_only_at_people():
 
 def test_record_keeps_every_frame_the_gateway_served_and_joins_them_with_the_pipeline(gateway, tmp_path):
     clock, written = FakeClock(), []
-    meta = record_clip.record(gateway.client, "keys-on-desk", tmp_path, seconds=2.0, clock=clock, sleep=clock.sleep,
+    meta = record_clip.record(gateway.client, "keys-on-desk", tmp_path, seconds=2.0, fps=12, clock=clock, sleep=clock.sleep,
                               runner=fake_gst(written))
     frames_dir = tmp_path / "keys-on-desk" / "frames"
     kept = [path.read_bytes() for path in sorted(frames_dir.glob("*.jpg"))]
     assert kept == gateway.served and len(kept) == meta["frames"] > 10
     assert [path.name for path in sorted(frames_dir.glob("*.jpg"))][:2] == ["00001.jpg", "00002.jpg"]
-    assert written == [record_clip.gst_command(frames_dir, 15, tmp_path / "keys-on-desk.mp4")]
+    assert written == [record_clip.gst_command(frames_dir, 12, tmp_path / "keys-on-desk.mp4")]
     assert meta["mp4_sha256"] == hashlib.sha256(b"an h264 clip").hexdigest() and meta["mp4_bytes"] == len(b"an h264 clip")
-    assert (meta["width"], meta["height"], meta["fps_clip"], meta["blur_faces"], meta["when"]) == (1280, 720, 15, True, "now")
+    assert (meta["width"], meta["height"], meta["fps_clip"], meta["blur_faces"], meta["when"]) == (1280, 720, 12, True, "now")
     assert meta["fps_measured"] == round(meta["frames"] / 2.0, 2)
     assert json.loads((tmp_path / "keys-on-desk" / "clip.json").read_text()) == meta
 
@@ -235,6 +235,15 @@ def test_record_keeps_nothing_when_the_picture_stalls(gateway, tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
+def test_record_refuses_a_camera_slower_than_the_clip_rate_and_says_how_to_record_it_as_it_is(gateway, tmp_path):
+    gateway.every = 8  # 6.5 frames a second reach the recorder
+    with pytest.raises(record_clip.RecordError, match=r"6\.5 frames a second.*--fps 6"):
+        record_one(gateway, tmp_path, fps=15)
+    assert list(tmp_path.iterdir()) == []
+    gateway.asks = 0  # the same stretch of frames again
+    assert record_one(gateway, tmp_path, fps=6)["fps_clip"] == 6
+
+
 def test_record_keeps_nothing_when_the_pipeline_fails(gateway, tmp_path):
     clock = FakeClock()
 
@@ -243,7 +252,7 @@ def test_record_keeps_nothing_when_the_pipeline_fails(gateway, tmp_path):
         raise record_clip.RecordError("GStreamer failed (1): no element jpegdec")
 
     with pytest.raises(record_clip.RecordError, match="GStreamer failed"):
-        record_clip.record(gateway.client, "keys-on-desk", tmp_path, seconds=2.0, clock=clock, sleep=clock.sleep, runner=failing)
+        record_clip.record(gateway.client, "keys-on-desk", tmp_path, seconds=2.0, fps=12, clock=clock, sleep=clock.sleep, runner=failing)
     assert list(tmp_path.iterdir()) == []
 
 
@@ -254,7 +263,7 @@ def test_record_keeps_a_good_clip_and_says_so_when_the_gateway_looks_bad_afterwa
         fake_gst([])(command)
         gateway.camera_status = "down"
 
-    meta = record_clip.record(gateway.client, "keys-on-desk", tmp_path, seconds=2.0, clock=clock, sleep=clock.sleep,
+    meta = record_clip.record(gateway.client, "keys-on-desk", tmp_path, seconds=2.0, fps=12, clock=clock, sleep=clock.sleep,
                               runner=encode_then_lose_the_camera)
     assert (tmp_path / "keys-on-desk.mp4").is_file() and (tmp_path / "keys-on-desk" / "clip.json").is_file()
     assert "not delivering frames" in meta["gateway_after"]["error"]
