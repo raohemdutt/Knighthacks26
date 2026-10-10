@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { Board, Change, Move, MoveKind, MoveOption, OpenSlot, SimResult } from "@/lib/api";
 import { addMove, blockOfMove, clock, clockSpan, minutes, nextClock, placeName, shiftMove, type PlaceIndex } from "@/lib/dayrun";
+import { useWords, type Words } from "@/lib/profile";
 import ui from "../ui.module.css";
 import dr from "./dayrun.module.css";
 
@@ -12,7 +13,8 @@ import dr from "./dayrun.module.css";
  * start and end, or why it was rejected) comes from the last simulation.
  */
 
-const KIND_NAME: Record<MoveKind, string> = { study: "Study", eat: "Eat", sleep: "Sleep", rest: "Rest", event: "Event" };
+/** The name of a move kind in the profile's words: "study" is the activity ("Study", "Work", "Homework"). */
+const kindName = (w: Words, kind: MoveKind): string => (kind === "study" ? w.Activity : { eat: "Eat", sleep: "Sleep", rest: "Rest", event: "Event" }[kind]);
 const KINDS: MoveKind[] = ["study", "eat", "sleep", "rest", "event"];
 /** A starting length for a new move; the box clamps and reports what really fits. `null` fills the slot. */
 const DEFAULT_MINUTES: Record<MoveKind, number | null> = { study: 90, eat: 30, sleep: null, rest: null, event: null };
@@ -25,11 +27,11 @@ function optionFor(slot: OpenSlot, move: Move): MoveOption | undefined {
   );
 }
 
-function moveTitle(slot: OpenSlot | undefined, move: Move, places: PlaceIndex): string {
+function moveTitle(slot: OpenSlot | undefined, move: Move, places: PlaceIndex, w: Words): string {
   const option = slot ? optionFor(slot, move) : undefined;
   if (option && (move.place || move.kind === "event")) return option.title;
-  if (move.place) return `${KIND_NAME[move.kind]} at ${placeName(places, move.place)}`;
-  return move.kind === "sleep" ? "Sleep" : `${KIND_NAME[move.kind]} where you are`;
+  if (move.place) return `${kindName(w, move.kind)} at ${placeName(places, move.place)}`;
+  return move.kind === "sleep" ? "Sleep" : `${kindName(w, move.kind)} where you are`;
 }
 
 export function Planner({
@@ -47,6 +49,7 @@ export function Planner({
   changes: Change[];
   places: PlaceIndex;
 }) {
+  const w = useWords();
   const [adding, setAdding] = useState<string | null>(null);
   const [editing, setEditing] = useState<number | null>(null); // the one move whose controls are open
   const slotIds = new Set(board.slots.map((s) => s.id));
@@ -78,7 +81,7 @@ export function Planner({
           <button type="button" className={dr.moveHead} aria-expanded={open} onClick={() => setEditing(open ? null : i)}>
             <span className={dr.moveTitle}>
               {/* What the box made of the move (its real place, after any re-route), else what was asked for. */}
-              {block ? block.title : `${moveTitle(slot, m, places)}${m.with_friend ? ` with ${m.with_friend}` : ""}`}
+              {block ? block.title : `${moveTitle(slot, m, places, w)}${m.with_friend ? ` with ${m.with_friend}` : ""}`}
             </span>
             <span className={dr.moveEdit}>{open ? "Done" : "Change"}</span>
           </button>
@@ -238,6 +241,7 @@ export function Planner({
 }
 
 function AddSheet({ slot, onPick, onClose }: { slot: OpenSlot; onPick: (o: MoveOption) => void; onClose: () => void }) {
+  const w = useWords();
   const kinds = KINDS.filter((k) => slot.moves.some((o) => o.kind === k));
   const [kind, setKind] = useState<MoveKind>(kinds[0] ?? "study");
   useEffect(() => {
@@ -265,7 +269,7 @@ function AddSheet({ slot, onPick, onClose }: { slot: OpenSlot; onPick: (o: MoveO
             <div className={ui.chips} role="group" aria-label="Kind of move">
               {kinds.map((k) => (
                 <button key={k} type="button" className={`${ui.chip} ${k === kind ? ui.chipOn : ""}`} aria-pressed={k === kind} onClick={() => setKind(k)}>
-                  {KIND_NAME[k]}
+                  {kindName(w, k)}
                 </button>
               ))}
             </div>

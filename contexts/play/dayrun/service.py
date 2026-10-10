@@ -134,6 +134,16 @@ class DayRun:
             raise LookupError(f"no scenario {name!r}")
         return Scenario.load(path)
 
+    def script(self, name: str) -> dict:
+        """A scenario's own presets for the phone: its plans, disruptions and campaign (never a result)."""
+        sc = self.scenario(name)
+        if sc is None:
+            raise LookupError("no scenario ''")
+        return {"name": name, "now": sc.now, "start_place": sc.start_place,
+                "plans": {k: [m.model_dump(mode="json", exclude_none=True) for m in v] for k, v in sc.plans.items()},
+                "disruptions": [d.model_dump(mode="json", exclude_none=True) for d in sc.disruptions],
+                "campaign": [[m.model_dump(mode="json", exclude_none=True) for m in day] for day in sc.campaign]}
+
     def _habit_rows(self, sc: Scenario | None, day: date, now: datetime) -> list[dict] | None:
         source = sc or self.habits
         if source is None:

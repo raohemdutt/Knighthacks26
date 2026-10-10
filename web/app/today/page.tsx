@@ -7,11 +7,13 @@ import ui from "@/components/ui.module.css";
 import { api, type Habit, type ImpactCounts, type Item } from "@/lib/api";
 import { useAtlasEvents } from "@/lib/atlas";
 import { dayLabel, exact, hoursMinutes, percent, timeOrDay, withUnit } from "@/lib/format";
+import { useWords } from "@/lib/profile";
 import { useFetch } from "@/lib/useFetch";
 
 const soonestFirst = (a: Item, b: Item) => (a.when ?? "").localeCompare(b.when ?? "");
 
 export default function TodayPage() {
+  const w = useWords(); // the profile's words: "assignments" for a student, "handovers" for a shift worker
   const [since] = useState(() => new Date().toISOString()); // "upcoming" means from the moment the screen opened
   // With owner recognition on and more than one person enrolled, habits are shown for one of them at a time.
   const [member, setMember] = useState<string | undefined>(undefined);
@@ -99,9 +101,9 @@ export default function TodayPage() {
         {items.error ? (
           <ErrorBox what="what is due" error={items.error} onRetry={items.reload} />
         ) : !items.data ? (
-          <Loading what="assignments" />
+          <Loading what={w.deadline_plural} />
         ) : due.length === 0 ? (
-          <Empty title="Nothing due">Assignments from Canvas with a due date ahead of now are listed here, soonest first.</Empty>
+          <Empty title="Nothing due">{w.Deadline_plural} with a due date ahead of now are listed here, soonest first.</Empty>
         ) : (
           <ul className={ui.list}>
             {due.map((i) => (

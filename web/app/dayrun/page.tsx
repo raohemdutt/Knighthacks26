@@ -15,6 +15,7 @@ import { useAtlas } from "@/lib/atlas";
 import { clock, clockSpan, dateLabel, dateOf, indexPlaces, minutes, ms, placeName, riskPercent, stars } from "@/lib/dayrun";
 import { DEMO_BAD_PLAN, DEMO_CAMPAIGN, DEMO_DISRUPTIONS, DEMO_GOOD_PLAN, DEMO_SCENARIO } from "@/lib/demoDay";
 import { amount, safeUrl } from "@/lib/format";
+import { useProfile, useWords } from "@/lib/profile";
 import { useFetch } from "@/lib/useFetch";
 
 /**
@@ -59,9 +60,25 @@ function line(r: SimResult): string {
 
 export default function DayRunPage() {
   const { approvals } = useAtlas();
+  const profile = useProfile(); // the box's words, and which scripted day its demo mode plays
+  const w = profile.words;
+  const scenarioName = profile.scenario ?? DEMO_SCENARIO;
   const [mode, setMode] = useState<Mode>("demo");
-  const scenario = mode === "demo" ? DEMO_SCENARIO : undefined;
-  const board = useFetch((s) => api.dayrunBoard(scenario, s), mode);
+  const scenario = mode === "demo" ? scenarioName : undefined;
+  const board = useFetch((s) => api.dayrunBoard(scenario, s), `${mode}:${scenario ?? ""}`);
+  // The scripted day's own one-tap plans; the student's are embedded (web/lib/demoDay.ts) so the demo works before the box answers.
+  const script = useFetch((s) => (scenario ? api.dayrunScenario(scenario, s) : Promise.resolve(null)), scenario ?? "");
+  const student = scenarioName === DEMO_SCENARIO;
+  const presets = useMemo(
+    () => ({
+      bad: script.data?.plans.bad ?? (student ? DEMO_BAD_PLAN : []),
+      good: script.data?.plans.good ?? (student ? DEMO_GOOD_PLAN : []),
+      disruptions: script.data?.disruptions ?? (student ? DEMO_DISRUPTIONS : []),
+      campaign: script.data?.campaign ?? (student ? DEMO_CAMPAIGN : []),
+    }),
+    [script.data, student],
+  );
+  const [urlPlan, setUrlPlan] = useState<"good" | "bad" | null>(null); // ?plan= from the presenter link, applied once a preset exists
   const packs = useFetch((s) => api.places(s));
   const places = useMemo(() => indexPlaces(packs.data ?? []), [packs.data]);
 
@@ -102,8 +119,8 @@ export default function DayRunPage() {
       setMode("mine");
       api.dayPlan().then((p) => setMoves(p.moves)).catch(() => undefined);
     } else if (!mine) {
-      if (plan === "bad") setMoves(DEMO_BAD_PLAN, "bad");
-      else if (plan === "good" || wantHard || wantPlay) setMoves(DEMO_GOOD_PLAN, "good");
+      if (plan === "bad") setUrlPlan("bad");
+      else if (plan === "good" || wantHard || wantPlay) setUrlPlan("good");
     }
     if (wantPlay) setPlay({ open: true, auto: q.get("play") !== "0", at: q.get("t") });
     setLinkHard(wantHard);
@@ -113,6 +130,13 @@ export default function DayRunPage() {
     if (auto.current.seed !== null) setSeed(auto.current.seed);
     if (q.has("more")) setOpenMore(true);
   }, [setMoves]);
+
+  useEffect(() => {
+    if (urlPlan && presets[urlPlan].length > 0) {
+      setMoves(presets[urlPlan], urlPlan);
+      setUrlPlan(null);
+    }
+  }, [urlPlan, presets, setMoves]);
 
   const start = board.data?.start;
 
@@ -141,7 +165,7 @@ export default function DayRunPage() {
       setHard({ busy: true, scripted });
       setView("after");
       api
-        .dayrunHard(scripted ? { moves, start, scenario, disruptions: DEMO_DISRUPTIONS } : { moves, start, scenario, seed: withSeed, count })
+        .dayrunHard(scripted ? { moves, start, scenario, disruptions: presets.disruptions } : { moves, start, scenario, seed: withSeed, count })
         .then((result) => setHard({ busy: false, result, scripted }))
         .catch((err: unknown) => setHard({ busy: false, error: asApiError(err), scripted }));
     },
@@ -238,12 +262,12 @@ export default function DayRunPage() {
         <>
           {mode === "demo" ? (
             <div className={ui.section}>
-              <p className={`${ui.muted} ${ui.small}`}>A scripted Sunday at Knight Hacks. Load a plan in one tap, then change it.</p>
+              <p className={`${ui.muted} ${ui.small}`}>{student ? "A scripted Sunday at Knight Hacks." : `A scripted day for the ${profile.name} profile (${scenarioName}).`} Load a plan in one tap, then change it.</p>
               <div className={dr.presets}>
-                <button type="button" className={`${ui.btn} ${preset === "bad" ? dr.presetOn : ""}`} aria-pressed={preset === "bad"} onClick={() => setMoves(DEMO_BAD_PLAN, "bad")}>
+                <button type="button" className={`${ui.btn} ${preset === "bad" ? dr.presetOn : ""}`} aria-pressed={preset === "bad"} disabled={presets.bad.length === 0} onClick={() => setMoves(presets.bad, "bad")}>
                   Bad plan
                 </button>
-                <button type="button" className={`${ui.btn} ${preset === "good" ? dr.presetOn : ""}`} aria-pressed={preset === "good"} onClick={() => setMoves(DEMO_GOOD_PLAN, "good")}>
+                <button type="button" className={`${ui.btn} ${preset === "good" ? dr.presetOn : ""}`} aria-pressed={preset === "good"} disabled={presets.good.length === 0} onClick={() => setMoves(presets.good, "good")}>
                   Good plan
                 </button>
                 <button type="button" className={ui.btn} disabled={moves.length === 0} onClick={() => setMoves([])}>
@@ -252,7 +276,7 @@ export default function DayRunPage() {
               </div>
             </div>
           ) : (
-            <p className={`${ui.muted} ${ui.small}`}>Your next 24 hours, from your calendar, Canvas, Habits and the friends who shared a place.</p>
+            <p className={`${ui.muted} ${ui.small}`}>{`Your next 24 hours, from your calendar, your ${w.deadline_plural}, Habits and the friends who shared a place.`}</p>
           )}
 
           <div ref={stage} className={dr.anchor}>
@@ -350,7 +374,7 @@ export default function DayRunPage() {
             <h2 className={ui.sectionTitle}>Your plan</h2>
             {b.slots.length === 0 ? (
               <Empty title="No open slots in the next 24 hours">
-                {b.blocks.length > 0 ? "Fixed blocks fill the whole day, so there is nothing to plan." : "The box has nothing on record for this day yet. Once your calendar or Canvas syncs, the slots appear here."}
+                {b.blocks.length > 0 ? "Fixed blocks fill the whole day, so there is nothing to plan." : "The box has nothing on record for this day yet. Once your calendar syncs, the slots appear here."}
               </Empty>
             ) : (
               <Planner board={b} moves={moves} onChange={(next) => setMoves(next)} result={shown} changes={changes} places={places} />
@@ -424,7 +448,7 @@ export default function DayRunPage() {
 
           <section className={ui.section}>
             <h2 className={ui.sectionTitle}>More</h2>
-            <More scenario={scenario} day={dateOf(b.start)} moves={moves} result={sim.result} campaignPreset={mode === "demo" ? DEMO_CAMPAIGN : null} openAll={openMore} />
+            <More scenario={scenario} day={dateOf(b.start)} moves={moves} result={sim.result} campaignPreset={mode === "demo" && presets.campaign.length > 0 ? presets.campaign : null} openAll={openMore} />
           </section>
         </>
       )}
@@ -591,6 +615,7 @@ function BoardCard({ board, places }: { board: Board; places: ReturnType<typeof 
 }
 
 function OutcomeCard({ result }: { result: SimResult }) {
+  const w = useWords();
   const o = result.outcome;
   const t = result.totals;
   return (
@@ -628,7 +653,7 @@ function OutcomeCard({ result }: { result: SimResult }) {
           </div>
           <div className={ui.stat}>
             <p className={ui.statNum}>{minutes(t.focused_minutes)}</p>
-            <p className={ui.statLabel}>of real work, from {minutes(t.study_minutes)} studying</p>
+            <p className={ui.statLabel}>of real work, from {minutes(t.study_minutes)} of {w.activity}</p>
           </div>
           <div className={ui.stat}>
             <p className={ui.statNum}>{amount(t.sleep_hours)} h</p>

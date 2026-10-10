@@ -27,6 +27,9 @@ def test_the_default_box_reports_the_student_profile_with_no_overrides(tmp_path,
         board = c.get("/api/dayrun/board", params={"scenario": "demo"}).json()
         titles = {o["title"] for s in board["slots"] for o in s["moves"]}
         assert any(t.startswith("Study at ") for t in titles)
+        script = c.get("/api/dayrun/scenarios/demo").json()
+        assert script["plans"]["good"][0] == {"slot": "s1", "kind": "eat", "place": "ucf.dining_63", "minutes": 30}
+        assert len(script["campaign"]) == 2 and script["disruptions"][0]["kind"] == "block_moved"
 
 
 @pytest.mark.parametrize("name", ["shift-worker", "family-home"])
@@ -55,6 +58,9 @@ def test_a_profile_boots_on_an_empty_data_dir_and_its_words_show(tmp_path, name)
 
         # the scenario's good plan wins and its bad plan does not
         sc = yaml.safe_load((CONFIG / "profiles" / name / "scenarios" / f"{got['scenario']}.yaml").read_text())
+        script = c.get(f"/api/dayrun/scenarios/{got['scenario']}").json()  # the phone's one-tap presets
+        assert script["plans"].keys() == sc["plans"].keys() and len(script["disruptions"]) == len(sc["disruptions"])
+        assert c.get("/api/dayrun/scenarios/nope").status_code == 404
         for plan, expect in (("good", True), ("bad", False)):
             res = c.post("/api/dayrun/simulate", json={"moves": sc["plans"][plan], "scenario": got["scenario"]})
             assert res.status_code == 200, res.text
