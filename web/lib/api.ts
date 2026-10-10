@@ -1053,6 +1053,17 @@ export interface NudgeRaised extends EventEnvelope {
 /** Anything on the bus. Narrow on `type` before reading other fields. */
 export type AtlasEvent = EventEnvelope & Record<string, unknown>;
 
+/**
+ * A piece of an answer while it is being written, on /ws only. Not an event: it is never logged and has no
+ * `event_id`, `version` or `ts`. The pieces of one question, in order, spell its answer; the final
+ * `agent.answer.generated` (and the reply to POST /api/ask) carries the whole text and replaces them.
+ */
+export interface AnswerDelta {
+  type: "agent.answer.delta";
+  question_id: string;
+  text: string;
+}
+
 // ---------- transport ----------
 
 const TOKEN_KEY = "atlas.token";
