@@ -205,6 +205,20 @@ names. Sort It reads its bin boxes at start, so restart `atlas-gateway` after mo
 `./jetson/push.sh` keeps the box's `config/zones.yaml` when it differs from the tree's (so a push cannot undo zones drawn
 on site); `./jetson/push.sh --zones` overwrites it. To keep what was drawn, copy it back: `scp <box>:Knighthacks26/config/zones.yaml config/`.
 
+## 11. Face models (owner recognition and the face profile)
+
+YuNet (finds and blurs faces) is in the repo. The two models behind the opt-in People screen are not, and the app never
+downloads anything; from a laptop with internet:
+
+```bash
+./jetson/face-fetch.sh [alexander@<ip>]     # SFace (37 MB) and the expression model (5 MB) into contexts/perception/models/, then restarts the app
+curl localhost:8000/identity/settings       # available: true (SFace), expressions_available: true, photos_available: true (OpenCV)
+```
+
+Without SFace recognition cannot be switched on; without the expression model "Read my expressions" and the anonymous
+room mode stay unavailable and everything else works. `./jetson/push.sh` leaves the box's model files alone. Everything is
+off until someone switches it on in the app, and stored pictures are blurred in every mode.
+
 ## Firmware update (boards with old factory firmware)
 
 JetPack 6 and 7 need firmware 36.x on the board. Boards with older firmware

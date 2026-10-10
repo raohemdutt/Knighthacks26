@@ -12,7 +12,9 @@ What each scope removes, all under data_dir:
 - memory:    memory.sqlite and its -wal and -shm files; the running process's open store is emptied first
              (`live_memory.clear()`), so Memory answers with nothing right away, not after a restart
 - all:       both, plus everything in exports/, events/, invites/ (the .ics files), dayrun/plans/ (committed
-             Day Run plans) and places/ (uploaded place packs), and the face templates in vault/identity/ (P9)
+             Day Run plans) and places/ (uploaded place packs), the face templates in vault/identity/ (P9: each
+             holds a member's exemplars and their "read my expressions" switch) and vault/identity.json (the
+             recognition and "everyone" switches: after a wipe of everything, recognition is off again)
 
 Memory is a projection of the event log: after a "memory" wipe the log is still there, so a restart
 replays it and Memory fills again. Only "all" removes the log too.
@@ -88,6 +90,7 @@ class WipeReport:
     refused: list[str] = field(default_factory=list)  # paths left alone
     master_key_removed: bool = False
     identity_removed: int = 0  # face templates (P9) deleted from vault/identity/; only scope "all" removes them
+    identity_switched_off: bool = False  # vault/identity.json went too: recognition and the "everyone" mode are off
     live_memory_cleared: bool = False  # the open Memory store was emptied, so reads show nothing without a restart
 
     def summary(self) -> str:
@@ -95,6 +98,8 @@ class WipeReport:
         parts = [f"{n} file{'s' if n != 1 else ''} from {target}" for target, n in self.removed.items() if n]
         if self.identity_removed:
             parts.append(f"{self.identity_removed} face template{'s' if self.identity_removed != 1 else ''}")
+        if self.identity_switched_off:
+            parts.append("the recognition switches (now off)")
         if self.live_memory_cleared:
             parts.append("the running Memory store (emptied)")
         if self.master_key_removed:
@@ -130,6 +135,7 @@ class Wiper:
                 report.live_memory_cleared = True
         if scope == "all":  # "everything" includes who the box can recognise; the key and the policy stay
             report.identity_removed = self._remove(self.data_dir / "vault" / "identity", vault_ok=True)
+            report.identity_switched_off = self._remove(self.data_dir / "vault" / "identity.json", vault_ok=True) > 0
         if include_master_key:  # everything encrypted with it becomes unreadable for good
             report.master_key_removed = self._remove(self.data_dir / "vault" / "master.key", vault_ok=True) > 0
         log.warning("wipe %s: removed %s, refused %s", scope, report.removed, report.refused)

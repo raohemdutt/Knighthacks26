@@ -188,8 +188,10 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
     app.include_router(impact_router(atlas.impact, publish=atlas.bus.publish, guard=authorized))
     if atlas.policy:  # GET/PUT /vault/policy, POST /vault/wipe/request, POST /vault/wipe, GET /vault/egress
         app.include_router(vault_router(atlas.policy, atlas.bus, wiper=atlas.wiper, guard=authorized))
-    if atlas.identity:  # GET/PUT /identity/settings, POST /identity/enroll/start, GET /identity/enroll/status, GET/DELETE /identity/members (P9)
-        app.include_router(identity_router(atlas.identity, atlas.bus, guard=authorized))
+    if atlas.identity:  # /identity/settings, /identity/enroll/start, status, photos, scan/*; /identity/members, present, expressions (P9)
+        # A person can be linked to a Circle member by id; the ids come from the configured Circle, nothing else crosses over.
+        app.include_router(identity_router(atlas.identity, atlas.bus, guard=authorized, circle_members=lambda: (
+            list(dict.fromkeys([atlas.circle.member_id, *(atlas.circle.members or [])])) if atlas.circle else None)))
     if atlas.capture:  # GET /capture/status (C6)
         app.include_router(capture_router(atlas.capture))
     if atlas.learning:  # GET /api/learning (X10)

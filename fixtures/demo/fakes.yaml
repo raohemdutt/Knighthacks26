@@ -19,6 +19,7 @@ perception:
   - {type: perception.scene.described, at: 12, caption: "On the desk: keys (next to the mug).", frame_ref: "frames:cam-desk:12"}
   - {type: perception.faces.counted, at: 14, count: 2, facing: 1}
   - {type: perception.faces.counted, at: 16, count: 0, facing: 0}
+  - {type: perception.expression.observed, at: 28, window_start: "+7s", window_end: "+27s"}  # only for a member who switched it on
   - {type: perception.person.lost, at: 30}
   - {type: perception.identity.changed, at: 31, enabled: false, members: []}  # leave recognition off, so habits stay with the one unnamed tracker
   # The room twin's Sort It round (contexts/perception/fakes: sort_round): a face held 2 s while the can is in hand
