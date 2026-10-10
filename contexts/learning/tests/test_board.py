@@ -80,3 +80,20 @@ def test_the_box_can_announce_a_deployed_model_through_the_api():
     r = TestClient(app).post("/api/learning/deployed", json={"model_version": "atlas-v2", "previous_version": "atlas-base"})
     assert r.status_code == 200 and (published[0].model_version, published[0].previous_version) == ("atlas-v2", "atlas-base")
     assert published[0].type == "learning.model.deployed"
+
+
+def test_a_denied_or_expired_export_approval_ends_the_task_instead_of_waiting_for_ever():
+    from contracts.agent import ActionProposed
+    from contracts.workspace import ActionCompleted
+
+    async def run(status):
+        bus = EventBus(persist=False)
+        board = LearningBoard()
+        board.subscribe(bus)
+        await bus.publish(TaskCreated(ts=T0, task="desk-objects", instruction="Name the small things."))
+        await bus.publish(ActionProposed(ts=T0, action_id="a9", kind="export_training_data", target="desk-objects", reason="teach"))
+        await bus.publish(ActionCompleted(ts=T0 + timedelta(minutes=1), action_id="a9", status=status))
+        return board.snapshot()["tasks"][0]["stage"]
+
+    assert asyncio.run(run("denied")) == "denied"
+    assert asyncio.run(run("expired")) == "expired"
