@@ -136,18 +136,33 @@ def test_an_iso_ts_with_an_offset_is_kept_as_written(ts):
     assert ledger.read()[0]["ts"] == ts
 
 
-@pytest.mark.parametrize("metrics", [{"x": "7.7"}, {"x": True}, {"x": None}, {"x": float("nan")},
-                                     {"x": float("inf")}, {"": 1.0}, {3: 1.0}, [("x", 1.0)], "x=1"])
+@pytest.mark.parametrize("metrics", [{"test.x": "7.7"}, {"test.x": True}, {"test.x": None}, {"test.x": float("nan")},
+                                     {"test.x": float("inf")}, {"": 1.0}, {3: 1.0}, [("test.x", 1.0)], "test.x=1"])
 def test_metrics_must_map_names_to_finite_numbers(metrics):
     with pytest.raises(ledger.RowError) as err:
         ledger.append(make_row(metrics=metrics))
     assert [p.split()[0] for p in err.value.problems] == ["metrics"]
 
 
+def test_an_int_beyond_float_range_is_not_a_finite_metric_and_nothing_is_written(isolated_state):
+    row = make_row(metrics={"test.x": 10**400})
+    with pytest.raises(ledger.RowError) as validated:
+        ledger.validate(row)
+    assert len(validated.value.problems) == 1, validated.value.problems
+    assert validated.value.problems[0].startswith("metrics")
+    assert "test.x" in validated.value.problems[0]
+    with pytest.raises(ledger.RowError) as appended:
+        ledger.append(row)
+    assert appended.value.problems == validated.value.problems
+    path = isolated_state / "ledger.jsonl"
+    assert not path.exists() or path.read_text(encoding="utf-8") == ""
+    assert ledger.read() == []
+
+
 def test_metrics_take_ints_floats_and_may_be_empty():
-    for metrics in ({"x": 7}, {"x": 7.7, "y": -0.5}, {}):
+    for metrics in ({"test.x": 7}, {"test.x": 7.7, "test.y": -0.5}, {}):
         ledger.append(make_row(metrics=metrics))
-    assert [r["metrics"] for r in ledger.read()] == [{"x": 7}, {"x": 7.7, "y": -0.5}, {}]
+    assert [r["metrics"] for r in ledger.read()] == [{"test.x": 7}, {"test.x": 7.7, "test.y": -0.5}, {}]
 
 
 def test_refs_are_stored_with_all_four_keys():
@@ -240,9 +255,9 @@ def test_read_on_a_missing_ledger_is_empty_and_creates_nothing(isolated_state):
 
 
 def test_read_filters_by_value_dict_subset_predicate_metric_and_time():
-    rows = [make_row(ts="2026-10-10T10:00:00Z", task="L3", outcome="ok", refs={"run_id": "run-1"}, metrics={"a": 1}),
-            make_row(ts="2026-10-10T11:00:00Z", task="L4", outcome="fail", refs={"run_id": "run-2"}, metrics={"b": 2}),
-            make_row(ts="2026-10-10T12:00:00Z", task="L3", outcome="ok", refs={"run_id": "run-2"}, metrics={"a": 3})]
+    rows = [make_row(ts="2026-10-10T10:00:00Z", task="L3", outcome="ok", refs={"run_id": "run-1"}, metrics={"test.a": 1}),
+            make_row(ts="2026-10-10T11:00:00Z", task="L4", outcome="fail", refs={"run_id": "run-2"}, metrics={"test.b": 2}),
+            make_row(ts="2026-10-10T12:00:00Z", task="L3", outcome="ok", refs={"run_id": "run-2"}, metrics={"test.a": 3})]
     for row in rows:
         ledger.append(row)
     assert seqs(ledger.read()) == [1, 2, 3]
@@ -250,7 +265,7 @@ def test_read_filters_by_value_dict_subset_predicate_metric_and_time():
     assert seqs(ledger.read(task="L3")) == [1, 3]
     assert seqs(ledger.read(refs={"run_id": "run-2"})) == [2, 3]
     assert seqs(ledger.read(outcome=lambda o: o != "ok")) == [2]
-    assert seqs(ledger.read(has_metric="a")) == [1, 3]
+    assert seqs(ledger.read(has_metric="test.a")) == [1, 3]
     assert seqs(ledger.read(since="2026-10-10T11:00:00Z")) == [2, 3]
     assert seqs(ledger.read(before="2026-10-10T07:00:00-04:00")) == [1], "before is exclusive, compared as instants"
     assert seqs(ledger.read(task="L3", since=dt.datetime(2026, 10, 10, 11, tzinfo=UTC))) == [3]
@@ -262,8 +277,8 @@ def test_read_filters_by_value_dict_subset_predicate_metric_and_time():
 
 def test_tail_returns_the_last_n_rows_in_ledger_order():
     for i in range(5):
-        ledger.append(make_row(metrics={"i": i}))
-    assert [r["metrics"]["i"] for r in ledger.tail(2)] == [3, 4]
+        ledger.append(make_row(metrics={"test.i": i}))
+    assert [r["metrics"]["test.i"] for r in ledger.tail(2)] == [3, 4]
     assert seqs(ledger.tail(10)) == [1, 2, 3, 4, 5]
     assert ledger.tail(5) == ledger.read()
     assert ledger.tail(0) == []
@@ -272,50 +287,50 @@ def test_tail_returns_the_last_n_rows_in_ledger_order():
 def test_tail_and_seq_work_across_rows_longer_than_a_read_block():
     long_note = "x" * 150_000
     for i in range(3):
-        ledger.append(make_row(note=long_note, metrics={"i": i}))
-    assert ledger.append(make_row(metrics={"i": 3})) == 4
+        ledger.append(make_row(note=long_note, metrics={"test.i": i}))
+    assert ledger.append(make_row(metrics={"test.i": 3})) == 4
     tail = ledger.tail(3)
-    assert [r["metrics"]["i"] for r in tail] == [1, 2, 3]
+    assert [r["metrics"]["test.i"] for r in tail] == [1, 2, 3]
     assert tail[0]["note"] == long_note
 
 
 def test_latest_metric_is_the_newest_measurement_by_time_then_seq_with_the_metrics_row_shape():
-    ledger.append(make_row(ts="2026-10-10T10:00:00Z", node="pod-a", metrics={"m": 1.0}))
-    ledger.append(make_row(ts="2026-10-10T12:00:00Z", node="pod-b", metrics={"m": 2.0}))
-    ledger.append(make_row(ts="2026-10-10T11:00:00Z", node="pod-a", metrics={"m": 3.0, "n": 4.0},
+    ledger.append(make_row(ts="2026-10-10T10:00:00Z", node="pod-a", metrics={"test.m": 1.0}))
+    ledger.append(make_row(ts="2026-10-10T12:00:00Z", node="pod-b", metrics={"test.m": 2.0}))
+    ledger.append(make_row(ts="2026-10-10T11:00:00Z", node="pod-a", metrics={"test.m": 3.0, "test.n": 4.0},
                            low_confidence=True))
-    ledger.append(make_row(ts="2026-10-10T09:00:00Z", node="pod-c", metrics={"m": 9.0},
-                           units={"m": "tok/s"}, conditions={"batch": 1}, source="PR #37"))
-    assert ledger.latest_metric("m") == {
-        "metric": "m", "value": 2.0, "unit": None, "node": "pod-b", "conditions": {},
+    ledger.append(make_row(ts="2026-10-10T09:00:00Z", node="pod-c", metrics={"test.m": 9.0},
+                           units={"test.m": "tok/s"}, conditions={"batch": 1}, source="PR #37"))
+    assert ledger.latest_metric("test.m") == {
+        "metric": "test.m", "value": 2.0, "unit": None, "node": "pod-b", "conditions": {},
         "source": "ledger seq 2", "ts": "2026-10-10T12:00:00Z", "low_confidence": False, "seq": 2}
-    assert ledger.latest_metric("m", node="pod-a") == {
-        "metric": "m", "value": 3.0, "unit": None, "node": "pod-a", "conditions": {},
+    assert ledger.latest_metric("test.m", node="pod-a") == {
+        "metric": "test.m", "value": 3.0, "unit": None, "node": "pod-a", "conditions": {},
         "source": "ledger seq 3", "ts": "2026-10-10T11:00:00Z", "low_confidence": True, "seq": 3}
-    assert ledger.latest_metric("m", node="pod-c") == {
-        "metric": "m", "value": 9.0, "unit": "tok/s", "node": "pod-c", "conditions": {"batch": 1},
+    assert ledger.latest_metric("test.m", node="pod-c") == {
+        "metric": "test.m", "value": 9.0, "unit": "tok/s", "node": "pod-c", "conditions": {"batch": 1},
         "source": "PR #37", "ts": "2026-10-10T09:00:00Z", "low_confidence": False, "seq": 4}
-    assert ledger.latest_metric("m", node="jetson") is None
+    assert ledger.latest_metric("test.m", node="jetson") is None
     assert ledger.latest_metric("absent") is None
     # instants, not strings: 08:30 at -04:00 is 12:30Z, later than 12:00Z
-    ledger.append(make_row(ts="2026-10-10T08:30:00-04:00", node="pod-b", metrics={"m": 5.0}))
-    assert ledger.latest_metric("m")["value"] == 5.0
+    ledger.append(make_row(ts="2026-10-10T08:30:00-04:00", node="pod-b", metrics={"test.m": 5.0}))
+    assert ledger.latest_metric("test.m")["value"] == 5.0
     # the same instant twice: the later seq wins
-    ledger.append(make_row(ts="2026-10-10T12:30:00Z", node="pod-b", metrics={"m": 6.0}))
-    assert (ledger.latest_metric("m")["value"], ledger.latest_metric("m")["seq"]) == (6.0, 6)
+    ledger.append(make_row(ts="2026-10-10T12:30:00Z", node="pod-b", metrics={"test.m": 6.0}))
+    assert (ledger.latest_metric("test.m")["value"], ledger.latest_metric("test.m")["seq"]) == (6.0, 6)
 
 
 def test_latest_metric_narrows_by_conditions_as_the_metrics_file_does():
-    ledger.append(make_row(ts="2026-10-10T10:00:00Z", node="pod-a", metrics={"m": 1.0},
+    ledger.append(make_row(ts="2026-10-10T10:00:00Z", node="pod-a", metrics={"test.m": 1.0},
                            conditions={"prompt": "text", "batch": 1}))
-    ledger.append(make_row(ts="2026-10-10T11:00:00Z", node="pod-a", metrics={"m": 2.0},
+    ledger.append(make_row(ts="2026-10-10T11:00:00Z", node="pod-a", metrics={"test.m": 2.0},
                            conditions={"prompt": "image", "batch": 1}))
-    ledger.append(make_row(ts="2026-10-10T12:00:00Z", node="pod-a", metrics={"m": 3.0}))
-    assert ledger.latest_metric("m")["value"] == 3.0
-    assert ledger.latest_metric("m", conditions={"prompt": "text"})["value"] == 1.0
-    assert ledger.latest_metric("m", "pod-a", conditions={"batch": 1})["value"] == 2.0
-    assert ledger.latest_metric("m", conditions={"batch": None}) is None, "a key the row lacks never matches"
-    assert ledger.latest_metric("m", conditions={"prompt": "audio"}) is None
+    ledger.append(make_row(ts="2026-10-10T12:00:00Z", node="pod-a", metrics={"test.m": 3.0}))
+    assert ledger.latest_metric("test.m")["value"] == 3.0
+    assert ledger.latest_metric("test.m", conditions={"prompt": "text"})["value"] == 1.0
+    assert ledger.latest_metric("test.m", "pod-a", conditions={"batch": 1})["value"] == 2.0
+    assert ledger.latest_metric("test.m", conditions={"batch": None}) is None, "a key the row lacks never matches"
+    assert ledger.latest_metric("test.m", conditions={"prompt": "audio"}) is None
 
 
 # --- crashes mid-write ----------------------------------------------------------------
@@ -510,7 +525,7 @@ def _append_rows(state: str, actor: str, start, out: str) -> None:
     fast as it can, then write down the seq each append returned."""
     start.wait(START_TIMEOUT)
     returned = [ledger.append({"actor": actor, "tier": "sonnet", "task": "L3", "verb": "ledger.race",
-                               "outcome": "ok", "metrics": {"i": i}, "refs": {}}, state_dir=state)
+                               "outcome": "ok", "metrics": {"test.i": i}, "refs": {}}, state_dir=state)
                 for i in range(ROWS_PER_CHILD)]
     Path(out).write_text(json.dumps(returned), encoding="utf-8")
 
@@ -530,8 +545,75 @@ def test_two_processes_appending_1000_rows_each_lose_nothing(tmp_path, isolated_
     assert seqs(rows) == list(range(1, 2 * ROWS_PER_CHILD + 1))
     for name in ("a", "b"):
         mine = [r for r in rows if r["actor"] == name]
-        assert [r["metrics"]["i"] for r in mine] == list(range(ROWS_PER_CHILD))
+        assert [r["metrics"]["test.i"] for r in mine] == list(range(ROWS_PER_CHILD))
         returned = json.loads((tmp_path / f"{name}.json").read_text(encoding="utf-8"))
         assert returned == seqs(mine), "every seq append returned is the seq on disk"
     switches = sum(1 for prev, cur in zip(rows, rows[1:]) if prev["actor"] != cur["actor"])
     assert switches > 1, "the two children never interleaved, so nothing raced"
+
+
+# --- one definition of the state dir --------------------------------------------------
+
+def test_resolve_state_dir_follows_stop_state_dir_and_an_explicit_dir_still_wins(tmp_path, monkeypatch):
+    from lab.machine import stop
+
+    monkeypatch.delenv("LAB_STATE_DIR", raising=False)
+    elsewhere = tmp_path / "elsewhere"
+    monkeypatch.setattr(stop, "state_dir", lambda: elsewhere)
+
+    assert ledger.resolve_state_dir() == elsewhere
+    assert ledger.ledger_path() == elsewhere / "ledger.jsonl"
+    given = tmp_path / "given"
+    assert ledger.resolve_state_dir(given) == given
+
+
+def test_ledger_state_dir_names_are_the_very_objects_stop_defines():
+    from lab.machine import stop
+
+    assert ledger.ENV_STATE_DIR is stop.STATE_DIR_ENV
+    assert ledger.DEFAULT_STATE_DIR is stop.DEFAULT_STATE_DIR
+
+
+# --- the ledger's time text helpers are a public, importable shared copy ------------------
+# metrics_report.py (O52) formats the same UTC text; the ledger is the one place it can come
+# from, because metrics_report already imports ledger and the reverse import would be a cycle.
+
+def test_ledger_exports_utc_text_and_now_text():
+    missing = [name for name in ("utc_text", "now_text") if name not in ledger.__all__]
+    assert missing == [], f"ledger.__all__ must publish {missing}"
+    for name in ("utc_text", "now_text"):
+        assert callable(getattr(ledger, name, None)), f"ledger.{name} must be a public callable"
+
+
+def test_ledger_utc_text_converts_an_offset_time_to_utc_z():
+    utc_text = getattr(ledger, "utc_text", None)
+    assert utc_text is not None, "ledger.utc_text must exist as a public name"
+    minus_four = dt.timezone(dt.timedelta(hours=-4))
+    assert utc_text(dt.datetime(2026, 10, 10, 6, 20, tzinfo=minus_four)) == "2026-10-10T10:20:00Z"
+    assert utc_text(dt.datetime(2026, 10, 10, 10, 20, tzinfo=UTC)) == "2026-10-10T10:20:00Z"
+
+
+def test_ledger_now_text_is_whole_second_utc_text_ending_in_z():
+    now_text = getattr(ledger, "now_text", None)
+    assert now_text is not None, "ledger.now_text must exist as a public name"
+    before = dt.datetime.now(UTC).replace(microsecond=0)
+    text = now_text()
+    after = dt.datetime.now(UTC)
+    assert text.endswith("Z")
+    moment = ledger._parse_ts(text)
+    assert moment is not None and moment.utcoffset() == dt.timedelta(0)
+    assert moment.microsecond == 0
+    assert before <= moment <= after
+
+
+# --- metric names are dotted lowercase ------------------------------------------------
+
+@pytest.mark.parametrize("name", ["Teacher.decode_tok_s", "x", "teacher decode"])
+def test_a_metric_name_off_the_dotted_lowercase_pattern_is_refused_and_nothing_is_written(name):
+    with pytest.raises(ledger.RowError) as err:
+        ledger.append(make_row(metrics={name: 1.0}))
+    problems = err.value.problems
+    assert len(problems) == 1, problems
+    assert problems[0].startswith("metrics"), problems
+    assert name in problems[0], problems
+    assert ledger.read() == []
