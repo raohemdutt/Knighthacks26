@@ -388,7 +388,6 @@ bash lab/pod_a_teacher.sh download   # RedHatAI/Qwen3.8-27B-INT4 (19 GB) into ~/
 bash lab/pod_a_teacher.sh serve      # OpenAI-compatible server on 127.0.0.1:8000, model names "teacher" and "group-brain", log ~/serve/vllm.log
 ```
 
-<<<<<<< HEAD
 One model under two names: "teacher" for labeling and captions, "group-brain" for the Circle's planning questions
 (G4, `contexts/circle/infrastructure/teacher.py`). The server runs `--scheduling-policy priority`: vLLM serves the
 lowest request priority first and, when the KV cache runs out, preempts the highest. A planning question asks at -10
@@ -398,12 +397,8 @@ ignores it, so the group brain works before the restart too, asking as "teacher"
 are not logged (`--enable-log-requests` stays off). Which name answers, with no member text sent:
 `python -m contexts.circle.brain status`. How much planning slows labeling when both run is not measured yet (T0).
 
-`lab/vllm-gfx1201.diff` is the set of changes vLLM (commit b1388b1, April 2026) needs on this pod: `num_stages=1`
-in the Triton unified attention kernel (64 KB LDS on RDNA4), two platform-detection fixes, the torch pins removed
-=======
 `lab/vllm-gfx1201.diff` is the set of changes vLLM (commit b1388b1, April 2026) needs on these pods: `num_stages=1`
 in the Triton unified attention kernel (whose default overflowed the R9700's 64 KB LDS on RDNA 4), two platform-detection fixes, the torch pins removed
->>>>>>> 670a3f6 (Retarget the lab docs to the Strix Halo pods on SJC)
 so the pod's own torch is used (`use_existing_torch.py`), and the GPTQ `compat.cuh` half/half2 `atomicAdd`
 fallbacks guarded out because ROCm 7.13 ships those overloads itself. Build gotchas the script handles: no root,
 so `cmake`, `ninja` and `pkgconf` come from `pip --user`; the image has no libdrm, so a stub `libdrm.pc` and an
