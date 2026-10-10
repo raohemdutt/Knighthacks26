@@ -16,11 +16,11 @@ site:
 
 calendar:
   # Published .ics feeds (K2 reads, K3 campus events, K6 Canvas fallback).
-  # Each feed URL is a bearer credential: put it in .env and name it here.
-  enabled: false  # turn on once the URLs are in .env
+  # Each feed URL is a bearer credential: put it in .env and name it here. A feed whose
+  # URL is not set on this box is skipped.
   module: contexts.connectors.servers.ics
   every_s: 600
-  hosts: [outlook.office365.com]
+  hosts: [outlook.office365.com, ufl.instructure.com]
   reads: {list_events: calendar_event}
   writes: [create_event]  # .ics invites (Graph fallback); runs only after an approval card
   env: [OUTLOOK_ICS_URL, CAMPUS_EVENTS_ICS_URL, CANVAS_ICS_URL]
@@ -30,8 +30,8 @@ calendar:
     days_ahead: 14
     feeds:
       - {name: outlook, url_env: OUTLOOK_ICS_URL, kind: calendar_event}
-      # - {name: campus, url_env: CAMPUS_EVENTS_ICS_URL, kind: calendar_event}
-      # - {name: canvas, url_env: CANVAS_ICS_URL, kind: assignment}
+      - {name: campus, url_env: CAMPUS_EVENTS_ICS_URL, kind: calendar_event}
+      - {name: canvas, url_env: CANVAS_ICS_URL, kind: assignment}  # K6: assignments and due dates
 
 browser:
   # K7: patchright search, Reddit and page reading as on-demand Agent tools.
