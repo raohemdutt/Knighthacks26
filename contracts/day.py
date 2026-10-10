@@ -258,3 +258,24 @@ class DayReviewed(TypedEvent):
     suggestions: list[str] = []  # one or two, drawn from the day's pattern
     calibration: CoachCalibration | None = None
     block_minutes: int | None = None  # the block length the coach suggests for tomorrow
+
+
+Moment = Literal["morning", "now", "replan", "coach", "evening", "approval"]
+
+
+@register
+class DayNarrated(TypedEvent):
+    """One moment of the day in words (D3), written once so the phone's screen, its voice and the push all say
+    the same thing and a restart replays it without calling a model again. `spoken` is for the ear (a few
+    sentences, no lists, times as people say them); `display` is a short paragraph that may keep exact times."""
+
+    type: Literal["day.narrated"] = "day.narrated"
+    day: date
+    moment: Moment
+    plan_id: str | None = None
+    ref: str | None = None  # what it narrates: the source event's id, or the action id of an approval ask
+    spoken: str
+    display: str
+    engine: Literal["template", "model"] = "template"
+    facts_hash: str
+    urgent: bool = False  # a "now" worth saying aloud unasked: leave now, late, you will miss it
