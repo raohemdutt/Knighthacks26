@@ -45,14 +45,20 @@ class SamplerRunner:
     async def run(self) -> None:
         while True:
             try:
-                async for event in self.sampler.samples():
-                    if not self.allowed(event):
-                        self.dropped += 1
-                        log.warning("dropped %s for node %r: this sampler speaks for %s", event.type,
-                                    getattr(event, "node", None), ", ".join(sorted(self.nodes)))
-                        continue
-                    await self.publish(event)
-                    self.published += 1
+                samples = self.sampler.samples()
+                try:
+                    async for event in samples:
+                        if not self.allowed(event):
+                            self.dropped += 1
+                            log.warning("dropped %s for node %r: this sampler speaks for %s", event.type,
+                                        getattr(event, "node", None), ", ".join(sorted(self.nodes)))
+                            continue
+                        await self.publish(event)
+                        self.published += 1
+                finally:  # close the sampler now, not whenever it is collected: it may hold a child process
+                    aclose = getattr(samples, "aclose", None)
+                    if aclose is not None:
+                        await aclose()
                 return  # the sampler ran out (a finite replay)
             except Exception as exc:
                 self.errors += 1
@@ -61,5 +67,9 @@ class SamplerRunner:
                 await self.sleep(self.retry_s)
 
     def status(self) -> dict:
-        return {"nodes": sorted(self.nodes), "published": self.published, "dropped": self.dropped,
-                "errors": self.errors, "last_error": self.last_error}
+        out = {"nodes": sorted(self.nodes), "published": self.published, "dropped": self.dropped,
+               "errors": self.errors, "last_error": self.last_error}
+        sampler_status = getattr(self.sampler, "status", None)
+        if callable(sampler_status):  # what the sampler itself knows, e.g. its period and skipped lines
+            out["source"] = sampler_status()
+        return out
