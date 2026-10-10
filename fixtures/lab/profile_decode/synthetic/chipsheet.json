@@ -1,0 +1,19 @@
+{
+ "schema": "synthetic chip sheet for the R47 self-check, not a measurement",
+ "bandwidth": {
+  "d2d_copy": {
+   "max_gb_s": 212.5,
+   "sizes_mb": [
+    1,
+    64,
+    4096
+   ],
+   "gb_s": [
+    40.0,
+    180.0,
+    212.5
+   ]
+  }
+ },
+ "peak_theoretical_gb_s": 256.0
+}
