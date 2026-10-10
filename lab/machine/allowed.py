@@ -39,7 +39,9 @@ page deletion, no bypassing the commit hook, no rebase that runs a command (--ex
 --exec=..., a shorter prefix such as --ex, or -x first or after other arguments: git
 runs that command itself, so no deny rule ever sees it), nothing from the owner's notes,
 the machine's state files or .env, and no allowed shell command but the interpreter
-(cp, mv, touch, an output redirect) whose text names the state dir.
+(cp, mv, touch, an output redirect) whose text names the state dir. A force push
+includes a + refspec anywhere in the push, and a remote delete includes a :refs/...
+refspec, because git push origin ctx/* also takes a teammate's branch after its own.
 
 Verbs that do not exist yet. When this file was written lab/__main__.py registered
 only ready, resume and stop. The other verbs named here do not exist yet; their
@@ -240,7 +242,10 @@ _PUSH_TO_MAIN: list[str] = [
 
 #: No force push, no remote delete, no mirror of every ref, and the commit hook (which
 #: strips attribution) is never bypassed. A pattern must not end in ":*": the CLI reads
-#: that as its older spelling of a trailing " *", so a delete refspec is caught as :ctx/*.
+#: that as its older spelling of a trailing " *", so a delete refspec is caught as :ctx/*
+#: and as :refs/* (:refs/heads/ctx/<theirs>). The allow rule git push origin ctx/* takes
+#: further refspecs after the branch, so a + refspec is refused anywhere after git push:
+#: +ctx/<theirs> force-updates a teammate's branch without --force.
 _PUSH_AND_COMMIT_FLAGS: list[str] = [
     "Bash(git push *--force*)",
     "Bash(git push -f*)",
@@ -249,6 +254,8 @@ _PUSH_AND_COMMIT_FLAGS: list[str] = [
     "Bash(git push -d*)",
     "Bash(git push * -d*)",
     "Bash(git push * :ctx/*)",
+    "Bash(git push * :refs/*)",
+    "Bash(git push *+*)",
     "Bash(git push *--mirror*)",
     "Bash(git push *--all*)",
     "Bash(git push *--prune*)",
