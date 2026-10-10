@@ -41,6 +41,7 @@ from contexts.day.application.loop import DayLoop, day_phone
 from contexts.connectors.infrastructure.mcp_client import McpConnector
 from contexts.learning.application.board import LearningBoard
 from contexts.learning.application.export import DatasetExporter
+from contexts.learning.application.lab_view import LabView
 from contexts.memory.application.embedder import embedder_from
 from contexts.memory.application.indexer import VectorIndexer
 from contexts.memory.application.projection import MemoryProjection
@@ -139,6 +140,7 @@ class Atlas:
     policy: Policy | None = None
     wiper: Wiper | None = None
     learning: LearningBoard | None = None  # where each taught task is (X10)
+    lab_view: LabView | None = None  # the Learning lab screen: one story per training run, rebuilt from the log
     capture: CaptureService | None = None  # cameras -> detector -> observations, only where there is a detector (C6)
     identity: IdentityService | None = None  # opt-in owner recognition (P9); off by default
     telemetry: object | None = None  # TelemetryService when ATLAS_TELEMETRY_SOURCE is set; off by default
@@ -517,6 +519,8 @@ def build(settings: Settings | None = None) -> Atlas:
     # Learning board (X10): the Teach screen's view of tasks, runs and deployed models; rebuilt from the log.
     learning = LearningBoard()
     learning.subscribe(bus)
+    lab_view = LabView(exports_dir=s.data_dir / "exports", models_dir=s.data_dir / "models")  # GET /api/learning/lab
+    lab_view.subscribe(bus)
 
     # The Impact screen: what Waste Watch's counts mean (estimated ranges from config/impact.yaml), the disposal
     # feed with each rule, the weekly goal, milestones and the Sort It practice set. Reads Waste Watch; counts nothing itself.
@@ -558,5 +562,6 @@ def build(settings: Settings | None = None) -> Atlas:
                  memory=memory, projection=projection, habits=habits, nudger=nudger,
                  presence_sync=presence_sync, board=board, vault=vault, policy=policy, wiper=wiper,
                  places=places, dayrun=dayrun, day=day, capture=capture, identity=identity, learning=learning,
+                 lab_view=lab_view,
                  telemetry=telemetry, profile=profile, league=league, league_sync=league_sync,
                  impact=impact, coach_feedback=coach_feedback, spot=spot)
