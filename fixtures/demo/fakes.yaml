@@ -145,3 +145,7 @@ day:
   - {type: day.narrated, at: 43201, moment: evening, ref: day-review-plan-2026-10-11-0815, facts_hash: 0c7e5a1b2d3f4e60,
      spoken: "That's the day. You followed about sixty percent of the plan and earned one star. For tomorrow: put lunch on the calendar before the afternoon block.",
      display: "You followed 62% of what could be measured: 1 star, 64 points (the plan would have earned 2). Tomorrow: put lunch on the calendar before the afternoon block."}
+  # The check-in (D4), last so the earlier steps keep their ids: the sample payload (invented values, nothing measured), then
+  # an answer to an earlier one, so this one stays open on the Now screen. The real rule is shown by `python -m contexts.demo checkin`.
+  - {type: day.checkin.raised, at: 43260}
+  - {type: day.checkin.answered, at: 43320}
