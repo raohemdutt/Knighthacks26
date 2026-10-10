@@ -126,6 +126,10 @@ export interface IdentitySettings {
   available: boolean; // false when the recognition model is not on this box
   recognizer: string | null;
   reason?: string;
+  /** The anonymous room mode: faces that match nobody are counted together, as nobody. */
+  everyone?: boolean;
+  expressions_available?: boolean; // false when the expression model is not on this box
+  photos_available?: boolean; // false when the box cannot decode pictures (no OpenCV)
 }
 
 /** One row of GET /identity/members. The face template itself never leaves the box. */
@@ -133,6 +137,84 @@ export interface Member {
   member_id: string;
   name: string;
   enrolled_at: string;
+  updated_at?: string | null;
+  photos?: number; // how many looks the template is made of (up to 12)
+  source?: "live" | "scan" | "photos";
+  expressions?: boolean; // this person switched "read my expressions" on
+  circle_member_id?: string | null; // which Circle member this is, when someone said so
+}
+
+/** Why the box did not take a photo or a still; `message` is the sentence to show. */
+export type PhotoReason =
+  | "unreadable" | "no_face" | "two_faces" | "too_small" | "turned" | "too_dark" | "too_bright" | "blurry" | "different" | "not_them"
+  | "enough_like_this";
+
+export interface PhotoResult {
+  index: number;
+  accepted: boolean;
+  reason: PhotoReason | null;
+  message: string | null;
+}
+
+/** POST /identity/enroll/photos and POST /identity/enroll/scan/finish. */
+export interface EnrollPhotosResult {
+  state: "done" | "failed";
+  member_id: string;
+  accepted: number;
+  rejected: number;
+  needed: number;
+  exemplars: number;
+  error: "not_enough_photos" | "already_enrolled" | null;
+  photos: PhotoResult[];
+}
+
+export type ScanPose = "front" | "left" | "right" | "up";
+
+/** POST /identity/enroll/scan/start and .../frame: where a guided scan stands. */
+export interface ScanStatus {
+  session: string;
+  member_id: string;
+  count: number;
+  needed: number;
+  poses: Record<ScanPose, number>;
+  want: ScanPose | null;
+  prompt: string | null;
+  done: boolean;
+  /** Only on a frame's answer: */
+  accepted?: boolean;
+  reason?: PhotoReason | null;
+  message?: string | null;
+  pose?: ScanPose | null;
+}
+
+export type Looked = "tense" | "tired" | "upbeat" | "neutral";
+
+/** GET /identity/expressions: stretches of apparent expression. A noisy signal, not an emotion and nothing about health. */
+export interface ExpressionSeries {
+  member_id: string | null; // null: the anonymous room aggregate
+  hours: number;
+  samples: number;
+  looked: Partial<Record<Looked, number>>; // share of the counted looks
+  strained_share: number | null;
+  windows: {
+    start: string;
+    end: string;
+    camera_id: string;
+    dominant: string;
+    looked: Looked;
+    shares: Record<string, number>;
+    samples: number;
+    confidence: number;
+    head_down: number | null;
+    turned_away: number | null;
+    people?: number | null;
+  }[];
+  note: string;
+}
+
+/** GET /identity/present: the enrolled people a camera recognises right now (ids only). */
+export interface PresentNow {
+  present: { member_id: string; circle_member_id: string | null; cameras: string[] }[];
 }
 
 /** GET /identity/enroll/status, and what POST /identity/enroll/start returns. */
@@ -1623,9 +1705,27 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   // People: opt-in owner recognition (P9).
   identitySettings: (signal?: AbortSignal) => get<IdentitySettings>("/identity/settings", undefined, signal),
   setIdentity: (on: boolean) => request<IdentitySettings>("PUT", "/identity/settings", { identity_enabled: on }),
+  /** The anonymous room mode. Switching it on has to be confirmed by the person, on the screen that says what it means. */
+  setEveryone: (on: boolean, confirm = false) => put<IdentitySettings>("/identity/settings", { everyone: on, confirm }),
   members: (signal?: AbortSignal) => get<Member[]>("/identity/members", undefined, signal),
   removeMember: (id: string) => request<{ removed: string }>("DELETE", `/identity/members/${encodeURIComponent(id)}`),
-  enrollStart: (name: string) => post<EnrollStatus>("/identity/enroll/start", { name }),
+  updateMember: (id: string, change: { expressions?: boolean; circle_member_id?: string }) =>
+    put<Member>(`/identity/members/${encodeURIComponent(id)}`, change),
+  /** `consent`: the person being enrolled agrees. The box refuses without it. */
+  enrollStart: (name: string, consent: boolean, circleMemberId?: string) =>
+    post<EnrollStatus>("/identity/enroll/start", { name, consent_ack: consent, ...(circleMemberId ? { circle_member_id: circleMemberId } : {}) }),
+  /** Photos as base64 (no data: prefix needed). For someone new send `name`; to add to someone send `member_id`. */
+  enrollPhotos: (who: { name?: string; member_id?: string; circle_member_id?: string }, photos: string[], consent: boolean) =>
+    post<EnrollPhotosResult>("/identity/enroll/photos", { ...who, consent_ack: consent, photos }),
+  scanStart: (who: { name?: string; member_id?: string; circle_member_id?: string }, consent: boolean) =>
+    post<ScanStatus>("/identity/enroll/scan/start", { ...who, consent_ack: consent }),
+  scanFrame: (session: string, photo: string, signal?: AbortSignal) =>
+    post<ScanStatus>("/identity/enroll/scan/frame", { session, photo }, signal),
+  scanFinish: (session: string) => post<EnrollPhotosResult>("/identity/enroll/scan/finish", { session }),
+  scanCancel: (session: string) => post<{ cancelled: boolean }>("/identity/enroll/scan/cancel", { session }),
+  expressions: (memberId: string | null, hours: number, signal?: AbortSignal) =>
+    get<ExpressionSeries>("/identity/expressions", { member_id: memberId ?? undefined, hours }, signal),
+  presentNow: (signal?: AbortSignal) => get<PresentNow>("/identity/present", undefined, signal),
   enrollStatus: (signal?: AbortSignal) => get<EnrollStatus>("/identity/enroll/status", undefined, signal),
   impact: (signal?: AbortSignal) => get<Impact>("/api/impact", undefined, signal),
   impactStory: (member?: string, signal?: AbortSignal) => get<import("./impact").ImpactStory>("/api/impact/story", { member }, signal),
