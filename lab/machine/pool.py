@@ -46,8 +46,8 @@ What it starts. Every candidate is one sit item for one tier:
   pass either, until it has finished (PASS_RULES.md, "Work happens in rounds").
 - the referee duty (Fable, sit --referee): only once python -m lab referee is registered, then
   when a fresh board snapshot newer than the last referee sitting shows GPU queue trouble (a
-  running slot past its cap, a complaint, a queued row that waited twice its minutes), at most
-  every REFEREE_TROUBLE_MINUTES, or REFEREE_EVERY_MINUTES after the last one ended.
+  running slot past its cap, a complaint, a queued row the complain verb would take a complaint
+  from), at most every REFEREE_TROUBLE_MINUTES, or REFEREE_EVERY_MINUTES after the last one ended.
 Board-derived items (tasks, passes, the merge) wait while the snapshot is older than
 --board-max-age minutes (digest.BOARD_STALE_MINUTES): a stale snapshot hides locks taken since.
 
@@ -118,7 +118,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
-from lab.machine import digest, ledger, refine_merge, sit, stop
+from lab.machine import digest, ledger, refine_merge, sit, slots, stop
 from lab.machine import refine_formats as rf
 from lab.machine.lock import FileLock, LockTimeout
 
@@ -287,22 +287,24 @@ class BoardIndex:
 
 def queue_trouble(board: digest.Board, now: dt.datetime) -> list[str]:
     """What on the GPU queue needs the referee: running slots past their cap, complaints on open
-    rows, and queued rows that waited twice their minutes without a complaint."""
+    rows, and queued rows with a complaint due. Each row is judged by the queue verbs' own rules
+    (lab/machine/slots.py): the cap is slots.cap_minutes, a Running row is past it by
+    slots.is_overrun, and a Queued row without a complaint is due one when slots.complaint_due says
+    the complain verb would take it, not answer too_early."""
     found: list[str] = []
-    for row in board.queue:
-        if row.status not in digest.OPEN_QUEUE_STATUSES:
-            continue
+    open_rows = digest.open_queue(board)
+    seen = [slot for _, slot in open_rows]
+    for row, slot in open_rows:
         name = row.task or clip(row.request, 40) or "a row"
         if row.complaint:
             found.append(f"a complaint on {name}")
-        if row.status == "Running" and row.started is not None and row.minutes is not None:
-            cap = row.minutes + (digest.EXTENSION_MINUTES if row.extended else 0)
-            elapsed = digest.minutes_between(row.started, now)
-            if elapsed > cap:
-                found.append(f"{name} running {elapsed} min against a cap of {cap:g}")
-        if (row.status == "Queued" and row.requested is not None and row.minutes is not None
-                and not row.complaint and digest.minutes_between(row.requested, now) >= 2 * row.minutes):
-            found.append(f"{name} queued {digest.minutes_between(row.requested, now)} min, a complaint is due")
+        if slots.is_overrun(slot, now):
+            found.append(f"{name} running {slots.tidy(slots.minutes_between(now, slot.started)):g} min "
+                         f"against a cap of {slots.cap_minutes(slot):g}")
+        if slot.status == slots.QUEUED and not row.complaint and slots.complaint_due(slot, seen, now)[0]:
+            since = slot.requested_at
+            waited = f" {slots.tidy(slots.minutes_between(now, since)):g} min" if since else ""
+            found.append(f"{name} queued{waited}, a complaint is due")
     return found
 
 
