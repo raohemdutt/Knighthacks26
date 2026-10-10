@@ -9,8 +9,10 @@ The budget. At most BUDGET_UNITS (16) units run at once: a Sonnet sitting costs 
 sitting 2 and a Fable sitting 8 (COST). Every sitting counts, not only the pool's own: one
 started by hand (python -m lab sit), or by an earlier pool process that died, holds its units
 from its start row in the ledger until its end row, or until its cap plus LIVE_GRACE_MINUTES
-has passed, and its item is not started a second time meanwhile. --units lowers the budget, to
-leave room for agents the ledger does not see; nothing raises it.
+has passed, and its item is not started a second time meanwhile. A cap has no upper bound, so
+these sit rows are read from the whole ledger (read_live_sittings), never only the last
+LEDGER_LOOKBACK_HOURS. --units lowers the budget, to leave room for agents the ledger does not
+see; nothing raises it.
 
 No fixed cycle. Each sitting runs in a seat: a thread that runs python -m lab sit as a child
 process and waits for its one-line answer. When a seat's sitting ends, the pool records it and
@@ -165,7 +167,7 @@ REFEREE_EVERY_MINUTES = 120.0  # the longest the referee duty waits without queu
 REFEREE_TROUBLE_MINUTES = 30.0 # the shortest gap between referee sittings called by queue trouble
 LIVE_GRACE_MINUTES = 10.0      # past its cap, a sitting with no end row counts as gone after this
 SEAT_MATCH_MINUTES = 1.0       # a seat owns sit rows of its tier and item started no earlier than this before it
-LEDGER_LOOKBACK_HOURS = 24.0   # how far back the ledger is read for sittings and the pool's history
+LEDGER_LOOKBACK_HOURS = 24.0   # how far back the ledger is read for the pool's own history; never for live sittings
 LOCK_WAIT_SECONDS = 2.0        # how long a starting pool waits for pool.lock
 FETCH_MINUTES = 5.0            # how often --refine-ref is fetched
 DEFAULT_REF = "origin/main"
@@ -561,6 +563,15 @@ def live_sittings(rows: Iterable[Mapping[str, Any]], now: dt.datetime) -> list[S
         live.append(SittingInfo(run_id, tier, str(row.get("item") or ""), started, COST[tier]))
     live.sort(key=lambda s: (s.started, s.sitting))
     return live
+
+
+def read_live_sittings(state_dir: Path, now: dt.datetime) -> list[SittingInfo]:
+    """live_sittings over every sit row in the ledger. A sitting holds its units until its end
+    row or its cap plus LIVE_GRACE_MINUTES, and a cap has no upper bound, so no lookback is
+    applied: LEDGER_LOOKBACK_HOURS would drop a sitting whose cap runs past it while it still
+    runs. ledger.read scans the whole file either way. Raises OSError when the ledger cannot be
+    read, for the caller to report."""
+    return live_sittings(ledger.read(state_dir=state_dir, verb=sit.VERB), now)
 
 
 @dataclass
@@ -1031,15 +1042,15 @@ def registered_verbs() -> list[str]:
 
 
 def build_view(settings: Settings, seats: Sequence[Seat], history: History, now: dt.datetime) -> View:
-    """The candidates in order, what is not offered and why, and the units in use."""
+    """The candidates in order, what is not offered and why, and the units in use. The units held
+    outside the seats come from read_live_sittings, over the whole ledger and not
+    LEDGER_LOOKBACK_HOURS."""
     problems: list[str] = []
     skips: list[Skip] = []
     candidates: list[Candidate] = []
 
     try:
-        rows = ledger.read(state_dir=settings.state_dir, verb=sit.VERB,
-                           since=now - dt.timedelta(hours=LEDGER_LOOKBACK_HOURS))
-        foreign = foreign_sittings(live_sittings(rows, now), seats)
+        foreign = foreign_sittings(read_live_sittings(settings.state_dir, now), seats)
     except OSError as exc:
         blocked = f"the ledger cannot be read ({type(exc).__name__}: {exc}); nothing starts"
         return View(now, settings.budget, None, None, [], skips, list(seats), [], [blocked], blocked)
@@ -1790,15 +1801,15 @@ def dry_run(settings: Settings, now: dt.datetime | None = None) -> dict[str, Any
 
 def status(state_dir: Path, now: dt.datetime | None = None) -> dict[str, Any]:
     """Whether a pool runs, its units in use and seats, the problems of its latest view, and the
-    sittings that hold units outside it."""
+    sittings that hold units outside it (read_live_sittings, over the whole ledger and not
+    LEDGER_LOOKBACK_HOURS)."""
     now = now or utc_now()
     running, holder = pool_running(state_dir)
     data = read_state(state_path(state_dir)) or {}
     seats = [Seat.from_summary(s) for s in data.get("seats") or [] if isinstance(s, Mapping)] if running else []
     seats = [seat for seat in seats if seat is not None]
     try:
-        rows = ledger.read(state_dir=state_dir, verb=sit.VERB, since=now - dt.timedelta(hours=LEDGER_LOOKBACK_HOURS))
-        foreign = foreign_sittings(live_sittings(rows, now), seats)
+        foreign = foreign_sittings(read_live_sittings(state_dir, now), seats)
         problem = None
     except OSError as exc:
         foreign, problem = [], f"the ledger cannot be read: {type(exc).__name__}: {exc}"
