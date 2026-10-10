@@ -23,12 +23,25 @@ import yaml
 
 from contexts.capture.infrastructure.camera import CameraReader
 from contexts.perception.application.tracking import TrackingPipeline
-from contexts.perception.infrastructure.detector import YoloDetector, build_detector
+from contexts.perception.infrastructure.detector import build_detector, detector_available
 from contexts.perception.infrastructure.face_blur import FaceBlur
 from contexts.perception.infrastructure.face_counter import FaceCounter
 from contexts.perception.infrastructure.keyframe_store import KeyframeStore
 
 log = logging.getLogger("atlas.capture")
+
+
+class LazyDetector:
+    """Builds the detector on the first frame. torch and TensorRT cost about 1.2 GB of the Jetson's 8 GB, which a box
+    whose camera is unplugged should not spend."""
+
+    def __init__(self, factory: Any) -> None:
+        self.factory, self._detector = factory, None
+
+    def __call__(self, frame: Any) -> Any:
+        if self._detector is None:
+            self._detector = self.factory()
+        return self._detector(frame)
 
 
 class CaptureService:
@@ -48,7 +61,7 @@ class CaptureService:
         cameras = ((yaml.safe_load(path.read_text()) or {}).get("cameras") or {}) if path.exists() else {}
         if not cameras:
             return None
-        if build_detector(models_yaml) is None:
+        if not detector_available(models_yaml):
             log.warning("cameras are configured but there is no detector engine here (see config/models.yaml): "
                         "capture is off")
             return None
@@ -60,7 +73,7 @@ class CaptureService:
             fps = float(cfg.get("fps", 15))
             reader = CameraReader(camera_id, source, bus=self.bus, loop=loop, fps=fps,
                                   width=cfg.get("width", 1280), height=cfg.get("height", 720))
-            detector: YoloDetector = self.detector_factory()  # ByteTrack keeps its state in the model: one per camera
+            detector = LazyDetector(self.detector_factory)  # ByteTrack keeps its state in the model: one per camera
             blur = FaceBlur()
             store = KeyframeStore(self.data_dir, blur=lambda frame, blur=blur: blur(frame) if self._blur_on() else frame)
             pipeline = TrackingPipeline(
