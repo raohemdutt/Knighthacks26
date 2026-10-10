@@ -5,23 +5,32 @@
 
 Each pod runs lab/pod_power.py, which keeps its samples and serves them at GET /samples?after=<seq> on a local port
 that the hub proxy exposes as https://<hub>/user/<account>/proxy/<port>/ (with the account's hub token).
-Every `poll_s` the reader asks each pod for what came after the last sample it has, so a proxy gap delays samples
+Each pod is polled by its own task, every `poll_s`, for what came after its cursor, so a proxy gap delays samples
 but loses none the pod still holds, and a sampler restart (a new sampler_started, its seq counting from 1 again) is
 followed from its first sample. Each sample is parsed against the contract and must be a telemetry.gpu.power for
 the pod it came from; it then gets `received_ts`, the moment this reader got it on the Jetson's clock, so `ts`
 (the pod's clock) and `received_ts` together show how late it arrived.
 
+The cursor (`after`, and `newest`, the newest sample's ts) moves one sample at a time, and only once samples() has
+handed that sample on and been asked for the next one, that is once the runner has published it. A pod is polled
+again only after its previous page was taken, so its next after= is that cursor. When a publish fails, the runner
+abandons samples() at that sample and calls it again: the new call stops the old polls and reads every pod again
+from its cursor, so the failed sample and the rest of its page come back (should the failed write have landed
+after all, the bus drops the repeat by its event_id).
+
 A sample at or before the newest one already held for that node (`skip_until`, the projection the log rebuilt) is
 not published again, so restarting the app does not copy the pod's buffer into the log a second time. Samples the
-pod dropped before they were fetched (its buffer is bounded) are counted as lost.
+pod dropped before they were fetched (its buffer is bounded) are counted as lost, once.
 
-A pod that does not answer is logged once per change of reason and asked again at the next poll; the other pod is
-not held up. The token is sent only in the Authorization header and appears in no log line or status.
+A pod that does not answer, or whose proxy holds the request for up to `timeout_s`, delays only its own samples:
+the other pod's are read and published meanwhile. A pod that does not answer is logged once per change of reason
+and asked again at its next poll. The token is sent only in the Authorization header and appears in no log line or
+status.
 """
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -90,6 +99,23 @@ def pod_endpoints(environ: Mapping[str, str], *, hub_url: str | None = None, por
     return pods
 
 
+@dataclass(frozen=True)
+class PodPage:
+    """One answer of one pod, not yet taken: the reader's cursor has not moved for any of its samples."""
+    first_seq: int | None  # the oldest sample the pod still held when it answered
+    received: datetime  # when the answer reached this reader, on the Jetson's clock
+    samples: list[Any]  # the raw {"seq", "event"} items, oldest first
+
+
+@dataclass(frozen=True)
+class _Handoff:
+    """What a pod's poll task hands samples(): a page and the flag that says it was taken, or the poll's end."""
+    pod: PodEndpoint
+    page: PodPage | None = None
+    taken: asyncio.Event | None = None
+    error: Exception | None = None  # the poll task ended on this error rather than after its rounds
+
+
 class PodReader:
     """A sampler (anything with samples()) for the SamplerRunner: the pods' telemetry.gpu.power samples."""
 
@@ -117,29 +143,82 @@ class PodReader:
         self.state: dict[str, dict[str, Any]] = {
             pod.node: {"after": 0, "sampler_started": None, "newest": None, "seeded": False, "fetched": 0, "lost": 0,
                        "rejected": 0, "repeats": 0, "restarts": 0, "error": None, "last_ok": None} for pod in pods}
+        self._polls: list[asyncio.Task[None]] = []  # the poll tasks of the samples() call now running
 
     async def samples(self) -> AsyncIterator[Event]:
-        done = 0
+        """Every pod's new samples as they arrive, each pod polled by its own task; see the module docstring.
+
+        A sample's cursor is committed when the caller asks for the next event after it, never before, so a
+        caller that fails on a sample and calls samples() again gets that sample and the rest of its page again."""
+        # A call abandoned at a failed publish may not have been closed yet; its polls must not outlive it.
+        await self._stop_polls(self._polls)
+        pages: asyncio.Queue[_Handoff] = asyncio.Queue()
         async with httpx.AsyncClient(transport=self.transport, timeout=self.timeout_s,
                                      follow_redirects=False) as client:
-            while True:
-                for pod in self.pods:
-                    for event in await self.fetch(client, pod):
+            polls = [asyncio.create_task(self._poll_pod(client, pod, pages), name=f"pod-reader-{pod.node}")
+                     for pod in self.pods]
+            self._polls = polls
+            try:
+                running = len(polls)
+                while running:
+                    handoff = await pages.get()
+                    if handoff.page is None or handoff.taken is None:
+                        running -= 1
+                        if handoff.error is not None:
+                            raise RuntimeError(f"polling the {handoff.pod.node} sampler failed") from handoff.error
+                        continue
+                    for event in self._take(handoff.pod, handoff.page):
                         yield event
-                done += 1
-                if self.rounds is not None and done >= self.rounds:
-                    return
+                    handoff.taken.set()
+            finally:
+                await self._stop_polls(polls)
+                if self._polls is polls:
+                    self._polls = []
+
+    async def _poll_pod(self, client: httpx.AsyncClient, pod: PodEndpoint, pages: asyncio.Queue[_Handoff]) -> None:
+        """One pod's polls: a page at a time, the next poll only after samples() took the last page."""
+        polls = 0
+        try:
+            while True:
+                page = await self._poll(client, pod)
+                polls += 1
+                if page is not None:
+                    taken = asyncio.Event()
+                    pages.put_nowait(_Handoff(pod, page, taken))
+                    await taken.wait()
+                if self.rounds is not None and polls >= self.rounds:
+                    break
                 await self.sleep(self.poll_s)
+        except Exception as exc:  # handed to samples(), which raises it for the runner to log and restart
+            pages.put_nowait(_Handoff(pod, error=exc))
+            return
+        pages.put_nowait(_Handoff(pod))
+
+    async def _stop_polls(self, polls: Sequence[asyncio.Task[None]]) -> None:
+        for task in polls:
+            task.cancel()
+        results = await asyncio.gather(*polls, return_exceptions=True)
+        for task, result in zip(polls, results):
+            if isinstance(result, BaseException) and not isinstance(result, asyncio.CancelledError):
+                log.error("the %s poll ended on %s: %s", task.get_name(), type(result).__name__, result)
 
     async def fetch(self, client: httpx.AsyncClient, pod: PodEndpoint) -> list[GpuPower]:
-        """One poll of one pod: the samples it has after the last one fetched, stamped with their receive time."""
+        """One poll of one pod, taken whole: the samples it has after the cursor, stamped with their receive time.
+
+        The cursor moves past every one of them, as for a caller that keeps all it is handed; samples() takes a
+        page one sample at a time instead."""
+        page = await self._poll(client, pod)
+        return [] if page is None else list(self._take(pod, page))
+
+    async def _poll(self, client: httpx.AsyncClient, pod: PodEndpoint) -> PodPage | None:
+        """Ask one pod for what came after its cursor; None when it gave no usable answer (logged by _trouble)."""
         state = self.state[pod.node]
         if not state["seeded"]:
             state["newest"] = self.skip_until(pod.node) if self.skip_until else None
             state["seeded"] = True
         body = await self._get(client, pod, state["after"])
         if body is None:
-            return []
+            return None
         started = body.get("sampler_started")
         if state["sampler_started"] is not None and started != state["sampler_started"]:
             state["restarts"] += 1  # a new sampler process numbers its samples from 1 again
@@ -147,38 +226,49 @@ class PodReader:
             log.info("the %s sampler restarted; reading it from its first sample", pod.node)
             body = await self._get(client, pod, 0)
             if body is None:
-                return []
+                return None
             started = body.get("sampler_started")
         state["sampler_started"] = started
         received = self.clock()
+        state["last_ok"] = received
         first_seq = body.get("first_seq")
-        if state["after"] and isinstance(first_seq, int) and first_seq > state["after"] + 1:
-            state["lost"] += first_seq - state["after"] - 1
-            log.warning("%d %s samples were dropped on the pod before they could be read",
-                        first_seq - state["after"] - 1, pod.node)
-        out: list[GpuPower] = []
-        for item in body.get("samples") or []:
+        return PodPage(first_seq if isinstance(first_seq, int) and not isinstance(first_seq, bool) else None,
+                       received, list(body.get("samples") or []))
+
+    def _take(self, pod: PodEndpoint, page: PodPage) -> Iterator[GpuPower]:
+        """The page's samples for this pod, committing the cursor for each only when the next one is asked for.
+
+        Samples skipped here (rejected, or already in the log) move the cursor at once, since nothing is published
+        for them. A caller that stops at a sample leaves the cursor before it, and its counts untouched."""
+        state = self.state[pod.node]
+        if state["after"] and page.first_seq is not None and page.first_seq > state["after"] + 1:
+            dropped = page.first_seq - state["after"] - 1
+            state["lost"] += dropped
+            state["after"] = page.first_seq - 1  # they are gone; counted once even if this page is read again
+            log.warning("%d %s samples were dropped on the pod before they could be read", dropped, pod.node)
+        for item in page.samples:
             seq = item.get("seq") if isinstance(item, Mapping) else None
             if not isinstance(seq, int) or isinstance(seq, bool):
                 state["rejected"] += 1
                 continue
-            state["after"] = max(state["after"], seq)
             try:
                 event = parse_event(item.get("event"))
             except (ValueError, TypeError):
                 state["rejected"] += 1
+                state["after"] = max(state["after"], seq)
                 continue
             if not isinstance(event, GpuPower) or event.node != pod.node:
                 state["rejected"] += 1  # only this pod's power samples come through this pod's address
+                state["after"] = max(state["after"], seq)
                 continue
             if state["newest"] is not None and event.ts <= state["newest"]:
                 state["repeats"] += 1  # already in the log
+                state["after"] = max(state["after"], seq)
                 continue
+            yield event.model_copy(update={"received_ts": page.received})
+            state["after"] = max(state["after"], seq)  # handed on: the runner published it
             state["newest"] = event.ts
-            out.append(event.model_copy(update={"received_ts": received}))
-        state["fetched"] += len(out)
-        state["last_ok"] = received
-        return out
+            state["fetched"] += 1
 
     async def _get(self, client: httpx.AsyncClient, pod: PodEndpoint, after: int) -> dict[str, Any] | None:
         state = self.state[pod.node]
