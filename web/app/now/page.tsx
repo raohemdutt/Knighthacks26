@@ -304,7 +304,7 @@ function PlanCard({ p, committed, reload }: { p: DayPlan | DayReplan; committed:
             Approve in Approvals
           </Link>
         ) : null}
-        <Link href="/dayrun/?day=mine" className={ui.btn}>
+        <Link href="/dayrun/?plan=day" className={ui.btn}>
           Change it in Day Run
         </Link>
       </div>

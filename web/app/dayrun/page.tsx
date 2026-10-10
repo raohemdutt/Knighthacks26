@@ -31,6 +31,7 @@ import { useFetch } from "@/lib/useFetch";
  *                             ?play=0 opens it paused; with ?t=11:15 it opens on exactly that minute.
  *                             &motion=reduce steps block by block, as with the system's reduced motion.
  *   /dayrun/?day=mine         start on "My day" (live sources) instead of the demo day
+ *   /dayrun/?plan=day         My day with the Day loop's plan for today preloaded (GET /api/day/plan)
  *   /dayrun/?more=1           open the review, replay, campaign and forecast forms
  */
 
@@ -96,7 +97,11 @@ export default function DayRunPage() {
     const plan = q.get("plan");
     const wantHard = q.has("hard") && q.get("hard") !== "0";
     const wantPlay = q.has("play");
-    if (!mine) {
+    if (plan === "day") {
+      // the Day loop's plan for today (Now screen "Change it in Day Run"): live sources, moves preloaded
+      setMode("mine");
+      api.dayPlan().then((p) => setMoves(p.moves)).catch(() => undefined);
+    } else if (!mine) {
       if (plan === "bad") setMoves(DEMO_BAD_PLAN, "bad");
       else if (plan === "good" || wantHard || wantPlay) setMoves(DEMO_GOOD_PLAN, "good");
     }
