@@ -64,17 +64,22 @@ function fetchProfile(): Promise<Profile> {
 
 /** The box's profile; the student's until the box answers (one request per page load, shared by every screen). */
 export function useProfile(): Profile {
-  const [profile, setProfile] = useState<Profile>(cached ?? STUDENT_PROFILE);
+  return useProfileState().profile;
+}
+
+/** The profile and whether the box has answered yet (`ready`), for screens that must not act on the default. */
+export function useProfileState(): { profile: Profile; ready: boolean } {
+  const [state, setState] = useState<{ profile: Profile; ready: boolean }>({ profile: cached ?? STUDENT_PROFILE, ready: cached !== null });
   useEffect(() => {
     let live = true;
     fetchProfile().then((p) => {
-      if (live) setProfile(p);
+      if (live) setState({ profile: p, ready: true });
     });
     return () => {
       live = false;
     };
   }, []);
-  return profile;
+  return state;
 }
 
 /** The profile's words: `w.event` ("class", "shift"), `w.Activity` ("Study", "Work"), `w.deadline_plural`, ... */

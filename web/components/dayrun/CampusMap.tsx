@@ -59,7 +59,14 @@ export function CampusMap({
   scrub: number;
   onScrubTo: (iso: string) => void;
 }) {
-  const located = [...places.values()].filter((p) => typeof p.lat === "number" && typeof p.lon === "number");
+  // Only the packs this day visits: a box with several profiles' packs loaded draws the one the day is played on.
+  const visited = new Set<string>();
+  for (const t of result.timeline) visited.add(t.place.split(".")[0] ?? "");
+  for (const b of result.blocks) visited.add(b.place.split(".")[0] ?? "");
+  for (const f of friends) visited.add(f.place.split(".")[0] ?? "");
+  const located = [...places.values()].filter(
+    (p) => typeof p.lat === "number" && typeof p.lon === "number" && visited.has(p.pack_name),
+  );
   const rooms = packs
     .map((pack) => ({
       pack,

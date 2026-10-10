@@ -1,15 +1,16 @@
 # Place pack: the plant where the shift happens. Edge minutes are walking time; the parking lot leads home.
+# Coordinates are a made-up site (the map draws located places); replace them with the real plant's.
 name: plant
 kind: campus
 places:
-  lot:       {name: Parking lot, kind: outdoors, pack: flat}
-  gate:      {name: Security gate, kind: door}
-  lockers:   {name: Locker room, kind: lockers}
-  floor:     {name: Line 3 station, kind: station, aliases: [Station, Line 3]}
-  office:    {name: Shift office, kind: office}
-  breakroom: {name: Break room, kind: breakroom, aliases: [Break room]}
-  canteen:   {name: Canteen, kind: canteen, aliases: [Canteen]}
-  gym:       {name: Site gym, kind: gym, aliases: [Gym]}
+  lot:       {name: Parking lot, kind: outdoors, lat: 28.5500, lon: -81.2600, pack: flat}
+  gate:      {name: Security gate, kind: door, lat: 28.5508, lon: -81.2592}
+  lockers:   {name: Locker room, kind: lockers, lat: 28.5510, lon: -81.2588}
+  floor:     {name: Line 3 station, kind: station, lat: 28.5514, lon: -81.2582, aliases: [Station, Line 3]}
+  office:    {name: Shift office, kind: office, lat: 28.5517, lon: -81.2586}
+  breakroom: {name: Break room, kind: breakroom, lat: 28.5512, lon: -81.2578, aliases: [Break room]}
+  canteen:   {name: Canteen, kind: canteen, lat: 28.5506, lon: -81.2580, aliases: [Canteen]}
+  gym:       {name: Site gym, kind: gym, lat: 28.5513, lon: -81.2594, aliases: [Gym]}
 edges:
   - [lot, gate, 12]
   - [gate, lockers, 2]

@@ -232,7 +232,7 @@ class _Schedule:
             self.changes.append(Change(move=i, kind="shortened", text=f"cut from {minutes_between(begin, end)} to {room} minutes: otherwise {reason}"))
             end = latest
 
-        self.go(trip, there, depart, f"to {w.name(target)} ({m.kind})", i)
+        self.go(trip, there, depart, f"to {w.name(target)} ({cfg.vocabulary.activity if m.kind == 'study' else m.kind})", i)
         friend = None
         if m.kind == "study":
             self.study(begin, end, target, m.deadline, m.with_friend, i)

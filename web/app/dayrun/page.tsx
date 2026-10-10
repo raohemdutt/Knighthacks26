@@ -15,7 +15,7 @@ import { useAtlas } from "@/lib/atlas";
 import { clock, clockSpan, dateLabel, dateOf, indexPlaces, minutes, ms, placeName, riskPercent, stars } from "@/lib/dayrun";
 import { DEMO_BAD_PLAN, DEMO_CAMPAIGN, DEMO_DISRUPTIONS, DEMO_GOOD_PLAN, DEMO_SCENARIO } from "@/lib/demoDay";
 import { amount, safeUrl } from "@/lib/format";
-import { useProfile, useWords } from "@/lib/profile";
+import { useProfileState, useWords } from "@/lib/profile";
 import { useFetch } from "@/lib/useFetch";
 
 /**
@@ -60,7 +60,7 @@ function line(r: SimResult): string {
 
 export default function DayRunPage() {
   const { approvals } = useAtlas();
-  const profile = useProfile(); // the box's words, and which scripted day its demo mode plays
+  const { profile, ready: profileReady } = useProfileState(); // the box's words, and which scripted day its demo mode plays
   const w = profile.words;
   const scenarioName = profile.scenario ?? DEMO_SCENARIO;
   const [mode, setMode] = useState<Mode>("demo");
@@ -132,11 +132,11 @@ export default function DayRunPage() {
   }, [setMoves]);
 
   useEffect(() => {
-    if (urlPlan && presets[urlPlan].length > 0) {
+    if (urlPlan && profileReady && !script.loading && presets[urlPlan].length > 0) {
       setMoves(presets[urlPlan], urlPlan);
       setUrlPlan(null);
     }
-  }, [urlPlan, presets, setMoves]);
+  }, [urlPlan, profileReady, script.loading, presets, setMoves]);
 
   const start = board.data?.start;
 
