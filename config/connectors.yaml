@@ -14,4 +14,21 @@ site:
       - {title: "Knight Hacks schedule", url: "https://knighthacks.org"}
       # - {title: "School page", url: "https://..."}
 
-# canvas, calendar (Hemdutt: K6, K2), groupme, search (Dom: K4, K5) go here.
+calendar:
+  # Published .ics feeds (K2 reads, K3 campus events, K6 Canvas fallback).
+  # Each feed URL is a bearer credential: put it in .env and name it here.
+  enabled: false  # turn on once the URLs are in .env
+  module: contexts.connectors.servers.ics
+  every_s: 600
+  hosts: [outlook.office365.com]
+  reads: {list_events: calendar_event}
+  env: [OUTLOOK_ICS_URL, CAMPUS_EVENTS_ICS_URL, CANVAS_ICS_URL]
+  options:
+    days_back: 1
+    days_ahead: 14
+    feeds:
+      - {name: outlook, url_env: OUTLOOK_ICS_URL, kind: calendar_event}
+      # - {name: campus, url_env: CAMPUS_EVENTS_ICS_URL, kind: calendar_event}
+      # - {name: canvas, url_env: CANVAS_ICS_URL, kind: assignment}
+
+# canvas (Hemdutt: K6), groupme (Hemdutt: K4), browser (Dom: K7) go here.
