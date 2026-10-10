@@ -24,7 +24,7 @@ REAL_RESOLVE_COMMAND = sit.resolve_command
 OPUS_PROMPT = (sit.PROMPTS_DIR / "opus.md").read_text(encoding="utf-8")
 DIGEST_TEXT = "ledger: 3 sittings in the last window\nnext unblocked: O22 (opus), O24 (sonnet)"
 MODEL_WORDS = "MODEL-WORDS-THAT-NEVER-REACH-THE-LEDGER"
-ENV_KEYS = ["LAB_STATE_DIR", "LAB_ACTOR", "LAB_TIER", "PYTHONPATH", "CLAUDE_CODE_DISABLE_AUTO_MEMORY",
+ENV_KEYS = ["LAB_STATE_DIR", "LAB_ACTOR", "LAB_TIER", "LAB_TASK", "PYTHONPATH", "CLAUDE_CODE_DISABLE_AUTO_MEMORY",
             "ENABLE_CLAUDEAI_MCP_SERVERS",
             "CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "KEEP_ME"]
 
@@ -240,6 +240,7 @@ def test_the_session_environment_names_the_sitting_and_drops_the_parent_session(
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "parent-session")
     monkeypatch.setenv("KEEP_ME", "kept")
     monkeypatch.setenv("ENABLE_CLAUDEAI_MCP_SERVERS", "true")
+    monkeypatch.setenv("LAB_TASK", "X9")
     monkeypatch.setenv("PYTHONPATH", "elsewhere")
 
     _, answer = run_cli(["sit", "--tier", "sonnet", "--task", "L3"], capsys)
@@ -248,6 +249,7 @@ def test_the_session_environment_names_the_sitting_and_drops_the_parent_session(
         "LAB_STATE_DIR": str(lab["state"].resolve()),
         "LAB_ACTOR": answer["sitting"],
         "LAB_TIER": "sonnet",
+        "LAB_TASK": "L3",
         "PYTHONPATH": os.pathsep.join([str(sit.REPO_ROOT), "elsewhere"]),
         "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
         "ENABLE_CLAUDEAI_MCP_SERVERS": "false",
@@ -579,7 +581,9 @@ def test_the_launcher_never_runs_inside_a_sitting(lab, cli, digest, capsys, monk
 # --- rehearsal and dry run -------------------------------------------------------------------
 
 
-def test_a_rehearsal_runs_a_fake_task_even_without_a_digest(lab, cli, capsys):
+def test_a_rehearsal_runs_a_fake_task_even_without_a_digest(lab, cli, capsys, monkeypatch):
+    monkeypatch.setenv("LAB_TASK", "X9")
+
     code, answer = run_cli(["sit", "--tier", "sonnet", "--rehearse"], capsys)
 
     assert (code, answer["outcome"], answer["item"], answer["rehearse"], answer["minutes"]) == (
@@ -590,6 +594,7 @@ def test_a_rehearsal_runs_a_fake_task_even_without_a_digest(lab, cli, capsys):
     assert instruction_part.endswith("\n\n" + sit.REHEARSAL_TASK.format(minutes=2.0, sitting=sitting, tier="sonnet")
                                      + "\n")
     assert "/open-ticket" not in instruction_part
+    assert cli.record()["env"]["LAB_TASK"] is None
     start, end = rows(lab["state"])
     assert (start["task"], start["item"], start["rehearse"], start["cap_minutes"]) == (None, "rehearse", True, 2.0)
     assert (end["outcome"], end["rehearse"]) == ("ok", True)
@@ -614,6 +619,7 @@ def test_a_dry_run_answers_what_would_run_and_starts_and_writes_nothing(lab, cli
     assert answer["cwd"] == str(lab["workspace"].resolve())
     assert answer["env"] == {
         "LAB_STATE_DIR": str(lab["state"].resolve()), "LAB_ACTOR": answer["sitting"], "LAB_TIER": "opus",
+        "LAB_TASK": "O20",
         "PYTHONPATH": answer["env"]["PYTHONPATH"], "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
         "ENABLE_CLAUDEAI_MCP_SERVERS": "false",
     }

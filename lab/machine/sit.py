@@ -46,8 +46,10 @@ stream's init event. The session's environment is the launcher's without the
 variables that tie a process to the agent session it was started from (SESSION_VARS:
 a sitting is a session of its own), plus LAB_STATE_DIR (the launcher's state dir, made
 absolute, so every verb a sitting runs from any clone writes the one ledger),
-LAB_ACTOR (the sitting id), LAB_TIER, PYTHONPATH (this repo root first, so python -m
-lab runs from the workspace), CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 (a sitting starts
+LAB_ACTOR (the sitting id), LAB_TIER and, for a task, LAB_TASK (the three the ledger
+helper record.py writes rows with; an inherited LAB_TASK is dropped otherwise),
+PYTHONPATH (this repo root first, so python -m lab runs from the workspace),
+CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 (a sitting starts
 from the digest, never from notes an earlier session left) and
 ENABLE_CLAUDEAI_MCP_SERVERS=false (none of the connectors added to the owner's web
 account: no tier may call one, and the account's Notion connector points at the same
@@ -127,6 +129,7 @@ WORKSPACE_ENV = "LAB_WORKSPACE"
 WORKSPACE_MARKER: tuple[str, ...] = (".claude", "skills", "open-ticket", "SKILL.md")
 ACTOR_ENV = "LAB_ACTOR"
 TIER_ENV = "LAB_TIER"
+TASK_ENV = "LAB_TASK"
 PYTHONPATH_ENV = "PYTHONPATH"
 #: What the launcher sets in a session's environment beyond the state dir, actor and tier:
 #: no auto memory, and no connectors of the owner's web account (see "Where it runs" above).
@@ -147,7 +150,8 @@ SESSION_VARS: tuple[str, ...] = (
 )
 #: The variables a dry run shows: the ones the launcher decides. The rest of the
 #: environment is never printed.
-LAUNCHER_ENV_KEYS: tuple[str, ...] = (ledger.ENV_STATE_DIR, ACTOR_ENV, TIER_ENV, PYTHONPATH_ENV, *ISOLATION_ENV)
+LAUNCHER_ENV_KEYS: tuple[str, ...] = (ledger.ENV_STATE_DIR, ACTOR_ENV, TIER_ENV, TASK_ENV, PYTHONPATH_ENV,
+                                      *ISOLATION_ENV)
 
 #: The agent CLI's command name on PATH.
 COMMAND = "claude"
@@ -290,14 +294,17 @@ def session_command(program: Sequence[str], tier: str, budget_usd: float | None 
     return cmd + allowed.cli_flags(tier)
 
 
-def session_env(base: Mapping[str, str], *, state_dir: Path, sitting: str, tier: str,
+def session_env(base: Mapping[str, str], *, state_dir: Path, sitting: str, tier: str, task: str | None = None,
                 repo_root: Path = REPO_ROOT) -> dict[str, str]:
-    """The session's whole environment: base without SESSION_VARS, then the launcher's
-    variables. PYTHONPATH keeps what base had, after this repo root."""
-    env = {key: value for key, value in base.items() if key not in SESSION_VARS}
+    """The session's whole environment: base without SESSION_VARS and without a LAB_TASK
+    of its own, then the launcher's variables (LAB_TASK only for a task). PYTHONPATH keeps
+    what base had, after this repo root."""
+    env = {key: value for key, value in base.items() if key not in SESSION_VARS and key != TASK_ENV}
     env[ledger.ENV_STATE_DIR] = str(state_dir)
     env[ACTOR_ENV] = sitting
     env[TIER_ENV] = tier
+    if task:
+        env[TASK_ENV] = task
     inherited = base.get(PYTHONPATH_ENV)
     env[PYTHONPATH_ENV] = os.pathsep.join([str(repo_root), inherited]) if inherited else str(repo_root)
     env.update(ISOLATION_ENV)
@@ -772,11 +779,11 @@ def run(tier: str, item: Item, *, minutes: float | None = None, budget_usd: floa
     text = instruction(item, sitting, tier, workspace, cap, started)
     prompt = build_prompt(tier_prompt, digest, text)
     cmd = session_command(program, tier, budget_usd)
-    env = session_env(os.environ, state_dir=state_dir, sitting=sitting, tier=tier)
+    env = session_env(os.environ, state_dir=state_dir, sitting=sitting, tier=tier, task=item.task)
     base = {"sitting": sitting, **base}
     if dry_run:
         return {"ok": True, "outcome": OUTCOME_DRY_RUN, **base, "command": cmd, "cwd": str(workspace),
-                "env": {key: env[key] for key in LAUNCHER_ENV_KEYS},
+                "env": {key: env.get(key) for key in LAUNCHER_ENV_KEYS},
                 "env_removed": sorted(key for key in SESSION_VARS if key in os.environ),
                 "instruction": text, "prompt_file": str(prompt_file), "prompt_chars": len(prompt),
                 "digest": digest.summary(), "state_dir": str(state_dir)}
