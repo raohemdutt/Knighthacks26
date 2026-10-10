@@ -188,7 +188,7 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
     app.include_router(impact_router(atlas.impact, publish=atlas.bus.publish, guard=authorized))
     if atlas.policy:  # GET/PUT /vault/policy, POST /vault/wipe/request, POST /vault/wipe, GET /vault/egress
         app.include_router(vault_router(atlas.policy, atlas.bus, wiper=atlas.wiper, guard=authorized))
-    if atlas.identity:  # GET/PUT /identity/settings, POST /identity/enroll/start, GET /identity/enroll/status, GET/DELETE /identity/members (P9)
+    if atlas.identity:  # GET/PUT /identity/settings, POST /identity/enroll/start|photos, GET /identity/enroll/status, GET/PUT/DELETE /identity/members, GET /identity/expressions (P9)
         app.include_router(identity_router(atlas.identity, atlas.bus, guard=authorized))
     if atlas.capture:  # GET /capture/status (C6)
         app.include_router(capture_router(atlas.capture))

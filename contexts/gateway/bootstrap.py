@@ -59,7 +59,9 @@ from contexts.impact.domain.waste_watch import WasteWatch
 from contexts.play.domain.game import SortIt
 from contexts.perception.application.identity import IdentityService
 from contexts.perception.application.service import PerceptionService
+from contexts.perception.infrastructure.expression import build_expression_reader
 from contexts.perception.infrastructure.identity_store import IdentityStore
+from contexts.perception.infrastructure.photo import build_photo_reader
 from contexts.perception.infrastructure.recognizer import build_recognizer
 from contexts.perception.domain.zones import ZoneEngine
 from contexts.play.dayrun.service import DayRun
@@ -291,10 +293,14 @@ def build(settings: Settings | None = None) -> Atlas:
     hub.offline = lambda: policy.offline  # offline pauses every connector read and write (V5, H4)
     policy.subscribe(bus)
     # Owner recognition (P9): opt-in, templates encrypted under data/vault/identity/. Unavailable without the SFace model.
-    identity = IdentityService(IdentityStore(s.data_dir, vault), build_recognizer())
+    # Face profile: photos need OpenCV; apparent expression needs its model file too (each reports itself unavailable without).
+    identity = IdentityService(IdentityStore(s.data_dir, vault), build_recognizer(),
+                               expression_reader=build_expression_reader(), photo_reader=build_photo_reader())
+    bus.subscribe("perception.expression", identity.on_expression, replay=True)  # the series GET /identity/expressions answers from
     bus.subscribe("perception.identity", identity.on_changed, replay=True)
     wiper = Wiper(s.data_dir, memory_db=s.data_dir / "memory.sqlite", live_memory=store)  # the open store is emptied too
     bus.subscribe("vault.wipe.requested", wiper.on_wipe_requested)
+    bus.subscribe("vault.wipe.requested", identity.on_wipe)  # live only: a wipe of everything also empties the expression series in memory
     EpisodeSummarizer(store, runtime).subscribe(bus)  # live only, in the background: one model call per closed episode (M3)
     # Semantic search (M5): off unless models.yaml sets embeddings.text. Live only, in the background, after the projection.
     memory.embedder = embedder_from(runtime, models_yaml)
