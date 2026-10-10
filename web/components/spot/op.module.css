@@ -1216,3 +1216,28 @@
     animation: none;
   }
 }
+
+/* a fold in the analysis: closed by default, one clear label */
+.fold {
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--sh-raised);
+  padding: 4px 20px;
+}
+
+.fold > summary {
+  display: flex;
+  align-items: center;
+  min-height: 56px;
+  font-size: 17px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.foldBody {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 6px 0 18px;
+  min-width: 0;
+}

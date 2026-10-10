@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { EvidenceLine, OpenCtx, pct, range, type Opener } from "@/components/spot/bits";
 import { Loading } from "@/components/States";
 import { api } from "@/lib/api";
@@ -8,6 +8,7 @@ import { useFetch } from "@/lib/useFetch";
 import { AskBox, HandoffCard } from "./AskBox";
 import { Detail } from "./Detail";
 import { BatteryCard, ModelCard, OverTimeCard, RateCard, VersionCard } from "./EvidencePanels";
+import { ExplainSheet, ExplainerGrid, type ExplainId, type Force } from "./Explainers";
 import { FacilityMap } from "./FacilityMap";
 import { LevelIcon } from "./FloorMap";
 import o from "./op.module.css";
@@ -32,6 +33,9 @@ export function AnalysisLayer({
   live,
   onLive,
   orders,
+  explain,
+  setExplain,
+  force,
 }: {
   shift: Shift;
   show: boolean;
@@ -40,17 +44,24 @@ export function AnalysisLayer({
   live: Replay | null;
   onLive: (r: Replay) => void;
   orders: WorkOrder[];
+  /** The animated explainer a "Why?" asked for, shown over the page. */
+  explain: ExplainId | null;
+  setExplain: (id: ExplainId | null) => void;
+  /** From a link: draw the explainers at their last (or a middle) step instead of playing them. */
+  force: Force;
 }) {
   const overview = useFetch((sig) => api.spotOverview(sig));
   const findings = useFetch((sig) => api.spotFindings(sig));
   const locations = useFetch((sig) => api.spotLocations(sig));
-  const heavy = show ? "on" : "off"; // the tables below load only when the section itself is open
-  const triage = useFetch((sig) => (show ? api.spotTriage(sig) : Promise.resolve(null)), heavy);
-  const assets = useFetch((sig) => (show ? api.spotAssets(sig) : Promise.resolve(null)), heavy);
-  const scorer = useFetch((sig) => (show ? api.spotModel(sig) : Promise.resolve(null)), heavy);
-  const handoff = useFetch((sig) => (show ? api.spotHandoff(sig) : Promise.resolve(null)), heavy);
+  const [tables, setTables] = useState(false);
+  const wanted = show && tables;
+  const heavy = wanted ? "on" : "off"; // the tables load only when their fold is opened
+  const triage = useFetch((sig) => (wanted ? api.spotTriage(sig) : Promise.resolve(null)), heavy);
+  const assets = useFetch((sig) => (wanted ? api.spotAssets(sig) : Promise.resolve(null)), heavy);
+  const scorer = useFetch((sig) => (wanted ? api.spotModel(sig) : Promise.resolve(null)), heavy);
+  const handoff = useFetch((sig) => (wanted ? api.spotHandoff(sig) : Promise.resolve(null)), heavy);
   const latestId = shift.latest_round ?? "";
-  const latest = useFetch((sig) => (show && latestId ? api.spotMission(latestId, sig) : Promise.resolve(null)), `${heavy}:${latestId}`);
+  const latest = useFetch((sig) => (wanted && latestId ? api.spotMission(latestId, sig) : Promise.resolve(null)), `${heavy}:${latestId}`);
 
   const index = overview.data?.index;
   const opener = useMemo<Opener>(() => {
@@ -98,10 +109,14 @@ export function AnalysisLayer({
             </div>
           </div>
 
-          <section className={o.card} aria-label="Each sentence and its finding">
-            <div className={o.cardHead}>
-              <h2>In plain words, and where each comes from</h2>
-            </div>
+          {findings.data ? (
+            <ExplainerGrid shift={shift} findings={findings.data.findings} live={live} force={force} onNumbers={setTarget} />
+          ) : (
+            <Loading what="the analysis" />
+          )}
+
+          <details className={o.fold}>
+            <summary>Every finding in one sentence ({shift.findings.length})</summary>
             <ul className={o.claims}>
               {shift.findings.map((f) => (
                 <li key={f.id}>
@@ -115,8 +130,12 @@ export function AnalysisLayer({
                 </li>
               ))}
             </ul>
-          </section>
+          </details>
 
+          <details className={o.fold} open={tables} onToggle={(e) => setTables((e.target as HTMLDetailsElement).open)}>
+            <summary>The full tables: ranked queue, intervals, the trained scorer, replay of every round</summary>
+            {tables ? (
+              <div className={o.foldBody}>
           <section aria-label="Key numbers" className={s.kpis}>
             {(o_?.kpis ?? []).map((k) => {
               const warn = k.good === "low" ? (k.rate ?? 0) > 0.25 : (k.rate ?? 1) < 0.85;
@@ -202,7 +221,14 @@ export function AnalysisLayer({
               ) : null}
             </div>
           </div>
+              </div>
+            ) : null}
+          </details>
         </div>
+      ) : null}
+
+      {explain && (findings.data || explain === "hidden" || explain === "alarms") ? (
+        <ExplainSheet id={explain} shift={shift} findings={findings.data?.findings ?? []} live={live} force={force} onNumbers={setTarget} onClose={() => setExplain(null)} />
       ) : null}
 
       {target && ((target.kind !== "finding" && target.kind !== "metric") || findings.data) && (target.kind !== "location" || locations.data) ? (

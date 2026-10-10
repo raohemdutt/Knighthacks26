@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnalysisLayer } from "@/components/spot/AnalysisLayer";
+import { EXPLAINS, type ExplainId, type Force } from "@/components/spot/Explainers";
 import { FloorMap } from "@/components/spot/FloorMap";
 import o from "@/components/spot/op.module.css";
 import { OperatorAsk } from "@/components/spot/OperatorAsk";
@@ -25,8 +26,7 @@ import { useFetch } from "@/lib/useFetch";
  * Only layers 1 and 2 load with the page (one request, plus the live picture). The analysis payloads are fetched when the
  * Analysis tab or a "Why?" is first opened.
  *
- * Deep links: ?asset=HX-202 opens that equipment's panel, ?round=M017&step=6 puts that round, at that step, at the top of the page, ?why=battery opens a
- * finding, ?tab=analysis opens the analysis, ?floor=2 picks the floor, ?all=1 lists all equipment.
+ * Deep links: ?asset=HX-202 opens that equipment's panel, ?round=M017&step=6 puts that round, at that step, at the top of the page, ?why=battery plays that finding's explainer (&at=end or &at=mid draws it at that step), ?numbers=battery opens its rows, ?tab=analysis opens the analysis, ?floor=2 picks the floor, ?all=1 lists all equipment.
  */
 type Tab = "shift" | "analysis";
 
@@ -38,6 +38,8 @@ export default function SpotPage() {
   const [asset, setAsset] = useState<string | null>(null);
   const [all, setAll] = useState(false);
   const [target, setTarget] = useState<Target | null>(null);
+  const [explain, setExplain] = useState<ExplainId | null>(null);
+  const [force, setForce] = useState<Force>(null);
   const [evidence, setEvidence] = useState(false); // becomes true the first time the analysis is needed, and stays
   const [link, setLink] = useState<{ round: string | null; step: number | null; floor: number | null } | null>(null);
 
@@ -45,7 +47,11 @@ export default function SpotPage() {
     const q = new URLSearchParams(window.location.search);
     const up = (k: string) => q.get(k)?.toUpperCase() ?? null;
     if (up("asset")) setAsset(up("asset"));
-    if (q.get("why")) (setTarget({ kind: "finding", id: q.get("why")! }), setEvidence(true));
+    const at = q.get("at");
+    if (at === "end" || at === "mid") setForce(at);
+    const asked = q.get("why");
+    if (asked) (EXPLAINS[asked] ? setExplain(EXPLAINS[asked]!) : setTarget({ kind: asked === "validation" ? "validation" : "finding", id: asked }), setEvidence(true));
+    if (q.get("numbers")) (setTarget({ kind: "finding", id: q.get("numbers")! }), setEvidence(true));
     if (q.get("tab") === "analysis") (setTab("analysis"), setEvidence(true));
     if (q.get("all")) setAll(true);
     setLink({ round: up("round"), step: q.get("step") ? Number(q.get("step")) : null, floor: q.get("floor") ? Number(q.get("floor")) : null });
@@ -83,10 +89,20 @@ export default function SpotPage() {
     return () => window.clearInterval(t);
   }, [playing, readLive]);
 
-  const why = useCallback((t: Target | null) => {
+  // "Why?" on a finding plays its explainer when it has one; "Show the numbers" there (and every other Why?) opens the rows
+  const numbers = useCallback((t: Target | null) => {
     if (t) setEvidence(true);
     setTarget(t);
   }, []);
+  const why = useCallback(
+    (t: Target | null) => {
+      const id = t && (t.kind === "finding" || t.kind === "validation") ? EXPLAINS[t.id] : undefined;
+      if (!id) return numbers(t);
+      setEvidence(true);
+      setExplain(id);
+    },
+    [numbers],
+  );
   const pick = (t: Tab) => {
     if (t === "analysis") setEvidence(true);
     setTab(t);
@@ -178,7 +194,7 @@ export default function SpotPage() {
         </>
       ) : null}
 
-      {evidence ? <AnalysisLayer shift={d} show={tab === "analysis"} target={target} setTarget={why} live={live} onLive={setLive} orders={written} /> : null}
+      {evidence ? <AnalysisLayer shift={d} show={tab === "analysis"} target={target} setTarget={numbers} explain={explain} setExplain={setExplain} force={force} live={live} onLive={setLive} orders={written} /> : null}
 
       {all ? <AllSheet shift={d} onClose={() => setAll(false)} onPick={(id) => (setAll(false), setAsset(id))} /> : null}
       {open ? <AssetSheet asset={open} orders={written} onClose={() => setAsset(null)} onWhy={why} /> : null}
