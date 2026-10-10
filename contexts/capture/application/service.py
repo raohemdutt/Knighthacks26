@@ -16,6 +16,7 @@ paused camera is not looked at.
 import asyncio
 import logging
 import os
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +38,9 @@ class CaptureService:
         self.cameras, self.bus, self.policy = cameras, bus, policy
         self.detector_factory, self.data_dir = detector_factory, Path(data_dir)
         self.readers: dict[str, CameraReader] = {}
+        self._snapshot_blur = FaceBlur()  # the Live screen's own detector: the pipeline's is used on another thread
+        self._snapshot_lock = threading.Lock()
+        self._snapshot_cache: dict[str, tuple[int, bytes]] = {}
         self.pipelines: dict[str, TrackingPipeline] = {}
 
     @classmethod
@@ -86,6 +90,34 @@ class CaptureService:
     def stats(self) -> dict[str, dict]:
         return {cid: {**r.stats(), "detected": self.pipelines[cid].detected, "errors": self.pipelines[cid].errors}
                 for cid, r in self.readers.items()}
+
+    def snapshot(self, camera_id: str) -> bytes | None:
+        """The newest frame as a JPEG for the phone's Live screen, faces blurred unless the policy says otherwise.
+        None when the camera is unknown, paused, or has not delivered a frame yet."""
+        import cv2
+
+        reader = self.readers.get(camera_id)
+        if reader is None or (self.policy and self.policy.is_paused(camera_id)) or reader.latest() is None:
+            return None
+        seq, _, frame = reader.latest()
+        with self._snapshot_lock:
+            cached = self._snapshot_cache.get(camera_id)
+            if cached and cached[0] == seq:
+                return cached[1]
+            shown = self._snapshot_blur(frame) if self._blur_on() else frame
+            ok, jpeg = cv2.imencode(".jpg", shown, [cv2.IMWRITE_JPEG_QUALITY, 70])
+            if not ok:
+                return None
+            self._snapshot_cache[camera_id] = (seq, jpeg.tobytes())
+            return self._snapshot_cache[camera_id][1]
+
+    def tracks(self, camera_id: str) -> dict | None:
+        pipeline = self.pipelines.get(camera_id)
+        if pipeline is None:
+            return None
+        latest = pipeline.latest
+        return {"camera_id": camera_id, "ts_ms": latest[0] if latest else None,
+                "tracks": [t.model_dump() for t in latest[1]] if latest else []}
 
     def _blur_on(self) -> bool:
         return self.policy is None or self.policy.blur_faces
