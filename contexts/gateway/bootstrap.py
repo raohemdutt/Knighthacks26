@@ -23,6 +23,7 @@ from bus import EventBus
 from contexts.agent.application.loop import ODD_HOURS_DESCRIPTION, ODD_HOURS_RULE, AgentLoop
 from contexts.agent.application.planner import Planner
 from contexts.agent.application.qa import QA, SleepSchedule
+from contexts.agent.application.talk import Talk, TalkConfig
 from contexts.agent.application.web_port import HubWebTools
 from contexts.agent.domain.rules import AlertHistory, RuleEvaluator, load_rules
 from contexts.capture.application.retention import prune_frames
@@ -266,6 +267,11 @@ def build(settings: Settings | None = None) -> Atlas:
     if "places" in hub.specs:  # K8: "what should I eat?" uses real nearby places
         planner.places = lambda kind: hub.call_tool("places.nearby", {"kind": kind})
     qa.planner = planner
+    # Conversation: small talk and simple questions, after the planner and the pre-fetch passed (agent.yaml `talk:`).
+    talk = Talk(runtime, qa.clock, memory=memory, config=TalkConfig.of(agent_cfg.get("talk")), tz=qa.sleep.tz, web=bool(web))
+    talk.about = profile.description
+    if talk.config.enabled:  # ATLAS_TALK=0 or `talk.enabled: false`: every open-ended question goes to the tool loop
+        qa.talk = talk
     rules = RuleEvaluator(load_rules(profile.path("rules.yaml")), builtin={ODD_HOURS_RULE: ODD_HOURS_DESCRIPTION})
     alerts = AlertHistory()
 
@@ -301,6 +307,7 @@ def build(settings: Settings | None = None) -> Atlas:
     wiper = Wiper(s.data_dir, memory_db=s.data_dir / "memory.sqlite", live_memory=store)  # the open store is emptied too
     bus.subscribe("vault.wipe.requested", wiper.on_wipe_requested)
     bus.subscribe("vault.wipe.requested", identity.on_wipe)  # live only: a wipe of everything also empties the expression series in memory
+    bus.subscribe("vault.wipe.requested", talk.on_wipe)  # live only: the turns of a conversation are not kept past a wipe
     EpisodeSummarizer(store, runtime).subscribe(bus)  # live only, in the background: one model call per closed episode (M3)
     # Semantic search (M5): off unless models.yaml sets embeddings.text. Live only, in the background, after the projection.
     memory.embedder = embedder_from(runtime, models_yaml)
@@ -314,6 +321,7 @@ def build(settings: Settings | None = None) -> Atlas:
     bus.subscribe("workspace.action.completed", approvals.on_completed, replay=True)
     # Live only: model calls, executors, phone pushes.
     bus.subscribe("experience.question.asked", bus.in_background(qa.on_question))  # model calls take seconds
+    bus.subscribe("agent.answer.generated", talk.on_answer)  # live only: "how's your day?" counts this session's answers
     bus.subscribe("connector.item.synced", bus.in_background(planner.on_item))  # exam within 48 h -> plan (A8)
     bus.subscribe("experience.approval.decided", bus.in_background(approvals.on_decided))  # executors do I/O
     if ntfy:
@@ -472,6 +480,7 @@ def build(settings: Settings | None = None) -> Atlas:
         day = DayLoop(dayrun, places, config_dir=s.config_dir, habits=habits, memory=memory, waste=waste, presence=presence, hub=hub,
                       runtime=runtime, narration=agent_cfg.get("day"), description=profile.description)
         day.subscribe(bus)
+        talk.day_facts = lambda: day.in_words(datetime.now(UTC))  # the person's day, in the narrator's words
         if ntfy:  # the plan, a re-plan and the review on the phone, in the narrator's words when it is on
             bus.subscribe("day.", day_phone(ntfy, s.ntfy_topic, narrated=day.narrator.mode != "off"))
 
