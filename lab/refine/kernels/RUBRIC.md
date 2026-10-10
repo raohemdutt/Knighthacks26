@@ -131,17 +131,18 @@ fix in PR 49264 was judged by swapping only the attention kernel [S34].
 Every number is the summary of repeated runs and is reported with its spread; a win counts only when
 the difference exceeds the run-to-run spread of both arms [S4].
 
-Check: (a) each arm has at least three runs so a median and a range exist, and more when
-`lab/machine/verdict.py` (the O28 task) says the observed spread needs them [S13]; (b) each metric is
-reported as median with min and max, or a confidence interval, and normality is not assumed without
-checking [S42]; (c) two arms are compared with non-overlapping intervals or the verdict function, not
-by eye [S42][S13]; (d) warm-up runs are discarded and said to be, and if prefix caching is on,
-repeats carry a per-run nonce so time to first token does not measure a cache hit, as the RDNA4
-port's harness does [S32]; (e) a single run goes into the metrics file marked `low_confidence`
-[S11]. The PR 49264 authors called a +0.1% change inside a 3.6% run-to-run spread no change [S34];
-issue 57838 reported within-arm spread of 0.02 to 0.04 tok/s beside its 10% gap [S35]. The first
-recorded numbers are single runs with no spread [S1], so they start the record; they are not yet a
-baseline a win can be judged against.
+Check: (a) each arm has at least five runs, the floor under which `verdict()` in
+`lab/machine/verdict.py` labels a measurement too_early, and more when its `needed_per_arm` says the
+observed gap needs them [S13]; (b) each metric is reported as median with min and max beside the mean
+and standard deviation that `verdict()` reads, and normality is not assumed without checking [S42];
+(c) two arms are compared with `verdict(old_runs, new_runs)`, Welch's t test, with
+`higher_is_better=False` for joules per token, never by eye [S13][S42]; (d) warm-up runs are
+discarded and said to be, and if prefix caching is on, repeats carry a per-run nonce so time to
+first token does not measure a cache hit, as the RDNA4 port's harness does [S32]; (e) a single run
+goes into the metrics file marked `low_confidence` [S11]. The PR 49264 authors called a +0.1% change
+inside a 3.6% run-to-run spread no change [S34]; issue 57838 reported within-arm spread of 0.02 to
+0.04 tok/s beside its 10% gap [S35]. The first recorded numbers are single runs with no spread [S1],
+so they start the record; they are not yet a baseline a win can be judged against.
 
 ### K4. Outputs match the baseline
 
@@ -227,7 +228,8 @@ estimate written before the run and the result written after it, both on the que
 Check: (a) each line is tagged `(kernels)` after its number and carries what the pass rules require
 (the track, the lever, the arms, the metric to move, the citation, and the expected movement) [S9],
 plus the expected change in joules per token at a named batch size, a confidence, and the minimum
-runs, matching the ranking the kernels research note gives its candidate experiments [S12]; (b)
+runs from `runs_per_arm_relative` on the observed spread [S13], matching the ranking the kernels
+research note gives its candidate experiments [S12]; (b)
 after the run the measured change is written beside the estimate, slower results included, because a
 slower result is still a result [S8]; (c) an estimate above the bandwidth ceiling in The baseline to
 beat needs a lever that changes the bytes moved per token (a smaller weight format, speculative
@@ -403,9 +405,9 @@ Opened by the author of this file on 2026-10-10. Repo files are cited at the com
 - [S8] R12 task page: the first HIP kernel experiment (unified attention stage and block settings for the 64 KB LDS), diff and rows under `gpu/`, never interrupts the teacher on pod A, a slower result is still recorded on T0. https://app.notion.com/p/3f596ef5fec58133b797da3de253aae4
 - [S9] `lab/refine/PASS_RULES.md` at `a76af64` (PR 43, the O13 deliverable): the four tracks and the kernels track's starting set (R11, R12, the ranked queue on T0); passes as fresh Opus agents through the open-ticket skill, in sequence per track, tracks in parallel in rounds, a Fable merge pass; what a pass reads, does, may and may never change (no GPU job, no queue slot, no pod); runs of at most 10 passes and convergence; the universal rules; process questions go to the pass rules, judging questions to the rubric. https://github.com/raohemdutt/Knighthacks26/blob/a76af64/lab/refine/PASS_RULES.md
 - [S10] O9 task page: `lab/refine/TEMPLATES.md` and the per-track `REFINE_LOG.md`, `OWNER_RULINGS.md`, `refine_pass.txt`, and `pass_reports/`, and the BEFORE, AFTER, SOURCE, WHY entry format. https://app.notion.com/p/3f596ef5fec581c38706ec07a84acf72
-- [S11] O10 task page: the `lab/refine/metrics.jsonl` schema and its dotted metric names, `low_confidence` for untraceable values; and its PR 47 (open on 2026-10-10), which seeds the file with `teacher.decode_tok_s`, `teacher.ttft_s`, `teacher.joules_per_token` (marked low confidence), `teacher.vram_pct`, and `teacher.max_concurrency`. https://app.notion.com/p/3f596ef5fec5812c9c58dd375d7e8d8d and https://github.com/raohemdutt/Knighthacks26/pull/47
+- [S11] `lab/refine/metrics.jsonl` at `3cd4b60` (PR 47, the O10 deliverable) and the O10 task page: one row per value with `metric`, `value`, `unit`, `node`, `conditions`, `source`, `ts`, `low_confidence`; seeded with `teacher.decode_tok_s`, `teacher.ttft_s`, `teacher.joules_per_token` (marked low confidence), `teacher.vram_pct`, and `teacher.max_concurrency`. https://github.com/raohemdutt/Knighthacks26/blob/3cd4b60/lab/refine/metrics.jsonl and https://app.notion.com/p/3f596ef5fec5812c9c58dd375d7e8d8d
 - [S12] O8 and O36 task pages: kernels research notes under `lab/refine/research/kernels/` with `SOURCES.md`, the four labels, experiments ranked by expected joules-per-token gain times confidence, and the research-format rules. https://app.notion.com/p/3f596ef5fec5817fbd3bd22a0195ca9f and https://app.notion.com/p/3f596ef5fec58136b164e799928c7ec9
-- [S13] O28 task page: `lab/machine/verdict.py`, Welch's t test for continuous metrics such as tok/s and J/token, and a minimum-runs calculator from observed spread. https://app.notion.com/p/3f596ef5fec5811f9ed4d5b3352a9bc2
+- [S13] `lab/machine/verdict.py` at `8a8a7d5` (PR 49, the O28 deliverable): measurements read with Welch's t test through `verdict(a, b)`, `higher_is_better=False` for joules per token, a floor of 5 runs per arm below which the label is too_early, `needed_per_arm` sized on the observed gap, and `runs_per_arm` and `runs_per_arm_relative` for planning. https://github.com/raohemdutt/Knighthacks26/blob/8a8a7d5/lab/machine/verdict.py
 - [S14] O1 task page: the shared rubric format and authority order, the universal rules, and the telemetry test that fixes one idle-baseline policy everywhere. https://app.notion.com/p/3f596ef5fec581859648f9824af01daf
 - [S15] Context: Telemetry: joules per answer is the answering node's watts integrated over the request window; pods allow power reads only, no caps or clock locks; `telemetry.gpu.power` carries `throttled`. https://app.notion.com/p/3f596ef5fec581ba9b28f19394fa042e
 - [S16] GPU Queue (R9700 pods) database: GPU A is the "teacher shared service" and GPU B is "exclusive", 15-minute slots by default (60 for training), one extension with a progress note; and the FYI announcing it on the Dominick and Team page (Sat 7:20 AM): pod A is only called, never reserved, and pod B is reserved shortest job first. https://app.notion.com/p/c69762a396874e049a4af6819f762615 and https://app.notion.com/p/3f596ef5fec581828d8ee02ab7b912e3
