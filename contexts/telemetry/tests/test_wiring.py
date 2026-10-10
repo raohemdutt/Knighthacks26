@@ -32,7 +32,7 @@ def test_the_fake_source_publishes_the_recorded_minute_into_the_log_and_the_proj
 
 
 def test_an_unknown_source_is_refused_by_name():
-    with pytest.raises(ValueError, match="unknown telemetry source 'tegrastat'; known sources: fake"):
+    with pytest.raises(ValueError, match="unknown telemetry source 'tegrastat'; known sources: fake, tegrastats$"):
         build_telemetry("tegrastat", EventBus(persist=False), on_jetson=lambda: False)
 
 
