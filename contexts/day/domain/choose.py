@@ -531,6 +531,11 @@ class _Day:
                         if lifted and self.left(self.sim(lifted)) <= left - 1:
                             helped.append((self.score(lifted), n, lifted, piece))
                 best = max(helped, key=lambda c: c[:2], default=None)
+            if (best is None or best[0] <= now) and needs[0][1] == "must":  # a win depends on it: a later night makes room
+                d, _, todo = needs[0]
+                later = [(self.score(c), -n, c, piece) for n, alt in enumerate(self.bedtimes(plan, (30, 60)))
+                         for piece, c in self.study_spots(alt, d, todo) if left - self.left(self.sim(c)) >= 1]
+                best = max(later, key=lambda c: c[:2], default=None)
             if best is None or best[0] <= now:
                 break
             plan = best[2]
