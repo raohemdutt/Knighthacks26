@@ -1,0 +1,265 @@
+{
+ "name": "spot-anomaly-scorer",
+ "kind": "logistic regression, pure Python",
+ "seed": 0,
+ "steps": 1200,
+ "learning_rate": 0.5,
+ "l2": 0.02,
+ "trained_on": {
+  "missions": 27,
+  "actions": 270,
+  "anomalies": 40
+ },
+ "features": [
+  "failed",
+  "has_reading",
+  "value_vs_fleet",
+  "value_vs_own_history",
+  "delta_from_previous",
+  "battery_low",
+  "late_in_mission",
+  "duration",
+  "type_acoustic_inspection",
+  "type_gauge_reading",
+  "type_navigation",
+  "type_thermal_inspection",
+  "type_visual_inspection",
+  "waypoint_history",
+  "asset_history",
+  "criticality"
+ ],
+ "weights": [
+  1.6005,
+  -0.242683,
+  0.187123,
+  -0.144044,
+  0.527181,
+  -0.259296,
+  0.122607,
+  -0.161014,
+  0.034822,
+  -0.101459,
+  -0.022652,
+  -0.120497,
+  0.181994,
+  -0.776188,
+  0.219712,
+  0.125983
+ ],
+ "bias": -1.044128,
+ "means": [
+  0.181481,
+  0.814815,
+  0.797963,
+  0.389127,
+  0.787445,
+  0.275556,
+  0.55,
+  0.0,
+  0.159259,
+  0.140741,
+  0.266667,
+  0.181481,
+  0.251852,
+  0.157094,
+  0.15215,
+  0.423457
+ ],
+ "sds": [
+  0.385417,
+  0.388448,
+  1.099972,
+  0.884134,
+  1.285854,
+  0.348575,
+  0.287228,
+  1.0,
+  0.365918,
+  0.347754,
+  0.442217,
+  0.385417,
+  0.434077,
+  0.078316,
+  0.086628,
+  0.287792
+ ],
+ "threshold": 0.559,
+ "fleet": {
+  "median": {
+   "LOCALIZATION_CONFIDENCE_PCT": 88.55,
+   "PRESSURE_PSI": 104.7,
+   "SOUND_DB": 70.6,
+   "TEMPERATURE_C": 65.2,
+   "VISUAL_SCORE": 85.0
+  },
+  "spread": {
+   "LOCALIZATION_CONFIDENCE_PCT": 6.44931,
+   "PRESSURE_PSI": 22.38726,
+   "SOUND_DB": 7.26474,
+   "TEMPERATURE_C": 11.19363,
+   "VISUAL_SCORE": 10.3782
+  },
+  "duration_mean": 50.103704,
+  "duration_sd": 24.525353,
+  "base_rate": 0.148148
+ },
+ "evaluation": {
+  "primary": {
+   "train_missions": [
+    "M001",
+    "M002",
+    "M003",
+    "M004",
+    "M005",
+    "M006",
+    "M007",
+    "M008",
+    "M009",
+    "M010",
+    "M011",
+    "M012",
+    "M013",
+    "M014",
+    "M015",
+    "M016",
+    "M017",
+    "M018",
+    "M019"
+   ],
+   "test_missions": [
+    "M020",
+    "M021",
+    "M022",
+    "M023",
+    "M024",
+    "M025",
+    "M026",
+    "M027"
+   ],
+   "n": 80,
+   "positives": 12,
+   "base_rate": 0.15,
+   "model": {
+    "tp": 7,
+    "fp": 1,
+    "fn": 5,
+    "flagged": 8,
+    "precision": 0.875,
+    "recall": 0.5833,
+    "f1": 0.7,
+    "pr_auc": 0.648
+   },
+   "status_rule": {
+    "tp": 7,
+    "fp": 1,
+    "fn": 5,
+    "flagged": 8,
+    "precision": 0.875,
+    "recall": 0.5833,
+    "f1": 0.7,
+    "pr_auc": 0.5729
+   },
+   "threshold_rule": {
+    "tp": 3,
+    "fp": 0,
+    "fn": 9,
+    "flagged": 3,
+    "precision": 1.0,
+    "recall": 0.25,
+    "f1": 0.4,
+    "pr_auc": 0.3625
+   },
+   "successful_actions_only": {
+    "n": 72,
+    "positives": 5,
+    "model_pr_auc": 0.1046,
+    "base_rate": 0.0694
+   }
+  },
+  "rolling": {
+   "folds": [
+    {
+     "train_upto": "M009",
+     "test": [
+      "M010",
+      "M011",
+      "M012"
+     ]
+    },
+    {
+     "train_upto": "M012",
+     "test": [
+      "M013",
+      "M014",
+      "M015"
+     ]
+    },
+    {
+     "train_upto": "M015",
+     "test": [
+      "M016",
+      "M017",
+      "M018"
+     ]
+    },
+    {
+     "train_upto": "M018",
+     "test": [
+      "M019",
+      "M020",
+      "M021"
+     ]
+    },
+    {
+     "train_upto": "M021",
+     "test": [
+      "M022",
+      "M023",
+      "M024"
+     ]
+    },
+    {
+     "train_upto": "M024",
+     "test": [
+      "M025",
+      "M026",
+      "M027"
+     ]
+    }
+   ],
+   "n": 180,
+   "positives": 25,
+   "model": {
+    "tp": 17,
+    "fp": 13,
+    "fn": 8,
+    "flagged": 30,
+    "precision": 0.5667,
+    "recall": 0.68,
+    "f1": 0.6182,
+    "pr_auc": 0.5734
+   },
+   "status_rule": {
+    "tp": 19,
+    "fp": 11,
+    "fn": 6,
+    "flagged": 30,
+    "precision": 0.6333,
+    "recall": 0.76,
+    "f1": 0.6909,
+    "pr_auc": 0.5147
+   },
+   "threshold_rule": {
+    "tp": 5,
+    "fp": 4,
+    "fn": 20,
+    "flagged": 9,
+    "precision": 0.5556,
+    "recall": 0.2,
+    "f1": 0.2941,
+    "pr_auc": 0.2222
+   }
+  }
+ },
+ "verdict": "The learned model beats the reading-outside-band threshold rule on later missions, but it does NOT clearly beat the simpler rule 'the action failed': at its own threshold it flags much the same actions, and its small PR-AUC edge is within what one or two rows would change. Held-out missions M020 to M027 (80 actions, 12 with an anomaly): model precision 7/8, recall 7/12, PR-AUC 0.65; status rule precision 7/8, recall 7/12, PR-AUC 0.57; reading-outside-band rule precision 3/3, recall 3/12, PR-AUC 0.36. Rolling cuts pooled (180 actions, 25 anomalies): model precision 17/30, recall 17/25, PR-AUC 0.57; status rule precision 19/30, recall 19/25, PR-AUC 0.51; band rule precision 5/9, recall 5/25, PR-AUC 0.22. Among successful actions only (72 held out, 5 anomalies), the model's PR-AUC is 0.10 against a base rate of 0.07: no better than chance, so it does not find anomalies the rules miss. It is used to order ties in the queue and to explain a flag, never to raise one on its own. With this few anomalies every number here moves a lot with one row."
+}

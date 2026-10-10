@@ -141,6 +141,7 @@ class Atlas:
     league_sync: LeagueSync | None = None  # friends' rows in, declarations out; only with Neon
     impact: ImpactStory | None = None  # the Impact screen's story over Waste Watch; GET /api/impact/story
     coach_feedback: CoachFeedback | None = None  # "Was that right?" about a break; GET /api/day/coach/feedback
+    spot: object | None = None  # SpotContext: the inspection (SPOT) dashboard, contexts/spot; GET /api/spot/*
     tasks: list[asyncio.Task] = field(default_factory=list)
     _last_retention: datetime | None = None
     _offline: set[str] = field(default_factory=set)  # tick jobs whose Neon is down (logged once)
@@ -493,10 +494,16 @@ def build(settings: Settings | None = None) -> Atlas:
 
         telemetry = build_telemetry(os.environ["ATLAS_TELEMETRY_SOURCE"], bus)
 
+    # Inspection (contexts/spot): a robot's missions on the same box and log. The live picture and the work-order list
+    # rebuild from `spot.` events; the work-order executor only writes a local file, and only after an approval.
+    from contexts.spot.wiring import build_spot
+
+    spot = build_spot(s.data_dir, bus, runtime, approvals)
+
     return Atlas(settings=s, bus=bus, qa=qa, approvals=approvals, hub=hub, loop=loop, zones=zones, rules=rules, alerts=alerts, game=game,
                  waste=waste, circle=circle, presence=presence, zone_engine=zone_engine, sharing=sharing,
                  memory=memory, projection=projection, habits=habits, nudger=nudger,
                  presence_sync=presence_sync, board=board, vault=vault, policy=policy, wiper=wiper,
                  places=places, dayrun=dayrun, day=day, capture=capture, identity=identity, learning=learning,
                  telemetry=telemetry, profile=profile, league=league, league_sync=league_sync,
-                 impact=impact, coach_feedback=coach_feedback)
+                 impact=impact, coach_feedback=coach_feedback, spot=spot)
