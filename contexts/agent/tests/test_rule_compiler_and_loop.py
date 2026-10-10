@@ -50,7 +50,7 @@ def test_loop_flags_activity_during_sleep_hours_once():
     empty = Episode(id="n2", camera_id="cam-desk", start=now - timedelta(minutes=5), labels=[])
     loop = AgentLoop(FakeMemory([night, empty]), SleepSchedule(tz=NY))
     [alert] = asyncio.run(loop.tick(now))
-    assert alert.message == "Activity on cam-desk at 3:12 AM, during sleep hours"
+    assert alert.message == "Activity at the desk at 3:12 AM, during sleep hours"
     assert alert.evidence[0].frame_ref == "frames:cam-desk:n1"
     assert not loop.due(now + timedelta(minutes=5)) and loop.due(now + timedelta(minutes=10))
     assert asyncio.run(loop.tick(now + timedelta(minutes=10))) == []
@@ -89,3 +89,12 @@ def test_package_at_an_empty_home_proposes_a_message():
                      SleepSchedule(tz=NY), notify="dom")
     assert home.on_alert(alert) == []
     assert AgentLoop(FakeMemory([]), SleepSchedule(tz=NY)).on_alert(alert) == []  # off unless configured
+
+
+def test_odd_hours_can_be_switched_off_and_names_the_place():
+    """X6's switch for the built-in rule; round 1 (T8): the alert said "cam-door"."""
+    from contexts.agent.application.loop import place
+
+    assert place("cam-door") == "door" and place("cam-living-room") == "living room"
+    off = AgentLoop(FakeMemory(), SleepSchedule(), enabled=lambda rule_id: False)
+    assert off.odd_hours(datetime(2026, 10, 11, 3, tzinfo=ZoneInfo("America/New_York"))) == []

@@ -117,6 +117,8 @@ WHERE_IS = re.compile(r"where(?: did i (?:leave|put)| are| is|'s|\u2019s) (?P<it
 # "where is the package now?" asks about "package": words around the item that are not part of its name
 ITEM_LEAD = re.compile(r"^(?:my|the|our|an?)\s+")
 ITEM_TAIL = re.compile(r"\s+(?:right now|now|currently|at the moment|today|again)$")
+WHAT_HAPPENED = re.compile(r"what (?:happened|became) (?:to|of) (?:my |the |our )?(?P<item>[a-z ]+?)[?.!]*$")
+SHORT_WINDOW = timedelta(hours=3)  # up to this long, each episode is its own line and citation
 LAST_N = re.compile(r"(?:last|past) (?P<n>\d+|an?) ?(?P<unit>hours?|minutes?|mins?)")
 
 
@@ -201,11 +203,25 @@ def upcoming_window(q: str, now: datetime, tz) -> tuple[datetime, datetime]:
     return now, now + timedelta(days=7)  # "this week" and the default: the next seven days
 
 
+MAX_EPISODE_LINES = 12
+
+
+def named_cameras(question: str | None, cameras: set[str]) -> set[str]:
+    """Cameras a question names by place: "the door" -> {"cam-door"} when that camera exists."""
+    if not question:
+        return set()
+    words = set(re.findall(r"[a-z]+", question.lower()))
+    return {c for c in cameras if c.lower().removeprefix("cam-") in words}
+
+
 def time_window(q: str, now: datetime, sleep: SleepSchedule = SleepSchedule()) -> tuple[datetime, datetime] | None:
     if "overnight" in q or "last night" in q:
         return sleep.last_night(now)
     if "today" in q:
         return now.replace(hour=0, minute=0, second=0, microsecond=0), now
+    if "yesterday" in q:
+        midnight = now.astimezone(sleep.tz).replace(hour=0, minute=0, second=0, microsecond=0)
+        return midnight - timedelta(days=1), midnight
     m = LAST_N.search(q)
     if m:
         n = 1 if m["n"] in ("a", "an") else int(m["n"])
@@ -262,11 +278,24 @@ class QA:
             pos = f", {s.position}" if s.position else ""
             ev.add(f"{s.label} last seen {self._t(s.ts)} in the {where}{pos}", Citation(frame_ref=s.frame_ref, ts=s.ts))
 
-    def episodes_between(self, start: datetime, end: datetime, ev: Evidence) -> None:
+    def episodes_between(self, start: datetime, end: datetime, ev: Evidence, question: str | None = None) -> None:
+        """What happened in [start, end). A short window lists each episode with its own citation; a long one
+        (overnight) is grouped by hour. A question that names a camera ("the door") keeps only that camera."""
+        episodes = self.memory.episodes(start, end)
+        cameras = named_cameras(question, {e.camera_id for e in episodes})
+        if cameras:
+            episodes = [e for e in episodes if e.camera_id in cameras]
+        if end - start <= SHORT_WINDOW or cameras:
+            for e in sorted(episodes, key=lambda e: e.start)[:MAX_EPISODE_LINES]:
+                text = e.summary or " ".join(e.captions) or ", ".join(e.labels)
+                ref = e.keyframe_refs[0] if e.keyframe_refs else None
+                ev.add(f"{self._t(e.start)} on {e.camera_id}: {text}", Citation(episode_id=e.id, frame_ref=ref, ts=e.start))
+            return
         for b in self.memory.window(start, end).hours:
             ref = b.keyframe_refs[0] if b.keyframe_refs else None
             eid = b.episode_ids[0] if b.episode_ids else None
             ev.add(f"{self._t(b.hour)} hour: " + " ".join(b.captions), Citation(episode_id=eid, frame_ref=ref, ts=b.hour))
+            ev.citations += [Citation(episode_id=other, ts=b.hour) for other in b.episode_ids[1:]]  # every episode in the hour
 
     def search_memory(self, q: str, ev: Evidence, newest_first: bool = False) -> None:
         hits = self.memory.search(q)
@@ -327,8 +356,13 @@ class QA:
         if ITEMS_Q.search(q) or (ITEM_THING.search(q) and FUTURE.search(q)):  # A9: "what is due this week?"
             self.upcoming_items(q, ev)
             return ev
+        if m := WHAT_HAPPENED.search(q):  # "what happened to the package?": where it was last, and what was seen with it
+            item = m["item"].strip()
+            self.last_seen(item, ev)
+            self.search_memory(item, ev, newest_first=True)
+            return ev
         if window := time_window(q, self.clock(), self.sleep):
-            self.episodes_between(*window, ev)
+            self.episodes_between(*window, ev, question=q)
             return ev
         if q.startswith("when did") or "last time" in q:
             self.search_memory(question, ev, newest_first=True)

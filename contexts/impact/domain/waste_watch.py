@@ -10,15 +10,19 @@ so the slide shows measured numbers, not estimates.
 from datetime import datetime
 
 from contexts.play.domain.pathfinding import SortingRules
+from contracts.habits import NudgeRaised
 from contracts.impact import CountUpdated, ItemDisposed, ItemSeen
 from contracts.perception import ObservationRecorded, ZoneEvent
+
+
+SORT_HABIT = "sort_right"  # config/habits.yaml: the habit whose nudges are about sorting
 
 
 class WasteWatch:
     def __init__(self, rules: SortingRules, nudges_on_at: datetime | None = None) -> None:
         self.rules = rules
         self.bin_by_zone = {zone: b for b, zone in rules.bins.items()}
-        self.nudges_on_at = nudges_on_at
+        self.nudges_on_at = nudges_on_at  # from config; otherwise the first sorting nudge sets it (on_nudge)
         self.seen: dict[str, ItemSeen] = {}
         self.disposed: dict[str, ItemDisposed] = {}
 
@@ -85,6 +89,12 @@ class WasteWatch:
 
     def counts(self, ts: datetime) -> CountUpdated:
         return CountUpdated(ts=ts, **self.metrics())
+
+    def on_nudge(self, e: NudgeRaised) -> list:
+        """With no `impact.nudges_on_at` in config, nudges count as on from the first sorting nudge (event time)."""
+        if self.nudges_on_at is None and e.habit_id == SORT_HABIT:
+            self.nudges_on_at = e.ts
+        return []
 
     def before_after(self) -> dict | None:
         if self.nudges_on_at is None:

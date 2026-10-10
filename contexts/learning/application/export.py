@@ -42,6 +42,16 @@ def select_keyframes(spec: TaskSpec, episodes: list) -> list[tuple]:
     return picked
 
 
+def span(d: timedelta) -> str:
+    """A lookback in words: "24 hours", "3 days", "90 minutes"."""
+    minutes = round(d.total_seconds() / 60)
+    if minutes % (24 * 60) == 0 and minutes > 24 * 60:
+        return f"{minutes // (24 * 60)} days"
+    if minutes % 60 == 0:
+        return f"{minutes // 60} hour" + ("s" if minutes != 60 else "")
+    return f"{minutes} minutes"
+
+
 def teach(spec: TaskSpec, now: datetime, lookback: timedelta = DEFAULT_LOOKBACK) -> tuple[TaskCreated, ActionProposed]:
     """A new task and the export request the user must approve."""
     created = TaskCreated(ts=now, task=spec.task, instruction=spec.instruction, output_schema=spec.output_schema)
@@ -50,7 +60,7 @@ def teach(spec: TaskSpec, now: datetime, lookback: timedelta = DEFAULT_LOOKBACK)
         action_id=uuid4().hex,
         kind="export_training_data",
         target=spec.task,
-        reason=f"Send blurred keyframes and captions from the last {lookback} to teach '{spec.task}'",
+        reason=f"Send blurred keyframes and captions from the last {span(lookback)} to teach '{spec.task}'",
         params={
             "spec": spec.model_dump(),
             "start": (now - lookback).isoformat(),

@@ -25,9 +25,18 @@ AWAY_FOR = timedelta(minutes=30)
 MAX_NOTE_CAPTIONS = 12
 
 
+ODD_HOURS_DESCRIPTION = "Activity during sleep hours (agent.yaml sleep window): a person on any camera"
+
+
+def place(camera_id: str) -> str:
+    """ "cam-door" -> "door": how a person names a camera."""
+    return camera_id.removeprefix("cam-").replace("-", " ")
+
+
 class AgentLoop:
     def __init__(self, memory: MemoryReader, sleep: SleepSchedule, watch_labels: tuple[str, ...] = ("person",),
-                 summarize: Callable[[list[str]], str] | None = None, notify: str | None = None) -> None:
+                 summarize: Callable[[list[str]], str] | None = None, notify: str | None = None,
+                 enabled: Callable[[str], bool] = lambda rule_id: True) -> None:
         self.memory = memory
         self.sleep = sleep
         self.watch_labels = watch_labels
@@ -36,6 +45,7 @@ class AgentLoop:
         self._since: datetime | None = None
         self._flagged: set[str] = set()
         self._noted_hour: datetime | None = None
+        self.enabled = enabled  # the Rules screen's switch (RuleEvaluator.enabled)
 
     def due(self, now: datetime) -> bool:
         return self._since is None or now - self._since >= TICK
@@ -72,6 +82,8 @@ class AgentLoop:
         since = self._since or now - TICK
         self._since = now
         alerts = []
+        if not self.enabled(ODD_HOURS_RULE):
+            return []
         night_start, night_end = self.sleep.last_night(now)
         for ep in self.memory.episodes(since, now):
             if ep.id in self._flagged or not night_start <= ep.start < night_end:
@@ -85,7 +97,7 @@ class AgentLoop:
                     ts=now,
                     alert_id=f"odd-{ep.id}",
                     rule_id=ODD_HOURS_RULE,
-                    message=f"Activity on {ep.camera_id} at {at}, during sleep hours",
+                    message=f"Activity at the {place(ep.camera_id)} at {at}, during sleep hours",
                     evidence=[Citation(episode_id=ep.id, frame_ref=(ep.keyframe_refs or [None])[0], ts=ep.start)],
                 )
             )

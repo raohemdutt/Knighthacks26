@@ -64,6 +64,7 @@ impact:
 
 agent:
   - {type: agent.rule.added, at: 0}
+  - {type: agent.rule.toggled, at: 1}
   - {type: agent.alert.raised, at: 30, alert_id: fake-alert-1, evidence: [{frame_ref: "frames:cam-door:1", ts: "+30s"}]}
   - {type: agent.action.proposed, at: 31, action_id: fake-action-1}
   - {type: agent.answer.generated, at: 60}

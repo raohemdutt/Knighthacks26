@@ -70,3 +70,15 @@ def test_thumbs_up_examples_pick_look_alikes_and_keep_verdicts():
     assert ("k2", None) in picked  # shares "keys" with the liked example
     assert ("c1", None) not in picked  # looks like nothing that was liked
     assert len(select_keyframes(SPEC, eps)) == 4  # no examples: export the whole window as before
+
+
+def test_the_approval_card_says_the_lookback_in_words():
+    """Round 2 (L1): the card read "from the last 1 day, 0:00:00"."""
+    from datetime import UTC, datetime, timedelta
+
+    from contexts.learning.application.export import span, teach
+    from contracts.learning import TaskSpec
+
+    _, proposal = teach(TaskSpec(task="desk-objects", instruction="List objects."), datetime(2026, 10, 11, tzinfo=UTC))
+    assert "from the last 24 hours to teach 'desk-objects'" in proposal.reason
+    assert [span(timedelta(hours=1)), span(timedelta(days=3)), span(timedelta(minutes=90))] == ["1 hour", "3 days", "90 minutes"]

@@ -25,6 +25,7 @@ SAMPLES: dict[str, dict] = {
     "agent.note.written": {"note_id": "n1", "hour": TS, "text": "Coding, then pizza.", "episode_ids": ["e1"]},
     "agent.plan.created": {"plan_id": "p1", "subject": "COP 3502 Exam 1", "text": "- Study recursion 3-5 PM",
                            "model_version": "atlas-base", "blocks": [{"title": "Study", "start": TS, "end": TS}]},
+    "agent.rule.toggled": {"rule_id": "package-at-door", "enabled": False},
     "agent.rule.added": {"rule": {"id": "bag", "when": {"label": ["backpack"], "zone": "desk", "kind": "dwell", "seconds": 60},
                                   "notify": "Bag left", "cooldown_s": 300}, "source_text": "tell me if a bag is left"},
     "capture.camera.health": {"camera_id": "cam-door", "status": "ok", "fps_actual": 14.8},
