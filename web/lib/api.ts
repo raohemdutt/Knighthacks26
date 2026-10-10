@@ -356,6 +356,105 @@ export interface ProposalBody {
   invitees?: string[];
 }
 
+// ---------- the agents' conversations (contexts/circle/application/threads.py) ----------
+
+export type ThreadState = "proposed" | "waiting" | "countered" | "agreed" | "declined";
+
+export interface CircleWho {
+  member_id: string;
+  display_name: string;
+  mine: boolean;
+}
+
+/** One line of a conversation. `line` is plain language written on the box from the structured fields only. */
+export interface CircleMessage {
+  id: string;
+  thread_id: string;
+  kind: "proposal" | "reply" | "agreed" | "note";
+  answer: RsvpAnswer | null;
+  at: string;
+  line: string;
+  from_member: string | null; // null: the agreement itself
+  display_name: string | null;
+  mine: boolean;
+  starts_at: string | null;
+  ends_at: string | null;
+  location: string | null;
+  /** "log": this box saw it. "store": read from the Circle. "agreement": implied by everyone having agreed. */
+  source: "log" | "store" | "agreement";
+}
+
+/** What this person can do next. "propose" carries the plan a new approval card would ask about. */
+export interface ThreadAction {
+  kind: "approve" | "propose" | "none";
+  action_id: string | null;
+  proposal: { title: string; start: string; end: string; location: string | null; invitees: string[] } | null;
+  text: string;
+}
+
+export interface CircleThread {
+  thread_id: string;
+  /** A counter-offer the proposer accepts is sent under a new id; every id of the conversation is here. */
+  legs: string[];
+  title: string;
+  proposer: CircleWho;
+  mine: boolean;
+  starts_at: string;
+  ends_at: string;
+  location: string | null;
+  state: ThreadState;
+  invitees: (CircleWho & { answer: RsvpAnswer | null })[];
+  waiting_on: CircleWho[];
+  /** When the latest proposal was sent; null while its card waits for approval. */
+  asked_at: string | null;
+  last_activity: string;
+  pending_action_id: string | null;
+  action: ThreadAction;
+  last_line: string;
+  messages_count: number;
+}
+
+/** GET /api/circle/threads: 200 in every state. */
+export interface CircleThreads {
+  configured: boolean;
+  circle_id: string | null;
+  member_id: string | null;
+  /** "log": this box's own log only. "log+store": plus what the Circle's store holds. */
+  source: "none" | "log" | "log+store";
+  offline: boolean;
+  members: CircleWho[];
+  threads: CircleThread[];
+}
+
+/** GET /api/circle/threads/{id} */
+export interface CircleThreadDetail extends CircleThread {
+  messages: CircleMessage[];
+  source: "log" | "log+store";
+  offline: boolean;
+}
+
+export interface CircleMember extends CircleWho {
+  /** true once a box of theirs was heard from; null: not seen from this box's log (phone only so far). */
+  has_box: boolean | null;
+  box_seen: string | null;
+  place: { place: string; source: "phone" | "desk"; shared_at: string; expires_at: string } | null;
+}
+
+/** GET /api/circle/members: 200 in every state. `connect` are the two config lines that join a Circle. */
+export interface CircleMembers {
+  configured: boolean;
+  circle_id: string | null;
+  member_id: string | null;
+  connect: string[];
+  members: CircleMember[];
+}
+
+/** GET /api/play/campus-route */
+export interface CampusRoute {
+  path: string[];
+  minutes: number;
+}
+
 /** GET /api/circle/sharing: what leaves this box for the Circle (contexts/circle/api.py). */
 export interface CircleSharing {
   configured: boolean;
@@ -1401,6 +1500,12 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   leaderboard: (signal?: AbortSignal) => get<Leaderboard>("/api/circle/leaderboard", undefined, signal),
   circleEvents: (signal?: AbortSignal) => get<CircleEvents>("/api/circle/events", undefined, signal),
   circleSharing: (signal?: AbortSignal) => get<CircleSharing>("/api/circle/sharing", undefined, signal),
+  circleThreads: (signal?: AbortSignal) => get<CircleThreads>("/api/circle/threads", undefined, signal),
+  circleThread: (id: string, signal?: AbortSignal) => get<CircleThreadDetail>(`/api/circle/threads/${encodeURIComponent(id)}`, undefined, signal),
+  circleMembers: (signal?: AbortSignal) => get<CircleMembers>("/api/circle/members", undefined, signal),
+  /** Walking route to where a friend is sharing (404 when they are not, or the place is on no map). */
+  routeToFriend: (from: string, member: string, signal?: AbortSignal) =>
+    get<CampusRoute>("/api/play/campus-route", { from, to: `friend:${member}` }, signal),
   /** Raises an approval card on the box; nothing is sent to the Circle until it is approved. */
   proposeTime: (body: ProposalBody) => post<{ action_id: string; thread_id: string }>("/api/circle/proposals", body),
 

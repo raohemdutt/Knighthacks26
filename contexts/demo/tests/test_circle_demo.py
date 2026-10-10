@@ -91,10 +91,10 @@ def test_the_conversations_come_out_of_the_log_alone(phone):
         "Agreed: tomorrow 3:00 PM, the Library, 3 of 3 in.",
     ]
     assert lines("Breakfast") == [
-        "Maya's Atlas: Can everyone do Breakfast, tomorrow 8:30 to 9:30 AM at the Student Union?",
+        "Maya's Atlas: Can everyone do Breakfast, Sun Oct 11 8:30 to 9:30 AM at the Student Union?",  # sent yesterday
         "Dominick's Atlas: Free.",
         "Hemdutt's Atlas: Free.",
-        "Agreed: tomorrow 8:30 AM, the Student Union, 3 of 3 in.",
+        "Agreed: Sun Oct 11 8:30 AM, the Student Union, 3 of 3 in.",
     ]
     assert lines("Gym") == [
         "Hemdutt's Atlas: Can everyone do Gym, Mon Oct 12 10:00 to 11:00 AM at the Gym?",

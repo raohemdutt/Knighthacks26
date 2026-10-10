@@ -48,9 +48,13 @@ def clock_time(t: datetime) -> str:
     return t.strftime("%I:%M %p").lstrip("0")
 
 
-def day_word(t: datetime, now: datetime) -> str:
+def day_word(t: datetime, now: datetime, said: datetime | None = None) -> str:
+    """"today" / "tomorrow" only in a message sent today: in an older one the word would point at the wrong day."""
     days = (t.date() - now.date()).days
-    return {0: "today", 1: "tomorrow", -1: "yesterday"}.get(days) or f"{t:%a %b} {t.day}"
+    if said is None or said.date() == now.date():
+        if word := {0: "today", 1: "tomorrow", -1: "yesterday"}.get(days):
+            return word
+    return f"{t:%a %b} {t.day}"
 
 
 def span(start: datetime, end: datetime) -> str:
@@ -65,9 +69,10 @@ def _all(names: list[str]) -> str:
 
 
 def proposal_line(who: str, p: Proposal, asked: list[str], everyone: bool, now: datetime, tz: tzinfo,
-                  follow_up: bool = False) -> str:
+                  follow_up: bool = False, said: datetime | None = None) -> str:
+    """`said` is when the message was sent (default: now)."""
     start, end = p.start.astimezone(tz), p.end.astimezone(tz)
-    when = f"{day_word(start, now.astimezone(tz))} {span(start, end)}"
+    when = f"{day_word(start, now.astimezone(tz), said and said.astimezone(tz))} {span(start, end)}"
     audience = "everyone" if everyone or not asked else _all(asked)
     if follow_up:
         return f"{who}'s Atlas: Can {audience} do {when} instead?"
@@ -75,14 +80,14 @@ def proposal_line(who: str, p: Proposal, asked: list[str], everyone: bool, now: 
     return f"{who}'s Atlas: Can {audience} do {p.title}, {when}{where}?"
 
 
-def reply_line(who: str, r: Reply, asked: Proposal | None, now: datetime, tz: tzinfo) -> str:
+def reply_line(who: str, r: Reply, asked: Proposal | None, now: datetime, tz: tzinfo, said: datetime | None = None) -> str:
     """One word, and for a counter the suggested time. Never a reason: the reply does not carry one."""
     if r.answer == "free":
         return f"{who}'s Atlas: Free."
     if r.answer == "counter" and r.counter is not None:
         start = r.counter.start.astimezone(tz)
         same_day = asked is not None and asked.start.astimezone(tz).date() == start.date()
-        when = clock_time(start) if same_day else f"{day_word(start, now.astimezone(tz))} {clock_time(start)}"
+        when = clock_time(start) if same_day else f"{day_word(start, now.astimezone(tz), said and said.astimezone(tz))} {clock_time(start)}"
         return f"{who}'s Atlas: Busy then. Suggests {when}."
     return f"{who}'s Atlas: Busy then."
 
@@ -91,7 +96,7 @@ def agreed_line(e: EventAgreed, now: datetime, tz: tzinfo) -> str:
     start = e.event.start.astimezone(tz)
     where = f", {e.event.location}" if e.event.location else ""
     n = len(e.attendees)
-    return f"Agreed: {day_word(start, now.astimezone(tz))} {clock_time(start)}{where}, {n} of {n} in."
+    return f"Agreed: {day_word(start, now.astimezone(tz), e.ts.astimezone(tz))} {clock_time(start)}{where}, {n} of {n} in."
 
 
 # --- the projection ---
@@ -260,14 +265,14 @@ class Threads:
             invited = _invitees(asked, leg.proposer, members, leg.replies)
             everyone = not asked.invitees or (bool(members) and invited >= set(members) - {leg.proposer})
             line = proposal_line(display(leg.proposer, names), asked, [display(m, names) for m in sorted(invited)],
-                                 everyone, now, tz, follow_up=n > 0)
+                                 everyone, now, tz, follow_up=n > 0, said=leg.started)
             if leg.proposal is None:  # my card, not approved: nothing was sent
                 say(f"card:{leg.pending.action_id}", leg, me, "note", leg.pending.ts,
-                    f"Not sent yet. {line.split(': ', 1)[1]} is waiting for {display(me, names)}'s approval.", p=asked)
+                    f"Not sent yet. Waiting for {display(me, names)}'s OK to ask: {line.split(': ', 1)[1]}", p=asked)
                 continue
             say(leg.proposal.id, leg, leg.proposer, "proposal", leg.proposal.at, line, p=asked, source=leg.proposal.source)
             for r in sorted(leg.replies.values(), key=lambda r: (r.at, r.from_member)):
-                say(r.id, leg, r.from_member, "reply", r.at, reply_line(display(r.from_member, names), r.reply, asked, now, tz),
+                say(r.id, leg, r.from_member, "reply", r.at, reply_line(display(r.from_member, names), r.reply, asked, now, tz, said=r.at),
                     answer=r.reply.answer, p=r.reply.counter if r.reply.answer == "counter" else None, source=r.source)
             e = self.agreed.get(leg.thread_id)
             if e is not None and e.circle_id == circle_id:

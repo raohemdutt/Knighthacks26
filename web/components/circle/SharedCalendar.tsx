@@ -54,14 +54,14 @@ function started(e: CircleEvent): boolean {
   return !Number.isNaN(t) && t <= Date.now();
 }
 
-export function SharedCalendar() {
+export function SharedCalendar({ title = "Shared calendar", onOpenThread }: { title?: string; onOpenThread?: (threadId: string) => void } = {}) {
   const calendar = useFetch((s) => api.circleEvents(s));
   useAtlasEvents(["circle.event.agreed", "circle.message.received"], () => calendar.reload());
   useRefresh(calendar.reload, REFRESH_MS);
 
   return (
     <section className={ui.section}>
-      <h2 className={ui.sectionTitle}>Shared calendar</h2>
+      <h2 className={ui.sectionTitle}>{title}</h2>
       {calendar.error ? (
         calendar.error.notConfigured ? (
           <Empty title="No shared calendar on this box yet">
@@ -73,13 +73,13 @@ export function SharedCalendar() {
       ) : !calendar.data ? (
         <Loading what="the shared calendar" />
       ) : (
-        <Calendar calendar={calendar.data} />
+        <Calendar calendar={calendar.data} onOpenThread={onOpenThread} />
       )}
     </section>
   );
 }
 
-function Calendar({ calendar }: { calendar: CircleEvents }) {
+function Calendar({ calendar, onOpenThread }: { calendar: CircleEvents; onOpenThread?: (threadId: string) => void }) {
   const events = Array.isArray(calendar.events) ? calendar.events : [];
   if (!calendar.configured)
     return (
@@ -104,7 +104,7 @@ function Calendar({ calendar }: { calendar: CircleEvents }) {
       ) : (
         <ul className={ui.list}>
           {events.map((e) => (
-            <EventCard key={e.id} event={e} />
+            <EventCard key={e.id} event={e} onOpenThread={onOpenThread} />
           ))}
         </ul>
       )}
@@ -112,7 +112,8 @@ function Calendar({ calendar }: { calendar: CircleEvents }) {
   );
 }
 
-function EventCard({ event: e }: { event: CircleEvent }) {
+function EventCard({ event: e, onOpenThread }: { event: CircleEvent; onOpenThread?: (threadId: string) => void }) {
+  const thread = e.thread_id;
   const attendees = Array.isArray(e.attendees) ? e.attendees : [];
   const groups = ANSWERS.map((a) => ({ ...a, names: attendees.filter((x) => x.answer === a.answer).map(name) })).filter((g) => g.names.length > 0);
   const now = started(e);
@@ -131,6 +132,11 @@ function EventCard({ event: e }: { event: CircleEvent }) {
         ))}
         {groups.length === 0 ? <FragmentRow label="Who" value="No answers recorded yet" /> : null}
       </dl>
+      {thread && onOpenThread ? (
+        <button type="button" className={ui.btn} onClick={() => onOpenThread(thread)}>
+          How it was agreed
+        </button>
+      ) : null}
     </li>
   );
 }

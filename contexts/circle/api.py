@@ -56,7 +56,7 @@ from contracts.circle import Proposal
 log = logging.getLogger("atlas.circle")
 
 STORE_WINDOW = timedelta(days=14)  # how far back the store is read to fill in what the log lacks
-CONNECT = ["circle.member_id: <your id, e.g. hemdutt>", "circle.circle_id: <the circle everyone shares, e.g. team>"]
+CONNECT = ["circle.member_id: hemdutt", "circle.circle_id: team"]  # the two lines, with example values
 
 SUMMARY_KINDS = ("habit_summary", "impact_count", "game_score")  # CircleSharing's outbox kinds
 

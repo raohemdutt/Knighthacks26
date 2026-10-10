@@ -122,6 +122,14 @@ def test_the_agreement_line_counts_who_is_in():
     assert agreed_line(agreed("t2", LATER, NOW), NOW, TZ) == "Agreed: tomorrow 3:30 PM, the Library, 3 of 3 in."
 
 
+def test_an_older_message_names_the_day_instead_of_saying_tomorrow():
+    """Read on Saturday, "tomorrow" inside a message sent on Friday would point at the wrong day."""
+    friday = NOW - timedelta(days=1)
+    assert "Sun Oct 11 2:00 to 4:00 PM" in proposal_line("Hemdutt", STUDY, [], True, NOW, TZ, said=friday)
+    assert "tomorrow 2:00 to 4:00 PM" in proposal_line("Hemdutt", STUDY, [], True, NOW, TZ, said=NOW - timedelta(hours=3))
+    assert agreed_line(agreed("t2", LATER, friday), NOW, TZ) == "Agreed: Sun Oct 11 3:30 PM, the Library, 3 of 3 in."
+
+
 # --- the projection ---
 
 
