@@ -27,7 +27,8 @@ def test_teach_then_deny_through_the_api(tmp_path):
         r = c.post("/api/teach", json={"task": "desk-objects", "instruction": "List objects on the desk."})
         action_id = r.json()["action_id"]
         assert [a["id"] for a in c.get("/api/approvals").json()] == [action_id]
-        assert c.post(f"/api/approvals/{action_id}", json={"decision": "deny"}).status_code == 200
+        r = c.post(f"/api/approvals/{action_id}", json={"decision": "deny"})
+        assert r.status_code == 200 and r.json()["status"] == "denied"  # round 2: it said "proposed"
         assert c.get("/api/approvals").json() == []
         assert c.post("/api/approvals/nope", json={"decision": "deny"}).status_code == 404
 
@@ -140,3 +141,10 @@ def test_place_packs_routes_feasibility_and_friend_routes(tmp_path):
         assert c.get("/api/play/campus-route", params={"from": "lab.a", "to": "lab.b"}).json()["minutes"] == 2
 
         assert c.get("/api/play/campus-route", params={"from": "ucf.union", "to": "friend:hemdutt"}).status_code in (404,)
+
+
+def test_route_for_an_unknown_item_is_a_404(tmp_path):
+    with client(tmp_path) as c:
+        r = c.get("/api/play/route", params={"item": "unicorn"})
+        assert r.status_code == 404 and "unicorn" in r.json()["detail"]
+        assert c.get("/api/play/route", params={"item": "soda can"}).json()["bin"] == "recycling"

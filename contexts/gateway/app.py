@@ -150,7 +150,10 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         if req is None:
             raise HTTPException(404, "no such request")
         await atlas.bus.publish(ApprovalDecided(action_id=action_id, decision=body.decision))
-        return req.model_dump(mode="json")
+        out = req.model_dump(mode="json")
+        if out["status"] == "proposed":  # the decision is handled in the background; say what was decided, not the old state
+            out["status"] = "denied" if body.decision == "deny" else "approved"
+        return out
 
     @app.post("/api/teach", dependencies=[Depends(authorized)])
     async def start_teaching(spec: TaskSpec):
@@ -174,6 +177,8 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
             raise HTTPException(404, "Sort It is not configured")
         from contexts.play.domain.pathfinding import route
 
+        if atlas.game.rules.canonical(item) is None:
+            raise HTTPException(404, f"unknown item {item!r}; sortable: {', '.join(sorted(atlas.game.rules.items))}")
         zone, path = route(atlas.game.map, atlas.game.rules, item, (x, y))
         return {"item": item, "bin": zone, "rows": atlas.game.map.rows, "cols": atlas.game.map.cols,
                 "path": [c.model_dump() for c in path]}

@@ -110,15 +110,27 @@ class SortingRules:
         """Is a tracked `label` the round's `item`? Exact, or one of the item's configured aliases."""
         return label == item or label in self.aliases.get(item, [])
 
+    def canonical(self, label: str) -> str | None:
+        """The listed item a label names: itself, or the item it is an alias of ("soda can" -> "can"); None if unknown."""
+        if label in self.items:
+            return label
+        return next((item for item, names in self.aliases.items() if label in names and item in self.items), None)
+
     def bin_for(self, label: str) -> str:
-        return self.items.get(label, "trash")
+        """Aliases sort like their item; anything not listed is trash (Waste Watch counts every drop)."""
+        return self.items.get(self.canonical(label) or label, "trash")
 
     def zone_for(self, label: str) -> str:
         return self.bins[self.bin_for(label)]
 
 
 def route(m: ZoneMap, rules: SortingRules, item: str, from_xy: tuple[float, float]) -> tuple[str, list[Cell]]:
-    """Target bin zone and the cells to walk, from a normalized point (the player's feet)."""
+    """Target bin zone and the cells to walk, from a normalized point (the player's feet).
+
+    The other bins are obstacles: the route never crosses the wrong bin to reach the right one."""
     zone = rules.zone_for(item)
-    path = astar(m, m.cell_of(*from_xy), set(m.cells_in(zone)))
+    goals = set(m.cells_in(zone))
+    others = {cell for z in set(rules.bins.values()) - {zone} if z in m.zones for cell in m.cells_in(z)}
+    m = ZoneMap(m.zones, m.rows, m.cols, (m.blocked | others) - goals)
+    path = astar(m, m.cell_of(*from_xy), goals)
     return zone, [Cell(row=r, col=c) for r, c in (path or [])]
