@@ -65,8 +65,8 @@ from lab.machine.metrics import _METRIC_RE as METRIC_NAME_RE
 
 __all__ = ["ENV_STATE_DIR", "DEFAULT_STATE_DIR", "LEDGER_FILE", "LOCK_FILE", "LOCK_TIMEOUT", "FIELDS",
            "REF_KEYS", "OPTIONAL_FIELDS", "FILTER_NAMES", "LockTimeout", "RowError", "resolve_state_dir",
-           "ledger_path", "lock_path", "finite_number", "validate", "append", "read", "tail",
-           "latest_metric"]
+           "ledger_path", "lock_path", "utc_text", "now_text", "finite_number", "validate", "append",
+           "read", "tail", "latest_metric"]
 
 log = logging.getLogger("lab.ledger")
 
@@ -126,14 +126,27 @@ def lock_path(state_dir: str | os.PathLike[str] | None = None) -> Path:
 
 # --- times ----------------------------------------------------------------------------
 
-def _utc_text(moment: dt.datetime) -> str:
-    """An aware time as the ledger writes it: UTC, ending in Z."""
+_UTC_OFFSET_TEXT = "+00:00"  # the offset isoformat() writes for UTC, written as Z instead
+_UTC_SUFFIX = "Z"
+
+
+def utc_text(moment: dt.datetime) -> str:
+    """An aware time as the ledger writes it: UTC, ending in Z. The one copy of
+    this format for the lab: a reader that shows ledger times (metrics_report.py)
+    imports it from here, since this module cannot import that one back."""
     text = moment.astimezone(dt.timezone.utc).isoformat()
-    return text[:-len("+00:00")] + "Z" if text.endswith("+00:00") else text
+    return text[:-len(_UTC_OFFSET_TEXT)] + _UTC_SUFFIX if text.endswith(_UTC_OFFSET_TEXT) else text
 
 
-def _now_text() -> str:
-    return _utc_text(dt.datetime.now(dt.timezone.utc).replace(microsecond=0))
+def now_text() -> str:
+    """The current time as utc_text, to the whole second."""
+    return utc_text(dt.datetime.now(dt.timezone.utc).replace(microsecond=0))
+
+
+# the module's own callers go through these names, so a test that sets the ledger's clock
+# (monkeypatching ledger._now_text, as tests/test_lab_slots.py does) still stamps every row
+_utc_text = utc_text
+_now_text = now_text
 
 
 def _parse_ts(value: Any) -> dt.datetime | None:
