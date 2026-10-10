@@ -35,7 +35,9 @@ cost inside a sitting), PowerShell, every MCP server but Notion, and rm of any k
 the launcher, not a sitting, deletes a finished clone. DENIED adds a second line for
 the worst cases: no pod launch or stop except through the queue verbs, no push to
 main or force push, no merge of a pull request, no recursive force delete, no Notion
-page deletion, no bypassing the commit hook, nothing from the owner's notes,
+page deletion, no bypassing the commit hook, no rebase that runs a command (--exec,
+--exec=..., a shorter prefix such as --ex, or -x first or after other arguments: git
+runs that command itself, so no deny rule ever sees it), nothing from the owner's notes,
 the machine's state files or .env, and no allowed shell command but the interpreter
 (cp, mv, touch, an output redirect) whose text names the state dir.
 
@@ -255,6 +257,20 @@ _PUSH_AND_COMMIT_FLAGS: list[str] = [
     "Bash(git commit -n*)",
 ]
 
+#: git rebase runs the argument of --exec (or -x) as a shell command after each commit it
+#: replays. A deny rule matches the command part as written, so a push, an rm or a write to
+#: the state dir inside that argument is never seen by the rules above: 'git rebase *' stays
+#: allowed for ordinary rebases, and every spelling that carries a command is refused.
+#: --ex* also catches --exec=<cmd> and the prefixes git accepts for --exec (--exe, --ex),
+#: which no other rebase option starts with; -x is caught as the first argument (also
+#: stuck to its command, -x<cmd>) and after other arguments. A short-flag group that ends
+#: in x (-mx) is not caught: deny rules are a second line, not a boundary.
+_REBASE_EXEC: list[str] = [
+    "Bash(git rebase *--ex*)",
+    "Bash(git rebase -x*)",
+    "Bash(git rebase * -x*)",
+]
+
 #: A pull request is merged by a person, never by a sitting.
 _MERGE: list[str] = ["Bash(gh pr merge *)", "Bash(gh api *merge*)"]
 
@@ -311,8 +327,8 @@ _STATE_WRITES: list[str] = [
 ]
 
 DENIED: list[str] = [
-    *_PODS, *_PUSH_TO_MAIN, *_PUSH_AND_COMMIT_FLAGS, *_MERGE, *_RM, *_NOTION_DELETE, *_OWNER, *_PATHS,
-    *_STATE_WRITES,
+    *_PODS, *_PUSH_TO_MAIN, *_PUSH_AND_COMMIT_FLAGS, *_REBASE_EXEC, *_MERGE, *_RM, *_NOTION_DELETE,
+    *_OWNER, *_PATHS, *_STATE_WRITES,
 ]
 
 # --- the argument vector ------------------------------------------------------------------
