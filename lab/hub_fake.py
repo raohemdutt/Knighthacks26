@@ -175,6 +175,9 @@ class _Canned:
     raises: Exception | None = None
 
 
+FAKE_ROLES = {"A": "pod-a", "B": "pod-b", "C": "pod-a", "D": "pod-b"}
+
+
 class FakeHub:
     """The hub, as the callers' code sees it. See the module docstring."""
 
@@ -201,13 +204,15 @@ class FakeHub:
 
     def add_account(self, letter: str, *, user: str, token: str, balance: int = 59960, rate: int = 4,
                     unlimited: bool = False, quota_enabled: bool = True, url: str | None = None,
-                    password: str | None = None) -> Account:
+                    password: str | None = None, role: str | None = None) -> Account:
         """A hub account, returned in the form the callers take. url is the address it is given as its own
         (AUP_HUB_URL_<letter>); the fake itself answers on whatever address it is reached at. password lets the
-        account log in on the web side (the spawn form); without one the fake refuses every login as that user."""
+        account log in on the web side (the spawn form); without one the fake refuses every login as that user.
+        role is the pod role the account fills (LAB_POD_ROLES in real use); unset, the letter's role in FAKE_ROLES
+        (A and C the teacher's pod-a, B and D the trainer's pod-b), and none for any other letter."""
         self._accounts[letter] = _Account(letter, user, token, balance, rate, unlimited, quota_enabled, password,
                                           user_activity=self._hub_now())
-        return Account(letter, user, token, url, password)
+        return Account(letter, user, token, url, password, role=role or FAKE_ROLES.get(letter))
 
     def start_server(self, letter: str, *, runtime_minutes: int = 600, started_ago_s: float = 0.0, idle_s: float = 0.0,
                      ready: bool = True, accelerator: str = "r9700", image: str = AUP_IMAGE) -> None:

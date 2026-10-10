@@ -26,7 +26,7 @@ TOKEN_C = "cccc9999dddd0000eeee1111ffff2222"
 PASSWORD = "fake-correct-horse-battery"
 WRONG_PASSWORD = "fake-wrong-password-77"
 SJC = "https://sjc.test"
-SJC_ENV = {"AUP_HUB_USER_C": "acct-c", "AUP_HUB_TOKEN_C": TOKEN_C, "AUP_HUB_URL_C": SJC}
+SJC_ENV = {"LAB_POD_ROLES": "C:pod-a,D:pod-b", "AUP_HUB_USER_C": "acct-c", "AUP_HUB_TOKEN_C": TOKEN_C, "AUP_HUB_URL_C": SJC}
 FORM_FIELDS = {"resource_type": "gpu", "gpu_selection_gpu": "strix-halo", "runtime": "2400", "repo_url": "",
                "repo_persist": "true", "repo_branch": ""}
 
@@ -61,6 +61,11 @@ class Sjc:
         """The (method, path) of the calls to the hub itself that change something or log in, in order."""
         return [(call.method, call.path) for call in self.hub.calls if call.path.startswith("/hub/")
                 and (call.method != "GET" or call.path.startswith(("/hub/native", "/hub/spawn")))]
+
+
+def plain(conditions):
+    """A row's conditions without the hub and account every pod row also records (tested on their own)."""
+    return {key: value for key, value in conditions.items() if key not in ("hub", "account")}
 
 
 def rows(verb):
@@ -151,8 +156,8 @@ def test_a_form_launch_leaves_a_ledger_row_that_says_the_path_and_the_accelerato
     sjc.controller().launch("C", 2400, accelerator="strix-halo", reason="rehearsal")
 
     pod = only_row("pod launch")
-    assert (pod["node"], pod["outcome"], pod["note"]) == ("pod-c", "running", "rehearsal")
-    assert pod["conditions"] == {"resource": "gpu", "accelerator": "strix-halo", "launch_path": "form"}
+    assert (pod["node"], pod["outcome"], pod["note"]) == ("pod-a", "running", "rehearsal")
+    assert plain(pod["conditions"]) == {"resource": "gpu", "accelerator": "strix-halo", "launch_path": "form"}
     assert pod["metrics"] == {"pod.start_s": 15.0}
     assert only_row("controller launch")["outcome"] == "running"
 
@@ -301,7 +306,7 @@ def test_the_ledger_row_of_a_launch_that_fell_back_says_form_and_where_it_fell_b
 
     pod = only_row("pod launch")
     assert pod["outcome"] == "running"
-    assert pod["conditions"] == {"resource": "gpu", "accelerator": "strix-halo", "launch_path": "form",
+    assert plain(pod["conditions"]) == {"resource": "gpu", "accelerator": "strix-halo", "launch_path": "form",
                                  "fell_back_from": "rest"}
 
 
@@ -339,7 +344,7 @@ def test_a_rest_launch_that_gave_the_real_image_is_kept_and_the_form_is_never_to
     assert "fell_back_from" not in answer
     assert sjc.hub.calls_matching(None, "/hub/native") == [] and sjc.hub.calls_matching(None, "/hub/spawn") == []
     assert sjc.hub.calls_matching("DELETE") == []
-    assert only_row("pod launch")["conditions"] == {"resource": "gpu", "accelerator": "r9700", "launch_path": "rest"}
+    assert plain(only_row("pod launch")["conditions"]) == {"resource": "gpu", "accelerator": "r9700", "launch_path": "rest"}
 
 
 def test_a_pod_that_cannot_be_asked_is_left_alone_and_the_answer_says_it_is_unknown():
@@ -447,7 +452,7 @@ def test_the_rest_key_keeps_an_account_that_has_a_password_on_the_rest_call_with
     assert (answer["outcome"], answer["launch_path"]) == ("running", "rest")
     assert "image_check" not in answer
     assert dub.hub.calls_matching(None, "/api/terminals") == [] and dub.hub.calls_matching(None, "/hub/native") == []
-    assert only_row("pod launch")["conditions"] == {"resource": "gpu", "accelerator": "r9700", "launch_path": "rest"}
+    assert plain(only_row("pod launch")["conditions"]) == {"resource": "gpu", "accelerator": "r9700", "launch_path": "rest"}
 
 
 # --- accelerator and resource: arguments, and per-account defaults ---------------------------------------

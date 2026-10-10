@@ -42,8 +42,8 @@ Two kinds of hub. GET /hub/api/quota/me says which.
 Hub time. Elapsed time and the day are read from the hub's clock (the Date header of its answers), because the
 workstation's clock is not the hub's.
 
-The ledger. Unless --no-ledger is given, one row per account is appended with verb `credits`, the node (pod-c for
-C), refs.account, the window in conditions, and the outcome ok, alert, unmetered or error. The metrics on a
+The ledger. Unless --no-ledger is given, one row per account is appended with verb `credits`, the node (the pod role the account fills: pod-a or
+pod-b, LAB_POD_ROLES), refs.account, the window, hub and account in conditions, and the outcome ok, alert, unmetered or error. The metrics on a
 metered row are pod.balance_credits (as the hub says it), pod.credits_left, pod.credits_per_hour,
 pod.credits_burn_per_hour and, when something burns, pod.credits_hours_left; on an unmetered row
 pod.usage_min_today, pod.sessions_today and pod.usage_min_window. A row built on an answer that was only partly
@@ -109,9 +109,9 @@ _MINUTES = re.compile(r"(\d+)\s*min\b")
 
 # --- small helpers ----------------------------------------------------------------------------
 
-def node_of(letter: str) -> str:
-    """The ledger's name for the machine behind an account: pod-a, pod-b, pod-c, ..."""
-    return hubs.NODES.get(letter) or f"pod-{letter.lower()}"
+def node_of(letter: str, roles: Any = None) -> str:
+    """The ledger's name for the machine behind an account: the pod role it fills (LAB_POD_ROLES), see lab.hub."""
+    return hubs.node_of(letter, roles)
 
 
 def url_key(letter: str) -> str:
@@ -250,7 +250,7 @@ def read_account(client: Hub, clock: Callable[[], dt.datetime]) -> Facts:
     the recent transactions; unmetered, the usage statistics. A read that fails is in errors (the account cannot
     be judged) or in warnings (the figures are partial)."""
     account = client.account
-    facts = Facts(account.letter, node_of(account.letter), client.base_url, clock())
+    facts = Facts(account.letter, account.node, client.base_url, clock())
     times: list[dt.datetime] = []
 
     def get(path: str) -> Reply:
@@ -492,7 +492,9 @@ def assess(facts: Facts, window_hours: float, judging: dt.datetime) -> Assessed:
 
 def write_row(item: Assessed) -> str | None:
     """Append the account's row. Returns why it could not be written, else None."""
-    fields: dict[str, Any] = {"node": item.node, "conditions": item.conditions}
+    hub = item.entry.get("hub")
+    fields: dict[str, Any] = {"node": item.node, "conditions": {
+        **item.conditions, **({"hub": hubs.hub_of(hub)} if hub else {}), "account": item.letter}}
     if item.metrics:
         fields["units"] = {name: UNITS[name] for name in item.metrics}
     if item.note:
@@ -575,7 +577,9 @@ def run(argv: Sequence[str], *, environ: Mapping[str, str] | None = None, env_fi
         return {"ok": False, "outcome": "missing_credentials", "error": "no account has its AUP_HUB_USER_<letter> "
                 "and AUP_HUB_TOKEN_<letter> keys", "missing": []}
     try:
-        accounts = hubs.load_accounts(letters, environ=env, env_files=files)
+        accounts = hubs.load_accounts(letters, environ=env, env_files=files, require_role=True)
+    except hubs.PodRoleError as exc:
+        return {"ok": False, "outcome": "no_pod_role", "error": str(exc)}
     except MissingCredentials as exc:
         return {"ok": False, "outcome": "missing_credentials", "error": str(exc), "missing": exc.missing}
     urls, _ = ready.collect_env([url_key(letter) for letter in letters], env, files)

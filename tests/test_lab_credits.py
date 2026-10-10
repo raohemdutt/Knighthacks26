@@ -17,7 +17,7 @@ from lab.machine import ledger
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "lab" / "credits"
 TOKEN_A = "aaaa" + "0123456789abcdef0123456789ab"   # built in parts: the secret scan flags 32 hex after "token"
 TOKEN_C = "cccc" + "0123456789abcdef0123456789ab"
-ENV = {"AUP_HUB_USER_A": "acct-a", "AUP_HUB_TOKEN_A": TOKEN_A, "AUP_HUB_URL_A": "https://dub.test",
+ENV = {"LAB_POD_ROLES": "A:pod-a,C:pod-a,D:pod-b", "AUP_HUB_USER_A": "acct-a", "AUP_HUB_TOKEN_A": TOKEN_A, "AUP_HUB_URL_A": "https://dub.test",
        "AUP_HUB_USER_C": "acct-c", "AUP_HUB_TOKEN_C": TOKEN_C, "AUP_HUB_URL_C": "https://sjc.test"}
 FAR_JUDGING = "2026-10-11T16:00:00Z"
 AFTER_JUDGING = "2026-10-10T10:00:00Z"      # before the recorded hub time: judging has already started
@@ -149,7 +149,7 @@ def test_unmetered_account_reports_usage_and_projects_nothing():
     for projected in ("balance", "credits_left", "hours_left", "burn_per_hour", "runs_out_at"):
         assert projected not in c
     assert answer["alerts"] == [] and answer["outcome"] == "ok"
-    assert answer["lines"][0].startswith("C (pod-c): unmetered: usage ")
+    assert answer["lines"][0].startswith("C (pod-a): unmetered: usage ")
     assert not any("/hub/admin" in r.url.path or "/users/" in r.url.path for r in hubs.requests)
 
 
@@ -207,7 +207,9 @@ def test_ledger_rows_one_per_account_without_secrets(state):
     assert a["metrics"]["pod.credits_hours_left"] == pytest.approx(248.25)
     assert a["units"]["pod.credits_left"] == "credits" and a["conditions"]["window_hours"] == 3.0
     assert not a.get("low_confidence")
-    assert (c["outcome"], c["node"], c["refs"]["account"]) == ("unmetered", "pod-c", "C")
+    assert (c["outcome"], c["node"], c["refs"]["account"]) == ("unmetered", "pod-a", "C")
+    assert (a["conditions"]["hub"], a["conditions"]["account"]) == ("dub.test", "A")
+    assert (c["conditions"]["hub"], c["conditions"]["account"]) == ("sjc.test", "C")
     assert set(c["metrics"]) == {"pod.usage_min_today", "pod.sessions_today", "pod.usage_min_window"}
     text = json.dumps(list(rows(state)), default=str)
     assert TOKEN_A not in text and TOKEN_C not in text and "acct-" not in text

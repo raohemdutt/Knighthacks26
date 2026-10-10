@@ -69,9 +69,13 @@ read, and run on.
 The ledger. A command writes a row for the call (verbs `controller launch`, `controller stop`, ... through
 @recorded: outcome, start, end, duration) and, where it learned or changed something about a pod, a pod row in the
 words the alert rules read (lab/machine/alerts.py): verbs `pod launch`, `pod stop`, `pod status`, `pod wait`,
-`pod keep-alive`, `pod quota` and `pod run-script`, with node pod-a or pod-b and refs.account. The metrics on them
+`pod keep-alive`, `pod quota` and `pod run-script`, with refs.account and the node. The metrics on them
 are pod.start_s (the launch request to a ready pod) and pod.balance_credits. A script run on a pod also leaves its
-row here, because a pod's own ledger is never read. A ledger that cannot be written never undoes what the hub
+row here, because a pod's own ledger is never read. Nodes are pod roles, not accounts (telemetry ruling 3): pod-a the teacher's pod, pod-b the trainer's, read from
+LAB_POD_ROLES (environment, then the workspace .env; default A:pod-a,B:pod-b, the DUB pair; on SJC
+C:pod-a,D:pod-b). Never pod-c or pod-d. Every pod row's conditions carry `hub` (the host) and `account` (the
+letter), so a row says which hub and which account filled the role. An account with no role in the setting is
+refused (outcome no_pod_role, exit 2) rather than named pod-<letter>. A ledger that cannot be written never undoes what the hub
 did: the answer then carries ledger_error.
 
 Outcomes. launch: running, already_running, launching (--no-wait), refused_quota, refused, timeout, failed, error,
@@ -103,7 +107,8 @@ if __package__ in (None, ""):          # started as `python lab/controller.py`: 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from lab import hub as hubs
-from lab.hub import Account, Hub, HubUnreachable, MissingCredentials, Reply, load_accounts, one_line
+from lab.hub import (Account, Hub, HubUnreachable, MissingCredentials, PodRoleError, Reply, hub_of, load_accounts,
+                     one_line)
 from lab.machine import record
 from lab.machine import stop as kill_switch
 from lab.machine.record import recorded
@@ -346,6 +351,8 @@ class Controller:
                  sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.time,
                  poll_s: float = POLL_S, environ: Mapping[str, str] | None = None) -> None:
         self.accounts = dict(accounts)
+        for account in self.accounts.values():
+            account.node        # PodRoleError at once for an account that fills no role
         self.sleep = sleep
         self.clock = clock
         self.poll_s = poll_s
@@ -476,8 +483,8 @@ class Controller:
         fields: dict[str, Any] = {"node": account.node}
         if metrics and units:
             fields["units"] = {name: unit for name, unit in units.items() if name in metrics}
-        if conditions:
-            fields["conditions"] = dict(conditions)
+        fields["conditions"] = {**(conditions or {}), "hub": hub_of(self._hub(account.letter).base_url),
+                                "account": account.letter}
         if note:
             fields["note"] = one_line(self.scrub(str(note)), NOTE_CHARS)
         try:
@@ -1329,7 +1336,9 @@ def run(argv: Sequence[str], *, environ: Mapping[str, str] | None = None, env_fi
     args = build_parser().parse_args(list(argv))
     environ = os.environ if environ is None else environ
     try:
-        accounts = load_accounts(_letters_of(args), environ=environ, env_files=env_files)
+        accounts = load_accounts(_letters_of(args), environ=environ, env_files=env_files, require_role=True)
+    except PodRoleError as exc:
+        return ({"ok": False, "command": args.command, "outcome": "no_pod_role", "error": str(exc)}, 2)
     except MissingCredentials as exc:
         return ({"ok": False, "command": args.command, "outcome": "no_credentials", "missing": exc.missing,
                  "error": "keys missing from the environment and the .env files",
