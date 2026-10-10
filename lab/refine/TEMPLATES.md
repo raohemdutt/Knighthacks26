@@ -43,9 +43,9 @@ pass go into the log too, so a pass never undoes one, but they do not bump the c
 - Plain ASCII, plain hyphens, no em-dashes and no emoji, in every file here.
 - Entries are appended, never rewritten. A log reads oldest first.
 - A dimension id is the label the track's `RUBRIC.md` gives one of its tests: the Learning rubric's
-  are LT1 to LT9 and the kernels rubric's are K1 to K8. If a rubric only numbers its tests, the id is
-  D followed by the number. The two universal rules every rubric carries are U1 (old versus new) and
-  U2 (source-forced).
+  are LT1 to LT9, the telemetry rubric's TT1 to TT7 and the kernels rubric's K1 to K8. If a rubric only
+  numbers its tests, the id is D followed by the number. The two universal rules every rubric carries
+  are U1 (old versus new) and U2 (source-forced).
 - A metric name is the dotted lowercase name used in `lab/refine/metrics.jsonl`
   (`teacher.decode_tok_s`, `pod.idle_watts`).
 - A reading is a metric's value with its unit, node and conditions, and the line it was read from:
