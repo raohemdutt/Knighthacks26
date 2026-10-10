@@ -364,7 +364,7 @@ export function buildShow(args: { result: SimResult; hard: HardResult | null; wo
   const holds: Hold[] = [];
   const feed: FeedItem[] = [];
   if (before && splitAt !== null) {
-    holds.push({ kind: "replan", t: splitAt, seconds: 5 + Math.min(4, changes.length) * 1.1 });
+    holds.push({ kind: "replan", t: splitAt, seconds: 4.5 + Math.min(4, changes.length) * 1.1 });
     for (const d of disruptions) feed.push({ t: splitAt, tone: "bad", text: d.text || d.kind.replace("_", " "), place: d.place ?? d.to_place ?? undefined });
     feed.push({ t: splitAt, tone: "warn", text: changes.length === 0 ? "Re-checked every move: nothing had to change" : `Re-planned the rest of the day: ${changes.length} ${changes.length === 1 ? "change" : "changes"}` });
     feed.push(...thresholdFeed(before, t0, splitAt, board));
@@ -422,7 +422,7 @@ export function buildShow(args: { result: SimResult; hard: HardResult | null; wo
 
 function routeHold(walk: Walk): Hold {
   const outdoor = walk.hops.filter((h) => !h.indoors).length;
-  return { kind: "route", t: walk.t0, seconds: outdoor === 0 ? 0.7 : Math.min(2.4, 1.1 + 0.3 * outdoor), walk };
+  return { kind: "route", t: walk.t0, seconds: outdoor === 0 ? 0.6 : Math.min(2, 0.9 + 0.25 * outdoor), walk };
 }
 
 /** Every walk of the day as it is actually lived: the calm day up to the split, the disrupted day after it. */
@@ -440,7 +440,7 @@ export const DEFAULT_SPEED = 36;
 /**
  * Simulated minutes per real second at `t`. Standing still runs at the chosen speed,
  * the night runs three times faster, and a walk is slowed so it can be watched:
- * at the default speed a walk takes two to four seconds whatever its length.
+ * at the default speed a walk takes two to three and a half seconds whatever its length.
  */
 export function paceAt(show: Show, t: number, speed: number): number {
   const s = scriptFor(show, t);
@@ -448,7 +448,7 @@ export function paceAt(show: Show, t: number, speed: number): number {
   if (walk) {
     const span = (walk.t1 - walk.t0) / MIN;
     const outdoor = walk.hops.some((h) => !h.indoors);
-    const seconds = (outdoor ? Math.max(2, Math.min(4, 1.2 + span * 0.16)) : 0.5) * Math.max(0.5, Math.min(1, DEFAULT_SPEED / speed));
+    const seconds = (outdoor ? Math.max(1.8, Math.min(3.4, 1.1 + span * 0.13)) : 0.5) * Math.max(0.5, Math.min(1, DEFAULT_SPEED / speed));
     return Math.min(speed, span / seconds);
   }
   const span = s.spans.find((x) => x.s <= t && t < x.e);
