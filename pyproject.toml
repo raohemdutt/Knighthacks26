@@ -10,6 +10,7 @@ dependencies = [
     "pydantic>=2",
     "fastapi",
     "uvicorn",
+    "websockets",  # uvicorn serves /ws only when a WebSocket library is installed
     "httpx",
     "pyyaml",
     "mcp>=1.20,<2",

@@ -27,12 +27,15 @@ approving things.
 import asyncio
 import contextlib
 import hmac
+import os
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from contexts.gateway.bootstrap import Atlas, Settings, build
@@ -275,4 +278,8 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         except WebSocketDisconnect:
             sockets.discard(ws)
 
+    # The phone app (web/, a Next.js static export). Mounted last so every API route and /ws wins.
+    web_dir = Path(os.environ.get("ATLAS_WEB_DIR", "web/out"))
+    if web_dir.is_dir():
+        app.mount("/", StaticFiles(directory=web_dir, html=True), name="web")
     return app
