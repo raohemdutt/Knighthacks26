@@ -212,6 +212,8 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         req = atlas.approvals.requests.get(action_id)
         if req is None:
             raise HTTPException(404, "no such request")
+        if req.status != "proposed":  # a second tap on the phone: say so, and log nothing
+            raise HTTPException(409, f"already {req.status}")
         await atlas.bus.publish(ApprovalDecided(action_id=action_id, decision=body.decision))
         out = req.model_dump(mode="json")
         if out["status"] == "proposed":  # the decision is handled in the background; say what was decided, not the old state
