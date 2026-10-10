@@ -33,8 +33,19 @@ NOW = datetime(2026, 10, 10, 14, 30, tzinfo=timezone.utc)  # Saturday 10:30 AM E
 SIGN = f"{HEART} Ilan's agent {DOT} Sat 10:30 AM ET:"
 TOKEN = "ntn_test_value_0123456789"
 
-RULINGS_HEADER = (REFINE / "telemetry" / "OWNER_RULINGS.md").read_text(encoding="utf-8")
-LOG_HEADER = (REFINE / "telemetry" / "REFINE_LOG.md").read_text(encoding="utf-8")
+
+def header_of(text: str) -> str:
+    """The text of a refinement file above its first '## ' heading (its first entry or ruling), ending in one newline."""
+    return re.split(r"^## ", text, maxsplit=1, flags=re.MULTILINE)[0].rstrip("\n") + "\n"
+
+
+def committed_header(name: str) -> str:
+    """The header of a committed telemetry file, so a pass or a merge that fills the file leaves the tests' header alone."""
+    return header_of((REFINE / "telemetry" / name).read_text(encoding="utf-8"))
+
+
+RULINGS_HEADER = committed_header("OWNER_RULINGS.md")
+LOG_HEADER = committed_header("REFINE_LOG.md")
 
 
 @pytest.fixture(autouse=True)
@@ -151,6 +162,19 @@ def test_every_committed_open_ruling_is_listed_with_its_default_and_recommendati
 
     for row in result["rulings"]:
         assert row["now"] and row["recommend"] and row["tension"]
+
+
+def test_the_header_the_trees_are_built_from_ends_before_the_first_entry_or_ruling():
+    """A pass appends entries to the log and a merge files rulings: neither may change the header the trees start from."""
+    filled = {
+        "REFINE_LOG.md": example("pass-entry") + "\n" + example("owner-correction") + "\n" + example("run-state"),
+        "OWNER_RULINGS.md": K4_OPEN + "\n" + k4_answered(),
+    }
+    for name, entries in filled.items():
+        header = committed_header(name)
+
+        assert "\n## " not in header
+        assert header_of(header + "\n" + entries) == header
 
 
 # ------------------------------------------------------------------ list
