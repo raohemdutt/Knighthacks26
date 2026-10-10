@@ -413,6 +413,41 @@ conditions; the per-second samples are `fixtures/telemetry/pod_power/strixhalo_2
 sampler stays up under nohup (`bash ~/lab/pod_power.sh stop`).
 The 39 W `pod.idle_watts` row is the R9700, the other chip.
 
+### The same build on pod D, from scripts alone (R30)
+
+Account D's pod on SJC (pod B's role, the trainer; the kernels experiments run there) holds the same stock build and
+checkpoint since 2026-10-10: vLLM 0.19.2+gfx1151 at b1388b1 plus `lab/vllm-gfx1201.diff` in `~/vllm`, and
+`~/models/Qwen3.8-27B-INT4` (19 GB, 12 files). No server runs there: start one only inside a GPU Queue slot and stop it
+after. Nothing was typed on the pod; every step went through the controller from the repo root:
+
+```
+python -m lab.controller run-script --account D lab/pod_a_teacher.sh facts       # hour-0 facts, read-only
+python -m lab.controller run-script --account D --timeout 3000 --with lab/vllm-gfx1201.diff lab/pod_a_teacher.sh build
+python -m lab.controller run-script --account D lab/pod_a_teacher.sh verify      # rejected hunks, extensions, platform
+python -m lab.controller run-script --account D --timeout 3000 lab/pod_a_teacher.sh download
+python -m lab slot request --task <ID> --what "..." --minutes 15                 # then: slot start --row <row>
+python -m lab.controller run-script --account D --timeout 900 lab/pod_a_teacher.sh serve
+python -m lab.controller run-script --account D lab/pod_a_teacher.sh models      # GET /v1/models on the pod
+python -m lab.proxy chat --account D --model teacher --no-thinking --prompt "..." # through the hub proxy
+python -m lab.controller run-script --account D lab/pod_a_teacher.sh stop        # then: slot done --row <row>
+```
+
+`--with` puts the patch next to the uploaded script, which is where the script looks for it. On SJC the Jupyter root
+is `/home/jovyan` itself, so run-script's files and everything the script writes sit on the persistent volume. What
+R29 did by hand on pod C and the script now does: the hour-0 facts (`facts`, R29 used a separate `hour0.sh`), the
+checks after the build (`verify`), the wall-clocks (`build`, `download` and `serve` end with a
+`### <step> wall_s=<seconds> rc=<code>` line), `/v1/models` on the pod (`models`) and stopping the server (`stop`).
+`serve` now ends at once with the log's tail when the engine dies, instead of waiting out its 15 minutes.
+
+What pod D showed: the recipe needed no change. All 9 hunks apply, none rejected; `_C`, `_rocm_C` and `_moe_C`
+import; vLLM resolves `RocmPlatform` with one GPU. Build 292 s (pip dependencies included, 20 jobs), download 281 s,
+the engine ready 523 s after a cold start (no torch.compile cache yet; pod C took 297 s warm). One chat completion
+with thinking off came back through `https://sjc.aupcloud.io/user/<account D>/proxy/8000/v1/chat/completions` (21
+tokens in, 47 out, 24.7 s). Idle with no server: 9 W (`amd-smi` SOCKET_POWER). The build and download wall-clocks are
+ledger rows on node `pod-b` with hub sjc and account D; no metric row was written, because this is a build and not a
+measurement (kernels pass 2, ruling b). The build's dependencies put numpy 2.2.6 in the user site, over the image's
+2.4.6.
+
 ## Trainer (pod B)
 
 ```
