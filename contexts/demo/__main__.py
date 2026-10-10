@@ -20,6 +20,10 @@
     python -m contexts.demo video check <file> | chapters | cards | json [out]
         The submission video's 10:00 number-key layout (D10): check an export's length and where each
         key lands, print the YouTube description, or write the title cards (HTML).
+
+    python -m contexts.demo totals [--data-dir data] [--since ISO] [--json]
+        The hackathon in numbers from the box's own event log (D11), each with the events it was
+        counted from, for the video's closing card and the Devpost.
 """
 
 import argparse
@@ -57,7 +61,20 @@ def main(argv: list[str] | None = None) -> int:
     v = sub.add_parser("video", help="the submission video's number-key layout (D10)")
     v.add_argument("action", choices=["check", "chapters", "cards", "json"])
     v.add_argument("file", nargs="?", type=Path, help="check: the exported video; cards: where to write the HTML")
+    t = sub.add_parser("totals", help="the hackathon in numbers, from the event log (D11)")
+    t.add_argument("--data-dir", type=Path, default=Path(os.environ.get("ATLAS_DATA_DIR", "data")))
+    t.add_argument("--since", type=datetime.fromisoformat, help="count only from this time (with a UTC offset)")
+    t.add_argument("--json", action="store_true", help="JSON instead of a markdown table")
     args = p.parse_args(argv)
+
+    if args.command == "totals":
+        from contexts.demo import totals
+
+        if args.since and args.since.tzinfo is None:
+            p.error("--since needs a UTC offset, e.g. 2026-10-10T09:00:00-04:00")
+        rows = totals.totals(totals.read_events(args.data_dir / "events"), since=args.since)
+        print(totals.as_json(rows) if args.json else totals.table(rows))
+        return 0
 
     if args.command == "video":
         return video_command(args.action, args.file)
