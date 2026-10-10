@@ -2,7 +2,9 @@
 
 The filled examples in lab/refine/TEMPLATES.md are the sample entries: each one is parsed here with the
 real parser, so an example that stops parsing fails the suite. The track files committed under
-lab/refine/<track>/ are parsed too, and a hand-written sample covers every field exactly.
+lab/refine/<track>/ are parsed too, together with a track folder as the first pass and the first merge leave
+it, so a check that holds only while the files are empty fails here before it fails a pass. A hand-written
+sample covers every field exactly.
 """
 
 import json
@@ -308,27 +310,79 @@ def test_the_same_entry_as_a_pass_is_missing_what_a_pass_needs():
     ]
 
 
-@pytest.mark.parametrize("track", TRACKS)
-def test_committed_track_log_opens_with_its_header(track):
-    log = rf.parse_log((REFINE / track / "REFINE_LOG.md").read_text(encoding="utf-8"))
+def write_filled_track(root: Path) -> Path:
+    """Write the telemetry folder as the first pass and the first merge leave it: the pass 1 entry in the log, its
+    report, a counter of 1, and the ruling that pass raised, filed as ruling 1."""
+    track = "telemetry"
+    entry = edit(SAMPLE, "## Pass 7, 2026-10-12", "## Pass 1, 2026-10-12")
+    raised = only_entry(entry).rulings_raised[0]
+    folder = root / track
+    (folder / "pass_reports").mkdir(parents=True)
+    (folder / "REFINE_LOG.md").write_text(
+        f"# Refinement log for the {track} track\n\nOne entry per pass, in the formats of lab/refine/TEMPLATES.md.\n\n---\n\n{entry}",
+        encoding="utf-8",
+    )
+    (folder / "refine_pass.txt").write_text("1\n", encoding="utf-8")
+    (folder / "pass_reports" / "pass_01.md").write_text(
+        f"Verbatim report returned by {track} refinement pass 1 (Opus sitting), 2026-10-12. "
+        f"The log entry it appended is in lab/refine/{track}/REFINE_LOG.md.\n"
+        "Ended: 2026-10-12T11:00:00-04:00\n\n---\n\nThe report.\n",
+        encoding="utf-8",
+    )
+    (folder / "OWNER_RULINGS.md").write_text(
+        f"# Owner rulings for the {track} track\n\nQuestions the passes could not decide.\n\n"
+        f"## 1. {raised.question} (pass 1)\n\n"
+        f"Now: {raised.now}\nRecommend: {raised.recommend}\nSource of tension: {raised.tension}\nAnswer: {raised.answer}\n",
+        encoding="utf-8",
+    )
+    return folder
 
-    assert log.header.startswith(f"# Refinement log for the {track} track")
+
+@pytest.fixture(params=[*TRACKS, "after-pass-1"])
+def track_folder(request, tmp_path):
+    """Each committed track folder, then one built as the first pass and the first merge leave a track."""
+    if request.param == "after-pass-1":
+        return write_filled_track(tmp_path)
+    return REFINE / request.param
+
+
+def test_the_filled_track_folder_holds_one_valid_pass_its_report_a_counter_of_one_and_one_ruling(tmp_path):
+    folder = write_filled_track(tmp_path)
+
+    (entry,) = rf.parse_log((folder / "REFINE_LOG.md").read_text(encoding="utf-8")).passes
+    (ruling,) = rf.parse_rulings((folder / "OWNER_RULINGS.md").read_text(encoding="utf-8"))
+    ended = rf.parse_report_end((folder / "pass_reports" / "pass_01.md").read_text(encoding="utf-8"))
+
+    assert (entry.number, rf.check_pass_entry(entry)) == (1, [])
+    assert rf.parse_counter((folder / "refine_pass.txt").read_text(encoding="utf-8")) == 1
+    assert ended == datetime(2026, 10, 12, 11, 0, tzinfo=timezone(timedelta(hours=-4)))
+    assert (ruling.number, ruling.origin, ruling.question, ruling.answered) == (
+        1,
+        "pass 1",
+        "Should E9 run on pod A or pod B?",
+        False,
+    )
+
+
+def test_committed_track_log_opens_with_its_header(track_folder):
+    log = rf.parse_log((track_folder / "REFINE_LOG.md").read_text(encoding="utf-8"))
+
+    assert log.header.startswith(f"# Refinement log for the {track_folder.name} track")
     assert "lab/refine/TEMPLATES.md" in log.header
 
 
-@pytest.mark.parametrize("track", TRACKS)
-def test_committed_rulings_file_holds_no_rulings_yet(track):
-    text = (REFINE / track / "OWNER_RULINGS.md").read_text(encoding="utf-8")
+def test_committed_rulings_file_parses_and_numbers_its_rulings_in_order(track_folder):
+    text = (track_folder / "OWNER_RULINGS.md").read_text(encoding="utf-8")
+    rulings = rf.parse_rulings(text)
 
-    assert text.startswith(f"# Owner rulings for the {track} track")
-    assert rf.parse_rulings(text) == ()
+    assert text.startswith(f"# Owner rulings for the {track_folder.name} track")
+    assert [ruling.number for ruling in rulings] == list(range(1, len(rulings) + 1))
 
 
-@pytest.mark.parametrize("track", TRACKS)
-def test_committed_counter_counts_the_passes_in_the_log(track):
-    log = rf.parse_log((REFINE / track / "REFINE_LOG.md").read_text(encoding="utf-8"))
+def test_committed_counter_counts_the_passes_in_the_log(track_folder):
+    log = rf.parse_log((track_folder / "REFINE_LOG.md").read_text(encoding="utf-8"))
 
-    assert rf.parse_counter((REFINE / track / "refine_pass.txt").read_text(encoding="utf-8")) == len(log.passes)
+    assert rf.parse_counter((track_folder / "refine_pass.txt").read_text(encoding="utf-8")) == len(log.passes)
 
 
 @pytest.mark.parametrize("track", TRACKS)
