@@ -36,6 +36,8 @@ def write_lines(path, *lines):
 
 # --- the seeded baseline -------------------------------------------------------------------------
 
+SAMPLER = "lab/pod_power.py 1"  # the T6 rows' conditions name the sampler that read them
+
 # (metric, node, conditions that select exactly one row, value, unit, low_confidence)
 EXPECTED_SEED = [
     ("teacher.decode_tok_s", "pod-a", {"prompt": "image"}, 6.6, "tok/s", False),
@@ -44,8 +46,8 @@ EXPECTED_SEED = [
     ("teacher.ttft_s", "pod-a", {"prompt": "image"}, 1.09, "s", False),
     ("teacher.ttft_s", "pod-a", {"prompt": "text", "thinking": "on"}, 0.28, "s", False),
     ("teacher.ttft_s", "pod-a", {"prompt": "text", "thinking": "off"}, 0.55, "s", False),
-    ("teacher.watts_avg", "pod-a", {}, 200, "W", False),
-    ("teacher.watts_peak", "pod-a", {}, 300, "W", False),
+    ("teacher.watts_avg", "pod-a", {"while": "generating"}, 200, "W", False),
+    ("teacher.watts_peak", "pod-a", {"while": "generating"}, 300, "W", False),
     ("teacher.engine_init_s", "pod-a", {}, 270, "s", False),
     ("teacher.vram_pct", "pod-a", {}, 84, "%", False),
     ("teacher.max_concurrency", "pod-a", {}, 10, "x", False),
@@ -54,7 +56,7 @@ EXPECTED_SEED = [
     ("trainer.peak_mem_gb", "pod-b", {}, 8.7, "GiB", False),
     ("trainer.smoke_loss_first", "pod-b", {}, 2.23, "loss", False),
     ("trainer.smoke_loss_last", "pod-b", {}, 0.16, "loss", False),
-    ("pod.idle_watts", "pod-a", {}, 39.0, "W", True),
+    ("pod.idle_watts", "pod-a", {"state": "idle", "range_w": [38, 40]}, 39.0, "W", True),
     ("pod.start_s", "pod-a", {}, 15, "s", False),
     ("pod.credits_per_min", "pod-a", {}, 4, "credits/min", False),
     ("pod.credits_per_min", "pod-b", {}, 4, "credits/min", False),
@@ -73,6 +75,11 @@ EXPECTED_SEED = [
     ("pod.idle_watts", "pod-c", {"server": "teacher loaded, no request"}, 9.2, "W", False),
     ("pod.idle_watts", "pod-c", {"server": "none"}, 8, "W", False),
     ("teacher.engine_init_s", "pod-c", {}, 297, "s", False),
+    # T6: the pod power sampler's live run on pod C under the teacher load (recorded as node pod-a, the teacher's role);
+    # the samples are fixtures/telemetry/pod_power/strixhalo_2026-10-10_teacher_load_*.jsonl
+    ("pod.idle_watts", "pod-a", {"sampler": SAMPLER, "under_load_samples": 0}, 10.2, "W", True),
+    ("teacher.watts_avg", "pod-a", {"sampler": SAMPLER}, 106.807, "W", True),
+    ("teacher.watts_peak", "pod-a", {"sampler": SAMPLER, "value": "peak"}, 129.0, "W", True),
 ]
 
 # The numbers the lab setup measured, by metric name.
@@ -127,8 +134,11 @@ def test_derived_joules_per_token_matches_the_inputs_it_names():
 def test_every_low_confidence_seed_row_says_why():
     flagged = [row for row in metrics.load() if row["low_confidence"]]
     assert {row["metric"] for row in flagged} == {
-        "teacher.joules_per_token", "pod.idle_watts", "pod.balance_credits"}
+        "teacher.joules_per_token", "pod.idle_watts", "pod.balance_credits", "teacher.watts_avg", "teacher.watts_peak"}
     for row in flagged:
+        if row["conditions"].get("sampler") == SAMPLER:  # the sampler's rows: its error is "unknown" until a reference run
+            assert row["conditions"]["error"] == "unknown", row["metric"]
+            continue
         reason = row["conditions"].get("low_confidence_reason")
         assert isinstance(reason, str) and reason.strip() != "", row["metric"]
 
