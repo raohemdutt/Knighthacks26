@@ -104,6 +104,26 @@ The box's Python is 3.10; the repo asks for 3.11 only because of `from datetime 
 `.pth` in the venv fixes that without touching the code:
 `echo 'import datetime; datetime.UTC = datetime.timezone.utc' > <venv>/lib/python3.10/site-packages/atlas_py310_compat.pth`.
 
+## 7. Always on (C6)
+
+Two systemd services, both `Restart=always` and enabled at boot: `atlas-llm` (the model, section 5) and
+`atlas-gateway` (`python -m contexts.gateway`: the app the phone talks to on port 8000, plus the cameras, detector,
+tracker and blurred keyframe store, all in one process so they share the event bus).
+
+```bash
+sudo ./jetson/jetson_setup.sh                       # installs and starts both (safe to re-run; ATLAS_VENV picks the Python venv)
+journalctl -u atlas-llm -u atlas-gateway -f         # logs
+curl localhost:8000/capture/status                  # per camera: ok / degraded / down, fps, frames detected
+curl localhost:8000/runtime/models                  # current model version and what llama-server serves
+```
+
+Cameras are listed in `config/cameras.yaml` (id, `/dev/video0` or a video file, fps). Capture starts only where
+`yolo11n.engine` exists (section 6), so laptops and CI skip it; `ATLAS_CAPTURE=0` turns it off. A camera that is not
+plugged in is retried every 2 s and shows as `down`. The Vault policy is honoured live: faces are blurred before a
+keyframe is stored unless `blur_faces` is off, and a paused camera is not looked at. Settings and secrets go in the
+repo's `.env` (never in git). The unit sets `ATLAS_MEMORY_FIXTURE=` empty, so a real box holds only what its cameras
+saw; put `ATLAS_MEMORY_FIXTURE=fixtures/memory/memory.yaml` in `.env` for the canned demo night.
+
 ## Firmware update (boards with old factory firmware)
 
 JetPack 6 and 7 need firmware 36.x on the board. Boards with older firmware

@@ -1,0 +1,13 @@
+# Cameras the box reads (C1). Camera ids must match the ones in config/zones.yaml.
+# Capture only starts where a detector engine exists (config/models.yaml: detector.weights), i.e. on the Jetson;
+# set ATLAS_CAPTURE=0 to turn it off there.
+#
+# source: a V4L2 device (/dev/video0) or index, or a video file (replayed in real time, looped: for testing)
+# fps: frames the reader keeps per second; detect_fps: how often the detector looks (10 keeps ByteTrack ids stable)
+cameras:
+  cam-desk:
+    source: /dev/video0
+    fps: 15
+    width: 1280
+    height: 720
+    detect_fps: 10

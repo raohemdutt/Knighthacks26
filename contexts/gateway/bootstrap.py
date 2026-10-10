@@ -25,6 +25,7 @@ from contexts.agent.application.planner import Planner
 from contexts.agent.application.qa import QA, SleepSchedule
 from contexts.agent.application.web_port import HubWebTools
 from contexts.agent.domain.rules import RuleEvaluator, load_rules
+from contexts.capture.application.service import CaptureService
 from contexts.circle.application.delivery import AgreedEventDelivery
 from contexts.circle.application.presence import PresenceBoard
 from contexts.circle.application.protocol import CircleAgent, InMemoryCircleStore
@@ -109,6 +110,7 @@ class Atlas:
     vault: Vault | None = None
     policy: Policy | None = None
     wiper: Wiper | None = None
+    capture: CaptureService | None = None  # cameras -> detector -> observations, only where there is a detector (C6)
     tasks: list[asyncio.Task] = field(default_factory=list)
 
     async def start(self) -> None:
@@ -116,6 +118,8 @@ class Atlas:
             n = await self.bus.replay_into()
             log.info("replayed %d events", n)
         self.tasks.append(asyncio.create_task(self._ticks()))
+        if self.capture:
+            self.capture.start(asyncio.get_running_loop())
 
     async def _ticks(self) -> None:
         while True:
@@ -145,6 +149,8 @@ class Atlas:
             await asyncio.sleep(TICK_S)
 
     async def stop(self) -> None:
+        if self.capture:
+            self.capture.stop()
         for t in self.tasks:
             t.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -342,8 +348,11 @@ def build(settings: Settings | None = None) -> Atlas:
     dayrun = DayRun(places, memory=memory, habits=habits, presence=presence, hub=hub,
                     config_dir=s.config_dir, data_dir=s.data_dir) if places else None
 
+    # Cameras (C1, P1, P2, P6): config/cameras.yaml; None unless a detector engine is on this machine.
+    capture = CaptureService.load(s.config_dir / "cameras.yaml", bus, models_yaml=models_yaml, data_dir=s.data_dir, policy=policy)
+
     return Atlas(settings=s, bus=bus, qa=qa, approvals=approvals, hub=hub, loop=loop, zones=zones, game=game,
                  waste=waste, circle=circle, presence=presence, zone_engine=zone_engine, sharing=sharing,
                  memory=memory, projection=projection, habits=habits, nudger=nudger,
                  presence_sync=presence_sync, board=board, vault=vault, policy=policy, wiper=wiper,
-                 places=places, dayrun=dayrun)
+                 places=places, dayrun=dayrun, capture=capture)

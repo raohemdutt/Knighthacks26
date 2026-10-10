@@ -25,9 +25,11 @@ class TrackingPipeline:
     def __init__(self, camera_id: CameraId, reader: Any, detector: Callable[[Any], list[Track]], bus: Any,
                  loop: asyncio.AbstractEventLoop, *, store: Callable[[CameraId, int, Any], FrameRef] | None = None,
                  detect_fps: float = 10, observe_every_s: float = 1.0, keyframe_every_s: float = 5.0,
-                 keepalive_s: float = 30.0, clock: Callable[[], float] = time.monotonic) -> None:
+                 keepalive_s: float = 30.0, paused: Callable[[], bool] | None = None,
+                 clock: Callable[[], float] = time.monotonic) -> None:
         self.camera_id, self.reader, self.detector, self.store = camera_id, reader, detector, store
         self._bus, self._loop, self._clock = bus, loop, clock
+        self._paused = paused or (lambda: False)  # a camera the Vault policy has paused is not looked at
         self.detect_period, self.observe_every_s = 1.0 / detect_fps, observe_every_s
         self.keyframe_every_s, self.keepalive_s = keyframe_every_s, keepalive_s
         self._stop = threading.Event()
@@ -52,7 +54,7 @@ class TrackingPipeline:
         while not self._stop.is_set():
             now = self._clock()
             item = self.reader.latest()
-            if item is None or item[0] == last_seq or now < next_detect:
+            if item is None or item[0] == last_seq or now < next_detect or self._paused():
                 self._stop.wait(0.005)
                 continue
             seq, ts_ms, frame = item
