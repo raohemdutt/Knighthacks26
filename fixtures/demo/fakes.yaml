@@ -17,6 +17,7 @@ perception:
   - {type: perception.scene.described, at: 12, caption: "On the desk: keys (next to the mug).", frame_ref: "frames:cam-desk:12"}
   - {type: perception.faces.counted, at: 14, count: 2, facing: 1}
   - {type: perception.person.lost, at: 30}
+  - {type: perception.identity.changed, at: 31, enabled: false, members: []}  # leave recognition off, so habits stay with the one unnamed tracker
 
 connectors:
   - {type: connector.item.synced, at: 0, external_id: "cop4533:assignment:88213", title: "Project - Milestone1 Fall2026 [COP4533]",
