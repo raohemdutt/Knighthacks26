@@ -3,6 +3,12 @@ import { cameraName, dayTime, hostOf, safeUrl } from "@/lib/format";
 import { Keyframe } from "./Keyframe";
 import ui from "./ui.module.css";
 
+/** "cam-desk-1791606660000" -> "Desk camera episode": the box names an episode after its camera and start time. */
+function episodeName(id: string): string {
+  const camera = /^(.+)-\d{10,}$/.exec(id)?.[1];
+  return camera ? `${cameraName(camera)} episode` : `Camera episode ${id}`;
+}
+
 /**
  * The evidence behind an answer. Every citation is shown: camera frames as
  * images, outside sources as titled links, and sources with neither (a group
@@ -47,7 +53,7 @@ export function Evidence({ citations }: { citations: Citation[] }) {
                     {c.title || hostOf(url)}
                   </a>
                 ) : (
-                  <span>{c.title || c.url || (c.episode_id ? `Camera episode ${c.episode_id}` : "Source without a title")}</span>
+                  <span>{c.title || c.url || (c.episode_id ? episodeName(c.episode_id) : "Source without a title")}</span>
                 )}
                 <span className={ui.frameCaption}>{[url ? hostOf(url) : null, dayTime(c.ts)].filter(Boolean).join(" · ")}</span>
               </li>
