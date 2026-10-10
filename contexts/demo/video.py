@@ -8,6 +8,7 @@ The general judges press nothing and watch slots 0 to 2.
     python -m contexts.demo video check atlas.mp4   # duration within tolerance, and where each key lands
     python -m contexts.demo video chapters          # the YouTube description: index card + chapters
     python -m contexts.demo video cards             # one title card per slot, as HTML to screen-capture
+    python -m contexts.demo video json              # the timeline for the Remotion project (video/src/timeline.json)
 """
 
 import html
@@ -17,6 +18,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+FPS = 30
 DURATION_S = 598.0  # Devpost cap is 10:00; stay under it
 TOLERANCE_S = 0.1  # key 9 lands at 90%, so a long export shifts it by 0.9 x the overrun
 SLOT_S = DURATION_S / 10
@@ -135,3 +137,21 @@ def cards() -> str:
                                  watchers=html.escape(" · ".join(watchers(s.key))))
                      for s in SLOTS)
     return f"<!doctype html><meta charset=utf-8><title>Atlas video title cards</title><body style=margin:0>{body}</body>"
+
+
+def timeline(clips_dir: Path = Path("video/public/clips")) -> dict:
+    """The Remotion project's timeline (D12): frame-exact slots, so the number keys land where the edit puts them.
+    A slot's screen recording is used when `video/public/clips/slot-<key>.mp4` exists."""
+    slot_frames = round(SLOT_S * FPS)
+    assert slot_frames * 10 == round(DURATION_S * FPS), "a slot must be a whole number of frames"
+    return {
+        "fps": FPS,
+        "duration_frames": slot_frames * 10,
+        "slot_frames": slot_frames,
+        "index_card": index_card(),
+        "tracks": [{"name": t.name, "key": t.key} for t in TRACKS],
+        "slots": [{"key": s.key, "title": s.title, "shows": s.shows, "watchers": watchers(s.key),
+                   "start_frame": s.key * slot_frames, "stamp": stamp(s.key * SLOT_S),
+                   "clip": f"clips/slot-{s.key}.mp4" if (clips_dir / f"slot-{s.key}.mp4").exists() else None}
+                  for s in SLOTS],
+    }
