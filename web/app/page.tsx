@@ -307,8 +307,7 @@ export default function AskPage() {
         <div className={ui.pageHead}>
           <h1>Ask Atlas</h1>
           <p className={ui.muted}>
-            Ask out loud or by typing, about your {w.workplace}, your {w.event_plural} or your evening, or just talk. Answers from memory come with the
-            camera frames and links they are based on, and every answer names the model that wrote it.
+            Ask about your {w.workplace}, your {w.event_plural} or your evening. Answers show the camera frames and links they come from.
           </p>
         </div>
       ) : null}

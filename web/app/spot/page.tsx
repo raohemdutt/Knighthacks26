@@ -109,7 +109,7 @@ export default function SpotPage() {
     return (
       <div className={s.page}>
         <div className={s.head}>
-          <h1>Inspection (SPOT)</h1>
+          <h1>Inspection</h1>
         </div>
         <Empty title="No inspection data on this box yet">{o.note}</Empty>
       </div>
@@ -124,7 +124,7 @@ export default function SpotPage() {
       <div className={s.page}>
         <div className={s.head}>
           <div>
-            <h1>Inspection (SPOT)</h1>
+            <h1>Inspection</h1>
             <p className={`${s.small} ${s.muted}`}>
               {o.counts?.missions} missions, {o.counts?.actions} actions, {o.counts?.anomalies} anomalies · data to {o.now?.replace("T", " ").slice(0, 16)} · synthetic challenge data
             </p>

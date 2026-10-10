@@ -37,10 +37,10 @@
   gap: 10px;
   padding: 8px 16px;
   font-size: 1.5rem;
-  background: var(--accent-soft);
-  color: var(--accent);
-  border: 1px solid var(--accent);
-  border-radius: 999px;
+  background: var(--surface);
+  color: var(--accent-text);
+  box-shadow: var(--sh-inset-sm);
+  border-radius: var(--radius-pill);
 }
 
 .badge b {
@@ -48,22 +48,26 @@
 }
 
 .badgeWarn {
-  background: rgba(255, 200, 87, 0.14);
-  color: #ffc857;
-  border-color: #ffc857;
+  background: rgba(138, 90, 0, 0.1);
+  color: var(--watch);
 }
 
 .badgeLink {
   text-decoration: none;
-  background: transparent;
+  background: var(--surface);
   color: var(--muted);
-  border-color: var(--line);
+  box-shadow: var(--sh-raised-sm);
+  min-height: var(--tap);
+  transition: box-shadow var(--ease-press);
+}
+
+.badgeLink:active {
+  box-shadow: var(--sh-inset-sm);
 }
 
 .badgeBad {
   background: var(--danger-soft);
   color: var(--danger);
-  border-color: var(--danger);
 }
 
 .cameras {
@@ -78,7 +82,7 @@
   flex-direction: column;
   min-height: 0;
   background: var(--surface);
-  border: 1px solid var(--line);
+  box-shadow: var(--sh-raised);
   border-radius: var(--radius);
   overflow: hidden;
 }
@@ -87,7 +91,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 16px;
+  padding: 14px 20px;
 }
 
 .cameraName {
@@ -96,13 +100,13 @@
 }
 
 .pill {
-  padding: 4px 12px;
+  padding: 4px 14px;
   font-size: 1.2rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }
 
 .pillOk {
-  color: var(--accent);
+  color: var(--accent-text);
   background: var(--accent-soft);
 }
 
@@ -115,7 +119,10 @@
   position: relative;
   flex: 1;
   min-height: 0;
-  background: #000;
+  margin: 0 12px 12px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--media-bg);
 }
 
 .view img,
@@ -139,15 +146,15 @@
 }
 
 .zone {
-  fill: rgba(92, 225, 198, 0.1);
-  stroke: var(--accent);
+  fill: rgba(96, 165, 250, 0.12);
+  stroke: #93c5fd;
   stroke-width: 4;
   stroke-dasharray: 14 10;
 }
 
 .zoneLabel {
   font-size: 34px;
-  fill: var(--accent);
+  fill: #bfdbfe;
   paint-order: stroke;
   stroke: #000;
   stroke-width: 6px;
@@ -176,9 +183,9 @@
 }
 
 .panel {
-  padding: 16px 20px;
+  padding: 20px 24px;
   background: var(--surface);
-  border: 1px solid var(--line);
+  box-shadow: var(--sh-raised);
   border-radius: var(--radius);
 }
 
@@ -207,13 +214,15 @@
   height: 14px;
   margin-top: 12px;
   background: var(--surface-2);
-  border-radius: 999px;
+  box-shadow: var(--sh-inset-sm);
+  border-radius: var(--radius-pill);
   overflow: hidden;
 }
 
 .bar div {
   height: 100%;
-  background: var(--accent);
+  border-radius: var(--radius-pill);
+  background: linear-gradient(90deg, var(--accent-bright), var(--accent));
   transition: width 0.4s ease;
 }
 
@@ -258,7 +267,7 @@
 }
 
 .tickGood {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 /* A narrow window (a phone, a half-width laptop): stack instead of squeezing. */
@@ -294,7 +303,7 @@
 }
 
 .voice_thinking .voiceDot {
-  background: #ffc857;
+  background: var(--watch);
 }
 
 .voice_speaking .voiceDot,
@@ -329,26 +338,30 @@
   font: inherit;
   font-size: 1.4rem;
   font-weight: 600;
-  border-radius: 999px;
+  border: 0;
+  border-radius: var(--radius-pill);
   cursor: pointer;
+  transition: box-shadow var(--ease-press);
 }
 
 .voicePrimary {
-  color: #04120f;
+  color: var(--accent-ink);
   background: var(--accent);
-  border: 1px solid var(--accent);
+  box-shadow: 5px 5px 14px rgba(170, 200, 245, 0.32), -5px -5px 12px var(--sh-light);
+}
+
+.voicePrimary:active {
+  box-shadow: inset 4px 4px 10px rgba(10, 30, 90, 0.45), inset -3px -3px 8px rgba(120, 160, 255, 0.35);
 }
 
 .voiceSecondary {
   color: var(--text);
-  background: transparent;
-  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: var(--sh-raised);
 }
 
-.voicePrimary:focus-visible,
-.voiceSecondary:focus-visible {
-  outline: 3px solid var(--text);
-  outline-offset: 2px;
+.voiceSecondary:active {
+  box-shadow: var(--sh-inset);
 }
 
 .voiceAnswer {
@@ -360,5 +373,5 @@
 .voiceNote {
   margin: 8px 0 0;
   font-size: 1.3rem;
-  color: #ffc857;
+  color: var(--watch);
 }

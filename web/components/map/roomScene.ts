@@ -81,10 +81,10 @@ export interface SceneOptions {
   onPick: (id: string) => void;
 }
 
-export const ROUTE_COLORS = [0x5ce1c6, 0xffa94d, 0xb794f6];
+export const ROUTE_COLORS = [0x2563eb, 0xe08a1e, 0x8e6fd8];
 const MEMBER_COLORS = [0xe8724a, 0x8e6fd8, 0x3fa7d6, 0xd6a13f];
 const PERSON = 0x7d8ea3;
-const ZONE_COLORS: Record<string, number> = { door: 0xf0b85a, desk: 0x5ce1c6, recycling: 0x4f9df0, trash: 0xaab3bd };
+const ZONE_COLORS: Record<string, number> = { door: 0xf0b85a, desk: 0x3b82f6, recycling: 0x2f9e8f, trash: 0xaab3bd };
 const MOVE_MS = 1000; // observations arrive once a second: a figure takes that long to reach the new spot
 const FOV = 30;
 
@@ -225,7 +225,7 @@ export class RoomScene {
   ) {
     this.view = opts.view;
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
-    const backdrop = new THREE.Color(0x1c2229);
+    const backdrop = new THREE.Color(0xe6ebf3);
     try {
       backdrop.setStyle(getComputedStyle(host).backgroundColor);
     } catch {
@@ -844,7 +844,7 @@ export class RoomScene {
     this.pinsGroup = new THREE.Group();
     for (const pin of pins) {
       const on = pin.id === selected;
-      const color = on ? 0x5ce1c6 : 0xf3f5f7;
+      const color = on ? 0x2563eb : 0x566176;
       const g = new THREE.Group();
       const tall = 0.62;
       const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, tall, 8), new THREE.MeshStandardMaterial({ color, roughness: 0.5 }));
@@ -854,7 +854,7 @@ export class RoomScene {
       tip.position.y = tall - 0.03;
       const head = new THREE.Mesh(new THREE.SphereGeometry(on ? 0.11 : 0.095, 18, 12), new THREE.MeshStandardMaterial({ color, roughness: 0.35, emissive: color, emissiveIntensity: on ? 0.35 : 0.12 }));
       head.position.y = tall + 0.08;
-      const ring = new THREE.Mesh(new THREE.RingGeometry(0.1, 0.135, 28), new THREE.MeshBasicMaterial({ color: 0x5ce1c6, transparent: true, opacity: on ? 0.95 : 0.6, depthWrite: false, side: THREE.DoubleSide }));
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.1, 0.135, 28), new THREE.MeshBasicMaterial({ color: 0x2563eb, transparent: true, opacity: on ? 0.95 : 0.6, depthWrite: false, side: THREE.DoubleSide }));
       ring.rotation.x = -Math.PI / 2;
       ring.position.y = 0.012;
       ring.renderOrder = 5;

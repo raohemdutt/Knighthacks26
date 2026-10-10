@@ -97,7 +97,7 @@ export default function RoomMapPage() {
     <>
       <div className={ui.pageHead}>
         <h1>Room map</h1>
-        <p className={ui.muted}>The zones the cameras watch, where your things were last seen, and the way to the right bin.</p>
+        <p className={ui.muted}>Where the cameras look, where your things were last seen, and the way to the bin.</p>
       </div>
 
       {CAMERAS.length === 0 ? (

@@ -24,8 +24,10 @@ The first four bullets belong to this flow and are replaced whole. The Needs a h
 also carries the "Lab rulings waiting on you" segment that `python -m lab rulings mirror` keeps there, and
 whatever else a person or another agent wrote. Only the segment this flow wrote (the signed prefix, "Lab
 digest:", and a closing "(digest <8 hex digits>)") is ever replaced, in place; everything else on the line is
-kept as it stands, the rulings segment included. The answer says whether that rulings segment is current,
-stale or missing, so a stale one can be refreshed with `python -m lab rulings mirror`.
+kept as it stands, the rulings segment included. The signed prefix is "Ilan's agent", a middle dot and the time;
+segments written before the no-emoji rule have a robot sign in front of it, and both forms are this flow's own.
+The answer says whether that rulings segment is current, stale or missing, so a stale one can be refreshed with
+`python -m lab rulings mirror`.
 
 Plan changes. Every board change a refinement pass or the merge pass makes is one line on the "Plan changes"
 item under "## FYI" on Ilan's Team Comms page (lab/refine/PASS_RULES.md, "Telling Ilan what changed"). The
@@ -34,8 +36,9 @@ and lab/refine/MERGE_LOG.md has its line, once. A line has the shape the rules g
 `<track> pass <N>, <task ID>: <what changed>. Was: "<before>". Why: <reason>. Source: <citation>.`, with the
 signed prefix, and goes after the item's last child (the item is created first when it is missing). A change
 counts as posted when the item already has a line, from a pass or from an earlier run, that starts with the
-same `<label>, <task ID>:` after its signed prefix; each such line covers one change of that label and task,
-the earliest first, and a "reverted change" line covers none.
+same `<label>, <task ID>:` after its signed prefix, whatever that prefix says (with or without the robot sign,
+under any agent's name, or none at all); each such line covers one change of that label and task, the earliest
+first, and a "reverted change" line covers none.
 
 Idempotent. The facts of the section are named by an id (8 hex digits over the four bodies and whether the
 board snapshot is stale, not the clock or the ledger's size), shown on the Last update bullet. A page that
@@ -121,9 +124,12 @@ CLIP_WHY = 300
 CLIP_SOURCE = 300
 CLIP_NOTE = 200      # of a free-text field in an error
 
-_TIME = r" [A-Z][a-z]{2} [0-9]{1,2}:[0-9]{2} [AP]M"
-_STAMP = re.escape(rulings.SIGNER) + _TIME + " ET:"
-_LOOSE_STAMP = re.escape(rulings.SIGNER) + _TIME + "(?: ET)?:"  # a pass may leave out the ET
+# This flow's own signature, as it writes it now and as it wrote it before the robot sign was dropped.
+_STAMP = rulings.STAMP_PATTERN
+# The signature of a plan-change line, whoever wrote it: a name and a time, which holds no colon but the one inside
+# a clock time and ends at the colon that closes it, or no signature at all. Only the label and the task say which
+# change a line covers.
+_SIGNATURE = r"(?:(?:[^\n:]|(?<=[0-9]):(?=[0-9]))*: )?"
 _DIGEST_MARK = re.compile(r"\(digest (?P<id>[0-9a-f]{8})\)")
 _OWN_SEGMENT = re.compile(_STAMP + " " + re.escape(SEGMENT_PHRASE) + r".*?" + _DIGEST_MARK.pattern)
 _RULINGS_SEGMENT = re.compile(_STAMP + " " + re.escape(rulings.PHRASE) + r".*?\(list (?P<id>[0-9a-f]{8})\)")
@@ -134,7 +140,7 @@ _BULLET = re.compile(r"^(?P<indent>[ \t]*)- \*\*(?P<label>[^*\n]+?):\*\*(?P<body
 _NEEDS_LINE = re.compile(r"^(?P<head>[ \t]*- \*\*" + re.escape(NEEDS) + r":\*\*)(?P<body>.*)$")
 _PLAN_ITEM = re.compile(r"^(?P<indent>[ \t]*)- \*\*Plan changes\*\*")
 _PLAN_CHILD = re.compile(
-    r"^(?P<indent>[ \t]+)- (?:" + _LOOSE_STAMP + r" )?"
+    r"^(?P<indent>[ \t]+)- " + _SIGNATURE +
     r"(?P<label>[a-z][a-z0-9-]* pass [0-9]+|merge [0-9]+), (?P<task>[A-Za-z0-9]+): (?P<rest>.*)$"
 )
 _TASK_ID = re.compile(r"\b[A-Z]{1,3}[0-9]{1,3}[a-z]?\b")
@@ -459,7 +465,7 @@ class PlanChange:
 
     @property
     def covers(self) -> str:
-        """What a line on the page starts with, after its signed prefix, to count as this change's."""
+        """What a line on the page starts with, after its signed prefix (whoever signed it), to count as this change's."""
         return f"{self.label}, {self.task}:"
 
 
@@ -564,7 +570,8 @@ def plan_edit(page: str, changes: Sequence[PlanChange], moment: dt.datetime) -> 
 def print_plan(section: Section | None, changes: Sequence[PlanChange] | None, moment: dt.datetime) -> list[dict[str, Any]]:
     """Where each text goes and how a session applies it, for use when no Notion client is available."""
     sign = rulings.stamp(moment)
-    earlier = f"an earlier segment of this flow: it starts with '{rulings.SIGNER}', a time and '{SEGMENT_PHRASE}' and ends at '(digest <8 hex digits>)'"
+    earlier = (f"an earlier segment of this flow: it starts with '{rulings.SIGNER}' (older segments have a robot sign in front of it), "
+               f"a time and '{SEGMENT_PHRASE}' and ends at '(digest <8 hex digits>)'")
     posts: list[dict[str, Any]] = []
     if section is not None:
         rendered = render(section, moment)
@@ -592,8 +599,9 @@ def print_plan(section: Section | None, changes: Sequence[PlanChange] | None, mo
             "where": "as child bullets of the item above, which is under '## FYI (no reply needed)'; add each line after the item's last child, "
                      "one tab deeper than the item, and create the item first, directly under the heading, when it is missing",
             "lines": [{"covers": change.covers, "text": f"- {sign} {change.text}"} for change in changes],
-            "skip_if_page_shows": "a child line that already starts, after its signed prefix, with the same '<label>, <task>:'; each such line "
-                                  "covers one change with that label and task, the earliest first, and a 'reverted change' line covers none",
+            "skip_if_page_shows": "a child line that already starts, after its signed prefix (whatever it says: with or without the robot sign, "
+                                  "under any agent's name, or none), with the same '<label>, <task>:'; each such line covers one change "
+                                  "with that label and task, the earliest first, and a 'reverted change' line covers none",
         })
     return posts
 

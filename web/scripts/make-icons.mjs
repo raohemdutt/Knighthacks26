@@ -1,4 +1,4 @@
-// Draws the PWA icons (a lens: accent ring and dot on the app's dark background)
+// Draws the PWA icons (a lens: accent ring and dot on the app's soft light background)
 // with nothing but Node's zlib, so the repo needs no image tooling.
 //   node scripts/make-icons.mjs      -> public/icons/*.png
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -7,8 +7,8 @@ import { fileURLToPath } from "node:url";
 import { deflateSync } from "node:zlib";
 
 const OUT = join(dirname(fileURLToPath(import.meta.url)), "..", "public", "icons");
-const BG = [0x0a, 0x0c, 0x0f];
-const ACCENT = [0x5c, 0xe1, 0xc6];
+const BG = [0xee, 0xf2, 0xf8];
+const ACCENT = [0x25, 0x63, 0xeb];
 
 const CRC_TABLE = Array.from({ length: 256 }, (_, n) => {
   let c = n;
