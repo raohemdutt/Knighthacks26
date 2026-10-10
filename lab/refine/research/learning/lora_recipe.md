@@ -253,3 +253,23 @@ traced to a public source; the nearest report is a rocBLASLt library-lookup bug 
 ### Gaps
 The source for "community runs of LoRA on a 7B vision model use about 17 GB on this card with ROCm 7.2" [R10] (Context:
 Learning page) was not found; LR-2 replaces it with our own number for the 4B.
+
+## 6. Loading the student for SFT, the Gated DeltaNet kernel on ROCm, and reproducibility (learning pass 1, 2026-10-10)
+
+Added by the research step of learning pass 1. Each source was opened on 2026-10-10 before it was cited.
+
+- **[practitioner]** TRL's SFT Trainer page says a model given as a string is loaded with the architecture its config names and that "If `dtype` is not specified in `args.model_init_kwargs`, it defaults to `float32`", while a model passed as an object must be a causal LM ("Only causal language models are supported"); for vision-language models it warns that "truncating may remove image tokens" and says to set `max_length=None` unless truncation is verified; and `SFTConfig` defaults to `seed=42`, with `data_seed` and `full_determinism` available. Source: Hugging Face TRL, "SFT Trainer" (vendor doc, main), https://huggingface.co/docs/trl/main/en/sft_trainer, sections "SFTTrainer" (the model parameter), "Training Vision Language Models" and `SFTConfig` [S17]
+  - Implication: a trainer that hands TRL the model id to get the image-text class must also pass `model_init_kwargs={"dtype": torch.bfloat16}`, or it trains in float32, which roughly doubles the weights that make up most of the 8.7 GB peak and gives a trainer.samples_per_s that cannot be compared with metrics.jsonl:13. The seed and the data seed go in the run's ledger row (rubric test LT5).
+  - Candidate experiment (LR-21): load Qwen3.5-4B through SFTTrainer by id with and without `model_init_kwargs` set to bf16 and print the parameter dtype and the peak memory after 2 steps. Expected movement: trainer.peak_mem_gb roughly doubles without the dtype argument; with it the text-only peak matches the 8.7 GB of metrics.jsonl:14. Minimum sample size: 2 steps per arm, one 15-minute pod B slot.
+
+- **[practitioner]** In transformers main, `use_kernel_func_from_hub_with_fallback` tries "1. Hf kernels (if requested)", "2. Original package", "3. Torch only path", and on the last logs once that the function "is falling back to its reference PyTorch implementation because" the package "is not installed. This is correct but much slower"; the hub mapping for `chunk_gated_delta_rule` lists CUDA and XPU devices and no ROCm device. Source: huggingface/transformers, `src/transformers/integrations/hub_kernels.py::use_kernel_func_from_hub_with_fallback` and its kernel mapping (source code, main), https://github.com/huggingface/transformers/blob/main/src/transformers/integrations/hub_kernels.py [S29]
+  - Implication: on gfx1201 the hub has no Gated DeltaNet kernel to offer, so the only fast path is the `fla` package itself, which `lab/pod_b_trainer.sh deps` does not install (its line 19 installs peft, trl, transformers and the rest, not flash-linear-attention). The 0.51 samples/s of trainer.samples_per_s (metrics.jsonl:13) was most likely measured on the torch fallback for 24 of the 32 layers.
+  - Experiment: LR-15, as specified in section 4, queued on T0 by learning pass 1.
+
+- **[practitioner]** PyTorch's reproducibility notes say "Completely reproducible results are not guaranteed across PyTorch releases, individual commits, or different platforms" and that "results may not be reproducible between CPU and GPU executions, even when using identical seeds". Source: PyTorch 2.14 documentation, "Reproducibility" (vendor doc), https://docs.pytorch.org/docs/2.14/notes/randomness.html [S64]
+  - Implication: a run is reproducible from its ledger row only within measured noise, and only if the row carries the torch, ROCm, PEFT, TRL and transformers versions and the seeds (rubric test LT5); a re-run on another torch build starts a new trainer.samples_per_s baseline rather than giving an after.
+  - Experiment: EN-12, as specified in `eval_noise.md` section 4 (three seeds of one recipe), with every run's versions recorded.
+
+## Search log
+
+- 2026-10-10, learning pass 1: the search that added section 6 is logged in `eval_noise.md`, section "Search log".

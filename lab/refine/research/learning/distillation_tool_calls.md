@@ -182,3 +182,19 @@ check, before any training.
 No source opened confirms Qwen3.5 tool calling through llama.cpp end to end, and none covers how the empty thinking
 block interacts with llama.cpp's tool-call parser when `--reasoning-budget 0` is set. DT-12 and DT-13 settle both
 on our build before any training run.
+
+## 5. llama.cpp's parser for the Qwen3.5 call format (learning pass 1, 2026-10-10)
+
+Added by the research step of learning pass 1. Each source was opened on 2026-10-10 before it was cited.
+
+- **[practitioner]** On llama.cpp master at commit 8b54361 (2026-10-09), `common/chat.cpp` picks a specialised handler for any chat template that contains `<tool_call>`, `<function=` and `<parameter=` (its comment reads "Qwen3-Coder XML tool calls, also used by Nemotron Nano 3, Qwen3.5 and StepFun-3.5-Flash") and returns `common_chat_params_init_qwen3_coder`, unless the template writes `<tool_call><function=` with no newline between the tags. Source: ggml-org/llama.cpp, `common/chat.cpp::common_chat_template_detect_params_init` at 8b54361, https://github.com/ggml-org/llama.cpp/blob/8b543610254aafe121942eaf79a23c3847177270/common/chat.cpp [S63]
+  - Implication: Qwen3.5-4B's template writes those three tags [S26], which is the case this handler names, so a llama-server built from a 2026 master with `--jinja` should hand the student's calls back as OpenAI `tool_calls`, which is what `runtime/llama.py` reads [R2]. The open risk for the tool-calling held-out score moves from "no parser" to "the Jetson's build predates it or parses it differently", and the Jetson's llama.cpp commit is recorded nowhere in the repo (`jetson/atlas-llm.sh` runs `$HOME/atlas/llama.cpp/build/bin/llama-server`).
+  - Experiment: DT-12, as specified in section 4, run against the Jetson's own build with that build's commit recorded in the run's ledger row.
+
+- **[anecdote]** llama.cpp issue #22422 reports that tool-call parsing for one model family (MiniMax-M2.7) broke between server builds b8925 and b8935 with a "Failed to parse input" server error; a commenter traced it to a chat-parser change, and the reporter wrote on 2026-05-13 that it "looks like it's been fixed". The issue says nothing about Qwen3.5. Source: ggml-org/llama.cpp, GitHub issue #22422, https://github.com/ggml-org/llama.cpp/issues/22422 [S67]
+  - Implication: whether tool calls parse can change from one llama.cpp build to the next, so the tool-calling held-out score is comparable only between runs served by the same recorded build (rubric test LT5), and DT-12 is re-run after every llama.cpp rebuild on the Jetson.
+  - Experiment: DT-12, as specified in section 4, re-run after each rebuild.
+
+## Search log
+
+- 2026-10-10, learning pass 1: the search that added section 5 is logged in `eval_noise.md`, section "Search log".
