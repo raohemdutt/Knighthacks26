@@ -1,0 +1,15 @@
+[Unit]
+Description=Atlas on-device model (llama-server, Qwen3.5-4B)
+After=network.target
+
+[Service]
+User=@USER@
+WorkingDirectory=@REPO@
+ExecStart=@REPO@/jetson/atlas-llm.sh
+Restart=always
+RestartSec=3
+# Model load takes a while on the Orin Nano; don't let systemd give up on it.
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target
