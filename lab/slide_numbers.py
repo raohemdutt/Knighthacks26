@@ -180,8 +180,9 @@ def measured_rows(client: httpx.Client, stats_url: str | None, telemetry: list[s
         for name, keys in KEYS.items():
             for k in keys:
                 v = stats.get(k)
-                if isinstance(v, dict) and v.get("value") is not None:  # {value, ts, source, low_confidence}
-                    offer(Row(name, str(v["value"]), v.get("source") or stats_url, v.get("ts"), low=bool(v.get("low_confidence"))))
+                if isinstance(v, dict):  # {value, ts, source, low_confidence}; a null value comes with only its reason
+                    if v.get("value") is not None:
+                        offer(Row(name, str(v["value"]), v.get("source") or stats_url, v.get("ts"), low=bool(v.get("low_confidence"))))
                     break
                 if v is not None:
                     offer(Row(name, str(v), stats_url))  # a bare number: when it was measured is unknown

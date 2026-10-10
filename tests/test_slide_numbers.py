@@ -70,3 +70,26 @@ def test_lab_numbers_cite_their_row_measurement_time_and_low_confidence(tmp_path
     assert "| Teacher tok/s (R9700) | 7.7 tok/s | metrics.jsonl:2 | 2026-10-10T10:22:13Z | no |" in md  # timed row beats a bare number
     assert "| Teacher joules per token | 25.97 J/token | metrics.jsonl:3 | 2026-10-10T10:22:13Z | LOW |" in md
     assert "| Watts, R9700 | 210 | R5 stats | 2026-10-10T11:00:00Z | no |" in md  # the endpoint's newer measurement wins
+
+
+def test_a_stats_figure_served_as_null_with_a_reason_is_not_printed_as_a_value(tmp_path):
+    """/runtime/stats (R5) serves a figure nothing has recorded as {value: null, reason}: the lab row fills it, or TBD."""
+    metrics = tmp_path / "metrics.jsonl"
+    metrics.write_text(json.dumps({"metric": "teacher.decode_tok_s", "value": 7.7, "unit": "tok/s",
+                                   "ts": "2026-10-10T10:22:13Z", "low_confidence": False}) + "\n")
+    stats = {
+        "teacher_tok_s": {"value": None, "unit": "tok/s", "ts": None, "source": None, "low_confidence": False,
+                          "reason": "not recorded yet: telemetry is off on this box"},
+        "detector_fps": {"value": None, "unit": "frames/s", "ts": None, "source": None, "low_confidence": False,
+                         "reason": "not recorded yet: no detector.fps row for node jetson"},
+    }
+
+    def handle(request):
+        return httpx.Response(200, json=stats)
+
+    client = httpx.Client(transport=httpx.MockTransport(handle))
+    md = slide.table(slide.measured_rows(client, "http://box/runtime/stats", [], metrics_file=metrics,
+                                        ledger_dir=str(tmp_path / "no-ledger")))
+    assert "| Teacher tok/s (R9700) | 7.7 tok/s | metrics.jsonl:1 | 2026-10-10T10:22:13Z | no |" in md
+    assert "| Detector FPS (Jetson) | [TBD: R5 stats, T1-T4 telemetry or a lab metrics row not recorded yet] |" in md
+    assert "reason" not in md
