@@ -7,12 +7,14 @@ the same example the refine-merge skill shows) is built in a temporary folder an
 edits of it show that each rule reports exactly what is wrong.
 """
 
+import json
 from pathlib import Path
 
 import pytest
 
 from lab.machine import refine_formats as rf
 from lab.machine import refine_merge as rm
+from lab.machine import refine_track as rt
 
 REFINE = Path(__file__).resolve().parents[1] / "lab" / "refine"
 
@@ -155,7 +157,7 @@ def report(track: str, number: int, date: str = "2026-10-10") -> str:
     return (
         f"Verbatim report returned by {track} refinement pass {number} (Opus sitting), {date}. "
         f"The log entry it appended is in lab/refine/{track}/REFINE_LOG.md.\n"
-        f"Ended: {date}T11:00:00-04:00\n\n---\n\nThe report.\n"
+        f"Ended: {date}T11:00:00-04:00\n\n---\n\nThe report.\n\n```text\n## Pass {number}, {date}\n```\n"
     )
 
 
@@ -598,47 +600,72 @@ def test_a_track_with_two_valid_passes_their_counter_and_reports_passes(tmp_path
     assert rm.check_tree(root) == []
 
 
+def test_the_merge_and_the_track_check_report_the_same_track_problems(tmp_path):
+    """refine_track.check_track and the merge's check_tree read one track folder by the same rules: here a report
+    written for another pass, which only the track check used to see, and a report with no pass in the log, which
+    only the merge check used to see."""
+    wrong_pass = report("kernels", 1).replace("kernels refinement pass 1 (", "kernels refinement pass 2 (")
+    root = track_files(tmp_path, pass_entry(1), "1\n", {1: wrong_pass, 3: report("kernels", 3)})
+    metrics = tmp_path / "metrics.jsonl"
+    row = {"metric": "pod.idle_watts", "value": 39, "unit": "W", "node": "pod-a"}
+    metrics.write_text("{}\n" * 4 + json.dumps(row) + "\n", encoding="utf-8")
+
+    track_side = rt.check_track(root / "kernels", metrics)
+
+    assert track_side == [
+        "pass_reports/pass_01.md: the first line must read 'Verbatim report returned by kernels refinement pass 1 (...'",
+        "pass_reports/pass_03.md has no pass 3 in REFINE_LOG.md",
+    ]
+    assert rm.check_tree(root) == [f"kernels: {problem}" for problem in track_side]
+
+
 @pytest.mark.parametrize(
     ("entries", "counter", "reports", "expected"),
     [
         (
             pass_entry(1) + pass_entry(2),
             "1\n",
-            {1: "Ended: 2026-10-10T11:00:00-04:00\n", 2: "Ended: 2026-10-10T12:00:00-04:00\n"},
-            ["kernels: refine_pass.txt reads 1, but the last pass entry is pass 2"],
+            {1: report("kernels", 1), 2: report("kernels", 2)},
+            ["kernels: refine_pass.txt reads 1 but the log's last pass entry is pass 2; a pass writes the counter last, after its entry"],
         ),
         (
             pass_entry(1),
             "1\n",
             {},
-            ["kernels: pass 1 has no report pass_reports/pass_01.md"],
+            ["kernels: pass 1 has no report at pass_reports/pass_01.md"],
         ),
         (
             pass_entry(1),
             "1\n",
-            {1: "Ended: 2026-10-10T11:00:00-04:00\n", 2: "Ended: 2026-10-10T12:00:00-04:00\n"},
+            {1: report("kernels", 1), 2: report("kernels", 2)},
             ["kernels: pass_reports/pass_02.md has no pass 2 in REFINE_LOG.md"],
         ),
         (
             pass_entry(1),
             "1\n",
-            {1: "Ended: 2026-10-10T11:00:00\n"},
+            {1: report("kernels", 1).replace("T11:00:00-04:00", "T11:00:00")},
             [
                 "kernels: pass_reports/pass_01.md: 'Ended: 2026-10-10T11:00:00' has no UTC offset, "
                 "for example 2026-10-10T06:52:00-04:00"
             ],
         ),
         (
+            pass_entry(1),
+            "1\n",
+            {1: report("kernels", 1).replace("## Pass 1, 2026-10-10", "## Pass 1, 2026-10-11")},
+            ["kernels: pass_reports/pass_01.md: does not quote its entry; no line reads '## Pass 1, 2026-10-10'"],
+        ),
+        (
             pass_entry(2),
             "2\n",
-            {2: "Ended: 2026-10-10T11:00:00-04:00\n"},
-            ["kernels: pass entries are numbered 1 to 1 in file order, found [2]"],
+            {2: report("kernels", 2)},
+            ["kernels: REFINE_LOG.md: pass entries must be numbered 1 to 1 in file order, found [2]"],
         ),
         (
             edit(pass_entry(1), "| pod.idle_watts | 39 | W | pod-a | no server loaded | metrics.jsonl:5 |\n", ""),
             "1\n",
-            {1: "Ended: 2026-10-10T11:00:00-04:00\n"},
-            ["kernels pass 1: 'Metrics before' needs a table with at least one reading"],
+            {1: report("kernels", 1)},
+            ["kernels: REFINE_LOG.md: pass 1: 'Metrics before' needs a table with at least one reading"],
         ),
     ],
 )

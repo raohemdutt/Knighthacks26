@@ -17,7 +17,9 @@ invariants of a track's files that the merge pass relies on when it judges a rou
 - A change to a RUBRIC.md or to a Priority cites an answered ruling as '<track>/OWNER_RULINGS.md <n>'. A file
   name Notion turned into a link, [OWNER_RULINGS.md](http://OWNER_RULINGS.md), reads as the name.
 - A track's pass entries are numbered 1, 2, 3 in file order and each is valid; refine_pass.txt equals the
-  last pass number; every pass has its report with an Ended line, and no report lacks its pass.
+  last pass number; every pass has its report, whose first line names its track and pass, whose second line
+  says when it ended and which quotes its entry's heading; and no report lacks its pass. check_track states
+  these once, and refine_track.check_track reads a track folder through it.
 - A track's rulings are numbered 1, 2, 3 in file order, and each names its origin.
 
 Every check returns a list of problems, one sentence each; an empty list means everything holds.
@@ -44,6 +46,7 @@ __all__ = [
     "check_track",
     "check_tree",
     "next_merge_number",
+    "read_reports",
     "reconciled",
     "round_passes",
     "walked_passes",
@@ -73,6 +76,7 @@ _RULING_CITATION = re.compile(rf"\b(?P<track>{_TRACK})/OWNER_RULINGS\.md,?\s+(?:
 _NEEDS_RULING = re.compile(r"RUBRIC\.md|\bPriority\b")
 _ORIGIN = re.compile(r"pass [0-9]+|merge [0-9]+|owner, [0-9]{4}-[0-9]{2}-[0-9]{2}")
 _REPORT_NAME = re.compile(r"pass_(?P<number>[0-9]{2,})\.md")
+_REPORT_FIRST_LINE = re.compile(r"^Verbatim report returned by (?P<track>[a-z]+) refinement pass (?P<number>[0-9]+) \(")
 
 
 @dataclass(frozen=True)
@@ -277,29 +281,70 @@ def check_merge_log(
     return problems
 
 
+def read_reports(track_dir: Path) -> dict[int, str]:
+    """The pass reports in a track folder, pass_reports/pass_NN.md, by pass number; {} when there is no such folder."""
+    folder = Path(track_dir) / "pass_reports"
+    if not folder.is_dir():
+        return {}
+    reports: dict[int, str] = {}
+    for path in sorted(folder.iterdir()):
+        name = _REPORT_NAME.fullmatch(path.name)
+        if name and path.is_file():
+            reports[int(name["number"])] = path.read_text(encoding="utf-8")
+    return reports
+
+
 def check_track(track: str, log: rf.Log, counter: int | None, reports: Mapping[int, str]) -> list[str]:
-    """List what one track's files break. counter is the value of refine_pass.txt (None skips that check);
-    reports maps a pass number to the text of pass_reports/pass_NN.md."""
+    """List what one track's files break, each problem named by the file it is in. counter is the value of
+    refine_pass.txt (None skips that check); reports maps a pass number to the text of pass_reports/pass_NN.md.
+
+    This is the one statement of a track folder's rules. The merge pass reads it through check_tree, and a track
+    pass through refine_track.check_track, which adds what only a pass checks (metric citations, dry runs).
+    """
     problems: list[str] = []
     numbers = [entry.number for entry in log.passes]
     if numbers != list(range(1, len(numbers) + 1)):
-        problems.append(f"{track}: pass entries are numbered 1 to {len(numbers)} in file order, found {numbers}")
+        problems.append(f"REFINE_LOG.md: pass entries must be numbered 1 to {len(numbers)} in file order, found {numbers}")
     last = numbers[-1] if numbers else 0
     if counter is not None and counter != last:
-        problems.append(f"{track}: refine_pass.txt reads {counter}, but the last pass entry is pass {last}")
+        problems.append(
+            f"refine_pass.txt reads {counter} but the log's last pass entry is "
+            f"{f'pass {last}' if numbers else 'none'}; a pass writes the counter last, after its entry"
+        )
     for entry in log.passes:
-        problems.extend(f"{track} {problem}" for problem in rf.check_pass_entry(entry))
-    for number in numbers:
-        text = reports.get(number)
+        problems.extend(f"REFINE_LOG.md: {problem}" for problem in rf.check_pass_entry(entry))
+    for entry in log.passes:
+        text = reports.get(entry.number)
         if text is None:
-            problems.append(f"{track}: pass {number} has no report pass_reports/pass_{number:02d}.md")
-            continue
-        try:
-            rf.parse_report_end(text)
-        except rf.FormatError as error:
-            problems.append(f"{track}: pass_reports/pass_{number:02d}.md: {error}")
+            problems.append(f"pass {entry.number} has no report at pass_reports/pass_{entry.number:02d}.md")
+        else:
+            problems.extend(_report_problems(track, entry, text))
     for number in sorted(set(reports) - set(numbers)):
-        problems.append(f"{track}: pass_reports/pass_{number:02d}.md has no pass {number} in REFINE_LOG.md")
+        problems.append(f"pass_reports/pass_{number:02d}.md has no pass {number} in REFINE_LOG.md")
+    return problems
+
+
+def _report_problems(track: str, entry: rf.PassEntry, text: str) -> list[str]:
+    """A pass report's first line names its track and pass, its second line says when the pass ended, and it
+    quotes its entry's heading (lab/refine/TEMPLATES.md, section 4)."""
+    name = f"pass_reports/pass_{entry.number:02d}.md"
+    lines = text.replace("\r\n", "\n").split("\n")
+    problems: list[str] = []
+    first = _REPORT_FIRST_LINE.match(lines[0])
+    if not first or (first["track"], int(first["number"])) != (track, entry.number):
+        problems.append(
+            f"{name}: the first line must read 'Verbatim report returned by {track} refinement pass {entry.number} (...'"
+        )
+    if len(lines) < 2 or not lines[1].startswith("Ended:"):
+        problems.append(f"{name}: the second line must state when the pass ended: 'Ended: <date>T<time><offset>'")
+    else:
+        try:
+            rf.parse_report_end(lines[1])
+        except rf.FormatError as error:
+            problems.append(f"{name}: {error}")
+    heading = f"## Pass {entry.number}, {entry.date}"
+    if heading not in (line.rstrip() for line in lines):
+        problems.append(f"{name}: does not quote its entry; no line reads '{heading}'")
     return problems
 
 
@@ -349,15 +394,9 @@ def check_tree(root: Path) -> list[str]:
             except rf.FormatError as error:
                 problems.append(f"{track}: {error}")
         rulings_text = read(folder / "OWNER_RULINGS.md")
-        reports: dict[int, str] = {}
-        if (folder / "pass_reports").is_dir():
-            for path in sorted((folder / "pass_reports").iterdir()):
-                name = _REPORT_NAME.fullmatch(path.name)
-                if name:
-                    reports[int(name["number"])] = path.read_text(encoding="utf-8")
         if log is not None:
             track_logs[track] = log
-            problems.extend(check_track(track, log, counter, reports))
+            problems.extend(f"{track}: {problem}" for problem in check_track(track, log, counter, read_reports(folder)))
         if rulings_text is not None:
             try:
                 rulings[track] = rf.parse_rulings(rulings_text)

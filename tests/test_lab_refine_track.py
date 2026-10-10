@@ -108,8 +108,7 @@ def test_a_pass_that_did_not_write_the_counter_is_reported(tmp_path):
     problems = rt.check_track(make_track(tmp_path, entries=[entry_text()], counter=0))
 
     assert problems == [
-        "refine_pass.txt reads 0 but the log's pass entries are numbered [1]; "
-        "they must run from 1 to the counter, which a pass writes last"
+        "refine_pass.txt reads 0 but the log's last pass entry is pass 1; a pass writes the counter last, after its entry"
     ]
 
 
@@ -117,8 +116,7 @@ def test_a_counter_ahead_of_the_log_is_reported(tmp_path):
     problems = rt.check_track(make_track(tmp_path, counter=1))
 
     assert problems == [
-        "refine_pass.txt reads 1 but the log's pass entries are numbered []; "
-        "they must run from 1 to the counter, which a pass writes last"
+        "refine_pass.txt reads 1 but the log's last pass entry is none; a pass writes the counter last, after its entry"
     ]
 
 
@@ -157,6 +155,14 @@ def test_a_report_written_for_another_pass_is_reported(tmp_path):
     assert rt.check_track(folder) == [
         "pass_reports/pass_01.md: the first line must read 'Verbatim report returned by telemetry refinement pass 1 (...'"
     ]
+
+
+def test_a_report_with_no_pass_in_the_log_is_reported(tmp_path):
+    """A report left behind for a pass the log does not hold, as after a revert that removed the entry but kept the report."""
+    folder = make_track(tmp_path, entries=[entry_text()])
+    (folder / "pass_reports" / "pass_03.md").write_text(report_text(entry_text(), number=3), encoding="utf-8")
+
+    assert rt.check_track(folder) == ["pass_reports/pass_03.md has no pass 3 in REFINE_LOG.md"]
 
 
 def test_a_report_that_does_not_quote_its_entry_is_reported(tmp_path):
