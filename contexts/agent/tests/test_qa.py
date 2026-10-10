@@ -184,3 +184,20 @@ def test_search_hits_for_connector_items_cite_their_link():
     rt = FakeRuntime(chat_replies=[call, ChatResult(content="HW 4.", model_version="v1")])
     a = asyncio.run(QA(rt, ItemSearch(), clock=lambda: NOW).ask("Anything about recursion?"))
     assert a.citations[0].url == "https://canvas/a" and a.citations[0].episode_id is None
+
+
+def test_where_is_ignores_filler_words_around_the_item():
+    """ "Where is the package now?" asked about "package now" and found nothing."""
+    from contexts.agent.application.qa import item_name
+
+    for question in ("Where are my keys now?", "Where's my keys right now?", "where are the keys at the moment",
+                     "Where is a keys currently?!", "Where did I leave my keys today?", "where are the keys again?",
+                     "Where are my keys?"):
+        q, rt = qa("On the desk.")
+        a = asyncio.run(q.ask(question))
+        assert a.text == "On the desk." and a.citations[0].frame_ref == "frames:cam-desk:k1", question
+        assert "keys last seen" in evidence_prompt(rt)
+    assert item_name("the wallet right now") == "wallet" and item_name("my package now again") == "package"
+    assert item_name("snow globe") == "snow globe"  # only whole filler words are dropped
+    q, _ = qa()
+    assert asyncio.run(q.ask("Where is the wallet now?")).text == NO_EVIDENCE  # never seen: still says so

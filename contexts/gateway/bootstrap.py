@@ -305,6 +305,7 @@ def build(settings: Settings | None = None) -> Atlas:
         game = SortIt(ZoneMap.load(camera, zones_file), SortingRules.load(sorting), start_xy=tuple(play_cfg.get("start_xy", (0.75, 0.75))))
         bus.subscribe("perception.faces", game.on_faces)
         bus.subscribe("perception.zone", game.on_zone_event)
+        bus.subscribe("play.round.scored", game.on_scored, replay=True)  # state only: rounds played before a restart
 
     # Waste Watch (E1, E2): counts rebuild from the log, so they survive restarts.
     waste = None

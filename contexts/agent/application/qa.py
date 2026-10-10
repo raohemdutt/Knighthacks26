@@ -113,7 +113,10 @@ KEYFRAME_TOOL = {
 }
 PAGE_EXCERPT = 600
 
-WHERE_IS = re.compile(r"where (?:did i (?:leave|put)|are|is|'s) (?:my |the |our )?(?P<item>[a-z ]+?)[?.!]*$")
+WHERE_IS = re.compile(r"where(?: did i (?:leave|put)| are| is|'s|\u2019s) (?P<item>[a-z ]+?)[?.!, ]*$")
+# "where is the package now?" asks about "package": words around the item that are not part of its name
+ITEM_LEAD = re.compile(r"^(?:my|the|our|an?)\s+")
+ITEM_TAIL = re.compile(r"\s+(?:right now|now|currently|at the moment|today|again)$")
 LAST_N = re.compile(r"(?:last|past) (?P<n>\d+|an?) ?(?P<unit>hours?|minutes?|mins?)")
 
 
@@ -172,6 +175,14 @@ ITEM_KINDS = {
     "assignment": re.compile(r"\b(due|deadlines?|assignments?|homework|exams?|quiz)\b"),
     "calendar_event": re.compile(r"\b(calendar|schedule|classes|meetings?|events?|happening|going on|on campus|tonight)\b"),
 }
+
+
+def item_name(text: str) -> str:
+    """The thing asked about, without "my/the/a" in front or "now / right now / at the moment" after it."""
+    text = text.strip()
+    while (cut := ITEM_TAIL.sub("", ITEM_LEAD.sub("", text)).strip()) != text:
+        text = cut
+    return text
 
 
 def upcoming_window(q: str, now: datetime, tz) -> tuple[datetime, datetime]:
@@ -311,7 +322,7 @@ class QA:
         q = question.lower().strip()
         ev = Evidence()
         if m := WHERE_IS.search(q):
-            self.last_seen(m["item"], ev)
+            self.last_seen(item_name(m["item"]), ev)
             return ev
         if ITEMS_Q.search(q) or (ITEM_THING.search(q) and FUTURE.search(q)):  # A9: "what is due this week?"
             self.upcoming_items(q, ev)

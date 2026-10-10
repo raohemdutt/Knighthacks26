@@ -244,3 +244,69 @@ def test_the_gateway_serves_both_when_the_box_has_no_circle(tmp_path, monkeypatc
         assert c.get("/api/circle/events").json()["events"] == []
         body = c.get("/api/circle/sharing").json()
         assert (body["configured"], body["sharing_now"], body["database"]) == (False, False, "not_configured")
+
+
+# --- starting a plan from the phone ---
+
+PLAN = {"title": "Study session", "start": "2026-10-11T14:00:00-04:00", "end": "2026-10-11T16:00:00-04:00",
+        "location": "Library", "invitees": ["dom", "xander"]}
+
+
+def test_a_proposal_from_the_phone_is_an_approval_card_and_sends_nothing(tmp_path):
+    """CircleAgent.propose had no caller outside tests: "find a time for all of us" could not be started."""
+    from contexts.agent.application.memory_port import FakeMemory
+    from contexts.circle.application.protocol import CircleAgent, InMemoryCircleStore
+    from contexts.workspace.domain.approvals import Approvals
+
+    store = InMemoryCircleStore()
+    me = CircleAgent("hemdutt", "team", store, FakeMemory(), clock=lambda: NOW)
+    bus, c = app(tmp_path, circle=me)
+    approvals = Approvals({"circle_share": me.share_executor})
+    bus.subscribe("agent.action.proposed", approvals.on_proposed)
+
+    r = c.post("/api/circle/proposals", json=PLAN)
+    assert r.status_code == 200 and set(r.json()) == {"action_id", "thread_id"}
+    [card] = approvals.pending()
+    assert (card.id, card.kind, card.target, card.reason) == (r.json()["action_id"], "circle_share", "team",
+                                                              "Ask the circle about Study session")
+    assert card.params["kind"] == "event_proposal" and card.params["thread_id"] == r.json()["thread_id"]
+    assert Proposal.model_validate(card.params["proposal"]) == Proposal.model_validate(PLAN)
+    assert store.messages == []  # nothing has left the box: that waits for the card
+
+    minimal = c.post("/api/circle/proposals", json={k: PLAN[k] for k in ("title", "start", "end")})
+    assert minimal.status_code == 200 and approvals.requests[minimal.json()["action_id"]].params["proposal"]["invitees"] == []
+    for bad in ({**PLAN, "end": PLAN["start"]}, {**PLAN, "title": "  "}, {**PLAN, "start": "2026-10-11T14:00:00"},
+                {k: PLAN[k] for k in ("title", "start")}):
+        assert c.post("/api/circle/proposals", json=bad).status_code == 422
+    assert len(approvals.pending()) == 2 and store.messages == []
+
+
+def test_a_proposal_without_a_circle_says_so_and_writes_need_the_token(tmp_path, monkeypatch):
+    import shutil
+
+    import yaml
+
+    from contexts.circle.infrastructure.neon import ENV_URL
+    from contexts.gateway.app import create_app
+    from contexts.gateway.bootstrap import Settings
+
+    monkeypatch.delenv(ENV_URL, raising=False)
+    off = Settings(data_dir=tmp_path / "off", token=None, connectors=False, ntfy_url=None, llm_url=None)
+    with TestClient(create_app(off)) as c:
+        r = c.post("/api/circle/proposals", json=PLAN)
+        assert (r.status_code, r.json()["detail"]) == (404, "the Circle is not configured")
+        assert c.get("/api/approvals").json() == []
+
+    config = tmp_path / "config"
+    shutil.copytree("config", config)
+    agent_yaml = yaml.safe_load((config / "agent.yaml").read_text())
+    agent_yaml["circle"] = {**(agent_yaml.get("circle") or {}), "member_id": "hemdutt", "circle_id": "team"}
+    (config / "agent.yaml").write_text(yaml.safe_dump(agent_yaml))
+    on = Settings(data_dir=tmp_path / "on", config_dir=config, token="s3cret", connectors=False, ntfy_url=None, llm_url=None)
+    with TestClient(create_app(on)) as c:
+        assert c.post("/api/circle/proposals", json=PLAN).status_code == 401
+        r = c.post("/api/circle/proposals", json=PLAN, headers={"Authorization": "Bearer s3cret"})
+        assert r.status_code == 200
+        [card] = c.get("/api/approvals").json()
+        assert (card["id"], card["kind"], card["status"]) == (r.json()["action_id"], "circle_share", "proposed")
+        assert c.app.state.atlas.circle.store.messages == []  # not approved, so not sent

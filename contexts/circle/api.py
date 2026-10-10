@@ -1,7 +1,7 @@
-"""Read-only Circle endpoints for the phone's Circle screen.
+"""Circle endpoints for the phone's Circle screen: two that only read, and one that starts a plan.
 
     app.include_router(circle_router(atlas.bus, circle=atlas.circle, sharing=atlas.sharing, presence=atlas.presence,
-                                     board=atlas.board, config_dir=atlas.settings.config_dir))
+                                     board=atlas.board, config_dir=atlas.settings.config_dir, guard=authorized))
 
 - GET /api/circle/events   the shared calendar: agreed events that have not ended, soonest first
     {"configured", "circle_id", "source": "neon"|"local"|"none", "offline",
@@ -12,8 +12,11 @@
      "database": "connected"|"offline"|"unknown"|"not_configured", "database_note", "last_reached_at",
      "queued", "sent", "last_synced_at", "oldest_queued_at",
      "kinds": [{"kind", "on", "queued", "sent", "last_synced_at"}], "place": {"place", "source", "expires_at"}|null}
+- POST /api/circle/proposals  {title, start, end, location?, invitees?} -> {"action_id", "thread_id"}
+    "Find a time for all of us": CircleAgent.propose, which only raises an approval card. Nothing is
+    sent to the Circle until the card is approved. 404 without a Circle; needs the token like other writes.
 
-Both answer 200 in every state (no Circle, no Neon, Neon offline), so the screen can say
+Both GETs answer 200 in every state (no Circle, no Neon, Neon offline), so the screen can say
 which one it is. Neither writes anything or reaches Neon for the status: `database` is what
 the box's own timer last saw.
 """
@@ -23,9 +26,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException
 
 from contexts.circle.application.calendar import AgreedEvents, CalendarRemote, upcoming
+from contracts.circle import Proposal
 
 SUMMARY_KINDS = ("habit_summary", "impact_count", "game_score")  # CircleSharing's outbox kinds
 
@@ -42,7 +46,8 @@ def _circle_config(config_dir: Path | None) -> dict:
 
 
 def circle_router(bus, *, circle=None, sharing=None, presence=None, board: CalendarRemote | None = None,
-                  config_dir: Path | None = None, clock: Callable[[], datetime] = lambda: datetime.now(UTC)) -> APIRouter:
+                  config_dir: Path | None = None, clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+                  guard: Callable | None = None) -> APIRouter:
     """`circle`, `sharing`, `presence` and `board` are the Atlas fields of the same names; any may be None."""
     router = APIRouter()
     agreed = AgreedEvents()
@@ -111,5 +116,20 @@ def circle_router(bus, *, circle=None, sharing=None, presence=None, board: Calen
             "kinds": kinds,
             "place": place,
         }
+
+    @router.post("/api/circle/proposals", dependencies=[Depends(guard)] if guard else [])
+    async def propose(body: Proposal) -> dict:
+        """Start "find a time for all of us" from the phone: an approval card, nothing sent until it is approved."""
+        if circle is None:
+            raise HTTPException(404, "the Circle is not configured")
+        if not body.title.strip():
+            raise HTTPException(422, "the plan needs a title")
+        if body.start.tzinfo is None or body.end.tzinfo is None:
+            raise HTTPException(422, "start and end need a UTC offset, e.g. 2026-10-11T14:00:00-04:00")
+        if body.end <= body.start:
+            raise HTTPException(422, "the end must be after the start")
+        action = circle.propose(body, f"Ask the circle about {body.title.strip()}")
+        await bus.publish(action)
+        return {"action_id": action.action_id, "thread_id": action.params["thread_id"]}
 
     return router

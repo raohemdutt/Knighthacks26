@@ -256,6 +256,16 @@ export interface ShareKindStatus {
   last_synced_at: string | null;
 }
 
+/** POST /api/circle/proposals (contracts.circle.Proposal). Times are ISO 8601 with a UTC offset. */
+export interface ProposalBody {
+  title: string;
+  start: string;
+  end: string;
+  location?: string;
+  /** Member ids. The plan is agreed once all of them answer free. */
+  invitees?: string[];
+}
+
 /** GET /api/circle/sharing: what leaves this box for the Circle (contexts/circle/api.py). */
 export interface CircleSharing {
   configured: boolean;
@@ -926,6 +936,8 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   leaderboard: (signal?: AbortSignal) => get<Leaderboard>("/api/circle/leaderboard", undefined, signal),
   circleEvents: (signal?: AbortSignal) => get<CircleEvents>("/api/circle/events", undefined, signal),
   circleSharing: (signal?: AbortSignal) => get<CircleSharing>("/api/circle/sharing", undefined, signal),
+  /** Raises an approval card on the box; nothing is sent to the Circle until it is approved. */
+  proposeTime: (body: ProposalBody) => post<{ action_id: string; thread_id: string }>("/api/circle/proposals", body),
 
   playRoute: (item: string, signal?: AbortSignal) => get<PlayRoute>("/api/play/route", { item }, signal),
   playAccuracy: (signal?: AbortSignal) => get<PlayAccuracy>("/api/play/accuracy", undefined, signal),

@@ -79,6 +79,36 @@ def test_play_route_and_a_round_over_the_bus(tmp_path):
         assert impact["items_seen"] == 1  # the same item, counted by Waste Watch too
 
 
+def test_sort_it_rounds_survive_a_restart(tmp_path):
+    """The log had play.round.scored, but /api/play/accuracy said `rounds: 0` after every start."""
+    from datetime import UTC, datetime, timedelta
+
+    from contracts.perception import ZoneEvent
+    from contracts.play import FacesCounted
+
+    with client(tmp_path) as c:
+        atlas = c.app.state.atlas
+        t0 = datetime.now(UTC)
+
+        async def play():
+            for s in (0, 2):
+                await atlas.bus.publish(FacesCounted(ts=t0 + timedelta(seconds=s), camera_id="cam-door", count=1, facing=1))
+            item = atlas.game.round.item
+            await atlas.bus.publish(ZoneEvent(ts=t0 + timedelta(seconds=4), camera_id="cam-door", track_id=1, label=item,
+                                              zone_id=atlas.game.rules.zone_for(item), kind="enter"))
+
+        c.portal.call(play)
+        before = c.get("/api/play/accuracy").json()
+        assert before["rounds"] == 1  # counted once, though the game also hears its own play.round.scored
+    log = sorted((tmp_path / "events").glob("*.jsonl"))
+    rounds_logged = sum(f.read_text().count('"play.round.') for f in log)
+    for _ in range(2):  # restart twice: the round is rebuilt from the log, and replay adds nothing to it
+        with client(tmp_path) as c:
+            assert c.get("/api/play/accuracy").json() == before
+            assert c.app.state.atlas.game.round is None
+    assert sum(f.read_text().count('"play.round.') for f in log) == rounds_logged == 2  # started + scored
+
+
 def test_invites_are_served_and_names_are_checked(tmp_path):
     (tmp_path / "invites").mkdir()
     (tmp_path / "invites" / "invite-20261010T120000-abc123.ics").write_text("BEGIN:VCALENDAR\nEND:VCALENDAR\n")

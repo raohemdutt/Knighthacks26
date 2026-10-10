@@ -162,3 +162,143 @@ def test_locate_finds_places_by_alias_or_name():
     assert ps.locate("until 11:15 AM \u00b7 HEC 101") == "ucf.hec"
     assert ps.locate("Study group at the John C. Hitt Library") == "ucf.library"
     assert ps.locate("Lunch at Chipotle") is None
+
+
+def _desk(id, hours_ago, *captions):
+    return Episode(id=id, camera_id="cam-desk", start=NOW - timedelta(hours=hours_ago), labels=["person"],
+                   captions=list(captions), keyframe_refs=[f"frames:cam-desk:{id}"])
+
+
+def test_food_cites_meals_not_mugs_cans_and_bottles():
+    """The answer cited the package, the keys and a water bottle, and pushed the bagels out of the last six."""
+    planner, rt = make()
+    planner.qa.memory._episodes += [
+        _desk("bagels", 6.5, "Two people eat bagels for breakfast at the table and share a coffee.",
+              "On the desk: bagel (on a plate), coffee mug."),  # one episode, cited once
+        _desk("package", 6, "A person opens the cardboard package on the table.",
+              "On the desk: package (open, in the middle of the table), keys (next to the coffee mug, left of the closed laptop)."),
+        _desk("cans", 5.5, "A person collects three empty cans from the desk."),
+        _desk("bins", 5.4, "A person drops two cans into the recycling bin and one into the trash.", "On the recycling: can (in the recycling bin)."),
+        _desk("bottle", 5, "A person holds a water bottle up to the camera, then drops it in the recycling bin."),
+        _desk("bowl", 4.5, "A person drops a food-stained takeout bowl in the recycling bin."),
+        _desk("candle", 4, "A person lights a candle next to the canvas bag."),
+        _desk("keys", 3, "On the desk: keys (left of the laptop, behind the coffee mug), laptop, phone."),
+        _desk("pizza", 2, "Three people eat pizza at the table; an open pizza box sits between the laptops."),
+        _desk("drink", 1, "A person opens an energy drink can and sets it next to the laptop."),
+    ]
+    planner.qa.planner = planner
+    a = asyncio.run(planner.qa.ask("What should I eat?"))
+    seen = [c for c in a.citations if c.episode_id]
+    assert [c.episode_id for c in seen] == ["bagels", "pizza", "drink"]  # time order, each episode once
+    assert [c.frame_ref for c in seen] == ["frames:cam-desk:bagels", "frames:cam-desk:pizza", "frames:cam-desk:drink"]
+    prompt = rt.calls[-1][1][-1].content
+    assert "Seen today at Sat 7:30 AM: Two people eat bagels for breakfast" in prompt
+    assert "On the desk" not in prompt and "water bottle" not in prompt and "No meals seen" not in prompt
+
+
+def test_food_keeps_the_meals_when_there_is_more_than_fits():
+    from contexts.agent.application.planner import MAX_MEALS, meals_seen
+
+    snacks = [_desk(f"chips{n}", 5 - n / 2, "A bag of chips lies next to the keyboard.") for n in range(MAX_MEALS + 2)]
+    breakfast = _desk("bagels", 6, "Two people eat bagels for breakfast.")
+    kept = meals_seen([breakfast, *snacks])
+    assert len(kept) == MAX_MEALS and kept[0][0].id == "bagels"  # the real meal stays; the oldest snacks go
+    assert [ep.start for ep, _ in kept] == sorted(ep.start for ep, _ in kept)
+
+
+def test_food_never_says_no_meals_beside_habits_meal_count():
+    """Round 2: "No meals seen at the desk today" next to "Habit Meals: 2 meals today"."""
+    class Habits:
+        def __init__(self, meals):
+            self.meals = meals
+
+        def digest(self, now=None):
+            return {"habits": [{"id": "meals", "name": "Meals", "unit": "meals", "direction": "at_least", "target": 2,
+                                "value": self.meals, "met": self.meals >= 2, "applies": True, "streak": 0}]}
+
+    for meals, says_none in ((2, False), (0, True)):
+        planner, rt = make()
+        planner.habits = Habits(meals)
+        asyncio.run(planner.food("What should I eat?"))
+        prompt = rt.calls[-1][1][-1].content
+        assert f"Habit Meals: {meals} meals today" in prompt
+        assert ("No meals seen at the desk today." in prompt) == says_none
+
+
+CONCERT = Item(connector="calendar", kind="calendar_event", external_id="campus:concert", title="Free concert on the lawn",
+               when=NOW + timedelta(hours=6), url="https://events.test/concert", summary="until 10:00 PM · Memory Mall · free")
+NOTICE = Item(connector="canvas", kind="assignment", external_id="x2", when=NOW + timedelta(hours=9),
+              title="GatorEvals – Fall 2026 Mid-Term Evaluation Voluntary Opt-In", url="https://canvas.test/evals")
+
+
+def test_only_graded_work_is_a_crunch_item():
+    """A chat message with "due", a "submissions due" calendar entry and an opt-in notice all got study blocks."""
+    soon = NOW + timedelta(hours=3)
+    chat = Item(connector="groupme", kind="message", external_id="g2", title="Maya: anyone started the milestone? due tuesday", when=soon)
+    submit = Item(connector="calendar", kind="calendar_event", external_id="c2", title="Knight Hacks: submissions due", when=soon)
+    midterm = Item(connector="calendar", kind="calendar_event", external_id="c3", title="COP 3502 Midterm", when=soon)
+    quiz = Item(connector="canvas", kind="assignment", external_id="x3", title="Quiz 5 - Greedy Algorithms [COP4533]", when=soon)
+    survey = quiz.model_copy(update={"title": "Course survey (voluntary)"})
+    assert [is_crunch(i, NOW) for i in (chat, submit, NOTICE, survey)] == [False] * 4
+    assert is_crunch(midterm, NOW) and is_crunch(quiz, NOW) and is_crunch(EXAM, NOW)
+    planner, rt = make()
+    assert asyncio.run(planner.on_item(ItemSynced(ts=NOW, **NOTICE.model_dump()))) == [] and not rt.calls  # no plan, no blocks
+
+
+def test_tonight_question_answers_from_this_evening_even_with_a_deadline():
+    """ "Where should I go tonight?" planned around the next "due" item and never listed tonight's events."""
+    from contexts.circle.application.presence import PresenceBoard
+    from contracts.circle import PlaceShared
+
+    spec = ConnectorSpec(name="calendar", module="x", writes=["create_event"])
+    for question in ("Where should I go tonight?", "What should I do tonight?", "what should I do this evening"):
+        planner, rt = make(ConnectorHub([spec], factory=lambda s: FakeConnector()))
+        tomorrow = CLASS.model_copy(update={"external_id": "c9", "title": "Brunch", "when": NOW + timedelta(hours=21)})
+        planner.qa.memory._items += [CONCERT, NOTICE, tomorrow]
+        planner.presence = PresenceBoard("team", "dom", ["Library"], opted_in=True)
+        planner.presence.on_shared(PlaceShared(ts=NOW, circle_id="team", member_id="hemdutt", place="Library", source="phone",
+                                               expires_at=NOW + timedelta(hours=2)))
+        plan = asyncio.run(planner.answer(question))
+        assert plan.subject == question and plan.blocks == []  # the evening, not study blocks for the exam
+        lines = rt.calls[-1][1][-1].content.splitlines()
+        assert lines[1:6] == [
+            "- Coming up: Dinner with Ilan at Sat 6:00 PM",
+            "- Coming up: Free concert on the lawn at Sat 8:00 PM (until 10:00 PM · Memory Mall · free)",
+            "- hemdutt is at Library (shared until 4:00 PM)",
+            "- Deadline coming up: COP 3502 Exam 1 at Sun 10:00 AM",  # the real deadline: one line, after the evening
+            "- Usual bedtime 08:00 PM",
+        ]
+        assert "GatorEvals" not in rt.calls[-1][1][-1].content and "Brunch" not in rt.calls[-1][1][-1].content
+        assert [(c.title, c.url) for c in plan.citations] == [
+            ("Dinner with Ilan", None), ("Free concert on the lawn", "https://events.test/concert"),
+            ("hemdutt at Library", None), ("COP 3502 Exam 1", "https://canvas.test/exam1")]
+
+    planner, rt = make()  # studying for something tonight is still the exam plan
+    plan = asyncio.run(planner.answer("Help me prep for my exam tonight"))
+    assert plan.subject == "COP 3502 Exam 1" and plan.blocks
+
+
+def test_tonight_with_nothing_on_says_so_and_started_events_still_count():
+    planner, rt = make()
+    planner.qa.memory._items = [CLASS.model_copy(update={"when": NOW - timedelta(minutes=30)}),
+                                CLASS.model_copy(update={"external_id": "old", "title": "Lunch", "when": NOW - timedelta(hours=3)})]
+    asyncio.run(planner.answer("Where should I go tonight?"))
+    assert "- Coming up: Dinner with Ilan at Sat 1:30 PM, already started" in rt.calls[-1][1][-1].content
+    assert "Lunch" not in rt.calls[-1][1][-1].content
+    planner, rt = make()
+    planner.qa.memory._items = []
+    plan = asyncio.run(planner.answer("Where should I go tonight?"))
+    assert "- Nothing on the calendar between now and Sat 10:00 PM." in rt.calls[-1][1][-1].content and plan.citations == []
+
+
+def test_the_evening_runs_to_bedtime_and_at_least_eight_hours():
+    from datetime import time
+
+    from contexts.agent.application.planner import evening_end
+
+    early, late = SleepSchedule(tz=NY), SleepSchedule(bedtime=time(1), wake=time(9), tz=NY)
+    morning = datetime(2026, 10, 10, 10, 30, tzinfo=NY)
+    assert evening_end(morning, early) == datetime(2026, 10, 10, 20, tzinfo=NY)  # until bedtime
+    assert evening_end(NOW, early) == NOW + timedelta(hours=8)  # 2 PM: bedtime is 6 hours off, the evening is not over at 8
+    assert evening_end(NOW.replace(hour=21), early) == NOW.replace(hour=21) + timedelta(hours=8)  # already past bedtime
+    assert evening_end(NOW, late) == datetime(2026, 10, 11, 1, tzinfo=NY)  # a bedtime after midnight is tonight's

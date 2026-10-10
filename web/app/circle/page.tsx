@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { ProposeTime } from "@/components/circle/ProposeTime";
 import { SharedCalendar } from "@/components/circle/SharedCalendar";
 import { YouAreSharing } from "@/components/circle/YouAreSharing";
 import { Empty, ErrorBox, Loading, WriteError } from "@/components/States";
@@ -61,6 +62,7 @@ export default function CirclePage() {
           </section>
 
           <ShareMyPlace onShared={presence.reload} />
+          <ProposeTime />
         </>
       )}
 
