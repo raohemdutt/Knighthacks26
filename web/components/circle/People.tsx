@@ -1,5 +1,6 @@
 "use client";
 
+import { RouteSheet } from "@/components/dayrun/RouteSheet";
 import { useState, type FormEvent } from "react";
 import { Empty, ErrorBox, Loading, WriteError } from "@/components/States";
 import ui from "@/components/ui.module.css";
@@ -122,7 +123,6 @@ function Person({ member: m, all, standing, packs, from }: {
     }
   };
 
-  const href = start ? `/api/play/campus-route?from=${encodeURIComponent(start)}&to=${encodeURIComponent(`friend:${m.member_id}`)}` : null;
   return (
     <li className={`${ui.card} ${c.person} ${colourOf(all, m.member_id)}`}>
       <span className={c.avatar} aria-hidden="true">
@@ -173,11 +173,7 @@ function Person({ member: m, all, standing, packs, from }: {
               <button type="button" className={ui.btn} onClick={findRoute} disabled={!start || loading}>
                 {loading ? "Finding the way…" : `Route to ${m.display_name}`}
               </button>
-              {href ? (
-                <a className={c.link} href={href} target="_blank" rel="noreferrer">
-                  Route as data
-                </a>
-              ) : null}
+              <RouteSheet to={`friend:${m.member_id}`} what={`${m.display_name} is at ${m.place.place}`} />
             </div>
           </>
         ) : null}
