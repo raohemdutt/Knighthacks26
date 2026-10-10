@@ -169,6 +169,7 @@ function HabitCard({ habit: h }: { habit: Habit }) {
   const atLeast = h.direction === "at_least";
   const fill = h.target > 0 ? Math.min(h.value / h.target, 1) : h.value > 0 ? 1 : 0;
   const good = h.applies && h.met;
+  const overLimit = h.applies && !h.closed && !atLeast && !h.met;
   const status = !h.applies
     ? "Nothing to measure yet today"
     : h.closed
@@ -186,7 +187,10 @@ function HabitCard({ habit: h }: { habit: Habit }) {
     <li className={ui.card}>
       <div className={`${ui.row} ${ui.between} ${ui.wrap}`}>
         <h3>{h.name}</h3>
-        {h.streak > 0 ? (
+        {h.streak > 0 && overLimit ? (
+          // The box's streak counts closed days only; a limit already passed today cannot be un-passed.
+          <span className={ui.tag}>{h.streak}-day streak ends today</span>
+        ) : h.streak > 0 ? (
           <span className={`${ui.tag} ${ui.tagAccent}`}>
             {h.streak}-day streak
           </span>
