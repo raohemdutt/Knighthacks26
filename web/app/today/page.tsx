@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ItemRow } from "@/components/ItemRow";
 import { Empty, ErrorBox, Loading } from "@/components/States";
 import ui from "@/components/ui.module.css";
@@ -13,11 +13,27 @@ const soonestFirst = (a: Item, b: Item) => (a.when ?? "").localeCompare(b.when ?
 
 export default function TodayPage() {
   const [since] = useState(() => new Date().toISOString()); // "upcoming" means from the moment the screen opened
-  const habits = useFetch((s) => api.habitsToday(s));
+  // With owner recognition on and more than one person enrolled, habits are shown for one of them at a time.
+  const [member, setMember] = useState<string | undefined>(undefined);
+  const habits = useFetch((s) => api.habitsToday(s, member), member ?? "");
+  const people = useFetch((s) => api.members(s)); // names for the picker; a box without recognition answers 404
+  const memberIds = habits.data?.members ?? [];
+  const pick = memberIds.length > 1;
+  const first = memberIds[0];
+  const gone = member !== undefined && habits.error?.status === 404; // deleted, or recognition was switched off
+  useEffect(() => {
+    if (gone) setMember(undefined);
+    else if (pick && member === undefined && first) setMember(first);
+  }, [gone, pick, member, first]);
   const items = useFetch((s) => api.items({ from: since }, s));
   const impact = useFetch((s) => api.impact(s));
 
   useAtlasEvents(["habits."], () => habits.reload());
+  // A person's own numbers are not published as habit events, so follow what they are built from.
+  useAtlasEvents(["perception.identity", "perception.person", "perception.scene"], () => {
+    if (habits.data?.members) habits.reload();
+    people.reload();
+  });
   useAtlasEvents(["impact."], () => impact.reload());
   useAtlasEvents(["connector.item.synced"], () => items.reload());
 
@@ -33,13 +49,28 @@ export default function TodayPage() {
 
       <section className={ui.section}>
         <h2 className={ui.sectionTitle}>Habits</h2>
-        {habits.error ? (
+        {pick ? (
+          <div className={ui.chips} role="group" aria-label="Whose habits">
+            {memberIds.map((id, i) => (
+              <button
+                key={id}
+                type="button"
+                className={`${ui.chip} ${id === member ? ui.chipOn : ""}`}
+                aria-pressed={id === member}
+                onClick={() => setMember(id)}
+              >
+                {people.data?.find((m) => m.member_id === id)?.name ?? `Person ${i + 1}`}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {habits.error && !gone ? (
           habits.error.notConfigured ? (
             <Empty title="Habits are not set up on this box">Once habits are configured, each one shows today&apos;s count against its target here.</Empty>
           ) : (
             <ErrorBox what="today's habits" error={habits.error} onRetry={habits.reload} />
           )
-        ) : !habits.data ? (
+        ) : !habits.data || (pick && !habits.data.member) ? (
           <Loading what="habits" />
         ) : habits.data.habits.length === 0 ? (
           <Empty title="No habits tracked yet">
@@ -169,8 +200,11 @@ function HabitCard({ habit: h }: { habit: Habit }) {
   const atLeast = h.direction === "at_least";
   const fill = h.target > 0 ? Math.min(h.value / h.target, 1) : h.value > 0 ? 1 : 0;
   const good = h.applies && h.met;
+  const overLimit = h.applies && !h.closed && !atLeast && !h.met;
   const status = !h.applies
-    ? "Nothing to measure yet today"
+    ? h.reason
+      ? `Not judged: ${h.reason}`
+      : "Nothing to measure yet today"
     : h.closed
       ? h.met
         ? "Day closed: met"
@@ -186,7 +220,10 @@ function HabitCard({ habit: h }: { habit: Habit }) {
     <li className={ui.card}>
       <div className={`${ui.row} ${ui.between} ${ui.wrap}`}>
         <h3>{h.name}</h3>
-        {h.streak > 0 ? (
+        {h.streak > 0 && overLimit ? (
+          // The box's streak counts closed days only; a limit already passed today cannot be un-passed.
+          <span className={ui.tag}>{h.streak}-day streak ends today</span>
+        ) : h.streak > 0 ? (
           <span className={`${ui.tag} ${ui.tagAccent}`}>
             {h.streak}-day streak
           </span>

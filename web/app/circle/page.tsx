@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { SharedCalendar } from "@/components/circle/SharedCalendar";
+import { YouAreSharing } from "@/components/circle/YouAreSharing";
 import { Empty, ErrorBox, Loading, WriteError } from "@/components/States";
 import ui from "@/components/ui.module.css";
 import { ApiError, api, type Leaderboard, type PlaceShared } from "@/lib/api";
@@ -62,6 +64,8 @@ export default function CirclePage() {
         </>
       )}
 
+      <SharedCalendar />
+
       <section className={ui.section}>
         <h2 className={ui.sectionTitle}>Leaderboards</h2>
         {board.error ? (
@@ -72,7 +76,7 @@ export default function CirclePage() {
                 : "This box is not connected to the Circle's shared database, so there are no recycling rates, habit streaks or Sort It scores to compare yet."}
             </Empty>
           ) : (
-            <ErrorBox what="the leaderboards" error={board.error} onRetry={board.reload} />
+            <ErrorBox what="the leaderboards" error={boardError(board.error)} onRetry={board.reload} />
           )
         ) : !board.data ? (
           <Loading what="leaderboards" />
@@ -80,8 +84,27 @@ export default function CirclePage() {
           <Boards board={board.data} />
         )}
       </section>
+
+      <YouAreSharing />
     </>
   );
+}
+
+/**
+ * The box answers 500 when it cannot reach the Circle's shared database (no network, database asleep).
+ * Say that instead of "Internal Server Error"; what was shared meanwhile is queued on the box.
+ */
+function boardError(error: ApiError): ApiError {
+  if (error.status < 500) return error;
+  return new ApiError(
+    error.status,
+    "This box can't reach the Circle's shared database right now. What it shares in the meantime waits on the box and goes out when it is back online.",
+  );
+}
+
+/** A member without a display name comes back as their id; show it the way "Where friends are" does. */
+function who(r: { member_id: string; display_name: string }): string {
+  return r.display_name === r.member_id ? humanize(r.member_id) : r.display_name;
 }
 
 function FriendPlace({ place: p }: { place: PlaceShared }) {
@@ -182,7 +205,7 @@ function Boards({ board }: { board: Leaderboard }) {
             <tbody>
               {board.impact.map((r) => (
                 <tr key={r.member_id}>
-                  <td>{r.display_name}</td>
+                  <td>{who(r)}</td>
                   <td className={ui.num}>
                     {r.recycled} of {r.items_seen}
                   </td>
@@ -210,7 +233,7 @@ function Boards({ board }: { board: Leaderboard }) {
             <tbody>
               {board.habits.map((r) => (
                 <tr key={`${r.member_id}-${r.habit_id}`}>
-                  <td>{r.display_name}</td>
+                  <td>{who(r)}</td>
                   <td>{humanize(r.habit_id)}</td>
                   <td className={ui.num}>{r.streak}</td>
                 </tr>
@@ -237,7 +260,7 @@ function Boards({ board }: { board: Leaderboard }) {
             <tbody>
               {board.scores.map((r) => (
                 <tr key={r.round_id}>
-                  <td>{r.display_name}</td>
+                  <td>{who(r)}</td>
                   <td>
                     {r.item}
                     {r.correct ? "" : " (wrong bin)"}

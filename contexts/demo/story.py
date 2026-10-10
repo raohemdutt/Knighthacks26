@@ -19,10 +19,12 @@ zone engine's 3 s exit, so a seated person is one unbroken stay), then two empty
 engine exit what left, the second lets Memory close the episode. Between beats there is nothing.
 """
 
-from datetime import datetime, timedelta
+import re
+from datetime import date, datetime, time, timedelta
 from itertools import count
 from pathlib import Path
 from typing import Literal
+from zoneinfo import ZoneInfo
 
 import yaml
 from pydantic import BaseModel, ConfigDict
@@ -39,6 +41,7 @@ from contracts.types import Box, ObjectHit, Track, frame_ref
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "fixtures" / "demo" / "night.yaml"
 ZONES = ROOT / "config" / "zones.yaml"
+LOCAL = ZoneInfo("America/New_York")  # the script's times, and the zone its item text is worded in
 MODEL = "demo-script"  # model_version on scripted captions: no model wrote them
 DOOR, DESK = "door", "desk"
 DESK_EVERY_S = 2  # under the zone engine's 3 s exit
@@ -90,6 +93,26 @@ class Script(_Strict):
 
 def load(path: str | Path = SCRIPT) -> Script:
     return Script.model_validate(yaml.safe_load(Path(path).read_text(encoding="utf-8")))
+
+
+_WORDED = re.compile(r"\{when(?:\+(\d+)m)?\}|\{day (\d{4}-\d{2}-\d{2})\}")
+
+
+def _clock(t: datetime) -> str:
+    return f"{t.hour % 12 or 12}:{t:%M %p}"
+
+
+def worded(text: str | None, when: datetime | None, by: timedelta) -> str | None:
+    """Item text with its dates written from the moved times, so it cannot disagree with `when` (see night.yaml)."""
+    def say(m: re.Match) -> str:
+        if m[2]:  # {day 2026-10-13}: the weekday that date is once the story has moved
+            return f"{datetime.combine(date.fromisoformat(m[2]), time(12), LOCAL) + by:%A}".lower()
+        if when is None:
+            raise ValueError(f"{m[0]} in {text!r}, but the item has no `when`")
+        t = when.astimezone(LOCAL)
+        return _clock(t + timedelta(minutes=int(m[1]))) if m[1] else f"{t:%a %b} {t.day}, {_clock(t)}"
+
+    return _WORDED.sub(say, text) if text else text
 
 
 def _track(track_id: int, label: str, x: float, bottom: float, w: float, h: float) -> Track:
@@ -190,10 +213,11 @@ def story(now: datetime | None = None, script: Script | None = None, zones: str 
     quiet: set[tuple[datetime, str]] = set()
 
     for item in script.items:
-        ts = item.synced + by
+        ts, when = item.synced + by, item.when + by if item.when else None
         events.append(ItemSynced(
-            event_id=f"demo-item-{item.connector}-{item.external_id}-{int(ts.timestamp())}", ts=ts,
-            when=item.when + by if item.when else None, **item.model_dump(exclude={"synced", "when"})))
+            event_id=f"demo-item-{item.connector}-{item.external_id}-{int(ts.timestamp())}", ts=ts, when=when,
+            title=worded(item.title, when, by), summary=worded(item.summary, when, by),
+            **item.model_dump(exclude={"synced", "when", "title", "summary"})))
 
     for b in script.beats:
         start = b.at + by

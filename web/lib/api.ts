@@ -100,6 +100,8 @@ export interface Habit {
   value: number;
   met: boolean;
   applies: boolean; // false when there is nothing to measure yet today
+  coverage?: number; // sleep, focus: share of the night or day the desk camera was reporting for (0 to 1)
+  reason?: string | null; // why it was not judged, when the cameras saw too little
   streak: number;
   closed: boolean;
   nudge: HabitNudge | null;
@@ -109,6 +111,36 @@ export interface HabitsToday {
   day: string | null;
   habits: Habit[];
   latest_nudge: HabitNudge | null;
+  /** Only while owner recognition is on and somebody is enrolled: whose habits these are (null: the unnamed set). */
+  member?: string | null;
+  /** ... and the enrolled member ids that can be asked for with ?member=. */
+  members?: string[];
+}
+
+/** GET /identity/settings: opt-in owner recognition (contexts/perception/api.py). */
+export interface IdentitySettings {
+  identity_enabled: boolean;
+  available: boolean; // false when the recognition model is not on this box
+  recognizer: string | null;
+  reason?: string;
+}
+
+/** One row of GET /identity/members. The face template itself never leaves the box. */
+export interface Member {
+  member_id: string;
+  name: string;
+  enrolled_at: string;
+}
+
+/** GET /identity/enroll/status, and what POST /identity/enroll/start returns. */
+export interface EnrollStatus {
+  state: "idle" | "collecting" | "done" | "failed";
+  frames_needed: number;
+  frames_done?: number;
+  member_id?: string;
+  camera_id?: string | null;
+  hint?: "no_face" | "one_person_only" | "look_at_camera" | "hold_still" | null;
+  error?: string | null;
 }
 
 export interface ImpactCounts {
@@ -183,6 +215,64 @@ export interface Leaderboard {
   impact: ImpactLeader[];
   habits: HabitLeader[];
   scores: ScoreLeader[];
+}
+
+export type RsvpAnswer = "free" | "busy" | "counter";
+
+export interface CircleAttendee {
+  member_id: string;
+  /** The member id again when the Circle has no display name for them. */
+  display_name: string;
+  answer: RsvpAnswer;
+}
+
+export interface CircleEvent {
+  id: string;
+  thread_id: string | null;
+  title: string;
+  starts_at: string; // UTC ISO 8601
+  ends_at: string;
+  location: string | null;
+  created_by: string | null;
+  attendees: CircleAttendee[];
+}
+
+/** GET /api/circle/events: agreed events that have not ended, soonest first (contexts/circle/api.py). */
+export interface CircleEvents {
+  configured: boolean; // false: this box has no Circle member
+  circle_id: string | null;
+  /** "neon": the Circle's shared calendar. "local": only what this box itself agreed. */
+  source: "neon" | "local" | "none";
+  offline: boolean; // the shared calendar is set up but could not be read just now
+  events: CircleEvent[];
+}
+
+export interface ShareKindStatus {
+  /** habit_summary, impact_count, game_score (the outbox kinds), presence, event_plan */
+  kind: string;
+  on: boolean;
+  queued: number | null; // null: this kind does not go through the outbox
+  sent: number | null;
+  last_synced_at: string | null;
+}
+
+/** GET /api/circle/sharing: what leaves this box for the Circle (contexts/circle/api.py). */
+export interface CircleSharing {
+  configured: boolean;
+  circle_id: string | null;
+  member_id: string | null;
+  share_summaries: boolean; // the setting
+  share_presence: boolean;
+  sharing_now: boolean; // the setting is on and there is a shared database to send to
+  database: "connected" | "offline" | "unknown" | "not_configured";
+  database_note: string | null;
+  last_reached_at: string | null;
+  queued: number;
+  sent: number;
+  last_synced_at: string | null;
+  oldest_queued_at: string | null;
+  kinds: ShareKindStatus[];
+  place: { place: string; source: "phone" | "desk"; expires_at: string } | null;
 }
 
 export interface Cell {
@@ -597,6 +687,93 @@ export function setToken(token: string): void {
   }
 }
 
+export interface VaultPolicy {
+  blur_faces: boolean;
+  paused_cameras: string[];
+  offline: boolean;
+  /** Days of pictures and memory to keep; null = forever. */
+  keep_days: number | null;
+}
+
+export interface EgressGroup {
+  /** "lan", "ntp", "dns", "hub", "connector:calendar", ... */
+  name: string;
+  hosts: string[];
+  packets: number;
+  bytes: number;
+}
+
+export interface EgressBlock {
+  dst: string;
+  proto: string;
+  port: string;
+  count: number;
+  last: string;
+}
+
+export interface Egress {
+  /** false where the box runs no firewall (a laptop, or the service is off). */
+  enforced: boolean;
+  mode?: "online" | "offline";
+  allowed: EgressGroup[];
+  blocked: number;
+  blocked_bytes?: number;
+  recent_blocks?: EgressBlock[];
+  updated?: string;
+  stale?: boolean;
+}
+
+export type WipeScope = "all" | "keyframes" | "memory";
+
+export interface WipeToken {
+  token: string;
+  scope: WipeScope;
+  expires_at: string;
+}
+
+export interface WipeResult {
+  scope: WipeScope;
+  done: boolean;
+  removed?: Record<string, number>;
+  refused?: unknown;
+}
+
+export type LearningStage = "waiting for approval" | "exported" | "labeling" | "training" | "eval" | "packaging" | "deploying" | "done" | "failed";
+
+/** One taught task, folded from the learning.* events (GET /api/learning). */
+export interface LearningTask {
+  task: string;
+  instruction: string;
+  stage: LearningStage;
+  /** 0..1 within the stage. */
+  progress: number;
+  loss?: number | null;
+  message?: string | null;
+  dataset_id?: string;
+  examples?: number;
+  /** e.g. {current: 0.41, candidate: 0.78, teacher: 0.86} */
+  scores?: Record<string, number>;
+  decision?: "deploy" | "reject";
+  model_version?: string;
+  deployed?: boolean;
+  created: string;
+  updated: string;
+}
+
+export interface LearningBoard {
+  tasks: LearningTask[];
+  deployments: { model_version: string; previous_version: string | null; ts: string }[];
+}
+
+export interface TeachBody {
+  /** A slug: "desk-objects". */
+  task: string;
+  instruction: string;
+  camera?: string;
+  label?: string;
+  examples: { frame_ref: string; verdict: "up" | "down" }[];
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number, // 0 = the gateway could not be reached
@@ -626,10 +803,10 @@ function withQuery(path: string, params?: Params): string {
   return s ? `${path}?${s}` : path;
 }
 
-async function request<T>(method: "GET" | "POST", path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+async function request<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const headers: Record<string, string> = {};
   if (body !== undefined) headers["Content-Type"] = "application/json";
-  if (method === "POST") {
+  if (method !== "GET") {
     const token = getToken();
     if (token) headers["Authorization"] = `Bearer ${token}`;
   }
@@ -665,8 +842,31 @@ async function request<T>(method: "GET" | "POST", path: string, body?: unknown, 
 
 const get = <T,>(path: string, params?: Params, signal?: AbortSignal) => request<T>("GET", withQuery(path, params), undefined, signal);
 const post = <T,>(path: string, body: unknown, signal?: AbortSignal) => request<T>("POST", path, body, signal);
+const put = <T,>(path: string, body: unknown, signal?: AbortSignal) => request<T>("PUT", path, body, signal);
 
 /** URL of the JPEG behind a frame ref. 404s when the box has no image for it (demo fixtures have none). */
+export interface CameraStatus {
+  status: "ok" | "degraded" | "down";
+  fps_actual: number;
+  dropped: number;
+  detected: number;
+  errors: number;
+}
+
+export interface TrackBox {
+  label: string;
+  confidence: number;
+  track_id: number;
+  /** Normalized 0..1, origin top left. */
+  box: { x1: number; y1: number; x2: number; y2: number };
+}
+
+export interface LiveTracks {
+  camera_id: string;
+  ts_ms: number | null;
+  tracks: TrackBox[];
+}
+
 export function keyframeUrl(ref: string): string {
   return `${HTTP_BASE}/memory/keyframes/${encodeURIComponent(ref)}`;
 }
@@ -677,10 +877,25 @@ export function cameraOfFrame(ref: string): string | null {
   return parts.length >= 3 && parts[0] === "frames" ? (parts[1] ?? null) : null;
 }
 
-export const api = {
-  health: (signal?: AbortSignal) => get<Health>("/health", undefined, signal),
+/** The newest frame from a camera (faces blurred by the box); add a changing query so the browser refetches. */
+export function snapshotUrl(camera: string, stamp: number): string {
+  return `${HTTP_BASE}/capture/${encodeURIComponent(camera)}/snapshot.jpg?t=${stamp}`;
+}
+
+export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", undefined, signal),
+  captureStatus: (signal?: AbortSignal) => get<{ cameras: Record<string, CameraStatus> }>("/capture/status", undefined, signal),
+  liveTracks: (camera: string, signal?: AbortSignal) => get<LiveTracks>(`/capture/${encodeURIComponent(camera)}/tracks`, undefined, signal),
 
   ask: (text: string) => post<Answer>("/api/ask", { text }),
+
+  vaultPolicy: (signal?: AbortSignal) => get<VaultPolicy>("/vault/policy", undefined, signal),
+  setVaultPolicy: (body: Partial<VaultPolicy>) => put<VaultPolicy>("/vault/policy", body),
+  egress: (signal?: AbortSignal) => get<Egress>("/vault/egress", undefined, signal),
+  wipeRequest: (scope: WipeScope) => post<WipeToken>("/vault/wipe/request", { scope }),
+  wipe: (token: string) => post<WipeResult>("/vault/wipe", { token }),
+
+  learning: (signal?: AbortSignal) => get<LearningBoard>("/api/learning", undefined, signal),
+  teach: (body: TeachBody) => post<{ task: string; action_id: string }>("/api/teach", body),
 
   episodes: (opts: { from?: string; to?: string; camera?: string; label?: string } = {}, signal?: AbortSignal) =>
     get<Episode[]>("/memory/episodes", opts, signal),
@@ -689,7 +904,15 @@ export const api = {
   items: (opts: { from?: string; to?: string; kind?: string } = {}, signal?: AbortSignal) =>
     get<Item[]>("/memory/items", opts, signal),
 
-  habitsToday: (signal?: AbortSignal) => get<HabitsToday>("/api/habits/today", undefined, signal),
+  habitsToday: (signal?: AbortSignal, member?: string) => get<HabitsToday>("/api/habits/today", { member }, signal),
+
+  // People: opt-in owner recognition (P9).
+  identitySettings: (signal?: AbortSignal) => get<IdentitySettings>("/identity/settings", undefined, signal),
+  setIdentity: (on: boolean) => request<IdentitySettings>("PUT", "/identity/settings", { identity_enabled: on }),
+  members: (signal?: AbortSignal) => get<Member[]>("/identity/members", undefined, signal),
+  removeMember: (id: string) => request<{ removed: string }>("DELETE", `/identity/members/${encodeURIComponent(id)}`),
+  enrollStart: (name: string) => post<EnrollStatus>("/identity/enroll/start", { name }),
+  enrollStatus: (signal?: AbortSignal) => get<EnrollStatus>("/identity/enroll/status", undefined, signal),
   impact: (signal?: AbortSignal) => get<Impact>("/api/impact", undefined, signal),
 
   approvals: (signal?: AbortSignal) => get<ApprovalRequest[]>("/api/approvals", undefined, signal),
@@ -698,6 +921,8 @@ export const api = {
   presence: (signal?: AbortSignal) => get<PlaceShared[]>("/api/presence", undefined, signal),
   sharePlace: (place: string, hours: number) => post<PlaceShared>("/api/presence", { place, hours }),
   leaderboard: (signal?: AbortSignal) => get<Leaderboard>("/api/circle/leaderboard", undefined, signal),
+  circleEvents: (signal?: AbortSignal) => get<CircleEvents>("/api/circle/events", undefined, signal),
+  circleSharing: (signal?: AbortSignal) => get<CircleSharing>("/api/circle/sharing", undefined, signal),
 
   playRoute: (item: string, signal?: AbortSignal) => get<PlayRoute>("/api/play/route", { item }, signal),
   playAccuracy: (signal?: AbortSignal) => get<PlayAccuracy>("/api/play/accuracy", undefined, signal),

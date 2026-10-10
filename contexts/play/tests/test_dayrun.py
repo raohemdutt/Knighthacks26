@@ -98,7 +98,7 @@ def test_board_lays_out_fixed_blocks_deadlines_and_open_slots(dayrun):
     assert (d.id, d.work_left, d.in_window) == (MILESTONE, 300, False) and 0 < d.risk < 1
     assert [e.title for e in b.events] == ["Movie on the lawn"]
     # four hours of sleep and no meal, from the habit numbers
-    assert (b.initial.sleep_hours, b.initial.meals, b.initial.sleep_debt, b.initial.source) == (4, 0, 4, "habits")
+    assert (b.initial.sleep_hours, b.initial.meals, b.initial.sleep_debt, b.initial.source) == (4, 0, 4, "scenario")
     assert b.initial.energy < 50
 
     library = next(o for o in b.slots[2].moves if o.kind == "study" and o.place == "ucf.library")
@@ -133,6 +133,22 @@ def test_start_values_come_from_habits_or_defaults(places, tmp_path):
     assert rested.source == "habits" and rested.sleep_debt == 0
     assert default.source == "defaults" and default.sleep_hours == 7
     assert rested.energy > default.energy > tired.energy
+
+
+def test_the_board_says_where_each_starting_value_came_from(places, dayrun, tmp_path):
+    """O8b: the scripted day said "habits" while showing the scenario's own numbers."""
+    class Habits:  # a night the cameras did not watch: only the meals are Habits' to give
+        def digest(self, day=None, now=None):
+            return {"habits": [{"id": "sleep", "value": 0.0, "applies": False}, {"id": "meals", "value": 1, "applies": True}]}
+
+    live = DayRun(places, habits=Habits(), data_dir=tmp_path)
+    assert dayrun.board(scenario="demo").initial.source == "scenario"
+    part = live.board(at(9, 30)).initial
+    assert (part.sleep_hours, part.meals, part.source) == (7, 1, "defaults (sleep), habits (meals)")
+    assert live.board(at(9, 30), InitialOverride(sleep_hours=3)).initial.source == "request (sleep), habits (meals)"
+    assert live.board(at(9, 30), InitialOverride(sleep_hours=3, meals=2)).initial.source == "request"
+    assert DayRun(places, data_dir=tmp_path).board(at(9, 30), InitialOverride(energy=40)).initial.source == "defaults (sleep and meals), request (energy)"
+    assert dayrun.board(scenario="demo", initial=InitialOverride(meals=0)).initial.source == "scenario (sleep), request (meals)"
 
 
 # --- feasibility ---
@@ -285,6 +301,49 @@ def test_reality_score_names_the_biggest_gap(dayrun, tmp_path):
     assert dayrun.review(SUNDAY, scenario="demo").measured == Measured(focus_minutes=20, meals=2, sleep_hours=6.5)
 
 
+# --- a night that has not happened yet (testing round 1, O2) ---
+
+
+def watched_sunday(until: str = "09:30", day: int = 11):
+    """A real habit tracker that has seen Saturday evening and Sunday morning at the desk, up to `until`."""
+    from contexts.habits.tests import helpers as h
+
+    t = h.tracker()
+    h.feed(t, h.sit(10, "18:00", "23:00") + h.sit(11, "07:00", "09:00")
+           + [h.scene(h.at(11, "08:00"), caption="a bagel on a plate for breakfast")])
+    t.flush(h.at(day, until))  # the ticker: the latest time the tracker knows about
+    return t
+
+
+def test_sleep_is_unknown_until_the_night_after_the_day_has_been_watched(places, tmp_path):
+    def measured(habits):
+        return DayRun(places, habits=habits, data_dir=tmp_path).measured(SUNDAY)
+
+    morning = measured(watched_sunday("09:30"))
+    assert morning.sleep_hours is None  # Sunday night is still ahead: not 12 hours of empty desk
+    assert (morning.meals, morning.focus_minutes) == (1, 120)  # what has been seen of the day so far is still reported
+    assert measured(watched_sunday("02:00", day=12)).sleep_hours is None  # half way through the night
+    assert measured(watched_sunday("08:30", day=12)).sleep_hours == 12  # the night is over: desk empty from 20:00 to 08:00
+
+
+def test_replaying_today_leaves_the_coming_night_out_of_the_score(places, tmp_path):
+    dayrun = DayRun(places, habits=watched_sunday(), data_dir=tmp_path)
+    night = [Move(slot="s1", kind="sleep", start=at(23), minutes=480)]
+
+    r = dayrun.replay(SUNDAY, night)
+    assert r.actual.sleep_hours is None and r.unknown == ["sleep"]
+    # neither zero nor met: both sides get the night the new plan schedules, so it cannot win or lose points
+    assert r.baseline.totals.sleep_hours == r.plan.totals.sleep_hours == 8 and r.baseline.rejected == []
+    assert "has not been measured yet" in r.text and "Sleep: 0.0 h" not in r.text
+
+    empty = dayrun.replay(SUNDAY, [])
+    assert empty.actual.sleep_hours is None and "has not been measured yet" in empty.text
+    assert [m.kind for m in empty.baseline_moves if m.kind == "sleep"] == []
+
+    known = dayrun.replay(SUNDAY, night, actual=Measured(focus_minutes=120, meals=1, sleep_hours=5))
+    assert known.unknown == [] and known.baseline.totals.sleep_hours == 5 and known.points_gained > 0
+
+
 # --- replay ---
 
 
@@ -331,6 +390,16 @@ def test_hard_mode_revalidates_and_reroutes(dayrun, plans):
     assert h.after.rejected == [] and h.after.totals.walk_minutes > h.before.totals.walk_minutes
     assert h.before.outcome.won
 
+    # O8a: re-routed to the place you are standing in is not "0 minutes from" it
+    stay = dayrun.hard([Move(slot="s3", kind="eat", place="ucf.dining_63", minutes=25), Move(slot="s3", kind="eat", place="ucf.union", minutes=25)],
+                       scenario="demo", disruptions=[Disruption(kind="place_closed", place="ucf.union")])
+    [moved] = [c.text for c in stay.changes if c.kind == "rerouted"]
+    assert moved == "Student Union is closed: re-routed to 63 South dining hall (you are already there)"
+    rerouted = [c.text for c in h.changes if c.kind == "rerouted"]  # the scripted demo: one of each
+    assert rerouted == ["Student Union is closed: re-routed to 63 South dining hall (you are already there), "
+                        "7 minutes on to the 11:45 Knight Hacks: judging and demos",
+                        "Student Union is closed: re-routed to 63 South dining hall, 13 minutes from John C. Hitt Library"]
+
     strict = dayrun.hard([Move(slot="s2", kind="eat", place="ucf.union", minutes=33)], scenario="demo",
                          disruptions=[Disruption(kind="block_moved", block=JUDGING, to_place="ucf.rwc")])
     assert strict.before.rejected == [] and [c.kind for c in strict.changes][:1] == ["shortened"]  # 11 minutes to the gym, not 6
@@ -349,6 +418,15 @@ def test_hard_mode_is_seeded_and_a_cancelled_friend_costs_the_boost(dayrun, plan
     gone = dayrun.hard(plans["good"], scenario="demo", disruptions=[Disruption(kind="friend_cancelled", friend="Maya")])
     assert gone.after.totals.focused_minutes < gone.before.totals.focused_minutes
     assert gone.disruptions[0].text == "Maya cancels: not coming after all"
+
+
+def test_hard_mode_survives_a_block_moved_inside_another(dayrun):
+    blocks = sorted(dayrun.hard([], scenario="demo", disruptions=[]).before.blocks, key=lambda b: b.start)
+    fixed = [b for b in blocks if b.kind == "fixed"] or blocks
+    long, short = next((a, b) for a in fixed for b in fixed if a.id != b.id and (b.end - b.start) <= (a.end - a.start))
+    shift = int((long.start - short.start).total_seconds() // 60)  # the short one now sits wholly inside the long one
+    h = dayrun.hard([], scenario="demo", disruptions=[Disruption(kind="block_moved", block=short.id, shift_minutes=shift)])
+    assert short.id not in [b.id for b in h.after.blocks] and h.disruptions[0].text
 
 
 # --- campaign ---

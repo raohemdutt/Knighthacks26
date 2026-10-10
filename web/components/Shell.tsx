@@ -56,6 +56,17 @@ const TABS: Tab[] = [
 /** Reached through the More sheet. Their URLs are unchanged. */
 const MORE: Tab[] = [
   {
+    href: "/live",
+    label: "Live",
+    icon: (
+      <>
+        <rect x="3" y="6" width="18" height="13" rx="2.5" />
+        <circle cx="12" cy="12.5" r="3.4" />
+        <path d="M8 6l1.4-2h5.2L16 6" />
+      </>
+    ),
+  },
+  {
     href: "/circle",
     label: "Circle",
     icon: (
@@ -77,12 +88,42 @@ const MORE: Tab[] = [
     ),
   },
   {
+    href: "/privacy",
+    label: "Privacy",
+    icon: (
+      <>
+        <path d="M12 3.5l7 2.8v5.4c0 4.2-2.9 7.4-7 8.8-4.1-1.4-7-4.6-7-8.8V6.3z" />
+        <path d="M9 12l2.2 2.2L15.5 10" />
+      </>
+    ),
+  },
+  {
+    href: "/teach",
+    label: "Teach",
+    icon: (
+      <>
+        <path d="M3 9l9-4.5L21 9l-9 4.5z" />
+        <path d="M7 11.2V15c0 1.4 2.2 2.8 5 2.8s5-1.4 5-2.8v-3.8M21 9v5" />
+      </>
+    ),
+  },
+  {
     href: "/map",
     label: "Room map",
     icon: (
       <>
         <path d="M3.5 6.5l5.5-2 6 2 5.5-2v13l-5.5 2-6-2-5.5 2z" />
         <path d="M9 4.5v13M15 6.5v13" />
+      </>
+    ),
+  },
+  {
+    href: "/people",
+    label: "People",
+    icon: (
+      <>
+        <circle cx="12" cy="8.5" r="3.5" />
+        <path d="M5 20c.6-4 3.4-6 7-6s6.4 2 7 6" />
       </>
     ),
   },

@@ -1,0 +1,14 @@
+[Unit]
+Description=Atlas egress firewall (only the LAN, NTP, the hub and the connectors' hosts may be reached)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Root: it edits iptables. It only ever touches the ATLAS_EGRESS chain, and the rules stay in force if it stops.
+WorkingDirectory=@REPO@
+ExecStart=@VENV@/bin/python @REPO@/jetson/egress.py serve --config-dir @REPO@/config --data-dir @REPO@/data --env-file @REPO@/.env
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

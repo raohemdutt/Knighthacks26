@@ -1,6 +1,9 @@
 import asyncio
+import os
 from datetime import timedelta
 from pathlib import Path
+
+import pytest
 
 from contexts.vault import KeyRing, Wiper, WipeTokens
 from contexts.vault.tests.helpers import T0, Box
@@ -33,6 +36,10 @@ def left(files: dict[str, Path]) -> set[str]:
 
 
 # --- confirmation token ---
+
+
+# Both tests below build symbolic links, which Windows only allows with a privilege most accounts lack.
+needs_symlinks = pytest.mark.skipif(os.name == "nt", reason="needs symbolic links")
 
 
 def test_token_works_once_inside_its_lifetime():
@@ -129,6 +136,7 @@ def test_master_key_goes_only_when_asked_for_by_name(tmp_path):
     assert not wiper.wipe("keyframes", include_master_key=True).master_key_removed  # already gone
 
 
+@needs_symlinks
 def test_refuses_targets_that_leave_the_data_dir(tmp_path):
     data, outside = tmp_path / "data", tmp_path / "outside"
     files = fill(data)
@@ -155,6 +163,7 @@ def test_refuses_targets_that_leave_the_data_dir(tmp_path):
     assert files["db"].exists()  # not the configured db, so not touched
 
 
+@needs_symlinks
 def test_refuses_dot_dot_paths_links_back_inside_and_the_vault_folder(tmp_path):
     data = tmp_path / "data"
     files = fill(data)

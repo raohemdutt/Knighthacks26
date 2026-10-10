@@ -162,7 +162,7 @@ class DayRun:
         over = initial or InitialOverride()
         if sc and sc.start_place and not over.start_place:
             over = over.model_copy(update={"start_place": sc.start_place})
-        state = initial_state(self.cfg, start, self._habit_rows(sc, start.date(), start), over)
+        state = initial_state(self.cfg, start, self._habit_rows(sc, start.date(), start), over, origin="scenario" if sc else "habits")
         return build_board(self.cfg, self.walks, start, list(items), state, self._friends(sc, start), over)
 
     # --- play ---
@@ -214,13 +214,21 @@ class DayRun:
     # --- afterwards ---
 
     def measured(self, day: date, scenario: str | None = None) -> Measured:
-        """What Habits measured for the day. Sleep is the night that followed it, read from the next day's row."""
+        """What Habits measured for the day. Sleep is the night that followed it, read from the next day's row.
+
+        That night is unknown (None) until Habits has seen the whole of it: a night still ahead, or half
+        way through, is not an empty desk. A scripted day's numbers are taken as written."""
         sc = self.scenario(scenario)
         if sc and day in sc.actual:
             return sc.actual[day]
         end = datetime.combine(day + timedelta(days=1), datetime.min.time(), self.cfg.tz)
+        seen = None if sc else getattr(self.habits, "now", None)  # the latest event time the tracker has seen
+        sched = getattr(self.habits, "sched", None)  # the night is Habits' sleep window, not Day Run's usual one
+        night_end = (sched.sleep_window(day + timedelta(days=1))[1] if sched
+                     else datetime.combine(day + timedelta(days=1), self.cfg.sleep.wake, self.cfg.tz))
+        night_over = seen is None or seen >= night_end
         today = {r["id"]: r for r in self._habit_rows(sc, day, end) or []}
-        tomorrow = {r["id"]: r for r in self._habit_rows(sc, day + timedelta(days=1), end + timedelta(days=1)) or []}
+        tomorrow = {r["id"]: r for r in self._habit_rows(sc, day + timedelta(days=1), end + timedelta(days=1)) or []} if night_over else {}
         return Measured(
             focus_minutes=round(today["focus"]["value"] * 60, 1) if "focus" in today else None,
             meals=int(today["meals"]["value"]) if "meals" in today else None,
@@ -239,15 +247,27 @@ class DayRun:
         start = datetime.combine(day, self.cfg.sleep.wake, self.cfg.tz)
         board = self.board(start, InitialOverride(meals=0), scenario)  # the day's meals had not happened yet at wake
         actual = actual or self.measured(day, scenario)
-        base_moves = baseline if baseline is not None else modes.baseline_moves(self.cfg, self.walks, board, actual)
-        base = simulate(self.cfg, self.walks, board, base_moves)
         plan = simulate(self.cfg, self.walks, board, moves)
+        # A night nobody has measured is not zero hours and not a full night: it is left out of the comparison
+        # by giving the baseline the night the new plan schedules, so sleep cannot win or lose a point.
+        night_unknown = baseline is None and actual.sleep_hours is None
+        night = [(moves[b.move].slot, b) for b in plan.blocks if b.kind == "sleep" and b.move is not None] if night_unknown else []
+        base_moves = baseline if baseline is not None else modes.baseline_moves(self.cfg, self.walks, board, actual, night)
+        base = simulate(self.cfg, self.walks, board, base_moves)
         points, stars = plan.totals.points - base.totals.points, plan.stars - base.stars
         verdict = "beats" if points > 0 else "matches" if points == 0 else "does worse than"
-        text = (f"What happened on {day:%a %b} {day.day}: {base.outcome.summary} ({base.totals.points} points). "
-                f"Your new plan {verdict} it by {abs(points)} points: {plan.outcome.summary}")
+        if night_unknown:
+            seen = [f"{actual.meals} meal{'' if actual.meals == 1 else 's'}" if actual.meals is not None else "meals not measured",
+                    f"{actual.focus_minutes:g} minutes at the desk" if actual.focus_minutes is not None else "desk time not measured"]
+            happened = (f"{day:%a %b} {day.day} so far: {', '.join(seen)}. That night's sleep has not been measured yet, so both "
+                        f"sides are given the night in your new plan ({plan.totals.sleep_hours:g} h) and sleep counts for neither. "
+                        f"On everything else your new plan {verdict} what happened")
+        else:
+            happened = (f"What happened on {day:%a %b} {day.day}: {base.outcome.summary} ({base.totals.points} points). "
+                        f"Your new plan {verdict} it")
+        text = f"{happened} by {abs(points)} points: {plan.outcome.summary}"
         return ReplayResult(day=day, board=board, actual=actual, baseline_moves=base_moves, baseline=base, plan=plan,
-                            points_gained=points, stars_gained=stars, text=text)
+                            points_gained=points, stars_gained=stars, text=text, unknown=["sleep"] if night_unknown else [])
 
     def forecast(self, estimates: list[Estimate], measured: dict[str, float] | None = None, day: date | None = None,
                  scenario: str | None = None) -> ForecastResult:

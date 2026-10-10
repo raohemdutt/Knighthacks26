@@ -202,6 +202,20 @@ const DEMO_CAMPAIGN = [
 ];
 
 const PLACE = { ...ENVELOPE, circle_id: "string", member_id: "string", place: "string", source: oneOf("phone", "desk"), expires_at: isoDate };
+const CIRCLE_EVENTS = {
+  configured: "boolean", circle_id: "string?", source: oneOf("neon", "local", "none"), offline: "boolean",
+  events: listOf({
+    id: "string", thread_id: "string?", title: "string", starts_at: isoDate, ends_at: isoDate, location: "string?", created_by: "string?",
+    attendees: listOf({ member_id: "string", display_name: "string", answer: oneOf("free", "busy", "counter") }),
+  }),
+};
+const CIRCLE_SHARING = {
+  configured: "boolean", circle_id: "string?", member_id: "string?", share_summaries: "boolean", share_presence: "boolean", sharing_now: "boolean",
+  database: oneOf("connected", "offline", "unknown", "not_configured"), database_note: "string?", last_reached_at: isoDateOrNull,
+  queued: "number", sent: "number", last_synced_at: isoDateOrNull, oldest_queued_at: isoDateOrNull,
+  kinds: listOf({ kind: "string", on: "boolean", queued: "number?", sent: "number?", last_synced_at: isoDateOrNull }),
+  place: nullableObject({ place: "string", source: oneOf("phone", "desk"), expires_at: isoDate }),
+};
 const LEADERBOARD = {
   circle_id: "string",
   impact: listOf({ member_id: "string", display_name: "string", items_seen: "number", recycled: "number", contamination: "number", diversion_rate: "number" }),
@@ -369,6 +383,12 @@ await check("GET /api/habits/today", "GET", "/api/habits/today", HABITS_TODAY, {
 await check("GET /memory/items?from=<now>", "GET", `/memory/items?from=${encodeURIComponent(new Date().toISOString())}`, ITEM, { list: true });
 await check("GET /api/impact", "GET", "/api/impact", IMPACT, { optional: { 404: "Waste Watch is not configured" } });
 
+console.log("\nPeople");
+const NO_IDENTITY = { 404: "owner recognition is not wired into this gateway" };
+await check("GET /identity/settings", "GET", "/identity/settings", { identity_enabled: "boolean", available: "boolean", recognizer: "string?" }, { optional: NO_IDENTITY });
+await check("GET /identity/members", "GET", "/identity/members", { member_id: "string", name: "string", enrolled_at: "string" }, { list: true, optional: NO_IDENTITY });
+await check("GET /identity/enroll/status", "GET", "/identity/enroll/status", { state: "string", frames_needed: "number" }, { optional: NO_IDENTITY });
+
 console.log("\nApprovals");
 await check("GET /api/approvals", "GET", "/api/approvals", APPROVAL, { list: true });
 if (WRITES) {
@@ -401,6 +421,10 @@ if (WRITES) {
 console.log("\nCircle");
 await check("GET /api/presence", "GET", "/api/presence", PLACE, { list: true, optional: { 404: "the Circle is not configured" } });
 await check("GET /api/circle/leaderboard", "GET", "/api/circle/leaderboard", LEADERBOARD, { optional: { 404: "the Circle is not connected" } });
+const calendar = await check("GET /api/circle/events", "GET", "/api/circle/events", CIRCLE_EVENTS);
+if (calendar) console.log(`        ${calendar.events.length} upcoming, from ${calendar.source}${calendar.offline ? " (shared calendar offline)" : ""}`);
+const sharing = await check("GET /api/circle/sharing", "GET", "/api/circle/sharing", CIRCLE_SHARING);
+if (sharing) console.log(`        summaries ${sharing.sharing_now ? "on" : "off"}; ${sharing.queued} queued, ${sharing.sent} sent; database ${sharing.database}`);
 if (WRITES) {
   await check("POST /api/presence", "POST", "/api/presence", PLACE, {
     body: { place: "Library", hours: 1 },

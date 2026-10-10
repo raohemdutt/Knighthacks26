@@ -1,0 +1,190 @@
+.section {
+  margin-top: 22px;
+}
+
+.section h2 {
+  font-size: 1.1rem;
+  margin: 0 0 8px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px;
+}
+
+.field {
+  display: block;
+  margin-bottom: 14px;
+}
+
+.label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.help {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.text {
+  width: 100%;
+  min-height: 52px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+}
+
+textarea.text {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.picks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.pick {
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+
+.pickUp {
+  border-color: var(--accent);
+}
+
+.pickDown {
+  border-color: var(--danger);
+}
+
+.pick img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  background: #000;
+}
+
+.thumbs {
+  display: flex;
+}
+
+.thumb {
+  flex: 1;
+  min-height: 44px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+
+.thumbOn {
+  background: var(--accent-soft);
+}
+
+.thumbOnDown {
+  background: var(--danger-soft);
+}
+
+.task {
+  margin-bottom: 12px;
+}
+
+.taskHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.taskName {
+  font-weight: 650;
+}
+
+.stage {
+  font-size: 0.82rem;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.stageBad {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+  margin: 10px 0 6px;
+}
+
+.barFill {
+  height: 100%;
+  background: var(--accent);
+}
+
+.steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 6px 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.stepOn {
+  color: var(--accent);
+  font-weight: 650;
+}
+
+.scores {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.score b {
+  display: block;
+  font-size: 1.3rem;
+}
+
+.score span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.ok {
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  margin-top: 12px;
+}
+
+.gone {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 9;
+  color: var(--muted);
+  font-size: 0.82rem;
+  background: var(--surface-2);
+}

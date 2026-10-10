@@ -9,6 +9,16 @@ desk: {zone: desk, camera: cam-desk}  # where meals, drinks, watch items and foc
 door_zone: door
 close_grace_minutes: 2  # the ticker closes a day this long after local midnight, for late events
 
+# Sleep and focus are judged only on time the desk camera was reporting. A paused camera (Vault policy), or
+# one silent for longer than `gap_minutes`, was not watching: an empty-desk stretch never runs across that,
+# and desk time is not counted in it. When less than `min_fraction` of the night (bedtime to wake) or of the
+# day (wake to bedtime) was watched, the habit has nothing to judge and its streak is left alone.
+coverage:
+  gap_minutes: 5
+  steady_minutes: 30   # silences count only once the camera has reported this long without one (a real
+                       # camera reports every second; a scripted log is bursts with nothing between)
+  min_fraction: 0.8
+
 nudges:
   cooldown_minutes: 180   # per habit, in event time; a habit may set its own
   min_gap_minutes: 20     # between two nudges raised by the ticker

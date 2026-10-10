@@ -12,6 +12,7 @@ If the camera drops off, the reader keeps retrying; `stats()` says whether it is
 """
 
 import asyncio
+import os
 import sys
 import threading
 import time
@@ -78,6 +79,8 @@ class CameraReader:
     def _open_capture(self, source: int | str) -> Any:
         import cv2
 
+        if isinstance(source, str) and source.startswith("/dev/") and not os.path.exists(source):
+            return None  # nothing plugged in: do not let OpenCV print a warning on every retry
         linux_device = sys.platform.startswith("linux") and (isinstance(source, int) or str(source).startswith("/dev/video"))
         cap = cv2.VideoCapture(source, cv2.CAP_V4L2) if linux_device else cv2.VideoCapture(source)
         if linux_device or isinstance(source, int):  # a live camera: ask for MJPG, which USB webcams do at full rate
@@ -96,7 +99,7 @@ class CameraReader:
         while not self._stop.is_set():
             if cap is None or not cap.isOpened():
                 cap = self._open(self.source)
-                if not cap.isOpened():
+                if cap is None or not cap.isOpened():
                     self._failed_reads += 1
                     self._stop.wait(self._retry_s)
                     continue

@@ -104,6 +104,54 @@ The box's Python is 3.10; the repo asks for 3.11 only because of `from datetime 
 `.pth` in the venv fixes that without touching the code:
 `echo 'import datetime; datetime.UTC = datetime.timezone.utc' > <venv>/lib/python3.10/site-packages/atlas_py310_compat.pth`.
 
+## 7. Always on (C6)
+
+Two systemd services, both `Restart=always` and enabled at boot: `atlas-llm` (the model, section 5) and
+`atlas-gateway` (`python -m contexts.gateway`: the app the phone talks to on port 8000, plus the cameras, detector,
+tracker and blurred keyframe store, all in one process so they share the event bus).
+
+```bash
+sudo ./jetson/jetson_setup.sh                       # installs and starts both (safe to re-run; ATLAS_VENV picks the Python venv)
+journalctl -u atlas-llm -u atlas-gateway -f         # logs
+curl localhost:8000/capture/status                  # per camera: ok / degraded / down, fps, frames detected
+curl localhost:8000/runtime/models                  # current model version and what llama-server serves
+```
+
+Cameras are listed in `config/cameras.yaml` (id, `/dev/video0` or a video file, fps). Capture starts only where
+`yolo11n.engine` exists (section 6), so laptops and CI skip it; `ATLAS_CAPTURE=0` turns it off. A camera that is not
+plugged in is retried every 2 s and shows as `down`. The Vault policy is honoured live: faces are blurred before a
+keyframe is stored unless `blur_faces` is off, and a paused camera is not looked at. Settings and secrets go in the
+repo's `.env` (never in git). The unit sets `ATLAS_MEMORY_FIXTURE=` empty, so a real box holds only what its cameras
+saw; put `ATLAS_MEMORY_FIXTURE=fixtures/memory/memory.yaml` in `.env` for the canned demo night.
+
+`jetson_setup.sh` also masks the sleep, suspend and hibernate targets (GNOME's default idle timer would suspend the box).
+
+## 8. Egress firewall and the offline switch (V6, V5, H4)
+
+The `atlas-egress` service (root, installed by `jetson_setup.sh`) keeps an iptables/ip6tables chain `ATLAS_EGRESS` on
+the OUTPUT side only (this Jetson kernel has no nftables counters, so iptables), so ssh in and the phone talking to the
+box are not affected. What may leave: loopback and replies, any private or link-local address (so any venue's Wi-Fi
+works), NTP, DNS to the box's own resolvers, the hub proxy `dub.aupcloud.io`, each connector's `hosts` from
+`config/connectors.yaml`, Neon (from `NEON_DATABASE_URL`), a non-LAN ntfy relay, and the Ubuntu connectivity check.
+Anything else is logged (`journalctl -k | grep atlas-egress-drop`) and rejected. Add hosts for a one-off need in
+`config/egress.yaml` (`groups: {name: [host, ...]}`); names are re-resolved every 5 minutes.
+
+```bash
+make offline        # LAN only; the firewall follows within ~10 s. Detection, answers and alerts carry on; connectors pause
+make online         # back to the allowlist (the phone's Privacy switch does the same through PUT /vault/policy)
+curl localhost:8000/vault/egress                       # bytes per group (hub, each connector, LAN, NTP, DNS), blocked count, recent blocks
+sudo python jetson/egress.py apply --revert-after 90   # try new rules by hand: undone in 90 s unless `touch /run/atlas-egress.ok`
+sudo python jetson/egress.py clear                     # remove the firewall (for apt/pip on the box), then `sudo systemctl restart atlas-egress`
+```
+
+While the firewall is on, `apt` and `pip` on the box are blocked: run `clear` first and restart the service after.
+
+### Updating the code on the box
+
+The box has no GitHub login, so code reaches it from a laptop: `./jetson/push.sh [alexander@<ip>]` copies the working
+tree (not `.env`, `data/`, the engine or the models) and restarts `atlas-gateway`; the app rebuilds its memory from the
+event log. `--web` builds the phone app first. The default address is `alexander@ubuntu.local`.
+
 ## Firmware update (boards with old factory firmware)
 
 JetPack 6 and 7 need firmware 36.x on the board. Boards with older firmware

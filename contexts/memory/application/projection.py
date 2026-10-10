@@ -2,7 +2,10 @@
 
 An episode is a bounded span of activity on one camera. It opens on the first
 activity and closes after QUIET_S without any, measured in event time, so a
-replay builds the same rows as the live run. Activity is an observation with
+replay builds the same rows as the live run. Every tracked object (people
+aside) also leaves the detector's latest sighting of its label, with the zone
+its zone events put it in, for "where did I last see it" when no object list
+named it. Activity is an observation with
 at least one track, a zone event or a caption. An episode that never goes
 quiet (a laptop always in view) is cut at MAX_EPISODE_S so hours stay
 separable. The agent's hourly notes (agent.note.written) are indexed for
@@ -24,6 +27,7 @@ from contracts.perception import ObservationRecorded, SceneDescribed, ZoneEvent
 QUIET_S = 30
 MAX_EPISODE_S = 600
 MAX_KEYFRAMES = 8
+NOT_OBJECTS = frozenset({"person"})  # tracked, but nobody asks where they last saw one
 
 
 def episode_id(camera_id: str, start: datetime) -> str:
@@ -54,12 +58,16 @@ class MemoryProjection:
         with self.store.db:
             if not self.store.first_time(e.event_id):
                 return []
+            for t in e.tracks:
+                if t.label not in NOT_OBJECTS:
+                    self.store.put_track(t.label, e.camera_id, t.track_id, e.ts, e.frame_ref)
             return self._activity(e.camera_id, e.ts, labels=[t.label for t in e.tracks], first_frame=e.frame_ref)
 
     def on_zone_event(self, e: ZoneEvent) -> list:
         with self.store.db:
             if not self.store.first_time(e.event_id):
                 return []
+            self.store.track_zone(e.camera_id, e.track_id, e.zone_id, e.ts, inside=e.kind != "exit")
             return self._activity(e.camera_id, e.ts, labels=[e.label], keyframe=e.frame_ref)
 
     def on_scene(self, e: SceneDescribed) -> list:

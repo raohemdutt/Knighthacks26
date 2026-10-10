@@ -15,7 +15,7 @@ import json
 import os
 import threading
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 
 from contexts.circle.application.protocol import AgentMessage
 from contexts.circle.application.sharing import CircleOffline, OutboxRow
@@ -55,6 +55,8 @@ class NeonDb:
         self.names = names or {}  # member id -> display name, used when a member row is first created
         self._conn = None
         self._lock = threading.Lock()
+        self.last_ok: datetime | None = None  # when a statement last went through (this process)
+        self.offline: str | None = None  # why the last attempt failed; None once one succeeds
 
     def run(self, work: Callable):
         """Run `work(cursor)` in a transaction and return its result. Reconnects and retries once."""
@@ -67,11 +69,16 @@ class NeonDb:
                         self._conn = self._connect()
                     out = work(self._conn.cursor())
                     self._conn.commit()
+                    self.last_ok, self.offline = datetime.now(UTC), None
                     return out
                 except dropped as e:
                     self._close()
                     if not reused:  # a fresh connection failed too: we are offline
-                        raise CircleOffline(f"Neon is unreachable ({type(e).__name__})") from e
+                        self.offline = f"Neon is unreachable ({type(e).__name__})"
+                        raise CircleOffline(self.offline) from e
+                except CircleOffline as e:  # no driver or no URL: nothing to roll back
+                    self.offline = str(e)
+                    raise
                 except Exception:
                     if self._conn is not None:
                         self._conn.rollback()
@@ -260,6 +267,18 @@ class CircleBoard:
             " g.played_at FROM game_scores g JOIN members m ON m.id = g.member_id"
             " WHERE g.circle_id = %s ORDER BY g.score DESC, g.played_at LIMIT %s",
             (circle_id, limit),
+        )
+
+    def upcoming_events(self, circle_id: str, now: datetime) -> list[dict]:
+        """The shared calendar: agreed events that have not ended, soonest first, one row per RSVP.
+
+        An event without RSVPs still comes back once, with member_id, display_name and answer set to None."""
+        return self._rows(
+            "SELECT e.id, e.thread_id, e.title, e.starts_at, e.ends_at, e.location, e.created_by,"
+            " r.member_id, m.display_name, r.answer"
+            " FROM events e LEFT JOIN rsvps r ON r.event_id = e.id LEFT JOIN members m ON m.id = r.member_id"
+            " WHERE e.circle_id = %s AND e.ends_at > %s ORDER BY e.starts_at, e.id, m.display_name, r.member_id",
+            (circle_id, now),
         )
 
     def _rows(self, sql: str, params: tuple) -> list[dict]:

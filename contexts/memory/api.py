@@ -5,7 +5,7 @@
 - GET /memory/episodes?from&to&camera&label   list[Episode]
 - GET /memory/window?from&to                  EpisodeWindow (hour buckets)
 - GET /memory/objects/{label}/last-seen       Sighting, 404 if never seen
-- GET /memory/search?q=&limit=                list[SearchHit], best first
+- GET /memory/search?q=&limit=                list[SearchHit], best first (keywords, plus meaning when vectors exist: M5)
 - GET /memory/items?from&to&kind              list[Item]
 - GET /memory/keyframes/{ref}                 the JPEG behind frames:<camera>:<ts_ms>
 - GET /memory/stats                           MemoryStats
@@ -52,7 +52,7 @@ def build_router(memory: SqliteMemory, frames_dir: str | Path = "data/frames") -
 
     @router.get("/search")
     async def search(q: str, limit: int = Query(5, ge=1, le=50)) -> list[SearchHit]:
-        return memory.search(q, limit)
+        return await memory.search_hybrid(q, limit)  # embeds the query off the event loop (M5)
 
     @router.get("/items")
     async def items(start: datetime = From, end: datetime = To, kind: str | None = None) -> list[Item]:

@@ -24,7 +24,8 @@ class FaceBlur:
         self._detector = detector  # anything with .detect(frame) -> (_, faces rows [x, y, w, h, ..., score])
         self._size: tuple[int, int] | None = None
 
-    def __call__(self, frame: Any) -> Any:
+    def faces(self, frame: Any) -> list[Any]:
+        """YuNet rows for the frame: [x, y, w, h, 5 landmark points (x, y each), score]."""
         import cv2
 
         h, w = frame.shape[:2]
@@ -34,9 +35,15 @@ class FaceBlur:
         if self._size != (w, h) and hasattr(self._detector, "setInputSize"):
             self._detector.setInputSize((w, h))
             self._size = (w, h)
-        _, faces = self._detector.detect(frame)
+        _, rows = self._detector.detect(frame)
+        return [] if rows is None else list(rows)
+
+    def __call__(self, frame: Any) -> Any:
+        import cv2
+
+        h, w = frame.shape[:2]
         out = frame.copy()
-        for row in faces if faces is not None else []:
+        for row in self.faces(frame):
             x, y, fw, fh = (float(v) for v in row[:4])
             mx, my = fw * self.margin, fh * self.margin
             x1, y1 = max(int(x - mx), 0), max(int(y - my), 0)

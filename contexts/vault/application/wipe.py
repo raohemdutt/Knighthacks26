@@ -10,7 +10,7 @@
 What each scope removes, all under data_dir:
 - keyframes: everything in frames/
 - memory:    memory.sqlite and its -wal and -shm files
-- all:       both, plus everything in exports/ and events/
+- all:       both, plus everything in exports/ and events/, and the face templates in vault/identity/ (P9)
 
 Directories are emptied, not removed. Nothing outside data_dir is touched: a
 target that is a symlink, or that resolves outside data_dir, is refused and
@@ -70,6 +70,7 @@ class WipeReport:
     removed: dict[str, int] = field(default_factory=dict)  # target -> files deleted
     refused: list[str] = field(default_factory=list)  # paths left alone
     master_key_removed: bool = False
+    identity_removed: int = 0  # face templates (P9) deleted from vault/identity/; only scope "all" removes them
 
 
 class Wiper:
@@ -91,6 +92,8 @@ class Wiper:
                 except OutsideDataDir as exc:
                     log.warning("wipe refused: %s", exc)
                     report.refused.append(str(path))
+        if scope == "all":  # "everything" includes who the box can recognise; the key and the policy stay
+            report.identity_removed = self._remove(self.data_dir / "vault" / "identity", vault_ok=True)
         if include_master_key:  # everything encrypted with it becomes unreadable for good
             report.master_key_removed = self._remove(self.data_dir / "vault" / "master.key", vault_ok=True) > 0
         log.warning("wipe %s: removed %s, refused %s", scope, report.removed, report.refused)

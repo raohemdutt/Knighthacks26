@@ -54,8 +54,8 @@ function CameraView() {
     return () => window.clearTimeout(t);
   }, [typed]);
 
-  // A finished episode shows up without a reload.
-  useAtlasEvents(["memory.episode.closed"], () => {
+  // An episode shows up without a reload, both when it starts ("happening now") and when it finishes.
+  useAtlasEvents(["memory.episode.opened", "memory.episode.closed"], () => {
     episodes.reload();
     stats.reload();
   });
@@ -200,7 +200,8 @@ function SearchResults({ query }: { query: string }) {
 
 function SearchHitCard({ hit }: { hit: SearchHit }) {
   const url = safeUrl(hit.url);
-  if (hit.kind === "episode")
+  // "note" is the box's hourly summary of what a camera saw: it carries a camera and a keyframe, not a connector.
+  if (hit.kind === "episode" || hit.kind === "note")
     return (
       <li className={`${ui.card} ${ui.episode}`}>
         {hit.frame_ref ? <Keyframe frameRef={hit.frame_ref} compact /> : <div />}
@@ -208,6 +209,7 @@ function SearchHitCard({ hit }: { hit: SearchHit }) {
           <div className={`${ui.row} ${ui.wrap}`}>
             <strong>{dayTime(hit.ts)}</strong>
             {hit.camera_id ? <span className={ui.tag}>{cameraName(hit.camera_id)}</span> : null}
+            {hit.kind === "note" ? <span className={ui.tag}>Hour summary</span> : null}
           </div>
           <p className={ui.episodeText}>{hit.text}</p>
         </div>

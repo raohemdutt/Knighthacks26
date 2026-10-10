@@ -21,6 +21,7 @@ from contexts.play.dayrun.models import (
     InitialOverride,
     Measured,
     Move,
+    PlannedBlock,
 )
 from contexts.play.dayrun.routes import Walks
 
@@ -99,7 +100,9 @@ def hard(cfg: DayRunConfig, w: Walks, board: Board, moves: list[Move], seed: int
     for d in told:
         if d.kind != "block_moved":
             continue
-        title = next(b.title for b in shaken.blocks if b.id == d.block)
+        title = next((b.title for b in shaken.blocks if b.id == d.block), None)
+        if title is None:  # moved out of the day's window: there is no walk to compare
+            continue
         was = next((r for r in before.routes if r.purpose == f"to {title}"), None)
         now = next((r for r in after.routes if r.purpose == f"to {title}"), None)
 
@@ -134,8 +137,13 @@ def campaign(cfg: DayRunConfig, w: Walks, board_for: Callable[[datetime, Initial
 # --- replay: what actually happened, as a plan ---
 
 
-def baseline_moves(cfg: DayRunConfig, w: Walks, board: Board, actual: Measured) -> list[Move]:
+def baseline_moves(cfg: DayRunConfig, w: Walks, board: Board, actual: Measured,
+                   night: list[tuple[str, PlannedBlock]] | None = None) -> list[Move]:
     """The measured day as moves the engine can run: that much sleep, that many meals, that much desk time.
+
+    When the night's sleep is not measured (`actual.sleep_hours` is None), `night` is the (slot, sleep
+    block) pairs to use in its place: the night of the plan this baseline is compared with, so that
+    an unknown night is the same on both sides instead of counting as no sleep.
 
     Habits knows totals, not times of day, so the times are a reconstruction: sleep ends when
     the board does, meals sit near 12:30 and 18:30 (then 08:30), and desk time fills the earliest
@@ -159,7 +167,11 @@ def baseline_moves(cfg: DayRunConfig, w: Walks, board: Board, actual: Measured) 
 
     sleep = round((actual.sleep_hours or 0) * 60)
     last = board.slots[-1] if board.slots and board.slots[-1].next_block is None else None
-    if sleep >= cfg.min_move_minutes and last and last.id in free:
+    if actual.sleep_hours is None:
+        for slot, b in night or []:
+            free.setdefault(slot, [])
+            take(slot, b.start, b.end, "sleep", b.place)
+    elif sleep >= cfg.min_move_minutes and last and last.id in free:
         lo, hi = free[last.id][-1]
         take(last.id, max(lo, hi - timedelta(minutes=sleep)), hi, "sleep", board.home)
 

@@ -13,7 +13,7 @@ m = json.load(open(sys.argv[1] + "/manifest.json"))
 print(m["gguf"], m.get("mmproj") or "")
 ' "$pkg")
 
-args=(-m "$pkg/$gguf" --jinja --host 127.0.0.1 --port "${ATLAS_LLM_PORT:-8080}" -c 4096 -ngl 99 -np 1 --reasoning-budget 0)
+args=(-m "$pkg/$gguf" --jinja --host 127.0.0.1 --port "${ATLAS_LLM_PORT:-8080}" -c 4096 -ngl 99 -np 1 --reasoning-budget 0 --cache-ram 0)  # cache-ram: the default lets the prompt cache grow to 8 GB, the whole box
 [ -n "$mmproj" ] && args+=(--mmproj "$pkg/$mmproj")
 
 exec "$llama_server" "${args[@]}"

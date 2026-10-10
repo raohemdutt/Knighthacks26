@@ -14,7 +14,7 @@ import contextlib
 import logging
 import os
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import yaml
@@ -25,6 +25,8 @@ from contexts.agent.application.planner import Planner
 from contexts.agent.application.qa import QA, SleepSchedule
 from contexts.agent.application.web_port import HubWebTools
 from contexts.agent.domain.rules import RuleEvaluator, load_rules
+from contexts.capture.application.retention import prune_frames
+from contexts.capture.application.service import CaptureService
 from contexts.circle.application.delivery import AgreedEventDelivery
 from contexts.circle.application.presence import PresenceBoard
 from contexts.circle.application.protocol import CircleAgent, InMemoryCircleStore
@@ -35,7 +37,10 @@ from contexts.circle.infrastructure.outbox import CircleOutbox
 from contexts.connectors.application.hub import ConnectorHub
 from contexts.connectors.domain.spec import load_specs
 from contexts.connectors.infrastructure.mcp_client import McpConnector
+from contexts.learning.application.board import LearningBoard
 from contexts.learning.application.export import DatasetExporter
+from contexts.memory.application.embedder import embedder_from
+from contexts.memory.application.indexer import VectorIndexer
 from contexts.memory.application.projection import MemoryProjection
 from contexts.memory.application.reader import SqliteMemory
 from contexts.memory.application.summarizer import EpisodeSummarizer
@@ -44,10 +49,14 @@ from contexts.memory.fixture import load as load_memory_fixture
 from contexts.memory.infrastructure.store import MemoryStore
 from contexts.habits.application.nudges import Nudger
 from contexts.habits.domain.config import load_config as load_habits
+from contexts.habits.domain.members import MemberHabits
 from contexts.habits.domain.tracker import HabitTracker
 from contexts.impact.domain.waste_watch import WasteWatch
 from contexts.play.domain.game import SortIt
+from contexts.perception.application.identity import IdentityService
 from contexts.perception.application.service import PerceptionService
+from contexts.perception.infrastructure.identity_store import IdentityStore
+from contexts.perception.infrastructure.recognizer import build_recognizer
 from contexts.perception.domain.zones import ZoneEngine
 from contexts.play.dayrun.service import DayRun
 from contexts.play.domain.pathfinding import SortingRules, ZoneMap
@@ -109,13 +118,23 @@ class Atlas:
     vault: Vault | None = None
     policy: Policy | None = None
     wiper: Wiper | None = None
+    learning: LearningBoard | None = None  # where each taught task is (X10)
+    capture: CaptureService | None = None  # cameras -> detector -> observations, only where there is a detector (C6)
+    identity: IdentityService | None = None  # opt-in owner recognition (P9); off by default
     tasks: list[asyncio.Task] = field(default_factory=list)
+    _last_retention: datetime | None = None
 
     async def start(self) -> None:
         if self.settings.replay:
             n = await self.bus.replay_into()
             log.info("replayed %d events", n)
         self.tasks.append(asyncio.create_task(self._ticks()))
+        if self.identity:  # after replay: say the switch and who is enrolled if the log does not have it
+            await self.bus.publish_all(self.identity.announce())
+        if self.capture:
+            self.capture.start(asyncio.get_running_loop())
+            if self.identity:  # one recognition hook per camera pipeline; does nothing while switched off
+                self.identity.attach(self.capture.pipelines, asyncio.get_running_loop(), self.bus)
 
     async def _ticks(self) -> None:
         while True:
@@ -131,6 +150,8 @@ class Atlas:
                 ("presence", (lambda: asyncio.to_thread(self.presence_sync.sync, now)) if self.presence_sync else None),
                 ("agent loop", (lambda: self.loop.tick(now)) if self.loop.due(now) else None),
                 ("connectors", (lambda: self.hub.sync_due(now)) if self.settings.connectors else None),
+                ("retention", self._retention(now)),
+                ("camera health", (lambda: self.capture.health(now)) if self.capture else None),
             ]
             for name, job in jobs:
                 if job is None:
@@ -144,7 +165,22 @@ class Atlas:
                     log.exception("tick job %s failed", name)
             await asyncio.sleep(TICK_S)
 
+    def _retention(self, now: datetime):
+        """Once an hour, remove saved pictures older than the policy's keep_days (nothing when it is forever)."""
+        if not self.policy or not self.policy.keep_days:
+            return None
+        if self._last_retention and now - self._last_retention < timedelta(hours=1):
+            return None
+        self._last_retention = now
+        async def prune() -> list:
+            await asyncio.to_thread(prune_frames, self.settings.data_dir, self.policy.keep_days, now)
+            return []  # no events: the tick publishes whatever a job returns
+
+        return prune
+
     async def stop(self) -> None:
+        if self.capture:
+            self.capture.stop()
         for t in self.tasks:
             t.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -214,10 +250,17 @@ def build(settings: Settings | None = None) -> Atlas:
     # background: a replayed wipe would wipe again, and the endpoint reads its report right after publish.
     vault = Vault(KeyRing(s.data_dir))  # no disk access until the first encrypt or decrypt
     policy = Policy(s.data_dir)
+    hub.offline = lambda: policy.offline  # offline pauses every connector read and write (V5, H4)
     policy.subscribe(bus)
+    # Owner recognition (P9): opt-in, templates encrypted under data/vault/identity/. Unavailable without the SFace model.
+    identity = IdentityService(IdentityStore(s.data_dir, vault), build_recognizer())
+    bus.subscribe("perception.identity", identity.on_changed, replay=True)
     wiper = Wiper(s.data_dir, memory_db=s.data_dir / "memory.sqlite")
     bus.subscribe("vault.wipe.requested", wiper.on_wipe_requested)
     EpisodeSummarizer(store, runtime).subscribe(bus)  # live only, in the background: one model call per closed episode (M3)
+    # Semantic search (M5): off unless models.yaml sets embeddings.text. Live only, in the background, after the projection.
+    memory.embedder = embedder_from(runtime, models_yaml)
+    VectorIndexer(store, memory.embedder).subscribe(bus)
     bus.subscribe("agent.rule.added", rules.on_rule_added, replay=True)
     bus.subscribe("perception.zone", rules.on_zone_event, replay=True)
     bus.subscribe("perception.zone", planner.on_zone_event)  # leaving checklist at the door (A8)
@@ -276,10 +319,14 @@ def build(settings: Settings | None = None) -> Atlas:
     habits_file = s.config_dir / "habits.yaml"
     if habits_file.exists():
         habits_cfg = load_habits(habits_file, s.config_dir / "agent.yaml")
-        habits = HabitTracker(habits_cfg)
-        nudger = Nudger(habits_cfg, habits)
+        habits = MemberHabits(HabitTracker(habits_cfg), nudger_for=lambda t: Nudger(habits_cfg, t))  # P9: per enrolled person
+        nudger = Nudger(habits_cfg, habits.base)
+        bus.subscribe("perception.identity", habits.on_identity, replay=True)  # recognition on/off, who is enrolled
+        bus.subscribe("perception.person", habits.on_person, replay=True)  # track N on camera C is member M
         bus.subscribe("perception.zone", habits.on_zone_event, replay=True)
         bus.subscribe("perception.scene", habits.on_scene, replay=True)
+        bus.subscribe("perception.observation", habits.on_observation, replay=True)  # when the desk camera was reporting
+        bus.subscribe("vault.policy.changed", habits.on_policy, replay=True)  # ... and when it was paused
         bus.subscribe("connector.item.synced", habits.on_item, replay=True)
         bus.subscribe("impact.item.disposed", habits.on_disposed, replay=True)
         bus.subscribe("habits.day.closed", habits.on_day_closed, replay=True)
@@ -342,8 +389,15 @@ def build(settings: Settings | None = None) -> Atlas:
     dayrun = DayRun(places, memory=memory, habits=habits, presence=presence, hub=hub,
                     config_dir=s.config_dir, data_dir=s.data_dir) if places else None
 
+    # Learning board (X10): the Teach screen's view of tasks, runs and deployed models; rebuilt from the log.
+    learning = LearningBoard()
+    learning.subscribe(bus)
+
+    # Cameras (C1, P1, P2, P6): config/cameras.yaml; None unless a detector engine is on this machine.
+    capture = CaptureService.load(s.config_dir / "cameras.yaml", bus, models_yaml=models_yaml, data_dir=s.data_dir, policy=policy)
+
     return Atlas(settings=s, bus=bus, qa=qa, approvals=approvals, hub=hub, loop=loop, zones=zones, game=game,
                  waste=waste, circle=circle, presence=presence, zone_engine=zone_engine, sharing=sharing,
                  memory=memory, projection=projection, habits=habits, nudger=nudger,
                  presence_sync=presence_sync, board=board, vault=vault, policy=policy, wiper=wiper,
-                 places=places, dayrun=dayrun)
+                 places=places, dayrun=dayrun, capture=capture, identity=identity, learning=learning)
