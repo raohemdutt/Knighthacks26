@@ -7,18 +7,11 @@ import { getToken, setToken } from "@/lib/api";
 import { useAtlas, type LinkState } from "@/lib/atlas";
 import ui from "./ui.module.css";
 
-const TABS: { href: string; label: string; icon: ReactNode }[] = [
+type Tab = { href: string; label: string; icon: ReactNode };
+
+/** The five screens that fit a phone tab bar. Everything else is one tap further, under More. */
+const TABS: Tab[] = [
   { href: "/", label: "Ask", icon: <path d="M4 5.5h16v10.5H10l-4.5 3.5V16H4z" /> },
-  {
-    href: "/timeline",
-    label: "Timeline",
-    icon: (
-      <>
-        <circle cx="12" cy="12" r="8.5" />
-        <path d="M12 7.5V12l3 2" />
-      </>
-    ),
-  },
   {
     href: "/today",
     label: "Today",
@@ -26,6 +19,25 @@ const TABS: { href: string; label: string; icon: ReactNode }[] = [
       <>
         <circle cx="12" cy="12" r="4" />
         <path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8" />
+      </>
+    ),
+  },
+  {
+    href: "/dayrun",
+    label: "Day Run",
+    icon: (
+      <>
+        <path d="M5 21V4M5 5h11l-2 3.5 2 3.5H5" />
+      </>
+    ),
+  },
+  {
+    href: "/timeline",
+    label: "Timeline",
+    icon: (
+      <>
+        <circle cx="12" cy="12" r="8.5" />
+        <path d="M12 7.5V12l3 2" />
       </>
     ),
   },
@@ -39,6 +51,10 @@ const TABS: { href: string; label: string; icon: ReactNode }[] = [
       </>
     ),
   },
+];
+
+/** Reached through the More sheet. Their URLs are unchanged. */
+const MORE: Tab[] = [
   {
     href: "/circle",
     label: "Circle",
@@ -60,6 +76,16 @@ const TABS: { href: string; label: string; icon: ReactNode }[] = [
       </>
     ),
   },
+  {
+    href: "/map",
+    label: "Room map",
+    icon: (
+      <>
+        <path d="M3.5 6.5l5.5-2 6 2 5.5-2v13l-5.5 2-6-2-5.5 2z" />
+        <path d="M9 4.5v13M15 6.5v13" />
+      </>
+    ),
+  },
 ];
 
 const LINK_TEXT: Record<LinkState, string> = { live: "Live", connecting: "Connecting…", offline: "Offline, retrying" };
@@ -72,6 +98,9 @@ export function Shell({ children }: { children: ReactNode }) {
   const path = normalize(usePathname() || "/");
   const { link, model, toasts, dismissToast, approvals } = useAtlas();
   const [settings, setSettings] = useState(false);
+  const [more, setMore] = useState(false);
+  const inMore = MORE.some((t) => t.href === path);
+  useEffect(() => setMore(false), [path]); // the sheet closes once its link has been followed
   const pending = approvals.items.length;
 
   return (
@@ -139,10 +168,65 @@ export function Shell({ children }: { children: ReactNode }) {
               </Link>
             );
           })}
+          <button
+            type="button"
+            className={`${ui.tab} ${ui.tabButton} ${inMore || more ? ui.tabOn : ""}`}
+            aria-haspopup="dialog"
+            aria-expanded={more}
+            onClick={() => setMore((m) => !m)}
+          >
+            <svg className={ui.tabIcon} viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">
+              <circle cx="5.5" cy="12" r="1.9" />
+              <circle cx="12" cy="12" r="1.9" />
+              <circle cx="18.5" cy="12" r="1.9" />
+            </svg>
+            <span>More</span>
+          </button>
         </div>
       </nav>
 
+      {more ? <MoreSheet path={path} onClose={() => setMore(false)} /> : null}
       {settings ? <Settings onClose={() => setSettings(false)} /> : null}
+    </div>
+  );
+}
+
+function useEscape(onClose: () => void) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+}
+
+/** The screens that do not fit the tab bar. */
+function MoreSheet({ path, onClose }: { path: string; onClose: () => void }) {
+  useEscape(onClose);
+  return (
+    <div className={`${ui.overlay} ${ui.overlayAboveTabs}`} onClick={onClose}>
+      <div className={ui.sheet} role="dialog" aria-modal="true" aria-label="More screens" onClick={(e) => e.stopPropagation()}>
+        <div className={`${ui.row} ${ui.between}`}>
+          <h2>More</h2>
+          <button type="button" className={ui.btn} onClick={onClose}>
+            Close
+          </button>
+        </div>
+        <ul className={ui.list}>
+          {MORE.map((t) => {
+            const on = path === t.href;
+            return (
+              <li key={t.href}>
+                <Link href={t.href} className={`${ui.moreLink} ${on ? ui.moreLinkOn : ""}`} aria-current={on ? "page" : undefined} onClick={onClose}>
+                  <svg className={ui.tabIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    {t.icon}
+                  </svg>
+                  <span>{t.label}</span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
     </div>
   );
 }
@@ -153,11 +237,7 @@ function Settings({ onClose }: { onClose: () => void }) {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => setTokenText(getToken()), []);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  useEscape(onClose);
 
   const save = (e: FormEvent) => {
     e.preventDefault();
