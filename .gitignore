@@ -8,6 +8,8 @@ __pycache__/
 *.db-wal
 *.db-shm
 data/
+# research records committed beside the notes (search spaces, chip sheets); runtime data/ stays ignored
+!lab/refine/research/*/data/
 graphify-out/
 *.engine
 yolo*.pt
