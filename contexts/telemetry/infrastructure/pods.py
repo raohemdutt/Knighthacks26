@@ -22,6 +22,9 @@ after all, the bus drops the repeat by its event_id).
 A sample at or before the newest one already held for that node (`skip_until`, the projection the log rebuilt) is
 not published again, so restarting the app does not copy the pod's buffer into the log a second time. Samples the
 pod dropped before they were fetched (its buffer is bounded) are counted as lost, once.
+A sample that is not this pod's telemetry.gpu.power (another node's name, a broken event) is counted as rejected
+and logged once per page and reason, with the pod and the count, so a pod whose every sample is rejected shows in
+the log and not only in the counters.
 
 A pod that does not answer, or whose proxy holds the request for up to `timeout_s`, delays only its own samples:
 the other pod's are read and published meanwhile. A pod that does not answer is logged once per change of reason
@@ -38,6 +41,7 @@ lab and jetson/egress.py read too), else lab.hub.DEFAULT_URL.
 
 import asyncio
 import logging
+from collections import Counter
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -107,6 +111,12 @@ def pod_endpoints(environ: Mapping[str, str], *, hub_url: str | None = None, por
         names = " or ".join(" and ".join(lab_hub.key_names(letter)) for _, letter in accounts)
         raise ValueError(f"the pods source needs {names} in the environment")
     return pods
+
+
+def _first_error(exc: Exception) -> str:
+    """The first line of a parse error, cut short: enough to name the field, never the whole sample."""
+    lines = str(exc).strip().splitlines()
+    return " ".join(lines[:2])[:200] if lines else type(exc).__name__
 
 
 def hub_user_agent(environ: Mapping[str, str]) -> str:
@@ -271,29 +281,38 @@ class PodReader:
             state["lost"] += dropped
             state["after"] = page.first_seq - 1  # they are gone; counted once even if this page is read again
             log.warning("%d %s samples were dropped on the pod before they could be read", dropped, pod.node)
-        for item in page.samples:
-            seq = item.get("seq") if isinstance(item, Mapping) else None
-            if not isinstance(seq, int) or isinstance(seq, bool):
-                state["rejected"] += 1
-                continue
-            try:
-                event = parse_event(item.get("event"))
-            except (ValueError, TypeError):
-                state["rejected"] += 1
-                state["after"] = max(state["after"], seq)
-                continue
-            if not isinstance(event, GpuPower) or event.node != pod.node:
-                state["rejected"] += 1  # only this pod's power samples come through this pod's address
-                state["after"] = max(state["after"], seq)
-                continue
-            if state["newest"] is not None and event.ts <= state["newest"]:
-                state["repeats"] += 1  # already in the log
-                state["after"] = max(state["after"], seq)
-                continue
-            yield event.model_copy(update={"received_ts": page.received})
-            state["after"] = max(state["after"], seq)  # handed on: the runner published it
-            state["newest"] = event.ts
-            state["fetched"] += 1
+        rejected: Counter[str] = Counter()  # reason -> samples of this page rejected for it, logged once per page
+        try:
+            for item in page.samples:
+                seq = item.get("seq") if isinstance(item, Mapping) else None
+                if not isinstance(seq, int) or isinstance(seq, bool):
+                    state["rejected"] += 1
+                    rejected["they carry no sequence number"] += 1
+                    continue
+                try:
+                    event = parse_event(item.get("event"))
+                except (ValueError, TypeError) as exc:
+                    state["rejected"] += 1
+                    rejected[f"they are not contract events ({_first_error(exc)})"] += 1
+                    state["after"] = max(state["after"], seq)
+                    continue
+                if not isinstance(event, GpuPower) or event.node != pod.node:
+                    state["rejected"] += 1  # only this pod's power samples come through this pod's address
+                    rejected[f"they are {event.type} for node {getattr(event, 'node', None)!r}, not {pod.node}'s "
+                             "power samples"] += 1
+                    state["after"] = max(state["after"], seq)
+                    continue
+                if state["newest"] is not None and event.ts <= state["newest"]:
+                    state["repeats"] += 1  # already in the log
+                    state["after"] = max(state["after"], seq)
+                    continue
+                yield event.model_copy(update={"received_ts": page.received})
+                state["after"] = max(state["after"], seq)  # handed on: the runner published it
+                state["newest"] = event.ts
+                state["fetched"] += 1
+        finally:  # also when the caller stops mid-page: what was rejected so far is said once
+            for reason, count in rejected.items():
+                log.warning("rejected %d %s sample%s: %s", count, pod.node, "" if count == 1 else "s", reason)
 
     async def _get(self, client: httpx.AsyncClient, pod: PodEndpoint, after: int) -> dict[str, Any] | None:
         state = self.state[pod.node]
