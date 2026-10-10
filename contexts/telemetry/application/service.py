@@ -20,4 +20,9 @@ class TelemetryService:
             await self.runner.run()
 
     def status(self) -> dict:
-        return {"source": self.source, "sampler": self.runner.status() if self.runner else None}
+        """The source, the runner's counts and, for a sampler that reports on itself (the pod reader), its own."""
+        out = {"source": self.source, "sampler": self.runner.status() if self.runner else None}
+        own = getattr(getattr(self.runner, "sampler", None), "status", None)
+        if callable(own):
+            out["sampler"] = {**out["sampler"], "own": own()}
+        return out

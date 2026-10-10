@@ -1,0 +1,42 @@
+GPU: 0
+    USAGE:
+        GFX_ACTIVITY: 99 %
+        UMC_ACTIVITY: 61 %
+        MM_ACTIVITY: N/A
+        VCN_ACTIVITY: [0 %, N/A, N/A, N/A]
+        JPEG_ACTIVITY: [N/A, N/A, N/A, N/A]
+        GFX_BUSY_INST: N/A
+        JPEG_BUSY: N/A
+        VCN_BUSY: N/A
+    POWER:
+        SOCKET_POWER: 201 W
+        GFX_VOLTAGE: N/A
+        SOC_VOLTAGE: N/A
+        MEM_VOLTAGE: N/A
+        THROTTLE_STATUS: N/A
+        POWER_MANAGEMENT: ENABLED
+        UBB_POWER: N/A
+    CLOCK:
+        GFX_0:
+            CLK: 2350 MHz
+            MIN_CLK: 500 MHz
+            MAX_CLK: 2350 MHz
+            DEEP_SLEEP: DISABLED
+        MEM_0:
+            CLK: 1258 MHz
+            MIN_CLK: 96 MHz
+            MAX_CLK: 1258 MHz
+            DEEP_SLEEP: DISABLED
+        UCLK_AID: N/A
+        SOCCLKS_MID: N/A
+    TEMPERATURE:
+        EDGE: 63 °C
+        HOTSPOT: 77 °C
+        MEM: 72 °C
+        HBM_STACKS: N/A
+        MID: N/A
+        AID: N/A
+        XCD: N/A
+    ENERGY:
+        TOTAL_ENERGY_CONSUMPTION: 1851934.775 J
+

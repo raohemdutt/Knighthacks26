@@ -10,6 +10,10 @@ reading), the configured period next to the period actually measured between sam
 gap, and samples that arrived out of order. Request windows and power readings are kept for a
 bounded recent stretch; energy over a window is computed from `readings()` by its consumers.
 
+A node whose samples come from the pod sampler (lab/pod_power.py) also gets `sampler`: its name and
+start, restarts seen, its polls and distinct updates, whether the card is under load or the readings
+went stale, the stale samples counted, whether the energy counter may be used, and its last checks.
+
 Event types it does not know yet (a new source) are counted per node and otherwise left alone,
 so adding a source never breaks the projection.
 """
@@ -80,12 +84,33 @@ class TelemetryProjection:
                 status["nvpmodel"], status["temps_c"] = event.nvpmodel, dict(event.temps_c)
             elif isinstance(event, GpuPower):
                 status["throttled"], status["temps_c"] = event.throttled, dict(event.temps_c)
+        if isinstance(event, GpuPower) and event.sampler is not None:
+            self._on_pod_sample(event, latest=p["latest_ts"] == r.ts)
         if p["first_ts"] is None or r.ts < p["first_ts"]:
             p["first_ts"] = r.ts
         if p["samples"] > 1:
             span_ms = (p["latest_ts"] - p["first_ts"]).total_seconds() * 1000
             p["measured_period_ms"] = span_ms / (p["samples"] - 1)
         self._readings.setdefault(key, deque(maxlen=self.keep)).append(r)
+
+    def _on_pod_sample(self, e: GpuPower, latest: bool) -> None:
+        """What the pod sampler says about itself: restarts, distinct updates, staleness and its energy-counter checks."""
+        s = self._node(e.node).setdefault("sampler", {"name": None, "started": None, "restarts": 0, "polls": None,
+                                                      "updates": None, "under_load": None, "stale": None,
+                                                      "stale_samples": 0, "counter_ok": None, "energy_checks": []})
+        if s["started"] is not None and e.sampler_started is not None and e.sampler_started != s["started"] and latest:
+            s["restarts"] += 1
+        s["stale_samples"] += int(e.stale is True)
+        if e.energy_check is not None:
+            s["energy_checks"] = [*s["energy_checks"], {"ts": e.ts, **e.energy_check.model_dump()}][-10:]
+        if latest:
+            s.update(name=e.sampler, started=e.sampler_started or s["started"], polls=e.polls, updates=e.updates,
+                     under_load=e.under_load, stale=e.stale, counter_ok=e.counter_ok)
+
+    def latest_power_ts(self, node: str) -> datetime | None:
+        """The newest power sample held for `node`, from any source; None before the first."""
+        times = [p["latest_ts"] for (n, _), p in self._power.items() if n == node and p["latest_ts"] is not None]
+        return max(times) if times else None
 
     def _on_step(self, e: TrainStep) -> None:
         run = self._runs.setdefault(e.run_id, {"node": e.node, "steps": 0, "first_ts": e.ts, "last_ts": e.ts,
@@ -116,6 +141,9 @@ class TelemetryProjection:
             power = {s: dict(p) for (n, s), p in sorted(self._power.items()) if n == node}
             nodes[node] = {**status, "events": dict(sorted(status["events"].items())), "temps_c": dict(status["temps_c"]),
                            "power": power}
+            if "sampler" in status:
+                nodes[node]["sampler"] = {**status["sampler"],
+                                          "energy_checks": [dict(c) for c in status["sampler"]["energy_checks"]]}
         requests = {node: [_window(w) for w in self.requests(node)[-self.recent:]] for node in sorted(self._requests)}
         return {"nodes": nodes, "requests": requests, "train_runs": {k: dict(v) for k, v in sorted(self._runs.items())},
                 "counts": dict(sorted(self.counts.items()))}
