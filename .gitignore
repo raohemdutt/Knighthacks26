@@ -11,3 +11,6 @@ data/
 graphify-out/
 *.engine
 yolo*.pt
+# lab machine runtime state (the ledger, its lock, the stop file); only the folder is kept
+lab/state/*
+!lab/state/.gitkeep
