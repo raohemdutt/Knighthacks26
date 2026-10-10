@@ -75,3 +75,14 @@ def test_play_route_and_a_round_over_the_bus(tmp_path):
         assert c.get("/api/play/accuracy").json()["rounds"] == 1
         impact = c.get("/api/impact").json()["total"]
         assert impact["items_seen"] == 1 and impact["recycled"] == 1  # the same can, counted by Waste Watch
+
+
+def test_invites_are_served_and_names_are_checked(tmp_path):
+    (tmp_path / "invites").mkdir()
+    (tmp_path / "invites" / "invite-20261010T120000-abc123.ics").write_text("BEGIN:VCALENDAR\nEND:VCALENDAR\n")
+    with client(tmp_path) as c:
+        [inv] = c.get("/api/invites").json()
+        r = c.get(inv["url"])
+        assert r.status_code == 200 and r.headers["content-type"].startswith("text/calendar")
+        assert c.get("/api/invites/..%2Fevents%2Fx.ics").status_code == 404
+        assert c.get("/api/invites/secret.txt").status_code == 404

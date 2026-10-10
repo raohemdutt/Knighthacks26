@@ -24,6 +24,7 @@ from contexts.agent.application.planner import Planner
 from contexts.agent.application.qa import QA, SleepSchedule
 from contexts.agent.application.web_port import HubWebTools
 from contexts.agent.domain.rules import RuleEvaluator, load_rules
+from contexts.circle.application.delivery import AgreedEventDelivery
 from contexts.circle.application.presence import PresenceBoard
 from contexts.circle.application.protocol import CircleAgent, InMemoryCircleStore
 from contexts.circle.application.sharing import CircleSharing
@@ -274,6 +275,10 @@ def build(settings: Settings | None = None) -> Atlas:
         circle = CircleAgent(circle_cfg["member_id"], circle_cfg["circle_id"], store, memory,
                              clock=lambda: datetime.now(UTC))
         approvals.executors["circle_share"] = circle.share_executor
+        # G1 step 4: once everyone says yes, propose the calendar invite and the group chat message.
+        delivery = AgreedEventDelivery(hub, circle_cfg["member_id"], qa.sleep.tz, emails=circle_cfg.get("emails") or {},
+                                       chat_group=circle_cfg.get("chat_group", "friends"), public_url=s.public_url)
+        bus.subscribe("circle.event.agreed", delivery.on_agreed)  # live only: proposes writes
         if neon:
             # Summaries leave the box only when the member opted in; they queue locally first.
             sharing = CircleSharing(CircleOutbox(s.data_dir / "circle.sqlite"), NeonShares(neon), circle_cfg["circle_id"],

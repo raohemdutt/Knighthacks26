@@ -32,6 +32,8 @@ circle:
   member_id: null   # e.g. dom
   circle_id: null   # e.g. team
   share_presence: false  # opt in to sharing a named place (G5)
+  chat_group: friends    # GroupMe group told when the circle agrees on an event (G1)
+  emails: {}             # member id -> email, for calendar invites, e.g. {hemdutt: hemdutt@example.edu}
 
 # Named places presence may use. Coarse spots only; never coordinates.
 places: [Our table, Library, Dorm, Student Union, Gym]
