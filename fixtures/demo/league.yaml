@@ -7,8 +7,7 @@ friends:
   - member_id: maya
     display_name: Maya
     counts: {items_seen: 12, recyclable_seen: 7, recycled: 4, contamination: 2}
-    days:
-      - {days_ago: 6, habits: {sleep: 5.1, meals: 2, energy_drinks: 3, focus: 2.5, sort_right: 100}}
+    days:  # five days back, so they stay inside the running week whichever weekday the story ends on
       - {days_ago: 5, habits: {sleep: 4.4, meals: 1, energy_drinks: 2, focus: 1.0, sort_right: 50}}
       - {days_ago: 4, habits: {sleep: 6.2, meals: 2, energy_drinks: 1, focus: 2.2, sort_right: 100}}
       - {days_ago: 3, habits: {sleep: 5.0, meals: 1, energy_drinks: 3, focus: 0.5, sort_right: 67}}

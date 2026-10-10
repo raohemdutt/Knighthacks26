@@ -87,7 +87,7 @@ function Table({ view }: { view: LeagueView }) {
                 <th scope="col">#</th>
                 <th scope="col">Who</th>
                 <th scope="col" className={ui.num}>Week</th>
-                <th scope="col" className={ui.num}>Hit</th>
+                <th scope="col" className={ui.num} style={{ paddingLeft: 14 }}>Hit</th>
               </tr>
             </thead>
             <tbody>
@@ -145,7 +145,7 @@ function Row({ s, me, worst, best }: { s: LeagueStanding; me: boolean; worst: bo
         {s.reasons.length > 0 ? <p className={`${ui.muted} ${ui.small}`}>{s.reasons.slice(0, 3).join(" · ")}</p> : null}
       </td>
       <td className={ui.num}>{s.score === null ? "—" : `${Math.round(s.score)}%`}</td>
-      <td className={ui.num}>
+      <td className={ui.num} style={{ paddingLeft: 14 }}>
         {s.met}/{s.judged}
       </td>
     </tr>
