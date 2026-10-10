@@ -17,6 +17,8 @@
 - GET  /api/day/now            the Day loop: live status, today's plan, a pending re-plan, the review (D1)
 - GET  /api/day/plan?day=      a day's plan with its moves in Day Run's editor shape; POST {moves?, from_here?} remakes it
 - GET  /api/play/route         ?item=can&x=&y= -> A* route to the right bin (S2)
+- GET  /api/play/room-route    ?item=can[&from_track=|&x=&y=] -> the same walk on the floor plan, in metres (X18)
+- GET  /api/room, /api/room/live    the room twin: floor plan + calibration + zones on the floor; live tracks on it
 - GET  /api/play/accuracy      Sort It round 1 vs round 5 accuracy (S1)
 - GET  /api/impact             Waste Watch counts, diversion rate, before vs after nudges (E2)
 - GET  /api/impact/story       the Impact screen: the week in estimated real units, the disposal feed with each rule,
@@ -85,6 +87,7 @@ from contexts.memory.api import build_router as memory_router
 from contexts.perception.api import identity_router
 from contexts.perception.zones_api import zones_router
 from contexts.play.dayrun_api import dayrun_router
+from contexts.play.room.api import room_router
 from contexts.profiles.api import profile_router
 from contexts.play.league.api import league_router
 from contexts.voice.proxy import voice_router
@@ -202,6 +205,8 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
 
         app.include_router(spot_router(atlas.spot, atlas.bus, guard=authorized))
     app.include_router(zones_router(atlas.settings.config_dir, lambda: atlas.zone_engine, guard=authorized), prefix="/api")  # set the zones from a browser
+    # GET /api/room, /api/room/live, /api/play/room-route; PUT /api/room/calibration/{camera} (the room twin, X18)
+    app.include_router(room_router(lambda: atlas.room, atlas.settings.config_dir, guard=authorized))
     app.include_router(voice_router(guard=authorized), prefix="/api")  # GET /api/voice/status, POST /api/voice/talk|stop|enabled (X16)
     app.include_router(runtime_router(ModelStore(atlas.settings.data_dir / "models"), llm_url=atlas.settings.llm_url))  # GET /runtime/models (R7)
 

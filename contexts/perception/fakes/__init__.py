@@ -7,7 +7,10 @@ from contexts.perception.fakes.script import (
     package_left,
     person_arrives,
     play,
+    room_scene,
     script,
+    sort_round,
+    which_bin,
 )
 
-__all__ = ["can_recycled", "keys_left", "observations", "package_left", "person_arrives", "play", "script"]
+__all__ = ["can_recycled", "keys_left", "observations", "package_left", "person_arrives", "play", "room_scene", "script", "sort_round", "which_bin"]

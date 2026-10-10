@@ -69,6 +69,8 @@ from contexts.play.league.application.sync import LeagueSync
 from contexts.play.league.infrastructure.neon import NeonLeague
 from contexts.play.domain.pathfinding import SortingRules, ZoneMap
 from contexts.play.domain.places import PlaceSet
+from contexts.play.room.live import RoomLive
+from contexts.play.room.plan import RoomError, load_room, room_path
 from contexts.profiles import Profile, load_profile
 from contexts.vault import KeyRing, Policy, Vault, Wiper
 from contexts.workspace.domain.approvals import Approvals
@@ -115,6 +117,7 @@ class Atlas:
     rules: RuleEvaluator | None = None  # GET /api/rules, the Rules screen's switches (X6)
     alerts: AlertHistory | None = None  # GET /api/alerts
     game: SortIt | None = None
+    room: RoomLive | None = None  # the room twin: floor plan, live tracks on it, Sort It routes in metres
     waste: WasteWatch | None = None
     habits: HabitTracker | None = None
     nudger: Nudger | None = None
@@ -345,6 +348,25 @@ def build(settings: Settings | None = None) -> Atlas:
         bus.subscribe("perception.zone", game.on_zone_event)
         bus.subscribe("play.round.scored", game.on_scored, replay=True)  # state only: rounds played before a restart
 
+    # The room twin (X18): config/rooms/<name>.yaml (ATLAS_ROOM, or `room:` in agent.yaml; default dorm). Tracks are
+    # put on the floor plan through each camera's homography; Sort It rounds get a route in room space.
+    room = None
+    room_file = room_path(s.config_dir, agent_cfg.get("room"))
+    if room_file is not None and sorting.exists():
+        try:
+            room = RoomLive(load_room(room_file), SortingRules.load(sorting),
+                            active_round=lambda: game.round.round_id if game and game.round else None)
+        except RoomError as err:
+            log.warning("room twin off: %s: %s", room_file, err)
+    if room is not None:
+        bus.subscribe("perception.observation", room.on_observation, replay=True)  # where things were last seen
+        bus.subscribe("perception.person.identified", room.on_identified, replay=True)
+        bus.subscribe("perception.person.lost", room.on_lost, replay=True)
+        bus.subscribe("play.round.started", room.on_round_started)  # live only: plans and publishes play.route.planned
+        bus.subscribe("play.round.scored", room.on_round_scored, replay=True)  # state only: the sitting's tally
+        if game is not None:
+            game.pick_item = room.held_item  # a round is about the thing the camera sees in the player's hand
+
     # Waste Watch (E1, E2): counts rebuild from the log, so they survive restarts.
     waste = None
     if sorting.exists():
@@ -500,7 +522,7 @@ def build(settings: Settings | None = None) -> Atlas:
 
     spot = build_spot(s.data_dir, bus, runtime, approvals)
 
-    return Atlas(settings=s, bus=bus, qa=qa, approvals=approvals, hub=hub, loop=loop, zones=zones, rules=rules, alerts=alerts, game=game,
+    return Atlas(settings=s, bus=bus, qa=qa, approvals=approvals, hub=hub, loop=loop, zones=zones, rules=rules, alerts=alerts, game=game, room=room,
                  waste=waste, circle=circle, presence=presence, zone_engine=zone_engine, sharing=sharing,
                  memory=memory, projection=projection, habits=habits, nudger=nudger,
                  presence_sync=presence_sync, board=board, vault=vault, policy=policy, wiper=wiper,

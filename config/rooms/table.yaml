@@ -1,0 +1,35 @@
+# The hackathon table, for the room twin (ATLAS_ROOM=table). The format is described in dorm.yaml.
+# The same two cameras: cam-door sees the bins and the door on the north wall, cam-desk looks down at the table.
+name: table
+title: Hackathon table
+outline: [[0, 0], [5.0, 0], [5.0, 4.2], [0, 4.2]]
+wall_height: 2.7
+
+doors:
+  - {id: door, wall: north, at: 2.68, width: 0.9}
+windows:
+  - {id: window, wall: west, at: 2.2, width: 1.8, sill: 0.95, height: 1.3}
+posters:
+  - {wall: north, at: 4.2, width: 0.9, height: 0.6, sill: 1.3, art: grid}
+
+furniture:
+  - {id: table, type: table, at: [2.6, 2.5], size: [1.8, 0.9], facing: south, height: 0.74}
+  - {id: chair-1, type: chair, at: [2.15, 3.22], size: [0.46, 0.48], facing: north, height: 0.46}
+  - {id: chair-2, type: chair, at: [3.05, 3.22], size: [0.46, 0.48], facing: north, height: 0.46}
+  - {id: chair-3, type: chair, at: [2.15, 1.78], size: [0.46, 0.48], facing: south, height: 0.46}
+  - {id: chair-4, type: chair, at: [3.05, 1.78], size: [0.46, 0.48], facing: south, height: 0.46}
+  - {id: recycling-bin, type: bin, bin: recycling, color: blue, at: [0.94, 0.28], size: [0.36, 0.32], facing: south, height: 0.52}
+  - {id: trash-bin, type: bin, bin: trash, color: grey, at: [1.6, 0.28], size: [0.36, 0.32], facing: south, height: 0.52}
+
+play:
+  walk_speed: 1.2
+  body_radius: 0.25
+  start: [3.6, 3.7]
+
+calibration:
+  cam-door:
+    image: [[0, 0.55], [1, 0.55], [1, 1], [0, 1]]
+    floor: [[0.5, 0], [3.4, 0], [3.4, 1.8], [0.5, 1.8]]
+  cam-desk:
+    image: [[0.1, 0.4], [0.9, 0.4], [0.9, 0.95], [0.1, 0.95]]
+    floor: [[1.55, 2.05], [2.75, 2.05], [2.75, 3.4], [1.55, 3.4]]

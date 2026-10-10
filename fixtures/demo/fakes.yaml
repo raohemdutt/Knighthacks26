@@ -3,21 +3,29 @@
 # type's sample payload from tests/test_contract_samples.py. A value like "+90s" or "-3600s" is a
 # time that far from the start. Every type a context publishes appears at least once.
 #
-# perception also plays the scripted half minute from contexts/perception/fakes first, through the
+# perception also plays the scripted scene from contexts/perception/fakes first (room_scene: the half
+# minute of script(), then a Sort It round and a "which bin?" moment for the room twin), through the
 # real zone engine: that is where its observations and zone events come from. Owner recognition (P9) is
 # switched on with one enrolled member, the person at the desk (track 1) is tagged as them, and the tag
 # ends when the scene does.
 
 perception:
   - {type: perception.faces.counted, at: 2}
+  - {type: perception.faces.counted, at: 3, count: 1, facing: 0}   # looked away: no Sort It round yet
   - {type: perception.identity.changed, at: 3}
   - {type: perception.person.identified, at: 7}
   - {type: perception.scene.described, at: 9, caption: "A person sits at the desk with a laptop.", zone_id: null, objects: [],
      frame_ref: "frames:cam-desk:9"}
   - {type: perception.scene.described, at: 12, caption: "On the desk: keys (next to the mug).", frame_ref: "frames:cam-desk:12"}
   - {type: perception.faces.counted, at: 14, count: 2, facing: 1}
+  - {type: perception.faces.counted, at: 16, count: 0, facing: 0}
   - {type: perception.person.lost, at: 30}
   - {type: perception.identity.changed, at: 31, enabled: false, members: []}  # leave recognition off, so habits stay with the one unnamed tracker
+  # The room twin's Sort It round (contexts/perception/fakes: sort_round): a face held 2 s while the can is in hand
+  # starts it; the can entering the recycling zone at 45 s scores it. Then nobody faces the camera (which_bin).
+  - {type: perception.faces.counted, at: 37}
+  - {type: perception.faces.counted, at: 39}
+  - {type: perception.faces.counted, at: 49, count: 1, facing: 0}
 
 connectors:
   - {type: connector.item.synced, at: 0, external_id: "cop4533:assignment:88213", title: "Project - Milestone1 Fall2026 [COP4533]",
@@ -105,6 +113,7 @@ play:
   - {type: play.round.scored, at: 4, path_len: 3}
   - {type: play.round.started, at: 10, round_id: r2, item: cup, target_bin: trash, path: [{row: 5, col: 6}, {row: 6, col: 4}]}
   - {type: play.round.scored, at: 22, round_id: r2, item: cup, correct: false, seconds: 12.0, path_len: 2, score: 0}
+  - {type: play.route.planned, at: 10, round_id: r2, item: cup, target_bin: trash}  # the same round's route in the room (floor metres)
   # The League: a friend's shared day, the stake, a dare and its result, and the week declared (all sample payloads).
   - {type: play.league.summary.received, at: 30}
   - {type: play.league.stake.set, at: 31}
