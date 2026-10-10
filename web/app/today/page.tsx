@@ -245,6 +245,10 @@ function HabitCard({ habit: h }: { habit: Habit }) {
       <p className={good ? ui.small : `${ui.small} ${ui.muted}`}>
         {good ? <strong>{status}</strong> : status}
       </p>
+      {h.source === "watch" || (h.source === "camera" && h.applies) ? (
+        // Sleep only: a night the watch measured, or the empty-desk estimate when it was not worn.
+        <p className={`${ui.small} ${ui.muted}`}>{h.source === "watch" ? "From your watch" : "Estimated from the desk camera"}</p>
+      ) : null}
       {h.nudge ? (
         // A nudge is what the box said at that moment; the figure in it may have moved since, so its time comes first.
         <p className={ui.nudge}>
