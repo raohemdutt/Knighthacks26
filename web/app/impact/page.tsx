@@ -134,7 +134,12 @@ function Story({
           {v.milestones.latest ? (
             <div className={im.milestone}>
               <p>
-                <strong>{v.milestones.latest.text}</strong>
+                {/* The count above is live; a milestone is a threshold passed earlier, so it is named as one unless the two agree. */}
+                <strong>
+                  {v.milestones.latest.kind === "kept_out" && v.milestones.latest.threshold !== g.recycled
+                    ? `Last milestone: ${v.milestones.latest.threshold} ${v.milestones.latest.threshold === 1 ? "item" : "items"} kept out of landfill (${g.recycled} so far this week).`
+                    : v.milestones.latest.text}
+                </strong>
               </p>
               {v.milestones.next ? <p className={`${ui.muted} ${ui.small}`}>{v.milestones.next.text}</p> : null}
             </div>

@@ -1097,3 +1097,13 @@
     padding-bottom: 24px;
   }
 }
+
+/* Ask, before the first question: the conversation is empty, so it takes no room. The intro, the suggestions and
+   the input then sit together above the tab bar, with the spare height above the heading instead of between them. */
+.turns:has(> :only-child) {
+  flex: 0 0 auto;
+}
+
+.pageHead:has(+ .turns > :only-child) {
+  margin-top: auto;
+}

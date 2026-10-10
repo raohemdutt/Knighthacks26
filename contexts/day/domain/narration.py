@@ -469,8 +469,11 @@ def _weave(shown: str, leave: str) -> str:
     """The leave-by goes right after the sentence that names the first fixed event."""
     if not leave:
         return shown
-    head, sep, tail = shown.partition(". ")
-    return f"{head}.{leave}{' ' + tail if sep and tail else ''}" if sep else f"{shown.rstrip('.')}.{leave}"
+    m = re.search(r"(?<!\b[A-Z])\. ", shown)  # the first sentence end; not the stop after an initial ("John C. Hitt Library")
+    if not m:
+        return f"{shown.rstrip('.')}.{leave}"
+    head, tail = shown[:m.start()], shown[m.end():]
+    return f"{head}.{leave}{' ' + tail if tail else ''}"
 
 
 def _morning(f: dict, w: Words) -> Narration:
@@ -482,7 +485,7 @@ def _morning(f: dict, w: Words) -> Narration:
     if sleep:
         opening = f"{sleep}: {body}." if not lead else f"{sleep}. {lead}: {body}."
     else:
-        opening = f"{lead or _pick(('Here is the shape of it', 'Today looks like this'), f.get('day', ''))}: {body}."
+        opening = f"{lead or _pick(('Here is the plan', 'Today looks like this'), f.get('day', ''))}: {body}."
     deadline, deadline_x = _deadline(f.get("deadline"), w)
     ask, ask_x = _ask(f)
     spoken = f"{greet} {opening}{leave}{deadline}{ask}"

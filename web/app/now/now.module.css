@@ -511,6 +511,13 @@ button.body:active {
   justify-content: flex-start;
 }
 
+/* The marker keeps its own place at the right edge, so a summary that wraps ("Was that right? Tell the coach about
+   the 2 breaks") and a short one beside it show the same "+" in the same spot, and a long one can never squeeze it out. */
+.fold > summary::after {
+  margin-left: auto;
+  flex: none;
+}
+
 .foldBody {
   display: flex;
   flex-direction: column;

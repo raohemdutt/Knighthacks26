@@ -462,5 +462,7 @@ export interface Answer {
   rephrased: boolean;
   model: string;
   check: string | null;
+  /** A model is configured and the draft is short enough to reword inside the budget. */
+  can_rephrase?: boolean;
   suggested: string[];
 }

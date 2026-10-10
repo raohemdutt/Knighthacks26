@@ -47,7 +47,8 @@ export default function TodayPage() {
     <>
       <div className={ui.pageHead}>
         <h1>Today</h1>
-        {habits.data?.day ? <p className={ui.muted}>{dayLabel(`${habits.data.day}T12:00:00`)}, as Atlas has seen it so far</p> : null}
+        {/* the date itself (never the word "Today" again, straight under the heading) */}
+        {habits.data?.day ? <p className={ui.muted}>{dayLabel(`${habits.data.day}T12:00:00`, new Date(0))} · what Atlas has seen so far</p> : null}
       </div>
 
       <section className={ui.section}>
@@ -212,10 +213,17 @@ function HabitCard({ habit: h }: { habit: Habit }) {
   const fill = h.target > 0 ? Math.min(h.value / h.target, 1) : h.value > 0 ? 1 : 0;
   const good = h.applies && h.met;
   const overLimit = h.applies && !h.closed && !atLeast && !h.met;
+  // "Start early" measures how long before its due time you first sat down to an assignment; it has a figure only on a day one is due.
+  const lead = h.id === "start_early";
+  const idle = !h.applies && !h.reason; // nothing to judge today
+  const showValue = lead ? h.applies : !idle || h.value > 0;
+  const showStatus = !(idle && showValue); // "43 min of at least 2 h" and "nothing to measure" never appear together
   const status = !h.applies
     ? h.reason
       ? `Not judged: ${h.reason}`
-      : "Nothing to measure yet today"
+      : lead
+        ? "Nothing is due today, so there is no early start to judge"
+        : "Nothing to measure yet today"
     : h.closed
       ? h.met
         ? "Day closed: met"
@@ -242,19 +250,21 @@ function HabitCard({ habit: h }: { habit: Habit }) {
           <span className={ui.tag}>no streak yet</span>
         )}
       </div>
-      <p>
-        {/* Hours read as "6 h 21 min"; other values keep the decimals the box sent (0.25 is not 0.3). */}
-        <span className={ui.habitValue}>{hours ? hoursMinutes(h.value) : exact(h.value)}</span>{" "}
-        <span className={ui.muted}>
-          of {atLeast ? "at least" : "at most"} {withUnit(h.target, h.unit)}
-        </span>
-      </p>
-      <div className={ui.meter} role="img" aria-label={`${withUnit(h.value, h.unit)} of ${withUnit(h.target, h.unit)}`}>
-        <div className={`${ui.meterFill} ${good ? ui.meterMet : ""}`} style={{ width: `${Math.round(fill * 100)}%` }} />
-      </div>
-      <p className={good ? ui.small : `${ui.small} ${ui.muted}`}>
-        {good ? <strong>{status}</strong> : status}
-      </p>
+      {showValue ? (
+        <>
+          <p>
+            {/* Hours read as "6 h 21 min"; other values keep the decimals the box sent (0.25 is not 0.3). */}
+            <span className={ui.habitValue}>{lead && h.value === 0 ? "Not started" : hours ? hoursMinutes(h.value) : exact(h.value)}</span>{" "}
+            <span className={ui.muted}>
+              {lead ? `before it is due · aim for at least ${withUnit(h.target, h.unit)} ahead` : `of ${atLeast ? "at least" : "at most"} ${withUnit(h.target, h.unit)}`}
+            </span>
+          </p>
+          <div className={ui.meter} role="img" aria-label={`${withUnit(h.value, h.unit)} of ${withUnit(h.target, h.unit)}`}>
+            <div className={`${ui.meterFill} ${good ? ui.meterMet : ""}`} style={{ width: `${Math.round(fill * 100)}%` }} />
+          </div>
+        </>
+      ) : null}
+      {showStatus ? <p className={good ? ui.small : `${ui.small} ${ui.muted}`}>{good ? <strong>{status}</strong> : status}</p> : null}
       {h.source === "watch" || (h.source === "camera" && h.applies) ? (
         // Sleep only: a night the watch measured, or the empty-desk estimate when it was not worn.
         <p className={`${ui.small} ${ui.muted}`}>{h.source === "watch" ? "From your watch" : "Estimated from the desk camera"}</p>
