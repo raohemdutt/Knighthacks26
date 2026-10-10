@@ -11,6 +11,7 @@
 - GET  /api/rules              every rule: id, description, on/off, where it came from (X6)
 - POST /api/rules/{id}/enabled {enabled} switch a rule off or back on (agent.rule.toggled, replays)
 - GET  /api/alerts?limit=      recent alerts, newest first: message, rule, time, evidence
+- POST /api/events             one event or a list: camera and connector input pushed into a running box (demo, T7)
 - GET  /api/play/route         ?item=can&x=&y= -> A* route to the right bin (S2)
 - GET  /api/play/accuracy      Sort It round 1 vs round 5 accuracy (S1)
 - GET  /api/impact             Waste Watch counts, diversion rate, before vs after nudges (E2)
@@ -58,7 +59,7 @@ from contexts.vault.api import vault_router
 from contexts.memory.api import build_router as memory_router
 from contexts.perception.api import identity_router
 from contexts.play.dayrun_api import dayrun_router
-from contracts import Event
+from contracts import REGISTRY, Event, parse_event
 from contracts.agent import AnswerGenerated, RuleAdded, RuleToggled
 from contracts.experience import ApprovalDecided, QuestionAsked
 from contracts.learning import TaskSpec
@@ -71,6 +72,11 @@ ASK_TIMEOUT_S = 90
 
 
 MAX_SHARE_HOURS = 12  # a shared place never outlives a day (G5)
+# What may be pushed in from outside (POST /api/events): what a camera or a connector would have produced.
+# Never decisions, approvals or agent output: those must come from the box itself. Zone events are derived
+# by the box's own zone engine from the observations, so they are not accepted either.
+INPUT_EVENTS = ("perception.observation", "perception.faces.", "perception.scene.", "capture.", "connector.item.")
+MAX_PUSHED = 500
 
 
 class AskBody(BaseModel):
@@ -183,6 +189,28 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
             raise HTTPException(404, "no such rule")
         await atlas.bus.publish(RuleToggled(rule_id=rule_id, enabled=body.enabled))
         return next(r for r in atlas.rules.listing() if r["id"] == rule_id)
+
+    @app.post("/api/events", dependencies=[Depends(authorized)])
+    async def push_events(body: dict | list[dict]):
+        """Push camera or connector input into the running box, as if a camera saw it (`python -m contexts.demo
+        fake perception --gateway ...`). Every event is checked against its contract before any is published."""
+        raw = body if isinstance(body, list) else [body]
+        if len(raw) > MAX_PUSHED:
+            raise HTTPException(413, f"at most {MAX_PUSHED} events per request")
+        events = []
+        for i, item in enumerate(raw):
+            kind = str(item.get("type", ""))
+            if not kind.startswith(INPUT_EVENTS):
+                raise HTTPException(403, f"event {i}: {kind or 'no type'} cannot be pushed in; only camera and connector "
+                                         f"input ({', '.join(INPUT_EVENTS)})")
+            if kind not in REGISTRY:
+                raise HTTPException(422, f"event {i}: unknown type {kind}")
+            try:
+                events.append(parse_event({"event_id": uuid4().hex, **item}))
+            except (ValueError, KeyError) as exc:
+                raise HTTPException(422, f"event {i} ({kind}): {exc}") from None
+        await atlas.bus.publish_all(events)
+        return {"published": len(events), "types": sorted({e.type for e in events})}
 
     @app.get("/api/alerts")
     async def recent_alerts(limit: int = Query(50, ge=1, le=200)):

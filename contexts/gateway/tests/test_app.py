@@ -202,3 +202,32 @@ def test_presence_is_capped_can_stop_early_and_an_offline_leaderboard_says_503(t
         atlas.circle, atlas.board = Me(), Offline()
         r = c.get("/api/circle/leaderboard")
         assert r.status_code == 503 and "offline" in r.json()["detail"]
+
+
+def test_camera_input_can_be_pushed_into_a_running_box_and_nothing_else(tmp_path):
+    """T7: a camera feed could not be faked into a running box; only the log could be written."""
+    from datetime import UTC, datetime
+
+    from contexts.demo import fakes
+
+    events = asyncio_run(fakes.publish("perception", tmp_path / "scratch", datetime.now(UTC).replace(microsecond=0)))
+    body = [e.model_dump(mode="json", exclude={"event_id"}) for e in events if e.type == "perception.observation.recorded"]
+    with client(tmp_path / "box", token="s3cret") as c:
+        auth = {"Authorization": "Bearer s3cret"}
+        assert c.post("/api/events", json=body).status_code == 401
+        seen = []
+        c.app.state.atlas.bus.subscribe("perception.zone", seen.append)
+        r = c.post("/api/events", json=body, headers=auth)
+        assert r.status_code == 200 and r.json()["published"] == len(body)
+        assert seen  # the box's own zone engine made zone events from the pushed observations
+        for bad in ({"type": "experience.approval.decided", "action_id": "x", "decision": "approve"},
+                    {"type": "agent.alert.raised", "alert_id": "a", "rule_id": "r", "message": "m"},
+                    {"type": "perception.zone.event"}):
+            assert c.post("/api/events", json=bad, headers=auth).status_code == 403
+        assert c.post("/api/events", json={"type": "perception.observation"}, headers=auth).status_code == 422
+
+
+def asyncio_run(coro):
+    import asyncio
+
+    return asyncio.run(coro)
