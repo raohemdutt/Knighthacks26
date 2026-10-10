@@ -218,6 +218,15 @@ python -m lab.controller stop --account B
   (`alive`, `failed_ping`, `lost`) with `node` pod-a or pod-b, which are the rows `python -m lab alerts` reads.
 - Tests use `lab/hub_fake.py`, a fake hub on a fake clock built from the recorded answers, so nothing launches or sleeps.
 
+Measured live (R13, 2026-10-10, pod D = account D on the SJC hub, Strix Halo gfx1151, `AUP_HUB_LAUNCH_D=form`): stop then
+`launch --minutes 2400 --accelerator strix-halo --resource gpu` took 5.55 s to a ready pod (launch_path form, image
+ghcr.io/amdresearch/auplc-base, `/dev/kfd` present, torch 2.9.1+rocm7.13.0 sees gfx1151). The first request through the hub
+(`GET /user/roscon02/api/me`, 200 in 0.21 s) came 11.7 s after the launch call began; pod B has no serving script yet, so
+there was no model server to ask. `keep-alive --interval 600 --minutes 70` made 7 pings with 0 failures and the pod was still
+running afterwards, so the idle culler did not fire. Credits per hour is unmetered on SJC (balance 0, unlimited true,
+enabled false); on a metered hub it is the 4 credits per whole minute above. The rows are in `lab/refine/metrics.jsonl`
+on node `pod-d`.
+
 ## Box ↔ lab: the hub proxy
 
 Once `pip install --user jupyter-server-proxy` has run on an account and the pod has been relaunched once,

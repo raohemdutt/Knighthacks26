@@ -80,6 +80,10 @@ EXPECTED_SEED = [
     ("pod.idle_watts", "pod-a", {"sampler": SAMPLER, "under_load_samples": 0}, 10.2, "W", True),
     ("teacher.watts_avg", "pod-a", {"sampler": SAMPLER}, 106.807, "W", True),
     ("teacher.watts_peak", "pod-a", {"sampler": SAMPLER, "value": "peak"}, 129.0, "W", True),
+    ("pod.start_s", "pod-d", {"launch_path": "form"}, 5.55, "s", False),
+    ("pod.first_request_s", "pod-d", {"launch_path": "form"}, 11.7, "s", False),
+    ("pod.keep_alive_min", "pod-d", {"launch_path": "form"}, 70, "min", False),
+    ("pod.credits_per_hour", "pod-d", {"billing": "unmetered"}, 0, "credits/h", False),
 ]
 
 # The numbers the lab setup measured, by metric name.
