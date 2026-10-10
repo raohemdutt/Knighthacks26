@@ -37,9 +37,16 @@ def test_the_committed_files_are_exactly_what_the_generator_writes():
     spec = importlib.util.spec_from_file_location("make_sample_run", SAMPLE_DIR.parent / "make_sample_run.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    _, files = module.build()
+    events, files = module.build()
+    hint = "run python fixtures/learning/make_sample_run.py"
     for name, text in files.items():
-        assert (SAMPLE_DIR / name).read_text(encoding="utf-8") == text, f"{name}: run python fixtures/learning/make_sample_run.py"
+        if name != "events.jsonl":
+            assert (SAMPLE_DIR / name).read_text(encoding="utf-8") == text, f"{name}: {hint}"
+    # An event the generator writes may carry fields a contract gained since the file was committed (new optional
+    # fields with defaults); everything the committed line says must still be what the generator says.
+    assert len(events) == len(RAW), hint
+    for committed, made in zip(RAW, events):
+        assert {k: made.get(k) for k in committed} == committed, f"{committed['event_id']}: {hint}"
 
 
 def test_every_line_and_file_says_it_is_a_sample_and_a_line_that_does_not_is_refused(tmp_path):
