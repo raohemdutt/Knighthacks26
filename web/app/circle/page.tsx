@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { League } from "@/components/circle/League";
 import { ProposeTime } from "@/components/circle/ProposeTime";
 import { SharedCalendar } from "@/components/circle/SharedCalendar";
 import { YouAreSharing } from "@/components/circle/YouAreSharing";
@@ -65,6 +66,8 @@ export default function CirclePage() {
           <ProposeTime />
         </>
       )}
+
+      <League />
 
       <SharedCalendar />
 

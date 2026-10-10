@@ -218,6 +218,95 @@ export interface Leaderboard {
   scores: ScoreLeader[];
 }
 
+// ---------- the League (contexts/play/league) ----------
+
+export type StakeKind = "pays_for_food" | "picks_the_event" | "custom";
+
+export interface LeagueStanding {
+  member_id: string;
+  display_name: string;
+  rank: number;
+  /** 0..100, or null when nothing of theirs was judged this week. */
+  score: number | null;
+  met: number;
+  judged: number;
+  reasons: string[];
+}
+
+export interface LeagueWho {
+  member_id: string;
+  display_name: string;
+  score: number | null;
+  reason: string;
+}
+
+export interface LeagueChallengeMember {
+  member_id: string;
+  display_name: string;
+  met_days: number;
+  judged_days: number;
+  days: number;
+}
+
+export interface LeagueChallenge {
+  challenge_id: string;
+  title: string;
+  habit_id: string;
+  direction: "at_least" | "at_most";
+  target: number;
+  starts: string; // local date
+  ends: string;
+  days: number;
+  started_by: string;
+  status: "upcoming" | "running" | "closed";
+  members: LeagueChallengeMember[];
+  winners: string[];
+  summary: string | null;
+}
+
+export interface LeagueTeamWaste {
+  line: string; // "team: 71% diverted, target 80%"
+  rate: number | null;
+  target: number;
+  recycled: number;
+  recyclable: number;
+  members: { member_id: string; display_name: string; recycled: number; recyclable: number; contamination: number; diversion_rate: number | null }[];
+  contamination_of_the_week: string | null;
+}
+
+/** GET /api/league: 200 in every state; `configured` false means no config/league.yaml on the box. */
+export interface LeagueView {
+  configured: boolean;
+  /** true: no Circle, this box plays alone under "You". */
+  local: boolean;
+  circle_id: string | null;
+  member_id: string | null;
+  note: string | null;
+  members: { member_id: string; display_name: string }[];
+  week: { start: string; end: string; closes_at: string; closes_in_s: number } | null;
+  targets: { id: string; label: string; weight: number; unit: string; source: "habit" | "dayrun" | "impact" }[];
+  standings: LeagueStanding[];
+  worst: LeagueWho | null;
+  best: LeagueWho | null;
+  summary: string | null;
+  stake: { kind: StakeKind; text: string | null; text_for_week: string; set_for_week: string | null } | null;
+  team_waste: LeagueTeamWaste | null;
+  challenges: LeagueChallenge[];
+  presets: { kind: string; title: string; habit_id: string; direction: "at_least" | "at_most"; target: number }[];
+  last_closed: { week_start: string; worst: string | null; best: string | null; summary: string } | null;
+}
+
+export interface LeagueMe {
+  member_id: string;
+  display_name: string;
+  week: { start: string; end: string };
+  score: number | null;
+  met: number;
+  judged: number;
+  reasons: string[];
+  breakdown: { target: string; label: string; unit: string; weight: number; met: number; judged: number; share: number | null; detail: string | null }[];
+}
+
 export type RsvpAnswer = "free" | "busy" | "counter";
 
 export interface CircleAttendee {
@@ -1151,6 +1240,13 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   circleSharing: (signal?: AbortSignal) => get<CircleSharing>("/api/circle/sharing", undefined, signal),
   /** Raises an approval card on the box; nothing is sent to the Circle until it is approved. */
   proposeTime: (body: ProposalBody) => post<{ action_id: string; thread_id: string }>("/api/circle/proposals", body),
+
+  // The League. The two POSTs raise approval cards on the box; nothing changes until they are approved.
+  league: (signal?: AbortSignal) => get<LeagueView>("/api/league", undefined, signal),
+  leagueMe: (signal?: AbortSignal) => get<LeagueMe>("/api/league/me", undefined, signal),
+  setStake: (kind: StakeKind, text?: string) => post<{ action_id: string; reason: string }>("/api/league/stake", { kind, text }),
+  startChallenge: (body: { kind: string; days: number; invitees: string[]; target?: number }) =>
+    post<{ action_id: string; challenge_id: string; reason: string }>("/api/league/challenges", body),
 
   playRoute: (item: string, signal?: AbortSignal) => get<PlayRoute>("/api/play/route", { item }, signal),
   playAccuracy: (signal?: AbortSignal) => get<PlayAccuracy>("/api/play/accuracy", undefined, signal),
