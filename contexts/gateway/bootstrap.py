@@ -314,6 +314,7 @@ def build(settings: Settings | None = None) -> Atlas:
         waste = WasteWatch(SortingRules.load(sorting), nudges_on_at=datetime.fromisoformat(nudges_on) if nudges_on else None)
         bus.subscribe("perception.observation", waste.on_observation, replay=True)
         bus.subscribe("perception.zone", waste.on_zone_event, replay=True)
+        bus.subscribe("habits.nudge.raised", waste.on_nudge, replay=True)  # state only: when nudges started (E2)
 
     # Habits (H1, H2): the daily picture rebuilds from the log; nudges are live only.
     habits = nudger = None

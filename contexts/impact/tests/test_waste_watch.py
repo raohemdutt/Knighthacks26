@@ -42,3 +42,19 @@ def test_before_and_after_nudges():
     w.on_zone_event(binned(75, 3, "can", "recycling"))
     ba = w.before_after()
     assert ba["before"]["diversion_rate"] == 0.0 and ba["after"]["diversion_rate"] == 1.0
+
+
+def test_before_after_starts_at_the_first_sorting_nudge_when_config_has_none():
+    """Round 2 (T11): impact.nudges_on_at is null in config, so before/after never showed."""
+    from contracts.habits import NudgeRaised
+
+    w = WasteWatch(SortingRules.load())
+    assert w.before_after() is None
+    w.on_nudge(NudgeRaised(ts=T0, nudge_id="n0", habit_id="meals", message="eat"))
+    assert w.before_after() is None  # only a sorting nudge counts
+    for n, hours in (("n1", 1), ("n2", 2)):
+        w.on_nudge(NudgeRaised(ts=T0 + timedelta(hours=hours), nudge_id=n, habit_id="sort_right", message="sort"))
+    assert w.nudges_on_at == T0 + timedelta(hours=1)  # the first one
+    configured = WasteWatch(SortingRules.load(), nudges_on_at=T0)
+    configured.on_nudge(NudgeRaised(ts=T0 + timedelta(hours=1), nudge_id="n1", habit_id="sort_right", message="sort"))
+    assert configured.nudges_on_at == T0  # config wins

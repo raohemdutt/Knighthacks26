@@ -20,7 +20,7 @@ people:
 
 # Waste Watch: when nudges were switched on, for the before/after diversion rate.
 impact:
-  nudges_on_at: null  # e.g. "2026-10-11T12:00:00-04:00"
+  nudges_on_at: null  # e.g. "2026-10-11T12:00:00-04:00"; null = from the first "sort_right" nudge
 
 # Sort It: which camera sees the bins, and where the player starts (normalized x, y).
 play:
