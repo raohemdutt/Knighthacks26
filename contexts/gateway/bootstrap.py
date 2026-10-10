@@ -438,7 +438,7 @@ def build(settings: Settings | None = None) -> Atlas:
     # The League (contexts/play/league): the friends' weekly game. The standings rebuild from the log; the
     # follow-ups (GroupMe post, Circle plan) and the stake/dare executor are live and behind approval cards.
     league = league_sync = None
-    league_file = s.config_dir / "league.yaml"
+    league_file = profile.path("league.yaml")  # a profile may bring its own targets and stake
     if league_file.exists():
         league_cfg = load_league(league_file)
         league = League(league_cfg, circle_cfg.get("circle_id") if circle else None,
