@@ -47,14 +47,43 @@ def test_loop_flags_activity_during_sleep_hours_once():
     night = Episode(id="n1", camera_id="cam-desk", start=now - timedelta(minutes=8), labels=["person"], keyframe_refs=["frames:cam-desk:n1"])
     empty = Episode(id="n2", camera_id="cam-desk", start=now - timedelta(minutes=5), labels=[])
     loop = AgentLoop(FakeMemory([night, empty]), SleepSchedule(tz=NY))
-    [alert] = loop.tick(now)
+    [alert] = asyncio.run(loop.tick(now))
     assert alert.message == "Activity on cam-desk at 3:12 AM, during sleep hours"
     assert alert.evidence[0].frame_ref == "frames:cam-desk:n1"
     assert not loop.due(now + timedelta(minutes=5)) and loop.due(now + timedelta(minutes=10))
-    assert loop.tick(now + timedelta(minutes=10)) == []
+    assert asyncio.run(loop.tick(now + timedelta(minutes=10))) == []
 
 
 def test_daytime_activity_is_normal():
     noon = datetime(2026, 10, 11, 12, 0, tzinfo=NY)
     ep = Episode(id="d1", camera_id="cam-desk", start=noon - timedelta(minutes=3), labels=["person"])
-    assert AgentLoop(FakeMemory([ep]), SleepSchedule(tz=NY)).tick(noon) == []
+    alerts = [e for e in asyncio.run(AgentLoop(FakeMemory([ep]), SleepSchedule(tz=NY)).tick(noon)) if e.type == "agent.alert.raised"]
+    assert alerts == []
+
+
+def test_hourly_note_once_per_hour_from_the_model():
+    from contracts.agent import NoteWritten
+
+    at = datetime(2026, 10, 11, 15, 5, tzinfo=NY)
+    eps = [Episode(id=f"h{i}", camera_id="cam-desk", start=datetime(2026, 10, 11, 14, 10 * i, tzinfo=NY), labels=["person"],
+                   captions=[c]) for i, c in enumerate(["Two people code at the table.", "Pizza arrives.", "Two people code at the table."])]
+    seen = []
+    loop = AgentLoop(FakeMemory(eps), SleepSchedule(tz=NY), summarize=lambda caps: seen.append(caps) or "Coding, then pizza.")
+    notes = [e for e in asyncio.run(loop.tick(at)) if isinstance(e, NoteWritten)]
+    assert [(n.text, n.hour.hour, sorted(n.episode_ids)) for n in notes] == [("Coding, then pizza.", 14, ["h0", "h1", "h2"])]
+    assert seen == [["Two people code at the table.", "Pizza arrives."]]  # deduped captions
+    assert [e for e in asyncio.run(loop.tick(at + timedelta(minutes=20))) if isinstance(e, NoteWritten)] == []
+
+
+def test_package_at_an_empty_home_proposes_a_message():
+    from contracts.agent import AlertRaised
+
+    t = datetime(2026, 10, 11, 15, 0, tzinfo=NY)
+    alert = AlertRaised(ts=t, alert_id="a", rule_id="package-at-door", message="Package left at the door")
+    empty = AgentLoop(FakeMemory([]), SleepSchedule(tz=NY), notify="dom")
+    [proposal] = empty.on_alert(alert)
+    assert (proposal.kind, proposal.target) == ("send_message", "dom") and "Package" in proposal.params["text"]
+    home = AgentLoop(FakeMemory([Episode(id="p", camera_id="cam-desk", start=t - timedelta(minutes=5), labels=["person"])]),
+                     SleepSchedule(tz=NY), notify="dom")
+    assert home.on_alert(alert) == []
+    assert AgentLoop(FakeMemory([]), SleepSchedule(tz=NY)).on_alert(alert) == []  # off unless configured

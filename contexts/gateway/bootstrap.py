@@ -88,7 +88,7 @@ class Atlas:
                 if self.circle:
                     await self.bus.publish_all(self.circle.poll())
                 if self.loop.due(now):
-                    await self.bus.publish_all(self.loop.tick(now))
+                    await self.bus.publish_all(await self.loop.tick(now))
                 if self.settings.connectors:
                     await self.bus.publish_all(await self.hub.sync_due(now))
             except Exception:
@@ -173,7 +173,8 @@ def build(settings: Settings | None = None) -> Atlas:
         zones = sorted({z for cam in (yaml.safe_load(zones_file.read_text()) or {}).values() for z in cam})
     else:
         zones = agent_cfg.get("zones", ["door", "desk"])
-    loop = AgentLoop(memory, qa.sleep)
+    loop = AgentLoop(memory, qa.sleep, summarize=runtime.summarize, notify=agent_cfg.get("notify_on_package"))
+    bus.subscribe("agent.alert.raised", loop.on_alert)  # live only: proposes a message
 
     # Sort It (S1, S2): needs the bin zones and sorting rules in config.
     game = None
