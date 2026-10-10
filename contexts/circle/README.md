@@ -18,9 +18,59 @@ expiry (opt-in), and daily summaries / counts / scores (opt-in). Never pictures,
 | Neon tables | `infrastructure/schema.sql`, `infrastructure/neon.py` |
 | The phone screen | `web/app/circle/page.tsx`, `web/components/circle/` |
 | An agreed plan as a fixed block of the day | `contexts/play/dayrun/agreed.py` |
+| The group brain: opt-in planning questions to the teacher, text only | `application/group_brain.py`, `infrastructure/teacher.py`, `brain_api.py`, `brain.py` |
 
 The phone's Circle screen (`/circle/`) has four parts: **People**, **Plans**, **League**, **Sharing**.
 Links open a part or a conversation directly: `/circle/?tab=plans&thread=<thread id>`.
+
+## The group brain (G4)
+
+Hard planning across members ("where should we meet tonight?") can be asked of the big model, the Qwen3.8-27B
+teacher on the lab pod in the `pod-a` role (`LAB_POD_ROLES`; account C on SJC today), through the hub proxy. It is
+the one place a lab GPU is in a request path, so it is never needed: a failure raises `BrainUnavailable` and the
+caller answers with the box's own model.
+
+- **Opt-in only.** Nothing is sent until the member switches it on: `POST /api/circle/brain/consent {"on": true}`
+  writes `circle.brain.consent.changed` to the log, and every ask names that event's `consent_id` as its
+  `opt_in_ref`. Off again is the same call with `false`. The switch outlives a restart (replayed from the log).
+- **Text only.** A question and its facts are strings; anything else, or a data URL inside the text, is refused
+  before anything is sent or logged, and the transport refuses the same again at the wire. No picture, frame or file.
+- **Every send is logged first.** `circle.brain.asked` (exactly the messages sent, the pod role, the hub, the model
+  name, the priority and the token cap) is in the log before the request leaves; `circle.brain.answered` follows with
+  the answer or the failure's kind. If the log cannot be written, nothing is sent.
+- **Small and one at a time.** One question in flight per box (another is refused, not queued), at most 6000
+  characters and 40 facts, answers capped at 256 tokens (about 90 s at the Strix Halo teacher's 2.9 tok/s, streamed),
+  thinking off, sent at priority -10 so the teacher serves it before labeling (`lab/README.md`, Teacher).
+- **Shown.** Every answer carries the badge "Asked the group brain".
+
+Use it from the planner (G5's "planned by the group brain"):
+
+```python
+from contexts.circle.application.group_brain import BrainRefused, BrainUnavailable
+try:
+    answer = await group_brain.ask(question, evidence_lines, purpose="where_to_go")
+    text, badge = answer.text, answer.badge          # show the badge with the answer
+except (BrainRefused, BrainUnavailable):
+    ...                                              # not opted in, busy or unreachable: the box's own model answers
+```
+
+Wiring (not in `bootstrap.py` yet; one block when the Circle is configured):
+
+```python
+from contexts.circle.application.group_brain import GroupBrain
+from contexts.circle.infrastructure.teacher import TeacherLink
+group_brain = GroupBrain(circle_cfg["circle_id"], circle_cfg["member_id"], TeacherLink.from_env(), bus.publish)
+bus.subscribe("circle.brain.consent", group_brain.on_consent, replay=True)   # state only
+# app.py: app.include_router(group_brain_router(atlas.group_brain, guard=authorized))   (contexts/circle/brain_api.py)
+```
+
+From a terminal (keys from `.env`; events to a folder of its own, never the box's `data/events`):
+
+```bash
+python -m contexts.circle.brain status       # which name answers, "group-brain" or "teacher"; sends no member text
+python -m contexts.circle.brain ask --log-dir /tmp/brain-log --circle team --member ilan --opt-in \
+  --fact "Maya is at the Library until 9:00 PM" "Where should we meet tonight?"
+```
 
 ## Conversations (`GET /api/circle/threads`, `/api/circle/threads/{id}`)
 
