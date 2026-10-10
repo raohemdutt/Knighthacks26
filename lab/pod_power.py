@@ -51,7 +51,10 @@ number can belong to any process. `alive` (alive_sampler_pid) answers only from 
 only while its command line is pod_power.py serve. It never signals the pid (os.kill with signal 0 is not a probe on
 every platform), and lab/pod_power.sh asks it before start, stop and status.
 
-Node gate: `serve` refuses to start unless --node is gpu-a or gpu-b and rocminfo names gfx1201 (an R9700 pod).
+Node gate: `serve` refuses to start unless --node is gpu-a or gpu-b, rocminfo names gfx1201, and no rocminfo
+Marketing Name is a 9070 card. That is all it proves: the RX 9070 and 9070 XT are the same gfx1201 silicon as the
+R9700 and the hubs offer them too, so gfx1201 alone does not mean an R9700, and with no rocminfo capture from a
+real R9700 pod there is no marketing name to require, only the known look-alikes to refuse.
 Stdlib only and one file, because the team repo cannot be cloned on a pod (lab/README.md); upload this file next
 to lab/pod_power.sh, which starts and stops it.
 """
@@ -84,6 +87,9 @@ GPU_POWER = "telemetry.gpu.power"
 NODES = ("gpu-a", "gpu-b")  # telemetry's names for the two pods; the lab ledger calls them pod-a and pod-b
 LEDGER_NODE = {"gpu-a": "pod-a", "gpu-b": "pod-b"}
 R9700_GFX = "gfx1201"
+# Cards that also report gfx1201 but are not an R9700, matched as a whole word in a rocminfo Marketing Name line.
+GFX1201_NOT_R9700 = ("9070",)
+MARKETING_NAME_RE = re.compile(r"^\s*Marketing Name:\s*(?P<name>.*?)\s*$", re.MULTILINE)
 
 DEFAULT_PERIOD_MS = 1000.0
 DEFAULT_PORT = 8790
@@ -743,7 +749,11 @@ def read_samples(paths: Iterable[str | Path]) -> list[dict[str, Any]]:
 # --- node gate --------------------------------------------------------------------------------------------------
 
 def gate(node: str, rocminfo: Callable[[], str]) -> str | None:
-    """Why this process may not sample here, or None when it may: a known node, on an R9700."""
+    """Why this process may not sample here, or None when it may.
+
+    It may when the node is known, rocminfo names gfx1201, and no rocminfo Marketing Name is a gfx1201 card that is
+    not an R9700 (GFX1201_NOT_R9700). It proves gfx1201 and not a 9070, not that the card is an R9700.
+    """
     if node not in NODES:
         return f"--node must be one of {', '.join(NODES)}, got {node!r}"
     try:
@@ -752,6 +762,18 @@ def gate(node: str, rocminfo: Callable[[], str]) -> str | None:
         return f"cannot tell what GPU this is: rocminfo failed ({exc})"
     if R9700_GFX not in text:
         return f"rocminfo names no {R9700_GFX}: this is not an R9700 pod"
+    look_alike = gfx1201_look_alike(text)
+    if look_alike is not None:
+        return f"rocminfo names {look_alike!r}, a {R9700_GFX} card that is not an R9700: this is not an R9700 pod"
+    return None
+
+
+def gfx1201_look_alike(rocminfo_text: str) -> str | None:
+    """The first rocminfo Marketing Name that is a known gfx1201 card other than the R9700, or None."""
+    for match in MARKETING_NAME_RE.finditer(rocminfo_text):
+        name = match.group("name")
+        if any(re.search(rf"\b{re.escape(card)}\b", name, re.IGNORECASE) for card in GFX1201_NOT_R9700):
+            return name
     return None
 
 
