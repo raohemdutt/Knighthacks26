@@ -262,7 +262,10 @@ class QA:
         if newest_first:  # "when did X last..." : put the latest match on top for a small model
             hits = sorted(hits, key=lambda h: h.ts, reverse=True)
         for h in hits:
-            ev.add(f"{self._t(h.ts)} on {h.camera_id}: {h.text}", Citation(episode_id=h.episode_id, frame_ref=h.frame_ref, ts=h.ts))
+            if h.url:  # a connector item (Canvas, calendar, chat), not a camera episode
+                ev.add(f"{self._t(h.ts)} [{h.kind}]: {h.text}", Citation(url=h.url, title=h.title, ts=h.ts))
+            else:
+                ev.add(f"{self._t(h.ts)} on {h.camera_id}: {h.text}", Citation(episode_id=h.episode_id, frame_ref=h.frame_ref, ts=h.ts))
 
     async def get_keyframe(self, frame_ref: str, question: str | None, ev: Evidence) -> None:
         """Caption one stored (blurred) keyframe on demand, e.g. to check what was on the desk."""
