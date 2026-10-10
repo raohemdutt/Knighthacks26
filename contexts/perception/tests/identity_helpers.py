@@ -103,10 +103,10 @@ class Mood(Frame):
 
 
 def photo(who: str = "ana", n: int = 0, *, w: int = 240, facing: bool = True, score: float = 0.95, brightness: float = 120,
-          sharpness: float = 300, others: tuple[str, ...] = ()) -> bytes:
+          sharpness: float = 300, others: tuple[str, ...] = (), yaw: float = 0.0, drop: float = 0.5) -> bytes:
     """Stands in for an uploaded JPEG: a description of the picture, which a FakePhotoReader "decodes". Its
     `secret` is the part of the file that must never be found anywhere afterwards."""
-    faces = [{"who": f"{who}#photo{n}", "w": w, "facing": facing, "score": score}]
+    faces = [{"who": f"{who}#photo{n}", "w": w, "facing": facing, "score": score, "yaw": yaw, "drop": drop}]
     faces += [{"who": f"{o}#photo{n}", "w": w, "facing": True, "score": 0.95} for o in others]
     return json.dumps({"secret": f"PIXELS-OF-{who.upper()}-{n}-" + "x" * 40, "faces": faces, "brightness": brightness,
                        "sharpness": sharpness}).encode()
@@ -126,6 +126,9 @@ class FakePhotoReader(PhotoReader):
         self.decoded += 1
         frame = Frame(*[(f["who"].encode(), row(100 + 300 * i, 100, w=f["w"], h=f["w"] * 1.3, facing=f["facing"], score=f["score"]))
                         for i, f in enumerate(raw["faces"])])
+        for f, (_, r) in zip(raw["faces"], frame.faces, strict=True):  # the head's pose: where the nose tip sits
+            r[8] += f.get("yaw", 0.0) * (r[6] - r[4])
+            r[9] = r[5] + f.get("drop", 0.375) * (r[11] - r[5])
         frame.brightness, frame.sharpness = raw["brightness"], raw["sharpness"]
         return frame
 

@@ -11,7 +11,7 @@ event log, Memory or an export. The switch is <data_dir>/vault/identity.json: {"
 
 A blob may also hold `vectors` (up to MAX_EXEMPLARS exemplar vectors: straight on, slight turns, with and
 without glasses; `vector` stays their mean), `expressions` (this member turned "read my expressions" on),
-`updated_at`, `source` (live or photos) and `consent_at`. A blob written before those existed has none of
+`updated_at`, `source` (live, scan or photos), `consent_at` and `circle_member_id`. A blob written before those existed has none of
 them and loads as before: its one vector is its only exemplar. identity.json holds `"everyone": true` only
 while the anonymous room mode is on. The switch file is read again when it changes on disk, so a wipe of
 everything switches the running box off without a restart.
@@ -26,6 +26,7 @@ from typing import Any
 
 CONTEXT = "identity"
 MEMBER_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}\Z")  # \Z, not $: "$" also matches before a trailing newline
+CIRCLE_MEMBER_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.@-]{0,63}\Z")
 MAX_EXEMPLARS = 12
 
 
@@ -42,6 +43,7 @@ class Member:
     updated_at: str | None = None  # the last time looks or photos were added
     source: str = "live"  # live (the camera) or photos (uploaded)
     consent_at: str | None = None  # when the person being enrolled was confirmed to agree
+    circle_member_id: str | None = None  # which Circle member this is, when someone said so: an id, nothing else
 
     @property
     def exemplars(self) -> list[list[float]]:

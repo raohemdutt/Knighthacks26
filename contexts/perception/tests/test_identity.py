@@ -126,7 +126,8 @@ def test_enrolling_takes_five_frames_with_exactly_one_face_looking_at_the_camera
     assert (status["state"], status["member_id"], status["camera_id"]) == ("done", "m-ana", "cam-desk")
     assert [(e.enabled, e.members) for e in out if e.type == "perception.identity.changed"] == [(True, ["m-ana"])]
     assert rig.service.members() == [{"member_id": "m-ana", "name": "Ana Example", "enrolled_at": "2026-10-11T12:00:10+00:00",
-                                      "updated_at": "2026-10-11T12:00:10+00:00", "photos": 5, "source": "live", "expressions": False}]
+                                      "updated_at": "2026-10-11T12:00:10+00:00", "photos": 5, "source": "live", "expressions": False,
+                                      "circle_member_id": None}]
     template = rig.store.members()[0].vector
     assert cosine(template, FakeRecognizer().embed(b"ana#77")) > 0.9  # the average still is her
 

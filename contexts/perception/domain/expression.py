@@ -45,8 +45,12 @@ HEAD_DOWN_RATIO = 0.7
 @dataclass(frozen=True)
 class HeadPose:
     eye_ratio: float  # distance between the eyes / width of the face box
-    nose_off: float  # how far the nose is from the middle of the eyes, in eye distances
+    yaw: float  # the nose's offset from the middle of the eyes, in eye distances; positive: towards the picture's right
     nose_drop: float  # where the nose tip sits between the eye line (0) and the mouth line (1)
+
+    @property
+    def nose_off(self) -> float:
+        return abs(self.yaw)
 
     @property
     def away(self) -> bool:
@@ -64,7 +68,7 @@ def head_pose(row: Any) -> HeadPose:
     eye_dist = ((rex - lex) ** 2 + (rey - ley) ** 2) ** 0.5
     eye_y, mouth_y = (rey + ley) / 2, (rmy + lmy) / 2
     return HeadPose(eye_ratio=eye_dist / w if w > 0 else 0.0,
-                    nose_off=abs(nx - (rex + lex) / 2) / eye_dist if eye_dist > 0 else 9.0,
+                    yaw=(nx - (rex + lex) / 2) / eye_dist if eye_dist > 0 else 9.0,
                     nose_drop=(ny - eye_y) / (mouth_y - eye_y) if mouth_y > eye_y else 0.5)
 
 

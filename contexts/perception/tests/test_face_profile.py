@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 
 from bus import EventBus
 from contexts.perception.api import MAX_BODY_BYTES, identity_router, parse_photos
-from contexts.perception.application.identity import MIN_FACE_PX, IdentityError
+from contexts.perception.application.identity import MIN_FACE_PX, SCAN_FRAMES, IdentityError
 from contexts.perception.application.tracking import TrackingPipeline
 from contexts.perception.domain.expression import LABELS, ExpressionRun, head_pose
 from contexts.perception.domain.identity import average, consistent, cosine, normalize
@@ -283,13 +283,15 @@ def test_a_multipart_body_and_a_json_body_are_read_the_same_way_in_memory():
     binary = [bytes(range(256)) * 3 + b"\r\n--not-the-boundary\r\n", b"\xff\xd8\xff\xe0 jpeg-ish \r\n\r\n tail", b""]
     body, content_type = multipart({"name": "Ana Example", "consent_ack": "true", "member_id": "m-ana", "ignored": "x"}, binary)
     fields, photos = parse_photos(content_type, body)
-    assert fields == {"name": "Ana Example", "member_id": "m-ana", "consent_ack": True} and photos == binary  # byte for byte
+    assert fields == {"name": "Ana Example", "member_id": "m-ana", "consent_ack": True, "circle_member_id": None}
+    assert photos == binary  # byte for byte
 
     as_json = json.dumps({"name": "Ana Example", "member_id": "m-ana", "consent_ack": True,
                           "photos": [b64(binary[0]), "data:image/jpeg;base64," + b64(binary[1]), ""]}).encode()
     assert parse_photos("application/json; charset=utf-8", as_json) == (fields, binary)
     assert parse_photos("application/json", json.dumps({"photos": [], "consent_ack": "true"}).encode())[0]["consent_ack"] is True
-    assert parse_photos("application/json", json.dumps({"photos": []}).encode())[0] == {"name": None, "member_id": None, "consent_ack": False}
+    assert parse_photos("application/json", json.dumps({"photos": [], "circle_member_id": "maya"}).encode())[0] == {
+        "name": None, "member_id": None, "consent_ack": False, "circle_member_id": "maya"}
     for content_type, bad in (("application/json", b"{not json"), ("application/json", b"[]"), ("text/plain", b"hello"),
                               ("application/json", json.dumps({"photos": ["!!not base64!!"]}).encode()),
                               ("application/json", json.dumps({"photos": [1]}).encode()),
@@ -391,6 +393,195 @@ def test_the_photo_endpoint_refuses_what_it_should(tmp_path):
     off = c.post("/identity/enroll/photos", json=good, headers=auth)
     assert off.status_code == 409 and "switched off" in off.json()["detail"]  # like the live path
     assert rig.service.photo_reader.decoded == 0
+
+
+# --- a guided scan on the phone: one still at a time, the same checks, live feedback ---
+
+
+def test_a_scan_takes_stills_one_at_a_time_says_what_to_change_and_wants_more_than_one_pose(tmp_path):
+    rig = box(tmp_path)
+    with pytest.raises(ValueError, match="consent_ack"):
+        rig.service.scan_start(None, "Ana Example")
+    with pytest.raises(ValueError, match="name"):
+        rig.service.scan_start(None, None, consent_ack=True)
+    start = rig.service.scan_start(None, "Ana Example", consent_ack=True)
+    session = start["session"]
+    assert (start["count"], start["needed"], start["want"], start["prompt"], start["done"]) == (0, SCAN_FRAMES, "front", "look straight at the camera", False)
+    assert "name" not in start
+
+    def send(n, **kw):
+        return rig.service.scan_frame(session, photo("ana", n, **kw))
+
+    dark = send(0, brightness=10)
+    assert (dark["accepted"], dark["reason"], dark["message"], dark["count"]) == (False, "too_dark", "too dark: find better light", 0)
+    assert send(1, w=40)["message"] == "too small: move closer" and send(2, sharpness=3)["reason"] == "blurry"
+    assert rig.service.scan_frame(session, photo("ana", 3, others=("ben",)))["reason"] == "two_faces"
+    assert rig.service.scan_frame(session, b"junk")["reason"] == "unreadable"
+
+    got = [send(10 + i) for i in range(4)]
+    assert [f["accepted"] for f in got] == [True] * 4 and got[-1]["poses"] == {"front": 4, "left": 0, "right": 0, "up": 0}
+    assert (got[2]["want"], got[2]["prompt"]) == ("left", "turn a little to your left")  # three straight on: now a turn
+    same = send(20)  # a fifth straight on: the template would learn nothing from it
+    assert (same["accepted"], same["reason"], same["count"]) == (False, "enough_like_this", 4)
+    assert same["message"] == "got enough like this: turn a little to your left"
+    stranger = rig.service.scan_frame(session, photo("ben", 21, yaw=0.2))
+    assert (stranger["accepted"], stranger["reason"]) == (False, "different")  # someone else leaned in
+
+    left = [send(30 + i, yaw=0.2) for i in range(2)]
+    assert [f["pose"] for f in left] == ["left", "left"] and left[-1]["want"] == "right"
+    right = send(40, yaw=-0.2)
+    up = send(41, drop=0.3)
+    assert (right["pose"], up["pose"], up["count"], up["done"], up["prompt"]) == ("right", "up", 8, True, None)
+    assert send(42, yaw=-0.2)["reason"] == "enough_like_this"  # complete: nothing more is taken
+    assert rig.service.members() == [] and not (tmp_path / "vault" / "identity").exists()  # nothing is stored until it is finished
+
+    result, events = rig.service.scan_finish(session)
+    assert (result["state"], result["accepted"], result["exemplars"], result["error"]) == ("done", 8, 8, None)
+    member = rig.store.get(result["member_id"])
+    assert (member.name, member.source, len(member.vectors)) == ("Ana Example", "scan", 8) and member.consent_at
+    assert [(e.enrolled_member, e.enrolled_via, e.consent_ack) for e in events] == [(member.member_id, "scan", True)]
+    with pytest.raises(KeyError):
+        rig.service.scan_frame(session, photo("ana", 50))  # the scan is closed
+    with pytest.raises(KeyError):
+        rig.service.scan_finish(session)
+    ana = person(7)
+    for i in range(2):
+        rig.look(Frame(face_in(ana, b"ana#desk%d" % i)), [ana])
+    assert rig.service.tagged() == {"cam-desk": {7: member.member_id}}
+
+
+def test_a_scan_can_add_to_someone_enrolled_times_out_and_too_few_stills_store_nothing(tmp_path):
+    rig = box(tmp_path)
+    rig.enroll("m-ana", "Ana Example", b"ana")
+    session = rig.service.scan_start("m-ana", None, consent_ack=True)["session"]
+    assert rig.service.scan_frame(session, photo("ben", 0))["reason"] == "not_them"
+    assert rig.service.scan_frame(session, photo("ana", 1))["accepted"] is True
+    result, events = rig.service.scan_finish(session)  # one good still is enough to add
+    assert (result["state"], result["exemplars"]) == ("done", 6) and rig.store.get("m-ana").source == "live"
+    assert [e.enrolled_via for e in events] == ["scan"]
+
+    session = rig.service.scan_start(None, "Ben Example", consent_ack=True)["session"]
+    for i in range(2):
+        rig.service.scan_frame(session, photo("ben", i))
+    result, events = rig.service.scan_finish(session)
+    assert (result["state"], result["error"], events) == ("failed", "not_enough_photos", []) and len(rig.service.members()) == 1
+
+    old = rig.service.scan_start(None, "Ben Example", consent_ack=True)["session"]
+    new = rig.service.scan_start(None, "Cy Example", consent_ack=True)["session"]  # a new scan replaces an unfinished one
+    with pytest.raises(KeyError):
+        rig.service.scan_frame(old, photo("ben", 0))
+    rig.clock.t += 181
+    with pytest.raises(IdentityError, match="too long"):
+        rig.service.scan_frame(new, photo("cy", 0))
+    again = rig.service.scan_start(None, "Cy Example", consent_ack=True)["session"]
+    rig.service.scan_cancel(again)
+    with pytest.raises(KeyError):
+        rig.service.scan_finish(again)
+    rig.service.set_enabled(False)
+    with pytest.raises(IdentityError, match="switched off"):
+        rig.service.scan_start(None, "Cy Example", consent_ack=True)
+
+
+def test_a_scan_over_http_never_keeps_or_echoes_a_still(tmp_path, caplog):
+    caplog.set_level(logging.DEBUG)
+    bus = EventBus(tmp_path / "events")
+    rig = box(tmp_path)
+    c, auth = http(rig, bus, token="s3cret"), {"Authorization": "Bearer s3cret"}
+    assert c.post("/identity/enroll/scan/start", json={"name": NAME, "consent_ack": True}).status_code == 401
+    assert c.post("/identity/enroll/scan/start", json={"name": NAME}, headers=auth).status_code == 422
+    session = c.post("/identity/enroll/scan/start", json={"name": NAME, "consent_ack": True}, headers=auth).json()["session"]
+    assert c.post("/identity/enroll/scan/frame", json={"session": session, "photo": "x"}).status_code == 401
+    stills = [photo("zeb", i, yaw=y, drop=d) for i, (y, d) in enumerate([(0, 0.5)] * 3 + [(0.2, 0.5)] * 2 + [(-0.2, 0.5)] * 2 + [(0, 0.3)])]
+    stills.append(photo("zeb", 99, brightness=4))
+    answers = []
+    for still in [stills[-1], *stills[:-1]]:
+        r = c.post("/identity/enroll/scan/frame", json={"session": session, "photo": "data:image/jpeg;base64," + b64(still)}, headers=auth)
+        assert r.status_code == 200, r.text
+        answers.append(r.text)
+    assert json.loads(answers[0])["message"].startswith("too dark") and json.loads(answers[-1])["done"] is True
+    bad = [c.post("/identity/enroll/scan/frame", content=b"{", headers=auth),
+           c.post("/identity/enroll/scan/frame", json={"session": session, "photo": "!!not base64!!"}, headers=auth),
+           c.post("/identity/enroll/scan/frame", json={"session": session, "photo": b64(stills[0]), "extra": 1}, headers=auth)]
+    assert [r.status_code for r in bad] == [422, 422, 422]
+    assert c.post("/identity/enroll/scan/frame", json={"session": "nope", "photo": b64(stills[0])}, headers=auth).status_code == 404
+    done = c.post("/identity/enroll/scan/finish", json={"session": session}, headers=auth)
+    assert done.status_code == 200 and (done.json()["state"], done.json()["exemplars"]) == ("done", 8)
+    assert c.post("/identity/enroll/scan/finish", json={"session": session}, headers=auth).status_code == 404
+    assert c.post("/identity/enroll/scan/cancel", json={"session": session}, headers=auth).json() == {"cancelled": True}
+    answers += [r.text for r in bad] + [done.text]
+
+    member = rig.store.get(done.json()["member_id"])
+    hay = needles(stills, [member.vector, *member.vectors])
+    for path in (p for p in tmp_path.rglob("*") if p.is_file()):
+        assert not [what for what, needle in hay.items() if needle in path.read_bytes()], f"{path.name} holds something in plain text"
+    lines = "\n".join(r.getMessage() for r in caplog.records).encode()
+    for text in [*answers, lines.decode()]:
+        assert not [what for what, needle in hay.items() if needle in text.encode()]
+    assert "not base64!!" not in "".join(answers)
+    logged = [json.loads(line) for p in (tmp_path / "events").glob("*.jsonl") for line in p.read_text().splitlines()]
+    assert [(e["type"], e["enrolled_via"]) for e in logged] == [("perception.identity.changed", "scan")]  # one fact, at the end
+
+
+# --- a person can be linked to a Circle member: an id, nothing else ---
+
+
+def test_a_member_can_be_linked_to_a_circle_member_by_id_and_seen_as_here_now(tmp_path):
+    bus = EventBus(tmp_path / "events")
+    rig = box(tmp_path)
+    app = FastAPI()
+    app.include_router(identity_router(rig.service, bus, circle_members=lambda: ["hemdutt", "maya", "riley"]))
+    c = TestClient(app)
+    good = {"name": "Maya Example", "consent_ack": True, "photos": [b64(p) for p in good_photos("maya")]}
+    refused = c.post("/identity/enroll/photos", json=good | {"circle_member_id": "nobody"})
+    assert refused.status_code == 422 and "no such member" in refused.json()["detail"] and rig.service.members() == []
+    assert c.post("/identity/enroll/scan/start", json={"name": "X", "consent_ack": True, "circle_member_id": "nobody"}).status_code == 422
+    assert c.post("/identity/enroll/start", json={"name": "X", "consent_ack": True, "circle_member_id": "nobody"}).status_code == 422
+    assert c.post("/identity/enroll/photos", json=good | {"circle_member_id": "../etc"}).status_code == 422
+    member_id = c.post("/identity/enroll/photos", json=good | {"circle_member_id": "maya"}).json()["member_id"]
+    assert c.get("/identity/members").json()[0]["circle_member_id"] == "maya"
+    assert rig.store.get(member_id).circle_member_id == "maya"
+
+    rig.enroll("m-ana", "Ana Example", b"ana")  # someone with no link
+    assert c.get("/identity/present").json() == {"present": []}
+    maya, ana = person(7, 0.05, 0.1, 0.45, 0.95), person(8, 0.55, 0.1, 0.95, 0.95)
+    events = []
+    for i in range(2):
+        events += rig.look(Frame(face_in(maya, b"maya#%d" % i), face_in(ana, b"ana#%d" % i)), [maya, ana])
+    seen = {e.member_id: e.circle_member_id for e in events if e.type == "perception.person.identified"}
+    assert seen == {member_id: "maya", "m-ana": None}  # the event that names her carries the link; an id, nothing else
+    assert sorted(c.get("/identity/present").json()["present"], key=lambda p: p["circle_member_id"] or "") == [
+        {"member_id": "m-ana", "circle_member_id": None, "cameras": ["cam-desk"]},
+        {"member_id": member_id, "circle_member_id": "maya", "cameras": ["cam-desk"]}]
+
+    assert c.put("/identity/members/m-ana", json={"circle_member_id": "nobody"}).status_code == 422
+    assert c.put("/identity/members/m-ana", json={"circle_member_id": "riley"}).json()["circle_member_id"] == "riley"
+    assert c.put("/identity/members/m-ana", json={"expressions": True}).json()["circle_member_id"] == "riley"  # other changes keep it
+    assert c.put("/identity/members/m-ana", json={"circle_member_id": ""}).json()["circle_member_id"] is None  # unlinked
+    rig.service.enroll_photos(member_id, None, [photo("maya", 50)], consent_ack=True)  # adding photos keeps the link
+    assert rig.store.get(member_id).circle_member_id == "maya"
+
+    logged = "".join(p.read_text() for p in (tmp_path / "events").glob("*.jsonl"))
+    rows = [json.loads(line) for line in logged.splitlines()]
+    assert [e["circle_member_id"] for e in rows if e.get("enrolled_member") == member_id] == ["maya"]
+    assert "vector" not in logged and "Maya Example" not in logged  # the link is an id; nothing of the face or the name with it
+
+    rig.service.set_enabled(False)
+    assert c.get("/identity/present").json() == {"present": []}
+    no_circle = TestClient(FastAPI())
+    no_circle.app.include_router(identity_router(rig.service, bus, circle_members=lambda: None))
+    rig.service.set_enabled(True)
+    assert no_circle.put("/identity/members/m-ana", json={"circle_member_id": "anyone"}).json()["circle_member_id"] == "anyone"
+
+
+def test_a_template_from_before_the_link_existed_loads_without_one(tmp_path):
+    rig = box(tmp_path)
+    rig.enroll("m-ana", "Ana Example", b"ana")
+    vault = Vault(KeyRing(tmp_path))
+    path = tmp_path / "vault" / "identity" / "m-ana.face"
+    raw = json.loads(vault.decrypt("identity", path.read_bytes()))
+    del raw["circle_member_id"]
+    path.write_bytes(vault.encrypt("identity", json.dumps(raw).encode()))
+    assert IdentityStore(tmp_path, vault).get("m-ana").circle_member_id is None
 
 
 # --- apparent expression: the pure part ---

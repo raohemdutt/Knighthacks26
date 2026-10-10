@@ -49,6 +49,7 @@ class PersonIdentified(TypedEvent):
     camera_id: CameraId
     track_id: int
     member_id: str
+    circle_member_id: str | None = None  # the Circle member this enrolled person was linked to, if any: an id only
 
 
 @register
@@ -72,8 +73,9 @@ class IdentityChanged(TypedEvent):
     # When this event records an enrolment: who (the id only), how, and that the person was confirmed to agree.
     # `ts` is when. None on every other change (a switch, a removal).
     enrolled_member: str | None = None
-    enrolled_via: Literal["live", "photos"] | None = None
+    enrolled_via: Literal["live", "photos", "scan"] | None = None  # the box's camera, uploaded photos, a scan on the phone
     consent_ack: bool | None = None
+    circle_member_id: str | None = None  # the Circle member the enrolled person was linked to, if any: an id only
 
 
 # --- apparent expression (opt-in per member; anonymous for a whole room only in the "everyone" mode) ---
