@@ -51,7 +51,7 @@ patterns are named in advance and match nothing that runs until the verb is adde
 verb with sub-verbs registers once, under its first word). VERBS in lab/__main__.py
 is the authority on what exists, so nothing here changes when a verb lands.
   allowed to sittings: ready, digest, handoff, draft, ledger, metrics, slot, rulings,
-    experiment, referee, review, mirror, placement
+    experiment, research-check, referee, review, mirror, placement
   the owner's, denied to every sitting: pool, resume, sit, stop
 A pod controller script (lab/controller.py) is denied by the same logic for its
 launch and stop commands; its command line is not final, so adjust _PODS when it lands.
@@ -129,7 +129,9 @@ _HELP: tuple[str, ...] = ("", " --help", " -h", " help")
 _READ_FORMS: tuple[str, ...] = ("rulings", "rulings -*")
 
 #: What opus and fable add: the verbs a refinement pass and experiment planning use.
-_PASS_VERBS: tuple[str, ...] = ("rulings apply", "experiment add", "experiment result", "experiment rank")
+_PASS_VERBS: tuple[str, ...] = (
+    "rulings apply", "experiment add", "experiment result", "experiment rank", "research-check",
+)
 
 #: What fable alone adds: the referee duties and the machine's account of itself.
 _REFEREE_VERBS: tuple[str, ...] = ("referee", "review", "mirror", "rulings mirror")
