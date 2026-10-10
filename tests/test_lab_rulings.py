@@ -20,7 +20,7 @@ import pytest
 
 from lab import __main__ as dispatcher
 from lab.machine import refine_formats as rf
-from lab.machine import pages_fake, rulings
+from lab.machine import pages_fake, refine_track, rulings
 from lab.machine.lock import FileLock
 
 REPO = Path(__file__).resolve().parents[1]
@@ -275,6 +275,18 @@ def test_a_log_that_breaks_the_format_is_a_warning_and_does_not_hide_the_open_ru
     assert [w["track"] for w in plain["warnings"]] == ["telemetry"]
     assert "unrecognized log heading" in plain["warnings"][0]["error"]
     assert [(r["number"], r["state"]) for r in everything["rulings"]] == [(1, "open"), (2, "unknown")]
+
+
+def test_the_track_order_and_the_default_folder_are_the_ones_refine_track_names(tmp_path, monkeypatch):
+    refine = make_tree(tmp_path, {"telemetry": [T1], "kernels": [K4_OPEN]})
+    (refine / "energy").mkdir()
+    write(refine / "energy" / "OWNER_RULINGS.md", RULINGS_HEADER)          # a folder the track list does not name
+    monkeypatch.setattr(refine_track, "REFINE_DIR", refine)
+    monkeypatch.setattr(refine_track, "TRACKS", ("kernels", "plumbing", "learning", "telemetry"))
+
+    assert rulings.discover(refine) == ["kernels", "plumbing", "learning", "telemetry", "energy"]
+    listed = rulings.main(["list"])                     # no --refine-dir: the folder refine_track names
+    assert [(row["track"], row["number"]) for row in listed["rulings"]] == [("kernels", 4), ("telemetry", 1)]
 
 
 def test_a_folder_without_any_rulings_file_is_not_a_track(tmp_path):

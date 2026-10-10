@@ -78,7 +78,7 @@ from typing import Any
 
 from lab.machine import digest as digest_mod
 from lab.machine import ledger as ledger_mod
-from lab.machine import ready, record, refine_formats, rulings, stop
+from lab.machine import ready, record, refine_formats, refine_track, rulings, stop
 from lab.machine.digest import Board
 
 __all__ = [
@@ -97,10 +97,8 @@ OVERNIGHT_URL = rulings.OVERNIGHT_URL
 TEAM_COMMS_PAGE = rulings.TEAM_COMMS_PAGE
 TEAM_COMMS_URL = rulings.TEAM_COMMS_URL
 
-REFINE_ROOT = digest_mod.REFINE_ROOT
 LOG_NAME = rulings.LOG_NAME
 MERGE_LOG_NAME = "MERGE_LOG.md"
-TRACK_ORDER = rulings.TRACK_ORDER
 
 #: The digest window of a mirror run: what "tonight" means unless --hours or --since says otherwise.
 WINDOW_HOURS = 12.0
@@ -476,7 +474,7 @@ def _plan_text(label: str, task: str, change: refine_formats.Change) -> str:
 
 def _log_folders(refine_root: Path) -> list[str]:
     found = [folder.name for folder in refine_root.iterdir() if (folder / LOG_NAME).is_file()] if refine_root.is_dir() else []
-    return [name for name in TRACK_ORDER if name in found] + sorted(name for name in found if name not in TRACK_ORDER)
+    return rulings.track_order(found)
 
 
 def collect_plan_changes(refine_root: Path) -> tuple[list[PlanChange], list[str]]:
@@ -498,8 +496,9 @@ def collect_plan_changes(refine_root: Path) -> tuple[list[PlanChange], list[str]
             if not isinstance(entry, refine_formats.PassEntry) or entry.kind != ("pass" if track else "merge"):
                 continue
             label = f"{track} pass {entry.number}" if entry.kind == "pass" else f"merge {entry.number}"
+            tracks = refine_track.TRACKS
             rank = (entry.date, 0 if entry.kind == "pass" else 1,
-                    TRACK_ORDER.index(track) if track in TRACK_ORDER else len(TRACK_ORDER), track, entry.number)
+                    tracks.index(track) if track in tracks else len(tracks), track, entry.number)
             for change in entry.changes:
                 match = _TASK_ID.search(change.target)
                 task = match[0] if match else "board"
@@ -717,7 +716,7 @@ def run(argv: Sequence[str], *, client: rulings.NotionPages | None = None, trans
     if args.since and digest_mod.parse_time(args.since)[0] > moment:
         return {"ok": False, "outcome": "usage", "verb": VERB, "error": f"--since {args.since} is after now"}, 2
     try:
-        facts = _gather(args, moment, args.refine_dir or REFINE_ROOT, state_dir)
+        facts = _gather(args, moment, args.refine_dir or refine_track.REFINE_DIR, state_dir)
     except (OSError, ValueError) as exc:
         failure = {"ok": False, "outcome": "error", "verb": VERB, "error": f"cannot compute the digest: {_clip(str(exc), CLIP_NOTE)}"}
         return _finish(failure, environ, state_dir), 1

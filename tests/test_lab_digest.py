@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 import lab.__main__ as lab_cli
-from lab.machine import digest, handoff
+from lab.machine import digest, handoff, refine_track
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = REPO_ROOT / "fixtures" / "lab" / "digest"
@@ -273,6 +273,13 @@ def test_unanswered_rulings_are_listed_with_their_default(recorded):
                                                                                   ("telemetry", 1, "pass 1")]
     assert rulings["items"][0]["now"] == "the spread, as kernel test 3 says; E3 uses five runs per point."
     assert rulings["answered"] == 1 and rulings["more"] == 0
+
+
+def test_the_rulings_read_by_default_are_under_the_refine_folder_refine_track_names(recorded, monkeypatch):
+    monkeypatch.setattr(refine_track, "REFINE_DIR", REFINE)
+    rulings = digest.compute(now=NOW, board=BOARD)["rulings"]             # no refine_root
+    assert [(e["track"], e["number"]) for e in rulings["items"]] == [("kernels", 4), ("telemetry", 1)]
+    assert rulings["answered"] == 1
 
 
 def test_a_broken_rulings_file_is_named_and_the_others_still_listed(recorded, tmp_path):

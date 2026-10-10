@@ -51,9 +51,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from lab.machine import alerts, ledger, metrics_report, rulings, sit, stop
+from lab.machine import alerts, ledger, metrics_report, refine_track, rulings, sit, stop
 
-__all__ = ["VERB", "REVIEW_DIR", "REFINE_ROOT", "REPO", "GH_COMMAND", "PrsUnavailable", "Review", "review_path",
+__all__ = ["VERB", "REVIEW_DIR", "REPO", "GH_COMMAND", "PrsUnavailable", "Review", "review_path",
            "gh_open_prs", "file_open_prs", "build", "review", "main"]
 
 log = logging.getLogger("lab.review")
@@ -62,7 +62,6 @@ UTC = dt.timezone.utc
 
 VERB = "review"
 REVIEW_DIR = "review"                                   # under the state dir
-REFINE_ROOT = rulings.REFINE_DIR
 REPO = "raohemdutt/Knighthacks26"
 GH_COMMAND = ("gh", "pr", "list", "--repo", REPO, "--state", "open", "--limit", "100", "--json",
               "number,title,headRefName,url,createdAt,isDraft,author")
@@ -463,8 +462,9 @@ def _stop_line(state: Path) -> str | None:
 def build(day: str, *, state_dir: StateDir = None, refine_root: Path | None = None,
           prs: Callable[[], list[dict[str, Any]]] | None = None, now: dt.datetime | None = None,
           scan: bool = True) -> Review:
-    """Compose the review of one UTC day from the ledger, the alerts file, the rulings files and the pull request
-    source (None: skipped), as of now (default: the current time). With scan, and day being now's day, the
+    """Compose the review of one UTC day from the ledger, the alerts file, the rulings files (under refine_root,
+    default refine_track.REFINE_DIR) and the pull request source (None: skipped), as of now (default: the current
+    time). With scan, and day being now's day, the
     alerts file is first brought up to date. Writes nothing but, through the scan, the alerts file. ValueError
     for a day that is not YYYY-MM-DD or a naive now."""
     now = (now or dt.datetime.now(UTC))
@@ -498,7 +498,8 @@ def build(day: str, *, state_dir: StateDir = None, refine_root: Path | None = No
     moved, moved_counts = moved_section(all_events, start, end)
     slots = slot_lines(all_events, now, start, end)
     complaints, complaint_total = complaint_lines(day_events)
-    rulings, ruling_total, ruling_problems = rulings_section(refine_root if refine_root is not None else REFINE_ROOT)
+    rulings, ruling_total, ruling_problems = rulings_section(refine_root if refine_root is not None
+                                                             else refine_track.REFINE_DIR)
     problems += ruling_problems
 
     pr_total: int | None = None

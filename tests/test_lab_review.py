@@ -21,7 +21,7 @@ from types import SimpleNamespace
 import pytest
 
 from lab import __main__ as lab_cli
-from lab.machine import alerts, ledger, review
+from lab.machine import alerts, ledger, refine_track, review
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RECORDED = REPO_ROOT / "fixtures" / "lab" / "alerts" / "ledger.jsonl"
@@ -613,9 +613,13 @@ def test_a_folder_of_tracks_that_does_not_exist_has_no_rulings(tmp_path):
     assert review.rulings_section(tmp_path / "nowhere") == ([], 0, [])
 
 
-def test_the_default_rulings_folder_is_the_refine_folder_of_this_repository():
-    assert review.REFINE_ROOT == REPO_ROOT / "lab" / "refine"
-    assert (review.REFINE_ROOT / "kernels" / "OWNER_RULINGS.md").is_file()
+def test_the_default_rulings_folder_is_the_one_refine_track_names(isolated_state, refine_root, monkeypatch):
+    assert refine_track.REFINE_DIR == REPO_ROOT / "lab" / "refine"
+    write_rulings(refine_root, "kernels", ruling(1, "Open question?"))
+    monkeypatch.setattr(refine_track, "REFINE_DIR", refine_root)
+    built = review.build(DAY, state_dir=isolated_state, now=NOW, scan=False)       # no refine_root
+    assert sections(built.text)["## Rulings waiting"] == [
+        "- kernels ruling 1: Open question? (applied meanwhile: the default; recommended: do it)"]
 
 
 # --- open pull requests ----------------------------------------------------------------------------------

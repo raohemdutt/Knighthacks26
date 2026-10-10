@@ -80,7 +80,7 @@ from pathlib import Path
 from typing import Any
 
 from lab.machine import ledger as ledger_mod
-from lab.machine import refine_formats, slots
+from lab.machine import refine_formats, refine_track, slots
 from lab.machine.slots import EXTENSION_MINUTES  # noqa: F401  (pool.py reads it as digest.EXTENSION_MINUTES)
 
 __all__ = ["MAX_LINES", "DEFAULT_WINDOW_HOURS", "BOARD_FILE", "BOARD_STALE_MINUTES", "SCHEMA",
@@ -88,7 +88,6 @@ __all__ = ["MAX_LINES", "DEFAULT_WINDOW_HOURS", "BOARD_FILE", "BOARD_STALE_MINUT
            "board_path", "queue_slot", "compute", "fit", "render", "text", "main"]
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-REFINE_ROOT = REPO_ROOT / "lab" / "refine"
 RULINGS_FILE = "OWNER_RULINGS.md"
 BOARD_FILE = "board.json"
 SCHEMA_VERSION = 1
@@ -938,7 +937,7 @@ def compute(*, now: dt.datetime | None = None, hours: float = DEFAULT_WINDOW_HOU
     """The digest as a JSON-ready dict, already fitted to max_lines. now defaults to the
     current UTC time; the window is [since, now], since defaulting to hours before now. board
     names a snapshot file (default: the stored one); refine_root holds the track folders
-    (default: lab/refine). OSError when the ledger cannot be opened."""
+    (default: refine_track.REFINE_DIR, lab/refine). OSError when the ledger cannot be opened."""
     now = (now or dt.datetime.now(dt.timezone.utc)).astimezone(dt.timezone.utc).replace(microsecond=0)
     if since is None:
         since = now - dt.timedelta(hours=hours)
@@ -958,7 +957,7 @@ def compute(*, now: dt.datetime | None = None, hours: float = DEFAULT_WINDOW_HOU
         problems.append(f"{_plural(undated, 'ledger row')} without a readable ts left out")
     snapshot, board_problems = load_board(board, state_dir=state)
     problems.extend(board_problems)
-    rulings, ruling_problems = open_rulings(Path(refine_root) if refine_root is not None else REFINE_ROOT)
+    rulings, ruling_problems = open_rulings(Path(refine_root) if refine_root is not None else refine_track.REFINE_DIR)
     problems.extend(ruling_problems)
 
     digest: dict[str, Any] = {

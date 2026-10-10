@@ -46,14 +46,14 @@ import re
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date as _date
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol
 
-from lab.machine import ready, stop
+from lab.machine import ready, refine_track, stop
 from lab.machine.lock import FileLock, LockTimeout
 from lab.machine.refine_formats import FormatError, Log, OwnerCorrection, PassEntry, Ruling, parse_log, parse_rulings
 
@@ -68,13 +68,14 @@ __all__ = [
     "main",
     "mirror_rulings",
     "notion_text",
+    "track_order",
 ]
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-REFINE_DIR = REPO_ROOT / "lab" / "refine"
+# The refine folder and the four tracks are lab/machine/refine_track.py's (REFINE_DIR, TRACKS), read when a call
+# needs them.
 RULINGS_NAME = "OWNER_RULINGS.md"
 LOG_NAME = "REFINE_LOG.md"
-TRACK_ORDER = ("telemetry", "learning", "plumbing", "kernels")
 LOCK_NAME = "rulings.lock"
 LOCK_TIMEOUT_S = 10.0
 
@@ -271,12 +272,18 @@ class Standing:
         return row
 
 
+def track_order(names: Iterable[str]) -> list[str]:
+    """Track folder names in the order of the refinement tracks (refine_track.TRACKS), then the rest by name."""
+    found = set(names)
+    known = [name for name in refine_track.TRACKS if name in found]
+    return known + sorted(found.difference(known))
+
+
 def discover(refine_dir: Path) -> list[str]:
     """Names of the folders under refine_dir that hold an OWNER_RULINGS.md: the known tracks in their usual order, then the rest."""
     if not refine_dir.is_dir():
         return []
-    found = [folder.name for folder in refine_dir.iterdir() if (folder / RULINGS_NAME).is_file()]
-    return [name for name in TRACK_ORDER if name in found] + sorted(name for name in found if name not in TRACK_ORDER)
+    return track_order(folder.name for folder in refine_dir.iterdir() if (folder / RULINGS_NAME).is_file())
 
 
 def _read(path: Path) -> str:
@@ -717,7 +724,7 @@ def mirror_rulings(items: Sequence[Standing], client: NotionPages, moment: datet
 
 def _parser() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--refine-dir", type=Path, default=REFINE_DIR, help="folder that holds the track folders (default: lab/refine)")
+    common.add_argument("--refine-dir", type=Path, default=refine_track.REFINE_DIR, help="folder that holds the track folders (default: lab/refine)")
     parser = argparse.ArgumentParser(prog="python -m lab rulings", description="Owner rulings of the refinement tracks.")
     commands = parser.add_subparsers(dest="command", required=True)
 
