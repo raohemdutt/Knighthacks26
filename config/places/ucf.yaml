@@ -3,13 +3,13 @@
 name: ucf
 kind: campus
 places:
-  union:       {name: Student Union, kind: dining, lat: 28.6016, lon: -81.2005}
-  library:     {name: John C. Hitt Library, kind: library, lat: 28.6003, lon: -81.2016}
-  hec:         {name: Harris Engineering Center, kind: class, lat: 28.6007, lon: -81.1981}
-  eng2:        {name: Engineering II (Knight Hacks), kind: class, lat: 28.6018, lon: -81.1983}
-  cb1:         {name: Classroom Building I, kind: class, lat: 28.6037, lon: -81.2007}
+  union:       {name: Student Union, kind: dining, lat: 28.6016, lon: -81.2005, aliases: [SU]}
+  library:     {name: John C. Hitt Library, kind: library, lat: 28.6003, lon: -81.2016, aliases: [LIB, Library]}
+  hec:         {name: Harris Engineering Center, kind: class, lat: 28.6007, lon: -81.1981, aliases: [HEC]}
+  eng2:        {name: Engineering II (Knight Hacks), kind: class, lat: 28.6018, lon: -81.1983, aliases: [ENG2, ENGR2]}
+  cb1:         {name: Classroom Building I, kind: class, lat: 28.6037, lon: -81.2007, aliases: [CB1]}
   memory_mall: {name: Memory Mall, kind: outdoors, lat: 28.6031, lon: -81.2003}
-  rwc:         {name: Recreation and Wellness Center, kind: gym, lat: 28.5958, lon: -81.1998}
+  rwc:         {name: Recreation and Wellness Center, kind: gym, lat: 28.5958, lon: -81.1998, aliases: [RWC]}
   dining_63:   {name: 63 South dining hall, kind: dining, lat: 28.6036, lon: -81.1966}
   towers:      {name: Towers (dorm), kind: dorm, lat: 28.6080, lon: -81.1965, pack: apartment}
 edges:

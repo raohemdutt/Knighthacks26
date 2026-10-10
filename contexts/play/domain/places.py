@@ -25,6 +25,7 @@ class Place(BaseModel):
     kind: str = "place"
     lat: float | None = None
     lon: float | None = None
+    aliases: list[str] = []  # other names calendars use: "HEC", "ENG2", "SU"
     pack: str | None = None  # a nested pack this place leads into (a dorm -> its apartment)
     zones: str | None = None  # a room's zones file (config/zones.yaml)
 
@@ -212,6 +213,21 @@ class PlaceSet:
         msg = f"you make the {at} with {slack} minutes to spare" if slack >= 0 else f"you miss the {at} by {-slack} minutes"
         return {"ok": slack >= 0, "minutes": minutes, "slack_minutes": slack, "arrive": arrive.isoformat(), "path": path,
                 "message": msg}
+
+    def locate(self, text: str | None) -> str | None:
+        """Find a place mentioned in free text ("until 11:15 AM - HEC 101") -> "pack.place". Longest match wins."""
+        if not text:
+            return None
+        low = f" {text.lower()} "
+        best: tuple[int, str] | None = None
+        for pname, pack in self.packs.items():
+            for pid, place in pack.places.items():
+                for name in [place.name.split(" (")[0], *place.aliases]:
+                    n = name.lower().strip()
+                    hit = f" {n} " in low.replace(",", " ").replace("-", " ").replace("\u00b7", " ") if len(n) <= 4 else n in low
+                    if n and hit and (best is None or len(n) > best[0]):
+                        best = (len(n), f"{pname}.{pid}")
+        return best[1] if best else None
 
     def find_shared(self, place_name: str) -> str | None:
         """A friend's shared place ("Library") -> "pack.place", searching campus packs first."""

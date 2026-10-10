@@ -99,6 +99,8 @@ class Planner:
         self.presence = None  # PresenceBoard (G5), set by the composition root when the Circle is on
         self.habits = None  # HabitTracker (H1), set by the composition root: meals, drinks, sleep so far today
         self.places = None  # async (kind) -> nearby places (K8), set by the composition root
+        self.place_set = None  # PlaceSet (S5): walking minutes from home to the next event
+        self.home_place: str | None = None  # where the box is, e.g. "apartment.door" (config: leaving.home_place)
 
     async def on_item(self, e: ItemSynced) -> list:
         """Bus handler for connector.item.synced: plan once per crunch item."""
@@ -221,9 +223,12 @@ class Planner:
         upcoming = [i for i in self.qa.memory.items(now, now + timedelta(hours=8)) if i.kind in ("calendar_event", "assignment")]
         if upcoming:
             nxt = upcoming[0]
-            leave_by = nxt.when - self.leave_buffer
+            walk, dest = self._walk_minutes(nxt)
+            margin = timedelta(minutes=5) if walk is not None else self.leave_buffer
+            leave_by = nxt.when - timedelta(minutes=walk or 0) - margin
             when = "now" if leave_by <= now else f"by {self.qa._t(leave_by).split(' ', 1)[1]}"
-            lines.append(f"Next: {nxt.title} at {self.qa._t(nxt.when).split(' ', 1)[1]}; leave {when}.")
+            trip = f" ({walk:.0f} min walk to {dest})" if walk is not None else ""
+            lines.append(f"Next: {nxt.title} at {self.qa._t(nxt.when).split(' ', 1)[1]}; leave {when}{trip}.")
             ev.add(lines[-1], Citation(url=nxt.url, title=nxt.title, ts=nxt.when))
         for label in self.watch_items:
             s = self.qa.memory.last_seen(label)
@@ -234,6 +239,20 @@ class Planner:
                 ev.add(lines[-1], Citation(frame_ref=s.frame_ref, ts=s.ts))
         text = " ".join(lines) or "Nothing on the calendar and nothing left behind. Have a good one."
         return _plan_event(now, "Leaving", text, ev, "rules")
+
+    def _walk_minutes(self, item) -> tuple[float | None, str | None]:
+        """Walking minutes from home to where `item` is (its title or summary names a place), or (None, None)."""
+        if not (self.place_set and self.home_place):
+            return None, None
+        dest = self.place_set.locate(f"{item.title} {item.summary or ''}")
+        if not dest or dest == self.home_place:
+            return None, None
+        try:
+            _, minutes = self.place_set.route(self.home_place, dest)
+        except ValueError:
+            return None, None
+        pack, pid = dest.split(".", 1)
+        return minutes, self.place_set.packs[pack].places[pid].name.split(" (")[0]
 
     def on_zone_event(self, e) -> list:
         """Bus handler for perception.zone.event: a person entering the door zone gets the checklist."""
