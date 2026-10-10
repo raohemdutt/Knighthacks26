@@ -1,4 +1,4 @@
-"""Memory's SQLite file (M1): episodes, sightings, connector items and one FTS5 index.
+"""Memory's SQLite file (M1): episodes, sightings, connector items, hourly notes and one FTS5 index.
 
 Every table is a projection of the event log, so the file can be deleted and
 rebuilt with `python -m contexts.memory rebuild`. Timestamps are stored as UTC
@@ -47,13 +47,19 @@ CREATE TABLE IF NOT EXISTS memory_items (
     PRIMARY KEY (connector, external_id)
 );
 CREATE INDEX IF NOT EXISTS memory_items_when ON memory_items (when_ts);
--- source is 'caption', 'summary' or 'item'; ref is the episode id or item_ref(...).
+CREATE TABLE IF NOT EXISTS memory_notes (
+    id TEXT PRIMARY KEY,               -- the agent's note_id
+    hour TEXT NOT NULL,                -- start of the hour the note covers
+    text TEXT NOT NULL,
+    episode_ids TEXT NOT NULL DEFAULT '[]'
+);
+-- source is 'caption', 'summary', 'item' or 'note'; ref is the episode id, item_ref(...) or note_ref(...).
 CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5 (text, source UNINDEXED, ref UNINDEXED, tokenize = 'porter unicode61');
 -- Events already projected, so replaying the log into a live file changes nothing.
 CREATE TABLE IF NOT EXISTS memory_applied (event_id TEXT PRIMARY KEY) WITHOUT ROWID;
 """
 
-TABLES = ("memory_episodes", "memory_sightings", "memory_items", "memory_fts", "memory_applied")
+TABLES = ("memory_episodes", "memory_sightings", "memory_items", "memory_notes", "memory_fts", "memory_applied")
 
 
 def iso(ts: datetime) -> str:
@@ -68,6 +74,10 @@ def parse(ts: str | None) -> datetime | None:
 
 def item_ref(connector: str, external_id: str) -> str:
     return f"item:{connector}:{external_id}"
+
+
+def note_ref(note_id: str) -> str:
+    return f"note:{note_id}"
 
 
 def episode_from(row: sqlite3.Row) -> Episode:
@@ -118,6 +128,12 @@ class MemoryStore:
         row = self.db.execute("SELECT * FROM memory_episodes WHERE id = ?", (episode_id,)).fetchone()
         return episode_from(row) if row else None
 
+    def set_summary(self, episode_id: str, summary: str) -> None:
+        """Store an episode's summary and make it searchable. Only this column: the row may have moved on."""
+        self.db.execute("UPDATE memory_episodes SET summary = ? WHERE id = ?", (summary, episode_id))
+        self.db.execute("DELETE FROM memory_fts WHERE ref = ? AND source = 'summary'", (episode_id,))
+        self.index("summary", episode_id, summary)
+
     def open_episodes(self) -> list[tuple[Episode, datetime]]:
         """Episodes still open, each with the time of its latest activity."""
         rows = self.db.execute("SELECT * FROM memory_episodes WHERE end_ts IS NULL ORDER BY start_ts, id")
@@ -145,6 +161,12 @@ class MemoryStore:
         ref = item_ref(item.connector, item.external_id)
         self.unindex(ref)
         self.index("item", ref, f"{item.title}. {item.summary}" if item.summary else item.title)
+
+    def put_note(self, note_id: str, hour: datetime, text: str, episode_ids: list[str]) -> None:
+        """The agent's hourly note, searchable like a caption."""
+        self.db.execute("INSERT OR REPLACE INTO memory_notes VALUES (?, ?, ?, ?)", (note_id, iso(hour), text, json.dumps(episode_ids)))
+        self.unindex(note_ref(note_id))
+        self.index("note", note_ref(note_id), text)
 
     # --- search index ---
 

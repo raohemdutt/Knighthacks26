@@ -1,9 +1,11 @@
 """Memory's read side (M4): the agent's MemoryReader, served from SQLite.
 
 Same semantics as the agent's FakeMemory, so the two can be swapped. Search
-goes through FTS5 and returns episodes and connector items together.
+goes through FTS5 and returns episodes (captions and summaries), connector
+items and the agent's hourly notes together.
 """
 
+import json
 import re
 from datetime import datetime
 
@@ -56,7 +58,9 @@ class SqliteMemory:
         return [item_from(r) for r in rows]
 
     def search(self, q: str, limit: int = 5) -> list[SearchHit]:
-        """Best first. An item comes back with `episode_id` "item:<connector>:<external_id>" and its connector as the camera."""
+        """Best first. An item comes back with `episode_id` "item:<connector>:<external_id>" and its connector as the camera.
+
+        An hourly note comes back as kind "note" on the first episode it covers, so it cites a real keyframe."""
         match = fts_query(q)
         if not match:
             return []
@@ -75,11 +79,22 @@ class SqliteMemory:
                 return None
             return SearchHit(episode_id=row["ref"], camera_id=connector, ts=parse(item["when_ts"] or item["synced_at"]),
                              text=row["text"], score=score, kind=item["kind"], url=item["url"], title=item["title"])
+        if row["source"] == "note":
+            return self._note_hit(row, score)
         ep = self.store.episode(row["ref"])
         if ep is None:
             return None
         return SearchHit(episode_id=ep.id, camera_id=ep.camera_id, ts=ep.start, text=row["text"], score=score,
                          frame_ref=ep.keyframe_refs[0] if ep.keyframe_refs else None)
+
+    def _note_hit(self, row, score: float) -> SearchHit | None:
+        note = self.db.execute("SELECT * FROM memory_notes WHERE id = ?", (row["ref"].split(":", 1)[1],)).fetchone()
+        if note is None:
+            return None
+        ep = next((ep for i in json.loads(note["episode_ids"]) if (ep := self.store.episode(i))), None)
+        return SearchHit(episode_id=ep.id if ep else row["ref"], camera_id=ep.camera_id if ep else "agent",
+                         ts=parse(note["hour"]), text=row["text"], score=score, kind="note",
+                         frame_ref=ep.keyframe_refs[0] if ep and ep.keyframe_refs else None)
 
     def stats(self) -> MemoryStats:
         """Hours from the first activity to the last, with the quiet stretches in between."""

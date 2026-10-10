@@ -36,6 +36,7 @@ from contexts.connectors.infrastructure.mcp_client import McpConnector
 from contexts.learning.application.export import DatasetExporter
 from contexts.memory.application.projection import MemoryProjection
 from contexts.memory.application.reader import SqliteMemory
+from contexts.memory.application.summarizer import EpisodeSummarizer
 from contexts.memory.fixture import fill_store
 from contexts.memory.fixture import load as load_memory_fixture
 from contexts.memory.infrastructure.store import MemoryStore
@@ -192,7 +193,8 @@ def build(settings: Settings | None = None) -> Atlas:
     approvals = Approvals(executors)
 
     # State that rebuilds from the log (replay=True).
-    projection.subscribe(bus)  # episodes, sightings, connector items
+    projection.subscribe(bus)  # episodes, sightings, connector items, hourly notes
+    EpisodeSummarizer(store, runtime).subscribe(bus)  # live only, in the background: one model call per closed episode (M3)
     bus.subscribe("agent.rule.added", rules.on_rule_added, replay=True)
     bus.subscribe("perception.zone", rules.on_zone_event, replay=True)
     bus.subscribe("perception.zone", planner.on_zone_event)  # leaving checklist at the door (A8)

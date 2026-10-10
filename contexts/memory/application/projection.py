@@ -5,7 +5,8 @@ activity and closes after QUIET_S without any, measured in event time, so a
 replay builds the same rows as the live run. Activity is an observation with
 at least one track, a zone event or a caption. An episode that never goes
 quiet (a laptop always in view) is cut at MAX_EPISODE_S so hours stay
-separable.
+separable. The agent's hourly notes (agent.note.written) are indexed for
+search next to the captions.
 
 Handlers follow the bus convention (event in, events out) and are safe to
 replay: an event that was already projected is skipped by `event_id`.
@@ -15,6 +16,7 @@ from datetime import datetime, timedelta
 
 from bus import EventBus
 from contexts.memory.infrastructure.store import MemoryStore
+from contracts.agent import NoteWritten
 from contracts.connectors import ItemSynced
 from contracts.memory import Episode, EpisodeClosed, EpisodeOpened, Item, Sighting
 from contracts.perception import ObservationRecorded, SceneDescribed, ZoneEvent
@@ -42,6 +44,7 @@ class MemoryProjection:
         bus.subscribe("perception.scene", self.on_scene, replay=True)
         bus.subscribe("connector.item.synced", self.on_item, replay=True)
         bus.subscribe("memory.episode.closed", self.on_episode_closed, replay=True)
+        bus.subscribe("agent.note.written", self.on_note, replay=True)
 
     # --- handlers ---
 
@@ -74,6 +77,12 @@ class MemoryProjection:
                 item = Item(connector=e.connector, kind=e.kind, external_id=e.external_id, title=e.title,
                             when=e.when, url=e.url, summary=e.summary)
                 self.store.put_item(item, synced_at=e.ts)
+        return []
+
+    def on_note(self, e: NoteWritten) -> list:
+        with self.store.db:
+            if self.store.first_time(e.event_id) and e.text.strip():
+                self.store.put_note(e.note_id, e.hour, e.text.strip(), e.episode_ids)
         return []
 
     def on_episode_closed(self, e: EpisodeClosed) -> list:

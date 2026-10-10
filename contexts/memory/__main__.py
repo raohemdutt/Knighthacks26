@@ -18,7 +18,9 @@ from contexts.memory.infrastructure.store import MemoryStore
 
 
 def rebuild(events_dir: Path, db: Path) -> int:
-    """Drop the file and project the whole log again. Returns the number of events replayed."""
+    """Drop the file and project the whole log again. Returns the number of events replayed.
+
+    Episode summaries (M3) are not in the log, so a rebuilt file has none until episodes close again."""
     for leftover in (db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
         leftover.unlink(missing_ok=True)
     store = MemoryStore(db)
