@@ -52,6 +52,10 @@ undoes what Notion already holds: the answer then carries ledger_error and the e
 queue's outcome says. While the STOP file exists (lab/machine/stop.py) every slot verb is refused before it
 runs.
 
+A request, a start and an extend that went through also carry the numbers lab/machine/alerts.py judges a slot by,
+in the spelling it reads: the metric slot.minutes (the Minutes asked for) on a request and a start, and
+slot.extend_minutes on an extend. A refused call, and a call that sent nothing to Notion, carry none.
+
 No token. NOTION_TOKEN is looked up in the process environment, then in the .env files of ready.py. When it
 is missing nothing is sent anywhere: the verb answers outcome no_token with the exact Notion tool calls a
 sitting makes instead (the row to create or the properties to set, in the form its Notion tools take, with
@@ -79,7 +83,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from lab.machine import record, stop
+from lab.machine import alerts, record, stop
 from lab.machine import slots_notion as notion
 from lab.machine.allowed import NOTION_SERVER
 from lab.machine.ready import collect_env, default_env_files
@@ -912,6 +916,23 @@ def _failure(args: argparse.Namespace, exc: notion.NotionError) -> dict[str, Any
 _LEDGER_KEYS = ("gpu", "minutes", "waited_min", "ran_min", "overrun_min", "position", "reason", "kind")
 
 
+#: The outcomes of a verb whose call did what the verb names: only such a call carries a number for the alerts.
+_NUMBERED_OUTCOMES = {"request": ("queued", "already_queued"), "start": ("started",), "extend": ("extended",)}
+
+
+def _ledger_metrics(verb: str, outcome: str, slot: Mapping[str, Any]) -> dict[str, int | float]:
+    """The numbers lab/machine/alerts.py judges a slot by, in the spelling it reads: the Minutes the slot asked for
+    on the row of a request and of a start, the minutes one extension adds on the row of an extend. The alerts take
+    any request, start or extend row whose outcome is not a failure word as one that happened, so a refused call, or
+    one that sent nothing to Notion, must not hand them a number."""
+    if outcome not in _NUMBERED_OUTCOMES.get(verb, ()):
+        return {}
+    if verb == "extend":
+        return {alerts.SLOT_EXTEND_MINUTES: EXTENSION_MINUTES}
+    minutes = slot.get("minutes")
+    return {alerts.SLOT_MINUTES: minutes} if isinstance(minutes, (int, float)) and not isinstance(minutes, bool) else {}
+
+
 def _record(args: argparse.Namespace, answer: Mapping[str, Any], environ: Mapping[str, str],
             state_dir: str | os.PathLike[str] | None) -> int:
     """Append the ledger row of a finished call (lab.machine.record) and return its seq."""
@@ -921,6 +942,7 @@ def _record(args: argparse.Namespace, answer: Mapping[str, Any], environ: Mappin
         value = answer.get(key, slot.get(key))
         if isinstance(value, (str, int, float, bool)):
             extras[key] = value
+    extras["metrics"] = _ledger_metrics(args.sub, answer["outcome"], slot)
     gpu_letter = getattr(args, "gpu", None) or next(
         (letter for letter, name in GPUS.items() if name == slot.get("gpu")), DEFAULT_GPU)
     task = getattr(args, "task", None) or slot.get("task") or record.current_task(environ)
