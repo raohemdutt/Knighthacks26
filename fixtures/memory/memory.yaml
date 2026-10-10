@@ -1,0 +1,259 @@
+# A hackathon table from Saturday midday to Sunday morning (M7): the demo's canned memory.
+# Same shape as fixtures/golden/memory.yaml, plus `end` on episodes and `items`. Times are America/New_York.
+# Load with contexts.memory.fixture: load(), then fake_memory(fx) or fill_store(store, fx).
+# Keyframe refs follow frames:<camera>:<ts_ms>; put JPEGs under data/frames/<camera>/ to serve them.
+now: "2026-10-11T09:30:00-04:00"
+
+episodes:
+  - {id: e01, camera_id: cam-door, start: "2026-10-10T12:02:00-04:00", end: "2026-10-10T12:04:00-04:00", labels: [person, backpack],
+     captions: ["Two people carry backpacks and a monitor in through the door."],
+     keyframe_refs: ["frames:cam-door:1791648130000"]}
+  - {id: e02, camera_id: cam-desk, start: "2026-10-10T12:06:00-04:00", end: "2026-10-10T12:15:00-04:00", labels: [person, laptop, backpack],
+     captions: ["Two people unpack laptops and set a monitor on the table.", "A person tapes a power strip to the table leg."],
+     summary: "Two people set up laptops, a monitor and a power strip at the table.",
+     keyframe_refs: ["frames:cam-desk:1791648370000"]}
+  - {id: e03, camera_id: cam-desk, start: "2026-10-10T12:40:00-04:00", end: "2026-10-10T12:44:00-04:00", labels: [person, laptop],
+     captions: ["A third person joins the table and opens a laptop."],
+     keyframe_refs: ["frames:cam-desk:1791650410000"]}
+  - {id: e04, camera_id: cam-door, start: "2026-10-10T13:15:00-04:00", end: "2026-10-10T13:16:00-04:00", labels: [person],
+     captions: ["A person leaves through the door."],
+     keyframe_refs: ["frames:cam-door:1791652510000"]}
+  - {id: e05, camera_id: cam-door, start: "2026-10-10T13:32:00-04:00", end: "2026-10-10T13:33:00-04:00", labels: [person, pizza],
+     captions: ["A person comes back through the door carrying a pizza box and a paper bag."],
+     keyframe_refs: ["frames:cam-door:1791653530000"]}
+  - {id: e06, camera_id: cam-desk, start: "2026-10-10T13:36:00-04:00", end: "2026-10-10T13:46:00-04:00", labels: [person, pizza, laptop],
+     captions: ["Three people eat pizza at the table; an open pizza box sits between the laptops.", "A person wipes their hands on a napkin and goes back to typing."],
+     summary: "Lunch: three people eat pizza at the table.",
+     keyframe_refs: ["frames:cam-desk:1791653770000"]}
+  - {id: e07, camera_id: cam-desk, start: "2026-10-10T14:05:00-04:00", end: "2026-10-10T14:07:00-04:00", labels: [person, pizza],
+     captions: ["A person closes the pizza box and pushes it to the edge of the table."],
+     keyframe_refs: ["frames:cam-desk:1791655510000"]}
+  - {id: e08, camera_id: cam-door, start: "2026-10-10T14:20:00-04:00", end: "2026-10-10T14:21:00-04:00", labels: [person],
+     captions: ["A person drops greasy paper plates in the trash bin."],
+     keyframe_refs: ["frames:cam-door:1791656410000"]}
+  - {id: e09, camera_id: cam-desk, start: "2026-10-10T15:10:00-04:00", end: "2026-10-10T15:13:00-04:00", labels: [person, can, laptop],
+     captions: ["A person opens an energy drink can and sets it next to the laptop."],
+     keyframe_refs: ["frames:cam-desk:1791659410000"]}
+  - {id: e10, camera_id: cam-desk, start: "2026-10-10T15:48:00-04:00", end: "2026-10-10T15:54:00-04:00", labels: [person, laptop],
+     captions: ["Two people point at a laptop screen and talk."],
+     keyframe_refs: ["frames:cam-desk:1791661690000"]}
+  - {id: e11, camera_id: cam-door, start: "2026-10-10T16:30:00-04:00", end: "2026-10-10T16:31:00-04:00", labels: [person, bottle],
+     captions: ["A person walks out with an empty water bottle."],
+     keyframe_refs: ["frames:cam-door:1791664210000"]}
+  - {id: e12, camera_id: cam-door, start: "2026-10-10T16:41:00-04:00", end: "2026-10-10T16:42:00-04:00", labels: [person, bottle],
+     captions: ["A person returns with a full water bottle."],
+     keyframe_refs: ["frames:cam-door:1791664870000"]}
+  - {id: e13, camera_id: cam-desk, start: "2026-10-10T17:20:00-04:00", end: "2026-10-10T17:23:00-04:00", labels: [person, can, laptop],
+     captions: ["A person opens a second energy drink; two cans stand on the desk."],
+     keyframe_refs: ["frames:cam-desk:1791667210000"]}
+  - {id: e14, camera_id: cam-door, start: "2026-10-10T17:55:00-04:00", end: "2026-10-10T17:56:00-04:00", labels: [person, can],
+     captions: ["A person drops an empty can in the recycling bin."],
+     keyframe_refs: ["frames:cam-door:1791669310000"]}
+  - {id: e15, camera_id: cam-desk, start: "2026-10-10T18:10:00-04:00", end: "2026-10-10T18:18:00-04:00", labels: [person, laptop],
+     captions: ["Two people work at the table with laptops."],
+     keyframe_refs: ["frames:cam-desk:1791670210000"]}
+  - {id: e16, camera_id: cam-door, start: "2026-10-10T18:45:00-04:00", end: "2026-10-10T18:47:00-04:00", labels: [person, package],
+     captions: ["A courier sets a cardboard package on the floor beside the door and leaves."],
+     keyframe_refs: ["frames:cam-door:1791672310000"]}
+  - {id: e17, camera_id: cam-door, start: "2026-10-10T19:05:00-04:00", end: "2026-10-10T19:06:00-04:00", labels: [package],
+     captions: ["The package is still beside the door; nobody has picked it up."],
+     keyframe_refs: ["frames:cam-door:1791673510000"]}
+  - {id: e18, camera_id: cam-desk, start: "2026-10-10T19:40:00-04:00", end: "2026-10-10T19:43:00-04:00", labels: [person, cup, keys],
+     captions: ["A person puts a set of keys next to the coffee mug."],
+     keyframe_refs: ["frames:cam-desk:1791675610000"]}
+  - {id: e19, camera_id: cam-desk, start: "2026-10-10T20:15:00-04:00", end: "2026-10-10T20:24:00-04:00", labels: [person, bowl, laptop],
+     captions: ["A person eats a burrito bowl at the desk while typing with one hand.", "The empty takeout bowl sits next to the keyboard."],
+     summary: "Dinner: one person eats a burrito bowl at the desk.",
+     keyframe_refs: ["frames:cam-desk:1791677710000"]}
+  - {id: e20, camera_id: cam-door, start: "2026-10-10T20:50:00-04:00", end: "2026-10-10T20:51:00-04:00", labels: [person, bowl],
+     captions: ["A person drops a food-stained takeout bowl in the recycling bin."],
+     keyframe_refs: ["frames:cam-door:1791679810000"]}
+  - {id: e21, camera_id: cam-desk, start: "2026-10-10T21:15:00-04:00", end: "2026-10-10T21:18:00-04:00", labels: [person, laptop, backpack],
+     captions: ["A person packs a laptop into a backpack and leaves the table."],
+     keyframe_refs: ["frames:cam-desk:1791681310000"]}
+  - {id: e22, camera_id: cam-door, start: "2026-10-10T21:18:00-04:00", end: "2026-10-10T21:19:00-04:00", labels: [person, backpack],
+     captions: ["A person with a backpack leaves through the door."],
+     keyframe_refs: ["frames:cam-door:1791681490000"]}
+  - {id: e23, camera_id: cam-door, start: "2026-10-10T21:50:00-04:00", end: "2026-10-10T21:51:00-04:00", labels: [package],
+     captions: ["The package is still beside the door."],
+     keyframe_refs: ["frames:cam-door:1791683410000"]}
+  - {id: e24, camera_id: cam-desk, start: "2026-10-10T22:30:00-04:00", end: "2026-10-10T22:35:00-04:00", labels: [person, laptop],
+     captions: ["One person is left at the table, wearing headphones."],
+     keyframe_refs: ["frames:cam-desk:1791685810000"]}
+  - {id: e25, camera_id: cam-desk, start: "2026-10-10T23:10:00-04:00", end: "2026-10-10T23:12:00-04:00", labels: [person, can, laptop],
+     captions: ["A person opens a third energy drink; three cans stand by the laptop."],
+     keyframe_refs: ["frames:cam-desk:1791688210000"]}
+  - {id: e26, camera_id: cam-desk, start: "2026-10-10T23:50:00-04:00", end: "2026-10-10T23:52:00-04:00", labels: [person],
+     captions: ["The person stretches, rubs their eyes and checks their phone."],
+     keyframe_refs: ["frames:cam-desk:1791690610000"]}
+  - {id: e27, camera_id: cam-desk, start: "2026-10-11T00:25:00-04:00", end: "2026-10-11T00:27:00-04:00", labels: [person, laptop],
+     captions: ["The last person closes the laptop and puts on a jacket."],
+     keyframe_refs: ["frames:cam-desk:1791692710000"]}
+  - {id: e28, camera_id: cam-door, start: "2026-10-11T00:28:00-04:00", end: "2026-10-11T00:29:00-04:00", labels: [person],
+     captions: ["A person in a jacket leaves through the door and switches off the light."],
+     keyframe_refs: ["frames:cam-door:1791692890000"]}
+  - {id: e29, camera_id: cam-desk, start: "2026-10-11T00:31:00-04:00", end: "2026-10-11T00:31:20-04:00", labels: [keys],
+     captions: ["The table is empty; the keys are still next to the coffee mug, beside three cans."],
+     keyframe_refs: ["frames:cam-desk:1791693070000"]}
+  - {id: e30, camera_id: cam-desk, start: "2026-10-11T01:10:00-04:00", end: "2026-10-11T01:10:20-04:00", labels: [],
+     captions: ["The table is empty; a phone charger is still plugged in."],
+     keyframe_refs: ["frames:cam-desk:1791695410000"]}
+  - {id: e31, camera_id: cam-door, start: "2026-10-11T02:20:00-04:00", end: "2026-10-11T02:21:00-04:00", labels: [person],
+     captions: ["A person in a hoodie walks past the door."],
+     keyframe_refs: ["frames:cam-door:1791699610000"]}
+  - {id: e32, camera_id: cam-door, start: "2026-10-11T02:22:00-04:00", end: "2026-10-11T02:23:00-04:00", labels: [person, package],
+     captions: ["The person in the hoodie stops, looks at the package, then walks away."],
+     keyframe_refs: ["frames:cam-door:1791699730000"]}
+  - {id: e33, camera_id: cam-desk, start: "2026-10-11T03:30:00-04:00", end: "2026-10-11T03:30:20-04:00", labels: [],
+     captions: ["The table is empty; the monitor is in standby."],
+     keyframe_refs: ["frames:cam-desk:1791703810000"]}
+  - {id: e34, camera_id: cam-door, start: "2026-10-11T04:45:00-04:00", end: "2026-10-11T04:47:00-04:00", labels: [person],
+     captions: ["A custodian empties the trash bin and rolls a cart past the door."],
+     keyframe_refs: ["frames:cam-door:1791708310000"]}
+  - {id: e35, camera_id: cam-door, start: "2026-10-11T05:30:00-04:00", end: "2026-10-11T05:30:20-04:00", labels: [package],
+     captions: ["The package has not moved; the hallway is empty."],
+     keyframe_refs: ["frames:cam-door:1791711010000"]}
+  - {id: e36, camera_id: cam-desk, start: "2026-10-11T06:10:00-04:00", end: "2026-10-11T06:10:20-04:00", labels: [keys],
+     captions: ["The table is empty in early light; keys, a mug and three cans are on the desk."],
+     keyframe_refs: ["frames:cam-desk:1791713410000"]}
+  - {id: e37, camera_id: cam-door, start: "2026-10-11T06:45:00-04:00", end: "2026-10-11T06:46:00-04:00", labels: [person, cup],
+     captions: ["A person comes in through the door carrying a coffee cup."],
+     keyframe_refs: ["frames:cam-door:1791715510000"]}
+  - {id: e38, camera_id: cam-desk, start: "2026-10-11T06:47:00-04:00", end: "2026-10-11T06:53:00-04:00", labels: [person, cup],
+     captions: ["A person comes back, sits at the table and drinks coffee."],
+     keyframe_refs: ["frames:cam-desk:1791715630000"]}
+  - {id: e39, camera_id: cam-desk, start: "2026-10-11T07:05:00-04:00", end: "2026-10-11T07:13:00-04:00", labels: [person, laptop],
+     captions: ["The person opens the laptop and starts typing."],
+     keyframe_refs: ["frames:cam-desk:1791716710000"]}
+  - {id: e40, camera_id: cam-door, start: "2026-10-11T07:30:00-04:00", end: "2026-10-11T07:31:00-04:00", labels: [person],
+     captions: ["A second person arrives with a paper bag of bagels."],
+     keyframe_refs: ["frames:cam-door:1791718210000"]}
+  - {id: e41, camera_id: cam-desk, start: "2026-10-11T07:34:00-04:00", end: "2026-10-11T07:41:00-04:00", labels: [person, cup],
+     captions: ["Two people eat bagels at the table and share a coffee."],
+     summary: "Breakfast: two people eat bagels at the table.",
+     keyframe_refs: ["frames:cam-desk:1791718450000"]}
+  - {id: e42, camera_id: cam-door, start: "2026-10-11T07:50:00-04:00", end: "2026-10-11T07:51:00-04:00", labels: [person, package],
+     captions: ["A person picks up the package from beside the door and carries it inside."],
+     keyframe_refs: ["frames:cam-door:1791719410000"]}
+  - {id: e43, camera_id: cam-desk, start: "2026-10-11T07:55:00-04:00", end: "2026-10-11T07:58:00-04:00", labels: [person, package],
+     captions: ["A person opens the cardboard package on the table and takes out a small tripod."],
+     keyframe_refs: ["frames:cam-desk:1791719710000"]}
+  - {id: e44, camera_id: cam-desk, start: "2026-10-11T08:10:00-04:00", end: "2026-10-11T08:11:00-04:00", labels: [person, can],
+     captions: ["A person collects three empty energy drink cans from the desk."],
+     keyframe_refs: ["frames:cam-desk:1791720610000"]}
+  - {id: e45, camera_id: cam-door, start: "2026-10-11T08:12:00-04:00", end: "2026-10-11T08:13:00-04:00", labels: [person, can],
+     captions: ["A person drops three cans into the recycling bin."],
+     keyframe_refs: ["frames:cam-door:1791720730000"]}
+  - {id: e46, camera_id: cam-door, start: "2026-10-11T08:30:00-04:00", end: "2026-10-11T08:31:00-04:00", labels: [person, backpack],
+     captions: ["A third person arrives with a backpack."],
+     keyframe_refs: ["frames:cam-door:1791721810000"]}
+  - {id: e47, camera_id: cam-desk, start: "2026-10-11T08:35:00-04:00", end: "2026-10-11T08:43:00-04:00", labels: [person, laptop],
+     captions: ["Three people gather around one laptop."],
+     keyframe_refs: ["frames:cam-desk:1791722110000"]}
+  - {id: e48, camera_id: cam-desk, start: "2026-10-11T08:50:00-04:00", end: "2026-10-11T08:52:00-04:00", labels: [person],
+     captions: ["A person writes a checklist on a sticky note and sticks it to the monitor."],
+     keyframe_refs: ["frames:cam-desk:1791723010000"]}
+  - {id: e49, camera_id: cam-door, start: "2026-10-11T09:05:00-04:00", end: "2026-10-11T09:06:00-04:00", labels: [person, phone],
+     captions: ["A person steps out through the door with a phone to their ear."],
+     keyframe_refs: ["frames:cam-door:1791723910000"]}
+  - {id: e50, camera_id: cam-desk, start: "2026-10-11T09:12:00-04:00", end: "2026-10-11T09:18:00-04:00", labels: [person, laptop, keys],
+     captions: ["Two people rehearse a presentation; one points at the monitor."],
+     keyframe_refs: ["frames:cam-desk:1791724330000"]}
+
+sightings:
+  - {label: pizza box, camera_id: cam-desk, zone_id: desk, ts: "2026-10-10T13:36:50-04:00",
+     frame_ref: "frames:cam-desk:1791653810000", position: "open, between the two laptops"}
+  - {label: can, camera_id: cam-desk, zone_id: desk, ts: "2026-10-10T15:10:40-04:00",
+     frame_ref: "frames:cam-desk:1791659440000", position: "right of the laptop"}
+  - {label: can, camera_id: cam-desk, zone_id: desk, ts: "2026-10-10T17:20:30-04:00",
+     frame_ref: "frames:cam-desk:1791667230000", position: "two cans, right of the laptop"}
+  - {label: can, camera_id: cam-door, zone_id: recycling, ts: "2026-10-10T17:55:20-04:00",
+     frame_ref: "frames:cam-door:1791669320000", position: "in the recycling bin"}
+  - {label: package, camera_id: cam-door, zone_id: door, ts: "2026-10-10T18:45:40-04:00",
+     frame_ref: "frames:cam-door:1791672340000", position: "on the floor, right of the door frame"}
+  - {label: package, camera_id: cam-door, zone_id: door, ts: "2026-10-10T19:05:10-04:00",
+     frame_ref: "frames:cam-door:1791673510000", position: "on the floor, right of the door frame"}
+  - {label: keys, camera_id: cam-desk, zone_id: desk, ts: "2026-10-10T19:41:00-04:00",
+     frame_ref: "frames:cam-desk:1791675660000", position: "next to the coffee mug"}
+  - {label: takeout bowl, camera_id: cam-desk, zone_id: desk, ts: "2026-10-10T20:16:30-04:00",
+     frame_ref: "frames:cam-desk:1791677790000", position: "next to the keyboard"}
+  - {label: takeout bowl, camera_id: cam-door, zone_id: recycling, ts: "2026-10-10T20:50:20-04:00",
+     frame_ref: "frames:cam-door:1791679820000", position: "in the recycling bin"}
+  - {label: package, camera_id: cam-door, zone_id: door, ts: "2026-10-10T21:50:10-04:00",
+     frame_ref: "frames:cam-door:1791683410000", position: "on the floor, right of the door frame"}
+  - {label: wallet, camera_id: cam-desk, zone_id: desk, ts: "2026-10-10T22:30:30-04:00",
+     frame_ref: "frames:cam-desk:1791685830000", position: "behind the monitor stand"}
+  - {label: can, camera_id: cam-desk, zone_id: desk, ts: "2026-10-10T23:10:30-04:00",
+     frame_ref: "frames:cam-desk:1791688230000", position: "three cans, right of the laptop"}
+  - {label: keys, camera_id: cam-desk, zone_id: desk, ts: "2026-10-11T00:31:10-04:00",
+     frame_ref: "frames:cam-desk:1791693070000", position: "next to the coffee mug, left of the closed laptop"}
+  - {label: phone charger, camera_id: cam-desk, zone_id: desk, ts: "2026-10-11T01:10:10-04:00",
+     frame_ref: "frames:cam-desk:1791695410000", position: "plugged into the power strip at the back of the desk"}
+  - {label: package, camera_id: cam-door, zone_id: door, ts: "2026-10-11T02:22:20-04:00",
+     frame_ref: "frames:cam-door:1791699740000", position: "on the floor, right of the door frame"}
+  - {label: package, camera_id: cam-door, zone_id: door, ts: "2026-10-11T05:30:10-04:00",
+     frame_ref: "frames:cam-door:1791711010000", position: "on the floor, right of the door frame"}
+  - {label: keys, camera_id: cam-desk, zone_id: desk, ts: "2026-10-11T06:10:10-04:00",
+     frame_ref: "frames:cam-desk:1791713410000", position: "next to the coffee mug, left of the closed laptop"}
+  - {label: package, camera_id: cam-desk, zone_id: desk, ts: "2026-10-11T07:56:00-04:00",
+     frame_ref: "frames:cam-desk:1791719760000", position: "open, in the middle of the table"}
+  - {label: can, camera_id: cam-door, zone_id: recycling, ts: "2026-10-11T08:12:20-04:00",
+     frame_ref: "frames:cam-door:1791720740000", position: "in the recycling bin"}
+  - {label: keys, camera_id: cam-desk, zone_id: desk, ts: "2026-10-11T09:12:45-04:00",
+     frame_ref: "frames:cam-desk:1791724365000", position: "left of the laptop, behind the coffee mug"}
+
+items:
+  - {connector: canvas, kind: assignment, external_id: "cop4533:assignment:88213", title: "Project - Milestone1 Fall2026 [COP4533]",
+     when: "2026-10-13T23:59:00-04:00", url: "https://canvas.example.edu/courses/5123/assignments/88213",
+     summary: "Due Tue Oct 13, 11:59 PM. Dynamic programming: code plus a runtime analysis writeup. 100 points."}
+  - {connector: canvas, kind: assignment, external_id: "cop4533:assignment:88240", title: "Quiz 5 - Greedy Algorithms [COP4533]",
+     when: "2026-10-15T17:00:00-04:00", url: "https://canvas.example.edu/courses/5123/assignments/88240",
+     summary: "Due Thu Oct 15, 5:00 PM. 20 minutes, one attempt."}
+  - {connector: calendar, kind: calendar_event, external_id: "outlook:kh-opening:2026-10-10T11:00:00-04:00", title: "Knight Hacks: opening ceremony",
+     when: "2026-10-10T11:00:00-04:00",
+     summary: "until 11:45 AM \u00b7 Student Union ballroom"}
+  - {connector: calendar, kind: calendar_event, external_id: "outlook:kh-hacking:2026-10-10T12:00:00-04:00", title: "Knight Hacks: hacking starts",
+     when: "2026-10-10T12:00:00-04:00",
+     summary: "until 12:15 PM \u00b7 Engineering II atrium"}
+  - {connector: calendar, kind: calendar_event, external_id: "outlook:kh-dinner:2026-10-10T19:00:00-04:00", title: "Knight Hacks: dinner",
+     when: "2026-10-10T19:00:00-04:00",
+     summary: "until 8:00 PM \u00b7 Engineering II atrium"}
+  - {connector: calendar, kind: calendar_event, external_id: "campus:lawn-concert:2026-10-10T20:00:00-04:00", title: "Free concert on the lawn",
+     when: "2026-10-10T20:00:00-04:00",
+     summary: "until 10:00 PM \u00b7 Memory Mall \u00b7 free"}
+  - {connector: calendar, kind: calendar_event, external_id: "outlook:kh-submit:2026-10-11T11:00:00-04:00", title: "Knight Hacks: submissions due",
+     when: "2026-10-11T11:00:00-04:00",
+     summary: "until 11:15 AM \u00b7 Devpost"}
+  - {connector: calendar, kind: calendar_event, external_id: "outlook:kh-judging:2026-10-11T12:00:00-04:00", title: "Knight Hacks: judging and demos",
+     when: "2026-10-11T12:00:00-04:00",
+     summary: "until 2:00 PM \u00b7 Engineering II atrium"}
+  - {connector: calendar, kind: calendar_event, external_id: "outlook:study-session:2026-10-11T14:00:00-04:00", title: "COP4533 study session",
+     when: "2026-10-11T14:00:00-04:00",
+     summary: "until 5:00 PM \u00b7 Library, 3rd floor"}
+  - {connector: calendar, kind: calendar_event, external_id: "outlook:cop4533-lecture:2026-10-12T10:40:00-04:00", title: "COP4533 lecture",
+     when: "2026-10-12T10:40:00-04:00",
+     summary: "until 11:30 AM \u00b7 CSE A101"}
+  - {connector: groupme, kind: message, external_id: "class:1760100001", title: "Maya: anyone started the COP4533 milestone 1? due tuesday",
+     when: "2026-10-10T16:02:00-04:00",
+     summary: "Maya in COP4533 class chat: anyone started the COP4533 milestone 1? due tuesday"}
+  - {connector: groupme, kind: message, external_id: "class:1760100002", title: "Jordan: started last night. the dynamic programming part is way harder than it l",
+     when: "2026-10-10T16:05:00-04:00",
+     summary: "Jordan in COP4533 class chat: started last night. the dynamic programming part is way harder than it looks, don't leave it for monday"}
+  - {connector: groupme, kind: message, external_id: "class:1760100003", title: "Priya: the TA said half the points are the runtime analysis writeup, not the cod",
+     when: "2026-10-10T16:09:00-04:00",
+     summary: "Priya in COP4533 class chat: the TA said half the points are the runtime analysis writeup, not the code"}
+  - {connector: groupme, kind: message, external_id: "class:1760100004", title: "Maya: ok. study session sunday afternoon at the library? 2pm?",
+     when: "2026-10-10T16:20:00-04:00",
+     summary: "Maya in COP4533 class chat: ok. study session sunday afternoon at the library? 2pm?"}
+  - {connector: groupme, kind: message, external_id: "friends:1760100005", title: "Riley: has anyone eaten actual food today or just energy drinks",
+     when: "2026-10-10T17:31:00-04:00",
+     summary: "Riley in Friends: has anyone eaten actual food today or just energy drinks"}
+  - {connector: groupme, kind: message, external_id: "friends:1760100006", title: "Sam: just energy drinks lol. thinking the bowl place by the union, it's open til",
+     when: "2026-10-10T17:34:00-04:00",
+     summary: "Sam in Friends: just energy drinks lol. thinking the bowl place by the union, it's open till 9"}
+  - {connector: groupme, kind: message, external_id: "friends:1760100007", title: "Riley: there's a free concert on the lawn at 8 tonight if people want a break",
+     when: "2026-10-10T17:40:00-04:00",
+     summary: "Riley in Friends: there's a free concert on the lawn at 8 tonight if people want a break"}
+  - {connector: groupme, kind: message, external_id: "friends:1760100008", title: "Alex: good luck at judging today, what time do you present?",
+     when: "2026-10-11T08:41:00-04:00",
+     summary: "Alex in Friends: good luck at judging today, what time do you present?"}
