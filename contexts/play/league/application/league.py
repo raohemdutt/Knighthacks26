@@ -54,6 +54,9 @@ class League:
         self.chat_group = chat_group
         self.fallback: Callable | None = None  # the circle_share executor for everything that is not the league's
         self.publish: Publish | None = None  # set by subscribe(): what the executor publishes with after an approval
+        # The Impact story (contexts/impact), when the box has one: `week_brief(now)` -> this week's milestone and the
+        # practice-set size, added to the team waste block. None: those two keys are None.
+        self.impact = None
         # --- the projection ---
         self.habits: dict[tuple[str, str, date], DaySummary] = {}
         self.counts: dict[str, list[Count]] = {}
@@ -351,6 +354,18 @@ class League:
         counts = [c for rows in self.counts.values() for c in rows]
         return scoring.team_waste(self.cfg, self.names, counts, week_start, self.sched.local_day)
 
+    def impact_brief(self, now: datetime) -> dict:
+        """This box's own week on the Impact screen: the latest milestone said and how many items are in the
+        Sort It practice set. Additive keys; None when there is no Impact story or it cannot answer."""
+        brief = {"milestone": None, "practice_size": None}
+        if self.impact is not None:
+            try:
+                got = self.impact.week_brief(now)
+                brief.update(milestone=got.get("milestone"), practice_size=got.get("practice_size"))
+            except Exception:
+                pass  # the standings never fail because the Impact story could not answer
+        return brief
+
     def current_week(self, now: datetime) -> date:
         return scoring.week_of(self.sched.local_day(now))
 
@@ -384,7 +399,7 @@ class League:
                       "set_for_week": set_for.isoformat() if set_for else None},
             "team_waste": {"line": team.line, "rate": team.rate, "target": team.target, "recycled": team.recycled,
                            "recyclable": team.recyclable, "members": team.members,
-                           "contamination_of_the_week": team.contamination_of_the_week},
+                           "contamination_of_the_week": team.contamination_of_the_week, **self.impact_brief(now)},
             "challenges": self.challenges_view(now),
             "presets": [{"kind": k, "title": p.title, "habit_id": p.habit, "direction": p.direction, "target": p.target}
                         for k, p in self.cfg.presets.items()],
