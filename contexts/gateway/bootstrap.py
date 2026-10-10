@@ -122,13 +122,17 @@ def build(settings: Settings | None = None) -> Atlas:
     # Memory: the golden fixture until Memory's read API (M4) is up.
     memory, _, _ = load_fixture()
 
+    def load_keyframe(ref: str) -> bytes:  # frames:<camera>:<ts_ms> -> data/frames/<camera>/<ts_ms>.jpg
+        _, camera, ts_ms = ref.split(":", 2)
+        return (s.data_dir / "frames" / camera / f"{ts_ms}.jpg").read_bytes()
+
     # Connectors (K1) and the browser as agent web tools (K7).
     specs = load_specs(s.config_dir / "connectors.yaml") if s.connectors else []
     hub = ConnectorHub(specs, factory=McpConnector)
     web = HubWebTools(hub) if "browser" in hub.specs else None
 
     qa = QA(runtime, memory, clock=lambda: datetime.now(UTC), sleep=SleepSchedule.load(s.config_dir / "agent.yaml"),
-            web=web, subreddit=agent_cfg.get("subreddit", "ucf"))
+            web=web, subreddit=agent_cfg.get("subreddit", "ucf"), load_keyframe=load_keyframe)
     planner = Planner(qa, hub)
     qa.planner = planner
     rules = RuleEvaluator(load_rules(s.config_dir / "rules.yaml"))
@@ -138,7 +142,7 @@ def build(settings: Settings | None = None) -> Atlas:
         "connector_write": hub.execute_write,
         "export_training_data": DatasetExporter(
             memory,
-            load_keyframe=lambda ref: (s.data_dir / "frames" / (ref.split(":", 1)[1].replace(":", "/") + ".jpg")).read_bytes(),
+            load_keyframe=load_keyframe,
             publish=lambda e: asyncio.get_running_loop().create_task(bus.publish(e)),
             out_dir=s.data_dir / "exports",
         ),

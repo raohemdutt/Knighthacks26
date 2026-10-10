@@ -99,6 +99,18 @@ WEB_TOOLS = [
     },
 ]
 TOOLS = MEMORY_TOOLS  # kept for the learning task: the tool set the student model is trained on
+KEYFRAME_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "get_keyframe",
+        "description": "Look at one stored keyframe (a frame_ref from earlier evidence) and describe what is in it.",
+        "parameters": {
+            "type": "object",
+            "properties": {"frame_ref": {"type": "string"}, "question": {"type": "string"}},
+            "required": ["frame_ref"],
+        },
+    },
+}
 PAGE_EXCERPT = 600
 
 WHERE_IS = re.compile(r"where (?:did i (?:leave|put)|are|is|'s) (?:my |the |our )?(?P<item>[a-z ]+?)[?.!]*$")
@@ -176,6 +188,7 @@ class QA:
         sleep: SleepSchedule = SleepSchedule(),
         web: WebTools | None = None,
         subreddit: str = "ucf",
+        load_keyframe: Callable[[str], bytes] | None = None,
     ) -> None:
         self.runtime = runtime
         self.memory = memory
@@ -183,7 +196,8 @@ class QA:
         self.sleep = sleep
         self.web = web
         self.subreddit = subreddit
-        self.tools = MEMORY_TOOLS + (WEB_TOOLS if web else [])
+        self.load_keyframe = load_keyframe  # frame_ref -> blurred JPEG bytes
+        self.tools = MEMORY_TOOLS + ([KEYFRAME_TOOL] if load_keyframe else []) + (WEB_TOOLS if web else [])
         self.planner = None  # set by the composition root; answers "help me prep for ..." (A8)
 
     async def on_question(self, e: QuestionAsked) -> AnswerGenerated:
@@ -223,6 +237,13 @@ class QA:
             hits = sorted(hits, key=lambda h: h.ts, reverse=True)
         for h in hits:
             ev.add(f"{self._t(h.ts)} on {h.camera_id}: {h.text}", Citation(episode_id=h.episode_id, frame_ref=h.frame_ref, ts=h.ts))
+
+    async def get_keyframe(self, frame_ref: str, question: str | None, ev: Evidence) -> None:
+        """Caption one stored (blurred) keyframe on demand, e.g. to check what was on the desk."""
+        jpeg = await asyncio.to_thread(self.load_keyframe, frame_ref)
+        prompt = question or "Describe what is in this picture in one sentence."
+        text = await asyncio.to_thread(self.runtime.caption, jpeg, prompt)
+        ev.add(f"Keyframe {frame_ref}: {text}", Citation(frame_ref=frame_ref))
 
     # --- web tools (K5, K7) ---
 
@@ -311,6 +332,8 @@ class QA:
                 tz = self.clock().tzinfo
                 start, end = (datetime.fromisoformat(args[k]) for k in ("start", "end"))
                 self.episodes_between(start.replace(tzinfo=start.tzinfo or tz), end.replace(tzinfo=end.tzinfo or tz), ev)
+            elif self.load_keyframe and call.name == "get_keyframe":
+                await self.get_keyframe(str(args["frame_ref"]), args.get("question"), ev)
             elif self.web and call.name == "web_search":
                 await self.web_search(str(args["query"]), ev)
             elif self.web and call.name == "reddit_search":

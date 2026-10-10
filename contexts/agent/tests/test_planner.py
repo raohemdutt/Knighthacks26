@@ -28,7 +28,9 @@ def make(hub=None):
     web = FakeWeb(results=[{"title": "COP 3502 Exam Info", "url": "https://cs.ucf.edu/exam/", "summary": "Exam 1: recursion, linked lists"}],
                   posts=[{"title": "Exam 1 tips", "url": "https://reddit.com/r/ucf/1"}])
     rt = FakeRuntime(chat_replies=[ChatResult(content="- Study recursion 3-5 PM\n- Sleep by 11 PM", model_version="v1")])
-    qa = QA(rt, FakeMemory([NIGHT], items=[EXAM, CLASS]), clock=lambda: NOW, sleep=SleepSchedule(tz=NY), web=web)
+    chat = Item(connector="groupme", kind="message", external_id="g1", title="Ana: COP3502 exam covers recursion + linked lists",
+                summary="Ana in COP4533 group chat: COP3502 exam covers recursion + linked lists", when=NOW - timedelta(hours=3))
+    qa = QA(rt, FakeMemory([NIGHT], items=[EXAM, CLASS, chat]), clock=lambda: NOW, sleep=SleepSchedule(tz=NY), web=web)
     return Planner(qa, hub), rt
 
 
@@ -57,6 +59,7 @@ def test_crunch_item_triggers_a_cited_plan_and_a_calendar_proposal():
     assert urls[:1] == ["https://canvas.test/exam1"] and "https://cs.ucf.edu/exam/" in urls and "https://reddit.com/r/ucf/1" in urls
     prompt = rt.calls[-1][1][-1].content
     assert "activity at the desk 1 times, last at Sat 2:30 AM" in prompt and "Free slots:" in prompt
+    assert "Group chat, Sat 11:00 AM: Ana in COP4533 group chat: COP3502 exam covers recursion" in prompt
     assert isinstance(proposal, ActionProposed) and proposal.target == "calendar.create_event"
     assert len(proposal.params["events"]) == 2
     assert asyncio.run(planner.on_item(synced)) == []  # once per item

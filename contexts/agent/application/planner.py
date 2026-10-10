@@ -22,6 +22,7 @@ from contracts.memory import Item
 from contracts.types import ChatMessage, Citation
 
 HORIZON = timedelta(hours=48)
+CHAT_LOOKBACK = timedelta(days=3)
 CRUNCH = re.compile(r"\b(exam|midterm|final|quiz|test|due|deadline|project|presentation)\b", re.I)
 COURSE = re.compile(r"\b([A-Z]{3})\s?(\d{4}[A-Z]?)\b")
 PLAN_QUESTION = re.compile(r"\b(plan|prep|prepare|study for|what should i do|where should i go|where is everyone)\b", re.I)
@@ -133,6 +134,12 @@ class Planner:
             self._friends(now, ev)
 
         course = course_of(item.title if item else subject)
+        if course:  # what the group chats say about the course (GroupMe items, K4)
+            code = course.replace(" ", "").lower()
+            chat = [m for m in self.qa.memory.items(now - CHAT_LOOKBACK, now + timedelta(seconds=1), kind="message")
+                    if code in m.title.replace(" ", "").lower() or code in (m.summary or "").replace(" ", "").lower()]
+            for m in chat[-5:]:
+                ev.add(f"Group chat, {self.qa._t(m.when)}: {m.summary or m.title}", Citation(url=m.url, title=m.title, ts=m.when))
         if course and self.qa.web:
             for search in (self.qa.web_search(f"{course} {item.title if item else ''} UCF".strip(), ev),
                            self.qa.reddit_search(course, None, ev)):

@@ -143,3 +143,12 @@ def test_web_tools_cite_links():
 def test_without_web_the_model_only_sees_memory_tools():
     q, _ = qa()
     assert {t["function"]["name"] for t in q.tools} == {"search_memory", "last_seen", "episodes_between"}
+
+
+def test_get_keyframe_tool_captions_a_stored_frame():
+    call = ChatResult(content="", tool_calls=[ToolCall(id="k", name="get_keyframe", arguments={"frame_ref": "frames:cam-desk:e02", "question": "Are there keys?"})], model_version="v1")
+    rt = FakeRuntime(chat_replies=[call, ChatResult(content="Yes, keys by the mug.", model_version="v1")], caption_text="Keys next to a mug.")
+    q = QA(rt, MEMORY, clock=lambda: NOW, load_keyframe=lambda ref: b"jpeg:" + ref.encode())
+    a = asyncio.run(q.ask("Is anything on the desk?"))
+    assert a.text == "Yes, keys by the mug." and a.citations[0].frame_ref == "frames:cam-desk:e02"
+    assert ("caption", "Are there keys?") in rt.calls
