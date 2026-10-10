@@ -81,9 +81,32 @@ MEASURES = {  # measurement type -> (name, unit as written after the number)
 }
 ENVIRONMENTS = {"HIGH_NOISE": "noisy areas", "LOW_LIGHT": "dim areas", "INDOOR_DUSTY": "dusty rooms", "INDOOR_DRY": "dry rooms",
                 "NORMAL": "ordinary areas"}
+# What Boston Dynamics' Spot User Guide (Release 1.1, the kit's Part Two) says about a kind of failure or place, with the page.
+# Shown as "the manual says ...": it is the vendor's general guidance, never a diagnosis of this (fictional) plant.
+GUIDE = "Spot User Guide R1.1"
+MANUAL_FAILURE = {
+    "PATH_BLOCKED": ("SPOT gets stuck when something blocks its recorded path. The operator takes control, walks it past, and can skip that part of the mission.", 44),
+    "OBSTACLE_DETECTION": ("SPOT gets stuck when something blocks its recorded path, and see-through, mirrored or very bright objects can confuse its obstacle detection.", 11),
+    "LOCALIZATION_FAILURE": ("when what SPOT sees no longer matches the recorded mission it declares itself lost, sits down and asks the operator to step in. "
+                             "Fiducials (printed markers) help it where there is little to recognise.", 44),
+    "COMMUNICATION_LOSS": ("when SPOT loses its link to the controller it sits after 3 seconds and its motors shut off after 8. Network trouble or a weak battery can cause it.", 11),
+}
+MANUAL_PLACE = {
+    "LOW_LIGHT": ("shadowed or unevenly lit fiducials (the markers SPOT finds its place by) can be detected unreliably.", 41),
+    "INDOOR_DUSTY": ("SPOT has difficulty walking on surfaces made slippery by dust, sand or liquids.", 11),
+}
+MANUAL_BATTERY = ("a weak battery is one of the reasons SPOT can lose its connection and stop, and the fix it gives is to recharge.", 44)
+
+
+def manual(entry: tuple[str, int] | None) -> dict | None:
+    return {"text": f"The manual says {entry[0]}", "source": f"{GUIDE}, p. {entry[1]}", "page": entry[1]} if entry else None
+
+
 GLOSSARY = [
-    {"term": "round", "means": "One trip SPOT makes around the plant (the data calls it a mission)."},
-    {"term": "check", "means": "One stop on a round: a photo, a heat picture, a listen or a gauge reading (the data calls it an action)."},
+    {"term": "round", "means": "One Autowalk mission: SPOT walks a recorded route by itself and does its actions on the way. The manual calls this "
+                               "\"replaying a mission\"; the data calls each one a mission."},
+    {"term": "check", "means": "One action on a round: a photo, a heat picture, a listen or a gauge reading, or the walk to the next stop."},
+    {"term": "stop", "means": "A place on the route (the data calls it a waypoint, WP01 to WP15)."},
     {"term": "alarm", "means": "SPOT flagged something unusual about a piece of equipment (the data calls it an anomaly)."},
     {"term": "not confirmed", "means": "The check that raised the alarm failed, so the alarm may be wrong. Send SPOT back before a person."},
     {"term": "usual range", "means": "What SPOT normally reads across this site. The kit gives no plant limits, so this band is ours, not a safety limit."},
@@ -266,7 +289,7 @@ def _last_check(kit: Kit, state: dict) -> dict:
     now = kit.now
     latest = kit.action.get(state["latest_attempt"]) if state["latest_attempt"] else None
     if latest is None:
-        return {"sentence": "SPOT has not checked this yet.", "at": None, "worked": None, "check": None}
+        return {"sentence": "SPOT has not checked this yet.", "at": None, "worked": None, "check": None, "manual": None}
     what = check_word(latest.action_type)
     if not latest.failed:
         text = f"SPOT checked it {ago(now, latest.timestamp)} ({what}, {when(now, latest.timestamp)}) and the check worked."
@@ -274,7 +297,8 @@ def _last_check(kit: Kit, state: dict) -> dict:
         good = datetime.fromisoformat(state["last_good_at"]) if state["last_good_at"] else None
         text = (f"SPOT tried {ago(now, latest.timestamp)} ({what}, {when(now, latest.timestamp)}) but the check failed: "
                 f"{failure_word(latest.failure_type)}. " + (f"The last check that worked was {ago(now, good)}." if good else "No check here has worked yet."))
-    return {"sentence": text, "at": latest.timestamp.isoformat(), "worked": not latest.failed, "check": CHECKS.get(latest.action_type, ("", "", "camera"))[2]}
+    return {"sentence": text, "at": latest.timestamp.isoformat(), "worked": not latest.failed, "check": CHECKS.get(latest.action_type, ("", "", "camera"))[2],
+            "manual": manual(MANUAL_FAILURE.get(latest.failure_type)) if latest.failed else None}
 
 
 def asset_state(spot: Spot, asset_id: str) -> dict:
@@ -428,7 +452,7 @@ def _battery(spot: Spot, f: Finding) -> dict:
             else f"SPOT's checks fail a little more often when its battery is under {cut}%")
     return {"headline": "Low battery, more failed checks",
             "sentence": f"{lead}: {lo[0]} of {lo[1]} failed, against {hi[0]} of {hi[1]} above. " + ("Bring it back to charge earlier." if clear else "Treat it as a hint."),
-            "note": "A pattern, not proof: low battery also means late in the round.",
+            "note": "A pattern, not proof: low battery also means late in the round.", "manual": manual(MANUAL_BATTERY),
             "level": "watch" if clear else "ok", "facts": {"k": lo[0], "n": lo[1], "k_rest": hi[0], "n_rest": hi[1], "threshold": cut},
             "visual": bars((f"Battery under {cut}%", *lo), (f"{cut}% or more", *hi))}
 
@@ -460,7 +484,8 @@ def _by_location(spot: Spot, f: Finding) -> dict:
             "sentence": f"SPOT has the most trouble at {place_label(spot.kit, worst.key)}: {worst.k} of {worst.n} checks there failed, against "
                         f"{rest[0]} of {rest[1]} everywhere else." + (" Walk the route there." if clear else _hedge(clear)),
             "level": "watch" if clear else "ok", "facts": {"k": worst.k, "n": worst.n, "k_rest": rest[0], "n_rest": rest[1]},
-            "why_ref": {"kind": "location", "id": worst.key}, "visual": bars((name, worst.k, worst.n), ("Everywhere else", *rest))}
+            "why_ref": {"kind": "location", "id": worst.key}, "visual": bars((name, worst.k, worst.n), ("Everywhere else", *rest)),
+            "manual": manual(MANUAL_PLACE.get(spot.kit.location[worst.key].environment)) if worst.key in spot.kit.location else None}
 
 
 def _navigation(spot: Spot, f: Finding) -> dict:
@@ -625,6 +650,7 @@ def finding_item(spot: Spot, f: Finding) -> dict:
     why = words.pop("why_ref", None) or {"kind": "finding", "id": f.id}
     out = item(f.id, words.pop("headline"), words.pop("sentence"), words.pop("level"), (why["kind"], why["id"]), finding_id=f.id, **words)
     out.setdefault("note", None)
+    out.setdefault("manual", None)
     out.setdefault("visual", None)
     return out
 
@@ -678,7 +704,8 @@ def step(spot: Spot, a: Action) -> dict:
     return {"action_id": a.action_id, "n": a.sequence, "time": clock(a.timestamp), "at": a.timestamp.isoformat(), "check": CHECKS.get(a.action_type, ("", "", "camera"))[2],
             "title": title, "worked": not a.failed, "alarm": bool(alarms), "result": "alarm" if alarms else "failed" if a.failed else "ok",
             "sentence": " · ".join(parts), "battery_pct": a.battery_pct, "location_id": a.location_id, "place": place_label(kit, a.location_id),
-            "asset_id": a.asset_id, "asset": asset_label(kit, a.asset_id), "why_ref": {"kind": "asset", "id": a.asset_id}}
+            "asset_id": a.asset_id, "asset": asset_label(kit, a.asset_id), "why_ref": {"kind": "asset", "id": a.asset_id},
+            "manual": manual(MANUAL_FAILURE.get(a.failure_type)) if a.failed else None}
 
 
 def round_view(spot: Spot, mission_id: str) -> dict | None:

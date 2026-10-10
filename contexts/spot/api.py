@@ -26,6 +26,10 @@ Write (token-guarded like every other write):
 - POST /api/spot/ask {text, rephrase?, plain?}  a cited answer built from the analysis, returned at once (no model call).
                                      plain=true words it for an operator (`text`); `draft` keeps the exact wording.
                                      rephrase=true also offers a short draft to the on-device model, bounded and checked
+- GET  /api/spot/shiftrun/board | /api/spot/shiftrun/recommended?hard=   Shift Run: what can be planned, and Atlas's plan
+- POST /api/spot/shiftrun/simulate {route, turn_back_at, seed?, hard?}     a plan run through the toy model (domain/shiftrun.py): score,
+                                     stars, steps, reasons, and Atlas's plan beside it. Pure: nothing is written, so it is not guarded.
+- POST /api/spot/actions/plan {route, turn_back_at}   the plan as a mission request: an approval card, like the two below
 - POST /api/spot/actions/reinspect {asset_id} | /api/spot/actions/work_order {anomaly_id}
                                      -> {"action_id"}: an approval card. Nothing is written until it is approved.
 """
@@ -67,6 +71,13 @@ class ReinspectBody(BaseModel):
 
 class WorkOrderBody(BaseModel):
     anomaly_id: str
+
+
+class PlanBody(BaseModel):
+    route: list[str] = Field(default_factory=list, max_length=24)  # asset ids in visiting order
+    turn_back_at: float = Field(default=40, ge=5, le=95)  # battery % at which SPOT stops and walks back
+    seed: int = 0  # for the "play" outcomes only; the score is an expected value
+    hard: bool = False  # the weakest waypoint is blocked
 
 
 def spot_router(spot: SpotContext, bus, guard: Callable | None = None) -> APIRouter:
@@ -242,6 +253,30 @@ def spot_router(spot: SpotContext, bus, guard: Callable | None = None) -> APIRou
             words = plain.answer(read, out)
             out.update(plain=words is not None, text=words or out["text"])
         return out
+
+    # --- Shift Run: plan a round, see how it would probably go (a toy model from the recorded rounds) ---
+
+    @router.get("/shiftrun/board")
+    def shiftrun_board() -> dict:
+        return spot.shiftrun.board()
+
+    @router.get("/shiftrun/recommended")
+    def shiftrun_recommended(hard: bool = False) -> dict:
+        return spot.shiftrun.recommended(hard=hard)
+
+    @router.post("/shiftrun/simulate")
+    def shiftrun_simulate(body: PlanBody) -> dict:
+        return spot.shiftrun.simulate(body.route, body.turn_back_at, seed=body.seed, hard=body.hard)
+
+    @router.post("/actions/plan", dependencies=writes)
+    async def plan(body: PlanBody) -> dict:
+        try:
+            result = spot.shiftrun.simulate(body.route, body.turn_back_at) if read.configured else {}
+            action = spot.orders.propose_plan(body.route, body.turn_back_at, result.get("summary", ""))
+        except ValueError as exc:
+            raise HTTPException(404, str(exc)) from None
+        await bus.publish(action)
+        return {"action_id": action.action_id, "reason": action.reason, "target": action.target}
 
     @router.post("/actions/reinspect", dependencies=writes)
     async def reinspect(body: ReinspectBody) -> dict:
