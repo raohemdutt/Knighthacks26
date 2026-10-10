@@ -32,11 +32,8 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
-from lab.machine import ledger
-
-# One resolver for the state dir: the ledger owns the variable name, the default and the lookup.
-STATE_DIR_ENV = ledger.ENV_STATE_DIR
-DEFAULT_STATE_DIR = ledger.DEFAULT_STATE_DIR
+STATE_DIR_ENV = "LAB_STATE_DIR"
+DEFAULT_STATE_DIR = Path(__file__).resolve().parents[1] / "state"
 STOP_NAME = "STOP"
 EXIT_STOPPED = 1
 NO_REASON = "no reason given"
@@ -44,8 +41,10 @@ MAX_REASON_CHARS = 400
 EXEMPT_ATTR = "runs_when_stopped"
 
 
-# lab/state, or $LAB_STATE_DIR when set; read on every call so a test or a rehearsal can point it elsewhere.
-state_dir = ledger.resolve_state_dir
+def state_dir() -> Path:
+    """lab/state, or $LAB_STATE_DIR when set; read on every call so a test or a rehearsal can point it elsewhere."""
+    override = os.environ.get(STATE_DIR_ENV)
+    return Path(override) if override else DEFAULT_STATE_DIR
 
 
 def stop_file() -> Path:
