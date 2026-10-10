@@ -12,8 +12,9 @@ probing on 2026-10-10:
   works and is parsed instead.
 - DuckDuckGo's HTML endpoint is the primary search; Bing is the fallback.
 
-Read tools only. Anything that clicks, submits or logs in would be a write
-tool and must go through an approval card.
+search, reddit and browse are read tools. submit_form clicks and submits, so
+it is a write tool: it only runs after an approval card, and it refuses
+credential or payment fields.
 
 options:
   headless: false
@@ -263,6 +264,33 @@ class Browser:
         body = readable(text, self.options.get("max_chars", 6000))
         return {"url": final_url, "title": title, "text": body, "summary": focus(body, goal)}
 
+    async def submit_form(self, url: str, fields: dict[str, str], submit: str, wait_for: str | None = None) -> dict:
+        """WRITE: fill fields (CSS selector -> value), click `submit`, and report where it landed.
+
+        Declared under `writes`, so it only ever runs after the person approves the
+        card that shows exactly these fields. Never used for logins or payments."""
+        if not host_allowed(url, self.options.get("allowed_hosts", ["*"])):
+            raise ValueError(f"{urlparse(url).hostname} is not an allowed host")
+        if any(t in (k + v).lower() for k, v in fields.items() for t in ("password", "card", "cvv", "ssn")):
+            raise ValueError("refusing to fill credentials or payment fields")
+        await self._pace(url)
+        page = await (await self.context()).new_page()
+        try:
+            await page.goto(url, wait_until="load", timeout=30_000)
+            if kind := await self._check(page):
+                raise ChallengeError(kind, page.url)
+            for selector, value in fields.items():
+                await page.fill(selector, value)
+                await page.wait_for_timeout(random.randint(150, 400))  # type like a person, not a script
+            await page.click(submit)
+            await page.wait_for_load_state("load")
+            if wait_for:
+                await page.wait_for_selector(wait_for, timeout=10_000)
+            text = readable(await page.evaluate(READABLE_JS), 1500)
+            return {"url": page.url, "title": await page.title(), "text": text}
+        finally:
+            await page.close()
+
     async def close(self) -> None:
         if self._ctx:
             await self._ctx.close()
@@ -298,6 +326,12 @@ async def reddit(subreddit: str, query: str, limit: int = 5) -> list[dict]:
 async def browse(url: str, goal: str | None = None) -> dict:
     """Open a page and return its readable text, plus the lines most relevant to `goal`."""
     return await browser().browse(url, goal)
+
+
+@mcp.tool()
+async def submit_form(url: str, fields: dict[str, str], submit: str, wait_for: str | None = None) -> dict:
+    """WRITE (approval only): fill a form and submit it, e.g. an RSVP or a room booking."""
+    return await browser().submit_form(url, fields, submit, wait_for)
 
 
 if __name__ == "__main__":

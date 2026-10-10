@@ -39,6 +39,7 @@ browser:
   module: contexts.connectors.servers.browser
   hosts: [html.duckduckgo.com, www.bing.com, www.reddit.com]
   tools: [search, reddit, browse]
+  writes: [submit_form]  # RSVPs, room bookings: only after an approval card
   options:
     headless: false
     channel: auto  # installed Chrome if present, else patchright's Chromium

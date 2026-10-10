@@ -80,3 +80,34 @@ def test_challenge_detection():
     assert challenge_kind("https://x.test", "Just a moment... Checking your browser") == "js"
     assert challenge_kind("https://html.duckduckgo.com", "Unfortunately, bots use DuckDuckGo too.") == "captcha"
     assert challenge_kind("https://old.reddit.com", "You've been blocked by network security.") == "blocked"
+
+
+FORM_PAGE = """<form action="about:blank" onsubmit="document.body.innerHTML='<main>RSVP saved for '+document.getElementById('name').value+'</main>'; return false;">
+<input id="name"><button id="go">RSVP</button></form>"""
+
+
+@pytest.mark.skipif(os.environ.get("ATLAS_SKIP_BROWSER") == "1", reason="no browser on this machine")
+def test_submit_form_fills_and_clicks(tmp_path):
+    page_file = tmp_path / "form.html"
+    page_file.write_text(FORM_PAGE)
+
+    async def run():
+        b = Browser({"headless": True, "profile_dir": str(tmp_path / "profile"), "min_gap_s": 0})
+        try:
+            return await b.submit_form(page_file.as_uri(), {"#name": "Dom"}, "#go")
+        finally:
+            await b.close()
+
+    try:
+        out = asyncio.run(run())
+    except Exception as exc:
+        if "browser" in str(exc).lower() or "executable" in str(exc).lower():
+            pytest.skip(f"browser unavailable: {exc}")
+        raise
+    assert "RSVP saved for Dom" in out["text"]
+
+
+def test_submit_form_refuses_credentials():
+    b = Browser({})
+    with pytest.raises(ValueError, match="credentials"):
+        asyncio.run(b.submit_form("https://x.test/login", {"#password": "hunter2"}, "#go"))
