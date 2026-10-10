@@ -83,7 +83,7 @@ def read_feeds(options: dict, now: dt.datetime, fetch) -> list[dict]:
     for feed in options.get("feeds", []):
         url = feed.get("url") or os.environ.get(feed.get("url_env", ""), "")
         if not url:
-            raise RuntimeError(f"feed {feed['name']}: set {feed.get('url_env')} in .env")
+            continue  # this box has not connected that feed; the others still sync
         items += expand(fetch(url), start, end, feed["name"], feed.get("kind", "calendar_event"))
     return items
 
