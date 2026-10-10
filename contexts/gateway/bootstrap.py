@@ -33,6 +33,7 @@ from contexts.connectors.infrastructure.mcp_client import McpConnector
 from contexts.learning.application.export import DatasetExporter
 from contexts.impact.domain.waste_watch import WasteWatch
 from contexts.play.domain.game import SortIt
+from contexts.perception.domain.zones import ZoneEngine
 from contexts.play.domain.pathfinding import SortingRules, ZoneMap
 from contexts.workspace.domain.approvals import Approvals
 from contexts.workspace.infrastructure.ntfy import Ntfy, PhoneNotifier, send_message_executor
@@ -70,6 +71,7 @@ class Atlas:
     zones: list[str] = field(default_factory=list)
     game: SortIt | None = None
     waste: WasteWatch | None = None
+    zone_engine: ZoneEngine | None = None
     circle: CircleAgent | None = None
     presence: PresenceBoard | None = None
     tasks: list[asyncio.Task] = field(default_factory=list)
@@ -85,6 +87,8 @@ class Atlas:
             now = datetime.now(UTC)
             try:
                 await self.bus.publish_all(self.approvals.expire(now))
+                if self.zone_engine:
+                    await self.bus.publish_all(self.zone_engine.flush(now))
                 if self.circle:
                     await self.bus.publish_all(self.circle.poll())
                 if self.loop.due(now):
@@ -176,6 +180,12 @@ def build(settings: Settings | None = None) -> Atlas:
     loop = AgentLoop(memory, qa.sleep, summarize=runtime.summarize, notify=agent_cfg.get("notify_on_package"))
     bus.subscribe("agent.alert.raised", loop.on_alert)  # live only: proposes a message
 
+    # Zone engine (P3): tracks -> enter/dwell/exit. Its stays rebuild from logged observations.
+    zone_engine = None
+    if zones_file.exists():
+        zone_engine = ZoneEngine.load(zones_file)
+        bus.subscribe("perception.observation", zone_engine.on_observation, replay=True)
+
     # Sort It (S1, S2): needs the bin zones and sorting rules in config.
     game = None
     play_cfg = agent_cfg.get("play", {})
@@ -214,4 +224,4 @@ def build(settings: Settings | None = None) -> Atlas:
         planner.presence = presence
 
     return Atlas(settings=s, bus=bus, qa=qa, approvals=approvals, hub=hub, loop=loop, zones=zones, game=game,
-                 waste=waste, circle=circle, presence=presence)
+                 waste=waste, circle=circle, presence=presence, zone_engine=zone_engine)
