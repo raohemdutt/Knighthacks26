@@ -11,6 +11,8 @@ lab/refine/research/<track>/<topic>.md    a note: one topic, lowercase kebab-cas
 lab/refine/research/<track>/SOURCES.md    the index of every source the track's notes cite
 ```
 
+A file named `measurements*.md` in the folder is a record, not a note: raw probe results that notes cite by section (`measurements-2026-10-10.md#m1-front-door`). The checker skips it, and an index entry points at it like any in-repo source.
+
 The tracks are `telemetry`, `learning`, `plumbing` and `kernels`. A pass adds findings to an existing note under a new heading, or starts a new note for a new topic. It never renames or deletes a heading that a log entry, a ruling or a queued experiment cites, because the heading is the address (section 9).
 
 ## 2. Note layout
@@ -146,7 +148,8 @@ Every finding carries at least one of these. Cite the narrowest thing that suppo
 | Issue or PR | the URL, a comment permalink when one comment is the source, or `owner/repo#N`; a bare `PR #N` means a PR in this repo | `[ROCm/vllm#1229](https://github.com/ROCm/vllm/issues/1229)`, `PR #37` |
 | Source file and function | repo, commit, file path and function; a permalink with the commit when the repo is public | `runtime/hub/core/spawner/kubernetes.py::RemoteLabKubeSpawner.options_from_form` in AMDResearch/aup-learning-cloud at 9b4af19 ([permalink](https://github.com/AMDResearch/aup-learning-cloud/blob/9b4af19bffb9e0cef8046cfffc03d66e929a72d5/runtime/hub/core/spawner/kubernetes.py#L308-L357)) |
 | Our ledger line | `ledger:<seq>`, the sequence number of the row in `lab/state/ledger.jsonl`; a number from the baseline metrics file is `lab/refine/metrics.jsonl:<line>` | `ledger:57` (an illustrative number; use the real `seq`) |
-| A file in this repo | the repo-relative path, with `::function` or `:line` when it narrows the claim | `lab/README.md` |
+| A file in this repo | the repo-relative path, with `::function` or `:line` when it narrows the claim, or a relative link with the section | `lab/README.md`, `[M1](measurements-2026-10-10.md#m1-front-door)` |
+| A source ID | `[S49]` or `[S3, S7]`: the ID of an entry in this folder's `SOURCES.md` (one capital letter and a number, so `[L2]` and `[R1]` also work), followed by what in the source supports the claim | `Source: [S49] vLLM benchmarks/kernels/benchmark_moe.py at b1388b1, tune and benchmark_config` |
 
 - Cite only what you opened. A paper known from memory, a title seen in a search result or a model's recollection is not opened.
 - Prefer peer-reviewed papers, vendor and project docs, and lab benchmarks over blog posts. A blog post is an `anecdote` unless it shows data.
@@ -156,7 +159,7 @@ Every finding carries at least one of these. Cite the narrowest thing that suppo
 ## 6. Under each finding: implication and candidate experiment
 
 - **Implication:** what the finding means for our metric set. Name the metric from the track's rubric (joules per answer, idle watts, sampler overhead, and so on). If it changes none, write "none for the metric set" and say why, as the anecdote and opinion examples above do.
-- **Candidate experiment:** one run that would test it on our hardware, with the **expected movement** (the metric, the direction and a size) and the **minimum sample size** (runs, samples or requests). An experiment is a proposal. Writing it in a note starts nothing.
+- **Candidate experiment:** one run that would test it on our hardware, with the **expected movement** (the metric, the direction and a size) and the **minimum sample size** (runs, samples or requests). An experiment is a proposal. Writing it in a note starts nothing. Several findings may share one experiment: define it once, with all its fields and an ID such as `KE5`, and let the others say `Experiment: KE5, as specified in kernels.md section 4`, `Experiment: see the previous finding`, or `Experiment: none beyond KE13`. The checker accepts these pointers without the fields.
 
 Each track asks a little more or less of an experiment, following its research task:
 
@@ -188,6 +191,10 @@ One `SOURCES.md` per track folder lists every source the track's notes cite, and
 
 - The columns are Source, URL or DOI, Opened, Type and Cited in. Type is one of `paper`, `vendor doc`, `project doc`, `benchmark`, `issue`, `pr`, `code`, `blog`, `other`. A list works as well as a table: `- [Zeus docs](https://ml.energy/zeus/measure/), opened 2026-10-10`.
 - An internal source (a file in this repo, a ledger line) may carry its path or `ledger:<seq>` in place of a URL.
+- To cite by ID, start the entry with its ID (`S49`, `[S49]` or an `ID` or `Key` column first in the row). `[S07]` and `[S7]` are the same ID. A cited ID that no entry defines is `source-not-indexed`.
+- Source code is read at a tag or commit, so a file URL such as `https://github.com/org/repo/blob/9b4af19/a/b.py` matches any index entry that lists the same repo at the same ref (a short commit matches the full one). Other repos and other refs do not match.
+- A lead that was seen but never opened (search snippets, a paywalled page) may be recorded with the words `not opened` or `not citable` and no link. It is never cited.
+- A table in `SOURCES.md` whose header has no URL, DOI, link, opened or date column (for example a table listing the notes) is not a list of sources and is skipped.
 - Every URL, DOI or arXiv id that a finding cites must appear in the index. The checker matches them ignoring `http` versus `https`, `www.`, a trailing slash, a `#fragment`, the `abs` versus `pdf` form of an arXiv link, and an arXiv paper's DOI versus its arXiv link. A comment permalink therefore matches its issue.
 - A URL template such as `https://host/user/<name>/proxy/` or `.../users/{name}/server` is an example, never a source. A URL inside a `code span` still counts as a citation but is not looked up in the index, so write a real source as a link.
 - A source that was opened but not cited stays in the index, so the next pass does not open it again.
@@ -220,13 +227,13 @@ SOURCE: lab/refine/research/telemetry/sampling.md#sampler-trust (practitioner)
 | `missing-path`, `not-markdown`, `no-notes` | the path does not exist; a file is not `.md`; a folder holds no notes |
 | `no-findings` | a note has no bullet under a `##` topic heading |
 | `no-label`, `unknown-label`, `multiple-labels` | a finding starts with no label; with a bracketed word that is not one of the four; with two labels |
-| `no-citation` | a finding carries no URL, DOI, arXiv id, `owner/repo#N`, `PR #N`, `ledger:N`, or file path (with a folder, or with `::function` or `:line`) |
+| `no-citation` | a finding carries no URL, DOI, arXiv id, `owner/repo#N`, `PR #N`, `ledger:N`, a source ID such as `[S49]`, a relative link to a file in the repo, or a file path (with a folder, or with `::function` or `:line`) |
 | `no-implication`, `no-experiment` | a finding has no implication, or no candidate experiment |
 | `no-expected-movement`, `no-minimum-sample`, `no-confidence` | the experiment does not state them, per the track table in section 6 |
 | `duplicate-heading` | two `##` headings in one note have the same anchor |
 | `sources-missing`, `sources-empty` | a folder with notes has no `SOURCES.md`; the index lists nothing |
 | `source-no-url`, `source-no-date` | an index entry has no link or locator, or no date opened |
-| `source-not-indexed` | a finding cites a URL, DOI or arXiv id that the index does not list |
+| `source-not-indexed` | a finding cites a URL, DOI, arXiv id or source ID that the index does not list |
 | `bad-reference` | a `file#heading` reference names no markdown file under the root, or no heading in it |
 
 Each violation is one string in the answer's `violations` list: `<file>:<line>: <code>: <message>`. A single note is checked against the `SOURCES.md` beside it when there is one. A folder is checked note by note, then its index. A folder with no notes of its own is checked subfolder by subfolder, so `lab/refine/research` covers all four tracks.

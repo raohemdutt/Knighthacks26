@@ -19,6 +19,7 @@ violations (the strings above), notes and findings; the exit code is 0 when clea
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import glob
 import os
 import re
@@ -42,6 +43,7 @@ DEFAULT_EXTRAS = ("minimum",)
 
 INDEX_NAME = "SOURCES.md"
 NOT_NOTES = frozenset({"sources.md", "readme.md"})
+RECORD_PATTERN = "measurements*.md"  # a raw measurement record that notes cite, not a note
 
 # Headings whose bullets are framing, method, questions, or the ranked experiment list rather than findings. A heading
 # matches when it is one of the single words, or starts with one of the phrases, after numbering and a trailing
@@ -95,8 +97,22 @@ _CODE = re.compile(
     r"|(?<![\w/.@:-])[\w.-]+\." + _EXT + r"\b" + _WHERE
 )
 
+# A source ID such as [S49] or [S3, S7] points at an entry of SOURCES.md; a relative link such as
+# [log](measurements.md#m1) points at a record in this repo.
+_SOURCE_ID = re.compile(r"\[([A-Z]\d{1,4}(?:\s*,\s*[A-Z]\d{1,4})*)\]")
+_REL_LINK = re.compile(r"\]\((?![A-Za-z][\w+.-]*://|#)[^)\s]+\." + _EXT + r"(?:#[^)\s]*)?\)", re.I)
+_INDEX_ID = re.compile(r"^[\s|*_`\[(]*([A-Z])(\d+)\b")
+
+# An experiment line that points at another experiment of the note instead of repeating it.
+_XREF = re.compile(
+    r"(?i:\bsee\b[^.;]{0,60}\b(?:previous|preceding|above|below|earlier|next|finding|experiment|section|test)\b)"
+    r"|(?i:\bcovered by\b|\bspecified in\b|\bsame (?:experiment )?as\b)"
+    r"|^(?i:experiments?)\W+(?:\([^)]*\)\W*)?(?:(?i:none)\b|[A-Z]{1,3}-?\d{1,3}\b)"
+)
+
 _IMPLICATION = re.compile(r"\bimplic\w*|\bimplies\b|\bimply\w*", re.I)
 _EXPERIMENT = re.compile(r"\bexperiments?\b", re.I)
+_EXPERIMENT_LINE = re.compile(r"\bexperiments?\b[^:\n]{0,40}:", re.I)  # "Experiment:", "Candidate experiment (EN-6):"
 _EXPECTED = re.compile(r"\bexpect\w*|\bmovement\b|\bdelta\b", re.I)
 _MINIMUM = re.compile(
     r"\bminimum\b|\bmin\.?\s+(?:n\b|samples?|runs?)|\bsample size\b|\bn\s*(?:=|>=|>|\u2265)\s*\d+|\bat least\s+\d+"
@@ -105,7 +121,10 @@ _MINIMUM = re.compile(
 )
 _CONFIDENCE = re.compile(r"\bconfiden(?:ce|t)\b|\bconf\b", re.I)
 
-_MONTH = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?"
+# An index entry may record a lead that was seen but never opened; it has no link and is not cited.
+_UNOPENED = re.compile(r"\bnot (?:opened|citable)\b", re.I)
+
+_MONTH =r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?"
 _DATE = re.compile(
     r"\b\d{4}[-/]\d{2}[-/]\d{2}\b|\b" + _MONTH + r"\s+\d{1,2},?\s+\d{4}\b|\b\d{1,2}\s+" + _MONTH + r"\s+\d{4}\b",
     re.I,
@@ -292,8 +311,14 @@ def _urls(text: str) -> list[str]:
 def _has_citation(text: str) -> bool:
     return bool(
         _urls(text) or _DOI.search(text) or _ARXIV.search(text) or _TRACKER.search(text) or _LEDGER.search(text)
-        or _CODE.search(text)
+        or _CODE.search(text) or _SOURCE_ID.search(_CODE_SPAN.sub(" ", text)) or _REL_LINK.search(text)
     )
+
+
+def _source_ids(text: str) -> list[str]:
+    """The source IDs cited in the text (S49 for [S49]), leaving out `code spans`."""
+    found = _CODE_SPAN.sub(" ", text)
+    return [f"{letter}{int(number)}" for m in _SOURCE_ID.finditer(found) for letter, number in re.findall(r"([A-Z])(\d+)", m.group(1))]
 
 
 def _doi_keys(doi: str) -> set[str]:
@@ -315,6 +340,13 @@ def _url_keys(url: str) -> set[str]:
     doi = re.search(r"(10\.\d{4,9}/[^\s?#]+)", path)
     if doi:
         keys |= _doi_keys(doi.group(1))
+    # Source code is read at a ref, so a file URL also stands for the repo at that tag or commit.
+    code = re.match(r"^(github\.com/[^/]+/[^/]+)/(?:blob|tree)/([^/]+)/", path, re.I)
+    if code:
+        repo, ref = code.group(1).lower(), code.group(2).lower()
+        keys.add(f"repo:{repo}@{ref}")
+        if re.fullmatch(r"[0-9a-f]{7,40}", ref):
+            keys.add(f"repo:{repo}@{ref[:7]}")
     return keys
 
 
@@ -394,15 +426,20 @@ def _check_finding(block: _Block, extras: tuple[str, ...], index_keys: set[str] 
         for shown, keys in _cited_keys(cited):
             if not keys & index_keys:
                 problem("source-not-indexed", f"{shown} is cited but not listed in {INDEX_NAME}")
+        for source_id in _source_ids(cited):
+            if f"id:{source_id}" not in index_keys:
+                problem("source-not-indexed", f"[{source_id}] is cited but {INDEX_NAME} has no entry with that ID")
 
     whole = " ".join([block.lead, *block.details])
     if not _IMPLICATION.search(whole):
         problem("no-implication", "finding has no implication for our metric set; add an 'Implication:' line under it")
-    experiment = _EXPERIMENT.search(whole)
+    experiment = _EXPERIMENT_LINE.search(whole) or _EXPERIMENT.search(whole)
     if not experiment:
         problem("no-experiment", "finding has no candidate experiment; add a 'Candidate experiment:' line under it")
         return
     text = whole[experiment.start():]
+    if _XREF.search(text):
+        return
     if not _EXPECTED.search(text):
         problem("no-expected-movement", "candidate experiment does not state the expected movement")
     if "minimum" in extras and not _MINIMUM.search(text):
@@ -416,16 +453,20 @@ def _check_finding(block: _Block, extras: tuple[str, ...], index_keys: set[str] 
 
 def _table_rows(lines: list[str]) -> list[tuple[int, str]]:
     rows: list[tuple[int, str]] = []
+    skipping = False
     for number, line in _visible(lines):
         text = line.strip()
         if not text.startswith("|"):
+            skipping = False
             continue
         cells = [cell.strip() for cell in text.strip("|").split("|")]
         if all(re.fullmatch(r":?-+:?", cell) for cell in cells):
             if rows and rows[-1][0] == number - 1:
-                rows.pop()  # the row above a separator is the header
+                header = rows.pop()[1].lower()  # the row above a separator is the header
+                skipping = not re.search(r"url|doi|link|opened|date", header)  # e.g. a table that lists the notes
             continue
-        rows.append((number, " | ".join(cells)))
+        if not skipping:
+            rows.append((number, " | ".join(cells)))
     return rows
 
 
@@ -442,6 +483,9 @@ def _index_keys(path: Path) -> set[str]:
     for _, text in _index_entries(_clean(_read(path))):
         for _, found in _cited_keys(text):
             keys |= found
+        entry_id = _INDEX_ID.match(text)
+        if entry_id:
+            keys.add(f"id:{entry_id.group(1)}{int(entry_id.group(2))}")
     return keys
 
 
@@ -451,7 +495,7 @@ def _check_index(path: Path, report: _Report) -> None:
     if not entries:
         report.add(where, None, "sources-empty", "no sources are listed; list every source opened, one per row or bullet")
     for line, text in entries:
-        if not _has_citation(text):
+        if not _has_citation(text) and not _UNOPENED.search(text):
             report.add(where, line, "source-no-url", "source has no URL or DOI; give the link that was opened")
         if not _DATE.search(text):
             report.add(where, line, "source-no-date", "source has no date opened; add it as YYYY-MM-DD")
@@ -467,6 +511,7 @@ def _find_index(folder: Path) -> Path | None:
 def _notes_in(folder: Path) -> list[Path]:
     return sorted(
         p for p in folder.iterdir() if p.is_file() and p.suffix.lower() == ".md" and p.name.lower() not in NOT_NOTES
+        and not fnmatch.fnmatch(p.name.lower(), RECORD_PATTERN)
     )
 
 

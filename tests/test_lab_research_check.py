@@ -318,6 +318,113 @@ def test_a_link_inside_the_implication_is_not_the_findings_citation(tmp_path):
     assert [code for _, code in parse(rc.check(path))] == ["no-citation"]
 
 
+@pytest.mark.parametrize("cite", ["Source: [S49] vLLM benchmark", "[S3, S7]", "([S12])"])
+def test_a_source_id_is_a_citation_when_there_is_no_index_to_check_it_against(tmp_path, cite):
+    assert rc.check(put(tmp_path, "research/telemetry/a.md", note(bullet(cite=cite)))) == []
+
+
+INDEX_WITH_IDS = """# Sources
+
+| ID | Source | URL or DOI | Opened |
+| --- | --- | --- | --- |
+| S01 | Zeus docs | https://ml.energy/zeus/measure/ | 2026-10-10 |
+| S49 | vLLM benchmark | https://github.com/vllm-project/vllm | 2026-10-10 |
+
+- [S7] PR 37 - https://github.com/raohemdutt/Knighthacks26/pull/37 - opened 2026-10-10
+"""
+
+
+@pytest.mark.parametrize("cite", ["[S49]", "[S1]", "[S01]", "[S7]", "[S49, S7]"])
+def test_a_source_id_must_name_an_entry_of_the_index(tmp_path, cite):
+    put(tmp_path, "research/telemetry/a.md", note(bullet(cite=cite)))
+    put(tmp_path, "research/telemetry/SOURCES.md", INDEX_WITH_IDS)
+    assert rc.check(tmp_path / "research" / "telemetry") == []
+
+
+def test_a_source_id_the_index_does_not_define_is_reported(tmp_path):
+    body = note(bullet(cite="[S49, S50]"))
+    put(tmp_path, "research/telemetry/a.md", body)
+    put(tmp_path, "research/telemetry/SOURCES.md", INDEX_WITH_IDS)
+    result = rc.check(tmp_path / "research" / "telemetry")
+    assert parse(result) == [(line_of(body, "- **[measured]**"), "source-not-indexed")]
+    assert "[S50]" in result[0]
+
+
+def test_a_source_id_in_a_code_span_is_not_a_citation(tmp_path):
+    assert [c for _, c in parse(rc.check(put(tmp_path, "research/telemetry/a.md", note(bullet(cite="`[S49]`")))))] == ["no-citation"]
+
+
+@pytest.mark.parametrize(
+    "cite", ["[log M1](measurements-2026-10-10.md#m1-front-door)", "[proxy](proxy-path.md)", "[x](../other/file.json#row-3)"]
+)
+def test_a_relative_link_to_a_record_in_the_repo_is_a_citation(tmp_path, cite):
+    assert rc.check(put(tmp_path, "research/telemetry/a.md", note(bullet(cite=cite)))) == []
+
+
+@pytest.mark.parametrize("cite", ["[see below](#section)", "[home](nothing)", "[page](https:/broken)"])
+def test_an_in_page_anchor_or_a_link_to_nothing_is_not_a_citation(tmp_path, cite):
+    assert [c for _, c in parse(rc.check(put(tmp_path, "research/telemetry/a.md", note(bullet(cite=cite)))))] == ["no-citation"]
+
+
+@pytest.mark.parametrize(
+    "pointer",
+    [
+        "see the previous finding.",
+        "covered by the cull timing experiment above.",
+        "KE5, as specified in `triton_gfx12.md` section 4.",
+        "KE15 (energy-aware selection) reuses a tuner like this; see section 3.",
+        "the same experiment as the one below.",
+    ],
+)
+def test_an_experiment_that_points_at_another_experiment_need_not_repeat_its_fields(tmp_path, pointer):
+    detail = ("  - Implication: joules per token follows decode speed.", f"  - Experiment: {pointer}")
+    assert rc.check(put(tmp_path, "research/kernels/a.md", note(bullet(detail=detail)))) == []
+
+
+def test_a_sentence_that_merely_contains_the_word_see_is_not_a_pointer(tmp_path):
+    detail = ("  - Implication: x.", "  - Experiment: rerun it to see whether the number holds.")
+    codes = [c for _, c in parse(rc.check(put(tmp_path, "research/telemetry/a.md", note(bullet(detail=detail)))))]
+    assert codes == ["no-expected-movement", "no-minimum-sample"]
+
+
+@pytest.mark.parametrize("cite", ["[L2]", "[R1]", "Source: `measurements-2026-10-10.md` M1 and M6 [R1]"])
+def test_other_one_letter_ids_work_like_source_ids(tmp_path, cite):
+    path = put(tmp_path, "research/plumbing/a.md", note(bullet(cite=cite)))
+    assert rc.check(path) == []
+    index = (
+        "# Sources\n\n"
+        "- [L2] T0 page - https://app.notion.com/p/abc - 2026-10-10\n"
+        "- [R1] record - lab/refine/research/plumbing/measurements-2026-10-10.md - 2026-10-10\n"
+    )
+    put(tmp_path, "research/plumbing/SOURCES.md", index)
+    assert rc.check(tmp_path / "research" / "plumbing") == []
+
+
+@pytest.mark.parametrize(
+    "pointer",
+    [
+        "none beyond KE13.",
+        "none from the headline; the kernels below map to KE3 and KE9.",
+        "see the measured propagation below; repeat it on pod B's next session; minimum n: 3 observations.",
+    ],
+)
+def test_an_experiment_may_say_none_or_point_below(tmp_path, pointer):
+    detail = ("  - Implication: x.", f"  - Experiment: {pointer}")
+    assert rc.check(put(tmp_path, "research/kernels/a.md", note(bullet(detail=detail)))) == []
+
+
+def test_a_measurements_record_is_not_a_note_and_a_notes_table_in_the_index_is_not_a_source(tmp_path):
+    put(tmp_path, "research/plumbing/a.md", note(bullet(cite="[log](measurements-2026-10-10.md#m1)")))
+    put(tmp_path, "research/plumbing/measurements-2026-10-10.md", "# Record\n\n## M1. Probe\n\nPlain prose, no bullets.\n")
+    sources = (
+        "# Sources\n\n| Note | Covers |\n| --- | --- |\n| `a.md` | decode energy |\n\n"
+        "| ID | Source | URL | Opened |\n| --- | --- | --- | --- |\n"
+        "| S1 | Zeus | https://ml.energy/zeus/measure/ | 2026-10-10 |\n"
+    )
+    put(tmp_path, "research/plumbing/SOURCES.md", sources)
+    assert rc.check(tmp_path / "research" / "plumbing") == []
+
+
 # ---- which bullets are findings ---------------------------------------------------------------------------
 
 
@@ -688,6 +795,36 @@ def test_a_cited_source_missing_from_the_index_is_reported_on_the_finding_line(t
     put(tmp_path, "research/telemetry/a.md", body)
     put(tmp_path, "research/telemetry/SOURCES.md", SOURCES_OK)
     assert parse(rc.check(tmp_path / "research" / "telemetry")) == [(line_of(body, "- **[measured]**"), "source-not-indexed")]
+
+
+REPO = "https://github.com/AMDResearch/aup-learning-cloud"
+SHA = "9b4af19bffb9e0cef8046cfffc03d66e929a72d5"
+
+
+@pytest.mark.parametrize(
+    "cited, indexed",
+    [
+        (f"{REPO}/blob/{SHA}/dockerfiles/Hub/Dockerfile#L22", f"{REPO}/blob/{SHA}/dockerfiles/Base/Dockerfile.rocm"),
+        (f"{REPO}/blob/9b4af19/runtime/hub/core/spawner/kubernetes.py", f"{REPO}/blob/{SHA}/README.md"),
+        (f"{REPO}/blob/{SHA}/README.md", f"{REPO}/tree/9b4af19/runtime"),
+    ],
+)
+def test_source_code_is_indexed_at_the_granularity_of_the_repo_and_ref_that_was_read(tmp_path, cited, indexed):
+    put(tmp_path, "research/plumbing/a.md", note(bullet(cite=cited)))
+    put(tmp_path, "research/plumbing/SOURCES.md", f"# Sources\n\n- {indexed}, opened 2026-10-10\n")
+    assert rc.check(tmp_path / "research" / "plumbing") == []
+
+
+def test_source_code_at_another_ref_or_in_another_repo_is_not_indexed(tmp_path):
+    body = note(bullet(cite=f"{REPO}/blob/main/README.md"), bullet(cite="https://github.com/jupyterhub/jupyterhub/blob/9b4af19/a.py"))
+    put(tmp_path, "research/plumbing/a.md", body)
+    put(tmp_path, "research/plumbing/SOURCES.md", f"# Sources\n\n- {REPO}/blob/{SHA}/README.md, opened 2026-10-10\n")
+    assert [c for _, c in parse(rc.check(tmp_path / "research" / "plumbing"))] == ["source-not-indexed", "source-not-indexed"]
+
+
+def test_an_index_entry_may_record_a_lead_that_was_never_opened(tmp_path):
+    entry = "- Web search results on SSE buffering (snippets only) - n/a - 2026-10-10 - not opened as pages, so not citable\n"
+    assert sources_check(tmp_path, "# Sources\n\n" + entry) == []
 
 
 # ---- slugs and references ---------------------------------------------------------------------------------
