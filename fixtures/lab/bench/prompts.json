@@ -1,0 +1,30 @@
+{
+  "id": "bench-v1",
+  "about": "The fixed prompt set of lab/bench.py: text and drawn fixture images only, never camera frames (kernels rubric K1 d). Each request asks the model to keep going, and the harness sends ignore_eos with a fixed max_tokens, so every request generates the same number of tokens. A change to this file or to an image is a new prompt set and starts a new stock record (K1 c).",
+  "prompts": [
+    {
+      "id": "text-kitchen",
+      "kind": "text",
+      "system": "You are a careful assistant in a home. Answer in plain sentences.",
+      "user": "Describe, step by step, how to tidy a small kitchen after cooking dinner for four people. Cover the counters, the stove, the sink, the dishes and the floor, in that order, and say why each step comes where it does."
+    },
+    {
+      "id": "image-bars",
+      "kind": "image",
+      "image": "images/bars_1280x720.png",
+      "user": "Describe this chart in detail: how many bars there are, their colours from left to right, and how their heights compare."
+    },
+    {
+      "id": "text-schedule",
+      "kind": "text",
+      "system": "You are a careful assistant in a home. Answer in plain sentences.",
+      "user": "A family of three shares one car. Write a weekday plan that gets one parent to work by 8:30, a child to school by 8:00 and the other parent to a 9:15 appointment, and explain each choice."
+    },
+    {
+      "id": "image-shapes",
+      "kind": "image",
+      "image": "images/shapes_640x480.png",
+      "user": "List every shape in this picture with its colour and its position, then describe the picture as a whole."
+    }
+  ]
+}

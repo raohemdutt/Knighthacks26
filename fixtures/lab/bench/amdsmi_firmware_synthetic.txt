@@ -1,0 +1,15 @@
+GPU: 0
+    FW_LIST:
+        FW 0:
+            FW_ID: CP_PFP
+            FW_VERSION: 0x00000052
+        FW 1:
+            FW_ID: CP_ME
+            FW_VERSION: 0x00000051
+        FW 2:
+            FW_ID: SMU
+            FW_VERSION: 100.112.0
+        FW 3:
+            FW_ID: PSP_SOSDRV
+            FW_VERSION: 0x00380017
+
