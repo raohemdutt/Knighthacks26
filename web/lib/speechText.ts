@@ -289,7 +289,7 @@ export function chunkForSpeech(text: string, max = CHUNK_CHARS): string[] {
 
 // ---------- things Atlas says without being asked ----------
 
-export type SpokenKind = "alert" | "nudge" | "approval" | "leaving" | "plan" | "coach";
+export type SpokenKind = "alert" | "nudge" | "approval" | "leaving" | "plan" | "coach" | "brief" | "replan" | "review" | "move";
 
 /** The shortest gap between two spoken events of one kind. Anything sooner is shown as usual but not said. */
 export const SPEAK_COOLDOWN_MS: Record<SpokenKind, number> = {
@@ -299,7 +299,34 @@ export const SPEAK_COOLDOWN_MS: Record<SpokenKind, number> = {
   leaving: 300_000,
   plan: 120_000,
   coach: 60_000,
+  // the day in words (day.narrated): the morning brief, a re-plan, the evening wrap, and "leave now" / "late"
+  brief: 120_000,
+  replan: 60_000,
+  review: 120_000,
+  move: 60_000,
 };
+
+/** Longest narration said unasked, in characters: the narrator keeps the morning brief under this. */
+const MAX_NARRATION_CHARS = 560;
+const NARRATED_KIND: Record<string, SpokenKind> = { morning: "brief", replan: "replan", coach: "coach", evening: "review" };
+
+/**
+ * What to say for a `day.narrated` event, or null when it is not one Atlas says unasked: the morning brief, a
+ * re-plan, the coach and the evening wrap always; a "now" only when it is urgent (leave now, late). Its
+ * `spoken` text was written for the ear, so it is said as it is. Approval asks are said by the approval itself.
+ */
+export function sentenceForNarration(e: Record<string, unknown>): { kind: SpokenKind; text: string } | null {
+  const moment = str(e.moment);
+  const kind = moment === "now" ? (e.urgent === true ? "move" : null) : (NARRATED_KIND[moment] ?? null);
+  const text = capAtSentence(str(e.spoken).replace(/\s+/g, " ").trim(), MAX_NARRATION_CHARS);
+  return kind && text ? { kind, text } : null;
+}
+
+/** "I'd like to add eight blocks to your calendar for tomorrow. Okay?" for a narrated ask; null when it has none. */
+export function narratedAsk(narration: { spoken?: unknown } | null | undefined): string | null {
+  const text = str(narration?.spoken).replace(/\s+/g, " ").trim();
+  return text ? text : null;
+}
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 
@@ -340,6 +367,8 @@ export function sentenceForEvent(e: { type: string } & Record<string, unknown>, 
       const subject = oneSentence(str(e.subject), 80, options).replace(/[.!?]+$/, "");
       return subject ? { kind: "plan", text: `I made a plan for ${subject}.` } : null;
     }
+    case "day.narrated":
+      return sentenceForNarration(e);
     case "day.coach.noted": {
       // the study coach when a block ends: already one to three short sentences written to be said
       const said = cleanForSpeech(str(e.text), options).slice(0, 260);
@@ -352,7 +381,7 @@ export function sentenceForEvent(e: { type: string } & Record<string, unknown>, 
 
 // ---------- what a heard phrase means ----------
 
-export type VoiceCommand = "stop" | "yes" | "no" | null;
+export type VoiceCommand = "stop" | "yes" | "no" | "brief" | "status" | null;
 
 const POLITE = /\b(?:please|thanks|thank you|atlas|hey|ok|okay|now)\b/g;
 const STOP = /^(?:stop|stop listening|stop talking|that s all|that is all|thats all|that s it|that will be all|never mind|nevermind|forget it|be quiet|quiet|goodbye|bye|i m done|we re done|done)$/;
@@ -360,6 +389,11 @@ const STOP = /^(?:stop|stop listening|stop talking|that s all|that is all|thats 
 // "No" acts, so it has to be the whole utterance.
 const YES = /^(?:(?:yes|yeah|yep|yup|sure|approve|approved|do it|go ahead|go for it|confirm|allow|it|that)(?:\s+|$))+$/;
 const NO = /^(?:no\s+)*(?:no|nope|nah|deny|deny it|deny that|denied|don t|do not|don t do it|do not do it|reject|reject it|cancel|cancel it)$/;
+// Answered on the phone from the narrator's words, without a model call: the day ahead, and how it is going.
+const BRIEF =
+  /^(?:brief me|give me (?:a|the|my) (?:brief|briefing|rundown)|(?:what s|what is|whats) (?:my|the) (?:day|plan|schedule)(?: (?:look|looking) like| like| today| for today)?|what does my day look like|how s my day looking|how does my day look|what s on today|what is on today|what s next|what is next|whats next)$/;
+const STATUS =
+  /^(?:how am i doing|how m i doing|how are we doing|how s it going|how is it going|am i on track|am i on time|am i behind|am i late|where should i be|where am i supposed to be|status|status report)$/;
 
 /**
  * A whole utterance that is a command, never a word inside a longer sentence: "stop" stops,
@@ -379,5 +413,10 @@ export function voiceCommand(transcript: string, expecting: "question" | "yes-no
     if (YES.test(said) || /^(?:ok|okay)$/.test(raw)) return "yes";
   }
   if (STOP.test(said) || (expecting === "question" && /^(?:cancel|no thanks|no thank you)$/.test(raw))) return "stop";
+  if (expecting === "question") {
+    const asked = said.replace(/\b(?:right|so|and|then|today)\b/g, " ").replace(/\s+/g, " ").trim();
+    if (BRIEF.test(said) || BRIEF.test(asked)) return "brief";
+    if (STATUS.test(said) || STATUS.test(asked)) return "status";
+  }
   return null;
 }

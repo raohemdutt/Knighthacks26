@@ -430,10 +430,13 @@ def build(settings: Settings | None = None) -> Atlas:
     # reviews rebuild from the log; deciding and proposing cards is live only.
     day = None
     if dayrun:
-        day = DayLoop(dayrun, places, config_dir=s.config_dir, habits=habits, memory=memory, waste=waste, presence=presence, hub=hub)
+        # The narrator (D3) says those moments in words (`day.narrated`): templates always, the model (agent.yaml
+        # `day.narration`, lowest priority, live only) when the runtime is a real one.
+        day = DayLoop(dayrun, places, config_dir=s.config_dir, habits=habits, memory=memory, waste=waste, presence=presence, hub=hub,
+                      runtime=runtime, narration=agent_cfg.get("day"), description=profile.description)
         day.subscribe(bus)
-        if ntfy:
-            bus.subscribe("day.", day_phone(ntfy, s.ntfy_topic))  # the plan, a re-plan and the review on the phone
+        if ntfy:  # the plan, a re-plan and the review on the phone, in the narrator's words when it is on
+            bus.subscribe("day.", day_phone(ntfy, s.ntfy_topic, narrated=day.narrator.mode != "off"))
 
     # The League (contexts/play/league): the friends' weekly game. The standings rebuild from the log; the
     # follow-ups (GroupMe post, Circle plan) and the stake/dare executor are live and behind approval cards.

@@ -10,7 +10,8 @@ import { ApiError, api, type ApprovalRequest } from "@/lib/api";
 import { useAnswerStream, useAtlas } from "@/lib/atlas";
 import { time } from "@/lib/format";
 import { useWords } from "@/lib/profile";
-import { approvalSentence, speechForAnswer, voiceCommand } from "@/lib/speechText";
+import { briefMe, useBrief } from "@/lib/brief";
+import { approvalSentence, narratedAsk, speechForAnswer, voiceCommand } from "@/lib/speechText";
 import { useVoice } from "@/lib/voice";
 
 const DEMO_QUESTIONS = [
@@ -123,6 +124,39 @@ export default function AskPage() {
     respond(reply);
   };
 
+  /**
+   * "Brief me", "what's my day", "how am I doing": answered here from the narrator's words (contexts/day), without
+   * a question to the model. The paragraph goes into the conversation; its spoken form is what is said.
+   */
+  const brief = async (what: "brief" | "status", said: string) => {
+    if (busy.current) return;
+    busy.current = true;
+    setNote(null);
+    setText("");
+    setWaiting(said);
+    setChat((turns) => [...turns, { id: nextId(), role: "you", text: said }]);
+    const n = await briefMe(what);
+    busy.current = false;
+    setWaiting(null);
+    if (!n) {
+      setChat((turns) => [...turns, { id: nextId(), role: "error", text: "There is no plan for today yet. Open Now to make one.", needsToken: false }]);
+      respond("I don't have a plan for today yet.");
+      return;
+    }
+    const answer = {
+      event_id: n.event_id,
+      type: "agent.answer.generated" as const,
+      version: 1,
+      ts: n.ts,
+      question_id: `brief-${n.event_id}`,
+      answer: n.display,
+      citations: [],
+      model_version: n.engine === "model" ? "the day narrator (model)" : "the day narrator",
+    };
+    setChat((turns) => [...turns, { id: nextId(), role: "atlas", answer }]);
+    respond(n.spoken);
+  };
+
   /** "No" to the request Atlas just asked about. Denying is the only decision the voice can make. */
   const denyByVoice = async (request: ApprovalRequest) => {
     try {
@@ -159,6 +193,10 @@ export default function AskPage() {
       conversing.current = false;
       setText("");
       setNote({ text: "Stopped listening. Tap the mic to talk again.", tone: "info" });
+      return;
+    }
+    if (command === "brief" || command === "status") {
+      void brief(command, said);
       return;
     }
     void ask(said, true);
@@ -234,12 +272,15 @@ export default function AskPage() {
     voice.status === "idle" &&
     waiting === null;
   const { say } = voice;
+  const { asks } = useBrief();
   useEffect(() => {
     if (!only || !canAskAloud || askedAloud.has(only.id) || document.visibilityState !== "visible") return;
     askedAloud.add(only.id);
     pendingApproval.current = only;
     conversing.current = true;
-    say(`${approvalSentence(only.reason)} Say no to deny it, or yes to open the Approvals screen.`, {
+    // the narrator's plain ask when it has one ("I'd like to add eight blocks to your calendar for tomorrow. Okay?")
+    const asking = narratedAsk(asks[only.id]) ?? approvalSentence(only.reason);
+    say(`${asking} Say no to deny it, or yes to open the Approvals screen.`, {
       tag: "answer",
       raw: true,
       onDone: (finished) => {
@@ -247,11 +288,13 @@ export default function AskPage() {
         else pendingApproval.current = null;
       },
     });
-  }, [only, canAskAloud, say, relisten]);
+  }, [only, canAskAloud, say, relisten, asks]);
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
-    void ask(text);
+    const command = voiceCommand(text);
+    if (command === "brief" || command === "status") void brief(command, text.trim());
+    else void ask(text);
   };
 
   return (

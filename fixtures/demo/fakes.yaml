@@ -119,3 +119,8 @@ day:
   - {type: day.replan.proposed, at: 3660, start: "+3660s"}
   - {type: day.coach.noted, at: 7200}  # the study coach's sentence when a block ends (the sample payload)
   - {type: day.reviewed, at: 43200}
+  # The same moments in words (D3), after the events they narrate so the earlier steps keep their ids.
+  - {type: day.narrated, at: 43200}  # the plan in words, for the screen and the voice (the sample payload)
+  - {type: day.narrated, at: 43201, moment: evening, ref: day-review-plan-2026-10-11-0815, facts_hash: 0c7e5a1b2d3f4e60,
+     spoken: "That's the day. You followed about sixty percent of the plan and earned one star. For tomorrow: put lunch on the calendar before the afternoon block.",
+     display: "You followed 62% of what could be measured: 1 star, 64 points (the plan would have earned 2). Tomorrow: put lunch on the calendar before the afternoon block."}

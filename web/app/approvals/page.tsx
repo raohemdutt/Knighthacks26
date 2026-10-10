@@ -5,6 +5,7 @@ import { Empty, ErrorBox, Loading, WriteError } from "@/components/States";
 import ui from "@/components/ui.module.css";
 import { ApiError, api, type ApprovalRequest, type Decision } from "@/lib/api";
 import { useAtlas } from "@/lib/atlas";
+import { useBrief } from "@/lib/brief";
 import { cameraName, dayTime, humanize, time } from "@/lib/format";
 
 const KIND_TITLE: Record<string, string> = {
@@ -61,6 +62,7 @@ function ApprovalCard({ request: r, onDecided }: { request: ApprovalRequest; onD
   const [error, setError] = useState<ApiError | null>(null);
   const left = useSecondsLeft(r.expires_at);
   const rows = paramRows(r);
+  const ask = useBrief().asks[r.id]; // the narrator's plain question for this card, when it has one
 
   const decide = async (decision: Decision) => {
     setBusy(decision);
@@ -83,7 +85,14 @@ function ApprovalCard({ request: r, onDecided }: { request: ApprovalRequest; onD
         {/* The box decides when a request has expired; the phone's clock may be off, so the buttons stay usable. */}
         <span className={ui.tag}>{left > 0 ? `expires in ${formatLeft(left)}` : `expires ${time(r.expires_at)}`}</span>
       </div>
-      <p className={ui.reason}>{r.reason}</p>
+      {ask ? (
+        <>
+          <p className={ui.reason}>{ask.spoken}</p>
+          <p className={`${ui.muted} ${ui.small} ${ui.breakWords}`}>{r.reason}</p>
+        </>
+      ) : (
+        <p className={ui.reason}>{r.reason}</p>
+      )}
       <dl className={ui.kv}>
         <dt>{TARGET_LABEL[r.kind] ?? "Target"}</dt>
         <dd>{r.target}</dd>

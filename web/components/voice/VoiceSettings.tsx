@@ -44,7 +44,7 @@ export function VoiceSettings() {
       />
       <Switch
         label="Speak up on its own"
-        hint={noVoice ? "This browser cannot speak." : "Says alerts, nudges, approval requests and the leaving checklist in one sentence, while this app is open."}
+        hint={noVoice ? "This browser cannot speak." : "Says alerts, nudges, approval requests, the leaving checklist and your day (the morning brief, a re-plan, the coach, when to leave, the evening wrap) while this app is open."}
         on={settings.proactive && canSpeak}
         disabled={noVoice}
         onChange={set("proactive")}

@@ -74,6 +74,12 @@ SAMPLES: dict[str, dict] = {
                      "coach_text": "You planned 120 study minutes at the desk and did 70.",
                      "suggestions": ["Hold chat notifications until the break."], "calibration": COACH_CALIBRATION,
                      "block_minutes": 45},
+    "day.narrated": {"day": "2026-10-11", "moment": "morning", "plan_id": "plan-2026-10-11-0815", "ref": "day-plan-plan-2026-10-11-0815",
+                     "spoken": "Morning. You got about five and a half hours, a little short: a short study block first, then "
+                               "lunch before the mentor check-in at twenty to three. Want me to put this on your calendar?",
+                     "display": "You slept 5.4 h, a little short. A 25-minute study block at 9 AM, then lunch at 12:30 PM before "
+                                "the mentor check-in at 2:40 PM (Engineering II). Approve to put 3 blocks on your calendar.",
+                     "engine": "template", "facts_hash": "5b1d0c2e9a7f4c31", "urgent": False},
     "day.coach.noted": {"day": "2026-10-11", "plan_id": "plan-2026-10-11-0815", "block_id": "m0",
                         "text": "You did 70 of 120 minutes. Two breaks; the long one came right after the group chat. "
                                 "Next study block is 45 minutes.",
