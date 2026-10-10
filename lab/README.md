@@ -356,7 +356,6 @@ arrival), restarts, distinct updates, starting temperatures, the energy and its 
 reference run measures it. Parsers and sampler are tested offline on `fixtures/telemetry/pod_power`
 (tests/test_lab_pod_power.py; the `strixhalo_*` files are output recorded on the Strix Halo (account C), the others
 on the R9700, the other chip).
-<<<<<<< HEAD
 
 ## Jetson sampler cost and idle watts (T13)
 
@@ -379,8 +378,6 @@ and `jetson.idle_watts` on node `jetson` in `lab/refine/metrics.jsonl`, all `low
 one run per cell and no external meter, error unmeasured); the raw output (top and ps snapshots, probe lines, request
 timings, temperatures) is `fixtures/telemetry/jetson_sampler_cost/`. Consequence: a sampler that fits 1 percent needs
 about a 350 ms period, or tegrastats read in place of a Python loop per line.
-=======
->>>>>>> 670a3f6 (Retarget the lab docs to the Strix Halo pods on SJC)
 
 ## Teacher (pod A)
 
@@ -391,7 +388,6 @@ bash lab/pod_a_teacher.sh download   # RedHatAI/Qwen3.8-27B-INT4 (19 GB) into ~/
 bash lab/pod_a_teacher.sh serve      # OpenAI-compatible server on 127.0.0.1:8000, model names "teacher" and "group-brain", log ~/serve/vllm.log
 ```
 
-<<<<<<< HEAD
 One model under two names: "teacher" for labeling and captions, "group-brain" for the Circle's planning questions
 (G4, `contexts/circle/infrastructure/teacher.py`). The server runs `--scheduling-policy priority`: vLLM serves the
 lowest request priority first and, when the KV cache runs out, preempts the highest. A planning question asks at -10
@@ -401,8 +397,6 @@ ignores it, so the group brain works before the restart too, asking as "teacher"
 are not logged (`--enable-log-requests` stays off). Which name answers, with no member text sent:
 `python -m contexts.circle.brain status`. How much planning slows labeling when both run is not measured yet (T0).
 
-=======
->>>>>>> 670a3f6 (Retarget the lab docs to the Strix Halo pods on SJC)
 `lab/vllm-gfx1201.diff` is the set of changes vLLM (commit b1388b1, April 2026) needs on these pods: `num_stages=1`
 in the Triton unified attention kernel (whose default overflowed the R9700's 64 KB LDS on RDNA 4), two platform-detection fixes, the torch pins removed
 so the pod's own torch is used (`use_existing_torch.py`), and the GPTQ `compat.cuh` half/half2 `atomicAdd`
