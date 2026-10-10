@@ -104,7 +104,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import IO, Any
 
-from lab.machine import allowed, ledger, stop
+from lab.machine import allowed, ledger, refine_merge, stop
 from lab.machine.lock import LockTimeout
 
 log = logging.getLogger("lab.sit")
@@ -115,8 +115,9 @@ ACTOR = "lab sit"
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PROMPTS_DIR = Path(__file__).with_name("prompts")
 
-#: The refinement tracks a pass may name (lab/refine/<track>/).
-TRACKS: tuple[str, ...] = ("kernels", "learning", "plumbing", "telemetry")
+#: The refinement tracks a pass may name (lab/refine/<track>/): the one list, refine_merge.TRACKS,
+#: so --pass and item_problem accept exactly the tracks the merge pass reconciles.
+TRACKS: tuple[str, ...] = refine_merge.TRACKS
 #: The tiers whose allow-lists carry the refine-track skill.
 PASS_TIERS: tuple[str, ...] = ("fable", "opus")
 #: The tier of the merge pass and the referee duty.
