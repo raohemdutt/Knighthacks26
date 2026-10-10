@@ -323,8 +323,17 @@ reference run measures it. Parsers and sampler are tested offline on `fixtures/t
 bash lab/pod_a_teacher.sh proxy      # once per account, then relaunch the pod
 bash lab/pod_a_teacher.sh build      # vLLM from source at commit b1388b1 + lab/vllm-gfx1201.diff, for the pod's gfx target, ~1 h
 bash lab/pod_a_teacher.sh download   # RedHatAI/Qwen3.8-27B-INT4 (19 GB) into ~/models
-bash lab/pod_a_teacher.sh serve      # OpenAI-compatible server on 127.0.0.1:8000, model name "teacher", log ~/serve/vllm.log
+bash lab/pod_a_teacher.sh serve      # OpenAI-compatible server on 127.0.0.1:8000, model names "teacher" and "group-brain", log ~/serve/vllm.log
 ```
+
+One model under two names: "teacher" for labeling and captions, "group-brain" for the Circle's planning questions
+(G4, `contexts/circle/infrastructure/teacher.py`). The server runs `--scheduling-policy priority`: vLLM serves the
+lowest request priority first and, when the KV cache runs out, preempts the highest. A planning question asks at -10
+and `lab/label.py` sends none (0), so a question never waits behind a labeling run, and continuous batching keeps the
+labels decoding beside it. At the pinned commit (b1388b1) a server on the default fcfs policy accepts the field and
+ignores it, so the group brain works before the restart too, asking as "teacher" while that is the only name. Requests
+are not logged (`--enable-log-requests` stays off). Which name answers, with no member text sent:
+`python -m contexts.circle.brain status`. How much planning slows labeling when both run is not measured yet (T0).
 
 `lab/vllm-gfx1201.diff` is the set of changes vLLM (commit b1388b1, April 2026) needs on this pod: `num_stages=1`
 in the Triton unified attention kernel (64 KB LDS on RDNA4), two platform-detection fixes, the torch pins removed

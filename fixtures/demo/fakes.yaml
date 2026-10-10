@@ -103,6 +103,10 @@ circle:
   - {type: circle.event.agreed, at: 41, event: {title: "Study session", start: "+16200s", end: "+23400s", location: "Library", invitees: [hemdutt]}}
   - {type: circle.share.queued, at: 60}
   - {type: circle.share.synced, at: 65}
+  # G4: the member opts in to the group brain, then one planning question goes out (logged first) and comes back.
+  - {type: circle.brain.consent.changed, at: 70}
+  - {type: circle.brain.asked, at: 75}
+  - {type: circle.brain.answered, at: 116}
 
 vault:
   - {type: vault.policy.changed, at: 0}

@@ -69,7 +69,11 @@ event stream or a byte range.
 For the stock runtime. proxied_runtime() builds runtime.llama.LlamaServerRuntime over a ProxyTransport. The transport
 adds the token, sends the exact Accept header on a stream, refuses to send the token to any other host, raises the
 mapped errors, and turns a non-streamed chat completion into a streamed one that it gathers back into the ordinary
-JSON reply, so no reply the runtime asks for can run into the 125 second cut. runtime/ itself is not changed.
+JSON reply, so no reply the runtime asks for can run into the 125 second cut. runtime/ itself is not changed. Two
+options serve a caller that wants more than the runtime writes: extra sets fields on every chat completion body (vLLM's
+priority, chat_template_kwargs, a smaller max_tokens), replacing the runtime's own value of the same name; text_only
+refuses, before a byte is sent, any request whose messages hold anything but plain text or whose body carries a data
+URL, so a picture cannot leave through that transport whatever the runtime is asked to do.
 
 Time. Durations come from `clock` and pauses from `sleep`, both handed in by tests.
 """
@@ -102,7 +106,7 @@ __all__ = [
     "PodStarting", "PodUnresponsive", "HubDown", "ModelServerDown", "ModelServerError", "GatewayTimeout",
     "ProxyTimeout", "Unreachable", "StreamInterrupted", "error_for", "ProxyReply", "CallRecord", "SseEvent",
     "parse_sse", "StreamHandle", "ChatCompletion", "collect_chat", "PodLink", "ModelServer", "ProxyTransport",
-    "proxied_runtime", "main", "build_parser"]
+    "text_only_problem", "proxied_runtime", "main", "build_parser"]
 
 log = logging.getLogger("lab.proxy")
 
@@ -782,17 +786,45 @@ class ModelServer:
 
 # --- the stock runtime over the proxy -------------------------------------------------------------
 
+DATA_URL = re.compile(r"data:[a-z0-9.+-]+/[a-z0-9.+-]+(;[a-z0-9=.+-]+)*;base64,", re.IGNORECASE)
+
+
+def text_only_problem(body: Any) -> str | None:
+    """Why a request body is not text only, or None when it is: every message's content must be a string (no list of
+    parts, so no image_url, input_audio or video part), and nothing in the body may be a data URL."""
+    if not isinstance(body, Mapping):
+        return "the body is not a JSON object"
+    messages = body.get("messages")
+    if messages is not None:
+        if not isinstance(messages, list):
+            return "messages is not a list"
+        for index, message in enumerate(messages):
+            if not isinstance(message, Mapping):
+                return f"message {index} is not an object"
+            content = message.get("content")
+            if content is not None and not isinstance(content, str):
+                return f"message {index} has content that is not a string (a picture or a file part)"
+    if DATA_URL.search(json.dumps(body, ensure_ascii=False)):
+        return "the body holds a data URL"
+    return None
+
+
 class ProxyTransport(httpx.BaseTransport):
     """An httpx transport that sends what the stock LlamaServerRuntime asks for through a PodLink. It adds the token and
     the browser User-Agent, refuses to send them to any other host, sends the exact Accept header on a stream, raises
     ProxyErrors for failure statuses, fills in `model` when model_name is given and the request names none, and (with
     upgrade) sends a chat completion that was not asked to stream as a stream and hands back the gathered reply as the
-    ordinary JSON, so that no reply can run into Cloudflare's 125 second cut."""
+    ordinary JSON, so that no reply can run into Cloudflare's 125 second cut. extra is set on every chat completion
+    body, over the runtime's own values; text_only refuses (ValueError) any request that is not plain text before it
+    is sent."""
 
-    def __init__(self, link: PodLink, *, model_name: str | None = None, upgrade: bool = True) -> None:
+    def __init__(self, link: PodLink, *, model_name: str | None = None, upgrade: bool = True,
+                 extra: Mapping[str, Any] | None = None, text_only: bool = False) -> None:
         self.link = link
         self.model_name = model_name
         self.upgrade = upgrade
+        self.extra = dict(extra or {})
+        self.text_only = text_only
         self._destination = self._where(httpx.URL(link.base_url))
 
     @staticmethod
@@ -812,10 +844,16 @@ class ProxyTransport(httpx.BaseTransport):
         if is_chat and body is not None:
             if self.model_name and not body.get("model"):
                 body["model"] = self.model_name
+            body.update(self.extra)
+        if self.text_only and request.content:
+            problem = text_only_problem(body) if body is not None else "the body is not JSON"
+            if problem is not None:
+                raise ValueError(f"text only: {problem}; nothing was sent")
+        if is_chat and body is not None:
             if not body.get("stream") and self.upgrade:
                 return self._gathered(request, body)
-            if body.get("stream"):
-                return self._forward(request, json.dumps(body).encode("utf-8"), accept=EVENT_STREAM).response
+            content = json.dumps(body).encode("utf-8")
+            return self._forward(request, content, accept=EVENT_STREAM if body.get("stream") else None).response
         return self._forward(request, request.content, accept=None).response
 
     @staticmethod
@@ -852,13 +890,15 @@ class ProxyTransport(httpx.BaseTransport):
 
 
 def proxied_runtime(model: Any, link: PodLink, port: int = TEACHER_PORT, *, model_name: str | None = None,
-                    upgrade: bool = True, **kwargs: Any) -> Any:
+                    upgrade: bool = True, extra: Mapping[str, Any] | None = None, text_only: bool = False,
+                    **kwargs: Any) -> Any:
     """The stock runtime.llama.LlamaServerRuntime over the proxy to the model server on `port`. model is its
-    ModelVersion; model_name is the name the server serves it under (the teacher is called "teacher"); kwargs go to
-    LlamaServerRuntime (detector, embedders, timeout_s ...), which already takes the transport used here."""
+    ModelVersion; model_name is the name the server serves it under (the teacher is called "teacher"); extra and
+    text_only are the ProxyTransport's; kwargs go to LlamaServerRuntime (detector, embedders, timeout_s ...), which
+    already takes the transport used here."""
     from runtime.llama import LlamaServerRuntime
 
-    transport = ProxyTransport(link, model_name=model_name, upgrade=upgrade)
+    transport = ProxyTransport(link, model_name=model_name, upgrade=upgrade, extra=extra, text_only=text_only)
     return LlamaServerRuntime(model, base_url=link.proxy_url(port), transport=transport, **kwargs)
 
 
