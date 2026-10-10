@@ -9,6 +9,7 @@ Anything that sends, writes or calls a model runs on live events only.
 """
 
 import asyncio
+from urllib.parse import urlparse
 import contextlib
 import logging
 import os
@@ -223,6 +224,10 @@ def build(settings: Settings | None = None) -> Atlas:
     bus.subscribe("connector.item.synced", bus.in_background(planner.on_item))  # exam within 48 h -> plan (A8)
     bus.subscribe("experience.approval.decided", bus.in_background(approvals.on_decided))  # executors do I/O
     if ntfy:
+        if urlparse(s.public_url).hostname in ("127.0.0.1", "localhost", "::1"):
+            # Phones reach the box on the LAN; Approve/Deny buttons on a phone would POST to the phone itself.
+            log.warning("ATLAS_PUBLIC_URL is %s: set it to the Jetson's LAN address (http://<jetson-ip>:8000) "
+                        "or the approval buttons on phones won't work", s.public_url)
         phones = PhoneNotifier(ntfy, s.ntfy_topic, s.public_url)
         bus.subscribe("agent.alert.raised", phones.on_alert)
         bus.subscribe("habits.nudge.raised", phones.on_nudge)
