@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+*.egg-info/
+*.db
+*.db-wal
+*.db-shm
+data/
+graphify-out/

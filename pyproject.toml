@@ -1,0 +1,15 @@
+[project]
+name = "atlas"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2",
+    "fastapi",
+    "uvicorn",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+include = ["contracts*", "runtime*", "bus*", "contexts*"]
