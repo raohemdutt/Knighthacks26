@@ -10,7 +10,7 @@ from collections.abc import Awaitable, Callable
 import httpx
 
 from contexts.workspace.domain.approvals import ActionRequest
-from contracts.agent import AlertRaised
+from contracts.agent import AlertRaised, PlanCreated
 from contracts.habits import NudgeRaised
 from contracts.workspace import ApprovalRequested
 
@@ -85,6 +85,10 @@ class PhoneNotifier:
     async def on_nudge(self, e: NudgeRaised) -> None:
         tag = "tada" if e.tone == "celebrate" else "seedling"
         await self.ntfy.publish(self.topic, e.message, title="Atlas", tags=[tag])
+
+    async def on_plan(self, e: PlanCreated) -> None:
+        link = next((c.url for c in e.citations if c.url), None)
+        await self.ntfy.publish(self.topic, e.text, title=e.subject, tags=["clipboard"], click=link)
 
     async def on_approval(self, e: ApprovalRequested) -> None:
         url = f"{self.gateway_url}/api/approvals/{e.action_id}"

@@ -73,3 +73,30 @@ def test_qa_routes_plan_questions_to_the_planner():
     planner.qa.planner = planner
     a = asyncio.run(planner.qa.ask("What should I do tonight to prepare?"))
     assert a.text.startswith("- Study recursion") and a.citations
+
+
+def test_leaving_checklist_at_the_door():
+    from contracts.memory import Sighting
+    from contracts.perception import ZoneEvent
+
+    planner, _ = make()
+    planner.qa.memory._sightings["keys"].append(
+        Sighting(label="keys", camera_id="cam-desk", zone_id="desk", ts=NOW - timedelta(minutes=30), frame_ref="frames:cam-desk:k", position="by the mug"))
+    enter = ZoneEvent(ts=NOW, camera_id="cam-door", track_id=1, label="person", zone_id="door", kind="enter")
+    [plan] = planner.on_zone_event(enter)
+    assert plan.subject == "Leaving"
+    assert plan.text == "Next: Dinner with Ilan at 6:00 PM; leave by 5:40 PM. Keys: last seen in the desk zone, by the mug at 1:30 PM."
+    assert plan.citations[1].frame_ref == "frames:cam-desk:k"
+    assert planner.on_zone_event(enter.model_copy(update={"ts": NOW + timedelta(minutes=5)})) == []  # cooldown
+    assert planner.on_zone_event(enter.model_copy(update={"label": "package"})) == []
+
+
+def test_food_question_uses_what_was_eaten_today():
+    planner, rt = make()
+    planner.qa.memory._episodes.append(
+        Episode(id="m1", camera_id="cam-desk", start=NOW - timedelta(hours=2), labels=["person"], captions=["A person eats pizza at the desk."]))
+    planner.qa.planner = planner
+    a = asyncio.run(planner.qa.ask("What should I eat for dinner?"))
+    prompt = rt.calls[-1][1][-1].content
+    assert "eats pizza" in prompt and "cs.ucf.edu" in prompt  # FakeWeb result stands in for nearby places
+    assert a.citations[0].episode_id == "m1"

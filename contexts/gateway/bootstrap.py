@@ -129,6 +129,7 @@ def build(settings: Settings | None = None) -> Atlas:
 
     # State that rebuilds from the log (replay=True).
     bus.subscribe("perception.zone", rules.on_zone_event, replay=True)
+    bus.subscribe("perception.zone", planner.on_zone_event)  # leaving checklist at the door (A8)
     bus.subscribe("agent.action.proposed", approvals.on_proposed, replay=True)
     bus.subscribe("workspace.action.completed", approvals.on_completed, replay=True)
     # Live only: model calls, executors, phone pushes.
@@ -139,6 +140,7 @@ def build(settings: Settings | None = None) -> Atlas:
         phones = PhoneNotifier(ntfy, s.ntfy_topic, s.public_url)
         bus.subscribe("agent.alert.raised", phones.on_alert)
         bus.subscribe("habits.nudge.raised", phones.on_nudge)
+        bus.subscribe("agent.plan.created", phones.on_plan)
         bus.subscribe("workspace.approval.requested", phones.on_approval)
 
     return Atlas(settings=s, bus=bus, qa=qa, approvals=approvals, hub=hub)

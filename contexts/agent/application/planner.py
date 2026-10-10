@@ -25,6 +25,9 @@ HORIZON = timedelta(hours=48)
 CRUNCH = re.compile(r"\b(exam|midterm|final|quiz|test|due|deadline|project|presentation)\b", re.I)
 COURSE = re.compile(r"\b([A-Z]{3})\s?(\d{4}[A-Z]?)\b")
 PLAN_QUESTION = re.compile(r"\b(plan|prep|prepare|study for|what should i do)\b", re.I)
+FOOD_QUESTION = re.compile(r"\b(eat|food|hungry|lunch|dinner|breakfast|snack)\b", re.I)
+FOOD_WORDS = ("eat", "food", "meal", "pizza", "sandwich", "snack", "lunch", "dinner", "breakfast", "chips", "drink", "coffee", "energy drink", "can", "bottle")
+LEAVING_COOLDOWN = timedelta(minutes=30)
 CALENDAR_WRITE = "calendar.create_event"
 BLOCK = timedelta(hours=2)
 MAX_BLOCKS = 3
@@ -75,10 +78,23 @@ def free_blocks(now: datetime, until: datetime, busy: list[Item], qa: QA) -> lis
 
 
 class Planner:
-    def __init__(self, qa: QA, hub: ConnectorHub | None = None) -> None:
+    def __init__(
+        self,
+        qa: QA,
+        hub: ConnectorHub | None = None,
+        watch_items: tuple[str, ...] = ("keys", "wallet", "charger", "laptop"),
+        leave_buffer: timedelta = timedelta(minutes=20),
+        door_zone: str = "door",
+        campus: str = "UCF",
+    ) -> None:
         self.qa = qa
         self.hub = hub
+        self.watch_items = watch_items
+        self.leave_buffer = leave_buffer
+        self.door_zone = door_zone
+        self.campus = campus
         self._planned: set[str] = set()
+        self._last_leaving: datetime | None = None
 
     async def on_item(self, e: ItemSynced) -> list:
         """Bus handler for connector.item.synced: plan once per crunch item."""
@@ -90,9 +106,11 @@ class Planner:
         return await self.plan(item.title, item, now)
 
     def wants(self, question: str) -> bool:
-        return is_plan_question(question)
+        return is_plan_question(question) or bool(FOOD_QUESTION.search(question))
 
     async def answer(self, question: str) -> PlanCreated:
+        if FOOD_QUESTION.search(question) and not is_plan_question(question):
+            return await self.food(question)
         """For a plan-shaped question: plan around the next crunch item, or the evening if there is none."""
         now = self.qa.clock()
         upcoming = [i for i in self.qa.memory.items(now, now + HORIZON) if is_crunch(i, now)]
@@ -158,6 +176,67 @@ class Planner:
                 )
             )
         return out
+
+
+    # --- trigger 3: leaving checklist at the door ---
+
+    def leaving(self, now: datetime) -> PlanCreated:
+        """Deterministic, so it is instant at the door: next event, when to leave, where your things are."""
+        ev = Evidence()
+        lines = []
+        upcoming = [i for i in self.qa.memory.items(now, now + timedelta(hours=8)) if i.kind in ("calendar_event", "assignment")]
+        if upcoming:
+            nxt = upcoming[0]
+            leave_by = nxt.when - self.leave_buffer
+            when = "now" if leave_by <= now else f"by {self.qa._t(leave_by).split(' ', 1)[1]}"
+            lines.append(f"Next: {nxt.title} at {self.qa._t(nxt.when).split(' ', 1)[1]}; leave {when}.")
+            ev.add(lines[-1], Citation(url=nxt.url, title=nxt.title, ts=nxt.when))
+        for label in self.watch_items:
+            s = self.qa.memory.last_seen(label)
+            if s and s.zone_id != self.door_zone:
+                where = f"{s.zone_id} zone" if s.zone_id else s.camera_id
+                pos = f", {s.position}" if s.position else ""
+                lines.append(f"{label.capitalize()}: last seen in the {where}{pos} at {self.qa._t(s.ts).split(' ', 1)[1]}.")
+                ev.add(lines[-1], Citation(frame_ref=s.frame_ref, ts=s.ts))
+        text = " ".join(lines) or "Nothing on the calendar and nothing left behind. Have a good one."
+        return _plan_event(now, "Leaving", text, ev, "rules")
+
+    def on_zone_event(self, e) -> list:
+        """Bus handler for perception.zone.event: a person entering the door zone gets the checklist."""
+        if e.label != "person" or e.zone_id != self.door_zone or e.kind != "enter":
+            return []
+        if self._last_leaving and e.ts - self._last_leaving < LEAVING_COOLDOWN:
+            return []
+        self._last_leaving = e.ts
+        return [self.leaving(e.ts)]
+
+    # --- trigger 2: what should I eat? ---
+
+    async def food(self, question: str) -> PlanCreated:
+        now = self.qa.clock()
+        ev = Evidence()
+        start = now.astimezone(self.qa.sleep.tz).replace(hour=0, minute=0, second=0, microsecond=0)
+        eaten = [
+            (ep, c) for ep in self.qa.memory.episodes(start, now) for c in ep.captions if any(w in c.lower() for w in FOOD_WORDS)
+        ]
+        for ep, c in eaten[-6:]:
+            ev.add(f"Seen today at {self.qa._t(ep.start)}: {c}", Citation(episode_id=ep.id, ts=ep.start))
+        if not eaten:
+            ev.lines.append("No meals seen at the desk today.")
+        night_start, night_end = self.qa.sleep.last_night(now)
+        ev.lines.append(f"Sleep window last night: {self.qa._t(night_start)} to {self.qa._t(night_end)}")
+        if self.qa.web:
+            try:
+                await self.qa.web_search(f"healthy food open now near {self.campus}", ev)
+            except Exception as exc:
+                ev.lines.append(f"(web lookup failed: {exc})")
+        prompt = "Evidence:\n" + "\n".join(f"- {line}" for line in ev.lines) + f"\n\nQuestion: {question}"
+        system = "You are Atlas. Suggest what to eat in two or three short sentences, balancing what was already eaten today. Use only the evidence; name a place only if it is in the evidence."
+        r = await self.qa._chat([ChatMessage(role="system", content=system), ChatMessage(role="user", content=prompt)])
+        return _plan_event(now, question, r.content.strip(), ev, r.model_version)
+
+def _plan_event(now: datetime, subject: str, text: str, ev: Evidence, model_version: str) -> PlanCreated:
+    return PlanCreated(ts=now, plan_id=uuid4().hex, subject=subject, text=text, citations=ev.citations, model_version=model_version)
 
 
 def is_plan_question(question: str) -> bool:
