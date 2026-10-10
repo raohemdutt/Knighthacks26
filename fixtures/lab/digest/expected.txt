@@ -1,0 +1,66 @@
+LAB DIGEST 2026-10-10T16:00:00Z: computed from the ledger, the board snapshot and the rulings files; never from notes.
+Window: 2026-10-10T14:00:00Z to 2026-10-10T16:00:00Z (2h).
+Ledger: 22 rows, seq 1 to 22, <state dir>/ledger.jsonl
+Board snapshot: taken 2026-10-10T15:45:00Z by sonnet-3, 15 min old, 23 tasks, 5 queue rows.
+
+## What ran (14:00Z to 16:00Z)
+12 rows by 5 actors on 5 tasks; outcomes: ok 9, error 1, fail 1, handoff 1.
+Read-only calls, not listed: digest 2.
+By task, newest first:
+  L3: 1 row, last 15:50Z smoke ok by opus-2; verbs: smoke
+  O20: 1 row, last 15:10Z handoff handoff by opus-6; verbs: handoff
+  R11: 5 rows, last 15:00Z bench ok by opus-2; verbs: bench, slot done, slot start
+  L13: 2 rows (2 failed), last 14:45Z label error by sonnet-4; verbs: label
+  O17: 1 row, last 14:40Z test ok by opus-5, PR 88; verbs: test
+Without a task:
+  pod status: 1 (ok 1)
+  pool tick: 1 (ok 1)
+Failures, newest first:
+  14:45Z L13 label error by sonnet-4, run label-0003 (ledger:14)
+  14:30Z L13 label fail by sonnet-4, run label-0002 (ledger:12)
+
+## Metrics that moved (newest in the window vs the newest reading before it)
+  teacher.decode_tok_s @pod-a [output_tokens=160 prompt=text thinking=on]: 7.7 -> 9.1 tok/s (+1.4, +18.2%) ledger:1 -> ledger:9
+  teacher.joules_per_token @pod-a: 25.97 -> 23.08 J/token (-2.89, -11.1%, low confidence) ledger:4 -> ledger:10
+  pod.balance_credits @pod-b: 59960 -> 59900 credits (-60, -0.1%, low confidence) ledger:6 -> ledger:20
+First readings of a series:
+  teacher.ttft_s @pod-a: 0.5 s (ledger:15)
+  teacher.watts_avg @pod-a [batch=1 output_tokens=160 prompt=text]: 210 W (ledger:9)
+Unchanged: trainer.samples_per_s @pod-b 0.51
+
+## GPU queue (open rows in the snapshot)
+A teacher shared service: 0 running, 1 queued; B exclusive: 1 running, 2 queued
+  running on B exclusive: R11: decode sweep batch 1 to 16 (R11), started 15:40Z, 20 min elapsed of a 15 min cap, OVER CAP by 5 min
+  queued #1 on A teacher shared service: T1: teacher power probe (T1), 15 min, waiting 10 min
+  queued #1 on B exclusive: R12: HIP kernel microbench (R12), 15 min, waiting 40 min
+  queued #2 on B exclusive: L3: smoke LoRA 200 steps (L3), 60 min, waiting 60 min
+Complaints on open rows:
+  R12: HIP kernel microbench (Queued, 40 min): Waited 40 min; the running slot is past its cap
+
+## Rulings waiting on Ilan (unanswered in lab/refine/<track>/OWNER_RULINGS.md)
+  kernels 4 (pass 3): Must a kernel win beat the run-to-run spread, or a fixed percentage? Now: the spread, as kernel test 3 says; E3 uses five runs per point.
+  telemetry 1 (pass 1): Is the pod's idle draw subtracted before J/token is reported? Now: idle is not subtracted; the whole-board figure is reported with the idle draw...
+
+## Ilan's lane: 22 tasks, 6 locked
+                Fable    Opus  Sonnet    none
+  Not started       1       6       3       1
+  In progress       0       3       2       0
+  Blocked           0       1       0       0
+  Done              0       2       3       0
+
+## Next unblocked (Not started, unlocked, Ilan's alone, every blocker Done; P0 first, then wave)
+Fable: none
+Opus:
+  O27 P0 w2 Experiment schema and queue sync
+  O18 P1 w2 Metrics history and before-versus-after report
+  O33 P1 w2 Alerts and the morning review file
+  G9 P2 w2 stretch Leaderboard animation polish
+Sonnet:
+  O30 P1 w1 GPU queue verbs for scripts (request, start, extend, done, complain,...
+No tier (the referee sets one first):
+  X1 P1 w2 Learning screen copy pass
+Held back, a teammate is also assigned: R5
+Held back, a blocker is missing from the snapshot: O41 (needs page 000a0012)
+
+## Problems
+  1 task row without an ID skipped
