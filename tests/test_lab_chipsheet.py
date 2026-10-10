@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -245,6 +246,10 @@ def fake_probe(tmp_path) -> Path:
         "    if line['probe'] == mode and (len(sys.argv) < 3 or line.get('param') == int(sys.argv[2])):\n"
         "        print(json.dumps(line))\n", encoding="utf-8")
     script.chmod(0o755)
+    if os.name == "nt":   # no shebangs on Windows: launch the same script through a .cmd wrapper
+        wrapper = tmp_path / "probe_fake.cmd"
+        wrapper.write_text(f'@"{sys.executable}" "{script}" %*\n', encoding="utf-8")
+        return wrapper
     return script
 
 
