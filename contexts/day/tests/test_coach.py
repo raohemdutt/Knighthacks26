@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from bus import EventBus
 from contexts.day.api import day_router
 from contexts.day.application.loop import DayLoop
-from contexts.day.domain.choose import choose, chunks
+from contexts.day.domain.choose import choose
 from contexts.day.domain.coach import (
     DeskPresence,
     Signal,
@@ -261,21 +261,19 @@ def test_the_evening_review_carries_the_sessions_and_the_next_plan_reads_the_adv
     assert source.id == f"coach:{review.plan_id}" and "so I'm planning 45-minute blocks" in source.text and "Hold chat notifications" in source.text
     assert "Your plans run 2.4x what happens." in source.text and "Coach: " + source.text.removeprefix("coach: ") in monday.text
     study = [m.minutes for m in monday.moves if m.kind == "study" and not m.fixed]
-    assert study and max(study) < 45 + 15 and study.count(45) >= 2  # blocks sized to the longest stretch
+    assert study and max(study) <= 45  # no block longer than the longest measured stretch
     plain = make(items, places, tmp_path / "plain", habits=FakeHabits(focus=1.2)).planner.plan(at(8, 5, day=12))[0]
     assert max(m.minutes for m in plain.moves if m.kind == "study" and not m.fixed) > 60  # without the coach's advice
-    assert monday.outcome.study_minutes == plain.outcome.study_minutes  # the same minutes, cut differently
+    assert monday.outcome.won == plain.outcome.won  # shorter blocks with breaks, and the day still works
 
 
-def test_blocks_are_cut_to_the_coachs_size_and_a_short_remainder_joins_the_last_one(items, places, tmp_path):  # noqa: F811
-    assert chunks(245, 25, 15) == [25] * 9 + [20] and chunks(235, 25, 15) == [25] * 8 + [35] and chunks(80, 25, 15) == [25, 25, 30] and chunks(100, 45, 15) == [45, 55]
-    assert chunks(110, 45, 15) == [45, 45, 20] and chunks(20, 45, 15) == [20]
+def test_blocks_are_no_longer_than_the_coachs_size(items, places, tmp_path):  # noqa: F811
     loop = make(items, places, tmp_path, habits=FakeHabits())
     board = loop.planner.dayrun.board(at(8, 10))
     whole, a = choose(loop.planner.dayrun.cfg, loop.planner.dayrun.walks, board)
-    cut, b = choose(loop.planner.dayrun.cfg, loop.planner.dayrun.walks, board, study_chunk=45)
-    assert max(m.minutes or 0 for m in cut if m.kind == "study") < 60 < max(m.minutes or 999 for m in whole if m.kind == "study")
-    assert (b.outcome.won, b.totals.study_minutes) == (a.outcome.won, a.totals.study_minutes) and not b.rejected
+    cut, b = choose(loop.planner.dayrun.cfg, loop.planner.dayrun.walks, board, preferred_block_minutes=45)
+    assert max(m.minutes or 0 for m in cut if m.kind == "study") <= 45 < max(m.minutes or 999 for m in whole if m.kind == "study")
+    assert b.outcome.won == a.outcome.won and not b.rejected
 
 
 def test_a_restart_rebuilds_the_coach_from_the_log_and_notes_nothing_twice(items, places, tmp_path):  # noqa: F811

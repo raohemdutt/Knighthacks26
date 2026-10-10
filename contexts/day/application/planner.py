@@ -205,7 +205,7 @@ class DayPlanner:
         advice = self.advice(day)
         if moves is None:
             moves, result = choose(self.dayrun.cfg, self.dayrun.walks, board, frozenset(biases(yesterday)),
-                                   study_chunk=advice[0].block_minutes if advice else None)
+                                   preferred_block_minutes=advice[0].block_minutes if advice else None)
         else:
             result = simulate(self.dayrun.cfg, self.dayrun.walks, board, moves)
         sources, missing = self.sources(board, now, yesterday)
@@ -353,7 +353,7 @@ class DayPlanner:
             return []
         board = self.dayrun.board(now, InitialOverride(start_place=start_place) if start_place else None)
         advice = self.advice(day)
-        moves, result = choose(self.dayrun.cfg, self.dayrun.walks, board, study_chunk=advice[0].block_minutes if advice else None)
+        moves, result = choose(self.dayrun.cfg, self.dayrun.walks, board, preferred_block_minutes=advice[0].block_minutes if advice else None)
         plan_id = self.fresh_id(f"plan-{day}-{local(self.dayrun.cfg, now):%H%M}r")
         blocks = plan_moves(result, moves)
         card = self.card(blocks, day, result, now, replace=True, why=why)
