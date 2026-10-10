@@ -27,7 +27,12 @@ CRUNCH = re.compile(r"\b(exam|midterm|final|quiz|test|due|deadline|project|prese
 COURSE = re.compile(r"\b([A-Z]{3})\s?(\d{4}[A-Z]?)\b")
 PLAN_QUESTION = re.compile(r"\b(plan|prep|prepare|study for|what should i do|where should i go|where is everyone)\b", re.I)
 FOOD_QUESTION = re.compile(r"\b(eat|food|hungry|lunch|dinner|breakfast|snack)\b", re.I)
-FOOD_WORDS = ("eat", "food", "meal", "pizza", "sandwich", "snack", "lunch", "dinner", "breakfast", "chips", "drink", "coffee", "energy drink", "can", "bottle")
+# Whole words only ("can" used to match "candle" and every can on the desk). EATING is someone having food or a
+# drink; FOOD only names one, so it ranks lower. A mug, can or bottle on its own is a container, not a meal.
+EATING = re.compile(r"\b(eat(s|ing|en)?|ate|drink(s|ing)|meals?|snack(s|ing)?|lunch|dinner|breakfast)\b", re.I)
+FOOD = re.compile(r"\b(food(?!-)|pizza|sandwich(es)?|chips|energy drinks?|coffee(?! (mug|cup)))\b", re.I)
+OBJECT_LIST = re.compile(r"^On the [\w ]+: ")  # perception's zone object list ("On the desk: keys (...), mug.")
+MAX_MEALS = 6
 LEAVING_COOLDOWN = timedelta(minutes=30)
 CALENDAR_WRITE = "calendar.create_event"
 BLOCK = timedelta(hours=2)
@@ -206,6 +211,14 @@ class Planner:
             state = "met" if r["met"] else "not met yet"
             ev.lines.append(f"Habit {r['name']}: {r['value']} {r['unit']} today (target {r['direction'].replace('_', ' ')} {r['target']}, {state}, streak {r['streak']})")
 
+    def _meals_counted(self, now: datetime) -> float:
+        """Meals Habits has counted today (0 when Habits is off or has no meals habit)."""
+        try:
+            rows = self.habits.digest(now=now).get("habits", []) if self.habits else []
+        except Exception:
+            return 0
+        return next((r["value"] for r in rows if r["id"] == "meals"), 0) or 0
+
     def _friends(self, now: datetime, ev: Evidence) -> None:
         """Where friends said they are (opt-in, coarse, unexpired)."""
         if not self.presence:
@@ -269,12 +282,11 @@ class Planner:
         now = self.qa.clock()
         ev = Evidence()
         start = now.astimezone(self.qa.sleep.tz).replace(hour=0, minute=0, second=0, microsecond=0)
-        eaten = [
-            (ep, c) for ep in self.qa.memory.episodes(start, now) for c in ep.captions if any(w in c.lower() for w in FOOD_WORDS)
-        ]
-        for ep, c in eaten[-6:]:
-            ev.add(f"Seen today at {self.qa._t(ep.start)}: {c}", Citation(episode_id=ep.id, ts=ep.start))
-        if not eaten:
+        eaten = meals_seen(self.qa.memory.episodes(start, now))
+        for ep, c in eaten:
+            ev.add(f"Seen today at {self.qa._t(ep.start)}: {c}",
+                   Citation(episode_id=ep.id, frame_ref=ep.keyframe_refs[0] if ep.keyframe_refs else None, ts=ep.start))
+        if not eaten and not self._meals_counted(now):  # never beside "Habit Meals: 2 meals today"
             ev.lines.append("No meals seen at the desk today.")
         self._habit_lines(now, ev, only=("meals", "energy_drinks", "sleep"))
         self._friends(now, ev)
@@ -295,6 +307,22 @@ class Planner:
         system = "You are Atlas. Suggest what to eat in two or three short sentences, balancing what was already eaten today. Use only the evidence; name a place only if it is in the evidence."
         r = await self.qa._chat([ChatMessage(role="system", content=system), ChatMessage(role="user", content=prompt)])
         return _plan_event(now, question, r.content.strip(), ev, r.model_version)
+
+
+def meals_seen(episodes: list) -> list[tuple]:
+    """(episode, caption) for today's eating and drinking, once per episode, in time order.
+
+    Object lists are skipped (a mug on the desk is not a meal). When there are more than MAX_MEALS,
+    captions that show someone eating or drinking are kept before ones that only name a food."""
+    found = []
+    for ep in episodes:
+        captions = [c for c in ep.captions if not OBJECT_LIST.match(c)]
+        best = next((c for c in captions if EATING.search(c)), None) or next((c for c in captions if FOOD.search(c)), None)
+        if best:
+            found.append((not EATING.search(best), ep, best))
+    keep = sorted(found, key=lambda f: (f[0], -f[1].start.timestamp()))[:MAX_MEALS]  # eating first, then the latest
+    return [(ep, c) for _, ep, c in sorted(keep, key=lambda f: f[1].start)]
+
 
 def _plan_event(now: datetime, subject: str, text: str, ev: Evidence, model_version: str) -> PlanCreated:
     return PlanCreated(ts=now, plan_id=uuid4().hex, subject=subject, text=text, citations=ev.citations, model_version=model_version)

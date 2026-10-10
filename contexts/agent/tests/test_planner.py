@@ -162,3 +162,64 @@ def test_locate_finds_places_by_alias_or_name():
     assert ps.locate("until 11:15 AM \u00b7 HEC 101") == "ucf.hec"
     assert ps.locate("Study group at the John C. Hitt Library") == "ucf.library"
     assert ps.locate("Lunch at Chipotle") is None
+
+
+def _desk(id, hours_ago, *captions):
+    return Episode(id=id, camera_id="cam-desk", start=NOW - timedelta(hours=hours_ago), labels=["person"],
+                   captions=list(captions), keyframe_refs=[f"frames:cam-desk:{id}"])
+
+
+def test_food_cites_meals_not_mugs_cans_and_bottles():
+    """The answer cited the package, the keys and a water bottle, and pushed the bagels out of the last six."""
+    planner, rt = make()
+    planner.qa.memory._episodes += [
+        _desk("bagels", 6.5, "Two people eat bagels for breakfast at the table and share a coffee.",
+              "On the desk: bagel (on a plate), coffee mug."),  # one episode, cited once
+        _desk("package", 6, "A person opens the cardboard package on the table.",
+              "On the desk: package (open, in the middle of the table), keys (next to the coffee mug, left of the closed laptop)."),
+        _desk("cans", 5.5, "A person collects three empty cans from the desk."),
+        _desk("bins", 5.4, "A person drops two cans into the recycling bin and one into the trash.", "On the recycling: can (in the recycling bin)."),
+        _desk("bottle", 5, "A person holds a water bottle up to the camera, then drops it in the recycling bin."),
+        _desk("bowl", 4.5, "A person drops a food-stained takeout bowl in the recycling bin."),
+        _desk("candle", 4, "A person lights a candle next to the canvas bag."),
+        _desk("keys", 3, "On the desk: keys (left of the laptop, behind the coffee mug), laptop, phone."),
+        _desk("pizza", 2, "Three people eat pizza at the table; an open pizza box sits between the laptops."),
+        _desk("drink", 1, "A person opens an energy drink can and sets it next to the laptop."),
+    ]
+    planner.qa.planner = planner
+    a = asyncio.run(planner.qa.ask("What should I eat?"))
+    seen = [c for c in a.citations if c.episode_id]
+    assert [c.episode_id for c in seen] == ["bagels", "pizza", "drink"]  # time order, each episode once
+    assert [c.frame_ref for c in seen] == ["frames:cam-desk:bagels", "frames:cam-desk:pizza", "frames:cam-desk:drink"]
+    prompt = rt.calls[-1][1][-1].content
+    assert "Seen today at Sat 7:30 AM: Two people eat bagels for breakfast" in prompt
+    assert "On the desk" not in prompt and "water bottle" not in prompt and "No meals seen" not in prompt
+
+
+def test_food_keeps_the_meals_when_there_is_more_than_fits():
+    from contexts.agent.application.planner import MAX_MEALS, meals_seen
+
+    snacks = [_desk(f"chips{n}", 5 - n / 2, "A bag of chips lies next to the keyboard.") for n in range(MAX_MEALS + 2)]
+    breakfast = _desk("bagels", 6, "Two people eat bagels for breakfast.")
+    kept = meals_seen([breakfast, *snacks])
+    assert len(kept) == MAX_MEALS and kept[0][0].id == "bagels"  # the real meal stays; the oldest snacks go
+    assert [ep.start for ep, _ in kept] == sorted(ep.start for ep, _ in kept)
+
+
+def test_food_never_says_no_meals_beside_habits_meal_count():
+    """Round 2: "No meals seen at the desk today" next to "Habit Meals: 2 meals today"."""
+    class Habits:
+        def __init__(self, meals):
+            self.meals = meals
+
+        def digest(self, now=None):
+            return {"habits": [{"id": "meals", "name": "Meals", "unit": "meals", "direction": "at_least", "target": 2,
+                                "value": self.meals, "met": self.meals >= 2, "applies": True, "streak": 0}]}
+
+    for meals, says_none in ((2, False), (0, True)):
+        planner, rt = make()
+        planner.habits = Habits(meals)
+        asyncio.run(planner.food("What should I eat?"))
+        prompt = rt.calls[-1][1][-1].content
+        assert f"Habit Meals: {meals} meals today" in prompt
+        assert ("No meals seen at the desk today." in prompt) == says_none
