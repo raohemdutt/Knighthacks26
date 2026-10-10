@@ -64,7 +64,7 @@ def test_backfill_and_the_live_path_agree_on_the_event(tmp_path):
     enter = ZoneEvent(ts=T0, camera_id="cam-desk", track_id=1, label="person", zone_id="desk", kind="enter", frame_ref=ref)
     live = asyncio.run(Captioner(FakeRuntime(), keyframe_loader(tmp_path)).on_zone_event(enter))
     assert run_backfill(tmp_path, FakeRuntime()) == 1
-    assert logged(tmp_path)[0] == live
+    assert logged(tmp_path) == live  # the handler returns the scene events of the calls it started
 
 
 def test_cli_refuses_to_write_fake_captions_unless_asked(tmp_path, capsys, monkeypatch):
