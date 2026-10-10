@@ -28,9 +28,9 @@ def test_the_reader_gets_through_the_hub_front_end_that_refuses_a_script_user_ag
     fake = FakeHub(FakeClock())
     fake.add_account("A", user="acct-a", token=TOKEN)
     fake.queue("GET", "/proxy/8790/samples", 200, body={
-        "ok": True, "node": "gpu-a", "sampler_started": "2026-10-10T18:00:00.000Z", "first_seq": 1, "last_seq": 3,
+        "ok": True, "node": "pod-a", "sampler_started": "2026-10-10T18:00:00.000Z", "first_seq": 1, "last_seq": 3,
         "samples": [{"seq": seq, "event": event} for seq, event in enumerate(events, 1)]})
-    reader = PodReader([PodEndpoint("gpu-a", "https://dub.aupcloud.io/user/acct-a/proxy/8790", TOKEN)],
+    reader = PodReader([PodEndpoint("pod-a", "https://dub.aupcloud.io/user/acct-a/proxy/8790", TOKEN)],
                        transport=fake.transport, clock=lambda: NOW, sleep=lambda _: asyncio.sleep(0), rounds=1)
 
     async def run():
@@ -38,7 +38,7 @@ def test_the_reader_gets_through_the_hub_front_end_that_refuses_a_script_user_ag
 
     got = asyncio.run(run())
 
-    assert reader.status()["gpu-a"]["error"] is None
+    assert reader.status()["pod-a"]["error"] is None
     assert [e.event_id for e in got] == [e["event_id"] for e in events]
     assert all(isinstance(e, GpuPower) for e in got)
     assert fake.calls, "the reader made no request to the hub"
@@ -53,5 +53,5 @@ def test_the_lab_hub_url_setting_moves_the_pods_and_an_accounts_own_hub_url_stil
     pods = pod_endpoints(env)
 
     assert [(p.node, p.base_url) for p in pods] == [
-        ("gpu-a", "https://sjc.hub.test/user/acct-a/proxy/8790"),
-        ("gpu-b", "https://other.hub.test/user/acct-b/proxy/8790")]
+        ("pod-a", "https://sjc.hub.test/user/acct-a/proxy/8790"),
+        ("pod-b", "https://other.hub.test/user/acct-b/proxy/8790")]

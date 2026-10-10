@@ -20,13 +20,13 @@ def one_of_each() -> list:
         JetsonPower(ts=T0, node="jetson", source="tegrastats", period_ms=100, nvpmodel="MAXN_SUPER",
                     rails={"VDD_IN": 12800, "VDD_CPU_GPU_CV": 6900, "VDD_SOC": 2600, "VDD_SOMETHING_NEW": 12},
                     temps_c={"gpu": 52.0}, oc_events={"oc1": 0, "oc2": 1}, sensor_avg_samples=4, sensor_update_ms=8.4),
-        GpuPower(ts=T0, node="gpu-a", source="amdsmi", period_ms=50, socket_w=201.0, gfx_mhz=2350, mem_mhz=1258,
+        GpuPower(ts=T0, node="pod-a", source="amdsmi", period_ms=50, socket_w=201.0, gfx_mhz=2350, mem_mhz=1258,
                  throttled=True, power_field="average_socket_power", temps_c={"edge": 55.0, "hotspot": 68.0},
                  energy_counter_j=123456.5, energy_counter_ns=987654321, received_ts=T0 + timedelta(milliseconds=180)),
-        RequestWindow(ts=T0 + timedelta(seconds=5), node="gpu-a", request_id="r1", started=T0,
+        RequestWindow(ts=T0 + timedelta(seconds=5), node="pod-a", request_id="r1", started=T0,
                       first_token=T0 + timedelta(seconds=1), ended=T0 + timedelta(seconds=5), tokens_in=1180,
                       tokens_out=28, target="teacher", model="teacher", engine="vllm", since_load=3, clock="jetson"),
-        TrainStep(ts=T0, node="gpu-b", run_id="run-0003", step=120, loss=1.02, step_ms=2480.0, socket_w=245.0,
+        TrainStep(ts=T0, node="pod-b", run_id="run-0003", step=120, loss=1.02, step_ms=2480.0, socket_w=245.0,
                   energy_j=607.6, tokens=4096, received_ts=T0 + timedelta(milliseconds=210)),
     ]
 
@@ -55,9 +55,9 @@ def test_each_event_comes_back_from_the_log_as_its_own_type_with_every_field(tmp
 
 
 def test_a_reading_the_source_could_not_take_is_null_in_the_log_and_replays_as_none(tmp_path):
-    na = GpuPower(ts=T0, node="gpu-a", source="amd-smi", period_ms=1000, socket_w=None, gfx_mhz=None, mem_mhz=None,
+    na = GpuPower(ts=T0, node="pod-a", source="amd-smi", period_ms=1000, socket_w=None, gfx_mhz=None, mem_mhz=None,
                   throttled=None)
-    nan_loss = TrainStep(ts=T0, node="gpu-b", run_id="r", step=1, loss=float("nan"), step_ms=2500.0, socket_w=None)
+    nan_loss = TrainStep(ts=T0, node="pod-b", run_id="r", step=1, loss=float("nan"), step_ms=2500.0, socket_w=None)
 
     async def run():
         await EventBus(tmp_path).publish_all([na, nan_loss])
@@ -85,5 +85,5 @@ def test_every_event_needs_a_node_and_takes_no_fields_its_source_does_not_define
     with pytest.raises(ValidationError):
         GpuPower(ts=T0, source="amd-smi", period_ms=1000, socket_w=40.0, gfx_mhz=None, mem_mhz=None, throttled=None)
     with pytest.raises(ValidationError):  # a new metric is a new event type, not a field squeezed into another
-        GpuPower(ts=T0, node="gpu-a", source="amd-smi", period_ms=1000, socket_w=40.0, gfx_mhz=None, mem_mhz=None,
+        GpuPower(ts=T0, node="pod-a", source="amd-smi", period_ms=1000, socket_w=40.0, gfx_mhz=None, mem_mhz=None,
                  throttled=None, fan_rpm=1200)

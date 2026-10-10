@@ -16,7 +16,7 @@ def jetson(rails: dict) -> JetsonPower:
 
 
 def gpu(socket_w: float | None) -> GpuPower:
-    return GpuPower(ts=T0, node="gpu-a", source="amd-smi", period_ms=1000, socket_w=socket_w, gfx_mhz=500,
+    return GpuPower(ts=T0, node="pod-a", source="amd-smi", period_ms=1000, socket_w=socket_w, gfx_mhz=500,
                     mem_mhz=96, throttled=False)
 
 
@@ -30,19 +30,19 @@ def test_a_jetson_sample_without_the_module_rail_has_no_watts_rather_than_a_part
 
 
 def test_a_pod_sample_is_graphics_package_power_and_a_missing_reading_stays_missing():
-    assert reading_of(gpu(201.0)) == PowerReading(node="gpu-a", ts=T0, watts=201.0, source="amd-smi",
-                                                  boundary="graphics package")
+    assert reading_of(gpu(201.0)) == PowerReading(node="pod-a", ts=T0, watts=201.0, source="amd-smi",
+                                                  boundary="APU socket")
     assert reading_of(gpu(None)).watts is None
 
 
 def test_requests_and_training_steps_are_not_power_samples():
     window = RequestWindow(ts=T0, node="jetson", request_id="r", started=T0 - timedelta(seconds=2), ended=T0,
                            tokens_in=10, tokens_out=5, target="student")
-    step = TrainStep(ts=T0, node="gpu-b", run_id="r", step=1, loss=1.0, step_ms=2500, socket_w=245.0)
+    step = TrainStep(ts=T0, node="pod-b", run_id="r", step=1, loss=1.0, step_ms=2500, socket_w=245.0)
     assert reading_of(window) is None and reading_of(step) is None
 
 
 def test_only_the_three_known_nodes_pass_the_check():
-    assert [check_node(n) for n in KNOWN_NODES] == ["jetson", "gpu-a", "gpu-b"]
+    assert [check_node(n) for n in KNOWN_NODES] == ["jetson", "pod-a", "pod-b"]
     with pytest.raises(ValueError, match="unknown node 'gpu_a'"):
         check_node("gpu_a")

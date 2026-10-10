@@ -26,7 +26,7 @@ def test_the_fake_source_publishes_the_recorded_minute_into_the_log_and_the_proj
     service = asyncio.run(run())
     assert len(telemetry_lines(tmp_path)) == 206
     assert sum(service.projection.counts.values()) == 206
-    assert service.status() == {"source": "fake", "sampler": {"nodes": ["gpu-a", "gpu-b", "jetson"],
+    assert service.status() == {"source": "fake", "sampler": {"nodes": ["jetson", "pod-a", "pod-b"],
                                                               "published": 206, "dropped": 0, "errors": 0,
                                                               "last_error": None}}
 
@@ -82,7 +82,7 @@ def test_with_the_fake_source_the_running_app_samples_into_its_log_and_projectio
     run_app_briefly(atlas, until=lambda: atlas.telemetry.projection.counts)
     lines = telemetry_lines(tmp_path / "events")
     assert lines and sum(atlas.telemetry.projection.counts.values()) == len(lines)
-    assert {line["node"] for line in lines} <= {"jetson", "gpu-a", "gpu-b"}
+    assert {line["node"] for line in lines} <= {"jetson", "pod-a", "pod-b"}
     assert all(task.done() for task in atlas.tasks)  # stop() cancelled the sampler with the ticks
 
 
