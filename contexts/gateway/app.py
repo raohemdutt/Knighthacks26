@@ -37,6 +37,7 @@ from contexts.gateway.bootstrap import Atlas, Settings, build
 from contexts.agent.application.rule_compiler import RuleCompileError, compile_rule
 from contexts.habits.api import habits_router
 from contexts.learning.application.export import teach
+from contexts.vault.api import vault_router
 from contexts.memory.api import build_router as memory_router
 from contracts import Event
 from contracts.agent import AnswerGenerated, RuleAdded
@@ -88,6 +89,9 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         token = atlas.settings.token
         if token and not hmac.compare_digest(authorization or "", f"Bearer {token}"):
             raise HTTPException(401, "missing or wrong token")
+
+    if atlas.policy:  # GET/PUT /vault/policy, POST /vault/wipe/request, POST /vault/wipe, GET /vault/egress
+        app.include_router(vault_router(atlas.policy, atlas.bus, wiper=atlas.wiper, guard=authorized))
 
     @app.get("/health")
     async def health():

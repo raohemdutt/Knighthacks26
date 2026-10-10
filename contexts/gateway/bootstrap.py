@@ -49,6 +49,7 @@ from contexts.play.domain.game import SortIt
 from contexts.perception.application.service import PerceptionService
 from contexts.perception.domain.zones import ZoneEngine
 from contexts.play.domain.pathfinding import SortingRules, ZoneMap
+from contexts.vault import KeyRing, Policy, Vault, Wiper
 from contexts.workspace.domain.approvals import Approvals
 from contexts.workspace.infrastructure.ntfy import Ntfy, PhoneNotifier, send_message_executor
 from contracts.types import ModelVersion
@@ -98,6 +99,9 @@ class Atlas:
     projection: MemoryProjection | None = None
     presence_sync: PresenceSync | None = None
     board: CircleBoard | None = None
+    vault: Vault | None = None
+    policy: Policy | None = None
+    wiper: Wiper | None = None
     tasks: list[asyncio.Task] = field(default_factory=list)
 
     async def start(self) -> None:
@@ -197,6 +201,14 @@ def build(settings: Settings | None = None) -> Atlas:
 
     # State that rebuilds from the log (replay=True).
     projection.subscribe(bus)  # episodes, sightings, connector items, hourly notes
+
+    # Privacy Vault (V1-V4): the policy rebuilds from the log. The wipe is live only and not in the
+    # background: a replayed wipe would wipe again, and the endpoint reads its report right after publish.
+    vault = Vault(KeyRing(s.data_dir))  # no disk access until the first encrypt or decrypt
+    policy = Policy(s.data_dir)
+    policy.subscribe(bus)
+    wiper = Wiper(s.data_dir, memory_db=s.data_dir / "memory.sqlite")
+    bus.subscribe("vault.wipe.requested", wiper.on_wipe_requested)
     EpisodeSummarizer(store, runtime).subscribe(bus)  # live only, in the background: one model call per closed episode (M3)
     bus.subscribe("agent.rule.added", rules.on_rule_added, replay=True)
     bus.subscribe("perception.zone", rules.on_zone_event, replay=True)
@@ -307,4 +319,4 @@ def build(settings: Settings | None = None) -> Atlas:
     return Atlas(settings=s, bus=bus, qa=qa, approvals=approvals, hub=hub, loop=loop, zones=zones, game=game,
                  waste=waste, circle=circle, presence=presence, zone_engine=zone_engine, sharing=sharing,
                  memory=memory, projection=projection, habits=habits, nudger=nudger,
-                 presence_sync=presence_sync, board=board)
+                 presence_sync=presence_sync, board=board, vault=vault, policy=policy, wiper=wiper)
