@@ -23,7 +23,9 @@ What goes in, in this order, all of the day asked for (the UTC day of the rows' 
   when nothing came before; readings first seen that day; how many series did not move. Event numbers
   (sitting.*, slot.*) are not series. Seqs are cited as ledger:<seq>.
 - GPU slots and complaints: the slots that ran that day against their caps, and every complaint the queue
-  recorded (a slot complain row with the outcome complaint_recorded; one the queue refused is not a complaint).
+  recorded (a slot complain row with the outcome complaint_recorded; one the queue refused is not a complaint)
+  with the start of its text: the entry slot complain added to the row's Complaint column, which the verb also
+  keeps as the note of the ledger row.
 - Rulings waiting: every ruling without an answer in lab/refine/<track>/OWNER_RULINGS.md, read with
   refine_formats.parse_rulings, with the default the passes apply meanwhile.
 - PRs open: the open pull requests of the team repository, oldest first, from `gh pr list` (a failure is
@@ -349,7 +351,9 @@ def slot_lines(all_events: Sequence[Event], now: dt.datetime, start: dt.datetime
 
 def complaint_lines(day_events: Sequence[Event]) -> tuple[list[str], int]:
     """Every complaint the queue recorded that day (alerts.slot_happened: a refused slot complain, such as one
-    answered too_early or not_waiting, filed nothing), with the complaint's first line."""
+    answered too_early or not_waiting, filed nothing), with the start of its text: the note of the row, which
+    slot complain sets to the entry it added to the row's Complaint column. A row without a note, such as one
+    written before the verb kept it, reads (no text)."""
     lines = []
     for when, row in day_events:
         if row.get("verb") != alerts.SLOT_COMPLAIN or not alerts.slot_happened(row):
