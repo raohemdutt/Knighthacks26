@@ -64,3 +64,12 @@ class CircleOutbox:
 
     def mark_synced(self, share_id: str, now: datetime) -> None:
         self._run("UPDATE circle_outbox SET synced_at = ? WHERE share_id = ?", (_iso(now), share_id))
+
+    def stats(self) -> list[dict]:
+        """Per kind: how many shares wait here, how many Neon has, and when the last one went (UTC ISO or None)."""
+        rows, _ = self._run(
+            "SELECT kind, SUM(synced_at IS NULL), SUM(synced_at IS NOT NULL), MAX(synced_at),"
+            " MIN(CASE WHEN synced_at IS NULL THEN created_at END) FROM circle_outbox GROUP BY kind ORDER BY kind"
+        )
+        return [{"kind": k, "queued": q, "sent": s, "last_synced_at": last, "oldest_queued_at": oldest}
+                for k, q, s, last, oldest in rows]
