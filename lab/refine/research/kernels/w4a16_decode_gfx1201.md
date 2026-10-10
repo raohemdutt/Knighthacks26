@@ -513,3 +513,107 @@ V2 runs per-shape kernel tests against an fp32 reference for every GEMM shape we
 6144 and 17408 at M = 1, 2, 4, 8 and 16, group 128) and records relative L2 error per shape.
 Expected error near 1e-3 for a correct kernel against about 0.5 for the failure mode in vLLM issue
 #60608; minimum 1 run per kernel arm; confidence high.
+
+## 8. Pass 1 additions: batching at the workload's context, a gfx1201 measurement for KE2, the KE13 and KE14 order
+
+Added by kernels refinement pass 1 on 2026-10-10. The experiment ids continue the table in section
+7; the spawn-band experiment `KE17` is defined in `rdna4_vllm_ports.md`, section 6.
+
+- **[measured]** Batching lowers token energy only as far as the context allows: on an H200, at 10
+  output tokens, "the batch-16 to batch-1 gain falls from 6.31x at context-512 to 1.17x at
+  context-4K", while longer outputs lower per-token energy again (7.46 to 0.72 J/token at batch 16
+  and context 4K). Source: [S68] Vellaisamy, Lam, Blanton, Shen, "Characterization of Request and
+  Token Energy Costs for LLM Inference Workloads on GPU Platforms", IISWC 2026 (accepted),
+  arXiv:2608.28044, abstract.
+
+  Implication: KE1's estimate (26 to 2-4 J/token at concurrency 16) fits long outputs on short
+  prompts, where decode dominates; short outputs on long prompts, such as captions with an image in
+  the prompt, keep their per-request prefill energy, so the queue line for KE1 has to name the
+  context and output length of its prompt set and report captions apart from long text.
+
+  Experiment: KE1 as queued on T0, primary arms on the text prompt of `lab/refine/metrics.jsonl:3`
+  (thinking on, 160 output tokens) so batch 1 compares with the stored baseline, captions reported
+  separately. Expected: J/token 26 to 2-4 at batch 16 on the text set, a smaller cut on captions;
+  minimum 5 cold spawns per level; confidence 0.75 for the text set (KE1).
+
+- **[opinion]** From our own rows, a caption at batch 1 spends about 1.09 s of prefill and 28 / 6.6 =
+  4.2 s of decode at about 200 W, about 38 J per generated token; at batch 16, with KE1's step cost
+  of 1.15x to 1.4x a single-sequence step, about 230 W, and no prefill shared between requests, it
+  comes to about 10 J/token (3.5x to 3.7x less), while the 160-token text prompt (0.28 s of prefill)
+  goes from about 26 to 2.5 to 3 J/token (9x to 10x less). Source: arithmetic on
+  `lab/refine/metrics.jsonl:1`, `:3`, `:4`, `:5` and `:7`, and the KE1 step-cost estimate in
+  `precision_kv_batching.md`, section 6.
+
+  Implication: a joules-per-token figure for batched labeling must say which prompt type it was
+  measured on; a caption-only job should expect about 10 J/token at batch 16, not 2 to 4.
+
+  Experiment: KE1 as above, captions reported as their own rows. Expected: about 38 to about 10
+  J/token at batch 16 for captions; minimum 5 cold spawns per level; confidence low (0.3), because
+  prefill power and prefill batching on this card are unmeasured.
+
+- **[measured]** On one R9700, `Qwen3.8-27B` W4A16 (compressed-tensors) served by a September vLLM
+  nightly with AITER unified attention and an fp8 KV cache decoded at 32.6 tok/s in the fast band
+  and 16.2 tok/s in the slow band (511 generated tokens at a 5K prompt), both at 250 W. Source: [S65]
+  ROCm/legacy-rocm-build issue #6347, comment by Tanguille of 2026-09-13.
+
+  Implication: this is the first number for our model and quantization on our card from a vLLM
+  that postdates `RDNAHybridW4A16LinearKernel` (merged 2026-07-14, [S13]); at 250 W the two bands
+  come to about 7.7 and 15.4 J/token, and both beat half of KE2's expected cut (about 18 J/token), so
+  KE2's confidence rises from 0.6 to 0.7. It goes no higher because that stack also changed the
+  attention backend, the KV-cache dtype and the vLLM version, and the comment does not name the
+  linear kernel class, so the kernel's own share is not isolated.
+
+  Experiment: KE2 as queued on T0, the linear kernel class as the only lever on one build.
+  Expected: 7.7 to 20-30 tok/s and 26 to 9-12 J/token at batch 1; minimum 5 cold spawns per arm
+  with each spawn's band classified; confidence 0.7.
+
+- **[anecdote]** One owner reported a dense `Qwen3.6-27B` AWQ checkpoint on one R9700 with vLLM
+  0.19.1 on ROCm 7.13.0 (the `rocm/vllm` image, `awq_marlin` selected, ROCM_ATTN, no speculative
+  decoding) at about 8 tok/s single-stream and about 32 tok/s aggregate at 4 concurrent requests,
+  against 32 to 36 tok/s single-stream for llama.cpp with MTP. It is one user's post with no power
+  figures and no repeats. Source: [S69] Reddit post by u/lummr1, snapshot of 2026-07-17.
+
+  Implication: a vLLM of our build's era (ours reports 0.19.2) decodes a dense 4-bit 27B on this
+  card near our 7.7 tok/s, and its aggregate grew about 4x at 4 streams, which fits KE1 at small
+  batch and E2's expected 4x gap to llama.cpp.
+
+  Experiment: KE1, as above.
+
+- **[opinion]** Section 7 prints KE13 and KE14 both at a score of 0.08 and ranks KE14 (7) above KE13
+  (8); at full precision KE13 scores 0.55 x 0.15 = 0.0825 and KE14 0.40 x 0.20 = 0.080, so the
+  table's order is a two-decimal tie broken by confidence, while the lab's ranking verb, which sorts
+  on the unrounded score first, would put KE13 first. Source: section 7 of this note, and the rank
+  function in lab/machine/experiments.py, which orders open lines by the unrounded score before any
+  tie-break.
+
+  Implication: none for the metric set today: neither is queued on T0 (the R23 and R25 tasks hold
+  their arms) and both score below every line queued so far; a pass that queues them uses the
+  unrounded score.
+
+  Experiment: none beyond KE13 and KE14.
+
+## Open questions
+
+- Which W4A16 kernel class served the 2026-09-13 report on issue #6347; the comment does not say,
+  and the serve log of any newer build we run answers it.
+- Whether our Conch build on vLLM b1388b1 and ROCm 7.13 splits into bands at all (the default arm
+  of KE17 answers it).
+- Whether compiled graphs at b1388b1 autotune kernels at first start the way the Capicua port's
+  inductor does; the kernels rubric's eager rule for output matching does not depend on it.
+- Prefill power on this card, which the caption arithmetic in section 8 assumes equal to decode
+  power.
+
+## Search log
+
+- 2026-10-10, kernels refinement pass 1. Budget about 3 h; used about 1 h 30 min. Starting points:
+  the kernels rubric's known open items (K1, K3, K4, K6, K7, K8), the O27 notes on E1, E2 and E4 and
+  on the KE13 and KE14 order, and the telemetry rubric's known open item 13 (E3's context length).
+  Opened: arXiv 2608.28044; ROCm/legacy-rocm-build issues #6347 (to the comment of 2026-09-25,
+  through the GitHub API) and #6685; the ROCm 7.13.0 environment-variable reference; vLLM PR 40977
+  again; the Capicua port's `RDNA4-PORT.md` reproducibility section at 19f71e90764c; a Reddit
+  snapshot; and, at vLLM b1388b1, `vllm/model_executor/kernels/linear/__init__.py`,
+  `mixed_precision/exllama.py` and `docs/features/speculative_decoding/mtp.md`. Queries:
+  "GPU_MAX_HW_QUEUES HIP environment variable ROCm documentation"; "vLLM RDNAHybridW4A16 gfx1201
+  R9700 W4A16 decode tok/s" (no gfx1201 measurement of the hybrid kernel itself turned up). Stopped
+  when the last three sources opened (PR 40977, the hybrid-kernel search, the reproducibility
+  section) repeated what this note set and the kernels rubric already said.

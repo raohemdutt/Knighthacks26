@@ -252,3 +252,105 @@ lessons, not their headline numbers.
   Experiment: KE8 (attention at long context). Expected +20% to +80% tok/s at 4k to 16k context
   and about 0 at short captions; minimum 5 spawns per arm per context length; confidence medium
   (0.45).
+
+## 6. Spawn bands and hardware queues, read to 2026-09-25
+
+Added by kernels refinement pass 1 on 2026-10-10. The issue in section 4 kept going after the
+2026-08-28 comment that section read, and it now lives at ROCm/legacy-rocm-build (the old
+ROCm/ROCm link redirects). One report in it is our model and quantization on one R9700, and a
+second issue from the same thread names a mechanism and a workaround. `KE17` is new to this note
+set and continues the numbering of `w4a16_decode_gfx1201.md`.
+
+- **[measured]** A third independent report on issue #6347 ran `Qwen3.8-27B` W4A16
+  (compressed-tensors), the GDN hybrid with 16 full-attention and 48 gated-delta-net layers, on a
+  single R9700 with ROCm 7.2.3, a September vLLM nightly, an fp8 KV cache and AITER unified
+  attention: one request at a time, 511 generated tokens at a 5K prompt, the fast band decoded at
+  32.6 tok/s (ITL 30.7 ms, `mem_busy_percent` 81) and the slow band at 16.2 tok/s (61.5 ms, 40),
+  exactly 2.00x apart, both at 250 W with memory clock, fabric clock, PCIe and the power cap
+  identical; 29.4 against 15.5 tok/s at 64K prompts. The draw rate followed the container image (5
+  of 5 fast spawns on the 2026-09-04 nightly, 0 of 5 on every nightly from 09-05 to 09-11), the
+  reporter "spent several days bisecting 84 vLLM commits for a 2x decode regression that was this
+  bug all along", and a slow process once recovered on its own mid-workload. Source: [S65]
+  ROCm/legacy-rocm-build issue #6347, comment by Tanguille of 2026-09-13.
+
+  Implication: our model and quantization split 2x between spawns on our card, so the 7.7 tok/s
+  baseline (`lab/refine/metrics.jsonl:3`, one spawn) is unclassified: it may be either band, and any
+  before-and-after comparison that does not classify each spawn's band can mistake the lottery for
+  a kernel effect, in either direction. Both bands drew the same 250 W, so joules per token moves 2x
+  with the band.
+
+  Experiment: KE17, `GPU_MAX_HW_QUEUES=1` against the default (unset, 4 queues) on the unchanged
+  stock server at batch 1, each arm at least 8 cold spawns, alternating (the thread's 8 against 8
+  design), recording per-spawn decode tok/s, watts, `mem_busy_percent` while exactly one request
+  decodes, and time since spawn. Expected: if the stock build splits 2x with about 1 fast spawn in
+  6 by default, as reported, mean decode up by about 70% and J/token down with it; if it shows one
+  band, about no change; minimum 8 spawns per arm; confidence low to medium (0.4): the note's KE7
+  estimate that our build shows bands at all was 0.25 before this report of our own model and
+  quantization splitting on one card, and our build (Conch on vLLM b1388b1, ROCm 7.13) is not the
+  reporter's.
+
+- **[measured]** On the same issue, `GPU_MAX_HW_QUEUES=1` moved a dense Qwen3-14B-FP8 on a single
+  R9700 (ROCm 7.2.3, vLLM 0.23.0) from 2 of 12 fast spawns to 12 of 12 (Fisher exact p about 2e-5;
+  slow band 25.74 to 26.52 tok/s, fast 33.65 to 33.68), after an earlier 0 of 8 against 8 of 8; on
+  the GDN W4A16 build above it gave 1361 of 1408 fast solo-decode windows over 24 hours but still
+  flipped one spawn mid-request, so it "shifts the odds substantially but does not pin the band".
+  Its cost was within run-to-run noise: at concurrency 1 to 16 within 1%, and on gemma-4-12B-FP8
+  (ROCm 10, vLLM 0.27.1.dev) prefill 1104 against 1101 tok/s and decode 33.41 against 33.44 with
+  the KFD queue count at 3 against 7. Source: [S65], comments by Tanguille of 2026-09-13 and by
+  taisunyoung of 2026-09-15 and 2026-09-20.
+
+  Implication: the variable is free in every measurement reported, needs no root and no rebuild, and
+  raises the fast-band share; it changes queue mapping only, so outputs should not change.
+
+  Experiment: KE17, as above.
+
+- **[practitioner]** The same report gives a cheap band discriminator: `gpu_busy_percent` reads 100
+  in both states and is useless, while `mem_busy_percent` separates them at a threshold of 60,
+  sampled only while exactly one request is decoding and gated on a boosted shader clock, because a
+  chunked long prefill reads 25 to 33 percent. Source: [S65], comment by Tanguille of 2026-09-13.
+
+  Implication: the benchmark harness can classify each spawn's band from the same amd-smi reads it
+  takes for watts, so every row can say which band it measured.
+
+  Experiment: KE17 and KE7 record `mem_busy_percent` per spawn; expected two clusters around 40
+  and 80 if the build splits, one if not; minimum 8 spawns per arm; confidence medium.
+
+- **[measured]** The opening post's idle-duration sweep (Qwen3-14B-FP8) found that one fast process
+  degraded to the slow band after a single 4-minute idle gap while another survived 46 longer gaps
+  over almost 19 hours ("There is no fixed idle timer"), and later comments saw processes move
+  between bands in the middle of a measurement window. Source: [S65], opening post of 2026-06-11
+  and comments to 2026-09-15.
+
+  Implication: the band is not fixed for the life of a process, so pod A's long-running teacher can
+  change speed without a restart; live pod A numbers are not a before value, and every run records
+  its time since spawn and the idle gap before it.
+
+  Experiment: KE7 gains a step: after its cold spawns, idle one spawn for 5 minutes and measure it
+  again. Expected: no change if the build has one band, a drop to the slow band if the decay
+  reproduces; minimum 3 idle gaps; confidence low.
+
+- **[measured]** Issue #6685 (ROCm 7.14, HIP runtime 7.14.60850): on an R9700, two or more other
+  streams holding pending `hipStreamWaitEvent` waits raised the median time of a tiny kernel from
+  2.496 to 19.367 us in a HIP graph and from 2.956 to 25.518 us in eager launches, while a 1 GiB
+  memory-bound read moved only from 1.688 to 1.750 ms; a Radeon Pro V620 (gfx1030) in the same host
+  showed no slowdown, and `GPU_MAX_HW_QUEUES` set to 1 or 2 removed it. In the pipeline-parallel
+  LLM server where it was found, the waits doubled forward time (about 17 ms against 7 ms) until the
+  side-stream work moved onto the main stream. Source: [S66] ROCm/legacy-rocm-build issue #6685,
+  body, 2026-09-25.
+
+  Implication: a decode step made of many small kernels (norms, GDN state updates, sampling across
+  64 layers) pays about 17 us per kernel whenever side streams wait, which bandwidth-bound GEMMs
+  hide and small kernels do not; KE17's lever removes this too, so KE17 tests the band and this
+  mechanism together and cannot tell them apart.
+
+  Experiment: KE17, as above.
+
+- **[practitioner]** The ROCm 7.13.0 documentation lists `GPU_MAX_HW_QUEUES` among the HIP debug
+  variables with a default of 4: it "controls how many independent hardware queues HIP runtime can
+  create per process, per device", and streams beyond that number reuse the same queues round-robin.
+  Source: [S67] ROCm 7.13.0 documentation, "ROCm environment variables", HIP environment variables,
+  debug variables.
+
+  Implication: the lever exists on the pods' ROCm 7.13 and is set per process, with no root.
+
+  Experiment: KE17, as above.
