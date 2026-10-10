@@ -1,5 +1,6 @@
 """Circle: friends' Atlases plan together through Neon. Only approved summaries,
-proposals, counts and scores leave the box; never frames or raw signals."""
+proposals, counts and scores leave the box; never frames or raw signals. A planning
+question to the group brain (G4) leaves as text only, after the member's opt-in."""
 
 from datetime import datetime
 from typing import Literal
@@ -78,3 +79,62 @@ class PlaceShared(TypedEvent):
     place: str  # one of the household's named places: "Library", "Our table"
     source: Literal["phone", "desk"]
     expires_at: datetime
+
+
+# --- the group brain (G4): opt-in, text only, every send written to this box's log before it leaves ---
+
+
+class BrainText(BaseModel):
+    """One message sent to the group brain: a role and plain text. Never a picture, a frame or a file."""
+
+    role: Literal["system", "user"]
+    content: str
+
+
+@register
+class BrainConsentChanged(TypedEvent):
+    """A member switched asking the group brain on or off for their own box. Nothing is sent while the member's latest
+    change is off; consent_id is the opt-in reference every ask under it carries."""
+
+    type: Literal["circle.brain.consent.changed"] = "circle.brain.consent.changed"
+    consent_id: str
+    circle_id: str
+    member_id: str
+    on: bool
+    source: Literal["phone", "cli"]
+
+
+@register
+class BrainAsked(TypedEvent):
+    """Written before a question leaves the box for the group brain: exactly the text sent, where it goes, under which
+    opt-in, and the request's priority and token cap. The log is the record of everything the group brain was told."""
+
+    type: Literal["circle.brain.asked"] = "circle.brain.asked"
+    ask_id: str
+    circle_id: str
+    member_id: str
+    opt_in_ref: str  # the consent_id of the member's circle.brain.consent.changed (on) this ask relies on
+    purpose: str  # what the asker wanted, one short word: "plan", "where_to_go"
+    node: str  # the pod role that answers: "pod-a", the teacher's pod
+    host: str  # the hub the request goes through, e.g. "sjc.aupcloud.io"; never the account
+    model: str  # the served model name asked: "group-brain", or "teacher" on a server that has only that name
+    priority: int | None = None  # the vLLM request priority sent (lower is served first); None when none was sent
+    max_tokens: int
+    messages: list[BrainText]
+    chars: int  # characters of text in messages
+
+
+@register
+class BrainAnswered(TypedEvent):
+    """How an ask ended: the group brain's answer, or the kind of failure (the asker then falls back to its own
+    model)."""
+
+    type: Literal["circle.brain.answered"] = "circle.brain.answered"
+    ask_id: str
+    circle_id: str
+    member_id: str
+    ok: bool
+    answer: str | None = None
+    error: str | None = None  # when ok is false: "pod_stopped", "unreachable", "model_server_error", ...
+    latency_ms: int
+    model: str | None = None

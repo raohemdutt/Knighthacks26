@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from bus import EventBus
 from contexts.gateway.app import create_app
 from contexts.gateway.bootstrap import Settings
-from contexts.spot.application.assistant import Assistant, grounded
+from contexts.spot.application.assistant import REPHRASE_MAX_DRAFT_CHARS, REPHRASE_TIMEOUT_S, Assistant, grounded
 from contexts.spot.application.service import Spot
 from contexts.spot.application.workorders import WorkOrders
 from contexts.spot.infrastructure.kit import load_kit
@@ -83,30 +83,89 @@ def test_grounding_check_accepts_rewording_and_rejects_new_numbers_or_ids():
     assert grounded("WP05 failed 7 of 25.", "Navigation to WP05 failed 7 of 25 times.")[0]  # the 05 in WP05 is not a number
 
 
+SHORT = "Summarize the last mission"  # a draft under the rephrase budget
+LONG = "Is V2 better than V1?"  # the version comparison: long and number-dense
+
+
+def reworded(draft: str) -> str:
+    return "In short: " + draft
+
+
 def test_fake_runtime_never_rephrases(spot):
     rt = FakeRuntime()
-    out = asyncio.run(Assistant(spot, rt).ask("Status of HX-202"))
-    assert not out["rephrased"] and out["text"] == out["draft"] and rt.calls == []
+    out = asyncio.run(Assistant(spot, rt).ask(SHORT, rephrase=True))
+    assert not out["rephrased"] and out["text"] == out["draft"] and rt.calls == [] and out["can_rephrase"] is False
+
+
+def test_the_default_ask_returns_the_draft_without_calling_the_model(spot):
+    rt = FakeRuntime(chat_replies=[ChatResult(content="never read", model_version="atlas-v3")])
+    a = Assistant(spot, rt, rephrase=True)
+    out = asyncio.run(a.ask(SHORT))
+    assert rt.calls == []
+    assert out["text"] == out["draft"] == a.draft(SHORT)["text"] and out["rephrased"] is False
+    assert out["model"] == "none (built from the tables by code)" and out["check"] is None
+    assert out["can_rephrase"] is True  # the screen may come back for the wording
+
+
+def test_long_or_number_dense_drafts_are_never_sent_to_the_model(spot):
+    rt = FakeRuntime(chat_replies=[ChatResult(content="never read", model_version="atlas-v3")])
+    a = Assistant(spot, rt, rephrase=True)
+    for q in (LONG, "What should I check first this shift?", "What needs attention now?", "give me the shift handoff"):
+        out = asyncio.run(a.ask(q, rephrase=True))
+        assert out["can_rephrase"] is False and not out["rephrased"] and out["text"] == out["draft"], q
+    assert rt.calls == []
+    assert REPHRASE_MAX_DRAFT_CHARS == 450 and REPHRASE_TIMEOUT_S == 8
+    assert len(a.draft(SHORT)["text"]) <= REPHRASE_MAX_DRAFT_CHARS < len(a.draft(LONG)["text"])
+    # the version comparison stays out even if it were ever short
+    assert a.can_rephrase({"intent": "version_comparison", "text": "V2 91.1% (82/90)."}) is False
+
+
+def test_a_timeout_leaves_the_draft(spot, monkeypatch):
+    import time
+
+    from contexts.spot.application import assistant
+
+    class Slow(FakeRuntime):
+        def chat(self, *a, **k):
+            time.sleep(0.3)
+            return ChatResult(content="too late", model_version="atlas-v3")
+
+    monkeypatch.setattr(assistant, "REPHRASE_TIMEOUT_S", 0.05)
+    draft = Assistant(spot, FakeRuntime()).draft(SHORT)["text"]
+    out = asyncio.run(Assistant(spot, Slow(), rephrase=True).ask(SHORT, rephrase=True))
+    assert not out["rephrased"] and out["text"] == draft and "TimeoutError" in out["check"]
 
 
 def test_a_real_model_may_only_rephrase_and_is_dropped_on_any_mismatch(spot):
-    draft = Assistant(spot, FakeRuntime()).draft("Status of HX-202")["text"]
-    good = draft.replace("Last good inspection:", "It was last inspected successfully by").replace("Failed since then:", "Since then these failed:")
+    draft = Assistant(spot, FakeRuntime()).draft(SHORT)["text"]
+    good = reworded(draft)
     rt = FakeRuntime(chat_replies=[ChatResult(content=good, model_version="atlas-v3")])
-    out = asyncio.run(Assistant(spot, rt, rephrase=True).ask("Status of HX-202"))
-    assert out["rephrased"] and out["text"] == good and out["model"] == "atlas-v3" and out["check"] == "ok"
+    out = asyncio.run(Assistant(spot, rt, rephrase=True).ask(SHORT, rephrase=True))
+    assert out["rephrased"] and out["text"] == good and out["draft"] == draft and out["model"] == "atlas-v3" and out["check"] == "ok"
     assert rt.calls[0][0] == "chat" and rt.calls[0][1][-1].content == draft  # the model is given the draft, nothing else
 
-    bad = FakeRuntime(chat_replies=[ChatResult(content=draft.replace("88 h", "12 h"), model_version="atlas-v3")])
-    out = asyncio.run(Assistant(spot, bad, rephrase=True).ask("Status of HX-202"))
-    assert not out["rephrased"] and out["text"] == draft and "12" in out["check"]
+    bad = FakeRuntime(chat_replies=[ChatResult(content=good + " Check M999 too.", model_version="atlas-v3")])
+    out = asyncio.run(Assistant(spot, bad, rephrase=True).ask(SHORT, rephrase=True))
+    assert not out["rephrased"] and out["text"] == draft and "M999" in out["check"]
 
     class Down(FakeRuntime):
         def chat(self, *a, **k):
             raise ConnectionError("llama-server is not running")
 
-    out = asyncio.run(Assistant(spot, Down(), rephrase=True).ask("Status of HX-202"))
+    out = asyncio.run(Assistant(spot, Down(), rephrase=True).ask(SHORT, rephrase=True))
     assert not out["rephrased"] and out["text"] == draft and "ConnectionError" in out["check"]
+
+
+def test_the_rewrite_is_asked_for_at_the_non_urgent_priority(spot):
+    seen = []
+
+    class Watching(FakeRuntime):
+        def chat(self, messages, tools=None, priority="chat", **k):
+            seen.append(priority)
+            return ChatResult(content=reworded(messages[-1].content), model_version="atlas-v3")
+
+    out = asyncio.run(Assistant(spot, Watching(), rephrase=True).ask(SHORT, rephrase=True))
+    assert out["rephrased"] and seen == ["summary"]  # it never jumps ahead of someone's question
 
 
 def test_handoff_is_five_to_eight_lines_each_with_evidence(spot):
@@ -222,6 +281,9 @@ def test_api_with_the_kit(tmp_path):
 
         ans = c.post("/api/spot/ask", json={"text": "what should I check first this shift?"}).json()
         assert ans["intent"] == "investigate_next" and "HX-202" in ans["citations"]["assets"] and ans["rephrased"] is False
+        assert ans["text"] == ans["draft"] and ans["model"] == "none (built from the tables by code)"
+        again = c.post("/api/spot/ask", json={"text": "summarize the last mission", "rephrase": True}).json()
+        assert again["rephrased"] is False and again["can_rephrase"] is False  # no model on this box: the draft stands
 
         # an approval card, approved over the same door the phone uses
         card = c.post("/api/spot/actions/reinspect", json={"asset_id": "hx-202"}).json()

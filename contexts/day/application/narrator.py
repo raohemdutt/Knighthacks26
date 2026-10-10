@@ -67,6 +67,9 @@ QUESTION_TTL = timedelta(seconds=120)  # a question with no answer after this lo
 KEEP_ASKS = 20
 KEEP_CACHE = 200
 PRIORITY = "backfill"  # the runtime's lowest: never ahead of a person's question
+# A draft shorter than this ("Evening. A quiet one: a long rest first, then dinner.") has nothing to improve, and
+# asking anyway costs about 5 s on the box for words that come back the same. The template is said as it is.
+MIN_DRAFT_CHARS = 120
 
 
 @dataclass(frozen=True)
@@ -125,7 +128,7 @@ class Narrator:
         self.failed: set[str] = set()  # facts the model was already asked about and did not improve
         self.jobs: dict[str, Job] = {}  # handed to the background task, by source event id
         self.background = None  # bus.in_background(self.rewrite): set when subscribed
-        self.stats = {"calls": 0, "used": 0, "rejected": 0, "timeouts": 0, "errors": 0, "last_problem": None}
+        self.stats = {"calls": 0, "used": 0, "unchanged": 0, "rejected": 0, "timeouts": 0, "errors": 0, "last_problem": None}
 
     @property
     def mode(self) -> str:
@@ -217,7 +220,7 @@ class Narrator:
     def may_ask_model(self, job: Job) -> bool:
         if self.engine != "model" or job.moment == "approval" or job.urgent or self.inflight or job.hash in self.failed:
             return False
-        if self.question_waiting(job.ts):
+        if len(job.draft.spoken) < MIN_DRAFT_CHARS or self.question_waiting(job.ts):
             return False
         return self.last_model is None or abs((job.ts - self.last_model).total_seconds()) >= self.config.gap_s
 
@@ -275,6 +278,8 @@ class Narrator:
         text = words.reply_text(content)
         if text == job.draft.spoken:
             self.failed.add(job.hash)  # nothing to improve: the template stands, and is not asked about again
+            if count:
+                self.stats["unchanged"] += 1  # the model gave the draft back word for word: a call that changed nothing
             return None
         problems = words.check(text, job.facts, job.draft.spoken)
         if problems:

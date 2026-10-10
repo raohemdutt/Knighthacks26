@@ -70,6 +70,49 @@ function binWords(bin: string, color: string | null | undefined): string {
   return color ? `${name} (the ${color} bin)` : name;
 }
 
+/** The room from above without WebGL: the floor plan as a flat drawing, with who and what the cameras see and the way to the bin. */
+function FlatPlan({ plan, live, pins, why, routes, target }: { plan: RoomPlan; live: RoomLive | null; pins: TwinPin[]; why: string; routes: [number, number][][]; target: string | null }) {
+  const [w, h] = plan.size;
+  const line = { fill: "none", stroke: "var(--muted)", strokeWidth: 0.03 };
+  return (
+    <div data-room={plan.name} data-view="flat">
+      <p className={ui.stateTitle}>3D view is not available on this device</p>
+      <p className={`${ui.muted} ${ui.small}`}>Here is the same room from above, drawn from its floor plan.</p>
+      <svg viewBox={`-0.1 -0.1 ${w + 0.2} ${h + 0.2}`} role="img" aria-label={`${plan.title} from above`} style={{ display: "block", width: "100%", maxHeight: "78vh", margin: "10px 0" }}>
+        <rect x={0} y={0} width={w} height={h} {...line} strokeWidth={0.06} />
+        {plan.furniture.map((f) => (
+          <g key={f.id} transform={`translate(${f.at[0]} ${f.at[1]}) rotate(${f.rot})`}>
+            <rect x={-f.size[0] / 2} y={-f.size[1] / 2} width={f.size[0]} height={f.size[1]} rx={0.04} {...line} strokeDasharray={f.type === "rug" ? "0.08 0.06" : undefined} fill={f.type === "bin" ? (f.color ?? "var(--muted)") : "none"} stroke={f.id === target ? "var(--accent)" : line.stroke} strokeWidth={f.id === target ? 0.08 : line.strokeWidth} />
+          </g>
+        ))}
+        {plan.furniture.map((f) =>
+          f.type === "rug" ? null : (
+            <text key={f.id} x={f.at[0]} y={f.at[1] + (f.type === "bin" ? 0.38 : 0.06)} textAnchor="middle" fontSize={0.17} fill="var(--text)">
+              {f.label ?? (f.bin ? humanize(f.bin) : humanize(f.type))}
+            </text>
+          ),
+        )}
+        {routes.map((points, i) => (
+          <polyline key={i} points={points.map((p) => p.join(",")).join(" ")} fill="none" stroke="var(--accent)" strokeWidth={0.07} strokeLinecap="round" strokeLinejoin="round" strokeDasharray="0.02 0.14" />
+        ))}
+        {pins.filter((p) => p.exact).map((p) => (
+          <circle key={p.label} cx={p.x} cy={p.y} r={0.07} fill="var(--accent)">
+            <title>{humanize(p.label)}</title>
+          </circle>
+        ))}
+        {(live?.tracks ?? []).map((t) => (
+          <circle key={t.key} cx={t.x} cy={t.y} r={t.kind === "person" ? 0.16 : 0.08} fill={t.kind === "person" ? "var(--text)" : "var(--accent)"}>
+            <title>{humanize(t.label)}</title>
+          </circle>
+        ))}
+      </svg>
+      <p className={`${ui.muted} ${ui.small} ${ui.breakWords}`}>
+        Large dots are people, small ones are things, and the dotted line is the way to the bin. Why there is no 3D: {why.replace(/\.+$/, "")}.
+      </p>
+    </div>
+  );
+}
+
 export default function RoomTwin({ plan, live, pins = [], preview = null, controls = false, shape = "phone", tally = null, speak = false, picked: pickedProp, onPick, start = "iso" }: RoomTwinProps) {
   const host = useRef<HTMLDivElement>(null);
   const overlay = useRef<HTMLDivElement>(null);
@@ -268,10 +311,14 @@ export default function RoomTwin({ plan, live, pins = [], preview = null, contro
 
   if (failed) {
     return (
-      <div className={`${ui.state} ${ui.stateError}`} role="alert">
-        <p className={ui.stateTitle}>The 3D room can&apos;t start on this device</p>
-        <p className={ui.breakWords}>{failed}.</p>
-      </div>
+      <FlatPlan
+        plan={plan}
+        live={live}
+        pins={pins}
+        why={failed}
+        routes={round ? round.routes.filter((r) => r.reachable).map((r) => r.points.map((p) => [p.x, p.y] as [number, number])) : preview?.reachable ? [preview.points] : []}
+        target={round ? (binOf(round.bin)?.id ?? null) : (assist?.bin_id ?? preview?.bin_id ?? null)}
+      />
     );
   }
 

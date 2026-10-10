@@ -210,8 +210,14 @@ serve() {
       # pod C a 1280x720 caption came back as real text and the server starts in about 5 min with a warm cache).
       vit_attn=(--mm-encoder-attn-backend TRITON_ATTN) ;;
   esac
+  # Two names, one model: "teacher" for labeling and captions, "group-brain" for the Circle's planning questions
+  # (contexts/circle). Priority scheduling serves the lower request priority first and, when the KV cache runs out,
+  # preempts the highest: planning asks at -10, labeling sends none (0), so a planning question never queues behind
+  # a labeling run, and continuous batching keeps the labels decoding beside it. Requests are not logged
+  # (--enable-log-requests stays off), so no prompt is written to the server log or to disk.
   nohup python3 -m vllm.entrypoints.openai.api_server \
-    --model "$dir" --served-model-name teacher --port "$PORT" --host 127.0.0.1 \
+    --model "$dir" --served-model-name teacher group-brain --port "$PORT" --host 127.0.0.1 \
+    --scheduling-policy priority \
     --max-model-len "$MAX_LEN" --limit-mm-per-prompt '{"image":1}' --gpu-memory-utilization "$GPU_UTIL" \
     --dtype bfloat16 ${vit_attn[@]+"${vit_attn[@]}"} > "$SERVE_LOG" 2>&1 &
   local pid=$!
