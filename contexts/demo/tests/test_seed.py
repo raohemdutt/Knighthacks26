@@ -62,6 +62,29 @@ def test_the_story_moves_with_now():
     assert due.when == load_memory_fixture().items[0].when + timedelta(days=3, hours=5)
 
 
+def test_item_text_is_worded_from_the_moved_time():
+    """O5: the story moved `when` but left "Due Tue Oct 13, 11:59 PM" in the summary under it."""
+    def items(now=None):
+        return {e.external_id: e for e in story(now) if e.type == "connector.item.synced"}
+
+    milestone, opening, chat = "cop4533:assignment:88213", "outlook:kh-opening:2026-10-10T11:00:00-04:00", "class:1760100001"
+    plain = items()
+    assert plain[milestone].summary == "Due Tue Oct 13, 11:59 PM. Dynamic programming: code plus a runtime analysis writeup. 100 points."
+    assert plain[opening].summary == "until 11:45 AM · Student Union ballroom"
+    assert plain[chat].title == "Maya: anyone started the COP4533 milestone 1? due tuesday" and plain[chat].summary.endswith("due tuesday")
+
+    moved = items(NOW - timedelta(days=1, minutes=30))
+    assert moved[milestone].summary.startswith("Due Mon Oct 12, 11:29 PM. Dynamic programming")
+    assert moved[opening].summary == "until 11:15 AM · Student Union ballroom"  # Day Run reads a block's end from this
+    assert moved[chat].title.endswith("due monday") and moved[chat].summary.endswith("due monday")
+    assert moved["class:1760100004"].summary.endswith("study session saturday afternoon at the library? 2pm?")
+    for e in moved.values():
+        assert "{" not in e.title + (e.summary or ""), e.external_id
+        if e.kind == "assignment":
+            local = e.when.astimezone(NOW.tzinfo)
+            assert e.summary.startswith(f"Due {local:%a %b} {local.day}, {local.hour % 12 or 12}:{local:%M %p}."), e.external_id
+
+
 def test_seed_fills_every_projection_of_a_fresh_app_replaying_the_log(seeded_dir, tmp_path):
     data_dir, seeded = seeded_dir
     assert set(seeded.written) > SOURCE_TYPES  # the app derived the rest
@@ -76,17 +99,28 @@ def test_seed_fills_every_projection_of_a_fresh_app_replaying_the_log(seeded_dir
         assert any(e.camera_id == canned.camera_id and abs(e.start - canned.start) < timedelta(minutes=1) for e in episodes), canned.id
     keys = app.memory.last_seen("keys")
     assert keys.zone_id == "desk" and keys.camera_id == "cam-desk"
+    for label in ("laptop", "phone"):  # the detector tracked them all night; the last desk crop says where they are
+        seen = app.memory.last_seen(label)
+        assert seen and seen.zone_id == "desk" and seen.position, label
+    can = app.memory.last_seen("can")  # the detector saw the last can go in after the caption: a zone, no text position
+    assert (can.camera_id, can.zone_id, can.position) == ("cam-door", "trash", None)
     assert {i.connector for i in app.memory.items(NOW - timedelta(days=3), NOW + timedelta(days=7))} == {"canvas", "calendar", "groupme"}
 
-    # Habits: Saturday is closed, with the meals, drinks, desk time and night the script wrote.
+    # Habits: Friday had a connector sync and no camera, so nothing a camera measures was judged that day.
+    friday = {h.id: app.habits.history_for(h.id)[0] for h in app.habits.cfg.habits}
+    assert all(r["day"] == (SATURDAY - timedelta(days=1)).isoformat() and r["closed"] for r in friday.values())
+    assert not any(friday[i]["applies"] or friday[i]["streak"] for i in ("sleep", "meals", "energy_drinks", "focus", "leave_ready"))
+    # Saturday is closed, with the meals, drinks and desk time the script wrote. The cameras came on at
+    # noon, so the night before it was never watched: no sleep value is claimed for it.
     saturday = {r["id"]: r for r in app.habits.digest(day=SATURDAY, now=NOW)["habits"]}
     assert all(r["closed"] for r in saturday.values())
     assert saturday["meals"]["value"] >= 2
     assert saturday["energy_drinks"]["value"] >= 3 and not saturday["energy_drinks"]["met"]
     assert saturday["focus"]["value"] > 0
-    assert saturday["sleep"]["applies"] and saturday["sleep"]["value"] > 0
+    assert not saturday["sleep"]["applies"] and saturday["sleep"]["value"] == 0 and saturday["sleep"]["streak"] == 0
+    assert saturday["leave_ready"]["applies"] and saturday["leave_ready"]["streak"] == 1  # its first watched day
     sunday = {r["id"]: r for r in app.habits.digest(now=NOW)["habits"]}
-    assert sunday["sleep"]["value"] >= 6  # the desk was empty from half past midnight to a quarter to seven
+    assert sunday["sleep"]["applies"] and sunday["sleep"]["value"] >= 6  # the desk was empty from half past midnight to a quarter to seven
     assert sunday["leave_ready"]["value"] == 1  # out the door at 9:05 with the keys on the desk
     assert sunday["focus"]["applies"] and sunday["focus"]["value"] > 0  # the milestone is due within 48 hours of the day
 

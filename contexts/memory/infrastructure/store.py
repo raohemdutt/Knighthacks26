@@ -1,4 +1,4 @@
-"""Memory's SQLite file (M1): episodes, sightings, connector items, hourly notes and one FTS5 index.
+"""Memory's SQLite file (M1): episodes, sightings, detector tracks, connector items, hourly notes and one FTS5 index.
 
 Every table is a projection of the event log, so the file can be deleted and
 rebuilt with `python -m contexts.memory rebuild`. Timestamps are stored as UTC
@@ -35,6 +35,22 @@ CREATE TABLE IF NOT EXISTS memory_sightings (
     position TEXT
 );
 CREATE INDEX IF NOT EXISTS memory_sightings_label ON memory_sightings (label, ts);
+-- The detector's latest track per label: where something was last seen when no object list named it.
+CREATE TABLE IF NOT EXISTS memory_tracks (
+    label TEXT PRIMARY KEY,
+    camera_id TEXT NOT NULL,
+    track_id INTEGER NOT NULL,
+    zone_id TEXT,                      -- from that track's zone events; NULL when it was in no zone
+    ts TEXT NOT NULL,
+    frame_ref TEXT
+);
+-- The zone each track is in right now, from its enter, dwell and exit events.
+CREATE TABLE IF NOT EXISTS memory_track_zones (
+    camera_id TEXT NOT NULL,
+    track_id INTEGER NOT NULL,
+    zone_id TEXT NOT NULL,
+    PRIMARY KEY (camera_id, track_id)
+) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS memory_items (
     connector TEXT NOT NULL,
     external_id TEXT NOT NULL,
@@ -59,7 +75,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5 (text, source UNINDEXED
 CREATE TABLE IF NOT EXISTS memory_applied (event_id TEXT PRIMARY KEY) WITHOUT ROWID;
 """
 
-TABLES = ("memory_episodes", "memory_sightings", "memory_items", "memory_notes", "memory_fts", "memory_applied")
+TABLES = ("memory_episodes", "memory_sightings", "memory_tracks", "memory_track_zones", "memory_items", "memory_notes", "memory_fts", "memory_applied")
 
 
 def iso(ts: datetime) -> str:
@@ -147,6 +163,28 @@ class MemoryStore:
             "INSERT OR REPLACE INTO memory_sightings VALUES (?, ?, ?, ?, ?, ?, ?)",
             (sid, s.label, s.camera_id, s.zone_id, iso(s.ts), s.frame_ref, s.position),
         )
+
+    def put_track(self, label: str, camera_id: str, track_id: int, ts: datetime, frame_ref: str | None) -> None:
+        """The detector saw `label` at `ts`: keep it if it is the latest, with the zone that track is in."""
+        zone = self.db.execute("SELECT zone_id FROM memory_track_zones WHERE camera_id = ? AND track_id = ?", (camera_id, track_id)).fetchone()
+        self.db.execute(
+            """INSERT INTO memory_tracks VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT (label) DO UPDATE SET camera_id = excluded.camera_id, track_id = excluded.track_id,
+                   zone_id = excluded.zone_id, ts = excluded.ts, frame_ref = excluded.frame_ref
+               WHERE excluded.ts >= memory_tracks.ts""",
+            (label, camera_id, track_id, zone["zone_id"] if zone else None, iso(ts), frame_ref),
+        )
+
+    def track_zone(self, camera_id: str, track_id: int, zone_id: str, ts: datetime, inside: bool) -> None:
+        """A zone event for a track. It follows the frame it was worked out from, so that frame's sighting is corrected too."""
+        if inside:
+            self.db.execute("INSERT OR REPLACE INTO memory_track_zones VALUES (?, ?, ?)", (camera_id, track_id, zone_id))
+            self.db.execute("UPDATE memory_tracks SET zone_id = ? WHERE camera_id = ? AND track_id = ? AND ts <= ?",
+                            (zone_id, camera_id, track_id, iso(ts)))
+        else:  # left the zone: a sighting from before the exit keeps the zone it was last seen in
+            self.db.execute("DELETE FROM memory_track_zones WHERE camera_id = ? AND track_id = ? AND zone_id = ?", (camera_id, track_id, zone_id))
+            self.db.execute("UPDATE memory_tracks SET zone_id = NULL WHERE camera_id = ? AND track_id = ? AND zone_id = ? AND ts >= ?",
+                            (camera_id, track_id, zone_id, iso(ts)))
 
     def put_item(self, item: Item, synced_at: datetime) -> None:
         """Insert or update on (connector, external_id), and keep its search text current."""

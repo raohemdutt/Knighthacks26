@@ -274,3 +274,49 @@ def test_digest_shape():
     assert [(r["day"], r["value"], r["closed"]) for r in t.history_for("meals", days=7)] == [
         ("2026-10-11", 2, True), ("2026-10-12", 1, False)]
     assert len(t.history_for("meals", days=1)) == 1
+
+
+# --- a day the cameras did not watch (testing round 1, O1) ---
+
+
+def test_a_connector_sync_does_not_make_a_day_or_a_night_watched():
+    t = tracker()
+    out = feed(t, [
+        assignment(at(10, "10:30"), "COP4533 Milestone 1", at(11, "23:59")),  # the box syncs a day before any camera
+        calendar(at(10, "10:30"), "Opening ceremony", at(11, "11:00")),
+        zone(at(11, "12:02"), "enter", zone_id="door"),  # the first camera event
+        *sit(11, "12:06", "12:30"),
+        *one_day(12),
+    ])
+    # Friday had connector items only: nothing a camera measures is judged, and no streak is earned.
+    for habit_id in ("sleep", "meals", "energy_drinks", "focus", "leave_ready"):
+        day_10, day_11 = t.history[habit_id]
+        assert (day_10.day, day_10.applies, day_10.met, day_10.streak) == (day(10), False, True, 0), habit_id
+    # Saturday's night ended at 08:00, four hours before the first camera event: not 12 hours of sleep.
+    assert signals(out, "away_window") == []
+    saturday = t.history["sleep"][1]
+    assert (saturday.value, saturday.applies, saturday.streak) == (0.0, False, 0)
+    # The rest of Saturday was watched, so it is judged, and it is the first day of any streak.
+    assert [(c.applies, c.streak) for c in t.history["leave_ready"]] == [(False, 0), (True, 1)]
+    assert [(c.applies, c.met) for c in t.history["meals"]] == [(False, True), (True, False)]
+    assert t.history["focus"][1].applies  # the deadline is near and the desk was in view
+
+
+def test_start_early_is_not_judged_on_an_assignment_no_camera_could_have_seen_started():
+    t = tracker()
+    feed(t, [assignment(at(10, "09:00"), "Essay", at(12, "10:00")),  # known 49 hours ahead ...
+             *sit(11, "20:00", "21:00"),  # ... but the cameras came on 14 hours before it was due
+             *one_day(13)])
+    assert [(c.day, c.applies) for c in t.history["start_early"]] == [(day(10), False), (day(11), False), (day(12), False)]
+
+
+def test_a_night_that_has_not_begun_is_not_judged_whatever_time_the_caller_names():
+    t = tracker()
+    feed(t, sit(10, "18:00", "23:00") + sit(11, "07:00", "09:00"))
+    t.flush(at(11, "09:30"))  # the latest the tracker knows
+    tomorrow = t.digest(day=day(12), now=at(13, "00:00"))["habits"][0]  # asked as of the end of Monday (O2)
+    assert (tomorrow["id"], tomorrow["value"], tomorrow["applies"]) == ("sleep", 0.0, False)
+    today = t.digest(day=day(11), now=at(13, "00:00"))["habits"][0]
+    assert (today["value"], today["applies"]) == (8.0, True)  # 23:00 to 07:00, already seen
+    t.flush(at(11, "22:00"))  # two hours into Sunday night
+    assert [t.digest(day=day(12), now=at(13, "00:00"))["habits"][0][k] for k in ("value", "applies")] == [2.0, True]

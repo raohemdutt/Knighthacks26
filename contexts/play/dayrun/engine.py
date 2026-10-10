@@ -192,9 +192,10 @@ class _Schedule:
                 return reject(f"{w.name(target)} is closed today")
             best = min(open_ones, key=lambda p: (w.walk(self.place, p)[0] + w.walk(p, to_place)[0], p))
             there, back = w.walk(self.place, best)[0], w.walk(best, to_place)[0]
-            self.changes.append(Change(move=i, kind="rerouted", text=(
-                f"{w.name(target)} is closed: re-routed to {w.name(best)}, {there} minutes from {w.name(self.place)}"
-                + (f" and {back} on to the {hm(nxt.start)} {nxt.title}" if nxt and back else ""))))
+            onward = f"on to the {hm(nxt.start)} {nxt.title}" if nxt and back else ""
+            walk = (f", {there} minutes from {w.name(self.place)}" + (f" and {back} {onward}" if onward else "") if there
+                    else " (you are already there)" + (f", {back} minutes {onward}" if onward else ""))  # never "0 minutes from" itself
+            self.changes.append(Change(move=i, kind="rerouted", text=f"{w.name(target)} is closed: re-routed to {w.name(best)}{walk}"))
             target = best
 
         depart = max(self.clock, local(cfg, m.start)) if m.start else self.clock

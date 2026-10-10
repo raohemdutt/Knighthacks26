@@ -67,15 +67,24 @@ def course_of(text: str) -> str | None:
     return f"{m[1]}{m[2]}".upper() if m else None
 
 
-def initial_state(cfg: DayRunConfig, start: datetime, habits: list[dict] | None, over: InitialOverride | None = None) -> Initial:
-    """Where the meters start: last night's sleep and today's meals from the Habits digest, else defaults."""
+def initial_state(cfg: DayRunConfig, start: datetime, habits: list[dict] | None, over: InitialOverride | None = None,
+                  origin: str = "habits") -> Initial:
+    """Where the meters start: last night's sleep and today's meals from the Habits digest, else defaults.
+
+    `origin` names what `habits` really is ("scenario" for a scripted day). `source` on the result says
+    where each value came from: one word when they agree, else e.g. "defaults (sleep), habits (meals)"."""
     start = local(cfg, start)
     rows = {r["id"]: r for r in habits or [] if r.get("applies", True)}
     sleep = rows["sleep"]["value"] if "sleep" in rows else None
     meals = rows["meals"]["value"] if "meals" in rows else None
-    source = "habits" if sleep is not None or meals is not None else "defaults"
-    if over and (over.sleep_hours is not None or over.meals is not None or over.energy is not None):
-        source = "request" if source == "defaults" else f"{source}+request"
+    asked = {"sleep": over.sleep_hours, "meals": over.meals, "energy": over.energy} if over else {}
+    came_from: dict[str, list[str]] = {}
+    for name, value in (("sleep", sleep), ("meals", meals), ("energy", None)):
+        if asked.get(name) is not None:
+            came_from.setdefault("request", []).append(name)
+        elif name != "energy":  # energy is worked out from the other two unless the request sets it
+            came_from.setdefault(origin if value is not None else "defaults", []).append(name)
+    source = next(iter(came_from)) if len(came_from) == 1 else ", ".join(f"{s} ({' and '.join(v)})" for s, v in came_from.items())
     sleep = over.sleep_hours if over and over.sleep_hours is not None else sleep if sleep is not None else cfg.start.default_sleep_hours
     meals = int(over.meals if over and over.meals is not None else meals or 0)
 

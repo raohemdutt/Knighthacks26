@@ -2,7 +2,11 @@
 # what the cameras and connectors would have published, so replaying it fills every projection.
 # Times are America/New_York; `python -m contexts.demo seed --now` moves the whole story so `now` is now.
 #
-# items: one `connector.item.synced` each, published at `synced`.
+# items: one `connector.item.synced` each, published at `synced`. Dates in `title` and `summary` are never
+#   written out, because the story can be moved in time and the text must still agree with `when`:
+#     {when}            the item's own `when`, as Canvas words a due date: "Tue Oct 13, 11:59 PM"
+#     {when+45m}        the time of day that long after `when`: "11:45 AM" (a calendar event's end)
+#     {day 2026-10-13}  the weekday that script date falls on once moved, as people type it: "tuesday"
 # beats: one burst of camera activity each (about one Memory episode per beat).
 #   move      sit    people seated in the desk zone for `seconds` (sampled every 2 s: this is focus time)
 #             arrive people walk in through the door zone       leave  people walk out through it
@@ -25,47 +29,49 @@ now: "2026-10-11T09:30:00-04:00"
 items:
   # The box is switched on the morning before the hackathon and its connectors sync. That is more than
   # 48 hours before "submissions due", so the planner does not write an exam-prep plan with the fake model.
+  # No camera reports until Saturday noon, so Habits judges nothing camera-derived on Friday, and
+  # Saturday's sleep (the night before the cameras arrived) is "nothing to judge": Sunday's is the real one.
   - {synced: "2026-10-09T10:30:00-04:00", connector: canvas, kind: assignment, external_id: "cop4533:assignment:88213",
      title: "Project - Milestone1 Fall2026 [COP4533]", when: "2026-10-13T23:59:00-04:00",
      url: "https://canvas.example.edu/courses/5123/assignments/88213",
-     summary: "Due Tue Oct 13, 11:59 PM. Dynamic programming: code plus a runtime analysis writeup. 100 points."}
+     summary: "Due {when}. Dynamic programming: code plus a runtime analysis writeup. 100 points."}
   - {synced: "2026-10-09T10:30:00-04:00", connector: canvas, kind: assignment, external_id: "cop4533:assignment:88240",
      title: "Quiz 5 - Greedy Algorithms [COP4533]", when: "2026-10-15T17:00:00-04:00",
      url: "https://canvas.example.edu/courses/5123/assignments/88240",
-     summary: "Due Thu Oct 15, 5:00 PM. 20 minutes, one attempt."}
+     summary: "Due {when}. 20 minutes, one attempt."}
   - {synced: "2026-10-09T10:30:10-04:00", connector: calendar, kind: calendar_event, external_id: "outlook:kh-opening:2026-10-10T11:00:00-04:00",
-     title: "Knight Hacks: opening ceremony", when: "2026-10-10T11:00:00-04:00", summary: "until 11:45 AM · Student Union ballroom"}
+     title: "Knight Hacks: opening ceremony", when: "2026-10-10T11:00:00-04:00", summary: "until {when+45m} · Student Union ballroom"}
   - {synced: "2026-10-09T10:30:10-04:00", connector: calendar, kind: calendar_event, external_id: "outlook:kh-hacking:2026-10-10T12:00:00-04:00",
-     title: "Knight Hacks: hacking starts", when: "2026-10-10T12:00:00-04:00", summary: "until 12:15 PM · Engineering II atrium"}
+     title: "Knight Hacks: hacking starts", when: "2026-10-10T12:00:00-04:00", summary: "until {when+15m} · Engineering II atrium"}
   - {synced: "2026-10-09T10:30:10-04:00", connector: calendar, kind: calendar_event, external_id: "outlook:kh-dinner:2026-10-10T19:00:00-04:00",
-     title: "Knight Hacks: dinner", when: "2026-10-10T19:00:00-04:00", summary: "until 8:00 PM · Engineering II atrium"}
+     title: "Knight Hacks: dinner", when: "2026-10-10T19:00:00-04:00", summary: "until {when+60m} · Engineering II atrium"}
   - {synced: "2026-10-09T10:30:10-04:00", connector: calendar, kind: calendar_event, external_id: "campus:lawn-concert:2026-10-10T20:00:00-04:00",
-     title: "Free concert on the lawn", when: "2026-10-10T20:00:00-04:00", summary: "until 10:00 PM · Memory Mall · free"}
+     title: "Free concert on the lawn", when: "2026-10-10T20:00:00-04:00", summary: "until {when+120m} · Memory Mall · free"}
   # Not in fixtures/memory/memory.yaml: an event that starts a quarter of an hour after someone walks out
   # at 9:05 with the keys still on the desk, so the leaving checklist and "Leave ready" have something to say.
   - {synced: "2026-10-09T10:30:10-04:00", connector: calendar, kind: calendar_event, external_id: "outlook:kh-mentor:2026-10-11T09:20:00-04:00",
-     title: "Knight Hacks: mentor check-in", when: "2026-10-11T09:20:00-04:00", summary: "until 9:40 AM · Engineering II atrium"}
+     title: "Knight Hacks: mentor check-in", when: "2026-10-11T09:20:00-04:00", summary: "until {when+20m} · Engineering II atrium"}
   - {synced: "2026-10-09T10:30:10-04:00", connector: calendar, kind: calendar_event, external_id: "outlook:kh-submit:2026-10-11T11:00:00-04:00",
-     title: "Knight Hacks: submissions due", when: "2026-10-11T11:00:00-04:00", summary: "until 11:15 AM · Devpost"}
+     title: "Knight Hacks: submissions due", when: "2026-10-11T11:00:00-04:00", summary: "until {when+15m} · Devpost"}
   - {synced: "2026-10-09T10:30:10-04:00", connector: calendar, kind: calendar_event, external_id: "outlook:kh-judging:2026-10-11T12:00:00-04:00",
-     title: "Knight Hacks: judging and demos", when: "2026-10-11T12:00:00-04:00", summary: "until 2:00 PM · Engineering II atrium"}
+     title: "Knight Hacks: judging and demos", when: "2026-10-11T12:00:00-04:00", summary: "until {when+120m} · Engineering II atrium"}
   - {synced: "2026-10-09T10:30:10-04:00", connector: calendar, kind: calendar_event, external_id: "outlook:study-session:2026-10-11T14:00:00-04:00",
-     title: "COP4533 study session", when: "2026-10-11T14:00:00-04:00", summary: "until 5:00 PM · Library, 3rd floor"}
+     title: "COP4533 study session", when: "2026-10-11T14:00:00-04:00", summary: "until {when+180m} · Library, 3rd floor"}
   - {synced: "2026-10-09T10:30:10-04:00", connector: calendar, kind: calendar_event, external_id: "outlook:cop4533-lecture:2026-10-12T10:40:00-04:00",
-     title: "COP4533 lecture", when: "2026-10-12T10:40:00-04:00", summary: "until 11:30 AM · CSE A101"}
+     title: "COP4533 lecture", when: "2026-10-12T10:40:00-04:00", summary: "until {when+50m} · CSE A101"}
   # Group chats: each message is synced a minute after it was posted.
   - {synced: "2026-10-10T16:03:00-04:00", connector: groupme, kind: message, external_id: "class:1760100001",
-     title: "Maya: anyone started the COP4533 milestone 1? due tuesday", when: "2026-10-10T16:02:00-04:00",
-     summary: "Maya in COP4533 class chat: anyone started the COP4533 milestone 1? due tuesday"}
+     title: "Maya: anyone started the COP4533 milestone 1? due {day 2026-10-13}", when: "2026-10-10T16:02:00-04:00",
+     summary: "Maya in COP4533 class chat: anyone started the COP4533 milestone 1? due {day 2026-10-13}"}
   - {synced: "2026-10-10T16:06:00-04:00", connector: groupme, kind: message, external_id: "class:1760100002",
      title: "Jordan: started last night. the dynamic programming part is way harder than it l", when: "2026-10-10T16:05:00-04:00",
-     summary: "Jordan in COP4533 class chat: started last night. the dynamic programming part is way harder than it looks, don't leave it for monday"}
+     summary: "Jordan in COP4533 class chat: started last night. the dynamic programming part is way harder than it looks, don't leave it for {day 2026-10-12}"}
   - {synced: "2026-10-10T16:10:00-04:00", connector: groupme, kind: message, external_id: "class:1760100003",
      title: "Priya: the TA said half the points are the runtime analysis writeup, not the cod", when: "2026-10-10T16:09:00-04:00",
      summary: "Priya in COP4533 class chat: the TA said half the points are the runtime analysis writeup, not the code"}
   - {synced: "2026-10-10T16:21:00-04:00", connector: groupme, kind: message, external_id: "class:1760100004",
-     title: "Maya: ok. study session sunday afternoon at the library? 2pm?", when: "2026-10-10T16:20:00-04:00",
-     summary: "Maya in COP4533 class chat: ok. study session sunday afternoon at the library? 2pm?"}
+     title: "Maya: ok. study session {day 2026-10-11} afternoon at the library? 2pm?", when: "2026-10-10T16:20:00-04:00",
+     summary: "Maya in COP4533 class chat: ok. study session {day 2026-10-11} afternoon at the library? 2pm?"}
   - {synced: "2026-10-10T17:32:00-04:00", connector: groupme, kind: message, external_id: "friends:1760100005",
      title: "Riley: has anyone eaten actual food today or just energy drinks", when: "2026-10-10T17:31:00-04:00",
      summary: "Riley in Friends: has anyone eaten actual food today or just energy drinks"}
@@ -210,4 +216,7 @@ beats:
      captions: ["A person steps out through the door with a phone to their ear."]}
   - {at: "2026-10-11T09:12:00-04:00", camera: cam-desk, move: sit, people: 2, seconds: 120, things: [laptop, keys],
      captions: ["Two people rehearse a presentation; one points at the monitor."],
-     objects: [{label: keys, position: "left of the laptop, behind the coffee mug"}]}
+     # laptop and phone are named here so "where is my laptop" has a text position, not only a detector track
+     objects: [{label: keys, position: "left of the laptop, behind the coffee mug"},
+               {label: laptop, position: "open in the middle of the desk"},
+               {label: phone, position: "face down, right of the laptop"}]}

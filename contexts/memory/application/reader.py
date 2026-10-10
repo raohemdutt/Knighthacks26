@@ -43,7 +43,14 @@ class SqliteMemory:
         return group_by_hour(start, end, self.episodes(start, end))
 
     def last_seen(self, label: str) -> Sighting | None:
+        """The latest object-list sighting (it has a text position), unless the detector tracked the label after it.
+
+        A track gives the camera, the zone its zone events put it in, the time and the frame, and no position."""
         row = self.db.execute("SELECT * FROM memory_sightings WHERE label = ? ORDER BY ts DESC, id LIMIT 1", (label,)).fetchone()
+        track = self.db.execute("SELECT * FROM memory_tracks WHERE label = ?", (label,)).fetchone()
+        if track and (row is None or track["ts"] > row["ts"]):
+            return Sighting(label=label, camera_id=track["camera_id"], zone_id=track["zone_id"], ts=parse(track["ts"]),
+                            frame_ref=track["frame_ref"] or "")
         if row is None:
             return None
         return Sighting(label=row["label"], camera_id=row["camera_id"], zone_id=row["zone_id"], ts=parse(row["ts"]),
@@ -60,15 +67,27 @@ class SqliteMemory:
     def search(self, q: str, limit: int = 5) -> list[SearchHit]:
         """Best first. An item comes back with `episode_id` "item:<connector>:<external_id>" and its connector as the camera.
 
-        An hourly note comes back as kind "note" on the first episode it covers, so it cites a real keyframe."""
+        An hourly note comes back as kind "note" on the first episode it covers, so it cites a real keyframe.
+        An episode is indexed once per caption and once for its summary: it comes back once, with the
+        text that matched best, and so does every item and note. `limit` counts those distinct results."""
         match = fts_query(q)
-        if not match:
+        if not match or limit <= 0:
             return []
         rows = self.db.execute(
-            "SELECT text, source, ref, bm25(memory_fts) AS rank FROM memory_fts WHERE memory_fts MATCH ? ORDER BY rank, rowid LIMIT ?",
-            (match, limit),
-        ).fetchall()
-        return [hit for r in rows if (hit := self._hit(r))]
+            "SELECT text, source, ref, bm25(memory_fts) AS rank FROM memory_fts WHERE memory_fts MATCH ? ORDER BY rank, rowid",
+            (match,),
+        )
+        hits: list[SearchHit] = []
+        seen: set[str] = set()
+        for r in rows:  # best first, so the first row of a ref is its best
+            if r["ref"] in seen:
+                continue
+            seen.add(r["ref"])
+            if hit := self._hit(r):
+                hits.append(hit)
+                if len(hits) == limit:
+                    break
+        return hits
 
     def _hit(self, row) -> SearchHit | None:
         score = -row["rank"]  # bm25 is lower-is-better
