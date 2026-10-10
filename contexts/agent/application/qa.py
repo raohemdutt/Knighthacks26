@@ -29,7 +29,8 @@ MAX_TOOL_CALLS = 3
 
 SYSTEM = (
     "You are Atlas, a home camera assistant. Answer in one or two short sentences "
-    "using only the evidence given. Mention times. If the evidence does not answer "
+    "using only the evidence given. Mention times. When a line is marked \"Most recent\", "
+    "a question about the last time is answered from that line. If the evidence does not answer "
     f'the question, say "{NO_EVIDENCE}"'
 )
 
@@ -113,11 +114,21 @@ KEYFRAME_TOOL = {
 }
 PAGE_EXCERPT = 600
 
-WHERE_IS = re.compile(r"where(?: did i (?:leave|put)| are| is|'s|\u2019s) (?P<item>[a-z ]+?)[?.!, ]*$")
+WHERE_IS = re.compile(
+    r"(?:where(?: did i (?:leave|put)|['\u2019]?d i (?:leave|put)| are| is|'s|\u2019s)|have you seen|(?:i )?can(?:no|['\u2019]?)t find)"
+    r" (?P<item>[a-z ]+?)[?.!, ]*$"
+)
 # "where is the package now?" asks about "package": words around the item that are not part of its name
 ITEM_LEAD = re.compile(r"^(?:my|the|our|an?)\s+")
 ITEM_TAIL = re.compile(r"\s+(?:right now|now|currently|at the moment|today|again)$")
 WHAT_HAPPENED = re.compile(r"what (?:happened|became) (?:to|of) (?:my |the |our )?(?P<item>[a-z ]+?)[?.!]*$")
+# "did a package arrive?", "has my order been delivered?": the same trace as "what happened to the package?"
+ARRIVED = re.compile(r"(?:did|has) (?:a|an|the|my|our|any) (?P<item>[a-z ]+?) (?:arrive|come|show up|get delivered|been delivered)")
+# "when did someone last leave the table?", "what time did ... last ...", "when was the last time ..."
+LAST_WHEN = re.compile(r"^(?:when did|when was the last|what time did .* last)|\blast time\b")
+RELEVANT = 0.75  # "when did X last": keep hits scoring at least this share of the best one
+NIGHT = re.compile(r"\b(?:overnight|last night|while (?:i|we) (?:was |were )?(?:asleep|sleeping|slept|were out))\b")
+RECENT = re.compile(r"\b(?:recently|just now|a minute ago|a few minutes ago)\b")
 SHORT_WINDOW = timedelta(hours=3)  # up to this long, each episode is its own line and citation
 LAST_N = re.compile(r"(?:last|past) (?P<n>\d+|an?) ?(?P<unit>hours?|minutes?|mins?)")
 
@@ -204,6 +215,7 @@ def upcoming_window(q: str, now: datetime, tz) -> tuple[datetime, datetime]:
 
 
 MAX_EPISODE_LINES = 12
+TRACE_BACK = timedelta(hours=48)  # how far back "what happened to the package?" looks for tagged episodes
 
 
 def named_cameras(question: str | None, cameras: set[str]) -> set[str]:
@@ -215,7 +227,7 @@ def named_cameras(question: str | None, cameras: set[str]) -> set[str]:
 
 
 def time_window(q: str, now: datetime, sleep: SleepSchedule = SleepSchedule()) -> tuple[datetime, datetime] | None:
-    if "overnight" in q or "last night" in q:
+    if NIGHT.search(q):
         return sleep.last_night(now)
     if "today" in q:
         return now.replace(hour=0, minute=0, second=0, microsecond=0), now
@@ -227,7 +239,7 @@ def time_window(q: str, now: datetime, sleep: SleepSchedule = SleepSchedule()) -
         n = 1 if m["n"] in ("a", "an") else int(m["n"])
         unit = timedelta(hours=1) if m["unit"].startswith("hour") else timedelta(minutes=1)
         return now - n * unit, now
-    if "last hour" in q or "past hour" in q:
+    if "last hour" in q or "past hour" in q or RECENT.search(q):
         return now - timedelta(hours=1), now
     return None
 
@@ -297,6 +309,35 @@ class QA:
             ev.add(f"{self._t(b.hour)} hour: " + " ".join(b.captions), Citation(episode_id=eid, frame_ref=ref, ts=b.hour))
             ev.citations += [Citation(episode_id=other, ts=b.hour) for other in b.episode_ids[1:]]  # every episode in the hour
 
+    def trace(self, item: str, ev: Evidence) -> None:
+        """Where `item` was last seen, the latest episodes the detector tagged with it, then caption matches."""
+        self.last_seen(item, ev)
+        now = self.clock()
+        label = item[:-1] if item.endswith("s") and not self.memory.episodes(now - TRACE_BACK, now, label=item) else item
+        for e in sorted(self.memory.episodes(now - TRACE_BACK, now, label=label), key=lambda e: e.start, reverse=True)[:3]:
+            text = e.summary or " ".join(e.captions) or ", ".join(e.labels)
+            ev.add(f"{self._t(e.start)} on {e.camera_id}: {text}",
+                   Citation(episode_id=e.id, frame_ref=(e.keyframe_refs or [None])[0], ts=e.start))
+        seen = {c.episode_id for c in ev.citations}
+        extra = Evidence()
+        self.search_memory(item, extra, newest_first=True)
+        for line, c in zip(extra.lines, extra.citations):
+            if c.episode_id not in seen:
+                ev.add(line, c)
+
+    def last_time(self, question: str, ev: Evidence) -> None:
+        """ "When did someone last leave the table?": the best-matching camera moments, newest first, with the
+        newest one labelled as such so a small model doesn't pick an earlier match (A2 on the Jetson did)."""
+        hits = [h for h in self.memory.search(question, limit=10) if not h.url]
+        if not hits:
+            return
+        best = max(h.score for h in hits)
+        top = sorted((h for h in hits if h.score >= RELEVANT * best), key=lambda h: h.ts, reverse=True)[:3]
+        for i, h in enumerate(top):
+            which = "Most recent" if i == 0 else "Earlier"
+            ev.add(f"{which}: {self._t(h.ts)} on {h.camera_id}: {h.text}",
+                   Citation(episode_id=h.episode_id, frame_ref=h.frame_ref, ts=h.ts))
+
     def search_memory(self, q: str, ev: Evidence, newest_first: bool = False) -> None:
         hits = self.memory.search(q)
         if newest_first:  # "when did X last..." : put the latest match on top for a small model
@@ -356,16 +397,14 @@ class QA:
         if ITEMS_Q.search(q) or (ITEM_THING.search(q) and FUTURE.search(q)):  # A9: "what is due this week?"
             self.upcoming_items(q, ev)
             return ev
-        if m := WHAT_HAPPENED.search(q):  # "what happened to the package?": where it was last, and what was seen with it
-            item = m["item"].strip()
-            self.last_seen(item, ev)
-            self.search_memory(item, ev, newest_first=True)
+        if m := WHAT_HAPPENED.search(q) or ARRIVED.search(q):  # "what happened to the package?" / "did a package arrive?"
+            self.trace(item_name(m["item"]), ev)
             return ev
         if window := time_window(q, self.clock(), self.sleep):
             self.episodes_between(*window, ev, question=q)
             return ev
-        if q.startswith("when did") or "last time" in q:
-            self.search_memory(question, ev, newest_first=True)
+        if LAST_WHEN.search(q):
+            self.last_time(question, ev)
             return ev
         return None
 

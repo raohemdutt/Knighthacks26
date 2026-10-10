@@ -1,20 +1,70 @@
-# Golden questions (A5). A question passes when every expected citation is
-# returned and, with a real model, the answer mentions one of the keywords.
-# `cite` matches episode ids or frame refs.
+# Golden questions (A5) and the demo question bank (A10). A question passes when every
+# expected citation is returned and, with a real model, the answer mentions one of the
+# keywords. `cite` matches episode ids, frame refs or links. `also` lists other ways the
+# driver or a judge may ask the same thing; each one is scored on its own, so the
+# on-device model has to get every phrasing right, not just ours.
+#
+#   python -m contexts.agent.eval                                    # retrieval, fake model (CI)
+#   python -m contexts.agent.eval --runtime llama --base-url http://127.0.0.1:8080   # on the Jetson
 - q: "What happened at our table overnight?"
+  also:
+    - "What happened overnight?"
+    - "What happened last night?"
+    - "Anything happen at the table last night?"
+    - "What went on while we were asleep?"
+    - "Give me a recap of last night"
   cite: [e03, e04, e05, e06, e07]
   keywords: [left, leave, came back, returned, empty]
 - q: "Where did I leave my keys?"
+  also:
+    - "Where are my keys?"
+    - "Where'd I put my keys?"
+    - "Have you seen my keys?"
+    - "Where are the keys right now?"
+    - "I can't find my keys"
   cite: ["frames:cam-desk:k1941"]
   keywords: [mug, desk]
 - q: "Did anyone come to the door in the last hour?"
+  also:
+    - "Was anyone at the door in the last hour?"
+    - "Who came to the door in the past hour?"
+    - "Any visitors at the door in the last hour?"
+    - "Did someone come by the door in the last 60 minutes?"
+    - "Was anyone at the door recently?"
   cite: [e08]
   keywords: [courier, box, package]
 - q: "When did someone last leave the table?"
+  also:
+    - "When was the last time someone left the table?"
+    - "When did the last person leave the table?"
+    - "What time did someone last leave the table?"
+    - "When did somebody last leave our table?"
+    - "Last time someone left the table?"
   cite: [e07]
   keywords: ["7:30"]
+- q: "Did a package arrive?"
+  also:
+    - "What happened to the package?"
+    - "Has a package been delivered?"
+    - "Did the package come?"
+    - "Did any package show up?"
+    - "What happened to my package?"
+  cite: [e08]
+  keywords: [door, courier, box]
 - q: "Where is my wallet?"
+  also:
+    - "Have you seen my wallet?"
+    - "Where did I leave my wallet?"
+    - "I can't find my wallet"
+    - "Where's my wallet?"
+    - "Where is the wallet now?"
   no_evidence: true
 - q: "What is due this week?"
+  also:
+    - "What do I have due this week?"
+    - "Any assignments due this week?"
+    - "What homework is due this week?"
+    - "Do I have any deadlines this week?"
+    - "What's due soon?"
   cite: ["https://webcourses.ucf.edu/courses/1/assignments/4", "https://webcourses.ucf.edu/courses/1/assignments/9"]
   keywords: ["HW 4", "Exam 1", "linked lists"]

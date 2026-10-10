@@ -31,6 +31,7 @@ GOLDEN = Path("fixtures/golden")
 
 class Golden(BaseModel):
     q: str
+    also: list[str] = []  # other ways a judge or the driver may ask it; each must pass on its own
     cite: list[str] = []
     keywords: list[str] = []
     no_evidence: bool = False
@@ -43,6 +44,7 @@ class Result(BaseModel):
     citations_ok: bool
     answer_ok: bool | None  # None when the model is fake
     latency_ms: int
+    shape: str = "prefetch"  # prefetch | tool loop: demo questions must never depend on the open tool loop
 
     @property
     def passed(self) -> bool:
@@ -65,9 +67,10 @@ def run(runtime: Runtime, root: Path = GOLDEN, judge_answers: bool = True) -> li
     memory, now, questions = load_fixture(root)
     qa = QA(runtime, memory, clock=lambda: now, sleep=SleepSchedule.load())
     results = []
-    for g in questions:
+    for g, q in ((g, q) for g in questions for q in [g.q, *g.also]):
+        shape = "prefetch" if qa.prefetch(q) is not None else "tool loop"
         start = time.monotonic()
-        a = asyncio.run(qa.ask(g.q))
+        a = asyncio.run(qa.ask(q))
         latency = int((time.monotonic() - start) * 1000)
         cited = sorted({ref for c in a.citations for ref in (c.episode_id, c.frame_ref, c.url) if ref})
         if g.no_evidence:
@@ -76,7 +79,8 @@ def run(runtime: Runtime, root: Path = GOLDEN, judge_answers: bool = True) -> li
         else:
             citations_ok = set(g.cite) <= set(cited)
             answer_ok = any(k.lower() in a.text.lower() for k in g.keywords) if judge_answers else None
-        results.append(Result(q=g.q, answer=a.text, cited=cited, citations_ok=citations_ok, answer_ok=answer_ok, latency_ms=latency))
+        results.append(Result(q=q, answer=a.text, cited=cited, citations_ok=citations_ok, answer_ok=answer_ok,
+                              latency_ms=latency, shape=shape))
     return results
 
 
@@ -102,7 +106,7 @@ def main(argv: list[str] | None = None) -> int:
     results = run(runtime, judge_answers=args.runtime != "fake")
     for r in results:
         mark = "PASS" if r.passed else "FAIL"
-        print(f"{mark}  {r.latency_ms:>6} ms  {r.q}\n      -> {r.answer}\n      cited: {', '.join(r.cited) or '-'}")
+        print(f"{mark}  {r.latency_ms:>6} ms  [{r.shape}]  {r.q}\n      -> {r.answer}\n      cited: {', '.join(r.cited) or '-'}")
     total = score(results)
     print(f"\nscore {total:.2f} ({sum(r.passed for r in results)}/{len(results)}) model={runtime.model_info().version}")
     if args.json:

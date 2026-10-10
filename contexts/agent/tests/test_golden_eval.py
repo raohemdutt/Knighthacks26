@@ -9,6 +9,13 @@ def test_agent_retrieves_the_right_evidence_for_every_golden_question():
     assert score(results) == 1
 
 
+def test_every_demo_question_and_paraphrase_takes_a_fixed_path():
+    """A10: on stage, a 4B model must never be left to choose tools; every way of asking has a prefetch shape."""
+    results = run(FakeRuntime(), judge_answers=False)
+    assert len(results) >= 40
+    assert [r.q for r in results if r.shape != "prefetch"] == []
+
+
 def test_cli_writes_json(tmp_path):
     out = tmp_path / "eval.json"
     assert main(["--json", str(out)]) == 0
