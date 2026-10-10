@@ -8,7 +8,9 @@
 // Without --writes the only POST is /api/ask (which the gateway logs as a question).
 // With --writes it also creates a harmless training-export approval through
 // /api/teach and denies it, to check the approval card and the live events, and
-// tries POST /api/presence. Use --writes against a throwaway data directory.
+// tries POST /api/presence and commits Day Run's scripted good plan (which creates
+// an approval card when the box can write to a calendar; the card is denied again).
+// Use --writes against a throwaway data directory.
 
 import { randomBytes } from "node:crypto";
 import http from "node:http";
@@ -95,6 +97,110 @@ const IMPACT = {
   before_after_nudges: nullableObject({ before: nullableObject(COUNTS), after: nullableObject(COUNTS) }),
 };
 const APPROVAL = { id: "string", kind: "string", target: "string", reason: "string", params: "object", status: "string", expires_at: isoDate, result: "string?" };
+const SIGHTING = { label: "string", camera_id: "string", zone_id: "string?", ts: isoDate, frame_ref: "string", position: "string?" };
+
+// Place packs and Day Run (contexts/play/dayrun/models.py): the fields lib/api.ts reads.
+const inner = (spec) => (v) => problems(v, spec, "").join("; ") || undefined;
+const optionalNumber = (v) => (v === undefined || typeof v === "number" ? undefined : `expected a number or nothing, got ${typeOf(v)}`);
+const PLACE_PACK = {
+  name: "string", kind: "string", entry: "string?",
+  places: (v) => {
+    if (typeOf(v) !== "object") return `expected an object, got ${typeOf(v)}`;
+    // `lat`/`lon` are left out (not null) for rooms, so they are checked only when present.
+    const bad = Object.entries(v).flatMap(([id, p]) => [
+      ...problems(p, { name: "string", kind: "string", aliases: stringList }, id),
+      ...["lat", "lon"].flatMap((k) => (optionalNumber(p?.[k]) ? [`${id}.${k}: ${optionalNumber(p[k])}`] : [])),
+    ]);
+    return bad.length ? bad.slice(0, 3).join("; ") : undefined;
+  },
+};
+const MOVE_OPTION = {
+  kind: oneOf("study", "eat", "sleep", "rest", "event"), place: "string?", place_name: "string?", title: "string", walk_minutes: "number",
+  back_minutes: "number", max_minutes: "number", feasible: "boolean", reason: "string?", friends: stringList, event: "string?", route: stringList,
+};
+const INITIAL = { energy: "number", focus: "number", sleep_hours: "number", meals: "number", sleep_debt: "number", hungry_minutes: "number", source: "string" };
+const BOARD = {
+  start: isoDate, end: isoDate, tick_minutes: "number", pack: "string", start_place: "string", home: "string", closed: stringList,
+  initial: inner(INITIAL),
+  blocks: listOf({ id: "string", title: "string", start: isoDate, end: isoDate, place: "string?", place_name: "string?", activity: "string", deadline: "string?", url: "string?" }),
+  deadlines: listOf({ id: "string", title: "string", due: isoDate, work_left: "number", in_window: "boolean", risk: "number", url: "string?" }),
+  slots: listOf({ id: "string", start: isoDate, end: isoDate, minutes: "number", from_place: "string", to_place: "string?", next_block: "string?", moves: listOf(MOVE_OPTION) }),
+  friends: listOf({ member: "string", place: "string", place_name: "string", start: isoDate, end: isoDate }),
+  events: listOf({ id: "string", title: "string", start: isoDate, end: isoDate, place: "string?", place_name: "string?", url: "string?" }),
+};
+const pairOrNull = (v) => (v === null || (Array.isArray(v) && v.length === 2 && v.every((n) => typeof n === "number")) ? undefined : "expected [lat, lon] or null");
+const MOVE = { slot: "string", kind: "string", place: "string?", minutes: "number?", start: "string?", with_friend: "string?", deadline: "string?", event: "string?" };
+const OUTCOME = {
+  won: "boolean", stars: "number", reasons: stringList, summary: "string",
+  checks: listOf({ id: "string", ok: "boolean", value: "number", target: "number", text: "string", status: "string?" }),
+};
+const CHANGE = { move: "number?", kind: oneOf("rerouted", "shortened", "friend_gone", "late", "route_changed", "rejected"), text: "string" };
+const TOTALS = { study_minutes: "number", focused_minutes: "number", walk_minutes: "number", sleep_hours: "number", meals: "number", energy_end: "number", energy_min: "number", points: "number" };
+const SIM = {
+  start: isoDate, end: isoDate, tick_minutes: "number", stars: "number", notes: stringList,
+  outcome: inner(OUTCOME),
+  timeline: listOf({ t: isoDate, energy: "number", focus: "number", deadline_risk: "number", work_left: "object", activity: "string", place: "string" }),
+  legs: listOf({ from: "string", to: "string", from_name: "string", to_name: "string", minutes: "number", from_xy: pairOrNull, to_xy: pairOrNull, route: "number", depart: isoDate }),
+  routes: listOf({ index: "number", purpose: "string", move: "number?", start: "string", end: "string", depart: isoDate, arrive: isoDate, minutes: "number", places: stringList }),
+  rejected: listOf({ index: "number", reason: "string", minutes: "number?", move: inner(MOVE) }),
+  blocks: listOf({ id: "string", kind: "string", title: "string", start: isoDate, end: isoDate, minutes: "number", place: "string", place_name: "string", fixed: "boolean", move: "number?", with_friend: "string?" }),
+  changes: listOf(CHANGE),
+  totals: inner(TOTALS),
+};
+const HARD = {
+  seed: "number", before: inner(SIM), after: inner(SIM), changes: listOf(CHANGE),
+  disruptions: listOf({ kind: oneOf("block_moved", "friend_cancelled", "place_closed"), text: "string" }),
+};
+const MEASURED = { focus_minutes: "number?", meals: "number?", sleep_hours: "number?", blocks: "object" };
+const REVIEW = {
+  day: "string", score: "number?", planned: "object", measured: inner(MEASURED), text: "string", measured_by: "string",
+  blocks: listOf({ id: "string", title: "string", kind: "string", planned_minutes: "number", measured_minutes: "number?", followed: "number?", note: "string" }),
+  biggest_gap: nullableObject({ block: "string?", kind: "string", planned: "number", measured: "number", text: "string" }),
+};
+const REPLAY = {
+  day: "string", actual: inner(MEASURED), baseline: inner(SIM), plan: inner(SIM), points_gained: "number", stars_gained: "number", text: "string",
+  baseline_moves: listOf(MOVE), board: inner(BOARD),
+};
+const CAMPAIGN = { won: "boolean", stars: "number", points: "number", days: listOf({ day: "string", result: inner(SIM), carry_in: inner(INITIAL) }) };
+const FORECAST = {
+  score: "number", bias: "number", multiplier: "number", unmeasured: stringList, text: "string",
+  rows: listOf({ block: "string", estimated: "number", measured: "number", error: "number", off_by: "number" }),
+};
+const COMMIT = { action_id: "string", day: "string", stars: "number", reason: "string", events: listOf({ title: "string", start: isoDate, end: isoDate, location: "string" }) };
+
+// The scripted plans the app embeds (lib/demoDay.ts, copied from fixtures/play/demo.yaml). Keep the three in step.
+const DEMO_BAD_PLAN = [
+  { slot: "s1", kind: "rest" },
+  { slot: "s2", kind: "eat", place: "ucf.dining_63", minutes: 40 },
+  { slot: "s3", kind: "rest", minutes: 300 },
+  { slot: "s3", kind: "study", place: "apartment.desk", minutes: 540 },
+  { slot: "s3", kind: "sleep" },
+];
+const DEMO_GOOD_PLAN = [
+  { slot: "s1", kind: "eat", place: "ucf.dining_63", minutes: 30 },
+  { slot: "s1", kind: "rest" },
+  { slot: "s2", kind: "eat", place: "ucf.union", minutes: 25 },
+  { slot: "s3", kind: "study", place: "ucf.library", minutes: 170, with_friend: "Maya" },
+  { slot: "s3", kind: "eat", place: "ucf.union", minutes: 35 },
+  { slot: "s3", kind: "study", place: "ucf.library", minutes: 105 },
+  { slot: "s3", kind: "rest", place: "apartment.desk", minutes: 60 },
+  { slot: "s3", kind: "sleep", start: "2026-10-11T22:30:00-04:00", minutes: 510 },
+];
+const DEMO_DISRUPTIONS = [
+  { kind: "block_moved", block: "outlook:kh-judging:2026-10-11T12:00:00-04:00", to_place: "ucf.cb1", shift_minutes: -15 },
+  { kind: "place_closed", place: "ucf.union" },
+];
+const DEMO_CAMPAIGN = [
+  [DEMO_GOOD_PLAN[0], DEMO_GOOD_PLAN[2], DEMO_GOOD_PLAN[3], DEMO_GOOD_PLAN[4], DEMO_GOOD_PLAN[7]],
+  [
+    { slot: "s1", kind: "eat", place: "apartment.kitchen", minutes: 20 },
+    { slot: "s2", kind: "eat", place: "ucf.union", minutes: 30 },
+    { slot: "s2", kind: "study", place: "ucf.library", minutes: 180 },
+    { slot: "s2", kind: "eat", place: "ucf.union", minutes: 30 },
+    { slot: "s2", kind: "sleep", start: "2026-10-12T23:00:00-04:00", minutes: 480 },
+  ],
+];
+
 const PLACE = { ...ENVELOPE, circle_id: "string", member_id: "string", place: "string", source: oneOf("phone", "desk"), expires_at: isoDate };
 const LEADERBOARD = {
   circle_id: "string",
@@ -308,6 +414,131 @@ for (const item of ["can", "cup"]) {
   if (r) console.log(`        ${item} -> ${r.bin}; ${r.cols}x${r.rows} grid; ${r.path.length} cells`);
 }
 await check("GET /api/play/accuracy", "GET", "/api/play/accuracy", ACCURACY, { optional: { 404: "Sort It is not configured" } });
+
+console.log("\nRoom map");
+for (const label of ["keys", "wallet", "charger", "laptop", "phone"]) {
+  const s = await check(`GET /memory/objects/${label}/last-seen`, "GET", `/memory/objects/${label}/last-seen`, SIGHTING, { optional: { 404: "never seen" } });
+  if (s) console.log(`        ${s.camera_id} / ${s.zone_id ?? "no zone"}: ${s.position ?? "no position text"}`);
+}
+{
+  const r = await call("GET", "/api/zones");
+  if (r.status === 404) ok("GET /api/zones", "404 as expected: no endpoint returns the zone polygons, so the app embeds config/zones.yaml at build time");
+  else fail("GET /api/zones", `HTTP ${r.status}: an endpoint now exists; lib/zones.generated.ts can be replaced by a fetch`);
+}
+
+console.log("\nPlaces");
+const expect = (name, cond, note) => (cond ? ok(name) : fail(name, note));
+const NO_DAYRUN = { 404: "Day Run is not configured (it needs the place packs)" };
+const packs = await check("GET /api/places", "GET", "/api/places", PLACE_PACK, { list: true, optional: { 404: "no place packs loaded" } });
+if (packs) {
+  const located = packs.flatMap((p) => Object.values(p.places)).filter((p) => typeof p.lat === "number" && typeof p.lon === "number").length;
+  const all = packs.reduce((n, p) => n + Object.keys(p.places).length, 0);
+  console.log(`        ${packs.length} packs, ${all} places, ${located} with coordinates (the rest are listed beside the map)`);
+}
+
+console.log("\nDay Run (scenario demo)");
+const board = await check("GET /api/dayrun/board?scenario=demo", "GET", "/api/dayrun/board?scenario=demo", BOARD, { optional: NO_DAYRUN });
+if (board) {
+  console.log(`        ${board.slots.length} slots, ${board.blocks.length} fixed blocks, ${board.deadlines.length} deadlines, ${board.friends.length} friends, ${board.events.length} optional events`);
+  const known = new Set((packs ?? []).flatMap((p) => Object.keys(p.places).map((id) => `${p.name}.${id}`)));
+  const refs = [board.start_place, board.home, ...board.slots.flatMap((s) => s.moves.map((m) => m.place)), ...board.friends.map((f) => f.place)].filter(Boolean);
+  if (packs) expect("  every place the board names is in GET /api/places", refs.every((r) => known.has(r)), `unknown: ${[...new Set(refs.filter((r) => !known.has(r)))].join(", ")}`);
+  const plan = (moves, extra = {}) => ({ scenario: "demo", start: board.start, moves, ...extra });
+
+  const empty = await check("POST /api/dayrun/simulate (no moves)", "POST", "/api/dayrun/simulate", SIM, { body: plan([]) });
+  if (empty) expect("  the timeline covers the board", empty.timeline.length > 1 && empty.timeline[0].t === empty.start && empty.timeline.at(-1).t === empty.end, `${empty.timeline.length} ticks, ${empty.timeline[0]?.t} to ${empty.timeline.at(-1)?.t}`);
+
+  const bad = await check("POST /api/dayrun/simulate (bad plan)", "POST", "/api/dayrun/simulate", SIM, { body: plan(DEMO_BAD_PLAN) });
+  if (bad) {
+    expect("  the bad plan fails with no stars", !bad.outcome.won && bad.stars === 0 && bad.outcome.reasons.length > 0, `won=${bad.outcome.won} stars=${bad.stars}`);
+    expect("  the lunch run is rejected with a reason", bad.rejected.length === 1 && bad.rejected[0].index === 1 && /miss the 12:00/.test(bad.rejected[0].reason), JSON.stringify(bad.rejected).slice(0, 200));
+    console.log(`        ${bad.outcome.summary}`);
+    console.log(`        rejected: ${bad.rejected.map((r) => r.reason).join("; ")}`);
+  }
+
+  const good = await check("POST /api/dayrun/simulate (good plan)", "POST", "/api/dayrun/simulate", SIM, { body: plan(DEMO_GOOD_PLAN) });
+  if (good) {
+    expect("  the good plan wins three stars", good.outcome.won && good.stars === 3 && good.rejected.length === 0, `won=${good.outcome.won} stars=${good.stars} rejected=${good.rejected.length}`);
+    expect("  every leg belongs to a route", good.legs.length > 0 && good.legs.every((l) => good.routes.some((r) => r.index === l.route)), "a leg names a route that is not listed");
+    expect("  every accepted move has its block", DEMO_GOOD_PLAN.every((_, i) => good.blocks.some((b) => !b.fixed && b.move === i && b.id === `m${i}`)), "blocks are not m<index> per move");
+    const drawn = good.legs.filter((l) => l.from_xy && l.to_xy).length;
+    console.log(`        ${good.outcome.summary}`);
+    console.log(`        ${good.routes.length} routes, ${good.legs.length} legs (${drawn} with coordinates, ${good.legs.length - drawn} indoors), ${good.timeline.length} ticks`);
+  }
+
+  const hard = await check("POST /api/dayrun/hard (scripted disruptions)", "POST", "/api/dayrun/hard", HARD, { body: plan(DEMO_GOOD_PLAN, { disruptions: DEMO_DISRUPTIONS }) });
+  if (hard) {
+    expect("  both disruptions come back with their text", hard.disruptions.length === 2 && hard.disruptions.every((d) => d.text.length > 0), JSON.stringify(hard.disruptions).slice(0, 200));
+    expect("  the plan is re-routed and shortened", ["rerouted", "shortened", "route_changed"].every((k) => hard.changes.some((c) => c.kind === k)), hard.changes.map((c) => c.kind).join(", "));
+    console.log(`        before: ${hard.before.outcome.summary} (${hard.before.totals.walk_minutes} min walking)`);
+    console.log(`        after:  ${hard.after.outcome.summary} (${hard.after.totals.walk_minutes} min walking)`);
+    for (const c of hard.changes) console.log(`        [${c.kind}] ${c.text}`);
+  }
+  const seeded = await check("POST /api/dayrun/hard (seed 7, count 2)", "POST", "/api/dayrun/hard", HARD, { body: plan(DEMO_GOOD_PLAN, { seed: 7, count: 2 }) });
+  if (seeded) expect("  the seed is echoed and picks two disruptions", seeded.seed === 7 && seeded.disruptions.length === 2, `seed=${seeded.seed}, ${seeded.disruptions.length} disruptions`);
+
+  // Commit: a failing plan is refused with the reasons; a winning one becomes an approval card, or 409 when no calendar can be written.
+  const refused = await call("POST", "/api/dayrun/commit", plan(DEMO_BAD_PLAN));
+  const detail = refused.data?.detail;
+  if (refused.status === 401) skip("POST /api/dayrun/commit (bad plan)", "the box asks for a token: set ATLAS_TOKEN");
+  else expect("POST /api/dayrun/commit (bad plan) -> 422 {message, reasons}", refused.status === 422 && typeof detail?.message === "string" && Array.isArray(detail?.reasons) && detail.reasons.length > 0, `HTTP ${refused.status}: ${JSON.stringify(refused.data)?.slice(0, 200)}`);
+  let committed = false;
+  if (WRITES) {
+    const c = await call("POST", "/api/dayrun/commit", plan(DEMO_GOOD_PLAN));
+    if (c.status === 409 && typeof c.data?.detail === "string") ok("POST /api/dayrun/commit (good plan)", `409: ${c.data.detail}; the app shows this message`);
+    else if (c.status === 200) {
+      const wrong = problems(c.data, COMMIT, "body");
+      const pending = (await call("GET", "/api/approvals")).data;
+      const card = Array.isArray(pending) ? pending.find((p) => p.id === c.data.action_id) : undefined;
+      if (wrong.length) fail("POST /api/dayrun/commit (good plan)", wrong.join("; "));
+      else if (!card) fail("POST /api/dayrun/commit (good plan)", `no approval card ${c.data.action_id} in GET /api/approvals`);
+      else {
+        committed = true;
+        ok("POST /api/dayrun/commit (good plan)", `approval card ${card.kind} ${card.target}: ${c.data.reason}`);
+        await check("POST /api/approvals/{id} deny (the Day Run card)", "POST", `/api/approvals/${c.data.action_id}`, APPROVAL, { body: { decision: "deny" } });
+      }
+    } else fail("POST /api/dayrun/commit (good plan)", `HTTP ${c.status}: ${JSON.stringify(c.data)?.slice(0, 200)}`);
+  } else skip("POST /api/dayrun/commit (good plan)", "run with --writes");
+
+  const day = board.start.slice(0, 10);
+  const review = await call("GET", `/api/dayrun/review?day=${day}&scenario=demo`);
+  if (review.status === 404 && typeof review.data?.detail === "string") {
+    if (committed) fail("GET /api/dayrun/review", `a plan was just committed for ${day} but the box says: ${review.data.detail}`);
+    else ok("GET /api/dayrun/review", `404: ${review.data.detail}; the app shows this message`);
+  } else if (review.status === 200) {
+    const wrong = problems(review.data, REVIEW, "body");
+    if (wrong.length) fail("GET /api/dayrun/review", wrong.join("; "));
+    else ok("GET /api/dayrun/review", `score ${review.data.score}: ${review.data.text}`.slice(0, 170));
+  } else fail("GET /api/dayrun/review", `HTTP ${review.status}: ${JSON.stringify(review.data)?.slice(0, 200)}`);
+
+  const replay = await check("POST /api/dayrun/replay", "POST", "/api/dayrun/replay", REPLAY, { body: { scenario: "demo", day, moves: DEMO_GOOD_PLAN } });
+  if (replay) console.log(`        ${replay.points_gained >= 0 ? "+" : ""}${replay.points_gained} points, ${replay.stars_gained >= 0 ? "+" : ""}${replay.stars_gained} stars`);
+  const campaign = await check("POST /api/dayrun/campaign", "POST", "/api/dayrun/campaign", CAMPAIGN, { body: { scenario: "demo", days: DEMO_CAMPAIGN } });
+  if (campaign) {
+    expect("  two days come back, each with its own result", campaign.days.length === 2, `${campaign.days.length} days`);
+    console.log(`        ${campaign.won ? "won" : "lost"}, ${campaign.stars} stars, ${campaign.points} points`);
+  }
+  const forecast = await check("POST /api/dayrun/forecast (measured given)", "POST", "/api/dayrun/forecast", FORECAST, {
+    body: { estimates: [{ block: "m3", minutes: 120 }, { block: "m5", minutes: 60 }], measured: { m3: 170, m5: 90 } },
+  });
+  if (forecast) console.log(`        ${forecast.text}`);
+  const fromReview = await call("POST", "/api/dayrun/forecast", { estimates: [{ block: "m3", minutes: 120 }], day, scenario: "demo" });
+  if (fromReview.status === 200) {
+    const wrong = problems(fromReview.data, FORECAST, "body");
+    if (wrong.length) fail("POST /api/dayrun/forecast (from the review)", wrong.join("; "));
+    else ok("POST /api/dayrun/forecast (from the review)", `${fromReview.data.rows.length} scored, ${fromReview.data.unmeasured.length} unmeasured`);
+  } else if (fromReview.status === 404 && typeof fromReview.data?.detail === "string") ok("POST /api/dayrun/forecast (from the review)", `404: ${fromReview.data.detail}; the app shows this message`);
+  else fail("POST /api/dayrun/forecast (from the review)", `HTTP ${fromReview.status}: ${JSON.stringify(fromReview.data)?.slice(0, 200)}`);
+
+  console.log("\nDay Run (my day: live sources)");
+  const mine = await check("GET /api/dayrun/board", "GET", "/api/dayrun/board", BOARD, { optional: NO_DAYRUN });
+  if (mine) {
+    console.log(`        ${mine.slots.length} slots, ${mine.blocks.length} fixed blocks, ${mine.deadlines.length} deadlines, ${mine.friends.length} friends; starting values from ${mine.initial.source}`);
+    const r = await check("POST /api/dayrun/simulate (my day, no moves)", "POST", "/api/dayrun/simulate", SIM, { body: { start: mine.start, moves: [] } });
+    if (r) expect("  simulating from the board's own start gives the same window", r.start === mine.start && r.end === mine.end, `${r.start} to ${r.end} vs ${mine.start} to ${mine.end}`);
+    await check("POST /api/dayrun/hard (my day, seed 7)", "POST", "/api/dayrun/hard", HARD, { body: { start: mine.start, moves: [], seed: 7 } });
+  }
+}
 
 ws?.close();
 console.log(failures ? `\nFAILED: ${failures} check${failures === 1 ? "" : "s"} did not match what the app expects.` : "\nAll checks passed.");

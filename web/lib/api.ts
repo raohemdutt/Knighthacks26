@@ -206,6 +206,340 @@ export interface PlayAccuracy {
   round_5_on: number | null;
 }
 
+/** contracts.memory.Sighting: where a watch item was last seen. A zone and a text position; never coordinates. */
+export interface Sighting {
+  label: string;
+  camera_id: string;
+  zone_id: string | null;
+  ts: string;
+  frame_ref: string;
+  position: string | null; // "left of the laptop"
+}
+
+// ---------- place packs and Day Run (contexts/play/dayrun/models.py) ----------
+
+/** One place of a pack (contexts.play.domain.places.Place). `lat`/`lon` are absent for rooms. */
+export interface Place {
+  name: string;
+  kind: string;
+  lat?: number;
+  lon?: number;
+  aliases: string[];
+  pack?: string; // a nested pack this place leads into (a dorm -> its apartment)
+  zones?: string; // a room's zones file, as a path on the box
+}
+
+/** One row of GET /api/places. Edges are not returned. */
+export interface PlacePack {
+  name: string;
+  kind: string; // campus | neighborhood | home
+  entry: string | null;
+  places: Record<string, Place>;
+}
+
+export type MoveKind = "study" | "eat" | "sleep" | "rest" | "event";
+export type Activity = "idle" | "study" | "class" | "walk" | "rest" | "event" | "eat" | "sleep";
+
+export interface FixedBlock {
+  id: string;
+  title: string;
+  start: string;
+  end: string;
+  place: string | null; // "pack.place"; null = wherever you are
+  place_name: string | null;
+  activity: Activity;
+  deadline: string | null;
+  url: string | null;
+}
+
+export interface Deadline {
+  id: string;
+  title: string;
+  due: string;
+  work_left: number; // focused minutes still needed
+  in_window: boolean;
+  risk: number; // 0..1 at the start of the board
+  url: string | null;
+}
+
+export interface FriendAt {
+  member: string;
+  place: string;
+  place_name: string;
+  start: string;
+  end: string;
+}
+
+export interface OptionalEvent {
+  id: string;
+  title: string;
+  start: string;
+  end: string;
+  place: string | null;
+  place_name: string | null;
+  url: string | null;
+}
+
+export interface MoveOption {
+  kind: MoveKind;
+  place: string | null;
+  place_name: string | null;
+  title: string;
+  walk_minutes: number; // from where the slot starts
+  back_minutes: number; // from there on to the next fixed block
+  max_minutes: number; // what is left of the slot after both walks
+  feasible: boolean;
+  reason: string | null;
+  friends: string[];
+  event: string | null;
+  route: string[];
+}
+
+export interface OpenSlot {
+  id: string;
+  start: string;
+  end: string;
+  minutes: number;
+  from_place: string;
+  to_place: string | null;
+  next_block: string | null;
+  moves: MoveOption[];
+}
+
+export interface DayRunInitial {
+  energy: number;
+  focus: number;
+  sleep_hours: number;
+  meals: number;
+  sleep_debt: number;
+  hungry_minutes: number;
+  source: string; // "habits" when Habits supplied the numbers, "defaults" otherwise
+}
+
+export interface Board {
+  start: string;
+  end: string;
+  tick_minutes: number;
+  pack: string;
+  start_place: string;
+  home: string;
+  initial: DayRunInitial;
+  blocks: FixedBlock[];
+  deadlines: Deadline[];
+  slots: OpenSlot[];
+  friends: FriendAt[];
+  events: OptionalEvent[];
+  closed: string[];
+  sleep_window: [string, string] | null;
+}
+
+/** One chosen move. Optional fields may be left out; the box answers with them as null. */
+export interface Move {
+  slot: string;
+  kind: MoveKind;
+  place?: string | null;
+  minutes?: number | null; // null: fill what is left of the slot
+  start?: string | null;
+  with_friend?: string | null;
+  deadline?: string | null;
+  event?: string | null;
+}
+
+export interface Tick {
+  t: string;
+  energy: number; // 0..100
+  focus: number; // 0..100
+  deadline_risk: number; // 0..1, the worst deadline
+  work_left: Record<string, number>;
+  activity: Activity;
+  place: string;
+}
+
+/** One edge walked. `from_xy`/`to_xy` are [lat, lon], or null indoors. */
+export interface RouteLeg {
+  from: string;
+  to: string;
+  from_name: string;
+  to_name: string;
+  minutes: number;
+  from_xy: [number, number] | null;
+  to_xy: [number, number] | null;
+  route: number; // index into `routes`
+  depart: string;
+}
+
+export interface RouteTaken {
+  index: number;
+  purpose: string;
+  move: number | null;
+  start: string;
+  end: string;
+  depart: string;
+  arrive: string;
+  minutes: number;
+  places: string[];
+}
+
+export interface Rejected {
+  index: number; // position of the move in the plan that was sent
+  move: Move;
+  reason: string;
+  minutes: number | null;
+}
+
+export interface Check {
+  id: string; // "sleep", "meals", or a deadline id
+  ok: boolean;
+  value: number;
+  target: number;
+  text: string;
+  status: string | null;
+}
+
+export interface Outcome {
+  won: boolean;
+  stars: number;
+  reasons: string[];
+  checks: Check[];
+  summary: string;
+}
+
+export interface PlannedBlock {
+  id: string; // a fixed block's id, or "m<index>" for a move
+  kind: string;
+  title: string;
+  start: string;
+  end: string;
+  minutes: number;
+  place: string;
+  place_name: string;
+  fixed: boolean;
+  move: number | null;
+  with_friend: string | null;
+}
+
+export interface Change {
+  move: number | null;
+  kind: "rerouted" | "shortened" | "friend_gone" | "late" | "route_changed" | "rejected";
+  text: string;
+}
+
+export interface Totals {
+  study_minutes: number;
+  focused_minutes: number;
+  walk_minutes: number;
+  sleep_hours: number;
+  meals: number;
+  energy_end: number;
+  energy_min: number;
+  points: number; // 0..100
+}
+
+export interface SimResult {
+  start: string;
+  end: string;
+  tick_minutes: number;
+  outcome: Outcome;
+  stars: number;
+  timeline: Tick[];
+  legs: RouteLeg[];
+  routes: RouteTaken[];
+  rejected: Rejected[];
+  blocks: PlannedBlock[];
+  changes: Change[];
+  notes: string[];
+  totals: Totals;
+}
+
+export interface Disruption {
+  kind: "block_moved" | "friend_cancelled" | "place_closed";
+  block?: string | null;
+  to_place?: string | null;
+  shift_minutes?: number;
+  friend?: string | null;
+  place?: string | null;
+  text?: string;
+}
+
+export interface HardResult {
+  seed: number;
+  disruptions: Disruption[];
+  before: SimResult;
+  after: SimResult;
+  changes: Change[];
+}
+
+export interface CommitResult {
+  action_id: string;
+  day: string;
+  events: { title: string; start: string; end: string; location: string }[];
+  stars: number;
+  reason: string;
+}
+
+export interface Measured {
+  focus_minutes: number | null;
+  meals: number | null;
+  sleep_hours: number | null;
+  blocks: Record<string, number>;
+}
+
+export interface BlockScore {
+  id: string;
+  title: string;
+  kind: string;
+  planned_minutes: number;
+  measured_minutes: number | null;
+  followed: number | null; // 0..1; null when nothing can measure the block
+  note: string;
+}
+
+export interface Review {
+  day: string;
+  score: number | null;
+  blocks: BlockScore[];
+  planned: Record<string, number>;
+  measured: Measured;
+  biggest_gap: { block: string | null; kind: string; planned: number; measured: number; text: string } | null;
+  text: string;
+  measured_by: string;
+}
+
+export interface ReplayResult {
+  day: string;
+  board: Board;
+  actual: Measured;
+  baseline_moves: Move[];
+  baseline: SimResult;
+  plan: SimResult;
+  points_gained: number;
+  stars_gained: number;
+  text: string;
+}
+
+export interface CampaignResult {
+  days: { day: string; carry_in: DayRunInitial; result: SimResult }[];
+  won: boolean;
+  stars: number;
+  points: number;
+}
+
+export interface ForecastResult {
+  score: number; // 0..100
+  bias: number;
+  multiplier: number;
+  rows: { block: string; estimated: number; measured: number; error: number; off_by: number }[];
+  unmeasured: string[];
+  text: string;
+}
+
+/** What simulate, hard and commit take. `start` defaults to now on the box (or the scenario's own time). */
+export interface PlanBody {
+  moves: Move[];
+  start?: string;
+  scenario?: string;
+}
+
 // ---------- events on /ws ----------
 
 export interface AlertRaised extends EventEnvelope {
@@ -267,6 +601,8 @@ export class ApiError extends Error {
   constructor(
     public status: number, // 0 = the gateway could not be reached
     message: string,
+    /** The list a structured error carries (Day Run's commit: why the plan does not win). */
+    public reasons: string[] = [],
   ) {
     super(message);
     this.name = "ApiError";
@@ -306,22 +642,29 @@ async function request<T>(method: "GET" | "POST", path: string, body?: unknown, 
   }
   if (!res.ok) {
     let detail = res.statusText || `HTTP ${res.status}`;
+    let reasons: string[] = [];
     try {
       const data: unknown = await res.json();
       if (data && typeof data === "object" && "detail" in data) {
         const d = (data as { detail: unknown }).detail;
-        detail = typeof d === "string" ? d : JSON.stringify(d);
+        if (typeof d === "string") detail = d;
+        else if (d && typeof d === "object" && typeof (d as { message?: unknown }).message === "string") {
+          // {message, reasons}: Day Run's "only a winning plan can be committed"
+          detail = (d as { message: string }).message;
+          const r = (d as { reasons?: unknown }).reasons;
+          if (Array.isArray(r)) reasons = r.filter((x): x is string => typeof x === "string");
+        } else detail = JSON.stringify(d);
       }
     } catch {
       /* not JSON: keep the status text */
     }
-    throw new ApiError(res.status, detail);
+    throw new ApiError(res.status, detail, reasons);
   }
   return (await res.json()) as T;
 }
 
 const get = <T,>(path: string, params?: Params, signal?: AbortSignal) => request<T>("GET", withQuery(path, params), undefined, signal);
-const post = <T,>(path: string, body: unknown) => request<T>("POST", path, body);
+const post = <T,>(path: string, body: unknown, signal?: AbortSignal) => request<T>("POST", path, body, signal);
 
 /** URL of the JPEG behind a frame ref. 404s when the box has no image for it (demo fixtures have none). */
 export function keyframeUrl(ref: string): string {
@@ -358,4 +701,18 @@ export const api = {
 
   playRoute: (item: string, signal?: AbortSignal) => get<PlayRoute>("/api/play/route", { item }, signal),
   playAccuracy: (signal?: AbortSignal) => get<PlayAccuracy>("/api/play/accuracy", undefined, signal),
+
+  places: (signal?: AbortSignal) => get<PlacePack[]>("/api/places", undefined, signal),
+  lastSeen: (label: string, signal?: AbortSignal) => get<Sighting>(`/memory/objects/${encodeURIComponent(label)}/last-seen`, undefined, signal),
+
+  // Day Run. `scenario` runs a scripted day from fixtures/play/ ("demo") instead of live sources.
+  dayrunBoard: (scenario?: string, signal?: AbortSignal) => get<Board>("/api/dayrun/board", { scenario }, signal),
+  dayrunSimulate: (body: PlanBody, signal?: AbortSignal) => post<SimResult>("/api/dayrun/simulate", body, signal),
+  dayrunHard: (body: PlanBody & { seed?: number; count?: number; disruptions?: Disruption[] }) => post<HardResult>("/api/dayrun/hard", body),
+  dayrunCommit: (body: PlanBody) => post<CommitResult>("/api/dayrun/commit", body),
+  dayrunReview: (day: string, scenario?: string) => get<Review>("/api/dayrun/review", { day, scenario }),
+  dayrunReplay: (body: { day: string; moves: Move[]; scenario?: string }) => post<ReplayResult>("/api/dayrun/replay", body),
+  dayrunCampaign: (body: { days: Move[][]; start?: string; scenario?: string }) => post<CampaignResult>("/api/dayrun/campaign", body),
+  dayrunForecast: (body: { estimates: { block: string; minutes: number }[]; measured?: Record<string, number>; day?: string; scenario?: string }) =>
+    post<ForecastResult>("/api/dayrun/forecast", body),
 };
