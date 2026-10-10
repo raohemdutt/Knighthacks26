@@ -1,0 +1,16 @@
+{
+  "recorded": "2026-10-10T22:30:00Z",
+  "about": "The two SJC Strix Halo pods as the existing helpers saw them on 2026-10-10, for python -m lab placement and its tests. status.json is the answer of python -m lab.controller status --probe-port 8000 for accounts C and D (made by make_status.py from the recorded hub state); <node>.facts.txt is the output of bash lab/pod_a_teacher.sh facts as the R29 and R30 task pages recorded it; power is the telemetry.gpu.power sample file lab/pod_power.py wrote on pod C during the T6 run (gpu-a). A live snapshot is the same files written today under <state dir>/placement.",
+  "status": "status.json",
+  "pods": {
+    "pod-a": {
+      "account": "C",
+      "facts": "pod-a.facts.txt",
+      "power": "../../telemetry/pod_power/strixhalo_2026-10-10_teacher_load_samples.jsonl"
+    },
+    "pod-b": {
+      "account": "D",
+      "facts": "pod-b.facts.txt"
+    }
+  }
+}
