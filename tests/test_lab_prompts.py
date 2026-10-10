@@ -86,7 +86,9 @@ REQUIRED_EVERYWHERE = {
     ),
     "keeps the lock state honest": r"(?i)\breleased\b",
     "forbids attribution": r"(?i)attribution",
-    "never merges a pull request": r"gh pr merge",
+    "leaves the PR open when merging is refused": (
+        r"(?i)refuses gh pr merge[^.\n]*leave the PR open"
+    ),
 }
 
 REQUIRED_BY_TIER = {
@@ -100,6 +102,8 @@ REQUIRED_BY_TIER = {
         "works the rulings file": r"python -m lab rulings",
         "writes the morning review": r"python -m lab review",
         "keeps rubric edits behind a ruling": r"RUBRIC\.md[^.\n]*ruling",
+        "never writes an Answer": r"(?i)never write an answer",
+        "posts on the Plan changes post": r"Plan changes post",
     },
     "opus": {
         "runs a refinement pass": r"/refine-track <track>",
@@ -107,6 +111,8 @@ REQUIRED_BY_TIER = {
         "applies the old-versus-new rule": r"(?i)old versus new",
         "applies the source-forced rule": r"(?i)source-forced",
         "never edits a rubric": r"(?i)never edit[^.\n]*RUBRIC\.md",
+        "edits plans only": r"(?i)edits plans only",
+        "writes rulings in its own log entry": r"(?i)ruling in your log entry",
     },
     "sonnet": {
         "handles slot verifications": r"(?i)slot verification",
@@ -217,7 +223,7 @@ def test_prompt_is_plain_ascii(tier):
 
 @pytest.mark.parametrize("tier", TIERS)
 def test_prompt_has_no_machine_specific_paths(tier):
-    found = re.findall(r"[A-Za-z]:\|/Users/|/home/|/c/", read_prompt(tier))
+    found = re.findall(r"[A-Za-z]:\x5c|/Users/|/home/|/c/", read_prompt(tier))
     assert not found, f"{tier}.md names machine-specific paths: {found}"
 
 
