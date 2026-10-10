@@ -70,8 +70,8 @@ health:
   # K9: last night's sleep from a watch (time asleep, stages, resting heart rate, HRV, breathing rate), one item
   # per night, read from the FreeReps database on the Raspberry Pi with a read-only role. Habits uses the
   # measured sleep instead of the empty-desk estimate. Raw health data stays on the box.
-  # Does nothing (no items, no errors) until FREEREPS_DATABASE_URL is in .env or `fixture` names a file.
-  # Needs the Postgres driver: pip install -e ".[neon]"
+  # Does nothing (no items, no errors) until FREEREPS_DATABASE_URL is in .env, or `export_dir` or `fixture`
+  # is set below. Read in that order; the database needs the Postgres driver: pip install -e ".[neon]"
   module: contexts.connectors.servers.health
   every_s: 1800
   hosts: []  # add the Pi's tailnet address here so the firewall lets this connector reach it
@@ -79,8 +79,12 @@ health:
   env: [FREEREPS_DATABASE_URL]
   options:
     days: 7
-    watch_sources: ["Apple Watch"]  # a row is the watch's when its source contains one of these ("Dominick’s Apple Watch")
-    fixture: null          # a file in the tables' shapes, read when the database is not set or not reachable
+    watch_sources: ["Apple Watch"]  # sleep-stage rows count when their source is empty or contains one of these;
+                                    # In Bed rows only when it contains one (add an older device's label to read
+                                    # nights from before the watch recorded stages)
+    # export_dir: fixtures/watch    # read a FreeReps export (<table>.csv.gz) instead; one teammate's real data, so the box's owner opts in
+    # export_rebase: true           # move the export's dates so its most recent night ends today (demos)
+    fixture: null         # a file in the tables' shapes, read when the database is not set or not reachable
                            # (fixtures/health/freereps.yaml is a synthetic week)
     fixture_rebase: false  # true: move the file's dates so its last day is today (demos)
 

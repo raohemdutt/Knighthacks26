@@ -9,10 +9,12 @@ import pytest
 
 from contexts.connectors.application.hub import ConnectorHub
 from contexts.connectors.domain.health import (
-    Stage, attach_metrics, clusters, night_day, nights, parse_summary, summary_line, to_item, watch_stages,
+    Stage, attach_metrics, clusters, night_day, nights, parse_summary, stage_name, summary_line, to_item, watch_stages,
 )
 from contexts.connectors.domain.spec import load_specs
-from contexts.connectors.infrastructure.freereps import METRICS_SQL, SESSION_OPTIONS, STAGES_SQL, FixtureSource, PostgresSource
+from contexts.connectors.infrastructure.freereps import (
+    METRICS_SQL, SESSION_OPTIONS, SLEEP_SQL, SLEEP_TYPE, FixtureSource, PostgresSource,
+)
 from contexts.connectors.infrastructure.mcp_client import McpConnector
 from contexts.connectors.servers.health import read_nights
 from contracts.connectors import ItemSynced
@@ -20,7 +22,7 @@ from contracts.connectors import ItemSynced
 NY = ZoneInfo("America/New_York")
 ROOT = Path(__file__).resolve().parents[3]
 FIXTURE = ROOT / "fixtures" / "health" / "freereps.yaml"
-WATCH = "Dominick’s Apple Watch"  # the curly apostrophe is what Apple Health writes
+WATCH = "Dominick’s Apple\u00a0Watch"  # the curly apostrophe and the no-break space are what Apple Health writes
 PHONE = "Dominick’s iPhone"
 NOW = datetime(2026, 10, 10, 12, 0, tzinfo=NY)
 OPTIONS = {"fixture": str(FIXTURE), "agent_config": str(ROOT / "config" / "agent.yaml")}
@@ -31,13 +33,19 @@ def at(day: int, clock: str) -> datetime:
     return datetime(2026, 10, day, int(h), int(m), tzinfo=NY)
 
 
+def sample(start: datetime, end: datetime, stage: str, source=WATCH) -> dict:
+    """One sleep row as category_samples has it: "Core" is written "Asleep Core", "Awake" and "In Bed" as they are."""
+    label = stage if stage in ("Awake", "In Bed") else f"Asleep {stage}"
+    return {"type": SLEEP_TYPE, "value_label": label, "start_date": start, "end_date": end, "source": source}
+
+
 def rows(start: datetime, *parts, source=WATCH) -> list[dict]:
     """Back-to-back stage rows from `start`: ("Core", 60), ("gap", 30), ..."""
     out, cur = [], start
     for stage, minutes in parts:
         end = cur + timedelta(minutes=minutes)
         if stage != "gap":
-            out.append({"start_time": cur, "end_time": end, "stage": stage, "duration_hr": minutes / 60, "source": source})
+            out.append(sample(cur, end, stage, source))
         cur = end
     return out
 
@@ -49,20 +57,51 @@ def night_of(*stage_rows, sources=("Apple Watch",)):
 # --- the rules, on rows made here ---
 
 
-def test_only_the_watchs_rows_count_and_in_bed_rows_never_do():
-    phone = [{"start_time": at(9, "22:00"), "end_time": at(10, "09:00"), "stage": "In Bed", "source": PHONE}]
-    watch_in_bed = [{"start_time": at(9, "22:00"), "end_time": at(10, "09:00"), "stage": "In Bed", "source": WATCH}]
+def test_only_the_watchs_rows_count_and_in_bed_rows_never_replace_stages():
+    phone = [sample(at(9, "22:00"), at(10, "09:00"), "In Bed", PHONE)]
+    watch_in_bed = [sample(at(9, "22:00"), at(10, "09:00"), "In Bed")]
     other = rows(at(9, "21:00"), ("Core", 600), source="Somebody's sleep ring")
     [night] = night_of(phone, watch_in_bed, other, rows(at(9, "23:00"), ("Core", 240), ("Awake", 30), ("REM", 180)))
     assert (night.day, night.bed, night.wake) == (date(2026, 10, 10), at(9, "23:00"), at(10, "06:30"))
     assert (night.asleep_min, night.in_bed_min, night.stage_min) == (420, 450, {"core": 240, "awake": 30, "rem": 180})
-    assert night_of(phone, watch_in_bed) == []  # a night with only In Bed rows is a night with no data
+    assert night.staged
+    assert night_of(phone) == [] and night_of(phone, other) == []  # the phone's In Bed rows alone: no data
+
+
+def test_stage_rows_with_no_source_count_and_in_bed_rows_need_the_watchs_name():
+    """The real tables: stage rows only ever come from the watch (often with no source at all), In Bed rows
+    come from more than the watch."""
+    [night] = night_of(rows(at(9, "23:00"), ("Core", 300), source=""), rows(at(10, "04:00"), ("REM", 60), source=None))
+    assert (night.asleep_min, night.staged) == (360, True)
+    assert night_of([sample(at(9, "23:00"), at(10, "06:00"), "In Bed", "")]) == []
+    assert stage_name("Asleep Core") == "core" and stage_name("Asleep REM") == "rem" and stage_name("Asleep") == "asleep"
+    assert stage_name("Asleep Unspecified") == "asleep" and stage_name("In Bed") == "in bed" and stage_name(None) == ""
+
+
+def test_a_night_with_only_the_watchs_in_bed_rows_is_a_night_marked_as_one_and_no_measurement():
+    """Every night before the watch recorded stages. Time in bed is not time asleep: the item says which."""
+    in_bed = [sample(at(9, "23:50"), at(10, "03:00"), "In Bed"), sample(at(10, "03:25"), at(10, "07:20"), "In Bed")]
+    [night] = night_of(in_bed, [sample(at(9, "22:00"), at(10, "09:00"), "In Bed", PHONE)])
+    assert (night.day, night.bed, night.wake) == (date(2026, 10, 10), at(9, "23:50"), at(10, "07:20"))
+    assert (night.staged, night.asleep_min, night.in_bed_min, night.stage_min) == (False, 0, 425, {})  # the gap is not in bed
+    attach_metrics(night, [{"time": at(10, "02:00"), "metric_name": "heart_rate", "value": 55}], NY)
+    item = to_item(night, NY)
+    assert item == {
+        "external_id": "sleep:2026-10-10", "kind": "health", "title": "In bed 7 h 5 min (no sleep stages)",
+        "when": "2026-10-10T07:20:00-04:00",
+        "summary": "in bed 7 h 5 min · 11:50 PM to 7:20 AM · no sleep stages: time in bed, not measured sleep · sleeping HR 55 bpm"}
+    assert parse_summary(item["summary"]) is None  # so Habits keeps its own estimate for that night
+    assert ItemSynced(ts=NOW, connector="health", **item)
+    assert night_of([sample(at(9, "23:50"), at(10, "00:40"), "In Bed")]) == []  # under an hour: a fragment
+    assert night_of([sample(at(9, "20:00"), at(10, "10:30"), "In Bed")]) == []  # over fourteen: nights run together
+    assert night_of([sample(at(10, "13:00"), at(10, "15:00"), "In Bed")]) == []  # a nap is still not a night
 
 
 def test_watch_sources_is_a_list_of_name_parts_and_the_apostrophe_does_not_matter():
     stages = rows(at(9, "23:00"), ("Core", 300))
     assert len(night_of(stages, sources=["Dominick's Apple Watch"])) == 1  # straight apostrophe in the config
-    assert len(night_of(stages, sources=["apple watch"])) == 1
+    assert len(night_of(stages, sources=["apple watch"])) == 1  # an ordinary space in the config, a no-break one in the data
+    assert len(night_of(rows(at(9, "23:00"), ("Core", 300), source="Dominick’s Apple Watch"), sources=["Apple\u00a0Watch"])) == 1
     assert night_of(stages, sources=["Garmin"]) == []
     assert len(night_of(rows(at(9, "23:00"), ("Core", 300), source="Maya's Garmin"), sources=["Apple Watch", "Garmin"])) == 1
 
@@ -163,11 +202,14 @@ def test_the_fixture_week_gives_one_item_for_each_night_the_watch_was_worn():
 
 def test_the_fixture_has_the_quirks_the_real_tables_have():
     source = FixtureSource(FIXTURE)
-    stages = source.sleep_stages(at(1, "00:00"), at(12, "00:00"))
-    assert {r["source"] for r in stages} == {WATCH, PHONE}
-    assert {r["stage"] for r in stages if r["source"] == PHONE} == {"In Bed"} and len([r for r in stages if r["source"] == PHONE]) == 7
-    assert {r["stage"] for r in stages if r["source"] == WATCH} == {"Core", "Deep", "REM", "Awake"}
-    raw = __import__("yaml").safe_load(FIXTURE.read_text(encoding="utf-8"))["health_metrics"]
+    stages = source.sleep_samples(at(1, "00:00"), at(12, "00:00"))
+    assert {r["source"] for r in stages} == {WATCH, PHONE} and {r["type"] for r in stages} == {SLEEP_TYPE}
+    assert {r["value_label"] for r in stages if r["source"] == PHONE} == {"In Bed"} and len([r for r in stages if r["source"] == PHONE]) == 7
+    assert {r["value_label"] for r in stages if r["source"] == WATCH} == {"Asleep Core", "Asleep Deep", "Asleep REM", "Awake"}
+    whole = __import__("yaml").safe_load(FIXTURE.read_text(encoding="utf-8"))
+    assert any(r["type"] != SLEEP_TYPE for r in whole["category_samples"]) and "sleep_stages" not in whole
+    raw = whole["health_metrics"]
+    assert {r["source"] for r in raw} == {""}  # the real health_metrics rows name no source
     heart = [r for r in raw if r["metric_name"] == "heart_rate"]
     assert heart and all(r["qty"] is None and r["avg_val"] is not None for r in heart)
     assert any(r["metric_name"] == "step_count" for r in raw)
@@ -189,8 +231,9 @@ def test_fixture_rebase_moves_the_week_to_end_today_keeping_local_clock_times():
 
 def test_a_json_export_in_the_same_shapes_reads_the_same(tmp_path):
     export = tmp_path / "export.json"
-    export.write_text(json.dumps({"sleep_stages": [
-        {"start_time": "2026-10-09T23:00:00-04:00", "end_time": "2026-10-10T05:00:00-04:00", "stage": "Core", "source": WATCH}]}))
+    export.write_text(json.dumps({"category_samples": [
+        {"type": SLEEP_TYPE, "start_date": "2026-10-10 03:00:00+00", "end_date": "2026-10-10T09:00:00Z", "value_label": "Asleep Core",
+         "source": ""}]}))  # UTC, as Postgres prints it and as JSON usually has it: 11 PM to 5 AM in the household's time zone
     [item] = read_nights({"fixture": str(export)}, NOW, env={})
     assert item["title"] == "Sleep 6 h 0 min"
 
@@ -214,8 +257,9 @@ class FakeCursor:
 
     def execute(self, sql: str, params: tuple = ()) -> None:
         self.log.append((sql, params))
-        if "FROM sleep_stages" in sql:
-            found, columns = self.source.sleep_stages(*params), ["start_time", "end_time", "stage", "source"]
+        if "FROM category_samples" in sql:
+            assert params[0] == SLEEP_TYPE
+            found, columns = self.source.sleep_samples(*params[1:]), ["start_date", "end_date", "value_label", "source"]
         else:
             names, start, end = params
             found, columns = self.source.metrics(start, end, names), ["time", "metric_name", "source", "value"]
@@ -249,14 +293,15 @@ def test_the_postgres_reader_only_selects_and_reads_heart_rate_through_coalesce(
     assert items == read_nights(OPTIONS, NOW, env={})  # the same week, whichever way it is read
     assert [url for url, _ in opened] == [env["FREEREPS_DATABASE_URL"]] * 2 and all(conn.closed for _, conn in opened)
     statements = [sql for sql, _ in log]
-    assert statements == [STAGES_SQL, METRICS_SQL]
+    assert statements == [SLEEP_SQL, METRICS_SQL]
     for sql in statements:
         assert sql.startswith("SELECT ") and ";" not in sql
         assert not re.search(r"\b(insert|update|delete|drop|alter|create|truncate|grant|copy|set)\b", sql, re.I)
-        assert "sleep_sessions" not in sql
+        assert "sleep_sessions" not in sql and "sleep_stages" not in sql  # the first is not used, the second does not exist
+    assert "FROM category_samples WHERE type = %s" in SLEEP_SQL and "start_date" in SLEEP_SQL and "value_label" in SLEEP_SQL
     assert "COALESCE(qty, avg_val)" in METRICS_SQL
     (_, stage_params), (_, metric_params) = log
-    assert stage_params[1] == NOW and stage_params[0] < NOW - timedelta(days=7)  # parameters, never formatted into the SQL
+    assert stage_params[0] == SLEEP_TYPE and stage_params[2] == NOW and stage_params[1] < NOW - timedelta(days=7)  # parameters, never formatted into the SQL
     assert set(metric_params[0]) == {"resting_heart_rate", "heart_rate", "heart_rate_variability", "respiratory_rate"}
     assert "default_transaction_read_only=on" in SESSION_OPTIONS and "statement_timeout=" in SESSION_OPTIONS
 
@@ -265,7 +310,7 @@ def test_the_real_driver_is_asked_for_a_read_only_session_with_timeouts(monkeypa
     psycopg = pytest.importorskip("psycopg")
     seen = {}
     monkeypatch.setattr(psycopg, "connect", lambda url, **kw: seen.update(url=url, **kw) or FakeConnection([]))
-    PostgresSource("postgresql://reader@pi.test/freereps").sleep_stages(NOW - timedelta(days=1), NOW)
+    PostgresSource("postgresql://reader@pi.test/freereps").sleep_samples(NOW - timedelta(days=1), NOW)
     assert seen["options"] == SESSION_OPTIONS and seen["connect_timeout"] == 5 and seen["autocommit"] is True
 
 
@@ -290,6 +335,7 @@ def test_the_committed_config_is_enabled_and_does_nothing_until_it_is_connected(
     assert (spec.enabled, spec.every_s, spec.env, spec.hosts) == (True, 1800, ["FREEREPS_DATABASE_URL"], [])
     assert spec.reads == {"list_nights": "health"} and not spec.writes and not spec.tools
     assert (spec.options["days"], spec.options["watch_sources"], spec.options["fixture"]) == (7, ["Apple Watch"], None)
+    assert not spec.options.get("export_dir")  # one person's real export: each box's owner opts in
     assert "postgresql://" not in (ROOT / "config" / "connectors.yaml").read_text()  # the address is a secret: .env only
     assert read_nights(spec.options, NOW, env={}) == []
 
