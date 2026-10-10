@@ -888,6 +888,83 @@ export interface DayStatus extends EventEnvelope {
   reason: string;
 }
 
+export type CoachTrigger = "chat" | "phone" | "door" | "food" | "none";
+
+/** contracts.day.CoachEvidence. `title` and `frame_ref` are added by the API from Memory; the event carries ids only. */
+export interface CoachEvidence {
+  kind: Exclude<CoachTrigger, "none">;
+  id: string;
+  at: string;
+  label: string;
+  title?: string | null;
+  frame_ref?: string | null;
+}
+
+export interface CoachBreak {
+  start: string;
+  end: string;
+  minutes: number;
+  trigger: CoachTrigger;
+  evidence: CoachEvidence[];
+}
+
+/** contracts.day.SessionReview: one planned block of the main activity against the desk camera. */
+export interface CoachSession {
+  block_id: string;
+  title: string;
+  start: string;
+  end: string;
+  place: string | null;
+  place_name: string | null;
+  planned_minutes: number;
+  measured: boolean;
+  not_measured: string | null;
+  desk_minutes: number | null;
+  late_start_minutes: number | null;
+  ended_early_minutes: number | null;
+  longest_stretch_minutes: number | null;
+  longest_stretch_start: string | null;
+  breaks: CoachBreak[];
+  text: string;
+}
+
+export interface CoachCalibration {
+  score: number;
+  ratio: number;
+  blocks: number;
+  text: string;
+}
+
+/** contracts.day.DayCoachNoted: the coach's sentence when a block ends. */
+export interface DayCoachNote extends EventEnvelope {
+  type: "day.coach.noted";
+  day: string;
+  plan_id: string;
+  block_id: string;
+  text: string;
+  session: CoachSession;
+  suggestions: string[];
+  calibration: CoachCalibration | null;
+  next_block: NextEvent | null;
+}
+
+/** GET /api/day/coach?day= */
+export interface DayCoach {
+  day: string;
+  now: string;
+  plan_id: string | null;
+  words: { activity: string; workplace: string };
+  sessions: CoachSession[];
+  text: string;
+  suggestions: string[];
+  calibration: CoachCalibration | null;
+  block_minutes: number | null;
+  desk_minutes_today: number | null;
+  notes: DayCoachNote[];
+  latest: DayCoachNote | null;
+  limits: string[];
+}
+
 export interface DayReview extends EventEnvelope {
   type: "day.reviewed";
   day: string;
@@ -901,6 +978,12 @@ export interface DayReview extends EventEnvelope {
   points: number;
   plan_stars: number;
   streak: number;
+  /** The study coach's part; absent on reviews written before it existed. */
+  sessions?: CoachSession[];
+  coach_text?: string;
+  suggestions?: string[];
+  calibration?: CoachCalibration | null;
+  block_minutes?: number | null;
 }
 
 export interface LastSeen {
@@ -925,6 +1008,10 @@ export interface DayNow {
   yesterday: DayReview | null;
   friends: PlaceShared[];
   last_seen: LastSeen | null;
+  /** The last block the coach spoke about, for a day after it ended; evidence already cited from Memory. */
+  coach?: DayCoachNote | null;
+  /** The blocks before that one in the last day, newest first. */
+  coach_earlier?: DayCoachNote[];
 }
 
 /** GET /api/day/plan?day= : `moves` go straight into POST /api/dayrun/simulate. */
@@ -1272,5 +1359,6 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   /** {} remakes today's plan; {moves} replaces it with your own; {from_here: true} re-plans the rest of the day. Each raises one card. */
   dayMakePlan: (body: { moves?: Move[]; from_here?: boolean } = {}) =>
     post<{ plan_id: string; type: string; action_id: string | null; plan: DayPlan | DayReplan }>("/api/day/plan", body),
+  dayCoach: (day?: string, signal?: AbortSignal) => get<DayCoach>("/api/day/coach", { day }, signal),
   dayPatterns: (signal?: AbortSignal) => get<{ patterns: DayPattern[]; note?: string }>("/api/day/patterns", undefined, signal),
 };

@@ -4,15 +4,31 @@ import Link from "next/link";
 import { useState } from "react";
 import { Empty, ErrorBox, Loading, WriteError } from "@/components/States";
 import ui from "@/components/ui.module.css";
-import { ApiError, api, type DayNow, type DayPlan, type DayReplan, type DayReview, type DayStatus, type PlanMove, type PlanSource } from "@/lib/api";
+import {
+  ApiError,
+  api,
+  keyframeUrl,
+  type CoachCalibration,
+  type CoachEvidence,
+  type CoachSession,
+  type DayCoachNote,
+  type DayNow,
+  type DayPlan,
+  type DayReplan,
+  type DayReview,
+  type DayStatus,
+  type PlanMove,
+  type PlanSource,
+} from "@/lib/api";
 import { useAtlasEvents } from "@/lib/atlas";
 import { cameraName, dayLabel, humanize, relative, time, timeOrDay } from "@/lib/format";
 import { useFetch } from "@/lib/useFetch";
 
 /**
  * Now: the day Atlas runs unasked (contexts/day). What the cameras see, where the plan has you against where
- * the box thinks you are, the next thing to leave for, today's meters, the plan with its reasons, a pending
- * re-plan, and the evening review. Live from the day.* events on /ws.
+ * the box thinks you are, the next thing to leave for, today's meters, the coach after a block of the main
+ * activity ends (planned against done, the breaks and what set them off, with the evidence), the plan with its
+ * reasons, a pending re-plan, and the evening review. Live from the day.* events on /ws.
  */
 
 const RISK_TEXT: Record<DayStatus["risk"], string> = {
@@ -31,6 +47,14 @@ const ORIGIN_TEXT: Record<string, string> = {
   watch: "your watch",
   circle: "Circle",
   review: "yesterday's review",
+  coach: "the coach",
+};
+
+const EVIDENCE_TEXT: Record<CoachEvidence["kind"], string> = {
+  chat: "Group chat",
+  phone: "Phone in view",
+  door: "At the door",
+  food: "Drink or food",
 };
 
 const asApiError = (err: unknown) => (err instanceof ApiError ? err : new ApiError(0, err instanceof Error ? err.message : String(err)));
@@ -115,6 +139,16 @@ function DayView({ d, reload }: { d: DayNow; reload: () => void }) {
         <h2 className={ui.sectionTitle}>Today so far</h2>
         {s ? <Meters s={s} /> : <p className={`${ui.muted} ${ui.small}`}>Meals, desk time, recycling and last night&apos;s sleep appear once the day has a status.</p>}
       </section>
+
+      {d.coach ? (
+        <section className={ui.section}>
+          <h2 className={ui.sectionTitle}>Coach</h2>
+          <CoachCard note={d.coach} />
+          {(d.coach_earlier ?? []).map((n) => (
+            <EarlierNote key={n.event_id} note={n} />
+          ))}
+        </section>
+      ) : null}
 
       {d.replan ? (
         <section className={ui.section}>
@@ -331,6 +365,132 @@ function ReplanCard({ r }: { r: DayReplan }) {
   );
 }
 
+/** One piece of evidence: what it was and when; a camera moment opens its picture when the box stored one. */
+function EvidenceChip({ e }: { e: CoachEvidence }) {
+  const [missing, setMissing] = useState(false);
+  const words = `${EVIDENCE_TEXT[e.kind]}, ${time(e.at)}${e.title ? `: ${e.title}` : ""}`;
+  if (!e.frame_ref || missing) {
+    return (
+      <li className={ui.source}>
+        <span className={ui.breakWords}>{words}</span>
+        <span className={`${ui.muted} ${ui.small}`}>{e.frame_ref ? "picture not stored on this box · " : ""}{e.id}</span>
+      </li>
+    );
+  }
+  return (
+    <li className={ui.source}>
+      <a href={keyframeUrl(e.frame_ref)} target="_blank" rel="noreferrer noopener" className={ui.breakWords}>
+        {words}
+      </a>
+      {/* probes for the picture: without one the row falls back to plain words */}
+      <img src={keyframeUrl(e.frame_ref)} alt="" hidden onError={() => setMissing(true)} />
+      <span className={`${ui.muted} ${ui.small}`}>tap for the picture · {e.id}</span>
+    </li>
+  );
+}
+
+function SessionRows({ s }: { s: CoachSession }) {
+  if (!s.measured) {
+    return (
+      <p className={`${ui.muted} ${ui.small}`}>
+        {s.title}, {time(s.start)} to {time(s.end)}: not measured ({s.not_measured ?? "the box could not see it"}).
+      </p>
+    );
+  }
+  const evidence = s.breaks.flatMap((b) => b.evidence);
+  return (
+    <>
+      <div className={ui.stats}>
+        <div className={ui.stat}>
+          <p className={ui.statNum}>
+            {s.desk_minutes ?? 0}/{s.planned_minutes}
+          </p>
+          <p className={ui.statLabel}>minutes done / planned</p>
+        </div>
+        <div className={ui.stat}>
+          <p className={ui.statNum}>{s.breaks.length}</p>
+          <p className={ui.statLabel}>{s.breaks.length === 1 ? "break" : "breaks"}</p>
+        </div>
+        <div className={ui.stat}>
+          <p className={ui.statNum}>{s.longest_stretch_minutes ?? 0}</p>
+          <p className={ui.statLabel}>longest stretch (min)</p>
+        </div>
+        <div className={ui.stat}>
+          <p className={ui.statNum}>{s.late_start_minutes ?? 0}</p>
+          <p className={ui.statLabel}>min to sit down</p>
+        </div>
+      </div>
+      <p className={ui.breakWords}>{s.text}</p>
+      {evidence.length > 0 ? (
+        <>
+          <h3>Evidence</h3>
+          <ul className={ui.sources}>
+            {evidence.map((e) => (
+              <EvidenceChip key={`${e.kind}:${e.id}:${e.at}`} e={e} />
+            ))}
+          </ul>
+        </>
+      ) : null}
+    </>
+  );
+}
+
+function Advice({ suggestions, calibration }: { suggestions: string[]; calibration?: CoachCalibration | null }) {
+  return (
+    <>
+      {suggestions.map((t) => (
+        <p key={t} className={ui.nudge}>
+          {t}
+        </p>
+      ))}
+      {calibration ? <p className={`${ui.muted} ${ui.small}`}>{calibration.text}</p> : null}
+    </>
+  );
+}
+
+/** After a block of the main activity ends: the sentence the phone got, the session behind it, and what to try. */
+function CoachCard({ note }: { note: DayCoachNote }) {
+  const s = note.session;
+  return (
+    <div className={ui.card}>
+      <div className={`${ui.row} ${ui.between} ${ui.wrap}`}>
+        <h3>{s.title}</h3>
+        <span className={ui.tag}>
+          {timeOrDay(s.start)} to {time(s.end)}
+        </span>
+      </div>
+      <p>
+        <strong>{note.text}</strong>
+      </p>
+      <SessionRows s={s} />
+      <Advice suggestions={note.suggestions} calibration={note.calibration} />
+      <p className={`${ui.muted} ${ui.small}`}>
+        The camera sees the desk, not the screen, and a trigger is only what happened in the two minutes before a break. Said {relative(note.ts)}.
+      </p>
+    </div>
+  );
+}
+
+/** A block before the last one: its sentence, and the evidence if a break had a visible reason. */
+function EarlierNote({ note }: { note: DayCoachNote }) {
+  const evidence = note.session.breaks.flatMap((b) => b.evidence);
+  return (
+    <div className={ui.card}>
+      <p className={`${ui.muted} ${ui.small}`}>
+        {note.session.title}, {timeOrDay(note.session.start)} to {time(note.session.end)}
+      </p>
+      <p>{note.text}</p>
+      {evidence.length > 0 ? (
+        <ul className={ui.sources}>
+          {evidence.map((e) => (
+            <EvidenceChip key={`${e.kind}:${e.id}:${e.at}`} e={e} />
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 function ReviewCard({ r }: { r: DayReview }) {
   return (
     <div className={ui.card}>
@@ -344,6 +504,16 @@ function ReviewCard({ r }: { r: DayReview }) {
       {r.followed.length > 0 ? <p className={ui.small}>Happened: {r.followed.join(", ")}.</p> : null}
       {r.slipped.length > 0 ? <p className={ui.small}>Slipped: {r.slipped.join(", ")}.</p> : null}
       <p className={ui.nudge}>Tomorrow: {r.change_tomorrow}</p>
+      {r.sessions && r.sessions.length > 0 ? (
+        <>
+          <h3>Coach</h3>
+          {r.coach_text ? <p className={ui.breakWords}>{r.coach_text}</p> : null}
+          {r.sessions.map((s) => (
+            <SessionRows key={`${s.block_id}:${s.start}`} s={s} />
+          ))}
+          <Advice suggestions={r.suggestions ?? []} calibration={null} />
+        </>
+      ) : null}
       <p className={`${ui.muted} ${ui.small}`}>
         Streak {r.streak} {r.streak === 1 ? "day" : "days"} with a star. The plan would have earned {r.plan_stars}.
       </p>

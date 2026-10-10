@@ -10,6 +10,7 @@ from a model, not from the log, so a rebuilt file has none until
 """
 
 import json
+import logging
 import math
 import sqlite3
 import struct
@@ -17,6 +18,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from contracts.memory import Episode, Item, Sighting
+
+log = logging.getLogger("atlas.memory")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS memory_episodes (
@@ -135,14 +138,66 @@ def item_from(row: sqlite3.Row) -> Item:
 class MemoryStore:
     def __init__(self, path: str | Path = "data/memory.sqlite") -> None:
         self.path = str(path)
+        self.moved_aside: str | None = None  # where a corrupt file went at open, if there was one
         if self.path != ":memory:":
             Path(self.path).parent.mkdir(parents=True, exist_ok=True)
+        try:
+            self._open()
+        except sqlite3.OperationalError:  # locked, no permission, disk full: the file may be fine, leave it be
+            raise
+        except sqlite3.DatabaseError as exc:  # "file is not a database", "database disk image is malformed"
+            if self.path == ":memory:":
+                raise
+            self.moved_aside = self._move_aside(exc)
+            self._open()
+
+    def _move_aside(self, exc: Exception) -> str:
+        """A file SQLite cannot read must not stop the box: Memory is a projection of the event log, so keep
+        the bad file under another name for whoever wants to look, start empty, and let the replay rebuild."""
+        try:
+            self.db.close()
+        except (AttributeError, sqlite3.Error):
+            pass
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")  # a file name, not a duration: the wall clock is right here
+        aside = f"{self.path}.corrupt-{stamp}"
+        n = 1
+        while Path(aside).exists():  # two bad starts in one second
+            n += 1
+            aside = f"{self.path}.corrupt-{stamp}-{n}"
+        Path(self.path).replace(aside)
+        for suffix in ("-wal", "-shm"):  # they belong to the bad file; left behind they would be applied to the new one
+            side = Path(self.path + suffix)
+            if side.exists():
+                side.replace(aside + suffix)
+        log.error("MEMORY DATABASE IS CORRUPT (%s): %s was moved to %s. Starting with an empty Memory; the event "
+                  "log replay rebuilds what it can (embeddings are made again by the indexer).", exc, self.path, aside)
+        return aside
+
+    def _open(self) -> None:
         # One connection, used from the event loop; the API's tests call in from another thread.
         self.db = sqlite3.connect(self.path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA journal_mode = WAL")
         self.db.execute("PRAGMA synchronous = NORMAL")
         self.db.executescript(SCHEMA)
+
+    def clear(self) -> None:
+        """Empty every table, the search index and the vectors, and give the pages back (the wipe, V4).
+        The running process answers from this connection, so removing the file alone changes nothing until a restart."""
+        self.db.commit()
+        with self.db:
+            for table in (*TABLES, "memory_vectors"):
+                self.db.execute(f"DELETE FROM {table}")
+        self.db.execute("VACUUM")
+        self.db.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchall()
+
+    def reopen(self) -> None:
+        """Drop the connection and open the path again: after the file was removed, this makes a new empty one."""
+        try:
+            self.db.close()
+        except sqlite3.Error:
+            pass
+        self._open()
 
     def close(self) -> None:
         self.db.close()

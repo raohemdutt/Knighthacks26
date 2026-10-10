@@ -289,7 +289,7 @@ export function chunkForSpeech(text: string, max = CHUNK_CHARS): string[] {
 
 // ---------- things Atlas says without being asked ----------
 
-export type SpokenKind = "alert" | "nudge" | "approval" | "leaving" | "plan";
+export type SpokenKind = "alert" | "nudge" | "approval" | "leaving" | "plan" | "coach";
 
 /** The shortest gap between two spoken events of one kind. Anything sooner is shown as usual but not said. */
 export const SPEAK_COOLDOWN_MS: Record<SpokenKind, number> = {
@@ -298,6 +298,7 @@ export const SPEAK_COOLDOWN_MS: Record<SpokenKind, number> = {
   approval: 30_000,
   leaving: 300_000,
   plan: 120_000,
+  coach: 60_000,
 };
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -338,6 +339,11 @@ export function sentenceForEvent(e: { type: string } & Record<string, unknown>, 
       }
       const subject = oneSentence(str(e.subject), 80, options).replace(/[.!?]+$/, "");
       return subject ? { kind: "plan", text: `I made a plan for ${subject}.` } : null;
+    }
+    case "day.coach.noted": {
+      // the study coach when a block ends: already one to three short sentences written to be said
+      const said = cleanForSpeech(str(e.text), options).slice(0, 260);
+      return said ? { kind: "coach", text: said } : null;
     }
     default:
       return null;

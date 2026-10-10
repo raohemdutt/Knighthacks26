@@ -8,12 +8,13 @@
 from datetime import datetime
 from pathlib import Path
 
+from contexts.day.application.coach import DayCoach
 from contexts.day.application.planner import DayPlanner
 from contexts.day.application.tracker import DayTracker
 from contexts.day.domain.clock import DayClock
 from contexts.play.dayrun.service import DayRun
 from contexts.play.domain.places import PlaceSet
-from contracts.day import DayPlanProposed, DayReplanProposed, DayReviewed
+from contracts.day import DayCoachNoted, DayPlanProposed, DayReplanProposed, DayReviewed
 from contracts.events import Event
 
 
@@ -23,10 +24,17 @@ class DayLoop:
         self.clock = clock or DayClock.load(Path(config_dir) / "agent.yaml")
         self.planner = DayPlanner(dayrun, self.clock, habits=habits, memory=memory, presence=presence, hub=hub)
         self.tracker = DayTracker(self.planner, dayrun, self.clock, places, habits=habits, waste=waste, presence=presence)
+        self.coach = DayCoach(self.planner, dayrun, self.clock, memory=memory, habits=habits, desk_zone=self.tracker.desk_zone,
+                              door_zone=self.tracker.door_zone, desk_camera=self.tracker.desk_camera)
+        self.planner.coach = self.coach
         self.memory = memory
 
     def subscribe(self, bus) -> None:
-        p, t = self.planner, self.tracker
+        p, t, c = self.planner, self.tracker, self.coach
+        # The coach's state first, so the planner's review (same event, later handler) sees the block that just ended.
+        bus.subscribe("perception.zone", c.on_zone, replay=True)
+        bus.subscribe("perception.scene", c.on_scene, replay=True)
+        bus.subscribe("day.coach.noted", c.on_noted, replay=True)
         # State that rebuilds from the log.
         bus.subscribe("day.plan.proposed", p.on_plan_proposed, replay=True)
         bus.subscribe("day.replan.proposed", p.on_replan_proposed, replay=True)
@@ -42,16 +50,18 @@ class DayLoop:
         for prefix in ("perception.zone", "connector.item.synced", "habits.signal"):
             bus.subscribe(prefix, p.on_event)  # the morning plan at the first sign of the day after wake
         bus.subscribe("perception.zone", t.on_zone_live)
+        for prefix in ("perception.zone", "connector.item.synced", "habits.signal"):
+            bus.subscribe(prefix, c.on_event)  # a block of the main activity ended: one sentence for the phone
         for prefix in ("connector.item.synced", "circle.place.shared", "day.plan.proposed", "day.plan.committed"):
             bus.subscribe(prefix, t.on_change)
 
     def tick(self, now: datetime) -> list[Event]:
-        return self.planner.tick(now) + self.tracker.tick(now)
+        return self.planner.tick(now) + self.tracker.tick(now) + self.coach.tick(now)
 
 
 def day_phone(ntfy, topic: str):
-    """A bus handler that pushes the plan, a re-plan and the review to the phones (the card itself goes out as
-    every approval does, through PhoneNotifier.on_approval)."""
+    """A bus handler that pushes the plan, a re-plan, the review and the coach's sentence after a block to the
+    phones (the card itself goes out as every approval does, through PhoneNotifier.on_approval)."""
 
     async def push(e: Event) -> None:
         if isinstance(e, DayPlanProposed):
@@ -59,6 +69,9 @@ def day_phone(ntfy, topic: str):
         elif isinstance(e, DayReplanProposed):
             await ntfy.publish(topic, f"{e.why} New plan: {e.outcome.summary}", title="Re-plan", tags=["arrows_counterclockwise"])
         elif isinstance(e, DayReviewed):
-            await ntfy.publish(topic, f"{e.text} {e.change_tomorrow}", title="Your day, reviewed", tags=["moon"])
+            coach = f" Coach: {' '.join(e.suggestions)}" if e.suggestions else ""
+            await ntfy.publish(topic, f"{e.text} {e.change_tomorrow}{coach}", title="Your day, reviewed", tags=["moon"])
+        elif isinstance(e, DayCoachNoted):
+            await ntfy.publish(topic, e.text, title="Coach", tags=["dart"])
 
     return push

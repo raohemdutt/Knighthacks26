@@ -25,9 +25,9 @@ EVENT_COLUMNS = ["id", "thread_id", "title", "starts_at", "ends_at", "location",
                  "display_name", "answer"]
 
 
-def agreed(thread="t1", title="Study session", hours=24, circle="team", location="Library"):
+def agreed(thread="t1", title="Study session", hours=24, circle="team", location="Library", created_by=None):
     start = NOW + timedelta(hours=hours)
-    return EventAgreed(ts=NOW, circle_id=circle, thread_id=thread, attendees=["dom", "hemdutt"],
+    return EventAgreed(ts=NOW, circle_id=circle, thread_id=thread, attendees=["dom", "hemdutt"], created_by=created_by,
                        event=Proposal(title=title, start=start, end=start + timedelta(hours=2), location=location,
                                       invitees=["dom"]))
 
@@ -69,6 +69,16 @@ def test_without_neon_the_calendar_is_what_this_box_saw_agreed(tmp_path):
     assert first["starts_at"] == "2026-10-10T18:00:00+00:00" and first["location"] == "Library"
     assert first["attendees"] == [{"member_id": "dom", "display_name": "dom", "answer": "free"},
                                   {"member_id": "hemdutt", "display_name": "hemdutt", "answer": "free"}]
+
+
+def test_the_local_calendar_shows_configured_names_and_who_proposed(tmp_path):
+    (tmp_path / "agent.yaml").write_text("circle:\n  circle_id: team\n  member_id: hemdutt\n  names:\n    hemdutt: Hemdutt Rao\n")
+    bus, c = app(tmp_path, circle=ME, config_dir=tmp_path)
+    asyncio.run(bus.publish(agreed(created_by="dom")))
+    [ev] = c.get("/api/circle/events").json()["events"]
+    assert ev["created_by"] == "dom"  # carried by circle.event.agreed
+    assert ev["attendees"] == [{"member_id": "dom", "display_name": "dom", "answer": "free"},  # no name configured
+                               {"member_id": "hemdutt", "display_name": "Hemdutt Rao", "answer": "free"}]
 
 
 def test_the_local_calendar_is_rebuilt_from_the_log_after_a_restart(tmp_path):

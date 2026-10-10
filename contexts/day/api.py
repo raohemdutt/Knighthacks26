@@ -9,6 +9,11 @@
                                moves; {from_here: true} a re-plan from where the box thinks you are. Each publishes a new
                                plan event and one approval card; nothing is written until the card is approved.
 - GET  /api/day/patterns       plain statements from the habit history ("on the N nights under 6 h, ...")
+- GET  /api/day/coach?day=     the study coach: each block of the main activity against the desk camera (minutes at the
+                               desk, breaks and their likely triggers with evidence), the day in words, one or two
+                               suggestions, the running forecast calibration, and the notes sent when blocks ended.
+                               Evidence is cited by id in the events; here each one also gets its words and, when
+                               Memory has a picture of that moment, a `frame_ref` the phone can open.
 
 Every answer is what the log says: the plan and status are projections of `day.*` events.
 """
@@ -16,10 +21,11 @@ Every answer is what the log says: the plan and status are projections of `day.*
 from collections.abc import Awaitable, Callable
 from datetime import UTC, date, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from contexts.day.application.loop import DayLoop
+from contexts.day.domain.coach import FOOD_WORDS, PHONE_WORDS, mentions
 from contexts.day.domain.patterns import patterns
 from contexts.play.dayrun.models import Move
 from contracts.day import DayPlanProposed, DayReplanProposed, MoveIn
@@ -49,6 +55,51 @@ def day_router(day: DayLoop, publish: Callable[[object], Awaitable] | None = Non
                 which = max(p.current)  # the last planned day, when the log ends before today
         return which, p.current.get(which)
 
+    def cite(evidence: dict) -> dict:
+        """An evidence row with what Memory knows about it: the message or caption, and a keyframe when there is one."""
+        out = {**evidence, "title": None, "frame_ref": None}
+        if memory is None:
+            return out
+        try:
+            at = datetime.fromisoformat(evidence["at"])
+            if evidence["kind"] == "chat":
+                hit = next((i for i in memory.items(at - timedelta(minutes=1), at + timedelta(minutes=1), kind="message")
+                            if f"{i.connector}:{i.external_id}" == evidence["id"]), None)
+                out["title"] = hit.title if hit else None
+            else:
+                ep = next((e for e in memory.episodes(at - timedelta(hours=2), at + timedelta(seconds=1)) if e.id == evidence["id"]), None)
+                if ep:
+                    words = {"phone": PHONE_WORDS, "food": FOOD_WORDS, "door": ("door",)}[evidence["kind"]]
+                    out["title"] = next((c for c in ep.captions if mentions(c, words)), None) or ep.summary or (ep.captions[-1] if ep.captions else None)
+                    out["frame_ref"] = nearest(ep.keyframe_refs, at)
+        except Exception:
+            pass
+        return out
+
+    def nearest(refs: list[str], at: datetime) -> str | None:
+        """The keyframe closest in time to `at` ("frames:<camera>:<ts_ms>"); the last one when the times cannot be read."""
+        if not refs:
+            return None
+        try:
+            return min(refs, key=lambda r: abs(int(r.rsplit(":", 1)[1]) / 1000 - at.timestamp()))
+        except ValueError:
+            return refs[-1]
+
+    def cited(session: dict) -> dict:
+        return {**session, "breaks": [{**b, "evidence": [cite(e) for e in b["evidence"]]} for b in session["breaks"]]}
+
+    def noted(note) -> dict:
+        body = note.model_dump(mode="json")
+        return {**body, "session": cited(body["session"])}
+
+    def coach_recent(now: datetime, limit: int = 4) -> list[dict]:
+        """The blocks the coach spoke about in the last day, newest first."""
+        return [noted(n) for n in day.coach.recent(now)[:limit]]
+
+    def coach_latest(now: datetime) -> dict | None:
+        recent = coach_recent(now, 1)
+        return recent[0] if recent else None
+
     def last_seen() -> dict | None:
         if memory is None:
             return None
@@ -71,6 +122,7 @@ def day_router(day: DayLoop, publish: Callable[[object], Awaitable] | None = Non
         friends = []
         if t.presence is not None:
             friends = [f.model_dump(mode="json") for f in t.presence.friends(event_now())]
+        coach = coach_recent(event_now())  # the last block the coach spoke about, and the ones before it
         return {
             "day": which.isoformat(), "now": event_now().isoformat(),
             "plan": plan.model_dump(mode="json") if plan else None,
@@ -80,6 +132,24 @@ def day_router(day: DayLoop, publish: Callable[[object], Awaitable] | None = Non
             "review": review.model_dump(mode="json") if review else None,
             "yesterday": p.reviews[which - timedelta(days=1)].model_dump(mode="json") if which - timedelta(days=1) in p.reviews else None,
             "friends": friends, "last_seen": last_seen(),
+            "coach": coach[0] if coach else None, "coach_earlier": coach[1:],
+        }
+
+    @router.get("/coach")
+    async def get_coach(day_: date | None = Query(None, alias="day")) -> dict:
+        c = day.coach
+        which, plan = plan_for(day_)
+        now = event_now()
+        body = c.day_review(which, now) if plan else {"sessions": [], "coach_text": "", "suggestions": [], "calibration": None, "block_minutes": None}
+        sessions = [cited(s.model_dump(mode="json")) for s in body["sessions"]]
+        notes = sorted(c.notes.get(which, {}).values(), key=lambda n: n.ts)
+        return {
+            "day": which.isoformat(), "now": now.isoformat(), "plan_id": plan.plan_id if plan else None,
+            "words": {"activity": c.words.activity, "workplace": c.words.workplace},
+            "sessions": sessions, "text": body["coach_text"], "suggestions": body["suggestions"],
+            "calibration": body["calibration"].model_dump() if body["calibration"] else None, "block_minutes": body["block_minutes"],
+            "desk_minutes_today": c.habits_desk_minutes(which, now),
+            "notes": [noted(n) for n in notes], "latest": coach_latest(now), "limits": c.limits(),
         }
 
     @router.get("/plan")

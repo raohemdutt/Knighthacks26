@@ -52,8 +52,12 @@ def fuse(keyword: list, semantic: list) -> list[dict]:
 class SqliteMemory:
     def __init__(self, store: MemoryStore, embedder: TextEmbedder | None = None) -> None:
         self.store = store
-        self.db = store.db
         self.embedder = embedder  # None: keyword search only
+
+    @property
+    def db(self):
+        """The store's connection right now: a wipe reopens the store on a new file (V4)."""
+        return self.store.db
 
     def episodes(self, start: datetime, end: datetime, camera: str | None = None, label: str | None = None) -> list[Episode]:
         """Episodes that start in [start, end), oldest first."""

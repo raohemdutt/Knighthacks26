@@ -284,7 +284,7 @@ def build(settings: Settings | None = None) -> Atlas:
     # Owner recognition (P9): opt-in, templates encrypted under data/vault/identity/. Unavailable without the SFace model.
     identity = IdentityService(IdentityStore(s.data_dir, vault), build_recognizer())
     bus.subscribe("perception.identity", identity.on_changed, replay=True)
-    wiper = Wiper(s.data_dir, memory_db=s.data_dir / "memory.sqlite")
+    wiper = Wiper(s.data_dir, memory_db=s.data_dir / "memory.sqlite", live_memory=store)  # the open store is emptied too
     bus.subscribe("vault.wipe.requested", wiper.on_wipe_requested)
     EpisodeSummarizer(store, runtime).subscribe(bus)  # live only, in the background: one model call per closed episode (M3)
     # Semantic search (M5): off unless models.yaml sets embeddings.text. Live only, in the background, after the projection.

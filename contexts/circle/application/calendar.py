@@ -65,7 +65,8 @@ def from_rows(rows: list[dict]) -> list[dict]:
 class AgreedEvents:
     """What this box itself saw agreed. Rebuilt from the log: subscribe with replay=True."""
 
-    def __init__(self) -> None:
+    def __init__(self, names: dict[str, str] | None = None) -> None:
+        self.names = names or {}  # member id -> display name, from the circle config; an unknown id shows as itself
         self.events: dict[str, EventAgreed] = {}  # thread_id -> the first agreement for it
 
     def on_agreed(self, e: EventAgreed) -> None:
@@ -76,9 +77,9 @@ class AgreedEvents:
         for e in list(self.events.values()):
             if e.circle_id != circle_id or _utc(e.event.end) <= now:
                 continue
-            ev = _event(e.thread_id, e.thread_id, e.event.title, e.event.start, e.event.end, e.event.location, None)
+            ev = _event(e.thread_id, e.thread_id, e.event.title, e.event.start, e.event.end, e.event.location, e.created_by)
             # agreement means every attendee answered free (the proposer included)
-            ev["attendees"] = [_attendee(m, None, "free") for m in sorted(e.attendees)]
+            ev["attendees"] = [_attendee(m, self.names.get(m), "free") for m in sorted(e.attendees)]
             out.append(ev)
         return out
 

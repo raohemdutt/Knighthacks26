@@ -144,6 +144,78 @@ class DayStatusChanged(TypedEvent):
     reason: str = ""  # what changed, in a few words
 
 
+# --- the study coach (D2): a planned block against what the desk camera saw ---
+
+Trigger = Literal["chat", "phone", "door", "food", "none"]
+
+
+class CoachEvidence(BaseModel):
+    """One thing that happened just before a break, by id, so the screen can cite it. Ids and times only:
+    the API looks the picture and the words up in Memory when the phone asks (never in the event)."""
+
+    kind: Literal["chat", "phone", "door", "food"]
+    id: str  # a connector item's "connector:external_id", or a Memory episode id
+    at: datetime
+    label: str  # "a message in the group chat", "the phone was in view"
+
+
+class CoachBreak(BaseModel):
+    """Away from the desk in the middle of a block, and the most likely reason from the two minutes before."""
+
+    start: datetime
+    end: datetime
+    minutes: int
+    trigger: Trigger = "none"  # "none": nothing the box records explains it
+    evidence: list[CoachEvidence] = []
+
+
+class SessionReview(BaseModel):
+    """One planned block of the main activity, measured. `measured` False means the box could not see it
+    (a block away from the box): every number is then None, never zero."""
+
+    block_id: str
+    title: str
+    start: datetime
+    end: datetime
+    place: str | None = None
+    place_name: str | None = None
+    planned_minutes: int
+    measured: bool = False
+    not_measured: str | None = None  # why, in words, when `measured` is False
+    desk_minutes: int | None = None
+    late_start_minutes: int | None = None  # block start to the first sit-down
+    ended_early_minutes: int | None = None  # last time at the desk to the block's end
+    longest_stretch_minutes: int | None = None
+    longest_stretch_start: datetime | None = None
+    breaks: list[CoachBreak] = []
+    text: str = ""  # planned against done, the moments that cost the most, what worked
+
+
+class CoachCalibration(BaseModel):
+    """Day Run's forecast calibration, fed with every measured block: planned minutes are the estimate."""
+
+    score: int  # 0 to 100
+    ratio: float  # planned / measured: 1.7 means plans run 1.7 times what happens
+    blocks: int  # measured blocks behind the figures
+    text: str
+
+
+@register
+class DayCoachNoted(TypedEvent):
+    """A planned block of the main activity ended and the desk camera measured it: one sentence for the
+    phone (and for a voice), with the session behind it."""
+
+    type: Literal["day.coach.noted"] = "day.coach.noted"
+    day: date
+    plan_id: str
+    block_id: str
+    text: str  # "You did 70 of 120 minutes. Two breaks; the long one came right after the group chat. ..."
+    session: SessionReview
+    suggestions: list[str] = []
+    calibration: CoachCalibration | None = None
+    next_block: NextEvent | None = None  # the plan's next block of the main activity
+
+
 @register
 class DayReplanProposed(TypedEvent):
     """Drift made the next fixed event infeasible: a new plan from where you are, with one card."""
@@ -180,3 +252,9 @@ class DayReviewed(TypedEvent):
     points: int = 0  # the real day's points, 0 to 100
     plan_stars: int = 0  # what the plan would have earned
     streak: int = 0  # consecutive reviewed days with at least one star
+    # the study coach (D2): the day's blocks of the main activity that had ended by the review
+    sessions: list[SessionReview] = []
+    coach_text: str = ""  # the day in the coach's words; "" when there was no such block
+    suggestions: list[str] = []  # one or two, drawn from the day's pattern
+    calibration: CoachCalibration | None = None
+    block_minutes: int | None = None  # the block length the coach suggests for tomorrow

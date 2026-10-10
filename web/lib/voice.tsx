@@ -33,7 +33,7 @@ export const SILENCE_MS = 8000;
 /** At most this many unprompted sentences wait their turn; older ones are dropped. */
 const MAX_QUEUED_EVENTS = 3;
 const SETTINGS_KEY = "atlas.voice";
-const SPOKEN_EVENTS = ["agent.alert.raised", "habits.nudge.raised", "workspace.approval.requested", "agent.plan.created"];
+const SPOKEN_EVENTS = ["agent.alert.raised", "habits.nudge.raised", "workspace.approval.requested", "agent.plan.created", "day.coach.noted"];
 
 export interface VoiceSettings {
   /** Read answers aloud. */
