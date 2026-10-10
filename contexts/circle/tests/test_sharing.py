@@ -106,6 +106,24 @@ def test_offline_leaves_rows_queued_and_returns_nothing(tmp_path):
     assert len(on.sync(LATER)) == 2 and on.outbox.pending() == []
 
 
+def test_offline_is_logged_once_when_it_starts_and_once_when_it_ends(tmp_path, caplog):
+    neon = FakeNeon()
+    neon.down = True
+    on = sharing(tmp_path, neon)
+    on.on_day_closed(day_closed())
+    with caplog.at_level("WARNING", logger="atlas.circle"):
+        for _ in range(5):  # five 30 s ticks with Neon down
+            assert on.sync(LATER) == []
+        assert len([r for r in caplog.records if "paused" in r.message]) == 1 and on.offline
+        neon.down = False
+        assert len(on.sync(LATER)) == 1 and not on.offline
+        on.on_round_scored(round_scored())
+        assert len(on.sync(LATER)) == 1  # still up: nothing more to say
+    messages = [r.message for r in caplog.records]
+    assert sum("paused" in m for m in messages) == 1 and sum("resumed" in m for m in messages) == 1
+    assert len(messages) == 2
+
+
 def test_a_refused_share_does_not_block_the_ones_behind_it(tmp_path):
     on = sharing(tmp_path)
     on.outbox.enqueue("team", "dom", "habit_summary", {"habit_id": "sleep"}, NOW, share_id="bad")  # fields missing

@@ -61,6 +61,7 @@ class CircleSharing:
         self.circle_id = circle_id
         self.member_id = member_id
         self.opted_in = opted_in  # nothing leaves the box without consent
+        self.offline = False  # Neon was down at the last sync; logged once when it changes, not on every tick
 
     # --- bus handlers (live only): summaries, counts and scores, never raw signals ---
 
@@ -90,11 +91,16 @@ class CircleSharing:
             try:
                 self.remote.push(row)
             except CircleOffline as e:
-                log.warning("circle sync paused, %s", e)
+                if not self.offline:
+                    log.warning("circle sync paused, %s; shares stay queued and every tick retries", e)
+                self.offline = True
                 break
             except Exception:
                 log.exception("circle share %s (%s) was refused; it stays queued", row.share_id, row.kind)
                 continue
+            if self.offline:
+                log.warning("circle sync resumed, Neon is reachable again")
+                self.offline = False
             self.outbox.mark_synced(row.share_id, now)
             synced.append(ShareSynced(ts=now, share_id=row.share_id, circle_id=row.circle_id))
         return synced
