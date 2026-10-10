@@ -18,11 +18,14 @@ Sources:
     ATLAS_TEGRASTATS                    the tegrastats command (default "tegrastats")
     ATLAS_NVPMODEL                      the nvpmodel command (default "/usr/sbin/nvpmodel")
 - "pods" reads the pod power samplers (lab/pod_power.py) through the hub proxy and publishes their
-  telemetry.gpu.power samples for gpu-a and gpu-b, each stamped with the time it arrived. It reads the accounts from
-  the environment: AUP_HUB_USER_<X> / AUP_HUB_TOKEN_<X> for each pod's account (either pod is enough), with
-  ATLAS_POD_ACCOUNTS (default gpu-a=A,gpu-b=B), AUP_HUB_URL_<X> or ATLAS_HUB_URL (default the DUB hub),
-  ATLAS_POD_POWER_PORT (default 8790) and ATLAS_POD_POWER_POLL_S (default 2) to override. Samples already in the log
-  are not published again after a restart.
+  telemetry.gpu.power samples for gpu-a and gpu-b, each stamped with the time it arrived. It runs off the pods (the
+  Jetson or a laptop) and reads the accounts from the environment: AUP_HUB_USER_<X> / AUP_HUB_TOKEN_<X> for each
+  pod's account (either pod is enough), with ATLAS_POD_ACCOUNTS (default gpu-a=A,gpu-b=B; the SJC pods are
+  gpu-a=C,gpu-b=D), AUP_HUB_URL_<X> or LAB_HUB_URL (the hub settings lab/hub.py reads; default the DUB hub),
+  LAB_HUB_USER_AGENT (default lab/hub.py's browser-like agent), ATLAS_POD_POWER_PORT (default 8790) and
+  ATLAS_POD_POWER_POLL_S (default 2) to override. A hub host other than dub.aupcloud.io must also be admitted by
+  the Jetson firewall (the hub group of jetson/egress.py), or the reader's polls never leave the box. Samples
+  already in the log are not published again after a restart.
 """
 
 import os
@@ -57,7 +60,8 @@ def build_telemetry(source: str, bus: EventBus, *, fixture: str | Path | None = 
     if source == "pods":  # read over the hub proxy, so it runs on any machine that holds the account keys
         endpoints = pods.pod_endpoints(env)
         reader = pods.PodReader(endpoints, poll_s=float(env.get("ATLAS_POD_POWER_POLL_S") or pods.POLL_S),
-                                transport=transport, skip_until=projection.latest_power_ts)
+                                transport=transport, skip_until=projection.latest_power_ts,
+                                user_agent=pods.hub_user_agent(env))
         service = TelemetryService(projection, SamplerRunner(reader, bus.publish, nodes=[p.node for p in endpoints]),
                                    source=source)
         service.subscribe(bus)

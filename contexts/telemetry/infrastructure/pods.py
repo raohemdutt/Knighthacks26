@@ -1,6 +1,7 @@
 """Reading the pod power samplers from the Jetson, through the hub proxy, as telemetry events.
 
-    reader = PodReader(pod_endpoints(os.environ))        # gpu-a and gpu-b, from the AUP_HUB_* keys of their accounts
+    reader = PodReader(pod_endpoints(os.environ),        # gpu-a and gpu-b, from the AUP_HUB_* keys of their accounts
+                       user_agent=hub_user_agent(os.environ))
     async for event in reader.samples(): ...             # telemetry.gpu.power, received_ts on this machine's clock
 
 Each pod runs lab/pod_power.py, which keeps its samples and serves them at GET /samples?after=<seq> on a local port
@@ -26,6 +27,13 @@ A pod that does not answer, or whose proxy holds the request for up to `timeout_
 the other pod's are read and published meanwhile. A pod that does not answer is logged once per change of reason
 and asked again at its next poll. The token is sent only in the Authorization header and appears in no log line or
 status.
+
+The hub is spoken to by the rules of lab/hub.py, the lab's one hub client, whose module-level pieces are reused here
+rather than copied (its Hub class is a blocking httpx.Client with blocking retries, so the reader keeps its own async
+client): every request carries the browser-like lab.hub.USER_AGENT, or $LAB_HUB_USER_AGENT (lab.hub.ENV_USER_AGENT),
+because the hub's front end answers 403 to a script's own agent; the account keys are lab.hub.key_names; and the hub
+of an account is its own AUP_HUB_URL_<X> (lab.hub.url_key), else $LAB_HUB_URL (lab.hub.ENV_URL, the one setting the
+lab and jetson/egress.py read too), else lab.hub.DEFAULT_URL.
 """
 
 import asyncio
@@ -42,10 +50,11 @@ from contexts.telemetry.domain.nodes import GPU_A, GPU_B, check_node
 from contracts import parse_event
 from contracts.events import Event
 from contracts.telemetry import GpuPower
+from lab import hub as lab_hub
 
 log = logging.getLogger("atlas.telemetry.pods")
 
-HUB_URL = "https://dub.aupcloud.io"
+HUB_URL = lab_hub.DEFAULT_URL  # the DUB hub, unless $LAB_HUB_URL (lab_hub.ENV_URL) or AUP_HUB_URL_<X> moves it
 DEFAULT_PORT = 8790  # lab/pod_power.py DEFAULT_PORT
 POLL_S = 2.0
 LIMIT = 1000
@@ -77,16 +86,17 @@ def pod_endpoints(environ: Mapping[str, str], *, hub_url: str | None = None, por
     """The pods this machine can read: each account with both AUP_HUB_USER_<X> and AUP_HUB_TOKEN_<X> set.
 
     ATLAS_POD_ACCOUNTS says which account runs which pod (default gpu-a=A,gpu-b=B). Each account's hub is
-    AUP_HUB_URL_<X> when set, else ATLAS_HUB_URL, else the DUB hub; ATLAS_POD_POWER_PORT moves the sampler's port.
+    AUP_HUB_URL_<X> when set, else $LAB_HUB_URL (the setting lab/hub.py reads), else the DUB hub;
+    ATLAS_POD_POWER_PORT moves the sampler's port.
     A half-set pair is an error naming the missing key (never its value); no pair at all is an error too."""
-    default_hub = hub_url or environ.get("ATLAS_HUB_URL") or HUB_URL
+    default_hub = hub_url or (environ.get(lab_hub.ENV_URL) or "").strip() or HUB_URL
     port = port or int(environ.get("ATLAS_POD_POWER_PORT") or DEFAULT_PORT)
     accounts = pod_accounts(environ.get("ATLAS_POD_ACCOUNTS") or ACCOUNTS)
     pods, missing = [], []
     for node, letter in accounts:
-        user_key, token_key = f"AUP_HUB_USER_{letter}", f"AUP_HUB_TOKEN_{letter}"
+        user_key, token_key = lab_hub.key_names(letter)
         user, token = (environ.get(user_key) or "").strip(), (environ.get(token_key) or "").strip()
-        hub = ((environ.get(f"AUP_HUB_URL_{letter}") or "").strip() or default_hub).rstrip("/")
+        hub = ((environ.get(lab_hub.url_key(letter)) or "").strip() or default_hub).rstrip("/")
         if user and token:
             pods.append(PodEndpoint(node, f"{hub}/user/{quote(user, safe='')}/proxy/{port}", token))
         elif user or token:
@@ -94,9 +104,15 @@ def pod_endpoints(environ: Mapping[str, str], *, hub_url: str | None = None, por
     if missing:
         raise ValueError(f"set {' and '.join(missing)} too, or neither key of that account")
     if not pods:
-        names = " or ".join(f"AUP_HUB_USER_{letter} and AUP_HUB_TOKEN_{letter}" for _, letter in accounts)
+        names = " or ".join(" and ".join(lab_hub.key_names(letter)) for _, letter in accounts)
         raise ValueError(f"the pods source needs {names} in the environment")
     return pods
+
+
+def hub_user_agent(environ: Mapping[str, str]) -> str:
+    """The User-Agent every request to the hub carries: $LAB_HUB_USER_AGENT when set, else lab/hub.py's browser-like
+    agent, by the same rule lab.hub.Hub follows (the hub's front end answers 403 to a script's own agent)."""
+    return (environ.get(lab_hub.ENV_USER_AGENT) or "").strip() or lab_hub.USER_AGENT
 
 
 @dataclass(frozen=True)
@@ -123,7 +139,8 @@ class PodReader:
                  transport: httpx.AsyncBaseTransport | None = None, timeout_s: float = 15.0,
                  clock: Callable[[], datetime] = lambda: datetime.now(UTC),
                  sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
-                 skip_until: Callable[[str], datetime | None] | None = None, rounds: int | None = None) -> None:
+                 skip_until: Callable[[str], datetime | None] | None = None, rounds: int | None = None,
+                 user_agent: str = lab_hub.USER_AGENT) -> None:
         if not pods:
             raise ValueError("a pod reader needs at least one pod")
         for pod in pods:
@@ -131,6 +148,9 @@ class PodReader:
                 raise ValueError(f"{pod.node} is not a pod")
         if len({pod.node for pod in pods}) != len(pods):
             raise ValueError("each pod may appear once")
+        if not user_agent.strip():
+            raise ValueError("a pod reader needs a User-Agent: the hub's front end answers 403 to a request without "
+                             "a browser-like one")
         self.pods = list(pods)
         self.poll_s = poll_s
         self.limit = limit
@@ -140,6 +160,7 @@ class PodReader:
         self.sleep = sleep
         self.skip_until = skip_until
         self.rounds = rounds  # stop after this many polls of every pod (tests); None polls until cancelled
+        self.user_agent = user_agent  # sent on every request through the client's default headers, as lab/hub.py does
         self.state: dict[str, dict[str, Any]] = {
             pod.node: {"after": 0, "sampler_started": None, "newest": None, "seeded": False, "fetched": 0, "lost": 0,
                        "rejected": 0, "repeats": 0, "restarts": 0, "error": None, "last_ok": None} for pod in pods}
@@ -153,8 +174,8 @@ class PodReader:
         # A call abandoned at a failed publish may not have been closed yet; its polls must not outlive it.
         await self._stop_polls(self._polls)
         pages: asyncio.Queue[_Handoff] = asyncio.Queue()
-        async with httpx.AsyncClient(transport=self.transport, timeout=self.timeout_s,
-                                     follow_redirects=False) as client:
+        async with httpx.AsyncClient(transport=self.transport, timeout=self.timeout_s, follow_redirects=False,
+                                     headers=self.hub_headers()) as client:
             polls = [asyncio.create_task(self._poll_pod(client, pod, pages), name=f"pod-reader-{pod.node}")
                      for pod in self.pods]
             self._polls = polls
@@ -193,6 +214,10 @@ class PodReader:
             pages.put_nowait(_Handoff(pod, error=exc))
             return
         pages.put_nowait(_Handoff(pod))
+
+    def hub_headers(self) -> dict[str, str]:
+        """The headers every request to the hub carries, the token aside (that one goes per request, to its pod)."""
+        return {"User-Agent": self.user_agent, "Accept": "application/json"}
 
     async def _stop_polls(self, polls: Sequence[asyncio.Task[None]]) -> None:
         for task in polls:
@@ -274,7 +299,7 @@ class PodReader:
         state = self.state[pod.node]
         try:
             reply = await client.get(f"{pod.base_url}/samples", params={"after": after, "limit": self.limit},
-                                     headers={"Authorization": f"token {pod.token}", "Accept": "application/json"})
+                                     headers={"Authorization": f"token {pod.token}"})
         except httpx.HTTPError as exc:
             return self._trouble(pod, f"no answer ({type(exc).__name__})")
         if reply.status_code != 200:

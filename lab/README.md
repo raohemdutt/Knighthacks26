@@ -285,8 +285,11 @@ python -m lab.controller run-script --account A lab/pod_power.sh stop
 
 The Jetson reads both pods with `ATLAS_TELEMETRY_SOURCE=pods` (keys `AUP_HUB_USER_<X>`, `AUP_HUB_TOKEN_<X>` of each
 pod's account; `ATLAS_POD_ACCOUNTS` maps pods to accounts, default `gpu-a=A,gpu-b=B`; `AUP_HUB_URL_<X>` or
-`ATLAS_HUB_URL` names the hub; `ATLAS_POD_POWER_PORT`, `ATLAS_POD_POWER_POLL_S` optional): samples arrive with `received_ts`, nothing is lost over
+`LAB_HUB_URL`, the same setting `lab/hub.py` reads, names the hub; `ATLAS_POD_POWER_PORT`, `ATLAS_POD_POWER_POLL_S` optional): samples arrive with `received_ts`, nothing is lost over
 a proxy gap the pod's buffer covers (about 5.5 hours), and a sampler restart shows as a new `sampler_started`.
+The reader sends `lab/hub.py`'s browser-like User-Agent (`LAB_HUB_USER_AGENT` overrides it), since the hub's front end
+answers 403 to a script's own agent. A hub host other than dub.aupcloud.io must also be admitted by the Jetson firewall
+(the hub group of `jetson/egress.py`), or the reader's polls never leave the box.
 A window becomes a stored row with `python -m lab gpu-power record --samples <files> --node pod-a --metric
 pod.idle_watts [--since ISO] [--until ISO] [--state idle] [--metrics-file]`: the row carries the sampler, period,
 measured period, longest gap, restarts, distinct updates, starting temperatures, the energy and its source, and
