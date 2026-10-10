@@ -35,8 +35,9 @@ cost inside a sitting), PowerShell, every MCP server but Notion, and rm of any k
 the launcher, not a sitting, deletes a finished clone. DENIED adds a second line for
 the worst cases: no pod launch or stop except through the queue verbs, no push to
 main or force push, no merge of a pull request, no recursive force delete, no Notion
-page deletion, no bypassing the commit hook, and nothing from the owner's notes,
-the machine's state files or .env.
+page deletion, no bypassing the commit hook, nothing from the owner's notes,
+the machine's state files or .env, and no allowed shell command but the interpreter
+(cp, mv, touch, an output redirect) whose text names the state dir.
 
 Verbs that do not exist yet. When this file was written lab/__main__.py registered
 only ready, resume and stop. The other verbs named here do not exist yet; their
@@ -285,8 +286,33 @@ _PATHS: list[str] = [
     f"Edit(//**/{STATE_DIR}/**)",
 ]
 
+#: The state dir as a command may spell it: with forward slashes, and with the Windows
+#: backslashes a quoted path keeps.
+_STATE_SPELLINGS: tuple[str, ...] = (STATE_DIR, STATE_DIR.replace("/", "\\"))
+
+#: The first words of the shell commands a sitting may run, apart from the interpreter.
+#: The interpreter is left out because it is how the verbs run, and a verb may name the
+#: state dir in its arguments (a handoff note that says it did not read the notes); it
+#: also runs code a sitting writes, so no rule on its command text bounds what it touches.
+_WRITING_COMMANDS: tuple[str, ...] = tuple(
+    sorted({command.split(" ", 1)[0] for command in _SHELL} - set(PYTHONS))
+)
+
+#: The Edit rule above does not reach Bash: cp, mv, touch and mkdir take the state dir as
+#: an argument, and an output redirect (date > lab/state/STOP) writes there through any
+#: allowed command. So each of those commands is refused when its text names the state
+#: dir. A rule cannot hold the redirect character itself (the cmd.exe shim would eat it),
+#: hence one rule per command, built from _SHELL so a command added there is covered.
+#: Read-only commands (ls, cat, grep, test) need no allow rule and stay free to read the
+#: state dir, and the verbs stay free to change it. A commit message or pull request text
+#: that names the state dir is refused too: reword it.
+_STATE_WRITES: list[str] = [
+    f"Bash({command} *{spelling}*)" for spelling in _STATE_SPELLINGS for command in _WRITING_COMMANDS
+]
+
 DENIED: list[str] = [
     *_PODS, *_PUSH_TO_MAIN, *_PUSH_AND_COMMIT_FLAGS, *_MERGE, *_RM, *_NOTION_DELETE, *_OWNER, *_PATHS,
+    *_STATE_WRITES,
 ]
 
 # --- the argument vector ------------------------------------------------------------------
