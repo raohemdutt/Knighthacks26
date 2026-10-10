@@ -12,6 +12,7 @@ dependencies = [
     "uvicorn",
     "httpx",
     "pyyaml",
+    "mcp>=1.20,<2",
     "tzdata; sys_platform == 'win32'",
 ]
 

@@ -1,3 +1,4 @@
+import asyncio
 import json
 from datetime import UTC, datetime, timedelta
 
@@ -31,7 +32,7 @@ def test_nothing_is_written_until_approved(tmp_path):
     assert list(tmp_path.iterdir()) == [] and published == []
 
     decision = ApprovalDecided(ts=NOW + timedelta(seconds=30), action_id=proposal.action_id, decision="deny")
-    assert approvals.on_decided(decision)[0].status == "denied"
+    assert asyncio.run(approvals.on_decided(decision))[0].status == "denied"
     assert list(tmp_path.iterdir()) == []
 
 
@@ -40,7 +41,7 @@ def test_approved_export_writes_the_lab_format(tmp_path):
     created, proposal = teach(SPEC, NOW)
     assert created.task == "desk-objects"
     approvals.on_proposed(proposal)
-    [done] = approvals.on_decided(ApprovalDecided(ts=NOW, action_id=proposal.action_id, decision="approve"))
+    [done] = asyncio.run(approvals.on_decided(ApprovalDecided(ts=NOW, action_id=proposal.action_id, decision="approve")))
     assert done.status == "done", done.result
 
     [exported] = published

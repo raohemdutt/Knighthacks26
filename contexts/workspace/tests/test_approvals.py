@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, datetime, timedelta
 
 from contexts.workspace.domain.approvals import Approvals
@@ -22,9 +23,9 @@ def test_approve_runs_the_executor_once():
     ap = Approvals({"send_message": lambda r: ran.append((r.target, r.params)) or "sent"})
     [req] = ap.on_proposed(proposed())
     assert req.expires_at == T0 + timedelta(minutes=5)
-    [done] = ap.on_decided(decided("approve"))
+    [done] = asyncio.run(ap.on_decided(decided("approve")))
     assert (done.status, done.result) == ("done", "sent")
-    assert ap.on_decided(decided("approve")) == []
+    assert asyncio.run(ap.on_decided(decided("approve"))) == []
     assert ran == [("dom", {"text": "hi"})]
 
 
@@ -33,8 +34,8 @@ def test_deny_and_late_approve_never_run():
     ap = Approvals({"send_message": lambda r: ran.append(r.target) or "sent"})
     ap.on_proposed(proposed("a1"))
     ap.on_proposed(proposed("a2"))
-    assert ap.on_decided(decided("deny", action_id="a1"))[0].status == "denied"
-    assert ap.on_decided(decided("approve", at_s=301, action_id="a2"))[0].status == "expired"
+    assert asyncio.run(ap.on_decided(decided("deny", action_id="a1")))[0].status == "denied"
+    assert asyncio.run(ap.on_decided(decided("approve", at_s=301, action_id="a2")))[0].status == "expired"
     assert ran == []
 
 
@@ -53,5 +54,5 @@ def test_failing_executor_reports_failed():
 
     ap = Approvals({"send_message": boom})
     ap.on_proposed(proposed())
-    [done] = ap.on_decided(decided("approve"))
+    [done] = asyncio.run(ap.on_decided(decided("approve")))
     assert (done.status, done.result) == ("failed", "ntfy down")

@@ -1,0 +1,17 @@
+# Connectors (K1). Each one is an MCP server run as `python -m <module>`.
+# reads: tool -> item kind, synced every `every_s` seconds into connector.item.synced.
+# writes: tools with an outside effect; they only run after an approval card.
+# Tokens live in .env and are listed by name under `env`; never put them here.
+
+site:
+  module: contexts.connectors.servers.site
+  every_s: 300
+  hosts: [knighthacks.org]
+  reads: {check_pages: page_change}
+  options:
+    state_dir: data/connectors/site
+    pages:
+      - {title: "Knight Hacks schedule", url: "https://knighthacks.org"}
+      # - {title: "School page", url: "https://..."}
+
+# canvas, calendar (Hemdutt: K6, K2), groupme, search (Dom: K4, K5) go here.

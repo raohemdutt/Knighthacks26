@@ -8,7 +8,8 @@ so a replay of the log reaches the same states. Executors are injected per
 action kind and only ever run after an approve.
 """
 
-from collections.abc import Callable
+import inspect
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 
 from pydantic import BaseModel
@@ -31,7 +32,7 @@ class ActionRequest(BaseModel):
     result: str | None = None
 
 
-Executor = Callable[[ActionRequest], str]  # returns result text
+Executor = Callable[[ActionRequest], str | Awaitable[str]]  # returns result text; may be async
 
 
 class Approvals:
@@ -65,7 +66,7 @@ class Approvals:
             )
         ]
 
-    def on_decided(self, e: ApprovalDecided) -> list[ActionCompleted]:
+    async def on_decided(self, e: ApprovalDecided) -> list[ActionCompleted]:
         req = self.requests.get(e.action_id)
         if req is None or req.status != "proposed":
             return []
@@ -79,6 +80,8 @@ class Approvals:
             return [self._finish(req, "failed", e.ts, f"no executor for {req.kind}")]
         try:
             result = executor(req)
+            if inspect.isawaitable(result):
+                result = await result
         except Exception as exc:  # an action failing must not take the box down
             return [self._finish(req, "failed", e.ts, str(exc))]
         return [self._finish(req, "done", e.ts, result)]
