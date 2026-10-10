@@ -1,5 +1,5 @@
-"""In-process event bus + append-only JSONL event log (F3).
+"""In-process event bus + append-only JSONL event log (F3). See bus/bus.py."""
 
-Log lives at data/events/*.jsonl and is the source of truth; context tables are
-projections rebuilt by replaying it. Publish/subscribe on contracts.events.Event.
-"""
+from bus.bus import EventBus
+
+__all__ = ["EventBus"]
