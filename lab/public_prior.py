@@ -15,7 +15,10 @@ The model is a bandwidth-bound decode model fitted by weighted least squares, no
 1. Bytes read per decoded token (GB). Decode at batch 1 streams every active weight once per token, so a row's bytes
    are its stated model file size (llama-bench prints it in GiB) scaled by active over total parameters for a
    mixture of experts; failing a size, active parameters times stated bits per weight over 8; failing those, active
-   parameters times the format's nominal bits per weight (NOMINAL_BITS). A row with none of these is not used.
+   parameters times the format's nominal bits per weight (nominal_bits). A row with none of these, or whose model's
+   architecture is not known (DENSE_FAMILIES, active-parameter markers such as A3B), stays out of the single-stream
+   fit and counts only for the batch term. Multi-node, speculative and total-throughput rows (EXCLUDE) and engines
+   other than vLLM, SGLang and llama.cpp (with LM Studio, Ollama and lemonade folded into it) are not used at all.
 2. Single stream: log(tok/s) = a[backend] - beta * log(GB) - g * log(1 + context depth in thousands) + m * [MoE], fitted on
    rows at batch 1 with a decode rate. exp(a[backend]) is that backend's effective bandwidth in GB/s at 1 GB read per
    token; beta near 1 means decode really is bandwidth-bound across the rows. Each row is weighted 1/sqrt(n) where n
@@ -126,7 +129,7 @@ class Row:
     model: str
     quant: str
     backend: str
-    gb: float  # bytes read per decoded token, GB
+    gb: float  # bytes read per decoded token, GB; 0.0 when the row does not say (batch term only)
     batch: int  # requests decoded together (batch or concurrency); 1 when the source states neither
     depth_k: float  # context depth in thousands of tokens at which decode was timed (0 when unstated)
     moe: bool
@@ -250,7 +253,7 @@ def source_group(url: str) -> str:
 
 def load_rows(path: Path = CSV_PATH) -> tuple[list[Row], list[dict[str, str]]]:
     """(usable decode rows, every CSV record). A record is usable when it is a plain single-node decode rate on a
-    GPU backend with known bytes per token."""
+    GPU backend; one with unknown bytes per token (gb 0.0) feeds only the batch term."""
     with open(path, newline="", encoding="utf-8") as handle:
         records = list(csv.DictReader(handle))
     rows: list[Row] = []
@@ -263,9 +266,7 @@ def load_rows(path: Path = CSV_PATH) -> tuple[list[Row], list[dict[str, str]]]:
         backend = backend_key(rec.get("engine", ""), rec.get("backend", ""))
         if backend not in FIT_BACKENDS:
             continue
-        gb = bytes_per_token_gb(rec)
-        if not gb or gb <= 0:
-            continue
+        gb = bytes_per_token_gb(rec) or 0.0  # 0 when unknown: such a row still counts for the batch term
         batch = max(int(_num(rec.get("concurrency")) or 1), 1)
         per_request = batch > 1 and "per-request" in (rec.get("notes") or "").lower()
         share = active_share(rec)
@@ -374,7 +375,8 @@ def _single_fit(rows: list[Row], backends: list[str]) -> tuple[dict[str, float],
 
 def fit(rows: list[Row], min_backend_rows: int = 1) -> Fit:
     """Fit the single-stream model on batch-1 rows and the batch term on matched pairs."""
-    single = [r for r in rows if r.batch == 1]
+    paired = [r for r in rows if r.batch == 1]  # every batch-1 row, the base the batch term divides by
+    single = [r for r in paired if r.gb > 0]
     counts: dict[str, int] = defaultdict(int)
     for r in single:
         counts[r.backend] += 1
@@ -409,7 +411,7 @@ def fit(rows: list[Row], min_backend_rows: int = 1) -> Fit:
 
     # Batch term from matched pairs: B/ratio - 1 = k (B - 1), fitted through the origin per backend.
     base: dict[tuple, float] = {}
-    for r in single:
+    for r in paired:
         base.setdefault((r.source, r.model, r.quant, r.backend, r.depth_k), r.tg)
     num: dict[str, float] = defaultdict(float)
     den: dict[str, float] = defaultdict(float)
