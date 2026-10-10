@@ -52,6 +52,48 @@ Authorization: token <hub token>
 where `<hub>` is `sjc.aupcloud.io` for C and D or `dub.aupcloud.io` for A and B, `<account>` is the user name the hub
 knows the account by (not the letter), and `<port>` is the port the server listens on.
 
+## Secret scan: `tests/test_no_secrets.py`
+
+`python -m pytest -q tests/test_no_secrets.py` fails on any credential-shaped text in three places: the repo tree
+(what git tracks, plus untracked files it does not ignore), everything under `lab/state/` (the ledger, notes and review
+files, ignored by git or not, and `$LAB_STATE_DIR` when it points elsewhere), and the Notion post texts kept in
+`fixtures/secrets/notion_posts.txt`. It runs with the rest of `pytest -q` in about a second and prints only
+`path:line: label`. A value is never printed.
+
+| Label | What it matches | Left alone on purpose |
+|---|---|---|
+| hub token | the word `token` or `bearer` (any case, an account letter such as `_C` allowed after it), then `:`, `=` or a space, then 32 hex characters: `Authorization: token ...`, `?token=...`, `"token": "..."`, `AUP_HUB_TOKEN_C=...` | a bare 32-hex string (event ids, Notion page ids and digests have that shape), `token_id`, `tokens`, 40 and 64 hex hashes, `$AUP_HUB_TOKEN_A` |
+| hugging face token | `hf_` and 30 or more letters and digits | `hf_hub_download` and other names |
+| notion token | `ntn_` (current) or `secret_` (legacy) and 40 or more letters and digits | the prefixes in prose, `secret_key_base` |
+| tailscale key | `tskey-`, an optional kind (`auth-`, `api-`) and 20 or more key characters | `tskey-auth-<key>` and `tskey-auth-...` |
+| github token | `ghp_`, `gho_`, `ghu_`, `ghs_` or `ghr_` and 36 or more characters, or `github_pat_` and 50 or more | the prefixes in prose |
+| private key | a `BEGIN ... PRIVATE KEY` header followed by a base64 body, also with JSON `\n` escapes between them | the header alone, a body written as `...` |
+| account password | an upper-case `.env` line whose key has `PASS`, `PASSWORD`, `PASSWD` or `PWD` as a whole word, `=`, then 8 or more characters; or a quoted value after a `password`, `passwd` or `pwd` key (JSON, YAML, Python) | `<password>`, `$VAR`, `${VAR}`, `changeme`, masked values, code that reads a password, a value that is itself a key name |
+
+A match is dropped when it cannot be a credential: filler such as `xxxx...`, one unit repeated (`0123456789abcdef`
+twice), a run of ten of one character, or fewer than 9 distinct characters in a long value (a random 32-hex token
+has fewer 3 times in a million). A fake token in a test therefore has to look like filler, or be built at run time.
+
+**Values from the `.env` files.** When a `.env` exists (the clone's, or one of the two folders above it, found the way
+`python -m lab ready` finds them, or `$LAB_ENV_FILES`), the test reads it in memory and looks for the value of every key
+listed in `config/.env.example` and of every credential-named key (`TOKEN`, `SECRET`, `PASS`, `PASSWORD`, `PASSWD`, `PWD`,
+`API_KEY`, `PRIVATE_KEY`, `ACCESS_KEY`, `AUTH_KEY`) in all three places, as written, JSON-escaped and percent-encoded.
+Values under 8 characters and keys ending `_DIR` or `_PATH` are skipped. Without a `.env` (CI has none) there is
+nothing to look for. A hit reads `env value of <KEY>`.
+
+**When it fails**, take the value out of the file. If it was real, tell Ilan: the credential has to be replaced, not just
+deleted (a hub token is minted again, a Notion or Hugging Face token is revoked).
+
+**The proof** is in `fixtures/secrets/`. `cases.json` holds the true and false positives; secret bodies are written
+as `{hex32}`, `{hf}`, `{ntn}`, `{tskey}`, `{github}`, `{pem}`, `{password}` and expand to generated values when the test
+runs, so the repo never holds one. `notion_posts.txt` holds post texts modeled on real ones (page links, event ids,
+hashes, key names) that have to stay clean. To teach the scan a new shape, add it to `SHAPES` with at least one true case
+and one near miss (`"near"`); a test fails when a shape has neither. To stop a false alarm, add the text that raised it to
+`cases.json` as a case with `"expect": []`, then change the shape.
+
+Limits: binary files and `.gz` archives are not read, a file is read up to 64 MB, and a hub token that is not 32 hex or
+a password inside prose is found only through its `.env` value.
+
 ## What the pods are
 
 - ROCm 7.13.0, `torch 2.9.1+rocm7.13.0`, `triton 3.5.1+rocm7.13.0`, `hipcc` on PATH, `python3` only.
