@@ -36,6 +36,7 @@ class SortIt:
         self._last_face: datetime | None = None
         self._turn = 0
         self.results: dict[str, list[bool]] = defaultdict(list)  # session -> correct per round
+        self._scored: set[str] = set()  # round ids already in `results`
 
     def on_faces(self, e: FacesCounted) -> list:
         if e.facing > 0:
@@ -69,10 +70,24 @@ class SortIt:
         speed = max(0.0, min(1.0, 2 - seconds / estimate))  # 1.0 at or under the estimate, 0 at twice it
         self.round = None
         self._faces_since = e.ts  # hold the camera's gaze again for the next round
+        self._scored.add(r.round_id)
         self.results[r.session_id].append(correct)
         return [RoundScored(ts=e.ts, round_id=r.round_id, session_id=r.session_id, players=r.players, item=r.item,
                             correct=correct, seconds=seconds, path_len=len(r.path),
                             score=round((100 if correct else 0) + 50 * speed * correct, 1))]
+
+    def on_scored(self, e: RoundScored) -> list:
+        """Rebuild the history from the log (replay): rounds scored before a restart count again.
+
+        State only: it starts no round and returns no events. A round this run scored itself is
+        already counted, so the live copy of its own event changes nothing."""
+        if e.round_id in self._scored:
+            return []
+        self._scored.add(e.round_id)
+        self.results[e.session_id].append(e.correct)
+        self.session_id = e.session_id  # the latest session stays the one on screen until someone plays again
+        self._last_face = e.ts  # event time: a face more than NEW_SESSION_AFTER later starts a new session
+        return []
 
     def accuracy(self, session_id: str, first: int = 1, last: int = 5) -> tuple[float, float] | None:
         """Accuracy over the first `first` rounds vs round `last` onward: did the player learn?"""
