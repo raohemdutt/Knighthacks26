@@ -59,6 +59,7 @@ from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 from typing import IO, Any
 
+from lab.machine import stop
 from lab.machine.lock import FileLock, LockTimeout
 from lab.machine.metrics import _METRIC_RE as METRIC_NAME_RE
 
@@ -69,8 +70,10 @@ __all__ = ["ENV_STATE_DIR", "DEFAULT_STATE_DIR", "LEDGER_FILE", "LOCK_FILE", "LO
 
 log = logging.getLogger("lab.ledger")
 
-ENV_STATE_DIR = "LAB_STATE_DIR"
-DEFAULT_STATE_DIR = Path(__file__).resolve().parents[1] / "state"
+# the state dir is the one the kill switch (stop.py) already resolves; these are its own
+# names, re-exported for the callers that read them here (pool.py, sit.py), never a copy
+ENV_STATE_DIR = stop.STATE_DIR_ENV
+DEFAULT_STATE_DIR = stop.DEFAULT_STATE_DIR
 LEDGER_FILE = "ledger.jsonl"
 LOCK_FILE = "ledger.lock"
 LOCK_TIMEOUT = 10.0          # seconds an append waits while another writer holds the lock
@@ -103,11 +106,12 @@ class RowError(ValueError):
 # --- where ----------------------------------------------------------------------------
 
 def resolve_state_dir(state_dir: str | os.PathLike[str] | None = None) -> Path:
-    """state_dir when given, else LAB_STATE_DIR when set and not empty, else lab/state."""
+    """state_dir when given, else stop.state_dir(): LAB_STATE_DIR when set and not
+    empty, else lab/state. Looked up through the stop module on every call, so the
+    ledger and the STOP file always resolve one and the same state dir."""
     if state_dir is not None:
         return Path(state_dir)
-    configured = os.environ.get(ENV_STATE_DIR)
-    return Path(configured) if configured else DEFAULT_STATE_DIR
+    return stop.state_dir()
 
 
 def ledger_path(state_dir: str | os.PathLike[str] | None = None) -> Path:
