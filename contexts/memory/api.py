@@ -31,6 +31,13 @@ From = Query(EARLIEST, alias="from")
 To = Query(LATEST, alias="to")
 
 
+def _inside(path: Path, root: Path) -> bool:
+    """True when `path` really is a file under `root`: a symlink in data/frames must not serve what it points at."""
+    if path.is_symlink() or path.parent.is_symlink():
+        return False
+    return root.resolve() in path.resolve().parents
+
+
 def build_router(memory: SqliteMemory, frames_dir: str | Path = "data/frames") -> APIRouter:
     router = APIRouter(prefix="/memory", tags=["memory"])
     frames = Path(frames_dir)
@@ -62,7 +69,7 @@ def build_router(memory: SqliteMemory, frames_dir: str | Path = "data/frames") -
     async def keyframe(ref: str) -> FileResponse:
         m = FRAME_REF.fullmatch(ref)
         path = frames / m[1] / f"{m[2]}.jpg" if m and ".." not in m[1] else None
-        if path is None or not path.is_file():
+        if path is None or not path.is_file() or not _inside(path, frames):
             raise HTTPException(404, "no such keyframe")
         return FileResponse(path, media_type="image/jpeg")
 
