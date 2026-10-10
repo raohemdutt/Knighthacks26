@@ -6,8 +6,8 @@
  * version from /health, and the Ask conversation (so it survives tab changes).
  */
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ApiError, api, wsUrl, type Answer, type ApprovalRequest, type AtlasEvent } from "./api";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { ApiError, api, wsUrl, type Answer, type AnswerDelta, type ApprovalRequest, type AtlasEvent } from "./api";
 
 export type LinkState = "connecting" | "live" | "offline";
 
@@ -26,6 +26,113 @@ export type ChatTurn =
 
 type Listener = (e: AtlasEvent) => void;
 
+const DELTA_TYPE = "agent.answer.delta";
+/** How many finished or foreign question ids are remembered, so their late pieces are never shown. */
+const MAX_SETTLED = 200;
+
+/**
+ * The answer being written for the question this phone just asked, put together from the
+ * `agent.answer.delta` pieces on /ws.
+ *
+ * The box makes the question id and only returns it with the finished answer, and every phone gets every
+ * phone's pieces, so which pieces are ours is worked out here:
+ *  - an id first seen while we had no question in flight is somebody else's, for good;
+ *  - `experience.question.asked` carries the id and the text: our text claims the id, any other text rules it out
+ *    (it normally arrives just before the first piece);
+ *  - if that event was missed, pieces are shown while exactly one unclaimed question is being written during ours.
+ *    Two at once show nothing until one of them is ruled out.
+ * Pieces carry no position, so a gap cannot be mended: when the socket drops, or a piece arrives on a different
+ * connection than the one before it, that question's text is withdrawn and the screen waits for the final
+ * answer, which always replaces what was streamed. Nothing is ever appended twice.
+ */
+class AnswerStreams {
+  private question: string | null = null; // the text of our question in flight
+  private mine: string | null = null; // its id, once the box has said so
+  private buffers = new Map<string, { text: string; conn: number; broken: boolean }>();
+  private settled = new Set<string>(); // ids that are not, or are no longer, ours
+  private shown: string | null = null;
+  private subs = new Set<() => void>();
+
+  subscribe = (fn: () => void) => {
+    this.subs.add(fn);
+    return () => {
+      this.subs.delete(fn);
+    };
+  };
+
+  /** The text to show so far, or null when there is none to show. */
+  snapshot = () => this.shown;
+
+  /** We just asked `question`. */
+  begin(question: string): void {
+    this.end();
+    this.question = question.trim();
+  }
+
+  /** Our question was answered or failed; anything still arriving for it is ignored. */
+  end(): void {
+    for (const id of this.buffers.keys()) this.settle(id);
+    if (this.mine) this.settle(this.mine);
+    this.buffers.clear();
+    this.question = null;
+    this.mine = null;
+    this.publish();
+  }
+
+  piece(d: AnswerDelta, conn: number): void {
+    if (this.settled.has(d.question_id)) return;
+    if (this.question === null) {
+      this.settle(d.question_id); // being written while we were not asking: not ours, however long it runs
+      return;
+    }
+    const b = this.buffers.get(d.question_id);
+    if (!b) this.buffers.set(d.question_id, { text: d.text, conn, broken: false });
+    else if (b.broken) return;
+    else if (b.conn !== conn) b.broken = true; // pieces were missed in between
+    else b.text += d.text;
+    this.publish();
+  }
+
+  /** The socket closed: whatever was being written now has a hole in it. */
+  linkLost(): void {
+    if (this.buffers.size === 0) return;
+    for (const b of this.buffers.values()) b.broken = true;
+    this.publish();
+  }
+
+  event(e: AtlasEvent): void {
+    const id = e.question_id;
+    if (typeof id !== "string" || !id) return;
+    if (e.type === "experience.question.asked") {
+      const ours = this.question !== null && this.mine === null && !this.settled.has(id) && str(e.text).trim() === this.question;
+      if (ours) this.mine = id;
+      else if (id !== this.mine) this.drop(id);
+    } else if (e.type === "agent.answer.generated" && id !== this.mine) {
+      this.drop(id); // ours stays up until the screen has the answer itself and calls end()
+    } else return;
+    this.publish();
+  }
+
+  private drop(id: string): void {
+    this.settle(id);
+    this.buffers.delete(id);
+  }
+
+  private settle(id: string): void {
+    this.settled.add(id);
+    if (this.settled.size > MAX_SETTLED) this.settled.delete(this.settled.values().next().value as string);
+  }
+
+  private publish(): void {
+    let b = this.mine ? this.buffers.get(this.mine) : undefined;
+    if (!this.mine && this.buffers.size === 1) b = this.buffers.values().next().value;
+    const next = b && !b.broken && b.text.trim() !== "" ? b.text : null;
+    if (next === this.shown) return;
+    this.shown = next;
+    this.subs.forEach((fn) => fn());
+  }
+}
+
 interface AtlasState {
   link: LinkState;
   model: string | null;
@@ -36,6 +143,8 @@ interface AtlasState {
   approvals: { items: ApprovalRequest[]; loading: boolean; error: ApiError | undefined; reload: () => void };
   chat: ChatTurn[];
   setChat: (update: (turns: ChatTurn[]) => ChatTurn[]) => void;
+  /** The answer being written for this phone's question; read it with useAnswerStream(). */
+  answerStream: AnswerStreams;
 }
 
 const Ctx = createContext<AtlasState | null>(null);
@@ -88,6 +197,7 @@ export function AtlasProvider({ children }: { children: ReactNode }) {
     error: undefined,
   });
   const listeners = useRef(new Set<Listener>());
+  const [answerStream] = useState(() => new AnswerStreams());
 
   const dismissToast = useCallback((id: string) => setToasts((t) => t.filter((x) => x.id !== id)), []);
 
@@ -129,6 +239,7 @@ export function AtlasProvider({ children }: { children: ReactNode }) {
     let timer: number | undefined;
     let delay = BACKOFF_START_MS;
     let stopped = false;
+    let conn = 0; // which connection a piece of an answer came in on
 
     const connect = () => {
       window.clearTimeout(timer);
@@ -142,6 +253,7 @@ export function AtlasProvider({ children }: { children: ReactNode }) {
         return;
       }
       ws = socket;
+      const id = ++conn;
       socket.onopen = () => {
         delay = BACKOFF_START_MS;
         setLink("live");
@@ -156,6 +268,14 @@ export function AtlasProvider({ children }: { children: ReactNode }) {
           return;
         }
         if (!e || typeof e.type !== "string") return;
+        if (e.type === DELTA_TYPE) {
+          // A piece of an answer, not an event: it has no event_id or ts, so it goes nowhere near toasts or listeners.
+          const d = e as unknown as AnswerDelta;
+          if (ws === socket && typeof d.question_id === "string" && d.question_id && typeof d.text === "string") answerStream.piece(d, id);
+          return;
+        }
+        if (typeof e.event_id !== "string") return; // every real event has one; toasts and handlers key on it
+        answerStream.event(e);
         const toast = toastFor(e);
         if (toast) pushToast(toast);
         if (APPROVAL_EVENTS.has(e.type)) reloadApprovals();
@@ -164,6 +284,7 @@ export function AtlasProvider({ children }: { children: ReactNode }) {
       socket.onclose = () => {
         if (ws !== socket) return; // an older socket closing after we already moved on
         ws = null;
+        answerStream.linkLost();
         retry();
       };
       socket.onerror = () => socket.close();
@@ -199,9 +320,10 @@ export function AtlasProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("online", onVisible);
       const socket = ws;
       ws = null;
+      answerStream.linkLost();
       socket?.close();
     };
-  }, [pushToast, reloadApprovals, refreshHealth]);
+  }, [pushToast, reloadApprovals, refreshHealth, answerStream]);
 
   const setChat = useCallback((update: (turns: ChatTurn[]) => ChatTurn[]) => setChatState(update), []);
 
@@ -215,8 +337,9 @@ export function AtlasProvider({ children }: { children: ReactNode }) {
       approvals: { ...approvals, reload: reloadApprovals },
       chat,
       setChat,
+      answerStream,
     }),
-    [link, model, toasts, dismissToast, subscribe, approvals, reloadApprovals, chat, setChat],
+    [link, model, toasts, dismissToast, subscribe, approvals, reloadApprovals, chat, setChat, answerStream],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
@@ -240,4 +363,15 @@ export function useAtlasEvents(prefixes: string[], fn: Listener): void {
       if (wanted.some((p) => e.type.startsWith(p))) ref.current(e);
     });
   }, [subscribe, key]);
+}
+
+/**
+ * The answer to this phone's question as it is being written. `begin(question)` just before asking, `end()` once
+ * the answer (or an error) is in; `text` is what has been written so far, or null when there is nothing to show
+ * (no pieces yet, the socket is down, or the answer came without any).
+ */
+export function useAnswerStream(): { text: string | null; begin: (question: string) => void; end: () => void } {
+  const { answerStream } = useAtlas();
+  const text = useSyncExternalStore(answerStream.subscribe, answerStream.snapshot, () => null);
+  return useMemo(() => ({ text, begin: (q: string) => answerStream.begin(q), end: () => answerStream.end() }), [text, answerStream]);
 }

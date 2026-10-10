@@ -7,7 +7,7 @@ import ui from "@/components/ui.module.css";
 import { VoiceBar } from "@/components/voice/VoiceBar";
 import v from "@/components/voice/voice.module.css";
 import { ApiError, api, type ApprovalRequest } from "@/lib/api";
-import { useAtlas } from "@/lib/atlas";
+import { useAnswerStream, useAtlas } from "@/lib/atlas";
 import { time } from "@/lib/format";
 import { useWords } from "@/lib/profile";
 import { approvalSentence, speechForAnswer, voiceCommand } from "@/lib/speechText";
@@ -31,10 +31,22 @@ const RELISTEN_MS = 350;
 
 type Note = { text: string; tone: "info" | "error" };
 
+/** An answer's words, finished or still being written: one place, so streamed text looks exactly like the final text. */
+function AnswerText({ text, writing = false }: { text: string; writing?: boolean }) {
+  return (
+    <p className={ui.answerText}>
+      {text}
+      {writing ? <span className={v.caret} aria-hidden="true" /> : null}
+    </p>
+  );
+}
+
 export default function AskPage() {
   const { chat, setChat, approvals } = useAtlas();
   const w = useWords();
   const voice = useVoice();
+  const stream = useAnswerStream();
+  const streamed = stream.text; // the answer so far, while it is being written
   const router = useRouter();
   const [text, setText] = useState("");
   const [waiting, setWaiting] = useState<string | null>(null); // the question being answered
@@ -47,8 +59,8 @@ export default function AskPage() {
   const startListeningRef = useRef<() => void>(() => undefined);
 
   useEffect(() => {
-    if (chat.length > 0 || waiting) endRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
-  }, [chat.length, waiting]);
+    if (chat.length > 0 || waiting) endRef.current?.scrollIntoView({ block: "end", behavior: streamed ? "auto" : "smooth" });
+  }, [chat.length, waiting, streamed]);
 
   /** Open the microphone again once Atlas has finished, if the conversation is hands-free and still wanted. */
   const relisten = useCallback(() => {
@@ -88,6 +100,7 @@ export default function AskPage() {
     setText("");
     setWaiting(q);
     setChat((turns) => [...turns, { id: nextId(), role: "you", text: q }]);
+    stream.begin(q); // pieces of the answer show as they are written; the reply below replaces them
     try {
       const answer = await api.ask(q);
       setChat((turns) => [...turns, { id: nextId(), role: "atlas", answer }]);
@@ -103,6 +116,7 @@ export default function AskPage() {
       setChat((turns) => [...turns, { id: nextId(), role: "error", text: message, needsToken: e.needsToken }]);
       if (spoken) reply = e.status === 504 ? "That took too long. Try again in a moment." : "Sorry, I could not get an answer. The reason is on screen.";
     } finally {
+      stream.end();
       busy.current = false;
       setWaiting(null);
     }
@@ -252,7 +266,7 @@ export default function AskPage() {
         </div>
       ) : null}
 
-      <div className={ui.turns} aria-live="polite">
+      <div className={ui.turns} aria-live="polite" aria-busy={waiting !== null}>
         {chat.map((turn) => {
           if (turn.role === "you")
             return (
@@ -269,7 +283,7 @@ export default function AskPage() {
           const a = turn.answer;
           return (
             <article key={turn.id} className={`${ui.card} ${ui.answer}`}>
-              <p className={ui.answerText}>{a.answer}</p>
+              <AnswerText text={a.answer} />
               <Evidence citations={a.citations} />
               <p className={ui.modelLine}>
                 Answered by <strong>{a.model_version}</strong> at {time(a.ts)}
@@ -277,7 +291,11 @@ export default function AskPage() {
             </article>
           );
         })}
-        {waiting ? (
+        {waiting && streamed ? (
+          <article className={`${ui.card} ${ui.answer}`} data-writing="true">
+            <AnswerText text={streamed} writing />
+          </article>
+        ) : waiting ? (
           <div className={ui.loading} role="status">
             <span className={ui.spinner} aria-hidden="true" />
             <span>Atlas is looking through its memory…</span>
