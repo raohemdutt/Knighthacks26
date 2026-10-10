@@ -128,3 +128,17 @@ No push or pull throughput was measured, because every probe here was read-only 
 root was 34 KB; XFR-3, XFR-5 and XFR-7 produce the MB/s baselines the rubric asks for. The pod's Tornado version,
 which decides the symlink behavior, could not be read over HTTP. AMD's Cloudflare plan, which decides the upload
 cap, is unknown.
+
+## 5. Range parts need a Range-capable server (plumbing pass 1, 2026-10-10)
+
+### Takeaway
+Python's built-in file server, the one R10's page proved the proxy path with, cannot answer a Range request, so
+it always sends a package file whole, and through `/proxy/<port>/` a whole file over 100 MiB is predicted to
+fail. Pulling a multi-GB package through the proxy needs a Range-capable server or files pre-split into parts.
+
+### Cited findings
+- **[practitioner]** CPython's `http.server` has no Range support: `SimpleHTTPRequestHandler.send_head` answers a GET for a file with 200 and the file's full `Content-Length`, and the module has no 206 path (also checked at v3.13.7 and on main). Source: CPython `Lib/http/server.py`, `SimpleHTTPRequestHandler.send_head`, L689-L770 at v3.12.11, https://github.com/python/cpython/blob/v3.12.11/Lib/http/server.py#L689-L770 [S45]
+
+  Implies: through `/proxy/<port>/`, `python3 -m http.server` returns every package file whole, which jupyter-server-proxy 4.6.0 refuses above 100 MiB (`proxy-path.md` section 3, Tornado's default `max_body_size`), so R10's server has to answer Range requests itself, or the package script splits each file into parts under 100 MiB with a sha256 per part in the manifest, which any static server can serve; the `/files/` route (section 3) answers Range without a pod-side server (MB/s, FCR).
+
+  Experiment (XFR-10): one 1 GB file pulled from pod B three ways: whole through `/proxy/<port>/` from `python3 -m http.server`, as 64 MiB pre-split parts through the same server, and in 64 MiB Range requests through `/files/`, sha256 checked. Expected: the whole pull fails (599 or a dropped connection) and both part-wise pulls succeed, `/files/` at least as fast. Minimum sample: 3 per arm.

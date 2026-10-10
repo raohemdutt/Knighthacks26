@@ -194,3 +194,46 @@ How often the Dublin hub restarts, and what its logs keep (request URLs, tokens 
 from outside. Whether a quota refusal reaches the caller as the POST's own error or only as a `failed` progress
 event was not tested, because that needs a launch. The hub-restart behaviors above (lost runtime timer, token
 cache) come from source, not observation.
+
+## 6. The front door down (plumbing pass 1, 2026-10-10)
+
+### Takeaway
+Since about 11:20 AM ET the hub's public address has answered Cloudflare's own plain-text 502 on every path,
+so nothing that goes through `dub.aupcloud.io` works: no launch, stop, status read, proxied model call or
+keep-alive ping. Both servers were already stopped, so nothing was lost this time.
+
+### Cited findings
+- **[measured]** Unauthenticated GETs of `/hub/api/`, a hub static file and `/hub/login` all returned 502 in under 0.4 s with `Server: cloudflare`, `Content-Type: text/plain`, no `x-jupyterhub-version` header and the 16-byte body `error code: 502`; `python -m lab ready` got 502 for both accounts' hub API reads; the R9 task page's lock line of Sat 11:24 AM ET already records the hub answering 502. Source: `measurements-2026-10-10.md` M16 [S47]; R9 task page, lock line of Sat 11:24 AM ET, https://app.notion.com/p/3f596ef5fec581579ba5c7a9c6d19230 [S48]
+
+  Implies: a front-door outage is its own failure class for FCR, told apart by `Server: cloudflare` plus the plain `error code: 502` body, distinct from a stopped server (424, `proxy-path.md` section 4) or a dead model server (500, M9); during it the controller can neither launch, stop nor read state, the box cannot reach a model server, and keep-alive pings sent through the proxy cannot land (see `idle-credits-recovery.md` section 5). The box shows "Learning paused" (Design Doc section 6b) and retries with backoff.
+
+  Experiment (HUB-18): the controller's status poll logs every front-door 502 with its `CF-RAY` and the outage's first and last failed poll. Expected: FCR gains a front-door class and the ledger holds outage minutes per day; no movement in the other metrics. Minimum sample: every poll for the weekend.
+
+- **[practitioner]** Cloudflare documents that a 502 or 504 originating from Cloudflare is a page without Cloudflare branding, while a Cloudflare-branded 502 or 504 is the origin's own error passed through; its listed causes of the unbranded kind are origin compression faults and data-center traffic shifts that usually last seconds. Source: Cloudflare docs, "Error 502 or 504", sections "502/504 from Cloudflare" and "502/504 from your origin web server", https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-5xx-errors/error-502-504/ [S44]
+
+  Implies: our unbranded 16-byte body is Cloudflare's own error, but an outage of hours on every path is not the seconds-long kind the page lists, so from outside we cannot tell whether AMD's hub, its ingress or the route to it is down; fixing it is AMD staff's job, and our tools only detect, wait and record it (FCR).
+
+  Experiment: none beyond HUB-18.
+
+## 7. Whose clock is off (plumbing pass 1, 2026-10-10)
+
+### Takeaway
+The 46 s gap of M14 is our workstation running slow, not the hub running fast: three unrelated public servers
+show the same gap.
+
+### Cited findings
+- **[measured]** At 16:04 UTC the `Date` headers of Google, GitHub and Cloudflare's own site ran 44 to 47 s ahead of the workstation clock, the same gap the hub's Cloudflare-served responses showed in M14 and M16. Source: `measurements-2026-10-10.md` M17 [S47]
+
+  Implies: ledger rows, pass reports and queue timestamps written on this machine run about 46 s slow, and durations that mix hub timestamps (`started`, quota transactions) with this clock carry that error (CPH, TTS, RT); timing code should take "now" from the hub's `Date` header or from a synced clock, and the section 4 advice to compute durations in hub time stands.
+
+  Experiment: HUB-13 as specified in section 4, logging the offset against a public clock as well as the hub's. Expected: the same 44 to 47 s until the workstation clock is resynced. Minimum sample: 10 polls.
+
+## Open questions
+
+- Is the Dublin outage the hub process itself or only the route from Cloudflare to it? It decides whether the idle culler keeps running during an outage (`idle-credits-recovery.md` section 5).
+- Does the live build carry AUP's `last_activity_interval = 60`? M13 dates the build between 2026-06-25 and 2026-07-06, older than the 9b4af19 config read here.
+- Does a job's output count as terminal activity when no browser is attached to its terminal, or only websocket traffic?
+
+## Search log
+
+- 2026-10-10, plumbing pass 1: budget about 2 h (`lab/refine/RESEARCH_FORMAT.md` section 8), used about 35 minutes (11:58 AM to 12:12 PM ET, workstation clock). Starting points: the rubric's known open items 1, 2, 3, 6 and 9, the Gaps sections of these notes, and the 502 outage the R9 task page reports. Opened: the live front door (M16) and three public `Date` headers (M17); Cloudflare's "Error 502 or 504" page (S44); CPython `Lib/http/server.py` at v3.12.11, v3.13.7 and main (S45); AUP's `jupyterhub_config.py` at 9b4af19 (S36) and z2jh 4.3.3's (S46). Re-opened before a change rested on them: jupyter-server-proxy v4.6.0 `handlers.py` (S25), Tornado v6.5.10 `simple_httpclient.py` (S27) and Cloudflare's "Connection limits" (S15). Stopped when those last three repeated what `proxy-path.md` already says.
