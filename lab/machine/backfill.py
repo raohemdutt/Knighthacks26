@@ -94,7 +94,7 @@ class Fact:
 
     key: str                       # stable identity inside FACTS; never reused for other text
     topic: str                     # build, build_fix, checkpoint, serving or pod_session
-    ts: str                        # when the earliest cited record was written (UTC, ending in Z)
+    ts: str                        # the time of the earliest record that states it (UTC, ending in Z)
     note: str                      # the fact in plain sentences
     source: str                    # the records it comes from
     node: str | None = None        # pod-a or pod-b when the fact is about one pod
