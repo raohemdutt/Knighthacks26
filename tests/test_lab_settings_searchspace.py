@@ -99,3 +99,11 @@ def test_the_pinned_settings_are_fixed_and_cover_the_teacher_serve_line():
     assert fixed["gpu_memory_utilization"] == 0.90
     assert fixed["mm_encoder_attn_backend"] == "TRITON_ATTN"
     assert fixed["max_num_seqs"] == 256
+
+
+def test_every_source_id_the_note_cites_is_defined_exactly_once_in_the_index():
+    cited = set(re.findall(r"\[(S\d+)\]", NOTE.read_text(encoding="utf-8")))
+    index = (KERNELS / "SOURCES.md").read_text(encoding="utf-8")
+    defined = re.findall(r"^\| (S\d+) \|", index, flags=re.M)
+    for source_id in sorted(cited):
+        assert defined.count(source_id) == 1, source_id
