@@ -60,6 +60,19 @@ EXPECTED_SEED = [
     ("pod.credits_per_min", "pod-b", {}, 4, "credits/min", False),
     ("pod.balance_credits", "pod-a", {}, 59960, "credits", True),
     ("pod.balance_credits", "pod-b", {}, 59960, "credits", True),
+    # R29: the teacher on the SJC pod C (Strix Halo, gfx1151)
+    ("teacher.ttft_s", "pod-c", {"prompt": "text", "thinking": "off"}, 0.39, "s", False),
+    ("teacher.decode_tok_s", "pod-c", {"prompt": "text", "thinking": "off"}, 2.88, "tok/s", False),
+    ("teacher.ttft_s", "pod-c", {"prompt": "image"}, 3.51, "s", False),
+    ("teacher.decode_tok_s", "pod-c", {"prompt": "image"}, 2.82, "tok/s", False),
+    ("teacher.e2e_s", "pod-c", {"prompt": "text"}, 27.51, "s", False),
+    ("teacher.e2e_s", "pod-c", {"prompt": "image"}, 12.85, "s", False),
+    ("teacher.watts_avg", "pod-c", {"prompt": "text"}, 120.3, "W", False),
+    ("teacher.watts_peak", "pod-c", {}, 129, "W", False),
+    ("teacher.watts_avg", "pod-c", {"prompt": "image"}, 118.3, "W", False),
+    ("pod.idle_watts", "pod-c", {"server": "teacher loaded, no request"}, 9.2, "W", False),
+    ("pod.idle_watts", "pod-c", {"server": "none"}, 8, "W", False),
+    ("teacher.engine_init_s", "pod-c", {}, 297, "s", False),
 ]
 
 # The numbers the lab setup measured, by metric name.
@@ -92,14 +105,14 @@ def test_seed_covers_every_number_the_lab_setup_measured():
     assert MEASURED_NAMES <= {row["metric"] for row in metrics.load()}
 
 
-def test_unfiltered_latest_on_the_seed_is_the_headline_text_prompt():
-    assert metrics.latest("teacher.decode_tok_s")["value"] == 7.7
-    assert metrics.latest("teacher.ttft_s")["value"] == 0.55
+def test_latest_on_pod_a_is_the_headline_text_prompt():
+    assert metrics.latest("teacher.decode_tok_s", node="pod-a")["value"] == 7.7
+    assert metrics.latest("teacher.ttft_s", node="pod-a")["value"] == 0.55
 
 
-def test_seed_history_keeps_every_condition_of_a_metric_in_file_order():
-    assert [row["value"] for row in metrics.history("teacher.decode_tok_s")] == [6.6, 7.8, 7.7]
-    assert [row["value"] for row in metrics.history("teacher.ttft_s")] == [1.09, 0.28, 0.55]
+def test_seed_history_on_pod_a_keeps_every_condition_of_a_metric_in_file_order():
+    assert [row["value"] for row in metrics.history("teacher.decode_tok_s", node="pod-a")] == [6.6, 7.8, 7.7]
+    assert [row["value"] for row in metrics.history("teacher.ttft_s", node="pod-a")] == [1.09, 0.28, 0.55]
 
 
 def test_derived_joules_per_token_matches_the_inputs_it_names():
