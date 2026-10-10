@@ -1,0 +1,60 @@
+/* The render-mode control and the comparison labels of the 3D room view. */
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.barName {
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--muted);
+}
+
+.modes {
+  flex: 1 1 260px;
+}
+
+.mode {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 6px;
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.modeSub {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.caption {
+  font-size: 15px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.bench {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 15px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.side {
+  position: absolute;
+  top: 8px;
+  z-index: 1;
+  padding: 2px 9px;
+  border-radius: 10px;
+  background: rgba(10, 12, 15, 0.78);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+  pointer-events: none;
+}
