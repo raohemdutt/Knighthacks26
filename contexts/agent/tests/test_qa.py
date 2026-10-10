@@ -142,7 +142,8 @@ def test_web_tools_cite_links():
 
 def test_without_web_the_model_only_sees_memory_tools():
     q, _ = qa()
-    assert {t["function"]["name"] for t in q.tools} == {"search_memory", "last_seen", "episodes_between"}
+    assert {t["function"]["name"] for t in q.tools} == {"search_memory", "last_seen", "episodes_between", "item_history",
+                                                         "upcoming"}
 
 
 def test_get_keyframe_tool_captions_a_stored_frame():
@@ -284,3 +285,118 @@ def test_while_we_were_asleep_is_still_the_night_not_a_visit():
     a = QA(FakeRuntime(), MEMORY, clock=lambda: NOW)
     assert a.prefetch("What went on while we were asleep?").direct is None
     assert a.prefetch("Recap their visit").direct.startswith("The latest visit")
+
+
+# --- A13: fall back to the tool loop when the fixed path is unsure; more tools ---
+
+def web_qa(*replies, web=None, memory=MEMORY):
+    from contexts.agent.application.web_port import FakeWeb
+
+    rt = FakeRuntime(chat_replies=[ChatResult(content=r, model_version="v1") if isinstance(r, str) else r for r in replies])
+    web = web or FakeWeb(results=[{"title": "Knights 31, Gators 24", "url": "https://espn.test/ucf-uf", "summary": "Final"}],
+                         pages={"https://espn.test/ucf-uf": {"url": "https://espn.test/ucf-uf", "title": "UCF vs UF",
+                                                             "summary": "UCF beat UF 31-24 on Sep 5."}})
+    return QA(rt, memory, clock=lambda: NOW, web=web), rt, web
+
+
+def calls(*named):
+    return ChatResult(content="", model_version="v1",
+                      tool_calls=[ToolCall(id=f"c{n}", name=name, arguments=args) for n, (name, args) in enumerate(named)])
+
+
+def test_a_score_question_searches_the_web_then_reads_the_page():
+    q, rt, web = web_qa(calls(("web_search", {"query": "UCF vs UF most recent game score"})),
+                        calls(("read_page", {"url": "https://espn.test/ucf-uf", "goal": "final score"})),
+                        "UCF beat UF 31-24 on Sep 5.")
+    a = asyncio.run(q.ask("What was the score in the most recent game against UF?"))
+    assert a.text == "UCF beat UF 31-24 on Sep 5."
+    assert {c.url for c in a.citations} == {"https://espn.test/ucf-uf"}
+    assert ("browse", "https://espn.test/ucf-uf", "final score") in web.calls
+    assert "sports scores" in rt.calls[-1][1][0].content  # the web hint is in the tool loop's system prompt
+
+
+def test_web_questions_get_four_tool_calls():
+    q, rt, _ = web_qa(*[calls(("web_search", {"query": f"try {n}"})) for n in range(5)], "done")
+    asyncio.run(q.ask("Who won the game?"))
+    assert sum(1 for name, _ in rt.calls if name == "chat") == 5  # 4 tool rounds, then one answer from the evidence
+
+
+def test_where_is_my_wallet_still_says_so_at_once_with_web_tools_on():
+    q, rt, web = web_qa("should not be asked")
+    for text in ("Where is my wallet?", "Have you seen my wallet?", "What happened to my wallet?", "Did my wallet arrive?"):
+        assert asyncio.run(q.ask(text)).text == NO_EVIDENCE
+    assert not any(name == "chat" for name, _ in rt.calls)
+    assert web.calls == []
+
+
+def test_an_empty_fixed_path_falls_back_to_the_tool_loop_with_web_tools():
+    q, rt, web = web_qa(calls(("web_search", {"query": "UCF last win"})), "UCF last won on Sep 5.", memory=FakeMemory())
+    a = asyncio.run(q.ask("When was the last time UCF won a football game?"))
+    assert a.text == "UCF last won on Sep 5."
+    assert web.calls[0] == ("search", "UCF last win")
+
+
+def test_without_web_an_empty_fixed_path_still_answers_at_once():
+    rt = FakeRuntime(chat_replies=[ChatResult(content="should not be asked", model_version="v1")])
+    q = QA(rt, FakeMemory(), clock=lambda: NOW)
+    assert asyncio.run(q.ask("When was the last time UCF won a football game?")).text == NO_EVIDENCE
+    assert not any(name == "chat" for name, _ in rt.calls)
+
+
+def test_an_unsure_fixed_answer_is_replaced_by_the_tool_loop_and_only_the_final_one_streams():
+    q, rt, web = web_qa(NO_EVIDENCE, calls(("web_search", {"query": "table"})), "Found it on the web.")
+    pieces = []
+    a = asyncio.run(q.ask("When did someone last leave the table?", stream=pieces.append))
+    assert a.text == "Found it on the web."
+    assert pieces == ["Found it on the web."]
+
+
+def test_a_sure_fixed_answer_with_web_tools_stays_one_model_call():
+    q, rt, web = web_qa("At 1:00 AM someone packed a laptop and left.")
+    pieces = []
+    a = asyncio.run(q.ask("When did someone last leave the table?", stream=pieces.append))
+    assert a.text.startswith("At 1:00 AM")
+    assert sum(1 for name, _ in rt.calls if name == "chat") == 1
+    assert pieces == [a.text] and web.calls == []
+
+
+def test_item_history_tool_gathers_the_last_sighting_and_the_moments_it_appeared():
+    q, rt = qa(calls(("item_history", {"label": "package", "hours": 6})), "A courier left a box at the door.")
+    asyncio.run(q.ask("Anything about deliveries?"))
+    result = [m.content for m in rt.calls[-1][1] if m.role == "tool"][0]
+    assert "courier drops a box" in result
+    assert "Old episode" not in result
+
+
+def test_upcoming_tool_lists_connector_items_matching_the_query():
+    from contracts.memory import Item
+
+    items = [Item(connector="canvas", kind="assignment", external_id="a1", title="COP 4533 Milestone 1",
+                  when=NOW + timedelta(days=2), url="https://canvas.test/a1"),
+             Item(connector="calendar", kind="event", external_id="e1", title="Dinner with Maya",
+                  when=NOW + timedelta(days=1), url="https://cal.test/e1")]
+    q, rt = qa(calls(("upcoming", {"query": "milestone", "days": 7})), "Milestone 1 is due Tuesday.")
+    q.memory = FakeMemory(items=items)
+    a = asyncio.run(q.ask("Anything I should work on?"))
+    result = [m.content for m in rt.calls[-1][1] if m.role == "tool"][0]
+    assert "COP 4533 Milestone 1" in result and "Dinner" not in result
+    assert a.citations[0].url == "https://canvas.test/a1"
+
+
+def test_prepare_for_runs_the_planner_as_a_tool():
+    from contracts.agent import PlanCreated
+    from contracts.types import Citation
+
+    class Planner:
+        def wants(self, question):
+            return False
+
+        async def answer(self, question):
+            return PlanCreated(plan_id="p1", subject=question, text="Study recursion tonight, sleep by midnight.",
+                               citations=[Citation(url="https://cs.ucf.edu/exam/")], model_version="v1")
+
+    q, rt = qa(calls(("prepare_for", {"event": "COP 3502 exam"})), "Study recursion tonight.")
+    q.planner = Planner()
+    a = asyncio.run(q.ask("I have a test soon, what now?"))
+    assert a.citations[0].url == "https://cs.ucf.edu/exam/"
+    assert "Study recursion tonight, sleep by midnight." in [m.content for m in rt.calls[-1][1] if m.role == "tool"][0]
