@@ -446,3 +446,47 @@ Not proven here: that the Jetson's llama.cpp build renders the same prompt and p
 `tool_calls`; that needs a run on the box. From the source, llama.cpp's own template engine (`common/jinja/value.cpp`
 at 8b54361) writes `tojson` with the same separators and key order, and prints `True`, `False` and `None` the way the
 Hugging Face renderer does, so the system block it builds from the `TOOLS` list should be the one in `text`.
+
+## Packages: the pod's file server and the box's pull (R10)
+
+A pod cannot reach the box, so the box pulls a finished model package (`manifest.json`, the GGUF, the vision projector)
+from the trainer pod through the hub proxy. Two facts shape it. `python3 -m http.server` cannot answer a Range request
+(it sends every file whole), and jupyter-server-proxy refuses any response body over 100 MiB, so a multi-GB GGUF only
+crosses the proxy in Range parts. The server is `lab/package_server.py` (standard library only), the pull is
+`lab/package_pull.py`, and `lab/package_fake.py` is the fake proxy their tests (and the next measurement tasks) use.
+
+```
+python -m lab.package_pull serve-start --account C           # put lab/package_server.py on the pod and start it (port 8300)
+python -m lab.package_pull curl --account C --version V      # the curl lines that prove the path from outside the pod
+python -m lab.package_pull probe --account C --version V     # one whole-file GET of the GGUF, once; records the proxy's status
+python -m lab.package_pull pull --account C --version V --dest data/models [--part-mib 64] [--force]
+python -m lab.package_pull serve-stop --account C
+```
+
+- The server serves `~/data/packages/<version>/` (the persistent home, not the Jupyter root a relaunch wipes) at
+  `https://<hub>/user/<account>/proxy/8300/<version>/<file>`, `<hub>` being the address `lab/hub.py` resolves for the
+  account (above). It listens on 127.0.0.1, answers `bytes=a-b`, `a-` and `-n`
+  with 206 and a Content-Range (416 past the end, `If-Range` honored), lists `/` and `/<version>/`, and never writes a
+  request header or a query string to its log: the proxy forwards the hub token to it. By hand on a pod:
+  `nohup python3 lab/package_server.py --root ~/data/packages --port 8300 --log ~/package_server.log &`.
+- `serve-start` runs a script on the pod through `Controller.run_script` that carries the server's source, so nothing is
+  uploaded first. It needs a ready pod with jupyter-server-proxy loaded (the `proxy` step of the pod scripts, then one
+  relaunch) and is refused while `lab/state/STOP` exists.
+- `pull` reads the manifest (`ModelManifest`), pulls each file in Range parts of 64 MiB by default (never 96 MiB or more),
+  checks its sha256, and writes `manifest.json` last, so a half-pulled package is never mistaken for an installed one
+  (`--dest data/models` leaves `data/models/<version>/`, the folder `runtime/modelstore.py` verifies and activates).
+  It continues a stopped pull from the `.part` file, tries gateway errors and dropped connections again, and does not
+  retry a login redirect, a 403, 404, 424 (pod stopped) or 500 (nothing on the port). A pull that sends nothing records no speed.
+- The ledger gets a row for the call (`package pull`) and the measurement (`link pull`): `link.pull_mb_s` (MB of 10^6
+  bytes over the seconds the transfers took), with the node, `refs.account`, and the fields bytes, seconds, part_bytes,
+  parts, retries, wall_seconds and version; conditions are the path, bytes, part size, hub and kind of machine. The
+  speed is written only for a package whose checksums matched. `probe` writes `link probe` with the status, the bytes
+  that arrived and the size of the file on the pod.
+- Reuse: `from lab.package_pull import PackageClient, pull_package, probe_whole_file` (R14 and L18), and
+  `lab.package_fake.write_package` / `FakePodProxy` to rehearse them against a fake hub.
+
+Only a pod can show these, and nothing here has run against one yet: that the live proxy passes a 206 and its
+Content-Range through, the status it answers to a whole file over 100 MiB (599 is the prediction; `probe` records it),
+the real MB/s of a single stream of 64 MiB parts, and that the SJC pod image has `python3` and the proxy extension.
+The `/files/` route of the Jupyter server (Range without a pod-side server, but only under the Jupyter root) is
+the other path; experiment E9 on the queue compares them.
