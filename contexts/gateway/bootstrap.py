@@ -29,6 +29,7 @@ from contexts.connectors.application.hub import ConnectorHub
 from contexts.connectors.domain.spec import load_specs
 from contexts.connectors.infrastructure.mcp_client import McpConnector
 from contexts.learning.application.export import DatasetExporter
+from contexts.impact.domain.waste_watch import WasteWatch
 from contexts.play.domain.game import SortIt
 from contexts.play.domain.pathfinding import SortingRules, ZoneMap
 from contexts.workspace.domain.approvals import Approvals
@@ -65,6 +66,7 @@ class Atlas:
     loop: AgentLoop
     zones: list[str] = field(default_factory=list)
     game: SortIt | None = None
+    waste: WasteWatch | None = None
     tasks: list[asyncio.Task] = field(default_factory=list)
 
     async def start(self) -> None:
@@ -169,4 +171,12 @@ def build(settings: Settings | None = None) -> Atlas:
         bus.subscribe("perception.faces", game.on_faces)
         bus.subscribe("perception.zone", game.on_zone_event)
 
-    return Atlas(settings=s, bus=bus, qa=qa, approvals=approvals, hub=hub, loop=loop, zones=zones, game=game)
+    # Waste Watch (E1, E2): counts rebuild from the log, so they survive restarts.
+    waste = None
+    if sorting.exists():
+        nudges_on = (agent_cfg.get("impact") or {}).get("nudges_on_at")
+        waste = WasteWatch(SortingRules.load(sorting), nudges_on_at=datetime.fromisoformat(nudges_on) if nudges_on else None)
+        bus.subscribe("perception.observation", waste.on_observation, replay=True)
+        bus.subscribe("perception.zone", waste.on_zone_event, replay=True)
+
+    return Atlas(settings=s, bus=bus, qa=qa, approvals=approvals, hub=hub, loop=loop, zones=zones, game=game, waste=waste)

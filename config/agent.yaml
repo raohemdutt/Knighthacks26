@@ -14,3 +14,12 @@ people:
   hemdutt: atlas-hemdutt
   xander: atlas-xander
   ilan: atlas-ilan
+
+# Waste Watch: when nudges were switched on, for the before/after diversion rate.
+impact:
+  nudges_on_at: null  # e.g. "2026-10-11T12:00:00-04:00"
+
+# Sort It: which camera sees the bins, and where the player starts (normalized x, y).
+play:
+  camera: cam-door
+  start_xy: [0.75, 0.75]

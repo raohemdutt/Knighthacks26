@@ -10,6 +10,7 @@
 - POST /api/rules              {text} plain English -> a new alert rule (A3)
 - GET  /api/play/route         ?item=can&x=&y= -> A* route to the right bin (S2)
 - GET  /api/play/accuracy      Sort It round 1 vs round 5 accuracy (S1)
+- GET  /api/impact             Waste Watch counts, diversion rate, before vs after nudges (E2)
 - GET  /health
 
 Writes need `Authorization: Bearer $ATLAS_TOKEN` when ATLAS_TOKEN is set; the
@@ -139,6 +140,13 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         acc = g.accuracy(g.session_id)
         return {"session_id": g.session_id, "rounds": len(g.results.get(g.session_id, [])),
                 "first_round": acc[0] if acc else None, "round_5_on": acc[1] if acc else None}
+
+    @app.get("/api/impact")
+    async def impact():
+        """Waste Watch numbers for the Today screen and the slide: measured counts only."""
+        if atlas.waste is None:
+            raise HTTPException(404, "Waste Watch is not configured")
+        return {"total": atlas.waste.metrics(), "before_after_nudges": atlas.waste.before_after()}
 
     @app.websocket("/ws")
     async def events(ws: WebSocket):

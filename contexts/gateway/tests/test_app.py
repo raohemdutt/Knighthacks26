@@ -73,3 +73,5 @@ def test_play_route_and_a_round_over_the_bus(tmp_path):
 
         c.portal.call(play)
         assert c.get("/api/play/accuracy").json()["rounds"] == 1
+        impact = c.get("/api/impact").json()["total"]
+        assert impact["items_seen"] == 1 and impact["recycled"] == 1  # the same can, counted by Waste Watch
