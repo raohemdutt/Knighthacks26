@@ -6,6 +6,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { getToken, setToken } from "@/lib/api";
 import { useAtlas, type LinkState } from "@/lib/atlas";
 import ui from "./ui.module.css";
+import { VoiceSettings } from "./voice/VoiceSettings";
 
 type Tab = { href: string; label: string; icon: ReactNode };
 
@@ -301,6 +302,7 @@ function Settings({ onClose }: { onClose: () => void }) {
           <dt>Model</dt>
           <dd>{model ?? "not reported yet"}</dd>
         </dl>
+        <VoiceSettings />
         <form className={ui.section} onSubmit={save}>
           <label htmlFor="atlas-token">
             <h3>Access token</h3>
