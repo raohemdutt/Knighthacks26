@@ -110,11 +110,12 @@ play:
   - {type: play.league.week.closed, at: 34}
 
 day:
-  # The Day loop (D1), one morning: the plan with its card, two statuses, a re-plan, and the evening review.
+  # The Day loop (D1), one morning: the plan with its card, two statuses, a re-plan, the coach after a block, the evening review.
   - {type: day.plan.proposed, at: 0, start: "+0s", end: "+86400s"}
   - {type: day.status.changed, at: 60, now: "+60s", drift_minutes: 0, seen_at: "apartment.desk", seen_at_name: Desk, seen_how: "desk camera",
      seen_ts: "+40s", risk: ok, reason: "plan started"}
   - {type: day.plan.committed, at: 90}
   - {type: day.status.changed, at: 3600, now: "+3600s", seen_ts: "+3500s", reason: "left the desk: 12 minutes behind"}
   - {type: day.replan.proposed, at: 3660, start: "+3660s"}
+  - {type: day.coach.noted, at: 7200}  # the study coach's sentence when a block ends (the sample payload)
   - {type: day.reviewed, at: 43200}

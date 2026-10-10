@@ -20,6 +20,17 @@ DAY_MOVE_IN = {"slot": "s1", "kind": "study", "place": "apartment.desk", "minute
 DAY_OUTCOME = {"won": True, "stars": 2, "points": 81, "summary": "Win, 2 stars", "sleep_hours": 7.5, "meals": 2,
                "study_minutes": 180, "energy_min": 31.0, "deadline_risk": 0.3}
 
+COACH_SESSION = {
+    "block_id": "m0", "title": "Study at Desk", "start": TS, "end": TS, "place": "apartment.desk", "place_name": "Desk",
+    "planned_minutes": 120, "measured": True, "desk_minutes": 70, "late_start_minutes": 6, "ended_early_minutes": 0,
+    "longest_stretch_minutes": 42, "longest_stretch_start": TS,
+    "breaks": [{"start": TS, "end": TS, "minutes": 31, "trigger": "chat",
+                "evidence": [{"kind": "chat", "id": "groupme:friends:1760100009", "at": TS, "label": "a message in the group chat"},
+                             {"kind": "phone", "id": "ep-cam-desk-1760150000", "at": TS, "label": "the phone was in view"}]},
+               {"start": TS, "end": TS, "minutes": 13, "trigger": "none", "evidence": []}],
+    "text": "Study at Desk: you planned 120 minutes and were at the desk for 70."}
+COACH_CALIBRATION = {"score": 58, "ratio": 1.7, "blocks": 3, "text": "Your plans run 1.7x what happens (calibration 58/100)."}
+
 SAMPLES: dict[str, dict] = {
     "agent.action.proposed": {"action_id": "a1", "kind": "send_message", "target": "dom", "reason": "Package at the door",
                               "params": {"text": "Package at the door"}},
@@ -59,7 +70,17 @@ SAMPLES: dict[str, dict] = {
     "day.reviewed": {"day": "2026-10-11", "plan_id": "plan-2026-10-11-0815", "score": 62, "followed": ["Study at Desk"],
                      "slipped": ["Eat at Kitchen"], "text": "You followed 62% of what could be measured.",
                      "change_tomorrow": "Put lunch on the calendar before the afternoon block.", "stars": 1, "points": 64,
-                     "plan_stars": 2, "streak": 3},
+                     "plan_stars": 2, "streak": 3, "sessions": [COACH_SESSION],
+                     "coach_text": "You planned 120 study minutes at the desk and did 70.",
+                     "suggestions": ["Hold chat notifications until the break."], "calibration": COACH_CALIBRATION,
+                     "block_minutes": 45},
+    "day.coach.noted": {"day": "2026-10-11", "plan_id": "plan-2026-10-11-0815", "block_id": "m0",
+                        "text": "You did 70 of 120 minutes. Two breaks; the long one came right after the group chat. "
+                                "Next study block is 45 minutes.",
+                        "session": COACH_SESSION, "suggestions": ["Hold chat notifications until the break."],
+                        "calibration": COACH_CALIBRATION,
+                        "next_block": {"id": "m2", "title": "Study at Desk", "start": TS, "end": TS, "place": "apartment.desk",
+                                       "place_name": "Desk"}},
     "day.status.changed": {"day": "2026-10-11", "plan_id": "plan-2026-10-11-0815", "now": TS, "block_id": "m0",
                            "block_title": "Study at Desk", "block_end": TS, "should_be": "apartment.desk", "should_be_name": "Desk",
                            "seen_at": "apartment.door", "seen_at_name": "Front door", "seen_how": "door camera", "seen_ts": TS,
