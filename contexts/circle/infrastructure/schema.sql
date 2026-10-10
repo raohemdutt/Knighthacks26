@@ -121,6 +121,50 @@ CREATE TABLE IF NOT EXISTS presence (
     expires_at  timestamptz NOT NULL
 );
 
+-- The League (contexts/play/league): the stake per week, each declared week's standings, and the
+-- dares. Standings are the week's summary lines only (contracts.play.Standing): never raw signals.
+CREATE TABLE IF NOT EXISTS league_stakes (
+    circle_id   text NOT NULL REFERENCES circles(id) ON DELETE CASCADE,
+    week_start  date NOT NULL,
+    kind        text NOT NULL CHECK (kind IN ('pays_for_food', 'picks_the_event', 'custom')),
+    text        text,
+    set_by      text NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+    set_at      timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (circle_id, week_start)
+);
+
+CREATE TABLE IF NOT EXISTS league_weeks (
+    circle_id   text NOT NULL REFERENCES circles(id) ON DELETE CASCADE,
+    week_start  date NOT NULL,
+    week_end    date NOT NULL,
+    standings   jsonb NOT NULL,
+    worst       text,
+    best        text,
+    stake       jsonb NOT NULL,
+    summary     text NOT NULL,
+    closed_at   timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (circle_id, week_start)
+);
+
+CREATE TABLE IF NOT EXISTS league_challenges (
+    challenge_id  text PRIMARY KEY,
+    circle_id     text NOT NULL REFERENCES circles(id) ON DELETE CASCADE,
+    title         text NOT NULL,
+    habit_id      text NOT NULL,
+    direction     text NOT NULL CHECK (direction IN ('at_least', 'at_most')),
+    target        double precision NOT NULL,
+    starts        date NOT NULL,
+    ends          date NOT NULL,
+    members       jsonb NOT NULL,
+    started_by    text NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+    results       jsonb,
+    winners       jsonb,
+    summary       text,
+    closed_at     timestamptz,
+    CHECK (ends >= starts)
+);
+CREATE INDEX IF NOT EXISTS league_challenges_circle ON league_challenges (circle_id, starts);
+
 CREATE OR REPLACE VIEW habit_leaderboard AS
 SELECT h.circle_id, h.member_id, m.display_name, h.habit_id, h.streak, h.day
 FROM habit_summaries h

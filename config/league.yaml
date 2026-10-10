@@ -1,0 +1,45 @@
+# The League (contexts/play/league): the friends' game on top of Habits, Day Run, Waste Watch and the Circle.
+# "Whoever has the worst week hitting targets pays for food, decides events, etc."
+#
+# The league is the Circle (config/agent.yaml `circle`: member_id, circle_id, names) plus this rule set.
+# Without a Circle it still runs for this box alone, under `me`, from the same daily summaries.
+# To play with friends, set these two lines in config/agent.yaml:
+#   circle.member_id: hemdutt
+#   circle.circle_id: team
+# (then share_summaries: true so your week reaches their boards, and Neon via NEON_DATABASE_URL in .env).
+
+me: me                 # member id for this box when the Circle is not configured; the display name is "You"
+week_starts: monday    # local Monday 00:00, in the habit tracker's time zone (config/agent.yaml sleep.timezone)
+close_grace_hours: 3   # the week is declared by the first event after Monday 03:00, so Sunday's summaries arrive first
+
+# What counts. A member's week score is the weighted share of judged targets they hit: for each target,
+# met days / judged days (only days with a summary count), weighted and averaged, as a percent.
+# Habit targets are judged from habits.day.closed (own box) and the friends' shared habit_summaries.
+targets:
+  sleep:         {weight: 2, label: "sleep",          unit: "nights"}
+  meals:         {weight: 1, label: "meals",          unit: "days"}
+  focus:         {weight: 1, label: "focus",          unit: "days"}
+  energy_drinks: {weight: 1, label: "energy drinks",  unit: "days"}
+  leave_ready:   {weight: 1, label: "leave ready",    unit: "days"}
+  sort_right:    {weight: 1, label: "sort right",     unit: "days"}
+  dayrun_stars:  {weight: 1, label: "Day Run stars",  unit: "plans", source: dayrun, min_stars: 2}
+  recycling:     {weight: 1, label: "recycling",      unit: "week",  source: impact, min_rate: 0.8}
+
+# What the worst (or best) week is on the hook for. Changed from the phone through an approval card.
+stake:
+  kind: pays_for_food    # pays_for_food | picks_the_event | custom
+  text: null             # for custom: "the loser does the dishes all week"
+
+# Waste Watch team mode (OneEthos): everyone's bins together against one target.
+team:
+  diversion_target: 0.8
+
+# Dares. A preset names a habit, a direction and a target; `days` and `invitees` come from the request.
+challenges:
+  max_days: 14
+  presets:
+    no_energy_drinks: {habit: energy_drinks, direction: at_most,  target: 0, title: "No energy drinks"}
+    sleep_six:        {habit: sleep,         direction: at_least, target: 6, title: "Six hours of sleep"}
+    three_meals:      {habit: meals,         direction: at_least, target: 3, title: "Three meals a day"}
+    focus_two:        {habit: focus,         direction: at_least, target: 2, title: "Two focused hours"}
+    sort_it_right:    {habit: sort_right,    direction: at_least, target: 80, title: "Sort it right"}

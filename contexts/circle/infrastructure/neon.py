@@ -269,6 +269,22 @@ class CircleBoard:
             (circle_id, limit),
         )
 
+    def habit_summaries(self, circle_id: str, since) -> list[dict]:
+        """Every member's daily habit summaries from `since` (a date) on, for the League's weekly scoring."""
+        return self._rows(
+            "SELECT member_id, habit_id, day, met, value, streak FROM habit_summaries"
+            " WHERE circle_id = %s AND day >= %s ORDER BY day, member_id, habit_id",
+            (circle_id, since),
+        )
+
+    def impact_counters(self, circle_id: str) -> list[dict]:
+        """Each member's latest Waste Watch totals, with when they were updated (the League's team line)."""
+        return self._rows(
+            "SELECT member_id, items_seen, recyclable_seen, recycled, contamination, diversion_rate, updated_at"
+            " FROM impact_counters WHERE circle_id = %s ORDER BY member_id",
+            (circle_id,),
+        )
+
     def upcoming_events(self, circle_id: str, now: datetime) -> list[dict]:
         """The shared calendar: agreed events that have not ended, soonest first, one row per RSVP.
 

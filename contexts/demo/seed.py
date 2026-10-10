@@ -21,6 +21,7 @@ from pathlib import Path
 
 from contexts.demo.story import ROOT, load, story
 from contexts.gateway.bootstrap import Atlas, Settings, build
+from contexts.play.league.demo import friend_summaries
 from contracts.events import Event
 
 PACKAGE_RULE = "package-at-door"
@@ -98,6 +99,9 @@ async def seed(data_dir: str | Path, now: datetime | None = None, force: bool = 
             if e.type.startswith(prefix):
                 kept.append(e)
 
+    if app.league:  # the League's second member: a friend's shared summaries, demo fixture only (fixtures/demo/league.yaml)
+        events = sorted(events + friend_summaries(now, circle_id=app.league.circle_id), key=lambda e: (e.ts, e.event_id))
+
     app.bus.subscribe("", note)  # live only: sees exactly what is appended to the log
     for e in events:
         clock["now"] = e.ts
@@ -138,6 +142,13 @@ def summary(s: Seeded) -> str:
                          f"{r['target']:g}, {state}{'' if r['applies'] else ', nothing to judge'})")
 
     lines += ["", "Waste Watch: " + ", ".join(f"{k} {v}" for k, v in app.waste.metrics().items())]
+    if app.league:
+        view = app.league.view(s.now)
+        lines += ["", f"League, week of {view['week']['start']} ({'this box alone' if view['local'] else view['circle_id']}):"]
+        for r in view["standings"]:
+            score = "  n/a " if r["score"] is None else f"{r['score']:5.1f}%"
+            lines.append(f"  {r['rank']}. {r['display_name']:10s} {score} {r['met']}/{r['judged']} target-days; " + "; ".join(r["reasons"]))
+        lines += [f"  {view['summary']}", f"  Stake: {view['stake']['text_for_week']}", f"  Waste Watch {view['team_waste']['line']}"]
     lines.append(f"Sort It: {len(s.rounds)} round(s) scored" + "".join(
         f"; {r.item} in the {'right' if r.correct else 'wrong'} bin in {r.seconds:.0f} s, {r.score:g} points" for r in s.rounds))
     for title, events, text in ((f"Alerts raised ({len(s.alerts)})", s.alerts, lambda e: f"[{e.rule_id}] {e.message}"),
