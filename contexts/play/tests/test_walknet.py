@@ -243,7 +243,7 @@ def test_route_and_feasible_with_a_network_follow_the_paths(tmp_path):
 
 KNOWN = ["ucf.union", "ucf.hec", "ucf.eng2", "ucf.library", "ucf.dining_63", "ucf.rwc", "ucf.cb1", "ucf.towers", "ucf.memory_mall",
          "apartment.door", "apartment.kitchen", "apartment.bedroom", "apartment.desk", "apartment.bathroom"]
-NOT_PLACES = {"edu", "yaml", "yml", "json", "map", "md", "nowhere", "py", "practice", "view"}  # ucf.edu, ucf.yaml, the "unknown place" test, and a test variable named ucf (ucf.view(), ucf.practice())
+NOT_PLACES = {"edu", "yaml", "yml", "json", "map", "md", "nowhere", "py", "practice", "view"}  # ucf.edu, ucf.yaml, the "unknown place" test, a test variable named ucf (ucf.view(), ucf.practice())
 
 
 def refs_in(files, packs: PlaceSet) -> set[str]:
