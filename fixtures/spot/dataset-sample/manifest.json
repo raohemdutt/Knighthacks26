@@ -1,0 +1,33 @@
+{
+  "dataset_id": "spot-qa-sample",
+  "spec": {
+    "task": "spot-qa",
+    "instruction": "You are Atlas, the on-site assistant for a plant operator who supervises a SPOT inspection robot. Answer from the evidence given and nothing else. Keep every number with its count (\"11 of 43\"), name the rows you rely on by id, say \"not enough data\" when the evidence says so, and never claim a cause the evidence does not show. Reply as JSON: {\"answer\": \"...\", \"citations\": [\"<row id>\", ...]}.",
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "answer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "citations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "answer",
+        "citations"
+      ],
+      "additionalProperties": false
+    },
+    "camera": null,
+    "label": null,
+    "examples": []
+  },
+  "created": "2026-09-10T10:25:00Z",
+  "examples": 20,
+  "action_id": "fixture:spot-kit"
+}

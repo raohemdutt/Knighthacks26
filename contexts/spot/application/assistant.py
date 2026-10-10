@@ -14,7 +14,7 @@ import re
 
 from contexts.spot.application.service import Spot
 from contexts.spot.domain.analysis import Evidence, _words
-from contexts.spot.domain.stats import MIN_N, pct, pct_range
+from contexts.spot.domain.stats import MIN_N, MIN_TREND_N, pct, pct_range
 from contracts.types import ChatMessage
 
 REPHRASE_TIMEOUT_S = 25
@@ -78,13 +78,18 @@ class Assistant:
         mission = next((m.upper() for m in re.findall(r"\bm\d{3}\b", low)), None)
         has = lambda *words: any(w in low for w in words)  # noqa: E731
 
+        pair = re.search(r"between (?:mission )?m?0*(\d{1,3}) and (?:mission )?m?0*(\d{1,3})", low)
+        if pair and has("worse", "changed", "new", "differ"):
+            return self._worse(f"M{int(pair.group(1)):03d}", f"M{int(pair.group(2)):03d}")
         if mission and mission in kit.mission:
             return self._mission(mission)
+        if asset and has("normal", "in range", "usual", "okay"):
+            return self._reading_normal(asset, low)
         if asset:
             return self._asset(asset)
         if waypoint and waypoint in kit.location:
             return self._waypoint(waypoint)
-        if has("handoff", "hand off", "hand-off", "shift summary", "summarize the shift", "summarise the shift", "next shift"):
+        if has("handoff", "hand off", "hand-off", "hand to", "shift summary", "summarize the shift", "summarise the shift", "next operator"):
             h = spot.handoff()
             ev = Evidence()
             for line in h["lines"]:
@@ -97,7 +102,7 @@ class Assistant:
             items = spot.assumptions
             return {"intent": "assumptions", "text": "The analysis rests on these assumptions: " + " ".join(f"({i}) {a['assumption']}" for i, a in enumerate(items[:6], 1))
                     + f" There are {len(items)} in all; the Assumptions and method panel lists every one.", "citations": Evidence().model_dump(), "target": {"kind": "assumptions", "id": "assumptions"}}
-        if has("check first", "investigate", "this shift", "what should i", "what next", "look at first", "where do i start"):
+        if has("check first", "inspect first", "investigate", "this shift", "what should i", "what next", "look at first", "where do i start"):
             return self._next()
         if has("attention", "triage", "urgent", "priority", "priorit", "most important", "biggest issue", "worst"):
             return self._triage()
@@ -105,13 +110,13 @@ class Assistant:
             return self._anomalies()
         if has("hidden", "completed") and has("fail", "hidden") or has("mission status"):
             return self._finding("hidden_failures", extra_rows=5)
-        if has("uninspected", "not inspected", "coverage", "overdue", "last good"):
+        if has("uninspected", "not inspected", "not been inspected", "coverage", "overdue", "last good"):
             return self._coverage()
         if has("battery", "charge"):
             return self._finding("battery")
         if has("v1", "v2", "version", "baseline", "improved", "configuration", "improving", "degrading", "getting better", "getting worse", "trend"):
             return self._version(over_time=has("improving", "degrading", "getting better", "getting worse", "trend"))
-        if has("least reliable", "inspection type", "action type", "which type", "types"):
+        if has("least reliable", "inspection type", "action type", "which type", "types", "kind of inspection", "weakest"):
             return self._finding("reliability_by_type", extra_rows=5)
         if has("where", "location", "concentrat", "waypoint", "floor"):
             return self._where()
@@ -262,6 +267,71 @@ class Assistant:
                  if anomalies else " No anomalies.")
         ev = Evidence(missions=[mission_id], actions=[a["action_id"] for a in failed], anomalies=[x["anomaly_id"] for _, x in anomalies])
         return self._pack("mission", text, ev, {"kind": "mission", "id": mission_id})
+
+    def _worse(self, before: str, after: str) -> dict:
+        """Assets that were fine in one mission and failed or raised an anomaly in a later one."""
+        kit = self.spot.kit
+        if before not in kit.mission or after not in kit.mission:
+            return self._pack("worse", f"I do not have both {before} and {after} in the data.", Evidence())
+
+        def state(mid: str) -> dict[str, dict]:
+            out: dict[str, dict] = {}
+            for a in kit.actions_of.get(mid, []):
+                st = out.setdefault(a.asset_id, {"failed": [], "anomalies": []})
+                if a.failed:
+                    st["failed"].append(a.action_id)
+                st["anomalies"] += [x.anomaly_id for x in kit.anomalies_of.get(a.action_id, [])]
+            return out
+
+        a, b = state(before), state(after)
+        worse = [(asset, st) for asset, st in sorted(b.items()) if (st["failed"] or st["anomalies"])
+                 and not (a.get(asset, {}).get("failed") or a.get(asset, {}).get("anomalies"))]
+        if not worse:
+            return self._pack("worse", f"No asset got worse between {before} and {after}: nothing failed or raised an anomaly in {after} that was "
+                                       f"clean or unvisited in {before}.", Evidence(missions=[before, after]), {"kind": "mission", "id": after})
+        parts = []
+        for asset, st in worse:
+            was = "was clean" if asset in a else "was not visited"
+            what = " and ".join(x for x in ((f"failed {', '.join(st['failed'])}" if st["failed"] else ""),
+                                            (f"raised {', '.join(st['anomalies'])}" if st["anomalies"] else "")) if x)
+            parts.append(f"{asset} ({kit.asset[asset].criticality if asset in kit.asset else '?'}) {was} in {before} and {what} in {after}")
+        ev = Evidence(missions=[before, after], assets=[x for x, _ in worse], actions=[i for _, st in worse for i in st["failed"]],
+                      anomalies=[i for _, st in worse for i in st["anomalies"]])
+        return self._pack("worse", f"{len(worse)} asset(s) got worse between {before} and {after}: " + "; ".join(parts) + ".", ev,
+                          {"kind": "mission", "id": after})
+
+    def _reading_normal(self, asset_id: str, low: str) -> dict:
+        """Is this asset's latest reading of a measurement inside the fleet's band? The band is ours, not an engineering limit."""
+        trends = self.spot.findings["reading_trends"].extra
+        series = [s for s in trends["series"] if s["asset_id"] == asset_id]
+        hint = {"TEMPERATURE_C": ("temp", "thermal"), "SOUND_DB": ("sound", "acoustic", "vibration"), "PRESSURE_PSI": ("pressure", "gauge"),
+                "VISUAL_SCORE": ("visual",), "LOCALIZATION_CONFIDENCE_PCT": ("localization", "localisation")}
+        wanted = next((s for s in series if any(w in low for w in hint.get(s["measurement_type"], ()))), None)
+        wanted = wanted or (max(series, key=lambda s: (s["n"], s["measurement_type"])) if series else None)
+        if wanted is None:
+            return self._pack("reading_normal", f"{asset_id} has no readings in the data, so I cannot say whether it is normal.", Evidence(assets=[asset_id]),
+                              {"kind": "asset", "id": asset_id})
+        band = trends["bands"].get(wanted["measurement_type"])
+        last = wanted["points"][-1]
+        name = _words(wanted["measurement_type"])
+        text = f"{asset_id} {name}: the latest reading is {last['value']} {wanted['unit']} ({last['reading_id']}, {last['mission_id']}), "
+        text += "marked GOOD" if last["good"] else "marked QUESTIONABLE because the action failed, so it should not be trusted"
+        if band:
+            inside = band["lo"] <= last["value"] <= band["hi"]
+            text += (f". The fleet's usual range for {name} is {band['lo']:.1f} to {band['hi']:.1f} {wanted['unit']} (median {band['median']:.1f}, "
+                     f"from {band['n']} good readings), and this one is {'inside' if inside else 'outside'} it.")
+        else:
+            text += f". There are too few good {name} readings in the fleet to say what is usual."
+        text += f" {wanted['n_good']} good of {wanted['n']} readings on this asset" + (
+            f"; trend {wanted['slope_per_day']:+.2f} {wanted['unit']} per day." if wanted["enough"] and wanted["slope_per_day"] is not None
+            else f": not enough for a trend (need {MIN_TREND_N} good).")
+        flagged = self.spot.kit.anomalies_of.get(last["action_id"], [])
+        if flagged:
+            text += (" Even so, " + ", ".join(f"{x.anomaly_id} ({x.severity} {_words(x.anomaly_type)})" for x in flagged)
+                     + " was raised on that same action: in this kit an anomaly row is not explained by the reading's value.")
+        text += " The kit gives no engineering limits; 'usual for this fleet' is not the same as 'safe'."
+        return self._pack("reading_normal", text, Evidence(assets=[asset_id], readings=[p["reading_id"] for p in wanted["points"]]),
+                          {"kind": "asset", "id": asset_id})
 
     def _replay(self) -> dict:
         kit = self.spot.kit
