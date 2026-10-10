@@ -816,7 +816,8 @@ def test_ready_reports_a_hub_that_cannot_be_reached(isolated_lab, monkeypatch, t
         probe = result["checks"]["hub"]["accounts"][letter]
         assert probe["ok"] is False
         assert "status" not in probe
-        assert probe["error"].startswith("URLError: ")
+        # The one hub client's exception for a connection that never got an answer (lab/hub.py HubUnreachable).
+        assert probe["error"].startswith("HubUnreachable: ")
     assert (result["ready"], result["reasons"]) == (True, [])
     assert result["warnings"] == ["hub account A unreachable", "hub account B unreachable"]
     assert_no_secret_values(out, err)
