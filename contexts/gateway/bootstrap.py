@@ -53,6 +53,8 @@ from contexts.habits.domain.config import Schedule as HabitsSchedule
 from contexts.habits.domain.config import load_config as load_habits
 from contexts.habits.domain.members import MemberHabits
 from contexts.habits.domain.tracker import HabitTracker
+from contexts.day.application.coach_feedback import CoachFeedback
+from contexts.impact.application.story import Factors, ImpactStory, RuleBook
 from contexts.impact.domain.waste_watch import WasteWatch
 from contexts.play.domain.game import SortIt
 from contexts.perception.application.identity import IdentityService
@@ -137,6 +139,8 @@ class Atlas:
     profile: Profile | None = None  # GET /api/profile: the vocabulary and which config files are overridden
     league: League | None = None  # the friends' weekly game (contexts/play/league); GET /api/league
     league_sync: LeagueSync | None = None  # friends' rows in, declarations out; only with Neon
+    impact: ImpactStory | None = None  # the Impact screen's story over Waste Watch; GET /api/impact/story
+    coach_feedback: CoachFeedback | None = None  # "Was that right?" about a break; GET /api/day/coach/feedback
     tasks: list[asyncio.Task] = field(default_factory=list)
     _last_retention: datetime | None = None
     _offline: set[str] = field(default_factory=set)  # tick jobs whose Neon is down (logged once)
@@ -462,6 +466,22 @@ def build(settings: Settings | None = None) -> Atlas:
     learning = LearningBoard()
     learning.subscribe(bus)
 
+    # The Impact screen: what Waste Watch's counts mean (estimated ranges from config/impact.yaml), the disposal
+    # feed with each rule, the weekly goal, milestones and the Sort It practice set. Reads Waste Watch; counts nothing itself.
+    impact = None
+    if waste:
+        impact = ImpactStory(waste, RuleBook.load(sorting, s.config_dir), Factors.load(s.config_dir / "impact.yaml"),
+                             tz=habits.sched.tz if habits else qa.sleep.tz, frames_dir=s.data_dir / "frames", profile=profile.name)
+        impact.subscribe(bus)  # after Waste Watch: a milestone is checked against counts that already hold the disposal
+        if league:
+            league.impact = impact  # GET /api/league's team_waste block: the week's milestone and the practice-set size
+
+    # The coach's feedback loop: "Was that right?" about a break -> calibration -> a teach task as an approval card.
+    coach_feedback = None
+    if day:
+        coach_feedback = CoachFeedback(day.coach, memory=memory, learning=learning, **(agent_cfg.get("coach_feedback") or {}))
+        coach_feedback.subscribe(bus)
+
     # Cameras (C1, P1, P2, P6): config/cameras.yaml; None unless a detector engine is on this machine.
     capture = CaptureService.load(s.config_dir / "cameras.yaml", bus, models_yaml=models_yaml, data_dir=s.data_dir, policy=policy)
 
@@ -478,4 +498,5 @@ def build(settings: Settings | None = None) -> Atlas:
                  memory=memory, projection=projection, habits=habits, nudger=nudger,
                  presence_sync=presence_sync, board=board, vault=vault, policy=policy, wiper=wiper,
                  places=places, dayrun=dayrun, day=day, capture=capture, identity=identity, learning=learning,
-                 telemetry=telemetry, profile=profile, league=league, league_sync=league_sync)
+                 telemetry=telemetry, profile=profile, league=league, league_sync=league_sync,
+                 impact=impact, coach_feedback=coach_feedback)

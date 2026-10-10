@@ -19,6 +19,11 @@
 - GET  /api/play/route         ?item=can&x=&y= -> A* route to the right bin (S2)
 - GET  /api/play/accuracy      Sort It round 1 vs round 5 accuracy (S1)
 - GET  /api/impact             Waste Watch counts, diversion rate, before vs after nudges (E2)
+- GET  /api/impact/story       the Impact screen: the week in estimated real units, the disposal feed with each rule,
+                               the weekly goal, milestones, which rules file is active (contexts/impact/api.py)
+- GET  /api/impact/practice    the Sort It practice set: this week's mistakes, most first; POST {label} is "teach me"
+- GET  /api/day/coach/feedback recent sessions' breaks with "Was that right?", per-trigger precision, what Atlas is learning;
+                               POST /api/day/coach/corrections {day, block_id, break_index, right, answer?, note?}
 - POST /api/presence           {place, hours} share a named place with the Circle (G5, opt-in), up to 12 hours
 - DELETE /api/presence         stop sharing my place now
 - GET  /api/presence           friends' current places
@@ -68,6 +73,8 @@ from contexts.agent.application.rule_compiler import RuleCompileError, compile_r
 from contexts.circle.api import circle_router
 from contexts.circle.application.sharing import CircleOffline
 from contexts.day.api import day_router
+from contexts.day.application.coach_feedback import coach_feedback_router
+from contexts.impact.api import impact_router
 from contexts.habits.api import habits_router
 from contexts.learning.application.export import teach
 from contexts.vault.api import vault_router
@@ -169,6 +176,10 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         app.include_router(dayrun_router(atlas.dayrun, publish=atlas.bus.publish, guard=authorized))
     if atlas.day:  # GET /api/day/now, GET/POST /api/day/plan, GET /api/day/patterns (D1)
         app.include_router(day_router(atlas.day, publish=atlas.bus.publish, guard=authorized, memory=atlas.memory))
+    if atlas.day and atlas.coach_feedback:  # GET /api/day/coach/feedback, POST /api/day/coach/corrections ("Was that right?")
+        app.include_router(coach_feedback_router(atlas.day, atlas.coach_feedback, publish=atlas.bus.publish, guard=authorized))
+    # GET /api/impact/story, GET/POST /api/impact/practice: the Impact screen (404 when Waste Watch is not set up)
+    app.include_router(impact_router(atlas.impact, publish=atlas.bus.publish, guard=authorized))
     if atlas.policy:  # GET/PUT /vault/policy, POST /vault/wipe/request, POST /vault/wipe, GET /vault/egress
         app.include_router(vault_router(atlas.policy, atlas.bus, wiper=atlas.wiper, guard=authorized))
     if atlas.identity:  # GET/PUT /identity/settings, POST /identity/enroll/start, GET /identity/enroll/status, GET/DELETE /identity/members (P9)
