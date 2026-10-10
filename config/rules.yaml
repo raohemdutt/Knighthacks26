@@ -1,0 +1,6 @@
+# Alert rules, evaluated deterministically on perception.zone.event (works offline).
+# Tune labels to whatever the detector actually calls the prop.
+- id: package-at-door
+  when: {label: [package, box, suitcase, backpack], zone: door, kind: dwell, seconds: 5}
+  notify: "Package left at the door"
+  cooldown_s: 120
