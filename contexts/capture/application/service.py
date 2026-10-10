@@ -25,6 +25,7 @@ from contexts.capture.infrastructure.camera import CameraReader
 from contexts.perception.application.tracking import TrackingPipeline
 from contexts.perception.infrastructure.detector import YoloDetector, build_detector
 from contexts.perception.infrastructure.face_blur import FaceBlur
+from contexts.perception.infrastructure.face_counter import FaceCounter
 from contexts.perception.infrastructure.keyframe_store import KeyframeStore
 
 log = logging.getLogger("atlas.capture")
@@ -68,6 +69,7 @@ class CaptureService:
                 observe_every_s=float(cfg.get("observe_every_s", 1.0)),
                 keyframe_every_s=float(cfg.get("keyframe_every_s", 5.0)),
                 keepalive_s=float(cfg.get("keepalive_s", 30.0)),
+                faces=FaceCounter(blur) if cfg.get("faces", True) else None,
                 paused=lambda camera_id=camera_id: bool(self.policy and self.policy.is_paused(camera_id)),
             )
             self.readers[camera_id], self.pipelines[camera_id] = reader, pipeline
