@@ -137,3 +137,41 @@ bash lab/pod_b_trainer.sh smoke      # lab/smoke_lora.py: tiny LoRA SFT, prints 
 
 `smoke_lora.py` is the template for the real trainer (L3): bf16, PEFT LoRA on all linear layers, TRL
 `SFTTrainer`, forkserver DataLoader workers, no `torch.compile`.
+
+## Datasets: the box's export and the no-camera fixture
+
+An approved export from the box is a folder named for its dataset id, with `manifest.json`, `examples.jsonl` and
+`images/` (the shapes are in `contracts/learning.py`). `lab/dataset.py` reads and checks one, and writes the
+teacher's labels back into it. Only `pydantic` and the repo's `contracts/` are needed, so it runs on a pod.
+
+```
+python lab/dataset.py <dataset folder>               # checks it against the contract, prints one JSON line
+python lab/dataset.py <dataset folder> --text-only   # the same for a dataset with no pictures
+```
+
+```python
+from lab.dataset import load, write_target
+
+data = load(folder)                       # DatasetError names every problem it found
+for example in data.pending():            # the examples that have no target yet
+    write_target(folder, example.id, label_for(example, data.image_path(example)))
+```
+
+`write_target` replaces `examples.jsonl` whole under a lock, so a labeling run can be killed and started again
+and two labelers lose nothing: `pending()` is exactly the work left. Same text again is a no-op; different text
+needs `overwrite=True`.
+
+`lab/fixture_dataset.py` builds the tool-calling task's dataset without any camera from
+`fixtures/golden/questions.yaml` and `memory.yaml`, in the same layout, into
+`fixtures/learning/tool-calling-fixture/`:
+
+```
+python lab/fixture_dataset.py                  # rebuilds it (refuses if some examples already have targets)
+python lab/fixture_dataset.py --no-variants    # only the golden questions
+```
+
+Each example is a question (`context`) with an empty `target`. A label is the JSON text
+`{"tool_calls": [{"name": ..., "arguments": {...}}], "answer": "..."}`, and `manifest.json` carries its schema.
+`expected.jsonl` holds what a correct label looks like, taken from the agent's own pre-fetch code; the teacher
+never sees it. Read `lab/fixture_dataset.py`'s docstring for how groups and `origin` support a split that keeps
+the golden questions out of training. Both scripts write a ledger row and stop while `lab/state/STOP` exists.
