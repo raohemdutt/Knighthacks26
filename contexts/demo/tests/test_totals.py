@@ -35,7 +35,7 @@ def test_counts_come_from_the_events_and_say_where_from():
     assert rows["Questions asked"].source == "`experience.question.asked` x 2"
     assert rows["Questions asked"].first == T0
     assert rows["Answers given, with citations"].value == "1"
-    assert rows["Approval taps (approve / deny)"].value == "1 / 1"
+    assert rows["Approval decisions (approve / deny)"].value == "1 / 1"
     assert rows["Keyframes kept (faces blurred)"].value == "2"
     assert "0.5 h of activity" in rows["Episodes remembered"].source
 
@@ -89,3 +89,11 @@ def test_the_seeded_demo_night_prints_a_full_card(tmp_path, capsys):
 def test_since_needs_an_offset():
     with pytest.raises(SystemExit):
         main(["totals", "--since", "2026-10-10T09:00:00"])
+
+
+def test_only_actions_that_ran_count_as_carried_out():
+    events = [ev("workspace.action.completed", n, action_id=str(n), status=s)
+              for n, s in enumerate(["expired", "denied", "done", "expired"])]
+    row = by_name(totals.totals(events))["Outside actions carried out, each after an approval"]
+    assert row.value == "1"
+    assert row.source == "`workspace.action.completed` with status done, of 4 (1 denied, 2 expired)"
