@@ -39,8 +39,10 @@ class Runtime(Protocol):
         messages: list[ChatMessage],
         tools: list[dict] | None = None,
         priority: Priority = "chat",
+        json_schema: dict | None = None,
     ) -> ChatResult:
-        """`tools` are OpenAI-style function schemas."""
+        """`tools` are OpenAI-style function schemas. `json_schema` constrains the reply to JSON
+        matching that schema (llama-server grammar-constrained decoding), for structured output."""
         ...
 
     def embed_text(self, texts: list[str]) -> list[list[float]]:

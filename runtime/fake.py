@@ -54,8 +54,10 @@ class FakeRuntime:
         messages: list[ChatMessage],
         tools: list[dict] | None = None,
         priority: Priority = "chat",
+        json_schema: dict | None = None,
     ) -> ChatResult:
         self.calls.append(("chat", messages))
+        self.last_json_schema = json_schema
         if self.chat_replies:
             return self.chat_replies.pop(0)
         return ChatResult(content=f"(fake) {messages[-1].content}", model_version="fake-0")

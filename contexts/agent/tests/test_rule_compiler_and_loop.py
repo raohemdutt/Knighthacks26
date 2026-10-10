@@ -25,7 +25,9 @@ def runtime(reply: str) -> FakeRuntime:
 
 def test_plain_english_becomes_a_rule_that_fires():
     reply = 'Sure: {"id": "bag-on-desk", "when": {"label": ["backpack"], "zone": "desk", "kind": "dwell", "seconds": 60}, "notify": "Bag left on the desk", "cooldown_s": 300}'
-    rule = asyncio.run(compile_rule("tell me if a backpack is left on the desk for a minute", runtime(reply), ZONES))
+    rt = runtime(reply)
+    rule = asyncio.run(compile_rule("tell me if a backpack is left on the desk for a minute", rt, ZONES))
+    assert rt.last_json_schema["$defs"]["Condition"]["properties"]["zone"]["enum"] == ZONES  # structured output
     ev = RuleEvaluator([])
     ev.on_rule_added(RuleAdded(rule=rule.model_dump(), source_text="..."))
     fired = ev.on_zone_event(ZoneEvent(camera_id="cam-desk", track_id=1, label="backpack", zone_id="desk", kind="dwell", dwell_s=61))

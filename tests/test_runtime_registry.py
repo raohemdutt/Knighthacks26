@@ -64,3 +64,19 @@ def test_installed_manifest_names_the_model(tmp_path):
                                       gguf="m.gguf", scores={"candidate": 0.78}, created=datetime.now(UTC)).model_dump_json())
     v = model_version({"manifest": str(manifest), "version": "ignored"})
     assert (v.version, v.task, v.scores) == ("atlas-v3-desk-objects", "desk-objects", {"candidate": 0.78})
+
+
+def test_structured_output_is_sent_as_response_format():
+    seen = []
+
+    def handle(request):
+        seen.append(json.loads(request.content))
+        return httpx.Response(200, json={"choices": [{"message": {"content": "{}"}}]})
+
+    rt = LlamaServerRuntime(ModelVersion(version="v", base="b"), transport=httpx.MockTransport(handle))
+    from contracts.types import ChatMessage
+
+    rt.chat([ChatMessage(role="user", content="x")], json_schema={"type": "object"})
+    assert seen[0]["response_format"]["json_schema"]["schema"] == {"type": "object"}
+    rt.chat([ChatMessage(role="user", content="x")])
+    assert "response_format" not in seen[1]
