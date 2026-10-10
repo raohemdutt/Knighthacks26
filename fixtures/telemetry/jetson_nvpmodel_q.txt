@@ -1,0 +1,5 @@
+# nvpmodel -q run without sudo on a Jetson Orin Nano developer kit, JetPack 6.2 (L4T r36.4.3), copied verbatim from
+# NVIDIA forum topic 321250 (orin-nano-benchmark-on-r36-4-3-jetpack6-2), first post,
+# https://forums.developer.nvidia.com/t/orin-nano-benchmark-on-r36-4-3-jetpack6-2/321250 .
+NV Power Mode: MAXN_SUPER
+2

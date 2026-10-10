@@ -1,0 +1,9 @@
+# sudo grep "" /sys/class/hwmon/hwmon*/oc* on a Jetson Orin Nano developer kit in super mode (L4T r36.4), copied
+# verbatim from NVIDIA forum topic 318940, post #37 by AastaLLL (NVIDIA), 2025-01-21,
+# https://forums.developer.nvidia.com/t/offline-cv0-cv1-and-cv2/318940/37 . path:value per line.
+/sys/class/hwmon/hwmon3/oc1_event_cnt:0
+/sys/class/hwmon/hwmon3/oc1_throt_en:1
+/sys/class/hwmon/hwmon3/oc2_event_cnt:0
+/sys/class/hwmon/hwmon3/oc2_throt_en:1
+/sys/class/hwmon/hwmon3/oc3_event_cnt:194
+/sys/class/hwmon/hwmon3/oc3_throt_en:1

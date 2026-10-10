@@ -120,3 +120,38 @@ def test_cancelling_the_task_stops_a_sampler_that_never_ends(tmp_path):
 def test_a_runner_cannot_be_started_for_a_node_atlas_does_not_know():
     with pytest.raises(ValueError, match="unknown node 'gpu-c'"):
         SamplerRunner(Scripted([]), EventBus(persist=False).publish, nodes=["jetson", "gpu-c"])
+
+
+class Holding:
+    """A sampler that holds something until it is closed (as the tegrastats sampler holds a child process)."""
+
+    def __init__(self) -> None:
+        self.closed = False
+
+    async def samples(self):
+        try:
+            s = 0
+            while True:
+                yield jetson(s)
+                s += 1
+        finally:
+            self.closed = True
+
+
+def test_cancelling_the_runner_closes_the_sampler_before_the_task_ends(tmp_path):
+    sampler = Holding()
+    gate = asyncio.Event()
+
+    async def publish(event) -> None:
+        await gate.wait()  # the runner is cancelled while it waits here, the sampler paused at its yield
+
+    async def run():
+        runner = SamplerRunner(sampler, publish, nodes=["jetson"])
+        task = asyncio.create_task(runner.run())
+        await asyncio.sleep(0.01)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        return sampler.closed
+
+    assert asyncio.run(run()) is True
