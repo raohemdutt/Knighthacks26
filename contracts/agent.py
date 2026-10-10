@@ -65,3 +65,14 @@ class RuleAdded(TypedEvent):
     type: Literal["agent.rule.added"] = "agent.rule.added"
     rule: dict  # contexts.agent.domain.rules.Rule as JSON
     source_text: str
+
+
+@register
+class NoteWritten(TypedEvent):
+    """The always-on loop's hourly note (A7): a few sentences on what happened, for memory search."""
+
+    type: Literal["agent.note.written"] = "agent.note.written"
+    note_id: str
+    hour: datetime  # start of the hour the note covers
+    text: str
+    episode_ids: list[str] = []

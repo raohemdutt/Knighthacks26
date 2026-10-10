@@ -8,6 +8,9 @@ sleep:
 # Subreddit the agent searches for "what do students say" questions.
 subreddit: ucf
 
+# Who the always-on loop offers to message when a package sits at an empty home (A7). null = off.
+notify_on_package: null  # e.g. dom
+
 # People the agent may message (send_message, after approval): name -> ntfy topic.
 people:
   dom: atlas-dom
