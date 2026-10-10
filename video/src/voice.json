@@ -1,0 +1,257 @@
+{
+  "voice": "en-US-AndrewMultilingualNeural",
+  "slots": {
+    "0": {
+      "title": "Atlas",
+      "lines": [
+        {
+          "n": 0,
+          "text": "This is Atlas. A small box that sits on your desk, with two camera eyes.",
+          "start": 5.0,
+          "duration": 5.21,
+          "file": "voice/0-0-a3d8390868.mp3"
+        },
+        {
+          "n": 1,
+          "text": "It watches your space, remembers what it saw, answers your questions, and learns new skills. All of it on the box. Your video never leaves.",
+          "start": 10.81,
+          "duration": 9.74,
+          "file": "voice/0-1-fcbfbd7170.mp3"
+        },
+        {
+          "n": 2,
+          "text": "Inside are four layers. Cameras, with every face blurred before anything is saved. A vision model that understands the scene. A memory of everything it saw. And an agent that never acts without asking you first.",
+          "start": 21.15,
+          "duration": 14.74,
+          "file": "voice/0-2-7d0c1486a4.mp3"
+        },
+        {
+          "n": 3,
+          "text": "Everything after this minute is something you point Atlas at. Pick your track, press the key, and watch two minutes.",
+          "start": 36.49,
+          "duration": 7.15,
+          "file": "voice/0-3-9ff1c21652.mp3"
+        }
+      ],
+      "speech_s": 36.8,
+      "ends_at_s": 43.6
+    },
+    "1": {
+      "title": "It runs your day",
+      "lines": [
+        {
+          "n": 0,
+          "text": "Point it at your week. Atlas reads your classes and deadlines, and watches how your day really goes at the desk.",
+          "start": 1.5,
+          "duration": 6.86,
+          "file": "voice/1-0-48c41ea9ee.mp3"
+        },
+        {
+          "n": 1,
+          "text": "Each morning it writes one plan, with its reasons. When something slips, it re-plans. In the evening, it tells you what happened against the plan.",
+          "start": 8.96,
+          "duration": 9.31,
+          "file": "voice/1-1-b574432f2b.mp3"
+        },
+        {
+          "n": 2,
+          "text": "Nothing is written to your calendar until you tap approve.",
+          "start": 18.88,
+          "duration": 3.31,
+          "file": "voice/1-2-8b0fd89a96.mp3"
+        }
+      ],
+      "speech_s": 19.5,
+      "ends_at_s": 22.2
+    },
+    "2": {
+      "title": "It learns",
+      "lines": [
+        {
+          "n": 0,
+          "text": "The model on the box is small. That is what makes it private and fast. But small models have gaps.",
+          "start": 1.5,
+          "duration": 6.43,
+          "file": "voice/2-0-2c909f1b48.mp3"
+        },
+        {
+          "n": 1,
+          "text": "When Atlas needs a new skill, you tap teach. It asks to export a handful of blurred pictures. A big open model in the lab labels them, and the small one is fine-tuned on the answers.",
+          "start": 8.53,
+          "duration": 11.57,
+          "file": "voice/2-1-19332388d3.mp3"
+        },
+        {
+          "n": 2,
+          "text": "A test decides if the new model is really better. Only then does it ship back to the box. Our adapter is public on Hugging Face.",
+          "start": 20.7,
+          "duration": 8.62,
+          "file": "voice/2-2-eeb48501e6.mp3"
+        }
+      ],
+      "speech_s": 26.6,
+      "ends_at_s": 29.3
+    },
+    "3": {
+      "title": "The learning lab",
+      "lines": [
+        {
+          "n": 0,
+          "text": "The lab is two AMD Radeon R9700 cards. One serves the teacher, a twenty-seven billion parameter Qwen. The other trains.",
+          "start": 1.5,
+          "duration": 9.62,
+          "file": "voice/3-0-51bc78a3b2.mp3"
+        },
+        {
+          "n": 1,
+          "text": "Labeling, training, testing and packaging run on ROCm, and every run is recorded, with its loss curve, its minutes and its watts.",
+          "start": 11.72,
+          "duration": 9.77,
+          "file": "voice/3-1-dccd302947.mp3"
+        },
+        {
+          "n": 2,
+          "text": "The box and the lab share two files, a dataset out and a model package back. Nothing else crosses.",
+          "start": 22.09,
+          "duration": 6.98,
+          "file": "voice/3-2-797db50b4f.mp3"
+        }
+      ],
+      "speech_s": 26.4,
+      "ends_at_s": 29.1
+    },
+    "4": {
+      "title": "Box and lab",
+      "lines": [
+        {
+          "n": 0,
+          "text": "The new model arrives as one small package. The box checks it, swaps it in, and rolls back by itself if it does not answer.",
+          "start": 1.5,
+          "duration": 8.33,
+          "file": "voice/4-0-6380685362.mp3"
+        },
+        {
+          "n": 1,
+          "text": "We measure energy on both sides. Watts on the Jetson, watts on the GPUs, and joules per answer, so you can see what a question costs.",
+          "start": 10.43,
+          "duration": 8.69,
+          "file": "voice/4-1-05ee41dfda.mp3"
+        }
+      ],
+      "speech_s": 17.0,
+      "ends_at_s": 19.1
+    },
+    "5": {
+      "title": "On the Jetson",
+      "lines": [
+        {
+          "n": 0,
+          "text": "Everything you see live runs on this Jetson. Cameras in, faces blurred, the on-device vision model understanding the scene, answers in a few seconds.",
+          "start": 1.5,
+          "duration": 10.27,
+          "file": "voice/5-0-aa8b1022c3.mp3"
+        },
+        {
+          "n": 1,
+          "text": "Pull the network cable. It keeps seeing, remembering, alerting and answering. Only learning pauses.",
+          "start": 12.37,
+          "duration": 6.82,
+          "file": "voice/5-1-fba6e6a0d6.mp3"
+        }
+      ],
+      "speech_s": 17.1,
+      "ends_at_s": 19.2
+    },
+    "6": {
+      "title": "Data into counts",
+      "lines": [
+        {
+          "n": 0,
+          "text": "The same cameras turn a room into data. Frames become events. Events become episodes you can ask about.",
+          "start": 1.5,
+          "duration": 7.13,
+          "file": "voice/6-0-9721218354.mp3"
+        },
+        {
+          "n": 1,
+          "text": "Point it at the bins, and it counts what gets thrown away and where it lands.",
+          "start": 9.23,
+          "duration": 4.32,
+          "file": "voice/6-1-0341e915a1.mp3"
+        }
+      ],
+      "speech_s": 11.4,
+      "ends_at_s": 13.6
+    },
+    "7": {
+      "title": "Impact, shared",
+      "lines": [
+        {
+          "n": 0,
+          "text": "With a count comes a number a campus can act on. How much was sorted right, before and after a nudge.",
+          "start": 1.5,
+          "duration": 5.9,
+          "file": "voice/7-0-39b72cc029.mp3"
+        },
+        {
+          "n": 1,
+          "text": "Tables share only their counts, never their pictures, and a leaderboard shows who is winning.",
+          "start": 8.0,
+          "duration": 5.74,
+          "file": "voice/7-1-e272ea01a5.mp3"
+        }
+      ],
+      "speech_s": 11.6,
+      "ends_at_s": 13.7
+    },
+    "8": {
+      "title": "Friends' Atlases",
+      "lines": [
+        {
+          "n": 0,
+          "text": "Point it at your friends. Each person's Atlas keeps their own calendar private.",
+          "start": 1.5,
+          "duration": 4.51,
+          "file": "voice/8-0-6aba6ba40f.mp3"
+        },
+        {
+          "n": 1,
+          "text": "Ask for a time that works for everyone, and the boxes negotiate. Only free or busy leaves each box. The event lands in everyone's plan after a tap.",
+          "start": 6.61,
+          "duration": 11.14,
+          "file": "voice/8-1-bb232aa7ed.mp3"
+        }
+      ],
+      "speech_s": 15.7,
+      "ends_at_s": 17.8
+    },
+    "9": {
+      "title": "Day Run",
+      "lines": [
+        {
+          "n": 0,
+          "text": "Point it at your habits. Day Run lets you play tomorrow before you live it, on a map of your own campus.",
+          "start": 1.5,
+          "duration": 6.5,
+          "file": "voice/9-0-8d616c5b4e.mp3"
+        },
+        {
+          "n": 1,
+          "text": "A bad plan fails, and the game tells you why. A good plan wins three stars. Hard mode moves a class and makes you re-route.",
+          "start": 8.6,
+          "duration": 8.83,
+          "file": "voice/9-1-6d94148616.mp3"
+        },
+        {
+          "n": 2,
+          "text": "It is the same box, the same cameras, the same memory. Pointed at one more part of your life.",
+          "start": 18.04,
+          "duration": 6.26,
+          "file": "voice/9-2-ca501cf8c5.mp3"
+        }
+      ],
+      "speech_s": 21.6,
+      "ends_at_s": 24.3
+    }
+  }
+}

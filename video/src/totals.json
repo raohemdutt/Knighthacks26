@@ -1,1 +1,122 @@
-[]
+[
+  {
+    "name": "Hours Atlas was running",
+    "value": "7.1 h",
+    "source": "all 14,244 logged events; gaps over 10 min count as off",
+    "events": 14244,
+    "first": "2026-10-10T11:20:06.378348+00:00",
+    "last": "2026-10-10T21:21:35.382515+00:00"
+  },
+  {
+    "name": "Frames seen by the cameras",
+    "value": "~10,732",
+    "source": "estimated: fps from `capture.camera.health` x 96 held until the next sample",
+    "events": 96,
+    "first": "2026-10-10T13:23:26.033372+00:00",
+    "last": "2026-10-10T21:19:19.650108+00:00"
+  },
+  {
+    "name": "Episodes remembered",
+    "value": "19",
+    "source": "`memory.episode.closed` x 19; 2.7 h of activity",
+    "events": 19,
+    "first": "2026-10-10T11:45:26.224724+00:00",
+    "last": "2026-10-10T19:28:23.455782+00:00"
+  },
+  {
+    "name": "Keyframes kept (faces blurred)",
+    "value": "136",
+    "source": "`memory.episode.closed` x 19; keyframe_refs summed",
+    "events": 19,
+    "first": "2026-10-10T11:45:26.224724+00:00",
+    "last": "2026-10-10T19:28:23.455782+00:00"
+  },
+  {
+    "name": "Scene captions written on the box",
+    "value": "508",
+    "source": "`memory.episode.closed` x 19; captions summed",
+    "events": 19,
+    "first": "2026-10-10T11:45:26.224724+00:00",
+    "last": "2026-10-10T19:28:23.455782+00:00"
+  },
+  {
+    "name": "Objects and people observed",
+    "value": "9,738",
+    "source": "`perception.observation.recorded` x 9738",
+    "events": 9738,
+    "first": "2026-10-10T11:42:50.102520+00:00",
+    "last": "2026-10-10T21:21:35.382515+00:00"
+  },
+  {
+    "name": "Questions asked",
+    "value": "55",
+    "source": "`experience.question.asked` x 55",
+    "events": 55,
+    "first": "2026-10-10T15:00:37.448907+00:00",
+    "last": "2026-10-10T21:17:34.401192+00:00"
+  },
+  {
+    "name": "Answers given, with citations",
+    "value": "55",
+    "source": "`agent.answer.generated` x 55",
+    "events": 55,
+    "first": "2026-10-10T15:00:37.460010+00:00",
+    "last": "2026-10-10T21:17:39.796282+00:00"
+  },
+  {
+    "name": "Alerts raised",
+    "value": "4",
+    "source": "`agent.alert.raised` x 4",
+    "events": 4,
+    "first": "2026-10-10T11:45:07.302120+00:00",
+    "last": "2026-10-10T19:13:44+00:00"
+  },
+  {
+    "name": "Actions proposed for approval",
+    "value": "5",
+    "source": "`agent.action.proposed` x 5",
+    "events": 5,
+    "first": "2026-10-10T17:38:00.611180+00:00",
+    "last": "2026-10-10T19:27:45.901912+00:00"
+  },
+  {
+    "name": "Approval decisions (approve / deny)",
+    "value": "2 / 15",
+    "source": "`experience.approval.decided` x 17; includes tests and pre-flight resets",
+    "events": 17,
+    "first": "2026-10-10T18:47:10.371515+00:00",
+    "last": "2026-10-10T19:28:07.688376+00:00"
+  },
+  {
+    "name": "Outside actions carried out, each after an approval",
+    "value": "1",
+    "source": "`workspace.action.completed` with status done, of 5 (1 denied, 3 expired)",
+    "events": 5,
+    "first": "2026-10-10T17:43:15.461798+00:00",
+    "last": "2026-10-10T19:28:07.688376+00:00"
+  },
+  {
+    "name": "Connector items read",
+    "value": "725",
+    "source": "`connector.item.synced` x 725",
+    "events": 725,
+    "first": "2026-10-10T11:20:06.378348+00:00",
+    "last": "2026-10-10T21:19:19.650108+00:00"
+  },
+  {
+    "name": "Energy used by the Jetson",
+    "value": "none in the log",
+    "source": "estimated: VDD_IN from `telemetry.jetson.power` x 0 integrated over time",
+    "events": 0,
+    "first": null,
+    "last": null
+  },
+  {
+    "name": "Energy used by the R9700s",
+    "value": "none in the log",
+    "source": "estimated: socket_w from `telemetry.gpu.power` x 0 integrated over time",
+    "events": 0,
+    "first": null,
+    "last": null
+  }
+]

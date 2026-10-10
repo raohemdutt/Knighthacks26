@@ -15,6 +15,17 @@ npm run render       # out/atlas.mp4 (about 30 minutes on a laptop)
 npm run check        # length within 0.1 s of 9:58, and where each key lands
 ```
 
+## Narration and diagrams
+
+- `script.yaml` is the script, one entry per slot, plain words. `python video/scripts/voice.py` speaks every line with
+  a male neural voice (edge-tts, `en-US-AndrewMultilingualNeural`), caches the audio under `public/voice/` (not
+  committed; the script needs the internet once per changed line) and writes `src/voice.json` with each line's start
+  and length. It prints a fit report per slot and fails if a slot's narration would run past its 59.8 s.
+- A slot with no recording shows its bird's-eye diagram from `src/scenes.ts` (nodes are soft cards, edges draw
+  themselves, a pulse shows the flow) while the narrator speaks; captions follow the voice line by line.
+- `python video/scripts/record_screens.py` records the phone app's screens from a gateway on the seeded demo night
+  into `public/clips/slot-<k>.mp4` (slots 1, 8 and 9 today); see its docstring for the gateway command.
+
 ## Renders
 
 `video/renders/` holds dated full renders for the team to watch (`atlas-draft-2026-10-10.mp4`: the design with slot 0
