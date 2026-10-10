@@ -1230,6 +1230,33 @@ def test_exactly_twice_the_minutes_is_not_yet_starved(world):
     assert world.call("start", "--row", short_row)[0]["outcome"] == "started"
 
 
+def test_a_queued_head_whose_agent_never_starts_it_stops_holding_up_the_card(world):
+    # X's row is first in line and its agent went away; the card stands free. Once it has stood free with X first
+    # for X's own Minutes while Y waited, Y may start: the queue does not stay wedged until a person edits Notion.
+    world.seed("L3: x", agent="Xander", requested=world.ago(minutes=30))
+    late = world.seed("O4: y", agent="Ilan", requested=world.now)
+    refused, code = world.call("start", "--row", late)
+    assert code == 1 and refused["outcome"] == "not_next"
+    world.advance(hours=3)
+    assert referee.run([], client=world.client, now=lambda: world.now)[1] == 0
+    started, code = world.call("start", "--row", late)
+    assert code == 0 and started["outcome"] == "started", started
+    assert [row["request"] for row in started["passed_idle"]] == ["L3: x"]
+    assert world.stored(late)["Status"] == "Running"
+
+
+def test_a_queued_head_keeps_its_turn_while_the_card_has_been_free_for_less_than_its_minutes(world):
+    world.seed("L3: x", agent="Xander", minutes=15, requested=world.ago(minutes=90),
+               status="Queued")
+    world.seed("L1: before", agent="Hemdutt", status="Done", started=world.ago(minutes=40), ended=world.ago(minutes=10))
+    late = world.seed("O4: y", agent="Ilan", requested=world.ago(minutes=60))
+    refused, code = world.call("start", "--row", late)
+    assert code == 1 and refused["outcome"] == "not_next" and refused["ahead"][0]["request"] == "L3: x"
+    world.advance(minutes=6)
+    started, code = world.call("start", "--row", late)
+    assert code == 0 and started["outcome"] == "started", started
+
+
 def test_a_starved_row_still_waits_for_the_card_and_blocks_nothing_it_may_not(world):
     world.running("L4: eval", started_ago=5)
     long_row = world.seed("L3: train", minutes=60, requested=world.ago(minutes=130))
