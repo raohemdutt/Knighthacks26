@@ -635,11 +635,14 @@ def test_the_api_serves_the_card_its_evidence_and_the_two_buttons(places, tmp_pa
     assert client.post("/api/day/checkin/done", json={}).json() == {"id": e.event_id, "answered": "done"}
     assert loop.checkin.answers[e.event_id].answer == "done"
     assert client.post("/api/day/checkin/done", json={"id": "nope"}).status_code == 404
-    # hours later it is history, not something to show
+    # answered, and hours later, it is history, not something to show; an unanswered one waits for the rest of its day
+    assert loop.checkin.latest(NOW + timedelta(hours=3)) is not None and loop.checkin.latest(NOW + timedelta(hours=4, minutes=1)) is None
     app = FastAPI()
     app.include_router(day_router(loop, clock=lambda: NOW + timedelta(hours=5)))
     later = TestClient(app).get("/api/day/checkin").json()
     assert later["latest"] is None and later["history"][0]["answered"] == "done"
+    loop.checkin.answers.clear()
+    assert loop.checkin.latest(NOW + timedelta(hours=6)) is not None and loop.checkin.latest(NOW + timedelta(hours=9)) is None  # the next day
 
 
 def test_the_api_with_no_check_in_yet(places, tmp_path):  # noqa: F811

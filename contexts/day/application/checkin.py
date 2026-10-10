@@ -48,7 +48,7 @@ log = logging.getLogger("atlas.day.checkin")
 KEEP = timedelta(days=3)  # looks and drinks, in event time
 KEEP_NIGHTS = timedelta(days=rule.HISTORY_DAYS + rule.BASELINE_DAYS + 7)
 KEEP_RAISED = 50
-FRESH = timedelta(hours=4)  # a check-in older than this is history, not something to show on the Now screen
+FRESH = timedelta(hours=4)  # an answered check-in older than this is history, not something to show on the Now screen
 HEALTH = "health"
 
 
@@ -265,9 +265,12 @@ class CheckIn:
         return next((e for e in self.raised if e.event_id == checkin_id), None)
 
     def latest(self, now: datetime) -> DayCheckinRaised | None:
-        """The check-in to show on the Now screen: the newest, while it is fresh."""
+        """The check-in to show on the Now screen: the newest, for the rest of its day while it waits for an answer,
+        and for FRESH after it once it has one."""
         e = self.raised[-1] if self.raised else None
-        return e if e is not None and timedelta(0) <= now - e.ts <= FRESH else None
+        if e is None or now < e.ts or self.clock.day_of(now) != e.day:
+            return None
+        return e if e.event_id not in self.answers or now - e.ts <= FRESH else None
 
     def card(self, e: DayCheckinRaised, numbers: bool = False) -> dict:
         answer = self.answers.get(e.event_id)
