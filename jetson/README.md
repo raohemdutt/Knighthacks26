@@ -73,6 +73,22 @@ checked-in `config/models.yaml` stays on `fake` so laptops and CI keep working.
 Thinking mode is off (`--reasoning-budget 0`): the runtime's small token limits
 would otherwise be spent before the answer starts.
 
+## 6. Detector (P1)
+
+yolo11n as a TensorRT FP16 engine, called as `fn(frame) -> list[Track]` (normalized 0-1 boxes, top-left origin).
+The venv `~/atlas/venv-yolo` has torch and ultralytics; the system TensorRT 10.3 is linked into it
+(`ln -s /usr/lib/python3.10/dist-packages/tensorrt <venv>/lib/python3.10/site-packages/tensorrt`).
+
+```bash
+pip install onnx onnxslim                                  # the engine export needs them
+python -m contexts.perception.infrastructure.detector export yolo11n.pt   # ~7 min, once per TensorRT version
+PYTHONPATH=. python jetson/bench_detector.py yolo11n.engine some.mp4      # end-to-end FPS
+```
+
+The box's Python is 3.10; the repo asks for 3.11 only because of `from datetime import UTC`. A one-line
+`.pth` in the venv fixes that without touching the code:
+`echo 'import datetime; datetime.UTC = datetime.timezone.utc' > <venv>/lib/python3.10/site-packages/atlas_py310_compat.pth`.
+
 ## Firmware update (boards with old factory firmware)
 
 JetPack 6 and 7 need firmware 36.x on the board. Boards with older firmware
