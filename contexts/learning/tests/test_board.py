@@ -98,3 +98,22 @@ def test_a_denied_or_expired_export_approval_ends_the_task_instead_of_waiting_fo
 
     assert asyncio.run(run("denied")) == "denied"
     assert asyncio.run(run("expired")) == "expired"
+
+
+def test_teaching_a_task_again_after_its_card_lapsed_waits_for_the_new_card():
+    """On the Jetson desk-objects was re-taught after its card expired, and the Teach list still said expired."""
+    from contracts.agent import ActionProposed
+    from contracts.workspace import ActionCompleted
+
+    async def run():
+        bus = EventBus(persist=False)
+        board = LearningBoard()
+        board.subscribe(bus)
+        await bus.publish(TaskCreated(ts=T0, task="desk-objects", instruction="Name the small things."))
+        await bus.publish(ActionProposed(ts=T0, action_id="a1", kind="export_training_data", target="desk-objects", reason="teach"))
+        await bus.publish(ActionCompleted(ts=T0 + timedelta(minutes=5), action_id="a1", status="expired"))
+        await bus.publish(TaskCreated(ts=T0 + timedelta(minutes=9), task="desk-objects", instruction="Name the small things."))
+        return board.snapshot()["tasks"]
+
+    [task] = asyncio.run(run())
+    assert task["stage"] == "waiting for approval"

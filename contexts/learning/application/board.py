@@ -38,6 +38,8 @@ class LearningBoard:
     def on_created(self, e: TaskCreated) -> None:
         t = self._task(e.task, e.ts)
         t.update(instruction=e.instruction, updated=e.ts)
+        if t["stage"] in ("denied", "expired"):  # taught again after the card lapsed: waiting for the new card
+            t.update(stage="waiting for approval", progress=0.0)
 
     def on_proposed(self, e: ActionProposed) -> None:
         if e.kind == "export_training_data":
