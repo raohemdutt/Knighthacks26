@@ -602,6 +602,13 @@ Added by kernels refinement pass 1 on 2026-10-10. The experiment ids continue th
   inductor does; the kernels rubric's eager rule for output matching does not depend on it.
 - Prefill power on this card, which the caption arithmetic in section 8 assumes equal to decode
   power.
+- Whether the SJC hosts the pods moved to show the stream-wait cost of `rdna4_vllm_ports.md`
+  section 7, and whether our Conch build splits into bands there (KE17's arm A answers both).
+- Which of the host fields (driver version, firmware list, ASIC serial) the pods' own amd-smi
+  prints, and whether the KFD queue count is readable inside a pod.
+- Which attention backend the stock build at b1388b1 selects on gfx1201; the serve log answers it,
+  and an engine change pins the same backend (`correctness_and_tuners.md` section 4).
+- vLLM PR #60400 (KE11) is still open with no comments on 2026-10-10.
 
 ## Search log
 
@@ -617,3 +624,15 @@ Added by kernels refinement pass 1 on 2026-10-10. The experiment ids continue th
   R9700 W4A16 decode tok/s" (no gfx1201 measurement of the hybrid kernel itself turned up). Stopped
   when the last three sources opened (PR 40977, the hybrid-kernel search, the reproducibility
   section) repeated what this note set and the kernels rubric already said.
+- 2026-10-10, kernels refinement pass 2. Budget about 3 h; used about 1 h 15 min. Starting points:
+  pass 1's "Left for the next pass" (recheck ROCm/legacy-rocm-build#6347 and vLLM PR #60400 for
+  news; the KE0 profile and KE7), the Open questions above, and the move of the pods to the SJC hub
+  (Ilan's Team Comms page, FYI of Sat 2:47 PM ET). Opened: #6347 through the GitHub API (no comment
+  after 2026-09-25); #6685 through the GitHub API (four comments of 2026-09-26 to 2026-09-30, and an
+  assignment and triage label on 2026-10-02); vLLM #60400 (open, no comments) and #57838 (comments
+  of 2026-10-06 to 2026-10-10); ROCm/aiter#5683 (body and comments to 2026-09-20); vLLM issue search
+  "HybridW4A16 gfx1201" (only #41394, the RDNA3 kernel) and "R9700 W4A16" updated since 2026-09-25
+  (#60893, #61003, #57032, #59773, #59132, #51971; titles read, #61003 and #57032 opened, none
+  cited: DFlash drafters on an NVFP4 target and a CMP 170HX cluster); the AMD SMI CLI tool usage
+  page. Stopped when the last three sources opened (#61003, #57032 and the issue search) added
+  nothing on a W4A16 kernel, the spawn bands or image correctness on gfx1201.
