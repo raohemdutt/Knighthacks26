@@ -104,7 +104,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import IO, Any
 
-from lab.machine import allowed, ledger, refine_merge, stop
+from lab.machine import allowed, ledger, record, refine_merge, stop
 from lab.machine.lock import LockTimeout
 
 log = logging.getLogger("lab.sit")
@@ -128,9 +128,11 @@ TASK_ID = re.compile(r"[A-Z]{1,4}[0-9]{1,4}")
 
 WORKSPACE_ENV = "LAB_WORKSPACE"
 WORKSPACE_MARKER: tuple[str, ...] = (".claude", "skills", "open-ticket", "SKILL.md")
-ACTOR_ENV = "LAB_ACTOR"
-TIER_ENV = "LAB_TIER"
-TASK_ENV = "LAB_TASK"
+#: The actor, tier and task names a sitting is started under: record.py's, the names every
+#: ledger row of the sitting is read back from, so the launcher sets exactly what record() reads.
+ACTOR_ENV = record.ENV_ACTOR
+TIER_ENV = record.ENV_TIER
+TASK_ENV = record.ENV_TASK
 PYTHONPATH_ENV = "PYTHONPATH"
 #: What the launcher sets in a session's environment beyond the state dir, actor and tier:
 #: no auto memory, and no connectors of the owner's web account (see "Where it runs" above).
