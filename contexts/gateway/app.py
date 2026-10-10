@@ -34,6 +34,8 @@
 - GET  /api/league          the League: this week's standings, worst and best with reasons, stake, dares, team waste line
 - GET  /api/league/me       this member's breakdown by target
 - POST /api/league/stake    {kind, text?} -> approval card to set the stake; POST /api/league/challenges {kind, days, invitees}
+- GET  /api/voice/status    the box's own voice: off|idle|listening|thinking|speaking, mic and speaker health (X16)
+- POST /api/voice/talk      push to talk (also /stop, /enabled): the microphone and speaker are on the box, not the phone
 - GET  /capture/status      camera status and detector counts, where cameras run (C6)
 - GET  /health
 - GET  /runtime/models      installed model versions, the current one and what llama-server really serves (R7)
@@ -72,6 +74,7 @@ from contexts.perception.api import identity_router
 from contexts.play.dayrun_api import dayrun_router
 from contexts.profiles.api import profile_router
 from contexts.play.league.api import league_router
+from contexts.voice.proxy import voice_router
 from contracts import REGISTRY, Event, parse_event
 from contracts.agent import AnswerGenerated, RuleAdded, RuleToggled
 from contracts.experience import ApprovalDecided, QuestionAsked
@@ -177,6 +180,7 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
                                      board=atlas.board, config_dir=atlas.settings.config_dir, guard=authorized))
     # GET /api/league, /api/league/me (200 in every state); POST /api/league/stake, /api/league/challenges -> approval cards
     app.include_router(league_router(atlas.bus, league=atlas.league, guard=authorized))
+    app.include_router(voice_router(guard=authorized), prefix="/api")  # GET /api/voice/status, POST /api/voice/talk|stop|enabled (X16)
     app.include_router(runtime_router(ModelStore(atlas.settings.data_dir / "models"), llm_url=atlas.settings.llm_url))  # GET /runtime/models (R7)
 
     @app.get("/health")

@@ -1,0 +1,24 @@
+[Unit]
+Description=Atlas voice (the webcam's microphone in, a Bluetooth speaker out; whisper.cpp and Piper, all local)
+# Optional: the box is fine without it. It asks the gateway on localhost, so it needs nothing from the internet.
+After=atlas-gateway.service bluetooth.service
+Wants=bluetooth.service
+
+[Service]
+User=@USER@
+WorkingDirectory=@REPO@
+Environment=PYTHONPATH=@REPO@
+# PulseAudio runs in the logged-in user's session; this is how a system service reaches it (and the Bluetooth speaker).
+Environment=XDG_RUNTIME_DIR=/run/user/@UID@
+Environment=PULSE_SERVER=unix:/run/user/@UID@/pulse/native
+ExecStart=@VENV@/bin/python -m contexts.voice
+Restart=always
+RestartSec=5
+# The model and the detector come first: if memory runs out, this is what goes (each speech tool peaks near 200 MB).
+Nice=10
+OOMScoreAdjust=500
+MemoryHigh=450M
+MemoryMax=600M
+
+[Install]
+WantedBy=multi-user.target

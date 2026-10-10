@@ -271,3 +271,87 @@
     overflow: visible;
   }
 }
+
+/* Voice on the box (X16): the state is a big word and a dot, so it reads from across the room. */
+.voiceDot {
+  display: inline-block;
+  width: 0.7em;
+  height: 0.7em;
+  margin-right: 0.45em;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.voice_listening .voiceDot {
+  background: var(--danger);
+}
+
+.voice_thinking .voiceDot {
+  background: #ffc857;
+}
+
+.voice_speaking .voiceDot,
+.voice_idle .voiceDot {
+  background: var(--accent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .voice_listening .voiceDot {
+    animation: voicePulse 1s ease-in-out infinite;
+  }
+}
+
+@keyframes voicePulse {
+  50% {
+    transform: scale(1.4);
+    opacity: 0.6;
+  }
+}
+
+.voiceButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.voicePrimary,
+.voiceSecondary {
+  min-height: 44px;
+  padding: 10px 22px;
+  font: inherit;
+  font-size: 1.4rem;
+  font-weight: 600;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.voicePrimary {
+  color: #04120f;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.voiceSecondary {
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--line);
+}
+
+.voicePrimary:focus-visible,
+.voiceSecondary:focus-visible {
+  outline: 3px solid var(--text);
+  outline-offset: 2px;
+}
+
+.voiceAnswer {
+  margin: 8px 0 0;
+  font-size: 1.4rem;
+  line-height: 1.3;
+}
+
+.voiceNote {
+  margin: 8px 0 0;
+  font-size: 1.3rem;
+  color: #ffc857;
+}

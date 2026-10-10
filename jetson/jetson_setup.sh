@@ -13,6 +13,16 @@ venv="${ATLAS_VENV:-$(getent passwd "$user" | cut -d: -f6)/atlas/venv-yolo}"
 [ -x "$venv/bin/python" ] || { echo "no Python venv at $venv (set ATLAS_VENV)" >&2; exit 1; }
 [ -e "$repo/yolo11n.engine" ] || echo "note: no $repo/yolo11n.engine yet: the gateway will run without cameras (see jetson/README.md, detector)"
 
+# `sudo ./jetson/jetson_setup.sh voice` installs only the voice unit (X16) and touches no other service.
+if [ "${1:-}" = "voice" ]; then
+    sed -e "s|@USER@|$user|g" -e "s|@REPO@|$repo|g" -e "s|@VENV@|$venv|g" -e "s|@UID@|$(id -u "$user")|g" "$repo/jetson/atlas-voice.service" > /etc/systemd/system/atlas-voice.service
+    systemctl daemon-reload
+    systemctl enable atlas-voice
+    systemctl restart atlas-voice
+    echo "installed atlas-voice; follow it with: journalctl -u atlas-voice -f"
+    exit 0
+fi
+
 chmod +x "$repo/jetson/atlas-llm.sh"
 for unit in atlas-llm atlas-gateway atlas-egress; do
     sed -e "s|@USER@|$user|g" -e "s|@REPO@|$repo|g" -e "s|@VENV@|$venv|g" "$repo/jetson/$unit.service" > "/etc/systemd/system/$unit.service"
