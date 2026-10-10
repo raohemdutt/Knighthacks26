@@ -31,7 +31,7 @@ TRACKS = ("telemetry", "learning", "plumbing", "kernels")
 HEART = "\U0001F916"
 DOT = "\u00b7"
 NOW = datetime(2026, 10, 10, 14, 30, tzinfo=timezone.utc)  # Saturday 10:30 AM Eastern
-SIGN = f"{HEART} Ilan's agent {DOT} Sat 10:30 AM ET:"
+SIGN = f"Ilan's agent {DOT} Sat 10:30 AM ET:"
 TOKEN = "ntn_test_value_0123456789"
 
 
@@ -145,6 +145,15 @@ def open_items(refine: Path):
     rows, errors, warnings = rulings.collect(refine)
     assert (errors, warnings) == ([], [])
     return [row for row in rows if row.state == "open"]
+
+
+PLAIN_SIGNER = f"Ilan's agent {DOT}"
+
+
+def robot_form(text: str) -> str:
+    """The text as it was posted before the no-emoji rule: the robot sign in front of its first signature."""
+    assert PLAIN_SIGNER in text
+    return text.replace(PLAIN_SIGNER, f"{HEART} {PLAIN_SIGNER}", 1)
 
 
 # ------------------------------------------------------------------ the committed files
@@ -655,7 +664,7 @@ def test_the_posts_are_signed_name_each_question_and_carry_the_list_id():
     ],
 )
 def test_the_signature_shows_the_day_and_eastern_time(moment, stamp):
-    assert rulings.build_posts([A], moment).block.startswith(f"- {HEART} Ilan's agent {DOT} {stamp} Lab rulings waiting on you (1).")
+    assert rulings.build_posts([A], moment).block.startswith(f"- Ilan's agent {DOT} {stamp} Lab rulings waiting on you (1).")
 
 
 def test_the_list_id_follows_the_wording_of_the_list_and_not_the_clock():
@@ -783,7 +792,7 @@ def test_the_first_mirror_adds_the_segment_to_the_needs_line_and_the_block_under
     assert overnight_of(notion) == OVERNIGHT.replace(NEEDS_LINE, NEEDS_LINE + "; " + posts.segment)
     assert team_comms_of(notion) == TEAM_COMMS.replace(FYI_HEADING, FYI_HEADING + "\n" + posts.block)
     inserted = team_comms_of(notion).split("\n")[team_comms_of(notion).split("\n").index(FYI_HEADING) + 1]
-    assert re.fullmatch(rf"- {HEART} Ilan's agent {DOT} Sat 10:30 AM ET: Lab rulings waiting on you \(2\)\..* \(list [0-9a-f]{{8}}\)", inserted)
+    assert re.fullmatch(rf"- Ilan's agent {DOT} Sat 10:30 AM ET: Lab rulings waiting on you \(2\)\..* \(list [0-9a-f]{{8}}\)", inserted)
 
 
 def test_a_second_mirror_changes_nothing_even_at_another_time(tmp_path):
@@ -846,11 +855,11 @@ def test_an_empty_list_with_no_earlier_post_posts_nothing_at_all(tmp_path):
     assert notion.edits == []
 
 
-def test_a_new_question_after_the_closing_line_replaces_the_closing_line(tmp_path):
+@pytest.mark.parametrize("robot", [False, True], ids=["plain", "robot"])
+def test_a_new_question_after_the_closing_line_replaces_the_closing_line(tmp_path, robot):
     refine = make_tree(tmp_path, {"telemetry": [T2_ANSWERED]})
-    notion = pages(team_comms=TEAM_COMMS.replace(
-        FYI_HEADING, FYI_HEADING + "\n" + rulings.build_posts([], NOW - timedelta(days=1)).block
-    ))
+    closing = rulings.build_posts([], NOW - timedelta(days=1)).block
+    notion = pages(team_comms=TEAM_COMMS.replace(FYI_HEADING, FYI_HEADING + "\n" + (robot_form(closing) if robot else closing)))
     write(rulings_path(refine, "learning"), read(rulings_path(refine, "learning")) + "\n" + L1)
 
     result = mirrored(refine, notion)
@@ -860,17 +869,99 @@ def test_a_new_question_after_the_closing_line_replaces_the_closing_line(tmp_pat
     assert team_comms_of(notion).count("Lab rulings waiting on you") == 1
 
 
+def test_a_post_carries_no_robot_sign_and_the_print_plan_names_both_forms(tmp_path):
+    refine = tree_with_two_open(tmp_path)
+    posts = rulings.build_posts(open_items(refine), NOW)
+
+    printed = run(refine, "mirror", "--print")
+
+    assert rulings.stamp(NOW) == f"Ilan's agent {DOT} Sat 10:30 AM ET:"
+    assert HEART not in posts.segment + posts.block + rulings.build_posts([], NOW).block
+    assert HEART not in json.dumps(printed, ensure_ascii=False)
+    overnight, fyi = printed["posts"]
+    for post in (overnight, fyi):
+        assert post["replace_if_present"].startswith(
+            f"an earlier post of this flow: it starts with '{PLAIN_SIGNER}' (older posts have a robot sign in front of it), a time and "
+            "'Lab rulings waiting on you' and ends at '(list <8 hex digits>)'"
+        )
+
+
+@pytest.mark.parametrize("team_robot", [False, True], ids=["team-plain", "team-robot"])
+@pytest.mark.parametrize("overnight_robot", [False, True], ids=["overnight-plain", "overnight-robot"])
+def test_posts_in_either_form_on_either_page_are_this_flows_own_and_are_left_alone(tmp_path, overnight_robot, team_robot):
+    refine = tree_with_two_open(tmp_path)
+    posts = rulings.build_posts(open_items(refine), NOW)
+    segment = robot_form(posts.segment) if overnight_robot else posts.segment
+    block = robot_form(posts.block) if team_robot else posts.block
+    assert (HEART in segment, HEART in block) == (overnight_robot, team_robot)
+    notion = pages(
+        overnight=OVERNIGHT.replace(NEEDS_LINE, NEEDS_LINE + "; " + segment),
+        team_comms=TEAM_COMMS.replace(FYI_HEADING, FYI_HEADING + "\n" + block),
+    )
+    before = (overnight_of(notion), team_comms_of(notion))
+
+    result = mirrored(refine, notion, NOW + timedelta(hours=3))
+
+    assert result["targets"] == {"overnight_status": {"action": "unchanged"}, "team_comms_fyi": {"action": "unchanged"}}
+    assert (overnight_of(notion), team_comms_of(notion)) == before
+    assert notion.edits == []
+
+
+@pytest.mark.parametrize("robot", [False, True], ids=["plain", "robot"])
+def test_a_changed_list_replaces_posts_in_either_form_by_posts_in_the_plain_form(tmp_path, robot):
+    refine = tree_with_two_open(tmp_path)
+    first = rulings.build_posts(open_items(refine), NOW)
+    segment, block = (robot_form(first.segment), robot_form(first.block)) if robot else (first.segment, first.block)
+    notion = pages(
+        overnight=OVERNIGHT.replace(NEEDS_LINE, NEEDS_LINE + "; " + segment),
+        team_comms=TEAM_COMMS.replace(FYI_HEADING, FYI_HEADING + "\n" + block),
+    )
+    write(rulings_path(refine, "learning"), read(rulings_path(refine, "learning")) + "\n" + L1)
+    later = NOW + timedelta(hours=1)
+
+    result = mirrored(refine, notion, later)
+
+    second = rulings.build_posts(open_items(refine), later)
+    assert result["targets"] == {"overnight_status": {"action": "updated"}, "team_comms_fyi": {"action": "updated"}}
+    assert overnight_of(notion) == OVERNIGHT.replace(NEEDS_LINE, NEEDS_LINE + "; " + second.segment)
+    assert team_comms_of(notion) == TEAM_COMMS.replace(FYI_HEADING, FYI_HEADING + "\n" + second.block)
+    assert HEART not in second.segment + second.block
+
+
+@pytest.mark.parametrize("robot", [False, True], ids=["plain", "robot"])
+def test_when_every_ruling_is_answered_posts_in_either_form_go_or_close(tmp_path, robot):
+    refine = tree_with_two_open(tmp_path)
+    first = rulings.build_posts(open_items(refine), NOW)
+    segment, block = (robot_form(first.segment), robot_form(first.block)) if robot else (first.segment, first.block)
+    notion = pages(
+        overnight=OVERNIGHT.replace(NEEDS_LINE, NEEDS_LINE + "; " + segment),
+        team_comms=TEAM_COMMS.replace(FYI_HEADING, FYI_HEADING + "\n" + block),
+    )
+    answer_ruling(refine, "telemetry", 1, "10 Hz (owner, 2026-10-10)")
+    answer_ruling(refine, "kernels", 4, "the spread (owner, 2026-10-10)")
+    later = NOW + timedelta(hours=2)
+
+    result = mirrored(refine, notion, later)
+
+    closing = rulings.build_posts([], later)
+    assert result["targets"] == {"overnight_status": {"action": "removed"}, "team_comms_fyi": {"action": "closed"}}
+    assert overnight_of(notion) == OVERNIGHT
+    assert team_comms_of(notion) == TEAM_COMMS.replace(FYI_HEADING, FYI_HEADING + "\n" + closing.block)
+
+
 def test_text_the_flow_did_not_write_is_never_replaced(tmp_path):
     refine = tree_with_two_open(tmp_path)
     human = "- Lab rulings waiting on you is what Dominick calls the lab list (list abcd1234)"
     signed_by_someone_else = f"- {HEART} Dominick's agent {DOT} Sat 6:00 AM ET: Lab rulings waiting on you (list 12345678)"
-    page = TEAM_COMMS.replace(FYI_HEADING, FYI_HEADING + "\n" + human + "\n" + signed_by_someone_else)
+    signed_plainly_by_someone_else = f"- Dominick's agent {DOT} Sat 6:05 AM ET: Lab rulings waiting on you (list 87654321)"
+    page = TEAM_COMMS.replace(FYI_HEADING, FYI_HEADING + "\n" + human + "\n" + signed_by_someone_else + "\n" + signed_plainly_by_someone_else)
     notion = pages(team_comms=page)
 
     result = mirrored(refine, notion)
 
     assert result["targets"]["team_comms_fyi"] == {"action": "posted"}
     assert human in team_comms_of(notion) and signed_by_someone_else in team_comms_of(notion)
+    assert signed_plainly_by_someone_else in team_comms_of(notion)
     assert len(notion.edits) == 2
 
 
@@ -1238,7 +1329,7 @@ def test_the_dispatcher_exits_one_when_mirror_has_no_token(tmp_path, capsys, mon
 
     assert code == 1
     assert result["outcome"] == "no_token"
-    assert result["posts"][1]["text"].startswith(f"- {HEART} Ilan's agent {DOT} ")
+    assert result["posts"][1]["text"].startswith(f"- Ilan's agent {DOT} ")
 
 
 def test_the_dispatcher_refuses_the_verb_while_the_stop_file_exists(tmp_path, capsys, state_dir):
