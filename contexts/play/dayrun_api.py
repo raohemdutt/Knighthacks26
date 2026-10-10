@@ -52,6 +52,8 @@ def dayrun_router(service: DayRun, publish: Callable[[object], Awaitable] | None
             raise HTTPException(404, str(exc).strip("'\"")) from None
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from None
+        except OverflowError:  # a date at the edge of the calendar, or minutes too large to add to one
+            raise HTTPException(422, "a date or a number of minutes in the request is out of range") from None
         except RuntimeError as exc:
             raise HTTPException(409, str(exc)) from None
 

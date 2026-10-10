@@ -149,3 +149,15 @@ def test_forecast(client, plans):
     r = client.post("/api/dayrun/forecast", json={"estimates": [{"block": "m7", "minutes": 480}, {"block": "m3", "minutes": 120}],
                                                   "day": "2026-10-11", "scenario": "demo"}).json()
     assert r["rows"][0]["measured"] == 390 and r["unmeasured"] == ["m3"]
+
+
+def test_dates_and_minutes_out_of_range_are_refused_not_a_crash(client):
+    for start in ("0001-01-01", "0001-01-01T00:00:00+14:00", "9999-12-31", "9999-12-31T23:59:59-14:00"):
+        assert client.get("/api/dayrun/board", params={"start": start}).status_code == 422
+    assert client.post("/api/dayrun/replay", json={"day": "9999-12-31"}).status_code == 422
+    move = {"slot": "s1", "kind": "study"}
+    for bad in ({"minutes": 10**18}, {"start": "9999-12-31T23:59:59-14:00"}):
+        r = client.post("/api/dayrun/simulate", json={"scenario": "demo", "moves": [move | bad]})
+        assert r.status_code == 422 and "out of range" in r.json()["detail"]
+    r = client.post("/api/dayrun/forecast", json={"estimates": [{"block": "a", "minutes": 1e308}], "measured": {"a": -1e308}})
+    assert r.status_code == 422
