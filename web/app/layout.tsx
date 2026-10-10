@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { Shell } from "@/components/Shell";
 import { AtlasProvider } from "@/lib/atlas";
+import { VoiceProvider } from "@/lib/voice";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -33,7 +34,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en">
       <body>
         <AtlasProvider>
-          <Shell>{children}</Shell>
+          <VoiceProvider>
+            <Shell>{children}</Shell>
+          </VoiceProvider>
         </AtlasProvider>
       </body>
     </html>
