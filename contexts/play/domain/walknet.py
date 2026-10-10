@@ -299,4 +299,4 @@ def leave_sentence(depart_clock: str, minutes: float, to_name: str, meters: floa
 
 
 def _distance(meters: float) -> str:
-    return f"{meters / 1000:.1f} km" if meters >= 1000 else f"{round(meters / 10) * 10 if meters >= 100 else round(meters)} m"
+    return f"{meters / 1000:.1f} km" if meters >= 1000 else f"{int(meters / 10 + 0.5) * 10 if meters >= 100 else int(meters + 0.5)} m"
