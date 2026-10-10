@@ -107,6 +107,13 @@ def test_a_reply_parses_json_and_reads_the_hub_clock_from_the_date_header():
     assert reply.attempts == 1
 
 
+def test_a_token_that_straddles_the_end_of_the_kept_text_leaves_no_fragment():
+    text = "x" * (hub.TEXT_CHARS - 5) + TOKEN
+    reply = make_hub(lambda request: httpx.Response(200, text=text)).get("/hub/api/users/acct-a")
+    assert TOKEN[:5] not in reply.text
+    assert reply.text.endswith("***")
+
+
 def test_a_reply_without_json_or_a_date_has_no_body_and_no_hub_time():
     reply = make_hub(lambda request: httpx.Response(202, text="")).post("/hub/api/users/acct-a/server")
     assert reply.status == 202

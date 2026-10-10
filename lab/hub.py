@@ -292,5 +292,5 @@ class Hub:
             except ValueError:
                 body = None
         headers = {name.lower(): value for name, value in response.headers.items()}
-        return Reply(status=response.status_code, body=body, text=self.scrub(clip(text, TEXT_CHARS)), headers=headers,
+        return Reply(status=response.status_code, body=body, text=clip(self.scrub(text), TEXT_CHARS), headers=headers,
                      hub_time=_hub_time(headers), elapsed_s=round(seconds, 3), attempts=attempts)
