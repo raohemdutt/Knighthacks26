@@ -7,6 +7,8 @@ from zoneinfo import ZoneInfo
 import yaml
 from pydantic import BaseModel, ConfigDict
 
+from contexts.profiles import Profile, Vocabulary
+
 
 class SleepCfg(BaseModel):
     bedtime: time = time(23, 30)
@@ -92,13 +94,21 @@ class DayRunConfig(BaseModel):
     min_move_minutes: int = 15
     review: ReviewCfg = ReviewCfg()
 
+    vocabulary: Vocabulary = Vocabulary()  # the profile's words: "Study at", "Work at"; block kinds stay "study"
+
     @classmethod
-    def load(cls, path: str | Path = "config/dayrun.yaml", agent_yaml: str | Path | None = "config/agent.yaml") -> "DayRunConfig":
+    def load(cls, path: str | Path = "config/dayrun.yaml", agent_yaml: str | Path | None = "config/agent.yaml",
+             profile: Profile | None = None) -> "DayRunConfig":
+        """dayrun.yaml; with a profile, its dayrun.yaml layered over it and its vocabulary for the titles."""
         raw = (yaml.safe_load(Path(path).read_text()) or {}) if Path(path).exists() else {}
-        if agent_yaml and Path(agent_yaml).exists():  # one time zone for the whole box
-            zone = ((yaml.safe_load(Path(agent_yaml).read_text()) or {}).get("sleep") or {}).get("timezone")
-            if zone:
-                raw.setdefault("tz", ZoneInfo(zone))
+        agent = (yaml.safe_load(Path(agent_yaml).read_text()) or {}) if agent_yaml and Path(agent_yaml).exists() else {}
+        if profile is not None:
+            raw = profile.layer("dayrun.yaml", raw)
+            agent = profile.layer("agent.yaml", agent)
+            raw["vocabulary"] = profile.vocabulary
+        zone = (agent.get("sleep") or {}).get("timezone")  # one time zone for the whole box
+        if zone:
+            raw.setdefault("tz", ZoneInfo(zone))
         if isinstance(raw.get("tz"), str):
             raw["tz"] = ZoneInfo(raw["tz"])
         return cls.model_validate(raw)

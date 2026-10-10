@@ -240,7 +240,7 @@ def options(cfg: DayRunConfig, w: Walks, board: Board, slot: OpenSlot) -> list[M
                           friends=friends if kind == "study" else [], event=event.id if event else None,
                           route=trip.places if trip else [place])
 
-    for kind, verb in (("study", "Study at"), ("eat", "Eat at")):
+    for kind, verb in (("study", f"{cfg.vocabulary.activity.capitalize()} at"), ("eat", "Eat at")):
         ranked = sorted(w.of_kind(cfg.kinds[kind], packs), key=lambda r: (w.walk(slot.from_place, r)[0], r))
         keep = [r for n, r in enumerate(ranked) if n < cfg.max_options or (kind == "study" and r in with_friends)]
         out += [option(kind, p, f"{verb} {w.name(p)}", cfg.min_move_minutes) for p in keep]

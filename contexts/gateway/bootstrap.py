@@ -62,6 +62,7 @@ from contexts.perception.domain.zones import ZoneEngine
 from contexts.play.dayrun.service import DayRun
 from contexts.play.domain.pathfinding import SortingRules, ZoneMap
 from contexts.play.domain.places import PlaceSet
+from contexts.profiles import Profile, load_profile
 from contexts.vault import KeyRing, Policy, Vault, Wiper
 from contexts.workspace.domain.approvals import Approvals
 from contexts.workspace.infrastructure.ntfy import Ntfy, PhoneNotifier, send_message_executor
@@ -91,6 +92,8 @@ class Settings:
     memory_fixture: str = os.environ.get("ATLAS_MEMORY_FIXTURE", "fixtures/golden/memory.yaml")
     # Move the canned story so it ends now, for demos on the real clock ("what happened overnight?").
     memory_fixture_now: bool = os.environ.get("ATLAS_MEMORY_FIXTURE_NOW", "0") == "1"
+    # Who this box serves (config/profiles/<name>/): ATLAS_PROFILE, else agent.yaml `profile:`, else student.
+    profile: str | None = os.environ.get("ATLAS_PROFILE") or None
 
 
 @dataclass
@@ -126,6 +129,7 @@ class Atlas:
     capture: CaptureService | None = None  # cameras -> detector -> observations, only where there is a detector (C6)
     identity: IdentityService | None = None  # opt-in owner recognition (P9); off by default
     telemetry: object | None = None  # TelemetryService when ATLAS_TELEMETRY_SOURCE is set; off by default
+    profile: Profile | None = None  # GET /api/profile: the vocabulary and which config files are overridden
     tasks: list[asyncio.Task] = field(default_factory=list)
     _last_retention: datetime | None = None
     _offline: set[str] = field(default_factory=set)  # tick jobs whose Neon is down (logged once)
@@ -205,6 +209,8 @@ class Atlas:
 def build(settings: Settings | None = None) -> Atlas:
     s = settings or Settings()
     agent_cfg = yaml.safe_load((s.config_dir / "agent.yaml").read_text()) or {}
+    profile = load_profile(s.config_dir, s.profile)  # the student by default: then nothing below changes
+    agent_cfg = profile.layer("agent.yaml", agent_cfg)
     bus = EventBus(s.data_dir / "events")
 
     # Runtime (R1): config/models.yaml picks the models; ATLAS_LLM_URL points at a llama-server.
@@ -241,7 +247,7 @@ def build(settings: Settings | None = None) -> Atlas:
     if "places" in hub.specs:  # K8: "what should I eat?" uses real nearby places
         planner.places = lambda kind: hub.call_tool("places.nearby", {"kind": kind})
     qa.planner = planner
-    rules = RuleEvaluator(load_rules(s.config_dir / "rules.yaml"), builtin={ODD_HOURS_RULE: ODD_HOURS_DESCRIPTION})
+    rules = RuleEvaluator(load_rules(profile.path("rules.yaml")), builtin={ODD_HOURS_RULE: ODD_HOURS_DESCRIPTION})
     alerts = AlertHistory()
 
     ntfy = Ntfy(s.ntfy_url, s.ntfy_token) if s.ntfy_url else None
@@ -318,7 +324,7 @@ def build(settings: Settings | None = None) -> Atlas:
     game = None
     play_cfg = agent_cfg.get("play", {})
     camera = play_cfg.get("camera", "cam-door")
-    sorting = s.config_dir / "sorting.yaml"
+    sorting = profile.path("sorting.yaml")
     if zones_file.exists() and sorting.exists() and camera in (yaml.safe_load(zones_file.read_text()) or {}):
         game = SortIt(ZoneMap.load(camera, zones_file), SortingRules.load(sorting), start_xy=tuple(play_cfg.get("start_xy", (0.75, 0.75))))
         bus.subscribe("perception.faces", game.on_faces)
@@ -338,7 +344,7 @@ def build(settings: Settings | None = None) -> Atlas:
     habits = nudger = None
     habits_file = s.config_dir / "habits.yaml"
     if habits_file.exists():
-        habits_cfg = load_habits(habits_file, s.config_dir / "agent.yaml")
+        habits_cfg = load_habits(habits_file, s.config_dir / "agent.yaml", profile=profile)
         habits = MemberHabits(HabitTracker(habits_cfg), nudger_for=lambda t: Nudger(habits_cfg, t))  # P9: per enrolled person
         nudger = Nudger(habits_cfg, habits.base)
         bus.subscribe("perception.identity", habits.on_identity, replay=True)  # recognition on/off, who is enrolled
@@ -400,7 +406,7 @@ def build(settings: Settings | None = None) -> Atlas:
 
     # Place packs (S5): shipped packs in config/places, uploads in data/places (later wins).
     try:
-        places = PlaceSet.load(s.config_dir / "places", s.data_dir / "places")
+        places = PlaceSet.load(*profile.places_dirs(), s.data_dir / "places")
     except ValueError as exc:
         log.warning("place packs not loaded: %s", exc)
         places = None
@@ -410,7 +416,7 @@ def build(settings: Settings | None = None) -> Atlas:
 
     # Day Run (S4, S6): play tomorrow on the place packs before living it. No model calls.
     dayrun = DayRun(places, memory=memory, habits=habits, presence=presence, hub=hub,
-                    config_dir=s.config_dir, data_dir=s.data_dir) if places else None
+                    config_dir=s.config_dir, data_dir=s.data_dir, profile=profile) if places else None
 
     # The Day loop (D1): the morning plan, the live status and the evening review, unasked. Plans, statuses and
     # reviews rebuild from the log; deciding and proposing cards is live only.
@@ -441,4 +447,4 @@ def build(settings: Settings | None = None) -> Atlas:
                  memory=memory, projection=projection, habits=habits, nudger=nudger,
                  presence_sync=presence_sync, board=board, vault=vault, policy=policy, wiper=wiper,
                  places=places, dayrun=dayrun, day=day, capture=capture, identity=identity, learning=learning,
-                 telemetry=telemetry)
+                 telemetry=telemetry, profile=profile)

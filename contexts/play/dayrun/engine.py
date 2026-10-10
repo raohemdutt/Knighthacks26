@@ -113,7 +113,8 @@ class _Schedule:
         beside = sorted((max(f.start, start), min(f.end, end)) for f in self.board.friends
                         if friend and f.member.lower() == friend.lower() and f.place == place and f.start < end and f.end > start)
         if friend and not beside:
-            text = f"{friend} is not at {self.w.name(place)} between {hm(start)} and {hm(end)}: no boost from studying together"
+            text = (f"{friend} is not at {self.w.name(place)} between {hm(start)} and {hm(end)}: no boost from "
+                    f"{self.cfg.vocabulary.activity}ing together")
             self.notes.append(text)
             if self.repair:
                 self.changes.append(Change(move=move, kind="friend_gone", text=text))
@@ -236,7 +237,7 @@ class _Schedule:
         if m.kind == "study":
             self.study(begin, end, target, m.deadline, m.with_friend, i)
             friend = m.with_friend if any(s.friend for s in self.segs if s.start >= begin and s.end <= end) else None
-            title = f"Study at {w.name(target)}" + (f" with {friend}" if friend else "")
+            title = f"{cfg.vocabulary.activity.capitalize()} at {w.name(target)}" + (f" with {friend}" if friend else "")
         elif m.kind == "eat":
             self.eat(begin, end, target)
             title = f"Eat at {w.name(target)}"
