@@ -15,6 +15,12 @@ npm run render       # out/atlas.mp4 (about 30 minutes on a laptop)
 npm run check        # length within 0.1 s of 9:58, and where each key lands
 ```
 
+## Renders
+
+`video/renders/` holds dated full renders for the team to watch (`atlas-draft-2026-10-10.mp4`: the design with slot 0
+finished and placeholders in slots 1 to 9). `out/` stays local. The final upload is the newest file here once the
+recordings are in.
+
 ## Adding a recording
 
 Drop a screen or phone recording at `public/clips/slot-<key>.mp4` (1920x1080, 30 fps, at least 58 s), run
