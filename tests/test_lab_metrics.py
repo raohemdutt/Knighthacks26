@@ -38,6 +38,13 @@ def write_lines(path, *lines):
 
 SAMPLER = "lab/pod_power.py 1"  # the T6 rows' conditions name the sampler that read them
 
+IDLE_DEEP = "deep idle: teacher loaded, no request in flight"
+IDLE_MCLK_UP = "idle sclk, memory clock still up (mclk 1000 MHz), the seconds after a request"
+IDLE_TWO_READERS = (
+    "deep idle with a second reader running (rocm-smi --showclocks and amd-smi metric --power forked once a second "
+    "beside the sampler)"
+)
+
 # (metric, node, conditions that select exactly one row, value, unit, low_confidence)
 EXPECTED_SEED = [
     ("teacher.decode_tok_s", "pod-a", {"prompt": "image"}, 6.6, "tok/s", False),
@@ -84,6 +91,15 @@ EXPECTED_SEED = [
     ("pod.first_request_s", "pod-d", {"launch_path": "form"}, 11.7, "s", False),
     ("pod.keep_alive_min", "pod-d", {"launch_path": "form"}, 70, "min", False),
     ("pod.credits_per_hour", "pod-d", {"billing": "unmetered"}, 0, "credits/h", False),
+    # T10: idle watts per observed clock state on pod C (recorded as node pod-a), from
+    # fixtures/telemetry/pod_power/strixhalo_2026-10-10_idle_baseline_*.jsonl (recomputed in test_idle_baseline_rows_*)
+    ("pod.idle_watts", "pod-a", {"state": IDLE_DEEP}, 10.27, "W", True),
+    ("pod.idle_watts", "pod-a", {"state": IDLE_MCLK_UP}, 11.14, "W", True),
+    ("pod.idle_watts", "pod-a", {"state": IDLE_TWO_READERS}, 13.84, "W", True),
+    ("pod.settle_s", "pod-a", {"sampler": SAMPLER}, 4.0, "s", True),
+    ("pod.idle_state_share", "pod-a", {"state": "deep idle (sclk below 700 MHz)"}, 62.15, "%", True),
+    ("pod.idle_state_share", "pod-a", {"state": "transition (sclk 700 to 2599 MHz)"}, 6.64, "%", True),
+    ("pod.idle_state_share", "pod-a", {"state": "busy (sclk 2600 MHz or more, mclk 1000)"}, 31.22, "%", True),
 ]
 
 # The numbers the lab setup measured, by metric name.
@@ -138,7 +154,8 @@ def test_derived_joules_per_token_matches_the_inputs_it_names():
 def test_every_low_confidence_seed_row_says_why():
     flagged = [row for row in metrics.load() if row["low_confidence"]]
     assert {row["metric"] for row in flagged} == {
-        "teacher.joules_per_token", "pod.idle_watts", "pod.balance_credits", "teacher.watts_avg", "teacher.watts_peak"}
+        "teacher.joules_per_token", "pod.idle_watts", "pod.balance_credits", "teacher.watts_avg", "teacher.watts_peak",
+        "pod.settle_s", "pod.idle_state_share"}
     for row in flagged:
         if row["conditions"].get("sampler") == SAMPLER:  # the sampler's rows: its error is "unknown" until a reference run
             assert row["conditions"]["error"] == "unknown", row["metric"]
@@ -514,3 +531,49 @@ def test_concurrent_writers_lose_no_rows_and_never_interleave(tmp_path):
     assert path.read_bytes().count(b"\n") == writers * per_writer
     assert {(row["conditions"]["writer"], row["conditions"]["i"]) for row in rows} == {
         (name, i) for name in "abcd" for i in range(per_writer)}
+
+
+# --- T10: the idle-baseline rows are what the recorded readings give ------------------------------------------------
+
+
+def _idle_baseline():
+    import importlib.util
+
+    path = ROOT / "fixtures" / "telemetry" / "pod_power" / "idle_baseline.py"
+    spec = importlib.util.spec_from_file_location("idle_baseline", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.report()
+
+
+def test_idle_baseline_rows_are_what_the_recorded_readings_give():
+    report = _idle_baseline()
+    deep = metrics.latest("pod.idle_watts", node="pod-a", conditions={"state": IDLE_DEEP})
+    assert deep["value"] == report["pure_idle"]["mean"]
+    assert deep["conditions"]["samples"] == report["pure_idle"]["n"]
+    assert metrics.latest("pod.idle_watts", node="pod-a", conditions={"state": IDLE_MCLK_UP})["value"] == (
+        report["deep_idle_by_mclk"]["1000"]["mean"]
+    )
+    assert metrics.latest("pod.idle_watts", node="pod-a", conditions={"state": IDLE_TWO_READERS})["value"] == (
+        report["reader"]["deep_idle"]["mean"]
+    )
+    settle = metrics.latest("pod.settle_s", node="pod-a", conditions={"sampler": SAMPLER})
+    assert settle["value"] == report["settle"]["median_s"]
+    assert settle["conditions"]["events"] == report["settle"]["events"]
+    shares = {r["conditions"]["state"].split(" ")[0]: r["value"] for r in metrics.history("pod.idle_state_share", node="pod-a")}
+    assert shares == {"deep": report["share_pct"]["deep_idle"], "transition": report["share_pct"]["transition"], "busy": report["share_pct"]["busy"]}
+    assert round(sum(shares.values()), 1) == 100.0
+
+
+def test_idle_baseline_rows_carry_the_sampler_period_samples_and_unknown_error():
+    for metric in ("pod.idle_watts", "pod.settle_s", "pod.idle_state_share"):
+        for row in metrics.history(metric, node="pod-a"):
+            if "under_load_samples" in row["conditions"] or row["conditions"].get("state") == "idle":
+                continue
+            if "state" not in row["conditions"] and metric == "pod.idle_watts":
+                continue
+            cond = row["conditions"]
+            assert cond["sampler"] == SAMPLER and cond["period_ms"] == 1000 and cond["error"] == "unknown"
+            assert row["low_confidence"] is True
+            if metric != "pod.settle_s":
+                assert cond["samples"] > 0

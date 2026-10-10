@@ -448,6 +448,30 @@ ledger rows on node `pod-b` with hub sjc and account D; no metric row was writte
 measurement (kernels pass 2, ruling b). The build's dependencies put numpy 2.2.6 in the user site, over the image's
 2.4.6.
 
+### Idle baseline on the Strix Halo
+
+T10, 2026-10-10, pod C, the T3 sampler beside the running teacher. The clock states cannot be set: `rocm-smi --setperflevel high`
+fails (no root; sudo answers "no new privileges") and the level stays `auto`, so the states were observed. rocm-smi's
+"clock level" label does not tell them apart (it prints level 1 at 620 MHz and at 2900 MHz); the state is the sclk band.
+Over 4866 samples (20:35 to 21:56 UTC): deep idle (sclk 600 to 650 MHz, no mclk line) 62 percent of the time at 10.27 W
+(stdev 0.7, longest unbroken stretch 42.6 min, 2558 samples), busy (sclk 2600 MHz or more, mclk 1000) 31 percent at 110 W,
+and the ramp between them 7 percent. After a request ends the power goes 110, 57, 28, 17, 13, 11, 10 W one second apart: it
+settles in a median of 4 s (3 to 5 s, 15 requests), costing about 46 J above idle; the memory clock lags the shader clock by a
+second or two (7 samples, 11.1 W). A second reader forking `rocm-smi --showclocks` and `amd-smi metric --power` once a second
+beside the sampler lifted deep idle to 13.8 W, so a clock reader must never run beside a power sample that is stored as idle.
+The five single requests at 60 s spacing ran while another client had the teacher at 96 to 110 W (53 requests running by the
+end), so they gave no clean settle; the settle figure comes from the T6 run. The rows are `pod.idle_watts` per state,
+`pod.settle_s` and `pod.idle_state_share` on node `pod-a`, all `low_confidence` with `error: unknown`; the readings are
+`fixtures/telemetry/pod_power/strixhalo_2026-10-10_idle_baseline_*.jsonl` and `idle_baseline.py` recomputes every number.
+
+Policy recommendation (telemetry ruling 1 stays: joules per answer are gross, with the idle stored beside). The idle beside
+the value is the deep-idle figure, 10.3 W, read by the sampler alone with the model loaded and no request. Why: it is the state
+the chip is in whenever no request is running (every sample outside the 4 s tail), so it is the watts a box not answering
+costs; the 8 W of a pod with no server is a different state (no model loaded), the R9700's 39 W is another chip, and a
+time-weighted average of the three states (about 45 W here) would describe the workload, not the machine. The 4 s settle tail
+is not part of the answer's window; its 46 J (2 to 5 percent of a 9 to 27 s answer at 110 W) is stored as `excess_j_median` on
+`pod.settle_s`, not folded into the idle.
+
 ## Trainer (pod B)
 
 ```
