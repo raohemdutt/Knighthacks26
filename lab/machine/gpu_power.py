@@ -95,7 +95,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def summary_of(args: argparse.Namespace) -> dict[str, Any]:
-    events = pod_power.read_samples(args.samples)
+    # The pod's own files name a pod as its sampler was started (gpu-a, gpu-b); the Jetson's log names it pod-a or
+    # pod-b (telemetry ruling 3). Both are read here under the sampler's name, which summarize filters on.
+    events = [{**e, "node": TELEMETRY_NODE[e["node"]]} if isinstance(e, dict) and e.get("node") in TELEMETRY_NODE else e
+              for e in pod_power.read_samples(args.samples)]
     return pod_power.summarize(events, node=args.node, start=args.since, end=args.until)
 
 
