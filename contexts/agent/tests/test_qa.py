@@ -93,3 +93,19 @@ def test_on_question_emits_answer_event():
     q, _ = qa("On the desk.")
     out = q.on_question(QuestionAsked(question_id="q1", text="where are my keys"))
     assert (out.question_id, out.answer, out.model_version) == ("q1", "On the desk.", "v1")
+
+
+def test_overnight_follows_the_sleep_schedule():
+    from datetime import time
+    from zoneinfo import ZoneInfo
+
+    from contexts.agent.application.qa import SleepSchedule
+
+    ny = ZoneInfo("America/New_York")
+    default = SleepSchedule.load("config/agent.yaml")
+    after_waking = datetime(2026, 10, 11, 9, 30, tzinfo=ny)
+    assert default.last_night(after_waking) == (datetime(2026, 10, 10, 20, tzinfo=ny), datetime(2026, 10, 11, 8, tzinfo=ny))
+    still_asleep = datetime(2026, 10, 11, 3, 0, tzinfo=ny)
+    assert default.last_night(still_asleep) == (datetime(2026, 10, 10, 20, tzinfo=ny), still_asleep)
+    night_owl = SleepSchedule(bedtime=time(1), wake=time(9), tz=ny)
+    assert night_owl.last_night(after_waking) == (datetime(2026, 10, 11, 1, tzinfo=ny), datetime(2026, 10, 11, 9, tzinfo=ny))

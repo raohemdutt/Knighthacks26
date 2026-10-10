@@ -1,0 +1,6 @@
+# Agent settings.
+# "Overnight" questions cover bedtime to wake. Adjust to the household's sleep schedule.
+sleep:
+  timezone: America/New_York
+  bedtime: "20:00"
+  wake: "08:00"

@@ -10,7 +10,11 @@ import json
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+import yaml
 
 from contexts.agent.application.memory_port import MemoryReader
 from contracts.agent import AnswerGenerated
@@ -82,9 +86,36 @@ class Answer:
     model_version: str
 
 
-def time_window(q: str, now: datetime) -> tuple[datetime, datetime] | None:
+@dataclass(frozen=True)
+class SleepSchedule:
+    """Defines "overnight". Defaults to 8 PM to 8 AM; set per household in config/agent.yaml."""
+
+    bedtime: time = time(20)
+    wake: time = time(8)
+    tz: ZoneInfo = ZoneInfo("America/New_York")
+
+    @classmethod
+    def load(cls, path: str | Path = "config/agent.yaml") -> "SleepSchedule":
+        raw = (yaml.safe_load(Path(path).read_text()) or {}).get("sleep", {})
+        return cls(
+            bedtime=time.fromisoformat(raw.get("bedtime", "20:00")),
+            wake=time.fromisoformat(raw.get("wake", "08:00")),
+            tz=ZoneInfo(raw.get("timezone", "America/New_York")),
+        )
+
+    def last_night(self, now: datetime) -> tuple[datetime, datetime]:
+        """The most recent sleep window; ends at `now` if they are still asleep."""
+        local = now.astimezone(self.tz)
+        wake = datetime.combine(local.date(), self.wake, self.tz)
+        start = datetime.combine(wake.date(), self.bedtime, self.tz)
+        if start >= wake:
+            start -= timedelta(days=1)
+        return start, min(wake, local)
+
+
+def time_window(q: str, now: datetime, sleep: SleepSchedule = SleepSchedule()) -> tuple[datetime, datetime] | None:
     if "overnight" in q or "last night" in q:
-        return now - timedelta(hours=12), now
+        return sleep.last_night(now)
     if "today" in q:
         return now.replace(hour=0, minute=0, second=0, microsecond=0), now
     m = LAST_N.search(q)
@@ -98,10 +129,17 @@ def time_window(q: str, now: datetime) -> tuple[datetime, datetime] | None:
 
 
 class QA:
-    def __init__(self, runtime: Runtime, memory: MemoryReader, clock: Callable[[], datetime]) -> None:
+    def __init__(
+        self,
+        runtime: Runtime,
+        memory: MemoryReader,
+        clock: Callable[[], datetime],
+        sleep: SleepSchedule = SleepSchedule(),
+    ) -> None:
         self.runtime = runtime
         self.memory = memory
         self.clock = clock
+        self.sleep = sleep
 
     def on_question(self, e: QuestionAsked) -> AnswerGenerated:
         a = self.ask(e.text)
@@ -143,7 +181,7 @@ class QA:
         if m := WHERE_IS.search(q):
             self.last_seen(m["item"], ev)
             return ev
-        if window := time_window(q, self.clock()):
+        if window := time_window(q, self.clock(), self.sleep):
             self.episodes_between(*window, ev)
             return ev
         if q.startswith("when did") or "last time" in q:

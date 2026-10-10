@@ -12,6 +12,7 @@ dependencies = [
     "uvicorn",
     "httpx",
     "pyyaml",
+    "tzdata; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]
