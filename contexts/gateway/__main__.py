@@ -32,4 +32,8 @@ if __name__ == "__main__":
 
     from contexts.gateway.app import create_app
 
-    uvicorn.run(create_app(), host=os.environ.get("ATLAS_HOST", "0.0.0.0"), port=int(os.environ.get("ATLAS_PORT", "8000")))
+    from contexts.gateway.tls import ssl_options
+
+    # ATLAS_HTTPS=1: serve https with a certificate made on this box, so phones may use the microphone (voice)
+    uvicorn.run(create_app(), host=os.environ.get("ATLAS_HOST", "0.0.0.0"), port=int(os.environ.get("ATLAS_PORT", "8000")),
+                **ssl_options(Path(os.environ.get("ATLAS_DATA_DIR", "data"))))
