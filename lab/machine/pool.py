@@ -95,7 +95,9 @@ cut at ERROR_CHARS.
 
 State. The running pool holds <state dir>/pool.lock for its whole life, so a second pool is
 refused and status can tell a live pool from a dead one, and rewrites <state dir>/pool.json
-(its seats, units, what is held, benched, paused) after every step. status reads both and the
+(its seats, units, what is held, benched, paused, and the problems of its latest view: a failed
+git fetch, an unresolvable --refine-ref, an unreadable track file or board) after every step, and
+logs a warning whenever those problems change between fills. status reads both and the
 ledger; --dry-run computes the same view a pool would and prints the order, starting nothing
 and writing nothing (it may fetch --refine-ref).
 """
@@ -1229,6 +1231,7 @@ class Pool:
         self.idle = False
         self.held: Candidate | None = None
         self.view: View | None = None
+        self.logged_problems: list[str] = []
         self.counts = {"started": 0, "ended": 0, "failed": 0, "benched": 0}
         self.error: str | None = None
         self._next_seat = 1
@@ -1315,6 +1318,7 @@ class Pool:
         self.paused_until = None
         view = build_view(self.settings, list(self.seats.values()), self.history, now)
         self.view = view
+        self._note_problems(view.problems)
         if view.blocked:
             self._pause(now, view.blocked)
             return None
@@ -1331,6 +1335,19 @@ class Pool:
         self.held = chosen.held
         self.idle = not self.seats and not chosen.starts and chosen.held is None
         return chosen
+
+    def _note_problems(self, problems: Sequence[str]) -> None:
+        """Log the view's problems when they differ from the last fill's, so a pool that reads
+        stale refinement files (a failed fetch, a ref git cannot resolve) or cannot load its board
+        says so once per change instead of on every tick or never."""
+        current = list(problems)
+        if current == self.logged_problems:
+            return
+        if current:
+            log.warning("lab pool: %d problem(s) in the view: %s", len(current), "; ".join(current))
+        else:
+            log.info("lab pool: the view's earlier problems are gone")
+        self.logged_problems = current
 
     def _start(self, candidate: Candidate, view: View, now: dt.datetime) -> bool:
         seat = Seat(f"seat-{self._next_seat}", candidate.tier, candidate.item, now, candidate.source, candidate.why,
@@ -1490,6 +1507,7 @@ class Pool:
             "pause_reason": self.pause_reason if self.paused_until and self.paused_until > now else None,
             "stopping": self.stopping, "draining": self.draining,
             "board": view.board if view else None, "counts": dict(self.counts),
+            "problems": list(view.problems) if view else [],
         }
         write_state(state_path(self.state_dir), data)
 
@@ -1531,7 +1549,8 @@ def dry_run(settings: Settings, now: dt.datetime | None = None) -> dict[str, Any
 
 
 def status(state_dir: Path, now: dt.datetime | None = None) -> dict[str, Any]:
-    """Whether a pool runs, its units in use and seats, and the sittings that hold units outside it."""
+    """Whether a pool runs, its units in use and seats, the problems of its latest view, and the
+    sittings that hold units outside it."""
     now = now or utc_now()
     running, holder = pool_running(state_dir)
     data = read_state(state_path(state_dir)) or {}
@@ -1555,7 +1574,7 @@ def status(state_dir: Path, now: dt.datetime | None = None) -> dict[str, Any]:
     }
     if running:
         for key in ("since", "updated", "held", "benched", "paused_until", "pause_reason", "stopping", "draining",
-                    "board", "counts"):
+                    "board", "counts", "problems"):
             answer[key] = data.get(key)
     elif data:
         answer["last_pool"] = {"since": data.get("since"), "updated": data.get("updated")}
