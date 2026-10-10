@@ -964,3 +964,14 @@ def test_dimension_ids_may_be_a_rubrics_own_labels():
     assert entry.findings[0].dimension == "LT1"
     assert entry.changes[0].dimensions == ("LT1",)
     assert rf.check_pass_entry(entry) == []
+
+
+def test_the_refinement_loop_names_its_four_tracks_in_one_place():
+    """refine_formats holds the one track tuple; the other modules of the loop hand on that same object, so a fifth
+    track (which takes a ruling and a board task) is added once."""
+    from lab.machine import experiments, refine_merge, refine_track
+
+    assert rf.TRACKS == ("telemetry", "learning", "plumbing", "kernels")
+    assert refine_track.TRACKS is rf.TRACKS
+    assert refine_merge.TRACKS is rf.TRACKS
+    assert experiments.TRACKS is rf.TRACKS

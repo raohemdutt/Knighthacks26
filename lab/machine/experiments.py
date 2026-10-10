@@ -90,6 +90,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 from lab.machine import ledger
+from lab.machine import refine_formats
 from lab.machine import verdict as verdict_math
 from lab.machine.lock import FileLock
 
@@ -108,7 +109,7 @@ VERB_AMEND = "experiment amend"
 VERB_RESULT = "experiment result"
 VERBS = (VERB_ADD, VERB_AMEND, VERB_RESULT)
 
-TRACKS = ("telemetry", "learning", "plumbing", "kernels")
+TRACKS = refine_formats.TRACKS
 MEASURE, RATE = "measure", "rate"
 KINDS = (MEASURE, RATE)
 HIGHER, LOWER = "higher", "lower"

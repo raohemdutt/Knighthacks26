@@ -30,6 +30,7 @@ __all__ = [
     "Ruling",
     "RunState",
     "Source",
+    "TRACKS",
     "Walk",
     "check_pass_entry",
     "parse_counter",
@@ -37,6 +38,10 @@ __all__ = [
     "parse_report_end",
     "parse_rulings",
 ]
+
+#: The four refinement tracks, in the order lab/refine/PASS_RULES.md lists them ("The four tracks"). Every module of
+#: the loop reads this tuple; changing the set takes a ruling and a board task.
+TRACKS: tuple[str, ...] = ("telemetry", "learning", "plumbing", "kernels")
 
 # A dimension id is the label a track's RUBRIC.md gives one of its tests (D1, T3, ...); U1 and U2 are
 # the two universal rules. A metric name is dotted and lowercase, as in lab/refine/metrics.jsonl.

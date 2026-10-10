@@ -46,7 +46,7 @@ __all__ = [
     "parse_dry_run",
 ]
 
-TRACKS = ("telemetry", "learning", "plumbing", "kernels")
+TRACKS = rf.TRACKS
 REFINE_DIR = Path(__file__).resolve().parents[1] / "refine"
 METRICS_PATH = REFINE_DIR / "metrics.jsonl"
 

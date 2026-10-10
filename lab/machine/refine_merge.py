@@ -48,7 +48,7 @@ __all__ = [
     "walked_passes",
 ]
 
-TRACKS: tuple[str, ...] = ("telemetry", "learning", "plumbing", "kernels")
+TRACKS = rf.TRACKS
 
 #: The checks every merge runs, by id. A merge entry's walk, findings and changes use these ids as
 #: their dimensions, and its walk names every one of them.
