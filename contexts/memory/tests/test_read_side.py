@@ -183,6 +183,16 @@ def test_api_returns_the_contract_shapes(memory, tmp_path):
     assert MemoryStats.model_validate(c.get("/memory/stats").json()).episodes == 50
 
 
+def test_a_date_with_no_utc_form_is_a_422_not_a_500(memory, tmp_path):
+    app = FastAPI()
+    app.include_router(build_router(memory, tmp_path / "frames"))
+    c = TestClient(app)
+    for url in ("/memory/episodes", "/memory/window", "/memory/items"):
+        assert c.get(url, params={"from": "0001-01-01T00:00:00+14:00"}).status_code == 422
+        assert c.get(url, params={"to": "9999-12-31T23:59:59-14:00"}).status_code == 422
+        assert c.get(url, params={"from": "0001-01-01T00:00:00", "to": "9999-12-31T23:59:59"}).status_code == 200
+
+
 def test_keyframes_never_follow_a_link_out_of_the_frames_folder(memory, tmp_path):
     frames = tmp_path / "frames"
     (frames / "cam-desk").mkdir(parents=True)
