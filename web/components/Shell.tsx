@@ -156,6 +156,8 @@ export function Shell({ children }: { children: ReactNode }) {
   useEffect(() => setMore(false), [path]); // the sheet closes once its link has been followed
   const pending = approvals.items.length;
 
+  if (path === "/operator") return <>{children}</>; // X15: the big-display page has its own header and no tab bar
+
   return (
     <div className={ui.shell}>
       <header className={ui.header}>
