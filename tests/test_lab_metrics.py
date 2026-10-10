@@ -117,6 +117,11 @@ EXPECTED_SEED = [
     ("telemetry.sampler_cpu_pct", "jetson", {"period_ms": 100, "load": "one caption request in flight"}, 3.28, "percent of one core", True),
     ("telemetry.sampler_cpu_pct", "jetson", {"period_ms": 200, "load": "one caption request in flight"}, 1.703, "percent of one core", True),
     ("jetson.idle_watts", "jetson", {"rail": "VDD_IN", "samples": 3000}, 15.76, "W", True),
+    # T7: the Jetson power sampler read once a second for 10 minutes in MAXN_SUPER, idle then under caption load, from
+    # fixtures/telemetry/jetson_power_live (recomputed in tests/test_lab_jetson_live_run.py)
+    ("jetson.idle_watts", "jetson", {"rail": "VDD_IN", "period_ms": 1000}, 12.62, "W", True),
+    ("student.watts_avg", "jetson", {"rail": "VDD_IN", "period_ms": 1000}, 17.536, "W", True),
+    ("student.watts_peak", "jetson", {"rail": "VDD_IN", "period_ms": 1000}, 19.127, "W", True),
 ]
 
 # The numbers the lab setup measured, by metric name.
@@ -174,7 +179,7 @@ def test_every_low_confidence_seed_row_says_why():
     assert {row["metric"] for row in flagged} == {
         "teacher.joules_per_token", "pod.idle_watts", "pod.balance_credits", "teacher.watts_avg", "teacher.watts_peak",
         "pod.settle_s", "pod.idle_state_share",
-        "telemetry.sampler_cpu_pct", "jetson.idle_watts"}
+        "telemetry.sampler_cpu_pct", "jetson.idle_watts", "student.watts_avg", "student.watts_peak"}
     for row in flagged:
         if row["conditions"].get("sampler") == SAMPLER:  # the sampler's rows: its error is "unknown" until a reference run
             assert row["conditions"]["error"] == "unknown", row["metric"]

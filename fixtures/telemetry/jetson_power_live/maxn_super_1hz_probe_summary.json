@@ -1,0 +1,1 @@
+{"summary": "probe", "requested_ms": 1000, "period_ms": 1000, "nvpmodel": "MAXN_SUPER", "sensor_avg_samples": 512, "sensor_update_ms": 1.0, "lines": 600, "samples": 600, "unparsed": 0, "without_rails": 0, "bunched": 0, "tegrastats_pid": null, "measured_period_ms": 1005.8}

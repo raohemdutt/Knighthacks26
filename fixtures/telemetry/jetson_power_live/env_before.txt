@@ -1,0 +1,16 @@
+nvpmodel: NV Power Mode: MAXN_SUPER 2 
+Linux ubuntu 5.15.148-tegra #1 SMP PREEMPT Mon Jun 16 08:24:48 PDT 2025 aarch64 aarch64 aarch64 GNU/Linux
+6
+cpu-thermal 58125
+gpu-thermal 58593
+cv0-thermal 
+cv1-thermal 
+cv2-thermal 
+soc0-thermal 57312
+soc1-thermal 57000
+soc2-thermal 57031
+tj-thermal 58406
+gateway:   15885    1372
+llama-server:     914    6051
+data/events before: -rw-r--r-- 1 alexander alexander 11325655 18:54:00 2026-10-10.jsonl
+meminfo: MemAvailable:     587752 kB

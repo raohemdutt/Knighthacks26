@@ -308,6 +308,44 @@ on a long answer runs into the 125 s cut measured on DUB. The rows are in `lab/r
 with hub sjc and account D (`proxy.status`, `proxy.restart_to_ready_s`, `proxy.stream_first_byte_s`,
 `proxy.concurrent_wall_s`), one sample each unless the row says otherwise.
 
+## Jetson power sampler, live run (T7)
+
+The Jetson sampler ran on the box on 2026-10-10 as one read-only 10-minute read over SSH (key login, no sudo,
+`atlas-gateway` and `atlas-llm` left running and never restarted, nothing written to `data/events`), in the mode the box
+was in: `nvpmodel -q` said MAXN_SUPER, mode 2, before and after, and nothing changed it. It is
+`python -m contexts.telemetry.jetson_power probe --count 600 --interval-ms 1000` on a scratch copy of main under `/tmp`
+(removed afterwards): nothing of ours running for the first 300 s, then back-to-back caption requests for 266 s, the
+request `runtime/llama.py` sends for a caption (one image, "Describe the scene in one sentence.", 80 tokens) straight to
+llama-server on :8080, one in flight at a time. The image is a 1280x720 repo fixture (939 prompt tokens, the count a
+camera frame gives), not a camera frame, and the request goes straight to llama-server, not through the gateway, so
+nothing reaches the event log.
+
+The sampler returned 600 samples in 602.5 s at a measured period of 1005.8 ms (longest gap 1015.2 ms, no line unparsed
+or bunched), the INA3221 averaging 512 conversions into each reading. Its own reads are cheap: the three overcurrent
+counters take 0.63 ms a sample, the INA3221 settings 0.25 ms (every 10 s) and the `nvpmodel -q` query 6.6 ms (every
+30 s). VDD_IN, all low confidence (one run per state, no external meter):
+
+- Idle, 297 samples: mean 12.62 W, median 15.07 W, from 4.15 to 19.17 W. It is not one level. The gateway keeps
+  captioning keyframes on its own, so the rail alternates in stretches of about 3 s between roughly 5 W (30 percent of
+  the samples are under 7 W) and roughly 18 W (half are over 15 W), and the mean moves with how busy that captioning is:
+  the 100 ms read in the T13 section below, an hour earlier, gave 15.76 W with three quarters of its samples over 15 W.
+- Under caption load, 265 samples and 28 requests (none failed, 9.5 s each on average because the server takes one
+  request at a time and the gateway's own captioning shares it, median decode 13.85 tok/s): mean 17.54 W, from 15.72
+  to 19.13 W. The peak is a one-second reading that averages 512 conversions, so a shorter spike is smoothed away.
+- Per rail, mean mW idle then loaded: VDD_IN 12620 then 17536, VDD_CPU_GPU_CV 5848 then 8947, VDD_SOC 3337 then 4408.
+- The overcurrent counter oc3 rose by 471 over the idle stretch and by 3684 over the load stretch (about 1.6 and 14 a
+  second); oc1 and oc2 stayed at 0. A joules-per-answer value is marked low confidence when a Jetson overcurrent counter
+  rose across its window, and on this run that is 24 of the 28 caption windows and 18 of 29 ten-second idle windows, so at
+  MAXN_SUPER on this box the rule fires on ordinary work. Replayed through the joules projection, the run gives one
+  value per caption, each with `idle_w` 18.23 W: the last reading before the first request, which is the captioning
+  level, not the 5 W floor, because the gateway's own captioning is not a `telemetry.request`.
+
+The rows are `jetson.idle_watts`, `student.watts_avg` and `student.watts_peak` on node `jetson` in
+`lab/refine/metrics.jsonl`, each with the mode, sampler, period, temperatures, rails and counter rises in its
+conditions. The raw one-second events, the request timings, the environment before and after and the read costs are in
+`fixtures/telemetry/jetson_power_live/`, and `tests/test_lab_jetson_live_run.py` recomputes each row from them. The
+other power modes were not run: switching `nvpmodel` needs sudo, and the box stays on MAXN SUPER.
+
 ## GPU power sampler: `lab/pod_power.py`
 
 Reads the pod's Strix Halo (Radeon 8060S, gfx1151; the R9700 is the other chip) once a period (default 1000 ms)
