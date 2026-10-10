@@ -40,8 +40,9 @@ def test_two_atlases_agree_when_both_are_free():
     session = Proposal(title="Study session", start=SUNDAY_2PM, end=SUNDAY_2PM + timedelta(hours=2), invitees=["hemdutt"])
     assert approve(dom, session)[0] == "proposed to the circle: Study session"
 
-    [received] = hem.poll()  # hemdutt's box reads the proposal and replies on its own
+    received, heard = hem.poll()  # hemdutt's box reads the proposal, replies on its own, and hears it is on
     assert isinstance(received, MessageReceived) and received.kind == "proposal"
+    assert isinstance(heard, EventAgreed) and heard.created_by == "dom"  # only dom's box sends the invites
     reply = [m for m in store.messages if m.kind == "reply"][0]
     assert reply.reply.answer == "free" and reply.from_member == "hemdutt"
 
@@ -74,3 +75,55 @@ def test_only_invitees_reply_and_nothing_private_leaves_the_box():
     ilan.poll()
     shared = [m.model_dump_json() for m in store.messages if m.from_member == "ilan"]
     assert shared and not any("Therapy" in s for s in shared)
+
+
+def test_a_restart_never_answers_or_agrees_twice():
+    """Q12: _seen and _agreed lived in memory, so a restart replied again and published a second agreement."""
+    store, clock = InMemoryCircleStore(), Clock()
+    dom, hem = agent("dom", store, clock), agent("hemdutt", store, clock)
+    approve(dom, Proposal(title="Study", start=SUNDAY_2PM, end=SUNDAY_2PM + timedelta(hours=1), invitees=["hemdutt"]))
+    log = hem.poll()
+    [agreed] = [e for e in dom.poll() if isinstance(e, EventAgreed)]
+    hem2, dom2 = agent("hemdutt", store, clock), agent("dom", store, clock)  # both boxes restart
+    for e in log:  # what the log replays into the new agents
+        (hem2.on_message if isinstance(e, MessageReceived) else hem2.on_agreed)(e)
+    dom2.on_agreed(agreed)
+    for e in [e for e in dom.poll() if isinstance(e, MessageReceived)]:
+        dom2.on_message(e)
+    assert hem2.poll() == [] and len([m for m in store.messages if m.kind == "reply"]) == 1
+    assert not any(isinstance(e, EventAgreed) for e in dom2.poll())
+    lost = agent("hemdutt", store, clock)  # even with the log gone, the reply already in the thread is not repeated
+    lost.poll()
+    assert len([m for m in store.messages if m.kind == "reply"]) == 1
+
+
+def test_a_reply_stamped_by_a_slow_clock_is_still_read():
+    """Q12: the invitee's clock ran 60 s behind, its reply sorted before what dom had already seen, and no agreement."""
+    store, clock = InMemoryCircleStore(), Clock()
+    dom, hem = agent("dom", store, clock), agent("hemdutt", store, clock)
+    approve(dom, Proposal(title="Study", start=SUNDAY_2PM, end=SUNDAY_2PM + timedelta(hours=1), invitees=["hemdutt"]))
+    dom.poll()  # dom has seen its own proposal
+    hem.clock = lambda: clock.t - timedelta(seconds=60)
+    hem.poll()
+    assert any(isinstance(e, EventAgreed) for e in dom.poll())
+
+
+def test_a_counter_offers_the_new_time_and_no_invitees_means_the_whole_circle():
+    store, clock = InMemoryCircleStore(), Clock()
+    dom = agent("dom", store, clock)
+    xan = agent("xander", store, clock, calendar=[("Shift at work", SUNDAY_2PM)])
+    approve(dom, Proposal(title="Study", start=SUNDAY_2PM, end=SUNDAY_2PM + timedelta(hours=1), invitees=["xander"]))
+    xan.poll()
+    [card] = [e for e in dom.poll() if getattr(e, "kind", None) == "circle_share"]
+    assert card.params["proposal"]["invitees"] == ["xander"] and "suggested" in card.reason
+    assert card.params["proposal"]["start"].startswith("2026-10-11T15:00")
+
+    store, clock = InMemoryCircleStore(), Clock()
+    team = ["dom", "hemdutt", "ilan"]
+    dom, hem, ilan = (CircleAgent(m, "team", store, FakeMemory(), clock, members=team) for m in team)
+    approve(dom, Proposal(title="Dinner", start=SUNDAY_2PM, end=SUNDAY_2PM + timedelta(hours=1)))
+    hem.poll()
+    assert not any(isinstance(e, EventAgreed) for e in dom.poll())  # ilan has not answered yet
+    ilan.poll()
+    [agreed] = [e for e in dom.poll() if isinstance(e, EventAgreed)]
+    assert agreed.attendees == team and agreed.event.invitees == ["hemdutt", "ilan"]

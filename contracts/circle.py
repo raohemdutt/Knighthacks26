@@ -65,6 +65,7 @@ class EventAgreed(TypedEvent):
     thread_id: str
     event: Proposal
     attendees: list[str]
+    created_by: str | None = None  # the proposer; each member's box publishes its own copy, only the proposer's sends invites
 
 
 @register

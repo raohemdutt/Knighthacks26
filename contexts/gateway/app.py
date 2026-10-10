@@ -14,7 +14,8 @@
 - GET  /api/play/route         ?item=can&x=&y= -> A* route to the right bin (S2)
 - GET  /api/play/accuracy      Sort It round 1 vs round 5 accuracy (S1)
 - GET  /api/impact             Waste Watch counts, diversion rate, before vs after nudges (E2)
-- POST /api/presence           {place, hours} share a named place with the Circle (G5, opt-in)
+- POST /api/presence           {place, hours} share a named place with the Circle (G5, opt-in), up to 12 hours
+- DELETE /api/presence         stop sharing my place now
 - GET  /api/presence           friends' current places
 - GET  /api/circle/leaderboard Waste Watch, habit and Sort It leaderboards from Neon (E2)
 - GET  /api/circle/events      the Circle's shared calendar: agreed events, soonest first
@@ -45,11 +46,12 @@ from uuid import uuid4
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from contexts.gateway.bootstrap import Atlas, Settings, build
 from contexts.agent.application.rule_compiler import RuleCompileError, compile_rule
 from contexts.circle.api import circle_router
+from contexts.circle.application.sharing import CircleOffline
 from contexts.habits.api import habits_router
 from contexts.learning.application.export import teach
 from contexts.vault.api import vault_router
@@ -66,6 +68,9 @@ from runtime.api import runtime_router
 from runtime.modelstore import ModelStore
 
 ASK_TIMEOUT_S = 90
+
+
+MAX_SHARE_HOURS = 12  # a shared place never outlives a day (G5)
 
 
 class AskBody(BaseModel):
@@ -223,7 +228,7 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
 
     class PlaceBody(BaseModel):
         place: str
-        hours: float = 2
+        hours: float = Field(2, gt=0, le=MAX_SHARE_HOURS)
 
     @app.post("/api/presence", dependencies=[Depends(authorized)])
     async def share_place(body: PlaceBody):
@@ -237,6 +242,18 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         await atlas.bus.publish(e)
         return e.model_dump(mode="json")
 
+    @app.delete("/api/presence", dependencies=[Depends(authorized)])
+    async def stop_sharing():
+        """Stop sharing my place now, before it expires: a share that ends now replaces the current one."""
+        if atlas.presence is None:
+            raise HTTPException(404, "the Circle is not configured")
+        mine = atlas.presence.current.get(atlas.presence.me)
+        now = datetime.now(UTC)
+        if mine is None or mine.expires_at <= now:
+            return {"sharing": False}
+        await atlas.bus.publish(mine.model_copy(update={"event_id": uuid4().hex, "ts": now, "expires_at": now}))
+        return {"sharing": False}
+
     @app.get("/api/presence")
     async def friends_places():
         if atlas.presence is None:
@@ -249,11 +266,14 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         if atlas.board is None or atlas.circle is None:
             raise HTTPException(404, "the Circle is not connected to Neon")
         cid = atlas.circle.circle_id
-        impact, habits, scores = await asyncio.gather(
-            asyncio.to_thread(atlas.board.impact_leaderboard, cid),
-            asyncio.to_thread(atlas.board.habit_leaderboard, cid),
-            asyncio.to_thread(atlas.board.top_scores, cid),
-        )
+        try:
+            impact, habits, scores = await asyncio.gather(
+                asyncio.to_thread(atlas.board.impact_leaderboard, cid),
+                asyncio.to_thread(atlas.board.habit_leaderboard, cid),
+                asyncio.to_thread(atlas.board.top_scores, cid),
+            )
+        except CircleOffline as exc:
+            raise HTTPException(503, f"the Circle is offline: {exc}") from None
         return {"circle_id": cid, "impact": impact, "habits": habits, "scores": scores}
 
     invites = atlas.settings.data_dir / "invites"

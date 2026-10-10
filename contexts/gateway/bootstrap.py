@@ -30,7 +30,7 @@ from contexts.capture.application.service import CaptureService
 from contexts.circle.application.delivery import AgreedEventDelivery
 from contexts.circle.application.presence import PresenceBoard
 from contexts.circle.application.protocol import CircleAgent, InMemoryCircleStore
-from contexts.circle.application.sharing import CircleSharing
+from contexts.circle.application.sharing import CircleOffline, CircleSharing
 from contexts.circle.application.presence_sync import PresenceSync
 from contexts.circle.infrastructure.neon import CircleBoard, NeonCircleStore, NeonDb, NeonPresence, NeonShares
 from contexts.circle.infrastructure.outbox import CircleOutbox
@@ -125,6 +125,7 @@ class Atlas:
     identity: IdentityService | None = None  # opt-in owner recognition (P9); off by default
     tasks: list[asyncio.Task] = field(default_factory=list)
     _last_retention: datetime | None = None
+    _offline: set[str] = field(default_factory=set)  # tick jobs whose Neon is down (logged once)
 
     async def start(self) -> None:
         if self.settings.replay:
@@ -163,6 +164,11 @@ class Atlas:
                     if asyncio.iscoroutine(out) or isinstance(out, asyncio.Future):
                         out = await out
                     await self.bus.publish_all(out or [])
+                    self._offline.discard(name)
+                except CircleOffline as exc:  # Neon unreachable: one line when it goes down, not a traceback a tick
+                    if name not in self._offline:
+                        log.warning("tick job %s: the Circle is offline (%s); retrying every %ss", name, exc, TICK_S)
+                    self._offline.add(name)
                 except Exception:
                     log.exception("tick job %s failed", name)
             await asyncio.sleep(TICK_S)
@@ -349,10 +355,13 @@ def build(settings: Settings | None = None) -> Atlas:
     circle_cfg = agent_cfg.get("circle") or {}
     if circle_cfg.get("member_id") and circle_cfg.get("circle_id"):
         # Neon (N1) when NEON_DATABASE_URL is set; otherwise two Atlases can still negotiate in one process.
-        neon = NeonDb() if os.environ.get("NEON_DATABASE_URL") else None
+        names = circle_cfg.get("names") or {}  # member id -> display name; also the circle's member list
+        neon = NeonDb(names=names) if os.environ.get("NEON_DATABASE_URL") else None
         store = NeonCircleStore(neon) if neon else InMemoryCircleStore()
         circle = CircleAgent(circle_cfg["member_id"], circle_cfg["circle_id"], store, memory,
-                             clock=lambda: datetime.now(UTC))
+                             clock=lambda: datetime.now(UTC), members=list(names))
+        bus.subscribe("circle.message.received", circle.on_message, replay=True)  # state only: never answer twice
+        bus.subscribe("circle.event.agreed", circle.on_agreed, replay=True)  # state only: never agree twice
         approvals.executors["circle_share"] = circle.share_executor
         # G1 step 4: once everyone says yes, propose the calendar invite and the group chat message.
         delivery = AgreedEventDelivery(hub, circle_cfg["member_id"], qa.sleep.tz, emails=circle_cfg.get("emails") or {},

@@ -10,11 +10,12 @@ a box without GroupMe just proposes the invite.
 from zoneinfo import ZoneInfo
 
 from contexts.connectors.application.hub import ConnectorHub
-from contracts.agent import ActionProposed
+from contracts.agent import ActionProposed, AlertRaised
 from contracts.circle import EventAgreed
 
 CALENDAR_WRITE = "calendar.create_event"
 CHAT_WRITE = "groupme.post"
+AGREED_ALERT = "circle-agreed"
 
 
 class AgreedEventDelivery:
@@ -27,10 +28,17 @@ class AgreedEventDelivery:
         self.chat_group = chat_group
         self.public_url = public_url  # where the gateway serves /api/invites/<file>
 
-    def on_agreed(self, e: EventAgreed) -> list[ActionProposed]:
+    def on_agreed(self, e: EventAgreed) -> list:
+        """The proposer's box proposes the invite and the chat message. Every box tells its own phone, so an
+        invitee (or a box without the calendar connector) still hears that the plan is on."""
         ev = e.event
         when = ev.start.astimezone(self.tz).strftime("%a %b %d, %I:%M %p").replace(" 0", " ")
-        out = []
+        place = f" at {ev.location}" if ev.location else ""
+        tell = AlertRaised(ts=e.ts, alert_id=f"circle-{e.thread_id}", rule_id=AGREED_ALERT,
+                           message=f"Everyone's in: {ev.title}, {when}{place}")
+        if e.created_by not in (None, self.me):
+            return [tell]  # an invitee: the proposer's box sends the invites
+        out: list = []
         if self.hub.is_write(CALENDAR_WRITE):
             attendees = [self.emails.get(m, m) for m in e.attendees if m != self.me]
             out.append(self.hub.propose_write(
@@ -42,11 +50,10 @@ class AgreedEventDelivery:
             ))
         if self.hub.is_write(CHAT_WRITE):
             link = f" Invites: {self.public_url}/api/invites" if self.public_url else ""
-            place = f" at {ev.location}" if ev.location else ""
             out.append(self.hub.propose_write(
                 CHAT_WRITE,
                 {"text": f"{ev.title}: {when}{place}. Everyone's in.{link}", "group": self.chat_group},
                 f"Tell the group chat that \"{ev.title}\" is set",
                 e.ts,
             ))
-        return out
+        return out or [tell]
