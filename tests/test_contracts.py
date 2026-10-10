@@ -26,7 +26,7 @@ def test_typed_event_rejects_unknown_fields():
 def test_every_context_registered():
     contexts = {t.split(".")[0] for t in REGISTRY}
     assert contexts == {
-        "agent", "capture", "circle", "connector", "experience", "habits", "impact", "learning", "memory",
+        "agent", "capture", "circle", "connector", "day", "experience", "habits", "impact", "learning", "memory",
         "perception", "play", "runtime", "telemetry", "vault", "workspace",
     }
     assert EpisodeClosed.TYPE == "memory.episode.closed"

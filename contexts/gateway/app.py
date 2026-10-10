@@ -14,6 +14,8 @@
 - GET  /api/alerts?limit=      recent alerts, newest first: message, rule, time, evidence
 - GET  /api/preflight          the demo's T-15 checklist, checked by the box itself (D9); POST .../reset clears the stage
 - POST /api/events             one event or a list: camera and connector input pushed into a running box (demo, T7)
+- GET  /api/day/now            the Day loop: live status, today's plan, a pending re-plan, the review (D1)
+- GET  /api/day/plan?day=      a day's plan with its moves in Day Run's editor shape; POST {moves?, from_here?} remakes it
 - GET  /api/play/route         ?item=can&x=&y= -> A* route to the right bin (S2)
 - GET  /api/play/accuracy      Sort It round 1 vs round 5 accuracy (S1)
 - GET  /api/impact             Waste Watch counts, diversion rate, before vs after nudges (E2)
@@ -57,6 +59,7 @@ from contexts.gateway.bootstrap import Atlas, Settings, build
 from contexts.agent.application.rule_compiler import RuleCompileError, compile_rule
 from contexts.circle.api import circle_router
 from contexts.circle.application.sharing import CircleOffline
+from contexts.day.api import day_router
 from contexts.habits.api import habits_router
 from contexts.learning.application.export import teach
 from contexts.vault.api import vault_router
@@ -150,6 +153,8 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
 
     if atlas.dayrun:  # /api/dayrun/* (S4, S6)
         app.include_router(dayrun_router(atlas.dayrun, publish=atlas.bus.publish, guard=authorized))
+    if atlas.day:  # GET /api/day/now, GET/POST /api/day/plan, GET /api/day/patterns (D1)
+        app.include_router(day_router(atlas.day, publish=atlas.bus.publish, guard=authorized, memory=atlas.memory))
     if atlas.policy:  # GET/PUT /vault/policy, POST /vault/wipe/request, POST /vault/wipe, GET /vault/egress
         app.include_router(vault_router(atlas.policy, atlas.bus, wiper=atlas.wiper, guard=authorized))
     if atlas.identity:  # GET/PUT /identity/settings, POST /identity/enroll/start, GET /identity/enroll/status, GET/DELETE /identity/members (P9)

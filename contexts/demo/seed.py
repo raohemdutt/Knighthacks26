@@ -107,7 +107,8 @@ async def seed(data_dir: str | Path, now: datetime | None = None, force: bool = 
     # The ticker's event-time jobs, once, at the end of the story (contexts.gateway.bootstrap.Atlas._ticks).
     clock["now"] = now
     for job in (lambda: app.zone_engine.flush(now), lambda: app.projection.flush(now),
-                lambda: app.habits.flush(now) + app.nudger.check(now)):
+                lambda: app.habits.flush(now) + app.nudger.check(now),
+                lambda: app.day.tick(now) if app.day else []):  # the Day loop's status at the end of the story
         await app.bus.publish_all(job())
         await settle()
     out.seconds = time.perf_counter() - started

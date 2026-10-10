@@ -61,6 +61,12 @@ function toastFor(e: AtlasEvent): Toast | null {
         tone: e.tone === "celebrate" ? "celebrate" : "warn",
         href: "/today/",
       };
+    case "day.plan.proposed":
+      return { id: e.event_id, title: "Your day", message: str(e.text, "Atlas planned your day."), tone: "info", href: "/now/" };
+    case "day.replan.proposed":
+      return { id: e.event_id, title: "Re-plan", message: str(e.why, "Atlas has a new plan for the rest of the day."), tone: "warn", href: "/now/" };
+    case "day.reviewed":
+      return { id: e.event_id, title: "Your day, reviewed", message: str(e.change_tomorrow, "The day's review is in."), tone: "info", href: "/now/" };
     case "workspace.approval.requested":
       if (window.location.pathname.startsWith("/approvals")) return null; // the card itself is appearing on screen
       return { id: e.event_id, title: "Needs your OK", message: str(e.reason, "Atlas wants to do something."), tone: "info", href: "/approvals/" };

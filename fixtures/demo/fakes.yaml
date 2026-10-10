@@ -102,3 +102,13 @@ play:
   - {type: play.round.scored, at: 4, path_len: 3}
   - {type: play.round.started, at: 10, round_id: r2, item: cup, target_bin: trash, path: [{row: 5, col: 6}, {row: 6, col: 4}]}
   - {type: play.round.scored, at: 22, round_id: r2, item: cup, correct: false, seconds: 12.0, path_len: 2, score: 0}
+
+day:
+  # The Day loop (D1), one morning: the plan with its card, two statuses, a re-plan, and the evening review.
+  - {type: day.plan.proposed, at: 0, start: "+0s", end: "+86400s"}
+  - {type: day.status.changed, at: 60, now: "+60s", drift_minutes: 0, seen_at: "apartment.desk", seen_at_name: Desk, seen_how: "desk camera",
+     seen_ts: "+40s", risk: ok, reason: "plan started"}
+  - {type: day.plan.committed, at: 90}
+  - {type: day.status.changed, at: 3600, now: "+3600s", seen_ts: "+3500s", reason: "left the desk: 12 minutes behind"}
+  - {type: day.replan.proposed, at: 3660, start: "+3660s"}
+  - {type: day.reviewed, at: 43200}
