@@ -31,15 +31,20 @@ word in the answer), or the build fails.
 
 What is in it:
 
-    golden    every golden question the agent answers with a tool. "What is due this week?" is left out, with the
-              reason in the build's `skipped`: the agent answers it from Canvas and calendar items it pre-fetches,
-              and none of the three TOOLS reads items, so there is no tool call to teach.
+    golden    every golden question the agent answers with tool calls whose results hold the whole evidence.
+              Three shapes are left out, each reported in the build's `skipped` with its reason, because the
+              evidence the agent answers from is something none of the three TOOLS can fetch:
+                - Canvas and calendar questions ("What is due this week?"): none of the TOOLS reads items;
+                - "when did X last ...": the agent ranks and labels the best hits itself ("Most recent:");
+                - "what happened to X" and "did X arrive": the agent adds the episodes the detector tagged with
+                  X over the last 48 hours, which no tool call returns.
+              Every `also` wording of a golden question is scored on its own by the golden eval, so each one the
+              agent answers with a tool is a golden example too (id golden-NN-k), and each one of a skipped shape
+              is skipped too.
     variant   the same shapes asked other ways about the fixture night: where an item is (ITEMS, of which the
-              memory has seen only the keys, so the rest teach "I didn't see that"), what happened in a window
-              (WINDOWS spelled in several ways, under WINDOW_STEMS) and what happened to an item (STORY_ITEMS, the
-              one shape the agent answers with two calls: where it was last seen, then what the memory says about
-              it). Each variant is run through reference_trace() like a golden question, and the build fails if
-              the agent does not answer it with a tool.
+              memory has seen only the keys, so the rest teach "I didn't see that") and what happened in a window
+              (WINDOWS spelled in several ways, under WINDOW_STEMS). Each variant is run through reference_trace()
+              like a golden question, and the build fails if the agent does not answer it with a tool.
 
 Examples whose expected tool calls are identical ask the same thing in different words, so they share a `group`,
 and frame_ref is "fixture:group:<group>": a split by frame_ref or by group keeps every wording of a question on one
@@ -79,7 +84,7 @@ from lab.machine.record import recorded
 from runtime import FakeRuntime
 
 __all__ = ["TASK", "DATASET_ID", "FIXTURE_ACTION_ID", "EXPECTED", "GOLDEN_DIR", "OUT_DIR", "ITEMS", "WINDOWS",
-           "WINDOW_STEMS", "LAST_SEEN_TEMPLATES", "STORY_ITEMS", "STORY_TEMPLATES", "BuildError", "Unsupported", "Trace", "Expected", "BuildResult",
+           "WINDOW_STEMS", "LAST_SEEN_TEMPLATES", "BuildError", "Unsupported", "Trace", "Expected", "BuildResult",
            "reference_trace", "output_schema", "instruction", "variant_questions", "build", "load_expected",
            "main"]
 
@@ -107,9 +112,6 @@ WINDOWS = (("overnight", "last night"), ("today",), ("in the last hour", "in the
 WINDOW_STEMS = ("What happened {when}?", "What happened at our table {when}?",
                 "Tell me what the cameras saw {when}.", "Was there any activity {when}?",
                 "Did anyone come to the door {when}?", "Was anyone at the desk {when}?")   # the last two name a camera
-STORY_ITEMS = ("keys", "laptop", "coffee mug", "phone charger", "package", "wallet")   # what happened to ...
-STORY_TEMPLATES = ("What happened to my {item}?", "What happened to the {item}?", "What became of my {item}?",
-                   "What became of the {item}?")
 
 
 class BuildError(RuntimeError):
@@ -209,9 +211,17 @@ class _RecordingQA(QA):
         super().search_memory(q, shown)
         self.calls.append(("search_memory", {"q": q}, shown.lines))
 
-    def upcoming_items(self, q: str, ev: Evidence) -> None:
+    def upcoming_items(self, q: str, ev: Evidence, *extra: Any, **named: Any) -> None:
         self.no_tool = ("the agent answers it from Canvas and calendar items it pre-fetches, and none of its "
                         "TOOLS reads items")
+
+    def last_time(self, question: str, ev: Evidence, *extra: Any, **named: Any) -> None:
+        self.no_tool = ("the agent ranks the best matches itself and marks the newest 'Most recent', which no "
+                        "tool call returns, so no tool call holds its evidence")
+
+    def trace(self, item: str, ev: Evidence, *extra: Any, **named: Any) -> None:
+        self.no_tool = ("the agent adds the episodes the detector tagged with the item over the last 48 hours, "
+                        "which no tool call returns, so no tool call holds its evidence")
 
 
 def _sentence(line: str) -> str:
@@ -268,7 +278,7 @@ def output_schema() -> dict[str, Any]:
 
 
 def variant_questions() -> list[str]:
-    """The variant questions in a fixed order: where an item is, what happened in a window, what happened to an item."""
+    """The variant questions in a fixed order: where an item is, what happened in a window."""
     questions = []
     for name, plural in ITEMS:
         for template in LAST_SEEN_TEMPLATES:
@@ -276,8 +286,6 @@ def variant_questions() -> list[str]:
     for spellings in WINDOWS:
         for when in spellings:
             questions.extend(stem.format(when=when) for stem in WINDOW_STEMS)
-    for item in STORY_ITEMS:
-        questions.extend(template.format(item=item) for template in STORY_TEMPLATES)
     return questions
 
 
@@ -347,14 +355,16 @@ def build(out_dir: str | Path = OUT_DIR, *, golden_dir: str | Path = GOLDEN_DIR,
     skipped: list[dict[str, str]] = []
     seen: set[str] = set()
     for number, golden in enumerate(questions, 1):
-        seen.add(_normal(golden.q))
-        try:
-            trace = reference_trace(golden.q, memory, now, sleep)
-        except Unsupported as why:
-            skipped.append({"question": golden.q, "reason": str(why)})
-            continue
-        _check_golden(number, golden, trace)
-        entries.append(_Entry(f"golden-{number:02d}", golden.q, "golden", trace, golden.keywords))
+        for wording, text in enumerate([golden.q, *golden.also]):   # the golden eval scores every wording on its own
+            seen.add(_normal(text))
+            try:
+                trace = reference_trace(text, memory, now, sleep)
+            except Unsupported as why:
+                skipped.append({"question": text, "reason": str(why)})
+                continue
+            _check_golden(number, golden, trace)
+            entries.append(_Entry(f"golden-{number:02d}" + (f"-{wording}" if wording else ""), text, "golden", trace,
+                                  golden.keywords))
     if variants:
         for question in variant_questions():
             if _normal(question) in seen:

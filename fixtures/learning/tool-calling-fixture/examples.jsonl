@@ -1,14 +1,31 @@
 {"id":"golden-01","image":"","frame_ref":"fixture:group:episodes_between-3fa0ffba","ts":"2026-10-11T09:30:00-04:00","context":"What happened at our table overnight?","target":null,"verdict":null}
+{"id":"golden-01-1","image":"","frame_ref":"fixture:group:episodes_between-3fa0ffba","ts":"2026-10-11T09:30:00-04:00","context":"What happened overnight?","target":null,"verdict":null}
+{"id":"golden-01-2","image":"","frame_ref":"fixture:group:episodes_between-3fa0ffba","ts":"2026-10-11T09:30:00-04:00","context":"What happened last night?","target":null,"verdict":null}
+{"id":"golden-01-3","image":"","frame_ref":"fixture:group:episodes_between-3fa0ffba","ts":"2026-10-11T09:30:00-04:00","context":"Anything happen at the table last night?","target":null,"verdict":null}
+{"id":"golden-01-4","image":"","frame_ref":"fixture:group:episodes_between-3fa0ffba","ts":"2026-10-11T09:30:00-04:00","context":"What went on while we were asleep?","target":null,"verdict":null}
+{"id":"golden-01-5","image":"","frame_ref":"fixture:group:episodes_between-3fa0ffba","ts":"2026-10-11T09:30:00-04:00","context":"Give me a recap of last night","target":null,"verdict":null}
 {"id":"golden-02","image":"","frame_ref":"fixture:group:last_seen-23377f1f","ts":"2026-10-11T09:30:00-04:00","context":"Where did I leave my keys?","target":null,"verdict":null}
+{"id":"golden-02-1","image":"","frame_ref":"fixture:group:last_seen-23377f1f","ts":"2026-10-11T09:30:00-04:00","context":"Where are my keys?","target":null,"verdict":null}
+{"id":"golden-02-2","image":"","frame_ref":"fixture:group:last_seen-23377f1f","ts":"2026-10-11T09:30:00-04:00","context":"Where'd I put my keys?","target":null,"verdict":null}
+{"id":"golden-02-3","image":"","frame_ref":"fixture:group:last_seen-23377f1f","ts":"2026-10-11T09:30:00-04:00","context":"Have you seen my keys?","target":null,"verdict":null}
+{"id":"golden-02-4","image":"","frame_ref":"fixture:group:last_seen-23377f1f","ts":"2026-10-11T09:30:00-04:00","context":"Where are the keys right now?","target":null,"verdict":null}
+{"id":"golden-02-5","image":"","frame_ref":"fixture:group:last_seen-23377f1f","ts":"2026-10-11T09:30:00-04:00","context":"I can't find my keys","target":null,"verdict":null}
 {"id":"golden-03","image":"","frame_ref":"fixture:group:episodes_between-dbc6dbec","ts":"2026-10-11T09:30:00-04:00","context":"Did anyone come to the door in the last hour?","target":null,"verdict":null}
-{"id":"golden-04","image":"","frame_ref":"fixture:group:search_memory-6a9de465","ts":"2026-10-11T09:30:00-04:00","context":"When did someone last leave the table?","target":null,"verdict":null}
-{"id":"golden-05","image":"","frame_ref":"fixture:group:last_seen-13a6314c","ts":"2026-10-11T09:30:00-04:00","context":"Where is my wallet?","target":null,"verdict":null}
+{"id":"golden-03-1","image":"","frame_ref":"fixture:group:episodes_between-dbc6dbec","ts":"2026-10-11T09:30:00-04:00","context":"Was anyone at the door in the last hour?","target":null,"verdict":null}
+{"id":"golden-03-2","image":"","frame_ref":"fixture:group:episodes_between-dbc6dbec","ts":"2026-10-11T09:30:00-04:00","context":"Who came to the door in the past hour?","target":null,"verdict":null}
+{"id":"golden-03-3","image":"","frame_ref":"fixture:group:episodes_between-dbc6dbec","ts":"2026-10-11T09:30:00-04:00","context":"Any visitors at the door in the last hour?","target":null,"verdict":null}
+{"id":"golden-03-4","image":"","frame_ref":"fixture:group:episodes_between-dbc6dbec","ts":"2026-10-11T09:30:00-04:00","context":"Did someone come by the door in the last 60 minutes?","target":null,"verdict":null}
+{"id":"golden-03-5","image":"","frame_ref":"fixture:group:episodes_between-dbc6dbec","ts":"2026-10-11T09:30:00-04:00","context":"Was anyone at the door recently?","target":null,"verdict":null}
+{"id":"golden-06","image":"","frame_ref":"fixture:group:last_seen-13a6314c","ts":"2026-10-11T09:30:00-04:00","context":"Where is my wallet?","target":null,"verdict":null}
+{"id":"golden-06-1","image":"","frame_ref":"fixture:group:last_seen-13a6314c","ts":"2026-10-11T09:30:00-04:00","context":"Have you seen my wallet?","target":null,"verdict":null}
+{"id":"golden-06-2","image":"","frame_ref":"fixture:group:last_seen-13a6314c","ts":"2026-10-11T09:30:00-04:00","context":"Where did I leave my wallet?","target":null,"verdict":null}
+{"id":"golden-06-3","image":"","frame_ref":"fixture:group:last_seen-13a6314c","ts":"2026-10-11T09:30:00-04:00","context":"I can't find my wallet","target":null,"verdict":null}
+{"id":"golden-06-4","image":"","frame_ref":"fixture:group:last_seen-13a6314c","ts":"2026-10-11T09:30:00-04:00","context":"Where's my wallet?","target":null,"verdict":null}
+{"id":"golden-06-5","image":"","frame_ref":"fixture:group:last_seen-13a6314c","ts":"2026-10-11T09:30:00-04:00","context":"Where is the wallet now?","target":null,"verdict":null}
 {"id":"v-446faf1b","image":"","frame_ref":"fixture:group:last_seen-23377f1f","ts":"2026-10-11T09:30:00-04:00","context":"Where did I put my keys?","target":null,"verdict":null}
-{"id":"v-c74de6cf","image":"","frame_ref":"fixture:group:last_seen-23377f1f","ts":"2026-10-11T09:30:00-04:00","context":"Where are my keys?","target":null,"verdict":null}
 {"id":"v-1ad7bdb7","image":"","frame_ref":"fixture:group:last_seen-23377f1f","ts":"2026-10-11T09:30:00-04:00","context":"Where are my keys right now?","target":null,"verdict":null}
 {"id":"v-fb73a588","image":"","frame_ref":"fixture:group:last_seen-23377f1f","ts":"2026-10-11T09:30:00-04:00","context":"Where did I leave my keys again?","target":null,"verdict":null}
 {"id":"v-0663ece2","image":"","frame_ref":"fixture:group:last_seen-23377f1f","ts":"2026-10-11T09:30:00-04:00","context":"Where are the keys?","target":null,"verdict":null}
-{"id":"v-10cee8cb","image":"","frame_ref":"fixture:group:last_seen-13a6314c","ts":"2026-10-11T09:30:00-04:00","context":"Where did I leave my wallet?","target":null,"verdict":null}
 {"id":"v-b0a83206","image":"","frame_ref":"fixture:group:last_seen-13a6314c","ts":"2026-10-11T09:30:00-04:00","context":"Where did I put my wallet?","target":null,"verdict":null}
 {"id":"v-8ad80728","image":"","frame_ref":"fixture:group:last_seen-13a6314c","ts":"2026-10-11T09:30:00-04:00","context":"Where is my wallet right now?","target":null,"verdict":null}
 {"id":"v-aa0bb848","image":"","frame_ref":"fixture:group:last_seen-13a6314c","ts":"2026-10-11T09:30:00-04:00","context":"Where did I leave my wallet again?","target":null,"verdict":null}
@@ -37,12 +54,10 @@
 {"id":"v-c5348d1d","image":"","frame_ref":"fixture:group:last_seen-d8f50a0a","ts":"2026-10-11T09:30:00-04:00","context":"Where is my umbrella right now?","target":null,"verdict":null}
 {"id":"v-87aca27b","image":"","frame_ref":"fixture:group:last_seen-d8f50a0a","ts":"2026-10-11T09:30:00-04:00","context":"Where did I leave my umbrella again?","target":null,"verdict":null}
 {"id":"v-8b6386b5","image":"","frame_ref":"fixture:group:last_seen-d8f50a0a","ts":"2026-10-11T09:30:00-04:00","context":"Where is the umbrella?","target":null,"verdict":null}
-{"id":"v-cf6e5324","image":"","frame_ref":"fixture:group:episodes_between-3fa0ffba","ts":"2026-10-11T09:30:00-04:00","context":"What happened overnight?","target":null,"verdict":null}
 {"id":"v-16d63eca","image":"","frame_ref":"fixture:group:episodes_between-3fa0ffba","ts":"2026-10-11T09:30:00-04:00","context":"Tell me what the cameras saw overnight.","target":null,"verdict":null}
 {"id":"v-f5e39cb3","image":"","frame_ref":"fixture:group:episodes_between-3fa0ffba","ts":"2026-10-11T09:30:00-04:00","context":"Was there any activity overnight?","target":null,"verdict":null}
 {"id":"v-a3da28c7","image":"","frame_ref":"fixture:group:episodes_between-3fa0ffba","ts":"2026-10-11T09:30:00-04:00","context":"Did anyone come to the door overnight?","target":null,"verdict":null}
 {"id":"v-1f9be784","image":"","frame_ref":"fixture:group:episodes_between-3fa0ffba","ts":"2026-10-11T09:30:00-04:00","context":"Was anyone at the desk overnight?","target":null,"verdict":null}
-{"id":"v-4ee3a822","image":"","frame_ref":"fixture:group:episodes_between-3fa0ffba","ts":"2026-10-11T09:30:00-04:00","context":"What happened last night?","target":null,"verdict":null}
 {"id":"v-fab5ff6b","image":"","frame_ref":"fixture:group:episodes_between-3fa0ffba","ts":"2026-10-11T09:30:00-04:00","context":"What happened at our table last night?","target":null,"verdict":null}
 {"id":"v-0f4dbbea","image":"","frame_ref":"fixture:group:episodes_between-3fa0ffba","ts":"2026-10-11T09:30:00-04:00","context":"Tell me what the cameras saw last night.","target":null,"verdict":null}
 {"id":"v-42e21adf","image":"","frame_ref":"fixture:group:episodes_between-3fa0ffba","ts":"2026-10-11T09:30:00-04:00","context":"Was there any activity last night?","target":null,"verdict":null}
@@ -125,27 +140,3 @@
 {"id":"v-fd9b528f","image":"","frame_ref":"fixture:group:episodes_between-9b7c9695","ts":"2026-10-11T09:30:00-04:00","context":"Was there any activity in the last 90 minutes?","target":null,"verdict":null}
 {"id":"v-3e664964","image":"","frame_ref":"fixture:group:episodes_between-9b7c9695","ts":"2026-10-11T09:30:00-04:00","context":"Did anyone come to the door in the last 90 minutes?","target":null,"verdict":null}
 {"id":"v-5f976e27","image":"","frame_ref":"fixture:group:episodes_between-9b7c9695","ts":"2026-10-11T09:30:00-04:00","context":"Was anyone at the desk in the last 90 minutes?","target":null,"verdict":null}
-{"id":"v-e3f9f7df","image":"","frame_ref":"fixture:group:last_seen-bf5b9b33","ts":"2026-10-11T09:30:00-04:00","context":"What happened to my keys?","target":null,"verdict":null}
-{"id":"v-6d89f021","image":"","frame_ref":"fixture:group:last_seen-bf5b9b33","ts":"2026-10-11T09:30:00-04:00","context":"What happened to the keys?","target":null,"verdict":null}
-{"id":"v-54ffebf6","image":"","frame_ref":"fixture:group:last_seen-bf5b9b33","ts":"2026-10-11T09:30:00-04:00","context":"What became of my keys?","target":null,"verdict":null}
-{"id":"v-ae18b06d","image":"","frame_ref":"fixture:group:last_seen-bf5b9b33","ts":"2026-10-11T09:30:00-04:00","context":"What became of the keys?","target":null,"verdict":null}
-{"id":"v-6895b05f","image":"","frame_ref":"fixture:group:last_seen-4588d821","ts":"2026-10-11T09:30:00-04:00","context":"What happened to my laptop?","target":null,"verdict":null}
-{"id":"v-af8c7448","image":"","frame_ref":"fixture:group:last_seen-4588d821","ts":"2026-10-11T09:30:00-04:00","context":"What happened to the laptop?","target":null,"verdict":null}
-{"id":"v-ac1030ee","image":"","frame_ref":"fixture:group:last_seen-4588d821","ts":"2026-10-11T09:30:00-04:00","context":"What became of my laptop?","target":null,"verdict":null}
-{"id":"v-896cfd07","image":"","frame_ref":"fixture:group:last_seen-4588d821","ts":"2026-10-11T09:30:00-04:00","context":"What became of the laptop?","target":null,"verdict":null}
-{"id":"v-95840a3f","image":"","frame_ref":"fixture:group:last_seen-2bb1c122","ts":"2026-10-11T09:30:00-04:00","context":"What happened to my coffee mug?","target":null,"verdict":null}
-{"id":"v-5bf1e7f2","image":"","frame_ref":"fixture:group:last_seen-2bb1c122","ts":"2026-10-11T09:30:00-04:00","context":"What happened to the coffee mug?","target":null,"verdict":null}
-{"id":"v-d9e66f5d","image":"","frame_ref":"fixture:group:last_seen-2bb1c122","ts":"2026-10-11T09:30:00-04:00","context":"What became of my coffee mug?","target":null,"verdict":null}
-{"id":"v-471128f3","image":"","frame_ref":"fixture:group:last_seen-2bb1c122","ts":"2026-10-11T09:30:00-04:00","context":"What became of the coffee mug?","target":null,"verdict":null}
-{"id":"v-562f8255","image":"","frame_ref":"fixture:group:last_seen-7ab0a081","ts":"2026-10-11T09:30:00-04:00","context":"What happened to my phone charger?","target":null,"verdict":null}
-{"id":"v-7f3e2163","image":"","frame_ref":"fixture:group:last_seen-7ab0a081","ts":"2026-10-11T09:30:00-04:00","context":"What happened to the phone charger?","target":null,"verdict":null}
-{"id":"v-991a3c6e","image":"","frame_ref":"fixture:group:last_seen-7ab0a081","ts":"2026-10-11T09:30:00-04:00","context":"What became of my phone charger?","target":null,"verdict":null}
-{"id":"v-8782d784","image":"","frame_ref":"fixture:group:last_seen-7ab0a081","ts":"2026-10-11T09:30:00-04:00","context":"What became of the phone charger?","target":null,"verdict":null}
-{"id":"v-0d7beca8","image":"","frame_ref":"fixture:group:last_seen-3c7ba8a9","ts":"2026-10-11T09:30:00-04:00","context":"What happened to my package?","target":null,"verdict":null}
-{"id":"v-9b125ea6","image":"","frame_ref":"fixture:group:last_seen-3c7ba8a9","ts":"2026-10-11T09:30:00-04:00","context":"What happened to the package?","target":null,"verdict":null}
-{"id":"v-1ce1f5d1","image":"","frame_ref":"fixture:group:last_seen-3c7ba8a9","ts":"2026-10-11T09:30:00-04:00","context":"What became of my package?","target":null,"verdict":null}
-{"id":"v-8437f776","image":"","frame_ref":"fixture:group:last_seen-3c7ba8a9","ts":"2026-10-11T09:30:00-04:00","context":"What became of the package?","target":null,"verdict":null}
-{"id":"v-9daa2575","image":"","frame_ref":"fixture:group:last_seen-d1b890a7","ts":"2026-10-11T09:30:00-04:00","context":"What happened to my wallet?","target":null,"verdict":null}
-{"id":"v-14c6193a","image":"","frame_ref":"fixture:group:last_seen-d1b890a7","ts":"2026-10-11T09:30:00-04:00","context":"What happened to the wallet?","target":null,"verdict":null}
-{"id":"v-ff01bab0","image":"","frame_ref":"fixture:group:last_seen-d1b890a7","ts":"2026-10-11T09:30:00-04:00","context":"What became of my wallet?","target":null,"verdict":null}
-{"id":"v-e6b71006","image":"","frame_ref":"fixture:group:last_seen-d1b890a7","ts":"2026-10-11T09:30:00-04:00","context":"What became of the wallet?","target":null,"verdict":null}

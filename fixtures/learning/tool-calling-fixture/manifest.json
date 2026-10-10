@@ -2,7 +2,7 @@
   "dataset_id": "tool-calling-fixture",
   "spec": {
     "task": "tool-calling",
-    "instruction": "You are Atlas, a home camera assistant. Answer in one or two short sentences using only the evidence given. Mention times. If the evidence does not answer the question, say \"I didn't see that.\" The time now is 2026-10-11T09:30:00-04:00. Use tools to find evidence.",
+    "instruction": "You are Atlas, a home camera assistant. Answer in one or two short sentences using only the evidence given. Mention times. When a line is marked \"Most recent\", a question about the last time is answered from that line. If the evidence does not answer the question, say \"I didn't see that.\" The time now is 2026-10-11T09:30:00-04:00. Use tools to find evidence.",
     "output_schema": {
       "type": "object",
       "properties": {
@@ -108,6 +108,6 @@
     "examples": []
   },
   "created": "2026-10-11T09:30:00-04:00",
-  "examples": 151,
+  "examples": 142,
   "action_id": "fixture:golden-questions"
 }

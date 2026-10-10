@@ -38,6 +38,7 @@ DOOR = "Did anyone come to the door in the last hour?"
 LAST_LEFT = "When did someone last leave the table?"
 WALLET = "Where is my wallet?"
 DUE = "What is due this week?"
+PACKAGE = "Did a package arrive?"
 
 
 @pytest.fixture(autouse=True)
@@ -106,7 +107,7 @@ def test_the_build_is_an_export_the_reader_loads_as_text_only(built):
     data = dataset.load(built.root, require_images=False)
     assert built.root.name == fx.DATASET_ID and data.dataset_id == fx.DATASET_ID
     assert len(data.examples) == data.manifest.examples == built.examples == built.golden + built.variants
-    assert (built.golden, built.skipped[0]["question"]) == (5, DUE)
+    assert (built.golden, len(built.skipped)) == (24, 18)
     assert data.manifest.action_id == fx.FIXTURE_ACTION_ID
     assert data.manifest.spec.task == fx.TASK
     assert data.labeled() == [] and [e.id for e in data.pending()] == [e.id for e in data.examples]
@@ -128,17 +129,24 @@ def test_every_example_is_a_text_question_with_the_fixture_time_and_no_target(bu
 def test_the_golden_questions_come_first_in_file_order_with_the_exact_tool_calls(built):
     expected = fx.load_expected(built.root)
     golden = [row for row in expected.values() if row.origin == "golden"]
-    assert [(r.id, r.question) for r in golden] == [
-        ("golden-01", OVERNIGHT), ("golden-02", KEYS), ("golden-03", DOOR), ("golden-04", LAST_LEFT),
-        ("golden-05", WALLET)]
-    assert list(expected)[:5] == [r.id for r in golden]
+    assert list(expected)[:len(golden)] == [r.id for r in golden] and len(golden) == built.golden == 24
+    primary = [(r.id, r.question) for r in golden if r.id.count("-") == 1]
+    assert primary == [("golden-01", OVERNIGHT), ("golden-02", KEYS), ("golden-03", DOOR), ("golden-06", WALLET)]
     calls = {r.question: [c.model_dump() for c in r.label.tool_calls] for r in golden}
-    assert calls == {
-        OVERNIGHT: [call("episodes_between", start="2026-10-10T20:00:00-04:00", end="2026-10-11T08:00:00-04:00")],
-        KEYS: [call("last_seen", label="keys")],
-        DOOR: [call("episodes_between", start="2026-10-11T08:30:00-04:00", end="2026-10-11T09:30:00-04:00")],
-        LAST_LEFT: [call("search_memory", q=LAST_LEFT)],
-        WALLET: [call("last_seen", label="wallet")]}
+    assert calls[OVERNIGHT] == [call("episodes_between", start="2026-10-10T20:00:00-04:00", end="2026-10-11T08:00:00-04:00")]
+    assert calls[KEYS] == [call("last_seen", label="keys")]
+    assert calls[DOOR] == [call("episodes_between", start="2026-10-11T08:30:00-04:00", end="2026-10-11T09:30:00-04:00")]
+    assert calls[WALLET] == [call("last_seen", label="wallet")]
+
+
+def test_the_golden_wordings_are_golden_examples_in_the_groups_of_their_question(built):
+    expected = {row.question: row for row in fx.load_expected(built.root).values()}
+    for wording, question in [("Where are my keys?", KEYS), ("Have you seen my keys?", KEYS), ("I can't find my keys", KEYS),
+                              ("What happened last night?", OVERNIGHT), ("Was anyone at the door recently?", DOOR),
+                              ("Where is the wallet now?", WALLET)]:
+        assert (expected[wording].origin, expected[wording].group) == ("golden", expected[question].group), wording
+        assert expected[wording].keywords == expected[question].keywords
+    assert expected["Where'd I put my keys?"].id == "golden-02-2"
 
 
 def test_the_golden_answers_are_the_evidence_and_an_abstention_is_the_agents_own_words(built):
@@ -148,34 +156,47 @@ def test_the_golden_answers_are_the_evidence_and_an_abstention_is_the_agents_own
     assert expected[WALLET].label.answer == NO_EVIDENCE == "I didn't see that."
     assert (expected[WALLET].tool_results, expected[WALLET].cited, expected[WALLET].no_evidence) == (
         ["nothing found"], [], True)
-    assert expected[LAST_LEFT].label.answer.startswith("Sun 7:30 AM on cam-desk: The person stands up and leaves the table. ")
-    assert len(expected[LAST_LEFT].tool_results[0].split("\n")) == 5   # the model is shown the hits by score, not by time
-    assert expected[LAST_LEFT].tool_results[0].split("\n")[0] != "Sun 7:30 AM on cam-desk: The person stands up and leaves the table."
     assert expected[DOOR].label.answer == "Sun 9:05 AM on cam-door: A courier drops a cardboard box at the door."
 
 
 def test_the_golden_answers_pass_the_golden_evals_own_scoring(built, fixture_night):
     _, _, golden, _ = fixture_night
     expected = {row.question: row for row in fx.load_expected(built.root).values()}
-    scored = []
+    skipped = {s["question"] for s in built.skipped}
+    scored = {}
     for g in golden:
-        if g.q == DUE:
-            continue
-        row = expected[g.q]
-        if g.no_evidence:
-            scored.append((g.q, row.cited == [] and row.label.answer == NO_EVIDENCE))
-        else:
-            scored.append((g.q, set(g.cite) <= set(row.cited)
-                           and any(k.lower() in row.label.answer.lower() for k in g.keywords)))
-        assert row.keywords == g.keywords
-    assert scored == [(q, True) for q in (OVERNIGHT, KEYS, DOOR, LAST_LEFT, WALLET)]
+        for text in [g.q, *g.also]:
+            if text in skipped:
+                continue
+            row = expected[text]
+            if g.no_evidence:
+                scored[text] = row.cited == [] and row.label.answer == NO_EVIDENCE
+            else:
+                scored[text] = (set(g.cite) <= set(row.cited)
+                                and any(k.lower() in row.label.answer.lower() for k in g.keywords))
+            assert row.keywords == g.keywords
+    assert len(scored) == built.golden == 24 and all(scored.values())
 
 
-def test_what_is_due_this_week_is_left_out_and_the_reason_is_reported(built):
-    [skipped] = built.skipped
-    assert skipped["question"] == DUE
-    assert "TOOLS" in skipped["reason"] and "items" in skipped["reason"]
-    assert DUE not in {row.question for row in fx.load_expected(built.root).values()}
+def test_the_shapes_whose_evidence_no_tool_returns_are_skipped_with_their_reasons(built, fixture_night):
+    _, _, golden, _ = fixture_night
+    wordings = {g.q: [g.q, *g.also] for g in golden}
+    reasons = {s["question"]: s["reason"] for s in built.skipped}
+    assert set(reasons) == set(wordings[LAST_LEFT] + wordings[PACKAGE] + wordings[DUE]) and len(reasons) == 18
+    assert all("Most recent" in reasons[t] for t in wordings[LAST_LEFT])
+    assert all("48 hours" in reasons[t] for t in wordings[PACKAGE])
+    assert all("TOOLS" in reasons[t] and "items" in reasons[t] for t in wordings[DUE])
+    assert not set(reasons) & {row.question for row in fx.load_expected(built.root).values()}
+
+
+def test_what_happened_to_an_item_has_no_example_because_no_tool_returns_its_evidence(built, fixture_night):
+    memory, now, _, sleep = fixture_night
+    assert "What happened to my keys?" not in {row.question for row in fx.load_expected(built.root).values()}
+    for question, reason_has in [("What happened to my keys?", "48 hours"), ("Did a package arrive?", "48 hours"),
+                                 ("When was the last time someone left the table?", "Most recent")]:
+        with pytest.raises(fx.Unsupported) as why:
+            fx.reference_trace(question, memory, now, sleep)
+        assert reason_has in str(why.value), question
 
 
 def test_no_wording_repeats_and_no_variant_is_a_golden_question(built):
@@ -235,28 +256,10 @@ def test_a_question_that_names_a_camera_is_answered_from_that_camera_but_the_mod
     assert expected["Was anyone at the desk today?"].cited == ["e06", "e07", "frames:cam-desk:e06", "frames:cam-desk:e07"]
 
 
-def test_what_happened_to_an_item_is_two_calls_and_each_result_is_what_the_tool_loop_shows(built):
-    expected = {row.question: row for row in fx.load_expected(built.root).values()}
-    keys = expected["What happened to my keys?"]
-    assert [c.model_dump() for c in keys.label.tool_calls] == [call("last_seen", label="keys"),
-                                                                call("search_memory", q="keys")]
-    assert keys.tool_results == ["keys last seen Sat 7:41 PM in the desk zone on cam-desk, next to the coffee mug",
-                                 "Sat 7:40 PM on cam-desk: A person puts a set of keys next to the coffee mug."]
-    assert keys.cited == ["e02", "frames:cam-desk:e02", "frames:cam-desk:k1941"]
-    assert keys.label.answer == ("Keys last seen Sat 7:41 PM in the desk zone on cam-desk, next to the coffee mug. "
-                                 "Sat 7:40 PM on cam-desk: A person puts a set of keys next to the coffee mug.")
-    wallet = expected["What became of the wallet?"]
-    assert [c.model_dump() for c in wallet.label.tool_calls] == [call("last_seen", label="wallet"),
-                                                                  call("search_memory", q="wallet")]
-    assert (wallet.tool_results, wallet.label.answer, wallet.no_evidence) == (
-        ["nothing found", "nothing found"], NO_EVIDENCE, True)
-    assert expected["What happened to the keys?"].group == keys.group
-
-
 def test_only_the_golden_questions_when_variants_are_off(tmp_path):
     result = fx.build(tmp_path / "out", variants=False)
-    assert (result.examples, result.golden, result.variants, result.groups) == (5, 5, 0, 5)
-    assert [r["id"] for r in jsonl(result.root / "examples.jsonl")] == [f"golden-0{n}" for n in range(1, 6)]
+    assert (result.examples, result.golden, result.variants, result.groups) == (24, 24, 0, 4)
+    assert all(r["id"].startswith("golden-") for r in jsonl(result.root / "examples.jsonl"))
 
 
 # --- the task -----------------------------------------------------------------------------------
@@ -417,8 +420,7 @@ def test_a_question_marked_no_evidence_that_has_evidence_fails_the_build(tmp_pat
     golden = tmp_path / "golden"
     shutil.copytree(GOLDEN_DIR, golden)
     text = (golden / "questions.yaml").read_text(encoding="utf-8")
-    marked = text.replace('- q: "Where did I leave my keys?"\n  cite: ["frames:cam-desk:k1941"]\n  keywords: [mug, desk]',
-                          '- q: "Where did I leave my keys?"\n  no_evidence: true')
+    marked = text.replace('  cite: ["frames:cam-desk:k1941"]\n  keywords: [mug, desk]', '  no_evidence: true')
     assert marked != text
     (golden / "questions.yaml").write_text(marked, encoding="utf-8")
     with pytest.raises(fx.BuildError, match="golden question 2 expects no evidence"):
@@ -476,9 +478,9 @@ def test_a_folder_that_cannot_be_read_is_not_rebuilt_without_force(tmp_path):
 def test_the_entry_point_builds_and_leaves_a_ledger_row(tmp_path):
     answer = fx.main(["--out", str(tmp_path / "out"), "--no-variants"])
     assert answer == {"ok": True, "outcome": "built", "dataset_id": fx.DATASET_ID,
-                      "path": str(tmp_path / "out" / fx.DATASET_ID), "examples": 5, "golden": 5, "variants": 0,
-                      "groups": 5, "skipped": [answer["skipped"][0]], "refs": {"dataset_id": fx.DATASET_ID}}
-    assert answer["skipped"][0]["question"] == DUE
+                      "path": str(tmp_path / "out" / fx.DATASET_ID), "examples": 24, "golden": 24, "variants": 0,
+                      "groups": 4, "skipped": answer["skipped"], "refs": {"dataset_id": fx.DATASET_ID}}
+    assert len(answer["skipped"]) == 18 and DUE in {s["question"] for s in answer["skipped"]}
     row = only_row()
     assert (row["verb"], row["outcome"], row["actor"], row["tier"]) == ("fixture-dataset", "built", "sonnet-test", "sonnet")
     assert row["refs"]["dataset_id"] == fx.DATASET_ID
@@ -519,7 +521,7 @@ def test_run_by_path_from_another_folder_the_script_builds_and_prints_one_json_l
                           capture_output=True, text=True, timeout=300)
     assert done.returncode == 0, done.stderr
     answer = json.loads(done.stdout)
-    assert (answer["ok"], answer["examples"]) == (True, 5)
+    assert (answer["ok"], answer["examples"]) == (True, 24)
     assert (tmp_path / "out" / fx.DATASET_ID / "examples.jsonl").is_file()
     assert only_row()["verb"] == "fixture-dataset"
 
