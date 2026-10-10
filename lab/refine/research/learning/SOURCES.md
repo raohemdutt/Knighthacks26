@@ -73,6 +73,13 @@ when the last searches only returned sources already listed or nothing new.
 | S59 | Apache Software Foundation, "Apache License, Version 2.0", section 4 | 2004 | License text | https://www.apache.org/licenses/LICENSE-2.0 | 2026-10-10 | packaging_model_card |
 | S60 | ggml-org/llama.cpp, `convert_lora_to_gguf.py` | 2026 | Source code (master) | https://github.com/ggml-org/llama.cpp/blob/master/convert_lora_to_gguf.py | 2026-10-10 | packaging_model_card |
 | S61 | Qwen, "Qwen/Qwen3.8-27B" model card | 2026 | Vendor doc (model card) | https://huggingface.co/Qwen/Qwen3.8-27B | 2026-10-10 | distillation_tool_calls, packaging_model_card |
+| S62 | S. Bowyer, `bayes_evals` repository (README): "A lightweight library for Bayesian analysis of LLM evals", the code of S02 (intervals, independent and paired comparisons) | 2025 | Source code (main) | https://github.com/sambowyer/bayes_evals | 2026-10-10 | eval_noise |
+| S63 | ggml-org/llama.cpp, `common/chat.cpp` (`common_chat_template_detect_params_init`: the Qwen3-Coder XML handler, named for Qwen3.5) | 2026 | Source code (commit 8b54361) | https://github.com/ggml-org/llama.cpp/blob/8b543610254aafe121942eaf79a23c3847177270/common/chat.cpp | 2026-10-10 | distillation_tool_calls |
+| S64 | PyTorch, "Reproducibility" notes (version 2.14) | 2026 | Vendor doc | https://docs.pytorch.org/docs/2.14/notes/randomness.html | 2026-10-10 | lora_recipe |
+| S65 | S. Kapoor, A. Narayanan, "Leakage and the Reproducibility Crisis in ML-based Science" | 2022 | arXiv preprint (abstract) | https://arxiv.org/abs/2207.07048 | 2026-10-10 | eval_noise |
+| S66 | Y. Li, Y. Du, K. Zhou, J. Wang, W. X. Zhao, J.-R. Wen, "Evaluating Object Hallucination in Large Vision-Language Models" (POPE) | 2023 | EMNLP 2023 (abstract) | https://arxiv.org/abs/2305.10355 | 2026-10-10 | eval_noise |
+| S67 | ggml-org/llama.cpp, issue #22422, "Eval bug: Failed to parse input at pos" (MiniMax-M2.7 tool calls, builds b8935 to b8994) | 2026 | GitHub issue | https://github.com/ggml-org/llama.cpp/issues/22422 | 2026-10-10 | distillation_tool_calls |
+| S68 | JupyterHub documentation, "Using JupyterHub's REST API" (the `Authorization: token` header; no Bearer form documented) | 2026 | Project doc | https://jupyterhub.readthedocs.io/en/stable/howto/rest.html | 2026-10-10 | not used yet (eval_noise, Open questions) |
 
 ## Our repository and team pages
 
@@ -91,6 +98,8 @@ at a commit and Notion pages by URL.
 | R8 | Ilan's Team Comms page, Q4 answer: `scores` keeps `current`, `candidate`, `teacher` and allows dotted per-metric keys | Notion (Team Comms) | https://app.notion.com/p/3f596ef5fec58163bbefd0e7ea5acea7 | 2026-10-10 | eval_noise |
 | R9 | Task L3, "LoRA trainer for the Jetson model (GPU B)": a few hundred examples train in under about 30 min | Notion (Task Board) | https://app.notion.com/p/3f596ef5fec5813a88b4cd7f6ce2e8de | 2026-10-10 | lora_recipe |
 | R10 | Atlas Design Doc (sections 2, 9, 13, 14) and its "Context: Learning" page | Notion (Design Doc) | https://app.notion.com/p/3f596ef5fec5819ea5cdcaa015e69917 and https://app.notion.com/p/3f596ef5fec5814bb5dfde0052175b1e | 2026-10-10 | lora_recipe, packaging_model_card |
+| R11 | Demo Plan (5 min): the 1:05 keys beat and the 2:05 "It learns" beat (desk-objects task, before vs after vs teacher) with their fallbacks | Notion (Demo Plan) | https://app.notion.com/p/3f596ef5fec581a2bdc4f96c8da65252 | 2026-10-10 | not used yet (learning pass 1 walk) |
+| R12 | Task Board rows of the learning track (L2 to L9, L11 to L21) and T0's experiment queue, as fetched by learning pass 1 | Notion (Task Board) | https://app.notion.com/p/3f596ef5fec581bcb319e8687c1fdd8e | 2026-10-10 | not used yet (learning pass 1 walk) |
 
 ## Searched for and not found
 
