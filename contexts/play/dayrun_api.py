@@ -3,6 +3,7 @@
     app.include_router(dayrun_router(atlas.dayrun, publish=atlas.bus.publish, guard=authorized))
 
 - GET  /api/dayrun/board?start=      the next 24 hours: fixed blocks, deadlines, open slots and their moves
+- GET  /api/dayrun/scenarios/{name}  a scripted day's own presets: plans, disruptions, campaign (the phone's one-tap plans)
 - POST /api/dayrun/simulate          {start, moves} -> meter timeline, route legs, outcome, stars, rejected moves
 - POST /api/dayrun/commit            {start, moves} -> one approval card for the calendar blocks (winning plans only)
 - GET  /api/dayrun/review?day=       the committed plan against what Habits measured that day
@@ -60,6 +61,11 @@ def dayrun_router(service: DayRun, publish: Callable[[object], Awaitable] | None
     @router.get("/board")
     async def board(start: datetime | None = None, scenario: str | None = None) -> Board:
         return run(service.board, start, None, scenario)
+
+    @router.get("/scenarios/{name}")
+    async def scenario(name: str) -> dict:
+        """A scripted day's own presets (plans, disruptions, campaign), so the phone's one-tap plans follow the profile."""
+        return run(service.script, name)
 
     @router.post("/simulate")
     async def simulate(body: PlanBody) -> SimResult:

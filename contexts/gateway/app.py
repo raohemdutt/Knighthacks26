@@ -30,6 +30,7 @@
 - GET  /api/places             place packs; POST one as YAML/JSON (validated) (S5)
 - GET  /api/play/campus-route  ?from=ucf.union&to=ucf.hec[&depart=&due=] or to=friend:<member> (S5)
 - GET  /api/learning        taught tasks: stage, progress, scores, deployed models (X10)
+- GET  /api/profile         who this box serves: name, description, vocabulary, overridden config files
 - GET  /capture/status      camera status and detector counts, where cameras run (C6)
 - GET  /health
 - GET  /runtime/models      installed model versions, the current one and what llama-server really serves (R7)
@@ -66,6 +67,7 @@ from contexts.vault.api import vault_router
 from contexts.memory.api import build_router as memory_router
 from contexts.perception.api import identity_router
 from contexts.play.dayrun_api import dayrun_router
+from contexts.profiles.api import profile_router
 from contracts import REGISTRY, Event, parse_event
 from contracts.agent import AnswerGenerated, RuleAdded, RuleToggled
 from contracts.experience import ApprovalDecided, QuestionAsked
@@ -143,6 +145,8 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
     app.state.loop = None
     if atlas.habits:  # GET /api/habits/today, /api/habits/{id}/history (H2)
         app.include_router(habits_router(atlas.habits), prefix="/api")
+    if atlas.profile:  # GET /api/profile: the words the screens use
+        app.include_router(profile_router(atlas.profile), prefix="/api")
     if atlas.memory:  # GET /memory/... (M4)
         app.include_router(memory_router(atlas.memory, atlas.settings.data_dir / "frames"))
 

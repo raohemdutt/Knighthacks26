@@ -47,6 +47,7 @@ from contexts.play.dayrun.models import (
 from contexts.play.dayrun.review import forecast, reality
 from contexts.play.dayrun.routes import Walks
 from contexts.play.domain.places import PlaceSet
+from contexts.profiles import Profile
 from contracts.agent import ActionProposed
 from contracts.memory import Item
 
@@ -110,12 +111,14 @@ class DayRun:
         fixtures_dir: str | Path = "fixtures/play",
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
         cfg: DayRunConfig | None = None,
+        profile: Profile | None = None,  # layers its dayrun.yaml over the base one; its scenarios/ are searched first
     ) -> None:
-        self.cfg = cfg or DayRunConfig.load(Path(config_dir) / "dayrun.yaml", Path(config_dir) / "agent.yaml")
+        self.cfg = cfg or DayRunConfig.load(Path(config_dir) / "dayrun.yaml", Path(config_dir) / "agent.yaml", profile)
         self.walks = Walks(places)
         self.memory, self.habits, self.presence, self.hub = memory, habits, presence, hub
         self.plans_dir = Path(data_dir) / "dayrun" / "plans"
         self.fixtures_dir = Path(fixtures_dir)
+        self.scenarios_dir = profile.scenarios_dir() if profile is not None else None
         self.clock = clock
 
     # --- sources ---
@@ -123,10 +126,23 @@ class DayRun:
     def scenario(self, name: str | None) -> Scenario | None:
         if not name:
             return None
-        path = self.fixtures_dir / f"{name}.yaml"
-        if not SCENARIO_NAME.match(name) or not path.exists():
+        if not SCENARIO_NAME.match(name):
+            raise LookupError(f"no scenario {name!r}")
+        folders = [self.scenarios_dir] if self.scenarios_dir else []
+        path = next((p for d in [*folders, self.fixtures_dir] if (p := d / f"{name}.yaml").exists()), None)
+        if path is None:
             raise LookupError(f"no scenario {name!r}")
         return Scenario.load(path)
+
+    def script(self, name: str) -> dict:
+        """A scenario's own presets for the phone: its plans, disruptions and campaign (never a result)."""
+        sc = self.scenario(name)
+        if sc is None:
+            raise LookupError("no scenario ''")
+        return {"name": name, "now": sc.now, "start_place": sc.start_place,
+                "plans": {k: [m.model_dump(mode="json", exclude_none=True) for m in v] for k, v in sc.plans.items()},
+                "disruptions": [d.model_dump(mode="json", exclude_none=True) for d in sc.disruptions],
+                "campaign": [[m.model_dump(mode="json", exclude_none=True) for m in day] for day in sc.campaign]}
 
     def _habit_rows(self, sc: Scenario | None, day: date, now: datetime) -> list[dict] | None:
         source = sc or self.habits

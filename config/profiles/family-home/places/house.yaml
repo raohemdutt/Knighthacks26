@@ -1,0 +1,19 @@
+# Place pack: the house. Rooms are places; edges are doorways in minutes. town.yaml's `street` leads in at the door.
+name: house
+kind: home
+entry: door
+places:
+  door:     {name: Front door, kind: door}
+  kitchen:  {name: Kitchen, kind: kitchen}
+  table:    {name: Kitchen table, kind: table, zones: config/zones.yaml, aliases: [Kitchen table, Table]}
+  living:   {name: Living room, kind: living, aliases: [Living room]}
+  bedroom:  {name: Bedroom, kind: bed}
+  kids:     {name: Kids' room, kind: bed}
+  yard:     {name: Backyard, kind: outdoors, aliases: [Backyard]}
+edges:
+  - [door, living, 0.2]
+  - [living, kitchen, 0.2]
+  - [kitchen, table, 0.1]
+  - [living, bedroom, 0.3]
+  - [living, kids, 0.3]
+  - [kitchen, yard, 0.2]

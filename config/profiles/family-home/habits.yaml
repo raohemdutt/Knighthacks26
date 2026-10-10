@@ -1,0 +1,41 @@
+# Layered over config/habits.yaml. With owner recognition on, every habit here is tracked per enrolled member
+# (contexts/habits/domain/members.py), so each person has their own bedtime streak and homework minutes.
+# Targets are one set for the household; per-member targets are not supported yet (see config/profiles/README.md).
+nudges:
+  celebrate: "{name}: {streak} days in a row for the whole house. Keep it going."
+
+habits:
+  - id: sleep
+    name: Bedtime
+    target: 9
+    nudge: "The {workplace} was still busy last night: only {value} hours of quiet. Aim for {target} tonight."
+    nudge_measured: "A watch measured {value} hours of sleep last night. Aim for {target} tonight."
+
+  - id: meals
+    name: Family meals
+    target: 2
+    nudge_after: "18:30"
+    nudge: "Atlas has seen {value} meals at the {workplace} today. Time to eat together."
+
+  - id: screen_time
+    name: Screen time
+    signal: drink               # the same "objects seen" signal as energy drinks: a phone or tablet at the table
+    target: 3
+    unit: sightings
+    direction: at_most
+    gap_minutes: 30
+    keywords: [phone, cell phone, tablet, ipad, game controller, handheld console]
+    nudge: "That is screen sighting number {value} at the {workplace} today. The limit is {target}."
+
+  - id: focus
+    name: Homework time
+    target: 1
+    deadline_hours: 168         # a chore or a project due this week makes today a homework day
+    nudge_after: "16:00"
+    nudge: "{title} is due in {hours} hours and there have been {minutes} {activity} minutes at the {workplace} today"
+
+  - id: leave_ready
+    name: Out the door
+    watch_items: [keys, lunch box, backpack, water bottle]
+    event_minutes: 40
+    nudge: "The {items} are still on the {workplace} and {title} starts in {minutes} minutes"

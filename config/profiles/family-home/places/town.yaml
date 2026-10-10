@@ -1,0 +1,20 @@
+# Place pack: the neighbourhood around the house. Edge minutes are walking time; `street` leads into the house.
+# Coordinates are a made-up neighbourhood (the map draws located places); replace them with the real one's.
+name: town
+kind: campus
+places:
+  street:   {name: Our street, kind: outdoors, lat: 28.5700, lon: -81.3000, pack: house}
+  school:   {name: Elementary school, kind: school, lat: 28.5740, lon: -81.3030, aliases: [School]}
+  park:     {name: Park, kind: outdoors, lat: 28.5720, lon: -81.2975, aliases: [Park]}
+  library:  {name: Public library, kind: library, lat: 28.5735, lon: -81.2960, aliases: [Library]}
+  grocery:  {name: Grocery store, kind: shop, lat: 28.5675, lon: -81.3040}
+  pizza:    {name: Pizza place, kind: dining, lat: 28.5672, lon: -81.3050}
+  pool:     {name: Community pool, kind: gym, lat: 28.5750, lon: -81.2995, aliases: [Pool]}
+edges:
+  - [street, school, 9]
+  - [street, park, 5]
+  - [park, library, 4]
+  - [street, grocery, 7]
+  - [grocery, pizza, 2]
+  - [school, pool, 6]
+  - [park, pool, 5]

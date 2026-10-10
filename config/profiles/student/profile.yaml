@@ -1,0 +1,17 @@
+# The student: the demo's profile, and the one every base config/*.yaml file describes.
+# It overrides nothing, so a box with ATLAS_PROFILE unset behaves exactly as the base files say.
+name: student
+description: A student with classes, assignments on Canvas and a desk the box watches.
+audience: one person
+
+vocabulary:
+  workplace: desk         # where the main activity happens and the box watches
+  activity: study         # the main activity, as a verb and a noun ("Study at", "study minutes")
+  event: class            # a fixed block on the calendar
+  deadline: assignment    # something due
+
+meters:
+  habits: []              # every habit in habits.yaml
+  dayrun: [energy, focus, hunger]
+
+scenario: demo            # fixtures/play/demo.yaml

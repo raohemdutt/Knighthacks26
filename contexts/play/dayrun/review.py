@@ -77,8 +77,9 @@ def reality(cfg: DayRunConfig, desk: str, day: date, blocks: list[PlannedBlock],
 
     unmeasured = sum(1 for r in rows if r.followed is None)
     text = (
-        f"Simulation: {predicted.sleep_hours:g} h of sleep, {predicted.meals} meals, {planned['study_minutes']:g} study minutes planned. "
-        f"Reality: {seen(measured.sleep_hours, 'h of sleep')}, {seen(measured.meals, 'meals')}, {seen(measured.focus_minutes, 'minutes at the desk')}. "
+        f"Simulation: {predicted.sleep_hours:g} h of sleep, {predicted.meals} meals, {planned['study_minutes']:g} {cfg.vocabulary.activity} minutes planned. "
+        f"Reality: {seen(measured.sleep_hours, 'h of sleep')}, {seen(measured.meals, 'meals')}, "
+        f"{seen(measured.focus_minutes, f'minutes at the {cfg.vocabulary.workplace}')}. "
         + (f"You followed {score}% of what could be measured. " if score is not None else "Nothing in this plan could be measured. ")
         + (f"Biggest gap: {gap.text}. " if gap else "No gap: every measured block happened. " if score is not None else "")
         + (f"{unmeasured} block(s) could not be measured." if unmeasured else "")

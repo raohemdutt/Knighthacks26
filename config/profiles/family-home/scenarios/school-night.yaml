@@ -1,0 +1,42 @@
+# Day Run's scripted evening for the family (times America/New_York). It is 3:30 PM on a school day: Ava's
+# science fair poster is due Thursday, swim practice is at 5, dinner must happen, bedtime is 9.
+#   GET /api/dayrun/board?scenario=school-night
+now: "2026-10-12T15:30:00-04:00"
+start_place: house.table
+
+items:
+  - {connector: calendar, kind: assignment, external_id: "school:poster:2026-10-15", title: "Ava: science fair poster",
+     when: "2026-10-15T08:30:00-04:00", summary: "Due Thursday morning at drop-off. Board, photos, one paragraph on the method."}
+  - {connector: calendar, kind: assignment, external_id: "home:chore:bins:2026-10-12", title: "Leo: bins out",
+     when: "2026-10-12T20:00:00-04:00", summary: "Collection is Tuesday morning."}
+  - {connector: calendar, kind: calendar_event, external_id: "family:swim:2026-10-12T17:00:00-04:00",
+     title: "Swim practice", when: "2026-10-12T17:00:00-04:00", summary: "until 6:00 PM · Community pool"}
+  - {connector: calendar, kind: calendar_event, external_id: "town:story-time:2026-10-12T18:30:00-04:00",
+     title: "Library story time", when: "2026-10-12T18:30:00-04:00", summary: "until 7:15 PM · Public library · optional"}
+  - {connector: calendar, kind: calendar_event, external_id: "family:dentist:2026-10-13T08:00:00-04:00",
+     title: "Dentist (Leo)", when: "2026-10-13T08:00:00-04:00", summary: "until 8:45 AM · Elementary school"}
+
+habits:
+  "2026-10-12": {sleep: 8, meals: 1, focus_hours: 0}
+  "2026-10-13": {sleep: 9, meals: 1, focus_hours: 0}
+
+plans:
+  # Screens until practice, pizza out, no homework, late to bed.
+  bad:
+    - {slot: s1, kind: rest}
+    - {slot: s2, kind: eat, place: town.pizza, minutes: 50}
+    - {slot: s2, kind: rest, minutes: 120}
+    - {slot: s2, kind: sleep, start: "2026-10-12T22:30:00-04:00", minutes: 480}
+  # Homework at the table before practice, dinner at home, a little more on the poster, bed at 9.
+  good:
+    - {slot: s1, kind: study, place: house.table, minutes: 60}
+    - {slot: s2, kind: eat, place: house.kitchen, minutes: 40}
+    - {slot: s2, kind: study, place: house.table, minutes: 45}
+    - {slot: s2, kind: rest, place: house.living, minutes: 30}
+    - {slot: s2, kind: sleep, start: "2026-10-12T21:00:00-04:00", minutes: 570}
+
+disruptions:
+  - {kind: place_closed, place: town.pizza}
+
+actual:
+  "2026-10-12": {focus_minutes: 50, meals: 2, sleep_hours: 9}

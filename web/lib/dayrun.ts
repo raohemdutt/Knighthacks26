@@ -126,7 +126,7 @@ export function routeAt(result: SimResult, t: number): { route: RouteTaken; walk
 }
 
 /** What is going on at `t`, in the box's own words where it has them. */
-export function activityAt(result: SimResult, index: number, places: PlaceIndex): string {
+export function activityAt(result: SimResult, index: number, places: PlaceIndex, words: { activity?: string; event?: string } = {}): string {
   const tick = result.timeline[index];
   if (!tick) return "";
   const t = ms(tick.t);
@@ -135,7 +135,8 @@ export function activityAt(result: SimResult, index: number, places: PlaceIndex)
   const walk = routeAt(result, t);
   if (tick.activity === "walk" || walk?.walking) return walk ? `Walking ${walk.route.purpose}` : "Walking";
   const where = placeName(places, tick.place);
-  return tick.activity === "idle" ? `Nothing planned, at ${where}` : `${tick.activity}, at ${where}`;
+  const doing = tick.activity === "study" ? (words.activity ?? "study") : tick.activity === "class" ? (words.event ?? "class") : tick.activity;
+  return tick.activity === "idle" ? `Nothing planned, at ${where}` : `${doing}, at ${where}`;
 }
 
 /** The first moment at or after `from` whose clock reads `hhmm`, written with `from`'s own offset. */

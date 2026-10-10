@@ -1,0 +1,5 @@
+# Layered over config/agent.yaml. `sleep.bedtime` and `sleep.wake` are set from profile.yaml's `shift`.
+subreddit: nursing
+places: [Station, Break room, Canteen, Gym, Home]
+leaving:
+  home_place: flat.door

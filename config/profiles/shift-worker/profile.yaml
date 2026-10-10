@@ -1,0 +1,24 @@
+# A shift worker on nights. The box sits at the kitchen station at home; the day starts in the afternoon.
+name: shift-worker
+description: A night-shift worker whose day starts in the afternoon, with handovers to write and a shift to leave for.
+audience: one person
+
+vocabulary:
+  workplace: station      # the kitchen station at home where the box watches
+  activity: work          # "Work at", "work minutes"
+  event: shift            # the fixed block on the calendar
+  deadline: handover      # the handover report due at the end of a shift
+
+meters:
+  habits: [sleep, meals, energy_drinks, focus, leave_ready, sort_right]   # no "start early": handovers are not posted days ahead
+  dayrun: [energy, focus, hunger]
+
+# The sleep window follows the shift: bed 90 minutes after it ends, up 7 hours later (07:30 to 14:30 here).
+# Change `start` and `end` when the rota changes and habits.yaml's "overnight" and Day Run's usual night move with it.
+shift:
+  start: "22:00"
+  end: "06:00"
+  sleep_after_minutes: 90
+  sleep_hours: 7
+
+scenario: night-shift     # config/profiles/shift-worker/scenarios/night-shift.yaml

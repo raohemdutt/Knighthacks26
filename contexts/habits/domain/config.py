@@ -10,6 +10,8 @@ from zoneinfo import ZoneInfo
 import yaml
 from pydantic import BaseModel
 
+from contexts.profiles import Profile, Vocabulary
+
 Signal = Literal["away_window", "meal", "drink", "desk_time", "start_lead", "forgot", "disposal"]
 
 
@@ -99,6 +101,7 @@ class HabitsConfig(BaseModel):
     coverage: CoverageSettings = CoverageSettings()
     nudges: NudgeSettings = NudgeSettings()
     schedule: Schedule = Schedule()
+    vocabulary: Vocabulary = Vocabulary()  # the profile's words, for {workplace}, {event}, ... in nudge texts
 
     def by_signal(self, signal: Signal) -> Habit | None:
         return next((h for h in self.habits if h.signal == signal), None)
@@ -107,9 +110,13 @@ class HabitsConfig(BaseModel):
         return next((h for h in self.habits if h.id == habit_id), None)
 
 
-def load_schedule(path: str | Path = "config/agent.yaml") -> Schedule:
+def load_schedule(path: str | Path = "config/agent.yaml", profile: Profile | None = None) -> Schedule:
+    """The sleep window from agent.yaml; with a profile, its agent.yaml layered over it (a shift moves the night)."""
     path = Path(path)
-    raw = ((yaml.safe_load(path.read_text()) or {}) if path.exists() else {}).get("sleep") or {}
+    agent = (yaml.safe_load(path.read_text()) or {}) if path.exists() else {}
+    if profile is not None:
+        agent = profile.layer("agent.yaml", agent)
+    raw = agent.get("sleep") or {}
     return Schedule(
         tz=ZoneInfo(raw.get("timezone", "America/New_York")),
         bedtime=time.fromisoformat(raw.get("bedtime", "20:00")),
@@ -117,6 +124,11 @@ def load_schedule(path: str | Path = "config/agent.yaml") -> Schedule:
     )
 
 
-def load_config(path: str | Path = "config/habits.yaml", agent_path: str | Path = "config/agent.yaml") -> HabitsConfig:
+def load_config(path: str | Path = "config/habits.yaml", agent_path: str | Path = "config/agent.yaml",
+                profile: Profile | None = None) -> HabitsConfig:
+    """habits.yaml; with a profile, its habits.yaml layered over it and its vocabulary in the nudge texts."""
     raw = yaml.safe_load(Path(path).read_text()) or {}
-    return HabitsConfig(**raw, schedule=load_schedule(agent_path))
+    if profile is not None:
+        raw = profile.layer("habits.yaml", raw)
+    return HabitsConfig(**raw, schedule=load_schedule(agent_path, profile),
+                        vocabulary=profile.vocabulary if profile is not None else Vocabulary())

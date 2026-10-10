@@ -55,7 +55,7 @@ class Nudger:
             f = t.forgotten
             fields = {"items": " and ".join(f["items"]), "title": f["title"],
                       "minutes": round((f["starts"] - e.ts).total_seconds() / 60)}
-            evidence = [Citation(frame_ref=f["frame_ref"], ts=f["ts"], title="Still on the desk"),
+            evidence = [Citation(frame_ref=f["frame_ref"], ts=f["ts"], title=f"Still on the {self.cfg.vocabulary.workplace}"),
                         Citation(url=f["url"], ts=f["starts"], title=f["title"])]
         return self._warn(h, e.ts, value, fields, evidence)
 
@@ -93,7 +93,7 @@ class Nudger:
             return []
         fields = {"title": a.title, "hours": _hours_left(a.when, now), "minutes": round(value * 60)}
         evidence = [Citation(url=a.url, ts=a.when, title=a.title),
-                    Citation(frame_ref=t.desk_frame, ts=t.active_until, title="Last seen at the desk")]
+                    Citation(frame_ref=t.desk_frame, ts=t.active_until, title=f"Last seen at the {self.cfg.vocabulary.workplace}")]
         return self._warn(h, now, value, fields, evidence)
 
     # --- on a closed day ---
@@ -103,7 +103,7 @@ class Nudger:
         closed = next((c for c in self.tracker.history.get(e.habit_id, []) if c.day == e.day), None)
         if h is None or not e.met or e.streak != self.cfg.nudges.celebrate_streak or not (closed and closed.applies):
             return []  # a day with nothing to judge holds the streak; it does not earn a second cheer
-        message = self.cfg.nudges.celebrate.format_map(_Blank(name=h.name, streak=e.streak))
+        message = self.cfg.nudges.celebrate.format_map(_Blank(self.cfg.vocabulary.words(), name=h.name, streak=e.streak))
         return [NudgeRaised(ts=e.ts, nudge_id=uuid4().hex, habit_id=h.id, message=message, tone="celebrate")]
 
     # --- cooldown ---
@@ -116,5 +116,7 @@ class Nudger:
         if last is not None and ts - last < timedelta(minutes=cooldown):
             return []
         self._last[h.id] = ts
-        message = (text or h.nudge).format_map(_Blank(fields or {}, name=h.name, value=_n(value), target=_n(h.target)))
+        # The profile's words ({workplace}, {event}, {deadline}, ...) are available to every nudge text.
+        message = (text or h.nudge).format_map(_Blank(self.cfg.vocabulary.words(), **(fields or {}), name=h.name,
+                                                      value=_n(value), target=_n(h.target)))
         return [NudgeRaised(ts=ts, nudge_id=uuid4().hex, habit_id=h.id, message=message, evidence=evidence or [])]

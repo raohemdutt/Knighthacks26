@@ -9,6 +9,7 @@ import v from "@/components/voice/voice.module.css";
 import { ApiError, api, type ApprovalRequest } from "@/lib/api";
 import { useAtlas } from "@/lib/atlas";
 import { time } from "@/lib/format";
+import { useWords } from "@/lib/profile";
 import { approvalSentence, speechForAnswer, voiceCommand } from "@/lib/speechText";
 import { useVoice } from "@/lib/voice";
 
@@ -32,6 +33,7 @@ type Note = { text: string; tone: "info" | "error" };
 
 export default function AskPage() {
   const { chat, setChat, approvals } = useAtlas();
+  const w = useWords();
   const voice = useVoice();
   const router = useRouter();
   const [text, setText] = useState("");
@@ -244,7 +246,7 @@ export default function AskPage() {
         <div className={ui.pageHead}>
           <h1>Ask Atlas</h1>
           <p className={ui.muted}>
-            Ask out loud or by typing, about your desk, your classes or your evening. Every answer comes with the camera frames and links it
+            Ask out loud or by typing, about your {w.workplace}, your {w.event_plural} or your evening. Every answer comes with the camera frames and links it
             is based on, and the model that wrote it.
           </p>
         </div>

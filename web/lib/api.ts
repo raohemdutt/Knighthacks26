@@ -338,6 +338,49 @@ export interface PlacePack {
   places: Record<string, Place>;
 }
 
+/** Every vocabulary word with its plural and capitalised forms, as GET /api/profile sends them in `words`. */
+export interface Words {
+  workplace: string;
+  Workplace: string;
+  workplace_plural: string;
+  Workplace_plural: string;
+  activity: string;
+  Activity: string;
+  activity_plural: string;
+  Activity_plural: string;
+  event: string;
+  Event: string;
+  event_plural: string;
+  Event_plural: string;
+  deadline: string;
+  Deadline: string;
+  deadline_plural: string;
+  Deadline_plural: string;
+}
+
+/** GET /api/profile: who this box serves (config/profiles/<name>/), and the words its screens use. */
+export interface Profile {
+  name: string;
+  description: string;
+  audience: string;
+  vocabulary: { workplace: string; activity: string; event: string; deadline: string; plurals: Record<string, string> };
+  words: Words;
+  meters: { habits: string[]; dayrun: string[] };
+  shift: { start: string; end: string; sleep_after_minutes: number; sleep_hours: number } | null;
+  scenario: string | null;
+  overrides: Record<string, string>;
+}
+
+/** GET /api/dayrun/scenarios/{name}: a scripted day's own presets, never a result. */
+export interface ScenarioScript {
+  name: string;
+  now: string;
+  start_place: string | null;
+  plans: Record<string, Move[]>;
+  disruptions: Disruption[];
+  campaign: Move[][];
+}
+
 export type MoveKind = "study" | "eat" | "sleep" | "rest" | "event";
 export type Activity = "idle" | "study" | "class" | "walk" | "rest" | "event" | "eat" | "sleep";
 
@@ -1065,6 +1108,7 @@ export function snapshotUrl(camera: string, stamp: number): string {
 }
 
 export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", undefined, signal),
+  profile: (signal?: AbortSignal) => get<Profile>("/api/profile", undefined, signal),
   captureStatus: (signal?: AbortSignal) => get<{ cameras: Record<string, CameraStatus> }>("/capture/status", undefined, signal),
   liveTracks: (camera: string, signal?: AbortSignal) => get<LiveTracks>(`/capture/${encodeURIComponent(camera)}/tracks`, undefined, signal),
 
@@ -1116,6 +1160,7 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
 
   // Day Run. `scenario` runs a scripted day from fixtures/play/ ("demo") instead of live sources.
   dayrunBoard: (scenario?: string, signal?: AbortSignal) => get<Board>("/api/dayrun/board", { scenario }, signal),
+  dayrunScenario: (name: string, signal?: AbortSignal) => get<ScenarioScript>(`/api/dayrun/scenarios/${encodeURIComponent(name)}`, undefined, signal),
   dayrunSimulate: (body: PlanBody, signal?: AbortSignal) => post<SimResult>("/api/dayrun/simulate", body, signal),
   dayrunHard: (body: PlanBody & { seed?: number; count?: number; disruptions?: Disruption[] }) => post<HardResult>("/api/dayrun/hard", body),
   dayrunCommit: (body: PlanBody) => post<CommitResult>("/api/dayrun/commit", body),

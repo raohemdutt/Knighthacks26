@@ -3,6 +3,7 @@
 import { useRef, type PointerEvent } from "react";
 import type { SimResult, Tick } from "@/lib/api";
 import { activityAt, clock, dayClock, ms, riskPercent, type PlaceIndex } from "@/lib/dayrun";
+import { activityLabel, useWords } from "@/lib/profile";
 import ui from "../ui.module.css";
 import dr from "./dayrun.module.css";
 
@@ -31,6 +32,7 @@ const SERIES = [
 const END_LABEL = { energy: "Energy", focus: "Focus", risk: "Risk" } as const;
 
 export function Meters({ result, places, scrub, onScrub }: { result: SimResult; places: PlaceIndex; scrub: number; onScrub: (index: number) => void }) {
+  const w = useWords();
   const svg = useRef<SVGSVGElement>(null);
   const ticks = result.timeline;
   const t0 = ms(result.start);
@@ -79,7 +81,7 @@ export function Meters({ result, places, scrub, onScrub }: { result: SimResult; 
     <div className={dr.chartWrap}>
       <div className={dr.readout} aria-live="off">
         <p className={dr.readoutTime}>
-          <strong>{dayClock(now.t)}</strong> <span className={ui.breakWords}>{activityAt(result, at, places)}</span>
+          <strong>{dayClock(now.t)}</strong> <span className={ui.breakWords}>{activityAt(result, at, places, w)}</span>
         </p>
         <ul className={dr.legend}>
           {SERIES.map((s) => (
@@ -158,7 +160,7 @@ export function Meters({ result, places, scrub, onScrub }: { result: SimResult; 
         step={1}
         value={at}
         aria-label="Time of day"
-        aria-valuetext={`${dayClock(now.t)}: ${activityAt(result, at, places)}`}
+        aria-valuetext={`${dayClock(now.t)}: ${activityAt(result, at, places, w)}`}
         onChange={(e) => onScrub(Number(e.target.value))}
       />
 
@@ -193,7 +195,7 @@ export function Meters({ result, places, scrub, onScrub }: { result: SimResult; 
                 <td className={ui.num}>{Math.round(t.energy)}</td>
                 <td className={ui.num}>{Math.round(t.focus)}</td>
                 <td className={ui.num}>{riskPercent(t.deadline_risk)}</td>
-                <td>{t.activity}</td>
+                <td>{activityLabel(w, t.activity)}</td>
               </tr>
             ))}
           </tbody>

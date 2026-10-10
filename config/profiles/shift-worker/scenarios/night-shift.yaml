@@ -1,0 +1,45 @@
+# Day Run's scripted day for the shift worker (times America/New_York). It is 3 PM; the night shift
+# runs 10 PM to 6 AM, the handover report is due at 6:30 AM, last "night" (07:30 to 14:30) was 5 hours,
+# nothing has been eaten yet, and a colleague will be in the canteen at 9 PM.
+#   GET /api/dayrun/board?scenario=night-shift
+now: "2026-10-11T15:00:00-04:00"
+start_place: flat.desk
+
+items:
+  - {connector: calendar, kind: assignment, external_id: "rota:handover:2026-10-12", title: "Handover report, Line 3",
+     when: "2026-10-12T06:30:00-04:00", summary: "Due at the end of the shift. Counts, incidents, what the day crew needs."}
+  - {connector: calendar, kind: calendar_event, external_id: "rota:shift:2026-10-11T22:00:00-04:00",
+     title: "Night shift, Line 3", when: "2026-10-11T22:00:00-04:00", summary: "until 6:00 AM · Line 3 station"}
+  - {connector: calendar, kind: calendar_event, external_id: "rota:training:2026-10-11T17:00:00-04:00",
+     title: "Forklift refresher training", when: "2026-10-11T17:00:00-04:00", summary: "until 6:00 PM · Shift office"}
+  - {connector: calendar, kind: calendar_event, external_id: "union:meeting:2026-10-11T19:00:00-04:00",
+     title: "Union branch meeting", when: "2026-10-11T19:00:00-04:00", summary: "until 8:00 PM · Break room · optional"}
+  - {connector: calendar, kind: calendar_event, external_id: "rota:shift:2026-10-12T22:00:00-04:00",
+     title: "Night shift, Line 3", when: "2026-10-12T22:00:00-04:00", summary: "until 6:00 AM · Line 3 station"}
+
+habits:
+  "2026-10-11": {sleep: 5, meals: 0, focus_hours: 0}
+  "2026-10-12": {sleep: 6.5, meals: 1, focus_hours: 0}
+
+friends:
+  - {member: Sam, place: Canteen, start: "2026-10-11T21:00:00-04:00", end: "2026-10-11T21:45:00-04:00"}
+
+plans:
+  # Skip food, write nothing before the shift, crash on the sofa afterwards.
+  bad:
+    - {slot: s1, kind: rest}
+    - {slot: s2, kind: rest}
+    - {slot: s3, kind: sleep, minutes: 240}
+  # Eat at home, prep the handover at the desk, eat with Sam before the shift, a full sleep after it.
+  good:
+    - {slot: s1, kind: eat, place: flat.kitchen, minutes: 30}
+    - {slot: s1, kind: study, place: flat.desk, minutes: 45}
+    - {slot: s2, kind: eat, place: plant.canteen, minutes: 40, with_friend: Sam}
+    - {slot: s3, kind: eat, place: flat.kitchen, minutes: 25}
+    - {slot: s3, kind: sleep, start: "2026-10-12T07:30:00-04:00", minutes: 420}
+
+disruptions:
+  - {kind: place_closed, place: plant.canteen}
+
+actual:
+  "2026-10-11": {focus_minutes: 30, meals: 2, sleep_hours: 6.5}
