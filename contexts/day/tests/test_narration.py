@@ -410,7 +410,7 @@ def test_an_invented_fact_a_timeout_and_a_runtime_error_all_fall_back_to_the_tem
     assert morning.engine == "template" and "quiz" not in morning.spoken and morning.spoken.startswith("Morning. You got")
     assert loop.narrator.stats["rejected"] == 1 and "half past four" in loop.narrator.stats["last_problem"]
 
-    slow = StubRuntime(delay=0.4)
+    slow = StubRuntime(delay=1.5)
     loop, bus, seen = build(items, places, tmp_path / "b", runtime=slow, narration={"narration_timeout_s": 0.05})
     assert loop.narrator.config.timeout_s == 0.05
 
@@ -422,12 +422,12 @@ def test_an_invented_fact_a_timeout_and_a_runtime_error_all_fall_back_to_the_tem
         waited = clocktime.monotonic() - started
         assert loop.narrator.inflight  # the runtime is still busy: the one slot stays taken
         await settle()
-        await asyncio.sleep(0.5)  # the late reply lands
+        await asyncio.sleep(1.6)  # the late reply lands
         return waited
 
     waited = run(timed())
     (morning,) = by_moment(seen, "morning")
-    assert morning.engine == "template" and waited < 0.35 and loop.narrator.stats["timeouts"] == 1
+    assert morning.engine == "template" and waited < 1.2 and loop.narrator.stats["timeouts"] == 1  # well under the model's 1.5 s, with room for a slow CI box
     assert not loop.narrator.inflight and loop.narrator.cache  # the late, grounded reply is kept for the next time these facts come up
 
     loop, bus, seen = build(items, places, tmp_path / "c", runtime=StubRuntime(error=RuntimeError("llama-server is down")))
