@@ -57,7 +57,7 @@ def test_only_the_enrolled_person_gets_habits_and_a_replay_gives_the_same(tmp_pa
     async def live() -> Box:
         box = Box(tmp_path, live=True)
         await box.bus.publish_all(box.rig.service.set_enabled(True))
-        member = box.rig.service.start_enrollment(None, NAME)["member_id"]
+        member = box.rig.service.start_enrollment(None, NAME, consent_ack=True)["member_id"]
         for i in range(5):  # the owner enrols alone at the desk
             await box.second(Frame((b"zeb#enrol%d" % i, row(300, 100))), [])
         assert box.rig.service.enrollment_status()["state"] == "done"

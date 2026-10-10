@@ -1,10 +1,12 @@
 """Synthetic frames and a box with recognition wired the way the gateway wires it. No camera, no OpenCV."""
 
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from contexts.perception.application.identity import IdentityService
 from contexts.perception.infrastructure.identity_store import IdentityStore
+from contexts.perception.infrastructure.photo import PhotoReader
 from contexts.perception.infrastructure.recognizer import FakeRecognizer
 from contexts.vault import KeyRing, Vault
 from contracts.types import Box, Track
@@ -79,11 +81,56 @@ class Rig:
     def enroll(self, member_id, name, who: bytes, camera="cam-desk"):
         """Switch on if needed and enrol `who` from five single-face frames. Returns the events it caused."""
         out = [] if self.service.enabled else self.service.set_enabled(True)
-        self.service.start_enrollment(member_id, name)
+        self.service.start_enrollment(member_id, name, consent_ack=True)
         for i in range(self.service.frames):
             out += self.look(Frame((who + b"#enrol%d" % i, row(300, 100))), camera=camera)
         assert self.service.enrollment_status()["state"] == "done"
         return out
+
+
+# --- the face profile: frames whose faces have a look, and uploaded "photos" ---
+
+
+class Mood(Frame):
+    """A frame that also knows how each face looks: `moods` maps who (the bytes before "#") to a label."""
+
+    def __init__(self, *faces, moods=None, **kw):
+        super().__init__(*faces, **kw)
+        self.moods = moods or {}
+
+    def expression(self, face_row):
+        return self.moods.get(self.crop(face_row).split(b"#", 1)[0], "neutral")
+
+
+def photo(who: str = "ana", n: int = 0, *, w: int = 240, facing: bool = True, score: float = 0.95, brightness: float = 120,
+          sharpness: float = 300, others: tuple[str, ...] = ()) -> bytes:
+    """Stands in for an uploaded JPEG: a description of the picture, which a FakePhotoReader "decodes". Its
+    `secret` is the part of the file that must never be found anywhere afterwards."""
+    faces = [{"who": f"{who}#photo{n}", "w": w, "facing": facing, "score": score}]
+    faces += [{"who": f"{o}#photo{n}", "w": w, "facing": True, "score": 0.95} for o in others]
+    return json.dumps({"secret": f"PIXELS-OF-{who.upper()}-{n}-" + "x" * 40, "faces": faces, "brightness": brightness,
+                       "sharpness": sharpness}).encode()
+
+
+class FakePhotoReader(PhotoReader):
+    """Stands in for OpenCV: the "picture" says what is in it and how bright and sharp the face is."""
+
+    def __init__(self):
+        self.decoded = 0
+
+    def decode(self, data):
+        try:
+            raw = json.loads(data)
+        except ValueError:
+            return None
+        self.decoded += 1
+        frame = Frame(*[(f["who"].encode(), row(100 + 300 * i, 100, w=f["w"], h=f["w"] * 1.3, facing=f["facing"], score=f["score"]))
+                        for i, f in enumerate(raw["faces"])])
+        frame.brightness, frame.sharpness = raw["brightness"], raw["sharpness"]
+        return frame
+
+    def measure(self, image, face_row):
+        return image.brightness, image.sharpness
 
 
 def kinds(events):

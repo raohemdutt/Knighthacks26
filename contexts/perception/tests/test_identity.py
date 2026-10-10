@@ -72,7 +72,8 @@ def test_a_tag_needs_two_matches_in_a_row_and_is_checked_again_later():
 
 def test_recognition_is_off_until_switched_on_and_then_does_nothing_without_a_template(tmp_path):
     rig = Rig(tmp_path)
-    assert rig.service.settings() == {"identity_enabled": False, "available": True, "recognizer": "fake"}
+    assert rig.service.settings() == {"identity_enabled": False, "available": True, "recognizer": "fake", "everyone": False,
+                                      "expressions_available": False, "expression_reader": None, "photos_available": False}
     assert rig.look(Frame(face_in(person(1), b"ana#1")), [person(1)]) == [] and rig.finder.calls == 0
     with pytest.raises(IdentityError):
         rig.service.start_enrollment("m-ana", "Ana")  # enrolling needs the switch
@@ -100,7 +101,7 @@ def test_without_the_model_the_feature_says_so_and_cannot_be_switched_on(tmp_pat
 def test_enrolling_takes_five_frames_with_exactly_one_face_looking_at_the_camera(tmp_path):
     rig = Rig(tmp_path)
     rig.service.set_enabled(True)
-    status = rig.service.start_enrollment("m-ana", "Ana Example")
+    status = rig.service.start_enrollment("m-ana", "Ana Example", consent_ack=True)
     assert (status["state"], status["frames_done"], status["frames_needed"]) == ("collecting", 0, 5)
     assert "name" not in status
 
@@ -124,7 +125,8 @@ def test_enrolling_takes_five_frames_with_exactly_one_face_looking_at_the_camera
     status = rig.service.enrollment_status()
     assert (status["state"], status["member_id"], status["camera_id"]) == ("done", "m-ana", "cam-desk")
     assert [(e.enabled, e.members) for e in out if e.type == "perception.identity.changed"] == [(True, ["m-ana"])]
-    assert rig.service.members() == [{"member_id": "m-ana", "name": "Ana Example", "enrolled_at": "2026-10-11T12:00:10+00:00"}]
+    assert rig.service.members() == [{"member_id": "m-ana", "name": "Ana Example", "enrolled_at": "2026-10-11T12:00:10+00:00",
+                                      "updated_at": "2026-10-11T12:00:10+00:00", "photos": 5, "source": "live", "expressions": False}]
     template = rig.store.members()[0].vector
     assert cosine(template, FakeRecognizer().embed(b"ana#77")) > 0.9  # the average still is her
 
@@ -135,7 +137,7 @@ def test_an_enrolment_nobody_shows_up_for_times_out_and_bad_input_is_refused(tmp
     for bad_id, name in (("Ana Example", "Ana"), ("m-ana", "  "), ("../x", "Ana")):
         with pytest.raises(ValueError):
             rig.service.start_enrollment(bad_id, name)
-    made_up = rig.service.start_enrollment(None, "Ana")["member_id"]
+    made_up = rig.service.start_enrollment(None, "Ana", consent_ack=True)["member_id"]
     assert made_up.startswith("m-") and "ana" not in made_up  # the box picks an id that is not the name
     rig.look(Frame((b"ana#0", row(300, 100))))
     rig.look(Frame(), step=31)
