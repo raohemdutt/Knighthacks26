@@ -197,6 +197,10 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
                                      board=atlas.board, config_dir=atlas.settings.config_dir, guard=authorized))
     # GET /api/league, /api/league/me (200 in every state); POST /api/league/stake, /api/league/challenges -> approval cards
     app.include_router(league_router(atlas.bus, league=atlas.league, guard=authorized))
+    if atlas.spot:  # /api/spot/*: the inspection (SPOT) dashboard; 200 in every state, also without a kit
+        from contexts.spot.api import spot_router
+
+        app.include_router(spot_router(atlas.spot, atlas.bus, guard=authorized))
     app.include_router(zones_router(atlas.settings.config_dir, lambda: atlas.zone_engine, guard=authorized), prefix="/api")  # set the zones from a browser
     app.include_router(voice_router(guard=authorized), prefix="/api")  # GET /api/voice/status, POST /api/voice/talk|stop|enabled (X16)
     app.include_router(runtime_router(ModelStore(atlas.settings.data_dir / "models"), llm_url=atlas.settings.llm_url))  # GET /runtime/models (R7)

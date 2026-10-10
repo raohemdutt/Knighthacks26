@@ -1,0 +1,27 @@
+{
+  "_about": "Where each waypoint's pin TIP sits on the kit's 04_ASSETS/fictional_floor_plan.png, read off the image by eye (about +/- 6 px) and normalised 0..1 (x / width, y / height, origin top-left). Ours, not the sponsor's: the kit does not give pixel positions. The image shows both floors side by side; `panel` is each floor's rectangle on it. These do NOT follow locations.csv x_coord/y_coord by any affine map (see GET /api/spot/locations -> plan.fit).",
+  "image": "fictional_floor_plan.png",
+  "width": 1095,
+  "height": 595,
+  "panels": {
+    "1": {"x0": 0.014, "y0": 0.022, "x1": 0.683, "y1": 0.980},
+    "2": {"x0": 0.692, "y0": 0.022, "x1": 0.990, "y1": 0.980}
+  },
+  "waypoints": {
+    "WP01": {"floor": 1, "x": 0.0986, "y": 0.7950},
+    "WP02": {"floor": 1, "x": 0.1032, "y": 0.5513},
+    "WP03": {"floor": 1, "x": 0.2329, "y": 0.4218},
+    "WP04": {"floor": 1, "x": 0.1963, "y": 0.1731},
+    "WP05": {"floor": 1, "x": 0.4082, "y": 0.4000},
+    "WP06": {"floor": 1, "x": 0.5050, "y": 0.1731},
+    "WP07": {"floor": 1, "x": 0.6055, "y": 0.4975},
+    "WP08": {"floor": 1, "x": 0.3452, "y": 0.7143},
+    "WP09": {"floor": 1, "x": 0.5032, "y": 0.7143},
+    "WP10": {"floor": 1, "x": 0.6137, "y": 0.7378},
+    "WP11": {"floor": 2, "x": 0.7763, "y": 0.2538},
+    "WP12": {"floor": 2, "x": 0.9142, "y": 0.2672},
+    "WP13": {"floor": 2, "x": 0.7635, "y": 0.5697},
+    "WP14": {"floor": 2, "x": 0.9050, "y": 0.6168},
+    "WP15": {"floor": 2, "x": 0.8174, "y": 0.8202}
+  }
+}
