@@ -5,8 +5,12 @@
         --stats http://<jetson-lan-ip>:8000/api/stats --telemetry data/telemetry/*.jsonl
 
 Prints a markdown table that pastes into the Architecture Slide (D3) and the
-Devpost (D4). Every number carries its source and when it was read; a source
-that isn't there yet prints as `[TBD: ...]` instead of a made-up number.
+Devpost (D4). Every number carries the row it came from (`metrics.jsonl:<line>`,
+`ledger seq <n>`, `<file>:<line>` or the endpoint), when that row was MEASURED (not
+when this script ran; an endpoint that gives no time prints "unknown"), and the row's
+low-confidence flag, so a flagged number never reaches the slide looking like a
+measured fact (telemetry rubric TT7, Q15). A source that isn't there yet prints as
+`[TBD: ...]` instead of a made-up number.
 
 Sources:
 - gateway: /health (model version), /memory/stats (hours recorded, episodes, captions),
@@ -14,7 +18,10 @@ Sources:
 - eval JSON from `python -m contexts.agent.eval --json` (before/after on the golden questions)
 - stats endpoint (R5) and telemetry JSONL (T1 to T4): FPS, tok/s, watts, joules per answer,
   frames filtered, training minutes. Field names follow the Telemetry context page; adjust
-  KEYS below if the endpoint names them differently.
+  KEYS below if the endpoint names them differently. An endpoint value may be a plain number or
+  {value, ts, source, low_confidence}.
+- the lab's metrics file (lab/refine/metrics.jsonl) and ledger (lab/state/ledger.jsonl): the
+  measured lab numbers (teacher tok/s, watts, joules, trainer), newest measurement wins.
 """
 
 import argparse
@@ -36,7 +43,18 @@ KEYS = {
     "Joules per answer": ["joules_per_answer"],
     "Frames filtered at the edge": ["frames_filtered_pct", "motion_filtered_pct"],
     "Training minutes per run": ["train_minutes", "training_minutes"],
+    "Teacher joules per token": ["teacher_joules_per_token"],
+    "Trainer samples/s (R9700)": ["trainer_samples_per_s"],
 }
+# the same numbers as the lab's metrics file and ledger name them
+LAB_METRICS = {
+    "Teacher tok/s (R9700)": "teacher.decode_tok_s",
+    "Watts, R9700": "teacher.watts_avg",
+    "Teacher joules per token": "teacher.joules_per_token",
+    "Trainer samples/s (R9700)": "trainer.samples_per_s",
+}
+METRICS_FILE = Path(__file__).resolve().parent / "refine" / "metrics.jsonl"
+UNKNOWN = "unknown"
 
 
 def now() -> str:
@@ -44,12 +62,15 @@ def now() -> str:
 
 
 class Row:
-    def __init__(self, name: str, value: str | None, source: str, when: str | None = None, missing: str | None = None):
-        self.name, self.value, self.source, self.when, self.missing = name, value, source, when or now(), missing
+    def __init__(self, name: str, value: str | None, source: str, when: str | None = None, missing: str | None = None,
+                 low: bool = False):
+        self.name, self.value, self.source, self.missing, self.low = name, value, source, missing, low
+        self.when = when or UNKNOWN  # when the number was measured; never the time this script ran
 
     def cells(self) -> list[str]:
-        value = self.value if self.value is not None else f"[TBD: {self.missing or self.source + ' not available'}]"
-        return [self.name, value, self.source, self.when if self.value is not None else "-"]
+        if self.value is None:
+            return [self.name, f"[TBD: {self.missing or self.source + ' not available'}]", self.source, "-", "-"]
+        return [self.name, self.value, self.source, self.when, "LOW" if self.low else "no"]
 
 
 def get_json(client: httpx.Client, url: str) -> dict | None:
@@ -68,21 +89,22 @@ def gateway_rows(client: httpx.Client, base: str | None) -> list[Row]:
     health = get_json(client, f"{base}/health")
     stats = get_json(client, f"{base}/memory/stats")
     impact = get_json(client, f"{base}/api/impact")
-    rows = [Row("Atlas model", health.get("model") if health else None, f"{base}/health")]
+    read = f"read {now()}"  # these endpoints describe the box as it is now
+    rows = [Row("Atlas model", health.get("model") if health else None, f"{base}/health", read)]
     if stats:
-        rows += [Row("Hours of memory", f"{stats['hours_recorded']:.1f} h", f"{base}/memory/stats"),
-                 Row("Episodes / captions", f"{stats['episodes']} / {stats['captions']}", f"{base}/memory/stats")]
+        rows += [Row("Hours of memory", f"{stats['hours_recorded']:.1f} h", f"{base}/memory/stats", read),
+                 Row("Episodes / captions", f"{stats['episodes']} / {stats['captions']}", f"{base}/memory/stats", read)]
     else:
         rows.append(Row("Hours of memory", None, f"{base}/memory/stats"))
     total = (impact or {}).get("total")
     if total:
         rows.append(Row("Waste Watch: items seen, diversion rate",
-                        f"{total['items_seen']} items, {100 * total['diversion_rate']:.0f}% recycled", f"{base}/api/impact"))
+                        f"{total['items_seen']} items, {100 * total['diversion_rate']:.0f}% recycled", f"{base}/api/impact", read))
         ba = impact.get("before_after_nudges")
         if ba:
             rows.append(Row("Diversion before vs after nudges",
                             f"{100 * ba['before']['diversion_rate']:.0f}% -> {100 * ba['after']['diversion_rate']:.0f}%",
-                            f"{base}/api/impact"))
+                            f"{base}/api/impact", read))
     else:
         rows.append(Row("Diversion rate", None, f"{base}/api/impact"))
     return rows
@@ -93,7 +115,7 @@ def eval_rows(before: str | None, after: str | None) -> list[Row]:
         if not path or not Path(path).exists():
             return None
         data = json.loads(Path(path).read_text())
-        when = datetime.fromtimestamp(Path(path).stat().st_mtime, UTC).strftime("%Y-%m-%d %H:%M UTC")
+        when = datetime.fromtimestamp(Path(path).stat().st_mtime, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")  # when the eval ran
         return data, when
 
     b, a = load(before), load(after)
@@ -105,33 +127,90 @@ def eval_rows(before: str | None, after: str | None) -> list[Row]:
                 f"{before}, {after}", when)]
 
 
-def measured_rows(client: httpx.Client, stats_url: str | None, telemetry: list[str]) -> list[Row]:
-    found: dict[str, tuple[str, str, str]] = {}  # name -> (value, source, when)
+def _ts(text: str | None) -> datetime | None:
+    try:
+        moment = datetime.fromisoformat(str(text).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return moment if moment.tzinfo else None
+
+
+def lab_metrics(path: str | Path | None = METRICS_FILE) -> dict[str, tuple]:
+    """Newest row per metric in the lab's metrics file: metric -> (value, unit, "metrics.jsonl:<line>", ts, low)."""
+    out: dict[str, tuple] = {}
+    if not path or not Path(path).exists():
+        return out
+    for number, line in enumerate(Path(path).read_text(encoding="utf-8").splitlines(), 1):
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        name, moment = rec.get("metric"), _ts(rec.get("ts"))
+        if name is None or rec.get("value") is None or moment is None:
+            continue
+        if name not in out or moment >= _ts(out[name][3]):  # newest by measurement time; a later line wins a tie
+            out[name] = (rec["value"], rec.get("unit"), f"{Path(path).name}:{number}", rec["ts"], bool(rec.get("low_confidence")))
+    return out
+
+
+def ledger_metric(name: str, state_dir: str | None = None) -> tuple | None:
+    """The ledger's newest measurement of a metric, as (value, unit, "ledger seq <n>", ts, low), or None."""
+    try:
+        from lab.machine.ledger import latest_metric
+    except ImportError:
+        return None
+    row = latest_metric(name, state_dir=state_dir)
+    if row is None:
+        return None
+    return (row["value"], row.get("unit"), f"ledger seq {row['seq']}", row["ts"], bool(row.get("low_confidence")))
+
+
+def measured_rows(client: httpx.Client, stats_url: str | None, telemetry: list[str],
+                  metrics_file: str | Path | None = METRICS_FILE, ledger_dir: str | None = None) -> list[Row]:
+    found: dict[str, Row] = {}
+
+    def offer(row: Row) -> None:
+        """Keep the newest measurement of each number; one with no known time only fills a gap."""
+        have = found.get(row.name)
+        new, old = _ts(row.when), _ts(have.when) if have else None
+        if have is None or (new is not None and (old is None or new >= old)):
+            found[row.name] = row
+
     if stats_url and (stats := get_json(client, stats_url)):
         for name, keys in KEYS.items():
             for k in keys:
-                if stats.get(k) is not None:
-                    found[name] = (str(stats[k]), stats_url, now())
+                v = stats.get(k)
+                if isinstance(v, dict) and v.get("value") is not None:  # {value, ts, source, low_confidence}
+                    offer(Row(name, str(v["value"]), v.get("source") or stats_url, v.get("ts"), low=bool(v.get("low_confidence"))))
+                    break
+                if v is not None:
+                    offer(Row(name, str(v), stats_url))  # a bare number: when it was measured is unknown
                     break
     for pattern in telemetry:
         for path in sorted(glob.glob(pattern)):
-            for line in Path(path).read_text().splitlines():
+            for number, line in enumerate(Path(path).read_text().splitlines(), 1):
                 try:
                     rec = json.loads(line)
                 except json.JSONDecodeError:
                     continue
                 for name, keys in KEYS.items():
                     for k in keys:
-                        if rec.get(k) is not None:  # later records win: the newest measurement
-                            found[name] = (str(rec[k]), path, str(rec.get("ts", now())))
+                        if rec.get(k) is not None:
+                            offer(Row(name, str(rec[k]), f"{path}:{number}", rec.get("ts"), low=bool(rec.get("low_confidence"))))
                             break
-    return [Row(name, *found[name]) if name in found else
-            Row(name, None, "stats endpoint / telemetry", missing="R5 stats or T1-T4 telemetry not recorded yet")
+    lab = lab_metrics(metrics_file)
+    for name, metric in LAB_METRICS.items():
+        for got in (lab.get(metric), ledger_metric(metric, ledger_dir)):
+            if got:
+                value, unit, source, ts, low = got
+                offer(Row(name, f"{value} {unit}" if unit else str(value), source, ts, low=low))
+    return [found.get(name) or Row(name, None, "stats endpoint / telemetry / lab metrics",
+                                   missing="R5 stats, T1-T4 telemetry or a lab metrics row not recorded yet")
             for name in KEYS]
 
 
 def table(rows: list[Row]) -> str:
-    out = ["| Number | Value | Source | Read at |", "| --- | --- | --- | --- |"]
+    out = ["| Number | Value | Source | Measured at | Low confidence |", "| --- | --- | --- | --- | --- |"]
     out += ["| " + " | ".join(c.replace("|", "/") for c in r.cells()) + " |" for r in rows]
     return "\n".join(out)
 
