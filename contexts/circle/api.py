@@ -50,9 +50,10 @@ def circle_router(bus, *, circle=None, sharing=None, presence=None, board: Calen
                   guard: Callable | None = None) -> APIRouter:
     """`circle`, `sharing`, `presence` and `board` are the Atlas fields of the same names; any may be None."""
     router = APIRouter()
-    agreed = AgreedEvents()
-    bus.subscribe("circle.event.agreed", agreed.on_agreed, replay=True)  # state only: rebuilt from the log
     config = _circle_config(config_dir)
+    names = config.get("names") if isinstance(config.get("names"), dict) else {}
+    agreed = AgreedEvents({str(k): str(v) for k, v in names.items() if v})
+    bus.subscribe("circle.event.agreed", agreed.on_agreed, replay=True)  # state only: rebuilt from the log
 
     @router.get("/api/circle/events")
     def events() -> dict:
