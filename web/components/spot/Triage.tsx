@@ -122,6 +122,13 @@ export function TriageQueue({ items, scoreText, orders, limit = 6 }: { items: Tr
             </div>
             <p className={s.reason}>{it.reason}</p>
             <p className={s.stepText}>{it.next_step.text}</p>
+            {it.model ? (
+              <p className={`${s.small} ${s.muted}`} title="The scorer trained on the kit. It orders ties and explains; it never changes a score.">
+                Model on its latest action <Id id={it.model.action_id} />: <b>{it.model.score.toFixed(2)}</b>
+                {it.model.flagged ? " (flagged)" : " (not flagged)"}
+                {it.model.why.length ? `, mainly because ${it.model.why[0]?.why}` : ""}
+              </p>
+            ) : null}
             <EvidenceLine evidence={it.evidence} max={8} />
             {it.kind === "asset" ? <OrderActions assetId={it.asset_id} anomalyId={it.anomaly_id} orders={orders} compact /> : null}
           </div>

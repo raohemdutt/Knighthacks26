@@ -13,6 +13,7 @@ Read (every one answers 200 without a kit: {"configured": false, "note": how to 
 - GET  /api/spot/handoff             five to eight lines for the next shift, each with its evidence
 - GET  /api/spot/assumptions         every assumption the analysis makes
 - GET  /api/spot/validation          our numbers next to the kit's validation_results.json, and every data surprise
+- GET  /api/spot/model               the small anomaly scorer trained on the kit: honest evaluation, weights, what it flags
 - GET  /api/spot/work_orders         work orders written on this box (after approval)
 - GET  /api/spot/kit/assets/{path}   an image from the kit's assets folder (read-only; only files the loader listed)
 - GET  /api/spot/plan/image          the floor plan re-encoded small, when fixtures/spot/floor_plan.jpg exists
@@ -134,6 +135,11 @@ def spot_router(spot: SpotContext, bus, guard: Callable | None = None) -> APIRou
     @router.get("/validation")
     def validation() -> dict:
         return {"configured": True, "kit_path": read.kit.path, **read.validation} if read.configured else {**not_configured(), "rows": [], "issues": []}
+
+    @router.get("/model")
+    def model() -> dict:
+        """The anomaly scorer trained on the kit: how it did on later missions against two plain rules, its weights, its flags."""
+        return read.model_view()
 
     @router.get("/work_orders")
     def work_orders() -> dict:

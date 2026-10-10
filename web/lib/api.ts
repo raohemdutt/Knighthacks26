@@ -1601,6 +1601,7 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   spotHandoff: (signal?: AbortSignal) => get<Spot.Handoff>("/api/spot/handoff", undefined, signal),
   spotAssumptions: (signal?: AbortSignal) => get<{ assumptions: Spot.Assumption[] }>("/api/spot/assumptions", undefined, signal),
   spotValidation: (signal?: AbortSignal) => get<Spot.Validation>("/api/spot/validation", undefined, signal),
+  spotModel: (signal?: AbortSignal) => get<Spot.Model>("/api/spot/model", undefined, signal),
   spotWorkOrders: (signal?: AbortSignal) => get<{ work_orders: Spot.WorkOrder[]; folder: string }>("/api/spot/work_orders", undefined, signal),
   spotReplay: (signal?: AbortSignal) => get<Spot.Replay>("/api/spot/replay/state", undefined, signal),
   spotReplayStart: () => post<Spot.Replay>("/api/spot/replay/start", {}),

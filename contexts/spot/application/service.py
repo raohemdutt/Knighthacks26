@@ -11,7 +11,7 @@ import math
 from functools import cached_property
 from pathlib import Path
 
-from contexts.spot.domain import analysis, triage as triage_mod
+from contexts.spot.domain import analysis, scorer, triage as triage_mod
 from contexts.spot.domain.analysis import HEADLINES, Evidence, Finding, _words
 from contexts.spot.domain.models import Kit
 from contexts.spot.domain.stats import MIN_N, pct, wilson
@@ -79,8 +79,61 @@ class Spot:
         return {f.id: f for f in analysis.all_findings(self.kit)} if self.kit else {}
 
     @cached_property
+    def model(self) -> dict | None:
+        """The anomaly scorer's saved weights (fixtures/spot/anomaly_scorer.json, written by `python -m contexts.spot.train`)."""
+        if self.kit is None:
+            return None
+        path = Path(self.kit.path).parent / "anomaly_scorer.json"
+        try:
+            model = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
+        except ValueError:
+            return None
+        return model if model and model.get("features") == list(scorer.FEATURES) else None
+
+    @cached_property
+    def scores(self) -> dict[str, dict]:
+        return {r["action_id"]: r for r in scorer.score_all(self.kit, self.model)} if self.model else {}
+
+    @cached_property
     def triage(self) -> list[dict]:
-        return triage_mod.triage(self.kit) if self.kit else []
+        """The ranked queue. The model never raises or lowers a score: it only orders items whose scores are equal, and
+        each asset item shows the model's read of the latest action on that asset."""
+        if not self.kit:
+            return []
+        items = triage_mod.triage(self.kit)
+        for item in items:
+            item["model"] = None
+            if item["kind"] == "asset" and self.scores:
+                last = next((a for a in reversed(self.kit.actions) if a.asset_id == item["id"]), None)
+                if last:
+                    row = self.scores[last.action_id]
+                    item["model"] = {"action_id": last.action_id, "score": row["score"], "flagged": row["flagged"], "why": row["why"]}
+        items.sort(key=lambda i: (-i["score"], -(i["model"]["score"] if i["model"] else 0), i["rank"]))
+        for rank, item in enumerate(items, 1):
+            item["rank"] = rank
+        return items
+
+    def model_view(self) -> dict:
+        kit, model = self.kit, self.model
+        if kit is None:
+            return {**not_configured(), "available": False}
+        if model is None:
+            return {"configured": True, "available": False,
+                    "note": "No trained weights next to the kit. Run: python -m contexts.spot.train"}
+        quiet = []  # flagged by the model although the reading-threshold rule calls the action normal
+        for row in self.scores.values():
+            if row["flagged"] and not row["outside_band"]:
+                a = kit.action[row["action_id"]]
+                quiet.append({**row, "asset_id": a.asset_id, "location_id": a.location_id, "action_type": a.action_type,
+                              "failure_type": a.failure_type, "timestamp": a.timestamp.isoformat()})
+        quiet.sort(key=lambda r: (r["timestamp"], r["score"]), reverse=True)
+        weights = sorted(({"feature": f, "weight": w, "why": scorer.PLAIN.get(f, f)} for f, w in zip(model["features"], model["weights"])),
+                         key=lambda x: -abs(x["weight"]))
+        return {"configured": True, "available": True, "name": model["name"], "kind": model["kind"], "verdict": model["verdict"],
+                "evaluation": model["evaluation"], "threshold": model["threshold"], "trained_on": model["trained_on"], "weights": weights,
+                "quiet_flags": quiet[:15], "quiet_total": len(quiet), "quiet_without_anomaly_row": sum(1 for r in quiet if not r["has_anomaly_row"]),
+                "use": "Orders ties in the triage queue and explains a flag with its top features. It never raises an alert by itself.",
+                "reproduce": "python -m contexts.spot.train   (deterministic; --check compares with the committed weights)"}
 
     @cached_property
     def uninspected(self) -> list[dict]:

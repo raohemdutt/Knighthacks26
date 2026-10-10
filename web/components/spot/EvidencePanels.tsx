@@ -1,8 +1,8 @@
 "use client";
 
-import { Pill, RateBars, Track, pValue, pct, useOpen } from "./bits";
+import { Id, Pill, RateBars, Track, pValue, pct, stamp, useOpen, words } from "./bits";
 import s from "./spot.module.css";
-import type { Bar, Finding, Metric } from "./types";
+import type { Bar, Finding, Metric, Model, RuleScore } from "./types";
 
 const VERDICT_TONE = { changed: "ok", "no clear change": "muted", "not enough data": "watch" } as const;
 
@@ -192,5 +192,95 @@ export function OverTimeCard({ f }: { f: Finding }) {
         })}
       </svg>
     </Card>
+  );
+}
+
+/** The small model trained on the kit: what it scored on later missions next to two plain rules, and what it flags. */
+export function ModelCard({ m }: { m: Model }) {
+  if (!m.available || !m.evaluation) {
+    return (
+      <section className={s.card}>
+        <div className={s.cardHead}>
+          <h2>Anomaly scorer (trained on the kit)</h2>
+        </div>
+        <p className={s.sentence}>{m.note ?? "Not available."}</p>
+      </section>
+    );
+  }
+  const row = (name: string, r: RuleScore) => (
+    <tr key={name}>
+      <td>{name}</td>
+      <td>
+        {r.tp}/{r.flagged}
+      </td>
+      <td>
+        {r.tp}/{r.tp + r.fn}
+      </td>
+      <td>{r.pr_auc === null ? "n/a" : r.pr_auc.toFixed(2)}</td>
+    </tr>
+  );
+  const block = (title: string, e: NonNullable<Model["evaluation"]>["primary"]) => (
+    <>
+      <tr>
+        <th colSpan={4}>
+          {title}: {e.n} actions, {e.positives} with an anomaly
+        </th>
+      </tr>
+      {row("Learned model", e.model)}
+      {row("Rule: the action failed", e.status_rule)}
+      {row("Rule: reading outside the band", e.threshold_rule)}
+    </>
+  );
+  return (
+    <section className={s.card}>
+      <div className={s.cardHead}>
+        <h2>Anomaly scorer (trained on the kit, runs on this box)</h2>
+      </div>
+      <p className={s.sentence}>
+        A {m.kind} on {m.trained_on?.actions} actions ({m.trained_on?.anomalies} with an anomaly row). {m.use}
+      </p>
+      <table className={s.means}>
+        <thead>
+          <tr>
+            <th>On missions it had not seen</th>
+            <th>Precision</th>
+            <th>Recall</th>
+            <th>PR-AUC</th>
+          </tr>
+        </thead>
+        <tbody>
+          {block(`Held out ${m.evaluation.primary.test_missions?.[0] ?? ""} onward`, m.evaluation.primary)}
+          {block("Rolling cuts, pooled", m.evaluation.rolling)}
+        </tbody>
+      </table>
+      <p className={s.caveat}>{m.verdict}</p>
+      <div className={s.sub}>What weighs most</div>
+      <p className={`${s.small} ${s.muted}`}>
+        {(m.weights ?? []).slice(0, 5).map((w) => `${words(w.feature)} ${w.weight > 0 ? "+" : ""}${w.weight.toFixed(2)}`).join(" · ")}
+      </p>
+      <div className={s.sub}>
+        Normal to the threshold rule, flagged by the model ({m.quiet_total}; {m.quiet_without_anomaly_row} have no anomaly row)
+      </div>
+      <table className={s.tbl}>
+        <tbody>
+          {(m.quiet_flags ?? []).slice(0, 6).map((f) => (
+            <tr key={f.action_id}>
+              <td>
+                <Id id={f.action_id} />
+                <div className={`${s.small} ${s.muted}`}>{stamp(f.timestamp)}</div>
+              </td>
+              <td>
+                <b>{f.score.toFixed(2)}</b>
+              </td>
+              <td>
+                {words(f.action_type)} of <Id id={f.asset_id} /> at <Id id={f.location_id} /> {f.has_anomaly_row ? <Pill tone="watch">has an anomaly row</Pill> : <Pill tone="muted">no anomaly row</Pill>}
+                <div className={`${s.small} ${s.muted}`}>because {f.why.map((w) => w.why).join("; ") || "nothing stands out"}</div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className={`${s.small} ${s.muted}`}>Scores on these rows are in-sample (the saved weights are fitted on every mission); the table above is the honest test. Reproduce: {m.reproduce}</p>
+    </section>
   );
 }

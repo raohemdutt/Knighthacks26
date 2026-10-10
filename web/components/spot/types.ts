@@ -197,6 +197,42 @@ export interface TriageItem {
   confirmed: boolean;
   inspection: Inspection | null;
   evidence: Evidence;
+  model?: { action_id: string; score: number; flagged: boolean; why: ModelWhy[] } | null;
+}
+
+export interface ModelWhy {
+  feature: string;
+  why: string;
+  contribution: number;
+}
+
+export interface RuleScore {
+  tp: number;
+  fp: number;
+  fn: number;
+  flagged: number;
+  precision: number;
+  recall: number;
+  pr_auc: number | null;
+}
+
+/** GET /api/spot/model: the small anomaly scorer trained on the kit. */
+export interface Model {
+  configured: boolean;
+  available: boolean;
+  note?: string;
+  name?: string;
+  kind?: string;
+  verdict?: string;
+  threshold?: number;
+  trained_on?: { missions: number; actions: number; anomalies: number };
+  evaluation?: Record<"primary" | "rolling", { n: number; positives: number; model: RuleScore; status_rule: RuleScore; threshold_rule: RuleScore; test_missions?: string[] }>;
+  weights?: { feature: string; weight: number; why: string }[];
+  quiet_flags?: { action_id: string; mission_id: string; asset_id: string; location_id: string; action_type: string; failure_type: string; timestamp: string; score: number; has_anomaly_row: boolean; failed: boolean; why: ModelWhy[] }[];
+  quiet_total?: number;
+  quiet_without_anomaly_row?: number;
+  use?: string;
+  reproduce?: string;
 }
 
 export interface Risk extends Inspection {

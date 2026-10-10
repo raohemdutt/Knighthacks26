@@ -218,22 +218,24 @@
     align-items: start;
   }
   .evidence {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px;
-    align-items: start;
+    columns: 2;
   }
 }
 
 @media (min-width: 1300px) {
   .evidence {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    columns: 3;
   }
 }
 
+/* Panels of very different heights: flow them in columns so no row leaves a hole. */
 .evidence {
-  display: grid;
-  gap: 16px;
+  column-gap: 16px;
+}
+
+.evidence > * {
+  break-inside: avoid;
+  margin-bottom: 16px;
 }
 
 .card {

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AskBox, HandoffCard } from "@/components/spot/AskBox";
 import { OpenCtx, pct, range, type Opener } from "@/components/spot/bits";
 import { Detail } from "@/components/spot/Detail";
-import { BatteryCard, OverTimeCard, RateCard, VersionCard } from "@/components/spot/EvidencePanels";
+import { BatteryCard, ModelCard, OverTimeCard, RateCard, VersionCard } from "@/components/spot/EvidencePanels";
 import { FacilityMap } from "@/components/spot/FacilityMap";
 import { MissionTimeline, ReplayBar } from "@/components/spot/ReplayPanel";
 import s from "@/components/spot/spot.module.css";
@@ -38,6 +38,7 @@ export default function SpotPage() {
   const assets = useFetch((sig) => api.spotAssets(sig));
   const handoff = useFetch((sig) => api.spotHandoff(sig));
   const orders = useFetch((sig) => api.spotWorkOrders(sig));
+  const scorer = useFetch((sig) => api.spotModel(sig));
   const latestId = overview.data?.latest_mission?.mission_id;
   const latest = useFetch((sig) => (latestId ? api.spotMission(latestId, sig) : Promise.resolve(null)), latestId ?? "");
 
@@ -187,12 +188,12 @@ export default function SpotPage() {
             ) : null}
             {triage.data ? <UninspectedRisk rows={triage.data.uninspected} /> : null}
             <AskBox modelLine={o.model.role} />
+            {handoff.data?.configured ? <HandoffCard handoff={handoff.data} /> : null}
           </div>
           <div className={s.col}>
             {live && live.index > 0 ? <MissionTimeline live={live} latest={latest.data ?? null} alerts={live.alerts ?? []} /> : null}
             {triage.data ? <TriageQueue items={triage.data.items} scoreText={triage.data.score} orders={orders.data?.work_orders ?? []} limit={3} /> : <Loading what="the triage queue" />}
             {live && live.index > 0 ? null : <MissionTimeline live={live} latest={latest.data ?? null} alerts={[]} />}
-            {handoff.data?.configured ? <HandoffCard handoff={handoff.data} /> : null}
           </div>
         </div>
 
@@ -206,6 +207,7 @@ export default function SpotPage() {
             {byId.reliability_by_type ? <RateCard f={byId.reliability_by_type} overall={overall} /> : null}
             {byId.reliability_by_location ? <RateCard f={byId.reliability_by_location} overall={overall} limit={8} onRow={(b) => setTarget({ kind: "location", id: b.key })} /> : null}
             {byId.over_time ? <OverTimeCard f={byId.over_time} /> : null}
+            {scorer.data?.configured ? <ModelCard m={scorer.data} /> : null}
             {byId.hidden_failures ? <RateCard f={byId.hidden_failures} overall={overall} limit={8} onRow={(b) => setTarget({ kind: "mission", id: b.key })} /> : null}
             {byId.navigation_hotspot ? <RateCard f={byId.navigation_hotspot} overall={overall} limit={5} onRow={(b) => setTarget({ kind: "location", id: b.key })} /> : null}
             {byId.anomalies_hidden ? <RateCard f={{ ...byId.anomalies_hidden, rows: [] }} overall={overall} /> : null}
