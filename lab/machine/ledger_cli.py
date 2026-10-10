@@ -56,6 +56,7 @@ HELP_WORDS = ("-h", "--help", "help")
 # One line per sub-verb, alphabetical: "name": "module:function".
 SUBVERBS: dict[str, str] = {
     "add": "lab.machine.ledger_cli:add_main",
+    "backfill": "lab.machine.backfill:main",
     "grep": "lab.machine.ledger_cli:grep_main",
     "tail": "lab.machine.ledger_cli:tail_main",
 }
