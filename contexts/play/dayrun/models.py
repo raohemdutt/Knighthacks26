@@ -380,7 +380,7 @@ class ReplayResult(BaseModel):
 
 class Estimate(BaseModel):
     block: str
-    minutes: float
+    minutes: float = Field(ge=0)
 
 
 class ForecastBody(BaseModel):

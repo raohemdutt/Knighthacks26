@@ -162,6 +162,13 @@ def test_forecast(client, plans):
                                                   "measured": {"m3": 180, "m4": 30}})
     assert r.status_code == 200 and r.json()["score"] == 75 and r.json()["bias"] < 0
     assert client.post("/api/dayrun/forecast", json={"estimates": [{"block": "m3", "minutes": 90}]}).status_code == 422
+    # a negative or infinite length is refused, not scored (it gave a score of -199999999900)
+    assert client.post("/api/dayrun/forecast", json={"estimates": [{"block": "a", "minutes": -5}], "measured": {"a": 7}}).status_code == 422
+    assert client.post("/api/dayrun/forecast", json={"estimates": [{"block": "a", "minutes": 5}], "measured": {"a": -7}}).status_code == 422
+    inf = b'{"estimates": [{"block": "a", "minutes": 5}], "measured": {"a": 1e400}}'  # JSON that parses as infinity
+    assert client.post("/api/dayrun/forecast", content=inf, headers={"content-type": "application/json"}).status_code == 422
+    zero = client.post("/api/dayrun/forecast", json={"estimates": [{"block": "a", "minutes": 0}], "measured": {"a": 0}}).json()
+    assert zero["score"] == 100
     # against a committed day's measured blocks
     client.post("/api/dayrun/commit", json={"scenario": "demo", "moves": plans["good"]}, headers={"Authorization": "Bearer t"})
     r = client.post("/api/dayrun/forecast", json={"estimates": [{"block": "m7", "minutes": 480}, {"block": "m3", "minutes": 120}],
