@@ -41,12 +41,13 @@ MEAL_MINUTES = 30
 MEAL_REACH = 150  # a meal moves at most this far from its usual time, unless a win needs it
 MEAL_GRACE = 120  # a usual meal time this recently passed can still be had now
 MEALS_A_DAY = 3  # an extra meal for energy never takes a day past this
-ENERGY_MEAL_APART = 150  # ... and is at least this far from the meals around it
+MEAL_APART = 150  # meals are laid this far apart when they can be (the engine counts one from its own, shorter gap)
 MAX_BLOCK = 90  # the longest study block, unless the caller knows the person's own
 BREAK_MINUTES = 15  # between two study blocks (five more after a short night)
+LONG_BREAK_MINUTES = 45  # the longest break tried between two blocks
 MIN_STUDY = 25  # a shorter study block is not worth the walk
 STUDY_MARGIN = 10  # study minutes planned beyond the estimate of what a deadline needs
-WALK_WEIGHT = 0.25  # study minutes a minute of detour is worth, when picking where to study
+WALK_WEIGHT = 0.5  # study minutes a minute of detour is worth, when picking where to study
 NAP_MINUTES = (90, 60, 30)
 NAP_BEFORE_BED = 240  # a nap ends at least this long before the night
 WAKE_UP_MINUTES = 30  # no study straight out of bed
@@ -109,8 +110,12 @@ class _Day:
         self.floor = cfg.stars.energy_floor
         self.short_night = board.initial.sleep_hours < cfg.win.sleep_hours
         self.pause = BREAK_MINUTES + (5 if self.short_night else 0)
+        drain, gain = abs(cfg.focus_per_hour.get("study", 0.0)), cfg.focus_per_hour.get("rest", 0.0)
+        # the break that gives back the focus a full block takes, by the engine's own rates
+        self.long_pause = max(self.pause, min(LONG_BREAK_MINUTES, _ceil5(self.block * drain / gain) if gain > 0 else self.pause))
         self.sims = 0
         self._walks: dict[tuple, int] = {}
+        self._places: dict[str, list[str]] = {}
         self._results: dict[tuple, SimResult] = {}
         self._traces: dict[tuple, tuple[bool, dict[str, str]]] = {}
         self.base_late: dict[str, int] = {}
@@ -257,9 +262,13 @@ class _Day:
     def detour(self, g: Gap, place: str) -> int:
         return self.walk(g.p0, place) + self.walk(place, g.p1) - self.walk(g.p0, g.p1)
 
-    def places(self, slot: str, kind: str) -> list[str]:
-        """Where this slot offers `kind`, nearest first."""
-        return list(dict.fromkeys(o.place for o in self.slots[slot].moves if o.kind == kind and o.feasible and o.place))
+    def places(self, kind: str) -> list[str]:
+        """Where the board offers `kind`, in the order its slots list them. (A slot's own "feasible" is measured
+        from where the calendar leaves you, which is not always where the plan does: the room is worked out here.)"""
+        if kind not in self._places:
+            offered = [o.place for s in self.board.slots for o in s.moves if o.kind == kind and o.place]
+            self._places[kind] = [p for p in dict.fromkeys(offered) if p not in self.board.closed]
+        return self._places[kind]
 
     # --- the night ---
 
@@ -330,7 +339,7 @@ class _Day:
         return eaten + sum(m.date() == when.date() for m in self.meal_starts(plan))
 
     def meal(self, plan: Plan, ideal: datetime, reach: int | None = None, before: datetime | None = None,
-             apart: int | None = None) -> Plan | None:
+             apart: int | None = None, role: str = "meal") -> Plan | None:
         """The plan with one more meal as near `ideal` as one fits (within `reach` minutes, ending by `before`),
         far enough from every other meal to count as one. None when nowhere can hold it."""
         apart = max(apart or 0, self.cfg.meal_gap_minutes)
@@ -339,7 +348,7 @@ class _Day:
         lengths = list(dict.fromkeys([MEAL_MINUTES, max(self.cfg.meal_min_minutes, self.cfg.min_move_minutes)]))
         found: list[tuple] = []
         for g in self.gaps(plan):
-            for n, place in enumerate(self.places(g.slot, "eat")):
+            for n, place in enumerate(self.places("eat")):
                 a, b = self.room(g, place)
                 b = min(b, before) if before else b
                 for minutes in lengths:
@@ -352,43 +361,68 @@ class _Day:
                             continue
                         found.append((off + MEAL_MINUTES - minutes, self.detour(g, place), start, n, g.slot, place, minutes))
         for _, _, start, _, slot, place, minutes in sorted(found):
-            new = self.put(plan, slot, Piece("eat", place, start, minutes, "meal"))
+            new = self.put(plan, slot, Piece("eat", place, start, minutes, role))
             if new:
                 return new
         return None
 
-    def meal_wishes(self) -> list[datetime]:
-        """When the meals still to eat would usually be: the rest of today's, a late one now if today would
-        otherwise end short of a win, and tomorrow's that fall on this board. A meal already on the calendar
-        stands for the usual one nearest it."""
+    def meal_wishes(self) -> list[tuple[datetime, int | None]]:
+        """When the meals still to eat would usually be, each with how far it may move: the rest of today's
+        (what was eaten stands for the usual meals already past, and any more for those coming up soon), a
+        late one as soon as it fits if today would otherwise end short of a win, and tomorrow's that fall on
+        this board. A meal already on the calendar stands for the usual one nearest it."""
         start, end = self.board.start, self.board.end
         eaten = self.board.initial.meals
-        today = [datetime.combine(start.date(), t, start.tzinfo) for t in MEAL_TIMES][eaten:]
-        ahead = [t for t in today if t >= start - timedelta(minutes=MEAL_GRACE)]
-        late = max(0, min(1, len(today) - len(ahead), self.cfg.win.meals - eaten - len(ahead)))
-        wishes = [start] * late + [max(t, start) for t in ahead]
+        today = [datetime.combine(start.date(), t, start.tzinfo) for t in MEAL_TIMES]
+        past = [t for t in today if t < start]
+        spare = max(0, eaten - len(past))  # eaten beyond the usual meals so far: the next usual ones, if near
+        open_past = past[eaten:]
+        ahead = []
+        for t in today[len(past):]:
+            if spare and minutes_between(start, t) <= MEAL_REACH:
+                spare -= 1
+            else:
+                ahead.append(t)
+        recent = [t for t in open_past if t >= start - timedelta(minutes=MEAL_GRACE)]
+        late = max(0, min(1, len(open_past) - len(recent), self.cfg.win.meals - eaten - len(recent) - len(ahead)))
+        wishes: list[tuple[datetime, int | None]] = [(start, None)] * late + [(start, MEAL_REACH) for _ in recent]
+        wishes += [(t, MEAL_REACH) for t in ahead]
         day = start.date() + timedelta(days=1)
         while day <= end.date():
-            wishes += [datetime.combine(day, t, start.tzinfo) for t in MEAL_TIMES]
+            wishes += [(datetime.combine(day, t, start.tzinfo), MEAL_REACH) for t in MEAL_TIMES]
             day += timedelta(days=1)
-        wishes = [t for t in wishes if t + timedelta(minutes=MEAL_MINUTES) <= end]
+        wishes = [(t, reach) for t, reach in wishes if t + timedelta(minutes=MEAL_MINUTES) <= end]
         for b in self.board.blocks:
             if b.activity == "eat" and wishes:
-                near = min(wishes, key=lambda t: abs(minutes_between(t, b.start)))
-                if abs(minutes_between(near, b.start)) <= MEAL_REACH:
+                near = min(wishes, key=lambda x: abs(minutes_between(x[0], b.start)))
+                if abs(minutes_between(near[0], b.start)) <= MEAL_REACH:
                     wishes.remove(near)
         return wishes
 
-    def meals(self, plan: Plan) -> Plan:
+    def lay_meals(self, plan: Plan, wishes: list[tuple[datetime, int | None]]) -> tuple[Plan, list[datetime]]:
         missed: list[datetime] = []
-        for ideal in self.meal_wishes():
-            new = self.meal(plan, ideal, reach=MEAL_REACH)
+        for ideal, reach in wishes:
+            new = self.meal(plan, ideal, reach=reach, apart=MEAL_APART) or self.meal(plan, ideal, reach=reach)
             if new:
                 plan = new
             else:
                 missed.append(ideal)
-        for ideal in [*missed, self.board.start]:  # a win needs more: as near a missed one as any slot can hold it
-            if self.meal_count(plan) >= self.cfg.win.meals:
+        return plan, missed
+
+    def meals(self, plan: Plan) -> Plan:
+        """Every meal still to eat, each near its usual time. If that leaves today short of the meals a win
+        needs, today's are laid again as near as any slot can hold them (a fixed block in the way moves a
+        meal, it does not drop it); if the board is still short, one more goes wherever one fits."""
+        start, need = self.board.start, self.cfg.win.meals
+        wishes = self.meal_wishes()
+        first, missed = self.lay_meals(plan, wishes)
+        if self.meals_on(first, start) < need:
+            again, missed_again = self.lay_meals(plan, [(t, None if t.date() == start.date() else reach) for t, reach in wishes])
+            if self.meals_on(again, start) > self.meals_on(first, start):
+                first, missed = again, missed_again
+        plan = first
+        for ideal in [*missed, start]:
+            if self.meal_count(plan) >= need:
                 break
             plan = self.meal(plan, ideal) or plan
         return plan
@@ -405,16 +439,17 @@ class _Day:
             if d.due > self.board.end:
                 capacity = (d.due - self.board.end).total_seconds() / 3600 * cfg.capacity_minutes_per_day / 24
                 must, should = cfg.on_track_risk * capacity, cfg.stars.risk * capacity
-            if left > 0.5:
+            if left > (0.01 if d.due <= self.board.end else 0.5):  # due on this board: every minute, or it is missed
                 out.append((d, "must" if left > must else "should" if left > should else "could", left))
         return out
 
-    def study_piece(self, g: Gap, d: Deadline, want: int) -> Piece | None:
-        """The best study block for this gap: where the minutes are worth most, a break away from other study."""
-        lo = g.t0 + timedelta(minutes=self.pause if g.before == "study" else WAKE_UP_MINUTES if g.before == "sleep" else 0)
+    def study_piece(self, g: Gap, d: Deadline, want: int, pause: int) -> Piece | None:
+        """The best study block for this gap: where the minutes are worth most, `pause` after other study."""
+        wait = pause if g.before == "study" else WAKE_UP_MINUTES if g.before == "sleep" else 0
+        lo = g.t0 + timedelta(minutes=wait)
         hi = min(g.t1 - timedelta(minutes=self.pause if g.after == "study" else 0), d.due)
         best = None
-        for place in self.places(g.slot, "study"):
+        for place in self.places("study"):
             a, b = self.room(g, place)
             a, b = max(a, lo), min(b, hi)
             minutes = min(want, self.block, minutes_between(a, b))
@@ -430,13 +465,18 @@ class _Day:
         return best[1] if best else None
 
     def study_spots(self, plan: Plan, d: Deadline, todo: float) -> list[tuple[Piece, Plan]]:
+        """One block per gap, as early as it fits; after other study, once after the short break and once
+        after the long one, the break itself as rest when it is spent in the same place."""
         want = max(MIN_STUDY, _ceil5(todo / STUDY_RATE + STUDY_MARGIN))
         out = []
         for g in self.gaps(plan):
-            piece = self.study_piece(g, d, want)
-            new = self.put(plan, g.slot, piece) if piece else None
-            if new:
-                out.append((piece, new))
+            for pause in ((self.pause, self.long_pause) if g.before == "study" else (0,)):
+                piece = self.study_piece(g, d, want, pause)
+                new = self.put(plan, g.slot, piece) if piece else None
+                if new and g.before == "study" and piece.place == g.p0 and minutes_between(g.t0, piece.start) >= 10:
+                    new = self.put(new, g.slot, Piece("rest", g.p0, g.t0, minutes_between(g.t0, piece.start), "break")) or new
+                if new:
+                    out.append((piece, new))
         return out
 
     def rests(self, plan: Plan) -> list[tuple[Piece, Plan]]:
@@ -466,14 +506,16 @@ class _Day:
                 break
             now, left = self.key(res, plan), self.left(res)
             spots: list[tuple[Piece, Plan]] = []
-            for d, _, todo in needs:
+            share = MIN_GAIN
+            for d, urgency, todo in needs:
                 spots = self.study_spots(plan, d, todo)
                 if spots:
+                    share = 0.0 if urgency == "must" else MIN_GAIN  # a win depends on it: any work counts
                     break
             cands = []  # (score, order, plan)
             for n, (piece, cand) in enumerate([*spots, *self.rests(plan)]):
                 gain = left - self.left(self.sim(cand))
-                if gain >= (MIN_GAIN * piece.minutes if piece.kind == "study" else 1.0):
+                if gain >= (max(1.0, share * piece.minutes) if piece.kind == "study" else 1.0):
                     cands.append((self.score(cand), -n, cand, piece))
             best = max(cands, key=lambda c: c[:2], default=None)
             if best is None or best[0] <= now:  # the useful blocks cross the floor: help them
@@ -494,11 +536,24 @@ class _Day:
             plan = best[2]
         return plan
 
+    def resized(self, plan: Plan, slot: str, p: Piece, minutes: int) -> Plan | None:
+        """The plan with study block `p` cut to `minutes` (0: gone); the break after it starts when it now ends."""
+        after = next((q for q in plan[slot] if q.role == "break" and q.start == p.end), None)
+        new = self.drop(plan, slot, p)
+        if after:
+            new = self.drop(new, slot, after)
+        if minutes:
+            new = self.put(new, slot, replace(p, minutes=minutes))
+            if new and after:
+                new = self.put(new, slot, replace(after, start=after.start - timedelta(minutes=p.minutes - minutes),
+                                                  minutes=after.minutes + p.minutes - minutes)) or new
+        return new if new and self.trace(new)[0] else None
+
     def trim(self, plan: Plan) -> Plan:
-        """Cut the study and the rest the day turned out not to need, the latest first."""
-        for slot, p in reversed([(s, p) for s, p in self.pieces(plan) if p.role in ("study", "rest")]):
-            without = self.drop(plan, slot, p)
-            if self.trace(without)[0] and self.no_worse(without, plan):
+        """Cut the study, and the rest, naps and extra meals, the day turned out not to need, the latest first."""
+        for slot, p in reversed([(s, p) for s, p in self.pieces(plan) if p.role in ("study", "rest", "nap", "extra")]):
+            without = self.resized(plan, slot, p, 0)
+            if without and self.no_worse(without, plan):
                 plan = without
                 continue
             if p.role != "study":
@@ -506,14 +561,21 @@ class _Day:
             lo, hi = MIN_STUDY // 5, p.minutes // 5  # the shortest length (in fives) that costs nothing
             while lo < hi:
                 mid = (lo + hi) // 2
-                new = self.put(plan, slot, replace(p, minutes=mid * 5), instead_of=p)
+                new = self.resized(plan, slot, p, mid * 5)
                 if new and self.no_worse(new, plan):
                     hi = mid
                 else:
                     lo = mid + 1
-            new = self.put(plan, slot, replace(p, minutes=lo * 5), instead_of=p) if lo * 5 < p.minutes else None
+            new = self.resized(plan, slot, p, lo * 5) if lo * 5 < p.minutes else None
             if new and self.no_worse(new, plan):
                 plan = new
+        for slot, p in self.pieces(plan):  # a break with no study on one side of it is not a break
+            if p.role == "break":
+                i = plan[slot].index(p)
+                before = plan[slot][i - 1].kind if i else next((g.before for g in self.gaps(plan) if g.slot == slot), "")
+                after = plan[slot][i + 1].kind if i + 1 < len(plan[slot]) else ""
+                if not (before == after == "study"):
+                    plan = self.drop(plan, slot, p)
         return plan
 
     # --- energy ---
@@ -529,13 +591,13 @@ class _Day:
         and (when asked) rest in place of free time."""
         out: list[Plan] = []
         if self.meals_on(plan, low) < MEALS_A_DAY:
-            new = self.meal(plan, low - timedelta(minutes=MEAL_MINUTES), before=low, apart=ENERGY_MEAL_APART)
+            new = self.meal(plan, low - timedelta(minutes=MEAL_MINUTES), before=low, apart=MEAL_APART, role="extra")
             if new:
                 out.append(new)
         home = self.board.home
         nights = self.nights(plan)
-        if not any(p.role == "nap" for _, p in self.pieces(plan)):
-            bed = min((p.start for _, p in nights), default=self.board.end)
+        bed = min((p.start for _, p in nights if p.start > low), default=self.board.end)
+        if not any(p.role == "nap" for _, p in self.pieces(plan)) and minutes_between(low, bed) > 120:
             for g in self.gaps(plan):
                 if g.t0 >= low:
                     break
@@ -552,7 +614,8 @@ class _Day:
                 if new:
                     out.append(new)
         if rest and sum(p.role == "rest" for _, p in self.pieces(plan)) < MAX_RESTS:
-            free = sorted((g for g in self.gaps(plan) if g.t0 < low), key=lambda g: (-minutes_between(g.t0, min(g.t1, low)), g.t0))
+            free = sorted((g for g in self.gaps(plan) if g.t0 < low and "rest" not in (g.before, g.after)),
+                          key=lambda g: (-minutes_between(g.t0, min(g.t1, low)), g.t0))
             for g in free[:2]:
                 end = min(g.t1 - timedelta(minutes=self.walk(g.p0, g.p1)), low)
                 minutes = min(REST_MAX_MINUTES, minutes_between(g.t0, end))
@@ -563,7 +626,9 @@ class _Day:
         return out
 
     def energize(self, plan: Plan, rest: bool = False) -> Plan:
-        """While energy crosses the floor, do before a low point whatever the engine credits most."""
+        """While energy crosses the floor, do before a low point whatever the engine credits most. Rest in place
+        of free time is kept only when it gets the day all the way above the floor: it is not padding."""
+        start = plan
         for _ in range(ENERGY_STEPS):
             lows = self.low_points(self.sim(plan))
             now = self.score(plan)[:-1]
@@ -572,6 +637,8 @@ class _Day:
             if best is None or best[0] <= now:
                 break
             plan = cands[-best[1]]
+        if rest and self.under(self.sim(plan)) > 0:
+            return self.energize(start)
         return plan
 
     # --- repair ---
@@ -603,7 +670,7 @@ class _Day:
                 if c.ok:
                     continue
                 if c.id == "meals":
-                    cands += [m for m in (self.meal(plan, t) for t in [self.board.start, *self.meal_wishes()]) if m]
+                    cands += [m for m in (self.meal(plan, t) for t in [self.board.start, *(t for t, _ in self.meal_wishes())]) if m]
                 elif c.id == "sleep":
                     cands += self.more_sleep(plan)
                 elif c.id in deadlines:
@@ -695,7 +762,7 @@ class _Day:
                 until = min(d.due, board.end)
                 open_minutes = 0
                 for g in self.gaps(self.empty()):
-                    rooms = [self.room(g, p) for p in self.places(g.slot, "study")]
+                    rooms = [self.room(g, p) for p in self.places("study")]
                     open_minutes += max([minutes_between(a, min(b, until)) for a, b in rooms] + [0])
                 open_minutes += sum(minutes_between(b.start, min(b.end, until)) for b in board.blocks if b.activity == "study" and b.start < until)
                 if d.due <= board.end:
