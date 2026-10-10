@@ -3,7 +3,11 @@
 # The GPU target comes from rocminfo, so the same steps build for the R9700 (gfx1201, DUB accounts A and B) and for
 # the Strix Halo (gfx1151, SJC accounts C and D); GFX=<target> overrides it.
 # Idempotent and resumable: re-run after a pod relaunch; finished steps are skipped.
-# Usage on the pod (JupyterLab terminal):  bash lab/pod_a_teacher.sh [proxy|build|download|serve|all]
+# Usage on the pod (JupyterLab terminal):  bash lab/pod_a_teacher.sh [facts|proxy|build|download|serve|models|stop|all]
+# From the box, with nothing typed on the pod (the patch file is uploaded next to the script):
+#   python -m lab.controller run-script --account D --with lab/vllm-gfx1201.diff lab/pod_a_teacher.sh build
+# facts prints the pod's hour-0 facts and changes nothing; models asks the local server for /v1/models; stop ends
+# the server. build and download end with a line "### <step> wall_s=<seconds>" for the ledger.
 # Callers reach the server at https://<hub>/user/<account>/proxy/8000/v1/... with header
 # "Authorization: token <hub API token>" (jupyter-server-proxy must be installed once: step "proxy").
 set -u
@@ -21,6 +25,72 @@ MAX_LEN="${MAX_LEN:-16384}"
 GPU_UTIL="${GPU_UTIL:-0.90}"
 SERVE_DIR="$HOME/serve"
 SERVE_LOG="$SERVE_DIR/vllm.log"
+
+timed() {
+  # Run a step and print its wall-clock, so the caller can write it to the ledger without a stopwatch.
+  local t0 rc
+  t0=$(date +%s)
+  "$@"; rc=$?
+  echo "### $1 wall_s=$(( $(date +%s) - t0 )) rc=$rc"
+  return $rc
+}
+
+facts() {
+  # Hour-0 facts, read-only: what the task pages record beside R2's and R29's tables.
+  echo "date_utc: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "gfx: $(gpu_arch)"
+  echo "gpu: $(rocminfo 2>/dev/null | grep -m1 'Marketing Name' | sed 's/.*Marketing Name: *//')"
+  echo "cpu: $(grep -m1 'model name' /proc/cpuinfo | sed 's/.*: //'), $(nproc) threads"
+  echo "mem: $(awk '/MemTotal/ {t=$2} /MemAvailable/ {a=$2} END {printf "%.0f GB total, %.0f GB available", t/1048576, a/1048576}' /proc/meminfo)"
+  echo "os: $(. /etc/os-release 2>/dev/null; echo "$PRETTY_NAME"), kernel $(uname -r)"
+  echo "hip: $(hipconfig --version 2>/dev/null || echo none)"
+  python3 - <<'PY'
+import importlib, importlib.util
+for name in ("torch", "triton", "numpy", "vllm", "transformers", "huggingface_hub", "amdsmi", "jupyter_server_proxy"):
+    if importlib.util.find_spec(name) is None:
+        print(f"{name}: absent")
+        continue
+    try:
+        print(f"{name}: {getattr(importlib.import_module(name), '__version__', 'present')}")
+    except Exception as exc:  # a broken install is a fact too
+        print(f"{name}: import fails ({type(exc).__name__})")
+try:
+    import torch
+    print(f"torch_gpu: available={torch.cuda.is_available()} count={torch.cuda.device_count()}"
+          + (f" mem_gib={torch.cuda.get_device_properties(0).total_memory / 2**30:.1f}" if torch.cuda.is_available() else ""))
+except Exception as exc:
+    print(f"torch_gpu: {type(exc).__name__}")
+PY
+  local tool tools=""
+  for tool in hipcc gcc git wget curl cmake ninja pkg-config hf amd-smi rocm-smi; do
+    command -v "$tool" >/dev/null 2>&1 && tools="$tools $tool" || tools="$tools no-$tool"
+  done
+  echo "tools:$tools"
+  echo "home: $HOME ($(df -h "$HOME" | awk 'NR==2 {print $2 " size, " $4 " free, " $1}'))"
+  echo "cwd: $(pwd) ($(df -h . | awk 'NR==2 {print $4 " free, " $1}'))"
+  echo "home_holds: $(ls -A "$HOME" 2>/dev/null | tr '\n' ' ')"
+  # No ss or netstat in the image: try the ports the lab uses.
+  echo "listeners: $(python3 -c "import socket
+for port in (8000, 8099, 8790, 8888):
+    s = socket.socket(); s.settimeout(1)
+    print(port if s.connect_ex(('127.0.0.1', port)) == 0 else 'no-%d' % port, end=' ')
+    s.close()")"
+  local code host
+  for host in github.com huggingface.co pypi.org repo.radeon.com; do
+    code=$(python3 -c "import urllib.request,sys
+try: print(urllib.request.urlopen('https://$host', timeout=10).status)
+except Exception as e: print(getattr(e, 'code', type(e).__name__))" 2>/dev/null)
+    echo "egress $host: $code"
+  done
+  # Idle watts: SOCKET_POWER is the whole APU package; ten reads one second apart, the first can be high.
+  local i watts=""
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    watts="$watts $(amd-smi metric --power 2>/dev/null | grep -m1 -o 'SOCKET_POWER: *[0-9.]\+' | grep -o '[0-9.]\+$')"
+    sleep 1
+  done
+  echo "idle_socket_power_w:$watts"
+  echo "server_running: $(pgrep -f 'vllm.entrypoints' >/dev/null && echo yes || echo no)"
+}
 
 gpu_arch() {
   # The first gfx target rocminfo lists: gfx1201 on the R9700, gfx1151 on the Strix Halo.
@@ -150,11 +220,30 @@ serve() {
   echo "server did not come up; see $SERVE_LOG"; tail -20 "$SERVE_LOG"
 }
 
+models() {
+  python3 -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:$PORT/v1/models', timeout=10).read().decode())"
+}
+
+stop() {
+  # End the server and wait until it is gone, so the pod is left as it was found.
+  pkill -f "vllm.entrypoints" 2>/dev/null || { echo "no teacher server running"; return 0; }
+  for i in $(seq 1 30); do
+    pgrep -f "vllm.entrypoints" >/dev/null || { echo "teacher stopped"; return 0; }
+    sleep 2
+  done
+  pkill -9 -f "vllm.entrypoints" 2>/dev/null; sleep 2
+  pgrep -f "vllm.entrypoints" >/dev/null && { echo "teacher still running"; return 1; }
+  echo "teacher stopped (killed)"
+}
+
 case "$STEP" in
+  facts) facts ;;
   proxy) proxy ;;
-  build) build ;;
-  download) download ;;
+  build) timed build ;;
+  download) timed download ;;
   serve) serve ;;
-  all) proxy; build; download; serve ;;
+  models) models ;;
+  stop) stop ;;
+  all) proxy; timed build; timed download; serve ;;
   *) echo "unknown step $STEP"; exit 2 ;;
 esac
