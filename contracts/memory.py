@@ -65,6 +65,9 @@ class SearchHit(BaseModel):
     text: str  # matching caption or summary
     score: float
     frame_ref: FrameRef | None = None
+    kind: str = "episode"  # "episode", or a connector item kind ("assignment", "message", ...)
+    url: str | None = None  # set for connector items, so answers can cite the link
+    title: str | None = None
 
 
 class HourBucket(BaseModel):

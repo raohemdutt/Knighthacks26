@@ -170,3 +170,17 @@ def test_due_this_week_answers_from_connector_items_with_links():
     cal = asyncio.run(QA(FakeRuntime(), FakeMemory(items=items), clock=lambda: sunday_10am).ask("What's on my calendar today?"))
     assert [c.title for c in cal.citations] == ["Judging"]
     assert asyncio.run(QA(FakeRuntime(), FakeMemory(), clock=lambda: sunday_10am).ask("Anything due tomorrow?")).text == NO_EVIDENCE
+
+
+def test_search_hits_for_connector_items_cite_their_link():
+    from contracts.memory import SearchHit
+
+    class ItemSearch(FakeMemory):
+        def search(self, q, limit=5):
+            return [SearchHit(episode_id="item:canvas:a", camera_id="", ts=NOW, text="HW 4 covers recursion", score=1.0,
+                              kind="assignment", url="https://canvas/a", title="HW 4")]
+
+    call = ChatResult(content="", tool_calls=[ToolCall(id="1", name="search_memory", arguments={"q": "recursion"})], model_version="v1")
+    rt = FakeRuntime(chat_replies=[call, ChatResult(content="HW 4.", model_version="v1")])
+    a = asyncio.run(QA(rt, ItemSearch(), clock=lambda: NOW).ask("Anything about recursion?"))
+    assert a.citations[0].url == "https://canvas/a" and a.citations[0].episode_id is None

@@ -54,6 +54,7 @@ REDDIT_PAGE = """<a data-testid="post-title-text" href="https://www.reddit.com/r
 
 @pytest.mark.skipif(os.environ.get("ATLAS_SKIP_BROWSER") == "1", reason="no browser on this machine")
 def test_page_scripts_parse_saved_markup():
+    pytest.importorskip("patchright")
     async def run():
         b = Browser({"headless": True, "profile_dir": os.path.join(os.environ.get("TMP", "/tmp"), "atlas-test-profile")})
         try:
@@ -88,6 +89,7 @@ FORM_PAGE = """<form action="about:blank" onsubmit="document.body.innerHTML='<ma
 
 @pytest.mark.skipif(os.environ.get("ATLAS_SKIP_BROWSER") == "1", reason="no browser on this machine")
 def test_submit_form_fills_and_clicks(tmp_path):
+    pytest.importorskip("patchright")  # optional extra: pip install -e ".[browser]"
     page_file = tmp_path / "form.html"
     page_file.write_text(FORM_PAGE)
 
