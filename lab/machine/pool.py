@@ -175,10 +175,12 @@ RESULT_REFUSED = "refused"     # python -m lab sit started nothing
 V_BEGIN, V_START, V_END, V_BENCH = "pool begin", "pool start", "pool end", "pool bench"
 V_PAUSE, V_HOLD, V_STOP, V_DRAIN, V_EXIT = "pool pause", "pool hold", "pool stop", "pool drain", "pool exit"
 
+#: The track alternation of the title recognisers, built from the one track list refine_merge owns.
+_TRACK_ALTERNATION = "|".join(re.escape(track) for track in refine_merge.TRACKS)
 _PASS_TITLE = re.compile(
-    r"^(?:first refinement pass|refinement pass [0-9]+), (?P<track>telemetry|learning|plumbing|kernels) track\b",
+    rf"^(?:first refinement pass|refinement pass [0-9]+), (?P<track>{_TRACK_ALTERNATION}) track\b",
     re.IGNORECASE)
-_LOOP_TITLE = re.compile(r"^(?P<track>telemetry|learning|plumbing|kernels) loop, passes\b", re.IGNORECASE)
+_LOOP_TITLE = re.compile(rf"^(?P<track>{_TRACK_ALTERNATION}) loop, passes\b", re.IGNORECASE)
 _MERGE_TITLE = re.compile(r"^(?:first merge pass|merge pass [0-9]+)\b", re.IGNORECASE)
 _PRIORITY = re.compile(r"P(?P<rank>[0-9])", re.IGNORECASE)
 _ID = re.compile(r"^(?P<letters>[A-Za-z]+)(?P<number>[0-9]+)(?P<rest>.*)$")
