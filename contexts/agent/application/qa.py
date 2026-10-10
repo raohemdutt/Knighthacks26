@@ -154,6 +154,14 @@ def unsure(text: str) -> bool:
     return text.strip() == NO_EVIDENCE or bool(REFUSAL.search(text))
 
 
+# About the world outside the room, so only the web can answer: with web tools these skip small talk (A13)
+OUTSIDE = re.compile(
+    r"\b(?:scores?|standings|playoffs?|box score|final score|kickoff|tip-?off)\b"
+    r"|\b(?:game|match|matchup) (?:against|vs\.?|versus|with)\b|\b(?:last|latest|most recent|next|upcoming) (?:game|match)\b"
+    r"|\b(?:vs\.?|versus)\b|\bwho (?:won|is winning|plays)\b|\bdid (?:ucf|uf|the knights|the gators)\b",
+    re.IGNORECASE)
+
+
 WEB_HINT = (" For news, sports scores, opening hours or anything outside this room, use web_search, "
             "then read_page on the best link.")
 HISTORY_HOURS = 24.0
@@ -369,8 +377,13 @@ class QA:
             return Answer(plan.text or NO_EVIDENCE, plan.citations, plan.model_version)
         evidence = self.prefetch(question)
         if evidence is None:
+            if self.web and OUTSIDE.search(question):  # a score or a game: straight to the tools, which can search
+                return await self.tool_loop(question, stream)
             if self.talk and self.talk.wants(question):
-                return await self.talk.reply(question, stream)
+                a = await self.talk.reply(question, stream)
+                if self.web and unsure(a.text):  # small talk gave up ("I can't browse the web"): let the tools try
+                    return await self.tool_loop(question, stream)
+                return a
             return await self.tool_loop(question, stream)
         unsure_ok = self.web is not None and not evidence.room_only  # A13: may fall back to the tool loop
         if not evidence:
