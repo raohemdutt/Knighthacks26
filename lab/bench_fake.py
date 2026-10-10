@@ -1,22 +1,24 @@
 """A stand-in model server and pod for lab/bench.py: spawned like vLLM or llama-server, read like a Strix Halo pod.
 
-    python lab/bench_fake.py serve --port 8100 --engine vllm --log serve.log --root FAKE_ROOT [options]
+    python lab/bench_fake.py serve --port 0 --port-file serve.port --engine vllm --log serve.log --root FAKE_ROOT
 
-    from lab.bench_fake import FakeHost
+    from lab.bench_fake import FakeHost, FakePower
     host = FakeHost(FAKE_ROOT)              # what lab/bench.py reads on a pod: amd-smi, /proc, /sys, versions
+    power = FakePower(FAKE_ROOT)            # watts on a fixed grid, worked out from the fake server's own decodes
 
 Nothing here touches a GPU or the network beyond 127.0.0.1. The tests spawn `serve` as a real process, so a run of the
-harness against it is a real cold spawn, a real token stream and a real stop; only the GPU is pretend.
+harness against it is a real cold spawn, a real token stream and a real stop; only the GPU is pretend. What the tests
+assert about it is structure and values the fake decides (counts, roles, conditions, cached tokens, mem_busy_percent,
+watts bounds), never a rate measured on the test machine's clock.
 
 The server (`serve`). An OpenAI-compatible server with the routes the harness uses: GET /v1/models (the served name,
 its checkpoint as root and max_model_len, as vLLM answers), GET /health, and POST /v1/chat/completions streamed as
 server-sent events (one token per chunk, a finish chunk, a usage chunk when stream_options.include_usage is set, then
-[DONE]). It honours max_tokens, ignore_eos (without it, an answer ends after a third of max_tokens with finish reason
-stop) and temperature. Time is real and kept short: the first token after --ttft-s (plus --image-ttft-s per image),
-then one token every 1 / min(--stream-tok-s, --capacity-tok-s / streams decoding) seconds, so more concurrent
-streams make each one slower and the sum faster, as batching does. With --prefix-caching on, a request whose whole
-prompt was seen before answers its first token after a tenth of the TTFT, as a prefix-cache hit would; the harness's
-per-request nonce is what keeps that from happening.
+[DONE]). It honours max_tokens and ignore_eos (without it, an answer ends after a third of max_tokens with finish
+reason stop). Tokens come --stream-tok-s apart after --ttft-s. With --prefix-caching on, a request whose whole prompt
+was seen before is a prefix-cache hit and its usage says so in prompt_tokens_details.cached_tokens, as vLLM's does;
+the harness's per-request nonce is what keeps measured requests from hitting. With --port 0 it binds a free port
+itself and writes it to --port-file, so no test ever races another process for a port.
 
 At start-up it waits --startup-s and writes a serve log in the engine's own words (--engine vllm: the lines vLLM's
 b1388b1 source logs for the engine config, the linear kernel, the attention backends and the KV cache; --engine
@@ -28,21 +30,20 @@ ones. Under --root it then writes what a pod exposes about a running server:
                                                   wrapper that changes what the launch meant to set)
     <root>/sys/class/kfd/kfd/proc/<pid>/queues/N  --queues queue folders
     <root>/sys/class/drm/card0/device/vendor      0x1002
-    <root>/sys/class/drm/card0/device/mem_busy_percent   updated while it serves
-    <root>/fake_load                              {"t", "pid", "port", "active", "band"}, refreshed every 50 ms
-                                                  and whenever a stream starts or ends
+    <root>/sys/class/drm/card0/device/mem_busy_percent   MEM_BUSY_ONE + MEM_BUSY_STEP per extra stream, set when a
+                                                  stream starts decoding and held until the next one starts (so
+                                                  a read during a lone request always sees MEM_BUSY_ONE)
+    <root>/fake_load                              {"pid", "port", "active"}, rewritten whenever a stream starts or ends
+    <root>/decodes.jsonl                          one {"start", "end"} per request, written before its [DONE]
 
-Bands. <root>/band_plan.txt, when present, holds one word per spawn (fast or slow), taken in spawn order through
-<root>/spawn_count. A slow spawn decodes at --slow-factor of the rate and reads a higher mem_busy_percent, which is
-the pattern the harness's band classification has to find without being told.
-
-The pod (`FakeHost`). lab.bench.Host over a fake file-system root and recorded command output: amd-smi metric prints
-the Strix Halo output recorded on pod C (fixtures/telemetry/pod_power/strixhalo_amdsmi_metric_power.txt), its
-SOCKET_POWER set from <root>/fake_load (8 W with no server, 9.2 W with one loaded and idle, 15 W more per stream
-decoding, the morning's pod C figures in lab/README.md stretched to make the arithmetic visible); amd-smi static
---driver and --asic and amd-smi firmware print fixtures/lab/bench/amdsmi_*_synthetic.txt (made from amd-smi's output
-layout, not recorded: the SJC image has amd-smi off PATH and nobody has run those subcommands there yet); python
-prints the pod's torch and Triton versions; git prints a fixed commit. Stdlib only.
+The pod. `FakeHost` is lab.bench.Host over the fake root and recorded command output: amd-smi metric prints the Strix
+Halo output recorded on pod C (fixtures/telemetry/pod_power/strixhalo_amdsmi_metric_power.txt), its SOCKET_POWER set
+from <root>/fake_load (IDLE_NO_SERVER_W with no live server, IDLE_LOADED_W loaded, WATTS_PER_STREAM more per stream);
+amd-smi static --driver and --asic and amd-smi firmware print fixtures/lab/bench/amdsmi_*_synthetic.txt (made from
+amd-smi's output layout, not recorded); python prints the pod's torch and Triton versions; git prints a fixed commit.
+`FakePower` is a power source for lab.bench sessions that never depends on a sampling thread being scheduled: its
+samples sit on a fixed grid from start() to the moment they are asked for, each IDLE_NO_SERVER_W plus
+WATTS_PER_STREAM per request decoding at that instant by <root>/decodes.jsonl. Stdlib only.
 """
 from __future__ import annotations
 
@@ -59,7 +60,7 @@ from typing import Any
 if not __package__:  # run by path (the tests spawn it so): the repo root, one folder up, holds lab/
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from lab import bench  # noqa: E402
+from lab import bench, pod_power  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
 POWER_FIXTURE = REPO / "fixtures" / "telemetry" / "pod_power" / "strixhalo_amdsmi_metric_power.txt"
@@ -69,8 +70,8 @@ FAKE_VERSIONS = {"torch": "2.9.1+rocm7.13.0", "triton": "3.5.1", "hip": "7.13.0"
 IDLE_NO_SERVER_W = 8.0
 IDLE_LOADED_W = 9.2
 WATTS_PER_STREAM = 15.0
-HEARTBEAT_S = 0.05
-MEM_BUSY = {"fast": 55.0, "slow": 85.0}
+MEM_BUSY_ONE = 55.0
+MEM_BUSY_STEP = 4.0
 
 
 # --- the server -------------------------------------------------------------------------------------------------
@@ -79,25 +80,12 @@ class FakeEngine:
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
         self.root = Path(args.root) if args.root else None
+        self.port = args.port
         self.active = 0
-        self.lock = threading.Lock()
-        self.files = threading.Lock()  # one heartbeat writes at a time, so a stale count never lands last
+        self.busy = 0.0
+        self.lock = threading.Lock()        # the counters
+        self.files = threading.Lock()       # one writer of the shared files at a time, so a stale value never lands last
         self.seen: set[str] = set()
-        self.band = self._take_band()
-        self.factor = args.slow_factor if self.band == "slow" else 1.0
-        self.stop = threading.Event()
-
-    def _take_band(self) -> str:
-        if self.root is None:
-            return "fast"
-        plan = self.root / "band_plan.txt"
-        counter = self.root / "spawn_count"
-        n = int(counter.read_text()) if counter.exists() else 0
-        counter.write_text(str(n + 1))
-        if not plan.exists():
-            return "fast"
-        words = plan.read_text().split()
-        return words[n] if n < len(words) else "fast"
 
     # files a pod exposes
 
@@ -108,12 +96,13 @@ class FakeEngine:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name(path.name + f".{os.getpid()}.tmp")
         tmp.write_bytes(data.encode() if isinstance(data, str) else data)
-        for _ in range(20):
+        for _ in range(200):
             try:
                 os.replace(tmp, path)
                 return
-            except PermissionError:  # Windows: a reader has it open
+            except PermissionError:  # Windows: a reader has it open for a moment
                 time.sleep(0.005)
+        raise OSError(f"could not replace {path}")
 
     def publish_process(self) -> None:
         pid = os.getpid()
@@ -123,24 +112,21 @@ class FakeEngine:
             if self.root is not None:
                 (self.root / f"sys/class/kfd/kfd/proc/{pid}/queues/{q}").mkdir(parents=True, exist_ok=True)
         self._write("sys/class/drm/card0/device/vendor", "0x1002\n")
-        self.heartbeat()
+        self.publish_load()
 
-    def mem_busy(self, active: int) -> float:
-        if active == 0:
-            return 0.0
-        return min(100.0, MEM_BUSY[self.band] + 4.0 * (active - 1))
-
-    def heartbeat(self) -> None:
+    def publish_load(self) -> None:
         with self.files:
             with self.lock:
-                active = self.active
-            self._write("fake_load", json.dumps({"t": time.time(), "pid": os.getpid(), "port": self.args.port,
-                                                 "active": active, "band": self.band}))
-            self._write("sys/class/drm/card0/device/mem_busy_percent", f"{int(self.mem_busy(active))}\n")
+                active, busy = self.active, self.busy
+            self._write("fake_load", json.dumps({"pid": os.getpid(), "port": self.port, "active": active}))
+            self._write("sys/class/drm/card0/device/mem_busy_percent", f"{busy:g}\n")
 
-    def beat_forever(self) -> None:
-        while not self.stop.wait(HEARTBEAT_S):
-            self.heartbeat()
+    def log_decode(self, start: float, end: float) -> None:
+        if self.root is None:
+            return
+        with self.files:
+            with open(self.root / "decodes.jsonl", "a", encoding="utf-8") as fh:
+                fh.write(json.dumps({"start": start, "end": end}) + "\n")
 
     def serve_log(self) -> str:
         a = self.args
@@ -155,7 +141,7 @@ class FakeEngine:
                 "llama_context: flash_attn    = enabled",
                 f"llama_kv_cache: size = 2048.00 MiB ( {a.kv_tokens} cells,  16 layers, {a.parallel}/{a.parallel} seqs), "
                 "K (f16): 1024.00 MiB, V (f16): 1024.00 MiB",
-                f"main: server is listening on http://127.0.0.1:{a.port} - starting the main loop", ""])
+                "main: server is listening - starting the main loop", ""])
         conc = a.kv_tokens / a.max_len
         pre = "(EngineCore_DP0 pid=%d) INFO 10-10 19:30:20 " % os.getpid()
         return "\n".join([
@@ -174,33 +160,28 @@ class FakeEngine:
 
     def chat(self, handler: BaseHTTPRequestHandler, body: dict[str, Any]) -> None:
         a = self.args
-        messages = body.get("messages") or []
-        prompt_text = json.dumps(messages, sort_keys=True)
+        prompt_text = json.dumps(body.get("messages") or [], sort_keys=True)
         images = prompt_text.count('"image_url"')
         max_tokens = int(body.get("max_tokens") or 16)
         n = max_tokens if body.get("ignore_eos") else max(1, max_tokens // 3)
         finish = "length" if body.get("ignore_eos") else "stop"
-        ttft = a.ttft_s + a.image_ttft_s * images
         with self.lock:
             hit = a.prefix_caching == "on" and prompt_text in self.seen
             self.seen.add(prompt_text)
-        if hit:
-            ttft /= 10.0
         handler.send_response(200)
         handler.send_header("Content-Type", "text/event-stream")
         handler.send_header("Cache-Control", "no-cache")
         handler.end_headers()
-        time.sleep(ttft)
+        time.sleep(a.ttft_s)
         with self.lock:
             self.active += 1
-        self.heartbeat()  # the load and mem_busy_percent change as the stream starts decoding, not 50 ms later
+            self.busy = min(100.0, MEM_BUSY_ONE + MEM_BUSY_STEP * (self.active - 1))
+        self.publish_load()   # before the first token goes out, so a read at any token sees this stream decoding
+        start = time.time()
         try:
             for i in range(n):
-                with self.lock:
-                    streams = self.active
-                rate = min(a.stream_tok_s, a.capacity_tok_s / max(1, streams)) * self.factor
                 if i:
-                    time.sleep(1.0 / rate)
+                    time.sleep(1.0 / a.stream_tok_s)
                 self._event(handler, {"object": "chat.completion.chunk", "model": a.model,
                                       "choices": [{"index": 0, "delta": {"content": f"t{i} "}, "finish_reason": None}]})
             self._event(handler, {"object": "chat.completion.chunk", "model": a.model,
@@ -208,12 +189,14 @@ class FakeEngine:
         finally:
             with self.lock:
                 self.active -= 1
-            self.heartbeat()
+            self.publish_load()
+            self.log_decode(start, time.time())
         if (body.get("stream_options") or {}).get("include_usage"):
             prompt_tokens = len(prompt_text) // 4 + 300 * images
             self._event(handler, {"object": "chat.completion.chunk", "model": a.model, "choices": [],
                                   "usage": {"prompt_tokens": prompt_tokens, "completion_tokens": n,
-                                            "total_tokens": prompt_tokens + n}})
+                                            "total_tokens": prompt_tokens + n,
+                                            "prompt_tokens_details": {"cached_tokens": prompt_tokens if hit else 0}}})
         handler.wfile.write(b"data: [DONE]\n\n")
         handler.wfile.flush()
 
@@ -226,6 +209,7 @@ class FakeEngine:
 def make_handler(engine: FakeEngine) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.0"
+        timeout = 60   # a client that stops reading cannot hold a handler thread for ever
 
         def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
             return
@@ -265,17 +249,18 @@ def serve(args: argparse.Namespace) -> int:
         os.environ[key] = value
     engine = FakeEngine(args)
     time.sleep(args.startup_s)
+    server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(engine))
+    server.daemon_threads = True
+    engine.port = server.server_address[1]
     log = Path(args.log)
     log.parent.mkdir(parents=True, exist_ok=True)
     log.write_text(engine.serve_log(), encoding="utf-8")
     engine.publish_process()
-    threading.Thread(target=engine.beat_forever, daemon=True).start()
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(engine))
-    server.daemon_threads = True
-    try:
-        server.serve_forever(poll_interval=0.05)
-    finally:
-        engine.stop.set()
+    if args.port_file:   # written last and whole: once the harness can read it, the port is bound and listening
+        tmp = Path(args.port_file + ".tmp")
+        tmp.write_text(str(engine.port))
+        os.replace(tmp, args.port_file)
+    server.serve_forever(poll_interval=0.05)
     return 0
 
 
@@ -283,7 +268,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="lab/bench_fake.py", description=__doc__.splitlines()[0])
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("serve")
-    s.add_argument("--port", type=int, required=True)
+    s.add_argument("--port", type=int, required=True, help="0: bind a free port and write it to --port-file")
+    s.add_argument("--port-file", default=None)
     s.add_argument("--engine", choices=("vllm", "llamacpp"), default="vllm")
     s.add_argument("--log", required=True)
     s.add_argument("--root", default=None)
@@ -293,11 +279,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--kv-tokens", type=int, default=163840)
     s.add_argument("--parallel", type=int, default=16)
     s.add_argument("--stream-tok-s", type=float, default=400.0)
-    s.add_argument("--capacity-tok-s", type=float, default=1600.0)
-    s.add_argument("--ttft-s", type=float, default=0.03)
-    s.add_argument("--image-ttft-s", type=float, default=0.02)
-    s.add_argument("--startup-s", type=float, default=0.1)
-    s.add_argument("--slow-factor", type=float, default=0.6)
+    s.add_argument("--ttft-s", type=float, default=0.01)
+    s.add_argument("--startup-s", type=float, default=0.05)
     s.add_argument("--queues", type=int, default=3)
     s.add_argument("--prefix-caching", choices=("on", "off"), default="on")
     s.add_argument("--set-env", action="append", metavar="K=V")
@@ -315,16 +298,14 @@ def spawn_python() -> str:
     return getattr(sys, "_base_executable", None) or sys.executable
 
 
-def serve_command(port_placeholder: str = "{port}", **options: Any) -> list[str]:
-    """The argv the harness spawns for the fake, with {port} and {log} left for it to fill."""
-    argv = [spawn_python(), str(Path(__file__).resolve()), "serve", "--port", port_placeholder, "--log", "{log}"]
+def serve_command(**options: Any) -> list[str]:
+    """The argv the harness spawns for the fake: port 0 with {port_file} and {log} left for the harness to fill."""
+    argv = [spawn_python(), str(Path(__file__).resolve()), "serve", "--port", "{port}", "--port-file", "{port_file}",
+            "--log", "{log}"]
     for key, value in options.items():
         flag = "--" + key.replace("_", "-")
-        if isinstance(value, (list, tuple)):
-            for item in value:
-                argv += [flag, str(item)]
-        else:
-            argv += [flag, str(value)]
+        for item in (value if isinstance(value, (list, tuple)) else [value]):
+            argv += [flag, str(item)]
     return argv
 
 
@@ -409,6 +390,54 @@ class FakeHost(bench.Host):
         if tool.startswith("python"):
             return json.dumps(FAKE_VERSIONS) + "\n"
         raise bench.HostError(f"{tool} is not on this fake pod")
+
+
+class FakePower:
+    """Watts for a lab.bench session on a fixed grid, from the fake server's decodes (see the module docstring)."""
+
+    available = True
+    reason = None
+
+    def __init__(self, root: str | Path, *, period_s: float = 0.01) -> None:
+        self.root = Path(root)
+        self.period_s = period_s
+        self.t0: float | None = None
+
+    def start(self) -> None:
+        self.t0 = time.time() - self.period_s
+
+    def stop(self) -> None:
+        return None
+
+    def decodes(self) -> list[tuple[float, float]]:
+        try:
+            lines = (self.root / "decodes.jsonl").read_text(encoding="utf-8").splitlines()
+        except OSError:
+            return []
+        out = []
+        for line in lines:
+            try:
+                d = json.loads(line)
+            except ValueError:   # a line still being written
+                continue
+            out.append((float(d["start"]), float(d["end"])))
+        return out
+
+    def events(self) -> list[dict[str, Any]]:
+        if self.t0 is None:
+            return []
+        decodes = self.decodes()
+        end = time.time() + self.period_s
+        out = []
+        k = 0
+        while self.t0 + k * self.period_s <= end:
+            t = self.t0 + k * self.period_s
+            busy = sum(1 for a, b in decodes if a <= t <= b)
+            out.append({"type": pod_power.GPU_POWER, "ts": pod_power.iso(t), "t_local": t,
+                        "socket_w": IDLE_NO_SERVER_W + WATTS_PER_STREAM * busy, "source": "amd-smi",
+                        "power_field": "socket_power", "sampler": "lab/bench_fake.py FakePower", "throttled": None})
+            k += 1
+        return out
 
 
 if __name__ == "__main__":

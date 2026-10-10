@@ -73,6 +73,9 @@ spread and bands in the conditions, low_confidence while a configuration has few
 Spawning on pod C would collide with the teacher it serves (port 8000, and most of the 64 GB): the harness refuses
 a port that something already listens on, defaults to 8100, and the spawn-per-run measurements are R20's on pod B.
 Tested against lab/bench_fake.py (a fake server spawned as a real process, and a fake pod).
+Every wait is bounded: readiness by the ready timeout, each request by --request-timeout-s (a stream that has not
+finished by then fails its run, and the spawn is still stopped). With --port 0 the launch command must carry
+{port_file}, where the server writes the port it bound (the fake does; vLLM and llama-server take a fixed port).
 """
 from __future__ import annotations
 
@@ -119,8 +122,9 @@ DEFAULT_MAX_TOKENS = 128
 DEFAULT_REPEATS = MIN_RUNS_PER_ARM
 DEFAULT_IDLE_S = 10.0
 DEFAULT_POWER_PERIOD_S = 0.5
-DEFAULT_MEM_BUSY_PERIOD_S = 0.05
 DEFAULT_READY_TIMEOUT_S = 900.0
+DEFAULT_REQUEST_TIMEOUT_S = 900.0   # one streamed request, end to end; a stuck one fails instead of hanging
+MODELS_TIMEOUT_S = 10.0             # GET /v1/models while waiting for readiness
 DEFAULT_BAND_GAP = 0.10
 MIN_SPAWNS_TO_BAND = 4
 SAMPLER_PORT = pod_power.DEFAULT_PORT   # the T6 sampler's port (8790)
@@ -327,6 +331,7 @@ class RequestResult:
     decode_tok_s: float | None = None
     buffered: bool = False
     error: str | None = None
+    cached_tokens: int | None = None   # usage.prompt_tokens_details.cached_tokens: a prefix-cache hit when > 0
 
     def as_dict(self) -> dict[str, Any]:
         return {"role": self.role, "stream": self.stream, "index": self.index, "prompt": self.prompt_id,
@@ -334,7 +339,7 @@ class RequestResult:
                 "last_token": None if self.last is None else utc(self.last), "chunks": self.chunks,
                 "tokens": self.tokens, "prompt_tokens": self.prompt_tokens, "finish_reason": self.finish_reason,
                 "ttft_s": _r(self.ttft_s), "decode_tok_s": _r(self.decode_tok_s), "buffered": self.buffered,
-                "error": self.error}
+                "cached_prompt_tokens": self.cached_tokens, "error": self.error}
 
 
 class DirectEndpoint:
@@ -348,7 +353,7 @@ class DirectEndpoint:
         self._client = httpx.Client(base_url=self.base_url, timeout=httpx.Timeout(timeout_s, connect=10.0))
 
     def models(self) -> list[dict[str, Any]]:
-        reply = self._client.get("/v1/models")
+        reply = self._client.get("/v1/models", timeout=MODELS_TIMEOUT_S)
         reply.raise_for_status()
         return list(reply.json().get("data") or [])
 
@@ -391,8 +396,9 @@ class ProxyEndpoint:
 
 
 def run_request(endpoint: Any, body: Mapping[str, Any], *, role: str, stream: int, index: int, prompt_id: str,
-                clock: WallClock) -> RequestResult:
-    """Send one streamed chat completion and time it from its chunks."""
+                clock: WallClock, on_token: Callable[[], None] | None = None) -> RequestResult:
+    """Send one streamed chat completion and time it from its chunks. on_token is called as each content chunk
+    arrives (the probe reads mem_busy_percent there, so every reading falls inside the decode)."""
     sent = time.perf_counter()
     times: list[float] = []
     usage: dict[str, Any] = {}
@@ -418,29 +424,38 @@ def run_request(endpoint: Any, body: Mapping[str, Any], *, role: str, stream: in
                 delta = choice.get("delta") or {}
                 if delta.get("content") or delta.get("reasoning_content") or delta.get("reasoning"):
                     times.append(t)
+                    if on_token is not None:
+                        on_token()
                 if choice.get("finish_reason"):
                     finish = choice["finish_reason"]
     except Exception as exc:  # one failed request is a row's reason, never a crash of the session
         error = f"{type(exc).__name__}: {' '.join(str(exc).split())[:300]}"
     tokens = int(usage.get("completion_tokens") or len(times))
+    details = usage.get("prompt_tokens_details")
+    cached = details.get("cached_tokens") if isinstance(details, dict) else None
     timing = stream_timing(sent=sent, chunk_times=times, tokens=tokens)
     if error is None and not times:
         error = "no token arrived"
     return RequestResult(role, stream, index, prompt_id, clock.wall(sent),
                          clock.wall(times[0]) if times else None, clock.wall(times[-1]) if times else None,
                          len(times), tokens, usage.get("prompt_tokens"), finish, timing.ttft_s, timing.decode_tok_s,
-                         timing.buffered, error)
+                         timing.buffered, error, cached)
 
 
 def run_batch(endpoint: Any, prompts: PromptSet, settings: Settings, *, batch: int, per_stream: int, role: str,
-              clock: WallClock, tag: str) -> list[RequestResult]:
-    """batch concurrent streams, each sending per_stream requests one after another; stream s starts at prompt s."""
+              clock: WallClock, tag: str, timeout_s: float = DEFAULT_REQUEST_TIMEOUT_S,
+              grace_s: float = 60.0) -> list[RequestResult]:
+    """batch concurrent streams, each sending per_stream requests one after another; stream s starts at prompt s.
+    Every wait is bounded: streams not finished after grace_s plus per_stream x timeout_s raise BenchError."""
     results: list[RequestResult] = []
     lock = threading.Lock()
     barrier = threading.Barrier(batch)
 
     def stream(s: int) -> None:
-        barrier.wait()
+        try:
+            barrier.wait(timeout=grace_s + timeout_s)
+        except threading.BrokenBarrierError:
+            return
         for k in range(per_stream):
             index = s + k
             nonce = f"{tag}-{role}-{s}-{k}-{uuid.uuid4().hex[:8]}" if settings.nonce_on else None
@@ -453,8 +468,15 @@ def run_batch(endpoint: Any, prompts: PromptSet, settings: Settings, *, batch: i
     threads = [threading.Thread(target=stream, args=(s,), daemon=True) for s in range(batch)]
     for t in threads:
         t.start()
+    limit = grace_s + per_stream * timeout_s
+    deadline = time.monotonic() + limit
     for t in threads:
-        t.join()
+        t.join(max(0.0, deadline - time.monotonic()))
+    stuck = sum(1 for t in threads if t.is_alive())
+    if stuck:
+        raise BenchError(f"{stuck} of {batch} {role} streams had not finished after {limit:g} s")
+    if len(results) != batch * per_stream:
+        raise BenchError(f"{batch * per_stream - len(results)} {role} requests never started (a stream did not join)")
     return sorted(results, key=lambda r: (r.stream, r.index))
 
 
@@ -835,31 +857,6 @@ def find_mem_busy(host: Host) -> str | None:
     return None
 
 
-class MemBusySampler:
-    def __init__(self, host: Host, path: str, period_s: float) -> None:
-        self.host, self.path, self.period_s = host, path, period_s
-        self.samples: list[tuple[float, float]] = []
-        self._stop = threading.Event()
-        self._thread = threading.Thread(target=self._loop, daemon=True)
-
-    def _loop(self) -> None:
-        while not self._stop.is_set():
-            text = (self.host.read_text(self.path) or "").strip()
-            try:
-                self.samples.append((time.time(), float(text)))
-            except ValueError:
-                pass
-            self._stop.wait(self.period_s)
-
-    def __enter__(self) -> "MemBusySampler":
-        self._thread.start()
-        return self
-
-    def __exit__(self, *exc: object) -> None:
-        self._stop.set()
-        self._thread.join(5)
-
-
 def software_versions(host: Host, python: str) -> tuple[dict[str, Any], str | None]:
     try:
         return json.loads(host.command([python, "-c", VERSION_SCRIPT]).strip().splitlines()[-1]), None
@@ -944,7 +941,7 @@ def parse_serve_log(text: str, engine: str) -> dict[str, Any]:
 
 # --- spawning ---------------------------------------------------------------------------------------------------
 
-_PLACEHOLDER = re.compile(r"\{(port|log|batch|max_len|model|checkpoint)\}")
+_PLACEHOLDER = re.compile(r"\{(port|port_file|log|batch|max_len|model|checkpoint)\}")
 
 
 def default_command(engine: str, chip: str | None) -> list[str]:
@@ -995,13 +992,16 @@ class Spawned:
                     os.killpg(self.proc.pid, signal.SIGKILL)
                 else:
                     self.proc.kill()
-                self.proc.wait(timeout_s)
+                try:
+                    self.proc.wait(timeout_s)
+                except subprocess.TimeoutExpired:
+                    pass
             except ProcessLookupError:
                 pass
         if self.out_handle is not None:
             self.out_handle.close()
         deadline = time.time() + timeout_s
-        while port_open(self.port) and time.time() < deadline:
+        while self.port and port_open(self.port) and time.time() < deadline:
             time.sleep(0.05)
         self.stopped = self.proc.poll() is not None
         return self.stopped
@@ -1009,8 +1009,9 @@ class Spawned:
 
 def spawn_server(argv: list[str], *, port: int, log_path: Path, env: Mapping[str, str], cwd: Path,
                  own_log: bool) -> Spawned:
-    """Start the server; its stdout and stderr go to the log (or beside it when the command writes its own)."""
-    if port_open(port):
+    """Start the server; its stdout and stderr go to the log (or beside it when the command writes its own).
+    Port 0: the server picks a free port itself and writes it to its {port_file} (see wait_port)."""
+    if port and port_open(port):
         raise BenchError(f"something already listens on 127.0.0.1:{port}; a server spawned there would collide "
                          "with it (on pod C that is the running teacher)")
     out_path = log_path.with_suffix(".out") if own_log else log_path
@@ -1022,6 +1023,23 @@ def spawn_server(argv: list[str], *, port: int, log_path: Path, env: Mapping[str
         handle.close()
         raise BenchError(f"could not start {argv[0]}: {exc}") from exc
     return Spawned(proc, proc.pid, port, log_path, time.time(), argv, out_handle=handle)
+
+
+def wait_port(spawned: Spawned, port_file: Path, timeout_s: float) -> int:
+    """The port a server started with port 0 wrote to its port file; bounded by timeout_s."""
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        code = spawned.proc.poll()
+        if code is not None:
+            raise BenchError(f"the server exited with code {code} before it named its port; see {spawned.log_path}")
+        try:
+            port = int(port_file.read_text().strip())
+        except (OSError, ValueError):
+            time.sleep(0.02)
+            continue
+        spawned.port = port
+        return port
+    raise BenchError(f"the server named no port in {port_file.name} within {timeout_s:g} s")
 
 
 def wait_ready(spawned: Spawned, endpoint: Any, timeout_s: float) -> None:
@@ -1132,7 +1150,7 @@ class Config:
     probe: bool = True
     idle_s: float = DEFAULT_IDLE_S
     power_period_s: float = DEFAULT_POWER_PERIOD_S
-    mem_busy_period_s: float = DEFAULT_MEM_BUSY_PERIOD_S
+    request_timeout_s: float = DEFAULT_REQUEST_TIMEOUT_S
     ready_timeout_s: float = DEFAULT_READY_TIMEOUT_S
     out_dir: Path = DEFAULT_OUT
     prompts: Path = DEFAULT_PROMPTS
@@ -1317,12 +1335,12 @@ class Session:
             return row
         for _ in range(c.warmup_rounds):
             warm += run_batch(endpoint, self.prompts, self.settings, batch=pb.size, per_stream=1, role="warmup",
-                              clock=self.clock, tag=tag)
+                              clock=self.clock, tag=tag, timeout_s=c.request_timeout_s)
         row["warmup"] = {"requests": len(warm), "discarded": True, "items": [r.as_dict() for r in warm]}
         if probe_now:
             row["probe"] = self.run_probe(endpoint, tag)
         measured = run_batch(endpoint, self.prompts, self.settings, batch=pb.size, per_stream=self.per_stream,
-                             role="measure", clock=self.clock, tag=tag)
+                             role="measure", clock=self.clock, tag=tag, timeout_s=c.request_timeout_s)
         row["requests"] = [r.as_dict() for r in measured]
         good = [r for r in measured if r.error is None and r.first is not None and r.last is not None]
         errors = [r.error for r in measured if r.error]
@@ -1357,20 +1375,26 @@ class Session:
     def run_probe(self, endpoint: Any, tag: str) -> dict[str, Any]:
         """Exactly one request decoding: its rate, and mem_busy_percent sampled while it decodes."""
         path = find_mem_busy(self.host) if self.host is not None else None
+        readings: list[float] = []
+        host = self.host
+
+        def read_busy() -> None:   # once per content chunk: the request is decoding, alone
+            try:
+                readings.append(float((host.read_text(path) or "").strip()))
+            except ValueError:
+                pass
+
+        nonce = f"{tag}-probe-{uuid.uuid4().hex[:8]}" if self.settings.nonce_on else None
+        result = run_request(endpoint, self.prompts.request_body(0, self.settings, nonce), role="probe", stream=0,
+                             index=0, prompt_id=self.prompts.prompt_id(0), clock=self.clock,
+                             on_token=read_busy if path is not None else None)
         if path is None:
-            (result,) = run_batch(endpoint, self.prompts, self.settings, batch=1, per_stream=1, role="probe",
-                                  clock=self.clock, tag=tag)
             busy, why = None, ("attached: mem_busy_percent is not readable from here" if self.host is None
                                else "no AMD card exposes mem_busy_percent under /sys/class/drm")
         else:
-            with MemBusySampler(self.host, path, self.config.mem_busy_period_s) as sampler:
-                (result,) = run_batch(endpoint, self.prompts, self.settings, batch=1, per_stream=1, role="probe",
-                                      clock=self.clock, tag=tag)
-            inside = [v for t, v in sampler.samples
-                      if result.first is not None and result.last is not None and result.first <= t <= result.last]
-            busy = {"median": statistics.median(inside), "max": max(inside), "samples": len(inside),
-                    "path": path} if inside else None
-            why = None if inside else "no mem_busy_percent sample fell inside the probe's decode"
+            busy = {"median": statistics.median(readings), "max": max(readings), "samples": len(readings),
+                    "path": path} if readings else None
+            why = None if readings else "mem_busy_percent could not be read while the probe decoded"
         return {"in_flight": 1, "decode_tok_s": _r(result.decode_tok_s), "ttft_s": _r(result.ttft_s),
                 "mem_busy_pct": busy, "reason": why or result.error, "request": result.as_dict()}
 
@@ -1406,9 +1430,11 @@ class Session:
 
     def run(self) -> None:
         c = self.config
-        if port_open(c.port):
+        if c.port and port_open(c.port):
             raise BenchError(f"something already listens on 127.0.0.1:{c.port}; a server spawned there would collide "
                              "with it (on pod C that is the running teacher)")
+        if not c.port and not any("{port_file}" in str(a) for a in (c.command or [])):
+            raise BenchError("port 0 needs a launch command with {port_file}, where the server writes the port it took")
         self.base = self.static_conditions()
         self.power.start()
         try:
@@ -1427,19 +1453,22 @@ class Session:
         log_path = self.dir / f"serve-{index:02d}.log"
         chip = self.base["host"].get("chip")
         template = c.command or default_command(c.engine, chip)
-        values = {"port": c.port, "log": log_path, "batch": max(pb.size for pb in group), "max_len": c.max_len,
-                  "model": c.model, "checkpoint": c.checkpoint}
+        port_file = self.dir / f"serve-{index:02d}.port"
+        values = {"port": c.port, "port_file": port_file, "log": log_path, "batch": max(pb.size for pb in group),
+                  "max_len": c.max_len, "model": c.model, "checkpoint": c.checkpoint}
         argv = fill_command(template, values)
         own_log = any("{log}" in str(a) for a in template)
         spawned = spawn_server(argv, port=c.port, log_path=log_path, env=c.launch_env, cwd=self.dir, own_log=own_log)
         spawn = {"index": index, "pid": spawned.pid, "cold": True, "attached": False, "spawned": utc(spawned.spawned),
                  "spawned_t": spawned.spawned, "ready_s": None, "stopped": False, "log": str(log_path),
                  "shared": c.share_spawn, "command": argv}
-        endpoint = DirectEndpoint(f"http://127.0.0.1:{c.port}")
+        endpoint = None
         rows: list[dict[str, Any]] = []
         log(f"spawn {index} (repeat {repeat}, batch {', '.join(str(pb.size) for pb in group)}): pid {spawned.pid}")
         try:
             try:
+                port = c.port or wait_port(spawned, port_file, c.ready_timeout_s)
+                endpoint = DirectEndpoint(f"http://127.0.0.1:{port}", timeout_s=c.request_timeout_s)
                 wait_ready(spawned, endpoint, c.ready_timeout_s)
             except BenchError as exc:
                 for pb in group:
@@ -1453,15 +1482,20 @@ class Session:
             self.served_model(endpoint, conditions)
             idle = {"no_server": idle_none, "loaded": idle_watts(self.power, c.idle_s)}
             probe_rate = None
-            for i, pb in enumerate(group):
-                row = self.measure(endpoint, pb, repeat=repeat, spawn=spawn, conditions=conditions, idle=idle,
-                                   probe_now=c.probe and probe_rate is None)
+            for pb in group:
+                try:
+                    row = self.measure(endpoint, pb, repeat=repeat, spawn=spawn, conditions=conditions, idle=idle,
+                                       probe_now=c.probe and probe_rate is None)
+                except BenchError as exc:   # a stuck stream: the run fails, the spawn is still stopped
+                    row = self.blank_row(repeat=repeat, batch=pb.size, spawn=spawn, conditions=conditions)
+                    row["outcome"], row["reason"] = "fail", str(exc)
                 if row["probe"].get("decode_tok_s") is not None:
                     probe_rate = row["probe"]
                 rows.append(row)
             self.spawns[str(index)] = {"probe": probe_rate, "runs": [r["run_id"] for r in rows]}
         finally:
-            endpoint.close()
+            if endpoint is not None:
+                endpoint.close()
             spawn["stopped"] = spawned.stop()
             for row in rows:
                 row["spawn"] = {k: v for k, v in spawn.items() if k != "spawned_t"}
@@ -1496,48 +1530,9 @@ class Session:
     # the summary
 
     def summarize(self) -> dict[str, Any]:
-        rates: dict[str, float] = {}
-        busy: dict[str, float | None] = {}
-        run_spawn: dict[str, str] = {}
-        for key, info in self.spawns.items():
-            for run_id in info["runs"]:
-                run_spawn[run_id] = key
-            probe = info.get("probe")
-            rate = (probe or {}).get("decode_tok_s")
-            if rate is None:   # no probe: the spawn's first measured rate stands in
-                first = next((r for r in self.rows if r["run_id"] in info["runs"] and r["decode_tok_s"]), None)
-                rate = first["decode_tok_s"] if first else None
-            if rate is not None:
-                rates[key] = rate
-                busy[key] = ((probe or {}).get("mem_busy_pct") or {}).get("median")
-        bands = classify_bands(rates, rel_gap=self.config.band_gap)
-        rule = band_rule(bands, rates, busy, rel_gap=self.config.band_gap) if bands else {"clusters": [], "boundaries": []}
-        band_of = {spawn: f"b{i + 1}" for i, members in enumerate(bands) for spawn in members}
-        configurations: dict[str, Any] = {}
-        for row in self.rows:
-            if row["outcome"] == "skipped":
-                continue
-            key = f"{row['engine']} b{row['batch_size']}"
-            entry = configurations.setdefault(key, {"engine": row["engine"], "batch_size": row["batch_size"],
-                                                    "spawns": []})
-            entry["spawns"].append({
-                "run_id": row["run_id"], "spawn": run_spawn.get(row["run_id"]),
-                "band": band_of.get(run_spawn.get(row["run_id"], "")), "outcome": row["outcome"],
-                "decode_tok_s": row["decode_tok_s"], "decode_tok_s_total": row["decode_tok_s_total"],
-                "ttft_s": row["ttft_s"], "joules_per_token": row["joules_per_token"],
-                "watts_avg": (row["watts"] or {}).get("avg_w"), "watts_peak": (row["watts"] or {}).get("peak_w"),
-                "time_since_spawn_s": row["time_since_spawn_s"]})
-        for entry in configurations.values():
-            spawns = [s for s in entry["spawns"] if s["outcome"] == "ok"]
-            entry["stats"] = {m: stats(s[m] for s in spawns) for m in METRIC_UNITS}
-            entry["bands"] = {}
-            for band in sorted({s["band"] for s in spawns if s["band"]}):
-                members = [s for s in spawns if s["band"] == band]
-                entry["bands"][band] = {"spawns": len(members), "share": len(members) / len(spawns),
-                                        "stats": {m: stats(s[m] for s in members) for m in METRIC_UNITS}}
         return {"session": self.id, "harness": HARNESS, "engine": self.config.engine, "node": self.config.node,
-                "prompt_set": self.prompts.describe(), "rows": len(self.rows), "band_rule": rule,
-                "configurations": configurations}
+                "prompt_set": self.prompts.describe(), "rows": len(self.rows),
+                **summarize_runs(self.rows, self.spawns, band_gap=self.config.band_gap)}
 
     def write_metrics(self, summary: dict[str, Any], path: str | Path) -> int:
         """Each configuration's medians as metrics-file rows, their spread and bands in the conditions."""
@@ -1567,6 +1562,51 @@ class Session:
                                   "low_confidence": low}, path=path)
                 written += 1
         return written
+
+
+def summarize_runs(rows: Sequence[Mapping[str, Any]], spawns: Mapping[str, Mapping[str, Any]], *,
+                   band_gap: float = DEFAULT_BAND_GAP) -> dict[str, Any]:
+    """Bands and per-configuration statistics from the rows and the spawns ({key: {"probe", "runs"}}); pure."""
+    rates: dict[str, float] = {}
+    busy: dict[str, float | None] = {}
+    run_spawn: dict[str, str] = {}
+    for key, info in spawns.items():
+        for run_id in info["runs"]:
+            run_spawn[run_id] = key
+        probe = info.get("probe")
+        rate = (probe or {}).get("decode_tok_s")
+        if rate is None:   # no probe: the spawn's first measured rate stands in
+            first = next((r for r in rows if r["run_id"] in info["runs"] and r["decode_tok_s"]), None)
+            rate = first["decode_tok_s"] if first else None
+        if rate is not None:
+            rates[key] = rate
+            busy[key] = ((probe or {}).get("mem_busy_pct") or {}).get("median")
+    bands = classify_bands(rates, rel_gap=band_gap)
+    rule = band_rule(bands, rates, busy, rel_gap=band_gap) if bands else {"clusters": [], "boundaries": []}
+    band_of = {spawn: f"b{i + 1}" for i, members in enumerate(bands) for spawn in members}
+    configurations: dict[str, Any] = {}
+    for row in rows:
+        if row["outcome"] == "skipped":
+            continue
+        key = f"{row['engine']} b{row['batch_size']}"
+        entry = configurations.setdefault(key, {"engine": row["engine"], "batch_size": row["batch_size"],
+                                                "spawns": []})
+        entry["spawns"].append({
+            "run_id": row["run_id"], "spawn": run_spawn.get(row["run_id"]),
+            "band": band_of.get(run_spawn.get(row["run_id"], "")), "outcome": row["outcome"],
+            "decode_tok_s": row["decode_tok_s"], "decode_tok_s_total": row["decode_tok_s_total"],
+            "ttft_s": row["ttft_s"], "joules_per_token": row["joules_per_token"],
+            "watts_avg": (row["watts"] or {}).get("avg_w"), "watts_peak": (row["watts"] or {}).get("peak_w"),
+            "time_since_spawn_s": row["time_since_spawn_s"]})
+    for entry in configurations.values():
+        ok = [s for s in entry["spawns"] if s["outcome"] == "ok"]
+        entry["stats"] = {m: stats(s[m] for s in ok) for m in METRIC_UNITS}
+        entry["bands"] = {}
+        for band in sorted({s["band"] for s in ok if s["band"]}):
+            members = [s for s in ok if s["band"] == band]
+            entry["bands"][band] = {"spawns": len(members), "share": len(members) / len(ok),
+                                    "stats": {m: stats(s[m] for s in members) for m in METRIC_UNITS}}
+    return {"band_rule": rule, "configurations": configurations}
 
 
 def _metrics_ts() -> str:
@@ -1640,6 +1680,7 @@ def build_parser() -> argparse.ArgumentParser:
         s.add_argument("--idle-s", type=float, default=None)
         s.add_argument("--power-period-s", type=float, default=DEFAULT_POWER_PERIOD_S)
         s.add_argument("--band-gap", type=float, default=DEFAULT_BAND_GAP)
+        s.add_argument("--request-timeout-s", type=float, default=DEFAULT_REQUEST_TIMEOUT_S)
         s.add_argument("--prompts", default=str(DEFAULT_PROMPTS))
         s.add_argument("--out", default=str(DEFAULT_OUT))
         s.add_argument("--metrics-file", nargs="?", const=str(metrics_file.DEFAULT_PATH), default=None)
@@ -1685,14 +1726,15 @@ def _config(args: argparse.Namespace) -> Config:
         power_period_s=args.power_period_s, out_dir=Path(args.out), prompts=Path(args.prompts),
         metric_prefix=args.metric_prefix, python=args.python, hub=args.hub,
         account=getattr(args, "account", None) if not attach else None,
-        pid=getattr(args, "pid", None), serve_log=getattr(args, "serve_log", None), band_gap=args.band_gap)
+        pid=getattr(args, "pid", None), serve_log=getattr(args, "serve_log", None), band_gap=args.band_gap,
+        request_timeout_s=args.request_timeout_s)
 
 
 def _attach(config: Config, args: argparse.Namespace, host: Host | None) -> dict[str, Any]:
     if bool(args.url) == bool(args.account):
         raise BenchError("attach takes --url or --account, one of them")
     if args.url:
-        endpoint = DirectEndpoint(args.url)
+        endpoint = DirectEndpoint(args.url, timeout_s=config.request_timeout_s)
         local = host or (Host() if (config.pid or config.serve_log) else None)
         power = LocalPower.for_host(local, node=config.node, period_s=config.power_period_s) if local else None
         try:
@@ -1712,13 +1754,14 @@ def _attach(config: Config, args: argparse.Namespace, host: Host | None) -> dict
 
 
 @recorded("bench")
-def main(argv: Sequence[str] | None = None, *, host: Host | None = None) -> dict[str, Any]:
+def main(argv: Sequence[str] | None = None, *, host: Host | None = None,
+         power: Any = None) -> dict[str, Any]:
     """Benchmark a model server: decode tok/s, TTFT and joules per token, one cold spawn per run."""
     args = build_parser().parse_args(list(sys.argv[1:] if argv is None else argv))
     try:
         config = _config(args)
         if args.cmd == "run":
-            result = run_session(config, host=host, metrics_path=args.metrics_file)
+            result = run_session(config, host=host, power=power, metrics_path=args.metrics_file)
         else:
             result = _attach(config, args, host)
     except BenchError as exc:

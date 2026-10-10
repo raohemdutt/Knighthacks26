@@ -1,13 +1,21 @@
-"""lab/bench.py, the benchmark harness, against lab/bench_fake.py: a fake model server spawned as a real process and a
-fake Strix Halo pod (recorded amd-smi output, a fake /proc and /sys). One group of tests per clause of R11's Done when:
-the prompt set and decode settings, the batch sizes, the client-stream timing, the watts and joules, cold spawns and
-warm-up, repeats and bands, the conditions every row carries, the ledger and metrics rows, and both engines."""
+"""lab/bench.py, the benchmark harness, one group of tests per clause of R11's Done when.
+
+Two kinds of test, so none depends on how fast the test machine is:
+- the arithmetic (decode rate from chunk times, watts over a window, J/token, statistics, bands, the summary) runs on
+  recorded or constructed inputs with fixed times;
+- whole sessions spawn lab/bench_fake.py as a real server process (a cold spawn, a real token stream, a real stop) and
+  read a fake Strix Halo pod, and assert only structure and values the fake decides: counts, roles, conditions,
+  cached prompt tokens, mem_busy_percent, and watts bounded by the fake's own power model (lab.bench_fake.FakePower,
+  samples on a fixed grid, never a sampling thread).
+Every server binds port 0 and names its port in a file, every wait in the harness is bounded, and a watchdog turns a
+test that runs past WATCHDOG_S into a crash with every thread's traceback instead of a hang."""
 from __future__ import annotations
 
 import base64
+import faulthandler
 import json
 import socket
-import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -20,6 +28,8 @@ from lab.machine import ledger, metrics
 REPO = Path(__file__).resolve().parents[1]
 FIX = REPO / "fixtures" / "lab" / "bench"
 STRIX = REPO / "fixtures" / "telemetry" / "pod_power"
+WATCHDOG_S = 120.0
+MAX_TOKENS = 8
 
 # The kernels rubric test 1 (K1 b) conditions, the host facts and the per-run facts every row must carry.
 K1_CONDITIONS = ("engine", "engine_commit", "patch_hash", "checkpoint", "quantization", "max_model_len", "batch_size",
@@ -31,28 +41,38 @@ HOST_FACTS = ("hub", "account", "hostname", "kernel_release", "amdgpu_driver", "
 def isolated(tmp_path, monkeypatch):
     monkeypatch.setenv("LAB_STATE_DIR", str(tmp_path / "state"))
     monkeypatch.delenv("LAB_TASK", raising=False)
-
-
-def free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+    faulthandler.dump_traceback_later(WATCHDOG_S, exit=True, file=sys.__stderr__)
+    yield
+    faulthandler.cancel_dump_traceback_later()
 
 
 def fake_config(tmp_path, *, engine="vllm", batches=(1, 4), repeats=1, add_64=False, set_env=("GPU_MAX_HW_QUEUES=4",),
-                **fake_options) -> tuple[bench.Config, bench_fake.FakeHost]:
+                **fake_options) -> tuple[bench.Config, bench_fake.FakeHost, bench_fake.FakePower]:
     root = tmp_path / "pod"
     root.mkdir(parents=True, exist_ok=True)
     host = bench_fake.FakeHost(root)
+    power = bench_fake.FakePower(root)
     options = {"engine": engine, "root": str(root), "set_env": list(set_env), **fake_options}
     config = bench.Config(
         engine=engine, command=bench_fake.serve_command(**options), checkpoint="/home/jovyan/models/Qwen3.8-27B-INT4",
-        model="teacher", max_len=16384, node="pod-b", port=free_port(), batches=list(batches), add_64=add_64,
-        repeats=repeats, max_tokens=12, requests_per_stream=2, warmup_rounds=1, idle_s=0.15, power_period_s=0.02,
-        mem_busy_period_s=0.005, ready_timeout_s=30.0, out_dir=tmp_path / "out", engine_dir="/home/jovyan/vllm",
-        patches=[str(REPO / "lab" / "vllm-gfx1201.diff")], launch_env={"GPU_MAX_HW_QUEUES": "2"},
-        python="python3", hub="https://sjc.aupcloud.io")
-    return config, host
+        model="teacher", max_len=16384, node="pod-b", port=0, batches=list(batches), add_64=add_64,
+        repeats=repeats, max_tokens=MAX_TOKENS, requests_per_stream=2, warmup_rounds=1, idle_s=0.05,
+        power_period_s=power.period_s, ready_timeout_s=30.0, request_timeout_s=20.0, out_dir=tmp_path / "out",
+        engine_dir="/home/jovyan/vllm", patches=[str(REPO / "lab" / "vllm-gfx1201.diff")],
+        launch_env={"GPU_MAX_HW_QUEUES": "2"}, python="python3", hub="https://sjc.aupcloud.io")
+    return config, host, power
+
+
+def run(tmp_path, **kwargs):
+    config, host, power = fake_config(tmp_path, **kwargs)
+    return config, bench.run_session(config, host=host, power=power)
+
+
+def synthetic_row(run_id, *, batch=1, decode, outcome="ok", joules=2.0):
+    """A row as run_session writes it, with only the fields the summary reads."""
+    return {"run_id": run_id, "engine": "vllm", "batch_size": batch, "outcome": outcome, "decode_tok_s": decode,
+            "decode_tok_s_total": decode * batch, "ttft_s": 0.5, "joules_per_token": joules,
+            "watts": {"avg_w": 100.0, "peak_w": 120.0}, "time_since_spawn_s": 30.0}
 
 
 # --- the prompt set and the decode settings ---------------------------------------------------------------------
@@ -120,7 +140,7 @@ def test_64_fits_only_when_the_kv_cache_holds_64_requests_of_the_workload():
     assert bench.fits(64, kv_cache_tokens=None, tokens_per_request=2_000) is None
 
 
-# --- client-stream timing ---------------------------------------------------------------------------------------
+# --- client-stream timing (recorded chunk times, no clock) ----------------------------------------------------
 
 def test_decode_rate_is_timed_from_first_to_last_token_of_the_client_stream():
     times = [10.0 + 0.1 * i for i in range(11)]           # 11 tokens, 1.0 s from first to last
@@ -136,7 +156,40 @@ def test_a_stream_the_proxy_held_back_gives_no_decode_rate():
     assert timing.ttft_s == pytest.approx(5.0)
 
 
-# --- watts and joules -------------------------------------------------------------------------------------------
+def test_a_request_is_timed_from_a_recorded_stream_and_reports_cached_prompt_tokens():
+    class Recorded:
+        def events(self, body):
+            yield 2.0, json.dumps({"choices": [{"delta": {"content": "a"}, "finish_reason": None}]})
+            yield 2.5, json.dumps({"choices": [{"delta": {"content": "b"}, "finish_reason": None}]})
+            yield 3.0, json.dumps({"choices": [{"delta": {"content": "c"}, "finish_reason": "length"}]})
+            yield 3.0, json.dumps({"choices": [], "usage": {"prompt_tokens": 40, "completion_tokens": 3,
+                                                            "prompt_tokens_details": {"cached_tokens": 32}}})
+            yield 3.0, "[DONE]"
+
+    clock = bench.WallClock()
+    seen = []
+    result = bench.run_request(Recorded(), {}, role="measure", stream=0, index=0, prompt_id="p", clock=clock,
+                               on_token=lambda: seen.append(1))
+    assert result.tokens == 3 and result.chunks == 3 and len(seen) == 3
+    assert result.decode_tok_s == pytest.approx(2.0)        # 2 tokens after the first, over 1.0 s
+    assert result.finish_reason == "length" and result.prompt_tokens == 40 and result.cached_tokens == 32
+    assert result.error is None
+
+
+def test_a_stuck_stream_fails_within_its_timeout_instead_of_hanging():
+    class Stuck:
+        def events(self, body):
+            time.sleep(5.0)
+            yield 0.0, "[DONE]"
+
+    started = time.monotonic()
+    with pytest.raises(bench.BenchError, match="had not finished"):
+        bench.run_batch(Stuck(), bench.PromptSet.load(), bench.Settings(model="m"), batch=2, per_stream=1,
+                        role="measure", clock=bench.WallClock(), tag="t", timeout_s=0.5, grace_s=0.0)
+    assert time.monotonic() - started < 4.0
+
+
+# --- watts and joules (constructed samples) ---------------------------------------------------------------------
 
 def test_watts_are_integrated_over_the_decode_window_with_its_edges_interpolated():
     points = [(float(t), 100.0) for t in range(0, 21)]
@@ -158,13 +211,14 @@ def test_local_power_reads_amd_smi_through_the_pod_power_parsers(tmp_path):
     host = bench_fake.FakeHost(tmp_path)
     power = bench.LocalPower.for_host(host, node="pod-b", period_s=0.01)
     assert power.available, power.reason
-    power.start()
-    time.sleep(0.1)
-    power.stop()
+    for _ in range(5):
+        power.sampler.poll()                                 # read by hand: no thread, no timing
     events = power.events()
-    assert len(events) >= 5
+    assert len(events) == 5
     assert {e["source"] for e in events} == {"amd-smi"} and {e["power_field"] for e in events} == {"socket_power"}
     assert {e["socket_w"] for e in events} == {bench_fake.IDLE_NO_SERVER_W}
+    assert ["/opt/rocm/bin/amd-smi", "metric", "--power", "--clock", "--temperature", "--usage", "--energy"] \
+        in host.calls
     # the parser is pod_power's: the recorded strixhalo text reads the same through it
     recorded = pod_power.parse_amdsmi((STRIX / "strixhalo_amdsmi_metric_power.txt").read_text(encoding="utf-8"))
     assert recorded[0].socket_w == 110.0
@@ -173,11 +227,19 @@ def test_local_power_reads_amd_smi_through_the_pod_power_parsers(tmp_path):
 def test_throttling_is_what_amd_smi_reports(tmp_path):
     host = bench_fake.FakeHost(tmp_path, throttle="THROTTLED")
     power = bench.LocalPower.for_host(host, node="pod-b", period_s=0.01)
-    power.start()
-    time.sleep(0.05)
-    power.stop()
+    power.sampler.poll()
     assert bench.throttled(power.events()) is True
     assert bench.throttled([{"throttled": None}]) is None      # the Strix Halo reads THROTTLE_STATUS: N/A
+
+
+def test_fake_power_puts_its_samples_on_a_fixed_grid_from_the_decodes(tmp_path):
+    (tmp_path / "decodes.jsonl").write_text(json.dumps({"start": 0.0, "end": 1e12}) + "\n")
+    power = bench_fake.FakePower(tmp_path, period_s=0.5)
+    power.start()
+    events = power.events()
+    times = [e["t_local"] for e in events]
+    assert all(b - a == pytest.approx(0.5) for a, b in zip(times, times[1:]))
+    assert {e["socket_w"] for e in events} == {bench_fake.IDLE_NO_SERVER_W + bench_fake.WATTS_PER_STREAM}
 
 
 # --- conditions: serve log, environment, host ---------------------------------------------------------------------
@@ -214,8 +276,10 @@ def test_host_facts_come_from_amd_smi_static_and_firmware(tmp_path):
 
 
 def test_host_facts_say_why_when_amd_smi_cannot_be_read(tmp_path):
-    host = bench.Host(root=tmp_path, run=lambda argv: (_ for _ in ()).throw(bench.HostError("no amd-smi")),
-                      which=lambda name: None, environ={})
+    def refuse(argv):
+        raise bench.HostError("no amd-smi")
+
+    host = bench.Host(root=tmp_path, run=refuse, which=lambda name: None, environ={})
     facts = bench.host_facts(host)
     assert facts["amdgpu_driver"] is None and "amdgpu_driver" in facts["unavailable"]
 
@@ -244,7 +308,7 @@ def test_kfd_queue_count_where_the_pod_exposes_it(tmp_path):
     assert bench.kfd_queues(host, 7) == (5, None)
 
 
-# --- statistics and bands ---------------------------------------------------------------------------------------
+# --- statistics and bands (constructed values) ------------------------------------------------------------------
 
 def test_stats_report_median_min_max_mean_and_sd():
     s = bench.stats([3.0, 1.0, 2.0, 4.0])
@@ -275,51 +339,79 @@ def test_mem_busy_threshold_is_set_from_the_clusters_never_in_advance():
     assert rule["boundaries"][0]["mem_busy_separates"] is False
 
 
-# --- whole runs: cold spawns, warm-up, rows -----------------------------------------------------------------------
+def test_repeats_are_spawns_summarised_per_configuration_and_per_band():
+    probes = {"0": (2.90, 55.0), "1": (2.88, 56.0), "2": (1.80, 85.0), "3": (2.86, 54.0), "4": (1.75, 86.0)}
+    rows = [synthetic_row(f"run-{k}", decode=rate, joules=10.0 / rate) for k, (rate, _) in probes.items()]
+    rows.append({**synthetic_row("run-skip", batch=64, decode=0.0), "outcome": "skipped"})
+    spawns = {k: {"probe": {"decode_tok_s": rate, "mem_busy_pct": {"median": busy}}, "runs": [f"run-{k}"]}
+              for k, (rate, busy) in probes.items()}
+    summary = bench.summarize_runs(rows, spawns)
+    assert set(summary["configurations"]) == {"vllm b1"}               # the skipped 64 arm is not a configuration
+    entry = summary["configurations"]["vllm b1"]
+    assert [s["run_id"] for s in entry["spawns"]] == ["run-0", "run-1", "run-2", "run-3", "run-4"]
+    assert entry["stats"]["decode_tok_s"] == bench.stats([2.90, 2.88, 1.80, 2.86, 1.75])
+    assert {s["run_id"]: s["band"] for s in entry["spawns"]} == {
+        "run-0": "b1", "run-1": "b1", "run-3": "b1", "run-2": "b2", "run-4": "b2"}
+    assert entry["bands"]["b1"]["share"] == pytest.approx(0.6) and entry["bands"]["b2"]["share"] == pytest.approx(0.4)
+    assert entry["bands"]["b1"]["stats"]["decode_tok_s"] == bench.stats([2.90, 2.88, 2.86])
+    assert entry["bands"]["b2"]["stats"]["joules_per_token"] == bench.stats([10.0 / 1.80, 10.0 / 1.75])
+    boundary = summary["band_rule"]["boundaries"][0]
+    assert boundary["mem_busy_threshold_pct"] == pytest.approx((55.0 + 85.5) / 2)
+    assert boundary["mem_busy_separates"] is True
+
+
+def test_spawns_without_a_probe_are_banded_by_their_measured_rate():
+    rows = [synthetic_row(f"run-{k}", decode=rate) for k, rate in enumerate([3.0, 3.0, 3.0, 1.0])]
+    spawns = {str(k): {"probe": None, "runs": [f"run-{k}"]} for k in range(4)}
+    entry = bench.summarize_runs(rows, spawns)["configurations"]["vllm b1"]
+    assert entry["bands"]["b1"]["spawns"] == 3 and entry["bands"]["b2"]["spawns"] == 1
+
+
+# --- whole sessions against the spawned fake (structure and the fake's own values) --------------------------------
 
 def test_each_run_is_a_cold_spawn_whose_warmup_is_discarded_and_marked(tmp_path):
-    config, host = fake_config(tmp_path, batches=(1, 4), repeats=2)
-    result = bench.run_session(config, host=host)
+    config, result = run(tmp_path, batches=(1, 4), repeats=2)
     rows = result["rows"]
     assert [(r["batch_size"], r["repeat"]) for r in rows] == [(1, 0), (4, 0), (1, 1), (4, 1)]
     assert len({r["spawn"]["pid"] for r in rows}) == 4 and all(r["spawn"]["cold"] for r in rows)
     lines = (config.out_dir / result["session"] / "rows.jsonl").read_text().splitlines()
     assert [json.loads(line)["run_id"] for line in lines] == [r["run_id"] for r in rows]   # one JSON row per run
+    n_prompts = len(bench.PromptSet.load().prompts)
     for row in rows:
         assert row["outcome"] == "ok", row.get("reason")
         warm = row["warmup"]
-        assert warm["discarded"] is True and warm["requests"] == len(bench.PromptSet.load().prompts) + row["batch_size"]
+        assert warm["discarded"] is True and warm["requests"] == n_prompts + row["batch_size"]
+        assert all(item["role"] == "warmup" for item in warm["items"])
         assert len(row["requests"]) == row["batch_size"] * 2 and all(r["role"] == "measure" for r in row["requests"])
-        assert row["tokens_generated"] == row["batch_size"] * 2 * 12
+        assert row["tokens_generated"] == row["batch_size"] * 2 * MAX_TOKENS
+        assert all(r["finish_reason"] == "length" and r["tokens"] == MAX_TOKENS for r in row["requests"])
         assert row["time_since_spawn_s"] > 0 and row["spawn"]["ready_s"] > 0
-        assert row["probe"]["in_flight"] == 1 and row["probe"]["mem_busy_pct"]["median"] == 55.0
-    # nothing is left running
-    for row in rows:
         assert row["spawn"]["stopped"] is True
+        probe = row["probe"]
+        assert probe["in_flight"] == 1 and probe["request"]["role"] == "probe"
+        assert probe["mem_busy_pct"]["median"] == bench_fake.MEM_BUSY_ONE           # read while it decoded alone
+        assert probe["mem_busy_pct"]["samples"] == MAX_TOKENS
+    assert [s["run_id"] for s in result["summary"]["configurations"]["vllm b4"]["spawns"]] ==         [rows[1]["run_id"], rows[3]["run_id"]]
 
 
 def test_rows_carry_decode_ttft_watts_joules_and_the_idle_reading_beside_it(tmp_path):
-    config, host = fake_config(tmp_path, batches=(1, 4))
-    rows = bench.run_session(config, host=host)["rows"]
-    one, four = rows
-    for row in rows:
-        assert row["decode_tok_s"] > 0 and row["decode_tok_s_total"] > 0 and row["ttft_s"] > 0
+    _, result = run(tmp_path, batches=(1, 4))
+    for row in result["rows"]:
+        for key in ("decode_tok_s", "decode_tok_s_total", "ttft_s"):
+            assert row[key] is None or row[key] > 0, key
         w = row["watts"]
         assert w["available"] is True and w["source"] == "amd-smi" and w["power_field"] == "socket_power"
-        assert w["peak_w"] >= w["avg_w"] > bench_fake.IDLE_LOADED_W
+        ceiling = bench_fake.IDLE_NO_SERVER_W + bench_fake.WATTS_PER_STREAM * row["batch_size"]
+        assert bench_fake.IDLE_NO_SERVER_W <= w["avg_w"] <= w["peak_w"] <= ceiling
+        assert w["energy_j"] == pytest.approx(w["avg_w"] * row["window_s"], rel=1e-3)
         assert row["joules_per_token"] == pytest.approx(w["energy_j"] / row["tokens_generated"], rel=1e-3)
-        # the windows are 0.15 s long here, so an edge can interpolate towards the reading next to it
-        assert row["idle_w"]["no_server"] == pytest.approx(bench_fake.IDLE_NO_SERVER_W, abs=0.5)
-        assert bench_fake.IDLE_NO_SERVER_W <= row["idle_w"]["loaded"] <= bench_fake.IDLE_LOADED_W + 0.01
+        assert row["idle_w"] == {"no_server": bench_fake.IDLE_NO_SERVER_W, "loaded": bench_fake.IDLE_NO_SERVER_W}
         assert row["throttled"] is None
-    assert four["decode_tok_s_total"] > one["decode_tok_s_total"]   # batching: more in total
-    assert four["watts"]["avg_w"] > one["watts"]["avg_w"]
 
 
 def test_every_row_carries_the_kernels_rubric_test_1_conditions_and_the_host(tmp_path):
-    config, host = fake_config(tmp_path, batches=(1,))
-    row = bench.run_session(config, host=host)["rows"][0]
-    c = row["conditions"]
+    _, result = run(tmp_path, batches=(1,))
+    c = result["rows"][0]["conditions"]
     for key in K1_CONDITIONS:
         assert key in c and c[key] is not None, key
     for key in HOST_FACTS:
@@ -332,104 +424,81 @@ def test_every_row_carries_the_kernels_rubric_test_1_conditions_and_the_host(tmp
     # read back from the running process: the launch meant 2, the process has 4
     assert c["env"]["GPU_MAX_HW_QUEUES"] == "4" and c["env_meant"]["GPU_MAX_HW_QUEUES"] == "2"
     assert c["kfd_queues"] == 3
-    assert c["prompt_set"]["id"] == "bench-v1" and c["max_tokens"] == 12 and c["ignore_eos"] is True
+    assert c["prompt_set"]["id"] == "bench-v1" and c["max_tokens"] == MAX_TOKENS and c["ignore_eos"] is True
     assert c["temperature"] == 0 and c["nonce"] is True
     assert c["host"]["chip"] == "gfx1151"
 
 
 def test_rows_reach_the_ledger_and_the_metrics_file_through_the_recorded_hook(tmp_path):
-    config, host = fake_config(tmp_path, batches=(1,))
+    config, host, power = fake_config(tmp_path, batches=(1,))
     metrics_file = tmp_path / "metrics.jsonl"
     argv = ["run", "--engine", "vllm", "--serve-cmd", json.dumps(config.command), "--checkpoint", config.checkpoint,
-            "--node", "pod-b", "--port", str(config.port), "--batches", "1", "--no-64", "--repeats", "1",
-            "--max-tokens", "12", "--requests-per-stream", "2", "--idle-s", "0.15", "--power-period-s", "0.02",
+            "--node", "pod-b", "--port", "0", "--batches", "1", "--no-64", "--repeats", "1",
+            "--max-tokens", str(MAX_TOKENS), "--requests-per-stream", "2", "--idle-s", "0.05",
+            "--power-period-s", str(power.period_s), "--request-timeout-s", "20",
             "--out", str(config.out_dir), "--metrics-file", str(metrics_file), "--engine-dir", "/home/jovyan/vllm",
             "--patch", str(REPO / "lab" / "vllm-gfx1201.diff"), "--hub", "https://sjc.aupcloud.io"]
-    answer = bench.main(argv, host=host)
+    answer = bench.main(argv, host=host, power=power)
     assert answer["ok"] is True, answer
     rows = ledger.read(state_dir=tmp_path / "state")
     runs = [r for r in rows if r["verb"] == "bench.run"]
     assert len(runs) == 1 and runs[0]["node"] == "pod-b" and runs[0]["refs"]["run_id"] == answer["rows"][0]
-    assert runs[0]["metrics"]["teacher.decode_tok_s"] > 0 and runs[0]["metrics"]["teacher.joules_per_token"] > 0
+    assert runs[0]["metrics"]["teacher.joules_per_token"] > 0 and "teacher.watts_avg" in runs[0]["metrics"]
     assert runs[0]["conditions"]["batch_size"] == 1 and runs[0]["low_confidence"] is True
     whole = [r for r in rows if r["verb"] == "bench"]
-    assert len(whole) == 1 and whole[0]["outcome"] == "ok" and "teacher.decode_tok_s.b1" in whole[0]["metrics"]
+    assert len(whole) == 1 and whole[0]["outcome"] == "ok" and "teacher.joules_per_token.b1" in whole[0]["metrics"]
     written = metrics.load(metrics_file)
     names = {r["metric"] for r in written}
-    assert {"teacher.decode_tok_s", "teacher.decode_tok_s_total", "teacher.ttft_s", "teacher.joules_per_token",
-            "teacher.watts_avg", "teacher.watts_peak"} <= names
+    assert {"teacher.joules_per_token", "teacher.watts_avg", "teacher.watts_peak"} <= names
     for r in written:
         assert r["node"] == "pod-b" and r["conditions"]["batch_size"] == 1
         assert r["low_confidence"] is True and "spawn" in r["conditions"]["low_confidence_reason"]
 
 
-def test_repeats_are_spawns_summarised_per_configuration_and_per_band(tmp_path):
-    # slower tokens and a wider band gap than the defaults keep a busy test machine's jitter from splitting a band
-    config, host = fake_config(tmp_path, batches=(1,), repeats=5, stream_tok_s=100, slow_factor=0.4)
-    config.band_gap = 0.3
-    (host.root / "band_plan.txt").write_text("fast fast slow fast slow")
-    result = bench.run_session(config, host=host)
-    summary = result["summary"]
-    config_summary = summary["configurations"]["vllm b1"]
-    assert len(config_summary["spawns"]) == 5
-    s = config_summary["stats"]["decode_tok_s"]
-    assert s["n"] == 5 and s["min"] <= s["median"] <= s["max"] and s["sd"] is not None
-    bands = config_summary["bands"]
-    assert set(bands) == {"b1", "b2"}
-    assert bands["b1"]["share"] == pytest.approx(0.6) and bands["b2"]["share"] == pytest.approx(0.4)
-    assert bands["b2"]["stats"]["decode_tok_s"]["max"] < bands["b1"]["stats"]["decode_tok_s"]["min"]
-    rule = summary["band_rule"]
-    assert 55.0 < rule["boundaries"][0]["mem_busy_threshold_pct"] < 85.0
-    assert rule["boundaries"][0]["mem_busy_separates"] is True
-    slow_runs = {sp["run_id"] for sp in config_summary["spawns"] if sp["band"] == "b2"}
-    assert slow_runs == {result["rows"][2]["run_id"], result["rows"][4]["run_id"]}
-
-
 def test_the_64_arm_is_skipped_with_its_reason_when_it_does_not_fit(tmp_path):
-    config, host = fake_config(tmp_path, batches=(1,), add_64=True, kv_tokens=4000)
-    rows = bench.run_session(config, host=host)["rows"]
+    _, result = run(tmp_path, batches=(1,), add_64=True, kv_tokens=4000)
+    rows = result["rows"]
     assert [r["batch_size"] for r in rows] == [1, 64]
     assert rows[1]["outcome"] == "skipped" and "does not fit" in rows[1]["reason"]
+    assert rows[1]["fits"]["fits"] is False and rows[1]["fits"]["kv_cache_tokens"] == 4000
     assert rows[1]["spawn"]["stopped"] is True
 
 
 def test_the_same_harness_runs_unchanged_against_llamacpp(tmp_path):
-    vllm_config, vllm_host = fake_config(tmp_path / "v", batches=(1,))
-    llama_config, llama_host = fake_config(tmp_path / "l", engine="llamacpp", batches=(1,))
-    v = bench.run_session(vllm_config, host=vllm_host)["rows"][0]
-    lc = bench.run_session(llama_config, host=llama_host)["rows"][0]
+    _, v = run(tmp_path / "v", batches=(1,))
+    _, lc = run(tmp_path / "l", engine="llamacpp", batches=(1,))
+    v, lc = v["rows"][0], lc["rows"][0]
     assert set(v) == set(lc) and set(v["conditions"]) == set(lc["conditions"])
     assert lc["outcome"] == "ok" and lc["conditions"]["engine"] == "llamacpp"
     assert lc["conditions"]["attention_backends"] == ["flash_attn enabled"]
     assert lc["conditions"]["kv_cache_tokens"] == 163_840
+    assert lc["conditions"]["engine_commit"] == bench_fake.FAKE_COMMIT          # --engine-dir wins over the build line
 
 
-def test_spawning_refuses_a_port_something_already_serves(tmp_path):
-    config, host = fake_config(tmp_path, batches=(1,))
-    log = tmp_path / "squatter.log"
-    argv = [a.replace("{port}", str(config.port)).replace("{log}", str(log)) for a in config.command]
-    squatter = subprocess.Popen(argv)
-    try:
-        deadline = time.time() + 20
-        while time.time() < deadline and not log.exists():
-            time.sleep(0.05)
-        time.sleep(0.2)
+def test_spawning_refuses_a_port_something_already_listens_on(tmp_path):
+    config, host, power = fake_config(tmp_path, batches=(1,))
+    with socket.socket() as squatter:
+        squatter.bind(("127.0.0.1", 0))
+        squatter.listen()
+        config.port = squatter.getsockname()[1]
         with pytest.raises(bench.BenchError, match="already"):
-            bench.run_session(config, host=host)
-    finally:
-        squatter.terminate()
-        squatter.wait(10)
+            bench.run_session(config, host=host, power=power)
 
 
-def test_the_nonce_keeps_ttft_from_measuring_a_prefix_cache_hit(tmp_path):
-    config, host = fake_config(tmp_path, batches=(1,), ttft_s=0.2, image_ttft_s=0.0)
-    config.warmup_rounds = 1
-    with_nonce = bench.run_session(config, host=host)["rows"][0]
+def test_port_0_needs_a_command_that_names_its_port(tmp_path):
+    config, host, power = fake_config(tmp_path, batches=(1,))
+    config.command = [a for a in config.command if a not in ("--port-file", "{port_file}")]
+    with pytest.raises(bench.BenchError, match="port_file"):
+        bench.run_session(config, host=host, power=power)
+
+
+def test_the_nonce_keeps_measured_requests_from_hitting_the_prefix_cache(tmp_path):
+    _, with_nonce = run(tmp_path / "a", batches=(1,))
+    config, host, power = fake_config(tmp_path / "b", batches=(1,))
     config.prefix_caching = False                        # the harness believes caching is off: no nonce
-    config.out_dir = tmp_path / "out2"
-    without = bench.run_session(config, host=host)["rows"][0]
-    assert with_nonce["ttft_s"] >= 0.18                  # every measured request missed the cache
-    assert without["ttft_s"] < 0.1                       # the warm-up had already filled it
+    without = bench.run_session(config, host=host, power=power)
+    assert all(r["cached_prompt_tokens"] == 0 for r in with_nonce["rows"][0]["requests"])
+    assert all(r["cached_prompt_tokens"] > 0 for r in without["rows"][0]["requests"])   # the warm-up filled it
 
 
 # --- attach: a server the harness did not spawn (the live smoke) ---------------------------------------------------
@@ -442,7 +511,7 @@ def test_attach_through_the_hub_proxy_marks_watts_unavailable_when_the_sampler_i
     link = PodLink.for_account(fake.account("C"), transport=fake.transport, sleep=lambda s: None)
     config = bench.Config(engine="vllm", model="teacher", node="pod-c", batches=[1], add_64=False, max_tokens=16,
                           requests_per_stream=4, warmup_rounds=0, probe=False, out_dir=tmp_path / "out",
-                          hub="https://teacher.test", account="acct-c")
+                          hub="https://teacher.test", account="acct-c", request_timeout_s=20.0)
     result = bench.attach_session(config, endpoint=bench.ProxyEndpoint(link, 8000),
                                   power=bench.RemotePower(link, 8790))
     row = result["rows"][0]
@@ -487,14 +556,12 @@ def test_remote_power_reads_the_t6_sampler_through_the_proxy(tmp_path):
     power = bench.RemotePower(link, 8790)
     power.start()
     assert power.available, power.reason
-    start = time.time()
     for _ in range(5):
         sampler.poll()
-        time.sleep(0.01)
-    end = time.time()
     power.stop()
     events = power.events()
-    assert len(events) >= 5                                  # only the samples after start
-    w = bench.power_window(bench.watt_points(events), start, end, period_s=0.01)
+    assert len(events) == 5                                  # only the samples after start
+    points = bench.watt_points(events)
+    w = bench.power_window(points, points[0][0], points[-1][0], period_s=0.01)   # the samples' own span
     assert w["available"] is True and w["avg_w"] == pytest.approx(bench_fake.IDLE_NO_SERVER_W)
     link.close()
