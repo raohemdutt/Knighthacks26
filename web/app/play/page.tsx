@@ -81,8 +81,8 @@ export default function PlayPage() {
         <h1>Sort It</h1>
         <p className={ui.muted}>
           {twin.plan
-            ? "Face the bin camera holding something for two seconds to start a round, or pick what you are holding. Atlas shows the right bin and the way to it across the room."
-            : "Pick what you are holding. Atlas shows the right bin and the shortest way to it."}
+            ? "Hold something up to the bin camera for two seconds, or pick it below. Atlas shows the right bin and the way there."
+            : "Pick what you are holding. Atlas shows the right bin and the way there."}
         </p>
       </div>
 
@@ -215,7 +215,7 @@ function RouteCard({ route, bins }: { route: PlayRoute; bins: BinMark[] }) {
     <div className={ui.card}>
       <div className={`${ui.row} ${ui.between} ${ui.wrap}`}>
         <h2>
-          {humanize(route.item)} goes in <span style={{ color: "var(--accent)" }}>{route.bin}</span>
+          {humanize(route.item)} goes in <span style={{ color: "var(--accent-text)" }}>{route.bin}</span>
         </h2>
         {path.length > 1 ? <span className={ui.tag}>{path.length - 1} steps</span> : null}
       </div>

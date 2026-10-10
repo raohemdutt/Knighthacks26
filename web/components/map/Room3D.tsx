@@ -494,7 +494,7 @@ export default function Room3D({ cameras, pins, selected, route }: Room3DProps) 
         number.position.copy(head.position);
         group.add(number);
         if (on) {
-          const text = label(humanize(pin.label), "#2563eb", 0.13);
+          const text = label(humanize(pin.label), "#456cb3", 0.13);
           text.position.copy(place(pin.at, ZONE_H + 0.2 + tallest * PIN_STEP + 0.19));
           text.renderOrder = 11;
           group.add(text);

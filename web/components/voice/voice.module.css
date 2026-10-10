@@ -36,7 +36,7 @@
 }
 
 .statusOn {
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 650;
 }
 
@@ -62,7 +62,7 @@
   border: 0;
   background: var(--surface);
   box-shadow: var(--sh-raised);
-  color: var(--accent);
+  color: var(--accent-text);
   touch-action: manipulation;
   transition: box-shadow var(--ease-press);
 }
@@ -79,7 +79,7 @@
 .micListening {
   background: var(--accent);
   color: var(--accent-ink);
-  box-shadow: 0 0 0 6px var(--accent-soft), 5px 5px 14px rgba(37, 99, 235, 0.32);
+  box-shadow: 0 0 0 6px var(--accent-soft), 5px 5px 14px rgba(170, 200, 245, 0.32);
 }
 
 .micListening::after {
@@ -167,7 +167,7 @@
 
 .toggleOn {
   box-shadow: var(--sh-selected);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .toggle:disabled {

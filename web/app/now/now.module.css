@@ -74,7 +74,7 @@
   border: 0;
   background: var(--surface);
   box-shadow: var(--sh-raised-sm);
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 16px;
   font-weight: 650;
   transition: box-shadow var(--ease-press);
@@ -93,7 +93,7 @@
 .speakOn:active:not(:disabled) {
   background: var(--accent);
   color: var(--accent-ink);
-  box-shadow: 5px 5px 14px rgba(37, 99, 235, 0.32), -5px -5px 12px var(--sh-light);
+  box-shadow: 5px 5px 14px rgba(170, 200, 245, 0.32), -5px -5px 12px var(--sh-light);
 }
 
 .speak:disabled {
@@ -407,7 +407,7 @@ button.body:active {
 
 .pillGood {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .progress {

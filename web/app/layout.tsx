@@ -1,9 +1,14 @@
 import type { Metadata, Viewport } from "next";
+import { Quicksand } from "next/font/google";
 import type { ReactNode } from "react";
 import { Shell } from "@/components/Shell";
+import { Splash } from "@/components/Splash";
 import { AtlasProvider } from "@/lib/atlas";
 import { VoiceProvider } from "@/lib/voice";
 import "./globals.css";
+
+// Headings and the wordmark. A soft, rounded face, to match the neumorphic theme and the logo; the body stays on the system font.
+const display = Quicksand({ subsets: ["latin"], weight: ["500", "600", "700"], variable: "--font-display", display: "swap" });
 
 export const metadata: Metadata = {
   title: { default: "Atlas", template: "%s · Atlas" },
@@ -31,8 +36,9 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" className={display.variable}>
       <body>
+        <Splash />
         <AtlasProvider>
           <VoiceProvider>
             <Shell>{children}</Shell>

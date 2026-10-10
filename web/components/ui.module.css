@@ -22,6 +22,10 @@
 }
 
 .brand {
+  font-family: var(--font-display), system-ui, sans-serif;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   font-size: 20px;
   font-weight: 750;
   letter-spacing: 0.02em;
@@ -69,7 +73,7 @@
   border: 0;
   border-radius: var(--radius-sm);
   background: var(--surface);
-  color: var(--accent);
+  color: var(--accent-text);
   box-shadow: var(--sh-raised-sm);
   transition: box-shadow var(--ease-press);
 }
@@ -134,7 +138,7 @@
 
 /* the current tab is pressed in and blue: two cues, neither of them shadow alone */
 .tabOn {
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 700;
   box-shadow: var(--sh-inset-sm);
 }
@@ -334,7 +338,7 @@
 /* selected: pressed in, blue text and a blue ring */
 .chipOn {
   box-shadow: var(--sh-selected);
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 650;
 }
 
@@ -365,7 +369,7 @@
 .btnPrimary {
   background: var(--accent);
   color: var(--accent-ink);
-  box-shadow: 5px 5px 14px rgba(37, 99, 235, 0.32), -5px -5px 12px var(--sh-light);
+  box-shadow: 5px 5px 14px rgba(170, 200, 245, 0.32), -5px -5px 12px var(--sh-light);
 }
 
 .btnPrimary:active:not(:disabled) {
@@ -416,7 +420,7 @@
 /* the chosen segment rises out of the well and turns blue */
 .segOn {
   background: var(--surface);
-  color: var(--accent);
+  color: var(--accent-text);
   box-shadow: var(--sh-raised-sm);
 }
 
@@ -433,7 +437,7 @@
 
 .tagAccent {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 650;
 }
 
@@ -918,7 +922,178 @@
   box-shadow: var(--sh-inset-sm);
 }
 
+.moreGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.moreGroupTitle {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
 .moreLinkOn {
   box-shadow: var(--sh-selected);
-  color: var(--accent);
+  color: var(--accent-text);
+}
+
+/* ---------- desktop: a sidebar and a wide content area instead of the phone's tab bar ---------- */
+.sidebar {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .shell {
+    max-width: none;
+    margin: 0;
+    padding-left: var(--side-w);
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 30;
+    width: var(--side-w);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 28px 18px 20px;
+    overflow-y: auto;
+    background: var(--bg);
+    border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+    box-shadow: 8px 0 20px -6px var(--sh-dark), 2px 0 6px var(--sh-light);
+  }
+
+  .sideBrand {
+    font-family: var(--font-display), system-ui, sans-serif;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 10px;
+    font-size: 28px;
+    font-weight: 750;
+    letter-spacing: 0.02em;
+  }
+
+  .sidebar .status {
+    padding: 0 10px 14px;
+    font-size: 15px;
+  }
+
+  .sideNav {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .sideGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .sideGroupTitle {
+    padding: 0 14px 2px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .sideLink {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 38px;
+    padding: 6px 14px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--muted);
+    text-align: left;
+    text-decoration: none;
+    font-family: inherit;
+    font-size: 17px;
+    font-weight: 600;
+    transition: box-shadow var(--ease-press);
+  }
+
+  .sideLink:hover {
+    color: var(--text);
+    box-shadow: var(--sh-raised-sm);
+  }
+
+  .sideLink:active {
+    box-shadow: var(--sh-inset-sm);
+  }
+
+  .sideLinkOn,
+  .sideLinkOn:hover {
+    color: var(--accent-text);
+    font-weight: 700;
+    box-shadow: var(--sh-inset-sm);
+  }
+
+  .sideIcon {
+    flex: none;
+    width: 24px;
+    height: 24px;
+  }
+
+  .sideBadge {
+    margin-left: auto;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 7px;
+    border-radius: 11px;
+    background: var(--accent);
+    color: var(--accent-ink);
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 22px;
+    text-align: center;
+  }
+
+  .sideSettings {
+    margin-top: auto;
+  }
+
+  .header,
+  .tabbar {
+    display: none;
+  }
+
+  .main {
+    width: 100%;
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 32px var(--gutter) 48px;
+  }
+
+  .toasts {
+    left: var(--side-w);
+    max-width: 640px;
+    top: 24px;
+  }
+
+  .overlay,
+  .overlayAboveTabs {
+    align-items: center;
+    padding-bottom: 0;
+  }
+
+  .sheet {
+    max-width: 560px;
+    border-radius: var(--radius-lg);
+    padding-bottom: 24px;
+  }
 }

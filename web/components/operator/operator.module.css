@@ -38,7 +38,7 @@
   padding: 8px 16px;
   font-size: 1.5rem;
   background: var(--surface);
-  color: var(--accent);
+  color: var(--accent-text);
   box-shadow: var(--sh-inset-sm);
   border-radius: var(--radius-pill);
 }
@@ -106,7 +106,7 @@
 }
 
 .pillOk {
-  color: var(--accent);
+  color: var(--accent-text);
   background: var(--accent-soft);
 }
 
@@ -267,7 +267,7 @@
 }
 
 .tickGood {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 /* A narrow window (a phone, a half-width laptop): stack instead of squeezing. */
@@ -347,7 +347,7 @@
 .voicePrimary {
   color: var(--accent-ink);
   background: var(--accent);
-  box-shadow: 5px 5px 14px rgba(37, 99, 235, 0.32), -5px -5px 12px var(--sh-light);
+  box-shadow: 5px 5px 14px rgba(170, 200, 245, 0.32), -5px -5px 12px var(--sh-light);
 }
 
 .voicePrimary:active {

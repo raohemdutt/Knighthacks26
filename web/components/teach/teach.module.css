@@ -126,7 +126,7 @@ textarea.text {
   padding: 3px 12px;
   border-radius: var(--radius-pill);
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-text);
   white-space: nowrap;
 }
 
@@ -160,7 +160,7 @@ textarea.text {
 }
 
 .stepOn {
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 650;
 }
 

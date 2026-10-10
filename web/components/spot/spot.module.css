@@ -305,7 +305,7 @@
 .seg button[aria-pressed="true"] {
   background: var(--surface);
   box-shadow: var(--sh-raised-sm);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 /* ---------- pills ---------- */
@@ -357,7 +357,7 @@
   border: 0;
   background: var(--surface-2);
   box-shadow: var(--sh-inset-sm);
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 12.5px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   line-height: 1.6;
@@ -468,7 +468,7 @@ span.id {
   border-radius: var(--radius-sm);
   border: 0;
   background: var(--accent);
-  box-shadow: 5px 5px 14px rgba(37, 99, 235, 0.32), -5px -5px 12px var(--sh-light);
+  box-shadow: 5px 5px 14px rgba(170, 200, 245, 0.32), -5px -5px 12px var(--sh-light);
   color: var(--accent-ink);
   font-size: 15px;
   font-weight: 700;
@@ -717,7 +717,7 @@ span.id {
 }
 
 .itemTitle:hover {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .score {
@@ -795,7 +795,7 @@ span.id {
 
 .actPrimary {
   background: var(--accent);
-  box-shadow: 4px 4px 12px rgba(37, 99, 235, 0.3), -4px -4px 10px var(--sh-light);
+  box-shadow: 4px 4px 12px rgba(170, 200, 245, 0.3), -4px -4px 10px var(--sh-light);
   color: var(--accent-ink);
 }
 
@@ -846,7 +846,7 @@ span.id {
 }
 
 button.barRow:hover .barLabel {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .barLabel {
@@ -1051,7 +1051,7 @@ button.barRow:hover .barLabel {
 }
 
 .handoff button:hover {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 /* ---------- drawer ---------- */

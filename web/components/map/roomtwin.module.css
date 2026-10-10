@@ -196,7 +196,7 @@
 .viewOn {
   background: var(--surface);
   box-shadow: var(--sh-raised-sm);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .side {
@@ -346,7 +346,7 @@
 }
 
 .resultGood .resultTitle {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .resultBad .resultTitle {
@@ -468,5 +468,5 @@
 .pillOn,
 .pillOn:active {
   box-shadow: var(--sh-selected);
-  color: var(--accent);
+  color: var(--accent-text);
 }

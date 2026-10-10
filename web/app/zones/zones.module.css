@@ -63,7 +63,7 @@
 }
 
 .ok {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .steps {

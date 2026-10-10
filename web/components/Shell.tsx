@@ -7,12 +7,12 @@ import { api, getToken, setToken } from "@/lib/api";
 import { useAtlas, type LinkState } from "@/lib/atlas";
 import { useProfileState } from "@/lib/profile";
 import { useFetch } from "@/lib/useFetch";
+import { Logo } from "./Logo";
 import ui from "./ui.module.css";
 import { VoiceSettings } from "./voice/VoiceSettings";
 
 type Tab = { href: string; label: string; icon: ReactNode };
 
-/** The screens that fit a phone tab bar: Now first (the day Atlas runs unasked), Ask beside it. Everything else is one tap further, under More. */
 const TABS: Tab[] = [
   {
     href: "/now",
@@ -178,7 +178,7 @@ const MORE: MoreTab[] = [
   {
     href: "/spot",
     group: "Inspection",
-    label: "Inspection (SPOT)",
+    label: "Inspection",
     icon: (
       <>
         <rect x="5" y="9" width="12" height="5" rx="1.5" />
@@ -191,6 +191,27 @@ const MORE: MoreTab[] = [
 /** The inspection dashboard belongs to the inspection profile, or to a box that has a kit to show. */
 const INSPECTION = "/spot";
 
+const ALL = [...TABS, ...MORE];
+
+/** How the screens are grouped, in the sidebar and in the phone's More sheet. URLs are unchanged. */
+const SECTIONS: { title: string; hrefs: string[] }[] = [
+  { title: "Everyday", hrefs: ["/", "/now", "/today", "/timeline", "/approvals"] },
+  { title: "The room", hrefs: ["/live", "/map", "/people", "/play"] },
+  { title: "Plan", hrefs: ["/dayrun", "/circle"] },
+  { title: "Insights", hrefs: ["/impact", "/spot", "/teach"] },
+  { title: "Setup", hrefs: ["/zones", "/privacy"] },
+];
+
+/** The phone tab bar: the four things used daily. Everything else is one tap further, under More. */
+const BAR = ["/", "/now", "/today", "/approvals"].map((href) => ALL.find((t) => t.href === href)!);
+
+/** Inspection shows on the inspection profile, on a box with a kit, or when that screen is the one open. */
+function useShowInspection(path: string): boolean {
+  const { profile } = useProfileState();
+  const spot = useFetch((s) => api.spotOverview(s));
+  return profile.name === "inspection" || spot.data?.configured === true || path === INSPECTION;
+}
+
 const LINK_TEXT: Record<LinkState, string> = { live: "Live", connecting: "Connecting…", offline: "Offline, retrying" };
 
 function normalize(path: string): string {
@@ -202,16 +223,66 @@ export function Shell({ children }: { children: ReactNode }) {
   const { link, model, toasts, dismissToast, approvals } = useAtlas();
   const [settings, setSettings] = useState(false);
   const [more, setMore] = useState(false);
-  const inMore = MORE.some((t) => t.href === path);
+  const inMore = !BAR.some((t) => t.href === path);
   useEffect(() => setMore(false), [path]); // the sheet closes once its link has been followed
   const pending = approvals.items.length;
+  const inspection = useShowInspection(path);
 
   if (path === "/operator") return <>{children}</>; // X15: the big-display page has its own header and no tab bar
 
   return (
     <div className={ui.shell}>
+      <aside className={ui.sidebar} aria-label="Screens">
+        <span className={ui.sideBrand}>
+          <Logo size={34} />
+          Atlas
+        </span>
+        <div className={ui.status} title="Connection to the Atlas box, and the model that answers">
+          <span className={`${ui.dot} ${link === "live" ? ui.dotLive : link === "offline" ? ui.dotOffline : ""}`} aria-hidden="true" />
+          <span className={ui.statusText}>
+            {LINK_TEXT[link]}
+            {model ? ` · ${model}` : ""}
+          </span>
+        </div>
+        <nav className={ui.sideNav}>
+          {SECTIONS.map((g) => (
+            <div key={g.title} className={ui.sideGroup}>
+              <span className={ui.sideGroupTitle}>{g.title}</span>
+              {g.hrefs.filter((href) => href !== INSPECTION || inspection).map((href) => {
+                const t = ALL.find((x) => x.href === href)!;
+                const on = path === t.href;
+                return (
+                  <Link key={t.href} href={t.href} className={`${ui.sideLink} ${on ? ui.sideLinkOn : ""}`} aria-current={on ? "page" : undefined}>
+                    <svg className={ui.sideIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      {t.icon}
+                    </svg>
+                    <span>{t.label}</span>
+                    {t.href === "/approvals" && pending > 0 ? (
+                      <span className={ui.sideBadge} aria-label={`${pending} waiting`}>
+                        {pending}
+                      </span>
+                    ) : null}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
+        </nav>
+        <button type="button" className={`${ui.sideLink} ${ui.sideSettings}`} onClick={() => setSettings(true)}>
+          <svg className={ui.sideIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+            <path d="M4 7h10M18 7h2M4 17h2M10 17h10" />
+            <circle cx="16" cy="7" r="2" />
+            <circle cx="8" cy="17" r="2" />
+          </svg>
+          <span>Settings</span>
+        </button>
+      </aside>
+
       <header className={ui.header}>
-        <span className={ui.brand}>Atlas</span>
+        <span className={ui.brand}>
+          <Logo size={26} />
+          Atlas
+        </span>
         <div className={ui.status} title="Connection to the Atlas box, and the model that answers">
           <span className={`${ui.dot} ${link === "live" ? ui.dotLive : link === "offline" ? ui.dotOffline : ""}`} aria-hidden="true" />
           <span className={ui.statusText}>
@@ -257,7 +328,7 @@ export function Shell({ children }: { children: ReactNode }) {
 
       <nav className={ui.tabbar} aria-label="Screens">
         <div className={ui.tabs}>
-          {TABS.map((t) => {
+          {BAR.map((t) => {
             const on = path === t.href;
             return (
               <Link key={t.href} href={t.href} className={`${ui.tab} ${on ? ui.tabOn : ""}`} aria-current={on ? "page" : undefined}>
@@ -307,12 +378,7 @@ function useEscape(onClose: () => void) {
 /** The screens that do not fit the tab bar, grouped the way a day uses them. */
 function MoreSheet({ path, onClose }: { path: string; onClose: () => void }) {
   useEscape(onClose);
-  // Inspection shows on the inspection profile, on a box with a kit, or when that screen is the one open.
-  const { profile } = useProfileState();
-  const spot = useFetch((s) => api.spotOverview(s));
-  const inspection = profile.name === "inspection" || spot.data?.configured === true || path === INSPECTION;
-  const shown = MORE.filter((t) => t.href !== INSPECTION || inspection);
-  const groups = [...new Set(shown.map((t) => t.group))];
+  const inspection = useShowInspection(path);
   return (
     <div className={`${ui.overlay} ${ui.overlayAboveTabs}`} onClick={onClose}>
       <div className={ui.sheet} role="dialog" aria-modal="true" aria-label="More screens" onClick={(e) => e.stopPropagation()}>
@@ -322,27 +388,26 @@ function MoreSheet({ path, onClose }: { path: string; onClose: () => void }) {
             Close
           </button>
         </div>
-        {groups.map((group) => (
-          <section key={group} className={ui.section} aria-label={group}>
-            <h3 className={ui.sectionTitle}>{group}</h3>
+        {SECTIONS.map((g) => (
+          <div key={g.title} className={ui.moreGroup}>
+            <h3 className={ui.moreGroupTitle}>{g.title}</h3>
             <ul className={ui.list}>
-              {shown
-                .filter((t) => t.group === group)
-                .map((t) => {
-                  const on = path === t.href;
-                  return (
-                    <li key={t.href}>
-                      <Link href={t.href} className={`${ui.moreLink} ${on ? ui.moreLinkOn : ""}`} aria-current={on ? "page" : undefined} onClick={onClose}>
-                        <svg className={ui.tabIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          {t.icon}
-                        </svg>
-                        <span>{t.label}</span>
-                      </Link>
-                    </li>
-                  );
-                })}
+              {g.hrefs.filter((href) => href !== INSPECTION || inspection).map((href) => {
+                const t = ALL.find((x) => x.href === href)!;
+                const on = path === t.href;
+                return (
+                  <li key={t.href}>
+                    <Link href={t.href} className={`${ui.moreLink} ${on ? ui.moreLinkOn : ""}`} aria-current={on ? "page" : undefined} onClick={onClose}>
+                      <svg className={ui.tabIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        {t.icon}
+                      </svg>
+                      <span>{t.label}</span>
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
-          </section>
+          </div>
         ))}
       </div>
     </div>

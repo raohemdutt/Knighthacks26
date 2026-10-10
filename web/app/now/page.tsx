@@ -315,7 +315,7 @@ function Action({ d, reload, onLeave }: { d: DayNow; reload: () => void; onLeave
     </Link>
   );
 
-  let primary: ReactNode;
+  let primary: ReactNode = null;
   let hint: string;
   let rest: ReactNode[];
   const e = s?.next_event;
@@ -348,15 +348,14 @@ function Action({ d, reload, onLeave }: { d: DayNow; reload: () => void; onLeave
     hint = `You are about ${s.drift_minutes} minutes behind. A new plan from where you are, with one card to approve.`;
     rest = [dayRun(false), planAgain(false)];
   } else {
-    primary = dayRun(true);
-    hint = d.committed ? "Approved and on your calendar. It is still yours to change." : d.plan.action_id ? "Its card has expired or was answered; plan again for a new one, or edit it yourself." : "The plan is a starting point: edit it yourself.";
+    hint = d.committed ? "Approved and on your calendar." : "";
     rest = [fromHere(false), planAgain(false)];
   }
 
   return (
     <section className={n.action} aria-label="What to do">
       {primary}
-      <p className={n.hint}>{hint}</p>
+      {hint ? <p className={n.hint}>{hint}</p> : null}
       {error ? <WriteError error={error} /> : null}
       {rest.length > 0 ? (
         <details className={n.more}>

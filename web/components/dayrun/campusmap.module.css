@@ -408,7 +408,7 @@
 .mapBtnOn,
 .mapBtnOn:active:not(:disabled) {
   box-shadow: var(--sh-selected);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 /* ---------- the key under a map ---------- */
@@ -474,7 +474,7 @@
 }
 
 .leaveSoon {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .leaveLate {
@@ -499,7 +499,7 @@
   border: 0;
   background: var(--surface);
   box-shadow: var(--sh-raised-sm);
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 14px;
   font-weight: 700;
   white-space: nowrap;

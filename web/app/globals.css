@@ -6,8 +6,8 @@
  * --sh-raised* shadows, pressed or sunken things (inputs, wells, active buttons) use --sh-inset*.
  * Blue is the only accent and is kept for primary actions, selected states, progress and icons.
  *
- * Contrast (checked against --bg): --text 13.9:1, --muted 5.5:1, --accent 4.6:1 (white on --accent
- * 5.2:1), --danger 5.0:1, --ok 4.7:1, --watch 5.3:1. --accent-bright is for non-text marks only.
+ * Contrast (checked against --bg): --text 13.9:1, --muted 5.5:1, --accent-text 4.6:1 (--accent-ink on --accent
+ * 11:1), --danger 5.0:1, --ok 4.7:1, --watch 5.3:1. --accent-bright is for non-text marks only.
  */
 :root {
   /* surface */
@@ -21,10 +21,11 @@
   --muted: #566176;
 
   /* accent (blue) */
-  --accent: #2563eb;
-  --accent-bright: #3b82f6;
-  --accent-ink: #ffffff;
-  --accent-soft: rgba(37, 99, 235, 0.1);
+  --accent: #b9d1f7; /* pastel: fills, rings, strokes */
+  --accent-text: #456cb3; /* the same blue deepened so text and icons stay readable */
+  --accent-bright: #d6e5fb;
+  --accent-ink: #1b2433; /* text on a pastel fill */
+  --accent-soft: rgba(140, 180, 240, 0.16);
 
   /* status */
   --danger: #c0332b;
@@ -115,6 +116,12 @@ ol {
   list-style: none;
 }
 
+h1,
+h2,
+h3 {
+  font-family: var(--font-display), system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
 h1 {
   font-size: 30px;
   line-height: 1.15;
@@ -134,7 +141,7 @@ h3 {
 }
 
 a {
-  color: var(--accent);
+  color: var(--accent-text);
   text-underline-offset: 3px;
 }
 
@@ -160,6 +167,17 @@ img,
 svg {
   display: block;
   max-width: 100%;
+}
+
+/* desktop: roomier gutters and room for the sidebar (components/ui.module.css) */
+:root {
+  --side-w: 288px;
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --gutter: 36px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

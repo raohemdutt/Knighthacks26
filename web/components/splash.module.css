@@ -1,0 +1,114 @@
+/* Pure CSS timing, so the splash covers the page from the first paint and leaves even before hydration. */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  animation: leave 420ms ease-in 1450ms forwards;
+}
+
+.mark {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  animation: breathe 1800ms ease-out both;
+}
+
+.word {
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-size: 30px;
+  font-weight: 750;
+  letter-spacing: 0.32em;
+  padding-left: 0.32em; /* balances the trailing letter space so the word looks centred */
+  color: var(--accent-text);
+  opacity: 0;
+  animation: rise 520ms ease-out 900ms forwards;
+}
+
+.mark svg {
+  filter: drop-shadow(6px 6px 10px var(--sh-dark)) drop-shadow(-6px -6px 10px var(--sh-light));
+}
+
+.mark :global([data-logo]) {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+}
+
+.mark :global([data-logo="ring"]) {
+  animation: draw 800ms cubic-bezier(0.5, 0, 0.2, 1) 80ms forwards;
+}
+
+.mark :global([data-logo="a"]) {
+  animation: draw 520ms cubic-bezier(0.5, 0, 0.2, 1) 560ms forwards;
+}
+
+.mark :global([data-logo="dot"]) {
+  stroke-dasharray: none;
+  stroke-dashoffset: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+  animation: pop 420ms cubic-bezier(0.3, 1.6, 0.5, 1) 1000ms forwards;
+}
+
+@keyframes draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes breathe {
+  from {
+    transform: scale(0.94);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+@keyframes leave {
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .splash {
+    animation: leave 200ms linear 1000ms forwards;
+  }
+
+  .mark,
+  .word,
+  .mark :global([data-logo]) {
+    animation: none;
+    stroke-dashoffset: 0;
+    opacity: 1;
+    transform: none;
+  }
+}

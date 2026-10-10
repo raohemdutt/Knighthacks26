@@ -68,7 +68,7 @@
   display: inline-flex;
   align-items: center;
   min-height: var(--tap);
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 650;
   background: none;
   border: 0;
@@ -126,7 +126,7 @@
 
 .pipFree {
   background: var(--accent);
-  border-color: var(--accent);
+  border-color: var(--accent-text);
 }
 
 .pipCounter {
@@ -155,7 +155,7 @@
 .agreed {
   color: var(--accent-ink);
   background: var(--accent);
-  box-shadow: 2px 2px 6px rgba(37, 99, 235, 0.3);
+  box-shadow: 2px 2px 6px rgba(170, 200, 245, 0.3);
 }
 
 .waiting {
@@ -181,7 +181,7 @@
   padding: 0 4px;
   border: 0;
   background: none;
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 17px;
   font-weight: 650;
 }
@@ -270,7 +270,7 @@
 }
 
 .systemAgreed {
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 700;
   background: var(--accent-soft);
   box-shadow: var(--sh-inset-sm), inset 0 0 0 2px var(--accent-soft);
@@ -349,5 +349,5 @@
   display: flex;
   align-items: center;
   font-weight: 650;
-  color: var(--accent);
+  color: var(--accent-text);
 }

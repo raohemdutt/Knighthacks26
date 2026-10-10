@@ -25,7 +25,7 @@
 
 .presetOn.presetOn {
   box-shadow: var(--sh-selected);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .verdict {
@@ -64,7 +64,7 @@
   font-size: 30px;
   line-height: 1;
   letter-spacing: 0.06em;
-  color: var(--accent);
+  color: var(--accent-text);
   white-space: nowrap;
 }
 
@@ -214,7 +214,7 @@
 .pillOn,
 .pillOn:active {
   box-shadow: var(--sh-selected);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .bedtime,
@@ -348,7 +348,7 @@
 }
 
 .bandPlanned {
-  fill: rgba(37, 99, 235, 0.1);
+  fill: rgba(170, 200, 245, 0.1);
 }
 
 .grid {
@@ -402,7 +402,7 @@
   width: 100%;
   height: 36px;
   margin: 0;
-  accent-color: var(--accent);
+  accent-color: var(--accent-text);
 }
 
 .swatch {
@@ -420,7 +420,7 @@
 }
 
 .swatchPlanned {
-  background: rgba(37, 99, 235, 0.22);
+  background: rgba(170, 200, 245, 0.22);
 }
 
 .details summary,
@@ -655,7 +655,7 @@
 
 .checkOk .checkMark {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .checkFail .checkMark {
@@ -868,8 +868,8 @@
 }
 
 .pinItemOn .pinNum {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--accent-text);
+  color: var(--accent-text);
 }
 
 .pinLabel {
@@ -955,7 +955,7 @@
   flex: none;
   font-size: 14px;
   font-weight: 600;
-  color: var(--accent);
+  color: var(--accent-text);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -1011,7 +1011,7 @@
 }
 
 .plPaceHold {
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 650;
 }
 
@@ -1323,7 +1323,7 @@
 }
 
 .plOk {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .plBad {
@@ -1465,7 +1465,7 @@
 }
 
 .plFeedOk.plFeedNew {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .plRooms {
@@ -1488,7 +1488,7 @@
 
 .plRooms .plRoomOn {
   box-shadow: var(--sh-selected);
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 650;
 }
 
