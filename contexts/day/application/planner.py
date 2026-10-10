@@ -348,9 +348,14 @@ class DayPlanner:
 
     # --- a re-plan from where you are ---
 
-    def replan(self, now: datetime, start_place: str | None, why: str, asked: bool = False, for_event: str | None = None) -> list[Event]:
+    def replan(self, now: datetime, start_place: str | None, why: str, asked: bool = False, for_event: str | None = None,
+               adjust=None, draft: bool = False) -> list[Event]:
         """A new plan for the rest of the day from `start_place` (where the box thinks you are), with one card.
-        Drift triggers it (contexts/day/application/tracker.py); the person can ask for one at any time."""
+        Drift triggers it (contexts/day/application/tracker.py); the person can ask for one at any time.
+
+        `adjust(moves) -> moves | None` changes the chosen moves before they are simulated (the check-in's "move the
+        block to after dinner"); None, or a move the engine then rejects, means no re-plan at all. `draft` returns
+        the re-plan without its card, for looking at what it would be: nothing is proposed."""
         day = self.clock.day_of(now)
         current = self.current.get(day)
         if current is None:
@@ -358,9 +363,16 @@ class DayPlanner:
         board = self.dayrun.board(now, InitialOverride(start_place=start_place) if start_place else None)
         advice = self.advice(day)
         moves, result = choose(self.dayrun.cfg, self.dayrun.walks, board, preferred_block_minutes=advice[0].block_minutes if advice else None)
+        if adjust is not None:
+            moves = adjust(moves)
+            if moves is None:
+                return []
+            result = simulate(self.dayrun.cfg, self.dayrun.walks, board, moves)
+            if result.rejected:
+                return []
         plan_id = self.fresh_id(f"plan-{day}-{local(self.dayrun.cfg, now):%H%M}r")
         blocks = plan_moves(result, moves)
-        card = self.card(blocks, day, result, now, replace=True, why=why)
+        card = None if draft else self.card(blocks, day, result, now, replace=True, why=why)
         replan = DayReplanProposed(event_id=f"day-replan-{plan_id}", ts=now, day=day, plan_id=plan_id, replaces=current.plan_id,
                                    why=why, start=board.start, moves=blocks, dayrun_moves=[MoveIn(**m.model_dump()) for m in moves],
                                    outcome=plan_outcome(result), action_id=card.action_id if card else None, asked=asked,

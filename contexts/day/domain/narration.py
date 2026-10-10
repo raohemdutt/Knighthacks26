@@ -34,12 +34,20 @@ from datetime import date, datetime, timedelta, tzinfo
 
 from contracts.day import PlanMove
 
-MOMENTS = ("morning", "now", "replan", "coach", "evening", "approval")
+MOMENTS = ("morning", "now", "replan", "coach", "evening", "approval", "checkin")
 RISKY = ("leave_now", "late", "infeasible")
 # Worth saying aloud unasked. "infeasible" is not: the re-plan that follows it says the same thing and what to do.
 URGENT_RISKS = ("leave_now", "late")
 # Bounds for a spoken narration: (sentences, characters). "Morning." counts as a sentence.
-BOUNDS = {"morning": (6, 520), "now": (4, 340), "replan": (5, 420), "coach": (4, 360), "evening": (5, 420), "approval": (3, 240)}
+BOUNDS = {"morning": (6, 520), "now": (4, 340), "replan": (5, 420), "coach": (4, 360), "evening": (5, 420), "approval": (3, 240),
+          "checkin": (5, 540)}
+# A check-in says what was measured ("looked strained", "resting heart rate is up") and never what it might mean.
+# None of these words may appear in one: not in the template, and a model's rewrite that uses one is rejected.
+DIAGNOSIS = frozenset("""
+stress stressed stressful sick sickness ill illness unwell dehydrated dehydration anxious anxiety depressed depression
+exhausted exhaustion fatigue fatigued tired burnout burned fever feverish unhealthy symptom symptoms diagnosis diagnose
+condition disorder overworked overwhelmed upset angry sad afraid worried panic
+""".split())
 NAP_MAX = 180  # a chosen sleep block shorter than this is a nap, not the night
 BREAK_MAX = 30  # a rest this short between two blocks of the main activity is a break inside them
 LONG_REST = 60
@@ -381,7 +389,7 @@ def _sequence(beats: list[dict], w: Words, exact: bool = False, anchored: bool =
 def render(facts: dict, words: Words = Words()) -> Narration:
     """The template narration of `facts`: deterministic, always available, and the model's draft."""
     return {"morning": _morning, "now": _now, "replan": _replan, "coach": _coach, "evening": _evening,
-            "approval": _approval}[facts["moment"]](facts, words)
+            "approval": _approval, "checkin": _checkin}[facts["moment"]](facts, words)
 
 
 def _sleep_clause(hours: float | None, gentle: bool) -> tuple[str, str]:
@@ -671,6 +679,70 @@ def _approval(f: dict, w: Words) -> Narration:
     return Narration("I'd like to post the dare's result to the group chat. Okay?", "Post the League dare's result to the group chat.")
 
 
+def _series(parts: list[str]) -> str:
+    """"a", "a and b", "a, b, and c": clauses that are sentences of their own keep the comma before "and"."""
+    return parts[0] if len(parts) == 1 else " and ".join(parts) if len(parts) == 2 else ", ".join(parts[:-1]) + f", and {parts[-1]}"
+
+
+def _checkin(f: dict, w: Words) -> Narration:
+    """The check-in (contexts/day/domain/checkin.py): what was noticed, what happened the last times, what the desk
+    camera saw, what to do. Each clause is there only when its fact is; with none of a sentence's facts the
+    sentence is not there at all."""
+    spoken: list[str] = []
+    display: list[str] = []
+    # 1. how the person is doing, from the watch and their face
+    said, shown = [], []
+    if f.get("sleep_hours") is not None:
+        hours = float(f["sleep_hours"])
+        said.append(f"you slept about {say_hours(hours).removeprefix('about ')}")
+        shown.append(f"you slept about {hours:g} h")
+    if f.get("resting_hr") == "up":
+        said.append("your resting heart rate is up")
+        shown.append("your resting heart rate is up")
+    if f.get("strained_min"):
+        said.append(f"you've looked strained for the last {say_minutes(f['strained_min']).removeprefix('about ')}")
+        shown.append(f"you've looked strained for the last {f['strained_min']} minutes")
+    if said:
+        spoken.append(cap(_series(said)) + ".")
+        display.append(cap(_series(shown)) + ".")
+    # 2. the earlier days that looked like this one
+    past = f.get("history")
+    if past and past.get("matches"):
+        outcome = (past.get("outcome") or "").strip().rstrip(".")
+        by = past.get("by")
+        heard = outcome.replace(clock(by), say_time(by)) if by else outcome
+        spoken.append(f"The last {say_number(past['matches'])} times a day looked like this, {heard}.")
+        display.append(f"The last {past['matches']} times a day looked like this, {outcome}.")
+    # 3. at the desk: the sitting, and the drink nobody saw
+    said, shown = [], []
+    if f.get("sitting_min"):
+        said.append(f"you've been at the {w.workplace} for {say_minutes(f['sitting_min'])} straight")
+        shown.append(f"you've been at the {w.workplace} for {f['sitting_min']} minutes straight")
+    drink = f.get("drink")
+    if drink:
+        if drink.get("since"):
+            said.append(f"I haven't seen you pick up a drink since {say_time(drink['since'])}")
+            shown.append(f"I haven't seen you pick up a drink since {clock(drink['since'])}")
+        else:
+            tail = "in that time" if said else "since you sat down"
+            said.append(f"I haven't seen you pick up a drink {tail}")
+            shown.append(f"I haven't seen you pick up a drink {tail}")
+    if said:
+        spoken.append(cap(", and ".join(said)) + ".")
+        display.append(cap(", and ".join(shown)) + ".")
+    # 4. what to do: plain nudges, and the one offer that goes through an approval card
+    todo = []
+    for s in f.get("suggest") or []:
+        text = (s.get("text") or "").strip().rstrip(".")
+        if text:
+            todo.append(f"I can {lower_first(text)} if you say yes" if s.get("kind") == "move_block" else lower_first(text))
+    if todo:
+        line = cap(", and ".join(todo) if len(todo) == 2 and todo[1].startswith("I can ") else _series(todo)) + "."
+        spoken.append(line)
+        display.append(line)
+    return Narration(_tidy(" ".join(spoken)), _tidy(" ".join(display)))
+
+
 def _tidy(text: str) -> str:
     text = re.sub(r"\s+", " ", text).strip()
     text = re.sub(r"\s+([.,;:!?])", r"\1", text)
@@ -948,6 +1020,10 @@ def check(text: str, facts: dict, draft: str) -> list[str]:
     for value, words in numbers_in(rest):
         if not any(abs(value - n) < 0.01 for n in ok_numbers):
             problems.append(f"a number that is not in the facts: {words!r}")
+
+    if facts["moment"] == "checkin":  # what was measured, never what it might mean
+        for word in sorted({w for w in re.findall(r"[a-z]+", stripped.lower()) if w in DIAGNOSIS}):
+            problems.append(f"a diagnosis word: {word!r}")
 
     blob_words = {_stem(w) for w in re.findall(r"[a-z0-9']+(?:-[a-z0-9']+)*", blob)}
     blob_words |= {_stem(p) for w in re.findall(r"[a-z0-9']+(?:-[a-z0-9']+)+", blob) for p in w.split("-")}
