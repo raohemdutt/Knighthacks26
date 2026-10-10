@@ -147,3 +147,78 @@ At 16:04:03 workstation time the `Date` headers of `https://www.google.com`, `ht
 responses of M16 carried 16:04:39 to 16:04:40 against 16:03:52 to 16:03:53 local. The workstation
 clock is 44 to 47 s behind all four, so the 46 s of M14 is this machine running slow, not the hub
 running fast.
+
+## M18. The SJC hub's front door (plumbing pass 2, 19:01 UTC)
+
+The pods moved to AMD's second hub, `https://sjc.aupcloud.io` (accounts C and D), after the DUB
+outage of M16. At 19:01:28 workstation time an unauthenticated `GET /hub/api/` returned 200 in
+0.181 s with body `{"version": "5.4.4"}` and headers `server: cloudflare`, a `cf-ray`, and
+`x-jupyterhub-version: 5.4.4`. `GET /hub/static/spawn-ui/assets/index.js` returned 200 in 0.426 s,
+218,673 bytes, with `repo_persist` (1 occurrence), `gpu_selection` (2) and `allowGitClone` (4): the
+same size and markers as DUB's bundle in M13, so SJC runs the same AUP hub build behind the same
+Cloudflare front.
+
+## M19. SJC accounts C and D (plumbing pass 2, hub API reads only, 19:01 UTC)
+
+`GET /hub/api/users/<acct>` (no `include_stopped_servers`): for account C, server `''` ready, not
+pending, `started` 2026-10-10T18:54:27Z, server `last_activity` 19:01:09Z (hub time),
+`user_options` `{runtime_minutes: 2400, resource_type: gpu, gpu_selection: r9700}`; for account D,
+ready, not pending, `started` 18:54:59Z, `last_activity` 19:00:03Z, the same `user_options`. Both
+answered in 0.19 to 0.31 s with `server: cloudflare`. `GET /hub/api/quota/me` for both: `balance` 0,
+`unlimited` true, `enabled` false, and the same rate table as DUB (`r9700` 4, `9070xt` 4,
+`strix-halo` 3, `strix` 2, `phx` 2, `cpu` 1). These reads touch only the hub API, which does not
+move a server's `last_activity` (M10).
+
+## M20. Pod C's Jupyter server on SJC (plumbing pass 2, 19:01 to 19:03 UTC)
+
+`GET /user/<acct>/api` returned `{"version": "2.21.1"}` (jupyter_server 2.21.1; DUB's pod A ran
+2.19.0, M6) in 0.109 s. `GET /user/<acct>/api/contents/` (the Jupyter root) listed 9 entries at
+19:01 and 11 at 19:03: hour-0 and GPU probe scripts and their outputs written since 18:59 (by
+another session) plus two directories, `checkpoints` and `outputs`, whose `last_modified` is
+2026-09-22 (12:45:41Z and 13:02:10Z), and no `home` or `opt` entry. Directories dated weeks before
+the account existed come from the image rather than a fresh home volume, which points to the root
+being the image's working directory again (ephemeral, as `/opt/workspace` on DUB) and not
+`/home/jovyan`; the contents API does not show an absolute path, so this is not proven. These three
+requests went through the pod's Jupyter server and count as activity on pod C.
+
+## M21. DUB still down, as Cloudflare classifies it (plumbing pass 2, 19:01 to 19:04 UTC)
+
+Every request to `https://dub.aupcloud.io/hub/api/` still answered 502, so the outage that began
+about 15:20 UTC (M16) had lasted at least 3 h 40 min. The body depends on the request headers. A
+client sending a browser User-Agent and `Accept: */*` (httpx) got Cloudflare's branded HTML error
+page (6,432 bytes) that reads "Browser Working", "Atlanta Cloudflare Working" and
+"dub.aupcloud.io Host Error". With `Accept: application/json` it got an 869-byte JSON body:
+`"error_code": 502`, `"error_name": "origin_bad_gateway"`, `"error_category": "origin"`,
+`"detail": "The origin web server returned an invalid or incomplete response to Cloudflare. This
+typically indicates the origin is overloaded or misconfigured."`, `"retryable": true`,
+`"retry_after": 60`, `"owner_action_required": true`, `"cloudflare_error": true`,
+`"zone": "dub.aupcloud.io"`. curl, with its own or a browser User-Agent, still got the 16-byte
+`error code: 502` text of M16. The `type` URL in the JSON body
+(`https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-5xx-errors/error-502/`)
+answered 404 when opened.
+
+## M22. The workstation clock is still slow (plumbing pass 2, 19:01 UTC)
+
+The `Date` headers of the SJC and DUB answers in M18 to M21 ran 45.4 to 46.1 s ahead of the
+workstation clock, and `https://www.google.com` 47 s ahead (19:02:18 GMT against 19:01:31 local),
+the same offset as M17.
+
+## M23. The lab's readiness check reads DUB only (plumbing pass 2, about 18:59 UTC)
+
+`python -m lab ready` from a fresh clone of main at 97428e4 answered
+`{"ok": false, "ready": false, "outcome": "not_ready", "reasons": ["hub account A answered 502",
+"hub account B answered 502"], ...}` with `"hub": {"url": "https://dub.aupcloud.io", ...}`: it
+checks accounts A and B on DUB only (`lab/machine/ready.py`, `ACCOUNTS`, `REQUIRED_ENV` and
+`HUB_URL`), so it reports the lab not ready while both SJC pods run.
+
+## M24. The SJC pods after their relaunch as Strix Halo (plumbing pass 2, 19:31 UTC)
+
+The dispatcher reports that SJC ignored the REST launch (a stock image with no GPU) and that both pods were
+relaunched through the hub's web spawn form, as Strix Halo (Ilan1 and Ilan2 dispatcher page, lines of Sat 3:46
+and 4:00 PM ET by that page's clock), so M19 and M20 describe the first, REST-launched pods. At 19:31:06 to
+19:31:09 workstation time, hub API reads showed account C's server ready since 19:07:12Z and account D's since
+19:07:32Z, both with `user_options` `{runtime_minutes: 2400, resource_type: gpu, gpu_selection: strix-halo}`;
+server `last_activity` 19:29:51Z for C and 19:08:32Z for D; quota as in M19 (balance 0, unlimited true, enabled
+false; `strix-halo` rate 3 in the table). `GET /user/<acct>/api` on pod C returned `{"version": "2.20.0"}`, and its
+Jupyter root listed 20 entries with the directories `checkpoints`, `lab`, `models`, `outputs`, `proxytest`,
+`serve` and `vllm`, and no `home` or `opt` entry.

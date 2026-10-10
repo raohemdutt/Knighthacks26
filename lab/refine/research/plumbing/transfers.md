@@ -142,3 +142,17 @@ fail. Pulling a multi-GB package through the proxy needs a Range-capable server 
   Implies: through `/proxy/<port>/`, `python3 -m http.server` returns every package file whole, which jupyter-server-proxy 4.6.0 refuses above 100 MiB (`proxy-path.md` section 3, Tornado's default `max_body_size`), so R10's server has to answer Range requests itself, or the package script splits each file into parts under 100 MiB with a sha256 per part in the manifest, which any static server can serve; the `/files/` route (section 3) answers Range without a pod-side server (MB/s, FCR).
 
   Experiment (XFR-10): one 1 GB file pulled from pod B three ways: whole through `/proxy/<port>/` from `python3 -m http.server`, as 64 MiB pre-split parts through the same server, and in 64 MiB Range requests through `/files/`, sha256 checked. Expected: the whole pull fails (599 or a dropped connection) and both part-wise pulls succeed, `/files/` at least as fast. Minimum sample: 3 per arm.
+
+## 6. Where a push lands on SJC (plumbing pass 2, 2026-10-10)
+
+### Takeaway
+On the SJC hub the Jupyter root of pod C again holds directories baked into the image weeks before the account
+existed and no `home` entry, so a push through the contents API most likely lands in ephemeral storage there too.
+Until a relaunch proves it either way, treat SJC pushes as lost on relaunch and move them under `~/`.
+
+### Cited findings
+- **[measured]** Pod C's Jupyter root on SJC listed the session's uploaded scripts plus `checkpoints` and `outputs` directories last modified on 2026-09-22, and no `home` or `opt` entry, both on the first, REST-launched pod (jupyter_server 2.21.1) and on the Strix Halo pod launched through the web form, where the root also holds `lab`, `models`, `serve` and `vllm` directories (jupyter_server 2.20.0). Source: `measurements-2026-10-10.md` M20 and M24 [S49]
+
+  Implies: as on DUB (section 1), the contents API most likely writes into the image's working directory, which a relaunch wipes, so R6's push helper and E10 must move a pushed dataset under `~/data/` on the pod (or delete a test file) whichever hub they run on; the relaunch of the SJC pods through the web form would then have dropped every script uploaded to the root before it, and a vLLM build or model download kept in the root's `vllm` or `models` directory would be lost at the next relaunch (RT, MB/s, TTS).
+
+  Experiment: XFR-1 as specified in section 1, run on SJC account D at its next relaunch. Expected: the marker file is gone from the root after the relaunch and present under `~/data/`. Minimum sample: 1 each.
