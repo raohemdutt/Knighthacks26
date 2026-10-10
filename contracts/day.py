@@ -31,6 +31,20 @@ class PlanMove(BaseModel):
     with_friend: str | None = None
 
 
+class MoveIn(BaseModel):
+    """A chosen move in the shape Day Run's editor consumes (contexts.play.dayrun.models.Move): the plan is a
+    starting point, and the person can change it in Day Run and send it back through POST /api/day/plan."""
+
+    slot: str
+    kind: str
+    place: str | None = None
+    minutes: int | None = None
+    start: datetime | None = None
+    with_friend: str | None = None
+    deadline: str | None = None
+    event: str | None = None
+
+
 class PlanSource(BaseModel):
     """Why the plan is what it is: one input the box already had, with where it came from."""
 
@@ -74,11 +88,13 @@ class DayPlanProposed(TypedEvent):
     start: datetime
     end: datetime
     moves: list[PlanMove] = []  # fixed blocks and chosen moves, in time order
+    dayrun_moves: list[MoveIn] = []  # the chosen moves as Day Run's editor takes them
     outcome: PlanOutcome
     sources: list[PlanSource] = []
     missing: list[str] = []  # inputs the box did not have ("circle: not configured")
     text: str  # one paragraph for the phone
     action_id: str | None = None  # the approval card for the calendar blocks
+    by: Literal["atlas", "person"] = "atlas"  # who chose the moves: the box, or the person editing them
 
 
 @register
@@ -120,7 +136,8 @@ class DayStatusChanged(TypedEvent):
     seen_how: str | None = None  # "desk camera", "door camera", "shared place"
     seen_ts: datetime | None = None
     drift_minutes: int = 0  # positive: behind the plan; negative: ahead
-    next_event: NextEvent | None = None
+    next_block: NextEvent | None = None  # the plan's next block, fixed or chosen
+    next_event: NextEvent | None = None  # the next fixed event with a place, and when to leave for it
     risk: Risk = "ok"
     deadline_risk: float = 0.0
     meters: DayMeters = DayMeters()
@@ -138,13 +155,18 @@ class DayReplanProposed(TypedEvent):
     why: str
     start: datetime
     moves: list[PlanMove] = []
+    dayrun_moves: list[MoveIn] = []
     outcome: PlanOutcome
     action_id: str | None = None
+    asked: bool = False  # True when the person asked for it (POST /api/day/plan from_here), not drift
+    for_event: str | None = None  # the fixed block the drift was about
 
 
 @register
 class DayReviewed(TypedEvent):
-    """The evening review: the plan against what Habits measured."""
+    """The evening review: the plan against what Habits measured (Day Run's reality score), and the real day
+    scored by the same engine as a simulated one, so a lived day earns stars and points the way a played
+    one does (Day Run's scoring is untouched: the measured day is run through it as a baseline plan)."""
 
     type: Literal["day.reviewed"] = "day.reviewed"
     day: date
@@ -154,3 +176,7 @@ class DayReviewed(TypedEvent):
     slipped: list[str] = []  # block titles that did not
     text: str
     change_tomorrow: str  # one sentence
+    stars: int = 0  # the real day's stars, by Day Run's rules
+    points: int = 0  # the real day's points, 0 to 100
+    plan_stars: int = 0  # what the plan would have earned
+    streak: int = 0  # consecutive reviewed days with at least one star

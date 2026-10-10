@@ -16,6 +16,7 @@ PROPOSAL = {"title": "Study session", "start": "2026-10-11T14:00:00-04:00", "end
             "invitees": ["hemdutt"]}
 DAY_MOVE = {"id": "m0", "kind": "study", "title": "Study at Desk", "start": TS, "end": TS, "minutes": 90, "place": "apartment.desk",
             "place_name": "Desk", "fixed": False, "deadline": "hw4"}
+DAY_MOVE_IN = {"slot": "s1", "kind": "study", "place": "apartment.desk", "minutes": 90, "start": TS, "deadline": "hw4"}
 DAY_OUTCOME = {"won": True, "stars": 2, "points": 81, "summary": "Win, 2 stars", "sleep_hours": 7.5, "meals": 2,
                "study_minutes": 180, "energy_min": 31.0, "deadline_risk": 0.3}
 
@@ -46,21 +47,25 @@ SAMPLES: dict[str, dict] = {
     "connector.sync.failed": {"connector": "canvas", "error": "401 Unauthorized"},
     "day.plan.committed": {"day": "2026-10-11", "plan_id": "plan-2026-10-11-0815", "action_id": "a3"},
     "day.plan.proposed": {"day": "2026-10-11", "plan_id": "plan-2026-10-11-0815", "start": TS, "end": TS,
-                          "moves": [DAY_MOVE], "outcome": DAY_OUTCOME,
+                          "moves": [DAY_MOVE], "dayrun_moves": [DAY_MOVE_IN], "outcome": DAY_OUTCOME, "by": "atlas",
                           "sources": [{"kind": "item", "id": "hw4", "text": "HW 4 due Tue 11:59 PM", "origin": "canvas"},
                                       {"kind": "habit", "id": "sleep", "text": "slept 5.4 h last night", "origin": "watch"}],
                           "missing": ["circle: not configured"], "text": "Study at the desk until lunch, then judging.",
                           "action_id": "a3"},
     "day.replan.proposed": {"day": "2026-10-11", "plan_id": "plan-2026-10-11-0912", "replaces": "plan-2026-10-11-0815",
                             "why": "At the desk at 9:12; the 9:20 mentor check-in is a 9 minute walk away.", "start": TS,
-                            "moves": [DAY_MOVE], "outcome": DAY_OUTCOME, "action_id": "a4"},
+                            "moves": [DAY_MOVE], "dayrun_moves": [DAY_MOVE_IN], "outcome": DAY_OUTCOME, "action_id": "a4",
+                            "asked": False, "for_event": "outlook:kh-mentor"},
     "day.reviewed": {"day": "2026-10-11", "plan_id": "plan-2026-10-11-0815", "score": 62, "followed": ["Study at Desk"],
                      "slipped": ["Eat at Kitchen"], "text": "You followed 62% of what could be measured.",
-                     "change_tomorrow": "Put lunch on the calendar before the afternoon block."},
+                     "change_tomorrow": "Put lunch on the calendar before the afternoon block.", "stars": 1, "points": 64,
+                     "plan_stars": 2, "streak": 3},
     "day.status.changed": {"day": "2026-10-11", "plan_id": "plan-2026-10-11-0815", "now": TS, "block_id": "m0",
                            "block_title": "Study at Desk", "block_end": TS, "should_be": "apartment.desk", "should_be_name": "Desk",
                            "seen_at": "apartment.door", "seen_at_name": "Front door", "seen_how": "door camera", "seen_ts": TS,
                            "drift_minutes": 12,
+                           "next_block": {"id": "m1", "title": "Eat at Kitchen", "start": TS, "end": TS, "place": "apartment.kitchen",
+                                          "place_name": "Kitchen"},
                            "next_event": {"id": "outlook:kh-judging", "title": "Judging", "start": TS, "end": TS, "place": "ucf.eng2",
                                           "place_name": "Engineering II", "walk_minutes": 9, "leave_by": TS},
                            "risk": "leave_now", "deadline_risk": 0.4,
