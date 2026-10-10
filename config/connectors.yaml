@@ -22,8 +22,10 @@ calendar:
   every_s: 600
   hosts: [outlook.office365.com]
   reads: {list_events: calendar_event}
+  writes: [create_event]  # .ics invites (Graph fallback); runs only after an approval card
   env: [OUTLOOK_ICS_URL, CAMPUS_EVENTS_ICS_URL, CANVAS_ICS_URL]
   options:
+    invites_dir: data/invites
     days_back: 1
     days_ahead: 14
     feeds:
