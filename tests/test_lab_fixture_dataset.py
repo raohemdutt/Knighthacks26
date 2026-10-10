@@ -39,6 +39,7 @@ LAST_LEFT = "When did someone last leave the table?"
 WALLET = "Where is my wallet?"
 DUE = "What is due this week?"
 PACKAGE = "Did a package arrive?"
+VISIT = "What happened while they were here?"  # A12: no memory tool returns a visit, so the lab skips it
 
 
 @pytest.fixture(autouse=True)
@@ -107,7 +108,7 @@ def test_the_build_is_an_export_the_reader_loads_as_text_only(built):
     data = dataset.load(built.root, require_images=False)
     assert built.root.name == fx.DATASET_ID and data.dataset_id == fx.DATASET_ID
     assert len(data.examples) == data.manifest.examples == built.examples == built.golden + built.variants
-    assert (built.golden, len(built.skipped)) == (24, 18)
+    assert (built.golden, len(built.skipped)) == (24, 24)
     assert data.manifest.action_id == fx.FIXTURE_ACTION_ID
     assert data.manifest.spec.task == fx.TASK
     assert data.labeled() == [] and [e.id for e in data.pending()] == [e.id for e in data.examples]
@@ -182,7 +183,7 @@ def test_the_shapes_whose_evidence_no_tool_returns_are_skipped_with_their_reason
     _, _, golden, _ = fixture_night
     wordings = {g.q: [g.q, *g.also] for g in golden}
     reasons = {s["question"]: s["reason"] for s in built.skipped}
-    assert set(reasons) == set(wordings[LAST_LEFT] + wordings[PACKAGE] + wordings[DUE]) and len(reasons) == 18
+    assert set(reasons) == set(wordings[LAST_LEFT] + wordings[PACKAGE] + wordings[DUE] + wordings[VISIT]) and len(reasons) == 24
     assert all("Most recent" in reasons[t] for t in wordings[LAST_LEFT])
     assert all("48 hours" in reasons[t] for t in wordings[PACKAGE])
     assert all("TOOLS" in reasons[t] and "items" in reasons[t] for t in wordings[DUE])
@@ -480,7 +481,7 @@ def test_the_entry_point_builds_and_leaves_a_ledger_row(tmp_path):
     assert answer == {"ok": True, "outcome": "built", "dataset_id": fx.DATASET_ID,
                       "path": str(tmp_path / "out" / fx.DATASET_ID), "examples": 24, "golden": 24, "variants": 0,
                       "groups": 4, "skipped": answer["skipped"], "refs": {"dataset_id": fx.DATASET_ID}}
-    assert len(answer["skipped"]) == 18 and DUE in {s["question"] for s in answer["skipped"]}
+    assert len(answer["skipped"]) == 24 and DUE in {s["question"] for s in answer["skipped"]}
     row = only_row()
     assert (row["verb"], row["outcome"], row["actor"], row["tier"]) == ("fixture-dataset", "built", "sonnet-test", "sonnet")
     assert row["refs"]["dataset_id"] == fx.DATASET_ID
