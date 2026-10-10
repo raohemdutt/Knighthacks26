@@ -460,7 +460,12 @@ def build(day: str, *, state_dir: StateDir = None, refine_root: Path | None = No
     all_events = alerts.timeline(ledger.read(state_dir=state), now)
     day_events = [event for event in all_events if start <= event[0] < end]
     alert_lines = []
-    for line in alerts.day_lines(day, state):
+    try:
+        written = alerts.day_lines(day, state)
+    except OSError as exc:
+        problems.append(f"the alerts file could not be read: {type(exc).__name__}: {exc.strerror or 'not read'}")
+        written = []
+    for line in written:
         parsed = alerts.parse_line(line)
         alert_lines.append(f"- {parsed.time}Z **{parsed.title}** {parsed.body}")     # type: ignore[union-attr]
 

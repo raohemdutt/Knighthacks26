@@ -730,6 +730,12 @@ def test_an_alert_announced_on_an_earlier_day_inside_the_window_is_not_announced
     assert not (isolated_state / "alerts" / "2026-10-10.md").exists()
 
 
+def test_a_plain_file_where_the_alerts_folder_belongs_has_no_lines_on_any_system(isolated_state):
+    (isolated_state / "alerts").write_text("in the way", encoding="utf-8")
+    assert alerts.day_lines("2026-10-10", isolated_state) == []
+    assert alerts.announced_keys(dt.date(2026, 10, 9), dt.date(2026, 10, 10), isolated_state) == set()
+
+
 def test_a_dry_run_says_what_is_new_and_writes_nothing(isolated_state):
     record(isolated_state)
     report = alerts.raise_alerts(state_dir=isolated_state, now=NOW, dry_run=True)

@@ -726,6 +726,20 @@ def test_a_failed_alert_scan_is_a_problem_and_the_review_is_still_written(isolat
     assert "35 ledger rows" in text
 
 
+def test_an_alerts_file_that_cannot_be_read_is_a_problem_and_the_review_is_still_written(isolated_state,
+                                                                                         refine_root):
+    record(isolated_state)
+    folder = isolated_state / "alerts"
+    folder.mkdir()
+    (folder / "2026-10-10.md").mkdir()               # a folder where the day's file belongs: reading it fails
+    built = build(isolated_state, refine_root)
+    found = sections(built.text)
+    assert found["## Alerts"] == ["- none"]
+    [problem] = found["## Problems"]
+    assert problem.startswith("- the alerts file could not be read: ")
+    assert "35 ledger rows" in built.text
+
+
 def test_a_naive_time_is_refused_before_anything_is_written(isolated_state, refine_root):
     with pytest.raises(ValueError, match="UTC offset"):
         review.review(DAY, state_dir=isolated_state, refine_root=refine_root, now=dt.datetime(2026, 10, 10, 15, 0))

@@ -548,10 +548,11 @@ def parse_line(line: str) -> ParsedLine | None:
 
 
 def day_lines(day: str, state_dir: StateDir = None) -> list[str]:
-    """The alert lines of one day's file as written, without their newlines; [] when there is no file."""
+    """The alert lines of one day's file as written, without their newlines; [] when there is no file (nor a
+    folder where it would be: some systems answer a path under a plain file with NotADirectoryError)."""
     try:
         text = alerts_path(day, state_dir).read_text(encoding="utf-8", errors="replace")
-    except FileNotFoundError:
+    except (FileNotFoundError, NotADirectoryError):
         return []
     return [line for line in text.splitlines() if parse_line(line) is not None]
 
