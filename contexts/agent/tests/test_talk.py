@@ -324,6 +324,47 @@ def test_name_and_tone_come_from_config():
     assert "You are Jarvis" in system_prompt(rt) and "Dry humour, very brief." in system_prompt(rt)
 
 
+def test_how_is_your_day_is_three_spoken_sentences_and_the_facts_are_never_cut_mid_word():
+    busy = Episode(id="ep-busy", camera_id="cam-desk", start=NOW - timedelta(minutes=13), end=NOW - timedelta(minutes=10), labels=["person"],
+                   summary=("Two people rehearse a presentation; one points at the monitor. On the desk: keys (left of the laptop, behind the "
+                            "coffee mug), laptop (open in the middle), a charger, two mugs, a notebook, a water bottle and a phone face down."),
+                   keyframe_refs=["frames:cam-desk:1"])
+    t = Talk(FakeRuntime(), Clock(), memory=FakeMemory(episodes=[busy]))
+    t.day_facts = lambda: {
+        "now": "About 15 min behind on your study block until 5:46 PM; last seen at the desk. The submissions due is at 6:37 PM at Student Union "
+               "(10 min walk, leave by 6:27 PM).",
+        "now_spoken": "You're about fifteen minutes behind on your study block, which runs until quarter to six. The submissions due is at "
+                      "twenty to seven at the Student Union. Leave by twenty-five past six.",
+        "plan": "Morning. " + "A study block, then a long walk across campus to the next thing on the calendar, " * 4 + "and that is the day.",
+    }
+    said = asyncio.run(t.reply("How's your day?")).text
+    assert said == ("Pretty good, my cameras logged 1 moment today, the last at 2:49 PM: two people rehearse a presentation. "
+                    "You're about fifteen minutes behind on your study block, which runs until quarter to six. How's yours going?")
+    assert "(" not in said and "…" not in said and "keys" not in said  # the ear's wording: no brackets, no inventory of the desk
+    # an initial in a name is not where the sentence ends
+    t.day_facts = lambda: {"now_spoken": "You're about fifteen minutes behind: the plan has you at John C. Hitt Library. Head over."}
+    t.forget()
+    assert asyncio.run(t.reply("how's your day?")).text.endswith("the plan has you at John C. Hitt Library. How's yours going?")
+    # without the narrator's spoken words, the first sentence of what there is
+    t.day_facts = lambda: {"now": "You're in your study block until 4. Class is at 5; leave by 4:40."}
+    t.forget()
+    assert asyncio.run(t.reply("how are you?")).text.endswith("presentation. You're in your study block until 4. How's yours going?")
+
+    # the model's FACTS: the same clause about the last moment, the screen's exact `now`, no line for the spoken copy,
+    # and a long line ends at a sentence or a clause, never inside a word
+    t.day_facts = lambda: {"now": "On plan.", "now_spoken": "You're on plan.", "plan": "Morning. " + "A study block, then a long walk across campus, " * 8}
+    facts = t.facts()
+    assert "Your cameras logged 1 moment today and kept 1 keyframe. The last one was at 2:49 PM: Two people rehearse a presentation." in facts
+    assert "Their day right now: On plan." in facts and not any("spoken" in f or "You're on plan" in f for f in facts)
+    plan = next(f for f in facts if f.startswith("Their plan for today"))
+    assert len(plan) <= 240 and plan.endswith("across campus, A study block.") and "…" not in "".join(facts)
+    long_caption = Episode(id="ep-long", camera_id="cam-desk", start=NOW - timedelta(minutes=5), end=NOW, labels=["person"],
+                           summary="A person " + "rearranges the monitor and the keyboard and the lamp and " * 6 + "sits down")
+    t.memory = FakeMemory(episodes=[long_caption])
+    (seen,) = t.seen_today(NOW)
+    assert len(seen) < 170 and seen.endswith(".") and not seen.endswith(" .") and seen.split()[-1].rstrip(".") in ("and", "the", "monitor", "keyboard", "lamp")
+
+
 # --- with no model at all (the fake runtime on a laptop) ---
 
 
@@ -332,7 +373,8 @@ def test_the_fake_runtime_gets_templates_not_an_echo():
     t.day_facts = lambda: {"now": "You're in your study block until 4."}
     pieces = []
     day = asyncio.run(t.reply("How's your day?", pieces.append))
-    assert "My cameras logged 2 moments today" in day.text and "You're in your study block until 4." in day.text
+    assert day.text == ("Pretty good, my cameras logged 2 moments today, the last at 2:22 PM: a person types at the desk. "
+                        "You're in your study block until 4. How's yours going?")
     assert "".join(pieces) == day.text and len(pieces) > 5 and day.model_version == "fake-0"
     assert "AI" in asyncio.run(t.reply("are you gay?")).text and "orientation" in asyncio.run(t.reply("what's your sexual orientation?")).text
     assert "not a person" in asyncio.run(t.reply("who are you?")).text
