@@ -500,6 +500,112 @@ export interface PlayAccuracy {
   round_5_on: number | null;
 }
 
+// ---------- the room twin (contexts/play/room) ----------
+
+export type RoomWall = "north" | "east" | "south" | "west";
+
+/** A box of furniture on the floor plan: metres, x east, y south; `rot` in degrees clockwise (0 = its front looks south). */
+export interface RoomFurniture {
+  id: string;
+  type: string; // bed desk chair wardrobe shelf fridge nightstand table rug bin
+  at: [number, number];
+  size: [number, number]; // width along its front, depth
+  rot: number;
+  height: number;
+  bin: string | null; // for a bin: its name in config/sorting.yaml
+  color: string | null;
+  label: string | null;
+}
+
+/** A door, a window or a poster on a wall. `at` is the centre, in metres along the wall from its west or north end. */
+export interface RoomOpening {
+  id?: string;
+  wall: RoomWall;
+  at: number;
+  width: number;
+  sill?: number;
+  height?: number;
+  art?: string;
+}
+
+/** GET /api/room: the floor plan, each camera's calibration, and the zones laid on the floor. */
+export interface RoomPlan {
+  name: string;
+  title: string;
+  size: [number, number];
+  wall_height: number;
+  doors: RoomOpening[];
+  windows: RoomOpening[];
+  posters: RoomOpening[];
+  furniture: RoomFurniture[];
+  calibration: Record<string, { image: [number, number][]; floor: [number, number][]; homography: number[][] }>;
+  zones: Record<string, Record<string, [number, number][]>>; // camera -> zone -> floor polygon (m)
+  play: { walk_speed: number; body_radius: number; start: [number, number] };
+  rooms: string[];
+  uncalibrated: string[];
+}
+
+/** One tracked person or thing on the floor plan. */
+export interface FloorTrack {
+  key: string; // "<camera>:<track id>"
+  camera: string;
+  track_id: number;
+  label: string;
+  kind: "person" | "object";
+  x: number;
+  y: number;
+  z: number; // metres above the floor
+  on: string | null; // the furniture it rests on or sits in
+  held_by: string | null;
+  in_bin: string | null;
+  seated: boolean;
+  member_id: string | null;
+}
+
+export interface RoomRouteLeg {
+  player: number;
+  track: string | null;
+  points: { x: number; y: number }[];
+  distance_m: number;
+  par_s: number;
+  reachable: boolean;
+}
+
+export interface SeenOnFloor {
+  label: string;
+  x: number;
+  y: number;
+  z: number;
+  on: string | null;
+  camera: string;
+  ts: string;
+}
+
+/** GET /api/room/live. */
+export interface RoomLive {
+  room: string;
+  ts: string | null;
+  tracks: FloorTrack[];
+  seen: Record<string, SeenOnFloor>;
+  round: { round_id: string; item: string; target_bin: string; bin: string; players: number; started: string; routes: RoomRouteLeg[] } | null;
+  result: { round_id: string; item: string; correct: boolean; seconds: number; score: number; players: number; par_s: number | null; bin: string; ts: string; right: number; rounds: number } | null;
+  assist: { item: string; label: string; bin: string; bin_id: string; color: string | null; side: string; track: string; person: string; text: string } | null;
+}
+
+/** GET /api/play/room-route. `points` is empty when no way exists. */
+export interface RoomRouteAnswer {
+  item: string;
+  bin: string;
+  bin_id: string;
+  zone: string;
+  room: string;
+  from: { x: number; y: number; track: string | null };
+  reachable: boolean;
+  points: [number, number][];
+  distance_m: number;
+  par_s: number;
+}
+
 /** contracts.memory.Sighting: where a watch item was last seen. A zone and a text position; never coordinates. */
 export interface Sighting {
   label: string;
@@ -1553,6 +1659,11 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
 
   playRoute: (item: string, signal?: AbortSignal) => get<PlayRoute>("/api/play/route", { item }, signal),
   playAccuracy: (signal?: AbortSignal) => get<PlayAccuracy>("/api/play/accuracy", undefined, signal),
+  room: (signal?: AbortSignal) => get<RoomPlan>("/api/room", undefined, signal),
+  roomLive: (signal?: AbortSignal) => get<RoomLive>("/api/room/live", undefined, signal),
+  roomRoute: (item: string, fromTrack?: string | null, signal?: AbortSignal) => get<RoomRouteAnswer>("/api/play/room-route", { item, from_track: fromTrack ?? undefined }, signal),
+  setRoomCalibration: (camera: string, taps: { image: [number, number][]; floor: [number, number][] }) =>
+    put<RoomPlan>(`/api/room/calibration/${encodeURIComponent(camera)}`, taps),
 
   places: (signal?: AbortSignal) => get<PlacePack[]>("/api/places", undefined, signal),
   /** A pack's drawn map, by the path GET /api/places gave for it. Fetch it through lib/campusmap's loadCampusMap, which keeps it. */
