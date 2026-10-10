@@ -99,11 +99,16 @@ def astar(m: ZoneMap, start: tuple[int, int], goals: set[tuple[int, int]]) -> li
 class SortingRules:
     bins: dict[str, str]  # bin -> zone id
     items: dict[str, str]  # item label -> bin
+    aliases: dict[str, list[str]] = field(default_factory=dict)  # item -> other detector labels for the same thing
 
     @classmethod
     def load(cls, path: str | Path = "config/sorting.yaml") -> "SortingRules":
         raw = yaml.safe_load(Path(path).read_text())
-        return cls(raw["bins"], raw["items"])
+        return cls(raw["bins"], raw["items"], raw.get("aliases") or {})
+
+    def same_item(self, label: str, item: str) -> bool:
+        """Is a tracked `label` the round's `item`? Exact, or one of the item's configured aliases."""
+        return label == item or label in self.aliases.get(item, [])
 
     def bin_for(self, label: str) -> str:
         return self.items.get(label, "trash")
