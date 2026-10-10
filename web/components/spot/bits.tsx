@@ -103,6 +103,7 @@ export function rateColor(rate: number | null, overall: number): string {
 export function RateBars({ rows, overall, max, onRow, limit }: { rows: Bar[]; overall: number; max?: number; onRow?: (b: Bar) => void; limit?: number }) {
   const shown = limit ? rows.slice(0, limit) : rows;
   const top = max ?? Math.min(1, Math.max(0.4, ...shown.map((b) => b.hi ?? b.rate ?? 0)));
+  if (shown.length === 0) return null;
   return (
     <div className={s.rows}>
       {shown.map((b) => {

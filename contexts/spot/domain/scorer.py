@@ -139,8 +139,9 @@ def score(model: dict, x: list[float]) -> float:
 
 def explain(model: dict, x: list[float], top: int = 3) -> list[dict]:
     """The features that push this action's score up the most: weight times how unusual the value is."""
+    # only features that raise the score by being HIGH: "a low value of something with a negative weight" is not a reason a person can use
     parts = [{"feature": f, "why": PLAIN.get(f, f), "contribution": w * (v - m) / s, "value": v}
-             for f, w, v, m, s in zip(model["features"], model["weights"], x, model["means"], model["sds"])]
+             for f, w, v, m, s in zip(model["features"], model["weights"], x, model["means"], model["sds"]) if w > 0 and v > m]
     return sorted((p for p in parts if p["contribution"] > 0), key=lambda p: -p["contribution"])[:top]
 
 
