@@ -597,6 +597,57 @@ export function setToken(token: string): void {
   }
 }
 
+export interface VaultPolicy {
+  blur_faces: boolean;
+  paused_cameras: string[];
+  offline: boolean;
+  /** Days of pictures and memory to keep; null = forever. */
+  keep_days: number | null;
+}
+
+export interface EgressGroup {
+  /** "lan", "ntp", "dns", "hub", "connector:calendar", ... */
+  name: string;
+  hosts: string[];
+  packets: number;
+  bytes: number;
+}
+
+export interface EgressBlock {
+  dst: string;
+  proto: string;
+  port: string;
+  count: number;
+  last: string;
+}
+
+export interface Egress {
+  /** false where the box runs no firewall (a laptop, or the service is off). */
+  enforced: boolean;
+  mode?: "online" | "offline";
+  allowed: EgressGroup[];
+  blocked: number;
+  blocked_bytes?: number;
+  recent_blocks?: EgressBlock[];
+  updated?: string;
+  stale?: boolean;
+}
+
+export type WipeScope = "all" | "keyframes" | "memory";
+
+export interface WipeToken {
+  token: string;
+  scope: WipeScope;
+  expires_at: string;
+}
+
+export interface WipeResult {
+  scope: WipeScope;
+  done: boolean;
+  removed?: Record<string, number>;
+  refused?: unknown;
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number, // 0 = the gateway could not be reached
@@ -626,10 +677,10 @@ function withQuery(path: string, params?: Params): string {
   return s ? `${path}?${s}` : path;
 }
 
-async function request<T>(method: "GET" | "POST", path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+async function request<T>(method: "GET" | "POST" | "PUT", path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const headers: Record<string, string> = {};
   if (body !== undefined) headers["Content-Type"] = "application/json";
-  if (method === "POST") {
+  if (method !== "GET") {
     const token = getToken();
     if (token) headers["Authorization"] = `Bearer ${token}`;
   }
@@ -665,6 +716,7 @@ async function request<T>(method: "GET" | "POST", path: string, body?: unknown, 
 
 const get = <T,>(path: string, params?: Params, signal?: AbortSignal) => request<T>("GET", withQuery(path, params), undefined, signal);
 const post = <T,>(path: string, body: unknown, signal?: AbortSignal) => request<T>("POST", path, body, signal);
+const put = <T,>(path: string, body: unknown, signal?: AbortSignal) => request<T>("PUT", path, body, signal);
 
 /** URL of the JPEG behind a frame ref. 404s when the box has no image for it (demo fixtures have none). */
 export interface CameraStatus {
@@ -709,6 +761,12 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   liveTracks: (camera: string, signal?: AbortSignal) => get<LiveTracks>(`/capture/${encodeURIComponent(camera)}/tracks`, undefined, signal),
 
   ask: (text: string) => post<Answer>("/api/ask", { text }),
+
+  vaultPolicy: (signal?: AbortSignal) => get<VaultPolicy>("/vault/policy", undefined, signal),
+  setVaultPolicy: (body: Partial<VaultPolicy>) => put<VaultPolicy>("/vault/policy", body),
+  egress: (signal?: AbortSignal) => get<Egress>("/vault/egress", undefined, signal),
+  wipeRequest: (scope: WipeScope) => post<WipeToken>("/vault/wipe/request", { scope }),
+  wipe: (token: string) => post<WipeResult>("/vault/wipe", { token }),
 
   episodes: (opts: { from?: string; to?: string; camera?: string; label?: string } = {}, signal?: AbortSignal) =>
     get<Episode[]>("/memory/episodes", opts, signal),

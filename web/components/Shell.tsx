@@ -88,6 +88,16 @@ const MORE: Tab[] = [
     ),
   },
   {
+    href: "/privacy",
+    label: "Privacy",
+    icon: (
+      <>
+        <path d="M12 3.5l7 2.8v5.4c0 4.2-2.9 7.4-7 8.8-4.1-1.4-7-4.6-7-8.8V6.3z" />
+        <path d="M9 12l2.2 2.2L15.5 10" />
+      </>
+    ),
+  },
+  {
     href: "/map",
     label: "Room map",
     icon: (
