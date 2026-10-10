@@ -76,6 +76,7 @@ class IdentityChanged(TypedEvent):
     enrolled_via: Literal["live", "photos", "scan"] | None = None  # the box's camera, uploaded photos, a scan on the phone
     consent_ack: bool | None = None
     circle_member_id: str | None = None  # the Circle member the enrolled person was linked to, if any: an id only
+    received_from: list[str] = []  # Circle member ids whose own template a friend's box shared with this one (face share)
 
 
 # --- apparent expression (opt-in per member; anonymous for a whole room only in the "everyone" mode) ---
