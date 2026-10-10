@@ -82,7 +82,19 @@ def _is_private(host: str) -> bool:
     return ip.is_private or ip.is_loopback or ip.is_link_local
 
 
-def host_groups(config_dir: Path, env: dict[str, str]) -> dict[str, list[str]]:
+def derp_nodes(run: Callable = subprocess.run) -> list[str]:
+    """Every Tailscale relay (DERP) address, from tailscaled's own map: the derpN host names cover only some of them,
+    and with the nearby relays blocked the box fell back to one in Bengaluru. [] when tailscale is not running."""
+    try:
+        out = run(["tailscale", "debug", "derp-map"], capture_output=True, text=True, timeout=10)
+        regions = json.loads(out.stdout or "{}").get("Regions") or {}
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return []
+    return sorted({ip for r in regions.values() for node in r.get("Nodes") or [] for ip in (node.get("IPv4"), node.get("IPv6"))
+                   if ip and ip != "none"})
+
+
+def host_groups(config_dir: Path, env: dict[str, str], relays: Callable[[], list[str]] = derp_nodes) -> dict[str, list[str]]:
     """Group name -> hostnames. The group name is what the phone shows ("connector:calendar", "hub", "neon")."""
     groups: dict[str, list[str]] = {"hub": list(HUB_HOSTS), "system": list(SYSTEM_HOSTS)}
     connectors = config_dir / "connectors.yaml"
@@ -91,6 +103,8 @@ def host_groups(config_dir: Path, env: dict[str, str]) -> dict[str, list[str]]:
             groups[f"connector:{name}"] = [str(h) for h in spec["hosts"]]
     if env.get("ATLAS_TAILSCALE") == "1":
         groups["tailscale"] = list(TAILSCALE_HOSTS)
+        if nodes := relays():
+            groups["tailscale-relays"] = nodes  # literal addresses, about 90 of each version: not capped
     neon = urlparse(env.get("NEON_DATABASE_URL", "")).hostname
     if neon:
         groups["neon"] = [neon]
@@ -150,7 +164,8 @@ def resolve_groups(groups: dict[str, list[str]], previous: dict[str, Resolved] |
                     a, b = resolve(host)
                     v4 |= a
                     v6 |= b
-        out[group] = (set(sorted(v4)[-MAX_PER_GROUP:]), set(sorted(v6)[-MAX_PER_GROUP:]))
+        cap = None if group == "tailscale-relays" else MAX_PER_GROUP
+        out[group] = (set(sorted(v4)[-cap:]) if cap else v4, set(sorted(v6)[-cap:]) if cap else v6)
     return out
 
 
@@ -167,7 +182,7 @@ def render(version: int, groups: dict[str, Resolved], dns: Resolved, offline: bo
              f"-A {CHAIN} -o lo -j ACCEPT",
              f"-A {CHAIN} -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT"]
     lines += [f"-A {CHAIN} -d {net} {_comment('lan')} -j ACCEPT" for net in LAN[version]]
-    if "tailscale" in groups:  # traffic to tailnet peers goes over tailscale0 and is ours end to end, like the LAN
+    if "tailscale" in groups or "tailscale-relays" in groups:  # traffic to tailnet peers goes over tailscale0 and is ours end to end, like the LAN
         lines += [f"-A {CHAIN} -d {net} {_comment('tailnet')} -j ACCEPT" for net in TAILNET[version]]
     if version == 6:  # neighbour discovery, router adverts and path-MTU messages: IPv6 does not work without them
         lines.append(f"-A {CHAIN} -p ipv6-icmp {_comment('lan')} -j ACCEPT")
@@ -176,7 +191,7 @@ def render(version: int, groups: dict[str, Resolved], dns: Resolved, offline: bo
         for proto in ("udp", "tcp"):
             lines.append(f"-A {CHAIN} -d {ip} -p {proto} --dport 53 {_comment('dns')} -j ACCEPT")
     if not offline:
-        if "tailscale" in groups:
+        if "tailscale" in groups or "tailscale-relays" in groups:
             lines.append(f"-A {CHAIN} -p udp --sport {TAILSCALE_PORT} {_comment('tailscale')} -j ACCEPT")
         for group, resolved in sorted(groups.items()):
             lines += [f"-A {CHAIN} -d {ip} {_comment(group)} -j ACCEPT" for ip in sorted(resolved[pick])]

@@ -204,7 +204,7 @@ def test_a_host_that_rotates_through_many_addresses_gets_all_of_them_over_time(t
 
 def test_tailscale_opens_its_servers_its_wireguard_port_and_the_tailnet_only_when_switched_on(config):
     assert "tailscale" not in egress.host_groups(config, {})
-    groups = egress.host_groups(config, {"ATLAS_TAILSCALE": "1"})
+    groups = egress.host_groups(config, {"ATLAS_TAILSCALE": "1"}, relays=lambda: [])
     assert "controlplane.tailscale.com" in groups["tailscale"] and "derp1.tailscale.com" in groups["tailscale"]
     resolved = {"tailscale": ({"192.0.2.10"}, set())}
     online = egress.render(4, resolved, (set(), set()), offline=False)
@@ -215,3 +215,17 @@ def test_tailscale_opens_its_servers_its_wireguard_port_and_the_tailnet_only_whe
     assert "100.64.0.0/10" in offline and "41641" not in offline and "192.0.2.10" not in offline
     assert "fd7a:115c:a1e0::/48" in egress.render(6, resolved, (set(), set()), offline=False)
     assert "100.64.0.0/10" not in egress.render(4, {}, (set(), set()), offline=False)  # off: no tailnet line
+
+
+def test_every_tailscale_relay_address_comes_from_the_derp_map_uncapped(config):
+    """Only some relays answer to derpN.tailscale.com; with the US ones blocked the Jetson relayed via Bengaluru."""
+    class Done:
+        stdout = json.dumps({"Regions": {str(r): {"Nodes": [{"IPv4": f"198.51.{r}.{n}", "IPv6": f"2001:db8:{r}::{n}"}
+                                                            for n in range(1, 10)]} for r in range(1, 12)}})
+
+    nodes = egress.derp_nodes(run=lambda *a, **k: Done())
+    assert len(nodes) == 2 * 99
+    groups = egress.host_groups(config, {"ATLAS_TAILSCALE": "1"}, relays=lambda: nodes)
+    resolved = egress.resolve_groups({"tailscale-relays": groups["tailscale-relays"]})
+    assert len(resolved["tailscale-relays"][0]) == 99 > egress.MAX_PER_GROUP  # not cut to the cap
+    assert egress.derp_nodes(run=lambda *a, **k: (_ for _ in ()).throw(OSError("no tailscale"))) == []
