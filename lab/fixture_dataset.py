@@ -19,12 +19,15 @@ from the agent's own TOOLS (contexts/agent/application/qa.py), so a call to a to
 argument or an invented one fails validation.
 
 Where the expected values come from. The agent already knows how to answer these questions: QA.prefetch() turns
-the common shapes into one memory lookup and answers from it. reference_trace() runs that real code against
+the common shapes into a memory lookup (or two) and answers from it. reference_trace() runs that real code against
 fixtures/golden/memory.yaml with the three tool entry points logged, so the expected tool calls are what the agent
 does, not a second copy of its rules, and a change to the agent shows up when the dataset is rebuilt. The expected
-answer is the evidence the call returned, written out (an abstention is the agent's "I didn't see that."). It is a
-reference to check labels against, not a training target: the teacher writes those. A golden question must still
-pass the golden eval's own checks (every `cite` cited, a `keywords` word in the answer), or the build fails.
+answer is the evidence the pre-fetch gathered, written out (an abstention is the agent's "I didn't see that."). It
+is a reference to check labels against, not a training target: the teacher writes those. What each call returns
+(`tool_results`) is what the agent's tool loop hands the model for that call, which can differ from the evidence
+the answer is written from: the pre-fetch knows things the model's call does not, such as which camera a
+question names. A golden question must still pass the golden eval's own checks (every `cite` cited, a `keywords`
+word in the answer), or the build fails.
 
 What is in it:
 
@@ -32,9 +35,11 @@ What is in it:
               reason in the build's `skipped`: the agent answers it from Canvas and calendar items it pre-fetches,
               and none of the three TOOLS reads items, so there is no tool call to teach.
     variant   the same shapes asked other ways about the fixture night: where an item is (ITEMS, of which the
-              memory has seen only the keys, so the rest teach "I didn't see that") and what happened in a window
-              (WINDOWS spelled in several ways, under WINDOW_STEMS). Each variant is run through reference_trace()
-              like a golden question, and the build fails if the agent does not answer it with a tool.
+              memory has seen only the keys, so the rest teach "I didn't see that"), what happened in a window
+              (WINDOWS spelled in several ways, under WINDOW_STEMS) and what happened to an item (STORY_ITEMS, the
+              one shape the agent answers with two calls: where it was last seen, then what the memory says about
+              it). Each variant is run through reference_trace() like a golden question, and the build fails if
+              the agent does not answer it with a tool.
 
 Examples whose expected tool calls are identical ask the same thing in different words, so they share a `group`,
 and frame_ref is "fixture:group:<group>": a split by frame_ref or by group keeps every wording of a question on one
@@ -74,7 +79,7 @@ from lab.machine.record import recorded
 from runtime import FakeRuntime
 
 __all__ = ["TASK", "DATASET_ID", "FIXTURE_ACTION_ID", "EXPECTED", "GOLDEN_DIR", "OUT_DIR", "ITEMS", "WINDOWS",
-           "WINDOW_STEMS", "LAST_SEEN_TEMPLATES", "BuildError", "Unsupported", "Trace", "Expected", "BuildResult",
+           "WINDOW_STEMS", "LAST_SEEN_TEMPLATES", "STORY_ITEMS", "STORY_TEMPLATES", "BuildError", "Unsupported", "Trace", "Expected", "BuildResult",
            "reference_trace", "output_schema", "instruction", "variant_questions", "build", "load_expected",
            "main"]
 
@@ -90,9 +95,8 @@ EXPECTED = "expected.jsonl"
 NOTHING_FOUND = "nothing found"   # what the agent's tool loop hands the model when a tool finds nothing
 
 # Variant questions. Each must be a shape QA.prefetch() answers with one tool; the build checks that it is.
-ITEMS = (("keys", True), ("wallet", False), ("phone", False), ("glasses", True), ("headphones", True),
-         ("passport", False), ("umbrella", False), ("laptop charger", False), ("backpack", False),
-         ("water bottle", False))   # (name, plural): the memory has seen the keys and none of the rest
+ITEMS = (("keys", True), ("wallet", False), ("phone", False), ("glasses", True), ("passport", False),
+         ("umbrella", False))   # (name, plural): the memory has seen the keys and none of the rest
 LAST_SEEN_TEMPLATES = ("Where did I leave my {item}?", "Where did I put my {item}?", "Where {be} my {item}?",
                        "Where {be} my {item} right now?", "Where did I leave my {item} again?",
                        "Where {be} the {item}?")
@@ -101,7 +105,11 @@ WINDOWS = (("overnight", "last night"), ("today",), ("in the last hour", "in the
            ("in the last 12 hours",), ("in the last 30 minutes", "in the past 30 minutes"),
            ("in the last 10 minutes",), ("in the last 90 minutes",))   # spellings of one window per tuple
 WINDOW_STEMS = ("What happened {when}?", "What happened at our table {when}?",
-                "Tell me what the cameras saw {when}.", "Was there any activity {when}?")
+                "Tell me what the cameras saw {when}.", "Was there any activity {when}?",
+                "Did anyone come to the door {when}?", "Was anyone at the desk {when}?")   # the last two name a camera
+STORY_ITEMS = ("keys", "laptop", "coffee mug", "phone charger", "package", "wallet")   # what happened to ...
+STORY_TEMPLATES = ("What happened to my {item}?", "What happened to the {item}?", "What became of my {item}?",
+                   "What became of the {item}?")
 
 
 class BuildError(RuntimeError):
@@ -172,28 +180,33 @@ class BuildResult:
 # --- what the agent does ------------------------------------------------------------------
 
 class _RecordingQA(QA):
-    """The agent's own QA with its tool entry points logged: whatever prefetch() calls is the reference policy."""
+    """The agent's own QA with its tool entry points logged: whatever prefetch() calls is the reference policy.
+
+    Each call is logged with the arguments the model controls and with what the tool loop would hand the model
+    for them, which is the same tool called with only those arguments: prefetch can pass more (a question that
+    names a camera, a newest-first sort) that the model's call cannot."""
 
     def __init__(self, memory: FakeMemory, now: datetime, sleep: SleepSchedule) -> None:
         super().__init__(FakeRuntime(), memory, clock=lambda: now, sleep=sleep)
         self.calls: list[tuple[str, dict[str, str], list[str]]] = []
         self.no_tool: str | None = None
 
-    def last_seen(self, label: str, ev: Evidence) -> None:
-        mark = len(ev.lines)
-        super().last_seen(label, ev)
-        self.calls.append(("last_seen", {"label": label}, ev.lines[mark:]))
-
-    def episodes_between(self, start: datetime, end: datetime, ev: Evidence) -> None:
-        mark = len(ev.lines)
-        super().episodes_between(start, end, ev)
-        self.calls.append(("episodes_between", {"start": start.isoformat(), "end": end.isoformat()},
-                           ev.lines[mark:]))
-
-    def search_memory(self, q: str, ev: Evidence, newest_first: bool = False) -> None:
-        super().search_memory(q, ev, newest_first)
+    def last_seen(self, label: str, ev: Evidence, *extra: Any, **named: Any) -> None:
+        super().last_seen(label, ev, *extra, **named)
         shown = Evidence()
-        super().search_memory(q, shown)   # the tool loop calls the tool without the newest-first sort
+        super().last_seen(label, shown)
+        self.calls.append(("last_seen", {"label": label}, shown.lines))
+
+    def episodes_between(self, start: datetime, end: datetime, ev: Evidence, *extra: Any, **named: Any) -> None:
+        super().episodes_between(start, end, ev, *extra, **named)
+        shown = Evidence()
+        super().episodes_between(start, end, shown)
+        self.calls.append(("episodes_between", {"start": start.isoformat(), "end": end.isoformat()}, shown.lines))
+
+    def search_memory(self, q: str, ev: Evidence, *extra: Any, **named: Any) -> None:
+        super().search_memory(q, ev, *extra, **named)
+        shown = Evidence()
+        super().search_memory(q, shown)
         self.calls.append(("search_memory", {"q": q}, shown.lines))
 
     def upcoming_items(self, q: str, ev: Evidence) -> None:
@@ -218,14 +231,11 @@ def reference_trace(question: str, memory: FakeMemory, now: datetime, sleep: Sle
         raise Unsupported(qa.no_tool)
     if evidence is None or not qa.calls:
         raise Unsupported("the agent has no pre-fetch for this kind of question, so it would use the open tool loop")
-    lines = evidence.lines
-    if qa.calls[-1][0] == "search_memory":   # "when did ... last": prefetch puts the newest match first
-        lines = lines[:1]
     return Trace(
         tool_calls=tuple({"name": name, "arguments": arguments} for name, arguments, _ in qa.calls),
-        tool_results=tuple("\n".join(found) or NOTHING_FOUND for _, _, found in qa.calls),
+        tool_results=tuple("\n".join(shown) or NOTHING_FOUND for _, _, shown in qa.calls),
         cited=tuple(sorted({ref for c in evidence.citations for ref in (c.episode_id, c.frame_ref, c.url) if ref})),
-        answer=" ".join(_sentence(line) for line in lines) if evidence.lines else NO_EVIDENCE,
+        answer=" ".join(_sentence(line) for line in evidence.lines) if evidence.lines else NO_EVIDENCE,
     )
 
 
@@ -258,7 +268,7 @@ def output_schema() -> dict[str, Any]:
 
 
 def variant_questions() -> list[str]:
-    """The variant questions in a fixed order: where an item is, then what happened in a window."""
+    """The variant questions in a fixed order: where an item is, what happened in a window, what happened to an item."""
     questions = []
     for name, plural in ITEMS:
         for template in LAST_SEEN_TEMPLATES:
@@ -266,6 +276,8 @@ def variant_questions() -> list[str]:
     for spellings in WINDOWS:
         for when in spellings:
             questions.extend(stem.format(when=when) for stem in WINDOW_STEMS)
+    for item in STORY_ITEMS:
+        questions.extend(template.format(item=item) for template in STORY_TEMPLATES)
     return questions
 
 

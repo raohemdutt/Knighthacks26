@@ -148,8 +148,10 @@ def test_the_golden_answers_are_the_evidence_and_an_abstention_is_the_agents_own
     assert expected[WALLET].label.answer == NO_EVIDENCE == "I didn't see that."
     assert (expected[WALLET].tool_results, expected[WALLET].cited, expected[WALLET].no_evidence) == (
         ["nothing found"], [], True)
-    assert expected[LAST_LEFT].label.answer == "Sun 7:30 AM on cam-desk: The person stands up and leaves the table."
-    assert expected[DOOR].label.answer == "Sun 9:00 AM hour: A courier drops a cardboard box at the door."
+    assert expected[LAST_LEFT].label.answer.startswith("Sun 7:30 AM on cam-desk: The person stands up and leaves the table. ")
+    assert len(expected[LAST_LEFT].tool_results[0].split("\n")) == 5   # the model is shown the hits by score, not by time
+    assert expected[LAST_LEFT].tool_results[0].split("\n")[0] != "Sun 7:30 AM on cam-desk: The person stands up and leaves the table."
+    assert expected[DOOR].label.answer == "Sun 9:05 AM on cam-door: A courier drops a cardboard box at the door."
 
 
 def test_the_golden_answers_pass_the_golden_evals_own_scoring(built, fixture_night):
@@ -212,13 +214,43 @@ def test_holding_out_the_golden_groups_leaves_enough_held_out_examples_and_more_
 
 def test_variants_cover_items_seen_and_unseen_and_windows_with_and_without_evidence(built):
     expected = {row.question: row for row in fx.load_expected(built.root).values()}
-    assert expected["Where are my headphones right now?"].label.tool_calls[0].model_dump() == call("last_seen", label="headphones")
-    assert expected["Where are my headphones right now?"].label.answer == NO_EVIDENCE
+    assert expected["Where are my glasses right now?"].label.tool_calls[0].model_dump() == call("last_seen", label="glasses")
+    assert expected["Where are my glasses right now?"].label.answer == NO_EVIDENCE
     assert expected["Where did I put my keys?"].cited == ["frames:cam-desk:k1941"]
     assert expected["Was there any activity in the last 10 minutes?"].label.answer == NO_EVIDENCE
     assert expected["Was there any activity in the last 10 minutes?"].label.tool_calls[0].model_dump() == call(
         "episodes_between", start="2026-10-11T09:20:00-04:00", end="2026-10-11T09:30:00-04:00")
     assert expected["What happened in the last 90 minutes?"].cited == ["e08", "frames:cam-door:e08"]
+
+
+def test_a_question_that_names_a_camera_is_answered_from_that_camera_but_the_model_is_shown_every_camera(built):
+    expected = {row.question: row for row in fx.load_expected(built.root).values()}
+    door = expected["Did anyone come to the door overnight?"]
+    assert [c.model_dump() for c in door.label.tool_calls] == [
+        call("episodes_between", start="2026-10-10T20:00:00-04:00", end="2026-10-11T08:00:00-04:00")]
+    assert door.label.answer == "Sun 2:20 AM on cam-door: A person in a hoodie walks past the door."
+    assert door.cited == ["e05", "frames:cam-door:e05"]
+    assert len(door.tool_results[0].split("\n")) == 5   # the model's call has no camera in it, so it gets the night
+    assert door.group == expected[OVERNIGHT].group      # the same call, so the same group as the same window unnamed
+    assert expected["Was anyone at the desk today?"].cited == ["e06", "e07", "frames:cam-desk:e06", "frames:cam-desk:e07"]
+
+
+def test_what_happened_to_an_item_is_two_calls_and_each_result_is_what_the_tool_loop_shows(built):
+    expected = {row.question: row for row in fx.load_expected(built.root).values()}
+    keys = expected["What happened to my keys?"]
+    assert [c.model_dump() for c in keys.label.tool_calls] == [call("last_seen", label="keys"),
+                                                                call("search_memory", q="keys")]
+    assert keys.tool_results == ["keys last seen Sat 7:41 PM in the desk zone on cam-desk, next to the coffee mug",
+                                 "Sat 7:40 PM on cam-desk: A person puts a set of keys next to the coffee mug."]
+    assert keys.cited == ["e02", "frames:cam-desk:e02", "frames:cam-desk:k1941"]
+    assert keys.label.answer == ("Keys last seen Sat 7:41 PM in the desk zone on cam-desk, next to the coffee mug. "
+                                 "Sat 7:40 PM on cam-desk: A person puts a set of keys next to the coffee mug.")
+    wallet = expected["What became of the wallet?"]
+    assert [c.model_dump() for c in wallet.label.tool_calls] == [call("last_seen", label="wallet"),
+                                                                  call("search_memory", q="wallet")]
+    assert (wallet.tool_results, wallet.label.answer, wallet.no_evidence) == (
+        ["nothing found", "nothing found"], NO_EVIDENCE, True)
+    assert expected["What happened to the keys?"].group == keys.group
 
 
 def test_only_the_golden_questions_when_variants_are_off(tmp_path):
