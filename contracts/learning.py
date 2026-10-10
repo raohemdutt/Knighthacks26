@@ -64,12 +64,20 @@ class ModelDeployed(TypedEvent):
 #   <gguf>, <mmproj>
 
 
+class TeachExample(BaseModel):
+    """A keyframe the person marked while teaching: thumbs up = like this, thumbs down = not this."""
+
+    frame_ref: str
+    verdict: Literal["up", "down"]
+
+
 class TaskSpec(BaseModel):
     task: str  # slug: "desk-objects"
     instruction: str  # prompt given to teacher and student for each image
     output_schema: dict = {}  # JSON schema of the expected answer, {} for free text
     camera: str | None = None  # restrict examples to one camera
     label: str | None = None  # restrict to episodes with this detector label
+    examples: list[TeachExample] = []  # a few thumbs up/down picks from the timeline
 
 
 class DatasetExample(BaseModel):
