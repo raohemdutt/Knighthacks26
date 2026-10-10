@@ -103,3 +103,23 @@ def test_food_question_uses_what_was_eaten_today():
     prompt = rt.calls[-1][1][-1].content
     assert "eats pizza" in prompt and "cs.ucf.edu" in prompt  # FakeWeb result stands in for nearby places
     assert a.citations[0].episode_id == "m1"
+
+
+def test_plans_include_todays_habit_numbers():
+    class Habits:
+        def digest(self, now=None):
+            return {"habits": [
+                {"id": "meals", "name": "Meals", "unit": "meals", "direction": "at_least", "target": 2, "value": 1,
+                 "met": False, "applies": True, "streak": 0},
+                {"id": "sleep", "name": "Sleep", "unit": "hours", "direction": "at_least", "target": 6, "value": 4.5,
+                 "met": False, "applies": True, "streak": 0},
+                {"id": "desk", "name": "Focus", "unit": "hours", "direction": "at_least", "target": 2, "value": 0,
+                 "met": True, "applies": False, "streak": 0},
+            ]}
+
+    planner, rt = make()
+    planner.habits = Habits()
+    asyncio.run(planner.plan("COP 3502 Exam 1", EXAM, NOW))
+    prompt = rt.calls[-1][1][-1].content
+    assert "Habit Meals: 1 meals today (target at least 2, not met yet, streak 0)" in prompt
+    assert "Habit Sleep: 4.5 hours today" in prompt and "Focus" not in prompt  # not applicable today

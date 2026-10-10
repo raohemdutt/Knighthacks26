@@ -255,6 +255,7 @@ def build(settings: Settings | None = None) -> Atlas:
         bus.subscribe("habits.nudge.raised", habits.on_nudge, replay=True)  # state only: latest nudge, cooldown
         bus.subscribe("habits.signal.recorded", nudger.on_signal)
         bus.subscribe("habits.day.closed", nudger.on_day_closed)
+        planner.habits = habits  # A8: plans and food answers use today's habit numbers
 
     # Circle (G1): friends' Atlases negotiate through agent_messages. The store is in-memory until
     # the Neon store from N1 is plugged in here (same CircleStore port).
