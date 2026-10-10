@@ -20,11 +20,11 @@ from pathlib import Path
 import yaml
 
 from bus import EventBus
-from contexts.agent.application.loop import AgentLoop
+from contexts.agent.application.loop import ODD_HOURS_DESCRIPTION, ODD_HOURS_RULE, AgentLoop
 from contexts.agent.application.planner import Planner
 from contexts.agent.application.qa import QA, SleepSchedule
 from contexts.agent.application.web_port import HubWebTools
-from contexts.agent.domain.rules import RuleEvaluator, load_rules
+from contexts.agent.domain.rules import AlertHistory, RuleEvaluator, load_rules
 from contexts.capture.application.retention import prune_frames
 from contexts.capture.application.service import CaptureService
 from contexts.circle.application.delivery import AgreedEventDelivery
@@ -101,6 +101,8 @@ class Atlas:
     hub: ConnectorHub
     loop: AgentLoop
     zones: list[str] = field(default_factory=list)
+    rules: RuleEvaluator | None = None  # GET /api/rules, the Rules screen's switches (X6)
+    alerts: AlertHistory | None = None  # GET /api/alerts
     game: SortIt | None = None
     waste: WasteWatch | None = None
     habits: HabitTracker | None = None
@@ -227,7 +229,8 @@ def build(settings: Settings | None = None) -> Atlas:
     if "places" in hub.specs:  # K8: "what should I eat?" uses real nearby places
         planner.places = lambda kind: hub.call_tool("places.nearby", {"kind": kind})
     qa.planner = planner
-    rules = RuleEvaluator(load_rules(s.config_dir / "rules.yaml"))
+    rules = RuleEvaluator(load_rules(s.config_dir / "rules.yaml"), builtin={ODD_HOURS_RULE: ODD_HOURS_DESCRIPTION})
+    alerts = AlertHistory()
 
     ntfy = Ntfy(s.ntfy_url, s.ntfy_token) if s.ntfy_url else None
     executors = {
@@ -262,6 +265,8 @@ def build(settings: Settings | None = None) -> Atlas:
     memory.embedder = embedder_from(runtime, models_yaml)
     VectorIndexer(store, memory.embedder).subscribe(bus)
     bus.subscribe("agent.rule.added", rules.on_rule_added, replay=True)
+    bus.subscribe("agent.rule.toggled", rules.on_rule_toggled, replay=True)  # X6: the Rules screen's switches
+    bus.subscribe("agent.alert.raised", alerts.on_alert, replay=True)  # GET /api/alerts
     bus.subscribe("perception.zone", rules.on_zone_event, replay=True)
     bus.subscribe("perception.zone", planner.on_zone_event)  # leaving checklist at the door (A8)
     bus.subscribe("agent.action.proposed", approvals.on_proposed, replay=True)
@@ -286,7 +291,8 @@ def build(settings: Settings | None = None) -> Atlas:
         zones = sorted({z for cam in (yaml.safe_load(zones_file.read_text()) or {}).values() for z in cam})
     else:
         zones = agent_cfg.get("zones", ["door", "desk"])
-    loop = AgentLoop(memory, qa.sleep, summarize=runtime.summarize, notify=agent_cfg.get("notify_on_package"))
+    loop = AgentLoop(memory, qa.sleep, summarize=runtime.summarize, notify=agent_cfg.get("notify_on_package"),
+                     enabled=rules.enabled)
     bus.subscribe("agent.alert.raised", loop.on_alert)  # live only: proposes a message
 
     # Perception (P3, P4, P5, P7): tracks -> zone events, captions and desk object lists.
@@ -398,7 +404,7 @@ def build(settings: Settings | None = None) -> Atlas:
     # Cameras (C1, P1, P2, P6): config/cameras.yaml; None unless a detector engine is on this machine.
     capture = CaptureService.load(s.config_dir / "cameras.yaml", bus, models_yaml=models_yaml, data_dir=s.data_dir, policy=policy)
 
-    return Atlas(settings=s, bus=bus, qa=qa, approvals=approvals, hub=hub, loop=loop, zones=zones, game=game,
+    return Atlas(settings=s, bus=bus, qa=qa, approvals=approvals, hub=hub, loop=loop, zones=zones, rules=rules, alerts=alerts, game=game,
                  waste=waste, circle=circle, presence=presence, zone_engine=zone_engine, sharing=sharing,
                  memory=memory, projection=projection, habits=habits, nudger=nudger,
                  presence_sync=presence_sync, board=board, vault=vault, policy=policy, wiper=wiper,

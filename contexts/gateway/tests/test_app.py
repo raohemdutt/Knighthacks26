@@ -148,3 +148,29 @@ def test_route_for_an_unknown_item_is_a_404(tmp_path):
         r = c.get("/api/play/route", params={"item": "unicorn"})
         assert r.status_code == 404 and "unicorn" in r.json()["detail"]
         assert c.get("/api/play/route", params={"item": "soda can"}).json()["bin"] == "recycling"
+
+
+def test_rules_list_toggle_and_alert_history(tmp_path):
+    """Q10 (Xander, X6): the Rules screen lists rules, switches them, and shows recent alerts."""
+    from datetime import UTC, datetime
+
+    from contracts.perception import ZoneEvent
+
+    door = dict(camera_id="cam-door", track_id=7, label="package", zone_id="door", kind="dwell", dwell_s=9)
+    with client(tmp_path) as c:
+        rules = {r["id"]: r for r in c.get("/api/rules").json()}
+        assert rules["package-at-door"]["enabled"] and rules["package-at-door"]["source"] == "config"
+        assert "door zone" in rules["package-at-door"]["description"]
+        assert rules["odd-hours-activity"]["source"] == "built-in"
+        atlas = c.app.state.atlas
+        c.portal.call(atlas.bus.publish, ZoneEvent(ts=datetime(2026, 10, 11, 12, tzinfo=UTC), **door))
+        [alert] = c.get("/api/alerts").json()
+        assert alert["rule_id"] == "package-at-door" and alert["message"] == "Package left at the door"
+        r = c.post("/api/rules/package-at-door/enabled", json={"enabled": False})
+        assert r.status_code == 200 and r.json()["enabled"] is False
+        c.portal.call(atlas.bus.publish, ZoneEvent(ts=datetime(2026, 10, 11, 13, tzinfo=UTC), **door))
+        assert len(c.get("/api/alerts").json()) == 1  # switched off: no new alert
+        assert c.post("/api/rules/nope/enabled", json={"enabled": False}).status_code == 404
+    with client(tmp_path) as c:  # restart: the switch and the history come back from the log
+        assert {r["id"]: r["enabled"] for r in c.get("/api/rules").json()}["package-at-door"] is False
+        assert len(c.get("/api/alerts", params={"limit": 5}).json()) == 1

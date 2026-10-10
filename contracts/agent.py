@@ -68,6 +68,15 @@ class RuleAdded(TypedEvent):
 
 
 @register
+class RuleToggled(TypedEvent):
+    """A rule switched off or back on from the phone's Rules screen (X6). Replays, so the switch survives restarts."""
+
+    type: Literal["agent.rule.toggled"] = "agent.rule.toggled"
+    rule_id: str
+    enabled: bool
+
+
+@register
 class NoteWritten(TypedEvent):
     """The always-on loop's hourly note (A7): a few sentences on what happened, for memory search."""
 

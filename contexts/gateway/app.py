@@ -8,6 +8,9 @@
 - POST /api/approvals/{id}     {decision: approve|deny} (ntfy buttons call this)
 - POST /api/teach              {task, instruction, ...} -> approval card for the export
 - POST /api/rules              {text} plain English -> a new alert rule (A3)
+- GET  /api/rules              every rule: id, description, on/off, where it came from (X6)
+- POST /api/rules/{id}/enabled {enabled} switch a rule off or back on (agent.rule.toggled, replays)
+- GET  /api/alerts?limit=      recent alerts, newest first: message, rule, time, evidence
 - GET  /api/play/route         ?item=can&x=&y= -> A* route to the right bin (S2)
 - GET  /api/play/accuracy      Sort It round 1 vs round 5 accuracy (S1)
 - GET  /api/impact             Waste Watch counts, diversion rate, before vs after nudges (E2)
@@ -54,7 +57,7 @@ from contexts.memory.api import build_router as memory_router
 from contexts.perception.api import identity_router
 from contexts.play.dayrun_api import dayrun_router
 from contracts import Event
-from contracts.agent import AnswerGenerated, RuleAdded
+from contracts.agent import AnswerGenerated, RuleAdded, RuleToggled
 from contracts.experience import ApprovalDecided, QuestionAsked
 from contracts.learning import TaskSpec
 from contexts.capture.api import capture_router
@@ -67,6 +70,10 @@ ASK_TIMEOUT_S = 90
 
 class AskBody(BaseModel):
     text: str
+
+
+class EnabledBody(BaseModel):
+    enabled: bool
 
 
 class DecisionBody(BaseModel):
@@ -160,6 +167,21 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         created, proposal = teach(spec, datetime.now(UTC))
         await atlas.bus.publish_all([created, proposal])
         return {"task": created.task, "action_id": proposal.action_id}
+
+    @app.get("/api/rules")
+    async def list_rules():
+        return atlas.rules.listing() if atlas.rules else []
+
+    @app.post("/api/rules/{rule_id}/enabled", dependencies=[Depends(authorized)])
+    async def toggle_rule(rule_id: str, body: EnabledBody):
+        if atlas.rules is None or not atlas.rules.known(rule_id):
+            raise HTTPException(404, "no such rule")
+        await atlas.bus.publish(RuleToggled(rule_id=rule_id, enabled=body.enabled))
+        return next(r for r in atlas.rules.listing() if r["id"] == rule_id)
+
+    @app.get("/api/alerts")
+    async def recent_alerts(limit: int = Query(50, ge=1, le=200)):
+        return atlas.alerts.recent(limit) if atlas.alerts else []
 
     @app.post("/api/rules", dependencies=[Depends(authorized)])
     async def add_rule(body: AskBody):
