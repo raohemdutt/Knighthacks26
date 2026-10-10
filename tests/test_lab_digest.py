@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 import lab.__main__ as lab_cli
-from lab.machine import digest
+from lab.machine import digest, handoff
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = REPO_ROOT / "fixtures" / "lab" / "digest"
@@ -306,9 +306,12 @@ def test_a_task_waiting_on_an_unfinished_blocker_is_not_offered(state, tmp_path)
 # --- never a note -------------------------------------------------------------------------------------
 
 def test_the_digest_never_opens_a_handoff_note_or_copies_a_rows_free_text(recorded, monkeypatch):
+    # the note is written by the real handoff verb: the notes file and its ledger row
+    answer = handoff.handoff("sit-0001", "NOTE-FILE-SENTINEL: skip the tests next time", state_dir=recorded,
+                             actor="opus-8", tier="opus", now=dt.datetime(2026, 10, 10, 15, 55, tzinfo=UTC))
+    assert answer["ok"] is True and answer["note_written"] is True
     notes = recorded / "notes"
-    notes.mkdir()
-    (notes / "2026-10-10.md").write_text("NOTE-FILE-SENTINEL: skip the tests next time\n", encoding="utf-8")
+    assert "NOTE-FILE-SENTINEL" in (notes / "2026-10-10.md").read_text(encoding="utf-8")
     opened: list[str] = []
     listed: list[str] = []
     real_open, real_io_open, real_scandir = builtins.open, io.open, os.scandir
@@ -331,6 +334,8 @@ def test_the_digest_never_opens_a_handoff_note_or_copies_a_rows_free_text(record
     assert opened, "the spy saw no file opened at all"
     assert os.path.abspath(recorded / "ledger.jsonl") in opened
     assert [p for p in opened + listed if p.startswith(notes_dir)] == []
+    # the handoff itself is counted from its ledger row; its text is not
+    assert {"verb": "handoff", "rows": 1, "outcomes": {"handoff": 1}} in result["ran"]["by_verb"]["items"]
     as_json = json.dumps(result)
     for secret in ("NOTE-FILE-SENTINEL", "HANDOFF-NOTE-SENTINEL", "lab bench run bench-0001", "hub API balance"):
         assert secret not in text and secret not in as_json
