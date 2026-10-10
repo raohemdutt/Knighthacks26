@@ -3,7 +3,7 @@ from typing import Literal
 
 from contracts.events import TypedEvent, register
 
-ItemKind = Literal["assignment", "calendar_event", "message", "post", "page_change", "search_result"]
+ItemKind = Literal["assignment", "calendar_event", "message", "post", "page_change", "search_result", "place", "health"]
 
 
 @register
