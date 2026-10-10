@@ -46,6 +46,7 @@ VERBS: dict[str, str] = {
     "handoff": "lab.machine.handoff:main",
     "ledger": "lab.machine.ledger_cli:main",
     "metrics": "lab.machine.metrics_report:main",
+    "pool": "lab.machine.pool:main",
     "ready": "lab.machine.ready:main",
     "research-check": "lab.machine.research_check:main",
     "resume": "lab.machine.stop:resume_main",
