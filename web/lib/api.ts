@@ -751,7 +751,7 @@ export interface WipeResult {
   refused?: unknown;
 }
 
-export type LearningStage = "waiting for approval" | "exported" | "labeling" | "training" | "eval" | "packaging" | "deploying" | "done" | "failed";
+export type LearningStage = "waiting for approval" | "exported" | "labeling" | "training" | "eval" | "packaging" | "deploying" | "done" | "failed" | "denied" | "expired";
 
 /** One taught task, folded from the learning.* events (GET /api/learning). */
 export interface LearningTask {

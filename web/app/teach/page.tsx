@@ -31,6 +31,8 @@ const STEP_LABEL: Record<LearningStage, string> = {
   deploying: "Installing",
   done: "Done",
   failed: "Failed",
+  denied: "Not approved",
+  expired: "Timed out",
 };
 
 function slug(name: string): string {
@@ -46,7 +48,7 @@ function percent(n: number): string {
 
 function TaskCard({ task }: { task: LearningTask }) {
   const at = Math.max(STEPS.indexOf(task.stage), 0);
-  const failed = task.stage === "failed";
+  const failed = task.stage === "failed" || task.stage === "denied" || task.stage === "expired";
   const scores = task.scores;
   return (
     <div className={`${teach.card} ${teach.task}`}>

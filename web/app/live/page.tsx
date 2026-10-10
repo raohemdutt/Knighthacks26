@@ -124,8 +124,8 @@ export default function LivePage() {
         <h1>Live</h1>
       </div>
       {cameras.loading && !cameras.data ? <Loading what="the cameras" /> : null}
-      {cameras.error && !cameras.data ? <ErrorBox what="the cameras" error={cameras.error} onRetry={cameras.reload} /> : null}
-      {cameras.data && entries.length === 0 ? (
+      {cameras.error && !cameras.data && !cameras.error.notConfigured ? <ErrorBox what="the cameras" error={cameras.error} onRetry={cameras.reload} /> : null}
+      {(cameras.data && entries.length === 0) || (cameras.error && !cameras.data && cameras.error.notConfigured) ? (
         <Empty title="No cameras on this box">The box is not reading any camera yet. Cameras are listed in config/cameras.yaml and start with the gateway.</Empty>
       ) : null}
       <div className={live.grid}>
