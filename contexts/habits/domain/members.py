@@ -78,7 +78,7 @@ class MemberHabits:
                 self._stays.clear()
         for m in ids:
             if m not in self.members:
-                self.members[m] = t = HabitTracker(self.cfg)
+                self.members[m] = t = HabitTracker(self.cfg, self.base.cover)  # one room: the same cameras watched it
                 t.keep_up(self.base.today, self.base.now, e.ts)
                 t.assignments = {k: copy(a) for k, a in self.base.assignments.items()}  # deadlines already synced
                 t.calendar = {k: copy(c) for k, c in self.base.calendar.items()}

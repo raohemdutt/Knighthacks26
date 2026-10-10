@@ -7,8 +7,9 @@ from contexts.habits.domain.config import HabitsConfig, load_config
 from contexts.habits.domain.tracker import HabitTracker
 from contracts.connectors import ItemSynced
 from contracts.impact import ItemDisposed
-from contracts.perception import SceneDescribed, ZoneEvent
+from contracts.perception import ObservationRecorded, SceneDescribed, ZoneEvent
 from contracts.types import ObjectHit
+from contracts.vault import PolicyChanged
 
 NY = ZoneInfo("America/New_York")
 
@@ -43,6 +44,24 @@ def scene(ts, caption="a tidy desk", objects=(), zone_id=None, camera="cam-desk"
                           frame_ref=f"frames:{camera}:{int(ts.timestamp() * 1000)}")
 
 
+def watch(start: datetime, end: datetime, camera="cam-desk", every_s=60) -> list[ObservationRecorded]:
+    """The camera reporting an empty room from `start` to `end` (a real one reports every second)."""
+    n = int((end - start).total_seconds() // every_s)
+    return [ObservationRecorded(event_id=f"obs-{camera}-{int((start + timedelta(seconds=i * every_s)).timestamp())}",
+                                ts=start + timedelta(seconds=i * every_s), camera_id=camera, tracks=[]) for i in range(n + 1)]
+
+
+def paused(ts, *cameras) -> PolicyChanged:
+    """The Vault policy as of `ts`: these cameras paused, every other one on."""
+    return PolicyChanged(ts=ts, blur_faces=True, paused_cameras=list(cameras))
+
+
+def in_order(*events) -> list:
+    """Several scripts as one log: by time, and at the same instant the camera's report before what was made of it."""
+    flat = [e for part in events for e in (part if isinstance(part, list) else [part])]
+    return sorted(flat, key=lambda e: (e.ts, e.type != "perception.observation.recorded"))
+
+
 def assignment(ts, title, due, external_id="a1"):
     return ItemSynced(ts=ts, connector="canvas", kind="assignment", external_id=external_id, title=title, when=due,
                       url=f"https://canvas.test/{external_id}")
@@ -60,7 +79,8 @@ def disposed(ts, correct, item_id="cam-door:1"):
 def feed(t: HabitTracker, events) -> list:
     """Route events the way the bus does; returns everything the tracker published."""
     handlers = {"perception.zone.event": t.on_zone_event, "perception.scene.described": t.on_scene,
-                "connector.item.synced": t.on_item, "impact.item.disposed": t.on_disposed}
+                "connector.item.synced": t.on_item, "impact.item.disposed": t.on_disposed,
+                "perception.observation.recorded": t.on_observation, "vault.policy.changed": t.on_policy}
     out = []
     for e in events:
         out += handlers[e.type](e)

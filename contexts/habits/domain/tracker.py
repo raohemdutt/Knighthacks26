@@ -13,12 +13,18 @@ away, or no camera had reported yet) closes as met with its streak unchanged.
 Only camera events say the room was watched: a connector sync says nothing
 about the desk, so it never starts the clock for sleep, meals, drinks, focus
 or the leaving check.
+
+Sleep and focus are durations, so they count only time the desk camera was
+reporting (see coverage.py): not while it was paused, and not across a gap in
+its observations. When too little of the night or the day was watched they
+have nothing to judge either, and the row says why (`coverage`, `reason`).
 """
 
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 
 from contexts.habits.domain.config import Habit, HabitsConfig, word_pattern
+from contexts.habits.domain.coverage import Coverage
 from contracts.connectors import ItemSynced
 from contracts.events import Event
 from contracts.habits import DayClosed, NudgeRaised, SignalRecorded
@@ -63,20 +69,24 @@ class Closed:
     met: bool
     streak: int
     applies: bool
+    coverage: float | None = None  # sleep, focus: share of the window the desk camera reported for, when measured
+    reason: str | None = None  # why it was not judged, when that share was too small
 
 
 def _hours(delta: timedelta) -> float:
     return delta.total_seconds() / 3600
 
 
-def _overlap_h(a: datetime, b: datetime, start: datetime, end: datetime) -> float:
-    return max(0.0, _hours(min(b, end) - max(a, start)))
+def _h(delta: timedelta) -> str:
+    return f"{round(_hours(delta), 1):g} h"
 
 
 class HabitTracker:
-    def __init__(self, cfg: HabitsConfig) -> None:
+    def __init__(self, cfg: HabitsConfig, cover: Coverage | None = None) -> None:
         self.cfg = cfg
         self.sched = cfg.schedule
+        self.cover = cover or Coverage(cfg.desk.camera, timedelta(minutes=cfg.coverage.gap_minutes),
+                                       timedelta(minutes=cfg.coverage.steady_minutes))
         self.today: date | None = None  # the earliest day still open
         self.now: datetime | None = None  # latest event time seen
         self.watching_since: datetime | None = None  # first camera event: nothing is known about the room before this
@@ -137,6 +147,19 @@ class HabitTracker:
                 day.drinks += n
             out.append(self._signal(kind, n, e))
         return out
+
+    def on_observation(self, e: Event) -> list[Event]:
+        """About one a second per camera, whatever is in view: the camera was reporting. Nothing is counted
+        from it, so it is not deduped and does not move the day on."""
+        self._watching(e)
+        if e.camera_id == self.cfg.desk.camera:
+            self.cover.beat(e.ts)
+        return []
+
+    def on_policy(self, e: Event) -> list[Event]:
+        """`vault.policy.changed`: a paused desk camera is not watching, from then until it is switched back on."""
+        self.cover.policy(self.cfg.desk.camera in (getattr(e, "paused_cameras", None) or []), e.ts)
+        return []
 
     def on_item(self, e: ItemSynced) -> list[Event]:
         """Assignments (due dates) and calendar events (start times) from the connectors."""
@@ -259,7 +282,7 @@ class HabitTracker:
             value, applies = self.measure(h, day, end)
             met = h.met(value) or not applies
             streak = self.streak(h.id) if not applies else self.streak(h.id) + 1 if met else 0
-            self.history[h.id].append(Closed(day, value, met, streak, applies))
+            self.history[h.id].append(Closed(day, value, met, streak, applies, *self.watched(h, day, end)))
             out.append(DayClosed(event_id=f"habits-day-{h.id}-{day}", ts=ts, habit_id=h.id, day=day,
                                  met=met, value=value, streak=streak))
         self.days.pop(day, None)
@@ -268,6 +291,7 @@ class HabitTracker:
         self.calendar = {k: c for k, c in self.calendar.items() if c.when >= end}
         self._since = {k: t for k, t in self._since.items() if end - t < ONE_DAY}  # tracks that never exited
         self.unjudged = {d for d in self.unjudged if d > day}
+        self.cover.forget(self.sched.day_start(day) - ONE_DAY)  # the next night began after this
         return out
 
     def streak(self, habit_id: str) -> int:
@@ -281,18 +305,19 @@ class HabitTracker:
         since = self.watching_since
         judged = self._judged(day, end)  # False only for a set of habits paused by owner recognition (P9)
         watched = judged and since is not None and since < end  # a camera had reported by the end of this day
+        enough = self.watched(h, day, now)[1] is None  # sleep, focus: the desk camera saw enough of the window
         match h.signal:
             case "away_window":  # a night that ended before any camera, or has not begun by `now`, is not judged
                 night_start, night_end = self.sched.sleep_window(day)
                 observed = judged and since is not None and since < night_end and night_start < now
-                return round(max(d.away_h, self._open_gap_h(day, now)), 2), observed
+                return round(max(d.away_h, self._open_gap_h(day, now)), 2), observed and enough
             case "meal":
                 return d.meals, watched
             case "drink":
                 return d.drinks, watched
             case "desk_time":
                 near = end + timedelta(hours=h.deadline_hours)
-                return round(d.desk_min / 60, 2), watched and any(start <= a.when < near for a in self.assignments.values())
+                return round(d.desk_min / 60, 2), watched and enough and any(start <= a.when < near for a in self.assignments.values())
             case "start_lead":  # only assignments an early start on could have been both known and seen
                 due = [a for a in self.assignments.values() if watched and start <= a.when < end
                        and _hours(a.when - max(a.known_at, since)) >= h.target]
@@ -302,6 +327,30 @@ class HabitTracker:
                 return d.forgot, watched
             case "disposal":
                 return (round(100 * d.correct / d.disposed) if d.disposed else 0), d.disposed > 0
+
+    def watched(self, h: Habit, day: date, now: datetime) -> tuple[float | None, str | None]:
+        """(coverage, reason) for sleep and focus as of `now`: the share of the night, or of the waking day, the
+        desk camera was reporting for, and why the habit is not judged when that is too little. (None, None)
+        for the other habits, before the window has begun, and while the camera's coverage is not measured."""
+        if h.signal == "away_window":
+            (start, end), name = self.sched.sleep_window(day), "night"
+        elif h.signal == "desk_time":  # wake to bedtime: a camera that is off overnight says nothing about focus
+            start, end, name = self.sched.sleep_window(day)[1], self.sched.sleep_window(day + ONE_DAY)[0], "day"
+        else:
+            return None, None
+        upto = min(now, end)
+        if not self.cover.measured or upto <= start:
+            return None, None
+        known = max(self.now or now, now)
+        total = upto - start
+        seen = sum((y - x for x, y in self.cover.seen(start, upto, known)), timedelta(0))
+        if seen / total >= self.cfg.coverage.min_fraction:
+            return round(seen / total, 2), None
+        window = f"the {_h(total)} {name}" if upto == end else f"{_h(total)} of the {name} so far"
+        paused = self.cover.paused_in(start, upto, known)
+        if paused and paused >= (total - seen) / 2:
+            return round(seen / total, 2), f"cameras were paused for {_h(paused)} of {window}"
+        return round(seen / total, 2), f"cameras saw {_h(seen)} of {window}"
 
     # --- the desk: focus time and the away window ---
 
@@ -329,7 +378,8 @@ class HabitTracker:
         out = []
         day = self.sched.local_day(prev)
         while start > prev and day <= self.sched.local_day(start) + ONE_DAY:
-            hours = _overlap_h(prev, start, *self.sched.sleep_window(day))
+            night_start, night_end = self.sched.sleep_window(day)
+            hours = self._empty_h(max(prev, night_start), min(start, night_end), e.ts)
             if day >= self.today and hours > self._day(day).away_h:
                 self._day(day).away_h = hours
                 if hours >= MIN_AWAY_H:
@@ -340,10 +390,15 @@ class HabitTracker:
     def _open_gap_h(self, day: date, now: datetime) -> float:
         """Hours of this night's window the desk has been empty since the last activity."""
         prev = self.active_until or self.watching_since
-        if prev is None or self._since:  # someone is at the desk
+        known = max(self.now or now, now)
+        if prev is None or any(self.cover.unbroken(t, known) for t in self._since.values()):  # someone is at the desk
             return 0.0
         start, end = self.sched.sleep_window(day)
-        return _overlap_h(prev, min(now, end), start, end)
+        return self._empty_h(max(prev, start), min(now, end), known)
+
+    def _empty_h(self, a: datetime, b: datetime, known: datetime) -> float:
+        """The longest stretch of [a, b] the desk camera was reporting for: an empty desk never runs across a gap."""
+        return max((_hours(y - x) for x, y in self.cover.seen(a, b, known)), default=0.0)
 
     def _credit(self, start: datetime, e: ZoneEvent) -> list[Event]:
         """Add the part of [start, e.ts] not yet counted to desk time, split at local midnight."""
@@ -353,8 +408,8 @@ class HabitTracker:
         while start < e.ts:
             day = self.sched.local_day(start)
             stop = min(e.ts, self.sched.day_start(day + ONE_DAY))
-            minutes = (stop - start).total_seconds() / 60
-            if day >= self.today:
+            minutes = sum((y - x).total_seconds() for x, y in self.cover.seen(start, stop, e.ts)) / 60  # watched time only
+            if day >= self.today and minutes:
                 self._day(day).desk_min += minutes
                 self._session_min += minutes
                 out += self._work(minutes, stop, e)
@@ -470,11 +525,14 @@ class HabitTracker:
         if self.now is not None:
             now = min(now, self.now)  # nothing is known past the latest event or tick: a later `now` is not an empty desk
         value, applies = self.measure(h, day, now)
-        return self._view(h, Closed(day, value, h.met(value) or not applies, self.streak(h.id), applies), closed=False)
+        return self._view(h, Closed(day, value, h.met(value) or not applies, self.streak(h.id), applies,
+                                    *self.watched(h, day, now)), closed=False)
 
     def _view(self, h: Habit, c: Closed, closed: bool) -> dict:
         n = self.latest_nudge.get(h.id)
         nudge = {"message": n.message, "tone": n.tone, "ts": n.ts.isoformat()} if n and self.sched.local_day(n.ts) == c.day else None
-        return {"id": h.id, "name": h.name, "unit": h.unit, "direction": h.direction, "target": h.target,
-                "day": c.day.isoformat(), "value": c.value, "met": c.met, "applies": c.applies, "streak": c.streak,
-                "closed": closed, "nudge": nudge}
+        row = {"id": h.id, "name": h.name, "unit": h.unit, "direction": h.direction, "target": h.target,
+               "day": c.day.isoformat(), "value": c.value, "met": c.met, "applies": c.applies, "streak": c.streak,
+               "closed": closed, "nudge": nudge}
+        # Sleep and focus, once the desk camera's coverage is measured: how much of the window it saw.
+        return row if c.coverage is None else row | {"coverage": c.coverage, "reason": c.reason}
