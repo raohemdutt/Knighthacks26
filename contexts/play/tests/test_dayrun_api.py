@@ -139,6 +139,13 @@ def test_campaign(client, plans):
     assert body["stars"] == one["result"]["stars"] + two["result"]["stars"]
 
 
+def test_campaign_length_is_bounded(client, plans):
+    """Every day is simulated on the event loop: 400 days held the whole box for seconds, 3,000,000 for good."""
+    assert client.post("/api/dayrun/campaign", json={"scenario": "demo", "days": [[]] * 31}).status_code == 200
+    assert client.post("/api/dayrun/campaign", json={"scenario": "demo", "days": [[]] * 32}).status_code == 422
+    assert client.post("/api/dayrun/campaign", json={"scenario": "demo"}).status_code == 422  # still required
+
+
 def test_forecast(client, plans):
     r = client.post("/api/dayrun/forecast", json={"estimates": [{"block": "m3", "minutes": 90}, {"block": "m4", "minutes": 30}],
                                                   "measured": {"m3": 180, "m4": 30}})

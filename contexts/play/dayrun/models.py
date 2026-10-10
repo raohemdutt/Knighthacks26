@@ -3,10 +3,11 @@
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from contexts.play.dayrun.routes import Leg
 
+MAX_CAMPAIGN_DAYS = 31  # each day is a board and a simulation, run on the event loop
 MoveKind = Literal["study", "eat", "sleep", "rest", "event"]
 Activity = Literal["idle", "study", "class", "walk", "rest", "event", "eat", "sleep"]
 
@@ -300,7 +301,7 @@ class HardResult(BaseModel):
 
 class CampaignBody(BaseModel):
     start: datetime | None = None
-    days: list[list[Move]]
+    days: list[list[Move]] = Field(max_length=MAX_CAMPAIGN_DAYS)
     initial: InitialOverride | None = None
     scenario: str | None = None
 

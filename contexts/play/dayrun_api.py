@@ -8,7 +8,7 @@
 - GET  /api/dayrun/review?day=       the committed plan against what Habits measured that day
 - POST /api/dayrun/replay            {day, moves} -> a past day again: what happened vs a new plan
 - POST /api/dayrun/hard              {start, moves, seed} -> seeded disruptions, re-validated and re-routed
-- POST /api/dayrun/campaign          {start, days: [moves, ...]} -> consecutive days with carry-over
+- POST /api/dayrun/campaign          {start, days: [moves, ...]} -> consecutive days with carry-over (at most 31)
 - POST /api/dayrun/forecast          {estimates, measured | day} -> how well you estimate your own time
 
 Every route takes an optional `scenario` (a file in fixtures/play/, e.g. "demo") to run on a
