@@ -184,12 +184,10 @@ def test_one_ledger_row_says_handoff_and_holds_no_note_text(isolated_state, monk
     monkeypatch.setenv("LAB_ACTOR", "opus-7")
     monkeypatch.setenv("LAB_TIER", "Opus")
     note = "KEEPOUT-4711 the PR is open; O19 still holds the lock"
-    before = dt.datetime.now(UTC).replace(microsecond=0)
     handoff.handoff("s-12", note, now=NOW)
-    after = dt.datetime.now(UTC)
     rows = ledger.read()
     assert len(rows) == 1
-    assert before <= aware(rows[0].pop("ts")) <= after
+    assert aware(rows[0].pop("ts")) == NOW  # the row carries the given now, like the note heading
     assert rows[0] == {
         "seq": 1, "actor": "opus-7", "tier": "opus", "task": None, "verb": "handoff", "outcome": "handoff",
         "metrics": {}, "refs": {"pr": None, "commit": None, "slot": None, "run_id": None},
