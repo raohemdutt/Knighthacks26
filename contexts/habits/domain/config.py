@@ -48,6 +48,14 @@ class Desk(BaseModel):
     camera: str = "cam-desk"
 
 
+class CoverageSettings(BaseModel):
+    """When a night or a day was watched enough to judge (contexts/habits/domain/coverage.py)."""
+
+    gap_minutes: float = 5  # the desk camera silent for longer than this was not watching
+    steady_minutes: float = 30  # ... once it has reported this long without such a silence
+    min_fraction: float = 0.8  # sleep and focus are judged only when this much of their window was watched
+
+
 class NudgeSettings(BaseModel):
     cooldown_minutes: float = 180
     min_gap_minutes: float = 20
@@ -87,6 +95,7 @@ class HabitsConfig(BaseModel):
     desk: Desk = Desk()
     door_zone: str = "door"
     close_grace_minutes: float = 2
+    coverage: CoverageSettings = CoverageSettings()
     nudges: NudgeSettings = NudgeSettings()
     schedule: Schedule = Schedule()
 
