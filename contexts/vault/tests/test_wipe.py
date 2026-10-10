@@ -1,0 +1,175 @@
+import asyncio
+from datetime import timedelta
+from pathlib import Path
+
+from contexts.vault import KeyRing, Wiper, WipeTokens
+from contexts.vault.tests.helpers import T0, Box
+from contracts.vault import WipeRequested
+
+
+def fill(data: Path) -> dict[str, Path]:
+    """A data dir with something of everything, the way the box lays it out."""
+    files = {
+        "frame": data / "frames" / "cam-door" / "1000.jpg",
+        "frame2": data / "frames" / "cam-desk" / "2000.jpg",
+        "db": data / "memory.sqlite",
+        "wal": data / "memory.sqlite-wal",
+        "shm": data / "memory.sqlite-shm",
+        "export": data / "exports" / "desk-objects" / "train.jsonl",
+        "events": data / "events" / "2020-01-01.jsonl",  # an old day, so it never collides with today's log
+        "circle": data / "circle.sqlite",  # not on the wipe list
+        "browser": data / "browser" / "profile" / "cookies",  # not on the wipe list
+    }
+    for f in files.values():
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_bytes(b"x")
+    KeyRing(data).key_for("memory")
+    files["key"] = data / "vault" / "master.key"
+    return files
+
+
+def left(files: dict[str, Path]) -> set[str]:
+    return {name for name, f in files.items() if f.exists()}
+
+
+# --- confirmation token ---
+
+
+def test_token_works_once_inside_its_lifetime():
+    tokens = WipeTokens(ttl=timedelta(seconds=60))
+    token, expires_at = tokens.request("keyframes", T0)
+    assert expires_at == T0 + timedelta(seconds=60)
+    assert tokens.redeem("guess", T0) is None  # a wrong guess does not burn the real one
+    assert tokens.redeem(token, T0 + timedelta(seconds=59)) == "keyframes"
+    assert tokens.redeem(token, T0 + timedelta(seconds=59)) is None  # single use
+
+
+def test_token_expires_and_a_new_request_replaces_the_old_one():
+    tokens = WipeTokens(ttl=timedelta(seconds=60))
+    token, _ = tokens.request("all", T0)
+    assert tokens.redeem(token, T0 + timedelta(seconds=60)) is None  # expired
+    assert tokens.redeem(token, T0) is None  # and spent by the attempt
+    old, _ = tokens.request("all", T0)
+    new, _ = tokens.request("memory", T0)
+    assert old != new
+    assert tokens.redeem(old, T0) is None
+    assert tokens.redeem(new, T0) == "memory"
+    assert WipeTokens().redeem("", T0) is None  # nothing pending
+
+
+# --- the endpoints ---
+
+
+def test_wipe_needs_a_fresh_token_and_publishes_the_event(tmp_path):
+    files = fill(tmp_path)
+    box = Box(tmp_path)
+    assert box.http.post("/vault/wipe", json={"token": "nope"}).status_code == 403
+    assert box.http.post("/vault/wipe", json={}).status_code == 422
+
+    asked = box.http.post("/vault/wipe/request", json={"scope": "keyframes"}).json()
+    assert asked["scope"] == "keyframes" and asked["expires_at"] == (T0 + timedelta(minutes=2)).isoformat()
+    box.clock.tick(121)
+    assert box.http.post("/vault/wipe", json={"token": asked["token"]}).status_code == 403  # expired
+    assert box.seen == [] and left(files) == set(files)
+
+    token = box.http.post("/vault/wipe/request", json={"scope": "keyframes"}).json()["token"]
+    box.clock.tick(119)
+    r = box.http.post("/vault/wipe", json={"token": token})
+    assert r.status_code == 200
+    assert r.json() == {"scope": "keyframes", "done": True, "removed": {"frames": 2}, "refused": []}
+    [event] = box.seen
+    assert isinstance(event, WipeRequested) and event.scope == "keyframes"
+    assert left(files) == set(files) - {"frame", "frame2"}
+    assert box.http.post("/vault/wipe", json={"token": token}).status_code == 403  # single use
+    assert len(box.seen) == 1
+
+
+def test_wipe_endpoints_need_the_gateway_token(tmp_path):
+    box = Box(tmp_path, token="s3cret")
+    assert box.http.post("/vault/wipe/request", json={}).status_code == 401
+    assert box.http.post("/vault/wipe", json={"token": "x"}).status_code == 401
+    r = box.http.post("/vault/wipe/request", json={}, headers={"Authorization": "Bearer s3cret"})
+    assert r.status_code == 200 and r.json()["scope"] == "all"
+
+
+def test_wipe_is_not_run_again_on_replay(tmp_path):
+    box = Box(tmp_path)
+    asyncio.run(box.bus.publish(WipeRequested(scope="memory")))  # logged, db not there yet
+    files = fill(tmp_path)
+    restarted = Box(tmp_path)
+    assert asyncio.run(restarted.bus.replay_into()) == 1
+    assert restarted.wiper.last is None and left(files) == set(files)
+
+
+# --- the wiper ---
+
+
+def test_each_scope_removes_only_what_it_lists(tmp_path):
+    files = fill(tmp_path)
+    wiper = Wiper(tmp_path)
+    assert wiper.wipe("memory").removed == {"memory": 3}
+    assert left(files) == set(files) - {"db", "wal", "shm"}
+
+    report = wiper.wipe("all")
+    assert report.removed == {"frames": 2, "memory": 0, "exports": 1, "events": 1}
+    assert report.refused == [] and not report.master_key_removed and wiper.last is report
+    assert left(files) == {"circle", "browser", "key"}  # the key and everything unlisted stay
+    for kept in ("frames", "exports", "events"):  # emptied, not removed
+        assert (tmp_path / kept).is_dir() and not any((tmp_path / kept).iterdir())
+    assert wiper.wipe("all").removed == {"frames": 0, "memory": 0, "exports": 0, "events": 0}  # nothing left: no error
+
+
+def test_master_key_goes_only_when_asked_for_by_name(tmp_path):
+    files = fill(tmp_path)
+    wiper = Wiper(tmp_path)
+    wiper.on_wipe_requested(WipeRequested(scope="all"))  # the event cannot reach the key
+    assert files["key"].exists()
+    report = wiper.wipe("keyframes", include_master_key=True)
+    assert report.master_key_removed and not files["key"].exists()
+    assert not wiper.wipe("keyframes", include_master_key=True).master_key_removed  # already gone
+
+
+def test_refuses_targets_that_leave_the_data_dir(tmp_path):
+    data, outside = tmp_path / "data", tmp_path / "outside"
+    files = fill(data)
+    (outside / "photos").mkdir(parents=True)
+    precious = [outside / "photos" / "a.jpg", outside / "other.sqlite", outside / "notes.txt"]
+    for f in precious:
+        f.write_bytes(b"keep me")
+
+    (data / "exports" / "desk-objects" / "train.jsonl").unlink()
+    (data / "exports" / "desk-objects").rmdir()
+    (data / "exports").rmdir()
+    (data / "exports").symlink_to(outside / "photos")  # a target that is a link out
+    (data / "frames" / "cam-door" / "link.jpg").symlink_to(outside / "notes.txt")  # links inside a wiped dir
+    (data / "frames" / "album").symlink_to(outside / "photos")
+
+    wiper = Wiper(data, memory_db=outside / "other.sqlite")  # a db configured somewhere else
+    report = wiper.wipe("all")
+    assert all(f.read_bytes() == b"keep me" for f in precious)
+    assert sorted(report.refused) == sorted(
+        [str(data / "exports"), str(outside / "other.sqlite"), str(outside / "other.sqlite-wal"), str(outside / "other.sqlite-shm")]
+    )
+    assert report.removed == {"frames": 4, "memory": 0, "exports": 0, "events": 1}  # the links themselves went
+    assert not any((data / "frames").iterdir())
+    assert files["db"].exists()  # not the configured db, so not touched
+
+
+def test_refuses_dot_dot_paths_links_back_inside_and_the_vault_folder(tmp_path):
+    data = tmp_path / "data"
+    files = fill(data)
+    (tmp_path / "other.sqlite").write_bytes(b"keep me")
+    assert Wiper(data, memory_db=data / ".." / "other.sqlite").wipe("memory").refused  # climbs out with ..
+    assert (tmp_path / "other.sqlite").exists()
+    assert Wiper(data, memory_db=data / "vault" / "master.key").wipe("memory").refused  # the vault's own folder
+    assert Wiper(data, memory_db=data).wipe("memory").refused  # the data dir itself
+    assert files["key"].exists() and files["frame"].exists()
+
+    files["frame"].unlink()
+    files["frame2"].unlink()
+    for d in ("cam-door", "cam-desk"):
+        (data / "frames" / d).rmdir()
+    (data / "frames").rmdir()
+    (data / "frames").symlink_to(data / "vault")  # a link that stays inside but points at the key
+    report = Wiper(data).wipe("keyframes")
+    assert report.refused == [str(data / "frames")] and files["key"].exists()
