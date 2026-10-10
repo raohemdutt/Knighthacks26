@@ -5,6 +5,8 @@
   "description": "Atlas phone app (PWA), built as static files that the gateway serves",
   "scripts": {
     "dev": "next dev",
+    "embed-zones": "node scripts/embed-zones.mjs",
+    "prebuild": "node scripts/embed-zones.mjs",
     "build": "next build",
     "typecheck": "tsc --noEmit",
     "check-api": "node scripts/check-api.mjs",
@@ -13,12 +15,14 @@
   "dependencies": {
     "next": "15.5.27",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "three": "0.170.0"
   },
   "devDependencies": {
     "@types/node": "20.19.43",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
+    "@types/three": "0.170.0",
     "typescript": "5.9.3"
   }
 }

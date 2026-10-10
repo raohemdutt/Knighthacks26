@@ -6,13 +6,11 @@ import ui from "@/components/ui.module.css";
 import { api, type Cell, type PlayRoute } from "@/lib/api";
 import { useAtlasEvents } from "@/lib/atlas";
 import { humanize, percent } from "@/lib/format";
+import { SORT_ITEMS } from "@/lib/room";
 import { useFetch } from "@/lib/useFetch";
 
-/**
- * The items the box knows how to sort (config/sorting.yaml). The gateway has
- * no endpoint that lists them; anything it does not know goes to the trash.
- */
-const ITEMS = ["can", "bottle", "paper", "cardboard", "cup", "napkin", "chip bag", "food container", "banana", "wine glass"];
+/** The items the box knows how to sort; anything it does not know goes to the trash. Shared with the Room map. */
+const ITEMS = SORT_ITEMS;
 
 /**
  * The route endpoint returns cells, not where the bins are. Asking for one item
