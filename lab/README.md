@@ -212,6 +212,7 @@ python -m lab.controller stop --account B
   240 credits an hour: always give it `--minutes`.
 - `run-script` takes its own options before the script's name; everything after the name goes to the script. It
   uploads the script to the pod, runs it in a terminal and waits for the exit code it appends to the output.
+  `--with FILE` (before the script's name, repeatable) uploads a file the script needs next to it first.
 - While `lab/state/STOP` exists `launch`, `stop`, `keep-alive` and `run-script` are refused.
 - Ledger rows: `controller <command>` for each call, and `pod launch`, `pod stop`, `pod status`, `pod keep-alive`
   (`alive`, `failed_ping`, `lost`) with `node` pod-a or pod-b, which are the rows `python -m lab alerts` reads.
@@ -264,6 +265,32 @@ Jupyter root, which on DUB was the ephemeral `/opt/workspace`: what must outlive
 on the pod (`push_dataset` reports `persistent` when the root lists a `home` folder). Nothing here has run on a real
 pod or on SJC yet; `lab/proxy_fake.py` is the stand-in its tests use (Cloudflare, the hub, the Jupyter server and a
 model server on a fake clock).
+
+## GPU power sampler: `lab/pod_power.py`
+
+Reads the R9700 once a period (default 1000 ms) with `amd-smi metric --power --clock --temperature --usage
+--energy` (rocm-smi as fallback; reads only, no root), keeps every read as one `telemetry.gpu.power` sample in
+`~/atlas-power/samples-<UTC day>.jsonl`, and serves them on `127.0.0.1:8790` (`/samples?after=<seq>`, `/status`),
+which the proxy exposes at `/user/<account>/proxy/8790/`. Each sample names the tool, the period, the power field
+(SOCKET_POWER, the firmware's averaged socket power on this card) and the temperatures, and counts polls apart from
+distinct updates; under load, readings frozen for 10 s are flagged stale; the energy counter is checked against
+integrated power at start-up and once under load and is used for energy only while it agrees within 10 percent.
+Stdlib only, so the pod needs nothing installed. Starting it on a pod is Ilan's go (pod B through the GPU queue):
+
+```
+python -m lab.controller run-script --account A --with lab/pod_power.py lab/pod_power.sh check            # one read, raw outputs saved
+python -m lab.controller run-script --account A --with lab/pod_power.py lab/pod_power.sh start gpu-a       # status after 15 s
+python -m lab.controller run-script --account A lab/pod_power.sh stop
+```
+
+The Jetson reads both pods with `ATLAS_TELEMETRY_SOURCE=pods` (keys `AUP_HUB_USER_<A|B>`, `AUP_HUB_TOKEN_<A|B>`;
+`ATLAS_POD_POWER_PORT`, `ATLAS_POD_POWER_POLL_S` optional): samples arrive with `received_ts`, nothing is lost over
+a proxy gap the pod's buffer covers (about 5.5 hours), and a sampler restart shows as a new `sampler_started`.
+A window becomes a stored row with `python -m lab gpu-power record --samples <files> --node pod-a --metric
+pod.idle_watts [--since ISO] [--until ISO] [--state idle] [--metrics-file]`: the row carries the sampler, period,
+measured period, longest gap, restarts, distinct updates, starting temperatures, the energy and its source, and
+`error: unknown` until a reference run measures it. Parsers and sampler are tested offline on
+`fixtures/telemetry/pod_power` (tests/test_lab_pod_power.py).
 
 ## Teacher (pod A)
 
