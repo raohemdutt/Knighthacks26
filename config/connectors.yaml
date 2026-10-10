@@ -20,7 +20,7 @@ calendar:
   # URL is not set on this box is skipped.
   module: contexts.connectors.servers.ics
   every_s: 600
-  hosts: [outlook.office365.com, ufl.instructure.com]
+  hosts: [outlook.office365.com, ufl.instructure.com, events.ucf.edu]
   reads: {list_events: calendar_event}
   writes: [create_event]  # .ics invites (Graph fallback); runs only after an approval card
   env: [OUTLOOK_ICS_URL, CAMPUS_EVENTS_ICS_URL, CANVAS_ICS_URL]
@@ -30,7 +30,7 @@ calendar:
     days_ahead: 14
     feeds:
       - {name: outlook, url_env: OUTLOOK_ICS_URL, kind: calendar_event}
-      - {name: campus, url_env: CAMPUS_EVENTS_ICS_URL, kind: calendar_event}
+      - {name: campus, url: "https://events.ucf.edu/upcoming/feed.ics", kind: calendar_event}  # K3: public UCF events feed
       - {name: canvas, url_env: CANVAS_ICS_URL, kind: assignment}  # K6: assignments and due dates
 
 browser:
