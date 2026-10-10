@@ -85,7 +85,7 @@ from lab.machine.slots import EXTENSION_MINUTES  # noqa: F401  (pool.py reads it
 
 __all__ = ["MAX_LINES", "DEFAULT_WINDOW_HOURS", "BOARD_FILE", "BOARD_STALE_MINUTES", "SCHEMA",
            "SCHEMA_VERSION", "BoardError", "Board", "load_board", "parse_board", "save_board",
-           "board_path", "queue_slot", "compute", "fit", "render", "text", "main"]
+           "board_path", "queue_slot", "open_queue", "compute", "fit", "render", "text", "main"]
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RULINGS_FILE = "OWNER_RULINGS.md"
@@ -772,13 +772,20 @@ def queue_slot(row: QueueRow, index: int = 0) -> slots.Slot:
                       complaint=row.complaint, result="")
 
 
+def open_queue(board: Board) -> list[tuple[QueueRow, slots.Slot]]:
+    """The Running and Queued rows of a snapshot, each with the slots.Slot the queue verbs' rules read it as.
+    The slots are the rows slots.complaint_due looks at, so a judgment of one row sees the rest."""
+    open_rows = [row for row in board.queue if row.status in OPEN_QUEUE_STATUSES]
+    return [(row, queue_slot(row, index)) for index, row in enumerate(open_rows)]
+
+
 def gpu_queue(board: Board, now: dt.datetime) -> dict[str, Any]:
     running: list[dict[str, Any]] = []
     queued: list[dict[str, Any]] = []
     complaints: list[dict[str, Any]] = []
-    open_rows = [row for row in board.queue if row.status in OPEN_QUEUE_STATUSES]
-    seen = [queue_slot(row, index) for index, row in enumerate(open_rows)]
-    for row, slot in zip(open_rows, seen):
+    open_rows = open_queue(board)
+    seen = [slot for _, slot in open_rows]
+    for row, slot in open_rows:
         base = {"request": clip(row.request, TITLE_CHARS), "task": clip(row.task, ID_CHARS) or None,
                 "gpu": clip(row.gpu, NAME_CHARS), "minutes": row.minutes}
         if row.status == slots.RUNNING:
