@@ -118,7 +118,9 @@ def lab(tmp_path, monkeypatch):
     monkeypatch.setenv("LAB_STATE_DIR", str(state))
     monkeypatch.setenv(sit.WORKSPACE_ENV, str(workspace))
     monkeypatch.delenv(sit.ACTOR_ENV, raising=False)
-    monkeypatch.delitem(lab_cli.VERBS, sit.DIGEST_VERB, raising=False)
+    # A copy without the digest verb: deleting and restoring the key would move it to the end.
+    monkeypatch.setattr(lab_cli, "VERBS", {verb: target for verb, target in lab_cli.VERBS.items()
+                                           if verb != sit.DIGEST_VERB})
     monkeypatch.setattr(sit, "resolve_command", refuse_real_cli)
     monkeypatch.setattr(sit, "POLL_SECONDS", 0.05)
     monkeypatch.setattr(sit, "STOP_GRACE_SECONDS", 0.5)
