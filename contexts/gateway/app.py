@@ -17,6 +17,7 @@
 - GET  /api/invites[/{name}]   calendar invites (.ics) created after approval, to open or share (K2)
 - GET  /api/places             place packs; POST one as YAML/JSON (validated) (S5)
 - GET  /api/play/campus-route  ?from=ucf.union&to=ucf.hec[&depart=&due=] or to=friend:<member> (S5)
+- GET  /capture/status      camera status and detector counts, where cameras run (C6)
 - GET  /health
 - GET  /runtime/models      installed model versions, the current one and what llama-server really serves (R7)
 
@@ -50,6 +51,7 @@ from contracts import Event
 from contracts.agent import AnswerGenerated, RuleAdded
 from contracts.experience import ApprovalDecided, QuestionAsked
 from contracts.learning import TaskSpec
+from contexts.capture.api import capture_router
 from runtime.api import runtime_router
 from runtime.modelstore import ModelStore
 
@@ -103,6 +105,8 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         app.include_router(dayrun_router(atlas.dayrun, publish=atlas.bus.publish, guard=authorized))
     if atlas.policy:  # GET/PUT /vault/policy, POST /vault/wipe/request, POST /vault/wipe, GET /vault/egress
         app.include_router(vault_router(atlas.policy, atlas.bus, wiper=atlas.wiper, guard=authorized))
+    if atlas.capture:  # GET /capture/status (C6)
+        app.include_router(capture_router(atlas.capture))
     app.include_router(runtime_router(ModelStore(atlas.settings.data_dir / "models"), llm_url=atlas.settings.llm_url))  # GET /runtime/models (R7)
 
     @app.get("/health")

@@ -106,3 +106,8 @@ def test_a_real_video_file_loops(tmp_path):
     reader, stats, events = drive(str(clip), None, 1.2, fps=20, width=64, height=48, retry_s=0.05)
     assert len(events) > 5  # the 5-frame clip came round again
     assert reader.latest()[2].shape == (48, 64, 3)
+
+
+def test_a_device_that_is_not_plugged_in_is_not_opened_at_all():
+    reader = CameraReader("cam-table", "/dev/video99", bus=None, loop=None)
+    assert reader._open_capture("/dev/video99") is None  # no OpenCV warning on every retry

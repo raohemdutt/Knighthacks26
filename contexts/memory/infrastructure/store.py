@@ -69,7 +69,7 @@ def iso(ts: datetime) -> str:
 
 
 def parse(ts: str | None) -> datetime | None:
-    return datetime.fromisoformat(ts) if ts else None
+    return datetime.fromisoformat(ts.replace("Z", "+00:00")) if ts else None  # Python 3.10 (the Jetson) rejects a trailing Z
 
 
 def item_ref(connector: str, external_id: str) -> str:
