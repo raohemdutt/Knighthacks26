@@ -2,8 +2,9 @@
 
 The rulings come from files built the way the tracks' own files are built (the committed headers, the
 rulings and corrections shown in lab/refine/TEMPLATES.md), parsed by the real parsers. Only Notion is
-faked, at its boundary: a page store that behaves like the page-markdown endpoints, and a transport
-under the REST client that answers like the API reference says it does.
+faked, at its boundary, by the shared in-memory page store of lab/machine/pages_fake.py: the protocol the
+mirror edits through, and the wire under the real REST client, which checks the token and the
+Notion-Version the page-markdown endpoints need.
 """
 
 import hashlib
@@ -500,7 +501,7 @@ def test_mirror_still_posts_the_open_rulings_when_a_log_cannot_be_read(tmp_path)
     refine = tree_with_two_open(tmp_path)
     broken = log_path(refine, "kernels")
     write(broken, read(broken) + "\n## Something else entirely\n\ntext\n")
-    notion = FakePages()
+    notion = pages()
 
     result = run(refine, "mirror", client=notion)
 
@@ -747,30 +748,19 @@ TEAM_COMMS = "\n".join(
 )
 
 
-class FakePages:
-    """A page store with the behavior of Notion's page-markdown endpoints: read the text, replace one exact match."""
+def pages(overnight: str = OVERNIGHT, team_comms: str = TEAM_COMMS, *, token: str = TOKEN,
+          kind: type[pages_fake.FakePages] = pages_fake.FakePages) -> pages_fake.FakePages:
+    """The two pages the mirror writes, in the shared in-memory Notion: the protocol the flow edits through
+    (read_page, replace_text) and, as .transport, the wire under the REST client, answering only this token."""
+    return kind({rulings.OVERNIGHT_PAGE: overnight, rulings.TEAM_COMMS_PAGE: team_comms}, token=token)
 
-    def __init__(self, overnight: str = OVERNIGHT, team_comms: str = TEAM_COMMS) -> None:
-        self.pages = {rulings.OVERNIGHT_PAGE: overnight, rulings.TEAM_COMMS_PAGE: team_comms}
-        self.edits: list[tuple[str, str, str]] = []
 
-    @property
-    def overnight(self) -> str:
-        return self.pages[rulings.OVERNIGHT_PAGE]
+def overnight_of(notion: pages_fake.FakePages) -> str:
+    return notion.text(rulings.OVERNIGHT_PAGE)
 
-    @property
-    def team_comms(self) -> str:
-        return self.pages[rulings.TEAM_COMMS_PAGE]
 
-    def read_page(self, page_id: str) -> str:
-        return self.pages[page_id]
-
-    def replace_text(self, page_id: str, old: str, new: str) -> None:
-        found = self.pages[page_id].count(old)
-        if found != 1:
-            raise rulings.NotionError(f"the text to replace occurs {found} times, not once")
-        self.pages[page_id] = self.pages[page_id].replace(old, new)
-        self.edits.append((page_id, old, new))
+def team_comms_of(notion: pages_fake.FakePages) -> str:
+    return notion.text(rulings.TEAM_COMMS_PAGE)
 
 
 def mirrored(refine: Path, notion, moment=NOW):
@@ -783,36 +773,36 @@ def tree_with_two_open(tmp_path):
 
 def test_the_first_mirror_adds_the_segment_to_the_needs_line_and_the_block_under_the_fyi_heading(tmp_path):
     refine = tree_with_two_open(tmp_path)
-    notion = FakePages()
+    notion = pages()
 
     result = mirrored(refine, notion)
 
     posts = rulings.build_posts(open_items(refine), NOW)
     assert result["ok"] is True
     assert result["targets"] == {"overnight_status": {"action": "posted"}, "team_comms_fyi": {"action": "posted"}}
-    assert notion.overnight == OVERNIGHT.replace(NEEDS_LINE, NEEDS_LINE + "; " + posts.segment)
-    assert notion.team_comms == TEAM_COMMS.replace(FYI_HEADING, FYI_HEADING + "\n" + posts.block)
-    inserted = notion.team_comms.split("\n")[notion.team_comms.split("\n").index(FYI_HEADING) + 1]
+    assert overnight_of(notion) == OVERNIGHT.replace(NEEDS_LINE, NEEDS_LINE + "; " + posts.segment)
+    assert team_comms_of(notion) == TEAM_COMMS.replace(FYI_HEADING, FYI_HEADING + "\n" + posts.block)
+    inserted = team_comms_of(notion).split("\n")[team_comms_of(notion).split("\n").index(FYI_HEADING) + 1]
     assert re.fullmatch(rf"- {HEART} Ilan's agent {DOT} Sat 10:30 AM ET: Lab rulings waiting on you \(2\)\..* \(list [0-9a-f]{{8}}\)", inserted)
 
 
 def test_a_second_mirror_changes_nothing_even_at_another_time(tmp_path):
     refine = tree_with_two_open(tmp_path)
-    notion = FakePages()
+    notion = pages()
     mirrored(refine, notion)
-    pages, edits = dict(notion.pages), list(notion.edits)
+    before, edits = (overnight_of(notion), team_comms_of(notion)), list(notion.edits)
 
     again = mirrored(refine, notion, NOW + timedelta(hours=3))
 
     assert again["ok"] is True
     assert again["targets"] == {"overnight_status": {"action": "unchanged"}, "team_comms_fyi": {"action": "unchanged"}}
-    assert notion.pages == pages
+    assert (overnight_of(notion), team_comms_of(notion)) == before
     assert notion.edits == edits
 
 
 def test_a_changed_list_replaces_the_earlier_posts_in_place_instead_of_adding_new_ones(tmp_path):
     refine = tree_with_two_open(tmp_path)
-    notion = FakePages()
+    notion = pages()
     mirrored(refine, notion)
     first_id = rulings.build_posts(open_items(refine), NOW).list_id
     write(rulings_path(refine, "learning"), read(rulings_path(refine, "learning")) + "\n" + L1)
@@ -821,16 +811,16 @@ def test_a_changed_list_replaces_the_earlier_posts_in_place_instead_of_adding_ne
 
     second = rulings.build_posts(open_items(refine), NOW + timedelta(hours=1))
     assert result["targets"] == {"overnight_status": {"action": "updated"}, "team_comms_fyi": {"action": "updated"}}
-    assert first_id not in notion.overnight + notion.team_comms
-    assert notion.overnight == OVERNIGHT.replace(NEEDS_LINE, NEEDS_LINE + "; " + second.segment)
-    assert notion.team_comms == TEAM_COMMS.replace(FYI_HEADING, FYI_HEADING + "\n" + second.block)
-    assert notion.team_comms.count("Lab rulings waiting on you (3).") == 1
-    assert notion.overnight.count("Lab rulings waiting on you") == 1
+    assert first_id not in overnight_of(notion) + team_comms_of(notion)
+    assert overnight_of(notion) == OVERNIGHT.replace(NEEDS_LINE, NEEDS_LINE + "; " + second.segment)
+    assert team_comms_of(notion) == TEAM_COMMS.replace(FYI_HEADING, FYI_HEADING + "\n" + second.block)
+    assert team_comms_of(notion).count("Lab rulings waiting on you (3).") == 1
+    assert overnight_of(notion).count("Lab rulings waiting on you") == 1
 
 
 def test_when_every_ruling_is_answered_the_segment_goes_and_the_fyi_says_none_is_waiting(tmp_path):
     refine = tree_with_two_open(tmp_path)
-    notion = FakePages()
+    notion = pages()
     mirrored(refine, notion)
     answer_ruling(refine, "telemetry", 1, "10 Hz (owner, 2026-10-10)")
     answer_ruling(refine, "kernels", 4, "the spread (owner, 2026-10-10)")
@@ -839,8 +829,8 @@ def test_when_every_ruling_is_answered_the_segment_goes_and_the_fyi_says_none_is
 
     closing = rulings.build_posts([], NOW + timedelta(hours=2))
     assert result["targets"] == {"overnight_status": {"action": "removed"}, "team_comms_fyi": {"action": "closed"}}
-    assert notion.overnight == OVERNIGHT
-    assert notion.team_comms == TEAM_COMMS.replace(FYI_HEADING, FYI_HEADING + "\n" + closing.block)
+    assert overnight_of(notion) == OVERNIGHT
+    assert team_comms_of(notion) == TEAM_COMMS.replace(FYI_HEADING, FYI_HEADING + "\n" + closing.block)
     assert "question" not in closing.block
     again = mirrored(refine, notion, NOW + timedelta(hours=4))
     assert again["targets"] == {"overnight_status": {"action": "unchanged"}, "team_comms_fyi": {"action": "unchanged"}}
@@ -848,7 +838,7 @@ def test_when_every_ruling_is_answered_the_segment_goes_and_the_fyi_says_none_is
 
 def test_an_empty_list_with_no_earlier_post_posts_nothing_at_all(tmp_path):
     refine = make_tree(tmp_path, {"telemetry": [T2_ANSWERED]})
-    notion = FakePages()
+    notion = pages()
 
     result = mirrored(refine, notion)
 
@@ -858,17 +848,16 @@ def test_an_empty_list_with_no_earlier_post_posts_nothing_at_all(tmp_path):
 
 def test_a_new_question_after_the_closing_line_replaces_the_closing_line(tmp_path):
     refine = make_tree(tmp_path, {"telemetry": [T2_ANSWERED]})
-    notion = FakePages()
-    notion.pages[rulings.TEAM_COMMS_PAGE] = TEAM_COMMS.replace(
+    notion = pages(team_comms=TEAM_COMMS.replace(
         FYI_HEADING, FYI_HEADING + "\n" + rulings.build_posts([], NOW - timedelta(days=1)).block
-    )
+    ))
     write(rulings_path(refine, "learning"), read(rulings_path(refine, "learning")) + "\n" + L1)
 
     result = mirrored(refine, notion)
 
     assert result["targets"]["team_comms_fyi"] == {"action": "updated"}
-    assert "none. Every ruling" not in notion.team_comms
-    assert notion.team_comms.count("Lab rulings waiting on you") == 1
+    assert "none. Every ruling" not in team_comms_of(notion)
+    assert team_comms_of(notion).count("Lab rulings waiting on you") == 1
 
 
 def test_text_the_flow_did_not_write_is_never_replaced(tmp_path):
@@ -876,12 +865,12 @@ def test_text_the_flow_did_not_write_is_never_replaced(tmp_path):
     human = "- Lab rulings waiting on you is what Dominick calls the lab list (list abcd1234)"
     signed_by_someone_else = f"- {HEART} Dominick's agent {DOT} Sat 6:00 AM ET: Lab rulings waiting on you (list 12345678)"
     page = TEAM_COMMS.replace(FYI_HEADING, FYI_HEADING + "\n" + human + "\n" + signed_by_someone_else)
-    notion = FakePages(team_comms=page)
+    notion = pages(team_comms=page)
 
     result = mirrored(refine, notion)
 
     assert result["targets"]["team_comms_fyi"] == {"action": "posted"}
-    assert human in notion.team_comms and signed_by_someone_else in notion.team_comms
+    assert human in team_comms_of(notion) and signed_by_someone_else in team_comms_of(notion)
     assert len(notion.edits) == 2
 
 
@@ -899,20 +888,20 @@ def test_text_the_flow_did_not_write_is_never_replaced(tmp_path):
 def test_the_segment_goes_on_the_end_of_whatever_the_line_already_says(tmp_path, body, glue):
     refine = tree_with_two_open(tmp_path)
     line = "- **Needs a human (Ilan):**" + body
-    notion = FakePages(overnight=OVERNIGHT.replace(NEEDS_LINE, line))
+    notion = pages(overnight=OVERNIGHT.replace(NEEDS_LINE, line))
 
     mirrored(refine, notion)
 
     posts = rulings.build_posts(open_items(refine), NOW)
     kept = body.strip() if body.strip() not in ("", "\u2014", "none") else ""
-    assert notion.overnight.split("\n")[-1] == "- **Needs a human (Ilan):** " + (kept + glue if kept else "") + posts.segment
+    assert overnight_of(notion).split("\n")[-1] == "- **Needs a human (Ilan):** " + (kept + glue if kept else "") + posts.segment
 
 
 def test_removing_the_segment_leaves_the_other_items_and_a_placeholder_when_it_was_alone(tmp_path):
     refine = tree_with_two_open(tmp_path)
-    alone = FakePages(overnight=OVERNIGHT.replace(NEEDS_LINE, "- **Needs a human (Ilan):**"))
+    alone = pages(overnight=OVERNIGHT.replace(NEEDS_LINE, "- **Needs a human (Ilan):**"))
     mirrored(refine, alone)
-    shared = FakePages()
+    shared = pages()
     mirrored(refine, shared)
     answer_ruling(refine, "telemetry", 1, "10 Hz (owner, 2026-10-10)")
     answer_ruling(refine, "kernels", 4, "the spread (owner, 2026-10-10)")
@@ -920,8 +909,8 @@ def test_removing_the_segment_leaves_the_other_items_and_a_placeholder_when_it_w
     mirrored(refine, alone)
     mirrored(refine, shared)
 
-    assert alone.overnight.split("\n")[-1] == "- **Needs a human (Ilan):** none"
-    assert shared.overnight.split("\n")[-1] == NEEDS_LINE
+    assert overnight_of(alone).split("\n")[-1] == "- **Needs a human (Ilan):** none"
+    assert overnight_of(shared).split("\n")[-1] == NEEDS_LINE
 
 
 @pytest.mark.parametrize(
@@ -936,19 +925,19 @@ def test_removing_the_segment_keeps_the_separator_between_the_items_on_both_side
     refine = tree_with_two_open(tmp_path)
     segment = rulings.build_posts(open_items(refine), NOW).segment
     line = "- **Needs a human (Ilan):**" + before + segment + after
-    notion = FakePages(overnight=OVERNIGHT.replace(NEEDS_LINE, line))
+    notion = pages(overnight=OVERNIGHT.replace(NEEDS_LINE, line))
     answer_ruling(refine, "telemetry", 1, "10 Hz (owner, 2026-10-10)")
     answer_ruling(refine, "kernels", 4, "the spread (owner, 2026-10-10)")
 
     result = mirrored(refine, notion)
 
     assert result["targets"]["overnight_status"] == {"action": "removed"}
-    assert notion.overnight.split("\n")[-1] == "- **Needs a human (Ilan):** " + left
+    assert overnight_of(notion).split("\n")[-1] == "- **Needs a human (Ilan):** " + left
 
 
 def test_a_page_without_the_needs_line_fails_that_target_and_the_other_is_still_done(tmp_path):
     refine = tree_with_two_open(tmp_path)
-    notion = FakePages(overnight=OVERNIGHT.replace(NEEDS_LINE, "- **Waiting on:** nothing"))
+    notion = pages(overnight=OVERNIGHT.replace(NEEDS_LINE, "- **Waiting on:** nothing"))
 
     result = mirrored(refine, notion)
 
@@ -960,18 +949,18 @@ def test_a_page_without_the_needs_line_fails_that_target_and_the_other_is_still_
 
 def test_two_needs_lines_for_ilan_are_refused_rather_than_guessed(tmp_path):
     refine = tree_with_two_open(tmp_path)
-    notion = FakePages(overnight=OVERNIGHT + "\n" + NEEDS_LINE)
+    notion = pages(overnight=OVERNIGHT + "\n" + NEEDS_LINE)
 
     result = mirrored(refine, notion)
 
     assert result["targets"]["overnight_status"]["action"] == "failed"
     assert "found 2" in result["targets"]["overnight_status"]["error"]
-    assert notion.overnight == OVERNIGHT + "\n" + NEEDS_LINE
+    assert overnight_of(notion) == OVERNIGHT + "\n" + NEEDS_LINE
 
 
 def test_a_team_comms_page_without_an_fyi_heading_fails_that_target(tmp_path):
     refine = tree_with_two_open(tmp_path)
-    notion = FakePages(team_comms=TEAM_COMMS.replace(FYI_HEADING, "## Notes"))
+    notion = pages(team_comms=TEAM_COMMS.replace(FYI_HEADING, "## Notes"))
 
     result = mirrored(refine, notion)
 
@@ -982,13 +971,13 @@ def test_a_team_comms_page_without_an_fyi_heading_fails_that_target(tmp_path):
 
 
 def test_a_write_that_does_not_show_up_on_the_page_is_reported_as_failed(tmp_path):
-    class Forgetful(FakePages):
+    class Forgetful(pages_fake.FakePages):
         def replace_text(self, page_id, old, new):
             pass
 
     refine = tree_with_two_open(tmp_path)
 
-    result = mirrored(refine, Forgetful())
+    result = mirrored(refine, pages(kind=Forgetful))
 
     assert result["ok"] is False
     assert {t["action"] for t in result["targets"].values()} == {"failed"}
@@ -996,51 +985,24 @@ def test_a_write_that_does_not_show_up_on_the_page_is_reported_as_failed(tmp_pat
 
 
 def test_a_notion_error_on_one_page_is_reported_for_that_page_only(tmp_path):
-    class RefusesOvernight(FakePages):
+    class RefusesOvernight(pages_fake.FakePages):
         def replace_text(self, page_id, old, new):
             if page_id == rulings.OVERNIGHT_PAGE:
                 raise rulings.NotionError("Notion answered 403 to PATCH")
             super().replace_text(page_id, old, new)
 
     refine = tree_with_two_open(tmp_path)
-    notion = RefusesOvernight()
+    notion = pages(kind=RefusesOvernight)
 
     result = mirrored(refine, notion)
 
     assert result["ok"] is False
     assert result["targets"]["overnight_status"] == {"action": "failed", "error": "Notion answered 403 to PATCH"}
     assert result["targets"]["team_comms_fyi"] == {"action": "posted"}
-    assert notion.overnight == OVERNIGHT
+    assert overnight_of(notion) == OVERNIGHT
 
 
 # ------------------------------------------------------------------ the mirror verb: print mode, token, REST client
-
-
-class NotionApi:
-    """The page-markdown endpoints as the API reference describes them, at the transport under RestNotionClient."""
-
-    def __init__(self, overnight: str = OVERNIGHT, team_comms: str = TEAM_COMMS) -> None:
-        self.pages = {rulings.OVERNIGHT_PAGE: overnight, rulings.TEAM_COMMS_PAGE: team_comms}
-        self.calls: list[tuple[str, str, dict, object]] = []
-
-    def __call__(self, method, url, headers, body, timeout):
-        self.calls.append((method, url, dict(headers), json.loads(body) if body else None))
-        match = re.fullmatch(r"https://api\.notion\.com/v1/pages/([0-9a-f-]{36})/markdown", url)
-        assert match, f"unexpected url {url}"
-        page_id = match.group(1)
-        if headers.get("Authorization") != f"Bearer {TOKEN}":
-            return 401, {"object": "error", "code": "unauthorized", "message": "API token is invalid."}
-        if method == "GET":
-            return 200, {"object": "page_markdown", "id": page_id, "markdown": self.pages[page_id], "truncated": False, "unknown_block_ids": []}
-        assert method == "PATCH"
-        update = json.loads(body)
-        assert update["type"] == "update_content"
-        for item in update["update_content"]["content_updates"]:
-            found = self.pages[page_id].count(item["old_str"])
-            if found != 1:
-                return 400, {"object": "error", "code": "validation_error", "message": f"old_str matched {found} times"}
-            self.pages[page_id] = self.pages[page_id].replace(item["old_str"], item["new_str"])
-        return 200, {"object": "page_markdown", "id": page_id, "markdown": self.pages[page_id], "truncated": False, "unknown_block_ids": []}
 
 
 def forbidden_transport(*args):
@@ -1086,13 +1048,13 @@ def test_print_mode_with_nothing_waiting_only_replaces_earlier_posts(tmp_path):
 def test_the_texts_a_session_would_paste_are_the_ones_the_live_run_posts(tmp_path):
     refine = tree_with_two_open(tmp_path)
     printed = run(refine, "mirror", "--print")
-    api = NotionApi()
+    api = pages()
 
-    run(refine, "mirror", environ={"NOTION_TOKEN": TOKEN}, env_files=[], transport=api)
+    run(refine, "mirror", environ={"NOTION_TOKEN": TOKEN}, env_files=[], transport=api.transport)
 
     overnight, fyi = printed["posts"]
-    assert overnight["text"] in api.pages[rulings.OVERNIGHT_PAGE]
-    assert fyi["text"] in api.pages[rulings.TEAM_COMMS_PAGE]
+    assert overnight["text"] in overnight_of(api)
+    assert fyi["text"] in team_comms_of(api)
 
 
 def test_without_a_token_nothing_is_posted_and_the_texts_come_back_with_a_failing_answer(tmp_path):
@@ -1119,9 +1081,9 @@ def test_the_token_is_read_from_an_env_file_when_the_environment_has_none(tmp_pa
     refine = tree_with_two_open(tmp_path)
     env_file = tmp_path / ".env"
     env_file.write_text(f"OTHER=1\nNOTION_TOKEN={TOKEN}\n", encoding="utf-8")
-    api = NotionApi()
+    api = pages()
 
-    result = run(refine, "mirror", environ={}, env_files=[env_file], transport=api)
+    result = run(refine, "mirror", environ={}, env_files=[env_file], transport=api.transport)
 
     assert result["ok"] is True
     assert result["targets"] == {"overnight_status": {"action": "posted"}, "team_comms_fyi": {"action": "posted"}}
@@ -1129,42 +1091,44 @@ def test_the_token_is_read_from_an_env_file_when_the_environment_has_none(tmp_pa
 
 def test_the_rest_client_speaks_the_page_markdown_api_and_the_mirror_works_through_it(tmp_path):
     refine = tree_with_two_open(tmp_path)
-    api = NotionApi()
+    api = pages()
+    sent = []
 
-    result = run(refine, "mirror", environ={"NOTION_TOKEN": TOKEN}, env_files=[], transport=api)
+    def wire(method, url, headers, body, timeout):
+        sent.append((method, url, dict(headers)))
+        return api.transport(method, url, headers, body, timeout)
+
+    result = run(refine, "mirror", environ={"NOTION_TOKEN": TOKEN}, env_files=[], transport=wire)
 
     posts = rulings.build_posts(open_items(refine), NOW)
     assert result["ok"] is True
-    assert api.pages[rulings.OVERNIGHT_PAGE] == OVERNIGHT.replace(NEEDS_LINE, NEEDS_LINE + "; " + posts.segment)
-    assert api.pages[rulings.TEAM_COMMS_PAGE] == TEAM_COMMS.replace(FYI_HEADING, FYI_HEADING + "\n" + posts.block)
-    overnight_url = f"https://api.notion.com/v1/pages/{rulings.OVERNIGHT_PAGE}/markdown"
-    assert api.calls[0][:2] == ("GET", overnight_url)
-    assert api.calls[0][2] == {
+    assert overnight_of(api) == OVERNIGHT.replace(NEEDS_LINE, NEEDS_LINE + "; " + posts.segment)
+    assert team_comms_of(api) == TEAM_COMMS.replace(FYI_HEADING, FYI_HEADING + "\n" + posts.block)
+    overnight_path = f"/v1/pages/{rulings.OVERNIGHT_PAGE}/markdown"
+    assert sent[0] == ("GET", "https://api.notion.com" + overnight_path, {
         "Authorization": f"Bearer {TOKEN}",
         "Notion-Version": "2026-03-11",
         "Content-Type": "application/json",
         "User-Agent": "atlas-lab-rulings",
-    }
-    assert api.calls[0][3] is None
-    patch = api.calls[1]
-    assert patch[:2] == ("PATCH", overnight_url)
-    assert patch[3] == {
+    })
+    assert api.requests[0] == ("GET", overnight_path, None)
+    assert api.requests[1] == ("PATCH", overnight_path, {
         "type": "update_content",
         "update_content": {"content_updates": [{"old_str": NEEDS_LINE, "new_str": NEEDS_LINE + "; " + posts.segment}]},
-    }
-    assert [c[0] for c in api.calls] == ["GET", "PATCH", "GET", "GET", "PATCH", "GET"]
+    })
+    assert [request[0] for request in api.requests] == ["GET", "PATCH", "GET", "GET", "PATCH", "GET"]
 
 
 def test_a_second_run_through_the_rest_client_sends_no_patch(tmp_path):
     refine = tree_with_two_open(tmp_path)
-    api = NotionApi()
-    run(refine, "mirror", environ={"NOTION_TOKEN": TOKEN}, env_files=[], transport=api)
-    api.calls.clear()
+    api = pages()
+    run(refine, "mirror", environ={"NOTION_TOKEN": TOKEN}, env_files=[], transport=api.transport)
+    api.requests.clear()
 
-    again = run(refine, "mirror", environ={"NOTION_TOKEN": TOKEN}, env_files=[], transport=api)
+    again = run(refine, "mirror", environ={"NOTION_TOKEN": TOKEN}, env_files=[], transport=api.transport)
 
     assert again["ok"] is True
-    assert [c[0] for c in api.calls] == ["GET", "GET"]
+    assert [request[0] for request in api.requests] == ["GET", "GET"]
 
 
 def test_the_token_never_reaches_the_output_or_an_error_message(tmp_path):
@@ -1200,8 +1164,7 @@ def header_checking(wire):
 @pytest.mark.parametrize("token", ["tok-SENTINEL\n", "tok-SENTINEL\r", " tok-SENTINEL\r\n", "\ttok-SENTINEL "])
 def test_a_token_with_a_line_break_or_spaces_around_it_is_stripped_and_never_printed(tmp_path, token):
     refine = tree_with_two_open(tmp_path)
-    notion = pages_fake.FakePages({rulings.OVERNIGHT_PAGE: OVERNIGHT, rulings.TEAM_COMMS_PAGE: TEAM_COMMS},
-                                  token="tok-SENTINEL")
+    notion = pages(token="tok-SENTINEL")
 
     result = run(refine, "mirror", environ={"NOTION_TOKEN": token}, env_files=[],
                  transport=header_checking(notion.transport))
@@ -1230,14 +1193,14 @@ def test_a_track_that_cannot_be_read_stops_the_mirror_before_anything_is_posted(
     refine = tree_with_two_open(tmp_path)
     broken = rulings_path(refine, "learning")
     write(broken, read(broken) + "\n## 7. Half a ruling (pass 1)\n\nNow: x\n")
-    api = NotionApi()
+    api = pages()
 
-    result = run(refine, "mirror", environ={"NOTION_TOKEN": TOKEN}, env_files=[], transport=api)
+    result = run(refine, "mirror", environ={"NOTION_TOKEN": TOKEN}, env_files=[], transport=api.transport)
 
     assert result["ok"] is False
     assert result["outcome"] == "format_error"
     assert result["errors"][0]["track"] == "learning"
-    assert api.calls == []
+    assert api.requests == []
 
 
 # ------------------------------------------------------------------ through the dispatcher
