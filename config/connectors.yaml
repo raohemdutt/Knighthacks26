@@ -42,6 +42,7 @@ browser:
   hosts: [html.duckduckgo.com, www.bing.com, www.reddit.com, "*"]
   tools: [search, reddit, browse]
   writes: [submit_form]  # RSVPs, room bookings: only after an approval card
+  env: [DISPLAY, WAYLAND_DISPLAY]  # the Jetson's Xvfb display (atlas-xvfb.service, DISPLAY=:99 in .env); without one it runs headless
   options:
     headless: false
     channel: auto  # installed Chrome if present, else patchright's Chromium
