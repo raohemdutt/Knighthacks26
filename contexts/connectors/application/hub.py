@@ -9,8 +9,10 @@
 
 import hashlib
 import json
+import re
 from collections.abc import Callable
 from datetime import datetime, timedelta
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 from contexts.connectors.application.port import Connector
@@ -19,6 +21,22 @@ from contexts.workspace.domain.approvals import ActionRequest
 from contracts.agent import ActionProposed
 from contracts.connectors import ItemSynced, SyncFailed
 from contracts.events import Event
+
+
+_URL = re.compile(r"https?://[^\s'\"<>)\]]+")
+
+
+def quiet(text: str) -> str:
+    """An error message with every URL cut down to its scheme and host.
+
+    A feed URL is its own credential (a published .ics link, a `?token=` query), and an HTTP client's
+    error text carries the full URL. What is said here goes into the event log and out over /ws."""
+
+    def host_only(m: re.Match) -> str:
+        parts = urlsplit(m[0])
+        return f"{parts.scheme}://{parts.hostname or 'host'}/…"
+
+    return _URL.sub(host_only, text)
 
 
 class ConnectorHub:
@@ -65,7 +83,7 @@ class ConnectorHub:
             try:
                 items = await self.connector(name).call(tool)
             except Exception as exc:  # one broken source must not stop the others
-                out.append(SyncFailed(ts=now, connector=name, error=f"{tool}: {exc}"))
+                out.append(SyncFailed(ts=now, connector=name, error=quiet(f"{tool}: {exc}")))
                 continue
             for raw in items or []:
                 item = ItemSynced(ts=now, connector=name, kind=raw.get("kind", kind), **_item_fields(raw))
