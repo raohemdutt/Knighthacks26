@@ -280,6 +280,34 @@ on the pod (`push_dataset` reports `persistent` when the root lists a `home` fol
 pod or on SJC yet; `lab/proxy_fake.py` is the stand-in its tests use (Cloudflare, the hub, the Jupyter server and a
 model server on a fake clock).
 
+### Failure-mode map of the proxy path on SJC (R18)
+
+Exercised on 2026-10-10 from a laptop (not a pod) through `lab/proxy.py`, with no retry, against pod B's role (account
+D on `sjc.aupcloud.io`), port 8000, where the R30 teacher (vLLM) was started and stopped inside a GPU Queue slot. SJC
+answers through Cloudflare like DUB (`server: cloudflare`, a `cf-ray` header). Pod C was not called.
+
+| Case | Status | `lab/proxy.py` kind | error_name | Latency | What comes back |
+|---|---|---|---|---|---|
+| Bad token, GET | 302 | `bad_token` | none | 0.39 s | a redirect to the hub's login page (never followed) |
+| Bad token, POST | 403 | `bad_token` | none | 0.13 s | Jupyter Server's 403 page |
+| Nothing listening on the port (8000, 8123), GET and POST | 500 | `model_server_down` | none | 0.13 to 0.23 s | Jupyter Server's HTML error page |
+| Model server mid-restart (GET `/v1/models` every 5 s) | 500, 56 times, then 200 | `model_server_down` | none | 0.2 s a poll; 294 s from start to the first 200 | the same 500 page for the whole start: vLLM opens the port only when the engine is ready, so there is no 502, no 503 and no hung call |
+| Model server stopped, pod up | 500 | `model_server_down` | none | 0.13 to 0.47 s | as nothing listening |
+| Pod stopped | 424 predicted | `pod_stopped` | none | not exercised | not exercised live: stopping pod D ends the keep-alive that runs from another machine, which is the owner's call (JupyterHub documents 424 with a JSON body for a stopped server) |
+| 31 s stream, `Accept: text/event-stream` | 200 | ok | - | headers and first bytes at 0.92 s, last at 31.9 s | streamed: 91 reads spread over 30.9 s |
+| The same stream, `Accept: application/json` | 200 | ok | - | nothing until 31.5 s | held whole: headers and all 19,994 bytes arrive together when the model has finished (2 reads in 0.008 s) |
+| 5 MB request body (5,242,964 bytes), POST | 400 | `model_server_error` | none | 1.0 s | the body reaches vLLM, which refuses it for its 16,384-token context; no 413 on the way |
+| 20 concurrent short chats (8 tokens each, streamed) | 200, all 20 | ok | - | 3.0 s for all; 1.05 s fastest, 2.95 s median, 2.98 s slowest; first token 2.2 s | no refusal and no rate limit at 20 |
+| Front door down (from the record, DUB, M21 of `lab/refine/research/plumbing/measurements-2026-10-10.md`) | 502 | `hub_down` | `origin_bad_gateway`, error_category `origin` | - | with `Accept: application/json` Cloudflare's JSON (`retryable` true, `retry_after` 60); a browser-like request gets its HTML page |
+
+What the box should take from it: only the outage answer carries an `error_name`; every other failure is told apart
+by its status and by whether the body is the hub's, Jupyter's or the model server's. A model server that is starting
+looks exactly like one that was never started (500 for about five minutes), so the caller waits and polls instead of
+giving up. A reply that is not asked for with the exact event-stream header shows nothing until it is complete, which
+on a long answer runs into the 125 s cut measured on DUB. The rows are in `lab/refine/metrics.jsonl` on node `pod-b`
+with hub sjc and account D (`proxy.status`, `proxy.restart_to_ready_s`, `proxy.stream_first_byte_s`,
+`proxy.concurrent_wall_s`), one sample each unless the row says otherwise.
+
 ## GPU power sampler: `lab/pod_power.py`
 
 Reads the pod's Strix Halo (Radeon 8060S, gfx1151; the R9700 is the other chip) once a period (default 1000 ms)

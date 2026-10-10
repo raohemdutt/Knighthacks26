@@ -100,6 +100,17 @@ EXPECTED_SEED = [
     ("pod.idle_state_share", "pod-a", {"state": "deep idle (sclk below 700 MHz)"}, 62.15, "%", True),
     ("pod.idle_state_share", "pod-a", {"state": "transition (sclk 700 to 2599 MHz)"}, 6.64, "%", True),
     ("pod.idle_state_share", "pod-a", {"state": "busy (sclk 2600 MHz or more, mclk 1000)"}, 31.22, "%", True),
+    # R18: the proxy failure-mode map against pod D (account D on SJC, pod B's role)
+    ("proxy.status", "pod-b", {"case": "bad token", "method": "GET"}, 302, "http", False),
+    ("proxy.status", "pod-b", {"case": "bad token", "method": "POST"}, 403, "http", False),
+    ("proxy.status", "pod-b", {"case": "nothing listening"}, 500, "http", False),
+    ("proxy.status", "pod-b", {"case": "mid-restart"}, 500, "http", False),
+    ("proxy.restart_to_ready_s", "pod-b", {"case": "mid-restart"}, 294.1, "s", False),
+    ("proxy.status", "pod-b", {"case": "model server stopped"}, 500, "http", False),
+    ("proxy.stream_first_byte_s", "pod-b", {"accept": "text/event-stream"}, 0.916, "s", False),
+    ("proxy.stream_first_byte_s", "pod-b", {"accept": "application/json"}, 31.483, "s", False),
+    ("proxy.status", "pod-b", {"case": "5 MB body"}, 400, "http", False),
+    ("proxy.concurrent_wall_s", "pod-b", {"case": "20 concurrent"}, 2.998, "s", False),
 ]
 
 # The numbers the lab setup measured, by metric name.
