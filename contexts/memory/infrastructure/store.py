@@ -138,9 +138,40 @@ def item_from(row: sqlite3.Row) -> Item:
 class MemoryStore:
     def __init__(self, path: str | Path = "data/memory.sqlite") -> None:
         self.path = str(path)
+        self.moved_aside: str | None = None  # where a corrupt file went at open, if there was one
         if self.path != ":memory:":
             Path(self.path).parent.mkdir(parents=True, exist_ok=True)
-        self._open()
+        try:
+            self._open()
+        except sqlite3.OperationalError:  # locked, no permission, disk full: the file may be fine, leave it be
+            raise
+        except sqlite3.DatabaseError as exc:  # "file is not a database", "database disk image is malformed"
+            if self.path == ":memory:":
+                raise
+            self.moved_aside = self._move_aside(exc)
+            self._open()
+
+    def _move_aside(self, exc: Exception) -> str:
+        """A file SQLite cannot read must not stop the box: Memory is a projection of the event log, so keep
+        the bad file under another name for whoever wants to look, start empty, and let the replay rebuild."""
+        try:
+            self.db.close()
+        except (AttributeError, sqlite3.Error):
+            pass
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")  # a file name, not a duration: the wall clock is right here
+        aside = f"{self.path}.corrupt-{stamp}"
+        n = 1
+        while Path(aside).exists():  # two bad starts in one second
+            n += 1
+            aside = f"{self.path}.corrupt-{stamp}-{n}"
+        Path(self.path).replace(aside)
+        for suffix in ("-wal", "-shm"):  # they belong to the bad file; left behind they would be applied to the new one
+            side = Path(self.path + suffix)
+            if side.exists():
+                side.replace(aside + suffix)
+        log.error("MEMORY DATABASE IS CORRUPT (%s): %s was moved to %s. Starting with an empty Memory; the event "
+                  "log replay rebuilds what it can (embeddings are made again by the indexer).", exc, self.path, aside)
+        return aside
 
     def _open(self) -> None:
         # One connection, used from the event loop; the API's tests call in from another thread.

@@ -213,3 +213,33 @@ def test_item_upserts_when_the_same_item_syncs_again(tmp_path):
 
     projection.on_item(old)  # a replayed event must not bring the old version back
     assert memory.items(at(0), at(0) + timedelta(days=30), kind="assignment")[0].when.day == 16
+
+
+def test_a_corrupt_file_is_moved_aside_and_the_replay_rebuilds_memory(tmp_path, caplog):
+    db = tmp_path / "memory.sqlite"
+    bus = EventBus(tmp_path / "events")
+    projection = MemoryProjection(MemoryStore(db))
+    projection.subscribe(bus)
+    for e in script():
+        asyncio.run(bus.publish(e))
+    good = projection.store.dump()
+    assert good["memory_episodes"]
+    projection.store.close()
+
+    db.write_bytes(b"this is not a database, " * 200)  # what a full disk or a pulled plug can leave
+    db.with_name("memory.sqlite-wal").write_bytes(b"stale")
+    with caplog.at_level("ERROR", logger="atlas.memory"):
+        store = MemoryStore(db)  # does not raise: the gateway starts
+    [aside] = tmp_path.glob("memory.sqlite.corrupt-*Z")
+    assert store.moved_aside == str(aside) and aside.read_bytes().startswith(b"this is not a database")
+    wal = db.with_name("memory.sqlite-wal")  # the bad file's journal is never applied to the new file
+    assert not wal.exists() or wal.read_bytes() != b"stale"
+    assert "CORRUPT" in caplog.text and aside.name in caplog.text
+    assert store.dump()["memory_episodes"] == []  # empty until the log is replayed
+
+    bus = EventBus(tmp_path / "events")  # the restart: the normal replay fills the new file
+    rebuilt = MemoryProjection(store)
+    rebuilt.subscribe(bus)
+    asyncio.run(bus.replay_into())
+    assert store.dump() == good
+    assert MemoryStore(db).moved_aside is None  # a good file is opened as it is
