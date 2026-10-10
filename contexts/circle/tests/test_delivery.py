@@ -46,3 +46,15 @@ def test_only_declared_writes_are_proposed():
     h, _ = hub("calendar")
     [only] = AgreedEventDelivery(h, "dom", NY).on_agreed(AGREED)
     assert only.target == "calendar.create_event"
+
+
+def test_without_connectors_or_as_an_invitee_the_phone_still_hears_it():
+    """Q12: with the calendar connector off, nothing reached the phone; the invitee's box never heard at all."""
+    from contracts.agent import AlertRaised
+
+    h, _ = hub()
+    [tell] = AgreedEventDelivery(h, "dom", NY).on_agreed(AGREED)
+    assert isinstance(tell, AlertRaised) and tell.message == "Everyone's in: Study session, Sun Oct 11, 2:00 PM at Library"
+    h, fakes = hub("calendar", "groupme")
+    invitee = AGREED.model_copy(update={"created_by": "dom"})
+    assert [type(e).__name__ for e in AgreedEventDelivery(h, "hemdutt", NY).on_agreed(invitee)] == ["AlertRaised"]

@@ -174,3 +174,31 @@ def test_rules_list_toggle_and_alert_history(tmp_path):
     with client(tmp_path) as c:  # restart: the switch and the history come back from the log
         assert {r["id"]: r["enabled"] for r in c.get("/api/rules").json()}["package-at-door"] is False
         assert len(c.get("/api/alerts", params={"limit": 5}).json()) == 1
+
+
+def test_presence_is_capped_can_stop_early_and_an_offline_leaderboard_says_503(tmp_path):
+    """Q12: any `hours` was accepted, sharing could not be stopped, and Neon offline gave a bare 500."""
+    from contexts.circle.application.presence import PresenceBoard
+    from contexts.circle.application.sharing import CircleOffline
+
+    class Offline:
+        def __getattr__(self, name):
+            def fail(*a, **k):
+                raise CircleOffline("NEON_DATABASE_URL is not set")
+            return fail
+
+    class Me:
+        circle_id = "team"
+
+    with client(tmp_path) as c:
+        atlas = c.app.state.atlas
+        atlas.presence = PresenceBoard("team", "dom", ["Library"], opted_in=True)
+        atlas.bus.subscribe("circle.place.shared", atlas.presence.on_shared)
+        assert c.post("/api/presence", json={"place": "Library", "hours": 48}).status_code == 422
+        assert c.post("/api/presence", json={"place": "Library", "hours": 2}).status_code == 200
+        assert c.delete("/api/presence").json() == {"sharing": False}
+        mine = atlas.presence.current["dom"]
+        assert mine.place == "Library" and mine.expires_at <= mine.ts  # ended now; PresenceSync sends it to friends
+        atlas.circle, atlas.board = Me(), Offline()
+        r = c.get("/api/circle/leaderboard")
+        assert r.status_code == 503 and "offline" in r.json()["detail"]

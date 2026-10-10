@@ -34,6 +34,12 @@ circle:
   share_presence: false  # opt in to sharing a named place (G5)
   chat_group: friends    # GroupMe group told when the circle agrees on an event (G1)
   emails: {}             # member id -> email, for calendar invites, e.g. {hemdutt: hemdutt@example.edu}
+  share_summaries: false # opt in to sending habit/impact/game summaries to the Circle's leaderboards (E2)
+  names:                 # member id -> display name; also who must say yes to a plan with no invitees (G1)
+    dom: Dominick
+    hemdutt: Hemdutt
+    xander: Xander
+    ilan: Ilan
 
 # Named places presence may use. Coarse spots only; never coordinates.
 places: [Our table, Library, Dorm, Student Union, Gym]
