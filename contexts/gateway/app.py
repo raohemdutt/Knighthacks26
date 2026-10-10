@@ -17,6 +17,7 @@
 - GET  /api/invites[/{name}]   calendar invites (.ics) created after approval, to open or share (K2)
 - GET  /api/places             place packs; POST one as YAML/JSON (validated) (S5)
 - GET  /api/play/campus-route  ?from=ucf.union&to=ucf.hec[&depart=&due=] or to=friend:<member> (S5)
+- GET  /api/learning        taught tasks: stage, progress, scores, deployed models (X10)
 - GET  /capture/status      camera status and detector counts, where cameras run (C6)
 - GET  /health
 - GET  /runtime/models      installed model versions, the current one and what llama-server really serves (R7)
@@ -53,6 +54,7 @@ from contracts.agent import AnswerGenerated, RuleAdded
 from contracts.experience import ApprovalDecided, QuestionAsked
 from contracts.learning import TaskSpec
 from contexts.capture.api import capture_router
+from contexts.learning.api import learning_router
 from runtime.api import runtime_router
 from runtime.modelstore import ModelStore
 
@@ -110,6 +112,8 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         app.include_router(identity_router(atlas.identity, atlas.bus, guard=authorized))
     if atlas.capture:  # GET /capture/status (C6)
         app.include_router(capture_router(atlas.capture))
+    if atlas.learning:  # GET /api/learning (X10)
+        app.include_router(learning_router(atlas.learning))
     app.include_router(runtime_router(ModelStore(atlas.settings.data_dir / "models"), llm_url=atlas.settings.llm_url))  # GET /runtime/models (R7)
 
     @app.get("/health")

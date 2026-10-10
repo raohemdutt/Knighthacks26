@@ -37,6 +37,7 @@ from contexts.circle.infrastructure.outbox import CircleOutbox
 from contexts.connectors.application.hub import ConnectorHub
 from contexts.connectors.domain.spec import load_specs
 from contexts.connectors.infrastructure.mcp_client import McpConnector
+from contexts.learning.application.board import LearningBoard
 from contexts.learning.application.export import DatasetExporter
 from contexts.memory.application.projection import MemoryProjection
 from contexts.memory.application.reader import SqliteMemory
@@ -115,6 +116,7 @@ class Atlas:
     vault: Vault | None = None
     policy: Policy | None = None
     wiper: Wiper | None = None
+    learning: LearningBoard | None = None  # where each taught task is (X10)
     capture: CaptureService | None = None  # cameras -> detector -> observations, only where there is a detector (C6)
     identity: IdentityService | None = None  # opt-in owner recognition (P9); off by default
     tasks: list[asyncio.Task] = field(default_factory=list)
@@ -379,6 +381,10 @@ def build(settings: Settings | None = None) -> Atlas:
     dayrun = DayRun(places, memory=memory, habits=habits, presence=presence, hub=hub,
                     config_dir=s.config_dir, data_dir=s.data_dir) if places else None
 
+    # Learning board (X10): the Teach screen's view of tasks, runs and deployed models; rebuilt from the log.
+    learning = LearningBoard()
+    learning.subscribe(bus)
+
     # Cameras (C1, P1, P2, P6): config/cameras.yaml; None unless a detector engine is on this machine.
     capture = CaptureService.load(s.config_dir / "cameras.yaml", bus, models_yaml=models_yaml, data_dir=s.data_dir, policy=policy)
 
@@ -386,4 +392,4 @@ def build(settings: Settings | None = None) -> Atlas:
                  waste=waste, circle=circle, presence=presence, zone_engine=zone_engine, sharing=sharing,
                  memory=memory, projection=projection, habits=habits, nudger=nudger,
                  presence_sync=presence_sync, board=board, vault=vault, policy=policy, wiper=wiper,
-                 places=places, dayrun=dayrun, capture=capture, identity=identity)
+                 places=places, dayrun=dayrun, capture=capture, identity=identity, learning=learning)

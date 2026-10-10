@@ -40,6 +40,7 @@ class TrackingPipeline:
         self._thread: threading.Thread | None = None
         self.detected = 0
         self.errors = 0
+        self.latest: tuple[int, list[Track]] | None = None  # (frame ts_ms, tracks) of the newest detection, for the Live screen
 
     def start(self) -> None:
         self._thread = threading.Thread(target=self._run, name=f"tracking-{self.camera_id}", daemon=True)
@@ -71,6 +72,7 @@ class TrackingPipeline:
                 self.errors += 1
                 continue
             self.detected += 1
+            self.latest = (ts_ms, tracks)
             if now < next_observe:
                 continue
             next_observe = now + self.observe_every_s

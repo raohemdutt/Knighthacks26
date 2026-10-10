@@ -125,3 +125,41 @@ def test_the_detector_is_only_built_when_a_frame_arrives(tmp_path):
     lazy = LazyDetector(factory)
     assert built == []  # nothing yet: a camera that is unplugged costs no memory
     assert lazy("frame")[0].track_id == 1 and lazy("frame") and built == [1]  # built once, on the first frame
+
+
+def test_the_live_screen_gets_a_blurred_snapshot_and_the_newest_tracks(clip, tmp_path, monkeypatch):
+    calls = []
+
+    class Spy:
+        def __call__(self, frame):
+            calls.append(1)
+            return frame
+
+    monkeypatch.setattr("contexts.capture.application.service.FaceBlur", Spy)
+    cameras = {"cam-desk": {"source": clip, "fps": 15, "width": 64, "height": 48, "faces": False}}
+    holder = {}
+
+    async def main():
+        bus = EventBus(persist=False)
+        service = CaptureService(cameras, bus, lambda: person, tmp_path / "data", Policy())
+        holder["service"] = service
+        service.start(asyncio.get_running_loop())
+        await asyncio.sleep(1.0)
+        holder["jpeg"] = service.snapshot("cam-desk")
+        holder["again"] = service.snapshot("cam-desk")
+        holder["tracks"] = service.tracks("cam-desk")
+        app = FastAPI()
+        app.include_router(capture_router(service))
+        holder["http"] = TestClient(app)
+        holder["r"] = holder["http"].get("/capture/cam-desk/snapshot.jpg")
+        holder["missing"] = holder["http"].get("/capture/cam-nope/snapshot.jpg")
+        service.policy.paused.add("cam-desk")
+        holder["paused"] = service.snapshot("cam-desk")
+        service.stop()
+
+    asyncio.run(main())
+    assert holder["jpeg"][:2] == b"\xff\xd8" and calls  # a JPEG, and the blur ran on it
+    assert holder["tracks"]["tracks"][0]["track_id"] == 1 and holder["tracks"]["ts_ms"] > 0
+    assert holder["r"].status_code == 200 and holder["r"].headers["content-type"] == "image/jpeg"
+    assert holder["r"].headers["cache-control"] == "no-store"
+    assert holder["missing"].status_code == 404 and holder["paused"] is None
