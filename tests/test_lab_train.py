@@ -28,7 +28,7 @@ from contracts.telemetry import TrainStep
 from lab import dataset
 from lab import format_traces as ft
 from lab import train
-from lab.machine import ledger, stop
+from lab.machine import gpu_power, ledger, stop
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TINY = REPO_ROOT / "fixtures" / "learning" / "train-tiny"
@@ -38,6 +38,7 @@ SCRIPT = REPO_ROOT / "lab" / "train.py"
 COMMIT = "0123456789abcdef0123456789abcdef01234567"
 OTHER_COMMIT = "89abcdef0123456789abcdef0123456789abcdef"
 T0 = datetime(2026, 10, 10, 20, 0, 0, tzinfo=timezone.utc)
+SEARCH_SPACE = REPO_ROOT / "lab" / "refine" / "research" / "kernels" / "data" / "searchspace-training-gfx1151.json"
 
 
 @pytest.fixture(autouse=True)
@@ -46,6 +47,9 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setenv("LAB_ACTOR", "opus-test")
     monkeypatch.setenv("LAB_TIER", "opus")
     monkeypatch.delenv("LAB_TASK", raising=False)
+    for name in (*train.PINNED_ENV, *train.KNOB_ENV):   # a pod-mode run exports these; each is put back afterwards
+        monkeypatch.setenv(name, "")
+        monkeypatch.delenv(name)
 
 
 def fixture_rows() -> list[dict]:
@@ -331,9 +335,39 @@ def test_the_feed_averages_the_samplers_readings_inside_the_step_and_keeps_where
     (tmp_path / "samples-2026-10-10.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
     feed = train.PowerFeed(tmp_path, "gpu-b")
     window = feed.window(T0 + timedelta(milliseconds=500), T0 + timedelta(seconds=2))
-    assert window == train.PowerWindow(115.0, 2, "lab/pod_power.py 1", "amd-smi", "socket_power", 1000.0)
+    # 1 s and 2 s read 110 W and 120 W; the null sample at 1.5 s is a sample without a reading. Energy is power
+    # integrated over the readings, since the samples carry no energy counter.
+    assert window == train.PowerWindow(115.0, 2, "lab/pod_power.py 1", "amd-smi", "socket_power", 1000.0, 115.0,
+                                       "avg_power_integral", 500.0)
+    assert window.counter_energy_j is None
     assert feed.bad_lines == 1
     assert feed.window(T0 + timedelta(seconds=3), T0 + timedelta(seconds=4)) == train.PowerWindow(None, 0)
+
+
+def test_a_window_reads_exactly_what_gpu_power_record_reads_for_the_same_samples(tmp_path):
+    lines = [sample("gpu-b", T0 + timedelta(milliseconds=250 * n), 90.0 + (n % 7), under_load=n % 3 == 0,
+                    sampler_started="2026-10-10T19:00:00.000Z") for n in range(40)]
+    lines.insert(9, sample("gpu-b", T0 + timedelta(milliseconds=2260), None))
+    path = tmp_path / "samples-2026-10-10.jsonl"
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    start, end = T0 + timedelta(seconds=1), T0 + timedelta(seconds=7)
+    summary = gpu_power.main(["summary", "--samples", str(path), "--node", "pod-b", "--since", start.isoformat(),
+                              "--until", end.isoformat()])["summary"]
+    feed = train.PowerFeed(tmp_path, "pod-b")   # either name of the pod reads the sampler's gpu-b samples
+    assert feed.summary(start, end) == summary
+    assert feed.window(start, end) == train.PowerWindow.of(summary)
+    assert (feed.window(start, end).watts, feed.window(start, end).samples) == (summary["mean_w"], summary["readings"])
+
+
+def test_a_window_with_an_energy_counter_gives_the_steps_energy_and_mixed_samplers_are_listed(tmp_path):
+    lines = [sample("gpu-b", T0 + timedelta(seconds=s), 100.0, energy_counter_j=1000.0 + 100 * s, counter_ok=True)
+             for s in range(3)]
+    lines.append(sample("gpu-b", T0 + timedelta(seconds=3), 100.0, energy_counter_j=1300.0, counter_ok=True,
+                        sampler="lab/pod_power.py 2", period_ms=500.0))
+    (tmp_path / "samples-2026-10-10.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    window = train.PowerFeed(tmp_path).window(T0, T0 + timedelta(seconds=3))
+    assert (window.energy_j, window.energy_source, window.counter_energy_j) == (300.0, "energy_counter", 300.0)
+    assert (window.sampler, window.period_ms) == ("lab/pod_power.py 1; lab/pod_power.py 2", "1000; 500")
 
 
 def test_the_feed_reads_only_whole_lines_and_picks_up_what_the_sampler_writes_later(tmp_path):
@@ -349,7 +383,7 @@ def test_the_feed_reads_only_whole_lines_and_picks_up_what_the_sampler_writes_la
         out.write(second[30:] + "\n")
     (tmp_path / "samples-2026-10-11.jsonl").write_text(sample("gpu-b", end, 100.0) + "\n", encoding="utf-8")
     assert feed.window(late, end) == train.PowerWindow(90.0, 3, "lab/pod_power.py 1", "amd-smi", "socket_power",
-                                                      1000.0)
+                                                      1000.0, 275.0, "avg_power_integral", 1500.0)
     assert feed.bad_lines == 0
 
 
@@ -381,7 +415,7 @@ def test_each_logged_step_appends_one_train_step_event_with_its_loss_time_tokens
     (tmp_path / "power" / "samples-2026-10-10.jsonl").write_text(
         "\n".join(sample("gpu-b", T0 + timedelta(seconds=s), 100.0 + s) for s in range(0, 6)) + "\n", encoding="utf-8")
     wall, timer = Clock(T0.timestamp()), Clock(50.0)
-    steps = train.StepLog(tmp_path / "telemetry.jsonl", "run-7", "gpu-b", train.PowerFeed(tmp_path / "power"),
+    steps = train.StepLog(tmp_path / "telemetry.jsonl", "run-7", train.POD_NODE, train.PowerFeed(tmp_path / "power"),
                           clock=wall, timer=timer)
     steps.begin()
     wall.now, timer.now = wall.now + 2.5, timer.now + 2.5
@@ -397,8 +431,9 @@ def test_each_logged_step_appends_one_train_step_event_with_its_loss_time_tokens
     assert [type(event) for event in events] == [TrainStep, TrainStep]
     first, second = events
     assert (first.node, first.run_id, first.step, first.loss, first.step_ms, first.tokens) == \
-        ("gpu-b", "run-7", 1, 1.25, 2500.0, 300)
+        ("pod-b", "run-7", 1, 1.25, 2500.0, 300)
     assert first.socket_w == pytest.approx(101.0)   # the readings at 0, 1 and 2 s of a step from 0 to 2.5 s
+    assert first.energy_j is None                   # integrated power is not the counter TrainStep.energy_j names
     assert first.ts == T0 + timedelta(seconds=2.5)
     assert (second.step, second.loss, second.step_ms, second.tokens) == (2, None, 2000.0, 220)
     assert second.socket_w == pytest.approx(103.5)  # 3 and 4 s, inside 2.5 to 4.5 s
@@ -596,6 +631,29 @@ def test_on_another_chip_the_run_is_refused_before_it_reads_or_deletes_anything(
     assert only_row()["outcome"] == "refused"
 
 
+def test_on_the_pod_the_pinned_environment_is_exported_before_torch_is_imported(tmp_path, monkeypatch):
+    monkeypatch.setenv("GPU_MAX_HW_QUEUES", "1")   # a pod profile's leftover
+    seen = {}
+
+    def importing(name, *args, **kwargs):
+        if name == "torch":
+            seen.update({key: os.environ.get(key) for key in ("GPU_MAX_HW_QUEUES", "MIOPEN_FIND_MODE",
+                                                               "TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL")})
+            return fake_torch(arch="gfx1201")
+        return real_import(name, *args, **kwargs)
+
+    import builtins
+    real_import = builtins.__import__
+    monkeypatch.delitem(sys.modules, "torch", raising=False)
+    monkeypatch.setattr(builtins, "__import__", importing)
+    folder, rows = copy_fixture(tmp_path)
+    answer = train.main(run_args(folder, rows, model_folder(tmp_path, [COMMIT]), tmp_path / "out",
+                                 "--aotriton-experimental"))
+    assert answer["outcome"] == "refused"
+    assert seen == {"GPU_MAX_HW_QUEUES": None, "MIOPEN_FIND_MODE": "NORMAL",
+                    "TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL": "1"}
+
+
 def test_on_the_pod_a_refused_run_still_deletes_its_copy_of_the_data(tmp_path, monkeypatch):
     monkeypatch.setitem(sys.modules, "torch", fake_torch())
     folder, rows = copy_fixture(tmp_path)
@@ -649,3 +707,48 @@ def test_run_by_path_from_another_folder_the_script_prints_one_json_line(tmp_pat
     assert len(lines) == 1
     assert json.loads(lines[0])["outcome"] == "invalid"
     assert only_row()["outcome"] == "invalid"
+
+
+# --- R36's pinned baseline and its search space ------------------------------------------------------------------
+
+def test_the_defaults_are_r36s_pinned_baseline_for_gfx1151():
+    space = json.loads(SEARCH_SPACE.read_text(encoding="utf-8"))
+    assert train.BASELINE == space["baseline"]
+    assert set(train.BASELINE) == {parameter["name"] for parameter in space["parameters"]}
+    pinned = space["pinned"]
+    assert train.PINNED_ENV == pinned["env"]
+    assert (train.PINNED["lora_r"], train.PINNED["lora_alpha"], train.PINNED["lora_dropout"]) == \
+        (pinned["lora"]["r"], pinned["lora"]["lora_alpha"], pinned["lora"]["lora_dropout"])
+    assert {key: train.PINNED[key] for key in ("learning_rate", "attn_implementation", "optim", "seed",
+                                               "dataloader_num_workers", "dataloader_pin_memory",
+                                               "dataloader_persistent_workers")} == \
+        {key: pinned[key] for key in ("learning_rate", "attn_implementation", "optim", "seed",
+                                      "dataloader_num_workers", "dataloader_pin_memory",
+                                      "dataloader_persistent_workers")}
+    args = train._parser().parse_args(["--dataset", "d", "--rows", "r", "--model", "m"])
+    assert (args.batch * args.grad_accum, args.batch, args.checkpointing, args.lr, args.rank, args.alpha,
+            args.dropout, args.seed, args.workers, args.group_by_length, args.aotriton_experimental,
+            args.blas_backend, args.tunableop) == \
+        (space["fixed_effective_batch_size"], 4, True, 2e-4, 16, 32.0, 0.0, 42, 2, False, False, "default", None)
+
+
+def test_the_run_environment_is_the_pinned_one_and_each_flag_sets_only_its_own_variables():
+    assert train.run_env() == {**train.PINNED_ENV, **dict.fromkeys(train.KNOB_ENV)}
+    moved = train.run_env(aotriton=True, blas="hipblaslt", tunableop="/home/u/tunableop_results.csv")
+    assert {name: value for name, value in moved.items() if value != train.run_env()[name]} == {
+        "TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL": "1", "TORCH_BLAS_PREFER_HIPBLASLT": "1",
+        "PYTORCH_TUNABLEOP_ENABLED": "1", "PYTORCH_TUNABLEOP_TUNING": "0",
+        "PYTORCH_TUNABLEOP_FILENAME": "/home/u/tunableop_results.csv"}
+    with pytest.raises(ValueError):
+        train.run_env(blas="rocblas")
+    environ = {"GPU_MAX_HW_QUEUES": "1", "HOME": "/home/u", "MIOPEN_FIND_MODE": "FAST"}
+    train.apply_env(train.run_env(), environ)
+    assert environ == {"HOME": "/home/u", "MIOPEN_FIND_MODE": "NORMAL"}
+
+
+def test_a_tunableop_flag_without_its_results_file_is_refused(tmp_path):
+    folder, rows = copy_fixture(tmp_path)
+    answer = train.main(["--cpu", *run_args(folder, rows, model_folder(tmp_path, [COMMIT]), tmp_path / "out",
+                                            "--tunableop", str(tmp_path / "missing.csv"))])
+    assert (answer["outcome"], answer["problems"]) == \
+        ("usage", ["--tunableop names no results file; tune once at this sequence length first"])

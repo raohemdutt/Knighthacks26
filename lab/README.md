@@ -983,8 +983,9 @@ python lab/format_traces.py <dataset folder> --out rows.jsonl --split
 # to the pod: lab/ and contracts/ (the repo cannot be cloned there), the dataset folder and rows.jsonl
 python -m lab.transfer push-dataset --account D <dataset folder> --to datasets
 python -m lab.transfer push-file --account D rows.jsonl datasets/rows.jsonl
-# on the pod, from the Jupyter root the pushes landed in, with the pod's power sampler (lab/pod_power.sh, once it
-# is on main) already running so each step gets its watts
+# the pod's power sampler running first, so each step gets its watts
+python -m lab.controller run-script --account D --with lab/pod_power.py lab/pod_power.sh start gpu-b
+# on the pod, from the Jupyter root the pushes landed in
 python3 lab/train.py --dataset datasets/<dataset_id> --rows datasets/rows.jsonl --model ~/models/Qwen3.5-4B
 ```
 
@@ -1001,6 +1002,15 @@ python3 lab/train.py --dataset datasets/<dataset_id> --rows datasets/rows.jsonl 
   The loss sits on the rows' `spans` and nowhere else; a span that does not start and end on a token boundary of the
   whole text, or a text the tokenizer does not give back, refuses the run. Nothing is truncated: `--max-length` below
   the longest example refuses the run.
+- **Settings.** The defaults are R36's pinned baseline for this step on gfx1151
+  (`lab/refine/research/kernels/settings_training_gfx1151.md` section 13): LoRA r 16, alpha 32, dropout 0, learning
+  rate 2e-4, batch 4 by gradient accumulation 4 (effective batch 16), gradient checkpointing with `use_reentrant`
+  False, SDPA, fused AdamW, two forkserver workers with pinned memory, seed 42, no packing, no length grouping, no
+  torch.compile. On the pod it exports `MIOPEN_FIND_MODE=NORMAL` and unsets every other variable the sheet pins
+  before torch is imported. The search-space settings a flag can move: `--no-gradient-checkpointing`, `--batch`
+  with `--grad-accum`, `--group-by-length`, `--aotriton-experimental`, `--blas-backend hipblaslt` and
+  `--tunableop <results file>`. `refs.settings` gives the run's value of every search-space parameter under its own
+  name (as `data/searchspace-training-gfx1151.json` names them), `refs.env` the environment.
 - **The model.** Loaded in bfloat16 by the script; the text-only class for text rows, the image-text class and its
   processor for image rows (with the labels following the processor's image-token expansion). LoRA on every linear
   layer of the language model, the vision encoder and projector excluded and checked frozen before the first step.
@@ -1010,9 +1020,15 @@ python3 lab/train.py --dataset datasets/<dataset_id> --rows datasets/rows.jsonl 
   of `examples.jsonl`, of `split.json` and of the rows, the base's Hub repo and commit, seed and data_seed, the
   library versions, the full LoraConfig and SFTConfig as JSON text, and `trainer.samples_per_s` measured as
   `metrics.jsonl:13` measures it); one `telemetry.train.step` event per optimizer step in `<out>/telemetry.jsonl`
-  (loss, step_ms, tokens, and socket_w from the pod sampler's own samples in `~/atlas-power`, so the trainer never
-  reads amd-smi itself); the adapter in `<out>/adapter/` and the answer in `<out>/run.json` (`--out` defaults to
-  `~/runs/<run_id>`). The row is written to the pod's own `lab/state/ledger.jsonl`; bring it back with the run.
+  on node `pod-b` (loss, step_ms, tokens, socket_w); the adapter in `<out>/adapter/` and the answer in
+  `<out>/run.json` (`--out` defaults to `~/runs/<run_id>`). The row is written to the pod's own
+  `lab/state/ledger.jsonl`; bring it back with the run.
+- **Power has one reading path.** The trainer never reads amd-smi. It reads the pod sampler's samples in
+  `~/atlas-power` as they are written and puts every window through `lab/pod_power.py`'s `summarize()`, the summary
+  `python -m lab gpu-power record` stores: a step's `socket_w` is its window's `mean_w` (null when the step is
+  shorter than the sampler's period and holds no sample), its `energy_j` is set only from the card's energy counter
+  (N/A on the Strix Halo, so null there), and the run's own window gives `trainer.mean_socket_w`,
+  `trainer.peak_socket_w` and `trainer.energy_j` (integrated power), with the whole summary in `refs.power_window`.
 - **What it deletes.** On the pod, once the node check passed, the dataset copy and the rows file are deleted however
   the run ends; `refs.data_deleted` says whether that worked, and a folder that does not look like an export is
   left and named (a trained run then ends `data-left`, exit 1).

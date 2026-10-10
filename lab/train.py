@@ -59,13 +59,29 @@ steps x per-device batch x gradient accumulation, over the wall time of trainer.
 max_length, rank and examples beside it. The same answer is written to <out>/run.json.
 
 Per step. Every optimizer step appends one telemetry.train.step event (contracts/telemetry.py) to
-<out>/telemetry.jsonl: run_id, step, loss (null when not finite), step_ms, tokens, and socket_w, the mean of the
-pod sampler's own readings inside the step. The trainer never reads amd-smi itself: pod B's power has one reading
-path, the sampler lab/pod_power.py runs on the pod, which writes telemetry.gpu.power samples to
+<out>/telemetry.jsonl, on node pod-b (the trainer's role; cpu for a rehearsal): run_id, step, loss (null when not
+finite), step_ms, tokens, socket_w and energy_j. The trainer never reads amd-smi itself: pod B's power has one
+reading path. The sampler lab/pod_power.py runs on the pod and writes telemetry.gpu.power samples to
 <--power-dir>/samples-<UTC day>.jsonl (default ~/atlas-power), each with its sampler, source tool, power field and
-period_ms. The run reads the samples of --power-node (default gpu-b) as they are written and records which sampler,
-tool, field and period it read in the ledger row. A step shorter than the sampler's period can hold no reading, and
-with no sampler running none does: socket_w is then null, and trainer.steps_with_power counts the steps that had one.
+period_ms; the run reads the samples of --power-node (gpu-b, the name the sampler is started with; pod-b means the
+same pod) as they are written, and every window, a step's or the whole run's, goes through lab/pod_power.py's
+summarize(), the same summary `python -m lab gpu-power record` stores. socket_w is the step's mean_w; energy_j is set
+only when the window's energy came from the card's energy counter, which reads N/A on the Strix Halo, so it is null
+there. A step shorter than the sampler's period can hold no reading, and with no sampler running none does: socket_w
+is then null, and trainer.steps_with_power counts the steps that had one. The run's own window gives
+trainer.mean_socket_w, trainer.peak_socket_w and trainer.energy_j (integrated power on the Strix Halo), with the
+sampler, tool, field, period, energy source and the whole summary (power_window) in the row.
+
+Settings. The defaults are R36's pinned baseline for this step on gfx1151 (lab/refine/research/kernels/
+settings_training_gfx1151.md section 13): LoRA r 16, alpha 32, dropout 0 on all-linear; learning rate 2e-4; batch 4
+by gradient accumulation 4 (effective batch 16, the one its search space holds fixed); gradient checkpointing on
+with use_reentrant False; SDPA attention; fused AdamW; two forkserver DataLoader workers with pinned memory and no
+persistent workers; seed 42; no packing, no length grouping, no torch.compile. On the pod the run exports the pinned
+environment (MIOPEN_FIND_MODE=NORMAL, every other variable it names unset) before torch is imported. The settings of
+its search space that a trainer flag can move are --no-gradient-checkpointing, --batch with --grad-accum,
+--group-by-length, --aotriton-experimental, --blas-backend hipblaslt and --tunableop <results file>; packing and
+torch.compile stay off. refs.settings names the run's value of every search-space setting under the search space's
+own parameter names (gdn_kernel and causal_conv1d_kernel as installed), refs.env the environment it trained under.
 
 The data is deleted when the run ends. On the pod, once the node check has passed, the dataset folder and the rows
 file are deleted on every way out (trained, refused, failed or interrupted), and the row of every run that was not
@@ -106,15 +122,17 @@ from typing import TYPE_CHECKING, Any
 if not __package__:  # run by path on a pod: the repo root, one folder up, is what holds contracts/ and lab/
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from lab import pod_power
 from lab.machine import stop
 from lab.machine.record import recorded
 
 if TYPE_CHECKING:
     from lab.dataset import Split
 
-__all__ = ["VERB", "INSTALL_VERB", "REQUIREMENTS", "DEFAULT_BASE_REPO", "POD_GFX", "POD_NODE", "CPU_NODE",
-           "VISION_MODULES", "CPU_PARAM_CAP", "IGNORE", "SAMPLES_MEASURE", "TrainError", "Row", "Base", "Encoded",
-           "PowerWindow", "PowerFeed", "StepLog", "read_rows", "train_rows", "resolve_base", "span_labels",
+__all__ = ["VERB", "INSTALL_VERB", "REQUIREMENTS", "DEFAULT_BASE_REPO", "POD_GFX", "POD_NODE", "POWER_NODE",
+           "CPU_NODE", "VISION_MODULES", "CPU_PARAM_CAP", "IGNORE", "SAMPLES_MEASURE", "BASELINE", "PINNED_ENV",
+           "TrainError", "Row", "Base", "Encoded", "PowerWindow", "PowerFeed", "StepLog", "run_env", "apply_env",
+           "read_rows", "train_rows", "resolve_base", "span_labels",
            "expand_image_labels", "ImageSpanCollator", "pod_gate", "delete_data", "file_sha256", "read_pins",
            "pins_to_install", "protected_constraints", "install_command", "install", "torch_loss_head", "main"]
 
@@ -126,16 +144,17 @@ PROTECTED = ("torch", "torchvision", "torchaudio", "triton", "pytorch-triton-roc
 RESTARTED_ENV = "ATLAS_TRAIN_INSTALLED"   # set on the second start, after an install, so it cannot loop
 
 DEFAULT_BASE_REPO = "Qwen/Qwen3.5-4B"     # the student: the base model the Jetson runs
-POD_GFX = "gfx1151"                       # the SJC pods' Strix Halo (Radeon 8060S), which hold pod B's role
-POD_NODE = "gpu-b"                        # telemetry's name for the trainer pod (the ledger calls it pod-b)
-LEDGER_NODE = "pod-b"
+POD_GFX = pod_power.POD_GFX               # the SJC pods' Strix Halo (Radeon 8060S), which hold pod B's role
+POWER_NODE = "gpu-b"                      # the name the trainer pod's sampler is started with (pod_power.NODES)
+POD_NODE = pod_power.LEDGER_NODE[POWER_NODE]   # pod-b, the trainer's role: telemetry's name (ruling 3) and the ledger's
+LEDGER_NODE = POD_NODE
 CPU_NODE = "cpu"                          # what a --cpu rehearsal puts in node, so it is never read as pod B
 CPU_PARAM_CAP = 50_000_000                # parameters a --cpu run accepts: a tiny model, never the real student
 DEFAULT_RUNS = "~/runs"
-DEFAULT_POWER_DIR = "~/atlas-power"       # where lab/pod_power.py writes its samples on the pod
-POWER_FILE = "samples-{day}.jsonl"        # one file per UTC day, named as lab/pod_power.py names them
-POWER_EVENT = "telemetry.gpu.power"
-POWER_KEEP = 20_000                       # samples kept in memory: about 5.5 hours at one a second
+DEFAULT_POWER_DIR = pod_power.DEFAULT_DIR    # where lab/pod_power.py writes its samples on the pod
+POWER_FILE = "samples-{day}.jsonl"        # one file per UTC day, named as pod_power.DailyJsonl names them
+POWER_EVENT = pod_power.GPU_POWER
+POWER_KEEP = pod_power.KEEP               # samples kept in memory: about 5.5 hours at one a second
 HUB_COMMIT = re.compile(r"[0-9a-f]{40}")
 # Module names of the vision side across image-text families (Qwen's visual tower and its merger, LLaVA-style
 # vision_tower and multi_modal_projector): PEFT reads this as a full match against each module's name.
@@ -144,8 +163,32 @@ IGNORE = -100                             # the label of a token that carries no
 SAMPLES_MEASURE = "examples seen (steps x per-device batch x gradient accumulation) over trainer.train() wall time"
 SHOWN = 5                                 # problems an answer lists in full
 
-DEFAULTS = {"epochs": 3.0, "lr": 2e-4, "batch": 4, "grad_accum": 1, "rank": 16, "alpha": 32.0, "dropout": 0.0,
-            "seed": 42, "workers": 2}
+# R36's pinned baseline for the student's LoRA step on gfx1151 (lab/refine/research/kernels/
+# settings_training_gfx1151.md section 13, and the "baseline" and "pinned" of data/searchspace-training-gfx1151.json,
+# which a test holds these to). A run uses it unless a flag moves one of the search space's settings, and its ledger
+# row names every one of them (refs.settings) under the search space's own parameter names, so an Ax trial (R39) and
+# a run of this trainer read the same way. Effective batch 16 (4 by accumulation 4) is the one the search holds fixed.
+BASELINE = {"gdn_kernel": "torch", "gradient_checkpointing": True, "per_device_train_batch_size": 4,
+            "gradient_accumulation_steps": 4, "packing": False, "group_by_length": False,
+            "aotriton_experimental": False, "torch_compile": False, "tunableop": False,
+            "causal_conv1d_kernel": "torch", "blas_backend": "default"}
+PINNED = {"lora_r": 16, "lora_alpha": 32.0, "lora_dropout": 0.0, "learning_rate": 2e-4, "attn_implementation": "sdpa",
+          "optim": "adamw_torch_fused", "dataloader_num_workers": 2, "dataloader_pin_memory": True,
+          "dataloader_persistent_workers": False, "seed": 42}
+# The pinned environment: a value is exported, None is unset, so a pod profile cannot leak a value into a run.
+PINNED_ENV: dict[str, str | None] = {
+    "MIOPEN_FIND_MODE": "NORMAL", "PYTORCH_ALLOC_CONF": None, "PYTORCH_NO_HIP_MEMORY_CACHING": None,
+    "HIPBLAS_WORKSPACE_CONFIG": None, "HIPBLASLT_ALLOW_TF32": None, "TORCH_ROCM_FA_PREFER_CK": None,
+    "GPU_MAX_HW_QUEUES": None, "AMD_SERIALIZE_KERNEL": None, "HIP_FORCE_DEV_KERNARG": None, "HSA_XNACK": None,
+    "HSA_ENABLE_SDMA": None, "GPU_MAX_HEAP_SIZE": None, "GPU_SINGLE_ALLOC_PERCENT": None}
+KNOB_ENV = ("TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL", "TORCH_BLAS_PREFER_HIPBLASLT", "PYTORCH_TUNABLEOP_ENABLED",
+            "PYTORCH_TUNABLEOP_TUNING", "PYTORCH_TUNABLEOP_FILENAME")   # set only by the flags of their settings
+BLAS_BACKENDS = ("default", "hipblaslt")
+
+DEFAULTS = {"epochs": 3.0, "lr": PINNED["learning_rate"], "batch": BASELINE["per_device_train_batch_size"],
+            "grad_accum": BASELINE["gradient_accumulation_steps"], "rank": PINNED["lora_r"],
+            "alpha": PINNED["lora_alpha"], "dropout": PINNED["lora_dropout"], "seed": PINNED["seed"],
+            "workers": PINNED["dataloader_num_workers"]}
 
 
 class TrainError(ValueError):
@@ -478,14 +521,45 @@ class ImageSpanCollator:
 
 @dataclass(frozen=True)
 class PowerWindow:
-    """The sampler's readings inside one step: their mean in W (None without a reading) and where they came from."""
+    """What the pod sampler's samples say about one window (a step, or the whole run), taken from
+    lab/pod_power.py's summarize(), the summary `python -m lab gpu-power record` stores for a window: watts is its
+    mean_w (None without a reading), samples its readings (samples that carry a power reading), then where they
+    came from and the window's energy with where that came from (energy_counter, or avg_power_integral, which is the
+    Strix Halo's case since its counter reads N/A). Several samplers, tools, fields or periods in one window are
+    listed together, separated by "; "."""
 
     watts: float | None
     samples: int
     sampler: str | None = None
     source: str | None = None
     power_field: str | None = None
-    period_ms: float | None = None
+    period_ms: float | str | None = None
+    energy_j: float | None = None
+    energy_source: str | None = None
+    measured_period_ms: float | None = None
+
+    @classmethod
+    def of(cls, summary: Mapping[str, Any]) -> PowerWindow:
+        """The window pod_power.summarize() described."""
+        period = summary.get("period_ms")
+        return cls(summary.get("mean_w"), int(summary.get("readings") or 0), _listed(summary.get("sampler")),
+                   _listed(summary.get("source")), _listed(summary.get("power_field")),
+                   period if period is None or isinstance(period, (int, float)) else _listed(period),
+                   summary.get("energy_j"), summary.get("energy_source"), summary.get("measured_period_ms"))
+
+    @property
+    def counter_energy_j(self) -> float | None:
+        """The window's energy when it came from the card's energy counter, which is all TrainStep.energy_j takes."""
+        return self.energy_j if self.energy_source == "energy_counter" else None
+
+
+def _listed(value: Any) -> str | None:
+    """summarize's one value, or its list of different values as text; None for none."""
+    if value is None or value == []:
+        return None
+    if isinstance(value, list):
+        return "; ".join(f"{item:g}" if isinstance(item, float) else str(item) for item in value)
+    return f"{value:g}" if isinstance(value, float) else str(value)
 
 
 def _when(text: Any) -> dt.datetime | None:
@@ -498,19 +572,29 @@ def _when(text: Any) -> dt.datetime | None:
     return moment if moment.tzinfo is not None else None
 
 
+def _sampler_node(node: str) -> str:
+    """The name the pod sampler gives the pod of `node`, which may be given by either name (gpu-b or pod-b)."""
+    names = {ledger: sampler for sampler, ledger in pod_power.LEDGER_NODE.items()}
+    return names.get(node, node)
+
+
 class PowerFeed:
-    """The pod sampler's telemetry.gpu.power samples for one node, read from its daily files as they grow.
+    """The pod sampler's telemetry.gpu.power samples for one node, read from its daily files as they grow, and
+    summarized per window by lab/pod_power.py's own summarize(): one reading path for pod B's power across this
+    trainer, the sampler and `python -m lab gpu-power record`.
 
     The sampler names each file for the UTC day of its samples, so a window reads only the files of the days it
     spans, and each file from where the last read stopped. Only whole lines are read (a line the sampler is still
-    writing waits for the next read); lines that are not JSON, other event types and other nodes are skipped. The
+    writing waits for the next read); lines that are not JSON or have no time are counted in bad_lines, and other
+    event types and other nodes are skipped. The node may be given by either of its names (gpu-b, pod-b), and samples
+    carrying either are read as the sampler's. A socket_w that is not a finite number is read as no reading. The
     newest POWER_KEEP samples are kept."""
 
-    def __init__(self, directory: str | os.PathLike[str], node: str = POD_NODE) -> None:
+    def __init__(self, directory: str | os.PathLike[str], node: str = POWER_NODE) -> None:
         self.directory = Path(directory).expanduser()
-        self.node = node
-        self.samples: deque[tuple[dt.datetime, float | None, str | None, str | None, str | None, float | None]] = \
-            deque(maxlen=POWER_KEEP)
+        self.node = _sampler_node(node)
+        self._names = {self.node, pod_power.LEDGER_NODE.get(self.node, self.node)}
+        self.samples: deque[tuple[dt.datetime, dict[str, Any]]] = deque(maxlen=POWER_KEEP)
         self.bad_lines = 0
         self._offsets: dict[Path, int] = {}
         self._pending: dict[Path, bytes] = {}
@@ -543,32 +627,37 @@ class PowerFeed:
         except ValueError:
             self.bad_lines += 1
             return
-        if not isinstance(event, dict) or event.get("type") != POWER_EVENT or event.get("node") != self.node:
+        if not isinstance(event, dict) or event.get("type") != POWER_EVENT or event.get("node") not in self._names:
             return
         moment = _when(event.get("ts"))
         if moment is None:
             self.bad_lines += 1
             return
         watts = event.get("socket_w")
-        watts = float(watts) if isinstance(watts, (int, float)) and not isinstance(watts, bool) else None
-        period = event.get("period_ms")
-        period = float(period) if isinstance(period, (int, float)) and not isinstance(period, bool) else None
-        self.samples.append((moment, watts if watts is not None and math.isfinite(watts) else None,
-                             _text(event.get("sampler")), _text(event.get("source")), _text(event.get("power_field")),
-                             period))
+        if not (isinstance(watts, (int, float)) and not isinstance(watts, bool) and math.isfinite(watts)):
+            watts = None
+        self.samples.append((moment, {**event, "node": self.node, "socket_w": watts}))
+
+    def summary(self, start: dt.datetime, end: dt.datetime) -> dict[str, Any] | None:
+        """pod_power.summarize() over the samples with start <= ts <= end, after reading what the sampler has
+        written since the last call; None when no sample falls inside (or the samples cannot be summarized)."""
+        self._read_new(start.astimezone(dt.timezone.utc).date(), end.astimezone(dt.timezone.utc).date())
+        inside = [event for moment, event in self.samples if start <= moment <= end]
+        if not inside:
+            return None
+        try:
+            return pod_power.summarize(inside, node=self.node)
+        except (ValueError, TypeError, KeyError):
+            return None
 
     def window(self, start: dt.datetime, end: dt.datetime) -> PowerWindow:
-        """The readings with start <= ts <= end, after reading what the sampler has written since the last call."""
-        self._read_new(start.astimezone(dt.timezone.utc).date(), end.astimezone(dt.timezone.utc).date())
-        inside = [sample for sample in self.samples if start <= sample[0] <= end and sample[1] is not None]
-        if not inside:
-            return PowerWindow(None, 0)
-        last = inside[-1]
-        return PowerWindow(sum(sample[1] for sample in inside) / len(inside), len(inside), *last[2:])
+        """The PowerWindow of start <= ts <= end; PowerWindow(None, 0) when no sample falls inside."""
+        summary = self.summary(start, end)
+        return PowerWindow(None, 0) if summary is None else PowerWindow.of(summary)
 
-
-def _text(value: Any) -> str | None:
-    return value if isinstance(value, str) and value else None
+    def kept_since(self, start: dt.datetime) -> bool:
+        """Whether every sample since `start` is still held (False once POWER_KEEP newer ones pushed some out)."""
+        return len(self.samples) < POWER_KEEP or self.samples[0][0] <= start
 
 
 # --- one telemetry.train.step event per optimizer step ------------------------------------------
@@ -579,7 +668,9 @@ class StepLog:
 
     begin() and end() bracket a step (the trainer's on_step_begin and on_step_end), logged() takes the trainer's
     log of the same step; `clock` gives wall time in seconds since the epoch (for ts and the power window) and
-    `timer` a monotonic time for step_ms."""
+    `timer` a monotonic time for step_ms. socket_w is the mean_w of pod_power.summarize() over the step's samples,
+    and energy_j the window's energy only when it came from the card's energy counter (as TrainStep defines it);
+    `node` is the trainer pod's role, pod-b (cpu for a rehearsal)."""
 
     path: Path
     run_id: str
@@ -622,7 +713,8 @@ class StepLog:
             window = self.power.window(dt.datetime.fromtimestamp(began, dt.timezone.utc),
                                        dt.datetime.fromtimestamp(ended, dt.timezone.utc))
         event = TrainStep(ts=dt.datetime.fromtimestamp(ended, dt.timezone.utc), node=self.node, run_id=self.run_id,
-                          step=step, loss=loss, step_ms=round(step_ms, 3), socket_w=window.watts, tokens=tokens)
+                          step=step, loss=loss, step_ms=round(step_ms, 3), socket_w=window.watts,
+                          energy_j=window.counter_energy_j, tokens=tokens)
         with self.path.open("a", encoding="utf-8", newline="\n") as out:
             out.write(event.model_dump_json() + "\n")
         record = json.loads(event.model_dump_json())
@@ -646,6 +738,36 @@ def _callback(steps: StepLog) -> Any:
             steps.logged(state.global_step, logs or {})
 
     return Steps()
+
+
+# --- the pinned environment and the search space's settings -----------------------------------------
+
+def run_env(aotriton: bool = False, blas: str = "default", tunableop: str | None = None) -> dict[str, str | None]:
+    """The environment a run on the pod trains under: PINNED_ENV, and the variables of the three environment
+    settings of the search space (aotriton_experimental, blas_backend, tunableop with tuning off reading the results
+    file named), each unset unless its flag asks for it. A value is exported, None is unset."""
+    if blas not in BLAS_BACKENDS:
+        raise ValueError(f"blas backend {blas!r} is not one of {', '.join(BLAS_BACKENDS)}")
+    env = dict(PINNED_ENV)
+    env.update(dict.fromkeys(KNOB_ENV))
+    if aotriton:
+        env["TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL"] = "1"
+    if blas == "hipblaslt":
+        env["TORCH_BLAS_PREFER_HIPBLASLT"] = "1"
+    if tunableop:
+        env.update(PYTORCH_TUNABLEOP_ENABLED="1", PYTORCH_TUNABLEOP_TUNING="0", PYTORCH_TUNABLEOP_FILENAME=tunableop)
+    return env
+
+
+def apply_env(env: Mapping[str, str | None], environ: Any = None) -> None:
+    """Export each value of `env` and unset each None, in os.environ unless another mapping is given. On the pod
+    this runs before torch is imported, so the HIP runtime and torch's ROCm switches read the pinned values."""
+    environ = os.environ if environ is None else environ
+    for name, value in env.items():
+        if value is None:
+            environ.pop(name, None)
+        else:
+            environ[name] = value
 
 
 # --- where it runs, and the data afterwards ----------------------------------------------------------
@@ -857,9 +979,12 @@ class Plan:
     seed: int
     data_seed: int
     workers: int
-    gradient_checkpointing: bool | None
+    gradient_checkpointing: bool
     power: PowerFeed | None
     torch_loss: bool = False     # the loss head in plain torch instead of TRL's Triton kernel (always with --cpu)
+    group_by_length: bool = False
+    env: Mapping[str, str | None] = field(default_factory=run_env)   # what the run trains under (run_env)
+    env_applied: bool = False    # exported before torch was imported (on the pod; never in a --cpu rehearsal)
 
 
 @dataclass
@@ -904,6 +1029,21 @@ def _check_frozen(model: Any) -> tuple[int, int]:
     return trainable, total
 
 
+def _settings(config: Any, plan: Plan) -> dict[str, Any]:
+    """The run's value of every setting in R36's search space, under the search space's parameter names."""
+    return {
+        "gdn_kernel": "fla" if _installed("flash-linear-attention") else "torch",
+        "gradient_checkpointing": bool(config.gradient_checkpointing),
+        "per_device_train_batch_size": config.per_device_train_batch_size,
+        "gradient_accumulation_steps": config.gradient_accumulation_steps,
+        "packing": bool(config.packing), "group_by_length": config.train_sampling_strategy == "group_by_length",
+        "aotriton_experimental": plan.env.get("TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL") == "1",
+        "torch_compile": bool(config.torch_compile), "tunableop": plan.env.get("PYTORCH_TUNABLEOP_ENABLED") == "1",
+        "causal_conv1d_kernel": "causal_conv1d" if _installed("causal-conv1d") else "torch",
+        "blas_backend": "hipblaslt" if plan.env.get("TORCH_BLAS_PREFER_HIPBLASLT") == "1" else "default",
+    }
+
+
 def train(plan: Plan) -> Trained:
     """Load the base in bfloat16, put LoRA on its language model, train on the rows, save the adapter."""
     import torch
@@ -928,7 +1068,8 @@ def train(plan: Plan) -> Trained:
     if plan.cpu and _weights_bytes(Path(plan.base.path)) > 4 * CPU_PARAM_CAP:
         raise TrainError([f"--cpu takes a model of at most {CPU_PARAM_CAP:,} parameters; this folder's weights are "
                           "larger"], outcome="refused")
-    model = model_class.from_pretrained(plan.base.path, dtype=torch.bfloat16)
+    model = model_class.from_pretrained(plan.base.path, dtype=torch.bfloat16,
+                                        attn_implementation=PINNED["attn_implementation"])
     model.config.use_cache = False
     dtypes = sorted({str(p.dtype).replace("torch.", "") for p in model.parameters() if p.is_floating_point()})
     if dtypes != ["bfloat16"]:
@@ -975,9 +1116,10 @@ def train(plan: Plan) -> Trained:
         raise TrainError([f"--max-length {plan.max_length} would cut {cut} of {len(lengths)} examples (the longest "
                           f"is {longest} tokens); nothing is truncated, so raise it or leave it unset"],
                          outcome="refused")
-    if image:
+    if image:   # a length column for group_by_length: the processor's tokens, which the default lengths cannot see
         data = Dataset.from_list([{"text": row.text, "spans": [list(span) for span in row.spans],
-                                   "images": list(row.images)} for row in plan.rows])
+                                   "images": list(row.images), **({"length": length} if plan.group_by_length else {})}
+                                  for row, length in zip(plan.rows, lengths)])
     else:
         data = Dataset.from_list([{"input_ids": list(item.ids), "labels": list(item.labels)} for item in encoded])
 
@@ -989,31 +1131,39 @@ def train(plan: Plan) -> Trained:
         per_device_train_batch_size=plan.batch, gradient_accumulation_steps=plan.grad_accum,
         learning_rate=plan.lr, bf16=True, logging_strategy="steps", logging_steps=1, logging_nan_inf_filter=False,
         save_strategy="no", eval_strategy="no", report_to=[], disable_tqdm=True,
-        dataloader_num_workers=plan.workers, dataloader_persistent_workers=False, torch_compile=False,
-        max_length=plan.max_length, packing=False, seed=plan.seed, data_seed=plan.data_seed, use_cpu=plan.cpu,
+        dataloader_num_workers=plan.workers, dataloader_persistent_workers=PINNED["dataloader_persistent_workers"],
+        dataloader_pin_memory=PINNED["dataloader_pin_memory"] and not plan.cpu, optim=PINNED["optim"],
+        torch_compile=False, max_length=plan.max_length, packing=False, seed=plan.seed, data_seed=plan.data_seed,
+        use_cpu=plan.cpu, gradient_checkpointing=plan.gradient_checkpointing,
+        train_sampling_strategy="group_by_length" if plan.group_by_length else "random",
         dataset_kwargs={"skip_prepare_dataset": True}, remove_unused_columns=not image)
+    if plan.gradient_checkpointing:
+        settings["gradient_checkpointing_kwargs"] = {"use_reentrant": False}
     if plan.workers:
         if "forkserver" not in multiprocessing.get_all_start_methods():
             raise TrainError(["DataLoader workers start with forkserver, which this platform lacks; pass "
                               "--workers 0"], outcome="refused")
         settings["dataloader_multiprocessing_context"] = "forkserver"
-    if plan.gradient_checkpointing is not None:
-        settings["gradient_checkpointing"] = plan.gradient_checkpointing
     config = SFTConfig(**settings)
     steps = StepLog(plan.out / "telemetry.jsonl", plan.run_id, plan.node, plan.power)
     trainer = SFTTrainer(model=model, args=config, train_dataset=data, processing_class=processing,
                          peft_config=lora, data_collator=collator, callbacks=[_callback(steps)])
     trainable, total = _check_frozen(trainer.model)
-    if config.torch_compile:
-        raise TrainError(["torch.compile is on"], outcome="refused")
+    if config.torch_compile or config.packing:
+        raise TrainError(["torch.compile or packing is on; both stay off (R36: packing needs fla and a varlen "
+                          "attention path on gfx1151)"], outcome="refused")
     if torch.cuda.is_available() and not plan.cpu:
         torch.cuda.reset_peak_memory_stats()
 
     with torch_loss_head() if plan.torch_loss else contextlib.nullcontext():
+        began = dt.datetime.now(dt.timezone.utc)
         clock = time.perf_counter()
         result = trainer.train()
         seconds = time.perf_counter() - clock
+        ended = dt.datetime.now(dt.timezone.utc)
     trainer.save_model(str(plan.out / "adapter"))
+    # The whole run's power, summarized exactly as `python -m lab gpu-power record` summarizes a window.
+    run_power = plan.power.summary(began, ended) if plan.power is not None else None
 
     state = trainer.state
     seen = state.global_step * config.per_device_train_batch_size * config.gradient_accumulation_steps
@@ -1027,7 +1177,9 @@ def train(plan: Plan) -> Trained:
         "trainer.tokens": steps.tokens_total, "trainer.span_tokens": trained_tokens,
         "trainer.longest_example_tokens": longest, "trainer.trainable_params": trainable,
         "trainer.base_params": total - trainable, "trainer.steps_with_power": len(powered),
-        "trainer.mean_socket_w": sum(w.watts for w in powered) / len(powered) if powered else None,
+        "trainer.mean_socket_w": run_power["mean_w"] if run_power else None,
+        "trainer.peak_socket_w": run_power["max_w"] if run_power else None,
+        "trainer.energy_j": run_power["energy_j"] if run_power else None,
         "trainer.batch": config.per_device_train_batch_size, "trainer.grad_accum": config.gradient_accumulation_steps,
         "trainer.lora_rank": plan.rank,
     }
@@ -1045,19 +1197,24 @@ def train(plan: Plan) -> Trained:
         "model_class": type(model).__name__, "weights_dtype": "bfloat16", "device": device,
         "loss_head": "torch" if plan.torch_loss else "trl triton kernel",
         "deltanet_kernel": "fla" if _installed("flash-linear-attention") else "torch fallback",
+        "settings": _config_text(_settings(config, plan)),
+        "effective_batch": config.per_device_train_batch_size * config.gradient_accumulation_steps,
+        "attn_implementation": getattr(model.config, "_attn_implementation", None),
+        "env": _config_text(plan.env), "env_applied": "yes" if plan.env_applied else "no: a --cpu rehearsal",
         "lora_config": _config_text(effective_lora), "sft_config": _config_text(config.to_dict()),
         "samples_measure": SAMPLES_MEASURE, "adapter": str(plan.out / "adapter"),
         "telemetry": str(plan.out / "telemetry.jsonl"),
         **_versions(torch),
     }
-    seen_from = sorted({(w.sampler, w.source, w.power_field, w.period_ms) for w in powered}, key=str)
-    if seen_from:
-        refs["power_sampler"] = "; ".join(str(item[0]) for item in seen_from)
-        refs["power_source"] = "; ".join(str(item[1]) for item in seen_from)
-        refs["power_field"] = "; ".join(str(item[2]) for item in seen_from)
-        refs["power_period_ms"] = "; ".join(f"{item[3]:g}" if item[3] is not None else "None" for item in seen_from)
+    if run_power is not None:
+        whole = PowerWindow.of(run_power)
+        refs.update(power_sampler=whole.sampler, power_source=whole.source, power_field=whole.power_field,
+                    power_period_ms=_listed(whole.period_ms), power_energy_source=whole.energy_source,
+                    power_window=_config_text(run_power))
+        if plan.power is not None and not plan.power.kept_since(began):
+            refs["power_window_note"] = f"the run outlasted the {POWER_KEEP} samples kept, so the window is its end"
     else:
-        refs["power_source"] = "none: no sampler reading fell inside a step"
+        refs["power_source"] = "none: no sampler sample fell inside the run"
     return Trained({key: value for key, value in metrics.items() if value is not None}, refs)
 
 
@@ -1099,10 +1256,19 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--data-seed", type=int, help="the data order's seed (default: --seed)")
     parser.add_argument("--workers", type=int, default=DEFAULTS["workers"], help="DataLoader workers (forkserver)")
     checkpointing = parser.add_mutually_exclusive_group()
-    checkpointing.add_argument("--gradient-checkpointing", dest="checkpointing", action="store_true", default=None)
+    checkpointing.add_argument("--gradient-checkpointing", dest="checkpointing", action="store_true",
+                               default=BASELINE["gradient_checkpointing"], help="on by default (R36's baseline)")
     checkpointing.add_argument("--no-gradient-checkpointing", dest="checkpointing", action="store_false")
+    parser.add_argument("--group-by-length", action="store_true", help="length-grouped sampling (R36's TS14)")
+    parser.add_argument("--aotriton-experimental", action="store_true",
+                        help="TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1: SDPA's AOTriton kernels on gfx1151 (TS6)")
+    parser.add_argument("--blas-backend", choices=BLAS_BACKENDS, default=BASELINE["blas_backend"],
+                        help="hipblaslt sets TORCH_BLAS_PREFER_HIPBLASLT=1 (TS4)")
+    parser.add_argument("--tunableop", metavar="RESULTS_CSV",
+                        help="read this TunableOp results file with tuning off (TS5)")
     parser.add_argument("--power-dir", default=DEFAULT_POWER_DIR, help="the pod sampler's samples folder")
-    parser.add_argument("--power-node", default=POD_NODE, help="the node whose power samples are read")
+    parser.add_argument("--power-node", default=POWER_NODE,
+                        help="the pod whose sampler samples are read (gpu-b or pod-b, the same pod)")
     parser.add_argument("--gfx", default=POD_GFX, help="the GPU the trainer pod must have")
     parser.add_argument("--cpu", action="store_true", help="a rehearsal on the CPU with a tiny model")
     parser.add_argument("--torch-loss-head", action="store_true",
@@ -1145,6 +1311,9 @@ def _prepare(args: argparse.Namespace, run_id: str, refs: dict[str, Any], node: 
         raise TrainError(["--dropout must be at least 0 and below 1"], outcome="usage")
     if args.workers < 0:
         raise TrainError(["--workers must be 0 or more"], outcome="usage")
+    if args.tunableop and not Path(args.tunableop).expanduser().is_file():
+        raise TrainError(["--tunableop names no results file; tune once at this sequence length first"],
+                         outcome="usage")
     dataset = Path(args.dataset).expanduser()
     rows = read_rows(Path(args.rows).expanduser())
     try:
@@ -1171,7 +1340,12 @@ def _prepare(args: argparse.Namespace, run_id: str, refs: dict[str, Any], node: 
     return Plan(run_id, tuple(chosen), dataset, base, out, args.cpu, node, args.epochs, args.max_steps, args.lr,
                 args.batch, args.grad_accum, args.rank, args.alpha, args.dropout, args.max_length, seed, data_seed,
                 args.workers, args.checkpointing, PowerFeed(args.power_dir, args.power_node),
-                args.cpu or args.torch_loss_head)
+                args.cpu or args.torch_loss_head, args.group_by_length, _env_of(args), not args.cpu)
+
+
+def _env_of(args: argparse.Namespace) -> dict[str, str | None]:
+    tunableop = str(Path(args.tunableop).expanduser().resolve()) if args.tunableop else None
+    return run_env(args.aotriton_experimental, args.blas_backend, tunableop)
 
 
 @recorded(VERB)
@@ -1182,7 +1356,8 @@ def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
     run_id = args.run_id or _run_id()
     mode = "cpu" if args.cpu else "pod"
     refs: dict[str, Any] = {"run_id": run_id, "mode": mode, "node": CPU_NODE if args.cpu else LEDGER_NODE}
-    if not args.cpu:
+    if not args.cpu:   # the pinned environment goes in before torch is imported, so the HIP runtime reads it
+        apply_env(_env_of(args))
         try:
             import torch
         except ImportError:

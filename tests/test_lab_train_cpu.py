@@ -135,6 +135,7 @@ def test_a_cpu_run_trains_on_the_rows_and_records_everything_needed_to_repeat_it
     sampler_file(tmp_path / "power", 42.5)
     answer = train.main(["--cpu", "--dataset", str(folder), "--rows", str(rows), "--model", str(text_model),
                          "--out", str(tmp_path / "run"), "--run-id", "run-cpu-1", "--epochs", "2", "--batch", "2",
+                         "--grad-accum", "1",
                          "--rank", "8", "--alpha", "16", "--lr", "1e-3", "--seed", "7", "--data-seed", "11",
                          "--workers", "0", "--power-dir", str(tmp_path / "power")])
     assert (answer["ok"], answer["outcome"]) == (True, "trained"), answer.get("error")
@@ -177,8 +178,23 @@ def test_a_cpu_run_trains_on_the_rows_and_records_everything_needed_to_repeat_it
     assert sum(event.tokens for event in events) == metrics["trainer.tokens"]
     assert (metrics["trainer.loss_first"], metrics["trainer.loss_last"]) == (events[0].loss, events[-1].loss)
     assert (metrics["trainer.steps_with_power"], metrics["trainer.mean_socket_w"]) == (6, 42.5)
-    assert (refs["power_sampler"], refs["power_source"], refs["power_field"], refs["power_period_ms"]) == \
-        ("lab/pod_power.py 1", "amd-smi", "socket_power", "20")
+    assert (refs["power_sampler"], refs["power_source"], refs["power_field"], refs["power_period_ms"],
+            refs["power_energy_source"]) == ("lab/pod_power.py 1", "amd-smi", "socket_power", "20",
+                                             "avg_power_integral")
+    window = json.loads(refs["power_window"])   # the run's window, as pod_power.summarize gives it
+    assert (window["node"], window["mean_w"], window["max_w"]) == ("gpu-b", 42.5, metrics["trainer.peak_socket_w"])
+    assert metrics["trainer.energy_j"] == pytest.approx(42.5 * window["duration_s"], rel=1e-3)
+    assert all(event.energy_j is None for event in events)   # no energy counter in these samples
+    settings = json.loads(refs["settings"])
+    assert settings == {**train.BASELINE, "per_device_train_batch_size": 2, "gradient_accumulation_steps": 1}
+    assert (refs["effective_batch"], refs["attn_implementation"], refs["env_applied"]) == \
+        (2, "sdpa", "no: a --cpu rehearsal")
+    assert json.loads(refs["env"])["MIOPEN_FIND_MODE"] == "NORMAL"
+    assert {key: sft[key] for key in ("gradient_checkpointing", "gradient_checkpointing_kwargs", "optim",
+                                      "train_sampling_strategy", "packing", "dataloader_persistent_workers")} == {
+        "gradient_checkpointing": True, "gradient_checkpointing_kwargs": {"use_reentrant": False},
+        "optim": "adamw_torch_fused", "train_sampling_strategy": "random", "packing": False,
+        "dataloader_persistent_workers": False}
 
     adapter = json.loads((tmp_path / "run" / "adapter" / "adapter_config.json").read_text(encoding="utf-8"))
     assert sorted(adapter["target_modules"]) == sorted(lora["target_modules"])
@@ -343,11 +359,14 @@ def test_an_image_run_uses_the_image_text_class_keeps_the_vision_side_frozen_and
     assert batch["input_ids"].shape[0] == 2 and batch["pixel_values"].shape[0] == 32
 
     answer = train.main(["--cpu", "--dataset", str(folder), "--rows", str(rows), "--model", str(model),
-                         "--out", str(tmp_path / "run"), "--epochs", "1", "--batch", "2", "--workers", "0"])
+                         "--out", str(tmp_path / "run"), "--epochs", "1", "--batch", "2", "--workers", "0",
+                         "--group-by-length"])
     assert (answer["ok"], answer["outcome"]) == (True, "trained"), answer.get("error")
     refs, metrics = answer["refs"], answer["metrics"]
     assert (refs["model_class"], refs["dataset_id"], refs["action_id"]) == \
         ("Qwen3_5ForConditionalGeneration", "desk-objects-tiny", "act-approved-1")
+    assert json.loads(refs["settings"])["group_by_length"] is True
+    assert json.loads(refs["sft_config"])["train_sampling_strategy"] == "group_by_length"
     lora = json.loads(refs["lora_config"])
     assert lora["exclude_modules"] == train.VISION_MODULES
     assert lora["target_modules"] and not [name for name in lora["target_modules"] if "visual" in name]
