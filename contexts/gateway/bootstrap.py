@@ -44,6 +44,7 @@ from contexts.habits.domain.config import load_config as load_habits
 from contexts.habits.domain.tracker import HabitTracker
 from contexts.impact.domain.waste_watch import WasteWatch
 from contexts.play.domain.game import SortIt
+from contexts.perception.application.service import PerceptionService
 from contexts.perception.domain.zones import ZoneEngine
 from contexts.play.domain.pathfinding import SortingRules, ZoneMap
 from contexts.workspace.domain.approvals import Approvals
@@ -216,11 +217,12 @@ def build(settings: Settings | None = None) -> Atlas:
     loop = AgentLoop(memory, qa.sleep, summarize=runtime.summarize, notify=agent_cfg.get("notify_on_package"))
     bus.subscribe("agent.alert.raised", loop.on_alert)  # live only: proposes a message
 
-    # Zone engine (P3): tracks -> enter/dwell/exit. Its stays rebuild from logged observations.
+    # Perception (P3, P4, P5, P7): tracks -> zone events, captions and desk object lists.
     zone_engine = None
     if zones_file.exists():
-        zone_engine = ZoneEngine.load(zones_file)
-        bus.subscribe("perception.observation", zone_engine.on_observation, replay=True)
+        perception = PerceptionService.load(zones_file, runtime, load_keyframe, **(agent_cfg.get("perception") or {}))
+        perception.subscribe(bus)  # zones replay; captions and desk object lists are live only, in the background
+        zone_engine = perception.engine  # the ticker flushes it
 
     # Sort It (S1, S2): needs the bin zones and sorting rules in config.
     game = None
