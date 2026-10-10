@@ -10,13 +10,19 @@ refuses to run while LAB_ACTOR names a sitting).
     python -m lab sit --tier fable --merge                      the merge pass: /refine-merge
     python -m lab sit --tier fable --referee                    the referee duty: python -m lab referee first
     python -m lab sit --tier <tier> --rehearse                  a fake task, capped at REHEARSE_MINUTES
-        [--minutes N] [--budget-usd X] [--dry-run]
+        [--minutes N] [--budget-usd X] [--force] [--dry-run]
 
 One call, in order:
 1. Refusals before anything runs or is written: the STOP file (stop.py), an item the
    tier cannot do (exit 2: --merge and --referee are Fable duties, a pass is Opus's or
    Fable's), no workspace, no tier prompt, no agent CLI and, for anything but a
-   rehearsal, no digest.
+   rehearsal, no digest. Last, the live sittings: the sittings the ledger shows as
+   running (pool.read_live_sittings, every sit row in the ledger, the pool's own count),
+   whoever started them. Outcome no_units when their units plus this tier's
+   (pool.COST) would pass pool.BUDGET_UNITS; outcome running when one of them has the
+   same item, which the answer names. --force (force=True in run()) is the owner's
+   override of both. A pool seat never needs it: the pool starts a sitting only inside
+   its own count of the same live sittings, so a pool launch is never refused here.
 2. The prompt: the tier prompt (prompts/<tier>.md), the digest (python -m lab digest,
    run through the dispatcher in this process just before the session starts) and,
    last, the instruction: the sitting id, the cap and the item.
@@ -80,10 +86,12 @@ task (run python -m lab --help once, answer one line, change nothing) and a cap 
 REHEARSE_MINUTES (a smaller --minutes lowers it); without a digest it still runs and
 the prompt says why there is none. --dry-run answers the command, the launcher's
 environment variables, the working directory, the instruction and the prompt's size;
-it starts nothing and writes nothing.
+it starts nothing and writes nothing, and it answers no_units or running where the
+sitting itself would.
 
 run() is the same call for a caller in this process, such as the pool:
-run("opus", Item("task", "O20")) returns the answer as a dict.
+run("opus", Item("task", "O20")) returns the answer as a dict, and
+run(..., force=True) is --force.
 """
 
 from __future__ import annotations
@@ -202,6 +210,8 @@ OUTCOME_NO_CLI = "no_cli"
 OUTCOME_NO_DIGEST = "no_digest"
 OUTCOME_LEDGER = "ledger_error"
 OUTCOME_DRY_RUN = "dry_run"
+OUTCOME_NO_UNITS = "no_units"  # the live sittings leave too few of pool.BUDGET_UNITS for this tier
+OUTCOME_RUNNING = "running"    # a live sitting already has this item
 
 #: The CLI's result subtypes the launcher tells apart.
 SUCCESS_SUBTYPE = "success"
@@ -859,11 +869,45 @@ def _stopped_answer() -> dict[str, Any]:
             "file": str(stop.stop_file())}
 
 
+def live_refusal(tier: str, item: Item, state_dir: Path, now: dt.datetime) -> dict[str, Any] | None:
+    """Why the sittings the ledger shows as running refuse this one, as the fields of a
+    refusal (outcome, error, live), or None when they leave room for it. The live sittings
+    are pool.read_live_sittings: every sit row in the ledger, no lookback, because a sitting
+    whose cap runs past pool.LEDGER_LOOKBACK_HOURS still holds its units. running when a
+    live sitting has the same item; no_units when their units plus this tier's would pass
+    pool.BUDGET_UNITS. ledger_error when the ledger cannot be read: the budget cannot be
+    checked, and --force is the way past it."""
+    from lab.machine import pool  # imported here: pool imports sit
+
+    try:
+        # the pool's own reader, so a hand sitting and a pool seat count the same live sittings
+        live = pool.read_live_sittings(state_dir, now)
+    except OSError as exc:
+        return {"outcome": OUTCOME_LEDGER,
+                "error": f"the ledger cannot be read, so the live sittings and the unit budget cannot be checked "
+                         f"({type(exc).__name__}: {exc}); --force starts the sitting without the check"}
+    summaries = [info.summary() for info in live]
+    same = [info.sitting for info in live if info.item == item.label]
+    if same:
+        return {"outcome": OUTCOME_RUNNING, "live": summaries,
+                "error": f"{item.label} already runs in sitting {', '.join(same)}; --force starts a second one"}
+    in_use = sum(info.units for info in live)
+    cost = pool.COST[tier]
+    if in_use + cost > pool.BUDGET_UNITS:
+        return {"outcome": OUTCOME_NO_UNITS, "live": summaries, "units_in_use": in_use, "units_needed": cost,
+                "error": f"{in_use} of {pool.BUDGET_UNITS} units are in use by {len(live)} live sittings "
+                         f"({', '.join(info.sitting for info in live)}) and a {tier} sitting needs {cost}; "
+                         "--force starts it over the budget"}
+    return None
+
+
 def run(tier: str, item: Item, *, minutes: float | None = None, budget_usd: float | None = None,
-        dry_run: bool = False) -> dict[str, Any]:
+        dry_run: bool = False, force: bool = False) -> dict[str, Any]:
     """Start one sitting of this tier for this item and wait for it to end; the answer
     as a dict (see the module docstring). minutes is the cap, budget_usd the CLI's
-    --max-budget-usd; dry_run answers what would run and starts nothing."""
+    --max-budget-usd; dry_run answers what would run and starts nothing; force skips the
+    live-sittings check (live_refusal), the owner's override of the unit budget and of an
+    item that already runs."""
     tier = str(tier).strip().lower()
     problem = item_problem(tier, item)
     for name, value in (("minutes", minutes), ("budget_usd", budget_usd)):
@@ -905,6 +949,10 @@ def run(tier: str, item: Item, *, minutes: float | None = None, budget_usd: floa
     cmd = session_command(program, tier, budget_usd)
     env = session_env(os.environ, state_dir=state_dir, sitting=sitting, tier=tier, task=item.task)
     base = {"sitting": sitting, **base}
+    if not force:
+        refusal = live_refusal(tier, item, state_dir, dt.datetime.now(dt.timezone.utc))
+        if refusal is not None:
+            return {"ok": False, **base, **refusal}
     if dry_run:
         return {"ok": True, "outcome": OUTCOME_DRY_RUN, **base, "command": cmd, "cwd": str(workspace),
                 "env": {key: env.get(key) for key in LAUNCHER_ENV_KEYS},
@@ -986,6 +1034,10 @@ def _parser() -> argparse.ArgumentParser:
                         help=f"kill the session after this many minutes (default {DEFAULT_MINUTES:g}; "
                              f"a rehearsal never runs past {REHEARSE_MINUTES:g})")
     parser.add_argument("--budget-usd", type=_positive, help="passed to the CLI as --max-budget-usd")
+    parser.add_argument("--force", action="store_true",
+                        help="the owner's override: start even when the live sittings in the ledger hold too many "
+                             f"of the budget's units or already run this item (outcomes {OUTCOME_NO_UNITS} and "
+                             f"{OUTCOME_RUNNING})")
     parser.add_argument("--dry-run", action="store_true",
                         help="answer the command, environment and prompt size; start and write nothing")
     return parser
@@ -1010,4 +1062,5 @@ def main(argv: Sequence[str]) -> dict[str, Any]:
     problem = item_problem(args.tier, item)
     if problem:
         parser.error(problem)
-    return run(args.tier, item, minutes=args.minutes, budget_usd=args.budget_usd, dry_run=args.dry_run)
+    return run(args.tier, item, minutes=args.minutes, budget_usd=args.budget_usd, dry_run=args.dry_run,
+               force=args.force)
