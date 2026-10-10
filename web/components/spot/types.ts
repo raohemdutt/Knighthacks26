@@ -466,3 +466,129 @@ export interface Answer {
   can_rephrase?: boolean;
   suggested: string[];
 }
+
+// --- the operator's screen (GET /api/spot/shift, contexts/spot/application/plain.py) ---
+
+export type Level = "act" | "watch" | "ok";
+
+export interface OpAction {
+  kind: "reinspect" | "work_order";
+  label: string;
+  asset_id: string;
+  anomaly_id: string | null;
+}
+
+/** One plain sentence with the panel that backs it. */
+export interface PlainItem {
+  id: string;
+  headline: string;
+  sentence: string;
+  level: Level;
+  level_words: string;
+  why_ref: Target;
+  action: OpAction | null;
+}
+
+export interface CompareVisual {
+  kind: "compare";
+  unit: string;
+  bars: { label: string; k: number; n: number }[];
+}
+
+export interface PlainFinding extends PlainItem {
+  finding_id: string;
+  note: string | null;
+  visual: CompareVisual | null;
+  facts: Record<string, number>;
+}
+
+export interface AssetState extends PlainItem {
+  asset_id: string;
+  name: string;
+  label: string;
+  location_id: string;
+  place: string;
+  floor: number | null;
+  what: string;
+  importance: string;
+  reasons: string[];
+  rank: number | null;
+  last_check: { sentence: string; at: string | null; worked: boolean | null; check: string | null };
+  reading: { sentence: string; value: number | null; unit: string | null; measure: string | null; in_range: boolean | null; at: string | null; range: { lo: number; hi: number; words: string } | null };
+  alarm: { sentence: string; what: string | null; severity: string | null; confirmed: boolean | null; cleared: boolean | null; at: string | null; count: number; count_words: string };
+  sample: { url: string; label: string } | null;
+}
+
+export interface RoundLabel {
+  mission_id: string;
+  number: number;
+  label: string;
+  name: string;
+  started: string;
+  when: string;
+  result: string;
+  failed: number;
+  alarms: number;
+  checks: number;
+  level: Level;
+  start_battery_pct: number;
+  end_battery_pct: number;
+}
+
+export type CheckKind = "heat" | "sound" | "camera" | "gauge" | "walk";
+
+export interface RoundStep {
+  action_id: string;
+  n: number;
+  time: string;
+  at: string;
+  check: CheckKind;
+  title: string;
+  worked: boolean;
+  alarm: boolean;
+  result: "ok" | "failed" | "alarm";
+  sentence: string;
+  battery_pct: number;
+  location_id: string;
+  place: string;
+  asset_id: string;
+  asset: string;
+  why_ref: Target;
+}
+
+export interface RoundView extends RoundLabel {
+  configured: boolean;
+  summary: string;
+  steps: RoundStep[];
+  ended: string;
+  why_ref: Target;
+}
+
+export interface Place {
+  location_id: string;
+  name: string;
+  floor: number;
+  x: number;
+  y: number;
+}
+
+export interface Shift {
+  configured: boolean;
+  note?: string;
+  now?: string;
+  status?: { sentence: string; rounds: number; act: number; watch: number; ok: number; assets: number; as_of: string; last_round: string | null; note: string };
+  trust?: { question: string; sentence: string; facts: Record<string, number>; why_ref: Target; level: Level } | null;
+  do_first: AssetState[];
+  do_first_total?: number;
+  watch: PlainFinding[];
+  fine?: { headline: string; sentence: string; level: Level; count: number; total: number; names: string[]; why_ref: Target };
+  assets: AssetState[];
+  triage: PlainItem[];
+  findings: PlainFinding[];
+  rounds: RoundLabel[];
+  latest_round?: string | null;
+  map?: { plan: Plan | null; route: string[]; places: Place[] };
+  levels?: { level: Level; words: string; rule: string }[];
+  glossary?: { term: string; means: string }[];
+  ask?: string[];
+}

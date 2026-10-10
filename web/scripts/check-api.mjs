@@ -584,6 +584,12 @@ await check("GET /api/spot/assumptions", "GET", "/api/spot/assumptions", { confi
 await check("GET /api/spot/validation", "GET", "/api/spot/validation", { configured: "boolean", rows: "array", issues: "array" }, { optional: NO_SPOT });
 await check("GET /api/spot/work_orders", "GET", "/api/spot/work_orders", { configured: "boolean", work_orders: "array", folder: "string" }, { optional: NO_SPOT });
 await check("GET /api/spot/replay/state", "GET", "/api/spot/replay/state", { configured: "boolean", index: "number", total: "number", playing: "boolean" }, { optional: NO_SPOT });
+// the operator's first screen in plain words (contexts/spot/application/plain.py)
+const spotShift = await check("GET /api/spot/shift", "GET", "/api/spot/shift", { configured: "boolean", do_first: "array", watch: "array", assets: "array", rounds: "array", triage: "array", findings: "array" }, { optional: NO_SPOT });
+if (spotShift?.configured) {
+  console.log(`        ${spotShift.status.sentence}`);
+  await check(`GET /api/spot/shift/rounds/${spotShift.latest_round}`, "GET", `/api/spot/shift/rounds/${spotShift.latest_round}`, { configured: "boolean", label: "string", summary: "string", steps: "array" }, { optional: NO_SPOT });
+}
 
 console.log("\nLearning lab");
 // A number on the lab screen: its value, or null with the reason, and where it came from (lib/lab.ts LabNum).

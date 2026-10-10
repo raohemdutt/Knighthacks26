@@ -1887,6 +1887,11 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   spotReplaySeek: (body: { index?: number; mission_id?: string; fraction?: number }) => post<Spot.Replay>("/api/spot/replay/seek", body),
   spotReplaySpeed: (speed: number) => post<Spot.Replay>("/api/spot/replay/speed", { speed }),
   spotAsk: (text: string, rephrase = false) => post<Spot.Answer>("/api/spot/ask", { text, rephrase }),
+  /** The operator's first screen in plain words (no statistics): status, do-this-first, watch-out, every asset, the rounds. */
+  spotShift: (signal?: AbortSignal) => get<Spot.Shift>("/api/spot/shift", undefined, signal),
+  spotRound: (id: string, signal?: AbortSignal) => get<Spot.RoundView>(`/api/spot/shift/rounds/${encodeURIComponent(id)}`, undefined, signal),
+  /** The same cited answer, worded for an operator; `draft` keeps the exact wording. */
+  spotAskPlain: (text: string) => post<Spot.Answer & { plain?: boolean }>("/api/spot/ask", { text, plain: true }),
   /** Both raise an approval card on the box; nothing is written until it is approved. */
   spotReinspect: (asset_id: string) => post<{ action_id: string; reason: string }>("/api/spot/actions/reinspect", { asset_id }),
   spotWorkOrder: (anomaly_id: string) => post<{ action_id: string; reason: string }>("/api/spot/actions/work_order", { anomaly_id }),
