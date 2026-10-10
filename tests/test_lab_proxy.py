@@ -639,6 +639,78 @@ def test_other_requests_through_the_transport_carry_the_token_and_keep_their_own
     assert w.fake.calls[0].path == f"/user/{USER}/proxy/8000/v1/models"
 
 
+def test_extra_fields_go_on_every_chat_body_and_replace_the_runtimes_own_values():
+    w = World()
+    runtime = w.runtime(extra={"priority": -10, "max_tokens": 64, "chat_template_kwargs": {"enable_thinking": False}})
+
+    runtime.chat([ChatMessage(role="user", content="Plan tonight")])
+    runtime.chat([ChatMessage(role="user", content="And tomorrow")], on_text=lambda piece: None)
+
+    assert len(w.teacher.requests) == 2
+    for sent in w.teacher.requests:
+        assert (sent["priority"], sent["max_tokens"], sent["chat_template_kwargs"]) == (
+            -10, 64, {"enable_thinking": False})
+        assert (sent["model"], sent["stream"]) == ("teacher", True)
+    assert w.teacher.accepts == ["text/event-stream", "text/event-stream"]
+
+
+def test_a_reply_asked_for_whole_still_carries_the_model_name_and_the_extra_fields():
+    w = World()
+    runtime = w.runtime(upgrade=False, extra={"priority": -10})
+
+    result = runtime.chat([ChatMessage(role="user", content="Plan tonight")])
+
+    assert result.content == "Hello from the fake teacher."
+    sent = w.teacher.requests[0]
+    assert (sent["model"], sent["priority"], sent.get("stream")) == ("teacher", -10, None)
+    assert w.teacher.accepts == ["*/*"]                  # the runtime's own header, as for any other request
+
+
+def test_without_extra_the_chat_body_is_what_the_runtime_wrote():
+    w = World()
+
+    w.runtime().chat([ChatMessage(role="user", content="Plan tonight")])
+
+    sent = w.teacher.requests[0]
+    assert "priority" not in sent and "chat_template_kwargs" not in sent
+    assert sent["max_tokens"] == 512
+
+
+def test_a_text_only_transport_refuses_an_image_and_nothing_leaves_the_box():
+    w = World()
+    runtime = w.runtime(text_only=True)
+
+    with pytest.raises(ValueError, match="text only"):
+        runtime.caption(b"\xff\xd8\xff\xe0 a jpeg")
+
+    assert w.fake.calls == [] and w.teacher.requests == []
+
+
+@pytest.mark.parametrize("content", [
+    "where is everyone? data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==",
+    "a frame: DATA:image/jpeg;base64,/9j/4AAQSkZJRg==",
+])
+def test_a_text_only_transport_refuses_a_picture_hidden_in_text(content):
+    w = World()
+
+    with pytest.raises(ValueError, match="text only"):
+        w.runtime(text_only=True).chat([ChatMessage(role="user", content=content)])
+
+    assert w.fake.calls == []
+
+
+def test_a_text_only_transport_lets_plain_text_and_reads_through():
+    w = World()
+    runtime = w.runtime(text_only=True, extra={"priority": -10})
+
+    result = runtime.chat([ChatMessage(role="system", content="Plan."), ChatMessage(role="user", content="Tonight?")])
+    names = runtime.http.get("/v1/models").json()["data"]
+
+    assert result.content == "Hello from the fake teacher."
+    assert [m["content"] for m in w.teacher.requests[0]["messages"]] == ["Plan.", "Tonight?"]
+    assert [model["id"] for model in names] == ["teacher"]
+
+
 def test_the_transport_will_not_send_the_token_to_any_other_host():
     from runtime.llama import LlamaServerRuntime
 
