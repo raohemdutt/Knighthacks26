@@ -538,10 +538,10 @@ def test_only_the_rulings_without_an_answer_are_waiting_and_they_say_what_applie
     write_rulings(refine_root, "learning", ruling(1, "Which split is held out?", now="by day", recommend="by episode"))
     lines, total, problems = review.rulings_section(refine_root)
     assert total == 2 and problems == []
-    assert lines == [
+    assert lines == [          # the tracks in the order the rulings verb lists them: learning before kernels
+        "- learning ruling 1: Which split is held out? (applied meanwhile: by day; recommended: by episode)",
         "- kernels ruling 2: Is a practitioner post a source? (applied meanwhile: measured and paper sources only; "
-        "recommended: allow it, labeled)",
-        "- learning ruling 1: Which split is held out? (applied meanwhile: by day; recommended: by episode)"]
+        "recommended: allow it, labeled)"]
 
 
 def test_a_rulings_file_that_cannot_be_read_is_a_problem_and_the_others_are_still_listed(isolated_state, refine_root):
@@ -553,8 +553,9 @@ def test_a_rulings_file_that_cannot_be_read_is_a_problem_and_the_others_are_stil
     found = sections(built.text)
     assert found["## Rulings waiting"] == [
         "- kernels ruling 1: Open question? (applied meanwhile: the default; recommended: do it)"]
-    assert len(found["## Problems"]) == 1
-    assert found["## Problems"][0].startswith("- plumbing/OWNER_RULINGS.md could not be read: FormatError: ")
+    assert found["## Problems"] == [
+        "- plumbing/OWNER_RULINGS.md could not be read: '## 3 Missing the period' is not a ruling heading; "
+        "expected '## <n>. <question> (<origin>)'"]
     assert built.counts["rulings_waiting"] == 1 and len(built.problems) == 1
 
 

@@ -49,7 +49,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from lab.machine import alerts, ledger, refine_formats, stop
+from lab.machine import alerts, ledger, metrics_report, rulings, stop
 
 __all__ = ["VERB", "REVIEW_DIR", "REFINE_ROOT", "REPO", "GH_COMMAND", "PrsUnavailable", "Review", "review_path",
            "gh_open_prs", "file_open_prs", "build", "review", "main"]
@@ -60,8 +60,7 @@ UTC = dt.timezone.utc
 
 VERB = "review"
 REVIEW_DIR = "review"                                   # under the state dir
-REFINE_ROOT = Path(__file__).resolve().parents[1] / "refine"
-RULINGS_FILE = "OWNER_RULINGS.md"
+REFINE_ROOT = rulings.REFINE_DIR
 REPO = "raohemdutt/Knighthacks26"
 GH_COMMAND = ("gh", "pr", "list", "--repo", REPO, "--state", "open", "--limit", "100", "--json",
               "number,title,headRefName,url,createdAt,isDraft,author")
@@ -243,7 +242,7 @@ class _Moves:
 def moved_section(all_events: Sequence[Event], start: dt.datetime,
                   end: dt.datetime) -> tuple[list[str], dict[str, int]]:
     """What the day's readings did against the ones before: moved, new and unchanged series."""
-    series: dict[tuple[str, str | None, str], list[tuple[dt.datetime, Row, float]]] = {}
+    series: dict[tuple[str, str | None, str | None, str], list[tuple[dt.datetime, Row, float]]] = {}
     for when, row in all_events:
         metrics = row.get("metrics")
         if when >= end or not isinstance(metrics, Mapping):
@@ -253,7 +252,7 @@ def moved_section(all_events: Sequence[Event], start: dt.datetime,
             if value is not None and isinstance(name, str) and not name.startswith(alerts.EVENT_METRIC_PREFIXES):
                 series.setdefault(alerts.series_key(name, row), []).append((when, row, value))
     result = _Moves()
-    for (name, node, _), readings in series.items():
+    for (name, node, _unit, _setup), readings in series.items():
         today = [reading for reading in readings if start <= reading[0] < end]
         if not today:
             continue
@@ -274,11 +273,11 @@ def moved_section(all_events: Sequence[Event], start: dt.datetime,
             continue
         unit = alerts.reading_unit(after[1], name)
         change = (after[2] - before[2]) / abs(before[2]) * 100 if before[2] != 0 else None
-        direction = alerts.direction_of(name, unit)
+        direction = metrics_report.direction_of(name, unit)
         if direction is None:
             word = "up" if after[2] > before[2] else "down"
         else:
-            better = after[2] > before[2] if direction == alerts.HIGHER else after[2] < before[2]
+            better = after[2] > before[2] if direction == metrics_report.HIGHER else after[2] < before[2]
             word = "better" if better else "worse"
         low = before[1].get("low_confidence") is True or after[1].get("low_confidence") is True
         result.moved.append((abs(change) if change is not None else -1.0,
@@ -341,24 +340,15 @@ def complaint_lines(day_events: Sequence[Event]) -> tuple[list[str], int]:
 # --- rulings and pull requests --------------------------------------------------------------------
 
 def rulings_section(refine_root: Path) -> tuple[list[str], int, list[str]]:
-    """The unanswered rulings of every track, and what could not be read."""
-    lines: list[str] = []
-    problems: list[str] = []
-    if refine_root.is_dir():
-        for track in sorted(path for path in refine_root.iterdir() if path.is_dir()):
-            file = track / RULINGS_FILE
-            if not file.is_file():
-                continue
-            try:
-                rulings = refine_formats.parse_rulings(file.read_text(encoding="utf-8"))
-            except (OSError, UnicodeDecodeError, refine_formats.FormatError) as exc:
-                problems.append(f"{track.name}/{RULINGS_FILE} could not be read: {type(exc).__name__}: {_clip(exc)}")
-                continue
-            for ruling in rulings:
-                if not ruling.answered:
-                    lines.append(f"- {track.name} ruling {ruling.number}: {_clip(ruling.question)} "
-                                 f"(applied meanwhile: {_clip(ruling.now, 120)}; recommended: "
-                                 f"{_clip(ruling.recommend, 120)})")
+    """The rulings still waiting on the owner (those the rulings verb lists as open, in its track order), and
+    what could not be read: a track whose rulings file breaks the format."""
+    standings, errors, _ = rulings.collect(refine_root)
+    waiting = [item for item in standings if not item.answered]
+    lines = [f"- {item.track} ruling {item.number}: {_clip(item.question)} "
+             f"(applied meanwhile: {_clip(item.now, 120)}; recommended: {_clip(item.recommend, 120)})"
+             for item in waiting]
+    problems = [f"{error['track']}/{rulings.RULINGS_NAME} could not be read: "
+                f"{_clip(error['error'].split(': ', 1)[-1])}" for error in errors]
     return _more(lines[:MAX_RULINGS], len(lines)), len(lines), problems
 
 

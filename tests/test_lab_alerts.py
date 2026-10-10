@@ -440,6 +440,22 @@ def test_conditions_are_compared_whatever_order_their_keys_were_written_in(isola
     assert keys(isolated_state) == [f"metric_regressed:{seq}:teacher.decode_tok_s"]
 
 
+def test_conditions_that_only_describe_the_number_do_not_split_a_series(isolated_state):
+    reading(isolated_state, at(8), 100, conditions={"prompt": "text", "spread": {"runs": 5, "sd": 2.0}})
+    seq = reading(isolated_state, at(9), 50, conditions={"prompt": "text", "stated_as": "about 50"})
+    [alert] = found(isolated_state)
+    assert alert.key == f"metric_regressed:{seq}:teacher.decode_tok_s"
+    assert "prompt=text; read" in alert.body and "spread" not in alert.body and "stated_as" not in alert.body
+
+
+def test_readings_in_another_unit_are_another_series(isolated_state):
+    reading(isolated_state, at(8), 100, name="exp.latency", unit="ms")
+    reading(isolated_state, at(9), 150, name="exp.latency", unit="s")          # a time too, but not the same unit
+    assert keys(isolated_state) == []
+    seq = reading(isolated_state, at(10), 300, name="exp.latency", unit="s")   # twice the last "s" reading
+    assert keys(isolated_state) == [f"metric_regressed:{seq}:exp.latency"]
+
+
 def test_a_low_confidence_reading_takes_no_part_either_way(isolated_state):
     reading(isolated_state, at(8), 100)
     reading(isolated_state, at(9), 10, low_confidence=True)      # not alerted on

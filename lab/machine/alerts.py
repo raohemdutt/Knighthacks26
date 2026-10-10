@@ -31,13 +31,15 @@ writers of the slot and pod rows (the queue verbs, the pod controller) have one 
                     slot.minutes cannot be judged and raises nothing. The slot ends at its first slot done row;
                     until then it runs until now. A minute of grace is allowed. One alert per slot, key
                     slot_over_cap:<slot>, whether it was first seen running or already done.
-  metric_regressed  a reading of a metric that is worse than the previous reading of the same series (metric,
-                    node and conditions) by at least REGRESSION_FRACTION, where "worse" follows the metric's
-                    direction (DIRECTION by name, else UNIT_DIRECTION by unit; a metric with no better side,
-                    such as a credit balance or a VRAM share, is never judged). Rows marked low_confidence take
-                    no part. Readings are ordered by their ts, not by their seq. One alert per reading and
-                    metric, key metric_regressed:<seq>:<metric>. This is a prompt to look, not a verdict:
-                    lab/machine/verdict.py judges a comparison with enough runs.
+  metric_regressed  a reading of a metric that is worse than the previous reading of the same series by at
+                    least REGRESSION_FRACTION. A series is the metrics report's (lab/machine/metrics_report.py):
+                    metric, node, unit and setup, the setup being the row's conditions less the keys that
+                    describe the number itself. "Worse" follows the metric's direction in that report's table
+                    (by name, else by unit); a metric with no better side, such as a credit balance or a VRAM
+                    share, is never judged. Rows marked low_confidence take no part, and readings are ordered
+                    by their ts, not by their seq. One alert per reading and metric, key
+                    metric_regressed:<seq>:<metric>. This is a prompt to look, not a verdict: the metrics
+                    report and lab/machine/verdict.py judge a comparison with enough runs.
   pod_stopped       a pod that went down without being stopped by us. Rows with a verb that starts with "pod "
                     and a node (pod-a, pod-b) are replayed in time order. pod launch, and an outcome of running,
                     ready, up or alive, mean up; pod stop means down on purpose. A row whose outcome says
@@ -72,14 +74,15 @@ from typing import Any
 
 from lab.machine import ledger, stop
 from lab.machine.lock import FileLock, LockTimeout
+from lab.machine.metrics_report import HIGHER, comparable, direction_of
 
 __all__ = [
     "VERB", "ALERTS_DIR", "ALERTS_LOCK", "DEFAULT_HOURS", "RULES", "SITTING_ERROR", "SLOT_OVER_CAP",
-    "METRIC_REGRESSED", "POD_STOPPED", "CREDITS_LOW", "HIGHER", "LOWER", "DIRECTION", "UNIT_DIRECTION",
+    "METRIC_REGRESSED", "POD_STOPPED", "CREDITS_LOW",
     "REGRESSION_FRACTION", "CREDIT_HORIZON_HOURS", "CREDIT_WINDOW_HOURS", "CREDIT_MIN_SPAN_MINUTES",
     "SLOT_COMPLAIN", "BALANCE_METRIC", "EVENT_METRIC_PREFIXES", "SIT_VERB",
     "Alert", "ParsedLine", "Report", "SlotRun", "alerts_dir", "alerts_path", "parse_ts", "number", "metric_value",
-    "ident", "label", "one_line", "cite", "timeline", "direction_of", "series_key", "reading_unit",
+    "ident", "label", "one_line", "cite", "timeline", "series_key", "reading_unit", "setup_of",
     "compact_conditions",
     "is_failure", "slot_runs", "replay_pods", "credit_runways", "scan", "format_line", "parse_line", "day_lines",
     "announced_keys", "raise_alerts", "aware_time", "main",
@@ -135,58 +138,9 @@ CREDIT_MIN_SPAN_MINUTES = 30.0   # readings closer together than this say nothin
 FAILURE_WORDS = ("fail", "error", "crash", "refus", "denied", "skipped", "invalid", "abort", "timeout",
                  "timed_out", "lock_timeout")
 
-# --- metric direction -------------------------------------------------------------------------
+# --- metric direction ---------------------------------------------------------------------------
 
-HIGHER = "higher"
-LOWER = "lower"
 REGRESSION_FRACTION = 0.10       # worse by this share of the previous reading or more
-
-#: Which way is better, by metric name, from the track rubrics (lab/refine/<track>/RUBRIC.md). None
-#: means the metric has no better side, so it is never judged.
-DIRECTION: dict[str, str | None] = {
-    "teacher.decode_tok_s": HIGHER,
-    "teacher.ttft_s": LOWER,
-    "teacher.watts_avg": LOWER,
-    "teacher.watts_peak": LOWER,
-    "teacher.joules_per_token": LOWER,
-    "teacher.engine_init_s": LOWER,
-    "teacher.max_concurrency": HIGHER,
-    "teacher.output_match_rate": HIGHER,
-    "teacher.vram_pct": None,
-    "trainer.samples_per_s": HIGHER,
-    "trainer.peak_mem_gb": LOWER,
-    "trainer.smoke_loss_first": LOWER,
-    "trainer.smoke_loss_last": LOWER,
-    "pod.start_s": LOWER,
-    "pod.recovery_s": LOWER,
-    "pod.launch_to_serving_s": LOWER,
-    "pod.credits_per_min": LOWER,
-    "pod.credits_per_hour": LOWER,
-    "pod.balance_credits": None,
-    "pod.idle_watts": None,
-    "link.push_mb_s": HIGHER,
-    "link.pull_mb_s": HIGHER,
-    "link.failed_call_rate": LOWER,
-    "telemetry.joules_per_answer": LOWER,
-    "telemetry.sampler_cpu_pct": LOWER,
-    "telemetry.sampler_interference_pct": LOWER,
-    "telemetry.samples_per_window": HIGHER,
-    "learning.heldout.current": HIGHER,
-    "learning.heldout.candidate": HIGHER,
-    "learning.heldout.teacher": HIGHER,
-    "learning.label_agreement": HIGHER,
-    "learning.loop_minutes": LOWER,
-    "learning.package_mb": LOWER,
-}
-
-#: The direction of a metric DIRECTION does not name, by the unit its row gives it. A rate ("tok/s",
-#: "MB/s", "samples/s") is higher-is-better; a time, a power, a size or a cost is lower-is-better.
-UNIT_DIRECTION: dict[str, str] = {
-    "s": LOWER, "ms": LOWER, "min": LOWER,
-    "W": LOWER, "J": LOWER, "J/token": LOWER,
-    "GiB": LOWER, "GB": LOWER, "MiB": LOWER, "MB": LOWER,
-    "loss": LOWER, "credits/min": LOWER, "credits/h": LOWER,
-}
 
 #: Metrics with these prefixes describe one event (a sitting, a slot), not a series to compare.
 EVENT_METRIC_PREFIXES = ("sitting.", "slot.", "alerts.", "review.")
@@ -275,37 +229,32 @@ def stamp(moment: dt.datetime) -> str:
     return f"{moment.astimezone(UTC):%Y-%m-%d %H:%M}Z"
 
 
-def direction_of(metric: str, unit: str | None = None) -> str | None:
-    """HIGHER or LOWER when more or less of the metric is better, None when it has no better side or is not
-    known: by name first (DIRECTION), else by the unit (UNIT_DIRECTION, and any unit ending in /s is a rate)."""
-    if metric in DIRECTION:
-        return DIRECTION[metric]
-    if unit in UNIT_DIRECTION:
-        return UNIT_DIRECTION[unit]
-    if isinstance(unit, str) and unit.endswith("/s"):
-        return HIGHER
-    return None
-
-
-def series_key(name: str, row: Mapping[str, Any]) -> tuple[str, str | None, str]:
-    """What makes two readings comparable: the metric, the node, and the row's conditions."""
-    conditions = row.get("conditions")
-    canon = json.dumps(conditions, sort_keys=True, separators=(",", ":"), default=str) if conditions else ""
-    return name, row.get("node") if isinstance(row.get("node"), str) else None, canon
-
-
 def reading_unit(row: Mapping[str, Any], name: str) -> str | None:
+    """The unit the row gives one of its metrics; None when it gives none."""
     units = row.get("units")
     unit = units.get(name) if isinstance(units, Mapping) else None
     return unit if isinstance(unit, str) else None
 
 
-def compact_conditions(row: Mapping[str, Any], limit: int = 70) -> str:
-    """The row's conditions as "key=value, ..." for a line, cut at limit; "" when it has none."""
+def setup_of(row: Mapping[str, Any]) -> dict[str, Any]:
+    """The row's conditions without the keys that describe the number rather than how it was measured (the
+    metrics report's comparable())."""
     conditions = row.get("conditions")
-    if not isinstance(conditions, Mapping) or not conditions:
-        return ""
-    text = ", ".join(f"{key}={one_line(str(conditions[key]))}" for key in sorted(conditions, key=str))
+    return comparable(conditions) if isinstance(conditions, Mapping) else {}
+
+
+def series_key(name: str, row: Mapping[str, Any]) -> tuple[str, str | None, str | None, str]:
+    """What makes two readings comparable, as in the metrics report: the metric, the node, the unit and the
+    setup. A reading is only ever set against one measured the same way."""
+    setup = setup_of(row)
+    canon = json.dumps(setup, sort_keys=True, separators=(",", ":"), default=str) if setup else ""
+    return name, row.get("node") if isinstance(row.get("node"), str) else None, reading_unit(row, name), canon
+
+
+def compact_conditions(row: Mapping[str, Any], limit: int = 70) -> str:
+    """The setup of the row as "key=value, ..." for a line, cut at limit; "" when it has none."""
+    setup = setup_of(row)
+    text = ", ".join(f"{key}={one_line(str(setup[key]))}" for key in sorted(setup, key=str))
     return text if len(text) <= limit else text[: limit - 3] + "..."
 
 
@@ -429,7 +378,7 @@ def slot_overruns(events: Sequence[tuple[dt.datetime, Row]], since: dt.datetime,
 
 def metric_regressions(events: Sequence[tuple[dt.datetime, Row]], since: dt.datetime,
                        fraction: float = REGRESSION_FRACTION) -> list[Alert]:
-    series: dict[tuple[str, str | None, str], list[tuple[dt.datetime, Row, float]]] = {}
+    series: dict[tuple[str, str | None, str | None, str], list[tuple[dt.datetime, Row, float]]] = {}
     for when, row in events:
         metrics = row.get("metrics")
         if row.get("low_confidence") is True or not isinstance(metrics, Mapping):
@@ -440,7 +389,7 @@ def metric_regressions(events: Sequence[tuple[dt.datetime, Row]], since: dt.date
                 continue
             series.setdefault(series_key(name, row), []).append((when, row, value))
     found = []
-    for (name, node, _), readings in series.items():
+    for (name, node, _unit, _setup), readings in series.items():
         for (_, before_row, before), (when, row, after) in zip(readings, readings[1:]):
             direction = direction_of(name, reading_unit(row, name))
             if direction is None or when < since or before == 0:
