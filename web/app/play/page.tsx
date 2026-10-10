@@ -123,8 +123,7 @@ export default function PlayPage() {
             </p>
           ) : null}
           <p className={`${ui.muted} ${ui.small}`}>
-            {twin.plan ? "The way to its bin is drawn above. " : "The way to its bin is drawn below. "}
-            Hold it up to the bin camera to play the round.
+            Pick one to see its bin and the way there on this screen. Hold it up to the bin camera to play the round.
           </p>
         </section>
       ) : null}

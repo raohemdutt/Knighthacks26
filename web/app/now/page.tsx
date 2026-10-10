@@ -661,8 +661,15 @@ function CoachNote({ note, said, about }: { note: DayCoachNote; said: string; ab
       <span className={n.noteLabel}>Coach · {relative(note.ts)}</span>
       {about ? <span className={n.meta}>{about}</span> : null}
       <p className={n.noteText}>{said}</p>
-      {/* "Was that right?" under each break the coach found; nothing when the block had none */}
-      <CoachFeedback day={note.day} blockId={note.block_id} />
+      {note.session.breaks.length > 0 ? (
+        // "Was that right?" under each break the coach found, one tap away so the ribbon stays a ribbon
+        <details className={n.fold}>
+          <summary>Was that right? Tell the coach about {note.session.breaks.length === 1 ? "the break" : `the ${note.session.breaks.length} breaks`}</summary>
+          <div className={n.foldBody}>
+            <CoachFeedback day={note.day} blockId={note.block_id} />
+          </div>
+        </details>
+      ) : null}
       <details className={n.fold}>
         <summary>The numbers and the evidence</summary>
         <div className={n.foldBody}>
