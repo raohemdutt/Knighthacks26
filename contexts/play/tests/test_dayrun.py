@@ -285,6 +285,49 @@ def test_reality_score_names_the_biggest_gap(dayrun, tmp_path):
     assert dayrun.review(SUNDAY, scenario="demo").measured == Measured(focus_minutes=20, meals=2, sleep_hours=6.5)
 
 
+# --- a night that has not happened yet (testing round 1, O2) ---
+
+
+def watched_sunday(until: str = "09:30", day: int = 11):
+    """A real habit tracker that has seen Saturday evening and Sunday morning at the desk, up to `until`."""
+    from contexts.habits.tests import helpers as h
+
+    t = h.tracker()
+    h.feed(t, h.sit(10, "18:00", "23:00") + h.sit(11, "07:00", "09:00")
+           + [h.scene(h.at(11, "08:00"), caption="a bagel on a plate for breakfast")])
+    t.flush(h.at(day, until))  # the ticker: the latest time the tracker knows about
+    return t
+
+
+def test_sleep_is_unknown_until_the_night_after_the_day_has_been_watched(places, tmp_path):
+    def measured(habits):
+        return DayRun(places, habits=habits, data_dir=tmp_path).measured(SUNDAY)
+
+    morning = measured(watched_sunday("09:30"))
+    assert morning.sleep_hours is None  # Sunday night is still ahead: not 12 hours of empty desk
+    assert (morning.meals, morning.focus_minutes) == (1, 120)  # what has been seen of the day so far is still reported
+    assert measured(watched_sunday("02:00", day=12)).sleep_hours is None  # half way through the night
+    assert measured(watched_sunday("08:30", day=12)).sleep_hours == 12  # the night is over: desk empty from 20:00 to 08:00
+
+
+def test_replaying_today_leaves_the_coming_night_out_of_the_score(places, tmp_path):
+    dayrun = DayRun(places, habits=watched_sunday(), data_dir=tmp_path)
+    night = [Move(slot="s1", kind="sleep", start=at(23), minutes=480)]
+
+    r = dayrun.replay(SUNDAY, night)
+    assert r.actual.sleep_hours is None and r.unknown == ["sleep"]
+    # neither zero nor met: both sides get the night the new plan schedules, so it cannot win or lose points
+    assert r.baseline.totals.sleep_hours == r.plan.totals.sleep_hours == 8 and r.baseline.rejected == []
+    assert "has not been measured yet" in r.text and "Sleep: 0.0 h" not in r.text
+
+    empty = dayrun.replay(SUNDAY, [])
+    assert empty.actual.sleep_hours is None and "has not been measured yet" in empty.text
+    assert [m.kind for m in empty.baseline_moves if m.kind == "sleep"] == []
+
+    known = dayrun.replay(SUNDAY, night, actual=Measured(focus_minutes=120, meals=1, sleep_hours=5))
+    assert known.unknown == [] and known.baseline.totals.sleep_hours == 5 and known.points_gained > 0
+
+
 # --- replay ---
 
 

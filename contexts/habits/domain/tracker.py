@@ -159,6 +159,7 @@ class HabitTracker:
 
     def on_day_closed(self, e: DayClosed) -> None:
         """A close already in the log (from an earlier flush) closes the day here too, once."""
+        self.now = max(self.now or e.ts, e.ts)  # the tick that closed it is a time this tracker has seen, on replay too
         if self.today is None:
             self.today = e.day + ONE_DAY
         elif e.day >= self.today:
@@ -228,8 +229,9 @@ class HabitTracker:
         since = self.watching_since
         watched = since is not None and since < end  # a camera had reported by the end of this day
         match h.signal:
-            case "away_window":
-                observed = since is not None and since < self.sched.sleep_window(day)[1]
+            case "away_window":  # a night that ended before any camera, or has not begun by `now`, is not judged
+                night_start, night_end = self.sched.sleep_window(day)
+                observed = since is not None and since < night_end and night_start < now
                 return round(max(d.away_h, self._open_gap_h(day, now)), 2), observed
             case "meal":
                 return d.meals, watched
@@ -410,7 +412,10 @@ class HabitTracker:
             return self._view(h, done, closed=True)
         if self.today is not None and day < self.today:
             return None  # before Atlas was watching
-        value, applies = self.measure(h, day, now or self.sched.day_start(day + ONE_DAY))
+        now = now or self.sched.day_start(day + ONE_DAY)
+        if self.now is not None:
+            now = min(now, self.now)  # nothing is known past the latest event or tick: a later `now` is not an empty desk
+        value, applies = self.measure(h, day, now)
         return self._view(h, Closed(day, value, h.met(value) or not applies, self.streak(h.id), applies), closed=False)
 
     def _view(self, h: Habit, c: Closed, closed: bool) -> dict:

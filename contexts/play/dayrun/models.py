@@ -370,6 +370,7 @@ class ReplayResult(BaseModel):
     points_gained: int
     stars_gained: int
     text: str
+    unknown: list[str] = []  # "sleep": that night is not measured yet, so both sides were given the plan's night
 
 
 class Estimate(BaseModel):

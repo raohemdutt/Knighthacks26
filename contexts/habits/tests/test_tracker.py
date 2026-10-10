@@ -308,3 +308,15 @@ def test_start_early_is_not_judged_on_an_assignment_no_camera_could_have_seen_st
              *sit(11, "20:00", "21:00"),  # ... but the cameras came on 14 hours before it was due
              *one_day(13)])
     assert [(c.day, c.applies) for c in t.history["start_early"]] == [(day(10), False), (day(11), False), (day(12), False)]
+
+
+def test_a_night_that_has_not_begun_is_not_judged_whatever_time_the_caller_names():
+    t = tracker()
+    feed(t, sit(10, "18:00", "23:00") + sit(11, "07:00", "09:00"))
+    t.flush(at(11, "09:30"))  # the latest the tracker knows
+    tomorrow = t.digest(day=day(12), now=at(13, "00:00"))["habits"][0]  # asked as of the end of Monday (O2)
+    assert (tomorrow["id"], tomorrow["value"], tomorrow["applies"]) == ("sleep", 0.0, False)
+    today = t.digest(day=day(11), now=at(13, "00:00"))["habits"][0]
+    assert (today["value"], today["applies"]) == (8.0, True)  # 23:00 to 07:00, already seen
+    t.flush(at(11, "22:00"))  # two hours into Sunday night
+    assert [t.digest(day=day(12), now=at(13, "00:00"))["habits"][0][k] for k in ("value", "applies")] == [2.0, True]
