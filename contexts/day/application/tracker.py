@@ -25,7 +25,7 @@ from contexts.day.domain.clock import DayClock
 from contexts.play.dayrun.board import minutes_between
 from contexts.play.dayrun.service import DayRun
 from contexts.play.domain.places import PlaceSet
-from contracts.day import DayMeters, DayStatusChanged, NextEvent, PlanMove
+from contracts.day import DayMeters, DayStatusChanged, NextEvent
 from contracts.events import Event
 from contracts.perception import ZoneEvent
 
@@ -223,7 +223,3 @@ class DayTracker:
             return True
         except ValueError:
             return False
-
-
-def block_at(moves: list[PlanMove], now: datetime) -> PlanMove | None:
-    return next((m for m in sorted(moves, key=lambda m: m.start) if m.start <= now < m.end), None)
