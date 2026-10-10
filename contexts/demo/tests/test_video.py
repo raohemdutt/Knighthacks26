@@ -75,3 +75,22 @@ def test_check_reads_a_real_file(tmp_path, capsys):
     subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=black:s=64x64:d=2", str(clip)], check=True)
     assert main(["video", "check", str(clip)]) == 1
     assert "FAIL  duration 2.00 s" in capsys.readouterr().out
+
+
+def test_the_remotion_timeline_is_frame_exact_and_uses_clips_that_exist(tmp_path):
+    (tmp_path / "slot-5.mp4").write_bytes(b"")
+    t = video.timeline(clips_dir=tmp_path)
+    assert (t["fps"], t["slot_frames"], t["duration_frames"]) == (30, 1794, 17940)
+    assert [s["start_frame"] for s in t["slots"]] == [k * 1794 for k in range(10)]
+    assert t["slots"][5]["clip"] == "clips/slot-5.mp4" and t["slots"][4]["clip"] is None
+
+
+def test_the_committed_remotion_timeline_matches_the_layout():
+    """video/src/timeline.json is generated (`npm run timeline`); a layout change must regenerate it."""
+    import json
+    from pathlib import Path
+
+    committed = json.loads((Path(__file__).parents[3] / "video" / "src" / "timeline.json").read_text(encoding="utf-8"))
+    fresh = video.timeline(clips_dir=Path("no-such-dir"))
+    strip = lambda t: {**t, "slots": [{**s, "clip": None} for s in t["slots"]]}  # clips differ per machine
+    assert strip(committed) == strip(fresh)

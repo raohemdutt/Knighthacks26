@@ -17,7 +17,7 @@
         engine, rules, Sort It and Waste Watch react live, as if the camera saw it.
         Contexts: perception connectors memory habits impact agent circle vault play day
 
-    python -m contexts.demo video check <file> | chapters | cards
+    python -m contexts.demo video check <file> | chapters | cards | json [out]
         The submission video's 10:00 number-key layout (D10): check an export's length and where each
         key lands, print the YouTube description, or write the title cards (HTML).
 """
@@ -55,7 +55,7 @@ def main(argv: list[str] | None = None) -> int:
     pf.add_argument("--reset", action="store_true", help="clear cooldowns and leftover approval cards first")
     pf.add_argument("--question", default="Where are my keys?", help="the warm-up question")
     v = sub.add_parser("video", help="the submission video's number-key layout (D10)")
-    v.add_argument("action", choices=["check", "chapters", "cards"])
+    v.add_argument("action", choices=["check", "chapters", "cards", "json"])
     v.add_argument("file", nargs="?", type=Path, help="check: the exported video; cards: where to write the HTML")
     args = p.parse_args(argv)
 
@@ -127,6 +127,16 @@ def video_command(action: str, file: Path | None) -> int:
 
     if action == "chapters":
         print(video.chapters())
+        return 0
+    if action == "json":
+        import json
+
+        text = json.dumps(video.timeline(), indent=2)
+        if file:
+            file.write_text(text + "\n", encoding="utf-8")
+            print(f"wrote the timeline to {file}")
+        else:
+            print(text)
         return 0
     if action == "cards":
         out = file or Path("video_cards.html")
