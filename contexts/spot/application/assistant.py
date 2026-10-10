@@ -81,6 +81,8 @@ class Assistant:
         waypoint = next((w.upper() for w in re.findall(r"\bwp\s?(\d{1,2})\b", low)), None)
         if waypoint:
             waypoint = f"WP{int(waypoint):02d}"
+        else:  # or by its name: "what happened at the pipe gallery?"
+            waypoint = next((x.location_id for x in kit.locations if x.location_name and x.location_name.lower() in low), None)
         asset = next((a.asset_id for a in kit.assets if a.asset_id.lower() in low or (a.asset_name and a.asset_name.lower() in low)), None)
         mission = next((m.upper() for m in re.findall(r"\bm\d{3}\b", low)), None)
         has = lambda *words: any(w in low for w in words)  # noqa: E731
@@ -103,7 +105,7 @@ class Assistant:
                 for k, v in line["evidence"].items():
                     setattr(ev, k, sorted(set(getattr(ev, k)) | set(v)))
             return {"intent": "handoff", "text": h["text"], "citations": ev.model_dump(), "target": None}
-        if has("last mission", "latest mission", "most recent mission"):
+        if has("last mission", "latest mission", "most recent mission", "last round", "latest round"):
             return self._mission(kit.missions[-1].mission_id)
         if has("assumption", "method", "how do you", "how did you"):
             items = spot.assumptions

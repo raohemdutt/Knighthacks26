@@ -10,6 +10,9 @@ Read (every one answers 200 without a kit: {"configured": false, "note": how to 
 - GET  /api/spot/locations           waypoints: coordinates, floor, health with n, failed actions, anomalies; the floor plan if the kit has one
 - GET  /api/spot/assets              one row per asset; GET /api/spot/assets/{id} adds readings over time, anomalies, last good inspection
 - GET  /api/spot/replay/state        the live picture: mission in progress, robot position, counts, alerts, scrubber marks
+- GET  /api/spot/shift               the operator's first screen in plain words: status line, do-this-first, watch-out, every asset with a
+                                     traffic-light level and a sentence, the rounds, the floor plan (application/plain.py). No statistics.
+- GET  /api/spot/shift/rounds/{id}   one round as steps, each a sentence with its time, result, reading and alarm
 - GET  /api/spot/handoff             five to eight lines for the next shift, each with its evidence
 - GET  /api/spot/assumptions         every assumption the analysis makes
 - GET  /api/spot/validation          our numbers next to the kit's validation_results.json, and every data surprise
@@ -20,7 +23,8 @@ Read (every one answers 200 without a kit: {"configured": false, "note": how to 
 
 Write (token-guarded like every other write):
 - POST /api/spot/replay/start | pause | seek {index | mission_id | fraction} | speed {speed}
-- POST /api/spot/ask {text, rephrase?}  a cited answer built from the analysis, returned at once (no model call).
+- POST /api/spot/ask {text, rephrase?, plain?}  a cited answer built from the analysis, returned at once (no model call).
+                                     plain=true words it for an operator (`text`); `draft` keeps the exact wording.
                                      rephrase=true also offers a short draft to the on-device model, bounded and checked
 - POST /api/spot/actions/reinspect {asset_id} | /api/spot/actions/work_order {anomaly_id}
                                      -> {"action_id"}: an approval card. Nothing is written until it is approved.
@@ -33,6 +37,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from contexts.spot.application import plain
 from contexts.spot.application.assistant import SUGGESTED
 from contexts.spot.application.service import not_configured
 from contexts.spot.wiring import SpotContext
@@ -43,6 +48,7 @@ CACHE = {"Cache-Control": "public, max-age=3600"}
 class AskBody(BaseModel):
     text: str = Field(min_length=1, max_length=500)
     rephrase: bool = False  # false: the code-built answer at once, no model call
+    plain: bool = False  # true: the same answer in operator words; `draft` keeps the exact wording
 
 
 class SeekBody(BaseModel):
@@ -124,6 +130,24 @@ def spot_router(spot: SpotContext, bus, guard: Callable | None = None) -> APIRou
         found = read.asset(asset_id.upper())
         if found is None:
             raise HTTPException(404, f"no asset {asset_id}")
+        return {"configured": True, **found}
+
+    shift_view: dict = {}  # the kit never changes while the box runs: worded once
+
+    @router.get("/shift")
+    def shift() -> dict:
+        """The operator's first screen: what to do, what to watch, what is fine, in sentences (no statistics)."""
+        if "view" not in shift_view:
+            shift_view["view"] = plain.shift(read)
+        return shift_view["view"]
+
+    @router.get("/shift/rounds/{mission_id}")
+    def shift_round(mission_id: str) -> dict:
+        if not read.configured:
+            return not_configured()
+        found = plain.round_view(read, mission_id.upper())
+        if found is None:
+            raise HTTPException(404, f"no round {mission_id}")
         return {"configured": True, **found}
 
     @router.get("/handoff")
@@ -213,7 +237,11 @@ def spot_router(spot: SpotContext, bus, guard: Callable | None = None) -> APIRou
 
     @router.post("/ask", dependencies=writes)
     async def ask(body: AskBody) -> dict:
-        return {"configured": read.configured, **await spot.assistant.ask(body.text, rephrase=body.rephrase)}
+        out = {"configured": read.configured, **await spot.assistant.ask(body.text, rephrase=body.rephrase and not body.plain)}
+        if body.plain:
+            words = plain.answer(read, out)
+            out.update(plain=words is not None, text=words or out["text"])
+        return out
 
     @router.post("/actions/reinspect", dependencies=writes)
     async def reinspect(body: ReinspectBody) -> dict:
