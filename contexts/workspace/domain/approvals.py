@@ -86,6 +86,13 @@ class Approvals:
             return [self._finish(req, "failed", e.ts, str(exc))]
         return [self._finish(req, "done", e.ts, result)]
 
+    def on_completed(self, e: ActionCompleted) -> None:
+        """Replay only: restore a finished request's state from the log without running anything."""
+        req = self.requests.get(e.action_id)
+        if req is not None:
+            req.status = e.status
+            req.result = e.result
+
     def expire(self, now: datetime) -> list[ActionCompleted]:
         """Call on a timer (or any event) with the current event time."""
         return [self._finish(r, "expired", now) for r in self.pending() if now >= r.expires_at]

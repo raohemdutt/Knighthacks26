@@ -4,3 +4,13 @@ sleep:
   timezone: America/New_York
   bedtime: "20:00"
   wake: "08:00"
+
+# Subreddit the agent searches for "what do students say" questions.
+subreddit: ucf
+
+# People the agent may message (send_message, after approval): name -> ntfy topic.
+people:
+  dom: atlas-dom
+  hemdutt: atlas-hemdutt
+  xander: atlas-xander
+  ilan: atlas-ilan

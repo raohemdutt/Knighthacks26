@@ -92,3 +92,23 @@ def test_replay_never_reruns_side_effects(tmp_path):
     wire(rebuilt, again)
     assert aio.run(rebuilt.replay_into()) == 4  # proposed, requested, decided, completed
     assert again == []
+
+
+def test_background_handlers_do_not_block_the_bus(tmp_path):
+    async def run():
+        bus = EventBus(tmp_path)
+        order = []
+
+        async def slow(e):
+            await asyncio.sleep(0.05)
+            order.append("slow done")
+            return AlertRaised(alert_id="a", rule_id="r", message="m")
+
+        bus.subscribe("perception.zone", bus.in_background(slow))
+        bus.subscribe("agent.alert", lambda e: order.append("alert"))
+        await bus.publish(package())
+        order.append("publish returned")
+        await asyncio.sleep(0.1)
+        return order
+
+    assert asyncio.run(run()) == ["publish returned", "slow done", "alert"]

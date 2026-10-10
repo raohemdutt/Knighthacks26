@@ -13,6 +13,7 @@
   never takes the bus down.
 """
 
+import asyncio
 import inspect
 import logging
 from datetime import UTC
@@ -44,6 +45,28 @@ class EventBus:
         Only projections (tables rebuilt from the log) should pass `replay=True`. Handlers with
         side effects (approval executors, connector writes, model calls) must not run on replay."""
         self._subs.append((prefix, handler, replay))
+
+    def in_background(self, handler: Handler) -> Handler:
+        """Wrap a slow handler (a model call) so it runs as its own task and the bus keeps flowing.
+
+        Whatever it returns is published when it finishes."""
+        tasks: set[asyncio.Task] = set()
+
+        async def run(event: Event) -> None:
+            try:
+                out = handler(event)
+                if inspect.isawaitable(out):
+                    out = await out
+                await self.publish_all(_as_events(out))
+            except Exception:
+                log.exception("background handler %s failed on %s", getattr(handler, "__qualname__", handler), event.type)
+
+        def spawn(event: Event) -> None:
+            task = asyncio.get_running_loop().create_task(run(event))
+            tasks.add(task)  # keep a reference until done
+            task.add_done_callback(tasks.discard)
+
+        return spawn
 
     async def publish(self, event: Event) -> None:
         await self._publish(event, log_it=True)
