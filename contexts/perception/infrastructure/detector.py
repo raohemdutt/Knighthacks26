@@ -68,6 +68,12 @@ def _decode(jpeg: bytes) -> Any:
     return frame
 
 
+def detector_available(config_path: str | Path = "config/models.yaml") -> bool:
+    """Whether models.yaml names a detector whose weights are on this machine (does not load anything)."""
+    cfg = load_models_config(config_path).get("detector", {})
+    return cfg.get("backend", "ultralytics") == "ultralytics" and Path(cfg.get("weights", "yolo11n.engine")).exists()
+
+
 def build_detector(config_path: str | Path = "config/models.yaml", *, track: bool = False) -> YoloDetector | None:
     """The detector models.yaml describes, or None when its weights are not on this machine (laptops, CI)."""
     cfg = load_models_config(config_path).get("detector", {})

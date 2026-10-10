@@ -111,3 +111,17 @@ def test_status_endpoint(clip, tmp_path):
     app.include_router(capture_router(service))
     body = TestClient(app).get("/capture/status").json()
     assert set(body["cameras"]["cam-desk"]) == {"status", "fps_actual", "dropped", "detected", "errors"}
+
+
+def test_the_detector_is_only_built_when_a_frame_arrives(tmp_path):
+    from contexts.capture.application.service import LazyDetector
+
+    built = []
+
+    def factory():
+        built.append(1)
+        return person
+
+    lazy = LazyDetector(factory)
+    assert built == []  # nothing yet: a camera that is unplugged costs no memory
+    assert lazy("frame")[0].track_id == 1 and lazy("frame") and built == [1]  # built once, on the first frame
