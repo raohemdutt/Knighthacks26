@@ -22,7 +22,7 @@ from contracts.events import Event
 STEPS = ROOT / "fixtures" / "demo" / "fakes.yaml"
 # context -> prefix of the event types it publishes
 PREFIX = {"perception": "perception.", "connectors": "connector.", "memory": "memory.", "habits": "habits.",
-          "impact": "impact.", "agent": "agent.", "circle": "circle.", "vault": "vault.", "play": "play."}
+          "impact": "impact.", "agent": "agent.", "circle": "circle.", "vault": "vault.", "play": "play.", "day": "day."}
 CONTEXTS = tuple(PREFIX)
 _OFFSET = re.compile(r"^[+-]\d+s$")
 

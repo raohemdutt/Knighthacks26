@@ -15,7 +15,7 @@
     python -m contexts.demo fake perception --gateway http://<box>:8000 [--token $ATLAS_TOKEN]
         The camera scene pushed into a running box (POST /api/events), timed from now: its own zone
         engine, rules, Sort It and Waste Watch react live, as if the camera saw it.
-        Contexts: perception connectors memory habits impact agent circle vault play
+        Contexts: perception connectors memory habits impact agent circle vault play day
 """
 
 import argparse

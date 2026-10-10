@@ -5,6 +5,7 @@ from contracts import (  # noqa: F401
     capture,
     circle,
     connectors,
+    day,
     experience,
     habits,
     impact,

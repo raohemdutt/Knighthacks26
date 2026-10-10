@@ -14,6 +14,10 @@ TS = "2026-10-11T02:12:00-04:00"
 BOX = {"x1": 0.1, "y1": 0.2, "x2": 0.3, "y2": 0.4}
 PROPOSAL = {"title": "Study session", "start": "2026-10-11T14:00:00-04:00", "end": "2026-10-11T16:00:00-04:00",
             "invitees": ["hemdutt"]}
+DAY_MOVE = {"id": "m0", "kind": "study", "title": "Study at Desk", "start": TS, "end": TS, "minutes": 90, "place": "apartment.desk",
+            "place_name": "Desk", "fixed": False, "deadline": "hw4"}
+DAY_OUTCOME = {"won": True, "stars": 2, "points": 81, "summary": "Win, 2 stars", "sleep_hours": 7.5, "meals": 2,
+               "study_minutes": 180, "energy_min": 31.0, "deadline_risk": 0.3}
 
 SAMPLES: dict[str, dict] = {
     "agent.action.proposed": {"action_id": "a1", "kind": "send_message", "target": "dom", "reason": "Package at the door",
@@ -40,6 +44,28 @@ SAMPLES: dict[str, dict] = {
     "connector.item.synced": {"connector": "canvas", "kind": "assignment", "external_id": "hw4", "title": "HW 4",
                               "when": "2026-10-13T23:59:00-04:00", "url": "https://webcourses.ucf.edu/a/4"},
     "connector.sync.failed": {"connector": "canvas", "error": "401 Unauthorized"},
+    "day.plan.committed": {"day": "2026-10-11", "plan_id": "plan-2026-10-11-0815", "action_id": "a3"},
+    "day.plan.proposed": {"day": "2026-10-11", "plan_id": "plan-2026-10-11-0815", "start": TS, "end": TS,
+                          "moves": [DAY_MOVE], "outcome": DAY_OUTCOME,
+                          "sources": [{"kind": "item", "id": "hw4", "text": "HW 4 due Tue 11:59 PM", "origin": "canvas"},
+                                      {"kind": "habit", "id": "sleep", "text": "slept 5.4 h last night", "origin": "watch"}],
+                          "missing": ["circle: not configured"], "text": "Study at the desk until lunch, then judging.",
+                          "action_id": "a3"},
+    "day.replan.proposed": {"day": "2026-10-11", "plan_id": "plan-2026-10-11-0912", "replaces": "plan-2026-10-11-0815",
+                            "why": "At the desk at 9:12; the 9:20 mentor check-in is a 9 minute walk away.", "start": TS,
+                            "moves": [DAY_MOVE], "outcome": DAY_OUTCOME, "action_id": "a4"},
+    "day.reviewed": {"day": "2026-10-11", "plan_id": "plan-2026-10-11-0815", "score": 62, "followed": ["Study at Desk"],
+                     "slipped": ["Eat at Kitchen"], "text": "You followed 62% of what could be measured.",
+                     "change_tomorrow": "Put lunch on the calendar before the afternoon block."},
+    "day.status.changed": {"day": "2026-10-11", "plan_id": "plan-2026-10-11-0815", "now": TS, "block_id": "m0",
+                           "block_title": "Study at Desk", "block_end": TS, "should_be": "apartment.desk", "should_be_name": "Desk",
+                           "seen_at": "apartment.door", "seen_at_name": "Front door", "seen_how": "door camera", "seen_ts": TS,
+                           "drift_minutes": 12,
+                           "next_event": {"id": "outlook:kh-judging", "title": "Judging", "start": TS, "end": TS, "place": "ucf.eng2",
+                                          "place_name": "Engineering II", "walk_minutes": 9, "leave_by": TS},
+                           "risk": "leave_now", "deadline_risk": 0.4,
+                           "meters": {"meals": 1, "desk_minutes": 95, "recycled": 2, "sleep_hours": 6.2, "sleep_source": "camera"},
+                           "reason": "block started"},
     "experience.approval.decided": {"action_id": "a1", "decision": "approve"},
     "experience.correction.submitted": {"subject_ref": "q1", "verdict": "down", "note": "wrong mug"},
     "experience.question.asked": {"question_id": "q1", "text": "Where did I leave my keys?"},
