@@ -17,7 +17,9 @@ is tagged on counts for no one. The unnamed tracker still keeps the calendar: it
 a tick of the clock, closes the days, and its `habits.day.closed` events in the log are what make every
 tracker here close the same days at the same moments on replay. Its own camera habits are not judged for
 those days; things thrown away (nobody's track) and connector items stay with it, and the items are also
-given to each member.
+given to each member. A night a watch measured (K9, a `health` item) is the exception: the watch is one
+person's, so it goes to the unnamed tracker and, when exactly one person is enrolled, to them; with several
+enrolled nothing says whose watch it is, and no member is given it.
 
 The members' own signals and closed days are NOT published: the habits events have no field to say whose
 they are (that is a contract change), so a member's numbers exist only as this projection, rebuilt from the
@@ -84,6 +86,8 @@ class MemberHabits:
                 t.calendar = {k: copy(c) for k, c in self.base.calendar.items()}
                 for item in [*t.assignments.values(), *t.calendar.values()]:
                     item.desk_min, item.started_at, item.flagged = 0.0, None, False
+                if len(ids) == 1:  # the only person here: the nights the watch already measured are theirs
+                    t.measured_sleep = dict(self.base.measured_sleep)
                 self._switch(t, on, e.ts)
                 if self._nudger_for:
                     self.nudgers[m] = self._nudger_for(t)
@@ -152,7 +156,8 @@ class MemberHabits:
 
     def on_item(self, e: ItemSynced) -> list[Event]:
         out = self.base.on_item(e)
-        for member, t in self.members.items():
+        mine = e.kind != "health" or len(self.members) == 1  # a watch is one person's: never everybody's sleep
+        for member, t in self.members.items() if mine else []:
             out += self._run(member, t.on_item(e))
         return out + self._sync(e.ts)
 

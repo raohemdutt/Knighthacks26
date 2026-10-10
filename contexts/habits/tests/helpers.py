@@ -3,6 +3,7 @@
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from contexts.connectors.domain.health import Night, to_item
 from contexts.habits.domain.config import HabitsConfig, load_config
 from contexts.habits.domain.tracker import HabitTracker
 from contracts.connectors import ItemSynced
@@ -69,6 +70,16 @@ def assignment(ts, title, due, external_id="a1"):
 
 def calendar(ts, title, start, external_id="c1"):
     return ItemSynced(ts=ts, connector="calendar", kind="calendar_event", external_id=external_id, title=title, when=start)
+
+
+def night(ts, d: int, asleep: str, bed: str = "23:30", resting_hr: int | None = 52):
+    """A night the watch measured, as the health connector syncs it at `ts`: ending on day `d`, asleep "7:28"."""
+    h, m = asleep.split(":")
+    minutes = int(h) * 60 + int(m)
+    start = at(d - 1, bed)
+    measured = Night(day(d), start, start + timedelta(minutes=minutes + 20), minutes, minutes + 20,
+                     {"core": minutes, "awake": 20}, resting_hr=resting_hr, sleeping_hr=55, hrv_ms=61, resp=14.2)
+    return ItemSynced(ts=ts, connector="health", **to_item(measured, NY))
 
 
 def disposed(ts, correct, item_id="cam-door:1"):

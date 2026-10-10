@@ -20,6 +20,7 @@ class Habit(BaseModel):
     target: float
     direction: Literal["at_least", "at_most"]
     nudge: str
+    nudge_measured: str | None = None  # away_window: the text when a watch measured the night (not the empty desk)
     unit: str = ""
     cooldown_minutes: float | None = None  # None: nudges.cooldown_minutes
     nudge_after: time | None = None  # local time before which the ticker stays quiet about it
