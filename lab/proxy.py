@@ -16,10 +16,11 @@
 
 What sits between the box and a model server on a pod: Cloudflare, the hub's proxy, the pod's Jupyter server running
 jupyter-server-proxy, then the model server. Every fact below is from lab/refine/research/plumbing/proxy-path.md (its
-sources and the measurements of 2026-10-10 are indexed there). Those were taken on the DUB hub and its pods; the SJC hub
-(accounts C and D) has not been probed for Cloudflare, for the 125 s and 100 MB limits or for jupyter-server-proxy, and
-none of it has been tried from the Jetson. `probe` prints the answer's `server` and `cf-ray` headers so the first live
-call settles whether SJC sits behind Cloudflare; streaming is the right way to send a long reply either way.
+sources and the measurements of 2026-10-10 are indexed there). Those were taken on the DUB hub and its pods. The SJC hub
+(accounts C and D) answers through Cloudflare too, and R18's map against account D (the table in lab/README.md) found
+the same statuses for a bad token and an empty port and the same held reply without the event-stream header; the
+125 s and 100 MB limits were not probed there, and none of it has been tried from the Jetson. `probe` prints the
+answer's `server` and `cf-ray` headers; streaming is the right way to send a long reply either way.
 
 The address. https://<hub>/user/<account>/proxy/<port>/<path>. The hub is the one lab/hub.py settles on for the
 account (its AUP_HUB_URL_<letter>, else $LAB_HUB_URL, else DUB); this module never names one. The

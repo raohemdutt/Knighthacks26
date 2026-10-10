@@ -84,6 +84,17 @@ EXPECTED_SEED = [
     ("pod.first_request_s", "pod-d", {"launch_path": "form"}, 11.7, "s", False),
     ("pod.keep_alive_min", "pod-d", {"launch_path": "form"}, 70, "min", False),
     ("pod.credits_per_hour", "pod-d", {"billing": "unmetered"}, 0, "credits/h", False),
+    # R18: the proxy failure-mode map against pod D (account D on SJC, pod B's role)
+    ("proxy.status", "pod-b", {"case": "bad token", "method": "GET"}, 302, "http", False),
+    ("proxy.status", "pod-b", {"case": "bad token", "method": "POST"}, 403, "http", False),
+    ("proxy.status", "pod-b", {"case": "nothing listening"}, 500, "http", False),
+    ("proxy.status", "pod-b", {"case": "mid-restart"}, 500, "http", False),
+    ("proxy.restart_to_ready_s", "pod-b", {"case": "mid-restart"}, 294.1, "s", False),
+    ("proxy.status", "pod-b", {"case": "model server stopped"}, 500, "http", False),
+    ("proxy.stream_first_byte_s", "pod-b", {"accept": "text/event-stream"}, 0.916, "s", False),
+    ("proxy.stream_first_byte_s", "pod-b", {"accept": "application/json"}, 31.483, "s", False),
+    ("proxy.status", "pod-b", {"case": "5 MB body"}, 400, "http", False),
+    ("proxy.concurrent_wall_s", "pod-b", {"case": "20 concurrent"}, 2.998, "s", False),
 ]
 
 # The numbers the lab setup measured, by metric name.
