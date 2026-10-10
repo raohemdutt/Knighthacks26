@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { TwinStage } from "@/components/map/TwinStage";
 import { Empty, ErrorBox, Loading } from "@/components/States";
 import ui from "@/components/ui.module.css";
@@ -10,6 +10,7 @@ import { humanize, percent } from "@/lib/format";
 import { SORT_ITEMS } from "@/lib/room";
 import { type TwinPin, useRoomTwin } from "@/lib/roomTwin";
 import { useFetch } from "@/lib/useFetch";
+import { useVoice } from "@/lib/voice";
 
 /** The items the box knows how to sort; anything it does not know goes to the trash. Shared with the Room map. */
 const ITEMS = SORT_ITEMS;
@@ -39,10 +40,37 @@ export default function PlayPage() {
   // The room twin is the main picture when the box has a floor plan: the live round, or the way for the picked item.
   const twin = useRoomTwin();
 
-  // A round started on the box: follow along with its item. A round scored: refresh the numbers.
-  useAtlasEvents(["play.round."], (e) => {
+  // This week's mistakes at the bins (the Impact screen's practice set), most first. Nothing when Waste Watch is off.
+  const practice = useFetch((s) => api.impactPractice(undefined, s));
+  const voice = useVoice();
+  const top = practice.data?.items[0];
+  const [practising, setPractising] = useState<string | null>(null);
+  const [result, setResult] = useState<{ item: string; correct: boolean } | null>(null);
+  const practisingRef = useRef(practising);
+  practisingRef.current = practising;
+  const rules = new Map((practice.data?.items ?? []).map((p) => [p.item, p.rule]));
+  const rulesRef = useRef(rules);
+  rulesRef.current = rules;
+
+  const practise = (it: string) => {
+    setPractising(it);
+    setResult(null);
+    setItem(it); // the same preview any picked item gets: the right bin and the way to it
+  };
+
+  // A round started on the box: follow along with its item. A round scored: refresh the numbers, and after a
+  // round of the item being practised say why it goes where it goes.
+  useAtlasEvents(["play.round.", "impact.practice.", "impact.item.disposed"], (e) => {
     if (e.type === "play.round.started" && typeof e.item === "string") setItem(e.item);
-    if (e.type === "play.round.scored") accuracy.reload();
+    if (e.type === "play.round.scored") {
+      accuracy.reload();
+      if (typeof e.item === "string" && e.item === practisingRef.current) {
+        setResult({ item: e.item, correct: e.correct === true });
+        const rule = rulesRef.current.get(e.item);
+        if (rule) voice.say(rule, { tag: "sort-it-rule", replace: true });
+      }
+    }
+    if (e.type.startsWith("impact.")) practice.reload();
   });
 
   const off = route.error?.notConfigured ?? false;
@@ -62,6 +90,42 @@ export default function PlayPage() {
         <div className={ui.card}>
           <TwinStage twin={twin} pins={NO_PINS} previewItem={item} speak start="top" shape="tall" />
         </div>
+      ) : null}
+
+      {top ? (
+        <section className={ui.card} aria-label="Practise what you got wrong">
+          <div className={`${ui.row} ${ui.between} ${ui.wrap}`}>
+            <h2>Practise what you got wrong</h2>
+            <span className={ui.tag}>
+              {practice.data?.size} this week
+            </span>
+          </div>
+          <p className={ui.breakWords}>
+            <strong>{humanize(top.item)}</strong>
+            {top.mistakes > 0
+              ? `: ${top.mistakes === 1 ? "once" : `${top.mistakes} times`} in the wrong bin this week${top.went_to ? ` (it went in ${top.went_to})` : ""}.`
+              : ": you asked to be taught this one."}
+          </p>
+          <div className={`${ui.row} ${ui.wrap}`}>
+            <button type="button" className={`${ui.btn} ${ui.btnPrimary}`} aria-pressed={practising === top.item} onClick={() => practise(top.item)}>
+              {practising === top.item ? `Practising: ${humanize(top.item)}` : `Practise: ${humanize(top.item)}`}
+            </button>
+            {(practice.data?.items ?? []).slice(1, 4).map((p) => (
+              <button key={p.item} type="button" className={ui.btn} aria-pressed={practising === p.item} onClick={() => practise(p.item)}>
+                {humanize(p.item)}
+              </button>
+            ))}
+          </div>
+          {practising && rules.get(practising) ? (
+            <p className={ui.nudge} role="status">
+              {result?.item === practising ? (result.correct ? "Right bin. " : "Not that bin. ") : ""}
+              {rules.get(practising)}
+            </p>
+          ) : null}
+          <p className={`${ui.muted} ${ui.small}`}>
+            Pick one to see its bin and the way there on this screen. Hold it up to the bin camera to play the round.
+          </p>
+        </section>
       ) : null}
 
       {off ? (

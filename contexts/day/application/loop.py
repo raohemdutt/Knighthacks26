@@ -71,7 +71,8 @@ class DayLoop:
 
     def in_words(self, now: datetime) -> dict[str, str]:
         """Today in a few plain sentences, for whoever is talking with the person (the agent's conversation):
-        `now` from the live state, `plan`, `coach` and `review` from the latest narration of each. Only today's;
+        `now` from the live state (and `now_spoken`, its wording for the ear), `plan`, `coach` and `review` from
+        the latest narration of each. Only today's;
         empty when there is no plan yet. Reads state, publishes nothing, never calls a model."""
         n, day, out = self.narrator, self.clock.day_of(now), {}
         try:
@@ -80,6 +81,7 @@ class DayLoop:
             job = None
         if job is not None and job.day == day:
             out["now"] = job.draft.display
+            out["now_spoken"] = job.draft.spoken  # the same moment for the ear: no brackets, times as they are said
         for key, moment in (("plan", "morning"), ("coach", "coach"), ("review", "evening")):
             said = n.latest.get(moment)
             if said is not None and said.day == day:

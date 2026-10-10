@@ -181,7 +181,8 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
     if atlas.dayrun:  # /api/dayrun/* (S4, S6)
         app.include_router(dayrun_router(atlas.dayrun, publish=atlas.bus.publish, guard=authorized))
     if atlas.day:  # GET /api/day/now, GET/POST /api/day/plan, GET /api/day/patterns (D1)
-        app.include_router(day_router(atlas.day, publish=atlas.bus.publish, guard=authorized, memory=atlas.memory))
+        app.include_router(day_router(atlas.day, publish=atlas.bus.publish, guard=authorized, memory=atlas.memory,
+                                      feedback=atlas.coach_feedback))
     if atlas.day and atlas.coach_feedback:  # GET /api/day/coach/feedback, POST /api/day/coach/corrections ("Was that right?")
         app.include_router(coach_feedback_router(atlas.day, atlas.coach_feedback, publish=atlas.bus.publish, guard=authorized))
     # GET /api/impact/story, GET/POST /api/impact/practice: the Impact screen (404 when Waste Watch is not set up)

@@ -37,6 +37,7 @@ log = logging.getLogger("atlas.talk")
 ENV = "ATLAS_TALK"  # "0" turns conversation off: every open-ended question goes to the tool loop, as before
 MAX_FACT_CHARS = 240  # one fact line; the model reads 14 tokens a second, the prompt has to stay small
 MAX_REPLY_CHARS = 900
+MAX_CLAUSE_CHARS = 90  # the last thing a camera saw, as one clause of a sentence
 
 
 @dataclass(frozen=True)
@@ -157,6 +158,10 @@ SYSTEM = (
 )
 DAY_LABELS = {"now": "Their day right now", "plan": "Their plan for today", "coach": "Your last coaching note to them",
               "review": "Your review of their day"}
+SPOKEN = "_spoken"  # a day fact's wording for the ear ("now_spoken"): what the template says; not a FACTS line of its own
+# where a sentence ends; an initial is not an end ("John C. Hitt Library")
+SENTENCE_END = re.compile(r"(?<!\b[A-Z]\.)(?<=[.!?])\s+")
+CLAUSE_END = re.compile(r"(?<!\b[A-Z]\.)(?<=[.!?])\s+|\s*[;:]\s+|\s+\(|\s+[-–—]\s+")
 JOKES = ("Why did the camera get promoted? It always stayed focused.",
          "I'd tell you a joke about my memory, but I only keep the good frames.",
          "Why don't boxes like me play hide and seek? Somebody always finds the power cable.")
@@ -177,6 +182,34 @@ def clean(text: str) -> str:
         cut = text[:MAX_REPLY_CHARS]
         text = cut[: max(cut.rfind(". "), cut.rfind("? "), cut.rfind("! ")) + 1] or cut
     return text
+
+
+def whole(text: str, limit: int) -> str:
+    """`text` in at most `limit` characters, ending where a person would stop: after the last whole sentence that
+    fits, else at a clause boundary, else at a word. Never cut inside a word, and never ended with an ellipsis."""
+    text = re.sub(r"\s+", " ", text or "").strip()
+    if len(text) <= limit:
+        return text
+    cut = text[:limit + 1]
+    end = max((m.start() for m in SENTENCE_END.finditer(cut)), default=0)
+    if end >= limit // 2:  # a sentence end that keeps most of the line; an early one would throw the rest away
+        return cut[:end]
+    end = max(cut.rfind("; "), cut.rfind(": "), cut.rfind(", "), cut.rfind(" ("))
+    if end <= 0:
+        end = cut.rfind(" ")
+    return (cut[:end] if end > 0 else text[:limit]).rstrip(" ,;:(-–—") + "."
+
+
+def first_clause(text: str, limit: int = MAX_CLAUSE_CHARS) -> str:
+    """What a caption says first, without its closing mark: "Two people rehearse a presentation" from a summary that
+    goes on to say who points where and lists what is on the desk."""
+    clause = CLAUSE_END.split(re.sub(r"\s+", " ", text or "").strip(), maxsplit=1)[0].rstrip(" .!?,;:")
+    return whole(clause, limit).rstrip(" .!?,;:")
+
+
+def lower_first(text: str) -> str:
+    """For the middle of a sentence: "Two people ..." -> "two people ...", but "I ...", "COP 3502 ..." stay."""
+    return text[:1].lower() + text[1:] if re.match(r"(?!I\b)[A-Z][a-z]*\b(?!\.)", text) else text
 
 
 def clock_words(t: datetime) -> str:
@@ -296,34 +329,47 @@ class Talk:
         lines += self.seen_today(now)
         if self.answered:
             lines.append(f"You have answered {self.answered} question{'s' if self.answered != 1 else ''} since you started.")
-        if self.day_facts:
-            try:
-                day = self.day_facts() or {}
-            except Exception:  # their day is a nicety; a conversation must not fail on it
-                log.debug("no day facts", exc_info=True)
-                day = {}
-            lines += [f"{DAY_LABELS.get(k, k)}: {v}" for k, v in day.items() if v]
+        lines += [f"{DAY_LABELS.get(k, k)}: {v}" for k, v in self.their_day().items() if v and not k.endswith(SPOKEN)]
         if self.about:
             lines.append(f"Who you are talking to: {self.about.rstrip('.')}.")
-        return [line if len(line) <= MAX_FACT_CHARS else line[: MAX_FACT_CHARS - 1].rstrip() + "…" for line in lines]
+        return [whole(line, MAX_FACT_CHARS) for line in lines]  # whole sentences: a cut-off word is not a fact
 
-    def seen_today(self, now: datetime) -> list[str]:
+    def their_day(self) -> dict:
+        if not self.day_facts:
+            return {}
+        try:
+            return self.day_facts() or {}
+        except Exception:  # their day is a nicety; a conversation must not fail on it
+            log.debug("no day facts", exc_info=True)
+            return {}
+
+    def seen(self, now: datetime) -> dict | None:
+        """The box's own day: how many moments and keyframes, and the last thing a camera saw as one clause (no
+        inventory of the desk). None without a memory to ask; `n` is 0 on a quiet day."""
         if self.memory is None:
-            return []
+            return None
         midnight = now.astimezone(self.tz).replace(hour=0, minute=0, second=0, microsecond=0)
         try:
             episodes = sorted(self.memory.episodes(midnight, now + timedelta(seconds=1)), key=lambda e: e.start)
         except Exception:
             log.debug("no episodes for the conversation", exc_info=True)
-            return []
+            return None
         if not episodes:
-            return ["Your cameras have logged nothing today."]
+            return {"n": 0}
         last = episodes[-1]
-        frames = sum(len(e.keyframe_refs) for e in episodes)
-        n = len(episodes)
+        what = first_clause(last.summary or " ".join(last.captions[:1]) or ", ".join(last.labels))
+        return {"n": len(episodes), "frames": sum(len(e.keyframe_refs) for e in episodes),
+                "at": clock_words(last.start.astimezone(self.tz)), "what": what}
+
+    def seen_today(self, now: datetime) -> list[str]:
+        s = self.seen(now)
+        if s is None:
+            return []
+        if not s["n"]:
+            return ["Your cameras have logged nothing today."]
+        n, frames = s["n"], s["frames"]
         line = f"Your cameras logged {n} moment{'s' if n != 1 else ''} today" + (f" and kept {frames} keyframe{'s' if frames != 1 else ''}" if frames else "")
-        what = last.summary or " ".join(last.captions[:1]) or ", ".join(last.labels)
-        return [f"{line}. The last one was at {clock_words(last.start.astimezone(self.tz))}: {what}"]
+        return [f"{line}. The last one was at {s['at']}" + (f": {s['what']}." if s["what"] else ".")]
 
     # --- with no model (the fake runtime), and when the model fails ---
 
@@ -363,13 +409,20 @@ class Talk:
                 "Ask me how my day is, or for a joke.")
 
     def my_day(self) -> str:
-        facts = self.facts()
-        seen = next((f for f in facts if f.startswith("Your cameras")), "")
-        mine = seen.replace("Your cameras have logged nothing today.", "It's been quiet, the cameras haven't logged a thing today.") \
-                   .replace("Your cameras logged", "Pretty good. My cameras logged")
-        mine = re.sub(r" and kept \d+ keyframes?", "", mine)
-        theirs = next((f.split(": ", 1)[1] for f in facts if f.startswith(DAY_LABELS["now"])), "")
-        return " ".join(part for part in (mine or "Pretty good, all quiet here.", theirs, "How's yours going?") if part)
+        """Three short sentences to be said aloud: its own day, the person's (the narrator's spoken words when it
+        has them, never the screen's text with its brackets), and the question back."""
+        s = self.seen(self.clock())
+        if s is None:
+            mine = "Pretty good, all quiet here."
+        elif not s["n"]:
+            mine = "It's been quiet, the cameras haven't logged a thing today."
+        else:
+            last = f", the last at {s['at']}" + (f": {lower_first(s['what'])}" if s["what"] else "")
+            mine = f"Pretty good, my cameras logged {s['n']} moment{'s' if s['n'] != 1 else ''} today{last}."
+        day = self.their_day()
+        said = re.sub(r"\s+", " ", str(day.get("now" + SPOKEN) or day.get("now") or "")).strip()
+        theirs = whole(SENTENCE_END.split(said, maxsplit=1)[0], MAX_FACT_CHARS) if said else ""
+        return " ".join(part for part in (mine, theirs, "How's yours going?") if part)
 
     # --- live hooks (wired in the composition root) ---
 

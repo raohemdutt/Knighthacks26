@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { getToken, setToken } from "@/lib/api";
+import { api, getToken, setToken } from "@/lib/api";
 import { useAtlas, type LinkState } from "@/lib/atlas";
+import { useProfileState } from "@/lib/profile";
+import { useFetch } from "@/lib/useFetch";
 import ui from "./ui.module.css";
 import { VoiceSettings } from "./voice/VoiceSettings";
 
@@ -65,10 +67,49 @@ const TABS: Tab[] = [
   },
 ];
 
-/** Reached through the More sheet. Their URLs are unchanged. */
-const MORE: Tab[] = [
+type MoreTab = Tab & { group: string };
+
+/**
+ * Reached through the More sheet, in the order a day uses them. Their URLs are unchanged. The study coach is not here:
+ * it is one use of the day, reached from the coach's note on Now and from Today (/coach/ still works).
+ */
+const MORE: MoreTab[] = [
+  {
+    href: "/impact",
+    group: "Your day",
+    label: "Impact",
+    icon: (
+      <>
+        <path d="M12 21c-4.5 0-7.5-3-7.5-7.2C4.500 8.500 9 5.500 19.500 4c.5 9.500-2 17-7.500 17z" />
+        <path d="M5 20.500c2.500-5 6-8.500 10.500-11" />
+      </>
+    ),
+  },
+  {
+    href: "/play",
+    group: "Your day",
+    label: "Sort It",
+    icon: (
+      <>
+        <path d="M5 8h14l-1.3 12H6.3z" />
+        <path d="M3.5 8h17M9.5 8V5h5v3" />
+      </>
+    ),
+  },
+  {
+    href: "/map",
+    group: "Home",
+    label: "Room map",
+    icon: (
+      <>
+        <path d="M3.5 6.5l5.5-2 6 2 5.5-2v13l-5.5 2-6-2-5.5 2z" />
+        <path d="M9 4.5v13M15 6.5v13" />
+      </>
+    ),
+  },
   {
     href: "/live",
+    group: "Home",
     label: "Live",
     icon: (
       <>
@@ -80,6 +121,7 @@ const MORE: Tab[] = [
   },
   {
     href: "/zones",
+    group: "Home",
     label: "Zones",
     icon: (
       <>
@@ -89,7 +131,19 @@ const MORE: Tab[] = [
     ),
   },
   {
+    href: "/teach",
+    group: "Home",
+    label: "Teach",
+    icon: (
+      <>
+        <path d="M3 9l9-4.5L21 9l-9 4.5z" />
+        <path d="M7 11.2V15c0 1.4 2.2 2.8 5 2.8s5-1.4 5-2.8v-3.8M21 9v5" />
+      </>
+    ),
+  },
+  {
     href: "/circle",
+    group: "Friends",
     label: "Circle",
     icon: (
       <>
@@ -100,17 +154,8 @@ const MORE: Tab[] = [
     ),
   },
   {
-    href: "/play",
-    label: "Sort It",
-    icon: (
-      <>
-        <path d="M5 8h14l-1.3 12H6.3z" />
-        <path d="M3.5 8h17M9.5 8V5h5v3" />
-      </>
-    ),
-  },
-  {
     href: "/privacy",
+    group: "Privacy",
     label: "Privacy",
     icon: (
       <>
@@ -120,27 +165,8 @@ const MORE: Tab[] = [
     ),
   },
   {
-    href: "/teach",
-    label: "Teach",
-    icon: (
-      <>
-        <path d="M3 9l9-4.5L21 9l-9 4.5z" />
-        <path d="M7 11.2V15c0 1.4 2.2 2.8 5 2.8s5-1.4 5-2.8v-3.8M21 9v5" />
-      </>
-    ),
-  },
-  {
-    href: "/map",
-    label: "Room map",
-    icon: (
-      <>
-        <path d="M3.5 6.5l5.5-2 6 2 5.5-2v13l-5.5 2-6-2-5.5 2z" />
-        <path d="M9 4.5v13M15 6.5v13" />
-      </>
-    ),
-  },
-  {
     href: "/people",
+    group: "Privacy",
     label: "People",
     icon: (
       <>
@@ -150,28 +176,8 @@ const MORE: Tab[] = [
     ),
   },
   {
-    href: "/impact",
-    label: "Impact",
-    icon: (
-      <>
-        <path d="M12 21c-4.5 0-7.5-3-7.5-7.2C4.500 8.500 9 5.500 19.500 4c.5 9.500-2 17-7.500 17z" />
-        <path d="M5 20.500c2.500-5 6-8.500 10.500-11" />
-      </>
-    ),
-  },
-  {
-    href: "/coach",
-    label: "Coach",
-    icon: (
-      <>
-        <circle cx="12" cy="12" r="8.500" />
-        <circle cx="12" cy="12" r="4.500" />
-        <circle cx="12" cy="12" r="0.800" />
-      </>
-    ),
-  },
-  {
     href: "/spot",
+    group: "Inspection",
     label: "Inspection (SPOT)",
     icon: (
       <>
@@ -181,6 +187,9 @@ const MORE: Tab[] = [
     ),
   },
 ];
+
+/** The inspection dashboard belongs to the inspection profile, or to a box that has a kit to show. */
+const INSPECTION = "/spot";
 
 const LINK_TEXT: Record<LinkState, string> = { live: "Live", connecting: "Connecting…", offline: "Offline, retrying" };
 
@@ -295,9 +304,15 @@ function useEscape(onClose: () => void) {
   }, [onClose]);
 }
 
-/** The screens that do not fit the tab bar. */
+/** The screens that do not fit the tab bar, grouped the way a day uses them. */
 function MoreSheet({ path, onClose }: { path: string; onClose: () => void }) {
   useEscape(onClose);
+  // Inspection shows on the inspection profile, on a box with a kit, or when that screen is the one open.
+  const { profile } = useProfileState();
+  const spot = useFetch((s) => api.spotOverview(s));
+  const inspection = profile.name === "inspection" || spot.data?.configured === true || path === INSPECTION;
+  const shown = MORE.filter((t) => t.href !== INSPECTION || inspection);
+  const groups = [...new Set(shown.map((t) => t.group))];
   return (
     <div className={`${ui.overlay} ${ui.overlayAboveTabs}`} onClick={onClose}>
       <div className={ui.sheet} role="dialog" aria-modal="true" aria-label="More screens" onClick={(e) => e.stopPropagation()}>
@@ -307,21 +322,28 @@ function MoreSheet({ path, onClose }: { path: string; onClose: () => void }) {
             Close
           </button>
         </div>
-        <ul className={ui.list}>
-          {MORE.map((t) => {
-            const on = path === t.href;
-            return (
-              <li key={t.href}>
-                <Link href={t.href} className={`${ui.moreLink} ${on ? ui.moreLinkOn : ""}`} aria-current={on ? "page" : undefined} onClick={onClose}>
-                  <svg className={ui.tabIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    {t.icon}
-                  </svg>
-                  <span>{t.label}</span>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+        {groups.map((group) => (
+          <section key={group} className={ui.section} aria-label={group}>
+            <h3 className={ui.sectionTitle}>{group}</h3>
+            <ul className={ui.list}>
+              {shown
+                .filter((t) => t.group === group)
+                .map((t) => {
+                  const on = path === t.href;
+                  return (
+                    <li key={t.href}>
+                      <Link href={t.href} className={`${ui.moreLink} ${on ? ui.moreLinkOn : ""}`} aria-current={on ? "page" : undefined} onClick={onClose}>
+                        <svg className={ui.tabIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          {t.icon}
+                        </svg>
+                        <span>{t.label}</span>
+                      </Link>
+                    </li>
+                  );
+                })}
+            </ul>
+          </section>
+        ))}
       </div>
     </div>
   );

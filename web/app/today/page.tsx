@@ -95,6 +95,10 @@ export default function TodayPage() {
             </ul>
           </>
         )}
+        {/* the coach is one use of the day, not a destination of its own: reached from here and from its note on Now */}
+        <Link href="/coach/" className={ui.btn}>
+          The {w.activity} coach: your blocks, breaks and what it guessed
+        </Link>
       </section>
 
       <section className={ui.section}>

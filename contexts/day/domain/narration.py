@@ -638,7 +638,12 @@ def _evening(f: dict, w: Words) -> Narration:
     tomorrow = (f.get("tomorrow") or "").strip().rstrip(".")
     tomorrow = re.sub(r"\s+tomorrow\b", "", tomorrow)
     tom_s = f" For tomorrow: {lower_first(tomorrow)}." if tomorrow else ""
-    return Narration(_tidy(f"{lead}.{win_s}{tom_s}"), _tidy(f"{lead_x}.{win_x}{slip_x}{' Tomorrow: ' + lower_first(tomorrow) + '.' if tomorrow else ''}"))
+    # Waste Watch's clause for the day, when there is one (a fact, so a model's rewrite of it stays grounded)
+    waste = (f.get("waste") or "").strip().rstrip(".")
+    waste_s = " On sorting: " + re.sub(r"\b\d+\b", lambda m: say_number(int(m.group(0))), waste) + "." if waste else ""
+    waste_x = f" Waste Watch: {waste}." if waste else ""
+    return Narration(_tidy(f"{lead}.{win_s}{waste_s}{tom_s}"),
+                     _tidy(f"{lead_x}.{win_x}{slip_x}{waste_x}{' Tomorrow: ' + lower_first(tomorrow) + '.' if tomorrow else ''}"))
 
 
 def _approval(f: dict, w: Words) -> Narration:

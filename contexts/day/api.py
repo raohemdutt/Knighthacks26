@@ -15,7 +15,8 @@
                                desk, breaks and their likely triggers with evidence), the day in words, one or two
                                suggestions, the running forecast calibration, and the notes sent when blocks ended.
                                Evidence is cited by id in the events; here each one also gets its words and, when
-                               Memory has a picture of that moment, a `frame_ref` the phone can open.
+                               Memory has a picture of that moment, a `frame_ref` the phone can open. `feedback` is
+                               the "Was that right?" view (GET /api/day/coach/feedback) when that loop is wired, else null.
 
 - GET  /api/day/brief?moment=  the day in words (D3): the latest narration of each moment (morning, now, replan, coach,
                                evening) with `spoken` for the ear and `display` for the screen, the asks for pending
@@ -53,7 +54,7 @@ class BriefBody(BaseModel):
 
 
 def day_router(day: DayLoop, publish: Callable[[object], Awaitable] | None = None, guard: Callable | None = None,
-               memory=None, clock: Callable[[], datetime] = lambda: datetime.now(UTC)) -> APIRouter:
+               memory=None, clock: Callable[[], datetime] = lambda: datetime.now(UTC), feedback=None) -> APIRouter:
     router = APIRouter(prefix="/api/day", tags=["day"])
     writes = [Depends(guard)] if guard else []
     p, t = day.planner, day.tracker
@@ -166,6 +167,7 @@ def day_router(day: DayLoop, publish: Callable[[object], Awaitable] | None = Non
             "calibration": body["calibration"].model_dump() if body["calibration"] else None, "block_minutes": body["block_minutes"],
             "desk_minutes_today": c.habits_desk_minutes(which, now),
             "notes": [noted(n) for n in notes], "latest": coach_latest(now), "limits": c.limits(),
+            "feedback": feedback.view(now) if feedback else None,  # "Was that right?" (CoachFeedback), when it is wired
         }
 
     @router.get("/plan")

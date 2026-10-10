@@ -23,6 +23,17 @@
   flex: none;
 }
 
+/* the "No frame stored" placeholder has to fit a thumbnail this small */
+.thumb span {
+  font-size: 11px;
+  line-height: 1.15;
+}
+
+.thumb svg {
+  width: 20px;
+  height: 20px;
+}
+
 .question {
   font-weight: 650;
   margin-bottom: 8px !important;
