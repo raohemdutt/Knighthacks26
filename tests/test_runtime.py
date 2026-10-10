@@ -73,3 +73,36 @@ def test_llama_streams_pieces_and_returns_the_whole_reply():
     got = []
     r = rt.chat([ChatMessage(role="user", content="where?")], on_text=got.append)
     assert got == ["On", " the", " desk."] and r.content == "On the desk."
+
+
+def test_a_waiting_question_goes_before_background_captions():
+    """On the Jetson questions queued behind keyframe captions on the one llama-server slot."""
+    import threading
+    import time
+
+    from runtime.llama import PriorityGate
+
+    gate, order = PriorityGate(), []
+    running = threading.Event()
+
+    def caption_in_flight():
+        with gate.slot():
+            running.set()
+            time.sleep(0.2)
+            order.append("caption 1")
+
+    def job(name, urgent, delay):
+        time.sleep(delay)
+        with gate.slot(urgent):
+            order.append(name)
+
+    first = threading.Thread(target=caption_in_flight)
+    first.start()
+    running.wait()
+    threads = [threading.Thread(target=job, args=("caption 2", False, 0.0)),
+               threading.Thread(target=job, args=("question", True, 0.05))]
+    for t in threads:
+        t.start()
+    for t in [first, *threads]:
+        t.join()
+    assert order == ["caption 1", "question", "caption 2"]  # the question jumped the queued caption

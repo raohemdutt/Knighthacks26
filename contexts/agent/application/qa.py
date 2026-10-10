@@ -137,6 +137,8 @@ LAST_N = re.compile(r"(?:last|past) (?P<n>\d+|an?) ?(?P<unit>hours?|minutes?|min
 class Evidence:
     lines: list[str] = field(default_factory=list)
     citations: list[Citation] = field(default_factory=list)
+    system: str | None = None  # a prompt for this shape of question, instead of SYSTEM
+    direct: str | None = None  # an answer written from the data itself: no model call (lists the model garbles)
 
     def add(self, line: str, citation: Citation) -> None:
         self.lines.append(line)
@@ -215,6 +217,28 @@ def upcoming_window(q: str, now: datetime, tz) -> tuple[datetime, datetime]:
 
 
 MAX_EPISODE_LINES = 12
+MAX_LISTED = 6  # items read out in a direct list answer
+DUE_WORDS = re.compile(r"\b(due|deadlines?|homework|assignments?)\b")
+SYSTEM_RECAP = (
+    "You are Atlas, a home camera assistant. Using only the evidence, recap what happened in time order, "
+    "one short clause per hour that had something, with its time, in under 40 words. "
+    f'If the evidence is empty, say "{NO_EVIDENCE}"'
+)
+
+
+def tidy(text: str) -> str:
+    """A small model sometimes ends a real answer with the no-evidence line; keep the answer, drop the hedge."""
+    text = text.strip()
+    if text != NO_EVIDENCE and text.endswith(NO_EVIDENCE):
+        text = text[: -len(NO_EVIDENCE)].rstrip()
+    return text
+
+
+def window_words(q: str) -> str:
+    for words in ("today", "tonight", "tomorrow", "this weekend", "next week", "this week"):
+        if words in q:
+            return words
+    return "soon"
 TRACE_BACK = timedelta(hours=48)  # how far back "what happened to the package?" looks for tagged episodes
 
 
@@ -280,6 +304,10 @@ class QA:
             return await self.tool_loop(question)
         if not evidence:
             return Answer(NO_EVIDENCE, [], self.runtime.model_info().version)
+        if evidence.direct:
+            if stream:
+                stream(evidence.direct)
+            return Answer(evidence.direct, evidence.citations, self.runtime.model_info().version)
         return await self._answer_from(question, evidence, stream)
 
     # --- tools (A1) ---
@@ -305,6 +333,7 @@ class QA:
                 ref = e.keyframe_refs[0] if e.keyframe_refs else None
                 ev.add(f"{self._t(e.start)} on {e.camera_id}: {text}", Citation(episode_id=e.id, frame_ref=ref, ts=e.start))
             return
+        ev.system = SYSTEM_RECAP  # a recap names every hour that had something, not just one of them
         for b in self.memory.window(start, end).hours:
             ref = b.keyframe_refs[0] if b.keyframe_refs else None
             eid = b.episode_ids[0] if b.episode_ids else None
@@ -389,6 +418,11 @@ class QA:
         for i in items[:10]:
             extra = f" ({i.summary})" if i.summary else ""
             ev.add(f"{i.title}: {self._t(i.when)}{extra} [{i.connector}]", Citation(url=i.url, title=i.title, ts=i.when))
+        if items:  # on the Jetson the 4B model garbled these lists; the list itself is the answer
+            lead = "Due" if DUE_WORDS.search(q) else "Coming up"
+            shown = [f"{i.title}, {self._t(i.when)}" for i in items[:MAX_LISTED]]
+            more = f", and {len(items) - MAX_LISTED} more" if len(items) > MAX_LISTED else ""
+            ev.direct = f"{lead} {window_words(q)}: " + "; ".join(shown) + more + "."
 
     def prefetch(self, question: str) -> Evidence | None:
         q = question.lower().strip()
@@ -419,9 +453,9 @@ class QA:
 
     async def _answer_from(self, question: str, ev: Evidence, stream: Callable[[str], None] | None = None) -> Answer:
         prompt = "Evidence:\n" + "\n".join(f"- {line}" for line in ev.lines) + f"\n\nQuestion: {question}"
-        r = await self._chat([ChatMessage(role="system", content=SYSTEM), ChatMessage(role="user", content=prompt)],
+        r = await self._chat([ChatMessage(role="system", content=ev.system or SYSTEM), ChatMessage(role="user", content=prompt)],
                              stream=stream)
-        return Answer(r.content.strip() or NO_EVIDENCE, ev.citations, r.model_version)
+        return Answer(tidy(r.content) or NO_EVIDENCE, ev.citations, r.model_version)
 
     # --- open-ended (tool loop) ---
 
