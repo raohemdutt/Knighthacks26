@@ -37,42 +37,69 @@ run can be killed at any moment and started again:
 
 A call that fails writes nothing: unknown ids, a target that is not text, an example the contract would refuse.
 
-    python lab/dataset.py <dataset folder> [--text-only]
+A dataset can carry a frozen split: split.json, beside examples.jsonl, lists the example ids that train and the ids
+held out for the eval gate. load_split() is the one place the trainer and the gate decide membership. Nothing else
+counts: not a question's origin, not a hash of its id, not the order of examples.jsonl.
+
+    from lab.dataset import load_split
+
+    split = load_split("fixtures/learning/tool-calling-fixture", require_images=False)
+    split.train          # DatasetExample objects, in the order split.json lists them
+    split.held_out       # the same for the gate's examples, which no training run may see
+    split.sha256         # of split.json; the ledger row of every run that used the split records it
+
+It refuses a split that is not whole and clean, so a run cannot start on a leaky one: the dataset id must match;
+every example must be listed once, on one side; no listed id may be missing from examples.jsonl; no frame_ref may
+be on both sides (a frame stays on one side, and with it the group of questions that share it); the same question
+(a text-only example's `context`, with case, spacing and closing punctuation folded) may not be on both sides; and
+the held-out side must hold at least MIN_HELD_OUT examples, the floor for a gate that may deploy. A smaller floor
+can be asked for by name, to report the scores of a short held-out set; split.meets_deploy_floor then says False,
+and a gate that reads it that way reports the scores and never deploys. A problem names ids and counts and never
+quotes a caption, a question or a label.
+
+    python lab/dataset.py <dataset folder> [--text-only] [--split]
 
 prints one JSON line (ok, dataset_id, examples, labeled, pending, problems) and exits 0 when the folder holds up
-and 1 when it does not. The entry point writes a ledger row (verb dataset-check) and refuses to run while
-lab/state/STOP exists.
+and 1 when it does not. With --split it also checks split.json as load_split() does and adds a `split` entry
+(sha256, train, held_out, held_out_frame_refs) to the line; the ledger row then carries refs.split_sha256, which is
+the record that the split was frozen as it stands. The entry point writes a ledger row (verb dataset-check) and
+refuses to run while lab/state/STOP exists.
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
 import sys
 import tempfile
 import time
-from collections.abc import Mapping, Sequence
+from collections import Counter
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any, NamedTuple
+from typing import Any, Literal, NamedTuple
 
 if not __package__:  # run by path on a pod: the repo root, one folder up, is what holds contracts/ and lab/
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from contracts.learning import DatasetExample, DatasetManifest
 from lab.machine import stop
 from lab.machine.lock import FileLock
 from lab.machine.record import recorded
 
-__all__ = ["MANIFEST", "EXAMPLES", "IMAGES", "LOCK_NAME", "LOCK_TIMEOUT", "DatasetError", "Dataset", "Written",
-           "has_target", "load", "check", "write_target", "write_targets", "main"]
+__all__ = ["MANIFEST", "EXAMPLES", "IMAGES", "SPLIT", "MIN_HELD_OUT", "LOCK_NAME", "LOCK_TIMEOUT", "DatasetError",
+           "Dataset", "Split", "Written", "has_target", "load", "check", "load_split", "write_target",
+           "write_targets", "main"]
 
 MANIFEST = "manifest.json"
 EXAMPLES = "examples.jsonl"
 IMAGES = "images"
+SPLIT = "split.json"
+MIN_HELD_OUT = 50              # held-out examples a task needs before the eval gate may deploy (the owner's ruling)
 LOCK_NAME = ".examples.lock"   # in the dataset folder; held only while labels are written
 LOCK_TIMEOUT = 30.0            # seconds a write waits for another labeler
 REPLACE_TRIES = 6              # os.replace attempts; Windows refuses while a scanner holds the file for a moment
@@ -364,25 +391,188 @@ def write_target(root: str | os.PathLike[str], example_id: str, label: str, *, o
     return write_targets(root, {example_id: label}, overwrite=overwrite, timeout=timeout)
 
 
+# --- the frozen split -------------------------------------------------------------------
+
+class _SplitFile(BaseModel):
+    """split.json as stored: the ids that train, the ids held out, and a line on how they were drawn."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: Literal[1]
+    dataset_id: str
+    rule: str = ""
+    train: list[str]
+    held_out: list[str]
+
+
+@dataclass(frozen=True)
+class Split:
+    """A dataset and its frozen split: the examples that train and the examples held out, as split.json lists them."""
+
+    data: Dataset
+    train: tuple[DatasetExample, ...]      # in the order split.json lists them
+    held_out: tuple[DatasetExample, ...]   # likewise; no training run may see these
+    sha256: str                            # of split.json, its line endings read as LF
+
+    @property
+    def dataset_id(self) -> str:
+        return self.data.dataset_id
+
+    @property
+    def held_out_frame_refs(self) -> int:
+        """How many distinct frame_refs the held-out examples stand on. Report it beside len(held_out): examples that
+        share a frame_ref are one case asked several ways, not independent items."""
+        return len({example.frame_ref for example in self.held_out})
+
+    @property
+    def meets_deploy_floor(self) -> bool:
+        """Whether the held-out side holds the MIN_HELD_OUT examples a gate needs before it may deploy. False only for
+        a split read with a smaller min_held_out to report scores: those are reported and never deploy."""
+        return len(self.held_out) >= MIN_HELD_OUT
+
+
+def _question_key(text: str | None) -> str:
+    """A question's wording with case, spacing and closing punctuation folded away, to tell the same question twice."""
+    return " ".join((text or "").lower().split()).rstrip("?.! ")
+
+
+def _listed(ids: Sequence[str], shown: int = 5) -> str:
+    """The first few ids, quoted, and how many more there are."""
+    text = ", ".join(repr(name) for name in ids[:shown])
+    return text + (f" and {len(ids) - shown} more" if len(ids) > shown else "")
+
+
+def _shared(train: Sequence[DatasetExample], held_out: Sequence[DatasetExample],
+            key: Callable[[DatasetExample], str]) -> tuple[int, str, str] | None:
+    """How many keys both sides have, with a train id and a held-out id that share one; None when they share none.
+    An empty key is no key."""
+    first: dict[str, str] = {}
+    for example in train:
+        if name := key(example):
+            first.setdefault(name, example.id)
+    clashes: dict[str, tuple[str, str]] = {}
+    for example in held_out:
+        if (name := key(example)) and name in first:
+            clashes.setdefault(name, (first[name], example.id))
+    if not clashes:
+        return None
+    train_id, held_out_id = next(iter(clashes.values()))
+    return len(clashes), train_id, held_out_id
+
+
+def _read_split(root: Path, problems: list[str]) -> tuple[_SplitFile, str] | None:
+    """split.json parsed, with its sha256; None, with the problem, when it is missing or is not a split file."""
+    try:
+        text = _text(root / SPLIT)
+    except FileNotFoundError:
+        problems.append(f"{SPLIT}: missing")
+        return None
+    except (OSError, UnicodeDecodeError) as exc:
+        problems.append(f"{SPLIT}: cannot be read ({type(exc).__name__})")
+        return None
+    try:
+        listed = _SplitFile.model_validate_json(text)
+    except ValidationError as err:
+        problems.append(f"{SPLIT}: {_why(err)}")
+        return None
+    return listed, hashlib.sha256(text.replace("\r\n", "\n").encode("utf-8")).hexdigest()
+
+
+def _inspect_split(data: Dataset, min_held_out: int) -> tuple[Split | None, list[str]]:
+    problems: list[str] = []
+    read = _read_split(data.root, problems)
+    if read is None:
+        return None, problems
+    listed, digest = read
+    if listed.dataset_id != data.dataset_id:
+        problems.append(f"{SPLIT}: is for dataset {listed.dataset_id!r}, but the folder holds {data.dataset_id!r}")
+    by_id = {example.id: example for example in data.examples}
+    for side, ids in (("train", listed.train), ("held_out", listed.held_out)):
+        missing = sorted({name for name in ids if name not in by_id})
+        if missing:
+            problems.append(f"{SPLIT}: {side} ids that {EXAMPLES} does not have ({len(missing)}): {_listed(missing)}")
+        repeated = sorted(name for name, times in Counter(ids).items() if times > 1)
+        if repeated:
+            problems.append(f"{SPLIT}: {side} ids listed more than once ({len(repeated)}): {_listed(repeated)}")
+    train_ids, held_out_ids = set(listed.train), set(listed.held_out)
+    both = sorted(train_ids & held_out_ids)
+    if both:
+        problems.append(f"{SPLIT}: ids listed in both train and held_out ({len(both)}): {_listed(both)}")
+    on_a_side = train_ids | held_out_ids
+    unlisted = [example.id for example in data.examples if example.id not in on_a_side]
+    if unlisted:
+        problems.append(f"{SPLIT}: examples listed on neither side ({len(unlisted)}): {_listed(unlisted)}")
+
+    train = [by_id[name] for name in listed.train if name in by_id and name not in held_out_ids]
+    held_out = [by_id[name] for name in listed.held_out if name in by_id and name not in train_ids]
+    bare = [example.id for example in (*train, *held_out) if not example.frame_ref.strip()]
+    if bare:
+        problems.append(f"{SPLIT}: examples with no frame_ref, which the split cannot keep on one side "
+                        f"({len(bare)}): {_listed(bare)}")
+    for what, key in (("frame_refs", lambda example: example.frame_ref.strip()),
+                      # a picture with a caption is a different input from the same caption beside another picture
+                      ("questions", lambda example: "" if example.image else _question_key(example.context))):
+        if clash := _shared(train, held_out, key):
+            count, train_id, held_out_id = clash
+            problems.append(f"{SPLIT}: {what} on both sides ({count}), for example train {train_id!r} and "
+                            f"held_out {held_out_id!r}")
+    held_out_count = len({example.id for example in held_out})   # real examples, once each
+    if held_out_count < min_held_out:
+        problems.append(f"{SPLIT}: held_out has {held_out_count} examples, below the {min_held_out} a gate "
+                        "needs before it may deploy")
+    if not train:
+        problems.append(f"{SPLIT}: train is empty")
+    if problems:
+        return None, problems
+    return Split(data, tuple(train), tuple(held_out), digest), []
+
+
+def load_split(root: str | os.PathLike[str], *, require_images: bool = True,
+               min_held_out: int = MIN_HELD_OUT) -> Split:
+    """The dataset in the folder with its frozen split (see the module docstring).
+
+    DatasetError, listing every problem, when the dataset does not hold up (as load() would say) or split.json is
+    missing, is not a split file, or does not fit the dataset. min_held_out is the floor for a gate that may deploy;
+    pass a smaller number only to report the scores of a short held-out set (the split then has meets_deploy_floor
+    False and must not deploy) or in a test."""
+    split, problems = _inspect_split(load(root, require_images=require_images), min_held_out)
+    if split is None:
+        raise DatasetError(problems)
+    return split
+
+
 # --- the entry point ----------------------------------------------------------------------
 
 @recorded("dataset-check")
 @stop.guarded
 def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
-    """Check a dataset export against contracts/learning.py and count what is labeled."""
+    """Check a dataset export against contracts/learning.py and count what is labeled; with --split, check its
+    frozen split too."""
     parser = argparse.ArgumentParser(prog="python lab/dataset.py", description=main.__doc__, allow_abbrev=False)
     parser.add_argument("dataset", help="the <dataset_id> folder: manifest.json, examples.jsonl, images/")
     parser.add_argument("--text-only", action="store_true",
                         help="the examples carry no picture (an empty image is allowed)")
+    parser.add_argument("--split", action="store_true",
+                        help="also check split.json, and record its sha256 in the ledger row")
     args = parser.parse_args(argv)
     data, problems = _inspect(Path(args.dataset), require_images=not args.text_only)
     if data is None:
         return {"ok": False, "outcome": "invalid", "problems": problems,
                 "error": str(DatasetError(problems))}
     labeled = len(data.labeled())
-    return {"ok": True, "outcome": "ok", "dataset_id": data.dataset_id, "examples": len(data.examples),
-            "labeled": labeled, "pending": len(data.examples) - labeled, "problems": [],
-            "refs": {"dataset_id": data.dataset_id}}
+    answer: dict[str, Any] = {"ok": True, "outcome": "ok", "dataset_id": data.dataset_id,
+                              "examples": len(data.examples), "labeled": labeled,
+                              "pending": len(data.examples) - labeled, "problems": [],
+                              "refs": {"dataset_id": data.dataset_id}}
+    if args.split:
+        split, problems = _inspect_split(data, MIN_HELD_OUT)
+        if split is None:
+            return {"ok": False, "outcome": "invalid", "problems": problems,
+                    "error": str(DatasetError(problems))}
+        answer["split"] = {"sha256": split.sha256, "train": len(split.train), "held_out": len(split.held_out),
+                           "held_out_frame_refs": split.held_out_frame_refs}
+        answer["refs"]["split_sha256"] = split.sha256
+    return answer
 
 
 if __name__ == "__main__":

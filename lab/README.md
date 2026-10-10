@@ -251,6 +251,44 @@ for example in data.pending():            # the examples that have no target yet
 and two labelers lose nothing: `pending()` is exactly the work left. Same text again is a no-op; different text
 needs `overwrite=True`.
 
+A dataset folder can also carry a frozen split: `split.json` beside `examples.jsonl`, with the example ids that
+train and the ids held out for the eval gate. It is drawn once, before any training run, and not edited afterwards
+(a new split is a new baseline for the current, candidate and teacher scores). `load_split` is how the trainer and
+the gate decide membership, and nothing else decides it:
+
+```python
+from lab.dataset import load_split
+
+split = load_split("fixtures/learning/tool-calling-fixture", require_images=False)
+split.train                 # DatasetExample objects, in the order split.json lists them: what the trainer reads
+split.held_out              # the gate's examples, which no training run may see
+split.sha256                # of split.json; the ledger row of every run and score that used the split records it
+split.held_out_frame_refs   # 4: how many distinct cases the held-out examples stand on
+split.meets_deploy_floor    # True: 58 held-out examples is at least the 50 a gate needs before it may deploy
+```
+
+It raises `DatasetError`, naming every problem by id and never quoting a question, caption or label, unless the
+split names this dataset, lists every example once on one side, lists no id that `examples.jsonl` lacks, keeps every
+`frame_ref` on one side (and with it the group of questions that share it), keeps the same question (a text-only
+example's `context`, case, spacing and closing punctuation folded) off both sides, and holds at least
+`MIN_HELD_OUT` = 50 examples out. 50 is the owner's ruling (`lab/refine/learning/OWNER_RULINGS.md`, ruling 1): at
+least 50 held-out items per task before the gate may deploy; fewer is reported but never deploys. So a short
+held-out set is read only when asked for (`min_held_out=`), and then `split.meets_deploy_floor` is False and the
+gate rejects. An example added to a rebuilt dataset belongs to neither side until the split is drawn again.
+
+`fixtures/learning/tool-calling-fixture/split.json` holds out every group that has a golden question's wording (the
+questions `contexts/agent/eval.py` scores): 58 examples standing on 4 frame_refs, with the other 84 examples in 12
+groups to train on. Report `held_out_frame_refs` beside the example count: 58 wordings of 4 cases are not 58
+independent items. To record the freeze, once, before the first training run:
+
+```
+python lab/dataset.py fixtures/learning/tool-calling-fixture --text-only --split
+```
+
+It prints the usual line plus a `split` entry (`sha256`, `train`, `held_out`, `held_out_frame_refs`) and writes a
+`dataset-check` ledger row whose `refs.split_sha256` is the hash, so the row is older than any run that cites it.
+A split that does not hold up exits 1 and the row says `invalid`.
+
 `lab/fixture_dataset.py` builds the tool-calling task's dataset without any camera from
 `fixtures/golden/questions.yaml` and `memory.yaml`, in the same layout, into
 `fixtures/learning/tool-calling-fixture/`:
