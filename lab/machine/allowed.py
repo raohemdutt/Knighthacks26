@@ -35,13 +35,15 @@ cost inside a sitting), PowerShell, every MCP server but Notion, and rm of any k
 the launcher, not a sitting, deletes a finished clone. DENIED adds a second line for
 the worst cases: no pod launch or stop except through the queue verbs, no push to
 main or force push, no merge of a pull request, no recursive force delete, no Notion
-page deletion, no bypassing the commit hook, no rebase that runs a command (--exec,
---exec=..., a shorter prefix such as --ex, or -x first or after other arguments: git
-runs that command itself, so no deny rule ever sees it), nothing from the owner's notes,
-the machine's state files or .env, and no allowed shell command but the interpreter
-(cp, mv, touch, an output redirect) whose text names the state dir. A force push
-includes a + refspec anywhere in the push, and a remote delete includes a :refs/...
-refspec, because git push origin ctx/* also takes a teammate's branch after its own.
+page deletion, no bypassing the commit hook (--no-verify or a prefix of it, or -n
+first, after other arguments, or folded after one short flag as in -an), no rebase
+that runs a command (--exec, --exec=..., a shorter prefix such as --ex, or -x first or
+after other arguments: git runs that command itself, so no deny rule ever sees it),
+nothing from the owner's notes, the machine's state files or .env, and no allowed
+shell command but the interpreter (cp, mv, touch, an output redirect) whose text
+names the state dir. A force push includes a + refspec anywhere in the push, and a
+remote delete includes a :refs/... refspec, because git push origin ctx/* also takes
+a teammate's branch after its own.
 
 Verbs that do not exist yet. When this file was written lab/__main__.py registered
 only ready, resume and stop. The other verbs named here do not exist yet; their
@@ -240,10 +242,27 @@ _PUSH_TO_MAIN: list[str] = [
     )
 ]
 
-#: No force push, no remote delete, no mirror of every ref, and the commit hook (which
-#: strips attribution) is never bypassed. A pattern must not end in ":*": the CLI reads
-#: that as its older spelling of a trailing " *", so a delete refspec is caught as :ctx/*
-#: and as :refs/* (:refs/heads/ctx/<theirs>). The allow rule git push origin ctx/* takes
+#: git commit flags that take no argument and so may stand before n in one short-flag
+#: group (-an is -a -n): -a, -s, -q and -v.
+_COMMIT_FLAGS_BEFORE_N: tuple[str, ...] = ("a", "s", "q", "v")
+
+#: The commit hook (which strips attribution) is never bypassed. --no-v* is --no-verify
+#: and every prefix git accepts for it. -n* after "git commit*" is -n as the first
+#: argument or after other arguments (git commit -m wip -n), alone or first in a group
+#: (-nq). The group rules catch -n folded after one flag (-an, -sn). Not caught: -n
+#: third or later in a group (-asn), since deny rules are a second line, not a boundary;
+#: and -amn is not -n at all (the n is -m's message). A message with " -n" in it is
+#: refused too: reword it.
+_COMMIT_NO_VERIFY: list[str] = [
+    "Bash(git commit *--no-v*)",
+    "Bash(git commit* -n*)",
+    *(f"Bash(git commit* -{flag}n*)" for flag in _COMMIT_FLAGS_BEFORE_N),
+]
+
+#: No force push, no remote delete, no mirror of every ref, and the commit hook is never
+#: bypassed (_COMMIT_NO_VERIFY). A pattern must not end in ":*": the CLI reads that as its
+#: older spelling of a trailing " *", so a delete refspec is caught as :ctx/* and as
+#: :refs/* (:refs/heads/ctx/<theirs>). The allow rule git push origin ctx/* takes
 #: further refspecs after the branch, so a + refspec is refused anywhere after git push:
 #: +ctx/<theirs> force-updates a teammate's branch without --force.
 _PUSH_AND_COMMIT_FLAGS: list[str] = [
@@ -260,8 +279,7 @@ _PUSH_AND_COMMIT_FLAGS: list[str] = [
     "Bash(git push *--all*)",
     "Bash(git push *--prune*)",
     "Bash(git push *--no-verify*)",
-    "Bash(git commit *--no-verify*)",
-    "Bash(git commit -n*)",
+    *_COMMIT_NO_VERIFY,
 ]
 
 #: git rebase runs the argument of --exec (or -x) as a shell command after each commit it
