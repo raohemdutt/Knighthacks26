@@ -110,6 +110,8 @@ class RequestWindow(_TelemetryEvent):
     engine: str | None = None  # engine and build, e.g. "llama.cpp b6123", "vllm b1388b1"
     since_load: int | None = None  # 1 for the first request after the model loaded, 2 for the next ...
     clock: str | None = None  # node whose clock stamped started/first_token/ended when it is not `node`
+    kind: str | None = None  # the kind of work, as the routing hook names it: "label", "caption", "chat", "eval", ...
+    policy: str | None = None  # the routing policy that chose `target` (runtime/routing.py), e.g. "capability"
 
     @model_validator(mode="after")
     def _window_in_order(self) -> "RequestWindow":
@@ -188,6 +190,7 @@ class JoulesPerAnswer(_TelemetryEvent):
     request_id: str
     target: str | None = None
     model: str | None = None
+    kind: str | None = None  # the request's kind of work, copied from telemetry.request (the energy policy reads it)
     started: datetime
     ended: datetime
     clock: str  # the clock started, ended and idle_ts are on: "jetson", or the node's own
