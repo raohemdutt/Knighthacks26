@@ -55,6 +55,24 @@ bluetoothctl
   connect XX:XX:XX:XX:XX:XX
 ```
 
+## 5. On-device model (`atlas-llm`, R8)
+
+Qwen3.5-4B (Q4_K_M) plus its vision projector, served by llama.cpp on port 8080
+(localhost only). The files live in `data/models/<version>/` with a `manifest.json`;
+`data/models/current` points at the active version.
+
+```bash
+python3 jetson/make_manifest.py data/models/atlas-base --base Qwen/Qwen3.5-4B   # sha256s + manifest.json
+ln -sfn atlas-base data/models/current
+sudo ./jetson/jetson_setup.sh      # installs and starts the atlas-llm service (safe to re-run)
+journalctl -u atlas-llm -f
+```
+
+The gateway reaches it with `ATLAS_LLM_URL=http://127.0.0.1:8080` in `.env`; the
+checked-in `config/models.yaml` stays on `fake` so laptops and CI keep working.
+Thinking mode is off (`--reasoning-budget 0`): the runtime's small token limits
+would otherwise be spent before the answer starts.
+
 ## Firmware update (boards with old factory firmware)
 
 JetPack 6 and 7 need firmware 36.x on the board. Boards with older firmware
