@@ -20,7 +20,8 @@ Disc = tuple[float, float, float]  # x, y, radius in metres
 
 CELL_M = 0.1
 REACH_M = 0.35  # how close to a bin's edge a walker has to get to drop something in
-DROP_S = 1.0  # par allows this long for the drop itself
+START_S = 1.5  # par allows this long to read the route and set off ...
+DROP_S = 1.0  # ... and this long for the drop itself
 SQRT2 = math.sqrt(2)
 
 
@@ -187,7 +188,7 @@ def plan_route(grid: FloorGrid, start: Point, target: Point, footprint_radius: f
     else:  # the walker's own spot is not free (in a chair, say): out to the first free cell, then the walk
         pulled = [start] + smooth(grid, points)
     d = length(pulled)
-    return Route(pulled, d, d / walk_speed + DROP_S, cells)
+    return Route(pulled, d, START_S + d / walk_speed + DROP_S, cells)
 
 
 def blocked_ahead(grid: FloorGrid, route: Route, at: Point, ignore_within: float = 0.45) -> bool:

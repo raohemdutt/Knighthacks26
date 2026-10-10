@@ -22,7 +22,7 @@ perception:
   - {type: perception.person.lost, at: 30}
   - {type: perception.identity.changed, at: 31, enabled: false, members: []}  # leave recognition off, so habits stay with the one unnamed tracker
   # The room twin's Sort It round (contexts/perception/fakes: sort_round): a face held 2 s while the can is in hand
-  # starts it; the can entering the recycling zone at 47 s scores it. Then nobody faces the camera (which_bin).
+  # starts it; the can entering the recycling zone at 45 s scores it. Then nobody faces the camera (which_bin).
   - {type: perception.faces.counted, at: 37}
   - {type: perception.faces.counted, at: 39}
   - {type: perception.faces.counted, at: 49, count: 1, facing: 0}

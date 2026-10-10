@@ -52,14 +52,14 @@ def can_recycled(at: int = 20) -> list[Step]:
 
 ROOM_LENGTH_S = 62
 _WALK = ((0.60, 0.99), (0.60, 0.99), (0.60, 0.99), (0.60, 0.99), (0.60, 0.99),  # 36-40 s: stands holding the can; the round starts
-         (0.638, 0.8875), (0.631, 0.80), (0.517, 0.745), (0.362, 0.74), (0.241, 0.74), (0.224, 0.7375))  # 41-46 s: around the friend
+         (0.638, 0.8875), (0.586, 0.75), (0.38, 0.74), (0.224, 0.7375))  # 41-44 s: around the friend, at a walk
 
 
 def sort_round(at: int = 36) -> list[Step]:
     """A Sort It round on the bin camera: someone stands holding a can, a friend steps into the straight way to the
     bins, the player walks around them and drops the can in recycling. The can stays out of every zone until the drop."""
     walk = [(at + i, "cam-door", _track(5, "person", x, y, 0.2, 0.6)) for i, (x, y) in enumerate(_WALK)]
-    stay = [(at + len(_WALK) + i, "cam-door", _track(5, "person", 0.224, 0.7375, 0.2, 0.6)) for i in range(3)]
+    stay = [(at + len(_WALK) + i, "cam-door", _track(5, "person", 0.224, 0.7375, 0.2, 0.6)) for i in range(5)]
     carried = [(at + i, "cam-door", _track(6, "can", x + 0.05, min(y - 0.42, 0.53), 0.04, 0.07)) for i, (x, y) in enumerate(_WALK)]
     dropped = [(at + len(_WALK) + i, "cam-door", _track(6, "can", 0.15, 0.8, 0.04, 0.07)) for i in range(2)]
     friend = [(s, "cam-door", _track(8, "person", 0.448, 0.875, 0.2, 0.6)) for s in range(at + 4, at + 13)]  # steps in at 40 s

@@ -363,7 +363,7 @@ def build(settings: Settings | None = None) -> Atlas:
         bus.subscribe("perception.person.identified", room.on_identified, replay=True)
         bus.subscribe("perception.person.lost", room.on_lost, replay=True)
         bus.subscribe("play.round.started", room.on_round_started)  # live only: plans and publishes play.route.planned
-        bus.subscribe("play.round.scored", room.on_round_scored)
+        bus.subscribe("play.round.scored", room.on_round_scored, replay=True)  # state only: the sitting's tally
         if game is not None:
             game.pick_item = room.held_item  # a round is about the thing the camera sees in the player's hand
 

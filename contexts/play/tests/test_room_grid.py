@@ -49,7 +49,7 @@ def test_route_goes_around_a_wall_of_furniture():
     assert route is not None and clear_of_furniture(plan, route.points, plan.body_radius)
     assert max(y for _, y in route.points) > 2.8  # down past the end of the shelf and back up
     assert route.distance_m > 5.0 > math.hypot(3.0, 0.0)  # much longer than the straight line it could not take
-    assert abs(route.par_s - (route.distance_m / 1.0 + 1.0)) < 1e-9  # walking speed, plus the drop
+    assert abs(route.par_s - (1.5 + route.distance_m / 1.0 + 1.0)) < 1e-9  # setting off, walking speed, the drop
     assert abs(length(route.points) - route.distance_m) < 1e-9
     assert len(route.points) <= 6  # smoothed: a few corners, not a staircase of cells
     assert route.points[0] == (0.5, 0.5)

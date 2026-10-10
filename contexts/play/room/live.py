@@ -151,6 +151,7 @@ class RoomLive:
         self.now: datetime | None = None  # the newest observation's time
         self.round: ActiveRound | None = None
         self.result: dict | None = None
+        self.sessions: dict[str, list[int]] = {}  # session -> [right, rounds], for "3 of 4 right"
         self.assist: dict | None = None
 
     def set_plan(self, plan: RoomPlan) -> None:
@@ -301,9 +302,12 @@ class RoomLive:
     def on_round_scored(self, e: RoundScored) -> None:
         r = self.round if self.round and self.round.round_id == e.round_id else None
         par = next((p.par_s for p, _ in r.routes if p.reachable), None) if r else None
+        tally = self.sessions.setdefault(e.session_id, [0, 0])
+        tally[0] += int(e.correct)
+        tally[1] += 1
         self.result = {"round_id": e.round_id, "item": e.item, "correct": e.correct, "seconds": round(e.seconds, 1),
                        "score": e.score, "players": e.players, "par_s": par, "bin": self.rules.bin_for(e.item),
-                       "ts": e.ts.isoformat()}
+                       "ts": e.ts.isoformat(), "right": tally[0], "rounds": tally[1]}
         if r:
             self.round = None
 

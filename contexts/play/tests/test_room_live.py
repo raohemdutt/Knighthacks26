@@ -111,7 +111,7 @@ def test_round_start_plans_a_route_from_the_player_and_publishes_it():
     end = route.points[-1]
     recycling, trash = room.plan.bins()["recycling"], room.plan.bins()["trash"]
     assert math.hypot(end.x - recycling.at[0], end.y - recycling.at[1]) < 0.62 < math.hypot(end.x - trash.at[0], end.y - trash.at[1])
-    assert abs(route.par_s - (route.distance_m / 1.2 + 1.0)) < 0.1 and 1.0 < route.distance_m < 2.5
+    assert abs(route.par_s - (route.distance_m / 1.2 + 2.5)) < 0.1 and 1.0 < route.distance_m < 2.5
     state = room.state(at(0))
     assert state["round"]["item"] == "can" and state["round"]["routes"][0]["track"] == "cam-door:5" and state["assist"] is None
 
@@ -162,7 +162,7 @@ def test_scored_round_reports_seconds_against_par_and_clears_the_round():
     state = room.state(at(5))
     assert state["round"] is None
     assert state["result"] == {"round_id": "r1", "item": "can", "correct": True, "seconds": 5.0, "score": 150, "players": 1,
-                               "par_s": event.routes[0].par_s, "bin": "recycling", "ts": at(5).isoformat()}
+                               "par_s": event.routes[0].par_s, "bin": "recycling", "ts": at(5).isoformat(), "right": 1, "rounds": 1}
 
 
 def test_a_round_the_game_dropped_without_an_event_is_forgotten():
@@ -274,7 +274,7 @@ def test_room_route_endpoint(tmp_path):
     r = c.get("/api/play/room-route", params={"item": "can"}).json()
     assert (r["bin"], r["zone"], r["room"], r["reachable"]) == ("recycling", "recycling", "dorm", True)
     assert r["from"] == {"x": 1.3, "y": 3.7, "track": None} and r["points"][0] == [1.3, 3.7]
-    assert r["distance_m"] > 3 and r["par_s"] == round(r["distance_m"] / 1.2 + 1.0, 1)
+    assert r["distance_m"] > 3 and abs(r["par_s"] - (r["distance_m"] / 1.2 + 2.5)) < 0.06
     assert c.get("/api/play/room-route", params={"item": "soda can"}).json()["bin"] == "recycling"
     assert c.get("/api/play/room-route", params={"item": "cup", "x": 3.0, "y": 1.0}).json()["from"] == {"x": 3.0, "y": 1.0, "track": None}
     assert c.get("/api/play/room-route", params={"item": "unicorn"}).status_code == 404
@@ -313,6 +313,7 @@ def test_sort_it_takes_the_held_item_when_the_room_sees_one():
 def test_the_room_scene_keeps_the_original_half_minute():
     old, new = script(T0), room_scene(T0)
     assert len(new) == 126 and new[-1].ts == at(62)
+    assert sum(1 for o in new for t in o.tracks if t.track_id == 5) == 24  # the player is in view from 36 s to 59 s
     assert [o.tracks for o in new[:62]] == [o.tracks for o in old]  # the first 30 s are script(), track for track
 
 
@@ -338,15 +339,15 @@ def test_the_fake_scene_plays_a_whole_round_through_the_gateway(tmp_path):
         assert c.post("/api/events", json=body).status_code == 200
         when = lambda e: int((e.ts - start).total_seconds())  # noqa: E731
         rounds = [(when(e), e.type, e.item) for e in seen if e.type.startswith("play.round.")]
-        assert rounds == [(39, "play.round.started", "can"), (47, "play.round.scored", "can")]
+        assert rounds == [(39, "play.round.started", "can"), (45, "play.round.scored", "can")]
         scored = next(e for e in seen if e.type == "play.round.scored")
-        assert scored.correct and scored.seconds == 8.0
+        assert scored.correct and scored.seconds == 6.0
         routes = [e for e in seen if isinstance(e, RoutePlanned)]
         assert [(when(e), e.reason) for e in routes] == [(39, "round_started"), (40, "replan")]
         assert all(e.routes[0].track == "cam-door:5" and e.routes[0].reachable for e in routes)
         assert routes[1].routes[0].distance_m > routes[0].routes[0].distance_m  # around the friend
         assert {text for s, text in assists if 52 <= s <= 56} == {"That cup goes in the trash, the grey bin on your right."}
-        assert not [a for a in assists if 39 <= a[0] <= 47]  # never during the round
+        assert not [a for a in assists if 39 <= a[0] <= 45]  # never during the round
         state = c.get("/api/room/live").json()
         assert state["result"]["correct"] and state["result"]["par_s"] == routes[1].routes[0].par_s and state["round"] is None
         assert {"keys", "package", "can", "cup"} <= set(state["seen"])
