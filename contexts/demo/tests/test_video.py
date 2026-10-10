@@ -1,4 +1,5 @@
 import shutil
+from pathlib import Path
 import subprocess
 
 import pytest
@@ -94,3 +95,9 @@ def test_the_committed_remotion_timeline_matches_the_layout():
     fresh = video.timeline(clips_dir=Path("no-such-dir"))
     strip = lambda t: {**t, "slots": [{**s, "clip": None} for s in t["slots"]]}  # clips differ per machine
     assert strip(committed) == strip(fresh)
+
+
+def test_every_slot_has_an_opening_line_that_fits_a_caption():
+    for s in video.SLOTS:
+        assert s.line and len(s.line) <= 140, s.title
+    assert all(s["line"] for s in video.timeline(clips_dir=Path("no-such-dir"))["slots"])

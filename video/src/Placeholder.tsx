@@ -11,6 +11,7 @@ export function Placeholder({ slot }: { slot: Slot }) {
         <Muted>recording needed · public/clips/slot-{slot.key}.mp4</Muted>
         <div style={{ fontSize: type.title, fontWeight: 700, margin: "20px 0 28px" }}>{slot.title}</div>
         <div style={{ fontSize: type.body, lineHeight: 1.35, maxWidth: 1400 }}>{slot.shows}</div>
+        <Muted style={{ marginTop: 36, fontStyle: "italic" }}>Narration: {slot.line}</Muted>
       </Well>
     </AbsoluteFill>
   );
