@@ -86,6 +86,16 @@ const MORE: Tab[] = [
       </>
     ),
   },
+  {
+    href: "/people",
+    label: "People",
+    icon: (
+      <>
+        <circle cx="12" cy="8.5" r="3.5" />
+        <path d="M5 20c.6-4 3.4-6 7-6s6.4 2 7 6" />
+      </>
+    ),
+  },
 ];
 
 const LINK_TEXT: Record<LinkState, string> = { live: "Live", connecting: "Connecting…", offline: "Offline, retrying" };

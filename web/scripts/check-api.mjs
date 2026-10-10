@@ -369,6 +369,12 @@ await check("GET /api/habits/today", "GET", "/api/habits/today", HABITS_TODAY, {
 await check("GET /memory/items?from=<now>", "GET", `/memory/items?from=${encodeURIComponent(new Date().toISOString())}`, ITEM, { list: true });
 await check("GET /api/impact", "GET", "/api/impact", IMPACT, { optional: { 404: "Waste Watch is not configured" } });
 
+console.log("\nPeople");
+const NO_IDENTITY = { 404: "owner recognition is not wired into this gateway" };
+await check("GET /identity/settings", "GET", "/identity/settings", { identity_enabled: "boolean", available: "boolean", recognizer: "string?" }, { optional: NO_IDENTITY });
+await check("GET /identity/members", "GET", "/identity/members", { member_id: "string", name: "string", enrolled_at: "string" }, { list: true, optional: NO_IDENTITY });
+await check("GET /identity/enroll/status", "GET", "/identity/enroll/status", { state: "string", frames_needed: "number" }, { optional: NO_IDENTITY });
+
 console.log("\nApprovals");
 await check("GET /api/approvals", "GET", "/api/approvals", APPROVAL, { list: true });
 if (WRITES) {

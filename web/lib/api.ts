@@ -109,6 +109,36 @@ export interface HabitsToday {
   day: string | null;
   habits: Habit[];
   latest_nudge: HabitNudge | null;
+  /** Only while owner recognition is on and somebody is enrolled: whose habits these are (null: the unnamed set). */
+  member?: string | null;
+  /** ... and the enrolled member ids that can be asked for with ?member=. */
+  members?: string[];
+}
+
+/** GET /identity/settings: opt-in owner recognition (contexts/perception/api.py). */
+export interface IdentitySettings {
+  identity_enabled: boolean;
+  available: boolean; // false when the recognition model is not on this box
+  recognizer: string | null;
+  reason?: string;
+}
+
+/** One row of GET /identity/members. The face template itself never leaves the box. */
+export interface Member {
+  member_id: string;
+  name: string;
+  enrolled_at: string;
+}
+
+/** GET /identity/enroll/status, and what POST /identity/enroll/start returns. */
+export interface EnrollStatus {
+  state: "idle" | "collecting" | "done" | "failed";
+  frames_needed: number;
+  frames_done?: number;
+  member_id?: string;
+  camera_id?: string | null;
+  hint?: "no_face" | "one_person_only" | "look_at_camera" | "hold_still" | null;
+  error?: string | null;
 }
 
 export interface ImpactCounts {
@@ -626,10 +656,10 @@ function withQuery(path: string, params?: Params): string {
   return s ? `${path}?${s}` : path;
 }
 
-async function request<T>(method: "GET" | "POST", path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+async function request<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const headers: Record<string, string> = {};
   if (body !== undefined) headers["Content-Type"] = "application/json";
-  if (method === "POST") {
+  if (method !== "GET") {
     const token = getToken();
     if (token) headers["Authorization"] = `Bearer ${token}`;
   }
@@ -689,7 +719,15 @@ export const api = {
   items: (opts: { from?: string; to?: string; kind?: string } = {}, signal?: AbortSignal) =>
     get<Item[]>("/memory/items", opts, signal),
 
-  habitsToday: (signal?: AbortSignal) => get<HabitsToday>("/api/habits/today", undefined, signal),
+  habitsToday: (signal?: AbortSignal, member?: string) => get<HabitsToday>("/api/habits/today", { member }, signal),
+
+  // People: opt-in owner recognition (P9).
+  identitySettings: (signal?: AbortSignal) => get<IdentitySettings>("/identity/settings", undefined, signal),
+  setIdentity: (on: boolean) => request<IdentitySettings>("PUT", "/identity/settings", { identity_enabled: on }),
+  members: (signal?: AbortSignal) => get<Member[]>("/identity/members", undefined, signal),
+  removeMember: (id: string) => request<{ removed: string }>("DELETE", `/identity/members/${encodeURIComponent(id)}`),
+  enrollStart: (name: string) => post<EnrollStatus>("/identity/enroll/start", { name }),
+  enrollStatus: (signal?: AbortSignal) => get<EnrollStatus>("/identity/enroll/status", undefined, signal),
   impact: (signal?: AbortSignal) => get<Impact>("/api/impact", undefined, signal),
 
   approvals: (signal?: AbortSignal) => get<ApprovalRequest[]>("/api/approvals", undefined, signal),

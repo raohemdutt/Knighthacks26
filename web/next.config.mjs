@@ -7,7 +7,7 @@ import { PHASE_DEVELOPMENT_SERVER } from "next/constants.js";
  * server can resolve without rewrite rules.
  *
  * Development (`next dev`): set NEXT_PUBLIC_ATLAS_URL to a running gateway and
- * /api, /memory and /health are proxied to it, so the browser sees one origin
+ * /api, /memory, /identity and /health are proxied to it, so the browser sees one origin
  * and the gateway needs no CORS. The WebSocket connects to the gateway directly.
  */
 export default function config(phase) {
@@ -26,6 +26,7 @@ export default function config(phase) {
       return [
         { source: "/api/:path*", destination: `${gateway}/api/:path*` },
         { source: "/memory/:path*", destination: `${gateway}/memory/:path*` },
+        { source: "/identity/:path*", destination: `${gateway}/identity/:path*` },
         { source: "/health", destination: `${gateway}/health` },
       ];
     },
