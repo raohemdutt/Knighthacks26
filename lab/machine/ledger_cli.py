@@ -30,18 +30,18 @@ repeats and every pair must hold. --metric NAME keeps the rows that carry that m
 inclusive and --before is not.
 
 A sub-verb is a function that gets the rest of argv and answers the way a verb of lab/__main__.py
-does (a dict, an int or None). SUBVERBS names them, and a new one takes one line there.
+does (a dict, an int or None). SUBVERBS names them, and a new one takes one line there. A sub-verb
+is loaded, and its line in -h is read, by the dispatcher's own load and summary, and the help words
+are the dispatcher's HELP_WORDS, so the ledger verb never keeps a copy of how a verb is found.
 """
 from __future__ import annotations
 
 import argparse
 import datetime as dt
 import fnmatch
-import importlib
-import inspect
 import json
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from typing import Any
 
 from lab.machine import ledger, record
@@ -50,7 +50,6 @@ __all__ = ["SUBVERBS", "DEFAULT_TAIL", "DEFAULT_LIMIT", "main", "add_main", "tai
 
 DEFAULT_TAIL = 10      # rows `tail` prints without a number
 DEFAULT_LIMIT = 50     # rows `grep` prints without --limit
-HELP_WORDS = ("-h", "--help", "help")
 
 # One line per sub-verb, alphabetical: "name": "module:function".
 SUBVERBS: dict[str, str] = {
@@ -246,32 +245,23 @@ def grep_main(argv: Sequence[str]) -> dict[str, Any]:
 
 # --- the verb -----------------------------------------------------------------------------
 
-def _load(target: str) -> Callable[[Sequence[str]], Any]:
-    module, _, name = target.partition(":")
-    return getattr(importlib.import_module(module), name)
-
-
-def _summary(target: str) -> str:
-    try:
-        doc = inspect.getdoc(_load(target)) or ""
-    except Exception as exc:
-        return f"(cannot load: {type(exc).__name__}: {exc})"
-    return doc.splitlines()[0] if doc else ""
-
-
 def help_text() -> str:
+    # imported here, and read at call time: the dispatcher imports this module lazily as a verb
+    from lab import __main__ as dispatcher
     width = max(len(name) for name in SUBVERBS)
     lines = ["usage: python -m lab ledger <sub-verb> [args]    (python -m lab ledger <sub-verb> -h for its arguments)",
              "",
              "sub-verbs:",
-             *(f"  {name:<{width}}  {_summary(target)}" for name, target in SUBVERBS.items())]
+             *(f"  {name:<{width}}  {dispatcher.summary(target)}" for name, target in SUBVERBS.items())]
     return "\n".join(lines)
 
 
 def main(argv: Sequence[str]) -> dict[str, Any] | int | None:
     """Add to, tail and search the lab ledger (ledger add, tail, grep)."""
+    # imported here, and read at call time: the dispatcher imports this module lazily as a verb
+    from lab import __main__ as dispatcher
     args = list(argv)
-    if not args or args[0] in HELP_WORDS:
+    if not args or args[0] in dispatcher.HELP_WORDS:
         print(help_text())
         return 0
     name, rest = args[0], args[1:]
@@ -280,7 +270,7 @@ def main(argv: Sequence[str]) -> dict[str, Any] | int | None:
         return {"ok": False, "outcome": "unknown_subverb", "error": f"unknown ledger sub-verb {name!r}",
                 "subverbs": sorted(SUBVERBS)}
     try:
-        fn = _load(target)
+        fn = dispatcher.load(target)
     except Exception as exc:
         return {"ok": False, "outcome": "error", "error": f"cannot load {target}: {type(exc).__name__}: {exc}"}
     return fn(rest)
