@@ -782,6 +782,66 @@
   stroke-width: 2.5;
 }
 
+.pinNumber {
+  fill: var(--text);
+  font-size: 11.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.pinNumberOn {
+  fill: var(--accent);
+}
+
+/* The list under the map: which numbered pin is which item. */
+.pinList {
+  list-style: none;
+  margin: 10px 0 8px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 6px;
+}
+
+.pinItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  font-size: 16px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.pinItemOn {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.pinNum {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px dashed var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.pinItemOn .pinNum {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .pinLabel {
   fill: var(--text);
   font-size: 12px;

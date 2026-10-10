@@ -21,10 +21,12 @@ const PANEL_W = 4 / 3; // a camera frame is drawn 4:3, like the Sort It grid (32
 const PANEL_D = 1;
 const GAP = 0.22;
 const ZONE_H = 0.14;
+const NAME_STEP = 0.15; // how much higher a zone's name stands when it would run into its neighbour's
+const PIN_STEP = 0.09; // how much taller a pin stands for each row of pins in front of it
 
 const COLOR = { floor: 0x1c2229, edge: 0x2b333d, zone: 0x5f6b78, zoneOn: 0x5ce1c6, text: "#f3f5f7", muted: "#a6b0bb", pin: 0xf3f5f7, accent: 0x5ce1c6 };
 
-function label(text: string, color: string, size = 0.11): THREE.Sprite {
+function label(text: string, color: string, size = 0.11, outline = true): THREE.Sprite {
   const pad = 12;
   const font = "600 44px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
   const canvas = document.createElement("canvas");
@@ -40,7 +42,7 @@ function label(text: string, color: string, size = 0.11): THREE.Sprite {
     ctx.lineJoin = "round";
     ctx.lineWidth = 8;
     ctx.strokeStyle = "#13171c";
-    ctx.strokeText(text, pad, 34);
+    if (outline) ctx.strokeText(text, pad, 34);
     ctx.fillStyle = color;
     ctx.fillText(text, pad, 34);
   }
@@ -174,8 +176,9 @@ export default function Room3D({ cameras, pins, selected, route }: Room3DProps) 
       name.position.set(ox + PANEL_W / 2, 0.08, -0.06); // along the far edge, behind the zones
       group.add(name);
 
+      const names: { level: number; span: [number, number] }[] = []; // zone names placed so far in this panel
       for (const zone of cam.zones) {
-        const on = (selectedPin?.camera === cam.id && selectedPin.zone === zone.id) || (route?.camera === cam.id && route.bin === zone.id);
+        const on =(selectedPin?.camera === cam.id && selectedPin.zone === zone.id) || (route?.camera === cam.id && route.bin === zone.id);
         const shape = new THREE.Shape(zone.polygon.map(([x, y]) => new THREE.Vector2(x * PANEL_W, y * PANEL_D)));
         const geometry = new THREE.ExtrudeGeometry(shape, { depth: ZONE_H, bevelEnabled: false });
         geometry.rotateX(Math.PI / 2); // the outline lies on the floor, the extrusion points down...
@@ -184,25 +187,54 @@ export default function Room3D({ cameras, pins, selected, route }: Room3DProps) 
         group.add(block);
         const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), new THREE.LineBasicMaterial({ color: on ? COLOR.accent : 0xa6b0bb }));
         group.add(edges);
-        // The name stands at the near edge of the zone, clear of any pins in its middle.
+        // The name stands at the near edge of the zone, clear of any pins in its middle. It is drawn no
+        // wider than it must be, and when it would still run into a neighbour's name it stands a step
+        // higher, on a thin line down to its own zone.
+        const xs = zone.polygon.map((q) => q[0]);
         const near = Math.max(...zone.polygon.map((q) => q[1]));
+        const mid = (Math.min(...xs) + Math.max(...xs)) / 2;
         const text = label(humanize(zone.id), COLOR.text, 0.15);
-        text.position.copy(place([zone.center[0], near], ZONE_H + 0.1));
+        const fit = Math.max(0.72, Math.min(1, ((Math.max(...xs) - Math.min(...xs)) * PANEL_W) / text.scale.x));
+        text.scale.multiplyScalar(fit);
+        const span: [number, number] = [mid * PANEL_W - text.scale.x / 2, mid * PANEL_W + text.scale.x / 2];
+        let level = 0;
+        while (names.some((n) => n.level === level && n.span[0] < span[1] && span[0] < n.span[1])) level++;
+        names.push({ level, span });
+        text.position.copy(place([mid, near], ZONE_H + 0.1 + level * NAME_STEP));
         group.add(text);
+        if (level > 0) {
+          const line = new THREE.Line(
+            new THREE.BufferGeometry().setFromPoints([place([mid, near], ZONE_H), place([mid, near], ZONE_H + 0.04 + level * NAME_STEP)]),
+            new THREE.LineBasicMaterial({ color: 0xa6b0bb }),
+          );
+          group.add(line);
+        }
       }
 
-      for (const pin of pins.filter((p) => p.camera === cam.id)) {
+      // Each pin is a ball with its number on it (the list under the map says which item that is). Pins
+      // in a row behind another stand taller, so no ball hides the one in front of it. Only the pin in
+      // focus has its name written out, above all of them.
+      const mine = pins.filter((p) => p.camera === cam.id);
+      const tallest = Math.max(0, ...mine.map((p) => p.lift));
+      for (const pin of mine) {
         const on = pin.label === selected;
         const color = on ? COLOR.accent : COLOR.pin;
-        const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.18, 8), new THREE.MeshStandardMaterial({ color }));
-        stem.position.copy(place(pin.at, ZONE_H + 0.09));
+        const top = 0.2 + pin.lift * PIN_STEP;
+        const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, top, 8), new THREE.MeshStandardMaterial({ color }));
+        stem.position.copy(place(pin.at, ZONE_H + top / 2));
         group.add(stem);
-        const head = new THREE.Mesh(new THREE.SphereGeometry(on ? 0.05 : 0.04, 20, 14), new THREE.MeshStandardMaterial({ color, roughness: 0.4 }));
-        head.position.copy(place(pin.at, ZONE_H + 0.2));
+        const head = new THREE.Mesh(new THREE.SphereGeometry(on ? 0.058 : 0.05, 20, 14), new THREE.MeshStandardMaterial({ color, roughness: 0.4 }));
+        head.position.copy(place(pin.at, ZONE_H + top));
         group.add(head);
-        const text = label(humanize(pin.label), on ? "#5ce1c6" : COLOR.text, 0.13);
-        text.position.copy(place(pin.at, ZONE_H + 0.33));
-        group.add(text);
+        const number = label(String(pin.n), "#13171c", 0.1, false);
+        number.position.copy(head.position);
+        group.add(number);
+        if (on) {
+          const text = label(humanize(pin.label), "#5ce1c6", 0.13);
+          text.position.copy(place(pin.at, ZONE_H + 0.2 + tallest * PIN_STEP + 0.19));
+          text.renderOrder = 11;
+          group.add(text);
+        }
       }
 
       if (route && route.camera === cam.id && route.points.length > 1) {
