@@ -1,12 +1,16 @@
-"""controller: launch, stop, watch and keep alive the two AUP pods (one R9700 per hub account).
+"""controller: launch, stop, watch and keep alive the AUP pods (one GPU per hub account).
 
-    python -m lab.controller status [--account A|B|both] [--probe-port PORT]
-    python -m lab.controller quota [--account A|B|both] [--transactions]
-    python -m lab.controller launch --account A|B --minutes N [--no-wait] [--timeout S] [--dry-run] [--reason TEXT]
-    python -m lab.controller stop --account A|B [--no-wait] [--timeout S] [--reason TEXT]
-    python -m lab.controller wait --account A|B [--timeout S]
-    python -m lab.controller keep-alive [--account A|B|both] [--interval S] [--minutes N]
-    python -m lab.controller run-script --account A|B SCRIPT [ARG ...] [--timeout S]
+    python -m lab.controller status [--account LETTER|both] [--probe-port PORT]
+    python -m lab.controller quota [--account LETTER|both] [--transactions]
+    python -m lab.controller launch --account LETTER --minutes N [--no-wait] [--timeout S] [--dry-run] [--reason TEXT]
+    python -m lab.controller stop --account LETTER [--no-wait] [--timeout S] [--reason TEXT]
+    python -m lab.controller wait --account LETTER [--timeout S]
+    python -m lab.controller keep-alive [--account LETTER|both] [--interval S] [--minutes N]
+    python -m lab.controller run-script --account LETTER SCRIPT [ARG ...] [--timeout S]
+
+An account is any single letter whose AUP_HUB_USER_<LETTER> and AUP_HUB_TOKEN_<LETTER> keys exist: A and B on the
+DUB hub, C and D on the SJC hub. `both` means A and B (the default of status, quota and keep-alive); the SJC pair
+is asked for by letter.
 
 Run it from the repo root (`python lab/controller.py ...` works from any folder). Every call answers with one JSON
 object on stdout and an exit code, as the verbs of `python -m lab` do: 0 when it worked, 1 when it did not (a
@@ -18,9 +22,12 @@ The hub. Launch is `POST /hub/api/users/<account>/server` with {runtime_minutes,
 gpu_selection: r9700}; stop is `DELETE` on the same path; state is `GET /hub/api/users/<account>` and the balance
 `GET /hub/api/quota/me`. The hub enforces no ceiling on runtime_minutes, so --minutes takes any whole number; the
 session is charged when it ends, 4 credits for each whole minute, so a launch whose cost the balance cannot cover
-is refused here, with the longest runtime it can, before anything is sent. The keys are AUP_HUB_USER_<A|B> and
-AUP_HUB_TOKEN_<A|B>, found as lab/machine/ready.py finds them; no key, token or account name is ever printed,
-logged or written to the ledger (lab/hub.py).
+is refused here, with the longest runtime it can, before anything is sent. A hub that keeps no accounts (quota
+disabled: balance 0, unlimited, enabled false, as the SJC hub answers) refuses nothing: the launch goes ahead and
+the answer says "quota disabled on this hub". The keys are AUP_HUB_USER_<LETTER> and AUP_HUB_TOKEN_<LETTER>, found
+as lab/machine/ready.py finds them, and each account lives on the hub at its AUP_HUB_URL_<LETTER> when that is set,
+else at $LAB_HUB_URL, else on the DUB hub (lab/hub.py); no key, token or account name is ever printed, logged or
+written to the ledger.
 
 Safe to repeat. A launch of a pod that is ready answers already_running and sends nothing; a launch while a
 spawn is pending joins it; a launch while a stop is pending waits for the stop and then launches; the hub's own
@@ -114,6 +121,7 @@ TERMINAL_SETTLE_S = 3.0             # real seconds to wait for the shell to echo
 NOTE_CHARS = 300
 MIN_NAME_CHARS = 4                  # a shorter account name would mangle the text it is cut out of
 
+QUOTA_DISABLED = "quota disabled on this hub"
 POD_LAUNCH, POD_STOP, POD_STATUS = "pod launch", "pod stop", "pod status"
 POD_WAIT, POD_KEEP_ALIVE, POD_QUOTA, POD_RUN_SCRIPT = "pod wait", "pod keep-alive", "pod quota", "pod run-script"
 BALANCE = "pod.balance_credits"
@@ -317,7 +325,12 @@ class Controller:
 
     @property
     def base_url(self) -> str:
+        """The address of the hub of the first account (the accounts may live on different hubs, see hub_urls)."""
         return self._hub(next(iter(self.accounts))).base_url
+
+    def hub_urls(self, letters: Sequence[str] | None = None) -> dict[str, str]:
+        """The address of the hub each of those accounts lives on."""
+        return {letter: self._hub(letter).base_url for letter in self._letters(letters)}
 
     def _account(self, letter: str) -> Account:
         try:
@@ -508,6 +521,8 @@ class Controller:
             answer = {**base, **answer}
             if quota is not None and quota.enabled:
                 answer.setdefault("balance", quota.balance)
+            if quota is not None and not quota.enabled:
+                answer.setdefault("note", QUOTA_DISABLED)
             if not write:
                 return answer
             metrics: dict[str, Any] = {}
@@ -698,7 +713,8 @@ class Controller:
 
     @recorded("controller status")
     def status(self, letters: Sequence[str] | None = None, *, probe_port: int | None = None) -> dict[str, Any]:
-        """Both accounts at a glance: running, ready, scheduled end, spend, balance (hub API reads only)."""
+        """The accounts at a glance: running, ready, scheduled end, spend, balance (hub API reads only). The answer
+        names the hub they live on (`hub`), or one hub per account (`hubs`) when they do not share one."""
         asked = self._letters(letters)
         entries: dict[str, Any] = {}
         errors: list[str] = []
@@ -728,8 +744,10 @@ class Controller:
                 problem = self._pod_row(POD_STATUS, state, account, metrics=metrics, units={BALANCE: "credits"})
             if problem:
                 ledger_errors.append(problem)
+        where = self.hub_urls(asked)
+        location = {"hub": next(iter(where.values()))} if len(set(where.values())) == 1 else {"hubs": where}
         answer: dict[str, Any] = {"ok": not errors, "command": "status", "outcome": "error" if errors else "ok",
-                                  "hub": self.base_url, "hub_clock_offset_s": self._offset_s, "accounts": entries,
+                                  **location, "hub_clock_offset_s": self._offset_s, "accounts": entries,
                                   "refs": {"accounts": ",".join(asked)}}
         if errors:
             answer.update(kind="hub_unreachable", error="; ".join(errors))
@@ -767,6 +785,8 @@ class Controller:
             entry: dict[str, Any] = {"node": account.node, "reachable": True, "balance": quota.balance,
                                      "unlimited": quota.unlimited, "enabled": quota.enabled,
                                      "rate": quota.rate(ACCELERATOR), "rates": dict(quota.rates)}
+            if not quota.enabled:
+                entry["note"] = QUOTA_DISABLED
             if transactions:
                 user = urllib.parse.quote(account.user, safe="")
                 extra = self._send(letter, "GET", f"/hub/admin/api/quota/{user}")
@@ -990,10 +1010,13 @@ class Controller:
 # --- the command line -------------------------------------------------------------------------
 
 def _account_letter(text: str) -> str:
-    letter = text.strip().upper()
-    if letter not in hubs.LETTERS:
-        raise argparse.ArgumentTypeError(f"{text!r} is not an account: use A or B")
-    return letter
+    """An account is one letter; whether its keys exist is settled when they are loaded."""
+    letter = text.strip()
+    if not re.fullmatch(r"[A-Za-z]", letter):
+        raise argparse.ArgumentTypeError(
+            f"{text!r} is not an account: use one letter (A, B, C, D, ...) whose AUP_HUB_USER_<letter> and "
+            "AUP_HUB_TOKEN_<letter> keys exist")
+    return letter.upper()
 
 
 def _account_or_both(text: str) -> str:
@@ -1028,9 +1051,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     def with_accounts(sub: argparse.ArgumentParser, *, required: bool) -> None:
         if required:
-            sub.add_argument("--account", required=True, type=_account_letter, help="A or B")
+            sub.add_argument("--account", required=True, type=_account_letter, help="an account letter: A, B, C or D")
         else:
-            sub.add_argument("--account", default="both", type=_account_or_both, help="A, B or both (default)")
+            sub.add_argument("--account", default="both", type=_account_or_both,
+                             help="an account letter (A, B, C or D) or both (A and B, default)")
 
     status = commands.add_parser("status", help="both accounts: running, ready, scheduled end, spend, balance")
     with_accounts(status, required=False)

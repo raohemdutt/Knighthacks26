@@ -22,7 +22,8 @@ import pytest
 
 from lab import controller as ctl_module
 from lab.controller import Controller
-from lab.hub_fake import FakeClock, FakeHub
+from lab.hub import load_accounts
+from lab.hub_fake import FakeClock, FakeHub, network
 from lab.machine import alerts, allowed, ledger, stop
 
 REPO = Path(__file__).resolve().parents[1]
@@ -877,6 +878,207 @@ def socket_closed_port():
     yield port
 
 
+# --- accounts C and D on the SJC hub -----------------------------------------------------------
+
+TOKEN_C = "cccc9999dddd0000eeee1111ffff2222"
+TOKEN_D = "dddd3333eeee4444ffff5555aaaa6666"
+DUB = "https://dub.test"
+SJC = "https://sjc.test"
+SJC_ENV = {"AUP_HUB_USER_C": "acct-c", "AUP_HUB_TOKEN_C": TOKEN_C, "AUP_HUB_URL_C": SJC,
+           "AUP_HUB_USER_D": "acct-d", "AUP_HUB_TOKEN_D": TOKEN_D, "AUP_HUB_URL_D": SJC}
+BOTH_HUBS_ENV = {**ENV, **SJC_ENV, "LAB_HUB_URL": DUB}
+DISABLED = "quota disabled on this hub"
+
+
+class TwoHubs:
+    """DUB with accounts A and B (credits are charged) and SJC with C and D (quota disabled), two fake hubs on one
+    fake network and one clock: a call goes to the hub whose host it names."""
+
+    def __init__(self):
+        self.clock = FakeClock("2026-10-10T09:27:00Z")
+        self.dub = FakeHub(self.clock)
+        self.sjc = FakeHub(self.clock)
+        self.dub.add_account("A", user="acct-a", token=TOKEN_A, balance=59960)
+        self.dub.add_account("B", user="acct-b", token=TOKEN_B, balance=59628)
+        self.sjc.add_account("C", user="acct-c", token=TOKEN_C, quota_enabled=False)
+        self.sjc.add_account("D", user="acct-d", token=TOKEN_D, quota_enabled=False)
+        self.transport = network({"dub.test": self.dub, "sjc.test": self.sjc})
+
+    def rows(self, verb, node=None):
+        return [row for row in ledger.read(verb=verb) if node is None or row.get("node") == node]
+
+    def only_row(self, verb, node=None):
+        rows = self.rows(verb, node)
+        assert len(rows) == 1, rows
+        return rows[0]
+
+
+@pytest.fixture
+def two_hubs(tmp_path, monkeypatch):
+    monkeypatch.setenv("LAB_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.setenv("LAB_ACTOR", "tester")
+    for name in ("LAB_TIER", "LAB_TASK"):
+        monkeypatch.delenv(name, raising=False)
+    return TwoHubs()
+
+
+def sjc_cli(world, *argv, environ=None):
+    """The command line against both fake hubs; the keys come from environ alone, never from a .env file."""
+    return ctl_module.run(list(argv), environ=BOTH_HUBS_ENV if environ is None else environ, env_files=[],
+                          transport=world.transport, sleep=world.clock.sleep, clock=world.clock.time)
+
+
+def test_status_of_c_asks_the_sjc_hub_with_the_token_of_c_and_nothing_else(two_hubs):
+    answer, code = sjc_cli(two_hubs, "status", "--account", "C")
+
+    assert code == 0
+    assert (answer["command"], answer["outcome"], answer["hub"]) == ("status", "ok", SJC)
+    assert answer["accounts"] == {"C": {"node": "pod-c", "reachable": True, "running": False, "balance": 0,
+                                        "unlimited": True, "quota_enabled": False, "rate": 4}}
+    assert two_hubs.dub.calls == []
+    assert {call.host for call in two_hubs.sjc.calls} == {"sjc.test"}
+    assert {call.headers["authorization"] for call in two_hubs.sjc.calls} == {f"token {TOKEN_C}"}
+    assert {call.account for call in two_hubs.sjc.calls} == {"C"}
+    assert two_hubs.only_row("pod status")["node"] == "pod-c"
+
+
+def test_quota_of_c_says_the_quota_is_disabled_instead_of_showing_an_empty_balance(two_hubs):
+    answer, code = sjc_cli(two_hubs, "quota", "--account", "C")
+
+    assert code == 0
+    assert answer["accounts"]["C"] == {"node": "pod-c", "reachable": True, "balance": 0, "unlimited": True,
+                                       "enabled": False, "rate": 4, "rates": {"cpu": 1, "r9700": 4}, "note": DISABLED}
+    row = two_hubs.only_row("pod quota")
+    assert (row["node"], row["outcome"], row["metrics"]) == ("pod-c", "ok", {})
+
+
+def test_launch_on_a_hub_without_quota_goes_ahead_where_the_same_zero_balance_is_refused_on_a_metered_one(two_hubs):
+    two_hubs.dub.set_balance("A", 0)
+    refused, refused_code = sjc_cli(two_hubs, "launch", "--account", "A", "--minutes", "30")
+    assert (refused_code, refused["outcome"]) == (1, "refused_quota")
+    assert two_hubs.dub.calls_matching("POST", "/server") == []
+
+    answer, code = sjc_cli(two_hubs, "launch", "--account", "C", "--minutes", "30")
+
+    assert (code, answer["ok"], answer["outcome"]) == (0, True, "running")
+    assert answer["note"] == DISABLED
+    assert "balance" not in answer and answer["cost_credits"] is None
+    assert [(call.host, call.path, call.json) for call in two_hubs.sjc.calls_matching("POST", "/server")] == [
+        ("sjc.test", "/hub/api/users/acct-c/server", {"runtime_minutes": 30, "resource_type": "gpu", "gpu_selection": "r9700"})]
+    pod = two_hubs.only_row("pod launch", "pod-c")
+    assert (pod["outcome"], pod["metrics"]) == ("running", {"pod.start_s": 15.0})
+
+
+def test_a_dry_run_on_a_hub_without_quota_plans_the_launch_says_so_and_sends_nothing(two_hubs):
+    answer, code = sjc_cli(two_hubs, "launch", "--account", "D", "--minutes", "600", "--dry-run")
+
+    assert (code, answer["outcome"], answer["note"]) == (0, "dry_run", DISABLED)
+    assert answer["plan"]["path"] == "/hub/api/users/acct-d/server"
+    assert two_hubs.sjc.calls_matching("POST", "/server") == []
+
+
+def test_a_pod_on_d_lives_its_whole_life_through_the_command_line_with_no_credit_figures(two_hubs):
+    answers = {}
+    for argv in (["launch", "--account", "D", "--minutes", "30"], ["wait", "--account", "d", "--timeout", "5"],
+                 ["status", "--account", "D"], ["keep-alive", "--account", "D", "--minutes", "1"],
+                 ["stop", "--account", "D"], ["stop", "--account", "D"]):
+        answer, code = sjc_cli(two_hubs, *argv)
+        assert code == 0, (argv, answer)
+        answers.setdefault(argv[0], []).append(answer)
+
+    assert answers["launch"][0]["outcome"] == "running"
+    assert answers["wait"][0]["outcome"] == "ready"
+    entry = answers["status"][0]["accounts"]["D"]
+    assert (entry["node"], entry["running"], entry["ready"], entry["quota_enabled"]) == ("pod-d", True, True, False)
+    assert not [key for key in entry if key.startswith(("credits_", "balance_")) or key == "exceeds_balance"]
+    assert answers["keep-alive"][0]["outcome"] == "completed"
+    assert answers["keep-alive"][0]["accounts"]["D"]["pings"] >= 1
+    first_stop, second_stop = answers["stop"]
+    assert (first_stop["outcome"], first_stop["state"]) == ("ok", "stopped")
+    assert not {"credits_charged", "balance_before", "balance_after"} & set(first_stop)
+    assert second_stop["outcome"] == "already_stopped"
+    assert two_hubs.dub.calls == []
+    assert {call.headers["authorization"] for call in two_hubs.sjc.calls} == {f"token {TOKEN_D}"}
+    assert all("acct-c" not in call.path for call in two_hubs.sjc.calls)
+
+
+def test_run_script_takes_c_and_asks_the_sjc_hub_whether_the_pod_is_there(two_hubs, tmp_path):
+    script = tmp_path / "job.sh"
+    script.write_text("echo hello\n", encoding="utf-8")
+
+    answer, code = sjc_cli(two_hubs, "run-script", "--account", "C", str(script))
+
+    assert (code, answer["outcome"], answer["node"]) == (1, "not_running", "pod-c")
+    assert [call.path for call in two_hubs.sjc.calls] == ["/hub/api/users/acct-c"]
+    assert two_hubs.dub.calls == []
+
+
+@pytest.mark.parametrize("letter", ["C", "D", "c", "d"])
+@pytest.mark.parametrize("command", ["status", "quota", "launch --minutes 5", "stop", "wait", "keep-alive", "run-script x.sh"])
+def test_every_command_takes_the_account_letters_c_and_d_in_either_case(command, letter):
+    name, _, rest = command.partition(" ")
+
+    args = ctl_module.build_parser().parse_args(shlex.split(f"{name} --account {letter} {rest}"))
+
+    assert args.account == letter.upper()
+
+
+def test_both_still_means_accounts_a_and_b_even_when_c_and_d_have_keys(two_hubs):
+    status, _ = sjc_cli(two_hubs, "status")
+    quota, _ = sjc_cli(two_hubs, "quota", "--account", "both")
+
+    assert list(status["accounts"]) == ["A", "B"] and status["hub"] == DUB
+    assert list(quota["accounts"]) == ["A", "B"]
+    assert two_hubs.sjc.calls == []
+
+
+def test_each_account_goes_to_its_own_address_when_accounts_of_two_hubs_are_asked_together(two_hubs):
+    accounts = load_accounts(["A", "C"], environ=BOTH_HUBS_ENV, env_files=[])
+
+    with Controller(accounts, transport=two_hubs.transport, sleep=two_hubs.clock.sleep, clock=two_hubs.clock.time,
+                    environ=BOTH_HUBS_ENV) as controller:
+        answer = controller.status()
+
+    assert answer["ok"] is True
+    assert "hub" not in answer and answer["hubs"] == {"A": DUB, "C": SJC}
+    assert {call.account for call in two_hubs.dub.calls} == {"A"}
+    assert {call.account for call in two_hubs.sjc.calls} == {"C"}
+
+
+def test_an_account_without_its_own_address_uses_lab_hub_url_and_then_the_dub_default(two_hubs):
+    own_url_missing = {key: value for key, value in BOTH_HUBS_ENV.items() if key != "AUP_HUB_URL_D"}
+    answer, code = sjc_cli(two_hubs, "status", "--account", "D", environ={**own_url_missing, "LAB_HUB_URL": SJC})
+    assert (code, answer["hub"]) == (0, SJC)
+    assert {call.host for call in two_hubs.sjc.calls} == {"sjc.test"}
+
+    bare = {key: value for key, value in own_url_missing.items() if key != "LAB_HUB_URL"}
+    answer, code = sjc_cli(two_hubs, "status", "--account", "D", environ=bare)
+    assert (code, answer["hub"], answer["accounts"]["D"]["reachable"]) == (1, "https://dub.aupcloud.io", False)
+
+
+def test_an_account_without_keys_is_named_by_its_missing_keys_and_nothing_is_sent(two_hubs):
+    answer, code = sjc_cli(two_hubs, "launch", "--account", "c", "--minutes", "5", environ=ENV)
+
+    assert code == 2
+    assert (answer["ok"], answer["outcome"]) == (False, "no_credentials")
+    assert answer["missing"] == ["AUP_HUB_USER_C", "AUP_HUB_TOKEN_C"]
+    assert two_hubs.dub.calls == [] and two_hubs.sjc.calls == []
+
+
+def test_nothing_of_account_c_is_printed_or_written_anywhere_even_when_its_hub_fails(two_hubs, capsys):
+    answers = [sjc_cli(two_hubs, "status", "--account", "C")[0], sjc_cli(two_hubs, "quota", "--account", "C")[0],
+               sjc_cli(two_hubs, "launch", "--account", "C", "--minutes", "5")[0]]
+    two_hubs.sjc.queue_dropped("GET", "/hub/api/users/acct-c", times=10)
+    failed, code = sjc_cli(two_hubs, "status", "--account", "C")
+    answers.append(failed)
+
+    assert code == 1 and failed["accounts"]["C"]["reachable"] is False
+    captured = capsys.readouterr()
+    everything = json.dumps(answers) + captured.out + captured.err + ledger.ledger_path().read_text(encoding="utf-8")
+    assert TOKEN_C not in everything and "acct-c" not in everything
+    assert "<account C>" in failed["accounts"]["C"]["error"]
+
+
 # --- what a sitting may run -------------------------------------------------------------------
 
 COMMANDS = ["status", "quota --transactions", "launch --account B --minutes 600", "stop --account B",
@@ -1004,7 +1206,8 @@ def test_while_stop_exists_nothing_that_changes_a_pod_runs_but_reading_still_wor
 
 
 def test_bad_arguments_exit_2(world, capsys):
-    for argv in (["launch"], ["launch", "--account", "C", "--minutes", "5"], ["launch", "--account", "A", "--minutes", "x"],
+    for argv in (["launch"], ["launch", "--account", "AB", "--minutes", "5"], ["launch", "--account", "A", "--minutes", "x"],
+                 ["status", "--account", "7"], ["status", "--account", "C,D"], ["quota", "--account", ""],
                  ["keep-alive", "--interval", "5"], ["nothing"], []):
         with pytest.raises(SystemExit) as caught:
             cli(world, *argv)

@@ -29,6 +29,14 @@ hub's clock differed on the day of the probes.
 
 Like the real front end it answers 403 to a request whose User-Agent is not a browser's, and like the hub it
 answers a wrong token with 403 on its API and a redirect to a login page on a pod's address.
+
+Two hubs, as with DUB and SJC: one FakeHub per hub, and network() makes one transport out of them, sending each
+call to the hub whose host it names (a host no hub has is a dropped connection). An account added with a quota that
+is off (`quota_enabled=False`) answers as the SJC hub does: balance 0, unlimited, enabled false, and a launch is
+never refused for credits.
+
+    transport = network({"dub.test": dub, "sjc.test": sjc})
+    c = sjc.add_account("C", user="acct-c", token="...", quota_enabled=False, url="https://sjc.test")
 """
 from __future__ import annotations
 
@@ -48,7 +56,7 @@ import httpx
 
 from lab.hub import Account
 
-__all__ = ["FakeClock", "FakeHub", "Call"]
+__all__ = ["FakeClock", "FakeHub", "Call", "network"]
 
 UTC = dt.timezone.utc
 HUB_VERSION = "5.4.4"
@@ -169,11 +177,12 @@ class FakeHub:
     # --- scenario ---------------------------------------------------------------------------
 
     def add_account(self, letter: str, *, user: str, token: str, balance: int = 59960, rate: int = 4,
-                    unlimited: bool = False, quota_enabled: bool = True) -> Account:
-        """A hub account, returned in the form the callers take."""
+                    unlimited: bool = False, quota_enabled: bool = True, url: str | None = None) -> Account:
+        """A hub account, returned in the form the callers take. url is the address it is given as its own
+        (AUP_HUB_URL_<letter>); the fake itself answers on whatever address it is reached at."""
         self._accounts[letter] = _Account(letter, user, token, balance, rate, unlimited, quota_enabled,
                                           user_activity=self._hub_now())
-        return Account(letter, user, token)
+        return Account(letter, user, token, url)
 
     def start_server(self, letter: str, *, runtime_minutes: int = 600, started_ago_s: float = 0.0, idle_s: float = 0.0,
                      ready: bool = True, accelerator: str = "r9700") -> None:
@@ -530,3 +539,15 @@ class FakeHub:
             return httpx.Response(200, json={"name": path.rsplit("/", 1)[-1], "path": path, "type": "file",
                                              "format": "text", "content": self.files[key]})
         return httpx.Response(405, json={"message": "Method Not Allowed"})
+
+
+def network(hubs: Mapping[str, FakeHub]) -> httpx.MockTransport:
+    """One transport for several fake hubs, told apart by the host of the address a call names. A call to a host
+    that none of them has fails as a connection to nowhere does."""
+    def route(request: httpx.Request) -> httpx.Response:
+        hub = hubs.get(request.url.host)
+        if hub is None:
+            raise httpx.ConnectError(f"no hub answers at {request.url.host}")
+        return hub._handle(request)
+
+    return httpx.MockTransport(route)

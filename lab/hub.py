@@ -2,10 +2,13 @@
 
     from lab import hub
 
-    accounts = hub.load_accounts(["A"])                  # AUP_HUB_USER_A and AUP_HUB_TOKEN_A
-    with hub.Hub(accounts["A"]) as client:
+    accounts = hub.load_accounts(["C"])                  # AUP_HUB_USER_C and AUP_HUB_TOKEN_C
+    with hub.Hub(accounts["C"]) as client:
         reply = client.get(client.user_url())            # GET /hub/api/users/<account>
         reply.ok, reply.status, reply.body, reply.hub_time
+
+An account is any single letter whose AUP_HUB_USER_<letter> and AUP_HUB_TOKEN_<letter> keys exist; A and B are
+the two on the DUB hub, C and D the two on the SJC hub.
 
 This is the one place the hub is spoken to, so the rules for talking to it hold for every caller:
 
@@ -20,7 +23,8 @@ This is the one place the hub is spoken to, so the rules for talking to it hold 
 - Whatever the hub answers is a Reply, a failure status included. Only a connection that never gets an
   answer raises HubUnreachable.
 
-The address is $LAB_HUB_URL when it is set, else https://dub.aupcloud.io. The keys come from the process
+The address of an account is its own AUP_HUB_URL_<letter> when that key is set, else $LAB_HUB_URL when that is
+set, else https://dub.aupcloud.io; an address handed to Hub outranks all three. The keys come from the process
 environment, then from the .env files lab/machine/ready.py searches (the clone's, then the two folders
 above it); $LAB_ENV_FILES replaces that search. A test hands Hub an httpx transport instead of a network.
 """
@@ -43,7 +47,7 @@ import httpx
 from lab.machine import ready
 
 __all__ = ["USER_AGENT", "ENV_USER_AGENT", "ENV_URL", "DEFAULT_URL", "LETTERS", "NODES", "TRANSIENT_STATUSES",
-           "Account", "MissingCredentials", "HubUnreachable", "Reply", "Hub", "load_accounts", "node_of",
+           "Account", "MissingCredentials", "HubUnreachable", "Reply", "Hub", "load_accounts", "node_of", "url_key",
            "one_line", "clip"]
 
 DEFAULT_URL = ready.HUB_URL
@@ -52,8 +56,8 @@ ENV_USER_AGENT = "LAB_HUB_USER_AGENT"
 # A real browser's agent string: the hub's front end refuses python's and httpx's own.
 USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
               "Chrome/130.0 Safari/537.36")
-LETTERS = ("A", "B")
-NODES = {"A": "pod-a", "B": "pod-b"}          # the ledger's name for the machine behind each account
+LETTERS = ("A", "B")                          # what `both` stands for: the pair on the DUB hub
+NODES = {"A": "pod-a", "B": "pod-b"}          # the ledger's name for the machine behind the first two accounts
 TRANSIENT_STATUSES = frozenset({502, 503, 504})
 IDEMPOTENT_METHODS = frozenset({"GET", "HEAD", "PUT", "DELETE", "OPTIONS"})
 REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
@@ -67,8 +71,8 @@ MIN_HIDDEN_CHARS = ready.MIN_HIDDEN_CHARS
 
 
 def node_of(letter: str) -> str:
-    """The ledger node of an account letter: pod-a or pod-b."""
-    return NODES[letter]
+    """The ledger node of an account letter: pod-a for A, pod-b for B, pod-c for C and so on."""
+    return NODES.get(letter) or f"pod-{letter.lower()}"
 
 
 def one_line(text: Any, limit: int | None = None) -> str:
@@ -87,11 +91,13 @@ def clip(text: str, limit: int) -> str:
 
 @dataclass(frozen=True)
 class Account:
-    """One hub account: its letter, the user name the hub knows it by and its API token."""
+    """One hub account: its letter, the user name the hub knows it by, its API token and, when AUP_HUB_URL_<letter>
+    is set, the address of the hub it lives on (None: the shared default, see Hub)."""
 
     letter: str
     user: str
     token: str = field(repr=False)
+    url: str | None = None
 
     @property
     def node(self) -> str:
@@ -115,23 +121,31 @@ def key_names(letter: str) -> tuple[str, str]:
     return f"AUP_HUB_USER_{letter}", f"AUP_HUB_TOKEN_{letter}"
 
 
+def url_key(letter: str) -> str:
+    """The optional key holding the address of the hub an account lives on."""
+    return f"AUP_HUB_URL_{letter}"
+
+
 def load_accounts(letters: Iterable[str], *, environ: Mapping[str, str] | None = None,
                   env_files: Sequence[Path] | None = None) -> dict[str, Account]:
     """The accounts of those letters, from the process environment first and then the .env files.
 
-    Raises MissingCredentials naming every key that is absent or blank, in letter order. env_files replaces
-    the search of lab/machine/ready.py (the clone's .env and the two folders above it)."""
+    Raises MissingCredentials naming every key that is absent or blank, in letter order. The address key
+    AUP_HUB_URL_<letter> is optional and read the same way. env_files replaces the search of
+    lab/machine/ready.py (the clone's .env and the two folders above it)."""
     environ = os.environ if environ is None else environ
     files = ready.default_env_files(environ) if env_files is None else list(env_files)
     wanted = [(letter, *key_names(letter)) for letter in letters]
     names = [name for _, user_key, token_key in wanted for name in (user_key, token_key)]
-    given = {name: environ[name].strip() for name in names
+    url_names = [url_key(letter) for letter, _, _ in wanted]
+    given = {name: environ[name].strip() for name in names + url_names
              if isinstance(environ.get(name), str) and environ[name].strip()}
-    found, _ = ready.collect_env(names, given, files)
+    found, _ = ready.collect_env(names + url_names, given, files)
     missing = [name for name in names if name not in found]
     if missing:
         raise MissingCredentials(missing)
-    return {letter: Account(letter, found[user_key], found[token_key]) for letter, user_key, token_key in wanted}
+    return {letter: Account(letter, found[user_key], found[token_key], found.get(url_key(letter)))
+            for letter, user_key, token_key in wanted}
 
 
 # --- replies --------------------------------------------------------------------------------
@@ -180,7 +194,10 @@ def _hub_time(headers: Mapping[str, str]) -> dt.datetime | None:
 # --- the client -----------------------------------------------------------------------------
 
 class Hub:
-    """The calls of one account. transport replaces the network (an httpx transport); sleep paces the retries."""
+    """The calls of one account. transport replaces the network (an httpx transport); sleep paces the retries.
+
+    The hub's address is base_url when given, else the account's own (AUP_HUB_URL_<letter>), else $LAB_HUB_URL,
+    else the DUB default."""
 
     def __init__(self, account: Account, *, base_url: str | None = None, transport: httpx.BaseTransport | None = None,
                  sleep: Callable[[float], None] = time.sleep, retries: int = DEFAULT_RETRIES,
@@ -188,7 +205,7 @@ class Hub:
                  environ: Mapping[str, str] | None = None) -> None:
         environ = os.environ if environ is None else environ
         self.account = account
-        self.base_url = (base_url or environ.get(ENV_URL) or DEFAULT_URL).rstrip("/")
+        self.base_url = (base_url or account.url or environ.get(ENV_URL) or DEFAULT_URL).rstrip("/")
         self.user_agent = user_agent or environ.get(ENV_USER_AGENT) or USER_AGENT
         self.retries = retries
         self.timeout_s = timeout_s

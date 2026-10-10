@@ -96,6 +96,26 @@ def test_the_hub_address_comes_from_the_environment_when_it_is_not_given():
     assert default.base_url == "https://dub.aupcloud.io"
 
 
+@pytest.mark.parametrize("given, own, shared, expected", [
+    ("https://given.test", "https://sjc.test", "https://shared.test", "https://given.test"),
+    (None, "https://sjc.test/", "https://shared.test", "https://sjc.test"),
+    (None, None, "https://shared.test/", "https://shared.test"),
+    (None, None, None, "https://dub.aupcloud.io"),
+])
+def test_the_hub_address_is_the_given_one_then_the_accounts_own_then_lab_hub_url_then_dub(given, own, shared, expected):
+    seen = []
+
+    def handler(request):
+        seen.append(request.url.host)
+        return ok_json({})
+
+    environ = {"LAB_HUB_URL": shared} if shared else {}
+    client = Hub(Account("C", "acct-c", TOKEN, own), base_url=given, transport=httpx.MockTransport(handler), environ=environ)
+    client.get("/hub/api/")
+    assert client.base_url == expected
+    assert seen == [expected.split("//")[1]]
+
+
 # --- replies --------------------------------------------------------------------------------
 
 def test_a_reply_parses_json_and_reads_the_hub_clock_from_the_date_header():
@@ -293,3 +313,52 @@ def test_the_search_for_dotenv_files_is_the_lab_machines_own(tmp_path):
     accounts = load_accounts(["A"], environ=environ)
     assert accounts["A"].user == "one"
     assert accounts["A"].token == TOKEN
+
+
+# --- accounts beyond A and B, and the hub each lives on -------------------------------------------
+
+SJC_ENV = {"AUP_HUB_USER_C": "acct-c", "AUP_HUB_TOKEN_C": TOKEN, "AUP_HUB_URL_C": "https://sjc.test/",
+           "AUP_HUB_USER_D": "acct-d", "AUP_HUB_TOKEN_D": OTHER_TOKEN}
+
+
+def test_any_letter_with_its_user_and_token_keys_is_an_account_with_its_own_node_and_hub():
+    accounts = load_accounts(["C", "D"], environ=SJC_ENV, env_files=[])
+
+    assert list(accounts) == ["C", "D"]
+    assert [(a.letter, a.user, a.token, a.node, a.url) for a in accounts.values()] == [
+        ("C", "acct-c", TOKEN, "pod-c", "https://sjc.test/"), ("D", "acct-d", OTHER_TOKEN, "pod-d", None)]
+    assert (hub.node_of("A"), hub.node_of("B")) == ("pod-a", "pod-b")
+
+
+def test_the_address_key_is_optional_a_blank_one_is_unset_and_a_dotenv_file_may_hold_it(tmp_path):
+    keys = {"AUP_HUB_USER_C": "acct-c", "AUP_HUB_TOKEN_C": TOKEN}
+    assert load_accounts(["C"], environ=keys, env_files=[])["C"].url is None
+    assert load_accounts(["C"], environ={**keys, "AUP_HUB_URL_C": "   "}, env_files=[])["C"].url is None
+
+    dotenv = tmp_path / ".env"
+    dotenv.write_text("AUP_HUB_URL_C=https://sjc.test\nAUP_HUB_URL_D=https://elsewhere.test\n", encoding="utf-8")
+    accounts = load_accounts(["C", "D"], environ={**keys, "AUP_HUB_USER_D": "acct-d", "AUP_HUB_TOKEN_D": OTHER_TOKEN,
+                                                  "AUP_HUB_URL_D": "https://from-env.test"}, env_files=[dotenv])
+    assert (accounts["C"].url, accounts["D"].url) == ("https://sjc.test", "https://from-env.test")
+
+
+def test_the_missing_keys_of_a_letter_are_named_and_the_optional_address_is_never_one_of_them():
+    with pytest.raises(MissingCredentials) as caught:
+        load_accounts(["C", "D"], environ={"AUP_HUB_USER_C": "acct-c", "AUP_HUB_TOKEN_C": TOKEN}, env_files=[])
+    assert caught.value.missing == ["AUP_HUB_USER_D", "AUP_HUB_TOKEN_D"]
+
+
+def test_an_account_takes_its_hub_address_from_the_key_and_sends_its_calls_there():
+    seen = []
+
+    def handler(request):
+        seen.append((request.url.host, request.headers["authorization"]))
+        return ok_json({})
+
+    account = load_accounts(["C"], environ=SJC_ENV, env_files=[])["C"]
+    client = Hub(account, transport=httpx.MockTransport(handler), environ={"LAB_HUB_URL": "https://shared.test"})
+    client.get(client.user_url())
+
+    assert client.base_url == "https://sjc.test"
+    assert seen == [("sjc.test", f"token {TOKEN}")]
+    assert TOKEN not in repr(account)

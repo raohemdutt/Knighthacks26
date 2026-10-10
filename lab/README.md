@@ -4,6 +4,54 @@ Two pods, one R9700 (gfx1201, 32 GB) each, on https://dub.aupcloud.io. Account A
 (serves Qwen3.8-27B), account B is the **trainer** (LoRA, eval, packaging). Logins and hub API tokens
 are on the Notion Credentials page and in your local `.env`; never put them in this repo.
 
+## Which hub is live today (2026-10-10)
+
+| Hub | Accounts | State |
+|---|---|---|
+| **SJC**, https://sjc.aupcloud.io | **C** and **D** | The one to use. JupyterHub 5.4.4, resource key `gpu` (image `ghcr.io/amdresearch/auplc-base:latest`), accelerators `r9700`, `9070xt`, `strix-halo`, `strix`, `phx`. |
+| **DUB**, https://dub.aupcloud.io | **A** and **B** | Kept for when it answers again; it has answered 502 all day. |
+
+The sections below were written against DUB and its accounts A and B. Nothing has been launched on SJC yet, so read
+their numbers (credits, timings, the culler) as DUB's until a pod there has been measured.
+
+**Nothing is metered on SJC.** `GET /hub/api/quota/me` answers `balance: 0, unlimited: true, enabled: false` and
+`GET /hub/api/quota/rates` answers `enabled: false`: the hub keeps no credit accounts. The controller reads that as
+"no limit", not as an empty balance: `quota` and `launch` say `quota disabled on this hub`, a launch is never
+refused for credits, and `status` shows no credit figures. On DUB (quota enabled) a balance that cannot cover the
+runtime still refuses the launch.
+
+**Accounts and addresses.** An account is any single letter whose `AUP_HUB_USER_<letter>` and
+`AUP_HUB_TOKEN_<letter>` keys exist in the environment or the workspace `.env` (the same search as `python -m lab ready`).
+The hub it lives on is its `AUP_HUB_URL_<letter>` when that key is set, else `LAB_HUB_URL`, else DUB, so C and D
+(`AUP_HUB_URL_C`, `AUP_HUB_URL_D` = `https://sjc.aupcloud.io`) work without renaming a key. `--account both` still means
+A and B, which is also the default of `status`, `quota` and `keep-alive`: ask for the SJC pair by letter. The ledger
+calls the machines `pod-c` and `pod-d`.
+
+```
+python -m lab.controller status --account C                 # read-only: is a pod up, its scheduled end, which hub
+python -m lab.controller quota --account C                  # read-only: "quota disabled on this hub"
+python -m lab.controller launch --account C --minutes 240 --dry-run
+python -m lab.controller launch --account C --minutes 240 [--no-wait]
+python -m lab.controller wait --account C
+python -m lab.controller keep-alive --account C --minutes 90
+python -m lab.controller run-script --account C lab/pod_a_teacher.sh proxy
+python -m lab.controller stop --account C
+```
+
+The same with `--account D`. `status` answers with `hub` (the address) when the accounts it was asked about share a
+hub, and with `hubs` (one address per account) when they do not. Launching and stopping stay the owner's call.
+
+**Reaching a pod from outside.** Once `jupyter-server-proxy` runs on the pod (the `proxy` step of the pod scripts, then
+one relaunch; not yet tried on SJC), anything listening on a pod port is at
+
+```
+https://<hub>/user/<account>/proxy/<port>/
+Authorization: token <hub token>
+```
+
+where `<hub>` is `sjc.aupcloud.io` for C and D or `dub.aupcloud.io` for A and B, `<account>` is the user name the hub
+knows the account by (not the letter), and `<port>` is the port the server listens on.
+
 ## What the pods are
 
 - ROCm 7.13.0, `torch 2.9.1+rocm7.13.0`, `triton 3.5.1+rocm7.13.0`, `hipcc` on PATH, `python3` only.
@@ -34,7 +82,7 @@ The private team repo cannot be cloned at launch (no GitHub app on the hub); upl
 
 ## Controlling the pods: `lab/controller.py`
 
-One command line for the calls above, from the repo root. The keys are `AUP_HUB_USER_<A|B>` and `AUP_HUB_TOKEN_<A|B>`
+One command line for the calls above, from the repo root. The keys are `AUP_HUB_USER_<letter>` and `AUP_HUB_TOKEN_<letter>`
 in the workspace `.env` (found the way `python -m lab ready` finds them); nothing prints a key or an account name.
 Every call answers with one JSON line and exit code 0, 1 or 2, like `python -m lab`.
 
