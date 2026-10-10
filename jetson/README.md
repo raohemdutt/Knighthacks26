@@ -193,6 +193,18 @@ when done (it also ends by itself after 1 s of quiet), tap while it speaks to st
 it heard, what it answered, and whether the mic and speaker are fine. The box never speaks while the microphone is open.
 `python -m contexts.demo preflight` has a "voice on the box" line.
 
+## 10. Zones in a room you could not preset
+
+Open `http://<jetson>:8000/zones/` on a laptop or phone (or "Set zones" on `/operator/`): pick the camera and the zone,
+drag a box on the picture, **Save**. The box rewrites its own `config/zones.yaml` and the zone engine uses the new boxes
+at once, with no restart (`PUT /api/zones/<camera>`; the token goes in Settings if `ATLAS_TOKEN` is set). **Use demo zones**
+(`POST /api/zones/demo`) puts the big, forgiving boxes from `config/zones.demo.yaml` over the same cameras and ids when
+there is no time to draw. Only zones that already exist can be moved, because rules and Waste Watch refer to their
+names. Sort It reads its bin boxes at start, so restart `atlas-gateway` after moving Recycling or Trash.
+
+`./jetson/push.sh` keeps the box's `config/zones.yaml` when it differs from the tree's (so a push cannot undo zones drawn
+on site); `./jetson/push.sh --zones` overwrites it. To keep what was drawn, copy it back: `scp <box>:Knighthacks26/config/zones.yaml config/`.
+
 ## Firmware update (boards with old factory firmware)
 
 JetPack 6 and 7 need firmware 36.x on the board. Boards with older firmware

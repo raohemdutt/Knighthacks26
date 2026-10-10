@@ -216,6 +216,9 @@ export default function OperatorPage() {
         </span>
         {offline ? <span className={`${op.badge} ${op.badgeWarn}`}>Offline · LAN only</span> : null}
         <span className={op.spacer} />
+        <a className={`${op.badge} ${op.badgeLink}`} href="/zones/" title="Draw where things count, from this screen or a phone">
+          Set zones
+        </a>
         <span className={`${op.badge} ${link === "live" ? "" : op.badgeBad}`}>{link === "live" ? "Live" : link === "connecting" ? "Connecting…" : "Box unreachable, retrying"}</span>
         <span className={op.clock}>{time(now.toISOString())}</span>
       </header>

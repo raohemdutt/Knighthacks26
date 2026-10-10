@@ -1,0 +1,9 @@
+# The forgiving fallback for a room nobody could preset (judging): the same cameras and zone ids as config/zones.yaml,
+# but the boxes are big, so a person or an object anywhere useful in the picture counts. Apply it with the Zones page
+# ("Use demo zones") or `curl -X POST $ATLAS_URL/api/zones/demo`. It only changes zones that exist in both files.
+cam-door:
+  door: [[0.45, 0.25], [0.98, 0.25], [0.98, 0.98], [0.45, 0.98]]
+  recycling: [[0.02, 0.45], [0.24, 0.45], [0.24, 0.98], [0.02, 0.98]]
+  trash: [[0.26, 0.45], [0.43, 0.45], [0.43, 0.98], [0.26, 0.98]]
+cam-desk:
+  desk: [[0.03, 0.12], [0.97, 0.12], [0.97, 0.98], [0.03, 0.98]]

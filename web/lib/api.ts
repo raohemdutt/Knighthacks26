@@ -1132,6 +1132,9 @@ export interface VoiceStatus {
   text_to_speech?: { ok: boolean; detail: string };
 }
 
+/** GET /api/zones: polygons per camera in that camera's picture, 0..1, origin top left (config/zones.yaml). */
+export type ZoneSet = Record<string, Record<string, [number, number][]>>;
+
 export interface EgressGroup {
   /** "lan", "ntp", "dns", "hub", "connector:calendar", ... */
   name: string;
@@ -1326,6 +1329,9 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
 
   ask: (text: string) => post<Answer>("/api/ask", { text }),
 
+  zones: (signal?: AbortSignal) => get<ZoneSet>("/api/zones", undefined, signal),
+  setZones: (camera: string, zones: Record<string, [number, number][]>) => put<ZoneSet>(`/api/zones/${encodeURIComponent(camera)}`, { zones }),
+  demoZones: () => post<ZoneSet>("/api/zones/demo", {}),
   vaultPolicy: (signal?: AbortSignal) => get<VaultPolicy>("/vault/policy", undefined, signal),
   runtimeModels: (signal?: AbortSignal) => get<RuntimeModels>("/runtime/models", undefined, signal),
   voiceStatus: (signal?: AbortSignal) => get<VoiceStatus>("/api/voice/status", undefined, signal),

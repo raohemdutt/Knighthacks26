@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { api, snapshotUrl, type CameraStatus, type LiveTracks } from "@/lib/api";
 import { cameraName, humanize } from "@/lib/format";
-import { ZONES } from "@/lib/zones.generated";
+import { useZones } from "@/lib/useZones";
 import op from "./operator.module.css";
 
 const REFRESH_MS = 400;
@@ -52,7 +52,7 @@ export function OperatorCamera({ camera, status }: { camera: string; status: Cam
   const flowing = status.status !== "down";
   const picture = useSnapshot(camera, stamp, flowing);
   const tracks = useTracks(camera, stamp, flowing);
-  const zones = ZONES[camera] ?? {};
+  const zones = useZones()[camera] ?? {};
   const seen = tracks?.tracks ?? [];
 
   return (
