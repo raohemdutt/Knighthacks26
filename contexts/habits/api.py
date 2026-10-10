@@ -5,6 +5,10 @@
 - GET /habits/today                      every habit: value, target, met so far, streak, latest nudge
 - GET /habits/{habit_id}/history?days=7  closed days, oldest first, ending with today so far
 
+A sleep or focus row also has `coverage` (0 to 1: how much of the night, or of the waking day, the desk camera
+was reporting for) and `reason` once that is measured. `reason` is null unless too little was watched to judge
+the habit ("cameras saw 3 h of the 12 h night", "cameras were paused for ..."); then `applies` is false.
+
 With owner recognition on and somebody enrolled (P9, `MemberHabits`), both take `?member=<member_id>` for one
 person's habits, and `today` also says whose it returned (`member`) and who can be asked for (`members`, ids
 only). Without `member` it is the only enrolled person's, or the unnamed set when several are enrolled.

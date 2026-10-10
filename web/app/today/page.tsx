@@ -202,7 +202,9 @@ function HabitCard({ habit: h }: { habit: Habit }) {
   const good = h.applies && h.met;
   const overLimit = h.applies && !h.closed && !atLeast && !h.met;
   const status = !h.applies
-    ? "Nothing to measure yet today"
+    ? h.reason
+      ? `Not judged: ${h.reason}`
+      : "Nothing to measure yet today"
     : h.closed
       ? h.met
         ? "Day closed: met"

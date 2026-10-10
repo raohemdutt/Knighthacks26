@@ -100,6 +100,8 @@ export interface Habit {
   value: number;
   met: boolean;
   applies: boolean; // false when there is nothing to measure yet today
+  coverage?: number; // sleep, focus: share of the night or day the desk camera was reporting for (0 to 1)
+  reason?: string | null; // why it was not judged, when the cameras saw too little
   streak: number;
   closed: boolean;
   nudge: HabitNudge | null;
