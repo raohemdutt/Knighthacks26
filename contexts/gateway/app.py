@@ -14,6 +14,7 @@
 - POST /api/presence           {place, hours} share a named place with the Circle (G5, opt-in)
 - GET  /api/presence           friends' current places
 - GET  /api/circle/leaderboard Waste Watch, habit and Sort It leaderboards from Neon (E2)
+- GET  /api/invites[/{name}]   calendar invites (.ics) created after approval, to open or share (K2)
 - GET  /health
 
 Writes need `Authorization: Bearer $ATLAS_TOKEN` when ATLAS_TOKEN is set; the
@@ -29,6 +30,7 @@ from typing import Literal
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from contexts.gateway.bootstrap import Atlas, Settings, build
@@ -191,6 +193,21 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
             asyncio.to_thread(atlas.board.top_scores, cid),
         )
         return {"circle_id": cid, "impact": impact, "habits": habits, "scores": scores}
+
+    invites = atlas.settings.data_dir / "invites"
+
+    @app.get("/api/invites")
+    async def list_invites():
+        """Calendar invites created after approval (K2), newest first, for the phone or the group chat link."""
+        files = sorted(invites.glob("invite-*.ics"), reverse=True) if invites.exists() else []
+        return [{"name": f.name, "url": f"/api/invites/{f.name}"} for f in files[:20]]
+
+    @app.get("/api/invites/{name}")
+    async def get_invite(name: str):
+        path = invites / name
+        if not name.startswith("invite-") or not name.endswith(".ics") or "/" in name or "\\" in name or not path.is_file():
+            raise HTTPException(404, "no such invite")
+        return FileResponse(path, media_type="text/calendar", filename=name)
 
     @app.websocket("/ws")
     async def events(ws: WebSocket):
