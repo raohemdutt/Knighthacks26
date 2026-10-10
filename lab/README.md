@@ -32,6 +32,37 @@ Poll `GET /hub/api/users/<account>` until `servers[""].ready`. Stop with `DELETE
 The private team repo cannot be cloned at launch (no GitHub app on the hub); upload `lab/` after launch
 (JupyterLab upload, or `PUT /user/<account>/api/contents/<path>`).
 
+## Controlling the pods: `lab/controller.py`
+
+One command line for the calls above, from the repo root. The keys are `AUP_HUB_USER_<A|B>` and `AUP_HUB_TOKEN_<A|B>`
+in the workspace `.env` (found the way `python -m lab ready` finds them); nothing prints a key or an account name.
+Every call answers with one JSON line and exit code 0, 1 or 2, like `python -m lab`.
+
+```
+python -m lab.controller status                       # both accounts: running, scheduled end, spend so far, balance
+python -m lab.controller quota --transactions         # balances, rates, recent sessions
+python -m lab.controller launch --account B --minutes 600 [--dry-run] [--no-wait]
+python -m lab.controller wait --account B
+python -m lab.controller keep-alive --minutes 90      # a ping every 10 minutes so the idle culler never fires
+python -m lab.controller run-script --account B lab/pod_b_trainer.sh smoke
+python -m lab.controller stop --account B
+```
+
+- Launching and stopping a pod is the owner's call, and pod B goes through the GPU queue: a sitting is denied
+  `launch` and `stop` (`lab/machine/allowed.py`). Try `launch --dry-run` first: it checks the balance and sends nothing.
+- Safe to repeat: launch of a ready pod and stop of a stopped one say so and send nothing; a launch the hub answered
+  with a gateway error is never sent twice.
+- `--minutes` has no ceiling (the hub has none). The session is charged when it ends, 4 credits a minute, so
+  `status` works the spend out from the start time and a launch the balance cannot cover is refused up front.
+- `status` reads only the hub API, which does not count as activity. `keep-alive` pings the pod and so does cost
+  240 credits an hour: always give it `--minutes`.
+- `run-script` takes its own options before the script's name; everything after the name goes to the script. It
+  uploads the script to the pod, runs it in a terminal and waits for the exit code it appends to the output.
+- While `lab/state/STOP` exists `launch`, `stop`, `keep-alive` and `run-script` are refused.
+- Ledger rows: `controller <command>` for each call, and `pod launch`, `pod stop`, `pod status`, `pod keep-alive`
+  (`alive`, `failed_ping`, `lost`) with `node` pod-a or pod-b, which are the rows `python -m lab alerts` reads.
+- Tests use `lab/hub_fake.py`, a fake hub on a fake clock built from the recorded answers, so nothing launches or sleeps.
+
 ## Box ↔ lab: the hub proxy
 
 Once `pip install --user jupyter-server-proxy` has run on an account and the pod has been relaunched once,
