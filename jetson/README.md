@@ -124,6 +124,26 @@ keyframe is stored unless `blur_faces` is off, and a paused camera is not looked
 repo's `.env` (never in git). The unit sets `ATLAS_MEMORY_FIXTURE=` empty, so a real box holds only what its cameras
 saw; put `ATLAS_MEMORY_FIXTURE=fixtures/memory/memory.yaml` in `.env` for the canned demo night.
 
+## 8. Egress firewall and the offline switch (V6, V5, H4)
+
+The `atlas-egress` service (root, installed by `jetson_setup.sh`) keeps an iptables/ip6tables chain `ATLAS_EGRESS` on
+the OUTPUT side only (this Jetson kernel has no nftables counters, so iptables), so ssh in and the phone talking to the
+box are not affected. What may leave: loopback and replies, any private or link-local address (so any venue's Wi-Fi
+works), NTP, DNS to the box's own resolvers, the hub proxy `dub.aupcloud.io`, each connector's `hosts` from
+`config/connectors.yaml`, Neon (from `NEON_DATABASE_URL`), a non-LAN ntfy relay, and the Ubuntu connectivity check.
+Anything else is logged (`journalctl -k | grep atlas-egress-drop`) and rejected. Add hosts for a one-off need in
+`config/egress.yaml` (`groups: {name: [host, ...]}`); names are re-resolved every 5 minutes.
+
+```bash
+make offline        # LAN only; the firewall follows within ~10 s. Detection, answers and alerts carry on; connectors pause
+make online         # back to the allowlist (the phone's Privacy switch does the same through PUT /vault/policy)
+curl localhost:8000/vault/egress                       # bytes per group (hub, each connector, LAN, NTP, DNS), blocked count, recent blocks
+sudo python jetson/egress.py apply --revert-after 90   # try new rules by hand: undone in 90 s unless `touch /run/atlas-egress.ok`
+sudo python jetson/egress.py clear                     # remove the firewall (for apt/pip on the box), then `sudo systemctl restart atlas-egress`
+```
+
+While the firewall is on, `apt` and `pip` on the box are blocked: run `clear` first and restart the service after.
+
 ## Firmware update (boards with old factory firmware)
 
 JetPack 6 and 7 need firmware 36.x on the board. Boards with older firmware

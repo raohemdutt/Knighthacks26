@@ -220,6 +220,7 @@ def build(settings: Settings | None = None) -> Atlas:
     # background: a replayed wipe would wipe again, and the endpoint reads its report right after publish.
     vault = Vault(KeyRing(s.data_dir))  # no disk access until the first encrypt or decrypt
     policy = Policy(s.data_dir)
+    hub.offline = lambda: policy.offline  # offline pauses every connector read and write (V5, H4)
     policy.subscribe(bus)
     wiper = Wiper(s.data_dir, memory_db=s.data_dir / "memory.sqlite")
     bus.subscribe("vault.wipe.requested", wiper.on_wipe_requested)
