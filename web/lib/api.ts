@@ -1099,6 +1099,16 @@ export function setToken(token: string): void {
   }
 }
 
+/** GET /runtime/models (R7): what the box has installed and what llama-server really serves. */
+export interface RuntimeModels {
+  current: string | null;
+  previous: string | null;
+  /** The folder llama-server reports it loaded; null when it did not answer. */
+  serving: string | null;
+  in_sync: boolean | null;
+  versions: { version: string; base: string | null; task: string | null; scores: Record<string, number>; current: boolean }[];
+}
+
 export interface VaultPolicy {
   blur_faces: boolean;
   paused_cameras: string[];
@@ -1302,6 +1312,7 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   ask: (text: string) => post<Answer>("/api/ask", { text }),
 
   vaultPolicy: (signal?: AbortSignal) => get<VaultPolicy>("/vault/policy", undefined, signal),
+  runtimeModels: (signal?: AbortSignal) => get<RuntimeModels>("/runtime/models", undefined, signal),
   setVaultPolicy: (body: Partial<VaultPolicy>) => put<VaultPolicy>("/vault/policy", body),
   egress: (signal?: AbortSignal) => get<Egress>("/vault/egress", undefined, signal),
   wipeRequest: (scope: WipeScope) => post<WipeToken>("/vault/wipe/request", { scope }),

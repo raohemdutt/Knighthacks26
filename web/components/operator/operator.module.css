@@ -1,0 +1,273 @@
+/* The operator screen: sized to be read from 3 m on a TV or a mirrored projector. Same tokens as the phone app. */
+.page {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 16px;
+  height: 100vh;
+  padding: 16px 20px;
+  overflow: hidden;
+}
+
+.top {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.brand {
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.clock {
+  font-size: 2rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  font-size: 1.5rem;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+}
+
+.badge b {
+  font-weight: 700;
+}
+
+.badgeWarn {
+  background: rgba(255, 200, 87, 0.14);
+  color: #ffc857;
+  border-color: #ffc857;
+}
+
+.badgeBad {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.cameras {
+  display: grid;
+  grid-auto-rows: minmax(0, 1fr);
+  gap: 16px;
+  min-height: 0;
+}
+
+.camera {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.cameraHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+}
+
+.cameraName {
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.pill {
+  padding: 4px 12px;
+  font-size: 1.2rem;
+  border-radius: 999px;
+}
+
+.pillOk {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.pillBad {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.view {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background: #000;
+}
+
+.view img,
+.view svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.viewEmpty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  font-size: 1.5rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+.zone {
+  fill: rgba(92, 225, 198, 0.1);
+  stroke: var(--accent);
+  stroke-width: 4;
+  stroke-dasharray: 14 10;
+}
+
+.zoneLabel {
+  font-size: 34px;
+  fill: var(--accent);
+  paint-order: stroke;
+  stroke: #000;
+  stroke-width: 6px;
+}
+
+.box {
+  fill: none;
+  stroke: #ffc857;
+  stroke-width: 6;
+}
+
+.boxLabel {
+  font-size: 40px;
+  font-weight: 700;
+  fill: #ffc857;
+  paint-order: stroke;
+  stroke: #000;
+  stroke-width: 7px;
+}
+
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+}
+
+.panel {
+  padding: 16px 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.panel h2 {
+  margin: 0 0 8px;
+  font-size: 1.2rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.big {
+  margin: 0;
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+.muted {
+  margin: 4px 0 0;
+  font-size: 1.4rem;
+  color: var(--muted);
+}
+
+.bar {
+  height: 14px;
+  margin-top: 12px;
+  background: var(--surface-2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.bar div {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.4s ease;
+}
+
+.scores {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin: 12px 0 0;
+  font-size: 1.4rem;
+  color: var(--muted);
+}
+
+.scores b {
+  color: var(--text);
+}
+
+.tickerPanel {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ticker {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 1.5rem;
+  line-height: 1.3;
+}
+
+.ticker time {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  margin-right: 6px;
+}
+
+.tickAlert {
+  color: var(--danger);
+}
+
+.tickGood {
+  color: var(--accent);
+}
+
+/* A narrow window (a phone, a half-width laptop): stack instead of squeezing. */
+@media (max-width: 900px) {
+  .page {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    height: auto;
+    overflow: visible;
+  }
+
+  .cameras {
+    grid-auto-rows: 56vw;
+  }
+
+  .tickerPanel {
+    overflow: visible;
+  }
+}
