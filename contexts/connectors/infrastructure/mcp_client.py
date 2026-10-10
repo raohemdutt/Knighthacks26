@@ -1,6 +1,7 @@
 """MCP client side: run a connector as a stdio MCP server and call its tools."""
 
 import json
+import logging
 import os
 import sys
 from contextlib import AsyncExitStack
@@ -58,4 +59,7 @@ class McpConnector:
 
 def server_options() -> dict:
     """For connector servers: the `options` block from connectors.yaml."""
+    # httpx logs every request with its full URL at INFO, and a server's stderr is the box's service log:
+    # a published feed link or a ?token= query would be written there on every sync
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     return json.loads(os.environ.get(OPTIONS_ENV) or "{}")

@@ -105,3 +105,31 @@ def test_on_demand_tools_are_declared_reads_only():
     with pytest.raises(ValueError):
         asyncio.run(hub.call_tool("browser.submit", {}))  # writes must be proposed, never called directly
     assert fake.calls == [("search", {"query": "q"})]
+
+
+def test_a_failed_sync_never_repeats_a_feed_url_or_its_token():
+    # httpx words a failure with the whole URL; a published .ics link and a ?token= query are credentials
+    fake = FakeConnector({"list_items": []})
+    fake.fail = ("Client error '404 Not Found' for url 'https://outlook.office365.com/owa/calendar/SECRET-FEED-ID/calendar.ics'\n"
+                 "and 403 for url 'https://api.groupme.com/v3/groups/1/messages?token=SECRET-TOKEN&limit=20'")
+    [failed] = asyncio.run(hub_with(fake).sync("canvas", T0))
+    assert "SECRET" not in failed.error and "token=" not in failed.error
+    assert "404 Not Found" in failed.error  # the useful part stays
+    assert "https://outlook.office365.com/…" in failed.error and "https://api.groupme.com/…" in failed.error
+
+
+def test_quiet_leaves_plain_messages_alone():
+    from contexts.connectors.application.hub import quiet
+
+    assert quiet("list_events: timed out after 20 s") == "list_events: timed out after 20 s"
+    assert quiet("see (https://example.edu/a/b?x=1).") == "see (https://example.edu/…)."
+
+
+def test_a_connector_server_does_not_log_request_urls(monkeypatch):
+    import logging
+
+    from contexts.connectors.infrastructure.mcp_client import server_options
+
+    logging.getLogger("httpx").setLevel(logging.INFO)
+    server_options()
+    assert not logging.getLogger("httpx").isEnabledFor(logging.INFO)  # httpx's "HTTP Request: GET <full url>" line
