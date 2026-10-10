@@ -1,0 +1,74 @@
+# Day Run's scripted scenario: the demo story, Sunday of Knight Hacks (times America/New_York).
+# It is 9:30 AM at the hackathon table in Engineering II. COP4533 Milestone 1 is due Tuesday
+# 11:59 PM, last night was four hours of sleep, nothing real has been eaten, and Maya will be at
+# the library from 2 PM. Items have the shape of fixtures/memory/memory.yaml's `items`.
+#   python -m contexts.play.dayrun demo
+# Also served by the API: add `scenario=demo` (query) or "scenario": "demo" (body).
+now: "2026-10-11T09:30:00-04:00"
+start_place: ucf.eng2
+
+items:
+  - {connector: canvas, kind: assignment, external_id: "cop4533:assignment:88213", title: "COP4533 Project Milestone 1",
+     when: "2026-10-13T23:59:00-04:00", url: "https://canvas.example.edu/courses/5123/assignments/88213",
+     summary: "Due Tue Oct 13, 11:59 PM. Dynamic programming: code plus a runtime analysis writeup. 100 points."}
+  - {connector: calendar, kind: calendar_event, external_id: "outlook:kh-submit:2026-10-11T11:00:00-04:00",
+     title: "Knight Hacks: submissions due", when: "2026-10-11T11:00:00-04:00", summary: "until 11:15 AM · Devpost"}
+  - {connector: calendar, kind: calendar_event, external_id: "outlook:kh-judging:2026-10-11T12:00:00-04:00",
+     title: "Knight Hacks: judging and demos", when: "2026-10-11T12:00:00-04:00", summary: "until 2:00 PM · Engineering II atrium"}
+  - {connector: calendar, kind: calendar_event, external_id: "campus:lawn-movie:2026-10-11T20:00:00-04:00",
+     title: "Movie on the lawn", when: "2026-10-11T20:00:00-04:00", summary: "until 10:00 PM · Memory Mall · free"}
+  - {connector: calendar, kind: calendar_event, external_id: "outlook:cop4533-lecture:2026-10-12T10:40:00-04:00",
+     title: "COP4533 lecture", when: "2026-10-12T10:40:00-04:00", summary: "until 11:30 AM · HEC 101"}
+  - {connector: groupme, kind: message, external_id: "class:1760100004", title: "Maya: ok. study session sunday afternoon at the library? 2pm?",
+     when: "2026-10-10T16:20:00-04:00", summary: "Maya in COP4533 class chat: ok. study session sunday afternoon at the library? 2pm?"}
+
+# What Habits has for each day: last night's sleep (hours), meals so far, desk time (hours).
+habits:
+  "2026-10-11": {sleep: 4, meals: 0, focus_hours: 0.5}
+  "2026-10-12": {sleep: 6.5, meals: 0, focus_hours: 0}
+
+# Friends who shared a place (opt-in, a named spot, with an end).
+friends:
+  - {member: Maya, place: Library, start: "2026-10-11T14:00:00-04:00", end: "2026-10-11T17:00:00-04:00"}
+
+# Slots on this board: s1 09:30-11:00, s2 11:15-12:00, s3 14:00 to 09:30 Monday.
+plans:
+  # No food, a lunch run that cannot make it back, cramming alone at the desk all night, a nap at dawn.
+  bad:
+    - {slot: s1, kind: rest}
+    - {slot: s2, kind: eat, place: ucf.dining_63, minutes: 40}
+    - {slot: s3, kind: rest, minutes: 300}
+    - {slot: s3, kind: study, place: apartment.desk, minutes: 540}
+    - {slot: s3, kind: sleep}
+  # Breakfast first, lunch near the venue, the library with Maya, dinner, a second short session, a full night.
+  good:
+    - {slot: s1, kind: eat, place: ucf.dining_63, minutes: 30}
+    - {slot: s1, kind: rest}
+    - {slot: s2, kind: eat, place: ucf.union, minutes: 25}
+    - {slot: s3, kind: study, place: ucf.library, minutes: 170, with_friend: Maya}
+    - {slot: s3, kind: eat, place: ucf.union, minutes: 35}
+    - {slot: s3, kind: study, place: ucf.library, minutes: 105}
+    - {slot: s3, kind: rest, place: apartment.desk, minutes: 60}
+    - {slot: s3, kind: sleep, start: "2026-10-11T22:30:00-04:00", minutes: 510}
+
+# Hard mode in the demo: judging moves across campus and starts early; the Student Union's food closes.
+disruptions:
+  - {kind: block_moved, block: "outlook:kh-judging:2026-10-11T12:00:00-04:00", to_place: ucf.cb1, shift_minutes: -15}
+  - {kind: place_closed, place: ucf.union}
+
+# Campaign: Sunday as the good plan, then Monday (lecture at 10:40).
+campaign:
+  - - {slot: s1, kind: eat, place: ucf.dining_63, minutes: 30}
+    - {slot: s2, kind: eat, place: ucf.union, minutes: 25}
+    - {slot: s3, kind: study, place: ucf.library, minutes: 170, with_friend: Maya}
+    - {slot: s3, kind: eat, place: ucf.union, minutes: 35}
+    - {slot: s3, kind: sleep, start: "2026-10-11T22:30:00-04:00", minutes: 510}
+  - - {slot: s1, kind: eat, place: apartment.kitchen, minutes: 20}
+    - {slot: s2, kind: eat, place: ucf.union, minutes: 30}
+    - {slot: s2, kind: study, place: ucf.library, minutes: 180}
+    - {slot: s2, kind: eat, place: ucf.union, minutes: 30}
+    - {slot: s2, kind: sleep, start: "2026-10-12T23:00:00-04:00", minutes: 480}
+
+# What really happened on Sunday, for the review after a commit (as Habits would report it).
+actual:
+  "2026-10-11": {focus_minutes: 20, meals: 2, sleep_hours: 6.5}

@@ -1,0 +1,109 @@
+# Day Run (S4, S6): the model the simulation steps, and where the day happens.
+# Every rate here is a starting guess for one student, written down so it can be fitted to a
+# person's own history later (the habit tracker's sleep, meals and desk time). None of these
+# numbers is measured yet. Meters run 0 to 100.
+
+tick_minutes: 15        # one row of the meter timeline
+window_hours: 24        # how much of the future a board covers
+deadline_horizon_hours: 72   # assignments due this soon appear on the board
+
+# --- where ---
+pack: ucf                     # the place pack the day is played on (config/places/<id>.yaml)
+home: "apartment.bedroom"     # where sleep happens
+desk: "apartment.desk"        # where the Atlas box is: the only place Habits can measure
+start_place: "apartment.desk" # where a board starts unless the request says otherwise
+kinds:                        # which place kinds offer which move
+  study: [library, desk, class]
+  eat: [dining, kitchen]
+max_options: 5                # per slot and move kind, nearest first
+
+# --- the usual night (config/agent.yaml's `sleep` is the camera's "overnight", not this) ---
+sleep:
+  bedtime: "23:30"
+  wake: "07:30"
+  need_hours: 8          # sleeping less than this adds to sleep debt
+  fixed: false           # true: the usual night is a fixed block; false: the player chooses when to sleep
+  min_block_minutes: 90  # a shorter sleep is a nap: it restores energy but does not count as sleep
+
+# --- calendar ---
+default_event_minutes: 60               # a calendar item with no end time
+optional_event_prefixes: ["campus:"]    # external_id prefixes of events you may skip (the campus feed)
+meal_words: [breakfast, brunch, lunch, dinner, pizza, meal]            # a fixed block with one of these is a meal
+study_words: [study, review, office hours, lab, tutoring, workshop]    # ... is study for the matching course
+
+# --- starting values, from Habits when it has them ---
+start:
+  energy_rested: 90          # energy on waking after a full night
+  energy_per_missed_hour: 8  # lost per hour of sleep short of need_hours
+  default_sleep_hours: 7     # when Habits has no number for last night
+  no_meal_penalty: 6         # nothing eaten yet and it is past `no_meal_after`
+  no_meal_after: "09:00"
+  focus: 85
+  hungry_minutes_no_meal: 240   # how long since the last meal when Habits has seen none today
+  hungry_minutes_default: 120
+
+# --- energy, per hour of each activity ---
+energy_per_hour:
+  idle: -2.5     # free time, awake
+  study: -4.5
+  class: -4.0    # any fixed block that is not a meal, study or sleep
+  walk: -5.0
+  rest: -0.5
+  event: -2.0
+  eat: 0.0
+  sleep: 11.0
+meal_energy: 15          # added over the course of one meal
+snack_factor: 0.3        # share of meal_energy from eating again too soon, or too briefly
+meal_min_minutes: 20     # shorter than this is a snack, not a meal
+meal_gap_minutes: 90     # starting to eat again sooner than this after the last meal began is a snack (the same gap Habits uses to count meals)
+hunger_after_minutes: 300   # awake this long since the last meal: energy drains faster
+hunger_energy_per_hour: -3.0
+debt_drain_per_hour: 0.04   # each hour of sleep debt makes every drain this much steeper
+max_sleep_debt_hours: 24
+
+# --- focus: how much of a study minute turns into work ---
+# The meter shown is freshness x the energy factor. Freshness falls over an unbroken session and
+# comes back with breaks; the energy factor is energy / energy_full_focus, between focus_floor and 1.
+focus_per_hour:
+  study: -14.0
+  class: -6.0
+  walk: 10.0
+  idle: 15.0
+  rest: 30.0
+  eat: 30.0
+  event: 20.0
+  sleep: 25.0
+energy_full_focus: 50    # at or above this energy, focus is not held back
+focus_floor: 0.15        # the energy factor never drops below this
+friend_boost: 1.2        # work per minute when studying with a friend who is there
+friend_decay: 0.7        # freshness falls this much slower beside a friend
+study_place_factor:      # work per minute by the kind of place
+  library: 1.0
+  desk: 0.9
+  class: 0.9
+  default: 0.7
+
+# --- deadlines ---
+# work_left is in focused minutes. deadline_risk = work_left / (hours left x capacity_per_hour),
+# capped at 1: the share of your realistic remaining study capacity the deadline would take.
+work_estimates:          # first match on the title wins; minutes of focused work
+  - {match: "project|milestone|paper|essay|lab report", minutes: 300}
+  - {match: "exam|midterm|final", minutes: 240}
+  - {match: "quiz", minutes: 45}
+default_work_minutes: 120
+capacity_minutes_per_day: 180   # focused minutes a day you can realistically give one deadline
+on_track_risk: 0.5              # at or under this at the end of the board, a deadline is on track
+
+# --- winning, and stars ---
+win:
+  sleep_hours: 6
+  meals: 2
+stars:                   # a failed plan has none; a winning plan has one, plus one for each of:
+  energy_floor: 25       # second star: energy never under this, and never late to a fixed block
+  sleep_hours: 7.5       # third star: this much sleep, and every deadline at or under `risk`
+  risk: 0.35
+min_move_minutes: 15     # the shortest move worth scheduling
+
+# --- reality score ---
+review:
+  weights: {study: 0.5, sleep: 0.3, meals: 0.2}   # share of the score each kind of block carries

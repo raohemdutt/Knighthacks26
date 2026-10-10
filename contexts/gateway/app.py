@@ -44,6 +44,7 @@ from contexts.habits.api import habits_router
 from contexts.learning.application.export import teach
 from contexts.vault.api import vault_router
 from contexts.memory.api import build_router as memory_router
+from contexts.play.dayrun_api import dayrun_router
 from contracts import Event
 from contracts.agent import AnswerGenerated, RuleAdded
 from contracts.experience import ApprovalDecided, QuestionAsked
@@ -95,6 +96,8 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         if token and not hmac.compare_digest(authorization or "", f"Bearer {token}"):
             raise HTTPException(401, "missing or wrong token")
 
+    if atlas.dayrun:  # /api/dayrun/* (S4, S6)
+        app.include_router(dayrun_router(atlas.dayrun, publish=atlas.bus.publish, guard=authorized))
     if atlas.policy:  # GET/PUT /vault/policy, POST /vault/wipe/request, POST /vault/wipe, GET /vault/egress
         app.include_router(vault_router(atlas.policy, atlas.bus, wiper=atlas.wiper, guard=authorized))
 

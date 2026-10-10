@@ -49,6 +49,7 @@ from contexts.impact.domain.waste_watch import WasteWatch
 from contexts.play.domain.game import SortIt
 from contexts.perception.application.service import PerceptionService
 from contexts.perception.domain.zones import ZoneEngine
+from contexts.play.dayrun.service import DayRun
 from contexts.play.domain.pathfinding import SortingRules, ZoneMap
 from contexts.play.domain.places import PlaceSet
 from contexts.vault import KeyRing, Policy, Vault, Wiper
@@ -104,6 +105,7 @@ class Atlas:
     presence_sync: PresenceSync | None = None
     board: CircleBoard | None = None
     places: PlaceSet | None = None
+    dayrun: DayRun | None = None
     vault: Vault | None = None
     policy: Policy | None = None
     wiper: Wiper | None = None
@@ -336,8 +338,12 @@ def build(settings: Settings | None = None) -> Atlas:
         planner.place_set = places
         planner.home_place = (agent_cfg.get("leaving") or {}).get("home_place")
 
+    # Day Run (S4, S6): play tomorrow on the place packs before living it. No model calls.
+    dayrun = DayRun(places, memory=memory, habits=habits, presence=presence, hub=hub,
+                    config_dir=s.config_dir, data_dir=s.data_dir) if places else None
+
     return Atlas(settings=s, bus=bus, qa=qa, approvals=approvals, hub=hub, loop=loop, zones=zones, game=game,
                  waste=waste, circle=circle, presence=presence, zone_engine=zone_engine, sharing=sharing,
                  memory=memory, projection=projection, habits=habits, nudger=nudger,
                  presence_sync=presence_sync, board=board, vault=vault, policy=policy, wiper=wiper,
-                 places=places)
+                 places=places, dayrun=dayrun)
