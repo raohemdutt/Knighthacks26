@@ -6,7 +6,7 @@ sources indexed in `SOURCES.md`. Question: what sits between the Jetson and a mo
 and why do server-sent events (SSE) arrive in one burst?
 
 Labels, keys and metric names as in `hub-api-lifecycle.md`: `measured` = observed on a running system with the
-setup (ours: `measurements-2026-10-10.md`, M1 to M14); `practitioner` = documented behavior or recommendation
+setup (ours: `measurements-2026-10-10.md`, M1 to M15); `practitioner` = documented behavior or recommendation
 from the people who build or run the system (vendor docs, maintainers' source at a pinned version,
 maintainers' PRs); `anecdote` = one report without data; `opinion` = argument without evidence. Metrics (O3
 rubric [R8]): CPH `pod.credits_per_hour`, TTS `pod.launch_to_serving_s`, MB/s `link.push_mb_s` and

@@ -6,7 +6,7 @@ and AMD's AUP Learning Cloud spawner actually do when our controller launches, s
 authenticates, and which of our metrics does each behavior move?
 
 Labels: `measured` = a number or behavior observed on a running system, with the setup (our own read-only
-probes are in `measurements-2026-10-10.md`, cited as M1 to M14); `practitioner` = documented behavior or a
+probes are in `measurements-2026-10-10.md`, cited as M1 to M15); `practitioner` = documented behavior or a
 documented recommendation from the people who build or run the system (vendor docs, maintainers' source code
 and docstrings at a pinned version, maintainers' PRs); `anecdote` = one report without data; `opinion` =
 argument without evidence. Every finding ends with `[S..]` or `[R..]` keys into `SOURCES.md`; source links pin

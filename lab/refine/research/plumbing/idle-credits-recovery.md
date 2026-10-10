@@ -5,7 +5,7 @@ Research note for the plumbing track (O3 rubric tests T2 and T3), opened 2026-10
 should a job be written so that a pod lost mid-job costs as little as possible?
 
 Labels, keys and metric names as in `hub-api-lifecycle.md`: `measured` = observed on a running system with the
-setup (ours: `measurements-2026-10-10.md`, M1 to M14); `practitioner` = documented behavior or recommendation
+setup (ours: `measurements-2026-10-10.md`, M1 to M15); `practitioner` = documented behavior or recommendation
 from the people who build or run the system (vendor docs, maintainers' source at a pinned version,
 maintainers' PRs); `anecdote` = one report without data; `opinion` = argument without evidence. Metrics (O3
 rubric [R8]): CPH `pod.credits_per_hour`, TTS `pod.launch_to_serving_s`, MB/s `link.push_mb_s` and
@@ -55,6 +55,12 @@ with nothing touching it.
   Implies: until the R9 controller exists, the shared teacher is culled about an hour after its last use, and each of our probes reset that clock; a status command built only on hub API reads has no keep-alive side effect (T3, CPH).
 
   Experiment (IDL-3): a hub-API-only status poll every 10 minutes for an hour on a pod nobody else uses. Expected: server `last_activity` unchanged by the polls. Minimum sample: 6 polls.
+
+- **[measured]** Pod A, untouched after our last read at 11:04:47 hub time, was stopped at 12:13:39, 68.9 minutes later, with no stop issued by our tools; the 60-minute timeout plus the 10-minute culler cycle predicts exactly that window. Its balance then fell by 664 credits, which is 166 whole minutes x 4 for a session of 166.25 minutes. Source: `measurements-2026-10-10.md` M10 and M15 [R1]
+
+  Implies: IDL-1's prediction holds on the live hub, so the shared teacher dies about 70 minutes after its last use unless something works on it, and its next start costs a full TTS (T2, T3, CPH); the charge confirms the rounded-down per-minute billing of section 3.
+
+  Experiment: IDL-1 is answered once (n=1); repeat on the next idle episode to confirm the window. Expected: stop between 60 and 75 minutes after the last activity. Minimum sample: 2 more episodes.
 
 - **[measured]** Account B's 600-minute session ended at 10:53:37 hub time after 78 minutes (`Session 776: 78 min @ r9700 (4/min)`, -312 credits), and the stopped server's record shows `last_activity` equal to the stop time, so a cull cannot be told apart from a deliberate stop through the hub API. Source: `measurements-2026-10-10.md` M4 and M5 [R1]
 

@@ -121,3 +121,11 @@ entered the spawn app in commit 6e09fad (2026-06-25), and the base image's `WORK
 
 Hub `Date` header `Sat, 10 Oct 2026 11:03:23 GMT` against the workstation's UTC clock
 `11:02:37`: the hub is about 46 s ahead.
+
+## M15. Pod A stopped about 69 minutes after its last activity (probe 6, about 13:52 UTC, hub API only)
+
+`GET /hub/api/users/<acct>?include_stopped_servers=1` for account A: server `''` `stopped: true`,
+`last_activity` 2026-10-10T12:13:39Z (the stop time). The last activity recorded before it was
+11:04:47Z (M10), so the server stopped 68.9 minutes after its last activity, with nothing issuing a
+stop that we know of. Account A's balance fell from 59,960 to 59,296 (-664 = 166 minutes x 4);
+09:27:24 to 12:13:39 is 166.25 minutes. Account B was unchanged (59,628).

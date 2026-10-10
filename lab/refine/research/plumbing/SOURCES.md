@@ -72,7 +72,7 @@ culling, JupyterLab's chunk size, the token-mint handler) only refined findings 
 
 | Key | Source | URL or path | Opened | Cited in |
 |---|---|---|---|---|
-| R1 | Read-only probes of the live hub, 2026-10-10 11:00 to 11:10 UTC (M1 to M14) | `lab/refine/research/plumbing/measurements-2026-10-10.md` | 2026-10-10 | hub, proxy, transfers, idle |
+| R1 | Read-only probes of the live hub, 2026-10-10 11:00 to 11:10 UTC (M1 to M15) | `lab/refine/research/plumbing/measurements-2026-10-10.md` | 2026-10-10 | hub, proxy, transfers, idle |
 | R2 | `lab/README.md` from R2 (pod facts, launch, teacher numbers) at bb351e6 | https://github.com/raohemdutt/Knighthacks26/blob/bb351e6/lab/README.md | 2026-10-10 | hub, transfers, idle |
 | R3 | PR #37, "R2: GPU lab setup (teacher on GPU A, trainer on GPU B)" (merged): smoke LoRA 0.51 samples/s, 8.7 GB peak | https://github.com/raohemdutt/Knighthacks26/pull/37 | 2026-10-10 | idle |
 | R4 | R9 task page, "Verified today" line (Sat 6:35 AM) | https://app.notion.com/p/3f596ef5fec581579ba5c7a9c6d19230 | 2026-10-10 | hub |
