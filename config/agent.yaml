@@ -23,3 +23,8 @@ impact:
 play:
   camera: cam-door
   start_xy: [0.75, 0.75]
+
+# Circle (G1): who this box speaks for, and which circle it negotiates in. Leave empty to turn off.
+circle:
+  member_id: null   # e.g. dom
+  circle_id: null   # e.g. team

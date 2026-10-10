@@ -25,6 +25,7 @@ from contexts.agent.application.qa import QA, SleepSchedule
 from contexts.agent.application.web_port import HubWebTools
 from contexts.agent.domain.rules import RuleEvaluator, load_rules
 from contexts.agent.eval import load_fixture
+from contexts.circle.application.protocol import CircleAgent, InMemoryCircleStore
 from contexts.connectors.application.hub import ConnectorHub
 from contexts.connectors.domain.spec import load_specs
 from contexts.connectors.infrastructure.mcp_client import McpConnector
@@ -68,6 +69,7 @@ class Atlas:
     zones: list[str] = field(default_factory=list)
     game: SortIt | None = None
     waste: WasteWatch | None = None
+    circle: CircleAgent | None = None
     tasks: list[asyncio.Task] = field(default_factory=list)
 
     async def start(self) -> None:
@@ -81,6 +83,8 @@ class Atlas:
             now = datetime.now(UTC)
             try:
                 await self.bus.publish_all(self.approvals.expire(now))
+                if self.circle:
+                    await self.bus.publish_all(self.circle.poll())
                 if self.loop.due(now):
                     await self.bus.publish_all(self.loop.tick(now))
                 if self.settings.connectors:
@@ -183,4 +187,14 @@ def build(settings: Settings | None = None) -> Atlas:
         bus.subscribe("perception.observation", waste.on_observation, replay=True)
         bus.subscribe("perception.zone", waste.on_zone_event, replay=True)
 
-    return Atlas(settings=s, bus=bus, qa=qa, approvals=approvals, hub=hub, loop=loop, zones=zones, game=game, waste=waste)
+    # Circle (G1): friends' Atlases negotiate through agent_messages. The store is in-memory until
+    # the Neon store from N1 is plugged in here (same CircleStore port).
+    circle = None
+    circle_cfg = agent_cfg.get("circle") or {}
+    if circle_cfg.get("member_id") and circle_cfg.get("circle_id"):
+        circle = CircleAgent(circle_cfg["member_id"], circle_cfg["circle_id"], InMemoryCircleStore(), memory,
+                             clock=lambda: datetime.now(UTC))
+        approvals.executors["circle_share"] = circle.share_executor
+
+    return Atlas(settings=s, bus=bus, qa=qa, approvals=approvals, hub=hub, loop=loop, zones=zones, game=game,
+                 waste=waste, circle=circle)
