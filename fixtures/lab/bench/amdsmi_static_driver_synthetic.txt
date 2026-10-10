@@ -1,0 +1,5 @@
+GPU: 0
+    DRIVER:
+        NAME: amdgpu
+        VERSION: 6.12.12-fake
+

@@ -1,0 +1,12 @@
+build: 6500 (1a2b3c4d) with cc (GCC) 13.2.0 for x86_64-linux-gnu
+system info: n_threads = 16, n_threads_batch = 16, total_threads = 32
+ggml_cuda_init: found 1 ROCm devices:
+  Device 0: AMD Radeon 8060S, gfx1151 (0x1151), VMM: no, Wave Size: 32
+print_info: file type   = Q4_K - Medium
+print_info: n_ctx_train      = 262144
+llama_context: n_seq_max     = 16
+llama_context: n_ctx         = 16384
+llama_context: flash_attn    = enabled
+llama_kv_cache: size = 2048.00 MiB ( 16384 cells,  16 layers, 16/16 seqs), K (f16): 1024.00 MiB, V (f16): 1024.00 MiB
+main: server is listening on http://127.0.0.1:8100 - starting the main loop
+srv  update_slots: all slots are idle
