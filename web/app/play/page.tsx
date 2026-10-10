@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { TwinStage } from "@/components/map/TwinStage";
 import { Empty, ErrorBox, Loading } from "@/components/States";
 import ui from "@/components/ui.module.css";
 import { api, type Cell, type PlayRoute } from "@/lib/api";
 import { useAtlasEvents } from "@/lib/atlas";
 import { humanize, percent } from "@/lib/format";
 import { SORT_ITEMS } from "@/lib/room";
+import { type TwinPin, useRoomTwin } from "@/lib/roomTwin";
 import { useFetch } from "@/lib/useFetch";
 
 /** The items the box knows how to sort; anything it does not know goes to the trash. Shared with the Room map. */
@@ -17,6 +19,9 @@ const ITEMS = SORT_ITEMS;
  * per bin tells us where each bin's route ends, which is enough to mark both.
  */
 const BIN_PROBES = ["can", "cup"];
+
+/** Sort It shows no memory pins: the floor is for the route. */
+const NO_PINS: TwinPin[] = [];
 
 /** SVG units per grid cell. Kept large so label text is a normal font size (browsers clamp very small ones). */
 const S = 10;
@@ -31,6 +36,8 @@ export default function PlayPage() {
   const route = useFetch((s) => api.playRoute(item, s), item);
   const probes = useFetch((s) => Promise.all(BIN_PROBES.map((p) => api.playRoute(p, s))));
   const accuracy = useFetch((s) => api.playAccuracy(s));
+  // The room twin is the main picture when the box has a floor plan: the live round, or the way for the picked item.
+  const twin = useRoomTwin();
 
   // A round started on the box: follow along with its item. A round scored: refresh the numbers.
   useAtlasEvents(["play.round."], (e) => {
@@ -44,8 +51,18 @@ export default function PlayPage() {
     <>
       <div className={ui.pageHead}>
         <h1>Sort It</h1>
-        <p className={ui.muted}>Pick what you are holding. Atlas shows the right bin and the shortest way to it.</p>
+        <p className={ui.muted}>
+          {twin.plan
+            ? "Face the bin camera holding something for two seconds to start a round, or pick what you are holding. Atlas shows the right bin and the way to it across the room."
+            : "Pick what you are holding. Atlas shows the right bin and the shortest way to it."}
+        </p>
       </div>
+
+      {twin.plan ? (
+        <div className={ui.card}>
+          <TwinStage twin={twin} pins={NO_PINS} previewItem={item} speak start="top" shape="tall" />
+        </div>
+      ) : null}
 
       {off ? (
         <Empty title="Sort It is not set up on this box">
@@ -71,7 +88,10 @@ export default function PlayPage() {
           ) : !route.data ? (
             <Loading what="the route" />
           ) : (
-            <RouteCard route={route.data} bins={binMarks(route.data, probes.data ?? [])} />
+            <>
+              {twin.plan ? <h2 className={ui.sectionTitle}>The bin camera&apos;s own view</h2> : null}
+              <RouteCard route={route.data} bins={binMarks(route.data, probes.data ?? [])} />
+            </>
           )}
         </>
       )}
