@@ -41,6 +41,8 @@ class DayLoop:
         bus.subscribe("perception.zone", c.on_zone, replay=True)
         bus.subscribe("perception.scene", c.on_scene, replay=True)
         bus.subscribe("day.coach.noted", c.on_noted, replay=True)
+        bus.subscribe("perception.expression", c.on_expression, replay=True)  # optional input: how an enrolled member looked
+        bus.subscribe("perception.identity", c.on_identity, replay=True)  # a forgotten member's looks are dropped
         # State that rebuilds from the log.
         bus.subscribe("day.plan.proposed", p.on_plan_proposed, replay=True)
         bus.subscribe("day.replan.proposed", p.on_replan_proposed, replay=True)

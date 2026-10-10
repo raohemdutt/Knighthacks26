@@ -14,7 +14,10 @@ Where the inputs come from:
   zone's object lists (an object counts when it was not in the list before: appearing, not lying there);
 - chat messages with their times, and the episode a scene or a door entry belongs to (the id the screen
   cites): Memory's reader (`items`, `episodes`);
-- the day's desk minutes: Habits' digest; the planned blocks: the planner's current plan.
+- the day's desk minutes: Habits' digest; the planned blocks: the planner's current plan;
+- how the person looked (optional): `perception.expression.observed` on the desk camera for an enrolled member who
+  switched "read my expressions" on. With no such events the coach says exactly what it said before. A member who
+  is no longer enrolled (`perception.identity.changed`) is forgotten here too.
 
 When a block ends, and the person was at the desk for at least five minutes of it, the coach publishes
 `day.coach.noted` (one sentence for the phone and the voice; a skipped block is not announced); the evening review
@@ -38,7 +41,9 @@ from contexts.day.domain.coach import (
     NOTE_MIN_MINUTES,
     PHONE_WORDS,
     Advice,
+    STRAINED_LOOKS,
     DeskPresence,
+    Looks,
     Signal,
     Words,
     day_text,
@@ -51,7 +56,7 @@ from contexts.play.dayrun.models import Estimate
 from contexts.play.dayrun.service import DayRun
 from contracts.day import CoachCalibration, DayCoachNoted, DayPlanProposed, DayReplanProposed, NextEvent, PlanMove, SessionReview
 from contracts.events import Event
-from contracts.perception import SceneDescribed, ZoneEvent
+from contracts.perception import ExpressionObserved, SceneDescribed, ZoneEvent
 
 log = logging.getLogger("atlas.day")
 KEEP = timedelta(days=3)  # how far back presence and scenes are kept, in event time
@@ -72,6 +77,7 @@ class DayCoach:
         self.presence = DeskPresence()
         self.seen: list[tuple[str, datetime, str]] = []  # (kind, at, camera): door entries and desk scenes, in time order
         self.desk_labels: set[str] | None = None  # the desk zone's last object list; None until the first one
+        self.looks: dict[str, list[Looks]] = {}  # enrolled member -> how they looked at the desk camera, in time order
         self.notes: dict[date, dict[tuple[str, str], DayCoachNoted]] = {}  # day -> (plan id, block id) -> note
         self.latest: DayCoachNoted | None = None
         self._noting: set[tuple[str, str]] = set()  # handed to the bus, not yet seen back (live only)
@@ -102,6 +108,26 @@ class DayCoach:
                 self.seen.append(("phone", e.ts, e.camera_id))
             if mentions(e.caption, FOOD_WORDS):
                 self.seen.append(("food", e.ts, e.camera_id))
+
+    def on_expression(self, e: ExpressionObserved) -> None:
+        """How an enrolled member looked at the desk camera over a stretch. The anonymous room count is not a person's."""
+        if e.member_id is None or e.camera_id != self.desk_camera or e.samples <= 0:
+            return
+        strained = sum(share for label, share in e.shares.items() if label in STRAINED_LOOKS) * e.samples
+        rows = self.looks.setdefault(e.member_id, [])
+        rows.append(Looks(e.window_start, e.window_end, e.samples, strained))
+        if rows[0].end < e.window_end - KEEP - timedelta(days=1):
+            self.looks[e.member_id] = [x for x in rows if x.end >= e.window_end - KEEP]
+
+    def on_identity(self, e: Event) -> None:
+        """Someone was forgotten: their looks go from here as well."""
+        enrolled = set(getattr(e, "members", ()))
+        self.looks = {m: rows for m, rows in self.looks.items() if m in enrolled}
+
+    def looks_in(self, block: PlanMove) -> list[Looks]:
+        """The looks inside the block of the member seen most in it (the desk is one person's at a time)."""
+        inside = [[x for x in rows if x.end > block.start and x.start < block.end] for rows in self.looks.values()]
+        return max(inside, key=lambda rows: sum(x.samples for x in rows), default=[])
 
     def on_noted(self, e: DayCoachNoted) -> None:
         self.notes.setdefault(e.day, {})[e.plan_id, e.block_id] = e
@@ -161,7 +187,8 @@ class DayCoach:
     def session(self, block: PlanMove) -> SessionReview:
         spans = self.presence.intervals(block.start, block.end)
         desk = self.dayrun.walks.ref(self.dayrun.cfg.desk)
-        return review_session(block, spans, self.signals(block) if spans else [], desk, self.words, self.clock.tz)
+        return review_session(block, spans, self.signals(block) if spans else [], desk, self.words, self.clock.tz,
+                              looks=self.looks_in(block) if spans and self.looks else None)
 
     def sessions(self, day: date, now: datetime) -> list[SessionReview]:
         """Every block of the main activity in the day's plan that has ended by `now`, measured or said not to be."""
@@ -273,4 +300,8 @@ class DayCoach:
         return sorted(notes, key=lambda n: n.ts, reverse=True)
 
     def limits(self) -> list[str]:
-        return [s.format(workplace=self.words.workplace) for s in LIMITS]
+        out = [s.format(workplace=self.words.workplace) for s in LIMITS]
+        if self.looks:  # only where expressions are read at all
+            out.append('"Looked strained" is how a face looked to a small model over many looks: a noisy signal, '
+                       'not an emotion and nothing about health.')
+        return out
