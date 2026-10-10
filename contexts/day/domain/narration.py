@@ -229,6 +229,11 @@ def short_place(name: str | None) -> str | None:
     return f"the {n.lower()}" if n.lower() in PLAIN_PLACES else n
 
 
+def at_place(place: str) -> str:
+    """"in the kitchen", "at the desk", "at Engineering II"."""
+    return f"in {place}" if place in ("the kitchen", "the bedroom", "the living room", "the office") else f"at {place}"
+
+
 def the(title: str) -> str:
     """"the mentor check-in", but "COP4533 study session" and "Judging" stay as they are."""
     return f"the {title}" if title[:1].islower() else title
@@ -512,9 +517,9 @@ def _now(f: dict, w: Words) -> Narration:
             return Narration(f"Time to go. {cap(title)} starts at {at_s}{where}, {walk_s} from here; {go}.",
                              f"Leave now: {title} starts at {at_x}{where}" + (f", a {walk} min walk (leave by {clock(nxt['leave_by'])})." if walk and nxt.get("leave_by") else "."))
         if risk == "late":
-            still = f" and you're still at {seen}" if seen else ""
+            still = f" and you're still {at_place(seen)}" if seen else ""
             return Narration(f"{cap(title)} started at {at_s}{still}. Head{' to ' + nxt['place'] if nxt.get('place') else ' over'} now; it's {walk_s}.",
-                             f"Late: {title} started at {at_x}{where}{f'; last seen at {seen}' if seen else ''}. It is a {walk} min walk.")
+                             f"Late: {title} started at {at_x}{where}{f'; last seen {at_place(seen)}' if seen else ''}. It is a {walk} min walk.")
         origin = f" from {seen}" if seen else ""
         return Narration(f"You won't make {title} at {at_s}{origin}; it's {walk_s}. I'm working out a new plan from where you are.",
                          f"You will miss the start of {title} at {at_x}{origin} ({walk} min walk). A re-plan from here is coming.")
@@ -525,8 +530,8 @@ def _now(f: dict, w: Words) -> Narration:
         if drift >= 10:
             gap = say_minutes(drift)
             gap = gap if gap.startswith("about") else f"about {gap}"
-            away = f": the plan has you at {should}" + (f" and I last saw you at {seen}" if seen and seen != should else "") if should else ""
-            lead, lead_x = f"You're {gap} behind on {block}{away}.", f"About {drift} min behind on {doing_x}" + (f"; last seen at {seen}." if seen else ".")
+            away = f": the plan has you {at_place(should)}" + (f" and I last saw you {at_place(seen)}" if seen and seen != should else "") if should else ""
+            lead, lead_x = f"You're {gap} behind on {block}{away}.", f"About {drift} min behind on {doing_x}" + (f"; last seen {at_place(seen)}." if seen else ".")
         elif drift <= -10:
             lead, lead_x = f"You're ahead of the plan: {doing}.", f"Ahead of the plan: {doing_x}."
         else:
@@ -546,7 +551,7 @@ def _now(f: dict, w: Words) -> Narration:
 
 def _replan(f: dict, w: Words) -> Narration:
     ev, seen = f.get("for"), f.get("seen_at")
-    body, leave, shown = _plan_body(f, w)
+    body, leave, shown = _plan_body({k: v for k, v in f.items() if k not in ("bed", "tomorrow")}, w)  # the change, not the whole night
     if f.get("asked") or not ev:
         lead = f"Here's a fresh plan from {seen}" if seen else "Here's a fresh plan from here"
         lead_x = f"A new plan from {seen or 'here'}, as you asked"
@@ -556,9 +561,13 @@ def _replan(f: dict, w: Words) -> Narration:
         origin = f" from {seen}" if seen else ""
         verb = "started" if ev.get("started") else "starts"
         walk_s = f"; it's {_walk_words(walk)}" if walk else ""
-        go = " Head there now and catch what's left." if ev.get("kept") else " I've had to drop it."
-        spoken = (f"You won't make the start of {title} at {say_time(ev['at'])}{origin}{walk_s}.{go}"
-                  f" After that I'd do it this way: {body}.")
+        if ev.get("started"):
+            opening = f"{cap(title)} started at {say_time(ev['at'])}" + (f" and you're {_walk_words(walk)} away" if walk else "") + "."
+        else:
+            opening = f"You won't make the start of {title} at {say_time(ev['at'])}{origin}{walk_s}."
+        go = (" Head there now and catch what's left. After that I'd do it this way" if ev.get("kept")
+              else " It no longer fits, so I'd carry on from here")
+        spoken = f"{opening}{go}: {body}."
         display = (f"{cap(title)} {verb} at {clock(ev['at'])}" + (f" at {ev['place']}" if ev.get("place") else "") + (f", a {walk} min walk{origin}" if walk else "")
                    + f". {'Go now and catch the rest' if ev.get('kept') else 'It no longer fits'}. Then: {lower_first(shown)}")
     n = f.get("blocks", 0)

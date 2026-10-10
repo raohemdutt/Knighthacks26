@@ -571,7 +571,7 @@ class Narrator:
             move = next((m for m in (plan.moves if plan else []) if m.title == e.followed[0]), None)
             title = short_title(e.followed[0])
             if move is not None and move.kind == "eat" and not move.fixed:
-                title = words.meal_name(self.local(move.start)) + (f" at {short_place(move.place_name)}" if move.place_name else "")
+                title = words.meal_name(self.local(move.start)) + (f" {words.at_place(short_place(move.place_name))}" if move.place_name else "")
             f["win"] = {"kind": "kept", "title": title}
         elif e.streak >= 2:
             f["win"] = {"kind": "streak", "days": e.streak}

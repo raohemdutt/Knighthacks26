@@ -1,0 +1,551 @@
+/* Now: the day as one story, top to bottom. Phone first (390 to 520 px); tokens from globals.css. */
+
+/* ---------- the hero: what Atlas would say right now ---------- */
+.hero {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 16px 16px;
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, var(--accent-soft), transparent 70%), var(--surface);
+  border: 1px solid var(--line);
+  min-width: 0;
+}
+
+.heroWarn {
+  border-color: var(--danger);
+  background: linear-gradient(180deg, var(--danger-soft), transparent 70%), var(--surface);
+}
+
+.greeting {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 15px;
+  color: var(--muted);
+}
+
+.greeting strong {
+  font-size: 17px;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.lead {
+  font-size: 21px;
+  line-height: 1.4;
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+
+.sub {
+  font-size: 16px;
+  line-height: 1.45;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.subLabel {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.heroRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.speak {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 16px 8px 12px;
+  border-radius: 22px;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.speak svg {
+  width: 22px;
+  height: 22px;
+}
+
+.speakOn {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.speak:disabled {
+  opacity: 0.5;
+}
+
+.engine {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* ---------- one primary action ---------- */
+.action {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.primary {
+  width: 100%;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hint {
+  font-size: 15px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.more {
+  border-radius: var(--radius-sm);
+  min-width: 0;
+}
+
+.more > summary,
+.why > summary,
+.fold > summary {
+  cursor: pointer;
+  list-style: none;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.more > summary::-webkit-details-marker,
+.why > summary::-webkit-details-marker,
+.fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+.more > summary::after,
+.why > summary::after,
+.fold > summary::after {
+  content: "+";
+  font-size: 20px;
+  line-height: 1;
+}
+
+.more[open] > summary::after,
+.why[open] > summary::after,
+.fold[open] > summary::after {
+  content: "–";
+}
+
+.moreBody {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.moreBody > * {
+  min-height: 48px;
+  font-size: 16px;
+  padding: 10px 12px;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ---------- meters, as a strip ---------- */
+.strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.cell {
+  padding: 10px 6px;
+  text-align: center;
+  min-width: 0;
+}
+
+.cell + .cell {
+  border-left: 1px solid var(--line);
+}
+
+.cellNum {
+  font-size: 20px;
+  font-weight: 750;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+.cellLabel {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.25;
+}
+
+/* ---------- the ribbon ---------- */
+.ribbon {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.item {
+  display: grid;
+  grid-template-columns: 62px 18px minmax(0, 1fr);
+  column-gap: 8px;
+  position: relative;
+  min-width: 0;
+}
+
+.when {
+  padding-top: 13px;
+  font-size: 14px;
+  color: var(--muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.rail {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+
+.rail::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--line);
+}
+
+.item:first-child .rail::before {
+  top: 18px;
+}
+
+.item:last-child .rail::before {
+  bottom: calc(100% - 18px);
+}
+
+.dot {
+  position: relative;
+  z-index: 1;
+  margin-top: 15px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--muted);
+  background: var(--bg);
+}
+
+/* fixed, from the calendar: a filled square; a suggestion from Atlas: a hollow circle */
+.dotFixed {
+  border-radius: 3px;
+  border-color: var(--text);
+  background: var(--text);
+}
+
+.dotNow {
+  border-color: var(--accent);
+  background: var(--accent);
+  box-shadow: 0 0 0 5px var(--accent-soft);
+}
+
+.dotNote {
+  width: 8px;
+  height: 8px;
+  margin-top: 17px;
+  border: none;
+  background: var(--muted);
+}
+
+.body {
+  margin: 4px 0;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--line);
+  background: transparent;
+  text-align: left;
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font: inherit;
+  color: inherit;
+}
+
+button.body {
+  cursor: pointer;
+}
+
+.bodyFixed {
+  border-style: solid;
+  border-left: 4px solid var(--text);
+  background: var(--surface);
+}
+
+.bodyNow {
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+}
+
+.bodyNow.bodyFixed {
+  border-left-width: 4px;
+}
+
+.bodyNext {
+  border-style: solid;
+  border-color: var(--muted);
+}
+
+.bodyWarn {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.past .body,
+.past .when {
+  opacity: 0.55;
+}
+
+.titleRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.title {
+  font-size: 17px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  font-size: 14px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pill {
+  display: inline-block;
+  padding: 1px 9px;
+  border-radius: 11px;
+  font-size: 13px;
+  font-weight: 650;
+  background: var(--surface-2);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.pillHere {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.pillWarn {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.pillGood {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.progress {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  overflow: hidden;
+  margin-top: 2px;
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width 0.6s ease;
+}
+
+.leave {
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.reason {
+  font-size: 15px;
+  line-height: 1.4;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.here {
+  margin: 4px 0;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.note {
+  margin: 4px 0;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border-left: 4px solid var(--accent);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.noteLabel {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.noteText {
+  font-size: 16px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.fold {
+  min-width: 0;
+}
+
+.fold > summary {
+  min-height: 36px;
+  font-size: 14px;
+  justify-content: flex-start;
+}
+
+.foldBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 6px;
+  min-width: 0;
+}
+
+.legend {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--muted);
+  padding-left: 4px;
+}
+
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--muted);
+  border-radius: 50%;
+}
+
+.legend i.sq {
+  border-radius: 2px;
+  border-color: var(--text);
+  background: var(--text);
+}
+
+/* ---------- why this plan ---------- */
+.why {
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  padding: 4px 16px;
+  min-width: 0;
+}
+
+.why > summary {
+  color: var(--text);
+  font-size: 17px;
+  min-height: 52px;
+}
+
+.whyBody {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 4px 0 14px;
+  min-width: 0;
+}
+
+.whyBody h3 {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+@media (max-width: 360px) {
+  .item {
+    grid-template-columns: 54px 16px minmax(0, 1fr);
+  }
+  .lead {
+    font-size: 19px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progressFill {
+    transition: none;
+  }
+}

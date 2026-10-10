@@ -1026,6 +1026,35 @@ export interface DayPlanOut {
   plan: DayPlan | DayReplan;
 }
 
+export type DayMoment = "morning" | "now" | "replan" | "coach" | "evening" | "approval";
+
+/** contracts.day.DayNarrated: one moment of the day in words, for the ear (`spoken`) and for the screen (`display`). */
+export interface DayNarration extends EventEnvelope {
+  type: "day.narrated";
+  day: string;
+  moment: DayMoment;
+  plan_id: string | null;
+  /** The source event's id, or the action id of an approval ask. */
+  ref: string | null;
+  spoken: string;
+  display: string;
+  engine: "template" | "model";
+  facts_hash: string;
+  /** A "now" worth saying aloud unasked: leave now, late. */
+  urgent: boolean;
+}
+
+/** GET /api/day/brief */
+export interface DayBrief {
+  mode: "model" | "template" | "off";
+  engine: "model" | "template" | "off";
+  timeout_s: number;
+  gap_s: number;
+  latest: Partial<Record<DayMoment, DayNarration>>;
+  asks: Record<string, DayNarration>;
+  model: { calls: number; used: number; rejected: number; timeouts: number; errors: number; last_problem: string | null };
+}
+
 export interface DayPattern {
   text: string;
   n: number;
@@ -1407,5 +1436,10 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   dayMakePlan: (body: { moves?: Move[]; from_here?: boolean } = {}) =>
     post<{ plan_id: string; type: string; action_id: string | null; plan: DayPlan | DayReplan }>("/api/day/plan", body),
   dayCoach: (day?: string, signal?: AbortSignal) => get<DayCoach>("/api/day/coach", { day }, signal),
+  /** The day in words: the latest narration of each moment and the asks for pending cards. */
+  dayBrief: (signal?: AbortSignal) => get<DayBrief>("/api/day/brief", undefined, signal),
+  /** Narrate a moment again from the state as it is now ("Brief me"). `fast` never waits for the model. */
+  dayBriefMake: (body: { moment: Exclude<DayMoment, "approval">; fast?: boolean }) =>
+    post<{ mode: string; engine: string; moment: DayMoment; fresh: boolean; narration: DayNarration }>("/api/day/brief", body),
   dayPatterns: (signal?: AbortSignal) => get<{ patterns: DayPattern[]; note?: string }>("/api/day/patterns", undefined, signal),
 };
