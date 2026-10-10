@@ -1,0 +1,3 @@
+# cmd.exe can jump to the wrong line after a goto when a batch file uses bare line feeds, so
+# batch files keep Windows line endings in every checkout (the repo default is LF).
+*.cmd text eol=crlf
