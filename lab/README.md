@@ -54,10 +54,35 @@ bash lab/pod_a_teacher.sh download   # amd/Qwen3.8-27B-Quark-AWQ-INT4-W4A16 (18 
 bash lab/pod_a_teacher.sh serve      # OpenAI-compatible server on 127.0.0.1:8000, model name "teacher"
 ```
 
-`lab/vllm-gfx1201.diff` is the set of changes vLLM needs on RDNA4: `num_stages=1` in the Triton unified
-attention kernel (64 KB LDS), two platform-detection fixes, and the torch pins removed so the pod's own
-torch is used (`use_existing_torch.py`). Alternative checkpoints: `TEACHER=RedHatAI/Qwen3.8-27B-INT4` or
-`TEACHER=Qwen/Qwen3.8-27B-FP8` (28.8 GB, tight).
+`lab/vllm-gfx1201.diff` is the set of changes vLLM (commit b1388b1, April 2026) needs on this pod: `num_stages=1`
+in the Triton unified attention kernel (64 KB LDS on RDNA4), two platform-detection fixes, the torch pins removed
+so the pod's own torch is used (`use_existing_torch.py`), and the GPTQ `compat.cuh` half/half2 `atomicAdd`
+fallbacks guarded out because ROCm 7.13 ships those overloads itself. Build gotchas the script handles: no root,
+so `cmake`, `ninja` and `pkgconf` come from `pip --user`; the image has no libdrm, so a stub `libdrm.pc` and an
+empty `libdrm.so` under `~/.local` satisfy torch's `LoadHIP.cmake`; `SETUPTOOLS_SCM_PRETEND_VERSION` avoids a
+`git describe` timeout on the NFS home.
+
+Measured on 2026-10-10 with `RedHatAI/Qwen3.8-27B-INT4` (bf16 activations, 16k context, one image per prompt):
+
+| Prompt | TTFT | decode |
+|---|---|---|
+| text, thinking off, 76 tokens | 0.55 s | 7.8 tok/s |
+| text, thinking on, 160 tokens | 0.28 s | 7.7 tok/s |
+| 1280x720 JPEG caption, 28 tokens | 1.09 s | 6.6 tok/s |
+
+Engine init takes about 270 s (CUDA-graph capture included), the model holds 84 % of VRAM with ~10x concurrency
+at 16k tokens, and the card draws ~200 W average, 300 W peak, while generating. The W4A16 layers run on
+`ConchLinearKernel` (the Triton fallback; Marlin/Machete do not exist on ROCm), which is why decode is far
+below the 20 to 30 tok/s the design doc estimated. That kernel is the first target for the gfx1201 kernel work.
+Pass `"chat_template_kwargs": {"enable_thinking": false}` for captions, otherwise the model spends its budget
+reasoning.
+
+Checkpoints: `amd/Qwen3.8-27B-Quark-AWQ-INT4-W4A16` and `-MXFP4` are AMD's own Quark exports (Aug 2026) and
+would be the better AMD-track story, but this vLLM commit's Quark weight mapper (`quark.py:apply_vllm_mapper`)
+rejects their config. Making them load means either moving to a vLLM commit from late August 2026 or later
+(which pins torch 2.10+, so torch would come from `repo.radeon.com/rocm/manylinux` rather than the image) or
+backporting that one Python file's mapper, which needs no C++ rebuild. `Qwen/Qwen3.8-27B-FP8` (28.8 GB) is the
+last resort and leaves little KV room.
 
 Call it from anywhere:
 

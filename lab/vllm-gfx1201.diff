@@ -112,3 +112,27 @@ index ca5d0e3..10940a8 100644
          )
          reduce_segments[(q.shape[0], num_query_heads)](
              output_ptr=out,
+diff --git a/csrc/quantization/gptq/compat.cuh b/csrc/quantization/gptq/compat.cuh
+index 1b3fb3d391..395d0ffcb0 100644
+--- a/csrc/quantization/gptq/compat.cuh
++++ b/csrc/quantization/gptq/compat.cuh
+@@ -46,14 +46,19 @@ __device__ __forceinline__ void atomicAdd_half2(half2* address, half2 val) {
+ #if defined(__CUDA_ARCH__) || defined(USE_ROCM)
+   #if __CUDA_ARCH__ < 700 || defined(USE_ROCM)
+ 
++#if !defined(USE_ROCM)  // ATLAS_ROCM_HAS_HALF_ATOMICADD: ROCm 7.13 provides atomicAdd(__half*, __half)
+ __device__ __forceinline__ void atomicAdd(half* address, half val) {
+   atomicAdd_half(address, val);
+ }
++#endif
+ 
+     #if __CUDA_ARCH__ < 600 || defined(USE_ROCM)
++// ROCm 7.13+ ships atomicAdd(__half2*, __half2) in amd_hip_fp16.h; defining it again is ambiguous.
++#if !defined(USE_ROCM)  // ATLAS_ROCM_HAS_HALF2_ATOMICADD
+ __device__ __forceinline__ void atomicAdd(half2* address, half2 val) {
+   atomicAdd_half2(address, val);
+ }
++#endif
+     #endif
+ 
+   #endif
