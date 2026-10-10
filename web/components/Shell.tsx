@@ -170,6 +170,16 @@ const MORE: Tab[] = [
       </>
     ),
   },
+  {
+    href: "/spot",
+    label: "Inspection (SPOT)",
+    icon: (
+      <>
+        <rect x="5" y="9" width="12" height="5" rx="1.5" />
+        <path d="M7 14v5M15 14v5M17 10.5l3-2.5M9 9V6h3" />
+      </>
+    ),
+  },
 ];
 
 const LINK_TEXT: Record<LinkState, string> = { live: "Live", connecting: "Connecting…", offline: "Offline, retrying" };

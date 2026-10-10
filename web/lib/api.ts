@@ -1589,4 +1589,31 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   coachCorrect: (body: import("./coachFeedback").CoachCorrectionBody) =>
     post<import("./coachFeedback").CoachCorrectionResult>("/api/day/coach/corrections", body),
   dayPatterns: (signal?: AbortSignal) => get<{ patterns: DayPattern[]; note?: string }>("/api/day/patterns", undefined, signal),
+
+  // Inspection (SPOT): contexts/spot; shapes in components/spot/types.ts. Every GET answers 200 without a kit ({configured: false, note}).
+  spotOverview: (signal?: AbortSignal) => get<Spot.Overview>("/api/spot/overview", undefined, signal),
+  spotFindings: (signal?: AbortSignal) => get<{ configured: boolean; findings: Spot.Finding[] }>("/api/spot/findings", undefined, signal),
+  spotTriage: (signal?: AbortSignal) => get<Spot.Triage>("/api/spot/triage", undefined, signal),
+  spotLocations: (signal?: AbortSignal) => get<Spot.Locations>("/api/spot/locations", undefined, signal),
+  spotAssets: (signal?: AbortSignal) => get<{ configured: boolean; assets: Spot.AssetRow[] }>("/api/spot/assets", undefined, signal),
+  spotAsset: (id: string, signal?: AbortSignal) => get<Spot.AssetDetail>(`/api/spot/assets/${encodeURIComponent(id)}`, undefined, signal),
+  spotMission: (id: string, signal?: AbortSignal) => get<Spot.MissionDetail>(`/api/spot/missions/${encodeURIComponent(id)}`, undefined, signal),
+  spotHandoff: (signal?: AbortSignal) => get<Spot.Handoff>("/api/spot/handoff", undefined, signal),
+  spotAssumptions: (signal?: AbortSignal) => get<{ assumptions: Spot.Assumption[] }>("/api/spot/assumptions", undefined, signal),
+  spotValidation: (signal?: AbortSignal) => get<Spot.Validation>("/api/spot/validation", undefined, signal),
+  spotWorkOrders: (signal?: AbortSignal) => get<{ work_orders: Spot.WorkOrder[]; folder: string }>("/api/spot/work_orders", undefined, signal),
+  spotReplay: (signal?: AbortSignal) => get<Spot.Replay>("/api/spot/replay/state", undefined, signal),
+  spotReplayStart: () => post<Spot.Replay>("/api/spot/replay/start", {}),
+  spotReplayPause: () => post<Spot.Replay>("/api/spot/replay/pause", {}),
+  spotReplaySeek: (body: { index?: number; mission_id?: string; fraction?: number }) => post<Spot.Replay>("/api/spot/replay/seek", body),
+  spotReplaySpeed: (speed: number) => post<Spot.Replay>("/api/spot/replay/speed", { speed }),
+  spotAsk: (text: string) => post<Spot.Answer>("/api/spot/ask", { text }),
+  /** Both raise an approval card on the box; nothing is written until it is approved. */
+  spotReinspect: (asset_id: string) => post<{ action_id: string; reason: string }>("/api/spot/actions/reinspect", { asset_id }),
+  spotWorkOrder: (anomaly_id: string) => post<{ action_id: string; reason: string }>("/api/spot/actions/work_order", { anomaly_id }),
 };
+
+import type * as Spot from "@/components/spot/types";
+
+/** Full URL of a gateway path the inspection screen puts in an <img> (the floor plan, the kit's sample pictures). */
+export const spotUrl = (path: string): string => HTTP_BASE + path;

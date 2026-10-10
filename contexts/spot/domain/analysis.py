@@ -637,7 +637,7 @@ def anomalies_in_successful_missions(kit: Kit) -> Finding:
                             "is questionable and the asset needs a second look before anyone is sent.",
                    caveat="The kit does not say whether an anomaly on a failed action is a real finding or a by-product of the failure. "
                           "We treat it as unverified, not as false.",
-                   evidence=Evidence(anomalies=[x.anomaly_id for x in serious], missions=[b.key for b in rows]),
+                   evidence=Evidence(anomalies=sorted({x.anomaly_id for x in serious} | {x.anomaly_id for x in in_clean}), missions=[b.key for b in rows]),
                    extra={"confirmed": [x.anomaly_id for x in confirmed], "unverified": [x.anomaly_id for x in unverified],
                           "in_clean_missions": [x.anomaly_id for x in in_clean], "in_completed": len(inside)})
 

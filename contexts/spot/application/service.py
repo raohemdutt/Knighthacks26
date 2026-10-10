@@ -159,7 +159,11 @@ class Spot:
                 "validation": {"summary": self.validation["summary"], "agree": self.validation["agree"], "compared": self.validation["compared"]},
                 "issues": {"warn": sum(i.level == "warn" for i in kit.issues), "error": sum(i.level == "error" for i in kit.issues),
                            "info": sum(i.level == "info" for i in kit.issues)},
-                "assets": {"files": kit.asset_files, "floor_plan": bool(self.plan)}, "min_n": MIN_N}
+                "assets": {"files": kit.asset_files, "floor_plan": bool(self.plan)}, "min_n": MIN_N,
+                # so an id cited anywhere on the screen can open the right panel
+                "index": {"action_mission": {x.action_id: x.mission_id for x in kit.actions},
+                          "anomaly_asset": {x.anomaly_id: x.asset_id for x in kit.anomalies}},
+                "samples": {t: self.sample_image(t) for t in SAMPLE_IMAGE}}
 
     def mission_summary(self, mission_id: str) -> dict:
         kit = self.kit
@@ -257,9 +261,8 @@ class Spot:
         trends = self.findings["reading_trends"].extra
         series = [s for s in trends["series"] if s["asset_id"] == asset_id]
         types = sorted({a.action_type for a in acts if a.is_inspection}, key=lambda t: -sum(1 for a in acts if a.action_type == t))
-        return {**base, "location": next((x for x in self.locations()["locations"] if x["location_id"] == base["location_id"]), None)
-                and {"location_id": base["location_id"], "location_name": kit.location[base["location_id"]].location_name,
-                     "floor": kit.location[base["location_id"]].floor},
+        home = kit.location.get(base["location_id"])
+        return {**base, "location": {"location_id": home.location_id, "location_name": home.location_name, "floor": home.floor} if home else None,
                 "inspection": triage_mod.inspection_state(kit, asset_id),
                 "triage": next((i for i in self.triage if i["id"] == asset_id), None),
                 "series": [{**s, "band": trends["bands"].get(s["measurement_type"])} for s in series],
