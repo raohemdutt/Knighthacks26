@@ -46,6 +46,7 @@ from contexts.habits.api import habits_router
 from contexts.learning.application.export import teach
 from contexts.vault.api import vault_router
 from contexts.memory.api import build_router as memory_router
+from contexts.perception.api import identity_router
 from contexts.play.dayrun_api import dayrun_router
 from contracts import Event
 from contracts.agent import AnswerGenerated, RuleAdded
@@ -105,6 +106,8 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         app.include_router(dayrun_router(atlas.dayrun, publish=atlas.bus.publish, guard=authorized))
     if atlas.policy:  # GET/PUT /vault/policy, POST /vault/wipe/request, POST /vault/wipe, GET /vault/egress
         app.include_router(vault_router(atlas.policy, atlas.bus, wiper=atlas.wiper, guard=authorized))
+    if atlas.identity:  # GET/PUT /identity/settings, POST /identity/enroll/start, GET /identity/enroll/status, GET/DELETE /identity/members (P9)
+        app.include_router(identity_router(atlas.identity, atlas.bus, guard=authorized))
     if atlas.capture:  # GET /capture/status (C6)
         app.include_router(capture_router(atlas.capture))
     app.include_router(runtime_router(ModelStore(atlas.settings.data_dir / "models"), llm_url=atlas.settings.llm_url))  # GET /runtime/models (R7)
