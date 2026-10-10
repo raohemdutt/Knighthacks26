@@ -463,16 +463,6 @@ def test_the_verb_exits_1_with_the_reason_when_the_run_is_refused(tmp_path, caps
     assert (answer["ok"], answer["outcome"]) == (False, "refused")
 
 
-def test_an_unknown_sub_verb_and_a_missing_one_are_bad_arguments(capsys):
-    code, out, err = run_cli(["ledger", "nope"], capsys)
-    assert (code, out) == (2, "")
-    assert "invalid choice: 'nope'" in err
-
-    code, out, err = run_cli(["ledger"], capsys)
-    assert (code, out) == (2, "")
-    assert "sub_verb" in err
-
-
 def test_help_shows_the_sub_verb_and_its_arguments(capsys):
     code, out, _ = run_cli(["ledger", "--help"], capsys)
     assert code == 0
@@ -484,10 +474,12 @@ def test_help_shows_the_sub_verb_and_its_arguments(capsys):
     assert "--metrics" in out
 
 
-def test_the_dispatcher_lists_the_ledger_verb_with_its_summary():
-    lines = [line.strip() for line in lab_cli.help_text().splitlines()]
-    assert any(line.startswith("ledger ") and line.endswith("backfill puts the lab's past into the ledger.")
-               for line in lines), lines
+def test_the_dispatcher_lists_the_ledger_verb_and_can_load_it():
+    lines = [line.strip() for line in lab_cli.help_text().splitlines() if line.strip().startswith("ledger ")]
+    assert len(lines) == 1, lines
+    summary = lines[0][len("ledger"):].strip()
+    assert summary
+    assert not summary.startswith("(cannot load"), summary
 
 
 def test_the_verb_is_refused_while_the_machine_is_stopped(isolated_state, capsys):
@@ -522,3 +514,30 @@ def test_the_verb_registry_names_every_verb_once():
     repeated = sorted({name for name in names if names.count(name) > 1})
     assert repeated == [], f"VERBS repeats {repeated}: a repeated name silently replaces the verb before it"
     assert "ledger" in names
+
+
+# --- ledger_main, the router behind the ledger verb -----------------------------------------------------------
+
+def test_ledger_main_sends_backfill_to_backfill():
+    answer = backfill.ledger_main(["backfill", "--dry-run"])
+
+    assert (answer["ok"], answer["outcome"], answer["to_add"]) == (True, "dry_run", total_rows())
+
+
+@pytest.mark.parametrize("words, complaint", [(["nope"], "invalid choice: 'nope'"), ([], "sub_verb")])
+def test_ledger_main_refuses_an_unknown_or_missing_sub_verb_as_bad_arguments(capsys, words, complaint):
+    with pytest.raises(SystemExit) as caught:
+        backfill.ledger_main(words)
+
+    assert caught.value.code == 2
+    out, err = capsys.readouterr()
+    assert out == ""
+    assert complaint in err
+
+
+def test_ledger_main_help_names_the_sub_verb(capsys):
+    with pytest.raises(SystemExit) as caught:
+        backfill.ledger_main(["--help"])
+
+    assert caught.value.code == 0
+    assert "backfill" in capsys.readouterr().out
