@@ -53,3 +53,19 @@ def test_publish_raises_on_server_error():
     client = Ntfy("http://ntfy.test", transport=httpx.MockTransport(lambda r: httpx.Response(500)))
     with pytest.raises(httpx.HTTPStatusError):
         asyncio.run(client.publish("t", "m"))
+
+
+def test_an_alert_carries_its_blurred_keyframe_as_a_photo():
+    """Demo beat "it watches for you": the phone buzzes with the photo, fetched from the box itself."""
+    from contracts.types import Citation
+
+    client, sent = ntfy()
+    notifier = PhoneNotifier(client, gateway_url="http://100.124.34.36:8000")
+    alert = AlertRaised(alert_id="x", rule_id="package-at-door", message="Package left at the door",
+                        evidence=[Citation(frame_ref="frames:cam-door:1791657381000", ts=T0)])
+    asyncio.run(notifier.on_alert(alert))
+    asyncio.run(notifier.on_alert(AlertRaised(alert_id="y", rule_id="r", message="no photo")))
+    with_photo, without = sent
+    assert with_photo["attach"] == "http://100.124.34.36:8000/memory/keyframes/frames:cam-door:1791657381000"
+    assert with_photo["filename"] == "frames-cam-door-1791657381000.jpg" and with_photo["click"] == "http://100.124.34.36:8000/"
+    assert "attach" not in without

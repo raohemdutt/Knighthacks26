@@ -39,6 +39,7 @@ class Ntfy:
         tags: list[str] | None = None,
         click: str | None = None,
         actions: list[dict] | None = None,
+        attach: str | None = None,
     ) -> None:
         payload = {"topic": topic, "message": message, "priority": PRIORITY[priority]}
         if title:
@@ -49,6 +50,9 @@ class Ntfy:
             payload["click"] = click
         if actions:
             payload["actions"] = actions
+        if attach:  # the phone's ntfy app fetches it itself (from the box, over the tailnet) and shows it inline
+            payload["attach"] = attach
+            payload["filename"] = attach.rsplit("/", 1)[-1].replace(":", "-") + ".jpg"
         headers = {"Authorization": f"Bearer {self.token}"} if self.token else {}
         async with httpx.AsyncClient(timeout=self.timeout_s, transport=self.transport) as client:
             r = await client.post(self.base_url, json=payload, headers=headers)
@@ -80,7 +84,11 @@ class PhoneNotifier:
         self.gateway_url = gateway_url.rstrip("/")
 
     async def on_alert(self, e: AlertRaised) -> None:
-        await self.ntfy.publish(self.topic, e.message, title="Atlas", priority="high", tags=["rotating_light"])
+        """The alert with its photo: the blurred keyframe it fired on, served by the box (GET /memory/keyframes)."""
+        ref = next((c.frame_ref for c in e.evidence if c.frame_ref), None)
+        photo = f"{self.gateway_url}/memory/keyframes/{ref}" if ref else None
+        await self.ntfy.publish(self.topic, e.message, title="Atlas", priority="high", tags=["rotating_light"],
+                                attach=photo, click=f"{self.gateway_url}/")
 
     async def on_nudge(self, e: NudgeRaised) -> None:
         tag = "tada" if e.tone == "celebrate" else "seedling"
