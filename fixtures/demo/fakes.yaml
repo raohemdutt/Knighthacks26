@@ -4,14 +4,19 @@
 # time that far from the start. Every type a context publishes appears at least once.
 #
 # perception also plays the scripted half minute from contexts/perception/fakes first, through the
-# real zone engine: that is where its observations and zone events come from.
+# real zone engine: that is where its observations and zone events come from. Owner recognition (P9) is
+# switched on with one enrolled member, the person at the desk (track 1) is tagged as them, and the tag
+# ends when the scene does.
 
 perception:
   - {type: perception.faces.counted, at: 2}
+  - {type: perception.identity.changed, at: 3}
+  - {type: perception.person.identified, at: 7}
   - {type: perception.scene.described, at: 9, caption: "A person sits at the desk with a laptop.", zone_id: null, objects: [],
      frame_ref: "frames:cam-desk:9"}
   - {type: perception.scene.described, at: 12, caption: "On the desk: keys (next to the mug).", frame_ref: "frames:cam-desk:12"}
   - {type: perception.faces.counted, at: 14, count: 2, facing: 1}
+  - {type: perception.person.lost, at: 30}
 
 connectors:
   - {type: connector.item.synced, at: 0, external_id: "cop4533:assignment:88213", title: "Project - Milestone1 Fall2026 [COP4533]",
