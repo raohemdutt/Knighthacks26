@@ -526,7 +526,7 @@ export default function Room3D({ cameras, pins, selected, route }: Room3DProps) 
   if (failed) {
     return (
       <div className={`${ui.state} ${ui.stateError}`} role="alert">
-        <p className={ui.stateTitle}>The 3D view can&apos;t start on this phone</p>
+        <p className={ui.stateTitle}>3D view is not available on this device</p>
         <p className={ui.breakWords}>{failed}. The 2D view shows the same zones and pins.</p>
       </div>
     );

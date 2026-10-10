@@ -71,6 +71,8 @@ export default function RoomMapPage() {
   const route = useFetch<PlayRoute | null>((s) => (sort ? api.playRoute(sort, s) : Promise.resolve(null)), sort ?? "");
   const twin = useRoomTwin(view === "3d");
   const twinPins = useTwinPins(view === "3d" ? twin.plan : null, twin.live);
+  // Whether the box has a floor plan at all, so the 2D view does not say there is none (the twin is only fetched for 3D).
+  const hasPlan = useFetch((s) => api.room(s).then(() => true, () => false)).data ?? false;
   const twinOn = view === "3d" && twin.plan !== null; // the box has a floor plan: one room, not a panel per camera
 
   useEffect(() => {
@@ -157,8 +159,10 @@ export default function RoomMapPage() {
               ) : null}
             </p>
             <p className={`${ui.muted} ${ui.small}`} hidden={twinOn}>
-              Each panel is one camera&apos;s own view, with its zones where they sit in the picture. The box has no floor plan, so the panels are side by side rather than joined into one room
-              {view === "3d" ? ", and the heights are only there to make the zones readable" : ""}.
+              Each panel is one camera&apos;s own view, with its zones where they sit in the picture.{" "}
+              {hasPlan
+                ? "The 3D view joins them into one room, drawn from the floor plan."
+                : `The box has no floor plan, so the panels are side by side rather than joined into one room${view === "3d" ? ", and the heights are only there to make the zones readable" : ""}.`}
             </p>
           </div>
         </>
