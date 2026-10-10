@@ -332,6 +332,9 @@ def build(settings: Settings | None = None) -> Atlas:
     except ValueError as exc:
         log.warning("place packs not loaded: %s", exc)
         places = None
+    if places:  # A8 leaving checklist: real walking time from home to the next event
+        planner.place_set = places
+        planner.home_place = (agent_cfg.get("leaving") or {}).get("home_place")
 
     return Atlas(settings=s, bus=bus, qa=qa, approvals=approvals, hub=hub, loop=loop, zones=zones, game=game,
                  waste=waste, circle=circle, presence=presence, zone_engine=zone_engine, sharing=sharing,

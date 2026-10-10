@@ -37,3 +37,7 @@ circle:
 
 # Named places presence may use. Coarse spots only; never coordinates.
 places: [Our table, Library, Dorm, Student Union, Gym]
+
+# Leaving checklist (A8): where the box is, as a place-pack place, for walking time to the next event.
+leaving:
+  home_place: apartment.door   # e.g. ucf.eng2 when the box sits at the Knight Hacks table

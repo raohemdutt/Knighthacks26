@@ -138,3 +138,27 @@ def test_food_uses_nearby_places_with_links():
     prompt = rt.calls[-1][1][-1].content
     assert "Nearby: Knightro's (pizza, 70 m away)" in prompt and "cs.ucf.edu" not in prompt  # places, not web search
     assert "https://www.openstreetmap.org/node/1" in [c.url for c in a.citations]
+
+
+def test_leaving_uses_real_walking_time_when_the_place_is_known():
+    from contexts.play.domain.places import PlaceSet
+    from contracts.perception import ZoneEvent
+
+    planner, _ = make()
+    lecture = Item(connector="calendar", kind="calendar_event", external_id="l1", title="COP 3502 Lecture",
+                   summary="until 11:15 AM \u00b7 HEC 101", when=NOW + timedelta(hours=1))
+    planner.qa.memory._items = [lecture]
+    planner.place_set = PlaceSet.load("config/places")
+    planner.home_place = "ucf.union"
+    [plan] = planner.on_zone_event(ZoneEvent(ts=NOW, camera_id="cam-door", track_id=1, label="person", zone_id="door", kind="enter"))
+    # union -> hec is 4 min, plus a 5 min margin: leave by 2:51 for a 3:00 PM lecture
+    assert plan.text.startswith("Next: COP 3502 Lecture at 3:00 PM; leave by 2:51 PM (4 min walk to Harris Engineering Center).")
+
+
+def test_locate_finds_places_by_alias_or_name():
+    from contexts.play.domain.places import PlaceSet
+
+    ps = PlaceSet.load("config/places")
+    assert ps.locate("until 11:15 AM \u00b7 HEC 101") == "ucf.hec"
+    assert ps.locate("Study group at the John C. Hitt Library") == "ucf.library"
+    assert ps.locate("Lunch at Chipotle") is None
