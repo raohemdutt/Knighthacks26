@@ -31,10 +31,11 @@ must be moved under ~/ on the pod before the pod stops. The SJC pods run another
 push_dataset reports `persistent`, whether the root listing shows a `home` folder (a newer image's does), and the caller
 knows which case it is in. Nothing here moves a file on the pod.
 
-Datasets. push_dataset sends one approved export, the folder `data/exports/<dataset_id>/`. It refuses a folder whose
-manifest.json is not a DatasetManifest or carries no `action_id`: that field is the approval that allowed the export,
-and a push is an outside effect. Symbolic links are not followed or sent. manifest.json goes last, so a half-sent dataset
-has none and a reader on the pod can take its presence for "complete".
+Datasets. push_dataset sends one approved export, the folder `data/exports/<dataset_id>/`. It first has lab.dataset.load
+check the folder (the manifest and every example against the contract, an `action_id` that names the approval that
+allowed the export, the example count, image paths that stay inside the folder) and refuses what does not hold up,
+because a push is an outside effect. Symbolic links are not followed or sent. manifest.json goes last, so a half-sent
+dataset has none and a reader on the pod can take its presence for "complete".
 
 Pull, with HTTP byte ranges: the Jupyter server's own /files/<path> route (nothing to run on the pod; it serves only
 what is under the Jupyter root and puts no limit on a response), or /proxy/<port>/<path> for a file server on a pod
@@ -384,21 +385,16 @@ def _walk(root: Path) -> tuple[list[str], list[str]]:
 
 def push_dataset(files: PodFiles, local_dir: Path | str, *, remote_root: str = "datasets",
                  chunk_bytes: int = DEFAULT_CHUNK_BYTES) -> DatasetPush:
-    """Send one approved export folder to `<remote_root>/<dataset_id>` on the pod. Raises NotApproved for a folder that
-    is not an export or carries no approval id."""
-    from contracts.learning import DatasetManifest
+    """Send one approved export folder to `<remote_root>/<dataset_id>` on the pod. Raises NotApproved, naming every
+    problem lab.dataset.load found, for a folder that is not an approved export."""
+    from lab.dataset import DatasetError, load
 
     root = Path(local_dir)
-    manifest_path = root / "manifest.json"
-    if not manifest_path.is_file():
-        raise NotApproved(f"{root.name} has no manifest.json, so it is not an export")
     try:
-        manifest = DatasetManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
-    except ValueError as exc:
-        raise NotApproved(f"{root.name}/manifest.json is not a dataset manifest: {str(exc).splitlines()[0]}") from None
-    if not manifest.action_id.strip():
-        raise NotApproved(f"{root.name} carries no approval id (action_id), so it was not approved for export")
-    dataset_id = clean_name(manifest.dataset_id)
+        data = load(root, require_images=False)
+    except DatasetError as exc:
+        raise NotApproved(f"{root.name} is not an approved export: {exc}") from None
+    dataset_id = clean_name(data.dataset_id)
     top = remote_root.strip("/")
     remote_dir = clean_remote(f"{top}/{dataset_id}" if top else dataset_id)
     names, skipped = _walk(root)

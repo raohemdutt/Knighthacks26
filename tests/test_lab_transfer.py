@@ -16,7 +16,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from contracts.learning import DatasetManifest, ModelManifest, TaskSpec
+from contracts.learning import DatasetExample, DatasetManifest, ModelManifest, TaskSpec
 from lab import transfer
 from lab.hub import Hub
 from lab.hub_fake import FakeClock
@@ -63,16 +63,21 @@ class World:
         return self.fake.file("D", path)
 
 
-def make_dataset(root: Path, dataset_id="ds-0007", *, action_id="approval-123", images=2) -> Path:
+def make_dataset(root: Path, dataset_id="ds-0007", *, action_id="approval-123", images=2, declared=None,
+                 image_name="images/{i:04d}.jpg") -> Path:
+    """An export folder as the box writes it: a DatasetManifest, one DatasetExample per line and the pictures they name
+    (stand-in bytes, not frames). An empty image_name makes a text-only dataset."""
     folder = root / dataset_id
     (folder / "images").mkdir(parents=True)
     manifest = DatasetManifest(dataset_id=dataset_id, spec=TaskSpec(task="desk-objects", instruction="What is on the desk?"),
-                               created=WHEN, examples=images, action_id=action_id)
+                               created=WHEN, examples=images if declared is None else declared, action_id=action_id)
     (folder / "manifest.json").write_text(manifest.model_dump_json(), encoding="utf-8")
-    (folder / "examples.jsonl").write_text("\n".join(json.dumps({"id": f"e{i}"}) for i in range(images)) + "\n",
-                                           encoding="utf-8")
+    examples = [DatasetExample(id=f"e{i}", image=image_name.format(i=i), frame_ref=f"frames:cam-table:{i}", ts=WHEN,
+                               context="a desk with a laptop") for i in range(images)]
+    (folder / "examples.jsonl").write_text("".join(e.model_dump_json() + "\n" for e in examples), encoding="utf-8")
     for i in range(images):
-        (folder / "images" / f"{i:04d}.jpg").write_bytes(blob(300 + i, i))
+        if image_name:
+            (folder / "images" / f"{i:04d}.jpg").write_bytes(blob(300 + i, i))
     (folder / "thumbs").mkdir()                       # a name that sorts after manifest.json
     (folder / "thumbs" / "0000.jpg").write_bytes(blob(120, 7))
     return folder
@@ -373,7 +378,7 @@ def test_an_export_with_no_approval_id_is_not_pushed(tmp_path):
     w = World()
     folder = make_dataset(tmp_path, action_id="  ")
 
-    with pytest.raises(NotApproved, match="no approval id"):
+    with pytest.raises(NotApproved, match="action_id is empty"):
         push_dataset(w.files, folder)
 
     assert w.fake.calls == []
@@ -386,13 +391,40 @@ def test_a_folder_that_is_not_an_export_is_not_pushed(tmp_path):
     bad = tmp_path / "bad"
     bad.mkdir()
     (bad / "manifest.json").write_text(json.dumps({"dataset_id": 3}))
+    (bad / "examples.jsonl").write_text("")
 
-    with pytest.raises(NotApproved, match="no manifest.json"):
+    with pytest.raises(NotApproved, match="manifest.json: missing"):
         push_dataset(w.files, tmp_path / "plain")
-    with pytest.raises(NotApproved, match="not a dataset manifest"):
+    with pytest.raises(NotApproved, match="manifest.json: "):
         push_dataset(w.files, bad)
+    with pytest.raises(NotApproved, match="not a folder"):
+        push_dataset(w.files, tmp_path / "nowhere")
 
     assert w.fake.calls == []
+
+
+def test_an_export_that_does_not_hold_together_is_not_pushed_and_nothing_is_quoted(tmp_path):
+    w = World()
+    miscounted = make_dataset(tmp_path / "a", declared=5)
+    escaping = make_dataset(tmp_path / "b", image_name="../secret-{i}.jpg")
+
+    with pytest.raises(NotApproved, match="says 5 examples but examples.jsonl has 2"):
+        push_dataset(w.files, miscounted)
+    with pytest.raises(NotApproved, match="not a relative path inside the dataset folder") as caught:
+        push_dataset(w.files, escaping)
+
+    assert "a desk with a laptop" not in str(caught.value)       # a caption is never quoted into an error
+    assert w.fake.calls == []
+
+
+def test_a_text_only_export_is_pushed_like_any_other(tmp_path):
+    w = World()
+    folder = make_dataset(tmp_path, "ds-text", images=3, image_name="")
+
+    done = push_dataset(w.files, folder)
+
+    assert done.files == 3 and done.dataset_id == "ds-text"           # manifest, examples and the extra thumbs file
+    assert w.remote("datasets/ds-text/examples.jsonl") == (folder / "examples.jsonl").read_bytes()
 
 
 def test_a_dataset_id_that_could_leave_its_folder_is_refused(tmp_path):
@@ -887,7 +919,7 @@ def test_a_refused_push_is_exit_1_and_names_why(tmp_path):
     code, out = run_cli(w, "push-dataset", "--account", "D", str(folder))
 
     report = json.loads(out)
-    assert code == 1 and report["kind"] == "NotApproved" and "approval id" in report["error"]
+    assert code == 1 and report["kind"] == "NotApproved" and "action_id is empty" in report["error"]
     assert w.fake.calls == []
 
 
