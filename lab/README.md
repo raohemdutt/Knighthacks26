@@ -389,6 +389,15 @@ torch.compile cache. Decode is about 2.7x slower than the R9700's 7.7 tok/s, abo
 bandwidths (decode is weight-bound on `ConchLinearKernel`). The rows are in `lab/refine/metrics.jsonl` on node
 `pod-c`; the R9700 rows stay on `pod-a` as the old, other chip.
 
+Pod power sampler, live on pod C (T6, 2026-10-10): `amd-smi metric --power --clock --temperature --usage --energy` answers on
+this chip (exit 0, 0.21 s a read): SOCKET_POWER and GFX_ACTIVITY, with CLOCK, ENERGY, HOTSPOT and the other sensors N/A and
+EDGE the only temperature. Idle with the teacher loaded 10.2 W (60 s); over 50 teacher requests one every 12 s (44 text, 6
+720p images, 6460 prompt and 894 completion tokens) 106.8 W average inside the request windows, 129 W peak, about 9 samples
+a window (2 for the answers that stop after 3 tokens). Rows on node `pod-a` (the teacher's role) with the sampler's
+conditions; the per-second samples are `fixtures/telemetry/pod_power/strixhalo_2026-10-10_teacher_load_*.jsonl`. The
+sampler stays up under nohup (`bash ~/lab/pod_power.sh stop`).
+The 39 W `pod.idle_watts` row is the R9700, the other chip.
+
 ## Trainer (pod B)
 
 ```
