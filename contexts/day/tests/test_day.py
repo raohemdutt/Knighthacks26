@@ -202,7 +202,7 @@ def test_a_remake_and_the_persons_own_moves_replace_the_plan(items, places, tmp_
 
 
 def test_drift_is_seen_and_an_infeasible_next_event_triggers_one_replan(items, places, tmp_path):
-    loop = make(items, places, tmp_path, habits=FakeHabits())
+    loop = make(items, places, tmp_path, habits=FakeHabits(meals=0))  # nothing eaten yet: the plan opens with breakfast
     out = feed(loop, [zone(at(8, 10), "desk")])
     plan = next(e for e in out if isinstance(e, DayPlanProposed))
     statuses = [e for e in out if isinstance(e, DayStatusChanged)]
