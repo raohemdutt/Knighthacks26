@@ -32,7 +32,7 @@ from typing import Any
 
 from contexts.telemetry.application.evals import EvalScores
 from contexts.telemetry.application.projection import TelemetryProjection
-from contexts.telemetry.domain.nodes import GPU_A, GPU_B, JETSON
+from contexts.telemetry.domain.nodes import JETSON, POD_A, POD_B
 from contexts.telemetry.domain.stats import Figure, decode_rate, missing, newest, run_minutes
 from contexts.telemetry.infrastructure.lab_records import LabRecords
 
@@ -59,8 +59,8 @@ FIGURES = (
          no_telemetry="telemetry.request windows do not say which requests were captions"),
     Spec("trainer_samples_per_s", "samples/s", "trainer.samples_per_s", None,
          no_telemetry="telemetry.train.step carries no sample count"),
-    Spec("train_minutes", "min", "trainer.run_minutes", None, telemetry="run", telemetry_node=GPU_B),
-    Spec("teacher_tok_s", "tok/s", "teacher.decode_tok_s", None, telemetry="decode", telemetry_node=GPU_A),
+    Spec("train_minutes", "min", "trainer.run_minutes", None, telemetry="run", telemetry_node=POD_B),
+    Spec("teacher_tok_s", "tok/s", "teacher.decode_tok_s", None, telemetry="decode", telemetry_node=POD_A),
 )
 
 

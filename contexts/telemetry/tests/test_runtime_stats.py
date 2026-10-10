@@ -50,6 +50,7 @@ def window(node: str, request_id: str, start_s: float, first_s: float | None, en
 
 
 def step(run_id: str, n: int, s: float, step_ms: float = 2000.0) -> TrainStep:
+    """A step from a pod sampler that still says gpu-b, the old name the projection reads as pod-b."""
     return TrainStep(ts=at(s), node="gpu-b", run_id=run_id, step=n, loss=1.0, step_ms=step_ms, socket_w=250.0)
 
 
@@ -144,7 +145,7 @@ def test_tok_s_from_request_windows_is_output_after_the_first_token_over_the_tim
                                       "source": "telemetry.request: 2 windows from node jetson",
                                       "low_confidence": False, "reason": None}
     assert (stats["teacher_tok_s"]["value"], stats["teacher_tok_s"]["node"], stats["teacher_tok_s"]["source"]) == (
-        7.7, "gpu-a", "telemetry.request: 1 window from node gpu-a")
+        7.7, "pod-a", "telemetry.request: 1 window from node pod-a")
 
 
 def test_the_newest_measurement_wins_between_telemetry_and_the_lab_records(tmp_path):
@@ -156,7 +157,7 @@ def test_the_newest_measurement_wins_between_telemetry_and_the_lab_records(tmp_p
                       window("gpu-a", "t1", 0, 0.5, 10.5, tokens_out=91, target="teacher")],
                      metrics=metrics, state_dir=tmp_path / "state")
     assert (stats["teacher_tok_s"]["value"], stats["teacher_tok_s"]["source"]) == (
-        9.0, "telemetry.request: 1 window from node gpu-a")
+        9.0, "telemetry.request: 1 window from node pod-a")
     assert (stats["student_tok_s"]["value"], stats["student_tok_s"]["source"]) == (15.7, "metrics.jsonl:2")
 
 
@@ -166,14 +167,14 @@ def test_train_minutes_is_the_newest_evaluated_run_from_its_first_step_to_its_la
         evaluated("r1", "atlas-v2", 700, {"current": 0.4, "candidate": 0.8}),
         step("r2", 1, 1000), step("r2", 2, 1060),  # a later run with no evaluation yet: may still be training
     ], **nothing(tmp_path))
-    assert stats["train_minutes"] == {"value": 602 / 60, "unit": "min", "node": "gpu-b", "ts": "2026-10-10T14:10:00Z",
+    assert stats["train_minutes"] == {"value": 602 / 60, "unit": "min", "node": "pod-b", "ts": "2026-10-10T14:10:00Z",
                                       "source": "telemetry.train.step: run r1, 3 steps", "low_confidence": False,
                                       "reason": None}
 
 
 def test_a_run_not_evaluated_yet_is_served_as_low_confidence_when_it_is_the_only_one(tmp_path):
     stats = snapshot([step("r2", 1, 1000, step_ms=3000), step("r2", 2, 1060, step_ms=3000)], **nothing(tmp_path))
-    assert stats["train_minutes"] == {"value": 63 / 60, "unit": "min", "node": "gpu-b", "ts": "2026-10-10T14:17:40Z",
+    assert stats["train_minutes"] == {"value": 63 / 60, "unit": "min", "node": "pod-b", "ts": "2026-10-10T14:17:40Z",
                                       "source": "telemetry.train.step: run r2, 2 steps (no learning.run.evaluated "
                                                 "for it yet, so it may still be training)",
                                       "low_confidence": True, "reason": None}
@@ -214,7 +215,7 @@ def test_with_telemetry_on_but_empty_the_reason_names_the_events_it_looked_for(t
         "no telemetry.request window from node jetson with a first-token time and two or more output tokens")
     assert stats["train_minutes"]["reason"] == (
         "not recorded yet: no trainer.run_minutes row in the lab metrics file or the lab ledger; "
-        "no telemetry.train.step from node gpu-b")
+        "no telemetry.train.step from node pod-b")
 
 
 def test_an_unreadable_metrics_file_is_named_in_the_reason_instead_of_failing_the_endpoint(tmp_path):
@@ -262,3 +263,14 @@ def test_an_evaluation_without_a_before_or_after_score_says_which_is_missing(tmp
     assert (model["before"], model["after"], model["teacher"], model["reason"]) == (
         None, 0.8, None, "the evaluation carries no 'current' score")
     assert model["low_confidence"] is True and model["ts"] and model["source"]
+
+
+def test_the_pod_figures_read_the_telemetry_of_the_nodes_main_names_pod_a_and_pod_b(tmp_path):
+    stats = snapshot([
+        window("pod-a", "t1", 0, 0.5, 10.5, tokens_out=91, target="teacher"),
+        TrainStep(ts=at(0), node="pod-b", run_id="r1", step=1, loss=1.0, step_ms=2000.0, socket_w=250.0),
+        TrainStep(ts=at(60), node="pod-b", run_id="r1", step=2, loss=1.0, step_ms=2000.0, socket_w=250.0),
+        evaluated("r1", "atlas-v2", 120, {"current": 0.4, "candidate": 0.8}),
+    ], **nothing(tmp_path))
+    assert (stats["teacher_tok_s"]["value"], stats["teacher_tok_s"]["node"]) == (9.0, "pod-a")
+    assert (stats["train_minutes"]["value"], stats["train_minutes"]["node"]) == (62 / 60, "pod-b")
