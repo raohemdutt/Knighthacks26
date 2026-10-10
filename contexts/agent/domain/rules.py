@@ -13,7 +13,7 @@ from uuid import uuid4
 import yaml
 from pydantic import BaseModel, field_validator
 
-from contracts.agent import AlertRaised
+from contracts.agent import AlertRaised, RuleAdded
 from contracts.perception import ZoneEvent
 from contracts.types import Citation
 
@@ -55,6 +55,10 @@ class RuleEvaluator:
     def __init__(self, rules: list[Rule]) -> None:
         self.rules = rules
         self._last_fired: dict[str, datetime] = {}
+
+    def on_rule_added(self, e: RuleAdded) -> None:
+        rule = Rule.model_validate(e.rule)
+        self.rules = [r for r in self.rules if r.id != rule.id] + [rule]
 
     def on_zone_event(self, e: ZoneEvent) -> list[AlertRaised]:
         alerts = []

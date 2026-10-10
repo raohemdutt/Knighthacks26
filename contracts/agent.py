@@ -56,3 +56,12 @@ class PlanCreated(TypedEvent):
     citations: list[Citation] = []
     blocks: list[PlanBlock] = []  # suggested calendar blocks; proposed for approval when the calendar can write
     model_version: str
+
+
+@register
+class RuleAdded(TypedEvent):
+    """A rule created from plain English (A3). The log is where custom rules live."""
+
+    type: Literal["agent.rule.added"] = "agent.rule.added"
+    rule: dict  # contexts.agent.domain.rules.Rule as JSON
+    source_text: str

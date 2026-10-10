@@ -39,3 +39,15 @@ def test_writes_need_the_token_and_state_survives_restart(tmp_path):
         action_id = c.post("/api/teach", json={"task": "t", "instruction": "i"}, headers=auth).json()["action_id"]
     with client(tmp_path, token="s3cret") as c:  # restart: pending card rebuilt from the log
         assert [a["id"] for a in c.get("/api/approvals").json()] == [action_id]
+
+
+def test_plain_english_rule_through_the_api(tmp_path):
+    from contracts.types import ChatResult
+
+    with client(tmp_path) as c:
+        rt = c.app.state.atlas.qa.runtime
+        rt.chat_replies.append(ChatResult(model_version="fake-0", content='{"id": "late-visitor", "when": {"label": ["person"], "zone": "door", "kind": "enter"}, "notify": "Someone at the door", "cooldown_s": 60}'))
+        r = c.post("/api/rules", json={"text": "tell me when someone comes to the door"})
+        assert r.status_code == 200 and r.json()["id"] == "late-visitor"
+        rt.chat_replies.append(ChatResult(model_version="fake-0", content="no idea"))
+        assert c.post("/api/rules", json={"text": "???"}).status_code == 422

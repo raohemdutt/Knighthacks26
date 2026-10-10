@@ -19,6 +19,7 @@ from pathlib import Path
 import yaml
 
 from bus import EventBus
+from contexts.agent.application.loop import AgentLoop
 from contexts.agent.application.planner import Planner
 from contexts.agent.application.qa import QA, SleepSchedule
 from contexts.agent.application.web_port import HubWebTools
@@ -59,6 +60,8 @@ class Atlas:
     qa: QA
     approvals: Approvals
     hub: ConnectorHub
+    loop: AgentLoop
+    zones: list[str] = field(default_factory=list)
     tasks: list[asyncio.Task] = field(default_factory=list)
 
     async def start(self) -> None:
@@ -72,6 +75,8 @@ class Atlas:
             now = datetime.now(UTC)
             try:
                 await self.bus.publish_all(self.approvals.expire(now))
+                if self.loop.due(now):
+                    await self.bus.publish_all(self.loop.tick(now))
                 if self.settings.connectors:
                     await self.bus.publish_all(await self.hub.sync_due(now))
             except Exception:
@@ -128,6 +133,7 @@ def build(settings: Settings | None = None) -> Atlas:
     approvals = Approvals(executors)
 
     # State that rebuilds from the log (replay=True).
+    bus.subscribe("agent.rule.added", rules.on_rule_added, replay=True)
     bus.subscribe("perception.zone", rules.on_zone_event, replay=True)
     bus.subscribe("perception.zone", planner.on_zone_event)  # leaving checklist at the door (A8)
     bus.subscribe("agent.action.proposed", approvals.on_proposed, replay=True)
@@ -143,4 +149,10 @@ def build(settings: Settings | None = None) -> Atlas:
         bus.subscribe("agent.plan.created", phones.on_plan)
         bus.subscribe("workspace.approval.requested", phones.on_approval)
 
-    return Atlas(settings=s, bus=bus, qa=qa, approvals=approvals, hub=hub)
+    zones_file = s.config_dir / "zones.yaml"
+    if zones_file.exists():  # {camera: {zone: polygon}}
+        zones = sorted({z for cam in (yaml.safe_load(zones_file.read_text()) or {}).values() for z in cam})
+    else:
+        zones = agent_cfg.get("zones", ["door", "desk"])
+    loop = AgentLoop(memory, qa.sleep)
+    return Atlas(settings=s, bus=bus, qa=qa, approvals=approvals, hub=hub, loop=loop, zones=zones)

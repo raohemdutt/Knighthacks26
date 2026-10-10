@@ -7,6 +7,7 @@
 - GET  /api/approvals          pending approval cards
 - POST /api/approvals/{id}     {decision: approve|deny} (ntfy buttons call this)
 - POST /api/teach              {task, instruction, ...} -> approval card for the export
+- POST /api/rules              {text} plain English -> a new alert rule (A3)
 - GET  /health
 
 Writes need `Authorization: Bearer $ATLAS_TOKEN` when ATLAS_TOKEN is set; the
@@ -25,9 +26,10 @@ from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket, WebSocke
 from pydantic import BaseModel
 
 from contexts.gateway.bootstrap import Atlas, Settings, build
+from contexts.agent.application.rule_compiler import RuleCompileError, compile_rule
 from contexts.learning.application.export import teach
 from contracts import Event
-from contracts.agent import AnswerGenerated
+from contracts.agent import AnswerGenerated, RuleAdded
 from contracts.experience import ApprovalDecided, QuestionAsked
 from contracts.learning import TaskSpec
 
@@ -106,6 +108,15 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         created, proposal = teach(spec, datetime.now(UTC))
         await atlas.bus.publish_all([created, proposal])
         return {"task": created.task, "action_id": proposal.action_id}
+
+    @app.post("/api/rules", dependencies=[Depends(authorized)])
+    async def add_rule(body: AskBody):
+        try:
+            rule = await compile_rule(body.text, atlas.qa.runtime, atlas.zones)
+        except RuleCompileError as exc:
+            raise HTTPException(422, str(exc)) from None
+        await atlas.bus.publish(RuleAdded(rule=rule.model_dump(), source_text=body.text))
+        return rule.model_dump()
 
     @app.websocket("/ws")
     async def events(ws: WebSocket):
