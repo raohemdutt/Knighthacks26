@@ -27,6 +27,9 @@ from contexts.agent.domain.rules import RuleEvaluator, load_rules
 from contexts.agent.eval import load_fixture
 from contexts.circle.application.presence import PresenceBoard
 from contexts.circle.application.protocol import CircleAgent, InMemoryCircleStore
+from contexts.circle.application.sharing import CircleSharing
+from contexts.circle.infrastructure.neon import NeonCircleStore, NeonDb, NeonShares
+from contexts.circle.infrastructure.outbox import CircleOutbox
 from contexts.connectors.application.hub import ConnectorHub
 from contexts.connectors.domain.spec import load_specs
 from contexts.connectors.infrastructure.mcp_client import McpConnector
@@ -74,6 +77,7 @@ class Atlas:
     zone_engine: ZoneEngine | None = None
     circle: CircleAgent | None = None
     presence: PresenceBoard | None = None
+    sharing: CircleSharing | None = None
     tasks: list[asyncio.Task] = field(default_factory=list)
 
     async def start(self) -> None:
@@ -91,6 +95,8 @@ class Atlas:
                     await self.bus.publish_all(self.zone_engine.flush(now))
                 if self.circle:
                     await self.bus.publish_all(self.circle.poll())
+                if self.sharing:  # push approved shares to Neon; rows stay queued while offline
+                    await self.bus.publish_all(await asyncio.to_thread(self.sharing.sync, now))
                 if self.loop.due(now):
                     await self.bus.publish_all(await self.loop.tick(now))
                 if self.settings.connectors:
@@ -206,12 +212,22 @@ def build(settings: Settings | None = None) -> Atlas:
 
     # Circle (G1): friends' Atlases negotiate through agent_messages. The store is in-memory until
     # the Neon store from N1 is plugged in here (same CircleStore port).
-    circle = None
+    circle = sharing = None
     circle_cfg = agent_cfg.get("circle") or {}
     if circle_cfg.get("member_id") and circle_cfg.get("circle_id"):
-        circle = CircleAgent(circle_cfg["member_id"], circle_cfg["circle_id"], InMemoryCircleStore(), memory,
+        # Neon (N1) when NEON_DATABASE_URL is set; otherwise two Atlases can still negotiate in one process.
+        neon = NeonDb() if os.environ.get("NEON_DATABASE_URL") else None
+        store = NeonCircleStore(neon) if neon else InMemoryCircleStore()
+        circle = CircleAgent(circle_cfg["member_id"], circle_cfg["circle_id"], store, memory,
                              clock=lambda: datetime.now(UTC))
         approvals.executors["circle_share"] = circle.share_executor
+        if neon:
+            # Summaries leave the box only when the member opted in; they queue locally first.
+            sharing = CircleSharing(CircleOutbox(s.data_dir / "circle.sqlite"), NeonShares(neon), circle_cfg["circle_id"],
+                                    circle_cfg["member_id"], opted_in=bool(circle_cfg.get("share_summaries")))
+            bus.subscribe("habits.day.closed", sharing.on_day_closed)  # live only: they write
+            bus.subscribe("impact.count.updated", sharing.on_count_updated)
+            bus.subscribe("play.round.scored", sharing.on_round_scored)
 
     # Friend presence (G5): opt-in, named places only, expiring.
     presence = None
@@ -224,4 +240,4 @@ def build(settings: Settings | None = None) -> Atlas:
         planner.presence = presence
 
     return Atlas(settings=s, bus=bus, qa=qa, approvals=approvals, hub=hub, loop=loop, zones=zones, game=game,
-                 waste=waste, circle=circle, presence=presence, zone_engine=zone_engine)
+                 waste=waste, circle=circle, presence=presence, zone_engine=zone_engine, sharing=sharing)
