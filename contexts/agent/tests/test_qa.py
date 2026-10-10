@@ -540,3 +540,14 @@ def test_a_web_call_that_hangs_times_out_and_the_answer_still_comes():
         assert "timed out" in [m.content for m in rt.calls[-1][1] if m.role == "tool"][0]
     finally:
         qa_module.WEB_CALL_MIN_S, qa_module.WEB_BUDGET_S = old
+
+
+def test_the_budget_counts_model_time_so_a_slow_first_round_stops_the_loop():
+    from contexts.agent.application import qa as qa_module
+
+    q, rt, web = web_qa(calls(("web_search", {"query": "x"})), calls(("web_search", {"query": "never"})))
+    ticks = iter([0, qa_module.WEB_BUDGET_S + 1] + [qa_module.WEB_BUDGET_S + 2] * 20)
+    q.monotonic = lambda: next(ticks)
+    assert asyncio.run(q.ask("Who won the game?")).text == NO_EVIDENCE
+    assert not any(name == "chat" for name, _ in rt.calls)  # out of time before the first model round
+
