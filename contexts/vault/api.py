@@ -100,9 +100,9 @@ def vault_router(
         snap = policy.path.parent / "egress.json"
         try:
             data = json.loads(snap.read_text())
-        except (OSError, ValueError):
+            updated = datetime.strptime(data["updated"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+        except (OSError, ValueError, KeyError, TypeError):  # no file, or a half-written or foreign one: as good as none
             return {"allowed": [], "blocked": 0, "enforced": False}
-        updated = datetime.strptime(data["updated"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
         data["stale"] = (clock() - updated).total_seconds() > 120  # the service stopped writing: the rules still hold
         return data
 

@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 CONTEXT = "identity"
-MEMBER_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
+MEMBER_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}\Z")  # \Z, not $: "$" also matches before a trailing newline
 
 
 @dataclass(frozen=True)

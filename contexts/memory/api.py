@@ -31,17 +31,32 @@ From = Query(EARLIEST, alias="from")
 To = Query(LATEST, alias="to")
 
 
+def _span(start: datetime, end: datetime) -> tuple[datetime, datetime]:
+    """`from`/`to` as UTC. A date so far out that it has no UTC form (year 1 with a +14:00 offset) is a 422, not a 500."""
+    try:
+        return tuple(t.astimezone(UTC) if t.tzinfo else t.replace(tzinfo=UTC) for t in (start, end))
+    except (OverflowError, ValueError):
+        raise HTTPException(422, "from and to must be dates between years 1 and 9999 in UTC") from None
+
+
+def _inside(path: Path, root: Path) -> bool:
+    """True when `path` really is a file under `root`: a symlink in data/frames must not serve what it points at."""
+    if path.is_symlink() or path.parent.is_symlink():
+        return False
+    return root.resolve() in path.resolve().parents
+
+
 def build_router(memory: SqliteMemory, frames_dir: str | Path = "data/frames") -> APIRouter:
     router = APIRouter(prefix="/memory", tags=["memory"])
     frames = Path(frames_dir)
 
     @router.get("/episodes")
     async def episodes(start: datetime = From, end: datetime = To, camera: str | None = None, label: str | None = None) -> list[Episode]:
-        return memory.episodes(start, end, camera=camera, label=label)
+        return memory.episodes(*_span(start, end), camera=camera, label=label)
 
     @router.get("/window")
     async def window(start: datetime = From, end: datetime = To) -> EpisodeWindow:
-        return memory.window(start, end)
+        return memory.window(*_span(start, end))
 
     @router.get("/objects/{label}/last-seen")
     async def last_seen(label: str) -> Sighting:
@@ -56,13 +71,13 @@ def build_router(memory: SqliteMemory, frames_dir: str | Path = "data/frames") -
 
     @router.get("/items")
     async def items(start: datetime = From, end: datetime = To, kind: str | None = None) -> list[Item]:
-        return memory.items(start, end, kind=kind)
+        return memory.items(*_span(start, end), kind=kind)
 
     @router.get("/keyframes/{ref}")
     async def keyframe(ref: str) -> FileResponse:
         m = FRAME_REF.fullmatch(ref)
         path = frames / m[1] / f"{m[2]}.jpg" if m and ".." not in m[1] else None
-        if path is None or not path.is_file():
+        if path is None or not path.is_file() or not _inside(path, frames):
             raise HTTPException(404, "no such keyframe")
         return FileResponse(path, media_type="image/jpeg")
 

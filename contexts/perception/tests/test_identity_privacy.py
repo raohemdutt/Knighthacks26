@@ -1,3 +1,4 @@
+import os
 """P9's privacy promises, each as a test: nothing about a face in the log, in Memory, in an API answer or in a
 log line; templates only as vault blobs; stored keyframes exactly as blurred as before."""
 
@@ -143,7 +144,8 @@ def test_the_template_file_is_a_vault_blob_only_this_box_can_open(tmp_path):
     rig = Rig(tmp_path)
     rig.enroll("m-ana", "Ana Example", b"ana")
     path = tmp_path / "vault" / "identity" / "m-ana.face"
-    assert path.stat().st_mode & 0o777 == 0o600 and path.parent.stat().st_mode & 0o777 == 0o700
+    if os.name == "posix":  # Windows has no owner-only mode
+        assert path.stat().st_mode & 0o777 == 0o600 and path.parent.stat().st_mode & 0o777 == 0o700
     assert json.loads((tmp_path / "vault" / "identity.json").read_text()) == {"identity_enabled": True}
     blob = path.read_bytes()
     assert blob[:1] == b"\x01" and b"Ana" not in blob

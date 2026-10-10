@@ -103,3 +103,15 @@ def test_with_no_policy_events_in_the_log_the_file_stands(tmp_path):
 
 def test_egress_is_an_honest_placeholder(tmp_path):
     assert Box(tmp_path).http.get("/vault/egress").json() == {"allowed": [], "blocked": 0, "enforced": False}
+
+
+def test_a_damaged_egress_snapshot_counts_as_none(tmp_path):
+    box = Box(tmp_path)
+    snap = tmp_path / "vault" / "egress.json"
+    snap.parent.mkdir(parents=True)
+    for text in ('{"allowed": [], "blocked": 0}', '{"updated": "yesterday"}', '{"updated": 5}', "[]", '"x"', "null", "{"):
+        snap.write_text(text)
+        r = box.http.get("/vault/egress")
+        assert r.status_code == 200 and r.json() == {"allowed": [], "blocked": 0, "enforced": False}, text
+    snap.write_text('{"updated": "2026-10-11T11:00:00Z", "allowed": [], "blocked": 2, "enforced": true}')
+    assert box.http.get("/vault/egress").json()["stale"] is True  # written an hour before the box's clock

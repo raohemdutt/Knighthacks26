@@ -209,7 +209,13 @@ class DayRun:
         path = self.plans_dir / f"{day}.json"
         if not path.exists():
             raise LookupError(f"no plan was committed for {day}")
-        return json.loads(path.read_text())
+        try:
+            plan = json.loads(path.read_text())
+        except ValueError:
+            plan = None
+        if not isinstance(plan, dict) or not isinstance(plan.get("blocks"), list) or not isinstance(plan.get("totals"), dict):
+            raise ValueError(f"the plan committed for {day} is damaged ({path.name}); commit it again")
+        return plan
 
     # --- afterwards ---
 
@@ -275,4 +281,6 @@ class DayRun:
             if day is None:
                 raise ValueError("give `measured` minutes per block, or the `day` of a committed plan")
             measured = {b.id: b.measured_minutes for b in self.review(day, scenario=scenario).blocks if b.measured_minutes is not None}
+        elif any(not (0 <= m < float("inf")) for m in measured.values()):  # a negative or infinite length scores as nonsense
+            raise ValueError("measured minutes must be 0 or more")
         return forecast(estimates, measured)

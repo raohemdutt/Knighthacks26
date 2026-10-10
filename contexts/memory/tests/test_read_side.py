@@ -183,6 +183,34 @@ def test_api_returns_the_contract_shapes(memory, tmp_path):
     assert MemoryStats.model_validate(c.get("/memory/stats").json()).episodes == 50
 
 
+def test_a_date_with_no_utc_form_is_a_422_not_a_500(memory, tmp_path):
+    app = FastAPI()
+    app.include_router(build_router(memory, tmp_path / "frames"))
+    c = TestClient(app)
+    for url in ("/memory/episodes", "/memory/window", "/memory/items"):
+        assert c.get(url, params={"from": "0001-01-01T00:00:00+14:00"}).status_code == 422
+        assert c.get(url, params={"to": "9999-12-31T23:59:59-14:00"}).status_code == 422
+        assert c.get(url, params={"from": "0001-01-01T00:00:00", "to": "9999-12-31T23:59:59"}).status_code == 200
+
+
+def test_keyframes_never_follow_a_link_out_of_the_frames_folder(memory, tmp_path):
+    frames = tmp_path / "frames"
+    (frames / "cam-desk").mkdir(parents=True)
+    (frames / "cam-desk" / "1.jpg").write_bytes(b"\xff\xd8jpeg")
+    secret = tmp_path / "secret.jpg"
+    secret.write_bytes(b"SECRET")
+    (frames / "cam-desk" / "2.jpg").symlink_to(secret)  # a linked file
+    (tmp_path / "elsewhere").mkdir()
+    (tmp_path / "elsewhere" / "3.jpg").write_bytes(b"OUTSIDE")
+    (frames / "cam-link").symlink_to(tmp_path / "elsewhere")  # a linked camera folder
+    app = FastAPI()
+    app.include_router(build_router(memory, frames))
+    c = TestClient(app)
+    assert c.get("/memory/keyframes/frames:cam-desk:1").content == b"\xff\xd8jpeg"
+    assert c.get("/memory/keyframes/frames:cam-desk:2").status_code == 404
+    assert c.get("/memory/keyframes/frames:cam-link:3").status_code == 404
+
+
 def test_seed_command_fills_a_database(tmp_path, capsys):
     assert main(["seed", "--data-dir", str(tmp_path)]) == 0
     assert "50 episodes" in capsys.readouterr().out

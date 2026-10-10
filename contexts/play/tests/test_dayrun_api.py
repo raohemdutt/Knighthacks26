@@ -107,6 +107,17 @@ def test_review(client, plans):
     assert sum(1 for b in r["blocks"] if b["followed"] is None) == 2  # the two library sessions
 
 
+def test_a_damaged_plan_file_is_a_422_not_a_500(client, tmp_path):
+    plans_dir = tmp_path / "dayrun" / "plans"
+    plans_dir.mkdir(parents=True)
+    for text in ("", "not json", "[]", "{}", '{"blocks": 5, "totals": {}}', '{"blocks": [], "totals": null}'):
+        (plans_dir / "2026-10-11.json").write_text(text)
+        r = client.get("/api/dayrun/review", params={"day": "2026-10-11", "scenario": "demo"})
+        assert r.status_code == 422 and "damaged" in r.json()["detail"], text
+        r = client.post("/api/dayrun/forecast", json={"estimates": [{"block": "m0", "minutes": 5}], "day": "2026-10-11", "scenario": "demo"})
+        assert r.status_code == 422, text
+
+
 def test_replay(client, plans):
     r = client.post("/api/dayrun/replay", json={"day": "2026-10-11", "scenario": "demo", "moves": plans["good"],
                                                 "actual": {"focus_minutes": 45, "meals": 1, "sleep_hours": 5}})
@@ -139,13 +150,39 @@ def test_campaign(client, plans):
     assert body["stars"] == one["result"]["stars"] + two["result"]["stars"]
 
 
+def test_campaign_length_is_bounded(client, plans):
+    """Every day is simulated on the event loop: 400 days held the whole box for seconds, 3,000,000 for good."""
+    assert client.post("/api/dayrun/campaign", json={"scenario": "demo", "days": [[]] * 31}).status_code == 200
+    assert client.post("/api/dayrun/campaign", json={"scenario": "demo", "days": [[]] * 32}).status_code == 422
+    assert client.post("/api/dayrun/campaign", json={"scenario": "demo"}).status_code == 422  # still required
+
+
 def test_forecast(client, plans):
     r = client.post("/api/dayrun/forecast", json={"estimates": [{"block": "m3", "minutes": 90}, {"block": "m4", "minutes": 30}],
                                                   "measured": {"m3": 180, "m4": 30}})
     assert r.status_code == 200 and r.json()["score"] == 75 and r.json()["bias"] < 0
     assert client.post("/api/dayrun/forecast", json={"estimates": [{"block": "m3", "minutes": 90}]}).status_code == 422
+    # a negative or infinite length is refused, not scored (it gave a score of -199999999900)
+    assert client.post("/api/dayrun/forecast", json={"estimates": [{"block": "a", "minutes": -5}], "measured": {"a": 7}}).status_code == 422
+    assert client.post("/api/dayrun/forecast", json={"estimates": [{"block": "a", "minutes": 5}], "measured": {"a": -7}}).status_code == 422
+    inf = b'{"estimates": [{"block": "a", "minutes": 5}], "measured": {"a": 1e400}}'  # JSON that parses as infinity
+    assert client.post("/api/dayrun/forecast", content=inf, headers={"content-type": "application/json"}).status_code == 422
+    zero = client.post("/api/dayrun/forecast", json={"estimates": [{"block": "a", "minutes": 0}], "measured": {"a": 0}}).json()
+    assert zero["score"] == 100
     # against a committed day's measured blocks
     client.post("/api/dayrun/commit", json={"scenario": "demo", "moves": plans["good"]}, headers={"Authorization": "Bearer t"})
     r = client.post("/api/dayrun/forecast", json={"estimates": [{"block": "m7", "minutes": 480}, {"block": "m3", "minutes": 120}],
                                                   "day": "2026-10-11", "scenario": "demo"}).json()
     assert r["rows"][0]["measured"] == 390 and r["unmeasured"] == ["m3"]
+
+
+def test_dates_and_minutes_out_of_range_are_refused_not_a_crash(client):
+    for start in ("0001-01-01", "0001-01-01T00:00:00+14:00", "9999-12-31", "9999-12-31T23:59:59-14:00"):
+        assert client.get("/api/dayrun/board", params={"start": start}).status_code == 422
+    assert client.post("/api/dayrun/replay", json={"day": "9999-12-31"}).status_code == 422
+    move = {"slot": "s1", "kind": "study"}
+    for bad in ({"minutes": 10**18}, {"start": "9999-12-31T23:59:59-14:00"}):
+        r = client.post("/api/dayrun/simulate", json={"scenario": "demo", "moves": [move | bad]})
+        assert r.status_code == 422 and "out of range" in r.json()["detail"]
+    r = client.post("/api/dayrun/forecast", json={"estimates": [{"block": "a", "minutes": 1e308}], "measured": {"a": -1e308}})
+    assert r.status_code == 422

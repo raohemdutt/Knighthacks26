@@ -44,6 +44,7 @@ from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
+import yaml
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -226,7 +227,7 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         return rule.model_dump()
 
     @app.get("/api/play/route")
-    async def play_route(item: str, x: float = 0.75, y: float = 0.75):
+    async def play_route(item: str, x: float = Query(0.75, ge=0, le=1), y: float = Query(0.75, ge=0, le=1)):
         """Route from a normalized point to the right bin for `item`, as grid cells for the phone to draw."""
         if atlas.game is None:
             raise HTTPException(404, "Sort It is not configured")
@@ -333,14 +334,18 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         """Upload a place pack as YAML or JSON. It is validated (known places, all reachable, nesting) before use."""
         from contexts.play.domain.places import PlaceSet, parse_pack
 
-        text = (await request.body()).decode("utf-8")
+        from contexts.play.dayrun.service import SCENARIO_NAME
+
         try:
+            text = (await request.body()).decode("utf-8")
             pack = parse_pack(text)
+            if not SCENARIO_NAME.match(pack.name):  # the name becomes a file name under data/places
+                raise ValueError("pack name must be 1 to 40 of a-z, 0-9, _ or -")
             if atlas.places is None:
                 atlas.places = PlaceSet({})
             atlas.places.add(pack)
-        except ValueError as exc:  # pydantic's ValidationError is a ValueError
-            raise HTTPException(422, str(exc)) from None
+        except (ValueError, yaml.YAMLError, RecursionError) as exc:  # pydantic's ValidationError is a ValueError
+            raise HTTPException(422, str(exc)[:500]) from None
         folder = atlas.settings.data_dir / "places"
         folder.mkdir(parents=True, exist_ok=True)
         (folder / f"{pack.name}.yaml").write_text(text, encoding="utf-8")
