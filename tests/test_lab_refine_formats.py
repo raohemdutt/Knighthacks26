@@ -309,10 +309,9 @@ def test_the_same_entry_as_a_pass_is_missing_what_a_pass_needs():
 
 
 @pytest.mark.parametrize("track", TRACKS)
-def test_committed_track_log_is_a_header_only_log(track):
+def test_committed_track_log_opens_with_its_header(track):
     log = rf.parse_log((REFINE / track / "REFINE_LOG.md").read_text(encoding="utf-8"))
 
-    assert log.entries == ()
     assert log.header.startswith(f"# Refinement log for the {track} track")
     assert "lab/refine/TEMPLATES.md" in log.header
 
@@ -326,8 +325,10 @@ def test_committed_rulings_file_holds_no_rulings_yet(track):
 
 
 @pytest.mark.parametrize("track", TRACKS)
-def test_committed_counter_reads_zero(track):
-    assert rf.parse_counter((REFINE / track / "refine_pass.txt").read_text(encoding="utf-8")) == 0
+def test_committed_counter_counts_the_passes_in_the_log(track):
+    log = rf.parse_log((REFINE / track / "REFINE_LOG.md").read_text(encoding="utf-8"))
+
+    assert rf.parse_counter((REFINE / track / "refine_pass.txt").read_text(encoding="utf-8")) == len(log.passes)
 
 
 @pytest.mark.parametrize("track", TRACKS)
