@@ -10,9 +10,10 @@ working. What may leave:
     NTP (udp 123), DNS to the box's own resolvers             always
     Tailscale's control and relay servers and its WireGuard
     port (udp from 41641), when ATLAS_TAILSCALE=1            online mode only
-    the hub proxy (dub.aupcloud.io), each connector's `hosts`
-    from config/connectors.yaml, Neon, the ntfy relay, the
-    Ubuntu connectivity check,
+    the AUP hubs: dub.aupcloud.io plus the aupcloud.io hosts
+    named by AUP_HUB_URL_<X> and LAB_HUB_URL,
+    each connector's `hosts` from config/connectors.yaml,
+    Neon, the ntfy relay, the Ubuntu connectivity check,
     config/egress.yaml extras                                 online mode only: their resolved IP addresses
     everything else                                           logged ("atlas-egress-drop") and rejected
 
@@ -48,6 +49,11 @@ import yaml
 
 CHAIN = "ATLAS_EGRESS"
 HUB_HOSTS = ["dub.aupcloud.io"]
+# The hub settings the telemetry pod reader and lab/hub.py read: one per AUP account letter, plus the all-accounts one.
+HUB_URL_ACCOUNT_ENV = re.compile(r"AUP_HUB_URL_[A-Z]")
+HUB_URL_ALL_ACCOUNTS_ENV = "LAB_HUB_URL"
+# Only hubs under this domain may join the hub group, so a setting cannot widen the allowlist to an arbitrary host.
+HUB_DOMAIN_SUFFIX = ".aupcloud.io"
 # NetworkManager asks this every few minutes; blocked, it would mark the Wi-Fi as having no internet.
 SYSTEM_HOSTS = ["connectivity-check.ubuntu.com"]
 # Tailscale (ATLAS_TAILSCALE=1): phones on the owner's tailnet reach the box's app and ntfy from anywhere.
@@ -94,9 +100,42 @@ def derp_nodes(run: Callable = subprocess.run) -> list[str]:
                    if ip and ip != "none"})
 
 
+_warned: set[str] = set()
+
+
+def _warn_once(message: str) -> None:
+    """Report a setting that was left out, once per distinct message (the service re-reads the env every few seconds)."""
+    if message not in _warned:
+        _warned.add(message)
+        print(f"egress: {message}", file=sys.stderr, flush=True)
+
+
+def hub_hosts(env: dict[str, str]) -> list[str]:
+    """HUB_HOSTS, then the aupcloud.io host of every AUP_HUB_URL_<X> and of LAB_HUB_URL, each once, in a fixed order.
+    A blank value is ignored; an unparsable one, or one outside aupcloud.io, is left out with a warning."""
+    hosts = list(HUB_HOSTS)
+    names = sorted(k for k in env if HUB_URL_ACCOUNT_ENV.fullmatch(k)) + [HUB_URL_ALL_ACCOUNTS_ENV]
+    for name in names:
+        value = (env.get(name) or "").strip()
+        if not value:
+            continue
+        try:
+            host = urlparse(value).hostname
+        except ValueError as e:
+            _warn_once(f"{name} is not a URL ({e}): left out of the hub group")
+            continue
+        if not host:
+            _warn_once(f"{name} has no host name: left out of the hub group")
+        elif not host.endswith(HUB_DOMAIN_SUFFIX):
+            _warn_once(f"{name} names {host}, which is outside {HUB_DOMAIN_SUFFIX.lstrip('.')}: left out of the hub group")
+        elif host not in hosts:
+            hosts.append(host)
+    return hosts
+
+
 def host_groups(config_dir: Path, env: dict[str, str], relays: Callable[[], list[str]] = derp_nodes) -> dict[str, list[str]]:
     """Group name -> hostnames. The group name is what the phone shows ("connector:calendar", "hub", "neon")."""
-    groups: dict[str, list[str]] = {"hub": list(HUB_HOSTS), "system": list(SYSTEM_HOSTS)}
+    groups: dict[str, list[str]] = {"hub": hub_hosts(env), "system": list(SYSTEM_HOSTS)}
     connectors = config_dir / "connectors.yaml"
     for name, spec in ((yaml.safe_load(connectors.read_text()) or {}) if connectors.exists() else {}).items():
         if spec and spec.get("hosts"):
