@@ -8,6 +8,10 @@
     python -m contexts.demo fake <context> [--data-dir data] [--now]
         A few realistic events of every type one context publishes, appended to the log.
 
+    python -m contexts.demo preflight --gateway http://<box>:8000 [--token $ATLAS_TOKEN] [--reset]
+        The T-15 checklist (D9): PASS/FAIL with the fix for each, plus a warm-up question and its time.
+        --reset first clears alert cooldowns and leftover approval cards (memory is untouched).
+
     python -m contexts.demo fake perception --gateway http://<box>:8000 [--token $ATLAS_TOKEN]
         The camera scene pushed into a running box (POST /api/events), timed from now: its own zone
         engine, rules, Sort It and Waste Watch react live, as if the camera saw it.
@@ -41,7 +45,15 @@ def main(argv: list[str] | None = None) -> int:
     f.add_argument("--now", action="store_true", help="start at the current time instead of the demo night's")
     f.add_argument("--gateway", help="push into a running box instead of writing the log, e.g. http://192.168.1.20:8000")
     f.add_argument("--token", default=os.environ.get("ATLAS_TOKEN"), help="the box's ATLAS_TOKEN, if it has one")
+    pf = sub.add_parser("preflight", help="check the box is ready for the demo (D9)")
+    pf.add_argument("--gateway", default="http://127.0.0.1:8000")
+    pf.add_argument("--token", default=os.environ.get("ATLAS_TOKEN"))
+    pf.add_argument("--reset", action="store_true", help="clear cooldowns and leftover approval cards first")
+    pf.add_argument("--question", default="Where are my keys?", help="the warm-up question")
     args = p.parse_args(argv)
+
+    if args.command == "preflight":
+        return preflight(args.gateway, args.token, args.reset, args.question)
 
     if args.command == "seed":
         if args.end and args.end.tzinfo is None:
@@ -67,6 +79,37 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{e.ts.isoformat()}  {e.type}")
     print(f"published {len(published)} {args.context} events into {args.data_dir / 'events'}")
     return 0
+
+
+WARM_ANSWER_S = 5.0  # a warmed on-device model answers a prefetch question well under this
+
+
+def preflight(gateway: str, token: str | None, do_reset: bool, question: str) -> int:
+    import time
+
+    import httpx
+
+    base, headers = gateway.rstrip("/"), ({"Authorization": f"Bearer {token}"} if token else {})
+    try:
+        if do_reset:
+            r = httpx.post(f"{base}/api/preflight/reset", headers=headers, timeout=10).raise_for_status().json()
+            print(f"reset: {r['cooldowns_cleared']} cooldowns cleared, {r['cards_denied']} cards denied")
+        checks = httpx.get(f"{base}/api/preflight", timeout=30).raise_for_status().json()["checks"]
+        start = time.monotonic()
+        a = httpx.post(f"{base}/api/ask", json={"text": question}, headers=headers, timeout=60).raise_for_status().json()
+        took = time.monotonic() - start
+    except httpx.HTTPError as exc:
+        print(f"FAIL  gateway                    {base} did not answer: {exc}")
+        return 1
+    warm = took <= WARM_ANSWER_S and bool(a.get("answer"))
+    checks.append({"name": "warm-up answer", "ok": warm,
+                   "detail": f"{took:.1f} s: {' '.join(a.get('answer', '').split())[:70]}",
+                   "fix": "" if warm else "ask it again to warm the model; if still slow, check `journalctl -u atlas-llm`"})
+    for c in checks:
+        print(f"{'PASS' if c['ok'] else 'FAIL'}  {c['name']:<30} {c['detail']}" + (f"\n      fix: {c['fix']}" if c["fix"] else ""))
+    failed = [c for c in checks if not c["ok"]]
+    print(f"\n{len(checks) - len(failed)}/{len(checks)} ready" + (" - go." if not failed else ""))
+    return 1 if failed else 0
 
 
 def push(context: str, gateway: str, token: str | None) -> int:
