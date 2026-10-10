@@ -14,74 +14,70 @@ the teacher's labels were checked, the eval gate earned the deploy on a held-out
 trained on, the run can be repeated from the ledger, the package installs on the box without hand edits,
 and the published card carries no user data.
 
-Target: the pass cap per run in `lab/refine/PASS_RULES.md`, or convergence, whichever comes first.
-Convergence = a pass that walks every task and queued experiment in the walk list against all nine tests
-and changes nothing. The loop is judged by whether the metric set moved across passes, not by how many
-edits the passes made.
+Target: convergence, or the cap of 10 passes per run, whichever comes first. Convergence = a pass that
+walks every task and queued experiment in the walk list against all nine tests and changes nothing: no
+board edit, no new queued experiment, no new ruling. The loop is judged by whether the metric set moved
+across passes, not by how many edits the passes made.
 
 ## How passes are run
 
-- One pass is one Opus agent running the refine-track skill on `learning`. Passes on this track run
-  strictly in sequence, because each one reads the log the last one wrote; the telemetry, plumbing and
-  kernels tracks run in parallel with it. After a round of track passes the Fable merge pass checks
-  cross-track blockers and the demo flow; it alone may edit this file, and only with a ruling.
-- Files in this folder: the pass log `REFINE_LOG.md`, the counter `refine_pass.txt`, the rulings file
-  `OWNER_RULINGS.md` (a filled `Answer:` is an owner rule) and `pass_reports/`. The entry formats are in
-  `lab/refine/TEMPLATES.md`; the triggers, the cap and convergence are in `lab/refine/PASS_RULES.md`.
-  Where this file and the pass rules disagree on mechanics, the pass rules win and the pass raises a
-  ruling.
-- Inside every pass, in this order:
-  1. Research: one bounded research step on the track's top open problem, written to
-     `lab/refine/research/learning/` in the research-note format and later cited by file and heading.
-  2. Metrics before: read every metric the pass may move from `lab/refine/metrics.jsonl` or the ledger
-     (`lab/state/ledger.jsonl`), with its line. A metric never measured is written "not measured",
-     never estimated into a value.
-  3. Walk: every task and queued experiment in the walk list against LT1 to LT9. Every finding is logged
-     with its evidence (task page, file and line, ledger line), fixed or not.
-  4. Change, highest impact first: (a) LT1 privacy; (b) a deploy, publish or demo claim without valid
-     evidence (LT3, LT4, LT8, LT9); (c) a missing trace or reproducibility field (LT1, LT5); (d) the
-     package (LT7); (e) the loop budget (LT6). Each change records BEFORE, AFTER, SOURCE, WHY and the
-     metric it is expected to move.
-  5. Metrics after: measured the same way as before (same script, set and settings), or written "not
-     re-measured" with the reason. The verdict uses the recorded spread; a regression is reverted or goes
-     to `OWNER_RULINGS.md` with the trade-off stated.
-  6. Queue: each untested, source-backed idea becomes an experiment with its hypothesis, lever, metric,
-     expected movement, minimum n and citation.
-- A pass touches no GPU and no Jetson. A measurement that needs pod B goes through the GPU queue; a pod
-  start, an install on the box, or a publish to the Hugging Face Hub waits for Ilan's explicit go.
-- Sources: the Task Board pages of O9, O11, O12, O13, O27, O36 and O38 (links under Sources).
+`lab/refine/PASS_RULES.md` governs the process: each pass is a fresh Opus agent started through the
+open-ticket skill with the pass as its board task; passes on this track run strictly in sequence while
+the four tracks run in parallel; a Fable merge pass reconciles each round and is the only pass that may
+edit this file, to carry out a filled ruling; a run ends at convergence, at its tenth pass, or when Ilan
+ends it. The entry, ruling and report formats are in `lab/refine/TEMPLATES.md`. Where this file and the
+pass rules disagree about process, the pass rules win; where they disagree about what the learning track
+is judged on, this file wins.
 
-## Universal rules (every track, verbatim in spirit)
+What the learning track adds to the pass rules:
+- The metrics-before block lists the seven metrics in the metric set below. One with no value yet is
+  listed as having no baseline, never estimated into one, and its measurement is queued on T0.
+- The research step writes to `lab/refine/research/learning/`.
+- The walk uses LT1 to LT9 as the rubric's dimensions and the walk list below as the tasks.
+- Changes go highest impact first, in this order: (a) LT1 privacy; (b) a deploy, publish or demo claim
+  without valid evidence (LT3, LT4, LT8, LT9); (c) a missing trace or reproducibility field (LT1, LT5);
+  (d) the package (LT7); (e) the loop budget (LT6).
+- A pass changes plans only. A test whose evidence needs a run (a score, a dry run, a timing) is judged
+  from the records that run left. When they do not exist the finding says so, and the run that would
+  produce them is a task or a queued experiment, never something the pass runs itself.
+
+## Universal rules (every track, as the pass rules state them)
 
 1. **Old versus new.** Every task and experiment names the metrics it is meant to move, reads their
    current values from the metrics file or ledger before starting, and ends by measuring them the same
-   way. The pass log shows before, after, and the conditions. A change that moves nothing is not an
-   improvement; a regression is reverted or goes to the rulings file with the trade-off stated. The loop
-   itself is judged by whether the track's numbers moved across passes.
-2. **Source-forced.** Every change to a method or a plan item cites at least one source next to the
+   way. The pass entry shows the values before and after and the conditions they were measured under. A
+   change that moves nothing is not an improvement. A regression is reverted, or it goes to a ruling with
+   the trade-off stated. The loop itself is judged by whether the track's numbers moved across passes.
+2. **Source-forced.** Every change to a method or a plan item cites at least one source next to its
    before and after. Each pass starts with a bounded research step on the track's open problems, written
-   into `lab/refine/research/learning/` with citations. A source-backed idea not yet tested becomes a
-   queued experiment with its citation and expected movement.
+   into `lab/refine/research/learning/` with citations. A source-backed idea that has not been tested
+   becomes a queued experiment with its citation and expected movement. A change that depends on a fact
+   no source in hand establishes is not made; the fact becomes a queued measurement or a ruling.
+
+A pass entry with no metrics-before block, or with any change that has no citation, is invalid and is
+reverted.
 
 ## Primary sources (the only things that may justify a change)
 
-In this order of authority. When sources disagree, follow the higher one and record the disagreement;
-never average. A pass opens the source before it changes anything and cites the file and line, section,
-URL or ledger line in the log. No citation, no change. Nothing from memory.
+In the order the pass rules give. When two disagree, the higher one wins and the disagreement is
+recorded, never averaged. A pass opens a source before it changes anything because of it and cites the
+file and line, section, URL or ledger line. No citation, no change. Nothing from memory.
 
-1. Ilan's rulings: a filled `Answer:` in `lab/refine/learning/OWNER_RULINGS.md`, and his decisions
-   written on his Team Comms page. Notion is the team's source of truth; when the repo and Notion
-   disagree, Notion wins and the conflict is raised, never quietly picked (AGENTS.md).
-2. The Design Doc's Learning context spec and, for the package and hot-swap, the Inference Runtime spec;
-   the Demo Plan for what the judges see.
-3. The repo at the commit the pass reads. `contracts/learning.py` is the ground truth for the learning
-   events and for the two formats that are the only coupling between Atlas and `lab/`: the dataset export
-   and the model package.
-4. Research notes in `lab/refine/research/learning/`, each finding labeled measured, practitioner,
-   anecdote or opinion.
-5. Our own measurements: the ledger, `lab/refine/metrics.jsonl`, and PR bodies that carry the command and
-   its output (PR #37 for the trainer and teacher numbers).
-6. The papers and docs under Sources, and any new one a pass opens and adds there.
+1. A filled ruling from Ilan: an `Answer:` in `lab/refine/learning/OWNER_RULINGS.md`.
+2. The Design Doc spec for the context: the Learning context spec and, for the package and hot-swap, the
+   Inference Runtime spec.
+3. The track's research notes in `lab/refine/research/learning/`, each finding labeled measured,
+   practitioner, anecdote or opinion, and the papers and docs they cite (the list under Sources is the
+   starting set).
+4. The metrics file or ledger (`lab/refine/metrics.jsonl`, later `lab/state/ledger.jsonl`), and PR
+   bodies that carry the command and its output (PR #37 for the trainer and teacher numbers).
+
+Two records sit beside that order rather than in it. The repo at the commit the pass reads is what
+exists: `contracts/learning.py` is the ground truth for the learning events and for the two formats that
+are the only coupling between Atlas and `lab/`, the dataset export and the model package, and a claim
+about current behavior is checked against the code before a pass relies on it. When the repo and Notion
+disagree on what should be built, Notion wins and the conflict is raised (AGENTS.md). The Demo Plan says
+what the judges see, and no pass changes it.
 
 ## The rubric: nine learning tests
 
@@ -89,7 +85,7 @@ Every pass checks all nine against every task and queued experiment in the walk 
 test is logged whether or not it is fixed this pass. Each test is stated as the task page states it, then
 judged twice: on the board (does a task's Done when require it, with an owner and a check?) and on the
 evidence (once a run exists, the files and ledger lines that prove it). File lines are at origin/main
-29401d7.
+a76af64.
 
 ### LT1. Trace and privacy
 
@@ -212,9 +208,9 @@ run.
 - Evidence: the package folder holds exactly one model `.gguf` and at most one `mmproj*.gguf`
   (jetson/make_manifest.py L25-28); `manifest.json` validates as `ModelManifest` (contracts/learning.py
   L101-109) with `base` Qwen/Qwen3.5-4B, `task` set, a `sha256` for every file that matches it, and the
-  eval `scores`; the dry run installs the folder into a temporary `data/models/<version>/` on this machine
-  and `model_version()` in runtime/registry.py (L24-30) reads back the new version, base, task and
-  scores, with no file edited by hand between the lab's output and the install.
+  eval `scores`; a recorded dry run installed the folder into a temporary `data/models/<version>/` off
+  the box, and `model_version()` in runtime/registry.py (L24-30) read back the new version, base, task
+  and scores, with no file edited by hand between the lab's output and the install.
 - Moves: `learning.package_mb`
 - Sources: `contracts/learning.py`; `jetson/make_manifest.py`; `runtime/registry.py`;
   `tests/test_make_manifest.py`; `jetson/README.md` section 5; the PEFT LoRA guide (`merge_and_unload`;
@@ -249,11 +245,12 @@ The before-and-after is a beat in the five-minute demo with a rehearsed fallback
 ## The metric set
 
 Names follow the dotted, lowercase convention of `lab/refine/metrics.jsonl` (a row holds metric, value,
-unit, node, conditions, source, ts, low_confidence). `trainer.samples_per_s` is already named there; the
-other six are new, and the first pass that measures one adds it. A score is reported with its n and
-standard error (Miller section 2.1). The three held-out scores map one to one to the `scores` keys of
-`learning.run.evaluated` (contracts/learning.py L42). A value taken under other conditions (another
-batch size or max_length, or data with images) starts a new baseline; it is not an after.
+unit, node, conditions, source, ts, low_confidence). `trainer.samples_per_s` is the name on that file's
+task page (O10); the other six are new, and the first pass that measures one adds it. A score is
+reported with its n and standard error (Miller section 2.1). The three held-out scores map one to one to
+the `scores` keys of `learning.run.evaluated` (contracts/learning.py L42). A value taken under other
+conditions (another batch size or max_length, or data with images) starts a new baseline; it is not an
+after.
 
 | Metric | Name | How it is measured | Value on 2026-10-10 |
 | --- | --- | --- | --- |
@@ -267,41 +264,46 @@ batch size or max_length, or data with images) starts a new baseline; it is not 
 
 ## The walk list
 
-Every pass walks these learning-track tasks (O38, the first learning pass, names L2 to L9, L11 and L12)
-and every queued learning experiment, each against LT1 to LT9. The tests that bear hardest on each task
-are named so a pass starts there; the walk still covers all nine.
+Every pass walks these tasks, which are the learning track's starting set in the pass rules (L2 to L9,
+L11 and L12), and every queued experiment on T0 that belongs to the track (its line says `(learning)`, or
+the first metric it names is in the metric set below), each against LT1 to LT9. The tests that bear
+hardest on each task are named so a pass starts there; the walk still covers all nine.
 
 - L2 teacher labeling on pod A: LT1, LT2, LT6.
 - L3 LoRA trainer on pod B: LT1, LT5, LT6.
 - L4 eval gate: LT3, LT4.
 - L5 package (merge, GGUF, Q4_K_M, manifest): LT5, LT7.
-- L6 deploy over the hub proxy (with Xander): LT7.
-- L7 first learned task, end to end (with Dom): all nine.
+- L6 deploy over the hub proxy, shared with Xander: LT7.
+- L7 first learned task, end to end, shared with Dom: all nine.
 - L8 publish to Hugging Face: LT8.
 - L9 second taught task (P1, after L7): as L7.
 - L11 dataset reader and fixture dataset: LT1, LT3.
 - L12 tool-call trace formatting: LT2, LT3.
 - Queued learning experiments: LT4 for how they are measured, plus the tests their lever touches.
 
-Read, never edited, because other people own them: L1 and the export code (Dom), the scorer
-`contexts/agent/eval.py` (Dom), and P6 face blur, R7 hot-swap, R8 on-device model and X10 Teach screen
-(Xander).
+L6 and L7 are shared, so a pass walks them and logs its findings but changes them only through a
+proposal to their co-owner. Read for evidence, never edited, because other people own them: L1 and the
+export code (Dom), the scorer `contexts/agent/eval.py` (Dom), and P6 face blur, R7 hot-swap, R8
+on-device model and X10 Teach screen (Xander).
 
 ## What a pass may NOT change
 
-- Other people's tasks and folders: L1 and `contexts/learning/application/export.py` (Dom),
-  `contexts/agent/eval.py` (Dom), and P6, R7, R8 and X10 (Xander). A finding there becomes a question on
-  the owner's Team Comms page, not an edit.
-- The Demo Plan, P0 priorities, and this file (the merge pass edits it, and only with a ruling).
-- The two universal rules and the wording of the nine tests. A pass may make a test's Board or Evidence
-  line more precise, never weaker.
-- A held-out set once a run has trained against it. New held-out items start a new baseline, measured
-  again for current, candidate and teacher.
-- The scorer, the held-out set or the decode settings between the before and the after of one comparison.
-- The shapes in `contracts/learning.py`, except additively, with a version bump and a heads-up to their
-  users (AGENTS.md section 8.3).
-- Live systems: a pass starts no pod, takes no pod B time outside the GPU queue, installs nothing on the
-  Jetson and publishes nothing to the Hub; those wait for Ilan's explicit go.
+Everything on the pass rules' list of what a pass may never change holds here: another person's task, a
+shared or unassigned task, a Locked task, the Demo Plan, any Priority, this rubric, the rulings file,
+another track's rows, and anything outside plans (code, contracts, config, fixtures, pods, GPU jobs,
+queue slots, `data/events`). On the learning track that means in particular:
+
+- L1, L6, L7 and the tasks and folders listed above as other people's: a finding there becomes a
+  proposal on Dominick and Team, not an edit.
+- This file. A pass that finds a test unclear or wrong raises a ruling; the merge pass edits the file
+  once Ilan has answered it.
+- A plan that swaps the held-out set, the scorer or the decode settings between the before and the after
+  of one comparison. A new held-out set starts a new baseline, measured again for current, candidate and
+  teacher.
+- A Done when that lets a run read anything but an approved export, keep a dataset on a pod after the
+  run, or install on the Jetson or publish to the Hub without Ilan's explicit go.
+- A Done when that changes `contracts/learning.py` other than additively, with a version bump and a
+  heads-up to its users (AGENTS.md section 8.3).
 - Privacy: no raw frame, export image, caption, label or other household text goes into a pass log,
   report, ruling, PR or Notion post.
 
@@ -348,14 +350,15 @@ Read, never edited, because other people own them: L1 and the export code (Dom),
   `learning.run.evaluated` and `learning.model.deployed` (L37-51); passes use the contract's names.
   Publishing to the Hub has no event.
 - LT9: the "It learns" beat shows desk-objects (Demo Plan) and L7 asks for real table data, while the
-  first path that can run today is the text-only tool-calling task built from fixtures (L11). The beat
+  L11 page says the first learned task can start from the text fixtures (the tool-calling task). The beat
   needs a ruling on which task it shows.
 - LT8: the Design Doc (section 9) says to verify the base's license before publishing adapters; the
   Qwen3.5-4B card read apache-2.0 on 2026-10-10, which settles it until the publish-time check.
 
 ## Sources (opened 2026-10-10)
 
-Repo files, at origin/main 29401d7:
+Repo files, at origin/main a76af64:
+- `lab/refine/PASS_RULES.md`: the process every pass follows: tracks, rounds, the cap, convergence, what a pass may and may never change, the two universal rules.
 - `contracts/learning.py`: the learning events (L9-51), the export and package formats (L54-64), and `TaskSpec`, `DatasetExample`, `DatasetManifest` and `ModelManifest` (L74-109).
 - `contexts/learning/application/export.py`: the approval-gated export, the 300-example cap, keyframe selection, thumbs verdicts kept as gold labels.
 - `contexts/learning/tests/test_export.py`: nothing is written until the export is approved.
