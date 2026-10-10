@@ -27,7 +27,8 @@ from contexts.agent.domain.rules import RuleEvaluator, load_rules
 from contexts.circle.application.presence import PresenceBoard
 from contexts.circle.application.protocol import CircleAgent, InMemoryCircleStore
 from contexts.circle.application.sharing import CircleSharing
-from contexts.circle.infrastructure.neon import NeonCircleStore, NeonDb, NeonShares
+from contexts.circle.application.presence_sync import PresenceSync
+from contexts.circle.infrastructure.neon import CircleBoard, NeonCircleStore, NeonDb, NeonPresence, NeonShares
 from contexts.circle.infrastructure.outbox import CircleOutbox
 from contexts.connectors.application.hub import ConnectorHub
 from contexts.connectors.domain.spec import load_specs
@@ -92,6 +93,8 @@ class Atlas:
     sharing: CircleSharing | None = None
     memory: SqliteMemory | None = None
     projection: MemoryProjection | None = None
+    presence_sync: PresenceSync | None = None
+    board: CircleBoard | None = None
     tasks: list[asyncio.Task] = field(default_factory=list)
 
     async def start(self) -> None:
@@ -103,24 +106,28 @@ class Atlas:
     async def _ticks(self) -> None:
         while True:
             now = datetime.now(UTC)
-            try:
-                await self.bus.publish_all(self.approvals.expire(now))
-                if self.habits:  # close finished days; nudge on habits about to slip
-                    await self.bus.publish_all(self.habits.flush(now) + self.nudger.check(now))
-                if self.zone_engine:
-                    await self.bus.publish_all(self.zone_engine.flush(now))
-                if self.projection:  # close episodes that have gone quiet
-                    await self.bus.publish_all(self.projection.flush(now))
-                if self.circle:
-                    await self.bus.publish_all(self.circle.poll())
-                if self.sharing:  # push approved shares to Neon; rows stay queued while offline
-                    await self.bus.publish_all(await asyncio.to_thread(self.sharing.sync, now))
-                if self.loop.due(now):
-                    await self.bus.publish_all(await self.loop.tick(now))
-                if self.settings.connectors:
-                    await self.bus.publish_all(await self.hub.sync_due(now))
-            except Exception:
-                log.exception("tick failed")
+            jobs = [
+                ("approvals", lambda: self.approvals.expire(now)),
+                # close finished days; nudge on habits about to slip
+                ("habits", (lambda: self.habits.flush(now) + self.nudger.check(now)) if self.habits else None),
+                ("zones", (lambda: self.zone_engine.flush(now)) if self.zone_engine else None),
+                ("episodes", (lambda: self.projection.flush(now)) if self.projection else None),  # close quiet episodes
+                ("circle", (lambda: asyncio.to_thread(self.circle.poll)) if self.circle else None),  # network I/O with Neon
+                ("shares", (lambda: asyncio.to_thread(self.sharing.sync, now)) if self.sharing else None),
+                ("presence", (lambda: asyncio.to_thread(self.presence_sync.sync, now)) if self.presence_sync else None),
+                ("agent loop", (lambda: self.loop.tick(now)) if self.loop.due(now) else None),
+                ("connectors", (lambda: self.hub.sync_due(now)) if self.settings.connectors else None),
+            ]
+            for name, job in jobs:
+                if job is None:
+                    continue
+                try:  # each job on its own: Neon being offline must not stop alerts or connector syncs
+                    out = job()
+                    if asyncio.iscoroutine(out) or isinstance(out, asyncio.Future):
+                        out = await out
+                    await self.bus.publish_all(out or [])
+                except Exception:
+                    log.exception("tick job %s failed", name)
             await asyncio.sleep(TICK_S)
 
     async def stop(self) -> None:
@@ -251,7 +258,7 @@ def build(settings: Settings | None = None) -> Atlas:
 
     # Circle (G1): friends' Atlases negotiate through agent_messages. The store is in-memory until
     # the Neon store from N1 is plugged in here (same CircleStore port).
-    circle = sharing = None
+    circle = sharing = neon = board = None
     circle_cfg = agent_cfg.get("circle") or {}
     if circle_cfg.get("member_id") and circle_cfg.get("circle_id"):
         # Neon (N1) when NEON_DATABASE_URL is set; otherwise two Atlases can still negotiate in one process.
@@ -267,6 +274,7 @@ def build(settings: Settings | None = None) -> Atlas:
             bus.subscribe("habits.day.closed", sharing.on_day_closed)  # live only: they write
             bus.subscribe("impact.count.updated", sharing.on_count_updated)
             bus.subscribe("play.round.scored", sharing.on_round_scored)
+            board = CircleBoard(neon)  # leaderboards for the Circle screen and E2
 
     # Friend presence (G5): opt-in, named places only, expiring.
     presence = None
@@ -278,6 +286,13 @@ def build(settings: Settings | None = None) -> Atlas:
         bus.subscribe("perception.zone", presence.on_zone_event)
         planner.presence = presence
 
+    # Presence delivery (G5): my places to Neon, friends' places back as events.
+    presence_sync = None
+    if presence and neon:
+        presence_sync = PresenceSync(NeonPresence(neon), circle_cfg["circle_id"], circle_cfg["member_id"])
+        bus.subscribe("circle.place.shared", presence_sync.on_shared)  # live only: it writes
+
     return Atlas(settings=s, bus=bus, qa=qa, approvals=approvals, hub=hub, loop=loop, zones=zones, game=game,
                  waste=waste, circle=circle, presence=presence, zone_engine=zone_engine, sharing=sharing,
-                 memory=memory, projection=projection, habits=habits, nudger=nudger)
+                 memory=memory, projection=projection, habits=habits, nudger=nudger,
+                 presence_sync=presence_sync, board=board)

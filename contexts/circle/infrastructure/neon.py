@@ -268,3 +268,38 @@ class CircleBoard:
             return [dict(zip([d[0] for d in cur.description], r)) for r in cur.fetchall()]
 
         return self.db.run(work)
+
+
+class NeonPresence:
+    """The `presence` table (G5): one row per member, latest share wins, rows expire."""
+
+    def __init__(self, db: NeonDb) -> None:
+        self.db = db
+
+    def push(self, row: OutboxRow) -> None:
+        p = row.payload
+
+        def work(cur):
+            self.db.ensure(cur, row.circle_id, row.member_id)
+            cur.execute(
+                "INSERT INTO presence (member_id, circle_id, place, source, shared_at, expires_at)"
+                " VALUES (%s, %s, %s, %s, %s, %s)"
+                " ON CONFLICT (member_id) DO UPDATE SET circle_id = EXCLUDED.circle_id, place = EXCLUDED.place,"
+                " source = EXCLUDED.source, shared_at = EXCLUDED.shared_at, expires_at = EXCLUDED.expires_at"
+                " WHERE presence.shared_at <= EXCLUDED.shared_at",
+                (row.member_id, row.circle_id, p["place"], p["source"], p["shared_at"], p["expires_at"]),
+            )
+
+        self.db.run(work)
+
+    def active(self, circle_id: str, now) -> list[dict]:
+        def work(cur):
+            cur.execute(
+                "SELECT member_id, place, source, shared_at, expires_at FROM presence"
+                " WHERE circle_id = %s AND expires_at > %s ORDER BY member_id",
+                (circle_id, now),
+            )
+            cols = [d[0] for d in cur.description]
+            return [dict(zip(cols, r, strict=True)) for r in cur.fetchall()]
+
+        return self.db.run(work)
