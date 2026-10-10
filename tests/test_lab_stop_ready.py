@@ -1077,30 +1077,19 @@ def test_ready_probes_the_hub_through_the_one_hub_client(monkeypatch):
     assert problems == []
 
 
-def test_stop_resolves_the_state_dir_through_the_ledger_resolver(monkeypatch, tmp_path):
-    """One resolver for the state dir: stop shares ledger.resolve_state_dir and its constants, it repeats none."""
+def test_the_ledger_resolves_the_state_dir_through_stop(monkeypatch, tmp_path):
+    """One resolver for the state dir: stop owns the variable name and the default, and the ledger follows it on every call."""
     from lab.machine import ledger
 
-    problems = []
-    if stop.state_dir is not ledger.resolve_state_dir:
-        problems.append("stop.state_dir is not ledger.resolve_state_dir")
-    if stop.DEFAULT_STATE_DIR != ledger.DEFAULT_STATE_DIR:
-        problems.append(f"stop.DEFAULT_STATE_DIR {stop.DEFAULT_STATE_DIR!r} != ledger.DEFAULT_STATE_DIR")
-    if stop.STATE_DIR_ENV != ledger.ENV_STATE_DIR:
-        problems.append(f"stop.STATE_DIR_ENV {stop.STATE_DIR_ENV!r} != ledger.ENV_STATE_DIR")
+    assert ledger.ENV_STATE_DIR == stop.STATE_DIR_ENV
+    assert ledger.DEFAULT_STATE_DIR == stop.DEFAULT_STATE_DIR
 
-    # Behavior that follows from one source of truth: moving the ledger's default or variable name moves STOP too.
-    moved_default = tmp_path / "moved-default"
     monkeypatch.delenv("LAB_STATE_DIR", raising=False)
-    monkeypatch.delenv("LAB_OTHER_STATE_DIR", raising=False)
-    monkeypatch.setattr(ledger, "DEFAULT_STATE_DIR", moved_default)
-    if stop.state_dir() != moved_default:
-        problems.append(f"stop.state_dir() gave {stop.state_dir()!r} after ledger.DEFAULT_STATE_DIR moved to {moved_default!r}")
+    moved_default = tmp_path / "moved-default"
+    monkeypatch.setattr(stop, "DEFAULT_STATE_DIR", moved_default)
+    assert ledger.resolve_state_dir() == moved_default, "the ledger must follow stop's default, not keep a copy"
 
     moved_env = tmp_path / "moved-env"
-    monkeypatch.setattr(ledger, "ENV_STATE_DIR", "LAB_OTHER_STATE_DIR")
-    monkeypatch.setenv("LAB_OTHER_STATE_DIR", str(moved_env))
-    if stop.state_dir() != moved_env:
-        problems.append(f"stop.state_dir() gave {stop.state_dir()!r} after ledger.ENV_STATE_DIR was renamed")
-
-    assert problems == []
+    monkeypatch.setenv("LAB_STATE_DIR", str(moved_env))
+    assert stop.state_dir() == moved_env
+    assert ledger.resolve_state_dir() == moved_env, "the ledger must read LAB_STATE_DIR through stop"
