@@ -1,0 +1,8 @@
+out/
+node_modules/
+assets/voice/*.mp3
+assets/clips/*.mp4
+.hyperframes/
+AGENTS.md
+CLAUDE.md
+snapshots*/

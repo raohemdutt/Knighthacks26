@@ -1,0 +1,101 @@
+<!doctype html>
+<html>
+  <head><meta charset="UTF-8" /></head>
+  <body>
+    <template>
+      <link rel="stylesheet" href="world/soft.css" />
+      <style>
+        #root { position: absolute; inset: 0; pointer-events: none; }
+        .cap { position: absolute; left: 0; right: 0; bottom: 64px; display: flex; justify-content: center; }
+        .cap-card { padding: 22px 40px; max-width: 1560px; opacity: 0; }
+        .cap-text { font-size: 32px; text-align: center; }
+      </style>
+      <div id="root" data-composition-id="captions" data-width="1920" data-height="1080">
+        <div class="clip cap" id="cap-0-0" data-start="5.000" data-duration="5.710" data-track-index="0"><div class="cap-card soft-raised"><div class="cap-text soft-body">This is Atlas. A small box that sits on your desk, with two camera eyes.</div></div></div>
+        <div class="clip cap" id="cap-0-1" data-start="10.810" data-duration="10.240" data-track-index="0"><div class="cap-card soft-raised"><div class="cap-text soft-body">It watches your space, remembers what it saw, answers your questions, and learns new skills. All of it on the box. Your video never leaves.</div></div></div>
+        <div class="clip cap" id="cap-0-2" data-start="21.150" data-duration="15.240" data-track-index="0"><div class="cap-card soft-raised"><div class="cap-text soft-body">Inside are four layers. Cameras, with every face blurred before anything is saved. A vision model that understands the scene. A memory of everything it saw. And an agent that never acts without asking you first.</div></div></div>
+        <div class="clip cap" id="cap-0-3" data-start="36.490" data-duration="7.650" data-track-index="0"><div class="cap-card soft-raised"><div class="cap-text soft-body">Everything after this minute is something you point Atlas at. Pick your track, press the key, and watch two minutes.</div></div></div>
+        <div class="clip cap" id="cap-1-0" data-start="61.300" data-duration="7.360" data-track-index="0"><div class="cap-card soft-raised"><div class="cap-text soft-body">Point it at your week. Atlas reads your classes and deadlines, and watches how your day really goes at the desk.</div></div></div>
+        <div class="clip cap" id="cap-1-1" data-start="68.760" data-duration="9.810" data-track-index="0"><div class="cap-card soft-raised"><div class="cap-text soft-body">Each morning it writes one plan, with its reasons. When something slips, it re-plans. In the evening, it tells you what happened against the plan.</div></div></div>
+        <div class="clip cap" id="cap-1-2" data-start="78.680" data-duration="3.810" data-track-index="0"><div class="cap-card soft-raised"><div class="cap-text soft-body">Nothing is written to your calendar until you tap approve.</div></div></div>
+        <div class="clip cap" id="cap-2-0" data-start="121.100" data-duration="6.930" data-track-index="0"><div class="cap-card soft-raised"><div class="cap-text soft-body">The model on the box is small. That is what makes it private and fast. But small models have gaps.</div></div></div>
+        <div class="clip cap" id="cap-2-1" data-start="128.130" data-duration="12.070" data-track-index="0"><div class="cap-card soft-raised"><div class="cap-text soft-body">When Atlas needs a new skill, you tap teach. It asks to export a handful of blurred pictures. A big open model in the lab labels them, and the small one is fine-tuned on the answers.</div></div></div>
+        <div class="clip cap" id="cap-2-2" data-start="140.300" data-duration="9.120" data-track-index="0"><div class="cap-card soft-raised"><div class="cap-text soft-body">A test decides if the new model is really better. Only then does it ship back to the box. Our adapter is public on Hugging Face.</div></div></div>
+        <div class="clip cap" id="cap-3-0" data-start="180.900" data-duration="10.120" data-track-index="0"><div class="cap-card soft-raised"><div class="cap-text soft-body">The lab is two AMD Radeon R9700 cards. One serves the teacher, a twenty-seven billion parameter Qwen. The other trains.</div></div></div>
+        <div class="clip cap" id="cap-3-1" data-start="191.120" data-duration="10.270" data-track-index="0"><div class="cap-card soft-raised"><div class="cap-text soft-body">Labeling, training, testing and packaging run on ROCm, and every run is recorded, with its loss curve, its minutes and its watts.</div></div></div>
+        <div class="clip cap" id="cap-3-2" data-start="201.490" data-duration="7.480" data-track-index="0"><div class="cap-card soft-raised"><div class="cap-text soft-body">The box and the lab share two files, a dataset out and a model package back. Nothing else crosses.</div></div></div>
+        <div class="clip cap" id="cap-4-0" data-start="240.700" data-duration="8.830" data-track-index="0"><div class="cap-card soft-raised"><div class="cap-text soft-body">The new model arrives as one small package. The box checks it, swaps it in, and rolls back by itself if it does not answer.</div></div></div>
+        <div class="clip cap" id="cap-4-1" data-start="249.630" data-duration="9.190" data-track-index="0"><div class="cap-card soft-raised"><div class="cap-text soft-body">We measure energy on both sides. Watts on the Jetson, watts on the GPUs, and joules per answer, so you can see what a question costs.</div></div></div>
+        <div class="clip cap" id="cap-5-0" data-start="300.500" data-duration="10.770" data-track-index="0"><div class="cap-card soft-raised"><div class="cap-text soft-body">Everything you see live runs on this Jetson. Cameras in, faces blurred, the on-device vision model understanding the scene, answers in a few seconds.</div></div></div>
+        <div class="clip cap" id="cap-5-1" data-start="311.370" data-duration="7.320" data-track-index="0"><div class="cap-card soft-raised"><div class="cap-text soft-body">Pull the network cable. It keeps seeing, remembering, alerting and answering. Only learning pauses.</div></div></div>
+        <div class="clip cap" id="cap-6-0" data-start="360.300" data-duration="7.630" data-track-index="0"><div class="cap-card soft-raised"><div class="cap-text soft-body">The same cameras turn a room into data. Frames become events. Events become episodes you can ask about.</div></div></div>
+        <div class="clip cap" id="cap-6-1" data-start="368.030" data-duration="4.820" data-track-index="0"><div class="cap-card soft-raised"><div class="cap-text soft-body">Point it at the bins, and it counts what gets thrown away and where it lands.</div></div></div>
+        <div class="clip cap" id="cap-7-0" data-start="420.100" data-duration="6.400" data-track-index="0"><div class="cap-card soft-raised"><div class="cap-text soft-body">With a count comes a number a campus can act on. How much was sorted right, before and after a nudge.</div></div></div>
+        <div class="clip cap" id="cap-7-1" data-start="426.600" data-duration="6.240" data-track-index="0"><div class="cap-card soft-raised"><div class="cap-text soft-body">Tables share only their counts, never their pictures, and a leaderboard shows who is winning.</div></div></div>
+        <div class="clip cap" id="cap-8-0" data-start="479.900" data-duration="5.010" data-track-index="0"><div class="cap-card soft-raised"><div class="cap-text soft-body">Point it at your friends. Each person's Atlas keeps their own calendar private.</div></div></div>
+        <div class="clip cap" id="cap-8-1" data-start="485.010" data-duration="11.640" data-track-index="0"><div class="cap-card soft-raised"><div class="cap-text soft-body">Ask for a time that works for everyone, and the boxes negotiate. Only free or busy leaves each box. The event lands in everyone's plan after a tap.</div></div></div>
+        <div class="clip cap" id="cap-9-0" data-start="539.700" data-duration="7.000" data-track-index="0"><div class="cap-card soft-raised"><div class="cap-text soft-body">Point it at your habits. Day Run lets you play tomorrow before you live it, on a map of your own campus.</div></div></div>
+        <div class="clip cap" id="cap-9-1" data-start="546.800" data-duration="9.330" data-track-index="0"><div class="cap-card soft-raised"><div class="cap-text soft-body">A bad plan fails, and the game tells you why. A good plan wins three stars. Hard mode moves a class and makes you re-route.</div></div></div>
+        <div class="clip cap" id="cap-9-2" data-start="556.240" data-duration="6.760" data-track-index="0"><div class="cap-card soft-raised"><div class="cap-text soft-body">It is the same box, the same cameras, the same memory. Pointed at one more part of your life.</div></div></div>
+      </div>
+      <script>
+        (function () {
+          const tl = gsap.timeline({ paused: true });
+        tl.fromTo("#cap-0-0 .cap-card", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 5.000);
+        tl.to("#cap-0-0 .cap-card", { opacity: 0, duration: 0.3, ease: "power2.in" }, 10.390);
+        tl.fromTo("#cap-0-1 .cap-card", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 10.810);
+        tl.to("#cap-0-1 .cap-card", { opacity: 0, duration: 0.3, ease: "power2.in" }, 20.730);
+        tl.fromTo("#cap-0-2 .cap-card", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 21.150);
+        tl.to("#cap-0-2 .cap-card", { opacity: 0, duration: 0.3, ease: "power2.in" }, 36.070);
+        tl.fromTo("#cap-0-3 .cap-card", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 36.490);
+        tl.to("#cap-0-3 .cap-card", { opacity: 0, duration: 0.3, ease: "power2.in" }, 43.820);
+        tl.fromTo("#cap-1-0 .cap-card", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 61.300);
+        tl.to("#cap-1-0 .cap-card", { opacity: 0, duration: 0.3, ease: "power2.in" }, 68.340);
+        tl.fromTo("#cap-1-1 .cap-card", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 68.760);
+        tl.to("#cap-1-1 .cap-card", { opacity: 0, duration: 0.3, ease: "power2.in" }, 78.250);
+        tl.fromTo("#cap-1-2 .cap-card", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 78.680);
+        tl.to("#cap-1-2 .cap-card", { opacity: 0, duration: 0.3, ease: "power2.in" }, 82.170);
+        tl.fromTo("#cap-2-0 .cap-card", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 121.100);
+        tl.to("#cap-2-0 .cap-card", { opacity: 0, duration: 0.3, ease: "power2.in" }, 127.710);
+        tl.fromTo("#cap-2-1 .cap-card", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 128.130);
+        tl.to("#cap-2-1 .cap-card", { opacity: 0, duration: 0.3, ease: "power2.in" }, 139.880);
+        tl.fromTo("#cap-2-2 .cap-card", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 140.300);
+        tl.to("#cap-2-2 .cap-card", { opacity: 0, duration: 0.3, ease: "power2.in" }, 149.100);
+        tl.fromTo("#cap-3-0 .cap-card", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 180.900);
+        tl.to("#cap-3-0 .cap-card", { opacity: 0, duration: 0.3, ease: "power2.in" }, 190.700);
+        tl.fromTo("#cap-3-1 .cap-card", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 191.120);
+        tl.to("#cap-3-1 .cap-card", { opacity: 0, duration: 0.3, ease: "power2.in" }, 201.070);
+        tl.fromTo("#cap-3-2 .cap-card", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 201.490);
+        tl.to("#cap-3-2 .cap-card", { opacity: 0, duration: 0.3, ease: "power2.in" }, 208.650);
+        tl.fromTo("#cap-4-0 .cap-card", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 240.700);
+        tl.to("#cap-4-0 .cap-card", { opacity: 0, duration: 0.3, ease: "power2.in" }, 249.210);
+        tl.fromTo("#cap-4-1 .cap-card", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 249.630);
+        tl.to("#cap-4-1 .cap-card", { opacity: 0, duration: 0.3, ease: "power2.in" }, 258.500);
+        tl.fromTo("#cap-5-0 .cap-card", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 300.500);
+        tl.to("#cap-5-0 .cap-card", { opacity: 0, duration: 0.3, ease: "power2.in" }, 310.950);
+        tl.fromTo("#cap-5-1 .cap-card", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 311.370);
+        tl.to("#cap-5-1 .cap-card", { opacity: 0, duration: 0.3, ease: "power2.in" }, 318.370);
+        tl.fromTo("#cap-6-0 .cap-card", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 360.300);
+        tl.to("#cap-6-0 .cap-card", { opacity: 0, duration: 0.3, ease: "power2.in" }, 367.610);
+        tl.fromTo("#cap-6-1 .cap-card", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 368.030);
+        tl.to("#cap-6-1 .cap-card", { opacity: 0, duration: 0.3, ease: "power2.in" }, 372.530);
+        tl.fromTo("#cap-7-0 .cap-card", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 420.100);
+        tl.to("#cap-7-0 .cap-card", { opacity: 0, duration: 0.3, ease: "power2.in" }, 426.180);
+        tl.fromTo("#cap-7-1 .cap-card", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 426.600);
+        tl.to("#cap-7-1 .cap-card", { opacity: 0, duration: 0.3, ease: "power2.in" }, 432.520);
+        tl.fromTo("#cap-8-0 .cap-card", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 479.900);
+        tl.to("#cap-8-0 .cap-card", { opacity: 0, duration: 0.3, ease: "power2.in" }, 484.590);
+        tl.fromTo("#cap-8-1 .cap-card", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 485.010);
+        tl.to("#cap-8-1 .cap-card", { opacity: 0, duration: 0.3, ease: "power2.in" }, 496.330);
+        tl.fromTo("#cap-9-0 .cap-card", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 539.700);
+        tl.to("#cap-9-0 .cap-card", { opacity: 0, duration: 0.3, ease: "power2.in" }, 546.380);
+        tl.fromTo("#cap-9-1 .cap-card", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 546.800);
+        tl.to("#cap-9-1 .cap-card", { opacity: 0, duration: 0.3, ease: "power2.in" }, 555.810);
+        tl.fromTo("#cap-9-2 .cap-card", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 556.240);
+        tl.to("#cap-9-2 .cap-card", { opacity: 0, duration: 0.3, ease: "power2.in" }, 562.680);
+          window.__timelines["captions"] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>
