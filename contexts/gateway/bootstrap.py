@@ -49,6 +49,7 @@ from contexts.memory.fixture import as_of, fill_store
 from contexts.memory.fixture import load as load_memory_fixture
 from contexts.memory.infrastructure.store import MemoryStore
 from contexts.habits.application.nudges import Nudger
+from contexts.habits.domain.config import Schedule as HabitsSchedule
 from contexts.habits.domain.config import load_config as load_habits
 from contexts.habits.domain.members import MemberHabits
 from contexts.habits.domain.tracker import HabitTracker
@@ -60,6 +61,9 @@ from contexts.perception.infrastructure.identity_store import IdentityStore
 from contexts.perception.infrastructure.recognizer import build_recognizer
 from contexts.perception.domain.zones import ZoneEngine
 from contexts.play.dayrun.service import DayRun
+from contexts.play.league import League, load_config as load_league
+from contexts.play.league.application.sync import LeagueSync
+from contexts.play.league.infrastructure.neon import NeonLeague
 from contexts.play.domain.pathfinding import SortingRules, ZoneMap
 from contexts.play.domain.places import PlaceSet
 from contexts.profiles import Profile, load_profile
@@ -130,6 +134,8 @@ class Atlas:
     identity: IdentityService | None = None  # opt-in owner recognition (P9); off by default
     telemetry: object | None = None  # TelemetryService when ATLAS_TELEMETRY_SOURCE is set; off by default
     profile: Profile | None = None  # GET /api/profile: the vocabulary and which config files are overridden
+    league: League | None = None  # the friends' weekly game (contexts/play/league); GET /api/league
+    league_sync: LeagueSync | None = None  # friends' rows in, declarations out; only with Neon
     tasks: list[asyncio.Task] = field(default_factory=list)
     _last_retention: datetime | None = None
     _offline: set[str] = field(default_factory=set)  # tick jobs whose Neon is down (logged once)
@@ -160,6 +166,8 @@ class Atlas:
                 ("circle", (lambda: asyncio.to_thread(self.circle.poll)) if self.circle else None),  # network I/O with Neon
                 ("shares", (lambda: asyncio.to_thread(self.sharing.sync, now)) if self.sharing else None),
                 ("presence", (lambda: asyncio.to_thread(self.presence_sync.sync, now)) if self.presence_sync else None),
+                ("league", (lambda: self.league.flush(now)) if self.league else None),  # close a week the clock passed
+                ("league sync", (lambda: asyncio.to_thread(self.league_sync.sync, now)) if self.league_sync else None),
                 ("agent loop", (lambda: self.loop.tick(now)) if self.loop.due(now) else None),
                 ("day", (lambda: self.day.tick(now)) if self.day else None),  # the morning plan, status, evening review
                 ("connectors", (lambda: self.hub.sync_due(now)) if self.settings.connectors else None),
@@ -427,6 +435,22 @@ def build(settings: Settings | None = None) -> Atlas:
         if ntfy:
             bus.subscribe("day.", day_phone(ntfy, s.ntfy_topic))  # the plan, a re-plan and the review on the phone
 
+    # The League (contexts/play/league): the friends' weekly game. The standings rebuild from the log; the
+    # follow-ups (GroupMe post, Circle plan) and the stake/dare executor are live and behind approval cards.
+    league = league_sync = None
+    league_file = s.config_dir / "league.yaml"
+    if league_file.exists():
+        league_cfg = load_league(league_file)
+        league = League(league_cfg, circle_cfg.get("circle_id") if circle else None,
+                        circle_cfg["member_id"] if circle else league_cfg.me, (circle_cfg.get("names") or {}) if circle else {},
+                        habits.sched if habits else HabitsSchedule(), clock=lambda: datetime.now(UTC), hub=hub, circle=circle,
+                        chat_group=circle_cfg.get("chat_group", "friends"))
+        league.subscribe(bus)
+        league.fallback = approvals.executors.get("circle_share")  # event proposals keep going to the Circle
+        approvals.executors["circle_share"] = league.executor
+        if neon and board:
+            league_sync = LeagueSync(NeonLeague(neon, board), league)
+
     # Learning board (X10): the Teach screen's view of tasks, runs and deployed models; rebuilt from the log.
     learning = LearningBoard()
     learning.subscribe(bus)
@@ -447,4 +471,4 @@ def build(settings: Settings | None = None) -> Atlas:
                  memory=memory, projection=projection, habits=habits, nudger=nudger,
                  presence_sync=presence_sync, board=board, vault=vault, policy=policy, wiper=wiper,
                  places=places, dayrun=dayrun, day=day, capture=capture, identity=identity, learning=learning,
-                 telemetry=telemetry, profile=profile)
+                 telemetry=telemetry, profile=profile, league=league, league_sync=league_sync)

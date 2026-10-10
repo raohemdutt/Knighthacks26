@@ -31,6 +31,9 @@
 - GET  /api/play/campus-route  ?from=ucf.union&to=ucf.hec[&depart=&due=] or to=friend:<member> (S5)
 - GET  /api/learning        taught tasks: stage, progress, scores, deployed models (X10)
 - GET  /api/profile         who this box serves: name, description, vocabulary, overridden config files
+- GET  /api/league          the League: this week's standings, worst and best with reasons, stake, dares, team waste line
+- GET  /api/league/me       this member's breakdown by target
+- POST /api/league/stake    {kind, text?} -> approval card to set the stake; POST /api/league/challenges {kind, days, invitees}
 - GET  /capture/status      camera status and detector counts, where cameras run (C6)
 - GET  /health
 - GET  /runtime/models      installed model versions, the current one and what llama-server really serves (R7)
@@ -68,6 +71,7 @@ from contexts.memory.api import build_router as memory_router
 from contexts.perception.api import identity_router
 from contexts.play.dayrun_api import dayrun_router
 from contexts.profiles.api import profile_router
+from contexts.play.league.api import league_router
 from contracts import REGISTRY, Event, parse_event
 from contracts.agent import AnswerGenerated, RuleAdded, RuleToggled
 from contracts.experience import ApprovalDecided, QuestionAsked
@@ -171,6 +175,8 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
     # POST /api/circle/proposals: an approval card for a plan with friends (G1)
     app.include_router(circle_router(atlas.bus, circle=atlas.circle, sharing=atlas.sharing, presence=atlas.presence,
                                      board=atlas.board, config_dir=atlas.settings.config_dir, guard=authorized))
+    # GET /api/league, /api/league/me (200 in every state); POST /api/league/stake, /api/league/challenges -> approval cards
+    app.include_router(league_router(atlas.bus, league=atlas.league, guard=authorized))
     app.include_router(runtime_router(ModelStore(atlas.settings.data_dir / "models"), llm_url=atlas.settings.llm_url))  # GET /runtime/models (R7)
 
     @app.get("/health")
