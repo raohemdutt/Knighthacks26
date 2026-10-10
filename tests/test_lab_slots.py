@@ -32,6 +32,13 @@ TOKEN = slots_fake.TOKEN
 B = "B exclusive"
 A = "A teacher shared service"
 
+#: The lines of a long request's Progress note as the justification step writes them, one more at each step.
+JUSTIFIED = ("Justification (s-1, 2026-10-10T13:00Z): cannot be split because: one training run; already measured: "
+             "200 steps took 13 minutes")
+CRITIQUED = JUSTIFIED + (" | Critique (s-fable, 2026-10-10T13:05Z): checkpoint every 100 steps so a slot can "
+                         "resume")
+CLEARED = CRITIQUED + " | Reply (s-1, 2026-10-10T13:10Z): checkpoints every 100 steps are on"
+
 
 @pytest.fixture(autouse=True)
 def isolated(tmp_path, monkeypatch):
@@ -65,8 +72,12 @@ class World:
         return slots.run(list(argv), client=self.client, now=lambda: self.now)
 
     def seed(self, request: str, **fields) -> str:
+        """Put a row straight into the fake; a long one holds a cleared justification unless the test gives its own
+        Progress note."""
         fields.setdefault("task_id", request.split(":")[0])
         fields.setdefault("requested", self.now)
+        if (fields.get("minutes", 15) or 15) > slots.LONG_ABOVE_MINUTES:
+            fields.setdefault("progress_note", CLEARED)
         return self.fake.add_row(request, **fields)
 
     def running(self, request: str, *, started_ago: float = 5, **fields) -> str:
@@ -95,10 +106,13 @@ def one_json_line(text: str) -> dict:
 
 
 def make_slot(**overrides) -> slots.Slot:
+    """A Slot; a long one holds a cleared justification unless the test gives its own Progress note."""
     base = dict(id="a" * 32, url="https://www.notion.so/x", request="L3: x", task_id="L3", gpu=B, minutes=15.0,
                 status="Queued", agent="Ilan", requested=T0, created=T0, started=None, ended=None, extended=False,
                 progress_note="", complaint="", result="")
     base.update(overrides)
+    if (base["minutes"] or 0) > slots.LONG_ABOVE_MINUTES and "progress_note" not in overrides:
+        base["progress_note"] = CLEARED
     return slots.Slot(**base)
 
 
@@ -326,34 +340,34 @@ def test_a_server_that_is_not_there_is_a_transport_error():
 def test_a_shorter_request_goes_first_even_when_it_was_asked_for_later():
     long_early = make_slot(id="1" * 32, minutes=60.0, requested=T0)
     short_late = make_slot(id="2" * 32, minutes=15.0, requested=T0 + dt.timedelta(minutes=30))
-    assert slots.queue_order([long_early, short_late]) == [short_late, long_early]
+    assert slots.queue_order([long_early, short_late], T0) == [short_late, long_early]
 
 
 def test_equal_minutes_go_to_the_earlier_request():
     first = make_slot(id="2" * 32, requested=T0)
     second = make_slot(id="1" * 32, requested=T0 + dt.timedelta(seconds=1))
-    assert slots.queue_order([second, first]) == [first, second]
+    assert slots.queue_order([second, first], T0) == [first, second]
 
 
 def test_a_request_with_no_time_of_day_is_placed_by_when_notion_made_the_row():
     early = make_slot(id="2" * 32, requested=None, created=T0)
     late = make_slot(id="1" * 32, requested=None, created=T0 + dt.timedelta(minutes=2))
-    assert slots.queue_order([late, early]) == [early, late]
+    assert slots.queue_order([late, early], T0) == [early, late]
 
 
 def test_rows_that_tie_on_everything_are_ordered_by_id_so_the_order_is_total():
     a, b = make_slot(id="a" * 32), make_slot(id="b" * 32)
-    assert slots.queue_order([b, a]) == [a, b]
-    assert slots.ahead_of(b, [a, b]) == [a]
-    assert slots.ahead_of(a, [a, b]) == []
+    assert slots.queue_order([b, a], T0) == [a, b]
+    assert slots.ahead_of(b, [a, b], T0) == [a]
+    assert slots.ahead_of(a, [a, b], T0) == []
 
 
 def test_only_queued_rows_are_in_the_queue_and_only_those_on_the_same_gpu_are_ahead():
     mine = make_slot(id="c" * 32, minutes=60.0)
     rows = [make_slot(id="1" * 32, status="Running"), make_slot(id="2" * 32, status="Done"),
             make_slot(id="3" * 32, gpu=A), make_slot(id="4" * 32), mine]
-    assert [row.id for row in slots.queue_order(rows)] == ["3" * 32, "4" * 32, "c" * 32]
-    assert [row.id for row in slots.ahead_of(mine, rows)] == ["4" * 32]
+    assert [row.id for row in slots.queue_order(rows, T0)] == ["3" * 32, "4" * 32, "c" * 32]
+    assert [row.id for row in slots.ahead_of(mine, rows, T0)] == ["4" * 32]
 
 
 def test_a_slot_ends_at_started_plus_its_minutes_and_fifteen_more_once_extended():
@@ -452,17 +466,26 @@ def test_a_request_adds_one_row_with_the_columns_the_queue_rules_name(world):
     assert answer["next"] == f"python -m lab slot start --row {row}"
 
 
-def test_a_long_slot_needs_a_reason_and_the_reason_is_written_into_the_request(world):
+def test_a_long_slot_carries_a_justification_and_it_is_written_into_the_row(world):
     answer, code = world.call("request", "--task", "l3", "--what", "train the adapter", "--minutes", "60",
-                              "--why", "training run")
-    assert code == 0
-    assert world.stored(answer["row"])["Request"] == "L3: train the adapter (60 min: training run)"
-    assert world.stored(answer["row"])["Minutes"] == 60 and world.stored(answer["row"])["Task ID"] == "L3"
+                              "--why", "one run, a split reloads the model", "--measured", "200 steps took 13 minutes")
+    assert code == 0 and answer["outcome"] == "queued"
+    stored = world.stored(answer["row"])
+    assert stored["Request"] == "L3: train the adapter (60 min: one run, a split reloads the model)"
+    assert stored["Minutes"] == 60 and stored["Task ID"] == "L3" and stored["Status"] == "Queued"
+    assert stored["Progress note"] == ("Justification (unknown, 2026-10-10T14:00Z): cannot be split because: one run, "
+                                       "a split reloads the model; already measured: 200 steps took 13 minutes")
+    assert answer["justification_state"] == "awaiting_critique" and answer["position"] is None
+    assert answer["may_start"] is False and answer["waiting_for"] == "the referee's critique of its justification"
+    assert answer["justification"] == {"state": "awaiting_critique", "justification": stored["Progress note"].split(
+        "): ", 1)[1]}
+    assert f"python -m lab slot start --row {answer['row']} --reply" in answer["next"]
+    assert f"python -m lab slot start --row {answer['row']} --minutes 15" in answer["next"]
 
 
 @pytest.mark.parametrize("argv", [
-    ["request", "--task", "L3", "--what", "x", "--minutes", "60"],
     ["request", "--task", "L3", "--what", "x", "--why", "because"],
+    ["request", "--task", "L3", "--what", "x", "--measured", "200 steps"],
     ["request", "--task", "L3", "--what", "x", "--minutes", "30", "--why", "long"],
     ["request", "--task", "ticket", "--what", "x"],
     ["request", "--task", "L3", "--what", "   "],
@@ -471,6 +494,9 @@ def test_a_long_slot_needs_a_reason_and_the_reason_is_written_into_the_request(w
     ["request", "--task", "L3", "--what", "x", "--gpu", "C"],
     ["start"],
     ["start", "--row", "L3"],
+    ["start", "--row", "a" * 32, "--minutes", "30"],
+    ["start", "--row", "a" * 32, "--minutes", "60"],
+    ["start", "--row", "a" * 32, "--reply", "  "],
     ["extend", "--row", "a" * 32],
     ["extend", "--row", "a" * 32, "--note", " "],
     ["done", "--row", "a" * 32],
@@ -500,13 +526,13 @@ def test_a_different_job_of_the_same_task_is_a_second_row(world):
 
 
 def test_a_short_request_made_later_is_first_in_line_and_the_long_one_is_behind_it(world):
-    long_row, _ = world.call("request", "--task", "L3", "--what", "train", "--minutes", "60", "--why", "training run")
-    assert long_row["position"] == 1 and long_row["may_start"] is True
+    long_row = world.seed("L3: train", minutes=60)
+    assert world.call("status", "--row", long_row)[0]["position"] == 1
     world.advance(minutes=3)
     short, _ = world.call("request", "--task", "O4", "--what", "bench")
     assert short["position"] == 1 and short["may_start"] is True and short["ahead"] == []
     status, _ = world.call("status")
-    assert [row["row"] for row in status["queued"]] == [short["row"], long_row["row"]]
+    assert [row["row"] for row in status["queued"]] == [short["row"], long_row]
     assert [row["may_start"] for row in status["queued"]] == [True, False]
 
 
@@ -943,6 +969,483 @@ def test_status_reads_every_page_of_a_long_queue():
     assert [r["request"] for r in answer["queued"]] == [f"L{n}: job" for n in range(1, 8)]
 
 
+# --- the starvation guard ----------------------------------------------------------------
+
+def minutes_after(minutes: float) -> dt.datetime:
+    return T0 + dt.timedelta(minutes=minutes)
+
+
+def passer(row_id: str, requested_after: float, started_after: float, **overrides) -> slots.Slot:
+    """A row requested and started the given minutes after T0: a start that may have passed a waiting row over."""
+    overrides.setdefault("status", "Done")
+    return make_slot(id=row_id * 32, requested=minutes_after(requested_after), started=minutes_after(started_after),
+                     **overrides)
+
+
+def test_a_row_is_passed_over_by_each_later_request_that_started_while_it_waited():
+    mine = make_slot(id="a" * 32, minutes=60.0, requested=T0)
+    rows = [
+        passer("1", 1, 5), passer("2", 2, 20, status="Ended by referee"), passer("3", 3, 40, status="Running"),
+        passer("4", -10, 6),                  # asked before mine: first come, first served, not a pass
+        passer("5", -30, -5),                 # started before mine was asked for
+        passer("6", 1, 5, gpu=A),             # the other card
+        make_slot(id="7" * 32, requested=minutes_after(1)),                      # still waiting
+        make_slot(id="8" * 32, requested=minutes_after(1), status="Cancelled"),  # never started
+        make_slot(id="9" * 32, requested=minutes_after(1), started=minutes_after(5)),  # Queued with a stale Started
+        mine,
+    ]
+    assert slots.passed_over(mine, rows) == 3
+
+
+def test_two_pass_overs_do_not_starve_a_row_and_the_third_does():
+    mine = make_slot(id="a" * 32, minutes=60.0, requested=T0)
+    two = [passer("1", 1, 5), passer("2", 2, 20)]
+    assert slots.starvation(mine, two + [mine], minutes_after(25)) is None
+    found = slots.starvation(mine, two + [passer("3", 3, 40), mine], minutes_after(45))
+    assert found == slots.Starvation("passed_over", "has been passed over 3 times by later requests", 3)
+
+
+def test_a_row_is_starved_by_waiting_only_after_more_than_twice_its_own_minutes():
+    mine = make_slot(id="a" * 32, minutes=15.0, requested=T0)
+    assert slots.starvation(mine, [mine], minutes_after(30)) is None
+    found = slots.starvation(mine, [mine], minutes_after(30) + dt.timedelta(seconds=1))
+    assert found == slots.Starvation("waited", "has waited 30 minutes, more than twice the 15 asked for", 0)
+    long = make_slot(id="b" * 32, minutes=60.0, requested=T0)
+    assert slots.starvation(long, [long], minutes_after(120)) is None
+    assert slots.starvation(long, [long], minutes_after(121)).code == "waited"
+
+
+def test_only_a_queued_row_with_a_request_time_can_be_starved():
+    running = make_slot(id="a" * 32, status="Running", started=T0, requested=T0)
+    undated = make_slot(id="b" * 32, requested=None, created=None)
+    assert slots.starvation(running, [running], minutes_after(999)) is None
+    assert slots.starvation(undated, [undated], minutes_after(999)) is None
+    assert slots.passed_over(undated, [undated, passer("1", 1, 5)]) == 0
+
+
+def test_starved_rows_go_first_the_earliest_request_first_and_the_rest_stay_shortest_first():
+    long = make_slot(id="1" * 32, minutes=60.0, requested=T0)                       # starved from minute 120
+    middle = make_slot(id="2" * 32, minutes=15.0, requested=minutes_after(60))      # starved from minute 90
+    later = make_slot(id="3" * 32, minutes=15.0, requested=minutes_after(110))
+    latest = make_slot(id="4" * 32, minutes=15.0, requested=minutes_after(105))
+    rows = [later, latest, middle, long]
+    assert [row.id for row in slots.queue_order(rows, minutes_after(130))] == ["1" * 32, "2" * 32, "4" * 32, "3" * 32]
+    assert [row.id for row in slots.queue_order(rows, minutes_after(115))] == ["2" * 32, "4" * 32, "3" * 32, "1" * 32]
+
+
+def test_a_row_that_is_starved_but_first_by_length_anyway_moves_nobody():
+    waiting = make_slot(id="1" * 32, minutes=15.0, requested=T0)
+    other = make_slot(id="2" * 32, minutes=60.0, requested=minutes_after(100))
+    now = minutes_after(40)
+    assert slots.starvation(waiting, [waiting, other], now).code == "waited"
+    assert slots.jumped(waiting, [waiting, other], now) == []
+    long_waiting = make_slot(id="3" * 32, minutes=60.0, requested=T0)
+    shorter = make_slot(id="4" * 32, minutes=15.0, requested=minutes_after(100))
+    assert slots.starvation(long_waiting, [long_waiting, shorter], minutes_after(130)).code == "waited"
+    assert slots.jumped(long_waiting, [long_waiting, shorter], minutes_after(130)) == [shorter]
+
+
+def test_a_row_that_cannot_start_for_want_of_a_critique_or_a_reply_is_not_in_the_line():
+    ready = make_slot(id="9" * 32, minutes=60.0, requested=minutes_after(5))
+    for number, note in enumerate(("", JUSTIFIED, CRITIQUED), start=1):
+        stuck = make_slot(id=str(number) * 32, minutes=60.0, requested=T0, progress_note=note)
+        assert slots.queue_order([stuck, ready], minutes_after(10)) == [ready]
+        assert slots.ahead_of(ready, [stuck, ready], minutes_after(10)) == []
+        assert slots.ahead_of(stuck, [stuck, ready], minutes_after(10)) == []
+
+
+def test_a_blocked_row_that_waited_long_enough_to_be_starved_still_holds_nobody_up():
+    stuck = make_slot(id="1" * 32, minutes=60.0, requested=T0, progress_note=JUSTIFIED)
+    short = make_slot(id="2" * 32, minutes=15.0, requested=minutes_after(200))
+    now = minutes_after(300)
+    assert slots.starvation(stuck, [stuck, short], now).code == "waited"
+    assert slots.queue_order([stuck, short], now) == [short]
+    assert slots.ahead_of(short, [stuck, short], now) == []
+
+
+# --- the justification step ---------------------------------------------------------------
+
+@pytest.mark.parametrize("minutes,note,state", [
+    (15.0, "", "not_required"),
+    (15.0, CLEARED, "not_required"),
+    (30.0, "", "not_required"),
+    (45.0, "", "missing"),
+    (60.0, "loss fell", "missing"),
+    (60.0, JUSTIFIED, "awaiting_critique"),
+    (60.0, CRITIQUED, "awaiting_reply"),
+    (60.0, CLEARED, "cleared"),
+    (60.0, CLEARED + " | Reply (s-1, 2026-10-10T13:20Z): and again", "cleared"),
+    (60.0, JUSTIFIED + " | Reply (s-1, 2026-10-10T13:10Z): a reply with no critique before it", "awaiting_critique"),
+    (60.0, "Critique (s-fable, 2026-10-10T13:05Z): a critique with no justification before it", "missing"),
+    (60.0, "loss fell | " + CLEARED, "cleared"),
+])
+def test_where_a_row_stands_on_its_justification_follows_the_lines_of_its_progress_note(minutes, note, state):
+    row = make_slot(minutes=minutes, progress_note=note)
+    assert slots.justification_state(row) == state
+
+
+def test_a_row_without_minutes_counts_as_the_default_and_needs_no_justification():
+    assert slots.justification_state(make_slot(minutes=None, progress_note="")) == "not_required"
+
+
+def test_the_view_of_a_justification_holds_the_lines_it_has_and_none_for_a_short_row():
+    assert slots.justification_view(make_slot(minutes=15.0)) is None
+    assert slots.justification_view(make_slot(minutes=60.0, progress_note=CRITIQUED)) == {
+        "state": "awaiting_reply",
+        "justification": "cannot be split because: one training run; already measured: 200 steps took 13 minutes",
+        "critique": "checkpoint every 100 steps so a slot can resume"}
+
+
+def test_a_signed_line_names_its_writer_and_the_minute_and_cannot_hold_the_separator():
+    line = slots.note_entry("Reply", "s-fable 7 (x)", T0, "first | second")
+    assert line == "Reply (s-fable-7-x, 2026-10-10T14:00Z): first / second"
+    assert slots.read_thread(f"Justification (a, 2026-10-10T14:00Z): j | {line}") == slots.Thread(justification="j")
+    assert slots.note_entry("Reply", "  ", T0, "x") == "Reply (unknown, 2026-10-10T14:00Z): x"
+    assert slots.read_thread(JUSTIFIED + " | " + slots.note_entry("Critique", "s-fable", T0, "c")).critique == "c"
+
+
+@pytest.mark.parametrize("minutes,why,measured,missing", [
+    (15, None, None, []),
+    (30, None, None, []),
+    (60, None, None, ["--why", "--measured"]),
+    (60, "one run", None, ["--measured"]),
+    (60, None, "200 steps", ["--why"]),
+    (60, "  ", "200 steps", ["--why"]),
+    (60, "one run", "200 steps", []),
+])
+def test_a_request_over_30_minutes_lacks_exactly_the_parts_it_did_not_give(minutes, why, measured, missing):
+    assert slots.justification_missing(minutes, why, measured) == missing
+    refused = slots.justification_refusal(minutes, why, measured)
+    assert (refused is None) == (missing == [])
+    if refused:
+        assert refused["outcome"] == "justification_required" and refused["missing"] == missing
+        assert refused["ok"] is False and refused["verb"] == "slot request"
+
+
+@pytest.mark.parametrize("flags,missing", [
+    ([], ["--why", "--measured"]),
+    (["--why", "one run"], ["--measured"]),
+    (["--measured", "200 steps"], ["--why"]),
+])
+def test_a_long_request_without_its_justification_is_refused_and_written_nowhere(world, flags, missing):
+    answer, code = world.call("request", "--task", "L3", "--what", "train", "--minutes", "60", *flags)
+    assert code == 1 and answer["ok"] is False and answer["outcome"] == "justification_required"
+    assert answer["missing"] == missing and "carries a justification" in answer["reason"]
+    assert all(flag in answer["reason"] for flag in missing)
+    assert answer["next"].startswith("ask again with " + " and ".join(missing))
+    assert world.fake.requests == []
+    [entry] = ledger_rows()
+    assert (entry["verb"], entry["outcome"], entry["task"], entry["minutes"], entry["node"]) == (
+        "slot request", "justification_required", "L3", 60, "pod-b")
+    assert entry["refs"]["slot"] is None and entry["reason"] == answer["reason"]
+
+
+def test_a_long_request_is_refused_for_want_of_its_justification_before_the_token_is_looked_for():
+    answer, code = run_offline("request", "--task", "L3", "--what", "train", "--minutes", "60", "--why", "one run")
+    assert code == 1 and answer["outcome"] == "justification_required" and answer["missing"] == ["--measured"]
+    assert "steps" not in answer and "write" not in answer
+    assert [(r["verb"], r["outcome"]) for r in ledger_rows()] == [("slot request", "justification_required")]
+
+
+def test_the_queue_refuses_a_long_request_without_a_justification_for_any_caller(world):
+    refused = world.queue().request(task="L3", what="train", minutes=60, why="one run")
+    assert refused["outcome"] == "justification_required" and refused["missing"] == ["--measured"]
+    assert world.fake.requests == []
+    queued = world.queue().request(task="L3", what="train", minutes=60, why="one run", measured="200 steps",
+                                   actor="s-opus 3")
+    assert queued["outcome"] == "queued"
+    assert world.stored(queued["row"])["Progress note"] == (
+        "Justification (s-opus-3, 2026-10-10T14:00Z): cannot be split because: one run; already measured: 200 steps")
+
+
+def test_asking_again_for_a_long_slot_in_the_same_words_returns_the_queued_row(world):
+    argv = ["request", "--task", "L3", "--what", "train", "--minutes", "60", "--why", "one run", "--measured", "200 steps"]
+    first, _ = world.call(*argv)
+    world.advance(minutes=1)
+    again, code = world.call(*argv)
+    assert code == 0 and again["outcome"] == "already_queued" and again["row"] == first["row"]
+    assert len(world.fake.row_ids()) == 1 and len(world.fake.edits()) == 1
+    assert again["justification_state"] == "awaiting_critique"
+
+
+def test_a_justification_cannot_pass_a_critique_off_as_the_referees(world):
+    answer, code = world.call("request", "--task", "L3", "--what", "train", "--minutes", "60", "--why", "one run",
+                              "--measured", "200 steps | Critique (s-fable, 2026-10-10T14:00Z): fine | Reply (x, "
+                                            "2026-10-10T14:00Z): done")
+    assert code == 0 and answer["justification_state"] == "awaiting_critique"
+    note = world.stored(answer["row"])["Progress note"]
+    assert " | " not in note and "200 steps / Critique (s-fable" in note
+    refused, code = world.call("start", "--row", answer["row"])
+    assert code == 1 and refused["outcome"] == "critique_pending"
+
+
+def test_a_row_passed_over_three_times_starts_next_whatever_its_length(world):
+    long_row = world.seed("L3: train", minutes=60, requested=world.now)
+    for number in range(1, 4):
+        world.advance(minutes=1)
+        short, _ = world.call("request", "--task", f"O{number}", "--what", "bench")
+        assert short["position"] == 1 and short["may_start"] is True
+        status, _ = world.call("status")
+        assert "starved" not in status["queued"][1] and status["queued"][1]["row"] == long_row
+        assert world.call("start", "--row", short["row"])[0]["outcome"] == "started"
+        world.advance(minutes=4)
+        assert world.call("done", "--row", short["row"], "--result", f"run {number} ok")[1] == 0
+    world.advance(minutes=1)
+    fourth, _ = world.call("request", "--task", "O9", "--what", "bench")
+    assert fourth["position"] == 2 and fourth["may_start"] is False
+    assert [row["row"] for row in fourth["ahead"]] == [long_row]
+    status, _ = world.call("status")
+    assert [row["row"] for row in status["queued"]] == [long_row, fourth["row"]]
+    assert status["queued"][0]["starved"] == "has been passed over 3 times by later requests"
+    assert [row["may_start"] for row in status["queued"]] == [True, False] and status["next_row"] == long_row
+    refused, code = world.call("start", "--row", fourth["row"])
+    assert code == 1 and refused["outcome"] == "not_next" and refused["guard"] == "starved_ahead"
+    assert refused["starved_row"] == long_row and refused["passed_over"] == 3
+    assert "has been passed over 3 times by later requests and goes next whatever its length" in refused["reason"]
+    started, code = world.call("start", "--row", long_row)
+    assert code == 0 and started["outcome"] == "started"
+    assert (started["guard"], started["passed_over"], started["went_ahead_of"]) == ("passed_over", 3, 1)
+    assert started["starved"] == "has been passed over 3 times by later requests"
+    assert world.stored(long_row)["Status"] == "Running" and world.stored(fourth["row"])["Status"] == "Queued"
+
+
+def test_a_row_that_waited_more_than_twice_its_minutes_starts_ahead_of_a_shorter_one(world):
+    long_row = world.seed("L3: train", minutes=60, requested=world.ago(minutes=121))
+    short_row = world.seed("O4: bench", minutes=15, requested=world.ago(minutes=1))
+    refused, code = world.call("start", "--row", short_row)
+    assert code == 1 and refused["outcome"] == "not_next" and [r["row"] for r in refused["ahead"]] == [long_row]
+    assert refused["guard"] == "starved_ahead" and refused["passed_over"] == 0
+    assert "has waited 121 minutes, more than twice the 60 asked for and goes next" in refused["reason"]
+    assert world.fake.edits() == []
+    started, code = world.call("start", "--row", long_row)
+    assert code == 0 and started["outcome"] == "started"
+    assert (started["guard"], started["passed_over"], started["went_ahead_of"]) == ("waited", 0, 1)
+    assert started["starved"] == "has waited 121 minutes, more than twice the 60 asked for"
+
+
+def test_exactly_twice_the_minutes_is_not_yet_starved(world):
+    long_row = world.seed("L3: train", minutes=60, requested=world.ago(minutes=120))
+    short_row = world.seed("O4: bench", minutes=15, requested=world.ago(minutes=1))
+    assert world.call("start", "--row", long_row)[0]["outcome"] == "not_next"
+    assert world.call("start", "--row", short_row)[0]["outcome"] == "started"
+
+
+def test_a_starved_row_still_waits_for_the_card_and_blocks_nothing_it_may_not(world):
+    world.running("L4: eval", started_ago=5)
+    long_row = world.seed("L3: train", minutes=60, requested=world.ago(minutes=130))
+    world.seed("O4: bench", minutes=15, requested=world.ago(minutes=1))
+    refused, code = world.call("start", "--row", long_row)
+    assert code == 1 and refused["outcome"] == "busy" and world.fake.edits() == []
+    status, _ = world.call("status", "--row", long_row)
+    assert status["position"] == 1 and status["may_start"] is False
+    assert status["starved"] == "has waited 130 minutes, more than twice the 60 asked for"
+
+
+def test_a_starved_row_that_is_first_by_length_anyway_carries_no_guard_note(world):
+    row = world.seed("L3: smoke", minutes=15, requested=world.ago(minutes=40))
+    world.seed("O4: train", minutes=60, requested=world.ago(minutes=1))
+    status, _ = world.call("status")
+    assert status["queued"][0]["row"] == row and "starved" not in status["queued"][0]
+    assert "starved" not in world.call("status", "--row", row)[0]
+    started, _ = world.call("start", "--row", row)
+    assert started["outcome"] == "started" and "guard" not in started and "starved" not in started
+    assert "guard" not in ledger_rows()[-1]
+
+
+def test_a_row_waiting_for_its_critique_does_not_hold_up_an_equal_one_asked_for_later(world):
+    stuck = world.seed("L3: train", minutes=60, requested=world.ago(minutes=20), progress_note=JUSTIFIED)
+    ready = world.seed("O4: train", minutes=60, requested=world.ago(minutes=10))
+    started, code = world.call("start", "--row", ready)
+    assert code == 0 and started["outcome"] == "started"
+    assert world.stored(stuck)["Status"] == "Queued"
+
+
+def test_the_ledger_row_of_a_start_the_guard_decided_says_which_rule_and_how_many_it_passed(world):
+    long_row = world.seed("L3: train", minutes=60, requested=world.ago(minutes=130))
+    world.seed("O4: bench", minutes=15)
+    world.seed("O5: bench", minutes=15)
+    world.call("start", "--row", long_row)
+    [entry] = ledger_rows()
+    assert (entry["verb"], entry["outcome"], entry["guard"], entry["passed_over"], entry["went_ahead_of"]) == (
+        "slot start", "started", "waited", 0, 2)
+    assert entry["refs"]["slot"] == long_row and entry["task"] == "L3"
+
+
+@pytest.mark.parametrize("note,outcome,state,waits_for", [
+    ("", "justification_required", "missing", "a justification"),
+    (JUSTIFIED, "critique_pending", "awaiting_critique", "the referee's critique of its justification"),
+    (CRITIQUED, "reply_required", "awaiting_reply", "its agent's reply to the referee's critique"),
+])
+def test_a_long_row_does_not_start_until_its_critique_is_written_and_answered(world, note, outcome, state, waits_for):
+    row = world.seed("L3: train", minutes=60, progress_note=note)
+    answer, code = world.call("start", "--row", row)
+    assert code == 1 and answer["ok"] is False and answer["outcome"] == outcome
+    assert waits_for in answer["reason"] and answer["justification_state"] == state
+    assert f"python -m lab slot start --row {row} --minutes 15" in answer["next"]
+    assert world.fake.edits() == [] and world.stored(row)["Status"] == "Queued"
+    [entry] = ledger_rows()
+    assert (entry["verb"], entry["outcome"], entry["task"], entry["justification_state"]) == (
+        "slot start", outcome, "L3", state)
+
+
+def test_a_reply_answers_the_critique_and_the_row_starts_in_the_same_call(world):
+    row = world.seed("L3: train (60 min: one run)", minutes=60, progress_note=CRITIQUED)
+    world.advance(minutes=2)
+    answer, code = world.call("start", "--row", row, "--reply", "checkpoints every 100 steps are on now")
+    assert code == 0 and answer["outcome"] == "started" and answer["replied"] is True
+    assert answer["justification_state"] == "cleared" and answer["slot"]["cap_min"] == 60
+    stored = world.stored(row)
+    assert stored["Progress note"] == (CRITIQUED + " | Reply (unknown, 2026-10-10T14:02Z): checkpoints every 100 "
+                                       "steps are on now")
+    assert (stored["Status"], stored["Minutes"]) == ("Running", 60)
+    changes = [body["properties"] for method, _, body in world.fake.edits() if method == "PATCH"]
+    assert [sorted(change) for change in changes] == [["Progress note"], ["Started", "Status"]]
+    [entry] = ledger_rows()
+    assert (entry["outcome"], entry["replied"], entry["justification_state"]) == ("started", True, "cleared")
+
+
+def test_the_reply_is_signed_with_the_actor_of_the_sitting(world, monkeypatch):
+    monkeypatch.setenv("LAB_ACTOR", "s-sonnet-4")
+    row = world.seed("L3: train", minutes=60, progress_note=CRITIQUED)
+    world.call("start", "--row", row, "--reply", "will do")
+    assert world.stored(row)["Progress note"].endswith(" | Reply (s-sonnet-4, 2026-10-10T14:00Z): will do")
+
+
+def test_a_reply_is_kept_when_the_start_is_refused_and_the_next_start_needs_no_reply(world):
+    blocker = world.running("L4: eval", started_ago=5)
+    row = world.seed("L3: train", minutes=60, progress_note=CRITIQUED)
+    refused, code = world.call("start", "--row", row, "--reply", "will do")
+    assert code == 1 and refused["outcome"] == "busy" and refused["replied"] is True
+    assert world.stored(row)["Progress note"].endswith(" | Reply (unknown, 2026-10-10T14:00Z): will do")
+    assert ledger_rows()[-1]["replied"] is True
+    assert world.call("done", "--row", blocker, "--result", "ok")[1] == 0
+    started, code = world.call("start", "--row", row)
+    assert code == 0 and started["outcome"] == "started" and "replied" not in started
+    assert world.stored(row)["Progress note"].count("Reply (") == 1
+
+
+@pytest.mark.parametrize("minutes,note", [(60, ""), (60, JUSTIFIED), (60, CLEARED), (15, "")])
+def test_a_reply_with_no_critique_waiting_for_it_is_refused_and_writes_nothing(world, minutes, note):
+    row = world.seed("L3: job", minutes=minutes, progress_note=note)
+    answer, code = world.call("start", "--row", row, "--reply", "will do")
+    assert code == 1 and answer["outcome"] == "nothing_to_reply_to" and "no critique" in answer["reason"]
+    assert world.fake.edits() == [] and world.stored(row)["Status"] == "Queued"
+
+
+def test_a_long_row_is_shortened_instead_of_answered_and_then_starts_as_a_short_one(world):
+    row = world.seed("L3: train (60 min: one run)", minutes=60, progress_note=JUSTIFIED)
+    answer, code = world.call("start", "--row", row, "--minutes", "15")
+    assert code == 0 and answer["outcome"] == "started" and answer["shortened_to"] == 15
+    assert answer["slot"]["cap_min"] == 15 and answer["slot"]["ends_at"] == "2026-10-10T14:15:00.000Z"
+    assert "justification_state" not in answer
+    stored = world.stored(row)
+    assert (stored["Minutes"], stored["Request"], stored["Status"]) == (15, "L3: train", "Running")
+    assert stored["Progress note"] == JUSTIFIED + " | Shortened (unknown, 2026-10-10T14:00Z): from 60 to 15 minutes"
+    assert ledger_rows()[-1]["shortened_to"] == 15 and ledger_rows()[-1]["minutes"] == 15
+
+
+def test_shortening_and_replying_in_one_call_writes_both_lines_and_one_update(world):
+    row = world.seed("L3: train (60 min: one run)", minutes=60, progress_note=CRITIQUED)
+    answer, code = world.call("start", "--row", row, "--minutes", "15", "--reply", "split in two")
+    assert code == 0 and answer["replied"] is True and answer["shortened_to"] == 15
+    assert world.stored(row)["Progress note"] == (
+        CRITIQUED + " | Shortened (unknown, 2026-10-10T14:00Z): from 60 to 15 minutes"
+        " | Reply (unknown, 2026-10-10T14:00Z): split in two")
+    patches = [body["properties"] for method, _, body in world.fake.edits() if method == "PATCH"]
+    assert [sorted(change) for change in patches] == [["Minutes", "Progress note", "Request"], ["Started", "Status"]]
+
+
+def test_a_row_that_asks_for_15_minutes_cannot_be_shortened(world):
+    row = world.seed("L3: smoke")
+    answer, code = world.call("start", "--row", row, "--minutes", "15")
+    assert code == 1 and answer["outcome"] == "not_shorter" and "15 minutes already" in answer["reason"]
+    assert world.fake.edits() == [] and world.stored(row)["Status"] == "Queued"
+
+
+def test_a_row_shortened_by_hand_in_notion_needs_no_justification(world):
+    row = world.seed("L3: train", minutes=60, progress_note=JUSTIFIED)
+    assert world.call("start", "--row", row)[0]["outcome"] == "critique_pending"
+    world.client.update_page(row, slots.rest_properties({"Minutes": 30}))
+    started, code = world.call("start", "--row", row)
+    assert code == 0 and started["outcome"] == "started" and started["slot"]["cap_min"] == 30
+
+
+def test_a_shortened_row_keeps_its_place_by_the_time_it_was_asked_for(world):
+    row = world.seed("L3: train", minutes=60, progress_note=JUSTIFIED, requested=world.ago(minutes=5))
+    shorter_later = world.seed("O4: bench", minutes=15, requested=world.ago(minutes=1))
+    started, code = world.call("start", "--row", row, "--minutes", "15")
+    assert code == 0 and started["outcome"] == "started"
+    assert world.stored(shorter_later)["Status"] == "Queued"
+
+
+def test_status_lists_a_row_that_cannot_start_apart_from_the_line_and_a_one_row_status_shows_its_critique(world):
+    ready = world.seed("O4: bench", minutes=15)
+    waiting_for_reply = world.seed("L3: train", minutes=60, progress_note=CRITIQUED, requested=world.ago(minutes=3))
+    waiting_for_critique = world.seed("L5: pack", minutes=60, progress_note=JUSTIFIED, requested=world.ago(minutes=2))
+    answer, code = world.call("status")
+    assert code == 0 and [row["row"] for row in answer["queued"]] == [ready] and answer["next_row"] == ready
+    assert [(row["row"], row["justification_state"], row["waiting_for"]) for row in answer["blocked"]] == [
+        (waiting_for_reply, "awaiting_reply", "its agent's reply to the referee's critique"),
+        (waiting_for_critique, "awaiting_critique", "the referee's critique of its justification")]
+    only_l3, _ = world.call("status", "--task", "L3")
+    assert only_l3["queued"] == [] and [row["row"] for row in only_l3["blocked"]] == [waiting_for_reply]
+    one, code = world.call("status", "--row", waiting_for_reply)
+    assert code == 0 and one["position"] is None and one["may_start"] is False and one["ahead"] == []
+    assert one["waiting_for"] == "its agent's reply to the referee's critique"
+    assert one["justification"] == {
+        "state": "awaiting_reply",
+        "justification": "cannot be split because: one training run; already measured: 200 steps took 13 minutes",
+        "critique": "checkpoint every 100 steps so a slot can resume"}
+
+
+def test_a_complaint_on_a_row_that_cannot_start_says_what_it_waits_for(world):
+    row = world.seed("L3: train", minutes=60, progress_note=JUSTIFIED, requested=world.ago(minutes=130))
+    answer, code = world.call("complain", "--row", row)
+    assert code == 0 and answer["outcome"] == "complaint_recorded"
+    assert answer["waiting_for"] == "the referee's critique of its justification"
+    assert world.stored(row)["Complaint"].endswith(
+        "waiting behind: it waits for the referee's critique of its justification")
+
+
+def test_an_extension_adds_its_note_after_the_justification_lines_the_row_holds(world):
+    row = world.running("L3: train", started_ago=10, minutes=60, progress_note=CLEARED)
+    answer, code = world.call("extend", "--row", row, "--note", "loss fell from 2.1 to 1.4")
+    assert code == 0 and answer["outcome"] == "extended"
+    assert world.stored(row)["Progress note"] == CLEARED + " | loss fell from 2.1 to 1.4"
+    thread = slots.read_thread(world.stored(row)["Progress note"])
+    assert thread.reply is not None and thread.critique is not None
+
+
+def test_without_a_token_a_start_with_a_reply_and_a_shorter_row_prints_the_update_to_make_first():
+    answer, code = run_offline("start", "--row", ROW, "--reply", "checkpoints are on", "--minutes", "15")
+    assert code == 2 and answer["outcome"] == "no_token"
+    assert [step["tool"].rsplit("notion-", 1)[1] for step in answer["steps"]] == [
+        "fetch", "update-page", "query-data-sources", "update-page", "query-data-sources"]
+    assert answer["amend"] == {
+        "Minutes": 15,
+        "Progress note": "<the Progress note as it is> | Shortened (unknown, 2026-10-10T14:00Z): from <Minutes> to 15 "
+                         "minutes | Reply (unknown, 2026-10-10T14:00Z): checkpoints are on"}
+    assert answer["steps"][1]["arguments"] == {"page_id": ROW, "command": "update_properties",
+                                               "properties": answer["amend"]}
+    assert answer["write"] == {"Status": "Running", "date:Started:start": "2026-10-10T14:00:00.000Z",
+                               "date:Started:is_datetime": 1}
+    plain, _ = run_offline("start", "--row", ROW)
+    assert "amend" not in plain and len(plain["steps"]) == 4
+
+
+def test_the_update_printed_without_a_token_is_the_one_the_verb_makes_with_one(world):
+    row = world.seed("L3: train (60 min: one run)", minutes=60, progress_note=CRITIQUED)
+    argv = ["start", "--row", row, "--minutes", "15", "--reply", "split in two"]
+    printed, code = slots.run(argv, environ={}, env_files=[], now=lambda: world.now)
+    assert code == 2
+    note = printed["amend"]["Progress note"].replace("<the Progress note as it is>", CRITIQUED)
+    note = note.replace("<Minutes>", "60")
+    answer, code = world.call(*argv)
+    assert code == 0 and answer["outcome"] == "started"
+    stored = world.stored(row)
+    assert stored["Progress note"] == note and stored["Minutes"] == printed["amend"]["Minutes"]
+
+
 # --- Notion trouble ----------------------------------------------------------------------
 
 def test_a_notion_failure_is_an_answer_with_the_kind_and_nothing_half_done(world):
@@ -1159,25 +1662,32 @@ def test_without_a_token_a_request_prints_the_exact_row_to_create_and_exits_2(mo
     assert create["arguments"] == {"parent": {"type": "data_source_id", "data_source_id": slots.DATA_SOURCE_ID},
                                    "pages": [{"properties": row}]}
     assert query["tool"] == f"mcp__{allowed.NOTION_SERVER}__notion-query-data-sources"
+    def status_is(name):
+        return {"type": "property", "property": "Status", "propertyType": "select", "operator": "enum_is",
+                "value": {"type": "exact", "value": name}}
+
     assert query["arguments"] == {"data": {
         "mode": "rows", "data_source_url": f"collection://{slots.DATA_SOURCE_ID}", "limit": 100,
         "filter": {"type": "group", "operator": "and", "filters": [
             {"type": "property", "property": "GPU", "propertyType": "select", "operator": "enum_is",
              "value": {"type": "exact", "value": B}},
             {"type": "group", "operator": "or", "filters": [
-                {"type": "property", "property": "Status", "propertyType": "select", "operator": "enum_is",
-                 "value": {"type": "exact", "value": "Queued"}},
-                {"type": "property", "property": "Status", "propertyType": "select", "operator": "enum_is",
-                 "value": {"type": "exact", "value": "Running"}}]}]}}}
-    assert "asks for more minutes than yours" in answer["rule"]
+                status_is("Queued"), status_is("Running"), status_is("Done"), status_is("Ended by referee")]}]}}}
+    assert "fewest Minutes first" in answer["rule"] and "passed over three times" in answer["rule"]
+    assert "A request for more than 30 minutes carries a justification" not in answer["rule"]
 
 
-def test_without_a_token_a_long_request_prints_its_reason_in_the_title():
-    answer, code = run_offline("request", "--task", "L3", "--what", "train", "--minutes", "60", "--why", "training run",
-                               "--gpu", "A")
+def test_without_a_token_a_long_request_prints_its_justification_with_the_row():
+    answer, code = run_offline("request", "--task", "L3", "--what", "train", "--minutes", "60", "--why", "one run",
+                               "--measured", "200 steps in 13 minutes", "--gpu", "A")
     assert code == 2
-    assert answer["write"]["Request"] == "L3: train (60 min: training run)" and answer["write"]["Minutes"] == 60
+    assert answer["write"]["Request"] == "L3: train (60 min: one run)" and answer["write"]["Minutes"] == 60
+    assert answer["write"]["Progress note"] == (
+        "Justification (unknown, 2026-10-10T14:00Z): cannot be split because: one run; already measured: "
+        "200 steps in 13 minutes")
     assert answer["write"]["GPU"] == A
+    assert answer["rule"].startswith("A request for more than 30 minutes carries a justification")
+    assert answer["rule"].endswith(slots.RULE_START)
 
 
 ROW = "3f596ef5fec581f096aac6afa10b7b12"
@@ -1242,7 +1752,7 @@ def stored_as_python(world: World, row: str, names) -> dict:
 def test_the_row_printed_without_a_token_is_the_row_the_verb_writes_with_one():
     online = World()
     argv = ["request", "--task", "L3", "--what", "train the adapter", "--minutes", "60", "--why", "training run",
-            "--gpu", "A"]
+            "--measured", "200 steps took 13 minutes", "--gpu", "A"]
     printed, code = slots.run(argv, environ={}, env_files=[], now=lambda: online.now)
     assert code == 2
     written, _ = online.call(*argv)
@@ -1395,8 +1905,11 @@ def test_the_real_command_line_exits_2_with_the_row_to_write_when_there_is_no_to
 
 @pytest.mark.parametrize("call", [
     'slot request --task L3 --what "smoke LoRA 200 steps"',
-    'slot request --task L3 --what "train the adapter" --minutes 60 --why "training run" --gpu B',
+    'slot request --task L3 --what "train the adapter" --minutes 60 --why "one run" --measured "200 steps" --gpu B',
     f"slot start --row {ROW}",
+    f'slot start --row {ROW} --reply "checkpoints are on now"',
+    f"slot start --row {ROW} --minutes 15",
+    f'slot start --row {ROW} --reply "split it" --minutes 15',
     f'slot extend --row {ROW} --note "loss fell from 2.1 to 1.4"',
     f'slot done --row {ROW} --result "7.7 tok/s"',
     f"slot done --row {ROW} --cancel",

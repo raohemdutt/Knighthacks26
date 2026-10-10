@@ -2,8 +2,8 @@
 
 Anything that trains, benchmarks, restarts a process or needs the whole GPU asks for it here and waits its turn.
 
-    python -m lab slot request  --task L3 --what "smoke LoRA 200 steps" [--minutes 15|60 --why "training run"]
-    python -m lab slot start    --row <id or url>
+    python -m lab slot request  --task L3 --what "smoke LoRA 200 steps" [--minutes 60 --why "..." --measured "..."]
+    python -m lab slot start    --row <id or url> [--reply "answer to the critique"] [--minutes 15]
     python -m lab slot extend   --row <id or url> --note "what the slot has already proven"
     python -m lab slot done     --row <id or url> --result "one line with the numbers" [--cancel]
     python -m lab slot complain --row <id or url> [--text "more detail"]
@@ -15,26 +15,47 @@ rules on the client, because Notion cannot:
 
   request   adds a row: Request "<task>: <what>", Task ID, GPU "B exclusive" (--gpu A for the shared teacher
             pod, which is only queued to restart or change the server itself), Minutes 15, Status Queued,
-            Agent Ilan, Requested now. 60 minutes is for a training run or a declared long job, and --why
-            says which; it is written into the Request. Asking again with the same words while the first
-            row is still Queued returns that row (outcome already_queued) instead of adding a second.
-  start     sets Status Running and Started now, in one update, and only when no row on the GPU is Running
-            and no other Queued row goes before this one. The order is shortest first: fewer Minutes goes
-            first, and equal Minutes go to the earlier Requested. A Running row blocks even when it looks
-            stale (the answer says when it is past its cap); complain instead. Notion cannot make the check
-            and the update one step, so the queue is read again after the update, and a row that then finds
-            any other Running row on its GPU puts itself back to Queued and answers lost_race: two agents
-            that start in the same moment can never both keep the card, and may both step back and try again.
+            Agent Ilan, Requested now. 60 minutes is for a training run or a declared long job and carries a
+            justification (below). Asking again with the same words while the first row is still Queued
+            returns that row (outcome already_queued) instead of adding a second.
+  start     sets Status Running and Started now, in one update, and only when the row's justification is in
+            order, no row on the GPU is Running and no other Queued row goes before this one. The order is
+            shortest first: fewer Minutes goes first, and equal Minutes go to the earlier Requested, except
+            that a starved row goes first (below). A Running row blocks even when it looks stale (the answer
+            says when it is past its cap); complain instead. Notion cannot make the check and the update one
+            step, so the queue is read again after the update, and a row that then finds any other Running
+            row on its GPU puts itself back to Queued and answers lost_race: two agents that start in the
+            same moment can never both keep the card, and may both step back and try again. --reply and
+            --minutes answer the critique or shorten the row before any of this (below).
   extend    one extension of 15 minutes: Extended is checked and the Progress note says what the slot has
-            already proven. A Running row only, once, while it is still inside its cap.
+            already proven, after any text the note holds. A Running row only, once, while it is still
+            inside its cap.
   done      Status Done, Ended now, Result (one line, with the numbers). It releases the card. --cancel
             withdraws a row that never started (Status Cancelled).
   complain  writes the Complaint on the agent's own Queued row, once it has waited more than twice its
             Minutes (or a Running row on its GPU is past its cap): the wait so far, what it is waiting
             behind, and any --text. A later complaint is added after the earlier ones.
   status    the open rows of the GPU in queue order, with who waits how long, when the Running one ends,
-            whether it is overrun, and whether each Queued row may start; --row narrows it to one row,
+            whether it is overrun, and whether each Queued row may start; a Queued row that cannot start
+            for want of a critique or a reply is listed apart, under blocked; --row narrows it to one row,
             --task to one task's rows. It changes nothing.
+
+Two guards sit on the order.
+
+Starvation. A Queued row that has been passed over three times, or has waited more than twice its own
+Minutes, goes next whatever its length: starvation() says which, and queue_order() puts such rows before every
+other row, the earliest request first, the rest staying shortest first. A row is passed over each time a row
+requested after it starts while it waits; the count is read from the Started times of the GPU's Running, Done
+and Ended by referee rows, so no row carries a counter and no verb writes another agent's row.
+
+Justification. A request for more than 30 minutes carries a justification: --what says what runs, --why why it
+cannot be split into 15-minute slots, --measured what was already measured. request refuses it
+(justification_required) while --why or --measured is missing, and otherwise writes the justification as the
+first line of the row's Progress note. The referee reads each unanswered justification once and adds one
+critique line after it (python -m lab referee --critique). The row cannot start until its agent has shortened
+it (start --minutes 15) or replied to the critique (start --reply "..."), which adds a reply line. A row that
+cannot start for want of a critique or a reply is left out of the order, so it holds nobody up. A request of
+30 minutes or less needs none of this.
 
 A slot is capped at its Minutes (plus 15 once extended): cap_minutes() and ends_at() give the cap, and
 is_overrun() says a Running row has passed it. The verbs do not end an overrun slot; the referee does.
@@ -46,11 +67,12 @@ reason and a next step) and an exit code: 0 when it worked, 1 when the rules or 
 arguments and for a missing token. Trouble with Notion itself is outcome error, with its kind (unauthorized,
 not_found, rate_limited, transport, ...). Each call that gets as far as a decision also appends one row to the
 ledger (verb "slot <name>", the outcome, the task - the call's own, the row's, else $LAB_TASK - refs.slot the
-row's id, node pod-b or pod-a, and the minutes and waits); a refusal is a row too. The actor is $LAB_ACTOR and
-the tier $LAB_TIER, as for every ledger row (lab/machine/record.py). A ledger that cannot be written never
-undoes what Notion already holds: the answer then carries ledger_error and the exit code stays what the
-queue's outcome says. While the STOP file exists (lab/machine/stop.py) every slot verb is refused before it
-runs.
+row's id, node pod-b or pod-a, the minutes and waits, and for the guards the justification state, the reply or
+shortening made, and which starvation rule put a row first or kept another behind it); a refusal is a row too.
+The actor is $LAB_ACTOR and the tier $LAB_TIER, as for every ledger row (lab/machine/record.py), and the actor
+signs the lines a call adds to a Progress note. A ledger that cannot be written never undoes what Notion
+already holds: the answer then carries ledger_error and the exit code stays what the queue's outcome says.
+While the STOP file exists (lab/machine/stop.py) every slot verb is refused before it runs.
 
 A request, a start and an extend that went through also carry the numbers lab/machine/alerts.py judges a slot by,
 in the spelling it reads: the metric slot.minutes (the Minutes asked for) on a request and a start, and
@@ -59,15 +81,16 @@ slot.extend_minutes on an extend. A refused call, and a call that sent nothing t
 No token. NOTION_TOKEN is looked up in the process environment, then in the .env files of ready.py. When it
 is missing nothing is sent anywhere: the verb answers outcome no_token with the exact Notion tool calls a
 sitting makes instead (the row to create or the properties to set, in the form its Notion tools take, with
-the checks to make first) and exits 2. The ledger still gets its row.
+the checks to make first) and exits 2. The ledger still gets its row. A request that lacks its justification
+is refused before the token is looked for.
 
 Settings, for rehearsals: LAB_QUEUE_DATA_SOURCE names another data source than the live queue's, and
 LAB_NOTION_URL another address than https://api.notion.com. The token is never printed, logged or written to
 the ledger; error messages are scrubbed of it.
 
-For other code: Slot, slot_from_page(), queue_order(), cap_minutes(), ends_at(), is_overrun(),
-complaint_due(), connect() (the client the token makes) and SlotQueue (the six verbs as methods) are the same
-rules the verbs use.
+For other code: Slot, slot_from_page(), queue_order(), starvation(), justification_state(), cap_minutes(),
+ends_at(), is_overrun(), complaint_due(), connect() (the client the token makes) and SlotQueue (the six verbs as
+methods) are the same rules the verbs use.
 """
 
 from __future__ import annotations
@@ -89,9 +112,10 @@ from lab.machine.allowed import NOTION_SERVER
 from lab.machine.ready import collect_env, default_env_files
 
 __all__ = [
-    "COLUMNS", "DATA_SOURCE_ID", "GPUS", "Slot", "SlotQueue", "cap_minutes", "complaint_due", "connect",
-    "data_source_of", "ends_at", "is_overrun", "main", "mcp_properties", "parse_moment", "queue_order",
-    "rest_properties", "run", "slot_from_page",
+    "COLUMNS", "DATA_SOURCE_ID", "GPUS", "Slot", "SlotQueue", "Starvation", "Thread", "board_filter", "cap_minutes",
+    "complaint_due", "connect", "data_source_of", "ends_at", "is_overrun", "jumped", "justification_state", "main",
+    "mcp_properties", "note_entry", "parse_moment", "queue_order", "read_thread", "rest_properties", "run",
+    "slot_from_page", "starvation",
 ]
 
 log = logging.getLogger("lab.slots")
@@ -112,19 +136,30 @@ DEFAULT_GPU = "B"
 DEFAULT_AGENT = "Ilan"
 
 QUEUED, RUNNING, DONE, CANCELLED = "Queued", "Running", "Done", "Cancelled"
+ENDED_BY_REFEREE = "Ended by referee"
 OPEN_STATUSES = (QUEUED, RUNNING)
+#: The rows that tell where a Queued row stands: the open ones, and the ones that started and are over.
+BOARD_STATUSES = (QUEUED, RUNNING, DONE, ENDED_BY_REFEREE)
+#: The rows that have started, whether they still run or not.
+STARTED_STATUSES = (RUNNING, DONE, ENDED_BY_REFEREE)
 
 DEFAULT_MINUTES = 15
 LONG_MINUTES = 60
 SLOT_MINUTES = (DEFAULT_MINUTES, LONG_MINUTES)
+LONG_ABOVE_MINUTES = 30          # a request for more minutes than this carries a justification
 EXTENSION_MINUTES = 15
 COMPLAIN_AFTER_FACTOR = 2        # a row may complain once it has waited more than this many times its Minutes
+STARVED_PASSES = 3               # a Queued row passed over this many times goes next
+STARVED_AFTER_FACTOR = 2         # so does one that has waited more than this many times its Minutes
 
 MAX_WHAT_CHARS = 200
 MAX_WHY_CHARS = 120
+MAX_MEASURED_CHARS = 200
 MAX_NOTE_CHARS = 1000            # progress note, result, extra complaint text
-MAX_COMPLAINT_CHARS = 2000       # what one Notion text value holds; older complaints are dropped to fit
-COMPLAINT_JOIN = " | "
+MAX_REPLY_CHARS = 300            # the reply to a critique
+MAX_CRITIQUE_CHARS = 300         # what the referee's critique says
+MAX_COMPLAINT_CHARS = 2000       # what one Notion text value holds; older entries are dropped to fit
+COMPLAINT_JOIN = " | "           # between the entries of a Complaint or of a Progress note
 
 TASK_ID = re.compile(r"[A-Za-z]{1,3}[0-9]{1,3}")
 
@@ -260,17 +295,162 @@ def slot_from_page(page: Mapping[str, Any]) -> Slot:
     )
 
 
+# --- the progress note ----------------------------------------------------------------
+
+JUSTIFICATION, CRITIQUE, REPLY, SHORTENED = "Justification", "Critique", "Reply", "Shortened"
+
+#: Where a row stands on its justification.
+NOT_REQUIRED, MISSING, AWAITING_CRITIQUE, AWAITING_REPLY, CLEARED = (
+    "not_required", "missing", "awaiting_critique", "awaiting_reply", "cleared")
+STARTABLE = (NOT_REQUIRED, CLEARED)
+
+#: What a Queued row waits for, by the state of its justification.
+WAITING_FOR = {
+    MISSING: "a justification (cancel it and ask again with --why and --measured, or shorten it)",
+    AWAITING_CRITIQUE: "the referee's critique of its justification",
+    AWAITING_REPLY: "its agent's reply to the referee's critique",
+}
+
+#: How a start that the state of the justification refuses is named in the answer.
+GATE_OUTCOMES = {MISSING: "justification_required", AWAITING_CRITIQUE: "critique_pending",
+                 AWAITING_REPLY: "reply_required"}
+
+NOTE_ENTRY = re.compile(r"(Justification|Critique|Reply|Shortened) \(([^()]*), (\d{4}-\d\d-\d\dT\d\d:\d\dZ)\): (.*)",
+                        re.DOTALL)
+LONG_ENDING = re.compile(r" \(\d+ min: .*\)\Z")
+
+
+def signer(actor: str) -> str:
+    """An actor's name as the signature of a Progress note line: no brackets, commas or spaces in it."""
+    return re.sub(r"[^\w.@:/-]+", "-", actor.strip()).strip("-") or record.UNKNOWN_ACTOR
+
+
+def note_entry(label: str, actor: str, now: dt.datetime, text: str) -> str:
+    """One signed line of a Progress note: "<label> (<actor>, <time>Z): <text>". The text cannot hold the
+    separator between lines, so it can never pass for a line of its own."""
+    return f"{label} ({signer(actor)}, {iso(now)[:16]}Z): {text.replace(COMPLAINT_JOIN, ' / ')}"
+
+
+@dataclasses.dataclass(frozen=True)
+class Thread:
+    """The lines of a Progress note that belong to the justification step; None for one not written yet."""
+
+    justification: str | None = None
+    critique: str | None = None
+    reply: str | None = None
+
+
+def read_thread(note: str) -> Thread:
+    """The justification, the critique after it and the reply after that, from a Progress note: the first line of
+    each kind, in that order. Any other text in the note is ignored."""
+    found: dict[str, str] = {}
+    for part in note.split(COMPLAINT_JOIN):
+        match = NOTE_ENTRY.fullmatch(part.strip())
+        if match is None:
+            continue
+        label, text = match.group(1), match.group(4)
+        if label == JUSTIFICATION and "justification" not in found:
+            found["justification"] = text
+        elif label == CRITIQUE and "justification" in found and "critique" not in found:
+            found["critique"] = text
+        elif label == REPLY and "critique" in found and "reply" not in found:
+            found["reply"] = text
+    return Thread(**found)
+
+
+def justification_text(why: str | None, measured: str | None) -> str:
+    """What the justification line of a request says, from --why and --measured."""
+    return f"cannot be split because: {why}; already measured: {measured}"
+
+
 # --- the rules ------------------------------------------------------------------------
 
+def justification_state(slot: Slot) -> str:
+    """Where a row stands on its justification: NOT_REQUIRED up to 30 minutes, else MISSING without a justification
+    line, AWAITING_CRITIQUE with one, AWAITING_REPLY once the referee has written a critique, CLEARED once its
+    agent has replied. A row shortened to 30 minutes or less is NOT_REQUIRED again."""
+    if slot.minutes_or_default <= LONG_ABOVE_MINUTES:
+        return NOT_REQUIRED
+    thread = read_thread(slot.progress_note)
+    if thread.justification is None:
+        return MISSING
+    if thread.critique is None:
+        return AWAITING_CRITIQUE
+    return CLEARED if thread.reply is not None else AWAITING_REPLY
+
+
+def justification_view(slot: Slot) -> dict[str, Any] | None:
+    """The state of a row's justification and the lines it holds, as an answer shows them; None for a row that
+    needs none."""
+    state = justification_state(slot)
+    if state == NOT_REQUIRED:
+        return None
+    thread = read_thread(slot.progress_note)
+    view: dict[str, Any] = {"state": state}
+    for name in ("justification", "critique", "reply"):
+        text = getattr(thread, name)
+        if text is not None:
+            view[name] = text
+    return view
+
+
+@dataclasses.dataclass(frozen=True)
+class Starvation:
+    """Why a Queued row goes next whatever its length: code is passed_over or waited, why a clause that follows
+    the row ("has been passed over 3 times by later requests")."""
+
+    code: str
+    why: str
+    passed_over: int
+
+
+def passed_over(slot: Slot, rows: Iterable[Slot]) -> int:
+    """How many rows on the GPU of slot were requested after it and started after it was requested: each took
+    the card while slot waited. Only rows that have started count (Running, Done, Ended by referee)."""
+    since = slot.requested_at
+    if since is None:
+        return 0
+    return sum(1 for row in rows
+               if row.id != slot.id and row.gpu == slot.gpu and row.status in STARTED_STATUSES
+               and row.started is not None and row.started > since
+               and row.requested_at is not None and row.requested_at > since)
+
+
+def starvation(slot: Slot, rows: Iterable[Slot], now: dt.datetime) -> Starvation | None:
+    """The reason a Queued row goes next whatever its length, else None: it has been passed over three times, or
+    it has waited more than twice its own Minutes. rows are the rows of its GPU, with the ones that started."""
+    since = slot.requested_at
+    if slot.status != QUEUED or since is None:
+        return None
+    passes = passed_over(slot, rows)
+    if passes >= STARVED_PASSES:
+        return Starvation("passed_over", f"has been passed over {passes} times by later requests", passes)
+    waited = minutes_between(now, since)
+    if waited > STARVED_AFTER_FACTOR * slot.minutes_or_default:
+        return Starvation("waited", f"has waited {tidy(waited)} minutes, more than twice the "
+                                    f"{tidy(slot.minutes_or_default)} asked for", passes)
+    return None
+
+
 def queue_key(slot: Slot) -> tuple[float, dt.datetime, dt.datetime, str]:
-    """Where a row stands in the queue, smaller going first: fewer Minutes first (shortest job first), equal
-    Minutes by the earlier Requested, then by when Notion made the row, then by id so the order is total."""
+    """Where a row stands in the queue by length alone, smaller going first: fewer Minutes first (shortest job
+    first), equal Minutes by the earlier Requested, then by when Notion made the row, then by id so the order is
+    total."""
     return (slot.minutes_or_default, slot.requested_at or _LATEST, slot.created or _LATEST, slot.id)
 
 
-def queue_order(rows: Iterable[Slot]) -> list[Slot]:
-    """The Queued rows of rows in the order they may start."""
-    return sorted((row for row in rows if row.status == QUEUED), key=queue_key)
+def queue_order(rows: Iterable[Slot], now: dt.datetime) -> list[Slot]:
+    """The Queued rows of rows that may take their turn, in the order they may start: first the starved rows, the
+    earliest request first, then the others shortest first (queue_key). A row that cannot start for want of a
+    critique or a reply is not in the line, so it holds nobody up. rows are the rows of the GPU with the ones
+    that started, which is what starvation() reads."""
+    board = list(rows)
+    line = [row for row in board if row.status == QUEUED and justification_state(row) in STARTABLE]
+    hungry = {row.id for row in line if starvation(row, board, now) is not None}
+    first = sorted((row for row in line if row.id in hungry),
+                   key=lambda row: (row.requested_at or _LATEST, row.created or _LATEST, row.id))
+    rest = sorted((row for row in line if row.id not in hungry), key=queue_key)
+    return first + rest
 
 
 def cap_minutes(slot: Slot) -> float:
@@ -295,10 +475,24 @@ def running_on(rows: Iterable[Slot], gpu: str, *, other_than: str | None = None)
     return sorted(found, key=lambda row: (row.started or dt.datetime.min.replace(tzinfo=UTC), row.id))
 
 
-def ahead_of(slot: Slot, rows: Iterable[Slot]) -> list[Slot]:
-    """The Queued rows on slot's GPU that go before it."""
+def ahead_of(slot: Slot, rows: Iterable[Slot], now: dt.datetime) -> list[Slot]:
+    """The Queued rows on the GPU of slot that go before it. A row that is not in the line has none."""
+    line = queue_order(rows, now)
+    places = [row.id for row in line]
+    if slot.id not in places:
+        return []
+    return [row for row in line[: places.index(slot.id)] if row.gpu == slot.gpu]
+
+
+def jumped(slot: Slot, rows: Iterable[Slot], now: dt.datetime) -> list[Slot]:
+    """The Queued rows that go behind slot only because it is starved: shortest first would put them before it."""
+    board = list(rows)
+    line = queue_order(board, now)
+    places = [row.id for row in line]
+    if slot.id not in places or starvation(slot, board, now) is None:
+        return []
     mine = queue_key(slot)
-    return [row for row in queue_order(rows) if row.gpu == slot.gpu and row.id != slot.id and queue_key(row) < mine]
+    return [row for row in line[places.index(slot.id) + 1:] if row.gpu == slot.gpu and queue_key(row) < mine]
 
 
 def complaint_due(slot: Slot, rows: Iterable[Slot], now: dt.datetime) -> tuple[bool, str, dt.datetime | None]:
@@ -376,6 +570,20 @@ def open_rows_mcp_filter(gpu: str) -> dict[str, Any]:
     ]}
 
 
+def board_filter(gpu: str) -> dict[str, Any]:
+    """The REST filter for the rows of one GPU that tell where a Queued row stands: the Queued and Running rows
+    and the Done and Ended by referee rows (BOARD_STATUSES)."""
+    return {"and": [_select_is("GPU", gpu), {"or": [_select_is("Status", s) for s in BOARD_STATUSES]}]}
+
+
+def board_mcp_filter(gpu: str) -> dict[str, Any]:
+    """The same filter as the rows-mode query of the Notion MCP tool takes it."""
+    return {"type": "group", "operator": "and", "filters": [
+        _mcp_select_is("GPU", gpu),
+        {"type": "group", "operator": "or", "filters": [_mcp_select_is("Status", s) for s in BOARD_STATUSES]},
+    ]}
+
+
 # --- what a call says -----------------------------------------------------------------
 
 def summary(slot: Slot, now: dt.datetime) -> dict[str, Any]:
@@ -419,17 +627,64 @@ def request_title(task: str, what: str, minutes: int, why: str | None) -> str:
     """The Request column: "<task>: <what>", and for a long slot "(60 min: <why>)" at the end."""
     text = what[len(task) + 1:].strip() if what.upper().startswith(f"{task}:") else what
     title = f"{task}: {text}"
-    if minutes != DEFAULT_MINUTES:
+    if why:
         title += f" ({minutes} min: {why})"
     return title
 
 
-def add_complaint(existing: str, entry: str) -> str:
-    """The Complaint column with entry added after what it already holds, oldest entries dropped to fit."""
+def add_entry(existing: str, entry: str) -> str:
+    """A text column with entry added after what it already holds, oldest entries dropped to fit."""
     parts = [part for part in existing.split(COMPLAINT_JOIN) if part] + [entry]
     while len(parts) > 1 and len(COMPLAINT_JOIN.join(parts)) > MAX_COMPLAINT_CHARS:
         parts.pop(0)
     return COMPLAINT_JOIN.join(parts)[-MAX_COMPLAINT_CHARS:]
+
+
+def add_complaint(existing: str, entry: str) -> str:
+    """The Complaint column with entry added after what it already holds, oldest entries dropped to fit."""
+    return add_entry(existing, entry)
+
+
+def justification_missing(minutes: int, why: str | None, measured: str | None) -> list[str]:
+    """The options a request for this many minutes lacks: none up to 30 minutes, else --why and --measured."""
+    if minutes <= LONG_ABOVE_MINUTES:
+        return []
+    return [flag for flag, value in (("--why", why), ("--measured", measured)) if not (value or "").strip()]
+
+
+def justification_refusal(minutes: int, why: str | None, measured: str | None) -> dict[str, Any] | None:
+    """The refusal of a request that lacks its justification, else None."""
+    lacking = justification_missing(minutes, why, measured)
+    if not lacking:
+        return None
+    return refusal("slot request", "justification_required",
+                   f"a request for more than {LONG_ABOVE_MINUTES} minutes carries a justification: what runs (--what), "
+                   f"why it cannot be split into {DEFAULT_MINUTES}-minute slots (--why) and what was already measured "
+                   f"(--measured); {' and '.join(lacking)} {'is' if len(lacking) == 1 else 'are'} missing",
+                   missing=lacking, minutes=minutes,
+                   next=f"ask again with {' and '.join(lacking)}, or ask for {DEFAULT_MINUTES} minutes")
+
+
+def next_step(slot: Slot, may_start: bool) -> str:
+    """What the agent of a Queued row does next, from where the row stands."""
+    row = slot.id
+    state = justification_state(slot)
+    shorten = f"python -m lab slot start --row {row} --minutes {DEFAULT_MINUTES}"
+    if state == AWAITING_CRITIQUE:
+        return (f"the referee critiques a request for more than {LONG_ABOVE_MINUTES} minutes before it can start: read "
+                f"the critique with python -m lab slot status --row {row}, then answer it with python -m lab slot "
+                f"start --row {row} --reply \"...\", or shorten the request with {shorten}")
+    if state == AWAITING_REPLY:
+        return (f"answer the referee's critique with python -m lab slot start --row {row} --reply \"what you will "
+                f"change, or why the critique does not apply\", or shorten the request with {shorten}")
+    if state == MISSING:
+        return (f"the row holds no justification, so it cannot start: shorten it with {shorten}, or cancel it with "
+                f"python -m lab slot done --row {row} --cancel and ask again with --why and --measured")
+    if may_start:
+        return f"python -m lab slot start --row {row}"
+    patience = tidy(COMPLAIN_AFTER_FACTOR * slot.minutes_or_default)
+    return (f"wait for your turn (python -m lab slot status --row {row}); after {patience} minutes of waiting, "
+            f"python -m lab slot complain --row {row}")
 
 
 # --- the six verbs --------------------------------------------------------------------
@@ -452,6 +707,12 @@ class SlotQueue:
         pages = self.client.query_data_source(self.data_source, filter=open_rows_filter(gpu))
         return [slot for slot in (slot_from_page(page) for page in pages) if slot.status in OPEN_STATUSES]
 
+    def board(self, gpu: str) -> list[Slot]:
+        """The rows of a GPU that tell where a Queued row stands: the open ones, and the Done and Ended by referee
+        rows, whose starts are what passed a waiting row over."""
+        pages = self.client.query_data_source(self.data_source, filter=board_filter(gpu))
+        return [slot for slot in (slot_from_page(page) for page in pages) if slot.status in BOARD_STATUSES]
+
     def load(self, row_id: str, agent: str, verb: str, *,
              own: bool = True) -> tuple[Slot | None, dict[str, Any] | None]:
         """(the row, None), or (None, the refusal to answer with) when it is not a row of this queue or, with own, not
@@ -471,33 +732,49 @@ class SlotQueue:
         return slot, None
 
     def _where(self, slot: Slot, rows: Sequence[Slot], now: dt.datetime) -> dict[str, Any]:
-        """Where a Queued row stands: its place, who is ahead, what is Running, whether it may start."""
-        ahead = ahead_of(slot, rows)
-        running = running_on(rows, slot.gpu, other_than=slot.id)
-        return {"position": len(ahead) + 1, "may_start": not ahead and not running,
-                "ahead": [summary(row, now) for row in ahead], "running": [summary(row, now) for row in running]}
+        """Where a Queued row stands: its place, who is ahead, what is Running, whether it may start, and what a row
+        outside the line waits for."""
+        running = [summary(row, now) for row in running_on(rows, slot.gpu, other_than=slot.id)]
+        state = justification_state(slot)
+        if state not in STARTABLE:
+            return {"position": None, "may_start": False, "ahead": [], "running": running,
+                    "waiting_for": WAITING_FOR[state]}
+        ahead = ahead_of(slot, rows, now)
+        where: dict[str, Any] = {"position": len(ahead) + 1, "may_start": not ahead and not running,
+                                 "ahead": [summary(row, now) for row in ahead], "running": running}
+        hungry = starvation(slot, rows, now)
+        if hungry is not None and jumped(slot, rows, now):
+            where["starved"] = hungry.why
+        return where
 
     # request
 
     def request(self, *, task: str, what: str, minutes: int = DEFAULT_MINUTES, why: str | None = None,
-                gpu: str = DEFAULT_GPU, agent: str = DEFAULT_AGENT) -> dict[str, Any]:
+                measured: str | None = None, gpu: str = DEFAULT_GPU, agent: str = DEFAULT_AGENT,
+                actor: str = record.UNKNOWN_ACTOR) -> dict[str, Any]:
         verb, gpu_name, now = "slot request", GPUS[gpu], self._now()
+        refused = justification_refusal(minutes, why, measured)
+        if refused is not None:
+            return refused
         title = request_title(task, what, minutes, why)
-        rows = self.open_rows(gpu_name)
+        rows = self.board(gpu_name)
         twin = next((r for r in rows if r.status == QUEUED and r.request == title and same_agent(r.agent, agent)), None)
         outcome = "already_queued"
         if twin is None:
             change = {"Request": title, "Task ID": task, "GPU": gpu_name, "Minutes": minutes, "Status": QUEUED,
                       "Agent": agent, "Requested": now}
+            if minutes > LONG_ABOVE_MINUTES:
+                change["Progress note"] = note_entry(JUSTIFICATION, actor, now, justification_text(why, measured))
             twin = slot_from_page(self.client.create_page(self.data_source, rest_properties(change)))
             rows = [row for row in rows if row.id != twin.id] + [twin]
             outcome = "queued"
         answer: dict[str, Any] = {"ok": True, "outcome": outcome, "verb": verb, "row": twin.id, "url": twin.url,
                                   "slot": summary(twin, now), **self._where(twin, rows, now)}
-        patience = tidy(COMPLAIN_AFTER_FACTOR * twin.minutes_or_default)
-        answer["next"] = (f"python -m lab slot start --row {twin.id}" if answer["may_start"] else
-                          f"wait for your turn (python -m lab slot status --row {twin.id}); after {patience} minutes "
-                          f"of waiting, python -m lab slot complain --row {twin.id}")
+        view = justification_view(twin)
+        if view is not None:
+            answer["justification"] = view
+            answer["justification_state"] = view["state"]
+        answer["next"] = next_step(twin, answer["may_start"])
         if gpu == "A":
             answer["warning"] = ("pod A is the shared teacher service: queue it only to restart or change the "
                                  "server itself")
@@ -505,7 +782,65 @@ class SlotQueue:
 
     # start
 
-    def start(self, row_id: str, *, agent: str = DEFAULT_AGENT) -> dict[str, Any]:
+    def _amend(self, slot: Slot, reply: str | None, minutes: int | None, actor: str,
+               now: dt.datetime) -> tuple[Slot, dict[str, Any], dict[str, Any] | None]:
+        """Write the reply to the critique and the shortened Minutes of a Queued row in one update: (the row as it
+        stands, what the answer says was done, or the refusal). A reply needs a critique that waits for one."""
+        verb = "slot start"
+        if reply is not None and justification_state(slot) != AWAITING_REPLY:
+            return slot, {}, refusal(verb, "nothing_to_reply_to", "there is no critique on this row waiting for a "
+                                     "reply: the referee writes it after the justification, and one reply answers it",
+                                     row=slot.id, slot=summary(slot, now), justification=justification_view(slot))
+        if minutes is not None and minutes >= slot.minutes_or_default:
+            return slot, {}, refusal(verb, "not_shorter", f"--minutes only shortens a row: it asks for "
+                                     f"{tidy(slot.minutes_or_default)} minutes already", row=slot.id,
+                                     slot=summary(slot, now))
+        change: dict[str, Any] = {}
+        said: dict[str, Any] = {}
+        note = slot.progress_note
+        if minutes is not None:
+            title = LONG_ENDING.sub("", slot.request)
+            if title != slot.request:
+                change["Request"] = title
+            change["Minutes"] = minutes
+            note = add_entry(note, note_entry(SHORTENED, actor, now,
+                                              f"from {tidy(slot.minutes_or_default)} to {minutes} minutes"))
+            said["shortened_to"] = minutes
+        if reply is not None:
+            note = add_entry(note, note_entry(REPLY, actor, now, reply))
+            said["replied"] = True
+        change["Progress note"] = note
+        return slot_from_page(self.client.update_page(slot.id, rest_properties(change))), said, None
+
+    def _not_next(self, slot: Slot, ahead: Sequence[Slot], rows: Sequence[Slot], now: dt.datetime,
+                  said: Mapping[str, Any]) -> dict[str, Any]:
+        """The refusal of a start behind the rows that go first. When one of them goes first only because it is
+        starved, the answer names that row and the rule that put it there."""
+        reason = f"{len(ahead)} Queued row(s) go before this one (shortest first, then earliest request)"
+        guard: dict[str, Any] = {}
+        for row in ahead:
+            found = starvation(row, rows, now)
+            if found is not None and queue_key(row) > queue_key(slot):
+                reason = (f"{len(ahead)} Queued row(s) go before this one; {row.request!r} {found.why} and goes "
+                          "next whatever its length")
+                guard = {"guard": "starved_ahead", "starved_row": row.id, "passed_over": found.passed_over}
+                break
+        return refusal("slot start", "not_next", reason, row=slot.id, ahead=[summary(row, now) for row in ahead],
+                       slot=summary(slot, now), **guard, **said)
+
+    @staticmethod
+    def _guard_note(slot: Slot, rows: Sequence[Slot], now: dt.datetime) -> dict[str, Any]:
+        """What a start says when the starvation guard put the row first: the rule, how often the row was passed
+        over and how many rows it went ahead of. Nothing when its length alone made it first."""
+        hungry = starvation(slot, rows, now)
+        passed = jumped(slot, rows, now)
+        if hungry is None or not passed:
+            return {}
+        return {"guard": hungry.code, "starved": hungry.why, "passed_over": hungry.passed_over,
+                "went_ahead_of": len(passed)}
+
+    def start(self, row_id: str, *, agent: str = DEFAULT_AGENT, reply: str | None = None, minutes: int | None = None,
+              actor: str = record.UNKNOWN_ACTOR) -> dict[str, Any]:
         verb = "slot start"
         slot, bad = self.load(row_id, agent, verb)
         if bad:
@@ -517,32 +852,46 @@ class SlotQueue:
         if not slot.gpu:
             return refusal(verb, "no_gpu", "the row has no GPU set, so it is in no queue", row=slot.id,
                            slot=summary(slot, now))
-        rows = self.open_rows(slot.gpu)
+        said: dict[str, Any] = {}
+        if reply is not None or minutes is not None:
+            slot, said, bad = self._amend(slot, reply, minutes, actor, now)
+            if bad:
+                return bad
+        state = justification_state(slot)
+        if state not in STARTABLE:
+            return refusal(verb, GATE_OUTCOMES[state], f"the row cannot start yet: it waits for {WAITING_FOR[state]}",
+                           row=slot.id, slot=summary(slot, now), justification=justification_view(slot),
+                           justification_state=state, next=next_step(slot, False), **said)
+        rows = [row for row in self.board(slot.gpu) if row.id != slot.id] + [slot]
         running = running_on(rows, slot.gpu, other_than=slot.id)
         if running:
             stale = [row for row in running if is_overrun(row, now)]
             return refusal(verb, "busy", "a row is Running on this GPU; never start while one is Running, even if it "
                            "looks stale - complain instead" + (" (it is past its cap)" if stale else ""),
-                           row=slot.id, running=[summary(row, now) for row in running], slot=summary(slot, now))
-        ahead = ahead_of(slot, rows)
+                           row=slot.id, running=[summary(row, now) for row in running], slot=summary(slot, now),
+                           **said)
+        ahead = ahead_of(slot, rows, now)
         if ahead:
-            return refusal(verb, "not_next", f"{len(ahead)} Queued row(s) go before this one (shortest first, then "
-                           "earliest request)", row=slot.id, ahead=[summary(row, now) for row in ahead],
-                           slot=summary(slot, now))
+            return self._not_next(slot, ahead, rows, now, said)
+        guard = self._guard_note(slot, rows, now)
+        view = justification_view(slot)
+        if view is not None:
+            said["justification_state"] = view["state"]
         began = self._now()
         mine = slot_from_page(self.client.update_page(slot.id, rest_properties({"Status": RUNNING, "Started": began})))
+        release = f"python -m lab slot done --row {mine.id} --result \"<one line with the numbers>\""
         try:
             rivals = running_on(self.open_rows(slot.gpu), slot.gpu, other_than=slot.id)
         except notion.NotionError as exc:
             log.warning("slot start: row %s is Running, but the queue could not be read again: %s", slot.id, exc)
             return {"ok": True, "outcome": "started", "verb": verb, "row": mine.id, "slot": summary(mine, began),
-                    "release": f"python -m lab slot done --row {mine.id} --result \"<one line with the numbers>\"",
+                    "release": release, **guard, **said,
                     "warning": f"the queue could not be read again to confirm that no other row started in the same "
                                f"moment ({exc}); run python -m lab slot status and release the card if one did"}
         if rivals:
             answer = refusal(verb, "lost_race", "another row is Running on this GPU after this row's update (two agents "
                              "started in the same moment); this row is back to Queued - try again in a moment",
-                             row=slot.id, running=[summary(row, began) for row in rivals])
+                             row=slot.id, running=[summary(row, began) for row in rivals], **said)
             try:
                 self.client.update_page(slot.id, rest_properties({"Status": QUEUED, "Started": None}))
             except notion.NotionError as exc:
@@ -551,7 +900,7 @@ class SlotQueue:
                               "set its Status to Queued and clear Started by hand")
             return answer
         return {"ok": True, "outcome": "started", "verb": verb, "row": mine.id, "slot": summary(mine, began),
-                "release": f"python -m lab slot done --row {mine.id} --result \"<one line with the numbers>\""}
+                "release": release, **guard, **said}
 
     # extend
 
@@ -571,8 +920,9 @@ class SlotQueue:
         if end is not None and now > end:
             return refusal(verb, "past_cap", f"the slot reached its cap at {iso(end)}; an extension asked for after "
                            "the cap is not one - finish with done", row=slot.id, slot=summary(slot, now))
+        text = add_entry(slot.progress_note, note) if slot.progress_note else note
         updated = slot_from_page(self.client.update_page(
-            slot.id, rest_properties({"Extended": True, "Progress note": note})))
+            slot.id, rest_properties({"Extended": True, "Progress note": text})))
         return {"ok": True, "outcome": "extended", "verb": verb, "row": updated.id, "slot": summary(updated, now)}
 
     # done
@@ -626,7 +976,7 @@ class SlotQueue:
         if not slot.gpu:
             return refusal(verb, "no_gpu", "the row has no GPU set, so it is in no queue", row=slot.id,
                            slot=summary(slot, now))
-        rows = self.open_rows(slot.gpu)
+        rows = self.board(slot.gpu)
         due, why, earliest = complaint_due(slot, rows, now)
         if not due:
             return refusal(verb, "too_early", "a complaint comes after waiting more than twice the minutes asked for, "
@@ -637,6 +987,8 @@ class SlotQueue:
         behind = [f"Running {row['request']!r} (ends {row.get('ends_at', 'unknown')})" for row in where["running"]]
         if where["ahead"]:
             behind.append(f"{len(where['ahead'])} Queued row(s) ahead")
+        if "waiting_for" in where:
+            behind.append(f"it waits for {where['waiting_for']}")
         entry = (f"{iso(now)[:16]}Z {why}; waiting behind: {'; '.join(behind) or 'nothing found'}"
                  + (f". {text}" if text else ""))
         updated = slot_from_page(self.client.update_page(
@@ -649,7 +1001,7 @@ class SlotQueue:
     def status(self, *, gpu: str = DEFAULT_GPU, row_id: str | None = None, task: str | None = None,
                agent: str = DEFAULT_AGENT) -> dict[str, Any]:
         verb, gpu_name, now = "slot status", GPUS[gpu], self._now()
-        rows = self.open_rows(gpu_name)
+        rows = self.board(gpu_name)
         if row_id is not None:
             slot, bad = self.load(row_id, agent, verb, own=False)
             if bad:
@@ -658,17 +1010,29 @@ class SlotQueue:
                                       "slot": summary(slot, now)}
             if slot.status == QUEUED:
                 answer.update(self._where(slot, rows, now))
+                view = justification_view(slot)
+                if view is not None:
+                    answer["justification"] = view
             return answer
         running = running_on(rows, gpu_name)
-        queued = queue_order(rows)
+        line = queue_order(rows, now)
+        in_line = {row.id for row in line}
+        held = sorted((row for row in rows if row.status == QUEUED and row.id not in in_line), key=queue_key)
         free = not running
         listed = []
-        for index, row in enumerate(queued, start=1):
+        for index, row in enumerate(line, start=1):
             if task is None or row.task_id == task:
-                listed.append({**summary(row, now), "position": index, "may_start": free and index == 1})
+                entry = {**summary(row, now), "position": index, "may_start": free and index == 1}
+                hungry = starvation(row, rows, now)
+                if hungry is not None and jumped(row, rows, now):
+                    entry["starved"] = hungry.why
+                listed.append(entry)
+        blocked = [{**summary(row, now), "waiting_for": WAITING_FOR[justification_state(row)],
+                    "justification_state": justification_state(row)}
+                   for row in held if task is None or row.task_id == task]
         return {"ok": True, "outcome": "status", "verb": verb, "gpu": gpu_name,
                 "running": [summary(row, now) for row in running if task is None or row.task_id == task],
-                "queued": listed, "card_free": free, "next_row": queued[0].id if queued else None}
+                "queued": listed, "blocked": blocked, "card_free": free, "next_row": line[0].id if line else None}
 
 
 # --- no token: what a sitting writes by hand --------------------------------------------
@@ -680,7 +1044,7 @@ def _tool(name: str) -> str:
 def _query_step(gpu_name: str, data_source: str, why: str) -> dict[str, Any]:
     return {"tool": _tool("query-data-sources"), "why": why, "arguments": {"data": {
         "mode": "rows", "data_source_url": f"collection://{data_source}",
-        "filter": open_rows_mcp_filter(gpu_name), "limit": 100}}}
+        "filter": board_mcp_filter(gpu_name), "limit": 100}}}
 
 
 def _update_step(row: str, change: Mapping[str, Any], why: str) -> dict[str, Any]:
@@ -692,13 +1056,24 @@ def _fetch_step(row: str, why: str) -> dict[str, Any]:
     return {"tool": _tool("fetch"), "why": why, "arguments": {"id": row}}
 
 
-RULE_START = ("Start only when no row on the GPU is Running and every other Queued row on it asks for more minutes "
-              "than yours, or the same minutes and was requested after yours. Never start while one is Running, "
-              "even if it looks stale; complain instead. After the update query again: if any other row on the GPU "
-              "is Running, set yours back to Queued, clear Started and try again in a moment.")
+RULE_START = ("Start only when your row's justification is in order, no row on the GPU is Running and your row is "
+              "first in line. A row asking for more than 30 minutes is in order when its Progress note holds a "
+              "Justification line, a Critique line after it and a Reply line after that, or when its Minutes have "
+              "been shortened to 30 or less; a row that is not in order is left out of the line. The line is: first "
+              "every Queued row that has been passed over three times (three rows requested after it have started "
+              "since it was requested, whether they Run, are Done or were Ended by referee) or has waited more than "
+              "twice its Minutes, the earliest request first; then the rest, fewest Minutes first and, for equal "
+              "Minutes, the earlier request first. Never start while one is Running, even if it looks stale; "
+              "complain instead. After the update query again: if any other row on the GPU is Running, set yours "
+              "back to Queued, clear Started and try again in a moment.")
+RULE_JUSTIFY = ("A request for more than 30 minutes carries a justification, written as the first line of the "
+                "Progress note: 'Justification (<who>, <time>Z): cannot be split because: <why it cannot be split "
+                "into 15-minute slots>; already measured: <what was measured>'. Without both parts do not add the "
+                "row. The referee then adds one 'Critique' line and you add one 'Reply' line, or you shorten the "
+                "row to 15 minutes; until then the row cannot start.")
 RULE_EXTEND = ("One extension of 15 minutes, only on your Running row, only before Started plus Minutes has "
                "passed, only when Extended is unchecked, and only with a Progress note saying what the slot has "
-               "already proven.")
+               "already proven; keep any text the Progress note already holds and add yours after ' | '.")
 RULE_COMPLAIN = ("Only on your own Queued row, and only after it has waited more than twice its Minutes (or the "
                  "Running row is past Started plus its Minutes, plus 15 if Extended is checked). Say what you wait "
                  "for and for how long; keep any text the Complaint already holds and add yours after ' | '.")
@@ -706,7 +1081,22 @@ RULE_DONE = ("Only on your Running row. Result is one line with the numbers the 
              "Then stop using the card at once.")
 
 
-def offline_plan(args: argparse.Namespace, now: dt.datetime, data_source: str) -> dict[str, Any]:
+def amendment(args: argparse.Namespace, now: dt.datetime, actor: str) -> dict[str, Any]:
+    """The change a start with --reply or --minutes makes before the start, with <> where the row's own text goes."""
+    change: dict[str, Any] = {}
+    note = "<the Progress note as it is>"
+    if args.minutes is not None:
+        change["Minutes"] = args.minutes
+        note += COMPLAINT_JOIN + note_entry(SHORTENED, actor, now, f"from <Minutes> to {args.minutes} minutes")
+    if args.reply is not None:
+        note += COMPLAINT_JOIN + note_entry(REPLY, actor, now, args.reply)
+    if change or args.reply is not None:
+        change["Progress note"] = note
+    return change
+
+
+def offline_plan(args: argparse.Namespace, now: dt.datetime, data_source: str,
+                 actor: str = record.UNKNOWN_ACTOR) -> dict[str, Any]:
     """What a sitting does with its Notion tools when no token lets the verb do it: the exact row or properties
     to write and the checks to make, as an answer with outcome no_token."""
     sub = args.sub
@@ -719,25 +1109,37 @@ def offline_plan(args: argparse.Namespace, now: dt.datetime, data_source: str) -
         title = request_title(args.task, args.what, args.minutes, args.why)
         change = {"Request": title, "Task ID": args.task, "GPU": gpu_name, "Minutes": args.minutes, "Status": QUEUED,
                   "Agent": args.agent, "Requested": now}
+        long = args.minutes > LONG_ABOVE_MINUTES
+        if long:
+            change["Progress note"] = note_entry(JUSTIFICATION, actor, now, justification_text(args.why, args.measured))
         plan["write"] = mcp_properties(change)
         plan["steps"] = [
             {"tool": _tool("create-pages"), "why": "add your row to the GPU Queue", "arguments": {
                 "parent": {"type": "data_source_id", "data_source_id": data_source},
                 "pages": [{"properties": mcp_properties(change)}]}},
-            _query_step(gpu_name, data_source, "list the Queued and Running rows of the GPU, then apply the start "
-                        "rule"),
+            _query_step(gpu_name, data_source, "list the Queued, Running, Done and Ended by referee rows of the GPU, "
+                        "then apply the start rule"),
         ]
-        plan["rule"] = RULE_START
+        plan["rule"] = (RULE_JUSTIFY + " " if long else "") + RULE_START
     elif sub == "start":
         change = {"Status": RUNNING, "Started": now}
         plan["write"] = mcp_properties(change)
-        plan["steps"] = [
-            _fetch_step(args.row, "read your row: Status must be Queued; note its GPU and Minutes"),
-            _query_step(gpu_name, data_source, "list the Queued and Running rows of your row's GPU (this filter is "
-                        f"{gpu_name!r}; use the GPU your row names if it differs), then apply the start rule"),
+        steps = [_fetch_step(args.row, "read your row: Status must be Queued; note its GPU, Minutes and Progress note")]
+        amend = amendment(args, now, actor)
+        if amend:
+            plan["amend"] = mcp_properties(amend)
+            steps.append(_update_step(args.row, amend, "write the reply to the critique and the shorter Minutes, "
+                                      "with the Progress note as the row holds it (a reply needs a Critique line "
+                                      "without a Reply line after it; when you shorten a row, drop the ' (N min: "
+                                      "...)' ending of its Request)"))
+        steps += [
+            _query_step(gpu_name, data_source, "list the Queued, Running, Done and Ended by referee rows of your "
+                        f"row's GPU (this filter is {gpu_name!r}; use the GPU your row names if it differs), then "
+                        "apply the start rule"),
             _update_step(args.row, change, "mark your row Running, Status and Started in one update"),
             _query_step(gpu_name, data_source, "check that no other row is Running; if one is, undo your update"),
         ]
+        plan["steps"] = steps
         plan["rule"] = RULE_START
     elif sub == "extend":
         change = {"Extended": True, "Progress note": args.note}
@@ -764,8 +1166,8 @@ def offline_plan(args: argparse.Namespace, now: dt.datetime, data_source: str) -
         ]
         plan["rule"] = RULE_COMPLAIN
     else:
-        plan["steps"] = [_query_step(gpu_name, data_source, "the Queued and Running rows of the GPU, in no order; "
-                                     "sort them by Minutes, then Requested")]
+        plan["steps"] = [_query_step(gpu_name, data_source, "the Queued, Running, Done and Ended by referee rows of "
+                                     "the GPU, in no order; apply the start rule to see the line")]
         plan["rule"] = "Read only: nothing is written."
     return plan
 
@@ -819,9 +1221,13 @@ def build_parser() -> argparse.ArgumentParser:
     request.add_argument("--what", required=True, type=_text_type(MAX_WHAT_CHARS, "--what"), metavar="TEXT",
                          help="one line of what runs in the slot")
     request.add_argument("--minutes", type=int, choices=SLOT_MINUTES, default=DEFAULT_MINUTES,
-                         help="15, or 60 for a training run or a declared long job (then --why is required)")
+                         help=f"{DEFAULT_MINUTES}, or {LONG_MINUTES} for a training run or a declared long job "
+                              "(then --why and --measured are required)")
     request.add_argument("--why", type=_text_type(MAX_WHY_CHARS, "--why"), metavar="TEXT",
-                         help="why a 60-minute slot; written into the Request")
+                         help=f"for a {LONG_MINUTES}-minute slot: why it cannot be split into {DEFAULT_MINUTES}-minute "
+                              "slots; written into the Request and the justification")
+    request.add_argument("--measured", type=_text_type(MAX_MEASURED_CHARS, "--measured"), metavar="TEXT",
+                         help=f"for a {LONG_MINUTES}-minute slot: what was already measured (a run, a rate, a size)")
     request.add_argument("--gpu", type=_gpu_type, default=DEFAULT_GPU, metavar="{A,B}",
                          help="B (default) is the exclusive card; A is the shared teacher service")
 
@@ -833,7 +1239,13 @@ def build_parser() -> argparse.ArgumentParser:
         parser_ = sub(name, help_)
         parser_.add_argument("--row", required=name != "status", type=_row_type, metavar="ID_OR_URL",
                              help="the row's page id or its Notion URL")
-        if name == "extend":
+        if name == "start":
+            parser_.add_argument("--reply", type=_text_type(MAX_REPLY_CHARS, "--reply"), metavar="TEXT",
+                                 help="your answer to the referee's critique: what you will change, or why it does "
+                                      "not apply (written to the row before the start is tried)")
+            parser_.add_argument("--minutes", type=int, choices=(DEFAULT_MINUTES,), metavar=str(DEFAULT_MINUTES),
+                                 help=f"shorten the row to {DEFAULT_MINUTES} minutes instead of answering a critique")
+        elif name == "extend":
             parser_.add_argument("--note", required=True, type=_text_type(MAX_NOTE_CHARS, "--note"), metavar="TEXT",
                                  help="what the slot has already proven")
         elif name == "done":
@@ -853,10 +1265,9 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     """The arguments of a slot call; SystemExit(2), argparse's usage message on stderr, for bad ones."""
     parser = build_parser()
     args = parser.parse_args(list(argv))
-    if args.sub == "request" and args.minutes != DEFAULT_MINUTES and not args.why:
-        parser.error(f"--minutes {args.minutes} needs --why: say why this is a training run or a declared long job")
-    if args.sub == "request" and args.minutes == DEFAULT_MINUTES and args.why:
-        parser.error(f"--why is for a {LONG_MINUTES}-minute slot; a {DEFAULT_MINUTES}-minute slot needs no reason")
+    if args.sub == "request" and args.minutes <= LONG_ABOVE_MINUTES and (args.why or args.measured):
+        parser.error(f"--why and --measured are for a {LONG_MINUTES}-minute slot; a {DEFAULT_MINUTES}-minute slot "
+                     "needs no justification")
     if args.sub == "done" and not args.cancel and not args.result:
         parser.error("--result is required: one line with the numbers the slot proved (or --cancel a Queued row)")
     return args
@@ -886,12 +1297,12 @@ def data_source_of(environ: Mapping[str, str] | None = None) -> str:
     return (environ.get(ENV_DATA_SOURCE) or "").strip() or DATA_SOURCE_ID
 
 
-def _dispatch(queue: SlotQueue, args: argparse.Namespace) -> dict[str, Any]:
+def _dispatch(queue: SlotQueue, args: argparse.Namespace, actor: str) -> dict[str, Any]:
     if args.sub == "request":
-        return queue.request(task=args.task, what=args.what, minutes=args.minutes, why=args.why, gpu=args.gpu,
-                             agent=args.agent)
+        return queue.request(task=args.task, what=args.what, minutes=args.minutes, why=args.why,
+                             measured=args.measured, gpu=args.gpu, agent=args.agent, actor=actor)
     if args.sub == "start":
-        return queue.start(args.row, agent=args.agent)
+        return queue.start(args.row, agent=args.agent, reply=args.reply, minutes=args.minutes, actor=actor)
     if args.sub == "extend":
         return queue.extend(args.row, args.note, agent=args.agent)
     if args.sub == "done":
@@ -913,7 +1324,8 @@ def _failure(args: argparse.Namespace, exc: notion.NotionError) -> dict[str, Any
 
 
 #: Fields of an answer worth keeping in the ledger row, beside the standard ones.
-_LEDGER_KEYS = ("gpu", "minutes", "waited_min", "ran_min", "overrun_min", "position", "reason", "kind")
+_LEDGER_KEYS = ("gpu", "minutes", "waited_min", "ran_min", "overrun_min", "position", "reason", "kind", "guard",
+                "passed_over", "went_ahead_of", "justification_state", "replied", "shortened_to")
 
 
 #: The outcomes of a verb whose call did what the verb names: only such a call carries a number for the alerts.
@@ -960,16 +1372,21 @@ def run(argv: Sequence[str], *, client: notion.NotionClient | None = None, envir
     environ = os.environ if environ is None else environ
     clock = now or utc_now
     args = parse_args(argv)
+    actor = record.current_actor(environ)
     data_source = data_source_of(environ)
-    client = client or connect(environ, env_files)
-    if client is None:
-        answer, code = offline_plan(args, clock(), data_source), 2
+    refused = justification_refusal(args.minutes, args.why, args.measured) if args.sub == "request" else None
+    if refused is not None:
+        answer, code = refused, 1
     else:
-        try:
-            answer = _dispatch(SlotQueue(client, data_source=data_source, now=clock), args)
-        except notion.NotionError as exc:
-            answer = _failure(args, exc)
-        code = 0 if answer["ok"] else 1
+        client = client or connect(environ, env_files)
+        if client is None:
+            answer, code = offline_plan(args, clock(), data_source, actor), 2
+        else:
+            try:
+                answer = _dispatch(SlotQueue(client, data_source=data_source, now=clock), args, actor)
+            except notion.NotionError as exc:
+                answer = _failure(args, exc)
+            code = 0 if answer["ok"] else 1
     try:
         answer["ledger_seq"] = _record(args, answer, environ, state_dir)
     except Exception as exc:
