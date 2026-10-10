@@ -1,0 +1,22 @@
+"""Building the stats GET /runtime/stats serves, for the composition root.
+
+    stats = build_runtime_stats(atlas.bus, atlas.telemetry)      # before the bus replays the log
+    app.include_router(stats_router(stats.snapshot))              # runtime/stats_api.py
+
+It subscribes the eval-score fold to the bus with replay=True, so it must be built before `Atlas.start()` replays the
+log (the gateway builds it in create_app, as it does its other subscriptions). `telemetry` is the gateway's
+TelemetryService, or None when ATLAS_TELEMETRY_SOURCE is not set; only its projection is read. `lab` defaults to the
+committed lab/refine/metrics.jsonl and the ledger in LAB_STATE_DIR (else lab/state).
+"""
+
+from bus import EventBus
+from contexts.telemetry.application.evals import EvalScores
+from contexts.telemetry.application.stats import RuntimeStats
+from contexts.telemetry.infrastructure.lab_records import LabRecords
+
+
+def build_runtime_stats(bus: EventBus, telemetry: object | None = None, *,
+                        lab: LabRecords | None = None) -> RuntimeStats:
+    evals = EvalScores()
+    evals.subscribe(bus)
+    return RuntimeStats(evals, projection=getattr(telemetry, "projection", None), lab=lab)
