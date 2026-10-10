@@ -1,20 +1,26 @@
-# lab/ — the R9700 side (AUP Learning Cloud)
+# lab/ - the Strix Halo side (AUP Learning Cloud)
 
-Two pods, one R9700 (gfx1201, 32 GB) each, on https://dub.aupcloud.io. Account A is the **teacher**
-(serves Qwen3.8-27B), account B is the **trainer** (LoRA, eval, packaging). Logins and hub API tokens
-are on the Notion Credentials page and in your local `.env`; never put them in this repo.
+Two pods, one AMD Strix Halo each (Radeon 8060S, gfx1151, RDNA 3.5, 64 GB shared with the CPU), on the SJC hub
+https://sjc.aupcloud.io: ROCm 7.13, torch 2.9.1+rocm7.13.0, triton 3.5.1, Python 3.12, image
+`ghcr.io/amdresearch/auplc-base:latest`. Account C is **pod A, the teacher** (vLLM 0.19.2 built for gfx1151 serves
+Qwen3.8-27B as model `teacher` on port 8000, behind the hub proxy; only called, never reserved). Account D is
+**pod B, the exclusive card** (trainer: LoRA, eval, packaging, and the kernels experiments), used only through the
+GPU Queue. Some notes and ledger rows call them pod C and pod D, after the account letters. The AMD Radeon AI PRO
+R9700 (gfx1201, RDNA 4, 32 GB) on the DUB hub (accounts A and B) is **the other chip**: the scripts were first built
+and measured there, and every R9700 number below is labelled as that chip's, never as the lab's baseline. Logins and
+hub API tokens are on the Notion Credentials page and in your local `.env`; never put them in this repo.
 
 ## Which hub is live today (2026-10-10)
 
 | Hub | Accounts | State |
 |---|---|---|
-| **SJC**, https://sjc.aupcloud.io | **C** and **D** | The one to use. JupyterHub 5.4.4, resource key `gpu` (image `ghcr.io/amdresearch/auplc-base:latest`), accelerators `r9700`, `9070xt`, `strix-halo`, `strix`, `phx`. |
-| **DUB**, https://dub.aupcloud.io | **A** and **B** | Kept for when it answers again; it has answered 502 all day. |
+| **SJC**, https://sjc.aupcloud.io | **C** and **D** | The lab: the two Strix Halo pods (launched with accelerator `strix-halo`, through the web spawn form). Quota disabled, nothing metered. JupyterHub 5.4.4, resource key `gpu` (image `ghcr.io/amdresearch/auplc-base:latest`), accelerators `r9700`, `9070xt`, `strix-halo`, `strix`, `phx`. |
+| **DUB**, https://dub.aupcloud.io | **A** and **B** | The other hub: the R9700s (gfx1201), metered at 4 credits a minute. It answered 502 all day on 2026-10-10 and is kept only for when it answers again. |
 
-The sections below were written against DUB and its accounts A and B. Pods on SJC have so far been started only through
-the hub's web spawn form (next paragraphs), so read their numbers (credits, timings, the culler) as DUB's until a pod
-there has been measured. On SJC, account C's pod is a Strix Halo and runs the teacher today: see "Teacher on SJC today
-(pod C, Strix Halo)" below for what it is and what differs from the R9700 recipe.
+Some sections below were first written against DUB and its accounts A and B; a number that comes from there
+(credits, timings, the culler) says so and is the other hub's, not the lab's, until the same thing has been measured
+on SJC. Pods on SJC are started through the hub's web spawn form (next paragraphs). Pod A (account C) runs the teacher:
+see "Teacher on the Strix Halo (pod A, account C)" below for what it is and what differs from the R9700 recipe.
 
 **On SJC the REST launch is accepted but ignored; the controller launches through the web form.**
 `POST /hub/api/users/<account>/server` with options answers 202 and echoes the options back, but the pod that comes up
@@ -34,7 +40,7 @@ Which way a launch goes is set per account, in the environment or the workspace 
 |---|---|
 | `AUP_HUB_LAUNCH_<letter>` | `form`: always the web form. `rest`: only the API call, never a look at the pod. `auto` (also when the key is not set): the API call, then, if the account has a password, a look at the ready pod; a pod that turns out to be the stock image is stopped and launched again through the form. Set `form` for C and D. |
 | `AUP_HUB_PASS_<letter>` | The web login password. Only the form reads it, and it is cut out of every answer, error message and ledger row as the token is. A `form` launch without it is refused before anything is sent (kind `no_credentials`, exit 2). |
-| `AUP_HUB_GPU_<letter>` | The accelerator the account launches by default (`strix-halo` on SJC); else `r9700`. `--accelerator` overrides it. |
+| `AUP_HUB_GPU_<letter>` | The accelerator the account launches by default; else `strix-halo`, the SJC pods. `r9700` (the other chip, on DUB) is still a card both hubs list: set it for A and B. `--accelerator` overrides it. |
 | `AUP_HUB_RESOURCE_<letter>` | The catalog resource the account launches by default; else `gpu`. `--resource` overrides it. |
 
 The look at the pod (`auto`) runs a three-line script in a terminal on it, as `run-script` does, which prints
@@ -104,13 +110,13 @@ a result, outcome `alert`, still exit 0), 1 when one could not be (outcome `erro
 keys. `--account all` takes every letter that has both keys; an account's hub is `AUP_HUB_URL_<letter>`, else
 `$LAB_HUB_URL`, else DUB.
 
-- **Metered hub** (DUB: quota enabled, 4 credits a minute on the R9700). The hub deducts a session only when it
+- **Metered hub** (DUB, the other hub: quota enabled, 4 credits a minute on the R9700, the other chip). The hub deducts a session only when it
   stops, so the balance is flat while a pod runs. The tracker adds the running session (whole minutes x rate, from the
   server's `started`) and the settled ones (the usage transactions, spread over the minutes they ran) to give
   `credits_left`, `credits_per_hour` over `--window-hours` (default 3), `burn_per_hour` (the higher of that and what
   the running servers burn now), `hours_left` and `runs_out_at`. It alerts when the credits are gone or would not last
   until `--until` (default judging, Sunday 2026-10-11 12:00 ET); after that moment it never alerts.
-- **Unmetered hub** (SJC: quota disabled, balance 0, unlimited). Nothing is projected and nothing alerts; the line is
+- **Unmetered hub** (SJC, the lab: quota disabled, balance 0, unlimited). Nothing is projected and nothing alerts; the line is
   `unmetered: usage N minutes today, M sessions` from `/hub/api/stats/me`, today being the hub's UTC day.
 - Times come from the hub's clock (its `Date` header), not the workstation's.
 - **Ledger.** One row per account (verb `credits`, node the role the account fills (`pod-a` for C on SJC, `LAB_POD_ROLES`), `refs.account`, `hub` and `account` in conditions, outcome `ok`, `alert`,
@@ -165,21 +171,26 @@ a password inside prose is found only through its `.env` value.
 
 ## What the pods are
 
+- An AMD Strix Halo APU each: Radeon 8060S, gfx1151, RDNA 3.5, 64 GB of memory shared between the CPU and the GPU.
+  The R9700 (gfx1201, 32 GB of GDDR6) on DUB is the other chip.
 - ROCm 7.13.0, `torch 2.9.1+rocm7.13.0`, `triton 3.5.1+rocm7.13.0`, `hipcc` on PATH, `python3` only.
 - No root, no Docker, no SSH. JupyterLab terminal and the Jupyter REST API only. `pip install --user` works
   (binaries land in `~/.local/bin`; the scripts add it to PATH).
 - `/home/jovyan` is a persistent NFS volume (models, venv packages, builds survive a relaunch).
   `/opt/workspace` (the Jupyter root) is ephemeral.
-- Billing is per elapsed minute (4 credits/min on the R9700, ~60,000 per account). The server enforces no
-  runtime cap; AMD staff are fine with long sessions. Stopping is immediate. A 60-minute idle culler
+- Nothing is billed on SJC (quota disabled). On the other hub, DUB, billing is per elapsed minute (4 credits/min on
+  the R9700, ~60,000 per account). The server enforces no runtime cap; AMD staff are fine with long sessions, and a
+  runtime beyond the form's 240 minutes wants their go first. Stopping is immediate. A 60-minute idle culler
   stops a server that gets no requests, so keep the model server busy or ping it.
 - **Tailscale is blocked** on the pods (every tailscale.com host is connection-reset). GitHub, Hugging Face
   and PyPI are reachable.
 
 ## Launching a pod
 
-Web form: resource "Basic GPU Environment" (key `gpu`), accelerator `r9700`, runtime up to 240 (the API has
-no cap). API, with the account's hub token:
+Web form: resource "Basic GPU Environment" (key `gpu`), accelerator `strix-halo`, runtime up to 240 on the page.
+On SJC this form is the only way to get the real pod; the REST launch is accepted but ignored there (above), and
+`python -m lab.controller launch` with `AUP_HUB_LAUNCH_<letter>=form` does what the form does. On the other hub, DUB,
+the API launch works, with the account's hub token and the R9700:
 
 ```
 POST https://dub.aupcloud.io/hub/api/users/<account>/server
@@ -238,7 +249,7 @@ Once `pip install --user jupyter-server-proxy` has run on an account and the pod
 anything listening on a pod port is reachable from outside:
 
 ```
-https://dub.aupcloud.io/user/<account>/proxy/<port>/...
+https://<hub>/user/<account>/proxy/<port>/...        # <hub> is sjc.aupcloud.io for C and D
 Authorization: token <hub token>
 ```
 
@@ -381,7 +392,8 @@ pod.idle_watts [--since ISO] [--until ISO] [--state idle] [--metrics-file]`: the
 measured period, longest gap (and, from the Jetson log, the longest gap between receive times and the latest
 arrival), restarts, distinct updates, starting temperatures, the energy and its source, and `error: unknown` until a
 reference run measures it. Parsers and sampler are tested offline on `fixtures/telemetry/pod_power`
-(tests/test_lab_pod_power.py; the `strixhalo_*` files are output recorded on pod C, the others the R9700's).
+(tests/test_lab_pod_power.py; the `strixhalo_*` files are output recorded on the Strix Halo (account C), the others
+on the R9700, the other chip).
 
 ## Jetson sampler cost and idle watts (T13)
 
@@ -423,15 +435,22 @@ ignores it, so the group brain works before the restart too, asking as "teacher"
 are not logged (`--enable-log-requests` stays off). Which name answers, with no member text sent:
 `python -m contexts.circle.brain status`. How much planning slows labeling when both run is not measured yet (T0).
 
-`lab/vllm-gfx1201.diff` is the set of changes vLLM (commit b1388b1, April 2026) needs on this pod: `num_stages=1`
-in the Triton unified attention kernel (64 KB LDS on RDNA4), two platform-detection fixes, the torch pins removed
+`lab/vllm-gfx1201.diff` is the set of changes vLLM (commit b1388b1, April 2026) needs on these pods: `num_stages=1`
+in the Triton unified attention kernel (whose default overflowed the R9700's 64 KB LDS on RDNA 4), two platform-detection fixes, the torch pins removed
 so the pod's own torch is used (`use_existing_torch.py`), and the GPTQ `compat.cuh` half/half2 `atomicAdd`
 fallbacks guarded out because ROCm 7.13 ships those overloads itself. Build gotchas the script handles: no root,
 so `cmake`, `ninja` and `pkgconf` come from `pip --user`; the image has no libdrm, so a stub `libdrm.pc` and an
 empty `libdrm.so` under `~/.local` satisfy torch's `LoadHIP.cmake`; `SETUPTOOLS_SCM_PRETEND_VERSION` avoids a
 `git describe` timeout on the NFS home.
 
-Measured on 2026-10-10 with `RedHatAI/Qwen3.8-27B-INT4` (bf16 activations, 16k context, one image per prompt):
+The patch keeps the name `vllm-gfx1201.diff` although the lab now runs on gfx1151. Its hunks are generic ROCm fixes
+for this vLLM commit, not code for one chip, and the same file is applied unchanged for both targets (all 9 hunks
+apply on gfx1151 and none is new, below). The name stays because the scripts (`pod_a_teacher.sh` looks for it next to
+itself), `--with` and `--patch` command lines, the kernels rubric, the rulings and the ledger rows all cite that path;
+renaming it would break the build steps and orphan that history.
+
+On the R9700 (the other chip, DUB pod A, measured on the morning of 2026-10-10) with `RedHatAI/Qwen3.8-27B-INT4`
+(bf16 activations, 16k context, one image per prompt):
 
 | Prompt | TTFT | decode |
 |---|---|---|
@@ -439,10 +458,13 @@ Measured on 2026-10-10 with `RedHatAI/Qwen3.8-27B-INT4` (bf16 activations, 16k c
 | text, thinking on, 160 tokens | 0.28 s | 7.7 tok/s |
 | 1280x720 JPEG caption, 28 tokens | 1.09 s | 6.6 tok/s |
 
-Engine init takes about 270 s (CUDA-graph capture included), the model holds 84 % of VRAM with ~10x concurrency
-at 16k tokens, and the card draws ~200 W average, 300 W peak, while generating. The W4A16 layers run on
-`ConchLinearKernel` (the Triton fallback; Marlin/Machete do not exist on ROCm), which is why decode is far
-below the 20 to 30 tok/s the design doc estimated. That kernel is the first target for the gfx1201 kernel work.
+On the R9700, engine init took about 270 s (CUDA-graph capture included), the model held 84 % of VRAM with ~10x
+concurrency at 16k tokens, and the card drew ~200 W average, 300 W peak, while generating (about 26 J per token).
+These are the other chip's numbers, not the lab's baseline; the Strix Halo's are in the next section (2.9 tok/s at
+about 120 W, 9 W idle, 0.39 s to the first text token). On both chips the W4A16 layers run on `ConchLinearKernel`
+(the Triton fallback; Marlin/Machete do not exist on ROCm), which is why decode is far below the 20 to 30 tok/s the
+design doc estimated. That kernel is the first target of the kernel work, which now targets gfx1151 (RDNA 3.5) on
+pod B.
 Pass `"chat_template_kwargs": {"enable_thinking": false}` for captions, otherwise the model spends its budget
 reasoning.
 
@@ -456,16 +478,16 @@ last resort and leaves little KV room.
 Call it from anywhere:
 
 ```
-curl https://dub.aupcloud.io/user/<account>/proxy/8000/v1/chat/completions \
-  -H "Authorization: token $AUP_HUB_TOKEN_A" -H "Content-Type: application/json" \
+curl https://sjc.aupcloud.io/user/<account>/proxy/8000/v1/chat/completions \
+  -H "Authorization: token $AUP_HUB_TOKEN_C" -H "Content-Type: application/json" \
   -d '{"model":"teacher","messages":[{"role":"user","content":"Describe this table in one sentence."}]}'
 ```
 
 Images go inline as `{"type":"image_url","image_url":{"url":"data:image/jpeg;base64,..."}}` content parts.
 
-### Teacher on SJC today (pod C, Strix Halo)
+### Teacher on the Strix Halo (pod A, account C)
 
-Account C's pod on SJC (`roscon01`) runs the teacher today, at
+Account C's pod on SJC (`roscon01`), pod A, runs the teacher, at
 `https://sjc.aupcloud.io/user/roscon01/proxy/8000/v1/chat/completions` with `Authorization: token $AUP_HUB_TOKEN_C`.
 The GPU is a Radeon 8060S (Strix Halo, gfx1151, RDNA 3.5) with 64 GB of memory shared with the CPU. The same
 `lab/pod_a_teacher.sh` builds and serves it; what differs from the R9700 recipe above:
@@ -487,7 +509,7 @@ The GPU is a Radeon 8060S (Strix Halo, gfx1151, RDNA 3.5) with 64 GB of memory s
   what `serve` passes on gfx115x.
 - Power is read with `amd-smi metric --power` (`SOCKET_POWER`, the whole APU package); energy and clocks read N/A.
 
-Measured on 2026-10-10 on pod C (fix round 3, batch 1, 16k context, temperature 0, thinking off; TTFT and decode
+Measured on 2026-10-10 on pod A, account C (fix round 3, batch 1, 16k context, temperature 0, thinking off; TTFT and decode
 with a streaming client on the pod, end to end through the proxy, which buffers the response):
 
 | Prompt | TTFT | decode | through the proxy | watts while decoding |
@@ -496,12 +518,13 @@ with a streaming client on the pod, end to end through the proxy, which buffers 
 | 1280x720 JPEG caption, 902 in, 27 out | 3.51 s | 2.82 tok/s | 12.9 s | 118 W average |
 
 Idle: 8 W with no server, 9.2 W with the teacher loaded. The engine is ready about 5 min after launch with a warm
-torch.compile cache. Decode is about 2.7x slower than the R9700's 7.7 tok/s, about the ratio of the two memory
+torch.compile cache. These are the lab's teacher numbers. Decode is about 2.7x slower than the other chip's (the
+R9700's) 7.7 tok/s, about the ratio of the two memory
 bandwidths (decode is weight-bound on `ConchLinearKernel`). The rows are in `lab/refine/metrics.jsonl` on node
 `pod-c` (written before the rows were named by role; they are read as pod-a-role rows of account C on the SJC hub and
 stay as written); the R9700 rows stay on `pod-a` as the old, other chip.
 
-Pod power sampler, live on pod C (T6, 2026-10-10): `amd-smi metric --power --clock --temperature --usage --energy` answers on
+Pod power sampler, live on pod A, account C (T6, 2026-10-10): `amd-smi metric --power --clock --temperature --usage --energy` answers on
 this chip (exit 0, 0.21 s a read): SOCKET_POWER and GFX_ACTIVITY, with CLOCK, ENERGY, HOTSPOT and the other sensors N/A and
 EDGE the only temperature. Idle with the teacher loaded 10.2 W (60 s); over 50 teacher requests one every 12 s (44 text, 6
 720p images, 6460 prompt and 894 completion tokens) 106.8 W average inside the request windows, 129 W peak, about 9 samples
@@ -574,7 +597,7 @@ is not part of the answer's window; its 46 J (2 to 5 percent of a 9 to 27 s answ
 ```
 bash lab/pod_b_trainer.sh proxy      # once, then relaunch
 bash lab/pod_b_trainer.sh deps       # peft, trl, transformers, accelerate, datasets, gguf (torch stays the pod's)
-bash lab/pod_b_trainer.sh llama      # llama-quantize / llama-cli / llama-server built for gfx1201
+bash lab/pod_b_trainer.sh llama      # llama-quantize / llama-cli / llama-server built for the pod's gfx target (rocminfo; GFX= overrides)
 bash lab/pod_b_trainer.sh download   # Qwen/Qwen3.5-4B (the student the Jetson runs)
 bash lab/pod_b_trainer.sh smoke      # lab/smoke_lora.py: tiny LoRA SFT, prints loss and samples/s
 ```

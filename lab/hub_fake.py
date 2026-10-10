@@ -76,7 +76,8 @@ SESSION_COOKIE = "jupyterhub-hub-login"
 
 UTC = dt.timezone.utc
 HUB_VERSION = "5.4.4"
-DEFAULT_RATES = {"cpu": 1, "r9700": 4}
+DEFAULT_ACCELERATOR = "strix-halo"   # the SJC pods; "r9700" is the other chip, on DUB
+DEFAULT_RATES = {"cpu": 1, "strix-halo": 3, "r9700": 4}   # SJC's posted table (M24) and DUB's R9700 rate
 CLOUDFLARE_PAGE = "<html><head><title>Access denied</title></head><body>Error 1010: browser signature banned</body></html>"
 
 
@@ -209,13 +210,14 @@ class FakeHub:
         (AUP_HUB_URL_<letter>); the fake itself answers on whatever address it is reached at. password lets the
         account log in on the web side (the spawn form); without one the fake refuses every login as that user.
         role is the pod role the account fills (LAB_POD_ROLES in real use); unset, the letter's role in FAKE_ROLES
-        (A and C the teacher's pod-a, B and D the trainer's pod-b), and none for any other letter."""
+        (A and C the teacher's pod-a, B and D the trainer's pod-b), and none for any other letter. rate is what a
+        metered account is charged a minute for either GPU card, and the rate its quota posts for both."""
         self._accounts[letter] = _Account(letter, user, token, balance, rate, unlimited, quota_enabled, password,
                                           user_activity=self._hub_now())
         return Account(letter, user, token, url, password, role=role or FAKE_ROLES.get(letter))
 
     def start_server(self, letter: str, *, runtime_minutes: int = 600, started_ago_s: float = 0.0, idle_s: float = 0.0,
-                     ready: bool = True, accelerator: str = "r9700", image: str = AUP_IMAGE) -> None:
+                     ready: bool = True, accelerator: str = DEFAULT_ACCELERATOR, image: str = AUP_IMAGE) -> None:
         """A pod that is already there: ready and running for started_ago_s, or still launching (ready=False)."""
         account = self._accounts[letter]
         now = self._hub_now()
@@ -230,7 +232,7 @@ class FakeHub:
         """A server the hub still lists after its spawn failed: not ready and with nothing pending."""
         account = self._accounts[letter]
         now = self._hub_now()
-        options = {"runtime_minutes": 600, "resource_type": "gpu", "gpu_selection": "r9700"}
+        options = {"runtime_minutes": 600, "resource_type": "gpu", "gpu_selection": DEFAULT_ACCELERATOR}
         account.sessions += 1
         account.server = _Server(now, 600, options, now, None, failed=True)
 
@@ -368,7 +370,7 @@ class FakeHub:
             return
         before = account.balance
         account.balance = max(0, before - amount)
-        accelerator = server.options.get("gpu_selection", "r9700")
+        accelerator = server.options.get("gpu_selection", DEFAULT_ACCELERATOR)
         account.transactions.append({
             "id": len(account.transactions) + 1, "username": account.user, "amount": -amount,
             "transaction_type": "usage", "resource_type": server.options.get("resource_type", "gpu"),
@@ -492,7 +494,7 @@ class FakeHub:
             return {"username": account.user, "balance": 0, "unlimited": True, "rates": dict(DEFAULT_RATES),
                     "enabled": False}
         return {"username": account.user, "balance": account.balance, "unlimited": account.unlimited,
-                "rates": {**DEFAULT_RATES, "r9700": account.rate}, "enabled": True}
+                "rates": {**DEFAULT_RATES, "strix-halo": account.rate, "r9700": account.rate}, "enabled": True}
 
     def _launch(self, account: _Account, options: Mapping[str, Any], image: str) -> httpx.Response:
         server = account.server

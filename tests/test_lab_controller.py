@@ -30,7 +30,7 @@ REPO = Path(__file__).resolve().parents[1]
 TOKEN_A = "aaaa1111bbbb2222cccc3333dddd4444"
 TOKEN_B = "eeee5555ffff6666aaaa7777bbbb8888"
 ENV = {"AUP_HUB_USER_A": "acct-a", "AUP_HUB_TOKEN_A": TOKEN_A, "AUP_HUB_USER_B": "acct-b", "AUP_HUB_TOKEN_B": TOKEN_B}
-LAUNCH_KEYS = {"runtime_minutes": 600, "resource_type": "gpu", "gpu_selection": "r9700"}
+LAUNCH_KEYS = {"runtime_minutes": 600, "resource_type": "gpu", "gpu_selection": "strix-halo"}
 
 
 class World:
@@ -99,7 +99,7 @@ def test_launch_leaves_a_pod_row_with_its_node_and_a_row_for_the_call(world):
     assert (pod["node"], pod["outcome"], pod["actor"]) == ("pod-a", "running", "tester")
     assert pod["metrics"] == {"pod.start_s": 15.0, "pod.balance_credits": 59960}
     assert pod["units"] == {"pod.start_s": "s", "pod.balance_credits": "credits"}
-    assert pod["conditions"] == {"resource": "gpu", "accelerator": "r9700", "launch_path": "rest", "hub": "hub.test",
+    assert pod["conditions"] == {"resource": "gpu", "accelerator": "strix-halo", "launch_path": "rest", "hub": "hub.test",
                                  "account": "A"}
     assert pod["refs"]["account"] == "A"
 
@@ -281,11 +281,18 @@ def test_a_runtime_that_is_not_a_positive_whole_number_is_refused(world, minutes
     assert world.only_row("controller launch")["outcome"] == "error"
 
 
-def test_the_automatic_accelerator_is_refused_because_it_is_not_the_r9700(world):
+def test_the_automatic_accelerator_is_refused_because_the_card_must_be_named(world):
     for accelerator in ("auto", "AUTO ", ""):
         with pytest.raises(ValueError):
             world.controller.launch("A", 10, accelerator=accelerator)
     assert world.hub.calls == []
+
+
+def test_the_r9700_is_still_a_card_a_launch_can_name(world):
+    world.controller.launch("A", 10, accelerator="r9700")
+
+    assert [call.json["gpu_selection"] for call in world.hub.calls_matching("POST", "/server")] == ["r9700"]
+    assert world.only_row("pod launch")["conditions"]["accelerator"] == "r9700"
 
 
 def test_an_unknown_account_is_refused(world):
@@ -305,7 +312,7 @@ def test_stop_deletes_once_and_reads_the_charge_from_the_balance(world):
     assert (answer["outcome"], answer["state"]) == ("ok", "stopped")
     assert answer["minutes_run"] == 61.5
     assert (answer["balance_before"], answer["balance_after"], answer["credits_charged"]) == (59960, 59716, 244)
-    assert world.hub.transactions("A")[0]["description"] == "Session 1: 61 min @ r9700 (4/min)"
+    assert world.hub.transactions("A")[0]["description"] == "Session 1: 61 min @ strix-halo (4/min)"
     assert world.hub.running("A") is False
 
     pod = world.only_row("pod stop")
@@ -408,7 +415,7 @@ def test_status_shows_both_accounts_with_balance_spend_and_the_scheduled_end(wor
         "node": "pod-a", "reachable": True, "running": True, "ready": True, "pending": None,
         "started": "2026-10-10T08:26:16Z", "runtime_minutes": 600, "scheduled_end": "2026-10-10T18:26:16Z",
         "minutes_run": 61.5, "minutes_left": 538.5, "last_activity": "2026-10-10T09:20:16Z", "idle_minutes": 7.5,
-        "resource_type": "gpu", "accelerator": "r9700",
+        "resource_type": "gpu", "accelerator": "strix-halo",
         "balance": 59960, "unlimited": False, "quota_enabled": True, "rate": 4,
         "credits_so_far": 244, "credits_if_run_to_end": 2400, "balance_if_stopped_now": 59716,
         "balance_at_scheduled_end": 57560, "exceeds_balance": False}
@@ -504,7 +511,7 @@ def test_quota_reads_the_balance_and_rates_for_each_account(world):
 
     assert answer["ok"] is True
     assert answer["accounts"]["A"] == {"node": "pod-a", "reachable": True, "balance": 59960, "unlimited": False,
-                                       "enabled": True, "rate": 4, "rates": {"cpu": 1, "r9700": 4}}
+                                       "enabled": True, "rate": 4, "rates": {"cpu": 1, "strix-halo": 4, "r9700": 4}}
     assert answer["accounts"]["B"]["balance"] == 59628
     assert [(row["node"], row["metrics"]) for row in world.rows("pod quota")] == [
         ("pod-a", {"pod.balance_credits": 59960}), ("pod-b", {"pod.balance_credits": 59628})]
@@ -519,7 +526,7 @@ def test_quota_can_add_the_recent_transactions_of_the_account(world):
     transactions = answer["accounts"]["A"]["transactions"]
     assert [(t["amount"], t["transaction_type"], t["balance_before"], t["balance_after"]) for t in transactions] == [
         (-244, "usage", 59960, 59716)]
-    assert transactions[0]["description"] == "Session 1: 61 min @ r9700 (4/min)"
+    assert transactions[0]["description"] == "Session 1: 61 min @ strix-halo (4/min)"
     assert "/hub/admin/api/quota/acct-a" in [call.path for call in world.hub.calls]
 
 
@@ -550,7 +557,7 @@ def test_the_idle_culler_stops_the_pod_nobody_pings_and_spares_the_one_that_is_p
 
     assert world.hub.running("A") is True
     assert world.hub.running("B") is False
-    assert world.hub.transactions("B")[0]["description"] == "Session 1: 60 min @ r9700 (4/min)"
+    assert world.hub.transactions("B")[0]["description"] == "Session 1: 60 min @ strix-halo (4/min)"
 
 
 def test_keep_alive_reports_a_pod_that_disappears_and_stops_when_none_is_left(world):
@@ -971,7 +978,7 @@ def test_status_of_c_asks_the_sjc_hub_with_the_token_of_c_and_nothing_else(two_h
     assert code == 0
     assert (answer["command"], answer["outcome"], answer["hub"]) == ("status", "ok", SJC)
     assert answer["accounts"] == {"C": {"node": "pod-a", "reachable": True, "running": False, "balance": 0,
-                                        "unlimited": True, "quota_enabled": False, "rate": 4}}
+                                        "unlimited": True, "quota_enabled": False, "rate": 3}}
     assert two_hubs.dub.calls == []
     assert {call.host for call in two_hubs.sjc.calls} == {"sjc.test"}
     assert {call.headers["authorization"] for call in two_hubs.sjc.calls} == {f"token {TOKEN_C}"}
@@ -984,7 +991,7 @@ def test_quota_of_c_says_the_quota_is_disabled_instead_of_showing_an_empty_balan
 
     assert code == 0
     assert answer["accounts"]["C"] == {"node": "pod-a", "reachable": True, "balance": 0, "unlimited": True,
-                                       "enabled": False, "rate": 4, "rates": {"cpu": 1, "r9700": 4}, "note": DISABLED}
+                                       "enabled": False, "rate": 3, "rates": {"cpu": 1, "strix-halo": 3, "r9700": 4}, "note": DISABLED}
     row = two_hubs.only_row("pod quota")
     assert (row["node"], row["outcome"], row["metrics"]) == ("pod-a", "ok", {})
 
@@ -1001,7 +1008,7 @@ def test_launch_on_a_hub_without_quota_goes_ahead_where_the_same_zero_balance_is
     assert answer["note"] == DISABLED
     assert "balance" not in answer and answer["cost_credits"] is None
     assert [(call.host, call.path, call.json) for call in two_hubs.sjc.calls_matching("POST", "/server")] == [
-        ("sjc.test", "/hub/api/users/acct-c/server", {"runtime_minutes": 30, "resource_type": "gpu", "gpu_selection": "r9700"})]
+        ("sjc.test", "/hub/api/users/acct-c/server", {"runtime_minutes": 30, "resource_type": "gpu", "gpu_selection": "strix-halo"})]
     pod = [row for row in two_hubs.rows("pod launch") if row["conditions"]["hub"] == "sjc.test"][0]
     assert (pod["outcome"], pod["metrics"]) == ("running", {"pod.start_s": 15.0})
 
