@@ -85,7 +85,7 @@ Every pass checks all nine against every task and queued experiment in the walk 
 test is logged whether or not it is fixed this pass. Each test is stated as the task page states it, then
 judged twice: on the board (does a task's Done when require it, with an owner and a check?) and on the
 evidence (once a run exists, the files and ledger lines that prove it). File lines are at origin/main
-a76af64.
+5eebde3.
 
 ### LT1. Trace and privacy
 
@@ -335,9 +335,13 @@ queue slots, `data/events`). On the learning track that means in particular:
 - LT4: the teacher is reached through the hub proxy, which needs an `Authorization: token` header
   (lab/README.md L35-45), and `LlamaServerRuntime` sends none (runtime/llama.py L61-78), so eval.py cannot
   score the teacher as written. The token stays in `.env` and never enters a log or a saved command line.
-- LT1: blur is not enforced on main. Face blur on the Jetson is P6 (not started), and the Build Log entry
-  for the Vault (PR #25) says nothing enforces the blur policy yet. Until P6 lands, an approved export can
-  hold unblurred faces.
+- LT1: face blur exists on main but is not on by default. P6 (PR #44) added `FaceBlur`, which blurs a
+  keyframe before it is encoded and stores nothing when the detector fails, but `KeyframeStore` takes
+  `blur=None` unless it is passed (contexts/perception/infrastructure/keyframe_store.py L16-17 and
+  L25-26), no production code passes it yet, and the PR leaves that to the box-start wiring (C6); the
+  Vault's blur policy is not read yet either (Build Log, PR #25). YuNet can also miss faces cut off at the
+  image edge or turned away (PR #44). Until the wiring lands, an approved export can hold unblurred faces,
+  and LT1 cannot pass for a run whose export came before it.
 - LT6: `lab/smoke_lora.py` trains text at max_length 256 (L68). The TRL SFT docs say to set
   `max_length=None` for vision-language data, or to verify that truncation never removes image tokens.
   The 0.51 samples/s is a text-only number and is measured again with image examples before LT6 is
@@ -357,11 +361,13 @@ queue slots, `data/events`). On the learning track that means in particular:
 
 ## Sources (opened 2026-10-10)
 
-Repo files, at origin/main a76af64:
+Repo files, at origin/main 5eebde3:
 - `lab/refine/PASS_RULES.md`: the process every pass follows: tracks, rounds, the cap, convergence, what a pass may and may never change, the two universal rules.
 - `contracts/learning.py`: the learning events (L9-51), the export and package formats (L54-64), and `TaskSpec`, `DatasetExample`, `DatasetManifest` and `ModelManifest` (L74-109).
 - `contexts/learning/application/export.py`: the approval-gated export, the 300-example cap, keyframe selection, thumbs verdicts kept as gold labels.
 - `contexts/learning/tests/test_export.py`: nothing is written until the export is approved.
+- `contexts/perception/infrastructure/face_blur.py`: `FaceBlur`, the YuNet face blur applied before a keyframe is encoded; a detector failure stores nothing.
+- `contexts/perception/infrastructure/keyframe_store.py`: the keyframe store, whose `blur` is None unless passed (L16-17, L25-26).
 - `contexts/agent/eval.py`: the golden-question scorer and its `--json` output for before and after.
 - `contexts/agent/tests/test_golden_eval.py`: the golden set scores 1.0 on the fake runtime, which checks retrieval only.
 - `fixtures/golden/questions.yaml`: the six golden questions.
@@ -378,6 +384,7 @@ Repo files, at origin/main a76af64:
 
 Team pages and PRs:
 - PR #37 (trainer 0.51 samples/s, 8.7 GB peak, loss 2.23 to 0.16 in 20 steps; teacher numbers): https://github.com/raohemdutt/Knighthacks26/pull/37
+- PR #44 (face blur before a keyframe is encoded, passed to the store by the box-start wiring, which is not there yet): https://github.com/raohemdutt/Knighthacks26/pull/44
 - O2 task page (the tests, the metric set, the starting sources): https://app.notion.com/p/3f596ef5fec5810db5ebe39aef2e0ec9
 - O1 task page (the shared section list and the universal rules' wording): https://app.notion.com/p/3f596ef5fec581859648f9824af01daf
 - O9 (pass log, rulings and counter formats): https://app.notion.com/p/3f596ef5fec581c38706ec07a84acf72
