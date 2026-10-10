@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { CoachFeedback } from "@/components/coach/CoachFeedback";
+import { RouteSheet } from "@/components/dayrun/RouteSheet";
 import { Empty, ErrorBox, Loading, WriteError } from "@/components/States";
 import ui from "@/components/ui.module.css";
 import {
@@ -19,6 +21,7 @@ import {
   type DayReplan,
   type DayReview,
   type DayStatus,
+  type NextEvent,
   type PlanMove,
   type PlanSource,
 } from "@/lib/api";
@@ -436,6 +439,8 @@ function reasonFor(m: PlanMove, plan: DayPlan | DayReplan): string {
   return `Suggested by Atlas where the day had room for it.${friend}`;
 }
 
+const leaveLine = (e: NextEvent) => (e.walk_minutes > 0 && e.leave_by ? `Leave by ${time(e.leave_by)} · ${e.walk_minutes} min walk` : "You are already there");
+
 function Ribbon({ d, brief, nextRef }: { d: DayNow; brief: BriefState; nextRef: RefObject<HTMLDivElement | null> }) {
   const plan = d.plan as DayPlan | DayReplan;
   const s = d.status;
@@ -519,11 +524,7 @@ function Ribbon({ d, brief, nextRef }: { d: DayNow; brief: BriefState; nextRef: 
                 <span className={n.meta}>{hereLine}</span>
               </>
             ) : null}
-            {e ? (
-              <span className={n.leave}>
-                {e.walk_minutes > 0 && e.leave_by ? `Leave by ${time(e.leave_by)} · ${e.walk_minutes} min walk` : "You are already there"}
-              </span>
-            ) : null}
+            {e && !e.place ? <span className={n.leave}>{leaveLine(e)}</span> : null}
             {past && session ? (
               <span className={n.meta}>
                 {session.measured ? `${session.desk_minutes ?? 0} of ${session.planned_minutes} min at the desk, ${session.breaks.length} ${session.breaks.length === 1 ? "break" : "breaks"}` : `Not measured (${session.not_measured ?? "the box could not see it"})`}
@@ -531,6 +532,13 @@ function Ribbon({ d, brief, nextRef }: { d: DayNow; brief: BriefState; nextRef: 
             ) : null}
             {open === key ? <span className={n.reason}>{reasonFor(m, plan)}</span> : null}
           </button>
+          {e && e.place ? (
+            // when to leave, and the walk itself on the campus map: the one thing to tap about the next fixed block
+            <div className={`${n.leaveRow} ${risky ? n.leaveRowWarn : ""}`}>
+              <span className={n.leave}>{leaveLine(e)}</span>
+              <RouteSheet from={s?.seen_at ?? "here"} to={e.place} arriveBy={e.start} now={d.now} what={e.title} />
+            </div>
+          ) : null}
           {note ? <CoachNote note={note} said={said ?? note.text} /> : null}
         </div>
       </div>
@@ -653,12 +661,17 @@ function CoachNote({ note, said, about }: { note: DayCoachNote; said: string; ab
       <span className={n.noteLabel}>Coach · {relative(note.ts)}</span>
       {about ? <span className={n.meta}>{about}</span> : null}
       <p className={n.noteText}>{said}</p>
+      {/* "Was that right?" under each break the coach found; nothing when the block had none */}
+      <CoachFeedback day={note.day} blockId={note.block_id} />
       <details className={n.fold}>
         <summary>The numbers and the evidence</summary>
         <div className={n.foldBody}>
           <SessionRows s={note.session} />
           <Advice suggestions={note.suggestions} calibration={note.calibration} />
           <p className={`${ui.muted} ${ui.small}`}>The camera sees the desk, not the screen, and a trigger is only what happened in the two minutes before a break.</p>
+          <Link href="/coach/" className={ui.btn}>
+            Every block and what Atlas is learning
+          </Link>
         </div>
       </details>
     </div>
