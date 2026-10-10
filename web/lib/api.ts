@@ -697,6 +697,28 @@ const get = <T,>(path: string, params?: Params, signal?: AbortSignal) => request
 const post = <T,>(path: string, body: unknown, signal?: AbortSignal) => request<T>("POST", path, body, signal);
 
 /** URL of the JPEG behind a frame ref. 404s when the box has no image for it (demo fixtures have none). */
+export interface CameraStatus {
+  status: "ok" | "degraded" | "down";
+  fps_actual: number;
+  dropped: number;
+  detected: number;
+  errors: number;
+}
+
+export interface TrackBox {
+  label: string;
+  confidence: number;
+  track_id: number;
+  /** Normalized 0..1, origin top left. */
+  box: { x1: number; y1: number; x2: number; y2: number };
+}
+
+export interface LiveTracks {
+  camera_id: string;
+  ts_ms: number | null;
+  tracks: TrackBox[];
+}
+
 export function keyframeUrl(ref: string): string {
   return `${HTTP_BASE}/memory/keyframes/${encodeURIComponent(ref)}`;
 }
@@ -707,8 +729,14 @@ export function cameraOfFrame(ref: string): string | null {
   return parts.length >= 3 && parts[0] === "frames" ? (parts[1] ?? null) : null;
 }
 
-export const api = {
-  health: (signal?: AbortSignal) => get<Health>("/health", undefined, signal),
+/** The newest frame from a camera (faces blurred by the box); add a changing query so the browser refetches. */
+export function snapshotUrl(camera: string, stamp: number): string {
+  return `${HTTP_BASE}/capture/${encodeURIComponent(camera)}/snapshot.jpg?t=${stamp}`;
+}
+
+export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", undefined, signal),
+  captureStatus: (signal?: AbortSignal) => get<{ cameras: Record<string, CameraStatus> }>("/capture/status", undefined, signal),
+  liveTracks: (camera: string, signal?: AbortSignal) => get<LiveTracks>(`/capture/${encodeURIComponent(camera)}/tracks`, undefined, signal),
 
   ask: (text: string) => post<Answer>("/api/ask", { text }),
 

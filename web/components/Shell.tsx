@@ -56,6 +56,17 @@ const TABS: Tab[] = [
 /** Reached through the More sheet. Their URLs are unchanged. */
 const MORE: Tab[] = [
   {
+    href: "/live",
+    label: "Live",
+    icon: (
+      <>
+        <rect x="3" y="6" width="18" height="13" rx="2.5" />
+        <circle cx="12" cy="12.5" r="3.4" />
+        <path d="M8 6l1.4-2h5.2L16 6" />
+      </>
+    ),
+  },
+  {
     href: "/circle",
     label: "Circle",
     icon: (
