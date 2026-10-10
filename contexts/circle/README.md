@@ -6,6 +6,8 @@ time), and when everyone is free the event is on the shared calendar and in each
 
 What leaves a box is only: a proposal after its approval card, a one-word reply, a named place with an
 expiry (opt-in), and daily summaries / counts / scores (opt-in). Never pictures, raw signals or the calendar.
+One more thing can leave, and only when its own switch is on (it is off by default): a person's own face
+template, as ciphertext only one named friend's box can read, after a card on both boxes. See "Face share" below.
 
 | Piece | Where |
 | --- | --- |
@@ -19,6 +21,7 @@ expiry (opt-in), and daily summaries / counts / scores (opt-in). Never pictures,
 | The phone screen | `web/app/circle/page.tsx`, `web/components/circle/` |
 | An agreed plan as a fixed block of the day | `contexts/play/dayrun/agreed.py` |
 | The group brain: opt-in planning questions to the teacher, text only | `application/group_brain.py`, `infrastructure/teacher.py`, `brain_api.py`, `brain.py` |
+| **Face share** (off by default): a friend's box recognises you | `application/sealed.py` (the envelope), `application/face_share.py`, `face_share_api.py`, `infrastructure/neon_sealed.py` |
 
 The phone's Circle screen (`/circle/`) has four parts: **People**, **Plans**, **League**, **Sharing**.
 Links open a part or a conversation directly: `/circle/?tab=plans&thread=<thread id>`.
@@ -71,6 +74,82 @@ python -m contexts.circle.brain status       # which name answers, "group-brain"
 python -m contexts.circle.brain ask --log-dir /tmp/brain-log --circle team --member ilan --opt-in \
   --fact "Maya is at the Library until 9:00 PM" "Where should we meet tonight?"
 ```
+
+## Face share: a friend's box recognises you (off by default)
+
+Until now a friend was recognised by your box only if they enrolled on your box. With face share, a person who
+is enrolled on their **own** box can let the boxes of **named** friends in the same Circle recognise them. It was
+decided by Hemdutt and built without waiting for the protocol's owner, so it is additive, off by default and has
+one switch. Nothing in `protocol.py`, `neon.py`, `api.py` or `agent_messages` was changed for it.
+
+**Switch.** `circle.face_share: true` in `config/agent.yaml`, or `ATLAS_CIRCLE_FACE_SHARE=1` in `.env`, then restart.
+It is independent of the recognition switch and of `ATLAS_CIRCLE_SHARE`. `circle.face_share_days` (30, at most 90)
+is how long a share lasts.
+
+- **Off, and never switched on:** no key is made, nothing is read from or written to the Circle for it, no file is
+  created, and every `/api/circle/face-share` endpoint answers 409 with the reason.
+- **Switched off after it was on:** at the next poll this member's shares are revoked, the templates friends shared
+  with this box are deleted, the box's public key is taken out of the Circle, and a share that still arrives is
+  ignored and written to the log as ignored (`circle.face_share.changed`, `state: ignored`, `reason: switched_off`).
+
+**The flow** (each step has a test in `tests/test_face_share.py`):
+
+| Step | On whose box | What happens |
+| --- | --- | --- |
+| 0 | both | Each box makes a key pair once and publishes the public half. Each shows its own fingerprint and the friend's. |
+| 1 | the sharer's | People, "Friends who can recognise you", **Share**: an approval card. Nothing has left the box. |
+| 2 | the sharer's | **Approve**: the template is sealed to that one friend's box and one row is written to the Circle. |
+| 3 | the friend's | Next poll (30 s): a card, "<name> wants your Atlas to recognise them. Accept?". Nothing is decrypted yet. |
+| 4 | the friend's | **Approve**: decrypted, stored in that box's own vault as a member with `source: "circle"`, `shared_by`, `received_at`, `expires_at`. The row is removed from the Circle. It is used only while recognition is on there; the card says so when it is off. |
+| later | the sharer's | **Revoke**: a signed revoke; the friend's box deletes the template at its next poll. |
+| later | the friend's | **Forget**, a wipe of everything, or the expiry: deleted. The expiry needs no network. |
+
+**Only the template, only one's own.** What is sealed is the mean vector, the exemplar vectors, the display name and
+the Circle member id (`IdentityService.own_template`): about 37 kB at the most, refused above 256 kB. Never a photo,
+a frame, a crop or expression history. A box shares only the one person enrolled on it, with consent, who is linked
+to that box's own Circle member ("Which Circle member is this?" on the People screen). A visitor who enrolled on your
+box is not yours to share, and a template your box received cannot be shared on, edited or added to.
+
+**The envelope** (`application/sealed.py`; every primitive is from the `cryptography` package, which the vault
+already uses; nothing was added to the dependencies and no cipher was written here):
+
+- Each box has an Ed25519 signing key and an X25519 encryption key. The private halves are in the box's vault
+  (`data/vault/circle/face_share.bin`, AES-256-GCM under the vault's key) and never leave it.
+- A share: a fresh X25519 key pair per message; X25519(ephemeral, friend's public key); HKDF-SHA256 over the result
+  with the protocol name, the ephemeral key, the friend's key and the sender's signing key as `info`;
+  ChaCha20-Poly1305 with a random 96-bit nonce, and the header as associated data; then an Ed25519 signature over
+  the header, the ephemeral key, the nonce and the ciphertext.
+- The header is `{v, kind, circle_id, from, to, share_id, seq, issued_at, expires_at, model}`. Changing who it is
+  from or to, its counter or its dates breaks both the signature and the decryption.
+- A revoke is `{v, kind, circle_id, from, to, seq, issued_at}` with a signature and no ciphertext.
+- `seq` only goes up per sender. A friend's box remembers the highest counter it has seen and the highest it was
+  told to revoke: an old share put back into the database after a revoke (or after a forget) is refused.
+
+**Rows** (`contracts.circle.SealedMessage`, version 1, the `sealed_messages` table; apply `schema.sql` again to add
+it): `box_key` (to everyone: two public keys, self-signed), `face_share` (to one member: header, `eph_pub`, `nonce`,
+`ciphertext`, `sig`), `face_revoke` (to one member: header, `sig`). The table has no CHECK on `kind`, and a box
+skips rows whose kind or version it does not know. It is a separate channel on purpose: `CircleAgent.poll` turns
+every `agent_messages` row into a `circle.message.received` whose `kind` is a closed list, so a new kind in that
+table would break the poll of a box that does not know it. A box without this code never reads `sealed_messages`.
+
+**Limits, said plainly.**
+
+- **Keys are trusted on first use.** A box keeps the first key it sees for a member. Someone who controls the
+  shared database could put their own key under a friend's name before your box has seen the real one, and then
+  read what you share with that friend. The defence is to **compare fingerprints**: your screen shows the friend's
+  box key, theirs shows their own, and they must match (and the other way round). A key that changes later is
+  never used silently: sharing with that friend stops until you compare and trust the new one.
+- **Whoever runs the database can hold messages back.** That includes a revoke. The expiry is the backstop: the
+  friend's box deletes the template after 30 days on its own clock, with or without the Circle.
+- **A friend's box that accepted has the template.** Revoke and expiry are carried out by that box's software; a
+  box that was modified, or a copy of its disk, keeps what it was given. Share with friends you trust.
+- **No forward secrecy.** A share is removed from the database once it is accepted, revoked, replaced or expired.
+  If one is copied from the database before that and the friend's box key is stolen later, it can be read.
+- **Who shares with whom is visible** to anyone who can read the database: member ids, times, the expiry, the
+  face model's name and the size. The template and the name kept with it are not.
+- A share works only between boxes with the same face model (the header names it; the card says when it differs).
+- **Not run against the real Neon database or with real faces.** The store is tested in memory and on the fake
+  connection; the faces in the tests are bytes the fake recogniser turns into vectors.
 
 ## Conversations (`GET /api/circle/threads`, `/api/circle/threads/{id}`)
 
