@@ -6,13 +6,15 @@
 - PUT  /vault/policy          any of those fields; the rest stay as they are
 - POST /vault/wipe/request    {scope: all|keyframes|memory} -> {token, scope, expires_at}
 - POST /vault/wipe            {token} -> publishes vault.wipe.requested; the Wiper does the deleting
-- GET  /vault/egress          placeholder until the egress firewall lands: `enforced` is false
+- GET  /vault/egress          allowed bytes per group (hub, each connector, LAN, NTP, DNS), blocked count and recent blocks
+                               from the firewall's snapshot; `enforced` is false where no firewall runs
 
 `guard` is the gateway's token check; it goes on the PUT and both POSTs. The
 endpoints only publish events: the policy changes because `policy.subscribe(bus)`
 applies them, the same way it does on replay.
 """
 
+import json
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Literal
@@ -93,7 +95,15 @@ def vault_router(
 
     @router.get("/egress")
     async def egress():
-        """Not measured yet: the egress firewall is a separate task. `enforced: false` says so."""
-        return {"allowed": [], "blocked": 0, "enforced": False}
+        """What the egress firewall (V6, jetson/egress.py) let out per group and blocked, from its snapshot file
+        next to policy.json. Without one (a laptop, or the service is not running) `enforced: false` says so."""
+        snap = policy.path.parent / "egress.json"
+        try:
+            data = json.loads(snap.read_text())
+        except (OSError, ValueError):
+            return {"allowed": [], "blocked": 0, "enforced": False}
+        updated = datetime.strptime(data["updated"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+        data["stale"] = (clock() - updated).total_seconds() > 120  # the service stopped writing: the rules still hold
+        return data
 
     return router
