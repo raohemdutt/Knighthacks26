@@ -15,3 +15,6 @@
   keywords: ["7:30"]
 - q: "Where is my wallet?"
   no_evidence: true
+- q: "What is due this week?"
+  cite: ["https://webcourses.ucf.edu/courses/1/assignments/4", "https://webcourses.ucf.edu/courses/1/assignments/9"]
+  keywords: ["HW 4", "Exam 1", "linked lists"]

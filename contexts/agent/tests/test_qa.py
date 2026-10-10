@@ -152,3 +152,21 @@ def test_get_keyframe_tool_captions_a_stored_frame():
     a = asyncio.run(q.ask("Is anything on the desk?"))
     assert a.text == "Yes, keys by the mug." and a.citations[0].frame_ref == "frames:cam-desk:e02"
     assert ("caption", "Are there keys?") in rt.calls
+
+
+def test_due_this_week_answers_from_connector_items_with_links():
+    from contracts.memory import Item
+
+    sunday_10am = datetime(2026, 10, 11, 14, 0, tzinfo=UTC)  # Sun 10:00 AM in New York
+    items = [
+        Item(connector="canvas", kind="assignment", external_id="a", title="HW 4", when=sunday_10am + timedelta(days=2), url="https://canvas/a"),
+        Item(connector="canvas", kind="assignment", external_id="b", title="Essay", when=sunday_10am + timedelta(days=9), url="https://canvas/b"),
+        Item(connector="calendar", kind="calendar_event", external_id="c", title="Judging", when=sunday_10am + timedelta(hours=1)),
+    ]
+    rt = FakeRuntime(chat_replies=[ChatResult(content="HW 4 is due Tuesday.", model_version="v1")])
+    q = QA(rt, FakeMemory(items=items), clock=lambda: sunday_10am)
+    a = asyncio.run(q.ask("What is due this week?"))
+    assert [c.url for c in a.citations] == ["https://canvas/a"]  # the essay is next week; judging isn't "due"
+    cal = asyncio.run(QA(FakeRuntime(), FakeMemory(items=items), clock=lambda: sunday_10am).ask("What's on my calendar today?"))
+    assert [c.title for c in cal.citations] == ["Judging"]
+    assert asyncio.run(QA(FakeRuntime(), FakeMemory(), clock=lambda: sunday_10am).ask("Anything due tomorrow?")).text == NO_EVIDENCE

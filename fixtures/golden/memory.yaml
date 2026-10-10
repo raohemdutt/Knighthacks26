@@ -23,3 +23,13 @@ episodes:
 sightings:
   - {label: keys, camera_id: cam-desk, zone_id: desk, ts: "2026-10-10T19:41:00-04:00",
      frame_ref: "frames:cam-desk:k1941", position: "next to the coffee mug"}
+
+items:
+  - {connector: canvas, kind: assignment, external_id: "canvas:hw4", title: "COP 3502 HW 4: linked lists",
+     when: "2026-10-13T23:59:00-04:00", url: "https://webcourses.ucf.edu/courses/1/assignments/4"}
+  - {connector: canvas, kind: assignment, external_id: "canvas:exam1", title: "COP 3502 Exam 1",
+     when: "2026-10-15T10:00:00-04:00", url: "https://webcourses.ucf.edu/courses/1/assignments/9"}
+  - {connector: canvas, kind: assignment, external_id: "canvas:late", title: "Essay draft (next week)",
+     when: "2026-10-22T23:59:00-04:00", url: "https://webcourses.ucf.edu/courses/2/assignments/1"}
+  - {connector: calendar, kind: calendar_event, external_id: "cal:1", title: "Knight Hacks judging",
+     when: "2026-10-11T11:00:00-04:00", summary: "until 1:00 PM, Engineering 2"}

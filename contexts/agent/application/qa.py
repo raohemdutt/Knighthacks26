@@ -164,6 +164,32 @@ class SleepSchedule:
         return start, min(wake, local)
 
 
+# Item questions: either clearly about the calendar/deadlines, or a thing + a future time phrase.
+ITEMS_Q = re.compile(r"\b(due|deadlines?|calendar|schedule|coming up|upcoming|happening|going on|on campus)\b")
+ITEM_THING = re.compile(r"\b(assignments?|homework|exams?|quiz(zes)?|classes|events?|meetings?)\b")
+FUTURE = re.compile(r"\b(tonight|today|tomorrow|this week|next week|this weekend|weekend|upcoming|soon)\b")
+ITEM_KINDS = {
+    "assignment": re.compile(r"\b(due|deadlines?|assignments?|homework|exams?|quiz)\b"),
+    "calendar_event": re.compile(r"\b(calendar|schedule|classes|meetings?|events?|happening|going on|on campus|tonight)\b"),
+}
+
+
+def upcoming_window(q: str, now: datetime, tz) -> tuple[datetime, datetime]:
+    """Future windows for item questions: tonight, today, tomorrow, this weekend, this week (default 7 days)."""
+    local = now.astimezone(tz)
+    midnight = local.replace(hour=0, minute=0, second=0, microsecond=0)
+    if "tonight" in q:
+        return now, midnight + timedelta(days=1, hours=3)
+    if "tomorrow" in q:
+        return midnight + timedelta(days=1), midnight + timedelta(days=2)
+    if "today" in q:
+        return now, midnight + timedelta(days=1)
+    if "weekend" in q:
+        saturday = midnight + timedelta(days=(5 - local.weekday()) % 7)
+        return max(now, saturday), saturday + timedelta(days=2)
+    return now, now + timedelta(days=7)  # "this week" and the default: the next seven days
+
+
 def time_window(q: str, now: datetime, sleep: SleepSchedule = SleepSchedule()) -> tuple[datetime, datetime] | None:
     if "overnight" in q or "last night" in q:
         return sleep.last_night(now)
@@ -268,11 +294,24 @@ class QA:
 
     # --- pre-fetch (common shapes, no tool loop) ---
 
+    def upcoming_items(self, q: str, ev: Evidence) -> None:
+        """Canvas, calendar, campus and chat items in the asked window, soonest first, each cited by link."""
+        start, end = upcoming_window(q, self.clock(), self.sleep.tz)
+        kinds = [k for k, rx in ITEM_KINDS.items() if rx.search(q)] or [None]
+        items = sorted({i.external_id: i for k in kinds for i in self.memory.items(start, end, kind=k)}.values(),
+                       key=lambda i: i.when)
+        for i in items[:10]:
+            extra = f" ({i.summary})" if i.summary else ""
+            ev.add(f"{i.title}: {self._t(i.when)}{extra} [{i.connector}]", Citation(url=i.url, title=i.title, ts=i.when))
+
     def prefetch(self, question: str) -> Evidence | None:
         q = question.lower().strip()
         ev = Evidence()
         if m := WHERE_IS.search(q):
             self.last_seen(m["item"], ev)
+            return ev
+        if ITEMS_Q.search(q) or (ITEM_THING.search(q) and FUTURE.search(q)):  # A9: "what is due this week?"
+            self.upcoming_items(q, ev)
             return ev
         if window := time_window(q, self.clock(), self.sleep):
             self.episodes_between(*window, ev)
