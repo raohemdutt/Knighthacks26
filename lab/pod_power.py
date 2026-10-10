@@ -4,6 +4,7 @@ On the pod (python3, nothing to install):
 
     python3 pod_power.py check [--save DIR]                 # one read with each tool and option set, as JSON
     python3 pod_power.py serve --node gpu-a [--period-ms 1000] [--port 8790] [--minutes N]
+    python3 pod_power.py alive --pidfile ~/atlas-power/sampler.pid   # the pid, exit 0, only if it is this sampler
 
 What it reads. `amd-smi metric --power --clock --temperature --usage --energy`, once per period, in one process, so
 power, clocks, temperatures, GFX activity and the energy counter come from one instant. SOCKET_POWER is the AMD SMI
@@ -45,6 +46,11 @@ https://dub.aupcloud.io/user/<account>/proxy/<port>/ to anyone holding the accou
 Every answer carries `pod_received` and `pod_sent` (the pod's clock) so a reader can measure the clock offset. The
 server logs no requests: the proxy passes the hub token through in the headers.
 
+Is it running. The pid file lives on the persistent home and outlives the container, so after a relaunch its
+number can belong to any process. `alive` (alive_sampler_pid) answers only from /proc/<pid>/cmdline: the pid counts
+only while its command line is pod_power.py serve. It never signals the pid (os.kill with signal 0 is not a probe on
+every platform), and lab/pod_power.sh asks it before start, stop and status.
+
 Node gate: `serve` refuses to start unless --node is gpu-a or gpu-b and rocminfo names gfx1201 (an R9700 pod).
 Stdlib only and one file, because the team repo cannot be cloned on a pod (lab/README.md); upload this file next
 to lab/pod_power.sh, which starts and stops it.
@@ -69,7 +75,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
@@ -106,6 +112,13 @@ ROCMSMI_OPTIONS: tuple[tuple[str, ...], ...] = (
     ("--showpower",),
 )
 ROCM_BIN = Path("/opt/rocm/bin")
+
+PROC_ROOT = Path("/proc")
+SAMPLER_SCRIPT = "pod_power.py"  # the program name a live sampler's command line carries
+SAMPLER_SERVE = "serve"  # and the subcommand right after it
+ALIVE_EXIT_YES = 0  # `alive`: the pid file names a running sampler (its pid is printed)
+ALIVE_EXIT_NO = 1  # `alive`: no pid file, no such process, or the pid is some other program now
+ALIVE_EXIT_UNKNOWN = 2  # `alive`: the pid file or /proc could not be read; the launcher must not guess
 
 _NUMBER = re.compile(r"^\s*([-+]?\d+(?:\.\d+)?)")
 _SENTINELS = {float(0xFFFF), float(0xFFFFFFFF), float(0xFFFFFFFFFFFFFFFF)}  # unsupported-field markers, never data
@@ -749,6 +762,52 @@ def _rocminfo() -> str:
     return run_command([program], timeout_s=30.0)
 
 
+# --- is the sampler running -------------------------------------------------------------------------------------
+
+def is_sampler_cmdline(cmdline: bytes) -> bool:
+    """Whether a /proc/<pid>/cmdline (NUL-separated arguments) is pod_power.py serve, under any interpreter."""
+    args = [part.decode("utf-8", errors="replace") for part in cmdline.split(b"\0")]
+    return any(PurePosixPath(arg).name == SAMPLER_SCRIPT and following == SAMPLER_SERVE
+               for arg, following in zip(args, args[1:]))
+
+
+def alive_sampler_pid(pidfile: Path, proc: Path = PROC_ROOT) -> int | None:
+    """The pid in `pidfile` when that process is a running `pod_power.py serve`, else None.
+
+    None for a missing pid file, one that holds no positive whole number, a pid with no /proc entry, or a pid whose
+    command line is any other program (the number was reused after a relaunch). The answer comes from
+    proc/<pid>/cmdline only; the pid is never signalled. A pid file or /proc entry that exists but cannot be read
+    raises OSError, so the caller can tell "cannot tell" from "not running"."""
+    try:
+        text = Path(pidfile).read_text(encoding="ascii", errors="replace").strip()
+    except FileNotFoundError:
+        return None
+    if not text.isdigit():
+        return None
+    pid = int(text)
+    if pid <= 0:
+        return None
+    try:
+        cmdline = (Path(proc) / str(pid) / "cmdline").read_bytes()
+    except (FileNotFoundError, ProcessLookupError):  # no such process, or it exited while being read
+        return None
+    return pid if is_sampler_cmdline(cmdline) else None
+
+
+def alive(pidfile: Path, proc: Path = PROC_ROOT) -> int:
+    """The `alive` subcommand: print the sampler's pid and return ALIVE_EXIT_YES, or return ALIVE_EXIT_NO, or
+    say on stderr what could not be read and return ALIVE_EXIT_UNKNOWN."""
+    try:
+        pid = alive_sampler_pid(pidfile, proc)
+    except OSError as exc:
+        print(f"cannot tell whether {pidfile} names a running sampler: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return ALIVE_EXIT_UNKNOWN
+    if pid is None:
+        return ALIVE_EXIT_NO
+    print(pid)
+    return ALIVE_EXIT_YES
+
+
 # --- command line -----------------------------------------------------------------------------------------------
 
 def check(gpu: int = 0, save: str | Path | None = None, run: Callable[[Sequence[str]], str] = run_command,
@@ -836,6 +895,10 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--check-settle-s", type=float, default=CHECK_SETTLE_S)
     run.add_argument("--tolerance", type=float, default=CHECK_TOLERANCE)
     run.add_argument("--minutes", type=float, default=0.0, help="stop after this long (0: run until stopped)")
+    up = sub.add_parser("alive", help="print the pid and exit 0 only if the pid file names a running pod_power.py "
+                                      "serve; exit 1 if it names none, 2 if that cannot be read")
+    up.add_argument("--pidfile", required=True, type=Path, help="the launcher's sampler.pid")
+    up.add_argument("--proc", type=Path, default=PROC_ROOT, help="the proc filesystem to look in (tests)")
     return parser
 
 
@@ -845,6 +908,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = check(args.gpu, args.save)
         print(json.dumps(result, indent=2))
         return 0 if result["ok"] else 1
+    if args.command == "alive":
+        return alive(args.pidfile, args.proc)
     return serve(args)
 
 

@@ -19,7 +19,33 @@ install_copy() {
   [ -f "$DIR/pod_power.py" ] || { echo "pod_power.py is neither next to $0 nor in $DIR"; exit 1; }
 }
 
-running() { [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; }
+# Is the pid file's process the sampler? The pid file is on the persistent home and outlives a relaunch, so its
+# number may belong to any process in the new container; pod_power.py alive answers from /proc/<pid>/cmdline only.
+# Returns 0 with SAMPLER_PID set (a running pod_power.py serve), 1 (none), 2 (cannot tell; the reason is on stderr).
+SAMPLER_PID=""
+running() {
+  SAMPLER_PID=""
+  local script="$HERE/pod_power.py" out code=0
+  [ -f "$script" ] || script="$DIR/pod_power.py"
+  if [ ! -f "$script" ]; then
+    echo "cannot check $PIDFILE: pod_power.py is neither next to $0 nor in $DIR" >&2
+    return 2
+  fi
+  out="$(python3 "$script" alive --pidfile "$PIDFILE")" || code=$?
+  case "$code" in
+    0) SAMPLER_PID="$out"; return 0 ;;
+    1) return 1 ;;
+    *) echo "cannot check $PIDFILE: pod_power.py alive exited $code" >&2; return 2 ;;
+  esac
+}
+
+# A pid file that names no running sampler is left over from a pod that was stopped or culled: remove it.
+drop_stale_pidfile() {
+  if [ -f "$PIDFILE" ]; then
+    echo "removing $PIDFILE: pid $(head -c 32 "$PIDFILE" | tr -d '[:space:]') is not a running pod_power.py serve"
+    rm -f "$PIDFILE"
+  fi
+}
 
 show_status() {
   python3 -c 'import sys, urllib.request; print(urllib.request.urlopen("http://127.0.0.1:%s/status" % sys.argv[1], timeout=5).read().decode())' "$PORT"
@@ -30,18 +56,37 @@ case "$STEP" in
     NODE="${2:?usage: bash pod_power.sh start gpu-a|gpu-b [period_ms]}"
     PERIOD="${3:-1000}"
     install_copy
-    if running; then echo "already running (pid $(cat "$PIDFILE"))"; show_status; exit 0; fi
+    running; STATE=$?
+    if [ "$STATE" -eq 2 ]; then exit 1; fi
+    if [ "$STATE" -eq 0 ]; then
+      echo "already running (pid $SAMPLER_PID)"
+      if show_status; then exit 0; fi
+      echo "pid $SAMPLER_PID is pod_power.py serve but nothing answered on 127.0.0.1:$PORT"
+      exit 1
+    fi
+    drop_stale_pidfile
     nohup python3 "$DIR/pod_power.py" serve --node "$NODE" --period-ms "$PERIOD" --port "$PORT" --dir "$DIR" \
       >> "$DIR/sampler.log" 2>&1 &
     echo $! > "$PIDFILE"
     sleep 15  # past the 10 s start-up energy check, so the status below shows its verdict
-    if running; then show_status; else echo "the sampler exited:"; tail -n 20 "$DIR/sampler.log"; exit 1; fi
+    running; STATE=$?
+    if [ "$STATE" -eq 0 ]; then show_status; else echo "the sampler exited:"; tail -n 20 "$DIR/sampler.log"; exit 1; fi
     ;;
   stop)
-    if running; then kill "$(cat "$PIDFILE")"; rm -f "$PIDFILE"; echo "stopped"; else echo "not running"; fi
+    running; STATE=$?
+    case "$STATE" in
+      0) kill "$SAMPLER_PID"; rm -f "$PIDFILE"; echo "stopped" ;;
+      1) drop_stale_pidfile; echo "not running" ;;
+      *) exit 1 ;;
+    esac
     ;;
   status)
-    if running; then show_status; else echo "not running"; exit 1; fi
+    running; STATE=$?
+    case "$STATE" in
+      0) show_status ;;
+      1) echo "not running"; exit 1 ;;
+      *) exit 1 ;;
+    esac
     ;;
   check)
     install_copy
