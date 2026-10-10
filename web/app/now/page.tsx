@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { CheckinCard } from "@/components/checkin/CheckinCard";
 import { CoachFeedback } from "@/components/coach/CoachFeedback";
 import { RouteSheet } from "@/components/dayrun/RouteSheet";
 import { Empty, ErrorBox, Loading, WriteError } from "@/components/States";
@@ -256,6 +257,16 @@ function Day({ d, brief, patterns, reload }: { d: DayNow; brief: BriefState; pat
       {d.replan ? <ReplanFold r={d.replan} /> : null}
 
       {s ? <Strip s={s} /> : null}
+
+      {/* The check-in, when Atlas raised one today: one card at the top of the day's ribbon. */}
+      {d.checkin ? (
+        <CheckinCard
+          key={d.checkin.event_id}
+          card={d.checkin}
+          said={brief.latest.checkin && brief.latest.checkin.ref === d.checkin.event_id ? brief.latest.checkin.display : undefined}
+          onChanged={reload}
+        />
+      ) : null}
 
       {d.plan ? (
         <section className={ui.section} aria-label="Your day">

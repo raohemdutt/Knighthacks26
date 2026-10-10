@@ -1330,6 +1330,64 @@ export interface DayNow {
   coach?: DayCoachNote | null;
   /** The blocks before that one in the last day, newest first. */
   coach_earlier?: DayCoachNote[];
+  /** The check-in to show at the top of the day, when Atlas raised one today; absent on a box without it. */
+  checkin?: CheckinCard | null;
+}
+
+export type CheckinKind = "sleep" | "resting_hr" | "expression" | "sitting" | "drink" | "history";
+
+/** contracts.day.CheckinSignal: one thing the box noticed, in plain words. Never a raw heart number. */
+export interface CheckinSignal {
+  kind: CheckinKind;
+  summary: string;
+  detail: string;
+  since: string | null;
+  minutes: number | null;
+  evidence_refs: string[];
+}
+
+/** What is behind each chip, looked up on the box when this phone asks. Only the kinds the check-in has. */
+export interface CheckinEvidence {
+  sleep?: { asleep_min: number | null; in_bed_min: number | null; stages: Record<string, number>; usual_min: number | null; nights: number };
+  /** `rel` is each day against the person's own baseline (1 = baseline). The values come only with `numbers=true`. */
+  resting_hr?: { series: { day: string; rel: number }[]; days: number; baseline?: number; today?: number; values?: number[] };
+  expression?: { windows: { start: string; end: string; samples: number; strained: number }[] };
+  sitting?: { since: string | null; minutes: number | null };
+  drink?: {
+    since: string | null;
+    picked_up: boolean;
+    frame_ref: string | null;
+    last_seen: { label: string; ts: string; frame_ref: string | null; zone_id: string | null; position: string | null } | null;
+  };
+  history?: { days: { day: string; text: string }[]; outcome: string; by: string | null };
+}
+
+/** contracts.day.DayCheckinRaised with its words, its answer and its evidence (GET /api/day/checkin, /api/day/now). Box-only. */
+export interface CheckinCard extends EventEnvelope {
+  type: "day.checkin.raised";
+  day: string;
+  at: string;
+  signals: CheckinSignal[];
+  suggestions: { kind: "drink" | "break" | "move_block" | "walk"; text: string }[];
+  history: { matches: number; outcome: string; by: string | null; days: { day: string; text: string }[] } | null;
+  proposes_replan: boolean;
+  plan_id: string | null;
+  text: string;
+  answered: "done" | "move" | null;
+  spoken: string | null;
+  display: string;
+  evidence: CheckinEvidence;
+}
+
+/** GET /api/day/checkin */
+export interface CheckinView {
+  now: string;
+  enabled: boolean;
+  latest: CheckinCard | null;
+  history: { id: string; at: string; day: string; text: string; signals: string[]; answered: "done" | "move" | null }[];
+  watching: { signals: string[]; agree: boolean; held: string | null };
+  rule: Record<string, number | string>;
+  limits: string[];
 }
 
 /** GET /api/day/plan?day= : `moves` go straight into POST /api/dayrun/simulate. */
@@ -1344,7 +1402,7 @@ export interface DayPlanOut {
   plan: DayPlan | DayReplan;
 }
 
-export type DayMoment = "morning" | "now" | "replan" | "coach" | "evening" | "approval";
+export type DayMoment = "morning" | "now" | "replan" | "coach" | "evening" | "approval" | "checkin";
 
 /** contracts.day.DayNarrated: one moment of the day in words, for the ear (`spoken`) and for the screen (`display`). */
 export interface DayNarration extends EventEnvelope {
@@ -1804,6 +1862,11 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   coachCorrect: (body: import("./coachFeedback").CoachCorrectionBody) =>
     post<import("./coachFeedback").CoachCorrectionResult>("/api/day/coach/corrections", body),
   dayPatterns: (signal?: AbortSignal) => get<{ patterns: DayPattern[]; note?: string }>("/api/day/patterns", undefined, signal),
+  /** The check-in with its evidence. `numbers` asks for the resting heart rate's values: only after an explicit tap, on this device. */
+  dayCheckin: (numbers = false, signal?: AbortSignal) => get<CheckinView>("/api/day/checkin", numbers ? { numbers: "true" } : undefined, signal),
+  dayCheckinDone: (id: string) => post<{ id: string; answered: "done" }>("/api/day/checkin/done", { id }),
+  /** "Move the block": raises a re-plan with its approval card. Nothing changes until that card is approved. */
+  dayCheckinMove: (id: string) => post<{ id: string; answered: "move"; plan_id: string; action_id: string | null }>("/api/day/checkin/move", { id }),
 
   // Inspection (SPOT): contexts/spot; shapes in components/spot/types.ts. Every GET answers 200 without a kit ({configured: false, note}).
   spotOverview: (signal?: AbortSignal) => get<Spot.Overview>("/api/spot/overview", undefined, signal),
