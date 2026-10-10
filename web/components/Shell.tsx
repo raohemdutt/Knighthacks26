@@ -142,6 +142,17 @@ const MORE: MoreTab[] = [
     ),
   },
   {
+    href: "/lab",
+    group: "Home",
+    label: "Learning lab",
+    icon: (
+      <>
+        <path d="M4 18.500l4.500-6 3.500 3 4-7 4 4.500" />
+        <path d="M4 5v15h16" />
+      </>
+    ),
+  },
+  {
     href: "/circle",
     group: "Friends",
     label: "Circle",

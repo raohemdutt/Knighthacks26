@@ -668,7 +668,7 @@ class LabView:
             r = report[1]
             if r.p_value is not None:
                 alpha = ev["alpha"]
-                detail.append(f"p = {r.p_value:.3g}: a difference this large would show up by chance about "
+                detail.append(f"p = {r.p_value:.3g}: a difference this large would show up by chance "
                               f"{_one_in(r.p_value)}; the gate needs p below {alpha:g}.")
             if r.noise is not None and cur is not None and cand is not None:
                 side = "larger than" if abs(cand - cur) > r.noise else "inside"
@@ -749,7 +749,7 @@ def _one_in(p: float) -> str:
         return "never"
     if p >= 0.5:
         return "more than half the time"
-    return f"1 time in {round(1 / p):,}"
+    return f"about 1 time in {round(1 / p):,}"
 
 
 def fold(view: LabView, events: list[Event]) -> LabView:
