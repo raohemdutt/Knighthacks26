@@ -111,6 +111,12 @@ EXPECTED_SEED = [
     ("proxy.stream_first_byte_s", "pod-b", {"accept": "application/json"}, 31.483, "s", False),
     ("proxy.status", "pod-b", {"case": "5 MB body"}, 400, "http", False),
     ("proxy.concurrent_wall_s", "pod-b", {"case": "20 concurrent"}, 2.998, "s", False),
+    # T13: the Jetson sampler's CPU cost and the box's idle watts, over SSH in MAXN_SUPER (fixtures/telemetry/jetson_sampler_cost)
+    ("telemetry.sampler_cpu_pct", "jetson", {"period_ms": 100, "load": "idle"}, 3.513, "percent of one core", True),
+    ("telemetry.sampler_cpu_pct", "jetson", {"period_ms": 200, "load": "idle"}, 1.833, "percent of one core", True),
+    ("telemetry.sampler_cpu_pct", "jetson", {"period_ms": 100, "load": "one caption request in flight"}, 3.28, "percent of one core", True),
+    ("telemetry.sampler_cpu_pct", "jetson", {"period_ms": 200, "load": "one caption request in flight"}, 1.703, "percent of one core", True),
+    ("jetson.idle_watts", "jetson", {"rail": "VDD_IN", "samples": 3000}, 15.76, "W", True),
 ]
 
 # The numbers the lab setup measured, by metric name.
@@ -118,6 +124,7 @@ MEASURED_NAMES = {
     "teacher.decode_tok_s", "teacher.ttft_s", "teacher.watts_avg", "teacher.watts_peak",
     "teacher.engine_init_s", "teacher.vram_pct", "trainer.samples_per_s", "trainer.peak_mem_gb",
     "pod.idle_watts", "pod.start_s", "pod.credits_per_min", "pod.balance_credits",
+    "telemetry.sampler_cpu_pct", "jetson.idle_watts",
 }
 
 
@@ -166,7 +173,8 @@ def test_every_low_confidence_seed_row_says_why():
     flagged = [row for row in metrics.load() if row["low_confidence"]]
     assert {row["metric"] for row in flagged} == {
         "teacher.joules_per_token", "pod.idle_watts", "pod.balance_credits", "teacher.watts_avg", "teacher.watts_peak",
-        "pod.settle_s", "pod.idle_state_share"}
+        "pod.settle_s", "pod.idle_state_share",
+        "telemetry.sampler_cpu_pct", "jetson.idle_watts"}
     for row in flagged:
         if row["conditions"].get("sampler") == SAMPLER:  # the sampler's rows: its error is "unknown" until a reference run
             assert row["conditions"]["error"] == "unknown", row["metric"]
