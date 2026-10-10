@@ -28,6 +28,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from lab.machine import refine_formats as rf
+
 __all__ = ["LABELS", "check", "check_reference", "label_of", "main", "slugify"]
 
 LABELS = ("measured", "practitioner", "anecdote", "opinion")
@@ -61,7 +63,6 @@ _EXEMPT_PREFIXES = (
 )
 
 _CODE_SPAN = re.compile(r"`[^`\n]*`")
-_FENCE = re.compile(r"^\s*(`{3,}|~{3,})")
 _HEADING = re.compile(r"^ {0,3}(#{1,6})[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$")
 _ITEM = re.compile(r"^(?P<indent>[ \t]*)(?:[-*+]|\d{1,3}[.)])[ \t]+(?P<text>\S.*)$")
 _RULE = re.compile(r"^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$")
@@ -191,19 +192,12 @@ def _clean(text: str) -> list[str]:
 
 
 def _visible(lines: list[str]):
-    """(line number, line) for every line outside a code fence."""
-    fence = ""
-    for number, raw in enumerate(lines, 1):
-        line = raw.expandtabs(4)
-        if fence:
-            if re.match(r"^\s*" + re.escape(fence[0]) + "{" + str(len(fence)) + r",}\s*$", line):
-                fence = ""
-            continue
-        opening = _FENCE.match(line)
-        if opening:
-            fence = opening.group(1)
-            continue
-        yield number, line
+    """(line number, line) for every line outside a fenced code block (refine_formats.code_blocks)."""
+    expanded = [raw.expandtabs(4) for raw in lines]
+    fenced = {index for block in rf.code_blocks(expanded) for index in block.indexes}
+    for index, line in enumerate(expanded):
+        if index not in fenced:
+            yield index + 1, line
 
 
 def _normalized_heading(text: str) -> str:

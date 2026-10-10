@@ -452,6 +452,26 @@ def test_a_heading_inside_a_code_fence_is_not_an_entry():
     assert entry.next_pass == "re-walk T9 and E9. ``` ## Notes ```"
 
 
+@pytest.mark.parametrize(
+    "block",
+    [
+        pytest.param("~~~\n## Notes\n~~~", id="tilde-fence"),
+        pytest.param("````\n```\n## Notes\n```\n````", id="backtick-fence-inside-a-longer-one"),
+        pytest.param("```text\n```text\n## Notes\n```", id="a-fence-with-an-info-string-does-not-close"),
+        pytest.param("```\n~~~\n## Notes\n~~~\n```", id="tilde-fence-inside-a-backtick-one"),
+    ],
+)
+def test_a_heading_inside_any_fenced_code_block_is_not_an_entry(block):
+    """A fenced block opens with three or more backticks or tildes and closes only at a bare fence of the same
+    character at least as long, as CommonMark reads it, so a quoted '## ' line inside never becomes an entry."""
+    fenced = edit(SAMPLE, "Left for the next pass: re-walk T9 and E9.", "Left for the next pass: re-walk T9 and E9.\n\n" + block)
+
+    entry = only_entry(fenced)
+
+    assert (entry.kind, entry.number) == ("pass", 7)
+    assert entry.next_pass == "re-walk T9 and E9. " + " ".join(block.splitlines())
+
+
 def test_a_section_label_may_appear_only_once_in_an_entry():
     doubled = edit(SAMPLE, "Converged: NO - two changes made.", "Converged: NO - two changes made.\nConverged: NO - again.")
 

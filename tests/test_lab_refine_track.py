@@ -321,6 +321,35 @@ def test_a_dry_run_without_its_entry_block_is_reported(tmp_path):
     ]
 
 
+def refence(text, opener, closer):
+    """The record with its entry block fenced by opener and closer instead of ```text dry-run:pass-entry and ```."""
+    head, found, rest = text.partition("```text dry-run:pass-entry\n")
+    assert found, "the recorded dry run has no entry block"
+    body, found, tail = rest.partition("\n```\n")
+    assert found, "the recorded dry run's entry block has no closing fence"
+    return f"{head}{opener}\n{body}\n{closer}\n{tail}"
+
+
+@pytest.mark.parametrize(
+    "opener,closer,inner",
+    [
+        pytest.param("~~~text dry-run:pass-entry", "~~~", "", id="tilde-fence"),
+        pytest.param(
+            "````text dry-run:pass-entry", "````", "```\n## Pass 2, 2026-10-10\n```\n", id="longer-fence-around-a-quoted-block"
+        ),
+    ],
+)
+def test_a_dry_run_entry_block_may_use_any_fence_markdown_allows(tmp_path, opener, closer, inner):
+    """The entry block is found by the fence reading refine_formats uses for the log, so a tilde fence, or a longer
+    fence around output that holds a fenced block of its own, is one block and its quoted heading is not an entry."""
+    text = refence(recorded_text(), opener, closer)
+    text = edit(text, "Checks run (commands and their actual output):\n", "Checks run (commands and their actual output):\n" + inner)
+    path = put_dry_run(tmp_path, text)
+
+    assert rt.check_dry_run(path) == []
+    assert rt.parse_dry_run(text).entry.number == 1
+
+
 def test_a_dry_run_block_holding_two_entries_is_reported(tmp_path):
     text = recorded_text()
     path = put_dry_run(tmp_path, edit(text, "Checks run (commands and their actual output):", "## Pass 2, 2026-10-10\n\nChecks run (commands and their actual output):"))

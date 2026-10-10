@@ -19,6 +19,8 @@ A dry-run record is a pass report (TEMPLATES.md section 4) with three difference
     ...
     ```
 
+The entry block is the fenced code block whose info string is "text dry-run:pass-entry", its fences read as
+refine_formats.code_blocks reads them, so a longer fence may wrap output that holds a fenced block of its own.
 Its file is named <YYYY-MM-DD>-pass-<NN>.md after the date and the pass it rehearses. A dry run is not a pass:
 its entry never counts toward the counter, and no pass cites a record as a source. parse_dry_run() reads one
 and raises FormatError when its structure is wrong.
@@ -56,7 +58,7 @@ _DRY_RUN_HEADER = re.compile(
     r"(?P<date>[0-9]{4}-[0-9]{2}-[0-9]{2})\."
 )
 _DRY_RUN_NAME = re.compile(r"^(?P<date>[0-9]{4}-[0-9]{2}-[0-9]{2})-pass-(?P<number>[0-9]{2,})\.md$")
-_DRY_RUN_FENCE = re.compile(r"^```text dry-run:pass-entry[ \t]*\n(?P<body>.*?)^```[ \t]*$", re.MULTILINE | re.DOTALL)
+_DRY_RUN_INFO = "text dry-run:pass-entry"  # the info string of the fenced block that holds the rehearsed entry
 _REPORT_FIRST_LINE = re.compile(r"^Verbatim report returned by (?P<track>[a-z]+) refinement pass (?P<number>[0-9]+) \(")
 _METRICS_LINE = re.compile(r"(?:^|/)metrics\.jsonl:(?P<line>[0-9]+)$")
 
@@ -84,10 +86,10 @@ def parse_dry_run(text: str) -> DryRun:
     if len(lines) < 2 or not lines[1].startswith("Ended:"):
         raise rf.FormatError("the second line of a dry-run record states when it ended: 'Ended: <date>T<time><offset>'")
     ended = rf.parse_report_end(lines[1])
-    fences = list(_DRY_RUN_FENCE.finditer("\n".join(lines)))
+    fences = [block for block in rf.code_blocks(lines) if block.closed and block.info == _DRY_RUN_INFO]
     if len(fences) != 1:
         raise rf.FormatError(f"a dry-run record holds exactly one ```text dry-run:pass-entry block, found {len(fences)}")
-    log = rf.parse_log(fences[0]["body"])
+    log = rf.parse_log("\n".join(fences[0].body))
     entries = [entry for entry in log.entries if isinstance(entry, rf.PassEntry) and entry.kind == "pass"]
     if len(log.entries) != 1 or len(entries) != 1:
         raise rf.FormatError(f"the dry-run block holds one '## Pass N, YYYY-MM-DD' entry and nothing else, found {len(log.entries)} entries")

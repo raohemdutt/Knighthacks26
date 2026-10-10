@@ -14,12 +14,14 @@ what to fix.
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date as _date
 from datetime import datetime
 
 __all__ = [
     "Change",
+    "CodeBlock",
     "Finding",
     "FormatError",
     "Log",
@@ -34,6 +36,7 @@ __all__ = [
     "TRACKS",
     "Walk",
     "check_pass_entry",
+    "code_blocks",
     "parse_counter",
     "parse_log",
     "parse_report_end",
@@ -96,12 +99,58 @@ _RULING_REF = re.compile(r"\bRULING \((?P<labels>[a-z](?:\s*,\s*[a-z])*)\)")
 _RAISED_START = re.compile(r"^\((?P<label>[a-z])\)\s+(?P<question>.+)$")
 _RULINGS_APPLIED = re.compile(r"^Rulings applied:\s*(?P<numbers>[0-9]+(?:\s*,\s*[0-9]+)*)\s*$")
 
+# A code fence: three or more backticks or tildes, after any indentation; what follows is the info string.
+_FENCE = re.compile(r"^\s*(?P<fence>`{3,}|~{3,})(?P<info>.*)$")
+
 _RAISED_FIELDS = {"Now": "now", "Recommend": "recommend", "Source of tension": "tension", "Answer": "answer"}
 _RULING_FIELDS = {**_RAISED_FIELDS, "Tension": "tension"}
 
 
 class FormatError(ValueError):
     """A refinement file breaks the structure documented in lab/refine/TEMPLATES.md."""
+
+
+@dataclass(frozen=True)
+class CodeBlock:
+    """A fenced code block of a markdown text, by line index: the opening fence (start), the closing fence (end, or
+    the text's last line when the block never closes), the opener's info string and the lines between the fences."""
+
+    start: int
+    end: int
+    info: str
+    body: tuple[str, ...]
+    closed: bool
+
+    @property
+    def indexes(self) -> range:
+        """The indexes of every line the block covers, its fences included."""
+        return range(self.start, self.end + 1)
+
+
+def code_blocks(lines: Sequence[str]) -> list[CodeBlock]:
+    """The fenced code blocks among a markdown text's lines, read as CommonMark reads them.
+
+    A block opens at a line of three or more backticks or tildes (any indentation, then an optional info string)
+    and closes at the next line holding only a fence of the same character at least as long. A shorter fence, a
+    fence of the other character or a fence with text after it is a line of the block, so a block can quote
+    another. A block that never closes runs to the end of the text.
+    """
+    blocks: list[CodeBlock] = []
+    opened: tuple[int, str, str] | None = None
+    for index, line in enumerate(lines):
+        if opened is None:
+            found = _FENCE.match(line)
+            if found:
+                opened = (index, found["fence"], found["info"].strip())
+            continue
+        start, fence, info = opened
+        if re.fullmatch(rf"\s*{re.escape(fence[0])}{{{len(fence)},}}\s*", line):
+            blocks.append(CodeBlock(start, index, info, tuple(lines[start + 1:index]), True))
+            opened = None
+    if opened is not None:
+        start, _, info = opened
+        blocks.append(CodeBlock(start, len(lines) - 1, info, tuple(lines[start + 1:]), False))
+    return blocks
 
 
 @dataclass(frozen=True)
@@ -505,14 +554,14 @@ def _check_change(add, change: Change, full: bool) -> None:
 
 
 def _split_h2(text: str) -> tuple[list[str], list[tuple[str, list[str]]]]:
-    """Return the lines before the first '## ' heading and each heading with its body lines."""
+    """Return the lines before the first '## ' heading and each heading with its body lines. A '## ' line inside a
+    fenced code block (code_blocks) is a line of the body, not a heading."""
     header: list[str] = []
     blocks: list[tuple[str, list[str]]] = []
-    in_fence = False
-    for line in text.splitlines():
-        if line.lstrip().startswith("```"):
-            in_fence = not in_fence
-        if not in_fence and line.startswith("## "):
+    lines = text.splitlines()
+    fenced = {index for block in code_blocks(lines) for index in block.indexes}
+    for index, line in enumerate(lines):
+        if index not in fenced and line.startswith("## "):
             blocks.append((line.rstrip(), []))
         elif blocks:
             blocks[-1][1].append(line)
