@@ -129,7 +129,7 @@ lessons, not their headline numbers.
 
   Implication: if stock Triton reaches roughly a quarter of what hand-written WMMA code does on
   gfx1201, compute-bound shapes (prefill, large batches) have large headroom; single-stream decode
-  is bandwidth-bound, so this matters for TTFT and for W2, not for KE2's W1 gain.
+  is bandwidth-bound, so this matters for TTFT and for WL2, not for KE2's WL1 gain.
 
   Experiment: KE0 includes prefill; if prefill GEMMs exceed a third of a labeling job's time, a
   W8A8 or W4A8 FP8 prefill path becomes a candidate (precision note, "INT8 and INT4 matrix

@@ -461,8 +461,9 @@ decoding with the checkpoint's own MTP layer is the third lever for single-strea
 
 Each row is a candidate for T0, scored by expected joules-per-token gain times confidence.
 "Gain" is the expected fractional cut in J/token against the 26 J/token baseline on the workload
-named in the row: W1 is single-stream decode (interactive answers and captions at concurrency 1),
-W2 is batched labeling at concurrency 16 with 2k to 4k tokens of context. "Confidence" is our
+named in the row: WL1 is single-stream decode (interactive answers and captions at concurrency 1),
+WL2 is batched labeling at concurrency 16 with 2k to 4k tokens of context (WL1 and WL2 name
+workloads; they are unrelated to the W1 to W6 work items in `lab/refine/kernels/RUBRIC.md`). "Confidence" is our
 probability that the experiment delivers at least half of that gain, judged from the labels of
 its evidence (measured on gfx1201 above measured on a sibling RDNA part above practitioner above
 opinion). Gains do not add: KE2, KE4, KE5, KE6 and KE13 are alternatives for the same GEMMs, and
@@ -479,22 +480,22 @@ concurrency 1. Rows with very large expected effects (KE1) may use 3 spawns per 
 
 | Rank | Id | Lever | Workload | Expected movement | Gain | Confidence | Score | Minimum runs | Board home |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | KE1 | Batch the labeling jobs: concurrency 1, 4, 8, 16 (32 if KV fits) | W2 | aggregate 7.7 to 60-110 tok/s at c=16; 26 to 2-4 J/token; per-request TPOT up 1.1x to 1.5x | 0.85 | 0.75 | 0.64 | 3 spawns, 10 requests per level | R26, T0 E3 |
-| 2 | KE2 | RDNAHybridW4A16 kernel (newer vLLM, or backport onto b1388b1) | W1 | 7.7 to 20-30 tok/s; TTFT -10% to -40%; 26 to 9-12 J/token | 0.60 | 0.60 | 0.36 | 5 spawns per arm plus R21 | new task |
-| 3 | KE3 | MTP speculative decoding, 1 to 3 draft tokens, from the checkpoint's own MTP layer | W1 | 1.4x to 2.6x tok/s on Conch (verify rows ride free in its 128-row tile), 1.6x to 1.9x after KE2; -30% to -60% J/token | 0.45 | 0.45 | 0.20 | 5 spawns per arm, greedy and production sampling | new task |
-| 4 | KE4 | `VLLM_DISABLED_KERNELS=ConchLinearKernel` with `--dtype float16` (ExLlama path) | W1 | 1.5x to 3x tok/s; -30% to -60% J/token; accuracy risk from fp16 | 0.50 | 0.30 | 0.15 | 5 spawns per arm plus R21 and a GSM8K-style check | new task |
-| 5 | KE6 | Split-K Triton W4A16 (only if KE2 is blocked) | W1 | 1.5x to 2.5x tok/s; -35% to -60% J/token | 0.45 | 0.30 | 0.14 | 5 spawns per arm plus per-shape fp32-reference tests | R12 candidate |
-| 6 | KE5 | Conch tile retune (patch `_get_tuning_parameters`: BLOCK_M 16 for decode, BLOCK_N 32-128, BLOCK_K 64-256, 2-8 warps, 1-2 stages, LDS checked) | W1 | 1.2x to 1.8x tok/s; -15% to -40% J/token | 0.25 | 0.40 | 0.10 | 5 spawns per config shortlisted from a cache-flushed microbenchmark | R24 |
-| 7 | KE14 | FP8 W8A8 checkpoint `Qwen/Qwen3.8-27B-FP8` (28.8 GB) | W1 only | 14-17 tok/s at batch 1; -40% to -50% J/token at W1; almost no room for KV, so W2 gets worse | 0.40 | 0.20 | 0.08 | 3 spawns after a load test | R25 |
-| 8 | KE13 | Quark MXFP4 checkpoint through the Capicua RDNA4 fork (upstream only emulates MXFP4 on gfx1201) | W1 | similar to KE2 if the fork runs on our stack; it expects torch 2.10 | 0.55 | 0.15 | 0.08 | 3 spawns per arm | R23-adjacent |
-| 9 | KE7 | Spawn-lottery check and CUDA-graph mode (default `FULL_AND_PIECEWISE` vs `PIECEWISE`) | W1 | either no second band, or a band 1.3x to 2.2x faster at the same watts | 0.30 | 0.25 | 0.075 | 6 spawns per mode | R20 protocol |
-| 10 | KE8 | Attention at long context: `ROCM_SEGMENTED_ATTN` (newer vLLM) or unified-attention stage and block tuning | W1 and W2 at 4k-16k | +20% to +80% tok/s at long context, about 0 at short captions | 0.15 | 0.45 | 0.068 | 5 spawns per arm per context length | R12 |
-| 11 | KE10 | GDN state in bf16 (`--mamba-ssm-cache-dtype bfloat16`; the checkpoint asks for float32) | W2 | state traffic 4.8 to 2.4 GB per step at c=16; -8% to -12% J/token at W2, about -1% at W1 | 0.08 | 0.40 | 0.032 | 5 spawns per arm plus R21 on long outputs | new task |
-| 12 | KE9 | FP8 KV cache with the checkpoint's calibrated `k_scale` and `v_scale` | W2 | -10% to -20% bytes per step at c=16 and 8k context, 2x KV capacity; about 0 at W1 | 0.10 | 0.30 | 0.030 | 5 spawns per arm plus R21 and a task-accuracy check | R25 |
-| 13 | KE12 | FP8 or int8 `lm_head` (2.54 GB of bf16 per token) | W1 after KE2 | -6% to -8% J/token after KE2 | 0.07 | 0.30 | 0.021 | 5 spawns per arm plus top-1 logit agreement | new task |
-| 14 | KE11 | GDN packed-decode launch configs for gfx1201 (#60400, Python only) | W1 and W2 | GDN kernel -7.6% to -10%; about -1% to -2% of the step | 0.015 | 0.60 | 0.009 | 5 spawns per arm | new task |
-| 15 | KE15 | Energy-aware config selection: pick tiles by joules per call instead of time | W1 | 0 to -5% J/token at fixed clocks | 0.03 | 0.25 | 0.008 | 1 s windows per config, 5 repeats | post-hackathon thread |
-| 16 | KE16 | PyTorch TunableOp for the bf16 prefill GEMMs | W1 TTFT | TTFT 0 to -10%, J/token about 0 | 0.01 | 0.30 | 0.003 | 5 spawns per arm | none |
+| 1 | KE1 | Batch the labeling jobs: concurrency 1, 4, 8, 16 (32 if KV fits) | WL2 | aggregate 7.7 to 60-110 tok/s at c=16; 26 to 2-4 J/token; per-request TPOT up 1.1x to 1.5x | 0.85 | 0.75 | 0.64 | 3 spawns, 10 requests per level | R26, T0 E3 |
+| 2 | KE2 | RDNAHybridW4A16 kernel (newer vLLM, or backport onto b1388b1) | WL1 | 7.7 to 20-30 tok/s; TTFT -10% to -40%; 26 to 9-12 J/token | 0.60 | 0.60 | 0.36 | 5 spawns per arm plus R21 | new task |
+| 3 | KE3 | MTP speculative decoding, 1 to 3 draft tokens, from the checkpoint's own MTP layer | WL1 | 1.4x to 2.6x tok/s on Conch (verify rows ride free in its 128-row tile), 1.6x to 1.9x after KE2; -30% to -60% J/token | 0.45 | 0.45 | 0.20 | 5 spawns per arm, greedy and production sampling | new task |
+| 4 | KE4 | `VLLM_DISABLED_KERNELS=ConchLinearKernel` with `--dtype float16` (ExLlama path) | WL1 | 1.5x to 3x tok/s; -30% to -60% J/token; accuracy risk from fp16 | 0.50 | 0.30 | 0.15 | 5 spawns per arm plus R21 and a GSM8K-style check | new task |
+| 5 | KE6 | Split-K Triton W4A16 (only if KE2 is blocked) | WL1 | 1.5x to 2.5x tok/s; -35% to -60% J/token | 0.45 | 0.30 | 0.14 | 5 spawns per arm plus per-shape fp32-reference tests | R12 candidate |
+| 6 | KE5 | Conch tile retune (patch `_get_tuning_parameters`: BLOCK_M 16 for decode, BLOCK_N 32-128, BLOCK_K 64-256, 2-8 warps, 1-2 stages, LDS checked) | WL1 | 1.2x to 1.8x tok/s; -15% to -40% J/token | 0.25 | 0.40 | 0.10 | 5 spawns per config shortlisted from a cache-flushed microbenchmark | R24 |
+| 7 | KE14 | FP8 W8A8 checkpoint `Qwen/Qwen3.8-27B-FP8` (28.8 GB) | WL1 only | 14-17 tok/s at batch 1; -40% to -50% J/token at WL1; almost no room for KV, so WL2 gets worse | 0.40 | 0.20 | 0.08 | 3 spawns after a load test | R25 |
+| 8 | KE13 | Quark MXFP4 checkpoint through the Capicua RDNA4 fork (upstream only emulates MXFP4 on gfx1201) | WL1 | similar to KE2 if the fork runs on our stack; it expects torch 2.10 | 0.55 | 0.15 | 0.08 | 3 spawns per arm | R23-adjacent |
+| 9 | KE7 | Spawn-lottery check and CUDA-graph mode (default `FULL_AND_PIECEWISE` vs `PIECEWISE`) | WL1 | either no second band, or a band 1.3x to 2.2x faster at the same watts | 0.30 | 0.25 | 0.075 | 6 spawns per mode | R20 protocol |
+| 10 | KE8 | Attention at long context: `ROCM_SEGMENTED_ATTN` (newer vLLM) or unified-attention stage and block tuning | WL1 and WL2 at 4k-16k | +20% to +80% tok/s at long context, about 0 at short captions | 0.15 | 0.45 | 0.068 | 5 spawns per arm per context length | R12 |
+| 11 | KE10 | GDN state in bf16 (`--mamba-ssm-cache-dtype bfloat16`; the checkpoint asks for float32) | WL2 | state traffic 4.8 to 2.4 GB per step at c=16; -8% to -12% J/token at WL2, about -1% at WL1 | 0.08 | 0.40 | 0.032 | 5 spawns per arm plus R21 on long outputs | new task |
+| 12 | KE9 | FP8 KV cache with the checkpoint's calibrated `k_scale` and `v_scale` | WL2 | -10% to -20% bytes per step at c=16 and 8k context, 2x KV capacity; about 0 at WL1 | 0.10 | 0.30 | 0.030 | 5 spawns per arm plus R21 and a task-accuracy check | R25 |
+| 13 | KE12 | FP8 or int8 `lm_head` (2.54 GB of bf16 per token) | WL1 after KE2 | -6% to -8% J/token after KE2 | 0.07 | 0.30 | 0.021 | 5 spawns per arm plus top-1 logit agreement | new task |
+| 14 | KE11 | GDN packed-decode launch configs for gfx1201 (#60400, Python only) | WL1 and WL2 | GDN kernel -7.6% to -10%; about -1% to -2% of the step | 0.015 | 0.60 | 0.009 | 5 spawns per arm | new task |
+| 15 | KE15 | Energy-aware config selection: pick tiles by joules per call instead of time | WL1 | 0 to -5% J/token at fixed clocks | 0.03 | 0.25 | 0.008 | 1 s windows per config, 5 repeats | post-hackathon thread |
+| 16 | KE16 | PyTorch TunableOp for the bf16 prefill GEMMs | WL1 TTFT | TTFT 0 to -10%, J/token about 0 | 0.01 | 0.30 | 0.003 | 5 spawns per arm | none |
 
 Run order is not the rank order. KE0 (the kernel profile) and KE7 run first, inside the R20
 baseline matrix, because every other row needs a trustworthy baseline and a known split of step

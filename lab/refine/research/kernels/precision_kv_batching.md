@@ -89,11 +89,11 @@ of the Gated DeltaNet recurrent state, and what batching does to joules per toke
   `kernels/linear/__init__.py` at b1388b1, `_POSSIBLE_INT8_KERNELS`.
 
   Implication: a W8A8-int8 or W4A8 path would double matrix throughput for prefill and large
-  batches, but single-stream decode is bandwidth-bound, so it would not move W1 J/token; activation
+  batches, but single-stream decode is bandwidth-bound, so it would not move WL1 J/token; activation
   quantization also adds accuracy risk for a model whose outputs become training labels.
 
   Experiment: not queued now. If KE0 shows prefill above a third of a labeling job's time, test a
-  W8A8-int8 prefill path for W2; expected TTFT -20% to -40% at concurrency 16; minimum 5 spawns per
+  W8A8-int8 prefill path for WL2; expected TTFT -20% to -40% at concurrency 16; minimum 5 spawns per
   arm plus the R21 gate; confidence low (0.2).
 
 ## 4. KV cache quantization
@@ -125,7 +125,7 @@ of the Gated DeltaNet recurrent state, and what batching does to joules per toke
   short prompt that is under 1% of a 15.5 GB decode step; at concurrency 16 with 8k tokens each it
   is about 8.6 GB per step, more than half of the weight bytes. Source: arithmetic on [S25].
 
-  Implication: KV precision matters for J/token only in the batched long-context regime (W2), and
+  Implication: KV precision matters for J/token only in the batched long-context regime (WL2), and
   there mostly through capacity (more sequences fit), so KE9 belongs after KE1, not before.
 
   Experiment: KE9 runs at concurrency 16 with 8k-token prompts, the regime where it can matter.
@@ -165,10 +165,10 @@ of the Gated DeltaNet recurrent state, and what batching does to joules per toke
 
   Implication: with our 48 value heads the state is 1.5 MB (bf16) or 3 MB (fp32) per sequence and
   layer; at concurrency 16 in float32 that is about 4.8 GB of state traffic per decode step, a
-  third of the weight bytes, so state precision and the GDN kernel config both matter for W2.
+  third of the weight bytes, so state precision and the GDN kernel config both matter for WL2.
 
   Experiment: KE10, `--mamba-ssm-cache-dtype bfloat16`. Expected state traffic 4.8 to 2.4 GB per
-  step at concurrency 16, -8% to -12% J/token at W2 and about -1% at W1, plus room for more
+  step at concurrency 16, -8% to -12% J/token at WL2 and about -1% at WL1, plus room for more
   sequences; minimum 5 spawns per arm plus the R21 gate on long outputs (recurrent error
   accumulates with length); confidence low to medium (0.4).
 
@@ -250,7 +250,7 @@ of the Gated DeltaNet recurrent state, and what batching does to joules per toke
   plus their KV, inside the roughly 10x concurrency at 16k tokens that [L1] measured. Source:
   arithmetic on [S10], [S25], [L1]; batching behavior of good kernels in [S44].
 
-  Implication: for the labeling and tool-trace jobs (W2), batching beats every kernel change on
+  Implication: for the labeling and tool-trace jobs (WL2), batching beats every kernel change on
   J/token, and the slide's J/token claim should say which concurrency it was measured at.
 
   Experiment: KE1, concurrency 1, 4, 8, 16 (and 32 if the KV cache allows) with the R11 harness
