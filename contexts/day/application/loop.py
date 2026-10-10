@@ -9,18 +9,20 @@ from datetime import datetime
 from pathlib import Path
 
 from contexts.day.application.coach import DayCoach
+from contexts.day.application.narrator import NarrationConfig, Narrator
 from contexts.day.application.planner import DayPlanner
 from contexts.day.application.tracker import DayTracker
 from contexts.day.domain.clock import DayClock
 from contexts.play.dayrun.service import DayRun
 from contexts.play.domain.places import PlaceSet
-from contracts.day import DayCoachNoted, DayPlanProposed, DayReplanProposed, DayReviewed
+from contracts.day import DayCoachNoted, DayNarrated, DayPlanProposed, DayReplanProposed, DayReviewed
 from contracts.events import Event
 
 
 class DayLoop:
     def __init__(self, dayrun: DayRun, places: PlaceSet, config_dir: str | Path = "config", habits=None, memory=None,
-                 waste=None, presence=None, hub=None, clock: DayClock | None = None) -> None:
+                 waste=None, presence=None, hub=None, clock: DayClock | None = None, runtime=None, narration: dict | None = None,
+                 description: str = "") -> None:
         self.config_dir = Path(config_dir)
         self.clock = clock or DayClock.load(self.config_dir / "agent.yaml")
         self.planner = DayPlanner(dayrun, self.clock, habits=habits, memory=memory, presence=presence, hub=hub)
@@ -29,6 +31,9 @@ class DayLoop:
                               door_zone=self.tracker.door_zone, desk_camera=self.tracker.desk_camera)
         self.planner.coach = self.coach
         self.memory = memory
+        # The narrator (D3): `narration` is agent.yaml's `day:` block; `runtime` is the model it may ask (never the fake one).
+        self.narrator = Narrator(self.planner, self.tracker, self.coach, self.clock, runtime=runtime,
+                                 config=NarrationConfig.of(narration, runtime), description=description)
 
     def subscribe(self, bus) -> None:
         p, t, c = self.planner, self.tracker, self.coach
@@ -56,16 +61,35 @@ class DayLoop:
         for prefix in ("connector.item.synced", "circle.place.shared", "day.plan.proposed", "day.plan.committed"):
             bus.subscribe(prefix, t.on_change)
 
+        # Last, so the planner, the tracker and the coach have already taken the event in: the day in words.
+        self.narrator.subscribe(bus)
+
     def tick(self, now: datetime) -> list[Event]:
         return self.planner.tick(now) + self.tracker.tick(now) + self.coach.tick(now)
 
 
-def day_phone(ntfy, topic: str):
+MOMENT_PUSH = {"morning": ("Your day", "sunrise"), "replan": ("Re-plan", "arrows_counterclockwise"),
+               "coach": ("Coach", "dart"), "evening": ("Your day, reviewed", "moon")}
+
+
+def day_phone(ntfy, topic: str, narrated: bool = False):
     """A bus handler that pushes the plan, a re-plan, the review and the coach's sentence after a block to the
-    phones (the card itself goes out as every approval does, through PhoneNotifier.on_approval)."""
+    phones (the card itself goes out as every approval does, through PhoneNotifier.on_approval).
+
+    With the narrator on (`narrated`), the push is the narration's paragraph (`day.narrated`), the same words
+    the screen shows and the voice says, plus an urgent "now" (leave now, late); the raw events are not pushed
+    as well. With it off, the events' own texts go out as before."""
 
     async def push(e: Event) -> None:
-        if isinstance(e, DayPlanProposed):
+        if isinstance(e, DayNarrated):
+            if narrated and e.moment in MOMENT_PUSH:
+                title, tag = MOMENT_PUSH[e.moment]
+                await ntfy.publish(topic, e.display, title=title, tags=[tag])
+            elif narrated and e.moment == "now" and e.urgent:
+                await ntfy.publish(topic, e.display, title="Time to move", tags=["walking"])
+        elif narrated:
+            return
+        elif isinstance(e, DayPlanProposed):
             await ntfy.publish(topic, e.text, title="Your day", tags=["sunrise"])
         elif isinstance(e, DayReplanProposed):
             await ntfy.publish(topic, f"{e.why} New plan: {e.outcome.summary}", title="Re-plan", tags=["arrows_counterclockwise"])

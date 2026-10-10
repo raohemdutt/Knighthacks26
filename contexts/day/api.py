@@ -17,6 +17,13 @@
                                Evidence is cited by id in the events; here each one also gets its words and, when
                                Memory has a picture of that moment, a `frame_ref` the phone can open.
 
+- GET  /api/day/brief?moment=  the day in words (D3): the latest narration of each moment (morning, now, replan, coach,
+                               evening) with `spoken` for the ear and `display` for the screen, the asks for pending
+                               cards by action id, and which engine writes them. With `moment`, just that one.
+- POST /api/day/brief          {moment, fast} narrate that moment again from the state as it is now (the "Brief me"
+                               button): a "morning" brief asked for at 3 PM covers the rest of the day. `fast` never
+                               waits for the model. Publishes `day.narrated` when the words are new.
+
 Every answer is what the log says: the plan and status are projections of `day.*` events.
 """
 
@@ -32,12 +39,17 @@ from contexts.day.application.watch_history import export_patterns
 from contexts.day.domain.coach import FOOD_WORDS, PHONE_WORDS, mentions
 from contexts.day.domain.patterns import patterns
 from contexts.play.dayrun.models import Move
-from contracts.day import DayPlanProposed, DayReplanProposed, MoveIn
+from contracts.day import DayPlanProposed, DayReplanProposed, Moment, MoveIn
 
 
 class PlanBody(BaseModel):
     moves: list[MoveIn] | None = None  # the person's own moves (Day Run's shape); None: let Atlas choose
     from_here: bool = False  # a re-plan for the rest of the day from where the box thinks you are
+
+
+class BriefBody(BaseModel):
+    moment: Moment = "morning"
+    fast: bool = False  # never wait for the model: its cached words for these facts, or the template's
 
 
 def day_router(day: DayLoop, publish: Callable[[object], Awaitable] | None = None, guard: Callable | None = None,
@@ -185,6 +197,41 @@ def day_router(day: DayLoop, publish: Callable[[object], Awaitable] | None = Non
                 await publish(e)
         head = events[0]
         return {"plan_id": head.plan_id, "type": head.type, "action_id": head.action_id, "plan": head.model_dump(mode="json")}
+
+    def brief_out() -> dict:
+        n = day.narrator
+        return {"mode": n.mode, "engine": n.engine, "timeout_s": n.config.timeout_s, "gap_s": n.config.gap_s,
+                "latest": {m: e.model_dump(mode="json") for m, e in n.latest.items()},
+                "asks": {a: e.model_dump(mode="json") for a, e in n.asks.items()}, "model": dict(n.stats)}
+
+    @router.get("/brief")
+    async def get_brief(moment: Moment | None = None) -> dict:
+        out = brief_out()
+        if moment is None:
+            return out
+        e = day.narrator.latest.get(moment)
+        return {"mode": out["mode"], "engine": out["engine"], "moment": moment, "narration": e.model_dump(mode="json") if e else None}
+
+    @router.post("/brief", dependencies=writes)
+    async def make_brief(body: BriefBody | None = None) -> dict:
+        body = body or BriefBody()
+        n = day.narrator
+        if n.mode == "off":
+            raise HTTPException(409, "narration is off on this box (agent.yaml day.narration)")
+        if body.moment == "approval":
+            raise HTTPException(422, "an approval ask is narrated when its card is requested, not on demand")
+        try:
+            e = await n.regenerate(body.moment, event_now(), fast=body.fast)
+        except Exception as exc:
+            raise HTTPException(500, f"could not narrate {body.moment}: {type(exc).__name__}") from exc
+        if e is None:
+            raise HTTPException(404, f"nothing to narrate for {body.moment!r} yet")
+        fresh = n.latest.get(body.moment) is not e
+        if fresh and publish:
+            await publish(e)
+        elif fresh:
+            n.on_narrated(e)
+        return {"mode": n.mode, "engine": n.engine, "moment": body.moment, "fresh": fresh, "narration": e.model_dump(mode="json")}
 
     @router.get("/patterns")
     async def get_patterns() -> dict:
