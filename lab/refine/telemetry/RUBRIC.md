@@ -322,15 +322,17 @@ this list; a pass never renames a metric that already has rows.
 
 - **Joules per answer.** Name `telemetry.joules_per_answer`, unit J, with `target`, `tokens_out`,
   `samples`, `period_ms`, `sampler` and `error` in `conditions`. Gross energy of the answering node
-  over the request window (Test 2). Today: none measured. The only related figure is derived: about
-  26 J per generated token for the teacher at batch 1 (about 200 W over 7.7 to 7.8 tok/s
-  [lab-README, lines 69-74]), low confidence because no sampler period, window or error was
-  recorded. Better is lower, but only while the routed work's quality stays inside its spread
-  (Test 6).
+  over the request window (Test 2). Today: none measured. The only related row is derived:
+  `teacher.joules_per_token` = 25.97 J/token on pod-a (200 W over 7.7 tok/s), flagged low
+  confidence because the watts and the decode rate come from different windows [metrics, line 12;
+  lab-README, lines 69-74]. Better is lower, but only while the routed work's quality stays inside
+  its spread (Test 6).
 - **Idle watts per node.** Names `pod.idle_watts` for the pods and `jetson.idle_watts` for the
-  Jetson, unit W. Mean power over a stated window in the stated idle state (Test 4). Today: pods 38
-  to 40 W [T0], low confidence (period, error and the loaded model not recorded); Jetson none. Not
-  a target: it is tracked, and a move beyond its spread means a condition changed and is explained.
+  Jetson, unit W. Mean power over a stated window in the stated idle state (Test 4). Today:
+  `pod.idle_watts` = 39.0 W on pod-a, the midpoint of the 38 to 40 W stated on T0, flagged low
+  confidence for having no sample count or sampling rate [metrics, line 17; T0]; no row for pod-b,
+  none for the Jetson, and the loaded model is not recorded. Not a target: it is tracked, and a
+  move beyond its spread means a condition changed and is explained.
 - **Sampler overhead.** Names `telemetry.sampler_cpu_pct` (Jetson: percent of one CPU core) and
   `telemetry.sampler_interference_pct` (pods: change in decode tok/s with the sampler on), unit
   percent. Measured as in Test 5. Today: none. Better is lower, and it must stay under the bound.
@@ -464,11 +466,15 @@ Found on 2026-10-10 from the board, the repo and the sources below; no pass has 
 
 1. U1, every task: no Done when on T1 to T5 names a metric from the metric set, its before value or
    a target; the only number on any of them is "~40 W idle" on T3, with no period or error [Tasks].
-2. Test 1, the numbers we hold: pod idle 38 to 40 W [T0] and the teacher's ~200 W average and 300 W
-   peak while generating [lab-README, lines 73-74] record no sampler period, window or error, so
-   both are low confidence until a sampler re-measures them; the idle reading also does not say
-   whether the teacher was loaded (Test 4). Some orchestration task pages quote "~202 W"; the
-   measurement record says "~200 W".
+2. Test 1, the numbers we hold: the provenance check run on 2026-10-10 against the metrics file
+   reported 22 rows and 4 problems, the four power and energy rows (`teacher.watts_avg`,
+   `teacher.watts_peak`, `teacher.joules_per_token`, `pod.idle_watts`, lines 7, 8, 12 and 17), none
+   of which records a sampler, period or error [metrics]. Two of them, the teacher's 200 W average
+   and 300 W peak, are not flagged low confidence although Test 1 says they are until a sampler
+   re-measures them; the file is append-only and written by the lab's metrics writer [PASS_RULES],
+   so the fix is a new measured row, not an edit. The idle row does not say whether the teacher was
+   loaded (Test 4). The averages also disagree slightly: `lab/README.md` says about 200 W
+   [lab-README, line 74], while the Build Log's R2 entry says about 202 W [Build-Log].
 3. Tests 1 and 2, the pods: the averaging window and lag of the R9700's socket power are unknown.
    Candidate experiment, to queue on T0 marked `(telemetry)` and run on pod B in a GPU Queue slot:
    a square-wave load with on and off phases of 0.5, 1, 2 and 5 s, recording `amd-smi metric
@@ -477,7 +483,7 @@ Found on 2026-10-10 from the board, the repo and the sources below; no pass has 
    GPU]. Expected movement: pod attribution error goes from none to a measured value, and the
    shortest attributable pod window becomes a number [McDaniel-2026, sections III-A1 and V-A2].
 4. Test 1, the Jetson: `tegrastats` defaults to 1000 ms [tegrastats] and a warm caption takes about
-   2.1 s [Build-Log-R8], so at the default a caption holds about two samples, under the 10-sample
+   2.1 s [Build-Log], so at the default a caption holds about two samples, under the 10-sample
    default. T2's Done when says "a configurable interval" with no value; a pass sets the interval
    target from Test 1 and holds it to Test 5's bound.
 5. Test 1, the Jetson's error: VDD_IN is total module power [Orin-power], published work found
@@ -644,8 +650,12 @@ Our own sources:
   experiment queue, https://app.notion.com/p/3f596ef5fec581819588ec7a702a4bb1 .
 - [R3] R3, the Jetson environment (Orin Nano Developer Kit Super, JetPack 6.2.1, L4T R36.4.4, MAXN
   SUPER as nvpmodel mode 2), https://app.notion.com/p/3f596ef5fec581c5887bf3490b947df5 .
-- [Build-Log-R8] Build Log, "On-device model service, R8 (PR #36)": student decode about 15.7
-  tok/s, a warm caption about 2.1 s, https://app.notion.com/p/3f596ef5fec5812fa37de5ae92086234 .
+- [Build-Log] Build Log, the entry "On-device model service, R8 (PR #36)" (student decode about
+  15.7 tok/s, a warm caption about 2.1 s) and the R2 entry (the teacher at "~202 W average"),
+  https://app.notion.com/p/3f596ef5fec5812fa37de5ae92086234 .
+- [metrics] `lab/refine/metrics.jsonl` (on `main` since 3cd4b60), lines 7, 8, 12 and 17: the
+  teacher's average and peak watts, the derived joules per token, and pod idle watts; read with
+  `lab/machine/metrics.py`.
 - [lab-README] `lab/README.md`, lines 65-76: the teacher measured at 16k context, its TTFT and
   decode table, about 200 W average and 300 W peak while generating, about ten concurrent
   16k-token requests.
