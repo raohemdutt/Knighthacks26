@@ -726,6 +726,34 @@ def test_a_pod_known_to_be_stopped_burns_nothing_and_raises_none(isolated_state)
     assert keys(isolated_state) == ["credits_low:pod-a:2026-10-10"]
 
 
+def approximate_balance(state, ts, credits, node="pod-a"):
+    """A balance written by hand or backfilled, marked low_confidence as ledger add --low-confidence does."""
+    return put(state, ts, "pod status", "running", node=node, metrics={"pod.balance_credits": credits},
+               units={"pod.balance_credits": "credits"}, low_confidence=True)
+
+
+def test_an_approximate_balance_cannot_hide_a_short_runway(isolated_state):
+    first = balance(isolated_state, at(9), 6000)
+    balance(isolated_state, at(11), 5500)
+    last = balance(isolated_state, at(13, 10), 5000)
+    approximate_balance(isolated_state, at(13), 5600)       # would read as a top-up just before the last reading
+    now = moment(13, 15)
+    # 1000 credits in 250 minutes is 4 a minute; at 13:15 there are 5000 - 4 * 5 = 4980 left, 20.75 hours of it
+    [alert] = found(isolated_state, now=now)
+    assert alert.key == "credits_low:pod-a:2026-10-10"
+    assert alert.body == (f"4,980 left at 4.00 credits/min, about 20.8 h (alert horizon 24 h), from the readings "
+                          f"up to 2026-10-10 13:10Z (ledger:{first} to ledger:{last})")
+
+
+def test_an_approximate_balance_cannot_raise_a_false_alert(isolated_state):
+    balance(isolated_state, at(10), 60000)
+    balance(isolated_state, at(12), 59400)                  # 5 a minute: 195 hours left at 15:00
+    approximate_balance(isolated_state, at(12, 30), 20000)
+    assert keys(isolated_state) == []
+    runway = alerts.credit_runways(alerts.timeline(ledger.read(state_dir=isolated_state), NOW), NOW)["pod-a"]
+    assert (runway["burn_per_min"], runway["hours_left"]) == (pytest.approx(5.0), pytest.approx(195.0))
+
+
 def test_an_account_with_nothing_left_is_the_worst_runway(isolated_state):
     balance(isolated_state, at(10), 600)
     balance(isolated_state, at(12), 0)

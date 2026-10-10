@@ -52,7 +52,9 @@ writers of the slot and pod rows (the queue verbs, the pod controller) have one 
                     stopped, down, not_running or gone while the pod was up, or culled, lost or died unless it
                     was known to be down, is the alert. One alert per observing row, key pod_stopped:<seq>.
   credits_low       a pod account whose credits are projected to run out within CREDIT_HORIZON_HOURS. The
-                    balance is metrics pod.balance_credits on a row with a node. From the readings of the last
+                    balance is metrics pod.balance_credits on a row with a node; rows marked low_confidence (a
+                    balance written by hand or backfilled) take no part, as for metric_regressed, because one
+                    of them can read as a top-up or as a fall that never happened. From the readings of the last
                     CREDIT_WINDOW_HOURS (cut at the last time the balance went up, a top-up) that are at least
                     CREDIT_MIN_SPAN_MINUTES apart, the burn per minute is the fall over the span; the runway is
                     what is left now at that burn. A pod the rule above knows to be stopped burns nothing and
@@ -483,10 +485,12 @@ def credit_runways(events: Sequence[tuple[dt.datetime, Row]], now: dt.datetime, 
                    window_hours: float = CREDIT_WINDOW_HOURS,
                    min_span_minutes: float = CREDIT_MIN_SPAN_MINUTES) -> dict[str, dict[str, Any]]:
     """Per node with a usable projection: the balance now, the burn per minute, the hours left, and the
-    first and last readings the projection stands on."""
+    first and last readings the projection stands on. A reading marked low_confidence is not used."""
     cutoff = now - dt.timedelta(hours=window_hours)
     by_node: dict[str, list[tuple[dt.datetime, Row, float]]] = {}
     for when, row in events:
+        if row.get("low_confidence") is True:
+            continue
         balance = metric_value(row, BALANCE_METRIC)
         node = row.get("node")
         if balance is not None and isinstance(node, str) and when >= cutoff:
