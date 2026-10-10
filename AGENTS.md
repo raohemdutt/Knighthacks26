@@ -131,8 +131,17 @@ The Task Board is the backlog. To choose work:
 2. **P0 first.** Do P1 only once the P0 demo path works end to end, and P2 only if ahead.
 3. Prefer tasks whose **Blocked by** tasks are all Done (lower **Wave** numbers come first).
 4. Read the task's **Done when**. That text is the acceptance test.
-5. If none of your tasks are unblocked, look for work that unblocks you, and ask on Team Comms before taking over someone else's task. If your person agrees to take over a task, change its Assignee in Notion so the board stays honest.
-6. Set the task to **In progress** when you start.
+5. **Skip anything Locked by someone else** (section 8.2). Check the lock before you take a task, every time.
+6. If none of your tasks are unblocked, look for work that unblocks you, and ask on Team Comms before taking over someone else's task. If your person agrees to take over a task, change its Assignee in Notion so the board stays honest.
+7. Claim the task with the lock (section 8.2): Assignee, **Locked**, **In progress**.
+
+### Creating work when the backlog runs dry
+If every task assigned to your person is Done or blocked, **it is our job to
+assign more and keep going**. Don't stop, and don't wait for morning:
+1. First look for **unassigned, unlocked** tasks that fit your person's area (the team table on the Knighthacks hub), and claim one.
+2. Otherwise, **create the next task yourself.** Base it on the gap between the Design Doc / Demo Plan and what the Build Log says exists: a demo beat that doesn't work yet, a "Done when" clause still open on an In-progress task, a context spec item nobody has built, tests or fixtures that are missing.
+3. Write it like the others: next free ID in its context (e.g. `A9`), Context, Priority (P0 only if a demo beat depends on it), a concrete **Done when**, **Blocked by**, Assignee = your person, Locked = checked, Status = In progress. Note on the task page that an agent created it and why.
+4. Stay inside your person's areas and the Design Doc. Product changes, new sponsors, or anything that changes the demo go to **Dominick ↔ Team** as a proposal, not straight onto the board.
 
 **The Design Doc is what you are building towards.** Before building a context,
 read its spec page (Design Doc → section 15). Check the **Demo Plan** to see what
@@ -149,7 +158,7 @@ judges will actually see; it is the reason each P0 exists.
 1. **Tests pass first:** `pytest -q`. Commit only on green; chain them (`pytest -q && git commit ...`).
 2. **Pull, then push to `main`** (small, focused commits; message says what changed and why).
 3. **Build Log:** add an entry at the top. Include what landed, the commit hash, how to use it (command, endpoint, file), and anything others must do differently.
-4. **Task Board:** set the task to **Done**, or **In progress** with a note if part of "Done when" is still open (say which part).
+4. **Task Board:** set the task to **Done** and **uncheck Locked**, or keep it **In progress** (still locked) with a note saying which part of "Done when" is still open.
 5. **Tell the people it affects:** add an FYI on their Team Comms page if it changes an interface they use.
 6. **Keep Notion small:** when several tasks are Done, consolidate them. Add one "✅ Done batch N: …" row to the board, move the original task pages under **Completed tasks (archive)**, and list them in that page's table. Move pages, don't delete them. Archive pages that are fully superseded the same way.
 
@@ -182,12 +191,36 @@ Follow these rules so they help each other instead of colliding.
 - **Needs a human:** if an agent cannot answer without its person (section 4B), it writes `Answer: 🙋 waiting on <Person> — <what is needed>` and adds the item to **Needs a human** in its section of **Overnight Status**. It does **not** wait: it moves on to other work and checks back later.
 - **Don't edit what others wrote** except their `Answer:` lines on your own page and the checkbox. Never delete another person's or agent's text.
 
-### 8.2 Claiming work, so two agents never build the same thing
-- **Work only on tasks assigned to your person.** The Assignee field is the lock.
-- Before starting, re-fetch the task. If it is already **In progress**, someone owns it; pick something else.
-- Claim it by setting **Status: In progress** and adding a first line to the task page: `🤖 <Person>'s agent · <time>: started — <plan in one line>`.
-- **To take a task that isn't yours** (for example it blocks you and its owner is offline), ask on the owner's page and wait for a reply from them or their agent. Overnight, an owner's agent may agree to hand off a **Not started** task: it changes the Assignee and writes `handed to <Person>` on the task page. Never take an **In progress** task.
-- If you must change something in another person's folder (a one-line fix your work depends on), keep it minimal and post an FYI on their page with the commit hash.
+### 8.2 The task lock (a mutex): never take work someone has already claimed
+Every task on the Task Board has a **Locked** checkbox. **Locked = someone has
+confirmed they own this task and are working on it.** It is a mutex: only the
+lock holder (the Assignee, or their agent) works on that task.
+
+**Check before you take.** Before starting any task, even your own:
+1. **Re-fetch the task page now**, not from memory or an old search result.
+2. If **Locked** is checked and the **Assignee is not your person**, the task is taken. **Do not work on it, do not edit its properties, do not "help" in its files.** Pick something else, or ask the lock holder on their Team Comms page.
+3. If **Locked** is checked and the Assignee *is* your person, it's yours: continue.
+4. If **Locked** is unchecked, you may claim it **only if it is assigned to your person** (or unassigned and you follow "Creating work" below).
+
+**Claiming (acquire the lock):**
+1. Set **Assignee** to your person (if it was unassigned), **Locked** = checked, **Status** = In progress, in one update.
+2. Add a first line to the task page: `🤖 <Person>'s agent · <time>: locked — <plan in one line>`.
+3. **Re-fetch once more.** If another agent's `locked` line appears above yours (two agents claimed at the same moment), the earlier line wins. The later agent deletes its own line, sets the Assignee back to the earlier claimant, and moves on.
+
+**Releasing (always release what you hold):**
+- **Done:** set Status = Done and **uncheck Locked**.
+- **Handing off or giving up:** uncheck Locked, set Status back to Not started, and write `🤖 … released — <why, and what's already done>` on the task page.
+- **Blocked for a long time:** keep the lock, set Status = Blocked, and say what it's waiting on.
+
+**Taking over someone else's task:** you never break another person's lock.
+Ask on their page. Only the lock holder (or their person) releases it or
+reassigns it; then claim it normally. An **unlocked, Not started** task assigned
+to someone else may be handed over by that person or their agent; they change
+the Assignee and write `handed to <Person>` on the task page.
+
+**Other people's folders:** if your work needs a one-line change in another
+person's folder, keep it minimal and post an FYI on their page with the commit
+hash. Anything bigger is a question for them.
 
 ### 8.3 Git when four agents push to `main`
 - **Stay in your own folders** (`contexts/<your contexts>/`, your config files, your tests). Shared files (`contracts/`, `runtime/`, `bus/`, `contexts/gateway/bootstrap.py`, `pyproject.toml`) get small, additive edits only.
@@ -207,15 +240,15 @@ Follow these rules so they help each other instead of colliding.
 1. **Inbox:** read your person's Team Comms page and **Dominick ↔ Team**. Answer what you can (section 4A). Mark the rest `🙋 waiting on <Person>`.
 2. **Replies:** check the pages where *you* asked questions. Act on new answers.
 3. **Build Log + git:** `git pull --rebase`, skim what landed, and run `pytest -q` so you know `main` is green.
-4. **Work:** continue your In-progress task, or claim the next one (section 5 + 8.2). Work in small steps that can each be committed.
-5. **Ship:** tests, push, Build Log entry, Task Board status, FYIs to anyone affected (section 6).
+4. **Work:** continue the task you hold the lock on, or claim the next one: check the lock, then acquire it (sections 5 and 8.2). Work in small steps that can each be committed.
+5. **Ship:** tests, push, Build Log entry, Task Board status (release the lock when Done), FYIs to anyone affected (section 6).
 6. **Status:** rewrite your section of **Overnight Status**: last update, working on, done tonight, blocked on, needs a human.
-7. **Stop condition:** if every remaining task is blocked or waiting on a human, say so in Overnight Status and keep checking the inbox each cycle; don't invent work outside the Task Board.
+7. **Never idle:** if every task you hold or could claim is blocked or waiting on a human, create the next task (section 5, "Creating work when the backlog runs dry"), lock it, and build it. Only if nothing useful is left inside your person's areas, say so in Overnight Status and keep checking the inbox each cycle.
 
 **Claude Code:** start the night with `/loop` and this prompt (no interval: the agent paces itself, about every 30 minutes):
 
 ```
-/loop Follow AGENTS.md section 8.5 as <your name>'s agent: check Notion (my Team Comms page, Dominick ↔ Team, replies to my questions), pull and test main, continue or claim my next Task Board task, push with tests green, update the Build Log, Task Board and my Overnight Status section. Never take outside actions or answer decisions that need me; mark them "🙋 waiting on me".
+/loop Follow AGENTS.md section 8.5 as <your name>'s agent: check Notion (my Team Comms page, Dominick ↔ Team, replies to my questions), pull and test main, continue the task I hold the Locked mutex on or check-then-claim my next one (never take a task Locked by someone else; if my backlog is empty, create and lock the next task from the Design Doc), push with tests green, update the Build Log, Task Board and my Overnight Status section. Never take outside actions or answer decisions that need me; mark them "🙋 waiting on me".
 ```
 
 Other tools: run the same prompt on a timer (cron, a scheduler, or a manual re-run every half hour).
