@@ -142,6 +142,18 @@ PREPARE_TOOL = {
         "parameters": {"type": "object", "properties": {"event": {"type": "string"}}, "required": ["event"]},
     },
 }
+# A small model often refuses in its own words instead of saying NO_EVIDENCE: treat that as unsure too (A13)
+REFUSAL = re.compile(
+    r"\b(?:can(?:no|['\u2019]?)t|unable to|not able to) (?:browse|access|check|search|look up|see)"
+    r"|\bdon['\u2019]?t have (?:access|the ability|real[- ]time|internet|any (?:information|data))"
+    r"|\bi don['\u2019]?t know\b|\bas an ai\b|\bi['\u2019]?m (?:just )?an ai\b|\bno (?:internet|web) access\b",
+    re.IGNORECASE)
+
+
+def unsure(text: str) -> bool:
+    return text.strip() == NO_EVIDENCE or bool(REFUSAL.search(text))
+
+
 WEB_HINT = (" For news, sports scores, opening hours or anything outside this room, use web_search, "
             "then read_page on the best link.")
 HISTORY_HOURS = 24.0
@@ -371,7 +383,7 @@ class QA:
             return Answer(evidence.direct, evidence.citations, self.runtime.model_info().version)
         if unsure_ok:  # not streamed: an unsure answer is replaced by the tool loop's
             a = await self._answer_from(question, evidence)
-            if a.text != NO_EVIDENCE:
+            if not unsure(a.text):
                 if stream:
                     stream(a.text)
                 return a
@@ -604,15 +616,25 @@ class QA:
         ]
         tools = self.tools + ([PREPARE_TOOL] if self.planner else [])
         ev = Evidence()
+        searched = False  # the web was searched, by the model or by us
         for _ in range(MAX_WEB_TOOL_CALLS if self.web else MAX_TOOL_CALLS):
             r = await self._chat(msgs, tools)
             if not r.tool_calls:
                 text = (r.content.strip() if ev else NO_EVIDENCE) or NO_EVIDENCE
+                if self.web and not searched and unsure(text):
+                    # the model gave up without trying the web: search with the question itself, answer from that
+                    found = Evidence()
+                    await self._run_tool(ToolCall(id="auto-web", name="web_search", arguments={"query": question}), found)
+                    if found:
+                        ev.lines += found.lines
+                        ev.citations += found.citations
+                        return await self._answer_from(question, ev, stream)
                 if stream:
                     stream(text)
                 return Answer(text, ev.citations, r.model_version)
             msgs.append(ChatMessage(role="assistant", content=r.content, tool_calls=r.tool_calls))
             for call in r.tool_calls:
+                searched = searched or call.name == "web_search"
                 found = Evidence()
                 await self._run_tool(call, found)
                 ev.lines += found.lines

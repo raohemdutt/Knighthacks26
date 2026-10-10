@@ -400,3 +400,33 @@ def test_prepare_for_runs_the_planner_as_a_tool():
     a = asyncio.run(q.ask("I have a test soon, what now?"))
     assert a.citations[0].url == "https://cs.ucf.edu/exam/"
     assert "Study recursion tonight, sleep by midnight." in [m.content for m in rt.calls[-1][1] if m.role == "tool"][0]
+
+
+def test_a_model_that_refuses_without_trying_gets_a_web_search_of_the_question():
+    q, rt, web = web_qa("I don't know the score. I can't browse the web or check sports news from here.",
+                        "UCF beat UF 31-24 on Sep 5.")
+    pieces = []
+    a = asyncio.run(q.ask("What was the score in the most recent game against UF?", stream=pieces.append))
+    assert web.calls[0] == ("search", "What was the score in the most recent game against UF?")
+    assert a.text == "UCF beat UF 31-24 on Sep 5." and "".join(pieces) == a.text
+    assert a.citations[0].url == "https://espn.test/ucf-uf"
+
+
+def test_a_refusal_on_the_fixed_path_counts_as_unsure():
+    q, rt, web = web_qa("As an AI I don't have access to that.", calls(("web_search", {"query": "table"})), "Found it.")
+    assert asyncio.run(q.ask("When did someone last leave the table?")).text == "Found it."
+
+
+def test_no_second_search_when_the_model_already_searched():
+    from contexts.agent.application.web_port import FakeWeb
+
+    q, rt, web = web_qa(calls(("web_search", {"query": "x"})), "I don't know.", web=FakeWeb())
+    assert asyncio.run(q.ask("Who won the game?")).text == NO_EVIDENCE  # nothing found anywhere
+    assert [c[0] for c in web.calls] == ["search"]
+
+
+def test_unsure_spots_refusals_but_not_real_answers():
+    from contexts.agent.application.qa import unsure
+
+    assert unsure(NO_EVIDENCE) and unsure("I can't browse the web.") and unsure("I'm just an AI running on this box")
+    assert not unsure("Your keys are on the desk.") and not unsure("UF won 24-13, I know it was close.")
