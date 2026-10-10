@@ -56,6 +56,8 @@ python -m lab.controller stop --account B
   `status` works the spend out from the start time and a launch the balance cannot cover is refused up front.
 - `status` reads only the hub API, which does not count as activity. `keep-alive` pings the pod and so does cost
   240 credits an hour: always give it `--minutes`.
+- `run-script` takes its own options before the script's name; everything after the name goes to the script. It
+  uploads the script to the pod, runs it in a terminal and waits for the exit code it appends to the output.
 - While `lab/state/STOP` exists `launch`, `stop`, `keep-alive` and `run-script` are refused.
 - Ledger rows: `controller <command>` for each call, and `pod launch`, `pod stop`, `pod status`, `pod keep-alive`
   (`alive`, `failed_ping`, `lost`) with `node` pod-a or pod-b, which are the rows `python -m lab alerts` reads.

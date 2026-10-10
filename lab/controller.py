@@ -92,7 +92,7 @@ log = logging.getLogger("lab.controller")
 RESOURCE_TYPE = "gpu"
 ACCELERATOR = "r9700"
 NO_ANSWER = 0                       # the status of a Reply for a call that never got one
-POLL_S = 3.0                        # seconds between reads while a pod launches
+POLL_S = 1.0                        # seconds between reads while a pod launches: the start time is only as fine as this
 STOP_POLL_S = 2.0                   # seconds between reads while a pod stops
 POST_TIMEOUT_S = 60.0
 LAUNCH_TIMEOUT_S = 420.0            # the hub itself gives a spawn 300 s
@@ -100,6 +100,7 @@ STOP_TIMEOUT_S = 180.0
 WAIT_TIMEOUT_S = 420.0
 VANISH_GRACE_S = 15.0               # how long a launching server may be missing from the hub's list before it counts as gone
 CONFIRM_READS = 3                   # reads that settle whether a POST the hub answered badly started a server
+CONFIRM_PAUSE_S = 3.0               # seconds between those reads
 KEEP_ALIVE_INTERVAL_S = 600
 KEEP_ALIVE_MIN_S = 30
 KEEP_ALIVE_MAX_S = 1800             # the culler waits an hour and checks every ten minutes: stay well inside
@@ -480,7 +481,7 @@ class Controller:
         for _ in range(CONFIRM_READS - 1):
             if seen.ok and seen.server is not None:
                 break
-            self.sleep(self.poll_s)
+            self.sleep(CONFIRM_PAUSE_S)
             seen = self._look(letter)
         return seen
 
