@@ -29,6 +29,8 @@ options:
 
 import asyncio
 import base64
+import os
+import sys
 import random
 import re
 import time
@@ -37,6 +39,15 @@ from urllib.parse import parse_qs, quote_plus, urlparse
 from mcp.server.fastmcp import FastMCP
 
 from contexts.connectors.infrastructure.mcp_client import server_options
+
+
+def headless_mode(options: dict, environ: dict | None = None, platform: str = sys.platform) -> bool:
+    """Headful by default (it passes the bot checks), but a Linux box with no display (the Jetson, no Xvfb) can only
+    run headless: launching a visible window there fails and the Agent loses its web tools altogether."""
+    if options.get("headless", False):
+        return True
+    env = os.environ if environ is None else environ
+    return platform.startswith("linux") and not (env.get("DISPLAY") or env.get("WAYLAND_DISPLAY"))
 
 DDG = "https://html.duckduckgo.com/html/?q={q}"
 BING = "https://www.bing.com/search?q={q}"
@@ -172,7 +183,7 @@ class Browser:
                         self._ctx = await self._pw.chromium.launch_persistent_context(
                             user_data_dir=self.options.get("profile_dir", "data/browser/profile"),
                             channel=ch,
-                            headless=self.options.get("headless", False),
+                            headless=headless_mode(self.options),
                             no_viewport=True,
                             locale=self.options.get("locale", "en-US"),
                             timezone_id=self.options.get("timezone", "America/New_York"),

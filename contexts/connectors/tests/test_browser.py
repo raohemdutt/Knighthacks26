@@ -113,3 +113,13 @@ def test_submit_form_refuses_credentials():
     b = Browser({})
     with pytest.raises(ValueError, match="credentials"):
         asyncio.run(b.submit_form("https://x.test/login", {"#password": "hunter2"}, "#go"))
+
+
+def test_headless_only_when_asked_or_when_linux_has_no_display():
+    """On the Jetson (no display, no Xvfb) headful launch failed and web questions had no tools."""
+    from contexts.connectors.servers.browser import headless_mode
+
+    assert headless_mode({}, environ={}, platform="linux") is True  # the Jetson
+    assert headless_mode({}, environ={"DISPLAY": ":99"}, platform="linux") is False  # under Xvfb
+    assert headless_mode({"headless": False}, environ={}, platform="win32") is False  # a laptop
+    assert headless_mode({"headless": True}, environ={"DISPLAY": ":0"}, platform="linux") is True
