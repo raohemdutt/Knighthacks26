@@ -93,7 +93,8 @@ def test_a_denied_or_expired_export_approval_ends_the_task_instead_of_waiting_fo
         await bus.publish(TaskCreated(ts=T0, task="desk-objects", instruction="Name the small things."))
         await bus.publish(ActionProposed(ts=T0, action_id="a9", kind="export_training_data", target="desk-objects", reason="teach"))
         await bus.publish(ActionCompleted(ts=T0 + timedelta(minutes=1), action_id="a9", status=status))
-        return board.snapshot()["tasks"][0]["stage"]
+        assert board.snapshot()["tasks"] == []  # hidden from the Teach screen by default (test cards)
+        return board.snapshot(include_closed=True)["tasks"][0]["stage"]
 
     assert asyncio.run(run("denied")) == "denied"
     assert asyncio.run(run("expired")) == "expired"

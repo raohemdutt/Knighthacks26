@@ -27,8 +27,8 @@ def learning_router(board: LearningBoard, publish: Callable[[ModelDeployed], Awa
     router = APIRouter()
 
     @router.get("/api/learning")
-    def learning() -> dict:
-        return board.snapshot()
+    def learning(all: bool = False) -> dict:  # ?all=1 also lists tasks whose export was denied or expired
+        return board.snapshot(include_closed=all)
 
     if publish is not None:
 
