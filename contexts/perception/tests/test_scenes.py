@@ -1,13 +1,17 @@
 import asyncio
+import sys
+import time
 from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from contexts.perception.application.captioner import Captioner
+from contexts.perception.application.keyframes import ModelQueue
 from contexts.perception.application.object_finder import ObjectFinder
 from contexts.perception.domain.scenes import bounding_box, frame_time, objects_caption, scene
 from contexts.perception.domain.zones import load_zones
 from contexts.perception.infrastructure import frames
+from contexts.perception.tests.images import jpeg_size, make_jpeg
 from contracts.perception import ObservationRecorded, ZoneEvent
 from contracts.types import Box, ObjectHit, Track, frame_ref
 from runtime import FakeRuntime
@@ -44,8 +48,9 @@ def zone(s: float, kind: str, zone_id: str = "desk", camera: str = "cam-desk", l
 
 
 def run(handler, events) -> list:
+    """Every scene event the handler returned, in order. A handler returns those of the model calls it started."""
     async def go():
-        return [out for e in events if (out := await handler(e)) is not None]
+        return [out for e in events for out in await handler(e)]
 
     return asyncio.run(go())
 
@@ -84,9 +89,36 @@ def test_caption_on_enter_and_exit_but_not_dwell():
 def test_caption_every_15_s_per_camera_while_something_is_in_view():
     rt = FakeRuntime()
     events = [seen(s, PERSON, camera=cam) for s in range(40) for cam in ("cam-desk", "cam-door")]
-    out = run(Captioner(rt, jpeg_of).on_observation, events)
+    out = run(Captioner(rt, jpeg_of, idle_max_s=15).on_observation, events)  # the fixed cadence: no backoff
     assert [(e.camera_id, e.ts) for e in out] == [(cam, at(s)) for s in (0, 15, 30) for cam in ("cam-desk", "cam-door")]
     assert run(Captioner(rt, jpeg_of).on_observation, [seen(s) for s in range(40)]) == []  # empty room: no captions
+
+
+def test_a_still_scene_is_captioned_less_and_less_often_until_something_changes():
+    c = Captioner(FakeRuntime(), jpeg_of)  # 15 s, doubling to 60 s while nothing changes
+    still = run(c.on_observation, [seen(s, PERSON) for s in range(200)])
+    assert [e.ts for e in still] == [at(s) for s in (0, 15, 45, 105, 165)]
+    assert c.stats.captions_sent == 5 and c.stats.captions_requested == 14  # the 14 the fixed cadence would have sent
+    assert c.stats.captions_skipped_redundant == 9 and c.period("cam-desk") == timedelta(seconds=60)
+    # Keys appear at 200 s: a change, so the next caption is due 15 s after the last one, which is now.
+    keys = Track(track_id=3, label="keys", confidence=0.9, box=Box(x1=0.2, y1=0.6, x2=0.3, y2=0.7))
+    changed = run(c.on_observation, [seen(s, PERSON, keys) for s in range(200, 250)])
+    assert [e.ts for e in changed] == [at(s) for s in (200, 215, 245)]  # 15 s, then 30 s: still again
+    # An exit is never held back by the backoff, and puts the cadence back to 15 s.
+    assert [e.ts for e in run(c.on_zone_event, [zone(250, "exit", label="keys")])] == [at(250)]
+    assert [e.ts for e in run(c.on_observation, [seen(s, PERSON, keys) for s in range(251, 270)])] == [at(265)]
+
+
+def test_enters_and_exits_close_together_are_one_caption_and_a_waiting_one_takes_the_newest_frame():
+    c = Captioner(FakeRuntime(), jpeg_of)
+    out = run(c.on_zone_event, [zone(0, "enter"), zone(0, "enter", label="keys"), zone(1.5, "exit", label="keys"), zone(2, "exit")])
+    assert [e.ts for e in out] == [at(0), at(2)]
+    assert (c.stats.captions_requested, c.stats.captions_sent, c.stats.captions_coalesced) == (4, 2, 2)
+
+    c = Captioner(FakeRuntime(), jpeg_of, queue=ModelQueue(jpeg_of, min_gap_s=5))  # the model may not be used again until 5 s
+    out = run(c.on_zone_event, [zone(0, "enter"), zone(3, "exit"), zone(4, "enter"), zone(5, "dwell")])
+    assert [e.ts for e in out] == [at(0), at(4)]  # the exit at 3 s was still waiting when the enter at 4 s replaced it
+    assert c.stats.captions_coalesced == 1
 
 
 def test_zone_caption_resets_the_cadence_and_same_moment_events_are_one_caption():
@@ -95,7 +127,7 @@ def test_zone_caption_resets_the_cadence_and_same_moment_events_are_one_caption(
     events = [seen(0, PERSON), zone(10, "enter"), zone(10, "enter", label="keys"), zone(11, "exit", label="keys"), *[seen(s, PERSON) for s in range(11, 30)]]
 
     async def go():
-        return [out for e in events if (out := await (c.on_zone_event(e) if isinstance(e, ZoneEvent) else c.on_observation(e)))]
+        return [out for e in events for out in await (c.on_zone_event(e) if isinstance(e, ZoneEvent) else c.on_observation(e))]
 
     assert [e.ts for e in asyncio.run(go())] == [at(0), at(10), at(25)]
 
@@ -118,15 +150,29 @@ def test_no_caption_event_when_the_model_says_nothing():
     assert run(Captioner(FakeRuntime(caption_text="  "), jpeg_of).on_zone_event, [zone(0, "enter")]) == []
 
 
-def test_camera_is_skipped_while_its_last_caption_is_still_running():
-    c = Captioner(FakeRuntime(), jpeg_of)
+def test_one_model_call_at_a_time_and_one_waiting_per_camera():
+    running, most = 0, 0
+
+    class Slow(FakeRuntime):
+        def caption(self, jpeg, prompt="Describe the scene in one sentence."):
+            nonlocal running, most
+            running += 1
+            most = max(most, running)
+            time.sleep(0.02)
+            running -= 1
+            return super().caption(jpeg, prompt)
+
+    rt = Slow()
+    c = Captioner(rt, jpeg_of)
 
     async def go():
         return await asyncio.gather(c.on_zone_event(zone(0, "enter")), c.on_zone_event(zone(5, "exit")),
-                                    c.on_zone_event(zone(5, "enter", "door", "cam-door")))
+                                    c.on_zone_event(zone(8, "enter")), c.on_zone_event(zone(8, "enter", "door", "cam-door")))
 
-    first, second, other_camera = asyncio.run(go())
-    assert first and second is None and other_camera
+    out = [e for events in asyncio.run(go()) for e in events]
+    # While the first caption runs, the desk's exit at 5 s is replaced by its enter at 8 s; the door waits its turn.
+    assert sorted((e.camera_id, e.ts) for e in out) == [("cam-desk", at(0)), ("cam-desk", at(8)), ("cam-door", at(8))]
+    assert most == 1 and len(rt.calls) == 3 and c.stats.captions_coalesced == 1
 
 
 # --- watch items on the desk (P4) ---
@@ -215,3 +261,79 @@ def test_a_frame_that_cannot_be_read_is_passed_whole():
     from contexts.perception.infrastructure.frames import crop_jpeg
 
     assert crop_jpeg(b"not a jpeg", Box(x1=0.1, y1=0.4, x2=0.9, y2=0.95)) == b"not a jpeg"
+
+
+# --- smaller copies for the model ---
+
+
+def test_scaled_size_keeps_the_aspect_ratio_and_never_scales_up():
+    assert frames.scaled_size(1280, 720, 640) == (640, 360)
+    assert frames.scaled_size(720, 1280, 640) == (360, 640)  # the longest side, whichever it is
+    assert frames.scaled_size(1024, 396, 960) == (960, 371)
+    assert frames.scaled_size(640, 360, 640) is None and frames.scaled_size(320, 240, 640) is None  # fits already
+    assert frames.scaled_size(1280, 720, 0) is None  # 0 = unchanged
+    assert frames.scaled_size(4000, 2, 640) == (640, 1)
+
+
+def check_scaling() -> None:
+    """With whichever library `frames` is using: a real 1280x720 JPEG comes out 640x360 and much smaller."""
+    big = make_jpeg(1280, 720)
+    small = frames.scale_jpeg(big, 640)
+    assert jpeg_size(small) == (640, 360) and len(small) < len(big) / 2
+    assert jpeg_size(frames.scale_jpeg(make_jpeg(360, 640), 320)) == (180, 320)
+    assert frames.scale_jpeg(big, 0) is big and frames.scale_jpeg(big, 1280) is big and frames.scale_jpeg(big, 4000) is big
+    assert frames.scale_jpeg(small, 640) is small  # scaling twice changes nothing: not re-encoded when it fits
+    assert frames.scale_jpeg(b"not a jpeg", 640) == b"not a jpeg" and frames.scale_jpeg(big[:500], 640) == big[:500]
+    desk = frames.scale_jpeg(frames.crop_jpeg(big, Box(x1=0.1, y1=0.4, x2=0.9, y2=0.95)), 960)  # crop first, then scale
+    assert jpeg_size(desk) == (960, 371)
+
+
+def test_scale_with_pillow():
+    pytest.importorskip("PIL.Image")
+    check_scaling()
+
+
+def test_scale_and_crop_with_opencv_when_there_is_no_pillow(monkeypatch):
+    pytest.importorskip("cv2")
+    monkeypatch.setattr(frames, "Image", None)
+    check_scaling()
+    assert jpeg_size(frames.crop_jpeg(make_jpeg(200, 100), Box(x1=0.1, y1=0.4, x2=0.9, y2=0.95))) == (160, 55)
+
+
+def test_without_an_image_library_the_frame_goes_out_unchanged(monkeypatch):
+    monkeypatch.setattr(frames, "Image", None)
+    monkeypatch.setitem(sys.modules, "cv2", None)  # importing it now fails, as on a box without OpenCV
+    jpeg = make_jpeg(1280, 720) or b"\xff\xd8 some camera frame"
+    assert frames.scale_jpeg(jpeg, 640) is jpeg
+    assert frames.crop_jpeg(jpeg, Box(x1=0.1, y1=0.4, x2=0.9, y2=0.95)) is jpeg
+
+
+def test_the_model_gets_the_scaled_copy_and_the_stored_keyframe_is_untouched(tmp_path):
+    jpeg = make_jpeg(1280, 720)
+    if jpeg is None:
+        pytest.skip("no image library")
+    path = tmp_path / "frames" / "cam-desk" / f"{int(at(0).timestamp() * 1000)}.jpg"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(jpeg)
+    sent = []
+
+    class Looking(FakeRuntime):
+        def caption(self, image, prompt="Describe the scene in one sentence."):
+            sent.append(("caption", jpeg_size(image), len(image)))
+            return super().caption(image, prompt)
+
+        def find_objects(self, image, items=None):
+            sent.append(("objects", jpeg_size(image), len(image)))
+            return super().find_objects(image, items)
+
+    load = frames.keyframe_loader(tmp_path)
+    c = Captioner(Looking(), load)
+    run(c.on_observation, [seen(0, PERSON)])
+    run(ObjectFinder(Looking(), load, ZONES).on_observation, [seen(0, PERSON)])
+    run(Captioner(Looking(), load, max_side=0).on_observation, [seen(0, PERSON)])
+    run(ObjectFinder(Looking(), load, ZONES, max_side=0).on_observation, [seen(0, PERSON)])
+    assert [(kind, size) for kind, size, _ in sent] == [("caption", (640, 360)), ("objects", (960, 371)),
+                                                        ("caption", (1280, 720)), ("objects", (1024, 396))]
+    assert sent[2][2] == len(jpeg) and sent[0][2] < len(jpeg) / 2  # 0 = the stored bytes, as before
+    assert path.read_bytes() == jpeg
+    assert (c.stats.images_sent, c.stats.bytes_before_scaling, c.stats.bytes_sent) == (1, len(jpeg), sent[0][2])
