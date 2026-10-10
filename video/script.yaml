@@ -1,0 +1,78 @@
+# The narration script, one entry per slot. `python video/scripts/voice.py` reads it, speaks every line with a
+# male neural voice (edge-tts), writes video/public/voice/<slot>-<n>.mp3 and video/src/voice.json (timings), and
+# reports whether each slot's words fit its minute. Lines are spoken in order with short pauses; `at` pins a line to
+# a second within the slot when the picture needs it. Plain words, bird's-eye view: a judge should never have to
+# decode a term.
+
+voice: en-US-AndrewMultilingualNeural
+rate: "+0%"
+gap_s: 0.6          # silence between lines
+budget_s: 52        # speech per slot, leaving the title card and breathing room inside 59.8 s
+
+slots:
+  0:
+    title: Atlas
+    lines:
+      - at: 5
+        text: This is Atlas. A small box that sits on your desk, with two camera eyes.
+      - text: It watches your space, remembers what it saw, answers your questions, and learns new skills. All of it on the box. Your video never leaves.
+      - text: Inside are four layers. Cameras, with every face blurred before anything is saved. A vision model that understands the scene. A memory of everything it saw. And an agent that never acts without asking you first.
+      - text: Everything after this minute is something you point Atlas at. Pick your track, press the key, and watch two minutes.
+
+  1:
+    title: It runs your day
+    lines:
+      - text: Point it at your week. Atlas reads your classes and deadlines, and watches how your day really goes at the desk.
+      - text: Each morning it writes one plan, with its reasons. When something slips, it re-plans. In the evening, it tells you what happened against the plan.
+      - text: Nothing is written to your calendar until you tap approve.
+
+  2:
+    title: It learns
+    lines:
+      - text: The model on the box is small. That is what makes it private and fast. But small models have gaps.
+      - text: When Atlas needs a new skill, you tap teach. It asks to export a handful of blurred pictures. A big open model in the lab labels them, and the small one is fine-tuned on the answers.
+      - text: A test decides if the new model is really better. Only then does it ship back to the box. Our adapter is public on Hugging Face.
+
+  3:
+    title: The learning lab
+    lines:
+      - text: The lab is two AMD Radeon R9700 cards. One serves the teacher, a twenty-seven billion parameter Qwen. The other trains.
+      - text: Labeling, training, testing and packaging run on ROCm, and every run is recorded, with its loss curve, its minutes and its watts.
+      - text: The box and the lab share two files, a dataset out and a model package back. Nothing else crosses.
+
+  4:
+    title: Box and lab
+    lines:
+      - text: The new model arrives as one small package. The box checks it, swaps it in, and rolls back by itself if it does not answer.
+      - text: We measure energy on both sides. Watts on the Jetson, watts on the GPUs, and joules per answer, so you can see what a question costs.
+
+  5:
+    title: On the Jetson
+    lines:
+      - text: Everything you see live runs on this Jetson. Cameras in, faces blurred, the on-device vision model understanding the scene, answers in a few seconds.
+      - text: Pull the network cable. It keeps seeing, remembering, alerting and answering. Only learning pauses.
+
+  6:
+    title: Data into counts
+    lines:
+      - text: The same cameras turn a room into data. Frames become events. Events become episodes you can ask about.
+      - text: Point it at the bins, and it counts what gets thrown away and where it lands.
+
+  7:
+    title: Impact, shared
+    lines:
+      - text: With a count comes a number a campus can act on. How much was sorted right, before and after a nudge.
+      - text: Tables share only their counts, never their pictures, and a leaderboard shows who is winning.
+
+  8:
+    title: Friends' Atlases
+    lines:
+      - text: Point it at your friends. Each person's Atlas keeps their own calendar private.
+      - text: Ask for a time that works for everyone, and the boxes negotiate. Only free or busy leaves each box. The event lands in everyone's plan after a tap.
+
+  9:
+    title: Day Run
+    lines:
+      - text: Point it at your habits. Day Run lets you play tomorrow before you live it, on a map of your own campus.
+      - text: A bad plan fails, and the game tells you why. A good plan wins three stars. Hard mode moves a class and makes you re-route.
+      - text: It is the same box, the same cameras, the same memory. Pointed at one more part of your life.

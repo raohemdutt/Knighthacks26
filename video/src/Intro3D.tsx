@@ -4,7 +4,7 @@ import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } fr
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import { Card } from "./Soft";
-import { page, theme, type } from "./theme";
+import { theme, type } from "./theme";
 
 /**
  * The tool before the use cases: one soft box resting on the same surface as every card, two camera eyes. The box
@@ -14,13 +14,6 @@ import { page, theme, type } from "./theme";
  */
 
 const LAYERS = ["Cameras, faces blurred", "Qwen VL understands the scene", "Memory of what it saw", "Agent that asks first"];
-
-const LINES = [
-  { from: 0, text: "This is Atlas." },
-  { from: 120, text: "A private AI box that sees, remembers, talks and learns." },
-  { from: 330, text: "Everything runs on the box. Your video never leaves it." },
-  { from: 600, text: "Everything after this minute is something you point it at." },
-];
 
 const LAYER_H = 0.36;
 const GAP = 0.04;
@@ -87,8 +80,6 @@ export function Intro3D() {
   const { fps, width, height } = useVideoConfig();
   const open = spring({ frame: frame - 420, fps, config: { damping: 20 } });
   const spin = interpolate(frame, [0, 1200], [-0.5, 0.7]);
-  const line = [...LINES].reverse().find((l) => frame >= l.from) ?? LINES[0];
-  const lineIn = interpolate(frame - line.from, [0, 15], [0, 1], { extrapolateRight: "clamp" });
   return (
     <AbsoluteFill style={{ backgroundColor: theme.surface }}>
       <ThreeCanvas width={width} height={height} camera={{ position: [0, 1.6, 8.5], fov: 38 }}>
@@ -103,9 +94,6 @@ export function Intro3D() {
           ))}
         </AbsoluteFill>
       ) : null}
-      <AbsoluteFill style={{ ...page, backgroundColor: "transparent", justifyContent: "flex-end", paddingBottom: 110 }}>
-        <div style={{ fontSize: type.title * 0.9, fontWeight: 600, opacity: lineIn, maxWidth: 1500 }}>{line.text}</div>
-      </AbsoluteFill>
     </AbsoluteFill>
   );
 }

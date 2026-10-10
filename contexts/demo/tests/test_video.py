@@ -101,3 +101,19 @@ def test_every_slot_has_an_opening_line_that_fits_a_caption():
     for s in video.SLOTS:
         assert s.line and len(s.line) <= 140, s.title
     assert all(s["line"] for s in video.timeline(clips_dir=Path("no-such-dir"))["slots"])
+
+
+def test_the_spoken_script_covers_every_slot_and_fits_each_minute():
+    """video/script.yaml is the narration; voice.json is its timing (video/scripts/voice.py). Neither may overflow a slot."""
+    import json
+
+    import yaml
+
+    root = Path(__file__).parents[3] / "video"
+    script = yaml.safe_load((root / "script.yaml").read_text(encoding="utf-8"))
+    assert sorted(int(k) for k in script["slots"]) == list(range(10))
+    timing = json.loads((root / "src" / "voice.json").read_text(encoding="utf-8"))["slots"]
+    for key in range(10):
+        slot = timing[str(key)]
+        assert slot["ends_at_s"] <= video.SLOT_S, f"slot {key} narration overflows its slot"
+        assert [l["text"] for l in slot["lines"]] == [l["text"].strip() for l in script["slots"][key]["lines"]], f"slot {key}: voice.json is stale, run video/scripts/voice.py"
