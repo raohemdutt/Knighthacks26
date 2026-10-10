@@ -16,6 +16,7 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
@@ -743,7 +744,9 @@ def test_a_pod_that_was_up_and_is_gone_at_the_next_status_raises_the_alert_once(
 @contextlib.contextmanager
 def fake_terminal(world, letter, *, output="hello from the pod\n", exit_code=0):
     """A Jupyter terminal on localhost. The pod that runs a command is this handler writing the command's
-    output file into the fake hub's file store, the way the shell on a real pod would."""
+    output file into the fake hub's file store, the way the shell on a real pod would. It echoes the command
+    only after the file is written, and the controller waits for that echo, so a slow machine cannot make the
+    controller read the file too early."""
     from websockets.sync.server import serve
 
     received = []
@@ -761,7 +764,7 @@ def fake_terminal(world, letter, *, output="hello from the pod\n", exit_code=0):
                     world.hub.files[(letter, match.group(1))] = output
                 connection.send(json.dumps(["stdout", payload]))
 
-    with serve(handler, "127.0.0.1", 0) as server:
+    with serve(handler, "127.0.0.1", 0) as server, mock.patch.object(ctl_module, "TERMINAL_SETTLE_S", 60.0):
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:
