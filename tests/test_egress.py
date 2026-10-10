@@ -200,3 +200,18 @@ def test_a_host_that_rotates_through_many_addresses_gets_all_of_them_over_time(t
     assert second["hub"][0] == {"1.1.1.1", "1.1.1.2", "1.1.1.3", "9.9.9.9"}  # kept, not replaced
     monkeypatch.setattr(egress, "resolve", lambda host, *a: (set(), set()))
     assert egress.resolve_groups({"hub": ["x.example"]}, second)["hub"][0] == second["hub"][0]  # a blip changes nothing
+
+
+def test_tailscale_opens_its_servers_its_wireguard_port_and_the_tailnet_only_when_switched_on(config):
+    assert "tailscale" not in egress.host_groups(config, {})
+    groups = egress.host_groups(config, {"ATLAS_TAILSCALE": "1"})
+    assert "controlplane.tailscale.com" in groups["tailscale"] and "derp1.tailscale.com" in groups["tailscale"]
+    resolved = {"tailscale": ({"192.0.2.10"}, set())}
+    online = egress.render(4, resolved, (set(), set()), offline=False)
+    assert '-d 100.64.0.0/10 -m comment --comment "tailnet" -j ACCEPT' in online
+    assert '-p udp --sport 41641 -m comment --comment "tailscale" -j ACCEPT' in online
+    assert '-d 192.0.2.10 -m comment --comment "tailscale" -j ACCEPT' in online
+    offline = egress.render(4, resolved, (set(), set()), offline=True)
+    assert "100.64.0.0/10" in offline and "41641" not in offline and "192.0.2.10" not in offline
+    assert "fd7a:115c:a1e0::/48" in egress.render(6, resolved, (set(), set()), offline=False)
+    assert "100.64.0.0/10" not in egress.render(4, {}, (set(), set()), offline=False)  # off: no tailnet line

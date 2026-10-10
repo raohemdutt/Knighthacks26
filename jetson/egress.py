@@ -6,7 +6,10 @@ working. What may leave:
 
     loopback, replies to connections that came in            always
     any private / link-local / multicast address (the LAN)   always, so Wi-Fi at any venue works
+    the tailnet's own addresses (100.64.0.0/10, fd7a:115c:a1e0::/48), when ATLAS_TAILSCALE=1: always, like the LAN
     NTP (udp 123), DNS to the box's own resolvers             always
+    Tailscale's control and relay servers and its WireGuard
+    port (udp from 41641), when ATLAS_TAILSCALE=1            online mode only
     the hub proxy (dub.aupcloud.io), each connector's `hosts`
     from config/connectors.yaml, Neon, the ntfy relay, the
     Ubuntu connectivity check,
@@ -47,6 +50,11 @@ CHAIN = "ATLAS_EGRESS"
 HUB_HOSTS = ["dub.aupcloud.io"]
 # NetworkManager asks this every few minutes; blocked, it would mark the Wi-Fi as having no internet.
 SYSTEM_HOSTS = ["connectivity-check.ubuntu.com"]
+# Tailscale (ATLAS_TAILSCALE=1): phones on the owner's tailnet reach the box's app and ntfy from anywhere.
+TAILSCALE_HOSTS = ["controlplane.tailscale.com", "login.tailscale.com", "log.tailscale.io",
+                   *(f"derp{n}.tailscale.com" for n in range(1, 29))]
+TAILNET = {4: ["100.64.0.0/10"], 6: ["fd7a:115c:a1e0::/48"]}
+TAILSCALE_PORT = 41641  # tailscaled's WireGuard source port: direct paths to peers instead of relays
 LAN = {4: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "224.0.0.0/4", "255.255.255.255/32"],
        6: ["fe80::/10", "fc00::/7", "ff00::/8"]}
 REJECT = {4: "icmp-port-unreachable", 6: "icmp6-port-unreachable"}
@@ -81,6 +89,8 @@ def host_groups(config_dir: Path, env: dict[str, str]) -> dict[str, list[str]]:
     for name, spec in ((yaml.safe_load(connectors.read_text()) or {}) if connectors.exists() else {}).items():
         if spec and spec.get("hosts"):
             groups[f"connector:{name}"] = [str(h) for h in spec["hosts"]]
+    if env.get("ATLAS_TAILSCALE") == "1":
+        groups["tailscale"] = list(TAILSCALE_HOSTS)
     neon = urlparse(env.get("NEON_DATABASE_URL", "")).hostname
     if neon:
         groups["neon"] = [neon]
@@ -157,6 +167,8 @@ def render(version: int, groups: dict[str, Resolved], dns: Resolved, offline: bo
              f"-A {CHAIN} -o lo -j ACCEPT",
              f"-A {CHAIN} -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT"]
     lines += [f"-A {CHAIN} -d {net} {_comment('lan')} -j ACCEPT" for net in LAN[version]]
+    if "tailscale" in groups:  # traffic to tailnet peers goes over tailscale0 and is ours end to end, like the LAN
+        lines += [f"-A {CHAIN} -d {net} {_comment('tailnet')} -j ACCEPT" for net in TAILNET[version]]
     if version == 6:  # neighbour discovery, router adverts and path-MTU messages: IPv6 does not work without them
         lines.append(f"-A {CHAIN} -p ipv6-icmp {_comment('lan')} -j ACCEPT")
     lines.append(f"-A {CHAIN} -p udp --dport 123 {_comment('ntp')} -j ACCEPT")
@@ -164,6 +176,8 @@ def render(version: int, groups: dict[str, Resolved], dns: Resolved, offline: bo
         for proto in ("udp", "tcp"):
             lines.append(f"-A {CHAIN} -d {ip} -p {proto} --dport 53 {_comment('dns')} -j ACCEPT")
     if not offline:
+        if "tailscale" in groups:
+            lines.append(f"-A {CHAIN} -p udp --sport {TAILSCALE_PORT} {_comment('tailscale')} -j ACCEPT")
         for group, resolved in sorted(groups.items()):
             lines += [f"-A {CHAIN} -d {ip} {_comment(group)} -j ACCEPT" for ip in sorted(resolved[pick])]
     lines += [
