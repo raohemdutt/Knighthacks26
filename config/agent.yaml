@@ -47,3 +47,10 @@ places: [Our table, Library, Dorm, Student Union, Gym]
 # Leaving checklist (A8): where the box is, as a place-pack place, for walking time to the next event.
 leaving:
   home_place: apartment.door   # e.g. ucf.eng2 when the box sits at the Knight Hacks table
+
+# The coach feeds the learning loop (contexts/day/application/coach_feedback.py): after this many "Was that right?"
+# answers about one kind of break (phone, food, someone coming in), of which at least `min_negatives` said "no",
+# the coach proposes a teach task as an approval card. Nothing leaves the box unless the card is approved.
+coach_feedback:
+  min_corrections: 5
+  min_negatives: 2
