@@ -134,7 +134,7 @@ _OPTIONAL_TEXT = ("title", "expected", "node", "note")
 
 _ID = re.compile(r"[A-Za-z][A-Za-z0-9._-]{0,31}")
 _ARM = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,15}")
-_METRIC = re.compile(r"[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+")
+_METRIC = refine_formats.METRIC_NAME
 _TASK = re.compile(r"[A-Z]{1,3}[0-9]{1,3}")
 _E_NUMBER = re.compile(r"E([0-9]+)")
 

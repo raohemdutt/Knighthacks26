@@ -975,3 +975,36 @@ def test_the_refinement_loop_names_its_four_tracks_in_one_place():
     assert refine_track.TRACKS is rf.TRACKS
     assert refine_merge.TRACKS is rf.TRACKS
     assert experiments.TRACKS is rf.TRACKS
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["pod.idle_watts", "teacher.decode_tok_s", "a.b.c", "decode.8k_tok_s", "teacher.2x", "pod.idle_watts.",
+     "Pod.idle_watts", "idle_watts", "pod..idle", "pod.idle-watts"],
+)
+def test_a_metric_name_is_read_by_metrics_py_rule_in_pass_entries_and_experiments(tmp_path, name):
+    """lab/machine/metrics.py decides what a metric name is, since it keeps the file every reading cites. A pass
+    entry's metrics table and an experiment take exactly the names it takes; a name with a digit-led part such as
+    decode.8k_tok_s cannot be stored there, so it cannot be cited or moved either."""
+    from lab.machine import experiments, metrics
+
+    try:
+        metrics.add({"metric": name, "value": 1.0, "unit": "W", "node": "pod-a", "conditions": {},
+                     "source": "test", "low_confidence": False}, path=tmp_path / "metrics.jsonl")
+        stored = True
+    except metrics.MetricsFormatError as exc:
+        assert "metric must be" in str(exc)
+        stored = False
+
+    entry = only_entry(edit(SAMPLE, "| pod.idle_watts | 39 |", f"| {name} | 39 |"))
+    in_entry = f"pass 7: metrics before: {name!r} is not a dotted lowercase metric name" not in rf.check_pass_entry(entry)
+
+    fields = {"id": "E9", "track": "kernels", "hypothesis": "h", "lever": "l", "arms": {"A": "a", "B": "b"},
+              "metric": name, "better": "lower", "citation": "c"}
+    try:
+        experiments.validate_definition(fields)
+        in_experiment = True
+    except experiments.ExperimentError:
+        in_experiment = False
+
+    assert (in_entry, in_experiment) == (stored, stored)

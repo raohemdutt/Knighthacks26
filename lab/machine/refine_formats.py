@@ -23,6 +23,7 @@ __all__ = [
     "Finding",
     "FormatError",
     "Log",
+    "METRIC_NAME",
     "OwnerCorrection",
     "PassEntry",
     "RaisedRuling",
@@ -43,11 +44,15 @@ __all__ = [
 #: the loop reads this tuple; changing the set takes a ruling and a board task.
 TRACKS: tuple[str, ...] = ("telemetry", "learning", "plumbing", "kernels")
 
+#: A metric name: dotted lowercase words, each starting with a letter (teacher.decode_tok_s). It is the rule
+#: lab/machine/metrics.py applies to lab/refine/metrics.jsonl, so a name a reading cites or an experiment moves is
+#: one that file can hold.
+METRIC_NAME = re.compile(r"[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+")
+
 # A dimension id is the label a track's RUBRIC.md gives one of its tests (D1, T3, ...); U1 and U2 are
-# the two universal rules. A metric name is dotted and lowercase, as in lab/refine/metrics.jsonl.
+# the two universal rules.
 _DIM = r"[A-Z]{1,3}[0-9]{1,2}"
 _DIM_LIST = rf"{_DIM}(?:\s*,\s*{_DIM})*"
-_METRIC = r"[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+"
 _DATE = r"[0-9]{4}-[0-9]{2}-[0-9]{2}"
 
 _PASS_HEADING = re.compile(rf"^## (?P<kind>Pass|Merge) (?P<number>[0-9]+), (?P<date>{_DATE})\s*$")
@@ -469,7 +474,7 @@ def check_pass_entry(entry: PassEntry) -> list[str]:
 
 def _check_readings(add, name: str, readings: tuple[Reading, ...], allow_absent: bool) -> None:
     for reading in readings:
-        if not re.fullmatch(_METRIC, reading.metric):
+        if not METRIC_NAME.fullmatch(reading.metric):
             add(f"{name}: {reading.metric!r} is not a dotted lowercase metric name")
         if not reading.value:
             add(f"{name}: {reading.metric} has no value")
@@ -490,7 +495,7 @@ def _check_change(add, change: Change, full: bool) -> None:
     if full:
         if not change.metric:
             add(f"change {n} has no METRIC")
-        elif not (re.match(_METRIC, change.metric) or change.metric.lower().startswith("none")):
+        elif not (METRIC_NAME.match(change.metric) or change.metric.lower().startswith("none")):
             add(f"change {n}: METRIC must start with a dotted metric name or 'none - <reason>'")
 
 

@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from lab.machine import metrics
 from lab.machine import refine_formats as rf
 
 __all__ = [
@@ -48,7 +49,7 @@ __all__ = [
 
 TRACKS = rf.TRACKS
 REFINE_DIR = Path(__file__).resolve().parents[1] / "refine"
-METRICS_PATH = REFINE_DIR / "metrics.jsonl"
+METRICS_PATH = metrics.DEFAULT_PATH
 
 _DRY_RUN_HEADER = re.compile(
     r"^Dry run of (?P<track>[a-z]+) refinement pass (?P<number>[0-9]+) \((?P<who>[^()\n]*)\), "

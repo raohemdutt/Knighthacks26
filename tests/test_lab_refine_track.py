@@ -347,3 +347,11 @@ def test_a_dry_run_with_crlf_line_endings_parses_like_lf(tmp_path):
 
     assert rt.check_dry_run(path) == []
     assert rt.parse_dry_run(path.read_text(encoding="utf-8")).entry.number == 1
+
+
+def test_the_metrics_file_the_checks_read_by_default_is_the_one_metrics_py_owns():
+    """metrics.py owns lab/refine/metrics.jsonl; the citation checks read the file it names instead of a path of
+    their own, so the two can never point at different files."""
+    from lab.machine import metrics
+
+    assert rt.METRICS_PATH is metrics.DEFAULT_PATH
