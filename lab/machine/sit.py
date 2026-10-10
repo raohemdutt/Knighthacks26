@@ -882,6 +882,10 @@ def live_refusal(tier: str, item: Item, state_dir: Path, now: dt.datetime) -> di
     try:
         # the pool's own reader, so a hand sitting and a pool seat count the same live sittings
         live = pool.read_live_sittings(state_dir, now)
+    except (FileNotFoundError, NotADirectoryError):
+        # no ledger yet (or a state dir that is not a directory): nothing runs, and the start-row write
+        # is the step that reports a state dir that cannot be written
+        live = []
     except OSError as exc:
         return {"outcome": OUTCOME_LEDGER,
                 "error": f"the ledger cannot be read, so the live sittings and the unit budget cannot be checked "
