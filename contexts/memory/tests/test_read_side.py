@@ -159,3 +159,19 @@ def test_seed_command_fills_a_database(tmp_path, capsys):
     assert main(["seed", "--data-dir", str(tmp_path)]) == 0
     assert "50 episodes" in capsys.readouterr().out
     assert SqliteMemory(MemoryStore(tmp_path / "memory.sqlite")).last_seen("keys").zone_id == "desk"
+
+
+def test_a_fixture_can_be_moved_to_end_now():
+    from datetime import UTC, datetime
+
+    from contexts.memory.fixture import as_of
+
+    fx = load()
+    now = datetime(2027, 3, 1, 9, 30, tzinfo=UTC)
+    moved = as_of(fx, now)
+    by = now - fx.now
+    assert moved.now == now and len(moved.episodes) == len(fx.episodes)
+    assert moved.episodes[0].start == fx.episodes[0].start + by
+    assert moved.sightings[0].ts == fx.sightings[0].ts + by
+    assert [i.when for i in moved.items if i.when] == [i.when + by for i in fx.items if i.when]
+    assert moved.episodes[0].keyframe_refs == fx.episodes[0].keyframe_refs  # refs are names, not times
