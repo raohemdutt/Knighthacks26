@@ -1545,15 +1545,27 @@ def clocked(world, monkeypatch):
     return world
 
 
-LONG_SLOT = ("--minutes", "60", "--why", "training run")
+LONG_SLOT = ("--minutes", "60", "--why", "training run", "--measured", "200 steps took 13 minutes")
 
 
 def open_slot(world, *request_args: str) -> str:
-    """Request a slot for L3, start it two minutes later, both through the verbs; the row's id."""
+    """Request a slot for L3, start it two minutes later, both through the verbs; the row's id. A request over 30
+    minutes is critiqued by the referee and answered with a reply in the start, as the justification step asks."""
     request, _ = world.call("request", "--task", "L3", "--what", "smoke LoRA", *request_args)
-    world.advance(minutes=2)
-    world.call("start", "--row", request["row"])
-    return request["row"]
+    row = request["row"]
+    reply: tuple[str, ...] = ()
+    if "--measured" in request_args:
+        world.advance(minutes=1)
+        critiqued, _ = referee.run(["--critique", row, "--text", "checkpoint every 100 steps so a slot can resume"],
+                                   client=world.client, now=lambda: world.now)
+        assert critiqued["outcome"] == "critiqued"
+        reply = ("--reply", "checkpoints every 100 steps are on")
+        world.advance(minutes=1)
+    else:
+        world.advance(minutes=2)
+    started, _ = world.call("start", "--row", row, *reply)
+    assert started["outcome"] == "started"
+    return row
 
 
 def end_slot(world, row: str, how: str) -> None:
