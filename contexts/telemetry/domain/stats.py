@@ -1,4 +1,4 @@
-"""The figures GET /runtime/stats serves, each with the record it came from, or null and the reason nothing has.
+﻿"""The figures GET /runtime/stats serves, each with the record it came from, or null and the reason nothing has.
 
 A Figure is one number the endpoint serves: its value and unit, the node it describes, when it was MEASURED (the
 record's own time, never the time the endpoint was read), the record it came from (`metrics.jsonl:<line>`,
@@ -54,6 +54,7 @@ class EvalRow(BaseModel):
     ts: datetime | None = None  # when the evaluation was recorded
     source: str | None = None  # learning.run.evaluated <event_id>
     reason: str | None = None  # why before or after is null
+    low_confidence: bool = False  # true when the scores are incomplete or no evaluation is recorded for this model
 
 
 def missing(unit: str, reason: str) -> Figure:

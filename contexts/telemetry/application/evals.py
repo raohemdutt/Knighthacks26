@@ -1,4 +1,4 @@
-"""Before and after eval scores per deployed model, folded from the learning events and rebuilt by replaying the log.
+﻿"""Before and after eval scores per deployed model, folded from the learning events and rebuilt by replaying the log.
 
     evals = EvalScores()
     evals.subscribe(bus)        # replay=True: learning.run.evaluated and learning.model.deployed
@@ -47,6 +47,7 @@ class EvalScores:
             row = EvalRow(model_version=d.model_version, deployed_ts=d.ts, previous_version=d.previous_version)
             if e is None:
                 row.reason = f"no learning.run.evaluated for {d.model_version} in the event log"
+                row.low_confidence = True
             else:
                 row = row.model_copy(update={
                     "task": e.task, "run_id": e.run_id, "decision": e.decision, "before": e.scores.get("current"),
@@ -55,6 +56,7 @@ class EvalScores:
                 absent = [k for k in ("current", "candidate") if k not in e.scores]
                 if absent:
                     row.reason = "the evaluation carries no " + " and no ".join(f"'{k}'" for k in absent) + " score"
+                    row.low_confidence = True
             out.append(row)
         return out
 

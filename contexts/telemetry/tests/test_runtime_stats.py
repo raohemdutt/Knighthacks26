@@ -1,4 +1,4 @@
-"""GET /runtime/stats assembles recorded numbers: the lab's metrics file and ledger, the telemetry projection and the
+﻿"""GET /runtime/stats assembles recorded numbers: the lab's metrics file and ledger, the telemetry projection and the
 learning events. Every figure is present; a figure nothing has recorded is null with the reason why."""
 
 import asyncio
@@ -248,10 +248,10 @@ def test_eval_scores_list_each_deployed_model_with_its_before_and_after_rebuilt_
     assert scores == {"reason": None, "models": [
         {"model_version": "atlas-base", "deployed_ts": "2026-10-10T14:06:40Z", "previous_version": "atlas-v2-desk",
          "task": None, "run_id": None, "decision": None, "before": None, "after": None, "teacher": None, "ts": None,
-         "source": None, "reason": "no learning.run.evaluated for atlas-base in the event log"},
+         "source": None, "reason": "no learning.run.evaluated for atlas-base in the event log", "low_confidence": True},
         {"model_version": "atlas-v2-desk", "deployed_ts": "2026-10-10T14:03:20Z", "previous_version": "atlas-base",
          "task": "desk-objects", "run_id": "r1b", "decision": "deploy", "before": 0.41, "after": 0.8, "teacher": 0.86,
-         "ts": "2026-10-10T14:02:30Z", "source": f"learning.run.evaluated {v2_again.event_id}", "reason": None},
+         "ts": "2026-10-10T14:02:30Z", "source": f"learning.run.evaluated {v2_again.event_id}", "reason": None, "low_confidence": False},
     ]}
 
 
@@ -261,3 +261,4 @@ def test_an_evaluation_without_a_before_or_after_score_says_which_is_missing(tmp
     (model,) = stats["eval_scores"]["models"]
     assert (model["before"], model["after"], model["teacher"], model["reason"]) == (
         None, 0.8, None, "the evaluation carries no 'current' score")
+    assert model["low_confidence"] is True and model["ts"] and model["source"]

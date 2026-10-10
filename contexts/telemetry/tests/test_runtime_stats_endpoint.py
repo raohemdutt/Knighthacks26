@@ -1,4 +1,4 @@
-"""GET /runtime/stats on the running app: mounted by the gateway, rebuilt from the event log on start, and reading the
+﻿"""GET /runtime/stats on the running app: mounted by the gateway, rebuilt from the event log on start, and reading the
 lab's committed metrics file through lab/machine."""
 
 import asyncio
@@ -34,7 +34,8 @@ def test_the_gateway_serves_every_figure_and_rebuilds_eval_scores_from_the_log(t
     assert body["eval_scores"]["models"] == [
         {"model_version": "atlas-v2-desk", "deployed_ts": "2026-10-10T14:05:00Z", "previous_version": "atlas-base",
          "task": "desk-objects", "run_id": "r1", "decision": "deploy", "before": 0.41, "after": 0.78, "teacher": None,
-         "ts": "2026-10-10T14:00:00Z", "source": f"learning.run.evaluated {evaluated.event_id}", "reason": None}]
+         "ts": "2026-10-10T14:00:00Z", "source": f"learning.run.evaluated {evaluated.event_id}", "reason": None,
+         "low_confidence": False}]
     teacher = metrics.latest("teacher.decode_tok_s")  # the committed lab/refine/metrics.jsonl
     assert (body["teacher_tok_s"]["value"], body["teacher_tok_s"]["node"], body["teacher_tok_s"]["low_confidence"]) == (
         teacher["value"], teacher["node"], teacher["low_confidence"])
