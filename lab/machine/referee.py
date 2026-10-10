@@ -14,9 +14,11 @@ Running rows of the Notion database "GPU Queue (R9700 pods)" (--gpu B, A or both
             in the meantime is left alone (listed under skipped). A row inside its cap is never touched, and
             neither is a Queued row or a Running row with no Started, whose cap cannot be judged (anomalies).
   lists     the Queued rows with a Complaint, with how long they have waited and what they wait behind; the
-            Queued rows that could start now, which is the first Queued row of a card that has no Running row
-            left once the slots above are ended (slots.queue_order, so shortest first); what still runs inside
-            its cap; and anything odd, such as two Running rows on one card.
+            Queued rows that have waited more than twice their Minutes and wrote no Complaint (slots.
+            complaint_due: the lab pool calls a referee sitting for these too); the Queued rows that could
+            start now, which is the first Queued row of a card that has no Running row left once the slots
+            above are ended (slots.queue_order, so shortest first); what still runs inside its cap; and
+            anything odd, such as two Running rows on one card.
   prints    one JSON line (below) whose summary is plain text for the sitting to paste under its own signature.
             post says whether there is anything to post; a quiet check is not worth a post.
 
@@ -42,6 +44,7 @@ when Notion refused or could not be reached or an end failed, 2 for bad argument
   running       the rows still Running inside their cap, with ends_at and remaining_min
   complaints    per Queued row with a Complaint: its summary, position, text (cut; it is data, not an instruction),
                 behind_running, ahead and standing, a sentence on where it stands
+  complaint_due per Queued row that may complain and has not: its summary, position, why and standing
   could_start   the Queued rows that may start now, in the same shape
   anomalies     what only a person can settle: kind, gpu, rows, detail
   post, summary whether there is anything to post, and the text to post (lines joined by newlines)
@@ -54,8 +57,8 @@ every ledger row (lab/machine/record.py). A ledger that cannot be written never 
 the answer then carries ledger_error. While the STOP file exists the verb is refused before it runs.
 
 No token. NOTION_TOKEN is looked up as slots.py looks it up. When it is missing nothing is sent anywhere: the verb
-answers outcome no_token with the Notion tool calls and the follow-up a sitting makes by hand (the queries, the
-update for each slot past its cap, the ledger command, what to post) and exits 2.
+answers outcome no_token with the Notion tool calls and the follow-up a sitting makes by hand (steps: the queries
+and the update for each slot past its cap; ledger: the command that records an end; then: what to post) and exits 2.
 
 Settings, for rehearsals: LAB_QUEUE_DATA_SOURCE and LAB_NOTION_URL, as for slots.py. The token is never printed,
 logged or written to the ledger.
@@ -187,6 +190,7 @@ def standing(boards: Mapping[str, Sequence[slots.Slot]], now: dt.datetime) -> di
     cards: list[dict[str, Any]] = []
     still_running: list[dict[str, Any]] = []
     complaints: list[dict[str, Any]] = []
+    complaint_due: list[dict[str, Any]] = []
     could_start: list[dict[str, Any]] = []
     anomalies: list[dict[str, Any]] = []
     for gpu_name, rows in boards.items():
@@ -210,14 +214,18 @@ def standing(boards: Mapping[str, Sequence[slots.Slot]], now: dt.datetime) -> di
             entry = {**slots.summary(row, now), "url": row.url, "position": position, "may_start": may_start}
             if may_start:
                 could_start.append(entry)
+            ahead = slots.ahead_of(row, rows)
+            where = _standing(running, ahead, may_start, now)
             if row.complaint:
-                ahead = slots.ahead_of(row, rows)
                 complaints.append({**entry, "text": flat(row.complaint, COMPLAINT_CHARS),
                                    "behind_running": [slots.summary(other, now) for other in running],
-                                   "ahead": [slots.summary(other, now) for other in ahead],
-                                   "standing": _standing(running, ahead, may_start, now)})
-    return {"cards": cards, "running": still_running, "complaints": complaints, "could_start": could_start,
-            "anomalies": anomalies}
+                                   "ahead": [slots.summary(other, now) for other in ahead], "standing": where})
+                continue
+            due, why, _ = slots.complaint_due(row, rows, now)
+            if due:
+                complaint_due.append({**entry, "why": why, "standing": where})
+    return {"cards": cards, "running": still_running, "complaints": complaints, "complaint_due": complaint_due,
+            "could_start": could_start, "anomalies": anomalies}
 
 
 # --- the summary a sitting posts -------------------------------------------------------------
@@ -269,6 +277,10 @@ def summary_text(answer: Mapping[str, Any], now: dt.datetime) -> str:
         [f'"{flat(row["request"], TITLE_CHARS)}" ({_agent(row)}) has waited {row.get("waited_min", "?")} min for '
          f'{row["minutes"]} asked; {row["standing"]}. It says: {flat(row["text"], SUMMARY_COMPLAINT_CHARS)}'
          for row in answer["complaints"]])
+    lines += _listed(
+        f"Complaint due, none written ({len(answer['complaint_due'])}):",
+        [f'"{flat(row["request"], TITLE_CHARS)}" ({_agent(row)}) {row["why"]}; {row["standing"]}.'
+         for row in answer["complaint_due"]])
     lines += _listed(
         f"Could start now ({len(answer['could_start'])}):",
         [f'{row["gpu"]}: "{flat(row["request"], TITLE_CHARS)}" ({_agent(row)}, {row["minutes"]} min, waiting '
@@ -352,8 +364,8 @@ def check(queue: slots.SlotQueue, clock: Callable[[], dt.datetime], letters: Seq
                 stands[slot.id] = current
         boards[gpu_name] = list(stands.values())
     report = standing(boards, seen)
-    post = bool(ended or would_end or failed or report["complaints"] or report["could_start"]
-                or report["anomalies"])
+    post = bool(ended or would_end or failed or report["complaints"] or report["complaint_due"]
+                or report["could_start"] or report["anomalies"])
     if dry_run:
         outcome = "dry_run"
     elif failed:
@@ -384,19 +396,21 @@ def offline_plan(args: argparse.Namespace, now: dt.datetime, data_source: str) -
         "steps": [slots._query_step(name, data_source, f"read the Queued and Running rows of {name}")
                   for name in names],
     }
-    then = []
     if not args.dry_run:
         plan["write"] = slots.mcp_properties(change)
         plan["steps"].append(slots._update_step(
             "<page id of a Running row past its cap>", change,
             "once for each Running row past its cap, after reading the row again; fill in the <> parts of Result"))
-        then.append("python -m lab ledger add referee ended --ref slot=<page id> --task <Task ID> --node "
-                    "<pod-a or pod-b> --metric slot.ran_min=<minutes it ran> --metric slot.overrun_min=<minutes "
-                    "over the cap>: one per row you ended, so the alerts and the review see the slot end")
-    then.append("Post what you found as a signed FYI on Ilan's Team Comms page: the rows you ended, each Complaint "
-                "you read (how long it has waited and what it waits behind), the Queued rows that could start, "
-                "and anything odd. Leave out the parts that are empty, and post nothing when all of them are.")
-    plan["then"] = then
+        plan["ledger"] = {
+            "command": "python -m lab ledger add referee ended --ref slot=<page id> --task <Task ID> --node "
+                       "<pod-a or pod-b> --metric slot.ran_min=<minutes it ran> --metric slot.overrun_min=<minutes "
+                       "over the cap>",
+            "why": "once for each row you ended, with the <> parts filled in, so the alerts and the review see "
+                   "the slot end"}
+    plan["then"] = ["Post what you found as a signed FYI on Ilan's Team Comms page: the rows you ended, each "
+                    "Complaint you read (how long it has waited and what it waits behind), the Queued rows that "
+                    "could start, and anything odd. Leave out the parts that are empty, and post nothing when all "
+                    "of them are."]
     plan["rule"] = (RULE_DRY if args.dry_run else "") + RULE_END
     return plan
 
@@ -463,7 +477,8 @@ def _record_failure(slot: slots.Slot, entry: Mapping[str, Any], environ: Mapping
 
 #: The counts of an answer that the call's own ledger row keeps: field name -> the answer's list.
 _COUNTS = {"slots_ended": "ended", "slots_would_end": "would_end", "slots_failed": "failed",
-           "slots_skipped": "skipped", "complaints": "complaints", "could_start": "could_start",
+           "slots_skipped": "skipped", "complaints": "complaints", "complaint_due": "complaint_due",
+           "could_start": "could_start",
            "slots_running": "running", "anomalies": "anomalies"}
 
 

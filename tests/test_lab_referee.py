@@ -365,6 +365,41 @@ def test_a_long_complaint_is_cut_and_stays_data_on_one_line(world):
     assert len(item) < 500 and "\n" not in item
 
 
+def test_a_queued_row_that_waited_over_twice_its_minutes_without_complaining_is_listed_as_due(world):
+    world.running("R20: bench", started_ago=5, minutes=15)
+    due = world.seed("O4: eval", minutes=15, requested=world.ago(minutes=31))
+    world.seed("O5: eval", minutes=15, requested=world.ago(minutes=30))
+    complained = world.seed("O6: eval", minutes=15, requested=world.ago(minutes=45), complaint="still waiting")
+    answer, code = world.referee()
+    assert code == 0 and answer["outcome"] == "reported" and answer["post"] is True
+    [entry] = answer["complaint_due"]
+    assert entry["row"] == due and entry["why"] == "waited 31 minutes, more than twice the 15 asked for"
+    assert entry["standing"] == ('it waits behind the Running slot "R20: bench" (10 min left) and 1 Queued row(s) '
+                                 "that go first (fewest minutes, then earliest request)")
+    assert ids(answer["complaints"]) == [complained]
+    assert ('- "O4: eval" (Ilan) waited 31 minutes, more than twice the 15 asked for; it waits behind the Running '
+            'slot "R20: bench" (10 min left)') in answer["summary"]
+    assert "Complaint due, none written (1):" in answer["summary"]
+    [scan] = ledger_rows()
+    assert (scan["complaint_due"], scan["complaints"]) == (1, 1)
+
+
+def test_a_row_that_is_only_due_is_worth_a_post_by_itself(world):
+    world.running("R20: bench", started_ago=5, minutes=15)
+    due = world.seed("O4: eval", minutes=15, requested=world.ago(minutes=40))
+    answer, _ = world.referee()
+    assert ids(answer["complaint_due"]) == [due] and answer["complaints"] == [] and answer["could_start"] == []
+    assert answer["post"] is True and answer["outcome"] == "reported"
+
+
+def test_a_row_is_not_due_until_it_has_waited_more_than_twice_its_minutes(world):
+    world.running("R20: bench", started_ago=5, minutes=15)
+    world.seed("O4: eval", minutes=15, requested=world.ago(minutes=30))
+    world.seed("L3: train", minutes=60, requested=world.ago(minutes=119))
+    answer, _ = world.referee()
+    assert answer["complaint_due"] == [] and answer["post"] is False
+
+
 def test_the_first_queued_row_could_start_when_the_card_has_no_running_row(world):
     shorter_later = world.seed("O4: eval", minutes=15, requested=world.ago(minutes=1))
     world.seed("L3: train", minutes=60, requested=world.ago(minutes=50))
@@ -547,6 +582,7 @@ def test_a_token_notion_rejects_is_an_error_with_a_hint_and_writes_nothing():
     wrong = NotionClient("some-other-token-0123456789", transport=world.fake.transport)
     answer, code = referee.run([], client=wrong, now=lambda: T0)
     assert code == 1 and answer["ok"] is False and answer["outcome"] == "error" and answer["kind"] == "unauthorized"
+    assert answer["verb"] == "referee"
     assert "wrong or revoked" in answer["reason"] and world.fake.edits() == []
     [scan] = ledger_rows()
     assert (scan["verb"], scan["outcome"], scan["kind"]) == ("referee scan", "error", "unauthorized")
@@ -665,7 +701,7 @@ def test_without_a_token_the_verb_prints_what_a_sitting_does_by_hand_and_exits_2
     assert update["properties"]["date:Ended:start"] == "2026-10-10T14:00:00.000Z"
     assert update["properties"]["Result"].startswith("Ended by the referee at 2026-10-10T14:00Z: ran <minutes since "
                                                      "Started> min against a cap of <Minutes, plus 15 if Extended>")
-    assert any(step.startswith("python -m lab ledger add referee ended --ref slot=") for step in answer["then"])
+    assert answer["ledger"]["command"].startswith("python -m lab ledger add referee ended --ref slot=")
     assert any("signed FYI on Ilan's Team Comms page" in step for step in answer["then"])
     assert "Status 'Ended by referee'" in answer["rule"] and slots.RULE_START in answer["rule"]
 
@@ -675,7 +711,7 @@ def test_without_a_token_a_dry_run_or_one_card_prints_only_what_it_needs():
     assert code == 2 and answer["dry_run"] is True and "write" not in answer
     assert [step["tool"].rsplit("notion-", 1)[1] for step in answer["steps"]] == ["query-data-sources"]
     assert answer["rule"].startswith("Read only: write nothing to Notion")
-    assert not any("ledger add referee ended" in step for step in answer["then"])
+    assert "ledger" not in answer
 
 
 def test_without_a_token_the_call_still_writes_its_scan_row():
@@ -712,6 +748,28 @@ def test_the_properties_printed_without_a_token_are_the_columns_the_verb_sets_wi
     assert after["Status"] == wanted["Status"]
     assert slots.parse_moment(after["Ended"]) == wanted["Ended"]
     assert after["Result"].split(": ran ")[0] == wanted["Result"].split(": ran ")[0]
+
+
+def test_the_ledger_command_printed_without_a_token_writes_the_row_the_verb_writes_with_one(world, capsys):
+    row = world.running("L3: train", started_ago=75, minutes=60)
+    world.referee()
+    [by_verb, _scan] = ledger_rows()
+    printed, _ = referee.run([], environ={}, env_files=[], now=lambda: world.now)
+    filled = printed["ledger"]["command"]
+    for placeholder, value in {"<page id>": row, "<Task ID>": "L3", "<pod-a or pod-b>": "pod-b",
+                               "<minutes it ran>": "75", "<minutes over the cap>": "15"}.items():
+        assert placeholder in filled
+        filled = filled.replace(placeholder, value)
+    assert "<" not in filled
+    capsys.readouterr()
+    words = shlex.split(filled)
+    assert words[:3] == ["python", "-m", "lab"]
+    assert lab_cli.main(words[3:]) == 0
+    by_hand = one_json_line(capsys.readouterr().out)
+    assert by_hand["outcome"] == "added"
+    written = [r for r in ledger_rows() if r["seq"] == by_hand["seq"]][0]
+    for field in ("verb", "outcome", "task", "node", "metrics", "refs"):
+        assert written[field] == by_verb[field], field
 
 
 def test_a_blank_token_counts_as_missing(tmp_path):
