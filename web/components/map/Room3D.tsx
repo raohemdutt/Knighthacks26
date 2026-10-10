@@ -37,7 +37,7 @@ const NAME_STEP = 0.15; // how much higher a zone's name stands when it would ru
 const PIN_STEP = 0.09; // how much taller a pin stands for each row of pins in front of it
 const HALO = 0.3; // how far a panel's soft shadow reaches past its edge
 
-const COLOR = { floor: 0x1c2229, edge: 0x2b333d, zone: 0x5f6b78, zoneOn: 0x5ce1c6, text: "#f3f5f7", muted: "#a6b0bb", pin: 0xf3f5f7, accent: 0x5ce1c6 };
+const COLOR = { floor: 0xe6ebf3, edge: 0xc9d3e3, zone: 0x8e9bb0, zoneOn: 0x3b82f6, text: "#1b2433", muted: "#566176", pin: 0x566176, accent: 0x2563eb };
 
 export type Mode = "native" | "quality" | "performance";
 export const MODES: { id: Mode; name: string; sub: string; scale: number }[] = [
@@ -99,7 +99,7 @@ function label(text: string, color: string, size = 0.11, outline = true): THREE.
     ctx.textBaseline = "middle";
     ctx.lineJoin = "round";
     ctx.lineWidth = 8;
-    ctx.strokeStyle = "#13171c";
+    ctx.strokeStyle = "#eef2f8";
     if (outline) ctx.strokeText(text, pad, 34);
     ctx.fillStyle = color;
     ctx.fillText(text, pad, 34);
@@ -400,9 +400,9 @@ export default function Room3D({ cameras, pins, selected, route }: Room3DProps) 
       const ground = shadowPlane(PANEL_W + HALO * 2, PANEL_D + HALO * 2, [256, 208], 0, (ctx) => {
         const sx = 256 / (PANEL_W + HALO * 2);
         const sy = 208 / (PANEL_D + HALO * 2);
-        ctx.shadowColor = "rgba(0,0,0,0.6)";
+        ctx.shadowColor = "rgba(70,85,122,0.5)";
         ctx.shadowBlur = HALO * sx * 0.75;
-        ctx.fillStyle = "#000";
+        ctx.fillStyle = "#46557a";
         ctx.fillRect(HALO * sx, HALO * sy, PANEL_W * sx, PANEL_D * sy);
       });
       ground.position.set(ox + PANEL_W / 2, -0.021, PANEL_D / 2);
@@ -413,8 +413,8 @@ export default function Room3D({ cameras, pins, selected, route }: Room3DProps) 
           polygon.forEach(([x, y], n) => (n === 0 ? ctx.moveTo(x * 512, y * 384) : ctx.lineTo(x * 512, y * 384)));
           ctx.closePath();
         };
-        ctx.fillStyle = "#000";
-        ctx.shadowColor = "rgba(0,0,0,0.75)";
+        ctx.fillStyle = "#46557a";
+        ctx.shadowColor = "rgba(70,85,122,0.55)";
         ctx.shadowBlur = 20;
         for (const zone of cam.zones) {
           trace(zone.polygon);
@@ -446,7 +446,7 @@ export default function Room3D({ cameras, pins, selected, route }: Room3DProps) 
         const block = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: on ? COLOR.zoneOn : COLOR.zone, roughness: 0.8, transparent: true, opacity: on ? 0.6 : 0.5 }));
         block.renderOrder = 2;
         group.add(block);
-        const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), new THREE.LineBasicMaterial({ color: on ? COLOR.accent : 0xa6b0bb }));
+        const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), new THREE.LineBasicMaterial({ color: on ? COLOR.accent : 0x8e9bb0 }));
         group.add(edges);
         // The name stands at the near edge of the zone, clear of any pins in its middle. It is drawn no
         // wider than it must be, and when it would still run into a neighbour's name it stands a step
@@ -466,7 +466,7 @@ export default function Room3D({ cameras, pins, selected, route }: Room3DProps) 
         if (level > 0) {
           const line = new THREE.Line(
             new THREE.BufferGeometry().setFromPoints([place([mid, near], ZONE_H), place([mid, near], ZONE_H + 0.04 + level * NAME_STEP)]),
-            new THREE.LineBasicMaterial({ color: 0xa6b0bb }),
+            new THREE.LineBasicMaterial({ color: 0x8e9bb0 }),
           );
           group.add(line);
         }
@@ -490,11 +490,11 @@ export default function Room3D({ cameras, pins, selected, route }: Room3DProps) 
         const head = new THREE.Mesh(new THREE.SphereGeometry(on ? 0.058 : 0.05, 20, 14), new THREE.MeshStandardMaterial({ color, roughness: 0.4 }));
         head.position.copy(place(pin.at, ZONE_H + top));
         group.add(head);
-        const number = label(String(pin.n), "#13171c", 0.1, false);
+        const number = label(String(pin.n), "#ffffff", 0.1, false);
         number.position.copy(head.position);
         group.add(number);
         if (on) {
-          const text = label(humanize(pin.label), "#5ce1c6", 0.13);
+          const text = label(humanize(pin.label), "#2563eb", 0.13);
           text.position.copy(place(pin.at, ZONE_H + 0.2 + tallest * PIN_STEP + 0.19));
           text.renderOrder = 11;
           group.add(text);

@@ -1,25 +1,75 @@
-/* Tokens and element defaults. Dark only, one accent, type sized to stay readable on a mirrored projector. */
+/*
+ * Design tokens and element defaults: a soft (neumorphic) light theme.
+ *
+ * One surface colour. Depth comes only from a light source at the top-left: a white highlight
+ * on the top-left edge and a cool grey shade on the bottom-right. Raised things use the
+ * --sh-raised* shadows, pressed or sunken things (inputs, wells, active buttons) use --sh-inset*.
+ * Blue is the only accent and is kept for primary actions, selected states, progress and icons.
+ *
+ * Contrast (checked against --bg): --text 13.9:1, --muted 5.5:1, --accent 4.6:1 (white on --accent
+ * 5.2:1), --danger 5.0:1, --ok 4.7:1, --watch 5.3:1. --accent-bright is for non-text marks only.
+ */
 :root {
-  --bg: #0a0c0f;
-  --surface: #13171c;
-  --surface-2: #1c2229;
-  --line: #2b333d;
-  --text: #f3f5f7;
-  --muted: #a6b0bb;
-  --accent: #5ce1c6;
-  --accent-ink: #04231d;
-  --accent-soft: rgba(92, 225, 198, 0.14);
-  --danger: #ff9b91;
-  --danger-soft: rgba(255, 155, 145, 0.12);
+  /* surface */
+  --bg: #eef2f8;
+  --surface: #eef2f8;
+  --surface-2: #e6ebf3; /* a slightly sunken tone for wells and tags */
+  --line: rgba(120, 136, 165, 0.22); /* hairline dividers only, never an outline around a control */
 
-  --radius: 16px;
-  --radius-sm: 10px;
-  --gutter: 16px;
-  --tabbar-h: 68px;
+  /* text */
+  --text: #1b2433;
+  --muted: #566176;
+
+  /* accent (blue) */
+  --accent: #2563eb;
+  --accent-bright: #3b82f6;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(37, 99, 235, 0.1);
+
+  /* status */
+  --danger: #c0332b;
+  --danger-soft: rgba(192, 51, 43, 0.09);
+  --ok: #0f7b5f;
+  --watch: #8a5a00;
+  --bad: #c0332b;
+  --unknown: #5f6b7a;
+
+  /* text and marks drawn on top of camera frames or 3D scenes, which stay dark */
+  --on-media: #ffffff;
+  --on-media-scrim: rgba(15, 20, 30, 0.72);
+  --media-bg: #0f141d;
+
+  /* shadow colours: light from the top-left */
+  --sh-light: #ffffff;
+  --sh-dark: #c9d3e3;
+
+  /* raised: sits above the surface */
+  --sh-raised-sm: 3px 3px 8px var(--sh-dark), -3px -3px 8px var(--sh-light);
+  --sh-raised: 6px 6px 14px var(--sh-dark), -6px -6px 14px var(--sh-light);
+  --sh-raised-lg: 10px 10px 24px var(--sh-dark), -10px -10px 24px var(--sh-light);
+  /* inset: pressed in, for the active state of a control and for fields and wells */
+  --sh-inset-sm: inset 2px 2px 5px var(--sh-dark), inset -2px -2px 5px var(--sh-light);
+  --sh-inset: inset 4px 4px 9px var(--sh-dark), inset -4px -4px 9px var(--sh-light);
+  /* a selected control: pressed in, with a blue ring as a second cue that does not depend on shadow */
+  --sh-selected: var(--sh-inset-sm), 0 0 0 2px var(--accent);
+  /* a lone element laid over other content (toasts, sheets) */
+  --sh-float: 0 18px 40px rgba(86, 100, 130, 0.28), -4px -4px 12px var(--sh-light);
+
+  /* corner radii */
+  --radius-lg: 24px;
+  --radius: 20px;
+  --radius-sm: 16px;
+  --radius-pill: 999px;
+
+  --gutter: 20px;
+  --tabbar-h: 76px;
+  --tap: 44px; /* minimum tap target */
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-top: env(safe-area-inset-top, 0px);
 
-  color-scheme: dark;
+  --ease-press: 120ms ease-out;
+
+  color-scheme: light;
 }
 
 *,
@@ -90,7 +140,8 @@ a {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
   color: inherit;
 }
@@ -101,8 +152,8 @@ button {
 }
 
 :focus-visible {
-  outline: 3px solid var(--accent);
-  outline-offset: 2px;
+  outline: 3px solid var(--accent-bright);
+  outline-offset: 3px;
 }
 
 img,

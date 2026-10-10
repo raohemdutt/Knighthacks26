@@ -10,7 +10,7 @@ export const metadata: Metadata = {
   description: "Ask your desk what happened, see what is due, and approve what Atlas wants to do.",
   manifest: "/manifest.webmanifest",
   applicationName: "Atlas",
-  appleWebApp: { capable: true, title: "Atlas", statusBarStyle: "black-translucent" },
+  appleWebApp: { capable: true, title: "Atlas", statusBarStyle: "default" },
   icons: {
     icon: [
       { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
@@ -25,8 +25,8 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#0a0c0f",
-  colorScheme: "dark",
+  themeColor: "#eef2f8",
+  colorScheme: "light",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

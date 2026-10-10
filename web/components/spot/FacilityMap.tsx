@@ -132,12 +132,12 @@ export function FacilityMap({ data, assets, live }: { data: Locations; assets: A
           {geo.image ? (
             <>
               <image href={geo.image} x="0" y="0" width={geo.w} height={geo.h} preserveAspectRatio="none" />
-              <rect x="0" y="0" width={geo.w} height={geo.h} fill="#0a0c0f" opacity="0.42" />
+              <rect x="0" y="0" width={geo.w} height={geo.h} fill="#eef2f8" opacity="0.35" />
             </>
           ) : (
             Object.entries(geo.panels).map(([f, p]) => (
               <g key={f}>
-                <rect x={p.x + 4} y={p.y + 4} width={p.w - 8} height={p.h - 8} rx="14" fill="#11161c" stroke="var(--line)" strokeWidth={1.5 * u} />
+                <rect x={p.x + 4} y={p.y + 4} width={p.w - 8} height={p.h - 8} rx="14" fill="var(--surface-2)" stroke="var(--line)" strokeWidth={1.5 * u} />
                 {[0.25, 0.5, 0.75].map((t) => (
                   <g key={t} stroke="var(--line)" strokeWidth={u} opacity="0.5">
                     <line x1={p.x + t * p.w} x2={p.x + t * p.w} y1={p.y + 12} y2={p.y + p.h - 12} />
@@ -155,7 +155,7 @@ export function FacilityMap({ data, assets, live }: { data: Locations; assets: A
             <polyline
               points={trail.map((id) => `${geo.pos[id]!.x},${geo.pos[id]!.y}`).join(" ")}
               fill="none"
-              stroke="#fff"
+              stroke="var(--text)"
               strokeWidth={2.5 * u}
               strokeDasharray={`${6 * u} ${5 * u}`}
               strokeLinecap="round"
@@ -203,26 +203,26 @@ export function FacilityMap({ data, assets, live }: { data: Locations; assets: A
                   return (
                     <g key={a.asset_id} onClick={(e) => (e.stopPropagation(), open({ kind: "asset", id: a.asset_id }))}>
                       <title>{`${a.asset_id} ${a.asset_name}: ${a.criticality} criticality, ${a.anomalies} anomaly rows`}</title>
-                      <circle cx={ax} cy={ay} r={5 * u} fill={sev ? SEV_COLOR[sev] : "#1c2229"} stroke={a.criticality === "CRITICAL" ? "#fff" : "#cfd6de"} strokeWidth={ring * u} />
-                      {a.criticality === "CRITICAL" ? <circle cx={ax} cy={ay} r={8 * u} fill="none" stroke="#fff" strokeWidth={1 * u} /> : null}
+                      <circle cx={ax} cy={ay} r={5 * u} fill={sev ? SEV_COLOR[sev] : "var(--surface)"} stroke={a.criticality === "CRITICAL" ? "#1b2433" : "#8e9bb0"} strokeWidth={ring * u} />
+                      {a.criticality === "CRITICAL" ? <circle cx={ax} cy={ay} r={8 * u} fill="none" stroke="#1b2433" strokeWidth={1 * u} /> : null}
                     </g>
                   );
                 })}
-                <circle cx={p.x} cy={p.y} r={r + 2.5 * u} fill="#0a0c0f" opacity="0.9" />
-                <circle cx={p.x} cy={p.y} r={r} fill={color} stroke={here ? "#fff" : "transparent"} strokeWidth={2.5 * u} />
-                <text x={p.x} y={p.y + 3.8 * u} textAnchor="middle" fontSize={10.5 * u} fontWeight="800" fill="#04130f">
+                <circle cx={p.x} cy={p.y} r={r + 2.5 * u} fill="#ffffff" opacity="0.9" />
+                <circle cx={p.x} cy={p.y} r={r} fill={color} stroke={here ? "#1b2433" : "transparent"} strokeWidth={2.5 * u} />
+                <text x={p.x} y={p.y + 3.8 * u} textAnchor="middle" fontSize={10.5 * u} fontWeight="800" fill="#ffffff">
                   {label}
                 </text>
                 {anomalyCount > 0 ? (
                   <g>
-                    <circle cx={p.x + r * 0.95} cy={p.y + r * 0.8} r={7.5 * u} fill={SEV_COLOR[worst ?? "LOW"]} stroke="#0a0c0f" strokeWidth={1.5 * u} />
-                    <text x={p.x + r * 0.95} y={p.y + r * 0.8 + 3.3 * u} textAnchor="middle" fontSize={9 * u} fontWeight="800" fill="#16090a">
+                    <circle cx={p.x + r * 0.95} cy={p.y + r * 0.8} r={7.5 * u} fill={SEV_COLOR[worst ?? "LOW"]} stroke="#ffffff" strokeWidth={1.5 * u} />
+                    <text x={p.x + r * 0.95} y={p.y + r * 0.8 + 3.3 * u} textAnchor="middle" fontSize={9 * u} fontWeight="800" fill="#ffffff">
                       {anomalyCount}
                     </text>
                   </g>
                 ) : null}
                 {!geo.image ? (
-                  <text x={p.x} y={p.y + r + 13 * u} textAnchor="middle" fontSize={11 * u} fontWeight="700" fill="var(--text)" stroke="#0a0c0f" strokeWidth={3 * u} paintOrder="stroke">
+                  <text x={p.x} y={p.y + r + 13 * u} textAnchor="middle" fontSize={11 * u} fontWeight="700" fill="var(--text)" stroke="#eef2f8" strokeWidth={3 * u} paintOrder="stroke">
                     {l.location_id}
                   </text>
                 ) : null}
@@ -232,10 +232,10 @@ export function FacilityMap({ data, assets, live }: { data: Locations; assets: A
 
           {robot && visible(robotAt!) ? (
             <g className={s.robot} style={{ transform: `translate(${robot.x}px, ${robot.y}px)` }}>
-              <circle className={s.pulse} r={r + 5 * u} fill="none" stroke="#fff" strokeWidth={2.5 * u} />
+              <circle className={s.pulse} r={r + 5 * u} fill="none" stroke="var(--accent-bright)" strokeWidth={2.5 * u} />
               <g transform={`translate(${-r - 4 * u}, ${-r - 12 * u})`}>
-                <rect x={-17 * u} y={-9 * u} width={34 * u} height={16 * u} rx={4 * u} fill="#fff" />
-                <text x="0" y={3 * u} textAnchor="middle" fontSize={10 * u} fontWeight="800" fill="#0a0c0f">
+                <rect x={-17 * u} y={-9 * u} width={34 * u} height={16 * u} rx={4 * u} fill="var(--accent)" />
+                <text x="0" y={3 * u} textAnchor="middle" fontSize={10 * u} fontWeight="800" fill="#ffffff">
                   SPOT
                 </text>
               </g>
@@ -258,7 +258,7 @@ export function FacilityMap({ data, assets, live }: { data: Locations; assets: A
           <i className={s.swatch} style={{ background: "var(--unknown)" }} /> {replaying ? "not visited yet" : "under 8 actions"}
         </span>
         <span>
-          <i className={s.swatch} style={{ background: "#1c2229", border: "2px solid #fff", outline: "1px solid #fff", outlineOffset: 2 }} /> asset (ring = criticality, fill = worst anomaly)
+          <i className={s.swatch} style={{ background: "var(--surface)", border: "2px solid #1b2433", outline: "1px solid #1b2433", outlineOffset: 2 }} /> asset (ring = criticality, fill = worst anomaly)
         </span>
         <span>
           <i className={s.swatch} style={{ background: "var(--sev-high)" }} /> anomaly count

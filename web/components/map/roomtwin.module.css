@@ -6,8 +6,8 @@
   aspect-ratio: 1 / 0.82;
   max-height: 78vh;
   border-radius: var(--radius-sm);
-  background: #171c22;
-  border: 1px solid var(--line);
+  background: var(--surface-2); /* the 3D scene reads this as its sky and floor colour */
+  box-shadow: var(--sh-inset);
   overflow: hidden;
   touch-action: none; /* drags turn the room */
   user-select: none;
@@ -34,7 +34,7 @@
   aspect-ratio: auto;
   max-height: none;
   height: 100%;
-  border: 0;
+  box-shadow: none;
   border-radius: 0;
 }
 
@@ -58,10 +58,11 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 2px 8px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 999px;
-  background: rgba(12, 15, 19, 0.82);
+  padding: 3px 10px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 2px 2px 6px rgba(120, 136, 170, 0.35);
   color: var(--text);
   font-size: 13px;
   font-weight: 650;
@@ -71,7 +72,7 @@
 }
 
 .person {
-  background: rgba(12, 15, 19, 0.9);
+  background: #ffffff;
 }
 
 .thing {
@@ -83,8 +84,8 @@
 }
 
 .zone {
-  border-color: transparent;
-  background: rgba(12, 15, 19, 0.55);
+  box-shadow: none;
+  background: rgba(255, 255, 255, 0.6);
   color: var(--muted);
   font-size: 12px;
   font-weight: 600;
@@ -94,15 +95,14 @@
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  border: 1px solid #ffffff;
 }
 
 .pin {
   min-height: 24px;
-  padding: 2px 9px;
-  border-color: rgba(255, 255, 255, 0.5);
-  background: #f3f5f7;
-  color: #10141a;
+  padding: 3px 11px;
+  background: #ffffff;
+  color: var(--text);
   font-size: 13px;
   pointer-events: auto;
   cursor: pointer;
@@ -117,13 +117,11 @@
 
 .pinOn {
   background: var(--accent);
-  border-color: var(--accent);
   color: var(--accent-ink);
 }
 
 .target {
   background: var(--accent);
-  border-color: var(--accent);
   color: var(--accent-ink);
   font-size: 14px;
 }
@@ -145,10 +143,10 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 2px 7px;
-  padding: 5px 11px;
-  border-radius: 14px;
-  background: rgba(12, 15, 19, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  background: rgba(238, 242, 248, 0.94);
+  box-shadow: var(--sh-raised-sm);
   font-size: 14px;
   font-weight: 650;
 }
@@ -168,33 +166,36 @@
 }
 
 .chip[data-live="on"] .liveDot {
-  background: var(--accent);
+  background: var(--accent-bright);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .views {
   display: flex;
-  padding: 3px;
-  border-radius: 14px;
-  background: rgba(12, 15, 19, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  background: rgba(238, 242, 248, 0.94);
+  box-shadow: var(--sh-inset-sm);
   pointer-events: auto;
 }
 
 .viewBtn {
-  min-width: 52px;
-  min-height: 36px;
-  padding: 4px 10px;
+  min-width: var(--tap);
+  min-height: var(--tap);
+  padding: 4px 12px;
   border: 0;
-  border-radius: 10px;
+  border-radius: 12px;
   background: transparent;
   color: var(--muted);
   font-size: 14px;
   font-weight: 650;
+  transition: box-shadow var(--ease-press);
 }
 
 .viewOn {
-  background: var(--accent-soft);
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
   color: var(--accent);
 }
 
@@ -202,9 +203,10 @@
   position: absolute;
   top: 56px;
   z-index: 1;
-  padding: 2px 9px;
-  border-radius: 10px;
-  background: rgba(10, 12, 15, 0.78);
+  padding: 3px 11px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 2px 2px 6px rgba(120, 136, 170, 0.35);
   color: var(--text);
   font-size: 13px;
   font-weight: 650;
@@ -234,7 +236,7 @@
 
 .under > * {
   width: 100%;
-  background: var(--surface-2);
+  background: var(--surface);
 }
 
 .round,
@@ -242,10 +244,10 @@
 .assist,
 .pinCard {
   width: min(100%, 520px);
-  padding: 10px 14px;
-  border-radius: 14px;
-  background: rgba(12, 15, 19, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 14px 18px;
+  border-radius: var(--radius-sm);
+  background: rgba(238, 242, 248, 0.96);
+  box-shadow: var(--sh-raised);
   pointer-events: auto;
 }
 
@@ -288,20 +290,21 @@
 .meter {
   position: relative;
   height: 8px;
-  margin: 8px 0 6px;
+  margin: 10px 0 8px;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
   overflow: hidden;
 }
 
 .meterFill {
   height: 100%;
   border-radius: 4px;
-  background: var(--accent);
+  background: linear-gradient(90deg, var(--accent-bright), var(--accent));
 }
 
 .meterOver {
-  background: #ffa94d;
+  background: #e08a1e;
 }
 
 .meterPar {
@@ -329,11 +332,11 @@
 }
 
 .resultGood {
-  border-color: var(--accent);
+  box-shadow: var(--sh-raised), inset 0 0 0 2px var(--accent);
 }
 
 .resultBad {
-  border-color: var(--danger);
+  box-shadow: var(--sh-raised), inset 0 0 0 2px var(--danger);
 }
 
 .resultTitle {
@@ -355,28 +358,30 @@
   font-size: 15px;
 }
 
-.assist {
-  border-color: rgba(255, 255, 255, 0.3);
-}
-
 .pinCard {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
-  border-color: var(--accent);
+  box-shadow: var(--sh-raised), inset 0 0 0 2px var(--accent);
 }
 
 .close {
   flex: none;
-  width: 40px;
-  height: 40px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--surface-2);
+  width: var(--tap);
+  height: var(--tap);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
   color: var(--text);
   font-size: 22px;
   line-height: 1;
+  transition: box-shadow var(--ease-press);
+}
+
+.close:active {
+  box-shadow: var(--sh-inset-sm);
 }
 
 /* The operator screen's panel: the room fills its grid cell. */
@@ -386,7 +391,7 @@
   min-height: 0;
   height: 100%;
   background: var(--surface);
-  border: 1px solid var(--line);
+  box-shadow: var(--sh-raised);
   border-radius: var(--radius);
   overflow: hidden;
 }
@@ -444,18 +449,24 @@
 }
 
 .pill {
-  min-height: 40px;
-  padding: 6px 14px;
-  border-radius: 20px;
-  border: 1px solid var(--line);
+  min-height: var(--tap);
+  padding: 6px 18px;
+  border-radius: var(--radius-pill);
+  border: 0;
   background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
   color: var(--text);
   font-size: 15px;
   font-weight: 600;
+  transition: box-shadow var(--ease-press);
 }
 
-.pillOn {
-  border-color: var(--accent);
-  background: var(--accent-soft);
+.pill:active {
+  box-shadow: var(--sh-inset-sm);
+}
+
+.pillOn,
+.pillOn:active {
+  box-shadow: var(--sh-selected);
   color: var(--accent);
 }
