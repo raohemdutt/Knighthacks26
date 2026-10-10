@@ -1,0 +1,16 @@
+# The demo night's League (contexts/play/league/demo.py): a friend's shared daily summaries, the way
+# her box would have put them on the Circle's habit_summaries and impact_counters. Demo fixture only.
+# `days_ago` counts back from the story's end, so `python -m contexts.demo seed --now` moves it too.
+# Maya has the worse week on purpose: she sleeps little and skips meals, the owner's "2 of 7 sleep targets".
+circle_id: league
+friends:
+  - member_id: maya
+    display_name: Maya
+    counts: {items_seen: 12, recyclable_seen: 7, recycled: 4, contamination: 2}
+    days:
+      - {days_ago: 6, habits: {sleep: 5.1, meals: 2, energy_drinks: 3, focus: 2.5, sort_right: 100}}
+      - {days_ago: 5, habits: {sleep: 4.4, meals: 1, energy_drinks: 2, focus: 1.0, sort_right: 50}}
+      - {days_ago: 4, habits: {sleep: 6.2, meals: 2, energy_drinks: 1, focus: 2.2, sort_right: 100}}
+      - {days_ago: 3, habits: {sleep: 5.0, meals: 1, energy_drinks: 3, focus: 0.5, sort_right: 67}}
+      - {days_ago: 2, habits: {sleep: 4.8, meals: 2, energy_drinks: 2, focus: 3.1, sort_right: 100}}
+      - {days_ago: 1, habits: {sleep: 6.5, meals: 2, energy_drinks: 1, focus: 2.0, sort_right: 50}}
