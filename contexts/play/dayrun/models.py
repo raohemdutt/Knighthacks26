@@ -294,6 +294,8 @@ class HardResult(BaseModel):
     before: SimResult
     after: SimResult
     changes: list[Change]
+    requested: int | None = None  # how many seeded disruptions were asked for (None: the request listed its own)
+    note: str = ""  # set when fewer came back than asked for: there is one per kind, and not every kind fits every day
 
 
 class CampaignBody(BaseModel):

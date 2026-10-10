@@ -558,6 +558,8 @@ export interface HardResult {
   before: SimResult;
   after: SimResult;
   changes: Change[];
+  requested?: number | null; // seeded disruptions asked for; null when the request listed its own
+  note?: string; // set when fewer came back than asked for
 }
 
 export interface CommitResult {

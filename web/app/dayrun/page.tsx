@@ -237,6 +237,7 @@ export default function DayRunPage() {
                   </li>
                 ))}
               </ul>
+              {hard.result.note ? <p className={ui.nudge}>{hard.result.note}</p> : null}
               <dl className={ui.kv}>
                 <dt>Before</dt>
                 <dd>{line(hard.result.before)}</dd>
@@ -619,6 +620,7 @@ function HardCard({ run, scripted, view, onView }: { run: HardResult; scripted: 
           ))}
         </ul>
       )}
+      {run.note ? <p className={ui.nudge}>{run.note}</p> : null}
       <h3>What the box changed</h3>
       {run.changes.length === 0 ? (
         <p className={ui.muted}>Nothing: the plan stands as it was.</p>

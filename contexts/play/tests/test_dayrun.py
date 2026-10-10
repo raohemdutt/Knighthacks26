@@ -11,6 +11,7 @@ from contexts.agent.application.memory_port import FakeMemory
 from contexts.connectors.application.hub import ConnectorHub
 from contexts.connectors.domain.spec import ConnectorSpec
 from contexts.memory.fixture import load as load_memory_fixture
+from contexts.play.dayrun import modes
 from contexts.play.dayrun.models import Disruption, Estimate, InitialOverride, Measured, Move
 from contexts.play.dayrun.review import forecast
 from contexts.play.dayrun.service import DayRun, PlanNotWinning
@@ -444,6 +445,23 @@ def test_hard_mode_is_seeded_and_a_cancelled_friend_costs_the_boost(dayrun, plan
     gone = dayrun.hard(plans["good"], scenario="demo", disruptions=[Disruption(kind="friend_cancelled", friend="Maya")])
     assert gone.after.totals.focused_minutes < gone.before.totals.focused_minutes
     assert gone.disruptions[0].text == "Maya cancels: not coming after all"
+
+
+def test_hard_mode_says_when_it_returns_fewer_disruptions_than_asked(dayrun, plans):
+    """Testing round 2: count=3 on a board with no friends came back with 2 and no explanation."""
+    full = dayrun.hard(plans["good"], scenario="demo", seed=0, count=3)
+    assert (len(full.disruptions), full.requested, full.note) == (3, 3, "")
+
+    alone = dayrun.board(scenario="demo")
+    alone.friends = []
+    h = modes.hard(dayrun.cfg, dayrun.walks, alone, [], seed=0, count=3)
+    assert sorted(d.kind for d in h.disruptions) == ["block_moved", "place_closed"] and h.requested == 3
+    assert h.note == ("Asked for 3 disruptions; only 2 kinds of disruption are possible on this day, one of each "
+                      "(no friend on the board to cancel).")
+    assert modes.hard(dayrun.cfg, dayrun.walks, alone, [], seed=0, count=2).note == ""
+
+    listed = dayrun.hard(plans["good"], scenario="demo", disruptions=[Disruption(kind="friend_cancelled", friend="Maya")])
+    assert listed.requested is None and listed.note == ""  # the request named its own: nothing was asked of the seed
 
 
 def test_hard_mode_survives_a_block_moved_inside_another(dayrun):
