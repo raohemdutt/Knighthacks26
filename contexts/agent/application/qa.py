@@ -131,6 +131,13 @@ NIGHT = re.compile(r"\b(?:overnight|last night|while (?:i|we) (?:was |were )?(?:
 RECENT = re.compile(r"\b(?:recently|just now|a minute ago|a few minutes ago)\b")
 SHORT_WINDOW = timedelta(hours=3)  # up to this long, each episode is its own line and citation
 LAST_N = re.compile(r"(?:last|past) (?P<n>\d+|an?) ?(?P<unit>hours?|minutes?|mins?)")
+# A12: "what happened while they were here?" -- the most recent visit, however long it was
+VISIT = re.compile(
+    r"\bwhile (?:they|the judges?|our guests?|the visitors?|he|she|someone) (?:was|were) (?:here|at (?:the|our) table|visiting)\b"
+    r"|\b(?:their|the last|the latest|that|the) visit\b"
+)
+VISIT_LOOKBACK = timedelta(hours=3)
+VISIT_GAP = timedelta(minutes=3)  # people out of view for longer than this end one visit
 
 
 @dataclass
@@ -222,6 +229,14 @@ DUE_WORDS = re.compile(r"\b(due|deadlines?|homework|assignments?)\b")
 SYSTEM_RECAP = (
     "You are Atlas, a home camera assistant. Using only the evidence, recap what happened in time order, "
     "one short clause per hour that had something, with its time, in under 40 words. "
+    f'If the evidence is empty, say "{NO_EVIDENCE}"'
+)
+
+
+SYSTEM_VISIT = (
+    "You are Atlas, a home camera assistant. Using only the evidence, recap the most recent visit in one or two "
+    "short sentences: when it started, what the people did, and anything they brought, left or took. Never say who "
+    'anyone is: say "a person" or "two people". '
     f'If the evidence is empty, say "{NO_EVIDENCE}"'
 )
 
@@ -340,6 +355,27 @@ class QA:
             ev.add(f"{self._t(b.hour)} hour: " + " ".join(b.captions), Citation(episode_id=eid, frame_ref=ref, ts=b.hour))
             ev.citations += [Citation(episode_id=other, ts=b.hour) for other in b.episode_ids[1:]]  # every episode in the hour
 
+    def visit(self, ev: Evidence) -> None:
+        """The most recent stretch with a person in view (episodes less than VISIT_GAP apart), and everything the
+        cameras saw during it. No identity: episodes carry labels and captions, never names."""
+        now = self.clock()
+        episodes = sorted(self.memory.episodes(now - VISIT_LOOKBACK, now), key=lambda e: e.start)
+        people = [e for e in episodes if "person" in e.labels]
+        if not people:
+            return
+        start = people[-1].start
+        for before, after in zip(reversed(people[:-1]), reversed(people[1:])):
+            if after.start - (before.end or before.start) > VISIT_GAP:
+                break
+            start = before.start
+        last = people[-1].end or people[-1].start
+        ev.system = SYSTEM_VISIT
+        ev.lines.append(f"The most recent visit started {self._t(start)}; people were last in view {self._t(last)}.")
+        for e in [e for e in episodes if start <= e.start <= last][:MAX_EPISODE_LINES]:
+            text = e.summary or " ".join(e.captions) or ", ".join(e.labels)
+            ref = e.keyframe_refs[0] if e.keyframe_refs else None
+            ev.add(f"{self._t(e.start)} on {e.camera_id}: {text}", Citation(episode_id=e.id, frame_ref=ref, ts=e.start))
+
     def trace(self, item: str, ev: Evidence) -> None:
         """Where `item` was last seen, the latest episodes the detector tagged with it, then caption matches."""
         self.last_seen(item, ev)
@@ -435,6 +471,9 @@ class QA:
             return ev
         if m := WHAT_HAPPENED.search(q) or ARRIVED.search(q):  # "what happened to the package?" / "did a package arrive?"
             self.trace(item_name(m["item"]), ev)
+            return ev
+        if VISIT.search(q):  # before the windows: "while they were here" names no window of its own
+            self.visit(ev)
             return ev
         if window := time_window(q, self.clock(), self.sleep):
             self.episodes_between(*window, ev, question=q)

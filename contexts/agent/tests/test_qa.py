@@ -252,3 +252,33 @@ def test_due_lists_are_answered_from_the_data_and_hedges_are_dropped():
     assert [c.url for c in a.citations] == ["https://canvas/hw4", "https://canvas/ex1"] and not rt.calls  # no model call
     assert tidy("Your keys were last seen at 7:41 PM. I didn't see that.") == "Your keys were last seen at 7:41 PM."
     assert tidy(NO_EVIDENCE) == NO_EVIDENCE
+
+
+def visit_ep(id, minutes_ago, length, caption, labels=("person",), camera="cam-desk"):
+    start = NOW - timedelta(minutes=minutes_ago)
+    return Episode(id=id, camera_id=camera, start=start, end=start + timedelta(minutes=length), labels=list(labels),
+                   captions=[caption], keyframe_refs=[f"frames:{camera}:{id}"])
+
+
+def test_a_visit_is_the_latest_stretch_of_people_and_everything_seen_during_it():
+    memory = FakeMemory(episodes=[
+        visit_ep("old", 60, 5, "Two people eat lunch at the table."),  # ended 55 min ago: an earlier visit
+        visit_ep("v1", 20, 4, "Two people stop at the table and look at the box."),
+        visit_ep("obj", 17, 1, "A phone is left on the desk.", labels=("cell phone",)),
+        visit_ep("v2", 14, 6, "One of them asks Atlas a question and points at the phone screen."),  # 2 min after v1 ended
+    ])
+    a = QA(FakeRuntime(), memory, clock=lambda: NOW)
+    ev = a.prefetch("What happened while the judges were here?")
+    assert [c.episode_id for c in ev.citations] == ["v1", "obj", "v2"]
+    assert "started" in ev.lines[0] and ev.system and "Never say who" in ev.system
+
+
+def test_no_person_in_view_recently_means_no_visit():
+    memory = FakeMemory(episodes=[visit_ep("obj", 10, 1, "A cup on the desk.", labels=("cup",))])
+    a = QA(FakeRuntime(), memory, clock=lambda: NOW)
+    assert asyncio.run(a.ask("Recap their visit")).text == NO_EVIDENCE
+
+
+def test_while_we_were_asleep_is_still_the_night_not_a_visit():
+    a = QA(FakeRuntime(), MEMORY, clock=lambda: NOW)
+    assert a.prefetch("What went on while we were asleep?").system != a.prefetch("Recap their visit").system
