@@ -8,7 +8,7 @@ register_pool.ps1 (parsing executes none of it) and one checks that this parse c
 syntax error, so that it cannot pass by reading nothing.
 
 PowerShell is needed for those two: powershell.exe on Windows, pwsh elsewhere (the CI image has
-it). A machine without either fails them with an install hint.
+it). A machine without either skips them with an install hint.
 """
 
 import os
@@ -39,6 +39,9 @@ EXPECTED_SETTINGS = {
     "RestartCount": "999",
     "RestartInterval": "(New-TimeSpan -Minutes 1)",
 }
+
+POWERSHELL_MISSING = ("PowerShell is not installed: the parse tests need powershell.exe (Windows) or pwsh "
+                      "(install it with brew install powershell; the CI image already has it)")
 
 PARSE_COMMAND = (
     "$tokens = $null; $errors = $null; "
@@ -72,8 +75,7 @@ def parse_errors(path: Path) -> list[str]:
     The parser must have read the file: a run that found no tokens is a failure, not a clean parse."""
     exe = shutil.which("powershell") or shutil.which("pwsh")
     if exe is None:
-        pytest.fail("PowerShell is not installed: the parse tests need powershell.exe (Windows) or pwsh "
-                    "(brew install powershell; the CI image already has it)")
+        pytest.skip(POWERSHELL_MISSING)
     done = subprocess.run([exe, "-NoProfile", "-NonInteractive", "-Command", PARSE_COMMAND],
                           env={**os.environ, "LAB_PARSE_TARGET": str(path)},
                           capture_output=True, text=True, timeout=120)
