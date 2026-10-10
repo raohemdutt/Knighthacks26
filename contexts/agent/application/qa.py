@@ -6,6 +6,7 @@ evidence. Only open-ended questions go through the tool loop (max 3 calls).
 No evidence means "I didn't see that." without asking the model at all.
 """
 
+import asyncio
 import json
 import re
 from collections.abc import Callable
@@ -17,6 +18,7 @@ from zoneinfo import ZoneInfo
 import yaml
 
 from contexts.agent.application.memory_port import MemoryReader
+from contexts.agent.application.web_port import WebTools
 from contracts.agent import AnswerGenerated
 from contracts.experience import QuestionAsked
 from contracts.types import ChatMessage, Citation, ToolCall
@@ -31,7 +33,7 @@ SYSTEM = (
     f'the question, say "{NO_EVIDENCE}"'
 )
 
-TOOLS = [
+MEMORY_TOOLS = [
     {
         "type": "function",
         "function": {
@@ -61,6 +63,43 @@ TOOLS = [
         },
     },
 ]
+
+WEB_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": "Search the web. Returns titles, links and snippets.",
+            "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "reddit_search",
+            "description": "What students say on Reddit. Searches one subreddit (default: the school's).",
+            "parameters": {
+                "type": "object",
+                "properties": {"query": {"type": "string"}, "subreddit": {"type": "string"}},
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_page",
+            "description": "Open a link from a search result and read the parts relevant to a goal.",
+            "parameters": {
+                "type": "object",
+                "properties": {"url": {"type": "string"}, "goal": {"type": "string"}},
+                "required": ["url"],
+            },
+        },
+    },
+]
+TOOLS = MEMORY_TOOLS  # kept for the learning task: the tool set the student model is trained on
+PAGE_EXCERPT = 600
 
 WHERE_IS = re.compile(r"where (?:did i (?:leave|put)|are|is|'s) (?:my |the |our )?(?P<item>[a-z ]+?)[?.!]*$")
 LAST_N = re.compile(r"(?:last|past) (?P<n>\d+|an?) ?(?P<unit>hours?|minutes?|mins?)")
@@ -135,23 +174,28 @@ class QA:
         memory: MemoryReader,
         clock: Callable[[], datetime],
         sleep: SleepSchedule = SleepSchedule(),
+        web: WebTools | None = None,
+        subreddit: str = "ucf",
     ) -> None:
         self.runtime = runtime
         self.memory = memory
         self.clock = clock
         self.sleep = sleep
+        self.web = web
+        self.subreddit = subreddit
+        self.tools = MEMORY_TOOLS + (WEB_TOOLS if web else [])
 
-    def on_question(self, e: QuestionAsked) -> AnswerGenerated:
-        a = self.ask(e.text)
+    async def on_question(self, e: QuestionAsked) -> AnswerGenerated:
+        a = await self.ask(e.text)
         return AnswerGenerated(question_id=e.question_id, answer=a.text, citations=a.citations, model_version=a.model_version)
 
-    def ask(self, question: str) -> Answer:
+    async def ask(self, question: str) -> Answer:
         evidence = self.prefetch(question)
         if evidence is None:
-            return self.tool_loop(question)
+            return await self.tool_loop(question)
         if not evidence:
             return Answer(NO_EVIDENCE, [], self.runtime.model_info().version)
-        return self._answer_from(question, evidence)
+        return await self._answer_from(question, evidence)
 
     # --- tools (A1) ---
 
@@ -176,6 +220,27 @@ class QA:
         for h in hits:
             ev.add(f"{self._t(h.ts)} on {h.camera_id}: {h.text}", Citation(episode_id=h.episode_id, frame_ref=h.frame_ref, ts=h.ts))
 
+    # --- web tools (K5, K7) ---
+
+    async def web_search(self, query: str, ev: Evidence) -> None:
+        for r in await self.web.search(query):
+            snippet = f": {r['summary']}" if r.get("summary") else ""
+            ev.add(f"{r['title']}{snippet} ({r['url']})", Citation(url=r["url"], title=r["title"]))
+
+    async def reddit_search(self, query: str, subreddit: str | None, ev: Evidence) -> None:
+        sub = (subreddit or self.subreddit).removeprefix("r/")
+        for r in await self.web.reddit(sub, query):
+            ev.add(f"r/{sub} post: {r['title']} ({r['url']})", Citation(url=r["url"], title=r["title"]))
+
+    async def read_page(self, url: str, goal: str | None, ev: Evidence) -> None:
+        page = await self.web.browse(url, goal)
+        if page.get("blocked"):
+            ev.add(f"{url} is behind a bot check; open it on your phone", Citation(url=page["url"]))
+            return
+        text = page.get("summary") or page.get("text", "")[:PAGE_EXCERPT]
+        if text:
+            ev.add(f"{page.get('title') or page['url']}: {text}", Citation(url=page["url"], title=page.get("title")))
+
     # --- pre-fetch (common shapes, no tool loop) ---
 
     def prefetch(self, question: str) -> Evidence | None:
@@ -192,14 +257,18 @@ class QA:
             return ev
         return None
 
-    def _answer_from(self, question: str, ev: Evidence) -> Answer:
+    async def _chat(self, messages: list[ChatMessage], tools: list[dict] | None = None):
+        # The runtime is a blocking HTTP call; keep it off the event loop that serves the bus.
+        return await asyncio.to_thread(self.runtime.chat, messages, tools)
+
+    async def _answer_from(self, question: str, ev: Evidence) -> Answer:
         prompt = "Evidence:\n" + "\n".join(f"- {line}" for line in ev.lines) + f"\n\nQuestion: {question}"
-        r = self.runtime.chat([ChatMessage(role="system", content=SYSTEM), ChatMessage(role="user", content=prompt)])
+        r = await self._chat([ChatMessage(role="system", content=SYSTEM), ChatMessage(role="user", content=prompt)])
         return Answer(r.content.strip() or NO_EVIDENCE, ev.citations, r.model_version)
 
     # --- open-ended (tool loop) ---
 
-    def tool_loop(self, question: str) -> Answer:
+    async def tool_loop(self, question: str) -> Answer:
         now = self.clock()
         msgs = [
             ChatMessage(role="system", content=f"{SYSTEM} The time now is {now.isoformat()}. Use tools to find evidence."),
@@ -207,27 +276,27 @@ class QA:
         ]
         ev = Evidence()
         for _ in range(MAX_TOOL_CALLS):
-            r = self.runtime.chat(msgs, tools=TOOLS)
+            r = await self._chat(msgs, self.tools)
             if not r.tool_calls:
                 text = r.content.strip() if ev else NO_EVIDENCE
                 return Answer(text or NO_EVIDENCE, ev.citations, r.model_version)
             msgs.append(ChatMessage(role="assistant", content=r.content, tool_calls=r.tool_calls))
             for call in r.tool_calls:
                 found = Evidence()
-                self._run_tool(call, found)
+                await self._run_tool(call, found)
                 ev.lines += found.lines
                 ev.citations += found.citations
                 result = "\n".join(found.lines) or "nothing found"
                 msgs.append(ChatMessage(role="tool", content=result, tool_call_id=call.id))
         if not ev:
             return Answer(NO_EVIDENCE, [], self.runtime.model_info().version)
-        return self._answer_from(question, ev)
+        return await self._answer_from(question, ev)
 
     def _t(self, ts: datetime) -> str:
         """Times the model sees are local to the household, e.g. "Sun 7:30 AM"."""
         return ts.astimezone(self.sleep.tz).strftime("%a %I:%M %p").replace(" 0", " ")
 
-    def _run_tool(self, call: ToolCall, ev: Evidence) -> None:
+    async def _run_tool(self, call: ToolCall, ev: Evidence) -> None:
         args = call.arguments
         try:
             if call.name == "search_memory":
@@ -238,5 +307,13 @@ class QA:
                 tz = self.clock().tzinfo
                 start, end = (datetime.fromisoformat(args[k]) for k in ("start", "end"))
                 self.episodes_between(start.replace(tzinfo=start.tzinfo or tz), end.replace(tzinfo=end.tzinfo or tz), ev)
+            elif self.web and call.name == "web_search":
+                await self.web_search(str(args["query"]), ev)
+            elif self.web and call.name == "reddit_search":
+                await self.reddit_search(str(args["query"]), args.get("subreddit"), ev)
+            elif self.web and call.name == "read_page":
+                await self.read_page(str(args["url"]), args.get("goal"), ev)
         except (KeyError, ValueError, json.JSONDecodeError):
             pass  # bad arguments from a small model: the tool returns nothing found
+        except Exception as exc:  # the web is flaky; say so instead of failing the answer
+            ev.lines.append(f"{call.name} failed: {exc}")

@@ -9,6 +9,7 @@ the agent fetch the right evidence?) and, with a real model, the answer text.
 """
 
 import argparse
+import asyncio
 import json
 import sys
 import time
@@ -65,7 +66,7 @@ def run(runtime: Runtime, root: Path = GOLDEN, judge_answers: bool = True) -> li
     results = []
     for g in questions:
         start = time.monotonic()
-        a = qa.ask(g.q)
+        a = asyncio.run(qa.ask(g.q))
         latency = int((time.monotonic() - start) * 1000)
         cited = sorted({ref for c in a.citations for ref in (c.episode_id, c.frame_ref) if ref})
         if g.no_evidence:

@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, datetime, timedelta
 
 from contexts.agent.application.memory_port import FakeMemory
@@ -47,7 +48,7 @@ def evidence_prompt(rt):
 
 def test_where_are_my_keys_prefetches_last_seen():
     q, rt = qa("Your keys are on the desk next to the mug.")
-    a = q.ask("Where did I leave my keys?")
+    a = asyncio.run(q.ask("Where did I leave my keys?"))
     assert a.citations[0].frame_ref == "frames:cam-desk:k1"
     assert "next to the mug" in evidence_prompt(rt)
     assert a.model_version == "v1"
@@ -55,7 +56,7 @@ def test_where_are_my_keys_prefetches_last_seen():
 
 def test_overnight_uses_hour_window_and_skips_old_episodes():
     q, rt = qa("Someone left, then it was quiet.")
-    a = q.ask("What happened at our table overnight?")
+    a = asyncio.run(q.ask("What happened at our table overnight?"))
     prompt = evidence_prompt(rt)
     assert "packs a laptop" in prompt and "two days ago" not in prompt
     assert {c.episode_id for c in a.citations} == {"e1", "e2", "e3"}
@@ -63,13 +64,13 @@ def test_overnight_uses_hour_window_and_skips_old_episodes():
 
 def test_last_hour_door():
     q, rt = qa("Yes, a courier dropped a box.")
-    a = q.ask("Did anyone come to the door in the last hour?")
+    a = asyncio.run(q.ask("Did anyone come to the door in the last hour?"))
     assert [c.episode_id for c in a.citations] == ["e3"]
 
 
 def test_no_evidence_does_not_call_the_model():
     q, rt = qa()
-    a = q.ask("Where is my wallet?")
+    a = asyncio.run(q.ask("Where is my wallet?"))
     assert a.text == NO_EVIDENCE
     assert not any(name == "chat" for name, _ in rt.calls)
 
@@ -77,7 +78,7 @@ def test_no_evidence_does_not_call_the_model():
 def test_open_question_runs_the_tool_loop():
     call = ChatResult(content="", tool_calls=[ToolCall(id="c1", name="search_memory", arguments={"q": "courier box"})], model_version="v1")
     q, rt = qa(call, "A courier dropped a box at the door.")
-    a = q.ask("Anything delivered?")
+    a = asyncio.run(q.ask("Anything delivered?"))
     assert a.text == "A courier dropped a box at the door."
     assert a.citations[0].episode_id == "e3"
     tool_msg = rt.calls[-1][1][-1]
@@ -86,12 +87,12 @@ def test_open_question_runs_the_tool_loop():
 
 def test_tool_loop_without_evidence_says_so():
     q, _ = qa("Probably nothing happened.")
-    assert q.ask("Anything weird?").text == NO_EVIDENCE
+    assert asyncio.run(q.ask("Anything weird?")).text == NO_EVIDENCE
 
 
 def test_on_question_emits_answer_event():
     q, _ = qa("On the desk.")
-    out = q.on_question(QuestionAsked(question_id="q1", text="where are my keys"))
+    out = asyncio.run(q.on_question(QuestionAsked(question_id="q1", text="where are my keys")))
     assert (out.question_id, out.answer, out.model_version) == ("q1", "On the desk.", "v1")
 
 
@@ -109,3 +110,36 @@ def test_overnight_follows_the_sleep_schedule():
     assert default.last_night(still_asleep) == (datetime(2026, 10, 10, 20, tzinfo=ny), still_asleep)
     night_owl = SleepSchedule(bedtime=time(1), wake=time(9), tz=ny)
     assert night_owl.last_night(after_waking) == (datetime(2026, 10, 11, 1, tzinfo=ny), datetime(2026, 10, 11, 9, tzinfo=ny))
+
+
+def test_web_tools_cite_links():
+    from contexts.agent.application.web_port import FakeWeb
+
+    web = FakeWeb(
+        results=[{"title": "COP 3502 Exam Info", "url": "https://cs.ucf.edu/exam/", "summary": "Exam 1 covers recursion"}],
+        posts=[{"title": "Exam 1 tips", "url": "https://reddit.com/r/ucf/comments/x/"}],
+        pages={"https://blocked.test/": {"url": "https://blocked.test/", "blocked": "captcha"}},
+    )
+    calls = ChatResult(
+        content="",
+        tool_calls=[
+            ToolCall(id="1", name="web_search", arguments={"query": "COP 3502 exam"}),
+            ToolCall(id="2", name="reddit_search", arguments={"query": "COP 3502 exam"}),
+            ToolCall(id="3", name="read_page", arguments={"url": "https://blocked.test/"}),
+        ],
+        model_version="v1",
+    )
+    rt = FakeRuntime(chat_replies=[calls, ChatResult(content="Exam 1 covers recursion.", model_version="v1")])
+    q = QA(rt, MEMORY, clock=lambda: NOW, web=web)
+    a = asyncio.run(q.ask("What's on the COP 3502 exam?"))
+    assert a.text == "Exam 1 covers recursion."
+    assert [c.url for c in a.citations] == ["https://cs.ucf.edu/exam/", "https://reddit.com/r/ucf/comments/x/", "https://blocked.test/"]
+    assert ("reddit", "ucf", "COP 3502 exam") in web.calls
+    tool_results = [m.content for m in rt.calls[-1][1] if m.role == "tool"]
+    assert "bot check" in tool_results[2]
+    assert any(t["function"]["name"] == "web_search" for t in q.tools)
+
+
+def test_without_web_the_model_only_sees_memory_tools():
+    q, _ = qa()
+    assert {t["function"]["name"] for t in q.tools} == {"search_memory", "last_seen", "episodes_between"}
