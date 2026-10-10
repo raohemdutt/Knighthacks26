@@ -1,0 +1,11 @@
+nvpmodel: NV Power Mode: MAXN_SUPER 2 
+cpu-thermal 59625
+gpu-thermal 60343
+cv0-thermal 
+cv1-thermal 
+cv2-thermal 
+soc0-thermal 59531
+soc1-thermal 59187
+soc2-thermal 59031
+tj-thermal 60437
+data/events after: -rw-r--r-- 1 alexander alexander 12263796 19:04:04 2026-10-10.jsonl
