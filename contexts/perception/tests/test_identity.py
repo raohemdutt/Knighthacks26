@@ -2,6 +2,7 @@ import pytest
 
 from contexts.perception.application.identity import IdentityError
 from contexts.perception.domain.identity import TrackTags, average, best_match, cosine, face_box, track_for_face
+from contexts.perception.infrastructure.identity_store import Member
 from contexts.perception.infrastructure.recognizer import FakeRecognizer, SFaceRecognizer, build_recognizer
 from contexts.perception.tests.identity_helpers import H, W, Frame, Rig, face_in, kinds, person, row
 
@@ -141,6 +142,18 @@ def test_an_enrolment_nobody_shows_up_for_times_out_and_bad_input_is_refused(tmp
     status = rig.service.enrollment_status()
     assert (status["state"], status["error"], status["frames_done"]) == ("failed", "timeout", 0)
     assert rig.service.members() == []
+
+
+def test_a_member_id_that_ends_in_a_newline_is_refused_everywhere(tmp_path):
+    """`$` matches before a trailing newline, so "m-ana\\n" passed and would have named a file "m-ana\\n.face"."""
+    rig = Rig(tmp_path)
+    rig.service.set_enabled(True)
+    with pytest.raises(ValueError):
+        rig.service.start_enrollment("m-ana\n", "Ana")
+    with pytest.raises(ValueError):
+        rig.store.save(Member(member_id="m-ana\n", name="Ana", enrolled_at="2026-10-11T12:00:00+00:00", model="fake", frames=5, vector=[1.0]))
+    rig.enroll("m-ana", "Ana", b"ana")
+    assert rig.store.delete("m-ana\n") is False and [m.member_id for m in rig.store.members()] == ["m-ana"]
 
 
 # --- tagging ---
