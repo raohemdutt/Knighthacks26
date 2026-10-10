@@ -1,13 +1,16 @@
 """Telemetry events: what Atlas costs to run, per node, one event type per source.
 
 Each source publishes at the cadence it supports and carries its own fields. The only
-fields every telemetry event has are `node` (`jetson`, `gpu-a`, `gpu-b`) and `ts`; there is
+fields every telemetry event has are `node` (`jetson`, `pod-a`, `pod-b`) and `ts`; there is
 no shared metric list, and a new source is a new event type rather than a change here.
 
 - `telemetry.jetson.power`  one sample per sampler period (tegrastats: 1000 ms by default)
 - `telemetry.gpu.power`     one sample per poll of the pod's card (amd-smi, rocm-smi or sysfs)
 - `telemetry.request`       one per answered request: its window on the answering node
 - `telemetry.train.step`    one per training step on the trainer's card
+- `telemetry.clock.offset`  one per measurement of a pod's clock against the Jetson's, through the hub proxy
+- `telemetry.joules_per_answer`  one per answered request: the energy of the answer (J, gross), how it was
+                            attributed, and what the window ran under
 
 `ts` is when the sample was taken or the step or request finished, on the clock of the node
 that produced it. Units are in the field names, except the Jetson `rails`, which are mW as
@@ -24,7 +27,7 @@ from contracts.events import TypedEvent, register
 
 
 class _TelemetryEvent(TypedEvent):
-    node: str = Field(min_length=1)  # "jetson", "gpu-a", "gpu-b": the node the numbers describe
+    node: str = Field(min_length=1)  # "jetson", "pod-a", "pod-b": the node the numbers describe
 
 
 @register
@@ -63,12 +66,12 @@ class EnergyCheck(BaseModel):
 
 @register
 class GpuPower(_TelemetryEvent):
-    """One sample of an R9700's power, clocks and throttle state, read on its pod (no root: reads only)."""
+    """One sample of a pod's power, clocks and throttle state, read on its pod (no root: reads only)."""
 
     type: Literal["telemetry.gpu.power"] = "telemetry.gpu.power"
     source: str  # the tool that read it: "amd-smi", "amdsmi" (library), "rocm-smi", "hwmon", "fake"
     period_ms: float  # the sampler's configured period
-    socket_w: float | None  # graphics package power in W (whole watts on RDNA4); null when N/A
+    socket_w: float | None  # socket power in W, whole watts; the whole APU (CPU and graphics) on the Strix Halo; null when N/A
     gfx_mhz: float | None
     mem_mhz: float | None
     throttled: bool | None  # the firmware reports any throttling (power, thermal, current) at this sample
@@ -130,3 +133,81 @@ class TrainStep(_TelemetryEvent):
     energy_j: float | None = None  # energy the card used during this step, from its energy counter
     tokens: int | None = None  # tokens the step trained on
     received_ts: datetime | None = None  # when the Jetson's reader got it, on the Jetson's clock
+
+
+@register
+class ClockOffset(_TelemetryEvent):
+    """A pod's clock against the reference clock (the Jetson's), from four timestamps of one exchange through the hub
+    proxy, as NTP computes it (RFC 5905, section 8).
+
+    t1 and t4 are on the reference clock (request sent, reply received), t2 and t3 on the pod's (request received,
+    reply sent). offset_s = ((t2 - t1) + (t3 - t4)) / 2 is the pod's clock minus the reference clock, so a pod time
+    moves onto the reference clock as pod_ts - offset_s; round_trip_s = (t4 - t1) - (t3 - t2), and the offset is
+    within error_s = round_trip_s / 2. `node` is the pod; `ts` is t4."""
+
+    type: Literal["telemetry.clock.offset"] = "telemetry.clock.offset"
+    reference: str  # the clock the offset is measured against: "jetson"
+    via: str  # the path the exchange took, e.g. "hub proxy /samples"
+    t1: datetime
+    t2: datetime
+    t3: datetime
+    t4: datetime
+    offset_s: float
+    round_trip_s: float
+    error_s: float
+    exchanges: int = 1  # exchanges this one was chosen from, by the smallest round trip
+
+
+class WindowConditions(BaseModel):
+    """What a request window ran under, read from the power samples that bracket and fall in it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    power_modes: list[str] = []  # Jetson nvpmodel names seen in the window, in order; two means it changed
+    temps_c: dict[str, float] = {}  # the sample at or before the window start
+    throttled: bool | None = None  # any pod sample in the window says throttled; null when none could say
+    overcurrent: bool | None = None  # a Jetson overcurrent counter rose across the window; null without counters
+    train_overlap: bool = False  # a training step (telemetry.train.step) on the same node overlapped the window
+
+
+@register
+class JoulesPerAnswer(_TelemetryEvent):
+    """The energy of one answer: the answering node's power integrated over the request window (J), gross.
+
+    Gross means nothing is subtracted (telemetry ruling 1); the node's latest idle watts and their time are stored
+    beside the value so a marginal figure can be derived without measuring again. The integral takes the last
+    sample at or before the window start and the first at or after its end, clipped to the window by linear
+    interpolation; repeated identical readings are all kept. Where requests overlap on the node, each stretch
+    between samples and window edges is split among the requests running in it in proportion to their output
+    tokens (`attribution`), so the answers of a node never sum past the node's energy. `node_energy_j` is the
+    node's whole energy over the same window. `started` and `ended` are on the clock named by `clock`; pod
+    samples were moved onto it by `clock_offset_s` (pod minus that clock), known within `clock_error_s`.
+    `ts` is the window's end on that clock."""
+
+    type: Literal["telemetry.joules_per_answer"] = "telemetry.joules_per_answer"
+    request_id: str
+    target: str | None = None
+    model: str | None = None
+    started: datetime
+    ended: datetime
+    clock: str  # the clock started, ended and idle_ts are on: "jetson", or the node's own
+    joules: float  # J, gross, this answer's share of the node's energy over its window
+    node_energy_j: float  # J, the node's whole energy over the window, every request's share included
+    basis: Literal["gross"] = "gross"
+    attribution: Literal["token_proportional"] = "token_proportional"
+    overlapping: int = 0  # other requests that ran on the node during part of this window
+    tokens_out: int | None = None
+    idle_w: float | None  # the node's latest idle reading before the window, W; null when none was seen
+    idle_ts: datetime | None
+    power_field: str  # the reading integrated: "VDD_IN" on the Jetson, "socket_w" on the pods
+    boundary: str  # what that reading covers, e.g. "module input" or "APU socket (CPU cores and graphics)"
+    accelerator: str  # the chip that answered, e.g. "Radeon 8060S (gfx1151, Strix Halo)"
+    sampler: str  # the program or tool that took the samples
+    period_ms: float | None  # the sampler's configured period
+    samples: int  # samples with started <= ts <= ended
+    error: float | None  # relative error of this node's energy, measured on our node; null while unmeasured
+    clock_offset_s: float | None = None  # null when the samples and the window share a clock
+    clock_error_s: float | None = None
+    low_confidence: bool
+    reasons: list[str] = []  # why low_confidence is set, one short phrase each
+    conditions: WindowConditions = WindowConditions()
