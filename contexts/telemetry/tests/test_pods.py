@@ -49,7 +49,7 @@ class FakePod:
         after, limit = int(request.url.params["after"]), int(request.url.params["limit"])
         page = [(seq, e) for seq, e in self.held if seq > after][:limit]
         return httpx.Response(200, json={
-            "ok": True, "node": "gpu-a", "sampler_started": self.started,
+            "ok": True, "node": "pod-a", "sampler_started": self.started,
             "first_seq": self.held[0][0] if self.held else None, "last_seq": self.held[-1][0] if self.held else 0,
             "samples": [{"seq": seq, "event": e} for seq, e in page]})
 
@@ -63,7 +63,7 @@ def collect(reader: PodReader) -> list:
 
 def reader_for(pod: FakePod, **kw) -> PodReader:
     kw.setdefault("rounds", 1)
-    return PodReader([PodEndpoint("gpu-a", "https://hub.test/user/acct/proxy/8790", TOKEN)],
+    return PodReader([PodEndpoint("pod-a", "https://hub.test/user/acct/proxy/8790", TOKEN)],
                      transport=httpx.MockTransport(pod), clock=lambda: NOW, sleep=lambda _: asyncio.sleep(0), **kw)
 
 
@@ -71,7 +71,9 @@ def test_the_samples_come_back_as_gpu_power_events_stamped_with_the_jetsons_rece
     events = recorded()[:5]
     pod = FakePod(events)
     got = collect(reader_for(pod))
-    assert got == [parse_event({**e, "received_ts": NOW.isoformat()}) for e in events]
+    # the recorded sampler ran as --node gpu-a, the pod's old name: it is read as pod-a (telemetry ruling 3)
+    assert {e["node"] for e in events} == {"gpu-a"}
+    assert got == [parse_event({**e, "received_ts": NOW.isoformat(), "node": "pod-a"}) for e in events]
     assert all(isinstance(e, GpuPower) and e.received_ts == NOW for e in got)
     assert got[0].ts < got[0].received_ts  # the pod's time of the reading, and when the Jetson had it
 
@@ -93,7 +95,7 @@ def test_polls_page_through_a_backlog_and_then_ask_for_only_the_new_samples():
     got = collect(reader)
     assert len(got) == 25
     assert [r.url.params["after"] for r in pod.requests] == ["0", "10", "20", "25"]
-    assert reader.status()["gpu-a"]["fetched"] == 25
+    assert reader.status()["pod-a"]["fetched"] == 25
 
 
 def test_a_sampler_restart_is_followed_from_its_first_sample():
@@ -112,7 +114,7 @@ def test_a_sampler_restart_is_followed_from_its_first_sample():
     first, second = asyncio.run(run())
     assert (len(first), len(second)) == (48, 12)
     assert [e.event_id for e in second] == [e["event_id"] for e in events[48:]]
-    assert (reader.status()["gpu-a"]["restarts"], reader.status()["gpu-a"]["after"]) == (1, 12)
+    assert (reader.status()["pod-a"]["restarts"], reader.status()["pod-a"]["after"]) == (1, 12)
 
 
 def test_samples_the_pod_dropped_before_they_were_read_are_counted_as_lost(caplog):
@@ -129,30 +131,30 @@ def test_samples_the_pod_dropped_before_they_were_read_are_counted_as_lost(caplo
     with caplog.at_level(logging.WARNING, logger="atlas.telemetry.pods"):
         got = asyncio.run(run())
     assert [e.event_id for e in got] == [e["event_id"] for e in events[15:]]
-    assert reader.status()["gpu-a"]["lost"] == 5
-    assert "5 gpu-a samples were dropped on the pod before they could be read" in caplog.text
+    assert reader.status()["pod-a"]["lost"] == 5
+    assert "5 pod-a samples were dropped on the pod before they could be read" in caplog.text
 
 
 def test_only_this_pods_power_samples_pass_and_anything_else_is_counted_as_rejected():
     good = recorded()[0]
-    other_node = {**recorded()[1], "node": "gpu-b"}
-    not_power = {"event_id": "x", "type": "telemetry.request", "ts": good["ts"], "node": "gpu-a", "request_id": "r",
+    other_node = {**recorded()[1], "node": "pod-b"}
+    not_power = {"event_id": "x", "type": "telemetry.request", "ts": good["ts"], "node": "pod-a", "request_id": "r",
                  "started": good["ts"], "ended": good["ts"], "tokens_in": 1, "tokens_out": 1, "target": "teacher"}
     broken = {**recorded()[2], "socket_w": "forty"}
     pod = FakePod([other_node, not_power, broken, good])
     reader = reader_for(pod)
     got = collect(reader)
     assert [e.event_id for e in got] == [good["event_id"]]
-    assert reader.status()["gpu-a"]["rejected"] == 3
+    assert reader.status()["pod-a"]["rejected"] == 3
 
 
 def test_samples_already_in_the_log_are_not_published_again_after_the_app_restarts():
     events = recorded()[:10]
     newest_held = parse_event(events[6]).ts
-    reader = reader_for(FakePod(events), skip_until=lambda node: newest_held if node == "gpu-a" else None)
+    reader = reader_for(FakePod(events), skip_until=lambda node: newest_held if node == "pod-a" else None)
     got = collect(reader)
     assert [e.event_id for e in got] == [e["event_id"] for e in events[7:]]
-    assert reader.status()["gpu-a"]["repeats"] == 7
+    assert reader.status()["pod-a"]["repeats"] == 7
 
 
 def test_a_pod_that_does_not_answer_is_logged_once_per_reason_and_read_again_when_it_comes_back(caplog):
@@ -173,34 +175,34 @@ def test_a_pod_that_does_not_answer_is_logged_once_per_reason_and_read_again_whe
         results = asyncio.run(run())
     assert [len(r) for r in results] == [0, 0, 0, 0, 4]
     messages = [r.getMessage() for r in caplog.records]
-    assert messages == ["the gpu-a sampler gave HTTP 502; asking again every 2 s",
-                        "the gpu-a sampler gave no answer (ConnectError); asking again every 2 s",
-                        "the gpu-a sampler answers again"]
+    assert messages == ["the pod-a sampler gave HTTP 502; asking again every 2 s",
+                        "the pod-a sampler gave no answer (ConnectError); asking again every 2 s",
+                        "the pod-a sampler answers again"]
     assert TOKEN not in caplog.text
-    assert reader.status()["gpu-a"]["error"] is None
+    assert reader.status()["pod-a"]["error"] is None
 
 
 def test_one_pod_down_does_not_hold_up_the_other():
-    a, b = FakePod([]), FakePod([{**e, "node": "gpu-b"} for e in recorded("samples_gpu-b_stale.jsonl")[:3]])
+    a, b = FakePod([]), FakePod([{**e, "node": "pod-b"} for e in recorded("samples_gpu-b_stale.jsonl")[:3]])
     a.fail_with = 502
 
     def route(request: httpx.Request) -> httpx.Response:
         return (a if "/acct-a/" in request.url.path else b)(request)
 
-    reader = PodReader([PodEndpoint("gpu-a", "https://hub.test/user/acct-a/proxy/8790", TOKEN),
-                        PodEndpoint("gpu-b", "https://hub.test/user/acct-b/proxy/8790", TOKEN)],
+    reader = PodReader([PodEndpoint("pod-a", "https://hub.test/user/acct-a/proxy/8790", TOKEN),
+                        PodEndpoint("pod-b", "https://hub.test/user/acct-b/proxy/8790", TOKEN)],
                        transport=httpx.MockTransport(route), clock=lambda: NOW, rounds=1)
     got = collect(reader)
-    assert [e.node for e in got] == ["gpu-b"] * 3
-    assert reader.status()["gpu-a"]["error"] == "HTTP 502"
+    assert [e.node for e in got] == ["pod-b"] * 3
+    assert reader.status()["pod-a"]["error"] == "HTTP 502"
 
 
 def test_the_reader_takes_only_pods_each_once():
     with pytest.raises(ValueError, match="jetson is not a pod"):
         PodReader([PodEndpoint("jetson", "https://hub.test/x", TOKEN)])
     with pytest.raises(ValueError, match="each pod may appear once"):
-        PodReader([PodEndpoint("gpu-a", "https://hub.test/x", TOKEN), PodEndpoint("gpu-a", "https://hub.test/y", TOKEN)])
-    assert TOKEN not in repr(PodEndpoint("gpu-a", "https://hub.test/x", TOKEN))
+        PodReader([PodEndpoint("pod-a", "https://hub.test/x", TOKEN), PodEndpoint("pod-a", "https://hub.test/y", TOKEN)])
+    assert TOKEN not in repr(PodEndpoint("pod-a", "https://hub.test/x", TOKEN))
 
 
 # --- which pods, from the environment ---------------------------------------------------------------------------------
@@ -208,8 +210,8 @@ def test_the_reader_takes_only_pods_each_once():
 def test_the_pods_come_from_the_hub_account_keys_with_the_account_name_quoted_into_the_proxy_url():
     pods = pod_endpoints(ENV)
     assert [(p.node, p.base_url, p.token) for p in pods] == [
-        ("gpu-a", "https://dub.aupcloud.io/user/acct%20a/proxy/8790", TOKEN),
-        ("gpu-b", "https://dub.aupcloud.io/user/acct-b/proxy/8790", "other")]
+        ("pod-a", "https://dub.aupcloud.io/user/acct%20a/proxy/8790", TOKEN),
+        ("pod-b", "https://dub.aupcloud.io/user/acct-b/proxy/8790", "other")]
     moved = pod_endpoints({**ENV, "LAB_HUB_URL": "https://hub.test/", "ATLAS_POD_POWER_PORT": "9001"})
     assert moved[1].base_url == "https://hub.test/user/acct-b/proxy/9001"
     # the one all-accounts hub setting is lab/hub.py's LAB_HUB_URL (the name jetson/egress.py admits too); the
@@ -219,23 +221,23 @@ def test_the_pods_come_from_the_hub_account_keys_with_the_account_name_quoted_in
 
 
 def test_the_pods_can_run_on_other_accounts_each_with_its_own_hub():
-    env = {"ATLAS_POD_ACCOUNTS": "gpu-a=D, gpu-b=c", "AUP_HUB_USER_C": "acct-c", "AUP_HUB_TOKEN_C": "tc",
+    env = {"ATLAS_POD_ACCOUNTS": "pod-a=D, pod-b=c", "AUP_HUB_USER_C": "acct-c", "AUP_HUB_TOKEN_C": "tc",
            "AUP_HUB_URL_C": "https://sjc.hub.test/", "AUP_HUB_USER_D": "acct-d", "AUP_HUB_TOKEN_D": "td",
            **ENV}
     pods = pod_endpoints(env)
     assert [(p.node, p.base_url, p.token) for p in pods] == [
-        ("gpu-a", "https://dub.aupcloud.io/user/acct-d/proxy/8790", "td"),
-        ("gpu-b", "https://sjc.hub.test/user/acct-c/proxy/8790", "tc")]
+        ("pod-a", "https://dub.aupcloud.io/user/acct-d/proxy/8790", "td"),
+        ("pod-b", "https://sjc.hub.test/user/acct-c/proxy/8790", "tc")]
     with pytest.raises(ValueError, match="the pods source needs AUP_HUB_USER_D and AUP_HUB_TOKEN_D in the environment"):
-        pod_endpoints({"ATLAS_POD_ACCOUNTS": "gpu-a=D", **ENV})
-    for bad in ("gpu-a=CD", "jetson=C", "gpu-a", "gpu-a=C,gpu-a=D", "gpu-a=C,gpu-b=C"):
+        pod_endpoints({"ATLAS_POD_ACCOUNTS": "pod-a=D", **ENV})
+    for bad in ("pod-a=CD", "jetson=C", "pod-a", "pod-a=C,pod-a=D", "pod-a=C,pod-b=C"):
         with pytest.raises(ValueError, match="ATLAS_POD_ACCOUNTS"):
             pod_endpoints({"ATLAS_POD_ACCOUNTS": bad, **ENV})
 
 
 def test_one_account_is_enough_a_half_set_one_names_its_missing_key_and_none_at_all_is_refused():
     only_b = pod_endpoints({"AUP_HUB_USER_B": "acct-b", "AUP_HUB_TOKEN_B": "other"})
-    assert [p.node for p in only_b] == ["gpu-b"]
+    assert [p.node for p in only_b] == ["pod-b"]
     with pytest.raises(ValueError) as caught:
         pod_endpoints({"AUP_HUB_USER_A": "acct-a", "AUP_HUB_USER_B": "acct-b", "AUP_HUB_TOKEN_B": "other"})
     assert str(caught.value) == "set AUP_HUB_TOKEN_A too, or neither key of that account"
@@ -266,13 +268,13 @@ def test_the_pods_source_publishes_both_pods_samples_into_the_log_and_the_projec
     assert all(e["received_ts"] is not None for e in logged)
     status = service.status()
     assert (status["source"], status["sampler"]["published"], status["sampler"]["nodes"]) == ("pods", 65,
-                                                                                              ["gpu-a", "gpu-b"])
-    assert status["sampler"]["source"]["gpu-b"]["fetched"] == 25
+                                                                                              ["pod-a", "pod-b"])
+    assert status["sampler"]["source"]["pod-b"]["fetched"] == 25
     nodes = service.projection.snapshot()["nodes"]
-    assert nodes["gpu-b"]["sampler"]["stale"] is True
-    assert nodes["gpu-b"]["sampler"]["stale_samples"] == 12
-    assert nodes["gpu-b"]["sampler"]["counter_ok"] is False
-    assert nodes["gpu-a"]["sampler"]["counter_ok"] is True
+    assert nodes["pod-b"]["sampler"]["stale"] is True
+    assert nodes["pod-b"]["sampler"]["stale_samples"] == 12
+    assert nodes["pod-b"]["sampler"]["counter_ok"] is False
+    assert nodes["pod-a"]["sampler"]["counter_ok"] is True
 
 
 def test_a_restarted_app_rebuilds_from_the_log_and_does_not_publish_the_pods_buffer_twice(tmp_path):
@@ -292,7 +294,7 @@ def test_a_restarted_app_rebuilds_from_the_log_and_does_not_publish_the_pods_buf
     logged = [line for path in tmp_path.glob("*.jsonl") for line in path.read_text().splitlines()]
     assert len(logged) == 20
     assert again.runner.published == 0
-    assert again.runner.sampler.status()["gpu-a"]["repeats"] == 20
+    assert again.runner.sampler.status()["pod-a"]["repeats"] == 20
 
 
 # --- the projection's view of the pod sampler -------------------------------------------------------------------------
@@ -311,7 +313,7 @@ def fold(events: list[GpuPower]) -> TelemetryProjection:
 
 def test_the_projection_keeps_the_samplers_restarts_updates_staleness_and_energy_checks():
     events = [parse_event(e) for e in recorded()]
-    sampler = fold(events).snapshot()["nodes"]["gpu-a"]["sampler"]
+    sampler = fold(events).snapshot()["nodes"]["pod-a"]["sampler"]
     checks = [(c["ts"], c["phase"], c["agrees"]) for c in sampler["energy_checks"]]
     assert checks == [(datetime(2026, 10, 10, 18, 0, 10, 260000, tzinfo=UTC), "start-up", True),
                       (datetime(2026, 10, 10, 18, 0, 33, 230000, tzinfo=UTC), "load", True),
@@ -326,21 +328,21 @@ def test_the_projection_keeps_the_samplers_restarts_updates_staleness_and_energy
 def test_a_late_pod_sample_does_not_overwrite_the_samplers_latest_state_or_count_a_restart():
     events = [parse_event(e) for e in recorded()[:12]]
     late = events[3]
-    sampler = fold([*events, late.model_copy(update={"event_id": "late"})]).snapshot()["nodes"]["gpu-a"]["sampler"]
+    sampler = fold([*events, late.model_copy(update={"event_id": "late"})]).snapshot()["nodes"]["pod-a"]["sampler"]
     assert (sampler["polls"], sampler["restarts"], len(sampler["energy_checks"])) == (12, 0, 1)
 
 
 def test_samples_without_the_pod_samplers_fields_leave_no_sampler_section():
-    plain = GpuPower(ts=NOW, node="gpu-a", source="amd-smi", period_ms=1000, socket_w=40.0, gfx_mhz=500,
+    plain = GpuPower(ts=NOW, node="pod-a", source="amd-smi", period_ms=1000, socket_w=40.0, gfx_mhz=500,
                      mem_mhz=96, throttled=False)
-    assert "sampler" not in fold([plain]).snapshot()["nodes"]["gpu-a"]
+    assert "sampler" not in fold([plain]).snapshot()["nodes"]["pod-a"]
 
 
 def test_the_newest_power_sample_per_node_is_what_the_reader_skips_up_to():
     events = [parse_event(e) for e in recorded()[:5]]
     projection = fold(events)
-    assert projection.latest_power_ts("gpu-a") == events[-1].ts
-    assert projection.latest_power_ts("gpu-b") is None
+    assert projection.latest_power_ts("pod-a") == events[-1].ts
+    assert projection.latest_power_ts("pod-b") is None
 
 
 def test_an_energy_check_survives_the_log_as_its_own_model(tmp_path):

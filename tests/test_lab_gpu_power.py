@@ -126,3 +126,19 @@ def test_a_node_that_is_not_a_pod_is_a_usage_error(capsys):
     assert lab_cli.main(["gpu-power", "record", "--samples", str(POD_A), "--node", "jetson",
                          "--metric", "pod.idle_watts"]) == 2
     assert "'jetson' is not a pod" in capsys.readouterr().err
+
+
+def test_summary_reads_a_jetson_log_copy_whose_pod_samples_carry_the_pod_names_today(capsys, tmp_path):
+    # since telemetry ruling 3 the Jetson's pod reader logs a pod's samples as pod-a and pod-b, while the pod's own
+    # files keep the sampler's gpu-a and gpu-b: a Jetson-log copy must still be read under either name
+    log = tmp_path / "events.jsonl"
+    lines = []
+    for line in POD_A.read_text(encoding="utf-8").splitlines():
+        event = json.loads(line)
+        if event.get("node") == "gpu-a":
+            event["node"] = "pod-a"
+        lines.append(json.dumps(event))
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    want = run(capsys, "summary", "--samples", str(POD_A), "--node", "pod-a", *IDLE_WINDOW)
+    for node in ("pod-a", "gpu-a"):
+        assert run(capsys, "summary", "--samples", str(log), "--node", node, *IDLE_WINDOW) == want

@@ -36,7 +36,7 @@ def fake_pod(events: list[dict]):
         after, limit = int(request.url.params["after"]), int(request.url.params["limit"])
         page = [(seq, e) for seq, e in held if seq > after][:limit]
         return httpx.Response(200, json={
-            "ok": True, "node": "gpu-a", "sampler_started": "2026-10-10T18:00:00.000Z",
+            "ok": True, "node": "pod-a", "sampler_started": "2026-10-10T18:00:00.000Z",
             "first_seq": held[0][0], "last_seq": held[-1][0],
             "samples": [{"seq": seq, "event": e} for seq, e in page]})
 
@@ -72,6 +72,6 @@ def test_the_status_carries_the_pod_readers_counters_once_under_source():
     service = asyncio.run(run())
     status = service.status()
 
-    assert service.runner.sampler.status()["gpu-a"]["fetched"] == 5
+    assert service.runner.sampler.status()["pod-a"]["fetched"] == 5
     assert status["sampler"]["source"] == service.runner.sampler.status()
     assert "own" not in status["sampler"]
