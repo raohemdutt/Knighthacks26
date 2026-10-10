@@ -141,7 +141,7 @@ export function buildPins(plan: RoomPlan, live: RoomLive | null, sightings: Sigh
   for (const s of sightings) {
     const seen = live?.seen[s.label];
     const title = `Your ${s.label} ${PLURAL.test(s.label) ? "are" : "is"} here`;
-    const when = `seen ${dayTime(s.ts)}`;
+    const when = `seen ${dayTime(s.ts).replace(/^Today /, "today at ")}`;
     if (seen && seen.camera === s.camera_id) {
       const detail = [s.position ? humanize(s.position) : seen.on ? `On the ${seen.on.replace(/-/g, " ")}` : null, when].filter(Boolean).join(" · ");
       pins.push({ label: s.label, x: seen.x, y: seen.y, z: seen.z, exact: true, title, detail, sighting: s });

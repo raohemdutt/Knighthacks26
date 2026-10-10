@@ -171,6 +171,7 @@ def test_a_round_the_game_dropped_without_an_event_is_forgotten():
     room.on_round_started(started(0))
     room.on_observation(obs(1, "cam-door"))
     assert room.round is not None
+    assert room.state(at(60))["round"] is not None and room.state(at(100))["round"] is None  # the cameras went quiet: not shown for ever
     active[0] = None  # nobody faced the camera for 10 s: the game abandoned it
     room.on_observation(obs(12, "cam-door"))
     assert room.round is None

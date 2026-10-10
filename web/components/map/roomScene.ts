@@ -381,8 +381,16 @@ export class RoomScene {
     return rows;
   }
 
+  /** Draw calls of one whole frame: the shadow map, the room, and the upscaling passes. */
   drawCalls(): number {
-    return this.renderer.info.render.calls;
+    const info = this.renderer.info;
+    info.autoReset = false;
+    info.reset();
+    this.renderer.shadowMap.needsUpdate = true;
+    this.pipeline.render(this.scene, this.camera);
+    const calls = info.render.calls;
+    info.autoReset = true;
+    return calls;
   }
 
   // ---------- camera ----------
@@ -627,7 +635,7 @@ export class RoomScene {
         o.receiveShadow = true;
       });
       this.room.add(made.group);
-      const label = this.makeLabel(humanize(f.bin ?? "bin"), this.opts.classes.bin, 40, true, false, `#${binColor(f.color).toString(16).padStart(6, "0")}`);
+      const label = this.makeLabel(humanize(f.bin ?? "bin"), this.opts.classes.bin, 75, true, false, `#${binColor(f.color).toString(16).padStart(6, "0")}`);
       label.anchor.set(f.at[0], f.height + 0.12, f.at[1]);
       this.staticLabels.push(label);
       this.bins.set(f.id, { f, ...made, label });
@@ -759,6 +767,7 @@ export class RoomScene {
         this.retext(fig.label, name);
       }
       fig.heldBy = t.held_by;
+      if (person) fig.label.priority = player ? 85 : 60; // a player's name outranks the pins and the bins
       fig.label.off = !person && (t.held_by !== null || quiet.has(t.label));
       if (fig.shade) fig.shade.visible = !t.held_by && !t.in_bin;
       if (person) {
@@ -911,7 +920,7 @@ export class RoomScene {
       bin.body.depthWrite = !dim;
       bin.face.opacity = dim ? 0.18 : 1;
       bin.label.el.style.opacity = dim ? "0.45" : "1";
-      bin.label.priority = id === this.target ? 20 : 40; // the "goes here" label speaks for the target
+      bin.label.priority = id === this.target ? 20 : 75; // the "goes here" label speaks for the target
       if (id !== this.target) continue;
       const color = ROUTE_COLORS[0] as number;
       const ring = new THREE.Mesh(new THREE.RingGeometry(0.36, 0.43, 48), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95, depthWrite: false, side: THREE.DoubleSide }));

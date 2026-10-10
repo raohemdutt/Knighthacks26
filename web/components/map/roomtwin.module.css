@@ -211,13 +211,13 @@
   pointer-events: none;
 }
 
+/* The read-outs on the big screen: in the corner, clear of the room in the middle. */
 .bottom {
   position: absolute;
-  left: 8px;
-  right: 8px;
-  bottom: 8px;
+  left: 10px;
+  bottom: 10px;
+  width: min(42%, 420px);
   display: flex;
-  justify-content: center;
   pointer-events: none;
 }
 

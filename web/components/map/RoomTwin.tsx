@@ -211,7 +211,7 @@ export default function RoomTwin({ plan, live, pins = [], preview = null, contro
   useEffect(() => {
     if (ready) scene.current?.setPins(chips, chips.find((c) => c.labels.includes(picked ?? ""))?.id ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pinKey, ready]);
+  }, [pinKey, picked, ready]);
 
   // The result stays up for a while, then leaves the room clear again.
   const result = live?.result ?? null;

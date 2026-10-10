@@ -349,6 +349,8 @@ class RoomLive:
         newest = self.now
         live = now is None or newest is None or now - newest <= FRESH * 2
         r = self.round
+        if r is not None and now is not None and now - r.started > ROUND_TIMEOUT:
+            r = None  # the cameras went quiet in the middle of a round: do not leave its clock running on the phones
         return {
             "room": self.plan.name,
             "ts": newest.isoformat() if newest else None,
