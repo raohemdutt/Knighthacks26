@@ -59,8 +59,36 @@ def test_log_is_split_by_utc_day_and_replays_without_duplicating(tmp_path):
 
     rebuilt = EventBus(tmp_path)
     alerts = []
-    rebuilt.subscribe("perception.zone", RuleEvaluator(load_rules("config/rules.yaml")).on_zone_event)
-    rebuilt.subscribe("agent.alert", alerts.append)
+    rebuilt.subscribe("perception.zone", RuleEvaluator(load_rules("config/rules.yaml")).on_zone_event, replay=True)
+    rebuilt.subscribe("agent.alert", alerts.append, replay=True)
     assert asyncio.run(rebuilt.replay_into()) == 4
     assert len(alerts) == 2 and all(isinstance(a, AlertRaised) for a in alerts)  # the logged ones, not new copies
     assert sum(len(p.read_text().splitlines()) for p in tmp_path.glob("*.jsonl")) == 4
+
+
+def test_replay_never_reruns_side_effects(tmp_path):
+    import asyncio as aio
+
+    from contexts.workspace.domain.approvals import Approvals
+    from contracts.agent import ActionProposed
+    from contracts.experience import ApprovalDecided
+
+    def wire(bus, sent):
+        approvals = Approvals({"send_message": lambda r: sent.append(r.target) or "sent"})
+        bus.subscribe("agent.action.proposed", approvals.on_proposed)
+        bus.subscribe("experience.approval.decided", approvals.on_decided)
+
+    sent = []
+    live = EventBus(tmp_path)
+    wire(live, sent)
+    aio.run(live.publish_all([
+        ActionProposed(ts=T0, action_id="a1", kind="send_message", target="dom", reason="test"),
+        ApprovalDecided(ts=T0, action_id="a1", decision="approve"),
+    ]))
+    assert sent == ["dom"]
+
+    again = []
+    rebuilt = EventBus(tmp_path)
+    wire(rebuilt, again)
+    assert aio.run(rebuilt.replay_into()) == 4  # proposed, requested, decided, completed
+    assert again == []

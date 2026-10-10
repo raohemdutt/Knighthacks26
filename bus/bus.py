@@ -35,12 +35,15 @@ class EventBus:
     def __init__(self, log_dir: str | Path = "data/events", persist: bool = True) -> None:
         self.log_dir = Path(log_dir)
         self.persist = persist
-        self._subs: list[tuple[str, Handler]] = []
+        self._subs: list[tuple[str, Handler, bool]] = []
         self._seen: OrderedDict[str, None] = OrderedDict()
 
-    def subscribe(self, prefix: str, handler: Handler) -> None:
-        """`prefix` matches the start of the event type: "perception.zone", "experience.", or "" for all."""
-        self._subs.append((prefix, handler))
+    def subscribe(self, prefix: str, handler: Handler, replay: bool = False) -> None:
+        """`prefix` matches the start of the event type: "perception.zone", "experience.", or "" for all.
+
+        Only projections (tables rebuilt from the log) should pass `replay=True`. Handlers with
+        side effects (approval executors, connector writes, model calls) must not run on replay."""
+        self._subs.append((prefix, handler, replay))
 
     async def publish(self, event: Event) -> None:
         await self._publish(event, log_it=True)
@@ -58,8 +61,8 @@ class EventBus:
         if log_it and self.persist and event.type not in NOT_LOGGED:
             self._append(event)
         follow_ups: list[Event] = []
-        for prefix, handler in list(self._subs):
-            if not event.type.startswith(prefix):
+        for prefix, handler, on_replay in list(self._subs):
+            if not event.type.startswith(prefix) or (not log_it and not on_replay):
                 continue
             try:
                 out = handler(event)
@@ -102,7 +105,7 @@ class EventBus:
                         log.warning("skipping bad line %s:%d", path.name, n)
 
     async def replay_into(self, days: Iterable[str] | None = None) -> int:
-        """Feed the log through current subscribers without writing it again. Returns events replayed.
+        """Feed the log through `replay=True` subscribers without writing it again. Returns events replayed.
 
         Follow-up events that handlers return during replay are dropped: the original run
         already logged them, and they are replayed from the log in their own turn."""

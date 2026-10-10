@@ -71,6 +71,10 @@ class ChatResult(BaseModel):
 
 
 class Citation(BaseModel):
+    """Evidence behind an answer: a camera episode/keyframe, or an outside source by URL."""
+
     episode_id: str | None = None
     frame_ref: FrameRef | None = None
     ts: datetime | None = None
+    url: str | None = None  # Canvas assignment, calendar event, search result, Reddit post
+    title: str | None = None
