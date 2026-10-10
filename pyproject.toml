@@ -20,6 +20,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest"]
+# Browser connector (K7). After install: python -m patchright install chromium
+browser = ["patchright>=1.50"]
 
 [tool.setuptools.packages.find]
 include = ["contracts*", "runtime*", "bus*", "contexts*"]

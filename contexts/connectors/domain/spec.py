@@ -19,6 +19,7 @@ class ConnectorSpec(BaseModel):
     every_s: int = 300  # sync period for read tools
     hosts: list[str] = []  # egress the Vault opens for this connector (H4)
     reads: dict[str, ItemKind] = {}  # read tool -> kind of items it returns
+    tools: list[str] = []  # on-demand read tools the Agent may call directly (search, browse)
     writes: list[str] = []  # tools with an outside effect; always proposed, never run directly
     options: dict = {}  # passed to the server as ATLAS_CONNECTOR_OPTIONS (JSON); no secrets here
     env: list[str] = []  # names of .env variables the server may read (tokens)

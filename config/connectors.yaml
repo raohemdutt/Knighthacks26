@@ -31,4 +31,17 @@ calendar:
       # - {name: campus, url_env: CAMPUS_EVENTS_ICS_URL, kind: calendar_event}
       # - {name: canvas, url_env: CANVAS_ICS_URL, kind: assignment}
 
-# canvas (Hemdutt: K6), groupme (Hemdutt: K4), browser (Dom: K7) go here.
+browser:
+  # K7: patchright search, Reddit and page reading as on-demand Agent tools.
+  # Headful passes DuckDuckGo and Reddit bot checks; on the Jetson run under Xvfb.
+  module: contexts.connectors.servers.browser
+  hosts: [html.duckduckgo.com, www.bing.com, www.reddit.com]
+  tools: [search, reddit, browse]
+  options:
+    headless: false
+    channel: null  # "chrome" on a dev laptop with Chrome installed
+    profile_dir: data/browser/profile
+    allowed_hosts: ["*"]
+    max_chars: 6000
+
+# canvas (Hemdutt: K6), groupme (Hemdutt: K4) go here.

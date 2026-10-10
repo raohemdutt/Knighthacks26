@@ -94,3 +94,13 @@ def test_real_mcp_round_trip():
     item, done = asyncio.run(run())
     assert item.title == "hello"
     assert (done.status, done.result) == ("done", "posted: hi")
+
+
+def test_on_demand_tools_are_declared_reads_only():
+    spec = ConnectorSpec(name="browser", module="x", tools=["search"], writes=["submit"])
+    fake = FakeConnector({"search": [{"title": "t", "url": "u"}]})
+    hub = ConnectorHub([spec], factory=lambda s: fake)
+    assert asyncio.run(hub.call_tool("browser.search", {"query": "q"})) == [{"title": "t", "url": "u"}]
+    with pytest.raises(ValueError):
+        asyncio.run(hub.call_tool("browser.submit", {}))  # writes must be proposed, never called directly
+    assert fake.calls == [("search", {"query": "q"})]

@@ -76,6 +76,21 @@ class ConnectorHub:
                     out.append(item)
         return out
 
+    # --- on-demand reads (Agent tools) ---
+
+    def is_tool(self, tool: str) -> bool:
+        name, _, short = tool.partition(".")
+        return name in self.specs and short in self.specs[name].tools
+
+    async def call_tool(self, tool: str, arguments: dict | None = None):
+        """Run a declared read-only tool now, e.g. "browser.search". Writes never go through here."""
+        if not self.is_tool(tool):
+            raise ValueError(f"{tool} is not a declared read tool")
+        if self.offline():
+            raise RuntimeError("offline: connectors are paused")
+        name, _, short = tool.partition(".")
+        return await self.connector(name).call(short, arguments or {})
+
     # --- writes ---
 
     def is_write(self, tool: str) -> bool:
