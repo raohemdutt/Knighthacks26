@@ -61,8 +61,8 @@ class SortIt:
 
     def on_zone_event(self, e: ZoneEvent) -> list:
         r = self.round
-        if r is None or e.kind != "enter" or e.zone_id not in self.bin_zones or e.label not in self.rules.items:
-            return []  # only sortable items score: a person walking through a bin zone doesn't
+        if r is None or e.kind != "enter" or e.zone_id not in self.bin_zones or not self.rules.same_item(e.label, r.item):
+            return []  # only the round's item scores: a person or another object passing a bin zone doesn't
         correct = e.zone_id == r.target_bin
         seconds = (e.ts - r.ts).total_seconds()
         estimate = max(len(r.path), 1) * SECONDS_PER_CELL

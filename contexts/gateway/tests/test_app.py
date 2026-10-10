@@ -69,12 +69,14 @@ def test_play_route_and_a_round_over_the_bus(tmp_path):
         async def play():
             for s in (0, 2):
                 await atlas.bus.publish(FacesCounted(ts=t0 + timedelta(seconds=s), camera_id="cam-door", count=1, facing=1))
-            await atlas.bus.publish(ZoneEvent(ts=t0 + timedelta(seconds=4), camera_id="cam-door", track_id=1, label="can", zone_id="recycling", kind="enter"))
+            item = atlas.game.round.item  # the round's item is the one that has to be sorted
+            zone = atlas.game.rules.zone_for(item)
+            await atlas.bus.publish(ZoneEvent(ts=t0 + timedelta(seconds=4), camera_id="cam-door", track_id=1, label=item, zone_id=zone, kind="enter"))
 
         c.portal.call(play)
         assert c.get("/api/play/accuracy").json()["rounds"] == 1
         impact = c.get("/api/impact").json()["total"]
-        assert impact["items_seen"] == 1 and impact["recycled"] == 1  # the same can, counted by Waste Watch
+        assert impact["items_seen"] == 1  # the same item, counted by Waste Watch too
 
 
 def test_invites_are_served_and_names_are_checked(tmp_path):

@@ -14,3 +14,9 @@ items:
   chip bag: trash
   napkin: trash
   banana: trash
+
+# Other detector labels that count as the same item in a Sort It round (S1). The round
+# only scores when the round's item (or one of these) enters a bin zone.
+aliases:
+  can: [soda can, tin can]
+  bottle: [water bottle, plastic bottle]
