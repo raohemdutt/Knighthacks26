@@ -335,7 +335,7 @@ Compression", 2024; the Mesa merge request for ANV ASTC emulation (!25467) and t
 articles on RADV bfloat16 and descriptor heaps (bot checks); the rocJPEG hardware page (HTTP 404).
 ## Added by R49, fast settings optimization note (2026-10-10)
 
-Ids `B1` to `B59` belong to `fast_optimization.md` ("fast" in the Cited in column). They use the
+Ids `B1` to `B60` belong to `fast_optimization.md` ("fast" in the Cited in column). They use the
 letter B so that they cannot collide with the `S` and `L` ids that other open pull requests append
 to this index. PDFs that could not be read in the browser fetch were saved and read with pdftotext.
 
@@ -396,10 +396,11 @@ to this index. PDFs that could not be read in the browser fetch were saved and r
 | B53 | our measurement | `lab/refine/metrics.jsonl` lines 13 and 14: smoke LoRA samples/s 0.51 and peak 8.7 GiB on one R9700 | this repo, `lab/refine/metrics.jsonl:13-14` (main at 02db66b) | 2026-10-10 | fast |
 | B54 | our files | `lab/pod_a_teacher.sh`, `GPU_UTIL` default 0.90 (line 25) and the serve command | this repo, `lab/pod_a_teacher.sh:25` (main at 02db66b) | 2026-10-10 | fast |
 | B55 | our files | `lab/machine/verdict.py`, `MIN_RUNS_PER_ARM = 5` (line 52) | this repo, `lab/machine/verdict.py:52` (main at 02db66b) | 2026-10-10 | fast |
-| B56 | pr | PR #235, R35 inference settings sheet and `lab/refine/research/kernels/data/searchspace-inference-gfx1151.json` (open on 2026-10-10) | https://github.com/raohemdutt/Knighthacks26/pull/235 | 2026-10-10 | fast |
-| B57 | pr | PR #238, R36 training settings sheet and `lab/refine/research/kernels/data/searchspace-training-gfx1151.json` (open on 2026-10-10) | https://github.com/raohemdutt/Knighthacks26/pull/238 | 2026-10-10 | fast |
-| B58 | pr | PR #237, R32 Strix Halo hardware note `lab/refine/research/kernels/strix_halo_hardware.md` (sections 2, 3 and 5; open on 2026-10-10) | https://github.com/raohemdutt/Knighthacks26/pull/237 | 2026-10-10 | fast |
+| B56 | pr | PR #235, R35 inference settings sheet and `lab/refine/research/kernels/data/searchspace-inference-gfx1151.json` (merged 2026-10-10 as 99db20c) | https://github.com/raohemdutt/Knighthacks26/pull/235 | 2026-10-10 | fast |
+| B57 | pr | PR #238, R36 training settings sheet and `lab/refine/research/kernels/data/searchspace-training-gfx1151.json` (merged 2026-10-10 as 86f7b8d) | https://github.com/raohemdutt/Knighthacks26/pull/238 | 2026-10-10 | fast |
+| B58 | pr | PR #237, R32 Strix Halo hardware note `lab/refine/research/kernels/strix_halo_hardware.md` (sections 2, 3 and 5; merged 2026-10-10 as 6a8e4a0) | https://github.com/raohemdutt/Knighthacks26/pull/237 | 2026-10-10 | fast |
 | B59 | benchmark | kyuz0, "AMD Strix Halo - Legacy Backend Benchmarks" (Framework Desktop, Fedora 42, captured 2025-11-14); the results grid did not load, so nothing was taken from it | https://kyuz0.github.io/amd-strix-halo-toolboxes/ | 2026-10-10 | not used |
+| B60 | our files | `lab/refine/research/plumbing/placement.md` (R46's placement plan, merged in #243 as c39b242): "What the teacher's vLLM holds" (64.0 GiB visible to torch, 58 GB available, 17.98 GiB of weights), "Memory margin" (13.05 GiB LoRA budget, 4 GiB host reserve, 74.65 GiB at 0.90, a share of 0.63 or less) and "Measurements get a chip to themselves" | this repo, `lab/refine/research/plumbing/placement.md` (main at ab7f9f3) | 2026-10-10 | fast |
 
 Seen but not opened, so not cited: AMD's blog post "AMD Ryzen AI MAX+ 395 Processor: Breakthrough AI
 Performance in Thin and Light" (the fetch timed out), the Framework Community threads on Strix Halo

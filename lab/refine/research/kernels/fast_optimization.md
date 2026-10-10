@@ -4,15 +4,17 @@ Decision: Ax 1.x (ax-platform 1.3.1, BoTorch, the default "fast" method with qLo
 asynchronously, one trial per free worker, warm-started from the baseline and four prior arms
 instead of Sobol points, with repeats inside one server spawn and the trials grouped by the card
 state they need, so each restart serves a whole block of measurements and reuses a warm compile
-cache where it can; inference (R38) runs on pod D and training (R39) on pod C at the same time when
-pod C passes its free-memory check, and every extra pod AMD grants tonight joins the inference lane.
-Expected: a confirmed win after about 5 evaluations when one of the priors is right (about 0.69 by
-R35's own odds) and about 17 when none is, plus 6 confirmation spawns; 17 inference trials fit in 3
-hours on one pod and 35 on two, 15 training trials on one pod and 31 on two. The configuration is
+cache where it can; inference (R38) and then training (R39) run on pod D, as the team's placement
+plan gives Ax trials the exclusive card, and training moves to pod C at the same time as R38 only
+with Ilan's go to serve the teacher at a share of at most 0.63 and to override the placement check;
+every extra pod AMD grants tonight joins the inference lane. Expected: a confirmed win after about 5
+evaluations when one of the priors is right (about 0.69 by R35's own odds) and about 17 when none
+is, plus 6 confirmation spawns; 17 inference trials fit in 3 hours on one pod and 35 on two, 15
+training trials on one pod and 31 on two. The configuration is
 `lab/refine/research/kernels/data/ax-config-night.json`, whose format is in "Approach" below.
 
 Research note for the kernels track (Task Board R49), searched on 2026-10-10 with 2025 and 2026
-sources first. Sources are indexed in `SOURCES.md` under "Added by R49" with ids `B1` to `B59`;
+sources first. Sources are indexed in `SOURCES.md` under "Added by R49" with ids `B1` to `B60`;
 experiment ids `FO1` to `FO10` are defined once each and ranked at the end. What it covers: the
 cost of one trial on our pods and harness, the trial counts that fit in three hours, grouping trials
 by card state, the open-source optimizers at a budget of 30 to 60 evaluations, the literature on
@@ -218,7 +220,8 @@ per-stream rate (2.6 tok/s) and the training model load (60 s) are assumptions m
   18 to 9, which is what makes 17 to 18 configurations fit in three hours; the config file's
   `group_by_state` rule says it: one server state per block, every restart-free measurement of that
   state in the block, blocks ordered by compile class, and on a card one lane at a time (the
-  inference block, then the kernel block, then the training block when pod C cannot train).
+  inference block, then the kernel block, then the training block, unless plan A moves training to
+  pod C).
 
   Experiment: FO4, as specified in section 2.
 
@@ -534,52 +537,67 @@ per-stream rate (2.6 tok/s) and the training model load (60 s) are assumptions m
   `vllm/config/cache.py` at b1388b1, `gpu_memory_utilization` and `kv_cache_memory_bytes`.
 
   Implication: the live teacher on pod C, launched by `lab/pod_a_teacher.sh` with `GPU_UTIL`
-  defaulting to 0.90 [B54], holds 90 percent of the memory the GPU sees whatever else runs; if the GPU
-  sees all 64 GB that is 57.6 GB (19 GB of weights, the rest KV and activations), leaving at most
-  6.4 GB for everything else on the APU, including the CPU side.
+  defaulting to 0.90 [B54], holds 90 percent of the memory torch reports whatever else runs, not its
+  weights alone.
 
   Experiment: FO6, a read-only memory reading on pod C with the teacher up: `torch.cuda.mem_get_info()`
-  total and free, `mem_info_vram_total` and `mem_info_gtt_total`. Expected movement: free at most 6.4
-  GiB if the total is 64 GiB, less if the GTT limit caps the GPU at about half the RAM. Minimum
-  sample size: 1 reading. Confidence: medium (0.6).
+  total and free beside the host's MemAvailable. Expected movement: free memory of about 1 GiB or less
+  (58 GiB available minus the 57.6 GiB the teacher holds). Minimum sample size: 3 readings.
+  Confidence: medium (0.6).
 
-- **[measured]** The pods' GPU is a Radeon 8060S with 64 GB shared with the CPU; power is read as
-  `amd-smi` `SOCKET_POWER`, the whole APU package; over 81 minutes beside the running teacher the
-  chip was in deep idle 62 percent of the time and busy (about 110 W) 31 percent. Source: [B51]
-  `lab/README.md`, "Teacher on SJC today" and "Idle baseline on the Strix Halo".
+- **[measured]** The pods' hour-0 facts give 64.0 GiB visible to torch on both pods, with 62 GB of
+  host RAM of which 58 GB is available, and pod C's first start loaded 17.98 GiB of weights; the team's
+  placement plan therefore counts the teacher at the 0.90 share as 57.6 GiB held and takes 58 GiB as
+  what a pod can place. Source: [B60] `lab/refine/research/plumbing/placement.md`, "What the
+  teacher's vLLM holds" (R46, merged in c39b242).
 
-  Implication: a trial on pod C cannot measure joules per token, because the package power includes
-  the live teacher's 100 W or so whenever it answers, and about a third of the time it does; its
-  tok/s would also lose to the teacher's kernels on the same 40 CUs. Inference trials stay on pod D.
+  Implication: R32's question whether the GTT limit hides half the memory [B58] is settled for these
+  hosts: the GPU sees the whole pool, the teacher at 0.90 leaves about 0.4 GiB of the 58 available, and
+  the "live teacher about 18 GB" figure is its weights, not what it holds.
 
   Experiment: FO6, as specified in the previous finding.
 
-- **[practitioner]** AMD's guidance cited by the R32 hardware note says the GTT pool used by PyTorch
-  and other compute work is dynamic, "by default ... approximately 50 percent of total system RAM",
-  and that when GTT is larger than VRAM the driver makes VRAM allocations from GTT. Source: [B58] PR
-  #237, `lab/refine/research/kernels/strix_halo_hardware.md`, section 5.
+- **[opinion]** The placement plan budgets a LoRA job at 13.05 GiB (the 8.7 GiB measured peak plus a
+  50 percent margin) plus a 4 GiB host reserve, so the teacher and a LoRA job need 74.65 GiB at the
+  0.90 share against 58 available and fit only at a share of 0.63 or less; it also gives measurements,
+  benchmarks and Ax trials alike, a chip to themselves, and `python -m lab slot request` refuses an Ax
+  trial on pod C's card unless `--override` says why. Source: [B60]
+  `lab/refine/research/plumbing/placement.md`, "Memory margin" and "Measurements get a chip to
+  themselves"; [B53] `lab/refine/metrics.jsonl:14`.
 
-  Implication: on a default host the GPU may see about 32 GB, of which the teacher holds 28.8 GB at
-  0.90, and training beside it is impossible; on a host with a raised limit (the community sets
-  about 115 GB on 128 GB machines [B34]) the 6.4 GB figure above holds. Only FO6 tells which.
+  Implication: by the team's own plan both search lanes belong on pod D, one after the other. Running
+  R39 on pod C at the same time as R38 needs two goes from Ilan: serving the teacher at a share of at
+  most 0.63 (a restart of about 297 s with no teacher) and an override of the placement check,
+  justified by dropping the training steps that overlap a teacher request.
+
+  Experiment: FO6, as specified in the first finding of this section; the interference itself is
+  R43's PL1 run in the placement note.
+
+- **[measured]** Power is read as `amd-smi` `SOCKET_POWER`, the whole APU package; over 81 minutes
+  beside the running teacher the chip was in deep idle 62 percent of the time and busy (about 110 W)
+  31 percent. Source: [B51] `lab/README.md`, "Teacher on SJC today" and "Idle baseline on the Strix
+  Halo".
+
+  Implication: a trial on pod C cannot measure joules per token, because the package power includes
+  the live teacher's 100 W or so whenever it answers, and about a third of the time it does; its tok/s
+  would also lose to the teacher's kernels on the same 40 CUs. Inference trials stay on pod D.
 
   Experiment: FO6, as specified in the first finding of this section.
 
-- **[opinion]** A second stock teacher on pod C is not worth it: at 0.90 there is no room; with
-  both instances cut to about 0.35 (22.4 GB each, 19 GB of weights plus a small KV) plus the 9 GB
-  LoRA job, the APU would hold about 54 GB plus the CPU side's 6 GB or so, near the 64 GB edge, the
-  live teacher would need a restart (297 s of outage), its decode would share the CUs, and the second
-  instance's joules per token could not be measured. Pod C takes the training lane only, and only if
-  FO6 shows at least 12 GiB free (8.7 GiB measured peak plus 3 GiB) or Ilan approves restarting the
-  teacher at `GPU_UTIL` 0.70 (44.8 GB) for the night; otherwise R39 runs on pod D after R38. Source:
-  [B29] `vllm/config/cache.py` at b1388b1; [B51] `lab/README.md`; [B53]
-  `lab/refine/metrics.jsonl:14`.
+- **[opinion]** A second stock teacher on pod C is not worth it: at the 0.90 share there is no room,
+  and with both instances cut to 0.35 (22.4 GiB each, of which 18 GiB are weights) plus a LoRA job's
+  13.05 GiB and the 4 GiB reserve the pod would need 61.85 GiB against 58 available; a 0.35 share is
+  also below any share the teacher has been seen to start at, the live teacher would need a restart,
+  the two decoders would share the CUs, and the second instance's joules per token could not be read.
+  Source: [B29] `vllm/config/cache.py` at b1388b1; [B60] `lab/refine/research/plumbing/placement.md`;
+  [B51] `lab/README.md`.
 
-  Implication: both objectives run at the same time only when FO6 passes or Ilan gives that go; the
-  config marks pod C's training role as conditional and gives pod C the restart-free attach
-  measurements of the baseline (FO7) either way.
+  Implication: pod C keeps serving the teacher and takes only restart-free measurements of the live
+  baseline in attach mode (FO7) by default; plan B in the config (R38, then the kernel lane, then R39,
+  all on pod D) is the default, and plan A (R39 on pod C beside the teacher at a share of at most
+  0.63) runs only with Ilan's go.
 
-  Experiment: FO6, as specified in the first finding of this section.
+  Experiment: FO7, as specified in section 1.
 
 ## 9. Public Strix Halo numbers as priors
 
@@ -841,11 +859,12 @@ model (pending; not in the repository yet).
 - Expected wall clock to a confirmed inference win (612 s screen trials, 676 s confirmation
   spawns): one inference pod 2.0 hours if a prior hits and 4.0 if not (expected 2.6); two pods 1.1
   and 2.1 (expected 1.4); four pods 0.7 and 1.2 (expected 0.9).
-- Pods: pod D takes inference (R38) and the kernel lane; pod C takes training (R39) only if FO6
-  passes or Ilan approves the teacher restart at `GPU_UTIL` 0.70, and the restart-free attach
-  measurements of the baseline (FO7) either way; an extra pod AMD grants joins the inference lane
-  with the driver moved to this machine (hub runner) so one Ax experiment serves all inference
-  workers.
+- Pods: by default (plan B) pod D runs R38, then the kernel lane, then R39, as the placement plan
+  gives Ax trials the exclusive card [B60]; pod C keeps serving the teacher and takes the
+  restart-free attach measurements of the baseline (FO7). Plan A runs R39 on pod C at the same time
+  as R38 only with Ilan's go to serve the teacher at a share of at most 0.63 and to override the
+  placement check. An extra pod AMD grants joins the inference lane, with the driver moved to this
+  machine (hub runner) so one Ax experiment serves all inference workers.
 
 ## Approach (the night configuration file)
 
@@ -861,11 +880,12 @@ model (pending; not in the repository yet).
 | `asynchronous` | bool | true: ask one trial whenever a worker frees; never wait for a batch |
 | `window` | object | `start` and `result_by`, ISO 8601 with offset (23:00 to 08:00 ET) |
 | `generation_strategy` | object | the arguments of `Client.configure_generation_strategy`, by their Ax names |
-| `workers` | list of objects | `name`, `account`, `hub`, `gpu_queue` (the GPU Queue's GPU value), `lanes` (list of lane names), `exclusive` (bool), `enabled` (true, `"if_precondition"` or `"if_granted"`), `precondition` (string or null), `runner` (`"local"` on the pod, `"hub"` through the controller), `stagger_s` (int) |
+| `workers` | list of objects | `name`, `account`, `hub`, `gpu_queue` (the GPU Queue's GPU value), `lanes` (lane names the worker always takes), `conditional_lanes` (list of `lane` and `precondition`: lanes taken only when the precondition holds), `exclusive` (bool), `enabled` (true or `"if_granted"`), `precondition` (string or null), `runner` (`"local"` on the pod, `"hub"` through the controller), `stagger_s` (int) |
 | `driver_host` | object | where each lane's Ax experiment runs: `one_inference_worker` and `several_inference_workers` |
 | `group_by_state` | object | the card-state rule: `principle`, then per lane the `state` that defines a block, `block` (what runs back to back in it), `order` (how blocks are ordered), and `card` (one lane at a time per card, in `order`) |
 | `lanes.<lane>.task` | string | the Task Board task the lane serves |
-| `lanes.<lane>.search_space` | string | repo path of the search-space file; `search_space_status` says where it is pending |
+| `lanes.<lane>.search_space` | string | repo path of the search-space file; `search_space_status` says where it came from and its format |
+| `lanes.<lane>.worker_names` | list of strings | the workers that run the lane by default; `plan_a_worker_names` the ones that run it under plan A |
 | `lanes.<lane>.objective` | object | `metric` (dotted name as R45 names metrics) and `goal` (`minimize` or `maximize`) |
 | `lanes.<lane>.tracking` | list of strings | metrics recorded beside the objective on every trial |
 | `lanes.<lane>.finalist_tracking` | list of strings | metrics measured on the running server only for the current top 3 |
@@ -875,13 +895,13 @@ model (pending; not in the repository yet).
 | `lanes.<lane>.repeat_policy` | object | requests or steps per trial, spawns or processes per trial, and how the SEM handed to Ax is computed |
 | `lanes.<lane>.early_stop` | object | the first-request or first-steps rule, Ax's percentile strategy switch, `max_consecutive_failures` |
 | `lanes.<lane>.initial_arms` | list of objects | in run order: `name`, `parameters` (changes from the baseline; `{}` is the baseline), `attach_as` (`baseline` or `trial`), `restart` (`cold` or `warm`), `priors` (ids into `priors`) |
-| `lanes.<lane>.budget` | object | `minutes`, `slot_minutes`, `slots`, `trials_per_worker_est`, `restarts_est`, `reserve_for_confirmation_minutes` |
+| `lanes.<lane>.budget` | object | `minutes`, `slot_minutes`, `slots`, `trials_per_worker_est`, `restarts_est`, `reserve_for_confirmation_minutes`, and for a lane whose time differs under plan B, `plan_b_minutes` and `plan_b_trials_est` |
 | `lanes.<lane>.confirmation` | object | `spawns_per_arm` (or `runs_per_arm`), `order`, `test` |
 | `lanes.kernel` | object | the kernel lane: `targets`, `measure`, `initial_random_configs`, `model`, `features`, `search`, `top_k_measure`, `held_out`, `kill`, `slot_minutes`, `reuse` |
 | `priors` | list of objects | settings to try first: `id`, `lane`, `parameters`, `expected`, `p` (number or null), `sources` (list of strings with dates), `evidence_os`, `evidence_rocm` |
 | `expected_ranges` | object | the ranges R33 and R47 are checked against, each with `low`, `high`, `unit` and `sources` |
 | `transfer` | object | how the public prior model (R51, pending) enters: `now`, `later`, `offset_calibration_trials`, `file` |
-| `schedule` | list of objects | `start`, `end` (ET clock times), `worker`, `lane`, `what` |
+| `schedule` | list of objects | `plan` (`"A"`, `"B"` or `"A and B"`; B is the default), `start`, `end` (ET clock times), `worker`, `lane`, `what` |
 
 ## Candidate experiments, ranked
 
@@ -893,7 +913,8 @@ others feed.
 2. FO1, the restart diet (every later trial up to 30 percent shorter; confidence low).
 3. FO2, the compile-cache classes (decides the warm and cold classes the scheduler groups by;
    confidence medium).
-4. FO6, pod C's free memory (decides whether both objectives run at once; confidence medium).
+4. FO6, pod C's free memory with the teacher up (confirms plan B, or plan A after a teacher restart
+   at a share of at most 0.63; confidence medium).
 5. FO3, the noise split (sets the confirmation spawns; confidence medium).
 6. FO5, the R39 night run (samples/s up 20 percent or more if a training prior holds; confidence
    low).
@@ -904,14 +925,15 @@ others feed.
 
 ## Open questions
 
-- Pod C's GPU-visible memory and free memory with the teacher up (FO6, R32's SH8); the training
-  lane's placement waits on it or on Ilan's go to restart the teacher at `GPU_UTIL` 0.70.
+- Pod C's free memory with the teacher up (FO6; the placement note's first open question). Plan A
+  (R39 on pod C beside the teacher) waits on Ilan's go to serve the teacher at a share of at most
+  0.63 and on R43's interference measurement (PL1).
 - Whether `num_speculative_tokens`, `mamba_ssm_cache_dtype`, `attention_backend` and
   `enable_prefix_caching` change the torch.compile key (the speculative and cache configs were not
   opened); FO2 answers it on the pod.
-- Three search-space formats exist (R35's `atlas.searchspace.v1`, R36's Ax-config style, R45's
-  `lab.optimize.searchspace/1` sample); R45 must read or convert both real files before R38 and R39
-  start.
+- Three search-space formats exist (R35's `atlas.searchspace.v1` and R36's Ax-config style, both on
+  main since tonight, and R45's `lab.optimize.searchspace/1` sample); R45 must read or convert both
+  real files before R38 and R39 start.
 - The harness change for a one-request warm-up (L3 in section 2) is not made; it is worth about 90 s
   a trial.
 - A trainer that changes in-process settings without reloading the model (section 3) does not exist

@@ -58,9 +58,13 @@ def test_workers_are_well_formed(config: dict) -> None:
         assert isinstance(worker["exclusive"], bool)
         assert set(worker["lanes"]) <= lanes
         assert worker["enabled"] is True or worker["precondition"]
+        for conditional in worker.get("conditional_lanes", []):
+            assert conditional["lane"] in lanes and conditional["precondition"]
+            assert conditional["plan"] in ("A", "B")
     for lane in config["lanes"].values():
-        assert set(lane["worker_names"]) <= set(names)
-        assert set(lane.get("fallback_worker_names", [])) <= set(names)
+        for key, value in lane.items():
+            if key.endswith("worker_names"):
+                assert set(value) <= set(names), key
 
 
 @pytest.mark.parametrize("lane_name", SEARCH_LANES)
@@ -139,6 +143,7 @@ def test_schedule_names_known_workers_and_lanes(config: dict) -> None:
     lanes = set(config["lanes"]) | {"baseline_attach"}
     for item in config["schedule"]:
         assert CLOCK.match(item["start"]) and CLOCK.match(item["end"]), item
+        assert item["plan"] in ("A", "B", "A and B")
         assert item["worker"] in names
         assert item["lane"] in lanes
 

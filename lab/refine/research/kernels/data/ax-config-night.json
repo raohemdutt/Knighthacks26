@@ -3,7 +3,7 @@
   "task": "R49",
   "note": "lab/refine/research/kernels/fast_optimization.md",
   "_comment": "Read by the R45 driver (lab/optimize_settings.py) for R38 and R39. Keys and types are documented in the note's 'Approach' section; _comment keys are for people. Times in 'schedule' are ET clock times on the night of 2026-10-10.",
-  "decision": "Ax 1.x (ax-platform 1.3.1, BoTorch, method fast with qLogNEI), asynchronous one trial per free worker, warm-started from the baseline and four prior arms instead of Sobol points, repeats inside one spawn, trials grouped by card state; inference (R38) on pod D, training (R39) on pod C at the same time when FO6 passes; expected win after about 5 evaluations when a prior is right (p about 0.69), about 17 when not, plus 6 confirmation spawns.",
+  "decision": "Ax 1.x (ax-platform 1.3.1, BoTorch, method fast with qLogNEI), asynchronous one trial per free worker, warm-started from the baseline and four prior arms instead of Sobol points, repeats inside one spawn, trials grouped by card state; inference (R38) then training (R39) on pod D (plan B, the default), R39 on pod C at the same time only with Ilan's go (plan A: teacher share at most 0.63, placement override); expected win after about 5 evaluations when a prior is right (p about 0.69), about 17 when not, plus 6 confirmation spawns.",
   "tool": {
     "name": "ax-platform",
     "api_tested": "1.3.1",
@@ -47,10 +47,17 @@
       "account": "C",
       "hub": "sjc",
       "gpu_queue": "A teacher shared service",
-      "lanes": ["training", "baseline_attach"],
+      "lanes": ["baseline_attach"],
+      "conditional_lanes": [
+        {
+          "lane": "training",
+          "plan": "A",
+          "precondition": "Ilan's go to restart the teacher with GPU_UTIL at most 0.63 (about 297 s with no teacher) and to override the placement check for R39's slot (python -m lab slot request --override); then FO6 must show at least 17.05 GiB free (13.05 GiB LoRA budget plus 4 GiB host reserve, lab/refine/research/plumbing/placement.md)"
+        }
+      ],
       "exclusive": false,
-      "enabled": "if_precondition",
-      "precondition": "FO6: torch.cuda.mem_get_info() shows at least 12 GiB free with the live teacher up, or Ilan approves restarting the teacher with GPU_UTIL=0.70 for the night; otherwise pod C runs only baseline_attach (FO7) and R39 moves to pod D",
+      "enabled": true,
+      "precondition": null,
       "never": ["inference trials", "a second vLLM server", "restarting the teacher without Ilan's go"],
       "runner": "local",
       "stagger_s": 0
@@ -108,7 +115,7 @@
     "card": {
       "rule": "one lane at a time per card; the blocks of a lane run back to back",
       "pod-d": ["inference", "kernel", "training"],
-      "pod-c": ["training", "baseline_attach"]
+      "pod-c": ["baseline_attach", "training"]
     }
   },
   "lanes": {
@@ -116,7 +123,7 @@
       "task": "R38",
       "worker_names": ["pod-d", "pod-e", "pod-f"],
       "search_space": "lab/refine/research/kernels/data/searchspace-inference-gfx1151.json",
-      "search_space_status": "pending in PR #235 (schema atlas.searchspace.v1; R45 reads or converts it)",
+      "search_space_status": "on main since PR #235 (99db20c), schema atlas.searchspace.v1; R45 reads or converts it",
       "parameters": [
         "linear_kernel",
         "num_speculative_tokens",
@@ -220,10 +227,10 @@
     },
     "training": {
       "task": "R39",
-      "worker_names": ["pod-c"],
-      "fallback_worker_names": ["pod-d"],
+      "worker_names": ["pod-d"],
+      "plan_a_worker_names": ["pod-c"],
       "search_space": "lab/refine/research/kernels/data/searchspace-training-gfx1151.json",
-      "search_space_status": "pending in PR #238 (Ax-config style; R45 reads or converts it)",
+      "search_space_status": "on main since PR #238 (86f7b8d), Ax-config style; R45 reads or converts it",
       "parameters": [
         "gdn_kernel",
         "gradient_checkpointing",
@@ -289,6 +296,8 @@
         "slot_minutes": 60,
         "slots": 3,
         "trials_per_worker_est": 15,
+        "plan_b_minutes": 120,
+        "plan_b_trials_est": 10,
         "restarts_est": 15,
         "reserve_for_confirmation_minutes": 0,
         "queue_justification": "each trial is a 20-step LoRA run of about 11 minutes at the old chip's rate; the driver resumes from its trial files between 60-minute slots"
@@ -511,15 +520,15 @@
     "own_trials_per_lane_est": 17
   },
   "schedule": [
-    {"plan": "A and B", "start": "23:00", "end": "23:05", "worker": "pod-c", "lane": "baseline_attach", "what": "FO6: read-only memory reading with the teacher up; decides plan A (pod C trains) or plan B"},
+    {"plan": "A and B", "start": "23:00", "end": "23:05", "worker": "pod-c", "lane": "baseline_attach", "what": "FO6: read-only memory reading with the teacher up; plan B (the default) unless Ilan has approved plan A"},
     {"plan": "A and B", "start": "23:00", "end": "23:30", "worker": "pod-d", "lane": "inference", "what": "FO2 and FO1: compile-class and restart-diet spawns; the first spawn is trial 0, the baseline"},
     {"plan": "A and B", "start": "23:30", "end": "02:30", "worker": "pod-d", "lane": "inference", "what": "R38 Ax run, three 60-minute slots, resumable"},
-    {"plan": "A", "start": "23:05", "end": "02:05", "worker": "pod-c", "lane": "training", "what": "R39 Ax run beside the teacher"},
+    {"plan": "A", "start": "23:05", "end": "02:05", "worker": "pod-c", "lane": "training", "what": "R39 Ax run beside the teacher, after the teacher restart at a share of at most 0.63; steps that overlap a teacher request are dropped"},
     {"plan": "A", "start": "02:05", "end": "03:15", "worker": "pod-c", "lane": "training", "what": "R39 confirmation, 3 runs each of best and baseline"},
     {"plan": "A and B", "start": "02:30", "end": "03:40", "worker": "pod-d", "lane": "inference", "what": "R38 confirmation, 3 spawns each of best and baseline"},
     {"plan": "A", "start": "03:40", "end": "05:10", "worker": "pod-d", "lane": "kernel", "what": "R33 and R47 chip measurements, then the FO8 cost-model pilot in 15-minute slots"},
     {"plan": "A", "start": "05:10", "end": "07:40", "worker": "pod-d", "lane": "inference", "what": "more R38 trials, or the 5-spawn verdict for T0"},
-    {"plan": "A and B", "start": "03:15", "end": "03:45", "worker": "pod-c", "lane": "baseline_attach", "what": "FO7: the live baseline's concurrency curve in attach mode"},
+    {"plan": "A and B", "start": "03:15", "end": "03:45", "worker": "pod-c", "lane": "baseline_attach", "what": "FO7: the live baseline's concurrency curve in attach mode (no restart)"},
     {"plan": "B", "start": "03:40", "end": "04:40", "worker": "pod-d", "lane": "kernel", "what": "R33 and R47 chip measurements, then a shortened FO8"},
     {"plan": "B", "start": "04:40", "end": "06:40", "worker": "pod-d", "lane": "training", "what": "R39 Ax run, two 60-minute slots"},
     {"plan": "B", "start": "06:40", "end": "07:50", "worker": "pod-d", "lane": "training", "what": "R39 confirmation, 3 runs each of best and baseline"},
