@@ -42,6 +42,7 @@
       "key": 0,
       "title": "Atlas",
       "shows": "Index card (5 s), then the hook: it remembers, it watches, nothing leaves the box. Index card again at 0:55.",
+      "line": "This is Atlas: a private AI box that sees, remembers, talks and learns. Your video never leaves it.",
       "watchers": [
         "Best Overall / Best AI / Best Embedded",
         "Hugging Face",
@@ -60,6 +61,7 @@
       "key": 1,
       "title": "It runs your day",
       "shows": "Knows your week (Canvas, calendar), the Day loop plan, one approval card.",
+      "line": "Point it at your week: it reads your Canvas and calendar, plans the day around what the cameras see, and asks before it acts.",
       "watchers": [
         "Best Overall / Best AI / Best Embedded"
       ],
@@ -71,6 +73,7 @@
       "key": 2,
       "title": "It learns",
       "shows": "The big Qwen teaches the small Qwen; before/after scores; our adapter on Hugging Face; quick unplug.",
+      "line": "When it needs a new skill, a big open model teaches the small one on the box.",
       "watchers": [
         "Best Overall / Best AI / Best Embedded",
         "Hugging Face"
@@ -83,6 +86,7 @@
       "key": 3,
       "title": "The learning lab",
       "shows": "Qwen3.8-27B teacher on R9700 A, LoRA on R9700 B, ROCm, loss curve, publishing to the Hub.",
+      "line": "Here is where that teaching happens: two AMD Radeon R9700s on ROCm.",
       "watchers": [
         "Hugging Face",
         "AMD"
@@ -95,6 +99,7 @@
       "key": 4,
       "title": "Box and lab",
       "shows": "The Q4_K_M package hot-swapped onto the Jetson; watts from amd-smi and tegrastats; joules per answer.",
+      "line": "The lesson comes back as a smaller, smarter model, hot-swapped on the Jetson. We measure every joule both ways.",
       "watchers": [
         "AMD",
         "NVIDIA"
@@ -107,6 +112,7 @@
       "key": 5,
       "title": "On the Jetson",
       "shows": "Cameras and face blur; the on-device Qwen VL understands the scene; FPS and tok/s; then unplug the internet.",
+      "line": "Everything you see live runs on this Jetson, with the internet unplugged.",
       "watchers": [
         "NVIDIA",
         "Encompass"
@@ -119,6 +125,7 @@
       "key": 6,
       "title": "Data into counts",
       "shows": "Frames to events to episodes; Waste Watch counting items and the bin zone they end in.",
+      "line": "The same cameras turn a room into data: events, episodes and counts.",
       "watchers": [
         "Encompass",
         "OneEthos"
@@ -131,6 +138,7 @@
       "key": 7,
       "title": "Impact, shared",
       "shows": "Diversion rate before vs after nudges; the leaderboard served from Neon.",
+      "line": "Point it at a recycling bin, and a campus can measure what changed.",
       "watchers": [
         "OneEthos",
         "Neon"
@@ -143,6 +151,7 @@
       "key": 8,
       "title": "Friends' Atlases",
       "shows": "Two Atlases agree on a time through Neon; the event lands in the Day Run plan; the League.",
+      "line": "Point it at your friends: Atlases agree on a time through Neon, and only free or busy leaves each box.",
       "watchers": [
         "Neon",
         "Full Sail"
@@ -155,6 +164,7 @@
       "key": 9,
       "title": "Day Run",
       "shows": "A bad plan fails, a good plan wins three stars, hard mode re-routes, Play mode, a Sort It round started by a face.",
+      "line": "Point it at your habits: play tomorrow before you live it.",
       "watchers": [
         "Full Sail"
       ],
