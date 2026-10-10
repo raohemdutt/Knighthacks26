@@ -22,6 +22,15 @@ Drop a screen or phone recording at `public/clips/slot-<key>.mp4` (1920x1080, 30
 not committed (`.gitignore`); keep them in the team drive. What each slot must show is in `contexts/demo/video.py`
 and on the placeholder itself.
 
+## The look
+
+Soft UI (neumorphism), minimal: one surface colour, depth only from a light to the top left and a shade to the
+bottom right, one accent for the key a judge presses, four type sizes, one idea per screen. The tokens and the
+`raised` / `pressed` / `press(t)` styles are in `src/theme.ts`; the pieces (`Key`, `Card`, `Well`, `Muted`) in
+`src/Soft.tsx`. The 3D box in the intro uses the same surface colour and light direction, with a soft shadow texture
+instead of shadow maps, so it reads as the same material as the cards. A recording dropped into a slot is shown as
+is; keep the screens it shows on the box's own light theme where you can.
+
 ## Rules
 
 - The slot order, titles and tracks live only in `contexts/demo/video.py`. Change them there, never in
