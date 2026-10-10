@@ -297,7 +297,7 @@ def test_ledger_without_a_sub_verb_or_with_help_lists_the_sub_verbs(words, capsy
     out, err = capsys.readouterr()
     assert err == ""
     assert out.splitlines()[0].startswith("usage: python -m lab ledger <sub-verb> [args]")
-    assert [line.split()[0] for line in out.splitlines()[3:]] == ["add", "grep", "tail"]
+    assert [line.split()[0] for line in out.splitlines()[3:]] == ["add", "backfill", "grep", "tail"]
     assert "Append one row to the ledger." in out
 
 
@@ -305,7 +305,7 @@ def test_an_unknown_sub_verb_answers_with_the_ones_that_exist(capsys):
     code, answer, _ = run(capsys, "rewrite")
     assert code == 1
     assert answer == {"ok": False, "outcome": "unknown_subverb", "error": "unknown ledger sub-verb 'rewrite'",
-                      "subverbs": ["add", "grep", "tail"]}
+                      "subverbs": ["add", "backfill", "grep", "tail"]}
 
 
 def test_each_sub_verb_has_its_own_help(capsys):
@@ -337,8 +337,8 @@ def test_a_sub_verb_added_to_the_table_gets_the_rest_of_argv(monkeypatch, capsys
     code, answer, _ = run(capsys, "probe", "--flag", "value")
     assert (code, answer) == (0, {"ok": True, "outcome": "probed", "argv": ["--flag", "value"]})
     listing = ledger_cli.help_text().splitlines()
-    assert [line.split()[0] for line in listing[3:]] == ["add", "grep", "tail", "probe"]
-    assert listing[6].endswith("A stand-in for a sub-verb that a later task registers.")
+    assert [line.split()[0] for line in listing[3:]] == ["add", "backfill", "grep", "tail", "probe"]
+    assert listing[7].endswith("A stand-in for a sub-verb that a later task registers.")
 
 
 def test_a_sub_verb_that_cannot_be_loaded_answers_error_without_breaking_the_others(monkeypatch, capsys):

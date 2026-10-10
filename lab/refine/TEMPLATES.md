@@ -29,6 +29,7 @@ lab/refine/
     OWNER_RULINGS.md    numbered questions; the owner fills in the Answer lines
     refine_pass.txt     the pass counter
     pass_reports/       pass_01.md, pass_02.md, ... one report per pass
+    dry_runs/           rehearsals of a pass (the skill's --dry-run); never passes, never sources
 ```
 
 A pass appends one entry to its track's `REFINE_LOG.md`, saves its report under `pass_reports/`, and
@@ -389,6 +390,17 @@ EXAMPLE, not a real report. Pass 3 on the kernels track walked E2, E3, E5 and R2
 Out of scope, noted: none.
 ```
 
+### 4.1 The dry-run record (`dry_runs/<YYYY-MM-DD>-pass-<NN>.md`)
+
+The pass skill's rehearsal mode (`/refine-track <track> --dry-run`) writes this one file and nothing else:
+no Notion page, no log entry, no report, no counter. It is a pass report with three differences. The first
+line reads `Dry run of <track> refinement pass <N> (<who>), <YYYY-MM-DD>.` and says what was left
+untouched; the entry a live pass would append sits in a fenced block opened with three backticks and
+`text dry-run:pass-entry`; and section (b) lists the board edits a live pass would make, none of them made.
+The file is named after the date and the pass it rehearses. A dry run is not a pass: it never moves the
+counter, never counts toward the cap, and no pass cites one as a source. The recorded rehearsal of
+telemetry pass 1 is `telemetry/dry_runs/2026-10-10-pass-01.md`.
+
 ## 5. Reading these files from code
 
 `lab/machine/refine_formats.py` reads everything above:
@@ -414,3 +426,10 @@ that is not an integer, a report with no `Ended:` line) raise `FormatError`. Con
 pass entry are returned by `check_pass_entry`, one sentence each, so a pass can be told exactly what to
 fix. After editing a format in this file, run `python -m pytest -q tests/test_lab_refine_formats.py`:
 the tests parse the examples above.
+
+`lab/machine/refine_track.py` checks a whole track folder against these formats: `check_track(track)`
+returns one sentence per problem (an entry `check_pass_entry` rejects, pass numbers that do not run from 1
+to the counter, a pass without its report, a `metrics.jsonl:<line>` cited for a value that line does not
+hold, a dry-run record that does not parse) and an empty list when the folder holds together.
+`parse_dry_run` reads a dry-run record. `python -m pytest -q tests/test_lab_refine_track.py` runs the
+check on every committed track, so a pass runs it on its own files before it commits.
