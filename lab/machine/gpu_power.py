@@ -18,6 +18,11 @@ the samples and how many were distinct updates, the starting temperatures, the e
 error, which stays "unknown" until a reference run measures the sampler's error. That makes the row low_confidence.
 --metrics-file also appends the reading to lab/refine/metrics.jsonl, or to the file named. --dry-run prints the row
 and writes nothing.
+
+The two stores never disagree about a reading. --metric must be a name the metrics file accepts (dotted lowercase
+words, e.g. pod.idle_watts), checked before anything is read; with --metrics-file the whole metrics row is checked
+before either file is written, and the metrics file, the stricter store, is appended to before the ledger, so a row it
+refuses or a lock it cannot take leaves both files untouched and answers outcome error with the reason.
 """
 
 from __future__ import annotations
@@ -29,7 +34,7 @@ from pathlib import Path
 from typing import Any
 
 from lab import pod_power
-from lab.machine import metrics
+from lab.machine import ledger, metrics
 from lab.machine.record import record
 
 VERB = "gpu-power record"
@@ -44,6 +49,14 @@ def _node(text: str) -> str:
     if name in TELEMETRY_NODE:
         return TELEMETRY_NODE[name]
     raise argparse.ArgumentTypeError(f"{text!r} is not a pod: use gpu-a, gpu-b, pod-a or pod-b")
+
+
+def _metric(text: str) -> str:
+    """A metric name both the ledger and the metrics file accept, so a reading never lands in only one of them."""
+    try:
+        return metrics.check_metric_name(text)
+    except metrics.MetricsFormatError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from None
 
 
 def _when(text: str) -> datetime:
@@ -63,7 +76,7 @@ def build_parser() -> argparse.ArgumentParser:
         cmd.add_argument("--since", type=_when, help="first sample time to include (ISO 8601)")
         cmd.add_argument("--until", type=_when, help="last sample time to include (ISO 8601)")
         if name == "record":
-            cmd.add_argument("--metric", required=True, help="dotted metric name, e.g. pod.idle_watts")
+            cmd.add_argument("--metric", type=_metric, required=True, help="dotted metric name, e.g. pod.idle_watts")
             cmd.add_argument("--state", help="what the card was doing, kept in the conditions (idle, teacher-loaded ...)")
             cmd.add_argument("--metrics-file", nargs="?", const=str(metrics.DEFAULT_PATH), metavar="PATH",
                              help="also append the reading to the metrics file (default lab/refine/metrics.jsonl)")
@@ -81,13 +94,18 @@ def _metrics_ts(iso_text: str) -> str:
     return pod_power.parse_ts(iso_text).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
+def _error(reason: str) -> dict[str, Any]:
+    """The dispatcher's error answer: not ok, outcome error, and the reason."""
+    return {"ok": False, "outcome": "error", "error": reason}
+
+
 def main(argv: Sequence[str]) -> dict[str, Any] | int:
     """Summarize pod GPU power samples, or store a window of them as a ledger row: summary | record."""
     args = build_parser().parse_args(list(argv))
     try:
         summary = summary_of(args)
     except (OSError, ValueError) as exc:
-        return {"ok": False, "outcome": "error", "error": str(exc)}
+        return _error(str(exc))
     if args.command == "summary":
         return {"ok": True, "summary": summary}
     if summary["mean_w"] is None:
@@ -101,13 +119,28 @@ def main(argv: Sequence[str]) -> dict[str, Any] | int:
     metrics_row = {"metric": args.metric, "value": summary["mean_w"], "unit": "W", "node": ledger_node,
                    "conditions": conditions, "source": source, "ts": _metrics_ts(summary["end"]),
                    "low_confidence": True}
+    if args.metrics_file:
+        try:
+            metrics.check_row(metrics_row)
+        except metrics.MetricsFormatError as exc:
+            return _error(f"the metrics file would refuse the reading, so nothing was written: {exc}")
     if args.dry_run:
         return {"ok": True, "outcome": "dry_run", "row": row,
                 "metrics_row": metrics_row if args.metrics_file else None}
-    seq = record(VERB, "ok", metrics=row["metrics"], node=ledger_node, units=row["units"], conditions=conditions,
-                 low_confidence=True, source=source)
     written = None
     if args.metrics_file:
-        written = metrics.add(metrics_row, path=args.metrics_file)
+        try:
+            written = metrics.add(metrics_row, path=args.metrics_file)
+        except (metrics.MetricsFormatError, metrics.MetricsLocked) as exc:
+            return _error(f"could not append the reading to {args.metrics_file}, "
+                          f"so neither it nor the ledger was written: {exc}")
+    try:
+        seq = record(VERB, "ok", metrics=row["metrics"], node=ledger_node, units=row["units"], conditions=conditions,
+                     low_confidence=True, source=source)
+    except (ledger.LockTimeout, ledger.RowError) as exc:
+        if written is None:
+            return _error(f"the ledger refused the reading, so nothing was written: {exc}")
+        return {**_error(f"{args.metrics_file} holds the reading but the ledger refused it: {exc}"),
+                "metrics_file": args.metrics_file, "metrics_row": written}
     return {"ok": True, "outcome": "recorded", "seq": seq, "row": row, "metrics_file": args.metrics_file,
             "metrics_row": written}

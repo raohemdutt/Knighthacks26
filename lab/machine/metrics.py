@@ -46,7 +46,7 @@ else:
 
 __all__ = [
     "DEFAULT_PATH", "FIELDS", "LOCK_TIMEOUT", "FileLock", "MetricsFormatError", "MetricsLocked",
-    "add", "history", "latest", "load",
+    "add", "check_metric_name", "check_row", "history", "latest", "load",
 ]
 
 log = logging.getLogger("lab.metrics")
@@ -174,6 +174,15 @@ def _parse_ts(ts: str) -> dt.datetime:
     return dt.datetime.strptime(ts, fmt).replace(tzinfo=dt.timezone.utc)
 
 
+def check_metric_name(name: Any) -> str:
+    """`name` unchanged when it is a metric name this file accepts (dotted lowercase words such as
+    'teacher.decode_tok_s'), else MetricsFormatError saying what the rule is. Writes nothing. The one rule add, load and
+    check_row apply, exposed so a caller can refuse a name before it writes anything anywhere."""
+    if not (isinstance(name, str) and _METRIC_RE.fullmatch(name)):
+        raise MetricsFormatError(f"metric must be dotted lowercase words such as 'teacher.decode_tok_s', got {name!r}")
+    return name
+
+
 def _is_finite_number(value: Any) -> bool:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return False
@@ -195,9 +204,10 @@ def _check_row(row: Any, *, where: str, stamp_missing_ts: bool) -> dict:
             raise MetricsFormatError(f"{where}: missing field {key!r}")
 
     metric, value, unit, node = row["metric"], row["value"], row["unit"], row["node"]
-    if not (isinstance(metric, str) and _METRIC_RE.fullmatch(metric)):
-        raise MetricsFormatError(
-            f"{where}: metric must be dotted lowercase words such as 'teacher.decode_tok_s', got {metric!r}")
+    try:
+        check_metric_name(metric)
+    except MetricsFormatError as exc:
+        raise MetricsFormatError(f"{where}: {exc}") from None
     if not _is_finite_number(value):
         raise MetricsFormatError(f"{where}: value must be a finite number (not a bool), got {value!r}")
     if not (isinstance(unit, str) and unit.strip()):
@@ -236,6 +246,13 @@ def _check_row(row: Any, *, where: str, stamp_missing_ts: bool) -> dict:
         "metric": metric, "value": value, "unit": unit, "node": node, "conditions": conditions,
         "source": source, "ts": ts, "low_confidence": low_confidence,
     }
+
+
+def check_row(row: Mapping[str, Any]) -> dict:
+    """The row as add would write it (normalized to FIELDS order, ts stamped with the current UTC time when missing), or
+    MetricsFormatError naming the first field that is wrong. Writes nothing and touches no file, so a caller that keeps
+    the same reading in another store can refuse it here before writing either."""
+    return _check_row(row, where="row", stamp_missing_ts=True)
 
 
 # --- reading and writing ----------------------------------------------------------------------------------------------
@@ -299,7 +316,7 @@ def add(row: Mapping[str, Any], *, path: Path | str = DEFAULT_PATH, lock_timeout
     for a row that fails validation (MetricsFormatError). The line is on disk (fsynced) before this returns. Waits at
     most `lock_timeout` seconds for the file lock and then raises MetricsLocked. Creates missing parent directories."""
     path = Path(path)
-    checked = _check_row(row, where="row", stamp_missing_ts=True)
+    checked = check_row(row)
     line = (json.dumps(checked, ensure_ascii=False, allow_nan=False) + "\n").encode("utf-8")
     with FileLock(path, timeout=lock_timeout):
         _require_complete_last_line(path)
