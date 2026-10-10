@@ -669,6 +669,56 @@ def test_the_entry_point_formats_the_dataset_and_leaves_a_ledger_row(tmp_path):
     assert (row["refs"]["dataset_id"], row["refs"]["rows_sha256"]) == (fx.DATASET_ID, digest)
 
 
+def test_with_the_frozen_split_only_the_train_side_gets_rows_and_the_held_out_side_is_counted(tmp_path, results):
+    root = labeled_copy(tmp_path / "d")
+    split = dataset.load_split(root, require_images=False)
+    train, held_out = {e.id for e in split.train}, {e.id for e in split.held_out}
+    in_file_order = [e.id for e in split.data.examples if e.id in train]
+    done = ft.format_dataset(root, results, tmp_path / "rows.jsonl", split=True)
+    assert [row["id"] for row in done.rows] == [row["id"] for row in jsonl(tmp_path / "rows.jsonl")] == in_file_order
+    assert not held_out & {row["id"] for row in done.rows}
+    assert (done.labeled, done.pending, done.held_out, done.split_sha256) == (len(train), 0, len(held_out), split.sha256)
+    assert held_out and train and len(train) + len(held_out) == TOTAL
+
+
+def test_the_split_view_counts_only_the_train_side_as_labeled_and_as_pending(tmp_path, results):
+    split = dataset.load_split(FIXTURE, require_images=False)
+    first_train, first_held_out = split.train[0].id, split.held_out[0].id
+    root = labeled_copy(tmp_path / "d", only=[first_train, first_held_out])
+    done = ft.format_dataset(root, results, None, split=True)
+    assert [row["id"] for row in done.rows] == [first_train]
+    assert (done.labeled, done.pending, done.held_out) == (1, len(split.train) - 1, len(split.held_out))
+    everything = ft.format_dataset(root, results, None)
+    assert sorted(row["id"] for row in everything.rows) == sorted([first_train, first_held_out])
+    assert (everything.held_out, everything.split_sha256) == (0, None)
+
+
+def test_the_entry_point_with_split_records_the_split_hash_and_how_many_held_out_examples_it_skipped(tmp_path):
+    root = labeled_copy(tmp_path / "d")
+    split = dataset.load_split(root, require_images=False)
+    answer = ft.main([str(root), "--out", str(tmp_path / "rows.jsonl"), "--split"])
+    assert (answer["ok"], answer["rows"], answer["labeled"], answer["pending"]) == (True, len(split.train), len(split.train), 0)
+    assert answer["split"] == {"sha256": split.sha256, "held_out_skipped": len(split.held_out)}
+    assert answer["metrics"]["format.held_out_skipped"] == len(split.held_out)
+    row = only_row()
+    assert row["refs"]["split_sha256"] == split.sha256 and row["metrics"]["format.held_out_skipped"] == len(split.held_out)
+
+
+def test_the_entry_point_without_split_leaves_the_split_out_of_the_answer_and_the_row(tmp_path):
+    root = labeled_copy(tmp_path / "d", only=[IDS[0]])
+    answer = ft.main([str(root)])
+    assert "split" not in answer and "split_sha256" not in answer["refs"]
+    assert "format.held_out_skipped" not in answer["metrics"] and "split_sha256" not in only_row()["refs"]
+
+
+def test_a_split_that_is_not_there_is_reported_as_an_invalid_dataset_and_nothing_is_written(tmp_path):
+    root = labeled_copy(tmp_path / "d", only=[IDS[0]])
+    (root / "split.json").unlink()
+    answer = ft.main([str(root), "--out", str(tmp_path / "rows.jsonl"), "--split"])
+    assert (answer["ok"], answer["outcome"], answer["problems"]) == (False, "invalid", ["split.json: missing"])
+    assert not (tmp_path / "rows.jsonl").exists()
+
+
 def test_the_entry_point_without_out_only_checks(tmp_path):
     root = labeled_copy(tmp_path / "d", only=[IDS[0], IDS[1]])
     answer = ft.main([str(root)])

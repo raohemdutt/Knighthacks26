@@ -1,7 +1,7 @@
 """Turn labeled tool-calling examples into training rows in the student's own chat format.
 
-    python lab/format_traces.py <dataset folder> --out rows.jsonl
-    python lab/format_traces.py <dataset folder> --out rows.jsonl --tokenizer ~/models/Qwen3.5-4B
+    python lab/format_traces.py <dataset folder> --out rows.jsonl --split
+    python lab/format_traces.py <dataset folder> --out rows.jsonl --split --tokenizer ~/models/Qwen3.5-4B
     python lab/format_traces.py <dataset folder> --tokenizer ~/models/Qwen3.5-4B       # check only, write nothing
 
 The Jetson serves Qwen/Qwen3.5-4B with `llama-server --jinja --reasoning-budget 0`: the model's own chat template
@@ -49,6 +49,10 @@ Train on `text` and `spans`. If you render again from `messages` and `tools`, lo
 pass enable_thinking=False: the datasets library gives the argument objects of different tools one shared set of
 keys, and the template would then print the missing ones as `None`.
 
+With --split the dataset's frozen split.json is read as lab/dataset.py load_split() does (a split that leaks or is
+too short is refused) and only the examples it lists under train get a row, so a held-out example cannot reach the
+trainer through this file; the ledger row records the split's sha256. Training rows should always be made this way.
+
 Where the tool results come from. A label holds the calls and the answer, not what the calls returned, so each call
 is run again through the agent's own tool loop against the fixture night (fixtures/golden/memory.yaml): the text the
 box would have shown the model. That is only possible for the no-camera fixture dataset (action_id
@@ -72,7 +76,7 @@ import os
 import re
 import sys
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -80,7 +84,7 @@ if not __package__:  # run by path: the repo root, one folder up, is what holds 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from contexts.agent.application.qa import TOOLS
-from lab.dataset import Dataset, DatasetError, load
+from lab.dataset import Dataset, DatasetError, load, load_split
 from lab.fixture_dataset import FIXTURE_ACTION_ID, GOLDEN_DIR, TASK
 from lab.machine import stop
 from lab.machine.record import recorded
@@ -703,14 +707,25 @@ class Formatted:
     path: Path | None
     sha256: str | None
     tokens: tuple[int, ...] = ()                   # per row, when a tokenizer was given
+    held_out: int = 0                              # examples the frozen split keeps out of training (split only)
+    split_sha256: str | None = None                # of split.json (split only)
 
 
 def format_dataset(root: str | Path, results: ToolResults, out: str | Path | None = None, *,
                    tokenizer: Tokenizer | None = None, reference: Reference | None = None,
-                   tools: Sequence[Mapping[str, Any]] = TOOLS) -> Formatted:
+                   tools: Sequence[Mapping[str, Any]] = TOOLS, split: bool = False) -> Formatted:
     """Read the labeled examples of the dataset folder, check every trace, and write the rows of those that passed
-    to `out` (nothing is written when out is None or no row passed). DatasetError when the folder does not hold up."""
-    data = load(root, require_images=False)
+    to `out` (nothing is written when out is None or no row passed). With split, only the examples the folder's
+    frozen split.json lists under train are read: a held-out example gets no row, and `labeled` and `pending` count
+    the train side. DatasetError when the folder, or its split, does not hold up."""
+    held_out, split_digest = 0, None
+    if split:
+        frozen = load_split(root, require_images=False)
+        train = {example.id for example in frozen.train}
+        data = replace(frozen.data, examples=tuple(example for example in frozen.data.examples if example.id in train))
+        held_out, split_digest = len(frozen.held_out), frozen.sha256
+    else:
+        data = load(root, require_images=False)
     loaded = read_traces(data, results, tools)
     rows, failed, tokens = [], [], []
     for trace in loaded.traces:
@@ -726,7 +741,7 @@ def format_dataset(root: str | Path, results: ToolResults, out: str | Path | Non
         path = Path(out)
         digest = _write_rows(path, rows)
     return Formatted(loaded.dataset_id, len(data.labeled()), loaded.pending, tuple(rows), loaded.rejected,
-                     tuple(failed), path, digest, tuple(tokens))
+                     tuple(failed), path, digest, tuple(tokens), held_out, split_digest)
 
 
 # --- the entry point -----------------------------------------------------------------------
@@ -746,6 +761,8 @@ def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
                         help="questions.yaml and memory.yaml the tool results come from (default: fixtures/golden)")
     parser.add_argument("--tokenizer", help="a folder with tokenizer.json (and chat_template.jinja), or the file: "
                                             "encode and decode every trace, and compare with the template's rendering")
+    parser.add_argument("--split", action="store_true",
+                        help="only the examples the dataset's frozen split.json lists under train get a row")
     args = parser.parse_args(argv)
     try:
         data = load(args.dataset, require_images=False)
@@ -754,7 +771,7 @@ def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
                               "whose memory is in the repo")
         tokenizer, reference = load_tokenizer(args.tokenizer) if args.tokenizer else (None, None)
         done = format_dataset(args.dataset, fixture_tool_results(args.golden), args.out,
-                              tokenizer=tokenizer, reference=reference)
+                              tokenizer=tokenizer, reference=reference, split=args.split)
     except DatasetError as err:
         return {"ok": False, "outcome": "invalid", "problems": err.problems, "error": str(err)}
     except FormatError as err:
@@ -763,6 +780,8 @@ def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
                                  "format.rejected": len(done.rejected), "format.failed": len(done.failed)}
     if done.tokens:
         metrics.update({"format.tokens_total": sum(done.tokens), "format.tokens_max": max(done.tokens)})
+    if done.split_sha256:
+        metrics["format.held_out_skipped"] = done.held_out
     answer: dict[str, Any] = {
         "ok": bool(done.rows), "outcome": "formatted" if done.path else "checked" if done.rows else "nothing-passed",
         "dataset_id": done.dataset_id, "labeled": done.labeled, "pending": done.pending, "rows": len(done.rows),
@@ -776,6 +795,9 @@ def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
     }
     if done.tokens:
         answer["tokens"] = {"total": sum(done.tokens), "max": max(done.tokens), "min": min(done.tokens)}
+    if done.split_sha256:
+        answer["split"] = {"sha256": done.split_sha256, "held_out_skipped": done.held_out}
+        answer["refs"]["split_sha256"] = done.split_sha256
     if not done.rows:
         answer["error"] = "no trace passed the check" if done.labeled else "no example has a target yet"
     return answer

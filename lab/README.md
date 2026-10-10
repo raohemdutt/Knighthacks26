@@ -392,10 +392,16 @@ dataset (the no-camera fixture, once the teacher has filled `target`) into the r
 writes a row only when it can prove it. It needs nothing beyond the repo's own requirements.
 
 ```
-python lab/format_traces.py <dataset folder> --out rows.jsonl                    # writes the rows
+python lab/format_traces.py <dataset folder> --out rows.jsonl --split             # the training rows
+python lab/format_traces.py <dataset folder> --out rows.jsonl                    # a row for every labeled example
 python lab/format_traces.py <dataset folder>                                      # only checks
-python lab/format_traces.py <dataset folder> --out rows.jsonl --tokenizer <folder>   # also encodes and decodes every trace
+python lab/format_traces.py <dataset folder> --out rows.jsonl --split --tokenizer <folder>   # also encodes and decodes every trace
 ```
+
+`--split` reads the dataset's frozen `split.json` the way `load_split()` does (a split that leaks or is too short is
+refused) and writes rows only for the examples it lists under `train`, so a held-out example cannot reach the trainer
+through this file. Make the training rows with it. The answer then has a `split` entry (the sha256 of `split.json`
+and how many held-out examples were skipped), and the ledger row records the hash as `refs.split_sha256`.
 
 It prints one JSON line (`rows`, `rejected`, `failed`, `pending`, the sha256 of the rows file, and the reasons for
 the first few rejects) and exits 1 when no row passed. It writes a ledger row (`format-traces`) and stops while
