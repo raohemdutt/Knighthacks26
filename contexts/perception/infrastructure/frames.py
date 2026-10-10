@@ -27,12 +27,18 @@ def stored_frames(data_dir: str | Path = "data") -> list[tuple[str, FrameRef]]:
 
 
 def crop_jpeg(jpeg: bytes, box: Box) -> bytes:
-    """The part of the image inside `box` (normalized), at full resolution. Without Pillow: the whole frame."""
+    """The part of the image inside `box` (normalized), at full resolution.
+
+    Without Pillow, or for bytes Pillow cannot read (a truncated or corrupt frame), the whole frame:
+    the model still gets something to look at, and one bad frame does not stop the finder."""
     if Image is None:
         return jpeg
-    with Image.open(io.BytesIO(jpeg)) as im:
-        w, h = im.size
-        area = (round(box.x1 * w), round(box.y1 * h), round(box.x2 * w), round(box.y2 * h))
-        out = io.BytesIO()
-        im.convert("RGB").crop(area).save(out, "JPEG", quality=95)
+    try:
+        with Image.open(io.BytesIO(jpeg)) as im:
+            w, h = im.size
+            area = (round(box.x1 * w), round(box.y1 * h), round(box.x2 * w), round(box.y2 * h))
+            out = io.BytesIO()
+            im.convert("RGB").crop(area).save(out, "JPEG", quality=95)
+    except OSError:  # includes PIL.UnidentifiedImageError
+        return jpeg
     return out.getvalue()

@@ -209,3 +209,9 @@ def test_crop_with_pillow_cuts_the_box_at_full_resolution():
     image.new("RGB", (200, 100), "white").save(buf, "JPEG")
     out = image.open(io.BytesIO(frames.crop_jpeg(buf.getvalue(), Box(x1=0.1, y1=0.4, x2=0.9, y2=0.95))))
     assert out.size == (160, 55)
+
+
+def test_a_frame_that_cannot_be_read_is_passed_whole():
+    from contexts.perception.infrastructure.frames import crop_jpeg
+
+    assert crop_jpeg(b"not a jpeg", Box(x1=0.1, y1=0.4, x2=0.9, y2=0.95)) == b"not a jpeg"
