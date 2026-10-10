@@ -61,7 +61,7 @@ def test_focus_nudge_joins_the_camera_with_the_assignment():
 
 def test_the_ticker_raises_one_nudge_at_a_time_and_none_at_night():
     t, n = pair()
-    feed(t, [assignment(at(11, "09:00"), "Essay", at(13, "09:30"))])
+    feed(t, [zone(at(11, "08:30"), "enter", zone_id="door"), assignment(at(11, "09:00"), "Essay", at(13, "09:30"))])
     assert n.check(at(11, "09:59")) == []  # focus and start-early wait until 10:00
     assert [x.habit_id for x in n.check(at(11, "10:00"))] == ["focus"]
     assert n.check(at(11, "10:10")) == []  # 20 minutes between ticker nudges
@@ -70,6 +70,13 @@ def test_the_ticker_raises_one_nudge_at_a_time_and_none_at_night():
     [meals] = n.check(at(11, "15:00"))
     assert meals.message == "Atlas has seen 0 meals at your desk today. Time to eat something."
     assert n.check(at(11, "22:00")) == [] and n.check(at(12, "03:00")) == []  # asleep
+
+
+def test_the_ticker_says_nothing_about_a_desk_no_camera_has_shown_it():
+    t, n = pair()
+    feed(t, [assignment(at(11, "09:00"), "Essay", at(13, "09:30"))])  # a connector sync, and no camera yet
+    for clock in ("08:05", "10:00", "10:20", "15:00"):  # sleep, focus, start-early, meals
+        assert n.check(at(11, clock)) == [], clock
 
 
 def test_a_short_night_is_mentioned_after_waking():

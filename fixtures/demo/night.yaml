@@ -25,6 +25,8 @@ now: "2026-10-11T09:30:00-04:00"
 items:
   # The box is switched on the morning before the hackathon and its connectors sync. That is more than
   # 48 hours before "submissions due", so the planner does not write an exam-prep plan with the fake model.
+  # No camera reports until Saturday noon, so Habits judges nothing camera-derived on Friday, and
+  # Saturday's sleep (the night before the cameras arrived) is "nothing to judge": Sunday's is the real one.
   - {synced: "2026-10-09T10:30:00-04:00", connector: canvas, kind: assignment, external_id: "cop4533:assignment:88213",
      title: "Project - Milestone1 Fall2026 [COP4533]", when: "2026-10-13T23:59:00-04:00",
      url: "https://canvas.example.edu/courses/5123/assignments/88213",

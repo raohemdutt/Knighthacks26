@@ -78,15 +78,21 @@ def test_seed_fills_every_projection_of_a_fresh_app_replaying_the_log(seeded_dir
     assert keys.zone_id == "desk" and keys.camera_id == "cam-desk"
     assert {i.connector for i in app.memory.items(NOW - timedelta(days=3), NOW + timedelta(days=7))} == {"canvas", "calendar", "groupme"}
 
-    # Habits: Saturday is closed, with the meals, drinks, desk time and night the script wrote.
+    # Habits: Friday had a connector sync and no camera, so nothing a camera measures was judged that day.
+    friday = {h.id: app.habits.history_for(h.id)[0] for h in app.habits.cfg.habits}
+    assert all(r["day"] == (SATURDAY - timedelta(days=1)).isoformat() and r["closed"] for r in friday.values())
+    assert not any(friday[i]["applies"] or friday[i]["streak"] for i in ("sleep", "meals", "energy_drinks", "focus", "leave_ready"))
+    # Saturday is closed, with the meals, drinks and desk time the script wrote. The cameras came on at
+    # noon, so the night before it was never watched: no sleep value is claimed for it.
     saturday = {r["id"]: r for r in app.habits.digest(day=SATURDAY, now=NOW)["habits"]}
     assert all(r["closed"] for r in saturday.values())
     assert saturday["meals"]["value"] >= 2
     assert saturday["energy_drinks"]["value"] >= 3 and not saturday["energy_drinks"]["met"]
     assert saturday["focus"]["value"] > 0
-    assert saturday["sleep"]["applies"] and saturday["sleep"]["value"] > 0
+    assert not saturday["sleep"]["applies"] and saturday["sleep"]["value"] == 0 and saturday["sleep"]["streak"] == 0
+    assert saturday["leave_ready"]["applies"] and saturday["leave_ready"]["streak"] == 1  # its first watched day
     sunday = {r["id"]: r for r in app.habits.digest(now=NOW)["habits"]}
-    assert sunday["sleep"]["value"] >= 6  # the desk was empty from half past midnight to a quarter to seven
+    assert sunday["sleep"]["applies"] and sunday["sleep"]["value"] >= 6  # the desk was empty from half past midnight to a quarter to seven
     assert sunday["leave_ready"]["value"] == 1  # out the door at 9:05 with the keys on the desk
     assert sunday["focus"]["applies"] and sunday["focus"]["value"] > 0  # the milestone is due within 48 hours of the day
 

@@ -9,7 +9,10 @@ with `replay=True`. Each source event is counted once (deduped on event id),
 and events for a day that is already closed are ignored.
 
 A habit that had nothing to judge on a day (no deadline near, nothing thrown
-away) closes as met with its streak unchanged.
+away, or no camera had reported yet) closes as met with its streak unchanged.
+Only camera events say the room was watched: a connector sync says nothing
+about the desk, so it never starts the clock for sleep, meals, drinks, focus
+or the leaving check.
 """
 
 from dataclasses import dataclass, field
@@ -76,7 +79,7 @@ class HabitTracker:
         self.sched = cfg.schedule
         self.today: date | None = None  # the earliest day still open
         self.now: datetime | None = None  # latest event time seen
-        self.first_ts: datetime | None = None  # nothing is known about the desk before this
+        self.watching_since: datetime | None = None  # first camera event: nothing is known about the room before this
         self.days: dict[date, Day] = {}
         self.history: dict[str, list[Closed]] = {h.id: [] for h in cfg.habits}
         self.assignments: dict[str, Item] = {}
@@ -99,6 +102,7 @@ class HabitTracker:
     def on_zone_event(self, e: ZoneEvent) -> list[Event]:
         """A person in the desk zone is focus time; the gaps between are the away window."""
         desk, door = self.cfg.desk.zone, self.cfg.door_zone
+        self._watching(e)
         if e.label != "person" or e.zone_id not in (desk, door) or not self._admit(e):
             return []
         out = self._desk(e) if e.zone_id == desk else []  # before the roll: minutes before midnight stay on their day
@@ -110,6 +114,7 @@ class HabitTracker:
     def on_scene(self, e: SceneDescribed) -> list[Event]:
         """Desk captions and object lists: meals, energy drinks, and where the watch items are."""
         desk = self.cfg.desk
+        self._watching(e)
         at_desk = e.zone_id == desk.zone or (e.zone_id is None and e.camera_id == desk.camera)
         if not at_desk or not self._admit(e):
             return []
@@ -178,9 +183,12 @@ class HabitTracker:
             return False
         self._seen.setdefault(day, set()).add(e.event_id)
         self.today = self.today or day
-        self.first_ts = self.first_ts or e.ts
         self.now = max(self.now or e.ts, e.ts)
         return True
+
+    def _watching(self, e: Event) -> None:
+        """Any camera event, whatever it shows, means the room was being watched from then on."""
+        self.watching_since = self.watching_since or e.ts
 
     def _day(self, day: date) -> Day:
         return self.days.setdefault(day, Day())
@@ -217,24 +225,26 @@ class HabitTracker:
         """(value, applies) for a habit on an open day, as of `now`."""
         d = self.days.get(day) or Day()
         start, end = self.sched.day_start(day), self.sched.day_start(day + ONE_DAY)
+        since = self.watching_since
+        watched = since is not None and since < end  # a camera had reported by the end of this day
         match h.signal:
             case "away_window":
-                observed = self.first_ts is not None and self.first_ts < self.sched.sleep_window(day)[1]
+                observed = since is not None and since < self.sched.sleep_window(day)[1]
                 return round(max(d.away_h, self._open_gap_h(day, now)), 2), observed
             case "meal":
-                return d.meals, True
+                return d.meals, watched
             case "drink":
-                return d.drinks, True
+                return d.drinks, watched
             case "desk_time":
                 near = end + timedelta(hours=h.deadline_hours)
-                return round(d.desk_min / 60, 2), any(start <= a.when < near for a in self.assignments.values())
-            case "start_lead":
-                due = [a for a in self.assignments.values()
-                       if start <= a.when < end and _hours(a.when - a.known_at) >= h.target]
+                return round(d.desk_min / 60, 2), watched and any(start <= a.when < near for a in self.assignments.values())
+            case "start_lead":  # only assignments an early start on could have been both known and seen
+                due = [a for a in self.assignments.values() if watched and start <= a.when < end
+                       and _hours(a.when - max(a.known_at, since)) >= h.target]
                 leads = [max(0.0, _hours(a.when - a.started_at)) if a.started_at else 0.0 for a in due]
                 return round(min(leads, default=0.0), 1), bool(due)
             case "forgot":
-                return d.forgot, True
+                return d.forgot, watched
             case "disposal":
                 return (round(100 * d.correct / d.disposed) if d.disposed else 0), d.disposed > 0
 
@@ -260,7 +270,7 @@ class HabitTracker:
 
     def _away(self, start: datetime, e: ZoneEvent) -> list[Event]:
         """The desk was empty from the last activity until `start`: longest such gap per sleep window."""
-        prev = self.active_until or self.first_ts
+        prev = self.active_until or self.watching_since
         out = []
         day = self.sched.local_day(prev)
         while start > prev and day <= self.sched.local_day(start) + ONE_DAY:
@@ -274,7 +284,7 @@ class HabitTracker:
 
     def _open_gap_h(self, day: date, now: datetime) -> float:
         """Hours of this night's window the desk has been empty since the last activity."""
-        prev = self.active_until or self.first_ts
+        prev = self.active_until or self.watching_since
         if prev is None or self._since:  # someone is at the desk
             return 0.0
         start, end = self.sched.sleep_window(day)
@@ -325,9 +335,9 @@ class HabitTracker:
         return min(soon, key=lambda a: a.when, default=None)
 
     def unstarted(self, now: datetime, h: Habit) -> Item | None:
-        """An assignment that can still be started early (target hours ahead) and has not been."""
+        """An assignment that can still be started early (target hours ahead) and has not been, as far as a camera can tell."""
         late = [a for a in self.assignments.values()
-                if not a.started_at and _hours(a.when - a.known_at) >= h.target
+                if self.watching_since is not None and not a.started_at and _hours(a.when - a.known_at) >= h.target
                 and h.target < _hours(a.when - now) <= h.deadline_hours]
         return min(late, key=lambda a: a.when, default=None)
 
