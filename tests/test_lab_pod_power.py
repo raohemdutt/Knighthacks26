@@ -1,4 +1,4 @@
-"""lab/pod_power.py: the R9700 sampler that runs on a pod, tested offline on recorded tool output.
+"""lab/pod_power.py: the pod power sampler, tested offline on tool output (here the R9700 fixtures, the other chip).
 
 The tools (amd-smi, rocm-smi, rocminfo) are the boundary: tests hand the real parsers and sampler the text those
 tools print (fixtures/telemetry/pod_power, laid out by the CLIs' own printer code at therock-7.13) through the
@@ -418,11 +418,12 @@ def test_every_recorded_sample_is_a_registered_gpu_power_event_and_the_checks_ar
 
 # --- the node gate and the command line ------------------------------------------------------------------------------
 
-def test_the_gate_lets_only_a_known_node_on_an_r9700_sample():
-    r9700 = lambda: "  Name:                    gfx1201\n"  # noqa: E731
-    assert pod_power.gate("gpu-a", r9700) is None
-    assert pod_power.gate("pod-a", r9700) == "--node must be one of gpu-a, gpu-b, got 'pod-a'"
-    assert pod_power.gate("gpu-b", lambda: "  Name:   gfx1100\n") == "rocminfo names no gfx1201: this is not an R9700 pod"
+def test_the_gate_lets_only_a_known_node_on_a_strix_halo_sample():
+    strix_halo = lambda: "  Name:                    gfx1151\n"  # noqa: E731
+    assert pod_power.gate("gpu-a", strix_halo) is None
+    assert pod_power.gate("pod-a", strix_halo) == "--node must be one of gpu-a, gpu-b, got 'pod-a'"
+    assert pod_power.gate("gpu-b", lambda: "  Name:   gfx1201\n") == ("rocminfo names no gfx1151: this is not a Strix "
+                                                                      "Halo pod")
 
     def missing():
         raise pod_power.ReadError("rocminfo is not installed")
@@ -430,11 +431,11 @@ def test_the_gate_lets_only_a_known_node_on_an_r9700_sample():
     assert pod_power.gate("gpu-b", missing) == "cannot tell what GPU this is: rocminfo failed (rocminfo is not installed)"
 
 
-def test_serve_refuses_to_start_off_an_r9700_and_says_why(capsys):
+def test_serve_refuses_to_start_off_a_strix_halo_and_says_why(capsys):
     args = pod_power.build_parser().parse_args(["serve", "--node", "gpu-a"])
     assert pod_power.serve(args, rocminfo=lambda: "gfx90a") == 2
     assert json.loads(capsys.readouterr().out) == {"ok": False, "outcome": "refused",
-                                                   "error": "rocminfo names no gfx1201: this is not an R9700 pod"}
+                                                   "error": "rocminfo names no gfx1151: this is not a Strix Halo pod"}
 
 
 def test_check_reads_once_with_every_option_set_and_saves_each_raw_output_for_new_fixtures(tmp_path):

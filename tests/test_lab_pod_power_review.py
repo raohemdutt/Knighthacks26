@@ -77,11 +77,11 @@ _RX_9070_XT_ROCMINFO = "  Marketing Name:          AMD Radeon RX 9070 XT\n  Name
 _R9700_ROCMINFO = "  Marketing Name:          AMD Radeon AI PRO R9700\n  Name:                    gfx1201\n"
 
 
-def test_gate_refuses_a_9070_xt_that_reports_gfx1201_and_still_admits_an_r9700():
-    refused = pod_power.gate("gpu-a", lambda: _RX_9070_XT_ROCMINFO)
-    assert refused is not None, "the RX 9070 XT also reports gfx1201 but is not an R9700 pod"
-    assert "9070" in refused
-    assert pod_power.gate("gpu-a", lambda: _R9700_ROCMINFO) is None
+def test_gate_refuses_a_9070_xt_that_reports_gfx1201_and_the_r9700_too():
+    # The pods are Strix Halos (gfx1151) since 2026-10-10: every gfx1201 card, the R9700 included, is refused.
+    for other in (_RX_9070_XT_ROCMINFO, _R9700_ROCMINFO):
+        refused = pod_power.gate("gpu-a", lambda: other)
+        assert refused is not None and "gfx1151" in refused
 
 
 # --- t-summary-shows-a-receive-gap-the-pod-clock-hides -------------------------------------------------------------
