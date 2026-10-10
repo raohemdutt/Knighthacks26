@@ -70,7 +70,10 @@ what its predecessor did (the "pool end" rows of the last LEDGER_LOOKBACK_HOURS)
   Locked or In progress, since that is most likely the failed sitting's own claim, which the
   open-ticket skill continues. After MAX_RESTARTS restarts in a row fail, the item is benched for
   BENCH_HOURS after its last failure. BREAKER_FAILURES failed sittings in a row, whatever the
-  item, pause the pool for PAUSE_MINUTES.
+  item, pause the pool for PAUSE_MINUTES and are the pool's problem (an outage), not the items':
+  the trip starts the streak over and clears every item's failures, so an outage that trips the
+  breaker round after round benches nothing. The history applies the trip, so a restarted pool
+  replaying its end rows arrives at the same counts the live one had.
 - stopped or interrupted: offered again like a failure, without counting one.
 - refused (python -m lab sit started nothing: no CLI, no workspace, no digest, a ledger that
   cannot be written): the pool pauses for PAUSE_MINUTES; the item counts no failure.
@@ -617,8 +620,17 @@ class Record:
         return self.last_result in (RESULT_FAILED, RESULT_NEUTRAL)
 
 
+@dataclass(frozen=True)
+class Ending:
+    """What one recorded end did: the item's record after it, and whether it tripped the breaker."""
+
+    record: Record
+    tripped: bool = False
+
+
 class History:
-    """Every item's record, and the failures in a row across items."""
+    """Every item's record, and the failures in a row across items. The breaker lives here, so
+    the live pool and a replay of its end rows (from_rows) apply it the same way."""
 
     def __init__(self) -> None:
         self.items: dict[str, Record] = {}
@@ -636,7 +648,10 @@ class History:
         record.last_start = when
 
     def ended(self, label: str, tier: str, result: str, when: dt.datetime, progress: Mapping[str, Any],
-              started: dt.datetime | None = None) -> Record:
+              started: dt.datetime | None = None) -> Ending:
+        """Record one end. When BREAKER_FAILURES failed in a row, whatever the items, the breaker
+        trips: the streak starts over and every item's failures are cleared, since such a run is
+        the pool's problem and not the items'; the caller pauses the pool on a trip."""
         record = self._record(label)
         record.tier = tier
         if started is not None:
@@ -651,7 +666,17 @@ class History:
             record.failures += 1
             record.last_failure = when
             self.streak += 1
-        return record
+            if self.streak >= BREAKER_FAILURES:
+                self._trip()
+                return Ending(record, tripped=True)
+        return Ending(record)
+
+    def _trip(self) -> None:
+        """The breaker: start the streak over and clear every item's failures."""
+        self.streak = 0
+        for each in self.items.values():
+            each.failures = 0
+            each.last_failure = None
 
     @classmethod
     def from_rows(cls, rows: Iterable[Mapping[str, Any]]) -> History:
@@ -1346,7 +1371,8 @@ class Pool:
         if seat is None:
             return
         result = classify(answer)
-        record = self.history.ended(seat.label, seat.tier, result, now, seat.progress, seat.started)
+        ending = self.history.ended(seat.label, seat.tier, result, now, seat.progress, seat.started)
+        record = ending.record
         self.counts["ended"] += 1
         outcome = str(answer.get("outcome") or "unknown")
         sitting_id = answer.get("sitting") if isinstance(answer.get("sitting"), str) else None
@@ -1368,8 +1394,7 @@ class Pool:
                           failures=record.failures, until=iso(until))
                 log.warning("lab pool: %s is benched until %s after %d failed sittings in a row", seat.label,
                             iso(until), record.failures)
-            if self.history.streak >= BREAKER_FAILURES:
-                self.history.streak = 0
+            if ending.tripped:
                 self._pause(now, f"{BREAKER_FAILURES} sittings in a row failed")
         elif result == RESULT_REFUSED:
             self._pause(now, f"python -m lab sit started nothing for {seat.label}: {outcome}"
