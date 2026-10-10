@@ -8,7 +8,7 @@ home: ~/atlas/voice
 # whisper_bin / whisper_model / piper_bin / piper_model: override one path only if it is not under `home`
 
 mic_device: "plughw:CARD=Webcam,DEV=0"   # the USB webcam's microphone (arecord -L lists the names)
-speaker_mac: ""          # the Bluetooth speaker, e.g. "AA:BB:CC:DD:EE:FF": reconnected before every answer. Empty = PulseAudio's default output.
+speaker_mac: "F9:04:7C:90:5C:CC"   # Xander's "onn Rugged Speaker S": reconnected before every answer and at start. Empty = PulseAudio's default output.
 speaker_sink: ""         # a PulseAudio sink name (pactl list short sinks); empty = the default sink
 
 max_seconds: 8           # longest question
