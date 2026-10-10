@@ -513,21 +513,28 @@ def test_the_jetson_reader_fetches_the_pods_samples_over_http_into_the_log_and_t
         bus = EventBus(tmp_path)
         projection = TelemetryProjection()
         projection.subscribe(bus)
-        reader = PodReader([PodEndpoint("gpu-a", base, "not-a-real-token")], limit=16, rounds=3,
+        # the sampler runs under the pod's old name, gpu-a; the reader speaks for pod-a (telemetry ruling 3)
+        reader = PodReader([PodEndpoint("pod-a", base, "not-a-real-token")], limit=16, rounds=3,
                            clock=lambda: received, sleep=lambda _: asyncio.sleep(0))
-        runner = SamplerRunner(reader, bus.publish, nodes=["gpu-a"])
+        runner = SamplerRunner(reader, bus.publish, nodes=["pod-a"])
         await runner.run()
         return projection, runner, reader
 
     projection, runner, reader = asyncio.run(run())
     logged = [json.loads(line) for path in sorted(tmp_path.glob("*.jsonl")) for line in path.read_text().splitlines()]
+    offsets = [e for e in logged if e["type"] == "telemetry.clock.offset"]
+    # the pod's clock from its first answer's timestamps; this test's reader clock stands still, so an answer that
+    # took the pod a millisecond or more reads as a round trip below zero and is no exchange
+    assert len(offsets) <= 1 and all(e["node"] == "pod-a" for e in offsets)
+    logged = [e for e in logged if e["type"] == "telemetry.gpu.power"]
+    assert {e["node"] for e in logged} == {"pod-a"}
     assert [e["event_id"] for e in logged] == [e["event_id"] for e in recorded]
     assert {e["received_ts"] for e in logged} == {"2026-10-10T18:01:40Z"}
     assert [(e["socket_w"], e["polls"], e["updates"]) for e in logged] == [
         (e["socket_w"], e["polls"], e["updates"]) for e in recorded]
-    assert runner.status()["published"] == 40
-    assert reader.status()["gpu-a"]["after"] == 40
-    snap = projection.snapshot()["nodes"]["gpu-a"]
+    assert runner.status()["published"] == 40 + len(offsets)
+    assert reader.status()["pod-a"]["after"] == 40
+    snap = projection.snapshot()["nodes"]["pod-a"]
     assert snap["power"]["amd-smi"]["samples"] == 40
     assert (snap["sampler"]["counter_ok"], [c["phase"] for c in snap["sampler"]["energy_checks"]]) == (
         True, ["start-up", "load"])
