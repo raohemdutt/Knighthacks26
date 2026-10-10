@@ -111,3 +111,21 @@ def test_a_real_video_file_loops(tmp_path):
 def test_a_device_that_is_not_plugged_in_is_not_opened_at_all():
     reader = CameraReader("cam-table", "/dev/video99", bus=None, loop=None)
     assert reader._open_capture("/dev/video99") is None  # no OpenCV warning on every retry
+
+
+def test_a_still_scene_publishes_only_a_keepalive_event_but_keeps_every_frame():
+    class Still(FakeCapture):
+        def read(self):
+            self.n += 1
+            return True, np.full((240, 320, 3), 100, np.uint8)  # nothing ever changes
+
+    reader, stats, events = drive("clip.mp4", lambda s: Still(), 1.5, fps=20, width=160, height=90, retry_s=0.05,
+                                  motion_threshold=0.01, keepalive_s=0.6)
+    assert 2 <= len(events) <= 4  # the first frame, then one every 0.6 s, not 20 a second
+    assert reader.latest()[0] > 15 and stats["fps_actual"] >= 15  # but every frame was kept and counted
+
+
+def test_moving_frames_all_publish_with_the_gate_on():
+    reader, stats, events = drive("clip.mp4", lambda s: FakeCapture(), 1.2, fps=20, width=160, height=90, retry_s=0.05,
+                                  motion_threshold=0.01, keepalive_s=60)
+    assert len(events) >= 15 and events[1].motion_score > 0.9  # black/white flicker passes the gate every frame
