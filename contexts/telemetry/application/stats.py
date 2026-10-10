@@ -15,12 +15,20 @@ Each Figure is {value, unit, node, ts, source, low_confidence, reason} (domain/s
 calls nothing: no model server, pod, hub or Jetson tool is asked. A figure takes the newest of its candidates:
 - the lab's metrics file and ledger (infrastructure/lab_records.py), under the metric names in FIGURES;
 - the telemetry projection, when the gateway runs telemetry: decode rates over the newest RECENT_WINDOWS
-  `telemetry.request` windows of the node that answered (jetson for the on-device model, gpu-a for the teacher), and
+  `telemetry.request` windows of the node that answered (jetson for the on-device model, pod-a for the teacher), and
   the minutes of the newest training
-  run from its `telemetry.train.step` events on gpu-b. A run counts once a `learning.run.evaluated` names it (its
+  run from its `telemetry.train.step` events on pod-b. A run counts once a `learning.run.evaluated` names it (its
   training has ended); while none does, the newest run is served with low_confidence, since it may still be training.
 On a tie the metrics file is cited first, then the ledger (a ledger backfill copies metrics rows with their times).
 When no candidate exists the figure is null and its reason names the metric, the node and the events looked for.
+
+Most figures have no producer in the repo yet, so they can only be null until one is built or a number is recorded by
+hand (`python -m lab ledger add ...`, or a row in lab/refine/metrics.jsonl). Nothing writes a detector.fps,
+student.decode_tok_s, student.caption_s or trainer.run_minutes row; nothing publishes `telemetry.request` or
+`telemetry.train.step` (the Jetson's only telemetry source, tegrastats, publishes power readings); and nothing publishes
+`learning.run.evaluated`, so a deployed model's before and after scores are null with their reason. Today only
+teacher_tok_s and trainer_samples_per_s carry values, both from the committed metrics file. This endpoint does not
+measure them itself: the producers belong to the contexts that run the detector, the on-device model and the trainer.
 
 The projection and the eval fold are read on the event loop, where their events land; the files are read in a
 worker thread, so a slow disk or a held lock never stalls the loop.

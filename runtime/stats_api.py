@@ -5,6 +5,8 @@
 The numbers are assembled by the Telemetry context (contexts/telemetry/application/stats.py) from what is already
 recorded: the lab's metrics file and ledger, the telemetry projection and the learning events in the log. This module
 only serves them; it measures nothing and calls no model server, pod or hub.
+A figure nothing has recorded is served as null with its reason; which figures have no producer yet is listed in
+that module's docstring.
 """
 
 from collections.abc import Awaitable, Callable
