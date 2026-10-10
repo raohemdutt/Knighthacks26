@@ -266,7 +266,8 @@ def test_preflight_names_what_would_break_the_demo_and_reset_clears_the_stage(tm
         c.post("/api/teach", json={"task": "t", "instruction": "i"})  # a leftover approval card
         checks = {x["name"]: x for x in c.get("/api/preflight").json()["checks"]}
         assert not checks["package alert ready"]["ok"] and not checks["no stale approval cards"]["ok"]
-        assert c.post("/api/preflight/reset").json() == {"cooldowns_cleared": 1, "cards_denied": 1}
+        reset = c.post("/api/preflight/reset").json()
+        assert reset["cooldowns_cleared"] == 1 and reset["cards_denied"] >= 1  # the teach card, plus the Day loop's morning plan card when the day has started
         checks = {x["name"]: x for x in c.get("/api/preflight").json()["checks"]}
         assert checks["package alert ready"]["ok"] and checks["no stale approval cards"]["ok"]
 
