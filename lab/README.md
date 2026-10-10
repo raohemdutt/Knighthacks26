@@ -199,6 +199,41 @@ Authorization: token <hub token>
 That is how the Jetson calls the teacher (`/proxy/8000/v1/chat/completions`) and how it will pull packaged
 models. The `/proxy/absolute/<port>/` form does not work here.
 
+### From the box: `lab/proxy.py` and `lab/transfer.py`
+
+`lab/proxy.py` is the box's client for that address. It takes the hub from `lab/hub.py`, sends the token and a browser
+User-Agent, never follows a redirect, and streams: jupyter-server-proxy holds any reply whose `Accept` header is not
+exactly `text/event-stream` until it is whole, and on DUB Cloudflare cut a held reply after 125 s, so `chat()` always
+sends `stream: true` with that header and gathers the pieces. Each failure is one error with a kind, a status, a
+`retryable` flag and a hint: a wrong token is 302 or 403 (`bad_token`), a stopped pod 424 (`pod_stopped`), a port with
+nothing on it 500 (`model_server_down`), a held reply cut at 125 s 524 (`gateway_timeout`), the proxy giving up 599
+(`proxy_timeout`); the whole table is in the module's docstring. `proxied_runtime()` gives the stock
+`LlamaServerRuntime` the same path without changing `runtime/`.
+
+```
+python -m lab.proxy probe --account C [--port 8000] [--wrong-token]    # models, health, and the server and cf-ray headers
+python -m lab.proxy chat --account C --prompt "Count to 40." [--max-tokens 64] [--no-thinking]   # streams, and times it
+```
+
+`lab/transfer.py` moves files. A dataset goes up through the contents API in chunks (folders made first, a lost answer
+settled by reading the size back, only an export that `lab/dataset.py` accepts). A package comes down in byte ranges
+through the Jupyter server's `/files/` route, or through a file server on a pod port, with a sha256 check, and lands
+under `data/models/<version>` ready for `python jetson/atlas_swap.py swap <version>`.
+
+```
+python -m lab.transfer push-dataset --account D data/exports/<dataset_id> [--to datasets] [--chunk-mib 8]
+python -m lab.transfer push-file --account D LOCAL REMOTE [--chunk-mib 8]
+python -m lab.transfer pull-file --account D REMOTE LOCAL [--via files|proxy --port N] [--part-mib 64] [--sha256 HEX]
+python -m lab.transfer pull-package --account D REMOTE_DIR [--models-dir data/models] [--via files|proxy --port N]
+```
+
+Both print one JSON line and exit 0 (worked), 1 (did not) or 2 (bad arguments, missing keys); a transfer reports its
+bytes, seconds and megabytes a second as the `link.push_mb_s` or `link.pull_mb_s` metric. A push lands in the pod's
+Jupyter root, which on DUB was the ephemeral `/opt/workspace`: what must outlive a relaunch has to be moved under `~/`
+on the pod (`push_dataset` reports `persistent` when the root lists a `home` folder). Nothing here has run on a real
+pod or on SJC yet; `lab/proxy_fake.py` is the stand-in its tests use (Cloudflare, the hub, the Jupyter server and a
+model server on a fake clock).
+
 ## Teacher (pod A)
 
 ```
