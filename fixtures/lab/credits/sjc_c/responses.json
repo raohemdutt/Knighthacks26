@@ -1,0 +1,215 @@
+{
+  "recorded": "read-only GETs for one account on https://sjc.aupcloud.io, Sat 2026-10-10 about 19:05 UTC; the account name is replaced by acct-c",
+  "responses": {
+    "/hub/api/quota/me": {
+      "status": 200,
+      "date": "Sat, 10 Oct 2026 19:05:34 GMT",
+      "body": {
+        "username": "acct-c",
+        "balance": 0,
+        "unlimited": true,
+        "rates": {
+          "cpu": 1,
+          "9070xt": 4,
+          "phx": 2,
+          "r9700": 4,
+          "strix": 2,
+          "strix-halo": 3
+        },
+        "enabled": false
+      }
+    },
+    "/hub/api/quota/rates": {
+      "status": 200,
+      "date": "Sat, 10 Oct 2026 19:05:34 GMT",
+      "body": {
+        "enabled": false,
+        "rates": {
+          "cpu": 1,
+          "9070xt": 4,
+          "phx": 2,
+          "r9700": 4,
+          "strix": 2,
+          "strix-halo": 3
+        },
+        "minimum_to_start": 10,
+        "default_quota": 0
+      }
+    },
+    "/hub/api/stats/me": {
+      "status": 200,
+      "date": "Sat, 10 Oct 2026 19:05:34 GMT",
+      "body": {
+        "username": "acct-c",
+        "total_minutes": 214,
+        "total_sessions": 10,
+        "usage": [
+          {
+            "date": "2026-09-22",
+            "minutes": 160,
+            "sessions": 4
+          },
+          {
+            "date": "2026-10-07",
+            "minutes": 12,
+            "sessions": 2
+          },
+          {
+            "date": "2026-10-08",
+            "minutes": 36,
+            "sessions": 2
+          },
+          {
+            "date": "2026-10-10",
+            "minutes": 6,
+            "sessions": 2
+          }
+        ],
+        "by_resource": [
+          {
+            "resource_type": "Course-Finetuning",
+            "resource_display": "Fine-tuning on GPUs: from cloud to robot",
+            "minutes": 65,
+            "sessions": 2
+          },
+          {
+            "resource_type": "Course-Simulation",
+            "resource_display": "GPU simulation for robotics",
+            "minutes": 62,
+            "sessions": 1
+          },
+          {
+            "resource_type": "gpu",
+            "resource_display": "Basic GPU Environment",
+            "minutes": 40,
+            "sessions": 4
+          },
+          {
+            "resource_type": "Course-LocalInference",
+            "resource_display": "Local inference on GPUs",
+            "minutes": 40,
+            "sessions": 2
+          },
+          {
+            "resource_type": "Course-RL-Learning",
+            "resource_display": "Reinforcement learning on GPUs",
+            "minutes": 7,
+            "sessions": 1
+          }
+        ],
+        "recent_sessions": [
+          {
+            "resource_type": "Course-LocalInference",
+            "resource_display": "Local inference on GPUs",
+            "accelerator_type": "strix-halo",
+            "accelerator_display": "AMD Radeon\u2122 8060S (Strix Halo iGPU)",
+            "start_time": "2026-10-10 19:01:44.478657",
+            "end_time": null,
+            "duration_minutes": null,
+            "status": "active"
+          },
+          {
+            "resource_type": "gpu",
+            "resource_display": "Basic GPU Environment",
+            "accelerator_type": "strix-halo",
+            "accelerator_display": "AMD Radeon\u2122 8060S (Strix Halo iGPU)",
+            "start_time": "2026-10-10 19:00:45.488470",
+            "end_time": "2026-10-10 19:01:39.476725",
+            "duration_minutes": 0,
+            "status": "completed"
+          },
+          {
+            "resource_type": "gpu",
+            "resource_display": "Basic GPU Environment",
+            "accelerator_type": "r9700",
+            "accelerator_display": "AMD Radeon\u2122 AI Pro R9700 (Workstation GPU)",
+            "start_time": "2026-10-10 18:54:27.715859",
+            "end_time": "2026-10-10 19:00:41.105068",
+            "duration_minutes": 6,
+            "status": "completed"
+          },
+          {
+            "resource_type": "Course-Finetuning",
+            "resource_display": "Fine-tuning on GPUs: from cloud to robot",
+            "accelerator_type": "strix-halo",
+            "accelerator_display": "AMD Radeon\u2122 8060S (Strix Halo iGPU)",
+            "start_time": "2026-10-08 23:29:33.994438",
+            "end_time": "2026-10-08 23:43:47.922626",
+            "duration_minutes": 14,
+            "status": "completed"
+          },
+          {
+            "resource_type": "gpu",
+            "resource_display": "Basic GPU Environment",
+            "accelerator_type": "strix-halo",
+            "accelerator_display": "AMD Radeon\u2122 8060S (Strix Halo iGPU)",
+            "start_time": "2026-10-08 23:06:45.405078",
+            "end_time": "2026-10-08 23:29:21.927000",
+            "duration_minutes": 22,
+            "status": "completed"
+          },
+          {
+            "resource_type": "gpu",
+            "resource_display": "Basic GPU Environment",
+            "accelerator_type": "strix-halo",
+            "accelerator_display": "AMD Radeon\u2122 8060S (Strix Halo iGPU)",
+            "start_time": "2026-10-07 01:49:34.853085",
+            "end_time": "2026-10-07 02:02:31.171390",
+            "duration_minutes": 12,
+            "status": "completed"
+          },
+          {
+            "resource_type": "Course-LocalInference",
+            "resource_display": "Local inference on GPUs",
+            "accelerator_type": "strix-halo",
+            "accelerator_display": "AMD Radeon\u2122 8060S (Strix Halo iGPU)",
+            "start_time": "2026-10-07 01:47:21.775601",
+            "end_time": "2026-10-07 01:48:00.143578",
+            "duration_minutes": 0,
+            "status": "completed"
+          },
+          {
+            "resource_type": "Course-LocalInference",
+            "resource_display": "Local inference on GPUs",
+            "accelerator_type": "strix-halo",
+            "accelerator_display": "AMD Radeon\u2122 8060S (Strix Halo iGPU)",
+            "start_time": "2026-09-22 15:24:18.948793",
+            "end_time": "2026-09-22 16:04:22.713583",
+            "duration_minutes": 40,
+            "status": "completed"
+          },
+          {
+            "resource_type": "Course-Simulation",
+            "resource_display": "GPU simulation for robotics",
+            "accelerator_type": "strix-halo",
+            "accelerator_display": "AMD Radeon\u2122 8060S (Strix Halo iGPU)",
+            "start_time": "2026-09-22 13:52:06.327987",
+            "end_time": "2026-09-22 14:54:35.069287",
+            "duration_minutes": 62,
+            "status": "completed"
+          },
+          {
+            "resource_type": "Course-RL-Learning",
+            "resource_display": "Reinforcement learning on GPUs",
+            "accelerator_type": "strix-halo",
+            "accelerator_display": "AMD Radeon\u2122 8060S (Strix Halo iGPU)",
+            "start_time": "2026-09-22 13:42:21.921406",
+            "end_time": "2026-09-22 13:49:21.968503",
+            "duration_minutes": 7,
+            "status": "completed"
+          },
+          {
+            "resource_type": "Course-Finetuning",
+            "resource_display": "Fine-tuning on GPUs: from cloud to robot",
+            "accelerator_type": "strix-halo",
+            "accelerator_display": "AMD Radeon\u2122 8060S (Strix Halo iGPU)",
+            "start_time": "2026-09-22 12:39:28.987576",
+            "end_time": "2026-09-22 13:30:35.446237",
+            "duration_minutes": 51,
+            "status": "completed"
+          }
+        ]
+      }
+    }
+  }
+}
