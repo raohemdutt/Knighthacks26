@@ -264,12 +264,14 @@ class QA:
         self.load_keyframe = load_keyframe  # frame_ref -> blurred JPEG bytes
         self.tools = MEMORY_TOOLS + ([KEYFRAME_TOOL] if load_keyframe else []) + (WEB_TOOLS if web else [])
         self.planner = None  # set by the composition root; answers "help me prep for ..." (A8)
+        self.on_delta: Callable[[str, str], None] | None = None  # (question_id, text): streamed answer pieces (A11)
 
     async def on_question(self, e: QuestionAsked) -> AnswerGenerated:
-        a = await self.ask(e.text)
+        stream = (lambda text: self.on_delta(e.question_id, text)) if self.on_delta else None
+        a = await self.ask(e.text, stream=stream)
         return AnswerGenerated(question_id=e.question_id, answer=a.text, citations=a.citations, model_version=a.model_version)
 
-    async def ask(self, question: str) -> Answer:
+    async def ask(self, question: str, stream: Callable[[str], None] | None = None) -> Answer:
         if self.planner and self.planner.wants(question):
             plan = await self.planner.answer(question)
             return Answer(plan.text or NO_EVIDENCE, plan.citations, plan.model_version)
@@ -278,7 +280,7 @@ class QA:
             return await self.tool_loop(question)
         if not evidence:
             return Answer(NO_EVIDENCE, [], self.runtime.model_info().version)
-        return await self._answer_from(question, evidence)
+        return await self._answer_from(question, evidence, stream)
 
     # --- tools (A1) ---
 
@@ -408,13 +410,17 @@ class QA:
             return ev
         return None
 
-    async def _chat(self, messages: list[ChatMessage], tools: list[dict] | None = None):
+    async def _chat(self, messages: list[ChatMessage], tools: list[dict] | None = None,
+                    stream: Callable[[str], None] | None = None):
         # The runtime is a blocking HTTP call; keep it off the event loop that serves the bus.
+        if stream:
+            return await asyncio.to_thread(lambda: self.runtime.chat(messages, tools, on_text=stream))
         return await asyncio.to_thread(self.runtime.chat, messages, tools)
 
-    async def _answer_from(self, question: str, ev: Evidence) -> Answer:
+    async def _answer_from(self, question: str, ev: Evidence, stream: Callable[[str], None] | None = None) -> Answer:
         prompt = "Evidence:\n" + "\n".join(f"- {line}" for line in ev.lines) + f"\n\nQuestion: {question}"
-        r = await self._chat([ChatMessage(role="system", content=SYSTEM), ChatMessage(role="user", content=prompt)])
+        r = await self._chat([ChatMessage(role="system", content=SYSTEM), ChatMessage(role="user", content=prompt)],
+                             stream=stream)
         return Answer(r.content.strip() or NO_EVIDENCE, ev.citations, r.model_version)
 
     # --- open-ended (tool loop) ---

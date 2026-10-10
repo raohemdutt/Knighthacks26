@@ -17,7 +17,10 @@ def test_ask_answers_from_memory_and_streams_events(tmp_path):
         assert r.status_code == 200
         body = r.json()
         assert body["citations"][0]["frame_ref"] == "frames:cam-desk:k1941"
-        types = [ws.receive_json()["type"] for _ in range(2)]
+        types = []
+        while "agent.answer.generated" not in types:
+            types.append(ws.receive_json()["type"])
+        types = [t for t in types if t != "agent.answer.delta"]  # streamed pieces (A11) arrive in between
         assert types == ["experience.question.asked", "agent.answer.generated"]
     assert len(list((tmp_path / "events").glob("*.jsonl"))) == 1
 
@@ -266,3 +269,17 @@ def test_preflight_names_what_would_break_the_demo_and_reset_clears_the_stage(tm
         assert c.post("/api/preflight/reset").json() == {"cooldowns_cleared": 1, "cards_denied": 1}
         checks = {x["name"]: x for x in c.get("/api/preflight").json()["checks"]}
         assert checks["package alert ready"]["ok"] and checks["no stale approval cards"]["ok"]
+
+
+def test_answers_stream_word_by_word_over_the_websocket_before_the_final_answer(tmp_path):
+    """A11: the phone shows the answer as it is written; the final event and the log are unchanged."""
+    with client(tmp_path) as c, c.websocket_connect("/ws") as ws:
+        r = c.post("/api/ask", json={"text": "Where did I leave my keys?"}).json()
+        msgs = []
+        while not msgs or msgs[-1]["type"] != "agent.answer.generated":
+            msgs.append(ws.receive_json())
+        deltas = [m for m in msgs if m["type"] == "agent.answer.delta"]
+        assert len(deltas) > 3 and "".join(d["text"] for d in deltas) == r["answer"]
+        assert msgs.index(deltas[-1]) < len(msgs) - 1  # every piece arrives before the final answer
+    log = "".join(p.read_text() for p in (tmp_path / "events").glob("*.jsonl"))
+    assert "agent.answer.delta" not in log

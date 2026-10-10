@@ -126,8 +126,12 @@ class LlamaServerRuntime:
         tools: list[dict] | None = None,
         priority: Priority = "chat",
         json_schema: dict | None = None,
+        on_text: Callable[[str], None] | None = None,
     ) -> ChatResult:
         start = time.monotonic()
+        if on_text and not tools and not json_schema:
+            text = self._stream([self._to_openai(m) for m in messages], on_text, max_tokens=512)
+            return ChatResult(content=text, model_version=self.model.version, latency_ms=int((time.monotonic() - start) * 1000))
         msg = self._complete([self._to_openai(m) for m in messages], tools=tools, max_tokens=512, json_schema=json_schema)
         calls = [
             ToolCall(id=c["id"], name=c["function"]["name"], arguments=json.loads(c["function"]["arguments"] or "{}"))
@@ -155,6 +159,24 @@ class LlamaServerRuntime:
         if m.tool_call_id:
             out["tool_call_id"] = m.tool_call_id
         return out
+
+    def _stream(self, messages: list[dict], on_text: Callable[[str], None], max_tokens: int = 256) -> str:
+        """OpenAI-style server-sent events from llama-server: each `data:` line carries a delta."""
+        body = {"messages": messages, "max_tokens": max_tokens, "temperature": 0.2, "stream": True}
+        parts: list[str] = []
+        with self.http.stream("POST", "/v1/chat/completions", json=body) as r:
+            r.raise_for_status()
+            for line in r.iter_lines():
+                if not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if data == "[DONE]":
+                    break
+                piece = (json.loads(data)["choices"][0].get("delta") or {}).get("content")
+                if piece:
+                    parts.append(piece)
+                    on_text(piece)
+        return "".join(parts)
 
     def _complete(self, messages: list[dict], tools: list[dict] | None = None, max_tokens: int = 256,
                   json_schema: dict | None = None) -> dict:

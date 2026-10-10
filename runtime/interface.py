@@ -8,6 +8,7 @@ Priority on the device (enforced by the scheduler, R4):
 detection > alerts > chat > captions > summaries > backfill.
 """
 
+from collections.abc import Callable
 from typing import Any, Literal, Protocol
 
 from contracts.types import ChatMessage, ChatResult, Detection, ModelVersion, ObjectHit, Track
@@ -40,9 +41,12 @@ class Runtime(Protocol):
         tools: list[dict] | None = None,
         priority: Priority = "chat",
         json_schema: dict | None = None,
+        on_text: Callable[[str], None] | None = None,
     ) -> ChatResult:
         """`tools` are OpenAI-style function schemas. `json_schema` constrains the reply to JSON
-        matching that schema (llama-server grammar-constrained decoding), for structured output."""
+        matching that schema (llama-server grammar-constrained decoding), for structured output.
+        `on_text` streams the reply: called with each new piece of text as the model writes it (from the
+        calling thread); the returned ChatResult still holds the whole reply. Ignored with tools or json_schema."""
         ...
 
     def embed_text(self, texts: list[str]) -> list[list[float]]:
