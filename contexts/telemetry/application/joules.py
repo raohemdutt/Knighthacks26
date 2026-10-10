@@ -233,7 +233,7 @@ class JoulesPerAnswerProjection:
         sampler = first.sampler if isinstance(first, GpuPower) and first.sampler else first.source
         return JoulesPerAnswer(
             event_id=f"jpa:{node}:{w.request_id}:{w.started.isoformat()}", ts=w.ended, node=node,
-            request_id=w.request_id, target=w.target, model=w.model, started=w.started, ended=w.ended,
+            request_id=w.request_id, target=w.target, model=w.model, kind=w.kind, started=w.started, ended=w.ended,
             clock=canonical(w.clock or w.node), joules=joules, node_energy_j=integrate(trace, start, end),
             overlapping=overlapping, tokens_out=w.tokens_out,
             idle_w=idle.watts if idle else None, idle_ts=_dt(idle.t - back) if idle else None,
@@ -261,6 +261,12 @@ class JoulesPerAnswerProjection:
     def values(self, node: str | None = None) -> list[JoulesPerAnswer]:
         out = [v for v in self._values.values() if node in (None, v.node)]
         return sorted(out, key=lambda v: v.ended)
+
+    def routing_snapshot(self) -> dict[str, Any]:
+        """What the energy routing policy reads (T5): the latest joules per answer per node and kind of work."""
+        from contexts.telemetry.application.routing import routing_snapshot
+
+        return routing_snapshot(self.values())
 
     def stats(self, recent: int = 20) -> dict[str, Any]:
         """For the stats page, per node: watts now, joules per answer (recent values and their mean), and per UTC day
