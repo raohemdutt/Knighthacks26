@@ -4,13 +4,18 @@
     token, expires_at = tokens.request("all", now)   # good for two minutes, once
     scope = tokens.redeem(token, now)                # "all", or None
 
-    wiper = Wiper(data_dir)
+    wiper = Wiper(data_dir, live_memory=store)       # the open Memory store is emptied too, not only its file
     bus.subscribe("vault.wipe.requested", wiper.on_wipe_requested)   # LIVE ONLY: a replayed wipe would wipe again
 
 What each scope removes, all under data_dir:
 - keyframes: everything in frames/
-- memory:    memory.sqlite and its -wal and -shm files
-- all:       both, plus everything in exports/ and events/, and the face templates in vault/identity/ (P9)
+- memory:    memory.sqlite and its -wal and -shm files; the running process's open store is emptied first
+             (`live_memory.clear()`), so Memory answers with nothing right away, not after a restart
+- all:       both, plus everything in exports/, events/, invites/ (the .ics files), dayrun/plans/ (committed
+             Day Run plans) and places/ (uploaded place packs), and the face templates in vault/identity/ (P9)
+
+Memory is a projection of the event log: after a "memory" wipe the log is still there, so a restart
+replays it and Memory fills again. Only "all" removes the log too.
 
 Directories are emptied, not removed. Nothing outside data_dir is touched: a
 target that is a symlink, or that resolves outside data_dir, is refused and
@@ -27,6 +32,7 @@ import shutil
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Protocol
 
 from contexts.vault.infrastructure.keyring import VaultError
 from contracts.vault import WipeRequested
@@ -34,7 +40,16 @@ from contracts.vault import WipeRequested
 log = logging.getLogger("atlas.vault")
 
 TOKEN_TTL = timedelta(minutes=2)
-SCOPES = {"keyframes": ("frames",), "memory": ("memory",), "all": ("frames", "memory", "exports", "events")}
+SCOPES = {"keyframes": ("frames",), "memory": ("memory",),
+          "all": ("frames", "memory", "exports", "events", "invites", "dayrun/plans", "places")}
+
+
+class LiveMemory(Protocol):
+    """The Memory store the running process has open (contexts.memory's MemoryStore fits)."""
+
+    def clear(self) -> None: ...
+
+    def reopen(self) -> None: ...
 
 
 class WipeTokens:
@@ -71,12 +86,27 @@ class WipeReport:
     refused: list[str] = field(default_factory=list)  # paths left alone
     master_key_removed: bool = False
     identity_removed: int = 0  # face templates (P9) deleted from vault/identity/; only scope "all" removes them
+    live_memory_cleared: bool = False  # the open Memory store was emptied, so reads show nothing without a restart
+
+    def summary(self) -> str:
+        """One sentence for the phone: what went, in words."""
+        parts = [f"{n} file{'s' if n != 1 else ''} from {target}" for target, n in self.removed.items() if n]
+        if self.identity_removed:
+            parts.append(f"{self.identity_removed} face template{'s' if self.identity_removed != 1 else ''}")
+        if self.live_memory_cleared:
+            parts.append("the running Memory store (emptied)")
+        if self.master_key_removed:
+            parts.append("the master key")
+        text = "Removed " + ", ".join(parts) + "." if parts else "Nothing was stored for this scope."
+        return text + (f" Refused {len(self.refused)} path{'s' if len(self.refused) != 1 else ''}." if self.refused else "")
 
 
 class Wiper:
-    def __init__(self, data_dir: str | Path = "data", memory_db: str | Path | None = None) -> None:
+    def __init__(self, data_dir: str | Path = "data", memory_db: str | Path | None = None,
+                 live_memory: LiveMemory | None = None) -> None:
         self.data_dir = Path(data_dir)
         self.memory_db = Path(memory_db) if memory_db else self.data_dir / "memory.sqlite"
+        self.live_memory = live_memory
         self.last: WipeReport | None = None
 
     def on_wipe_requested(self, e: WipeRequested) -> None:
@@ -86,12 +116,16 @@ class Wiper:
         report = WipeReport(scope=scope)
         for target in SCOPES[scope]:
             report.removed[target] = 0
+            live = target == "memory" and self._clear_live_memory()
             for path in self._paths(target):
                 try:
                     report.removed[target] += self._remove(path)
                 except OutsideDataDir as exc:
                     log.warning("wipe refused: %s", exc)
                     report.refused.append(str(path))
+            if live:  # the old connection now points at a removed file: open a new, empty one in its place
+                self.live_memory.reopen()
+                report.live_memory_cleared = True
         if scope == "all":  # "everything" includes who the box can recognise; the key and the policy stay
             report.identity_removed = self._remove(self.data_dir / "vault" / "identity", vault_ok=True)
         if include_master_key:  # everything encrypted with it becomes unreadable for good
@@ -99,6 +133,18 @@ class Wiper:
         log.warning("wipe %s: removed %s, refused %s", scope, report.removed, report.refused)
         self.last = report
         return report
+
+    def _clear_live_memory(self) -> bool:
+        """Empty the open store before its file goes. Not when the file is refused: a database outside
+        data_dir is left alone through the open connection too."""
+        if self.live_memory is None:
+            return False
+        try:
+            self._check(self.memory_db, vault_ok=False)
+        except OutsideDataDir:
+            return False
+        self.live_memory.clear()
+        return True
 
     def _paths(self, target: str) -> list[Path]:
         if target == "memory":

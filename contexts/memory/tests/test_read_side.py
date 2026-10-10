@@ -231,3 +231,24 @@ def test_a_fixture_can_be_moved_to_end_now():
     assert moved.sightings[0].ts == fx.sightings[0].ts + by
     assert [i.when for i in moved.items if i.when] == [i.when + by for i in fx.items if i.when]
     assert moved.episodes[0].keyframe_refs == fx.episodes[0].keyframe_refs  # refs are names, not times
+
+
+def test_clear_empties_every_table_the_index_and_the_vectors_and_reopen_starts_a_new_file(tmp_path):
+    from contexts.memory.infrastructure.store import TABLES, MemoryStore
+    from contracts.memory import Episode
+
+    path = tmp_path / "memory.sqlite"
+    store = MemoryStore(path)
+    t = datetime(2026, 10, 10, 12, tzinfo=ZoneInfo("UTC"))
+    with store.db:
+        assert store.first_time("e1")
+        store.put_episode(Episode(id="ep1", camera_id="cam-desk", start=t, end=t, captions=["keys on the desk"]), t)
+        store.index("caption", "ep1", "keys on the desk")
+        store.put_vectors("m", {"keys on the desk": [1.0, 0.0]})
+    store.db.execute("INSERT INTO memory_applied VALUES ('half-open')")  # a write nobody committed yet
+    store.clear()
+    assert all(rows == [] for rows in store.dump().values()) and set(store.dump()) == set(TABLES)
+    assert store.vector_count() == 0
+    path.unlink()  # what the wiper does next
+    store.reopen()
+    assert path.exists() and store.first_time("e1")  # the same event projects again into the new file

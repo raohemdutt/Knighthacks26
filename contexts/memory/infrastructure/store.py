@@ -10,6 +10,7 @@ from a model, not from the log, so a rebuilt file has none until
 """
 
 import json
+import logging
 import math
 import sqlite3
 import struct
@@ -17,6 +18,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from contracts.memory import Episode, Item, Sighting
+
+log = logging.getLogger("atlas.memory")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS memory_episodes (
@@ -137,12 +140,33 @@ class MemoryStore:
         self.path = str(path)
         if self.path != ":memory:":
             Path(self.path).parent.mkdir(parents=True, exist_ok=True)
+        self._open()
+
+    def _open(self) -> None:
         # One connection, used from the event loop; the API's tests call in from another thread.
         self.db = sqlite3.connect(self.path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA journal_mode = WAL")
         self.db.execute("PRAGMA synchronous = NORMAL")
         self.db.executescript(SCHEMA)
+
+    def clear(self) -> None:
+        """Empty every table, the search index and the vectors, and give the pages back (the wipe, V4).
+        The running process answers from this connection, so removing the file alone changes nothing until a restart."""
+        self.db.commit()
+        with self.db:
+            for table in (*TABLES, "memory_vectors"):
+                self.db.execute(f"DELETE FROM {table}")
+        self.db.execute("VACUUM")
+        self.db.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchall()
+
+    def reopen(self) -> None:
+        """Drop the connection and open the path again: after the file was removed, this makes a new empty one."""
+        try:
+            self.db.close()
+        except sqlite3.Error:
+            pass
+        self._open()
 
     def close(self) -> None:
         self.db.close()

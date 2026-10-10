@@ -20,6 +20,10 @@ def fill(data: Path) -> dict[str, Path]:
         "shm": data / "memory.sqlite-shm",
         "export": data / "exports" / "desk-objects" / "train.jsonl",
         "events": data / "events" / "2020-01-01.jsonl",  # an old day, so it never collides with today's log
+        "invite": data / "invites" / "invite-20261010T180000Z-abc.ics",
+        "plan": data / "dayrun" / "plans" / "2026-10-10.json",
+        "place_pack": data / "places" / "home.yaml",
+        "dayrun_other": data / "dayrun" / "forecasts.json",  # not on the wipe list: only the committed plans go
         "circle": data / "circle.sqlite",  # not on the wipe list
         "browser": data / "browser" / "profile" / "cookies",  # not on the wipe list
     }
@@ -83,7 +87,8 @@ def test_wipe_needs_a_fresh_token_and_publishes_the_event(tmp_path):
     box.clock.tick(119)
     r = box.http.post("/vault/wipe", json={"token": token})
     assert r.status_code == 200
-    assert r.json() == {"scope": "keyframes", "done": True, "removed": {"frames": 2}, "refused": []}
+    assert r.json() == {"scope": "keyframes", "done": True, "removed": {"frames": 2}, "refused": [],
+                        "identity_removed": 0, "live_memory_cleared": False, "summary": "Removed 2 files from frames."}
     [event] = box.seen
     assert isinstance(event, WipeRequested) and event.scope == "keyframes"
     assert left(files) == set(files) - {"frame", "frame2"}
@@ -118,12 +123,57 @@ def test_each_scope_removes_only_what_it_lists(tmp_path):
     assert left(files) == set(files) - {"db", "wal", "shm"}
 
     report = wiper.wipe("all")
-    assert report.removed == {"frames": 2, "memory": 0, "exports": 1, "events": 1}
+    assert report.removed == {"frames": 2, "memory": 0, "exports": 1, "events": 1, "invites": 1, "dayrun/plans": 1,
+                              "places": 1}
     assert report.refused == [] and not report.master_key_removed and wiper.last is report
-    assert left(files) == {"circle", "browser", "key"}  # the key and everything unlisted stay
-    for kept in ("frames", "exports", "events"):  # emptied, not removed
+    assert left(files) == {"circle", "browser", "key", "dayrun_other"}  # the key and everything unlisted stay
+    for kept in ("frames", "exports", "events", "invites", "dayrun/plans", "places"):  # emptied, not removed
         assert (tmp_path / kept).is_dir() and not any((tmp_path / kept).iterdir())
-    assert wiper.wipe("all").removed == {"frames": 0, "memory": 0, "exports": 0, "events": 0}  # nothing left: no error
+    assert report.summary() == ("Removed 2 files from frames, 1 file from exports, 1 file from events, 1 file from invites, "
+                                "1 file from dayrun/plans, 1 file from places.")
+    assert set(wiper.wipe("all").removed.values()) == {0}  # nothing left: no error
+    assert wiper.last.summary() == "Nothing was stored for this scope."
+
+
+class LiveStore:
+    """Stands in for the open Memory store: records what the wiper asked of it."""
+
+    def __init__(self):
+        self.calls = []
+
+    def clear(self):
+        self.calls.append("clear")
+
+    def reopen(self):
+        self.calls.append("reopen")
+
+
+def test_a_memory_wipe_empties_the_open_store_then_reopens_it(tmp_path):
+    files = fill(tmp_path)
+    live = LiveStore()
+    wiper = Wiper(tmp_path, live_memory=live)
+    assert not wiper.wipe("keyframes").live_memory_cleared and live.calls == []  # only memory and all touch it
+    report = wiper.wipe("memory")
+    assert live.calls == ["clear", "reopen"] and report.live_memory_cleared
+    assert "db" not in left(files)
+    assert report.summary() == "Removed 3 files from memory, the running Memory store (emptied)."
+    assert wiper.wipe("all").live_memory_cleared and live.calls == ["clear", "reopen"] * 2
+
+
+@needs_symlinks
+def test_a_refused_memory_file_is_not_emptied_through_the_open_store_either(tmp_path):
+    data, outside = tmp_path / "data", tmp_path / "outside"
+    fill(data)
+    outside.mkdir()
+    (outside / "other.sqlite").write_bytes(b"keep me")
+    live = LiveStore()
+    report = Wiper(data, memory_db=outside / "other.sqlite", live_memory=live).wipe("memory")
+    assert live.calls == [] and not report.live_memory_cleared and len(report.refused) == 3
+    (data / "memory.sqlite").unlink()
+    (data / "memory.sqlite").symlink_to(outside / "other.sqlite")
+    report = Wiper(data, live_memory=live).wipe("all")
+    assert live.calls == [] and str(data / "memory.sqlite") in report.refused
+    assert (outside / "other.sqlite").read_bytes() == b"keep me"
 
 
 def test_master_key_goes_only_when_asked_for_by_name(tmp_path):
@@ -158,7 +208,8 @@ def test_refuses_targets_that_leave_the_data_dir(tmp_path):
     assert sorted(report.refused) == sorted(
         [str(data / "exports"), str(outside / "other.sqlite"), str(outside / "other.sqlite-wal"), str(outside / "other.sqlite-shm")]
     )
-    assert report.removed == {"frames": 4, "memory": 0, "exports": 0, "events": 1}  # the links themselves went
+    assert report.removed == {"frames": 4, "memory": 0, "exports": 0, "events": 1, "invites": 1, "dayrun/plans": 1,
+                              "places": 1}  # the links themselves went
     assert not any((data / "frames").iterdir())
     assert files["db"].exists()  # not the configured db, so not touched
 

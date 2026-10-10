@@ -90,7 +90,8 @@ def vault_router(
         report = wiper.last if wiper and wiper.last is not before else None
         out = {"scope": scope, "done": report is not None}
         if report:
-            out |= {"removed": report.removed, "refused": report.refused}
+            out |= {"removed": report.removed, "refused": report.refused, "identity_removed": report.identity_removed,
+                    "live_memory_cleared": report.live_memory_cleared, "summary": report.summary()}
         return out
 
     @router.get("/egress")

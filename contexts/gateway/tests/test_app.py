@@ -25,6 +25,20 @@ def test_ask_answers_from_memory_and_streams_events(tmp_path):
     assert len(list((tmp_path / "events").glob("*.jsonl"))) == 1
 
 
+def test_a_memory_wipe_shows_an_empty_memory_at_once_without_a_restart(tmp_path):
+    with client(tmp_path) as c:
+        assert c.get("/memory/stats").json()["episodes"] > 0
+        assert c.post("/api/ask", json={"text": "Where did I leave my keys?"}).json()["citations"]
+        token = c.post("/vault/wipe/request", json={"scope": "memory"}).json()["token"]
+        body = c.post("/vault/wipe", json={"token": token}).json()
+        assert body["done"] and body["live_memory_cleared"] and body["removed"]["memory"] >= 1
+        assert "the running Memory store (emptied)" in body["summary"]
+        stats = c.get("/memory/stats").json()  # the same process, no restart
+        assert (stats["episodes"], stats["captions"], stats["hours_recorded"]) == (0, 0, 0)
+        assert c.get("/memory/search", params={"q": "keys"}).json() == []
+        assert (tmp_path / "memory.sqlite").exists()  # a new empty file, so what is recorded next is kept
+
+
 def test_teach_then_deny_through_the_api(tmp_path):
     with client(tmp_path) as c:
         r = c.post("/api/teach", json={"task": "desk-objects", "instruction": "List objects on the desk."})
