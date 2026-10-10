@@ -678,6 +678,42 @@ export interface WipeResult {
   refused?: unknown;
 }
 
+export type LearningStage = "waiting for approval" | "exported" | "labeling" | "training" | "eval" | "packaging" | "deploying" | "done" | "failed";
+
+/** One taught task, folded from the learning.* events (GET /api/learning). */
+export interface LearningTask {
+  task: string;
+  instruction: string;
+  stage: LearningStage;
+  /** 0..1 within the stage. */
+  progress: number;
+  loss?: number | null;
+  message?: string | null;
+  dataset_id?: string;
+  examples?: number;
+  /** e.g. {current: 0.41, candidate: 0.78, teacher: 0.86} */
+  scores?: Record<string, number>;
+  decision?: "deploy" | "reject";
+  model_version?: string;
+  deployed?: boolean;
+  created: string;
+  updated: string;
+}
+
+export interface LearningBoard {
+  tasks: LearningTask[];
+  deployments: { model_version: string; previous_version: string | null; ts: string }[];
+}
+
+export interface TeachBody {
+  /** A slug: "desk-objects". */
+  task: string;
+  instruction: string;
+  camera?: string;
+  label?: string;
+  examples: { frame_ref: string; verdict: "up" | "down" }[];
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number, // 0 = the gateway could not be reached
@@ -797,6 +833,9 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   egress: (signal?: AbortSignal) => get<Egress>("/vault/egress", undefined, signal),
   wipeRequest: (scope: WipeScope) => post<WipeToken>("/vault/wipe/request", { scope }),
   wipe: (token: string) => post<WipeResult>("/vault/wipe", { token }),
+
+  learning: (signal?: AbortSignal) => get<LearningBoard>("/api/learning", undefined, signal),
+  teach: (body: TeachBody) => post<{ task: string; action_id: string }>("/api/teach", body),
 
   episodes: (opts: { from?: string; to?: string; camera?: string; label?: string } = {}, signal?: AbortSignal) =>
     get<Episode[]>("/memory/episodes", opts, signal),

@@ -98,6 +98,16 @@ const MORE: Tab[] = [
     ),
   },
   {
+    href: "/teach",
+    label: "Teach",
+    icon: (
+      <>
+        <path d="M3 9l9-4.5L21 9l-9 4.5z" />
+        <path d="M7 11.2V15c0 1.4 2.2 2.8 5 2.8s5-1.4 5-2.8v-3.8M21 9v5" />
+      </>
+    ),
+  },
+  {
     href: "/map",
     label: "Room map",
     icon: (
