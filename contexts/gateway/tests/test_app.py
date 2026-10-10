@@ -231,3 +231,15 @@ def asyncio_run(coro):
     import asyncio
 
     return asyncio.run(coro)
+
+
+def test_a_place_pack_cannot_name_a_file_outside_data_and_bad_bodies_are_422(tmp_path):
+    with client(tmp_path) as c:
+        escape = "name: ../../evil\nkind: campus\nplaces: {a: {name: A}}\nedges: []\n"
+        assert c.post("/api/places", content=escape, headers={"content-type": "application/yaml"}).status_code == 422
+        assert not (tmp_path.parent.parent / "evil.yaml").exists() and not list(tmp_path.glob("**/evil.yaml"))
+        assert c.post("/api/places", content=b"\xff\xfe\x00", headers={"content-type": "application/yaml"}).status_code == 422
+        assert c.post("/api/places", content="!!python/object/apply:os.system [echo]", headers={"content-type": "application/yaml"}).status_code == 422
+        assert c.post("/api/places", content="[" * 5000, headers={"content-type": "application/yaml"}).status_code == 422
+        assert c.get("/api/play/route?item=can&x=nan").status_code == 422
+        assert c.get("/api/play/route?item=can&x=2").status_code == 422
