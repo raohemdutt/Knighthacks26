@@ -151,6 +151,7 @@ class Atlas:
                 ("agent loop", (lambda: self.loop.tick(now)) if self.loop.due(now) else None),
                 ("connectors", (lambda: self.hub.sync_due(now)) if self.settings.connectors else None),
                 ("retention", self._retention(now)),
+                ("camera health", (lambda: self.capture.health(now)) if self.capture else None),
             ]
             for name, job in jobs:
                 if job is None:

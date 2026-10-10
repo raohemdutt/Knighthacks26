@@ -17,12 +17,14 @@ import asyncio
 import logging
 import os
 import threading
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 from contexts.capture.infrastructure.camera import CameraReader
+from contracts.capture import CameraHealth
 from contexts.perception.application.tracking import TrackingPipeline
 from contexts.perception.infrastructure.detector import build_detector, detector_available
 from contexts.perception.infrastructure.face_blur import FaceBlur
@@ -54,6 +56,7 @@ class CaptureService:
         self._snapshot_blur = FaceBlur()  # the Live screen's own detector: the pipeline's is used on another thread
         self._snapshot_lock = threading.Lock()
         self._snapshot_cache: dict[str, tuple[int, bytes]] = {}
+        self._health_sent: dict[str, tuple[str, datetime]] = {}  # camera -> (status last published, when)
         self.pipelines: dict[str, TrackingPipeline] = {}
 
     @classmethod
@@ -123,6 +126,20 @@ class CaptureService:
                 return None
             self._snapshot_cache[camera_id] = (seq, jpeg.tobytes())
             return self._snapshot_cache[camera_id][1]
+
+    def health(self, now: datetime, every: timedelta = timedelta(minutes=5)) -> list[CameraHealth]:
+        """`capture.camera.health` for each camera whose status changed since the last call, and for every camera at
+        least once per `every` (so the log shows a camera that stayed fine, and when the box last looked)."""
+        out = []
+        for camera_id, reader in self.readers.items():
+            stats = reader.stats()
+            status = "paused" if (self.policy and self.policy.is_paused(camera_id)) else stats["status"]
+            last = self._health_sent.get(camera_id)
+            if last and last[0] == status and now - last[1] < every:
+                continue
+            self._health_sent[camera_id] = (status, now)
+            out.append(CameraHealth(ts=now, camera_id=camera_id, status=status, fps_actual=stats["fps_actual"], dropped=stats["dropped"]))
+        return out
 
     def tracks(self, camera_id: str) -> dict | None:
         pipeline = self.pipelines.get(camera_id)
