@@ -6,7 +6,9 @@ keeps the newest one in memory and publishes `capture.frames.captured` for it.
     seq, ts_ms, frame = reader.latest()      # BGR array; frame_ref(camera_id, ts_ms) names it on disk (C2)
 
 The event carries no pixels (it is in-process only and not logged); whoever needs the picture asks
-`latest()`. `source` is a device index or path (USB webcam, V4L2 on the Jetson) or a video file, which
+`latest()`. With `motion_threshold` set, `capture.frames.captured` is only published for frames that moved at least that much
+(motion score 0..1) plus one every `keepalive_s` (C3); `latest()` and `stats()` still see every frame.
+`source` is a device index or path (USB webcam, V4L2 on the Jetson) or a video file, which
 is replayed in real time and loops, so everything downstream can be tested without a camera.
 If the camera drops off, the reader keeps retrying; `stats()` says whether it is ok, degraded or down.
 """
@@ -29,7 +31,8 @@ _MOTION_SIZE = (64, 36)
 class CameraReader:
     def __init__(self, camera_id: CameraId, source: int | str, *, bus: Any, loop: asyncio.AbstractEventLoop,
                  fps: float = 15, width: int | None = 1280, height: int | None = 720,
-                 open_capture: Callable[[int | str], Any] | None = None, retry_s: float = 2.0) -> None:
+                 open_capture: Callable[[int | str], Any] | None = None, retry_s: float = 2.0,
+                 motion_threshold: float | None = None, keepalive_s: float = 5.0) -> None:
         self.camera_id, self.source = camera_id, source
         self.fps, self.size = fps, (width, height)
         self._bus, self._loop = bus, loop
@@ -43,6 +46,8 @@ class CameraReader:
         self._failed_reads = 0
         self._last_ok = 0.0
         self._seq = 0
+        self.motion_threshold, self.keepalive_s = motion_threshold, keepalive_s  # None: an event for every frame
+        self._last_event = float("-inf")
 
     # --- public ---------------------------------------------------------------------------------
 
@@ -148,6 +153,9 @@ class CameraReader:
             self._latest = (self._seq, ts_ms, frame)
             self._times.append(mono)
         self._last_ok = mono
+        if self.motion_threshold is not None and motion < self.motion_threshold and mono - self._last_event < self.keepalive_s:
+            return small  # a still scene: the frame is kept (latest()) but no event, except one every keepalive_s
+        self._last_event = mono
         event = FramesCaptured(camera_id=self.camera_id, seq=self._seq, width=frame.shape[1], height=frame.shape[0],
                                motion_score=round(motion, 4))
         asyncio.run_coroutine_threadsafe(self._bus.publish(event), self._loop)

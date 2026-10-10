@@ -79,7 +79,8 @@ class CaptureService:
             source = cfg["source"]
             fps = float(cfg.get("fps", 15))
             reader = CameraReader(camera_id, source, bus=self.bus, loop=loop, fps=fps,
-                                  width=cfg.get("width", 1280), height=cfg.get("height", 720))
+                                  width=cfg.get("width", 1280), height=cfg.get("height", 720),
+                                  motion_threshold=cfg.get("motion_threshold"), keepalive_s=float(cfg.get("keepalive_event_s", 5)))
             detector = LazyDetector(self.detector_factory)  # ByteTrack keeps its state in the model: one per camera
             blur = FaceBlur()
             store = KeyframeStore(self.data_dir, blur=lambda frame, blur=blur: blur(frame) if self._blur_on() else frame)

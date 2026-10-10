@@ -4,6 +4,8 @@
 #
 # source: a V4L2 device (/dev/video0) or index, or a video file (replayed in real time, looped: for testing)
 # fps: frames the reader keeps per second; detect_fps: how often the detector looks (10 keeps ByteTrack ids stable)
+# motion_threshold: publish capture.frames.captured only for frames that moved this much (0..1) plus one every
+# keepalive_event_s seconds (C3); leave it out to publish every frame
 cameras:
   cam-desk:
     source: /dev/video0
@@ -11,3 +13,5 @@ cameras:
     width: 1280
     height: 720
     detect_fps: 10
+    motion_threshold: 0.01
+    keepalive_event_s: 5
