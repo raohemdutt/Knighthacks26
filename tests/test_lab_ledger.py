@@ -217,6 +217,19 @@ def test_extra_fields_must_be_json_with_string_names():
     assert ledger.read() == []
 
 
+def test_a_row_may_carry_its_own_metric_field_but_not_a_read_filter_name():
+    experiment = make_row(verb="experiment.add", metrics={}, metric="teacher.decode_tok_s", expected_delta=0.2)
+    assert ledger.append(experiment) == 1
+    assert ledger.append(make_row(metrics={"teacher.decode_tok_s": 8.1})) == 2
+    assert seqs(ledger.read(metric="teacher.decode_tok_s")) == [1], "metric is a field like any other"
+    assert seqs(ledger.read(has_metric="teacher.decode_tok_s")) == [2]
+    for name in ("has_metric", "since", "before", "state_dir"):
+        with pytest.raises(ledger.RowError) as err:
+            ledger.append(make_row(**{name: "x"}))
+        assert [p.split()[0] for p in err.value.problems] == [name]
+    assert seqs(ledger.read()) == [1, 2]
+
+
 # --- reading --------------------------------------------------------------------------
 
 def test_read_on_a_missing_ledger_is_empty_and_creates_nothing(isolated_state):
@@ -237,7 +250,7 @@ def test_read_filters_by_value_dict_subset_predicate_metric_and_time():
     assert seqs(ledger.read(task="L3")) == [1, 3]
     assert seqs(ledger.read(refs={"run_id": "run-2"})) == [2, 3]
     assert seqs(ledger.read(outcome=lambda o: o != "ok")) == [2]
-    assert seqs(ledger.read(metric="a")) == [1, 3]
+    assert seqs(ledger.read(has_metric="a")) == [1, 3]
     assert seqs(ledger.read(since="2026-10-10T11:00:00Z")) == [2, 3]
     assert seqs(ledger.read(before="2026-10-10T07:00:00-04:00")) == [1], "before is exclusive, compared as instants"
     assert seqs(ledger.read(task="L3", since=dt.datetime(2026, 10, 10, 11, tzinfo=UTC))) == [3]

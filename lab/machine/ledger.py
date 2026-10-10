@@ -77,7 +77,7 @@ FIELDS = ("seq", "ts", "actor", "tier", "task", "verb", "outcome", "metrics", "r
 REF_KEYS = ("pr", "commit", "slot", "run_id")
 OPTIONAL_FIELDS = ("node", "units", "conditions", "low_confidence", "source", "note")
 # read() keywords that are not row fields, so no row may use them as field names
-FILTER_NAMES = ("metric", "since", "before", "state_dir")
+FILTER_NAMES = ("has_metric", "since", "before", "state_dir")
 
 _TEXT_FIELDS = ("actor", "tier", "task", "verb", "outcome")
 _MAY_BE_NONE = frozenset({"tier", "task"})
@@ -430,10 +430,11 @@ def read(*, state_dir: str | os.PathLike[str] | None = None, **filters: Any) -> 
     passes it: a callable is called with the value, a dict must be contained
     in the value (read(refs={"run_id": "run-3"})), anything else must equal
     it; a field a row lacks reads as None. Three filters are not fields:
-    metric=<name> keeps the rows whose metrics carry that name, since=<t>
-    the rows at or after t and before=<t> the rows strictly before t, with t
-    an aware datetime or ISO 8601 text with a UTC offset (ValueError
-    otherwise), compared as instants. Takes no lock and creates nothing."""
+    has_metric=<name> keeps the rows whose metrics carry that name,
+    since=<t> the rows at or after t and before=<t> the rows strictly
+    before t, with t an aware datetime or ISO 8601 text with a UTC offset
+    (ValueError otherwise), compared as instants. Takes no lock and creates
+    nothing."""
     keep = _matcher(filters)
     path = ledger_path(state_dir)
     try:
@@ -461,7 +462,7 @@ def _matcher(filters: Mapping[str, Any]) -> Callable[[Row], bool]:
 
     def keep(row: Row) -> bool:
         for key, want in filters.items():
-            if key == "metric":
+            if key == "has_metric":
                 metrics = row.get("metrics")
                 if not (isinstance(metrics, dict) and want in metrics):
                     return False
@@ -523,7 +524,7 @@ def latest_metric(name: str, node: str | None = None, *,
     one, else "ledger seq <n>"), ts, low_confidence and seq."""
     best: Row | None = None
     best_key: tuple[dt.datetime, int] | None = None
-    for row in read(state_dir=state_dir, metric=name):
+    for row in read(state_dir=state_dir, has_metric=name):
         if node is not None and row.get("node") != node:
             continue
         moment = _parse_ts(row.get("ts"))
