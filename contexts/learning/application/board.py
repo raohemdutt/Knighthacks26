@@ -67,6 +67,9 @@ class LearningBoard:
             if t.get("model_version") == e.model_version:
                 t.update(stage="done", progress=1.0, deployed=True, updated=e.ts)
 
-    def snapshot(self) -> dict[str, Any]:
-        tasks = sorted(self.tasks.values(), key=lambda t: t["updated"], reverse=True)
+    def snapshot(self, include_closed: bool = False) -> dict[str, Any]:
+        """Tasks newest first. A task whose export was denied or expired is hidden unless `include_closed` (Dominick:
+        test cards should not clutter the Teach screen); the log keeps them all."""
+        tasks = sorted((t for t in self.tasks.values() if include_closed or t["stage"] not in ("denied", "expired")),
+                       key=lambda t: t["updated"], reverse=True)
         return {"tasks": tasks, "deployments": list(reversed(self.deployments))}
