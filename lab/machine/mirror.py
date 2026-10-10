@@ -36,9 +36,10 @@ and lab/refine/MERGE_LOG.md has its line, once. A line has the shape the rules g
 `<track> pass <N>, <task ID>: <what changed>. Was: "<before>". Why: <reason>. Source: <citation>.`, with the
 signed prefix, and goes after the item's last child (the item is created first when it is missing). A change
 counts as posted when the item already has a line, from a pass or from an earlier run, that starts with the
-same `<label>, <task ID>:` after its signed prefix, whatever that prefix says (with or without the robot sign,
-under any agent's name, or none at all); each such line covers one change of that label and task, the earliest
-first, and a "reverted change" line covers none.
+same `<label>, <task ID>:` after its signed prefix: an agent's signature ("Ilan's agent", "Ilan agent" or "Ilan2
+agent", a middle dot or a comma, and the day and time, with or without the ET and the robot sign in front), or no
+prefix at all. Any other words before the label make it a different line, one that covers nothing. Each such line
+covers one change of that label and task, the earliest first, and a "reverted change" line covers none.
 
 Idempotent. The facts of the section are named by an id (8 hex digits over the four bodies and whether the
 board snapshot is stale, not the clock or the ledger's size), shown on the Last update bullet. A page that
@@ -126,10 +127,12 @@ CLIP_NOTE = 200      # of a free-text field in an error
 
 # This flow's own signature, as it writes it now and as it wrote it before the robot sign was dropped.
 _STAMP = rulings.STAMP_PATTERN
-# The signature of a plan-change line, whoever wrote it: a name and a time, which holds no colon but the one inside
-# a clock time and ends at the colon that closes it, or no signature at all. Only the label and the task say which
-# change a line covers.
-_SIGNATURE = r"(?:(?:[^\n:]|(?<=[0-9]):(?=[0-9]))*: )?"
+# The signature of a plan-change line, as an agent writes it: whose agent it is ("Ilan's agent", "Ilan agent",
+# "Ilan2 agent"), a middle dot or a comma, and the day and time, closed by a colon; posts from before the no-emoji
+# rule have a robot sign in front and may leave out the ET. A line may also carry no signature at all. Any other
+# words before the label are not a signature, so the line stands for no change.
+_AGENT = r"[A-Z][a-z]*[0-9]*(?:'s)? agent"
+_SIGNATURE = r"(?:(?:" + re.escape(rulings.ROBOT_SIGN) + " )?" + _AGENT + "(?: \u00b7|,)" + rulings.TIME_PATTERN + "(?: ET)?: )?"
 _DIGEST_MARK = re.compile(r"\(digest (?P<id>[0-9a-f]{8})\)")
 _OWN_SEGMENT = re.compile(_STAMP + " " + re.escape(SEGMENT_PHRASE) + r".*?" + _DIGEST_MARK.pattern)
 _RULINGS_SEGMENT = re.compile(_STAMP + " " + re.escape(rulings.PHRASE) + r".*?\(list (?P<id>[0-9a-f]{8})\)")
@@ -465,7 +468,7 @@ class PlanChange:
 
     @property
     def covers(self) -> str:
-        """What a line on the page starts with, after its signed prefix (whoever signed it), to count as this change's."""
+        """What a line on the page starts with, after its signed prefix (an agent's signature, or none), to count as this change's."""
         return f"{self.label}, {self.task}:"
 
 
@@ -599,9 +602,11 @@ def print_plan(section: Section | None, changes: Sequence[PlanChange] | None, mo
             "where": "as child bullets of the item above, which is under '## FYI (no reply needed)'; add each line after the item's last child, "
                      "one tab deeper than the item, and create the item first, directly under the heading, when it is missing",
             "lines": [{"covers": change.covers, "text": f"- {sign} {change.text}"} for change in changes],
-            "skip_if_page_shows": "a child line that already starts, after its signed prefix (whatever it says: with or without the robot sign, "
-                                  "under any agent's name, or none), with the same '<label>, <task>:'; each such line covers one change "
-                                  "with that label and task, the earliest first, and a 'reverted change' line covers none",
+            "skip_if_page_shows": "a child line that already starts, after its signed prefix, with the same '<label>, <task>:'; the prefix "
+                                  "is a signature - '<Name>'s agent' or '<Name> agent', a middle dot or a comma, then the day and time - "
+                                  "with or without a robot sign in front, or there is none at all; any other words before the label make "
+                                  "it a different line. Each such line covers one change with that label and task, the earliest first, "
+                                  "and a 'reverted change' line covers none",
         })
     return posts
 

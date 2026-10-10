@@ -230,8 +230,11 @@ HAND_ROBOT_NO_ET = f"{HEART} Ilan's agent {DOT} Sat 9:02 AM:"     # the robot fo
 HAND_RESIGNED = "Ilan2 agent, Sat 3:50 PM ET:"                      # how the telemetry and learning passes re-signed their lines
 HAND_NUMBERED = f"Ilan2's agent {DOT} Sat 4:15 PM ET:"
 HAND_OTHER = f"{HEART} Dominick's agent {DOT} Sat 9:03 AM ET:"
-HAND_TIME_ONLY = "Sat 9:04 AM ET:"
-MIXED_SIGNS = [HAND_PLAIN, HAND_ROBOT, HAND_ROBOT_NO_ET, HAND_RESIGNED, HAND_NUMBERED, HAND_OTHER, HAND_TIME_ONLY, None]  # None: unsigned
+HAND_COMMA = "Ilan's agent, Sat 6:48 PM ET:"                       # the plain form with a comma, as the agents sign now
+HAND_BARE = "Ilan agent, Sat 6:30 PM ET:"
+# Every form a plan-change line can carry, one per change of ALL_CHANGES; None: unsigned.
+MIXED_SIGNS = [HAND_PLAIN, HAND_ROBOT, HAND_ROBOT_NO_ET, HAND_RESIGNED, HAND_NUMBERED, HAND_OTHER, HAND_COMMA, HAND_BARE, None]
+SIGN_IDS = ["plain", "robot", "robot-no-ET", "re-signed", "numbered", "other-agent", "comma", "bare-name", "unsigned"]
 
 
 def by_hand(label: str, task: str, sign: str | None) -> str:
@@ -960,8 +963,8 @@ def test_everything_the_flow_writes_is_signed_without_the_robot_sign():
     assert HEART not in "\n".join(section + children)
 
 
-@pytest.mark.parametrize("sign", [HAND_PLAIN, HAND_ROBOT], ids=["plain", "robot"])
-def test_lines_a_pass_wrote_by_hand_cover_every_change_in_either_form(sign):
+@pytest.mark.parametrize("sign", MIXED_SIGNS, ids=SIGN_IDS)
+def test_lines_a_pass_wrote_by_hand_cover_every_change_in_every_signature_form(sign):
     own = [by_hand(label, task, sign) for label, task in ALL_CHANGES]
     team = TEAM_TEXT.replace(FYI, FYI + "\n" + PLAN_ITEM + "\n" + "\n".join(own))
     notion = pages(team=team)
@@ -1032,9 +1035,11 @@ def test_a_line_of_another_pass_or_another_task_covers_nothing_whoever_signed_it
     assert plan_children(notion.text(TEAM))[:3] == others
 
 
-@pytest.mark.parametrize("sign", [HAND_PLAIN, HAND_ROBOT, HAND_RESIGNED], ids=["plain", "robot", "re-signed"])
+@pytest.mark.parametrize("sign", [HAND_PLAIN, HAND_ROBOT, HAND_RESIGNED, HAND_COMMA, None],
+                         ids=["plain", "robot", "re-signed", "comma", "unsigned"])
 def test_a_line_that_names_a_change_only_after_other_words_covers_nothing(sign):
-    summary = signed("merge 1 summary: telemetry pass 1, T4: kept as it was.", sign)
+    text = "merge 1 summary: telemetry pass 1, T4: kept as it was."
+    summary = unsigned(text) if sign is None else signed(text, sign)
     team = TEAM_TEXT.replace(FYI, FYI + "\n" + PLAN_ITEM + "\n" + summary)
     notion = pages(team=team)
 
@@ -1042,7 +1047,31 @@ def test_a_line_that_names_a_change_only_after_other_words_covers_nothing(sign):
 
     result = answer["targets"]["plan_changes"]
     assert (result["posted"], result["already"]) == (9, 0)
-    assert plan_children(notion.text(TEAM))[0] == summary
+    children = plan_children(notion.text(TEAM))
+    assert children[0] == summary
+    assert labels_of(children[1:]) == [f"{a}, {b}" for a, b in ALL_CHANGES]
+
+
+@pytest.mark.parametrize("lead_in", [
+    pytest.param("Ilan:", id="person"),
+    pytest.param(f"{HEART} Ilan:", id="robot-sign-without-an-agent"),
+    pytest.param("Ilan's agent:", id="agent-without-a-time"),
+    pytest.param("Sat 9:04 AM ET:", id="time-only"),
+    pytest.param("note of Sat 9:00 AM ET:", id="time-after-other-words"),
+    pytest.param(f"see Ilan's agent {DOT} Sat 9:00 AM ET:", id="signature-after-other-words"),
+])
+def test_a_lead_in_that_is_not_a_signature_covers_nothing(lead_in):
+    line = unsigned(f"{lead_in} telemetry pass 1, T4: kept as it was.")
+    team = TEAM_TEXT.replace(FYI, FYI + "\n" + PLAN_ITEM + "\n" + line)
+    notion = pages(team=team)
+
+    answer, _ = go("--only", "plan-changes", client=notion)
+
+    result = answer["targets"]["plan_changes"]
+    assert (result["posted"], result["already"]) == (9, 0)
+    children = plan_children(notion.text(TEAM))
+    assert children[0] == line
+    assert labels_of(children[1:]) == [f"{a}, {b}" for a, b in ALL_CHANGES]
 
 
 def test_a_pass_that_posted_one_of_two_changes_to_a_task_leaves_only_the_later_change_to_post(tmp_path):
@@ -1232,7 +1261,8 @@ def test_the_printed_texts_carry_no_robot_sign_and_the_instructions_name_both_fo
     assert overnight["needs_segment"].startswith(f"Ilan's agent {DOT} Sat 12:00 PM ET: Lab digest: ")
     assert f"it starts with 'Ilan's agent {DOT}' (older segments have a robot sign in front of it)" in overnight["needs_how"]
     assert all(item["text"].startswith(f"- Ilan's agent {DOT} Sat 12:00 PM ET: ") for item in plans["lines"])
-    assert "whatever it says: with or without the robot sign, under any agent's name, or none" in plans["skip_if_page_shows"]
+    assert "with or without a robot sign in front, or there is none at all" in plans["skip_if_page_shows"]
+    assert "any other words before the label make it a different line" in plans["skip_if_page_shows"]
 
 
 def test_print_mode_reads_and_writes_nothing_even_when_a_client_is_at_hand():
