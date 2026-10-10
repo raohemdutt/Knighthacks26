@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 import lab.__main__ as lab_cli
-from lab.machine import digest, handoff
+from lab.machine import digest, handoff, refine_track
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = REPO_ROOT / "fixtures" / "lab" / "digest"
@@ -212,11 +212,38 @@ def test_gpu_queue_shows_overruns_waits_shortest_first_and_complaints(recorded):
     queued = [(e["gpu"], e["task"], e["position"], e["waited_min"], e["complaint_due"]) for e in gpu["queued"]["items"]]
     assert queued == [("A teacher shared service", "T1", 1, 10, False),
                       ("B exclusive", "R12", 1, 40, False),
-                      ("B exclusive", "L3", 2, 60, False)]
+                      ("B exclusive", "L3", 2, 60, True)]       # R11 on the same card is past its cap
     # the finished row's complaint is history and is not listed
     assert gpu["complaints"]["items"] == [{"request": "R12: HIP kernel microbench", "status": "Queued",
                                            "minutes_since": 40,
                                            "text": "Waited 40 min; the running slot is past its cap"}]
+
+
+def test_a_queued_row_may_complain_while_a_running_row_on_its_card_is_past_its_cap(recorded):
+    # The queue verbs' rule (lab/machine/slots.py, complaint_due): L3 has waited 60 of its 60 minutes, not yet
+    # twice them, but R11 has been running 5 minutes past its 15-minute cap on the same card.
+    queued = build()["gpu"]["queued"]["items"]
+    l3 = next(entry for entry in queued if entry["task"] == "L3")
+    assert (l3["gpu"], l3["waited_min"], l3["has_complaint"], l3["complaint_due"]) == ("B exclusive", 60, False, True)
+
+
+def test_an_overrun_makes_a_complaint_due_on_its_own_card_only_and_not_twice(state, tmp_path):
+    queue = [
+        {"request": "R11: sweep", "task": "R11", "gpu": "B exclusive", "minutes": 15, "status": "Running",
+         "requested": "2026-10-10T15:00:00Z", "started": "2026-10-10T15:30:00Z"},
+        {"request": "L3: smoke", "task": "L3", "gpu": "B exclusive", "minutes": 60, "status": "Queued",
+         "requested": "2026-10-10T15:50:00Z"},
+        {"request": "R12: bench", "task": "R12", "gpu": "B exclusive", "minutes": 15, "status": "Queued",
+         "requested": "2026-10-10T15:52:00Z", "complaint": "already said: R11 is past its cap"},
+        {"request": "T1: probe", "task": "T1", "gpu": "A teacher shared service", "minutes": 15, "status": "Queued",
+         "requested": "2026-10-10T15:55:00Z"},
+    ]
+    board = write_board(tmp_path / "board.json", [fake_task("O1")], queue)
+    gpu = build(board=board)["gpu"]
+    assert [(e["task"], e["waited_min"], e["complaint_due"]) for e in gpu["queued"]["items"]] == [
+        ("T1", 5, False), ("R12", 8, False), ("L3", 10, True)]
+    assert [(e["task"], e["cap_min"], e["elapsed_min"], e["over_min"]) for e in gpu["running"]["items"]] == [
+        ("R11", 15, 30, 15)]
 
 
 def test_a_fake_board_in_the_plain_schema_marks_a_complaint_due(state, tmp_path):
@@ -246,6 +273,13 @@ def test_unanswered_rulings_are_listed_with_their_default(recorded):
                                                                                   ("telemetry", 1, "pass 1")]
     assert rulings["items"][0]["now"] == "the spread, as kernel test 3 says; E3 uses five runs per point."
     assert rulings["answered"] == 1 and rulings["more"] == 0
+
+
+def test_the_rulings_read_by_default_are_under_the_refine_folder_refine_track_names(recorded, monkeypatch):
+    monkeypatch.setattr(refine_track, "REFINE_DIR", REFINE)
+    rulings = digest.compute(now=NOW, board=BOARD)["rulings"]             # no refine_root
+    assert [(e["track"], e["number"]) for e in rulings["items"]] == [("kernels", 4), ("telemetry", 1)]
+    assert rulings["answered"] == 1
 
 
 def test_a_broken_rulings_file_is_named_and_the_others_still_listed(recorded, tmp_path):

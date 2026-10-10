@@ -34,7 +34,7 @@ export const SILENCE_MS = 8000;
 /** At most this many unprompted sentences wait their turn; older ones are dropped. */
 const MAX_QUEUED_EVENTS = 3;
 const SETTINGS_KEY = "atlas.voice";
-const SPOKEN_EVENTS = ["agent.alert.raised", "habits.nudge.raised", "workspace.approval.requested", "agent.plan.created", "day.coach.noted", "day.narrated"];
+const SPOKEN_EVENTS = ["agent.alert.raised", "habits.nudge.raised", "workspace.approval.requested", "agent.plan.created", "day.coach.noted", "day.narrated", "impact.milestone.reached"];
 /** How long a spoken approval waits for the narrator's plain ask ("I'd like to add eight blocks...") before the raw reason is used. */
 const ASK_WAIT_MS = 900;
 

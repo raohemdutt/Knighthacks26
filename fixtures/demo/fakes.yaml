@@ -3,21 +3,30 @@
 # type's sample payload from tests/test_contract_samples.py. A value like "+90s" or "-3600s" is a
 # time that far from the start. Every type a context publishes appears at least once.
 #
-# perception also plays the scripted half minute from contexts/perception/fakes first, through the
+# perception also plays the scripted scene from contexts/perception/fakes first (room_scene: the half
+# minute of script(), then a Sort It round and a "which bin?" moment for the room twin), through the
 # real zone engine: that is where its observations and zone events come from. Owner recognition (P9) is
 # switched on with one enrolled member, the person at the desk (track 1) is tagged as them, and the tag
 # ends when the scene does.
 
 perception:
   - {type: perception.faces.counted, at: 2}
+  - {type: perception.faces.counted, at: 3, count: 1, facing: 0}   # looked away: no Sort It round yet
   - {type: perception.identity.changed, at: 3}
   - {type: perception.person.identified, at: 7}
   - {type: perception.scene.described, at: 9, caption: "A person sits at the desk with a laptop.", zone_id: null, objects: [],
      frame_ref: "frames:cam-desk:9"}
   - {type: perception.scene.described, at: 12, caption: "On the desk: keys (next to the mug).", frame_ref: "frames:cam-desk:12"}
   - {type: perception.faces.counted, at: 14, count: 2, facing: 1}
+  - {type: perception.faces.counted, at: 16, count: 0, facing: 0}
+  - {type: perception.expression.observed, at: 28, window_start: "+7s", window_end: "+27s"}  # only for a member who switched it on
   - {type: perception.person.lost, at: 30}
   - {type: perception.identity.changed, at: 31, enabled: false, members: []}  # leave recognition off, so habits stay with the one unnamed tracker
+  # The room twin's Sort It round (contexts/perception/fakes: sort_round): a face held 2 s while the can is in hand
+  # starts it; the can entering the recycling zone at 45 s scores it. Then nobody faces the camera (which_bin).
+  - {type: perception.faces.counted, at: 37}
+  - {type: perception.faces.counted, at: 39}
+  - {type: perception.faces.counted, at: 49, count: 1, facing: 0}
 
 connectors:
   - {type: connector.item.synced, at: 0, external_id: "cop4533:assignment:88213", title: "Project - Milestone1 Fall2026 [COP4533]",
@@ -66,6 +75,9 @@ impact:
   - {type: impact.item.seen, at: 40, item_id: "cam-door:5", label: cup, recyclable: false}
   - {type: impact.item.disposed, at: 45, item_id: "cam-door:5", label: cup, correct: false}
   - {type: impact.count.updated, at: 45, items_seen: 2, recyclable_seen: 1, recycled: 1, contamination: 1, diversion_rate: 1.0}
+  # The Impact screen: the first milestone of the week, and a "teach me" tap on the cup that went in recycling.
+  - {type: impact.milestone.reached, at: 6, threshold: 1, value: 1, text: "First item kept out of landfill this week."}
+  - {type: impact.practice.added, at: 50, label: cup, item_id: "cam-door:5"}
 
 agent:
   - {type: agent.rule.added, at: 0}
@@ -79,6 +91,9 @@ agent:
      text: "- Start the dynamic programming part today, 3-5 PM\n- Write the runtime analysis tomorrow morning\n- Eat before the study session",
      blocks: [{title: "Study: COP 4533", start: "+3600s", end: "+10800s"}]}
   - {type: agent.note.written, at: 3600, note_id: fake-note-1, hour: "+0s", text: "Coding at the desk, then pizza for lunch."}
+  # Conversation (talk.py), after the steps above so they keep their ids: a reply with nothing cited, because nothing was looked up.
+  - {type: agent.answer.generated, at: 3660, question_id: fake-q-talk, citations: [],
+     answer: "Pretty good. My cameras logged two moments today, the last one a courier at the door. How's yours going?"}
 
 circle:
   - {type: circle.place.shared, at: 0, expires_at: "+7200s"}
@@ -102,6 +117,7 @@ play:
   - {type: play.round.scored, at: 4, path_len: 3}
   - {type: play.round.started, at: 10, round_id: r2, item: cup, target_bin: trash, path: [{row: 5, col: 6}, {row: 6, col: 4}]}
   - {type: play.round.scored, at: 22, round_id: r2, item: cup, correct: false, seconds: 12.0, path_len: 2, score: 0}
+  - {type: play.route.planned, at: 10, round_id: r2, item: cup, target_bin: trash}  # the same round's route in the room (floor metres)
   # The League: a friend's shared day, the stake, a dare and its result, and the week declared (all sample payloads).
   - {type: play.league.summary.received, at: 30}
   - {type: play.league.stake.set, at: 31}
@@ -118,6 +134,7 @@ day:
   - {type: day.status.changed, at: 3600, now: "+3600s", seen_ts: "+3500s", reason: "left the desk: 12 minutes behind"}
   - {type: day.replan.proposed, at: 3660, start: "+3660s"}
   - {type: day.coach.noted, at: 7200}  # the study coach's sentence when a block ends (the sample payload)
+  - {type: day.coach.corrected, at: 7260, break_start: "+3600s"}  # "Was that right?" -> no, it was the bathroom (the sample payload)
   - {type: day.reviewed, at: 43200}
   # The same moments in words (D3), after the events they narrate so the earlier steps keep their ids.
   - {type: day.narrated, at: 43200}  # the plan in words, for the screen and the voice (the sample payload)

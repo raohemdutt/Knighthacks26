@@ -994,7 +994,7 @@ class SlotQueue:
         updated = slot_from_page(self.client.update_page(
             slot.id, rest_properties({"Complaint": add_complaint(slot.complaint, entry)})))
         return {"ok": True, "outcome": "complaint_recorded", "verb": verb, "row": updated.id, "reason": why,
-                "slot": summary(updated, now), **where}
+                "note": entry[:record.NOTE_CHARS], "slot": summary(updated, now), **where}
 
     # status
 
@@ -1325,7 +1325,7 @@ def _failure(args: argparse.Namespace, exc: notion.NotionError) -> dict[str, Any
 
 #: Fields of an answer worth keeping in the ledger row, beside the standard ones.
 _LEDGER_KEYS = ("gpu", "minutes", "waited_min", "ran_min", "overrun_min", "position", "reason", "kind", "guard",
-                "passed_over", "went_ahead_of", "justification_state", "replied", "shortened_to")
+                "passed_over", "went_ahead_of", "justification_state", "replied", "shortened_to", "note")
 
 
 #: The outcomes of a verb whose call did what the verb names: only such a call carries a number for the alerts.

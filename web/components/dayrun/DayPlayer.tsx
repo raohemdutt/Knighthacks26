@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
-import type { Board, HardResult, PlacePack, SimResult, Tick } from "@/lib/api";
+import { api, type Board, type HardResult, type PlacePack, type SimResult, type Tick } from "@/lib/api";
+import { pinKind, type CampusMap } from "@/lib/campusmap";
 import {
   DEFAULT_SPEED,
   ENERGY_LOW,
@@ -30,6 +31,8 @@ import {
 import { clock, clockSpan, dateLabel, minutes, ms, parentPlace, placeName, riskPercent, stars, type PlaceIndex } from "@/lib/dayrun";
 import ui from "../ui.module.css";
 import dr from "./dayrun.module.css";
+import { CampusLayers, MapFurniture, PlacePin, layoutPins, lineBoxes, type ScreenBox } from "./CampusLayers";
+import { pinName } from "./CampusMap";
 import { Figure } from "./Figure";
 
 /**
@@ -37,6 +40,8 @@ import { Figure } from "./Figure";
  * campus map in accelerated time while the clock, the meters and the feed run
  * with it. Every position and number is read from the result the box returned
  * (see lib/dayplay.ts); this component only draws the moment it is given.
+ * On a pack with a drawn map the figure walks the real footpaths over the
+ * campus's buildings, greens and roads (© OpenStreetMap contributors).
  *
  * In hard mode the calm day plays until the disruptions arrive, the remaining
  * route is re-planned on screen (old path out, new path in, with the box's own
@@ -75,7 +80,7 @@ const ease = (v: number) => {
   return x * x * (3 - 2 * x);
 };
 
-function fit(points: Pt[]): Cam {
+function fit(points: Pt[], drawn: boolean): Cam {
   if (points.length === 0) return { cx: 500, cy: 500, z: 0.3 };
   const xs = points.map((p) => p.x);
   const ys = points.map((p) => p.y);
@@ -84,7 +89,10 @@ function fit(points: Pt[]): Cam {
   const y0 = Math.min(...ys);
   const y1 = Math.max(...ys);
   // Room above for the figure and its cue, below for the banner, and either side for the labels.
-  const z = Math.min((W - 200) / Math.max(x1 - x0, 260), (H - 132) / Math.max(y1 - y0, 260));
+  // On a drawn map the names sit under their pins, so the route can use more of the width.
+  const z = drawn
+    ? Math.min((W - 96) / Math.max(x1 - x0, 170), (H - 128) / Math.max(y1 - y0, 170))
+    : Math.min((W - 200) / Math.max(x1 - x0, 260), (H - 132) / Math.max(y1 - y0, 260));
   return { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 - 12 / z, z };
 }
 
@@ -92,13 +100,13 @@ function fit(points: Pt[]): Cam {
  * What the camera frames: the route being chosen or walked; while standing, the walk
  * just finished and the one coming next; the whole day while it is being re-planned.
  */
-function cameraTarget(show: Show, walks: Walk[], frame: Frame, moment: Moment): Cam {
+function cameraTarget(show: Show, walks: Walk[], frame: Frame, moment: Moment, drawn: boolean): Cam {
   const hold = frame.hold !== null ? show.holds[frame.hold] : undefined;
-  if (hold?.kind === "reject" && hold.ghost) return fit([...hold.ghost.points, moment.pt]);
-  if (hold?.kind === "replan") return fit(show.extent);
+  if (hold?.kind === "reject" && hold.ghost) return fit([...hold.ghost.points, moment.pt], drawn);
+  if (hold?.kind === "replan") return fit(show.extent, drawn);
   const walk = hold?.kind === "route" ? hold.walk : moment.walk;
-  if (walk && walk.points.length > 1) return fit(walk.points);
-  if (frame.t >= show.t1) return fit(show.extent);
+  if (walk && walk.points.length > 1) return fit(walk.points, drawn);
+  if (frame.t >= show.t1) return fit(show.extent, drawn);
   let prev: Walk | undefined;
   let next: Walk | undefined;
   for (const w of walks) {
@@ -106,7 +114,7 @@ function cameraTarget(show: Show, walks: Walk[], frame: Frame, moment: Moment): 
     if (w.t1 <= frame.t) prev = w;
     else if (!next && w.t0 > frame.t) next = w;
   }
-  return fit([...(prev?.points ?? []), ...(next?.points ?? []), moment.pt]);
+  return fit([...(prev?.points ?? []), ...(next?.points ?? []), moment.pt], drawn);
 }
 
 const feedSeen = (show: Show, t: number) => {
@@ -128,6 +136,7 @@ function frameAt(show: Show, at: number, freeze: boolean): Frame {
 export function DayPlayer({
   packs,
   places,
+  map,
   board,
   result,
   hard,
@@ -139,6 +148,8 @@ export function DayPlayer({
 }: {
   packs: PlacePack[];
   places: PlaceIndex;
+  /** The pack's drawn map, when it has one. Pass it loaded: a map arriving later starts the day again. */
+  map: CampusMap | null;
   board: Board;
   result: SimResult;
   hard: HardResult | null;
@@ -150,7 +161,8 @@ export function DayPlayer({
   onTick: (index: number) => void;
   onClose: () => void;
 }) {
-  const world = useMemo(() => buildWorld(places), [places]);
+  const world = useMemo(() => buildWorld(places, map), [places, map]);
+  const drawn = map !== null;
   const show = useMemo(() => buildShow({ result, hard, world, places, board }), [result, hard, world, places, board]);
   const edges = useMemo(() => knownEdges(world, hard ? [hard.before, hard.after] : [result], board), [world, hard, result, board]);
   const walks = useMemo(() => livedWalks(show), [show]);
@@ -223,12 +235,12 @@ export function DayPlayer({
         flashAge = 0;
       }
       const out: Frame = { t, hold, holdF, next, cam: f.cam, phase: f.phase + dt, seen, flash, flashAge };
-      const target = cameraTarget(show, walks, out, showMoment(show, world, t));
+      const target = cameraTarget(show, walks, out, showMoment(show, world, t), drawn);
       const k = 1 - Math.exp(-dt * 3.2);
       out.cam = f.cam ? { cx: f.cam.cx + (target.cx - f.cam.cx) * k, cy: f.cam.cy + (target.cy - f.cam.cy) * k, z: f.cam.z + (target.z - f.cam.z) * k } : target;
       return out;
     },
-    [show, speed, world, walks],
+    [show, speed, world, walks, drawn],
   );
 
   const step = useCallback(
@@ -290,7 +302,7 @@ export function DayPlayer({
   const ended = frame.t >= show.t1;
   const hold: Hold | undefined = frame.hold !== null ? show.holds[frame.hold] : undefined;
   const script = moment.script;
-  const cam = frame.cam ?? cameraTarget(show, walks, frame, moment);
+  const cam = frame.cam ?? cameraTarget(show, walks, frame, moment, drawn);
   const S = (p: Pt): Pt => ({ x: (p.x - cam.cx) * cam.z + W / 2, y: (p.y - cam.cy) * cam.z + H / 2 });
   const path = (points: Pt[]) =>
     points
@@ -347,10 +359,67 @@ export function DayPlayer({
     for (const f of board.friends) add(f.place);
     return refs;
   }, [show, world, places, board.friends]);
+  // On a drawn map: the buildings of the places the day touches are picked out, and their pins carry the names.
+  const planBuildings = useMemo(() => {
+    const of = (ref: string) => map?.places.get(ref.split(".").slice(1).join("."))?.building;
+    const on = new Set<number>();
+    const all = new Set<number>();
+    for (const ref of world.at.keys()) {
+      const b = of(ref);
+      if (b === undefined) continue;
+      all.add(b);
+      if (touched.has(ref)) on.add(b);
+    }
+    return {
+      on,
+      all,
+      shut: (refs: Set<string>) => {
+        const out = new Set<number>();
+        for (const ref of refs) {
+          const b = of(ref);
+          if (b !== undefined) out.add(b);
+        }
+        return out;
+      },
+    };
+  }, [map, world, touched]);
   const midX = useMemo(() => {
     const xs = [...touched].map((ref) => world.at.get(ref)?.x ?? 0).sort((a, b) => a - b);
     return xs.length ? ((xs[Math.floor((xs.length - 1) / 2)] ?? 0) + (xs[Math.ceil((xs.length - 1) / 2)] ?? 0)) / 2 : 0;
   }, [touched, world]);
+
+  // A rejected move's route along the real paths: asked from the box once per pair of places, straight lines until it answers.
+  const [realLines, setRealLines] = useState<Map<string, Pt[]>>(() => new Map());
+  useEffect(() => {
+    const project = world.project;
+    if (!project) return;
+    const ctl = new AbortController();
+    const pairs = new Set<string>();
+    for (const h of show.holds) for (let i = 1; i < (h.ghost?.refs.length ?? 0); i++) pairs.add(`${h.ghost?.refs[i - 1]}>${h.ghost?.refs[i]}`);
+    for (const key of pairs) {
+      const [from, to] = key.split(">") as [string, string];
+      if (from === to || !world.at.has(from) || !world.at.has(to)) continue;
+      api
+        .placeRoute({ from, to }, ctl.signal)
+        .then((r) => {
+          if (r.polyline.length > 1) setRealLines((m) => new Map(m).set(key, r.polyline.map(([lat, lon]) => project(lat, lon))));
+        })
+        .catch(() => undefined); // the straight line stays
+    }
+    return () => ctl.abort();
+  }, [show, world]);
+  const ghostPoints = useMemo(() => {
+    const g = hold?.ghost;
+    if (!g) return [] as Pt[];
+    const out: Pt[] = [];
+    for (let i = 1; i < g.refs.length; i++) {
+      const a = world.resolve(g.refs[i - 1] as string);
+      const b = world.resolve(g.refs[i] as string);
+      const line = realLines.get(`${g.refs[i - 1]}>${g.refs[i]}`) ?? (a && b ? [a, b] : []);
+      for (const p of line) if (!out.length || Math.hypot(p.x - (out[out.length - 1] as Pt).x, p.y - (out[out.length - 1] as Pt).y) > 0.5) out.push(p);
+    }
+    return out.length > 1 ? out : g.points;
+  }, [hold, realLines, world]);
 
   const closedShown = split !== null && (frame.t > split || (frame.t === split && (replan === null || replan > 0.12)));
   const closed = new Set(closedShown ? show.disruptions.filter((d) => d.kind === "place_closed" && d.place).map((d) => d.place as string) : []);
@@ -413,6 +482,24 @@ export function DayPlayer({
 
   const me = S(moment.pt);
   const facing: 1 | -1 = moment.dx < -0.01 ? -1 : 1;
+
+  // On a drawn map: pins with names that keep off each other, the figure and the route; the other buildings' names keep off all of those.
+  const pinsOnMap = map
+    ? (() => {
+        const taken: ScreenBox[] = [{ x0: me.x - 11, y0: me.y - 34, x1: me.x + 11, y1: me.y + 4 }];
+        const spots = [...world.at.entries()]
+          .map(([ref, p]) => {
+            const s = S(p);
+            const place = places.get(ref);
+            const big = touched.has(ref) || closed.has(ref);
+            return { key: ref, x: s.x, y: s.y, big, text: `${place ? pinName(place.name, place.aliases) : ref}${closed.has(ref) ? " · closed" : ""}`, named: big || cam.z > 0.55, kind: pinKind(place?.kind) };
+          })
+          .filter((s) => s.x > -20 && s.x < W + 20 && s.y > -20 && s.y < H + 20 && (s.big || cam.z > 0.3));
+        const where = layoutPins(spots, taken);
+        if (current) taken.push(...lineBoxes(cam, W, H, current.points));
+        return { spots, where, taken };
+      })()
+    : null;
   const ghostF = hold?.kind === "reject" ? frame.holdF : 0;
 
   // ---------- the strip chart ----------
@@ -463,12 +550,16 @@ export function DayPlayer({
         <div className={dr.plCol}>
       <div className={dr.plMapWrap}>
         <svg className={dr.plMap} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Campus map. ${dayName} ${now.hhmm}: ${nowText}. ${whereText}.`}>
-          {/* the walkways the box has routed over */}
-          {edges.map(([a, b]) => {
-            const p = S(world.at.get(a) as Pt);
-            const q = S(world.at.get(b) as Pt);
-            return <line key={`${a}|${b}`} className={dr.plEdge} x1={p.x} y1={p.y} x2={q.x} y2={q.y} />;
-          })}
+          {/* the campus itself, or on a hand-made pack the walkways the box has routed over */}
+          {map ? (
+            <CampusLayers map={map} view={cam} width={W} height={H} highlight={{ on: planBuildings.on, closed: planBuildings.shut(closed) }} quiet={planBuildings.all} taken={pinsOnMap?.taken} />
+          ) : (
+            edges.map(([a, b]) => {
+              const p = S(world.at.get(a) as Pt);
+              const q = S(world.at.get(b) as Pt);
+              return <line key={`${a}|${b}`} className={dr.plEdge} x1={p.x} y1={p.y} x2={q.x} y2={q.y} />;
+            })
+          )}
 
           {/* the plan ahead, the trail behind */}
           {walks.map((w) =>
@@ -504,9 +595,15 @@ export function DayPlayer({
           ) : null}
 
           {/* a rejected move: the route the box tried */}
-          {hold?.kind === "reject" && hold.ghost ? <path className={dr.plGhost} d={path(hold.ghost.points)} pathLength={1} strokeDasharray={`${clamp(ghostF / 0.6, 0, 1).toFixed(3)} 1`} /> : null}
+          {hold?.kind === "reject" && hold.ghost ? <path className={dr.plGhost} d={path(ghostPoints)} pathLength={1} strokeDasharray={`${clamp(ghostF / 0.6, 0, 1).toFixed(3)} 1`} /> : null}
 
-          {[...world.at.entries()].map(([ref, p]) => {
+          {pinsOnMap
+            ? pinsOnMap.spots.map((s) => {
+                const below = pinsOnMap.where.get(s.key) ?? null;
+                return <PlacePin key={s.key} x={s.x} y={s.y} kind={s.kind} small={!s.big} closed={closed.has(s.key)} label={below === null ? undefined : s.text} below={below ?? true} />;
+              })
+            : null}
+          {(map ? [] : [...world.at.entries()]).map(([ref, p]) => {
             const s = S(p);
             if (s.x < -40 || s.x > W + 40 || s.y < -20 || s.y > H + 20) return null;
             const place = places.get(ref);
@@ -575,17 +672,23 @@ export function DayPlayer({
 
           {hold?.kind === "reject" && hold.ghost && ghostF > 0.02 && ghostF < 0.62
             ? (() => {
-                const pts = hold.ghost.points;
-                const f = clamp(ghostF / 0.6, 0, 1) * (pts.length - 1);
-                const i = Math.min(pts.length - 2, Math.floor(f));
+                // by distance along the line, so the ghost keeps one pace on a path with many bends
+                const pts = ghostPoints;
+                const cum = [0];
+                for (let n = 1; n < pts.length; n++) cum.push((cum[n - 1] as number) + Math.hypot((pts[n] as Pt).x - (pts[n - 1] as Pt).x, (pts[n] as Pt).y - (pts[n - 1] as Pt).y));
+                const d = clamp(ghostF / 0.6, 0, 1) * (cum[cum.length - 1] as number);
+                let i = 0;
+                while (i < pts.length - 2 && (cum[i + 1] as number) < d) i++;
                 const a = pts[i] as Pt;
                 const b = pts[i + 1] as Pt;
-                const s = S({ x: a.x + (b.x - a.x) * (f - i), y: a.y + (b.y - a.y) * (f - i) });
+                const g = (cum[i + 1] as number) > (cum[i] as number) ? (d - (cum[i] as number)) / ((cum[i + 1] as number) - (cum[i] as number)) : 0;
+                const s = S({ x: a.x + (b.x - a.x) * g, y: a.y + (b.y - a.y) * g });
                 return <Figure x={s.x} y={s.y} dir={b.x < a.x ? -1 : 1} doing="walk" phase={frame.phase} still={still} tone="ghost" />;
               })()
             : null}
 
           <Figure x={me.x} y={me.y} dir={facing} doing={moment.doing} phase={frame.phase} still={still} thinking={hold !== undefined} scale={1.15} />
+          {map ? <MapFurniture map={map} view={cam} width={W} height={H} /> : null}
         </svg>
 
         {flashItem ? (
@@ -640,6 +743,7 @@ export function DayPlayer({
       </div>
 
       <p className={`${dr.plLine} ${dr.plWhere}`}>{whereText}</p>
+      {map ? <p className={`${ui.muted} ${ui.small}`}>Map data {map.attribution}. The figure follows the mapped footpaths.</p> : null}
       {hereIndoors && !moment.walk ? <Rooms packs={packs} places={places} here={moment.place} /> : null}
         </div>
         <div className={dr.plCol}>

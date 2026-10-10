@@ -2,7 +2,8 @@
 
     python -m lab.controller status [--account LETTER|both] [--probe-port PORT]
     python -m lab.controller quota [--account LETTER|both] [--transactions]
-    python -m lab.controller launch --account LETTER --minutes N [--no-wait] [--timeout S] [--dry-run] [--reason TEXT]
+    python -m lab.controller launch --account LETTER --minutes N [--accelerator NAME] [--resource NAME] [--no-wait]
+                                    [--timeout S] [--dry-run] [--reason TEXT]
     python -m lab.controller stop --account LETTER [--no-wait] [--timeout S] [--reason TEXT]
     python -m lab.controller wait --account LETTER [--timeout S]
     python -m lab.controller keep-alive [--account LETTER|both] [--interval S] [--minutes N]
@@ -29,6 +30,20 @@ as lab/machine/ready.py finds them, and each account lives on the hub at its AUP
 else at $LAB_HUB_URL, else on the DUB hub (lab/hub.py); no key, token or account name is ever printed, logged or
 written to the ledger.
 
+Two ways to launch. AUP_HUB_LAUNCH_<LETTER> picks one per account. `rest` is the call above. `form` is the hub's own
+web page (Hub.spawn_form in lab/hub.py): log in at /hub/native/login with the user name and AUP_HUB_PASS_<LETTER>
+(cookies and the _xsrf token), POST /hub/spawn/<account>?_xsrf=<cookie> with the page's fields (resource_type,
+gpu_selection_<resource_type>, runtime in minutes, repo_url, repo_persist, repo_branch), then the same poll of the API
+until the pod is ready. The SJC hub accepts the REST call and echoes its options but ignores them: the pod comes up as
+the stock singleuser image with no GPU and no ROCm, and only the form gets ghcr.io/amdresearch/auplc-base. `auto`, the
+default, launches by REST as before and, when the account has a password, asks the ready pod which image it runs (a
+small script in a terminal reads JUPYTER_IMAGE_SPEC and /dev/kfd); a pod found to be the stock image is stopped and
+launched again through the form, and a pod that cannot be asked is left as it is and marked image_check unknown.
+--accelerator and --resource name the card and the catalog entry; their defaults are AUP_HUB_GPU_<LETTER> and
+AUP_HUB_RESOURCE_<LETTER>, else r9700 and gpu. The answer and the pod row of a launch say which path was used
+(launch_path) and the accelerator. The password is read like the other keys and is cut out of every answer, error
+and ledger row, as the token is.
+
 Safe to repeat. A launch of a pod that is ready answers already_running and sends nothing; a launch while a
 spawn is pending joins it; a launch while a stop is pending waits for the stop and then launches; the hub's own
 400 "already running" counts as success. A stop of an account with no server answers already_stopped and sends
@@ -54,15 +69,20 @@ read, and run on.
 The ledger. A command writes a row for the call (verbs `controller launch`, `controller stop`, ... through
 @recorded: outcome, start, end, duration) and, where it learned or changed something about a pod, a pod row in the
 words the alert rules read (lab/machine/alerts.py): verbs `pod launch`, `pod stop`, `pod status`, `pod wait`,
-`pod keep-alive`, `pod quota` and `pod run-script`, with node pod-a or pod-b and refs.account. The metrics on them
+`pod keep-alive`, `pod quota` and `pod run-script`, with refs.account and the node. The metrics on them
 are pod.start_s (the launch request to a ready pod) and pod.balance_credits. A script run on a pod also leaves its
-row here, because a pod's own ledger is never read. A ledger that cannot be written never undoes what the hub
+row here, because a pod's own ledger is never read. Nodes are pod roles, not accounts (telemetry ruling 3): pod-a the teacher's pod, pod-b the trainer's, read from
+LAB_POD_ROLES (environment, then the workspace .env; default A:pod-a,B:pod-b, the DUB pair; on SJC
+C:pod-a,D:pod-b). Never pod-c or pod-d. Every pod row's conditions carry `hub` (the host) and `account` (the
+letter), so a row says which hub and which account filled the role. An account with no role in the setting is
+refused (outcome no_pod_role, exit 2) rather than named pod-<letter>. A ledger that cannot be written never undoes what the hub
 did: the answer then carries ledger_error.
 
 Outcomes. launch: running, already_running, launching (--no-wait), refused_quota, refused, timeout, failed, error,
 dry_run. stop: ok, already_stopped, stopping (--no-wait), timeout, error. wait: ready, timeout, not_running, error.
 keep-alive: completed, lost, not_running, unreachable, stopped. run-script: ok, fail, timeout, not_running, error.
-An error carries kind (hub_unreachable, launch_unconfirmed, unexpected_status, terminal_unreachable, ...).
+An error carries kind (hub_unreachable, launch_unconfirmed, unexpected_status, terminal_unreachable, ...). A launch
+through the form also has login_failed, no_credentials (exit 2), xsrf_missing, form_unavailable and spawn_refused.
 """
 from __future__ import annotations
 
@@ -87,7 +107,8 @@ if __package__ in (None, ""):          # started as `python lab/controller.py`: 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from lab import hub as hubs
-from lab.hub import Account, Hub, HubUnreachable, MissingCredentials, Reply, load_accounts, one_line
+from lab.hub import (Account, Hub, HubUnreachable, MissingCredentials, PodRoleError, Reply, hub_of, load_accounts,
+                     one_line)
 from lab.machine import record
 from lab.machine import stop as kill_switch
 from lab.machine.record import recorded
@@ -120,6 +141,11 @@ TERMINAL_OPEN_S = 15.0
 TERMINAL_SETTLE_S = 3.0             # real seconds to wait for the shell to echo a command before moving on
 NOTE_CHARS = 300
 MIN_NAME_CHARS = 4                  # a shorter account name would mangle the text it is cut out of
+IMAGE_CHECK_S = 60.0                # how long a ready pod has to answer the question which image it runs
+STOCK_IMAGE = "jupyterhub/singleuser"   # the name the hub's default image carries: the pod a REST launch gets on SJC
+# What a ready pod is asked: the image KubeSpawner records in its environment and whether the GPU device is there.
+IMAGE_SCRIPT = ('echo "image=${JUPYTER_IMAGE_SPEC:-${JUPYTER_IMAGE:-}}"\n'
+                'if [ -e /dev/kfd ]; then echo "gpu_device=yes"; else echo "gpu_device=no"; fi\n')
 
 QUOTA_DISABLED = "quota disabled on this hub"
 POD_LAUNCH, POD_STOP, POD_STATUS = "pod launch", "pod stop", "pod status"
@@ -291,6 +317,30 @@ class Watch:
         return entry
 
 
+# --- which image a pod runs ---------------------------------------------------------------------
+
+def parse_image_answer(output: str) -> dict[str, Any]:
+    """The image and the GPU device a pod reported when it ran IMAGE_SCRIPT: {image: text or None, gpu_device:
+    True, False or None}. A line that is not one of the two is ignored."""
+    values = {key: value.strip() for key, _, value in (line.partition("=") for line in output.splitlines())
+              if key in ("image", "gpu_device")}
+    return {"image": values.get("image") or None,
+            "gpu_device": {"yes": True, "no": False}.get(values.get("gpu_device", ""))}
+
+
+def image_verdict(image: str | None, gpu_device: bool | None, resource_type: str) -> str:
+    """Whether a pod is the stock image the hub falls back to (stock), the one that was asked for (ok) or cannot
+    be told (unknown). The image name settles it; with no name, a pod without the GPU device is the stock image
+    when the resource is not a cpu one."""
+    if image:
+        return "stock" if STOCK_IMAGE in image.lower() else "ok"
+    if gpu_device is True:
+        return "ok"
+    if gpu_device is False and not resource_type.strip().lower().endswith("cpu"):
+        return "stock"
+    return "unknown"
+
+
 # --- the controller ---------------------------------------------------------------------------
 
 class Controller:
@@ -301,6 +351,8 @@ class Controller:
                  sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.time,
                  poll_s: float = POLL_S, environ: Mapping[str, str] | None = None) -> None:
         self.accounts = dict(accounts)
+        for account in self.accounts.values():
+            account.node        # PodRoleError at once for an account that fills no role
         self.sleep = sleep
         self.clock = clock
         self.poll_s = poll_s
@@ -375,6 +427,8 @@ class Controller:
         for account in self.accounts.values():
             if len(account.token) >= hubs.MIN_HIDDEN_CHARS:
                 text = text.replace(account.token, "***")
+            if account.password and len(account.password) >= hubs.MIN_HIDDEN_CHARS:
+                text = text.replace(account.password, "***")
             if len(account.user) >= MIN_NAME_CHARS:
                 text = text.replace(account.user, f"<account {account.letter}>")
         return text
@@ -429,8 +483,8 @@ class Controller:
         fields: dict[str, Any] = {"node": account.node}
         if metrics and units:
             fields["units"] = {name: unit for name, unit in units.items() if name in metrics}
-        if conditions:
-            fields["conditions"] = dict(conditions)
+        fields["conditions"] = {**(conditions or {}), "hub": hub_of(self._hub(account.letter).base_url),
+                                "account": account.letter}
         if note:
             fields["note"] = one_line(self.scrub(str(note)), NOTE_CHARS)
         try:
@@ -502,14 +556,25 @@ class Controller:
 
     @recorded("controller launch")
     def launch(self, letter: str, minutes: int, *, wait: bool = True, timeout_s: float = LAUNCH_TIMEOUT_S,
-               dry_run: bool = False, resource_type: str = RESOURCE_TYPE, accelerator: str = ACCELERATOR,
+               dry_run: bool = False, resource_type: str | None = None, accelerator: str | None = None,
                reason: str | None = None) -> dict[str, Any]:
-        """Launch the account's pod for `minutes` and wait until it is ready (a no-op when it already runs)."""
+        """Launch the account's pod for `minutes` and wait until it is ready (a no-op when it already runs).
+
+        resource_type and accelerator default to the account's AUP_HUB_RESOURCE_<letter> and AUP_HUB_GPU_<letter>,
+        else gpu and r9700. The account's AUP_HUB_LAUNCH_<letter> says how the hub is asked: rest (the API call),
+        form (the hub's web spawn form) or auto, the default (the API call, then a look at the image the pod runs
+        when the account has a password, and the form if it is the stock one; --no-wait skips the look)."""
         self._guard()
         account = self._account(letter)
         minutes = self._whole_minutes(minutes)
+        resource_type = (account.resource or RESOURCE_TYPE) if resource_type is None else resource_type
+        accelerator = (account.gpu or ACCELERATOR) if accelerator is None else accelerator
         if not accelerator.strip() or accelerator.strip().lower() == "auto":
             raise ValueError("the accelerator is named: auto picks the cheapest card the hub has free, not the R9700")
+        if not resource_type.strip():
+            raise ValueError("the resource is named: gpu is the Basic GPU Environment")
+        mode = self._launch_mode(account)
+        via_form = mode == "form"
         payload = {"runtime_minutes": minutes, "resource_type": resource_type, "gpu_selection": accelerator}
         client = self._hub(letter)
         base: dict[str, Any] = {"command": "launch", "account": letter, "node": account.node,
@@ -534,6 +599,10 @@ class Controller:
             return self._row(answer, POD_LAUNCH, account, metrics=metrics, units={START: "s", BALANCE: "credits"},
                              conditions=conditions, note=note or None)
 
+        if via_form and not account.password:
+            key = hubs.password_key(letter)
+            return finish({"ok": False, "outcome": "refused", "kind": "no_credentials", "missing": [key],
+                           "error": f"the form launch logs in with the account's password and {key} is not set"})
         seen = self._look(letter)
         if not seen.ok:
             return finish(self._trouble(seen))
@@ -566,13 +635,21 @@ class Controller:
                                        "error": (f"the balance of {quota.balance} credits cannot cover {minutes} minutes "
                                                  f"at {rate} credits a minute ({cost}); it covers {most}")})
             if dry_run:
-                return finish({"ok": True, "outcome": "dry_run", "rate": rate, "cost_credits": cost,
-                               "plan": {"method": "POST", "path": client.user_url("/server"), "json": payload}},
+                plan = ({"launch_path": "form", "login": hubs.LOGIN_PATH, "method": "POST", "path": client.spawn_url(),
+                         "form": hubs.spawn_fields(minutes, resource_type, accelerator)} if via_form else
+                        {"method": "POST", "path": client.user_url("/server"), "json": payload})
+                return finish({"ok": True, "outcome": "dry_run", "rate": rate, "cost_credits": cost, "plan": plan},
                               write=False)
 
         posted_at = self.clock()
         post_status: int | None = None
-        if not joined:
+        if not joined and via_form:
+            base["launch_path"] = conditions["launch_path"] = "form"
+            failure = self._submit_form(letter, minutes, resource_type, accelerator)
+            if failure is not None:
+                return finish(failure)
+        elif not joined:
+            base["launch_path"] = conditions["launch_path"] = "rest"
             reply = self._send(letter, "POST", client.user_url("/server"), json=payload, timeout=POST_TIMEOUT_S)
             if reply.status == 400 and "pending stop" in reply.detail().lower():
                 outcome, seen = self._await_gone(letter, STOP_TIMEOUT_S)
@@ -609,9 +686,20 @@ class Controller:
             return finish({"ok": True, "outcome": "launching", **extra,
                            "server": view_of(seen.server, seen.now or self._now())})
         outcome, seen = self._await_ready(letter, timeout_s, posted_at)
+        ready_s = self.clock()                  # the start time stops here, before the pod is asked which image it runs
+        if outcome == "ready" and mode == "auto" and account.password and base.get("launch_path") == "rest":
+            checked, failure, outcome, seen = self._vet_rest_pod(letter, minutes, resource_type, accelerator, timeout_s,
+                                                                 seen)
+            base.update(checked)
+            if "fell_back_from" in checked:
+                base["launch_path"] = conditions["launch_path"] = "form"
+                conditions["fell_back_from"] = checked["fell_back_from"]
+                ready_s = self.clock()          # the pod that counts is the one the form started
+            if failure is not None:
+                return finish(failure)
         view = view_of(seen.server, seen.now or self._now())
         if outcome == "ready":
-            start_s = None if joined else round(self.clock() - posted_at, 3)
+            start_s = None if joined else round(ready_s - posted_at, 3)
             answer = {"ok": True, "outcome": "running", **extra, "server": view}
             if start_s is not None:
                 answer["start_s"] = start_s
@@ -622,6 +710,111 @@ class Controller:
         reason_text = ("the server left the hub's list while launching: the spawn failed or was cancelled"
                        if outcome == "vanished" else "the server was stopped while launching")
         return finish({"ok": False, "outcome": "failed", "kind": outcome, **extra, "server": view, "error": reason_text})
+
+    @staticmethod
+    def _launch_mode(account: Account) -> str:
+        """How the account is launched: form, rest or auto (AUP_HUB_LAUNCH_<letter>; auto when it is not set)."""
+        mode = (account.launch or "auto").strip().lower()
+        if mode not in hubs.LAUNCH_MODES:
+            raise ValueError(f"AUP_HUB_LAUNCH_{account.letter} is {account.launch!r}: use one of "
+                             f"{', '.join(hubs.LAUNCH_MODES)}")
+        return mode
+
+    def _submit_form(self, letter: str, minutes: int, resource_type: str, accelerator: str) -> dict[str, Any] | None:
+        """Ask the hub for the pod through its web spawn form. None when the hub accepted the spawn (the caller then
+        waits for the pod); else the answer that says why not. A spawn the hub answered badly is never sent again:
+        the state is read back, as for the REST call."""
+        result = self._hub(letter).spawn_form(minutes, resource_type, accelerator)
+        if result.ok:
+            return None
+        error = self.scrub(result.error or f"the {result.stage} step failed")
+        answer: dict[str, Any] = {
+            "ok": False, "outcome": "refused" if result.kind in ("login_failed", "spawn_refused") else "error",
+            "kind": "hub_unreachable" if result.kind == "no_answer" else result.kind, "stage": result.stage,
+            "status": result.status, "error": error}
+        if result.stage == "spawn" and (result.status == NO_ANSWER or result.status >= 500):
+            seen = self._confirm_started(letter)
+            if seen.ok and seen.server is not None:
+                return None
+            answer.update(outcome="error", kind="launch_unconfirmed",
+                          error=f"the form launch got no usable answer ({error}) and no server appeared; it was not "
+                                "sent again")
+        return answer
+
+    def _shell_on_pod(self, letter: str, stem: str, text: str, timeout_s: float) -> tuple[str | None, str | None]:
+        """Run a shell script on the ready pod in a terminal, the way run-script does, and wait for it to end.
+
+        The script and its output are files in the Jupyter root (lab_<stem>_<id>.sh and .out); the output is read
+        back until the line `### END rc=<code>` that the command appends. Returns (the output, None), or (None, why
+        it could not be run or did not end)."""
+        client = self._hub(letter)
+        run_id = f"{self._now():%Y%m%d-%H%M%S}-{secrets.token_hex(2)}"
+        remote, out = f"lab_{stem}_{run_id}.sh", f"lab_{stem}_{run_id}.out"
+        for name, content in ((remote, text), (out, "")):
+            reply = self._send(letter, "PUT", client.pod_url(f"/api/contents/{name}"),
+                               json={"type": "file", "format": "text", "content": content}, timeout=120)
+            if reply.status not in (200, 201):
+                return None, f"could not upload {name}: {self._failure_text(reply)}"
+        terminal = self._send(letter, "POST", client.pod_url("/api/terminals"), json={})
+        name = terminal.body.get("name") if terminal.ok and isinstance(terminal.body, Mapping) else None
+        if not isinstance(name, str):
+            return None, f"could not open a terminal: {self._failure_text(terminal)}"
+        command = f"bash ./{remote} > ./{out} 2>&1; echo \"{END_MARKER} rc=$?\" >> ./{out}"
+        try:
+            self._type_into_terminal(client, name, command, remote)
+        except HubUnreachable as exc:
+            return None, self.scrub(str(exc))
+        deadline = self.clock() + timeout_s
+        output = ""
+        while True:
+            reply = self._send(letter, "GET", client.pod_url(f"/api/contents/{out}"),
+                               params={"content": "1", "format": "text"})
+            if reply.ok and isinstance(reply.body, Mapping) and isinstance(reply.body.get("content"), str):
+                output = reply.body["content"]
+            if re.search(rf"^{re.escape(END_MARKER)} rc=-?\d+[ \t]*$", output, re.MULTILINE):
+                return self.scrub(output), None
+            if self.clock() >= deadline:
+                return None, f"the script did not end within {timeout_s:g} s"
+            self.sleep(self.poll_s)
+
+    def _vet_rest_pod(self, letter: str, minutes: int, resource_type: str, accelerator: str, timeout_s: float,
+                      seen: Seen) -> tuple[dict[str, Any], dict[str, Any] | None, str, Seen]:
+        """Ask a pod the REST launch brought up which image it runs, and replace it by a form launch if it is the
+        stock one, which has no GPU and is no use.
+
+        Returns what to add to the answer (image_check ok, stock or unknown with the image or the reason; for a
+        stock pod rest_pod_image and, once the form is tried, fell_back_from), the failed answer when the swap
+        failed (None otherwise), and the outcome and last read of the wait for the pod: those it was given when the
+        pod stays, those of the form launch when it was replaced. A pod that cannot be asked is left alone."""
+        output, error = self._shell_on_pod(letter, "image", IMAGE_SCRIPT, IMAGE_CHECK_S)
+        asked = parse_image_answer(output) if output is not None else {}
+        verdict = image_verdict(asked.get("image"), asked.get("gpu_device"), resource_type)
+        checked: dict[str, Any] = {"image_check": verdict}
+        if asked.get("image"):
+            checked["rest_pod_image" if verdict == "stock" else "pod_image"] = asked["image"]
+        if error:
+            checked["image_check_note"] = one_line(self.scrub(error), NOTE_CHARS)
+        elif verdict == "unknown":
+            checked["image_check_note"] = "the pod named no image and showed no GPU device either way"
+        if verdict != "stock":
+            return checked, None, "ready", seen
+        reply = self._send(letter, "DELETE", self._hub(letter).user_url("/server"))
+        if reply.status not in (202, 204):
+            return checked, {"ok": False, "outcome": "error", "kind": "stock_pod_not_stopped", "status": reply.status,
+                             "error": ("the pod runs the stock image and could not be stopped to launch it again: "
+                                       + self._failure_text(reply))}, "ready", seen
+        gone, seen = self._await_gone(letter, STOP_TIMEOUT_S)
+        if gone != "gone":
+            return checked, {"ok": False, "outcome": "timeout", "kind": "stop_pending",
+                             "error": "the stock pod is still stopping; the form launch was not sent"}, "ready", seen
+        checked["fell_back_from"] = "rest"
+        failure = self._submit_form(letter, minutes, resource_type, accelerator)
+        if failure is not None:
+            failure["error"] = ("the REST launch gave the stock image, which was stopped; the launch through the form "
+                                f"then failed: {failure['error']}")
+            return checked, failure, "failed", seen
+        outcome, seen = self._await_ready(letter, timeout_s, self.clock())
+        return checked, None, outcome, seen
 
     # --- stop -------------------------------------------------------------------------------
 
@@ -916,16 +1109,22 @@ class Controller:
 
     @recorded("controller run-script")
     def run_script(self, letter: str, script: str | Path, *, args: Sequence[str] = (), timeout_s: float = SCRIPT_TIMEOUT_S,
-                   run_id: str | None = None, poll_s: float = SCRIPT_POLL_S) -> dict[str, Any]:
+                   run_id: str | None = None, poll_s: float = SCRIPT_POLL_S,
+                   files: Sequence[str | Path] = ()) -> dict[str, Any]:
         """Upload a shell script to the pod, run it in a terminal there and wait for its exit code.
 
         The pod must be ready. The script and its output live in the Jupyter root (`lab_run_<id>.sh`, `.out`); the
         output is read back through the contents API until the line `### END rc=<code>` that this command appends. A
-        script that starts something that must outlive its terminal starts it with nohup, as the pod scripts do."""
+        script that starts something that must outlive its terminal starts it with nohup, as the pod scripts do.
+        `files` are text files uploaded first, under their own names next to the script, for a script that needs
+        them (lab/pod_power.sh runs lab/pod_power.py)."""
         self._guard()
         account = self._account(letter)
         path = Path(script)
         text = path.read_text(encoding="utf-8").replace("\r\n", "\n")
+        extra = [(Path(f).name, Path(f).read_text(encoding="utf-8").replace("\r\n", "\n")) for f in files]
+        if len({name for name, _ in extra}) != len(extra):
+            raise ValueError("two files to upload have the same name")
         run_id = run_id or f"{self._now():%Y%m%d-%H%M%S}-{secrets.token_hex(2)}"
         remote, out = f"lab_run_{run_id}.sh", f"lab_run_{run_id}.out"
         client = self._hub(letter)
@@ -936,6 +1135,8 @@ class Controller:
         def finish(answer: dict[str, Any]) -> dict[str, Any]:
             answer = {**base, "seconds": round(self.clock() - started, 3), **answer}
             conditions = {"script": path.name, "exit_code": answer["exit_code"], "seconds": answer["seconds"]}
+            if extra:
+                conditions["with"] = [name for name, _ in extra]
             return self._row(answer, POD_RUN_SCRIPT, account, conditions=conditions, note=answer.get("error"),
                              refs={"run_id": run_id})
 
@@ -944,7 +1145,7 @@ class Controller:
             return finish(self._trouble(seen))
         if seen.server is None or not seen.server.up:
             return finish({"ok": False, "outcome": "not_running", "error": "the pod is not ready"})
-        for name, content in ((remote, text), (out, "")):
+        for name, content in (*extra, (remote, text), (out, "")):
             reply = self._send(letter, "PUT", client.pod_url(f"/api/contents/{name}"),
                                json={"type": "file", "format": "text", "content": content}, timeout=120)
             if reply.status not in (200, 201):
@@ -1033,6 +1234,14 @@ def _positive_int(text: str) -> int:
     return value
 
 
+def _catalog_name(text: str) -> str:
+    """A name from the hub's catalog (a resource or an accelerator): not empty, and not auto, which picks a card."""
+    name = text.strip()
+    if not name or name.lower() == "auto":
+        raise argparse.ArgumentTypeError("name one: auto picks the cheapest card the hub has free, not the one you want")
+    return name
+
+
 def _seconds(low: float, high: float | None = None) -> Callable[[str], float]:
     def parse(text: str) -> float:
         try:
@@ -1067,6 +1276,10 @@ def build_parser() -> argparse.ArgumentParser:
     launch = commands.add_parser("launch", help="launch the pod and wait until it is ready")
     with_accounts(launch, required=True)
     launch.add_argument("--minutes", required=True, type=_positive_int, help="runtime in minutes; the hub sets no ceiling")
+    launch.add_argument("--accelerator", type=_catalog_name,
+                        help=f"the card to ask for (default: AUP_HUB_GPU_<account>, else {ACCELERATOR})")
+    launch.add_argument("--resource", type=_catalog_name,
+                        help=f"the catalog resource (default: AUP_HUB_RESOURCE_<account>, else {RESOURCE_TYPE})")
     launch.add_argument("--no-wait", action="store_true", help="return when the hub accepts the launch")
     launch.add_argument("--timeout", type=_seconds(1), default=LAUNCH_TIMEOUT_S, help="seconds to wait for ready")
     launch.add_argument("--dry-run", action="store_true", help="check the balance and show the request; send nothing")
@@ -1093,6 +1306,8 @@ def build_parser() -> argparse.ArgumentParser:
     script.add_argument("script", help="a local shell script")
     script.add_argument("script_args", nargs=argparse.REMAINDER, help="arguments for the script")
     script.add_argument("--timeout", type=_seconds(1), default=SCRIPT_TIMEOUT_S, help="seconds to wait for the exit code")
+    script.add_argument("--with", dest="files", action="append", default=[], metavar="FILE",
+                        help="a text file to upload next to the script first (repeat for more)")
     return parser
 
 
@@ -1104,11 +1319,12 @@ HANDLERS: dict[str, Callable[[Controller, argparse.Namespace], dict[str, Any]]] 
     "status": lambda c, a: c.status(_letters_of(a), probe_port=a.probe_port),
     "quota": lambda c, a: c.quota(_letters_of(a), transactions=a.transactions),
     "launch": lambda c, a: c.launch(a.account, a.minutes, wait=not a.no_wait, timeout_s=a.timeout, dry_run=a.dry_run,
-                                    reason=a.reason),
+                                    resource_type=a.resource, accelerator=a.accelerator, reason=a.reason),
     "stop": lambda c, a: c.stop(a.account, wait=not a.no_wait, timeout_s=a.timeout, reason=a.reason),
     "wait": lambda c, a: c.wait_ready(a.account, timeout_s=a.timeout),
     "keep-alive": lambda c, a: c.keep_alive(_letters_of(a), interval_s=a.interval, minutes=a.minutes),
-    "run-script": lambda c, a: c.run_script(a.account, a.script, args=a.script_args, timeout_s=a.timeout),
+    "run-script": lambda c, a: c.run_script(a.account, a.script, args=a.script_args, timeout_s=a.timeout,
+                                            files=a.files),
 }
 
 
@@ -1120,7 +1336,9 @@ def run(argv: Sequence[str], *, environ: Mapping[str, str] | None = None, env_fi
     args = build_parser().parse_args(list(argv))
     environ = os.environ if environ is None else environ
     try:
-        accounts = load_accounts(_letters_of(args), environ=environ, env_files=env_files)
+        accounts = load_accounts(_letters_of(args), environ=environ, env_files=env_files, require_role=True)
+    except PodRoleError as exc:
+        return ({"ok": False, "command": args.command, "outcome": "no_pod_role", "error": str(exc)}, 2)
     except MissingCredentials as exc:
         return ({"ok": False, "command": args.command, "outcome": "no_credentials", "missing": exc.missing,
                  "error": "keys missing from the environment and the .env files",
@@ -1134,6 +1352,8 @@ def run(argv: Sequence[str], *, environ: Mapping[str, str] | None = None, env_fi
             answer = {"ok": False, "command": args.command, "outcome": "stopped", "reason": exc.reason,
                       "file": str(kill_switch.stop_file())}
         answer = {key: value for key, value in answer.items() if key != "refs"}
+    if answer.get("kind") == "no_credentials":
+        return answer, 2
     return answer, 0 if answer.get("ok", True) else 1
 
 

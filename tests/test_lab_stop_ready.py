@@ -4,6 +4,7 @@ Every test gets its own state dir and sees no real secrets, no .env file and no 
 credentials are fake and the hub is a stand-in HTTP server on 127.0.0.1.
 """
 
+import http.client
 import json
 import os
 import re
@@ -819,6 +820,67 @@ def test_errors_from_the_transport_never_echo_a_credential():
     result = ready.check(environ=dict(SECRETS), env_files=[], fetch=leaky)
 
     assert result["checks"]["hub"]["accounts"]["A"] == {"ok": False, "error": "OSError: reset while talking to *** with ***"}
+    assert_no_secret_values(json.dumps(result))
+
+
+# A token sourced from a CRLF .env reaches the check with a CR or LF on its end, or a hand-typed one with spaces
+# around it. The text the check then has to clean spells the token bare, or with the line break escaped the way
+# http.client's "Invalid header value" does, so hiding only the exact text it was given leaves the token showing.
+TOKEN = SECRETS["AUP_HUB_TOKEN_A"]
+LINE_BREAKS = {"cr": "\r", "lf": "\n", "crlf": "\r\n"}
+PADDED = {**{name: TOKEN + ending for name, ending in LINE_BREAKS.items()}, "spaces": "  " + TOKEN + "  "}
+
+
+def send_through_http_client(url, headers, timeout):
+    """A fetch that puts the headers through the real http.client, which refuses a value ending in a line break."""
+    connection = http.client.HTTPConnection("hub.invalid")
+    connection.putrequest("GET", "/")
+    for name, value in headers.items():
+        connection.putheader(name, value)
+    return 200, {}
+
+
+@pytest.mark.parametrize("padded", PADDED.values(), ids=PADDED.keys())
+def test_scrub_hides_a_padded_secret_from_a_message_that_spells_it_stripped(padded):
+    message = f"the hub refused Authorization: token {TOKEN} for this call"
+
+    assert ready.scrub(message, [padded]) == "the hub refused Authorization: token *** for this call"
+
+
+@pytest.mark.parametrize("padded", PADDED.values(), ids=PADDED.keys())
+def test_scrub_still_hides_a_padded_secret_spelled_exactly_as_given(padded):
+    assert ready.scrub(f"echoed {padded}back", [padded]) == "echoed ***back"
+
+
+@pytest.mark.parametrize("blank", ["", " ", "   ", "\r\n"], ids=["empty", "space", "spaces", "crlf"])
+def test_scrub_leaves_the_text_alone_for_a_secret_that_is_blank(blank):
+    assert ready.scrub("two words,   a gap\r\n", [blank]) == "two words,   a gap\r\n"
+
+
+def test_scrub_skips_a_blank_secret_and_still_hides_the_others():
+    assert ready.scrub(f"token {TOKEN} ok", ["", TOKEN, "  "]) == "token *** ok"
+
+
+@pytest.mark.parametrize("ending", LINE_BREAKS.values(), ids=LINE_BREAKS.keys())
+def test_a_token_ending_in_a_line_break_is_hidden_from_the_error_http_client_raises(ending):
+    environ = dict(SECRETS, AUP_HUB_TOKEN_A=TOKEN + ending)
+
+    result = ready.check(environ=environ, env_files=[], fetch=send_through_http_client)
+
+    escaped = repr(ending)[1:-1]  # the two characters backslash and r, not the CR itself
+    accounts = result["checks"]["hub"]["accounts"]
+    assert accounts["A"] == {"ok": False, "error": f"ValueError: Invalid header value b'token ***{escaped}'"}
+    assert accounts["B"] == {"ok": True, "status": 200}
+    assert_no_secret_values(json.dumps(result))
+
+
+def test_a_token_with_spaces_around_it_is_hidden_from_an_error_that_spells_it_bare():
+    def echoes_the_token_bare(url, headers, timeout):
+        raise OSError(f"the hub said no to token {TOKEN}")
+
+    result = ready.check(environ=dict(SECRETS, AUP_HUB_TOKEN_A=f"  {TOKEN}  "), env_files=[], fetch=echoes_the_token_bare)
+
+    assert result["checks"]["hub"]["accounts"]["A"] == {"ok": False, "error": "OSError: the hub said no to token ***"}
     assert_no_secret_values(json.dumps(result))
 
 

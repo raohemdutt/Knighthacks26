@@ -1,0 +1,14 @@
+GPU: 0
+    ASIC:
+        MARKET_NAME: AMD Radeon 8060S
+        VENDOR_ID: 0x1002
+        VENDOR_NAME: Advanced Micro Devices Inc. [AMD/ATI]
+        SUBVENDOR_ID: 0x1002
+        DEVICE_ID: 0x1586
+        SUBSYSTEM_ID: 0x0000
+        REV_ID: 0xc1
+        ASIC_SERIAL: 0x00000000FAKE0001
+        OAM_ID: N/A
+        NUM_COMPUTE_UNITS: 40
+        TARGET_GRAPHICS_VERSION: gfx1151
+

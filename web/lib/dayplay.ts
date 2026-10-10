@@ -10,13 +10,16 @@
  * Three things the API does not say, and what the playback does instead:
  *  - WHEN a disruption becomes known. It is revealed at the first moment the
  *    calm day and the disrupted day differ (`splitAt`).
- *  - The walkway graph. /api/places returns no edges, so the network drawn on
- *    the map is the set of place-to-place hops seen in the routes the box sent
- *    (the day's legs and every option on the board).
+ *  - The walkway graph. On a pack with a drawn map (lib/campusmap.ts) the map
+ *    itself shows the footpaths and each leg carries the line it was walked
+ *    along (`path`), so the figure follows the real paths at a pace set by the
+ *    distance. On a hand-made pack /api/places returns no edges, so the network
+ *    drawn is the set of place-to-place hops seen in the routes the box sent.
  *  - The low-energy line. `ENERGY_LOW` repeats config/dayrun.yaml stars.energy_floor.
  */
 
 import type { Board, Change, Disruption, FriendAt, HardResult, MoveOption, PlannedBlock, Rejected, RouteTaken, SimResult, Tick } from "./api";
+import type { CampusMap } from "./campusmap";
 import { clock, minutes, ms, parentPlace, placeName, type PlaceIndex } from "./dayrun";
 
 export const ENERGY_LOW = 25;
@@ -30,17 +33,25 @@ export interface Pt {
 // ---------- the world: places with coordinates, in one flat plane ----------
 
 export interface World {
-  /** Located places by "pack.place", in world units (the longer side of the campus is 1000). */
+  /** Located places by "pack.place", in world units: metres on a drawn map, else the longer side of the campus is 1000. */
   at: Map<string, Pt>;
+  /** Latitude and longitude to world units, when the world is a drawn map. */
+  project?: (lat: number, lon: number) => Pt;
   /** A place's own point, or the point of the campus place that leads into its pack (a room -> its dorm). */
   resolve: (ref: string) => Pt | undefined;
   /** True when the place itself has no coordinates (a room). */
   indoors: (ref: string) => boolean;
 }
 
-export function buildWorld(places: PlaceIndex): World {
+export function buildWorld(places: PlaceIndex, map?: CampusMap | null): World {
   const located = [...places.values()].filter((p) => typeof p.lat === "number" && typeof p.lon === "number");
   const at = new Map<string, Pt>();
+  if (map) {
+    // The drawn map's own plane, so places, paths and buildings line up.
+    for (const p of located) at.set(p.ref, map.project(p.lat as number, p.lon as number));
+    const resolveOnMap = (ref: string) => at.get(ref) ?? at.get(parentPlace(places, ref)?.ref ?? "");
+    return { at, project: map.project, resolve: resolveOnMap, indoors: (ref) => !at.has(ref) };
+  }
   if (located.length > 0) {
     // Equirectangular around the middle latitude, as on the campus map: fine at this scale.
     const lats = located.map((p) => p.lat as number);
@@ -81,6 +92,30 @@ export interface Hop {
   minutes: number;
   indoors: boolean;
   m0: number; // minutes walked when this hop starts
+  /** The line walked from `a` to `b`: the real path when the box sent one, else the two ends. */
+  line: Pt[];
+  /** Distance along `line` at each of its points. */
+  cum: number[];
+}
+
+const measure = (line: Pt[]): number[] => {
+  const cum = [0];
+  for (let i = 1; i < line.length; i++) cum.push((cum[i - 1] as number) + Math.hypot((line[i] as Pt).x - (line[i - 1] as Pt).x, (line[i] as Pt).y - (line[i - 1] as Pt).y));
+  return cum;
+};
+
+/** The point `g` (0..1) of the way along a hop's line by distance, and which way it is heading there. */
+function alongHop(hop: Hop, g: number): { pt: Pt; dx: number; dy: number; seg: number } {
+  const total = hop.cum[hop.cum.length - 1] ?? 0;
+  if (hop.line.length < 2 || total <= 0) return { pt: hop.b, dx: hop.b.x - hop.a.x, dy: hop.b.y - hop.a.y, seg: 0 };
+  const d = Math.max(0, Math.min(1, g)) * total;
+  let i = 1;
+  while (i < hop.line.length - 1 && (hop.cum[i] as number) < d) i++;
+  const p = hop.line[i - 1] as Pt;
+  const q = hop.line[i] as Pt;
+  const len = (hop.cum[i] as number) - (hop.cum[i - 1] as number);
+  const f = len > 0 ? (d - (hop.cum[i - 1] as number)) / len : 1;
+  return { pt: { x: p.x + (q.x - p.x) * f, y: p.y + (q.y - p.y) * f }, dx: q.x - p.x, dy: q.y - p.y, seg: i };
 }
 
 export interface Walk {
@@ -122,12 +157,14 @@ export function buildScript(result: SimResult, world: World, places: PlaceIndex)
       if (leg.route !== route.index) continue;
       const a = world.resolve(leg.from) ?? last;
       const b = world.resolve(leg.to) ?? a;
-      hops.push({ from: leg.from, to: leg.to, a, b, minutes: leg.minutes, indoors: leg.from_xy === null || leg.to_xy === null, m0 });
+      const project = world.project;
+      const line = project && leg.path && leg.path.length > 1 ? leg.path.map(([lat, lon]) => project(lat, lon)) : [a, b];
+      hops.push({ from: leg.from, to: leg.to, a, b, minutes: leg.minutes, indoors: leg.from_xy === null || leg.to_xy === null, m0, line, cum: measure(line) });
       m0 += leg.minutes;
       last = b;
     }
     const points: Pt[] = [];
-    for (const h of hops) for (const p of [h.a, h.b]) if (!points.length || Math.hypot(p.x - (points[points.length - 1] as Pt).x, p.y - (points[points.length - 1] as Pt).y) > 0.5) points.push(p);
+    for (const h of hops) for (const p of h.line) if (!points.length || Math.hypot(p.x - (points[points.length - 1] as Pt).x, p.y - (points[points.length - 1] as Pt).y) > 0.5) points.push(p);
     walks.push({ route, t0: ms(route.depart), t1: Math.max(ms(route.arrive), ms(route.depart) + 1), hops, total: m0, points, names: route.places.map((p) => placeName(places, p)) });
   }
   const spans = result.blocks.map((block) => ({ block, s: ms(block.start), e: ms(block.end) })).sort((a, b) => a.s - b.s);
@@ -149,7 +186,8 @@ export function alongWalk(walk: Walk, f: number): { pt: Pt; hop: Hop | undefined
   }
   const hop = walk.hops[index] as Hop;
   const g = hop.minutes > 0 ? Math.max(0, Math.min(1, (m - hop.m0) / hop.minutes)) : 1;
-  return { pt: { x: hop.a.x + (hop.b.x - hop.a.x) * g, y: hop.a.y + (hop.b.y - hop.a.y) * g }, hop, index, dx: hop.b.x - hop.a.x, dy: hop.b.y - hop.a.y };
+  const here = alongHop(hop, g); // along the real path, so the pace follows the distance
+  return { pt: here.pt, hop, index, dx: here.dx, dy: here.dy };
 }
 
 /** The part of a walk's outdoor polyline covered when `f` of it is done. */
@@ -160,12 +198,13 @@ export function walkedPoints(walk: Walk, f: number): Pt[] {
     const q = out[out.length - 1];
     if (!q || Math.hypot(p.x - q.x, p.y - q.y) > 0.5) out.push(p);
   };
-  for (let i = 0; i < here.index; i++) {
-    const h = walk.hops[i] as Hop;
-    push(h.a);
-    push(h.b);
+  for (let i = 0; i < here.index; i++) for (const p of (walk.hops[i] as Hop).line) push(p);
+  if (here.hop) {
+    const m = Math.max(0, Math.min(1, f)) * walk.total;
+    const g = here.hop.minutes > 0 ? Math.max(0, Math.min(1, (m - here.hop.m0) / here.hop.minutes)) : 1;
+    const upTo = alongHop(here.hop, g).seg;
+    for (let i = 0; i < Math.max(1, upTo); i++) push(here.hop.line[i] as Pt);
   }
-  if (here.hop) push(here.hop.a);
   push(here.pt);
   return out;
 }
@@ -247,7 +286,8 @@ export interface Hold {
   seconds: number;
   walk?: Walk;
   rejected?: Rejected;
-  ghost?: { points: Pt[]; names: string[]; option: MoveOption };
+  /** `refs` are the places the tried route runs through, there and on (or back), for drawing it along real paths. */
+  ghost?: { points: Pt[]; names: string[]; option: MoveOption; refs: string[] };
 }
 
 export interface FeedItem {
@@ -384,7 +424,8 @@ export function buildShow(args: { result: SimResult; hard: HardResult | null; wo
       const onward = slot?.to_place ? world.resolve(slot.to_place) : undefined;
       const round = slot?.to_place === option.route[0];
       const points = round ? [...there, ...there.slice(0, -1).reverse()] : onward ? [...there, onward] : there;
-      if (points.length > 1) ghost = { points, names: option.route.map((ref) => placeName(places, ref)), option };
+      const refs = round ? [...option.route, ...option.route.slice(0, -1).reverse()] : slot?.to_place ? [...option.route, slot.to_place] : option.route;
+      if (points.length > 1) ghost = { points, names: option.route.map((ref) => placeName(places, ref)), option, refs };
     }
     holds.push({ kind: "reject", t, seconds: 4.2, rejected: r, ghost });
     feed.push({ t, tone: "bad", text: `Rejected: ${r.reason}`, place: r.move.place ?? undefined });

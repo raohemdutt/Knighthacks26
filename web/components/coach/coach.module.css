@@ -1,0 +1,86 @@
+/* "Was that right?" under a break. Tokens come from app/globals.css. */
+
+.break {
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+
+.break p {
+  margin: 0;
+}
+
+.breakHead {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.thumb {
+  width: 84px;
+  flex: none;
+}
+
+/* the "No frame stored" placeholder has to fit a thumbnail this small */
+.thumb span {
+  font-size: 11px;
+  line-height: 1.15;
+}
+
+.thumb svg {
+  width: 20px;
+  height: 20px;
+}
+
+.question {
+  font-weight: 650;
+  margin-bottom: 8px !important;
+}
+
+.answered {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.other {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.other input {
+  flex: 1;
+  min-width: 0;
+}
+
+.learning {
+  margin-top: 10px !important;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  border-left: 4px solid var(--accent);
+}
+
+.precision {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 12px;
+  align-items: center;
+}
+
+.track {
+  grid-column: 1 / -1;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.fill {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--accent);
+}

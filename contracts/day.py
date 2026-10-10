@@ -169,6 +169,19 @@ class CoachBreak(BaseModel):
     evidence: list[CoachEvidence] = []
 
 
+class SessionExpression(BaseModel):
+    """How the person at the desk looked across a block, added up from `perception.expression.observed` (only for an
+    enrolled member who switched "read my expressions" on). Apparent expression is a noisy reading of a face's shape:
+    "looked strained" is not an emotion and nothing about health."""
+
+    samples: int  # counted looks inside the block
+    strained_share: float  # the fraction of them that looked angry, disgusted, fearful or sad
+    rose_after_minutes: int | None = None  # minutes into the block after which they looked more strained, when that showed
+    before_share: float | None = None  # the strained fraction before that mark
+    after_share: float | None = None  # ... and after it
+    text: str = ""  # "You looked more strained after the 35-minute mark; a break around then next time."
+
+
 class SessionReview(BaseModel):
     """One planned block of the main activity, measured. `measured` False means the box could not see it
     (a block away from the box): every number is then None, never zero."""
@@ -189,6 +202,7 @@ class SessionReview(BaseModel):
     longest_stretch_start: datetime | None = None
     breaks: list[CoachBreak] = []
     text: str = ""  # planned against done, the moments that cost the most, what worked
+    expression: SessionExpression | None = None  # only when enough looks were counted in the block; None otherwise
 
 
 class CoachCalibration(BaseModel):
@@ -279,3 +293,26 @@ class DayNarrated(TypedEvent):
     engine: Literal["template", "model"] = "template"
     facts_hash: str
     urgent: bool = False  # a "now" worth saying aloud unasked: leave now, late, you will miss it
+
+
+# --- the coach's feedback loop (contexts/day/application/coach_feedback.py): additive ---
+
+CoachAnswer = Literal["chat", "phone", "door", "food", "bathroom", "done", "other", "none"]
+
+
+@register
+class DayCoachCorrected(TypedEvent):
+    """The person answered "Was that right?" about one break. `right` True confirms the coach's guess;
+    False carries what it really was. The latest answer for a break wins. Ids and times only: the picture
+    behind a break is looked up in Memory when a teach task is proposed, never stored here."""
+
+    type: Literal["day.coach.corrected"] = "day.coach.corrected"
+    day: date
+    block_id: str
+    break_index: int  # position in the session's breaks, 0 first
+    break_start: datetime  # when the person left the desk: what identifies the break if the list shifts
+    guess: Trigger  # what the coach said
+    right: bool
+    answer: CoachAnswer  # the person's reason; equals `guess` when `right`
+    note: str | None = None  # free text, for "something else"
+    plan_id: str | None = None

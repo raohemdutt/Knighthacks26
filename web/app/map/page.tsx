@@ -4,11 +4,13 @@ import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import dr from "@/components/dayrun/dayrun.module.css";
 import { Keyframe } from "@/components/Keyframe";
+import { TwinStage } from "@/components/map/TwinStage";
 import { Empty, ErrorBox, Loading } from "@/components/States";
 import ui from "@/components/ui.module.css";
 import { ApiError, api, type PlayRoute, type Sighting } from "@/lib/api";
 import { cameraName, dayTime, humanize, relative } from "@/lib/format";
 import { CAMERAS, SORT_ITEMS, WATCH_ITEMS, cameraOfZone, placePins, routePoints, type Point, type RoomPin } from "@/lib/room";
+import { useRoomTwin, useTwinPins } from "@/lib/roomTwin";
 import { useFetch } from "@/lib/useFetch";
 
 /**
@@ -25,6 +27,11 @@ import { useFetch } from "@/lib/useFetch";
  *    a text position, never coordinates. Pins sit inside their zone, on a grid when
  *    several share it; each has a number, and the list under the map names them.
  *  - The route is the existing GET /api/play/route, drawn in the bin camera's view.
+ *
+ * The 3D view is the room twin (components/map/RoomTwin.tsx) when the box has a room plan (config/rooms/<name>.yaml,
+ * GET /api/room): one furnished room in metres, with the cameras' tracks projected onto its floor through each
+ * camera's calibration, pins at the projected last-seen point, and the Sort It route planned in room space. Without
+ * a plan the older per-camera panels (Room3D) are shown instead.
  */
 
 // three.js lives in this chunk only, fetched when the 3D view is opened.
@@ -62,6 +69,9 @@ export default function RoomMapPage() {
   const [sort, setSort] = useState<string | null>(null);
   const seen = useFetch(loadSightings);
   const route = useFetch<PlayRoute | null>((s) => (sort ? api.playRoute(sort, s) : Promise.resolve(null)), sort ?? "");
+  const twin = useRoomTwin(view === "3d");
+  const twinPins = useTwinPins(view === "3d" ? twin.plan : null, twin.live);
+  const twinOn = view === "3d" && twin.plan !== null; // the box has a floor plan: one room, not a panel per camera
 
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
@@ -104,8 +114,20 @@ export default function RoomMapPage() {
           </div>
 
           <div className={ui.card}>
-            {view === "2d" ? <Room2D pins={pins} selected={selected} route={drawn} onPick={setItem} /> : <Room3D cameras={CAMERAS} pins={pins} selected={selected} route={drawn} />}
-            {pins.length > 0 ? (
+            {view === "2d" ? (
+              <Room2D pins={pins} selected={selected} route={drawn} onPick={setItem} />
+            ) : twinOn ? (
+              <TwinStage twin={twin} pins={twinPins} previewItem={sort} controls picked={item} onPick={setItem} />
+            ) : (
+              <Room3D cameras={CAMERAS} pins={pins} selected={selected} route={drawn} />
+            )}
+            {twinOn ? (
+              <p className={`${ui.muted} ${ui.small}`}>
+                The room is drawn from its floor plan, in metres. People and things stand where each camera&apos;s calibration puts the bottom of their box on the floor; a pin stands where its
+                item was last projected, or inside its zone when the box only knows the zone.
+              </p>
+            ) : null}
+            {twinOn ? null : pins.length > 0 ? (
               <ol className={dr.pinList} aria-label="What each numbered pin is">
                 {pins.map((p) => (
                   <li key={p.label}>
@@ -123,7 +145,7 @@ export default function RoomMapPage() {
                 ))}
               </ol>
             ) : null}
-            <p className={dr.legend}>
+            <p className={dr.legend} hidden={twinOn}>
               <span>
                 <span className={dr.pinKey} aria-hidden="true" />a numbered pin is an item, placed inside its zone, not at its exact spot
               </span>
@@ -134,7 +156,7 @@ export default function RoomMapPage() {
                 </span>
               ) : null}
             </p>
-            <p className={`${ui.muted} ${ui.small}`}>
+            <p className={`${ui.muted} ${ui.small}`} hidden={twinOn}>
               Each panel is one camera&apos;s own view, with its zones where they sit in the picture. The box has no floor plan, so the panels are side by side rather than joined into one room
               {view === "3d" ? ", and the heights are only there to make the zones readable" : ""}.
             </p>

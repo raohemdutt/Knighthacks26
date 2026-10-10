@@ -109,8 +109,16 @@ def collect_env(
 
 
 def scrub(text: str, hide: Sequence[str]) -> str:
+    """text with every secret in hide replaced by ***, both as given and with its surrounding whitespace stripped.
+
+    A token sourced from a CRLF .env arrives with a CR or LF on its end, yet the messages that carry it spell it
+    bare, or with the line break written as an escape the way http.client's "Invalid header value" does; only the
+    stripped form matches those. A secret that is blank once stripped hides nothing.
+    """
     for secret in hide:
-        text = text.replace(secret, "***")
+        bare = secret.strip()
+        if bare:
+            text = text.replace(secret, "***").replace(bare, "***")
     return text
 
 

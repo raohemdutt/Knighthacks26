@@ -354,3 +354,103 @@ set and continues the numbering of `w4a16_decode_gfx1201.md`.
   Implication: the lever exists on the pods' ROCm 7.13 and is set per process, with no root.
 
   Experiment: KE17, as above.
+
+## 7. Pass 2 additions: host dependence, a baked-in variable and the band classifier
+
+Added by kernels refinement pass 2 on 2026-10-10. Issue #6685 gained four comments after the body
+that section 6 read (2026-09-26 to 2026-09-30), read here through the GitHub API; issue #6347 has
+no comment after 2026-09-25. The pods moved from the DUB hub to AMD's SJC hub on the afternoon of
+2026-10-10, which makes the host questions below practical ones.
+
+- **[measured]** On a third R9700 host (MES firmware 0x81, OS kernel 7.0.0-31, in-tree amdgpu, HIP
+  7.15.26333 in AMD's `rocm/vllm` image), the #6685 reproducer showed the same per-kernel cost at
+  about half the size: a tiny kernel took 9.848 us against 2.384 us in a HIP graph and 11.312 us
+  against 2.796 us in eager launches once two other streams held pending waits, `GPU_MAX_HW_QUEUES`
+  set to 1 or 2 removed it through four waits in both modes, and the KFD queue count while the
+  reproducer ran was 5. Source: [S71] ROCm/legacy-rocm-build#6685, comment by taisunyoung of
+  2026-09-26.
+
+  Implication: the cost reproduces on a second host and appears in eager launches as well as in
+  graph replay, so a CUDA-graph-mode change (the `PIECEWISE` arm of KE7) would not remove it; the
+  hardware-queue limit is the lever that does, so KE17 runs first and KE7's graph-mode arm waits on
+  its result.
+
+  Experiment: KE17, as queued on T0 (it supersedes E12). Expected: as in section 6, mean decode at
+  batch 1 up about 70% if our build splits, about no change if not; minimum 8 spawns per arm;
+  confidence 0.4.
+
+- **[practitioner]** In the same comment the reporter's first "default" column was silently the
+  queue-1 arm: the serving image sets `GPU_MAX_HW_QUEUES=1` in its environment, `docker exec`
+  inherited it, and the mistake showed only because the reproducer prints the variable in its
+  header, which the reporter says is "worth checking ... rather than trusting the label". Source:
+  [S71] ROCm/legacy-rocm-build#6685, comment by taisunyoung of 2026-09-26, methodological note.
+
+  Implication: an arm defined by an unset variable is unset only if the running process says so.
+  Our pods start the server inside the hub's own image and environment, which we did not build, so
+  every benchmark row records the variable as read back from the server process
+  (`/proc/PID/environ`), not as the launch script meant to set it.
+
+  Experiment: KE17 reads the variable back from the server process on every spawn of both arms.
+  Expected movement: none in tok/s; a mislabeled arm is caught before it is read. Minimum sample
+  size: 1 read per spawn. Confidence: high.
+
+- **[measured]** On a fourth host (two R9700s; OS kernel 6.8.0-134, amdgpu 6.16.13 in-tree, MES
+  0x84, ROCm 7.2.4 userspace with HIP 7.2.53211) the reproducer showed no cost at all: 1.68 us per
+  tiny kernel at 0, 1, 2 and 4 waiting streams, in eager and graph mode, on both cards, at the
+  default queue limit and at 2, with the KFD queue count at 5. Source: [S71]
+  ROCm/legacy-rocm-build#6685, comment by lohiaj of 2026-09-30.
+
+  Implication: whether the stream-wait cost exists, and plausibly the slow band with it, depends on
+  the machine, so a result measured on one hub's hosts does not carry to another's. The pods moved
+  to SJC accounts C and D on 2026-10-10 ([S75] Ilan's Team Comms page, FYI of Sat 2:47 PM ET), so
+  KE17 is measured on the hosts the pods run on now, and every row names its host.
+
+  Experiment: KE17 records per spawn the hub and account, the hostname, the OS kernel release, the
+  amdgpu driver version and the firmware versions. Expected movement: none by itself; results from
+  different hosts can be told apart. Minimum sample size: 1 record per spawn. Confidence: high.
+
+- **[measured]** On one host held fixed (OS kernel 7.0.0-31, in-tree amdgpu, MES 0x81), swapping
+  only the container's HIP runtime between 7.2.53211, 7.14.60850 and 7.15.26333 left the
+  graph-mode cost at two waits at +8.1, +7.4 and +7.5 us, and a limit of 1 or 2 removed it on all
+  three; the reporter concludes that what produces it "is below the container boundary on this
+  machine: kernel, amdgpu, firmware, or something else about the host". Source: [S71]
+  ROCm/legacy-rocm-build#6685, comment by taisunyoung of 2026-09-30.
+
+  Implication: the ROCm, torch and Triton versions a benchmark row already records cannot predict
+  the cost; the host's kernel, driver and firmware sit beside them.
+
+  Experiment: KE17, as above.
+
+- **[practitioner]** AMD's SMI command-line tool documents `amd-smi static --driver` ("Displays
+  driver version", printed as the amdgpu name and version), `amd-smi static --asic` (ASIC
+  information, including `ASIC_SERIAL`) and `amd-smi firmware` ("Gets firmware information about
+  the specified GPU", with `--fw-list`). Source: [S74] AMD SMI documentation, "AMD SMI CLI tool
+  usage" (AMD SMI 27.1.0).
+
+  Implication: the host fields that the benchmark harness and KE17 record can be read with the
+  tool the pod sampler already uses; which of them the pods' own amd-smi prints is checked at the
+  first launch on SJC.
+
+  Experiment: KE17's first spawn prints the three outputs once and the harness keeps the fields it
+  finds. Expected movement: none; the host columns get filled. Minimum sample size: 1 run.
+  Confidence: high.
+
+- **[opinion]** The `mem_busy_percent` threshold of 60 that section 6 takes from the report of our
+  model splitting cannot classify our own spawns. That report's bands read 81 and 40 at 32.6 and
+  16.2 tok/s; at about 15.5 GB read per decoded token that is about 505 and 250 GB/s, 79% and 39%
+  of the card's 640 GB/s, so the counter tracked bandwidth use closely, while our build moves about
+  19% of peak at 7.7 tok/s, so both of its bands, if it has two, would read well below 60. On
+  another host the two bands read 61 and 78. Source: arithmetic on [S65] (comment of 2026-09-13:
+  32.6 and 16.2 tok/s, `mem_busy_percent` 81 and 40) and on
+  `lab/refine/research/kernels/w4a16_decode_gfx1201.md#1-baseline-and-byte-budget` (15.5 GB per
+  step, 19% of peak at 7.7 tok/s); [S71] comment by taisunyoung of 2026-09-26 (slow band 61 against
+  fast band 78, gated on a shader clock of at least 3000 MHz).
+
+  Implication: a spawn's band is classified from its own decode rate, since the bands sit about 2x
+  apart and repeats inside a spawn agree to a few hundredths (section 4), and the
+  `mem_busy_percent` threshold is then set from those clusters on our build, never fixed in advance.
+
+  Experiment: KE17 classifies by decode-rate clusters and records `mem_busy_percent` beside them.
+  Expected movement: none in tok/s; every spawn gets a correct band label. Minimum sample size: 8
+  spawns per arm. Confidence: medium (0.6) that `mem_busy_percent` separates our clusters once its
+  threshold is set from them.

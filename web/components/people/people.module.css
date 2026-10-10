@@ -1,0 +1,200 @@
+/* The People screen: the face scan, the photo picker, the expression strip. */
+
+.stage {
+  position: relative;
+  width: min(100%, 340px);
+  aspect-ratio: 3 / 4;
+  margin: 4px auto 0;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #000;
+}
+
+.video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1); /* a mirror, as a front camera shows itself; the stills sent to the box are not mirrored */
+}
+
+.outline {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.outline ellipse {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.55);
+  stroke-width: 1.2;
+  stroke-dasharray: 3 3;
+}
+
+.outlineGood ellipse {
+  stroke: var(--accent);
+  stroke-dasharray: none;
+}
+
+.ring {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 64px;
+  height: 64px;
+}
+
+.ring circle {
+  fill: rgba(0, 0, 0, 0.55);
+  stroke: rgba(255, 255, 255, 0.25);
+  stroke-width: 4;
+}
+
+.ring .ringDone {
+  fill: none;
+  stroke: var(--accent);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.25s ease;
+}
+
+.ring text {
+  fill: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.prompt {
+  margin: 12px 0 2px;
+  font-size: 1.25rem;
+  font-weight: 650;
+  text-align: center;
+}
+
+.feedback {
+  min-height: 1.5em;
+  margin: 0;
+  text-align: center;
+  color: var(--muted);
+}
+
+.feedbackBad {
+  color: var(--danger);
+}
+
+.picker {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.photos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.photo {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.photo:last-child {
+  border-bottom: 0;
+}
+
+.photoOk {
+  color: var(--accent);
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.photoNo {
+  color: var(--danger);
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.guide {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--muted);
+}
+
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 44px;
+}
+
+.check input {
+  width: 24px;
+  height: 24px;
+  margin: 2px 0 0;
+  flex: none;
+  accent-color: var(--accent);
+}
+
+/* One block per stretch of time; the colour is how the face looked, the legend below says so in words. */
+.strip {
+  display: flex;
+  gap: 2px;
+  height: 22px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+
+.strip span {
+  min-width: 3px;
+}
+
+.upbeat {
+  background: var(--accent);
+}
+
+.neutral {
+  background: #6f7b88;
+}
+
+.tired {
+  background: #8fa8ff;
+}
+
+.tense {
+  background: var(--danger);
+}
+
+.stripLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.stripLegend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border-radius: 3px;
+}
+
+.stack {
+  display: grid;
+  gap: 12px;
+}

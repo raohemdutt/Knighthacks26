@@ -359,6 +359,15 @@ tracks"):
 - T3, the pod power sampler (`amd-smi`), read through the hub proxy.
 - T4, joules per answer.
 - T5, the routing hook and its first policy.
+- T6, the pod power sampler's live run under the teacher load.
+- T7, the Jetson power sampler's live run (shared with Xander, so walked for findings only).
+- T8, the attribution validation experiment.
+- T9, the sampler overhead measurement.
+- T10, the idle-baseline experiment on pod B.
+- T11, the routing hook's closed-loop test.
+
+T6 to T11 were added by merge 2 under telemetry ruling 2 (owner, 2026-10-10: the walk list is every
+telemetry task in Ilan's lane, T0 to T11, under the same rules).
 
 The experiments on T0 that belong to this track are the lines marked `(telemetry)` and the lines
 whose first metric is in this file's metric set [PASS_RULES, The four tracks]. Today there are none:

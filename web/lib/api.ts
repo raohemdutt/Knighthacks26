@@ -6,6 +6,8 @@
  * Datetimes arrive as ISO strings.
  */
 
+import type { CampusMapData } from "./campusmap";
+
 // ---------- shapes ----------
 
 /** contracts.types.Citation: a camera keyframe, an outside link, or just a titled source. */
@@ -124,6 +126,10 @@ export interface IdentitySettings {
   available: boolean; // false when the recognition model is not on this box
   recognizer: string | null;
   reason?: string;
+  /** The anonymous room mode: faces that match nobody are counted together, as nobody. */
+  everyone?: boolean;
+  expressions_available?: boolean; // false when the expression model is not on this box
+  photos_available?: boolean; // false when the box cannot decode pictures (no OpenCV)
 }
 
 /** One row of GET /identity/members. The face template itself never leaves the box. */
@@ -131,6 +137,84 @@ export interface Member {
   member_id: string;
   name: string;
   enrolled_at: string;
+  updated_at?: string | null;
+  photos?: number; // how many looks the template is made of (up to 12)
+  source?: "live" | "scan" | "photos";
+  expressions?: boolean; // this person switched "read my expressions" on
+  circle_member_id?: string | null; // which Circle member this is, when someone said so
+}
+
+/** Why the box did not take a photo or a still; `message` is the sentence to show. */
+export type PhotoReason =
+  | "unreadable" | "no_face" | "two_faces" | "too_small" | "turned" | "too_dark" | "too_bright" | "blurry" | "different" | "not_them"
+  | "enough_like_this";
+
+export interface PhotoResult {
+  index: number;
+  accepted: boolean;
+  reason: PhotoReason | null;
+  message: string | null;
+}
+
+/** POST /identity/enroll/photos and POST /identity/enroll/scan/finish. */
+export interface EnrollPhotosResult {
+  state: "done" | "failed";
+  member_id: string;
+  accepted: number;
+  rejected: number;
+  needed: number;
+  exemplars: number;
+  error: "not_enough_photos" | "already_enrolled" | null;
+  photos: PhotoResult[];
+}
+
+export type ScanPose = "front" | "left" | "right" | "up";
+
+/** POST /identity/enroll/scan/start and .../frame: where a guided scan stands. */
+export interface ScanStatus {
+  session: string;
+  member_id: string;
+  count: number;
+  needed: number;
+  poses: Record<ScanPose, number>;
+  want: ScanPose | null;
+  prompt: string | null;
+  done: boolean;
+  /** Only on a frame's answer: */
+  accepted?: boolean;
+  reason?: PhotoReason | null;
+  message?: string | null;
+  pose?: ScanPose | null;
+}
+
+export type Looked = "tense" | "tired" | "upbeat" | "neutral";
+
+/** GET /identity/expressions: stretches of apparent expression. A noisy signal, not an emotion and nothing about health. */
+export interface ExpressionSeries {
+  member_id: string | null; // null: the anonymous room aggregate
+  hours: number;
+  samples: number;
+  looked: Partial<Record<Looked, number>>; // share of the counted looks
+  strained_share: number | null;
+  windows: {
+    start: string;
+    end: string;
+    camera_id: string;
+    dominant: string;
+    looked: Looked;
+    shares: Record<string, number>;
+    samples: number;
+    confidence: number;
+    head_down: number | null;
+    turned_away: number | null;
+    people?: number | null;
+  }[];
+  note: string;
+}
+
+/** GET /identity/present: the enrolled people a camera recognises right now (ids only). */
+export interface PresentNow {
+  present: { member_id: string; circle_member_id: string | null; cameras: string[] }[];
 }
 
 /** GET /identity/enroll/status, and what POST /identity/enroll/start returns. */
@@ -272,6 +356,9 @@ export interface LeagueTeamWaste {
   recyclable: number;
   members: { member_id: string; display_name: string; recycled: number; recyclable: number; contamination: number; diversion_rate: number | null }[];
   contamination_of_the_week: string | null;
+  /** This box's own week on the Impact screen: the latest milestone said, and the Sort It practice-set size. */
+  milestone?: string | null;
+  practice_size?: number | null;
 }
 
 /** GET /api/league: 200 in every state; `configured` false means no config/league.yaml on the box. */
@@ -495,6 +582,112 @@ export interface PlayAccuracy {
   round_5_on: number | null;
 }
 
+// ---------- the room twin (contexts/play/room) ----------
+
+export type RoomWall = "north" | "east" | "south" | "west";
+
+/** A box of furniture on the floor plan: metres, x east, y south; `rot` in degrees clockwise (0 = its front looks south). */
+export interface RoomFurniture {
+  id: string;
+  type: string; // bed desk chair wardrobe shelf fridge nightstand table rug bin
+  at: [number, number];
+  size: [number, number]; // width along its front, depth
+  rot: number;
+  height: number;
+  bin: string | null; // for a bin: its name in config/sorting.yaml
+  color: string | null;
+  label: string | null;
+}
+
+/** A door, a window or a poster on a wall. `at` is the centre, in metres along the wall from its west or north end. */
+export interface RoomOpening {
+  id?: string;
+  wall: RoomWall;
+  at: number;
+  width: number;
+  sill?: number;
+  height?: number;
+  art?: string;
+}
+
+/** GET /api/room: the floor plan, each camera's calibration, and the zones laid on the floor. */
+export interface RoomPlan {
+  name: string;
+  title: string;
+  size: [number, number];
+  wall_height: number;
+  doors: RoomOpening[];
+  windows: RoomOpening[];
+  posters: RoomOpening[];
+  furniture: RoomFurniture[];
+  calibration: Record<string, { image: [number, number][]; floor: [number, number][]; homography: number[][] }>;
+  zones: Record<string, Record<string, [number, number][]>>; // camera -> zone -> floor polygon (m)
+  play: { walk_speed: number; body_radius: number; start: [number, number] };
+  rooms: string[];
+  uncalibrated: string[];
+}
+
+/** One tracked person or thing on the floor plan. */
+export interface FloorTrack {
+  key: string; // "<camera>:<track id>"
+  camera: string;
+  track_id: number;
+  label: string;
+  kind: "person" | "object";
+  x: number;
+  y: number;
+  z: number; // metres above the floor
+  on: string | null; // the furniture it rests on or sits in
+  held_by: string | null;
+  in_bin: string | null;
+  seated: boolean;
+  member_id: string | null;
+}
+
+export interface RoomRouteLeg {
+  player: number;
+  track: string | null;
+  points: { x: number; y: number }[];
+  distance_m: number;
+  par_s: number;
+  reachable: boolean;
+}
+
+export interface SeenOnFloor {
+  label: string;
+  x: number;
+  y: number;
+  z: number;
+  on: string | null;
+  camera: string;
+  ts: string;
+}
+
+/** GET /api/room/live. */
+export interface RoomLive {
+  room: string;
+  ts: string | null;
+  tracks: FloorTrack[];
+  seen: Record<string, SeenOnFloor>;
+  round: { round_id: string; item: string; target_bin: string; bin: string; players: number; started: string; routes: RoomRouteLeg[] } | null;
+  result: { round_id: string; item: string; correct: boolean; seconds: number; score: number; players: number; par_s: number | null; bin: string; ts: string; right: number; rounds: number } | null;
+  assist: { item: string; label: string; bin: string; bin_id: string; color: string | null; side: string; track: string; person: string; text: string } | null;
+}
+
+/** GET /api/play/room-route. `points` is empty when no way exists. */
+export interface RoomRouteAnswer {
+  item: string;
+  bin: string;
+  bin_id: string;
+  zone: string;
+  room: string;
+  from: { x: number; y: number; track: string | null };
+  reachable: boolean;
+  points: [number, number][];
+  distance_m: number;
+  par_s: number;
+}
+
 /** contracts.memory.Sighting: where a watch item was last seen. A zone and a text position; never coordinates. */
 export interface Sighting {
   label: string;
@@ -524,6 +717,28 @@ export interface PlacePack {
   kind: string; // campus | neighborhood | home
   entry: string | null;
   places: Record<string, Place>;
+  /** Where the pack's drawn map is served ("/api/places/map/ucf"), for packs built from real map data. */
+  map?: string;
+}
+
+/** GET /api/places/route: when to leave, and the walk itself along the real footpaths. */
+export interface PlaceRoute {
+  from: string;
+  to: string;
+  from_name: string;
+  to_name: string;
+  mode: "arrive_by" | "depart";
+  depart: string;
+  arrive: string;
+  minutes: number;
+  walk_minutes: number; // whole minutes, rounded up, as the day plan counts walks
+  meters: number | null;
+  path: string[];
+  polyline: [number, number][]; // [lat, lon]; empty when the packs have no path network
+  sentence: string; // "Leave by 2:41 PM: 9 minutes on foot to Engineering II, 720 m"
+  from_xy: [number, number] | null;
+  to_xy: [number, number] | null;
+  attribution: string | null;
 }
 
 /** Every vocabulary word with its plural and capitalised forms, as GET /api/profile sends them in `words`. */
@@ -696,6 +911,9 @@ export interface RouteLeg {
   minutes: number;
   from_xy: [number, number] | null;
   to_xy: [number, number] | null;
+  /** The line actually walked, [lat, lon] points along the footpaths, when the pack has a path network. */
+  path?: [number, number][] | null;
+  meters?: number | null;
   route: number; // index into `routes`
   depart: string;
 }
@@ -710,6 +928,7 @@ export interface RouteTaken {
   arrive: string;
   minutes: number;
   places: string[];
+  meters?: number | null; // the length walked, when the pack has a path network
 }
 
 export interface Rejected {
@@ -1486,11 +1705,33 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   // People: opt-in owner recognition (P9).
   identitySettings: (signal?: AbortSignal) => get<IdentitySettings>("/identity/settings", undefined, signal),
   setIdentity: (on: boolean) => request<IdentitySettings>("PUT", "/identity/settings", { identity_enabled: on }),
+  /** The anonymous room mode. Switching it on has to be confirmed by the person, on the screen that says what it means. */
+  setEveryone: (on: boolean, confirm = false) => put<IdentitySettings>("/identity/settings", { everyone: on, confirm }),
   members: (signal?: AbortSignal) => get<Member[]>("/identity/members", undefined, signal),
   removeMember: (id: string) => request<{ removed: string }>("DELETE", `/identity/members/${encodeURIComponent(id)}`),
-  enrollStart: (name: string) => post<EnrollStatus>("/identity/enroll/start", { name }),
+  updateMember: (id: string, change: { expressions?: boolean; circle_member_id?: string }) =>
+    put<Member>(`/identity/members/${encodeURIComponent(id)}`, change),
+  /** `consent`: the person being enrolled agrees. The box refuses without it. */
+  enrollStart: (name: string, consent: boolean, circleMemberId?: string) =>
+    post<EnrollStatus>("/identity/enroll/start", { name, consent_ack: consent, ...(circleMemberId ? { circle_member_id: circleMemberId } : {}) }),
+  /** Photos as base64 (no data: prefix needed). For someone new send `name`; to add to someone send `member_id`. */
+  enrollPhotos: (who: { name?: string; member_id?: string; circle_member_id?: string }, photos: string[], consent: boolean) =>
+    post<EnrollPhotosResult>("/identity/enroll/photos", { ...who, consent_ack: consent, photos }),
+  scanStart: (who: { name?: string; member_id?: string; circle_member_id?: string }, consent: boolean) =>
+    post<ScanStatus>("/identity/enroll/scan/start", { ...who, consent_ack: consent }),
+  scanFrame: (session: string, photo: string, signal?: AbortSignal) =>
+    post<ScanStatus>("/identity/enroll/scan/frame", { session, photo }, signal),
+  scanFinish: (session: string) => post<EnrollPhotosResult>("/identity/enroll/scan/finish", { session }),
+  scanCancel: (session: string) => post<{ cancelled: boolean }>("/identity/enroll/scan/cancel", { session }),
+  expressions: (memberId: string | null, hours: number, signal?: AbortSignal) =>
+    get<ExpressionSeries>("/identity/expressions", { member_id: memberId ?? undefined, hours }, signal),
+  presentNow: (signal?: AbortSignal) => get<PresentNow>("/identity/present", undefined, signal),
   enrollStatus: (signal?: AbortSignal) => get<EnrollStatus>("/identity/enroll/status", undefined, signal),
   impact: (signal?: AbortSignal) => get<Impact>("/api/impact", undefined, signal),
+  impactStory: (member?: string, signal?: AbortSignal) => get<import("./impact").ImpactStory>("/api/impact/story", { member }, signal),
+  impactPractice: (member?: string, signal?: AbortSignal) => get<import("./impact").ImpactPractice>("/api/impact/practice", { member }, signal),
+  addPractice: (label: string, item_id?: string, member?: string) =>
+    post<{ added: string; practice: import("./impact").ImpactPractice }>("/api/impact/practice", { label, item_id, member }),
 
   approvals: (signal?: AbortSignal) => get<ApprovalRequest[]>("/api/approvals", undefined, signal),
   decide: (id: string, decision: Decision) => post<ApprovalRequest>(`/api/approvals/${encodeURIComponent(id)}`, { decision }),
@@ -1518,8 +1759,17 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
 
   playRoute: (item: string, signal?: AbortSignal) => get<PlayRoute>("/api/play/route", { item }, signal),
   playAccuracy: (signal?: AbortSignal) => get<PlayAccuracy>("/api/play/accuracy", undefined, signal),
+  room: (signal?: AbortSignal) => get<RoomPlan>("/api/room", undefined, signal),
+  roomLive: (signal?: AbortSignal) => get<RoomLive>("/api/room/live", undefined, signal),
+  roomRoute: (item: string, fromTrack?: string | null, signal?: AbortSignal) => get<RoomRouteAnswer>("/api/play/room-route", { item, from_track: fromTrack ?? undefined }, signal),
+  setRoomCalibration: (camera: string, taps: { image: [number, number][]; floor: [number, number][] }) =>
+    put<RoomPlan>(`/api/room/calibration/${encodeURIComponent(camera)}`, taps),
 
   places: (signal?: AbortSignal) => get<PlacePack[]>("/api/places", undefined, signal),
+  /** A pack's drawn map, by the path GET /api/places gave for it. Fetch it through lib/campusmap's loadCampusMap, which keeps it. */
+  placeMap: (path: string, signal?: AbortSignal) => get<CampusMapData>(path, undefined, signal),
+  /** When to leave: `from` and `to` are pack ids ("ucf.eng2"), names, "friend:<member>" or "here". */
+  placeRoute: (q: { from?: string; to: string; arrive_by?: string; depart?: string }, signal?: AbortSignal) => get<PlaceRoute>("/api/places/route", q, signal),
   lastSeen: (label: string, signal?: AbortSignal) => get<Sighting>(`/memory/objects/${encodeURIComponent(label)}/last-seen`, undefined, signal),
 
   // Day Run. `scenario` runs a scripted day from fixtures/play/ ("demo") instead of live sources.
@@ -1546,5 +1796,36 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   /** Narrate a moment again from the state as it is now ("Brief me"). `fast` never waits for the model. */
   dayBriefMake: (body: { moment: Exclude<DayMoment, "approval">; fast?: boolean }) =>
     post<{ mode: string; engine: string; moment: DayMoment; fresh: boolean; narration: DayNarration }>("/api/day/brief", body),
+  coachFeedback: (days?: number, signal?: AbortSignal) => get<import("./coachFeedback").CoachFeedbackView>("/api/day/coach/feedback", { days }, signal),
+  coachCorrect: (body: import("./coachFeedback").CoachCorrectionBody) =>
+    post<import("./coachFeedback").CoachCorrectionResult>("/api/day/coach/corrections", body),
   dayPatterns: (signal?: AbortSignal) => get<{ patterns: DayPattern[]; note?: string }>("/api/day/patterns", undefined, signal),
+
+  // Inspection (SPOT): contexts/spot; shapes in components/spot/types.ts. Every GET answers 200 without a kit ({configured: false, note}).
+  spotOverview: (signal?: AbortSignal) => get<Spot.Overview>("/api/spot/overview", undefined, signal),
+  spotFindings: (signal?: AbortSignal) => get<{ configured: boolean; findings: Spot.Finding[] }>("/api/spot/findings", undefined, signal),
+  spotTriage: (signal?: AbortSignal) => get<Spot.Triage>("/api/spot/triage", undefined, signal),
+  spotLocations: (signal?: AbortSignal) => get<Spot.Locations>("/api/spot/locations", undefined, signal),
+  spotAssets: (signal?: AbortSignal) => get<{ configured: boolean; assets: Spot.AssetRow[] }>("/api/spot/assets", undefined, signal),
+  spotAsset: (id: string, signal?: AbortSignal) => get<Spot.AssetDetail>(`/api/spot/assets/${encodeURIComponent(id)}`, undefined, signal),
+  spotMission: (id: string, signal?: AbortSignal) => get<Spot.MissionDetail>(`/api/spot/missions/${encodeURIComponent(id)}`, undefined, signal),
+  spotHandoff: (signal?: AbortSignal) => get<Spot.Handoff>("/api/spot/handoff", undefined, signal),
+  spotAssumptions: (signal?: AbortSignal) => get<{ assumptions: Spot.Assumption[] }>("/api/spot/assumptions", undefined, signal),
+  spotValidation: (signal?: AbortSignal) => get<Spot.Validation>("/api/spot/validation", undefined, signal),
+  spotModel: (signal?: AbortSignal) => get<Spot.Model>("/api/spot/model", undefined, signal),
+  spotWorkOrders: (signal?: AbortSignal) => get<{ work_orders: Spot.WorkOrder[]; folder: string }>("/api/spot/work_orders", undefined, signal),
+  spotReplay: (signal?: AbortSignal) => get<Spot.Replay>("/api/spot/replay/state", undefined, signal),
+  spotReplayStart: () => post<Spot.Replay>("/api/spot/replay/start", {}),
+  spotReplayPause: () => post<Spot.Replay>("/api/spot/replay/pause", {}),
+  spotReplaySeek: (body: { index?: number; mission_id?: string; fraction?: number }) => post<Spot.Replay>("/api/spot/replay/seek", body),
+  spotReplaySpeed: (speed: number) => post<Spot.Replay>("/api/spot/replay/speed", { speed }),
+  spotAsk: (text: string) => post<Spot.Answer>("/api/spot/ask", { text }),
+  /** Both raise an approval card on the box; nothing is written until it is approved. */
+  spotReinspect: (asset_id: string) => post<{ action_id: string; reason: string }>("/api/spot/actions/reinspect", { asset_id }),
+  spotWorkOrder: (anomaly_id: string) => post<{ action_id: string; reason: string }>("/api/spot/actions/work_order", { anomaly_id }),
 };
+
+import type * as Spot from "@/components/spot/types";
+
+/** Full URL of a gateway path the inspection screen puts in an <img> (the floor plan, the kit's sample pictures). */
+export const spotUrl = (path: string): string => HTTP_BASE + path;

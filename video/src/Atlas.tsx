@@ -1,4 +1,5 @@
 import { AbsoluteFill, OffthreadVideo, Sequence, staticFile } from "remotion";
+import { Caption, CAPTION_FRAMES } from "./Caption";
 import { IndexCard } from "./IndexCard";
 import { Intro3D } from "./Intro3D";
 import { Placeholder } from "./Placeholder";
@@ -16,13 +17,18 @@ const TOTALS_FRAMES = 210; // 7 s of measured totals before the second index car
 function SlotBody({ slot }: { slot: Slot }) {
   const body = timeline.slot_frames - TITLE_FRAMES;
   return (
-    <AbsoluteFill style={{ backgroundColor: theme.bg }}>
+    <AbsoluteFill style={{ backgroundColor: theme.surface }}>
       <Sequence durationInFrames={TITLE_FRAMES}>
         <TitleCard slot={slot} />
       </Sequence>
       <Sequence from={TITLE_FRAMES} durationInFrames={body}>
         {slot.clip ? <OffthreadVideo src={staticFile(slot.clip)} /> : <Placeholder slot={slot} />}
       </Sequence>
+      {slot.clip && slot.line ? (
+        <Sequence from={TITLE_FRAMES} durationInFrames={CAPTION_FRAMES}>
+          <Caption text={slot.line} />
+        </Sequence>
+      ) : null}
     </AbsoluteFill>
   );
 }
@@ -32,9 +38,9 @@ function Intro({ slot }: { slot: Slot }) {
   const totals = MEASURED.length ? TOTALS_FRAMES : 0;
   const middle = timeline.slot_frames - 2 * INDEX_FRAMES;
   return (
-    <AbsoluteFill style={{ backgroundColor: theme.bg }}>
+    <AbsoluteFill style={{ backgroundColor: theme.surface }}>
       <Sequence durationInFrames={INDEX_FRAMES}>
-        <IndexCard text={timeline.index_card} />
+        <IndexCard />
       </Sequence>
       <Sequence from={INDEX_FRAMES} durationInFrames={middle - totals}>
         {slot.clip ? <OffthreadVideo src={staticFile(slot.clip)} /> : <Intro3D />}
@@ -45,14 +51,14 @@ function Intro({ slot }: { slot: Slot }) {
         </Sequence>
       ) : null}
       <Sequence from={INDEX_FRAMES + middle} durationInFrames={INDEX_FRAMES}>
-        <IndexCard text={timeline.index_card} />
+        <IndexCard />
       </Sequence>
     </AbsoluteFill>
   );
 }
 
 export const Atlas: React.FC = () => (
-  <AbsoluteFill style={{ backgroundColor: theme.bg, fontFamily: theme.font }}>
+  <AbsoluteFill style={{ backgroundColor: theme.surface, fontFamily: theme.font }}>
     {timeline.slots.map((slot) => (
       <Sequence key={slot.key} from={slot.start_frame} durationInFrames={timeline.slot_frames} name={`${slot.key} ${slot.title}`}>
         {slot.key === 0 ? <Intro slot={slot} /> : <SlotBody slot={slot} />}

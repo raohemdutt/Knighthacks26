@@ -1,0 +1,142 @@
+# What a count means in real units (the Impact screen, contexts/impact/application/story.py).
+#
+# EVERYTHING IN THIS FILE IS AN ESTIMATE. The counts on the Impact screen are measured by the cameras;
+# the grams, kilowatt-hours and CO2e are those counts multiplied by the factors below. The factors are
+# illustrative, order-of-magnitude figures written down from memory of published sources, without
+# network access, and rounded into ranges on purpose. A campus that reuses this should replace them
+# with its own: weigh twenty of its own cups, and take the energy and CO2e factors from its hauler or
+# from the current edition of the source named on each line. The screen always shows a range and the
+# words "estimate" and "illustrative"; it never shows a single precise number.
+#
+# confidence: high   = a physical measurement anyone can repeat with a kitchen scale
+#             medium = a published factor we are confident of to within the range given
+#             low    = depends heavily on local conditions or on accounting choices; treat as a rough guide
+
+disclaimer: "Estimates from illustrative factors in config/impact.yaml, not measurements. Replace them with your campus's own."
+
+# Per item type: what it is made of and what one weighs, empty.
+items:
+  can:
+    material: aluminium
+    mass_g: {low: 13, high: 15}
+    source: "A 12 oz (355 ml) aluminium drink can weighs about 13 to 15 g empty (industry figures put the average near 13 g; weigh one)."
+    confidence: high
+  bottle:
+    material: pet
+    mass_g: {low: 10, high: 25}
+    source: "A 500 ml PET water bottle weighs about 10 g (lightweighted) to 25 g (soda bottle), cap included."
+    confidence: medium
+  cup:
+    material: paper
+    mass_g: {low: 8, high: 15}
+    source: "A 12 to 16 oz poly-lined paper cup weighs roughly 8 to 15 g without the lid."
+    confidence: medium
+  paper:
+    material: paper
+    mass_g: {low: 4, high: 6}
+    source: "One sheet of office paper (US letter, 75 to 90 gsm) weighs 4.5 to 5.5 g; the camera cannot count sheets, so one sighting is taken as one sheet."
+    confidence: low
+  cardboard:
+    material: cardboard
+    mass_g: {low: 100, high: 400}
+    source: "A small to medium corrugated shipping box weighs roughly 100 to 400 g; boxes vary more than anything else here."
+    confidence: low
+  wine glass:
+    material: glass
+    mass_g: {low: 120, high: 250}
+    source: "A drinking glass weighs roughly 120 to 250 g."
+    confidence: low
+  food container:
+    material: mixed
+    mass_g: {low: 15, high: 40}
+    source: "A takeout bowl or clamshell (fibre or plastic) weighs roughly 15 to 40 g empty."
+    confidence: low
+  chip bag:
+    material: mixed
+    mass_g: {low: 2, high: 6}
+    source: "A single-serve chip bag weighs roughly 2 to 6 g empty."
+    confidence: low
+  napkin:
+    material: paper
+    mass_g: {low: 2, high: 4}
+    source: "A paper napkin weighs roughly 2 to 4 g."
+    confidence: low
+  milk carton:
+    material: carton
+    mass_g: {low: 10, high: 35}
+    source: "A single-serve to one-litre carton weighs roughly 10 to 35 g empty."
+    confidence: low
+  juice box:
+    material: carton
+    mass_g: {low: 8, high: 12}
+    source: "A 200 ml juice box weighs roughly 8 to 12 g empty."
+    confidence: low
+# Anything the rules file lists that has no entry above: counted, but given no weight (the screen says so).
+
+# Per material: what recycling one kilogram avoids, compared with sending it to landfill.
+# energy_kwh_per_kg and co2e_kg_per_kg are ranges; both come from life-cycle studies that count the
+# virgin material NOT made because the recycled one replaced it.
+materials:
+  aluminium:
+    name: aluminium
+    energy_kwh_per_kg: {low: 40, high: 55}
+    co2e_kg_per_kg: {low: 8, high: 11}
+    source: "Order of magnitude after the US EPA Waste Reduction Model (WARM), aluminium cans, recycling versus landfill (about 150 million BTU and 9 t CO2e per short ton), and the industry's 'recycling saves about 95 % of the energy of primary aluminium'. Recalled offline: check the current WARM tables before quoting."
+    confidence: medium
+  pet:
+    name: PET plastic
+    energy_kwh_per_kg: {low: 6, high: 10}
+    co2e_kg_per_kg: {low: 0.8, high: 1.5}
+    source: "Order of magnitude after US EPA WARM, PET, recycling versus landfill (about 30 million BTU and 1 t CO2e per short ton). Recalled offline: check the current WARM tables before quoting."
+    confidence: medium
+  paper:
+    name: paper
+    energy_kwh_per_kg: {low: 3, high: 7}
+    co2e_kg_per_kg: {low: 2.5, high: 4}
+    source: "Order of magnitude after US EPA WARM, mixed paper, recycling versus landfill. The CO2e figure leans on forest-carbon and landfill-methane accounting, which is why confidence is low."
+    confidence: low
+  cardboard:
+    name: cardboard
+    energy_kwh_per_kg: {low: 3, high: 5}
+    co2e_kg_per_kg: {low: 2.5, high: 3.5}
+    source: "Order of magnitude after US EPA WARM, corrugated containers, recycling versus landfill. Same caveat as paper."
+    confidence: low
+  glass:
+    name: glass
+    energy_kwh_per_kg: {low: 0.3, high: 0.8}
+    co2e_kg_per_kg: {low: 0.2, high: 0.4}
+    source: "Order of magnitude after US EPA WARM, glass, recycling versus landfill: glass saves little energy per kilogram."
+    confidence: medium
+  carton:
+    name: cartons
+    energy_kwh_per_kg: {low: 2, high: 6}
+    co2e_kg_per_kg: {low: 1, high: 3}
+    source: "Rough guide only: cartons are mostly paper fibre with plastic and aluminium layers, and few mills take them."
+    confidence: low
+  # "mixed" has no factors on purpose: nothing is claimed for materials we cannot name.
+
+# The everyday unit energy is turned into.
+equivalents:
+  phone_charge_wh: {low: 12, high: 20}
+  phone_charge_source: "One full smartphone charge takes roughly 12 to 20 Wh at the wall (battery of 12 to 19 Wh plus charger losses)."
+  phone_charge_confidence: medium
+
+# The cost of a wrong item. A rule of thumb, flagged as one on screen.
+contamination:
+  spoils_bag_at: 2
+  text: "{n} wrong items can spoil a bag: sorters and haulers reject bags and loads that look contaminated, and the good items in them go to landfill too."
+  source: "Rule of thumb, not a measurement. Rejection thresholds differ by hauler and are usually set per load (often quoted around 10 to 25 % by weight), not per bag; food and liquid do the most damage."
+  confidence: low
+  rule_of_thumb: true
+
+# The table's weekly goal (the week is Monday to Sunday, local time).
+goals:
+  diversion_target: 0.8        # share of recyclables seen that should reach recycling (the League's team target is the same 80 %)
+  contamination_ceiling: 2     # wrong items in recycling the week may have, at most
+  min_n: 5                     # recyclables on EACH side before the before/after-nudges bars are drawn; fewer says "not enough data yet"
+  min_day_items: 2             # disposals a day needs to be eligible for "best day"
+
+# Round numbers worth a sentence. Each is published once a week as `impact.milestone.reached`.
+milestones:
+  kept_out: [1, 3, 5, 10, 25, 50, 100, 250]   # recyclables that reached recycling this week
+  clean_streak: [3, 5, 7]                     # days in a row with disposals and nothing in the wrong bin

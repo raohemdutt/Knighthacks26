@@ -40,9 +40,12 @@ from lab.machine import stop
 # One line per verb, alphabetical: "verb": "module:function".
 VERBS: dict[str, str] = {
     "alerts": "lab.machine.alerts:main",
+    "bench": "lab.bench:main",
+    "credits": "lab.credits:main",
     "digest": "lab.machine.digest:main",
     "draft": "lab.machine.draft:main",
     "experiment": "lab.machine.experiments:main",
+    "gpu-power": "lab.machine.gpu_power:main",
     "handoff": "lab.machine.handoff:main",
     "ledger": "lab.machine.ledger_cli:main",
     "metrics": "lab.machine.metrics_report:main",

@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal
 
 from contracts.events import TypedEvent, register
@@ -48,6 +49,7 @@ class PersonIdentified(TypedEvent):
     camera_id: CameraId
     track_id: int
     member_id: str
+    circle_member_id: str | None = None  # the Circle member this enrolled person was linked to, if any: an id only
 
 
 @register
@@ -66,3 +68,38 @@ class IdentityChanged(TypedEvent):
     type: Literal["perception.identity.changed"] = "perception.identity.changed"
     enabled: bool
     members: list[str] = []  # enrolled member ids
+    everyone: bool = False  # the anonymous room mode: faces that match nobody add to a room-level count, never to a person
+    expressions: list[str] = []  # the enrolled members who switched "read my expressions" on for themselves
+    # When this event records an enrolment: who (the id only), how, and that the person was confirmed to agree.
+    # `ts` is when. None on every other change (a switch, a removal).
+    enrolled_member: str | None = None
+    enrolled_via: Literal["live", "photos", "scan"] | None = None  # the box's camera, uploaded photos, a scan on the phone
+    consent_ack: bool | None = None
+    circle_member_id: str | None = None  # the Circle member the enrolled person was linked to, if any: an id only
+
+
+# --- apparent expression (opt-in per member; anonymous for a whole room only in the "everyone" mode) ---
+
+
+@register
+class ExpressionObserved(TypedEvent):
+    """How a face looked over a stretch of time, added up from many looks. Never one frame, and never a
+    picture, a face vector or a landmark. "Apparent expression" is a noisy reading of a face's shape by a
+    small classifier: it is not an emotion, a mood or anything about health.
+
+    `member_id` is the enrolled member who switched this on for themselves, or None for the anonymous room
+    aggregate of the "everyone" mode (every face that matched no member, counted together: no track, no id)."""
+
+    type: Literal["perception.expression.observed"] = "perception.expression.observed"
+    camera_id: CameraId
+    member_id: str | None = None
+    window_start: datetime
+    window_end: datetime
+    dominant: str  # the most frequent of: angry, disgust, fearful, happy, neutral, sad, surprised
+    shares: dict[str, float] = {}  # label -> fraction of the counted looks (they add up to 1)
+    samples: int  # counted looks: the face was towards the camera and the classifier was sure enough
+    confidence: float  # the classifier's mean certainty over the counted looks, 0 to 1
+    looks: int | None = None  # every look in the window, also those not counted
+    head_down: float | None = None  # fraction of the looks with the head tipped down, relative to the camera
+    turned_away: float | None = None  # fraction of the looks turned away from the camera
+    people: int | None = None  # anonymous room only: the most faces seen in one look

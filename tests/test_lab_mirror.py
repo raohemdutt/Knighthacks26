@@ -432,6 +432,30 @@ def test_a_second_run_changes_nothing_even_at_another_time_and_after_the_first_l
     assert notion.edits == edits
 
 
+def test_a_board_snapshot_that_goes_stale_rewrites_the_last_update_once():
+    notion = pages()
+    since = "2026-10-10T04:00:00Z"                       # one window start for every call
+    # the snapshot was taken at 15:45 and an hour is the limit; the last ledger row is at 16:30, so from 16:31 on
+    # the facts stay the same and only the snapshot's age moves
+    go("--only", "overnight", "--since", since, client=notion, now=NOW + dt.timedelta(minutes=31))
+    first = ilan_section(notion.text(OVERNIGHT))
+    fresh = first[0]
+
+    stale_at = NOW + dt.timedelta(minutes=50)
+    answer, code = go("--only", "overnight", "--since", since, client=notion, now=stale_at)
+    later, _ = go("--only", "overnight", "--since", since, client=notion, now=stale_at + dt.timedelta(minutes=5))
+
+    assert (code, answer["targets"]) == (0, {"overnight_status": {"action": "updated"}})
+    assert "board snapshot from Sat 11:45 AM ET (digest" in fresh
+    section = ilan_section(notion.text(OVERNIGHT))
+    stale = section[0]
+    assert stale.startswith(f"- **Last update:** {HEART} Ilan's agent {DOT} Sat 12:50 PM ET: lab digest,")
+    assert "board snapshot from Sat 11:45 AM ET, stale (digest" in stale
+    assert marker(stale) == answer["section_id"] != marker(fresh)
+    assert section[1:4] == first[1:4]                    # Working on, Done tonight and Blocked on: the same facts
+    assert later["targets"] == {"overnight_status": {"action": "unchanged"}}
+
+
 def test_a_segment_someone_removed_comes_back_even_though_the_facts_did_not_change():
     notion = pages()
     go("--only", "overnight", client=notion)

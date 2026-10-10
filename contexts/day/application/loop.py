@@ -41,6 +41,8 @@ class DayLoop:
         bus.subscribe("perception.zone", c.on_zone, replay=True)
         bus.subscribe("perception.scene", c.on_scene, replay=True)
         bus.subscribe("day.coach.noted", c.on_noted, replay=True)
+        bus.subscribe("perception.expression", c.on_expression, replay=True)  # optional input: how an enrolled member looked
+        bus.subscribe("perception.identity", c.on_identity, replay=True)  # a forgotten member's looks are dropped
         # State that rebuilds from the log.
         bus.subscribe("day.plan.proposed", p.on_plan_proposed, replay=True)
         bus.subscribe("day.replan.proposed", p.on_replan_proposed, replay=True)
@@ -66,6 +68,25 @@ class DayLoop:
 
     def tick(self, now: datetime) -> list[Event]:
         return self.planner.tick(now) + self.tracker.tick(now) + self.coach.tick(now)
+
+    def in_words(self, now: datetime) -> dict[str, str]:
+        """Today in a few plain sentences, for whoever is talking with the person (the agent's conversation):
+        `now` from the live state (and `now_spoken`, its wording for the ear), `plan`, `coach` and `review` from
+        the latest narration of each. Only today's;
+        empty when there is no plan yet. Reads state, publishes nothing, never calls a model."""
+        n, day, out = self.narrator, self.clock.day_of(now), {}
+        try:
+            job = n.job_now("now", now)
+        except Exception:
+            job = None
+        if job is not None and job.day == day:
+            out["now"] = job.draft.display
+            out["now_spoken"] = job.draft.spoken  # the same moment for the ear: no brackets, times as they are said
+        for key, moment in (("plan", "morning"), ("coach", "coach"), ("review", "evening")):
+            said = n.latest.get(moment)
+            if said is not None and said.day == day:
+                out[key] = said.display
+        return out
 
 
 MOMENT_PUSH = {"morning": ("Your day", "sunrise"), "replan": ("Re-plan", "arrows_counterclockwise"),

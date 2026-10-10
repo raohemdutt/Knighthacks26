@@ -41,24 +41,24 @@ def test_a_projection_rebuilt_from_the_log_matches_the_one_that_watched_it_live(
     snap = rebuilt.snapshot()
     assert snap["counts"] == {"telemetry.gpu.power": 120, "telemetry.jetson.power": 60, "telemetry.request": 2,
                               "telemetry.train.step": 24}
-    jetson, gpu_a, gpu_b = (snap["nodes"][n]["power"]["fake"] for n in ("jetson", "gpu-a", "gpu-b"))
+    jetson, gpu_a, gpu_b = (snap["nodes"][n]["power"]["fake"] for n in ("jetson", "pod-a", "pod-b"))
     assert (jetson["samples"], jetson["latest_w"], jetson["latest_ts"], jetson["measured_period_ms"]) == (
         60, 6.4, at(59), 1000.0)
     assert (gpu_a["samples"], gpu_a["missing"], gpu_a["latest_w"], gpu_a["boundary"]) == (
-        60, 1, 39.0, "graphics package")
+        60, 1, 39.0, "APU socket")
     assert (gpu_b["samples"], gpu_b["latest_w"], gpu_b["latest_ts"]) == (60, 245.0, at(59.5))
-    assert [(r["request_id"], r["duration_s"], r["prefill_s"], r["tokens_out"]) for node in ("jetson", "gpu-a")
+    assert [(r["request_id"], r["duration_s"], r["prefill_s"], r["tokens_out"]) for node in ("jetson", "pod-a")
             for r in snap["requests"][node]] == [("fake-req-student-1", 4.5, 0.62, 61),
                                                   ("fake-req-teacher-1", 5.3, 1.09, 28)]
     run = snap["train_runs"]["fake-run-0001"]
-    assert (run["steps"], run["step"], run["last_ts"], run["node"]) == (24, 124, at(58.5), "gpu-b")
+    assert (run["steps"], run["step"], run["last_ts"], run["node"]) == (24, 124, at(58.5), "pod-b")
 
 
 def test_the_teacher_window_can_be_read_back_from_the_rebuilt_projection(tmp_path):
     asyncio.run(publish_the_minute(tmp_path))
     rebuilt, _ = asyncio.run(rebuild(tmp_path))
-    [window] = rebuilt.requests("gpu-a")
-    inside = rebuilt.readings("gpu-a", window.started, window.ended)
+    [window] = rebuilt.requests("pod-a")
+    inside = rebuilt.readings("pod-a", window.started, window.ended)
     assert [(r.ts, r.watts) for r in inside] == [(at(30.2), 300.0), (at(31.2), 212.0), (at(32.2), 201.0),
                                                  (at(33.2), 199.0), (at(34.2), 203.0), (at(35.2), 196.0)]
 

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ItemRow } from "@/components/ItemRow";
 import { Empty, ErrorBox, Loading } from "@/components/States";
@@ -94,6 +95,10 @@ export default function TodayPage() {
             </ul>
           </>
         )}
+        {/* the coach is one use of the day, not a destination of its own: reached from here and from its note on Now */}
+        <Link href="/coach/" className={ui.btn}>
+          The {w.activity} coach: your blocks, breaks and what it guessed
+        </Link>
       </section>
 
       <section className={ui.section}>
@@ -146,6 +151,9 @@ export default function TodayPage() {
               </Empty>
             ) : null}
             <ImpactStats counts={impact.data.total} />
+            <Link href="/impact/" className={ui.btn}>
+              What this adds up to, and this week&apos;s goal
+            </Link>
             {impact.data.before_after_nudges ? (
               <div className={ui.card}>
                 <h3>Before and after nudges</h3>

@@ -21,6 +21,10 @@ const DEMO_QUESTIONS = [
   "What should I eat?",
   "Where should I go tonight?",
 ];
+/** Atlas can also just be talked with (contexts/agent/application/talk.py): a few ways in. */
+const CHAT_STARTERS = ["How's your day?", "Tell me a joke", "I'm stressed about my exam"];
+/** What the box says when it looked and found nothing on record: the one answer with no sources that is not talk. */
+const NO_EVIDENCE = "I didn't see that.";
 
 let turnSeq = 0;
 const nextId = () => `t${Date.now()}-${turnSeq++}`;
@@ -303,8 +307,8 @@ export default function AskPage() {
         <div className={ui.pageHead}>
           <h1>Ask Atlas</h1>
           <p className={ui.muted}>
-            Ask out loud or by typing, about your {w.workplace}, your {w.event_plural} or your evening. Every answer comes with the camera frames and links it
-            is based on, and the model that wrote it.
+            Ask out loud or by typing, about your {w.workplace}, your {w.event_plural} or your evening, or just talk. Answers from memory come with the
+            camera frames and links they are based on, and every answer names the model that wrote it.
           </p>
         </div>
       ) : null}
@@ -324,12 +328,16 @@ export default function AskPage() {
               </p>
             );
           const a = turn.answer;
+          // Conversation ("how's your day?") cites nothing because nothing was looked up: no empty evidence block for it,
+          // only a quiet note. An answer that looked and found nothing still says so.
+          const talk = a.citations.length === 0 && a.answer.trim() !== NO_EVIDENCE;
           return (
             <article key={turn.id} className={`${ui.card} ${ui.answer}`}>
               <AnswerText text={a.answer} />
-              <Evidence citations={a.citations} />
+              {talk ? null : <Evidence citations={a.citations} />}
               <p className={ui.modelLine}>
                 Answered by <strong>{a.model_version}</strong> at {time(a.ts)}
+                {talk ? " · no sources attached" : null}
               </p>
             </article>
           );
@@ -341,7 +349,7 @@ export default function AskPage() {
         ) : waiting ? (
           <div className={ui.loading} role="status">
             <span className={ui.spinner} aria-hidden="true" />
-            <span>Atlas is looking through its memory…</span>
+            <span>Atlas is thinking…</span>
           </div>
         ) : null}
         <div ref={endRef} />
@@ -350,7 +358,7 @@ export default function AskPage() {
       <section className={ui.section} aria-label="Suggested questions">
         {chat.length === 0 ? <p className={ui.sectionTitle}>Try one</p> : null}
         <div className={ui.chips}>
-          {DEMO_QUESTIONS.map((q) => (
+          {[...DEMO_QUESTIONS, ...CHAT_STARTERS].map((q) => (
             <button key={q} type="button" className={ui.chip} disabled={waiting !== null} onClick={() => void ask(q)}>
               {q}
             </button>

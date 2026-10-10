@@ -148,8 +148,9 @@ def test_place_packs_routes_feasibility_and_friend_routes(tmp_path):
     with client(tmp_path) as c:
         assert {p["name"] for p in c.get("/api/places").json()} >= {"ucf", "apartment"}
         r = c.get("/api/play/campus-route", params={"from": "ucf.union", "to": "ucf.eng2"}).json()
-        assert r == {"path": ["ucf.union", "ucf.hec", "ucf.eng2"], "minutes": 6}
-        late = c.get("/api/play/campus-route", params={"from": "ucf.rwc", "to": "ucf.eng2",
+        # the walk follows the real footpaths (config/places/ucf.map.json): 185 m, with the line to draw
+        assert (r["path"], r["minutes"], r["meters"]) == (["ucf.union", "ucf.eng2"], 2.6, 185.0) and len(r["polyline"]) > 5
+        late = c.get("/api/play/campus-route", params={"from": "ucf.rwc", "to": "ucf.towers",
                                                        "depart": "2026-10-11T09:50:00-04:00", "due": "2026-10-11T10:00:00-04:00"}).json()
         assert late["message"] == "you miss the 10:00 by 7 minutes"
 
@@ -300,3 +301,22 @@ def test_answers_stream_word_by_word_over_the_websocket_before_the_final_answer(
         assert msgs.index(deltas[-1]) < len(msgs) - 1  # every piece arrives before the final answer
     log = "".join(p.read_text() for p in (tmp_path / "events").glob("*.jsonl"))
     assert "agent.answer.delta" not in log
+
+
+def test_small_talk_gets_a_reply_and_camera_questions_keep_their_path(tmp_path, monkeypatch):
+    with client(tmp_path) as c:
+        talk = c.app.state.atlas.qa.talk
+        hello = c.post("/api/ask", json={"text": "Hey Atlas, how's your day?"}).json()
+        assert hello["citations"] == [] and hello["answer"] != "I didn't see that." and not hello["answer"].startswith("(fake)")
+        assert "How's yours going?" in hello["answer"] and hello["model_version"] == "fake-0"
+        assert "AI" in c.post("/api/ask", json={"text": "are you gay?"}).json()["answer"]
+        assert len(talk.turns) == 2 and talk.answered == 2 and talk.about  # live state: the turns, the count, the profile's line
+        assert c.post("/api/ask", json={"text": "Anything weird?"}).json()["answer"] == "I didn't see that."  # the tool loop, as before
+        assert c.post("/api/ask", json={"text": "Where did I leave my keys?"}).json()["citations"]  # the pre-fetch, as before
+        wipe = c.post("/vault/wipe/request", json={"scope": "memory"}).json()["token"]
+        assert c.post("/vault/wipe", json={"token": wipe}).json()["done"]
+        assert not talk.turns  # a wipe clears the conversation too
+    monkeypatch.setenv("ATLAS_TALK", "0")
+    with client(tmp_path / "off") as c:
+        assert c.app.state.atlas.qa.talk is None
+        assert c.post("/api/ask", json={"text": "how's your day?"}).json()["answer"] == "I didn't see that."

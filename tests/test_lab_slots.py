@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 from lab import __main__ as lab_cli
-from lab.machine import alerts, allowed, ledger, referee, review, slots, slots_fake, slots_notion, stop
+from lab.machine import alerts, allowed, ledger, record, referee, review, slots, slots_fake, slots_notion, stop
 from lab.machine.slots_fake import FakeNotion
 from lab.machine.slots_notion import NotionClient, NotionError
 
@@ -1651,6 +1651,88 @@ def test_the_morning_review_lists_a_slot_opened_through_the_verbs(clocked):
     lines = review.slot_lines(alerts.timeline(ledger_rows(), clocked.now), clocked.now, day,
                               day + dt.timedelta(days=1))
     assert lines == [f"- slot {row} on pod-b, task L3: 10 of 15 min, still running (ledger:2)"]
+
+
+def complaint_lines_of_the_ledger(world) -> tuple[list[str], int]:
+    """The Complaints section of the morning review, built from the ledger the verbs wrote."""
+    return review.complaint_lines(alerts.timeline(ledger_rows(), world.now))
+
+
+#: What a complaint says of its wait when the Running row 'L4: eval' started 10 minutes before it and the complaining
+#: row has waited 40 minutes.
+FILED_BEHIND_THE_EVAL = ("2026-10-10T14:00Z waited 40 minutes, more than twice the 15 asked for; waiting behind: "
+                         "Running 'L4: eval' (ends 2026-10-10T14:05:00.000Z)")
+
+
+@pytest.mark.parametrize(("extra", "said"), [
+    (("--text", "the eval has run 10 minutes of its 15"), ". the eval has run 10 minutes of its 15"),
+    ((), "")])
+def test_the_morning_review_shows_the_text_of_a_complaint_filed_through_the_verb(clocked, monkeypatch, extra, said):
+    monkeypatch.setenv("LAB_ACTOR", "sonnet-3")
+    clocked.running("L4: eval", started_ago=10)
+    row = clocked.seed("L3: smoke", requested=clocked.ago(minutes=40))
+    answer, code = clocked.call("complain", "--row", row, *extra)
+    assert code == 0 and answer["outcome"] == "complaint_recorded"
+    lines, total = complaint_lines_of_the_ledger(clocked)
+    assert total == 1
+    assert lines == [f"- 14:00:00Z slot {row} (sonnet-3): {FILED_BEHIND_THE_EVAL}{said} (ledger:1)"]
+
+
+def test_the_review_file_lists_a_complaint_filed_through_the_verb_with_its_text(clocked, monkeypatch, capsys):
+    monkeypatch.setenv("LAB_ACTOR", "sonnet-3")
+    clocked.running("L4: eval", started_ago=10)
+    row = clocked.seed("L3: smoke", requested=clocked.ago(minutes=40))
+    clocked.call("complain", "--row", row, "--text", "the eval has run 10 minutes of its 15")
+    code = lab_cli.main(["review", "--day", "2026-10-10", "--now", "2026-10-10T15:00:00Z", "--no-prs", "--no-alerts"])
+    assert code == 0 and one_json_line(capsys.readouterr().out)["counts"]["complaints"] == 1
+    text = (Path(os.environ["LAB_STATE_DIR"]) / "review" / "2026-10-10.md").read_text(encoding="utf-8")
+    complaints = text.split("### Complaints", 1)[1].split("\n## ", 1)[0].strip().splitlines()
+    assert complaints == [f"- 14:00:00Z slot {row} (sonnet-3): {FILED_BEHIND_THE_EVAL}. the eval has run 10 minutes "
+                          "of its 15 (ledger:1)"]
+
+
+def test_the_note_of_a_complaint_row_is_the_entry_the_queue_was_given_and_never_the_token(clocked):
+    clocked.running("L4: eval", started_ago=10)
+    row = clocked.seed("L3: smoke", requested=clocked.ago(minutes=40))
+    answer, _ = clocked.call("complain", "--row", row, "--text", "the eval has run 10 minutes of its 15")
+    [entry] = ledger_rows()
+    assert entry["note"] == clocked.stored(row)["Complaint"] == answer["note"]
+    assert TOKEN not in ledger.ledger_path().read_text(encoding="utf-8")
+
+
+def test_a_long_complaint_keeps_all_of_its_text_in_the_queue_and_the_start_of_it_in_the_ledger(clocked):
+    clocked.running("L4: eval", started_ago=10)
+    row = clocked.seed("L3: smoke", requested=clocked.ago(minutes=40))
+    answer, code = clocked.call("complain", "--row", row, "--text", "x" * 900)
+    assert code == 0 and answer["outcome"] == "complaint_recorded"
+    stored = clocked.stored(row)["Complaint"]
+    [entry] = ledger_rows()
+    assert stored.endswith(". " + "x" * 900)
+    assert entry["note"] == stored[:record.NOTE_CHARS] and len(entry["note"]) == record.NOTE_CHARS
+
+
+def test_each_complaint_on_a_row_shows_its_own_text_and_not_the_earlier_ones(clocked):
+    clocked.running("L4: eval", started_ago=10)
+    row = clocked.seed("L3: smoke", requested=clocked.ago(minutes=40))
+    clocked.call("complain", "--row", row, "--text", "first")
+    clocked.advance(minutes=20)
+    clocked.call("complain", "--row", row, "--text", "still waiting")
+    lines, total = complaint_lines_of_the_ledger(clocked)
+    assert total == 2
+    assert lines == [
+        f"- 14:00:00Z slot {row} (unknown): {FILED_BEHIND_THE_EVAL}. first (ledger:1)",
+        f"- 14:20:00Z slot {row} (unknown): 2026-10-10T14:20Z waited 60 minutes, more than twice the 15 asked for; "
+        "waiting behind: Running 'L4: eval' (ends 2026-10-10T14:05:00.000Z). still waiting (ledger:2)"]
+
+
+def test_a_complaint_the_queue_refused_leaves_its_text_out_of_the_ledger(clocked):
+    clocked.running("L4: eval", started_ago=5)
+    row = clocked.seed("L3: smoke", requested=clocked.ago(minutes=29))
+    answer, code = clocked.call("complain", "--row", row, "--text", "give me the card now")
+    assert code == 1 and answer["outcome"] == "too_early" and "note" not in answer
+    [entry] = ledger_rows()
+    assert entry["outcome"] == "too_early" and "note" not in entry
+    assert complaint_lines_of_the_ledger(clocked) == ([], 0)
 
 
 # --- no token ----------------------------------------------------------------------------

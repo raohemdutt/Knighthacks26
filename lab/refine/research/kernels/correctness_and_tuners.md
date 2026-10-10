@@ -184,3 +184,58 @@ tuners pick a config by time alone, and what is known about tuning for energy in
 
   Experiment: KE2 reports watts per arm; expected load power to rise from about 200 W toward 230
   to 280 W as decode speeds up; minimum 5 spawns per arm; confidence medium (0.5).
+
+## 4. Pass 2 additions: image outputs on gfx12 attention backends
+
+Added by kernels refinement pass 2 on 2026-10-10. The teacher's main job is captioning images, so a
+check made only of text can pass a build that answers images wrongly.
+
+- **[measured]** On one R9700 (gfx1201) serving gemma-4-12B-it-FP8-Dynamic at temperature 0 on
+  vLLM 0.27.1.dev in AMD's `rocm/vllm` image with aiter built from source, six deterministic
+  384x384 image checks with one verifiable answer each (text to transcribe, a count, colour and
+  shape binding, a position, a corner, text inside a shape) scored 3 of 6 with
+  `ROCM_AITER_UNIFIED_ATTN` and 6 of 6 with `TRITON_ATTN`, the arms differing only in
+  `--attention-backend` and `VLLM_ROCM_USE_AITER`; an earlier single red-circle image had passed on
+  both. AMD's reply undertook to work on the non-causal attention path for gfx1201. Source: [S73]
+  ROCm/aiter#5683, comments by taisunyoung and amd-xavierwang of 2026-09-20.
+
+  Implication: an attention path can break image understanding while text stays right, and one
+  easy image does not show it. A kernels arm that changes the attention path or the vLLM build
+  (KE2 on a newer commit, KE8, R12) is held to a fixed set of fixture images with one verifiable
+  answer each, scored against the stock build, beside the text greedy match; a token-for-token
+  match across two vLLM versions is not expected (section 1.2), so across builds the image check is
+  the arbiter.
+
+  Experiment: an image check of six to ten fixture images with one verifiable answer each, run on
+  the stock build and on every new build or attention arm. Expected movement: the image score
+  equal to stock's on a correct build, a drop marking the arm failed; `teacher.output_match_rate`
+  unchanged on text. Minimum sample size: one pass per arm at temperature 0, repeated on a second
+  cold spawn. Confidence: high (0.8) that it catches a failure of this kind.
+
+- **[measured]** In the same report the AITER backend ran prefill 4.65x faster than `TRITON_ATTN`
+  on a cache-missing 7.7K-token prompt (5107 against 1098 tok/s) and decode 2.6% faster. Source:
+  [S73] ROCm/aiter#5683, body of 2026-09-19.
+
+  Implication: the speed that makes the AITER path tempting is on prefill, and its failure is on
+  images, which is the teacher's caption workload; a time-to-first-token win from it counts only on
+  text-only work, after the image check passes.
+
+  Experiment: KE18, an AITER unified-attention arm against `TRITON_ATTN` for text-only labeling
+  (tool-call traces) on a vLLM build that has both, the image check run on both arms. Expected
+  movement: `teacher.ttft_s` down by up to 4x on long text prompts, `teacher.joules_per_token`
+  about unchanged on long outputs. Minimum sample size: 5 spawns per arm. Confidence: low (0.2).
+
+- **[practitioner]** On vLLM 0.29.1.dev (AMD's `rocm/vllm` ROCm 10.1 image) on gfx1201,
+  `--attention-backend TRITON_ATTN` held the attention backend with `VLLM_ROCM_USE_AITER=1` set
+  (the serve log read "Using TRITON_ATTN backend (selected via --attention-backend)") and the six
+  image checks stayed at 6 of 6; the reporter serves production with `VLLM_ROCM_USE_AITER=0`
+  because AITER unified attention corrupts image output. Source: [S72] vllm-project/vllm#57838,
+  comments by taisunyoung of 2026-10-08 and 2026-10-09.
+
+  Implication: on a newer build both arms of a kernel experiment can pin the attention backend and
+  record the serve log's line, so a linear-kernel lever (KE2) does not also move attention (kernels
+  rubric K2).
+
+  Experiment: KE2 as queued on T0 (restated by kernels pass 2) pins the backend in both arms.
+  Expected movement: none from the pin itself. Minimum sample size: 1 serve-log check per spawn.
+  Confidence: high.

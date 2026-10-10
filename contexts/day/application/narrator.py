@@ -577,6 +577,9 @@ class Narrator:
             f["win"] = {"kind": "streak", "days": e.streak}
         if e.change_tomorrow:
             f["tomorrow"] = e.change_tomorrow
+        waste = self.planner.sorting(e.day, e.ts)  # Waste Watch's clause for that day, as the review's text has it
+        if waste:
+            f["waste"] = waste
         return f
 
     def approval_facts(self, e: ApprovalRequested) -> dict | None:

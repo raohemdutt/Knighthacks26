@@ -15,12 +15,27 @@ npm run render       # out/atlas.mp4 (about 30 minutes on a laptop)
 npm run check        # length within 0.1 s of 9:58, and where each key lands
 ```
 
+## Renders
+
+`video/renders/` holds dated full renders for the team to watch (`atlas-draft-2026-10-10.mp4`: the design with slot 0
+finished and placeholders in slots 1 to 9). `out/` stays local. The final upload is the newest file here once the
+recordings are in.
+
 ## Adding a recording
 
 Drop a screen or phone recording at `public/clips/slot-<key>.mp4` (1920x1080, 30 fps, at least 58 s), run
 `npm run timeline` again, and that slot plays it after its title card instead of the placeholder. Recordings are
 not committed (`.gitignore`); keep them in the team drive. What each slot must show is in `contexts/demo/video.py`
 and on the placeholder itself.
+
+## The look
+
+Soft UI (neumorphism), minimal: one surface colour, depth only from a light to the top left and a shade to the
+bottom right, one accent for the key a judge presses, four type sizes, one idea per screen. The tokens and the
+`raised` / `pressed` / `press(t)` styles are in `src/theme.ts`; the pieces (`Key`, `Card`, `Well`, `Muted`) in
+`src/Soft.tsx`. The 3D box in the intro uses the same surface colour and light direction, with a soft shadow texture
+instead of shadow maps, so it reads as the same material as the cards. A recording dropped into a slot is shown as
+is; keep the screens it shows on the box's own light theme where you can.
 
 ## Rules
 

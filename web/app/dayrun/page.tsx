@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCampusMap } from "@/components/dayrun/CampusLayers";
 import { CampusMap } from "@/components/dayrun/CampusMap";
 import { DayPlayer } from "@/components/dayrun/DayPlayer";
 import dr from "@/components/dayrun/dayrun.module.css";
 import { Meters } from "@/components/dayrun/Meters";
 import { More } from "@/components/dayrun/More";
 import { Planner } from "@/components/dayrun/Planner";
+import { RouteSheet } from "@/components/dayrun/RouteSheet";
 import { Empty, ErrorBox, Loading, WriteError } from "@/components/States";
 import ui from "@/components/ui.module.css";
 import { ApiError, api, type Board, type CommitResult, type HardResult, type Move, type SimResult } from "@/lib/api";
@@ -81,6 +83,9 @@ export default function DayRunPage() {
   const [urlPlan, setUrlPlan] = useState<"good" | "bad" | null>(null); // ?plan= from the presenter link, applied once a preset exists
   const packs = useFetch((s) => api.places(s));
   const places = useMemo(() => indexPlaces(packs.data ?? []), [packs.data]);
+  // The drawn campus of the board's own pack, if it has one: fetched once, shared by Play mode, the map and the Route sheets.
+  const boardPack = board.data?.pack;
+  const campus = useCampusMap(boardPack ? packs.data : undefined, useMemo(() => new Set(boardPack ? [boardPack] : []), [boardPack]));
 
   const [moves, setMovesState] = useState<Move[]>([]);
   const [preset, setPreset] = useState<"good" | "bad" | null>(null);
@@ -284,12 +289,13 @@ export default function DayRunPage() {
               <button type="button" className={`${ui.btn} ${ui.btnPrimary} ${dr.plWatch}`} disabled={!sim.result || !packs.data || Boolean(hard?.busy)} onClick={watch}>
                 <span aria-hidden="true">▶</span> Watch the day{hard?.result ? " go wrong" : ""}
               </button>
-            ) : !sim.result || !packs.data || linkHard || hard?.busy ? (
+            ) : !sim.result || !packs.data || linkHard || hard?.busy || (campus.pack && !campus.map && !campus.failed) ? (
               <Loading what="the day to play" />
             ) : (
               <DayPlayer
                 packs={packs.data}
                 places={places}
+                map={campus.map}
                 board={b}
                 result={sim.result}
                 hard={hard?.result ?? null}
@@ -368,7 +374,7 @@ export default function DayRunPage() {
             </section>
           ) : null}
 
-          <BoardCard board={b} places={places} />
+          <BoardCard board={b} places={places} result={shown} />
 
           <section className={ui.section}>
             <h2 className={ui.sectionTitle}>Your plan</h2>
@@ -521,7 +527,12 @@ function StartTiles({ board, places }: { board: Board; places: ReturnType<typeof
   );
 }
 
-function BoardCard({ board, places }: { board: Board; places: ReturnType<typeof indexPlaces> }) {
+function BoardCard({ board, places, result }: { board: Board; places: ReturnType<typeof indexPlaces>; result?: SimResult }) {
+  // Where the plan has you just before a fixed block: the walk the simulation takes to it, else where the day starts.
+  const cameFrom = (place: string, start: string): string => {
+    const walk = [...(result?.routes ?? [])].reverse().find((r) => r.end === place && ms(r.arrive) <= ms(start) && ms(start) - ms(r.arrive) <= 30 * 60000);
+    return walk?.start ?? board.start_place;
+  };
   return (
     <section className={ui.section}>
       <h2 className={ui.sectionTitle}>The board</h2>
@@ -569,9 +580,12 @@ function BoardCard({ board, places }: { board: Board; places: ReturnType<typeof 
             {board.blocks.map((f) => (
               <li key={f.id}>
                 <span className={dr.when}>{clockSpan(f.start, f.end)}</span>
-                <span className={ui.breakWords}>
-                  {f.title}
-                  <span className={ui.muted}> · {f.place_name ?? "anywhere"}</span>
+                <span className={`${ui.row} ${ui.between}`}>
+                  <span className={ui.breakWords}>
+                    {f.title}
+                    <span className={ui.muted}> · {f.place_name ?? "anywhere"}</span>
+                  </span>
+                  {f.place ? <RouteSheet from={cameFrom(f.place, f.start)} to={f.place} arriveBy={f.start} now={board.start} what={f.title} /> : null}
                 </span>
               </li>
             ))}
@@ -601,9 +615,12 @@ function BoardCard({ board, places }: { board: Board; places: ReturnType<typeof 
             {board.friends.map((f) => (
               <li key={`${f.member}-${f.start}`}>
                 <span className={dr.when}>{clockSpan(f.start, f.end)}</span>
-                <span className={ui.breakWords}>
-                  {f.member}
-                  <span className={ui.muted}> · {f.place_name || placeName(places, f.place)}</span>
+                <span className={`${ui.row} ${ui.between}`}>
+                  <span className={ui.breakWords}>
+                    {f.member}
+                    <span className={ui.muted}> · {f.place_name || placeName(places, f.place)}</span>
+                  </span>
+                  <RouteSheet from={board.start_place} to={f.place} now={board.start} what={`${f.member} is here ${clockSpan(f.start, f.end)}`} />
                 </span>
               </li>
             ))}

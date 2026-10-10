@@ -289,7 +289,7 @@ export function chunkForSpeech(text: string, max = CHUNK_CHARS): string[] {
 
 // ---------- things Atlas says without being asked ----------
 
-export type SpokenKind = "alert" | "nudge" | "approval" | "leaving" | "plan" | "coach" | "brief" | "replan" | "review" | "move";
+export type SpokenKind = "alert" | "nudge" | "approval" | "leaving" | "plan" | "coach" | "brief" | "replan" | "review" | "move" | "milestone";
 
 /** The shortest gap between two spoken events of one kind. Anything sooner is shown as usual but not said. */
 export const SPEAK_COOLDOWN_MS: Record<SpokenKind, number> = {
@@ -304,6 +304,8 @@ export const SPEAK_COOLDOWN_MS: Record<SpokenKind, number> = {
   replan: 60_000,
   review: 120_000,
   move: 60_000,
+  // Waste Watch's milestones (impact.milestone.reached): rare, and never two in one breath
+  milestone: 60_000,
 };
 
 /** Longest narration said unasked, in characters: the narrator keeps the morning brief under this. */
@@ -369,6 +371,11 @@ export function sentenceForEvent(e: { type: string } & Record<string, unknown>, 
     }
     case "day.narrated":
       return sentenceForNarration(e);
+    case "impact.milestone.reached": {
+      // Waste Watch passed a milestone: its `text` is one sentence written to be said ("That's 10 items kept out of landfill this week.")
+      const said = oneSentence(str(e.text), 200, options);
+      return said ? { kind: "milestone", text: said } : null;
+    }
     case "day.coach.noted": {
       // the study coach when a block ends: already one to three short sentences written to be said
       const said = cleanForSpeech(str(e.text), options).slice(0, 260);

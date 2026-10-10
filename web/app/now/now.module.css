@@ -410,6 +410,29 @@ button.body {
   font-weight: 650;
 }
 
+/* When to leave for the next fixed block, with the route button: sits flush under that block. */
+.leaveRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: -2px 0 6px;
+  padding: 6px 8px 6px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border-left: 4px solid var(--accent);
+  min-width: 0;
+}
+
+.leaveRow .leave {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.leaveRowWarn {
+  border-left-color: var(--danger);
+}
+
 .reason {
   font-size: 15px;
   line-height: 1.4;

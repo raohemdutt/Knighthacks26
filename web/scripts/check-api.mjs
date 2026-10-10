@@ -225,6 +225,50 @@ const LEADERBOARD = {
 const ROUTE = { item: "string", bin: "string", rows: "number", cols: "number", path: listOf({ row: "number", col: "number" }) };
 const ACCURACY = { session_id: "string", rounds: "number", first_round: "number?", round_5_on: "number?" };
 
+// The day in words, the coach's questions, the Circle's conversations, the Impact screen, "when to leave", the room
+// twin and the inspection dashboard: the fields lib/api.ts and the screens read, checked against the handlers.
+const NARRATION = { ...ENVELOPE, day: "string", moment: "string", plan_id: "string?", ref: "string?", spoken: "string", display: "string", engine: "string", facts_hash: "string", urgent: "boolean" };
+const mapOf = (spec) => (v) => {
+  if (typeOf(v) !== "object") return `expected an object, got ${typeOf(v)}`;
+  const bad = Object.entries(v).flatMap(([k, row]) => problems(row, spec, k));
+  return bad.length ? bad.slice(0, 3).join("; ") : undefined;
+};
+const BRIEF = { mode: oneOf("model", "template", "off"), engine: oneOf("model", "template", "off"), timeout_s: "number", gap_s: "number", latest: mapOf(NARRATION), asks: mapOf(NARRATION), model: "object" };
+const FEEDBACK_SESSION = { day: "string", block_id: "string", title: "string", start: isoDate, end: isoDate, planned_minutes: "number", measured: "boolean", breaks: "array", text: "string" };
+const COACH_FEEDBACK = {
+  now: isoDate, words: inner({ activity: "string", workplace: "string" }), options: listOf({ id: "string", label: "string" }),
+  sessions: listOf(FEEDBACK_SESSION), suggestions: stringList, precision: "array", answers: "number", progress: "array", threshold: "object",
+  learning: "array", notes: stringList,
+};
+const WHO = { member_id: "string", display_name: "string", mine: "boolean" };
+const CIRCLE_THREADS = {
+  configured: "boolean", circle_id: "string?", member_id: "string?", source: "string", offline: "boolean", members: listOf(WHO),
+  threads: listOf({
+    thread_id: "string", legs: stringList, title: "string", mine: "boolean", starts_at: isoDateOrNull, ends_at: isoDateOrNull, location: "string?",
+    state: "string", invitees: listOf(WHO), waiting_on: listOf(WHO), last_activity: isoDateOrNull, pending_action_id: "string?", messages_count: "number",
+  }),
+};
+const CIRCLE_MEMBERS = { configured: "boolean", circle_id: "string?", member_id: "string?", connect: "array", members: listOf({ ...WHO, has_box: "boolean" }) };
+const DISPOSAL = { item_id: "string", ts: isoDate, day: "string", label: "string", item: "string", bin: "string", zone: "string", correct: "boolean", belongs_in: "string", rule: "string", frame_ref: "string?", in_practice: "boolean" };
+const IMPACT_STORY = {
+  now: isoDate, week: inner({ start: "string", end: "string", today: "string" }), empty: "boolean", empty_text: "string?", rules: "object", total: "object",
+  this_week: "object", equivalents: "object", contamination: "object", feed: listOf(DISPOSAL), goal: "object",
+  days: listOf({ day: "string", disposals: "number", right: "number", wrong: "number", clean: "boolean" }), clean_streak: "number", milestones: "object", practice: "object",
+};
+const IMPACT_PRACTICE = {
+  week_start: "string", member_id: "string?", size: "number", how: "string", rules: inner({ file: "string", name: "string", place: "string?" }),
+  items: listOf({ item: "string", mistakes: "number", asked: "boolean", last_wrong_at: isoDateOrNull, went_to: "string?", belongs_in: "string", zone: "string", rule: "string", frame_ref: "string?", members: stringList }),
+};
+const PLACE_ROUTE = {
+  from: "string", to: "string", from_name: "string", to_name: "string", mode: oneOf("arrive_by", "depart"), depart: isoDate, arrive: isoDate, minutes: "number",
+  walk_minutes: "number", meters: "number?", path: stringList, polyline: "array", sentence: "string", from_xy: pairOrNull, to_xy: pairOrNull, attribution: "string?",
+};
+const PLACE_MAP = { attribution: "string", pack: "string", bbox: "array", origin: "array", unit: "number", buildings: "array", areas: "array", roads: "array", walk: "object", places: "object" };
+const ROOM = { name: "string", title: "string", size: "array", outline: "array", doors: "array", windows: "array", furniture: listOf({ id: "string", type: "string", at: "array", size: "array" }), calibration: "object", play: "object", zones: "object", rooms: "array", uncalibrated: stringList };
+const ROOM_LIVE = { room: "string", ts: isoDateOrNull, tracks: "array", seen: "object", round: "object?", result: "object?" };
+const ROOM_ROUTE = { item: "string", bin: "string", bin_id: "string", zone: "string", room: "string", from: inner({ x: "number", y: "number", track: "string?" }), reachable: "boolean", points: "array", distance_m: "number", par_s: "number" };
+const NO_ROOM = { 404: "the room twin is not set up (no floor plan)" };
+
 // ---------- transport ----------
 
 async function call(method, path, body) {
@@ -383,11 +427,40 @@ await check("GET /api/habits/today", "GET", "/api/habits/today", HABITS_TODAY, {
 await check("GET /memory/items?from=<now>", "GET", `/memory/items?from=${encodeURIComponent(new Date().toISOString())}`, ITEM, { list: true });
 await check("GET /api/impact", "GET", "/api/impact", IMPACT, { optional: { 404: "Waste Watch is not configured" } });
 
+console.log("\nNow (the day in words, the coach's questions)");
+const NO_DAY = { 404: "the Day loop is not on this box (it needs the place packs)" };
+const brief = await check("GET /api/day/brief", "GET", "/api/day/brief", BRIEF, { optional: NO_DAY });
+if (brief) console.log(`        ${brief.engine} engine; said so far: ${Object.keys(brief.latest).join(", ") || "nothing"}`);
+const coachAsks = await check("GET /api/day/coach/feedback", "GET", "/api/day/coach/feedback", COACH_FEEDBACK, { optional: NO_DAY });
+if (coachAsks) console.log(`        ${coachAsks.sessions.length} sessions, ${coachAsks.sessions.reduce((n, x) => n + x.breaks.length, 0)} breaks to ask about, ${coachAsks.answers} answered`);
+{
+  // GET /api/day/coach carries the same view as `feedback` (null on a box without the feedback loop)
+  const r = await call("GET", "/api/day/coach");
+  if (r.status === 404) skip("GET /api/day/coach .feedback", `HTTP 404: ${r.data?.detail ?? NO_DAY[404]}`);
+  else if (r.status !== 200 || !("feedback" in (r.data ?? {}))) fail("GET /api/day/coach .feedback", `HTTP ${r.status}: no feedback field`);
+  else if (r.data.feedback === null) ok("GET /api/day/coach .feedback", "null: the feedback loop is not wired");
+  else {
+    const bad = problems(r.data.feedback, COACH_FEEDBACK, "feedback");
+    if (bad.length) fail("GET /api/day/coach .feedback", bad.join("; "));
+    else ok("GET /api/day/coach .feedback");
+  }
+}
+
+console.log("\nImpact");
+const NO_IMPACT = { 404: "Waste Watch is not configured" };
+const story = await check("GET /api/impact/story", "GET", "/api/impact/story", IMPACT_STORY, { optional: NO_IMPACT });
+if (story) console.log(`        ${story.empty ? "nothing counted yet" : `${story.feed.length} disposals in the feed, ${story.clean_streak} clean days in a row`}`);
+const practice = await check("GET /api/impact/practice", "GET", "/api/impact/practice", IMPACT_PRACTICE, { optional: NO_IMPACT });
+if (practice) console.log(`        ${practice.size} to practise${practice.items[0] ? `, first: ${practice.items[0].item} -> ${practice.items[0].belongs_in}` : ""}`);
+
 console.log("\nPeople");
 const NO_IDENTITY = { 404: "owner recognition is not wired into this gateway" };
 await check("GET /identity/settings", "GET", "/identity/settings", { identity_enabled: "boolean", available: "boolean", recognizer: "string?" }, { optional: NO_IDENTITY });
 await check("GET /identity/members", "GET", "/identity/members", { member_id: "string", name: "string", enrolled_at: "string" }, { list: true, optional: NO_IDENTITY });
 await check("GET /identity/enroll/status", "GET", "/identity/enroll/status", { state: "string", frames_needed: "number" }, { optional: NO_IDENTITY });
+await check("GET /identity/settings (face profile)", "GET", "/identity/settings", { everyone: "boolean", expressions_available: "boolean", expression_reader: "string?", photos_available: "boolean" }, { optional: NO_IDENTITY });
+await check("GET /identity/present", "GET", "/identity/present", { present: "array" }, { optional: NO_IDENTITY });
+await check("GET /identity/expressions", "GET", "/identity/expressions", { member_id: "string?", hours: "number", samples: "number", looked: "object", strained_share: "number?", windows: "array", note: "string" }, { optional: NO_IDENTITY });
 
 console.log("\nApprovals");
 await check("GET /api/approvals", "GET", "/api/approvals", APPROVAL, { list: true });
@@ -425,6 +498,10 @@ const calendar = await check("GET /api/circle/events", "GET", "/api/circle/event
 if (calendar) console.log(`        ${calendar.events.length} upcoming, from ${calendar.source}${calendar.offline ? " (shared calendar offline)" : ""}`);
 const sharing = await check("GET /api/circle/sharing", "GET", "/api/circle/sharing", CIRCLE_SHARING);
 if (sharing) console.log(`        summaries ${sharing.sharing_now ? "on" : "off"}; ${sharing.queued} queued, ${sharing.sent} sent; database ${sharing.database}`);
+const threads = await check("GET /api/circle/threads", "GET", "/api/circle/threads", CIRCLE_THREADS);
+if (threads) console.log(`        ${threads.threads.length} conversations (${threads.source}${threads.offline ? ", shared store offline" : ""}): ${threads.threads.map((t) => `${t.title} [${t.state}]`).join(", ") || "none"}`);
+const circleMembers = await check("GET /api/circle/members", "GET", "/api/circle/members", CIRCLE_MEMBERS);
+if (circleMembers) console.log(`        ${circleMembers.members.length} members${circleMembers.configured ? "" : " (the Circle is not configured)"}`);
 if (WRITES) {
   await check("POST /api/presence", "POST", "/api/presence", PLACE, {
     body: { place: "Library", hours: 1 },
@@ -439,6 +516,14 @@ for (const item of ["can", "cup"]) {
 }
 await check("GET /api/play/accuracy", "GET", "/api/play/accuracy", ACCURACY, { optional: { 404: "Sort It is not configured" } });
 
+const roomRoute = await check("GET /api/play/room-route?item=can", "GET", "/api/play/room-route?item=can", ROOM_ROUTE, { optional: NO_ROOM });
+if (roomRoute) console.log(`        can -> ${roomRoute.bin} in the ${roomRoute.room} room; ${roomRoute.distance_m} m, par ${roomRoute.par_s} s${roomRoute.reachable ? "" : " (not reachable)"}`);
+
+console.log("\nRoom twin");
+const room = await check("GET /api/room", "GET", "/api/room", ROOM, { optional: NO_ROOM });
+if (room) console.log(`        ${room.title}: ${room.furniture.length} pieces of furniture, cameras calibrated: ${Object.keys(room.calibration).join(", ") || "none"}`);
+await check("GET /api/room/live", "GET", "/api/room/live", ROOM_LIVE, { optional: NO_ROOM });
+
 console.log("\nRoom map");
 for (const label of ["keys", "wallet", "charger", "laptop", "phone"]) {
   const s = await check(`GET /memory/objects/${label}/last-seen`, "GET", `/memory/objects/${label}/last-seen`, SIGHTING, { optional: { 404: "never seen" } });
@@ -446,8 +531,13 @@ for (const label of ["keys", "wallet", "charger", "laptop", "phone"]) {
 }
 {
   const r = await call("GET", "/api/zones");
-  if (r.status === 404) ok("GET /api/zones", "404 as expected: no endpoint returns the zone polygons, so the app embeds config/zones.yaml at build time");
-  else fail("GET /api/zones", `HTTP ${r.status}: an endpoint now exists; lib/zones.generated.ts can be replaced by a fetch`);
+  // camera -> zone -> polygon of [x, y] in 0..1 (lib/useZones.ts reads it; the copy embedded at build time is the fallback)
+  const polygon = (p) => Array.isArray(p) && p.length >= 3 && p.every((xy) => Array.isArray(xy) && xy.length === 2 && xy.every((n) => typeof n === "number" && n >= 0 && n <= 1));
+  const cameras = typeOf(r.data) === "object" ? Object.entries(r.data) : [];
+  if (r.status === 404) ok("GET /api/zones", "404: this box does not serve its zones, so the app uses the copy embedded at build time");
+  else if (r.status !== 200 || typeOf(r.data) !== "object") fail("GET /api/zones", `HTTP ${r.status}: ${JSON.stringify(r.data)?.slice(0, 200)}`);
+  else if (!cameras.every(([, zones]) => typeOf(zones) === "object" && Object.values(zones).every(polygon))) fail("GET /api/zones", "expected {camera: {zone: [[x, y], ...]}} with every point in 0..1");
+  else ok("GET /api/zones", `${cameras.length} cameras, ${cameras.reduce((n, [, z]) => n + Object.keys(z).length, 0)} zones`);
 }
 
 console.log("\nPlaces");
@@ -459,6 +549,41 @@ if (packs) {
   const all = packs.reduce((n, p) => n + Object.keys(p.places).length, 0);
   console.log(`        ${packs.length} packs, ${all} places, ${located} with coordinates (the rest are listed beside the map)`);
 }
+
+{
+  // "When to leave": the walk between the first two places that have coordinates, and the map it is drawn on.
+  const mapped = (packs ?? []).find((p) => typeof p.map === "string");
+  const NO_MAP = { 404: "no place pack has a drawn map" };
+  if (!mapped) skip("GET /api/places/route, GET /api/places/map/{pack}", NO_MAP[404]);
+  else {
+    const located = Object.entries(mapped.places).filter(([, p]) => typeof p.lat === "number" && typeof p.lon === "number").map(([id]) => `${mapped.name}.${id}`);
+    const [a, b] = located;
+    if (a && b) {
+      const arriveBy = new Date(Date.now() + 3600_000).toISOString();
+      const r = await check(`GET /api/places/route?from=${a}&to=${b}&arrive_by=`, "GET", `/api/places/route?from=${encodeURIComponent(a)}&to=${encodeURIComponent(b)}&arrive_by=${encodeURIComponent(arriveBy)}`, PLACE_ROUTE);
+      if (r) {
+        expect("  the route is for arriving by the time asked", r.mode === "arrive_by" && Date.parse(r.arrive) === Date.parse(arriveBy) && Date.parse(r.depart) <= Date.parse(r.arrive), `${r.mode}: ${r.depart} to ${r.arrive}`);
+        console.log(`        ${r.sentence}`);
+      }
+    }
+    await check(`GET /api/places/map/${mapped.name}`, "GET", `/api/places/map/${mapped.name}`, PLACE_MAP, { optional: NO_MAP });
+  }
+}
+
+console.log("\nInspection (SPOT)");
+// Every GET answers 200 also without a kit ({configured: false, note}); 404 only on a gateway without the context.
+const NO_SPOT = { 404: "the inspection context is not in this gateway" };
+const spotOverview = await check("GET /api/spot/overview", "GET", "/api/spot/overview", { configured: "boolean", model: "object" }, { optional: NO_SPOT });
+const spotTriage = await check("GET /api/spot/triage", "GET", "/api/spot/triage", { configured: "boolean", items: "array", uninspected: "array", next: "array" }, { optional: NO_SPOT });
+if (spotTriage) console.log(`        ${spotOverview?.configured ? `${spotTriage.items.length} assets ranked, ${spotTriage.uninspected.length} uninspected` : "no kit on this box: the screen says how to add one"}`);
+await check("GET /api/spot/findings", "GET", "/api/spot/findings", { configured: "boolean", findings: "array" }, { optional: NO_SPOT });
+await check("GET /api/spot/assets", "GET", "/api/spot/assets", { configured: "boolean", assets: "array" }, { optional: NO_SPOT });
+await check("GET /api/spot/locations", "GET", "/api/spot/locations", { configured: "boolean", locations: "array", plan: "object?" }, { optional: NO_SPOT });
+await check("GET /api/spot/handoff", "GET", "/api/spot/handoff", { configured: "boolean", lines: "array", text: "string" }, { optional: NO_SPOT });
+await check("GET /api/spot/assumptions", "GET", "/api/spot/assumptions", { configured: "boolean", assumptions: "array" }, { optional: NO_SPOT });
+await check("GET /api/spot/validation", "GET", "/api/spot/validation", { configured: "boolean", rows: "array", issues: "array" }, { optional: NO_SPOT });
+await check("GET /api/spot/work_orders", "GET", "/api/spot/work_orders", { configured: "boolean", work_orders: "array", folder: "string" }, { optional: NO_SPOT });
+await check("GET /api/spot/replay/state", "GET", "/api/spot/replay/state", { configured: "boolean", index: "number", total: "number", playing: "boolean" }, { optional: NO_SPOT });
 
 console.log("\nDay Run (scenario demo)");
 const board = await check("GET /api/dayrun/board?scenario=demo", "GET", "/api/dayrun/board?scenario=demo", BOARD, { optional: NO_DAYRUN });

@@ -39,16 +39,16 @@ const HALO = 0.3; // how far a panel's soft shadow reaches past its edge
 
 const COLOR = { floor: 0x1c2229, edge: 0x2b333d, zone: 0x5f6b78, zoneOn: 0x5ce1c6, text: "#f3f5f7", muted: "#a6b0bb", pin: 0xf3f5f7, accent: 0x5ce1c6 };
 
-type Mode = "native" | "quality" | "performance";
-const MODES: { id: Mode; name: string; sub: string; scale: number }[] = [
+export type Mode = "native" | "quality" | "performance";
+export const MODES: { id: Mode; name: string; sub: string; scale: number }[] = [
   { id: "native", name: "Native", sub: "100%", scale: 1 },
   { id: "quality", name: "FSR Quality", sub: "67%", scale: 0.67 },
   { id: "performance", name: "FSR Performance", sub: "50%", scale: 0.5 },
 ];
-const scaleOf = (mode: Mode) => MODES.find((m) => m.id === mode)?.scale ?? 1;
-const STORE_KEY = "atlas.map.render";
-const BENCH_FRAMES = 120;
-const BENCH: { name: string; scale: number; direct?: boolean }[] = [
+export const scaleOf = (mode: Mode) => MODES.find((m) => m.id === mode)?.scale ?? 1;
+export const STORE_KEY = "atlas.map.render";
+export const BENCH_FRAMES = 120;
+export const BENCH: { name: string; scale: number; direct?: boolean }[] = [
   { name: "Straight to the canvas (no pipeline)", scale: 1, direct: true },
   { name: "Native", scale: 1 },
   { name: "FSR Ultra Quality (77%)", scale: 0.77 },
@@ -56,16 +56,16 @@ const BENCH: { name: string; scale: number; direct?: boolean }[] = [
   { name: "FSR Performance (50%)", scale: 0.5 },
 ];
 
-interface BenchRow {
+export interface BenchRow {
   name: string;
   ms: number;
   internal: [number, number];
   output: [number, number];
 }
 
-const dims = (s: [number, number]) => `${s[0]}×${s[1]}`;
+export const dims = (s: [number, number]) => `${s[0]}×${s[1]}`;
 
-function remembered(): { mode: Mode; compare: boolean } {
+export function remembered(): { mode: Mode; compare: boolean } {
   let mode: Mode = "quality";
   let compare = false;
   try {

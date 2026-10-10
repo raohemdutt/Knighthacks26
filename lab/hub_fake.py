@@ -37,12 +37,24 @@ never refused for credits.
 
     transport = network({"dub.test": dub, "sjc.test": sjc})
     c = sjc.add_account("C", user="acct-c", token="...", quota_enabled=False, url="https://sjc.test")
+
+The web side of the hub, for the spawn form. Recorded live on SJC on 2026-10-10: `GET /hub/native/login` sets the
+`_xsrf` cookie and carries the same token in a hidden input; `POST /hub/native/login` (username, password, _xsrf)
+answers 302 with the cookies `jupyterhub-hub-login` and `jupyterhub-session-id` when the hub accepts the account
+and 200 with the login page and a `login_error` message when it does not; `GET /hub/spawn/<user>` answers 200 with
+a session and 302 to the login page without one; `POST /hub/spawn/<user>?_xsrf=<cookie>` with the spawn-ui fields
+answers 302 to `/hub/spawn-pending/<user>` when the spawn starts. An account added with a `password` can log in; the
+web calls carry cookies and no token. The pod a form launch starts runs the real image (`AUP_IMAGE`); as on SJC,
+`rest_launch_ignored = True` makes a REST launch answer as usual, echo its options, and start a pod that runs the
+stock singleuser image (`STOCK_IMAGE`) with no GPU. `pod_image()` and `pod_has_gpu()` say what a pod runs, which
+is what a terminal on it would tell. `omit_xsrf = True` serves the login page without any `_xsrf` token.
 """
 from __future__ import annotations
 
 import datetime as dt
 import email.utils
 import heapq
+import http.cookies
 import itertools
 import json
 import math
@@ -56,7 +68,11 @@ import httpx
 
 from lab.hub import Account
 
-__all__ = ["FakeClock", "FakeHub", "Call", "network"]
+__all__ = ["FakeClock", "FakeHub", "Call", "network", "STOCK_IMAGE", "AUP_IMAGE"]
+
+STOCK_IMAGE = "quay.io/jupyterhub/singleuser:latest"
+AUP_IMAGE = "ghcr.io/amdresearch/auplc-base:latest"
+SESSION_COOKIE = "jupyterhub-hub-login"
 
 UTC = dt.timezone.utc
 HUB_VERSION = "5.4.4"
@@ -114,6 +130,7 @@ class Call:
     t: float
     account: str | None = None
     status: int | None = None
+    form: dict[str, str] | None = None     # the fields of a form-encoded body (the web login and spawn)
 
 
 @dataclass
@@ -125,6 +142,7 @@ class _Server:
     ready_at: float | None             # the hub clock at which the spawn ends; None once it has
     stop_done_at: float | None = None  # the hub clock at which a pending stop ends
     failed: bool = False               # listed by the hub, but its spawn failed: not ready, nothing pending
+    image: str = AUP_IMAGE             # what the pod runs; a REST launch the hub ignores starts STOCK_IMAGE
 
 
 @dataclass
@@ -136,6 +154,7 @@ class _Account:
     rate: int
     unlimited: bool
     quota_enabled: bool
+    password: str | None = None
     server: _Server | None = None
     transactions: list[dict[str, Any]] = field(default_factory=list)
     sessions: int = 0
@@ -156,6 +175,9 @@ class _Canned:
     raises: Exception | None = None
 
 
+FAKE_ROLES = {"A": "pod-a", "B": "pod-b", "C": "pod-a", "D": "pod-b"}
+
+
 class FakeHub:
     """The hub, as the callers' code sees it. See the module docstring."""
 
@@ -165,6 +187,8 @@ class FakeHub:
         self.spawn_s = spawn_s
         self.stop_s = stop_s
         self.spawn_fails = False
+        self.rest_launch_ignored = False      # as on SJC: a REST launch is accepted, but its pod is the stock image
+        self.omit_xsrf = False                # serve the login page without any _xsrf token
         self.hub_clock_ahead_s = hub_clock_ahead_s
         self.cull_after_s = cull_after_s
         self.cull_every_s = cull_every_s
@@ -172,29 +196,35 @@ class FakeHub:
         self.files: dict[tuple[str, str], str] = {}
         self._accounts: dict[str, _Account] = {}
         self._canned: list[_Canned] = []
+        self._sessions: dict[str, str] = {}   # a web session cookie to the letter of the account that logged in
+        self._tokens = itertools.count(1)
         self.transport = httpx.MockTransport(self._handle)
 
     # --- scenario ---------------------------------------------------------------------------
 
     def add_account(self, letter: str, *, user: str, token: str, balance: int = 59960, rate: int = 4,
-                    unlimited: bool = False, quota_enabled: bool = True, url: str | None = None) -> Account:
+                    unlimited: bool = False, quota_enabled: bool = True, url: str | None = None,
+                    password: str | None = None, role: str | None = None) -> Account:
         """A hub account, returned in the form the callers take. url is the address it is given as its own
-        (AUP_HUB_URL_<letter>); the fake itself answers on whatever address it is reached at."""
-        self._accounts[letter] = _Account(letter, user, token, balance, rate, unlimited, quota_enabled,
+        (AUP_HUB_URL_<letter>); the fake itself answers on whatever address it is reached at. password lets the
+        account log in on the web side (the spawn form); without one the fake refuses every login as that user.
+        role is the pod role the account fills (LAB_POD_ROLES in real use); unset, the letter's role in FAKE_ROLES
+        (A and C the teacher's pod-a, B and D the trainer's pod-b), and none for any other letter."""
+        self._accounts[letter] = _Account(letter, user, token, balance, rate, unlimited, quota_enabled, password,
                                           user_activity=self._hub_now())
-        return Account(letter, user, token, url)
+        return Account(letter, user, token, url, password, role=role or FAKE_ROLES.get(letter))
 
     def start_server(self, letter: str, *, runtime_minutes: int = 600, started_ago_s: float = 0.0, idle_s: float = 0.0,
-                     ready: bool = True, accelerator: str = "r9700") -> None:
+                     ready: bool = True, accelerator: str = "r9700", image: str = AUP_IMAGE) -> None:
         """A pod that is already there: ready and running for started_ago_s, or still launching (ready=False)."""
         account = self._accounts[letter]
         now = self._hub_now()
         options = {"runtime_minutes": runtime_minutes, "resource_type": "gpu", "gpu_selection": accelerator}
         account.sessions += 1
         if ready:
-            account.server = _Server(now - started_ago_s, runtime_minutes, options, now - idle_s, None)
+            account.server = _Server(now - started_ago_s, runtime_minutes, options, now - idle_s, None, image=image)
         else:
-            account.server = _Server(now, runtime_minutes, options, now, now + self.spawn_s)
+            account.server = _Server(now, runtime_minutes, options, now, now + self.spawn_s, image=image)
 
     def start_failed_server(self, letter: str) -> None:
         """A server the hub still lists after its spawn failed: not ready and with nothing pending."""
@@ -261,6 +291,17 @@ class FakeHub:
         account = self._accounts[letter]
         self._advance(account)
         return None if account.server is None else account.server.last_activity
+
+    def pod_image(self, letter: str) -> str | None:
+        """The image the account's pod runs (what its JUPYTER_IMAGE_SPEC says); None when there is no server."""
+        account = self._accounts[letter]
+        self._advance(account)
+        return None if account.server is None else account.server.image
+
+    def pod_has_gpu(self, letter: str) -> bool | None:
+        """Whether the pod has a GPU device (/dev/kfd): the stock image has none; None when there is no server."""
+        image = self.pod_image(letter)
+        return None if image is None else image != STOCK_IMAGE
 
     def calls_matching(self, method: str | None = None, contains: str = "") -> list[Call]:
         return [call for call in self.calls
@@ -337,9 +378,14 @@ class FakeHub:
     # --- the requests -----------------------------------------------------------------------
 
     def _handle(self, request: httpx.Request) -> httpx.Response:
+        headers = {k.lower(): v for k, v in request.headers.items()}
+        kind = headers.get("content-type", "")
         call = Call(method=request.method, path=request.url.path, query=request.url.query.decode(),
-                    host=request.url.host, headers={k.lower(): v for k, v in request.headers.items()},
-                    json=json.loads(request.content) if request.content else None, t=self.clock.elapsed)
+                    host=request.url.host, headers=headers,
+                    json=json.loads(request.content) if request.content and "json" in kind else None,
+                    t=self.clock.elapsed,
+                    form=dict(urllib.parse.parse_qsl(request.content.decode(), keep_blank_values=True))
+                    if request.content and "x-www-form-urlencoded" in kind else None)
         self.calls.append(call)
         response = self._respond(request, call)
         call.status = response.status_code
@@ -374,6 +420,11 @@ class FakeHub:
         path = call.path
         if path.rstrip("/") == "/hub/api":
             return httpx.Response(200, json={"version": HUB_VERSION})
+        if path == "/hub/native/login":
+            return self._login(call)
+        spawn_page = re.match(r"^/hub/spawn/([^/]+)$", path)
+        if spawn_page:
+            return self._spawn_page(call, urllib.parse.unquote(spawn_page.group(1)))
         account = self._by_token(call.headers.get("authorization", ""))
         call.account = account.letter if account else None
         is_pod = path.startswith("/user/")
@@ -409,7 +460,7 @@ class FakeHub:
         if path == f"/hub/api/users/{urllib.parse.quote(account.user, safe='')}" and method == "GET":
             return httpx.Response(200, json=self._user_model(account))
         if path.endswith("/server") and method == "POST":
-            return self._launch(account, call.json or {})
+            return self._launch(account, call.json or {}, STOCK_IMAGE if self.rest_launch_ignored else AUP_IMAGE)
         if path.endswith("/server") and method == "DELETE":
             return self._stop(account)
         if path == "/hub/api/quota/me" and method == "GET":
@@ -443,7 +494,7 @@ class FakeHub:
         return {"username": account.user, "balance": account.balance, "unlimited": account.unlimited,
                 "rates": {**DEFAULT_RATES, "r9700": account.rate}, "enabled": True}
 
-    def _launch(self, account: _Account, options: Mapping[str, Any]) -> httpx.Response:
+    def _launch(self, account: _Account, options: Mapping[str, Any], image: str) -> httpx.Response:
         server = account.server
         text_plain = {"content-type": "text/plain"}
         if server is not None and server.failed:
@@ -470,7 +521,7 @@ class FakeHub:
         now = self._hub_now()
         account.sessions += 1
         ready_at = now + self.spawn_s if self.spawn_s > 0 else None
-        account.server = _Server(now, minutes, dict(options), now, ready_at)
+        account.server = _Server(now, minutes, dict(options), now, ready_at, image=image)
         return httpx.Response(202 if ready_at is not None else 201, headers=text_plain)
 
     def _stop(self, account: _Account) -> httpx.Response:
@@ -487,6 +538,84 @@ class FakeHub:
             return httpx.Response(204)
         server.stop_done_at = now + self.stop_s
         return httpx.Response(202, headers=text_plain)
+
+    # --- the hub's web side: login and the spawn form ---------------------------------------
+
+    @staticmethod
+    def _cookies(call: Call) -> dict[str, str]:
+        jar: http.cookies.SimpleCookie = http.cookies.SimpleCookie()
+        try:
+            jar.load(call.headers.get("cookie", ""))
+        except http.cookies.CookieError:
+            return {}
+        return {name: morsel.value for name, morsel in jar.items()}
+
+    @staticmethod
+    def _page(body: str, *, status: int = 200, cookies: Sequence[str] = ()) -> httpx.Response:
+        headers = [("content-type", "text/html; charset=utf-8"), *(("set-cookie", cookie) for cookie in cookies)]
+        return httpx.Response(status, headers=headers, text=f"<!DOCTYPE HTML><html><body>{body}</body></html>")
+
+    def _login(self, call: Call) -> httpx.Response:
+        """GET: the login page, which sets the _xsrf cookie and repeats it in a hidden input far down the page (the
+        real one has pages of style rules first). POST: the user name, the password and _xsrf."""
+        if call.method == "GET":
+            return self._login_page()
+        if call.method != "POST":
+            return httpx.Response(405, text="Method Not Allowed")
+        form = call.form or {}
+        cookie = self._cookies(call).get("_xsrf")
+        if not cookie or form.get("_xsrf") != cookie:
+            return httpx.Response(403, text="<html><body>403 : Forbidden '_xsrf' argument missing from POST</body></html>",
+                                  headers={"content-type": "text/html"})
+        account = next((a for a in self._accounts.values()
+                        if a.password is not None and a.user == form.get("username") and a.password == form.get("password")),
+                       None)
+        if account is None:
+            return self._login_page(error="Invalid username or password")
+        session = f"session-{account.letter}-{next(self._tokens)}"
+        self._sessions[session] = account.letter
+        return httpx.Response(302, headers=[("location", "/hub/"), ("set-cookie", f"{SESSION_COOKIE}={session}; Path=/hub/"),
+                                            ("set-cookie", f"jupyterhub-session-id=id-{session}; Path=/")])
+
+    def _login_page(self, error: str | None = None) -> httpx.Response:
+        padding = "<style>" + "/* the hub's style rules */ " * 200 + "</style>"
+        message = f'<p class="login_error">{error}</p>' if error else ""
+        if self.omit_xsrf:
+            return self._page(f'{padding}<form action="/hub/native/login">{message}<input name="username"/></form>')
+        token = f"xsrf-{next(self._tokens)}"
+        return self._page(
+            f'{padding}<form action="/hub/native/login" method="post">{message}<input name="username"/>'
+            f'<input type="hidden" name="_xsrf" value="{token}"/></form>', cookies=[f"_xsrf={token}; Path=/hub/"])
+
+    def _spawn_page(self, call: Call, user: str) -> httpx.Response:
+        """GET: the spawn page for a session of that user. POST: the spawn-ui fields, with _xsrf in the query."""
+        cookies = self._cookies(call)
+        letter = self._sessions.get(cookies.get(SESSION_COOKIE, ""))
+        account = self._accounts.get(letter) if letter else None
+        if account is None or account.user != user:
+            return httpx.Response(302, headers={"location": f"/hub/login?next=%2Fhub%2Fspawn%2F{urllib.parse.quote(user)}"})
+        self._advance(account)
+        if call.method == "GET":
+            if account.server is not None:
+                return httpx.Response(302, headers={"location": f"/hub/user/{urllib.parse.quote(user)}/"})
+            return self._page('<div id="spawn-root"></div>')
+        if call.method != "POST":
+            return httpx.Response(405, text="Method Not Allowed")
+        asked = urllib.parse.parse_qs(call.query).get("_xsrf", [""])[0]
+        if not asked or asked != cookies.get("_xsrf"):
+            return httpx.Response(403, text="<html><body>403 : Forbidden '_xsrf' argument missing from POST</body></html>",
+                                  headers={"content-type": "text/html"})
+        form = call.form or {}
+        resource = form.get("resource_type", "")
+        accelerator = form.get(f"gpu_selection_{resource}", "")
+        minutes = form.get("runtime", "")
+        if not resource or not accelerator or not minutes.isdigit():
+            return self._page('<p class="login_error">The spawn form is incomplete</p>', status=400)
+        options = {"gpu_selection": accelerator, "resource_type": resource, "runtime_minutes": int(minutes)}
+        launched = self._launch(account, options, AUP_IMAGE)
+        if launched.status_code in (201, 202):
+            return httpx.Response(302, headers={"location": f"/hub/spawn-pending/{urllib.parse.quote(user)}"})
+        return launched
 
     # --- the pod behind the proxy -----------------------------------------------------------
 

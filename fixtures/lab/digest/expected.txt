@@ -33,7 +33,7 @@ A teacher shared service: 0 running, 1 queued; B exclusive: 1 running, 2 queued
   running on B exclusive: R11: decode sweep batch 1 to 16 (R11), started 15:40Z, 20 min elapsed of a 15 min cap, OVER CAP by 5 min
   queued #1 on A teacher shared service: T1: teacher power probe (T1), 15 min, waiting 10 min
   queued #1 on B exclusive: R12: HIP kernel microbench (R12), 15 min, waiting 40 min
-  queued #2 on B exclusive: L3: smoke LoRA 200 steps (L3), 60 min, waiting 60 min
+  queued #2 on B exclusive: L3: smoke LoRA 200 steps (L3), 60 min, waiting 60 min, complaint due
 Complaints on open rows:
   R12: HIP kernel microbench (Queued, 40 min): Waited 40 min; the running slot is past its cap
 
