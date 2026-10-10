@@ -262,6 +262,11 @@ W11 are the subjects those tasks and experiments act on, walked with them.
   build` (K2, K7) [S2][S3].
 - W11. Any engine change a pass proposes (a newer vLLM commit, Triton, or ROCm), which resets the
   stock record (K1) and has its own documented regressions on this card [S35].
+- W12. R20 to R27, the run tasks of this track: R20 the stock matrix on pod B, R21 the correctness
+  harness, R22 thinking off for captions, R23 the Quark checkpoint, R24 the Conch config sweep, R25
+  FP8 weights or KV cache, R26 the batching sweep and R27 the Jetson power modes (shared with Xander,
+  so walked for findings only): added by merge 2 under kernels ruling 1 (owner, 2026-10-10: the walk
+  list is every kernels task in Ilan's lane, R11, R12, R20 to R27, under the same rules).
 
 ## The metric set
 
