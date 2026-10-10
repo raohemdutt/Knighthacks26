@@ -82,7 +82,15 @@ class ModelStore:
         if tmp.is_symlink() or tmp.exists():
             tmp.unlink()
         os.symlink(version, tmp)
-        os.replace(tmp, self.root / "current")  # atomic on POSIX
+        try:
+            os.replace(tmp, self.root / "current")  # atomic on POSIX
+        except PermissionError:  # Windows cannot rename a directory symlink over another one: remove, then rename
+            link = self.root / "current"
+            try:
+                link.unlink()
+            except OSError:  # a directory symlink on Windows is removed with rmdir
+                os.rmdir(link)
+            os.replace(tmp, link)
         if before and before != version:
             (self.root / "previous").write_text(before + "\n")
 
