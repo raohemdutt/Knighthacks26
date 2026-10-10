@@ -11,7 +11,7 @@ const PART_COLOR: Record<string, string> = {
   severity: "var(--sev-critical)",
   criticality: "var(--sev-high)",
   repeats: "var(--sev-medium)",
-  "not inspected": "#c792ea",
+  "not inspected": "#7c4dc4",
   stale: "var(--sev-low)",
   "failure rate": "var(--bad)",
   "seen since": "var(--ok)",

@@ -85,7 +85,7 @@ export default function CirclePage() {
     <>
       <div className={ui.pageHead}>
         <h1>Circle</h1>
-        <p className={ui.muted}>Friends who also run Atlas. Your Atlases plan together; only named places, one-word answers, counts and scores are shared. Never video.</p>
+        <p className={ui.muted}>Friends who also run Atlas. You share only place names, one-word answers, counts and scores, never video.</p>
       </div>
 
       {off ? <NotConnected lines={members.data?.connect ?? []} /> : null}

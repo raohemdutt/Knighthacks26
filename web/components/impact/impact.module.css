@@ -1,10 +1,10 @@
 /* The Impact screen. Tokens come from app/globals.css; nothing here defines a colour of its own. */
 
 .hero {
-  padding: 18px 16px;
+  padding: 22px 20px;
   border-radius: var(--radius);
   background: var(--surface);
-  border: 1px solid var(--line);
+  box-shadow: var(--sh-raised);
 }
 
 .heroLabel {
@@ -30,9 +30,10 @@
 
 .estimate {
   display: inline-block;
-  padding: 1px 8px;
-  border-radius: 999px;
-  border: 1px dashed var(--muted);
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
   color: var(--muted);
   font-size: 12px;
   font-weight: 600;
@@ -43,10 +44,9 @@
 
 .milestone {
   margin-top: 14px;
-  padding: 12px 14px;
+  padding: 14px 16px 14px 20px;
   border-radius: var(--radius-sm);
-  background: var(--accent-soft);
-  border-left: 4px solid var(--accent);
+  background: linear-gradient(var(--accent), var(--accent)) left / 4px 100% no-repeat, var(--accent-soft);
   font-size: 17px;
 }
 
@@ -62,10 +62,10 @@
 }
 
 .tile {
-  padding: 14px;
+  padding: 18px 16px;
   border-radius: var(--radius);
   background: var(--surface);
-  border: 1px solid var(--line);
+  box-shadow: var(--sh-raised);
   min-width: 0;
 }
 
@@ -86,8 +86,8 @@
 .details {
   margin-top: 12px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--line);
   background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
 }
 
 .details > summary {
@@ -119,6 +119,7 @@
   margin: 18px 0 6px;
   border-radius: 7px;
   background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
 }
 
 .goalFill {
@@ -128,7 +129,7 @@
 }
 
 .goalFillMet {
-  background: var(--accent);
+  background: linear-gradient(90deg, var(--accent-bright), var(--accent));
 }
 
 .goalMark {
@@ -160,17 +161,17 @@
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  padding: 8px 2px;
+  padding: 10px 2px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--line);
-  background: var(--surface-2);
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
   font-size: 12px;
   color: var(--muted);
   min-width: 0;
 }
 
 .dayToday {
-  border-color: var(--text);
+  box-shadow: var(--sh-inset-sm), 0 0 0 2px var(--text);
 }
 
 .dayMark {
@@ -181,8 +182,8 @@
 }
 
 .dayClean {
-  border-color: var(--accent);
   background: var(--accent-soft);
+  box-shadow: var(--sh-inset-sm), 0 0 0 2px var(--accent);
 }
 
 .dayFuture {
@@ -216,7 +217,8 @@
   width: 84px;
   aspect-ratio: 4 / 3;
   border-radius: var(--radius-sm);
-  border: 1px dashed var(--line);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
   color: var(--muted);
   font-size: 11px;
   text-align: center;
@@ -225,15 +227,15 @@
 
 .verdict {
   display: inline-block;
-  padding: 2px 10px;
-  border-radius: 999px;
+  padding: 3px 12px;
+  border-radius: var(--radius-pill);
   font-size: 13px;
   font-weight: 700;
 }
 
 .right {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .wrong {
@@ -243,10 +245,10 @@
 
 .rule {
   margin: 8px 0 0;
-  padding: 10px 12px;
+  padding: 12px 14px 12px 18px;
   border-radius: var(--radius-sm);
-  background: var(--surface-2);
-  border-left: 4px solid var(--danger);
+  background: linear-gradient(var(--danger), var(--danger)) left / 4px 100% no-repeat, var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
   font-size: 16px;
 }
 
@@ -275,12 +277,12 @@
 .bar {
   width: 56%;
   min-height: 2px;
-  border-radius: 4px 4px 0 0;
+  border-radius: 8px 8px 0 0;
   background: var(--muted);
 }
 
 .barAfter {
-  background: var(--accent);
+  background: linear-gradient(0deg, var(--accent), var(--accent-bright));
 }
 
 .barValue {

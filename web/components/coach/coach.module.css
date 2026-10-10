@@ -1,10 +1,10 @@
 /* "Was that right?" under a break. Tokens come from app/globals.css. */
 
 .break {
-  padding: 12px 14px;
+  padding: 16px;
   border-radius: var(--radius-sm);
   background: var(--surface-2);
-  border: 1px solid var(--line);
+  box-shadow: var(--sh-inset-sm);
 }
 
 .break p {
@@ -58,10 +58,9 @@
 
 .learning {
   margin-top: 10px !important;
-  padding: 10px 12px;
+  padding: 12px 14px 12px 18px;
   border-radius: var(--radius-sm);
-  background: var(--accent-soft);
-  border-left: 4px solid var(--accent);
+  background: linear-gradient(var(--accent), var(--accent)) left / 4px 100% no-repeat, var(--accent-soft);
 }
 
 .precision {
@@ -73,14 +72,15 @@
 
 .track {
   grid-column: 1 / -1;
-  height: 8px;
-  border-radius: 4px;
+  height: 12px;
+  border-radius: 6px;
   background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
   overflow: hidden;
 }
 
 .fill {
   height: 100%;
-  border-radius: 4px;
-  background: var(--accent);
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--accent-bright), var(--accent));
 }
