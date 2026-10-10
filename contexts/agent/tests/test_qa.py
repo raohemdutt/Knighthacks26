@@ -270,7 +270,8 @@ def test_a_visit_is_the_latest_stretch_of_people_and_everything_seen_during_it()
     a = QA(FakeRuntime(), memory, clock=lambda: NOW)
     ev = a.prefetch("What happened while the judges were here?")
     assert [c.episode_id for c in ev.citations] == ["v1", "obj", "v2"]
-    assert "started" in ev.lines[0] and ev.system and "Never say who" in ev.system
+    assert ev.direct.startswith("The latest visit started") and "phone is left on the desk" in ev.direct
+    assert "Two people eat lunch" not in ev.direct  # the earlier visit
 
 
 def test_no_person_in_view_recently_means_no_visit():
@@ -281,4 +282,5 @@ def test_no_person_in_view_recently_means_no_visit():
 
 def test_while_we_were_asleep_is_still_the_night_not_a_visit():
     a = QA(FakeRuntime(), MEMORY, clock=lambda: NOW)
-    assert a.prefetch("What went on while we were asleep?").system != a.prefetch("Recap their visit").system
+    assert a.prefetch("What went on while we were asleep?").direct is None
+    assert a.prefetch("Recap their visit").direct.startswith("The latest visit")

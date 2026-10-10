@@ -138,6 +138,7 @@ VISIT = re.compile(
 )
 VISIT_LOOKBACK = timedelta(hours=3)
 VISIT_GAP = timedelta(minutes=3)  # people out of view for longer than this end one visit
+VISIT_SPOKEN = 4  # moments read out in a visit recap
 
 
 @dataclass
@@ -229,14 +230,6 @@ DUE_WORDS = re.compile(r"\b(due|deadlines?|homework|assignments?)\b")
 SYSTEM_RECAP = (
     "You are Atlas, a home camera assistant. Using only the evidence, recap what happened in time order, "
     "one short clause per hour that had something, with its time, in under 40 words. "
-    f'If the evidence is empty, say "{NO_EVIDENCE}"'
-)
-
-
-SYSTEM_VISIT = (
-    "You are Atlas, a home camera assistant. Using only the evidence, recap the most recent visit in one or two "
-    "short sentences: when it started, what the people did, and anything they brought, left or took. Never say who "
-    'anyone is: say "a person" or "two people". '
     f'If the evidence is empty, say "{NO_EVIDENCE}"'
 )
 
@@ -369,12 +362,17 @@ class QA:
                 break
             start = before.start
         last = people[-1].end or people[-1].start
-        ev.system = SYSTEM_VISIT
-        ev.lines.append(f"The most recent visit started {self._t(start)}; people were last in view {self._t(last)}.")
+        spoken = []
         for e in [e for e in episodes if start <= e.start <= last][:MAX_EPISODE_LINES]:
             text = e.summary or " ".join(e.captions) or ", ".join(e.labels)
             ref = e.keyframe_refs[0] if e.keyframe_refs else None
             ev.add(f"{self._t(e.start)} on {e.camera_id}: {text}", Citation(episode_id=e.id, frame_ref=ref, ts=e.start))
+            said = text.strip().rstrip(".") + "."
+            spoken.append(said if not spoken else f"{self._t(e.start)}: {said}")
+        # Written from the data, no model call: on the Jetson the 4B read "while the judges were here" literally and
+        # refused when the evidence said "a courier". Captions describe people, never name them.
+        more = f" And {len(spoken) - VISIT_SPOKEN} more moments." if len(spoken) > VISIT_SPOKEN else ""
+        ev.direct = f"The latest visit started {self._t(start)}: " + " ".join(spoken[:VISIT_SPOKEN]) + more
 
     def trace(self, item: str, ev: Evidence) -> None:
         """Where `item` was last seen, the latest episodes the detector tagged with it, then caption matches."""
