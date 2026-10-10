@@ -123,3 +123,18 @@ def test_plans_include_todays_habit_numbers():
     prompt = rt.calls[-1][1][-1].content
     assert "Habit Meals: 1 meals today (target at least 2, not met yet, streak 0)" in prompt
     assert "Habit Sleep: 4.5 hours today" in prompt and "Focus" not in prompt  # not applicable today
+
+
+def test_food_uses_nearby_places_with_links():
+    planner, rt = make()
+
+    async def places(kind):
+        assert kind == "food"
+        return [{"title": "Knightro's", "summary": "pizza, 70 m away", "url": "https://www.openstreetmap.org/node/1"}]
+
+    planner.places = places
+    planner.qa.planner = planner
+    a = asyncio.run(planner.qa.ask("What should I eat?"))
+    prompt = rt.calls[-1][1][-1].content
+    assert "Nearby: Knightro's (pizza, 70 m away)" in prompt and "cs.ucf.edu" not in prompt  # places, not web search
+    assert "https://www.openstreetmap.org/node/1" in [c.url for c in a.citations]

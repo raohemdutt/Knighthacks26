@@ -98,6 +98,7 @@ class Planner:
         self._last_leaving: datetime | None = None
         self.presence = None  # PresenceBoard (G5), set by the composition root when the Circle is on
         self.habits = None  # HabitTracker (H1), set by the composition root: meals, drinks, sleep so far today
+        self.places = None  # async (kind) -> nearby places (K8), set by the composition root
 
     async def on_item(self, e: ItemSynced) -> list:
         """Bus handler for connector.item.synced: plan once per crunch item."""
@@ -260,7 +261,13 @@ class Planner:
         self._friends(now, ev)
         night_start, night_end = self.qa.sleep.last_night(now)
         ev.lines.append(f"Sleep window last night: {self.qa._t(night_start)} to {self.qa._t(night_end)}")
-        if self.qa.web:
+        if self.places:  # K8: real places near the box, from OpenStreetMap
+            try:
+                for pl in (await self.places("food"))[:6]:
+                    ev.add(f"Nearby: {pl['title']} ({pl['summary']})", Citation(url=pl.get("url"), title=pl["title"]))
+            except Exception as exc:
+                ev.lines.append(f"(nearby places unavailable: {exc})")
+        elif self.qa.web:
             try:
                 await self.qa.web_search(f"healthy food open now near {self.campus}", ev)
             except Exception as exc:
