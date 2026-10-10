@@ -1,4 +1,7 @@
+from datetime import datetime
 from typing import Literal
+
+from pydantic import BaseModel
 
 from contracts.events import TypedEvent, register
 
@@ -46,3 +49,53 @@ class ModelDeployed(TypedEvent):
     type: Literal["learning.model.deployed"] = "learning.model.deployed"
     model_version: str
     previous_version: str | None = None
+
+
+# --- box <-> lab file formats (the only coupling between Atlas and lab/) ---
+#
+# Dataset export, written by the box after an approved export:
+#   <dataset_id>/manifest.json   DatasetManifest
+#   <dataset_id>/examples.jsonl  one DatasetExample per line
+#   <dataset_id>/images/*.jpg    blurred keyframes only
+# The lab's label.py fills `target` with the teacher's output.
+#
+# Model package, written by lab/package.sh, installed under data/models/<version>/:
+#   manifest.json  ModelManifest
+#   <gguf>, <mmproj>
+
+
+class TaskSpec(BaseModel):
+    task: str  # slug: "desk-objects"
+    instruction: str  # prompt given to teacher and student for each image
+    output_schema: dict = {}  # JSON schema of the expected answer, {} for free text
+    camera: str | None = None  # restrict examples to one camera
+    label: str | None = None  # restrict to episodes with this detector label
+
+
+class DatasetExample(BaseModel):
+    id: str
+    image: str  # path relative to the dataset dir: "images/0001.jpg"
+    frame_ref: str
+    ts: datetime
+    context: str | None = None  # the box's own caption, for the teacher to see
+    target: str | None = None  # filled by the teacher in the lab
+    verdict: Literal["up", "down"] | None = None  # user thumbs, if any
+
+
+class DatasetManifest(BaseModel):
+    dataset_id: str
+    spec: TaskSpec
+    created: datetime
+    examples: int
+    action_id: str  # the approval that allowed this export
+
+
+class ModelManifest(BaseModel):
+    version: str  # "atlas-v3-desk-objects"
+    base: str  # "Qwen/Qwen3.5-4B"
+    task: str | None = None
+    gguf: str  # file name inside the package dir
+    mmproj: str | None = None
+    sha256: dict[str, str] = {}  # file name -> checksum
+    scores: dict[str, float] = {}
+    created: datetime

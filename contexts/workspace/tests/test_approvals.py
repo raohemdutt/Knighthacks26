@@ -19,7 +19,7 @@ def decided(decision, at_s=10, action_id="a1"):
 
 def test_approve_runs_the_executor_once():
     ran = []
-    ap = Approvals({"send_message": lambda target, p: ran.append((target, p)) or "sent"})
+    ap = Approvals({"send_message": lambda r: ran.append((r.target, r.params)) or "sent"})
     [req] = ap.on_proposed(proposed())
     assert req.expires_at == T0 + timedelta(minutes=5)
     [done] = ap.on_decided(decided("approve"))
@@ -30,7 +30,7 @@ def test_approve_runs_the_executor_once():
 
 def test_deny_and_late_approve_never_run():
     ran = []
-    ap = Approvals({"send_message": lambda t, p: ran.append(t) or "sent"})
+    ap = Approvals({"send_message": lambda r: ran.append(r.target) or "sent"})
     ap.on_proposed(proposed("a1"))
     ap.on_proposed(proposed("a2"))
     assert ap.on_decided(decided("deny", action_id="a1"))[0].status == "denied"
@@ -48,7 +48,7 @@ def test_expire_sweeps_pending():
 
 
 def test_failing_executor_reports_failed():
-    def boom(target, params):
+    def boom(request):
         raise RuntimeError("ntfy down")
 
     ap = Approvals({"send_message": boom})

@@ -19,8 +19,6 @@ from contracts.workspace import ActionCompleted, ActionStatus, ApprovalRequested
 
 APPROVAL_TTL = timedelta(minutes=5)
 
-Executor = Callable[[str, dict], str]  # (target, params) -> result text
-
 
 class ActionRequest(BaseModel):
     id: str
@@ -31,6 +29,9 @@ class ActionRequest(BaseModel):
     status: ActionStatus = "proposed"
     expires_at: datetime
     result: str | None = None
+
+
+Executor = Callable[[ActionRequest], str]  # returns result text
 
 
 class Approvals:
@@ -77,7 +78,7 @@ class Approvals:
         if executor is None:
             return [self._finish(req, "failed", e.ts, f"no executor for {req.kind}")]
         try:
-            result = executor(req.target, req.params)
+            result = executor(req)
         except Exception as exc:  # an action failing must not take the box down
             return [self._finish(req, "failed", e.ts, str(exc))]
         return [self._finish(req, "done", e.ts, result)]
