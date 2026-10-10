@@ -21,7 +21,7 @@ from pydantic import BaseModel
 
 from contexts.agent.application.memory_port import FakeMemory
 from contexts.agent.application.qa import NO_EVIDENCE, QA, SleepSchedule
-from contracts.memory import Episode, Sighting
+from contracts.memory import Episode, Item, Sighting
 from contracts.types import ModelVersion
 from runtime import FakeRuntime
 from runtime.interface import Runtime
@@ -54,6 +54,7 @@ def load_fixture(root: Path = GOLDEN) -> tuple[FakeMemory, datetime, list[Golden
     memory = FakeMemory(
         episodes=[Episode.model_validate(e) for e in mem["episodes"]],
         sightings=[Sighting.model_validate(s) for s in mem["sightings"]],
+        items=[Item.model_validate(i) for i in mem.get("items", [])],
     )
     now = datetime.fromisoformat(mem["now"])
     questions = [Golden.model_validate(g) for g in yaml.safe_load((root / "questions.yaml").read_text())]
@@ -68,7 +69,7 @@ def run(runtime: Runtime, root: Path = GOLDEN, judge_answers: bool = True) -> li
         start = time.monotonic()
         a = asyncio.run(qa.ask(g.q))
         latency = int((time.monotonic() - start) * 1000)
-        cited = sorted({ref for c in a.citations for ref in (c.episode_id, c.frame_ref) if ref})
+        cited = sorted({ref for c in a.citations for ref in (c.episode_id, c.frame_ref, c.url) if ref})
         if g.no_evidence:
             citations_ok = not a.citations
             answer_ok = a.text == NO_EVIDENCE if judge_answers or not a.citations else None
