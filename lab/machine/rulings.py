@@ -791,7 +791,9 @@ def main(
     if client is None:
         environment = os.environ if environ is None else environ
         files = ready.default_env_files(environment) if env_files is None else env_files
-        token = ready.collect_env((TOKEN_ENV,), environment, files)[0].get(TOKEN_ENV)
+        # Stripped as the mirror verb strips it: a CRLF .env sourced into a shell leaves a CR on the value, which
+        # http.client refuses in a header with a message that spells the token in a form ready.scrub cannot see.
+        token = ready.collect_env((TOKEN_ENV,), environment, files)[0].get(TOKEN_ENV, "").strip()
         if not token:
             return {
                 "ok": False,

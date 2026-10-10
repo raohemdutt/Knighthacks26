@@ -20,7 +20,7 @@ import pytest
 
 from lab import __main__ as dispatcher
 from lab.machine import refine_formats as rf
-from lab.machine import rulings
+from lab.machine import pages_fake, rulings
 from lab.machine.lock import FileLock
 
 REPO = Path(__file__).resolve().parents[1]
@@ -1170,6 +1170,33 @@ def test_the_token_never_reaches_the_output_or_an_error_message(tmp_path):
         assert {t["action"] for t in result["targets"].values()} == {"failed"}
         assert TOKEN not in json.dumps(result)
     assert TOKEN not in repr(rulings.RestNotionClient(TOKEN))
+
+
+def header_checking(wire):
+    """A transport that refuses a header value holding a bare CR or LF the way http.client does before it
+    connects (ValueError naming the value with its repr), and hands every other request to wire."""
+
+    def transport(method, url, headers, body, timeout):
+        for value in headers.values():
+            if "\r" in value or "\n" in value:
+                raise ValueError(f"Invalid header value {value.encode('latin-1')!r}")
+        return wire(method, url, headers, body, timeout)
+
+    return transport
+
+
+@pytest.mark.parametrize("token", ["tok-SENTINEL\n", "tok-SENTINEL\r", " tok-SENTINEL\r\n", "\ttok-SENTINEL "])
+def test_a_token_with_a_line_break_or_spaces_around_it_is_stripped_and_never_printed(tmp_path, token):
+    refine = tree_with_two_open(tmp_path)
+    notion = pages_fake.FakePages({rulings.OVERNIGHT_PAGE: OVERNIGHT, rulings.TEAM_COMMS_PAGE: TEAM_COMMS},
+                                  token="tok-SENTINEL")
+
+    result = run(refine, "mirror", environ={"NOTION_TOKEN": token}, env_files=[],
+                 transport=header_checking(notion.transport))
+
+    assert "SENTINEL" not in json.dumps(result)
+    assert result["ok"] is True
+    assert result["targets"] == {"overnight_status": {"action": "posted"}, "team_comms_fyi": {"action": "posted"}}
 
 
 def test_a_page_the_api_returns_in_part_is_refused(tmp_path):
