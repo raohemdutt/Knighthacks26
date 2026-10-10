@@ -7,10 +7,14 @@ Usage (on pod B):  python3 lab/smoke_lora.py --model ~/models/Qwen3.5-4B --steps
 import argparse
 import json
 import multiprocessing as mp
+import sys
 import time
 from pathlib import Path
 
 import torch
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # run as a bare script on a pod, "lab" is one folder up
+from lab.machine.record import recorded
 
 
 def build_dataset(n: int) -> list[dict]:
@@ -30,6 +34,7 @@ def build_dataset(n: int) -> list[dict]:
     return rows
 
 
+@recorded("smoke-lora")
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default=str(Path.home() / "models" / "Qwen3.5-4B"))
