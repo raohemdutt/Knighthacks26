@@ -279,3 +279,26 @@ class DayNarrated(TypedEvent):
     engine: Literal["template", "model"] = "template"
     facts_hash: str
     urgent: bool = False  # a "now" worth saying aloud unasked: leave now, late, you will miss it
+
+
+# --- the coach's feedback loop (contexts/day/application/coach_feedback.py): additive ---
+
+CoachAnswer = Literal["chat", "phone", "door", "food", "bathroom", "done", "other", "none"]
+
+
+@register
+class DayCoachCorrected(TypedEvent):
+    """The person answered "Was that right?" about one break. `right` True confirms the coach's guess;
+    False carries what it really was. The latest answer for a break wins. Ids and times only: the picture
+    behind a break is looked up in Memory when a teach task is proposed, never stored here."""
+
+    type: Literal["day.coach.corrected"] = "day.coach.corrected"
+    day: date
+    block_id: str
+    break_index: int  # position in the session's breaks, 0 first
+    break_start: datetime  # when the person left the desk: what identifies the break if the list shifts
+    guess: Trigger  # what the coach said
+    right: bool
+    answer: CoachAnswer  # the person's reason; equals `guess` when `right`
+    note: str | None = None  # free text, for "something else"
+    plan_id: str | None = None
