@@ -1,0 +1,19 @@
+# Place pack: the neighbourhood around the house. Edge minutes are walking time; `street` leads into the house.
+name: town
+kind: campus
+places:
+  street:   {name: Our street, kind: outdoors, pack: house}
+  school:   {name: Elementary school, kind: school, aliases: [School]}
+  park:     {name: Park, kind: outdoors, aliases: [Park]}
+  library:  {name: Public library, kind: library, aliases: [Library]}
+  grocery:  {name: Grocery store, kind: shop}
+  pizza:    {name: Pizza place, kind: dining}
+  pool:     {name: Community pool, kind: gym, aliases: [Pool]}
+edges:
+  - [street, school, 9]
+  - [street, park, 5]
+  - [park, library, 4]
+  - [street, grocery, 7]
+  - [grocery, pizza, 2]
+  - [school, pool, 6]
+  - [park, pool, 5]

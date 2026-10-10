@@ -1,0 +1,32 @@
+# Layered over config/dayrun.yaml. `sleep.bedtime` and `sleep.wake` are set from profile.yaml's `shift`.
+pack: plant                       # config/profiles/shift-worker/places/plant.yaml
+home: "flat.bedroom"
+desk: "flat.desk"                 # the station
+start_place: "flat.desk"
+kinds:
+  study: [station, desk, office]   # "work" moves: the handover gets written at a station or the desk
+  eat: [canteen, kitchen, dining]
+
+study_place_factor: {station: 1.0, office: 1.0, desk: 0.9, default: 0.6}
+
+sleep:
+  need_hours: 7
+  min_block_minutes: 90
+
+optional_event_prefixes: ["union:"]     # union and social events may be skipped
+meal_words: [breakfast, lunch, dinner, supper, meal, canteen]
+study_words: [handover, report, training, paperwork, audit]
+
+work_estimates:
+  - {match: "audit|inspection|incident", minutes: 120}
+  - {match: "handover|report", minutes: 45}
+default_work_minutes: 60
+capacity_minutes_per_day: 120
+
+win:
+  sleep_hours: 6
+  meals: 3
+stars:
+  sleep_hours: 7
+review:
+  weights: {study: 0.3, sleep: 0.4, meals: 0.3}

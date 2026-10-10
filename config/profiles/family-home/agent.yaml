@@ -1,0 +1,17 @@
+# Layered over config/agent.yaml: the household's night and who the box may message.
+sleep:
+  bedtime: "21:00"
+  wake: "06:30"
+subreddit: Parenting
+people:
+  mom: atlas-mom
+  dad: atlas-dad
+circle:
+  names:
+    mom: Mom
+    dad: Dad
+    ava: Ava
+    leo: Leo
+places: [Kitchen table, Living room, Backyard, School, Park, Library]
+leaving:
+  home_place: house.door

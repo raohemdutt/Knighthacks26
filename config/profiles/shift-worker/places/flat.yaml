@@ -1,0 +1,15 @@
+# Place pack: the shift worker's flat. The station (kitchen desk) is where the box sits; plant.lot leads in at the door.
+name: flat
+kind: home
+entry: door
+places:
+  door:     {name: Front door, kind: door}
+  kitchen:  {name: Kitchen, kind: kitchen}
+  desk:     {name: Kitchen station, kind: station, zones: config/zones.yaml, aliases: [Station]}
+  bedroom:  {name: Bedroom, kind: bed}
+  sofa:     {name: Sofa, kind: living}
+edges:
+  - [door, kitchen, 0.2]
+  - [kitchen, desk, 0.1]
+  - [kitchen, bedroom, 0.3]
+  - [kitchen, sofa, 0.2]

@@ -1,0 +1,21 @@
+# Place pack: the plant where the shift happens. Edge minutes are walking time; the parking lot leads home.
+name: plant
+kind: campus
+places:
+  lot:       {name: Parking lot, kind: outdoors, pack: flat}
+  gate:      {name: Security gate, kind: door}
+  lockers:   {name: Locker room, kind: lockers}
+  floor:     {name: Line 3 station, kind: station, aliases: [Station, Line 3]}
+  office:    {name: Shift office, kind: office}
+  breakroom: {name: Break room, kind: breakroom, aliases: [Break room]}
+  canteen:   {name: Canteen, kind: canteen, aliases: [Canteen]}
+  gym:       {name: Site gym, kind: gym, aliases: [Gym]}
+edges:
+  - [lot, gate, 12]
+  - [gate, lockers, 2]
+  - [lockers, floor, 3]
+  - [floor, office, 2]
+  - [floor, breakroom, 2]
+  - [breakroom, canteen, 3]
+  - [gate, canteen, 4]
+  - [lockers, gym, 3]

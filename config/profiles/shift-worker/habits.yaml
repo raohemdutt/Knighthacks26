@@ -1,0 +1,32 @@
+# Layered over config/habits.yaml: a habit here replaces the base one with the same id, key by key.
+# {workplace}, {event}, {deadline}, {activity} (and their plurals and capitals) come from profile.yaml.
+nudges:
+  celebrate: "{name}: {streak} shifts in a row. Keep it going."
+
+habits:
+  - id: sleep
+    target: 6.5
+    nudge: "Your {workplace} was empty for only {value} hours after the {event}. Aim for {target} before tonight."
+    nudge_measured: "Your watch measured {value} hours of sleep after the {event}. Aim for {target} before tonight."
+
+  - id: meals
+    target: 3
+    nudge_after: "17:00"
+    nudge: "Atlas has seen {value} meals at your {workplace} today. Eat something before the {event}."
+
+  - id: energy_drinks
+    target: 1
+    nudge: "That is energy drink number {value} today. Your limit before a {event} is {target}."
+
+  - id: focus
+    name: Handover prep
+    target: 0.5
+    deadline_hours: 24
+    nudge_after: "16:00"
+    nudge: "{title} is due in {hours} hours and you have {minutes} minutes at the {workplace} on it today"
+
+  - id: leave_ready
+    name: Leave for the shift
+    watch_items: [keys, badge, phone, charger]   # the leave-for-shift checklist: what must not stay on the station
+    event_minutes: 60
+    nudge: "You left your {items} on the {workplace} and your {event} starts in {minutes} minutes"

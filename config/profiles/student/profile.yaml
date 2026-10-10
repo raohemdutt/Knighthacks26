@@ -9,7 +9,6 @@ vocabulary:
   activity: study         # the main activity, as a verb and a noun ("Study at", "study minutes")
   event: class            # a fixed block on the calendar
   deadline: assignment    # something due
-  plurals: {event: classes}
 
 meters:
   habits: []              # every habit in habits.yaml

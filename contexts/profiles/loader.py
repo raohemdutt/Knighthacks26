@@ -144,7 +144,8 @@ class Profile:
         own = self.folder / name if self.folder else None
         if own and own.is_file():
             out = merge(out, _read(own))
-        if name == "agent.yaml" and self.spec.shift and isinstance(out, dict):
+        if name in ("agent.yaml", "dayrun.yaml") and self.spec.shift and isinstance(out, dict):
+            # the camera's overnight (agent.yaml) and Day Run's usual night (dayrun.yaml) both follow the shift
             bed, wake = self.spec.shift.sleep_window()
             out["sleep"] = {**(out.get("sleep") or {}), "bedtime": bed.strftime("%H:%M"), "wake": wake.strftime("%H:%M")}
         if name == "habits.yaml" and self.spec.meters.habits and isinstance(out, dict) and isinstance(out.get("habits"), list):

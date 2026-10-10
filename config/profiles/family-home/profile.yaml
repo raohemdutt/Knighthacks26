@@ -1,0 +1,17 @@
+# A family home: parents and kids, told apart by owner recognition (P9, switch it on in the Privacy screen and
+# enrol each member), each with their own habits and streaks. The box watches the kitchen table.
+name: family-home
+description: A family home where each member has their own homework, screen-time and bedtime habits, and chores are shared.
+audience: several people
+
+vocabulary:
+  workplace: table        # the kitchen table where the box watches
+  activity: homework      # "Homework at", "homework minutes"
+  event: appointment      # a fixed block on the family calendar
+  deadline: chore         # something due: a chore, a permission slip, a project
+
+meters:
+  habits: [sleep, meals, screen_time, focus, leave_ready, sort_right]
+  dayrun: [energy, focus, hunger]
+
+scenario: school-night    # config/profiles/family-home/scenarios/school-night.yaml

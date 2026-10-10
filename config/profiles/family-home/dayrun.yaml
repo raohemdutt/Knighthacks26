@@ -1,0 +1,36 @@
+# Layered over config/dayrun.yaml: an evening at home, played on the town pack.
+pack: town                        # config/profiles/family-home/places/town.yaml
+home: "house.bedroom"
+desk: "house.table"               # the kitchen table
+start_place: "house.table"
+kinds:
+  study: [table, desk, library]
+  eat: [kitchen, dining]
+
+study_place_factor: {table: 1.0, desk: 0.9, library: 1.0, default: 0.6}
+
+sleep:
+  bedtime: "21:00"
+  wake: "06:30"
+  need_hours: 9
+  fixed: true                     # bedtime is bedtime
+
+default_event_minutes: 45
+optional_event_prefixes: ["town:"]
+meal_words: [breakfast, lunch, dinner, supper, snack, meal, pizza]
+study_words: [homework, reading, practice, project, tutoring, revision]
+
+work_estimates:
+  - {match: "project|poster|diorama|science fair", minutes: 150}
+  - {match: "test|spelling|quiz", minutes: 45}
+  - {match: "chore|tidy|laundry|bins", minutes: 30}
+default_work_minutes: 40
+capacity_minutes_per_day: 120
+
+win:
+  sleep_hours: 8.5
+  meals: 2
+stars:
+  sleep_hours: 9
+review:
+  weights: {study: 0.4, sleep: 0.4, meals: 0.2}
