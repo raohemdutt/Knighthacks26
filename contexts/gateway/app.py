@@ -15,6 +15,8 @@
 - GET  /api/presence           friends' current places
 - GET  /api/circle/leaderboard Waste Watch, habit and Sort It leaderboards from Neon (E2)
 - GET  /api/invites[/{name}]   calendar invites (.ics) created after approval, to open or share (K2)
+- GET  /api/places             place packs; POST one as YAML/JSON (validated) (S5)
+- GET  /api/play/campus-route  ?from=ucf.union&to=ucf.hec[&depart=&due=] or to=friend:<member> (S5)
 - GET  /health
 
 Writes need `Authorization: Bearer $ATLAS_TOKEN` when ATLAS_TOKEN is set; the
@@ -29,7 +31,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Literal
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -212,6 +214,56 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         if not name.startswith("invite-") or not name.endswith(".ics") or "/" in name or "\\" in name or not path.is_file():
             raise HTTPException(404, "no such invite")
         return FileResponse(path, media_type="text/calendar", filename=name)
+
+    @app.get("/api/places")
+    async def list_places():
+        """Place packs (S5): campus, home and room maps with their places."""
+        if atlas.places is None:
+            raise HTTPException(404, "no place packs loaded")
+        return [{"name": p.name, "kind": p.kind, "entry": p.entry,
+                 "places": {pid: pl.model_dump(exclude_none=True) for pid, pl in p.places.items()}}
+                for p in atlas.places.packs.values()]
+
+    @app.post("/api/places", dependencies=[Depends(authorized)])
+    async def upload_place_pack(request: Request):
+        """Upload a place pack as YAML or JSON. It is validated (known places, all reachable, nesting) before use."""
+        from contexts.play.domain.places import PlaceSet, parse_pack
+
+        text = (await request.body()).decode("utf-8")
+        try:
+            pack = parse_pack(text)
+            if atlas.places is None:
+                atlas.places = PlaceSet({})
+            atlas.places.add(pack)
+        except ValueError as exc:  # pydantic's ValidationError is a ValueError
+            raise HTTPException(422, str(exc)) from None
+        folder = atlas.settings.data_dir / "places"
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / f"{pack.name}.yaml").write_text(text, encoding="utf-8")
+        return {"name": pack.name, "places": len(pack.places), "edges": len(pack.edges)}
+
+    @app.get("/api/play/campus-route")
+    async def campus_route(src: str = Query(alias="from"), dst: str = Query(alias="to"),
+                           depart: datetime | None = None, due: datetime | None = None):
+        """Walking route and minutes between two places ("ucf.union"), or to a friend ("friend:hemdutt").
+        With `depart` and `due`, also whether you make it and by how much."""
+        if atlas.places is None:
+            raise HTTPException(404, "no place packs loaded")
+        if dst.startswith("friend:"):
+            member = dst.split(":", 1)[1]
+            shared = {p.member_id: p for p in atlas.presence.friends(datetime.now(UTC))} if atlas.presence else {}
+            if member not in shared:
+                raise HTTPException(404, f"{member} isn't sharing a place right now")
+            dst = atlas.places.find_shared(shared[member].place) or ""
+            if not dst:
+                raise HTTPException(404, f"{shared[member].place!r} isn't on any map")
+        try:
+            if depart and due:
+                return atlas.places.feasible(src, dst, depart, due)
+            path, minutes = atlas.places.route(src, dst)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+        return {"path": path, "minutes": minutes}
 
     @app.websocket("/ws")
     async def events(ws: WebSocket):

@@ -50,6 +50,7 @@ from contexts.play.domain.game import SortIt
 from contexts.perception.application.service import PerceptionService
 from contexts.perception.domain.zones import ZoneEngine
 from contexts.play.domain.pathfinding import SortingRules, ZoneMap
+from contexts.play.domain.places import PlaceSet
 from contexts.vault import KeyRing, Policy, Vault, Wiper
 from contexts.workspace.domain.approvals import Approvals
 from contexts.workspace.infrastructure.ntfy import Ntfy, PhoneNotifier, send_message_executor
@@ -102,6 +103,7 @@ class Atlas:
     projection: MemoryProjection | None = None
     presence_sync: PresenceSync | None = None
     board: CircleBoard | None = None
+    places: PlaceSet | None = None
     vault: Vault | None = None
     policy: Policy | None = None
     wiper: Wiper | None = None
@@ -324,7 +326,15 @@ def build(settings: Settings | None = None) -> Atlas:
         presence_sync = PresenceSync(NeonPresence(neon), circle_cfg["circle_id"], circle_cfg["member_id"])
         bus.subscribe("circle.place.shared", presence_sync.on_shared)  # live only: it writes
 
+    # Place packs (S5): shipped packs in config/places, uploads in data/places (later wins).
+    try:
+        places = PlaceSet.load(s.config_dir / "places", s.data_dir / "places")
+    except ValueError as exc:
+        log.warning("place packs not loaded: %s", exc)
+        places = None
+
     return Atlas(settings=s, bus=bus, qa=qa, approvals=approvals, hub=hub, loop=loop, zones=zones, game=game,
                  waste=waste, circle=circle, presence=presence, zone_engine=zone_engine, sharing=sharing,
                  memory=memory, projection=projection, habits=habits, nudger=nudger,
-                 presence_sync=presence_sync, board=board, vault=vault, policy=policy, wiper=wiper)
+                 presence_sync=presence_sync, board=board, vault=vault, policy=policy, wiper=wiper,
+                 places=places)

@@ -1,0 +1,26 @@
+# Place pack (S5): UCF main campus, the demo venue. Coordinates are approximate; edge
+# minutes are walking time (straight-line distance x 1.3 at 80 m/min, rounded).
+name: ucf
+kind: campus
+places:
+  union:       {name: Student Union, kind: dining, lat: 28.6016, lon: -81.2005}
+  library:     {name: John C. Hitt Library, kind: library, lat: 28.6003, lon: -81.2016}
+  hec:         {name: Harris Engineering Center, kind: class, lat: 28.6007, lon: -81.1981}
+  eng2:        {name: Engineering II (Knight Hacks), kind: class, lat: 28.6018, lon: -81.1983}
+  cb1:         {name: Classroom Building I, kind: class, lat: 28.6037, lon: -81.2007}
+  memory_mall: {name: Memory Mall, kind: outdoors, lat: 28.6031, lon: -81.2003}
+  rwc:         {name: Recreation and Wellness Center, kind: gym, lat: 28.5958, lon: -81.1998}
+  dining_63:   {name: 63 South dining hall, kind: dining, lat: 28.6036, lon: -81.1966}
+  towers:      {name: Towers (dorm), kind: dorm, lat: 28.6080, lon: -81.1965, pack: apartment}
+edges:
+  - [union, library, 3]
+  - [union, memory_mall, 3]
+  - [union, hec, 4]
+  - [hec, eng2, 2]
+  - [eng2, memory_mall, 4]
+  - [memory_mall, cb1, 1]
+  - [cb1, library, 6]
+  - [union, rwc, 11]
+  - [eng2, dining_63, 4]
+  - [dining_63, towers, 8]
+  - [cb1, dining_63, 7]
