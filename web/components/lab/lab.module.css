@@ -1,26 +1,17 @@
-/* Learning lab (/lab): a guided replay of one training run. Tokens come from globals.css; shared blocks from ui.module.css. */
+/*
+ * Learning lab (/lab): a guided replay of one training run.
+ *
+ * Colours and depth come only from the tokens in app/globals.css: raised cards (--sh-raised), sunken wells for
+ * the numbers and answers (--sh-inset-sm), blue (--accent, --accent-text) for progress and the selected step,
+ * --ok for right answers and gains, --danger for wrong answers and regressions, --watch for the sample banner,
+ * low-confidence marks and the power trace. Nothing here names a colour of its own.
+ */
 
 .page {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 20px;
   min-width: 0;
-}
-
-/* On a wide screen the page steps out of the phone-width column, so two sections sit side by side. */
-@media (min-width: 1100px) {
-  .page {
-    position: relative;
-    left: 50%;
-    width: min(1340px, calc(100vw - 56px));
-    transform: translateX(-50%);
-  }
-}
-
-.head {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
 }
 
 .headTop {
@@ -39,18 +30,20 @@
 .meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 12px;
   align-items: center;
+  margin-top: 6px;
 }
 
 .status {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 14px;
-  border-radius: 20px;
-  border: 1px solid var(--line);
-  background: var(--surface-2);
+  padding: 7px 16px;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
+  color: var(--muted);
   font-size: 16px;
   font-weight: 700;
   white-space: nowrap;
@@ -61,31 +54,22 @@
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: var(--muted);
+  background: currentColor;
 }
 
 .statusGood {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.statusGood::before {
-  background: var(--accent);
+  color: var(--ok);
 }
 
 .statusBad {
-  border-color: var(--danger);
   color: var(--danger);
-  background: var(--danger-soft);
 }
 
-.statusBad::before {
-  background: var(--danger);
+.statusLive {
+  color: var(--accent-text);
 }
 
 .statusLive::before {
-  background: var(--accent);
   animation: pulse 1.4s ease-in-out infinite;
 }
 
@@ -96,58 +80,69 @@
 }
 
 .linkBtn {
-  min-height: 40px;
-  padding: 6px 14px;
-  border-radius: 12px;
-  border: 1px solid var(--line);
+  min-height: var(--tap);
+  padding: 8px 18px;
+  border: 0;
+  border-radius: var(--radius-sm);
   background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
+  color: var(--text);
   font-size: 15px;
   font-weight: 650;
+  transition: box-shadow var(--ease-press);
+}
+
+.linkBtn:active {
+  box-shadow: var(--sh-inset-sm);
 }
 
 /* ---------- the dock: sample banner and player, always in view ---------- */
 .dock {
   position: sticky;
-  top: calc(65px + var(--safe-top));
+  top: calc(72px + var(--safe-top)); /* under the phone header */
   z-index: 15;
   display: flex;
   flex-direction: column;
   border-radius: var(--radius);
-  border: 1px solid var(--line);
-  background: rgba(19, 23, 28, 0.97);
-  backdrop-filter: blur(10px);
+  background: var(--surface);
+  box-shadow: var(--sh-float);
   overflow: hidden;
+}
+
+@media (min-width: 1024px) {
+  .dock {
+    top: 14px; /* the sidebar layout has no header */
+  }
 }
 
 .banner {
   display: flex;
-  gap: 10px;
+  gap: 4px 10px;
   align-items: baseline;
   flex-wrap: wrap;
-  padding: 8px 14px;
-  background: #3a2d0c;
-  border-bottom: 1px solid #7a5f17;
-  color: #ffd772;
+  padding: 9px 18px;
+  background: color-mix(in srgb, var(--watch) 13%, var(--surface));
+  box-shadow: inset 5px 0 0 var(--watch);
+  color: var(--watch);
   font-size: 15px;
 }
 
 .banner strong {
   font-weight: 750;
-  letter-spacing: 0.02em;
 }
 
 .player {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 10px 12px;
+  gap: 10px 14px;
   align-items: center;
-  padding: 10px 12px;
+  padding: 12px 14px;
 }
 
 .play {
   min-height: 46px;
-  min-width: 104px;
-  padding: 8px 14px;
+  min-width: 108px;
+  padding: 8px 16px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -168,42 +163,39 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
   min-width: 0;
 }
 
 .track {
   position: relative;
   display: flex;
-  gap: 3px;
-  height: 22px;
+  gap: 4px;
+  height: 24px;
 }
 
 .seg {
   position: relative;
   height: 100%;
-  border-radius: 5px;
+  border-radius: 8px;
   background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
   overflow: hidden;
-  border: 0;
-  padding: 0;
-  color: var(--muted);
+  color: var(--text);
   font-size: 12px;
   font-weight: 700;
-  text-align: left;
 }
 
 .segFill {
   position: absolute;
   inset: 0 auto 0 0;
   background: var(--accent);
-  opacity: 0.38;
 }
 
 .segLabel {
   position: relative;
-  padding-left: 6px;
-  line-height: 22px;
+  padding-left: 7px;
+  line-height: 24px;
   white-space: nowrap;
   color: var(--text);
 }
@@ -223,15 +215,15 @@
   position: absolute;
   inset: -8px 0 auto 0;
   width: 100%;
-  height: 38px;
+  height: 40px;
   margin: 0;
   opacity: 0;
   cursor: pointer;
 }
 
 .range:focus-visible + .now {
-  outline: 3px solid var(--accent);
-  outline-offset: 2px;
+  outline: 3px solid var(--accent-bright);
+  outline-offset: 3px;
   border-radius: 6px;
 }
 
@@ -249,82 +241,91 @@
   font-weight: 650;
 }
 
-/* ---------- sections ---------- */
+/* ---------- sections: one column on a phone, two balanced columns beside the sidebar ---------- */
 .grid {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 22px;
   min-width: 0;
 }
 
-@media (min-width: 1100px) {
+/* on a phone the two column wrappers vanish and the sections read 1 to 5 */
+.col {
+  display: contents;
+}
+
+.o1 {
+  order: 1;
+}
+
+.o2 {
+  order: 2;
+}
+
+.o3 {
+  order: 3;
+}
+
+.o4 {
+  order: 4;
+}
+
+.o5 {
+  order: 5;
+}
+
+@media (min-width: 1280px) {
   .grid {
     display: grid;
-    grid-template-columns: repeat(12, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     align-items: start;
+    gap: 24px;
   }
 
-  .spanTaught {
-    grid-column: span 5;
-  }
-
-  .spanTraining {
-    grid-column: span 7;
-  }
-
-  .spanAnswers {
-    grid-column: span 7;
-  }
-
-  .spanSide {
-    grid-column: span 5;
+  .col {
     display: flex;
     flex-direction: column;
-    gap: 18px;
+    gap: 24px;
+    min-width: 0;
   }
-}
-
-.spanSide {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  min-width: 0;
 }
 
 .sec {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px;
+  gap: 14px;
+  padding: 20px;
   border-radius: var(--radius);
   background: var(--surface);
-  border: 1px solid var(--line);
+  box-shadow: var(--sh-raised);
   min-width: 0;
-  transition: border-color 0.3s;
+  transition: box-shadow 0.3s;
 }
 
+/* the step the playhead is in: a blue ring, the same second cue a selected control gets */
 .secNow {
-  border-color: var(--accent);
+  box-shadow: var(--sh-raised), 0 0 0 2px var(--accent);
 }
 
 .secHead h2 {
-  scroll-margin-top: 250px; /* clear of the app header and the dock when the player scrolls a section into view */
+  scroll-margin-top: 250px; /* clear of the header and the dock when the player scrolls a section into view */
 }
 
 .secHead {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
+  align-items: center;
+  gap: 12px;
 }
 
 .secNum {
   flex: none;
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
   color: var(--muted);
   font-size: 15px;
   font-weight: 750;
@@ -332,6 +333,7 @@
 
 .secNow .secNum {
   background: var(--accent);
+  box-shadow: none;
   color: var(--accent-ink);
 }
 
@@ -344,18 +346,12 @@
   color: var(--muted);
 }
 
-.waiting {
-  padding: 14px;
-  border-radius: var(--radius-sm);
-  border: 1px dashed var(--line);
-  color: var(--muted);
-  font-size: 16px;
-}
-
+.waiting,
 .gap {
-  padding: 10px 12px;
+  padding: 14px 16px;
   border-radius: var(--radius-sm);
-  border: 1px dashed var(--line);
+  background: var(--surface);
+  box-shadow: var(--sh-inset-sm);
   color: var(--muted);
   font-size: 15px;
 }
@@ -365,29 +361,30 @@
   font-weight: 650;
 }
 
-/* numbers */
+/* numbers: small wells */
 .stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
 }
 
 .stat {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 10px 12px;
+  padding: 12px 14px;
   border-radius: var(--radius-sm);
   background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
   min-width: 0;
 }
 
 .statNum {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 700;
-  line-height: 1.15;
+  line-height: 1.2;
   font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .statNone {
@@ -404,18 +401,19 @@
 .low {
   display: inline-block;
   margin-left: 6px;
-  padding: 0 6px;
-  border-radius: 8px;
-  border: 1px solid #7a5f17;
-  color: #ffd772;
+  padding: 0 7px;
+  border-radius: var(--radius-pill);
+  box-shadow: inset 0 0 0 1px currentColor;
+  color: var(--watch);
   font-size: 11px;
   font-weight: 700;
+  line-height: 18px;
   vertical-align: middle;
   white-space: nowrap;
 }
 
 .good {
-  color: var(--accent);
+  color: var(--ok);
 }
 
 .bad {
@@ -425,9 +423,10 @@
 /* 1. taught from */
 .cards {
   display: flex;
-  gap: 10px;
+  gap: 14px;
   overflow-x: auto;
-  padding-bottom: 6px;
+  padding: 6px 6px 12px;
+  margin: -6px;
   scroll-snap-type: x proximity;
 }
 
@@ -437,10 +436,10 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 12px;
+  padding: 14px;
   border-radius: var(--radius-sm);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
   scroll-snap-align: start;
   font-size: 15px;
 }
@@ -458,15 +457,16 @@
 }
 
 .exampleA {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .split {
   display: flex;
-  height: 30px;
-  border-radius: 8px;
+  height: 32px;
+  border-radius: var(--radius-pill);
   overflow: hidden;
   gap: 3px;
+  box-shadow: var(--sh-inset-sm);
   font-size: 13px;
   font-weight: 700;
 }
@@ -474,7 +474,7 @@
 .split > div {
   display: flex;
   align-items: center;
-  padding: 0 8px;
+  padding: 0 12px;
   white-space: nowrap;
   overflow: hidden;
   min-width: 0;
@@ -486,7 +486,7 @@
 }
 
 .splitHeld {
-  background: repeating-linear-gradient(135deg, #3a4654 0 6px, #2b333d 6px 12px);
+  background: repeating-linear-gradient(135deg, var(--surface-2) 0 6px, var(--sh-dark) 6px 12px);
   color: var(--text);
 }
 
@@ -513,7 +513,7 @@
 
 .lossLine {
   fill: none;
-  stroke: var(--accent);
+  stroke: var(--accent-text);
   stroke-width: 2.5;
   stroke-linejoin: round;
   stroke-linecap: round;
@@ -521,13 +521,13 @@
 
 .lossGhost {
   fill: none;
-  stroke: var(--line);
+  stroke: var(--sh-dark);
   stroke-width: 1.5;
   stroke-dasharray: 2 5;
 }
 
 .headDot {
-  fill: var(--accent);
+  fill: var(--accent-text);
   stroke: var(--surface);
   stroke-width: 2.5;
 }
@@ -542,21 +542,20 @@
 }
 
 .powerArea {
-  fill: #e9b949;
-  fill-opacity: 0.3;
+  fill: var(--watch);
+  fill-opacity: 0.2;
 }
 
 .powerLine {
   fill: none;
-  stroke: #e9b949;
+  stroke: var(--watch);
   stroke-width: 1.8;
 }
 
 .playhead {
-  stroke: var(--text);
+  stroke: var(--muted);
   stroke-width: 1;
   stroke-dasharray: 3 3;
-  opacity: 0.6;
 }
 
 .chartTitle {
@@ -564,6 +563,7 @@
   justify-content: space-between;
   gap: 10px;
   align-items: baseline;
+  margin-top: 4px;
   font-size: 14px;
   color: var(--muted);
 }
@@ -575,7 +575,7 @@
 .energy {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 10px;
+  gap: 8px 12px;
   align-items: center;
   font-size: 17px;
 }
@@ -585,12 +585,13 @@
 }
 
 .hint {
-  width: 26px;
-  height: 26px;
+  width: 30px;
+  height: 30px;
+  border: 0;
   border-radius: 50%;
-  border: 1px solid var(--line);
-  background: var(--surface-2);
-  color: var(--muted);
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
+  color: var(--accent-text);
   font-size: 14px;
   font-weight: 700;
   padding: 0;
@@ -599,22 +600,20 @@
 .measured {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 10px 12px;
+  gap: 6px;
+  padding: 14px 16px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: var(--sh-inset-sm), inset 5px 0 0 var(--ok);
   font-size: 15px;
 }
 
 .measuredTag {
   align-self: flex-start;
-  padding: 1px 8px;
-  border-radius: 8px;
-  background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--ok);
   font-size: 12px;
   font-weight: 750;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
@@ -622,32 +621,32 @@
 .tally {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 12px;
 }
 
 .tallyCard {
+  --bar: transparent;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 10px 12px;
+  padding: 12px 14px 12px 18px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--line);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm), inset 5px 0 0 var(--bar);
 }
 
 .tallyGood {
-  border-color: var(--accent);
-  background: var(--accent-soft);
+  --bar: var(--ok);
 }
 
 .tallyBad {
-  border-color: var(--danger);
-  background: var(--danger-soft);
+  --bar: var(--danger);
 }
 
 .bars {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 8px 10px;
+  gap: 10px 12px;
   align-items: center;
   font-size: 15px;
   font-variant-numeric: tabular-nums;
@@ -657,6 +656,7 @@
   height: 16px;
   border-radius: 8px;
   background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
   overflow: hidden;
 }
 
@@ -668,31 +668,32 @@
 }
 
 .barAfter {
-  background: var(--accent);
+  background: var(--ok);
 }
 
 .rows {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 14px;
 }
 
 .qa {
+  --bar: var(--sh-dark);
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 12px;
+  padding: 14px 14px 14px 20px;
   border-radius: var(--radius-sm);
-  background: var(--surface-2);
-  border-left: 4px solid var(--line);
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm), inset 5px 0 0 var(--bar);
 }
 
 .qaFixed {
-  border-left-color: var(--accent);
+  --bar: var(--ok);
 }
 
 .qaBroke {
-  border-left-color: var(--danger);
+  --bar: var(--danger);
 }
 
 .qaHead {
@@ -706,23 +707,26 @@
 
 .change {
   flex: none;
-  padding: 2px 9px;
-  border-radius: 10px;
+  padding: 2px 11px;
+  border-radius: var(--radius-pill);
   font-size: 13px;
   font-weight: 750;
   white-space: nowrap;
-  background: var(--surface);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
   color: var(--muted);
 }
 
 .changeFixed {
-  background: var(--accent);
-  color: var(--accent-ink);
+  background: var(--ok);
+  box-shadow: none;
+  color: var(--surface);
 }
 
 .changeBroke {
   background: var(--danger);
-  color: #3a0d08;
+  box-shadow: none;
+  color: var(--surface);
 }
 
 /* Only while the run is being played or scrubbed: a page opened on the finished run shows it still. */
@@ -740,17 +744,17 @@
 .pair {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 10px;
 }
 
 .ans {
   display: flex;
   flex-direction: column;
   gap: 3px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: var(--surface);
-  border: 1px solid var(--line);
+  padding: 9px 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
   min-width: 0;
 }
 
@@ -762,16 +766,8 @@
   color: var(--muted);
 }
 
-.ansRight {
-  border-color: rgba(92, 225, 198, 0.55);
-}
-
 .ansRight .ansLabel {
-  color: var(--accent);
-}
-
-.ansWrong {
-  border-color: rgba(255, 155, 145, 0.55);
+  color: var(--ok);
 }
 
 .ansWrong .ansLabel {
@@ -779,24 +775,23 @@
 }
 
 .ansWait {
-  border-style: dashed;
   color: var(--muted);
 }
 
 /* 4. the gate */
 .verdict {
-  padding: 14px 16px;
+  padding: 16px 18px 16px 22px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--accent);
-  background: var(--accent-soft);
+  background: color-mix(in srgb, var(--ok) 9%, var(--surface));
+  box-shadow: var(--sh-raised-sm), inset 5px 0 0 var(--ok);
   font-size: 21px;
   font-weight: 750;
   line-height: 1.25;
 }
 
 .verdictBad {
-  border-color: var(--danger);
   background: var(--danger-soft);
+  box-shadow: var(--sh-raised-sm), inset 5px 0 0 var(--danger);
 }
 
 .verdictSub {
@@ -817,16 +812,16 @@
 
 .noiseBand {
   fill: var(--muted);
-  fill-opacity: 0.28;
+  fill-opacity: 0.25;
 }
 
 .scoreAxis {
-  stroke: var(--line);
+  stroke: var(--sh-dark);
   stroke-width: 2;
 }
 
 .gainLine {
-  stroke: var(--accent);
+  stroke: var(--ok);
   stroke-width: 4;
   stroke-linecap: round;
 }
@@ -842,7 +837,7 @@
 }
 
 .dotAfter {
-  fill: var(--accent);
+  fill: var(--ok);
   stroke: var(--surface);
   stroke-width: 2;
 }
@@ -864,7 +859,7 @@
 }
 
 .gUp {
-  fill: var(--accent);
+  fill: var(--ok);
 }
 
 .gDown {
@@ -879,7 +874,7 @@
 .swap {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  gap: 10px;
+  gap: 12px;
   align-items: center;
 }
 
@@ -887,20 +882,21 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 10px 12px;
+  padding: 12px 14px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--line);
-  background: var(--surface-2);
+  background: var(--surface);
   min-width: 0;
-  transition: opacity 0.3s, border-color 0.3s;
+  transition: opacity 0.3s, box-shadow 0.3s;
 }
 
+/* the model that is serving stands out; the other is pressed back into the surface */
 .modelOn {
-  border-color: var(--accent);
+  box-shadow: var(--sh-raised-sm), 0 0 0 2px var(--accent);
 }
 
 .modelOff {
-  opacity: 0.55;
+  box-shadow: var(--sh-inset-sm);
+  color: var(--muted);
 }
 
 .modelName {
@@ -915,31 +911,34 @@
 }
 
 .swapBar {
-  height: 6px;
-  border-radius: 3px;
+  height: 8px;
+  border-radius: 4px;
   background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
   overflow: hidden;
 }
 
 .swapFill {
   height: 100%;
-  background: var(--accent);
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--accent-bright), var(--accent));
 }
 
 /* drawers */
 .sourceList {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .sourceRow {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 10px 12px;
+  padding: 10px 14px;
   border-radius: var(--radius-sm);
   background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
   font-size: 15px;
 }
 
@@ -966,16 +965,23 @@
 .flow {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 4px;
+  gap: 8px 6px;
   align-items: center;
   font-size: 16px;
+  color: var(--muted);
 }
 
 .flow span {
-  padding: 4px 10px;
-  border-radius: 10px;
+  padding: 5px 13px;
+  border-radius: var(--radius-pill);
   background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
   color: var(--text);
+}
+
+.cta {
+  text-align: center;
+  text-decoration: none;
 }
 
 @media (max-width: 420px) {
@@ -986,6 +992,6 @@
 
   .segLabel {
     font-size: 11px;
-    padding-left: 4px;
+    padding-left: 5px;
   }
 }

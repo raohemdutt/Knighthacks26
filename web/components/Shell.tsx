@@ -209,7 +209,7 @@ const SECTIONS: { title: string; hrefs: string[] }[] = [
   { title: "Everyday", hrefs: ["/", "/now", "/today", "/dayrun"] },
   { title: "The room", hrefs: ["/live", "/map", "/people"] },
   { title: "Plan", hrefs: ["/approvals", "/impact", "/spot"] },
-  { title: "Other", hrefs: ["/timeline", "/play", "/circle", "/teach", "/zones", "/privacy"] },
+  { title: "Other", hrefs: ["/timeline", "/play", "/circle", "/teach", "/lab", "/zones", "/privacy"] },
 ];
 
 /** The phone tab bar: the Everyday group. Everything else is one tap further, under More. */

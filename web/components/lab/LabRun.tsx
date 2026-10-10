@@ -311,9 +311,7 @@ function BeforeAfter({ story, frac }: { story: LabStory; frac: number }) {
         <div className={lab.bar} role="img" aria-label={`After: ${afterRight} of ${n} right so far`}>
           <div className={`${lab.barFill} ${lab.barAfter}`} style={{ width: `${(afterRight / n) * 100}%` }} />
         </div>
-        <b>
-          {afterRight} of {shown < n ? shown : n}
-        </b>
+        <b>{shown === 0 ? "not scored yet" : `${afterRight} of ${shown < n ? shown : n}`}</b>
       </div>
       <div className={lab.tally}>
         <div className={`${lab.tallyCard} ${lab.tallyGood}`}>
@@ -679,7 +677,7 @@ export function LabRun({ story, initial, forceReduced, picker }: { story: LabSto
 
   return (
     <div className={`${lab.page} ${live ? lab.live : ""}`}>
-      <div className={lab.head}>
+      <div className={ui.pageHead}>
         <div className={lab.headTop}>
           <h1>What Atlas learned</h1>
           <span className={`${lab.status} ${good ? lab.statusGood : bad ? lab.statusBad : ""} ${running ? lab.statusLive : ""}`}>{STATUS_LABEL[story.status]}</span>
@@ -758,20 +756,22 @@ export function LabRun({ story, initial, forceReduced, picker }: { story: LabSto
       {reduced ? <p className={`${ui.muted} ${ui.small}`}>Reduced motion is on: Next moves one step at a time and nothing animates. The bar still scrubs.</p> : null}
 
       <div className={lab.grid}>
-        <Section n={1} title="Taught from" now={is("taught")} className={lab.spanTaught}>
-          <TaughtFrom story={story} />
-        </Section>
-        <Section n={2} title="Training" now={is("training")} className={lab.spanTraining}>
-          <Training story={story} frac={trainFrac} measured={story.measured} />
-        </Section>
-        <Section n={3} title="Before / after" now={is("answers")} className={lab.spanAnswers}>
-          <BeforeAfter story={story} frac={within(u, "answers")} />
-        </Section>
-        <div className={lab.spanSide}>
-          <Section n={4} title="The gate" now={is("gate")}>
+        <div className={lab.col}>
+          <Section n={1} title="Taught from" now={is("taught")} className={lab.o1}>
+            <TaughtFrom story={story} />
+          </Section>
+          <Section n={3} title="Before / after" now={is("answers")} className={lab.o3}>
+            <BeforeAfter story={story} frac={within(u, "answers")} />
+          </Section>
+        </div>
+        <div className={lab.col}>
+          <Section n={2} title="Training" now={is("training")} className={lab.o2}>
+            <Training story={story} frac={trainFrac} measured={story.measured} />
+          </Section>
+          <Section n={4} title="The gate" now={is("gate")} className={lab.o4}>
             <Gate story={story} on={u >= CHAPTERS[3]!.from - 1e-6} />
           </Section>
-          <Section n={5} title="On the box" now={is("box")}>
+          <Section n={5} title="On the box" now={is("box")} className={lab.o5}>
             <OnTheBox story={story} frac={within(u, "box")} gated={u >= CHAPTERS[3]!.from - 1e-6} />
           </Section>
         </div>

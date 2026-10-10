@@ -68,7 +68,7 @@ export default function LabPage() {
           <p className={ui.muted}>
             Nothing leaves the box until you approve it. A model is installed only when it beats the old one on questions it never trained on, by more than chance.
           </p>
-          <Link href="/teach" className={`${ui.btn} ${ui.btnPrimary}`} style={{ textAlign: "center", textDecoration: "none" }}>
+          <Link href="/teach" className={`${ui.btn} ${ui.btnPrimary} ${lab.cta}`}>
             Teach Atlas something
           </Link>
         </div>
