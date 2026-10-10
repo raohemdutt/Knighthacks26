@@ -187,3 +187,16 @@ def test_clear_removes_the_jump_the_rules_and_the_chain(tmp_path, config, monkey
     eg, tables, _ = make(tmp_path, config, monkeypatch)
     eg.clear()
     assert [a for v, a, _ in tables.calls if v == 4] == [["-D", "OUTPUT", "-j", "ATLAS_EGRESS"], ["-F", "ATLAS_EGRESS"], ["-X", "ATLAS_EGRESS"]]
+
+
+def test_a_host_that_rotates_through_many_addresses_gets_all_of_them_over_time(tmp_path, config, monkeypatch):
+    answers = iter([({"1.1.1.1"}, set()), ({"1.1.1.2"}, set()), ({"1.1.1.3"}, set())] * 5)
+    eg, tables, _ = make(tmp_path, config, monkeypatch)
+    monkeypatch.setattr(egress, "resolve", lambda host, *a: next(answers))
+    first = egress.resolve_groups({"hub": ["x.example"]})
+    assert first["hub"][0] == {"1.1.1.1", "1.1.1.2", "1.1.1.3"}  # three lookups, three different answers
+    monkeypatch.setattr(egress, "resolve", lambda host, *a: ({"9.9.9.9"}, set()))
+    second = egress.resolve_groups({"hub": ["x.example"]}, first)
+    assert second["hub"][0] == {"1.1.1.1", "1.1.1.2", "1.1.1.3", "9.9.9.9"}  # kept, not replaced
+    monkeypatch.setattr(egress, "resolve", lambda host, *a: (set(), set()))
+    assert egress.resolve_groups({"hub": ["x.example"]}, second)["hub"][0] == second["hub"][0]  # a blip changes nothing
