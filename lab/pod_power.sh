@@ -1,10 +1,11 @@
 #!/bin/bash
-# The pod power sampler (lab/pod_power.py) on an R9700 pod: start it, stop it, look at it, or read once.
+# The pod power sampler (lab/pod_power.py) on a Strix Halo pod (SJC hub, accounts C and D): start it, stop it,
+# look at it, or read once.
 # Reads only (amd-smi / rocm-smi, no root needed); serves its samples on 127.0.0.1:$POD_POWER_PORT for the hub proxy.
 # Usage on the pod:  bash pod_power.sh start gpu-a|gpu-b [period_ms] | stop | status | check
 # pod_power.py must sit next to this script; it is copied to $POD_POWER_DIR (default ~/atlas-power, persistent).
 # From the workstation, after Ilan's go for that pod:
-#   python -m lab.controller run-script --account A --with lab/pod_power.py lab/pod_power.sh start gpu-a
+#   python -m lab.controller run-script --account C --with lab/pod_power.py lab/pod_power.sh start gpu-a
 set -u
 STEP="${1:-status}"
 HERE="$(cd "$(dirname "$0")" && pwd)"

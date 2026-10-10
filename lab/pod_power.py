@@ -1,4 +1,4 @@
-"""The R9700 power sampler that runs on an AUP pod, and the parsers and window summary it is built on.
+"""The Strix Halo power sampler that runs on an SJC AUP pod, and the parsers and window summary it is built on.
 
 On the pod (python3, nothing to install):
 
@@ -6,15 +6,23 @@ On the pod (python3, nothing to install):
     python3 pod_power.py serve --node gpu-a [--period-ms 1000] [--port 8790] [--minutes N]
     python3 pod_power.py alive --pidfile ~/atlas-power/sampler.pid   # the pid, exit 0, only if it is this sampler
 
-What it reads. `amd-smi metric --power --clock --temperature --usage --energy`, once per period, in one process, so
-power, clocks, temperatures, GFX activity and the energy counter come from one instant. SOCKET_POWER is the AMD SMI
-library's socket_power: current_socket_power where the card reports one, else average_socket_power (amd_smi.cc at
-therock-7.13); AMD documents only the average for Navi cards, so on the R9700 it is the firmware's averaged power,
-in whole watts. `--energy` exists only on bare-metal Linux (amdsmi_parser.py at therock-7.13), so the read goes on
-without it where the CLI refuses it, and then without `--usage`, then with `--power` alone. When amd-smi reads no
-power at all, `rocm-smi --showpower --showtemp --showclocks --showuse` is the fallback; its "Average Graphics
-Package Power" comes from the same firmware average. The tool and options are chosen once at start-up by trying
-them in that order, and every sample names them (`source`, `power_field`).
+What it reads. The pods are Strix Halos (Radeon 8060S, gfx1151, an APU); the R9700 (gfx1201) is the other chip,
+whose recorded output the parsers still read. `amd-smi metric --power --clock --temperature --usage --energy`, once
+per period, in one process, so power, clocks, temperatures, GFX activity and the energy counter come from one
+instant where the card reports them. SOCKET_POWER is the AMD SMI library's socket_power: current_socket_power where
+the card reports one, else average_socket_power (amd_smi.cc at therock-7.13), in whole watts; on the Strix Halo the
+socket is the whole APU package, so it is more than the GPU's own power. `--energy` exists only on bare-metal Linux
+(amdsmi_parser.py at therock-7.13), so the read goes on without it where the CLI refuses it, and then without
+`--usage`, then with `--power` alone. amd-smi is not on PATH on the SJC image; it is found under /opt/rocm/bin.
+
+What the Strix Halo reads (recorded on pod C, fixtures/telemetry/pod_power/strixhalo_*): SOCKET_POWER in watts,
+ENERGY: N/A, CLOCK: N/A, and only the EDGE temperature. So when the amd-smi read has no clocks or no temperatures,
+`rocm-smi --showtemp --showclocks` is read right after it on every period and fills only what amd-smi left empty
+(sclk and mclk levels, the edge sensor); power stays amd-smi's, and the sample's reader description names the fill
+(`/status`). When amd-smi reads no power at all, `rocm-smi --showpower --showtemp --showclocks --showuse` is the
+fallback; its "Current Socket Graphics Package Power" (the R9700's label is "Average Graphics Package Power") comes
+from the same firmware value. The tool and options are chosen once at start-up by trying them in that order, and
+every sample names them (`source`, `power_field`).
 
 Each read becomes one `telemetry.gpu.power` event (contracts/telemetry.py) as JSON, stamped with the pod's clock at
 the middle of the read. A read that fails is still a sample, with every reading null, so a gap shows as missing
@@ -28,7 +36,9 @@ Stale under load. A sample is under load when GFX activity is at least LOAD_ACTI
 readable, when power is at least LOAD_WATTS). Under load the readings move; a sample under load whose readings have
 not changed for `stale_after_s` is marked stale, and the run says it saw one. A flag to look at, not a verdict.
 
-The energy counter. Over the first `check_window_s` after start-up, and once over the same length of continuous load
+The energy counter. On the Strix Halo it reads N/A, so every check below says it did not advance (null) and
+did not agree, counter_ok is false from the end of the start-up check, and energy always comes from integrated
+power. Over the first `check_window_s` after start-up, and once over the same length of continuous load
 after `check_settle_s` of it, the sampler compares the counter's delta with power integrated over the same samples.
 The counter advanced when its delta is positive and it never went backwards; it agrees when it advanced and the
 ratio is within `tolerance` (10 percent) of 1. The sample that closes a check carries it (`energy_check`), and every
@@ -38,7 +48,7 @@ says it may, and otherwise integrates power; the row says which.
 
 Where samples go. Appended to <dir>/samples-<UTC day>.jsonl (default ~/atlas-power on the persistent home) and kept
 in memory for the HTTP endpoint on 127.0.0.1:<port>, which the hub proxy exposes as
-https://dub.aupcloud.io/user/<account>/proxy/<port>/ to anyone holding the account's hub token:
+https://sjc.aupcloud.io/user/<account>/proxy/<port>/ to anyone holding the account's hub token:
 
     GET /samples?after=<seq>&limit=<n>   the samples after seq, oldest first: {"seq": n, "event": {...}}
     GET /status                          the counters, the chosen tool, the energy checks so far
@@ -51,10 +61,9 @@ number can belong to any process. `alive` (alive_sampler_pid) answers only from 
 only while its command line is pod_power.py serve. It never signals the pid (os.kill with signal 0 is not a probe on
 every platform), and lab/pod_power.sh asks it before start, stop and status.
 
-Node gate: `serve` refuses to start unless --node is gpu-a or gpu-b, rocminfo names gfx1201, and no rocminfo
-Marketing Name is a 9070 card. That is all it proves: the RX 9070 and 9070 XT are the same gfx1201 silicon as the
-R9700 and the hubs offer them too, so gfx1201 alone does not mean an R9700, and with no rocminfo capture from a
-real R9700 pod there is no marketing name to require, only the known look-alikes to refuse.
+Node gate: `serve` refuses to start unless --node is gpu-a or gpu-b and rocminfo names gfx1151, the Strix Halo.
+Every other chip is refused, the R9700 and its gfx1201 look-alikes (RX 9070, 9070 XT) included, since the
+thresholds and the tools' fields here are this chip's.
 Stdlib only and one file, because the team repo cannot be cloned on a pod (lab/README.md); upload this file next
 to lab/pod_power.sh, which starts and stops it.
 """
@@ -75,7 +84,7 @@ import time
 import uuid
 from collections import deque
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PurePosixPath
@@ -86,10 +95,9 @@ SAMPLER = "lab/pod_power.py 1"  # program and version, on every sample
 GPU_POWER = "telemetry.gpu.power"
 NODES = ("gpu-a", "gpu-b")  # telemetry's names for the two pods; the lab ledger calls them pod-a and pod-b
 LEDGER_NODE = {"gpu-a": "pod-a", "gpu-b": "pod-b"}
-R9700_GFX = "gfx1201"
-# Cards that also report gfx1201 but are not an R9700, matched as a whole word in a rocminfo Marketing Name line.
-GFX1201_NOT_R9700 = ("9070",)
-MARKETING_NAME_RE = re.compile(r"^\s*Marketing Name:\s*(?P<name>.*?)\s*$", re.MULTILINE)
+POD_GFX = "gfx1151"  # the SJC pods' Strix Halo (Radeon 8060S); the R9700 (gfx1201) is the other chip, not sampled
+POD_CHIP = "Strix Halo"
+_POD_GFX_RE = re.compile(rf"\b{POD_GFX}\b")
 
 DEFAULT_PERIOD_MS = 1000.0
 DEFAULT_PORT = 8790
@@ -100,7 +108,7 @@ CHECK_WINDOW_S = 10.0
 CHECK_SETTLE_S = 5.0
 CHECK_TOLERANCE = 0.10
 LOAD_ACTIVITY_PCT = 50.0
-LOAD_WATTS = 100.0
+LOAD_WATTS = 60.0  # about twice the Strix Halo pods' 24 to 29 W idle; they read about 110 W busy
 READ_TIMEOUT_S = 10.0
 KEEP = 20_000  # samples the endpoint can hand out: about 5.5 hours at one a second
 MAX_LIMIT = 5_000
@@ -117,6 +125,9 @@ ROCMSMI_OPTIONS: tuple[tuple[str, ...], ...] = (
     ("--showpower", "--showtemp", "--showclocks", "--showuse"),
     ("--showpower",),
 )
+# What rocm-smi reads beside an amd-smi read that has no clocks or no temperatures (the Strix Halo's CLOCK: N/A).
+ROCMSMI_FILL_OPTIONS: tuple[str, ...] = ("--showtemp", "--showclocks")
+FILL_FIELDS = ("gfx_mhz", "mem_mhz", "temps_c")
 ROCM_BIN = Path("/opt/rocm/bin")
 
 PROC_ROOT = Path("/proc")
@@ -329,6 +340,39 @@ class CommandReader:
         return {"tool": self.source, "options": list(self.options), "gpu": self.gpu}
 
 
+def missing_fields(reading: Reading) -> list[str]:
+    """Of FILL_FIELDS, the ones this reading has nothing for."""
+    return [name for name in FILL_FIELDS if not getattr(reading, name)]
+
+
+class FilledReader:
+    """A power reader whose missing clocks and temperatures come from a second tool, read right after it.
+
+    Power, its field, the energy counter and the activity stay the main reader's, and so does `source`; only a field
+    the main read left empty is taken from the fill read. A fill read that fails leaves the sample as the main read
+    made it, so a failing fill tool costs the clocks and never the power."""
+
+    def __init__(self, main: CommandReader, fill: CommandReader) -> None:
+        self.main = main
+        self.fill = fill
+        self.source = main.source
+        self.options = main.options
+
+    def read(self) -> Reading:
+        reading = self.main.read()
+        wanted = missing_fields(reading)
+        if not wanted:
+            return reading
+        try:
+            extra = self.fill.read()
+        except (ReadError, OSError):
+            return reading
+        return replace(reading, **{name: getattr(extra, name) for name in wanted if getattr(extra, name)})
+
+    def describe(self) -> dict[str, Any]:
+        return {**self.main.describe(), "fill": {**self.fill.describe(), "fields": list(FILL_FIELDS)}}
+
+
 def candidates(gpu: int = 0, run: Callable[[Sequence[str]], str] = run_command,
                which: Callable[[str], str | None] = shutil.which) -> list[CommandReader | dict[str, Any]]:
     """Every reader worth trying, best first; a tool that is not installed is a dict saying so."""
@@ -343,8 +387,12 @@ def candidates(gpu: int = 0, run: Callable[[Sequence[str]], str] = run_command,
 
 
 def choose_reader(gpu: int = 0, run: Callable[[Sequence[str]], str] = run_command,
-                  which: Callable[[str], str | None] = shutil.which) -> tuple[CommandReader | None, list[dict[str, Any]]]:
-    """The first reader that reads a power number, and what each attempt gave."""
+                  which: Callable[[str], str | None] = shutil.which
+                  ) -> tuple[CommandReader | FilledReader | None, list[dict[str, Any]]]:
+    """The first reader that reads a power number, and what each attempt gave.
+
+    When that reader is amd-smi and its read has no clocks or no temperatures (on the Strix Halo, CLOCK is N/A),
+    rocm-smi --showtemp --showclocks fills them on every read, if it reads any of them now."""
     attempts: list[dict[str, Any]] = []
     for reader in candidates(gpu, run, which):
         if isinstance(reader, dict):
@@ -357,8 +405,25 @@ def choose_reader(gpu: int = 0, run: Callable[[Sequence[str]], str] = run_comman
             continue
         attempts.append({**reader.describe(), "socket_w": reading.socket_w})
         if reading.socket_w is not None:
-            return reader, attempts
+            return _with_fill(reader, reading, gpu, run, which, attempts), attempts
     return None, attempts
+
+
+def _with_fill(reader: CommandReader, reading: Reading, gpu: int, run: Callable[[Sequence[str]], str],
+               which: Callable[[str], str | None], attempts: list[dict[str, Any]]) -> CommandReader | FilledReader:
+    wanted = missing_fields(reading)
+    program = find_tool(ROCMSMI, which) if wanted and reader.source == AMDSMI else None
+    if program is None:
+        return reader
+    fill = CommandReader(ROCMSMI, program, ROCMSMI_FILL_OPTIONS, parse_rocmsmi, gpu=gpu, run=run)
+    try:
+        extra = fill.read()
+    except (ReadError, OSError) as exc:
+        attempts.append({**fill.describe(), "error": str(exc)})
+        return reader
+    fills = [name for name in wanted if getattr(extra, name)]
+    attempts.append({**fill.describe(), "fills": fills})
+    return FilledReader(reader, fill) if fills else reader
 
 
 # --- time -------------------------------------------------------------------------------------------------------
@@ -761,31 +826,18 @@ def read_samples(paths: Iterable[str | Path]) -> list[dict[str, Any]]:
 # --- node gate --------------------------------------------------------------------------------------------------
 
 def gate(node: str, rocminfo: Callable[[], str]) -> str | None:
-    """Why this process may not sample here, or None when it may.
+    """Why this process may not sample here, or None when it may: the node is known and rocminfo names gfx1151.
 
-    It may when the node is known, rocminfo names gfx1201, and no rocminfo Marketing Name is a gfx1201 card that is
-    not an R9700 (GFX1201_NOT_R9700). It proves gfx1201 and not a 9070, not that the card is an R9700.
-    """
+    That admits the SJC pods' Strix Halo and refuses every other chip, the R9700 (gfx1201) and its 9070 look-alikes
+    included: the thresholds and the tools' fields here are this chip's."""
     if node not in NODES:
         return f"--node must be one of {', '.join(NODES)}, got {node!r}"
     try:
         text = rocminfo()
     except (ReadError, OSError) as exc:
         return f"cannot tell what GPU this is: rocminfo failed ({exc})"
-    if R9700_GFX not in text:
-        return f"rocminfo names no {R9700_GFX}: this is not an R9700 pod"
-    look_alike = gfx1201_look_alike(text)
-    if look_alike is not None:
-        return f"rocminfo names {look_alike!r}, a {R9700_GFX} card that is not an R9700: this is not an R9700 pod"
-    return None
-
-
-def gfx1201_look_alike(rocminfo_text: str) -> str | None:
-    """The first rocminfo Marketing Name that is a known gfx1201 card other than the R9700, or None."""
-    for match in MARKETING_NAME_RE.finditer(rocminfo_text):
-        name = match.group("name")
-        if any(re.search(rf"\b{re.escape(card)}\b", name, re.IGNORECASE) for card in GFX1201_NOT_R9700):
-            return name
+    if not _POD_GFX_RE.search(text):
+        return f"rocminfo names no {POD_GFX}: this is not a {POD_CHIP} pod"
     return None
 
 

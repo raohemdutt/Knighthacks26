@@ -268,33 +268,40 @@ model server on a fake clock).
 
 ## GPU power sampler: `lab/pod_power.py`
 
-Reads the R9700 once a period (default 1000 ms) with `amd-smi metric --power --clock --temperature --usage
---energy` (rocm-smi as fallback; reads only, no root), keeps every read as one `telemetry.gpu.power` sample in
+Reads the pod's Strix Halo (Radeon 8060S, gfx1151; the R9700 is the other chip) once a period (default 1000 ms)
+with `amd-smi metric --power --clock --temperature --usage --energy`, found under `/opt/rocm/bin` since the SJC image
+has it off PATH (rocm-smi as fallback; reads only, no root), keeps every read as one `telemetry.gpu.power` sample in
 `~/atlas-power/samples-<UTC day>.jsonl`, and serves them on `127.0.0.1:8790` (`/samples?after=<seq>`, `/status`),
-which the proxy exposes at `/user/<account>/proxy/8790/`. Each sample names the tool, the period, the power field
-(SOCKET_POWER, the firmware's averaged socket power on this card) and the temperatures, and counts polls apart from
-distinct updates; under load, readings frozen for 10 s are flagged stale; the energy counter is checked against
+which the proxy exposes at `/user/<account>/proxy/8790/`. On this chip amd-smi reads SOCKET_POWER (the whole APU
+socket, in watts) and the edge temperature, but `ENERGY` and `CLOCK` are N/A, so `rocm-smi --showtemp --showclocks`
+fills the clocks (sclk, mclk) on every read and the energy always comes from integrated power. Each sample names the
+tool, the period, the power field and the temperatures, and counts polls apart from distinct updates; under load
+(GFX activity, else 60 W or more), readings frozen for 10 s are flagged stale; the energy counter is checked against
 integrated power at start-up and once under load and is used for energy only while it agrees within 10 percent.
-Stdlib only, so the pod needs nothing installed. Starting it on a pod is Ilan's go (pod B through the GPU queue):
+`serve` refuses any chip but gfx1151. Stdlib only, so the pod needs nothing installed. Starting it on a pod is
+Ilan's go:
 
 ```
-python -m lab.controller run-script --account A --with lab/pod_power.py lab/pod_power.sh check            # one read, raw outputs saved
-python -m lab.controller run-script --account A --with lab/pod_power.py lab/pod_power.sh start gpu-a       # status after 15 s
-python -m lab.controller run-script --account A lab/pod_power.sh stop
+python -m lab.controller run-script --account C --with lab/pod_power.py lab/pod_power.sh check            # one read, raw outputs saved
+python -m lab.controller run-script --account C --with lab/pod_power.py lab/pod_power.sh start gpu-a       # status after 15 s
+python -m lab.controller run-script --account C lab/pod_power.sh stop
 ```
 
 The Jetson reads both pods with `ATLAS_TELEMETRY_SOURCE=pods` (keys `AUP_HUB_USER_<X>`, `AUP_HUB_TOKEN_<X>` of each
-pod's account; `ATLAS_POD_ACCOUNTS` maps pods to accounts, default `gpu-a=A,gpu-b=B`; `AUP_HUB_URL_<X>` or
-`LAB_HUB_URL`, the same setting `lab/hub.py` reads, names the hub; `ATLAS_POD_POWER_PORT`, `ATLAS_POD_POWER_POLL_S` optional): samples arrive with `received_ts`, nothing is lost over
+pod's account; `ATLAS_POD_ACCOUNTS` maps pods to accounts, default `gpu-a=A,gpu-b=B`, so the SJC pods need
+`gpu-a=C,gpu-b=D`; `AUP_HUB_URL_<X>` or `LAB_HUB_URL`, the settings `lab/hub.py` reads, name the hub;
+`ATLAS_POD_POWER_PORT`, `ATLAS_POD_POWER_POLL_S` optional): samples arrive with `received_ts`, nothing is lost over
 a proxy gap the pod's buffer covers (about 5.5 hours), and a sampler restart shows as a new `sampler_started`.
 The reader sends `lab/hub.py`'s browser-like User-Agent (`LAB_HUB_USER_AGENT` overrides it), since the hub's front end
-answers 403 to a script's own agent. A hub host other than dub.aupcloud.io must also be admitted by the Jetson firewall
-(the hub group of `jetson/egress.py`), or the reader's polls never leave the box.
+answers 403 to a script's own agent. A hub host other than dub.aupcloud.io must also be admitted by the Jetson
+firewall: `jetson/egress.py` adds the aupcloud.io host of every `AUP_HUB_URL_<X>` and of `LAB_HUB_URL` to its hub
+group. Samples the reader rejects (another node's name, a broken event) are logged once per page with the count.
 A window becomes a stored row with `python -m lab gpu-power record --samples <files> --node pod-a --metric
 pod.idle_watts [--since ISO] [--until ISO] [--state idle] [--metrics-file]`: the row carries the sampler, period,
-measured period, longest gap (and from the Jetson log the longest receive gap and latest arrival), restarts, distinct updates, starting temperatures, the energy and its source, and
-`error: unknown` until a reference run measures it. Parsers and sampler are tested offline on
-`fixtures/telemetry/pod_power` (tests/test_lab_pod_power.py).
+measured period, longest gap (and, from the Jetson log, the longest gap between receive times and the latest
+arrival), restarts, distinct updates, starting temperatures, the energy and its source, and `error: unknown` until a
+reference run measures it. Parsers and sampler are tested offline on `fixtures/telemetry/pod_power`
+(tests/test_lab_pod_power.py; the `strixhalo_*` files are output recorded on pod C, the others the R9700's).
 
 ## Teacher (pod A)
 
