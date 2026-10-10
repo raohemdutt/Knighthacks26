@@ -344,7 +344,7 @@ def test_a_rest_launch_that_gave_the_real_image_is_kept_and_the_form_is_never_to
     assert "fell_back_from" not in answer
     assert sjc.hub.calls_matching(None, "/hub/native") == [] and sjc.hub.calls_matching(None, "/hub/spawn") == []
     assert sjc.hub.calls_matching("DELETE") == []
-    assert plain(only_row("pod launch")["conditions"]) == {"resource": "gpu", "accelerator": "r9700", "launch_path": "rest"}
+    assert plain(only_row("pod launch")["conditions"]) == {"resource": "gpu", "accelerator": "strix-halo", "launch_path": "rest"}
 
 
 def test_a_pod_that_cannot_be_asked_is_left_alone_and_the_answer_says_it_is_unknown():
@@ -438,7 +438,7 @@ def test_an_account_without_a_password_launches_by_rest_alone_exactly_as_before(
     assert [(call.method, call.path) for call in dub.hub.calls if call.method != "GET"] == [
         ("POST", "/hub/api/users/acct-a/server")]
     assert dub.hub.calls_matching("POST", "/server")[0].json == {
-        "runtime_minutes": 600, "resource_type": "gpu", "gpu_selection": "r9700"}
+        "runtime_minutes": 600, "resource_type": "gpu", "gpu_selection": "strix-halo"}
     assert (answer["outcome"], answer["start_s"], answer["balance"], answer["cost_credits"]) == ("running", 15.0, 59960, 2400)
     assert answer["launch_path"] == "rest" and "image_check" not in answer
     assert dub.hub.calls_matching(None, "/api/terminals") == [] and dub.hub.calls_matching(None, "/hub/native") == []
@@ -452,7 +452,7 @@ def test_the_rest_key_keeps_an_account_that_has_a_password_on_the_rest_call_with
     assert (answer["outcome"], answer["launch_path"]) == ("running", "rest")
     assert "image_check" not in answer
     assert dub.hub.calls_matching(None, "/api/terminals") == [] and dub.hub.calls_matching(None, "/hub/native") == []
-    assert plain(only_row("pod launch")["conditions"]) == {"resource": "gpu", "accelerator": "r9700", "launch_path": "rest"}
+    assert plain(only_row("pod launch")["conditions"]) == {"resource": "gpu", "accelerator": "strix-halo", "launch_path": "rest"}
 
 
 # --- accelerator and resource: arguments, and per-account defaults ---------------------------------------
@@ -463,14 +463,14 @@ def test_the_accelerator_and_resource_come_from_the_arguments_then_the_account_k
 
     sjc.cli("launch", "--account", "C", "--minutes", "30", environ=env)
     sjc.hub.drop_server("C")
-    sjc.cli("launch", "--account", "C", "--minutes", "30", environ={**env, "AUP_HUB_GPU_C": "strix-halo",
+    sjc.cli("launch", "--account", "C", "--minutes", "30", environ={**env, "AUP_HUB_GPU_C": "r9700",
                                                                   "AUP_HUB_RESOURCE_C": "code-gpu"})
     sjc.hub.drop_server("C")
     sjc.cli("launch", "--account", "C", "--minutes", "30", "--accelerator", "9070xt", "--resource", "gpu",
-            environ={**env, "AUP_HUB_GPU_C": "strix-halo", "AUP_HUB_RESOURCE_C": "code-gpu"})
+            environ={**env, "AUP_HUB_GPU_C": "r9700", "AUP_HUB_RESOURCE_C": "code-gpu"})
 
     assert [(call.json["resource_type"], call.json["gpu_selection"]) for call in sjc.hub.calls_matching("POST", "/server")] == [
-        ("gpu", "r9700"), ("code-gpu", "strix-halo"), ("gpu", "9070xt")]
+        ("gpu", "strix-halo"), ("code-gpu", "r9700"), ("gpu", "9070xt")]
 
 
 def test_the_form_names_the_accelerator_under_the_resource_the_account_launches_by_default():
