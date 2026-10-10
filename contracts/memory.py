@@ -89,3 +89,15 @@ class MemoryStats(BaseModel):
     episodes: int
     captions: int
     first_event: datetime | None = None
+
+
+class Item(BaseModel):
+    """Connector item projected into memory_items. GET /memory/items?from&to&kind"""
+
+    connector: str
+    kind: str  # contracts.connectors.ItemKind
+    external_id: str
+    title: str
+    when: datetime | None = None
+    url: str | None = None
+    summary: str | None = None

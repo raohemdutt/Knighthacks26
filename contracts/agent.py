@@ -3,7 +3,9 @@ from typing import Literal
 from contracts.events import TypedEvent, register
 from contracts.types import Citation
 
-ActionKind = Literal["export_training_data", "send_message", "browse"]
+# connector_write: target is the connector tool ("calendar.create_event"), params its arguments.
+# circle_share: target is the circle id, params the share payload.
+ActionKind = Literal["export_training_data", "send_message", "browse", "connector_write", "circle_share"]
 
 
 @register
