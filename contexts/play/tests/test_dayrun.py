@@ -98,7 +98,7 @@ def test_board_lays_out_fixed_blocks_deadlines_and_open_slots(dayrun):
     assert (d.id, d.work_left, d.in_window) == (MILESTONE, 300, False) and 0 < d.risk < 1
     assert [e.title for e in b.events] == ["Movie on the lawn"]
     # four hours of sleep and no meal, from the habit numbers
-    assert (b.initial.sleep_hours, b.initial.meals, b.initial.sleep_debt, b.initial.source) == (4, 0, 4, "habits")
+    assert (b.initial.sleep_hours, b.initial.meals, b.initial.sleep_debt, b.initial.source) == (4, 0, 4, "scenario")
     assert b.initial.energy < 50
 
     library = next(o for o in b.slots[2].moves if o.kind == "study" and o.place == "ucf.library")
@@ -133,6 +133,22 @@ def test_start_values_come_from_habits_or_defaults(places, tmp_path):
     assert rested.source == "habits" and rested.sleep_debt == 0
     assert default.source == "defaults" and default.sleep_hours == 7
     assert rested.energy > default.energy > tired.energy
+
+
+def test_the_board_says_where_each_starting_value_came_from(places, dayrun, tmp_path):
+    """O8b: the scripted day said "habits" while showing the scenario's own numbers."""
+    class Habits:  # a night the cameras did not watch: only the meals are Habits' to give
+        def digest(self, day=None, now=None):
+            return {"habits": [{"id": "sleep", "value": 0.0, "applies": False}, {"id": "meals", "value": 1, "applies": True}]}
+
+    live = DayRun(places, habits=Habits(), data_dir=tmp_path)
+    assert dayrun.board(scenario="demo").initial.source == "scenario"
+    part = live.board(at(9, 30)).initial
+    assert (part.sleep_hours, part.meals, part.source) == (7, 1, "defaults (sleep), habits (meals)")
+    assert live.board(at(9, 30), InitialOverride(sleep_hours=3)).initial.source == "request (sleep), habits (meals)"
+    assert live.board(at(9, 30), InitialOverride(sleep_hours=3, meals=2)).initial.source == "request"
+    assert DayRun(places, data_dir=tmp_path).board(at(9, 30), InitialOverride(energy=40)).initial.source == "defaults (sleep and meals), request (energy)"
+    assert dayrun.board(scenario="demo", initial=InitialOverride(meals=0)).initial.source == "scenario (sleep), request (meals)"
 
 
 # --- feasibility ---
@@ -373,6 +389,16 @@ def test_hard_mode_revalidates_and_reroutes(dayrun, plans):
     assert "ucf.union" not in eats and len(eats) == 3
     assert h.after.rejected == [] and h.after.totals.walk_minutes > h.before.totals.walk_minutes
     assert h.before.outcome.won
+
+    # O8a: re-routed to the place you are standing in is not "0 minutes from" it
+    stay = dayrun.hard([Move(slot="s3", kind="eat", place="ucf.dining_63", minutes=25), Move(slot="s3", kind="eat", place="ucf.union", minutes=25)],
+                       scenario="demo", disruptions=[Disruption(kind="place_closed", place="ucf.union")])
+    [moved] = [c.text for c in stay.changes if c.kind == "rerouted"]
+    assert moved == "Student Union is closed: re-routed to 63 South dining hall (you are already there)"
+    rerouted = [c.text for c in h.changes if c.kind == "rerouted"]  # the scripted demo: one of each
+    assert rerouted == ["Student Union is closed: re-routed to 63 South dining hall (you are already there), "
+                        "7 minutes on to the 11:45 Knight Hacks: judging and demos",
+                        "Student Union is closed: re-routed to 63 South dining hall, 13 minutes from John C. Hitt Library"]
 
     strict = dayrun.hard([Move(slot="s2", kind="eat", place="ucf.union", minutes=33)], scenario="demo",
                          disruptions=[Disruption(kind="block_moved", block=JUDGING, to_place="ucf.rwc")])

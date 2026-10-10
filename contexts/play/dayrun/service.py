@@ -162,7 +162,7 @@ class DayRun:
         over = initial or InitialOverride()
         if sc and sc.start_place and not over.start_place:
             over = over.model_copy(update={"start_place": sc.start_place})
-        state = initial_state(self.cfg, start, self._habit_rows(sc, start.date(), start), over)
+        state = initial_state(self.cfg, start, self._habit_rows(sc, start.date(), start), over, origin="scenario" if sc else "habits")
         return build_board(self.cfg, self.walks, start, list(items), state, self._friends(sc, start), over)
 
     # --- play ---

@@ -87,7 +87,8 @@ class OpenSlot(BaseModel):
 
 
 class Initial(BaseModel):
-    """Where the meters start. `source` says whether Habits supplied the numbers."""
+    """Where the meters start. `source` says what supplied the numbers: "habits", "scenario" (a scripted day),
+    "defaults", "request", or, when they differ, each with its values: "defaults (sleep), habits (meals)"."""
 
     energy: float
     focus: float
