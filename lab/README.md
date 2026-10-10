@@ -371,3 +371,78 @@ Each example is a question (`context`) with an empty `target`. A label is the JS
 `expected.jsonl` holds what a correct label looks like, taken from the agent's own pre-fetch code; the teacher
 never sees it. Read `lab/fixture_dataset.py`'s docstring for how groups and `origin` support a split that keeps
 the golden questions out of training. Both scripts write a ledger row and stop while `lab/state/STOP` exists.
+
+## Training rows for the student: `lab/format_traces.py`
+
+The Jetson serves Qwen3.5-4B with `llama-server --jinja --reasoning-budget 0`, so the model's own chat template renders
+every prompt with thinking off and the model answers a tool question in the template's tag form, not in JSON:
+
+```
+<tool_call>
+<function=last_seen>
+<parameter=label>
+keys
+</parameter>
+</function>
+</tool_call>
+```
+
+The teacher hands its calls back as OpenAI JSON. `lab/format_traces.py` turns the labeled examples of a tool-calling
+dataset (the no-camera fixture, once the teacher has filled `target`) into the rows the trainer reads, in that form, and
+writes a row only when it can prove it. It needs nothing beyond the repo's own requirements.
+
+```
+python lab/format_traces.py <dataset folder> --out rows.jsonl --split             # the training rows
+python lab/format_traces.py <dataset folder> --out rows.jsonl                    # a row for every labeled example
+python lab/format_traces.py <dataset folder>                                      # only checks
+python lab/format_traces.py <dataset folder> --out rows.jsonl --split --tokenizer <folder>   # also encodes and decodes every trace
+```
+
+`--split` reads the dataset's frozen `split.json` the way `load_split()` does (a split that leaks or is too short is
+refused) and writes rows only for the examples it lists under `train`, so a held-out example cannot reach the trainer
+through this file. Make the training rows with it. The answer then has a `split` entry (the sha256 of `split.json`
+and how many held-out examples were skipped), and the ledger row records the hash as `refs.split_sha256`.
+
+It prints one JSON line (`rows`, `rejected`, `failed`, `pending`, the sha256 of the rows file, and the reasons for
+the first few rejects) and exits 1 when no row passed. It writes a ledger row (`format-traces`) and stops while
+`lab/state/STOP` exists.
+
+A row is one trace, with these keys:
+
+| key | what it is |
+|---|---|
+| `id`, `frame_ref` | the example's, so a split by id or by `frame_ref` can pick rows |
+| `messages` | the conversation, OpenAI style: system, user, the assistant's `tool_calls` (arguments as objects), the `tool` results, the final answer |
+| `tools` | the `TOOLS` schemas of `contexts/agent/application/qa.py`, as llama-server receives them |
+| `text` | `messages` and `tools` rendered through the template with thinking off: what the student is trained on |
+| `spans` | `[start, end)` character offsets into `text` of what the model writes in each assistant turn, after the empty thinking block up to and including `<|im_end|>` |
+
+Train on `text` with the loss on `spans` only: `text[:start]` is exactly what the box sends before that turn (the
+generation prompt ends with the empty thinking block, so the model never has to write it). If you render again from
+`messages` and `tools`, read the rows with the `json` module and pass `enable_thinking=False`: the `datasets` library
+gives the argument objects of different tools one shared set of keys, and the template would then print the missing
+ones as `None`.
+
+What is proven for each row, and what happens to a row that fails:
+
+- The renderer is the template written out in Python (no Jinja), checked against what the real template produced for
+  16 conversations recorded in `fixtures/lab/qwen35-template/` (revision in `source.json`). With `--tokenizer <folder>`
+  holding `tokenizer.json` and `chat_template.jinja` (and `pip install tokenizers transformers`) every trace is also
+  compared with `apply_chat_template(..., enable_thinking=False)` itself.
+- Each assistant turn starts exactly where the generation prompt ends; the text survives encode and decode unchanged
+  (needs `--tokenizer`); and the calls and the answer read back out of the detokenized text have the same function names,
+  arguments and words as the trace.
+- A label that is not valid JSON, calls an unknown tool, leaves out or invents an argument, or has the wrong type is
+  `rejected`; a trace holding a special token or a thinking tag in its text, or whose rendering does not check out, is
+  `failed`. Both are counted and left out, never repaired. Arguments are written in the order the tool declares them.
+- A label holds the calls and the answer, not what the calls returned. Each call is run again through the agent's own tool
+  loop against `fixtures/golden/memory.yaml` (`--golden`), which gives the text the box would have shown the model. That
+  is possible only for the fixture dataset (`action_id` `fixture:golden-questions`), whose memory is in the repo.
+
+To get the student's tokenizer files without the model weights (about 13 MB), take `tokenizer.json`,
+`tokenizer_config.json` and `chat_template.jinja` from `https://huggingface.co/Qwen/Qwen3.5-4B/resolve/<revision>/` into
+one folder. If the template changes upstream, record it again with the call in `fixtures/lab/qwen35-template/source.json`.
+Not proven here: that the Jetson's llama.cpp build renders the same prompt and parses these calls back into
+`tool_calls`; that needs a run on the box. From the source, llama.cpp's own template engine (`common/jinja/value.cpp`
+at 8b54361) writes `tojson` with the same separators and key order, and prints `True`, `False` and `None` the way the
+Hugging Face renderer does, so the system block it builds from the `TOOLS` list should be the one in `text`.
