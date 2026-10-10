@@ -946,7 +946,7 @@ def label_dataset(root: str | os.PathLike[str], teacher: Teacher, *, decode: Dec
 def _teacher_from_args(args: argparse.Namespace, transport: httpx.BaseTransport | None) -> Teacher:
     if args.url:
         return Teacher(args.url, transport=transport, stream=not args.no_stream)
-    accounts = hub.load_accounts([args.account])
+    accounts = hub.load_accounts([args.account], require_role=True)
     return Teacher.from_hub(accounts[args.account], port=args.port, transport=transport, stream=not args.no_stream)
 
 
@@ -990,6 +990,8 @@ def main(argv: Sequence[str] | None = None, *, transport: httpx.BaseTransport | 
         teacher = _teacher_from_args(args, transport)
     except hub.MissingCredentials as err:
         return {"ok": False, "outcome": "refused", "error": f"the account's keys are missing: {err}"}
+    except hub.PodRoleError as err:
+        return {"ok": False, "outcome": "refused", "error": str(err)}
     with teacher:
         try:
             run = label_dataset(args.dataset, teacher, decode=decode, golden_dir=args.golden,

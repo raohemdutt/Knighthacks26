@@ -320,7 +320,7 @@ def test_the_search_for_dotenv_files_is_the_lab_machines_own(tmp_path):
 
 # --- accounts beyond A and B, and the hub each lives on -------------------------------------------
 
-SJC_ENV = {"AUP_HUB_USER_C": "acct-c", "AUP_HUB_TOKEN_C": TOKEN, "AUP_HUB_URL_C": "https://sjc.test/",
+SJC_ENV = {"LAB_POD_ROLES": "C:pod-a,D:pod-b", "AUP_HUB_USER_C": "acct-c", "AUP_HUB_TOKEN_C": TOKEN, "AUP_HUB_URL_C": "https://sjc.test/",
            "AUP_HUB_USER_D": "acct-d", "AUP_HUB_TOKEN_D": OTHER_TOKEN}
 
 
@@ -329,12 +329,12 @@ def test_any_letter_with_its_user_and_token_keys_is_an_account_with_its_own_node
 
     assert list(accounts) == ["C", "D"]
     assert [(a.letter, a.user, a.token, a.node, a.url) for a in accounts.values()] == [
-        ("C", "acct-c", TOKEN, "pod-c", "https://sjc.test/"), ("D", "acct-d", OTHER_TOKEN, "pod-d", None)]
+        ("C", "acct-c", TOKEN, "pod-a", "https://sjc.test/"), ("D", "acct-d", OTHER_TOKEN, "pod-b", None)]
     assert (hub.node_of("A"), hub.node_of("B")) == ("pod-a", "pod-b")
 
 
 def test_the_address_key_is_optional_a_blank_one_is_unset_and_a_dotenv_file_may_hold_it(tmp_path):
-    keys = {"AUP_HUB_USER_C": "acct-c", "AUP_HUB_TOKEN_C": TOKEN}
+    keys = {"LAB_POD_ROLES": "C:pod-a,D:pod-b", "AUP_HUB_USER_C": "acct-c", "AUP_HUB_TOKEN_C": TOKEN}
     assert load_accounts(["C"], environ=keys, env_files=[])["C"].url is None
     assert load_accounts(["C"], environ={**keys, "AUP_HUB_URL_C": "   "}, env_files=[])["C"].url is None
 
@@ -347,7 +347,8 @@ def test_the_address_key_is_optional_a_blank_one_is_unset_and_a_dotenv_file_may_
 
 def test_the_missing_keys_of_a_letter_are_named_and_the_optional_address_is_never_one_of_them():
     with pytest.raises(MissingCredentials) as caught:
-        load_accounts(["C", "D"], environ={"AUP_HUB_USER_C": "acct-c", "AUP_HUB_TOKEN_C": TOKEN}, env_files=[])
+        load_accounts(["C", "D"], environ={"LAB_POD_ROLES": "C:pod-a,D:pod-b", "AUP_HUB_USER_C": "acct-c",
+                                   "AUP_HUB_TOKEN_C": TOKEN}, env_files=[])
     assert caught.value.missing == ["AUP_HUB_USER_D", "AUP_HUB_TOKEN_D"]
 
 
@@ -373,7 +374,7 @@ PASSWORD = "fake-correct-horse-battery"
 # --- the optional keys of an account: password, launch mode, accelerator, resource ---------------------
 
 def test_the_optional_keys_are_read_like_the_others_and_none_of_them_is_ever_required():
-    keys = {"AUP_HUB_USER_C": "acct-c", "AUP_HUB_TOKEN_C": TOKEN}
+    keys = {"LAB_POD_ROLES": "C:pod-a,D:pod-b", "AUP_HUB_USER_C": "acct-c", "AUP_HUB_TOKEN_C": TOKEN}
     bare = load_accounts(["C"], environ=keys, env_files=[])["C"]
     assert (bare.password, bare.launch, bare.gpu, bare.resource) == (None, None, None, None)
 
@@ -390,7 +391,7 @@ def test_the_optional_keys_may_come_from_a_dotenv_file_and_only_for_the_account_
     dotenv = tmp_path / ".env"
     dotenv.write_text(f"AUP_HUB_PASS_C={PASSWORD}\nAUP_HUB_PASS_D=other-password-1\nAUP_HUB_GPU_D=r9700\n",
                       encoding="utf-8")
-    keys = {"AUP_HUB_USER_C": "acct-c", "AUP_HUB_TOKEN_C": TOKEN}
+    keys = {"LAB_POD_ROLES": "C:pod-a,D:pod-b", "AUP_HUB_USER_C": "acct-c", "AUP_HUB_TOKEN_C": TOKEN}
 
     account = load_accounts(["C"], environ=keys, env_files=[dotenv])["C"]
 
@@ -620,3 +621,28 @@ def test_a_login_redirect_that_sets_no_session_cookie_is_not_a_login():
 
     assert (result.ok, result.stage, result.kind, result.status) == (False, "login", "login_failed", 302)
     assert seen == [("GET", "/hub/native/login"), ("POST", "/hub/native/login")]
+
+
+# --- pod roles (LAB_POD_ROLES) ----------------------------------------------------------------
+
+def test_the_roles_default_to_the_dub_pair_and_the_setting_is_read_from_the_environment_then_the_dotenv(tmp_path):
+    assert hub.pod_roles({}, []) == {"A": "pod-a", "B": "pod-b"}
+    assert hub.pod_roles({"LAB_POD_ROLES": " c:pod-a , D:POD-B "}, []) == {"C": "pod-a", "D": "pod-b"}
+    dotenv = tmp_path / ".env"
+    dotenv.write_text("LAB_POD_ROLES=C:pod-a,D:pod-b\n", encoding="utf-8")
+    assert hub.pod_roles({}, [dotenv]) == {"C": "pod-a", "D": "pod-b"}
+    assert hub.pod_roles({"LAB_POD_ROLES": "A:pod-a"}, [dotenv]) == {"A": "pod-a"}
+
+
+def test_an_account_gets_its_role_as_its_node_and_one_with_no_role_is_refused_not_named_by_its_letter():
+    accounts = load_accounts(["C", "D"], environ=SJC_ENV, env_files=[])
+    assert (accounts["C"].node, accounts["D"].node) == ("pod-a", "pod-b")
+    with pytest.raises(hub.PodRoleError, match="account C fills no pod role"):
+        load_accounts(["C"], environ={k: v for k, v in SJC_ENV.items() if k != "LAB_POD_ROLES"}, env_files=[],
+                      require_role=True)
+    assert load_accounts(["C"], environ={k: v for k, v in SJC_ENV.items() if k != "LAB_POD_ROLES"}, env_files=[])["C"].role is None
+    with pytest.raises(hub.PodRoleError):
+        hub.node_of("C")
+    with pytest.raises(hub.PodRoleError):
+        _ = Account("D", "acct-d", TOKEN).node
+    assert hub.hub_of("https://sjc.test/") == "sjc.test"

@@ -63,6 +63,7 @@ if not __package__:  # run by path: the repo root, one folder up, is what holds 
 import httpx
 
 from lab.hub import Account
+from lab.hub_fake import FAKE_ROLES
 
 __all__ = ["Turn", "Policy", "Seen", "FakeTeacher", "reference_policy", "text_policy", "main"]
 
@@ -234,7 +235,8 @@ class FakeTeacher:
         """The hub account whose pod this fake stands behind, with the fake hub's address (or url)."""
         if not self.proxied:
             raise ValueError("this fake has no account: give it user and token")
-        return Account(letter, self.user or "", self.token or "", url or f"https://{self.host}")
+        return Account(letter, self.user or "", self.token or "", url or f"https://{self.host}",
+                       role=FAKE_ROLES.get(letter))
 
     # --- faults and state ----------------------------------------------------------------------
 

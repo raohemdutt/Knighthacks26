@@ -67,7 +67,7 @@ class World:
     def __init__(self, tmp_path: Path, *, files=None, limit: int = LIMIT, letter: str = "B", user: str = USER) -> None:
         self.tmp = tmp_path
         self.letter = letter
-        self.env = {f"AUP_HUB_USER_{letter}": user, f"AUP_HUB_TOKEN_{letter}": TOKEN, "LAB_HUB_URL": "https://hub.test"}
+        self.env = {"LAB_POD_ROLES": f"{letter}:{'pod-a' if letter in 'AC' else 'pod-b'}", f"AUP_HUB_USER_{letter}": user, f"AUP_HUB_TOKEN_{letter}": TOKEN, "LAB_HUB_URL": "https://hub.test"}
         self.packages = tmp_path / "pod" / "data" / "packages"
         self.on_pod = self.packages / VERSION
         write_package(self.packages, VERSION, files or {"model.gguf": GGUF, "mmproj-model.gguf": MMPROJ})
@@ -706,7 +706,7 @@ def test_the_command_takes_the_hub_from_the_accounts_own_address_key(world):
     assert lines["commands"][0] == 'curl -sS -H "Authorization: token ${AUP_HUB_TOKEN_B}" "https://sjc.test/user/${AUP_HUB_USER_B}/proxy/8300/"'
 
 
-def test_an_account_beyond_a_and_b_is_pod_c_in_the_answer_and_the_rows(tmp_path, monkeypatch):
+def test_an_account_beyond_a_and_b_takes_its_role_in_the_answer_and_the_rows(tmp_path, monkeypatch):
     monkeypatch.setenv("LAB_STATE_DIR", str(tmp_path / "state"))
     built = World(tmp_path, letter="C", user="acct-c")
     try:
@@ -715,9 +715,9 @@ def test_an_account_beyond_a_and_b_is_pod_c_in_the_answer_and_the_rows(tmp_path,
     finally:
         built.close()
 
-    assert (code, answer["ok"], answer["account"], answer["node"]) == (0, True, "C", "pod-c")
+    assert (code, answer["ok"], answer["account"], answer["node"]) == (0, True, "C", "pod-a")
     row = ledger.read(verb="link pull")[0]
-    assert (row["node"], row["refs"]["account"]) == ("pod-c", "C")
+    assert (row["node"], row["refs"]["account"]) == ("pod-a", "C")
 
 
 def test_a_failed_pull_exits_1_with_the_reason_and_both_rows_say_error(world):

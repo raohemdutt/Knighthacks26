@@ -32,7 +32,15 @@ This is the one place the hub is spoken to, so the rules for talking to it hold 
 The address of an account is its own AUP_HUB_URL_<letter> when that key is set, else $LAB_HUB_URL when that is
 set, else https://dub.aupcloud.io; an address handed to Hub outranks all three. The keys come from the process
 environment, then from the .env files lab/machine/ready.py searches (the clone's, then the two folders
-above it); $LAB_ENV_FILES replaces that search. A test hands Hub an httpx transport instead of a network.
+above it); $LAB_ENV_FILES replaces that search.
+
+Rows are named by pod role, not by account: LAB_POD_ROLES=C:pod-a,D:pod-b says which account fills the teacher's
+(pod-a) and the trainer's (pod-b) role, read the same way (environment, then the .env files); unset it is
+A:pod-a,B:pod-b. An account with no role is refused (PodRoleError), never named pod-<letter>.
+
+Rows are named by pod role, not by account: LAB_POD_ROLES=C:pod-a,D:pod-b says which account fills the teacher's
+(pod-a) and the trainer's (pod-b) role, read the same way (environment, then the .env files); unset it is
+A:pod-a,B:pod-b. An account with no role is refused (PodRoleError), never named pod-<letter>. A test hands Hub an httpx transport instead of a network.
 """
 from __future__ import annotations
 
@@ -53,7 +61,8 @@ import httpx
 
 from lab.machine import ready
 
-__all__ = ["USER_AGENT", "ENV_USER_AGENT", "ENV_URL", "DEFAULT_URL", "LETTERS", "NODES", "TRANSIENT_STATUSES",
+__all__ = ["USER_AGENT", "ENV_USER_AGENT", "ENV_URL", "DEFAULT_URL", "LETTERS", "NODES", "ENV_POD_ROLES", "DEFAULT_POD_ROLES",
+           "ROLES", "TRANSIENT_STATUSES", "PodRoleError", "pod_roles", "hub_of",
            "LAUNCH_MODES", "Account", "MissingCredentials", "HubUnreachable", "Reply", "FormResult", "Hub",
            "load_accounts", "node_of", "url_key", "password_key", "spawn_fields", "one_line", "clip"]
 
@@ -64,7 +73,10 @@ ENV_USER_AGENT = "LAB_HUB_USER_AGENT"
 USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
               "Chrome/130.0 Safari/537.36")
 LETTERS = ("A", "B")                          # what `both` stands for: the pair on the DUB hub
-NODES = {"A": "pod-a", "B": "pod-b"}          # the ledger's name for the machine behind the first two accounts
+NODES = {"A": "pod-a", "B": "pod-b"}          # the roles of the DUB hub's pair: what LAB_POD_ROLES defaults to
+ENV_POD_ROLES = "LAB_POD_ROLES"
+DEFAULT_POD_ROLES = "A:pod-a,B:pod-b"
+ROLES = ("pod-a", "pod-b")                    # the machines a row can be about: the teacher's pod and the trainer's
 TRANSIENT_STATUSES = frozenset({502, 503, 504})
 IDEMPOTENT_METHODS = frozenset({"GET", "HEAD", "PUT", "DELETE", "OPTIONS"})
 REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
@@ -83,9 +95,52 @@ XSRF_COOKIE = "_xsrf"
 HTML_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
 
 
-def node_of(letter: str) -> str:
-    """The ledger node of an account letter: pod-a for A, pod-b for B, pod-c for C and so on."""
-    return NODES.get(letter) or f"pod-{letter.lower()}"
+class PodRoleError(ValueError):
+    """An account that fills no pod role in LAB_POD_ROLES, or a setting that cannot be read. The message says
+    which and how to fix it; a node is never made up from the letter."""
+
+
+def _parse_roles(text: str) -> dict[str, str]:
+    roles: dict[str, str] = {}
+    for part in text.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        letter, sep, role = (piece.strip() for piece in part.partition(":"))
+        if not sep or len(letter) != 1 or not letter.isalpha() or role.lower() not in ROLES:
+            raise PodRoleError(f"{ENV_POD_ROLES} entry {part!r} is not <letter>:<role> with the role one of "
+                               f"{' or '.join(ROLES)} (for example {DEFAULT_POD_ROLES})")
+        if letter.upper() in roles:
+            raise PodRoleError(f"{ENV_POD_ROLES} names account {letter.upper()} twice")
+        roles[letter.upper()] = role.lower()
+    return roles
+
+
+def pod_roles(environ: Mapping[str, str] | None = None, env_files: Sequence[Path] | None = None) -> dict[str, str]:
+    """The pod role each account letter fills, from LAB_POD_ROLES: the process environment, then the .env files
+    lab/machine/ready.py searches. Unset, it is A:pod-a,B:pod-b (the DUB hub). On SJC, C:pod-a,D:pod-b."""
+    environ = os.environ if environ is None else environ
+    files = ready.default_env_files(environ) if env_files is None else list(env_files)
+    found, _ = ready.collect_env([ENV_POD_ROLES], {k: v for k, v in environ.items() if k == ENV_POD_ROLES}, files)
+    return _parse_roles(found.get(ENV_POD_ROLES, DEFAULT_POD_ROLES))
+
+
+def node_of(letter: str, roles: Mapping[str, str] | None = None) -> str:
+    """The ledger node of an account letter: the role it fills (pod-a for the teacher's account, pod-b for the
+    trainer's). roles is pod_roles(); without it, the default pair. Raises PodRoleError for a letter with no role."""
+    roles = _parse_roles(DEFAULT_POD_ROLES) if roles is None else roles
+    role = roles.get(letter.upper())
+    if role is None:
+        have = ", ".join(f"{k}:{v}" for k, v in sorted(roles.items())) or "none"
+        raise PodRoleError(f"account {letter} fills no pod role: {ENV_POD_ROLES} names {have}; set "
+                           f"{ENV_POD_ROLES}=<letter>:pod-a,<letter>:pod-b (SJC: C:pod-a,D:pod-b) in the environment "
+                           "or the workspace .env")
+    return role
+
+
+def hub_of(url: str) -> str:
+    """The name of a hub in a row's conditions: its host (dub.aupcloud.io, sjc.aupcloud.io)."""
+    return urllib.parse.urlsplit(url if "//" in url else "//" + url).netloc or url
 
 
 def one_line(text: Any, limit: int | None = None) -> str:
@@ -119,10 +174,12 @@ class Account:
     launch: str | None = None
     gpu: str | None = None
     resource: str | None = None
+    role: str | None = None     # the pod role this account fills (LAB_POD_ROLES); None: the default pair's
 
     @property
     def node(self) -> str:
-        return node_of(self.letter)
+        """The ledger node: the role the account fills, never pod-<letter>. PodRoleError when it fills none."""
+        return self.role or node_of(self.letter)
 
 
 class MissingCredentials(Exception):
@@ -159,14 +216,17 @@ def option_keys(letter: str) -> tuple[str, str, str, str, str]:
 
 
 def load_accounts(letters: Iterable[str], *, environ: Mapping[str, str] | None = None,
-                  env_files: Sequence[Path] | None = None) -> dict[str, Account]:
+                  env_files: Sequence[Path] | None = None, require_role: bool = False) -> dict[str, Account]:
     """The accounts of those letters, from the process environment first and then the .env files.
 
     Raises MissingCredentials naming every key that is absent or blank, in letter order. The optional keys
     (address, web password, launch mode, accelerator, resource: see option_keys) are read the same way and never
-    required. env_files replaces the search of lab/machine/ready.py (the clone's .env and the two folders above it)."""
+    required. require_role refuses (PodRoleError) an account that fills no pod role in LAB_POD_ROLES, as every verb
+    that writes a row must; a caller that only talks to the pod (the proxy, the transfer) leaves it off. env_files replaces the search of lab/machine/ready.py (the clone's .env and the two folders above it)."""
     environ = os.environ if environ is None else environ
     files = ready.default_env_files(environ) if env_files is None else list(env_files)
+    roles = pod_roles(environ, files)
+    letters = list(letters)
     wanted = [(letter, *key_names(letter)) for letter in letters]
     names = [name for _, user_key, token_key in wanted for name in (user_key, token_key)]
     optional = [name for letter, _, _ in wanted for name in option_keys(letter)]
@@ -176,10 +236,13 @@ def load_accounts(letters: Iterable[str], *, environ: Mapping[str, str] | None =
     missing = [name for name in names if name not in found]
     if missing:
         raise MissingCredentials(missing)
+    for letter in letters if require_role else ():
+        node_of(letter, roles)      # an account with no role is refused here
     accounts = {}
     for letter, user_key, token_key in wanted:
         url, password, launch, gpu, resource = (found.get(name) for name in option_keys(letter))
-        accounts[letter] = Account(letter, found[user_key], found[token_key], url, password, launch, gpu, resource)
+        accounts[letter] = Account(letter, found[user_key], found[token_key], url, password, launch, gpu, resource,
+                                   roles.get(letter.upper()))
     return accounts
 
 

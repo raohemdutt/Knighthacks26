@@ -435,7 +435,7 @@ def test_each_example_writes_a_ledger_row_with_its_seconds_tokens_and_conditions
 
     [row] = rows(tmp_path, verb="label-example")
     metrics = row["metrics"]
-    assert (row["outcome"], row["actor"], row["node"], row["note"]) == ("accepted", "test-labeler", "pod-c", None)
+    assert (row["outcome"], row["actor"], row["node"], row["note"]) == ("accepted", "test-labeler", "pod-a", None)
     assert row["refs"] == {"pr": None, "commit": None, "slot": None, "run_id": result.run_id,
                            "dataset_id": "tool-calling-fixture", "example_id": "golden-01"}
     assert (metrics["label.requests"], metrics["label.tool_calls"]) == (2, 1)
@@ -516,7 +516,8 @@ def test_an_error_the_server_sends_mid_answer_is_tried_again(tmp_path):
 def test_a_refused_token_stops_the_run_before_any_example(tmp_path):
     folder = fixture_copy(tmp_path)
     fake = proxied()
-    wrong = label.Teacher.from_hub(label.hub.Account("C", USER, "wrong-" + "t" * 30, "https://teacher.test"),
+    wrong = label.Teacher.from_hub(label.hub.Account("C", USER, "wrong-" + "t" * 30, "https://teacher.test",
+                                                   role="pod-a"),
                                    transport=fake.transport, sleep=lambda seconds: None)
 
     with wrong:
@@ -642,7 +643,7 @@ def test_main_reaches_the_teacher_through_the_hub_with_the_accounts_keys(tmp_pat
     folder = fixture_copy(tmp_path)
     fake = proxied()
     env_file = tmp_path / "keys.env"
-    env_file.write_text(f"AUP_HUB_USER_Z={USER}\nAUP_HUB_TOKEN_Z={TOKEN}\nAUP_HUB_URL_Z=https://teacher.test\n",
+    env_file.write_text(f"AUP_HUB_USER_Z={USER}\nAUP_HUB_TOKEN_Z={TOKEN}\nAUP_HUB_URL_Z=https://teacher.test\nLAB_POD_ROLES=Z:pod-a\n",
                         encoding="utf-8")
     monkeypatch.setenv("LAB_ENV_FILES", str(env_file))
 
@@ -651,7 +652,7 @@ def test_main_reaches_the_teacher_through_the_hub_with_the_accounts_keys(tmp_pat
     assert (answer["ok"], answer["accepted"]) == (True, 1)
     assert {seen.path.rsplit("/v1/", 1)[0] for seen in fake.requests} == {f"/user/{USER}/proxy/8000"}
     [row] = rows(tmp_path, verb="label-example")
-    assert row["node"] == "pod-z"
+    assert row["node"] == "pod-a"
 
 
 def test_main_without_the_accounts_keys_refuses_and_names_only_the_keys(tmp_path):

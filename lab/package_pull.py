@@ -84,7 +84,7 @@ from contracts.learning import ModelManifest
 from lab import hub as hubs
 from lab import package_server
 from lab.controller import Controller
-from lab.hub import Account, Hub, MissingCredentials, load_accounts, one_line
+from lab.hub import Account, Hub, MissingCredentials, PodRoleError, load_accounts, one_line
 from lab.machine import record
 from lab.machine import stop as kill_switch
 from lab.machine.record import recorded
@@ -992,7 +992,9 @@ def run(argv: Sequence[str], *, environ: Mapping[str, str] | None = None, env_fi
     args = build_parser().parse_args(list(argv))
     environ = os.environ if environ is None else environ
     try:
-        accounts = load_accounts([args.account], environ=environ, env_files=env_files)
+        accounts = load_accounts([args.account], environ=environ, env_files=env_files, require_role=True)
+    except PodRoleError as exc:
+        return ({"ok": False, "command": args.command, "outcome": "no_pod_role", "error": str(exc)}, 2)
     except MissingCredentials as exc:
         return ({"ok": False, "command": args.command, "outcome": "no_credentials", "missing": exc.missing,
                  "error": "keys missing from the environment and the .env files",

@@ -59,7 +59,12 @@ runtime still refuses the launch.
 The hub it lives on is its `AUP_HUB_URL_<letter>` when that key is set, else `LAB_HUB_URL`, else DUB, so C and D
 (`AUP_HUB_URL_C`, `AUP_HUB_URL_D` = `https://sjc.aupcloud.io`) work without renaming a key. `--account both` still means
 A and B, which is also the default of `status`, `quota` and `keep-alive`: ask for the SJC pair by letter. The ledger
-calls the machines `pod-c` and `pod-d`.
+names the machines by role, not by account (telemetry ruling 3): `LAB_POD_ROLES=C:pod-a,D:pod-b` says that SJC
+accounts C and D fill the teacher's pod-a and the trainer's pod-b (environment, then the workspace `.env`; unset, it is
+`A:pod-a,B:pod-b`, the DUB pair). Never `pod-c` or `pod-d`. An account with no role in the setting is refused
+(`no_pod_role`, exit 2) instead of being named `pod-<letter>`. Every `pod ...` row's conditions carry `hub` (the host)
+and `account` (the letter), so a pod-a row from DUB and one from SJC tell apart. `python -m lab credits` names its rows
+the same way.
 
 ```
 python -m lab.controller status --account C                 # read-only: is a pod up, its scheduled end, which hub
@@ -108,7 +113,7 @@ keys. `--account all` takes every letter that has both keys; an account's hub is
 - **Unmetered hub** (SJC: quota disabled, balance 0, unlimited). Nothing is projected and nothing alerts; the line is
   `unmetered: usage N minutes today, M sessions` from `/hub/api/stats/me`, today being the hub's UTC day.
 - Times come from the hub's clock (its `Date` header), not the workstation's.
-- **Ledger.** One row per account (verb `credits`, node `pod-c` for C, `refs.account`, outcome `ok`, `alert`,
+- **Ledger.** One row per account (verb `credits`, node the role the account fills (`pod-a` for C on SJC, `LAB_POD_ROLES`), `refs.account`, `hub` and `account` in conditions, outcome `ok`, `alert`,
   `unmetered` or `error`) unless `--no-ledger`. Metered rows carry `pod.balance_credits`, `pod.credits_left`,
   `pod.credits_per_hour`, `pod.credits_burn_per_hour`, `pod.credits_hours_left`; unmetered rows `pod.usage_min_today`,
   `pod.sessions_today`, `pod.usage_min_window`. A partly read answer is marked `low_confidence`. Tokens and account
@@ -215,7 +220,7 @@ python -m lab.controller stop --account B
   `--with FILE` (before the script's name, repeatable) uploads a file the script needs next to it first.
 - While `lab/state/STOP` exists `launch`, `stop`, `keep-alive` and `run-script` are refused.
 - Ledger rows: `controller <command>` for each call, and `pod launch`, `pod stop`, `pod status`, `pod keep-alive`
-  (`alive`, `failed_ping`, `lost`) with `node` pod-a or pod-b, which are the rows `python -m lab alerts` reads.
+  (`alive`, `failed_ping`, `lost`) with `node` pod-a or pod-b (the role the account fills, see above) and `hub` and `account` in their conditions, which are the rows `python -m lab alerts` reads.
 - Tests use `lab/hub_fake.py`, a fake hub on a fake clock built from the recorded answers, so nothing launches or sleeps.
 
 Measured live (R13, 2026-10-10, pod D = account D on the SJC hub, Strix Halo gfx1151, `AUP_HUB_LAUNCH_D=form`): stop then
@@ -396,7 +401,8 @@ with a streaming client on the pod, end to end through the proxy, which buffers 
 Idle: 8 W with no server, 9.2 W with the teacher loaded. The engine is ready about 5 min after launch with a warm
 torch.compile cache. Decode is about 2.7x slower than the R9700's 7.7 tok/s, about the ratio of the two memory
 bandwidths (decode is weight-bound on `ConchLinearKernel`). The rows are in `lab/refine/metrics.jsonl` on node
-`pod-c`; the R9700 rows stay on `pod-a` as the old, other chip.
+`pod-c` (written before the rows were named by role; they are read as pod-a-role rows of account C on the SJC hub and
+stay as written); the R9700 rows stay on `pod-a` as the old, other chip.
 
 Pod power sampler, live on pod C (T6, 2026-10-10): `amd-smi metric --power --clock --temperature --usage --energy` answers on
 this chip (exit 0, 0.21 s a read): SOCKET_POWER and GFX_ACTIVITY, with CLOCK, ENERGY, HOTSPOT and the other sensors N/A and
