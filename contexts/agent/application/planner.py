@@ -24,7 +24,7 @@ from contracts.types import ChatMessage, Citation
 HORIZON = timedelta(hours=48)
 CRUNCH = re.compile(r"\b(exam|midterm|final|quiz|test|due|deadline|project|presentation)\b", re.I)
 COURSE = re.compile(r"\b([A-Z]{3})\s?(\d{4}[A-Z]?)\b")
-PLAN_QUESTION = re.compile(r"\b(plan|prep|prepare|study for|what should i do)\b", re.I)
+PLAN_QUESTION = re.compile(r"\b(plan|prep|prepare|study for|what should i do|where should i go|where is everyone)\b", re.I)
 FOOD_QUESTION = re.compile(r"\b(eat|food|hungry|lunch|dinner|breakfast|snack)\b", re.I)
 FOOD_WORDS = ("eat", "food", "meal", "pizza", "sandwich", "snack", "lunch", "dinner", "breakfast", "chips", "drink", "coffee", "energy drink", "can", "bottle")
 LEAVING_COOLDOWN = timedelta(minutes=30)
@@ -95,6 +95,7 @@ class Planner:
         self.campus = campus
         self._planned: set[str] = set()
         self._last_leaving: datetime | None = None
+        self.presence = None  # PresenceBoard (G5), set by the composition root when the Circle is on
 
     async def on_item(self, e: ItemSynced) -> list:
         """Bus handler for connector.item.synced: plan once per crunch item."""
@@ -109,9 +110,9 @@ class Planner:
         return is_plan_question(question) or bool(FOOD_QUESTION.search(question))
 
     async def answer(self, question: str) -> PlanCreated:
+        """For a plan-shaped question: plan around the next crunch item, or the evening if there is none."""
         if FOOD_QUESTION.search(question) and not is_plan_question(question):
             return await self.food(question)
-        """For a plan-shaped question: plan around the next crunch item, or the evening if there is none."""
         now = self.qa.clock()
         upcoming = [i for i in self.qa.memory.items(now, now + HORIZON) if is_crunch(i, now)]
         events = await self.plan(question, upcoming[0] if upcoming else None, now)
@@ -126,9 +127,10 @@ class Planner:
         busy = [i for i in self.qa.memory.items(now, until) if i.kind == "calendar_event" and (not item or i.external_id != item.external_id)]
         for b in busy[:5]:
             ev.add(f"Also on the calendar: {b.title} at {self.qa._t(b.when)}", Citation(url=b.url, title=b.title, ts=b.when))
-        if not item:  # "what should I do tonight?": campus events and plans tonight
+        if not item:  # "what should I do tonight?" / "where should I go?": events, plans, friends
             for i in self.qa.memory.items(now, until)[:5]:
                 ev.add(f"{i.title} at {self.qa._t(i.when)}", Citation(url=i.url, title=i.title, ts=i.when))
+            self._friends(now, ev)
 
         course = course_of(item.title if item else subject)
         if course and self.qa.web:
@@ -178,6 +180,14 @@ class Planner:
         return out
 
 
+    def _friends(self, now: datetime, ev: Evidence) -> None:
+        """Where friends said they are (opt-in, coarse, unexpired)."""
+        if not self.presence:
+            return
+        for p in self.presence.friends(now):
+            until = p.expires_at.astimezone(self.qa.sleep.tz).strftime("%I:%M %p").lstrip("0")
+            ev.lines.append(f"{p.member_id} is at {p.place} (shared until {until})")
+
     # --- trigger 3: leaving checklist at the door ---
 
     def leaving(self, now: datetime) -> PlanCreated:
@@ -223,6 +233,7 @@ class Planner:
             ev.add(f"Seen today at {self.qa._t(ep.start)}: {c}", Citation(episode_id=ep.id, ts=ep.start))
         if not eaten:
             ev.lines.append("No meals seen at the desk today.")
+        self._friends(now, ev)
         night_start, night_end = self.qa.sleep.last_night(now)
         ev.lines.append(f"Sleep window last night: {self.qa._t(night_start)} to {self.qa._t(night_end)}")
         if self.qa.web:

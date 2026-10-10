@@ -65,3 +65,15 @@ class EventAgreed(TypedEvent):
     thread_id: str
     event: Proposal
     attendees: list[str]
+
+
+@register
+class PlaceShared(TypedEvent):
+    """Opt-in coarse presence (G5): a named spot, never coordinates or video, and it expires."""
+
+    type: Literal["circle.place.shared"] = "circle.place.shared"
+    circle_id: str
+    member_id: str
+    place: str  # one of the household's named places: "Library", "Our table"
+    source: Literal["phone", "desk"]
+    expires_at: datetime

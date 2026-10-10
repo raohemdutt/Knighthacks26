@@ -28,3 +28,7 @@ play:
 circle:
   member_id: null   # e.g. dom
   circle_id: null   # e.g. team
+  share_presence: false  # opt in to sharing a named place (G5)
+
+# Named places presence may use. Coarse spots only; never coordinates.
+places: [Our table, Library, Dorm, Student Union, Gym]

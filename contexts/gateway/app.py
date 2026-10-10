@@ -11,6 +11,8 @@
 - GET  /api/play/route         ?item=can&x=&y= -> A* route to the right bin (S2)
 - GET  /api/play/accuracy      Sort It round 1 vs round 5 accuracy (S1)
 - GET  /api/impact             Waste Watch counts, diversion rate, before vs after nudges (E2)
+- POST /api/presence           {place, hours} share a named place with the Circle (G5, opt-in)
+- GET  /api/presence           friends' current places
 - GET  /health
 
 Writes need `Authorization: Bearer $ATLAS_TOKEN` when ATLAS_TOKEN is set; the
@@ -21,7 +23,7 @@ approving things.
 import asyncio
 import contextlib
 import hmac
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 from uuid import uuid4
 
@@ -147,6 +149,28 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         if atlas.waste is None:
             raise HTTPException(404, "Waste Watch is not configured")
         return {"total": atlas.waste.metrics(), "before_after_nudges": atlas.waste.before_after()}
+
+    class PlaceBody(BaseModel):
+        place: str
+        hours: float = 2
+
+    @app.post("/api/presence", dependencies=[Depends(authorized)])
+    async def share_place(body: PlaceBody):
+        """Phone opt-in: share a named place with the Circle until it expires (G5)."""
+        if atlas.presence is None:
+            raise HTTPException(404, "the Circle is not configured")
+        try:
+            e = atlas.presence.share(body.place, "phone", datetime.now(UTC), timedelta(hours=body.hours))
+        except (PermissionError, ValueError) as exc:
+            raise HTTPException(422, str(exc)) from None
+        await atlas.bus.publish(e)
+        return e.model_dump(mode="json")
+
+    @app.get("/api/presence")
+    async def friends_places():
+        if atlas.presence is None:
+            raise HTTPException(404, "the Circle is not configured")
+        return [p.model_dump(mode="json") for p in atlas.presence.friends(datetime.now(UTC))]
 
     @app.websocket("/ws")
     async def events(ws: WebSocket):

@@ -25,6 +25,7 @@ from contexts.agent.application.qa import QA, SleepSchedule
 from contexts.agent.application.web_port import HubWebTools
 from contexts.agent.domain.rules import RuleEvaluator, load_rules
 from contexts.agent.eval import load_fixture
+from contexts.circle.application.presence import PresenceBoard
 from contexts.circle.application.protocol import CircleAgent, InMemoryCircleStore
 from contexts.connectors.application.hub import ConnectorHub
 from contexts.connectors.domain.spec import load_specs
@@ -70,6 +71,7 @@ class Atlas:
     game: SortIt | None = None
     waste: WasteWatch | None = None
     circle: CircleAgent | None = None
+    presence: PresenceBoard | None = None
     tasks: list[asyncio.Task] = field(default_factory=list)
 
     async def start(self) -> None:
@@ -196,5 +198,15 @@ def build(settings: Settings | None = None) -> Atlas:
                              clock=lambda: datetime.now(UTC))
         approvals.executors["circle_share"] = circle.share_executor
 
+    # Friend presence (G5): opt-in, named places only, expiring.
+    presence = None
+    if circle:
+        presence = PresenceBoard(circle_cfg["circle_id"], circle_cfg["member_id"],
+                                 places=agent_cfg.get("places", ["Our table", "Library", "Dorm", "Student Union", "Gym"]),
+                                 opted_in=bool(circle_cfg.get("share_presence")))
+        bus.subscribe("circle.place.shared", presence.on_shared, replay=True)
+        bus.subscribe("perception.zone", presence.on_zone_event)
+        planner.presence = presence
+
     return Atlas(settings=s, bus=bus, qa=qa, approvals=approvals, hub=hub, loop=loop, zones=zones, game=game,
-                 waste=waste, circle=circle)
+                 waste=waste, circle=circle, presence=presence)
