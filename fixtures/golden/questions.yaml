@@ -68,3 +68,12 @@
     - "What's due soon?"
   cite: ["https://webcourses.ucf.edu/courses/1/assignments/4", "https://webcourses.ucf.edu/courses/1/assignments/9"]
   keywords: ["HW 4", "Exam 1", "linked lists"]
+- q: "What happened while they were here?"
+  also:
+    - "What happened while the judges were here?"
+    - "What did you see while they were at our table?"
+    - "Recap their visit"
+    - "What happened during the last visit?"
+    - "Tell me about the latest visit"
+  cite: [e08]
+  keywords: [courier, box, package]
