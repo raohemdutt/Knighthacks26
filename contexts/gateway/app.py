@@ -15,6 +15,7 @@
 - GET  /api/presence           friends' current places
 - GET  /api/circle/leaderboard Waste Watch, habit and Sort It leaderboards from Neon (E2)
 - GET  /api/circle/events      the Circle's shared calendar: agreed events, soonest first
+- POST /api/circle/proposals   {title, start, end, location?, invitees?} -> approval card for a plan with friends (G1)
 - GET  /api/circle/sharing     what leaves this box for the Circle: settings, outbox counts, Neon up or down
 - GET  /api/invites[/{name}]   calendar invites (.ics) created after approval, to open or share (K2)
 - GET  /api/places             place packs; POST one as YAML/JSON (validated) (S5)
@@ -118,8 +119,9 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
     if atlas.learning:  # GET /api/learning (X10)
         app.include_router(learning_router(atlas.learning, publish=atlas.bus.publish, guard=authorized))
     # GET /api/circle/events, /api/circle/sharing: read-only, and they answer in every state (no Circle, no Neon)
+    # POST /api/circle/proposals: an approval card for a plan with friends (G1)
     app.include_router(circle_router(atlas.bus, circle=atlas.circle, sharing=atlas.sharing, presence=atlas.presence,
-                                     board=atlas.board, config_dir=atlas.settings.config_dir))
+                                     board=atlas.board, config_dir=atlas.settings.config_dir, guard=authorized))
     app.include_router(runtime_router(ModelStore(atlas.settings.data_dir / "models"), llm_url=atlas.settings.llm_url))  # GET /runtime/models (R7)
 
     @app.get("/health")
