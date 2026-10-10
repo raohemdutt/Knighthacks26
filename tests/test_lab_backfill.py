@@ -514,30 +514,3 @@ def test_the_verb_registry_names_every_verb_once():
     repeated = sorted({name for name in names if names.count(name) > 1})
     assert repeated == [], f"VERBS repeats {repeated}: a repeated name silently replaces the verb before it"
     assert "ledger" in names
-
-
-# --- ledger_main, the router behind the ledger verb -----------------------------------------------------------
-
-def test_ledger_main_sends_backfill_to_backfill():
-    answer = backfill.ledger_main(["backfill", "--dry-run"])
-
-    assert (answer["ok"], answer["outcome"], answer["to_add"]) == (True, "dry_run", total_rows())
-
-
-@pytest.mark.parametrize("words, complaint", [(["nope"], "invalid choice: 'nope'"), ([], "sub_verb")])
-def test_ledger_main_refuses_an_unknown_or_missing_sub_verb_as_bad_arguments(capsys, words, complaint):
-    with pytest.raises(SystemExit) as caught:
-        backfill.ledger_main(words)
-
-    assert caught.value.code == 2
-    out, err = capsys.readouterr()
-    assert out == ""
-    assert complaint in err
-
-
-def test_ledger_main_help_names_the_sub_verb(capsys):
-    with pytest.raises(SystemExit) as caught:
-        backfill.ledger_main(["--help"])
-
-    assert caught.value.code == 0
-    assert "backfill" in capsys.readouterr().out

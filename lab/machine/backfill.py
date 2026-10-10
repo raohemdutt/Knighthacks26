@@ -3,6 +3,9 @@ the ledger holds the past before anything compares against it.
 
     python -m lab ledger backfill [--metrics FILE] [--dry-run]
 
+backfill is a sub-verb of the ledger verb: lab/machine/ledger_cli.py hands the words after
+"ledger backfill" to main() here.
+
 Two kinds of row are written, both with verb "backfill", outcome "ok" (the
 outcome of the write, not of the thing recorded), actor "backfill" and no
 tier. Every row carries a backfill field: {key, kind, origin} plus a topic
@@ -58,7 +61,7 @@ import hashlib
 import json
 import os
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -68,7 +71,7 @@ from lab.machine.lock import FileLock, LockTimeout
 
 __all__ = ["VERB", "ACTOR", "LOCK_FILE", "LOCK_TIMEOUT", "FACT_TASK", "FACT_REFS", "Fact", "FACTS", "Candidate",
            "BackfillError", "fact_row", "metric_row", "metric_candidates", "fact_candidates", "candidates",
-           "present_keys", "run", "main", "SUB_VERBS", "ledger_main"]
+           "present_keys", "run", "main"]
 
 VERB = "backfill"
 ACTOR = "backfill"
@@ -457,17 +460,3 @@ def main(argv: Sequence[str]) -> dict[str, Any]:
     parser.add_argument("--dry-run", action="store_true", help="report what would be added and write nothing")
     args = parser.parse_args(argv)
     return run(metrics_path=args.metrics, dry_run=args.dry_run)
-
-
-SUB_VERBS: dict[str, Callable[[Sequence[str]], Any]] = {"backfill": main}
-
-
-def ledger_main(argv: Sequence[str]) -> Any:
-    """Ledger maintenance: backfill puts the lab's past into the ledger."""
-    words = list(argv)
-    if words and words[0] in SUB_VERBS:
-        return SUB_VERBS[words[0]](words[1:])
-    parser = argparse.ArgumentParser(prog="python -m lab ledger", description=ledger_main.__doc__)
-    parser.add_argument("sub_verb", choices=sorted(SUB_VERBS), help="what to do; add -h after it for its arguments")
-    parser.parse_args(words[:1])
-    return 2
