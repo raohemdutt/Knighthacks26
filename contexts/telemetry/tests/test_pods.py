@@ -255,7 +255,7 @@ def test_the_pods_source_publishes_both_pods_samples_into_the_log_and_the_projec
 
     async def run():
         bus = EventBus(tmp_path)
-        service = build_telemetry("pods", bus, environ=ENV, transport=httpx.MockTransport(route))
+        service = build_telemetry("pods", bus, env=ENV, transport=httpx.MockTransport(route))
         service.runner.sampler.rounds = 1
         await service.run()
         return service
@@ -267,7 +267,7 @@ def test_the_pods_source_publishes_both_pods_samples_into_the_log_and_the_projec
     status = service.status()
     assert (status["source"], status["sampler"]["published"], status["sampler"]["nodes"]) == ("pods", 65,
                                                                                               ["gpu-a", "gpu-b"])
-    assert status["sampler"]["own"]["gpu-b"]["fetched"] == 25
+    assert status["sampler"]["source"]["gpu-b"]["fetched"] == 25
     nodes = service.projection.snapshot()["nodes"]
     assert nodes["gpu-b"]["sampler"]["stale"] is True
     assert nodes["gpu-b"]["sampler"]["stale_samples"] == 12
@@ -280,7 +280,7 @@ def test_a_restarted_app_rebuilds_from_the_log_and_does_not_publish_the_pods_buf
 
     async def run_once():
         bus = EventBus(tmp_path)
-        service = build_telemetry("pods", bus, environ={"AUP_HUB_USER_A": "acct", "AUP_HUB_TOKEN_A": TOKEN},
+        service = build_telemetry("pods", bus, env={"AUP_HUB_USER_A": "acct", "AUP_HUB_TOKEN_A": TOKEN},
                                   transport=httpx.MockTransport(FakePod(events)))
         await bus.replay_into()  # as the app starts: the log rebuilds the projection before the reader runs
         service.runner.sampler.rounds = 1
