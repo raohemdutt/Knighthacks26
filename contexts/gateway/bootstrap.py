@@ -19,6 +19,7 @@ from pathlib import Path
 import yaml
 
 from bus import EventBus
+from contexts.agent.application.planner import Planner
 from contexts.agent.application.qa import QA, SleepSchedule
 from contexts.agent.application.web_port import HubWebTools
 from contexts.agent.domain.rules import RuleEvaluator, load_rules
@@ -108,6 +109,8 @@ def build(settings: Settings | None = None) -> Atlas:
 
     qa = QA(runtime, memory, clock=lambda: datetime.now(UTC), sleep=SleepSchedule.load(s.config_dir / "agent.yaml"),
             web=web, subreddit=agent_cfg.get("subreddit", "ucf"))
+    planner = Planner(qa, hub)
+    qa.planner = planner
     rules = RuleEvaluator(load_rules(s.config_dir / "rules.yaml"))
 
     ntfy = Ntfy(s.ntfy_url, s.ntfy_token) if s.ntfy_url else None
@@ -130,6 +133,7 @@ def build(settings: Settings | None = None) -> Atlas:
     bus.subscribe("workspace.action.completed", approvals.on_completed, replay=True)
     # Live only: model calls, executors, phone pushes.
     bus.subscribe("experience.question.asked", bus.in_background(qa.on_question))  # model calls take seconds
+    bus.subscribe("connector.item.synced", bus.in_background(planner.on_item))  # exam within 48 h -> plan (A8)
     bus.subscribe("experience.approval.decided", bus.in_background(approvals.on_decided))  # executors do I/O
     if ntfy:
         phones = PhoneNotifier(ntfy, s.ntfy_topic, s.public_url)

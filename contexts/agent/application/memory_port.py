@@ -8,7 +8,7 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Protocol
 
-from contracts.memory import Episode, EpisodeWindow, HourBucket, SearchHit, Sighting
+from contracts.memory import Episode, EpisodeWindow, HourBucket, Item, SearchHit, Sighting
 
 MAX_CAPTIONS_PER_HOUR = 6
 
@@ -23,6 +23,10 @@ class MemoryReader(Protocol):
     def last_seen(self, label: str) -> Sighting | None: ...
 
     def search(self, q: str, limit: int = 5) -> list[SearchHit]: ...
+
+    def items(self, start: datetime, end: datetime, kind: str | None = None) -> list[Item]:
+        """Connector items (Canvas, calendar, campus events) with `when` in [start, end)."""
+        ...
 
 
 def group_by_hour(start: datetime, end: datetime, episodes: list[Episode]) -> EpisodeWindow:
@@ -39,8 +43,11 @@ def group_by_hour(start: datetime, end: datetime, episodes: list[Episode]) -> Ep
 
 
 class FakeMemory:
-    def __init__(self, episodes: list[Episode] | None = None, sightings: list[Sighting] | None = None) -> None:
+    def __init__(
+        self, episodes: list[Episode] | None = None, sightings: list[Sighting] | None = None, items: list[Item] | None = None
+    ) -> None:
         self._episodes = episodes or []
+        self._items = items or []
         self._sightings: dict[str, list[Sighting]] = defaultdict(list)
         for s in sightings or []:
             self._sightings[s.label].append(s)
@@ -56,6 +63,12 @@ class FakeMemory:
 
     def window(self, start, end):
         return group_by_hour(start, end, self.episodes(start, end))
+
+    def items(self, start, end, kind=None):
+        return sorted(
+            (i for i in self._items if i.when and start <= i.when < end and (kind is None or i.kind == kind)),
+            key=lambda i: i.when,
+        )
 
     def last_seen(self, label):
         hits = self._sightings.get(label)

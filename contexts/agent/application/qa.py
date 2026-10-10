@@ -184,12 +184,16 @@ class QA:
         self.web = web
         self.subreddit = subreddit
         self.tools = MEMORY_TOOLS + (WEB_TOOLS if web else [])
+        self.planner = None  # set by the composition root; answers "help me prep for ..." (A8)
 
     async def on_question(self, e: QuestionAsked) -> AnswerGenerated:
         a = await self.ask(e.text)
         return AnswerGenerated(question_id=e.question_id, answer=a.text, citations=a.citations, model_version=a.model_version)
 
     async def ask(self, question: str) -> Answer:
+        if self.planner and self.planner.wants(question):
+            plan = await self.planner.answer(question)
+            return Answer(plan.text or NO_EVIDENCE, plan.citations, plan.model_version)
         evidence = self.prefetch(question)
         if evidence is None:
             return await self.tool_loop(question)
