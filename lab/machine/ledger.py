@@ -510,13 +510,15 @@ def tail(n: int = 10, *, state_dir: str | os.PathLike[str] | None = None) -> lis
     return found
 
 
-def latest_metric(name: str, node: str | None = None, *,
+def latest_metric(name: str, node: str | None = None, *, conditions: Mapping[str, Any] | None = None,
                   state_dir: str | os.PathLike[str] | None = None) -> Row | None:
     """The newest measurement of one metric, None when the ledger has none:
-    of the rows whose metrics carry name (and whose node is node, when node
-    is given), the one with the latest ts, compared as instants, the later
-    seq winning a tie. Newest by ts rather than by position, so an older
-    number appended late (a backfill) never passes for the current one.
+    of the rows whose metrics carry name (whose node is node, when node is
+    given, and whose own conditions hold every key and value of conditions,
+    when given, as the metrics file's latest() narrows them), the one with
+    the latest ts, compared as instants, the later seq winning a tie. Newest
+    by ts rather than by position, so an older number appended late (a
+    backfill) never passes for the current one.
 
     The answer has the shape of a metrics-file row plus the ledger seq:
     metric, value, unit (from the row's units, else None), node, conditions
@@ -527,6 +529,11 @@ def latest_metric(name: str, node: str | None = None, *,
     for row in read(state_dir=state_dir, has_metric=name):
         if node is not None and row.get("node") != node:
             continue
+        if conditions:
+            have = row.get("conditions")
+            if not isinstance(have, dict) or any(key not in have or have[key] != wanted
+                                                 for key, wanted in conditions.items()):
+                continue
         moment = _parse_ts(row.get("ts"))
         if moment is None or _number(row["metrics"][name]) is None:
             continue

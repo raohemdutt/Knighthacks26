@@ -305,6 +305,19 @@ def test_latest_metric_is_the_newest_measurement_by_time_then_seq_with_the_metri
     assert (ledger.latest_metric("m")["value"], ledger.latest_metric("m")["seq"]) == (6.0, 6)
 
 
+def test_latest_metric_narrows_by_conditions_as_the_metrics_file_does():
+    ledger.append(make_row(ts="2026-10-10T10:00:00Z", node="pod-a", metrics={"m": 1.0},
+                           conditions={"prompt": "text", "batch": 1}))
+    ledger.append(make_row(ts="2026-10-10T11:00:00Z", node="pod-a", metrics={"m": 2.0},
+                           conditions={"prompt": "image", "batch": 1}))
+    ledger.append(make_row(ts="2026-10-10T12:00:00Z", node="pod-a", metrics={"m": 3.0}))
+    assert ledger.latest_metric("m")["value"] == 3.0
+    assert ledger.latest_metric("m", conditions={"prompt": "text"})["value"] == 1.0
+    assert ledger.latest_metric("m", "pod-a", conditions={"batch": 1})["value"] == 2.0
+    assert ledger.latest_metric("m", conditions={"batch": None}) is None, "a key the row lacks never matches"
+    assert ledger.latest_metric("m", conditions={"prompt": "audio"}) is None
+
+
 # --- crashes mid-write ----------------------------------------------------------------
 
 def test_a_torn_last_line_is_skipped_and_the_next_append_starts_a_new_line(isolated_state):
