@@ -585,6 +585,41 @@ await check("GET /api/spot/validation", "GET", "/api/spot/validation", { configu
 await check("GET /api/spot/work_orders", "GET", "/api/spot/work_orders", { configured: "boolean", work_orders: "array", folder: "string" }, { optional: NO_SPOT });
 await check("GET /api/spot/replay/state", "GET", "/api/spot/replay/state", { configured: "boolean", index: "number", total: "number", playing: "boolean" }, { optional: NO_SPOT });
 
+console.log("\nLearning lab");
+// A number on the lab screen: its value, or null with the reason, and where it came from (lib/lab.ts LabNum).
+const labNum = (n) =>
+  typeOf(n) !== "object" ? `expected a number object, got ${typeOf(n)}`
+    : !("value" in n && "source" in n && "reason" in n && "low_confidence" in n) ? "a number without value, source, reason or low_confidence"
+      : n.value === null && !n.reason ? "a missing number without a reason"
+        : n.value !== null && !n.source ? "a number without a source" : undefined;
+const NO_LAB = { 404: "the learning lab is not on this box" };
+const lab = await check("GET /api/learning/lab", "GET", "/api/learning/lab", { runs: "array", sample: "boolean", sample_reason: "string?", real_runs: "number", current_model: "object?", measured: "array" }, { optional: NO_LAB });
+if (lab) {
+  console.log(`        ${lab.real_runs} real run${lab.real_runs === 1 ? "" : "s"}; showing ${lab.runs.length} ${lab.sample ? "SAMPLE " : ""}run${lab.runs.length === 1 ? "" : "s"}`);
+  expect("  a sample is shown only when the box has no real run", !lab.sample || lab.real_runs === 0, `sample with ${lab.real_runs} real runs`);
+  expect("  every sample run says it is one", !lab.sample || lab.runs.every((r) => r.sample === true), "a sample run without sample: true");
+  const first = lab.runs[0];
+  if (first) {
+    const LAB_STORY = {
+      run_id: "string", sample: "boolean", status: "string", task: "object", marks: "object", wall_s: labNum, dataset: "object", training: "object", power: "object",
+      eval: "object", package: "object", deploy: "object", box: "object", gaps: "array", sources: "array", measured: "array",
+    };
+    const run = await check(`GET /api/learning/lab/${first.run_id}`, "GET", `/api/learning/lab/${encodeURIComponent(first.run_id)}`, LAB_STORY);
+    if (run) {
+      expect("  the run says whether it is the sample, as the list does", run.sample === lab.sample, `run ${run.sample}, list ${lab.sample}`);
+      const bad = run.sources.map((n) => labNum(n) && `${n.label}: ${labNum(n)}`).filter(Boolean);
+      expect("  every number has a source, or is null with a reason", bad.length === 0, bad.slice(0, 3).join("; "));
+      for (const key of ["steps", "samples_per_s", "loss_last"]) expect(`  training.${key} is a number object`, !labNum(run.training[key]), labNum(run.training[key]));
+      for (const key of ["energy_j", "j_per_sample"]) expect(`  power.${key} is a number object`, !labNum(run.power[key]), labNum(run.power[key]));
+      for (const key of ["n_items", "noise", "p_value"]) expect(`  eval.${key} is a number object`, !labNum(run.eval[key]), labNum(run.eval[key]));
+      expect("  eval.scores has before, after and teacher", ["current", "candidate", "teacher"].every((k) => !labNum(run.eval.scores[k])), JSON.stringify(Object.keys(run.eval.scores)));
+      expect("  training.points and power.points are lists", Array.isArray(run.training.points) && Array.isArray(run.power.points), "not arrays");
+      expect("  eval.items is a list or null with a reason", Array.isArray(run.eval.items) || (run.eval.items === null && !!run.eval.items_reason), "null without items_reason");
+    }
+  }
+  await check("GET /api/learning/lab?sample=1", "GET", "/api/learning/lab?sample=1", { runs: "array", sample: "boolean", real_runs: "number" });
+}
+
 console.log("\nDay Run (scenario demo)");
 const board = await check("GET /api/dayrun/board?scenario=demo", "GET", "/api/dayrun/board?scenario=demo", BOARD, { optional: NO_DAYRUN });
 if (board) {
