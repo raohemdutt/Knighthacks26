@@ -14,7 +14,8 @@ invariants of a track's files that the merge pass relies on when it judges a rou
 - A ruling a merge lists names where it was filed, '<question> -> <track> <n>', and ruling <n> of that
   track's OWNER_RULINGS.md asks the same question. Every ruling a reconciled pass of the round raised is
   listed this way, filed in that pass's own track.
-- A change to a RUBRIC.md or to a Priority cites an answered ruling as '<track>/OWNER_RULINGS.md <n>'.
+- A change to a RUBRIC.md or to a Priority cites an answered ruling as '<track>/OWNER_RULINGS.md <n>'. A file
+  name Notion turned into a link, [OWNER_RULINGS.md](http://OWNER_RULINGS.md), reads as the name.
 - A track's pass entries are numbered 1, 2, 3 in file order and each is valid; refine_pass.txt equals the
   last pass number; every pass has its report with an Ended line, and no report lacks its pass.
 - A track's rulings are numbered 1, 2, 3 in file order, and each names its origin.
@@ -186,9 +187,9 @@ def check_merge_entry(
         strange = [d for d in change.dimensions if not _CHECK_ID.fullmatch(d)]
         if strange:
             add(f"change {change.number}: {', '.join(strange)} is not a merge check id")
-        if not _NEEDS_RULING.search(change.target):
+        if not _NEEDS_RULING.search(rf.unlink_file_names(change.target)):
             continue
-        cited = _RULING_CITATION.search(change.source)
+        cited = _RULING_CITATION.search(rf.unlink_file_names(change.source))
         if not cited:
             add(
                 f"change {change.number} edits a RUBRIC.md or a Priority, so its SOURCE cites the answered "

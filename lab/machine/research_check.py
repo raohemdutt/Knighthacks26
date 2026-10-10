@@ -91,7 +91,7 @@ _DOI = re.compile(r"(?<![\w/.-])(?:doi:\s*)?(?P<doi>10\.\d{4,9}/[^\s<>\"'`)\]]+)
 _ARXIV = re.compile(r"\barxiv[:\s]\s*(?P<id>\d{4}\.\d{4,5})(?:v\d+)?\b", re.I)
 _TRACKER = re.compile(r"(?<![\w/.-])[\w.-]+/[\w.-]+#\d+\b|\bPR\s*#\d+\b")
 _LEDGER = re.compile(r"\bledger(?:\s+(?:seq|line|row|entry))?\s*[:#]?\s*\d+\b", re.I)
-_EXT = r"(?:py|pyi|sh|ps1|ya?ml|jsonl?|toml|cfg|ini|md|txt|csv|log|diff|patch|c|cc|cpp|cu|h|hpp|hip|js|ts|tsx|go|rs|ipynb|sql)"
+_EXT = "(?:" + "|".join(rf.FILE_EXTENSIONS) + ")"
 _WHERE = r"(?:::[A-Za-z_][\w.]*(?:\(\))?|:\d+(?:-\d+)?|#L\d+(?:-L?\d+)?)"
 _CODE = re.compile(
     r"(?<![\w/.@:-])(?:[\w.-]+/)+[\w.-]+\." + _EXT + r"\b(?:" + _WHERE + r")?"
@@ -181,14 +181,16 @@ def _read(path: Path) -> str:
 
 
 def _clean(text: str) -> list[str]:
-    """The file's lines with front matter and HTML comments blanked out, so line numbers still match the file."""
+    """The file's lines with front matter and HTML comments blanked out, so line numbers still match the file, and
+    file names Notion turned into links read back as names (refine_formats.unlink_file_names)."""
     lines = re.split(r"\r\n|\r|\n", text)
     if lines and lines[0].strip() == "---":
         for end in range(1, len(lines)):
             if lines[end].strip() in ("---", "..."):
                 lines[: end + 1] = [""] * (end + 1)
                 break
-    return _COMMENT.sub(lambda m: re.sub(r"[^\n]", " ", m.group(0)), "\n".join(lines)).split("\n")
+    joined = rf.unlink_file_names("\n".join(lines))
+    return _COMMENT.sub(lambda m: re.sub(r"[^\n]", " ", m.group(0)), joined).split("\n")
 
 
 def _visible(lines: list[str]):

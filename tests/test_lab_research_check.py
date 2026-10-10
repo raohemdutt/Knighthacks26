@@ -797,6 +797,23 @@ def test_a_cited_source_missing_from_the_index_is_reported_on_the_finding_line(t
     assert parse(rc.check(tmp_path / "research" / "telemetry")) == [(line_of(body, "- **[measured]**"), "source-not-indexed")]
 
 
+def test_a_file_name_notion_turned_into_a_link_is_cited_as_the_file(tmp_path):
+    """Notion renders a file name such as experiments.py as [experiments.py](http://experiments.py), because .py is
+    also a web domain ending. A finding that cites a file in that form cites the file, the way the plain path does,
+    and is not reported as a web page missing from the index."""
+    cite = "lab/machine/[experiments.py](http://experiments.py) and refine_[merge.py:71](http://merge.py:71)"
+    put(tmp_path, "research/plumbing/a.md", note(bullet(cite=cite)))
+    put(tmp_path, "research/plumbing/SOURCES.md", "# Sources\n\n- lab/machine/experiments.py, read 2026-10-10\n")
+    assert rc.check(tmp_path / "research" / "plumbing") == []
+
+
+def test_a_link_to_a_web_page_named_after_its_address_is_still_a_web_page(tmp_path):
+    body = note(bullet(cite="[ml.energy](https://ml.energy)"))
+    put(tmp_path, "research/telemetry/a.md", body)
+    put(tmp_path, "research/telemetry/SOURCES.md", SOURCES_OK)
+    assert parse(rc.check(tmp_path / "research" / "telemetry")) == [(line_of(body, "- **[measured]**"), "source-not-indexed")]
+
+
 REPO = "https://github.com/AMDResearch/aup-learning-cloud"
 SHA = "9b4af19bffb9e0cef8046cfffc03d66e929a72d5"
 

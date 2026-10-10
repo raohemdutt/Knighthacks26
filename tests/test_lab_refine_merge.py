@@ -462,6 +462,17 @@ def test_a_rubric_or_priority_change_on_an_unanswered_ruling_is_reported(tmp_pat
     ]
 
 
+def test_file_names_notion_turned_into_links_still_name_the_rubric_and_cite_the_ruling(tmp_path):
+    """A merge entry that quotes a change as Notion shows it carries file names as links,
+    [OWNER_RULINGS.md](http://OWNER_RULINGS.md), because .md is also a web domain ending. The rubric target and the
+    ruling citation read through them, so a change carried out on an answered ruling is still valid."""
+    template = RUBRIC_CHANGE.replace("lab/refine/learning/RUBRIC.md,", "lab/refine/learning/[RUBRIC.md](http://RUBRIC.md),")
+    merge = with_change(template, "lab/refine/learning/[OWNER_RULINGS.md](http://OWNER_RULINGS.md) 1 (owner, 2026-10-11)")
+    root = make_tree(tmp_path, rulings=answered_learning_rulings(), merge=merge)
+
+    assert rm.check_tree(root) == []
+
+
 def test_a_change_citing_a_ruling_that_does_not_exist_is_reported(tmp_path):
     merge = with_change(RUBRIC_CHANGE, "lab/refine/learning/OWNER_RULINGS.md 7")
     logs, rulings, merge_log = read_tree(make_tree(tmp_path, merge=merge))

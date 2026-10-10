@@ -22,6 +22,7 @@ from datetime import datetime
 __all__ = [
     "Change",
     "CodeBlock",
+    "FILE_EXTENSIONS",
     "Finding",
     "FormatError",
     "Log",
@@ -41,6 +42,7 @@ __all__ = [
     "parse_log",
     "parse_report_end",
     "parse_rulings",
+    "unlink_file_names",
 ]
 
 #: The four refinement tracks, in the order lab/refine/PASS_RULES.md lists them ("The four tracks"). Every module of
@@ -99,6 +101,15 @@ _RULING_REF = re.compile(r"\bRULING \((?P<labels>[a-z](?:\s*,\s*[a-z])*)\)")
 _RAISED_START = re.compile(r"^\((?P<label>[a-z])\)\s+(?P<question>.+)$")
 _RULINGS_APPLIED = re.compile(r"^Rulings applied:\s*(?P<numbers>[0-9]+(?:\s*,\s*[0-9]+)*)\s*$")
 
+#: The extensions of the source and data files the loop cites by name (research notes cite a file as a source).
+FILE_EXTENSIONS: tuple[str, ...] = (
+    "py", "pyi", "sh", "ps1", "yml", "yaml", "json", "jsonl", "toml", "cfg", "ini", "md", "txt", "csv", "log", "diff",
+    "patch", "c", "cc", "cpp", "cu", "h", "hpp", "hip", "js", "ts", "tsx", "go", "rs", "ipynb", "sql",
+)
+# A file name with an optional line or line range, and a markdown link to a web address, for unlink_file_names.
+_FILE_NAME = re.compile(r"[\w.-]+\.(?:" + "|".join(FILE_EXTENSIONS) + r")(?::[0-9]+(?:-[0-9]+)?)?", re.IGNORECASE)
+_WEB_LINK = re.compile(r"\[(?P<text>[^\[\]\s]+)\]\(https?://(?P<address>[^()\s]+)\)", re.IGNORECASE)
+
 # A code fence: three or more backticks or tildes, after any indentation; what follows is the info string.
 _FENCE = re.compile(r"^\s*(?P<fence>`{3,}|~{3,})(?P<info>.*)$")
 
@@ -125,6 +136,24 @@ class CodeBlock:
     def indexes(self) -> range:
         """The indexes of every line the block covers, its fences included."""
         return range(self.start, self.end + 1)
+
+
+def unlink_file_names(text: str) -> str:
+    """The text with the links Notion makes of file names read back as the names.
+
+    Notion shows a file name such as experiments.py as [experiments.py](http://experiments.py), because .py, .md
+    and other file extensions are also web domain endings, and text copied from a Notion page keeps the link. A
+    link whose text is a file name (FILE_EXTENSIONS, optionally with :line) and whose address is that same name
+    becomes the name; a link to a web page, even one named after its address, is left as it is.
+    """
+
+    def plain(link: re.Match[str]) -> str:
+        name = link["text"]
+        if _FILE_NAME.fullmatch(name) and link["address"].rstrip("/").lower() == name.lower():
+            return name
+        return link[0]
+
+    return _WEB_LINK.sub(plain, text)
 
 
 def code_blocks(lines: Sequence[str]) -> list[CodeBlock]:
