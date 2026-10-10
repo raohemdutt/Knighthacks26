@@ -65,7 +65,7 @@ import sys
 import time
 import urllib.parse
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -75,7 +75,7 @@ if __package__ in (None, ""):          # started as `python lab/transfer.py`: pu
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from lab.hub import MissingCredentials, load_accounts
-from lab.proxy import NotFound, PodLink, ProxyError
+from lab.proxy import RETRY_PAUSES_S, NotFound, PodLink, ProxyError
 
 __all__ = ["DEFAULT_CHUNK_BYTES", "MAX_CHUNK_BYTES", "DEFAULT_PART_BYTES", "MAX_PART_BYTES", "TransferError",
            "UnsafePath", "NotApproved", "ChecksumMismatch", "RangeUnsupported", "TransferStats", "Layout", "PodFiles",
@@ -87,7 +87,6 @@ DEFAULT_CHUNK_BYTES = 8 * MIB
 MAX_CHUNK_BYTES = 64 * MIB            # base64 makes it about 85 MB on the wire, under Cloudflare's 100 MB
 DEFAULT_PART_BYTES = 64 * MIB
 MAX_PART_BYTES = 96 * MIB             # the proxy refuses one response over 100 MiB
-RETRY_PAUSES_S = (1.0, 2.0, 4.0)
 MANIFEST_LIMIT_BYTES = MIB
 READ_BLOCK = MIB
 NAME_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,199}")

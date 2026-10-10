@@ -13,7 +13,6 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-import httpx
 import pytest
 
 from contracts.learning import DatasetExample, DatasetManifest, ModelManifest, TaskSpec
@@ -427,11 +426,12 @@ def test_a_text_only_export_is_pushed_like_any_other(tmp_path):
     assert w.remote("datasets/ds-text/examples.jsonl") == (folder / "examples.jsonl").read_bytes()
 
 
-def test_a_dataset_id_that_could_leave_its_folder_is_refused(tmp_path):
+@pytest.mark.parametrize("dataset_id", ["../evil", "nested/id", "ds 0007", "-lead", "a\\b"])
+def test_a_dataset_id_that_is_not_one_plain_name_is_refused(tmp_path, dataset_id):
     w = World()
     folder = make_dataset(tmp_path, "ds-0007")
     manifest = json.loads((folder / "manifest.json").read_text())
-    manifest["dataset_id"] = "../evil"
+    manifest["dataset_id"] = dataset_id
     (folder / "manifest.json").write_text(json.dumps(manifest))
 
     with pytest.raises(UnsafePath):

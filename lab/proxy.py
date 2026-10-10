@@ -199,7 +199,7 @@ class ModelServerDown(ProxyError):
 
 class ModelServerError(ProxyError):
     kind = "model_server_error"
-    hint = "the model server answered with an error of its own"
+    hint = "the server on the pod (the model server, or Jupyter for the contents API) answered with an error of its own"
 
 
 class GatewayTimeout(ProxyError):
@@ -394,7 +394,6 @@ class StreamHandle:
         self.method = method
         self.where = where
         self._started = started
-        self.headers_s = link.clock() - started
 
     def elapsed(self) -> float:
         """Seconds since the request was sent."""
