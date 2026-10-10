@@ -16,6 +16,10 @@
         The camera scene pushed into a running box (POST /api/events), timed from now: its own zone
         engine, rules, Sort It and Waste Watch react live, as if the camera saw it.
         Contexts: perception connectors memory habits impact agent circle vault play day
+
+    python -m contexts.demo video check <file> | chapters | cards
+        The submission video's 10:00 number-key layout (D10): check an export's length and where each
+        key lands, print the YouTube description, or write the title cards (HTML).
 """
 
 import argparse
@@ -50,7 +54,13 @@ def main(argv: list[str] | None = None) -> int:
     pf.add_argument("--token", default=os.environ.get("ATLAS_TOKEN"))
     pf.add_argument("--reset", action="store_true", help="clear cooldowns and leftover approval cards first")
     pf.add_argument("--question", default="Where are my keys?", help="the warm-up question")
+    v = sub.add_parser("video", help="the submission video's number-key layout (D10)")
+    v.add_argument("action", choices=["check", "chapters", "cards"])
+    v.add_argument("file", nargs="?", type=Path, help="check: the exported video; cards: where to write the HTML")
     args = p.parse_args(argv)
+
+    if args.command == "video":
+        return video_command(args.action, args.file)
 
     if args.command == "preflight":
         return preflight(args.gateway, args.token, args.reset, args.question)
@@ -110,6 +120,25 @@ def preflight(gateway: str, token: str | None, do_reset: bool, question: str) ->
     failed = [c for c in checks if not c["ok"]]
     print(f"\n{len(checks) - len(failed)}/{len(checks)} ready" + (" - go." if not failed else ""))
     return 1 if failed else 0
+
+
+def video_command(action: str, file: Path | None) -> int:
+    from contexts.demo import video
+
+    if action == "chapters":
+        print(video.chapters())
+        return 0
+    if action == "cards":
+        out = file or Path("video_cards.html")
+        out.write_text(video.cards(), encoding="utf-8")
+        print(f"wrote {len(video.SLOTS)} title cards to {out}")
+        return 0
+    if file is None:
+        print("video check needs the exported file", file=sys.stderr)
+        return 2
+    ok, text = video.report(video.probe(file))
+    print(text)
+    return 0 if ok else 1
 
 
 def push(context: str, gateway: str, token: str | None) -> int:
