@@ -482,7 +482,7 @@ def _morning(f: dict, w: Words) -> Narration:
     if sleep:
         opening = f"{sleep}: {body}." if not lead else f"{sleep}. {lead}: {body}."
     else:
-        opening = f"{lead or _pick(('Here is the shape of it', 'Today looks like this'), f.get('day', ''))}: {body}."
+        opening = f"{lead or _pick(('Here is the plan', 'Today looks like this'), f.get('day', ''))}: {body}."
     deadline, deadline_x = _deadline(f.get("deadline"), w)
     ask, ask_x = _ask(f)
     spoken = f"{greet} {opening}{leave}{deadline}{ask}"

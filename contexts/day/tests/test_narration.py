@@ -14,7 +14,8 @@ from bus import EventBus
 from contexts.agent.application.memory_port import FakeMemory
 from contexts.day.api import day_router
 from contexts.day.application.loop import DayLoop, day_phone
-from contexts.day.application.narrator import NarrationConfig
+from contexts.day.application import narrator as narrator_module
+from contexts.day.application.narrator import MIN_DRAFT_CHARS, NarrationConfig
 from contexts.day.domain import narration as n
 from contexts.day.domain.narration import Words, check, render, shape
 from contexts.day.tests.test_day import CLOCK, TZ, FakeHabits, at, hub, items, never, places  # noqa: F401 (fixtures)
@@ -152,7 +153,7 @@ def test_the_morning_brief_bends_to_what_it_knows():
     assert rested.spoken.startswith("Morning. You got about eight hours of sleep: a nap first") and "Want me" not in rested.spoken
     unknown = morning_facts()
     del unknown["sleep_hours"], unknown["deadline"]
-    assert render(unknown).spoken.startswith("Morning. Here is the shape of it: a nap first") or render(unknown).spoken.startswith("Morning. Today looks like this: a nap first")
+    assert render(unknown).spoken.startswith("Morning. Here is the plan: a nap first") or render(unknown).spoken.startswith("Morning. Today looks like this: a nap first")
     mine = render(morning_facts(by="person"))
     assert "Your version of the day: a nap first" in mine.spoken and mine.spoken.endswith("Want me to put your version on your calendar?")
     no_calendar = render(morning_facts(ask="plan"))
@@ -161,11 +162,11 @@ def test_the_morning_brief_bends_to_what_it_knows():
     assert "Milestone 1 is due tomorrow, and this plan covers the ninety minutes it still needs." in covered.spoken
     # nothing fixed: the beats alone; one beat before a fixed event needs no "first"
     free = {"moment": "morning", "greeting": "afternoon", "day": "Sunday", "before": [{"kind": "study", "count": 1, "min": 90, "at": "14:00"}]}
-    assert render(free).spoken in ("Afternoon. Here is the shape of it: a long study block first.", "Afternoon. Today looks like this: a long study block first.")
+    assert render(free).spoken in ("Afternoon. Here is the plan: a long study block first.", "Afternoon. Today looks like this: a long study block first.")
     one = {"moment": "morning", "greeting": "morning", "day": "Sunday", "before": [{"kind": "rest", "count": 1, "min": 20, "at": "09:00"}],
            "first": {"title": "Judging", "at": "15:30"}, "main_later": {"title": "team dinner", "at": "19:00"}}
     assert render(one).spoken == "Morning. Today looks like this: a break before Judging at half past three, and the team dinner this evening." or \
-        render(one).spoken == "Morning. Here is the shape of it: a break before Judging at half past three, and the team dinner this evening."
+        render(one).spoken == "Morning. Here is the plan: a break before Judging at half past three, and the team dinner this evening."
 
 
 def test_now_says_where_you_are_against_the_plan_and_when_to_move():
@@ -455,7 +456,37 @@ def test_a_waiting_question_goes_first(items, places, tmp_path):  # noqa: F811
     assert loop.narrator.question_waiting(at(8, 1)) and not loop.narrator.question_waiting(at(8, 3))
 
 
-def test_the_same_facts_are_generated_once_and_the_model_is_rate_limited(items, places, tmp_path):  # noqa: F811
+def test_a_reply_that_is_the_draft_word_for_word_is_counted_as_unchanged(items, places, tmp_path):  # noqa: F811
+    stub = StubRuntime(lambda draft: draft)
+    loop, bus, seen = build(items, places, tmp_path, runtime=stub)
+    run(plan_morning(loop, bus))
+    (morning,) = by_moment(seen, "morning")
+    stats = loop.narrator.stats
+    assert morning.engine == "template" and len(stub.calls) == 1
+    assert (stats["calls"], stats["unchanged"], stats["used"], stats["rejected"], stats["timeouts"], stats["errors"]) == (1, 1, 0, 0, 0, 0)
+
+
+def test_a_very_short_draft_is_never_sent_to_the_model(items, places, tmp_path):  # noqa: F811
+    stub = StubRuntime()
+    loop, bus, seen = build(items, places, tmp_path, runtime=stub)
+    run(plan_morning(loop, bus))
+    assert len(stub.calls) == 1  # the long morning brief was worth a rewrite
+    later = at(8, 12)  # past the rate limit, so only the length decides
+    job = loop.narrator.job_now("now", later)
+    assert job is not None and len(job.draft.spoken) < MIN_DRAFT_CHARS == 120 and not loop.narrator.may_ask_model(job)
+    said = run(loop.narrator.regenerate("now", later))
+    assert said.engine == "template" and said.spoken == job.draft.spoken and len(stub.calls) == 1 and loop.narrator.stats["calls"] == 1
+    # the brief seen on the box: two short sentences, nothing to improve
+    short = n.Narration("Evening. Here is the plan: a long rest first, then dinner.", "A long rest first, then dinner.")
+    morning = loop.narrator.job_now("morning", later)
+    morning.hash, morning.draft = "other-facts", short
+    assert not loop.narrator.may_ask_model(morning)
+    morning.draft = n.Narration(short.spoken + " " + "And a longer stretch of study after that, until the team dinner at seven." * 2, short.display)
+    assert loop.narrator.may_ask_model(morning)
+
+
+def test_the_same_facts_are_generated_once_and_the_model_is_rate_limited(items, places, tmp_path, monkeypatch):  # noqa: F811
+    monkeypatch.setattr(narrator_module, "MIN_DRAFT_CHARS", 0)  # this is about the rate limit; the status line here is a short one
     stub = StubRuntime()
     loop, bus, seen = build(items, places, tmp_path, runtime=stub, narration={"narration_gap_s": 60})
     client = TestClient(api(loop, bus, now=lambda: at(8, 10) + timedelta(seconds=30)))

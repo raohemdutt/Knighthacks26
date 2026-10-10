@@ -1370,7 +1370,7 @@ export interface DayBrief {
   gap_s: number;
   latest: Partial<Record<DayMoment, DayNarration>>;
   asks: Record<string, DayNarration>;
-  model: { calls: number; used: number; rejected: number; timeouts: number; errors: number; last_problem: string | null };
+  model: { calls: number; used: number; unchanged?: number; rejected: number; timeouts: number; errors: number; last_problem: string | null };
 }
 
 export interface DayPattern {
