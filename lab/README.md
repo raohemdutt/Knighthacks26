@@ -440,6 +440,7 @@ Each example is a question (`context`) with an empty `target`. A label is the JS
 never sees it. Read `lab/fixture_dataset.py`'s docstring for how groups and `origin` support a split that keeps
 the golden questions out of training. Both scripts write a ledger row and stop while `lab/state/STOP` exists.
 
+<<<<<<< HEAD
 ## Training rows for the student: `lab/format_traces.py`
 
 The Jetson serves Qwen3.5-4B with `llama-server --jinja --reasoning-budget 0`, so the model's own chat template renders
@@ -558,3 +559,59 @@ Content-Range through, the status it answers to a whole file over 100 MiB (599 i
 the real MB/s of a single stream of 64 MiB parts, and that the SJC pod image has `python3` and the proxy extension.
 The `/files/` route of the Jupyter server (Range without a pod-side server, but only under the Jupyter root) is
 the other path; experiment E9 on the queue compares them.
+=======
+## Labeling with the teacher: `lab/label.py`
+
+`lab/label.py` asks the teacher about every example of a dataset that has no `target` yet, checks each answer and
+stores the ones that pass with `lab/dataset.py`'s `write_target`, so a run can be stopped and started again with
+nothing lost and nothing asked twice.
+
+```
+python lab/label.py data/exports/<dataset_id> --account C                   # through the hub proxy to pod C's port 8000
+python lab/label.py fixtures/learning/tool-calling-fixture --account C --workers 4
+python lab/label.py <dataset folder> --url http://127.0.0.1:8000             # a server reached directly
+python lab/label.py <dataset folder> --account C --limit 5                   # a short first run
+```
+
+- **What it reads.** Only an approved export, a `data/exports/<dataset_id>/` folder named for the dataset id in its
+  manifest (whose `action_id` `lab/dataset.py` already requires), or the no-camera fixture. Anything else is refused
+  before the teacher is asked. Run on a pod (`JUPYTERHUB_USER` set) it refuses an export: label an export where it
+  lives and reach the teacher through the proxy, so no copy of it is ever left on a pod. Images go inline in the
+  request as data URLs; vLLM keeps no request on disk unless started with `--enable-log-requests` (off by default at
+  the pod's commit `b1388b1`, and `pod_a_teacher.sh` does not pass it).
+- **How it asks.** Model `teacher`, thinking off on every request (`chat_template_kwargs: {"enable_thinking":
+  false}`), temperature 0, top_p 1, seed 0, at most 512 new tokens (`--temperature`, `--top-p`, `--seed`,
+  `--max-tokens` change them). Before the first example it reads `GET /v1/models` and stops unless `teacher` is served
+  from a Qwen3.8-27B checkpoint (`--expect-model ''` drops that check). Answers are streamed with `Accept:
+  text/event-stream` exactly, the only value the proxy streams for; a buffered answer (`--no-stream`) longer than
+  125 s is cut by Cloudflare with a 524. Gateway errors, dropped connections and broken streams are tried again after
+  1, 2 and 4 s; a login redirect (bad token), 401, 403, 404 or a stopped pod (424) ends the run, as do five examples
+  in a row with no usable answer.
+- **Tool-trace tasks** (the output schema has a top-level `tool_calls`, like the fixture): the instruction is the
+  system prompt, the question the user turn, and the teacher gets the agent's `TOOLS`. Each call it makes runs through
+  the agent's own tool code against `fixtures/golden` (`--golden` for another memory), for at most the agent's three
+  rounds of calls. The label is `{"tool_calls": [{"name", "arguments"}], "answer"}`, and `traces.jsonl` beside
+  `examples.jsonl` gets one row per kept label with each call's `result` as the teacher saw it.
+- **Checks.** A label is dropped, counted and left pending (never repaired) when it is `truncated` (hit the token
+  limit), carries a `thinking` block, is `empty`, is `not_json` or breaks the `schema` (the task's
+  `TaskSpec.output_schema`, checked with `jsonschema`), passes `bad_arguments` to a tool, makes calls past the last
+  round (`tool_rounds`), or answers with `tool_markup` the server did not parse. A free-text task (empty schema)
+  passes its own check to `label_dataset(check=...)`.
+- **Ledger.** One `label-example` row per example asked (outcome accepted, rejected or failed; `label.seconds`,
+  `label.prompt_tokens`, `label.completion_tokens`, `label.tokens`, `label.requests`, `label.tool_calls`; the decode
+  settings and served checkpoint as conditions; the reason as a word, never a label, caption or question), and one
+  `label` row per run with the counts, rejects by reason and per-example means. The entry point prints one JSON line
+  and exits 0 when every pending example was asked.
+
+**Before a real run on a pod**: the serve command in `pod_a_teacher.sh` has neither `--enable-auto-tool-choice`
+nor `--tool-call-parser`. At `b1388b1` vLLM then answers a request that offers tools with the model's call markup as
+plain text and no `tool_calls`, which `label.py` rejects as `tool_markup` (and stops after five), so the teacher
+must be served with both flags before the tool-calling fixture can be labeled (the parser named on the model card;
+the research notes give `qwen3_coder` for the Qwen3.5 family). Image and free-text tasks need neither.
+
+**Rehearsing without a pod.** `lab/teacher_fake.py` is a fake of vLLM's OpenAI server and of the hub proxy in front
+of it (token, browser agent, the Accept rule, the 125 s cut, a stopped pod), built from vLLM's code at `b1388b1`.
+The tests drive it in-process; `python -m lab.teacher_fake --port 8000` serves the fixture's reference answers on
+127.0.0.1 so a copy of the fixture can be labeled end to end with `--url http://127.0.0.1:8000`
+(`--no-tool-parser` answers as today's serve command would).
+>>>>>>> 827fe9b (Add the teacher labeling pipeline and a fake teacher server)
