@@ -251,9 +251,9 @@ def load_profile(config_dir: str | Path = "config", name: str | None = None) -> 
         spec = ProfileSpec.model_validate(_read(folder / "profile.yaml") or {})
     except ValueError as exc:  # pydantic's ValidationError is a ValueError
         raise ProfileError(f"{folder / 'profile.yaml'}: {exc}") from None
-    overrides = {f: str((folder / f).relative_to(config_dir)) for f in OVERRIDABLE if (folder / f).is_file()}
+    overrides = {f: (folder / f).relative_to(config_dir).as_posix() for f in OVERRIDABLE if (folder / f).is_file()}
     if (folder / "places").is_dir() and any((folder / "places").glob("*.yaml")):
-        overrides["places/"] = str((folder / "places").relative_to(config_dir))
+        overrides["places/"] = (folder / "places").relative_to(config_dir).as_posix()
     if (folder / "scenarios").is_dir() and any((folder / "scenarios").glob("*.yaml")):
-        overrides["scenarios/"] = str((folder / "scenarios").relative_to(config_dir))
+        overrides["scenarios/"] = (folder / "scenarios").relative_to(config_dir).as_posix()
     return Profile(name=name, spec=spec, config_dir=config_dir, folder=folder, overrides=overrides)
