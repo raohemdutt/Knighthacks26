@@ -129,3 +129,14 @@ https://docs.amd.com/v/u/en-US/rdna4-instruction-set-architecture, which returne
 unauthenticated fetch; the instruction and LDS facts it would have supplied are cited from S40, S41,
 S42 and S43 instead. The search was bounded at about three hours and stopped when new results
 repeated sources already listed.
+
+## Added by kernels refinement pass 1 (2026-10-10)
+
+| Id | Kind | Source | Link or location | Opened | Cited in |
+| --- | --- | --- | --- | --- | --- |
+| S65 | issue | The same issue as S28 at its new home, read through the GitHub API to its last comment (2026-09-25): the opening post's idle sweep, Tanguille's report of `Qwen3.8-27B` W4A16 on one R9700 (2026-09-13), taisunyoung's `GPU_MAX_HW_QUEUES=1` results (2026-09-15) and cost measurement (2026-09-20) | https://github.com/ROCm/legacy-rocm-build/issues/6347 | 2026-10-10 | ports, main |
+| S66 | issue | gazelleboy, "[gfx1201] Pending `hipStreamWaitEvent` on other streams adds ~17 us to every small kernel (not on gfx1030; gone with GPU_MAX_HW_QUEUES<=2)", ROCm/legacy-rocm-build issue #6685, 2026-09-25 | https://github.com/ROCm/legacy-rocm-build/issues/6685 | 2026-10-10 | ports |
+| S67 | vendor doc | AMD ROCm 7.13.0 documentation, "ROCm environment variables", HIP environment variables, debug variables (`GPU_MAX_HW_QUEUES`) | https://rocm.docs.amd.com/en/7.13.0-preview/reference/environment-variables/index.html | 2026-10-10 | ports |
+| S68 | paper | Prabhu Vellaisamy, Vanessa Lam, Shawn Blanton, John Paul Shen, "Characterization of Request and Token Energy Costs for LLM Inference Workloads on GPU Platforms", IISWC 2026 (accepted) | arXiv:2608.28044 (https://arxiv.org/abs/2608.28044) | 2026-10-10 | main |
+| S69 | forum | u/lummr1, Reddit post on vLLM against llama.cpp for a dense 27B on one R9700 (vLLM 0.19.1, ROCm 7.13.0), read from a snapshot of 2026-07-17 | https://reddit.sentinel-team.org/posts/1utuh4k/snapshots/2026-07-17T18%3A53%3A30.39359Z | 2026-10-10 | main |
+| S70 | repository doc | Capicua25x, `RDNA4-PORT.md` at commit 19f71e90764c, section "Reproducibility - same config, different outputs, and why" and the benchmark-harness note (the same document as S03 at another ref) | https://github.com/Capicua25x/vllm-rocm-rdna4/blob/19f71e90764c/RDNA4-PORT.md | 2026-10-10 | kernels pass 1 log entry |
