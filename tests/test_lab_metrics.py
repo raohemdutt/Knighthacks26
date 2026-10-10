@@ -279,6 +279,26 @@ def test_load_refuses_a_corrupt_line_and_names_it(tmp_path):
         metrics.load(path)
 
 
+def test_load_numbered_counts_blank_and_crlf_lines_the_way_load_names_them(tmp_path):
+    path = tmp_path / "m.jsonl"
+    first, second = json.dumps(make_row(value=1)), json.dumps(make_row(value=2))
+    good = (first + "\n" + "\n" + second + "\r\n" + "   \n").encode("utf-8")
+    path.write_bytes(good + b"{not json\n")
+
+    with pytest.raises(metrics.MetricsFormatError, match=r"line 5\b") as from_load:
+        metrics.load(path)
+    with pytest.raises(metrics.MetricsFormatError, match=r"line 5\b") as from_numbered:
+        metrics.load_numbered(path)
+    assert "line 5" in str(from_load.value) and "line 5" in str(from_numbered.value)
+
+    path.write_bytes(good)
+    rows = metrics.load(path)
+    numbered = metrics.load_numbered(path)
+    assert numbered == [(1, rows[0]), (3, rows[1])]
+    assert [row for _, row in numbered] == rows
+    assert [row["value"] for _, row in numbered] == [1, 2]
+
+
 def test_load_refuses_bytes_that_are_not_utf8(tmp_path):
     path = tmp_path / "m.jsonl"
     path.write_bytes(json.dumps(make_row()).encode("utf-8") + b"\n\xff\xfe\n")

@@ -675,3 +675,39 @@ def test_as_dict_keeps_the_gaps_as_nulls():
     d = v.verdict([7.7] * 5, [8.1] * 5).as_dict()
     assert json.loads(json.dumps(d)) == d
     assert (d["statistic"], d["p"], d["df"], d["more_a"], d["more_b"]) == (None, None, None, None, None)
+
+
+# --- the printed p stays on the same side of alpha as the real p ----------------------------------------------
+
+def _printed_p_reads_under(note, alpha):
+    """True when the p the note prints names a value under alpha: 'p = X' with X < alpha, or 'p < X' with X <= alpha."""
+    import re
+    match = re.search(r"p (=|<) ([0-9.]+(?:e-?[0-9]+)?)", note)
+    assert match is not None, f"no p printed in the note: {note!r}"
+    value = float(match.group(2))
+    return value < alpha if match.group(1) == "=" else value <= alpha
+
+
+def test_verdict_rate_note_does_not_print_p_equal_to_alpha_for_an_ahead_p_just_under_alpha():
+    """13 of 65 against 23 of 65: pooled rate 36/130, se = sqrt((36/130)(94/130)(2/65)) = 0.07885, z = 1.9600 and
+    the two-sided normal p is 0.0499956, just under 0.05 (z = 1.959964 is where it equals 0.05), so B is ahead.
+    Rounded to four places that p is 0.05, which would read as alpha itself."""
+    r = v.verdict(v.Counts(13, 65), v.Counts(23, 65))
+    assert r.label == "b_ahead"
+    assert r.p == pytest.approx(0.0499956, abs=1e-6)
+    assert r.p < v.ALPHA
+    assert "p = 0.05" not in r.note
+    assert _printed_p_reads_under(r.note, v.ALPHA), r.note
+
+
+def test_verdict_welch_note_does_not_print_p_equal_to_alpha_for_an_ahead_p_just_under_alpha():
+    """Runs 10..14 against the same runs plus 2.3061: both spreads are 1.5811, so Welch is the pooled test on
+    8 df with t = 2.3061 and the printed table puts t(0.975, 8) = 2.306 at two-sided p = 0.05; t = 2.3061 is just
+    past it, p = 0.049993, so B is ahead. Rounded to four places that p is 0.05, which would read as alpha."""
+    a = [10.0, 11.0, 12.0, 13.0, 14.0]
+    r = v.verdict(a, [x + 2.3061 for x in a])
+    assert r.label == "b_ahead"
+    assert r.p == pytest.approx(0.049993, abs=1e-6)
+    assert r.p < v.ALPHA
+    assert "p = 0.05" not in r.note
+    assert _printed_p_reads_under(r.note, v.ALPHA), r.note
