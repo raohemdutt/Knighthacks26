@@ -18,7 +18,8 @@ summary's mean_w), peak (its max_w) or min (its min_w), so pod.idle_watts stores
 the peak. Any other choice than mean is kept in the conditions as value (value: peak), so a mean row reads exactly as
 rows written before --value existed, and a window with no power reading is refused with outcome no_readings whichever
 statistic was asked for. The conditions carry the sampler, the tool, the power field,
-period_ms next to the period actually measured between samples, the longest gap and the restarts inside the window,
+period_ms next to the period actually measured between samples, the longest gap and the restarts inside the window
+(and, for samples read from the Jetson log, the longest gap between their receive times and the latest arrival),
 the samples and how many were distinct updates, the starting temperatures, the energy and where it came from, and
 error, which stays "unknown" until a reference run measures the sampler's error. That makes the row low_confidence.
 --metrics-file also appends the reading to lab/refine/metrics.jsonl, or to the file named. --dry-run prints the row

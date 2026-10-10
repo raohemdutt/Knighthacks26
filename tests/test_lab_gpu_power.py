@@ -67,6 +67,7 @@ def test_record_stores_the_idle_window_as_a_low_confidence_pod_a_row_carrying_ho
         "samples": 15, "readings": 15, "missing": 0, "distinct_updates": 14, "mean_w": 39.8, "min_w": 39.0,
         "max_w": 41.0, "sampler": "lab/pod_power.py 1", "source": "amd-smi", "power_field": "socket_power",
         "period_ms": 1000.0, "measured_period_ms": 1000.0, "max_gap_ms": 1020.0, "restarts": 0,
+        "max_receive_gap_ms": None, "max_receive_delay_s": None,
         "start_temps_c": {"edge": 34.0, "hotspot": 37.0, "mem": 44.0},
         "end_temps_c": {"edge": 38.0, "hotspot": 41.0, "mem": 48.0}, "under_load_samples": 0, "stale_samples": 0,
         "counter_ok": True, "energy_j": 557.52, "energy_source": "avg_power_integral", "error": "unknown",

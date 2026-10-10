@@ -292,7 +292,7 @@ answers 403 to a script's own agent. A hub host other than dub.aupcloud.io must 
 (the hub group of `jetson/egress.py`), or the reader's polls never leave the box.
 A window becomes a stored row with `python -m lab gpu-power record --samples <files> --node pod-a --metric
 pod.idle_watts [--since ISO] [--until ISO] [--state idle] [--metrics-file]`: the row carries the sampler, period,
-measured period, longest gap, restarts, distinct updates, starting temperatures, the energy and its source, and
+measured period, longest gap (and from the Jetson log the longest receive gap and latest arrival), restarts, distinct updates, starting temperatures, the energy and its source, and
 `error: unknown` until a reference run measures it. Parsers and sampler are tested offline on
 `fixtures/telemetry/pod_power` (tests/test_lab_pod_power.py).
 

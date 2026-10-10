@@ -671,9 +671,14 @@ def summarize(events: Iterable[Mapping[str, Any]], *, node: str | None = None, s
     """What a stored row needs from the telemetry.gpu.power samples of one node in [start, end].
 
     Watts are the samples' socket_w; distinct updates are counted the way the sampler counts them; the measured
-    period and the longest gap come from the samples' own times, so a sampler restart or a proxy gap inside the
-    window shows; energy comes from the counter only when every sample says the counter may be used, else from
-    integrating power. `error` stays "unknown" until a reference run measures the sampler's error."""
+    period and the longest gap come from the samples' own pod-clock times, so a sampler restart or a lost-sample
+    gap inside the window shows there. A proxy gap the pod buffer covers loses no samples and leaves the pod-clock
+    times evenly spaced, so it shows instead in the receive fields of a Jetson-log window, whose samples carry the
+    Jetson's received_ts: max_receive_gap_ms is the longest gap between consecutive receive times and
+    max_receive_delay_s the latest a sample arrived after its own ts; both are None when no sample in the window
+    carries received_ts (the pod's own files). Energy comes from the counter only when every sample says the
+    counter may be used, else from integrating power. `error` stays "unknown" until a reference run measures the
+    sampler's error."""
     rows = []
     for e in events:
         if e.get("type") != GPU_POWER or (node is not None and e.get("node") != node):
@@ -689,6 +694,11 @@ def summarize(events: Iterable[Mapping[str, Any]], *, node: str | None = None, s
         raise ValueError(f"samples from {len(nodes)} nodes ({', '.join(sorted(map(str, nodes)))}); name one with node=")
     times = [ts.timestamp() for ts, _ in rows]
     gaps_ms = [(b - a) * 1000.0 for a, b in zip(times, times[1:])]
+    receipts = [(parse_ts(str(e["received_ts"])).timestamp(), t) for t, (_, e) in zip(times, rows)
+                if e.get("received_ts") is not None]
+    received = sorted(r for r, _ in receipts)
+    receive_gaps_ms = [(b - a) * 1000.0 for a, b in zip(received, received[1:])]
+    receive_delays_s = [r - t for r, t in receipts]
     watts = [(t, float(e["socket_w"])) for t, (_, e) in zip(times, rows) if e.get("socket_w") is not None]
     values = [w for _, w in watts]
     updates, last = 0, None
@@ -722,6 +732,8 @@ def summarize(events: Iterable[Mapping[str, Any]], *, node: str | None = None, s
         "period_ms": _one_or_all(e.get("period_ms") for _, e in rows),
         "measured_period_ms": None if not gaps_ms else round(sum(gaps_ms) / len(gaps_ms), 3),
         "max_gap_ms": None if not gaps_ms else round(max(gaps_ms), 3),
+        "max_receive_gap_ms": None if not receive_gaps_ms else round(max(receive_gaps_ms), 3),
+        "max_receive_delay_s": None if not receive_delays_s else round(max(receive_delays_s), 3),
         "restarts": restarts,
         "start_temps_c": dict(first.get("temps_c") or {}), "end_temps_c": dict(final.get("temps_c") or {}),
         "under_load_samples": sum(1 for _, e in rows if e.get("under_load") is True),
