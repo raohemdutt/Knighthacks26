@@ -215,6 +215,64 @@ export interface Leaderboard {
   scores: ScoreLeader[];
 }
 
+export type RsvpAnswer = "free" | "busy" | "counter";
+
+export interface CircleAttendee {
+  member_id: string;
+  /** The member id again when the Circle has no display name for them. */
+  display_name: string;
+  answer: RsvpAnswer;
+}
+
+export interface CircleEvent {
+  id: string;
+  thread_id: string | null;
+  title: string;
+  starts_at: string; // UTC ISO 8601
+  ends_at: string;
+  location: string | null;
+  created_by: string | null;
+  attendees: CircleAttendee[];
+}
+
+/** GET /api/circle/events: agreed events that have not ended, soonest first (contexts/circle/api.py). */
+export interface CircleEvents {
+  configured: boolean; // false: this box has no Circle member
+  circle_id: string | null;
+  /** "neon": the Circle's shared calendar. "local": only what this box itself agreed. */
+  source: "neon" | "local" | "none";
+  offline: boolean; // the shared calendar is set up but could not be read just now
+  events: CircleEvent[];
+}
+
+export interface ShareKindStatus {
+  /** habit_summary, impact_count, game_score (the outbox kinds), presence, event_plan */
+  kind: string;
+  on: boolean;
+  queued: number | null; // null: this kind does not go through the outbox
+  sent: number | null;
+  last_synced_at: string | null;
+}
+
+/** GET /api/circle/sharing: what leaves this box for the Circle (contexts/circle/api.py). */
+export interface CircleSharing {
+  configured: boolean;
+  circle_id: string | null;
+  member_id: string | null;
+  share_summaries: boolean; // the setting
+  share_presence: boolean;
+  sharing_now: boolean; // the setting is on and there is a shared database to send to
+  database: "connected" | "offline" | "unknown" | "not_configured";
+  database_note: string | null;
+  last_reached_at: string | null;
+  queued: number;
+  sent: number;
+  last_synced_at: string | null;
+  oldest_queued_at: string | null;
+  kinds: ShareKindStatus[];
+  place: { place: string; source: "phone" | "desk"; expires_at: string } | null;
+}
+
 export interface Cell {
   row: number;
   col: number;
@@ -861,6 +919,8 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   presence: (signal?: AbortSignal) => get<PlaceShared[]>("/api/presence", undefined, signal),
   sharePlace: (place: string, hours: number) => post<PlaceShared>("/api/presence", { place, hours }),
   leaderboard: (signal?: AbortSignal) => get<Leaderboard>("/api/circle/leaderboard", undefined, signal),
+  circleEvents: (signal?: AbortSignal) => get<CircleEvents>("/api/circle/events", undefined, signal),
+  circleSharing: (signal?: AbortSignal) => get<CircleSharing>("/api/circle/sharing", undefined, signal),
 
   playRoute: (item: string, signal?: AbortSignal) => get<PlayRoute>("/api/play/route", { item }, signal),
   playAccuracy: (signal?: AbortSignal) => get<PlayAccuracy>("/api/play/accuracy", undefined, signal),
