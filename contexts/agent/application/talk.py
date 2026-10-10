@@ -157,6 +157,9 @@ SYSTEM = (
 )
 DAY_LABELS = {"now": "Their day right now", "plan": "Their plan for today", "coach": "Your last coaching note to them",
               "review": "Your review of their day"}
+JOKES = ("Why did the camera get promoted? It always stayed focused.",
+         "I'd tell you a joke about my memory, but I only keep the good frames.",
+         "Why don't boxes like me play hide and seek? Somebody always finds the power cable.")
 THINK = re.compile(r"<think>.*?(?:</think>|$)", re.S)
 MARKUP = re.compile(r"[*_#`]+|^\s*[-•]\s+", re.M)
 EMOJI = re.compile("[\U0001f000-\U0001faff☀-➿️‍]")
@@ -329,9 +332,14 @@ class Talk:
         q, name = normal(question), self.config.name
         if failed:
             return "Sorry, I lost my train of thought there. Say that again?"
-        if re.search(r"\b(?:joke|funny|make me laugh)\b", q):
-            return "Why did the camera get promoted? It always stayed focused."
-        if re.search(r"\b(?:gay|straight|bi|sexual orientation|sexuality|girlfriend|boyfriend|partner|married|single|crush|dating|in love)\b", q):
+        told = sum(1 for _, a in self.turns if a in JOKES)
+        if re.search(r"\b(?:joke|funny|make me laugh)\b", q) or (told and self.turns[-1][1] in JOKES and re.search(r"\b(?:another|one more|again)\b", q)):
+            return JOKES[told % len(JOKES)]
+        if re.search(r"\bi(?:'m| am| think i'm| think i am| think i might be| might be| may be)\b.*\b(?:gay|lesbian|bi|bisexual|trans|queer|straight"
+                     r"|non-?binary|asexual|ace|pan)\b", q):
+            return "Thanks for trusting me with that. Whoever you are is good with me, and there's no rush to have it figured out. Want to talk it through?"
+        if re.search(r"\b(?:you|your)\b", q) and re.search(
+                r"\b(?:gay|straight|bi|sexual orientation|sexuality|girlfriend|boyfriend|partner|married|single|crush|dating|in love)\b", q):
             return ("I'm an AI on a little box, so no orientation and no love life, just a very committed relationship with "
                     "this home. Happy to talk about any of it, or about you.")
         if re.search(r"\b(?:gender|pronouns|a (?:boy|girl|man|woman)|male|female)\b", q):
@@ -359,6 +367,7 @@ class Talk:
         seen = next((f for f in facts if f.startswith("Your cameras")), "")
         mine = seen.replace("Your cameras have logged nothing today.", "It's been quiet, the cameras haven't logged a thing today.") \
                    .replace("Your cameras logged", "Pretty good. My cameras logged")
+        mine = re.sub(r" and kept \d+ keyframes?", "", mine)
         theirs = next((f.split(": ", 1)[1] for f in facts if f.startswith(DAY_LABELS["now"])), "")
         return " ".join(part for part in (mine or "Pretty good, all quiet here.", theirs, "How's yours going?") if part)
 

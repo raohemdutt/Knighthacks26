@@ -336,6 +336,11 @@ def test_the_fake_runtime_gets_templates_not_an_echo():
     assert "".join(pieces) == day.text and len(pieces) > 5 and day.model_version == "fake-0"
     assert "AI" in asyncio.run(t.reply("are you gay?")).text and "orientation" in asyncio.run(t.reply("what's your sexual orientation?")).text
     assert "not a person" in asyncio.run(t.reply("who are you?")).text
+    mine = asyncio.run(t.reply("I think I might be gay")).text  # about them, not about the box: affirming, never a quip
+    assert "good with me" in mine and "orientation" not in mine
+    first, second = asyncio.run(t.reply("tell me a joke")).text, asyncio.run(t.reply("tell me another")).text
+    assert first != second and "?" in first
+    t.forget()
     seen = {asyncio.run(t.reply(q)).text for q in ("hi", "tell me a joke", "I'm stressed about my exam", "thanks", "bye", "I had a great day",
                                                    "what's the capital of France?")}
     assert len(seen) == 7 and NO_EVIDENCE not in seen and not any(s.startswith("(fake)") for s in seen)
