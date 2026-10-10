@@ -124,6 +124,8 @@ keyframe is stored unless `blur_faces` is off, and a paused camera is not looked
 repo's `.env` (never in git). The unit sets `ATLAS_MEMORY_FIXTURE=` empty, so a real box holds only what its cameras
 saw; put `ATLAS_MEMORY_FIXTURE=fixtures/memory/memory.yaml` in `.env` for the canned demo night.
 
+`jetson_setup.sh` also masks the sleep, suspend and hibernate targets (GNOME's default idle timer would suspend the box).
+
 ## 8. Egress firewall and the offline switch (V6, V5, H4)
 
 The `atlas-egress` service (root, installed by `jetson_setup.sh`) keeps an iptables/ip6tables chain `ATLAS_EGRESS` on

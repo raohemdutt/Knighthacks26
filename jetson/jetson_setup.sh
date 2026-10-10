@@ -17,6 +17,8 @@ chmod +x "$repo/jetson/atlas-llm.sh"
 for unit in atlas-llm atlas-gateway atlas-egress; do
     sed -e "s|@USER@|$user|g" -e "s|@REPO@|$repo|g" -e "s|@VENV@|$venv|g" "$repo/jetson/$unit.service" > "/etc/systemd/system/$unit.service"
 done
+# The box must never sleep: GNOME's idle timer would suspend it after a while.
+systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
 systemctl daemon-reload
 systemctl enable atlas-llm atlas-gateway atlas-egress
 systemctl restart atlas-llm
