@@ -62,6 +62,29 @@ def test_the_story_moves_with_now():
     assert due.when == load_memory_fixture().items[0].when + timedelta(days=3, hours=5)
 
 
+def test_item_text_is_worded_from_the_moved_time():
+    """O5: the story moved `when` but left "Due Tue Oct 13, 11:59 PM" in the summary under it."""
+    def items(now=None):
+        return {e.external_id: e for e in story(now) if e.type == "connector.item.synced"}
+
+    milestone, opening, chat = "cop4533:assignment:88213", "outlook:kh-opening:2026-10-10T11:00:00-04:00", "class:1760100001"
+    plain = items()
+    assert plain[milestone].summary == "Due Tue Oct 13, 11:59 PM. Dynamic programming: code plus a runtime analysis writeup. 100 points."
+    assert plain[opening].summary == "until 11:45 AM · Student Union ballroom"
+    assert plain[chat].title == "Maya: anyone started the COP4533 milestone 1? due tuesday" and plain[chat].summary.endswith("due tuesday")
+
+    moved = items(NOW - timedelta(days=1, minutes=30))
+    assert moved[milestone].summary.startswith("Due Mon Oct 12, 11:29 PM. Dynamic programming")
+    assert moved[opening].summary == "until 11:15 AM · Student Union ballroom"  # Day Run reads a block's end from this
+    assert moved[chat].title.endswith("due monday") and moved[chat].summary.endswith("due monday")
+    assert moved["class:1760100004"].summary.endswith("study session saturday afternoon at the library? 2pm?")
+    for e in moved.values():
+        assert "{" not in e.title + (e.summary or ""), e.external_id
+        if e.kind == "assignment":
+            local = e.when.astimezone(NOW.tzinfo)
+            assert e.summary.startswith(f"Due {local:%a %b} {local.day}, {local.hour % 12 or 12}:{local:%M %p}."), e.external_id
+
+
 def test_seed_fills_every_projection_of_a_fresh_app_replaying_the_log(seeded_dir, tmp_path):
     data_dir, seeded = seeded_dir
     assert set(seeded.written) > SOURCE_TYPES  # the app derived the rest
