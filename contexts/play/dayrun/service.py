@@ -112,10 +112,12 @@ class DayRun:
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
         cfg: DayRunConfig | None = None,
         profile: Profile | None = None,  # layers its dayrun.yaml over the base one; its scenarios/ are searched first
+        agreed=None,  # AgreedPlans (contexts/play/dayrun/agreed.py): .items(lo, hi, tz, known)
     ) -> None:
         self.cfg = cfg or DayRunConfig.load(Path(config_dir) / "dayrun.yaml", Path(config_dir) / "agent.yaml", profile)
         self.walks = Walks(places)
         self.memory, self.habits, self.presence, self.hub = memory, habits, presence, hub
+        self.agreed = agreed  # plans the Circle agreed: fixed blocks of the real day, never of a scripted one
         self.plans_dir = Path(data_dir) / "dayrun" / "plans"
         self.fixtures_dir = Path(fixtures_dir)
         self.scenarios_dir = profile.scenarios_dir() if profile is not None else None
@@ -174,7 +176,9 @@ class DayRun:
         start = local(self.cfg, start or (sc.now if sc else self.clock()))
         lo = start - timedelta(days=1)  # an event that began earlier may still be running
         hi = start + timedelta(hours=self.cfg.window_hours + self.cfg.deadline_horizon_hours)
-        items = sc.items_between(lo, hi) if sc else self.memory.items(lo, hi) if self.memory else []
+        items = list(sc.items_between(lo, hi) if sc else self.memory.items(lo, hi) if self.memory else [])
+        if self.agreed is not None and not sc:
+            items += self.agreed.items(lo, hi, self.cfg.tz, items)
         over = initial or InitialOverride()
         if sc and sc.start_place and not over.start_place:
             over = over.model_copy(update={"start_place": sc.start_place})

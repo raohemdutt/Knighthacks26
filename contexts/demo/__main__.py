@@ -5,6 +5,11 @@
         Then run the app on it:
             ATLAS_DATA_DIR=data ATLAS_MEMORY_FIXTURE= ATLAS_CONNECTORS=0 python -m contexts.gateway
 
+    python -m contexts.demo circle --data-dir <dir> [--config-dir <dir>] [--end ISO] [--force]
+        The same night plus a Circle of three on this one box, no network: names, places shared, two plans
+        agreed (one after a counter-offer) and one still open. It writes its own config directory (default
+        <data-dir>/config; the committed config never names a member) and prints the command to run the app on it.
+
     python -m contexts.demo fake <context> [--data-dir data] [--now]
         A few realistic events of every type one context publishes, appended to the log.
 
@@ -43,6 +48,11 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--now", action="store_true", help="move the story so it ends at the current time")
     s.add_argument("--end", type=datetime.fromisoformat, help="move the story so it ends at this time (with a UTC offset)")
     s.add_argument("--force", action="store_true", help="add to a data directory that already has an event log")
+    c = sub.add_parser("circle", help="the demo night plus a Circle of three, on one box")
+    c.add_argument("--data-dir", type=Path, required=True)
+    c.add_argument("--config-dir", type=Path, help="where to write the demo's config (default: <data-dir>/config)")
+    c.add_argument("--end", type=datetime.fromisoformat, help="end the story at this time (with a UTC offset) instead of now")
+    c.add_argument("--force", action="store_true", help="add to a data directory that already has an event log")
     f = sub.add_parser("fake", help="publish a small sample of one context's events")
     f.add_argument("context", choices=fakes.CONTEXTS)
     f.add_argument("--data-dir", type=Path, default=Path("data"))
@@ -64,6 +74,26 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "preflight":
         return preflight(args.gateway, args.token, args.reset, args.question)
+
+    if args.command == "circle":
+        from contexts.demo import circle
+
+        if args.end and args.end.tzinfo is None:
+            p.error("--end needs a UTC offset, e.g. 2026-10-11T09:30:00-04:00")
+        # the Circle is about what is coming up, so the story ends now unless told otherwise
+        end = args.end or datetime.now(UTC).replace(microsecond=0)
+        cfg = circle.config_dir(args.config_dir or args.data_dir / "config")
+        try:
+            seeded = asyncio.run(seed(args.data_dir, now=end, force=args.force, config_dir=cfg, extra=circle.circle_events))
+        except SeedRefused as refused:
+            print(refused, file=sys.stderr)
+            return 1
+        print(summary(seeded))
+        print(f"\nCircle {circle.CIRCLE_ID}: {', '.join(circle.NAMES.values())}; this box is {circle.NAMES[circle.ME]}'s.")
+        print("Run the app on it (no network, no second machine), then open /circle/:")
+        print(f"  ATLAS_DATA_DIR={args.data_dir} ATLAS_CONFIG_DIR={cfg} ATLAS_MEMORY_FIXTURE= ATLAS_CONNECTORS=0 "
+              "python -m contexts.gateway")
+        return 0
 
     if args.command == "seed":
         if args.end and args.end.tzinfo is None:
