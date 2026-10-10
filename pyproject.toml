@@ -22,6 +22,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest"]
+# Camera reader (C1) and the detector helpers; on the Jetson use the opencv-python already in its venv
+camera = ["opencv-python-headless>=4.8", "numpy"]
 # Browser connector (K7). After install: python -m patchright install chromium
 browser = ["patchright>=1.50"]
 # Circle's Neon Postgres store and outbox sync (N1)
