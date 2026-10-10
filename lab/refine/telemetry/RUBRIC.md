@@ -1,30 +1,34 @@
 # Refinement goal for the telemetry track
 
-Created 2026-10-10. This file governs every refinement pass on the telemetry track: the Telemetry
-context's tasks on the Notion Task Board (T0 to T5), the experiments queued on T0, the telemetry
-parts of R11, R5, L3 and the slide script, and the measurement methods all of them use. A pass
-that does not follow it is invalid and its edits are reverted.
+Created 2026-10-10. This file says what the telemetry track is judged on. The track covers energy
+and power measurement: the T tasks on the Notion Task Board (T0 to T5, listed under "The walk
+list"), the experiments queued on T0 that belong to it, and the numbers that reach the stats page
+and the slide [PASS_RULES, The four tracks]. A pass that does not follow it is invalid and its
+edits are reverted.
 
 The track's objective: energy numbers trustworthy enough to drive routing and to put on the AMD
 slide.
 
-Shared files beside this one: `lab/refine/PASS_RULES.md` (when passes run, the cap, the merge
-pass), `lab/refine/TEMPLATES.md` (the log entry, ruling, counter and report formats),
-`lab/refine/RESEARCH_FORMAT.md` (research notes and citations) and `lab/refine/metrics.jsonl`
-(the numbers, until the ledger replaces it). This track's own files: `REFINE_LOG.md`,
-`OWNER_RULINGS.md`, `refine_pass.txt` and `pass_reports/` in this folder, and
-`lab/refine/research/telemetry/`. Where a shared file and this one disagree on shared machinery,
-the shared file wins and the merge pass corrects this one.
+Shared files beside this one: `lab/refine/PASS_RULES.md` (how every pass runs, what it may change,
+the cap, the merge pass), `lab/refine/TEMPLATES.md` (the log entry, ruling, counter and report
+formats), `lab/refine/RESEARCH_FORMAT.md` (research notes and citations) and
+`lab/refine/metrics.jsonl` (the numbers, until the ledger replaces it). This track's own files:
+`REFINE_LOG.md`, `OWNER_RULINGS.md`, `refine_pass.txt` and `pass_reports/` in this folder, and
+`lab/refine/research/telemetry/`. Where PASS_RULES.md and this file disagree about process,
+PASS_RULES.md wins; where they disagree about what the track is judged on, this file wins; a filled
+ruling beats both [PASS_RULES].
 
 ## The goal
 
 Refine the telemetry track until every rubric dimension below holds for every cell of the node
 and workload matrix and every item in the walk list, and the metric set has moved toward the state
-listed below. Target: **10 passes per run**, or convergence, whichever comes first (the per-run
-cap in PASS_RULES.md [Orchestration]; Ilan may change it with a ruling). Convergence = a pass that
-walks every item and every matrix cell against every dimension and makes no change. The run is
-judged by the numbers, not by the pass count (U1): a run that converges with the metric set
-unmoved has refined the plan but not the measurements, and the log's closing section says so.
+listed below. Target: **10 passes per run**, or convergence, whichever comes first (the cap in
+PASS_RULES.md, "The cap"; a ruling can extend a run). Convergence = a pass that walks every task in
+the walk list, every queued experiment of the track and every matrix cell against every dimension
+and changes nothing: no board edit, no new queued experiment and no new ruling, though it may still
+add research notes [PASS_RULES, Convergence]. The run is judged by the numbers, not by the pass
+count (U1): a run that converges with the metric set unmoved has refined the plan but not the
+measurements, and the closing section of the run says so.
 
 The state the track is refined toward, one line per test:
 
@@ -42,27 +46,25 @@ The state the track is refined toward, one line per test:
 
 ## How passes are run
 
-One pass is one fresh Opus agent, started through the open-ticket skill with the pass as its task
-[Orchestration]; it runs the pass itself and does not hand it to another agent. Passes in this
-track run strictly in sequence, because each pass edits the board rows and files the next pass
-reads. The four tracks (telemetry, learning, plumbing, kernels) run in parallel, each in its own
-folder under `lab/refine/`. After each round of track passes, a Fable merge pass reconciles the
-tracks; only it adds questions to `OWNER_RULINGS.md` and changes items that span tracks. Triggers,
-the cap, and what happens at the cap are in PASS_RULES.md; where that file and this section
-disagree, PASS_RULES.md wins.
+PASS_RULES.md governs how passes run; this section summarizes it and adds what is particular to
+this track. Each pass is a fresh agent at the Opus tier, started through the open-ticket skill with
+the pass as its board task, and it runs the pass itself [PASS_RULES, How passes are run]. Passes on
+this track run strictly in sequence, each from a fresh `origin/main` after the previous pass's pull
+request has merged, because each pass edits the board rows and files the next one reads; the four
+tracks (telemetry, learning, plumbing, kernels) run in parallel. Work happens in rounds, and a
+Fable merge pass closes each round. Only the merge pass adds questions to `OWNER_RULINGS.md`, edits
+a `RUBRIC.md` (to carry out a filled ruling), and changes anything that crosses a track boundary
+[PASS_RULES, The merge pass].
 
-A pass changes the plan, not the machines. It edits the board rows in Ilan's lane (split, merge,
-reorder, rewrite Done when, fix Blocked by, set Tier), queues experiments on T0, and writes its
-log entry, report and counter in the formats TEMPLATES.md sets. A log entry without its
-metrics-before block, or without a citation for each change, is invalid and its edits are
-reverted [Orchestration]. A pass runs nothing on the Jetson or a pod: anything that needs a node
-becomes a task or a queued experiment and runs later, through the GPU Queue where a pod is
-involved, with Ilan's go (the open-ticket skill, sections 4b and 7).
+A pass changes the plan, not the machines: the board properties of this track's tasks in Ilan's
+lane, experiment lines on T0, and this track's log, report, counter and research notes. A log
+entry without its metrics-before block, or with a change that has no citation, is invalid and is
+reverted [PASS_RULES, Invalid passes]. A pass runs nothing on the Jetson or a pod; anything that
+needs a node becomes a task or a queued experiment and runs later with Ilan's go, through the GPU
+Queue when a pod is involved (the open-ticket skill, sections 4b and 7).
 
-Before changing anything, each pass reads: `refine_pass.txt`; this file; `REFINE_LOG.md` in full
-(once it is long, from its last closing section to the end, plus earlier entries where a change
-touches their item); `OWNER_RULINGS.md`; the metrics-file rows for every metric in the metric set;
-the research notes added since the last pass; and every board row in the walk list.
+Besides what PASS_RULES.md lists under "What a pass reads", a telemetry pass reads the newest rows
+each sampler has written (Test 3) and runs the track checks below before it changes anything.
 
 ## Primary sources (the ONLY things that may justify a change), in authority order
 
@@ -109,20 +111,24 @@ are dimensions.
 
 ### The universal rules
 
-U1 and U2 are the rules every track rubric carries, in the orchestration plan's words, kept word
-for word here [Orchestration]. If another track's rubric words them differently, the merge pass
-reconciles all four to one text through a ruling.
+U1 and U2 are the two rules every rubric repeats, copied word for word from PASS_RULES.md ("The two
+universal rules"), which states the orchestration plan's rules [Orchestration] in one shared text so
+that the four rubrics can carry the same words. If this copy and PASS_RULES.md ever differ,
+PASS_RULES.md wins.
 
 U1. **Old versus new.** Every task and experiment names the metrics it is meant to move, reads
 their current values from the metrics file or ledger before starting, and ends by measuring them
-the same way. The pass log shows before, after, and the conditions. A change that moves nothing is
-not an improvement; a regression is reverted or goes to the rulings file with the trade-off
-stated. The loop itself is judged by whether the track's numbers moved across passes.
+the same way. The pass entry shows the values before and after and the conditions they were
+measured under. A change that moves nothing is not an improvement. A regression is reverted, or it
+goes to a ruling with the trade-off stated. The loop itself is judged by whether the track's
+numbers moved across passes.
 
 U2. **Source-forced.** Every change to a method or a plan item cites at least one source next to
-the before and after. Each pass starts with a bounded research step on the track's open problems,
-written into `lab/refine/research/<track>/` with citations. A source-backed idea not yet tested
-becomes a queued experiment with its citation and expected movement.
+its before and after. Each pass starts with a bounded research step on the track's open problems,
+written into `lab/refine/research/<track>/` with citations. A source-backed idea that has not been
+tested becomes a queued experiment with its citation and expected movement. A change that depends
+on a fact no source in hand establishes is not made; the fact becomes a queued measurement or a
+ruling.
 
 In this track, "measured the same way" (U1) covers the sampler, its period, the window rule, the
 idle policy, the node's power mode, and the GPU temperature at the start of each run, because
@@ -339,29 +345,42 @@ this list; a pass never renames a metric that already has rows.
 
 ## The walk list
 
-Every pass walks the whole matrix (Test 3) and at least two items below end to end, rotating so
-that every item is walked during the run (the log says which were walked). Walking an item means
-checking it against all nine dimensions: the metric it moves and its before value (U1), the source
-behind its method (U2), and each test that applies. A pass may add an item the board has gained.
+Every pass walks the whole matrix (Test 3) and every task and queued experiment of the track
+against every dimension [PASS_RULES, What a pass does], and takes at least two of them end to end
+through the untidy cases below, rotating so that every task gets an end-to-end walk during the run
+(the log says which). Walking a task means checking it against all nine dimensions: the metric it
+moves and its before value (U1), the source behind its method (U2), and each test that applies.
 
-- T0, the standing question and its experiment queue: E1 contention on one card (preempt or
-  coexist), E2 vLLM against llama.cpp, E3 batch size against joules per token, E4 Jetson power
-  modes, E5 teacher checkpoints. Each experiment names its metric, before value, expected movement
-  with its source, and its repeat count.
+The tasks this track covers (this list replaces the starting set in PASS_RULES.md, "The four
+tracks"):
+
+- T0, the standing question: what else should we measure, and what would it let us optimize.
 - T1, the context skeleton and the per-source events (`contracts/telemetry.py`, a fake sampler, a
   projection rebuilt from the log).
 - T2, the Jetson power sampler (`tegrastats`).
 - T3, the pod power sampler (`amd-smi`), read through the hub proxy.
 - T4, joules per answer.
 - T5, the routing hook and its first policy.
-- R11, the benchmark harness (tok/s and joules per token on gfx1201), which reads pod power.
-- L3's per-step watts on `telemetry.train.step` (the training cell; the trainer itself is the
-  learning track's).
-- R5's stats endpoint and the slide script (Test 7 only; proposals only).
-- The metrics-file or ledger rows this track writes (the provenance check below).
-- `lab/refine/research/telemetry/` (U2).
 
-Each walk also tries at least one untidy case, not only the tidy path:
+The experiments on T0 that belong to this track are the lines marked `(telemetry)` and the lines
+whose first metric is in this file's metric set [PASS_RULES, The four tracks]. Today there are none:
+E1 to E5 name tok/s or joules per token first, which are kernels metrics, so they are the kernels
+track's. The first telemetry experiment is the one in Known open items, 3.
+
+Where this track's numbers are used outside it, a pass checks them (Tests 4 and 7) and changes
+nothing: it writes the finding in its entry for the merge pass, or posts a proposal when the task is
+shared with another person [PASS_RULES, What a pass may never change]:
+
+- R11, the benchmark harness, and T0's experiment lines (the kernels track): how they read pod power
+  and define joules per token.
+- L3's per-step watts on `telemetry.train.step` (the learning track): the training cell of the
+  matrix.
+- R5's stats endpoint (shared with Xander) and the slide script (shared with Dominick): Test 7.
+
+Each pass also checks the metrics-file or ledger rows this track writes (the provenance check
+below) and `lab/refine/research/telemetry/` (U2).
+
+Each end-to-end walk tries at least one untidy case, not only the tidy path:
 
 - a request shorter than the sampler period, and one that spans a sampler restart;
 - two overlapping requests on the teacher, and a burst of ten;
@@ -375,22 +394,26 @@ Each walk also tries at least one untidy case, not only the tidy path:
 
 ## What a pass may NOT change
 
-- Other people's tasks (today: R5, shared with Xander; the slide script, shared with Dominick):
-  proposals only, on Dominick ↔ Team.
-- The Demo Plan and the Design Doc, including Context: Telemetry and Context: Inference Runtime:
-  proposals only, on Dominick ↔ Team.
-- P0 priorities, without a ruling.
-- This file, the universal rules and the seven tests: a pass never edits them; only the merge pass
-  does, and only to apply an answered ruling.
-- `OWNER_RULINGS.md`: a pass reads it and never writes it; a question a pass cannot decide goes in
-  its report, and the merge pass adds it there.
-- Code and contracts: a pass edits no code and no event shape. A change to `contracts/telemetry.py`
-  or `runtime/` is a task: additive, with the heads-up `AGENTS.md` requires.
+Everything PASS_RULES.md lists under "What a pass may never change" holds here: another person's
+task, or one shared with someone or unassigned; the Demo Plan; any task's Priority; a Locked task; a
+`RUBRIC.md`, this one included (only the merge pass edits it, to carry out a filled ruling);
+`OWNER_RULINGS.md`; PASS_RULES.md and the universal rules; another track's rows, experiments or
+folder; an earlier pass's change, without a newer source or metric; and anything outside plans
+(code, contracts, config, fixtures, pods, model servers, GPU jobs, queue slots, `data/events`,
+deleting a Notion page). For this track that means in particular:
+
+- R5 (shared with Xander) and the slide script (shared with Dominick): proposals only, on
+  Dominick ↔ Team.
+- R11 and T0's E1 to E5 (the kernels track) and L3 (the learning track): findings for the merge
+  pass, never edits.
+- The Design Doc, including Context: Telemetry and Context: Inference Runtime: proposals only, on
+  Dominick ↔ Team. A change to `contracts/telemetry.py` or `runtime/` is a task: additive, with the
+  heads-up `AGENTS.md` requires.
 - Metric names that already have rows, and the definition behind a number already on the slide: a
   rename or a redefinition needs a ruling, and a redefinition re-measures the before value (Test 4).
-- Live nodes: no pod launch, GPU job, power-mode change or write to `data/events`. A power-mode
-  change can require a reboot of the box [Orin-power, Power Mode Controls], which runs MAXN SUPER
-  (nvpmodel mode 2) today [R3]. Those run only as tasks or GPU Queue slots with Ilan's go.
+- The Jetson's power mode: a mode change can require a reboot of the box [Orin-power, Power Mode
+  Controls], which runs MAXN SUPER (nvpmodel mode 2) today [R3]; it runs only as a task with Ilan's
+  go.
 - The privacy line: the routing hook never sends anything about the user's own space to the lab
   [Runtime-spec], and raw frames never leave the Jetson.
 - Another person's or agent's words on Notion, findings on T0 included: never edited or deleted
@@ -447,12 +470,12 @@ Found on 2026-10-10 from the board, the repo and the sources below; no pass has 
    whether the teacher was loaded (Test 4). Some orchestration task pages quote "~202 W"; the
    measurement record says "~200 W".
 3. Tests 1 and 2, the pods: the averaging window and lag of the R9700's socket power are unknown.
-   Candidate experiment for T0, run on pod B in a GPU Queue slot: a square-wave load with on and
-   off phases of 0.5, 1, 2 and 5 s, recording `amd-smi metric --power` and `amd-smi metric
-   --energy` at the shortest period Test 5 allows, plus Zeus's start-up check of the energy counter
-   against power on ROCm 7.13 [Zeus, Hardware Support, AMD GPU]. Expected movement: pod attribution
-   error goes from none to a measured value, and the shortest attributable pod window becomes a
-   number [McDaniel-2026, sections III-A1 and V-A2].
+   Candidate experiment, to queue on T0 marked `(telemetry)` and run on pod B in a GPU Queue slot:
+   a square-wave load with on and off phases of 0.5, 1, 2 and 5 s, recording `amd-smi metric
+   --power` and `amd-smi metric --energy` at the shortest period Test 5 allows, plus Zeus's
+   start-up check of the energy counter against power on ROCm 7.13 [Zeus, Hardware Support, AMD
+   GPU]. Expected movement: pod attribution error goes from none to a measured value, and the
+   shortest attributable pod window becomes a number [McDaniel-2026, sections III-A1 and V-A2].
 4. Test 1, the Jetson: `tegrastats` defaults to 1000 ms [tegrastats] and a warm caption takes about
    2.1 s [Build-Log-R8], so at the default a caption holds about two samples, under the 10-sample
    default. T2's Done when says "a configurable interval" with no value; a pass sets the interval
@@ -482,19 +505,20 @@ Found on 2026-10-10 from the board, the repo and the sources below; no pass has 
     script prints a source and a read-at time, but its sources are endpoint URLs and log paths rather
     than ledger rows, and it has no low confidence column [slide-script]. Both are shared tasks, so
     proposals only.
-13. U2, a source tension on T0: E3 says the ML.ENERGY data shows batching moves joules per token "6
-    to 8x" [T0]; the ML.ENERGY Leaderboard v3.0 post says increasing batch size "can unlock 3-5x
-    energy per token reduction" [MLE-v3], and a 2026 study found the batch 16 over batch 1 token
-    energy gain for 10-token outputs fell from 6.31x at 512 tokens of context to 1.17x at 4K
-    [Vellaisamy-2026]. E3's expected movement needs its source and the context length it assumes;
-    the teacher runs at 16k [lab-README, lines 65 and 74].
+13. U2, for the merge pass, since E3 is a kernels-track experiment: E3 on T0 says the ML.ENERGY data
+    shows batching moves joules per token "6 to 8x" [T0]; the ML.ENERGY Leaderboard v3.0 post says
+    increasing batch size "can unlock 3-5x energy per token reduction" [MLE-v3], and a 2026 study
+    found the batch 16 over batch 1 token energy gain for 10-token outputs fell from 6.31x at 512
+    tokens of context to 1.17x at 4K [Vellaisamy-2026]. E3's expected movement needs its source and
+    the context length it assumes; the teacher runs at 16k [lab-README, lines 65 and 74].
 14. U1, temperature: average energy correlates with the GPU temperature at the start of measurement
     [MLE-thermal], but `telemetry.gpu.power` has no temperature field [Telemetry-spec]. T1 has not
     started, so the field can join the first version of the event; a pass adds it to T1's Done when,
     and the spec page is Ilan's to change.
-15. Live nodes, T0's E4 (Jetson power modes): changing the mode can require a reboot [Orin-power,
-    Power Mode Controls], and the box runs mode 2 (MAXN SUPER) [R3]. E4's line on T0 needs Ilan's
-    go, a time outside the demo window, and a step that restores mode 2.
+15. Live nodes, for the merge pass, since E4 (Jetson power modes) names tok/s first and so is a
+    kernels-track experiment: changing the mode can require a reboot [Orin-power, Power Mode
+    Controls], and the box runs mode 2 (MAXN SUPER) [R3]. E4's line on T0 needs Ilan's go, a time
+    outside the demo window, and a step that restores mode 2.
 
 ## Sources
 
@@ -591,6 +615,10 @@ Outside sources:
 
 Our own sources:
 
+- [PASS_RULES] `lab/refine/PASS_RULES.md` (on `main` since a76af64): the four tracks and which tasks
+  and experiments belong to each, how passes are run, what a pass reads and does, convergence, the
+  cap, the merge pass, what a pass may and may never change, invalid passes, and the two universal
+  rules this file copies.
 - [Orchestration] The orchestration task pages on the Task Board: O1 (this rubric: the universal
   rules, the seven tests, the metric set, the format), O13 (pass rules: fresh Opus agents started
   through the open-ticket skill, 10 passes per run, the merge pass, an entry without its
