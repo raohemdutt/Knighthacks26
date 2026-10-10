@@ -232,15 +232,15 @@ def test_template_pass_entry_example_parses_and_is_valid():
     assert [w.target for w in entry.walked] == ["E2", "E3", "E5", "R24"]
     assert [w.held for w in entry.walked] == [False, False, False, True]
     assert [(f.dimension, f.status) for f in entry.findings] == [
-        ("D1", "fixed"),
-        ("D3", "fixed"),
-        ("D2", "fixed"),
-        ("D8", "fixed"),
-        ("D6", "fixed"),
-        ("D6", "held"),
+        ("K1", "fixed"),
+        ("K3", "fixed"),
+        ("K2", "fixed"),
+        ("K8", "fixed"),
+        ("K6", "fixed"),
+        ("K6", "held"),
     ]
     assert [c.number for c in entry.changes] == [1, 2, 3]
-    assert [c.dimensions for c in entry.changes] == [("D1", "D3", "D6"), ("D2",), ("D8",)]
+    assert [c.dimensions for c in entry.changes] == [("K1", "K3", "K6"), ("K2",), ("K8",)]
     assert [(r.label, r.answer) for r in entry.rulings_raised] == [("a", "____")]
     assert (entry.ending, entry.ending_number) == ("", None)
     assert entry.metrics_after == ()
@@ -253,7 +253,7 @@ def test_template_owner_correction_example_parses():
 
     assert isinstance(entry, rf.OwnerCorrection)
     assert (entry.date, entry.title, entry.rulings) == ("2026-10-10", "", (4,))
-    assert [(c.number, c.dimensions) for c in entry.changes] == [(1, ("D3",))]
+    assert [(c.number, c.dimensions) for c in entry.changes] == [(1, ("K3",))]
     assert entry.changes[0].source == "OWNER_RULINGS.md 4 (owner, 2026-10-10)"
     assert entry.changes[0].before != entry.changes[0].after
 
@@ -687,7 +687,7 @@ def test_template_pass_entry_example_keeps_its_checks_and_next_steps():
     entry = only_entry(example("pass-entry"))
 
     assert entry.checks.startswith("Re-fetched T0 after changes 1 to 3")
-    assert entry.next_pass.startswith("re-walk every item against D1 to D8")
+    assert entry.next_pass.endswith("Waits on the owner: ruling (a).")
     assert "checks" in entry.sections and "next" in entry.sections
 
 

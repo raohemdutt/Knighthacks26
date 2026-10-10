@@ -42,10 +42,10 @@ pass go into the log too, so a pass never undoes one, but they do not bump the c
 
 - Plain ASCII, plain hyphens, no em-dashes and no emoji, in every file here.
 - Entries are appended, never rewritten. A log reads oldest first.
-- A dimension id is the label the track's `RUBRIC.md` gives one of its tests (the Learning rubric's
-  are LT1 to LT9). If a rubric only numbers its tests, the id is D followed by the number, as in the
-  examples below. The two universal rules every rubric carries are U1 (old versus new) and U2
-  (source-forced).
+- A dimension id is the label the track's `RUBRIC.md` gives one of its tests: the Learning rubric's
+  are LT1 to LT9 and the kernels rubric's are K1 to K8. If a rubric only numbers its tests, the id is
+  D followed by the number. The two universal rules every rubric carries are U1 (old versus new) and
+  U2 (source-forced).
 - A metric name is the dotted lowercase name used in `lab/refine/metrics.jsonl`
   (`teacher.decode_tok_s`, `pod.idle_watts`).
 - A reading is a metric's value with its unit, node and conditions, and the line it was read from:
@@ -124,7 +124,7 @@ A filled pass entry:
 ```text example:pass-entry
 ## Pass 3, 2026-10-10
 
-EXAMPLE, not the record of a real pass. The quoted task text and the baseline figures are real (Notion board and lab/README.md, 2026-10-10); the pass around them is invented. Walked the kernels items on the experiment queue (E2, E3, E5) and R24 against kernel tests D1 to D8 and the two universal rules U1 and U2. Three changes, all to the plan, none measured yet. NOT CONVERGED; pass 4 repeats the walk.
+EXAMPLE, not the record of a real pass. The quoted task text and the baseline figures are real (Notion board and lab/README.md, 2026-10-10); the pass around them is invented. Walked the kernels items on the experiment queue (E2, E3, E5) and R24 against kernel tests K1 to K8 and the two universal rules U1 and U2. Three changes, all to the plan, none measured yet. NOT CONVERGED; pass 4 repeats the walk.
 
 Research step (sources opened):
 - Notion task O4, sections "Kernel tests" and "Baseline to beat" (https://app.notion.com/p/3f596ef5fec5816aae04d8fb488302c4), opened 2026-10-10 :: the eight kernel tests and the baseline (decode 7.7 tok/s, about 26 J per token); test 1 asks for stock numbers at batch 1, 4, 8 and 16.
@@ -140,33 +140,33 @@ Metrics before (read before changing anything):
 | teacher.decode_tok_s | none | tok/s | pod-a | batch 4, 8 and 16, same model and engine; never measured, measurement queued as E3 | none |
 
 Walked (task or experiment :: dimensions checked :: result):
-- E2 :: D2, D6, D8, U1, U2 :: BROKE D8; FIXED (3)
-- E3 :: D1, D3, D6, D8, U1, U2 :: BROKE D1, D3, D6, D8; FIXED (1, 3)
-- E5 :: D2, D6, D8, U1, U2 :: BROKE D2, D8; FIXED (2, 3)
-- R24 :: D2, D3, D4, D5, D6, D7 :: held
+- E2 :: K2, K6, K8, U1, U2 :: BROKE K8; FIXED (3)
+- E3 :: K1, K3, K6, K8, U1, U2 :: BROKE K1, K3, K6, K8; FIXED (1, 3)
+- E5 :: K2, K6, K8, U1, U2 :: BROKE K2, K8; FIXED (2, 3)
+- R24 :: K2, K3, K4, K5, K6, K7 :: held
 
 Findings (by dimension):
-- D1 E3 :: sweeps batch 1, 4, 16 and 64, while kernel test 1 requires stock numbers at 1, 4, 8 and 16, so batch 8 is missing and the curve cannot be compared with the baseline. FIXED (1).
-- D3 E3 :: names no repeat count, so a win cannot be told from the spread. FIXED (1). RULING (a).
-- D2 E5 :: one item asks two questions: whether the Quark checkpoint loads on vLLM b1388b1 (lab/README.md says it does not) and how fast the checkpoints that load run. FIXED (2).
-- D8 E2, E3, E5 :: no queue item carries an expected movement or a confidence, so the queue cannot be ordered by expected energy gain times confidence. FIXED (3).
-- D6 E3 :: reports a J/token curve but names no tok/s, so the speed half of the pair is missing. FIXED (1).
-- D6 E2, R24 :: each pairs speed with joules per token. HELD.
+- K1 E3 :: sweeps batch 1, 4, 16 and 64, while kernel test 1 requires stock numbers at 1, 4, 8 and 16, so batch 8 is missing and the curve cannot be compared with the baseline. FIXED (1).
+- K3 E3 :: names no repeat count, so a win cannot be told from the spread. FIXED (1). RULING (a).
+- K2 E5 :: one item asks two questions: whether the Quark checkpoint loads on vLLM b1388b1 (lab/README.md says it does not) and how fast the checkpoints that load run. FIXED (2).
+- K8 E2, E3, E5 :: no queue item carries an expected movement or a confidence, so the queue cannot be ordered by expected energy gain times confidence. FIXED (3).
+- K6 E3 :: reports a J/token curve but names no tok/s, so the speed half of the pair is missing. FIXED (1).
+- K6 E2, R24 :: each pairs speed with joules per token. HELD.
 
 Changes (3 of at most 5):
-1. E3 on T0, rewritten (D1, D3, D6)
+1. E3 on T0, rewritten (K1, K3, K6)
    BEFORE: "E3 batching sweep on vLLM (batch 1, 4, 16, 64: J/token curve)"
    AFTER:  "E3 (kernels) batching sweep on vLLM (batch 1, 4, 8, 16, 64; five runs per point, report the mean and the spread of tok/s and J/token; a point counts as a win only if it clears the batch-1 spread)"
    SOURCE: Notion task O4, "Kernel tests" 1, 3 and 6 (https://app.notion.com/p/3f596ef5fec5816aae04d8fb488302c4); lab/refine/PASS_RULES.md, section "The four tracks" (a queued experiment line names its track)
    WHY: the sweep skipped batch 8, which the stock baseline requires, named no repeat count and reported J/token without tok/s, so no win could be told from noise and speed was not paired with energy; five runs is a starting count, to be raised if the spread is wide.
    METRIC: teacher.joules_per_token, stored at batch 1 only today (25.97 J/token, metrics.jsonl:12); after E3 it is stored at batch 1, 4, 8, 16 and 64.
-2. E5 on T0, split into E5a and E5b (D2)
+2. E5 on T0, split into E5a and E5b (K2)
    BEFORE: "E5 Teacher checkpoint shootout: AMD Quark AWQ-INT4 vs RedHat INT4 vs official FP8 (loads? tok/s, J/token, caption quality on 20 fixture frames)"
    AFTER:  "E5a (kernels) Does the AMD Quark AWQ-INT4 checkpoint load on a vLLM commit from late August 2026 or later, or with the mapper backport: yes or no, with the error text. E5b (kernels) Shootout of the checkpoints that load (RedHat INT4, official FP8, and Quark if E5a says yes): tok/s and J/token at batch 1 and 16, caption quality on 20 fixture frames."
    SOURCE: lab/README.md, "Teacher (pod A)", paragraph "Checkpoints" (the Quark checkpoints are rejected by quark.py:apply_vllm_mapper on vLLM b1388b1; loading them needs a newer vLLM commit or a backport of that one file); Notion task O4, "Kernel tests" 2 (one lever per experiment)
    WHY: E5 mixed a load question that can fail with no speed data and a speed comparison, so a failed load would have hidden the other checkpoints' numbers.
    METRIC: teacher.joules_per_token for the Quark checkpoint, none stored today; E5b stores it if E5a passes.
-3. Experiment queue on T0, expected movement added to E2, E3 and E5b (D8)
+3. Experiment queue on T0, expected movement added to E2, E3 and E5b (K8)
    BEFORE: "(no queue item states an expected movement or a confidence)"
    AFTER:  "E2 expected: J/token differs between the two engines, direction unknown, confidence low. E3 expected: J/token changes with batch size; T0 cites the ML.ENERGY data for a 6 to 8x movement, confidence low. E5b expected: unknown until E5a answers."
    SOURCE: Notion task O4, "Kernel tests" 8 (order by expected energy gain times confidence, with the estimate and the result both on the queue); Notion task T0, "Experiment queue", E3 (the 6 to 8x note, which cites the ML.ENERGY data second-hand); Chung et al., arXiv 2505.06371, abstract (optimization recommendations save more than 40 percent in some cases; no batch-size figure, so the 6 to 8x is not verified here)
@@ -185,7 +185,7 @@ not run: this pass changed the plan only, so no experiment executed and no metri
 
 Converged: NO - three changes made; pass 4 repeats the walk of E2, E3, E5a, E5b and R24.
 
-Left for the next pass: re-walk every item against D1 to D8 and U1 and U2; check that T0 reads as AFTER for E3, E5a, E5b and the expected-movement lines; E3 has not run, so every batch 4, 8 and 16 reading is still none. Waits on the owner: ruling (a).
+Left for the next pass: re-walk every item against K1 to K8 and U1 and U2; check that T0 reads as AFTER for E3, E5a, E5b and the expected-movement lines; E3 has not run, so every batch 4, 8 and 16 reading is still none. Waits on the owner: ruling (a).
 
 Checks run (commands and their actual output):
 Re-fetched T0 after changes 1 to 3: E3, E5a, E5b and the expected-movement lines read as AFTER.
@@ -208,7 +208,7 @@ Rulings applied: 4
 
 EXAMPLE, not a record. The owner answered ruling 4 (a kernel win must beat the spread) and said five runs per point is too many for one 15-minute slot. The plan follows the answer. No pass ran, so the counter stays where it was.
 
-1. E3 on T0, repeat count (D3)
+1. E3 on T0, repeat count (K3)
    BEFORE: "E3 (kernels) batching sweep on vLLM (batch 1, 4, 8, 16, 64; five runs per point, report the mean and the spread of tok/s and J/token; a point counts as a win only if it clears the batch-1 spread)"
    AFTER:  "E3 (kernels) batching sweep on vLLM (batch 1, 4, 8, 16, 64; three runs per point, report the mean and the spread of tok/s and J/token; a point counts as a win only if it clears the batch-1 spread)"
    SOURCE: OWNER_RULINGS.md 4 (owner, 2026-10-10)
@@ -245,7 +245,7 @@ Paragraphs, each starting with its label:
 ```text example:run-state
 ## State at the end of the run, passes 1 to 5, 2026-10-10
 
-EXAMPLE, not a record of a real run. Five passes on the kernels track. Pass 5 walked E2, E3, E5a, E5b and R24 against D1 to D8 and the two universal rules and changed nothing. Passes 1 to 4 made nine changes between them, all to the plan: no experiment has run, so no metric has moved.
+EXAMPLE, not a record of a real run. Five passes on the kernels track. Pass 5 walked E2, E3, E5a, E5b and R24 against K1 to K8 and the two universal rules and changed nothing. Passes 1 to 4 made nine changes between them, all to the plan: no experiment has run, so no metric has moved.
 
 Run ended: converged at pass 5.
 
@@ -370,7 +370,7 @@ Ended: 2026-10-10T07:12:00-04:00
 
 ---
 
-EXAMPLE, not a real report. Pass 3 on the kernels track walked E2, E3, E5 and R24 against D1 to D8 and U1 and U2 and made three changes to the experiment queue on T0. NOT CONVERGED. Files touched: lab/refine/kernels/REFINE_LOG.md, lab/refine/kernels/refine_pass.txt, T0 on the board.
+EXAMPLE, not a real report. Pass 3 on the kernels track walked E2, E3, E5 and R24 against K1 to K8 and U1 and U2 and made three changes to the experiment queue on T0. NOT CONVERGED. Files touched: lab/refine/kernels/REFINE_LOG.md, lab/refine/kernels/refine_pass.txt, T0 on the board.
 
 **(a) Log entry appended, verbatim** (`REFINE_LOG.md`, "## Pass 3, 2026-10-10", L1-L58):
 
@@ -382,7 +382,7 @@ EXAMPLE, not a real report. Pass 3 on the kernels track walked E2, E3, E5 and R2
 - kernels pass 3, T0 queue: expected movement and confidence added to E2, E3 and E5b. Was: no estimates. Why: the queue could not be ordered by expected energy gain times confidence. Source: Notion task O4, "Kernel tests" 8.
 - refine_pass.txt reads 3. No metrics-file lines added, because no experiment ran.
 
-**(c) NOT CONVERGED.** E2 BROKE D8 (fixed); E3 BROKE D1, D3, D6, D8 (fixed); E5 BROKE D2, D8 (fixed); R24 held. Metrics before read from metrics.jsonl lines 3, 7 and 12; after: not run.
+**(c) NOT CONVERGED.** E2 BROKE K8 (fixed); E3 BROKE K1, K3, K6, K8 (fixed); E5 BROKE K2, K8 (fixed); R24 held. Metrics before read from metrics.jsonl lines 3, 7 and 12; after: not run.
 
 **(d) New owner items.** Ruling (a): must a kernel win beat the run-to-run spread, or a fixed percentage? Now: the spread. Recommend: the spread. Source of tension: kernel test 3 against the 15-minute GPU slot. Answer: ____
 
