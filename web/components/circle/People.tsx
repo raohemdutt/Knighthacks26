@@ -5,6 +5,7 @@ import { useState, type FormEvent } from "react";
 import { Empty, ErrorBox, Loading, WriteError } from "@/components/States";
 import ui from "@/components/ui.module.css";
 import { ApiError, api, type CampusRoute, type CircleMember, type CircleMembers, type LeagueStanding, type PlacePack, type PlaceShared } from "@/lib/api";
+import { useAtlasEvents } from "@/lib/atlas";
 import { relative, time } from "@/lib/format";
 import { useFetch, type Loadable } from "@/lib/useFetch";
 import c from "./circle.module.css";
@@ -18,6 +19,10 @@ import { colourOf } from "./shared";
  * GET /api/circle/members answers in every state. "Has a box" is what this box's own log shows: a member
  * whose Atlas sent a message or a summary, or whose desk camera shared a place. Otherwise it says so
  * plainly instead of guessing.
+ *
+ * "Here now" is this box's own cameras recognising someone who enrolled on the People screen and was linked to
+ * a Circle member (GET /identity/present: ids only). It says nothing about anyone who did not enroll here, and it
+ * is not shared with the Circle.
  */
 
 /**
@@ -40,6 +45,10 @@ export function People({ members, standings, packs, onChanged }: {
   packs: PlacePack[] | undefined;
   onChanged: () => void;
 }) {
+  // Who this box recognises right now. No recognition on this box (or it is off): nobody, and no message about it.
+  const seen = useFetch((s) => api.presentNow(s).catch(() => ({ present: [] })));
+  useAtlasEvents(["perception.person", "perception.identity"], seen.reload);
+  const here = new Set((seen.data?.present ?? []).map((x) => x.circle_member_id).filter((id): id is string => !!id));
   if (members.error) return <ErrorBox what="the Circle's people" error={members.error} onRetry={members.reload} />;
   if (!members.data) return <Loading what="the Circle's people" />;
   const data = members.data;
@@ -58,7 +67,7 @@ export function People({ members, standings, packs, onChanged }: {
         </h2>
         <ul className={ui.list}>
           {data.members.map((m) => (
-            <Person key={m.member_id} member={m} all={data.members} standing={standings.find((s) => s.member_id === m.member_id)} packs={packs} from={mine?.place?.place} />
+            <Person key={m.member_id} member={m} here={here.has(m.member_id)} all={data.members} standing={standings.find((s) => s.member_id === m.member_id)} packs={packs} from={mine?.place?.place} />
           ))}
         </ul>
       </section>
@@ -98,8 +107,9 @@ function startOf(packs: PlacePack[] | undefined, mine: string | undefined): stri
   return campus?.entry ? `${campus.name}.${campus.entry}` : null;
 }
 
-function Person({ member: m, all, standing, packs, from }: {
+function Person({ member: m, here, all, standing, packs, from }: {
   member: CircleMember;
+  here: boolean;
   all: CircleMember[];
   standing: LeagueStanding | undefined;
   packs: PlacePack[] | undefined;
@@ -152,6 +162,7 @@ function Person({ member: m, all, standing, packs, from }: {
           <p className={ui.muted}>{m.mine ? "You are not sharing a place right now." : "Not sharing a place right now."}</p>
         )}
         <div className={c.facts}>
+          {here ? <span className={`${ui.tag} ${ui.tagAccent}`}>Here now</span> : null}
           <span className={ui.tag}>{m.has_box ? (m.mine ? "This box" : "Has a box") : "Phone only so far"}</span>
         </div>
         <p className={`${ui.muted} ${ui.small}`}>
