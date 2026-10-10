@@ -29,8 +29,9 @@ does and refuses to write a row it cannot prove:
     * each assistant turn starts, in the training text, exactly where the generation prompt the box sends ends
       (`<|im_start|>assistant`, newline, the empty thinking block), and tool results sit in a user turn as
       `<tool_response>` blocks;
-    * parse_assistant_turns() reads the calls back out of the rendered, tokenized and detokenized text, and a trace is
-      kept only when the function names and arguments come back equal and the tokenizer round trip changed nothing.
+    * parse_assistant_turns() reads the calls back out of the rendered text (detokenized, when a tokenizer is given),
+      and a trace is kept only when the function names, arguments and answer come back equal and the tokenizer round
+      trip changed nothing.
 
 A row of the output JSONL is one trace:
 
