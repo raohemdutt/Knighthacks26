@@ -235,3 +235,20 @@ def test_yesterday_and_what_happened_to_are_answered_from_memory():
     rt = FakeRuntime(chat_replies=[ChatResult(content="It was delivered, then moved to the desk.", model_version="v1")])
     a = asyncio.run(QA(rt, mem, clock=lambda: NOW).ask("What happened to the package?"))
     assert a.text.startswith("It was delivered") and [c.episode_id for c in a.citations] == ["p2", "p1"]  # newest first
+
+
+def test_due_lists_are_answered_from_the_data_and_hedges_are_dropped():
+    """On the Jetson the 4B model answered: The most recent item is due at 11:59 PM. I didn't see that."""
+    from contexts.agent.application.qa import tidy
+    from contracts.memory import Item
+
+    hw = Item(connector="canvas", kind="assignment", external_id="hw4", title="HW 4: linked lists",
+              when=NOW + timedelta(days=2), url="https://canvas/hw4")
+    exam = Item(connector="canvas", kind="assignment", external_id="ex1", title="Exam 1",
+                when=NOW + timedelta(days=4), url="https://canvas/ex1")
+    rt = FakeRuntime()
+    a = asyncio.run(QA(rt, FakeMemory(items=[exam, hw]), clock=lambda: NOW).ask("Any assignments due this week?"))
+    assert a.text.startswith("Due this week: HW 4: linked lists, ") and "; Exam 1, " in a.text
+    assert [c.url for c in a.citations] == ["https://canvas/hw4", "https://canvas/ex1"] and not rt.calls  # no model call
+    assert tidy("Your keys were last seen at 7:41 PM. I didn't see that.") == "Your keys were last seen at 7:41 PM."
+    assert tidy(NO_EVIDENCE) == NO_EVIDENCE

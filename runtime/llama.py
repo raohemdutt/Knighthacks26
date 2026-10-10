@@ -7,8 +7,10 @@ plugged in as a callable so this module never imports ultralytics.
 """
 
 import base64
+import contextlib
 import json
 import re
+import threading
 import time
 from collections.abc import Callable
 from typing import Any
@@ -76,6 +78,7 @@ class LlamaServerRuntime:
         self.image_embedder = image_embedder
         self.load_image = load_image  # frame_ref -> jpeg bytes, for ChatMessage.images
         self.http = httpx.Client(base_url=base_url, timeout=timeout_s, transport=transport)
+        self.gate = PriorityGate()  # llama-server runs one request at a time (-np 1): questions go first
 
     def detect_track(self, frame: Any) -> list[Track]:
         if self.detector is None:
@@ -132,7 +135,8 @@ class LlamaServerRuntime:
         if on_text and not tools and not json_schema:
             text = self._stream([self._to_openai(m) for m in messages], on_text, max_tokens=512)
             return ChatResult(content=text, model_version=self.model.version, latency_ms=int((time.monotonic() - start) * 1000))
-        msg = self._complete([self._to_openai(m) for m in messages], tools=tools, max_tokens=512, json_schema=json_schema)
+        msg = self._complete([self._to_openai(m) for m in messages], tools=tools, max_tokens=512, json_schema=json_schema,
+                             urgent=priority == "chat")
         calls = [
             ToolCall(id=c["id"], name=c["function"]["name"], arguments=json.loads(c["function"]["arguments"] or "{}"))
             for c in msg.get("tool_calls") or []
@@ -164,7 +168,7 @@ class LlamaServerRuntime:
         """OpenAI-style server-sent events from llama-server: each `data:` line carries a delta."""
         body = {"messages": messages, "max_tokens": max_tokens, "temperature": 0.2, "stream": True}
         parts: list[str] = []
-        with self.http.stream("POST", "/v1/chat/completions", json=body) as r:
+        with self.gate.slot(urgent=True), self.http.stream("POST", "/v1/chat/completions", json=body) as r:
             r.raise_for_status()
             for line in r.iter_lines():
                 if not line.startswith("data:"):
@@ -179,12 +183,47 @@ class LlamaServerRuntime:
         return "".join(parts)
 
     def _complete(self, messages: list[dict], tools: list[dict] | None = None, max_tokens: int = 256,
-                  json_schema: dict | None = None) -> dict:
+                  json_schema: dict | None = None, urgent: bool = False) -> dict:
         body: dict[str, Any] = {"messages": messages, "max_tokens": max_tokens, "temperature": 0.2}
         if tools:
             body["tools"] = tools
         if json_schema:  # OpenAI-style structured output; llama-server turns it into a grammar
             body["response_format"] = {"type": "json_schema", "json_schema": {"name": "reply", "schema": json_schema, "strict": True}}
-        r = self.http.post("/v1/chat/completions", json=body)
+        with self.gate.slot(urgent):
+            r = self.http.post("/v1/chat/completions", json=body)
         r.raise_for_status()
         return r.json()["choices"][0]["message"]
+
+
+class PriorityGate:
+    """The device scheduler's first rule (interface.py: chat > captions > summaries > backfill), in-process.
+
+    llama-server answers one request at a time, and the perception service captions keyframes with the same
+    model every few seconds; on the Jetson a question waited behind a queue of captions (7-11 s for a
+    12-word answer). Here a request holds the one slot, and background work (captions, object lists,
+    summaries) never takes it while a question is waiting, so a question waits for at most the one
+    background request already running."""
+
+    def __init__(self) -> None:
+        self._cv = threading.Condition()
+        self._busy = False
+        self._urgent_waiting = 0
+
+    @contextlib.contextmanager
+    def slot(self, urgent: bool = False):
+        with self._cv:
+            if urgent:
+                self._urgent_waiting += 1
+            try:
+                while self._busy or (not urgent and self._urgent_waiting):
+                    self._cv.wait()
+            finally:
+                if urgent:
+                    self._urgent_waiting -= 1
+            self._busy = True
+        try:
+            yield
+        finally:
+            with self._cv:
+                self._busy = False
+                self._cv.notify_all()

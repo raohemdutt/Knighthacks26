@@ -50,7 +50,7 @@
     - "Did any package show up?"
     - "What happened to my package?"
   cite: [e08]
-  keywords: [door, courier, box]
+  keywords: [door, courier, box, "9:05"]  # "a package arrived at 9:05 AM" is right too
 - q: "Where is my wallet?"
   also:
     - "Have you seen my wallet?"
