@@ -67,7 +67,7 @@ def test_writes_only_run_after_approval():
 def test_config_loads():
     specs = {s.name: s for s in load_specs("config/connectors.yaml")}
     assert specs["site"].reads == {"check_pages": "page_change"}
-    assert not specs["calendar"].enabled  # stays off until the feed URLs are in .env
+    assert specs["calendar"].enabled and specs["calendar"].options["feeds"][0]["name"] == "campus"  # public feed on by default
     assert specs["groupme"].writes == ["post"]  # posting is an outside effect: approval first
 
 

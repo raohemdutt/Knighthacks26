@@ -13,6 +13,7 @@ fallback). Adapted from the home Atlas runner's IcsCalendarClient:
 
 options:
   feeds:
+    - {name: campus, url: "https://events.ucf.edu/upcoming/feed.ics", kind: calendar_event}  # public (K3)
     - {name: outlook, url_env: OUTLOOK_ICS_URL, kind: calendar_event}
     - {name: canvas, url_env: CANVAS_ICS_URL, kind: assignment}
   days_back: 1
@@ -80,11 +81,15 @@ def read_feeds(options: dict, now: dt.datetime, fetch) -> list[dict]:
     start = now - dt.timedelta(days=options.get("days_back", 1))
     end = now + dt.timedelta(days=options.get("days_ahead", 14))
     items: list[dict] = []
+    missing = []
     for feed in options.get("feeds", []):
         url = feed.get("url") or os.environ.get(feed.get("url_env", ""), "")
-        if not url:
-            raise RuntimeError(f"feed {feed['name']}: set {feed.get('url_env')} in .env")
+        if not url:  # a private feed whose URL isn't in .env yet: skip it, keep the others
+            missing.append(f"{feed['name']} (set {feed.get('url_env')} in .env)")
+            continue
         items += expand(fetch(url), start, end, feed["name"], feed.get("kind", "calendar_event"))
+    if missing and not items and len(missing) == len(options.get("feeds", [])):
+        raise RuntimeError("no feed configured: " + ", ".join(missing))
     return items
 
 

@@ -69,7 +69,9 @@ def test_feed_url_comes_from_env(monkeypatch):
     now = dt.datetime(2026, 10, 10, 12, tzinfo=NY)
     options = {"feeds": [{"name": "outlook", "url_env": "TEST_ICS_URL"}]}
     with pytest.raises(RuntimeError, match="TEST_ICS_URL"):
-        read_feeds(options, now, lambda url: FEED)
+        read_feeds(options, now, lambda url: FEED)  # the only feed is missing: say so
+    both = {"feeds": [{"name": "campus", "url": "https://public.test/feed.ics"}, {"name": "outlook", "url_env": "TEST_ICS_URL"}]}
+    assert len(read_feeds(both, now, lambda url: FEED)) == 3  # the missing private feed is skipped, campus still reads
     monkeypatch.setenv("TEST_ICS_URL", "https://secret.example/feed.ics")
     fetched = []
     items = read_feeds(options, now, lambda url: fetched.append(url) or FEED)
