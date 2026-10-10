@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 from lab import __main__ as lab_cli
-from lab.machine import allowed, ledger, slots, slots_fake, slots_notion, stop
+from lab.machine import alerts, allowed, ledger, referee, review, slots, slots_fake, slots_notion, stop
 from lab.machine.slots_fake import FakeNotion
 from lab.machine.slots_notion import NotionClient, NotionError
 
@@ -986,9 +986,12 @@ def test_every_call_writes_one_ledger_row_with_the_verb_the_outcome_the_task_and
         ("slot done", "cancelled", "O4")]
     assert [r["seq"] for r in rows] == list(range(1, 8))
     for r in rows:
-        assert (r["actor"], r["tier"], r["node"], r["metrics"]) == ("sitting-7", "sonnet", "pod-b", {})
+        assert (r["actor"], r["tier"], r["node"]) == ("sitting-7", "sonnet", "pod-b")
+    assert [r["metrics"] for r in rows] == [
+        {"slot.minutes": 15}, {}, {"slot.minutes": 15}, {"slot.extend_minutes": 15}, {}, {"slot.minutes": 15}, {}]
     assert [r["refs"]["slot"] for r in rows] == [row] * 5 + [other["row"]] * 2
     assert (rows[0]["minutes"], rows[0]["position"], rows[0]["gpu"]) == (15, 1, B)
+    assert rows[2]["minutes"] == 15
     assert rows[4]["ran_min"] == 25 and rows[4]["overrun_min"] == 0
 
 
@@ -1027,6 +1030,112 @@ def test_a_ledger_that_cannot_be_written_never_undoes_what_notion_holds(world, t
 def test_the_ledger_row_of_the_answer_is_reported_in_it(world):
     answer, _ = world.call("request", "--task", "L3", "--what", "smoke")
     assert answer["ledger_seq"] == 1 == ledger_rows()[0]["seq"]
+
+
+# --- what the alerts and the review read from those rows ---------------------------------
+
+@pytest.fixture
+def clocked(world, monkeypatch):
+    """The world whose clock also stamps the ledger, so a row is written with the moment the test says it is (a
+    real call is stamped by the wall clock, which is the clock the verbs use as well)."""
+    monkeypatch.setattr(ledger, "_now_text", lambda: world.now.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"))
+    return world
+
+
+LONG_SLOT = ("--minutes", "60", "--why", "training run")
+
+
+def open_slot(world, *request_args: str) -> str:
+    """Request a slot for L3, start it two minutes later, both through the verbs; the row's id."""
+    request, _ = world.call("request", "--task", "L3", "--what", "smoke LoRA", *request_args)
+    world.advance(minutes=2)
+    world.call("start", "--row", request["row"])
+    return request["row"]
+
+
+def end_slot(world, row: str, how: str) -> None:
+    """End the slot the way a sitting would (done), the way the referee would, or not at all."""
+    if how == "done":
+        world.call("done", "--row", row, "--result", "7.7 tok/s")
+    elif how == "referee":
+        referee.run([], client=world.client, now=lambda: world.now)
+    else:
+        assert how == "nothing"
+
+
+def alerts_found(world) -> list[alerts.Alert]:
+    """Every alert the rules find in the ledger as of the world's clock."""
+    return alerts.scan(ledger_rows(), now=world.now, since=T0 - dt.timedelta(hours=1))
+
+
+def test_a_slot_requested_and_started_through_the_verbs_is_a_run_the_alerts_judge(clocked):
+    row = open_slot(clocked)
+    clocked.advance(minutes=10)
+    runs = alerts.slot_runs(alerts.timeline(ledger_rows(), clocked.now), clocked.now)
+    assert [(run.slot, run.node, run.task, run.minutes, run.cap, run.extended, run.start, run.end, run.elapsed)
+            for run in runs] == [(row, "pod-b", "L3", 15.0, 15.0, False, T0 + dt.timedelta(minutes=2), None, 10.0)]
+
+
+@pytest.mark.parametrize(("request_args", "asked", "ran", "ended_by"), [
+    ((), 15, 41, "done"), ((), 15, 41, "referee"), ((), 15, 41, "nothing"), (LONG_SLOT, 60, 75, "done")])
+def test_a_slot_that_ran_past_its_cap_is_one_over_cap_alert_whoever_ended_it(clocked, request_args, asked, ran,
+                                                                            ended_by):
+    row = open_slot(clocked, *request_args)
+    clocked.advance(minutes=ran)
+    end_slot(clocked, row, ended_by)
+    state = "is past" if ended_by == "nothing" else "ran past"
+    assert [(a.rule, a.key, a.title) for a in alerts_found(clocked)] == [
+        (alerts.SLOT_OVER_CAP, f"slot_over_cap:{row}", f"Slot {row} {state} its cap")]
+    assert f"{ran} of {asked} min" in alerts_found(clocked)[0].body
+
+
+@pytest.mark.parametrize(("request_args", "ran", "ended_by"), [
+    ((), 10, "done"), ((), 10, "nothing"), (LONG_SLOT, 41, "done"), (LONG_SLOT, 41, "nothing")])
+def test_a_slot_that_stayed_inside_the_minutes_it_asked_for_raises_nothing(clocked, request_args, ran, ended_by):
+    row = open_slot(clocked, *request_args)
+    clocked.advance(minutes=ran)
+    end_slot(clocked, row, ended_by)
+    assert alerts_found(clocked) == []
+    runs = alerts.slot_runs(alerts.timeline(ledger_rows(), clocked.now), clocked.now)
+    assert [(run.slot, run.elapsed) for run in runs] == [(row, float(ran))]
+
+
+@pytest.mark.parametrize(("ran", "over"), [(25, False), (41, True)])
+def test_an_extension_through_the_verbs_moves_the_cap_the_alerts_judge_by(clocked, ran, over):
+    row = open_slot(clocked)
+    clocked.advance(minutes=10)
+    clocked.call("extend", "--row", row, "--note", "half done")
+    clocked.advance(minutes=ran - 10)
+    clocked.call("done", "--row", row, "--result", "7.7 tok/s")
+    runs = alerts.slot_runs(alerts.timeline(ledger_rows(), clocked.now), clocked.now)
+    assert [(run.extended, run.cap, run.elapsed) for run in runs] == [(True, 30.0, float(ran))]
+    assert [a.key for a in alerts_found(clocked)] == ([f"slot_over_cap:{row}"] if over else [])
+
+
+def test_a_call_the_queue_refused_or_that_sent_nothing_carries_no_number_for_the_alerts(clocked):
+    clocked.running("L4: eval")
+    row = clocked.seed("L3: smoke")
+    clocked.call("start", "--row", row)
+    run_offline("request", "--task", "L3", "--what", "smoke")
+    assert [(r["verb"], r["outcome"], r["metrics"]) for r in ledger_rows()] == [
+        ("slot start", "busy", {}), ("slot request", "no_token", {})]
+    assert alerts.slot_runs(alerts.timeline(ledger_rows(), clocked.now), clocked.now) == []
+
+
+def test_asking_again_for_a_row_already_queued_still_names_its_minutes(clocked):
+    first, _ = clocked.call("request", "--task", "L3", "--what", "smoke", *LONG_SLOT)
+    again, _ = clocked.call("request", "--task", "L3", "--what", "smoke", *LONG_SLOT)
+    assert (first["outcome"], again["outcome"], again["row"]) == ("queued", "already_queued", first["row"])
+    assert [r["metrics"] for r in ledger_rows()] == [{"slot.minutes": 60}, {"slot.minutes": 60}]
+
+
+def test_the_morning_review_lists_a_slot_opened_through_the_verbs(clocked):
+    row = open_slot(clocked)
+    clocked.advance(minutes=10)
+    day = dt.datetime(2026, 10, 10, tzinfo=UTC)
+    lines = review.slot_lines(alerts.timeline(ledger_rows(), clocked.now), clocked.now, day,
+                              day + dt.timedelta(days=1))
+    assert lines == [f"- slot {row} on pod-b, task L3: 10 of 15 min, still running (ledger:2)"]
 
 
 # --- no token ----------------------------------------------------------------------------
