@@ -48,3 +48,22 @@ def test_a_damaged_package_is_refused_before_anything_is_touched(store, tmp_path
     with pytest.raises(ModelStoreError, match="not safe"):
         atlas_swap.swap(store, "v2", restart=lambda: restarts.append(1), check=lambda: None, log=lambda m: None)
     assert store.current() == "v1" and restarts == []
+
+
+def test_a_good_swap_tells_the_app_which_model_replaced_which(store):
+    told = []
+    atlas_swap.swap(store, "v2", restart=lambda: None, check=lambda: None, log=lambda m: None,
+                    announce=lambda version, previous: told.append((version, previous)))
+    assert told == [("v2", "v1")]
+
+
+def test_a_swap_that_fails_announces_nothing_and_an_unreachable_app_does_not_undo_a_swap(store):
+    told = []
+    with pytest.raises(ModelStoreError):
+        atlas_swap.swap(store, "v2", restart=lambda: None, check=lambda: "did not load", log=lambda m: None,
+                        announce=lambda *a: told.append(a))
+    assert told == []
+    logged = []
+    atlas_swap.swap(store, "v2", restart=lambda: None, check=lambda: None, log=logged.append,
+                    announce=lambda *a: "the app could not be reached")
+    assert store.current() == "v2" and any("could not tell the app" in m for m in logged)

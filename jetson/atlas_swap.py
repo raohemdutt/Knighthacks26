@@ -8,7 +8,8 @@ Run from the repo root so `runtime` imports (PYTHONPATH=.). A swap:
   1. checks every file of the new version against the sha256s in its manifest (the old model keeps serving meanwhile);
   2. points `data/models/current` at it and restarts the `atlas-llm` service;
   3. waits for llama-server to load it and answer a test question;
-  4. if that fails, puts the old version back and restarts again, and exits with an error.
+  4. if that fails, puts the old version back and restarts again, and exits with an error;
+     if it works, tells the app (POST /api/learning/deployed) so the phone's Teach screen shows the new version.
 The model is about 3.6 GB and the box has 8 GB shared with the OS and the detector, so the new model cannot be
 loaded beside the old one: the phone gets no answers from the model for the ~40 s the reload takes.
 """
@@ -46,8 +47,23 @@ def wait_until_serving(url: str, timeout_s: float = 240, sleep: Callable[[float]
     return None if text.strip() else "the model answered with nothing"
 
 
+def announce_to_app(base_url: str, token: str | None = None) -> Callable[[str, str | None], str | None]:
+    """Tell the running app which model is now serving (it publishes learning.model.deployed for the Teach screen).
+    Returns None on success or a sentence; never raises: the swap itself already worked."""
+
+    def announce(version: str, previous: str | None) -> str | None:
+        try:
+            r = httpx.post(base_url + "/api/learning/deployed", json={"model_version": version, "previous_version": previous},
+                           headers={"Authorization": f"Bearer {token}"} if token else {}, timeout=10)
+            return None if r.status_code == 200 else f"the app answered HTTP {r.status_code}"
+        except httpx.HTTPError as e:
+            return f"the app could not be reached: {e}"
+
+    return announce
+
+
 def swap(store: ModelStore, version: str, *, restart: Callable[[], None], check: Callable[[], str | None],
-         log: Callable[[str], None] = print) -> None:
+         log: Callable[[str], None] = print, announce: Callable[[str, str | None], str | None] | None = None) -> None:
     log(f"checking {version} ...")
     problems = store.verify(version)
     if problems:
@@ -59,6 +75,9 @@ def swap(store: ModelStore, version: str, *, restart: Callable[[], None], check:
     failure = check()
     if failure is None:
         log(f"{version} is serving")
+        if announce:
+            problem = announce(version, old)
+            log("told the app" if problem is None else f"could not tell the app ({problem}); the model is serving anyway")
         return
     log(f"{version} failed: {failure}")
     if old:
@@ -77,6 +96,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--models-dir", default="data/models")
     p.add_argument("--service", default="atlas-llm")
     p.add_argument("--url", default=f"http://127.0.0.1:{os.environ.get('ATLAS_LLM_PORT', '8080')}")
+    p.add_argument("--app-url", default=os.environ.get("ATLAS_URL", "http://127.0.0.1:8000"), help="the app to tell about the new model")
     args = p.parse_args(argv)
     store = ModelStore(args.models_dir)
 
@@ -98,7 +118,8 @@ def main(argv: list[str] | None = None) -> int:
             if not args.version:
                 p.error("swap needs a version")
             target = args.version
-        swap(store, target, restart=restart, check=lambda: wait_until_serving(args.url))
+        swap(store, target, restart=restart, check=lambda: wait_until_serving(args.url),
+             announce=announce_to_app(args.app_url, os.environ.get("ATLAS_TOKEN")))
     except ModelStoreError as e:
         print(f"not switched: {e}", file=sys.stderr)
         return 1

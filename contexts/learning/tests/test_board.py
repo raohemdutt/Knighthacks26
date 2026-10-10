@@ -66,3 +66,17 @@ def test_the_endpoint_serves_the_snapshot():
     app.include_router(learning_router(board))
     body = TestClient(app).get("/api/learning").json()
     assert body["tasks"][0]["task"] == "desk-objects" and body["tasks"][0]["scores"]["candidate"] == 0.78
+
+
+def test_the_box_can_announce_a_deployed_model_through_the_api():
+    published = []
+
+    async def publish(event):
+        published.append(event)
+
+    board = LearningBoard()
+    app = FastAPI()
+    app.include_router(learning_router(board, publish=publish))
+    r = TestClient(app).post("/api/learning/deployed", json={"model_version": "atlas-v2", "previous_version": "atlas-base"})
+    assert r.status_code == 200 and (published[0].model_version, published[0].previous_version) == ("atlas-v2", "atlas-base")
+    assert published[0].type == "learning.model.deployed"

@@ -116,7 +116,7 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
     if atlas.capture:  # GET /capture/status (C6)
         app.include_router(capture_router(atlas.capture))
     if atlas.learning:  # GET /api/learning (X10)
-        app.include_router(learning_router(atlas.learning))
+        app.include_router(learning_router(atlas.learning, publish=atlas.bus.publish, guard=authorized))
     # GET /api/circle/events, /api/circle/sharing: read-only, and they answer in every state (no Circle, no Neon)
     app.include_router(circle_router(atlas.bus, circle=atlas.circle, sharing=atlas.sharing, presence=atlas.presence,
                                      board=atlas.board, config_dir=atlas.settings.config_dir))
