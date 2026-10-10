@@ -16,7 +16,8 @@ Advisory (every other check): still run and reported under "checks", but a failu
 under "warnings" and never changes ready or the exit code. A hub outage must not halt GPU-free
 work; a sitting that needs a pod reads checks.hub and the warnings for itself.
 
-    hub        GET <hub>/hub/api/users/<account> answers 200 with a JSON object, per pod account
+    hub        GET <hub>/hub/api/users/<account> answers 200 with a JSON object, per pod account,
+               asked once through lab.hub.Hub, the one hub client (token, agent, no redirects, scrubbing)
 
 Keys come from the process environment first, then from .env files: the clone's, then the one
 in each of the two folders above it (the Atlas workspace keeps its .env one level above atlas/
@@ -28,15 +29,13 @@ hub address.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import tempfile
-import urllib.error
-import urllib.parse
-import urllib.request
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
+
+import httpx
 
 from lab.machine import stop
 
@@ -47,14 +46,15 @@ ENV_FILES_ENV = "LAB_ENV_FILES"
 HUB_URL_ENV = "LAB_HUB_URL"
 HUB_URL = "https://dub.aupcloud.io"
 HUB_TIMEOUT_S = 8.0
-MAX_BODY_BYTES = 1_000_000
-# The hub's front end answers 403 to python-urllib's default agent, so ask like a browser would.
-USER_AGENT = "Mozilla/5.0 (compatible; atlas-lab-ready)"
+# ready reports what the hub answers right now; it never waits out the hub client's gateway backoff.
+HUB_PROBE_RETRIES = 0
+HTTP_OK = 200
 # Values shorter than this are not worth hiding in an error message; they would mangle it.
 MIN_HIDDEN_CHARS = 6
 # The checks that decide ready and the exit code; every other check (the hub) only warns.
 GATE_CHECKS = ("stop", "state_dir", "env")
 
+# A test's stand-in for the network under lab.hub.Hub: (url, headers, timeout) -> (status, parsed JSON or None).
 Fetch = Callable[[str, Mapping[str, str], float], tuple[int, Any]]
 
 
@@ -157,51 +157,71 @@ def check_env(values: Mapping[str, str], files: Sequence[Path]) -> dict[str, Any
     }
 
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    """Never follow a redirect: the token must only go to the address it was meant for."""
+def fetch_transport(fetch: Fetch, timeout: float) -> httpx.BaseTransport:
+    """An httpx transport for lab.hub.Hub that hands each request to fetch(url, headers, timeout).
 
-    def redirect_request(self, *args: Any, **kwargs: Any) -> None:
-        return None
+    fetch answers (status, parsed JSON or None); whatever it raises reaches the probe unchanged.
+    It is the seam tests use in place of a network.
+    """
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        status, body = fetch(str(request.url), dict(request.headers), timeout)
+        if body is None:
+            return httpx.Response(status, request=request)
+        return httpx.Response(status, json=body, request=request)
+
+    return httpx.MockTransport(handle)
 
 
-def fetch_json(url: str, headers: Mapping[str, str], timeout: float) -> tuple[int, Any]:
-    """GET url and return (status, parsed JSON or None). Transport failures raise OSError."""
-    request = urllib.request.Request(url, headers=dict(headers), method="GET")
-    opener = urllib.request.build_opener(_NoRedirect)
+def probe_account(
+    letter: str,
+    user: str,
+    token: str,
+    *,
+    base_url: str,
+    transport: httpx.BaseTransport | None,
+    environ: Mapping[str, str],
+    hide: Sequence[str],
+) -> dict[str, Any]:
+    """One read-only GET of the account's hub user endpoint. Any failure is a verdict, never a crash."""
+    # Imported here, not at the top: lab.hub reads this module's constants when it loads.
+    from lab import hub as lab_hub
+
+    account = lab_hub.Account(letter, user, token)
     try:
-        with opener.open(request, timeout=timeout) as response:
-            status, body = response.status, response.read(MAX_BODY_BYTES)
-    except urllib.error.HTTPError as exc:
-        with exc:
-            status, body = exc.code, exc.read(MAX_BODY_BYTES)
-    try:
-        return status, json.loads(body)
-    except ValueError:
-        return status, None
-
-
-def probe_account(base_url: str, user: str, token: str, fetch: Fetch, hide: Sequence[str]) -> dict[str, Any]:
-    """One read-only GET of the hub's user endpoint. Any failure is a verdict, never a crash."""
-    url = f"{base_url.rstrip('/')}/hub/api/users/{urllib.parse.quote(user, safe='')}"
-    headers = {"Authorization": f"token {token}", "Accept": "application/json", "User-Agent": USER_AGENT}
-    try:
-        status, body = fetch(url, headers, HUB_TIMEOUT_S)
+        with lab_hub.Hub(
+            account,
+            base_url=base_url,
+            transport=transport,
+            retries=HUB_PROBE_RETRIES,
+            timeout_s=HUB_TIMEOUT_S,
+            environ=environ,
+        ) as client:
+            reply = client.get(client.user_url())
     except Exception as exc:
-        return {"ok": False, "error": scrub(f"{type(exc).__name__}: {getattr(exc, 'reason', None) or exc}", hide)}
-    if status != 200:
-        return {"ok": False, "status": status}
-    if not isinstance(body, dict):
-        return {"ok": False, "status": status, "error": "response is not a JSON object"}
-    return {"ok": True, "status": status}
+        # HubUnreachable for no answer at all; anything else a stand-in transport raised. Both are reported.
+        return {"ok": False, "error": scrub(f"{type(exc).__name__}: {exc}", hide)}
+    if reply.status != HTTP_OK:
+        return {"ok": False, "status": reply.status}
+    if not isinstance(reply.body, dict):
+        return {"ok": False, "status": reply.status, "error": "response is not a JSON object"}
+    return {"ok": True, "status": reply.status}
 
 
-def check_hub(values: Mapping[str, str], base_url: str, fetch: Fetch) -> dict[str, Any]:
+def check_hub(
+    values: Mapping[str, str],
+    base_url: str,
+    transport: httpx.BaseTransport | None,
+    environ: Mapping[str, str],
+) -> dict[str, Any]:
     hide = sorted((value for value in values.values() if len(value) >= MIN_HIDDEN_CHARS), key=len, reverse=True)
     accounts: dict[str, dict[str, Any]] = {}
     for letter in ACCOUNTS:
         user, token = values.get(f"AUP_HUB_USER_{letter}"), values.get(f"AUP_HUB_TOKEN_{letter}")
         if user and token:
-            accounts[letter] = probe_account(base_url, user, token, fetch, hide)
+            accounts[letter] = probe_account(
+                letter, user, token, base_url=base_url, transport=transport, environ=environ, hide=hide
+            )
         else:
             accounts[letter] = {"ok": False, "skipped": "credentials missing"}
     return {"ok": all(probe["ok"] for probe in accounts.values()), "url": base_url, "accounts": accounts}
@@ -244,7 +264,10 @@ def check(
     fetch: Fetch | None = None,
     base_url: str | None = None,
 ) -> dict[str, Any]:
-    """Run every check and return the verdict; only GATE_CHECKS decide ready. The arguments exist for tests."""
+    """Run every check and return the verdict; only GATE_CHECKS decide ready. The arguments exist for tests.
+
+    fetch, when given, stands in for the network under lab.hub.Hub (see fetch_transport).
+    """
     environ = os.environ if environ is None else environ
     files = default_env_files(environ) if env_files is None else list(env_files)
     base_url = base_url or environ.get(HUB_URL_ENV) or HUB_URL
@@ -253,7 +276,7 @@ def check(
         "stop": check_stop(),
         "state_dir": check_state_dir(),
         "env": check_env(values, used),
-        "hub": check_hub(values, base_url, fetch or fetch_json),
+        "hub": check_hub(values, base_url, None if fetch is None else fetch_transport(fetch, HUB_TIMEOUT_S), environ),
     }
     ready = all(checks[name]["ok"] for name in GATE_CHECKS)
     return {
