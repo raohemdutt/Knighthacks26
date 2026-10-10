@@ -178,6 +178,35 @@ def test_retries_stop_after_max_retries_and_the_error_says_what_happened(world):
     assert len(world.sleeps) == slots_notion.MAX_RETRIES
 
 
+@pytest.mark.parametrize("status", [503, 529])
+def test_a_create_answered_503_or_529_after_it_was_made_is_not_sent_again(status):
+    # A proxy that forwarded the create and then answered 503 or 529: sending it again would add a second row.
+    fake = FakeNotion(clock=lambda: T0)
+    answered: list[int] = []
+
+    def proxy(method, url, headers, body, timeout):
+        reply = fake.transport(method, url, headers, body, timeout)
+        if method == "POST" and url.endswith("/v1/pages") and not answered:
+            answered.append(status)
+            return status, json.dumps({"object": "error", "code": "service_unavailable"}).encode(), {}
+        return reply
+
+    sleeps: list[float] = []
+    client = NotionClient(TOKEN, transport=proxy, sleep=sleeps.append)
+    queue = slots.SlotQueue(client, now=lambda: T0)
+    with pytest.raises(NotionError) as caught:
+        queue.request(task="L3", what="smoke")
+    assert caught.value.status == status and sleeps == []
+    assert len(fake.row_ids()) == 1
+
+
+def test_a_create_refused_with_429_is_still_retried(world):
+    world.fake.fail_next(1, status=429, code="rate_limited", retry_after="1")
+    created = world.client.create_page(slots_fake.DATA_SOURCE_ID, slots.rest_properties({"Request": "L3: x"}))
+    assert slots_notion.page_id_of(created["id"]) in world.fake.row_ids() and world.sleeps == [1.0]
+    assert len(world.fake.row_ids()) == 1
+
+
 def test_a_wait_longer_than_the_cap_is_not_waited_out(world):
     row = world.seed("L3: job")
     world.fake.fail_next(1, status=429, code="rate_limited", retry_after="60")
