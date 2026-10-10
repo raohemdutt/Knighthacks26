@@ -46,10 +46,14 @@ from contexts.memory.fixture import load as load_memory_fixture
 from contexts.memory.infrastructure.store import MemoryStore
 from contexts.habits.application.nudges import Nudger
 from contexts.habits.domain.config import load_config as load_habits
+from contexts.habits.domain.members import MemberHabits
 from contexts.habits.domain.tracker import HabitTracker
 from contexts.impact.domain.waste_watch import WasteWatch
 from contexts.play.domain.game import SortIt
+from contexts.perception.application.identity import IdentityService
 from contexts.perception.application.service import PerceptionService
+from contexts.perception.infrastructure.identity_store import IdentityStore
+from contexts.perception.infrastructure.recognizer import build_recognizer
 from contexts.perception.domain.zones import ZoneEngine
 from contexts.play.dayrun.service import DayRun
 from contexts.play.domain.pathfinding import SortingRules, ZoneMap
@@ -112,6 +116,7 @@ class Atlas:
     policy: Policy | None = None
     wiper: Wiper | None = None
     capture: CaptureService | None = None  # cameras -> detector -> observations, only where there is a detector (C6)
+    identity: IdentityService | None = None  # opt-in owner recognition (P9); off by default
     tasks: list[asyncio.Task] = field(default_factory=list)
     _last_retention: datetime | None = None
 
@@ -120,8 +125,12 @@ class Atlas:
             n = await self.bus.replay_into()
             log.info("replayed %d events", n)
         self.tasks.append(asyncio.create_task(self._ticks()))
+        if self.identity:  # after replay: say the switch and who is enrolled if the log does not have it
+            await self.bus.publish_all(self.identity.announce())
         if self.capture:
             self.capture.start(asyncio.get_running_loop())
+            if self.identity:  # one recognition hook per camera pipeline; does nothing while switched off
+                self.identity.attach(self.capture.pipelines, asyncio.get_running_loop(), self.bus)
 
     async def _ticks(self) -> None:
         while True:
@@ -238,6 +247,9 @@ def build(settings: Settings | None = None) -> Atlas:
     policy = Policy(s.data_dir)
     hub.offline = lambda: policy.offline  # offline pauses every connector read and write (V5, H4)
     policy.subscribe(bus)
+    # Owner recognition (P9): opt-in, templates encrypted under data/vault/identity/. Unavailable without the SFace model.
+    identity = IdentityService(IdentityStore(s.data_dir, vault), build_recognizer())
+    bus.subscribe("perception.identity", identity.on_changed, replay=True)
     wiper = Wiper(s.data_dir, memory_db=s.data_dir / "memory.sqlite")
     bus.subscribe("vault.wipe.requested", wiper.on_wipe_requested)
     EpisodeSummarizer(store, runtime).subscribe(bus)  # live only, in the background: one model call per closed episode (M3)
@@ -299,8 +311,10 @@ def build(settings: Settings | None = None) -> Atlas:
     habits_file = s.config_dir / "habits.yaml"
     if habits_file.exists():
         habits_cfg = load_habits(habits_file, s.config_dir / "agent.yaml")
-        habits = HabitTracker(habits_cfg)
-        nudger = Nudger(habits_cfg, habits)
+        habits = MemberHabits(HabitTracker(habits_cfg), nudger_for=lambda t: Nudger(habits_cfg, t))  # P9: per enrolled person
+        nudger = Nudger(habits_cfg, habits.base)
+        bus.subscribe("perception.identity", habits.on_identity, replay=True)  # recognition on/off, who is enrolled
+        bus.subscribe("perception.person", habits.on_person, replay=True)  # track N on camera C is member M
         bus.subscribe("perception.zone", habits.on_zone_event, replay=True)
         bus.subscribe("perception.scene", habits.on_scene, replay=True)
         bus.subscribe("connector.item.synced", habits.on_item, replay=True)
@@ -372,4 +386,4 @@ def build(settings: Settings | None = None) -> Atlas:
                  waste=waste, circle=circle, presence=presence, zone_engine=zone_engine, sharing=sharing,
                  memory=memory, projection=projection, habits=habits, nudger=nudger,
                  presence_sync=presence_sync, board=board, vault=vault, policy=policy, wiper=wiper,
-                 places=places, dayrun=dayrun, capture=capture)
+                 places=places, dayrun=dayrun, capture=capture, identity=identity)

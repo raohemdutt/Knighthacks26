@@ -96,6 +96,10 @@ class HabitTracker:
         self._words = {h.id: h.pattern() for h in cfg.habits if h.keywords}
         forgot = cfg.by_signal("forgot")
         self._watch = {w: word_pattern([w]) for w in (forgot.watch_items if forgot else [])}
+        # Owner recognition (P9): while this set of habits is not the one being told about people (`pause`),
+        # its camera habits are not judged. Never set unless contexts.habits.domain.members sets it.
+        self.unjudged_since: datetime | None = None
+        self.unjudged: set[date] = set()  # open days that were paused for some part
 
     # --- handlers (replay=True) ---
 
@@ -175,6 +179,53 @@ class HabitTracker:
         self.now = max(self.now or now, now)
         return self._roll(self.sched.local_day(now - timedelta(minutes=self.cfg.close_grace_minutes)), now)
 
+    # --- owner recognition (P9): used by MemberHabits only ---
+
+    def clock(self, e: Event) -> list[DayClosed]:
+        """A camera event that is not counted here: the room was watched, and the day moves on."""
+        self._watching(e)
+        return self._roll(self.sched.local_day(e.ts), e.ts) if self._admit(e) else []
+
+    def keep_up(self, today: date | None, now: datetime | None, ts: datetime) -> list[DayClosed]:
+        """Close the same days as the tracker the bus feeds, at the same moment."""
+        if now is not None:
+            self.now = max(self.now or now, now)
+        if today is None:
+            return []
+        if self.today is None:
+            self.today = today
+        return self._roll(today, ts)
+
+    def pause(self, ts: datetime) -> None:
+        """From `ts` on, people are counted somewhere else: whoever was at the desk is no longer followed here."""
+        if self.unjudged_since is None:
+            self.unjudged_since = ts
+            self._since.clear()
+            self._session_min = 0.0
+
+    def resume(self, ts: datetime) -> None:
+        if self.unjudged_since is None:
+            return
+        day = self.sched.local_day(self.unjudged_since)
+        while day <= self.sched.local_day(ts):
+            self.unjudged.add(day)
+            day += ONE_DAY
+        self.unjudged_since = None
+        self.active_until = max(self.active_until or ts, ts)  # the pause is not an empty desk
+
+    def left(self, camera_id: str, track_id: int | None = None) -> None:
+        """A track stopped being this person's (its tag ended) before it left the desk: stop the clock on it."""
+        gone = [k for k in self._since if k == f"{camera_id}:{track_id}" or (track_id is None and k.startswith(f"{camera_id}:"))]
+        for key in gone:
+            del self._since[key]
+
+    @property
+    def at_desk(self) -> bool:
+        return bool(self._since)
+
+    def _judged(self, day: date, end: datetime) -> bool:
+        return day not in self.unjudged and (self.unjudged_since is None or self.unjudged_since >= end)
+
     # --- days ---
 
     def _admit(self, e: Event) -> bool:
@@ -216,6 +267,7 @@ class HabitTracker:
         self.assignments = {k: a for k, a in self.assignments.items() if a.when >= end}
         self.calendar = {k: c for k, c in self.calendar.items() if c.when >= end}
         self._since = {k: t for k, t in self._since.items() if end - t < ONE_DAY}  # tracks that never exited
+        self.unjudged = {d for d in self.unjudged if d > day}
         return out
 
     def streak(self, habit_id: str) -> int:
@@ -227,11 +279,12 @@ class HabitTracker:
         d = self.days.get(day) or Day()
         start, end = self.sched.day_start(day), self.sched.day_start(day + ONE_DAY)
         since = self.watching_since
-        watched = since is not None and since < end  # a camera had reported by the end of this day
+        judged = self._judged(day, end)  # False only for a set of habits paused by owner recognition (P9)
+        watched = judged and since is not None and since < end  # a camera had reported by the end of this day
         match h.signal:
             case "away_window":  # a night that ended before any camera, or has not begun by `now`, is not judged
                 night_start, night_end = self.sched.sleep_window(day)
-                observed = since is not None and since < night_end and night_start < now
+                observed = judged and since is not None and since < night_end and night_start < now
                 return round(max(d.away_h, self._open_gap_h(day, now)), 2), observed
             case "meal":
                 return d.meals, watched
@@ -339,7 +392,8 @@ class HabitTracker:
     def unstarted(self, now: datetime, h: Habit) -> Item | None:
         """An assignment that can still be started early (target hours ahead) and has not been, as far as a camera can tell."""
         late = [a for a in self.assignments.values()
-                if self.watching_since is not None and not a.started_at and _hours(a.when - a.known_at) >= h.target
+                if self.watching_since is not None and self.unjudged_since is None and not a.started_at
+                and _hours(a.when - a.known_at) >= h.target
                 and h.target < _hours(a.when - now) <= h.deadline_hours]
         return min(late, key=lambda a: a.when, default=None)
 
