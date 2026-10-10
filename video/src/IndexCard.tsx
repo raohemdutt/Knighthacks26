@@ -1,24 +1,33 @@
-import { AbsoluteFill } from "remotion";
-import { theme } from "./theme";
+import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion";
+import { Key, Muted } from "./Soft";
+import { page, type } from "./theme";
 import timeline from "./timeline.json";
 
-/** The 5 s index: watch one minute, press your key, watch two. Built from the same track list as the chapters. */
-export function IndexCard({ text }: { text: string }) {
-  const [headline] = text.split("\n");
+/**
+ * The 5 s index: one sentence, then a row of keys. Each key carries its track underneath, so the judge reads one
+ * number and nothing else. The general judges get one quiet line: they press nothing.
+ */
+export function IndexCard() {
+  const frame = useCurrentFrame();
+  const keyed = timeline.tracks.filter((t) => t.key !== null);
+  const general = timeline.tracks.find((t) => t.key === null);
   return (
-    <AbsoluteFill style={{ backgroundColor: theme.bg, color: theme.text, justifyContent: "center", padding: "0 160px" }}>
-      <div style={{ fontSize: 64, fontWeight: 700, marginBottom: 48 }}>{headline}</div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px 80px", fontSize: 44 }}>
-        {timeline.tracks.map((t) => (
-          <div
-            key={t.name}
-            style={{ display: "flex", justifyContent: "space-between", borderBottom: `2px solid ${theme.panel}`, gridColumn: t.key === null ? "1 / -1" : undefined }}
-          >
-            <span>{t.name}</span>
-            <b style={{ color: theme.warm }}>{t.key === null ? "keep watching" : `press ${t.key}`}</b>
-          </div>
-        ))}
+    <AbsoluteFill style={page}>
+      <div style={{ fontSize: type.title, fontWeight: 600, lineHeight: 1.15, maxWidth: 1400 }}>
+        Watch one minute. Press your key. Watch two.
       </div>
+      <div style={{ display: "flex", gap: 44, marginTop: 96 }}>
+        {keyed.map((t, i) => {
+          const rise = interpolate(frame - i * 4, [0, 14], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+          return (
+            <div key={t.name} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 28, width: 190 }}>
+              <Key label={String(t.key)} size={160} down={rise} />
+              <div style={{ fontSize: type.small, fontWeight: 600, textAlign: "center", lineHeight: 1.2 }}>{t.name}</div>
+            </div>
+          );
+        })}
+      </div>
+      {general ? <Muted style={{ marginTop: 80 }}>{general.name}: press nothing, keep watching.</Muted> : null}
     </AbsoluteFill>
   );
 }
