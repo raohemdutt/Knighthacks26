@@ -73,6 +73,21 @@ checked-in `config/models.yaml` stays on `fake` so laptops and CI keep working.
 Thinking mode is off (`--reasoning-budget 0`): the runtime's small token limits
 would otherwise be spent before the answer starts.
 
+### Switching models (R7)
+
+```bash
+PYTHONPATH=. python jetson/atlas_swap.py status                 # installed versions, current, previous
+PYTHONPATH=. python jetson/atlas_swap.py swap atlas-v2-desk     # verify sha256s, switch, restart, test, roll back on failure
+PYTHONPATH=. python jetson/atlas_swap.py rollback               # back to the version before the last switch
+```
+
+A new version is a folder `data/models/<version>/` with its `manifest.json` (`ModelManifest`: the `.gguf`, the
+mmproj, and a sha256 for each). Nothing is switched to until every checksum matches. The 4B model does not fit
+twice in 8 GB, so there is a ~40 s gap while the new one loads (a full swap took ~2 min including the checksums,
+which are read before the old model is stopped). If the new model does not load and answer a test question, the old
+one is put back automatically. `GET /runtime/models` on the gateway shows the current version and what llama-server
+really serves (`in_sync`).
+
 ## 6. Detector (P1)
 
 yolo11n as a TensorRT FP16 engine, called as `fn(frame) -> list[Track]` (normalized 0-1 boxes, top-left origin).

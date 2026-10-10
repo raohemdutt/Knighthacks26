@@ -4,7 +4,7 @@
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-pkg="${ATLAS_MODEL_DIR:-$repo/data/models/current}"
+pkg="$(readlink -f "${ATLAS_MODEL_DIR:-$repo/data/models/current}")"  # the real folder, so /props names the version
 llama_server="${LLAMA_SERVER:-$HOME/atlas/llama.cpp/build/bin/llama-server}"
 
 read -r gguf mmproj < <(python3 -c '

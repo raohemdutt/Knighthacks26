@@ -18,6 +18,7 @@
 - GET  /api/places             place packs; POST one as YAML/JSON (validated) (S5)
 - GET  /api/play/campus-route  ?from=ucf.union&to=ucf.hec[&depart=&due=] or to=friend:<member> (S5)
 - GET  /health
+- GET  /runtime/models      installed model versions, the current one and what llama-server really serves (R7)
 
 Writes need `Authorization: Bearer $ATLAS_TOKEN` when ATLAS_TOKEN is set; the
 tailnet keeps strangers out, the token keeps a guest on the Wi-Fi from
@@ -49,6 +50,8 @@ from contracts import Event
 from contracts.agent import AnswerGenerated, RuleAdded
 from contracts.experience import ApprovalDecided, QuestionAsked
 from contracts.learning import TaskSpec
+from runtime.api import runtime_router
+from runtime.modelstore import ModelStore
 
 ASK_TIMEOUT_S = 90
 
@@ -100,6 +103,7 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         app.include_router(dayrun_router(atlas.dayrun, publish=atlas.bus.publish, guard=authorized))
     if atlas.policy:  # GET/PUT /vault/policy, POST /vault/wipe/request, POST /vault/wipe, GET /vault/egress
         app.include_router(vault_router(atlas.policy, atlas.bus, wiper=atlas.wiper, guard=authorized))
+    app.include_router(runtime_router(ModelStore(atlas.settings.data_dir / "models"), llm_url=atlas.settings.llm_url))  # GET /runtime/models (R7)
 
     @app.get("/health")
     async def health():
