@@ -47,4 +47,20 @@ browser:
     allowed_hosts: ["*"]
     max_chars: 6000
 
-# canvas (Hemdutt: K6), groupme (Hemdutt: K4) go here.
+groupme:
+  # K4. One bot per group. Reads the live groups when GROUPME_ACCESS_TOKEN is set;
+  # otherwise reads back what our own bots posted (bots cannot read).
+  module: contexts.connectors.servers.groupme
+  every_s: 120
+  hosts: [api.groupme.com]
+  reads: {list_messages: message}
+  writes: [post]
+  env: [GROUPME_BOT_CLASS, GROUPME_BOT_FRIENDS, GROUPME_ACCESS_TOKEN]
+  options:
+    state_dir: data/connectors/groupme
+    limit: 50
+    groups:
+      - {key: class, name: "COP4533 group chat", bot_env: GROUPME_BOT_CLASS, group_id: "118084819"}
+      - {key: friends, name: "Friends group chat", bot_env: GROUPME_BOT_FRIENDS, group_id: "118084823"}
+
+# canvas (Hemdutt: K6) goes here.

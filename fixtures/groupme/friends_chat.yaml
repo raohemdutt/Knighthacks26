@@ -1,0 +1,14 @@
+# Demo chatter for the friends group (K4). Posted for real by:
+#   python -m contexts.connectors.servers.groupme seed fixtures/groupme/friends_chat.yaml
+# Feeds the "what should I eat?" and "where should I go?" beats.
+group: friends
+gap_s: 1.5
+messages:
+  - {speaker: Sam, text: "who's still at the hackathon? i'm at the student union"}
+  - {speaker: Alex, text: "library 3rd floor with Riley until 6"}
+  - {speaker: Riley, text: "has anyone eaten actual food today or just energy drinks"}
+  - {speaker: Sam, text: "just energy drinks lol. thinking the bowl place by the union, it's open till 9"}
+  - {speaker: Alex, text: "that place is good, get the chicken bowl. way better than more pizza"}
+  - {speaker: Riley, text: "there's a free concert on the lawn at 8 tonight if people want a break"}
+  - {speaker: Sam, text: "i'm down if we finish the demo by then"}
+  - {speaker: Alex, text: "food at 6:30 then concert? someone make a calendar invite"}

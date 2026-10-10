@@ -1,0 +1,15 @@
+# Demo chatter for the class group (K4). Posted for real by:
+#   python -m contexts.connectors.servers.groupme seed fixtures/groupme/class_chat.yaml
+# Matches COP4533 Milestone 1 on the Canvas feed.
+group: class
+gap_s: 1.5
+messages:
+  - {speaker: Maya, text: "anyone started the COP4533 milestone 1? due tuesday"}
+  - {speaker: Jordan, text: "started last night. the dynamic programming part is way harder than it looks, don't leave it for monday"}
+  - {speaker: Priya, text: "the TA said half the points are the runtime analysis writeup, not the code"}
+  - {speaker: Maya, text: "which lectures do we actually need?"}
+  - {speaker: Jordan, text: "weeks 5 and 6. the knapsack and interval scheduling slides basically walk through it"}
+  - {speaker: Priya, text: "also the practice problems on canvas under module 6, problem 3 is almost the same as part b"}
+  - {speaker: Maya, text: "ok. study session sunday afternoon at the library? 2pm?"}
+  - {speaker: Jordan, text: "i'm in. eat before you come, last time we were there 5 hours and the cafe closed at 4"}
+  - {speaker: Priya, text: "and sleep tonight please, nobody debugs recurrences on 4 hours"}
