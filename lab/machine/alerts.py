@@ -25,12 +25,16 @@ writers of the slot and pod rows (the queue verbs, the pod controller) have one 
                     review counts those.
   slot_over_cap     a GPU slot that ran longer than its cap, or is running past it now. Rows with the verbs
                     slot request, slot start, slot extend and slot done (or a referee row) are matched by
-                    refs.slot; a row whose outcome says it failed or was refused is ignored. The cap is metrics
-                    slot.minutes on the start (else the request) row, plus 15 minutes once a slot extend row
-                    exists (metrics slot.extend_minutes overrides the 15); a slot whose rows carry no
-                    slot.minutes cannot be judged and raises nothing. The slot ends at its first slot done row;
-                    until then it runs until now. A minute of grace is allowed. One alert per slot, key
-                    slot_over_cap:<slot>, whether it was first seen running or already done.
+                    refs.slot, and a row counts only when its outcome says the call did what its verb names, in
+                    the words lab/machine/slots.py and lab/machine/referee.py write (SLOT_HAPPENED: queued,
+                    started, extended, done, ended). Any other outcome did not happen: a call the queue refused
+                    (busy, not_next, past_cap, already_extended, not_your_row, ...), an error, or a call that
+                    reached no Notion (no_token). The cap is metrics slot.minutes on the start (else the
+                    request) row, plus 15 minutes once a slot extend row exists (metrics slot.extend_minutes
+                    overrides the 15); a slot whose rows carry no slot.minutes cannot be judged and raises
+                    nothing. The slot ends at its first slot done (or referee) row; until then it runs until
+                    now. A minute of grace is allowed. One alert per slot, key slot_over_cap:<slot>, whether it
+                    was first seen running or already done.
   metric_regressed  a reading of a metric that is worse than the previous reading of the same series by at
                     least REGRESSION_FRACTION. A series is the metrics report's (lab/machine/metrics_report.py):
                     metric, node, unit and setup, the setup being the row's conditions less the keys that
@@ -80,12 +84,12 @@ __all__ = [
     "VERB", "ALERTS_DIR", "ALERTS_LOCK", "DEFAULT_HOURS", "RULES", "SITTING_ERROR", "SLOT_OVER_CAP",
     "METRIC_REGRESSED", "POD_STOPPED", "CREDITS_LOW",
     "REGRESSION_FRACTION", "CREDIT_HORIZON_HOURS", "CREDIT_WINDOW_HOURS", "CREDIT_MIN_SPAN_MINUTES",
-    "SLOT_COMPLAIN", "BALANCE_METRIC", "EVENT_METRIC_PREFIXES", "SIT_VERB",
+    "SLOT_COMPLAIN", "SLOT_HAPPENED", "BALANCE_METRIC", "EVENT_METRIC_PREFIXES", "SIT_VERB",
     "Alert", "ParsedLine", "Report", "SlotRun", "alerts_dir", "alerts_path", "parse_ts", "number", "metric_value",
     "ident", "label", "one_line", "cite", "timeline", "series_key", "reading_unit", "setup_of",
     "compact_conditions",
-    "is_failure", "slot_runs", "replay_pods", "credit_runways", "scan", "format_line", "parse_line", "day_lines",
-    "announced_keys", "raise_alerts", "aware_time", "main",
+    "is_failure", "slot_happened", "slot_runs", "replay_pods", "credit_runways", "scan", "format_line", "parse_line",
+    "day_lines", "announced_keys", "raise_alerts", "aware_time", "main",
 ]
 
 UTC = dt.timezone.utc
@@ -115,8 +119,21 @@ SLOT_START = "slot start"
 SLOT_EXTEND = "slot extend"
 SLOT_DONE = "slot done"
 SLOT_COMPLAIN = "slot complain"
-SLOT_END_VERBS = (SLOT_DONE, "referee")
+SLOT_REFEREE = "referee"         # the row lab/machine/referee.py writes for a slot it ended
+SLOT_END_VERBS = (SLOT_DONE, SLOT_REFEREE)
 SLOT_VERBS = (SLOT_REQUEST, SLOT_START, SLOT_EXTEND, *SLOT_END_VERBS)
+#: The outcomes of a slot row whose call did what its verb names, as lab/machine/slots.py and lab/machine/referee.py
+#: write them. Every other outcome of these verbs is a call that did not happen: a refusal (busy, not_next,
+#: not_queued, past_cap, already_extended, not_running, result_required, not_your_row, too_early, not_waiting, ...),
+#: an error, or no_token (no NOTION_TOKEN, so nothing reached Notion).
+SLOT_HAPPENED: dict[str, tuple[str, ...]] = {
+    SLOT_REQUEST: ("queued", "already_queued"),
+    SLOT_START: ("started",),
+    SLOT_EXTEND: ("extended",),
+    SLOT_DONE: ("done",),
+    SLOT_REFEREE: ("ended",),
+    SLOT_COMPLAIN: ("complaint_recorded",),
+}
 SLOT_MINUTES = "slot.minutes"
 SLOT_EXTEND_MINUTES = "slot.extend_minutes"
 EXTENSION_MINUTES = 15.0         # the one extension a slot may take (open-ticket skill, section 4b)
@@ -134,7 +151,9 @@ CREDIT_HORIZON_HOURS = 24.0      # a runway shorter than this raises credits_low
 CREDIT_WINDOW_HOURS = 6.0        # balance readings older than this are not used
 CREDIT_MIN_SPAN_MINUTES = 30.0   # readings closer together than this say nothing about the burn
 
-#: An outcome that starts with one of these did not happen (a refused slot start is not a start).
+#: An outcome that starts with one of these did not happen or did not finish well. The pod rules read it; a slot
+#: row is judged by SLOT_HAPPENED instead, because the queue's refusals (busy, not_next, past_cap, ...) start with
+#: none of these words.
 FAILURE_WORDS = ("fail", "error", "crash", "refus", "denied", "skipped", "invalid", "abort", "timeout",
                  "timed_out", "lock_timeout")
 
@@ -201,6 +220,13 @@ def is_failure(outcome: Any) -> bool:
     """Whether an outcome says the call did not happen or did not finish well (it starts with one of
     FAILURE_WORDS)."""
     return isinstance(outcome, str) and outcome.lower().startswith(FAILURE_WORDS)
+
+
+def slot_happened(row: Mapping[str, Any]) -> bool:
+    """Whether a slot row records a call that did what its verb names (SLOT_HAPPENED): False for a refusal, an
+    error, a call that reached no Notion, and a row of any other verb."""
+    verb = row.get("verb")
+    return isinstance(verb, str) and row.get("outcome") in SLOT_HAPPENED.get(verb, ())
 
 
 def timeline(rows: Iterable[Row], now: dt.datetime) -> list[tuple[dt.datetime, Row]]:
@@ -320,14 +346,15 @@ class SlotRun:
 
 
 def slot_runs(events: Sequence[tuple[dt.datetime, Row]], now: dt.datetime) -> list[SlotRun]:
-    """Every slot with a successful start row and a known number of minutes, in order of start. A slot
-    whose rows name no slot.minutes cannot be judged and is left out."""
+    """Every slot with a start row that started it and a known number of minutes, in order of start. Only rows
+    whose call happened count (slot_happened): a refused start is not the start, a refused extend adds no minutes
+    and a refused done ends nothing. A slot whose rows name no slot.minutes cannot be judged and is left out."""
     by_slot: dict[str, list[tuple[dt.datetime, Row]]] = {}
     for when, row in events:
         refs = row.get("refs")
         slot = refs.get("slot") if isinstance(refs, Mapping) else None
         if (slot is None or isinstance(slot, bool) or row.get("verb") not in SLOT_VERBS
-                or is_failure(row.get("outcome"))):
+                or not slot_happened(row)):
             continue
         by_slot.setdefault(str(slot), []).append((when, row))
     runs = []

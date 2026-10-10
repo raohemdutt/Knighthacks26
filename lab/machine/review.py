@@ -21,7 +21,8 @@ What goes in, in this order, all of the day asked for (the UTC day of the rows' 
   same way) the newest reading of the day against the newest before it, or against the day's first reading
   when nothing came before; readings first seen that day; how many series did not move. Event numbers
   (sitting.*, slot.*) are not series. Seqs are cited as ledger:<seq>.
-- GPU slots and complaints: the slots that ran that day against their caps, and every slot complain row.
+- GPU slots and complaints: the slots that ran that day against their caps, and every complaint the queue
+  recorded (a slot complain row with the outcome complaint_recorded; one the queue refused is not a complaint).
 - Rulings waiting: every ruling without an answer in lab/refine/<track>/OWNER_RULINGS.md, read with
   refine_formats.parse_rulings, with the default the passes apply meanwhile.
 - PRs open: the open pull requests of the team repository, oldest first, from `gh pr list` (a failure is
@@ -325,10 +326,11 @@ def slot_lines(all_events: Sequence[Event], now: dt.datetime, start: dt.datetime
 
 
 def complaint_lines(day_events: Sequence[Event]) -> tuple[list[str], int]:
-    """Every slot complain row of the day, with the complaint's first line."""
+    """Every complaint the queue recorded that day (alerts.slot_happened: a refused slot complain, such as one
+    answered too_early or not_waiting, filed nothing), with the complaint's first line."""
     lines = []
     for when, row in day_events:
-        if row.get("verb") != alerts.SLOT_COMPLAIN or alerts.is_failure(row.get("outcome")):
+        if row.get("verb") != alerts.SLOT_COMPLAIN or not alerts.slot_happened(row):
             continue
         slot = _refs(row).get("slot")
         what = _clip(_text(row.get("note")) or _text(row.get("complaint")) or "(no text)")

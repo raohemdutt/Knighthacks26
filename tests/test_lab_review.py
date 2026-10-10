@@ -158,13 +158,13 @@ def test_the_recorded_day_reviews_as_these_sections_exactly(isolated_state, refi
     assert found["### Other activity"] == [
         "- pod status: 8 (running 6, stopped 2)",
         "- bench run: 6 (ok 6)",
-        "- slot start: 5 (running 4, refused 1)",
+        "- slot start: 5 (started 4, busy 1)",
         "- pod launch: 2 (ok 2)",
-        "- slot done: 2 (ok 2)",
+        "- slot done: 2 (done 2)",
         "- handoff: 1 (handoff 1)",
         "- pod stop: 1 (ok 1)",
-        "- slot complain: 1 (ok 1)",
-        "- slot extend: 1 (ok 1)",
+        "- slot complain: 1 (complaint_recorded 1)",
+        "- slot extend: 1 (extended 1)",
         "- slot request: 1 (queued 1)",
     ]
     assert found["### Tasks touched"] == [
@@ -448,7 +448,7 @@ def test_a_baseline_of_zero_has_no_percent(isolated_state, refine_root):
 def test_the_numbers_of_a_sitting_or_a_slot_are_events_and_never_series(isolated_state, refine_root):
     put(isolated_state, at(20, day=9), "sit", "ok", metrics={"sitting.duration_s": 100})
     put(isolated_state, at(8), "sit", "ok", metrics={"sitting.duration_s": 900})
-    put(isolated_state, at(9), "slot done", "ok", metrics={"slot.minutes": 15}, refs={"slot": "x"})
+    put(isolated_state, at(9), "slot done", "done", metrics={"slot.minutes": 15}, refs={"slot": "x"})
     assert moved(isolated_state, refine_root) == ["- none"]
 
 
@@ -484,26 +484,37 @@ def test_the_moved_list_has_a_cap_and_says_how_many_it_left_out(isolated_state, 
 # --- GPU slots and complaints --------------------------------------------------------------------------
 
 def test_a_slot_that_began_the_day_before_and_ended_today_is_listed_today(isolated_state, refine_root):
-    put(isolated_state, at(23, 50, 9), "slot start", "running", node="pod-b", task="R20",
+    put(isolated_state, at(23, 50, 9), "slot start", "started", node="pod-b", task="R20",
         metrics={"slot.minutes": 15}, refs={"slot": "q-night"})
-    put(isolated_state, at(0, 3, 10), "slot done", "ok", refs={"slot": "q-night"})
+    put(isolated_state, at(0, 3, 10), "slot done", "done", refs={"slot": "q-night"})
     assert sections(build(isolated_state, refine_root).text)["### Slots"] == [
         "- slot q-night on pod-b, task R20: 13 of 15 min, done (ledger:1)"]
 
 
 def test_a_slot_still_running_when_a_past_day_ended_is_measured_to_the_end_of_that_day(isolated_state, refine_root):
-    put(isolated_state, at(23, 0, 9), "slot start", "running", node="pod-b", task="R20",
+    put(isolated_state, at(23, 0, 9), "slot start", "started", node="pod-b", task="R20",
         metrics={"slot.minutes": 15}, refs={"slot": "q-open"})
     built = build(isolated_state, refine_root, day="2026-10-09", now=moment(6, day=10))
     assert sections(built.text)["### Slots"] == [
         "- slot q-open on pod-b, task R20: 60 of 15 min, still running, past its cap (ledger:1)"]
 
 
+def test_a_slot_start_the_queue_refused_does_not_move_the_start_of_the_slot(isolated_state, refine_root):
+    put(isolated_state, at(14), "slot request", "queued", node="pod-b", task="L3", metrics={"slot.minutes": 15},
+        refs={"slot": "q-1"})
+    put(isolated_state, at(14, 1), "slot start", "busy", node="pod-b", task="L3", refs={"slot": "q-1"})
+    put(isolated_state, at(14, 21), "slot start", "started", node="pod-b", task="L3", metrics={"slot.minutes": 15},
+        refs={"slot": "q-1"})
+    put(isolated_state, at(14, 31), "slot done", "done", node="pod-b", task="L3", refs={"slot": "q-1"})
+    assert sections(build(isolated_state, refine_root).text)["### Slots"] == [
+        "- slot q-1 on pod-b, task L3: 10 of 15 min, done (ledger:3)"]
+
+
 def test_a_complaint_is_clipped_to_one_line_and_a_missing_text_is_said(isolated_state, refine_root):
-    put(isolated_state, at(9), "slot complain", "ok", actor="sonnet-1", refs={"slot": "q-1"},
+    put(isolated_state, at(9), "slot complain", "complaint_recorded", actor="sonnet-1", refs={"slot": "q-1"},
         note="waiting\nfor the card " + "x" * 300)
-    put(isolated_state, at(10), "slot complain", "ok", actor="sonnet-2", refs={"slot": "q-2"})
-    put(isolated_state, at(11), "slot complain", "ok", actor="sonnet-3", refs={"slot": "q-3"},
+    put(isolated_state, at(10), "slot complain", "complaint_recorded", actor="sonnet-2", refs={"slot": "q-2"})
+    put(isolated_state, at(11), "slot complain", "complaint_recorded", actor="sonnet-3", refs={"slot": "q-3"},
         complaint="named in the complaint field")
     lines = sections(build(isolated_state, refine_root).text)["### Complaints"]
     assert lines[0] == "- 09:00:00Z slot q-1 (sonnet-1): waiting for the card " + "x" * 176 + "... (ledger:1)"
@@ -512,8 +523,14 @@ def test_a_complaint_is_clipped_to_one_line_and_a_missing_text_is_said(isolated_
                          "- 11:00:00Z slot q-3 (sonnet-3): named in the complaint field (ledger:3)"]
 
 
-def test_a_complaint_that_the_queue_refused_is_not_a_complaint(isolated_state, refine_root):
-    put(isolated_state, at(9), "slot complain", "refused", refs={"slot": "q-1"}, note="never filed")
+# What lab/machine/slots.py writes as the outcome of a slot complain that recorded no complaint.
+REFUSED_COMPLAINTS = ["too_early", "not_waiting", "no_gpu", "not_your_row", "row_not_found", "not_a_queue_row",
+                      "no_token", "error"]
+
+
+@pytest.mark.parametrize("outcome", REFUSED_COMPLAINTS)
+def test_a_complaint_that_the_queue_refused_is_not_a_complaint(isolated_state, refine_root, outcome):
+    put(isolated_state, at(9), "slot complain", outcome, refs={"slot": "q-1"}, note="never filed")
     built = build(isolated_state, refine_root)
     assert sections(built.text)["### Complaints"] == ["- none"]
     assert built.counts["complaints"] == 0
@@ -521,7 +538,8 @@ def test_a_complaint_that_the_queue_refused_is_not_a_complaint(isolated_state, r
 
 def test_complaints_have_a_cap_and_the_count_still_counts_all(isolated_state, refine_root):
     for index in range(review.MAX_COMPLAINTS + 2):
-        put(isolated_state, at(1, index), "slot complain", "ok", refs={"slot": f"q-{index}"}, note="slow")
+        put(isolated_state, at(1, index), "slot complain", "complaint_recorded", refs={"slot": f"q-{index}"},
+            note="slow")
     built = build(isolated_state, refine_root)
     lines = sections(built.text)["### Complaints"]
     assert len(lines) == review.MAX_COMPLAINTS + 1 and lines[-1] == "- +2 more"
