@@ -118,6 +118,51 @@ def test_replaying_the_same_log_gives_identical_tables(tmp_path):
         rebuilt.close()
 
 
+def zone(s: float, kind: str, label: str, track: int, zone_id: str = "desk", camera: str = "cam-desk") -> ZoneEvent:
+    return ZoneEvent(ts=at(s), camera_id=camera, track_id=track, label=label, zone_id=zone_id, kind=kind, frame_ref=ref(camera, s))
+
+
+def test_last_seen_falls_back_to_the_latest_detector_track(tmp_path):
+    """O3: a laptop the detector tracked all night, but no object list ever named, was "never seen"."""
+    store, _, _ = run(tmp_path, script())
+    memory = SqliteMemory(store)
+    laptop = memory.last_seen("laptop")  # tracked at 0 s and 1 s, in no zone and in no object list
+    assert (laptop.camera_id, laptop.zone_id, laptop.ts, laptop.frame_ref, laptop.position) == ("cam-desk", None, at(1), ref("cam-desk", 1), None)
+    assert memory.last_seen("umbrella") is None
+    assert memory.last_seen("person") is None  # people are not objects to look for
+
+
+def test_a_track_sighting_carries_the_zone_its_zone_events_put_it_in(tmp_path):
+    events = [
+        seen(0, "person", "laptop"), zone(0, "enter", "laptop", track=1),  # the zone event follows its frame, as on the bus
+        seen(2, "person", "laptop"), zone(2, "dwell", "laptop", track=1),
+        seen(10, "person", "phone"),  # track 1 again, now a phone that is in no zone ...
+        zone(10, "exit", "laptop", track=1),
+        seen(12, "person", "phone"),
+        ObservationRecorded(ts=at(14), camera_id="cam-door", tracks=[Track(label="phone", confidence=0.9, box=BOX, track_id=4)]),  # no frame kept
+    ]
+    memory = SqliteMemory(run(tmp_path, events)[0])
+    laptop, phone = memory.last_seen("laptop"), memory.last_seen("phone")
+    assert (laptop.zone_id, laptop.ts, laptop.frame_ref, laptop.position) == ("desk", at(2), ref("cam-desk", 2), None)
+    assert (phone.camera_id, phone.zone_id, phone.ts, phone.frame_ref, phone.position) == ("cam-door", None, at(14), "", None)
+
+
+def test_an_object_list_sighting_wins_unless_a_track_is_more_recent(tmp_path):
+    events = [
+        seen(0, "keys"),
+        scene(0, "Keys on the desk.", ("keys", "next to the mug")),  # as recent as the track: the text position wins
+        seen(4, "laptop"),
+        scene(6, "A laptop.", ("laptop", "in the middle of the desk")),  # later than the track
+        scene(8, "A phone.", ("phone", "face down by the lamp")),
+        seen(9, "phone", camera="cam-door"),  # the detector saw it somewhere else afterwards
+    ]
+    memory = SqliteMemory(run(tmp_path, events)[0])
+    assert memory.last_seen("keys").position == "next to the mug"
+    assert (memory.last_seen("laptop").position, memory.last_seen("laptop").ts) == ("in the middle of the desk", at(6))
+    phone = memory.last_seen("phone")
+    assert (phone.camera_id, phone.ts, phone.position) == ("cam-door", at(9), None)
+
+
 def test_last_seen_keys_gives_the_latest_frame_and_zone(tmp_path):
     store, _, _ = run(tmp_path, script())
     memory = SqliteMemory(store)

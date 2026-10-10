@@ -212,4 +212,7 @@ beats:
      captions: ["A person steps out through the door with a phone to their ear."]}
   - {at: "2026-10-11T09:12:00-04:00", camera: cam-desk, move: sit, people: 2, seconds: 120, things: [laptop, keys],
      captions: ["Two people rehearse a presentation; one points at the monitor."],
-     objects: [{label: keys, position: "left of the laptop, behind the coffee mug"}]}
+     # laptop and phone are named here so "where is my laptop" has a text position, not only a detector track
+     objects: [{label: keys, position: "left of the laptop, behind the coffee mug"},
+               {label: laptop, position: "open in the middle of the desk"},
+               {label: phone, position: "face down, right of the laptop"}]}

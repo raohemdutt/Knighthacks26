@@ -76,6 +76,11 @@ def test_seed_fills_every_projection_of_a_fresh_app_replaying_the_log(seeded_dir
         assert any(e.camera_id == canned.camera_id and abs(e.start - canned.start) < timedelta(minutes=1) for e in episodes), canned.id
     keys = app.memory.last_seen("keys")
     assert keys.zone_id == "desk" and keys.camera_id == "cam-desk"
+    for label in ("laptop", "phone"):  # the detector tracked them all night; the last desk crop says where they are
+        seen = app.memory.last_seen(label)
+        assert seen and seen.zone_id == "desk" and seen.position, label
+    can = app.memory.last_seen("can")  # the detector saw the last can go in after the caption: a zone, no text position
+    assert (can.camera_id, can.zone_id, can.position) == ("cam-door", "trash", None)
     assert {i.connector for i in app.memory.items(NOW - timedelta(days=3), NOW + timedelta(days=7))} == {"canvas", "calendar", "groupme"}
 
     # Habits: Friday had a connector sync and no camera, so nothing a camera measures was judged that day.

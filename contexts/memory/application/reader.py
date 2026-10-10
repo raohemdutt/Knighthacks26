@@ -43,7 +43,14 @@ class SqliteMemory:
         return group_by_hour(start, end, self.episodes(start, end))
 
     def last_seen(self, label: str) -> Sighting | None:
+        """The latest object-list sighting (it has a text position), unless the detector tracked the label after it.
+
+        A track gives the camera, the zone its zone events put it in, the time and the frame, and no position."""
         row = self.db.execute("SELECT * FROM memory_sightings WHERE label = ? ORDER BY ts DESC, id LIMIT 1", (label,)).fetchone()
+        track = self.db.execute("SELECT * FROM memory_tracks WHERE label = ?", (label,)).fetchone()
+        if track and (row is None or track["ts"] > row["ts"]):
+            return Sighting(label=label, camera_id=track["camera_id"], zone_id=track["zone_id"], ts=parse(track["ts"]),
+                            frame_ref=track["frame_ref"] or "")
         if row is None:
             return None
         return Sighting(label=row["label"], camera_id=row["camera_id"], zone_id=row["zone_id"], ts=parse(row["ts"]),
