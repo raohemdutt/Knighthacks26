@@ -77,6 +77,10 @@ what its predecessor did (the "pool end" rows of the last LEDGER_LOOKBACK_HOURS)
 - stopped or interrupted: offered again like a failure, without counting one.
 - refused (python -m lab sit started nothing: no CLI, no workspace, no digest, a ledger that
   cannot be written): the pool pauses for PAUSE_MINUTES; the item counts no failure.
+  A child that answered no sitting (it died without its answer line, or sit raised and the
+  dispatcher answered error) is judged by the ledger instead: a sit start row of the seat's
+  sitting (seat_sitting) means it ran, so it failed, and its end row names that sitting; no
+  start row means nothing ran, so it was refused.
 
 STOP. While lab/state/STOP exists the pool starts nothing; the sittings that run hand off and
 end on their own (sit gives them a grace and then kills them), and the pool exits once the last
@@ -152,6 +156,7 @@ PROGRESS_WAIT_HOURS = 6.0      # an ok pass or merge whose pull request has not 
 REFEREE_EVERY_MINUTES = 120.0  # the longest the referee duty waits without queue trouble
 REFEREE_TROUBLE_MINUTES = 30.0 # the shortest gap between referee sittings called by queue trouble
 LIVE_GRACE_MINUTES = 10.0      # past its cap, a sitting with no end row counts as gone after this
+SEAT_MATCH_MINUTES = 1.0       # a seat owns sit rows of its tier and item started no earlier than this before it
 LEDGER_LOOKBACK_HOURS = 24.0   # how far back the ledger is read for sittings and the pool's history
 LOCK_WAIT_SECONDS = 2.0        # how long a starting pool waits for pool.lock
 FETCH_MINUTES = 5.0            # how often --refine-ref is fetched
@@ -586,17 +591,58 @@ class Seat:
                    str(data.get("source") or ""), str(data.get("why") or ""))
 
 
+def seat_owns(seat_tier: str, seat_label: str, seat_started: dt.datetime, tier: str, item: str,
+              started: dt.datetime) -> bool:
+    """Whether a sitting of tier and item that started at started can be a seat's own: the same
+    tier and item, started no earlier than SEAT_MATCH_MINUTES before the seat (sit stamps its
+    start row in its own process, after the pool stamped the seat)."""
+    return (tier == seat_tier and item == seat_label
+            and started >= seat_started - dt.timedelta(minutes=SEAT_MATCH_MINUTES))
+
+
 def foreign_sittings(live: Sequence[SittingInfo], seats: Iterable[Seat]) -> list[SittingInfo]:
     """The live sittings that are not the pool's own seats. A seat owns the earliest live
-    sitting of its tier and item that started no earlier than a minute before the seat."""
+    sitting that seat_owns."""
     left = list(live)
     for seat in sorted(seats, key=lambda s: s.started):
         for index, info in enumerate(left):
-            if (info.tier == seat.tier and info.item == seat.label
-                    and info.started >= seat.started - dt.timedelta(minutes=1)):
+            if seat_owns(seat.tier, seat.label, seat.started, info.tier, info.item, info.started):
                 del left[index]
                 break
     return left
+
+
+def _row_run_id(row: Mapping[str, Any]) -> str | None:
+    """A ledger row's refs.run_id, None when it has none."""
+    refs = row.get("refs")
+    run_id = refs.get("run_id") if isinstance(refs, Mapping) else None
+    return run_id if isinstance(run_id, str) else None
+
+
+def seat_sitting(rows: Iterable[Mapping[str, Any]], tier: str, label: str,
+                 seat_started: dt.datetime) -> Mapping[str, Any] | None:
+    """The sit start row of the sitting a seat of tier and label, started at seat_started, ran:
+    the earliest start row that seat_owns and that no pool end row names in refs.run_id, so a
+    sitting an earlier seat of the same item already recorded is never taken for this one. rows
+    are the ledger's sit rows and the pool's end rows; None when the seat's sitting wrote no start
+    row (nothing ran)."""
+    rows = list(rows)
+    claimed = {run_id for row in rows if row.get("verb") == V_END and row.get("actor") == ACTOR
+               for run_id in [_row_run_id(row)] if run_id is not None}
+    found: Mapping[str, Any] | None = None
+    found_started: dt.datetime | None = None
+    for row in rows:
+        if row.get("verb") != sit.VERB or row.get("outcome") != sit.STARTED:
+            continue
+        run_id = _row_run_id(row)
+        started = parse_iso(row.get("ts"))
+        if run_id is None or run_id in claimed or started is None:
+            continue
+        if not seat_owns(tier, label, seat_started, str(row.get("tier") or ""), str(row.get("item") or ""), started):
+            continue
+        if found_started is None or started < found_started:
+            found, found_started = row, started
+    return found
 
 
 @dataclass
@@ -701,7 +747,9 @@ class History:
 
 def classify(answer: Mapping[str, Any]) -> str:
     """How the pool judges a sit answer: ok, failed, neutral (stopped or interrupted) or refused
-    (nothing ran: sit wrote no start row). A refused item itself (usage) counts as failed."""
+    (nothing ran: sit wrote no start row). A refused item itself (usage) counts as failed. The
+    answer alone decides; an answer that names no sitting (answers_no_sitting) is read as refused
+    here, and Pool.handle asks the ledger whether that sitting ran after all."""
     outcome = str(answer.get("outcome") or "")
     started = answer.get("ledger")
     ran = isinstance(started, Mapping) and started.get("start") is not None
@@ -714,6 +762,14 @@ def classify(answer: Mapping[str, Any]) -> str:
     if outcome in (sit.STOPPED, sit.INTERRUPTED):
         return RESULT_NEUTRAL
     return RESULT_FAILED
+
+
+def answers_no_sitting(answer: Mapping[str, Any]) -> bool:
+    """Whether an answer is an error that carries no ledger key: not sit's answer for a sitting it
+    ran (that carries the ledger key) nor one of its named refusals (each has its own outcome),
+    but the launcher's or the dispatcher's for a child that died without its answer line, raised,
+    or never ran. Only the ledger can tell whether its sitting started."""
+    return str(answer.get("outcome") or "") == sit.ERROR and "ledger" not in answer
 
 
 # --- candidates and the order ------------------------------------------------------------------
@@ -1389,12 +1445,11 @@ class Pool:
         seat = self.seats.pop(seat_id, None)
         if seat is None:
             return
-        result = classify(answer)
+        result, sitting_id = self._judge(seat, answer)
         ending = self.history.ended(seat.label, seat.tier, result, now, seat.progress, seat.started)
         record = ending.record
         self.counts["ended"] += 1
         outcome = str(answer.get("outcome") or "unknown")
-        sitting_id = answer.get("sitting") if isinstance(answer.get("sitting"), str) else None
         more: dict[str, Any] = {}
         if answer.get("error"):
             more["error"] = clip(answer["error"])
@@ -1418,6 +1473,28 @@ class Pool:
         elif result == RESULT_REFUSED:
             self._pause(now, f"python -m lab sit started nothing for {seat.label}: {outcome}"
                              + (f": {answer.get('error')}" if answer.get("error") else ""))
+
+    def _judge(self, seat: Seat, answer: Mapping[str, Any]) -> tuple[str, str | None]:
+        """(how the pool judges the seat's sitting, the sitting's id). classify judges the answer;
+        one that answers no sitting (answers_no_sitting) is judged by the ledger: a start row of
+        the seat's sitting (seat_sitting) means it ran and ended without its answer, so it failed,
+        and the end row names it; none means nothing ran, so it was refused. A ledger that cannot
+        be read leaves classify's refusal, which pauses the pool, and says so."""
+        result = classify(answer)
+        sitting_id = answer.get("sitting") if isinstance(answer.get("sitting"), str) else None
+        if result != RESULT_REFUSED or not answers_no_sitting(answer):
+            return result, sitting_id
+        try:
+            rows = ledger.read(state_dir=self.state_dir, verb=lambda verb: verb in (sit.VERB, V_END),
+                               since=seat.started - dt.timedelta(minutes=SEAT_MATCH_MINUTES))
+        except OSError as exc:
+            log.error("lab pool: %s answered no sitting and the ledger cannot be read to tell whether its sitting "
+                      "started (%s: %s); judged refused", seat.seat, type(exc).__name__, exc)
+            return result, sitting_id
+        start = seat_sitting(rows, seat.tier, seat.label, seat.started)
+        if start is None:
+            return RESULT_REFUSED, sitting_id
+        return RESULT_FAILED, _row_run_id(start)
 
     def tick(self, timeout: float) -> None:
         """One step: fill, wait up to timeout for a seat to end, record every seat that ended, and
