@@ -38,7 +38,7 @@ from contexts.learning.application.export import DatasetExporter
 from contexts.memory.application.projection import MemoryProjection
 from contexts.memory.application.reader import SqliteMemory
 from contexts.memory.application.summarizer import EpisodeSummarizer
-from contexts.memory.fixture import fill_store
+from contexts.memory.fixture import as_of, fill_store
 from contexts.memory.fixture import load as load_memory_fixture
 from contexts.memory.infrastructure.store import MemoryStore
 from contexts.habits.application.nudges import Nudger
@@ -76,6 +76,8 @@ class Settings:
     # Canned memory loaded into an empty store: the golden night by default, fixtures/memory/memory.yaml for
     # the full demo night, "" on a box that should only hold what its cameras saw.
     memory_fixture: str = os.environ.get("ATLAS_MEMORY_FIXTURE", "fixtures/golden/memory.yaml")
+    # Move the canned story so it ends now, for demos on the real clock ("what happened overnight?").
+    memory_fixture_now: bool = os.environ.get("ATLAS_MEMORY_FIXTURE_NOW", "0") == "1"
 
 
 @dataclass
@@ -166,7 +168,8 @@ def build(settings: Settings | None = None) -> Atlas:
     memory = SqliteMemory(store)
     projection = MemoryProjection(store)
     if s.memory_fixture and memory.stats().episodes == 0:
-        fill_store(store, load_memory_fixture(s.memory_fixture))
+        fixture = load_memory_fixture(s.memory_fixture)
+        fill_store(store, as_of(fixture, datetime.now(UTC)) if s.memory_fixture_now else fixture)
 
     def load_keyframe(ref: str) -> bytes:  # frames:<camera>:<ts_ms> -> data/frames/<camera>/<ts_ms>.jpg
         _, camera, ts_ms = ref.split(":", 2)

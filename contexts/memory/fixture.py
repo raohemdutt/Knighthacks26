@@ -30,6 +30,18 @@ def load(path: str | Path = FIXTURE) -> Fixture:
     return Fixture.model_validate(yaml.safe_load(Path(path).read_text()))
 
 
+def as_of(fx: Fixture, now: datetime) -> Fixture:
+    """The same story moved in time so the fixture's `now` is `now`: "overnight" and "the last hour"
+    then mean something when the app runs on a canned night with the real clock."""
+    by = now - fx.now
+    return Fixture(
+        now=now,
+        episodes=[e.model_copy(update={"start": e.start + by, "end": e.end + by if e.end else None}) for e in fx.episodes],
+        sightings=[s.model_copy(update={"ts": s.ts + by}) for s in fx.sightings],
+        items=[i.model_copy(update={"when": i.when + by if i.when else None}) for i in fx.items],
+    )
+
+
 def fake_memory(fx: Fixture):
     from contexts.agent.application.memory_port import FakeMemory  # the agent's test double, only needed here
 
