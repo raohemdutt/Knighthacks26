@@ -1,26 +1,56 @@
-# Place pack (S5): UCF main campus, the demo venue. Coordinates are approximate; edge
-# minutes are walking time (straight-line distance x 1.3 at 80 m/min, rounded).
+# Place pack (S5): UCF main campus, the demo venue.
+# Written by scripts/build_campus_pack.py: do not edit the coordinates or edges by hand, run the script.
+# Coordinates, names and walking times come from OpenStreetMap. Map data © OpenStreetMap contributors (ODbL),
+# https://www.openstreetmap.org/copyright.
+# `network` is the map file with the footpaths: routes follow it (door to door, at 1.35 m/s unless
+# `walk_speed_mps` says otherwise). `edges` are the same real walks in minutes, used when the map file is missing.
 name: ucf
 kind: campus
+network: ucf.map.json
 places:
-  union:       {name: Student Union, kind: dining, lat: 28.6016, lon: -81.2005, aliases: [SU]}
-  library:     {name: John C. Hitt Library, kind: library, lat: 28.6003, lon: -81.2016, aliases: [LIB, Library]}
-  hec:         {name: Harris Engineering Center, kind: class, lat: 28.6007, lon: -81.1981, aliases: [HEC]}
-  eng2:        {name: Engineering II (Knight Hacks), kind: class, lat: 28.6018, lon: -81.1983, aliases: [ENG2, ENGR2]}
-  cb1:         {name: Classroom Building I, kind: class, lat: 28.6037, lon: -81.2007, aliases: [CB1]}
-  memory_mall: {name: Memory Mall, kind: outdoors, lat: 28.6031, lon: -81.2003}
-  rwc:         {name: Recreation and Wellness Center, kind: gym, lat: 28.5958, lon: -81.1998, aliases: [RWC]}
-  dining_63:   {name: 63 South dining hall, kind: dining, lat: 28.6036, lon: -81.1966}
-  towers:      {name: Towers (dorm), kind: dorm, lat: 28.6080, lon: -81.1965, pack: apartment}
+  union:       {name: Student Union, kind: dining, lat: 28.602015, lon: -81.200609, aliases: [SU]}  # OSM way/154245264
+  library:     {name: John C. Hitt Library, kind: library, lat: 28.600573, lon: -81.201281, aliases: [LIB, Library]}  # OSM way/154245274
+  hec:         {name: L3Harris Engineering Center, kind: class, lat: 28.600538, lon: -81.19766, aliases: [HEC, Harris Engineering Center]}  # OSM way/154245241
+  eng2:        {name: Engineering II (Knight Hacks), kind: class, lat: 28.601909, lon: -81.198378, aliases: [ENG2, ENGR2]}  # OSM way/307646411
+  cb1:         {name: Classroom Building I, kind: class, lat: 28.603715, lon: -81.200493, aliases: [CB1]}  # OSM way/154245258
+  memory_mall: {name: Memory Mall, kind: outdoors, lat: 28.604786, lon: -81.198832}  # OSM relation/4118731
+  rwc:         {name: Recreation and Wellness Center, kind: gym, lat: 28.595589, lon: -81.199459, aliases: [RWC]}  # OSM way/154739908
+  dining_63:   {name: '''63 South', kind: dining, lat: 28.597907, lon: -81.199803, aliases: [63 South dining hall]}  # OSM node/3456763132, inside Ferrell Commons
+  towers:      {name: Tower III (dorm), kind: dorm, lat: 28.606609, lon: -81.196544, pack: apartment, aliases: [Towers]}  # OSM way/157935013
 edges:
-  - [union, library, 3]
-  - [union, memory_mall, 3]
-  - [union, hec, 4]
-  - [hec, eng2, 2]
-  - [eng2, memory_mall, 4]
-  - [memory_mall, cb1, 1]
-  - [cb1, library, 6]
-  - [union, rwc, 11]
-  - [eng2, dining_63, 4]
-  - [dining_63, towers, 8]
-  - [cb1, dining_63, 7]
+  - [union, library, 1.3]  # 106 m
+  - [union, hec, 5]  # 380 m
+  - [union, eng2, 2.6]  # 185 m
+  - [union, cb1, 2.1]  # 169 m
+  - [union, memory_mall, 4.8]  # 392 m
+  - [union, rwc, 9.3]  # 751 m
+  - [union, dining_63, 6.8]  # 548 m
+  - [union, towers, 8.8]  # 690 m
+  - [library, hec, 4.2]  # 344 m
+  - [library, eng2, 3.8]  # 292 m
+  - [library, cb1, 4.2]  # 336 m
+  - [library, memory_mall, 7.4]  # 590 m
+  - [library, rwc, 6.9]  # 556 m
+  - [library, dining_63, 4.4]  # 353 m
+  - [library, towers, 11.5]  # 912 m
+  - [hec, eng2, 3.8]  # 307 m
+  - [hec, cb1, 6.7]  # 544 m
+  - [hec, memory_mall, 7.3]  # 588 m
+  - [hec, rwc, 8]  # 644 m
+  - [hec, dining_63, 5.5]  # 441 m
+  - [hec, towers, 9.6]  # 747 m
+  - [eng2, cb1, 3.6]  # 267 m
+  - [eng2, memory_mall, 5.5]  # 421 m
+  - [eng2, rwc, 9.6]  # 769 m
+  - [eng2, dining_63, 7.1]  # 566 m
+  - [eng2, towers, 9]  # 679 m
+  - [cb1, memory_mall, 2.5]  # 206 m
+  - [cb1, rwc, 12.4]  # 1005 m
+  - [cb1, dining_63, 9.9]  # 802 m
+  - [cb1, towers, 7.1]  # 558 m
+  - [memory_mall, rwc, 14.8]  # 1198 m
+  - [memory_mall, dining_63, 12.3]  # 995 m
+  - [memory_mall, towers, 5.1]  # 391 m
+  - [rwc, dining_63, 2.7]  # 221 m
+  - [rwc, towers, 17]  # 1344 m
+  - [dining_63, towers, 14.5]  # 1141 m

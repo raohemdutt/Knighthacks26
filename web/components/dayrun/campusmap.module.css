@@ -1,0 +1,496 @@
+/* The drawn campus (components/dayrun/CampusLayers.tsx). A dark street-map palette that sits in the app's dark theme. */
+
+.frame {
+  position: relative;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: #161b21;
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  touch-action: none; /* one finger pans the map, two pinch it */
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grab;
+}
+
+.svg:active {
+  cursor: grabbing;
+}
+
+.land {
+  fill: #12161b; /* beyond the downloaded box */
+}
+
+.ground {
+  fill: #1b2128;
+}
+
+.wood {
+  fill: #1c3526;
+}
+
+.green {
+  fill: #213527;
+}
+
+.pitch {
+  fill: #2a4a31;
+  stroke: #3a6343;
+  stroke-width: 0.8px;
+  vector-effect: non-scaling-stroke;
+}
+
+.parking {
+  fill: #232a32;
+}
+
+.water {
+  fill: #1d3d5c;
+}
+
+.pool {
+  fill: #2a6a94;
+}
+
+.plaza {
+  fill: #2c333c;
+}
+
+.service,
+.minor,
+.major,
+.foot,
+.steps {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.major {
+  stroke: #586473;
+  stroke-width: var(--w-major, 3px);
+}
+
+.minor {
+  stroke: #46505d;
+  stroke-width: var(--w-minor, 2px);
+}
+
+.service {
+  stroke: #353e49;
+  stroke-width: var(--w-service, 1px);
+}
+
+.foot {
+  stroke: #a9b3bf;
+  stroke-width: var(--w-foot, 1px);
+  opacity: 0.5;
+}
+
+.steps {
+  stroke: #b9a26a;
+  stroke-width: var(--w-foot, 1px);
+  stroke-dasharray: 2 2;
+  stroke-linecap: butt;
+  opacity: 0.8;
+}
+
+.building {
+  fill: #3a4450;
+  stroke: #56626f;
+  stroke-width: 0.8px;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.buildingOn {
+  fill: #23564e;
+  stroke: var(--accent);
+  stroke-width: 1.6px;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.buildingClosed {
+  fill: #4a2b2a;
+  stroke: var(--danger);
+  stroke-width: 1.6px;
+  stroke-dasharray: 4 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.buildingName,
+.waterName {
+  font-size: 9.5px;
+  font-weight: 600;
+  fill: #c3cbd4;
+  paint-order: stroke;
+  stroke: rgba(22, 27, 33, 0.85);
+  stroke-width: 2.6px;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.waterName {
+  fill: #7fb2dd;
+  font-style: italic;
+  font-weight: 500;
+}
+
+/* ---------- north, scale, credit ---------- */
+
+.furniture {
+  pointer-events: none;
+}
+
+.furniture a {
+  pointer-events: auto;
+}
+
+.compass {
+  fill: rgba(19, 23, 28, 0.86);
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.compassN {
+  fill: var(--danger);
+}
+
+.compassText {
+  font-size: 6.5px;
+  font-weight: 800;
+  fill: var(--text);
+}
+
+.plate {
+  fill: rgba(19, 23, 28, 0.82);
+}
+
+.scale {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 1.4;
+}
+
+.scaleText {
+  font-size: 8.5px;
+  font-weight: 700;
+  fill: var(--text);
+}
+
+.credit {
+  font-size: 8.5px;
+  fill: var(--muted);
+}
+
+/* ---------- pins ---------- */
+
+.pin {
+  stroke: #0d1014;
+  stroke-width: 1.6;
+}
+
+.pinSmall {
+  stroke-width: 1.1;
+  opacity: 0.9;
+}
+
+.pinEat {
+  fill: #f2a65a;
+}
+
+.pinStudy {
+  fill: #7fb2ff;
+}
+
+.pinClass {
+  fill: #c9a5ff;
+}
+
+.pinHome {
+  fill: #5ce1c6;
+}
+
+.pinGym {
+  fill: #ff8fa3;
+}
+
+.pinPark {
+  fill: #8fd68a;
+}
+
+.pinPlace {
+  fill: #c3cbd4;
+}
+
+.pinClosed {
+  fill: #5b3a39;
+  stroke: var(--danger);
+}
+
+.pinGlyph {
+  fill: none;
+  stroke: #10151a;
+  stroke-width: 1.35;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.pinShut {
+  stroke: var(--danger);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+}
+
+.pinLabel {
+  font-size: 11px;
+  font-weight: 700;
+  fill: var(--text);
+  paint-order: stroke;
+  stroke: rgba(13, 16, 20, 0.92);
+  stroke-width: 3.2px;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.pinLabelSmall {
+  font-size: 9.5px;
+  font-weight: 600;
+  fill: #c3cbd4;
+}
+
+.pinLabelClosed {
+  fill: var(--danger);
+}
+
+/* ---------- routes ---------- */
+
+.routeCase,
+.route,
+.routeDim,
+.routeDone {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.routeCase {
+  stroke: #0d1014;
+  stroke-width: 7.5;
+  opacity: 0.85;
+}
+
+.route {
+  stroke: var(--accent);
+  stroke-width: 4.2;
+}
+
+.routeDim {
+  stroke: #9fb4c9;
+  stroke-width: 2.2;
+  stroke-dasharray: 1 5;
+  opacity: 0.8;
+}
+
+.routeDone {
+  stroke: var(--accent);
+  stroke-width: 2.4;
+  opacity: 0.45;
+}
+
+.routeDot {
+  fill: #0d1014;
+  stroke: var(--accent);
+  stroke-width: 2.4;
+}
+
+.badge {
+  fill: var(--accent);
+  stroke: #0d1014;
+  stroke-width: 1.2;
+}
+
+.badgeText {
+  font-size: 10.5px;
+  font-weight: 800;
+  fill: var(--accent-ink);
+  pointer-events: none;
+}
+
+.you {
+  fill: var(--accent);
+  stroke: #ffffff;
+  stroke-width: 2.4;
+}
+
+.youHalo {
+  fill: var(--accent);
+  opacity: 0.22;
+}
+
+.friend {
+  fill: #ffd166;
+  stroke: #0d1014;
+  stroke-width: 1.5;
+}
+
+.friendText {
+  font-size: 9px;
+  font-weight: 800;
+  fill: #2a1e00;
+  pointer-events: none;
+}
+
+.friendName {
+  font-size: 9.5px;
+  font-weight: 700;
+  fill: #ffd166;
+  paint-order: stroke;
+  stroke: rgba(13, 16, 20, 0.92);
+  stroke-width: 3px;
+  pointer-events: none;
+}
+
+/* ---------- buttons over the map ---------- */
+
+.buttons {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  right: 44px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  pointer-events: none;
+}
+
+.buttons > * {
+  pointer-events: auto;
+}
+
+.zoomPair {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.mapBtn {
+  min-height: 34px;
+  min-width: 34px;
+  padding: 4px 11px;
+  border-radius: 17px;
+  border: 1px solid var(--line);
+  background: rgba(19, 23, 28, 0.9);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.mapBtn:disabled {
+  opacity: 0.4;
+}
+
+.mapBtnOn {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ---------- the key under a map ---------- */
+
+.key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.keyItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.keyPin {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+.keyLine {
+  display: inline-block;
+  width: 20px;
+  height: 0;
+  border-top: 4px solid var(--accent);
+  border-radius: 2px;
+}
+
+.keyLineDim {
+  border-top: 2px dotted #9fb4c9;
+}
+
+.keyYou {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid #fff;
+}
+
+.keyFriend {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #ffd166;
+  border: 1.5px solid #0d1014;
+}
+
+/* ---------- the route sheet ---------- */
+
+.leave {
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.leaveSoon {
+  color: var(--accent);
+}
+
+.leaveLate {
+  color: var(--danger);
+}
+
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: 15px;
+}
+
+.facts strong {
+  font-weight: 800;
+}
+
+.routeBtn {
+  min-height: 34px;
+  padding: 4px 12px;
+  border-radius: 17px;
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 13.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  flex: none;
+}

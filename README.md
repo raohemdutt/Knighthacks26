@@ -153,3 +153,19 @@ agent follows. All work landed through feature branches and pull requests with t
 **Using an AI coding agent on this repo? Read [AGENTS.md](AGENTS.md) first.** Notion is the source of
 truth and the team's communication channel. Branches are `ctx/<context>/<feature>`; contexts talk only
 through events in `contracts/`; never call a model directly, go through `runtime/`.
+
+## Campus map and walking routes
+
+The UCF campus the phone draws and Day Run walks on is real map data:
+`config/places/ucf.map.json` (building footprints, greens, water, roads and the
+footpath network) and the coordinates and walking times in `config/places/ucf.yaml`
+are built from OpenStreetMap by `python scripts/build_campus_pack.py` (run it from
+the repository root; `--cache <folder>` keeps the raw download out of the repo,
+`--check` prints the numbers without writing). Routes follow the footpaths at
+1.35 m/s, slower on steps, with a short wait at road crossings
+(`contexts/play/domain/walknet.py`). `GET /api/places/route?from=&to=&arrive_by=`
+answers "when do I leave"; `GET /api/places/map/ucf` serves the map.
+
+Map data © OpenStreetMap contributors, available under the Open Database License
+(ODbL): https://www.openstreetmap.org/copyright. The credit is drawn on every map
+in the app.

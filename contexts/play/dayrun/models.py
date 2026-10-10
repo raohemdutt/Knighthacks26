@@ -173,6 +173,7 @@ class RouteTaken(BaseModel):
     arrive: datetime
     minutes: float
     places: list[str]
+    meters: float | None = None  # the length walked, when the pack has a path network
 
 
 class Rejected(BaseModel):

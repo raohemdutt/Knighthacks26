@@ -6,6 +6,8 @@
  * Datetimes arrive as ISO strings.
  */
 
+import type { CampusMapData } from "./campusmap";
+
 // ---------- shapes ----------
 
 /** contracts.types.Citation: a camera keyframe, an outside link, or just a titled source. */
@@ -527,6 +529,28 @@ export interface PlacePack {
   kind: string; // campus | neighborhood | home
   entry: string | null;
   places: Record<string, Place>;
+  /** Where the pack's drawn map is served ("/api/places/map/ucf"), for packs built from real map data. */
+  map?: string;
+}
+
+/** GET /api/places/route: when to leave, and the walk itself along the real footpaths. */
+export interface PlaceRoute {
+  from: string;
+  to: string;
+  from_name: string;
+  to_name: string;
+  mode: "arrive_by" | "depart";
+  depart: string;
+  arrive: string;
+  minutes: number;
+  walk_minutes: number; // whole minutes, rounded up, as the day plan counts walks
+  meters: number | null;
+  path: string[];
+  polyline: [number, number][]; // [lat, lon]; empty when the packs have no path network
+  sentence: string; // "Leave by 2:41 PM: 9 minutes on foot to Engineering II, 720 m"
+  from_xy: [number, number] | null;
+  to_xy: [number, number] | null;
+  attribution: string | null;
 }
 
 /** Every vocabulary word with its plural and capitalised forms, as GET /api/profile sends them in `words`. */
@@ -699,6 +723,9 @@ export interface RouteLeg {
   minutes: number;
   from_xy: [number, number] | null;
   to_xy: [number, number] | null;
+  /** The line actually walked, [lat, lon] points along the footpaths, when the pack has a path network. */
+  path?: [number, number][] | null;
+  meters?: number | null;
   route: number; // index into `routes`
   depart: string;
 }
@@ -713,6 +740,7 @@ export interface RouteTaken {
   arrive: string;
   minutes: number;
   places: string[];
+  meters?: number | null; // the length walked, when the pack has a path network
 }
 
 export interface Rejected {
@@ -1527,6 +1555,10 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   playAccuracy: (signal?: AbortSignal) => get<PlayAccuracy>("/api/play/accuracy", undefined, signal),
 
   places: (signal?: AbortSignal) => get<PlacePack[]>("/api/places", undefined, signal),
+  /** A pack's drawn map, by the path GET /api/places gave for it. Fetch it through lib/campusmap's loadCampusMap, which keeps it. */
+  placeMap: (path: string, signal?: AbortSignal) => get<CampusMapData>(path, undefined, signal),
+  /** When to leave: `from` and `to` are pack ids ("ucf.eng2"), names, "friend:<member>" or "here". */
+  placeRoute: (q: { from?: string; to: string; arrive_by?: string; depart?: string }, signal?: AbortSignal) => get<PlaceRoute>("/api/places/route", q, signal),
   lastSeen: (label: string, signal?: AbortSignal) => get<Sighting>(`/memory/objects/${encodeURIComponent(label)}/last-seen`, undefined, signal),
 
   // Day Run. `scenario` runs a scripted day from fixtures/play/ ("demo") instead of live sources.

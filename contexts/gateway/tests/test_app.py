@@ -148,8 +148,9 @@ def test_place_packs_routes_feasibility_and_friend_routes(tmp_path):
     with client(tmp_path) as c:
         assert {p["name"] for p in c.get("/api/places").json()} >= {"ucf", "apartment"}
         r = c.get("/api/play/campus-route", params={"from": "ucf.union", "to": "ucf.eng2"}).json()
-        assert r == {"path": ["ucf.union", "ucf.hec", "ucf.eng2"], "minutes": 6}
-        late = c.get("/api/play/campus-route", params={"from": "ucf.rwc", "to": "ucf.eng2",
+        # the walk follows the real footpaths (config/places/ucf.map.json): 185 m, with the line to draw
+        assert (r["path"], r["minutes"], r["meters"]) == (["ucf.union", "ucf.eng2"], 2.6, 185.0) and len(r["polyline"]) > 5
+        late = c.get("/api/play/campus-route", params={"from": "ucf.rwc", "to": "ucf.towers",
                                                        "depart": "2026-10-11T09:50:00-04:00", "due": "2026-10-11T10:00:00-04:00"}).json()
         assert late["message"] == "you miss the 10:00 by 7 minutes"
 
