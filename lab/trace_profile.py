@@ -484,7 +484,8 @@ def kernel_table(kernels: Sequence[Kernel], *, steps: int | None, step_us: float
         rows.append({
             "name": name, "category": categorize(name), "launches": len(items),
             "launches_per_step": _r(len(items) / steps, 3) if steps else None,
-            "total_ms": _r(time_us / 1000.0, 4), "ms_per_step": _r(per_step / 1000.0, 4) if per_step is not None else None,
+            "total_ms": _r(time_us / 1000.0, 4),
+            "ms_per_step": _r(per_step / 1000.0, 4) if per_step is not None else None,
             "mean_us": _r(time_us / len(items), 2), "max_us": _r(max(k.dur_us for k in items), 2),
             "share_of_kernel_time": _r(time_us / total, 4) if total else None,
             "share_of_step": _r(per_step / step_us, 4) if per_step is not None and step_us else None,

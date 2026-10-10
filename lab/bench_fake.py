@@ -19,7 +19,14 @@ reason stop). Tokens come --stream-tok-s apart after --ttft-s, or --stall-tok-s 
 contain the text --stall-match (the harness's nonce names the run and the role, so a test can slow one run only). With --prefix-caching on, a request whose whole prompt
 was seen before is a prefix-cache hit and its usage says so in prompt_tokens_details.cached_tokens, as vLLM's does;
 the harness's per-request nonce is what keeps measured requests from hitting. With --port 0 it binds a free port
-itself and writes it to --port-file, so no test ever races another process for a port.
+itself and writes it to --port-file, so no test ever races another process for a port. With --profiler-config (vLLM's
+JSON, profiler torch) it also answers POST /start_profile and /stop_profile: while profiling, every streamed token
+is one decode step in vLLM's naming (an execute_context_0(0)_generation_<n>(<n>) range, a hipGraphLaunch and one
+_gemm_kernel), and a stop writes them to torch_profiler_dir as one gzip'd Chrome trace (lab/profile_decode.py's
+tests); without it those routes answer 404, as vLLM's do. `python lab/bench_fake.py rocprofv3 [rocprofv3's options]
+-d DIR -o NAME -- <python> lab/bench_fake.py serve ...` stands in for rocprofv3: it runs the server in its own process
+and appends one row of rocprofv3's kernel trace columns per streamed token to DIR/NAME_kernel_trace.csv (realtime
+nanoseconds; %pid% in DIR is its pid).
 
 At start-up it waits --startup-s and writes a serve log in the engine's own words (--engine vllm: the lines vLLM's
 b1388b1 source logs for the engine config, the linear kernel, the attention backends and the KV cache; --engine
@@ -54,6 +61,7 @@ returned. Stdlib only.
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import os
 import sys
@@ -74,6 +82,10 @@ POWER_FIXTURE = REPO / "fixtures" / "telemetry" / "pod_power" / "strixhalo_amdsm
 BENCH_FIXTURES = REPO / "fixtures" / "lab" / "bench"
 FAKE_COMMIT = "b1388b1fbfakefakefakefakefakefakefake0000"
 FAKE_VERSIONS = {"torch": "2.9.1+rocm7.13.0", "triton": "3.5.1", "hip": "7.13.0", "python": "3.12.3"}
+ROCPROF_COLUMNS = ("Kind", "Agent_Id", "Queue_Id", "Stream_Id", "Thread_Id", "Dispatch_Id", "Kernel_Id", "Kernel_Name",
+                   "Correlation_Id", "Start_Timestamp", "End_Timestamp", "LDS_Block_Size", "Scratch_Size", "VGPR_Count",
+                   "Accum_VGPR_Count", "SGPR_Count", "Workgroup_Size_X", "Workgroup_Size_Y", "Workgroup_Size_Z",
+                   "Grid_Size_X", "Grid_Size_Y", "Grid_Size_Z")
 IDLE_NO_SERVER_W = 8.0
 IDLE_LOADED_W = 9.2
 WATTS_PER_STREAM = 15.0
@@ -93,6 +105,66 @@ class FakeEngine:
         self.lock = threading.Lock()        # the counters
         self.files = threading.Lock()       # one writer of the shared files at a time, so a stale value never lands last
         self.seen: set[str] = set()
+        config = json.loads(args.profiler_config) if getattr(args, "profiler_config", None) else {}
+        self.profiler_dir = config.get("torch_profiler_dir") if config.get("profiler") == "torch" else None
+        self.profiling = False
+        self.profile_events: list[dict[str, Any]] = []
+        self.correlation = 0
+        self.rocprof_csv: Path | None = None
+        if getattr(args, "rocprof_dir", None):
+            folder = Path(args.rocprof_dir)
+            folder.mkdir(parents=True, exist_ok=True)
+            self.rocprof_csv = folder / f"{args.rocprof_name}_kernel_trace.csv"
+            self.rocprof_csv.write_text(",".join(f'"{c}"' for c in ROCPROF_COLUMNS) + "\n", encoding="utf-8")
+
+    # vLLM's torch profiler, as far as lab/profile_decode.py drives it
+
+    def profile(self, start: bool) -> int:
+        """POST /start_profile and /stop_profile: 404 without --profiler-config (as vLLM, which then has no such
+        routes); a stop writes the steps recorded since the start as one gzip'd Chrome trace in its folder."""
+        if not self.profiler_dir:
+            return 404
+        with self.lock:
+            if start:
+                self.profiling, self.profile_events = True, []
+                return 200
+            events, self.profiling = self.profile_events, False
+        trace = {"deviceProperties": [{"id": 0, "name": "fake gfx1151"}], "traceEvents": events}
+        folder = Path(self.profiler_dir)
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / f"fake_worker.{time.time_ns()}.pt.trace.json.gz"
+        path.write_bytes(gzip.compress(json.dumps(trace).encode()))
+        return 200
+
+    def record_dispatch(self) -> None:
+        """Under the fake rocprofv3: one kernel row per streamed token, appended at once (realtime nanoseconds), so
+        a stop that kills the process loses nothing."""
+        if self.rocprof_csv is None:
+            return
+        end = time.time_ns()
+        with self.files:
+            with self.lock:
+                self.correlation += 1
+                c = self.correlation
+            row = ['"KERNEL_DISPATCH"', 2, 1, 0, os.getpid(), c, 17, '"_gemm_kernel.kd"', c, end - 200_000, end,
+                   49152, 0, 128, 0, 64, 256, 1, 1, 20480, 1, 1]
+            with open(self.rocprof_csv, "a", encoding="utf-8") as fh:
+                fh.write(",".join(str(v) for v in row) + "\n")
+
+    def record_step(self) -> None:
+        """While profiling, one decode step per streamed token: vLLM's step range, a graph launch and one kernel."""
+        with self.lock:
+            if not self.profiling:
+                return
+            self.correlation += 1
+            c, n, t = self.correlation, max(1, self.active), time.time() * 1e6
+            self.profile_events += [
+                {"ph": "X", "cat": "user_annotation", "name": f"execute_context_0(0)_generation_{n}({n})",
+                 "pid": 1, "tid": 1, "ts": t, "dur": 100.0},
+                {"ph": "X", "cat": "cuda_runtime", "name": "hipGraphLaunch", "pid": 1, "tid": 1, "ts": t + 10.0,
+                 "dur": 5.0, "args": {"correlation": c}},
+                {"ph": "X", "cat": "kernel", "name": "_gemm_kernel", "pid": 0, "tid": 7, "ts": t + 50.0, "dur": 200.0,
+                 "args": {"correlation": c, "grid": [80, 1, 1], "block": [256, 1, 1]}}]
 
     # files a pod exposes
 
@@ -201,6 +273,8 @@ class FakeEngine:
                     choice["logprobs"] = {"content": [{"token": name, "logprob": logprob,
                                                        "bytes": list(text.encode()), "top_logprobs": []}]}
                 self._event(handler, {"object": "chat.completion.chunk", "model": a.model, "choices": [choice]})
+                self.record_step()
+                self.record_dispatch()
             self._event(handler, {"object": "chat.completion.chunk", "model": a.model,
                                   "choices": [{"index": 0, "delta": {}, "finish_reason": finish}]})
         finally:
@@ -265,6 +339,9 @@ def make_handler(engine: FakeEngine) -> type[BaseHTTPRequestHandler]:
         def do_POST(self) -> None:  # noqa: N802
             length = int(self.headers.get("Content-Length") or 0)
             body = json.loads(self.rfile.read(length) or b"{}")
+            if self.path.rstrip("/") in ("/start_profile", "/stop_profile"):
+                status = engine.profile(self.path.rstrip("/") == "/start_profile")
+                return self._json(status, {} if status == 200 else {"detail": "Not Found"})
             if self.path.rstrip("/") != "/v1/chat/completions":
                 return self._json(404, {"error": {"message": f"no route {self.path}"}})
             if body.get("model") not in (None, engine.args.model):
@@ -320,12 +397,41 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--retoken-at", type=int, default=None, help="at this position, the same text under another id")
     s.add_argument("--diverge-match", default=None, help="only prompts containing this text are changed by the two")
     s.add_argument("--set-env", action="append", metavar="K=V")
+    s.add_argument("--profiler-config", default=None, help="vLLM's JSON: with profiler torch, the profile routes "
+                                                            "answer and write traces to torch_profiler_dir")
+    s.add_argument("--rocprof-dir", default=None, help=argparse.SUPPRESS)    # set by the fake rocprofv3
+    s.add_argument("--rocprof-name", default="run", help=argparse.SUPPRESS)
     return p
 
 
+def fake_rocprof(argv: list[str]) -> int:
+    """`rocprofv3 [options] -d DIR -o NAME -- <python> lab/bench_fake.py serve ...` in one process: the server runs
+    here (so stopping this process stops it, on Windows too) and writes rocprofv3's kernel trace CSV columns to
+    DIR/NAME_kernel_trace.csv, DIR with %pid% replaced, one row per streamed token."""
+    if "--" not in argv:
+        raise SystemExit("fake rocprofv3: no -- before the command")
+    tool, rest = argv[:argv.index("--")], argv[argv.index("--") + 1:]
+    out_dir = tool[tool.index("-d") + 1] if "-d" in tool else "."
+    name = tool[tool.index("-o") + 1] if "-o" in tool else "run"
+    if "serve" not in rest:
+        raise SystemExit("fake rocprofv3: it only runs lab/bench_fake.py serve")
+    serve_args = rest[rest.index("serve") + 1:]
+    args = build_parser().parse_args(["serve", *serve_args, "--rocprof-dir",
+                                      out_dir.replace("%pid%", str(os.getpid())), "--rocprof-name", name])
+    return serve(args)
+
+
 def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv[:1] == ["rocprofv3"]:
+        return fake_rocprof(argv[1:])
     args = build_parser().parse_args(argv)
     return serve(args)
+
+
+def rocprof_command() -> list[str]:
+    """The command lab/profile_decode_pod.py puts in front of the server instead of rocprofv3 in tests."""
+    return [spawn_python(), str(Path(__file__).resolve()), "rocprofv3"]
 
 
 def spawn_python() -> str:

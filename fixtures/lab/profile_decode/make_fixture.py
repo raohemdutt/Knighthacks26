@@ -257,7 +257,8 @@ def raw_record() -> dict:
         "schema": "lab.profile_decode.raw/1", "run_id": "r47-synthetic", "task": "R47", "node": "pod-b",
         "hub": "sjc", "account": "D", "started": "2026-10-10T23:00:00.000Z", "ended": "2026-10-10T23:27:00.000Z",
         "args": {"phases": ["torch", "rocprof"], "max_tokens": 6, "port": 8100}, "unavailable": {},
-        "facts": {"hub": "sjc", "account": "D", "hostname": "synthetic-pod-d", "kernel_release": "6.18.6-061806-generic",
+        "facts": {"hub": "sjc", "account": "D", "hostname": "synthetic-pod-d",
+                  "kernel_release": "6.18.6-061806-generic",
                   "amdgpu_driver": "6.18.6", "firmware": None, "asic_serial": None, "chip": "gfx1151",
                   "market_name": "AMD Radeon 8060S", "unavailable": {}},
         "versions": {"torch": "2.9.1+rocm7.13.0", "triton": "3.5.1", "hip": "7.13.99004", "python": "3.12.3"},
@@ -331,12 +332,12 @@ def main() -> None:
                                                                    encoding="utf-8", newline="")
     (OUT / "rocprof" / "4243" / "run_memory_copy_trace.csv").write_text(csv_text(COPY_COLUMNS, copies),
                                                                         encoding="utf-8", newline="")
-    (OUT / "raw.json").write_text(json.dumps(raw_record(), indent=1) + "\n", encoding="utf-8")
+    (OUT / "raw.json").write_text(json.dumps(raw_record(), indent=1) + "\n", encoding="utf-8", newline="\n")
     sheet = {"schema": "synthetic chip sheet for the R47 self-check, not a measurement",
              "bandwidth": {"d2d_copy": {"max_gb_s": 212.5, "sizes_mb": [1, 64, 4096],
                                         "gb_s": [40.0, 180.0, 212.5]}},
              "peak_theoretical_gb_s": 256.0}
-    (OUT / "chipsheet.json").write_text(json.dumps(sheet, indent=1) + "\n", encoding="utf-8")
+    (OUT / "chipsheet.json").write_text(json.dumps(sheet, indent=1) + "\n", encoding="utf-8", newline="\n")
 
 
 if __name__ == "__main__":
