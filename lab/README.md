@@ -13,7 +13,8 @@ are on the Notion Credentials page and in your local `.env`; never put them in t
 
 The sections below were written against DUB and its accounts A and B. Pods on SJC have so far been started only through
 the hub's web spawn form (next paragraphs), so read their numbers (credits, timings, the culler) as DUB's until a pod
-there has been measured.
+there has been measured. On SJC, account C's pod is a Strix Halo and runs the teacher today: see "Teacher on SJC today
+(pod C, Strix Halo)" below for what it is and what differs from the R9700 recipe.
 
 **On SJC the REST launch is accepted but ignored; the controller launches through the web form.**
 `POST /hub/api/users/<account>/server` with options answers 202 and echoes the options back, but the pod that comes up
@@ -268,9 +269,9 @@ model server on a fake clock).
 
 ```
 bash lab/pod_a_teacher.sh proxy      # once per account, then relaunch the pod
-bash lab/pod_a_teacher.sh build      # vLLM from source at commit b1388b1 + lab/vllm-gfx1201.diff, ~1 h
-bash lab/pod_a_teacher.sh download   # amd/Qwen3.8-27B-Quark-AWQ-INT4-W4A16 (18 GB) into ~/models
-bash lab/pod_a_teacher.sh serve      # OpenAI-compatible server on 127.0.0.1:8000, model name "teacher"
+bash lab/pod_a_teacher.sh build      # vLLM from source at commit b1388b1 + lab/vllm-gfx1201.diff, for the pod's gfx target, ~1 h
+bash lab/pod_a_teacher.sh download   # RedHatAI/Qwen3.8-27B-INT4 (19 GB) into ~/models
+bash lab/pod_a_teacher.sh serve      # OpenAI-compatible server on 127.0.0.1:8000, model name "teacher", log ~/serve/vllm.log
 ```
 
 `lab/vllm-gfx1201.diff` is the set of changes vLLM (commit b1388b1, April 2026) needs on this pod: `num_stages=1`
@@ -312,6 +313,43 @@ curl https://dub.aupcloud.io/user/<account>/proxy/8000/v1/chat/completions \
 ```
 
 Images go inline as `{"type":"image_url","image_url":{"url":"data:image/jpeg;base64,..."}}` content parts.
+
+### Teacher on SJC today (pod C, Strix Halo)
+
+Account C's pod on SJC (`roscon01`) runs the teacher today, at
+`https://sjc.aupcloud.io/user/roscon01/proxy/8000/v1/chat/completions` with `Authorization: token $AUP_HUB_TOKEN_C`.
+The GPU is a Radeon 8060S (Strix Halo, gfx1151, RDNA 3.5) with 64 GB of memory shared with the CPU. The same
+`lab/pod_a_teacher.sh` builds and serves it; what differs from the R9700 recipe above:
+
+- Build target and size: `PYTORCH_ROCM_ARCH` comes from `rocminfo` (gfx1151), and compile jobs are capped by RAM
+  (20 jobs on 32 threads and 62 GB instead of 48). The build took 4 min 18 s on the pod's local disk (about an
+  hour on DUB's NFS home). `cmake` is pinned below 4 as vLLM asks, and a pip constraint holds the image's torch
+  2.9.1, torchvision, torchaudio and triton so no dependency swaps in a CUDA wheel.
+- Patch: all 9 hunks (7 files) of `lab/vllm-gfx1201.diff` apply cleanly at b1388b1 and no new hunk is needed; that commit
+  already lists gfx1150/gfx1151 and guards the RDNA 3.5 paths in `csrc/rocm`.
+- No `amdsmi` Python package: installed from `/opt/rocm` it loads a second copy of `libamd_smi` next to torch's own
+  and hides the GPU (`torch.cuda.device_count()` 0). `deps` removes a user-site copy; the patch's
+  `torch.version.hip` fallback detects the platform.
+- Vision encoder attention, three serve attempts: (1) Torch SDPA ran its math kernel, because torch 2.9.1 keeps
+  the AOTriton SDPA kernels off as experimental on gfx1151, and the encoder's profiling pass asked for a 256 GiB
+  attention matrix (HIP out of memory); (2) with `TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1` the server started,
+  but those kernels go wrong at a 720p image's ~3.5k tokens (max error 0.08 to 0.12, NaN at 4096) and captions
+  came back as "!!!!"; (3) `--mm-encoder-attn-backend TRITON_ATTN` (vLLM's own Triton attention) is exact and is
+  what `serve` passes on gfx115x.
+- Power is read with `amd-smi metric --power` (`SOCKET_POWER`, the whole APU package); energy and clocks read N/A.
+
+Measured on 2026-10-10 on pod C (fix round 3, batch 1, 16k context, temperature 0, thinking off; TTFT and decode
+with a streaming client on the pod, end to end through the proxy, which buffers the response):
+
+| Prompt | TTFT | decode | through the proxy | watts while decoding |
+|---|---|---|---|---|
+| text, 31 in, 77 out | 0.39 s | 2.88 tok/s | 27.5 s | 120 W average, 129 W peak |
+| 1280x720 JPEG caption, 902 in, 27 out | 3.51 s | 2.82 tok/s | 12.9 s | 118 W average |
+
+Idle: 8 W with no server, 9.2 W with the teacher loaded. The engine is ready about 5 min after launch with a warm
+torch.compile cache. Decode is about 2.7x slower than the R9700's 7.7 tok/s, about the ratio of the two memory
+bandwidths (decode is weight-bound on `ConchLinearKernel`). The rows are in `lab/refine/metrics.jsonl` on node
+`pod-c`; the R9700 rows stay on `pod-a` as the old, other chip.
 
 ## Trainer (pod B)
 

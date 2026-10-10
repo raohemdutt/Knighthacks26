@@ -1,9 +1,11 @@
 #!/bin/bash
-# Pod A (teacher): build vLLM for the R9700 (gfx1201, ROCm 7.13) and serve Qwen3.8-27B behind the hub proxy.
+# Teacher pod: build vLLM from source for the pod's GPU (ROCm 7.13) and serve Qwen3.8-27B behind the hub proxy.
+# The GPU target comes from rocminfo, so the same steps build for the R9700 (gfx1201, DUB accounts A and B) and for
+# the Strix Halo (gfx1151, SJC accounts C and D); GFX=<target> overrides it.
 # Idempotent and resumable: re-run after a pod relaunch; finished steps are skipped.
-# Usage on the pod (JupyterLab terminal):  bash lab/pod_a_teacher.sh [build|download|serve|all]
-# The Jetson calls the server at https://dub.aupcloud.io/user/<account>/proxy/8000/v1/... with
-# header "Authorization: token <hub API token>" (jupyter-server-proxy must be installed once: step "proxy").
+# Usage on the pod (JupyterLab terminal):  bash lab/pod_a_teacher.sh [proxy|build|download|serve|all]
+# Callers reach the server at https://<hub>/user/<account>/proxy/8000/v1/... with header
+# "Authorization: token <hub API token>" (jupyter-server-proxy must be installed once: step "proxy").
 set -u
 export PATH="$HOME/.local/bin:$PATH"
 STEP="${1:-all}"
@@ -16,6 +18,28 @@ MODELS="$HOME/models"
 TEACHER="${TEACHER:-RedHatAI/Qwen3.8-27B-INT4}"
 PORT="${PORT:-8000}"
 MAX_LEN="${MAX_LEN:-16384}"
+GPU_UTIL="${GPU_UTIL:-0.90}"
+SERVE_DIR="$HOME/serve"
+SERVE_LOG="$SERVE_DIR/vllm.log"
+
+gpu_arch() {
+  # The first gfx target rocminfo lists: gfx1201 on the R9700, gfx1151 on the Strix Halo.
+  if [ -n "${GFX:-}" ]; then echo "$GFX"; return; fi
+  rocminfo 2>/dev/null | grep -m1 -o 'gfx[0-9a-f]\+'
+}
+
+build_jobs() {
+  # One compile job per 3 GB of RAM, at most one per thread and at most 48: 48 on the R9700 host
+  # (128 threads, 502 GB), 20 on the Strix Halo (32 threads, 62 GB), where more jobs run out of memory.
+  local threads mem_gb jobs
+  threads=$(nproc)
+  mem_gb=$(awk '/MemTotal/ {print int($2 / 1048576)}' /proc/meminfo)
+  jobs=$((mem_gb / 3))
+  [ "$jobs" -gt "$threads" ] && jobs=$threads
+  [ "$jobs" -gt 48 ] && jobs=48
+  [ "$jobs" -lt 1 ] && jobs=1
+  echo "$jobs"
+}
 
 proxy() {
   python3 -c "import jupyter_server_proxy" 2>/dev/null && { echo "jupyter-server-proxy present"; return; }
@@ -25,10 +49,12 @@ proxy() {
 
 deps() {
   # pkgconf provides the pkg-config binary torch's LoadHIP.cmake needs (the image has none and there is no root).
-  pip install --user --quiet cmake ninja pkgconf packaging "setuptools>=77,<81" setuptools-scm wheel jinja2 regex huggingface_hub
+  # cmake stays below 4, as vLLM's own requirements/rocm-build.txt asks; an unpinned install gets 4.x.
+  pip install --user --quiet "cmake>=3.26.1,<4" ninja pkgconf packaging "setuptools>=77,<81" setuptools-scm wheel jinja2 regex huggingface_hub
   command -v pkg-config >/dev/null || ln -sf "$HOME/.local/bin/pkgconf" "$HOME/.local/bin/pkg-config"
-  # The image ships no libdrm at all, but torch's LoadHIP.cmake -> rocm_smi-config.cmake requires a libdrm
-  # pkg-config entry, and the torch target then carries its include and link flags. An empty stub satisfies both.
+  # Neither image ships a libdrm pkg-config entry or headers (the Strix Halo image has the runtime libdrm.so.2 only),
+  # but torch's LoadHIP.cmake -> rocm_smi-config.cmake requires one, and the torch target then carries its include
+  # and link flags. An empty stub satisfies both.
   if ! pkg-config --exists libdrm 2>/dev/null; then
     mkdir -p "$HOME/.local/include/libdrm" "$HOME/.local/lib/pkgconfig"
     echo 'int atlas_libdrm_stub(void){return 0;}' > /tmp/drm_stub.c
@@ -46,19 +72,45 @@ EOF
   fi
   export PKG_CONFIG_PATH="$HOME/.local/lib/pkgconfig:/opt/rocm/lib/pkgconfig"
   export LIBRARY_PATH="$HOME/.local/lib"
-  [ -d /opt/rocm/share/amd_smi ] && python3 -c "import amdsmi" 2>/dev/null || pip install --user --quiet /opt/rocm/share/amd_smi 2>/dev/null || true
+  # No amdsmi Python package: torch 2.9.1+rocm7.13 loads its own libamd_smi.so.26 (from _rocm_sdk_core), and the
+  # package from /opt/rocm/share/amd_smi loads a second copy into the same process, which then sees no GPU, so
+  # torch.cuda.device_count() answers 0 and vLLM finds no platform (verified on the Strix Halo pod). Without it the
+  # patch's torch.version.hip fallback detects ROCm and reads the gfx target through torch.
+  if pip show amdsmi 2>/dev/null | grep -q "Location: $HOME/.local"; then
+    pip uninstall -y --quiet amdsmi && echo "removed the user-site amdsmi package (it hides the GPU from torch)"
+  fi
+}
+
+torch_constraints() {
+  # The pod's own torch stack as pip constraints, so no vLLM dependency can swap in a CUDA wheel from PyPI.
+  python3 - <<'PY'
+from importlib import metadata
+for name in ("torch", "torchvision", "torchaudio", "triton", "pytorch-triton-rocm"):
+    try:
+        print(f"{name}=={metadata.version(name)}")
+    except metadata.PackageNotFoundError:
+        pass
+PY
 }
 
 build() {
   if python3 -c "import vllm" 2>/dev/null; then echo "vllm already importable: $(python3 -c 'import vllm;print(vllm.__version__)')"; return; fi
+  local gfx jobs constraints
+  gfx="$(gpu_arch)"
+  [ -n "$gfx" ] || { echo "no gfx target from rocminfo; set GFX=<target>"; exit 1; }
+  jobs="$(build_jobs)"
   deps
+  constraints="$HOME/.cache/vllm-torch-constraints.txt"
+  mkdir -p "$HOME/.cache" && torch_constraints > "$constraints"
   [ -d "$VLLM_DIR/.git" ] || git clone https://github.com/vllm-project/vllm.git "$VLLM_DIR"
   cd "$VLLM_DIR"
   git checkout -q "$VLLM_COMMIT"
   git checkout -- . && git apply --reject --whitespace=nowarn "$PATCH"
   python3 use_existing_torch.py
+  echo "building vLLM $VLLM_COMMIT for $gfx with $jobs jobs (log: ~/vllm_build.log)"
   # SETUPTOOLS_SCM_PRETEND_VERSION: `git describe` on the NFS home times out (40 s) and kills the build otherwise.
-  SETUPTOOLS_SCM_PRETEND_VERSION=0.19.2+gfx1201 VLLM_TARGET_DEVICE=rocm PYTORCH_ROCM_ARCH=gfx1201 MAX_JOBS=48 CMAKE_BUILD_PARALLEL_LEVEL=48 \
+  SETUPTOOLS_SCM_PRETEND_VERSION="0.19.2+$gfx" VLLM_TARGET_DEVICE=rocm PYTORCH_ROCM_ARCH="$gfx" \
+    MAX_JOBS="$jobs" CMAKE_BUILD_PARALLEL_LEVEL="$jobs" PIP_CONSTRAINT="$constraints" \
     pip install --user --no-build-isolation -e . 2>&1 | tee "$HOME/vllm_build.log" | tail -3
 }
 
@@ -72,15 +124,30 @@ download() {
 serve() {
   local dir="$MODELS/$(basename "$TEACHER")"
   # Never launch from $HOME: the ~/vllm checkout would shadow the installed package as a namespace package.
-  mkdir -p "$HOME/serve" && cd "$HOME/serve"
+  mkdir -p "$SERVE_DIR" && cd "$SERVE_DIR"
   pkill -f "vllm.entrypoints" 2>/dev/null; sleep 2
+  local vit_attn=()
+  case "$(gpu_arch)" in
+    gfx115*)
+      # Without flash_attn, vLLM gives the vision encoder Torch SDPA. On gfx1151 torch 2.9.1 keeps its AOTriton SDPA
+      # kernels off as experimental, so SDPA runs the math kernel and the encoder's profiling pass asks for a
+      # 256 GiB attention matrix; switched on (TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1) they start, but go wrong
+      # at a 720p image's ~3.5k tokens (max error 0.08 to 0.12 against 0.001, NaN at 4096) and the caption comes
+      # back as "!!!!". vLLM's own Triton attention is exact there and needs no attention matrix (fix round 3; on
+      # pod C a 1280x720 caption came back as real text and the server starts in about 5 min with a warm cache).
+      vit_attn=(--mm-encoder-attn-backend TRITON_ATTN) ;;
+  esac
   nohup python3 -m vllm.entrypoints.openai.api_server \
     --model "$dir" --served-model-name teacher --port "$PORT" --host 127.0.0.1 \
-    --max-model-len "$MAX_LEN" --limit-mm-per-prompt '{"image":1}' --gpu-memory-utilization 0.90 \
-    --dtype bfloat16 > "$HOME/vllm_serve.log" 2>&1 &
-  echo "vllm serve pid $! (log: ~/vllm_serve.log)"
-  for i in $(seq 1 120); do curl -sf "http://127.0.0.1:$PORT/v1/models" >/dev/null && { echo "teacher up on $PORT"; return; }; sleep 5; done
-  echo "server did not come up; see ~/vllm_serve.log"; tail -20 "$HOME/vllm_serve.log"
+    --max-model-len "$MAX_LEN" --limit-mm-per-prompt '{"image":1}' --gpu-memory-utilization "$GPU_UTIL" \
+    --dtype bfloat16 ${vit_attn[@]+"${vit_attn[@]}"} > "$SERVE_LOG" 2>&1 &
+  echo "vllm serve pid $! (log: $SERVE_LOG)"
+  # Readiness through python3, not curl: not every pod image ships curl.
+  for i in $(seq 1 180); do
+    python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:$PORT/v1/models', timeout=5)" 2>/dev/null       && { echo "teacher up on $PORT"; return; }
+    sleep 5
+  done
+  echo "server did not come up; see $SERVE_LOG"; tail -20 "$SERVE_LOG"
 }
 
 case "$STEP" in
