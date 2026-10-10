@@ -13,6 +13,7 @@
 - GET  /api/impact             Waste Watch counts, diversion rate, before vs after nudges (E2)
 - POST /api/presence           {place, hours} share a named place with the Circle (G5, opt-in)
 - GET  /api/presence           friends' current places
+- GET  /api/circle/leaderboard Waste Watch, habit and Sort It leaderboards from Neon (E2)
 - GET  /health
 
 Writes need `Authorization: Bearer $ATLAS_TOKEN` when ATLAS_TOKEN is set; the
@@ -177,6 +178,19 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         if atlas.presence is None:
             raise HTTPException(404, "the Circle is not configured")
         return [p.model_dump(mode="json") for p in atlas.presence.friends(datetime.now(UTC))]
+
+    @app.get("/api/circle/leaderboard")
+    async def leaderboard():
+        """Circle leaderboards from Neon (E2, G3): Waste Watch, habit streaks, Sort It scores."""
+        if atlas.board is None or atlas.circle is None:
+            raise HTTPException(404, "the Circle is not connected to Neon")
+        cid = atlas.circle.circle_id
+        impact, habits, scores = await asyncio.gather(
+            asyncio.to_thread(atlas.board.impact_leaderboard, cid),
+            asyncio.to_thread(atlas.board.habit_leaderboard, cid),
+            asyncio.to_thread(atlas.board.top_scores, cid),
+        )
+        return {"circle_id": cid, "impact": impact, "habits": habits, "scores": scores}
 
     @app.websocket("/ws")
     async def events(ws: WebSocket):
