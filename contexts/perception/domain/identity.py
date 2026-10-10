@@ -5,8 +5,8 @@ and which tracks carry a member's tag.
     perception.person.lost         that track's tag is over; track_id None = every track on the camera
     perception.identity.changed    recognition switched on or off, or the set of enrolled member ids changed
 
-These three are NOT in contracts/ yet (it needs a second person's OK), so they are not in the contract
-registry: from the log they come back as a plain `Event` with the same fields, which is all a consumer needs.
+The three event classes live in contracts/perception.py (registered, so the log gives them back typed) and
+are re-exported here, where they were first defined.
 
 A face belongs to the person track whose box contains it. A track is tagged after `confirm` matches for the
 same member in a row; a face that matches nobody never tags anything; a tagged track keeps its tag while it
@@ -16,34 +16,16 @@ dropped after `strikes` looks that did not match (the tracker swapped two people
 
 import math
 from dataclasses import dataclass
-from typing import Any, ClassVar, Literal
+from typing import Any
 
-from contracts.events import Event, TypedEvent
+from contracts.events import Event
+from contracts.perception import IdentityChanged, PersonIdentified, PersonLost
 from contracts.types import Box, CameraId, Track
 
+__all__ = ["IdentityChanged", "PersonIdentified", "PersonLost", "TrackTags", "Vector", "average", "best_match", "cosine",
+           "face_box", "normalize", "track_for_face"]
+
 Vector = list[float]
-
-
-class PersonIdentified(TypedEvent):
-    TYPE: ClassVar[str] = "perception.person.identified"
-    type: Literal["perception.person.identified"] = "perception.person.identified"
-    camera_id: CameraId
-    track_id: int
-    member_id: str
-
-
-class PersonLost(TypedEvent):
-    TYPE: ClassVar[str] = "perception.person.lost"
-    type: Literal["perception.person.lost"] = "perception.person.lost"
-    camera_id: CameraId
-    track_id: int | None = None  # None: every track on this camera (the pipeline restarted, or recognition went off)
-
-
-class IdentityChanged(TypedEvent):
-    TYPE: ClassVar[str] = "perception.identity.changed"
-    type: Literal["perception.identity.changed"] = "perception.identity.changed"
-    enabled: bool
-    members: list[str] = []  # enrolled member ids
 
 
 # --- vectors ---

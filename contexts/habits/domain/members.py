@@ -24,7 +24,7 @@ they are (that is a contract change), so a member's numbers exist only as this p
 log. Their nudges are raised as ordinary `habits.nudge.raised` (no name, no member id).
 
 `perception.person.*` and `perception.identity.changed` are read by field name, so they work both as the
-classes in contexts/perception/domain/identity.py and as the plain events the log gives back.
+classes in contracts/perception.py (what the log gives back) and as plain events with the same fields.
 """
 
 from collections.abc import Callable
