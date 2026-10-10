@@ -6,9 +6,16 @@ Every failing reason is listed at once. The check changes nothing a sitting woul
 its only write is a throwaway file in the state dir, and its only network traffic is one
 read-only GET per hub account.
 
+Gates (GATE_CHECKS): any one failing makes ready false, lists it under "reasons", and exits 1.
+
     stop       no STOP file (lab/machine/stop.py); this verb runs while stopped so it can say so
     state_dir  lab/state (or $LAB_STATE_DIR) exists, is created when missing, and takes a file
     env        the .env keys a sitting needs are present: key NAMES only, a value is never printed
+
+Advisory (every other check): still run and reported under "checks", but a failure is listed
+under "warnings" and never changes ready or the exit code. A hub outage must not halt GPU-free
+work; a sitting that needs a pod reads checks.hub and the warnings for itself.
+
     hub        GET <hub>/hub/api/users/<account> answers 200 with a JSON object, per pod account
 
 Keys come from the process environment first, then from .env files: the clone's, then the one
@@ -45,6 +52,8 @@ MAX_BODY_BYTES = 1_000_000
 USER_AGENT = "Mozilla/5.0 (compatible; atlas-lab-ready)"
 # Values shorter than this are not worth hiding in an error message; they would mangle it.
 MIN_HIDDEN_CHARS = 6
+# The checks that decide ready and the exit code; every other check (the hub) only warns.
+GATE_CHECKS = ("stop", "state_dir", "env")
 
 Fetch = Callable[[str, Mapping[str, str], float], tuple[int, Any]]
 
@@ -199,6 +208,7 @@ def check_hub(values: Mapping[str, str], base_url: str, fetch: Fetch) -> dict[st
 
 
 def reasons_for(checks: Mapping[str, Any]) -> list[str]:
+    """Why a sitting may not start: one line per failing gate check (GATE_CHECKS)."""
     reasons: list[str] = []
     if not checks["stop"]["ok"]:
         reasons.append(f"STOP file present: {checks['stop']['reason']}")
@@ -206,16 +216,25 @@ def reasons_for(checks: Mapping[str, Any]) -> list[str]:
         reasons.append(f"state dir not writable: {checks['state_dir']['path']}")
     if not checks["env"]["ok"]:
         reasons.append("env keys missing: " + ", ".join(checks["env"]["missing"]))
+    return reasons
+
+
+def warnings_for(checks: Mapping[str, Any]) -> list[str]:
+    """What failed among the advisory checks: one line per hub account that did not answer.
+
+    An account skipped for missing credentials is not repeated here; the env gate already names its keys.
+    """
+    warnings: list[str] = []
     for letter, probe in checks["hub"]["accounts"].items():
         if probe["ok"] or "skipped" in probe:
             continue
         if "status" not in probe:
-            reasons.append(f"hub account {letter} unreachable")
+            warnings.append(f"hub account {letter} unreachable")
         elif "error" in probe:
-            reasons.append(f"hub account {letter} answered {probe['status']} ({probe['error']})")
+            warnings.append(f"hub account {letter} answered {probe['status']} ({probe['error']})")
         else:
-            reasons.append(f"hub account {letter} answered {probe['status']}")
-    return reasons
+            warnings.append(f"hub account {letter} answered {probe['status']}")
+    return warnings
 
 
 def check(
@@ -225,7 +244,7 @@ def check(
     fetch: Fetch | None = None,
     base_url: str | None = None,
 ) -> dict[str, Any]:
-    """Run every precondition and return the verdict; the arguments exist for tests."""
+    """Run every check and return the verdict; only GATE_CHECKS decide ready. The arguments exist for tests."""
     environ = os.environ if environ is None else environ
     files = default_env_files(environ) if env_files is None else list(env_files)
     base_url = base_url or environ.get(HUB_URL_ENV) or HUB_URL
@@ -236,18 +255,19 @@ def check(
         "env": check_env(values, used),
         "hub": check_hub(values, base_url, fetch or fetch_json),
     }
-    ready = all(entry["ok"] for entry in checks.values())
+    ready = all(checks[name]["ok"] for name in GATE_CHECKS)
     return {
         "ok": ready,
         "ready": ready,
         "outcome": "ready" if ready else "not_ready",
         "reasons": reasons_for(checks),
+        "warnings": warnings_for(checks),
         "checks": checks,
     }
 
 
 @stop.exempt
 def main(argv: Sequence[str]) -> dict[str, Any]:
-    """Check what a sitting needs: no STOP, a writable state dir, .env key names, the hub."""
+    """Check what a sitting needs: no STOP, a writable state dir, .env key names; the hub only warns."""
     argparse.ArgumentParser(prog="python -m lab ready", description=main.__doc__).parse_args(argv)
     return check()
