@@ -81,7 +81,6 @@ from typing import Any
 
 from lab.machine import ledger as ledger_mod
 from lab.machine import refine_formats, refine_track, slots
-from lab.machine.slots import EXTENSION_MINUTES  # noqa: F401  (pool.py reads it as digest.EXTENSION_MINUTES)
 
 __all__ = ["MAX_LINES", "DEFAULT_WINDOW_HOURS", "BOARD_FILE", "BOARD_STALE_MINUTES", "SCHEMA",
            "SCHEMA_VERSION", "BoardError", "Board", "load_board", "parse_board", "save_board",

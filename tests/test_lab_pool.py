@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 
 from lab import __main__ as lab_cli
-from lab.machine import digest, ledger, pool, sit, stop
+from lab.machine import digest, ledger, pool, sit, slots, slots_fake, slots_notion, stop
 
 NOW = dt.datetime(2026, 10, 10, 15, 0, tzinfo=dt.timezone.utc)
 ILAN = "user://fbcc0baf-9942-4661-9414-319688df6910"
@@ -886,6 +886,138 @@ def test_queue_trouble_calls_the_referee_at_most_every_half_hour(make_pool, lab)
     p.history.ended("referee", "fable", pool.RESULT_OK, NOW - dt.timedelta(minutes=20), {})
     p.fill(NOW)
     assert offered(p) == []
+
+
+# --- queue trouble is judged by the queue verbs' rules -------------------------------------------
+
+B = "B exclusive"
+A = "A teacher shared service"
+
+
+class QueueWorld:
+    """The GPU queue as the slot verbs see it: a fake Notion under the real client and the real verbs
+    (lab/machine/slots.py), and the board snapshot the pool reads, taken from the same rows. The verbs
+    answer what a sitting would be told; queue_trouble must agree."""
+
+    def __init__(self) -> None:
+        self.fake = slots_fake.FakeNotion(clock=lambda: NOW)
+        client = slots_notion.NotionClient(slots_fake.TOKEN, transport=self.fake.transport, sleep=lambda seconds: None)
+        self.verbs = slots.SlotQueue(client, now=lambda: NOW)
+        self.ids: dict[str, str] = {}
+
+    def row(self, task: str, status: str, *, minutes: float | None = 15, waited: float | None = None,
+            ran: float | None = None, extended: bool = False, complaint: str = "", gpu: str = B) -> str:
+        """A row in the fake Notion: waited minutes since Requested, ran minutes since Started."""
+        requested = NOW - dt.timedelta(minutes=waited if waited is not None else (ran or 0) + 5)
+        row_id = self.fake.add_row(f"{task}: a short check", task_id=task, gpu=gpu, minutes=minutes, status=status,
+                                   requested=requested, started=None if ran is None else NOW - dt.timedelta(minutes=ran),
+                                   extended=extended, complaint=complaint)
+        self.ids[task] = row_id
+        return row_id
+
+    def board(self, *, unrequested: tuple[str, ...] = ()) -> digest.Board:
+        """The snapshot of every row so far, as the board file holds the queue; the tasks named in unrequested
+        lose their Requested time, as a row made by hand may."""
+        rows = [{**self.fake.values(row_id), **({"Requested": None} if task in unrequested else {})}
+                for task, row_id in self.ids.items()]
+        return digest.parse_board({"schema": 1, "taken_at": digest.iso(NOW), "taken_by": "test", "tasks": [],
+                                   "gpu_queue": rows})
+
+    def would_complain(self, task: str) -> bool:
+        """True when the complain verb records a complaint on the row now, False when it answers too_early."""
+        outcome = self.verbs.complain(self.ids[task])["outcome"]
+        assert outcome in ("complaint_recorded", "too_early")
+        return outcome == "complaint_recorded"
+
+    def is_overrun(self, task: str, card: str = "B") -> bool:
+        """True when the status verb marks the Running row of that card (A or B) overrun."""
+        running = {entry["task"]: entry for entry in self.verbs.status(gpu=card)["running"]}
+        return running[task]["overrun"]
+
+
+def test_a_queued_row_is_due_a_complaint_while_a_running_row_on_its_card_is_past_its_cap():
+    world = QueueWorld()
+    world.row("R11", "Running", ran=20)
+    world.row("L3", "Queued", minutes=60, waited=60)  # 60 minutes of the 60 asked for, not yet twice
+    board = world.board()
+    assert world.is_overrun("R11") and world.would_complain("L3")
+    assert pool.queue_trouble(board, NOW) == ["R11 running 20 min against a cap of 15",
+                                              "L3 queued 60 min, a complaint is due"]
+
+
+def test_an_overrun_on_the_other_card_makes_no_complaint_due():
+    world = QueueWorld()
+    world.row("T1", "Running", ran=20, gpu=A)
+    world.row("L3", "Queued", waited=20)
+    board = world.board()
+    assert world.is_overrun("T1", "A") and world.would_complain("L3") is False
+    assert pool.queue_trouble(board, NOW) == ["T1 running 20 min against a cap of 15"]
+
+
+@pytest.mark.parametrize("waited", [29, 30, 30.5, 45])
+def test_a_waiting_row_is_flagged_exactly_when_the_complain_verb_would_record_a_complaint(waited):
+    world = QueueWorld()
+    world.row("L3", "Queued", minutes=15, waited=waited)
+    board = world.board()
+    due = world.would_complain("L3")
+    assert pool.queue_trouble(board, NOW) == ([f"L3 queued {waited:g} min, a complaint is due"] if due else [])
+
+
+@pytest.mark.parametrize("ran", [14, 15, 15.5, 20])
+def test_a_running_row_is_flagged_exactly_when_the_status_verb_says_it_is_overrun(ran):
+    world = QueueWorld()
+    world.row("R11", "Running", minutes=15, ran=ran)
+    board = world.board()
+    overrun = world.is_overrun("R11")
+    assert pool.queue_trouble(board, NOW) == ([f"R11 running {ran:g} min against a cap of 15"] if overrun else [])
+
+
+def test_a_row_that_names_no_minutes_is_judged_by_the_default_slot():
+    world = QueueWorld()
+    world.row("R11", "Running", minutes=None, ran=20)
+    world.row("L3", "Queued", minutes=None, waited=31)
+    world.row("L4", "Queued", minutes=None, waited=29)
+    board = world.board()
+    assert world.is_overrun("R11") and world.would_complain("L3")
+    assert pool.queue_trouble(board, NOW) == ["R11 running 20 min against a cap of 15",
+                                              "L3 queued 31 min, a complaint is due",
+                                              "L4 queued 29 min, a complaint is due"]
+
+
+def test_one_extension_of_15_minutes_lifts_the_cap():
+    world = QueueWorld()
+    world.row("R11", "Running", ran=25, extended=True)
+    world.row("R12", "Running", ran=31, extended=True, gpu=A)
+    board = world.board()
+    assert world.is_overrun("R11") is False
+    assert pool.queue_trouble(board, NOW) == ["R12 running 31 min against a cap of 30"]
+
+
+def test_a_queued_row_with_no_requested_time_is_due_a_complaint_only_while_an_overrun_runs():
+    overrun = QueueWorld()
+    overrun.row("R11", "Running", ran=20)
+    overrun.row("L3", "Queued")
+    assert pool.queue_trouble(overrun.board(unrequested=("L3",)), NOW) == [
+        "R11 running 20 min against a cap of 15", "L3 queued, a complaint is due"]
+    quiet = QueueWorld()
+    quiet.row("R11", "Running", ran=10)
+    quiet.row("L3", "Queued")
+    assert pool.queue_trouble(quiet.board(unrequested=("L3",)), NOW) == []
+
+
+def test_a_row_that_already_complained_is_listed_by_its_complaint_alone():
+    world = QueueWorld()
+    world.row("R11", "Running", ran=20)
+    world.row("L3", "Queued", waited=60, complaint="waited 60 minutes behind R11")
+    assert pool.queue_trouble(world.board(), NOW) == ["R11 running 20 min against a cap of 15", "a complaint on L3"]
+
+
+def test_rows_that_are_not_open_make_no_trouble():
+    world = QueueWorld()
+    world.row("R11", "Done", ran=90)
+    world.row("R12", "Cancelled", waited=300)
+    world.row("R13", "Ended by referee", ran=90, complaint="ended after 90 minutes")
+    assert pool.queue_trouble(world.board(), NOW) == []
 
 
 # --- the dry run --------------------------------------------------------------------------------
