@@ -1819,7 +1819,7 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   spotReplayPause: () => post<Spot.Replay>("/api/spot/replay/pause", {}),
   spotReplaySeek: (body: { index?: number; mission_id?: string; fraction?: number }) => post<Spot.Replay>("/api/spot/replay/seek", body),
   spotReplaySpeed: (speed: number) => post<Spot.Replay>("/api/spot/replay/speed", { speed }),
-  spotAsk: (text: string) => post<Spot.Answer>("/api/spot/ask", { text }),
+  spotAsk: (text: string, rephrase = false) => post<Spot.Answer>("/api/spot/ask", { text, rephrase }),
   /** Both raise an approval card on the box; nothing is written until it is approved. */
   spotReinspect: (asset_id: string) => post<{ action_id: string; reason: string }>("/api/spot/actions/reinspect", { asset_id }),
   spotWorkOrder: (anomaly_id: string) => post<{ action_id: string; reason: string }>("/api/spot/actions/work_order", { anomaly_id }),

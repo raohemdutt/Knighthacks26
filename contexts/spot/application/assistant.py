@@ -3,9 +3,12 @@
     answer = await Assistant(spot, runtime).ask("what should I check first this shift?")
     answer["text"], answer["citations"], answer["intent"], answer["rephrased"]
 
-The answer is always built by code from the analysis (a deterministic intent layer; no model decides a fact).
-When a real model is configured, the on-device model is only asked to REPHRASE that grounded draft, at low
-priority. Its wording is used only if every number and every id in it also appears in the draft (`grounded`);
+The answer is always built by code from the analysis (a deterministic intent layer; no model decides a fact),
+and by default it is returned at once: `ask(text)` makes no model call, so an operator never waits on the
+model for the facts. `ask(text, rephrase=True)` additionally asks the on-device model to REPHRASE that grounded
+draft, at low priority, and only when the draft is short enough to rewrite inside a small budget
+(`REPHRASE_MAX_DRAFT_CHARS`, `REPHRASE_TIMEOUT_S`); long, number-dense answers (the version comparison) are
+never sent. Its wording is used only if every number and every id in it also appears in the draft (`grounded`);
 on any mismatch, a timeout, an error, or with the fake runtime, the draft itself is returned.
 """
 
@@ -17,7 +20,11 @@ from contexts.spot.domain.analysis import Evidence, _words
 from contexts.spot.domain.stats import MIN_N, MIN_TREND_N, pct, pct_range
 from contracts.types import ChatMessage
 
-REPHRASE_TIMEOUT_S = 25
+# The rephrase budget. The box writes about 14 tokens a second, one request at a time: a 450-character draft is
+# roughly 110 tokens, so about 8 s. Anything longer is shown as the code built it.
+REPHRASE_MAX_DRAFT_CHARS = 450
+REPHRASE_TIMEOUT_S = 8
+NEVER_REPHRASED = ("not_configured", "handoff", "version_comparison")  # nothing to reword, or too many numbers to risk
 ID = re.compile(r"\b(?:AN\d{3}|M\d{3}|A\d{4}|R\d{4}|WP\d{2}|E\d{5}|[A-Z]{2,6}-\d{3}|V\d)\b")
 NUMBER = re.compile(r"(?<![A-Za-z])[-+]?\d+(?:[.,]\d+)*")
 SYSTEM = ("You rewrite a briefing for a plant operator. Use plain, direct sentences. Keep every number and every id exactly as "
@@ -355,11 +362,18 @@ class Assistant:
 
     # --- rephrasing ---
 
-    async def ask(self, text: str) -> dict:
+    def can_rephrase(self, d: dict) -> bool:
+        """True when a model is configured and this draft is short enough to rewrite inside the budget."""
+        return bool(self.rephrase and self.runtime is not None and d["intent"] not in NEVER_REPHRASED
+                    and len(d["text"]) <= REPHRASE_MAX_DRAFT_CHARS)
+
+    async def ask(self, text: str, rephrase: bool = False) -> dict:
+        """The code-built answer, at once. With `rephrase=True` a short draft is also offered to the model (bounded)."""
         d = self.draft(text)
+        can = self.can_rephrase(d)
         out = {**d, "question": text, "draft": d["text"], "rephrased": False, "model": "none (built from the tables by code)", "check": None,
-               "suggested": SUGGESTED}
-        if not self.rephrase or self.runtime is None or d["intent"] in ("not_configured", "handoff"):
+               "can_rephrase": can, "suggested": SUGGESTED}
+        if not rephrase or not can:
             return out
         try:
             result = await asyncio.wait_for(asyncio.to_thread(

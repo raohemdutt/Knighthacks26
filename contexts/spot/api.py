@@ -20,7 +20,8 @@ Read (every one answers 200 without a kit: {"configured": false, "note": how to 
 
 Write (token-guarded like every other write):
 - POST /api/spot/replay/start | pause | seek {index | mission_id | fraction} | speed {speed}
-- POST /api/spot/ask {text}          a cited answer built from the analysis; a real model may only rephrase it
+- POST /api/spot/ask {text, rephrase?}  a cited answer built from the analysis, returned at once (no model call).
+                                     rephrase=true also offers a short draft to the on-device model, bounded and checked
 - POST /api/spot/actions/reinspect {asset_id} | /api/spot/actions/work_order {anomaly_id}
                                      -> {"action_id"}: an approval card. Nothing is written until it is approved.
 """
@@ -41,6 +42,7 @@ CACHE = {"Cache-Control": "public, max-age=3600"}
 
 class AskBody(BaseModel):
     text: str = Field(min_length=1, max_length=500)
+    rephrase: bool = False  # false: the code-built answer at once, no model call
 
 
 class SeekBody(BaseModel):
@@ -70,7 +72,7 @@ def spot_router(spot: SpotContext, bus, guard: Callable | None = None) -> APIRou
         info = spot.runtime.model_info() if spot.runtime is not None else None
         fake = info is None or info.base == "fake"
         return {"version": info.version if info else None, "real": not fake,
-                "role": ("Answers are built by code from the tables. " + ("The on-device model only rephrases them, and its wording is "
+                "role": ("Answers are built by code from the tables. " + ("The on-device model only rewords the short ones afterwards, and its wording is "
                          "dropped if it changes a number or an id." if not fake else "No model is configured, so nothing is rephrased."))}
 
     @router.get("/overview")
@@ -211,7 +213,7 @@ def spot_router(spot: SpotContext, bus, guard: Callable | None = None) -> APIRou
 
     @router.post("/ask", dependencies=writes)
     async def ask(body: AskBody) -> dict:
-        return {"configured": read.configured, **await spot.assistant.ask(body.text)}
+        return {"configured": read.configured, **await spot.assistant.ask(body.text, rephrase=body.rephrase)}
 
     @router.post("/actions/reinspect", dependencies=writes)
     async def reinspect(body: ReinspectBody) -> dict:

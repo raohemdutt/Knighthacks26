@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ApiError, api } from "@/lib/api";
 import { EvidenceLine, evidenceIds, useOpen } from "./bits";
 import s from "./spot.module.css";
@@ -15,6 +15,9 @@ export function AskBox({ modelLine }: { modelLine?: string }) {
   const [busy, setBusy] = useState(false);
   const [answer, setAnswer] = useState<Answer | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [reworded, setReworded] = useState<Answer | null>(null);
+  const [exact, setExact] = useState(false);
+  const asked = useRef(0);
 
   const ask = (q: string) => {
     const question = q.trim();
@@ -22,9 +25,17 @@ export function AskBox({ modelLine }: { modelLine?: string }) {
     setBusy(true);
     setError(null);
     setText(question);
+    setReworded(null);
+    setExact(false);
+    const turn = ++asked.current;
     api
       .spotAsk(question)
-      .then(setAnswer)
+      .then((a) => {
+        setAnswer(a);
+        // The facts are on screen. Only a short draft is offered to the model, in the background; a failure changes nothing.
+        if (a.can_rephrase)
+          api.spotAsk(question, true).then((r) => (turn === asked.current && r.rephrased ? setReworded(r) : undefined), () => undefined);
+      })
       .catch((e: unknown) => setError(e instanceof ApiError ? (e.needsToken ? "This box asks for a token (Settings, top right)." : e.message) : String(e)))
       .finally(() => setBusy(false));
   };
@@ -58,11 +69,15 @@ export function AskBox({ modelLine }: { modelLine?: string }) {
       {answer ? (
         <div className={s.answer} aria-live="polite">
           <span className={s.q}>{answer.question}</span>
-          <p style={{ whiteSpace: "pre-line" }}>{answer.text}</p>
+          <p style={{ whiteSpace: "pre-line" }}>{reworded && !exact ? reworded.text : answer.text}</p>
           <EvidenceLine evidence={answer.citations} max={18} />
           <span className={`${s.small} ${s.muted}`}>
-            {answer.rephrased ? `Worded by ${answer.model}; every number and id checked against the draft.` : "Built from the tables by code; no model wrote this."}
-            {answer.check && !answer.rephrased && answer.check !== "ok" ? ` (model wording dropped: ${answer.check})` : ""}
+            {reworded && !exact ? "Reworded by the on-device model; every number and id checked against the exact wording. " : "Built from the tables by code; no model wrote this. "}
+            {reworded ? (
+              <button type="button" className={s.linkBtn} onClick={() => setExact((v) => !v)}>
+                {exact ? "Show the reworded version" : "Show the exact wording"}
+              </button>
+            ) : null}
           </span>
           {answer.target && evidenceIds(answer.citations).length > 0 ? (
             <button type="button" className={s.linkBtn} style={{ alignSelf: "flex-start" }} onClick={() => answer.target && open(answer.target)}>
