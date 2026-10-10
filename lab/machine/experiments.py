@@ -89,7 +89,7 @@ import sys
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
-from lab.machine import ledger
+from lab.machine import ledger, record
 from lab.machine import refine_formats
 from lab.machine import verdict as verdict_math
 from lab.machine.lock import FileLock
@@ -98,7 +98,7 @@ log = logging.getLogger("lab.experiments")
 
 __all__ = [
     "VERB_ADD", "VERB_AMEND", "VERB_RESULT", "VERBS", "TRACKS", "KINDS", "BETTER", "STATUSES", "SETTABLE_STATUSES",
-    "QUEUED", "RUNNING", "DONE", "DROPPED", "MEASURE", "RATE", "HIGHER", "LOWER", "DEFAULT_TASK", "DEFAULT_ACTOR",
+    "QUEUED", "RUNNING", "DONE", "DROPPED", "MEASURE", "RATE", "HIGHER", "LOWER", "DEFAULT_TASK",
     "DEFINITION_FIELDS", "LOCK_FILE", "SEEDS", "ExperimentError",
     "validate_definition", "default_min_n", "planned_min_n", "expected_gain", "score_of", "fold", "load", "next_id",
     "add", "amend", "record_result", "runs_from_ledger", "rank", "checklist", "checklist_line", "seed", "main",
@@ -121,9 +121,6 @@ SETTABLE_STATUSES = (QUEUED, RUNNING, DROPPED)
 OPEN_STATUSES = (QUEUED, RUNNING)
 
 DEFAULT_TASK = "T0"
-DEFAULT_ACTOR = "cli"
-ACTOR_ENV = "LAB_ACTOR"
-TIER_ENV = "LAB_TIER"
 LOCK_FILE = "experiments.lock"
 LOCK_TIMEOUT = 30.0
 
@@ -441,21 +438,13 @@ def _lock(state_dir: str | os.PathLike[str] | None) -> FileLock:
     return FileLock(path, timeout=LOCK_TIMEOUT)
 
 
-def _actor() -> str:
-    return (os.environ.get(ACTOR_ENV) or "").strip() or DEFAULT_ACTOR
-
-
-def _tier() -> str | None:
-    return (os.environ.get(TIER_ENV) or "").strip().lower() or None
-
-
 def _append(verb: str, task: str, payload: dict[str, Any], outcome: str, *, state_dir: Any,
             refs: Mapping[str, Any] | None = None, source: str | None = None) -> int:
-    row: dict[str, Any] = {"actor": _actor(), "tier": _tier(), "task": task, "verb": verb, "outcome": outcome,
-                           "metrics": {}, "refs": dict(refs or {}), "experiment": payload}
-    if source:
-        row["source"] = source
-    return ledger.append(row, state_dir=state_dir)
+    """Write one experiment row through record.record, which names the writer (actor and tier) the way every
+    ledger row is named."""
+    extra = {"source": source} if source else {}
+    return record.record(verb, outcome, refs=dict(refs or {}), task=task, state_dir=state_dir, experiment=payload,
+                         **extra)
 
 
 def add(fields: Mapping[str, Any], *, state_dir: str | os.PathLike[str] | None = None,

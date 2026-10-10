@@ -24,7 +24,7 @@ import pytest
 
 from lab import __main__ as lab_cli
 from lab.machine import experiments as ex
-from lab.machine import ledger
+from lab.machine import ledger, record
 from lab.machine import verdict as v
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -130,12 +130,17 @@ def test_list_shows_an_added_experiment_queued_with_its_gain_and_score(capsys):
     assert (shown["added"]["seq"], shown["added"]["actor"], shown["seqs"]) == (1, "opus-3", [1])
 
 
-def test_add_with_no_actor_or_tier_in_the_environment_writes_cli_and_none(capsys, monkeypatch):
+def test_with_no_actor_or_tier_set_an_experiment_row_names_its_writer_as_every_other_ledger_row_does(
+        capsys, monkeypatch):
+    """record.py stamps the writer of every ledger row; an experiment row written outside a sitting carries the same
+    actor and tier as any other row written there, so the digest counts one unattributed writer, not two."""
     monkeypatch.delenv("LAB_ACTOR")
     monkeypatch.delenv("LAB_TIER")
     cli(capsys, *ADD_E9)
-    row = ledger.read()[0]
-    assert (row["actor"], row["tier"]) == ("cli", None)
+    record.record("bench.run", "ok")
+    experiment_row, other_row = ledger.read()
+    assert (experiment_row["actor"], experiment_row["tier"]) == (other_row["actor"], other_row["tier"])
+    assert (experiment_row["actor"], experiment_row["tier"]) == (record.UNKNOWN_ACTOR, None)
 
 
 def test_add_refuses_a_definition_with_problems_listing_every_one_and_writes_nothing():
