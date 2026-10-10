@@ -10,7 +10,9 @@ with one approval card for the calendar blocks. Every input is in `sources`, so 
 
 At bedtime (or when Habits closes the day) it runs Day Run's reality review against the plan and publishes
 `day.reviewed`; the next morning's choice is biased by it (a study slip: start earlier; a sleep slip: to
-bed earlier).
+bed earlier). With the study coach (contexts/day/application/coach.py) the review carries the day's
+sessions, and the next plan reads the coach's advice back as a `review` source and sizes its blocks of the
+main activity to the longest unbroken stretch.
 
 State (which day has a plan, which card belongs to which plan, what was committed or reviewed) rebuilds
 from the `day.*` and workspace events in the log: those handlers replay. Deciding and proposing is live only.
@@ -78,6 +80,7 @@ class DayPlanner:
     def __init__(self, dayrun: DayRun, clock: DayClock, habits=None, memory=None, presence=None, hub=None) -> None:
         self.dayrun, self.clock = dayrun, clock
         self.habits, self.memory, self.presence, self.hub = habits, memory, presence, hub
+        self.coach = None  # the study coach (DayLoop sets it): sessions for the review, advice for the next plan
         # --- state, rebuilt from the log ---
         self.plans: dict[date, DayPlanProposed] = {}  # the morning plan of each day
         self.current: dict[date, DayPlanProposed | DayReplanProposed] = {}  # what the day is measured against
@@ -199,11 +202,15 @@ class DayPlanner:
         day = self.clock.day_of(now)
         board = self.dayrun.board(now)
         yesterday = self.reviews.get(day - timedelta(days=1))
+        advice = self.advice(day)
         if moves is None:
-            moves, result = choose(self.dayrun.cfg, self.dayrun.walks, board, frozenset(biases(yesterday)))
+            moves, result = choose(self.dayrun.cfg, self.dayrun.walks, board, frozenset(biases(yesterday)),
+                                   study_chunk=advice[0].block_minutes if advice else None)
         else:
             result = simulate(self.dayrun.cfg, self.dayrun.walks, board, moves)
         sources, missing = self.sources(board, now, yesterday)
+        if advice:  # the coach's advice, read back: what it said and that the blocks follow it
+            sources.append(PlanSource(kind="review", id=f"coach:{advice[1]}", text=advice[2], origin="coach"))
         plan_id = self.fresh_id(f"plan-{day}-{local(self.dayrun.cfg, now):%H%M}")
         blocks = plan_moves(result, moves)
         outcome = plan_outcome(result)
@@ -215,6 +222,16 @@ class DayPlanner:
                                    outcome=outcome, sources=sources, missing=missing, text=text,
                                    action_id=card.action_id if card else None, by=by)
         return [proposed] + ([card] if card else [])
+
+    def advice(self, day: date):
+        """(advice, plan id, one line) from the coach about the day before, or None."""
+        if self.coach is None:
+            return None
+        try:
+            return self.coach.advice(day)
+        except Exception:
+            log.exception("the coach's advice failed")
+            return None
 
     def edited(self, now: datetime, moves: list[Move]) -> list[Event]:
         """The person's own version of today's plan, from Day Run's editor."""
@@ -313,13 +330,14 @@ class DayPlanner:
         steps = ", ".join(f"{m.title} {hm(m.start)}" for m in chosen[:6]) + (", ..." if len(chosen) > 6 else "")
         because = ""
         for s in sources:
-            if s.kind in ("item", "habit", "member", "review") and len(because) + len(s.text) < 400:
+            if s.kind in ("item", "habit", "member", "review") and s.origin != "coach" and len(because) + len(s.text) < 400:
                 because += ("; " if because else "") + s.text
         lead = "Your edited day" if by == "person" else "Here's your day"
         parts = [f"{lead}: {steps}." if chosen else "Nothing to add: the calendar fills the day.",
                  f"Simulated: {outcome.summary}"]
         if because:
             parts.append(f"Because: {because}.")
+        parts += [f"Coach: {s.text.removeprefix('coach: ')}" for s in sources if s.origin == "coach"]  # read back in full
         if card:
             parts.append("Approve to put it on your calendar.")
         return " ".join(parts)
@@ -334,7 +352,8 @@ class DayPlanner:
         if current is None:
             return []
         board = self.dayrun.board(now, InitialOverride(start_place=start_place) if start_place else None)
-        moves, result = choose(self.dayrun.cfg, self.dayrun.walks, board)
+        advice = self.advice(day)
+        moves, result = choose(self.dayrun.cfg, self.dayrun.walks, board, study_chunk=advice[0].block_minutes if advice else None)
         plan_id = self.fresh_id(f"plan-{day}-{local(self.dayrun.cfg, now):%H%M}r")
         blocks = plan_moves(result, moves)
         card = self.card(blocks, day, result, now, replace=True, why=why)
@@ -404,9 +423,15 @@ class DayPlanner:
         streak = (before.streak if before else 0) + 1 if stars > 0 else 0
         text = rv.text + (f" The real day scores {points} points and {stars} star{'s' if stars != 1 else ''} by Day Run's rules"
                           f" (the plan would have earned {plan_stars}); streak {streak}.")
+        coach: dict = {}
+        if self.coach is not None:  # the day's blocks of the main activity, against the desk camera
+            try:
+                coach = self.coach.day_review(day, now)
+            except Exception:
+                log.exception("the coach's part of the review failed")
         return DayReviewed(event_id=f"day-review-{plan.plan_id}", ts=now, day=day, plan_id=plan.plan_id, score=rv.score,
                            followed=followed, slipped=slipped, text=text, change_tomorrow=change, stars=stars, points=points,
-                           plan_stars=plan_stars, streak=streak)
+                           plan_stars=plan_stars, streak=streak, **coach)
 
 
 def biases(review: DayReviewed | None) -> list[str]:

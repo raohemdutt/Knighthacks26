@@ -6,7 +6,9 @@ The rule, in plain words: for each open slot in time order, lay down the things 
 usual times (meals near 8:30, 12:30 and 18:30; the night's sleep in the usual sleep window; at most one
 optional event), fill the gaps with study at the nearest good place (or rest, or nothing), simulate the
 whole day for each way of doing that, and keep the one with the most points; then go round once more with
-every other slot already chosen, so a late slot can change an early one. Points are the engine's own
+every other slot already chosen, so a late slot can change an early one. With `study_chunk` (the study coach's advice: the longest stretch the person really stays at the desk), a
+study filler is laid down as back-to-back blocks of that length instead of one long one: the same minutes,
+so the simulated day is the same, with an edge every `study_chunk` minutes to stop at. Points are the engine's own
 (deadline risk, sleep, meals, energy), plus a bonus for a winning plan and its stars. Nothing random: the
 same board always gives the same plan.
 """
@@ -87,11 +89,28 @@ def anchors_for(cfg: DayRunConfig, w: Walks, board: Board, slot: OpenSlot, meals
     return kept
 
 
+def chunks(minutes: int, size: int, least: int) -> list[int]:
+    """`minutes` cut into blocks of `size`; a remainder too short to schedule joins the last block."""
+    out = [size] * (minutes // size)
+    rest = minutes - size * len(out)
+    if rest >= least or not out:
+        return out + [rest] if rest else out
+    out[-1] += rest
+    return out
+
+
 def pieces(cfg: DayRunConfig, w: Walks, board: Board, slot: OpenSlot, anchors: list[Anchor], filler: str,
-           study: tuple[str, list[str]] | None) -> list[Move]:
+           study: tuple[str, list[str]] | None, study_chunk: int | None = None) -> list[Move]:
     """The slot's moves: fillers between the anchors, every move with its departure time."""
     moves: list[Move] = []
     cursor, here = slot.start, slot.from_place
+    size = max(study_chunk, cfg.min_move_minutes) if study_chunk else None
+
+    def study_moves(place: str, minutes: int, depart: datetime, begin: datetime, friend: str | None) -> None:
+        """One study stretch: a single move, or back-to-back blocks of the coach's size (the first one walks)."""
+        for n in chunks(minutes, size, cfg.min_move_minutes) if size and minutes > size else [minutes]:
+            moves.append(Move(slot=slot.id, kind="study", place=place, minutes=n, start=depart, with_friend=friend))
+            begin = depart = begin + timedelta(minutes=n)
 
     def fill(until: datetime | None, last: bool) -> None:
         nonlocal cursor, here
@@ -110,7 +129,7 @@ def pieces(cfg: DayRunConfig, w: Walks, board: Board, slot: OpenSlot, anchors: l
             t, depart = begin, cursor  # the first move leaves at `cursor` and walks; the rest start where it is
             while minutes_between(t, end) >= cfg.min_move_minutes:
                 chunk = min(BREAK_AFTER, minutes_between(t, end))
-                moves.append(Move(slot=slot.id, kind="study", place=place, minutes=chunk, start=depart, with_friend=friend))
+                study_moves(place, chunk, depart, t, friend)
                 t = depart = t + timedelta(minutes=chunk)
                 if minutes_between(t, end) < BREAK_MINUTES + cfg.min_move_minutes:
                     break
@@ -118,7 +137,10 @@ def pieces(cfg: DayRunConfig, w: Walks, board: Board, slot: OpenSlot, anchors: l
                 t = depart = t + timedelta(minutes=BREAK_MINUTES)
             cursor, here = t, place
             return
-        moves.append(Move(slot=slot.id, kind=kind, place=place, minutes=None if last else room, start=cursor, with_friend=friend))
+        if kind == "study" and size and room > size:
+            study_moves(place, room, cursor, begin, friend)
+        else:
+            moves.append(Move(slot=slot.id, kind=kind, place=place, minutes=None if last else room, start=cursor, with_friend=friend))
         cursor, here = end, place
 
     for a in anchors:
@@ -132,7 +154,8 @@ def pieces(cfg: DayRunConfig, w: Walks, board: Board, slot: OpenSlot, anchors: l
     return moves
 
 
-def candidates(cfg: DayRunConfig, w: Walks, board: Board, slot: OpenSlot, bias: frozenset[str]) -> list[list[Move]]:
+def candidates(cfg: DayRunConfig, w: Walks, board: Board, slot: OpenSlot, bias: frozenset[str],
+               study_chunk: int | None = None) -> list[list[Move]]:
     """Every way this slot is tried, in a fixed order; the first of two equal scores wins."""
     studies = _places(cfg, w, slot, "study") or [None]
     events = [e.id for e in board.events if e.place and e.start < slot.end and e.end > slot.start
@@ -144,7 +167,7 @@ def candidates(cfg: DayRunConfig, w: Walks, board: Board, slot: OpenSlot, bias: 
             anchors = anchors_for(cfg, w, board, slot, meals, event_id, bias)
             for filler in FILLERS:
                 for study in (studies if filler.startswith("study") else [None]):
-                    moves = pieces(cfg, w, board, slot, anchors, filler, study)
+                    moves = pieces(cfg, w, board, slot, anchors, filler, study, study_chunk)
                     key = tuple((m.kind, m.place, m.minutes, m.start, m.with_friend, m.event) for m in moves)
                     if key not in seen:
                         seen.add(key)
@@ -152,10 +175,11 @@ def candidates(cfg: DayRunConfig, w: Walks, board: Board, slot: OpenSlot, bias: 
     return out
 
 
-def choose(cfg: DayRunConfig, w: Walks, board: Board, bias: frozenset[str] = frozenset()) -> tuple[list[Move], SimResult]:
+def choose(cfg: DayRunConfig, w: Walks, board: Board, bias: frozenset[str] = frozenset(),
+           study_chunk: int | None = None) -> tuple[list[Move], SimResult]:
     """The best plan the search finds for this board, and its simulation."""
     chosen: dict[str, list[Move]] = {s.id: [] for s in board.slots}
-    options = {s.id: candidates(cfg, w, board, s, bias) for s in board.slots}
+    options = {s.id: candidates(cfg, w, board, s, bias, study_chunk) for s in board.slots}
 
     def plan() -> list[Move]:
         return [m for s in board.slots for m in chosen[s.id]]
