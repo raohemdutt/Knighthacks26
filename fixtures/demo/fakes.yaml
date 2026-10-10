@@ -28,6 +28,11 @@ connectors:
   - {type: connector.item.synced, at: 2, connector: groupme, kind: message, external_id: "class:1760100001",
      title: "Maya: anyone started the COP4533 milestone 1? due tuesday", when: "-60s", url: null,
      summary: "Maya in COP4533 class chat: anyone started the COP4533 milestone 1? due tuesday"}
+  # K9: last night from the watch (made-up numbers). When the fake starts at the demo night's time this is the
+  # night ending 2026-10-11, and Habits shows it as that day's sleep ("from your watch").
+  - {type: connector.item.synced, at: 2, connector: health, kind: health, external_id: "sleep:2026-10-11",
+     title: "Sleep 7 h 28 min", when: "-7440s", url: null,
+     summary: "asleep 7 h 28 min · in bed 7 h 46 min · 11:40 PM to 7:26 AM · core 250 min · deep 75 min · REM 123 min · awake 18 min · resting HR 53 bpm · sleeping HR 57 bpm · HRV 67 ms · breathing 14.7/min"}
   - {type: connector.sync.failed, at: 3}
   - {type: connector.sync.failed, at: 4, connector: groupme, error: "offline", offline: true}
 

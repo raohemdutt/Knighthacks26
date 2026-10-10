@@ -34,6 +34,7 @@ habits:
     direction: at_least
     cooldown_minutes: 720
     nudge: "Your desk was empty for only {value} hours last night. Aim for {target} tonight."
+    nudge_measured: "Your watch measured {value} hours of sleep last night. Aim for {target} tonight."  # K9
 
   - id: meals
     name: Meals

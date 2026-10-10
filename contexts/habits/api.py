@@ -9,6 +9,10 @@ A sleep or focus row also has `coverage` (0 to 1: how much of the night, or of t
 was reporting for) and `reason` once that is measured. `reason` is null unless too little was watched to judge
 the habit ("cameras saw 3 h of the 12 h night", "cameras were paused for ..."); then `applies` is false.
 
+A sleep row also has `source`: "watch" when a watch measured that night (K9: `value` is the hours asleep, and
+the row is judged whatever the cameras saw, so it has no `coverage`), "camera" when it is the empty-desk
+estimate.
+
 With owner recognition on and somebody enrolled (P9, `MemberHabits`), both take `?member=<member_id>` for one
 person's habits, and `today` also says whose it returned (`member`) and who can be asked for (`members`, ids
 only). Without `member` it is the only enrolled person's, or the unnamed set when several are enrolled.

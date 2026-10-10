@@ -86,7 +86,8 @@ class Nudger:
         if h.signal not in ("away_window", "meal", "desk_time") or not applies or h.met(value):
             return []
         if h.signal != "desk_time":
-            return self._warn(h, now, value)
+            measured = t.source(h, t.sched.local_day(now)) == "watch"  # the night was measured, not read off the desk
+            return self._warn(h, now, value, text=h.nudge_measured if measured else None)
         a = t.next_deadline(now, h.deadline_hours)
         if a is None:
             return []
@@ -108,12 +109,12 @@ class Nudger:
     # --- cooldown ---
 
     def _warn(self, h: Habit, ts: datetime, value: float, fields: dict | None = None,
-              evidence: list[Citation] | None = None) -> list[NudgeRaised]:
+              evidence: list[Citation] | None = None, text: str | None = None) -> list[NudgeRaised]:
         logged = self.tracker.latest_nudge.get(h.id)  # survives a restart, unlike `_last`
         last = self._last.get(h.id) or (logged.ts if logged else None)
         cooldown = h.cooldown_minutes if h.cooldown_minutes is not None else self.cfg.nudges.cooldown_minutes
         if last is not None and ts - last < timedelta(minutes=cooldown):
             return []
         self._last[h.id] = ts
-        message = h.nudge.format_map(_Blank(fields or {}, name=h.name, value=_n(value), target=_n(h.target)))
+        message = (text or h.nudge).format_map(_Blank(fields or {}, name=h.name, value=_n(value), target=_n(h.target)))
         return [NudgeRaised(ts=ts, nudge_id=uuid4().hex, habit_id=h.id, message=message, evidence=evidence or [])]

@@ -18,11 +18,18 @@ Sleep and focus are durations, so they count only time the desk camera was
 reporting (see coverage.py): not while it was paused, and not across a gap in
 its observations. When too little of the night or the day was watched they
 have nothing to judge either, and the row says why (`coverage`, `reason`).
+
+Sleep from a watch (K9): a `health` item from the connectors is a night the watch measured. Its hours asleep
+are the sleep value for the day the night ended on, in place of the empty-desk estimate, and that day is
+judged whatever the desk camera saw of it (`source` on the row: "watch", otherwise "camera"). It counts only
+while that day is still open: a closed day is in the log and never changes. A night the watch was not worn
+has no item, and is judged from the desk camera exactly as before.
 """
 
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 
+from contexts.connectors.domain.health import night_day, parse_summary  # pure: reads a health item's summary line
 from contexts.habits.domain.config import Habit, HabitsConfig, word_pattern
 from contexts.habits.domain.coverage import Coverage
 from contracts.connectors import ItemSynced
@@ -71,6 +78,7 @@ class Closed:
     applies: bool
     coverage: float | None = None  # sleep, focus: share of the window the desk camera reported for, when measured
     reason: str | None = None  # why it was not judged, when that share was too small
+    source: str | None = None  # sleep: "watch" when a watch measured the night, "camera" for the empty-desk estimate
 
 
 def _hours(delta: timedelta) -> float:
@@ -94,6 +102,7 @@ class HabitTracker:
         self.history: dict[str, list[Closed]] = {h.id: [] for h in cfg.habits}
         self.assignments: dict[str, Item] = {}
         self.calendar: dict[str, Item] = {}
+        self.measured_sleep: dict[date, float] = {}  # open day -> hours asleep in the night that ended on it, from a watch
         self.active_until: datetime | None = None  # the desk is accounted for up to here
         self.desk_frame: str | None = None
         self.on_desk: dict[str, str | None] = {}  # watch item -> frame it was last seen in
@@ -162,7 +171,9 @@ class HabitTracker:
         return []
 
     def on_item(self, e: ItemSynced) -> list[Event]:
-        """Assignments (due dates) and calendar events (start times) from the connectors."""
+        """Assignments (due dates), calendar events (start times) and nights a watch measured, from the connectors."""
+        if e.kind == "health":
+            return self._measured(e)
         if e.when is None or e.kind not in ("assignment", "calendar_event") or not self._admit(e):
             return []
         out = self._roll(self.sched.local_day(e.ts), e.ts)
@@ -173,6 +184,17 @@ class HabitTracker:
         item.title, item.when, item.url = e.title, when, e.url  # a re-sync updates, never duplicates
         if e.kind == "assignment":
             out += self._due_soon(key, item, e)
+        return out
+
+    def _measured(self, e: ItemSynced) -> list[Event]:
+        """A night from the watch. The latest reading of a night wins (a later upload has more of it); one for
+        a day already closed changes nothing. It says nothing about the desk, so it starts no camera clock."""
+        reading, day = parse_summary(e.summary), night_day(e.external_id)
+        if reading is None or day is None or not self._admit(e):
+            return []
+        out = self._roll(self.sched.local_day(e.ts), e.ts)
+        if day >= self.today:
+            self.measured_sleep[day] = reading.asleep_h
         return out
 
     def on_disposed(self, e: ItemDisposed) -> list[Event]:
@@ -282,10 +304,11 @@ class HabitTracker:
             value, applies = self.measure(h, day, end)
             met = h.met(value) or not applies
             streak = self.streak(h.id) if not applies else self.streak(h.id) + 1 if met else 0
-            self.history[h.id].append(Closed(day, value, met, streak, applies, *self.watched(h, day, end)))
+            self.history[h.id].append(Closed(day, value, met, streak, applies, *self.watched(h, day, end), self.source(h, day)))
             out.append(DayClosed(event_id=f"habits-day-{h.id}-{day}", ts=ts, habit_id=h.id, day=day,
                                  met=met, value=value, streak=streak))
         self.days.pop(day, None)
+        self.measured_sleep = {d: hours for d, hours in self.measured_sleep.items() if d > day}
         self._seen = {d: ids for d, ids in self._seen.items() if d > day}
         self.assignments = {k: a for k, a in self.assignments.items() if a.when >= end}
         self.calendar = {k: c for k, c in self.calendar.items() if c.when >= end}
@@ -307,6 +330,8 @@ class HabitTracker:
         watched = judged and since is not None and since < end  # a camera had reported by the end of this day
         enough = self.watched(h, day, now)[1] is None  # sleep, focus: the desk camera saw enough of the window
         match h.signal:
+            case "away_window" if day in self.measured_sleep:  # the watch measured it: judged whatever the cameras saw
+                return self.measured_sleep[day], True
             case "away_window":  # a night that ended before any camera, or has not begun by `now`, is not judged
                 night_start, night_end = self.sched.sleep_window(day)
                 observed = judged and since is not None and since < night_end and night_start < now
@@ -331,7 +356,10 @@ class HabitTracker:
     def watched(self, h: Habit, day: date, now: datetime) -> tuple[float | None, str | None]:
         """(coverage, reason) for sleep and focus as of `now`: the share of the night, or of the waking day, the
         desk camera was reporting for, and why the habit is not judged when that is too little. (None, None)
-        for the other habits, before the window has begun, and while the camera's coverage is not measured."""
+        for the other habits, before the window has begun, while the camera's coverage is not measured, and
+        for a night a watch measured (the camera is not what that figure rests on)."""
+        if h.signal == "away_window" and day in self.measured_sleep:
+            return None, None
         if h.signal == "away_window":
             (start, end), name = self.sched.sleep_window(day), "night"
         elif h.signal == "desk_time":  # wake to bedtime: a camera that is off overnight says nothing about focus
@@ -351,6 +379,12 @@ class HabitTracker:
         if paused and paused >= (total - seen) / 2:
             return round(seen / total, 2), f"cameras were paused for {_h(paused)} of {window}"
         return round(seen / total, 2), f"cameras saw {_h(seen)} of {window}"
+
+    def source(self, h: Habit, day: date) -> str | None:
+        """Where an open day's sleep figure comes from: "watch" or "camera". None for every other habit."""
+        if h.signal != "away_window":
+            return None
+        return "watch" if day in self.measured_sleep else "camera"
 
     # --- the desk: focus time and the away window ---
 
@@ -526,7 +560,7 @@ class HabitTracker:
             now = min(now, self.now)  # nothing is known past the latest event or tick: a later `now` is not an empty desk
         value, applies = self.measure(h, day, now)
         return self._view(h, Closed(day, value, h.met(value) or not applies, self.streak(h.id), applies,
-                                    *self.watched(h, day, now)), closed=False)
+                                    *self.watched(h, day, now), self.source(h, day)), closed=False)
 
     def _view(self, h: Habit, c: Closed, closed: bool) -> dict:
         n = self.latest_nudge.get(h.id)
@@ -534,5 +568,7 @@ class HabitTracker:
         row = {"id": h.id, "name": h.name, "unit": h.unit, "direction": h.direction, "target": h.target,
                "day": c.day.isoformat(), "value": c.value, "met": c.met, "applies": c.applies, "streak": c.streak,
                "closed": closed, "nudge": nudge}
+        if c.source:  # sleep: measured by a watch, or estimated from the empty desk
+            row["source"] = c.source
         # Sleep and focus, once the desk camera's coverage is measured: how much of the window it saw.
         return row if c.coverage is None else row | {"coverage": c.coverage, "reason": c.reason}

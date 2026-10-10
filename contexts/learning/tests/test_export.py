@@ -82,3 +82,28 @@ def test_the_approval_card_says_the_lookback_in_words():
     _, proposal = teach(TaskSpec(task="desk-objects", instruction="List objects."), datetime(2026, 10, 11, tzinfo=UTC))
     assert "from the last 24 hours to teach 'desk-objects'" in proposal.reason
     assert [span(timedelta(hours=1)), span(timedelta(days=3)), span(timedelta(minutes=90))] == ["1 hour", "3 days", "90 minutes"]
+
+
+def test_a_watch_night_in_memory_is_never_part_of_the_export(tmp_path):
+    """K9: the dataset is keyframes and captions of camera episodes. Connector items, health ones too, are not read."""
+    from contracts.memory import Item
+
+    night = Item(connector="health", kind="health", external_id="sleep:2026-10-11", title="Sleep 7 h 28 min",
+                 when=NOW - timedelta(hours=2), summary="asleep 7 h 28 min · in bed 7 h 46 min · resting HR 53 bpm · HRV 67 ms")
+
+    class EpisodesOnly(FakeMemory):
+        def items(self, start, end, kind=None):
+            raise AssertionError("the export must not read connector items")
+
+    memory = EpisodesOnly([episode("e1", "cam-desk", 2)], items=[night])
+    published = []
+    approvals = Approvals({"export_training_data": DatasetExporter(memory, lambda ref: b"jpeg", published.append, out_dir=tmp_path)})
+    _, proposal = teach(SPEC, NOW)
+    assert "Sleep" not in proposal.model_dump_json()
+    approvals.on_proposed(proposal)
+    [done] = asyncio.run(approvals.on_decided(ApprovalDecided(ts=NOW, action_id=proposal.action_id, decision="approve")))
+    assert done.status == "done", done.result
+    files = [p for p in tmp_path.rglob("*") if p.is_file()]
+    assert sorted(p.name for p in files) == ["0000.jpg", "examples.jsonl", "manifest.json"]
+    written = b"".join(p.read_bytes() for p in files).decode() + published[0].model_dump_json()
+    assert not [word for word in ("Sleep", "asleep", "bpm", "HRV", "health", "53 ") if word in written]
