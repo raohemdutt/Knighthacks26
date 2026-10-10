@@ -584,6 +584,13 @@ await check("GET /api/spot/assumptions", "GET", "/api/spot/assumptions", { confi
 await check("GET /api/spot/validation", "GET", "/api/spot/validation", { configured: "boolean", rows: "array", issues: "array" }, { optional: NO_SPOT });
 await check("GET /api/spot/work_orders", "GET", "/api/spot/work_orders", { configured: "boolean", work_orders: "array", folder: "string" }, { optional: NO_SPOT });
 await check("GET /api/spot/replay/state", "GET", "/api/spot/replay/state", { configured: "boolean", index: "number", total: "number", playing: "boolean" }, { optional: NO_SPOT });
+// Shift Run: plan a round and run it through the toy model (contexts/spot/domain/shiftrun.py). The simulation writes nothing.
+const runBoard = await check("GET /api/spot/shiftrun/board", "GET", "/api/spot/shiftrun/board", { configured: "boolean", candidates: "array" }, { optional: NO_SPOT });
+if (runBoard?.configured) {
+  const best = await check("GET /api/spot/shiftrun/recommended", "GET", "/api/spot/shiftrun/recommended", { configured: "boolean", route: "array", steps: "array", score: "number" }, { optional: NO_SPOT });
+  const mine = await check("POST /api/spot/shiftrun/simulate", "POST", "/api/spot/shiftrun/simulate", { configured: "boolean", score: "number", stars: "number", steps: "array", reasons: "array", differences: "array", recommended: "object" }, { optional: NO_SPOT, body: { route: runBoard.last_route, turn_back_at: 40 } });
+  if (best && mine) console.log(`        last round's route scores ${mine.score} (${mine.stars} of 3 stars); Atlas's plan ${best.score}`);
+}
 // the operator's first screen in plain words (contexts/spot/application/plain.py)
 const spotShift = await check("GET /api/spot/shift", "GET", "/api/spot/shift", { configured: "boolean", do_first: "array", watch: "array", assets: "array", rounds: "array", triage: "array", findings: "array" }, { optional: NO_SPOT });
 if (spotShift?.configured) {

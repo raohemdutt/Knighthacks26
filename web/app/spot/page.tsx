@@ -7,6 +7,7 @@ import { FloorMap } from "@/components/spot/FloorMap";
 import o from "@/components/spot/op.module.css";
 import { OperatorAsk } from "@/components/spot/OperatorAsk";
 import { Round } from "@/components/spot/Round";
+import { ShiftRun, type RunLink } from "@/components/spot/ShiftRun";
 import { AllSheet, AssetSheet, DoFirst, LooksFine, StatusLine, TrustLine, WatchOut } from "@/components/spot/Shift";
 import type { Replay, Target } from "@/components/spot/types";
 import { Empty, ErrorBox, Loading } from "@/components/States";
@@ -26,9 +27,11 @@ import { useFetch } from "@/lib/useFetch";
  * Only layers 1 and 2 load with the page (one request, plus the live picture). The analysis payloads are fetched when the
  * Analysis tab or a "Why?" is first opened.
  *
- * Deep links: ?asset=HX-202 opens that equipment's panel, ?round=M017&step=6 puts that round, at that step, at the top of the page, ?why=battery plays that finding's explainer (&at=end or &at=mid draws it at that step), ?numbers=battery opens its rows, ?tab=analysis opens the analysis, ?floor=2 picks the floor, ?all=1 lists all equipment.
+ * The Shift Run tab is a training game on the same plan: plan a round, run it through a toy model, compare with Atlas's.
+ *
+ * Deep links: ?tab=run&route=last&turn=40&show=result opens Shift Run with a plan already run, ?asset=HX-202 opens that equipment's panel, ?round=M017&step=6 puts that round, at that step, at the top of the page, ?why=battery plays that finding's explainer (&at=end or &at=mid draws it at that step), ?numbers=battery opens its rows, ?tab=analysis opens the analysis, ?floor=2 picks the floor, ?all=1 lists all equipment.
  */
-type Tab = "shift" | "analysis";
+type Tab = "shift" | "run" | "analysis";
 
 export default function SpotPage() {
   const shift = useFetch((sig) => api.spotShift(sig));
@@ -41,7 +44,7 @@ export default function SpotPage() {
   const [explain, setExplain] = useState<ExplainId | null>(null);
   const [force, setForce] = useState<Force>(null);
   const [evidence, setEvidence] = useState(false); // becomes true the first time the analysis is needed, and stays
-  const [link, setLink] = useState<{ round: string | null; step: number | null; floor: number | null } | null>(null);
+  const [link, setLink] = useState<{ round: string | null; step: number | null; floor: number | null; run: RunLink } | null>(null);
 
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
@@ -53,8 +56,11 @@ export default function SpotPage() {
     if (asked) (EXPLAINS[asked] ? setExplain(EXPLAINS[asked]!) : setTarget({ kind: asked === "validation" ? "validation" : "finding", id: asked }), setEvidence(true));
     if (q.get("numbers")) (setTarget({ kind: "finding", id: q.get("numbers")! }), setEvidence(true));
     if (q.get("tab") === "analysis") (setTab("analysis"), setEvidence(true));
+    if (q.get("tab") === "run") setTab("run");
     if (q.get("all")) setAll(true);
-    setLink({ round: up("round"), step: q.get("step") ? Number(q.get("step")) : null, floor: q.get("floor") ? Number(q.get("floor")) : null });
+    setLink({ round: up("round"), step: q.get("step") ? Number(q.get("step")) : null, floor: q.get("floor") ? Number(q.get("floor")) : null,
+      run: { route: q.get("route"), turn: q.get("turn") ? Number(q.get("turn")) : null, show: q.get("show"), hard: Boolean(q.get("hard")) },
+    });
   }, []);
 
   // The live picture: one reader, at most four reads a second.
@@ -133,6 +139,7 @@ export default function SpotPage() {
           {(
             [
               ["shift", "Your shift"],
+              ["run", "Shift Run"],
               ["analysis", "Analysis"],
             ] as [Tab, string][]
           ).map(([k, label]) => (
@@ -193,6 +200,8 @@ export default function SpotPage() {
           </button>
         </>
       ) : null}
+
+      {tab === "run" ? <ShiftRun shift={d} orders={written} link={link.run} /> : null}
 
       {evidence ? <AnalysisLayer shift={d} show={tab === "analysis"} target={target} setTarget={numbers} explain={explain} setExplain={setExplain} force={force} live={live} onLive={setLive} orders={written} /> : null}
 

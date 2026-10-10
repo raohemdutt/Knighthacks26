@@ -190,3 +190,13 @@ def test_the_shift_endpoints(tmp_path, monkeypatch):
     monkeypatch.setenv("ATLAS_SPOT_KIT", str(tmp_path / "no-kit-here"))
     with TestClient(create_app(Settings(data_dir=tmp_path, connectors=False, memory_fixture=""))) as c:
         assert c.get("/api/spot/shift").json()["configured"] is False and c.get("/api/spot/shift/rounds/M001").json()["configured"] is False
+
+
+def test_the_manual_is_quoted_with_its_page_and_only_where_it_says_something(spot, view):
+    step = plain.round_view(spot, "M017")["steps"][8]  # the walk that lost its connection
+    assert step["manual"]["page"] == 11 and step["manual"]["text"].startswith("The manual says") and "Spot User Guide" in step["manual"]["source"]
+    assert plain.round_view(spot, "M027")["steps"][4]["manual"] is None  # an unreliable reading: the guide gives no reason, so none is offered
+    assert all(s["manual"] is None for s in plain.round_view(spot, "M026")["steps"])  # nothing failed
+    words = {f["id"]: f for f in view["findings"]}
+    assert words["battery"]["manual"]["page"] == 44 and words["reliability_by_type"]["manual"] is None
+    assert any("Autowalk mission" in g["means"] for g in view["glossary"])

@@ -108,6 +108,9 @@ export function FloorMap({
   title,
   note,
   initialFloor,
+  order,
+  route2,
+  routeLabel,
   children,
 }: {
   map: NonNullable<Shift["map"]>;
@@ -124,6 +127,11 @@ export function FloorMap({
   title: string;
   note?: ReactNode;
   initialFloor?: FloorView | null;
+  /** Planning: the stop number to draw on a piece of equipment. */
+  order?: Record<string, number>;
+  /** A second route to compare with (drawn as a thin dashed line). */
+  route2?: string[];
+  routeLabel?: string;
   children?: ReactNode;
 }) {
   const geo = useMemo(() => geometry(map), [map]);
@@ -187,6 +195,9 @@ export function FloorMap({
     const b = pts[i]!;
     if (visible(a) && visible(b)) segs.push({ a, b, passed: done === undefined ? false : i < done });
   }
+  const pts2 = (route2 ?? []).filter((id) => geo.pos[id]);
+  const segs2: { a: string; b: string }[] = [];
+  for (let i = 1; i < pts2.length; i++) if (visible(pts2[i - 1]!) && visible(pts2[i]!) && pts2[i - 1] !== pts2[i]) segs2.push({ a: pts2[i - 1]!, b: pts2[i]! });
   const robot = robotAt && visible(robotAt) ? geo.pos[robotAt] : undefined;
 
   return (
@@ -241,6 +252,10 @@ export function FloorMap({
             />
           ))}
 
+          {segs2.map((sg, i) => (
+            <line key={`b${i}`} x1={geo.pos[sg.a]!.x + 5 * u} y1={geo.pos[sg.a]!.y + 5 * u} x2={geo.pos[sg.b]!.x + 5 * u} y2={geo.pos[sg.b]!.y + 5 * u} stroke="var(--ok)" strokeWidth={2.5 * u} strokeDasharray={`${8 * u} ${6 * u}`} strokeLinecap="round" opacity="0.8" />
+          ))}
+
           {map.places.filter((l) => visible(l.location_id)).map((l) => {
             const p = geo.pos[l.location_id]!;
             const n = byHome[l.location_id]?.length ?? 0;
@@ -280,11 +295,19 @@ export function FloorMap({
                   {a.level === "act" && !quiet ? <circle className={o.ring} r={17 * u} fill="none" stroke="var(--bad)" strokeWidth={2 * u} /> : null}
                   {on ? <circle r={19 * u} fill="none" stroke="var(--accent-text)" strokeWidth={3 * u} /> : null}
                   <LevelMark level={a.level} u={u} small={quiet} />
+                  {order?.[a.asset_id] ? (
+                    <g transform={`translate(${12 * u} ${-12 * u})`}>
+                      <circle r={9.5 * u} fill="var(--accent-text)" stroke="var(--surface)" strokeWidth={2 * u} />
+                      <text y={4 * u} textAnchor="middle" fontSize={11.5 * u} fontWeight="800" fill="var(--on-media)">
+                        {order[a.asset_id]}
+                      </text>
+                    </g>
+                  ) : null}
                 </g>
               );
             })}
 
-          {!quiet
+          {!quiet && !order
             ? spots
                 .filter((sp) => sp.a.level === "act" && visible(sp.a.location_id))
                 .map(({ a, x, y, side }) => (
@@ -316,7 +339,7 @@ export function FloorMap({
         ))}
         {pts.length > 1 ? (
           <span>
-            <i className={o.routeKey} /> {done === undefined ? "SPOT's last route" : "SPOT's route"}
+            <i className={o.routeKey} /> {routeLabel ?? (done === undefined ? "SPOT's last route" : "SPOT's route")}
           </span>
         ) : null}
       </div>

@@ -1241,3 +1241,23 @@
   padding: 6px 0 18px;
   min-width: 0;
 }
+
+/* what the manual says: set apart, with its source */
+.manual {
+  flex-basis: 100%;
+  margin-top: 4px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(var(--accent), var(--accent)) left / 4px 100% no-repeat, var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  font-size: 14.5px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.manual span {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--muted);
+}

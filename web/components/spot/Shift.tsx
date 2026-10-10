@@ -5,6 +5,7 @@ import ui from "@/components/ui.module.css";
 import { ApiError, api, spotUrl } from "@/lib/api";
 import { useAtlas } from "@/lib/atlas";
 import { LevelIcon } from "./FloorMap";
+import { ManualNote } from "./Round";
 import o from "./op.module.css";
 import type { AssetState, CompareVisual, Level, OpAction, PlainFinding, Shift, Target, WorkOrder } from "./types";
 
@@ -204,6 +205,7 @@ export function WatchOut({ items, onWhy }: { items: PlainFinding[]; onWhy: (t: T
             {it.visual ? <MiniBars v={it.visual} /> : null}
             <div className={o.itemActs}>
               {it.note ? <span className={o.note}>{it.note}</span> : null}
+              {it.manual ? <ManualNote m={it.manual} /> : null}
               <Why to={{ kind: "finding", id: it.finding_id }} onWhy={onWhy} />
             </div>
           </li>
@@ -282,6 +284,7 @@ export function AssetSheet({ asset, orders, onClose, onWhy }: { asset: AssetStat
         <Fact label="What it is">{asset.what}</Fact>
         <Fact label="Last check">
           <LevelIcon level={asset.last_check.worked === false ? "act" : "ok"} size={18} /> {asset.last_check.sentence}
+          {asset.last_check.manual ? <ManualNote m={asset.last_check.manual} /> : null}
         </Fact>
         <Fact label="Last reading">
           {asset.reading.sentence}

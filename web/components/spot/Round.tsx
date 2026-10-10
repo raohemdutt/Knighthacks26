@@ -7,7 +7,7 @@ import { useFetch } from "@/lib/useFetch";
 import { FloorMap } from "./FloorMap";
 import o from "./op.module.css";
 import { Why } from "./Shift";
-import type { CheckKind, Replay, RoundStep, Shift, Target } from "./types";
+import type { CheckKind, Manual, Replay, RoundStep, Shift, Target } from "./types";
 
 /**
  * Layer 2, "A round, replayed": one mission as a row of steps. After a round, step through it or drag the slider. Press
@@ -69,6 +69,15 @@ function Mark({ step, state }: { step: RoundStep; state: "done" | "now" | "later
       {!step.worked ? "✕" : step.alarm ? "!" : "✓"}
       {!step.worked && step.alarm ? <b className={o.badgeAlarm}>!</b> : null}
     </i>
+  );
+}
+
+/** What the Spot User Guide says about this kind of failure: the vendor's general guidance, with its page. */
+export function ManualNote({ m }: { m: Manual }) {
+  return (
+    <p className={o.manual}>
+      {m.text} <span>{m.source}. General guidance, not a finding about this plant.</span>
+    </p>
   );
 }
 
@@ -147,11 +156,14 @@ export function Round({
   };
 
   return (
-    <section className={o.round} aria-label="A round, replayed">
+    <section className={o.round} aria-label="A round, step by step">
       <div className={o.roundHead}>
         <div>
-          <h2 className={o.layerTitle}>A round, replayed</h2>
-          <p className={o.layerSub}>Step through any round after it ran, or press Play to watch it as it happened.</p>
+          <h2 className={o.layerTitle}>A round, step by step</h2>
+          <p className={o.layerSub}>
+            Go through any round after it ran, or press Play to watch it unfold as it happened. A round is one Autowalk mission: SPOT walks a recorded route by
+            itself and does its actions on the way.
+          </p>
         </div>
         <span className={`${o.mode} ${playing ? o.modeLive : ""}`} aria-live="polite">
           <i /> {playing ? "Live · following SPOT" : cursor === null ? "After the round" : "Paused"}
@@ -223,6 +235,7 @@ export function Round({
                   Step {current.n} of {steps.length} · at {current.place} · {current.asset}{" "}
                   <Why to={current.why_ref} onWhy={onWhy} />
                 </p>
+                {current.manual && !running ? <ManualNote m={current.manual} /> : null}
               </>
             ) : (
               <p className={o.nowLine}>{steps.length ? "SPOT is setting off. Press Play, or tap a step." : "…"}</p>
@@ -253,7 +266,7 @@ export function Round({
           </div>
           <input className={o.scrub} type="range" min={0} max={Math.max(1, steps.length)} value={shown} aria-label="Scrub through the round" onChange={(e) => move(Number(e.target.value))} />
           <p className={o.note}>
-            This replays recorded data in the order it happened. There is no live robot connected to this box.{" "}
+            This plays back the record of a round, in the order it happened. No robot is connected to this box, and nothing here makes SPOT walk.{" "}
             {round.data ? <Why to={round.data.why_ref} onWhy={onWhy}>See the raw rows</Why> : null}
           </p>
         </div>

@@ -115,8 +115,8 @@ class ShiftRun:
             names = ", ".join(plain.asset_name(kit, s["asset_id"]) for s in skipped[:3])
             out.append((sum(s["value"] for s in skipped) * 0.4, "bad", f"Turning back at {result['turn_back_at']:.0f}% left {len(skipped)} "
                                                                        f"stop{'s' if len(skipped) != 1 else ''} unchecked: {names}."))
-        elif not danger and result["stopped"] is None and steps and result["turn_back_at"] >= sr.LOW:
-            out.append((12, "good", f"Good: you turn back at {result['turn_back_at']:.0f}%, before the battery level where checks start to fail."))
+        elif not danger and result["stopped"] is None and steps and not any(s.get("low") for s in steps):
+            out.append((12, "good", "Good: every check ran above the battery level where checks start to fail."))
         cheap = [s for s in steps if s["outcome"] == "checked" and m["assets"][s["asset_id"]]["value"] <= sr.BASE_VALUE + 6]
         if cheap:
             s = cheap[0]
