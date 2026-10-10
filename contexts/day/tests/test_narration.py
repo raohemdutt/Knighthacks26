@@ -676,3 +676,11 @@ def test_the_day_in_words_for_a_conversation_is_todays_and_reads_only(items, pla
     assert words["now"] and words["now"] == loop.narrator.job_now("now", at(10, 0)).draft.display
     assert "coach" not in words and "review" not in words and len(seen) == before  # nothing published
     assert loop.in_words(at(10, 0) + timedelta(days=2)) == {}  # another day: the old plan is not today's
+
+
+def test_the_leave_by_never_lands_inside_a_place_name_with_an_initial():
+    from contexts.day.domain.narration import _weave
+
+    shown = _weave("A nap before the mentor check-in at 3:14 PM (John C. Hitt Library). Later: demos 5:54 PM.", " 13 min walk: leave by 3:02 PM.")
+    assert shown == "A nap before the mentor check-in at 3:14 PM (John C. Hitt Library). 13 min walk: leave by 3:02 PM. Later: demos 5:54 PM."
+    assert _weave("One thing only", " 5 min walk: leave by 1:00 PM.") == "One thing only. 5 min walk: leave by 1:00 PM."
