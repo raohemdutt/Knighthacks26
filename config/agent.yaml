@@ -5,6 +5,15 @@ sleep:
   bedtime: "20:00"
   wake: "08:00"
 
+# Conversation: small talk and simple questions ("how's your day?", "tell me a joke") get a short spoken reply
+# instead of a memory search. Every key is optional; these are the defaults. ATLAS_TALK=0 switches it off too.
+# talk:
+#   enabled: true
+#   name: Atlas            # what it calls itself
+#   tone: ""               # one more line for its persona, e.g. "Dry humour, very brief."
+#   max_history_turns: 6   # exchanges kept in memory for follow-ups ("why?", "tell me another"); never logged
+#   history_ttl_s: 600     # a conversation this quiet is forgotten
+
 # Subreddit the agent searches for "what do students say" questions.
 subreddit: ucf
 

@@ -343,6 +343,7 @@ class QA:
         self.load_keyframe = load_keyframe  # frame_ref -> blurred JPEG bytes
         self.tools = MEMORY_TOOLS + AGENT_TOOLS + ([KEYFRAME_TOOL] if load_keyframe else []) + (WEB_TOOLS if web else [])
         self.planner = None  # set by the composition root; answers "help me prep for ..." (A8)
+        self.talk = None  # set by the composition root; small talk and simple questions (talk.py)
         self.on_delta: Callable[[str, str], None] | None = None  # (question_id, text): streamed answer pieces (A11)
 
     async def on_question(self, e: QuestionAsked) -> AnswerGenerated:
@@ -356,6 +357,8 @@ class QA:
             return Answer(plan.text or NO_EVIDENCE, plan.citations, plan.model_version)
         evidence = self.prefetch(question)
         if evidence is None:
+            if self.talk and self.talk.wants(question):
+                return await self.talk.reply(question, stream)
             return await self.tool_loop(question, stream)
         unsure_ok = self.web is not None and not evidence.room_only  # A13: may fall back to the tool loop
         if not evidence:

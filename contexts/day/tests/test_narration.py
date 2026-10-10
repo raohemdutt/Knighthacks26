@@ -633,3 +633,15 @@ def test_the_push_uses_the_narrators_words_once(items, places, tmp_path):  # noq
     run(push(plan))
     run(push(loop.narrator.latest["morning"]))
     assert raw.sent == [("Your day", plan.text)]
+
+
+def test_the_day_in_words_for_a_conversation_is_todays_and_reads_only(items, places, tmp_path):  # noqa: F811
+    loop, bus, seen = build(items, places, tmp_path, runtime=FakeRuntime())
+    assert loop.in_words(at(8, 0)) == {}  # no plan yet: nothing to say about the day
+    run(plan_morning(loop, bus))
+    before = len(seen)
+    words = loop.in_words(at(10, 0))
+    assert words["plan"] == loop.narrator.latest["morning"].display
+    assert words["now"] and words["now"] == loop.narrator.job_now("now", at(10, 0)).draft.display
+    assert "coach" not in words and "review" not in words and len(seen) == before  # nothing published
+    assert loop.in_words(at(10, 0) + timedelta(days=2)) == {}  # another day: the old plan is not today's

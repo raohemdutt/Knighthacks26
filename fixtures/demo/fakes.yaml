@@ -91,6 +91,9 @@ agent:
      text: "- Start the dynamic programming part today, 3-5 PM\n- Write the runtime analysis tomorrow morning\n- Eat before the study session",
      blocks: [{title: "Study: COP 4533", start: "+3600s", end: "+10800s"}]}
   - {type: agent.note.written, at: 3600, note_id: fake-note-1, hour: "+0s", text: "Coding at the desk, then pizza for lunch."}
+  # Conversation (talk.py), after the steps above so they keep their ids: a reply with nothing cited, because nothing was looked up.
+  - {type: agent.answer.generated, at: 3660, question_id: fake-q-talk, citations: [],
+     answer: "Pretty good. My cameras logged two moments today, the last one a courier at the door. How's yours going?"}
 
 circle:
   - {type: circle.place.shared, at: 0, expires_at: "+7200s"}
