@@ -40,7 +40,6 @@ import fnmatch
 import importlib
 import inspect
 import json
-import math
 import re
 from collections.abc import Callable, Sequence
 from typing import Any
@@ -80,15 +79,18 @@ def _pair(text: str) -> tuple[str, str]:
 
 
 def _metric(text: str) -> tuple[str, int | float]:
+    """NAME=NUMBER as (name, number); whether the number is finite is the ledger's own rule
+    (ledger.finite_number), so nan, inf and an integer beyond float range are usage errors here."""
     name, value = _pair(text)
     try:
-        number: int | float = int(value)
+        parsed: int | float = int(value)
     except ValueError:
         try:
-            number = float(value)
+            parsed = float(value)
         except ValueError:
             raise argparse.ArgumentTypeError(f"the value of metric {name!r} must be a number, not {value!r}") from None
-    if not math.isfinite(number):
+    number = ledger.finite_number(parsed)
+    if number is None:
         raise argparse.ArgumentTypeError(f"the value of metric {name!r} must be finite, not {value!r}")
     return name, number
 

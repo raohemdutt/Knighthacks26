@@ -18,7 +18,7 @@ A row is one JSON object on one line, its fields in this order:
   task     the Task Board ID the row is about, or None
   verb     what was done
   outcome  how it ended: ok, fail, error, skipped, ...
-  metrics  {name: finite number}, dotted lowercase names such as
+  metrics  {name: finite number (finite_number)}, dotted lowercase names such as
            teacher.decode_tok_s; may be empty
   refs     {pr, commit, slot, run_id}: strings, integers or None; append
            fills in the ones a row leaves out as None and keeps any other
@@ -64,7 +64,8 @@ from lab.machine.metrics import _METRIC_RE as METRIC_NAME_RE
 
 __all__ = ["ENV_STATE_DIR", "DEFAULT_STATE_DIR", "LEDGER_FILE", "LOCK_FILE", "LOCK_TIMEOUT", "FIELDS",
            "REF_KEYS", "OPTIONAL_FIELDS", "FILTER_NAMES", "LockTimeout", "RowError", "resolve_state_dir",
-           "ledger_path", "lock_path", "validate", "append", "read", "tail", "latest_metric"]
+           "ledger_path", "lock_path", "finite_number", "validate", "append", "read", "tail",
+           "latest_metric"]
 
 log = logging.getLogger("lab.ledger")
 
@@ -171,18 +172,20 @@ def _is_metric_name(value: Any) -> bool:
     return isinstance(value, str) and METRIC_NAME_RE.fullmatch(value) is not None
 
 
-def _number(value: Any) -> int | float | None:
-    """value as a finite int or float; None when it is not one. A bool is not
-    a number here."""
+def finite_number(value: Any) -> int | float | None:
+    """value as a finite int or float, the ledger's one rule for a metric
+    value; None when it is not one. A bool is not a number here. Finite means
+    a float can hold it: nan, inf and an integer beyond float range (10**400)
+    are refused, while an integer that fits is kept exact as an int."""
     if isinstance(value, bool) or not isinstance(value, numbers.Real):
         return None
-    if isinstance(value, numbers.Integral):
-        return int(value)
     try:
         number = float(value)
     except (OverflowError, ValueError):
         return None
-    return number if math.isfinite(number) else None
+    if not math.isfinite(number):
+        return None
+    return int(value) if isinstance(value, numbers.Integral) else number
 
 
 def _json_problem(name: str, value: Any) -> str | None:
@@ -230,7 +233,7 @@ def _check_metrics(row: Mapping[str, Any], out: Row, problems: list[str]) -> Non
         return
     clean: dict[str, int | float] = {}
     for name, value in metrics.items():
-        number = _number(value)
+        number = finite_number(value)
         if not _is_metric_name(name):
             problems.append(f"metrics name {name!r} must be dotted lowercase words such as "
                             f"{METRIC_NAME_EXAMPLE!r}")
@@ -546,7 +549,7 @@ def latest_metric(name: str, node: str | None = None, *, conditions: Mapping[str
                                                  for key, wanted in conditions.items()):
                 continue
         moment = _parse_ts(row.get("ts"))
-        if moment is None or _number(row["metrics"][name]) is None:
+        if moment is None or finite_number(row["metrics"][name]) is None:
             continue
         key = (moment, row["seq"])
         if best_key is None or key > best_key:
