@@ -1,0 +1,16 @@
+# Which bin each item belongs in (Waste Watch E1, Sort It S1/S2).
+# Swap this one file for another campus or city's rules.
+bins:
+  recycling: recycling   # bin name -> zone id in zones.yaml
+  trash: trash
+items:
+  bottle: recycling
+  can: recycling
+  cup: trash             # coated paper cups are trash on most campuses
+  paper: recycling
+  cardboard: recycling
+  wine glass: trash
+  food container: trash
+  chip bag: trash
+  napkin: trash
+  banana: trash

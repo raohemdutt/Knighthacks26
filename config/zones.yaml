@@ -1,0 +1,8 @@
+# Zones per camera, as polygons in normalized [0, 1] image coordinates (P3).
+# Zone ids are what rules, Waste Watch and Sort It refer to.
+cam-door:
+  door: [[0.55, 0.55], [0.95, 0.55], [0.95, 0.98], [0.55, 0.98]]
+  recycling: [[0.05, 0.60], [0.25, 0.60], [0.25, 0.95], [0.05, 0.95]]
+  trash: [[0.28, 0.60], [0.48, 0.60], [0.48, 0.95], [0.28, 0.95]]
+cam-desk:
+  desk: [[0.10, 0.40], [0.90, 0.40], [0.90, 0.95], [0.10, 0.95]]

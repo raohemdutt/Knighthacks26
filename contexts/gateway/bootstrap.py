@@ -29,6 +29,8 @@ from contexts.connectors.application.hub import ConnectorHub
 from contexts.connectors.domain.spec import load_specs
 from contexts.connectors.infrastructure.mcp_client import McpConnector
 from contexts.learning.application.export import DatasetExporter
+from contexts.play.domain.game import SortIt
+from contexts.play.domain.pathfinding import SortingRules, ZoneMap
 from contexts.workspace.domain.approvals import Approvals
 from contexts.workspace.infrastructure.ntfy import Ntfy, PhoneNotifier, send_message_executor
 from contracts.types import ModelVersion
@@ -62,6 +64,7 @@ class Atlas:
     hub: ConnectorHub
     loop: AgentLoop
     zones: list[str] = field(default_factory=list)
+    game: SortIt | None = None
     tasks: list[asyncio.Task] = field(default_factory=list)
 
     async def start(self) -> None:
@@ -155,4 +158,15 @@ def build(settings: Settings | None = None) -> Atlas:
     else:
         zones = agent_cfg.get("zones", ["door", "desk"])
     loop = AgentLoop(memory, qa.sleep)
-    return Atlas(settings=s, bus=bus, qa=qa, approvals=approvals, hub=hub, loop=loop, zones=zones)
+
+    # Sort It (S1, S2): needs the bin zones and sorting rules in config.
+    game = None
+    play_cfg = agent_cfg.get("play", {})
+    camera = play_cfg.get("camera", "cam-door")
+    sorting = s.config_dir / "sorting.yaml"
+    if zones_file.exists() and sorting.exists() and camera in (yaml.safe_load(zones_file.read_text()) or {}):
+        game = SortIt(ZoneMap.load(camera, zones_file), SortingRules.load(sorting), start_xy=tuple(play_cfg.get("start_xy", (0.75, 0.75))))
+        bus.subscribe("perception.faces", game.on_faces)
+        bus.subscribe("perception.zone", game.on_zone_event)
+
+    return Atlas(settings=s, bus=bus, qa=qa, approvals=approvals, hub=hub, loop=loop, zones=zones, game=game)

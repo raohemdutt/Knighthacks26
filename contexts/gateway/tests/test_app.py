@@ -51,3 +51,25 @@ def test_plain_english_rule_through_the_api(tmp_path):
         assert r.status_code == 200 and r.json()["id"] == "late-visitor"
         rt.chat_replies.append(ChatResult(model_version="fake-0", content="no idea"))
         assert c.post("/api/rules", json={"text": "???"}).status_code == 422
+
+
+def test_play_route_and_a_round_over_the_bus(tmp_path):
+    import asyncio
+    from datetime import UTC, datetime, timedelta
+
+    from contracts.perception import ZoneEvent
+    from contracts.play import FacesCounted
+
+    with client(tmp_path) as c:
+        r = c.get("/api/play/route", params={"item": "can"}).json()
+        assert r["bin"] == "recycling" and r["path"]
+        atlas = c.app.state.atlas
+        t0 = datetime.now(UTC)
+
+        async def play():
+            for s in (0, 2):
+                await atlas.bus.publish(FacesCounted(ts=t0 + timedelta(seconds=s), camera_id="cam-door", count=1, facing=1))
+            await atlas.bus.publish(ZoneEvent(ts=t0 + timedelta(seconds=4), camera_id="cam-door", track_id=1, label="can", zone_id="recycling", kind="enter"))
+
+        c.portal.call(play)
+        assert c.get("/api/play/accuracy").json()["rounds"] == 1
