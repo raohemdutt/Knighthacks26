@@ -8,7 +8,9 @@
 - POST /api/day/plan           {} make or remake today's plan now; {moves: [...]} replace it with the person's own edited
                                moves; {from_here: true} a re-plan from where the box thinks you are. Each publishes a new
                                plan event and one approval card; nothing is written until the card is approved.
-- GET  /api/day/patterns       plain statements from the habit history ("on the N nights under 6 h, ...")
+- GET  /api/day/patterns       plain statements from the habit history ("on the N nights under 6 h, ...") and, when the
+                               health connector reads a watch export, from the watch's own history (`source: "watch"`,
+                               each with its count and date span). Read when asked for; never put in an event.
 - GET  /api/day/coach?day=     the study coach: each block of the main activity against the desk camera (minutes at the
                                desk, breaks and their likely triggers with evidence), the day in words, one or two
                                suggestions, the running forecast calibration, and the notes sent when blocks ended.
@@ -18,6 +20,7 @@
 Every answer is what the log says: the plan and status are projections of `day.*` events.
 """
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, date, datetime, timedelta
 
@@ -25,6 +28,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from contexts.day.application.loop import DayLoop
+from contexts.day.application.watch_history import export_patterns
 from contexts.day.domain.coach import FOOD_WORDS, PHONE_WORDS, mentions
 from contexts.day.domain.patterns import patterns
 from contexts.play.dayrun.models import Move
@@ -185,8 +189,13 @@ def day_router(day: DayLoop, publish: Callable[[object], Awaitable] | None = Non
     @router.get("/patterns")
     async def get_patterns() -> dict:
         try:
-            return {"patterns": patterns(t.habits)}
+            out: dict = {"patterns": patterns(t.habits)}
         except Exception as exc:
-            return {"patterns": [], "note": f"habit history unavailable: {exc}"}
+            out = {"patterns": [], "note": f"habit history unavailable: {exc}"}
+        try:
+            out["patterns"] += await asyncio.to_thread(export_patterns, day.config_dir, day.clock)  # a second of file reading, once
+        except Exception as exc:
+            out.setdefault("note", f"watch history unavailable: {type(exc).__name__}")
+        return out
 
     return router

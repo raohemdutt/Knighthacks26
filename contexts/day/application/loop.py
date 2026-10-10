@@ -21,7 +21,8 @@ from contracts.events import Event
 class DayLoop:
     def __init__(self, dayrun: DayRun, places: PlaceSet, config_dir: str | Path = "config", habits=None, memory=None,
                  waste=None, presence=None, hub=None, clock: DayClock | None = None) -> None:
-        self.clock = clock or DayClock.load(Path(config_dir) / "agent.yaml")
+        self.config_dir = Path(config_dir)
+        self.clock = clock or DayClock.load(self.config_dir / "agent.yaml")
         self.planner = DayPlanner(dayrun, self.clock, habits=habits, memory=memory, presence=presence, hub=hub)
         self.tracker = DayTracker(self.planner, dayrun, self.clock, places, habits=habits, waste=waste, presence=presence)
         self.coach = DayCoach(self.planner, dayrun, self.clock, memory=memory, habits=habits, desk_zone=self.tracker.desk_zone,

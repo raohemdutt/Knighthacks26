@@ -55,7 +55,7 @@ def _table(path: Path, tag: str, keep, columns: tuple[str, ...]) -> list[dict]:
     stat = path.stat()
     key = (str(path), stat.st_mtime_ns, stat.st_size, tag)
     if key not in _cache:
-        for old in [k for k in _cache if k[0] == key[0]]:
+        for old in [k for k in _cache if k[0] == key[0] and k[1:3] != key[1:3]]:  # an older version of this file
             del _cache[old]
         with gzip.open(path, "rt", encoding="utf-8", newline="") as f:
             _cache[key] = [{c: row.get(c, "") for c in columns} for row in csv.DictReader(f) if keep(row)]
