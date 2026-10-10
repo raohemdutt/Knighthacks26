@@ -77,7 +77,7 @@ def test_the_agent_passes_its_golden_questions_on_sqlite(tmp_path):
     qa = QA(FakeRuntime(), memory, clock=lambda: now, sleep=SleepSchedule.load())
     for g in questions:
         answer = asyncio.run(qa.ask(g.q))
-        cited = {ref for c in answer.citations for ref in (c.episode_id, c.frame_ref) if ref}
+        cited = {ref for c in answer.citations for ref in (c.episode_id, c.frame_ref, c.url) if ref}
         assert not cited if g.no_evidence else set(g.cite) <= cited, g.q
 
 

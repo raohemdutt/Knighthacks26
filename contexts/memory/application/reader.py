@@ -74,7 +74,7 @@ class SqliteMemory:
             if item is None:
                 return None
             return SearchHit(episode_id=row["ref"], camera_id=connector, ts=parse(item["when_ts"] or item["synced_at"]),
-                             text=row["text"], score=score)
+                             text=row["text"], score=score, kind=item["kind"], url=item["url"], title=item["title"])
         ep = self.store.episode(row["ref"])
         if ep is None:
             return None
