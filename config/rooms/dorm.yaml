@@ -1,0 +1,57 @@
+# A room, in metres, for the room twin (the 3D view, live tracks on the floor, Sort It routes).
+# Pick the room with ATLAS_ROOM=<name> or `room: <name>` in agent.yaml; the default is dorm.
+#
+# Plan coordinates: x runs east along the north wall, y runs south, the origin is the north-west corner
+# (like a picture: x right, y down). Heights are metres above the floor.
+#
+#   outline     the walls, clockwise from the north-west corner (a rectangle for now)
+#   doors       wall (north/east/south/west), at (centre along that wall, from its west or north end), width
+#   windows     the same, plus sill and height
+#   furniture   id, type, at [x, y] (the centre), size [width, depth] (width along its front), facing (which way its
+#               front looks: north/east/south/west) or rot (degrees clockwise, 0 = facing south), height.
+#               Types the view can draw: bed desk chair wardrobe shelf fridge nightstand table rug bin.
+#               A bin names the sorting bin it is (config/sorting.yaml) and its colour.
+#   play        walking speed and body radius for routes, where a player starts when no camera sees one
+#   calibration per camera, four points of the picture (0..1, origin top left) and the four floor points they are.
+#               `PUT /api/room/calibration/<camera>` rewrites this block; keep it the last one in the file.
+name: dorm
+title: Dorm room
+outline: [[0, 0], [4.2, 0], [4.2, 4.4], [0, 4.4]]
+wall_height: 2.5
+
+doors:
+  - {id: door, wall: north, at: 2.68, width: 0.9}
+windows:
+  - {id: window, wall: west, at: 2.0, width: 1.5, sill: 0.95, height: 1.15}
+posters:
+  - {wall: north, at: 1.27, width: 0.6, height: 0.84, sill: 1.15, art: sunset}
+  - {wall: north, at: 3.75, width: 0.5, height: 0.36, sill: 1.5, art: pennant}
+  - {wall: west, at: 3.75, width: 0.5, height: 0.7, sill: 2.05, art: grid}
+
+furniture:
+  - {id: desk, type: desk, at: [0.40, 2.0], size: [1.4, 0.65], facing: east, height: 0.75}
+  - {id: chair, type: chair, at: [1.05, 2.0], size: [0.48, 0.5], facing: west, height: 0.46}
+  - {id: bed, type: bed, at: [3.65, 3.2], size: [1.0, 2.0], facing: north, height: 0.55}
+  - {id: nightstand, type: nightstand, at: [2.86, 4.12], size: [0.45, 0.4], facing: north, height: 0.5}
+  - {id: wardrobe, type: wardrobe, at: [0.35, 3.75], size: [1.1, 0.6], facing: east, height: 1.95}
+  - {id: shelf, type: shelf, at: [0.21, 0.78], size: [0.8, 0.32], facing: east, height: 1.6}
+  - {id: fridge, type: fridge, at: [3.88, 0.36], size: [0.5, 0.55], facing: south, height: 0.85}
+  - {id: rug, type: rug, at: [2.1, 2.45], size: [1.6, 2.3], facing: south, height: 0.015}
+  - {id: recycling-bin, type: bin, bin: recycling, color: blue, at: [0.94, 0.28], size: [0.36, 0.32], facing: south, height: 0.52}
+  - {id: trash-bin, type: bin, bin: trash, color: grey, at: [1.6, 0.28], size: [0.36, 0.32], facing: south, height: 0.52}
+
+play:
+  walk_speed: 1.2     # metres a second, for the expected time ("par")
+  body_radius: 0.25   # furniture is grown by this much before a route is planned
+  start: [1.3, 3.7]   # where a player is taken to stand when no camera sees one
+
+# The demo cameras. cam-door looks at the north wall from inside the room: the bottom 45% of its picture is the
+# 1.8 m of floor in front of the bins and the door. cam-desk looks down at the desk from behind the chair: its desk
+# zone is the desk top and the chair.
+calibration:
+  cam-door:
+    image: [[0, 0.55], [1, 0.55], [1, 1], [0, 1]]
+    floor: [[0.5, 0], [3.4, 0], [3.4, 1.8], [0.5, 1.8]]
+  cam-desk:
+    image: [[0.1, 0.4], [0.9, 0.4], [0.9, 0.95], [0.1, 0.95]]
+    floor: [[0.05, 2.64], [0.05, 1.36], [1.095, 1.36], [1.095, 2.64]]
