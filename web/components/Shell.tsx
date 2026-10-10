@@ -195,15 +195,14 @@ const ALL = [...TABS, ...MORE];
 
 /** How the screens are grouped, in the sidebar and in the phone's More sheet. URLs are unchanged. */
 const SECTIONS: { title: string; hrefs: string[] }[] = [
-  { title: "Everyday", hrefs: ["/", "/now", "/today", "/timeline", "/approvals"] },
-  { title: "The room", hrefs: ["/live", "/map", "/people", "/play"] },
-  { title: "Plan", hrefs: ["/dayrun", "/circle"] },
-  { title: "Insights", hrefs: ["/impact", "/spot", "/teach"] },
-  { title: "Setup", hrefs: ["/zones", "/privacy"] },
+  { title: "Everyday", hrefs: ["/", "/now", "/today", "/dayrun"] },
+  { title: "The room", hrefs: ["/live", "/map", "/people"] },
+  { title: "Plan", hrefs: ["/approvals", "/impact", "/spot"] },
+  { title: "Other", hrefs: ["/timeline", "/play", "/circle", "/teach", "/zones", "/privacy"] },
 ];
 
-/** The phone tab bar: the four things used daily. Everything else is one tap further, under More. */
-const BAR = ["/", "/now", "/today", "/approvals"].map((href) => ALL.find((t) => t.href === href)!);
+/** The phone tab bar: the Everyday group. Everything else is one tap further, under More. */
+const BAR = ["/", "/now", "/today", "/dayrun"].map((href) => ALL.find((t) => t.href === href)!);
 
 /** Inspection shows on the inspection profile, on a box with a kit, or when that screen is the one open. */
 function useShowInspection(path: string): boolean {
@@ -357,6 +356,11 @@ export function Shell({ children }: { children: ReactNode }) {
               <circle cx="18.5" cy="12" r="1.9" />
             </svg>
             <span>More</span>
+            {pending > 0 ? (
+              <span className={ui.badge} aria-label={`${pending} approvals waiting`}>
+                {pending}
+              </span>
+            ) : null}
           </button>
         </div>
       </nav>
