@@ -912,6 +912,28 @@ def test_removing_the_segment_leaves_the_other_items_and_a_placeholder_when_it_w
     assert shared.overnight.split("\n")[-1] == NEEDS_LINE
 
 
+@pytest.mark.parametrize(
+    ("before", "after", "left"),
+    [
+        (" first item; ", "; last item", "first item; last item"),
+        (" ", "; last item", "last item"),
+        (" first item; ", "", "first item"),
+    ],
+)
+def test_removing_the_segment_keeps_the_separator_between_the_items_on_both_sides(tmp_path, before, after, left):
+    refine = tree_with_two_open(tmp_path)
+    segment = rulings.build_posts(open_items(refine), NOW).segment
+    line = "- **Needs a human (Ilan):**" + before + segment + after
+    notion = FakePages(overnight=OVERNIGHT.replace(NEEDS_LINE, line))
+    answer_ruling(refine, "telemetry", 1, "10 Hz (owner, 2026-10-10)")
+    answer_ruling(refine, "kernels", 4, "the spread (owner, 2026-10-10)")
+
+    result = mirrored(refine, notion)
+
+    assert result["targets"]["overnight_status"] == {"action": "removed"}
+    assert notion.overnight.split("\n")[-1] == "- **Needs a human (Ilan):** " + left
+
+
 def test_a_page_without_the_needs_line_fails_that_target_and_the_other_is_still_done(tmp_path):
     refine = tree_with_two_open(tmp_path)
     notion = FakePages(overnight=OVERNIGHT.replace(NEEDS_LINE, "- **Waiting on:** nothing"))

@@ -631,9 +631,9 @@ def _rewrite_needs_line(line: str, posts: Posts) -> tuple[str, str]:
     if posts.segment is None:
         if not found:
             return line, "unchanged"
-        before = body[: found.start()].rstrip().rstrip(";").rstrip()
-        after = body[found.end():].lstrip().lstrip(";").lstrip()
-        return f"{head} {(before + ' ' + after).strip() or 'none'}", "removed"
+        before = body[: found.start()].strip().rstrip(";").rstrip()
+        after = body[found.end():].strip().lstrip(";").lstrip()
+        return f"{head} {'; '.join(side for side in (before, after) if side) or 'none'}", "removed"
     if found:
         if found["id"] == posts.list_id:
             return line, "unchanged"
