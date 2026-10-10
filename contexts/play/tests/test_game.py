@@ -46,6 +46,8 @@ def test_walking_away_abandons_the_round_and_desk_zones_are_ignored():
     g.on_faces(faces(0))
     g.on_faces(faces(2))
     assert g.on_zone_event(drop(3, "door")) == []
+    walker = drop(3, "trash").model_copy(update={"label": "person"})
+    assert g.on_zone_event(walker) == []  # people passing a bin zone don't score
     g.on_faces(faces(13, facing=0))
     assert g.round is None
 
