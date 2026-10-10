@@ -48,6 +48,7 @@ VERBS: dict[str, str] = {
     "metrics": "lab.machine.metrics_report:main",
     "pool": "lab.machine.pool:main",
     "ready": "lab.machine.ready:main",
+    "referee": "lab.machine.referee:main",
     "research-check": "lab.machine.research_check:main",
     "resume": "lab.machine.stop:resume_main",
     "review": "lab.machine.review:main",
