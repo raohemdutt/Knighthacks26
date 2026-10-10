@@ -564,9 +564,10 @@ CHECK_CASES = [
         [("Converged: NO - two changes made.", "Converged: YES - nothing to do.")],
         [
             "pass 7: Converged is YES but the entry makes 2 change(s); a converged walk changes nothing",
+            "pass 7: Converged is YES but the entry raises 1 ruling(s); a converged walk raises no new ruling",
             "pass 7: Converged is YES, so the entry must end with the line 'CONVERGED at pass 7'",
         ],
-        id="converged-yes-with-changes",
+        id="converged-yes-with-changes-and-a-ruling",
     ),
 ]
 
@@ -840,6 +841,26 @@ def test_the_converged_closing_line_must_agree_with_the_entry(edits, expected):
         text = edit(text, old, new)
 
     assert rf.check_pass_entry(only_entry(text)) == expected
+
+
+def test_a_converged_entry_raises_no_new_ruling():
+    """lab/refine/PASS_RULES.md, "Convergence": a pass converges when its walk changed nothing, which means no
+    board edit, no new queued experiment and no new ruling. A YES entry that raises one would end the run while a
+    question is still open, and the next trigger would start a new run."""
+    raised = (
+        "Rulings raised (candidates; the merge pass numbers them into OWNER_RULINGS.md):\n"
+        "(a) Should E9 run on pod A or pod B?\n"
+        "    Now: pod B.\n"
+        "    Recommend: pod B, because pod A serves the teacher.\n"
+        '    Source of tension: lab/README.md, section "Teacher (pod A)" against the GPU queue rules.\n'
+        "    Answer: ____"
+    )
+    entry = only_entry(edit(CONVERGED_PASS, "Rulings raised: none", raised))
+
+    assert [r.label for r in entry.rulings_raised] == ["a"]
+    assert rf.check_pass_entry(entry) == [
+        "pass 5: Converged is YES but the entry raises 1 ruling(s); a converged walk raises no new ruling"
+    ]
 
 
 def test_a_cap_entry_closes_with_the_cap_line_and_raises_a_ruling():

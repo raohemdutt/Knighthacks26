@@ -379,7 +379,7 @@ def check_pass_entry(entry: PassEntry) -> list[str]:
     A pass entry needs a research step with sources, a metrics-before table whose rows cite a
     metrics-file or ledger line, a walk, dispositioned findings, complete numbered changes that trace
     to findings, rulings raised with a blank Answer line, and a Converged verdict that agrees with its
-    closing CONVERGED or CAP REACHED line. A merge entry needs the same except the research step, the
+    closing CONVERGED or CAP REACHED line; a YES verdict comes with no change and no new ruling. A merge entry needs the same except the research step, the
     metrics-before table, the METRIC line and the finding for each change.
     """
     who = f"{entry.kind} {entry.number}"
@@ -455,6 +455,11 @@ def check_pass_entry(entry: PassEntry) -> list[str]:
         add("'Converged' must start with YES or NO")
     if entry.converged and entry.changes:
         add(f"Converged is YES but the entry makes {len(entry.changes)} change(s); a converged walk changes nothing")
+    if entry.converged and entry.rulings_raised:
+        add(
+            f"Converged is YES but the entry raises {len(entry.rulings_raised)} ruling(s); "
+            "a converged walk raises no new ruling"
+        )
     if entry.converged and entry.ending != "converged":
         add(f"Converged is YES, so the entry must end with the line 'CONVERGED at pass {entry.number}'")
     if entry.ending == "converged" and entry.converged is False:
