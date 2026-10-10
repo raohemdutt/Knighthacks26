@@ -52,3 +52,24 @@ def test_chat_returns_tool_calls():
     assert result.tool_calls[0].arguments == {"label": "keys"}
     assert result.model_version == "atlas-v1"
     assert seen[0]["tools"] == [{"type": "function"}]
+
+
+def test_llama_streams_pieces_and_returns_the_whole_reply():
+    """A11: llama-server's server-sent events are passed on piece by piece."""
+    import httpx
+
+    from contracts.types import ChatMessage, ModelVersion
+    from runtime.llama import LlamaServerRuntime
+
+    sse = "".join(f'data: {{"choices": [{{"delta": {{"content": "{p}"}}}}]}}\n\n' for p in ["On", " the", " desk."])
+    sse += "data: [DONE]\n\n"
+
+    def handle(request):
+        assert b'"stream": true' in request.content or b'"stream":true' in request.content
+        return httpx.Response(200, text=sse, headers={"content-type": "text/event-stream"})
+
+    rt = LlamaServerRuntime(ModelVersion(version="v", base="b"), base_url="http://llm")
+    rt.http = httpx.Client(base_url="http://llm", transport=httpx.MockTransport(handle))
+    got = []
+    r = rt.chat([ChatMessage(role="user", content="where?")], on_text=got.append)
+    assert got == ["On", " the", " desk."] and r.content == "On the desk."

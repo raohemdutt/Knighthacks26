@@ -2,7 +2,8 @@
 
     python -m contexts.gateway            # serves on :8000
 
-- WS  /ws                      every bus event as JSON, live (the PWA's feed)
+- WS  /ws                      every bus event as JSON, live (the PWA's feed); while an answer is being written,
+                               also {"type": "agent.answer.delta", "question_id", "text"} pieces (not logged; A11)
 - POST /api/ask                {text} -> the answer with citations (also on /ws)
 - GET  /api/approvals          pending approval cards
 - POST /api/approvals/{id}     {decision: approve|deny} (ntfy buttons call this)
@@ -38,6 +39,7 @@ approving things.
 
 import asyncio
 import contextlib
+import json
 import hmac
 import os
 from datetime import UTC, datetime, timedelta
@@ -110,14 +112,32 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
 
     atlas.bus.subscribe("", fan_out)
 
+    async def send_all(data: str) -> None:
+        for ws in list(sockets):
+            try:
+                await ws.send_text(data)
+            except Exception:
+                sockets.discard(ws)
+
+    def stream_answer(question_id: str, text: str) -> None:
+        """Called from the model's worker thread with each new piece of an answer (A11): straight to the phones,
+        never to the log. The final agent.answer.generated is unchanged."""
+        loop = app.state.loop
+        if loop is not None and sockets:
+            data = json.dumps({"type": "agent.answer.delta", "question_id": question_id, "text": text})
+            loop.call_soon_threadsafe(lambda: loop.create_task(send_all(data)))
+
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI):
+        app.state.loop = asyncio.get_running_loop()
+        atlas.qa.on_delta = stream_answer
         await atlas.start()
         yield
         await atlas.stop()
 
     app = FastAPI(title="Atlas", lifespan=lifespan)
     app.state.atlas = atlas
+    app.state.loop = None
     if atlas.habits:  # GET /api/habits/today, /api/habits/{id}/history (H2)
         app.include_router(habits_router(atlas.habits), prefix="/api")
     if atlas.memory:  # GET /memory/... (M4)
