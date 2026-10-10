@@ -345,6 +345,28 @@ arrival), restarts, distinct updates, starting temperatures, the energy and its 
 reference run measures it. Parsers and sampler are tested offline on `fixtures/telemetry/pod_power`
 (tests/test_lab_pod_power.py; the `strixhalo_*` files are output recorded on pod C, the others the R9700's).
 
+## Jetson sampler cost and idle watts (T13)
+
+Measured on the box on 2026-10-10 over SSH (key login, no sudo, `atlas-gateway` and `atlas-llm` left running, nothing
+restarted, nothing written to `data/events`), in the mode it was in: `nvpmodel -q` said MAXN_SUPER, mode 2, never
+changed. The commands are the two read-only steps T2 merged, run from a scratch copy of main under `~/t13`:
+`python -m contexts.telemetry.jetson_power cpu --minutes 5 --interval-ms 100|200` (5 minutes sampler off, then 5 on),
+and `probe --count 3000 --interval-ms 100` (about 5 minutes of VDD_IN). The sampler's own CPU (this process, its
+`nvpmodel` children and tegrastats; the row value) is 3.51 percent of one core at the 100 ms default with the gateway
+idle and 3.28 with one caption request always in flight, and 1.83 and 1.70 at 200 ms: over the 1 percent budget at
+both periods, and about linear in the rate. The box-wide on-minus-off difference (the report's own `value`) came out
+-5.5, -3.5, +10.0 and -10.3 points, so the gateway's own background captioning (the box sits near 110 percent of a
+core with nothing asked of it) swamps the sampler and that figure cannot resolve it; it is kept in each row's
+conditions. The caption request was a back-to-back loop straight to llama-server (:8080, 80 tokens, about 9 to 13 s
+each under load), not `/api/ask`, which would have logged a `QuestionAsked` event on the box. Idle watts on the
+VDD_IN rail with the gateway and model loaded and no request of ours: mean 15.76 W over 3000 samples (median 18.2,
+min 4.7, max 19.9), bimodal: about 5 W between the gateway's keyframe captions and about 18 W while the GPU captions,
+so "idle" depends on how often it captions. The starting temperature was tj 54.2 C. Rows are `telemetry.sampler_cpu_pct`
+and `jetson.idle_watts` on node `jetson` in `lab/refine/metrics.jsonl`, all `low_confidence` (telemetry ruling 7:
+one run per cell and no external meter, error unmeasured); the raw output (top and ps snapshots, probe lines, request
+timings, temperatures) is `fixtures/telemetry/jetson_sampler_cost/`. Consequence: a sampler that fits 1 percent needs
+about a 350 ms period, or tegrastats read in place of a Python loop per line.
+
 ## Teacher (pod A)
 
 ```
