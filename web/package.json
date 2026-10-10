@@ -1,0 +1,24 @@
+{
+  "name": "atlas-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Atlas phone app (PWA), built as static files that the gateway serves",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "typecheck": "tsc --noEmit",
+    "check-api": "node scripts/check-api.mjs",
+    "icons": "node scripts/make-icons.mjs"
+  },
+  "dependencies": {
+    "next": "15.5.27",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.43",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "typescript": "5.9.3"
+  }
+}
