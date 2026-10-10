@@ -81,6 +81,11 @@ items:
   - {synced: "2026-10-10T17:41:00-04:00", connector: groupme, kind: message, external_id: "friends:1760100007",
      title: "Riley: there's a free concert on the lawn at 8 tonight if people want a break", when: "2026-10-10T17:40:00-04:00",
      summary: "Riley in Friends: there's a free concert on the lawn at 8 tonight if people want a break"}
+  # Not in fixtures/memory/memory.yaml: one message during Saturday night's study block (10:08 to 11:17 PM in the
+  # plan), a minute and a half before the desk empties, so the study coach has a break with a visible reason.
+  - {synced: "2026-10-10T22:32:40-04:00", connector: groupme, kind: message, external_id: "friends:1760100009",
+     title: "Riley: the concert was great. how is the hacking going over there?", when: "2026-10-10T22:31:40-04:00",
+     summary: "Riley in Friends: the concert was great. how is the hacking going over there?"}
   - {synced: "2026-10-11T08:42:00-04:00", connector: groupme, kind: message, external_id: "friends:1760100008",
      title: "Alex: good luck at judging today, what time do you present?", when: "2026-10-11T08:41:00-04:00",
      summary: "Alex in Friends: good luck at judging today, what time do you present?"}
@@ -148,6 +153,12 @@ beats:
   - {at: "2026-10-10T22:30:00-04:00", camera: cam-desk, move: sit, seconds: 180, things: [laptop],
      captions: ["One person is left at the table, wearing headphones."],
      objects: [{label: wallet, position: "behind the monitor stand"}, {label: keys, position: "next to the coffee mug"}]}
+  # Not in fixtures/memory/memory.yaml, for the study coach: the phone comes out a minute before the person
+  # above leaves the desk (the last minute of that same stay), and one unbroken ten minutes later in the block.
+  - {at: "2026-10-10T22:32:00-04:00", camera: cam-desk, move: sit, seconds: 60,
+     captions: ["The person picks up their phone and reads a message."]}
+  - {at: "2026-10-10T22:50:00-04:00", camera: cam-desk, move: sit, seconds: 600, things: [laptop],
+     captions: ["A person works through a problem set on the laptop, headphones on."]}
   - {at: "2026-10-10T23:10:00-04:00", camera: cam-desk, move: sit, seconds: 90, things: [laptop],
      captions: ["A person opens a third energy drink; three cans stand by the laptop."],
      objects: [{label: can, position: "three cans, right of the laptop"}, {label: keys, position: "next to the coffee mug"}]}

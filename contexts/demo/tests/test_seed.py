@@ -144,6 +144,33 @@ def test_the_handlers_raised_the_alert_the_nudges_the_checklist_and_a_game_round
     assert [r.correct for r in seeded.rounds] == [True]
 
 
+def test_the_study_coach_reviews_saturday_nights_block_with_a_real_distraction(seeded_dir, tmp_path):
+    data_dir, seeded = seeded_dir
+    app = seeded.app
+    (note,) = [e for e in app.bus.read_log() if e.type == "day.coach.noted"]
+    assert note.day == SATURDAY and note.text == ("You did 15 of 69 minutes. Two breaks; the long one came right after the group chat. "
+                                                  "Next study block is 43 minutes.")
+    s = note.session
+    assert (s.planned_minutes, s.desk_minutes, s.late_start_minutes, s.longest_stretch_minutes) == (69, 15, 22, 10)
+    long, short = s.breaks
+    assert (long.minutes, long.trigger, short.minutes, short.trigger) == (17, "chat", 10, "none")
+    chat, phone = long.evidence
+    assert chat.id == "groupme:friends:1760100009" and phone.kind == "phone"
+    assert "Hold chat notifications until the break" in note.suggestions[0] and "25-minute blocks" in note.suggestions[1]
+    # Sunday's plan reads it back and sizes its own blocks to it
+    sunday = app.day.planner.current[NOW.date()]
+    assert any(src.origin == "coach" and "25-minute blocks" in src.text for src in sunday.sources)
+    chosen = [m.minutes for m in sunday.moves if m.kind == "study" and not m.fixed]
+    assert chosen and max(chosen) < 25 + 15
+    # and a box restarted on the same log says the same, without saying it again
+    again = replayed(data_dir / "events", tmp_path)
+    assert again.day.coach.latest == note and again.day.coach.sessions(SATURDAY, NOW) == [s]
+    assert again.day.coach.tick(NOW) == []
+    episode = next(e for e in again.memory.episodes(NOW - timedelta(days=2), NOW) if e.id == phone.id)  # a real Memory episode
+    assert any("picks up their phone" in c for c in episode.captions)
+    again.projection.store.close()
+
+
 def test_replaying_the_same_log_twice_gives_identical_projections(seeded_dir, tmp_path):
     data_dir, seeded = seeded_dir
     first = picture(replayed(data_dir / "events", tmp_path / "a"))
