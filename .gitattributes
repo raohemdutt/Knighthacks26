@@ -3,3 +3,4 @@
 *.png binary
 *.mp4 binary
 *.gguf binary
+*.gz binary
