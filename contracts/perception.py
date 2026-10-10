@@ -32,5 +32,6 @@ class SceneDescribed(TypedEvent):
     camera_id: CameraId
     caption: str
     objects: list[ObjectHit] = []
+    zone_id: ZoneId | None = None  # set when the frame is a zone crop (watch-item finder)
     frame_ref: FrameRef
     model_version: str

@@ -1,8 +1,12 @@
 from datetime import datetime
 from typing import Literal
 
+from pydantic import BaseModel
+
 from contracts.events import TypedEvent, register
-from contracts.types import CameraId, FrameRef
+from contracts.types import CameraId, FrameRef, ZoneId
+
+# --- events ---
 
 
 @register
@@ -23,3 +27,65 @@ class EpisodeClosed(TypedEvent):
     captions: list[str]
     summary: str | None = None
     keyframe_refs: list[FrameRef] = []
+
+
+# --- read API (GET /memory/...), used by Agent and Experience ---
+
+
+class Episode(BaseModel):
+    """Row of memory_episodes. GET /memory/episodes?from&to&camera&label"""
+
+    id: str
+    camera_id: CameraId
+    start: datetime
+    end: datetime | None = None  # None while still open
+    labels: list[str] = []
+    captions: list[str] = []
+    summary: str | None = None
+    keyframe_refs: list[FrameRef] = []
+
+
+class Sighting(BaseModel):
+    """Last known place of a watch item. GET /memory/objects/{label}/last-seen"""
+
+    label: str
+    camera_id: CameraId
+    zone_id: ZoneId | None = None
+    ts: datetime
+    frame_ref: FrameRef
+    position: str | None = None  # "left of the laptop"
+
+
+class SearchHit(BaseModel):
+    """GET /memory/search?q= returns list[SearchHit], best first."""
+
+    episode_id: str
+    camera_id: CameraId
+    ts: datetime
+    text: str  # matching caption or summary
+    score: float
+    frame_ref: FrameRef | None = None
+
+
+class HourBucket(BaseModel):
+    hour: datetime  # start of the hour
+    episode_ids: list[str]
+    captions: list[str]  # deduped, capped so prompts stay small
+    keyframe_refs: list[FrameRef] = []
+
+
+class EpisodeWindow(BaseModel):
+    """Episodes in [start, end) grouped by hour, for "what happened overnight"."""
+
+    start: datetime
+    end: datetime
+    hours: list[HourBucket]
+
+
+class MemoryStats(BaseModel):
+    """GET /memory/stats"""
+
+    hours_recorded: float
+    episodes: int
+    captions: int
+    first_event: datetime | None = None
