@@ -225,10 +225,18 @@ def only_merge(text: str) -> rf.PassEntry:
 # --- the committed files -------------------------------------------------------------------------------
 
 
-def test_committed_merge_log_is_a_header_that_points_at_the_format_and_the_checks():
-    log = rf.parse_log((REFINE / "MERGE_LOG.md").read_text(encoding="utf-8"))
+@pytest.fixture(params=["committed", "with-a-merge-entry"])
+def merge_log_text(request):
+    """The committed MERGE_LOG.md, then its header with a merge entry under it, as the first merge leaves the file."""
+    text = (REFINE / "MERGE_LOG.md").read_text(encoding="utf-8")
+    if request.param == "with-a-merge-entry":
+        return text.split("\n## ", 1)[0].rstrip("\n") + "\n\n" + MERGE_EXAMPLE
+    return text
 
-    assert log.entries == ()
+
+def test_committed_merge_log_is_a_header_that_points_at_the_format_and_the_checks(merge_log_text):
+    log = rf.parse_log(merge_log_text)
+
     assert log.header.startswith("# Merge log for the four refinement tracks")
     for name in ("lab/refine/TEMPLATES.md", "lab/refine/PASS_RULES.md", "lab/machine/refine_merge.py"):
         assert name in log.header
