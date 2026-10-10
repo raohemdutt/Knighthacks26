@@ -36,6 +36,7 @@ from contexts.workspace.domain.approvals import Approvals
 from contexts.workspace.infrastructure.ntfy import Ntfy, PhoneNotifier, send_message_executor
 from contracts.types import ModelVersion
 from runtime import FakeRuntime
+from runtime.registry import build_runtime
 
 log = logging.getLogger("atlas")
 TICK_S = 30
@@ -101,8 +102,11 @@ def build(settings: Settings | None = None) -> Atlas:
     agent_cfg = yaml.safe_load((s.config_dir / "agent.yaml").read_text()) or {}
     bus = EventBus(s.data_dir / "events")
 
-    # Runtime (R1): the real model if a llama-server is configured.
-    if s.llm_url:
+    # Runtime (R1): config/models.yaml picks the models; ATLAS_LLM_URL points at a llama-server.
+    models_yaml = s.config_dir / "models.yaml"
+    if models_yaml.exists():
+        runtime = build_runtime(models_yaml, llm_url=s.llm_url)
+    elif s.llm_url:
         from runtime.llama import LlamaServerRuntime
 
         runtime = LlamaServerRuntime(ModelVersion(version=s.model_version, base="Qwen/Qwen3.5-4B"), base_url=s.llm_url)

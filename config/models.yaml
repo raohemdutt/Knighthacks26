@@ -1,0 +1,33 @@
+# Which models Atlas runs (R1). Changing a model is an edit here, not a code change.
+# Everything below runs on the Jetson; the lab GPUs are never in the request path.
+
+atlas_model:
+  # fake: no model, deterministic answers (laptops, tests).
+  # llama-server: the quantized Qwen VL on the Jetson (R8). ATLAS_LLM_URL overrides `url`.
+  backend: fake
+  url: http://127.0.0.1:8080
+  version: atlas-base
+  base: Qwen/Qwen3.5-4B
+  # The deployed package's manifest wins over version/base when it exists (R7 hot-swap).
+  manifest: data/models/current/manifest.json
+  timeout_s: 120
+
+detector:
+  # Real-time detect + track (P1, P2): ultralytics on a TensorRT engine, plugged in by Perception.
+  backend: ultralytics
+  weights: yolo11n.engine
+
+open_vocab:
+  # detect_open(): things the detector has no class for (keys, charger). Uses the Atlas model's grounding.
+  backend: atlas_model
+
+embeddings:
+  text:
+    # Semantic search over captions and items (M5). A second llama-server with --embedding, e.g.
+    #   llama-server -m bge-m3-Q8_0.gguf --embedding --port 8081
+    backend: none        # openai-http to turn on
+    url: http://127.0.0.1:8081
+    model: bge-m3
+  image:
+    backend: none        # clip (needs: pip install sentence-transformers pillow)
+    model: clip-ViT-B-32

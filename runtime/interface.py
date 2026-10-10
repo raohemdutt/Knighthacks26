@@ -10,7 +10,7 @@ detection > alerts > chat > captions > summaries > backfill.
 
 from typing import Any, Literal, Protocol
 
-from contracts.types import ChatMessage, ChatResult, ModelVersion, ObjectHit, Track
+from contracts.types import ChatMessage, ChatResult, Detection, ModelVersion, ObjectHit, Track
 
 Priority = Literal["chat", "caption", "summary", "backfill"]
 
@@ -18,6 +18,12 @@ Priority = Literal["chat", "caption", "summary", "backfill"]
 class Runtime(Protocol):
     def detect_track(self, frame: Any) -> list[Track]:
         """Detect + track on one BGR frame (numpy array). Real-time path."""
+        ...
+
+    def detect_open(self, jpeg: bytes, labels: list[str]) -> list[Detection]:
+        """Open-vocabulary detection: find things the detector has no class for ("keys", "charger").
+
+        Boxes are normalized [0, 1]. Slower than detect_track; use on keyframes and crops."""
         ...
 
     def caption(self, jpeg: bytes, prompt: str = "Describe the scene in one sentence.") -> str: ...
@@ -35,6 +41,14 @@ class Runtime(Protocol):
         priority: Priority = "chat",
     ) -> ChatResult:
         """`tools` are OpenAI-style function schemas."""
+        ...
+
+    def embed_text(self, texts: list[str]) -> list[list[float]]:
+        """One vector per text, for semantic search over captions and items (M5)."""
+        ...
+
+    def embed_image(self, jpeg: bytes) -> list[float]:
+        """One vector per image, in the same space as embed_text when the backend supports it."""
         ...
 
     def model_info(self) -> ModelVersion: ...

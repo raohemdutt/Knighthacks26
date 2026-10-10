@@ -1,8 +1,9 @@
 """Deterministic Runtime for laptops and tests. No models, no GPU."""
 
+import hashlib
 from typing import Any
 
-from contracts.types import ChatMessage, ChatResult, ModelVersion, ObjectHit, Track
+from contracts.types import ChatMessage, ChatResult, Detection, ModelVersion, ObjectHit, Track
 from runtime.interface import Priority
 
 
@@ -12,7 +13,9 @@ class FakeRuntime:
         chat_replies: list[ChatResult] | None = None,
         objects: list[ObjectHit] | None = None,
         caption_text: str = "A person sits at a table with a laptop.",
+        detections: list[Detection] | None = None,
     ) -> None:
+        self.detections = detections or []
         self.chat_replies = list(chat_replies or [])
         self.objects = objects or []
         self.caption_text = caption_text
@@ -21,6 +24,18 @@ class FakeRuntime:
     def detect_track(self, frame: Any) -> list[Track]:
         self.calls.append(("detect_track", None))
         return []
+
+    def detect_open(self, jpeg: bytes, labels: list[str]) -> list[Detection]:
+        self.calls.append(("detect_open", labels))
+        return [d for d in self.detections if d.label in labels]
+
+    def embed_text(self, texts: list[str]) -> list[list[float]]:
+        self.calls.append(("embed_text", texts))
+        return [_vector(t.encode()) for t in texts]
+
+    def embed_image(self, jpeg: bytes) -> list[float]:
+        self.calls.append(("embed_image", None))
+        return _vector(jpeg)
 
     def caption(self, jpeg: bytes, prompt: str = "Describe the scene in one sentence.") -> str:
         self.calls.append(("caption", prompt))
@@ -47,3 +62,9 @@ class FakeRuntime:
 
     def model_info(self) -> ModelVersion:
         return ModelVersion(version="fake-0", base="fake")
+
+
+def _vector(data: bytes, dim: int = 8) -> list[float]:
+    """Deterministic unit-ish vector from bytes, so tests can compare embeddings."""
+    digest = hashlib.sha256(data).digest()
+    return [b / 255 for b in digest[:dim]]

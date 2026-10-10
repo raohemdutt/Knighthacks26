@@ -15,13 +15,31 @@ from typing import Any
 
 import httpx
 
-from contracts.types import ChatMessage, ChatResult, ModelVersion, ObjectHit, ToolCall, Track
+from contracts.types import Box, ChatMessage, ChatResult, Detection, ModelVersion, ObjectHit, ToolCall, Track
 from runtime.interface import Priority
 
 FIND_OBJECTS_PROMPT = (
     "List the small objects you can see. Reply with only a JSON array like "
     '[{"label": "keys", "position": "left of the laptop"}].'
 )
+
+
+DETECT_OPEN_PROMPT = (
+    "Find every {labels} in the image. Reply with only a JSON array like "
+    '[{{"label": "keys", "box": [x1, y1, x2, y2]}}] where the box is in 0-1000 coordinates '
+    "(0,0 top-left, 1000,1000 bottom-right). Reply [] if there are none."
+)
+
+
+def _box_1000(raw) -> Box | None:
+    """Qwen VL grounding boxes on a 0-1000 scale -> normalized Box; None if malformed."""
+    try:
+        x1, y1, x2, y2 = (min(max(float(v) / 1000, 0.0), 1.0) for v in raw)
+    except (TypeError, ValueError):
+        return None
+    if x2 <= x1 or y2 <= y1:
+        return None
+    return Box(x1=x1, y1=y1, x2=x2, y2=y2)
 
 
 def _image_part(jpeg: bytes) -> dict:
@@ -46,12 +64,16 @@ class LlamaServerRuntime:
         model: ModelVersion,
         base_url: str = "http://127.0.0.1:8080",
         detector: Callable[[Any], list[Track]] | None = None,
+        text_embedder: Callable[[list[str]], list[list[float]]] | None = None,
+        image_embedder: Callable[[bytes], list[float]] | None = None,
         load_image: Callable[[str], bytes] | None = None,
         timeout_s: float = 120.0,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         self.model = model
         self.detector = detector
+        self.text_embedder = text_embedder
+        self.image_embedder = image_embedder
         self.load_image = load_image  # frame_ref -> jpeg bytes, for ChatMessage.images
         self.http = httpx.Client(base_url=base_url, timeout=timeout_s, transport=transport)
 
@@ -59,6 +81,27 @@ class LlamaServerRuntime:
         if self.detector is None:
             raise RuntimeError("no detector configured")
         return self.detector(frame)
+
+    def detect_open(self, jpeg: bytes, labels: list[str]) -> list[Detection]:
+        prompt = DETECT_OPEN_PROMPT.format(labels=", ".join(labels))
+        content = [_image_part(jpeg), {"type": "text", "text": prompt}]
+        text = self._complete([{"role": "user", "content": content}], max_tokens=300)["content"]
+        out = []
+        for item in _parse_json_array(text):
+            box = _box_1000(item.get("box") or item.get("bbox_2d") or item.get("bbox"))
+            if box and item["label"] in labels:
+                out.append(Detection(label=item["label"], confidence=float(item.get("confidence", 0.5)), box=box))
+        return out
+
+    def embed_text(self, texts: list[str]) -> list[list[float]]:
+        if self.text_embedder is None:
+            raise RuntimeError("no text embedding model configured (models.yaml: embeddings.text)")
+        return self.text_embedder(texts)
+
+    def embed_image(self, jpeg: bytes) -> list[float]:
+        if self.image_embedder is None:
+            raise RuntimeError("no image embedding model configured (models.yaml: embeddings.image)")
+        return self.image_embedder(jpeg)
 
     def caption(self, jpeg: bytes, prompt: str = "Describe the scene in one sentence.") -> str:
         content = [_image_part(jpeg), {"type": "text", "text": prompt}]
