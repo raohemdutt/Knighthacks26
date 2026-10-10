@@ -152,6 +152,47 @@ The box has no GitHub login, so code reaches it from a laptop: `./jetson/push.sh
 tree (not `.env`, `data/`, the engine or the models) and restarts `atlas-gateway`; the app rebuilds its memory from the
 event log. `--web` builds the phone app first. The default address is `alexander@ubuntu.local`.
 
+## 9. Voice on the box (X16)
+
+The Jetson listens through the USB webcam's built-in microphone and speaks through a Bluetooth speaker. Speech to text is
+whisper.cpp (`tiny.en`), text to speech is Piper; both run on the box, one short process per use (peak about 200 MB and
+150 MB, nothing resident between questions). A question goes in through the same `POST /api/ask` as the phone's Ask
+screen, so it is logged as `experience.question.asked` and the spoken text is the `agent.answer.generated` text. Only
+text leaves the microphone path: no audio leaves the box and none is stored (the recording lives in memory, plus one
+temp file in RAM for the 2 seconds whisper reads it). It needs nothing from the internet, so `make offline` is fine.
+
+**One-time setup** (the tools come from a laptop with internet, because the box's firewall blocks GitHub and Hugging Face):
+
+```bash
+./jetson/voice-fetch.sh alexander@192.168.1.126      # on the laptop: downloads, copies, builds whisper.cpp on the box
+sudo dpkg -i ~/atlas/voice/debs/pulseaudio-module-bluetooth_arm64.deb && pulseaudio -k   # on the box: lets PulseAudio use a Bluetooth speaker
+```
+
+**Pair the speaker** (on the box; put the speaker in pairing mode first, then run):
+
+```bash
+./jetson/pair-bluetooth.sh                     # scans 15 s and lists devices: note the speaker's MAC
+./jetson/pair-bluetooth.sh AA:BB:CC:DD:EE:FF   # pair, trust, connect
+pactl list short sinks                         # a bluez_sink... line means it is an audio output now
+```
+
+Then set `speaker_mac: "AA:BB:CC:DD:EE:FF"` in `config/voice.yaml`: the service reconnects it before every answer and at
+start, so a speaker that went to sleep or a restarted service comes back by itself (trusted devices also reconnect on power-up).
+
+**Start it** (only `atlas-voice`, no other service is touched; the gateway must be restarted once to get `/api/voice/*`):
+
+```bash
+sudo ./jetson/jetson_setup.sh voice        # installs and starts atlas-voice (memory-capped, killed first if memory runs out)
+sudo systemctl restart atlas-gateway       # once, to add the /api/voice proxy and the pre-flight line
+journalctl -u atlas-voice -f
+```
+
+**Use it:** open `/operator/` and tap **Tap to talk** (the panel shows Listening, Thinking, Speaking or Off), or
+`curl -X POST localhost:8000/api/voice/talk` (add `-H "Authorization: Bearer $ATLAS_TOKEN"` if a token is set). Tap again
+when done (it also ends by itself after 1 s of quiet), tap while it speaks to stop it. `GET /api/voice/status` says what
+it heard, what it answered, and whether the mic and speaker are fine. The box never speaks while the microphone is open.
+`python -m contexts.demo preflight` has a "voice on the box" line.
+
 ## Firmware update (boards with old factory firmware)
 
 JetPack 6 and 7 need firmware 36.x on the board. Boards with older firmware

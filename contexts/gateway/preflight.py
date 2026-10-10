@@ -16,6 +16,7 @@ from urllib.parse import urlparse
 import httpx
 
 from contexts.agent.application.loop import ODD_HOURS_RULE
+from contexts.voice.proxy import voice_check
 from contracts.experience import ApprovalDecided
 
 PACKAGE_RULE = "package-at-door"
@@ -80,6 +81,8 @@ def run_checks(atlas, now: datetime | None = None) -> list[dict]:
     if mem is not None:
         out.append(check("memory", mem >= MIN_MEMORY_MB, f"{mem} MB available",
                          "stop anything else running on the Jetson; the detector needs about 1 GB"))
+
+    out.append(voice_check())
 
     if atlas.capture is not None:
         for cam, st in atlas.capture.stats().items():

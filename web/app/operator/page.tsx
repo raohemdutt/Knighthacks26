@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { OperatorCamera } from "@/components/operator/Camera";
+import { VoicePanel } from "@/components/operator/Voice";
 import op from "@/components/operator/operator.module.css";
 import { api, type AtlasEvent, type LearningTask } from "@/lib/api";
 import { useAtlas } from "@/lib/atlas";
@@ -19,6 +20,7 @@ import { useFetch } from "@/lib/useFetch";
  *  - Lab: the newest taught task from /api/learning, kept fresh by learning.* events. The page cannot see whether
  *    the teacher is up, only what a run reports.
  *  - Offline badge: /vault/policy, refreshed when vault.policy.changed arrives.
+ *  - Voice: push to talk on the box's own microphone and Bluetooth speaker (X16), state from /api/voice/status.
  */
 
 const MAX_TICKS = 14;
@@ -230,6 +232,7 @@ export default function OperatorPage() {
       </section>
 
       <aside className={op.side}>
+        <VoicePanel />
         <Lab task={labTask} />
         <div className={`${op.panel} ${op.tickerPanel}`}>
           <h2>Happening now</h2>

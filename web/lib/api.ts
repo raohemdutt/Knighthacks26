@@ -1117,6 +1117,21 @@ export interface VaultPolicy {
   keep_days: number | null;
 }
 
+/** GET /api/voice/status: the box's own microphone and speaker (X16). "off" also means the voice service is not running. */
+export interface VoiceStatus {
+  state: "off" | "idle" | "listening" | "thinking" | "speaking";
+  running: boolean;
+  /** Why the last turn did not work, in words for the screen; "" when fine. */
+  problem: string;
+  heard: string;
+  answer: string;
+  seconds_in_state: number;
+  mic?: { ok: boolean; detail: string };
+  speaker?: { ok: boolean; detail: string };
+  speech_to_text?: { ok: boolean; detail: string };
+  text_to_speech?: { ok: boolean; detail: string };
+}
+
 export interface EgressGroup {
   /** "lan", "ntp", "dns", "hub", "connector:calendar", ... */
   name: string;
@@ -1313,6 +1328,10 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
 
   vaultPolicy: (signal?: AbortSignal) => get<VaultPolicy>("/vault/policy", undefined, signal),
   runtimeModels: (signal?: AbortSignal) => get<RuntimeModels>("/runtime/models", undefined, signal),
+  voiceStatus: (signal?: AbortSignal) => get<VoiceStatus>("/api/voice/status", undefined, signal),
+  voiceTalk: () => post<VoiceStatus>("/api/voice/talk", {}),
+  voiceStop: () => post<VoiceStatus>("/api/voice/stop", {}),
+  voiceEnabled: (enabled: boolean) => post<VoiceStatus>("/api/voice/enabled", { enabled }),
   setVaultPolicy: (body: Partial<VaultPolicy>) => put<VaultPolicy>("/vault/policy", body),
   egress: (signal?: AbortSignal) => get<Egress>("/vault/egress", undefined, signal),
   wipeRequest: (scope: WipeScope) => post<WipeToken>("/vault/wipe/request", { scope }),

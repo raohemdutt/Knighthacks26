@@ -1,0 +1,18 @@
+# Voice on the box (X16). Read by `python -m contexts.voice`; every key is optional.
+enabled: true            # false = the service starts but stays "off"
+port: 8091               # localhost only; the gateway proxies it at /api/voice/*
+ask_url: http://127.0.0.1:8000
+
+# Where the speech tools live on the Jetson (see jetson/README.md, "Voice"). The four paths below default to files in here.
+home: ~/atlas/voice
+# whisper_bin / whisper_model / piper_bin / piper_model: override one path only if it is not under `home`
+
+mic_device: "plughw:CARD=Webcam,DEV=0"   # the USB webcam's microphone (arecord -L lists the names)
+speaker_mac: ""          # the Bluetooth speaker, e.g. "AA:BB:CC:DD:EE:FF": reconnected before every answer. Empty = PulseAudio's default output.
+speaker_sink: ""         # a PulseAudio sink name (pactl list short sinks); empty = the default sink
+
+max_seconds: 8           # longest question
+wait_for_speech_s: 5     # give up if nobody speaks within this long
+end_silence_s: 1.0       # this much quiet after speech ends the question
+speech_level: 0.03       # louder than this (0 to 1, RMS) counts as speech; the room's own noise raises it if needed
+whisper_threads: 4
