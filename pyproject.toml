@@ -22,6 +22,8 @@ dependencies = [
 dev = ["pytest"]
 # Browser connector (K7). After install: python -m patchright install chromium
 browser = ["patchright>=1.50"]
+# Circle's Neon Postgres store and outbox sync (N1)
+neon = ["psycopg[binary]>=3.2"]
 
 [tool.setuptools.packages.find]
 include = ["contracts*", "runtime*", "bus*", "contexts*"]
