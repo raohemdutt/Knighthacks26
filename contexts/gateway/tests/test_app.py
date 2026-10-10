@@ -243,3 +243,26 @@ def test_a_place_pack_cannot_name_a_file_outside_data_and_bad_bodies_are_422(tmp
         assert c.post("/api/places", content="[" * 5000, headers={"content-type": "application/yaml"}).status_code == 422
         assert c.get("/api/play/route?item=can&x=nan").status_code == 422
         assert c.get("/api/play/route?item=can&x=2").status_code == 422
+
+
+def test_preflight_names_what_would_break_the_demo_and_reset_clears_the_stage(tmp_path):
+    """D9: the T-15 checklist as checks the box runs on itself."""
+    from datetime import UTC, datetime
+
+    from contracts.perception import ZoneEvent
+
+    with client(tmp_path) as c:
+        body = c.get("/api/preflight").json()
+        checks = {x["name"]: x for x in body["checks"]}
+        assert body["ok"] is False  # a laptop with no model, ntfy or cameras is not demo-ready
+        assert not checks["phone link"]["ok"] and "LAN" in checks["phone link"]["fix"]
+        assert not checks["on-device model"]["ok"] and checks["package alert on"]["ok"]
+        atlas = c.app.state.atlas
+        door = dict(camera_id="cam-door", track_id=7, label="package", zone_id="door", kind="dwell", dwell_s=9)
+        c.portal.call(atlas.bus.publish, ZoneEvent(ts=datetime.now(UTC), **door))
+        c.post("/api/teach", json={"task": "t", "instruction": "i"})  # a leftover approval card
+        checks = {x["name"]: x for x in c.get("/api/preflight").json()["checks"]}
+        assert not checks["package alert ready"]["ok"] and not checks["no stale approval cards"]["ok"]
+        assert c.post("/api/preflight/reset").json() == {"cooldowns_cleared": 1, "cards_denied": 1}
+        checks = {x["name"]: x for x in c.get("/api/preflight").json()["checks"]}
+        assert checks["package alert ready"]["ok"] and checks["no stale approval cards"]["ok"]

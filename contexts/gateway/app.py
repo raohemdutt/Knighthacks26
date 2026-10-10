@@ -11,6 +11,7 @@
 - GET  /api/rules              every rule: id, description, on/off, where it came from (X6)
 - POST /api/rules/{id}/enabled {enabled} switch a rule off or back on (agent.rule.toggled, replays)
 - GET  /api/alerts?limit=      recent alerts, newest first: message, rule, time, evidence
+- GET  /api/preflight          the demo's T-15 checklist, checked by the box itself (D9); POST .../reset clears the stage
 - POST /api/events             one event or a list: camera and connector input pushed into a running box (demo, T7)
 - GET  /api/play/route         ?item=can&x=&y= -> A* route to the right bin (S2)
 - GET  /api/play/accuracy      Sort It round 1 vs round 5 accuracy (S1)
@@ -190,6 +191,21 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
             raise HTTPException(404, "no such rule")
         await atlas.bus.publish(RuleToggled(rule_id=rule_id, enabled=body.enabled))
         return next(r for r in atlas.rules.listing() if r["id"] == rule_id)
+
+    @app.get("/api/preflight")
+    async def preflight_checks():
+        from contexts.gateway.preflight import run_checks
+
+        checks = await asyncio.to_thread(run_checks, atlas)
+        return {"ok": all(c["ok"] for c in checks), "checks": checks}
+
+    @app.post("/api/preflight/reset", dependencies=[Depends(authorized)])
+    async def preflight_reset():
+        from contexts.gateway.preflight import reset
+
+        done = reset(atlas)
+        await atlas.bus.publish_all(done.pop("events"))
+        return done
 
     @app.post("/api/events", dependencies=[Depends(authorized)])
     async def push_events(body: dict | list[dict]):
