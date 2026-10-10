@@ -24,7 +24,6 @@ from contexts.agent.application.planner import Planner
 from contexts.agent.application.qa import QA, SleepSchedule
 from contexts.agent.application.web_port import HubWebTools
 from contexts.agent.domain.rules import RuleEvaluator, load_rules
-from contexts.agent.eval import load_fixture
 from contexts.circle.application.presence import PresenceBoard
 from contexts.circle.application.protocol import CircleAgent, InMemoryCircleStore
 from contexts.circle.application.sharing import CircleSharing
@@ -34,6 +33,11 @@ from contexts.connectors.application.hub import ConnectorHub
 from contexts.connectors.domain.spec import load_specs
 from contexts.connectors.infrastructure.mcp_client import McpConnector
 from contexts.learning.application.export import DatasetExporter
+from contexts.memory.application.projection import MemoryProjection
+from contexts.memory.application.reader import SqliteMemory
+from contexts.memory.fixture import fill_store
+from contexts.memory.fixture import load as load_memory_fixture
+from contexts.memory.infrastructure.store import MemoryStore
 from contexts.impact.domain.waste_watch import WasteWatch
 from contexts.play.domain.game import SortIt
 from contexts.perception.domain.zones import ZoneEngine
@@ -61,6 +65,9 @@ class Settings:
     token: str | None = os.environ.get("ATLAS_TOKEN")  # required on /api writes when set
     connectors: bool = os.environ.get("ATLAS_CONNECTORS", "1") == "1"
     replay: bool = True
+    # Canned memory loaded into an empty store: the golden night by default, fixtures/memory/memory.yaml for
+    # the full demo night, "" on a box that should only hold what its cameras saw.
+    memory_fixture: str = os.environ.get("ATLAS_MEMORY_FIXTURE", "fixtures/golden/memory.yaml")
 
 
 @dataclass
@@ -78,6 +85,8 @@ class Atlas:
     circle: CircleAgent | None = None
     presence: PresenceBoard | None = None
     sharing: CircleSharing | None = None
+    memory: SqliteMemory | None = None
+    projection: MemoryProjection | None = None
     tasks: list[asyncio.Task] = field(default_factory=list)
 
     async def start(self) -> None:
@@ -93,6 +102,8 @@ class Atlas:
                 await self.bus.publish_all(self.approvals.expire(now))
                 if self.zone_engine:
                     await self.bus.publish_all(self.zone_engine.flush(now))
+                if self.projection:  # close episodes that have gone quiet
+                    await self.bus.publish_all(self.projection.flush(now))
                 if self.circle:
                     await self.bus.publish_all(self.circle.poll())
                 if self.sharing:  # push approved shares to Neon; rows stay queued while offline
@@ -130,7 +141,11 @@ def build(settings: Settings | None = None) -> Atlas:
         runtime = FakeRuntime()
 
     # Memory: the golden fixture until Memory's read API (M4) is up.
-    memory, _, _ = load_fixture()
+    store = MemoryStore(s.data_dir / "memory.sqlite")
+    memory = SqliteMemory(store)
+    projection = MemoryProjection(store)
+    if s.memory_fixture and memory.stats().episodes == 0:
+        fill_store(store, load_memory_fixture(s.memory_fixture))
 
     def load_keyframe(ref: str) -> bytes:  # frames:<camera>:<ts_ms> -> data/frames/<camera>/<ts_ms>.jpg
         _, camera, ts_ms = ref.split(":", 2)
@@ -162,6 +177,7 @@ def build(settings: Settings | None = None) -> Atlas:
     approvals = Approvals(executors)
 
     # State that rebuilds from the log (replay=True).
+    projection.subscribe(bus)  # episodes, sightings, connector items
     bus.subscribe("agent.rule.added", rules.on_rule_added, replay=True)
     bus.subscribe("perception.zone", rules.on_zone_event, replay=True)
     bus.subscribe("perception.zone", planner.on_zone_event)  # leaving checklist at the door (A8)
@@ -240,4 +256,5 @@ def build(settings: Settings | None = None) -> Atlas:
         planner.presence = presence
 
     return Atlas(settings=s, bus=bus, qa=qa, approvals=approvals, hub=hub, loop=loop, zones=zones, game=game,
-                 waste=waste, circle=circle, presence=presence, zone_engine=zone_engine, sharing=sharing)
+                 waste=waste, circle=circle, presence=presence, zone_engine=zone_engine, sharing=sharing,
+                 memory=memory, projection=projection)

@@ -33,6 +33,7 @@ from pydantic import BaseModel
 from contexts.gateway.bootstrap import Atlas, Settings, build
 from contexts.agent.application.rule_compiler import RuleCompileError, compile_rule
 from contexts.learning.application.export import teach
+from contexts.memory.api import build_router as memory_router
 from contracts import Event
 from contracts.agent import AnswerGenerated, RuleAdded
 from contracts.experience import ApprovalDecided, QuestionAsked
@@ -74,6 +75,8 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
 
     app = FastAPI(title="Atlas", lifespan=lifespan)
     app.state.atlas = atlas
+    if atlas.memory:  # GET /memory/... (M4)
+        app.include_router(memory_router(atlas.memory, atlas.settings.data_dir / "frames"))
 
     def authorized(authorization: str | None = Header(default=None)) -> None:
         token = atlas.settings.token
