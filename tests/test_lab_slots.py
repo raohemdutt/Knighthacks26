@@ -999,6 +999,8 @@ def test_the_task_of_a_row_comes_from_the_call_then_the_row_then_the_sittings_ta
     world.call("start", "--row", row)
     world.call("request", "--task", "O4", "--what", "bench")
     assert [r["task"] for r in ledger_rows()] == ["T2", "L3", "O4"]
+    slots.run(["status"], client=world.client, now=lambda: world.now, environ={"LAB_TASK": "T9"})
+    assert ledger_rows()[-1]["task"] == "T9"
 
 
 def test_a_refusal_is_a_ledger_row_too(world):
