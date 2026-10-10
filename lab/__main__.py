@@ -44,6 +44,7 @@ VERBS: dict[str, str] = {
     "digest": "lab.machine.digest:main",
     "draft": "lab.machine.draft:main",
     "experiment": "lab.machine.experiments:main",
+    "gpu-power": "lab.machine.gpu_power:main",
     "handoff": "lab.machine.handoff:main",
     "ledger": "lab.machine.ledger_cli:main",
     "metrics": "lab.machine.metrics_report:main",

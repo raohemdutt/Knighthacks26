@@ -807,6 +807,42 @@ def test_run_script_uploads_it_starts_it_in_a_terminal_and_reads_the_exit_code(w
     assert [call.path for call in world.hub.calls_matching("POST", "/terminals")] == ["/user/acct-b/api/terminals"]
 
 
+def test_run_script_uploads_the_files_it_is_given_first_next_to_the_script_and_names_them_in_its_row(world, tmp_path):
+    world.hub.start_server("A")
+    script = script_file(tmp_path)
+    helper = tmp_path / "pod_power.py"
+    helper.write_bytes(b"print('sampling')\r\n")
+
+    with fake_terminal(world, "A") as (port, received):
+        answer = world.make_controller(base_url=f"http://127.0.0.1:{port}").run_script(
+            "A", script, args=["start", "gpu-a"], timeout_s=60, run_id="t7", files=[helper])
+
+    assert (answer["ok"], answer["exit_code"]) == (True, 0)
+    uploads = [call.path for call in world.hub.calls_matching("PUT")]
+    assert uploads == ["/user/acct-a/api/contents/pod_power.py", "/user/acct-a/api/contents/lab_run_t7.sh",
+                       "/user/acct-a/api/contents/lab_run_t7.out"]
+    assert world.hub.files[("A", "pod_power.py")] == "print('sampling')\n"
+    assert [m["payload"] for m in received if m["kind"] == "stdin"] == [
+        "bash ./lab_run_t7.sh start gpu-a > ./lab_run_t7.out 2>&1; echo \"### END rc=$?\" >> ./lab_run_t7.out\n"]
+    assert world.only_row("pod run-script")["conditions"]["with"] == ["pod_power.py"]
+
+
+def test_run_script_takes_with_files_before_the_script_and_refuses_two_files_of_one_name(world, tmp_path):
+    args = ctl_module.build_parser().parse_args(
+        ["run-script", "--account", "A", "--with", "lab/pod_power.py", "lab/pod_power.sh", "start", "gpu-a"])
+    assert (args.files, args.script, args.script_args) == (["lab/pod_power.py"], "lab/pod_power.sh", ["start", "gpu-a"])
+
+    world.hub.start_server("A")
+    (tmp_path / "one").mkdir()
+    (tmp_path / "two").mkdir()
+    for folder in ("one", "two"):
+        (tmp_path / folder / "same.py").write_text("x = 1\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="two files to upload have the same name"):
+        world.controller.run_script("A", script_file(tmp_path), timeout_s=60, run_id="t8",
+                                    files=[tmp_path / "one" / "same.py", tmp_path / "two" / "same.py"])
+    assert world.hub.calls_matching("PUT") == []
+
+
 def test_run_script_leaves_a_local_row_because_the_pods_own_ledger_is_never_read(world, tmp_path):
     world.hub.start_server("B")
     script = script_file(tmp_path)

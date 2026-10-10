@@ -1,0 +1,10 @@
+GPU: 0
+    POWER:
+        SOCKET_POWER: 110 W
+        GFX_VOLTAGE: N/A
+        SOC_VOLTAGE: N/A
+        MEM_VOLTAGE: N/A
+        THROTTLE_STATUS: N/A
+        POWER_MANAGEMENT: N/A
+        UBB_POWER: N/A
+

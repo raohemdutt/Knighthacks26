@@ -18,7 +18,7 @@ value such as 0 or UINT32_MAX.
 from datetime import datetime
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from contracts.events import TypedEvent, register
 
@@ -42,6 +42,25 @@ class JetsonPower(_TelemetryEvent):
     sensor_update_ms: float | None = None  # INA3221 update interval; faster polling re-reads the same value
 
 
+class EnergyCheck(BaseModel):
+    """A pod sampler's check of the card's energy counter against power integrated over the same samples.
+
+    It runs at start-up and once under load; the sample that closes the window carries it, and `ts` of that
+    sample is the window's end."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    phase: Literal["start-up", "load"]
+    window_s: float  # seconds between the window's first and last sample
+    samples: int
+    advanced: bool | None  # the counter's delta was positive and it never went backwards; null if unreadable
+    counter_delta_j: float | None
+    integrated_j: float | None  # socket_w integrated over the same samples (trapezoid rule)
+    ratio: float | None  # counter_delta_j / integrated_j
+    tolerance: float  # 0.10: agrees when the ratio is within this of 1
+    agrees: bool
+
+
 @register
 class GpuPower(_TelemetryEvent):
     """One sample of an R9700's power, clocks and throttle state, read on its pod (no root: reads only)."""
@@ -58,6 +77,15 @@ class GpuPower(_TelemetryEvent):
     energy_counter_j: float | None = None  # the card's cumulative energy counter in J, when the driver exposes one
     energy_counter_ns: int | None = None  # the counter's own timestamp in ns, when reported with it
     received_ts: datetime | None = None  # when the Jetson's reader got the sample, on the Jetson's clock
+    sampler: str | None = None  # the program that took the sample and its version, e.g. "lab/pod_power.py 1"
+    sampler_started: datetime | None = None  # when that sampler started; a new value means it restarted
+    polls: int | None = None  # reads the sampler has made since it started, this one included
+    updates: int | None = None  # of those, reads that differed from the one before: distinct updates, not polls
+    gfx_activity_pct: float | None = None  # GFX engine busy percent, when the tool reads it
+    under_load: bool | None = None  # the card was busy at this sample (GFX activity, else power, past a threshold)
+    stale: bool | None = None  # under load, yet no reading has changed for the sampler's stale window
+    counter_ok: bool | None = None  # every energy-counter check so far agreed; null until the first one ends
+    energy_check: EnergyCheck | None = None  # set on the sample that closed a counter check
 
 
 @register

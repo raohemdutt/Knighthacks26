@@ -1102,16 +1102,22 @@ class Controller:
 
     @recorded("controller run-script")
     def run_script(self, letter: str, script: str | Path, *, args: Sequence[str] = (), timeout_s: float = SCRIPT_TIMEOUT_S,
-                   run_id: str | None = None, poll_s: float = SCRIPT_POLL_S) -> dict[str, Any]:
+                   run_id: str | None = None, poll_s: float = SCRIPT_POLL_S,
+                   files: Sequence[str | Path] = ()) -> dict[str, Any]:
         """Upload a shell script to the pod, run it in a terminal there and wait for its exit code.
 
         The pod must be ready. The script and its output live in the Jupyter root (`lab_run_<id>.sh`, `.out`); the
         output is read back through the contents API until the line `### END rc=<code>` that this command appends. A
-        script that starts something that must outlive its terminal starts it with nohup, as the pod scripts do."""
+        script that starts something that must outlive its terminal starts it with nohup, as the pod scripts do.
+        `files` are text files uploaded first, under their own names next to the script, for a script that needs
+        them (lab/pod_power.sh runs lab/pod_power.py)."""
         self._guard()
         account = self._account(letter)
         path = Path(script)
         text = path.read_text(encoding="utf-8").replace("\r\n", "\n")
+        extra = [(Path(f).name, Path(f).read_text(encoding="utf-8").replace("\r\n", "\n")) for f in files]
+        if len({name for name, _ in extra}) != len(extra):
+            raise ValueError("two files to upload have the same name")
         run_id = run_id or f"{self._now():%Y%m%d-%H%M%S}-{secrets.token_hex(2)}"
         remote, out = f"lab_run_{run_id}.sh", f"lab_run_{run_id}.out"
         client = self._hub(letter)
@@ -1122,6 +1128,8 @@ class Controller:
         def finish(answer: dict[str, Any]) -> dict[str, Any]:
             answer = {**base, "seconds": round(self.clock() - started, 3), **answer}
             conditions = {"script": path.name, "exit_code": answer["exit_code"], "seconds": answer["seconds"]}
+            if extra:
+                conditions["with"] = [name for name, _ in extra]
             return self._row(answer, POD_RUN_SCRIPT, account, conditions=conditions, note=answer.get("error"),
                              refs={"run_id": run_id})
 
@@ -1130,7 +1138,7 @@ class Controller:
             return finish(self._trouble(seen))
         if seen.server is None or not seen.server.up:
             return finish({"ok": False, "outcome": "not_running", "error": "the pod is not ready"})
-        for name, content in ((remote, text), (out, "")):
+        for name, content in (*extra, (remote, text), (out, "")):
             reply = self._send(letter, "PUT", client.pod_url(f"/api/contents/{name}"),
                                json={"type": "file", "format": "text", "content": content}, timeout=120)
             if reply.status not in (200, 201):
@@ -1291,6 +1299,8 @@ def build_parser() -> argparse.ArgumentParser:
     script.add_argument("script", help="a local shell script")
     script.add_argument("script_args", nargs=argparse.REMAINDER, help="arguments for the script")
     script.add_argument("--timeout", type=_seconds(1), default=SCRIPT_TIMEOUT_S, help="seconds to wait for the exit code")
+    script.add_argument("--with", dest="files", action="append", default=[], metavar="FILE",
+                        help="a text file to upload next to the script first (repeat for more)")
     return parser
 
 
@@ -1306,7 +1316,8 @@ HANDLERS: dict[str, Callable[[Controller, argparse.Namespace], dict[str, Any]]] 
     "stop": lambda c, a: c.stop(a.account, wait=not a.no_wait, timeout_s=a.timeout, reason=a.reason),
     "wait": lambda c, a: c.wait_ready(a.account, timeout_s=a.timeout),
     "keep-alive": lambda c, a: c.keep_alive(_letters_of(a), interval_s=a.interval, minutes=a.minutes),
-    "run-script": lambda c, a: c.run_script(a.account, a.script, args=a.script_args, timeout_s=a.timeout),
+    "run-script": lambda c, a: c.run_script(a.account, a.script, args=a.script_args, timeout_s=a.timeout,
+                                            files=a.files),
 }
 
 
