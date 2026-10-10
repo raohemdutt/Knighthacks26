@@ -62,3 +62,31 @@ Now: P1 (and L19, the publish run with the card's numbers, P1), while the "It le
 Recommend: P0 for L8 (a Sonnet-sized build: the push and the card template), with L19 kept at P1 unless the cut is rehearsed with the real card; the beat and the cut are the reason the adapter is on the plan at all.
 Source of tension: Demo Plan, "It learns" (adapter on Hugging Face) and "2-minute sponsor-room cuts", Hugging Face (our published LoRA adapter and model card), against the Task Board's Priority on L8 and L19 (P1) and lab/refine/PASS_RULES.md, "What a pass may never change" (any task's Priority).
 Answer: No, L8 and L19 stay P1. (owner, 2026-10-10)
+
+## 9. What does the gate score for the tool-calling task, now that every demo question is answered by the pre-fetch and the current model scores 42 of 42 there, and does tool calling stay the task L7 and the beat lead with? (pass 2)
+
+Now: L4 scores through contexts/agent/eval.py, as Ilan's scope note on L4 and RUBRIC.md LT4 say, which answers every golden wording through QA.ask's pre-fetch; L7 starts with desk objects and tool calling; learning ruling 6 (which task the beat shows) is unanswered; E16 (change 2) measures the current model on both paths.
+Recommend: decide after E16, which needs only the Jetson: if the current model also passes most of the 24 tool-answerable wordings through QA.tool_loop, the tool-calling task has no room to show a gain, so L7 and the beat lead with desk objects, which Context: Learning ties to the keys beat; if it fails a good share, keep tool calling, score it through QA.tool_loop with eval.py's checks and keep the QA.ask score as a dotted key, and say on the slide that the gain is on questions answered without the pre-fetch. Either way the keys line holds only for desk objects, because the keys answer comes from the pre-fetch.
+Source of tension: Ilan's scope note on L4 (reuse python -m contexts.agent.eval, its score the top-line number) and RUBRIC.md LT4 (the same command), against contexts/agent/eval.py L47 and L71 with qa.py QA.ask (demo questions never take the open tool loop), PR #120, PR #148 (42 of 42 through QA.ask on the Jetson), lab/refine/research/learning/distillation_tool_calls.md#6-which-answer-path-a-tool-calling-score-reads-learning-pass-2-2026-10-10 (DT-15) and Context: Learning, "Tasks we teach at the hackathon" (desk objects powers the keys beat; tool calling makes on-device Q&A reliable).
+Answer: ____
+
+## 10. Which tool list does the student train on and get scored with? (pass 2)
+
+Now: L12 (Locked, being built) formats traces with TOOLS, the three memory tools (qa.py L102, kept "for the learning task"), and eval.py's agent offers the same three, while the box's open tool loop offers those plus get_keyframe, and the web tools when the browser connector is on (bootstrap.py L243-L253, qa.py L289).
+Recommend: train and score with the list the box sends, because the chat template renders the tool list into the prompt, owner ruling 5 has the gate score the model served the way the box serves it, and DT-14 asks for the training render to equal the served prompt; the labels keep calling only the memory tools. If Dominick prefers the box to offer the student only TOOLS, that is a change in his qa.py and goes to him as a proposal.
+Source of tension: contexts/agent/application/qa.py L102 (TOOLS kept as the student's training set) against contexts/gateway/bootstrap.py L243-L253 and qa.py L289 (the box's agent offers get_keyframe and the web tools), lab/refine/learning/OWNER_RULINGS.md 5 (served the way the box serves it) and lab/refine/research/learning/distillation_tool_calls.md#4-tool-call-traces-train-exactly-the-format-llama-server-will-parse (DT-14).
+Answer: ____
+
+## 11. Besides ruling 1's 50 items, how many question groups must a held-out set span? (pass 2)
+
+Now: L4 (change 1) tests at the group level and records n as items and as groups; owner ruling 1 counts items (at least 50); L15 (Locked) still says 20 percent or 30 examples; holding out the L11 fixture's 4 golden groups gives 58 items in 4 groups.
+Recommend: at least 6 groups, better 8. An exact two-sided sign-flip test over 4 groups cannot go below p = 0.125 and over 5 below 0.0625, so with the 4 golden groups alone no candidate could ever deploy; 6 groups reach 0.031 only when every group favours the candidate. Hold out the 4 golden groups plus 2 to 4 variant groups, and if training then runs short, add variant groups to the fixture rather than more wordings of the same questions.
+Source of tension: lab/refine/learning/OWNER_RULINGS.md 1 (50 items) and L15's floor in examples, against lab/refine/research/learning/eval_noise.md#8-few-question-groups-the-paired-test-and-the-held-out-size-learning-pass-2-2026-10-10 (Durkalski et al. 2003; MacKinnon, Nielsen and Webb 2022; MacKinnon and Webb 2018; the fixture's 16 groups).
+Answer: ____
+
+## 12. If the teacher is not serving on SJC pod C in time, what labels the tool-calling fixture? (pass 2)
+
+Now: L2 and L13 label with Qwen3.8-27B on pod A, now SJC account C (Strix Halo, gfx1151), where R29 is bringing vLLM up for gfx1151; until it serves, L13, L16, L17 and the beat's numbers wait.
+Recommend: keep the teacher as the plan with a cut-off; if it is not serving by then, train the tool-calling task on the reference traces the L11 fixture already holds in expected.jsonl (the calls the agent's own pre-fetch makes, their results and a reference answer), and say on the slide and the card that it learned from the agent's own traces rather than from the 27B. Either way, use expected.jsonl as the gold L14's agreement check needs.
+Source of tension: Context: Learning (the 27B teacher labels the data) and L2's and L13's Done whens, against the Ilan1 and Ilan2 page (the R9700s given up; the teacher brought up on pod C through R29, with llama.cpp on Strix Halo raised as the alternative) and PR #117's body (expected.jsonl holds the expected tool calls, their results, the citations and a reference answer for every example; the teacher never sees it).
+Answer: ____
