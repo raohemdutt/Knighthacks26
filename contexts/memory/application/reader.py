@@ -67,15 +67,27 @@ class SqliteMemory:
     def search(self, q: str, limit: int = 5) -> list[SearchHit]:
         """Best first. An item comes back with `episode_id` "item:<connector>:<external_id>" and its connector as the camera.
 
-        An hourly note comes back as kind "note" on the first episode it covers, so it cites a real keyframe."""
+        An hourly note comes back as kind "note" on the first episode it covers, so it cites a real keyframe.
+        An episode is indexed once per caption and once for its summary: it comes back once, with the
+        text that matched best, and so does every item and note. `limit` counts those distinct results."""
         match = fts_query(q)
-        if not match:
+        if not match or limit <= 0:
             return []
         rows = self.db.execute(
-            "SELECT text, source, ref, bm25(memory_fts) AS rank FROM memory_fts WHERE memory_fts MATCH ? ORDER BY rank, rowid LIMIT ?",
-            (match, limit),
-        ).fetchall()
-        return [hit for r in rows if (hit := self._hit(r))]
+            "SELECT text, source, ref, bm25(memory_fts) AS rank FROM memory_fts WHERE memory_fts MATCH ? ORDER BY rank, rowid",
+            (match,),
+        )
+        hits: list[SearchHit] = []
+        seen: set[str] = set()
+        for r in rows:  # best first, so the first row of a ref is its best
+            if r["ref"] in seen:
+                continue
+            seen.add(r["ref"])
+            if hit := self._hit(r):
+                hits.append(hit)
+                if len(hits) == limit:
+                    break
+        return hits
 
     def _hit(self, row) -> SearchHit | None:
         score = -row["rank"]  # bm25 is lower-is-better

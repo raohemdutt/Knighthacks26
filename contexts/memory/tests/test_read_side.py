@@ -111,6 +111,34 @@ def test_search_returns_episodes_and_items_together(memory):
     assert all(h.frame_ref for h in drinks if h.camera_id.startswith("cam-"))
 
 
+def test_search_returns_each_episode_and_item_once_with_its_best_text(tmp_path):
+    """O4: one episode came back three times, for its summary, its object caption and its first caption."""
+    store = MemoryStore(tmp_path / "memory.sqlite")
+    start = datetime(2026, 10, 10, 19, 40, tzinfo=NY)
+    for n, captions in enumerate((["A person puts a set of keys next to the coffee mug.", "On the desk: keys (next to the coffee mug)."],
+                                  ["The keys are still on the desk.", "Keys, keys and more keys: three sets of keys."],
+                                  ["Nobody is at the table."])):
+        ep = Episode(id=f"ep{n}", camera_id="cam-desk", start=start + timedelta(hours=n), end=start + timedelta(hours=n, minutes=2),
+                     captions=captions)
+        store.put_episode(ep, ep.end)
+        for caption in captions:
+            store.index("caption", ep.id, caption)
+    store.set_summary("ep0", "Someone left their keys on the desk.")
+    for n in (1, 2):
+        store.put_item(Item(connector="groupme", kind="message", external_id=f"m{n}", title="Sam: has anyone seen my keys",
+                            when=start, summary="Sam in Friends: has anyone seen my keys"), synced_at=start)
+    memory = SqliteMemory(store)
+
+    hits = memory.search("keys", limit=20)
+    ids = [h.episode_id for h in hits]
+    assert sorted(ids) == ["ep0", "ep1", "item:groupme:m1", "item:groupme:m2"]  # was 7 rows: ep0 three times, ep1 twice
+    assert [h.score for h in hits] == sorted((h.score for h in hits), reverse=True)
+    assert next(h for h in hits if h.episode_id == "ep1").text == "Keys, keys and more keys: three sets of keys."  # its best text
+    # `limit` counts distinct results, and the cut is still best first
+    assert [h.episode_id for h in memory.search("keys", limit=3)] == ids[:3]
+    assert len(memory.search("keys", limit=1)) == 1
+
+
 def test_stats(memory, fx):
     stats = memory.stats()
     assert stats.episodes == len(fx.episodes)
