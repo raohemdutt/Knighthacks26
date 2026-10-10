@@ -1,4 +1,5 @@
 import { AbsoluteFill, OffthreadVideo, Sequence, staticFile } from "remotion";
+import { Caption, CAPTION_FRAMES } from "./Caption";
 import { IndexCard } from "./IndexCard";
 import { Intro3D } from "./Intro3D";
 import { Placeholder } from "./Placeholder";
@@ -23,6 +24,11 @@ function SlotBody({ slot }: { slot: Slot }) {
       <Sequence from={TITLE_FRAMES} durationInFrames={body}>
         {slot.clip ? <OffthreadVideo src={staticFile(slot.clip)} /> : <Placeholder slot={slot} />}
       </Sequence>
+      {slot.clip && slot.line ? (
+        <Sequence from={TITLE_FRAMES} durationInFrames={CAPTION_FRAMES}>
+          <Caption text={slot.line} />
+        </Sequence>
+      ) : null}
     </AbsoluteFill>
   );
 }
