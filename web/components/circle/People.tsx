@@ -184,7 +184,7 @@ function Person({ member: m, here, all, standing, packs, from }: {
               <button type="button" className={ui.btn} onClick={findRoute} disabled={!start || loading}>
                 {loading ? "Finding the way…" : `Route to ${m.display_name}`}
               </button>
-              <RouteSheet to={`friend:${m.member_id}`} what={`${m.display_name} is at ${m.place.place}`} label="On the map, and when to leave" />
+              <RouteSheet to={`friend:${m.member_id}`} what={`${m.display_name} is at ${m.place.place}`} label="On the map" />
             </div>
           </>
         ) : null}
