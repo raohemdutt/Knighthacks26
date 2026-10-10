@@ -2,8 +2,9 @@
 
 "Tell me if a package sits at the door for more than 10 seconds" becomes
 {label: [package, box], zone: door, kind: dwell, seconds: 10}. The on-device
-model drafts the JSON; code validates it against the Rule schema and the
-known zones, so a bad draft is rejected instead of silently never firing.
+model drafts the JSON under structured output (the Rule schema, with the zone
+limited to the known zones, so the model cannot produce anything else), and
+code still validates it, so a bad draft is rejected instead of silently never firing.
 """
 
 import asyncio
@@ -41,7 +42,9 @@ def _json_object(text: str) -> dict:
 async def compile_rule(text: str, runtime: Runtime, zones: list[str]) -> Rule:
     system = SYSTEM.format(zones=", ".join(zones))
     messages = [ChatMessage(role="system", content=system), ChatMessage(role="user", content=text)]
-    reply = await asyncio.to_thread(runtime.chat, messages, None)
+    schema = Rule.model_json_schema()
+    schema["$defs"]["Condition"]["properties"]["zone"] = {"type": "string", "enum": zones}
+    reply = await asyncio.to_thread(lambda: runtime.chat(messages, None, json_schema=schema))
     try:
         rule = Rule.model_validate(_json_object(reply.content))
     except ValidationError as exc:

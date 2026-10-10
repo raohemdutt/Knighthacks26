@@ -125,9 +125,10 @@ class LlamaServerRuntime:
         messages: list[ChatMessage],
         tools: list[dict] | None = None,
         priority: Priority = "chat",
+        json_schema: dict | None = None,
     ) -> ChatResult:
         start = time.monotonic()
-        msg = self._complete([self._to_openai(m) for m in messages], tools=tools, max_tokens=512)
+        msg = self._complete([self._to_openai(m) for m in messages], tools=tools, max_tokens=512, json_schema=json_schema)
         calls = [
             ToolCall(id=c["id"], name=c["function"]["name"], arguments=json.loads(c["function"]["arguments"] or "{}"))
             for c in msg.get("tool_calls") or []
@@ -155,10 +156,13 @@ class LlamaServerRuntime:
             out["tool_call_id"] = m.tool_call_id
         return out
 
-    def _complete(self, messages: list[dict], tools: list[dict] | None = None, max_tokens: int = 256) -> dict:
+    def _complete(self, messages: list[dict], tools: list[dict] | None = None, max_tokens: int = 256,
+                  json_schema: dict | None = None) -> dict:
         body: dict[str, Any] = {"messages": messages, "max_tokens": max_tokens, "temperature": 0.2}
         if tools:
             body["tools"] = tools
+        if json_schema:  # OpenAI-style structured output; llama-server turns it into a grammar
+            body["response_format"] = {"type": "json_schema", "json_schema": {"name": "reply", "schema": json_schema, "strict": True}}
         r = self.http.post("/v1/chat/completions", json=body)
         r.raise_for_status()
         return r.json()["choices"][0]["message"]
