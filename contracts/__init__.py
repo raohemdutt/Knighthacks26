@@ -13,6 +13,7 @@ from contracts import (  # noqa: F401
     perception,
     play,
     runtime,
+    telemetry,
     vault,
     workspace,
 )

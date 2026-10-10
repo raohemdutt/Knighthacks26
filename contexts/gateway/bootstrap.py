@@ -123,6 +123,7 @@ class Atlas:
     learning: LearningBoard | None = None  # where each taught task is (X10)
     capture: CaptureService | None = None  # cameras -> detector -> observations, only where there is a detector (C6)
     identity: IdentityService | None = None  # opt-in owner recognition (P9); off by default
+    telemetry: object | None = None  # TelemetryService when ATLAS_TELEMETRY_SOURCE is set; off by default
     tasks: list[asyncio.Task] = field(default_factory=list)
     _last_retention: datetime | None = None
     _offline: set[str] = field(default_factory=set)  # tick jobs whose Neon is down (logged once)
@@ -132,6 +133,8 @@ class Atlas:
             n = await self.bus.replay_into()
             log.info("replayed %d events", n)
         self.tasks.append(asyncio.create_task(self._ticks()))
+        if self.telemetry:  # after replay, so the projection is rebuilt before new samples arrive
+            self.tasks.append(asyncio.create_task(self.telemetry.run()))
         if self.identity:  # after replay: say the switch and who is enrolled if the log does not have it
             await self.bus.publish_all(self.identity.announce())
         if self.capture:
@@ -413,8 +416,17 @@ def build(settings: Settings | None = None) -> Atlas:
     # Cameras (C1, P1, P2, P6): config/cameras.yaml; None unless a detector engine is on this machine.
     capture = CaptureService.load(s.config_dir / "cameras.yaml", bus, models_yaml=models_yaml, data_dir=s.data_dir, policy=policy)
 
+    # Telemetry: per-node power samples, request windows and training steps as events, folded into a projection
+    # the log rebuilds. Off unless ATLAS_TELEMETRY_SOURCE names a sampler ("fake" replays recorded samples).
+    telemetry = None
+    if os.environ.get("ATLAS_TELEMETRY_SOURCE"):
+        from contexts.telemetry.wiring import build_telemetry
+
+        telemetry = build_telemetry(os.environ["ATLAS_TELEMETRY_SOURCE"], bus)
+
     return Atlas(settings=s, bus=bus, qa=qa, approvals=approvals, hub=hub, loop=loop, zones=zones, rules=rules, alerts=alerts, game=game,
                  waste=waste, circle=circle, presence=presence, zone_engine=zone_engine, sharing=sharing,
                  memory=memory, projection=projection, habits=habits, nudger=nudger,
                  presence_sync=presence_sync, board=board, vault=vault, policy=policy, wiper=wiper,
-                 places=places, dayrun=dayrun, capture=capture, identity=identity, learning=learning)
+                 places=places, dayrun=dayrun, capture=capture, identity=identity, learning=learning,
+                 telemetry=telemetry)

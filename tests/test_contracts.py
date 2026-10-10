@@ -27,6 +27,6 @@ def test_every_context_registered():
     contexts = {t.split(".")[0] for t in REGISTRY}
     assert contexts == {
         "agent", "capture", "circle", "connector", "experience", "habits", "impact", "learning", "memory",
-        "perception", "play", "runtime", "vault", "workspace",
+        "perception", "play", "runtime", "telemetry", "vault", "workspace",
     }
     assert EpisodeClosed.TYPE == "memory.episode.closed"

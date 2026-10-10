@@ -30,7 +30,7 @@ def test_fake_publishes_every_type_its_context_owns_and_nothing_else(context, tm
 def test_fakes_cover_every_context_that_publishes_events_to_the_phone():
     covered = set().union(*(fakes.owned(c) for c in fakes.CONTEXTS))
     others = {t.split(".")[0] for t in set(REGISTRY) - covered}
-    assert others == {"capture", "experience", "learning", "runtime", "workspace"}  # not asked for in F4's fake command
+    assert others == {"capture", "experience", "learning", "runtime", "telemetry", "workspace"}  # not asked for in F4's fake command
 
 
 def test_fake_is_the_same_events_every_time_so_a_replay_drops_the_repeat(tmp_path):
