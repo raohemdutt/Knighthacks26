@@ -21,7 +21,7 @@ from types import SimpleNamespace
 import pytest
 
 from lab import __main__ as lab_cli
-from lab.machine import alerts, ledger, review
+from lab.machine import alerts, ledger, refine_track, review
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RECORDED = REPO_ROOT / "fixtures" / "lab" / "alerts" / "ledger.jsonl"
@@ -158,13 +158,13 @@ def test_the_recorded_day_reviews_as_these_sections_exactly(isolated_state, refi
     assert found["### Other activity"] == [
         "- pod status: 8 (running 6, stopped 2)",
         "- bench run: 6 (ok 6)",
-        "- slot start: 5 (running 4, refused 1)",
+        "- slot start: 5 (started 4, busy 1)",
         "- pod launch: 2 (ok 2)",
-        "- slot done: 2 (ok 2)",
+        "- slot done: 2 (done 2)",
         "- handoff: 1 (handoff 1)",
         "- pod stop: 1 (ok 1)",
-        "- slot complain: 1 (ok 1)",
-        "- slot extend: 1 (ok 1)",
+        "- slot complain: 1 (complaint_recorded 1)",
+        "- slot extend: 1 (extended 1)",
         "- slot request: 1 (queued 1)",
     ]
     assert found["### Tasks touched"] == [
@@ -225,9 +225,9 @@ def test_the_verb_writes_the_file_whole_and_answers_with_counts_not_text(isolate
                            prs=review.file_open_prs(OPEN_PRS), now=NOW)
     assert answer == {
         "ok": True, "outcome": "written", "day": DAY, "file": "review/2026-10-10.md", "problems": 0,
-        "counts": {"rows": 35, "sittings": 3, "sittings_never_ended": 1, "alerts": 6, "metrics_moved": 8,
-                   "metrics_new": 1, "rulings_waiting": 0, "complaints": 1, "prs_open": 4, "cost_usd": 3.52,
-                   "cost_unknown": 1}}
+        "counts": {"rows": 35, "sittings": 3, "sittings_never_ended": 1, "sittings_running": 0, "alerts": 6,
+                   "metrics_moved": 8, "metrics_new": 1, "rulings_waiting": 0, "complaints": 1, "prs_open": 4,
+                   "cost_usd": 3.52, "cost_unknown": 1}}
     written = (isolated_state / "review" / "2026-10-10.md").read_text(encoding="utf-8")
     assert written == build(isolated_state, refine_root, prs=review.file_open_prs(OPEN_PRS), scan=True).text
     assert sorted(path.name for path in (isolated_state / "review").iterdir()) == ["2026-10-10.md"]
@@ -329,7 +329,7 @@ def test_rows_after_now_are_not_yet_part_of_the_account(isolated_state, refine_r
     assert sections(built.text)["### Sittings"] == [
         "- 08:20:10Z s-son-2 (sonnet, task O33): error, 15.2 min, $0.42 (ledger:22)",
         "- 08:41:30Z s-opus-1 (opus, task O20): ok, 41.5 min, $3.10 (ledger:23)",
-        "- 09:00:00Z s-son-3 (sonnet, task O16): started, no end row (ledger:25)"]
+        "- 09:00:00Z s-son-3 (sonnet, task O16): started, still running, 0 of 240 min (ledger:25)"]
     assert built.text.splitlines()[2] == (
         "Status: 17 ledger rows, 2 sittings ended (1 error, 1 ok), costing $3.52, 0 alerts, 6 metrics moved, "
         "0 rulings waiting, 0 complaints, PRs open unknown.")
@@ -356,6 +356,32 @@ def test_a_sitting_with_no_end_row_is_named_in_the_status_and_in_the_list(isolat
         "- 09:00:00Z s-lost (sonnet, no task): started, no end row (ledger:1)"]
     assert "1 sitting started that day and never ended; the launcher may have died." in built.text
     assert built.counts["sittings_never_ended"] == 1 and built.counts["sittings"] == 0
+
+
+def test_a_sitting_still_inside_its_cap_is_running_and_not_named_as_lost(isolated_state, refine_root):
+    # the referee sitting that runs the review as its last action: its own start row, five minutes old
+    put(isolated_state, at(14, 55), "sit", "started", tier="fable", task=None, refs={"run_id": "sit-live"},
+        cap_minutes=240.0)
+    built = build(isolated_state, refine_root)
+    assert "never ended" not in built.text and "the launcher may have died" not in built.text
+    assert sections(built.text)["### Sittings"] == [
+        "- 14:55:00Z sit-live (fable, no task): started, still running, 5 of 240 min (ledger:1)"]
+    assert (built.counts["sittings_never_ended"], built.counts["sittings_running"]) == (0, 1)
+
+
+def test_a_sitting_is_judged_against_the_cap_its_start_row_names_else_the_launchers_default(isolated_state,
+                                                                                            refine_root):
+    put(isolated_state, at(9), "sit", "started", tier="opus", task="O1", refs={"run_id": "short"}, cap_minutes=60.0)
+    put(isolated_state, at(12), "sit", "started", tier="opus", task="O2", refs={"run_id": "long"})
+    put(isolated_state, at(14, 58), "sit", "started", tier="sonnet", task="O3", refs={"run_id": "rehearsal"},
+        cap_minutes=2.0)
+    built = build(isolated_state, refine_root)                          # at 15:00
+    assert sections(built.text)["### Sittings"] == [
+        "- 09:00:00Z short (opus, task O1): started, no end row (ledger:1)",
+        "- 12:00:00Z long (opus, task O2): started, still running, 180 of 240 min (ledger:2)",
+        "- 14:58:00Z rehearsal (sonnet, task O3): started, still running, 2 of 2 min (ledger:3)"]
+    assert "1 sitting started that day and never ended; the launcher may have died." in built.text
+    assert (built.counts["sittings_never_ended"], built.counts["sittings_running"]) == (1, 2)
 
 
 def test_every_cost_known_makes_the_total_exact_and_one_unknown_makes_it_a_floor(isolated_state, refine_root):
@@ -448,7 +474,7 @@ def test_a_baseline_of_zero_has_no_percent(isolated_state, refine_root):
 def test_the_numbers_of_a_sitting_or_a_slot_are_events_and_never_series(isolated_state, refine_root):
     put(isolated_state, at(20, day=9), "sit", "ok", metrics={"sitting.duration_s": 100})
     put(isolated_state, at(8), "sit", "ok", metrics={"sitting.duration_s": 900})
-    put(isolated_state, at(9), "slot done", "ok", metrics={"slot.minutes": 15}, refs={"slot": "x"})
+    put(isolated_state, at(9), "slot done", "done", metrics={"slot.minutes": 15}, refs={"slot": "x"})
     assert moved(isolated_state, refine_root) == ["- none"]
 
 
@@ -484,26 +510,37 @@ def test_the_moved_list_has_a_cap_and_says_how_many_it_left_out(isolated_state, 
 # --- GPU slots and complaints --------------------------------------------------------------------------
 
 def test_a_slot_that_began_the_day_before_and_ended_today_is_listed_today(isolated_state, refine_root):
-    put(isolated_state, at(23, 50, 9), "slot start", "running", node="pod-b", task="R20",
+    put(isolated_state, at(23, 50, 9), "slot start", "started", node="pod-b", task="R20",
         metrics={"slot.minutes": 15}, refs={"slot": "q-night"})
-    put(isolated_state, at(0, 3, 10), "slot done", "ok", refs={"slot": "q-night"})
+    put(isolated_state, at(0, 3, 10), "slot done", "done", refs={"slot": "q-night"})
     assert sections(build(isolated_state, refine_root).text)["### Slots"] == [
         "- slot q-night on pod-b, task R20: 13 of 15 min, done (ledger:1)"]
 
 
 def test_a_slot_still_running_when_a_past_day_ended_is_measured_to_the_end_of_that_day(isolated_state, refine_root):
-    put(isolated_state, at(23, 0, 9), "slot start", "running", node="pod-b", task="R20",
+    put(isolated_state, at(23, 0, 9), "slot start", "started", node="pod-b", task="R20",
         metrics={"slot.minutes": 15}, refs={"slot": "q-open"})
     built = build(isolated_state, refine_root, day="2026-10-09", now=moment(6, day=10))
     assert sections(built.text)["### Slots"] == [
         "- slot q-open on pod-b, task R20: 60 of 15 min, still running, past its cap (ledger:1)"]
 
 
+def test_a_slot_start_the_queue_refused_does_not_move_the_start_of_the_slot(isolated_state, refine_root):
+    put(isolated_state, at(14), "slot request", "queued", node="pod-b", task="L3", metrics={"slot.minutes": 15},
+        refs={"slot": "q-1"})
+    put(isolated_state, at(14, 1), "slot start", "busy", node="pod-b", task="L3", refs={"slot": "q-1"})
+    put(isolated_state, at(14, 21), "slot start", "started", node="pod-b", task="L3", metrics={"slot.minutes": 15},
+        refs={"slot": "q-1"})
+    put(isolated_state, at(14, 31), "slot done", "done", node="pod-b", task="L3", refs={"slot": "q-1"})
+    assert sections(build(isolated_state, refine_root).text)["### Slots"] == [
+        "- slot q-1 on pod-b, task L3: 10 of 15 min, done (ledger:3)"]
+
+
 def test_a_complaint_is_clipped_to_one_line_and_a_missing_text_is_said(isolated_state, refine_root):
-    put(isolated_state, at(9), "slot complain", "ok", actor="sonnet-1", refs={"slot": "q-1"},
+    put(isolated_state, at(9), "slot complain", "complaint_recorded", actor="sonnet-1", refs={"slot": "q-1"},
         note="waiting\nfor the card " + "x" * 300)
-    put(isolated_state, at(10), "slot complain", "ok", actor="sonnet-2", refs={"slot": "q-2"})
-    put(isolated_state, at(11), "slot complain", "ok", actor="sonnet-3", refs={"slot": "q-3"},
+    put(isolated_state, at(10), "slot complain", "complaint_recorded", actor="sonnet-2", refs={"slot": "q-2"})
+    put(isolated_state, at(11), "slot complain", "complaint_recorded", actor="sonnet-3", refs={"slot": "q-3"},
         complaint="named in the complaint field")
     lines = sections(build(isolated_state, refine_root).text)["### Complaints"]
     assert lines[0] == "- 09:00:00Z slot q-1 (sonnet-1): waiting for the card " + "x" * 176 + "... (ledger:1)"
@@ -512,8 +549,14 @@ def test_a_complaint_is_clipped_to_one_line_and_a_missing_text_is_said(isolated_
                          "- 11:00:00Z slot q-3 (sonnet-3): named in the complaint field (ledger:3)"]
 
 
-def test_a_complaint_that_the_queue_refused_is_not_a_complaint(isolated_state, refine_root):
-    put(isolated_state, at(9), "slot complain", "refused", refs={"slot": "q-1"}, note="never filed")
+# What lab/machine/slots.py writes as the outcome of a slot complain that recorded no complaint.
+REFUSED_COMPLAINTS = ["too_early", "not_waiting", "no_gpu", "not_your_row", "row_not_found", "not_a_queue_row",
+                      "no_token", "error"]
+
+
+@pytest.mark.parametrize("outcome", REFUSED_COMPLAINTS)
+def test_a_complaint_that_the_queue_refused_is_not_a_complaint(isolated_state, refine_root, outcome):
+    put(isolated_state, at(9), "slot complain", outcome, refs={"slot": "q-1"}, note="never filed")
     built = build(isolated_state, refine_root)
     assert sections(built.text)["### Complaints"] == ["- none"]
     assert built.counts["complaints"] == 0
@@ -521,7 +564,8 @@ def test_a_complaint_that_the_queue_refused_is_not_a_complaint(isolated_state, r
 
 def test_complaints_have_a_cap_and_the_count_still_counts_all(isolated_state, refine_root):
     for index in range(review.MAX_COMPLAINTS + 2):
-        put(isolated_state, at(1, index), "slot complain", "ok", refs={"slot": f"q-{index}"}, note="slow")
+        put(isolated_state, at(1, index), "slot complain", "complaint_recorded", refs={"slot": f"q-{index}"},
+            note="slow")
     built = build(isolated_state, refine_root)
     lines = sections(built.text)["### Complaints"]
     assert len(lines) == review.MAX_COMPLAINTS + 1 and lines[-1] == "- +2 more"
@@ -569,9 +613,13 @@ def test_a_folder_of_tracks_that_does_not_exist_has_no_rulings(tmp_path):
     assert review.rulings_section(tmp_path / "nowhere") == ([], 0, [])
 
 
-def test_the_default_rulings_folder_is_the_refine_folder_of_this_repository():
-    assert review.REFINE_ROOT == REPO_ROOT / "lab" / "refine"
-    assert (review.REFINE_ROOT / "kernels" / "OWNER_RULINGS.md").is_file()
+def test_the_default_rulings_folder_is_the_one_refine_track_names(isolated_state, refine_root, monkeypatch):
+    assert refine_track.REFINE_DIR == REPO_ROOT / "lab" / "refine"
+    write_rulings(refine_root, "kernels", ruling(1, "Open question?"))
+    monkeypatch.setattr(refine_track, "REFINE_DIR", refine_root)
+    built = review.build(DAY, state_dir=isolated_state, now=NOW, scan=False)       # no refine_root
+    assert sections(built.text)["## Rulings waiting"] == [
+        "- kernels ruling 1: Open question? (applied meanwhile: the default; recommended: do it)"]
 
 
 # --- open pull requests ----------------------------------------------------------------------------------
@@ -786,8 +834,8 @@ def test_review_answers_one_json_line_and_writes_the_file(isolated_state, capsys
     answer = one_json_line(out)
     assert code == 0
     assert {key: value for key, value in answer["counts"].items() if key != "rulings_waiting"} == {
-        "rows": 35, "sittings": 3, "sittings_never_ended": 1, "alerts": 6, "metrics_moved": 8, "metrics_new": 1,
-        "complaints": 1, "prs_open": 4, "cost_usd": 3.52, "cost_unknown": 1}
+        "rows": 35, "sittings": 3, "sittings_never_ended": 1, "sittings_running": 0, "alerts": 6, "metrics_moved": 8,
+        "metrics_new": 1, "complaints": 1, "prs_open": 4, "cost_usd": 3.52, "cost_unknown": 1}
     assert (answer["ok"], answer["outcome"], answer["day"], answer["file"]) == (True, "written", DAY,
                                                                               "review/2026-10-10.md")
     assert str(isolated_state) not in out

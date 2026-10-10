@@ -245,14 +245,16 @@ def test_an_id_that_would_break_the_line_is_made_safe_and_no_note_is_copied(isol
 # --- slot_over_cap -----------------------------------------------------------------------------
 
 def slot_rows(state, slot="q-1", *, start=(10, 0), minutes=15, done=None, extend=None, node="pod-b", task="R20",
-              extend_minutes=None, end_verb="slot done"):
-    put(state, at(*start), "slot start", "running", node=node, task=task, metrics={"slot.minutes": minutes},
+              extend_minutes=None):
+    """The rows lab/machine/slots.py writes for a slot that started, maybe was extended, and maybe was done, with
+    the outcomes it writes when the call went through."""
+    put(state, at(*start), "slot start", "started", node=node, task=task, metrics={"slot.minutes": minutes},
         refs={"slot": slot})
     if extend:
-        put(state, at(*extend), "slot extend", "ok", node=node, task=task,
+        put(state, at(*extend), "slot extend", "extended", node=node, task=task,
             metrics={"slot.extend_minutes": extend_minutes} if extend_minutes else {}, refs={"slot": slot})
     if done:
-        put(state, at(*done), end_verb, "ok", node=node, task=task, refs={"slot": slot})
+        put(state, at(*done), "slot done", "done", node=node, task=task, refs={"slot": slot})
 
 
 def test_a_slot_that_ran_past_its_cap_raises_one_alert(isolated_state):
@@ -301,27 +303,71 @@ def test_a_slot_still_running_inside_its_cap_raises_none(isolated_state):
 
 
 def test_a_slot_whose_rows_name_no_minutes_cannot_be_judged(isolated_state):
-    put(isolated_state, at(8), "slot start", "running", refs={"slot": "q-1"})
-    put(isolated_state, at(12), "slot done", "ok", refs={"slot": "q-1"})
+    put(isolated_state, at(8), "slot start", "started", refs={"slot": "q-1"})
+    put(isolated_state, at(12), "slot done", "done", refs={"slot": "q-1"})
     assert keys(isolated_state) == []
 
 
 def test_the_minutes_may_come_from_the_request_row_when_the_start_row_has_none(isolated_state):
     put(isolated_state, at(8), "slot request", "queued", metrics={"slot.minutes": 15}, refs={"slot": "q-1"})
-    put(isolated_state, at(8, 5), "slot start", "running", refs={"slot": "q-1"})
-    put(isolated_state, at(9), "slot done", "ok", refs={"slot": "q-1"})
+    put(isolated_state, at(8, 5), "slot start", "started", refs={"slot": "q-1"})
+    put(isolated_state, at(9), "slot done", "done", refs={"slot": "q-1"})
     [alert] = found(isolated_state)
     assert alert.body == "no node, no task: 55 of 15 min, started 2026-10-10 08:05Z, ended 2026-10-10 09:00Z (ledger:2)"
 
 
-def test_a_refused_start_is_not_a_start(isolated_state):
-    put(isolated_state, at(8), "slot start", "refused", metrics={"slot.minutes": 15}, refs={"slot": "q-1"})
+# What lab/machine/slots.py writes as the outcome of a slot start that did not start the slot: the refusals of
+# SlotQueue.start and load, a lost race, no_token (no NOTION_TOKEN, nothing reached Notion) and error.
+REFUSED_STARTS = ["busy", "not_next", "not_queued", "no_gpu", "lost_race", "error_lost_race", "critique_pending",
+                  "reply_required", "justification_required", "nothing_to_reply_to", "not_shorter", "not_your_row",
+                  "row_not_found", "not_a_queue_row", "no_token", "error"]
+
+
+@pytest.mark.parametrize("outcome", REFUSED_STARTS)
+def test_a_start_the_queue_refused_is_not_a_start(isolated_state, outcome):
+    # the request carries the minutes, so a refused start would be judged against them if it counted as the start
+    put(isolated_state, at(8), "slot request", "queued", metrics={"slot.minutes": 60}, refs={"slot": "q-1"})
+    put(isolated_state, at(9), "slot start", outcome, refs={"slot": "q-1"})
     assert alerts.slot_runs(alerts.timeline(ledger.read(state_dir=isolated_state), NOW), NOW) == []
     assert keys(isolated_state) == []
 
 
+def test_a_slot_refused_before_it_started_is_measured_from_the_start_that_went_through(isolated_state):
+    put(isolated_state, at(14), "slot request", "queued", node="pod-b", task="L3", metrics={"slot.minutes": 15},
+        refs={"slot": "q-1"})
+    put(isolated_state, at(14, 1), "slot start", "busy", node="pod-b", task="L3", refs={"slot": "q-1"})
+    put(isolated_state, at(14, 21), "slot start", "started", node="pod-b", task="L3", metrics={"slot.minutes": 15},
+        refs={"slot": "q-1"})
+    put(isolated_state, at(14, 31), "slot done", "done", node="pod-b", task="L3", refs={"slot": "q-1"})
+    [run] = alerts.slot_runs(alerts.timeline(ledger.read(state_dir=isolated_state), NOW), NOW)
+    assert (run.start, run.start_seq, run.minutes, run.cap, run.end, run.elapsed, run.over_cap) == (
+        moment(14, 21), 3, 15.0, 15.0, moment(14, 31), 10.0, False)
+    assert keys(isolated_state) == []
+
+
+@pytest.mark.parametrize("outcome", ["past_cap", "already_extended", "not_running", "not_your_row", "no_token"])
+def test_an_extension_the_queue_refused_adds_no_minutes_to_the_cap(isolated_state, outcome):
+    slot_rows(isolated_state, start=(8, 0), minutes=15)
+    put(isolated_state, at(8, 20), "slot extend", outcome, node="pod-b", task="R20", refs={"slot": "q-1"})
+    put(isolated_state, at(8, 29), "slot done", "done", node="pod-b", task="R20", refs={"slot": "q-1"})
+    [alert] = found(isolated_state)
+    assert (alert.key, alert.title) == ("slot_over_cap:q-1", "Slot q-1 ran past its cap")
+    assert alert.body == "pod-b, task R20: 29 of 15 min, started 2026-10-10 08:00Z, ended 2026-10-10 08:29Z (ledger:1)"
+
+
+@pytest.mark.parametrize("verb, outcome", [("slot done", "not_your_row"), ("slot done", "not_running"),
+                                           ("slot done", "result_required"), ("slot done", "not_queued"),
+                                           ("slot done", "no_token"), ("referee", "error")])
+def test_an_end_that_did_not_happen_leaves_the_slot_running(isolated_state, verb, outcome):
+    slot_rows(isolated_state, start=(13, 0), minutes=60)
+    put(isolated_state, at(13, 30), verb, outcome, refs={"slot": "q-1"})
+    [alert] = found(isolated_state)
+    assert alert.title == "Slot q-1 is past its cap"
+    assert alert.body == "pod-b, task R20: 120 of 60 min, started 2026-10-10 13:00Z, still running (ledger:1)"
+
+
 def test_a_done_row_without_a_start_makes_no_slot(isolated_state):
-    put(isolated_state, at(8), "slot done", "ok", refs={"slot": "q-1"})
+    put(isolated_state, at(8), "slot done", "done", refs={"slot": "q-1"})
     assert keys(isolated_state) == []
 
 
@@ -334,21 +380,40 @@ def test_a_referee_row_for_the_slot_ends_it(isolated_state):
 
 
 def test_a_slot_that_ended_before_the_window_raises_none(isolated_state):
-    put(isolated_state, "2026-10-08T08:00:00Z", "slot start", "running", metrics={"slot.minutes": 15},
+    put(isolated_state, "2026-10-08T08:00:00Z", "slot start", "started", metrics={"slot.minutes": 15},
         refs={"slot": "old"})
-    put(isolated_state, "2026-10-08T09:00:00Z", "slot done", "ok", refs={"slot": "old"})
+    put(isolated_state, "2026-10-08T09:00:00Z", "slot done", "done", refs={"slot": "old"})
     assert keys(isolated_state) == []
 
 
 def test_the_same_slot_is_announced_once_even_when_it_is_first_seen_running_and_later_done(isolated_state):
     slot_rows(isolated_state, start=(13, 0), minutes=15)
     first = alerts.raise_alerts(state_dir=isolated_state, now=NOW)
-    put(isolated_state, at(15, 30), "slot done", "ok", refs={"slot": "q-1"})
+    put(isolated_state, at(15, 30), "slot done", "done", refs={"slot": "q-1"})
     second = alerts.raise_alerts(state_dir=isolated_state, now=moment(16))
     assert [alert.title for alert in first.new] == ["Slot q-1 is past its cap"]
     assert [alert.title for alert in second.found] == ["Slot q-1 ran past its cap"]
     assert second.new == ()
     assert alerts_text(isolated_state).count("slot_over_cap:q-1") == 1
+
+
+def test_a_slot_with_no_end_row_is_announced_once_however_many_days_it_stays_open(isolated_state):
+    # the referee could not write its end row, or someone ended the row in Notion by hand
+    slot_rows(isolated_state, start=(13, 0), minutes=60)
+    calls = [NOW, moment(12, day=11), dt.datetime(2026, 10, 12, 0, 5, tzinfo=UTC), moment(9, day=14)]
+    reports = [alerts.raise_alerts(state_dir=isolated_state, now=when) for when in calls]
+    assert [[alert.key for alert in report.new] for report in reports] == [["slot_over_cap:q-1"], [], [], []]
+    assert [report.found[0].title for report in reports] == ["Slot q-1 is past its cap"] * 4
+    assert sorted(path.name for path in (isolated_state / "alerts").iterdir()) == ["2026-10-10.md"]
+
+
+def test_a_short_window_after_midnight_still_finds_the_slot_announced_the_day_before(isolated_state):
+    slot_rows(isolated_state, start=(13, 0), minutes=60)
+    first = alerts.raise_alerts(state_dir=isolated_state, now=NOW, hours=1)
+    second = alerts.raise_alerts(state_dir=isolated_state, now=moment(1, 30, day=11), hours=1)
+    assert [alert.key for alert in first.new] == ["slot_over_cap:q-1"]
+    assert (second.new, second.written) == ((), False)
+    assert not (isolated_state / "alerts" / "2026-10-11.md").exists()
 
 
 # --- metric_regressed -----------------------------------------------------------------------------
@@ -466,8 +531,8 @@ def test_a_low_confidence_reading_takes_no_part_either_way(isolated_state):
 def test_event_numbers_of_sittings_and_slots_are_not_series(isolated_state):
     put(isolated_state, at(8), "sit", "ok", metrics={"sitting.duration_s": 100, "sitting.cost_usd": 1})
     put(isolated_state, at(9), "sit", "ok", metrics={"sitting.duration_s": 5000, "sitting.cost_usd": 50})
-    put(isolated_state, at(10), "slot done", "ok", metrics={"slot.minutes": 5}, refs={"slot": "x"})
-    put(isolated_state, at(11), "slot done", "ok", metrics={"slot.minutes": 500}, refs={"slot": "y"})
+    put(isolated_state, at(10), "slot done", "done", metrics={"slot.minutes": 5}, refs={"slot": "x"})
+    put(isolated_state, at(11), "slot done", "done", metrics={"slot.minutes": 500}, refs={"slot": "y"})
     assert keys(isolated_state) == []
 
 
@@ -659,6 +724,34 @@ def test_a_pod_known_to_be_stopped_burns_nothing_and_raises_none(isolated_state)
     assert keys(isolated_state) == []
     put(isolated_state, at(14), "pod launch", "ok", node="pod-a")
     assert keys(isolated_state) == ["credits_low:pod-a:2026-10-10"]
+
+
+def approximate_balance(state, ts, credits, node="pod-a"):
+    """A balance written by hand or backfilled, marked low_confidence as ledger add --low-confidence does."""
+    return put(state, ts, "pod status", "running", node=node, metrics={"pod.balance_credits": credits},
+               units={"pod.balance_credits": "credits"}, low_confidence=True)
+
+
+def test_an_approximate_balance_cannot_hide_a_short_runway(isolated_state):
+    first = balance(isolated_state, at(9), 6000)
+    balance(isolated_state, at(11), 5500)
+    last = balance(isolated_state, at(13, 10), 5000)
+    approximate_balance(isolated_state, at(13), 5600)       # would read as a top-up just before the last reading
+    now = moment(13, 15)
+    # 1000 credits in 250 minutes is 4 a minute; at 13:15 there are 5000 - 4 * 5 = 4980 left, 20.75 hours of it
+    [alert] = found(isolated_state, now=now)
+    assert alert.key == "credits_low:pod-a:2026-10-10"
+    assert alert.body == (f"4,980 left at 4.00 credits/min, about 20.8 h (alert horizon 24 h), from the readings "
+                          f"up to 2026-10-10 13:10Z (ledger:{first} to ledger:{last})")
+
+
+def test_an_approximate_balance_cannot_raise_a_false_alert(isolated_state):
+    balance(isolated_state, at(10), 60000)
+    balance(isolated_state, at(12), 59400)                  # 5 a minute: 195 hours left at 15:00
+    approximate_balance(isolated_state, at(12, 30), 20000)
+    assert keys(isolated_state) == []
+    runway = alerts.credit_runways(alerts.timeline(ledger.read(state_dir=isolated_state), NOW), NOW)["pod-a"]
+    assert (runway["burn_per_min"], runway["hours_left"]) == (pytest.approx(5.0), pytest.approx(195.0))
 
 
 def test_an_account_with_nothing_left_is_the_worst_runway(isolated_state):

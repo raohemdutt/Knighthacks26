@@ -34,10 +34,14 @@ The answer, in the order a sitting reads it:
   newest reading before it, or against the first reading in the window when nothing came
   before; then the series first read in the window, and the ones that did not change. Seqs
   are printed as ledger:<seq>, the citation form the refinement passes use.
-- GPU queue (from the snapshot): running rows with their elapsed minutes against their cap
-  (Minutes, plus EXTENSION_MINUTES when Extended), queued rows shortest first per GPU with
-  how long each has waited, and the complaints on open rows. A queued row that has waited
-  twice its Minutes without a complaint is marked "complaint due".
+- GPU queue (from the snapshot): running rows with their elapsed minutes against their cap,
+  queued rows shortest first per GPU with how long each has waited, and the complaints on
+  open rows. The cap and "complaint due" are the queue verbs' own rules, read from
+  lab/machine/slots.py and never restated here: the cap is slots.cap_minutes (Minutes,
+  DEFAULT_MINUTES when a row names none, plus EXTENSION_MINUTES once Extended), and a queued
+  row without a complaint is marked "complaint due" when slots.complaint_due says it may
+  complain (it has waited more than COMPLAIN_AFTER_FACTOR times its Minutes, or a Running
+  row on its GPU is past its cap).
 - rulings waiting on Ilan: every unanswered ruling in lab/refine/<track>/OWNER_RULINGS.md
   (read with lab/machine/refine_formats.py), with the default the passes apply meanwhile.
 - Ilan's lane (from the snapshot): his tasks counted by status and tier.
@@ -76,14 +80,14 @@ from pathlib import Path
 from typing import Any
 
 from lab.machine import ledger as ledger_mod
-from lab.machine import refine_formats
+from lab.machine import refine_formats, refine_track, slots
+from lab.machine.slots import EXTENSION_MINUTES  # noqa: F401  (pool.py reads it as digest.EXTENSION_MINUTES)
 
 __all__ = ["MAX_LINES", "DEFAULT_WINDOW_HOURS", "BOARD_FILE", "BOARD_STALE_MINUTES", "SCHEMA",
            "SCHEMA_VERSION", "BoardError", "Board", "load_board", "parse_board", "save_board",
-           "board_path", "compute", "fit", "render", "text", "main"]
+           "board_path", "queue_slot", "compute", "fit", "render", "text", "main"]
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-REFINE_ROOT = REPO_ROOT / "lab" / "refine"
 RULINGS_FILE = "OWNER_RULINGS.md"
 BOARD_FILE = "board.json"
 SCHEMA_VERSION = 1
@@ -93,8 +97,6 @@ MAX_LINES = 149
 DEFAULT_WINDOW_HOURS = 2.0
 #: A snapshot older than this is marked STALE.
 BOARD_STALE_MINUTES = 60
-#: The one extension a GPU slot may take (open-ticket skill, section 4b).
-EXTENSION_MINUTES = 15
 
 #: Ilan's Notion user id (AGENTS.md section 1): his lane is the tasks assigned to him.
 ILAN_USER_ID = "fbcc0baf-9942-4661-9414-319688df6910"
@@ -112,7 +114,7 @@ FAILURE_WORDS = ("fail", "error", "crash", "timeout", "timed_out", "refused", "s
 STATUS_ORDER = ("Not started", "In progress", "Blocked", "Done")
 TIER_ORDER = ("Fable", "Opus", "Sonnet")
 NO_TIER = "none"
-OPEN_QUEUE_STATUSES = ("Running", "Queued")
+OPEN_QUEUE_STATUSES = (slots.RUNNING, slots.QUEUED)
 
 # caps: entries listed before "+N more"
 MAX_TASKS_RAN = 12
@@ -759,29 +761,40 @@ def _series_label(entry: Mapping[str, Any], series: Mapping[tuple[str, str, str]
 
 # --- the GPU queue -----------------------------------------------------------------------------
 
+def queue_slot(row: QueueRow, index: int = 0) -> slots.Slot:
+    """A snapshot row as the queue verbs see a row (slots.Slot), so the digest judges it by their rules
+    (slots.cap_minutes, slots.is_overrun, slots.complaint_due). The snapshot holds no page id, Agent,
+    Ended, Progress note or Result: the id is the row's place in the snapshot and the rest stay empty,
+    and none of those rules reads them."""
+    return slots.Slot(id=f"snapshot-{index}", url="", request=row.request, task_id=row.task, gpu=row.gpu,
+                      minutes=row.minutes, status=row.status, agent="", requested=row.requested, created=None,
+                      started=row.started, ended=None, extended=row.extended, progress_note="",
+                      complaint=row.complaint, result="")
+
+
 def gpu_queue(board: Board, now: dt.datetime) -> dict[str, Any]:
     running: list[dict[str, Any]] = []
     queued: list[dict[str, Any]] = []
     complaints: list[dict[str, Any]] = []
     open_rows = [row for row in board.queue if row.status in OPEN_QUEUE_STATUSES]
-    for row in open_rows:
+    seen = [queue_slot(row, index) for index, row in enumerate(open_rows)]
+    for row, slot in zip(open_rows, seen):
         base = {"request": clip(row.request, TITLE_CHARS), "task": clip(row.task, ID_CHARS) or None,
                 "gpu": clip(row.gpu, NAME_CHARS), "minutes": row.minutes}
-        if row.status == "Running":
-            cap = (row.minutes or 0) + (EXTENSION_MINUTES if row.extended else 0)
+        if row.status == slots.RUNNING:
+            cap = slots.cap_minutes(slot)
             elapsed = minutes_between(row.started, now) if row.started else None
             running.append({**base, "started": iso(row.started) if row.started else None, "elapsed_min": elapsed,
-                            "cap_min": cap if row.minutes is not None else None, "extended": row.extended,
-                            "over_min": (elapsed - cap) if elapsed is not None and row.minutes is not None
-                            and elapsed > cap else 0})
+                            "cap_min": cap, "extended": row.extended,
+                            "over_min": (elapsed - cap) if elapsed is not None and elapsed > cap else 0})
         else:
             waited = minutes_between(row.requested, now) if row.requested else None
-            due = (waited is not None and row.minutes is not None and waited >= 2 * row.minutes
-                   and not row.complaint)
+            may_complain, _, _ = slots.complaint_due(slot, seen, now)
             queued.append({**base, "requested": iso(row.requested) if row.requested else None,
-                           "waited_min": waited, "complaint_due": due, "has_complaint": bool(row.complaint)})
+                           "waited_min": waited, "complaint_due": may_complain and not row.complaint,
+                           "has_complaint": bool(row.complaint)})
         if row.complaint:
-            since = row.started if row.status == "Running" else row.requested
+            since = row.started if row.status == slots.RUNNING else row.requested
             complaints.append({"request": clip(row.request, TITLE_CHARS), "status": row.status,
                                "minutes_since": minutes_between(since, now) if since else None,
                                "text": clip(row.complaint, COMPLAINT_CHARS)})
@@ -924,7 +937,7 @@ def compute(*, now: dt.datetime | None = None, hours: float = DEFAULT_WINDOW_HOU
     """The digest as a JSON-ready dict, already fitted to max_lines. now defaults to the
     current UTC time; the window is [since, now], since defaulting to hours before now. board
     names a snapshot file (default: the stored one); refine_root holds the track folders
-    (default: lab/refine). OSError when the ledger cannot be opened."""
+    (default: refine_track.REFINE_DIR, lab/refine). OSError when the ledger cannot be opened."""
     now = (now or dt.datetime.now(dt.timezone.utc)).astimezone(dt.timezone.utc).replace(microsecond=0)
     if since is None:
         since = now - dt.timedelta(hours=hours)
@@ -944,7 +957,7 @@ def compute(*, now: dt.datetime | None = None, hours: float = DEFAULT_WINDOW_HOU
         problems.append(f"{_plural(undated, 'ledger row')} without a readable ts left out")
     snapshot, board_problems = load_board(board, state_dir=state)
     problems.extend(board_problems)
-    rulings, ruling_problems = open_rulings(Path(refine_root) if refine_root is not None else REFINE_ROOT)
+    rulings, ruling_problems = open_rulings(Path(refine_root) if refine_root is not None else refine_track.REFINE_DIR)
     problems.extend(ruling_problems)
 
     digest: dict[str, Any] = {

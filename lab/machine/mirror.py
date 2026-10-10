@@ -37,10 +37,11 @@ counts as posted when the item already has a line, from a pass or from an earlie
 same `<label>, <task ID>:` after its signed prefix; each such line covers one change of that label and task,
 the earliest first, and a "reverted change" line covers none.
 
-Idempotent. The facts of the section are named by an id (8 hex digits over the four bodies, not the clock or
-the ledger's size), shown on the Last update bullet. A page that already shows the current id, with the Needs
-bullet in its place, is left alone; a changed digest replaces the earlier text in place. The verb's own ledger
-row (verb mirror) and its own failures are left out of the facts, so running it never changes them.
+Idempotent. The facts of the section are named by an id (8 hex digits over the four bodies and whether the
+board snapshot is stale, not the clock or the ledger's size), shown on the Last update bullet. A page that
+already shows the current id, with the Needs bullet in its place, is left alone; a changed digest replaces the
+earlier text in place, and so does a snapshot that has gone stale, once, so the page says so. The verb's own
+ledger row (verb mirror) and its own failures are left out of the facts, so running it never changes them.
 
 Notion. Page text is read and edited through the page-markdown boundary of lab/machine/rulings.py
 (NotionPages, and RestNotionClient over NOTION_TOKEN); no second client is written. An edit is one exact
@@ -78,7 +79,7 @@ from typing import Any
 
 from lab.machine import digest as digest_mod
 from lab.machine import ledger as ledger_mod
-from lab.machine import ready, record, refine_formats, rulings, stop
+from lab.machine import ready, record, refine_formats, refine_track, rulings, stop
 from lab.machine.digest import Board
 
 __all__ = [
@@ -97,10 +98,8 @@ OVERNIGHT_URL = rulings.OVERNIGHT_URL
 TEAM_COMMS_PAGE = rulings.TEAM_COMMS_PAGE
 TEAM_COMMS_URL = rulings.TEAM_COMMS_URL
 
-REFINE_ROOT = digest_mod.REFINE_ROOT
 LOG_NAME = rulings.LOG_NAME
 MERGE_LOG_NAME = "MERGE_LOG.md"
-TRACK_ORDER = rulings.TRACK_ORDER
 
 #: The digest window of a mirror run: what "tonight" means unless --hours or --since says otherwise.
 WINDOW_HOURS = 12.0
@@ -202,7 +201,8 @@ class Section:
     """What this flow says about the lab in the Ilan section, before it is signed and laid out.
 
     working, done and blocked are the bodies of their bullets and needs is this flow's part of the Needs bullet
-    ("" when it has nothing to add), all in Notion's markup. section_id names exactly these four texts."""
+    ("" when it has nothing to add), all in Notion's markup. section_id names exactly these four texts and
+    whether the board snapshot is stale."""
 
     section_id: str
     since: dt.datetime
@@ -309,7 +309,9 @@ def build_section(digest: Mapping[str, Any], board: Board | None, active: Collec
 
     bodies = [rulings.notion_text("; ".join(working)), rulings.notion_text(done),
               rulings.notion_text("; ".join(blocked) or "nothing"), rulings.notion_text(needs)]
-    ident = hashlib.sha256(json.dumps(bodies, ensure_ascii=True).encode("ascii")).hexdigest()[:8]
+    # A stale snapshot is a fact of its own: the Last update says so once instead of keeping the fresh wording.
+    facts = [*bodies, "board snapshot stale"] if seen is not None and board is not None and seen["stale"] else bodies
+    ident = hashlib.sha256(json.dumps(facts, ensure_ascii=True).encode("ascii")).hexdigest()[:8]
     return Section(ident, since, until, board_text, *bodies)
 
 
@@ -476,7 +478,7 @@ def _plan_text(label: str, task: str, change: refine_formats.Change) -> str:
 
 def _log_folders(refine_root: Path) -> list[str]:
     found = [folder.name for folder in refine_root.iterdir() if (folder / LOG_NAME).is_file()] if refine_root.is_dir() else []
-    return [name for name in TRACK_ORDER if name in found] + sorted(name for name in found if name not in TRACK_ORDER)
+    return rulings.track_order(found)
 
 
 def collect_plan_changes(refine_root: Path) -> tuple[list[PlanChange], list[str]]:
@@ -498,8 +500,9 @@ def collect_plan_changes(refine_root: Path) -> tuple[list[PlanChange], list[str]
             if not isinstance(entry, refine_formats.PassEntry) or entry.kind != ("pass" if track else "merge"):
                 continue
             label = f"{track} pass {entry.number}" if entry.kind == "pass" else f"merge {entry.number}"
+            tracks = refine_track.TRACKS
             rank = (entry.date, 0 if entry.kind == "pass" else 1,
-                    TRACK_ORDER.index(track) if track in TRACK_ORDER else len(TRACK_ORDER), track, entry.number)
+                    tracks.index(track) if track in tracks else len(tracks), track, entry.number)
             for change in entry.changes:
                 match = _TASK_ID.search(change.target)
                 task = match[0] if match else "board"
@@ -717,7 +720,7 @@ def run(argv: Sequence[str], *, client: rulings.NotionPages | None = None, trans
     if args.since and digest_mod.parse_time(args.since)[0] > moment:
         return {"ok": False, "outcome": "usage", "verb": VERB, "error": f"--since {args.since} is after now"}, 2
     try:
-        facts = _gather(args, moment, args.refine_dir or REFINE_ROOT, state_dir)
+        facts = _gather(args, moment, args.refine_dir or refine_track.REFINE_DIR, state_dir)
     except (OSError, ValueError) as exc:
         failure = {"ok": False, "outcome": "error", "verb": VERB, "error": f"cannot compute the digest: {_clip(str(exc), CLIP_NOTE)}"}
         return _finish(failure, environ, state_dir), 1
