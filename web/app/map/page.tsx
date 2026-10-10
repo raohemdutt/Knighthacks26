@@ -22,7 +22,8 @@ import { useFetch } from "@/lib/useFetch";
  *    (lib/zones.generated.ts) because no endpoint returns them. They are in each
  *    camera's own image, so each camera is its own panel; the box has no floor plan.
  *  - A sighting (GET /memory/objects/{label}/last-seen) has a camera, a zone and
- *    a text position, never coordinates. Pins sit in the middle of their zone.
+ *    a text position, never coordinates. Pins sit inside their zone, on a grid when
+ *    several share it; each has a number, and the list under the map names them.
  *  - The route is the existing GET /api/play/route, drawn in the bin camera's view.
  */
 
@@ -33,6 +34,7 @@ const PANEL_W = 360;
 const PANEL_H = 270; // 4:3, the shape of the Sort It grid (32 x 24 cells)
 const HEAD = 26;
 const GAP = 14;
+const ZONE_CHAR = 8; // about one letter of a zone's name (13 px bold), to tell when a name is wider than its zone
 
 interface Seen {
   label: string;
@@ -103,10 +105,27 @@ export default function RoomMapPage() {
 
           <div className={ui.card}>
             {view === "2d" ? <Room2D pins={pins} selected={selected} route={drawn} onPick={setItem} /> : <Room3D cameras={CAMERAS} pins={pins} selected={selected} route={drawn} />}
+            {pins.length > 0 ? (
+              <ol className={dr.pinList} aria-label="What each numbered pin is">
+                {pins.map((p) => (
+                  <li key={p.label}>
+                    <button type="button" className={`${dr.pinItem} ${selected === p.label ? dr.pinItemOn : ""}`} aria-pressed={selected === p.label} onClick={() => setItem(p.label)}>
+                      <span className={dr.pinNum} aria-hidden="true">
+                        {p.n}
+                      </span>
+                      <span>
+                        <span className={dr.srOnly}>Pin {p.n}: </span>
+                        {humanize(p.label)}
+                        <span className={`${ui.muted} ${ui.small}`}> · {humanize(p.zone).toLowerCase()} zone</span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            ) : null}
             <p className={dr.legend}>
               <span>
-                <span aria-hidden="true">◌ </span>
-                an item, placed in the middle of its zone
+                <span className={dr.pinKey} aria-hidden="true" />a numbered pin is an item, placed inside its zone, not at its exact spot
               </span>
               {drawn ? (
                 <span>
@@ -204,7 +223,7 @@ function SeenCard({ seen, placed }: { seen: Seen; placed: boolean }) {
       </p>
       <p className={ui.nudge}>
         {placed
-          ? `The box knows the zone${s.position ? " and the description above" : ""}, not coordinates. The pin marks the middle of the ${s.zone_id} zone, not the exact spot.`
+          ? `The box knows the zone${s.position ? " and the description above" : ""}, not coordinates. The pin sits inside the ${s.zone_id} zone, not at the exact spot.`
           : "The box has no zone on this map for it, so there is no pin."}
       </p>
       <Keyframe frameRef={s.frame_ref} caption={`${cameraName(s.camera_id)} · ${dayTime(s.ts)}`} />
@@ -229,13 +248,17 @@ function Room2D({ pins, selected, route, onPick }: { pins: RoomPin[]; selected: 
             <line className={ui.gridLine} x1={0} x2={PANEL_W} y1={top + HEAD} y2={top + HEAD} />
             {cam.zones.map((z) => {
               const on = (selectedPin?.camera === cam.id && selectedPin.zone === z.id) || (route?.camera === cam.id && route.bin === z.id);
+              const xs = z.polygon.map((p) => p[0]);
               const ys = z.polygon.map((p) => p[1]);
-              const [cx] = px(z.center);
+              const cx = ((Math.min(...xs) + Math.max(...xs)) / 2) * PANEL_W;
               const labelY = top + HEAD + Math.min(...ys) * PANEL_H + 18;
+              // A name wider than its zone is squeezed to fit, so it never runs into the zone next door.
+              const room = (Math.max(...xs) - Math.min(...xs)) * PANEL_W - 8;
+              const tight = humanize(z.id).length * ZONE_CHAR > room;
               return (
                 <g key={z.id}>
                   <polygon className={on ? dr.zoneOn : dr.zone} points={z.polygon.map((p) => px(p).join(",")).join(" ")} />
-                  <text className={dr.zoneLabel} x={cx} y={labelY} textAnchor="middle">
+                  <text className={dr.zoneLabel} x={cx} y={labelY} textAnchor="middle" textLength={tight ? room : undefined} lengthAdjust={tight ? "spacingAndGlyphs" : undefined}>
                     {humanize(z.id)}
                   </text>
                 </g>
@@ -253,12 +276,20 @@ function Room2D({ pins, selected, route, onPick }: { pins: RoomPin[]; selected: 
             {mine.map((p) => {
               const [x, y] = px(p.at);
               const on = p.label === selected;
+              // Every pin carries its number; its name is written here only where the zone has room for
+              // every name in it. The list under the map names them all.
               return (
                 <g key={p.label} onClick={() => onPick(p.label)} style={{ cursor: "pointer" }}>
-                  <circle className={`${dr.pin} ${on ? dr.pinOn : ""}`} cx={x} cy={y} r={on ? 9 : 7.5} />
-                  <text className={dr.pinLabel} x={x} y={y + 24} textAnchor="middle">
-                    {humanize(p.label)}
+                  <title>{humanize(p.label)}</title>
+                  <circle className={`${dr.pin} ${on ? dr.pinOn : ""}`} cx={x} cy={y} r={on ? 10.5 : 9.5} />
+                  <text className={`${dr.pinNumber} ${on ? dr.pinNumberOn : ""}`} x={x} y={y + 4} textAnchor="middle">
+                    {p.n}
                   </text>
+                  {p.named ? (
+                    <text className={dr.pinLabel} x={x} y={y + 25} textAnchor="middle">
+                      {humanize(p.label)}
+                    </text>
+                  ) : null}
                 </g>
               );
             })}

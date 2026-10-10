@@ -65,6 +65,34 @@ export function amount(n: number): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }
 
+/** Up to two decimals, none it does not have: 2 -> "2", 1.5 -> "1.5", 0.25 -> "0.25", 0.3333 -> "0.33" */
+export function exact(n: number): string {
+  return String(Math.round(n * 100) / 100);
+}
+
+/** Hours as a person says them: 6.35 -> "6 h 21 min", 0.25 -> "15 min", 7 -> "7 h" */
+export function hoursMinutes(hours: number): string {
+  const total = Math.round(Math.abs(hours) * 60);
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  const text = h === 0 ? `${m} min` : m === 0 ? `${h} h` : `${h} h ${m} min`;
+  return hours < 0 && total > 0 ? `-${text}` : text;
+}
+
+/** A value in its unit: hours as hours and minutes, a percentage with its sign, anything else as "2 meals". */
+export function withUnit(n: number, unit: string): string {
+  if (unit === "hours") return hoursMinutes(n);
+  if (unit === "%") return `${exact(n)}%`;
+  return `${exact(n)} ${unit}`;
+}
+
+/** "3:40 PM" for a time today, "Yesterday 3:40 PM" for any other day */
+export function timeOrDay(iso: string | null | undefined, now: Date = new Date()): string {
+  const d = parse(iso);
+  if (!d) return "";
+  return sameDay(d, now) ? TIME.format(d) : dayTime(iso);
+}
+
 /** "cam-desk" -> "Desk camera" */
 export function cameraName(id: string): string {
   const bare = id.replace(/^cam-/, "").replace(/[-_]/g, " ");

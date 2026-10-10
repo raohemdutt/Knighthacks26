@@ -48,6 +48,15 @@ function CameraView() {
   const [typed, setTyped] = useState("");
   const [query, setQuery] = useState("");
 
+  // Deep link: /timeline/?q=keys fills the box and runs the search. Read once, after the first
+  // render (the page is a static export, so the query is only known in the browser).
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get("q")?.trim();
+    if (!q) return;
+    setTyped(q);
+    setQuery(q);
+  }, []);
+
   // Search as you type, once typing pauses.
   useEffect(() => {
     const t = window.setTimeout(() => setQuery(typed.trim()), 350);

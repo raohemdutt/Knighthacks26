@@ -26,6 +26,9 @@ from contexts.play.dayrun.models import (
 from contexts.play.dayrun.routes import Walks
 
 MOVE_TO_KINDS = ["class", "library", "gym", "outdoors", "dining", "venue"]
+# Why a kind of disruption cannot happen on a board, for the note when fewer are returned than asked for.
+WHY_NOT = {"block_moved": "no fixed block with a place to move", "friend_cancelled": "no friend on the board to cancel",
+           "place_closed": "no place to eat to close"}
 
 
 # --- hard mode ---
@@ -96,6 +99,14 @@ def hard(cfg: DayRunConfig, w: Walks, board: Board, moves: list[Move], seed: int
     before = simulate(cfg, w, board, moves)
     shaken, told = apply_disruptions(cfg, w, board, chosen)
     after = simulate(cfg, w, shaken, moves, repair=True)  # re-validate every move and re-route
+    # One disruption per kind, so a board can offer fewer than were asked for: say so instead of returning fewer silently.
+    requested = max(0, count) if disruptions is None else None
+    note = ""
+    if requested is not None and len(told) < requested:
+        n = len(told)
+        missing = [WHY_NOT[k] for k in sorted(WHY_NOT) if k not in {d.kind for d in told}]
+        note = (f"Asked for {requested} disruptions; only {n} kind{'' if n == 1 else 's'} of disruption "
+                f"{'is' if n == 1 else 'are'} possible on this day, one of each ({'; '.join(missing)}).")
     changes = list(after.changes)
     for d in told:
         if d.kind != "block_moved":
@@ -111,7 +122,7 @@ def hard(cfg: DayRunConfig, w: Walks, board: Board, moves: list[Move], seed: int
 
         if say(was) != say(now):
             changes.append(Change(kind="route_changed", text=f"Route to {title} was {say(was)}; now {say(now)}"))
-    return HardResult(seed=seed, disruptions=told, before=before, after=after, changes=changes)
+    return HardResult(seed=seed, disruptions=told, before=before, after=after, changes=changes, requested=requested, note=note)
 
 
 # --- campaign ---

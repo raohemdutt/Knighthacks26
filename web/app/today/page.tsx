@@ -6,7 +6,7 @@ import { Empty, ErrorBox, Loading } from "@/components/States";
 import ui from "@/components/ui.module.css";
 import { api, type Habit, type ImpactCounts, type Item } from "@/lib/api";
 import { useAtlasEvents } from "@/lib/atlas";
-import { amount, dayLabel, percent, time } from "@/lib/format";
+import { dayLabel, exact, hoursMinutes, percent, timeOrDay, withUnit } from "@/lib/format";
 import { useFetch } from "@/lib/useFetch";
 
 const soonestFirst = (a: Item, b: Item) => (a.when ?? "").localeCompare(b.when ?? "");
@@ -81,8 +81,8 @@ export default function TodayPage() {
           <>
             {habits.data.latest_nudge ? (
               <p className={ui.nudge}>
+                <span className={`${ui.muted} ${ui.small}`}>Latest nudge, sent {timeOrDay(habits.data.latest_nudge.ts)}: </span>
                 {habits.data.latest_nudge.message}
-                <span className={`${ui.muted} ${ui.small}`}> · {time(habits.data.latest_nudge.ts)}</span>
               </p>
             ) : null}
             <ul className={ui.list}>
@@ -198,6 +198,7 @@ function ImpactStats({ counts }: { counts: ImpactCounts }) {
 
 function HabitCard({ habit: h }: { habit: Habit }) {
   const atLeast = h.direction === "at_least";
+  const hours = h.unit === "hours";
   const fill = h.target > 0 ? Math.min(h.value / h.target, 1) : h.value > 0 ? 1 : 0;
   const good = h.applies && h.met;
   const overLimit = h.applies && !h.closed && !atLeast && !h.met;
@@ -232,21 +233,23 @@ function HabitCard({ habit: h }: { habit: Habit }) {
         )}
       </div>
       <p>
-        <span className={ui.habitValue}>{amount(h.value)}</span>{" "}
+        {/* Hours read as "6 h 21 min"; other values keep the decimals the box sent (0.25 is not 0.3). */}
+        <span className={ui.habitValue}>{hours ? hoursMinutes(h.value) : exact(h.value)}</span>{" "}
         <span className={ui.muted}>
-          of {atLeast ? "at least" : "at most"} {amount(h.target)} {h.unit}
+          of {atLeast ? "at least" : "at most"} {withUnit(h.target, h.unit)}
         </span>
       </p>
-      <div className={ui.meter} role="img" aria-label={`${amount(h.value)} of ${amount(h.target)} ${h.unit}`}>
+      <div className={ui.meter} role="img" aria-label={`${withUnit(h.value, h.unit)} of ${withUnit(h.target, h.unit)}`}>
         <div className={`${ui.meterFill} ${good ? ui.meterMet : ""}`} style={{ width: `${Math.round(fill * 100)}%` }} />
       </div>
       <p className={good ? ui.small : `${ui.small} ${ui.muted}`}>
         {good ? <strong>{status}</strong> : status}
       </p>
       {h.nudge ? (
+        // A nudge is what the box said at that moment; the figure in it may have moved since, so its time comes first.
         <p className={ui.nudge}>
+          <span className={`${ui.muted} ${ui.small}`}>Nudge sent {timeOrDay(h.nudge.ts)}: </span>
           {h.nudge.message}
-          <span className={`${ui.muted} ${ui.small}`}> · {time(h.nudge.ts)}</span>
         </p>
       ) : null}
     </li>

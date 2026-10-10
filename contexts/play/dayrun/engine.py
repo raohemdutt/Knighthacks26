@@ -266,7 +266,11 @@ def simulate(cfg: DayRunConfig, w: Walks, board: Board, moves: list[Move], repai
     due = {d.id: d.due for d in board.deadlines}
     missed: set[str] = set()
     sleep_min = focused = walked = 0.0
-    study_min = meals = 0
+    study_min = 0
+    # Meals already eaten today (Habits, on a board that starts mid-day) count toward the day's meal target;
+    # a board that starts at wake has none. `eaten` is the meals inside this board's window.
+    before = max(0, init.meals)
+    eaten = 0
     energy_min = energy
 
     def factor() -> float:  # how much of your freshness low energy lets you use
@@ -316,7 +320,7 @@ def simulate(cfg: DayRunConfig, w: Walks, board: Board, moves: list[Move], repai
             if act == "walk":
                 walked += m
             if seg.meal and b == seg.end:
-                meals += 1
+                eaten += 1
                 hungry = 0.0
             energy_min = min(energy_min, energy)
             spent[act, seg.place] = spent.get((act, seg.place), 0.0) + m
@@ -341,8 +345,10 @@ def simulate(cfg: DayRunConfig, w: Walks, board: Board, moves: list[Move], repai
         checks.append(Check(id=d.id, ok=status in ("done", "on_track"), value=risk, target=cfg.on_track_risk, text=text, status=status))
     checks.append(Check(id="sleep", ok=sleep_h >= cfg.win.sleep_hours, value=sleep_h, target=cfg.win.sleep_hours,
                         text=f"Sleep: {sleep_h:.1f} h ({cfg.win.sleep_hours:g} h needed)"))
+    meals = before + eaten
+    so_far = f", {before} of them already eaten before this board starts" if before else ""
     checks.append(Check(id="meals", ok=meals >= cfg.win.meals, value=meals, target=cfg.win.meals,
-                        text=f"Meals: {meals} ({cfg.win.meals} needed)"))
+                        text=f"Meals: {meals} ({cfg.win.meals} needed{so_far})"))
     won = all(c.ok for c in checks)
     worst = max(final.values(), default=0.0)
     stars = 0
@@ -360,7 +366,7 @@ def simulate(cfg: DayRunConfig, w: Walks, board: Board, moves: list[Move], repai
         timeline=timeline, legs=plan.legs, routes=plan.routes, rejected=sorted(plan.rejected, key=lambda r: r.index),
         blocks=sorted(plan.blocks, key=lambda b: b.start), changes=plan.changes, notes=plan.notes,
         totals=Totals(study_minutes=study_min, focused_minutes=round(focused, 1), walk_minutes=round(walked, 1), sleep_hours=sleep_h,
-                      meals=meals, energy_end=round(energy, 1), energy_min=round(energy_min, 1), points=points),
+                      meals=meals, meals_before=before, energy_end=round(energy, 1), energy_min=round(energy_min, 1), points=points),
         carry=Carry(energy=round(energy, 1), focus=round(fresh, 1), sleep_debt=round(debt_end, 2), hungry_minutes=round(hungry, 1),
                     place=plan.place, work_left={d: round(v, 1) for d, v in work.items()}),
     )

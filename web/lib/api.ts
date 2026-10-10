@@ -519,7 +519,8 @@ export interface Totals {
   focused_minutes: number;
   walk_minutes: number;
   sleep_hours: number;
-  meals: number;
+  meals: number; // the day's meals: those eaten before the board starts plus those in its window
+  meals_before?: number; // of `meals`, how many were already eaten when the board starts
   energy_end: number;
   energy_min: number;
   points: number; // 0..100
@@ -557,6 +558,8 @@ export interface HardResult {
   before: SimResult;
   after: SimResult;
   changes: Change[];
+  requested?: number | null; // seeded disruptions asked for; null when the request listed its own
+  note?: string; // set when fewer came back than asked for
 }
 
 export interface CommitResult {
