@@ -76,9 +76,10 @@ class CircleSharing:
     def _queue(self, kind: str, e, fields: set[str]) -> ShareQueued | None:
         if not self.opted_in:
             return None
-        # share_id is the source event's id, so the same event never queues twice
+        # share_id is this member plus the source event's id: the same event never queues twice, and two
+        # boxes that close the same habit day (whose event ids are identical by design) do not collide in Neon
         return self.outbox.enqueue(self.circle_id, self.member_id, kind, e.model_dump(mode="json", include=fields),
-                                   e.ts, share_id=e.event_id)
+                                   e.ts, share_id=f"{self.member_id}:{e.event_id}")
 
     # --- outbox worker (run on the app's timer) ---
 

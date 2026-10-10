@@ -66,7 +66,7 @@ def test_handlers_queue_only_the_contract_fields(tmp_path):
     on = sharing(tmp_path)
     event = day_closed()
     queued = on.on_day_closed(event)
-    assert (queued.kind, queued.share_id, queued.circle_id) == ("habit_summary", event.event_id, "team")
+    assert (queued.kind, queued.share_id, queued.circle_id) == ("habit_summary", f"dom:{event.event_id}", "team")
     assert queued.payload == {"habit_id": "sleep", "day": "2026-10-09", "met": True, "value": 7.5, "streak": 3}
     assert on.on_day_closed(event) is None  # the same event again
     assert on.on_count_updated(count_updated()).payload.keys() == {
@@ -152,3 +152,10 @@ def test_shares_reach_neon_once_and_show_on_the_leaderboards(tmp_path):
         assert [s["score"] for s in board.top_scores(c)] == [95.0, 88.0]
     finally:
         assert drop_test_circle(db, c) == 0
+
+
+def test_two_boxes_closing_the_same_day_do_not_share_an_id(tmp_path):
+    event = day_closed()  # habit day-close ids are the same on every box
+    hem = sharing(tmp_path / "hem", member="hem").on_day_closed(event)
+    maya = sharing(tmp_path / "maya", member="maya").on_day_closed(event)
+    assert hem.share_id != maya.share_id
