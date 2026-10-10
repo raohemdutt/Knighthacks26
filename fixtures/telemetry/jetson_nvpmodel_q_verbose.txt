@@ -1,0 +1,7 @@
+# The first four lines of nvpmodel -q --verbose on a Jetson Orin Nano developer kit, JetPack 6.1 (L4T 36.4.2), copied
+# verbatim from NVIDIA forum topic 318940, post #4 by energyideas, 2025-01-07,
+# https://forums.developer.nvidia.com/t/offline-cv0-cv1-and-cv2/318940/4 .
+NVPM VERB: Config file: /etc/nvpmodel.conf
+NVPM VERB: parsing done for /etc/nvpmodel.conf
+NVPM VERB: Current mode: NV Power Mode: 15W 0
+NVPM VERB: PARAM CPU_ONLINE: ARG CORE_0: PATH /sys/devices/system/cpu/cpu0/online: REAL_VAL: 1 CONF_VAL: 1
