@@ -24,6 +24,7 @@ Comms page instead of quietly picking one.
 | **Demo Plan (5 min)** | The judged run of show. Everything works backwards from it. | https://app.notion.com/p/3f596ef5fec581a2bdc4f96c8da65252 |
 | **Team Comms** | Questions between teammates, one page per person, answered inline. | https://app.notion.com/p/3f596ef5fec5815c8023d5058086c741 |
 | **Build Log** (under Team Comms) | What has landed on `main`, how to use it, which commit. Newest first. | https://app.notion.com/p/3f596ef5fec5812fa37de5ae92086234 |
+| **Overnight Status (agents)** (under Team Comms) | One section per person; each agent rewrites its own every ~30 min while unattended. People read it first in the morning. | https://app.notion.com/p/3f596ef5fec58172a2d3e0db86fc09a3 |
 | **Completed tasks (archive)** (under Task Board) | Finished task pages, moved off the board to keep it fast. | https://app.notion.com/p/3f596ef5fec581d980ebc44e691ca543 |
 | **Credentials** | Logins and keys. Read them; never paste them into code, commits, events, logs or chat. | linked from the Knighthacks hub |
 
@@ -31,7 +32,7 @@ Each teammate has a Team Comms page:
 
 | Person | Team Comms page | Notion user id (for Assignee filters) |
 | --- | --- | --- |
-| Dominick (Dom) | asks the questions; questions *for* Dom go in "Questions for Dominick" on your own page | `user://13dd872b-594c-81cd-b409-0002df1ecab7` |
+| Dominick (Dom) | https://app.notion.com/p/3f596ef5fec581828d8ee02ab7b912e3 (Dominick ↔ Team) | `user://13dd872b-594c-81cd-b409-0002df1ecab7` |
 | Hemdutt | https://app.notion.com/p/3f596ef5fec5819f8099d245fa78799d | `user://3f5d872b-594c-8144-b8ea-0002ce9d65db` |
 | Xander | https://app.notion.com/p/3f596ef5fec58177b4c6dfd0acddacce | `user://32ed872b-594c-81b8-83fa-00026e75ed3d` |
 | Ilan | https://app.notion.com/p/3f596ef5fec58163bbefd0e7ea5acea7 | `user://fbcc0baf-9942-4661-9414-319688df6910` |
@@ -40,7 +41,7 @@ Every person page has the same four sections:
 - **Open questions:** checkboxes, each with an `Answer:` line under it.
 - **Answered:** questions that have been dealt with.
 - **FYI (no reply needed):** background the owner should know: interfaces they will plug into, ownership changes, gotchas.
-- **Questions for Dominick:** where that person (or their agent) asks Dom something.
+- **Questions for Dominick:** where that person (or their agent) asks Dom something. You can also post on **Dominick ↔ Team**; Dom's agent watches both.
 
 ### Getting Notion access
 See `notion/README.md`. In short, connect the Notion MCP server (claude.ai
@@ -64,7 +65,7 @@ Everything below ("your page", "your tasks") means that person's.
 ## 3. The loop: what to do, and when
 
 Do this **at the start of every session**, **before you pick new work**, and
-**after every push**. During long sessions, also do it at least every 30 to 60
+**after every push**. Unattended (overnight), run it as the cycle in section 8.5. During long sessions, also do it at least every 30 to 60
 minutes or between tasks, because teammates keep changing the plan.
 
 1. **Read your Team Comms page.** Handle every unticked item under *Open questions* (see section 4).
@@ -165,3 +166,61 @@ judges will actually see; it is the reason each P0 exists.
 - **Wire new handlers in `contexts/gateway/bootstrap.py`.** Run the app with `python -m contexts.gateway`.
 - **Secrets:** `.env` only (template: `config/.env.example`). Never in code, config, events, logs, commits, or Notion pages other than Credentials.
 - **Setup:** `pip install -e ".[dev]"` (add `,browser` and run `python -m patchright install chromium` for the browser connector), then `pytest -q`.
+
+---
+
+## 8. Working in parallel and overnight (agents talking to agents)
+
+All four agents may run at the same time, including overnight while their
+people sleep. Notion is how they coordinate; git is where their work meets.
+Follow these rules so they help each other instead of colliding.
+
+### 8.1 Message conventions (so everyone can tell who said what)
+- **Sign every post.** Anything an agent writes in Notion starts with `🤖 <Person>'s agent · <Day h:mm AM/PM ET>:`, e.g. `🤖 Hemdutt's agent · Sat 2:40 AM:`. Humans don't need a tag.
+- **Asking:** add `- [ ] **Q<n> (from <Person>'s agent, <time>):** <one-line question>` under *Open questions* on the **recipient's** page, with the context needed to answer it without a meeting (file paths, contract names, commit hashes), and an `Answer:` line under it. Number questions after the highest Q on that page. Questions for Dominick go on **Dominick ↔ Team**.
+- **Answering:** fill in the `Answer:` line as `🤖 <Person>'s agent · <time>: …`, tick the box, and, if the answer changes what the asker builds, say so in one line.
+- **Needs a human:** if an agent cannot answer without its person (section 4B), it writes `Answer: 🙋 waiting on <Person> — <what is needed>` and adds the item to **Needs a human** in its section of **Overnight Status**. It does **not** wait: it moves on to other work and checks back later.
+- **Don't edit what others wrote** except their `Answer:` lines on your own page and the checkbox. Never delete another person's or agent's text.
+
+### 8.2 Claiming work, so two agents never build the same thing
+- **Work only on tasks assigned to your person.** The Assignee field is the lock.
+- Before starting, re-fetch the task. If it is already **In progress**, someone owns it; pick something else.
+- Claim it by setting **Status: In progress** and adding a first line to the task page: `🤖 <Person>'s agent · <time>: started — <plan in one line>`.
+- **To take a task that isn't yours** (for example it blocks you and its owner is offline), ask on the owner's page and wait for a reply from them or their agent. Overnight, an owner's agent may agree to hand off a **Not started** task: it changes the Assignee and writes `handed to <Person>` on the task page. Never take an **In progress** task.
+- If you must change something in another person's folder (a one-line fix your work depends on), keep it minimal and post an FYI on their page with the commit hash.
+
+### 8.3 Git when four agents push to `main`
+- **Stay in your own folders** (`contexts/<your contexts>/`, your config files, your tests). Shared files (`contracts/`, `runtime/`, `bus/`, `contexts/gateway/bootstrap.py`, `pyproject.toml`) get small, additive edits only.
+- Every push: `git pull --rebase` → `pytest -q` → push. **Never** `--force`, never rewrite history, never `--no-verify`.
+- **Rebase conflict in your own files:** resolve it and re-run the tests. **Conflict in someone else's files:** abort the rebase (`git rebase --abort`), post on their page with the conflicting file and your commit, and work on something else until it is resolved.
+- **`main` is red because of someone else's commit:** don't fix their code. Post on their page (`🤖 … main fails: <test> since <commit>`), add it under *Blocked on* in Overnight Status, and keep working locally until it's fixed.
+- **Contract changes overnight** are additive only (new optional fields, new event types), always with an FYI to everyone who uses that contract. Renames and removals wait for the people.
+
+### 8.4 What an agent must not do unattended
+- No outside effects: no real messages, calendar invites, posts, purchases, emails, or data exports. Approvals exist for people; never approve on someone's behalf.
+- No credentials in code, commits, events, logs or Notion (except the Credentials page, which is read-only for agents).
+- No destructive commands: no deleting branches, data, or Notion pages (archive by moving instead), and no `git reset --hard` on shared work.
+- No new paid services, accounts or API keys. Put those under *Needs a human*.
+- Don't change the plan: the Design Doc, priorities and demo plan are the people's. Suggest changes on Dominick ↔ Team.
+
+### 8.5 The overnight cycle (run on a loop, about every 30 minutes)
+1. **Inbox:** read your person's Team Comms page and **Dominick ↔ Team**. Answer what you can (section 4A). Mark the rest `🙋 waiting on <Person>`.
+2. **Replies:** check the pages where *you* asked questions. Act on new answers.
+3. **Build Log + git:** `git pull --rebase`, skim what landed, and run `pytest -q` so you know `main` is green.
+4. **Work:** continue your In-progress task, or claim the next one (section 5 + 8.2). Work in small steps that can each be committed.
+5. **Ship:** tests, push, Build Log entry, Task Board status, FYIs to anyone affected (section 6).
+6. **Status:** rewrite your section of **Overnight Status**: last update, working on, done tonight, blocked on, needs a human.
+7. **Stop condition:** if every remaining task is blocked or waiting on a human, say so in Overnight Status and keep checking the inbox each cycle; don't invent work outside the Task Board.
+
+**Claude Code:** start the night with `/loop` and this prompt (no interval: the agent paces itself, about every 30 minutes):
+
+```
+/loop Follow AGENTS.md section 8.5 as <your name>'s agent: check Notion (my Team Comms page, Dominick ↔ Team, replies to my questions), pull and test main, continue or claim my next Task Board task, push with tests green, update the Build Log, Task Board and my Overnight Status section. Never take outside actions or answer decisions that need me; mark them "🙋 waiting on me".
+```
+
+Other tools: run the same prompt on a timer (cron, a scheduler, or a manual re-run every half hour).
+
+### 8.6 In the morning (for the people)
+1. Open **Overnight Status**: what was done, and what needs you.
+2. Answer the `🙋 waiting on you` questions on your Team Comms page (write the answer, tick the box). Your agent picks them up on its next cycle.
+3. Skim the Build Log for what landed overnight.
