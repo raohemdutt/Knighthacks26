@@ -17,6 +17,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, time, timedelta
 from pathlib import Path
+from time import monotonic
 from zoneinfo import ZoneInfo
 
 import yaml
@@ -160,6 +161,19 @@ OUTSIDE = re.compile(
     r"|\b(?:game|match|matchup) (?:against|vs\.?|versus|with)\b|\b(?:last|latest|most recent|next|upcoming) (?:game|match)\b"
     r"|\b(?:vs\.?|versus)\b|\bwho (?:won|is winning|plays)\b|\bdid (?:ucf|uf|the knights|the gators)\b",
     re.IGNORECASE)
+
+
+WEB_BUDGET_S = 25.0  # a web question answers from what it has after this long (the 4B on the Jetson is slow)
+WEB_CALL_MIN_S = 3.0  # but one web call always gets at least this long
+MAX_PAGES = 1  # pages read per question: each one is a slow browser load and a long prompt
+WEB_TOOL_NAMES = {"web_search", "reddit_search", "read_page"}
+NUMBER = re.compile(r"\d+")
+
+
+def grounded(answer: str, evidence: list[str]) -> bool:
+    """Every number in the answer (a score, a date, a price) appears in the evidence it was written from."""
+    seen = set(NUMBER.findall(" ".join(evidence)))
+    return all(n in seen for n in NUMBER.findall(answer))
 
 
 WEB_HINT = (" For news, sports scores, opening hours or anything outside this room, use web_search, "
@@ -364,6 +378,7 @@ class QA:
         self.tools = MEMORY_TOOLS + AGENT_TOOLS + ([KEYFRAME_TOOL] if load_keyframe else []) + (WEB_TOOLS if web else [])
         self.planner = None  # set by the composition root; answers "help me prep for ..." (A8)
         self.talk = None  # set by the composition root; small talk and simple questions (talk.py)
+        self.monotonic: Callable[[], float] = monotonic  # the web time budget (A13); tests replace it
         self.on_delta: Callable[[str, str], None] | None = None  # (question_id, text): streamed answer pieces (A11)
 
     async def on_question(self, e: QuestionAsked) -> AnswerGenerated:
@@ -630,18 +645,29 @@ class QA:
         tools = self.tools + ([PREPARE_TOOL] if self.planner else [])
         ev = Evidence()
         searched = False  # the web was searched, by the model or by us
+        pages = 0
+        started = self.monotonic()
+
+        def left() -> float:
+            return WEB_BUDGET_S - (self.monotonic() - started)
+
         for _ in range(MAX_WEB_TOOL_CALLS if self.web else MAX_TOOL_CALLS):
+            if self.web and ev and left() <= 0:
+                break  # out of time: answer from what was found so far
             r = await self._chat(msgs, tools)
             if not r.tool_calls:
                 text = (r.content.strip() if ev else NO_EVIDENCE) or NO_EVIDENCE
-                if self.web and not searched and unsure(text):
+                if self.web and not searched and unsure(text) and left() > 0:
                     # the model gave up without trying the web: search with the question itself, answer from that
                     found = Evidence()
-                    await self._run_tool(ToolCall(id="auto-web", name="web_search", arguments={"query": question}), found)
+                    await self._web_call(ToolCall(id="auto-web", name="web_search", arguments={"query": question}),
+                                         found, left())
                     if found:
                         ev.lines += found.lines
                         ev.citations += found.citations
-                        return await self._answer_from(question, ev, stream)
+                        return await self._finish(question, ev, stream)
+                if self.web and ev:
+                    return self._checked(Answer(text, ev.citations, r.model_version), ev, stream)
                 if stream:
                     stream(text)
                 return Answer(text, ev.citations, r.model_version)
@@ -649,14 +675,49 @@ class QA:
             for call in r.tool_calls:
                 searched = searched or call.name == "web_search"
                 found = Evidence()
-                await self._run_tool(call, found)
+                note = ""
+                if call.name == "read_page" and pages >= MAX_PAGES:
+                    note = "skipped: one page per question; answer from what you have"
+                elif self.web and call.name in WEB_TOOL_NAMES:
+                    pages += call.name == "read_page"
+                    if not await self._web_call(call, found, left()):
+                        note = f"{call.name} timed out"
+                else:
+                    await self._run_tool(call, found)
                 ev.lines += found.lines
                 ev.citations += found.citations
-                result = "\n".join(found.lines) or "nothing found"
+                result = "\n".join(found.lines) or note or "nothing found"
                 msgs.append(ChatMessage(role="tool", content=result, tool_call_id=call.id))
         if not ev:
             return Answer(NO_EVIDENCE, [], self.runtime.model_info().version)
-        return await self._answer_from(question, ev, stream)
+        return await self._finish(question, ev, stream)
+
+    async def _web_call(self, call: ToolCall, ev: Evidence, left: float) -> bool:
+        """One web tool call inside the time budget. False when it ran out of time (nothing is added)."""
+        found = Evidence()
+        try:
+            await asyncio.wait_for(self._run_tool(call, found), timeout=max(WEB_CALL_MIN_S, left))
+        except TimeoutError:
+            return False
+        ev.lines += found.lines
+        ev.citations += found.citations
+        return True
+
+    async def _finish(self, question: str, ev: Evidence, stream: Callable[[str], None] | None) -> Answer:
+        if not self.web:
+            return await self._answer_from(question, ev, stream)
+        return self._checked(await self._answer_from(question, ev), ev, stream)  # checked before it is streamed
+
+    def _checked(self, a: Answer, ev: Evidence, stream: Callable[[str], None] | None) -> Answer:
+        """A web answer whose numbers are not in what was found is not said: the links are offered instead."""
+        if not grounded(a.text, ev.lines):
+            links = [c for c in ev.citations if c.url][:3]
+            where = "; ".join(c.title or c.url for c in links)
+            text = "I couldn't confirm that from what I found." + (f" These may have it: {where}." if where else "")
+            a = Answer(text, links, a.model_version)
+        if stream:
+            stream(a.text)
+        return a
 
     def _t(self, ts: datetime) -> str:
         """Times the model sees are local to the household, e.g. "Sun 7:30 AM"."""

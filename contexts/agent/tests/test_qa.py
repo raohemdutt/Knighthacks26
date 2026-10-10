@@ -293,7 +293,7 @@ def web_qa(*replies, web=None, memory=MEMORY):
     from contexts.agent.application.web_port import FakeWeb
 
     rt = FakeRuntime(chat_replies=[ChatResult(content=r, model_version="v1") if isinstance(r, str) else r for r in replies])
-    web = web or FakeWeb(results=[{"title": "Knights 31, Gators 24", "url": "https://espn.test/ucf-uf", "summary": "Final"}],
+    web = web or FakeWeb(results=[{"title": "Knights 31, Gators 24", "url": "https://espn.test/ucf-uf", "summary": "Final, Sep 5"}],
                          pages={"https://espn.test/ucf-uf": {"url": "https://espn.test/ucf-uf", "title": "UCF vs UF",
                                                              "summary": "UCF beat UF 31-24 on Sep 5."}})
     return QA(rt, memory, clock=lambda: NOW, web=web), rt, web
@@ -454,7 +454,10 @@ def test_a_score_question_skips_small_talk_when_the_box_has_web():
 
 
 def test_small_talk_that_gives_up_falls_back_to_the_tools_with_web():
-    q, rt, web = web_qa(calls(("web_search", {"query": "pizza near campus"})), "Pizza Studio is open until 11.")
+    from contexts.agent.application.web_port import FakeWeb
+
+    pizza = FakeWeb(results=[{"title": "Pizza Studio", "url": "https://pizza.test/", "summary": "Open until 11 PM"}])
+    q, rt, web = web_qa(calls(("web_search", {"query": "pizza near campus"})), "Pizza Studio is open until 11.", web=pizza)
     q.talk = RefusingTalk("I don't have access to that, sorry.")
     a = asyncio.run(q.ask("Is the pizza place near campus open late?"))
     assert a.text == "Pizza Studio is open until 11." and q.talk.asked
@@ -474,3 +477,66 @@ def test_outside_spots_games_and_scores_not_room_questions():
         assert OUTSIDE.search(text), text
     for text in ("How are you?", "What did I play on Day Run?", "Where are my keys?"):
         assert not OUTSIDE.search(text), text
+
+
+# --- web answers are grounded and time-boxed ---
+
+def test_a_score_not_in_what_was_found_is_not_said_and_the_links_are_offered():
+    q, rt, web = web_qa(calls(("web_search", {"query": "UF score"})), "The most recent game ended 52-28 for Florida.")
+    pieces = []
+    a = asyncio.run(q.ask("What was the score in the most recent game against UF?", stream=pieces.append))
+    assert a.text == "I couldn't confirm that from what I found. These may have it: Knights 31, Gators 24."
+    assert [c.url for c in a.citations] == ["https://espn.test/ucf-uf"]
+    assert "".join(pieces) == a.text  # the unchecked answer never reached the phone
+
+
+def test_a_score_that_is_in_what_was_found_is_said():
+    q, rt, web = web_qa(calls(("web_search", {"query": "UF score"})), "UCF beat UF 31-24.")
+    assert asyncio.run(q.ask("What was the score in the most recent game against UF?")).text == "UCF beat UF 31-24."
+
+
+def test_grounded_checks_every_number():
+    from contexts.agent.application.qa import grounded
+
+    assert grounded("31-24 on Sep 5", ["Knights 31, Gators 24 (Sep 5)"])
+    assert not grounded("52-28", ["Knights 31, Gators 24"])
+    assert grounded("No score yet.", [])
+
+
+def test_only_one_page_is_read_per_question():
+    q, rt, web = web_qa(calls(("read_page", {"url": "https://espn.test/ucf-uf"}),
+                              ("read_page", {"url": "https://other.test/"})), "UCF beat UF 31-24 on Sep 5.")
+    asyncio.run(q.ask("Who won the game?"))
+    assert [c for c in web.calls if c[0] == "browse"] == [("browse", "https://espn.test/ucf-uf", None)]
+    assert "one page per question" in [m.content for m in rt.calls[-1][1] if m.role == "tool"][1]
+
+
+def test_out_of_time_answers_from_what_was_found():
+    from contexts.agent.application import qa as qa_module
+
+    q, rt, web = web_qa(calls(("web_search", {"query": "try 0"})), "UCF beat UF 31-24.",
+                        calls(("web_search", {"query": "never asked"})))
+    ticks = iter([0, 0, qa_module.WEB_BUDGET_S + 1] + [qa_module.WEB_BUDGET_S + 2] * 20)
+    q.monotonic = lambda: next(ticks)
+    a = asyncio.run(q.ask("Who won the game?"))
+    assert sum(1 for name, _ in rt.calls if name == "chat") == 2  # one tool round, then the answer
+    assert a.text == "UCF beat UF 31-24."
+
+
+def test_a_web_call_that_hangs_times_out_and_the_answer_still_comes():
+    from contexts.agent.application import qa as qa_module
+    from contexts.agent.application.web_port import FakeWeb
+
+    class SlowWeb(FakeWeb):
+        async def search(self, query):
+            await asyncio.sleep(10)
+            return []
+
+    old = qa_module.WEB_CALL_MIN_S, qa_module.WEB_BUDGET_S
+    qa_module.WEB_CALL_MIN_S = qa_module.WEB_BUDGET_S = 0.05
+    try:
+        q, rt, web = web_qa(calls(("web_search", {"query": "x"})), "nothing", web=SlowWeb())
+        assert asyncio.run(q.ask("Who won the game?")).text == NO_EVIDENCE
+        assert "timed out" in [m.content for m in rt.calls[-1][1] if m.role == "tool"][0]
+    finally:
+        qa_module.WEB_CALL_MIN_S, qa_module.WEB_BUDGET_S = old
