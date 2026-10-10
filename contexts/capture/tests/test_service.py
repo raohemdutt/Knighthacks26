@@ -8,6 +8,8 @@ import numpy as np  # noqa: E402
 from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
+from datetime import UTC, datetime  # noqa: E402
+
 from bus import EventBus  # noqa: E402
 from contexts.capture.api import capture_router  # noqa: E402
 from contexts.capture.application.service import CaptureService  # noqa: E402
@@ -163,3 +165,54 @@ def test_the_live_screen_gets_a_blurred_snapshot_and_the_newest_tracks(clip, tmp
     assert holder["r"].status_code == 200 and holder["r"].headers["content-type"] == "image/jpeg"
     assert holder["r"].headers["cache-control"] == "no-store"
     assert holder["missing"].status_code == 404 and holder["paused"] is None
+
+
+def test_health_is_published_on_change_and_as_a_five_minute_heartbeat(clip, tmp_path):
+    from datetime import timedelta
+
+    async def main():
+        bus = EventBus(persist=False)
+        policy = Policy()
+        service = CaptureService({"cam-desk": {"source": clip, "fps": 15, "width": 64, "height": 48, "faces": False}}, bus,
+                                 lambda: person, tmp_path / "data", policy)
+        service.start(asyncio.get_running_loop())
+        await asyncio.sleep(0.8)
+        t0 = datetime(2026, 10, 10, 12, 0, tzinfo=UTC)
+        first = service.health(t0)
+        again = service.health(t0 + timedelta(seconds=30))
+        policy.paused.add("cam-desk")
+        paused = service.health(t0 + timedelta(seconds=60))
+        policy.paused.clear()
+        beat = service.health(t0 + timedelta(minutes=7))
+        service.stop()
+        return first, again, paused, beat
+
+    first, again, paused, beat = asyncio.run(main())
+    assert [(e.camera_id, e.status) for e in first] == [("cam-desk", "ok")] and first[0].fps_actual > 5
+    assert again == []  # nothing changed, and not yet five minutes
+    assert [e.status for e in paused] == ["paused"]  # a change publishes at once
+    assert [e.status for e in beat] == ["ok"]  # back to ok after the pause (a change, and past the heartbeat)
+
+
+def test_the_mjpeg_stream_sends_boundaries_with_jpegs(clip, tmp_path):
+    holder = {}
+
+    async def main():
+        bus = EventBus(persist=False)
+        service = CaptureService({"cam-desk": {"source": clip, "fps": 15, "width": 64, "height": 48, "faces": False}}, bus,
+                                 lambda: person, tmp_path / "data", Policy())
+        service.start(asyncio.get_running_loop())
+        await asyncio.sleep(0.8)
+        holder["service"] = service
+        return service
+
+    service = asyncio.run(main())
+    app = FastAPI()
+    app.include_router(capture_router(service))
+    http = TestClient(app)
+    assert http.get("/capture/live/cam-nope").status_code == 404
+    with http.stream("GET", "/capture/live/cam-desk?fps=15&max=2") as r:
+        assert r.status_code == 200 and r.headers["content-type"].startswith("multipart/x-mixed-replace; boundary=frame")
+        chunk = b''.join(r.iter_bytes())
+    assert chunk.startswith(b"--frame\r\nContent-Type: image/jpeg") and b"\xff\xd8" in chunk
+    service.stop()
