@@ -52,3 +52,21 @@ def test_approved_export_writes_the_lab_format(tmp_path):
     ex = DatasetExample.model_validate(json.loads(line))
     assert ex.frame_ref == "frames:cam-desk:e1" and ex.context == "caption e1"
     assert (root / ex.image).read_bytes() == b"jpeg"
+
+
+def test_thumbs_up_examples_pick_look_alikes_and_keep_verdicts():
+    from contexts.learning.application.export import select_keyframes
+    from contracts.learning import TeachExample
+
+    eps = [
+        Episode(id="keys1", camera_id="cam-desk", start=NOW, labels=["person", "keys"], keyframe_refs=["k1"]),
+        Episode(id="keys2", camera_id="cam-desk", start=NOW, labels=["keys", "cup"], keyframe_refs=["k2"]),
+        Episode(id="empty", camera_id="cam-desk", start=NOW, labels=["chair"], keyframe_refs=["c1"]),
+        Episode(id="bad", camera_id="cam-desk", start=NOW, labels=["laptop"], keyframe_refs=["b1"]),
+    ]
+    spec = SPEC.model_copy(update={"examples": [TeachExample(frame_ref="k1", verdict="up"), TeachExample(frame_ref="b1", verdict="down")]})
+    picked = [(ref, verdict) for _, _, ref, verdict in select_keyframes(spec, eps)]
+    assert picked[:2] == [("k1", "up"), ("b1", "down")]  # the person's picks first, with verdicts
+    assert ("k2", None) in picked  # shares "keys" with the liked example
+    assert ("c1", None) not in picked  # looks like nothing that was liked
+    assert len(select_keyframes(SPEC, eps)) == 4  # no examples: export the whole window as before

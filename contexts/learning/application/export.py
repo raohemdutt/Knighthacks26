@@ -21,6 +21,27 @@ DEFAULT_LOOKBACK = timedelta(hours=24)
 MAX_EXAMPLES = 300
 
 
+def select_keyframes(spec: TaskSpec, episodes: list) -> list[tuple]:
+    """Which keyframes to export, as (episode, index, frame_ref, verdict).
+
+    With thumbs-up examples, keep the episodes that look like them: they share a
+    detector label with an up-voted episode (a cheap, explainable match a small
+    box can afford). The person's own picks always go in, carrying their verdict,
+    so the lab can use them as gold labels; thumbs-down frames are kept as
+    negatives but their look-alikes are not pulled in."""
+    verdicts = {e.frame_ref: e.verdict for e in spec.examples}
+    by_ref = {ref: ep for ep in episodes for ref in ep.keyframe_refs}
+    liked_labels = {lab for ref, v in verdicts.items() if v == "up" and ref in by_ref for lab in by_ref[ref].labels}
+    picked = []
+    for ep in episodes:
+        if liked_labels and not liked_labels & set(ep.labels) and not any(r in verdicts for r in ep.keyframe_refs):
+            continue  # doesn't look like anything the person liked
+        for i, ref in enumerate(ep.keyframe_refs):
+            picked.append((ep, i, ref, verdicts.get(ref)))
+    picked.sort(key=lambda t: t[3] is None)  # the person's own picks first, so the cap never drops them
+    return picked
+
+
 def teach(spec: TaskSpec, now: datetime, lookback: timedelta = DEFAULT_LOOKBACK) -> tuple[TaskCreated, ActionProposed]:
     """A new task and the export request the user must approve."""
     created = TaskCreated(ts=now, task=spec.task, instruction=spec.instruction, output_schema=spec.output_schema)
@@ -65,14 +86,14 @@ class DatasetExporter:
         (root / "images").mkdir(parents=True)
 
         examples: list[DatasetExample] = []
-        for ep in self.memory.episodes(start, end, camera=spec.camera, label=spec.label):
-            for i, ref in enumerate(ep.keyframe_refs):
-                if len(examples) >= MAX_EXAMPLES:
-                    break
-                image = f"images/{len(examples):04d}.jpg"
-                (root / image).write_bytes(self.load_keyframe(ref))
-                context = ep.captions[i] if i < len(ep.captions) else ep.summary
-                examples.append(DatasetExample(id=f"{ep.id}-{i}", image=image, frame_ref=ref, ts=ep.start, context=context))
+        for ep, i, ref, verdict in select_keyframes(spec, self.memory.episodes(start, end, camera=spec.camera, label=spec.label)):
+            if len(examples) >= MAX_EXAMPLES:
+                break
+            image = f"images/{len(examples):04d}.jpg"
+            (root / image).write_bytes(self.load_keyframe(ref))
+            context = ep.captions[i] if i < len(ep.captions) else ep.summary
+            examples.append(DatasetExample(id=f"{ep.id}-{i}", image=image, frame_ref=ref, ts=ep.start, context=context,
+                                           verdict=verdict))
 
         with (root / "examples.jsonl").open("w") as f:
             for ex in examples:
