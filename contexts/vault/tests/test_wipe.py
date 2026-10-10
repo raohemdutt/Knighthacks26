@@ -144,6 +144,9 @@ class LiveStore:
     def clear(self):
         self.calls.append("clear")
 
+    def close(self):
+        self.calls.append("close")
+
     def reopen(self):
         self.calls.append("reopen")
 
@@ -154,10 +157,10 @@ def test_a_memory_wipe_empties_the_open_store_then_reopens_it(tmp_path):
     wiper = Wiper(tmp_path, live_memory=live)
     assert not wiper.wipe("keyframes").live_memory_cleared and live.calls == []  # only memory and all touch it
     report = wiper.wipe("memory")
-    assert live.calls == ["clear", "reopen"] and report.live_memory_cleared
+    assert live.calls == ["clear", "close", "reopen"] and report.live_memory_cleared  # closed before the file goes: Windows cannot remove an open file
     assert "db" not in left(files)
     assert report.summary() == "Removed 3 files from memory, the running Memory store (emptied)."
-    assert wiper.wipe("all").live_memory_cleared and live.calls == ["clear", "reopen"] * 2
+    assert wiper.wipe("all").live_memory_cleared and live.calls == ["clear", "close", "reopen"] * 2
 
 
 @needs_symlinks

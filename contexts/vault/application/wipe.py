@@ -51,6 +51,8 @@ class LiveMemory(Protocol):
 
     def reopen(self) -> None: ...
 
+    def close(self) -> None: ...
+
 
 class WipeTokens:
     """One pending confirmation at a time, held in memory: a restart or a new request cancels it."""
@@ -144,6 +146,7 @@ class Wiper:
         except OutsideDataDir:
             return False
         self.live_memory.clear()
+        self.live_memory.close()  # Windows cannot remove a file that a connection still holds open
         return True
 
     def _paths(self, target: str) -> list[Path]:
