@@ -387,7 +387,9 @@ export function DayPlayer({
           ? "checking a move"
           : !playing
             ? "paused"
-            : `${pace >= 10 ? Math.round(pace) : pace.toFixed(1)} min/s${moment.walk ? " · walking pace" : moment.doing === "sleep" ? " · night" : ""}`;
+            : reduced
+              ? "stepping block by block"
+              : `${pace >= 10 ? Math.round(pace) : pace.toFixed(1)} min/s${moment.walk ? " · walking pace" : moment.doing === "sleep" ? " · night" : ""}`;
 
   const hereIndoors = world.indoors(moment.place);
   const whereText = moment.walk
@@ -731,13 +733,15 @@ export function DayPlayer({
           </svg>
         </button>
       </div>
-      <div className={ui.segmented} role="group" aria-label="Playback speed, in simulated minutes per second">
-        {SPEEDS.map((s) => (
-          <button key={s} type="button" className={`${ui.seg} ${speed === s ? ui.segOn : ""}`} aria-pressed={speed === s} onClick={() => setSpeed(s)}>
-            {s} min/s
-          </button>
-        ))}
-      </div>
+      {reduced ? null : (
+        <div className={ui.segmented} role="group" aria-label="Playback speed, in simulated minutes per second">
+          {SPEEDS.map((s) => (
+            <button key={s} type="button" className={`${ui.seg} ${speed === s ? ui.segOn : ""}`} aria-pressed={speed === s} onClick={() => setSpeed(s)}>
+              {s} min/s
+            </button>
+          ))}
+        </div>
+      )}
       <p className={`${ui.muted} ${ui.small}`}>
         {reduced
           ? "Reduced motion is on: the day steps block by block instead of animating."
