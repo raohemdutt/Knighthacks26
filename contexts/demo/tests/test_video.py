@@ -10,7 +10,7 @@ from contexts.demo.__main__ import main
 def test_every_judge_watches_three_minutes_with_at_most_one_key_press():
     for track in video.TRACKS:
         stretches = video.path(track)
-        assert sum(b - a for a, b in stretches) == 180, track.name
+        assert sum(b - a for a, b in stretches) == pytest.approx(3 * video.SLOT_S), track.name
         assert len(stretches) <= 2, track.name
         assert stretches[0][0] == 0, track.name
 
@@ -42,13 +42,21 @@ def test_chapters_start_at_zero_and_name_every_key():
     assert "AMD: press 3" in text and "just keep watching" in text
 
 
+def test_the_video_stays_under_the_ten_minute_cap():
+    assert video.DURATION_S + video.TOLERANCE_S < 600
+
+
 def test_report_passes_an_exact_export_and_says_how_to_fix_a_long_one():
-    ok, text = video.report(600.04)
+    ok, text = video.report(598.04)
     assert ok and "PASS" in text
     ok, text = video.report(606.0)
     assert not ok
-    assert "key 9 lands at  545.40 s" in text  # 5.4 s late
-    assert "-6.00 s" in text
+    assert "key 9 lands at  545.40 s" in text  # 7.2 s late
+    assert "-8.00 s" in text
+
+
+def test_chapter_stamps_never_start_after_the_key_lands():
+    assert video.stamp(8 * video.SLOT_S) == "7:58"  # key 8 lands at 478.4 s
 
 
 def test_cards_has_one_section_per_slot(tmp_path):

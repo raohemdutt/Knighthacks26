@@ -1,7 +1,7 @@
 """The submission video's layout (D10): ten 60 s slots that YouTube's number keys land on.
 
-YouTube's keys 0-9 seek to 0%, 10%, ... 90% of the video, so a video of exactly 10:00 puts key k on
-minute k. Every judge watches slot 0 (the intro), presses their key, and watches two slots: 1 + 2 = 3:00.
+YouTube's keys 0-9 seek to 0%, 10%, ... 90% of the video, so key k lands at k tenths of it. Devpost caps
+the video at 10 minutes, so it is 9:58 (a margin under the cap) and each slot is 59.8 s. Every judge watches slot 0 (the intro), presses their key, and watches two slots: 1 + 2 = 3:00.
 Each slot after the intro is shared by two neighbouring tracks, which is why the order below matters.
 The general judges press nothing and watch slots 0 to 2.
 
@@ -17,7 +17,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-DURATION_S = 600.0
+DURATION_S = 598.0  # Devpost cap is 10:00; stay under it
 TOLERANCE_S = 0.1  # key 9 lands at 90%, so a long export shifts it by 0.9 x the overrun
 SLOT_S = DURATION_S / 10
 WATCH_SLOTS = 2  # after the intro, every judge watches two slots
@@ -42,7 +42,7 @@ SLOTS = (
     Slot(2, "It learns", "The big Qwen teaches the small Qwen; before/after scores; our adapter on Hugging Face; quick unplug."),
     Slot(3, "The learning lab", "Qwen3.8-27B teacher on R9700 A, LoRA on R9700 B, ROCm, loss curve, publishing to the Hub."),
     Slot(4, "Box and lab", "The Q4_K_M package hot-swapped onto the Jetson; watts from amd-smi and tegrastats; joules per answer."),
-    Slot(5, "On the Jetson", "Cameras, the on-device Qwen VL, face blur, FPS and tok/s, then unplug the internet."),
+    Slot(5, "On the Jetson", "Cameras and face blur; the on-device Qwen VL understands the scene; FPS and tok/s; then unplug the internet."),
     Slot(6, "Data into counts", "Frames to events to episodes; Waste Watch counting items and the bin zone they end in."),
     Slot(7, "Impact, shared", "Diversion rate before vs after nudges; the leaderboard served from Neon."),
     Slot(8, "Friends' Atlases", "Two Atlases agree on a time through Neon; the event lands in the Day Run plan; the League."),
@@ -62,7 +62,7 @@ TRACKS = (
 
 
 def stamp(seconds: float) -> str:
-    whole = round(seconds)
+    whole = int(seconds)  # floor: a YouTube chapter must not start after the key's landing point
     return f"{whole // 60}:{whole % 60:02d}"
 
 
@@ -74,9 +74,15 @@ def path(track: Track, duration: float = DURATION_S) -> list[tuple[float, float]
     return [(0.0, stretches[1][1])] if track.key is None else stretches
 
 
+def slots_of(track: Track) -> set[int]:
+    """The slots a track's judge watches: the intro, then two slots from their key."""
+    start = 1 if track.key is None else track.key
+    return {0, *range(start, min(start + WATCH_SLOTS, 10))}
+
+
 def watchers(key: int) -> list[str]:
     """The tracks whose path includes this slot."""
-    return [t.name for t in TRACKS if any(a <= key * SLOT_S < b for a, b in path(t))]
+    return [t.name for t in TRACKS if key in slots_of(t)]
 
 
 def index_card() -> str:
