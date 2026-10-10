@@ -37,6 +37,7 @@ class SortIt:
         self._turn = 0
         self.results: dict[str, list[bool]] = defaultdict(list)  # session -> correct per round
         self._scored: set[str] = set()  # round ids already in `results`
+        self.pick_item = None  # optional () -> item | None: what a camera sees in the player's hand (room twin)
 
     def on_faces(self, e: FacesCounted) -> list:
         if e.facing > 0:
@@ -53,7 +54,7 @@ class SortIt:
         return []
 
     def _start(self, now: datetime, players: int) -> RoundStarted:
-        item = self.items[self._turn % len(self.items)]
+        item = (self.pick_item() if self.pick_item else None) or self.items[self._turn % len(self.items)]
         self._turn += 1
         zone, path = route(self.map, self.rules, item, self.start_xy)
         self.round = RoundStarted(ts=now, round_id=uuid4().hex, session_id=self.session_id,
