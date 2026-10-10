@@ -60,6 +60,7 @@ from pathlib import Path
 from typing import IO, Any
 
 from lab.machine.lock import FileLock, LockTimeout
+from lab.machine.metrics import _METRIC_RE as METRIC_NAME_RE
 
 __all__ = ["ENV_STATE_DIR", "DEFAULT_STATE_DIR", "LEDGER_FILE", "LOCK_FILE", "LOCK_TIMEOUT", "FIELDS",
            "REF_KEYS", "OPTIONAL_FIELDS", "FILTER_NAMES", "LockTimeout", "RowError", "resolve_state_dir",
@@ -82,6 +83,9 @@ FILTER_NAMES = ("has_metric", "since", "before", "state_dir")
 _TEXT_FIELDS = ("actor", "tier", "task", "verb", "outcome")
 _MAY_BE_NONE = frozenset({"tier", "task"})
 _BLOCK = 16 * 1024           # bytes read at a time when reading the ledger from its end
+# a metric name every ledger row must use, shared with the metrics file (metrics.py) so the
+# two stores agree on one name shape and latest_metric finds what append wrote
+METRIC_NAME_EXAMPLE = "teacher.decode_tok_s"
 
 Row = dict[str, Any]
 
@@ -161,6 +165,12 @@ def _is_name(value: Any) -> bool:
     return isinstance(value, str) and value.strip() != ""
 
 
+def _is_metric_name(value: Any) -> bool:
+    """value is a metric name of the shape both the ledger and the metrics
+    file use: dotted lowercase words such as teacher.decode_tok_s."""
+    return isinstance(value, str) and METRIC_NAME_RE.fullmatch(value) is not None
+
+
 def _number(value: Any) -> int | float | None:
     """value as a finite int or float; None when it is not one. A bool is not
     a number here."""
@@ -221,8 +231,9 @@ def _check_metrics(row: Mapping[str, Any], out: Row, problems: list[str]) -> Non
     clean: dict[str, int | float] = {}
     for name, value in metrics.items():
         number = _number(value)
-        if not _is_name(name):
-            problems.append(f"metrics name {name!r} must be a non-empty string")
+        if not _is_metric_name(name):
+            problems.append(f"metrics name {name!r} must be dotted lowercase words such as "
+                            f"{METRIC_NAME_EXAMPLE!r}")
         elif number is None:
             problems.append(f"metrics value for {name!r} must be a finite number, not {value!r}")
         else:
