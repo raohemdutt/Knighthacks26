@@ -23,8 +23,16 @@ from contracts.types import ChatMessage, Citation
 
 HORIZON = timedelta(hours=48)
 CHAT_LOOKBACK = timedelta(days=3)
-CRUNCH = re.compile(r"\b(exam|midterm|final|quiz|test|due|deadline|project|presentation)\b", re.I)
+# Something graded: a Canvas-like assignment, or a calendar entry named as an exam. Never a chat message that
+# says "due", a "submissions due" calendar entry, or a notice that only sits in the assignment feed.
+EXAM = re.compile(r"\b(exams?|midterms?|finals?|quiz(zes)?|tests?)\b", re.I)
+NOTICE = re.compile(r"\b(opt[- ]?(in|out)|surveys?|evaluations?|gatorevals|voluntary|questionnaires?)\b", re.I)
 COURSE = re.compile(r"\b([A-Z]{3})\s?(\d{4}[A-Z]?)\b")
+EVENING_QUESTION = re.compile(r"\b(tonight|this evening|where should i go|where is everyone)\b", re.I)
+STUDY_QUESTION = re.compile(r"\b(prep|prepare|study|exams?|midterms?|finals?|quiz(zes)?|tests?)\b", re.I)
+STARTED = timedelta(hours=1)  # an event that began this recently is still on (calendar items carry no end)
+EVENING = timedelta(hours=8)  # the window a plan without a deadline always had
+MAX_EVENTS = 8
 PLAN_QUESTION = re.compile(r"\b(plan|prep|prepare|study for|what should i do|where should i go|where is everyone)\b", re.I)
 FOOD_QUESTION = re.compile(r"\b(eat|food|hungry|lunch|dinner|breakfast|snack)\b", re.I)
 # Whole words only ("can" used to match "candle" and every can on the desk). EATING is someone having food or a
@@ -45,10 +53,25 @@ PLAN_SYSTEM = (
 )
 
 
+EVENING_SYSTEM = (
+    "You are Atlas. Using only the evidence, say in two or three short sentences where to go or what to do "
+    "this evening: name the events with their times and where friends are. A deadline gets one line at most."
+)
+
+
 def is_crunch(item: Item | ItemSynced, now: datetime) -> bool:
-    if not item.when or not now <= item.when <= now + HORIZON:
+    if not item.when or not now <= item.when <= now + HORIZON or NOTICE.search(item.title):
         return False
-    return item.kind == "assignment" or bool(CRUNCH.search(item.title))
+    return item.kind == "assignment" or (item.kind == "calendar_event" and bool(EXAM.search(item.title)))
+
+
+def evening_end(now: datetime, sleep) -> datetime:
+    """When "tonight" ends: the next bedtime, and never less than EVENING from now (late, or past bedtime)."""
+    local = now.astimezone(sleep.tz)
+    if overlaps_sleep(sleep, local, local + timedelta(seconds=1)):
+        return now + EVENING
+    bed = datetime.combine(local.date(), sleep.bedtime, sleep.tz)
+    return max(bed if bed > local else bed + timedelta(days=1), now + EVENING)
 
 
 def course_of(text: str) -> str | None:
@@ -124,9 +147,33 @@ class Planner:
         if FOOD_QUESTION.search(question) and not is_plan_question(question):
             return await self.food(question)
         now = self.qa.clock()
+        if is_evening_question(question):
+            return await self.evening(question, now)
         upcoming = [i for i in self.qa.memory.items(now, now + HORIZON) if is_crunch(i, now)]
         events = await self.plan(question, upcoming[0] if upcoming else None, now)
         return next(e for e in events if isinstance(e, PlanCreated))
+
+    async def evening(self, question: str, now: datetime) -> PlanCreated:
+        """ "Where should I go tonight?": what is on from now until bedtime (`evening_end`) and where friends are, each cited.
+        A deadline in the next 48 hours is one line of it, never the whole answer, and no study blocks."""
+        ev = Evidence()
+        end = evening_end(now, self.qa.sleep)
+        # up to and including an event that starts at bedtime
+        events = self.qa.memory.items(now - STARTED, end + timedelta(minutes=1), kind="calendar_event")
+        for i in events[:MAX_EVENTS]:
+            began = ", already started" if i.when < now else ""
+            ev.add(f"Coming up: {i.title} at {self.qa._t(i.when)}{began}" + (f" ({i.summary})" if i.summary else ""),
+                   Citation(url=i.url, title=i.title, ts=i.when))
+        if not events:
+            ev.lines.append(f"Nothing on the calendar between now and {self.qa._t(end)}.")
+        self._friends(now, ev)
+        due = next((i for i in self.qa.memory.items(now, now + HORIZON) if is_crunch(i, now)), None)
+        if due:
+            ev.add(f"Deadline coming up: {due.title} at {self.qa._t(due.when)}", Citation(url=due.url, title=due.title, ts=due.when))
+        ev.lines.append(f"Usual bedtime {self.qa.sleep.bedtime:%I:%M %p}")
+        prompt = "Evidence:\n" + "\n".join(f"- {line}" for line in ev.lines) + f"\n\nQuestion: {question}"
+        r = await self.qa._chat([ChatMessage(role="system", content=EVENING_SYSTEM), ChatMessage(role="user", content=prompt)])
+        return _plan_event(now, question, r.content.strip(), ev, r.model_version)
 
     async def plan(self, subject: str, item: Item | None, now: datetime) -> list:
         ev = Evidence()
@@ -225,7 +272,7 @@ class Planner:
             return
         for p in self.presence.friends(now):
             until = p.expires_at.astimezone(self.qa.sleep.tz).strftime("%I:%M %p").lstrip("0")
-            ev.lines.append(f"{p.member_id} is at {p.place} (shared until {until})")
+            ev.add(f"{p.member_id} is at {p.place} (shared until {until})", Citation(title=f"{p.member_id} at {p.place}", ts=p.ts))
 
     # --- trigger 3: leaving checklist at the door ---
 
@@ -330,4 +377,9 @@ def _plan_event(now: datetime, subject: str, text: str, ev: Evidence, model_vers
 
 def is_plan_question(question: str) -> bool:
     return bool(PLAN_QUESTION.search(question))
+
+
+def is_evening_question(question: str) -> bool:
+    """About this evening (where to go, what is on), not about studying for something."""
+    return bool(EVENING_QUESTION.search(question)) and not STUDY_QUESTION.search(question)
 

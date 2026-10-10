@@ -223,3 +223,82 @@ def test_food_never_says_no_meals_beside_habits_meal_count():
         prompt = rt.calls[-1][1][-1].content
         assert f"Habit Meals: {meals} meals today" in prompt
         assert ("No meals seen at the desk today." in prompt) == says_none
+
+
+CONCERT = Item(connector="calendar", kind="calendar_event", external_id="campus:concert", title="Free concert on the lawn",
+               when=NOW + timedelta(hours=6), url="https://events.test/concert", summary="until 10:00 PM · Memory Mall · free")
+NOTICE = Item(connector="canvas", kind="assignment", external_id="x2", when=NOW + timedelta(hours=9),
+              title="GatorEvals – Fall 2026 Mid-Term Evaluation Voluntary Opt-In", url="https://canvas.test/evals")
+
+
+def test_only_graded_work_is_a_crunch_item():
+    """A chat message with "due", a "submissions due" calendar entry and an opt-in notice all got study blocks."""
+    soon = NOW + timedelta(hours=3)
+    chat = Item(connector="groupme", kind="message", external_id="g2", title="Maya: anyone started the milestone? due tuesday", when=soon)
+    submit = Item(connector="calendar", kind="calendar_event", external_id="c2", title="Knight Hacks: submissions due", when=soon)
+    midterm = Item(connector="calendar", kind="calendar_event", external_id="c3", title="COP 3502 Midterm", when=soon)
+    quiz = Item(connector="canvas", kind="assignment", external_id="x3", title="Quiz 5 - Greedy Algorithms [COP4533]", when=soon)
+    survey = quiz.model_copy(update={"title": "Course survey (voluntary)"})
+    assert [is_crunch(i, NOW) for i in (chat, submit, NOTICE, survey)] == [False] * 4
+    assert is_crunch(midterm, NOW) and is_crunch(quiz, NOW) and is_crunch(EXAM, NOW)
+    planner, rt = make()
+    assert asyncio.run(planner.on_item(ItemSynced(ts=NOW, **NOTICE.model_dump()))) == [] and not rt.calls  # no plan, no blocks
+
+
+def test_tonight_question_answers_from_this_evening_even_with_a_deadline():
+    """ "Where should I go tonight?" planned around the next "due" item and never listed tonight's events."""
+    from contexts.circle.application.presence import PresenceBoard
+    from contracts.circle import PlaceShared
+
+    spec = ConnectorSpec(name="calendar", module="x", writes=["create_event"])
+    for question in ("Where should I go tonight?", "What should I do tonight?", "what should I do this evening"):
+        planner, rt = make(ConnectorHub([spec], factory=lambda s: FakeConnector()))
+        tomorrow = CLASS.model_copy(update={"external_id": "c9", "title": "Brunch", "when": NOW + timedelta(hours=21)})
+        planner.qa.memory._items += [CONCERT, NOTICE, tomorrow]
+        planner.presence = PresenceBoard("team", "dom", ["Library"], opted_in=True)
+        planner.presence.on_shared(PlaceShared(ts=NOW, circle_id="team", member_id="hemdutt", place="Library", source="phone",
+                                               expires_at=NOW + timedelta(hours=2)))
+        plan = asyncio.run(planner.answer(question))
+        assert plan.subject == question and plan.blocks == []  # the evening, not study blocks for the exam
+        lines = rt.calls[-1][1][-1].content.splitlines()
+        assert lines[1:6] == [
+            "- Coming up: Dinner with Ilan at Sat 6:00 PM",
+            "- Coming up: Free concert on the lawn at Sat 8:00 PM (until 10:00 PM · Memory Mall · free)",
+            "- hemdutt is at Library (shared until 4:00 PM)",
+            "- Deadline coming up: COP 3502 Exam 1 at Sun 10:00 AM",  # the real deadline: one line, after the evening
+            "- Usual bedtime 08:00 PM",
+        ]
+        assert "GatorEvals" not in rt.calls[-1][1][-1].content and "Brunch" not in rt.calls[-1][1][-1].content
+        assert [(c.title, c.url) for c in plan.citations] == [
+            ("Dinner with Ilan", None), ("Free concert on the lawn", "https://events.test/concert"),
+            ("hemdutt at Library", None), ("COP 3502 Exam 1", "https://canvas.test/exam1")]
+
+    planner, rt = make()  # studying for something tonight is still the exam plan
+    plan = asyncio.run(planner.answer("Help me prep for my exam tonight"))
+    assert plan.subject == "COP 3502 Exam 1" and plan.blocks
+
+
+def test_tonight_with_nothing_on_says_so_and_started_events_still_count():
+    planner, rt = make()
+    planner.qa.memory._items = [CLASS.model_copy(update={"when": NOW - timedelta(minutes=30)}),
+                                CLASS.model_copy(update={"external_id": "old", "title": "Lunch", "when": NOW - timedelta(hours=3)})]
+    asyncio.run(planner.answer("Where should I go tonight?"))
+    assert "- Coming up: Dinner with Ilan at Sat 1:30 PM, already started" in rt.calls[-1][1][-1].content
+    assert "Lunch" not in rt.calls[-1][1][-1].content
+    planner, rt = make()
+    planner.qa.memory._items = []
+    plan = asyncio.run(planner.answer("Where should I go tonight?"))
+    assert "- Nothing on the calendar between now and Sat 10:00 PM." in rt.calls[-1][1][-1].content and plan.citations == []
+
+
+def test_the_evening_runs_to_bedtime_and_at_least_eight_hours():
+    from datetime import time
+
+    from contexts.agent.application.planner import evening_end
+
+    early, late = SleepSchedule(tz=NY), SleepSchedule(bedtime=time(1), wake=time(9), tz=NY)
+    morning = datetime(2026, 10, 10, 10, 30, tzinfo=NY)
+    assert evening_end(morning, early) == datetime(2026, 10, 10, 20, tzinfo=NY)  # until bedtime
+    assert evening_end(NOW, early) == NOW + timedelta(hours=8)  # 2 PM: bedtime is 6 hours off, the evening is not over at 8
+    assert evening_end(NOW.replace(hour=21), early) == NOW.replace(hour=21) + timedelta(hours=8)  # already past bedtime
+    assert evening_end(NOW, late) == datetime(2026, 10, 11, 1, tzinfo=NY)  # a bedtime after midnight is tonight's
