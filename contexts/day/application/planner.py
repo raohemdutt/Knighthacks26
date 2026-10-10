@@ -81,6 +81,9 @@ class DayPlanner:
         self.dayrun, self.clock = dayrun, clock
         self.habits, self.memory, self.presence, self.hub = habits, memory, presence, hub
         self.coach = None  # the study coach (DayLoop sets it): sessions for the review, advice for the next plan
+        # A port the composition root may fill: (day, now) -> one clause about the day's sorting, or None (Waste Watch's
+        # story, contexts/impact). The review's text and the evening narration carry it; this context never imports that one.
+        self.waste_clause = None
         # --- state, rebuilt from the log ---
         self.plans: dict[date, DayPlanProposed] = {}  # the morning plan of each day
         self.current: dict[date, DayPlanProposed | DayReplanProposed] = {}  # what the day is measured against
@@ -390,6 +393,18 @@ class DayPlanner:
                     self.reviews.setdefault(day, None)  # type: ignore[arg-type]
         return out
 
+    def sorting(self, day: date, now: datetime) -> str | None:
+        """The day's sorting in one clause ("3 of 4 things you threw away went in the right bin; ...") when Waste Watch
+        is wired in and something was thrown away; None otherwise, and the review reads as it always did."""
+        if self.waste_clause is None:
+            return None
+        try:
+            clause = self.waste_clause(day, now)
+        except Exception:
+            log.exception("the day's sorting clause failed")
+            return None
+        return clause.strip().rstrip(".") or None if clause else None
+
     def review(self, day: date, now: datetime) -> DayReviewed:
         plan = self.current[day]
         blocks = [PlannedBlock(id=m.id, kind=m.kind, title=m.title, start=m.start, end=m.end, minutes=m.minutes,
@@ -424,6 +439,9 @@ class DayPlanner:
         streak = (before.streak if before else 0) + 1 if stars > 0 else 0
         text = rv.text + (f" The real day scores {points} points and {stars} star{'s' if stars != 1 else ''} by Day Run's rules"
                           f" (the plan would have earned {plan_stars}); streak {streak}.")
+        waste = self.sorting(day, now)
+        if waste:
+            text += f" Waste Watch: {waste}."
         coach: dict = {}
         if self.coach is not None:  # the day's blocks of the main activity, against the desk camera
             try:

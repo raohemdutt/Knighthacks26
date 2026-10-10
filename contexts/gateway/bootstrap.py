@@ -513,6 +513,8 @@ def build(settings: Settings | None = None) -> Atlas:
         impact.subscribe(bus)  # after Waste Watch: a milestone is checked against counts that already hold the disposal
         if league:
             league.impact = impact  # GET /api/league's team_waste block: the week's milestone and the practice-set size
+        if day:  # the evening review and its narration mention the day's sorting; a port, so Day never imports Impact
+            day.planner.waste_clause = impact.day_clause
 
     # The coach's feedback loop: "Was that right?" about a break -> calibration -> a teach task as an approval card.
     coach_feedback = None
