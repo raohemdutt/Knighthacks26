@@ -2,7 +2,8 @@
 
     python -m lab gpu-power summary --samples FILE [FILE ...] [--node gpu-a] [--since ISO] [--until ISO]
     python -m lab gpu-power record --samples FILE [FILE ...] --metric pod.idle_watts --node pod-a
-                                   [--since ISO] [--until ISO] [--state idle] [--metrics-file [PATH]] [--dry-run]
+                                   [--value mean|peak|min] [--since ISO] [--until ISO] [--state idle]
+                                   [--metrics-file [PATH]] [--dry-run]
 
 The samples are telemetry.gpu.power events written by lab/pod_power.py: the pod's own daily files
 (~/atlas-power/samples-<day>.jsonl, fetched from the pod) or the Jetson's event log, whose copies also carry
@@ -11,8 +12,12 @@ gpu-b) or the ledger one (pod-a, pod-b).
 
 summary prints what lab.pod_power.summarize says about the window and writes nothing.
 
-record writes one ledger row: verb "gpu-power record", node pod-a or pod-b, the window's mean watts under the
-metric (unit W), and the whole summary as its conditions, so the row carries the sampler, the tool, the power field,
+record writes one ledger row: verb "gpu-power record", node pod-a or pod-b, one statistic of the window's watts under
+the metric (unit W), and the whole summary as its conditions. --value picks the statistic: mean (the default, the
+summary's mean_w), peak (its max_w) or min (its min_w), so pod.idle_watts stores the mean and pod.peak_watts can store
+the peak. Any other choice than mean is kept in the conditions as value (value: peak), so a mean row reads exactly as
+rows written before --value existed, and a window with no power reading is refused with outcome no_readings whichever
+statistic was asked for. The conditions carry the sampler, the tool, the power field,
 period_ms next to the period actually measured between samples, the longest gap and the restarts inside the window,
 the samples and how many were distinct updates, the starting temperatures, the energy and where it came from, and
 error, which stays "unknown" until a reference run measures the sampler's error. That makes the row low_confidence.
@@ -38,6 +43,8 @@ from lab.machine import ledger, metrics
 from lab.machine.record import record
 
 VERB = "gpu-power record"
+VALUE_STATISTIC = {"mean": "mean_w", "peak": "max_w", "min": "min_w"}  # --value choice -> summary key it stores
+DEFAULT_VALUE = "mean"
 TELEMETRY_NODE = {ledger: node for node, ledger in pod_power.LEDGER_NODE.items()}
 
 
@@ -77,6 +84,8 @@ def build_parser() -> argparse.ArgumentParser:
         cmd.add_argument("--until", type=_when, help="last sample time to include (ISO 8601)")
         if name == "record":
             cmd.add_argument("--metric", type=_metric, required=True, help="dotted metric name, e.g. pod.idle_watts")
+            cmd.add_argument("--value", choices=tuple(VALUE_STATISTIC), default=DEFAULT_VALUE,
+                             help="statistic of the window's watts to store: mean (default), peak or min")
             cmd.add_argument("--state", help="what the card was doing, kept in the conditions (idle, teacher-loaded ...)")
             cmd.add_argument("--metrics-file", nargs="?", const=str(metrics.DEFAULT_PATH), metavar="PATH",
                              help="also append the reading to the metrics file (default lab/refine/metrics.jsonl)")
@@ -108,15 +117,19 @@ def main(argv: Sequence[str]) -> dict[str, Any] | int:
         return _error(str(exc))
     if args.command == "summary":
         return {"ok": True, "summary": summary}
-    if summary["mean_w"] is None:
-        return {"ok": False, "outcome": "no_readings", "error": "no sample in the window has a power reading",
+    value: float | None = summary[VALUE_STATISTIC[args.value]]
+    if value is None:
+        return {"ok": False, "outcome": "no_readings",
+                "error": f"no sample in the window has a power reading, so there is no {args.value} to store",
                 "summary": summary}
     ledger_node = pod_power.LEDGER_NODE[args.node]
     conditions = {**summary, "state": args.state}
+    if args.value != DEFAULT_VALUE:  # a mean row stays the shape every row before --value had
+        conditions["value"] = args.value
     source = f"{summary['sampler']} samples from {', '.join(Path(p).name for p in args.samples)}"
-    row = {"verb": VERB, "outcome": "ok", "node": ledger_node, "metrics": {args.metric: summary["mean_w"]},
+    row = {"verb": VERB, "outcome": "ok", "node": ledger_node, "metrics": {args.metric: value},
            "units": {args.metric: "W"}, "conditions": conditions, "low_confidence": True, "source": source}
-    metrics_row = {"metric": args.metric, "value": summary["mean_w"], "unit": "W", "node": ledger_node,
+    metrics_row = {"metric": args.metric, "value": value, "unit": "W", "node": ledger_node,
                    "conditions": conditions, "source": source, "ts": _metrics_ts(summary["end"]),
                    "low_confidence": True}
     if args.metrics_file:
