@@ -1848,8 +1848,8 @@ UPDATE = f"mcp__{allowed.NOTION_SERVER}__notion-update-page"
     (["start", "--row", ROW],
      {"Status": "Running", "date:Started:start": "2026-10-10T14:00:00.000Z", "date:Started:is_datetime": 1},
      ["fetch", "query-data-sources", "update-page", "query-data-sources"]),
-    (["extend", "--row", ROW, "--note", "loss fell"], {"Extended": "__YES__", "Progress note": "loss fell"},
-     ["fetch", "update-page"]),
+    (["extend", "--row", ROW, "--note", "loss fell"],
+     {"Extended": "__YES__", "Progress note": "<the Progress note as it is> | loss fell"}, ["fetch", "update-page"]),
     (["done", "--row", ROW, "--result", "7.7 tok/s"],
      {"Status": "Done", "date:Ended:start": "2026-10-10T14:00:00.000Z", "date:Ended:is_datetime": 1, "Result": "7.7 tok/s"},
      ["update-page"]),
@@ -1860,7 +1860,8 @@ UPDATE = f"mcp__{allowed.NOTION_SERVER}__notion-update-page"
      {"Status": "Cancelled", "date:Ended:start": "2026-10-10T14:00:00.000Z", "date:Ended:is_datetime": 1,
       "Result": "not needed"}, ["update-page"]),
     (["complain", "--row", ROW, "--text", "behind the eval for 40 minutes"],
-     {"Complaint": "2026-10-10T14:00Z behind the eval for 40 minutes"}, ["fetch", "update-page"]),
+     {"Complaint": "<the Complaint as it is> | 2026-10-10T14:00Z behind the eval for 40 minutes"},
+     ["fetch", "update-page"]),
 ])
 def test_without_a_token_each_verb_prints_the_properties_to_set_on_the_row(argv, props, tools):
     answer, code = run_offline(*argv)
@@ -1914,7 +1915,8 @@ def test_the_row_printed_without_a_token_is_the_row_the_verb_writes_with_one():
 
 @pytest.mark.parametrize("make,argv", [
     (lambda w: w.seed("L3: smoke"), ["start", "--row", "{row}"]),
-    (lambda w: w.running("L3: smoke", started_ago=3), ["extend", "--row", "{row}", "--note", "loss fell"]),
+    (lambda w: w.running("L3: smoke", started_ago=3, progress_note="loaded the set"),
+     ["extend", "--row", "{row}", "--note", "loss fell"]),
     (lambda w: w.running("L3: smoke", started_ago=3), ["done", "--row", "{row}", "--result", "7.7 tok/s"]),
     (lambda w: w.seed("L3: smoke"), ["done", "--row", "{row}", "--cancel", "--result", "not needed"]),
     (lambda w: w.seed("L3: smoke"), ["done", "--row", "{row}", "--cancel"]),
@@ -1928,7 +1930,9 @@ def test_the_properties_printed_without_a_token_are_the_ones_the_verb_sets_with_
     before = dict(world.stored(row))
     answer, code = world.call(*argv)
     assert code == 0, answer
-    wanted = decode_mcp(printed["write"])
+    # A "<the X as it is>" placeholder stands for what the row held before: filled in, the plan is what the verb wrote.
+    wanted = {name: value.replace(f"<the {name} as it is>", before[name]) if isinstance(value, str) else value
+              for name, value in decode_mcp(printed["write"]).items()}
     assert stored_as_python(world, row, wanted) == wanted
     after = world.stored(row)
     changed = {name for name in after if after[name] != before[name]}

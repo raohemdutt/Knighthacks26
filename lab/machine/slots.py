@@ -1260,7 +1260,7 @@ def offline_plan(args: argparse.Namespace, now: dt.datetime, data_source: str,
         plan["steps"] = steps
         plan["rule"] = RULE_START
     elif sub == "extend":
-        change = {"Extended": True, "Progress note": args.note}
+        change = {"Extended": True, "Progress note": f"<the Progress note as it is>{COMPLAINT_JOIN}{args.note}"}
         plan["write"] = mcp_properties(change)
         plan["steps"] = [
             _fetch_step(args.row, "read your row: it must be Running, Extended unchecked, and inside its cap"),
@@ -1276,7 +1276,8 @@ def offline_plan(args: argparse.Namespace, now: dt.datetime, data_source: str,
         plan["rule"] = ("Only on your Queued row; a Running row is finished with a result instead." if args.cancel
                         else RULE_DONE)
     elif sub == "complain":
-        change = {"Complaint": f"{iso(now)[:16]}Z {args.text or 'waiting longer than twice the minutes asked for'}"}
+        entry = f"{iso(now)[:16]}Z {args.text or 'waiting longer than twice the minutes asked for'}"
+        change = {"Complaint": f"<the Complaint as it is>{COMPLAINT_JOIN}{entry}"}
         plan["write"] = mcp_properties(change)
         plan["steps"] = [
             _fetch_step(args.row, "read your row: it must be Queued and have waited long enough; note its Complaint"),

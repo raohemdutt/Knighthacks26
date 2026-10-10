@@ -498,7 +498,7 @@ def offline_plan(args: argparse.Namespace, now: dt.datetime, data_source: str) -
     note = NOTE_FORMAT.format(when=slots.iso(now)[:16], ran="<minutes since Started>",
                               cap="<Minutes, plus 15 if Extended>", asked="<Minutes>",
                               extended="<, extended by 15 - only when Extended is checked>", over="<ran minus cap>")
-    change = {"Status": ENDED_BY_REFEREE, "Ended": now, "Result": note}
+    change = {"Status": ENDED_BY_REFEREE, "Ended": now, "Result": f"<the Result as it is>{slots.COMPLAINT_JOIN}{note}"}
     plan: dict[str, Any] = {
         "ok": False, "outcome": "no_token", "verb": VERB, "dry_run": args.dry_run,
         "error": f"{slots.ENV_TOKEN} is not set (process environment or a .env file), so nothing was sent to "
