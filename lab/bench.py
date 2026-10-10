@@ -73,8 +73,11 @@ spread and bands in the conditions, low_confidence while a configuration has few
 Spawning on pod C would collide with the teacher it serves (port 8000, and most of the 64 GB): the harness refuses
 a port that something already listens on, defaults to 8100, and the spawn-per-run measurements are R20's on pod B.
 Tested against lab/bench_fake.py (a fake server spawned as a real process, and a fake pod).
-Every wait is bounded: readiness by the ready timeout, each request by --request-timeout-s (a stream that has not
-finished by then fails its run, and the spawn is still stopped). With --port 0 the launch command must carry
+Every wait is bounded: readiness by the ready timeout; each read of a request by --request-timeout-s; a batch's
+streams by a grace period plus --request-timeout-s per request each stream sends (a stream that has not finished by
+then fails its run, the row keeps the warm-ups and the probe that ran, and the runs left on the same server, a shared
+spawn or an attached one, are written as not measured, since the stuck streams may still be decoding there; a
+spawned server is still stopped). With --port 0 the launch command must carry
 {port_file}, where the server writes the port it bound (the fake does; vLLM and llama-server take a fixed port).
 """
 from __future__ import annotations
@@ -123,7 +126,8 @@ DEFAULT_REPEATS = MIN_RUNS_PER_ARM
 DEFAULT_IDLE_S = 10.0
 DEFAULT_POWER_PERIOD_S = 0.5
 DEFAULT_READY_TIMEOUT_S = 900.0
-DEFAULT_REQUEST_TIMEOUT_S = 900.0   # one streamed request, end to end; a stuck one fails instead of hanging
+DEFAULT_REQUEST_TIMEOUT_S = 900.0   # one read of a streamed request; a batch's streams get this per request
+DEFAULT_STREAM_GRACE_S = 60.0       # added once to a batch's bound, for the streams to start and join
 MODELS_TIMEOUT_S = 10.0             # GET /v1/models while waiting for readiness
 DEFAULT_BAND_GAP = 0.10
 MIN_SPAWNS_TO_BAND = 4
@@ -145,6 +149,14 @@ VERSION_SCRIPT = ("import json\nout = {}\nfor name in ('torch', 'triton'):\n    
 
 class BenchError(Exception):
     """A run that cannot go on: bad arguments, a port in use, a server that never came up."""
+
+
+class StuckRun(BenchError):
+    """A run whose streams did not finish within their bound; `row` is its fail row with what had already run."""
+
+    def __init__(self, message: str, row: dict[str, Any]) -> None:
+        super().__init__(message)
+        self.row = row
 
 
 class HostError(Exception):
@@ -688,11 +700,13 @@ def _event_t(e: Mapping[str, Any]) -> float:
 
 
 def idle_watts(power: Any, seconds: float) -> float | None:
-    """Average watts over the next `seconds`, with nothing sent."""
+    """Average watts over `seconds`, with nothing sent. The window opens one sample period after the call, so its
+    first edge is interpolated from a sample taken after whatever ran before (a previous spawn's last decode, a
+    server's start) had ended, never blended with it."""
     if not power.available or seconds <= 0:
         return None
-    start = time.time()
-    time.sleep(seconds)
+    start = time.time() + power.period_s
+    time.sleep(seconds + power.period_s)
     out = power_window(watt_points(power.events()), start, time.time(), period_s=power.period_s)
     return _r(out.get("avg_w")) if out["available"] else None
 
@@ -1151,6 +1165,7 @@ class Config:
     idle_s: float = DEFAULT_IDLE_S
     power_period_s: float = DEFAULT_POWER_PERIOD_S
     request_timeout_s: float = DEFAULT_REQUEST_TIMEOUT_S
+    stream_grace_s: float = DEFAULT_STREAM_GRACE_S
     ready_timeout_s: float = DEFAULT_READY_TIMEOUT_S
     out_dir: Path = DEFAULT_OUT
     prompts: Path = DEFAULT_PROMPTS
@@ -1310,6 +1325,18 @@ class Session:
                     "idle_w": {"no_server": None, "loaded": None}})
         return row
 
+    def not_measured(self, todo: Sequence[tuple[int, PlannedBatch]], *, spawn: dict[str, Any],
+                     conditions: dict[str, Any], after: Mapping[str, Any]) -> list[dict[str, Any]]:
+        """Fail rows for the runs left on a server whose earlier run had stuck streams, which may still decode there
+        and would inflate every later number."""
+        out = []
+        for repeat, pb in todo:
+            row = self.blank_row(repeat=repeat, batch=pb.size, spawn=spawn, conditions=conditions)
+            row["outcome"] = "fail"
+            row["reason"] = f"not measured: {after['run_id']} on the same server had stuck streams ({after['reason']})"
+            out.append(row)
+        return out
+
     def measure(self, endpoint: Any, pb: PlannedBatch, *, repeat: int, spawn: dict[str, Any],
                 conditions: dict[str, Any], idle: dict[str, float | None], probe_now: bool) -> dict[str, Any]:
         c = self.config
@@ -1317,6 +1344,16 @@ class Session:
         row["idle_w"] = dict(idle)
         tag = row["run_id"]
         warm: list[RequestResult] = []
+
+        def batch(size: int, per_stream: int, role: str) -> list[RequestResult]:
+            try:
+                return run_batch(endpoint, self.prompts, self.settings, batch=size, per_stream=per_stream, role=role,
+                                 clock=self.clock, tag=tag, timeout_s=c.request_timeout_s, grace_s=c.stream_grace_s)
+            except BenchError as exc:
+                row["warmup"] = {"requests": len(warm), "discarded": True, "items": [r.as_dict() for r in warm]}
+                row["outcome"], row["reason"] = "fail", str(exc)
+                raise StuckRun(str(exc), row) from exc
+
         if c.warmup_rounds > 0:
             warm += run_sequential(endpoint, self.prompts, self.settings, role="warmup", clock=self.clock, tag=tag)
         prompt_tokens = [r.prompt_tokens for r in warm if r.prompt_tokens]
@@ -1334,13 +1371,11 @@ class Session:
                              f"{conditions.get('kv_cache_tokens')}, tokens per request {per_request})")
             return row
         for _ in range(c.warmup_rounds):
-            warm += run_batch(endpoint, self.prompts, self.settings, batch=pb.size, per_stream=1, role="warmup",
-                              clock=self.clock, tag=tag, timeout_s=c.request_timeout_s)
+            warm += batch(pb.size, 1, "warmup")
         row["warmup"] = {"requests": len(warm), "discarded": True, "items": [r.as_dict() for r in warm]}
         if probe_now:
             row["probe"] = self.run_probe(endpoint, tag)
-        measured = run_batch(endpoint, self.prompts, self.settings, batch=pb.size, per_stream=self.per_stream,
-                             role="measure", clock=self.clock, tag=tag, timeout_s=c.request_timeout_s)
+        measured = batch(pb.size, self.per_stream, "measure")
         row["requests"] = [r.as_dict() for r in measured]
         good = [r for r in measured if r.error is None and r.first is not None and r.last is not None]
         errors = [r.error for r in measured if r.error]
@@ -1482,13 +1517,17 @@ class Session:
             self.served_model(endpoint, conditions)
             idle = {"no_server": idle_none, "loaded": idle_watts(self.power, c.idle_s)}
             probe_rate = None
-            for pb in group:
+            for k, pb in enumerate(group):
                 try:
                     row = self.measure(endpoint, pb, repeat=repeat, spawn=spawn, conditions=conditions, idle=idle,
                                        probe_now=c.probe and probe_rate is None)
-                except BenchError as exc:   # a stuck stream: the run fails, the spawn is still stopped
-                    row = self.blank_row(repeat=repeat, batch=pb.size, spawn=spawn, conditions=conditions)
-                    row["outcome"], row["reason"] = "fail", str(exc)
+                except StuckRun as exc:   # the run fails; the rest of the group is not measured on this server
+                    row = exc.row
+                    rows.append(row)
+                    probe_rate = probe_rate or (row["probe"] if row["probe"].get("decode_tok_s") is not None else None)
+                    rows += self.not_measured([(repeat, rest) for rest in group[k + 1:]], spawn=spawn,
+                                              conditions=conditions, after=row)
+                    break
                 if row["probe"].get("decode_tok_s") is not None:
                     probe_rate = row["probe"]
                 rows.append(row)
@@ -1516,13 +1555,20 @@ class Session:
         try:
             idle = {"no_server": None, "loaded": idle_watts(self.power, c.idle_s)}
             probe_rate = None
-            for repeat in range(c.repeats):
-                for pb in self.plan:
+            todo = [(repeat, pb) for repeat in range(c.repeats) for pb in self.plan]
+            for k, (repeat, pb) in enumerate(todo):
+                try:
                     row = self.measure(endpoint, pb, repeat=repeat, spawn=dict(spawn), conditions=conditions,
                                        idle=idle, probe_now=c.probe and probe_rate is None)
-                    if row["probe"].get("decode_tok_s") is not None:
-                        probe_rate = row["probe"]
-                    self.keep(row)
+                except StuckRun as exc:   # the run fails; nothing more is measured on a server still decoding it
+                    self.keep(exc.row)
+                    for row in self.not_measured(todo[k + 1:], spawn=dict(spawn), conditions=conditions,
+                                                 after=exc.row):
+                        self.keep(row)
+                    break
+                if row["probe"].get("decode_tok_s") is not None:
+                    probe_rate = row["probe"]
+                self.keep(row)
             self.spawns["attached"] = {"probe": probe_rate, "runs": [r["run_id"] for r in self.rows]}
         finally:
             self.power.stop()
