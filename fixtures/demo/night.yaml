@@ -1,0 +1,213 @@
+# The demo night as a script (contexts/demo): the same story as fixtures/memory/memory.yaml, written as
+# what the cameras and connectors would have published, so replaying it fills every projection.
+# Times are America/New_York; `python -m contexts.demo seed --now` moves the whole story so `now` is now.
+#
+# items: one `connector.item.synced` each, published at `synced`.
+# beats: one burst of camera activity each (about one Memory episode per beat).
+#   move      sit    people seated in the desk zone for `seconds` (sampled every 2 s: this is focus time)
+#             arrive people walk in through the door zone       leave  people walk out through it
+#             pass   people stand in the door zone for `seconds`
+#             bins   a person stands by the bins while `toss` items go in
+#             none   nobody in view
+#   carrying  labels in the first person's hands (never inside a zone)
+#   things    labels on the desk for the first frames (not can/cup/bottle: Waste Watch counts every track
+#             with those labels as a new item, and a can on the desk camera is never seen entering a bin)
+#   package   seconds a package sits in the door zone (5 or more raises the package-at-door alert)
+#   toss      [{label, bin}]: items carried into a bin zone; Waste Watch decides whether the bin was right
+#   faces     seconds the people look at the camera before the toss (`perception.faces.counted`): 2 or more
+#             starts a Sort It round, and the game's first item is the first one in config/sorting.yaml
+#   captions  `perception.scene.described` for the whole frame (Habits reads meal and energy drink words
+#             in desk captions: see config/habits.yaml before rewording one)
+#   objects   `perception.scene.described` for a zone crop (`zone`, the desk by default): Memory's
+#             sightings, and for the desk the full list of watch items Habits thinks are on it
+now: "2026-10-11T09:30:00-04:00"
+
+items:
+  # The box is switched on the morning before the hackathon and its connectors sync. That is more than
+  # 48 hours before "submissions due", so the planner does not write an exam-prep plan with the fake model.
+  - {synced: "2026-10-09T10:30:00-04:00", connector: canvas, kind: assignment, external_id: "cop4533:assignment:88213",
+     title: "Project - Milestone1 Fall2026 [COP4533]", when: "2026-10-13T23:59:00-04:00",
+     url: "https://canvas.example.edu/courses/5123/assignments/88213",
+     summary: "Due Tue Oct 13, 11:59 PM. Dynamic programming: code plus a runtime analysis writeup. 100 points."}
+  - {synced: "2026-10-09T10:30:00-04:00", connector: canvas, kind: assignment, external_id: "cop4533:assignment:88240",
+     title: "Quiz 5 - Greedy Algorithms [COP4533]", when: "2026-10-15T17:00:00-04:00",
+     url: "https://canvas.example.edu/courses/5123/assignments/88240",
+     summary: "Due Thu Oct 15, 5:00 PM. 20 minutes, one attempt."}
+  - {synced: "2026-10-09T10:30:10-04:00", connector: calendar, kind: calendar_event, external_id: "outlook:kh-opening:2026-10-10T11:00:00-04:00",
+     title: "Knight Hacks: opening ceremony", when: "2026-10-10T11:00:00-04:00", summary: "until 11:45 AM · Student Union ballroom"}
+  - {synced: "2026-10-09T10:30:10-04:00", connector: calendar, kind: calendar_event, external_id: "outlook:kh-hacking:2026-10-10T12:00:00-04:00",
+     title: "Knight Hacks: hacking starts", when: "2026-10-10T12:00:00-04:00", summary: "until 12:15 PM · Engineering II atrium"}
+  - {synced: "2026-10-09T10:30:10-04:00", connector: calendar, kind: calendar_event, external_id: "outlook:kh-dinner:2026-10-10T19:00:00-04:00",
+     title: "Knight Hacks: dinner", when: "2026-10-10T19:00:00-04:00", summary: "until 8:00 PM · Engineering II atrium"}
+  - {synced: "2026-10-09T10:30:10-04:00", connector: calendar, kind: calendar_event, external_id: "campus:lawn-concert:2026-10-10T20:00:00-04:00",
+     title: "Free concert on the lawn", when: "2026-10-10T20:00:00-04:00", summary: "until 10:00 PM · Memory Mall · free"}
+  # Not in fixtures/memory/memory.yaml: an event that starts a quarter of an hour after someone walks out
+  # at 9:05 with the keys still on the desk, so the leaving checklist and "Leave ready" have something to say.
+  - {synced: "2026-10-09T10:30:10-04:00", connector: calendar, kind: calendar_event, external_id: "outlook:kh-mentor:2026-10-11T09:20:00-04:00",
+     title: "Knight Hacks: mentor check-in", when: "2026-10-11T09:20:00-04:00", summary: "until 9:40 AM · Engineering II atrium"}
+  - {synced: "2026-10-09T10:30:10-04:00", connector: calendar, kind: calendar_event, external_id: "outlook:kh-submit:2026-10-11T11:00:00-04:00",
+     title: "Knight Hacks: submissions due", when: "2026-10-11T11:00:00-04:00", summary: "until 11:15 AM · Devpost"}
+  - {synced: "2026-10-09T10:30:10-04:00", connector: calendar, kind: calendar_event, external_id: "outlook:kh-judging:2026-10-11T12:00:00-04:00",
+     title: "Knight Hacks: judging and demos", when: "2026-10-11T12:00:00-04:00", summary: "until 2:00 PM · Engineering II atrium"}
+  - {synced: "2026-10-09T10:30:10-04:00", connector: calendar, kind: calendar_event, external_id: "outlook:study-session:2026-10-11T14:00:00-04:00",
+     title: "COP4533 study session", when: "2026-10-11T14:00:00-04:00", summary: "until 5:00 PM · Library, 3rd floor"}
+  - {synced: "2026-10-09T10:30:10-04:00", connector: calendar, kind: calendar_event, external_id: "outlook:cop4533-lecture:2026-10-12T10:40:00-04:00",
+     title: "COP4533 lecture", when: "2026-10-12T10:40:00-04:00", summary: "until 11:30 AM · CSE A101"}
+  # Group chats: each message is synced a minute after it was posted.
+  - {synced: "2026-10-10T16:03:00-04:00", connector: groupme, kind: message, external_id: "class:1760100001",
+     title: "Maya: anyone started the COP4533 milestone 1? due tuesday", when: "2026-10-10T16:02:00-04:00",
+     summary: "Maya in COP4533 class chat: anyone started the COP4533 milestone 1? due tuesday"}
+  - {synced: "2026-10-10T16:06:00-04:00", connector: groupme, kind: message, external_id: "class:1760100002",
+     title: "Jordan: started last night. the dynamic programming part is way harder than it l", when: "2026-10-10T16:05:00-04:00",
+     summary: "Jordan in COP4533 class chat: started last night. the dynamic programming part is way harder than it looks, don't leave it for monday"}
+  - {synced: "2026-10-10T16:10:00-04:00", connector: groupme, kind: message, external_id: "class:1760100003",
+     title: "Priya: the TA said half the points are the runtime analysis writeup, not the cod", when: "2026-10-10T16:09:00-04:00",
+     summary: "Priya in COP4533 class chat: the TA said half the points are the runtime analysis writeup, not the code"}
+  - {synced: "2026-10-10T16:21:00-04:00", connector: groupme, kind: message, external_id: "class:1760100004",
+     title: "Maya: ok. study session sunday afternoon at the library? 2pm?", when: "2026-10-10T16:20:00-04:00",
+     summary: "Maya in COP4533 class chat: ok. study session sunday afternoon at the library? 2pm?"}
+  - {synced: "2026-10-10T17:32:00-04:00", connector: groupme, kind: message, external_id: "friends:1760100005",
+     title: "Riley: has anyone eaten actual food today or just energy drinks", when: "2026-10-10T17:31:00-04:00",
+     summary: "Riley in Friends: has anyone eaten actual food today or just energy drinks"}
+  - {synced: "2026-10-10T17:35:00-04:00", connector: groupme, kind: message, external_id: "friends:1760100006",
+     title: "Sam: just energy drinks lol. thinking the bowl place by the union, it's open til", when: "2026-10-10T17:34:00-04:00",
+     summary: "Sam in Friends: just energy drinks lol. thinking the bowl place by the union, it's open till 9"}
+  - {synced: "2026-10-10T17:41:00-04:00", connector: groupme, kind: message, external_id: "friends:1760100007",
+     title: "Riley: there's a free concert on the lawn at 8 tonight if people want a break", when: "2026-10-10T17:40:00-04:00",
+     summary: "Riley in Friends: there's a free concert on the lawn at 8 tonight if people want a break"}
+  - {synced: "2026-10-11T08:42:00-04:00", connector: groupme, kind: message, external_id: "friends:1760100008",
+     title: "Alex: good luck at judging today, what time do you present?", when: "2026-10-11T08:41:00-04:00",
+     summary: "Alex in Friends: good luck at judging today, what time do you present?"}
+
+beats:
+  # --- Saturday: setting up, lunch, energy drinks, a package, dinner ---
+  - {at: "2026-10-10T12:02:00-04:00", camera: cam-door, move: arrive, people: 2, carrying: [backpack],
+     captions: ["Two people carry backpacks and a monitor in through the door."]}
+  - {at: "2026-10-10T12:06:00-04:00", camera: cam-desk, move: sit, people: 2, seconds: 180, things: [laptop, backpack],
+     captions: ["Two people unpack laptops and set a monitor on the table.", "A person tapes a power strip to the table leg."]}
+  - {at: "2026-10-10T12:40:00-04:00", camera: cam-desk, move: sit, seconds: 60, things: [laptop],
+     captions: ["A third person joins the table and opens a laptop."]}
+  - {at: "2026-10-10T13:15:00-04:00", camera: cam-door, move: leave,
+     captions: ["A person leaves through the door."]}
+  - {at: "2026-10-10T13:32:00-04:00", camera: cam-door, move: arrive, carrying: [pizza],
+     captions: ["A person comes back through the door carrying a pizza box and a paper bag."]}
+  - {at: "2026-10-10T13:36:00-04:00", camera: cam-desk, move: sit, people: 2, seconds: 240, things: [pizza, laptop],
+     captions: ["Three people eat pizza at the table; an open pizza box sits between the laptops.",
+                "A person wipes their hands on a napkin and goes back to typing."],
+     objects: [{label: pizza box, position: "open, between the two laptops"}]}
+  - {at: "2026-10-10T14:05:00-04:00", camera: cam-desk, move: sit, seconds: 60, things: [pizza],
+     captions: ["A person closes the pizza box and pushes it to the edge of the table."]}
+  - {at: "2026-10-10T14:20:00-04:00", camera: cam-door, move: bins, toss: [{label: napkin, bin: trash}],
+     captions: ["A person drops greasy paper plates in the trash bin."]}
+  - {at: "2026-10-10T15:10:00-04:00", camera: cam-desk, move: sit, seconds: 90, things: [laptop],
+     captions: ["A person opens an energy drink can and sets it next to the laptop."],
+     objects: [{label: can, position: "right of the laptop"}]}
+  - {at: "2026-10-10T15:48:00-04:00", camera: cam-desk, move: sit, people: 2, seconds: 120, things: [laptop],
+     captions: ["Two people point at a laptop screen and talk."]}
+  - {at: "2026-10-10T16:30:00-04:00", camera: cam-door, move: leave, carrying: [bottle],
+     captions: ["A person walks out with an empty water bottle."]}
+  - {at: "2026-10-10T16:41:00-04:00", camera: cam-door, move: arrive,
+     captions: ["A person returns with a full water bottle."]}
+  - {at: "2026-10-10T17:20:00-04:00", camera: cam-desk, move: sit, seconds: 90, things: [laptop],
+     captions: ["A person opens a second energy drink; two cans stand on the desk."],
+     objects: [{label: can, position: "two cans, right of the laptop"}]}
+  - {at: "2026-10-10T17:55:00-04:00", camera: cam-door, move: bins, toss: [{label: can, bin: recycling}],
+     captions: ["A person drops an empty can in the recycling bin."],
+     zone: recycling, objects: [{label: can, position: "in the recycling bin"}]}
+  - {at: "2026-10-10T18:10:00-04:00", camera: cam-desk, move: sit, people: 2, seconds: 240, things: [laptop],
+     captions: ["Two people work at the table with laptops."]}
+  - {at: "2026-10-10T18:45:00-04:00", camera: cam-door, move: pass, seconds: 8, package: 20,
+     captions: ["A courier sets a cardboard package on the floor beside the door and leaves."],
+     zone: door, objects: [{label: package, position: "on the floor, right of the door frame"}]}
+  - {at: "2026-10-10T19:05:00-04:00", camera: cam-door, package: 10,
+     captions: ["The package is still beside the door; nobody has picked it up."],
+     zone: door, objects: [{label: package, position: "on the floor, right of the door frame"}]}
+  - {at: "2026-10-10T19:40:00-04:00", camera: cam-desk, move: sit, seconds: 90, things: [keys],
+     captions: ["A person puts a set of keys next to the coffee mug."],
+     objects: [{label: keys, position: "next to the coffee mug"}]}
+  - {at: "2026-10-10T20:15:00-04:00", camera: cam-desk, move: sit, seconds: 240, things: [laptop],
+     captions: ["A person eats a burrito bowl at the desk while typing with one hand.",
+                "The empty takeout bowl sits next to the keyboard."],
+     objects: [{label: takeout bowl, position: "next to the keyboard"}, {label: keys, position: "next to the coffee mug"}]}
+  - {at: "2026-10-10T20:50:00-04:00", camera: cam-door, move: bins, toss: [{label: food container, bin: recycling}],
+     captions: ["A person drops a food-stained takeout bowl in the recycling bin."],
+     zone: recycling, objects: [{label: takeout bowl, position: "in the recycling bin"}]}
+  - {at: "2026-10-10T21:15:00-04:00", camera: cam-desk, move: sit, seconds: 60, things: [laptop, backpack],
+     captions: ["A person packs a laptop into a backpack and leaves the table."]}
+  - {at: "2026-10-10T21:18:00-04:00", camera: cam-door, move: leave, carrying: [backpack],
+     captions: ["A person with a backpack leaves through the door."]}
+  - {at: "2026-10-10T21:50:00-04:00", camera: cam-door, package: 4,
+     captions: ["The package is still beside the door."],
+     zone: door, objects: [{label: package, position: "on the floor, right of the door frame"}]}
+  - {at: "2026-10-10T22:30:00-04:00", camera: cam-desk, move: sit, seconds: 180, things: [laptop],
+     captions: ["One person is left at the table, wearing headphones."],
+     objects: [{label: wallet, position: "behind the monitor stand"}, {label: keys, position: "next to the coffee mug"}]}
+  - {at: "2026-10-10T23:10:00-04:00", camera: cam-desk, move: sit, seconds: 90, things: [laptop],
+     captions: ["A person opens a third energy drink; three cans stand by the laptop."],
+     objects: [{label: can, position: "three cans, right of the laptop"}, {label: keys, position: "next to the coffee mug"}]}
+  - {at: "2026-10-10T23:50:00-04:00", camera: cam-desk, move: sit, seconds: 60,
+     captions: ["The person stretches, rubs their eyes and checks their phone."]}
+
+  # --- Sunday: the table empties, a quiet night, breakfast, the package comes in, cans go out ---
+  - {at: "2026-10-11T00:25:00-04:00", camera: cam-desk, move: sit, seconds: 60, things: [laptop],
+     captions: ["The last person closes the laptop and puts on a jacket."]}
+  - {at: "2026-10-11T00:28:00-04:00", camera: cam-door, move: leave,
+     captions: ["A person in a jacket leaves through the door and switches off the light."]}
+  - {at: "2026-10-11T00:31:00-04:00", camera: cam-desk, things: [keys],
+     captions: ["The table is empty; the keys are still next to the coffee mug, beside three cans."],
+     objects: [{label: keys, position: "next to the coffee mug, left of the closed laptop"}]}
+  - {at: "2026-10-11T01:10:00-04:00", camera: cam-desk,
+     captions: ["The table is empty; a phone charger is still plugged in."],
+     objects: [{label: charger, position: "plugged into the power strip at the back of the desk"},
+               {label: keys, position: "next to the coffee mug, left of the closed laptop"}]}
+  - {at: "2026-10-11T02:20:00-04:00", camera: cam-door, move: pass, seconds: 6,
+     captions: ["A person in a hoodie walks past the door."]}
+  - {at: "2026-10-11T02:22:00-04:00", camera: cam-door, move: pass, seconds: 8, package: 4,
+     captions: ["The person in the hoodie stops, looks at the package, then walks away."],
+     zone: door, objects: [{label: package, position: "on the floor, right of the door frame"}]}
+  - {at: "2026-10-11T03:30:00-04:00", camera: cam-desk,
+     captions: ["The table is empty; the monitor is in standby."]}
+  - {at: "2026-10-11T04:45:00-04:00", camera: cam-door, move: pass, seconds: 10,
+     captions: ["A custodian empties the trash bin and rolls a cart past the door."]}
+  - {at: "2026-10-11T05:30:00-04:00", camera: cam-door, package: 4,
+     captions: ["The package has not moved; the hallway is empty."],
+     zone: door, objects: [{label: package, position: "on the floor, right of the door frame"}]}
+  - {at: "2026-10-11T06:10:00-04:00", camera: cam-desk, things: [keys],
+     captions: ["The table is empty in early light; keys, a mug and three cans are on the desk."],
+     objects: [{label: keys, position: "next to the coffee mug, left of the closed laptop"}]}
+  - {at: "2026-10-11T06:45:00-04:00", camera: cam-door, move: arrive, carrying: [cup],
+     captions: ["A person comes in through the door carrying a coffee cup."]}
+  - {at: "2026-10-11T06:47:00-04:00", camera: cam-desk, move: sit, seconds: 120,
+     captions: ["A person comes back, sits at the table and drinks coffee."]}
+  - {at: "2026-10-11T07:05:00-04:00", camera: cam-desk, move: sit, seconds: 180, things: [laptop],
+     captions: ["The person opens the laptop and starts typing."]}
+  - {at: "2026-10-11T07:30:00-04:00", camera: cam-door, move: arrive,
+     captions: ["A second person arrives with a paper bag of bagels."]}
+  - {at: "2026-10-11T07:34:00-04:00", camera: cam-desk, move: sit, people: 2, seconds: 120,
+     captions: ["Two people eat bagels for breakfast at the table and share a coffee."]}
+  - {at: "2026-10-11T07:50:00-04:00", camera: cam-door, move: pass, seconds: 6, package: 3,
+     captions: ["A person picks up the package from beside the door and carries it inside."]}
+  - {at: "2026-10-11T07:55:00-04:00", camera: cam-desk, move: sit, seconds: 60, things: [package],
+     captions: ["A person opens the cardboard package on the table and takes out a small tripod."],
+     objects: [{label: package, position: "open, in the middle of the table"},
+               {label: keys, position: "next to the coffee mug, left of the closed laptop"}]}
+  - {at: "2026-10-11T08:10:00-04:00", camera: cam-desk, move: sit, seconds: 40,
+     captions: ["A person collects three empty cans from the desk."]}
+  - {at: "2026-10-11T08:12:00-04:00", camera: cam-door, move: bins,
+     toss: [{label: can, bin: recycling}, {label: can, bin: recycling}, {label: can, bin: trash}],
+     captions: ["A person drops two cans into the recycling bin and one into the trash."],
+     zone: recycling, objects: [{label: can, position: "in the recycling bin"}]}
+  - {at: "2026-10-11T08:30:00-04:00", camera: cam-door, move: arrive, carrying: [backpack],
+     captions: ["A third person arrives with a backpack."]}
+  - {at: "2026-10-11T08:35:00-04:00", camera: cam-desk, move: sit, people: 2, seconds: 120, things: [laptop],
+     captions: ["Three people gather around one laptop."]}
+  - {at: "2026-10-11T08:50:00-04:00", camera: cam-desk, move: sit, seconds: 40,
+     captions: ["A person writes a checklist on a sticky note and sticks it to the monitor."]}
+  # Not in fixtures/memory/memory.yaml: one round of Sort It, so the game has something in the log.
+  - {at: "2026-10-11T08:55:00-04:00", camera: cam-door, move: bins, faces: 3, toss: [{label: bottle, bin: recycling}],
+     captions: ["A person holds a water bottle up to the camera, then drops it in the recycling bin."]}
+  - {at: "2026-10-11T09:05:00-04:00", camera: cam-door, move: leave, carrying: [phone],
+     captions: ["A person steps out through the door with a phone to their ear."]}
+  - {at: "2026-10-11T09:12:00-04:00", camera: cam-desk, move: sit, people: 2, seconds: 120, things: [laptop, keys],
+     captions: ["Two people rehearse a presentation; one points at the monitor."],
+     objects: [{label: keys, position: "left of the laptop, behind the coffee mug"}]}

@@ -1,0 +1,92 @@
+# Per-context fakes (F4): `python -m contexts.demo fake <context>` publishes these, in order.
+# Each step is one event: `type`, `at` (seconds after the start), and any fields to change in that
+# type's sample payload from tests/test_contract_samples.py. A value like "+90s" or "-3600s" is a
+# time that far from the start. Every type a context publishes appears at least once.
+#
+# perception also plays the scripted half minute from contexts/perception/fakes first, through the
+# real zone engine: that is where its observations and zone events come from.
+
+perception:
+  - {type: perception.faces.counted, at: 2}
+  - {type: perception.scene.described, at: 9, caption: "A person sits at the desk with a laptop.", zone_id: null, objects: [],
+     frame_ref: "frames:cam-desk:9"}
+  - {type: perception.scene.described, at: 12, caption: "On the desk: keys (next to the mug).", frame_ref: "frames:cam-desk:12"}
+  - {type: perception.faces.counted, at: 14, count: 2, facing: 1}
+
+connectors:
+  - {type: connector.item.synced, at: 0, external_id: "cop4533:assignment:88213", title: "Project - Milestone1 Fall2026 [COP4533]",
+     when: "+225000s", url: "https://canvas.example.edu/courses/5123/assignments/88213",
+     summary: "Due in about two and a half days. Dynamic programming: code plus a runtime analysis writeup."}
+  - {type: connector.item.synced, at: 1, connector: calendar, kind: calendar_event, external_id: "outlook:study-session",
+     title: "COP4533 study session", when: "+16200s", url: null, summary: "until 5:00 PM · Library, 3rd floor"}
+  - {type: connector.item.synced, at: 2, connector: groupme, kind: message, external_id: "class:1760100001",
+     title: "Maya: anyone started the COP4533 milestone 1? due tuesday", when: "-60s", url: null,
+     summary: "Maya in COP4533 class chat: anyone started the COP4533 milestone 1? due tuesday"}
+  - {type: connector.sync.failed, at: 3}
+  - {type: connector.sync.failed, at: 4, connector: groupme, error: "offline", offline: true}
+
+memory:
+  - {type: memory.episode.opened, at: 0, episode_id: fake-e1}
+  - {type: memory.episode.closed, at: 95, episode_id: fake-e1, start: "+0s", end: "+65s", labels: [person, laptop],
+     captions: ["A person types at the desk.", "A person puts a set of keys next to the coffee mug."],
+     keyframe_refs: ["frames:cam-desk:1"]}
+  - {type: memory.episode.opened, at: 300, episode_id: fake-e2, camera_id: cam-door}
+  - {type: memory.episode.closed, at: 342, episode_id: fake-e2, camera_id: cam-door, start: "+300s", end: "+312s",
+     labels: [person, package], captions: ["A courier sets a cardboard package on the floor beside the door and leaves."]}
+
+habits:
+  - {type: habits.signal.recorded, at: 0, kind: away_window, value: 6.3}
+  - {type: habits.signal.recorded, at: 60}
+  - {type: habits.signal.recorded, at: 120, kind: drink, value: 1}
+  - {type: habits.signal.recorded, at: 180, kind: desk_time, value: 42.5}
+  - {type: habits.nudge.raised, at: 181, nudge_id: fake-nudge-1}
+  - {type: habits.nudge.raised, at: 240, nudge_id: fake-nudge-2, habit_id: energy_drinks,
+     message: "That is energy drink number 3 today. Your limit is 2."}
+  - {type: habits.day.closed, at: 300}
+  - {type: habits.day.closed, at: 300, habit_id: meals, met: true, value: 2, streak: 3}
+  - {type: habits.nudge.raised, at: 301, nudge_id: fake-nudge-3, habit_id: meals, tone: celebrate,
+     message: "Meals: 3 days in a row. Keep it going."}
+
+impact:
+  - {type: impact.item.seen, at: 0}
+  - {type: impact.count.updated, at: 0, items_seen: 1, recyclable_seen: 1, recycled: 0, contamination: 0, diversion_rate: 0.0}
+  - {type: impact.item.disposed, at: 5}
+  - {type: impact.count.updated, at: 5, items_seen: 1, recyclable_seen: 1, recycled: 1, contamination: 0, diversion_rate: 1.0}
+  - {type: impact.item.seen, at: 40, item_id: "cam-door:5", label: cup, recyclable: false}
+  - {type: impact.item.disposed, at: 45, item_id: "cam-door:5", label: cup, correct: false}
+  - {type: impact.count.updated, at: 45, items_seen: 2, recyclable_seen: 1, recycled: 1, contamination: 1, diversion_rate: 1.0}
+
+agent:
+  - {type: agent.rule.added, at: 0}
+  - {type: agent.alert.raised, at: 30, alert_id: fake-alert-1, evidence: [{frame_ref: "frames:cam-door:1", ts: "+30s"}]}
+  - {type: agent.action.proposed, at: 31, action_id: fake-action-1}
+  - {type: agent.answer.generated, at: 60}
+  - {type: agent.plan.created, at: 90, plan_id: fake-plan-1, subject: "Leaving", model_version: rules, blocks: [],
+     text: "Next: COP4533 study session at 2:00 PM; leave by 1:40 PM. Keys: last seen in the desk zone, next to the coffee mug."}
+  - {type: agent.plan.created, at: 120, plan_id: fake-plan-2, subject: "Project - Milestone1 Fall2026 [COP4533]",
+     text: "- Start the dynamic programming part today, 3-5 PM\n- Write the runtime analysis tomorrow morning\n- Eat before the study session",
+     blocks: [{title: "Study: COP 4533", start: "+3600s", end: "+10800s"}]}
+  - {type: agent.note.written, at: 3600, note_id: fake-note-1, hour: "+0s", text: "Coding at the desk, then pizza for lunch."}
+
+circle:
+  - {type: circle.place.shared, at: 0, expires_at: "+7200s"}
+  - {type: circle.message.received, at: 10, message_id: fake-m1, kind: proposal, from_member: dom, reply: null,
+     proposal: {title: "Study session", start: "+16200s", end: "+23400s", location: "Library", invitees: [hemdutt, xander]}}
+  - {type: circle.message.received, at: 40, message_id: fake-m2}
+  - {type: circle.event.agreed, at: 41, event: {title: "Study session", start: "+16200s", end: "+23400s", location: "Library", invitees: [hemdutt]}}
+  - {type: circle.share.queued, at: 60}
+  - {type: circle.share.synced, at: 65}
+
+vault:
+  - {type: vault.policy.changed, at: 0}
+  - {type: vault.retention.changed, at: 5}
+  - {type: vault.policy.changed, at: 10, paused_cameras: [cam-desk]}
+  - {type: vault.policy.changed, at: 20, paused_cameras: []}
+  # Only written to the log: the wiper is live-only, so the gateway ignores this when it replays.
+  - {type: vault.wipe.requested, at: 30}
+
+play:
+  - {type: play.round.started, at: 0, path: [{row: 5, col: 6}, {row: 5, col: 4}, {row: 6, col: 2}]}
+  - {type: play.round.scored, at: 4, path_len: 3}
+  - {type: play.round.started, at: 10, round_id: r2, item: cup, target_bin: trash, path: [{row: 5, col: 6}, {row: 6, col: 4}]}
+  - {type: play.round.scored, at: 22, round_id: r2, item: cup, correct: false, seconds: 12.0, path_len: 2, score: 0}
