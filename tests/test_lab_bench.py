@@ -12,11 +12,15 @@ test that runs past WATCHDOG_S into a crash with every thread's traceback instea
 from __future__ import annotations
 
 import base64
+import dataclasses
 import faulthandler
 import json
+import os
 import socket
+import subprocess
 import sys
 import time
+import types
 from pathlib import Path
 
 import httpx
@@ -242,6 +246,39 @@ def test_fake_power_puts_its_samples_on_a_fixed_grid_from_the_decodes(tmp_path):
     assert {e["socket_w"] for e in events} == {bench_fake.IDLE_NO_SERVER_W + bench_fake.WATTS_PER_STREAM}
 
 
+def test_fake_power_draws_the_loaded_idle_while_a_server_is_up_and_until_a_stopped_one_last_decoded(tmp_path):
+    gone = subprocess.Popen([sys.executable, "-c", "pass"])
+    gone.wait()                                              # an exited, reaped process: its pid is not alive
+    now = time.time()
+    (tmp_path / "servers.jsonl").write_text(
+        json.dumps({"pid": gone.pid, "up": now - 9.0}) + "\n" + json.dumps({"pid": os.getpid(), "up": now - 3.0}) + "\n")
+    (tmp_path / "decodes.jsonl").write_text(json.dumps({"pid": gone.pid, "start": now - 8.0, "end": now - 6.0}) + "\n")
+    power = bench_fake.FakePower(tmp_path, period_s=0.5)
+    power.start()
+    power.t0 = now - 10.0
+    watts = {round(e["t_local"] - now, 1): e["socket_w"] for e in power.events()}
+    assert watts[-9.5] == bench_fake.IDLE_NO_SERVER_W                                     # nothing up yet
+    assert watts[-8.5] == bench_fake.IDLE_LOADED_W                                        # up, not decoding
+    assert watts[-7.0] == bench_fake.IDLE_LOADED_W + bench_fake.WATTS_PER_STREAM          # decoding
+    assert watts[-5.5] == watts[-3.5] == bench_fake.IDLE_NO_SERVER_W                      # stopped after its decode
+    assert watts[-2.5] == watts[0.0] == bench_fake.IDLE_LOADED_W                          # the live one
+
+
+def test_the_idle_reading_opens_a_sample_period_after_it_is_asked_for(monkeypatch):
+    clock = types.SimpleNamespace(now=100.0)
+    monkeypatch.setattr(bench, "time", types.SimpleNamespace(
+        time=lambda: clock.now, sleep=lambda s: setattr(clock, "now", clock.now + s), monotonic=lambda: clock.now))
+
+    class JustBusy:                                          # a decode ended at the very moment the reading is asked
+        available, reason, period_s = True, None, 0.01
+
+        def events(self):
+            grid = [99.0 + k * 0.01 for k in range(int((clock.now + 0.02 - 99.0) / 0.01) + 1)]
+            return [{"t_local": t, "socket_w": 23.0 if t <= 100.0 else 8.0} for t in grid]
+
+    assert bench.idle_watts(JustBusy(), 0.05) == 8.0
+
+
 # --- conditions: serve log, environment, host ---------------------------------------------------------------------
 
 def test_vllm_serve_log_names_the_kernel_classes_and_the_kv_cache_capacity():
@@ -401,11 +438,13 @@ def test_rows_carry_decode_ttft_watts_joules_and_the_idle_reading_beside_it(tmp_
             assert row[key] is None or row[key] > 0, key
         w = row["watts"]
         assert w["available"] is True and w["source"] == "amd-smi" and w["power_field"] == "socket_power"
-        ceiling = bench_fake.IDLE_NO_SERVER_W + bench_fake.WATTS_PER_STREAM * row["batch_size"]
+        ceiling = bench_fake.IDLE_LOADED_W + bench_fake.WATTS_PER_STREAM * row["batch_size"]
         assert bench_fake.IDLE_NO_SERVER_W <= w["avg_w"] <= w["peak_w"] <= ceiling
         assert w["energy_j"] == pytest.approx(w["avg_w"] * row["window_s"], rel=1e-3)
         assert row["joules_per_token"] == pytest.approx(w["energy_j"] / row["tokens_generated"], rel=1e-3)
-        assert row["idle_w"] == {"no_server": bench_fake.IDLE_NO_SERVER_W, "loaded": bench_fake.IDLE_NO_SERVER_W}
+        # exact: each reading opens one sample period after what ran before it ended, so no edge blends with a
+        # previous spawn's decode, and the fake reports a live server's idle draw apart from no server at all
+        assert row["idle_w"] == {"no_server": bench_fake.IDLE_NO_SERVER_W, "loaded": bench_fake.IDLE_LOADED_W}
         assert row["throttled"] is None
 
 
@@ -499,6 +538,59 @@ def test_the_nonce_keeps_measured_requests_from_hitting_the_prefix_cache(tmp_pat
     without = bench.run_session(config, host=host, power=power)
     assert all(r["cached_prompt_tokens"] == 0 for r in with_nonce["rows"][0]["requests"])
     assert all(r["cached_prompt_tokens"] > 0 for r in without["rows"][0]["requests"])   # the warm-up filled it
+
+
+def stalling(config, *, timeout_s=1.0):
+    """A run whose measured streams the fake slows past the harness's bound (grace 0, timeout_s per request)."""
+    return dataclasses.replace(config, request_timeout_s=timeout_s, stream_grace_s=0.0)
+
+
+def assert_stuck_row_keeps_what_ran(row, n_prompts):
+    assert row["outcome"] == "fail" and "had not finished" in row["reason"]
+    assert row["warmup"]["requests"] == n_prompts + row["batch_size"]          # the warm-ups that ran are listed
+    assert all(item["role"] == "warmup" for item in row["warmup"]["items"])
+    assert row["probe"]["request"]["role"] == "probe" and row["probe"]["decode_tok_s"] is not None
+    assert row["probe"]["mem_busy_pct"]["median"] == bench_fake.MEM_BUSY_ONE
+
+
+def test_a_stuck_run_on_a_shared_spawn_ends_the_spawn_and_keeps_its_warmup_and_probe(tmp_path):
+    config, host, power = fake_config(tmp_path, batches=(1, 4), stall_match="b1-measure-", stall_tok_s=4.0)
+    config = stalling(dataclasses.replace(config, share_spawn=True))
+    result = bench.run_session(config, host=host, power=power)
+    first, second = result["rows"]
+    assert_stuck_row_keeps_what_ran(first, len(bench.PromptSet.load().prompts))
+    assert second["batch_size"] == 4 and second["outcome"] == "fail" and second["requests"] == []
+    assert "not measured" in second["reason"] and first["run_id"] in second["reason"]
+    assert first["spawn"]["stopped"] is True and first["spawn"]["pid"] == second["spawn"]["pid"]
+
+
+def test_a_stuck_run_while_attached_still_writes_every_row_and_the_summary(tmp_path):
+    root = tmp_path / "pod"
+    port_file = tmp_path / "serve.port"
+    argv = bench.fill_command(bench_fake.serve_command(root=str(root), stall_match="b1-measure-", stall_tok_s=4.0),
+                              {"port": 0, "port_file": port_file, "log": tmp_path / "serve.log"})
+    server = subprocess.Popen(argv)
+    try:
+        deadline = time.monotonic() + 30.0
+        while not port_file.exists() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert port_file.exists(), "the fake never named its port"
+        config = stalling(bench.Config(engine="vllm", model="teacher", node="pod-c", batches=[1, 4], add_64=False,
+                                       repeats=1, max_tokens=MAX_TOKENS, requests_per_stream=2, warmup_rounds=1,
+                                       idle_s=0.0, out_dir=tmp_path / "out"))
+        endpoint = bench.DirectEndpoint(f"http://127.0.0.1:{port_file.read_text()}", timeout_s=config.request_timeout_s)
+        result = bench.attach_session(config, endpoint=endpoint, host=bench_fake.FakeHost(root))
+        endpoint.close()
+    finally:
+        server.terminate()
+        server.wait(10)
+    first, second = result["rows"]
+    assert_stuck_row_keeps_what_ran(first, len(bench.PromptSet.load().prompts))
+    assert second["outcome"] == "fail" and "not measured" in second["reason"]
+    lines = (config.out_dir / result["session"] / "rows.jsonl").read_text().splitlines()
+    assert [json.loads(line)["run_id"] for line in lines] == [first["run_id"], second["run_id"]]
+    assert (config.out_dir / result["session"] / "summary.json").exists()
+    assert result["summary"]["rows"] == 2
 
 
 # --- attach: a server the harness did not spawn (the live smoke) ---------------------------------------------------

@@ -15,7 +15,8 @@ The server (`serve`). An OpenAI-compatible server with the routes the harness us
 its checkpoint as root and max_model_len, as vLLM answers), GET /health, and POST /v1/chat/completions streamed as
 server-sent events (one token per chunk, a finish chunk, a usage chunk when stream_options.include_usage is set, then
 [DONE]). It honours max_tokens and ignore_eos (without it, an answer ends after a third of max_tokens with finish
-reason stop). Tokens come --stream-tok-s apart after --ttft-s. With --prefix-caching on, a request whose whole prompt
+reason stop). Tokens come --stream-tok-s apart after --ttft-s, or --stall-tok-s apart for a request whose messages
+contain the text --stall-match (the harness's nonce names the run and the role, so a test can slow one run only). With --prefix-caching on, a request whose whole prompt
 was seen before is a prefix-cache hit and its usage says so in prompt_tokens_details.cached_tokens, as vLLM's does;
 the harness's per-request nonce is what keeps measured requests from hitting. With --port 0 it binds a free port
 itself and writes it to --port-file, so no test ever races another process for a port.
@@ -34,7 +35,8 @@ ones. Under --root it then writes what a pod exposes about a running server:
                                                   stream starts decoding and held until the next one starts (so
                                                   a read during a lone request always sees MEM_BUSY_ONE)
     <root>/fake_load                              {"pid", "port", "active"}, rewritten whenever a stream starts or ends
-    <root>/decodes.jsonl                          one {"start", "end"} per request, written before its [DONE]
+    <root>/decodes.jsonl                          one {"pid", "start", "end"} per request, written before its [DONE]
+    <root>/servers.jsonl                          one {"pid", "up"} per server, written before it names its port
 
 The pod. `FakeHost` is lab.bench.Host over the fake root and recorded command output: amd-smi metric prints the Strix
 Halo output recorded on pod C (fixtures/telemetry/pod_power/strixhalo_amdsmi_metric_power.txt), its SOCKET_POWER set
@@ -42,8 +44,12 @@ from <root>/fake_load (IDLE_NO_SERVER_W with no live server, IDLE_LOADED_W loade
 amd-smi static --driver and --asic and amd-smi firmware print fixtures/lab/bench/amdsmi_*_synthetic.txt (made from
 amd-smi's output layout, not recorded); python prints the pod's torch and Triton versions; git prints a fixed commit.
 `FakePower` is a power source for lab.bench sessions that never depends on a sampling thread being scheduled: its
-samples sit on a fixed grid from start() to the moment they are asked for, each IDLE_NO_SERVER_W plus
-WATTS_PER_STREAM per request decoding at that instant by <root>/decodes.jsonl. Stdlib only.
+samples sit on a fixed grid from start() to the moment they are asked for, each IDLE_LOADED_W while a server is up
+(IDLE_NO_SERVER_W otherwise) plus WATTS_PER_STREAM per request decoding at that instant by <root>/decodes.jsonl. A
+server is up from its line in <root>/servers.jsonl; one whose process has exited counts as up until the end of its
+last logged decode (or its start, when it decoded nothing), because the fake keeps no record of the moment it was
+stopped: the harness stops a server only after its last answer, and measures no idle window before the stop has
+returned. Stdlib only.
 """
 from __future__ import annotations
 
@@ -113,6 +119,10 @@ class FakeEngine:
                 (self.root / f"sys/class/kfd/kfd/proc/{pid}/queues/{q}").mkdir(parents=True, exist_ok=True)
         self._write("sys/class/drm/card0/device/vendor", "0x1002\n")
         self.publish_load()
+        if self.root is not None:
+            with self.files:
+                with open(self.root / "servers.jsonl", "a", encoding="utf-8") as fh:
+                    fh.write(json.dumps({"pid": pid, "up": time.time()}) + "\n")
 
     def publish_load(self) -> None:
         with self.files:
@@ -126,7 +136,7 @@ class FakeEngine:
             return
         with self.files:
             with open(self.root / "decodes.jsonl", "a", encoding="utf-8") as fh:
-                fh.write(json.dumps({"start": start, "end": end}) + "\n")
+                fh.write(json.dumps({"pid": os.getpid(), "start": start, "end": end}) + "\n")
 
     def serve_log(self) -> str:
         a = self.args
@@ -177,11 +187,12 @@ class FakeEngine:
             self.active += 1
             self.busy = min(100.0, MEM_BUSY_ONE + MEM_BUSY_STEP * (self.active - 1))
         self.publish_load()   # before the first token goes out, so a read at any token sees this stream decoding
+        rate = a.stall_tok_s if a.stall_match and a.stall_match in prompt_text else a.stream_tok_s
         start = time.time()
         try:
             for i in range(n):
                 if i:
-                    time.sleep(1.0 / a.stream_tok_s)
+                    time.sleep(1.0 / rate)
                 self._event(handler, {"object": "chat.completion.chunk", "model": a.model,
                                       "choices": [{"index": 0, "delta": {"content": f"t{i} "}, "finish_reason": None}]})
             self._event(handler, {"object": "chat.completion.chunk", "model": a.model,
@@ -280,6 +291,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--parallel", type=int, default=16)
     s.add_argument("--stream-tok-s", type=float, default=400.0)
     s.add_argument("--ttft-s", type=float, default=0.01)
+    s.add_argument("--stall-match", default=None, help="requests whose messages contain this text stream slowly")
+    s.add_argument("--stall-tok-s", type=float, default=4.0)
     s.add_argument("--startup-s", type=float, default=0.05)
     s.add_argument("--queues", type=int, default=3)
     s.add_argument("--prefix-caching", choices=("on", "off"), default="on")
@@ -409,23 +422,38 @@ class FakePower:
     def stop(self) -> None:
         return None
 
-    def decodes(self) -> list[tuple[float, float]]:
+    def _lines(self, name: str) -> list[dict[str, Any]]:
         try:
-            lines = (self.root / "decodes.jsonl").read_text(encoding="utf-8").splitlines()
+            lines = (self.root / name).read_text(encoding="utf-8").splitlines()
         except OSError:
             return []
         out = []
         for line in lines:
             try:
-                d = json.loads(line)
+                out.append(json.loads(line))
             except ValueError:   # a line still being written
                 continue
-            out.append((float(d["start"]), float(d["end"])))
+        return out
+
+    def decodes(self) -> list[tuple[float, float]]:
+        return [(float(d["start"]), float(d["end"])) for d in self._lines("decodes.jsonl")]
+
+    def servers(self) -> list[tuple[float, float | None]]:
+        """(up, down) per server; down None while its process lives, else the end of its last decode."""
+        ends: dict[int, float] = {}
+        for d in self._lines("decodes.jsonl"):
+            pid = int(d.get("pid", 0))
+            ends[pid] = max(ends.get(pid, 0.0), float(d["end"]))
+        out = []
+        for s in self._lines("servers.jsonl"):
+            pid, up = int(s["pid"]), float(s["up"])
+            out.append((up, None if pid_alive(pid) else max(up, ends.get(pid, up))))
         return out
 
     def events(self) -> list[dict[str, Any]]:
         if self.t0 is None:
             return []
+        servers = self.servers()
         decodes = self.decodes()
         end = time.time() + self.period_s
         out = []
@@ -433,8 +461,9 @@ class FakePower:
         while self.t0 + k * self.period_s <= end:
             t = self.t0 + k * self.period_s
             busy = sum(1 for a, b in decodes if a <= t <= b)
+            up = any(a <= t and (b is None or t <= b) for a, b in servers)
             out.append({"type": pod_power.GPU_POWER, "ts": pod_power.iso(t), "t_local": t,
-                        "socket_w": IDLE_NO_SERVER_W + WATTS_PER_STREAM * busy, "source": "amd-smi",
+                        "socket_w": (IDLE_LOADED_W if up else IDLE_NO_SERVER_W) + WATTS_PER_STREAM * busy, "source": "amd-smi",
                         "power_field": "socket_power", "sampler": "lab/bench_fake.py FakePower", "throttled": None})
             k += 1
         return out
