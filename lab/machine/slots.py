@@ -3,6 +3,7 @@
 Anything that trains, benchmarks, restarts a process or needs the whole GPU asks for it here and waits its turn.
 
     python -m lab slot request  --task L3 --what "smoke LoRA 200 steps" [--minutes 60 --why "..." --measured "..."]
+                                [--kind lora] [--override "why it must run there"]
     python -m lab slot start    --row <id or url> [--reply "answer to the critique"] [--minutes 15]
     python -m lab slot extend   --row <id or url> --note "what the slot has already proven"
     python -m lab slot done     --row <id or url> --result "one line with the numbers" [--cancel]
@@ -17,7 +18,12 @@ rules on the client, because Notion cannot:
             pod, which is only queued to restart or change the server itself), Minutes 15, Status Queued,
             Agent Ilan, Requested now. 60 minutes is for a training run or a declared long job and carries a
             justification (below). Asking again with the same words while the first row is still Queued
-            returns that row (outcome already_queued) instead of adding a second.
+            returns that row (outcome already_queued) instead of adding a second. Before it adds the row it
+            asks the placement plan (lab/placement.py) whether the kind of job (from --what's words, or
+            --kind) belongs on the card asked for, and refuses one that contradicts the plan (outcome
+            placement_contradiction) unless --override says why it must run there; the reason is then
+            written to the Progress note as an Override line. A plan that cannot be built never blocks
+            a request: the answer says so (placement verdict unavailable).
   start     sets Status Running and Started now, in one update, and only when the row's justification is in
             order, no row on the GPU is Running and no other Queued row goes before this one. The order is
             shortest first: fewer Minutes goes first, and equal Minutes go to the earlier Requested, except
@@ -158,6 +164,9 @@ MAX_MEASURED_CHARS = 200
 MAX_NOTE_CHARS = 1000            # progress note, result, extra complaint text
 MAX_REPLY_CHARS = 300            # the reply to a critique
 MAX_CRITIQUE_CHARS = 300         # what the referee's critique says
+MAX_OVERRIDE_CHARS = 200         # why a request that contradicts the placement plan must run where it asks
+#: The kinds of job the placement plan places (lab/placement.py KINDS; spelled out here so this module loads alone).
+PLACEMENT_KINDS = ("teacher", "sampler", "bench", "ax", "lora")
 MAX_COMPLAINT_CHARS = 2000       # what one Notion text value holds; older entries are dropped to fit
 COMPLAINT_JOIN = " | "           # between the entries of a Complaint or of a Progress note
 
@@ -298,6 +307,7 @@ def slot_from_page(page: Mapping[str, Any]) -> Slot:
 # --- the progress note ----------------------------------------------------------------
 
 JUSTIFICATION, CRITIQUE, REPLY, SHORTENED = "Justification", "Critique", "Reply", "Shortened"
+OVERRIDE = "Override"            # a Progress note line: why a request runs against the placement plan
 
 #: Where a row stands on its justification.
 NOT_REQUIRED, MISSING, AWAITING_CRITIQUE, AWAITING_REPLY, CLEARED = (
@@ -665,6 +675,48 @@ def justification_refusal(minutes: int, why: str | None, measured: str | None) -
                    next=f"ask again with {' and '.join(lacking)}, or ask for {DEFAULT_MINUTES} minutes")
 
 
+def placement_check(gpu: str, what: str, kind: str | None = None) -> dict[str, Any]:
+    """What the placement plan (lab/placement.py) says about a request for that card with those words: verdict
+    consistent, contradicts, no_line or unavailable, with the kind, the reason and, for a contradiction, the next
+    step. Never raises: a plan that cannot be built answers unavailable."""
+    from lab import placement   # imported here: lab/placement.py reads the queue through this module
+    try:
+        return placement.check_request(gpu=gpu, text=what, kind=kind)
+    except Exception as exc:    # the queue keeps working whatever happens to the plan
+        return {"contradicts": False, "verdict": "unavailable", "kind": kind,
+                "reason": f"no placement plan: {type(exc).__name__}: {exc}"}
+
+
+def placement_view(verdict: Mapping[str, Any], override: str | None) -> dict[str, Any]:
+    """The placement part of an answer: the verdict, the kind and how it was found, the reason, and the override
+    when the request went ahead against the plan."""
+    out = {key: verdict[key] for key in ("verdict", "kind", "kind_from", "node", "reason", "next") if key in verdict}
+    plan = verdict.get("plan")
+    if isinstance(plan, Mapping):
+        out["plan_pods"] = list(plan.get("pods") or [])
+    if verdict.get("contradicts") and override:
+        out["verdict"] = "overridden"
+        out["override"] = override
+    return out
+
+
+def placement_refusal(verdict: Mapping[str, Any], override: str | None) -> dict[str, Any] | None:
+    """The refusal of a request that contradicts the placement plan without an --override, else None."""
+    if not verdict.get("contradicts") or override:
+        return None
+    return refusal("slot request", "placement_contradiction", verdict.get("reason", "it contradicts the placement plan"),
+                   placement=placement_view(verdict, None), placement_verdict="contradicts",
+                   next=verdict.get("next") or 'ask for the card the plan names, or add --override "why"')
+
+
+def override_text(verdict: Mapping[str, Any], override: str) -> str:
+    """The Override line's text: what the plan says, in short, and why the request runs anyway."""
+    plan = verdict.get("plan") if isinstance(verdict.get("plan"), Mapping) else {}
+    pods = plan.get("pods") or []
+    where = " or ".join(pods) if pods else "no pod now"
+    return f"against the placement plan ({verdict.get('kind')} on {verdict.get('node')}; the plan says {where}): {override}"
+
+
 def next_step(slot: Slot, may_start: bool) -> str:
     """What the agent of a Queued row does next, from where the row stands."""
     row = slot.id
@@ -751,9 +803,16 @@ class SlotQueue:
 
     def request(self, *, task: str, what: str, minutes: int = DEFAULT_MINUTES, why: str | None = None,
                 measured: str | None = None, gpu: str = DEFAULT_GPU, agent: str = DEFAULT_AGENT,
-                actor: str = record.UNKNOWN_ACTOR) -> dict[str, Any]:
+                actor: str = record.UNKNOWN_ACTOR, kind: str | None = None, override: str | None = None,
+                placement: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        """Add a row. placement is the placement plan's verdict on the request when the caller already has it;
+        otherwise it is asked here (placement_check), so the plan holds for every caller."""
         verb, gpu_name, now = "slot request", GPUS[gpu], self._now()
         refused = justification_refusal(minutes, why, measured)
+        if refused is not None:
+            return refused
+        verdict = dict(placement) if placement is not None else placement_check(gpu, what, kind)
+        refused = placement_refusal(verdict, override)
         if refused is not None:
             return refused
         title = request_title(task, what, minutes, why)
@@ -765,6 +824,9 @@ class SlotQueue:
                       "Agent": agent, "Requested": now}
             if minutes > LONG_ABOVE_MINUTES:
                 change["Progress note"] = note_entry(JUSTIFICATION, actor, now, justification_text(why, measured))
+            if verdict.get("contradicts") and override:
+                change["Progress note"] = add_entry(change.get("Progress note", ""), note_entry(
+                    OVERRIDE, actor, now, override_text(verdict, override)))
             twin = slot_from_page(self.client.create_page(self.data_source, rest_properties(change)))
             rows = [row for row in rows if row.id != twin.id] + [twin]
             outcome = "queued"
@@ -778,6 +840,10 @@ class SlotQueue:
         if gpu == "A":
             answer["warning"] = ("pod A is the shared teacher service: queue it only to restart or change the "
                                  "server itself")
+        answer["placement"] = placement_view(verdict, override)
+        answer["placement_verdict"] = answer["placement"]["verdict"]
+        if answer["placement_verdict"] == "overridden":
+            answer["override"] = override
         return answer
 
     # start
@@ -1112,6 +1178,13 @@ def offline_plan(args: argparse.Namespace, now: dt.datetime, data_source: str,
         long = args.minutes > LONG_ABOVE_MINUTES
         if long:
             change["Progress note"] = note_entry(JUSTIFICATION, actor, now, justification_text(args.why, args.measured))
+        verdict = getattr(args, "placement", None) or {}
+        if verdict.get("contradicts") and args.override:
+            change["Progress note"] = add_entry(change.get("Progress note", ""), note_entry(
+                OVERRIDE, actor, now, override_text(verdict, args.override)))
+        if verdict:
+            plan["placement"] = placement_view(verdict, args.override)
+            plan["placement_verdict"] = plan["placement"]["verdict"]
         plan["write"] = mcp_properties(change)
         plan["steps"] = [
             {"tool": _tool("create-pages"), "why": "add your row to the GPU Queue", "arguments": {
@@ -1230,6 +1303,11 @@ def build_parser() -> argparse.ArgumentParser:
                          help=f"for a {LONG_MINUTES}-minute slot: what was already measured (a run, a rate, a size)")
     request.add_argument("--gpu", type=_gpu_type, default=DEFAULT_GPU, metavar="{A,B}",
                          help="B (default) is the exclusive card; A is the shared teacher service")
+    request.add_argument("--kind", choices=PLACEMENT_KINDS,
+                         help="the kind of job, for the placement plan's check; default: read from --what's words")
+    request.add_argument("--override", type=_text_type(MAX_OVERRIDE_CHARS, "--override"), metavar="TEXT",
+                         help="why the request must run on this card although the placement plan puts its kind "
+                              "elsewhere (written to the Progress note)")
 
     for name, help_ in (("start", "start the row's slot when its turn has come"),
                         ("extend", "extend a Running slot by 15 minutes, once, with a progress note"),
@@ -1300,7 +1378,8 @@ def data_source_of(environ: Mapping[str, str] | None = None) -> str:
 def _dispatch(queue: SlotQueue, args: argparse.Namespace, actor: str) -> dict[str, Any]:
     if args.sub == "request":
         return queue.request(task=args.task, what=args.what, minutes=args.minutes, why=args.why,
-                             measured=args.measured, gpu=args.gpu, agent=args.agent, actor=actor)
+                             measured=args.measured, gpu=args.gpu, agent=args.agent, actor=actor, kind=args.kind,
+                             override=args.override, placement=getattr(args, "placement", None))
     if args.sub == "start":
         return queue.start(args.row, agent=args.agent, reply=args.reply, minutes=args.minutes, actor=actor)
     if args.sub == "extend":
@@ -1325,6 +1404,7 @@ def _failure(args: argparse.Namespace, exc: notion.NotionError) -> dict[str, Any
 
 #: Fields of an answer worth keeping in the ledger row, beside the standard ones.
 _LEDGER_KEYS = ("gpu", "minutes", "waited_min", "ran_min", "overrun_min", "position", "reason", "kind", "guard",
+                "placement_verdict", "override",
                 "passed_over", "went_ahead_of", "justification_state", "replied", "shortened_to", "note")
 
 
@@ -1375,6 +1455,9 @@ def run(argv: Sequence[str], *, client: notion.NotionClient | None = None, envir
     actor = record.current_actor(environ)
     data_source = data_source_of(environ)
     refused = justification_refusal(args.minutes, args.why, args.measured) if args.sub == "request" else None
+    if refused is None and args.sub == "request":
+        args.placement = placement_check(args.gpu, args.what, args.kind)
+        refused = placement_refusal(args.placement, args.override)
     if refused is not None:
         answer, code = refused, 1
     else:

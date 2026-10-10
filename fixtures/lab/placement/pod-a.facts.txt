@@ -1,0 +1,32 @@
+# Pod C (account C on the SJC hub, pod-a's role: the teacher) at hour 0, before the teacher was built.
+# Rendered in the line format of `bash lab/pod_a_teacher.sh facts` from the R29 task page, line of Sat 3:23 PM ET
+# (facts read over the terminal websocket at 19:24 UTC; R29 used hour0.sh, which the facts step later replaced):
+# https://app.notion.com/p/3f596ef5fec581459f14c5afc37c7819
+# A line the page does not give is left out. The teacher started after these facts were read (19:53 UTC, R29), so
+# the plan takes its share off the memory available here.
+date_utc: 2026-10-10T19:24:00Z
+gfx: gfx1151
+gpu: Radeon 8060S (Strix Halo)
+cpu: AMD Ryzen AI Max+ 395, 32 threads
+mem: 62 GB total, 58 GB available
+os: Ubuntu 24.04.4, kernel 6.18.6
+hip: 7.13.99004-3309c6114a
+torch: 2.9.1+rocm7.13.0
+triton: 3.5.1
+numpy: 2.4.6
+vllm: absent
+transformers: absent
+huggingface_hub: absent
+amdsmi: absent
+jupyter_server_proxy: 4.6.0
+torch_gpu: available=True count=1 mem_gib=64.0
+tools: hipcc gcc git wget curl no-cmake no-ninja no-pkg-config
+home: /home/jovyan (984G size, 553G free, local LVM docker volume)
+listeners: no-8000 8099 no-8790 8888
+egress github.com: 200
+egress huggingface.co: 200
+egress pypi.org: 200
+egress repo.radeon.com: 200
+# The page records one amd-smi SOCKET_POWER read at idle with no server (and 7.1 W from rocm-smi).
+idle_socket_power_w: 9
+server_running: no

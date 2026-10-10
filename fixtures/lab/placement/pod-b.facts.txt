@@ -1,0 +1,34 @@
+# Pod D (account D on the SJC hub, pod-b's role: the trainer and the exclusive queued card).
+# Rendered in the line format of `bash lab/pod_a_teacher.sh facts` from the R30 task page:
+# https://app.notion.com/p/3f596ef5fec58118b653e4f3ae2d3024
+# Line of Sat 5:40 PM: the facts step itself, read-only, at 21:35 UTC (run id 20261010-213632-705f).
+# A line the page does not give is left out.
+date_utc: 2026-10-10T21:35:00Z
+gfx: gfx1151
+gpu: Radeon 8060S (Ryzen AI Max+ 395)
+cpu: AMD Ryzen AI Max+ 395, 32 threads
+mem: 62 GB total, 58 GB available
+os: Ubuntu 24.04.4, kernel 6.18.6-061806-generic
+hip: 7.13.99004-3309c6114a
+torch: 2.9.1+rocm7.13.0
+triton: 3.5.1
+numpy: 2.4.6
+vllm: absent
+transformers: absent
+huggingface_hub: absent
+amdsmi: absent
+jupyter_server_proxy: 4.6.0
+torch_gpu: available=True count=1 mem_gib=64.0
+tools: hipcc gcc git wget curl amd-smi rocm-smi no-cmake no-ninja no-pkg-config no-hf
+egress github.com: 200
+egress huggingface.co: 200
+egress pypi.org: 200
+egress repo.radeon.com: 200
+idle_socket_power_w: 19 12 10 9 9 9 9 8 9 9
+# Line of Sat 6:10 PM: pod D as left at 21:57 UTC after R30's build, download and one serve inside a slot: the home
+# holds the build and the checkpoint, no server process, port 8000 free, 540 GB free. Line of Sat 6:40 PM: R18
+# served the teacher there once in its own slot from 22:15 to 22:21 UTC and stopped it; nothing listens on 8000.
+home: /home/jovyan (984G size, 540G free, ubuntu-vg docker-lv)
+home_holds: checkpoints outputs _job.sh gpuprobe2.sh hour0.sh vllm models serve .triton .cache .local vllm_build.log vllm-gfx1201.diff
+listeners: no-8000
+server_running: no

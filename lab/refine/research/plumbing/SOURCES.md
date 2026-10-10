@@ -1,7 +1,7 @@
 # Sources for the plumbing research notes
 
 Index of every source cited in the notes in this folder: `hub-api-lifecycle.md` (hub), `proxy-path.md` (proxy),
-`transfers.md` (transfers), `idle-credits-recovery.md` (idle) and the measurement record
+`transfers.md` (transfers), `idle-credits-recovery.md` (idle), `placement.md` (placement) and the measurement record
 `measurements-2026-10-10.md`. Each source was opened on the date shown (the page, file or thread itself, not a
 search snippet) before it was cited. Keys are stable: a note cites `[S20]`, and a pass that relies on a finding
 cites the note's file and heading. Source code is cited at the tag or commit that matches what the live hub and
@@ -68,7 +68,8 @@ log is at the end of `hub-api-lifecycle.md`.
 | S39 | AMD AUP Learning Cloud git history | 29b463a (2026-02-06, quota and timer code already present), 6e09fad (2026-06-25, `repo_persist`), b5b9b7f8 and 351cba34 (2026-07-06, `WORKDIR` and landing paths), cff8981 (2026-07-28, `restartPolicy: Never`) | https://github.com/AMDResearch/aup-learning-cloud/commits/main | 2026-10-10 | hub, transfers |
 | S45 | CPython v3.12.11 (also read at v3.13.7 and main) | `Lib/http/server.py`: `SimpleHTTPRequestHandler.send_head` (no Range handling, no 206 anywhere in the module) | https://github.com/python/cpython/blob/v3.12.11/Lib/http/server.py | 2026-10-10 | transfers |
 | S46 | Zero to JupyterHub 4.3.3 | `jupyterhub/files/hub/jupyterhub_config.py`: `hub_bind_url`, `hub_connect_url` | https://github.com/jupyterhub/zero-to-jupyterhub-k8s/blob/4.3.3/jupyterhub/files/hub/jupyterhub_config.py | 2026-10-10 | idle |
-| S51 | vLLM b1388b1 | `vllm/config/cache.py`: `CacheConfig.gpu_memory_utilization` (L41-L48: fraction of GPU memory, default 0.9, a per-instance limit) | https://github.com/vllm-project/vllm/blob/b1388b1fbf5aaef47937fabe98931211684666a6/vllm/config/cache.py | 2026-10-10 | contention |
+| S51 | vLLM b1388b1 | `vllm/config/cache.py`: `CacheConfig.gpu_memory_utilization` (L41-L48: fraction of GPU memory, default 0.9, a per-instance limit) | https://github.com/vllm-project/vllm/blob/b1388b1fbf5aaef47937fabe98931211684666a6/vllm/config/cache.py | 2026-10-10 | contention, placement |
+| S60 | vLLM b1388b1 | `vllm/v1/worker/utils.py`: `request_memory` (L403-L423: asks for the device's total memory times `gpu_memory_utilization` at start and raises when the free memory is less) | https://github.com/vllm-project/vllm/blob/b1388b1fbf5aaef47937fabe98931211684666a6/vllm/v1/worker/utils.py | 2026-10-10 | placement |
 
 ## Issues and pull requests
 
@@ -99,9 +100,11 @@ log is at the end of `hub-api-lifecycle.md`.
 | S54 | `lab/hub.py` (L55-L62 accounts A and B and the retry pauses, L191 one hub address, L199-L200 the Accept header, L268), `lab/controller.py` (module docstring, `credit_figures`, `keep_alive`) and `jetson/egress.py` L50 (`HUB_HOSTS`), main at 97428e4 | https://github.com/raohemdutt/Knighthacks26/blob/97428e4/lab/hub.py | 2026-10-10 | hub, contention |
 | S55 | `lab/README.md` L3 (one R9700, 32 GB, per pod) and L104 (engine init about 270 s, 84 percent of VRAM) and `lab/pod_a_teacher.sh` L79 (`--gpu-memory-utilization 0.90`), main at 97428e4 | https://github.com/raohemdutt/Knighthacks26/blob/97428e4/lab/pod_a_teacher.sh | 2026-10-10 | contention |
 | S56 | O54 task page (accounts C and D on SJC, verified read-only at 1:52 PM ET; the Done when covers `lab/hub.py` and the controller) | https://app.notion.com/p/3f596ef5fec5813e8975ed859ff4dc01 | 2026-10-10 | pass 2 log |
-| S57 | R29 task page (SJC pod C brought up from an empty home; rows on node pod-a; pods C and D up since 2:54 PM ET for 40 hours) | https://app.notion.com/p/3f596ef5fec581459f14c5afc37c7819 | 2026-10-10 | pass 2 log |
+| S57 | R29 task page (SJC pod C brought up from an empty home; rows on node pod-a; pods C and D up since 2:54 PM ET for 40 hours) | https://app.notion.com/p/3f596ef5fec581459f14c5afc37c7819 | 2026-10-10 | pass 2 log, placement |
 | S58 | Ilan1 and Ilan2 dispatcher page (only Ilan1 touches pods; the sjc host missing from `jetson/egress.py`, a review finding on PR #142; lines of Sat 3:46, 4:00 and 4:27 PM ET by that page's clock: SJC ignores the REST launch, the pods relaunched through the web form as Strix Halo, and Ilan's decision to move the lab to them) | https://app.notion.com/p/3f596ef5fec58106826dcbd9d3d17561 | 2026-10-10 | pass 2 log |
 | S59 | Ilan's Team Comms page, FYI of Sat 2:47 PM ET (the pods moved to SJC; quota off there; code must take the hub from a setting) | https://app.notion.com/p/3f596ef5fec58163bbefd0e7ea5acea7 | 2026-10-10 | pass 2 log |
+| S61 | R30 task page (pod D's hour-0 facts at 21:35 UTC: 64.0 GiB visible to torch, 62 GB RAM with 58 GB available, idle 9 W; the vLLM build and checkpoint left in pod D's home; engine ready 523 s after a cold start; nothing listening on port 8000 after 22:21 UTC) | https://app.notion.com/p/3f596ef5fec58118b653e4f3ae2d3024 | 2026-10-10 | placement |
+| S62 | `lab/refine/metrics.jsonl` lines 14, 24, 29, 34, 35 and 36 (LoRA peak 8.7 GiB on the R9700; on pod C the teacher's 2.88 tok/s, 120.3 W decoding, 297 s warm start, 10.2 W idle loaded, 106.8 W in request windows), main at 7208c59 | https://github.com/raohemdutt/Knighthacks26/blob/7208c59/lab/refine/metrics.jsonl | 2026-10-10 | placement |
 
 ## Opened but not cited
 

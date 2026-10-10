@@ -44,7 +44,7 @@ patterns are named in advance and match nothing that runs until the verb is adde
 verb with sub-verbs registers once, under its first word). VERBS in lab/__main__.py
 is the authority on what exists, so nothing here changes when a verb lands.
   allowed to sittings: ready, digest, handoff, draft, ledger, metrics, slot, rulings,
-    experiment, referee, review, mirror
+    experiment, referee, review, mirror, placement
   the owner's, denied to every sitting: pool, resume, sit, stop
 A pod controller script (lab/controller.py) is denied by the same logic for its
 launch and stop commands; its command line is not final, so adjust _PODS when it lands.
@@ -108,6 +108,7 @@ _COMMON_VERBS: tuple[str, ...] = (
     "ledger add", "ledger tail", "ledger grep",
     "metrics report", "metrics compare",
     "slot request", "slot start", "slot extend", "slot done", "slot complain", "slot status",
+    "placement",
     "rulings list",
     "experiment list", "experiment run",
 )
