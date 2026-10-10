@@ -397,6 +397,25 @@ def test_the_same_slot_is_announced_once_even_when_it_is_first_seen_running_and_
     assert alerts_text(isolated_state).count("slot_over_cap:q-1") == 1
 
 
+def test_a_slot_with_no_end_row_is_announced_once_however_many_days_it_stays_open(isolated_state):
+    # the referee could not write its end row, or someone ended the row in Notion by hand
+    slot_rows(isolated_state, start=(13, 0), minutes=60)
+    calls = [NOW, moment(12, day=11), dt.datetime(2026, 10, 12, 0, 5, tzinfo=UTC), moment(9, day=14)]
+    reports = [alerts.raise_alerts(state_dir=isolated_state, now=when) for when in calls]
+    assert [[alert.key for alert in report.new] for report in reports] == [["slot_over_cap:q-1"], [], [], []]
+    assert [report.found[0].title for report in reports] == ["Slot q-1 is past its cap"] * 4
+    assert sorted(path.name for path in (isolated_state / "alerts").iterdir()) == ["2026-10-10.md"]
+
+
+def test_a_short_window_after_midnight_still_finds_the_slot_announced_the_day_before(isolated_state):
+    slot_rows(isolated_state, start=(13, 0), minutes=60)
+    first = alerts.raise_alerts(state_dir=isolated_state, now=NOW, hours=1)
+    second = alerts.raise_alerts(state_dir=isolated_state, now=moment(1, 30, day=11), hours=1)
+    assert [alert.key for alert in first.new] == ["slot_over_cap:q-1"]
+    assert (second.new, second.written) == ((), False)
+    assert not (isolated_state / "alerts" / "2026-10-11.md").exists()
+
+
 # --- metric_regressed -----------------------------------------------------------------------------
 
 def reading(state, ts, value, *, name="teacher.decode_tok_s", unit="tok/s", node="pod-a", conditions=None, **extra):

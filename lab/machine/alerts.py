@@ -10,7 +10,8 @@ thing itself happened. A line looks like
     - 15:00Z **Sitting s-son-2 ended with error** sonnet, task O33, exit code 1, after 15.2 min; ended 2026-10-10 08:20Z (ledger:22) `sitting_error:22`
 
 The backticked key at the end names the condition. Before it writes, a call looks for the keys already in the
-files of the days it covers, so running it every few minutes, or twice in a row, announces each condition once.
+files of the days it covers (for a slot, every day since the slot started), so running it every few minutes, or
+twice in a row, announces each condition once.
 A file is only ever appended to, under a lock (alerts.lock in the state dir), and a line is flushed and fsynced
 before the call answers. Ported from the phone project's alerts (social_outreach/tools/_core/alerts.py): the file
 per day and the announce-once rule are the same; the Windows toast is not, because nobody watches this machine's
@@ -34,7 +35,8 @@ writers of the slot and pod rows (the queue verbs, the pod controller) have one 
                     overrides the 15); a slot whose rows carry no slot.minutes cannot be judged and raises
                     nothing. The slot ends at its first slot done (or referee) row; until then it runs until
                     now. A minute of grace is allowed. One alert per slot, key slot_over_cap:<slot>, whether it
-                    was first seen running or already done.
+                    was first seen running or already done; a slot can stay past its cap for days (no end row
+                    reached the ledger), so its key is looked for in the files from the day it started on.
   metric_regressed  a reading of a metric that is worse than the previous reading of the same series by at
                     least REGRESSION_FRACTION. A series is the metrics report's (lab/machine/metrics_report.py):
                     metric, node, unit and setup, the setup being the row's conditions less the keys that
@@ -295,10 +297,14 @@ class Alert:
     title: str
     body: str
     when: dt.datetime        # when the condition arose (the ledger row's time)
+    #: For a condition that can stay true for days, when its subject began (a slot's start): an earlier call may
+    #: have announced it on any day since, so its key is looked for in the files from that day on. None: the
+    #: condition is bounded by its own time and the window of the call.
+    began: dt.datetime | None = None
 
 
-def _alert(rule: str, key: str, title: str, body: str, when: dt.datetime) -> Alert:
-    return Alert(rule, one_line(key).replace(" ", "_"), one_line(title), one_line(body), when)
+def _alert(rule: str, key: str, title: str, body: str, when: dt.datetime, began: dt.datetime | None = None) -> Alert:
+    return Alert(rule, one_line(key).replace(" ", "_"), one_line(title), one_line(body), when, began)
 
 
 # --- rule: a sitting ended with an error ---------------------------------------------------------
@@ -397,7 +403,7 @@ def slot_overruns(events: Sequence[tuple[dt.datetime, Row]], since: dt.datetime,
                             f"Slot {ident(run.slot)} {state} its cap",
                             f"{where}: {detail}, started {stamp(run.start)}"
                             f"{', still running' if run.end is None else ', ended ' + stamp(run.end)} "
-                            f"(ledger:{run.start_seq})", went_over))
+                            f"(ledger:{run.start_seq})", went_over, began=run.start))
     return found
 
 
@@ -632,9 +638,10 @@ def raise_alerts(*, state_dir: StateDir = None, now: dt.datetime | None = None, 
                  regression_fraction: float = REGRESSION_FRACTION,
                  credit_horizon_hours: float = CREDIT_HORIZON_HOURS) -> Report:
     """Scan the ledger and append the alerts not announced yet to the file of now's UTC day. now is an aware
-    time (default: the current time); events from now minus hours on are considered. Nothing is written for a
-    dry run. ValueError for a naive now or hours that are not positive; LockTimeout or OSError when the file
-    or its lock cannot be had."""
+    time (default: the current time); events from now minus hours on are considered. The keys announced before
+    are read from the files of the days since the window began, or since the earliest began of an alert found
+    (a slot past its cap for days), up to now's day. Nothing is written for a dry run. ValueError for a naive now
+    or hours that are not positive; LockTimeout or OSError when the file or its lock cannot be had."""
     if now is None:
         now = dt.datetime.now(UTC)
     if now.utcoffset() is None:
@@ -651,8 +658,10 @@ def raise_alerts(*, state_dir: StateDir = None, now: dt.datetime | None = None, 
     path = alerts_path(day, state)
     header = f"# Alerts, {day} (UTC)\n\n"
 
+    first_day = min([since.date(), *(alert.began.date() for alert in found if alert.began is not None)])
+
     def split() -> tuple[tuple[Alert, ...], tuple[Alert, ...]]:
-        keys = announced_keys(since.date(), now.date(), state)
+        keys = announced_keys(first_day, now.date(), state)
         return (tuple(a for a in found if a.key in keys), tuple(a for a in found if a.key not in keys))
 
     if dry_run:
