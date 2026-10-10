@@ -67,6 +67,11 @@ after that: outcome stopped. Ctrl+C kills it too: outcome interrupted. The CLI r
 cost only in its result line, so a session killed before that line has no cost, and
 the row says nothing rather than zero. A session that printed its result and was
 killed while it lingered (the CLI waits for background work) is judged by its result.
+On Windows the session runs in a job object of its own that kills everything in it when
+its last handle closes; the launcher holds that handle for the session's life, so a
+launcher that dies (closed console, killed process) takes the session tree with it
+instead of leaving it running with no cap, no STOP kill and no end row. On POSIX the
+session leads a process group of its own instead.
 Nothing here keeps the model's own words: the ledger and the answer carry numbers and
 codes, and the transcript lives only in the stream file.
 
@@ -523,6 +528,118 @@ def _new_group() -> dict[str, Any]:
     return {} if os.name == "nt" else {"start_new_session": True}
 
 
+# Windows job object constants (winnt.h), used only by SessionJob.
+JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
+JOB_OBJECT_EXTENDED_LIMIT_INFORMATION_CLASS = 9   # JobObjectExtendedLimitInformation
+PROCESS_SET_QUOTA = 0x0100
+PROCESS_TERMINATE = 0x0001
+
+
+class SessionJob:
+    """Windows: a job object with JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE that holds one session.
+    The launcher keeps the only handle to it, so when the launcher dies, however it dies,
+    the system closes the handle and ends every process in the job; the session cannot
+    outlive the cap and STOP watch that run_session keeps. close() at the session's end
+    also ends anything the session left behind. Other platforms: a no-op, the session's
+    own process group (_new_group) stands in. A job that cannot be made, or a process the
+    system refuses to put in one, is logged and the session runs without it."""
+
+    def __init__(self) -> None:
+        self._handle: int | None = None
+
+    @property
+    def active(self) -> bool:
+        return self._handle is not None
+
+    def adopt(self, proc: subprocess.Popen) -> None:
+        """Put proc in a new kill-on-close job, right after it started."""
+        if os.name != "nt":
+            return
+        try:
+            self._handle = _assign_kill_on_close_job(proc.pid)
+        except OSError as exc:
+            log.error("lab sit: the session (pid %s) runs without a kill-on-close job object, so it would "
+                      "outlive a launcher that dies: %s", proc.pid, exc)
+
+    def close(self) -> None:
+        """Close the job handle: the system ends whatever is still in the job."""
+        handle, self._handle = self._handle, None
+        if handle is None:
+            return
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+        kernel32.CloseHandle.restype = wintypes.BOOL
+        if not kernel32.CloseHandle(handle):
+            log.error("lab sit: closing the session's job object failed: %s",
+                      ctypes.WinError(ctypes.get_last_error()))
+
+
+def _assign_kill_on_close_job(pid: int) -> int:
+    """Windows only: make a job object that kills its processes when its last handle
+    closes, put pid in it, and return the job handle. Raises OSError, with the system's
+    reason, on any refusal; no handle leaks on the way out."""
+    import ctypes
+    from ctypes import wintypes
+
+    class IoCounters(ctypes.Structure):
+        _fields_ = [(name, ctypes.c_ulonglong) for name in (
+            "ReadOperationCount", "WriteOperationCount", "OtherOperationCount",
+            "ReadTransferCount", "WriteTransferCount", "OtherTransferCount")]
+
+    class BasicLimitInformation(ctypes.Structure):
+        _fields_ = [("PerProcessUserTimeLimit", ctypes.c_longlong), ("PerJobUserTimeLimit", ctypes.c_longlong),
+                    ("LimitFlags", wintypes.DWORD), ("MinimumWorkingSetSize", ctypes.c_size_t),
+                    ("MaximumWorkingSetSize", ctypes.c_size_t), ("ActiveProcessLimit", wintypes.DWORD),
+                    ("Affinity", ctypes.c_size_t), ("PriorityClass", wintypes.DWORD),
+                    ("SchedulingClass", wintypes.DWORD)]
+
+    class ExtendedLimitInformation(ctypes.Structure):
+        _fields_ = [("BasicLimitInformation", BasicLimitInformation), ("IoInfo", IoCounters),
+                    ("ProcessMemoryLimit", ctypes.c_size_t), ("JobMemoryLimit", ctypes.c_size_t),
+                    ("PeakProcessMemoryUsed", ctypes.c_size_t), ("PeakJobMemoryUsed", ctypes.c_size_t)]
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateJobObjectW.argtypes = (wintypes.LPVOID, wintypes.LPCWSTR)
+    kernel32.CreateJobObjectW.restype = wintypes.HANDLE
+    kernel32.SetInformationJobObject.argtypes = (wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD)
+    kernel32.SetInformationJobObject.restype = wintypes.BOOL
+    kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.AssignProcessToJobObject.argtypes = (wintypes.HANDLE, wintypes.HANDLE)
+    kernel32.AssignProcessToJobObject.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+    kernel32.CloseHandle.restype = wintypes.BOOL
+
+    def refused(step: str) -> OSError:
+        error = ctypes.WinError(ctypes.get_last_error())
+        return OSError(error.errno, f"{step}: {error.strerror}")
+
+    job = kernel32.CreateJobObjectW(None, None)  # no security attributes: the handle is not inherited
+    if not job:
+        raise refused("CreateJobObjectW")
+    try:
+        info = ExtendedLimitInformation()
+        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        if not kernel32.SetInformationJobObject(job, JOB_OBJECT_EXTENDED_LIMIT_INFORMATION_CLASS,
+                                                ctypes.byref(info), ctypes.sizeof(info)):
+            raise refused("SetInformationJobObject")
+        process = kernel32.OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, False, pid)
+        if not process:
+            raise refused("OpenProcess")
+        try:
+            if not kernel32.AssignProcessToJobObject(job, process):
+                raise refused("AssignProcessToJobObject")
+        finally:
+            kernel32.CloseHandle(process)
+    except OSError:
+        kernel32.CloseHandle(job)
+        raise
+    return int(job)
+
+
 def kill_tree(proc: subprocess.Popen) -> None:
     """End the session and every process it started: taskkill /T /F on Windows; on POSIX
     SIGTERM to its process group (the CLI's own clean exit), then SIGKILL."""
@@ -550,7 +667,8 @@ def run_session(cmd: Sequence[str], prompt: str, *, cwd: Path, env: Mapping[str,
                 cap_seconds: float) -> Session:
     """Run one session to its end: the prompt on stdin, stdout copied to stream_path as it
     comes, the process tree killed at cap_seconds, or STOP_GRACE_SECONDS after the STOP
-    file appeared, or on Ctrl+C."""
+    file appeared, or on Ctrl+C. On Windows the session runs in a SessionJob for its whole
+    life, so it also ends when this launcher dies."""
     session = Session()
     started = time.monotonic()
     with contextlib.suppress(OSError):  # a folder that cannot be made shows up as the stream's error
@@ -562,6 +680,8 @@ def run_session(cmd: Sequence[str], prompt: str, *, cwd: Path, env: Mapping[str,
         session.error = f"could not run {cmd[0]}: {exc}"
         session.duration_s = round(time.monotonic() - started, 1)
         return session
+    job = SessionJob()
+    job.adopt(proc)
     reader = _StdoutReader(proc.stdout, stream_path)
     errors = _StderrReader(proc.stderr)
     reader.start()
@@ -605,6 +725,7 @@ def run_session(cmd: Sequence[str], prompt: str, *, cwd: Path, env: Mapping[str,
         except subprocess.TimeoutExpired:
             log.error("lab sit: the session (pid %s) has not exited %.0f seconds after it was killed",
                       proc.pid, KILL_WAIT_SECONDS)
+        job.close()
         reader.join(READER_JOIN_SECONDS)
         errors.join(READER_JOIN_SECONDS)
     session.returncode = proc.returncode
