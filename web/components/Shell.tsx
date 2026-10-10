@@ -79,6 +79,16 @@ const MORE: Tab[] = [
     ),
   },
   {
+    href: "/zones",
+    label: "Zones",
+    icon: (
+      <>
+        <rect x="3.5" y="5" width="17" height="14" rx="2" />
+        <rect x="8" y="9" width="8" height="6" rx="1" strokeDasharray="2 2" />
+      </>
+    ),
+  },
+  {
     href: "/circle",
     label: "Circle",
     icon: (

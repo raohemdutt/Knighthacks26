@@ -7,7 +7,7 @@ import ui from "@/components/ui.module.css";
 import { api, snapshotUrl, type CameraStatus, type LiveTracks } from "@/lib/api";
 import { cameraName, humanize } from "@/lib/format";
 import { useFetch } from "@/lib/useFetch";
-import { ZONES } from "@/lib/zones.generated";
+import { useZones } from "@/lib/useZones";
 
 /**
  * Live: every camera the box reads, with what the detector sees drawn on top.
@@ -15,7 +15,7 @@ import { ZONES } from "@/lib/zones.generated";
  *  - The picture is GET /capture/{camera}/snapshot.jpg, refreshed about twice a second (faces are blurred by the
  *    box). It is a still, not a video stream: the MJPEG endpoint (C5) can replace the <img> later.
  *  - Boxes and track ids are GET /capture/{camera}/tracks (normalized 0..1). Zone outlines come from
- *    config/zones.yaml, embedded at build time (lib/zones.generated.ts).
+ *    config/zones.yaml, read from GET /api/zones (the build-time copy, lib/zones.generated.ts, until it answers).
  *  - Tap a camera to make it full width.
  */
 
@@ -66,7 +66,7 @@ function Tile({ camera, status, open, onToggle }: { camera: string; status: Came
   const flowing = status.status !== "down";
   const picture = useSnapshot(camera, stamp, flowing);
   const tracks = useTracks(camera, stamp, flowing);
-  const zones = ZONES[camera] ?? {};
+  const zones = useZones()[camera] ?? {};
   const seen = tracks?.tracks ?? [];
   const summary = seen.length ? seen.map((t) => `${t.label} #${t.track_id}`).join(", ") : "Nothing in view";
 

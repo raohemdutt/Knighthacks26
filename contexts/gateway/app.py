@@ -36,6 +36,8 @@
 - POST /api/league/stake    {kind, text?} -> approval card to set the stake; POST /api/league/challenges {kind, days, invitees}
 - GET  /api/voice/status    the box's own voice: off|idle|listening|thinking|speaking, mic and speaker health (X16)
 - POST /api/voice/talk      push to talk (also /stop, /enabled): the microphone and speaker are on the box, not the phone
+- GET  /api/zones           the zones per camera, read fresh from config/zones.yaml; PUT /api/zones/{camera} sets them live,
+                               POST /api/zones/demo applies the forgiving demo zones (the Zones page, /zones/)
 - GET  /capture/status      camera status and detector counts, where cameras run (C6)
 - GET  /health
 - GET  /runtime/models      installed model versions, the current one and what llama-server really serves (R7)
@@ -71,6 +73,7 @@ from contexts.learning.application.export import teach
 from contexts.vault.api import vault_router
 from contexts.memory.api import build_router as memory_router
 from contexts.perception.api import identity_router
+from contexts.perception.zones_api import zones_router
 from contexts.play.dayrun_api import dayrun_router
 from contexts.profiles.api import profile_router
 from contexts.play.league.api import league_router
@@ -180,6 +183,7 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
                                      board=atlas.board, config_dir=atlas.settings.config_dir, guard=authorized))
     # GET /api/league, /api/league/me (200 in every state); POST /api/league/stake, /api/league/challenges -> approval cards
     app.include_router(league_router(atlas.bus, league=atlas.league, guard=authorized))
+    app.include_router(zones_router(atlas.settings.config_dir, lambda: atlas.zone_engine, guard=authorized), prefix="/api")  # set the zones from a browser
     app.include_router(voice_router(guard=authorized), prefix="/api")  # GET /api/voice/status, POST /api/voice/talk|stop|enabled (X16)
     app.include_router(runtime_router(ModelStore(atlas.settings.data_dir / "models"), llm_url=atlas.settings.llm_url))  # GET /runtime/models (R7)
 
