@@ -1,0 +1,197 @@
+{
+  "name": "training-gfx1151-student-lora",
+  "description": "Ax search space for the student LoRA training step (Qwen3.5-4B, bf16, PEFT LoRA r 16, TRL SFTTrainer) on pod D (Strix Halo, Radeon 8060S, gfx1151, ROCm 7.13, torch 2.9.1+rocm7.13.0, triton 3.5.1). Each parameter maps to one setting in lab/refine/research/kernels/settings_training_gfx1151.md; field names follow ax/api/configs.py (RangeParameterConfig, ChoiceParameterConfig, DerivedParameterConfig).",
+  "note": "lab/refine/research/kernels/settings_training_gfx1151.md",
+  "ax_configs_source": "https://github.com/facebook/Ax/blob/f4e58e05f9e888cc70da28ef02df9e755b38f985/ax/api/configs.py",
+  "objective": {"metric": "samples_per_s", "goal": "maximize"},
+  "tracked_metrics": ["samples_per_s", "peak_mem_gb", "peak_reserved_gb", "first_step_s", "loss_at_step_50"],
+  "outcome_constraints": [
+    {"metric": "peak_mem_gb", "op": "<=", "bound": null, "bound_rule": "0.8 x torch.cuda.mem_get_info() total on pod D, recorded by TS1; R39 fills the number before its first trial"},
+    {"metric": "loss_at_step_50", "op": "<=", "bound": null, "bound_rule": "baseline mean plus 3 x its run-to-run standard deviation from TS1, so a setting that breaks the math (for example packing on the torch Gated DeltaNet path) is rejected"}
+  ],
+  "fixed_effective_batch_size": 16,
+  "fixed_effective_batch_size_note": "Held fixed so the search changes speed, not the optimization recipe. 16 is Qwen's own fine-tuning example (batch 4 by accumulation 4, lab/refine/research/learning/lora_recipe.md section 1); L3 owns the real value and this field follows it.",
+  "parameters": [
+    {
+      "kind": "choice",
+      "name": "gdn_kernel",
+      "parameter_type": "str",
+      "values": ["torch", "fla"],
+      "is_ordered": false,
+      "setting": "Gated DeltaNet chunk_gated_delta_rule: torch float32 reference or flash-linear-attention installed with --no-deps on the image's torch and triton",
+      "note_section": "6",
+      "experiment": "TS7",
+      "shortlist_rank": 1
+    },
+    {
+      "kind": "choice",
+      "name": "gradient_checkpointing",
+      "parameter_type": "bool",
+      "values": [true, false],
+      "is_ordered": false,
+      "setting": "SFTConfig.gradient_checkpointing (TRL default True, use_reentrant False)",
+      "note_section": "9",
+      "experiment": "TS12",
+      "shortlist_rank": 2
+    },
+    {
+      "kind": "choice",
+      "name": "per_device_train_batch_size",
+      "parameter_type": "int",
+      "values": [1, 2, 4, 8, 16],
+      "is_ordered": true,
+      "setting": "SFTConfig.per_device_train_batch_size",
+      "note_section": "9",
+      "experiment": "TS13",
+      "shortlist_rank": 3
+    },
+    {
+      "kind": "derived",
+      "name": "gradient_accumulation_steps",
+      "parameter_type": "int",
+      "expression_str": "16 / per_device_train_batch_size",
+      "setting": "SFTConfig.gradient_accumulation_steps, so per-device batch x accumulation stays at fixed_effective_batch_size",
+      "note_section": "9",
+      "experiment": "TS13",
+      "shortlist_rank": null
+    },
+    {
+      "kind": "choice",
+      "name": "packing",
+      "parameter_type": "bool",
+      "values": [false, true],
+      "is_ordered": false,
+      "setting": "SFTConfig.packing with packing_strategy bfd (padding-free implied)",
+      "note_section": "9",
+      "experiment": "TS9",
+      "shortlist_rank": 4
+    },
+    {
+      "kind": "choice",
+      "name": "group_by_length",
+      "parameter_type": "bool",
+      "values": [false, true],
+      "is_ordered": false,
+      "setting": "train_sampling_strategy group_by_length on transformers main, the boolean group_by_length on older releases",
+      "note_section": "9",
+      "experiment": "TS14",
+      "shortlist_rank": 5
+    },
+    {
+      "kind": "choice",
+      "name": "aotriton_experimental",
+      "parameter_type": "bool",
+      "values": [false, true],
+      "is_ordered": false,
+      "setting": "TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1, letting SDPA use the AOTriton flash or efficient kernel on gfx1151 instead of math",
+      "note_section": "5",
+      "experiment": "TS6",
+      "shortlist_rank": 6
+    },
+    {
+      "kind": "choice",
+      "name": "torch_compile",
+      "parameter_type": "bool",
+      "values": [false, true],
+      "is_ordered": false,
+      "setting": "SFTConfig.torch_compile with the inductor backend and default mode",
+      "note_section": "12",
+      "experiment": "TS16",
+      "shortlist_rank": 7
+    },
+    {
+      "kind": "choice",
+      "name": "tunableop",
+      "parameter_type": "bool",
+      "values": [false, true],
+      "is_ordered": false,
+      "setting": "PYTORCH_TUNABLEOP_ENABLED=1 with PYTORCH_TUNABLEOP_TUNING=0, reading a results file tuned once per sequence length",
+      "note_section": "4",
+      "experiment": "TS5",
+      "shortlist_rank": 8
+    },
+    {
+      "kind": "choice",
+      "name": "causal_conv1d_kernel",
+      "parameter_type": "str",
+      "values": ["torch", "causal_conv1d"],
+      "is_ordered": false,
+      "setting": "Gated DeltaNet short convolution: nn.Conv1d through MIOpen, or the causal-conv1d package built for gfx1151 with --no-build-isolation",
+      "note_section": "6",
+      "experiment": "TS10",
+      "shortlist_rank": 9
+    },
+    {
+      "kind": "choice",
+      "name": "blas_backend",
+      "parameter_type": "str",
+      "values": ["default", "hipblaslt"],
+      "is_ordered": false,
+      "setting": "TORCH_BLAS_PREFER_HIPBLASLT=1; upstream 2.9.1 overrides it back to hipBLAS on gfx1151, so TS4 decides whether this stays in the space",
+      "note_section": "4",
+      "experiment": "TS4",
+      "shortlist_rank": 10
+    }
+  ],
+  "invalid_combinations": [
+    {"when": {"packing": true, "gdn_kernel": "torch"}, "why": "the torch Gated DeltaNet path drops cu_seqlens, so packed examples share recurrent state (note section 6)"},
+    {"when": {"packing": true}, "unless": "a flash-attention variant TRL accepts loads on gfx1151", "why": "TRL warns of cross-contamination with SDPA (note section 9); until TS9's precondition holds, R39 fixes packing to false"},
+    {"when": {"packing": true, "group_by_length": true}, "why": "packing already removes padding; length grouping adds nothing and changes example order"},
+    {"when": {"torch_compile": true, "gdn_kernel": "torch"}, "why": "compile comes after fla so it does not compile a reference path about to be replaced (note section 12); allowed as a single control arm only"}
+  ],
+  "baseline": {
+    "gdn_kernel": "torch",
+    "gradient_checkpointing": true,
+    "per_device_train_batch_size": 4,
+    "gradient_accumulation_steps": 4,
+    "packing": false,
+    "group_by_length": false,
+    "aotriton_experimental": false,
+    "torch_compile": false,
+    "tunableop": false,
+    "causal_conv1d_kernel": "torch",
+    "blas_backend": "default"
+  },
+  "baseline_note": "The smoke script runs accumulation 1 (effective batch 4); the pinned baseline uses accumulation 4 so it shares the search's fixed effective batch. TS1 runs both and records the difference.",
+  "pinned": {
+    "model": "Qwen/Qwen3.5-4B, AutoModelForCausalLM, dtype bfloat16, use_cache False",
+    "lora": {"r": 16, "lora_alpha": 32, "lora_dropout": 0.0, "target_modules": "all-linear"},
+    "learning_rate": 2e-4,
+    "bf16": true,
+    "max_length": 256,
+    "attn_implementation": "sdpa",
+    "optim": "adamw_torch_fused",
+    "dataloader_num_workers": 2,
+    "dataloader_pin_memory": true,
+    "dataloader_persistent_workers": false,
+    "seed": 42,
+    "steps_per_trial": 50,
+    "warmup_steps_excluded": 10,
+    "env": {
+      "MIOPEN_FIND_MODE": "NORMAL",
+      "PYTORCH_ALLOC_CONF": null,
+      "PYTORCH_NO_HIP_MEMORY_CACHING": null,
+      "HIPBLAS_WORKSPACE_CONFIG": null,
+      "HIPBLASLT_ALLOW_TF32": null,
+      "TORCH_ROCM_FA_PREFER_CK": null,
+      "GPU_MAX_HW_QUEUES": null,
+      "AMD_SERIALIZE_KERNEL": null,
+      "HIP_FORCE_DEV_KERNARG": null,
+      "HSA_XNACK": null,
+      "HSA_ENABLE_SDMA": null,
+      "GPU_MAX_HEAP_SIZE": null,
+      "GPU_SINGLE_ALLOC_PERCENT": null
+    },
+    "env_note": "null means the variable is unset in every trial; R39 clears it explicitly so a pod profile cannot leak a value in."
+  },
+  "excluded": [
+    {"setting": "PYTORCH_ALLOC_CONF expandable_segments", "why": "compiled out on ROCm in torch 2.9.1, a no-op (note section 3)"},
+    {"setting": "TF32 (allow_tf32, set_float32_matmul_precision, HIPBLASLT_ALLOW_TF32)", "why": "the step is bf16 and TF32 is not supported on ROCm by default (note section 8)"},
+    {"setting": "optim adamw_torch against adamw_torch_fused", "why": "LoRA's optimizer step is a small share; fused is already the default from torch 2.8 (note section 11)"},
+    {"setting": "dataloader_num_workers, pin_memory, persistent_workers", "why": "batches are a few kilobytes of token ids; TS15 checks it is a no-op (note section 10)"},
+    {"setting": "GPU_MAX_HW_QUEUES and other HIP or HSA runtime variables", "why": "TS2 checks they are no-ops for a single-stream training step (note section 2)"},
+    {"setting": "MIOPEN_FIND_MODE", "why": "only the torch conv path reaches MIOpen and its share is small; pinned to NORMAL, TS11 checks it (note section 7)"},
+    {"setting": "use_kernels=True with the Atlas-Inference/gdn hub layer", "why": "third-party code with no documented backward pass; TS8 probes it first (note section 6)"},
+    {"setting": "max_length", "why": "a data choice owned by L3, not a speed setting"}
+  ]
+}
