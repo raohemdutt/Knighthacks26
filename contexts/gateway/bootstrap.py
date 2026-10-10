@@ -36,6 +36,7 @@ from contexts.circle.infrastructure.neon import CircleBoard, NeonCircleStore, Ne
 from contexts.circle.infrastructure.outbox import CircleOutbox
 from contexts.connectors.application.hub import ConnectorHub
 from contexts.connectors.domain.spec import load_specs
+from contexts.day.application.loop import DayLoop, day_phone
 from contexts.connectors.infrastructure.mcp_client import McpConnector
 from contexts.learning.application.board import LearningBoard
 from contexts.learning.application.export import DatasetExporter
@@ -117,6 +118,7 @@ class Atlas:
     board: CircleBoard | None = None
     places: PlaceSet | None = None
     dayrun: DayRun | None = None
+    day: DayLoop | None = None  # the Day loop (D1): plan, live status, review
     vault: Vault | None = None
     policy: Policy | None = None
     wiper: Wiper | None = None
@@ -155,6 +157,7 @@ class Atlas:
                 ("shares", (lambda: asyncio.to_thread(self.sharing.sync, now)) if self.sharing else None),
                 ("presence", (lambda: asyncio.to_thread(self.presence_sync.sync, now)) if self.presence_sync else None),
                 ("agent loop", (lambda: self.loop.tick(now)) if self.loop.due(now) else None),
+                ("day", (lambda: self.day.tick(now)) if self.day else None),  # the morning plan, status, evening review
                 ("connectors", (lambda: self.hub.sync_due(now)) if self.settings.connectors else None),
                 ("retention", self._retention(now)),
                 ("camera health", (lambda: self.capture.health(now)) if self.capture else None),
@@ -409,6 +412,15 @@ def build(settings: Settings | None = None) -> Atlas:
     dayrun = DayRun(places, memory=memory, habits=habits, presence=presence, hub=hub,
                     config_dir=s.config_dir, data_dir=s.data_dir) if places else None
 
+    # The Day loop (D1): the morning plan, the live status and the evening review, unasked. Plans, statuses and
+    # reviews rebuild from the log; deciding and proposing cards is live only.
+    day = None
+    if dayrun:
+        day = DayLoop(dayrun, places, config_dir=s.config_dir, habits=habits, memory=memory, waste=waste, presence=presence, hub=hub)
+        day.subscribe(bus)
+        if ntfy:
+            bus.subscribe("day.", day_phone(ntfy, s.ntfy_topic))  # the plan, a re-plan and the review on the phone
+
     # Learning board (X10): the Teach screen's view of tasks, runs and deployed models; rebuilt from the log.
     learning = LearningBoard()
     learning.subscribe(bus)
@@ -428,5 +440,5 @@ def build(settings: Settings | None = None) -> Atlas:
                  waste=waste, circle=circle, presence=presence, zone_engine=zone_engine, sharing=sharing,
                  memory=memory, projection=projection, habits=habits, nudger=nudger,
                  presence_sync=presence_sync, board=board, vault=vault, policy=policy, wiper=wiper,
-                 places=places, dayrun=dayrun, capture=capture, identity=identity, learning=learning,
+                 places=places, dayrun=dayrun, day=day, capture=capture, identity=identity, learning=learning,
                  telemetry=telemetry)
