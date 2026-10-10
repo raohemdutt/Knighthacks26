@@ -226,11 +226,25 @@ class Atlas:
         await self.hub.close()
 
 
+def circle_from_env(cfg: dict, env) -> dict:
+    """Join a Circle from `.env` without editing the committed config (G6: the Jetson and a laptop in one circle):
+    ATLAS_CIRCLE_MEMBER, ATLAS_CIRCLE_ID, and ATLAS_CIRCLE_SHARE=1 to opt in to presence and summaries."""
+    out = dict(cfg)
+    if env.get("ATLAS_CIRCLE_MEMBER"):
+        out["member_id"] = env["ATLAS_CIRCLE_MEMBER"]
+    if env.get("ATLAS_CIRCLE_ID"):
+        out["circle_id"] = env["ATLAS_CIRCLE_ID"]
+    if env.get("ATLAS_CIRCLE_SHARE") == "1":
+        out["share_presence"] = out["share_summaries"] = True
+    return out
+
+
 def build(settings: Settings | None = None) -> Atlas:
     s = settings or Settings()
     agent_cfg = yaml.safe_load((s.config_dir / "agent.yaml").read_text()) or {}
     profile = load_profile(s.config_dir, s.profile)  # the student by default: then nothing below changes
     agent_cfg = profile.layer("agent.yaml", agent_cfg)
+    agent_cfg["circle"] = circle_from_env(agent_cfg.get("circle") or {}, os.environ)
     bus = EventBus(s.data_dir / "events")
 
     # Runtime (R1): config/models.yaml picks the models; ATLAS_LLM_URL points at a llama-server.
