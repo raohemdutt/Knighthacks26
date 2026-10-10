@@ -107,6 +107,17 @@ def test_review(client, plans):
     assert sum(1 for b in r["blocks"] if b["followed"] is None) == 2  # the two library sessions
 
 
+def test_a_damaged_plan_file_is_a_422_not_a_500(client, tmp_path):
+    plans_dir = tmp_path / "dayrun" / "plans"
+    plans_dir.mkdir(parents=True)
+    for text in ("", "not json", "[]", "{}", '{"blocks": 5, "totals": {}}', '{"blocks": [], "totals": null}'):
+        (plans_dir / "2026-10-11.json").write_text(text)
+        r = client.get("/api/dayrun/review", params={"day": "2026-10-11", "scenario": "demo"})
+        assert r.status_code == 422 and "damaged" in r.json()["detail"], text
+        r = client.post("/api/dayrun/forecast", json={"estimates": [{"block": "m0", "minutes": 5}], "day": "2026-10-11", "scenario": "demo"})
+        assert r.status_code == 422, text
+
+
 def test_replay(client, plans):
     r = client.post("/api/dayrun/replay", json={"day": "2026-10-11", "scenario": "demo", "moves": plans["good"],
                                                 "actual": {"focus_minutes": 45, "meals": 1, "sleep_hours": 5}})

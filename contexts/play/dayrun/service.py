@@ -209,7 +209,13 @@ class DayRun:
         path = self.plans_dir / f"{day}.json"
         if not path.exists():
             raise LookupError(f"no plan was committed for {day}")
-        return json.loads(path.read_text())
+        try:
+            plan = json.loads(path.read_text())
+        except ValueError:
+            plan = None
+        if not isinstance(plan, dict) or not isinstance(plan.get("blocks"), list) or not isinstance(plan.get("totals"), dict):
+            raise ValueError(f"the plan committed for {day} is damaged ({path.name}); commit it again")
+        return plan
 
     # --- afterwards ---
 
