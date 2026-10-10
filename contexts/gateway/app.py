@@ -100,8 +100,8 @@ from contracts.experience import ApprovalDecided, QuestionAsked
 from contracts.learning import TaskSpec
 from contexts.capture.api import capture_router
 from contexts.learning.api import learning_router
-from contexts.telemetry.runtime_stats import build_runtime_stats
 from contexts.learning.lab_api import lab_router
+from contexts.telemetry.runtime_stats import build_runtime_stats
 from runtime.api import runtime_router
 from runtime.stats_api import stats_router
 from runtime.modelstore import ModelStore
