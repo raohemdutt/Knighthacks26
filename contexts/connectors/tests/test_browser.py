@@ -7,6 +7,7 @@ from contexts.connectors.servers.browser import (
     DDG_JS,
     REDDIT_JS,
     Browser,
+    challenge_kind,
     clean_results,
     focus,
     host_allowed,
@@ -71,3 +72,11 @@ def test_page_scripts_parse_saved_markup():
         pytest.skip(f"browser unavailable: {exc}")
     assert clean_results(ddg, 5)[0]["url"] == "https://cs.ucf.edu/exam/"
     assert [r["title"] for r in clean_results(red, 5)] == ["Need advice for COP3502C"]
+
+
+def test_challenge_detection():
+    assert challenge_kind("https://x.test/a", "Welcome to the course page") is None
+    assert challenge_kind("https://www.reddit.com/r/ucf/search/?js_challenge=1", "") == "js"
+    assert challenge_kind("https://x.test", "Just a moment... Checking your browser") == "js"
+    assert challenge_kind("https://html.duckduckgo.com", "Unfortunately, bots use DuckDuckGo too.") == "captcha"
+    assert challenge_kind("https://old.reddit.com", "You've been blocked by network security.") == "blocked"

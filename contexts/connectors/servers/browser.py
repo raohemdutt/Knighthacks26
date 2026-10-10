@@ -17,7 +17,10 @@ tool and must go through an approval card.
 
 options:
   headless: false
-  channel: null          # "chrome" uses installed Chrome; null uses patchright's Chromium
+  channel: auto          # installed Chrome if present, else patchright's Chromium (Jetson)
+  locale: en-US
+  timezone: America/New_York
+  min_gap_s: 2           # at least this long between pages on one host
   profile_dir: data/browser/profile
   allowed_hosts: ["*"]   # browse() refuses other hosts; the Vault allowlist (H4) still applies
   max_chars: 6000
@@ -25,7 +28,9 @@ options:
 
 import asyncio
 import base64
+import random
 import re
+import time
 from urllib.parse import parse_qs, quote_plus, urlparse
 
 from mcp.server.fastmcp import FastMCP
@@ -105,12 +110,54 @@ def host_allowed(url: str, allowed: list[str]) -> bool:
     return "*" in allowed or any(host == h or host.endswith("." + h) for h in allowed)
 
 
+CHALLENGE_MARKERS = {
+    # text that only shows on a bot check: kind -> phrases (lowercase)
+    "js": ["just a moment", "checking your browser", "verifying you are human", "please wait while we verify"],
+    "captcha": [
+        "bots use duckduckgo too", "select all squares", "confirm this search was made by a human",
+        "unusual traffic from your computer", "verify you are human", "i'm not a robot", "press & hold",
+    ],
+    "blocked": ["blocked by network security", "access denied", "you have been blocked", "request blocked"],
+}
+
+
+def challenge_kind(url: str, text: str) -> str | None:
+    """None for a normal page, else "js" (solves itself), "captcha" (needs a person) or "blocked"."""
+    if "js_challenge=1" in url or "/cdn-cgi/challenge" in url:
+        return "js"
+    head = text[:1500].lower()
+    for kind in ("js", "captcha", "blocked"):
+        if any(m in head for m in CHALLENGE_MARKERS[kind]):
+            return kind
+    return None
+
+
+class ChallengeError(RuntimeError):
+    def __init__(self, kind: str, url: str) -> None:
+        super().__init__(f"{kind} bot check at {url}; open it on your phone to get past it")
+        self.kind, self.url = kind, url
+
+
 class Browser:
+    """One persistent, visible browser that looks and paces like the person it works for.
+
+    Best effort against bot checks, for sites the user would visit themselves:
+    - patchright (no automation flags), the user's real Chrome when installed,
+      a persistent profile so cookies and passed challenges carry over, the
+      household's locale and time zone, and human-ish pauses between pages.
+    - JS challenges (Cloudflare, Reddit) clear on their own in a real browser:
+      wait for them, then retry once with the cookie they set.
+    - A real CAPTCHA is not solved automatically. Search falls back to another
+      engine; otherwise the tool reports the URL so the person can clear it
+      once on their phone, and the shared profile keeps it cleared.
+    """
+
     def __init__(self, options: dict) -> None:
         self.options = options
         self._pw = None
         self._ctx = None
         self._lock = asyncio.Lock()
+        self._last_visit: dict[str, float] = {}
 
     async def context(self):
         async with self._lock:
@@ -118,43 +165,87 @@ class Browser:
                 from patchright.async_api import async_playwright
 
                 self._pw = await async_playwright().start()
-                self._ctx = await self._pw.chromium.launch_persistent_context(
-                    user_data_dir=self.options.get("profile_dir", "data/browser/profile"),
-                    channel=self.options.get("channel"),
-                    headless=self.options.get("headless", False),
-                    no_viewport=True,
-                )
+                channel = self.options.get("channel", "auto")
+                for ch in (["chrome", None] if channel == "auto" else [channel]):
+                    try:
+                        self._ctx = await self._pw.chromium.launch_persistent_context(
+                            user_data_dir=self.options.get("profile_dir", "data/browser/profile"),
+                            channel=ch,
+                            headless=self.options.get("headless", False),
+                            no_viewport=True,
+                            locale=self.options.get("locale", "en-US"),
+                            timezone_id=self.options.get("timezone", "America/New_York"),
+                        )
+                        break
+                    except Exception:
+                        if ch is None or channel != "auto":
+                            raise  # bundled Chromium was the last try (e.g. Jetson has no Chrome)
             return self._ctx
 
+    async def _pace(self, url: str) -> None:
+        """A short random pause, and at least `min_gap_s` between hits on the same host."""
+        host = urlparse(url).hostname or ""
+        gap = self.options.get("min_gap_s", 2.0) - (time.monotonic() - self._last_visit.get(host, 0))
+        await asyncio.sleep(max(gap, 0) + random.uniform(0.3, 1.0))
+        self._last_visit[host] = time.monotonic()
+
+    async def _check(self, page) -> str | None:
+        return challenge_kind(page.url, await page.evaluate("() => document.body ? document.body.innerText : ''"))
+
     async def run(self, url: str, script: str, settle_ms: int = 0, wait_for: str | None = None):
+        await self._pace(url)
         page = await (await self.context()).new_page()
         try:
             await page.goto(url, wait_until="load", timeout=30_000)
-            if wait_for:  # e.g. Reddit's JS challenge redirects once before results render
+            kind = await self._check(page)
+            for _ in range(15 if kind == "js" else 0):  # let a JS challenge finish and redirect
+                await page.wait_for_timeout(1000)
+                kind = await self._check(page)
+                if kind != "js":
+                    break
+            if kind:
+                raise ChallengeError(kind, page.url)
+            if wait_for:
                 try:
                     await page.wait_for_selector(wait_for, timeout=10_000)
                 except Exception:
-                    pass  # no results or blocked: the script returns what is there
+                    pass  # no results: the script returns what is there
             if settle_ms:
                 await page.wait_for_timeout(settle_ms)
+            await page.mouse.wheel(0, random.randint(200, 600))  # people scroll; some checks look for it
             return await page.title(), page.url, await page.evaluate(script)
         finally:
             await page.close()
 
+    async def _retrying(self, url: str, script: str, **kw):
+        """One retry after a challenge: the first visit often only sets the cookie."""
+        try:
+            return await self.run(url, script, **kw)
+        except ChallengeError as first:
+            if first.kind == "captcha":
+                raise
+            return await self.run(url, script, **kw)
+
     async def search(self, query: str, limit: int = 5) -> list[dict]:
         q = quote_plus(query)
-        _, _, raw = await self.run(DDG.format(q=q), DDG_JS)
-        results = clean_results(raw, limit)
-        if not results:  # captcha or layout change: try Bing
-            _, _, raw = await self.run(BING.format(q=q), BING_JS, settle_ms=1000)
-            results = clean_results(raw, limit)
-        return results
+        blocked: ChallengeError | None = None
+        for template, script, settle in ((DDG, DDG_JS, 0), (BING, BING_JS, 1000)):
+            try:
+                _, _, raw = await self._retrying(template.format(q=q), script, settle_ms=settle)
+            except ChallengeError as exc:
+                blocked = exc
+                continue
+            if results := clean_results(raw, limit):
+                return results
+        if blocked:
+            raise blocked
+        return []
 
     async def reddit(self, subreddit: str, query: str, limit: int = 5) -> list[dict]:
         url = REDDIT.format(sub=quote_plus(subreddit), q=quote_plus(query))
         posts: list[dict] = []
-        for _ in range(2):  # a fresh profile gets a JS challenge first; the retry carries its cookie
-            _, _, raw = await self.run(url, REDDIT_JS, wait_for='a[data-testid="post-title-text"]')
+        for _ in range(2):  # results can render late after the challenge redirect
+            _, _, raw = await self._retrying(url, REDDIT_JS, wait_for='a[data-testid="post-title-text"]')
             if posts := clean_results(raw, limit):
                 break
         for p in posts:
@@ -164,7 +255,11 @@ class Browser:
     async def browse(self, url: str, goal: str | None = None) -> dict:
         if not host_allowed(url, self.options.get("allowed_hosts", ["*"])):
             raise ValueError(f"{urlparse(url).hostname} is not an allowed host")
-        title, final_url, text = await self.run(url, READABLE_JS, settle_ms=500)
+        try:
+            title, final_url, text = await self._retrying(url, READABLE_JS, settle_ms=500)
+        except ChallengeError as exc:
+            # Say so plainly, so the agent hands the link to the person instead of guessing.
+            return {"url": exc.url, "title": None, "text": "", "summary": None, "blocked": exc.kind}
         body = readable(text, self.options.get("max_chars", 6000))
         return {"url": final_url, "title": title, "text": body, "summary": focus(body, goal)}
 

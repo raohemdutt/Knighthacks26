@@ -39,7 +39,10 @@ browser:
   tools: [search, reddit, browse]
   options:
     headless: false
-    channel: null  # "chrome" on a dev laptop with Chrome installed
+    channel: auto  # installed Chrome if present, else patchright's Chromium
+    locale: en-US
+    timezone: America/New_York
+    min_gap_s: 2
     profile_dir: data/browser/profile
     allowed_hosts: ["*"]
     max_chars: 6000
