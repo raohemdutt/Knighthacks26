@@ -66,6 +66,9 @@ impact:
   - {type: impact.item.seen, at: 40, item_id: "cam-door:5", label: cup, recyclable: false}
   - {type: impact.item.disposed, at: 45, item_id: "cam-door:5", label: cup, correct: false}
   - {type: impact.count.updated, at: 45, items_seen: 2, recyclable_seen: 1, recycled: 1, contamination: 1, diversion_rate: 1.0}
+  # The Impact screen: the first milestone of the week, and a "teach me" tap on the cup that went in recycling.
+  - {type: impact.milestone.reached, at: 6, threshold: 1, value: 1, text: "First item kept out of landfill this week."}
+  - {type: impact.practice.added, at: 50, label: cup, item_id: "cam-door:5"}
 
 agent:
   - {type: agent.rule.added, at: 0}
@@ -118,6 +121,7 @@ day:
   - {type: day.status.changed, at: 3600, now: "+3600s", seen_ts: "+3500s", reason: "left the desk: 12 minutes behind"}
   - {type: day.replan.proposed, at: 3660, start: "+3660s"}
   - {type: day.coach.noted, at: 7200}  # the study coach's sentence when a block ends (the sample payload)
+  - {type: day.coach.corrected, at: 7260, break_start: "+3600s"}  # "Was that right?" -> no, it was the bathroom (the sample payload)
   - {type: day.reviewed, at: 43200}
   # The same moments in words (D3), after the events they narrate so the earlier steps keep their ids.
   - {type: day.narrated, at: 43200}  # the plan in words, for the screen and the voice (the sample payload)

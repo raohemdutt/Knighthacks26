@@ -272,6 +272,9 @@ export interface LeagueTeamWaste {
   recyclable: number;
   members: { member_id: string; display_name: string; recycled: number; recyclable: number; contamination: number; diversion_rate: number | null }[];
   contamination_of_the_week: string | null;
+  /** This box's own week on the Impact screen: the latest milestone said, and the Sort It practice-set size. */
+  milestone?: string | null;
+  practice_size?: number | null;
 }
 
 /** GET /api/league: 200 in every state; `configured` false means no config/league.yaml on the box. */
@@ -1491,6 +1494,10 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   enrollStart: (name: string) => post<EnrollStatus>("/identity/enroll/start", { name }),
   enrollStatus: (signal?: AbortSignal) => get<EnrollStatus>("/identity/enroll/status", undefined, signal),
   impact: (signal?: AbortSignal) => get<Impact>("/api/impact", undefined, signal),
+  impactStory: (member?: string, signal?: AbortSignal) => get<import("./impact").ImpactStory>("/api/impact/story", { member }, signal),
+  impactPractice: (member?: string, signal?: AbortSignal) => get<import("./impact").ImpactPractice>("/api/impact/practice", { member }, signal),
+  addPractice: (label: string, item_id?: string, member?: string) =>
+    post<{ added: string; practice: import("./impact").ImpactPractice }>("/api/impact/practice", { label, item_id, member }),
 
   approvals: (signal?: AbortSignal) => get<ApprovalRequest[]>("/api/approvals", undefined, signal),
   decide: (id: string, decision: Decision) => post<ApprovalRequest>(`/api/approvals/${encodeURIComponent(id)}`, { decision }),
@@ -1546,5 +1553,8 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   /** Narrate a moment again from the state as it is now ("Brief me"). `fast` never waits for the model. */
   dayBriefMake: (body: { moment: Exclude<DayMoment, "approval">; fast?: boolean }) =>
     post<{ mode: string; engine: string; moment: DayMoment; fresh: boolean; narration: DayNarration }>("/api/day/brief", body),
+  coachFeedback: (days?: number, signal?: AbortSignal) => get<import("./coachFeedback").CoachFeedbackView>("/api/day/coach/feedback", { days }, signal),
+  coachCorrect: (body: import("./coachFeedback").CoachCorrectionBody) =>
+    post<import("./coachFeedback").CoachCorrectionResult>("/api/day/coach/corrections", body),
   dayPatterns: (signal?: AbortSignal) => get<{ patterns: DayPattern[]; note?: string }>("/api/day/patterns", undefined, signal),
 };

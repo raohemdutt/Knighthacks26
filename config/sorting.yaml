@@ -20,3 +20,22 @@ items:
 aliases:
   can: [soda can, tin can]
   bottle: [water bottle, plastic bottle]
+
+# --- for the Impact screen (contexts/impact/application/story.py); the sorters above ignore these keys ---
+# Who these rules are for, shown on the Impact screen so anyone can see which file is active.
+name: UCF table rules
+place: UCF
+note: "The team's working list for our table. Check it against the campus recycling guide before quoting it."
+# One sentence per item: what the phone says when something lands in the wrong bin.
+reasons:
+  bottle: "Empty plastic bottles go in recycling at UCF."
+  can: "Empty drink cans go in recycling at UCF: aluminium is the most valuable thing in the bin."
+  cup: "Paper cups with a plastic lining go in trash at UCF: the lining cannot be pulped with paper."
+  paper: "Clean, dry paper goes in recycling at UCF."
+  cardboard: "Flattened, clean cardboard goes in recycling at UCF."
+  wine glass: "Drinking glasses go in trash at UCF: they melt at a different temperature from bottle glass."
+  food container: "Food-soiled takeout containers go in trash at UCF: food residue spoils the paper and plastic around it."
+  chip bag: "Chip bags go in trash at UCF: the foil and plastic layers cannot be separated."
+  napkin: "Used napkins go in trash at UCF: the fibres are too short and too dirty to recycle."
+  banana: "Food scraps go in trash at UCF: this table has no compost bin."
+default_reason: "Anything not on the list goes in trash at UCF: when in doubt, keep it out of recycling."

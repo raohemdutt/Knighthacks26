@@ -193,6 +193,8 @@ function toastFor(e: AtlasEvent): Toast | null {
       return { id: e.event_id, title: "Re-plan", message: str(e.why, "Atlas has a new plan for the rest of the day."), tone: "warn", href: "/now/" };
     case "day.coach.noted":
       return { id: e.event_id, title: "Coach", message: str(e.text, "A block just ended."), tone: "info", href: "/now/" };
+    case "impact.milestone.reached":
+      return { id: e.event_id, title: "Nice", message: str(e.text, "The table passed a milestone."), tone: "celebrate", href: "/impact/" };
     case "day.reviewed":
       return { id: e.event_id, title: "Your day, reviewed", message: str(e.change_tomorrow, "The day's review is in."), tone: "info", href: "/now/" };
     case "workspace.approval.requested":

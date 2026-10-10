@@ -149,6 +149,27 @@ const MORE: Tab[] = [
       </>
     ),
   },
+  {
+    href: "/impact",
+    label: "Impact",
+    icon: (
+      <>
+        <path d="M12 21c-4.5 0-7.5-3-7.5-7.2C4.500 8.500 9 5.500 19.500 4c.5 9.500-2 17-7.500 17z" />
+        <path d="M5 20.500c2.500-5 6-8.500 10.500-11" />
+      </>
+    ),
+  },
+  {
+    href: "/coach",
+    label: "Coach",
+    icon: (
+      <>
+        <circle cx="12" cy="12" r="8.500" />
+        <circle cx="12" cy="12" r="4.500" />
+        <circle cx="12" cy="12" r="0.800" />
+      </>
+    ),
+  },
 ];
 
 const LINK_TEXT: Record<LinkState, string> = { live: "Live", connecting: "Connecting…", offline: "Offline, retrying" };

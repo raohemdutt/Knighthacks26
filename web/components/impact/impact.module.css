@@ -1,0 +1,311 @@
+/* The Impact screen. Tokens come from app/globals.css; nothing here defines a colour of its own. */
+
+.hero {
+  padding: 18px 16px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.heroLabel {
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.heroNum {
+  margin: 4px 0 2px;
+  font-size: 44px;
+  font-weight: 750;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.heroUnit {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.estimate {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px dashed var(--muted);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.milestone {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  border-left: 4px solid var(--accent);
+  font-size: 17px;
+}
+
+.milestone p {
+  margin: 0;
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.tile {
+  padding: 14px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  min-width: 0;
+}
+
+.tileNum {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+.tileLabel {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.details {
+  margin-top: 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.details > summary {
+  padding: 12px 14px;
+  min-height: 44px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.detailsBody {
+  padding: 0 14px 14px;
+  font-size: 15px;
+}
+
+.factor {
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.factor p {
+  margin: 2px 0;
+}
+
+/* --- the goal --- */
+
+.goalBar {
+  position: relative;
+  height: 14px;
+  margin: 18px 0 6px;
+  border-radius: 7px;
+  background: var(--surface-2);
+}
+
+.goalFill {
+  height: 100%;
+  border-radius: 7px;
+  background: var(--muted);
+}
+
+.goalFillMet {
+  background: var(--accent);
+}
+
+.goalMark {
+  position: absolute;
+  top: -6px;
+  bottom: -6px;
+  width: 2px;
+  background: var(--text);
+}
+
+.goalMarkLabel {
+  position: absolute;
+  top: -22px;
+  transform: translateX(-50%);
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 2px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 0;
+}
+
+.dayToday {
+  border-color: var(--text);
+}
+
+.dayMark {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.dayClean {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.dayFuture {
+  opacity: 0.45;
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+/* --- the feed --- */
+
+.disposal {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.thumb {
+  width: 84px;
+}
+
+.noPicture {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 84px;
+  aspect-ratio: 4 / 3;
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+  padding: 4px;
+}
+
+.verdict {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.right {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.wrong {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.rule {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border-left: 4px solid var(--danger);
+  font-size: 16px;
+}
+
+/* --- before and after: two bars on one axis (0 to 100 %), each labelled with its value and its n --- */
+
+.bars {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px;
+  align-items: end;
+  height: 150px;
+  margin-top: 12px;
+  padding: 0 12%;
+  border-bottom: 1px solid var(--line);
+}
+
+.barCol {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  height: 100%;
+  gap: 4px;
+}
+
+.bar {
+  width: 56%;
+  min-height: 2px;
+  border-radius: 4px 4px 0 0;
+  background: var(--muted);
+}
+
+.barAfter {
+  background: var(--accent);
+}
+
+.barValue {
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.barLabels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px;
+  padding: 6px 12% 0;
+  text-align: center;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.rulesGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.rulesGrid ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
