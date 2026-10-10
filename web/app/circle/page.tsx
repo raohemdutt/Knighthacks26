@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { SharedCalendar } from "@/components/circle/SharedCalendar";
+import { YouAreSharing } from "@/components/circle/YouAreSharing";
 import { Empty, ErrorBox, Loading, WriteError } from "@/components/States";
 import ui from "@/components/ui.module.css";
 import { ApiError, api, type Leaderboard, type PlaceShared } from "@/lib/api";
@@ -62,6 +64,8 @@ export default function CirclePage() {
         </>
       )}
 
+      <SharedCalendar />
+
       <section className={ui.section}>
         <h2 className={ui.sectionTitle}>Leaderboards</h2>
         {board.error ? (
@@ -80,6 +84,8 @@ export default function CirclePage() {
           <Boards board={board.data} />
         )}
       </section>
+
+      <YouAreSharing />
     </>
   );
 }
