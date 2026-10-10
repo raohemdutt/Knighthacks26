@@ -1,7 +1,9 @@
 """Nights of sleep from a watch's sleep stages (K9). Pure: no database, no clock, no files.
 
     stages = watch_stages(rows, ["Apple Watch"])            # rows shaped like FreeReps' sleep_stages table
-    for night in nights(stages, tz, bedtime, wake):
+    found = nights(stages, tz, bedtime, wake)
+    found = with_sessions(found, session_nights(session_rows, tz, bedtime, wake))  # an export: days with no stages
+    for night in found:
         attach_metrics(night, metric_rows, tz)              # rows shaped like health_metrics, value = COALESCE(qty, avg_val)
         item = to_item(night, tz)                           # {external_id, title, when, summary, kind: "health"}
     reading = parse_summary(item["summary"])                # the numbers back out of the item, for Habits
@@ -9,9 +11,20 @@
 What the data's owner said about it, and what this does with it:
 
 - Only the watch's rows count. The phone writes `In Bed` rows and nothing else: they are dropped, whatever
-  their source.
-- FreeReps' own `sleep_sessions` splits a night into fragments, so it is not used. Stages are clustered
-  again here: a pause of up to two hours between stages is still the same sleep (`GAP`).
+  their source. What the real export (fixtures/watch) showed about `source`:
+  - stage rows name the device, with a no-break space in it ("Dominick’s Apple\u00a0Watch"), so names are
+    compared with every kind of space and apostrophe made plain;
+  - `health_metrics` and `workouts` rows have an empty source (the uploader does not record one). A stage row
+    with an empty source is therefore kept when it is a real stage (Core, Deep, REM, Awake, Asleep): only a
+    watch writes those. A row that names some other source is dropped;
+  - the labels are "Asleep Core", "Asleep Deep", "Asleep REM" in `category_samples` and "Core", "Deep", "REM"
+    in `sleep_stages`: both read the same.
+- FreeReps' own `sleep_sessions` splits a night into fragments and merges others into 28 hour "nights", so it
+  is not used where stages exist. Stages are clustered again here: a pause of up to two hours between stages
+  is still the same sleep (`GAP`). Where a day has no stages, its `sleep_sessions` row is the night
+  (`session_nights`): fragments up to two hours apart are joined, and a result longer than `SESSION_CAP` is
+  thrown away as a merged night. A row with no time asleep is the phone's `In Bed` schedule, not a
+  measurement, and is used only when asked for.
 - A night belongs to the local day it ends on: the cluster has to touch that day's sleep window (bedtime the
   evening before to wake, from config/agent.yaml), and the longest such cluster is the night. An afternoon
   nap touches no sleep window, so it is never a night, not even on a day with no other data.
@@ -27,6 +40,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, tzinfo
 
 GAP = timedelta(hours=2)
+SESSION_CAP = timedelta(hours=16)  # a `sleep_sessions` night longer than this is several nights merged: no data
 NOT_SLEEP = {"awake", "in bed"}
 STAGE_ORDER = ["core", "deep", "rem", "asleep", "awake"]
 METRICS = ("resting_heart_rate", "heart_rate", "heart_rate_variability", "respiratory_rate")
@@ -79,18 +93,35 @@ def as_time(value) -> datetime:
     return ts
 
 
+def _plain(text: str | None) -> str:
+    """Lower case, straight apostrophes, single ordinary spaces (Apple writes "Apple\u00a0Watch")."""
+    return " ".join((text or "").replace("’", "'").lower().split())
+
+
 def is_watch(source: str | None, watch_sources: list[str]) -> bool:
-    """True when any configured name is part of the row's source, whatever the case or the apostrophe."""
-    plain = (source or "").replace("’", "'").lower()
-    return any(name.replace("’", "'").lower() in plain for name in watch_sources if name)
+    """True when any configured name is part of the row's source, whatever the case, apostrophe or kind of space."""
+    plain = _plain(source)
+    return any(_plain(name) in plain for name in watch_sources if name)
 
 
-def watch_stages(rows: list[dict], watch_sources: list[str]) -> list[Stage]:
-    """The watch's sleep stages, oldest first. `In Bed` rows and every other source are dropped."""
+def stage_name(label) -> str:
+    """"Asleep Core" (HealthKit) and "Core" (FreeReps) are both "core"; plain "Asleep" stays "asleep"."""
+    stage = _plain(str(label or ""))
+    if stage.startswith("asleep ") and stage != "asleep unspecified":
+        return stage[len("asleep "):]
+    return "asleep" if stage == "asleep unspecified" else stage
+
+
+def watch_stages(rows: list[dict], watch_sources: list[str] | None) -> list[Stage]:
+    """The watch's sleep stages, oldest first.
+
+    `In Bed` rows are dropped whatever wrote them. A real stage is kept when its source is empty (the uploader
+    recorded none) or contains one of `watch_sources`; a row naming another source is dropped. With no
+    `watch_sources` at all, every real stage is kept."""
     out = []
     for row in rows:
-        stage = str(row.get("stage") or "").strip().lower()
-        if stage == "in bed" or not stage or not is_watch(row.get("source"), watch_sources):
+        stage, source = stage_name(row.get("stage")), _plain(row.get("source"))
+        if stage == "in bed" or not stage or (source and watch_sources and not is_watch(source, watch_sources)):
             continue
         start, end = as_time(row["start_time"]), as_time(row["end_time"])
         if end > start:
@@ -158,6 +189,61 @@ def nights(stages: list[Stage], tz: tzinfo, bedtime: time = time(20), wake: time
         if asleep and (day not in best or asleep > best[day].asleep_min):
             best[day] = night
     return [best[d] for d in sorted(best)]
+
+
+def session_nights(rows: list[dict], tz: tzinfo, bedtime: time = time(20), wake: time = time(8),
+                   gap: timedelta = GAP, cap: timedelta = SESSION_CAP, in_bed_only: bool = False) -> list[Night]:
+    """Nights from FreeReps' `sleep_sessions` rows (hours: total_sleep, core, deep, rem, in_bed; sleep_start,
+    sleep_end), for days that have no stage rows. The same rules as `nights`, on whole rows instead of stages:
+    rows up to `gap` apart are one sleep, a sleep longer than `cap` is dropped (merged nights), the longest
+    sleep touching a day's sleep window is its night and a nap is never one.
+
+    A row with no time asleep only says when the phone thought its owner was in bed. It is skipped unless
+    `in_bed_only`, and then its time in bed stands in for time asleep (an overestimate, with no stages)."""
+    spans = []
+    for row in rows:
+        start = row.get("sleep_start") or row.get("in_bed_start")
+        end = row.get("sleep_end") or row.get("in_bed_end")
+        asleep_h = float(row.get("total_sleep") or row.get("asleep") or 0)
+        if not start or not end or (not asleep_h and not in_bed_only):
+            continue
+        start, end = as_time(start), as_time(end)
+        if end <= start or end - start > cap:  # one row longer than the cap is already several nights
+            continue
+        span_min = (end - start).total_seconds() / 60
+        asleep = min(asleep_h * 60, span_min) if asleep_h else span_min  # a merged row can claim more than its span
+        stages = {k: float(row.get(k) or 0) * 60 for k in ("core", "deep", "rem")} if asleep_h else {}
+        spans.append((start, end, asleep, {k: v for k, v in stages.items() if v}))
+    best: dict[date, Night] = {}
+    groups: list[list] = []
+    last_end: datetime | None = None
+    for span in sorted(spans, key=lambda s: (s[0], s[1])):
+        if last_end is None or span[0] - last_end > gap:
+            groups.append([])
+            last_end = span[1]
+        groups[-1].append(span)
+        last_end = max(last_end, span[1])
+    for group in groups:
+        bed, up = group[0][0], max(s[1] for s in group)
+        day = _night_day(bed, up, tz, bedtime, wake) if up - bed <= cap else None
+        if day is None:
+            continue
+        in_bed = _minutes([(bed, up)])
+        asleep = min(round(sum(s[2] for s in group)), in_bed)
+        stage_min: dict[str, int] = {}
+        for s in group:
+            for k, v in s[3].items():
+                stage_min[k] = stage_min.get(k, 0) + round(v)
+        if asleep and (day not in best or asleep > best[day].asleep_min):
+            best[day] = Night(day, bed, up, asleep, in_bed, stage_min)
+    return [best[d] for d in sorted(best)]
+
+
+def with_sessions(staged: list[Night], sessions: list[Night]) -> list[Night]:
+    """`staged` nights plus the session nights of days that have none and overlap none of them, oldest first."""
+    days = {n.day for n in staged}
+    extra = [s for s in sessions if s.day not in days and not any(s.bed < n.wake and n.bed < s.wake for n in staged)]
+    return sorted(staged + extra, key=lambda n: n.day)
 
 
 def _mean(values: list[float]) -> float | None:

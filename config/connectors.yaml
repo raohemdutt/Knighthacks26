@@ -70,8 +70,16 @@ health:
   # K9: last night's sleep from a watch (time asleep, stages, resting heart rate, HRV, breathing rate), one item
   # per night, read from the FreeReps database on the Raspberry Pi with a read-only role. Habits uses the
   # measured sleep instead of the empty-desk estimate. Raw health data stays on the box.
-  # Does nothing (no items, no errors) until FREEREPS_DATABASE_URL is in .env or `fixture` names a file.
-  # Needs the Postgres driver: pip install -e ".[neon]"
+  # Does nothing (no items, no errors) until FREEREPS_DATABASE_URL is in .env, or `export_dir` or `fixture` is set.
+  # The database needs the Postgres driver: pip install -e ".[neon]". The export and the fixture need nothing.
+  #
+  # The demo box has no tailnet and no live database: it reads the export. To turn that on, set
+  #     export_dir: fixtures/watch
+  #     export_rebase: true
+  # Privacy: fixtures/watch is one teammate's (Dominick's) real Apple Watch history, shared with the team by his
+  # decision. The items made from it stay on the box: Memory and Habits get them, nothing is queued for the
+  # Circle, and they are not in the training export (contexts/circle/tests/test_health_privacy.py,
+  # contexts/learning/tests/test_export.py). Do not copy its numbers into events, logs, Notion or slides.
   module: contexts.connectors.servers.health
   every_s: 1800
   hosts: []  # add the Pi's tailnet address here so the firewall lets this connector reach it
@@ -79,7 +87,12 @@ health:
   env: [FREEREPS_DATABASE_URL]
   options:
     days: 7
-    watch_sources: ["Apple Watch"]  # a row is the watch's when its source contains one of these ("Dominick’s Apple Watch")
+    watch_sources: ["Apple Watch"]  # a stage row that names a source must contain one of these ("Dominick’s Apple Watch");
+                                    # rows with an empty source are kept, `In Bed` rows never are; [] takes any source
+    export_dir: null       # a folder of FreeReps tables as .csv.gz (`python -m watch pull`), read when the database
+                           # is not set or not reachable: stage intervals where it has them, else its sleep_sessions
+    export_rebase: false   # true: move the export's dates so its newest night is last night (demos)
+    export_in_bed_nights: false  # true: also count the phone's In Bed-only rows (2020 to 2025) as nights, time in bed as sleep
     fixture: null          # a file in the tables' shapes, read when the database is not set or not reachable
                            # (fixtures/health/freereps.yaml is a synthetic week)
     fixture_rebase: false  # true: move the file's dates so its last day is today (demos)
