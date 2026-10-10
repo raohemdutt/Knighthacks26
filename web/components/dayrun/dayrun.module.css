@@ -942,3 +942,623 @@
 .starsNone {
   color: var(--muted);
 }
+
+/* ---------- Play mode: the day, watched (DayPlayer.tsx, Figure.tsx) ---------- */
+.plStage {
+  gap: 8px;
+  scroll-margin-top: 12px;
+}
+
+.plHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.plClock {
+  font-size: 34px;
+  font-weight: 750;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.plDay {
+  font-size: 17px;
+  font-weight: 650;
+  color: var(--muted);
+}
+
+.plPace {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.plPaceHold {
+  color: var(--accent);
+  font-weight: 650;
+}
+
+/* One line each, so the map never moves while the text changes. */
+.plLine {
+  font-size: 15px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.plLine strong {
+  display: inline-block;
+  min-width: 2.7em;
+  color: var(--muted);
+  font-weight: 650;
+}
+
+.plWhere {
+  color: var(--muted);
+}
+
+/* One column on a phone; the map beside the meters and controls when there is room. */
+.plCols,
+.plCol {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+@media (min-width: 720px) {
+  .plCols {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+  }
+}
+
+.plMapWrap {
+  position: relative;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.plMap {
+  width: 100%;
+  height: auto;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.plEdge {
+  stroke: var(--line);
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+
+.plAhead {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.6;
+  stroke-dasharray: 2 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.75;
+}
+
+.plTrail {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.38;
+}
+
+.plRoute {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.32;
+}
+
+.plWalked {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.plOld {
+  fill: none;
+  stroke: var(--danger);
+  stroke-width: 3;
+  stroke-dasharray: 5 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.plNew {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.plGhost {
+  fill: none;
+  stroke: var(--danger);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.plPlaceOff {
+  fill: var(--surface-2);
+  stroke: var(--muted);
+  stroke-width: 1.5;
+  opacity: 0.7;
+}
+
+.plLabelOff {
+  fill: var(--muted);
+  font-weight: 500;
+}
+
+.plLabelShut {
+  fill: var(--danger);
+}
+
+.plShut {
+  fill: none;
+  stroke: var(--danger);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+}
+
+.plNode {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.plNodeText {
+  fill: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: var(--surface-2);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.plFlag line,
+.plFlagHot line {
+  stroke: var(--text);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.plFlag path {
+  fill: var(--text);
+}
+
+.plFlag text,
+.plFlagHot text {
+  fill: var(--bg);
+  font-size: 9.5px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
+.plFlagHot path {
+  fill: var(--danger);
+}
+
+.plPulse {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: plPulse 1.1s ease-out 3;
+}
+
+.plPulseBad {
+  stroke: var(--danger);
+}
+
+.plPulseWarn {
+  stroke: #cf7f30;
+}
+
+@keyframes plPulse {
+  from {
+    transform: scale(0.4);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1.7);
+    opacity: 0;
+  }
+}
+
+/* What just happened, over the foot of the map: never pushes the layout. */
+.plFlash {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  border-left-width: 5px;
+  background: var(--surface);
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  animation: plDrop 0.25s ease-out;
+}
+
+.plFlashBad {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.plFlashWarn {
+  border-color: #cf7f30;
+}
+
+.plFlashOk {
+  border-color: var(--accent);
+}
+
+@keyframes plDrop {
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.plEnd {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  overflow-y: auto;
+  background: rgba(10, 12, 15, 0.93);
+  border: 1px solid var(--line);
+  border-left-width: 6px;
+  border-radius: var(--radius-sm);
+  font-size: 15px;
+  animation: plDrop 0.3s ease-out;
+}
+
+.plEnd .bullets {
+  font-size: 15px;
+}
+
+.plEnd button {
+  flex: none;
+  white-space: nowrap;
+}
+
+.plEndWin {
+  border-left-color: var(--accent);
+}
+
+.plEndFail {
+  border-left-color: var(--danger);
+}
+
+.plEndScore {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+/* Room for six lines, so the meters below do not jump as the caption changes. */
+.plCaption {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-height: 10.4em;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.plFacts {
+  font-variant-numeric: tabular-nums;
+}
+
+.plOk {
+  color: var(--accent);
+}
+
+.plBad {
+  color: var(--danger);
+  font-weight: 650;
+}
+
+.plWarn {
+  color: #e0a063;
+}
+
+.plBars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.plBars li {
+  display: grid;
+  grid-template-columns: 7.2em 1fr 3em;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+}
+
+.plBarName {
+  color: var(--muted);
+}
+
+.plBar {
+  display: block;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.plBarFill {
+  display: block;
+  height: 100%;
+  border-radius: 6px;
+  background: var(--c);
+}
+
+.plBarLow {
+  box-shadow: 0 0 0 2px var(--danger);
+}
+
+.plBarValue {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.plChart {
+  width: 100%;
+  height: auto;
+  touch-action: pan-y;
+  cursor: ew-resize;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.plSplit {
+  stroke: var(--danger);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 3;
+}
+
+.plSplitMark {
+  fill: var(--danger);
+}
+
+.plControls {
+  display: grid;
+  grid-template-columns: 56px 56px 1fr 56px;
+  gap: 8px;
+}
+
+.plControls svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.plIcon {
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+
+.plPlay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.plSolid {
+  fill: currentColor;
+}
+
+.plFeed {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 6.4em;
+  font-size: 14px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.plFeed li {
+  display: grid;
+  grid-template-columns: 3.2em 1fr;
+  gap: 6px;
+}
+
+.plFeedNew {
+  color: var(--text);
+}
+
+.plFeedBad {
+  color: var(--danger);
+}
+
+.plFeedWarn.plFeedNew {
+  color: #e0a063;
+}
+
+.plFeedOk.plFeedNew {
+  color: var(--accent);
+}
+
+.plRooms {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.plRooms li {
+  padding: 3px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+}
+
+.plRooms .plRoomOn {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 650;
+}
+
+.plWatch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+/* the figure */
+.figYou {
+  --fig: var(--accent);
+  --fig-skin: var(--text);
+}
+
+.figFriend {
+  --fig: #6f8ff0;
+  --fig-skin: var(--text);
+}
+
+.figGhost {
+  --fig: var(--danger);
+  --fig-skin: var(--danger);
+  opacity: 0.8;
+}
+
+.figShadow {
+  fill: #000;
+  opacity: 0.35;
+}
+
+.figBody {
+  fill: var(--fig);
+  stroke: var(--bg);
+  stroke-width: 1.2;
+}
+
+.figPack {
+  fill: var(--muted);
+  stroke: var(--bg);
+  stroke-width: 1;
+}
+
+.figHead {
+  fill: var(--fig-skin);
+  stroke: var(--bg);
+  stroke-width: 1.2;
+}
+
+.figEye {
+  fill: var(--bg);
+}
+
+.figLimb {
+  stroke: var(--fig-skin);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+}
+
+.figArm {
+  stroke: var(--bg);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  opacity: 0.55;
+}
+
+.figZ {
+  fill: var(--text);
+  font-weight: 750;
+  font-style: italic;
+}
+
+.figLabel {
+  fill: var(--fig);
+  font-size: 10.5px;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: var(--surface-2);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.cueBubble {
+  fill: var(--text);
+  stroke: var(--bg);
+  stroke-width: 1;
+}
+
+.cueInk {
+  fill: none;
+  stroke: var(--bg);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cueFill {
+  fill: var(--bg);
+}
+
+.plWatch {
+  width: 100%;
+}

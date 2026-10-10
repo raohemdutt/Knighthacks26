@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CampusMap } from "@/components/dayrun/CampusMap";
+import { DayPlayer } from "@/components/dayrun/DayPlayer";
 import dr from "@/components/dayrun/dayrun.module.css";
 import { Meters } from "@/components/dayrun/Meters";
 import { More } from "@/components/dayrun/More";
@@ -25,6 +26,10 @@ import { useFetch } from "@/lib/useFetch";
  *                             on the demo day this uses the scripted disruptions
  *   /dayrun/?hard=1&seed=7    seeded disruptions instead (&count=2 for two of them)
  *   /dayrun/?t=14:05          put the scrubber at that time of day
+ *   /dayrun/?play=1           open Play mode and start it: the day is watched, with a figure walking the
+ *                             routes (with ?plan=good|bad and ?hard=1; the good plan if none is named).
+ *                             ?play=0 opens it paused; with ?t=11:15 it opens on exactly that minute.
+ *                             &motion=reduce steps block by block, as with the system's reduced motion.
  *   /dayrun/?day=mine         start on "My day" (live sources) instead of the demo day
  *   /dayrun/?more=1           open the review, replay, campaign and forecast forms
  */
@@ -69,6 +74,11 @@ export default function DayRunPage() {
   const [commit, setCommit] = useState<{ busy: boolean; done?: CommitResult; error?: ApiError }>({ busy: false });
   const [openMore, setOpenMore] = useState(false);
   const auto = useRef<{ hard: boolean; seed: number | null; count: number; t: string | null }>({ hard: false, seed: null, count: 1, t: null });
+  // Play mode. `auto` starts the clock as soon as the linked day is in; `at` is the ?t= minute to open on.
+  const [play, setPlay] = useState<{ open: boolean; auto: boolean; at: string | null }>({ open: false, auto: false, at: null });
+  const [linkHard, setLinkHard] = useState(false); // ?hard=1 was asked for and has not been run yet
+  const [seek, setSeek] = useState<{ index: number; n: number } | null>(null);
+  const stage = useRef<HTMLDivElement>(null);
 
   const setMoves = useCallback((next: Move[], from: "good" | "bad" | null = null) => {
     setMovesState(next);
@@ -85,10 +95,13 @@ export default function DayRunPage() {
     if (mine) setMode("mine");
     const plan = q.get("plan");
     const wantHard = q.has("hard") && q.get("hard") !== "0";
+    const wantPlay = q.has("play");
     if (!mine) {
       if (plan === "bad") setMoves(DEMO_BAD_PLAN, "bad");
-      else if (plan === "good" || wantHard) setMoves(DEMO_GOOD_PLAN, "good");
+      else if (plan === "good" || wantHard || wantPlay) setMoves(DEMO_GOOD_PLAN, "good");
     }
+    if (wantPlay) setPlay({ open: true, auto: q.get("play") !== "0", at: q.get("t") });
+    setLinkHard(wantHard);
     const s = Number(q.get("seed"));
     const c = Number(q.get("count"));
     auto.current = { hard: wantHard, seed: q.has("seed") && Number.isInteger(s) ? s : null, count: Number.isInteger(c) && c > 0 ? c : 1, t: q.get("t") };
@@ -136,6 +149,7 @@ export default function DayRunPage() {
     const a = auto.current;
     if (a.hard) {
       a.hard = false;
+      setLinkHard(false);
       runHard(mode === "demo" && a.seed === null, a.seed ?? 0, a.count);
     }
     if (a.t) {
@@ -167,12 +181,23 @@ export default function DayRunPage() {
       .catch((err: unknown) => setCommit({ busy: false, error: asApiError(err) }));
   };
 
+  // A scrub made by hand also moves the playback, when it is open.
+  const userScrub = useCallback((index: number) => {
+    setScrub(index);
+    setSeek((s) => ({ index, n: (s?.n ?? 0) + 1 }));
+  }, []);
+
   const scrubTo = (iso: string) => {
     const shown = hard?.result ? (view === "before" ? hard.result.before : hard.result.after) : sim.result;
     if (!shown) return;
     const t = ms(iso);
     const i = shown.timeline.findIndex((tick) => ms(tick.t) >= t);
-    setScrub(i < 0 ? shown.timeline.length - 1 : i);
+    userScrub(i < 0 ? shown.timeline.length - 1 : i);
+  };
+
+  const watch = () => {
+    setPlay({ open: true, auto: true, at: null });
+    window.requestAnimationFrame(() => stage.current?.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }));
   };
 
   const b = board.data;
@@ -225,6 +250,29 @@ export default function DayRunPage() {
             <p className={`${ui.muted} ${ui.small}`}>Your next 24 hours, from your calendar, Canvas, Habits and the friends who shared a place.</p>
           )}
 
+          <div ref={stage} className={dr.anchor}>
+            {!play.open ? (
+              <button type="button" className={`${ui.btn} ${ui.btnPrimary} ${dr.plWatch}`} disabled={!sim.result || !packs.data || Boolean(hard?.busy)} onClick={watch}>
+                <span aria-hidden="true">▶</span> Watch the day{hard?.result ? " go wrong" : ""}
+              </button>
+            ) : !sim.result || !packs.data || linkHard || hard?.busy ? (
+              <Loading what="the day to play" />
+            ) : (
+              <DayPlayer
+                packs={packs.data}
+                places={places}
+                board={b}
+                result={sim.result}
+                hard={hard?.result ?? null}
+                autoPlay={play.auto}
+                startClock={play.at}
+                seek={seek}
+                onTick={setScrub}
+                onClose={() => setPlay({ open: false, auto: false, at: null })}
+              />
+            )}
+          </div>
+
           <Verdict sim={sim} shown={shown} moves={moves.length} hard={Boolean(hard?.result)} view={view} />
 
           {hard?.result ? (
@@ -270,7 +318,7 @@ export default function DayRunPage() {
               <>
                 {sim.error ? <WriteError error={sim.error} /> : null}
                 <div className={ui.card}>
-                  <Meters result={shown} places={places} scrub={scrub} onScrub={setScrub} />
+                  <Meters result={shown} places={places} scrub={scrub} onScrub={userScrub} />
                 </div>
               </>
             )}
