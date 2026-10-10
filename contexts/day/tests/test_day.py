@@ -169,7 +169,9 @@ def test_once_per_day_at_wake_and_when_the_box_starts_after_wake(items, places, 
     loop = make(items, places, tmp_path, habits=FakeHabits())
     p = loop.planner
     assert p.tick(at(7, 30)) == []  # before wake: nothing
-    events = p.tick(at(8, 0))
+    quiet = make(items, places, tmp_path / "quiet", habits=None)
+    assert quiet.planner.tick(at(8, 0)) == [] and quiet.planner.on_event(zone(at(8, 1), "desk"))  # a tick needs a sign of life today
+    events = p.tick(at(8, 0))  # FakeHabits has seen 9:30 today
     assert [type(e) for e in events] == [DayPlanProposed, type(events[1])] and events[0].plan_id == f"plan-{SUNDAY}-0800"
     p.on_plan_proposed(events[0])
     assert p.tick(at(9, 0)) == [] and p.on_event(zone(at(9, 5), "desk")) == []  # once a day

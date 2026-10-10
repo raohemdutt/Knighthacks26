@@ -644,6 +644,174 @@ export interface PlanBody {
   scenario?: string;
 }
 
+// ---------- the Day loop (contracts/day.py, contexts/day) ----------
+
+/** One block of the day as the plan simulates it: a chosen move or a fixed calendar block. */
+export interface PlanMove {
+  id: string;
+  kind: string; // study, eat, sleep, rest, event, class
+  title: string;
+  start: string;
+  end: string;
+  minutes: number;
+  place: string | null;
+  place_name: string | null;
+  fixed: boolean;
+  deadline: string | null;
+  with_friend: string | null;
+}
+
+/** Why the plan is what it is: one input the box already had. */
+export interface PlanSource {
+  kind: "item" | "habit" | "member" | "place" | "review" | "config";
+  id: string;
+  text: string;
+  origin: string | null; // "canvas", "desk camera", "watch", "circle"
+}
+
+export interface PlanOutcome {
+  won: boolean;
+  stars: number;
+  points: number;
+  summary: string;
+  sleep_hours: number;
+  meals: number;
+  study_minutes: number;
+  energy_min: number;
+  deadline_risk: number;
+}
+
+export interface DayMeters {
+  meals: number;
+  desk_minutes: number;
+  recycled: number;
+  sleep_hours: number | null;
+  sleep_source: string | null;
+}
+
+export interface DayPlan extends EventEnvelope {
+  type: "day.plan.proposed";
+  day: string;
+  plan_id: string;
+  start: string;
+  end: string;
+  moves: PlanMove[];
+  dayrun_moves: Move[]; // the chosen moves in Day Run's editor shape
+  outcome: PlanOutcome;
+  sources: PlanSource[];
+  missing: string[];
+  text: string;
+  action_id: string | null;
+  by: "atlas" | "person";
+}
+
+export interface DayReplan extends EventEnvelope {
+  type: "day.replan.proposed";
+  day: string;
+  plan_id: string;
+  replaces: string;
+  why: string;
+  start: string;
+  moves: PlanMove[];
+  dayrun_moves: Move[];
+  outcome: PlanOutcome;
+  action_id: string | null;
+  asked: boolean;
+  for_event: string | null;
+}
+
+export interface NextEvent {
+  id: string;
+  title: string;
+  start: string;
+  end: string;
+  place: string | null;
+  place_name: string | null;
+  walk_minutes: number;
+  leave_by: string | null;
+}
+
+export type DayRisk = "ok" | "leave_now" | "late" | "infeasible";
+
+export interface DayStatus extends EventEnvelope {
+  type: "day.status.changed";
+  day: string;
+  plan_id: string | null;
+  now: string;
+  block_id: string | null;
+  block_title: string | null;
+  block_end: string | null;
+  should_be: string | null;
+  should_be_name: string | null;
+  seen_at: string | null;
+  seen_at_name: string | null;
+  seen_how: string | null;
+  seen_ts: string | null;
+  drift_minutes: number;
+  next_block: NextEvent | null;
+  next_event: NextEvent | null;
+  risk: DayRisk;
+  deadline_risk: number;
+  meters: DayMeters;
+  reason: string;
+}
+
+export interface DayReview extends EventEnvelope {
+  type: "day.reviewed";
+  day: string;
+  plan_id: string;
+  score: number | null;
+  followed: string[];
+  slipped: string[];
+  text: string;
+  change_tomorrow: string;
+  stars: number;
+  points: number;
+  plan_stars: number;
+  streak: number;
+}
+
+export interface LastSeen {
+  episode_id: string;
+  camera_id: string;
+  start: string;
+  end: string | null;
+  labels: string[];
+  caption: string | null;
+  frame_ref: string | null;
+}
+
+/** GET /api/day/now */
+export interface DayNow {
+  day: string;
+  now: string;
+  plan: DayPlan | DayReplan | null;
+  committed: boolean;
+  status: DayStatus | null;
+  replan: DayReplan | null;
+  review: DayReview | null;
+  yesterday: DayReview | null;
+  friends: PlaceShared[];
+  last_seen: LastSeen | null;
+}
+
+/** GET /api/day/plan?day= : `moves` go straight into POST /api/dayrun/simulate. */
+export interface DayPlanOut {
+  day: string;
+  plan_id: string;
+  start: string;
+  committed: boolean;
+  moves: Move[];
+  blocks: PlanMove[];
+  outcome: PlanOutcome;
+  plan: DayPlan | DayReplan;
+}
+
+export interface DayPattern {
+  text: string;
+  n: number;
+}
+
 // ---------- events on /ws ----------
 
 export interface AlertRaised extends EventEnvelope {
@@ -956,4 +1124,12 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   dayrunCampaign: (body: { days: Move[][]; start?: string; scenario?: string }) => post<CampaignResult>("/api/dayrun/campaign", body),
   dayrunForecast: (body: { estimates: { block: string; minutes: number }[]; measured?: Record<string, number>; day?: string; scenario?: string }) =>
     post<ForecastResult>("/api/dayrun/forecast", body),
+
+  // The Day loop (D1): the day Atlas runs unasked.
+  dayNow: (signal?: AbortSignal) => get<DayNow>("/api/day/now", undefined, signal),
+  dayPlan: (day?: string, signal?: AbortSignal) => get<DayPlanOut>("/api/day/plan", { day }, signal),
+  /** {} remakes today's plan; {moves} replaces it with your own; {from_here: true} re-plans the rest of the day. Each raises one card. */
+  dayMakePlan: (body: { moves?: Move[]; from_here?: boolean } = {}) =>
+    post<{ plan_id: string; type: string; action_id: string | null; plan: DayPlan | DayReplan }>("/api/day/plan", body),
+  dayPatterns: (signal?: AbortSignal) => get<{ patterns: DayPattern[]; note?: string }>("/api/day/patterns", undefined, signal),
 };

@@ -10,8 +10,19 @@ import { VoiceSettings } from "./voice/VoiceSettings";
 
 type Tab = { href: string; label: string; icon: ReactNode };
 
-/** The five screens that fit a phone tab bar. Everything else is one tap further, under More. */
+/** The screens that fit a phone tab bar: Now first (the day Atlas runs unasked), Ask beside it. Everything else is one tap further, under More. */
 const TABS: Tab[] = [
+  {
+    href: "/now",
+    label: "Now",
+    icon: (
+      <>
+        <circle cx="12" cy="12" r="8.5" />
+        <path d="M12 8v4.5l2.5 1.5" />
+        <path d="M3.5 3.5l2 2M20.5 3.5l-2 2" />
+      </>
+    ),
+  },
   { href: "/", label: "Ask", icon: <path d="M4 5.5h16v10.5H10l-4.5 3.5V16H4z" /> },
   {
     href: "/today",

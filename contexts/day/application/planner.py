@@ -92,6 +92,7 @@ class DayPlanner:
         self.skipped: set[date] = set()  # days the box came up too late to plan
         self.ids: set[str] = set()
         self.replans_for: dict[tuple[date, str], int] = {}
+        self.last_event: datetime | None = None  # the latest live event this planner saw (not replayed: a tick needs a sign of life)
         self._edited = False
 
     # --- state handlers (replay=True) ---
@@ -159,13 +160,21 @@ class DayPlanner:
     def on_event(self, e: Event) -> list[Event]:
         """Any live event after wake with no plan for its day: plan now, at the event's time (and review a day
         whose bedtime has passed)."""
+        self.last_event = max(self.last_event or e.ts, e.ts)
         return self.maybe_plan(e.ts) + self.maybe_review(e.ts)
 
     def on_day_closed(self, e: DayClosed) -> list[Event]:
         return self.maybe_review(e.ts, closing=e.day)
 
     def tick(self, now: datetime) -> list[Event]:
-        return self.maybe_plan(now) + self.maybe_review(now)
+        """The ticker: a box that comes up after wake plans once something has happened today (a camera or a
+        connector event, or Habits' event time): an idle box with an empty day has nothing to plan around."""
+        return (self.maybe_plan(now) if self.alive(now) else []) + self.maybe_review(now)
+
+    def alive(self, now: datetime) -> bool:
+        day = self.clock.day_of(now)
+        seen = [t for t in (self.last_event, getattr(self.habits, "now", None)) if t is not None]
+        return any(self.clock.day_of(t) == day for t in seen)
 
     # --- the morning plan ---
 
