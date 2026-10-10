@@ -74,16 +74,16 @@ def main() -> None:
         torch_compile=False,
     )
     trainer = SFTTrainer(model=model, args=cfg, train_dataset=ds, processing_class=tok, peft_config=lora)
-    t0 = time.time()
+    t0 = time.perf_counter()
     result = trainer.train()
-    elapsed = time.time() - t0
+    elapsed = time.perf_counter() - t0
     seen = args.steps * cfg.per_device_train_batch_size * cfg.gradient_accumulation_steps
     losses = [h["loss"] for h in trainer.state.log_history if "loss" in h]
     summary = {
         "steps": args.steps,
         "examples_seen": seen,
         "elapsed_s": round(elapsed, 1),
-        "samples_per_s": round(seen / elapsed, 2),
+        "samples_per_s": round(seen / elapsed, 2) if elapsed > 0 else 0.0,
         "first_loss": losses[0] if losses else None,
         "last_loss": losses[-1] if losses else None,
         "train_loss": result.training_loss,

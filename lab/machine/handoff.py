@@ -142,6 +142,7 @@ def handoff(sitting: str, note: str, *, state_dir: StateDir = None, actor: str |
     else:
         answer["note_written"] = True
     row = {
+        "ts": moment.isoformat().replace("+00:00", "Z"),  # the given now, so a replayed handoff lands in its own window
         "actor": _text(actor) or _text(os.environ.get(ENV_ACTOR)) or sitting,
         "tier": (_text(tier) or _text(os.environ.get(ENV_TIER))).lower() or None,
         "task": None, "verb": VERB, "outcome": OUTCOME, "metrics": {}, "refs": {},
