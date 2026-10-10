@@ -33,9 +33,10 @@ page, a wrong or missing token a 302 to the login page, a stopped server (stop_s
 text/event-stream and buffers it otherwise, and a buffered answer that takes longer than 125 seconds is cut with
 Cloudflare's 524.
 
-Time: each answer takes the time-to-first-token plus its completion tokens over the decode rate (0.55 s and 7.7 tok/s,
-the rates measured on pod A), which decides the 524; with a FakeClock (lab/hub_fake.py) that time also passes on the
-clock, so a caller timing its requests with that clock sees it.
+Time: each answer takes the time-to-first-token plus its completion tokens over the decode rate, which decides the 524;
+with a FakeClock (lab/hub_fake.py) that time also passes on the clock, so a caller timing its requests with that clock
+sees it. The default rates, 0.55 s and 7.7 tok/s, are the morning's R9700 numbers in lab/README.md, another chip than
+the Strix Halo pods the teacher now runs on, whose rates are not measured yet: they set the fake's pace, nothing more.
 
 Faults for a test to queue: fail() answers the next requests with a status, drop() drops the next connections, cut()
 ends the next streamed answers before they finish, and break_stream() ends them with the error chunk vLLM sends when
@@ -65,9 +66,9 @@ from lab.hub import Account
 
 __all__ = ["Turn", "Policy", "Seen", "FakeTeacher", "reference_policy", "text_policy", "main"]
 
-ROOT = "RedHatAI/Qwen3.8-27B-INT4"     # the checkpoint pod A serves (lab/pod_a_teacher.sh)
-TTFT_S = 0.55                          # time to first token, text, thinking off (lab/README.md, pod A)
-DECODE_TOK_S = 7.7                     # decode rate on pod A (lab/README.md)
+ROOT = "RedHatAI/Qwen3.8-27B-INT4"     # the checkpoint the teacher serves (lab/pod_a_teacher.sh)
+TTFT_S = 0.55                          # time to first token, text, thinking off: the R9700 number in lab/README.md
+DECODE_TOK_S = 7.7                     # decode rate: the R9700 number in lab/README.md, not the Strix Halo pods'
 BUFFERED_LIMIT_S = 125.0               # Cloudflare cuts a buffered answer after this long and answers 524
 MAX_MODEL_LEN = 16384
 NO_EVIDENCE = "I didn't see that."     # what the agent says when nothing answers the question
