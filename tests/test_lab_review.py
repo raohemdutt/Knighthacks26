@@ -225,9 +225,9 @@ def test_the_verb_writes_the_file_whole_and_answers_with_counts_not_text(isolate
                            prs=review.file_open_prs(OPEN_PRS), now=NOW)
     assert answer == {
         "ok": True, "outcome": "written", "day": DAY, "file": "review/2026-10-10.md", "problems": 0,
-        "counts": {"rows": 35, "sittings": 3, "sittings_never_ended": 1, "alerts": 6, "metrics_moved": 8,
-                   "metrics_new": 1, "rulings_waiting": 0, "complaints": 1, "prs_open": 4, "cost_usd": 3.52,
-                   "cost_unknown": 1}}
+        "counts": {"rows": 35, "sittings": 3, "sittings_never_ended": 1, "sittings_running": 0, "alerts": 6,
+                   "metrics_moved": 8, "metrics_new": 1, "rulings_waiting": 0, "complaints": 1, "prs_open": 4,
+                   "cost_usd": 3.52, "cost_unknown": 1}}
     written = (isolated_state / "review" / "2026-10-10.md").read_text(encoding="utf-8")
     assert written == build(isolated_state, refine_root, prs=review.file_open_prs(OPEN_PRS), scan=True).text
     assert sorted(path.name for path in (isolated_state / "review").iterdir()) == ["2026-10-10.md"]
@@ -329,7 +329,7 @@ def test_rows_after_now_are_not_yet_part_of_the_account(isolated_state, refine_r
     assert sections(built.text)["### Sittings"] == [
         "- 08:20:10Z s-son-2 (sonnet, task O33): error, 15.2 min, $0.42 (ledger:22)",
         "- 08:41:30Z s-opus-1 (opus, task O20): ok, 41.5 min, $3.10 (ledger:23)",
-        "- 09:00:00Z s-son-3 (sonnet, task O16): started, no end row (ledger:25)"]
+        "- 09:00:00Z s-son-3 (sonnet, task O16): started, still running, 0 of 240 min (ledger:25)"]
     assert built.text.splitlines()[2] == (
         "Status: 17 ledger rows, 2 sittings ended (1 error, 1 ok), costing $3.52, 0 alerts, 6 metrics moved, "
         "0 rulings waiting, 0 complaints, PRs open unknown.")
@@ -356,6 +356,32 @@ def test_a_sitting_with_no_end_row_is_named_in_the_status_and_in_the_list(isolat
         "- 09:00:00Z s-lost (sonnet, no task): started, no end row (ledger:1)"]
     assert "1 sitting started that day and never ended; the launcher may have died." in built.text
     assert built.counts["sittings_never_ended"] == 1 and built.counts["sittings"] == 0
+
+
+def test_a_sitting_still_inside_its_cap_is_running_and_not_named_as_lost(isolated_state, refine_root):
+    # the referee sitting that runs the review as its last action: its own start row, five minutes old
+    put(isolated_state, at(14, 55), "sit", "started", tier="fable", task=None, refs={"run_id": "sit-live"},
+        cap_minutes=240.0)
+    built = build(isolated_state, refine_root)
+    assert "never ended" not in built.text and "the launcher may have died" not in built.text
+    assert sections(built.text)["### Sittings"] == [
+        "- 14:55:00Z sit-live (fable, no task): started, still running, 5 of 240 min (ledger:1)"]
+    assert (built.counts["sittings_never_ended"], built.counts["sittings_running"]) == (0, 1)
+
+
+def test_a_sitting_is_judged_against_the_cap_its_start_row_names_else_the_launchers_default(isolated_state,
+                                                                                            refine_root):
+    put(isolated_state, at(9), "sit", "started", tier="opus", task="O1", refs={"run_id": "short"}, cap_minutes=60.0)
+    put(isolated_state, at(12), "sit", "started", tier="opus", task="O2", refs={"run_id": "long"})
+    put(isolated_state, at(14, 58), "sit", "started", tier="sonnet", task="O3", refs={"run_id": "rehearsal"},
+        cap_minutes=2.0)
+    built = build(isolated_state, refine_root)                          # at 15:00
+    assert sections(built.text)["### Sittings"] == [
+        "- 09:00:00Z short (opus, task O1): started, no end row (ledger:1)",
+        "- 12:00:00Z long (opus, task O2): started, still running, 180 of 240 min (ledger:2)",
+        "- 14:58:00Z rehearsal (sonnet, task O3): started, still running, 2 of 2 min (ledger:3)"]
+    assert "1 sitting started that day and never ended; the launcher may have died." in built.text
+    assert (built.counts["sittings_never_ended"], built.counts["sittings_running"]) == (1, 2)
 
 
 def test_every_cost_known_makes_the_total_exact_and_one_unknown_makes_it_a_floor(isolated_state, refine_root):
@@ -804,8 +830,8 @@ def test_review_answers_one_json_line_and_writes_the_file(isolated_state, capsys
     answer = one_json_line(out)
     assert code == 0
     assert {key: value for key, value in answer["counts"].items() if key != "rulings_waiting"} == {
-        "rows": 35, "sittings": 3, "sittings_never_ended": 1, "alerts": 6, "metrics_moved": 8, "metrics_new": 1,
-        "complaints": 1, "prs_open": 4, "cost_usd": 3.52, "cost_unknown": 1}
+        "rows": 35, "sittings": 3, "sittings_never_ended": 1, "sittings_running": 0, "alerts": 6, "metrics_moved": 8,
+        "metrics_new": 1, "complaints": 1, "prs_open": 4, "cost_usd": 3.52, "cost_unknown": 1}
     assert (answer["ok"], answer["outcome"], answer["day"], answer["file"]) == (True, "written", DAY,
                                                                               "review/2026-10-10.md")
     assert str(isolated_state) not in out

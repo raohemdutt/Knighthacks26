@@ -13,10 +13,11 @@ What goes in, in this order, all of the day asked for (the UTC day of the rows' 
 - Status: the counts of everything below, and a line saying so when lab/state/STOP exists.
 - Alerts: the lines of <state dir>/alerts/<day>.md. When the day is today, the verb first brings that file up
   to date (alerts.raise_alerts), because nothing else may have run the scan; --no-alerts leaves it as it is.
-- What happened: the sittings that ended that day with their outcome, length and cost (a sitting that started
-  and never ended is named; a cost the launcher did not report reads "cost unknown" and makes the total a
-  floor), the other verbs the ledger saw and how they ended, and the tasks the rows were about with the PRs
-  and commits their refs name.
+- What happened: the sittings that ended that day with their outcome, length and cost (a cost the launcher did
+  not report reads "cost unknown" and makes the total a floor), and the ones that started that day and have no
+  end row: still running while they are inside the cap their start row names (sit.DEFAULT_MINUTES when it names
+  none), and named as never ended once they are past it; then the other verbs the ledger saw and how they
+  ended, and the tasks the rows were about with the PRs and commits their refs name.
 - Numbers moved: per series (metric, node and conditions, so a number is only compared with one measured the
   same way) the newest reading of the day against the newest before it, or against the day's first reading
   when nothing came before; readings first seen that day; how many series did not move. Event numbers
@@ -50,7 +51,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from lab.machine import alerts, ledger, metrics_report, rulings, stop
+from lab.machine import alerts, ledger, metrics_report, rulings, sit, stop
 
 __all__ = ["VERB", "REVIEW_DIR", "REFINE_ROOT", "REPO", "GH_COMMAND", "PrsUnavailable", "Review", "review_path",
            "gh_open_prs", "file_open_prs", "build", "review", "main"]
@@ -68,6 +69,10 @@ GH_COMMAND = ("gh", "pr", "list", "--repo", REPO, "--state", "open", "--limit", 
 PR_TIMEOUT = 30.0               # seconds gh may take
 
 STARTED = "started"             # the outcome of a sitting's start row (lab sit)
+#: How long after its cap a sitting's end row may still be on its way: at the cap the launcher kills the session,
+#: waits for it to exit and for the rest of its output, and only then writes the row (lab/machine/sit.py).
+END_ROW_GRACE_MINUTES = (sit.POLL_SECONDS + sit.TERM_WAIT_SECONDS + sit.KILL_WAIT_SECONDS
+                         + sit.READER_JOIN_SECONDS) / 60
 NONE_LINE = "- none"
 LINE_CHARS = 200                # how much of a free-text field a line shows
 TITLE_CHARS = 100
@@ -170,8 +175,17 @@ def _sitting_line(when: dt.datetime, row: Row) -> str:
     return f"- {_clock(when)} {_who(row)} ({_item(row)}): {row.get('outcome')}, {length}, {price} ({alerts.cite(row)})"
 
 
-def sitting_section(day_events: Sequence[Event], all_events: Sequence[Event]) -> tuple[list[str], dict[str, Any]]:
-    """The day's ended sittings, the ones that started that day and never ended, and the counts."""
+def sitting_cap(row: Row) -> float:
+    """The cap in minutes a sitting's start row names (cap_minutes), else the launcher's default."""
+    cap = alerts.number(row.get("cap_minutes"))
+    return cap if cap is not None and cap > 0 else sit.DEFAULT_MINUTES
+
+
+def sitting_section(day_events: Sequence[Event], all_events: Sequence[Event],
+                    now: dt.datetime) -> tuple[list[str], dict[str, Any]]:
+    """The day's ended sittings, the ones that started that day and have no end row, and the counts. A sitting
+    without an end row is still running while now is inside its cap (sitting_cap, plus END_ROW_GRACE_MINUTES for
+    the end row to arrive), and never ended once it is past it."""
     ended_ever = {_sitting_id(row) for _, row in all_events
                   if row.get("verb") == alerts.SIT_VERB and row.get("outcome") != STARTED}
     ended = [(when, row) for when, row in day_events
@@ -180,15 +194,24 @@ def sitting_section(day_events: Sequence[Event], all_events: Sequence[Event]) ->
                  if row.get("verb") == alerts.SIT_VERB and row.get("outcome") == STARTED
                  and _sitting_id(row) not in ended_ever]
     lines = _more([_sitting_line(when, row) for when, row in ended[:MAX_SITTINGS]], len(ended))
+    running = lost = 0
     for when, row in open_ones:
-        lines.append(f"- {_clock(when)} {_who(row)} ({_item(row)}): started, no end row ({alerts.cite(row)})")
+        age, cap = (now - when).total_seconds() / 60, sitting_cap(row)
+        if age <= cap + END_ROW_GRACE_MINUTES:
+            running += 1
+            state = f"still running, {age:.0f} of {cap:g} min"
+        else:
+            lost += 1
+            state = "no end row"
+        lines.append(f"- {_clock(when)} {_who(row)} ({_item(row)}): started, {state} ({alerts.cite(row)})")
     costs = [alerts.metric_value(row, "sitting.cost_usd") for _, row in ended]
     known = [cost for cost in costs if cost is not None]
     outcomes = Counter(str(row.get("outcome")) for _, row in ended)
     return lines, {
         "sittings": len(ended),
         "outcomes": dict(sorted(outcomes.items(), key=lambda item: (-item[1], item[0]))),
-        "never_ended": len(open_ones),
+        "never_ended": lost,
+        "running": running,
         "cost_usd": round(sum(known), 4),
         "cost_unknown": len(costs) - len(known),
     }
@@ -471,7 +494,7 @@ def build(day: str, *, state_dir: StateDir = None, refine_root: Path | None = No
         parsed = alerts.parse_line(line)
         alert_lines.append(f"- {parsed.time}Z **{parsed.title}** {parsed.body}")     # type: ignore[union-attr]
 
-    sittings, sitting_counts = sitting_section(day_events, all_events)
+    sittings, sitting_counts = sitting_section(day_events, all_events, now)
     moved, moved_counts = moved_section(all_events, start, end)
     slots = slot_lines(all_events, now, start, end)
     complaints, complaint_total = complaint_lines(day_events)
@@ -531,6 +554,7 @@ def build(day: str, *, state_dir: StateDir = None, refine_root: Path | None = No
         "rows": len(day_events),
         "sittings": sitting_counts["sittings"],
         "sittings_never_ended": sitting_counts["never_ended"],
+        "sittings_running": sitting_counts["running"],
         "alerts": len(alert_lines),
         "metrics_moved": moved_counts["moved"],
         "metrics_new": moved_counts["new"],
