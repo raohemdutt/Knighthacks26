@@ -710,3 +710,148 @@ def test_the_command_ends_with_the_allow_list_flags_and_never_holds_the_prompt()
     assert cmd[:12] == ["agent-cli", "-p", "--model", "fable", "--output-format", "stream-json", "--verbose",
                         "--no-session-persistence", "--permission-prompts", "none", "--max-budget-usd", "2.5"]
     assert cmd[12:] == allowed.cli_flags("fable")
+
+
+def test_sit_uses_the_one_track_list_from_refine_merge():
+    from lab.machine import refine_merge
+
+    assert sit.TRACKS is refine_merge.TRACKS, (
+        f"sit.TRACKS {sit.TRACKS!r} is its own copy of the track list; "
+        f"it must be refine_merge.TRACKS {refine_merge.TRACKS!r}")
+
+
+# --- a session must not outlive its launcher (Windows job object) -----------------------------
+
+LAUNCHER_SCRIPT = r'''
+import os, sys
+from pathlib import Path
+
+from lab.machine import sit
+
+work = Path(sys.argv[1])
+CHILD = (
+    "import os, pathlib, time\n"
+    "pathlib.Path(r'%s').write_text(str(os.getpid()))\n"
+    "time.sleep(60)\n" % (work / "child.pid")
+)
+(work / "launcher.pid").write_text(str(os.getpid()))
+sit.run_session([sys.executable, "-c", CHILD], "", cwd=work, env=dict(os.environ),
+                stream_path=work / "stream.jsonl", cap_seconds=120)
+'''
+
+
+def _pid_listed(pid: int) -> bool:
+    import subprocess
+
+    shown = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH", "/FO", "CSV"], capture_output=True,
+                           text=True, check=False).stdout
+    return f'"{pid}"' in shown
+
+
+def _wait_for_text(path: Path, seconds: float) -> str | None:
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        if path.exists() and path.read_text(encoding="utf-8").strip():
+            return path.read_text(encoding="utf-8").strip()
+        time.sleep(0.1)
+    return None
+
+
+@pytest.mark.skipif(os.name != "nt", reason="the kill-on-close job object is the Windows launcher's guarantee")
+def test_a_session_does_not_outlive_its_launcher(tmp_path):
+    import subprocess
+
+    repo_root = Path(sit.__file__).resolve().parents[2]
+    script = tmp_path / "launcher.py"
+    script.write_text(LAUNCHER_SCRIPT, encoding="utf-8")
+    work = tmp_path / "work"
+    work.mkdir()
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(repo_root) + os.pathsep + env.get("PYTHONPATH", "")
+    launcher = subprocess.Popen([sys.executable, str(script), str(work)], cwd=str(repo_root), env=env,
+                                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    child_pid: int | None = None
+    launcher_pid: int | None = None
+    try:
+        child_text = _wait_for_text(work / "child.pid", 30)
+        launcher_text = _wait_for_text(work / "launcher.pid", 5)
+        assert child_text is not None, "the session never wrote its pid, so the launcher never started it"
+        assert launcher_text is not None, "the launcher never wrote its own pid"
+        child_pid, launcher_pid = int(child_text), int(launcher_text)
+        assert _pid_listed(child_pid), "the session is not running before the launcher is killed"
+
+        # Kill the launcher process alone, not its tree. The pid the launcher reported is the
+        # interpreter that runs run_session, which a venv's redirector may sit above.
+        os.kill(launcher_pid, 15)
+        launcher.kill()
+        launcher.wait(timeout=10)
+
+        end = time.monotonic() + 5
+        alive = True
+        while time.monotonic() < end:
+            alive = _pid_listed(child_pid)
+            if not alive:
+                break
+            time.sleep(0.2)
+        assert not alive, (
+            f"the session (pid {child_pid}) is still running 5 seconds after its launcher was killed; "
+            f"it must end with the launcher, no cap or STOP would reach it")
+    finally:
+        if child_pid is not None:
+            subprocess.run(["taskkill", "/PID", str(child_pid), "/T", "/F"], capture_output=True, check=False)
+        if launcher.poll() is None:
+            launcher.kill()
+
+
+def test_sit_takes_the_actor_tier_and_task_names_from_record():
+    import ast
+
+    from lab.machine import record
+
+    tree = ast.parse(Path(sit.__file__).read_text(encoding="utf-8"))
+    typed = sorted({node.value for node in ast.walk(tree)
+                    if isinstance(node, ast.Constant) and node.value in ("LAB_ACTOR", "LAB_TIER", "LAB_TASK")})
+
+    assert typed == [], f"sit.py types the env names {typed!r} as string literals; they are record.py's"
+    assert (sit.ACTOR_ENV, sit.TIER_ENV, sit.TASK_ENV) == (record.ENV_ACTOR, record.ENV_TIER, record.ENV_TASK)
+
+
+# --- a hand sitting reads the live sittings: the unit budget and the item that already runs ----
+
+
+def _live_start(state: Path, sitting: str, tier: str, item: str) -> None:
+    """A sit start row, stamped now, with no end row: a sitting the ledger shows as running."""
+    ledger.append({"actor": "lab pool", "tier": tier, "task": item.split(" ", 1)[1] if item.startswith("task ") else None,
+                   "verb": "sit", "outcome": "started", "metrics": {}, "refs": {"run_id": sitting},
+                   "item": item, "model": tier, "rehearse": False, "cap_minutes": 240.0}, state_dir=state)
+
+
+def test_a_hand_sitting_over_the_unit_budget_is_refused_unless_forced(lab, cli, digest):
+    _live_start(lab["state"], "sit-a", "fable", "merge")
+    _live_start(lab["state"], "sit-b", "fable", "referee")
+    before = rows(lab["state"])
+
+    answer = sit.run("sonnet", sit.Item("task", "O20"))
+
+    assert answer["ok"] is False
+    assert answer["outcome"] == "no_units"
+    assert not cli.ran(), "the CLI ran although 16 of 16 units were already live"
+    assert rows(lab["state"]) == before, "a refused sitting must not append a start row"
+
+    forced = sit.run("sonnet", sit.Item("task", "O20"), force=True)
+
+    assert forced["ok"] is True and forced["outcome"] == "ok"
+    assert cli.ran()
+
+
+def test_a_hand_sitting_of_an_item_that_already_runs_is_refused(lab, cli, digest):
+    _live_start(lab["state"], "sit-live-o20", "sonnet", "task O20")
+    before = rows(lab["state"])
+
+    answer = sit.run("opus", sit.Item("task", "O20"))
+
+    assert answer["ok"] is False
+    assert answer["outcome"] == "running"
+    assert "sit-live-o20" in answer["error"], f"the refusal must name the live sitting: {answer['error']!r}"
+    assert not cli.ran(), "the CLI ran although task O20 already has a live sitting"
+    assert rows(lab["state"]) == before, "a refused sitting must not append a start row"
