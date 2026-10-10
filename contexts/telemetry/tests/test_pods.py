@@ -210,8 +210,12 @@ def test_the_pods_come_from_the_hub_account_keys_with_the_account_name_quoted_in
     assert [(p.node, p.base_url, p.token) for p in pods] == [
         ("gpu-a", "https://dub.aupcloud.io/user/acct%20a/proxy/8790", TOKEN),
         ("gpu-b", "https://dub.aupcloud.io/user/acct-b/proxy/8790", "other")]
-    moved = pod_endpoints({**ENV, "ATLAS_HUB_URL": "https://hub.test/", "ATLAS_POD_POWER_PORT": "9001"})
+    moved = pod_endpoints({**ENV, "LAB_HUB_URL": "https://hub.test/", "ATLAS_POD_POWER_PORT": "9001"})
     assert moved[1].base_url == "https://hub.test/user/acct-b/proxy/9001"
+    # the one all-accounts hub setting is lab/hub.py's LAB_HUB_URL (the name jetson/egress.py admits too); the
+    # ATLAS_HUB_URL name this context once read is retired and moves nothing
+    retired = pod_endpoints({**ENV, "ATLAS_HUB_URL": "https://hub.test/"})
+    assert retired[1].base_url == "https://dub.aupcloud.io/user/acct-b/proxy/8790"
 
 
 def test_the_pods_can_run_on_other_accounts_each_with_its_own_hub():
