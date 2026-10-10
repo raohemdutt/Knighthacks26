@@ -175,11 +175,35 @@ def _comment(text: str) -> str:
     return f'-m comment --comment "{text}"'
 
 
+ACCT = "acct:"  # comment prefix of the counting rules
+
+
+def accounting(version: int, groups: dict[str, Resolved], dns: Resolved, offline: bool) -> list[str]:
+    """Counting rules with no target, ahead of the ESTABLISHED accept: every packet of every flow passes them, so a
+    group's `acct:` counter holds all the bytes sent to it. (The accept rules below see only a flow's first packet,
+    because ESTABLISHED catches the rest first.) An address in two groups counts once, for the group whose accept
+    rule would match it first."""
+    pick = 0 if version == 4 else 1
+    rules = [f"-A {CHAIN} -d {net} {_comment(ACCT + 'lan')}" for net in LAN[version]]
+    if "tailscale" in groups or "tailscale-relays" in groups:
+        rules += [f"-A {CHAIN} -d {net} {_comment(ACCT + 'tailnet')}" for net in TAILNET[version]]
+    rules += [f"-A {CHAIN} -d {ip} -p {proto} --dport 53 {_comment(ACCT + 'dns')}" for ip in sorted(dns[pick]) for proto in ("udp", "tcp")]
+    rules.append(f"-A {CHAIN} -p udp --dport 123 {_comment(ACCT + 'ntp')}")
+    if not offline:
+        seen: set[str] = set()
+        for group, resolved in sorted(groups.items()):
+            for ip in sorted(resolved[pick] - seen):
+                rules.append(f"-A {CHAIN} -d {ip} {_comment(ACCT + group)}")
+                seen.add(ip)
+    return rules
+
+
 def render(version: int, groups: dict[str, Resolved], dns: Resolved, offline: bool) -> str:
     """The chain as an iptables-restore transaction for IPv4 (version 4) or IPv6 (version 6)."""
     pick = 0 if version == 4 else 1
     lines = ["*filter", f":{CHAIN} - [0:0]",
              f"-A {CHAIN} -o lo -j ACCEPT",
+             *accounting(version, groups, dns, offline),
              f"-A {CHAIN} -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT"]
     lines += [f"-A {CHAIN} -d {net} {_comment('lan')} -j ACCEPT" for net in LAN[version]]
     if "tailscale" in groups or "tailscale-relays" in groups:  # traffic to tailnet peers goes over tailscale0 and is ours end to end, like the LAN
@@ -240,8 +264,15 @@ def parse_drops(kernel_log: str, limit: int = 20) -> list[dict]:
 def snapshot(counters: dict[str, dict[str, int]], groups: dict[str, list[str]], drops: list[dict], offline: bool,
              now: datetime | None = None) -> dict:
     """What GET /vault/egress shows."""
-    allowed = [{"name": name, "hosts": groups.get(name, []), **counters.get(name, {"packets": 0, "bytes": 0})}
-               for name in ["lan", "ntp", "dns", *sorted(groups)] if not (offline and name in groups)]
+    def sent(name: str) -> dict[str, int]:
+        """All bytes to the group (its counting rule), and how many connections it opened (its accept rule)."""
+        opened = counters.get(name, {"packets": 0, "bytes": 0})
+        total = counters.get(ACCT + name, opened)  # rules loaded before the counting rules existed: first packets only
+        return {"packets": total["packets"], "bytes": total["bytes"], "connections": opened["packets"]}
+
+    allowed = [{"name": name, "hosts": groups.get(name, []), **sent(name)}
+               for name in ["lan", *(["tailnet"] if ACCT + "tailnet" in counters else []), "ntp", "dns", *sorted(groups)]
+               if not (offline and name in groups)]
     blocked = counters.get("blocked", {"packets": 0, "bytes": 0})
     return {
         "enforced": True,

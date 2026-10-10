@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { OperatorCamera } from "@/components/operator/Camera";
+import { EgressPanel } from "@/components/operator/Egress";
 import { VoicePanel } from "@/components/operator/Voice";
 import op from "@/components/operator/operator.module.css";
 import { api, type AtlasEvent, type LearningTask } from "@/lib/api";
@@ -20,6 +21,8 @@ import { useFetch } from "@/lib/useFetch";
  *  - Lab: the newest taught task from /api/learning, kept fresh by learning.* events. The page cannot see whether
  *    the teacher is up, only what a run reports.
  *  - Offline badge: /vault/policy, refreshed when vault.policy.changed arrives.
+ *  - Leaving the box (V7): bytes to the internet per destination from the firewall, and camera pictures cleared to
+ *    leave (approved exports only), from /vault/egress.
  *  - Voice: push to talk on the box's own microphone and Bluetooth speaker (X16), state from /api/voice/status.
  */
 
@@ -162,6 +165,7 @@ export default function OperatorPage() {
   const models = useFetch((signal) => api.runtimeModels(signal));
   const policy = useFetch((signal) => api.vaultPolicy(signal));
   const board = useFetch((signal) => api.learning(signal));
+  const egress = useFetch((signal) => api.egress(signal));
   const [ticks, setTicks] = useState<Tick[]>([]);
   const tokS = useTokensPerSecond(subscribe);
 
@@ -169,6 +173,7 @@ export default function OperatorPage() {
   const { reload: reloadModels } = models;
   const { reload: reloadPolicy } = policy;
   const { reload: reloadBoard } = board;
+  const { reload: reloadEgress } = egress;
 
   // The slow numbers are polled; the events below only make them quicker when something changes.
   useEffect(() => {
@@ -177,9 +182,10 @@ export default function OperatorPage() {
       reloadModels();
       reloadPolicy();
       reloadBoard();
+      reloadEgress();
     }, SLOW_POLL_MS);
     return () => window.clearInterval(id);
-  }, [reloadCameras, reloadModels, reloadPolicy, reloadBoard]);
+  }, [reloadCameras, reloadModels, reloadPolicy, reloadBoard, reloadEgress]);
 
   const onEvent = useCallback(
     (e: AtlasEvent) => {
@@ -237,6 +243,7 @@ export default function OperatorPage() {
       <aside className={op.side}>
         <VoicePanel />
         <Lab task={labTask} />
+        <EgressPanel egress={egress.data ?? null} />
         <div className={`${op.panel} ${op.tickerPanel}`}>
           <h2>Happening now</h2>
           {ticks.length === 0 ? <p className={op.muted}>Waiting for something to happen…</p> : null}

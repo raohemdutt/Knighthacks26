@@ -5,6 +5,7 @@ import priv from "@/components/privacy/privacy.module.css";
 import { Empty, ErrorBox, Loading, WriteError } from "@/components/States";
 import ui from "@/components/ui.module.css";
 import { ApiError, api, type Egress, type VaultPolicy, type WipeResult, type WipeScope, type WipeToken } from "@/lib/api";
+import { bytes, groupLabel, internetSummary, picturesLine } from "@/lib/egress";
 import { cameraName } from "@/lib/format";
 import { useFetch } from "@/lib/useFetch";
 import { ZONES } from "@/lib/zones.generated";
@@ -23,28 +24,6 @@ const SCOPES: { id: WipeScope; label: string; what: string }[] = [
   { id: "keyframes", label: "Pictures only", what: "the saved camera pictures" },
   { id: "memory", label: "Memory only", what: "what Atlas remembers (the memory database)" },
 ];
-
-const GROUP_LABEL: Record<string, string> = {
-  lan: "Your own network",
-  ntp: "Clock sync",
-  dns: "Name lookups",
-  hub: "Learning lab",
-  system: "System check",
-  neon: "Circle (shared state)",
-  ntfy: "Phone alerts relay",
-};
-
-function groupLabel(name: string): string {
-  if (name.startsWith("connector:")) return `${name.slice(10).replace(/^./, (c) => c.toUpperCase())} app`;
-  if (name.startsWith("extra:")) return name.slice(6);
-  return GROUP_LABEL[name] ?? name;
-}
-
-function bytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / 1024 / 1024).toFixed(1)} MB`;
-}
 
 function Switch({ on, label, onChange, disabled }: { on: boolean; label: string; onChange: (next: boolean) => void; disabled?: boolean }) {
   return (
@@ -139,10 +118,14 @@ function EgressCard({ egress }: { egress: Egress }) {
     return <Empty title="No firewall on this box">Where the firewall runs (the Jetson), this lists what each group sent and what was blocked.</Empty>;
   }
   const sent = egress.allowed.filter((g) => g.bytes > 0 || !["lan", "ntp", "dns"].includes(g.name));
+  const pictures = picturesLine(egress);
   return (
     <div className={priv.card}>
       <Row title={egress.mode === "offline" ? "Offline: only your own network" : "Online: only listed places"} help={egress.stale ? "The numbers are old: the firewall service has stopped reporting. Its rules still hold." : undefined}>
         <span className={`${priv.pill} ${egress.mode === "offline" ? priv.pillWarn : ""}`}>{egress.mode === "offline" ? "Offline" : "Online"}</span>
+      </Row>
+      <Row title="Video sent: none" help={`${pictures ?? "Camera pictures leave only in a training export you approve"}. To the internet in total: ${bytes(internetSummary(egress).total)}.`}>
+        <span className={priv.pill}>Proof</span>
       </Row>
       <table className={priv.table}>
         <tbody>
