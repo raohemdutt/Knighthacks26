@@ -4,10 +4,11 @@
     found, problems = records.find([("teacher.decode_tok_s", None), ("detector.fps", "jetson")])
     found[("teacher.decode_tok_s", None)]        # [the metrics file's newest row, the ledger's newest row], as Figures
 
-A metrics-file row is cited as `metrics.jsonl:<line>` and a ledger row as `ledger seq <n>`, each with its own measured
-time and low-confidence flag. The newest row of a metric is the one `lab.machine.metrics.latest` and
-`lab.machine.ledger.latest_metric` would give: latest ts, the later line winning a tie. A node narrows the rows to that
-node; None takes any node (the teacher and the trainer have run on several pods).
+A metrics-file row is cited as `metrics.jsonl:<line>`, with the line number `lab.machine.metrics.load_numbered` gives,
+and a ledger row as `ledger seq <n>`, each with its own measured time and low-confidence flag. The newest row of a
+metric is the one `lab.machine.metrics.latest` and `lab.machine.ledger.latest_metric` would give: latest ts, the later
+line winning a tie. A node narrows the rows to that node; None takes any node (the teacher and the trainer have run on
+several pods).
 
 Nothing here creates or writes a file: a missing metrics file or ledger is no rows. A file that cannot be read (corrupt,
 or locked by a writer for longer than `lock_timeout`), and a checkout where `lab` cannot be imported (the gateway run
@@ -42,7 +43,7 @@ class LabRecords:
         problems = []
         path = self.metrics_path or metrics.DEFAULT_PATH
         try:
-            rows = _numbered(metrics.load(path, lock_timeout=self.lock_timeout), path)
+            rows = metrics.load_numbered(path, lock_timeout=self.lock_timeout)
         except (OSError, ValueError) as exc:
             rows = []
             problems.append(f"the lab metrics file could not be read: {type(exc).__name__}: {exc}")
@@ -62,15 +63,6 @@ class LabRecords:
         except (OSError, ValueError) as exc:
             problems.append(f"the lab ledger could not be read: {type(exc).__name__}: {exc}")
         return found, problems
-
-
-def _numbered(rows: list[dict], path: Path) -> list[tuple[int, dict]]:
-    """Each loaded row with its line number in the file. load() skips blank lines and the file only grows at its end,
-    so the n-th non-blank line holds the n-th row even if a row was appended after the load."""
-    if not rows:
-        return []
-    lines = [n for n, raw in enumerate(path.read_bytes().split(b"\n"), start=1) if raw.strip()]
-    return list(zip(lines, rows))
 
 
 def _newest(rows: list[tuple[int, dict]], metric: str, node: str | None) -> tuple[int, dict] | None:
