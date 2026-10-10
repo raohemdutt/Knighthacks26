@@ -21,6 +21,8 @@ options:
 
 import datetime as dt
 import os
+import uuid
+from pathlib import Path
 
 import httpx
 import icalendar
@@ -92,6 +94,44 @@ def _fetch(url: str) -> bytes:
     return r.content
 
 
+def make_invite(events: list[dict], organizer: str | None = None, now: dt.datetime | None = None) -> bytes:
+    """An .ics invite (METHOD:REQUEST) any calendar app can import: Outlook, Google, Apple.
+
+    The fallback for creating events when the school tenant won't grant a
+    Microsoft Graph token. Each event: {title, start, end, location?, attendees?}."""
+    now = now or dt.datetime.now(dt.UTC)
+    cal = icalendar.Calendar()
+    cal.add("prodid", "-//Atlas//Knight Hacks//EN")
+    cal.add("version", "2.0")
+    cal.add("method", "REQUEST")
+    for e in events:
+        ev = icalendar.Event()
+        start = dt.datetime.fromisoformat(e["start"]) if isinstance(e["start"], str) else e["start"]
+        end = dt.datetime.fromisoformat(e["end"]) if isinstance(e["end"], str) else e["end"]
+        ev.add("uid", f"{uuid.uuid4()}@atlas")
+        ev.add("dtstamp", now)
+        # UTC ("...Z") is the one form every calendar app imports correctly; offsets like
+        # "UTC-04:00" from isoformat strings are not valid TZIDs.
+        ev.add("dtstart", start.astimezone(dt.UTC))
+        ev.add("dtend", end.astimezone(dt.UTC))
+        ev.add("summary", e["title"])
+        if e.get("location"):
+            ev.add("location", e["location"])
+        if organizer:
+            ev.add("organizer", f"mailto:{organizer}")
+        for who in e.get("attendees", []):
+            ev.add("attendee", f"mailto:{who}" if "@" in who else who, parameters={"RSVP": "TRUE"})
+        cal.add_component(ev)
+    return cal.to_ical()
+
+
+def write_invite(events: list[dict], out_dir: Path, organizer: str | None = None) -> Path:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"invite-{dt.datetime.now(dt.UTC):%Y%m%dT%H%M%S}-{uuid.uuid4().hex[:6]}.ics"
+    path.write_bytes(make_invite(events, organizer))
+    return path
+
+
 mcp = FastMCP("atlas-ics")
 
 
@@ -99,6 +139,25 @@ mcp = FastMCP("atlas-ics")
 def list_events() -> list[dict]:
     """Calendar occurrences from every configured .ics feed, from yesterday to two weeks out."""
     return read_feeds(server_options(), dt.datetime.now(dt.UTC).astimezone(), _fetch)
+
+
+@mcp.tool()
+def create_event(
+    title: str | None = None,
+    start: str | None = None,
+    end: str | None = None,
+    location: str | None = None,
+    attendees: list[str] | None = None,
+    events: list[dict] | None = None,
+) -> str:
+    """Write tool (runs only after an approval card): create one event, or several via `events`,
+    as an .ics invite file under options.invites_dir. Returns the file path to share."""
+    batch = events or [{"title": title, "start": start, "end": end, "location": location, "attendees": attendees or []}]
+    if not all(e.get("title") and e.get("start") and e.get("end") for e in batch):
+        raise ValueError("each event needs title, start and end")
+    opts = server_options()
+    path = write_invite(batch, Path(opts.get("invites_dir", "data/invites")), opts.get("organizer"))
+    return f"created {len(batch)} event(s) as {path}"
 
 
 if __name__ == "__main__":

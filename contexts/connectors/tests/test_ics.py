@@ -74,3 +74,23 @@ def test_feed_url_comes_from_env(monkeypatch):
     fetched = []
     items = read_feeds(options, now, lambda url: fetched.append(url) or FEED)
     assert fetched == ["https://secret.example/feed.ics"] and len(items) == 3
+
+
+def test_invites_round_trip_through_any_calendar(tmp_path):
+    import icalendar
+
+    from contexts.connectors.servers.ics import write_invite
+
+    start = dt.datetime(2026, 10, 11, 14, tzinfo=NY)
+    path = write_invite([
+        {"title": "Study: COP 3502", "start": start.isoformat(), "end": (start + dt.timedelta(hours=2)).isoformat(),
+         "location": "Library", "attendees": ["hemdutt@example.edu"]},
+        {"title": "Study: COP 3502", "start": start + dt.timedelta(hours=4), "end": start + dt.timedelta(hours=6)},
+    ], tmp_path, organizer="dom@example.edu")
+    cal = icalendar.Calendar.from_ical(path.read_bytes())
+    events = list(cal.walk("VEVENT"))
+    assert cal["METHOD"] == "REQUEST" and len(events) == 2
+    assert events[0]["SUMMARY"] == "Study: COP 3502" and events[0]["LOCATION"] == "Library"
+    assert events[0]["DTSTART"].dt == start and "hemdutt@example.edu" in str(events[0]["ATTENDEE"])
+    # and our own reader parses what we wrote
+    assert len(expand(path.read_bytes(), start - dt.timedelta(hours=1), start + dt.timedelta(days=1), "mine", "calendar_event")) == 2
