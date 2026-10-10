@@ -99,7 +99,7 @@ def test_launch_leaves_a_pod_row_with_its_node_and_a_row_for_the_call(world):
     assert (pod["node"], pod["outcome"], pod["actor"]) == ("pod-a", "running", "tester")
     assert pod["metrics"] == {"pod.start_s": 15.0, "pod.balance_credits": 59960}
     assert pod["units"] == {"pod.start_s": "s", "pod.balance_credits": "credits"}
-    assert pod["conditions"] == {"resource": "gpu", "accelerator": "r9700"}
+    assert pod["conditions"] == {"resource": "gpu", "accelerator": "r9700", "launch_path": "rest"}
     assert pod["refs"]["account"] == "A"
 
     call = world.only_row("controller launch")

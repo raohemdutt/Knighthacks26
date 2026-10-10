@@ -5,12 +5,15 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import re
+from dataclasses import replace
 
 import httpx
 import pytest
 
 from lab import hub
 from lab.hub import Account, Hub, HubUnreachable, MissingCredentials, load_accounts
+from lab.hub_fake import AUP_IMAGE, FakeClock, FakeHub
 
 TOKEN = "0123456789abcdef0123456789abcdef"
 OTHER_TOKEN = "fedcba9876543210fedcba9876543210"
@@ -362,3 +365,258 @@ def test_an_account_takes_its_hub_address_from_the_key_and_sends_its_calls_there
     assert client.base_url == "https://sjc.test"
     assert seen == [("sjc.test", f"token {TOKEN}")]
     assert TOKEN not in repr(account)
+
+
+PASSWORD = "fake-correct-horse-battery"
+
+
+# --- the optional keys of an account: password, launch mode, accelerator, resource ---------------------
+
+def test_the_optional_keys_are_read_like_the_others_and_none_of_them_is_ever_required():
+    keys = {"AUP_HUB_USER_C": "acct-c", "AUP_HUB_TOKEN_C": TOKEN}
+    bare = load_accounts(["C"], environ=keys, env_files=[])["C"]
+    assert (bare.password, bare.launch, bare.gpu, bare.resource) == (None, None, None, None)
+
+    full = {**keys, "AUP_HUB_PASS_C": PASSWORD, "AUP_HUB_LAUNCH_C": "form", "AUP_HUB_GPU_C": "strix-halo",
+            "AUP_HUB_RESOURCE_C": "gpu"}
+    account = load_accounts(["C"], environ=full, env_files=[])["C"]
+    assert (account.password, account.launch, account.gpu, account.resource) == (PASSWORD, "form", "strix-halo", "gpu")
+
+    blank = {**keys, "AUP_HUB_PASS_C": "  ", "AUP_HUB_LAUNCH_C": ""}
+    assert load_accounts(["C"], environ=blank, env_files=[])["C"].password is None
+
+
+def test_the_optional_keys_may_come_from_a_dotenv_file_and_only_for_the_account_asked_for(tmp_path):
+    dotenv = tmp_path / ".env"
+    dotenv.write_text(f"AUP_HUB_PASS_C={PASSWORD}\nAUP_HUB_PASS_D=other-password-1\nAUP_HUB_GPU_D=r9700\n",
+                      encoding="utf-8")
+    keys = {"AUP_HUB_USER_C": "acct-c", "AUP_HUB_TOKEN_C": TOKEN}
+
+    account = load_accounts(["C"], environ=keys, env_files=[dotenv])["C"]
+
+    assert (account.password, account.gpu) == (PASSWORD, None)
+
+
+def test_a_password_is_never_shown_when_an_account_or_a_client_is_printed():
+    account = Account("C", "acct-c", TOKEN, "https://sjc.test", PASSWORD, "form", "strix-halo", "gpu")
+    client = Hub(account, transport=httpx.MockTransport(lambda request: ok_json({})))
+
+    for shown in (repr(account), str(account), repr(client)):
+        assert PASSWORD not in shown and TOKEN not in shown
+
+
+def test_the_password_is_cut_out_of_a_reply_text_like_the_token():
+    account = Account("C", "acct-c", TOKEN, None, PASSWORD)
+    client = Hub(account, base_url="https://sjc.test", transport=httpx.MockTransport(
+        lambda request: httpx.Response(400, text=f"bad {PASSWORD} and {TOKEN}")))
+
+    reply = client.get("/anything")
+
+    assert PASSWORD not in reply.text and TOKEN not in reply.text
+    assert client.scrub(f"x {PASSWORD} y") == "x *** y"
+
+
+# --- the web spawn form ----------------------------------------------------------------------
+
+
+def form_world(**fake_attributes):
+    """The SJC hub as a fake (quota off) with account C, who can log in, and a client for it."""
+    clock = FakeClock("2026-10-10T09:27:00Z")
+    fake = FakeHub(clock)
+    for name, value in fake_attributes.items():
+        setattr(fake, name, value)
+    account = fake.add_account("C", user="acct-c", token=TOKEN, quota_enabled=False, password=PASSWORD)
+    return fake, Hub(account, base_url="https://sjc.test", transport=fake.transport, sleep=clock.sleep), clock
+
+
+def xsrf_of(call):
+    return re.search(r"(?:^|; )_xsrf=([^;]+)", call.headers["cookie"]).group(1)
+
+
+def test_the_form_logs_in_with_cookies_then_posts_the_spawn_fields_with_the_xsrf_cookie_in_the_query():
+    fake, client, clock = form_world()
+
+    result = client.spawn_form(2400, "gpu", "strix-halo")
+
+    assert (result.ok, result.stage, result.status, result.kind, result.error) == (True, "spawn", 302, None, None)
+    assert result.location == "/hub/spawn-pending/acct-c"
+    assert [(call.method, call.path) for call in fake.calls] == [
+        ("GET", "/hub/native/login"), ("POST", "/hub/native/login"), ("GET", "/hub/spawn/acct-c"),
+        ("POST", "/hub/spawn/acct-c")]
+    login_page, login, spawn_page, spawn = fake.calls
+    assert "cookie" not in login_page.headers
+    assert login.form == {"username": "acct-c", "password": PASSWORD, "_xsrf": xsrf_of(login)}
+    assert "jupyterhub-hub-login=" in spawn_page.headers["cookie"]
+    assert spawn.query == f"_xsrf={xsrf_of(spawn)}"
+    assert spawn.form == {"resource_type": "gpu", "gpu_selection_gpu": "strix-halo", "runtime": "2400", "repo_url": "",
+                          "repo_persist": "true", "repo_branch": ""}
+    assert [call.status for call in fake.calls] == [200, 302, 200, 302]
+    clock.sleep(fake.spawn_s)
+    assert fake.pod_image("C") == AUP_IMAGE
+    options = client.get(client.user_url()).body["servers"][""]["user_options"]
+    assert options == {"gpu_selection": "strix-halo", "resource_type": "gpu", "runtime_minutes": 2400}
+
+
+def test_the_form_session_never_carries_the_token_and_the_api_calls_never_carry_its_cookies():
+    fake, client, _ = form_world()
+
+    client.spawn_form(30, "gpu", "r9700")
+    client.get(client.user_url())
+
+    web, api = fake.calls[:-1], fake.calls[-1]
+    assert all("authorization" not in call.headers for call in web)
+    assert all(call.headers["user-agent"] == hub.USER_AGENT for call in fake.calls)
+    assert api.headers["authorization"] == f"token {TOKEN}" and "cookie" not in api.headers
+
+
+def test_a_wrong_password_is_a_failed_login_in_the_hubs_words_and_nothing_is_spawned():
+    fake, client, _ = form_world()
+    wrong = Hub(replace(client.account, password="fake-wrong-password-1"), base_url="https://sjc.test",
+                transport=fake.transport)
+
+    result = wrong.spawn_form(30, "gpu", "r9700")
+
+    assert (result.ok, result.stage, result.kind, result.status) == (False, "login", "login_failed", 200)
+    assert result.error == "Invalid username or password"
+    assert [(call.method, call.path) for call in fake.calls] == [("GET", "/hub/native/login"), ("POST", "/hub/native/login")]
+    assert fake.running("C") is False
+    assert "fake-wrong-password-1" not in repr(result)
+
+
+def test_a_login_page_without_any_xsrf_token_stops_before_the_password_is_sent():
+    fake, client, _ = form_world(omit_xsrf=True)
+
+    result = client.spawn_form(30, "gpu", "r9700")
+
+    assert (result.ok, result.stage, result.kind) == (False, "login_page", "xsrf_missing")
+    assert "_xsrf" in result.error
+    assert [(call.method, call.path) for call in fake.calls] == [("GET", "/hub/native/login")]
+    assert PASSWORD not in json.dumps([call.form for call in fake.calls])
+
+
+def test_the_hidden_field_is_used_when_the_hub_sets_no_xsrf_cookie_but_the_spawn_needs_the_cookie():
+    posted = []
+
+    def handler(request):
+        if request.url.path == "/hub/native/login" and request.method == "GET":
+            filler = "<style>" + "x" * 5000 + "</style>"
+            return httpx.Response(200, text=f'{filler}<input value="hidden-token" name="_xsrf" type="hidden">')
+        if request.url.path == "/hub/native/login":
+            posted.append(request.content.decode())
+            return httpx.Response(302, headers=[("location", "/hub/"), ("set-cookie", "jupyterhub-hub-login=s; Path=/hub/")])
+        return httpx.Response(200, text="<html>the spawn page</html>")
+
+    client = Hub(Account("C", "acct-c", TOKEN, None, PASSWORD), base_url="https://sjc.test",
+                 transport=httpx.MockTransport(handler))
+
+    result = client.spawn_form(30, "gpu", "r9700")
+
+    assert "_xsrf=hidden-token" in posted[0]
+    assert (result.ok, result.stage, result.kind) == (False, "spawn_page", "xsrf_missing")
+
+
+def test_an_account_without_a_password_cannot_use_the_form_and_nothing_is_sent():
+    fake, client, _ = form_world()
+    bare = Hub(replace(client.account, password=None), base_url="https://sjc.test", transport=fake.transport)
+
+    with pytest.raises(MissingCredentials) as caught:
+        bare.spawn_form(30, "gpu", "r9700")
+
+    assert caught.value.missing == ["AUP_HUB_PASS_C"]
+    assert fake.calls == []
+
+
+def test_a_hub_that_does_not_answer_is_a_result_not_an_exception_and_leaks_nothing():
+    def handler(request):
+        raise httpx.ConnectError(f"cannot reach https://sjc.test with {PASSWORD}")
+
+    client = Hub(Account("C", "acct-c", TOKEN, None, PASSWORD), base_url="https://sjc.test",
+                 transport=httpx.MockTransport(handler), sleep=lambda seconds: None)
+
+    result = client.spawn_form(30, "gpu", "r9700")
+
+    assert (result.ok, result.stage, result.kind, result.status) == (False, "login_page", "no_answer", 0)
+    assert PASSWORD not in result.error and "***" in result.error
+
+
+def test_a_page_that_echoes_the_password_in_its_error_is_cut_before_it_is_returned():
+    def handler(request):
+        if request.method == "GET":
+            return httpx.Response(200, text="", headers={"set-cookie": "_xsrf=t; Path=/hub/"})
+        return httpx.Response(200, text=f'<p class="login_error">no account for {PASSWORD}</p>')
+
+    client = Hub(Account("C", "acct-c", TOKEN, None, PASSWORD), base_url="https://sjc.test",
+                 transport=httpx.MockTransport(handler))
+
+    result = client.spawn_form(30, "gpu", "r9700")
+
+    assert (result.kind, result.error) == ("login_failed", "no account for ***")
+
+
+def test_a_get_is_tried_again_after_a_gateway_error_but_a_post_never_is():
+    fake, client, _ = form_world()
+    fake.queue("GET", "/hub/native/login", 502)
+    first = client.spawn_form(30, "gpu", "r9700")
+    assert first.ok is True
+    assert [call.status for call in fake.calls_matching("GET", "/hub/native/login")] == [502, 200]
+
+    again, other, _ = form_world()
+    again.queue("POST", "/hub/native/login", 502)
+    second = other.spawn_form(30, "gpu", "r9700")
+    assert (second.ok, second.stage, second.kind, second.status) == (False, "login", "unexpected_status", 502)
+    assert len(again.calls_matching("POST", "/hub/native/login")) == 1
+
+
+def test_a_spawn_the_hub_refuses_is_reported_with_its_message_and_one_post():
+    fake, client, _ = form_world()
+    fake.queue("POST", "/hub/spawn/", 403, body={"status": 403, "message": "Cannot start container: Insufficient quota"})
+
+    result = client.spawn_form(30, "gpu", "r9700")
+
+    assert (result.ok, result.stage, result.kind, result.status) == (False, "spawn", "spawn_refused", 403)
+    assert result.error == "Cannot start container: Insufficient quota"
+    assert len(fake.calls_matching("POST", "/hub/spawn/")) == 1
+
+
+def test_a_spawn_sent_back_to_the_login_page_is_not_a_started_server():
+    def handler(request):
+        if request.url.path == "/hub/native/login":
+            if request.method == "GET":
+                return httpx.Response(200, text="", headers={"set-cookie": "_xsrf=t; Path=/hub/"})
+            return httpx.Response(302, headers=[("location", "/hub/"), ("set-cookie", "jupyterhub-hub-login=s; Path=/hub/")])
+        if request.method == "GET":
+            return httpx.Response(200, text="<html>the spawn page</html>")
+        return httpx.Response(302, headers={"location": "/hub/login?next=%2Fhub%2Fspawn%2Facct-c"})
+
+    client = Hub(Account("C", "acct-c", TOKEN, None, PASSWORD), base_url="https://sjc.test",
+                 transport=httpx.MockTransport(handler))
+
+    result = client.spawn_form(30, "gpu", "r9700")
+
+    assert (result.ok, result.kind, result.status) == (False, "spawn_refused", 302)
+    assert "login page" in result.error
+
+
+def test_the_form_fields_name_the_accelerator_under_the_resource_it_is_for():
+    assert hub.spawn_fields(2400, "gpu", "strix-halo") == {
+        "resource_type": "gpu", "gpu_selection_gpu": "strix-halo", "runtime": "2400", "repo_url": "",
+        "repo_persist": "true", "repo_branch": ""}
+    assert hub.spawn_fields(30, "code-gpu", "r9700")["gpu_selection_code-gpu"] == "r9700"
+
+
+def test_a_login_redirect_that_sets_no_session_cookie_is_not_a_login():
+    seen = []
+
+    def handler(request):
+        seen.append((request.method, request.url.path))
+        if request.method == "GET":
+            return httpx.Response(200, text="", headers={"set-cookie": "_xsrf=t; Path=/hub/"})
+        return httpx.Response(302, headers={"location": "/hub/native/login"})
+
+    client = Hub(Account("C", "acct-c", TOKEN, None, PASSWORD), base_url="https://sjc.test",
+                 transport=httpx.MockTransport(handler))
+
+    result = client.spawn_form(30, "gpu", "r9700")
+
+    assert (result.ok, result.stage, result.kind, result.status) == (False, "login", "login_failed", 302)
+    assert seen == [("GET", "/hub/native/login"), ("POST", "/hub/native/login")]

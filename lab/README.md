@@ -11,8 +11,41 @@ are on the Notion Credentials page and in your local `.env`; never put them in t
 | **SJC**, https://sjc.aupcloud.io | **C** and **D** | The one to use. JupyterHub 5.4.4, resource key `gpu` (image `ghcr.io/amdresearch/auplc-base:latest`), accelerators `r9700`, `9070xt`, `strix-halo`, `strix`, `phx`. |
 | **DUB**, https://dub.aupcloud.io | **A** and **B** | Kept for when it answers again; it has answered 502 all day. |
 
-The sections below were written against DUB and its accounts A and B. Nothing has been launched on SJC yet, so read
-their numbers (credits, timings, the culler) as DUB's until a pod there has been measured.
+The sections below were written against DUB and its accounts A and B. Pods on SJC have so far been started only through
+the hub's web spawn form (next paragraphs), so read their numbers (credits, timings, the culler) as DUB's until a pod
+there has been measured.
+
+**On SJC the REST launch is accepted but ignored; the controller launches through the web form.**
+`POST /hub/api/users/<account>/server` with options answers 202 and echoes the options back, but the pod that comes up
+is the stock `quay.io/jupyterhub/singleuser:latest`: no GPU device and no ROCm. Only the hub's own spawn page starts the
+real pod (`ghcr.io/amdresearch/auplc-base:latest`, ROCm 7.13, and with `strix-halo` the Strix Halo GPU, gfx1151).
+`Hub.spawn_form` in `lab/hub.py` does what the browser does, with cookies and no token:
+`GET /hub/native/login` (the `_xsrf` cookie and hidden field), `POST /hub/native/login` with `username`, `password` and
+`_xsrf` (a 302 and the `jupyterhub-hub-login` cookie mean it was accepted), `GET /hub/spawn/<user>` (200), then
+`POST /hub/spawn/<user>?_xsrf=<the _xsrf cookie>` with the fields `resource_type`, `gpu_selection_<resource_type>`,
+`runtime` (minutes), `repo_url`, `repo_persist` and `repo_branch` (a 302 means the spawn started). The controller then
+polls the API for `servers[""].ready` as for any launch. The page's own runtime box stops at 240 minutes; the hub took
+2400 from the form and records it as `runtime_minutes`, and a runtime beyond 240 still wants AMD staff's go first.
+
+Which way a launch goes is set per account, in the environment or the workspace `.env`:
+
+| Key | Meaning |
+|---|---|
+| `AUP_HUB_LAUNCH_<letter>` | `form`: always the web form. `rest`: only the API call, never a look at the pod. `auto` (also when the key is not set): the API call, then, if the account has a password, a look at the ready pod; a pod that turns out to be the stock image is stopped and launched again through the form. Set `form` for C and D. |
+| `AUP_HUB_PASS_<letter>` | The web login password. Only the form reads it, and it is cut out of every answer, error message and ledger row as the token is. A `form` launch without it is refused before anything is sent (kind `no_credentials`, exit 2). |
+| `AUP_HUB_GPU_<letter>` | The accelerator the account launches by default (`strix-halo` on SJC); else `r9700`. `--accelerator` overrides it. |
+| `AUP_HUB_RESOURCE_<letter>` | The catalog resource the account launches by default; else `gpu`. `--resource` overrides it. |
+
+The look at the pod (`auto`) runs a three-line script in a terminal on it, as `run-script` does, which prints
+`$JUPYTER_IMAGE_SPEC` and whether `/dev/kfd` exists. The image name decides (`jupyterhub/singleuser` is the stock one);
+without a name, a pod with no GPU device is the stock image when the resource is not a cpu one. A pod that cannot be
+asked is left as it is, and the answer says `image_check: unknown` and why. `--no-wait` skips the look, as does a pod
+that was already running. The answer of every launch that sent something names the path (`launch_path`: `rest` or
+`form`) and, after a look, `image_check` (`ok`, `stock` or `unknown`); a launch that fell back adds `fell_back_from` and
+`rest_pod_image`. The `pod launch` ledger row carries `launch_path` (and `fell_back_from`) next to `resource` and
+`accelerator` in `conditions`, so a metric such as `pod.start_s` is never mixed between the two paths. On DUB the REST
+call works and the look at the pod is only a few extra calls: set `AUP_HUB_LAUNCH_A=rest` and `AUP_HUB_LAUNCH_B=rest` to
+launch A and B exactly as before (an account without a password already does).
 
 **Nothing is metered on SJC.** `GET /hub/api/quota/me` answers `balance: 0, unlimited: true, enabled: false` and
 `GET /hub/api/quota/rates` answers `enabled: false`: the hub keeps no credit accounts. The controller reads that as
@@ -31,7 +64,7 @@ calls the machines `pod-c` and `pod-d`.
 python -m lab.controller status --account C                 # read-only: is a pod up, its scheduled end, which hub
 python -m lab.controller quota --account C                  # read-only: "quota disabled on this hub"
 python -m lab.controller launch --account C --minutes 240 --dry-run
-python -m lab.controller launch --account C --minutes 240 [--no-wait]
+python -m lab.controller launch --account C --minutes 240 [--accelerator strix-halo] [--resource gpu] [--no-wait]
 python -m lab.controller wait --account C
 python -m lab.controller keep-alive --account C --minutes 90
 python -m lab.controller run-script --account C lab/pod_a_teacher.sh proxy
