@@ -65,8 +65,9 @@ def test_writes_only_run_after_approval():
 
 
 def test_config_loads():
-    [site] = load_specs("config/connectors.yaml")
-    assert site.name == "site" and site.reads == {"check_pages": "page_change"}
+    specs = {s.name: s for s in load_specs("config/connectors.yaml")}
+    assert specs["site"].reads == {"check_pages": "page_change"}
+    assert not specs["calendar"].enabled  # stays off until the feed URLs are in .env
 
 
 def test_real_mcp_round_trip():
