@@ -8,40 +8,41 @@ there was opened by the author of this file on 2026-10-10.
 
 ## The goal
 
-Refine the kernels and speed track until every item in the walk list below passes every dimension
-of the rubric, and the track's numbers move. The objective is the best tokens per second and joules
-per token on gfx1201, told honestly [S4].
+Refine the kernels and speed track until every board task and queued experiment in the walk list
+below passes every dimension of the rubric, and the track's numbers move. The objective is the best
+tokens per second and joules per token on gfx1201, told honestly [S4].
 
-Target: the pass cap per run set in `lab/refine/PASS_RULES.md`, which the O13 task fixes at 10
-passes per run [S9], or convergence, whichever comes first. Convergence = a pass that walks every
-item in the walk list against every dimension and changes nothing [S9]. Ilan may change the target
-with a ruling in `lab/refine/kernels/OWNER_RULINGS.md`.
+Target: a run on this track ends at the first of three things: a pass that converges, the tenth pass
+of the run, or Ilan ending it [S9]. A pass converges when it has walked every board task and every
+queued experiment of the track against every dimension of this rubric and changed nothing: no board
+edit, no new queued experiment, and no new ruling [S9].
 
 What this track refines: the vLLM build that serves the teacher (built from source on the pod with
-the patches kept in the repo [S17]), the kernels inside it, the experiments that measure them, and
-the Task Board rows that plan them: R11 (the benchmark harness [S7]), R12 (the first HIP kernel
-experiment [S8]), and the speed and energy entries of the experiment queue on T0 [S6]. Telemetry
-samplers, the learning loop, and pod plumbing have their own rubrics under `lab/refine/`; the merge
-pass settles overlaps [S9].
+the patches kept in the repo [S17]), the kernels inside it, and the board tasks and experiments that
+plan and measure them. The pass rules give the kernels track "serving speed and kernel work: R11,
+R12 and the ranked experiment queue on T0" [S9]; the walk list below is that set, with the subjects
+those tasks act on. Telemetry samplers, the learning loop, and pod plumbing have their own rubrics
+under `lab/refine/`, and the merge pass settles overlaps [S9].
 
 ## How passes are run
 
-As set by the O13 task [S9], until `lab/refine/PASS_RULES.md` lands; where the two differ, that file
-wins. Each pass is a fresh Opus agent started through the open-ticket skill with the pass as its
-task, never a fork. Passes on this track run one at a time, strictly in sequence, because each pass
-edits what the next one reads; the four tracks (telemetry, learning, plumbing, kernels) run in
-parallel, and a Fable merge pass follows each round of track passes.
+`lab/refine/PASS_RULES.md` is the process. Where it and this file disagree about process, it wins;
+where they disagree about what the track is judged on, this file wins [S9]. In short: each pass is a
+fresh Opus agent started through the open-ticket skill as its own Task Board task, never a fork;
+passes on this track run strictly in sequence, the four tracks run in parallel in rounds, and a Fable
+merge pass follows each round [S9]. A pass reads the pass rules, this file, the formats in
+`lab/refine/TEMPLATES.md`, the counter and the log, the rulings, the metrics file
+`lab/refine/metrics.jsonl` (later the ledger) [S11], the notes under `lab/refine/research/kernels/`
+[S12], the board tasks of this track, and the experiment queue on T0 [S9][S10].
 
-A pass reads this file, the metrics file `lab/refine/metrics.jsonl` (later the ledger) [S11], the
-notes under `lab/refine/research/kernels/` [S12], and the Task Board rows for this track. It may edit
-those rows (split, merge, reorder within Ilan's lane, rewrite Done-when, fix blockers, set Tier,
-queue experiments on T0) and this track's log, counter, and rulings [S9][S10]. A pass that needs a
-measurement on a GPU queues it; it never runs one ad hoc (see What a pass may NOT change).
+A pass edits plans only. It runs no GPU job, takes no GPU Queue slot, starts no pod or model server,
+and writes no `data/events` [S9]. A measurement it needs becomes an experiment line on T0, which an
+ordinary task later runs through the GPU Queue on pod B [S9][S16].
 
 ## Primary sources (the ONLY things that may justify a change)
 
-In this order of authority, the order every track's rubric uses [S14]. When sources disagree, follow
-the higher one and record the disagreement; never average.
+In the order the pass rules give [S9], which every track's rubric uses [S14]. When sources disagree,
+follow the higher one and record the disagreement; never average.
 
 1. Ilan's rulings: a filled `Answer:` in `lab/refine/kernels/OWNER_RULINGS.md` [S10], and his
    decisions recorded in the Design Doc and on the Task Board: vLLM built from source is the serving
@@ -54,9 +55,10 @@ the higher one and record the disagreement; never average.
 4. Our own measurements: `lab/refine/metrics.jsonl` until the ledger replaces it [S11], the measured
    table in `lab/README.md` [S1], and results written on T0 [S6].
 
-On a question of fact about our own card (a speed, a wattage, whether a kernel fits in LDS), a
-measurement taken under this rubric outranks any outside report. U1 already makes measurement the
-judge of improvement; outside sources decide what to try, our measurements decide what is true.
+This ranking decides what a pass may change. Whether a change worked on our card (a speed, a
+wattage, whether a kernel fits in LDS) is decided by U1, the before and after measured here, never by
+an outside report of what the same change did elsewhere: outside sources decide what to try, our
+measurements decide what happened [S9].
 
 A pass MUST open a source before changing anything that rests on it, and MUST cite the file and
 heading, the URL, or the metrics-file line in the log. No citation, no change. Nothing from memory
@@ -70,27 +72,30 @@ dimension is logged whether or not it is fixed this pass.
 
 ### U1. Old versus new
 
-Every task and experiment names the metrics it is meant to move, records their current values first
-from the metrics file (or the ledger once it replaces it), and measures them the same way at the end:
-same harness, prompt set, checkpoint, quantization, batch sizes, node, and power sampler. The pass log
-carries before, after, and the conditions. A change that moves nothing is not an improvement; a
-regression is reverted, or it goes to `OWNER_RULINGS.md` with the trade-off stated. The track is
-judged by whether its numbers moved across passes [S4][S14].
+Every task and experiment names the metrics it is meant to move, reads their current values from the
+metrics file or ledger before starting, and ends by measuring them the same way. The pass entry shows
+the values before and after and the conditions they were measured under. A change that moves nothing
+is not an improvement. A regression is reverted, or it goes to a ruling with the trade-off stated.
+The loop itself is judged by whether the track's numbers moved across passes [S9][S4].
 
-Check: every value in the metrics-before block quotes its metrics-file line [S11]; the after rows
-carry the same conditions as the before rows; a missing before or a changed condition makes the
-comparison invalid, never "roughly comparable".
+Check: every value in the metrics-before block quotes its metrics-file line [S11]; the after values
+were measured with the same harness, prompt set, checkpoint, quantization, batch sizes, node, and
+power sampler as the before values; a missing before or a changed condition makes the comparison
+invalid, never "roughly comparable".
 
 ### U2. Source-forced
 
-Every change to a method, a patch, or a plan item cites at least one opened source beside its before
-and after. Each pass starts with a bounded research step written to `lab/refine/research/kernels/`
-in the research-note format (labels measured, practitioner, anecdote, opinion; the search bound in
-`lab/refine/RESEARCH_FORMAT.md`) [S12]. A source-backed idea that is not yet tested becomes a queued
-experiment on T0 with its citation, the metric it should move, and by how much [S4][S6].
+Every change to a method or a plan item cites at least one source next to its before and after. Each
+pass starts with a bounded research step on the track's open problems, written into
+`lab/refine/research/kernels/` with citations. A source-backed idea that has not been tested becomes a
+queued experiment with its citation and expected movement. A change that depends on a fact no source
+in hand establishes is not made; the fact becomes a queued measurement or a ruling [S9][S4].
 
 Check: each numbered change in the log has a SOURCE line naming a file and heading, a URL, or a
-metrics-file line; each new T0 entry carries its citation and expected movement (see K8).
+metrics-file line; research notes follow the research-note format (findings labeled measured,
+practitioner, anecdote, or opinion, within the search bound in `lab/refine/RESEARCH_FORMAT.md`)
+[S12]; each new T0 line carries its citation and expected movement (see K8). A pass entry with no
+metrics-before block, or with any change that has no citation, is invalid and is reverted [S9].
 
 ### K1. Stock numbers first
 
@@ -219,35 +224,42 @@ open items.
 Kernel and speed experiments are ordered by expected joules-per-token gain times confidence, with the
 estimate written before the run and the result written after it, both on the queue on T0 [S4][S6].
 
-Check: (a) each entry states the expected change in joules per token at a named batch size, a
-confidence, the minimum runs, and its citation, matching the ranking the kernels research note gives
-its candidate experiments [S12]; (b) after the run the measured change is written beside the
-estimate, slower results included, because a slower result is still a result [S8]; (c) an estimate
-above the bandwidth ceiling in The baseline to beat needs a lever that changes the bytes moved per
-token (a smaller weight format, speculative decoding), named as such [S36][S21].
+Check: (a) each line is tagged `(kernels)` after its number and carries what the pass rules require
+(the track, the lever, the arms, the metric to move, the citation, and the expected movement) [S9],
+plus the expected change in joules per token at a named batch size, a confidence, and the minimum
+runs, matching the ranking the kernels research note gives its candidate experiments [S12]; (b)
+after the run the measured change is written beside the estimate, slower results included, because a
+slower result is still a result [S8]; (c) an estimate above the bandwidth ceiling in The baseline to
+beat needs a lever that changes the bytes moved per token (a smaller weight format, speculative
+decoding), named as such [S36][S21].
 
 ## The walk list
 
-Each pass walks at least two of these against all ten dimensions, rotating so every item is walked
-across a run; the log says which were walked. A pass may add an item that the board or the research
-notes produced.
+Every pass walks every item below against all ten dimensions [S9]. W1 to W6 are this track's board
+tasks and queued experiments, and this list replaces the starting set in the pass rules [S9]; W7 to
+W11 are the subjects those tasks and experiments act on, walked with them.
 
-- W1. The stock record: vLLM b1388b1 plus `lab/vllm-gfx1201.diff`, `RedHatAI/Qwen3.8-27B-INT4`, at
-  batch sizes 1, 4, 8, and 16, with repeats and greedy reference outputs (K1, K3, K4) [S1][S2].
-- W2. The measuring stick: the R11 harness and the pod power sampler it reads; both arms of every
-  comparison depend on them (U1, K3, K6) [S7][S15].
-- W3. The W4A16 linear path: `ConchLinearKernel`, the Triton fallback that `lab/README.md` names the
-  first kernel target [S1][S23][S26].
-- W4. The unified attention kernel's stage and block settings, R12's first candidate and the first
-  LDS example [S8][S2].
-- W5. T0 entry E2: vLLM against llama.cpp on the same card and prompts [S6].
-- W6. T0 entry E3: the batch sweep and its joules-per-token curve [S6].
-- W7. T0 entry E5: the checkpoint shootout (AMD Quark AWQ-INT4, RedHat INT4, official FP8); a new
+- W1. R11, the benchmark harness: the measuring stick both arms of every comparison depend on (U1,
+  K3, K6) [S7].
+- W2. R12, the first HIP kernel experiment: the unified attention kernel's stage and block settings
+  for the 64 KB LDS (K2, K4, K5, K7) [S8].
+- W3. T0 entry E2: vLLM against llama.cpp on the same card and prompts [S6].
+- W4. T0 entry E3: the batch sweep and its joules-per-token curve [S6].
+- W5. T0 entry E5: the checkpoint shootout (AMD Quark AWQ-INT4, RedHat INT4, official FP8); a new
   checkpoint is a new stock record (K1) [S6][S1].
-- W8. The build-enabling patch and its recipe: `lab/vllm-gfx1201.diff` and `lab/pod_a_teacher.sh
+- W6. Every other line in T0's experiment queue that names this track, as `E<n> (kernels)`, or that
+  moves a metric in the metric set below. E1 (a trainer and a serving replica on one card) and E4
+  (Jetson power modes) are left to the plumbing and telemetry tracks [S6][S9].
+- W7. The stock record: vLLM b1388b1 plus `lab/vllm-gfx1201.diff`, `RedHatAI/Qwen3.8-27B-INT4`, at
+  batch sizes 1, 4, 8, and 16, with repeats and greedy reference outputs (K1, K3, K4) [S1][S2].
+- W8. The W4A16 linear path: `ConchLinearKernel`, the Triton fallback that `lab/README.md` names the
+  first kernel target [S1][S23][S26].
+- W9. The pod power sampler, a telemetry-track task, as the source of every joules-per-token number
+  here (K6); a finding about it goes to the merge pass [S15][S9].
+- W10. The build-enabling patch and its recipe: `lab/vllm-gfx1201.diff` and `lab/pod_a_teacher.sh
   build` (K2, K7) [S2][S3].
-- W9. Any engine change a pass proposes (a newer vLLM commit, Triton, or ROCm), which resets the stock
-  record (K1) and has its own documented regressions on this card [S35].
+- W11. Any engine change a pass proposes (a newer vLLM commit, Triton, or ROCm), which resets the
+  stock record (K1) and has its own documented regressions on this card [S35].
 
 ## The metric set
 
@@ -259,7 +271,7 @@ Names follow the metrics-file schema (`metric`, `value`, `unit`, `node`, `condit
 | Tokens per second at each batch size | `teacher.decode_tok_s`, batch in `conditions` | tok/s | Per-stream decode rate and the aggregate across streams, R11 harness [S7] |
 | Time to first token | `teacher.ttft_s` | s | From request sent to first token received, same harness [S7] |
 | Joules per token | `teacher.joules_per_token` | J/token | As in K6, from the pod sampler over the same runs [S15] |
-| VRAM | `teacher.vram_pct`, plus the KV-cache capacity vLLM logs at startup | % | The serve step reserves 90% of the card (`--gpu-memory-utilization 0.90` [S3], also vLLM's default at this commit [S25]), so the percentage mostly restates a setting; a kernel change shows up as KV-cache capacity |
+| VRAM | `teacher.vram_pct`, plus `teacher.max_concurrency`, the KV-cache capacity vLLM logs at startup | % | The serve step reserves 90% of the card (`--gpu-memory-utilization 0.90` [S3], also vLLM's default at this commit [S25]), so the percentage mostly restates a setting; a kernel change shows up as KV-cache capacity |
 | Output match rate against baseline | `teacher.output_match_rate` (new name, first recorded by W1) | fraction | As in K4 |
 
 ## The baseline to beat
@@ -307,14 +319,15 @@ per prompt [S1]. All single runs at batch 1, measured on the pod on 2026-10-10:
 
 ## What a pass may NOT change
 
-- The rubric itself (U1, U2, K1 to K8, the metric set, this list) without a filled `Answer:` in
+- Everything the pass rules list under "What a pass may never change" [S9], including this file: only
+  the merge pass edits it, and only to carry out a filled `Answer:` in
   `lab/refine/kernels/OWNER_RULINGS.md` [S9][S10].
-- Other people's tasks, the Demo Plan, and P0 priorities: proposals only, posted on the Dominick and
-  Team page [S9].
-- The teacher serving on pod A: a pass never restarts, rebuilds, or patches it. Kernel experiments
-  run on pod B through the GPU Queue [S8][S16].
+- Other people's tasks, the Demo Plan, and any task's Priority: proposals only, posted on the
+  Dominick and Team page [S9].
+- The teacher serving on pod A: nothing on this track restarts, rebuilds, or patches it. Kernel
+  experiments run on pod B through the GPU Queue, as ordinary tasks [S8][S16].
 - Starting a pod, a long job, a model publish, or anything that writes `data/events`: Ilan's explicit
-  go only. The pods are metered at 4 credits per minute [S1].
+  go only. The pods are metered at 4 credits per minute [S1][S9].
 - The recorded rows and the first numbers above: appended to, never rewritten; a re-measurement is a
   new row [S11].
 - The conditions of a comparison in progress (prompt set, checkpoint, engine commit, batch sizes):
@@ -325,29 +338,30 @@ per prompt [S1]. All single runs at batch 1, measured on the pod on 2026-10-10:
 
 ## The pass procedure (every pass, in this order)
 
-1. Read `lab/refine/kernels/refine_pass.txt`. Let N = that number + 1. This is pass N [S10].
-2. Read `lab/refine/kernels/REFINE_LOG.md` as `PASS_RULES.md` says [S9], then `OWNER_RULINGS.md`, then
-   this file, fresh.
-3. Metrics before: copy the current value of every metric in the metric set, per batch size, from
-   the metrics file or the ledger, each with its line [S11]. A metric with no row is written as "no
-   record", never estimated.
-4. Research step, within the research-format bound: open the sources for the problem this pass works
-   on and write the note under `lab/refine/research/kernels/` [S12].
-5. Walk at least two walk-list items against all ten dimensions, rotating from what earlier passes
-   walked. List every finding with its dimension, fixed or not.
-6. Fix at most five findings, highest impact first: (a) a number bound for the slide or the stats page
+Follow "What a pass does" in `lab/refine/PASS_RULES.md`, step by step [S9]. On this track the steps
+carry the following.
+
+1. Metrics before: for every metric in the metric set, per batch size, the current value with its
+   unit, node, the K1 conditions, and the metrics-file line [S11]. A metric with no value yet is
+   listed as having no baseline, and a measurement for it is queued on T0 [S9].
+2. Research step: the note goes under `lab/refine/research/kernels/`, within the research-format
+   bound [S12].
+3. Walk: every item in the walk list against all ten dimensions, with every finding listed by
+   dimension, fixed or not [S9].
+4. Changes, highest impact first for this track: (a) a number bound for the slide or the stats page
    that breaks K3 or K6; (b) an experiment with no stock record, two levers, or no output match; (c) a
    change with no LDS check or no rebuild recipe; (d) an unsourced change or estimate; (e) queue order
-   and wording. Each fix records BEFORE, AFTER, SOURCE, WHY, and the metric it should move [S10].
-7. A pass that needs a new measurement queues it on T0 and the GPU Queue and waits for Ilan's go; it
-   never measures ad hoc [S6][S16].
-8. From the clone root, run `python -m pytest -q tests/test_lab_kernels_rubric.py` and paste the real
-   output; it checks this file's sections, rules, citations, and plain hyphens.
-9. Append the entry to `REFINE_LOG.md` in the format of `lab/refine/TEMPLATES.md` [S10], including
-   this track's blocks: the K1 conditions, runs and spread per metric (K3), joules per token beside
-   every speed number (K6), LDS bytes per changed kernel (K5), and the output match rate (K4).
-10. Write N to `refine_pass.txt`, last. A pass that walked every item and changed nothing reads
-    "CONVERGED at pass N" [S9].
+   and wording. Each change records BEFORE, AFTER, SOURCE, WHY, and the metric it should move
+   [S9][S10].
+5. Queued experiments: each new T0 line carries what the pass rules require (the track, the lever,
+   the arms, the metric to move, the citation, and the expected movement) and what K8 adds [S9].
+6. The entry, in the format of `lab/refine/TEMPLATES.md` [S10], carries this track's blocks: the K1
+   conditions, runs and spread per metric (K3), joules per token beside every speed number (K6), LDS
+   bytes per changed kernel (K5), and the output match rate (K4). A pass that changed nothing ends
+   with `CONVERGED at pass N`, and N goes into `lab/refine/kernels/refine_pass.txt` last [S9].
+7. Whoever edits this file (the merge pass, carrying out a ruling [S9]) runs
+   `python -m pytest -q tests/test_lab_kernels_rubric.py` from the clone root and pastes the real
+   output; it checks this file's sections, rules, citations, baseline rows, and plain hyphens.
 
 ## Known open items for pass 1
 
@@ -370,7 +384,7 @@ Found on 2026-10-10 while writing this file.
   `git apply --reject`, so a rejected hunk does not stop the build, and its build step returns early
   whenever vLLM already imports, so a changed patch is not rebuilt on a used pod [S3]. The patch file
   mixes build-enabling hunks with the attention `num_stages` change [S2].
-- K8: T0's entries carry no expected gain, confidence, or minimum runs yet [S6].
+- K8: T0's entries carry no track tag, expected gain, confidence, or minimum runs yet [S6][S9].
 - W7: AMD's Quark checkpoints do not load at b1388b1 [S1], so E5 needs a backport of one mapper file
   or a newer vLLM, and a newer vLLM is a new stock record that has regressed decode on this card
   before [S35].
@@ -387,9 +401,9 @@ Opened by the author of this file on 2026-10-10. Repo files are cited at the com
 - [S6] T0 standing ticket: the experiment queue E1 to E5 (E3 sweeps batch 1, 4, 16, 64) and the finding that pod idle power is 38 to 40 W. https://app.notion.com/p/3f596ef5fec581819588ec7a702a4bb1
 - [S7] R11 task page: the benchmark harness (fixed prompt set, several batch sizes, amd-smi watts, one JSON row per run with decode tok/s, time to first token, average watts and joules per token, the same harness for vLLM and llama.cpp). https://app.notion.com/p/3f596ef5fec58181bef5d495fcea13e0
 - [S8] R12 task page: the first HIP kernel experiment (unified attention stage and block settings for the 64 KB LDS), diff and rows under `gpu/`, never interrupts the teacher on pod A, a slower result is still recorded on T0. https://app.notion.com/p/3f596ef5fec58133b797da3de253aae4
-- [S9] O13 task page: fresh Opus passes through the open-ticket skill, one at a time per track, tracks in parallel, a Fable merge pass, 10 passes per run, convergence, what a pass reads and may edit, what it may never change. https://app.notion.com/p/3f596ef5fec581b395cdef8efccafd9e
+- [S9] `lab/refine/PASS_RULES.md` at `a76af64` (PR 43, the O13 deliverable): the four tracks and the kernels track's starting set (R11, R12, the ranked queue on T0); passes as fresh Opus agents through the open-ticket skill, in sequence per track, tracks in parallel in rounds, a Fable merge pass; what a pass reads, does, may and may never change (no GPU job, no queue slot, no pod); runs of at most 10 passes and convergence; the universal rules; process questions go to the pass rules, judging questions to the rubric. https://github.com/raohemdutt/Knighthacks26/blob/a76af64/lab/refine/PASS_RULES.md
 - [S10] O9 task page: `lab/refine/TEMPLATES.md` and the per-track `REFINE_LOG.md`, `OWNER_RULINGS.md`, `refine_pass.txt`, and `pass_reports/`, and the BEFORE, AFTER, SOURCE, WHY entry format. https://app.notion.com/p/3f596ef5fec581c38706ec07a84acf72
-- [S11] O10 task page: the `lab/refine/metrics.jsonl` schema and its dotted metric names, `low_confidence` for untraceable values. https://app.notion.com/p/3f596ef5fec5812c9c58dd375d7e8d8d
+- [S11] O10 task page: the `lab/refine/metrics.jsonl` schema and its dotted metric names, `low_confidence` for untraceable values; and its PR 47 (open on 2026-10-10), which seeds the file with `teacher.decode_tok_s`, `teacher.ttft_s`, `teacher.joules_per_token` (marked low confidence), `teacher.vram_pct`, and `teacher.max_concurrency`. https://app.notion.com/p/3f596ef5fec5812c9c58dd375d7e8d8d and https://github.com/raohemdutt/Knighthacks26/pull/47
 - [S12] O8 and O36 task pages: kernels research notes under `lab/refine/research/kernels/` with `SOURCES.md`, the four labels, experiments ranked by expected joules-per-token gain times confidence, and the research-format rules. https://app.notion.com/p/3f596ef5fec5817fbd3bd22a0195ca9f and https://app.notion.com/p/3f596ef5fec58136b164e799928c7ec9
 - [S13] O28 task page: `lab/machine/verdict.py`, Welch's t test for continuous metrics such as tok/s and J/token, and a minimum-runs calculator from observed spread. https://app.notion.com/p/3f596ef5fec5811f9ed4d5b3352a9bc2
 - [S14] O1 task page: the shared rubric format and authority order, the universal rules, and the telemetry test that fixes one idle-baseline policy everywhere. https://app.notion.com/p/3f596ef5fec581859648f9824af01daf
