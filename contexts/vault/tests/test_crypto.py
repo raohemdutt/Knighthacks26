@@ -1,9 +1,13 @@
 import logging
+import os
 import stat
 
 import pytest
 
 from contexts.vault import DecryptError, KeyRing, Vault, VaultError
+
+
+POSIX = os.name == "posix"  # Windows has no owner-only file modes; the key ring still works there
 
 
 def mode(path) -> int:
@@ -15,7 +19,8 @@ def test_master_key_is_created_once_with_mode_600_and_reused(tmp_path):
     assert not keys.path.exists()  # nothing on disk until first use
     memory_key = keys.key_for("memory")
     assert keys.path == tmp_path / "vault" / "master.key"
-    assert mode(keys.path) == 0o600 and mode(keys.dir) == 0o700
+    if POSIX:
+        assert mode(keys.path) == 0o600 and mode(keys.dir) == 0o700
     master = keys.path.read_bytes()
     assert len(master) == 32
 
@@ -38,7 +43,8 @@ def test_a_loose_key_file_is_tightened_and_a_damaged_one_is_refused(tmp_path):
     keys.key_for("memory")
     keys.path.chmod(0o644)
     KeyRing(tmp_path).key_for("memory")
-    assert mode(keys.path) == 0o600
+    if POSIX:
+        assert mode(keys.path) == 0o600
 
     keys.path.write_bytes(b"short")
     with pytest.raises(VaultError, match="not a 32-byte key"):
