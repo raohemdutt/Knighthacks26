@@ -1,0 +1,90 @@
+# Habits (H1, H2): what Atlas tracks each local day, and what it says about it.
+# The time zone and the sleep window come from config/agent.yaml (`sleep`).
+#
+# Each habit reads one signal kind, has a target and a direction, and a nudge text.
+# Signals: away_window (hours), meal, drink, desk_time (hours), start_lead (hours),
+# forgot (items), disposal (percent correct).
+
+desk: {zone: desk, camera: cam-desk}  # where meals, drinks, watch items and focus are seen
+door_zone: door
+close_grace_minutes: 2  # the ticker closes a day this long after local midnight, for late events
+
+nudges:
+  cooldown_minutes: 180   # per habit, in event time; a habit may set its own
+  min_gap_minutes: 20     # between two nudges raised by the ticker
+  celebrate_streak: 3
+  celebrate: "{name}: {streak} days in a row. Keep it going."
+
+habits:
+  - id: sleep
+    name: Sleep
+    signal: away_window   # longest stretch the desk is empty inside the sleep window
+    target: 6
+    unit: hours
+    direction: at_least
+    cooldown_minutes: 720
+    nudge: "Your desk was empty for only {value} hours last night. Aim for {target} tonight."
+
+  - id: meals
+    name: Meals
+    signal: meal
+    target: 2
+    unit: meals
+    direction: at_least
+    nudge_after: "15:00"
+    gap_minutes: 90       # sightings closer than this are the same meal
+    keywords: [meal, plate, bowl, pizza, sandwich, burger, burrito, taco, noodles, ramen, pasta, salad,
+               rice, takeout, breakfast, lunch, dinner, eating]
+    nudge: "Atlas has seen {value} meals at your desk today. Time to eat something."
+
+  - id: energy_drinks
+    name: Energy drinks
+    signal: drink
+    target: 2
+    unit: cans
+    direction: at_most
+    gap_minutes: 45       # a can seen again within this is the same can
+    count_each: true      # two cans in one frame are two drinks
+    keywords: [energy drink, red bull, monster energy, monster can, celsius, rockstar, bang energy, reign]
+    nudge: "That is energy drink number {value} today. Your limit is {target}."
+
+  - id: focus
+    name: Focus
+    signal: desk_time     # a person in the desk zone
+    target: 2
+    unit: hours
+    direction: at_least
+    deadline_hours: 48    # only counts on days with something due this soon
+    nudge_after: "10:00"
+    nudge: "{title} is due in {hours} hours and you have {minutes} focused minutes today"
+
+  - id: start_early
+    name: Start early
+    signal: start_lead    # hours between first sitting down for an assignment and its due date
+    target: 24
+    unit: hours
+    direction: at_least
+    min_minutes: 15       # desk time that counts as having started
+    deadline_hours: 48    # start warning this long before the due date
+    nudge_after: "10:00"
+    nudge: "{title} is due in {hours} hours and Atlas has not seen you at the desk since it was posted. Start today to stay a day ahead."
+
+  - id: leave_ready
+    name: Leave ready
+    signal: forgot        # watch items still on the desk when you walk out before an event
+    target: 0
+    unit: items
+    direction: at_most
+    cooldown_minutes: 10
+    watch_items: [keys, charger]
+    event_minutes: 30
+    nudge: "You left your {items} on the desk and {title} starts in {minutes} minutes"
+
+  - id: sort_right
+    name: Sort it right
+    signal: disposal
+    target: 80
+    unit: "%"
+    direction: at_least
+    cooldown_minutes: 60
+    nudge: "Only {value}% of what you threw away today went in the right bin. Check the label before you toss."

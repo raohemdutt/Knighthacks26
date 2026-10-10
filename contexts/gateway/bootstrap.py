@@ -38,6 +38,9 @@ from contexts.memory.application.reader import SqliteMemory
 from contexts.memory.fixture import fill_store
 from contexts.memory.fixture import load as load_memory_fixture
 from contexts.memory.infrastructure.store import MemoryStore
+from contexts.habits.application.nudges import Nudger
+from contexts.habits.domain.config import load_config as load_habits
+from contexts.habits.domain.tracker import HabitTracker
 from contexts.impact.domain.waste_watch import WasteWatch
 from contexts.play.domain.game import SortIt
 from contexts.perception.domain.zones import ZoneEngine
@@ -81,6 +84,8 @@ class Atlas:
     zones: list[str] = field(default_factory=list)
     game: SortIt | None = None
     waste: WasteWatch | None = None
+    habits: HabitTracker | None = None
+    nudger: Nudger | None = None
     zone_engine: ZoneEngine | None = None
     circle: CircleAgent | None = None
     presence: PresenceBoard | None = None
@@ -100,6 +105,8 @@ class Atlas:
             now = datetime.now(UTC)
             try:
                 await self.bus.publish_all(self.approvals.expire(now))
+                if self.habits:  # close finished days; nudge on habits about to slip
+                    await self.bus.publish_all(self.habits.flush(now) + self.nudger.check(now))
                 if self.zone_engine:
                     await self.bus.publish_all(self.zone_engine.flush(now))
                 if self.projection:  # close episodes that have gone quiet
@@ -226,6 +233,22 @@ def build(settings: Settings | None = None) -> Atlas:
         bus.subscribe("perception.observation", waste.on_observation, replay=True)
         bus.subscribe("perception.zone", waste.on_zone_event, replay=True)
 
+    # Habits (H1, H2): the daily picture rebuilds from the log; nudges are live only.
+    habits = nudger = None
+    habits_file = s.config_dir / "habits.yaml"
+    if habits_file.exists():
+        habits_cfg = load_habits(habits_file, s.config_dir / "agent.yaml")
+        habits = HabitTracker(habits_cfg)
+        nudger = Nudger(habits_cfg, habits)
+        bus.subscribe("perception.zone", habits.on_zone_event, replay=True)
+        bus.subscribe("perception.scene", habits.on_scene, replay=True)
+        bus.subscribe("connector.item.synced", habits.on_item, replay=True)
+        bus.subscribe("impact.item.disposed", habits.on_disposed, replay=True)
+        bus.subscribe("habits.day.closed", habits.on_day_closed, replay=True)
+        bus.subscribe("habits.nudge.raised", habits.on_nudge, replay=True)  # state only: latest nudge, cooldown
+        bus.subscribe("habits.signal.recorded", nudger.on_signal)
+        bus.subscribe("habits.day.closed", nudger.on_day_closed)
+
     # Circle (G1): friends' Atlases negotiate through agent_messages. The store is in-memory until
     # the Neon store from N1 is plugged in here (same CircleStore port).
     circle = sharing = None
@@ -257,4 +280,4 @@ def build(settings: Settings | None = None) -> Atlas:
 
     return Atlas(settings=s, bus=bus, qa=qa, approvals=approvals, hub=hub, loop=loop, zones=zones, game=game,
                  waste=waste, circle=circle, presence=presence, zone_engine=zone_engine, sharing=sharing,
-                 memory=memory, projection=projection)
+                 memory=memory, projection=projection, habits=habits, nudger=nudger)
