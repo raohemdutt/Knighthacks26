@@ -151,8 +151,8 @@ def test_leaving_uses_real_walking_time_when_the_place_is_known():
     planner.place_set = PlaceSet.load("config/places")
     planner.home_place = "ucf.union"
     [plan] = planner.on_zone_event(ZoneEvent(ts=NOW, camera_id="cam-door", track_id=1, label="person", zone_id="door", kind="enter"))
-    # union -> hec is 4 min, plus a 5 min margin: leave by 2:51 for a 3:00 PM lecture
-    assert plan.text.startswith("Next: COP 3502 Lecture at 3:00 PM; leave by 2:51 PM (4 min walk to Harris Engineering Center).")
+    # union -> hec is 380 m, 5 min on the real footpaths, plus a 5 min margin: leave by 2:50 for a 3:00 PM lecture
+    assert plan.text.startswith("Next: COP 3502 Lecture at 3:00 PM; leave by 2:50 PM (5 min walk to L3Harris Engineering Center).")
 
 
 def test_locate_finds_places_by_alias_or_name():

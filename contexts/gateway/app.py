@@ -34,6 +34,8 @@
 - GET  /api/invites[/{name}]   calendar invites (.ics) created after approval, to open or share (K2)
 - GET  /api/places             place packs; POST one as YAML/JSON (validated) (S5)
 - GET  /api/play/campus-route  ?from=ucf.union&to=ucf.hec[&depart=&due=] or to=friend:<member> (S5)
+- GET  /api/places/route      ?from=&to=&arrive_by=|depart=  "when to leave": times, minutes, metres, the line walked
+- GET  /api/places/map/{pack} the pack's campus map (buildings, paths; © OpenStreetMap contributors) for the phone to draw
 - GET  /api/learning        taught tasks: stage, progress, scores, deployed models (X10)
 - GET  /api/profile         who this box serves: name, description, vocabulary, overridden config files
 - GET  /api/league          the League: this week's standings, worst and best with reasons, stake, dares, team waste line
@@ -56,6 +58,7 @@ import asyncio
 import contextlib
 import json
 import hmac
+import math
 import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -398,8 +401,93 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         if atlas.places is None:
             raise HTTPException(404, "no place packs loaded")
         return [{"name": p.name, "kind": p.kind, "entry": p.entry,
-                 "places": {pid: pl.model_dump(exclude_none=True) for pid, pl in p.places.items()}}
+                 "places": {pid: pl.model_dump(exclude_none=True) for pid, pl in p.places.items()},
+                 **({"map": f"/api/places/map/{p.name}"} if p.map_file else {})}
                 for p in atlas.places.packs.values()]
+
+    @app.get("/api/places/map/{pack}")
+    async def place_map(pack: str):
+        """The campus as drawn and walked: building footprints, greens, water, roads and the footpath network
+        (config/places/<pack>.map.json, built by scripts/build_campus_pack.py). Map data © OpenStreetMap contributors."""
+        found = atlas.places.packs.get(pack) if atlas.places else None
+        if found is None or found.map_file is None or not found.map_file.is_file():
+            raise HTTPException(404, f"no map for the {pack!r} pack")
+        return FileResponse(found.map_file, media_type="application/json", headers={"Cache-Control": "public, max-age=3600"})
+
+    def place_ref(text: str, what: str) -> str:
+        """A place from a pack id ("ucf.eng2"), a name or alias ("Engineering II", "HEC"), a friend ("friend:maya")
+        or "here" (where the box last saw you)."""
+        text = text.strip()
+        if text.startswith("friend:"):
+            member = text.split(":", 1)[1]
+            shared = {p.member_id.lower(): p for p in atlas.presence.friends(datetime.now(UTC))} if atlas.presence else {}
+            if member.lower() not in shared:
+                raise HTTPException(404, f"{member} isn't sharing a place right now")
+            found = atlas.places.find_shared(shared[member.lower()].place)
+            if not found:
+                raise HTTPException(404, f"{shared[member.lower()].place!r} isn't on any map")
+            return found
+        if text.lower() == "here":
+            tracker = getattr(atlas.day, "tracker", None)
+            seen = (tracker.status.seen_at if tracker and tracker.status and tracker.status.seen_at
+                    else tracker.seen[0] if tracker and tracker.seen else None)
+            if seen is None and atlas.dayrun is not None:
+                seen = atlas.dayrun.walks.ref(atlas.dayrun.cfg.start_place)
+            if seen is None:
+                raise HTTPException(404, "the box has not seen where you are yet")
+            return seen
+        pack, _, place = text.partition(".")
+        if place and pack in atlas.places.packs and (pid := atlas.places.packs[pack].find(place)):
+            return f"{pack}.{pid}"
+        found = atlas.places.find_shared(text) or atlas.places.locate(text)
+        if not found:
+            raise HTTPException(422, f"unknown {what} place {text!r} (use pack.place such as ucf.library, a place's name, or friend:<member>)")
+        return found
+
+    @app.get("/api/places/route")
+    async def place_route(src: str = Query("here", alias="from"), dst: str = Query(alias="to"),
+                          arrive_by: datetime | None = None, depart: datetime | None = None):
+        """When to leave. The walk from one place to another along the real footpaths, with the time to set off
+        for `arrive_by`, or the time you get there if you leave at `depart` (now, when neither is given)."""
+        from contexts.play.domain.walknet import leave_sentence
+
+        if atlas.places is None:
+            raise HTTPException(404, "no place packs loaded")
+        a, b = place_ref(src, "starting"), place_ref(dst, "destination")
+        try:
+            path, minutes = atlas.places.route(a, b)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+        line, meters = atlas.places.trace(path)
+        whole = 0 if a == b else max(1, math.ceil(minutes - 1e-9))  # whole minutes, rounded up, as the day plan counts walks
+        tz = getattr(getattr(atlas.day, "clock", None), "tz", None) or UTC
+        if arrive_by is not None:
+            arrive = arrive_by if arrive_by.tzinfo else arrive_by.replace(tzinfo=tz)
+            leave, mode = arrive - timedelta(minutes=whole), "arrive_by"
+        else:
+            leave = (depart if depart.tzinfo else depart.replace(tzinfo=tz)) if depart is not None else datetime.now(UTC).astimezone(tz)
+            arrive, mode = leave + timedelta(minutes=whole), "depart"
+
+        def get(ref: str):
+            pack, place = ref.split(".", 1)
+            return atlas.places.packs[pack].places[place]
+
+        def clock12(t: datetime) -> str:
+            return t.strftime("%I:%M %p").lstrip("0")
+
+        to_name = get(b).name.split(" (")[0]
+        if a == b:
+            sentence = f"You are already at {to_name}"
+        elif mode == "arrive_by":
+            sentence = leave_sentence(clock12(leave), whole, to_name, meters)
+        else:
+            sentence = leave_sentence(clock12(leave), whole, to_name, meters).replace("Leave by", "Leave at", 1) + f": there by {clock12(arrive)}"
+        return {"from": a, "to": b, "from_name": get(a).name.split(" (")[0], "to_name": to_name, "mode": mode,
+                "depart": leave.isoformat(), "arrive": arrive.isoformat(), "minutes": minutes, "walk_minutes": whole,
+                "meters": meters, "path": path, "polyline": line, "sentence": sentence,
+                "from_xy": [get(a).lat, get(a).lon] if get(a).lat is not None else None,
+                "to_xy": [get(b).lat, get(b).lon] if get(b).lat is not None else None,
+                "attribution": "© OpenStreetMap contributors" if line else None}
 
     @app.post("/api/places", dependencies=[Depends(authorized)])
     async def upload_place_pack(request: Request):
@@ -444,7 +532,8 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
             path, minutes = atlas.places.route(src, dst)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from None
-        return {"path": path, "minutes": minutes}
+        line, meters = atlas.places.trace(path)
+        return {"path": path, "minutes": minutes, **({"meters": meters, "polyline": line} if line else {})}
 
     @app.websocket("/ws")
     async def events(ws: WebSocket):

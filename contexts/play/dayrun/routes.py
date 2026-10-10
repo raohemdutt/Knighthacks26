@@ -22,12 +22,15 @@ class Leg(BaseModel):
     minutes: float
     from_xy: tuple[float, float] | None = None
     to_xy: tuple[float, float] | None = None
+    path: list[tuple[float, float]] | None = None  # the line actually walked, [[lat, lon], ...], when the pack has a path network
+    meters: float | None = None  # its length on that network
 
 
 class Trip(BaseModel):
     places: list[str]
     minutes: float
     legs: list[Leg]
+    meters: float | None = None  # the whole walk, when every outdoor leg is on a path network
 
 
 class Walks:
@@ -67,10 +70,19 @@ class Walks:
         legs = []
         for x, y in zip(path, path[1:]):
             px, py = self.get(x), self.get(y)
-            legs.append(Leg(a=x, b=y, from_name=px.name, to_name=py.name, minutes=self._edge(x, y),
+            real = self._real(x, y)
+            legs.append(Leg(a=x, b=y, from_name=px.name, to_name=py.name,
+                            minutes=round(real.minutes, 1) if real else self._edge(x, y),
                             from_xy=(px.lat, px.lon) if px.lat is not None and px.lon is not None else None,
-                            to_xy=(py.lat, py.lon) if py.lat is not None and py.lon is not None else None))
-        return Trip(places=path, minutes=minutes, legs=legs)
+                            to_xy=(py.lat, py.lon) if py.lat is not None and py.lon is not None else None,
+                            path=list(real.points) if real else None, meters=real.meters if real else None))
+        walked = [leg.meters for leg in legs if leg.meters is not None]
+        return Trip(places=path, minutes=minutes, legs=legs, meters=round(sum(walked), 1) if walked else None)
+
+    def _real(self, x: str, y: str):
+        """The walk along the pack's footpaths (a walknet.WalkRoute), or None for a pack that only has edges."""
+        (pack_x, a), (pack_y, b) = x.split(".", 1), y.split(".", 1)
+        return self.places.packs[pack_x].walk(a, b) if pack_x == pack_y else None
 
     def _edge(self, x: str, y: str) -> float:
         (pack_x, a), (pack_y, b) = x.split(".", 1), y.split(".", 1)

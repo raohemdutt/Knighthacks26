@@ -131,11 +131,12 @@ def test_from_here_mid_afternoon_keeps_the_next_fixed_event_reachable_and_fits_d
     p.on_plan_proposed(p.plan(at(8, 16))[0])
     replan = p.replan(at(15, 0), "apartment.desk", "At Desk, you asked for a new plan.", asked=True)[0]
     judging = next(m for m in replan.moves if m.fixed and m.id.startswith(JUDGING))
-    assert judging.start == at(15, 31)  # reached on time: nothing chosen before it runs into the 13 minute walk
+    assert judging.start == at(15, 31)  # reached on time: nothing chosen before it runs into the 10 minute walk (680 m)
     before = [m for m in replan.moves if not m.fixed and m.start < judging.start]
-    assert all(m.end <= at(15, 18) and m.place == "apartment.desk" for m in before)
+    assert all(m.end <= at(15, 21) and m.place.startswith("apartment.") for m in before)  # at home: the desk or the kitchen
     mine = [m for m in replan.moves if not m.fixed]
-    dinner = next(m for m in mine if m.kind == "eat" and m.start.date() == at(15).date())
+    # with a 10 minute walk there is also time for a bite at home before judging; dinner is the last meal of the day
+    dinner = [m for m in mine if m.kind == "eat" and m.start.date() == at(15).date()][-1]
     assert at(20, 31) <= dinner.start <= at(21, 0)  # after the study session that covers the usual dinner time
     assert replan.outcome.won and replan.outcome.meals >= 2 and replan.outcome.sleep_hours >= 6
     # the rest of the day is not turned into rest: there is a meal, the night and study for the deadline

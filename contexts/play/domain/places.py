@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
 
 class Place(BaseModel):
@@ -36,6 +36,10 @@ class PlacePack(BaseModel):
     entry: str | None = None  # where a parent pack's place leads in (home packs)
     places: dict[str, Place]
     edges: list[tuple[str, str, float]] = Field(default_factory=list)  # [a, b, minutes], walkable both ways
+    network: str | None = None  # a map file next to the pack with the real footpaths (ucf.map.json); routes follow it
+    walk_speed_mps: float | None = None  # walking speed on that network; None is walknet's default (1.35 m/s)
+    _net: object = PrivateAttr(default=None)  # the loaded WalkNetwork, set by PlaceSet.load
+    _walked: dict = PrivateAttr(default_factory=dict)
 
     @model_validator(mode="after")
     def _check(self) -> "PlacePack":
@@ -63,8 +67,38 @@ class PlacePack(BaseModel):
             g[b].append((a, m))
         return g
 
+    def attach_network(self, net) -> None:
+        """Use a walknet.WalkNetwork for this pack's routes (None goes back to the edges)."""
+        self._net = net
+        self._walked = {}
+
+    @property
+    def map_file(self) -> Path | None:
+        """The map file the attached network was read from, for the phone to draw."""
+        return getattr(self._net, "path", None)
+
+    def walk(self, a: str, b: str):
+        """The real walk between two places on the pack's network (a walknet.WalkRoute: points, meters, minutes),
+        or None when the pack has no network or either place is not on it."""
+        if self._net is None or a == b or a not in self.places or b not in self.places:
+            return None
+        if (a, b) not in self._walked:
+            pa, pb = self.places[a], self.places[b]
+            real = None
+            if None not in (pa.lat, pa.lon, pb.lat, pb.lon):
+                try:  # a building's doors when the map knows them, else the place's own point
+                    real = self._net.route(self._net.doors.get(a) or (pa.lat, pa.lon), self._net.doors.get(b) or (pb.lat, pb.lon))
+                    real = real.with_ends((pa.lat, pa.lon), (pb.lat, pb.lon))
+                except ValueError:
+                    real = None
+            self._walked[a, b] = real
+        return self._walked[a, b]
+
     def route(self, a: str, b: str) -> tuple[list[str], float]:
-        """Shortest walk by minutes. A* with a straight-line heuristic scaled to the fastest edge, so it stays admissible."""
+        """Shortest walk by minutes. A* with a straight-line heuristic scaled to the fastest edge, so it stays admissible.
+        With a network attached, the walk is the real one along the footpaths, straight from a to b."""
+        if (real := self.walk(a, b)) is not None:
+            return [a, b], round(real.minutes, 1)
         g = self._graph()
         speed = self._max_speed_m_per_min()
 
@@ -131,6 +165,7 @@ class PlaceSet:
             for f in sorted(Path(d).glob("*.y*ml")) if Path(d).exists() else []:
                 pack = parse_pack(f.read_text(encoding="utf-8"))
                 packs[pack.name] = pack
+                _attach(pack, [f.parent, *map(Path, dirs)])
         return cls(packs)
 
     def add(self, pack: PlacePack) -> None:
@@ -211,8 +246,24 @@ class PlaceSet:
         slack = round((due - arrive).total_seconds() / 60)
         at = due.strftime("%I:%M").lstrip("0")
         msg = f"you make the {at} with {slack} minutes to spare" if slack >= 0 else f"you miss the {at} by {-slack} minutes"
-        return {"ok": slack >= 0, "minutes": minutes, "slack_minutes": slack, "arrive": arrive.isoformat(), "path": path,
-                "message": msg}
+        out = {"ok": slack >= 0, "minutes": minutes, "slack_minutes": slack, "arrive": arrive.isoformat(), "path": path,
+               "message": msg}
+        line, meters = self.trace(path)
+        if line:  # only packs with a network have the real line and its length
+            out.update(polyline=line, meters=meters)
+        return out
+
+    def trace(self, path: list[str]) -> tuple[list[list[float]], float | None]:
+        """The line walked along a route's places, as [[lat, lon], ...], and its metres; ([], None) without a network."""
+        line: list[list[float]] = []
+        meters = 0.0
+        for x, y in zip(path, path[1:]):
+            (px, a), (py, b) = x.split(".", 1), y.split(".", 1)
+            real = self.packs[px].walk(a, b) if px == py else None
+            if real is not None:
+                line += [list(p) for p in real.points if not line or list(p) != line[-1]]
+                meters += real.meters
+        return line, (round(meters, 1) if line else None)
 
     def locate(self, text: str | None) -> str | None:
         """Find a place mentioned in free text ("until 11:15 AM - HEC 101") -> "pack.place". Longest match wins."""
@@ -243,6 +294,23 @@ def parse_pack(text: str) -> PlacePack:
     if not isinstance(raw, dict):
         raise ValueError("a place pack is a mapping with name, places and edges")
     return PlacePack.model_validate(raw)
+
+
+def _attach(pack: PlacePack, folders: list[Path]) -> None:
+    """Load the pack's `network` map file, from the pack's own folder or any other pack folder. Without the file the
+    pack routes over its edges as before."""
+    if not pack.network or "/" in pack.network or "\\" in pack.network:
+        return
+    from contexts.play.domain.walknet import WalkNetwork
+
+    for folder in folders:
+        if (folder / pack.network).is_file():
+            try:
+                kw = {"speed_mps": pack.walk_speed_mps} if pack.walk_speed_mps else {}
+                pack.attach_network(WalkNetwork.load(folder / pack.network, **kw))
+            except (ValueError, KeyError, TypeError, IndexError, OSError):
+                pass  # a broken map file is not a reason to lose the pack
+            return
 
 
 def _reachable(start: str, g: dict[str, list[tuple[str, float]]]) -> set[str]:
