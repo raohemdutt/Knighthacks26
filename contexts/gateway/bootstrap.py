@@ -175,6 +175,8 @@ def build(settings: Settings | None = None) -> Atlas:
     qa = QA(runtime, memory, clock=lambda: datetime.now(UTC), sleep=SleepSchedule.load(s.config_dir / "agent.yaml"),
             web=web, subreddit=agent_cfg.get("subreddit", "ucf"), load_keyframe=load_keyframe)
     planner = Planner(qa, hub)
+    if "places" in hub.specs:  # K8: "what should I eat?" uses real nearby places
+        planner.places = lambda kind: hub.call_tool("places.nearby", {"kind": kind})
     qa.planner = planner
     rules = RuleEvaluator(load_rules(s.config_dir / "rules.yaml"))
 

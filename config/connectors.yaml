@@ -67,3 +67,14 @@ groupme:
       - {key: friends, name: "Friends group chat", bot_env: GROUPME_BOT_FRIENDS, group_id: "118084823"}
 
 # canvas (Hemdutt: K6) goes here.
+
+places:
+  # K8: restaurants, cafes and dining halls near the box, from OpenStreetMap (Overpass API,
+  # no key; cached a day). The location is a fixed setting, never live GPS.
+  module: contexts.connectors.servers.places
+  hosts: [overpass-api.de, overpass.kumi.systems, overpass.private.coffee]
+  tools: [nearby]
+  options:
+    lat: 28.6024   # UCF main campus; set to where the box sits
+    lon: -81.2001
+    cache_dir: data/connectors/places
