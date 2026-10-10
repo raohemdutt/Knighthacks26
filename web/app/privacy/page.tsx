@@ -102,7 +102,7 @@ function Controls({ policy, cameras, onPolicy }: { policy: VaultPolicy; cameras:
           <div className={priv.row}>
             <div className={priv.rowText} style={{ flex: 1 }}>
               <div className={priv.rowTitle}>
-                Keep pictures and memory for <span className={priv.sliderValue}>{days >= KEEP_FOREVER ? "ever" : `${days} day${days === 1 ? "" : "s"}`}</span>
+                Keep saved pictures for <span className={priv.sliderValue}>{days >= KEEP_FOREVER ? "ever" : `${days} day${days === 1 ? "" : "s"}`}</span>
               </div>
               <input
                 className={priv.slider}
@@ -116,7 +116,7 @@ function Controls({ policy, cameras, onPolicy }: { policy: VaultPolicy; cameras:
                 onPointerUp={() => change({ keep_days: days >= KEEP_FOREVER ? null : days })}
                 onKeyUp={() => change({ keep_days: days >= KEEP_FOREVER ? null : days })}
               />
-              <p className={priv.rowHelp}>The right-hand end means forever. Older things are removed by the retention job when it runs.</p>
+              <p className={priv.rowHelp}>The right-hand end means forever. Older pictures are removed once an hour; what Atlas wrote down about them stays until you delete memory below.</p>
             </div>
           </div>
         </div>
