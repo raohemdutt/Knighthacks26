@@ -81,8 +81,13 @@ items:
   - {synced: "2026-10-10T17:41:00-04:00", connector: groupme, kind: message, external_id: "friends:1760100007",
      title: "Riley: there's a free concert on the lawn at 8 tonight if people want a break", when: "2026-10-10T17:40:00-04:00",
      summary: "Riley in Friends: there's a free concert on the lawn at 8 tonight if people want a break"}
-  # Not in fixtures/memory/memory.yaml: one message during Saturday night's study block (10:08 to 11:17 PM in the
-  # plan), a minute and a half before the desk empties, so the study coach has a break with a visible reason.
+  # Not in fixtures/memory/memory.yaml, for the study coach: a study block the person put on the calendar for
+  # Saturday night. A calendar block moves with the story, so whatever time `seed --now` runs at, the plan of
+  # that day has this block and the three beats below (10:30, 10:32 and 10:50 PM) fall inside it.
+  - {synced: "2026-10-09T10:30:10-04:00", connector: calendar, kind: calendar_event, external_id: "outlook:study-block:2026-10-10T22:25:00-04:00",
+     title: "Study block: milestone 1 writeup", when: "2026-10-10T22:25:00-04:00", summary: "until {when+50m} · Engineering II atrium"}
+  # ... and one message during that block, a minute and a half before the desk empties, so the coach has a
+  # break with a visible reason.
   - {synced: "2026-10-10T22:32:40-04:00", connector: groupme, kind: message, external_id: "friends:1760100009",
      title: "Riley: the concert was great. how is the hacking going over there?", when: "2026-10-10T22:31:40-04:00",
      summary: "Riley in Friends: the concert was great. how is the hacking going over there?"}

@@ -25,6 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from contexts.day.application.loop import DayLoop
+from contexts.day.domain.coach import FOOD_WORDS, PHONE_WORDS, mentions
 from contexts.day.domain.patterns import patterns
 from contexts.play.dayrun.models import Move
 from contracts.day import DayPlanProposed, DayReplanProposed, MoveIn
@@ -68,8 +69,8 @@ def day_router(day: DayLoop, publish: Callable[[object], Awaitable] | None = Non
             else:
                 ep = next((e for e in memory.episodes(at - timedelta(hours=2), at + timedelta(seconds=1)) if e.id == evidence["id"]), None)
                 if ep:
-                    words = {"phone": "phone", "door": "door"}.get(evidence["kind"])
-                    out["title"] = next((c for c in ep.captions if words and words in c.lower()), None) or ep.summary or (ep.captions[-1] if ep.captions else None)
+                    words = {"phone": PHONE_WORDS, "food": FOOD_WORDS, "door": ("door",)}[evidence["kind"]]
+                    out["title"] = next((c for c in ep.captions if mentions(c, words)), None) or ep.summary or (ep.captions[-1] if ep.captions else None)
                     out["frame_ref"] = nearest(ep.keyframe_refs, at)
         except Exception:
             pass
@@ -91,10 +92,13 @@ def day_router(day: DayLoop, publish: Callable[[object], Awaitable] | None = Non
         body = note.model_dump(mode="json")
         return {**body, "session": cited(body["session"])}
 
+    def coach_recent(now: datetime, limit: int = 4) -> list[dict]:
+        """The blocks the coach spoke about in the last day, newest first."""
+        return [noted(n) for n in day.coach.recent(now)[:limit]]
+
     def coach_latest(now: datetime) -> dict | None:
-        """The last block the coach spoke about, while it is still news (a day)."""
-        note = day.coach.latest
-        return noted(note) if note and timedelta(0) <= now - note.ts <= timedelta(hours=24) else None
+        recent = coach_recent(now, 1)
+        return recent[0] if recent else None
 
     def last_seen() -> dict | None:
         if memory is None:
@@ -118,6 +122,7 @@ def day_router(day: DayLoop, publish: Callable[[object], Awaitable] | None = Non
         friends = []
         if t.presence is not None:
             friends = [f.model_dump(mode="json") for f in t.presence.friends(event_now())]
+        coach = coach_recent(event_now())  # the last block the coach spoke about, and the ones before it
         return {
             "day": which.isoformat(), "now": event_now().isoformat(),
             "plan": plan.model_dump(mode="json") if plan else None,
@@ -126,7 +131,8 @@ def day_router(day: DayLoop, publish: Callable[[object], Awaitable] | None = Non
             "replan": p.pending[which].model_dump(mode="json") if which in p.pending else None,
             "review": review.model_dump(mode="json") if review else None,
             "yesterday": p.reviews[which - timedelta(days=1)].model_dump(mode="json") if which - timedelta(days=1) in p.reviews else None,
-            "friends": friends, "last_seen": last_seen(), "coach": coach_latest(event_now()),
+            "friends": friends, "last_seen": last_seen(),
+            "coach": coach[0] if coach else None, "coach_earlier": coach[1:],
         }
 
     @router.get("/coach")

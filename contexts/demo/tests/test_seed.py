@@ -148,10 +148,11 @@ def test_the_study_coach_reviews_saturday_nights_block_with_a_real_distraction(s
     data_dir, seeded = seeded_dir
     app = seeded.app
     (note,) = [e for e in app.bus.read_log() if e.type == "day.coach.noted"]
-    assert note.day == SATURDAY and note.text == ("You did 15 of 69 minutes. Two breaks; the long one came right after the group chat. "
+    assert note.day == SATURDAY and note.text == ("You did 15 of 50 minutes. Two breaks; the long one came right after the group chat. "
                                                   "Next study block is 43 minutes.")
     s = note.session
-    assert (s.planned_minutes, s.desk_minutes, s.late_start_minutes, s.longest_stretch_minutes) == (69, 15, 22, 10)
+    assert s.block_id.startswith("outlook:study-block:") and s.title == "Study block: milestone 1 writeup"  # the one on the calendar
+    assert (s.planned_minutes, s.desk_minutes, s.late_start_minutes, s.longest_stretch_minutes) == (50, 15, 5, 10)
     long, short = s.breaks
     assert (long.minutes, long.trigger, short.minutes, short.trigger) == (17, "chat", 10, "none")
     chat, phone = long.evidence
@@ -169,6 +170,18 @@ def test_the_study_coach_reviews_saturday_nights_block_with_a_real_distraction(s
     episode = next(e for e in again.memory.episodes(NOW - timedelta(days=2), NOW) if e.id == phone.id)  # a real Memory episode
     assert any("picks up their phone" in c for c in episode.captions)
     again.projection.store.close()
+
+
+def test_the_coach_finds_the_same_distraction_whatever_time_the_story_is_moved_to(tmp_path):
+    """`seed --now` moves the story by any amount; the calendar block moves with it, so the session does too."""
+    by = timedelta(hours=-20, minutes=-7)  # an afternoon run: the block lands in the small hours, in the day before's plan
+    seeded = asyncio.run(seed(tmp_path, now=NOW + by))
+    notes = [e for e in seeded.app.bus.read_log() if e.type == "day.coach.noted"]
+    seeded.app.projection.store.close()
+    (note,) = [n for n in notes if n.block_id.startswith("outlook:study-block:")]
+    assert note.text.startswith("You did 15 of 50 minutes. Two breaks; the long one came right after the group chat.")
+    assert note.session.start == load().beats[0].at.replace(hour=22, minute=25) + by
+    assert [b.trigger for b in note.session.breaks] == ["chat", "none"] and note is max(notes, key=lambda n: n.ts)  # the Now screen's card
 
 
 def test_replaying_the_same_log_twice_gives_identical_projections(seeded_dir, tmp_path):

@@ -16,7 +16,8 @@ Where the inputs come from:
   cites): Memory's reader (`items`, `episodes`);
 - the day's desk minutes: Habits' digest; the planned blocks: the planner's current plan.
 
-When a block ends the coach publishes `day.coach.noted` (one sentence for the phone); the evening review
+When a block ends, and the person was at the desk for at least five minutes of it, the coach publishes
+`day.coach.noted` (one sentence for the phone and the voice; a skipped block is not announced); the evening review
 carries the day's sessions; the next morning's plan reads the advice back as a `review` source and sizes
 its blocks to the longest unbroken stretch. Every measured block also feeds Day Run's forecast calibration
 (planned minutes are the estimate, desk minutes the result).
@@ -34,6 +35,7 @@ from contexts.day.domain.coach import (
     FOOD_LABELS,
     FOOD_WORDS,
     LIMITS,
+    NOTE_MIN_MINUTES,
     PHONE_WORDS,
     Advice,
     DeskPresence,
@@ -132,7 +134,7 @@ class DayCoach:
                 self._noting.add(key)  # once, measured or not
                 try:
                     session = self.session(block)
-                    if session.measured:
+                    if session.measured and (session.desk_minutes or 0) >= NOTE_MIN_MINUTES:
                         out.append(self.note(day, plan, block, session, now))
                 except Exception:  # Memory or Habits being down must not stop the box
                     log.exception("the coach's note for %s failed", block.id)
@@ -140,7 +142,7 @@ class DayCoach:
 
     def note(self, day: date, plan, block: PlanMove, session: SessionReview, now: datetime) -> DayCoachNoted:
         nxt = next((b for b in sorted(plan.moves, key=lambda m: m.start) if b.kind == MAIN_KIND and b.start >= block.end), None)
-        advice = suggest([s for s in self.sessions(day, now) if s.block_id != block.id] + [session], self.words)
+        advice = suggest([session], self.words)  # about this block; the day's pattern is the evening review's
         return DayCoachNoted(
             event_id=f"day-coach-{plan.plan_id}-{block.id}", ts=now, day=day, plan_id=plan.plan_id, block_id=block.id,
             text=note_text(session, nxt, self.words), session=session, suggestions=advice.suggestions,
@@ -264,6 +266,11 @@ class DayCoach:
         if calibration and calibration.ratio and advice.block_minutes:
             text += f" Your plans run {calibration.ratio:g}x what happens."
         return advice, plan_id, text
+
+    def recent(self, now: datetime, within: timedelta = timedelta(hours=24)) -> list[DayCoachNoted]:
+        """The notes of the last day, newest first: what the Now screen shows after a block ends."""
+        notes = [n for day in self.notes.values() for n in day.values() if timedelta(0) <= now - n.ts <= within]
+        return sorted(notes, key=lambda n: n.ts, reverse=True)
 
     def limits(self) -> list[str]:
         return [s.format(workplace=self.words.workplace) for s in LIMITS]

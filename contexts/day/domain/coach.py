@@ -19,6 +19,8 @@ The rules, in plain words (every time is event time; nothing here reads a clock 
 - Not measured: a block planned somewhere else than the box (a library) in which the desk camera saw
   nobody for AWAY_MIN_S or more. Its numbers are None, never zero. A block planned at the desk with
   nobody seen is measured as 0 minutes, and the text says the camera may have been off.
+- A note when the block ends only for a session that happened (NOTE_MIN_MINUTES at the desk or more): a
+  skipped block is in the evening review as a number, never announced.
 - What nobody can know from here: the camera sees the desk, not the screen, and it does not know who sits there.
 """
 
@@ -32,6 +34,7 @@ from contracts.day import CoachBreak, CoachEvidence, PlanMove, SessionReview
 MIN_BREAK_S = 60  # an absence shorter than this does not split a stretch
 TRIGGER_WINDOW_S = 120  # "the minute or two before" a break
 AWAY_MIN_S = 300  # desk time that makes a block planned elsewhere count as done at the desk
+NOTE_MIN_MINUTES = 5  # a block with less desk time than this ends without a sentence: the coach speaks about sessions that happened
 LATE_START_MIN = 5  # a first sit-down this late is worth a sentence
 MIN_BLOCK, MAX_BLOCK, BLOCK_STEP = 25, 120, 5  # suggested block lengths, minutes
 PRIORITY = ("chat", "phone", "door", "food")
@@ -226,10 +229,7 @@ def note_text(s: SessionReview, next_block: PlanMove | None = None, words: Words
     """One sentence or three short ones, for the phone or a voice."""
     parts = [f"You did {s.desk_minutes} of {_mins(s.planned_minutes)}."]
     n = len(s.breaks)
-    if not s.desk_minutes:  # said as what the camera saw, not as what the person did
-        parts = [f"I did not see you at the {words.workplace} for the {_mins(s.planned_minutes)[:-1] if s.planned_minutes != 1 else '1 minute'} "
-                 f"{words.activity} block. If you worked somewhere else, ignore me."]
-    elif n == 0:
+    if n == 0:
         late = s.late_start_minutes or 0
         parts.append(f"No breaks; you sat down {_mins(late)} in." if late >= LATE_START_MIN else "No breaks.")
     else:
@@ -310,7 +310,11 @@ def day_text(sessions: list[SessionReview], words: Words = Words(), habits_desk_
         if best.longest_stretch_minutes:
             parts.append(f"What worked: an unbroken {_mins(best.longest_stretch_minutes)} in {best.title}.")
     if away:
-        parts.append(f"Not measured: {', '.join(s.title for s in away)} (away from the box).")
+        places: dict[str, int] = {}
+        for s in away:
+            places[s.place_name or s.title] = places.get(s.place_name or s.title, 0) + 1
+        listed = ", ".join(f"{n} block{'' if n == 1 else 's'} at {place}" for place, n in places.items())
+        parts.append(f"Not measured: {listed} (away from the box).")
     if habits_desk_minutes is not None:
         parts.append(f"Habits counted {_mins(habits_desk_minutes)} at the {w} over the whole day.")
     return " ".join(parts)

@@ -193,7 +193,8 @@ def scene(ts: datetime, caption: str, objects: list[tuple[str, str]] = (), zone_
 
 CHAT = Item(connector="groupme", kind="message", external_id="friends:9", title="Riley: are you coming out tonight?",
             when=at(9, 46) + timedelta(seconds=40))
-EPISODES = [Episode(id="ep-desk-7", camera_id="cam-desk", start=at(9, 44), end=at(9, 48), captions=["A person types.", "The person picks up their phone."],
+EPISODES = [Episode(id="ep-desk-7", camera_id="cam-desk", start=at(9, 44), end=at(9, 48),
+                    captions=["A person types, wearing headphones.", "The person picks up their phone."],
                     keyframe_refs=[f"frames:cam-desk:{int(at(9, 44).timestamp() * 1000)}", f"frames:cam-desk:{int(at(9, 47).timestamp() * 1000)}"])]
 DAY = [*desk(AT_DESK), scene(at(9, 47), "The person picks up their phone."), scene(at(9, 30), "A person types on a laptop."),
        scene(at(10, 39), "desk: keys, phone", [("keys", "left"), ("phone", "face up")], zone_id="desk")]
@@ -226,9 +227,7 @@ def test_a_note_goes_out_once_when_a_measured_block_ends(items, places, tmp_path
     # the block away from the box ends without a note, and a block that ended while the box was off is not announced late
     assert c.check(at(17, 1)) == []
     late = coached(items, places, tmp_path / "late")
-    (missed,) = late.coach.check(at(15))  # m0 ended four hours ago; m2, at the desk with nobody seen, is said kindly
-    assert missed.block_id == "m2" and missed.text == ("I did not see you at the desk for the 45 minute study block. "
-                                                       "If you worked somewhere else, ignore me. Next study block is 180 minutes.")
+    assert late.coach.check(at(15)) == []  # m0 ended four hours ago; m2 was skipped, and a skipped block is not announced
     assert [s.block_id for s in late.coach.sessions(SUNDAY, at(15))] == ["m0", "m2"]  # but it is in the day's sessions
 
 
@@ -251,7 +250,7 @@ def test_the_evening_review_carries_the_sessions_and_the_next_plan_reads_the_adv
     assert [(s.block_id, s.measured, s.desk_minutes) for s in review.sessions] == [("m0", True, 70), ("m2", True, 0), ("lib", False, None)]
     assert review.coach_text.startswith("You planned 165 minutes of study in 2 blocks the camera could see, and were at the desk for 70.")
     assert "31 minutes away from 9:48 AM, right after a message arrived in the group chat (and the phone was in view)." in review.coach_text
-    assert "Not measured: Study at Library (away from the box)." in review.coach_text
+    assert "Not measured: 1 block at Library (away from the box)." in review.coach_text
     assert "Habits counted 72 minutes at the desk over the whole day." in review.coach_text
     assert review.coach_text.endswith("Your plans run 2.4x what happens (calibration 29/100 over 2 measured blocks); I'm planning 45-minute blocks.")
     assert review.suggestions == note.suggestions and review.block_minutes == 45 and review.calibration.blocks == 2
@@ -326,7 +325,7 @@ def test_the_coach_api_cites_each_piece_of_evidence_with_its_words_and_a_picture
     app = FastAPI()
     app.include_router(day_router(loop, memory=loop.memory, clock=lambda: at(11, 30)))
     c = TestClient(app)
-    assert c.get("/api/day/now").json()["coach"] is None  # nothing said yet
+    assert (c.get("/api/day/now").json()["coach"], c.get("/api/day/now").json()["coach_earlier"]) == (None, [])  # nothing said yet
     (note,) = loop.coach.check(at(11, 1))
     loop.coach.on_noted(note)
 
@@ -345,5 +344,6 @@ def test_the_coach_api_cites_each_piece_of_evidence_with_its_words_and_a_picture
 
     now = c.get("/api/day/now").json()
     assert now["coach"]["text"] == note.text and now["coach"]["session"]["breaks"][0]["evidence"][1]["frame_ref"]
+    assert now["coach_earlier"] == []
     empty = c.get("/api/day/coach", params={"day": "2026-10-05"}).json()
     assert (empty["sessions"], empty["text"], empty["suggestions"], empty["calibration"]) == ([], "", [], None)
