@@ -283,8 +283,9 @@ python -m lab.controller run-script --account A --with lab/pod_power.py lab/pod_
 python -m lab.controller run-script --account A lab/pod_power.sh stop
 ```
 
-The Jetson reads both pods with `ATLAS_TELEMETRY_SOURCE=pods` (keys `AUP_HUB_USER_<A|B>`, `AUP_HUB_TOKEN_<A|B>`;
-`ATLAS_POD_POWER_PORT`, `ATLAS_POD_POWER_POLL_S` optional): samples arrive with `received_ts`, nothing is lost over
+The Jetson reads both pods with `ATLAS_TELEMETRY_SOURCE=pods` (keys `AUP_HUB_USER_<X>`, `AUP_HUB_TOKEN_<X>` of each
+pod's account; `ATLAS_POD_ACCOUNTS` maps pods to accounts, default `gpu-a=A,gpu-b=B`; `AUP_HUB_URL_<X>` or
+`ATLAS_HUB_URL` names the hub; `ATLAS_POD_POWER_PORT`, `ATLAS_POD_POWER_POLL_S` optional): samples arrive with `received_ts`, nothing is lost over
 a proxy gap the pod's buffer covers (about 5.5 hours), and a sampler restart shows as a new `sampler_started`.
 A window becomes a stored row with `python -m lab gpu-power record --samples <files> --node pod-a --metric
 pod.idle_watts [--since ISO] [--until ISO] [--state idle] [--metrics-file]`: the row carries the sampler, period,

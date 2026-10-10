@@ -214,6 +214,21 @@ def test_the_pods_come_from_the_hub_account_keys_with_the_account_name_quoted_in
     assert moved[1].base_url == "https://hub.test/user/acct-b/proxy/9001"
 
 
+def test_the_pods_can_run_on_other_accounts_each_with_its_own_hub():
+    env = {"ATLAS_POD_ACCOUNTS": "gpu-a=D, gpu-b=c", "AUP_HUB_USER_C": "acct-c", "AUP_HUB_TOKEN_C": "tc",
+           "AUP_HUB_URL_C": "https://sjc.hub.test/", "AUP_HUB_USER_D": "acct-d", "AUP_HUB_TOKEN_D": "td",
+           **ENV}
+    pods = pod_endpoints(env)
+    assert [(p.node, p.base_url, p.token) for p in pods] == [
+        ("gpu-a", "https://dub.aupcloud.io/user/acct-d/proxy/8790", "td"),
+        ("gpu-b", "https://sjc.hub.test/user/acct-c/proxy/8790", "tc")]
+    with pytest.raises(ValueError, match="the pods source needs AUP_HUB_USER_D and AUP_HUB_TOKEN_D in the environment"):
+        pod_endpoints({"ATLAS_POD_ACCOUNTS": "gpu-a=D", **ENV})
+    for bad in ("gpu-a=CD", "jetson=C", "gpu-a", "gpu-a=C,gpu-a=D", "gpu-a=C,gpu-b=C"):
+        with pytest.raises(ValueError, match="ATLAS_POD_ACCOUNTS"):
+            pod_endpoints({"ATLAS_POD_ACCOUNTS": bad, **ENV})
+
+
 def test_one_account_is_enough_a_half_set_one_names_its_missing_key_and_none_at_all_is_refused():
     only_b = pod_endpoints({"AUP_HUB_USER_B": "acct-b", "AUP_HUB_TOKEN_B": "other"})
     assert [p.node for p in only_b] == ["gpu-b"]

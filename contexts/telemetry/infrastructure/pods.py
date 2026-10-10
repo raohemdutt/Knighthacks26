@@ -1,10 +1,10 @@
 """Reading the pod power samplers from the Jetson, through the hub proxy, as telemetry events.
 
-    reader = PodReader(pod_endpoints(os.environ))        # gpu-a and gpu-b, from AUP_HUB_USER_<A|B> / AUP_HUB_TOKEN_<A|B>
+    reader = PodReader(pod_endpoints(os.environ))        # gpu-a and gpu-b, from the AUP_HUB_* keys of their accounts
     async for event in reader.samples(): ...             # telemetry.gpu.power, received_ts on this machine's clock
 
 Each pod runs lab/pod_power.py, which keeps its samples and serves them at GET /samples?after=<seq> on a local port
-that the hub proxy exposes as https://dub.aupcloud.io/user/<account>/proxy/<port>/ (with the account's hub token).
+that the hub proxy exposes as https://<hub>/user/<account>/proxy/<port>/ (with the account's hub token).
 Every `poll_s` the reader asks each pod for what came after the last sample it has, so a proxy gap delays samples
 but loses none the pod still holds, and a sampler restart (a new sampler_started, its seq counting from 1 again) is
 followed from its first sample. Each sample is parsed against the contract and must be a telemetry.gpu.power for
@@ -40,7 +40,7 @@ HUB_URL = "https://dub.aupcloud.io"
 DEFAULT_PORT = 8790  # lab/pod_power.py DEFAULT_PORT
 POLL_S = 2.0
 LIMIT = 1000
-ACCOUNTS = (("A", GPU_A), ("B", GPU_B))  # hub account letter -> the node its pod is
+ACCOUNTS = "gpu-a=A,gpu-b=B"  # which hub account runs which pod, unless ATLAS_POD_ACCOUNTS says otherwise
 
 
 @dataclass(frozen=True)
@@ -50,17 +50,34 @@ class PodEndpoint:
     token: str = field(repr=False)
 
 
+def pod_accounts(text: str) -> list[tuple[str, str]]:
+    """(node, account letter) pairs from text such as "gpu-a=C,gpu-b=D"."""
+    pairs = []
+    for part in text.split(","):
+        node, sep, letter = part.strip().partition("=")
+        node, letter = node.strip(), letter.strip().upper()
+        if not sep or node not in (GPU_A, GPU_B) or len(letter) != 1 or not letter.isalpha():
+            raise ValueError(f"ATLAS_POD_ACCOUNTS takes pairs such as gpu-a=A,gpu-b=B; got {part.strip()!r}")
+        pairs.append((node, letter))
+    if len({node for node, _ in pairs}) != len(pairs) or len({letter for _, letter in pairs}) != len(pairs):
+        raise ValueError("ATLAS_POD_ACCOUNTS names a pod or an account twice")
+    return pairs
+
+
 def pod_endpoints(environ: Mapping[str, str], *, hub_url: str | None = None, port: int | None = None) -> list[PodEndpoint]:
     """The pods this machine can read: each account with both AUP_HUB_USER_<X> and AUP_HUB_TOKEN_<X> set.
 
-    ATLAS_HUB_URL and ATLAS_POD_POWER_PORT override the hub and the sampler's port. A half-set pair is an error
-    naming the missing key (never its value); no pair at all is an error too."""
-    hub = (hub_url or environ.get("ATLAS_HUB_URL") or HUB_URL).rstrip("/")
+    ATLAS_POD_ACCOUNTS says which account runs which pod (default gpu-a=A,gpu-b=B). Each account's hub is
+    AUP_HUB_URL_<X> when set, else ATLAS_HUB_URL, else the DUB hub; ATLAS_POD_POWER_PORT moves the sampler's port.
+    A half-set pair is an error naming the missing key (never its value); no pair at all is an error too."""
+    default_hub = hub_url or environ.get("ATLAS_HUB_URL") or HUB_URL
     port = port or int(environ.get("ATLAS_POD_POWER_PORT") or DEFAULT_PORT)
+    accounts = pod_accounts(environ.get("ATLAS_POD_ACCOUNTS") or ACCOUNTS)
     pods, missing = [], []
-    for letter, node in ACCOUNTS:
+    for node, letter in accounts:
         user_key, token_key = f"AUP_HUB_USER_{letter}", f"AUP_HUB_TOKEN_{letter}"
         user, token = (environ.get(user_key) or "").strip(), (environ.get(token_key) or "").strip()
+        hub = ((environ.get(f"AUP_HUB_URL_{letter}") or "").strip() or default_hub).rstrip("/")
         if user and token:
             pods.append(PodEndpoint(node, f"{hub}/user/{quote(user, safe='')}/proxy/{port}", token))
         elif user or token:
@@ -68,7 +85,8 @@ def pod_endpoints(environ: Mapping[str, str], *, hub_url: str | None = None, por
     if missing:
         raise ValueError(f"set {' and '.join(missing)} too, or neither key of that account")
     if not pods:
-        raise ValueError("the pods source needs AUP_HUB_USER_A and AUP_HUB_TOKEN_A, or the B pair, in the environment")
+        names = " or ".join(f"AUP_HUB_USER_{letter} and AUP_HUB_TOKEN_{letter}" for _, letter in accounts)
+        raise ValueError(f"the pods source needs {names} in the environment")
     return pods
 
 

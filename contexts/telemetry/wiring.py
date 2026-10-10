@@ -19,9 +19,10 @@ Sources:
     ATLAS_NVPMODEL                      the nvpmodel command (default "/usr/sbin/nvpmodel")
 - "pods" reads the pod power samplers (lab/pod_power.py) through the hub proxy and publishes their
   telemetry.gpu.power samples for gpu-a and gpu-b, each stamped with the time it arrived. It reads the accounts from
-  the environment: AUP_HUB_USER_A / AUP_HUB_TOKEN_A for gpu-a, the B pair for gpu-b (either is enough), with
-  ATLAS_HUB_URL, ATLAS_POD_POWER_PORT (default 8790) and ATLAS_POD_POWER_POLL_S (default 2) to override. Samples
-  already in the log are not published again after a restart.
+  the environment: AUP_HUB_USER_<X> / AUP_HUB_TOKEN_<X> for each pod's account (either pod is enough), with
+  ATLAS_POD_ACCOUNTS (default gpu-a=A,gpu-b=B), AUP_HUB_URL_<X> or ATLAS_HUB_URL (default the DUB hub),
+  ATLAS_POD_POWER_PORT (default 8790) and ATLAS_POD_POWER_POLL_S (default 2) to override. Samples already in the log
+  are not published again after a restart.
 """
 
 import os
