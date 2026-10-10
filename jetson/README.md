@@ -146,6 +146,12 @@ sudo python jetson/egress.py clear                     # remove the firewall (fo
 
 While the firewall is on, `apt` and `pip` on the box are blocked: run `clear` first and restart the service after.
 
+### Updating the code on the box
+
+The box has no GitHub login, so code reaches it from a laptop: `./jetson/push.sh [alexander@<ip>]` copies the working
+tree (not `.env`, `data/`, the engine or the models) and restarts `atlas-gateway`; the app rebuilds its memory from the
+event log. `--web` builds the phone app first. The default address is `alexander@ubuntu.local`.
+
 ## Firmware update (boards with old factory firmware)
 
 JetPack 6 and 7 need firmware 36.x on the board. Boards with older firmware
