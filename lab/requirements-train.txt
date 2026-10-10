@@ -1,0 +1,20 @@
+# What lab/train.py needs on the trainer pod beyond the pod image's own torch and triton.
+#
+# lab/train.py installs this file itself before a run when a pin is missing or differs:
+#     pip install [--user] -r lab/requirements-train.txt -c <the torch, torchvision, torchaudio and triton the pod has>
+# The constraint file is written at run time from what is installed, so pip can never replace the pod's
+# torch 2.9.1+rocm7.13.0 with a CUDA build from PyPI: a pin that needs another torch fails to resolve instead.
+#
+# Exact pins, so a run's ledger row names one stack. These are the versions the smoke LoRA ran on pod B
+# (lab/refine/research/learning/lora_recipe.md: PEFT 0.21, TRL 1.15, transformers 5.19). Changing a pin starts a
+# new trainer.samples_per_s baseline: say so in the PR that changes it.
+peft==0.21.2
+trl==1.15.0
+transformers==5.19.0
+accelerate==1.15.0
+datasets==5.1.0
+# lab/dataset.py reads the export through contracts/, which needs pydantic.
+pydantic==2.13.5
+# Image examples: the Qwen3.5 processor reads the blurred keyframes with Pillow (its PIL image processor, so no
+# torchvision is needed; never pin torchvision here, PyPI's build does not match the pod's ROCm torch).
+pillow==12.3.0
