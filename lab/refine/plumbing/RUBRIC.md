@@ -28,18 +28,22 @@ in its log entry, and the merge pass copies it into `OWNER_RULINGS.md`.
 
 ## The two universal rules
 
-These bind every pass in every track (PASS_RULES.md, "The two universal rules") and read the same in all four
-rubrics (O1 task page).
+These bind every pass in every track, in the words PASS_RULES.md gives them ("The two universal rules"), which
+every rubric repeats.
 
 1. Old versus new. Every task and experiment names the metrics it is meant to move, reads their current values
-   from the metrics file or ledger before starting, and ends by measuring them the same way. The pass log shows
-   before, after, and the conditions. A change that moves nothing is not an improvement; a regression is reverted
-   or goes to the rulings file with the trade-off stated. The loop itself is judged by whether the track's numbers
-   moved across passes.
-2. Source-forced. Every change to a method or a plan item cites at least one source next to the before and after.
+   from the metrics file or ledger before starting, and ends by measuring them the same way. The pass entry shows
+   the values before and after and the conditions they were measured under. A change that moves nothing is not an
+   improvement. A regression is reverted, or it goes to a ruling with the trade-off stated. The loop itself is
+   judged by whether the track's numbers moved across passes.
+2. Source-forced. Every change to a method or a plan item cites at least one source next to its before and after.
    Each pass starts with a bounded research step on the track's open problems, written into
-   `lab/refine/research/plumbing/` with citations. A source-backed idea not yet tested becomes a queued experiment
-   with its citation and expected movement.
+   `lab/refine/research/plumbing/` with citations. A source-backed idea that has not been tested becomes a queued
+   experiment with its citation and expected movement. A change that depends on a fact no source in hand
+   establishes is not made; the fact becomes a queued measurement or a ruling.
+
+A pass entry with no metrics-before block, or with any change that has no citation, is invalid and is reverted
+(PASS_RULES.md, "Invalid passes").
 
 For this track, "measured the same way" means the same node (this machine, the Jetson, pod A, or pod B), the same
 account, the same port, and the same payload size; the conditions in the log name all four.
@@ -142,8 +146,9 @@ reads, requests to pod A, calls to an account whose server is stopped), which a 
 - Checked by: unit tests of the projection against recorded quota answers; live, two `quota/me` reads around one
   stop, compared with the projection.
 - Moves: credits per hour.
-- Today: the rate is known; nothing tracks or projects spend; balances are read by hand (R9 task page). Both pods
-  were running when R2 reported (R2 task page).
+- Today: the rate is in the metrics file (`pod.credits_per_min`, lines 19 and 20); its balances are marked low
+  confidence (`pod.balance_credits`, lines 21 and 22); nothing tracks or projects spend, and balances are read by
+  hand (R9 task page). Both pods were running when R2 reported (R2 task page).
 
 ### T4. A test greps logs, repo, and Notion posts for tokens and fails on any hit
 
@@ -225,7 +230,8 @@ reads, requests to pod A, calls to an account whose server is stopped), which a 
 
 - Passes when: one command prints, for both accounts, running, ready, pending, started, scheduled end, last
   activity, the serving port, the served model name, the model server's health, and the balance, and appends one
-  ledger row per account (verb `status`).
+  ledger row per account (verb `status`). As a `python -m lab` verb it answers with one JSON line and exit code 0
+  or 1 (`lab/__main__.py`, module docstring).
 - Sources predict: `GET /hub/api/users/{name}` gives each server's `ready`, `pending`, `started`, `last_activity`,
   `url`, and `progress_url` (JupyterHub 5.4.4 `rest-api.yml`, Server schema; `tutorial/server-api.md`);
   `GET /hub/api/quota/me` gives the balance (R9 task page); through the proxy, vLLM answers `GET /v1/models` with
@@ -243,7 +249,8 @@ reads, requests to pod A, calls to an account whose server is stopped), which a 
   waits until `GET /v1/models` answers through the proxy, with no browser step; the time from the launch request
   to that answer is in the ledger for the warm case (build and checkpoint already in the home volume) and, once,
   for the cold case (empty home).
-- Sources predict: the pod is ready about 15 s after the launch (R9 task page; Q1 answer); vLLM's engine init
+- Sources predict: the pod is ready about 15 s after the launch (R9 task page; Q1 answer; `pod.start_s`,
+  metrics.jsonl line 18); vLLM's engine init
   takes about 270 s (`lab/README.md` L73; PR #37); a cold home adds the vLLM build, about 1 h (`lab/README.md`
   L52), and the 18 GB checkpoint download (unmeasured). Three steps are by hand today: jupyter-server-proxy needs
   one relaunch after its install (`lab/README.md` L37; `lab/pod_a_teacher.sh` L20-L24), the private repo cannot be
@@ -256,14 +263,16 @@ reads, requests to pod A, calls to an account whose server is stopped), which a 
 
 ## The metric set
 
-Names follow the dotted, lowercase style of `lab/refine/metrics.jsonl` (O10 task page: `pod.start_s`,
-`pod.credits_per_min`, `pod.balance_credits`); the merge pass reconciles a name if the metrics file chose another.
-MB means 10^6 bytes. Every row in the metrics file or the ledger names its node and its conditions (O10 task page).
+Names follow the dotted, lowercase style of `lab/refine/metrics.jsonl`, which already holds `pod.start_s`,
+`pod.credits_per_min`, and `pod.balance_credits` for the nodes `pod-a` and `pod-b` (lines 18 to 22); the six below
+are new to this track, and the merge pass reconciles a name if another track chose a different one. Every row
+names its node and its conditions; for this track the node is `pod-a` or `pod-b` (one account each), or the
+calling machine for link metrics. MB means 10^6 bytes.
 
 | Metric | Name | Unit | How it is measured | Before (2026-10-10) and source | Better |
 |---|---|---|---|---|---|
-| Credits per hour | `pod.credits_per_hour` | credits/h | Credits per wall-clock hour over a stated window, per account (node), from our own launch and stop times at the posted rate, checked against `quota/me` around each stop | 240 per running pod-hour by rate (4 per minute, `runtime/values.yaml` L265, `lab/README.md` L14); no window average yet | lower at equal work |
-| Time from launch to serving | `pod.launch_to_serving_s` | s | From the launch request to the first 200 from `GET /v1/models` through the proxy; conditions say warm or cold | not measured end to end; parts: about 15 s to ready (R9 task page) and about 270 s engine init (`lab/README.md` L73) | lower |
+| Credits per hour | `pod.credits_per_hour` | credits/h | Credits per wall-clock hour over a stated window, per account (node), from our own launch and stop times at the posted rate, checked against `quota/me` around each stop | 240 per running pod-hour by rate (`pod.credits_per_min` = 4 for `pod-a` and `pod-b`, metrics.jsonl lines 19 and 20; `runtime/values.yaml` L265); no window average yet | lower at equal work |
+| Time from launch to serving | `pod.launch_to_serving_s` | s | From the launch request to the first 200 from `GET /v1/models` through the proxy; conditions say warm or cold | not measured end to end; parts: 15 s to ready (`pod.start_s`, metrics.jsonl line 18) and about 270 s engine init (`lab/README.md` L73) | lower |
 | Push speed | `link.push_mb_s` | MB/s | Bytes over seconds for a real export pushed to pod B, sha256 checked; conditions give bytes and chunk size | unmeasured | higher |
 | Pull speed | `link.pull_mb_s` | MB/s | Bytes over seconds for a real package pulled from pod B, sha256 checked; conditions give bytes and path | unmeasured | higher |
 | Recovery time after a lost pod | `pod.recovery_s` | s | From the loss (the server gone from `GET /hub/api/users/{name}`, or a 424 through the proxy) to the job running again | unmeasured | lower |
@@ -471,12 +480,14 @@ Our own pages and repo:
 - Design Doc, sections 4, 6, 6b, 8, and 13: https://app.notion.com/p/3f596ef5fec5819ea5cdcaa015e69917
 - GPU Queue (R9700 pods) database: https://app.notion.com/p/c69762a396874e049a4af6819f762615
 - PR #37, R2 GPU lab setup with the measured numbers: https://github.com/raohemdutt/Knighthacks26/pull/37
-- `lab/README.md` on main: https://github.com/raohemdutt/Knighthacks26/blob/5eebde3dbb806db664a2f86426af888ff0d5b565/lab/README.md
-- `lab/pod_a_teacher.sh` on main: https://github.com/raohemdutt/Knighthacks26/blob/5eebde3dbb806db664a2f86426af888ff0d5b565/lab/pod_a_teacher.sh
-- `lab/pod_b_trainer.sh` on main: https://github.com/raohemdutt/Knighthacks26/blob/5eebde3dbb806db664a2f86426af888ff0d5b565/lab/pod_b_trainer.sh
-- `lab/refine/PASS_RULES.md`, the pass rules every track follows: https://github.com/raohemdutt/Knighthacks26/blob/5eebde3dbb806db664a2f86426af888ff0d5b565/lab/refine/PASS_RULES.md
-- `contracts/events.py` L21, the event id shape: https://github.com/raohemdutt/Knighthacks26/blob/5eebde3dbb806db664a2f86426af888ff0d5b565/contracts/events.py#L21
-- `AGENTS.md` L183, secrets: https://github.com/raohemdutt/Knighthacks26/blob/5eebde3dbb806db664a2f86426af888ff0d5b565/AGENTS.md#L183
+- `lab/README.md` on main: https://github.com/raohemdutt/Knighthacks26/blob/8a8a7d5c9b021822bb212d465edfe81e3db48280/lab/README.md
+- `lab/pod_a_teacher.sh` on main: https://github.com/raohemdutt/Knighthacks26/blob/8a8a7d5c9b021822bb212d465edfe81e3db48280/lab/pod_a_teacher.sh
+- `lab/pod_b_trainer.sh` on main: https://github.com/raohemdutt/Knighthacks26/blob/8a8a7d5c9b021822bb212d465edfe81e3db48280/lab/pod_b_trainer.sh
+- `lab/refine/PASS_RULES.md`, the pass rules every track follows: https://github.com/raohemdutt/Knighthacks26/blob/8a8a7d5c9b021822bb212d465edfe81e3db48280/lab/refine/PASS_RULES.md
+- `lab/refine/metrics.jsonl`, the metrics file (lines 18 to 22 hold the pod rows): https://github.com/raohemdutt/Knighthacks26/blob/8a8a7d5c9b021822bb212d465edfe81e3db48280/lab/refine/metrics.jsonl
+- `lab/__main__.py`, the `python -m lab` dispatcher and its JSON contract: https://github.com/raohemdutt/Knighthacks26/blob/8a8a7d5c9b021822bb212d465edfe81e3db48280/lab/__main__.py
+- `contracts/events.py` L21, the event id shape: https://github.com/raohemdutt/Knighthacks26/blob/8a8a7d5c9b021822bb212d465edfe81e3db48280/contracts/events.py#L21
+- `AGENTS.md` L183, secrets: https://github.com/raohemdutt/Knighthacks26/blob/8a8a7d5c9b021822bb212d465edfe81e3db48280/AGENTS.md#L183
 
 JupyterHub (our hub runs 5.4.4):
 - Live version, read without a token: https://dub.aupcloud.io/hub/api/
