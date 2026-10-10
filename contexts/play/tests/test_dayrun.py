@@ -420,6 +420,15 @@ def test_hard_mode_is_seeded_and_a_cancelled_friend_costs_the_boost(dayrun, plan
     assert gone.disruptions[0].text == "Maya cancels: not coming after all"
 
 
+def test_hard_mode_survives_a_block_moved_inside_another(dayrun):
+    blocks = sorted(dayrun.hard([], scenario="demo", disruptions=[]).before.blocks, key=lambda b: b.start)
+    fixed = [b for b in blocks if b.kind == "fixed"] or blocks
+    long, short = next((a, b) for a in fixed for b in fixed if a.id != b.id and (b.end - b.start) <= (a.end - a.start))
+    shift = int((long.start - short.start).total_seconds() // 60)  # the short one now sits wholly inside the long one
+    h = dayrun.hard([], scenario="demo", disruptions=[Disruption(kind="block_moved", block=short.id, shift_minutes=shift)])
+    assert short.id not in [b.id for b in h.after.blocks] and h.disruptions[0].text
+
+
 # --- campaign ---
 
 

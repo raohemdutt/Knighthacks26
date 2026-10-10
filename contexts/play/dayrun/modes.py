@@ -100,7 +100,9 @@ def hard(cfg: DayRunConfig, w: Walks, board: Board, moves: list[Move], seed: int
     for d in told:
         if d.kind != "block_moved":
             continue
-        title = next(b.title for b in shaken.blocks if b.id == d.block)
+        title = next((b.title for b in shaken.blocks if b.id == d.block), None)
+        if title is None:  # moved out of the day's window: there is no walk to compare
+            continue
         was = next((r for r in before.routes if r.purpose == f"to {title}"), None)
         now = next((r for r in after.routes if r.purpose == f"to {title}"), None)
 
