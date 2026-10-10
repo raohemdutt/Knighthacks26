@@ -61,6 +61,7 @@ from contexts.perception.infrastructure.identity_store import IdentityStore
 from contexts.perception.infrastructure.recognizer import build_recognizer
 from contexts.perception.domain.zones import ZoneEngine
 from contexts.play.dayrun.service import DayRun
+from contexts.play.dayrun.agreed import AgreedPlans
 from contexts.play.league import League, load_config as load_league
 from contexts.play.league.application.sync import LeagueSync
 from contexts.play.league.infrastructure.neon import NeonLeague
@@ -425,6 +426,9 @@ def build(settings: Settings | None = None) -> Atlas:
     # Day Run (S4, S6): play tomorrow on the place packs before living it. No model calls.
     dayrun = DayRun(places, memory=memory, habits=habits, presence=presence, hub=hub,
                     config_dir=s.config_dir, data_dir=s.data_dir, profile=profile) if places else None
+    if dayrun and circle:  # a plan the Circle agreed is a fixed block of each attendee's day, from this box's own log
+        dayrun.agreed = AgreedPlans(circle_cfg["member_id"])
+        bus.subscribe("circle.event.agreed", dayrun.agreed.on_agreed, replay=True)  # state only
 
     # The Day loop (D1): the morning plan, the live status and the evening review, unasked. Plans, statuses and
     # reviews rebuild from the log; deciding and proposing cards is live only.

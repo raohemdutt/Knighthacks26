@@ -278,7 +278,8 @@ class DayPlanner:
                 continue
             item = items.get(b.id)
             where = f" at {b.place_name}" if b.place_name else ""
-            out.append(PlanSource(kind="item", id=b.id, text=f"{b.title}, {hm(b.start)}{where}", origin=item.connector if item else "calendar"))
+            origin = item.connector if item else "circle" if b.id.startswith("circle:") else "calendar"  # agreed with friends
+            out.append(PlanSource(kind="item", id=b.id, text=f"{b.title}, {hm(b.start)}{where}", origin=origin))
         for d in board.deadlines:
             item = items.get(d.id)
             out.append(PlanSource(kind="item", id=d.id, text=f"{d.title} due {d.due:%a} {hm(d.due)}, about {d.work_left:g} focused minutes left",

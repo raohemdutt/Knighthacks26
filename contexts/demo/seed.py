@@ -15,6 +15,7 @@ import asyncio
 import os
 import time
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -48,18 +49,20 @@ class Seeded:
         return self.app.habits.sched.local_day(self.now) - timedelta(days=1)
 
 
-def settings(data_dir: Path) -> Settings:
+def settings(data_dir: Path, config_dir: Path | None = None) -> Settings:
     """The gateway's settings with everything that reaches outside switched off."""
     s = Settings(data_dir=data_dir, llm_url=None, ntfy_url=None, token=None, connectors=False, replay=False,
                  memory_fixture="")
-    if not s.config_dir.exists():  # run from somewhere else than the repo root
+    if config_dir is not None:  # the Circle demo's own copy (contexts/demo/circle.py)
+        s.config_dir = Path(config_dir)
+    elif not s.config_dir.exists():  # run from somewhere else than the repo root
         s.config_dir = ROOT / "config"
     return s
 
 
-def build_app(data_dir: Path) -> Atlas:
+def build_app(data_dir: Path, config_dir: Path | None = None) -> Atlas:
     os.environ.pop("ATLAS_LLM_URL", None)  # runtime.registry reads it directly: the seed never calls a real model
-    return build(settings(data_dir))
+    return build(settings(data_dir, config_dir))
 
 
 async def settle() -> None:
@@ -69,8 +72,10 @@ async def settle() -> None:
         await asyncio.gather(*pending, return_exceptions=True)
 
 
-async def seed(data_dir: str | Path, now: datetime | None = None, force: bool = False) -> Seeded:
+async def seed(data_dir: str | Path, now: datetime | None = None, force: bool = False, config_dir: Path | None = None,
+               extra: Callable[[datetime], list[Event]] | None = None) -> Seeded:
     """Publish the night into `data_dir`. `now` moves the story so it ends then (default: the script's own time).
+    `config_dir` builds the app on another config directory; `extra(now)` adds more source events to the story.
 
     Refuses a directory that already has an event log or a memory file unless `force`; never deletes.
     With `force` the existing log is replayed first, so seeding the same story twice adds nothing."""
@@ -84,7 +89,7 @@ async def seed(data_dir: str | Path, now: datetime | None = None, force: bool = 
     started = time.perf_counter()
     now = now or load().now
     events = story(now)
-    app = build_app(data_dir)
+    app = build_app(data_dir, config_dir)
     if log_files:
         await app.bus.replay_into()
 
@@ -101,6 +106,9 @@ async def seed(data_dir: str | Path, now: datetime | None = None, force: bool = 
 
     if app.league:  # the League's second member: a friend's shared summaries, demo fixture only (fixtures/demo/league.yaml)
         events = sorted(events + friend_summaries(now, circle_id=app.league.circle_id), key=lambda e: (e.ts, e.event_id))
+
+    if extra:
+        events = sorted(events + extra(now), key=lambda e: e.ts)  # stable: the story keeps its own order
 
     app.bus.subscribe("", note)  # live only: sees exactly what is appended to the log
     for e in events:
