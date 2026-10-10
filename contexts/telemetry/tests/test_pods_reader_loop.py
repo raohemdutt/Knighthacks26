@@ -106,3 +106,45 @@ def test_a_stalled_pod_does_not_delay_the_other_pods_samples():
 
     assert nodes == ["gpu-b"] * 3
     assert waited < 0.3, f"gpu-b's first sample came {waited:.2f} s after the read began, held up by gpu-a's stall"
+
+
+def test_a_pod_whose_samples_name_another_node_is_logged_with_its_node_the_count_and_the_reason(caplog):
+    events = recorded("samples_gpu-a.jsonl")[:3]
+    wrong = [{**e, "node": "gpu-b"} for e in events[:2]] + [events[2]]
+    pod = FakePod("gpu-a", wrong)
+    reader = PodReader([PodEndpoint("gpu-a", "https://hub.test/user/acct/proxy/8790", TOKEN)],
+                       transport=httpx.MockTransport(pod.answer), clock=lambda: NOW,
+                       sleep=lambda _: asyncio.sleep(0), rounds=1)
+
+    async def run():
+        return [e async for e in reader.samples()]
+
+    with caplog.at_level("WARNING", logger="atlas.telemetry.pods"):
+        got = asyncio.run(run())
+
+    assert [e.event_id for e in got] == [events[2]["event_id"]]
+    assert reader.status()["gpu-a"]["rejected"] == 2
+    warnings = [r for r in caplog.records if r.name == "atlas.telemetry.pods" and r.levelname == "WARNING"]
+    assert len(warnings) == 1, [r.getMessage() for r in warnings]
+    message = warnings[0].getMessage()
+    assert "gpu-a" in message and "2" in message and "gpu-b" in message, message
+    assert TOKEN not in caplog.text
+
+
+def test_a_sample_that_is_not_a_contract_event_is_logged_with_the_reason(caplog):
+    events = recorded("samples_gpu-a.jsonl")[:2]
+    broken = [{**events[0], "socket_w": "lots"}, events[1]]
+    pod = FakePod("gpu-a", broken)
+    reader = PodReader([PodEndpoint("gpu-a", "https://hub.test/user/acct/proxy/8790", TOKEN)],
+                       transport=httpx.MockTransport(pod.answer), clock=lambda: NOW,
+                       sleep=lambda _: asyncio.sleep(0), rounds=1)
+
+    async def run():
+        return [e async for e in reader.samples()]
+
+    with caplog.at_level("WARNING", logger="atlas.telemetry.pods"):
+        got = asyncio.run(run())
+
+    assert [e.event_id for e in got] == [events[1]["event_id"]]
+    warnings = [r.getMessage() for r in caplog.records if r.name == "atlas.telemetry.pods" and r.levelname == "WARNING"]
+    assert len(warnings) == 1 and "gpu-a" in warnings[0] and "1" in warnings[0] and "socket_w" in warnings[0], warnings
