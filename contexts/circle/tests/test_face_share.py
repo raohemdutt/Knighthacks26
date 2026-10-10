@@ -569,6 +569,17 @@ def test_rows_of_a_kind_or_version_this_box_does_not_know_are_left_alone(pair):
     assert len(bob.identity.members()) == 1
 
 
+def test_rows_with_oversized_ids_or_names_are_not_read_into_the_log_or_the_state(pair):
+    ana, bob, store = pair.ana, pair.bob, pair.store
+    ana.poll(), bob.poll()
+    store.post(SealedMessage(id="i" * 5000, circle_id="team", from_member="ana", to_member="bob", kind="face_share",
+                             body={}, created_at=pair.wall()))
+    store.post(SealedMessage(id="x9", circle_id="team", from_member="n" * 5000, to_member="bob", kind="face_share",
+                             body={}, created_at=pair.wall()))
+    assert bob.poll() == [] and bob.share.skipped == 2
+    assert len((bob.dir / "vault" / "circle" / "face_share.bin").read_bytes()) < 4000
+
+
 def test_the_plans_protocol_never_sees_a_face_share(pair):
     """`CircleAgent.poll` builds a `circle.message.received` for every agent_messages row, whose `kind` is a closed
     list: a new kind in that table would stop an older box's poll. So face share has its own channel, and a box

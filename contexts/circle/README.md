@@ -141,6 +141,9 @@ table would break the poll of a box that does not know it. A box without this co
   never used silently: sharing with that friend stops until you compare and trust the new one.
 - **Whoever runs the database can hold messages back.** That includes a revoke. The expiry is the backstop: the
   friend's box deletes the template after 30 days on its own clock, with or without the Circle.
+- **The box cannot tell whose face a template is.** "This box's own person" is the enrolled person linked to
+  this box's Circle member, with the consent that was ticked at enrolment. Whoever holds the box's token sets
+  that link, so the rule keeps a box from sharing a visitor by accident, not a box owner who lies to it.
 - **A friend's box that accepted has the template.** Revoke and expiry are carried out by that box's software; a
   box that was modified, or a copy of its disk, keeps what it was given. Share with friends you trust.
 - **No forward secrecy.** A share is removed from the database once it is accepted, revoked, replaced or expired.
@@ -148,6 +151,8 @@ table would break the poll of a box that does not know it. A box without this co
 - **Who shares with whom is visible** to anyone who can read the database: member ids, times, the expiry, the
   face model's name and the size. The template and the name kept with it are not.
 - A share works only between boxes with the same face model (the header names it; the card says when it differs).
+- A wipe of everything deletes the templates friends shared and takes this member's own shares back (when the
+  Circle can be reached; otherwise they run out). It keeps the box key, as it keeps the vault's master key.
 - **Not run against the real Neon database or with real faces.** The store is tested in memory and on the fake
   connection; the faces in the tests are bytes the fake recogniser turns into vectors.
 

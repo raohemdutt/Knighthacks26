@@ -66,6 +66,7 @@ DEFAULT_DAYS, MAX_DAYS = 30, 90
 MAX_PLAINTEXT = 256 * 1024  # a template as JSON: 13 vectors of 128 numbers are about 35 kB
 MAX_SEALED = 400_000  # a row's body as JSON; anything larger is not read
 MAX_ROWS = 500  # rows looked at per poll
+MAX_ID = 128  # characters in a row's id or member ids: the database lets anyone write anything, so longer is not read
 FUTURE = timedelta(days=1)  # how far ahead of this box's clock a share may be dated
 KEEP_IGNORED = 1000  # more than MAX_ROWS, so a row is reported once, not once a poll
 TEMPLATE_FIELDS = {"v", "circle_member_id", "name", "model", "vector", "vectors"}
@@ -545,8 +546,9 @@ class FaceShare:
             except Exception:  # this member is no longer enrolled here as themself: what they shared goes too
                 out += self._revoke_all(now)
         rows = self.store.inbox(self.circle_id, self.member_id)[:MAX_ROWS]
-        known = [r for r in rows if r.v == SEALED_VERSION and r.kind in ("box_key", "face_share", "face_revoke")]
-        self.skipped = len(rows) - len(known)  # a newer version's rows: left alone
+        known = [r for r in rows if r.v == SEALED_VERSION and r.kind in ("box_key", "face_share", "face_revoke")
+                 and max(len(r.id), len(r.from_member), len(r.to_member or "")) <= MAX_ID]
+        self.skipped = len(rows) - len(known)  # a newer version's rows, or not rows of ours at all: left alone
         if self.enabled:
             self._publish_key(known, now)
         else:  # no key of a box that has it switched off stays published
@@ -606,7 +608,8 @@ class FaceShare:
         ignored[row.id] = reason
         for old in list(ignored)[:-KEEP_IGNORED]:
             del ignored[old]
-        log.info("face share: a share from %s was ignored (%s)", row.from_member, reason)
+        log.info("face share: a share from %s was ignored (%s)",
+                 row.from_member if row.from_member in self.names else "someone not in the Circle's member list", reason)
         return [self._changed(now, row.from_member, "in", "ignored", share_id=row.id, reason=reason)]
 
     def _offered(self, row: SealedMessage, now: datetime) -> list[Event]:
