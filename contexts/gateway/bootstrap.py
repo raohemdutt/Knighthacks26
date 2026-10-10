@@ -39,6 +39,8 @@ from contexts.connectors.domain.spec import load_specs
 from contexts.connectors.infrastructure.mcp_client import McpConnector
 from contexts.learning.application.board import LearningBoard
 from contexts.learning.application.export import DatasetExporter
+from contexts.memory.application.embedder import embedder_from
+from contexts.memory.application.indexer import VectorIndexer
 from contexts.memory.application.projection import MemoryProjection
 from contexts.memory.application.reader import SqliteMemory
 from contexts.memory.application.summarizer import EpisodeSummarizer
@@ -255,6 +257,9 @@ def build(settings: Settings | None = None) -> Atlas:
     wiper = Wiper(s.data_dir, memory_db=s.data_dir / "memory.sqlite")
     bus.subscribe("vault.wipe.requested", wiper.on_wipe_requested)
     EpisodeSummarizer(store, runtime).subscribe(bus)  # live only, in the background: one model call per closed episode (M3)
+    # Semantic search (M5): off unless models.yaml sets embeddings.text. Live only, in the background, after the projection.
+    memory.embedder = embedder_from(runtime, models_yaml)
+    VectorIndexer(store, memory.embedder).subscribe(bus)
     bus.subscribe("agent.rule.added", rules.on_rule_added, replay=True)
     bus.subscribe("perception.zone", rules.on_zone_event, replay=True)
     bus.subscribe("perception.zone", planner.on_zone_event)  # leaving checklist at the door (A8)
