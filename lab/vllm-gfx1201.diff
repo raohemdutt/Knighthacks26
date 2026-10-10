@@ -1,0 +1,114 @@
+diff --git a/pyproject.toml b/pyproject.toml
+index fad8c8c..791fa3d 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -6,7 +6,6 @@ requires = [
+     "packaging>=24.2",
+     "setuptools>=77.0.3,<81.0.0",
+     "setuptools-scm>=8.0",
+-    "torch == 2.10.0",
+     "wheel",
+     "jinja2",
+ ]
+@@ -171,4 +170,3 @@ ser = "ser"
+ ure = "ure"
+ 
+ [tool.uv]
+-no-build-isolation-package = ["torch"]
+diff --git a/requirements/build.txt b/requirements/build.txt
+index c46880a..639de69 100644
+--- a/requirements/build.txt
++++ b/requirements/build.txt
+@@ -4,7 +4,6 @@ ninja
+ packaging>=24.2
+ setuptools>=77.0.3,<81.0.0
+ setuptools-scm>=8
+-torch==2.10.0
+ wheel
+ jinja2>=3.1.6
+ regex
+diff --git a/requirements/rocm-build.txt b/requirements/rocm-build.txt
+index 6f96c7d..e5f5a22 100644
+--- a/requirements/rocm-build.txt
++++ b/requirements/rocm-build.txt
+@@ -1,10 +1,6 @@
+ # Common dependencies
+ -r common.txt
+ 
+---extra-index-url https://download.pytorch.org/whl/rocm7.1
+-torch==2.10.0
+-torchvision==0.25.0
+-torchaudio==2.10.0
+ triton==3.6.0
+ cmake>=3.26.1,<4
+ packaging>=24.2
+diff --git a/vllm/platforms/__init__.py b/vllm/platforms/__init__.py
+index af344ac..8f453f0 100644
+--- a/vllm/platforms/__init__.py
++++ b/vllm/platforms/__init__.py
+@@ -126,6 +126,19 @@ def rocm_platform_plugin() -> str | None:
+     except Exception as e:
+         logger.debug("ROCm platform is not available because: %s", str(e))
+ 
++    # WSL2 fallback: amdsmi fails (AMDSMI_STATUS_DRIVER_NOT_LOADED) because the
++    # GPU is exposed via /dev/dxg, not /dev/kfd. Detect ROCm via torch.version.hip
++    # instead. See vLLM issue #40081.
++    if not is_rocm:
++        try:
++            import torch
++
++            if getattr(torch.version, "hip", None) and torch.cuda.is_available():
++                is_rocm = True
++                logger.debug("Confirmed ROCm platform via torch.version.hip fallback.")
++        except Exception as e:
++            logger.debug("ROCm torch.version.hip fallback failed: %s", str(e))
++
+     return "vllm.platforms.rocm.RocmPlatform" if is_rocm else None
+ 
+ 
+diff --git a/vllm/platforms/rocm.py b/vllm/platforms/rocm.py
+index d3836a4..0e8f57f 100644
+--- a/vllm/platforms/rocm.py
++++ b/vllm/platforms/rocm.py
+@@ -130,12 +130,12 @@ def _get_gcn_arch() -> str:
+     try:
+         return _query_gcn_arch_from_amdsmi()
+     except Exception as e:
+-        logger.debug("Failed to get GCN arch via amdsmi: %s", e)
+-        logger.warning_once(
+-            "Failed to get GCN arch via amdsmi, falling back to torch.cuda. "
+-            "This will initialize CUDA and may cause "
+-            "issues if CUDA_VISIBLE_DEVICES is not set yet."
+-        )
++        # NOTE: must NOT use logger.warning_once here. It calls
++        # _should_log_with_scope -> imports vllm.distributed -> imports
++        # current_platform, which circularly re-enters platform resolution
++        # while _GCN_ARCH is being computed at module import (WSL2: amdsmi
++        # always fails here, so this path always fires). Plain debug is safe.
++        logger.debug("Failed to get GCN arch via amdsmi, falling back to torch.cuda: %s", e)
+     # Ultimate fallback: use torch.cuda (will initialize CUDA)
+     return torch.cuda.get_device_properties("cuda").gcnArchName
+ 
+diff --git a/vllm/v1/attention/ops/triton_unified_attention.py b/vllm/v1/attention/ops/triton_unified_attention.py
+index ca5d0e3..10940a8 100644
+--- a/vllm/v1/attention/ops/triton_unified_attention.py
++++ b/vllm/v1/attention/ops/triton_unified_attention.py
+@@ -1040,6 +1040,9 @@ def unified_attention(
+             num_seqs=num_seqs,
+             BLOCK_M=BLOCK_M,
+             USE_FP8=output_scale is not None,
++            # RDNA4 (gfx1201) has 64KB LDS; default pipelining needs 66560 bytes
++            # -> triton OutOfResources. num_stages=1 removes double-buffering.
++            num_stages=1,
+         )
+     else:
+         kernel_unified_attention_3d[
+@@ -1092,6 +1095,8 @@ def unified_attention(
+             num_seqs=num_seqs,
+             BLOCK_M=BLOCK_M,
+             NUM_SEGMENTS_PER_SEQ=num_par_softmax_segments,
++            # RDNA4 (gfx1201) 64KB LDS: avoid double-buffering.
++            num_stages=1,
+         )
+         reduce_segments[(q.shape[0], num_query_heads)](
+             output_ptr=out,
