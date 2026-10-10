@@ -39,6 +39,7 @@ from lab.machine import stop
 
 # One line per verb, alphabetical: "verb": "module:function".
 VERBS: dict[str, str] = {
+    "ready": "lab.machine.ready:main",
     "resume": "lab.machine.stop:resume_main",
     "stop": "lab.machine.stop:stop_main",
 }

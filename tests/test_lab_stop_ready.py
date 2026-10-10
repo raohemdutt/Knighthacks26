@@ -7,16 +7,28 @@ credentials are fake and the hub is a stand-in HTTP server on 127.0.0.1.
 import json
 import os
 import re
+import socket
 import subprocess
 import sys
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
 
 from lab import __main__ as lab_cli
-from lab.machine import stop
+from lab.machine import ready, stop
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+# Fake credentials. Long, distinctive values let the tests prove nothing ever echoes one.
+SECRETS = {
+    "AUP_HUB_USER_A": "fake-user-alpha",
+    "AUP_HUB_USER_B": "fake-user-bravo",
+    "AUP_HUB_TOKEN_A": "fake-token-alpha-0123456789",
+    "AUP_HUB_TOKEN_B": "fake-token-bravo-0123456789",
+}
+REQUIRED = ["AUP_HUB_TOKEN_A", "AUP_HUB_TOKEN_B", "AUP_HUB_USER_A", "AUP_HUB_USER_B"]
 
 
 @pytest.fixture(autouse=True)
@@ -454,15 +466,417 @@ def test_registry_is_alphabetical_with_a_module_and_function_per_verb():
         assert re.fullmatch(r"lab(\.[a-z_][a-z0-9_]*)+:[a-z_][a-z0-9_]*", target), target
 
 
-@pytest.mark.parametrize("verb", ["resume", "stop"])
-def test_stop_verbs_are_registered_and_answer_help(verb, capsys):
+@pytest.mark.parametrize("verb", ["ready", "resume", "stop"])
+def test_stop_and_ready_verbs_are_registered_and_answer_help(verb, capsys):
     assert verb in lab_cli.VERBS
     code, out, _ = run_cli([verb, "-h"], capsys)
     assert code == 0
     assert f"usage: python -m lab {verb}" in out
 
 
+# --- ready: reading keys ---------------------------------------------------------------
+
+
+def test_dotenv_files_are_read_the_usual_way(tmp_path):
+    path = tmp_path / "x.env"
+    path.write_text(
+        "﻿# a comment\n"
+        "\n"
+        "PLAIN=value one\n"
+        "export EXPORTED=exported\n"
+        'DOUBLE="double quoted # not a comment"\n'
+        "SINGLE='single quoted'\n"
+        "TRAILING=before # a trailing comment\n"
+        "  SPACED  =  spaced out  \n"
+        "BLANK=\n"
+        "no equals sign here\n"
+        "=no key\n"
+        "REPEATED=first\n"
+        "REPEATED=second\n",
+        encoding="utf-8",
+    )
+    assert ready.read_env_file(path) == {
+        "PLAIN": "value one",
+        "EXPORTED": "exported",
+        "DOUBLE": "double quoted # not a comment",
+        "SINGLE": "single quoted",
+        "TRAILING": "before",
+        "SPACED": "spaced out",
+        "BLANK": "",
+        "REPEATED": "second",
+    }
+    assert ready.read_env_file(tmp_path / "missing.env") == {}
+
+
+def test_the_first_definition_wins_and_a_blank_value_does_not_count(tmp_path):
+    first, second = tmp_path / "first.env", tmp_path / "second.env"
+    first.write_text("ONE=from-first\nTWO=\n", encoding="utf-8")
+    second.write_text("ONE=from-second\nTWO=from-second\nTHREE=from-second\n", encoding="utf-8")
+
+    values, used = ready.collect_env(
+        ["ONE", "TWO", "THREE", "FOUR"], {"THREE": "from-environ"}, [first, tmp_path / "missing.env", second]
+    )
+
+    assert values == {"ONE": "from-first", "TWO": "from-second", "THREE": "from-environ"}
+    assert used == [first, second]
+
+
+def test_env_files_default_to_the_clone_and_the_two_folders_above_it(monkeypatch):
+    monkeypatch.delenv("LAB_ENV_FILES")
+    assert ready.default_env_files() == [
+        REPO_ROOT / ".env",
+        REPO_ROOT.parent / ".env",
+        REPO_ROOT.parent.parent / ".env",
+    ]
+
+
+def test_lab_env_files_replaces_the_search(monkeypatch, tmp_path):
+    first, second = tmp_path / "a.env", tmp_path / "b.env"
+    monkeypatch.setenv("LAB_ENV_FILES", os.pathsep.join([str(first), str(second)]))
+    assert ready.default_env_files() == [first, second]
+    monkeypatch.setenv("LAB_ENV_FILES", "")
+    assert ready.default_env_files() == []
+
+
+# --- ready: the checks, against a stand-in hub -----------------------------------------
+
+
+class FakeHubHandler(BaseHTTPRequestHandler):
+    """The hub's user endpoint as far as ready can tell: it records every request it gets."""
+
+    def answer(self):
+        hub = self.server
+        hub.requests.append(
+            {
+                "method": self.command,
+                "path": self.path,
+                "authorization": self.headers.get("Authorization"),
+                "user_agent": self.headers.get("User-Agent"),
+            }
+        )
+        if self.command != "GET":
+            self.send_json(405, {"message": "this stand-in hub is read-only"})
+        elif hub.mode == "redirect":
+            self.send_response(302)
+            self.send_header("Location", "/somewhere-else")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+        elif hub.mode == "html":
+            self.send_json(200, "<html>sign in</html>", content_type="text/html")
+        elif (self.headers.get("User-Agent") or "").startswith("Python-urllib"):
+            self.send_json(403, {"message": "blocked by the front end"})
+        else:
+            prefix = "/hub/api/users/"
+            user = self.path[len(prefix):] if self.path.startswith(prefix) else None
+            token = hub.tokens.get(user)
+            if token is None:
+                self.send_json(404, {"message": "no such user"})
+            elif self.headers.get("Authorization") != f"token {token}":
+                self.send_json(403, {"message": "forbidden"})
+            else:
+                self.send_json(200, {"name": user, "servers": {}})
+
+    def send_json(self, status, body, content_type="application/json"):
+        payload = (body if isinstance(body, str) else json.dumps(body)).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    do_GET = do_POST = do_PUT = do_PATCH = do_DELETE = answer
+
+    def log_message(self, *args):
+        pass
+
+
+@pytest.fixture
+def hub():
+    server = ThreadingHTTPServer(("127.0.0.1", 0), FakeHubHandler)
+    server.requests = []
+    server.mode = "normal"
+    server.tokens = {
+        SECRETS["AUP_HUB_USER_A"]: SECRETS["AUP_HUB_TOKEN_A"],
+        SECRETS["AUP_HUB_USER_B"]: SECRETS["AUP_HUB_TOKEN_B"],
+    }
+    server.url = f"http://127.0.0.1:{server.server_address[1]}"
+    thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
+    thread.start()
+    yield server
+    server.shutdown()
+    server.server_close()
+    thread.join(timeout=5)
+
+
+def closed_port() -> int:
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+def configure(monkeypatch, tmp_path, hub_url, values=None):
+    """Put the credentials in a .env file and point ready at the hub."""
+    values = SECRETS if values is None else values
+    env_file = tmp_path / "secrets.env"
+    env_file.write_text("".join(f"{key}={value}\n" for key, value in values.items()), encoding="utf-8")
+    monkeypatch.setenv("LAB_ENV_FILES", str(env_file))
+    monkeypatch.setenv("LAB_HUB_URL", hub_url)
+    return env_file
+
+
+def assert_no_secret_values(*outputs):
+    for text in outputs:
+        for name, value in SECRETS.items():
+            assert value not in text, f"the value of {name} leaked into: {text[:200]}"
+
+
+def test_ready_passes_when_every_precondition_holds(isolated_lab, hub, monkeypatch, tmp_path, capsys):
+    env_file = configure(monkeypatch, tmp_path, hub.url)
+
+    code, out, err = run_cli(["ready"], capsys)
+
+    assert code == 0
+    assert one_json_line(out) == {
+        "ok": True,
+        "ready": True,
+        "outcome": "ready",
+        "reasons": [],
+        "checks": {
+            "stop": {"ok": True, "stopped": False, "reason": "", "file": str(isolated_lab / "STOP")},
+            "state_dir": {"ok": True, "path": str(isolated_lab), "writable": True},
+            "env": {"ok": True, "present": REQUIRED, "missing": [], "files": [str(env_file)]},
+            "hub": {
+                "ok": True,
+                "url": hub.url,
+                "accounts": {"A": {"ok": True, "status": 200}, "B": {"ok": True, "status": 200}},
+            },
+        },
+    }
+    assert [(r["method"], r["path"]) for r in hub.requests] == [
+        ("GET", "/hub/api/users/fake-user-alpha"),
+        ("GET", "/hub/api/users/fake-user-bravo"),
+    ]
+    assert [r["authorization"] for r in hub.requests] == [
+        f"token {SECRETS['AUP_HUB_TOKEN_A']}",
+        f"token {SECRETS['AUP_HUB_TOKEN_B']}",
+    ]
+    assert list(isolated_lab.iterdir()) == []
+    assert_no_secret_values(out, err)
+
+
+def test_ready_names_missing_keys_without_printing_values(isolated_lab, hub, monkeypatch, tmp_path, capsys):
+    only_account_a = {key: value for key, value in SECRETS.items() if key.endswith("_A")}
+    configure(monkeypatch, tmp_path, hub.url, only_account_a)
+
+    code, out, err = run_cli(["ready"], capsys)
+
+    assert code == 1
+    result = one_json_line(out)
+    assert (result["ok"], result["ready"], result["outcome"]) == (False, False, "not_ready")
+    assert result["reasons"] == ["env keys missing: AUP_HUB_TOKEN_B, AUP_HUB_USER_B"]
+    assert result["checks"]["env"]["present"] == ["AUP_HUB_TOKEN_A", "AUP_HUB_USER_A"]
+    assert result["checks"]["env"]["missing"] == ["AUP_HUB_TOKEN_B", "AUP_HUB_USER_B"]
+    assert result["checks"]["hub"]["accounts"] == {
+        "A": {"ok": True, "status": 200},
+        "B": {"ok": False, "skipped": "credentials missing"},
+    }
+    assert len(hub.requests) == 1
+    assert_no_secret_values(out, err)
+
+
+def test_the_process_environment_beats_the_env_file(isolated_lab, hub, monkeypatch, tmp_path, capsys):
+    configure(monkeypatch, tmp_path, hub.url, dict(SECRETS, AUP_HUB_TOKEN_A="wrong-token-in-the-file"))
+    monkeypatch.setenv("AUP_HUB_TOKEN_A", SECRETS["AUP_HUB_TOKEN_A"])
+
+    code, out, _ = run_cli(["ready"], capsys)
+
+    assert code == 0
+    assert one_json_line(out)["ready"] is True
+    assert hub.requests[0]["authorization"] == f"token {SECRETS['AUP_HUB_TOKEN_A']}"
+
+
+def test_ready_says_not_ready_while_stopped_but_still_runs_every_check(
+    isolated_lab, hub, monkeypatch, tmp_path, capsys
+):
+    configure(monkeypatch, tmp_path, hub.url)
+    write_stop(isolated_lab, "pod credits low")
+
+    code, out, err = run_cli(["ready"], capsys)
+
+    assert code == 1
+    result = one_json_line(out)
+    assert result["reasons"] == ["STOP file present: pod credits low"]
+    assert result["checks"]["stop"] == {
+        "ok": False,
+        "stopped": True,
+        "reason": "pod credits low",
+        "file": str(isolated_lab / "STOP"),
+    }
+    assert result["checks"]["hub"]["ok"] is True
+    assert len(hub.requests) == 2
+    assert err == ""
+
+
+def test_ready_reports_a_state_dir_it_cannot_write(tmp_path, hub, monkeypatch, capsys):
+    configure(monkeypatch, tmp_path, hub.url)
+    blocker = tmp_path / "blocker"
+    blocker.write_text("a file where the state dir should be", encoding="utf-8")
+    state = blocker / "state"
+    monkeypatch.setenv("LAB_STATE_DIR", str(state))
+
+    code, out, _ = run_cli(["ready"], capsys)
+
+    assert code == 1
+    result = one_json_line(out)
+    check = result["checks"]["state_dir"]
+    assert (check["ok"], check["writable"], check["path"]) == (False, False, str(state))
+    assert isinstance(check["error"], str) and check["error"] != ""
+    assert f"state dir not writable: {state}" in result["reasons"]
+
+
+@pytest.mark.parametrize(
+    ("break_hub", "status"),
+    [
+        (lambda hub: hub.tokens.update({SECRETS["AUP_HUB_USER_B"]: "a-token-the-hub-never-issued"}), 403),
+        (lambda hub: hub.tokens.pop(SECRETS["AUP_HUB_USER_B"]), 404),
+    ],
+    ids=["token the hub refuses", "user the hub does not know"],
+)
+def test_ready_reports_an_account_the_hub_turns_away(
+    break_hub, status, isolated_lab, hub, monkeypatch, tmp_path, capsys
+):
+    configure(monkeypatch, tmp_path, hub.url)
+    break_hub(hub)
+
+    code, out, err = run_cli(["ready"], capsys)
+
+    assert code == 1
+    result = one_json_line(out)
+    assert result["checks"]["hub"]["accounts"] == {
+        "A": {"ok": True, "status": 200},
+        "B": {"ok": False, "status": status},
+    }
+    assert result["reasons"] == [f"hub account B answered {status}"]
+    assert_no_secret_values(out, err)
+
+
+def test_ready_does_not_follow_a_redirect_with_the_token(isolated_lab, hub, monkeypatch, tmp_path, capsys):
+    configure(monkeypatch, tmp_path, hub.url)
+    hub.mode = "redirect"
+
+    code, out, _ = run_cli(["ready"], capsys)
+
+    assert code == 1
+    assert one_json_line(out)["checks"]["hub"]["accounts"] == {
+        "A": {"ok": False, "status": 302},
+        "B": {"ok": False, "status": 302},
+    }
+    assert [r["path"] for r in hub.requests] == [
+        "/hub/api/users/fake-user-alpha",
+        "/hub/api/users/fake-user-bravo",
+    ]
+
+
+def test_ready_rejects_a_200_that_is_not_a_json_object(isolated_lab, hub, monkeypatch, tmp_path, capsys):
+    configure(monkeypatch, tmp_path, hub.url)
+    hub.mode = "html"
+
+    code, out, _ = run_cli(["ready"], capsys)
+
+    assert code == 1
+    result = one_json_line(out)
+    assert result["checks"]["hub"]["accounts"]["A"] == {
+        "ok": False,
+        "status": 200,
+        "error": "response is not a JSON object",
+    }
+    assert result["reasons"] == [
+        "hub account A answered 200 (response is not a JSON object)",
+        "hub account B answered 200 (response is not a JSON object)",
+    ]
+
+
+def test_ready_reports_a_hub_that_cannot_be_reached(isolated_lab, monkeypatch, tmp_path, capsys):
+    configure(monkeypatch, tmp_path, f"http://127.0.0.1:{closed_port()}")
+
+    code, out, err = run_cli(["ready"], capsys)
+
+    assert code == 1
+    result = one_json_line(out)
+    for letter in ("A", "B"):
+        probe = result["checks"]["hub"]["accounts"][letter]
+        assert probe["ok"] is False
+        assert "status" not in probe
+        assert probe["error"].startswith("URLError: ")
+    assert result["reasons"] == ["hub account A unreachable", "hub account B unreachable"]
+    assert_no_secret_values(out, err)
+
+
+def test_errors_from_the_transport_never_echo_a_credential():
+    def leaky(url, headers, timeout):
+        raise OSError(f"reset while talking to {SECRETS['AUP_HUB_USER_A']} with {SECRETS['AUP_HUB_TOKEN_A']}")
+
+    result = ready.check(environ=dict(SECRETS), env_files=[], fetch=leaky)
+
+    assert result["checks"]["hub"]["accounts"]["A"] == {"ok": False, "error": "OSError: reset while talking to *** with ***"}
+    assert_no_secret_values(json.dumps(result))
+
+
+def test_the_hub_address_defaults_to_the_aup_hub_and_follows_lab_hub_url():
+    seen = []
+
+    def record(url, headers, timeout):
+        seen.append(url)
+        return 200, {}
+
+    ready.check(environ=dict(SECRETS), env_files=[], fetch=record)
+    assert seen == [
+        "https://dub.aupcloud.io/hub/api/users/fake-user-alpha",
+        "https://dub.aupcloud.io/hub/api/users/fake-user-bravo",
+    ]
+
+    seen.clear()
+    ready.check(environ=dict(SECRETS, LAB_HUB_URL="http://hub.invalid/"), env_files=[], fetch=record)
+    assert seen == [
+        "http://hub.invalid/hub/api/users/fake-user-alpha",
+        "http://hub.invalid/hub/api/users/fake-user-bravo",
+    ]
+
+
+def test_a_user_name_is_percent_encoded_into_the_path():
+    seen = []
+
+    def record(url, headers, timeout):
+        seen.append(url)
+        return 200, {}
+
+    ready.check(environ=dict(SECRETS, AUP_HUB_USER_A="a b/c"), env_files=[], fetch=record)
+
+    assert seen[0] == "https://dub.aupcloud.io/hub/api/users/a%20b%2Fc"
+
+
 # --- the real entry point, in a child process ------------------------------------------
+
+
+def test_python_dash_m_lab_ready_prints_one_json_line(isolated_lab, hub, monkeypatch, tmp_path):
+    configure(monkeypatch, tmp_path, hub.url)
+
+    result = run_module("ready")
+
+    assert result.returncode == 0
+    verdict = one_json_line(result.stdout)
+    assert (verdict["ready"], verdict["reasons"]) == (True, [])
+    assert_no_secret_values(result.stdout, result.stderr)
+
+
+def test_python_dash_m_lab_ready_exits_1_while_stopped(isolated_lab, hub, monkeypatch, tmp_path):
+    configure(monkeypatch, tmp_path, hub.url)
+    write_stop(isolated_lab, "halt")
+
+    result = run_module("ready")
+
+    assert result.returncode == 1
+    assert one_json_line(result.stdout)["reasons"] == ["STOP file present: halt"]
 
 
 def test_python_dash_m_lab_stop_then_resume(isolated_lab):
