@@ -25,6 +25,7 @@ OPUS_PROMPT = (sit.PROMPTS_DIR / "opus.md").read_text(encoding="utf-8")
 DIGEST_TEXT = "ledger: 3 sittings in the last window\nnext unblocked: O22 (opus), O24 (sonnet)"
 MODEL_WORDS = "MODEL-WORDS-THAT-NEVER-REACH-THE-LEDGER"
 ENV_KEYS = ["LAB_STATE_DIR", "LAB_ACTOR", "LAB_TIER", "PYTHONPATH", "CLAUDE_CODE_DISABLE_AUTO_MEMORY",
+            "ENABLE_CLAUDEAI_MCP_SERVERS",
             "CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "KEEP_ME"]
 
 FAKE_CLI = r'''
@@ -76,9 +77,9 @@ sys.exit(spec.get("exit", 0))
 
 
 def init_event(notion: str | None = "connected", model: str = "opus-model-id") -> str:
-    servers = [{"name": "plugin_playwright_playwright", "status": "connected"}]
+    servers = [{"name": "plugin:playwright:playwright", "status": "pending", "source": "plugin"}]
     if notion is not None:
-        servers.insert(0, {"name": allowed.NOTION_SERVER, "status": notion})
+        servers.insert(0, {"name": "plugin:design:notion", "status": notion, "source": "plugin"})
     return json.dumps({"type": "system", "subtype": "init", "session_id": "session-1", "model": model,
                        "permissionMode": "dontAsk", "tools": ["Bash", "Read", "mcp__plugin_design_notion__notion-fetch"],
                        "mcp_servers": servers})
@@ -238,6 +239,7 @@ def test_the_session_environment_names_the_sitting_and_drops_the_parent_session(
     monkeypatch.setenv("CLAUDECODE", "1")
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "parent-session")
     monkeypatch.setenv("KEEP_ME", "kept")
+    monkeypatch.setenv("ENABLE_CLAUDEAI_MCP_SERVERS", "true")
     monkeypatch.setenv("PYTHONPATH", "elsewhere")
 
     _, answer = run_cli(["sit", "--tier", "sonnet", "--task", "L3"], capsys)
@@ -248,6 +250,7 @@ def test_the_session_environment_names_the_sitting_and_drops_the_parent_session(
         "LAB_TIER": "sonnet",
         "PYTHONPATH": os.pathsep.join([str(sit.REPO_ROOT), "elsewhere"]),
         "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
+        "ENABLE_CLAUDEAI_MCP_SERVERS": "false",
         "CLAUDECODE": None,
         "CLAUDE_CODE_SESSION_ID": None,
         "KEEP_ME": "kept",
@@ -439,6 +442,7 @@ def test_a_session_that_hands_off_within_the_grace_ends_on_its_own(lab, cli, dig
     ({"mcp_servers": [{"name": allowed.NOTION_SERVER, "status": "failed"}]}, "failed"),
     ({"mcp_servers": [{"name": "plugin:design:notion", "status": "needs-auth"}]}, "needs-auth"),
     ({"mcp_servers": [{"name": "notion", "status": "connected"}]}, "absent"),
+    ({"mcp_servers": [{"name": "claude.ai Notion", "status": "needs-auth", "source": "claudeai"}]}, "absent"),
     ({"mcp_servers": []}, "absent"),
     (None, None),
 ])
@@ -611,6 +615,7 @@ def test_a_dry_run_answers_what_would_run_and_starts_and_writes_nothing(lab, cli
     assert answer["env"] == {
         "LAB_STATE_DIR": str(lab["state"].resolve()), "LAB_ACTOR": answer["sitting"], "LAB_TIER": "opus",
         "PYTHONPATH": answer["env"]["PYTHONPATH"], "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
+        "ENABLE_CLAUDEAI_MCP_SERVERS": "false",
     }
     assert answer["env"]["PYTHONPATH"].split(os.pathsep)[0] == str(sit.REPO_ROOT)
     assert "CLAUDECODE" in answer["env_removed"]

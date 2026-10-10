@@ -47,8 +47,12 @@ variables that tie a process to the agent session it was started from (SESSION_V
 a sitting is a session of its own), plus LAB_STATE_DIR (the launcher's state dir, made
 absolute, so every verb a sitting runs from any clone writes the one ledger),
 LAB_ACTOR (the sitting id), LAB_TIER, PYTHONPATH (this repo root first, so python -m
-lab runs from the workspace) and CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 (a sitting starts
-from the digest, never from notes an earlier session left).
+lab runs from the workspace), CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 (a sitting starts
+from the digest, never from notes an earlier session left) and
+ENABLE_CLAUDEAI_MCP_SERVERS=false (none of the connectors added to the owner's web
+account: no tier may call one, and the account's Notion connector points at the same
+endpoint as the plugin's Notion server, so at a headless start it can take that
+server's place, unauthorised, and leave the sitting with no Notion tools).
 
 While it runs. The CLI's stdout is copied line by line, as it arrives, to
 <state dir>/sittings/<sitting>.jsonl; the prompt is kept beside it as
@@ -124,8 +128,9 @@ WORKSPACE_MARKER: tuple[str, ...] = (".claude", "skills", "open-ticket", "SKILL.
 ACTOR_ENV = "LAB_ACTOR"
 TIER_ENV = "LAB_TIER"
 PYTHONPATH_ENV = "PYTHONPATH"
-#: What the launcher sets in a session's environment beyond the state dir, actor and tier.
-ISOLATION_ENV: dict[str, str] = {"CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"}
+#: What the launcher sets in a session's environment beyond the state dir, actor and tier:
+#: no auto memory, and no connectors of the owner's web account (see "Where it runs" above).
+ISOLATION_ENV: dict[str, str] = {"CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1", "ENABLE_CLAUDEAI_MCP_SERVERS": "false"}
 #: Variables that tie a process to the agent session it was started from. A launcher
 #: started from inside a session inherits them; a sitting must not.
 SESSION_VARS: tuple[str, ...] = (
