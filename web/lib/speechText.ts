@@ -289,7 +289,7 @@ export function chunkForSpeech(text: string, max = CHUNK_CHARS): string[] {
 
 // ---------- things Atlas says without being asked ----------
 
-export type SpokenKind = "alert" | "nudge" | "approval" | "leaving" | "plan" | "coach" | "brief" | "replan" | "review" | "move" | "milestone";
+export type SpokenKind = "alert" | "nudge" | "approval" | "leaving" | "plan" | "coach" | "brief" | "replan" | "review" | "move" | "milestone" | "checkin";
 
 /** The shortest gap between two spoken events of one kind. Anything sooner is shown as usual but not said. */
 export const SPEAK_COOLDOWN_MS: Record<SpokenKind, number> = {
@@ -306,11 +306,13 @@ export const SPEAK_COOLDOWN_MS: Record<SpokenKind, number> = {
   move: 60_000,
   // Waste Watch's milestones (impact.milestone.reached): rare, and never two in one breath
   milestone: 60_000,
+  // the check-in (day.narrated, moment "checkin"): the box raises one every ninety minutes at most; said once
+  checkin: 300_000,
 };
 
 /** Longest narration said unasked, in characters: the narrator keeps the morning brief under this. */
 const MAX_NARRATION_CHARS = 560;
-const NARRATED_KIND: Record<string, SpokenKind> = { morning: "brief", replan: "replan", coach: "coach", evening: "review" };
+const NARRATED_KIND: Record<string, SpokenKind> = { morning: "brief", replan: "replan", coach: "coach", evening: "review", checkin: "checkin" };
 
 /**
  * What to say for a `day.narrated` event, or null when it is not one Atlas says unasked: the morning brief, a

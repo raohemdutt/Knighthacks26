@@ -107,3 +107,43 @@ def test_a_watch_night_in_memory_is_never_part_of_the_export(tmp_path):
     assert sorted(p.name for p in files) == ["0000.jpg", "examples.jsonl", "manifest.json"]
     written = b"".join(p.read_bytes() for p in files).decode() + published[0].model_dump_json()
     assert not [word for word in ("Sleep", "asleep", "bpm", "HRV", "health", "53 ") if word in written]
+
+
+def test_a_check_in_in_the_log_is_never_part_of_the_export(tmp_path):
+    """The check-in (`day.checkin.raised`) is box-only: the export is built from Memory's camera episodes and reads
+    neither the event log nor the Day loop, so a check-in sitting in the log leaves nothing in the dataset."""
+    import re
+    from pathlib import Path
+
+    from bus import EventBus
+    from contracts import parse_event
+    from contracts.day import BOX_ONLY_EVENTS
+    from tests.test_contract_samples import SAMPLES  # invented values: nothing measured on anybody
+
+    events = [parse_event({"type": t, "ts": NOW.isoformat(), **SAMPLES[t]}) for t in sorted(BOX_ONLY_EVENTS)]
+    raised = next(e for e in events if e.type == "day.checkin.raised")
+    bus = EventBus(tmp_path / "events")
+    asyncio.run(bus.publish_all(events))
+    assert len(list(bus.read_log())) == 2  # it is in the log, on the box
+
+    out = tmp_path / "datasets"
+    out.mkdir()
+    published = []
+    memory = FakeMemory([episode("e1", "cam-desk", 2)])
+    approvals = Approvals({"export_training_data": DatasetExporter(memory, lambda ref: b"jpeg", published.append, out_dir=out)})
+    _, proposal = teach(SPEC, NOW)
+    approvals.on_proposed(proposal)
+    [done] = asyncio.run(approvals.on_decided(ApprovalDecided(ts=NOW, action_id=proposal.action_id, decision="approve")))
+    assert done.status == "done", done.result
+    files = [p for p in out.rglob("*") if p.is_file()]
+    written = b"".join(p.read_bytes() for p in files).decode() + published[0].model_dump_json() + proposal.model_dump_json()
+    said = [s.summary for s in raised.signals] + [s.detail for s in raised.signals] + [s.text for s in raised.suggestions] + [raised.text]
+    assert not [line for line in said if line in written]
+    assert not [word for word in ("strained", "Heart rate", "heart rate", "slept", "drink", "checkin", "check-in") if word in written]
+
+    # structural: nothing in the learning context imports the Day loop or names one of its events
+    root = Path(__file__).resolve().parents[3]
+    for path in (root / "contexts" / "learning").rglob("*.py"):
+        if "tests" not in path.parts:
+            text = path.read_text(encoding="utf-8")
+            assert not re.search(r"contracts\.day|contexts\.day|[\"']day\.|checkin|Checkin", text), path

@@ -274,7 +274,7 @@ class DayReviewed(TypedEvent):
     block_minutes: int | None = None  # the block length the coach suggests for tomorrow
 
 
-Moment = Literal["morning", "now", "replan", "coach", "evening", "approval"]
+Moment = Literal["morning", "now", "replan", "coach", "evening", "approval", "checkin"]
 
 
 @register
@@ -316,3 +316,75 @@ class DayCoachCorrected(TypedEvent):
     answer: CoachAnswer  # the person's reason; equals `guess` when `right`
     note: str | None = None  # free text, for "something else"
     plan_id: str | None = None
+
+
+# --- the check-in (contexts/day/application/checkin.py): additive, and box-only ---
+
+# Events that never leave the box. A check-in is built from a watch's night, how a face looked and what the desk
+# camera saw: the owner's own phone may show it, and nothing else may carry it. Not the Circle (no handler there
+# takes a `day.` event: contexts/circle/tests/test_health_privacy.py), not the training export (it reads Memory's
+# camera episodes, never the event log: contexts/learning/tests/test_export.py), and the push that announces one
+# carries the suggestions only (contexts/day/application/loop.py). Every field below is box-only; none is safe
+# to forward, the plain-word summaries included ("Heart rate: up" is still a statement about a person's body).
+BOX_ONLY_EVENTS = frozenset({"day.checkin.raised", "day.checkin.answered"})
+
+CheckinSignalKind = Literal["sleep", "resting_hr", "expression", "sitting", "drink", "history"]
+CheckinSuggestionKind = Literal["drink", "break", "move_block", "walk"]
+
+
+class CheckinSignal(BaseModel):
+    """One thing the box noticed, in plain words. Never a raw health number: sleep is said to the half hour, as the
+    owner's own screen already shows it, and a heart rate is only ever "up" against the person's own baseline."""
+
+    kind: CheckinSignalKind
+    summary: str  # the chip: "Sleep: short", "Heart rate: up", "Looked strained 20 min", "No drink since 2:05 PM"
+    detail: str = ""  # one plain sentence behind the chip, with what it cannot know
+    since: datetime | None = None  # when it began: the last drink seen, the start of the sitting stretch
+    minutes: int | None = None  # how long it covers: the night to the half hour, the strained stretch, the sitting
+    evidence_refs: list[str] = []  # event ids, "connector:external_id" of an item, or frame refs: looked up on the box
+
+
+class CheckinSuggestion(BaseModel):
+    kind: CheckinSuggestionKind
+    text: str  # "Drink some water", "Take ten minutes outside", "Move the study block to after dinner"
+
+
+class CheckinPastDay(BaseModel):
+    day: date
+    text: str  # what the desk camera measured: "20 of 90 planned minutes at the desk from 3:30 PM on"
+
+
+class CheckinHistory(BaseModel):
+    """Earlier days that looked like this one, and what the desk camera measured on them."""
+
+    matches: int  # the days behind the claim: at least three, or there is no history at all
+    outcome: str  # "your study blocks fell apart by 4 PM"
+    by: str | None = None  # that time as local "HH:MM"
+    days: list[CheckinPastDay] = []
+
+
+@register
+class DayCheckinRaised(TypedEvent):
+    """Atlas speaking up unasked: enough independent signals agreed (the rule is contexts/day/domain/checkin.py).
+    Box-only (BOX_ONLY_EVENTS). A clause exists only for a signal that was there; nothing here is a diagnosis."""
+
+    type: Literal["day.checkin.raised"] = "day.checkin.raised"
+    day: date
+    at: datetime
+    signals: list[CheckinSignal] = []
+    suggestions: list[CheckinSuggestion] = []
+    history: CheckinHistory | None = None
+    proposes_replan: bool = False  # "Move the block" can build a re-plan; the plan changes only through its approval card
+    plan_id: str | None = None
+    text: str = ""  # the whole check-in as one paragraph for the screen (the template's words, before any rewrite)
+
+
+@register
+class DayCheckinAnswered(TypedEvent):
+    """The person answered a check-in on their phone: "Done", or "Move the block" (which raised a re-plan card)."""
+
+    type: Literal["day.checkin.answered"] = "day.checkin.answered"
+    day: date
+    checkin_id: str  # the `day.checkin.raised` event's id
+    answer: Literal["done", "move"]
+    action_id: str | None = None  # the re-plan's approval card, when the answer was "move"

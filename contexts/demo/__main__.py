@@ -10,6 +10,11 @@
         agreed (one after a counter-offer) and one still open. It writes its own config directory (default
         <data-dir>/config; the committed config never names a member) and prints the command to run the app on it.
 
+    python -m contexts.demo checkin --data-dir <empty dir> [--end ISO]
+        The check-in (D4): one invented afternoon (a short night, resting heart rate up, strained looks, a bottle
+        not picked up, three earlier days like it) published through the real app, so the Day loop's own rule
+        raises it and the narrator says it. Prints the sentence and the command to run the app on it.
+
     python -m contexts.demo fake <context> [--data-dir data] [--now]
         A few realistic events of every type one context publishes, appended to the log.
 
@@ -57,6 +62,10 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--config-dir", type=Path, help="where to write the demo's config (default: <data-dir>/config)")
     c.add_argument("--end", type=datetime.fromisoformat, help="end the story at this time (with a UTC offset) instead of now")
     c.add_argument("--force", action="store_true", help="add to a data directory that already has an event log")
+    k = sub.add_parser("checkin", help="an invented afternoon that ends in a check-in, through the real app (D4)")
+    k.add_argument("--data-dir", type=Path, required=True)
+    k.add_argument("--end", type=datetime.fromisoformat, help="when the check-in is raised (with a UTC offset); default: now in "
+                                                             "the afternoon, else today 15:40 local")
     f = sub.add_parser("fake", help="publish a small sample of one context's events")
     f.add_argument("context", choices=fakes.CONTEXTS)
     f.add_argument("--data-dir", type=Path, default=Path("data"))
@@ -92,6 +101,19 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "preflight":
         return preflight(args.gateway, args.token, args.reset, args.question)
+
+    if args.command == "checkin":
+        from contexts.demo import checkin
+
+        if args.end and args.end.tzinfo is None:
+            p.error("--end needs a UTC offset, e.g. 2026-10-10T15:40:00-04:00")
+        try:
+            shown = asyncio.run(checkin.show(args.data_dir, args.end or checkin.default_end(datetime.now(UTC))))
+        except SeedRefused as refused:
+            print(refused, file=sys.stderr)
+            return 1
+        print(checkin.summary(shown))
+        return 0 if shown.checkins else 1
 
     if args.command == "circle":
         from contexts.demo import circle

@@ -8,6 +8,7 @@
 from datetime import datetime
 from pathlib import Path
 
+from contexts.day.application.checkin import CheckIn
 from contexts.day.application.coach import DayCoach
 from contexts.day.application.narrator import NarrationConfig, Narrator
 from contexts.day.application.planner import DayPlanner
@@ -15,7 +16,7 @@ from contexts.day.application.tracker import DayTracker
 from contexts.day.domain.clock import DayClock
 from contexts.play.dayrun.service import DayRun
 from contexts.play.domain.places import PlaceSet
-from contracts.day import DayCoachNoted, DayNarrated, DayPlanProposed, DayReplanProposed, DayReviewed
+from contracts.day import DayCheckinRaised, DayCoachNoted, DayNarrated, DayPlanProposed, DayReplanProposed, DayReviewed
 from contracts.events import Event
 
 
@@ -34,6 +35,10 @@ class DayLoop:
         # The narrator (D3): `narration` is agent.yaml's `day:` block; `runtime` is the model it may ask (never the fake one).
         self.narrator = Narrator(self.planner, self.tracker, self.coach, self.clock, runtime=runtime,
                                  config=NarrationConfig.of(narration, runtime), description=description)
+        # The check-in (D4): speaks up when enough independent signals agree. agent.yaml `day: {checkin: false}` turns it off.
+        self.checkin = CheckIn(self.planner, self.tracker, self.coach, self.clock, memory=memory,
+                               enabled=bool((narration or {}).get("checkin", True)))
+        self.checkin.narrator = self.narrator
 
     def subscribe(self, bus) -> None:
         p, t, c = self.planner, self.tracker, self.coach
@@ -63,11 +68,15 @@ class DayLoop:
         for prefix in ("connector.item.synced", "circle.place.shared", "day.plan.proposed", "day.plan.committed"):
             bus.subscribe(prefix, t.on_change)
 
+        # The check-in: its signals rebuild from the log (replay=True inside); looking at the rule and raising one is
+        # live only, so a restart never raises an old check-in again. After the coach: it reads the coach's desk presence.
+        self.checkin.subscribe(bus)
+
         # Last, so the planner, the tracker and the coach have already taken the event in: the day in words.
         self.narrator.subscribe(bus)
 
     def tick(self, now: datetime) -> list[Event]:
-        return self.planner.tick(now) + self.tracker.tick(now) + self.coach.tick(now)
+        return self.planner.tick(now) + self.tracker.tick(now) + self.coach.tick(now) + self.checkin.tick(now)
 
     def in_words(self, now: datetime) -> dict[str, str]:
         """Today in a few plain sentences, for whoever is talking with the person (the agent's conversation):
@@ -93,6 +102,13 @@ MOMENT_PUSH = {"morning": ("Your day", "sunrise"), "replan": ("Re-plan", "arrows
                "coach": ("Coach", "dart"), "evening": ("Your day, reviewed", "moon")}
 
 
+def checkin_push(e: DayCheckinRaised) -> str:
+    """What a check-in's push may say: the plain nudges, and where to read the rest. Nothing about the person."""
+    nudges = [s.text.rstrip(".") for s in e.suggestions if s.kind != "move_block"]
+    todo = f" {nudges[0]}{''.join(', ' + n[:1].lower() + n[1:] for n in nudges[1:])}." if nudges else ""
+    return f"Atlas has a check-in for you.{todo} Open Now to see why."
+
+
 def day_phone(ntfy, topic: str, narrated: bool = False):
     """A bus handler that pushes the plan, a re-plan, the review and the coach's sentence after a block to the
     phones (the card itself goes out as every approval does, through PhoneNotifier.on_approval).
@@ -108,6 +124,10 @@ def day_phone(ntfy, topic: str, narrated: bool = False):
                 await ntfy.publish(topic, e.display, title=title, tags=[tag])
             elif narrated and e.moment == "now" and e.urgent:
                 await ntfy.publish(topic, e.display, title="Time to move", tags=["walking"])
+        elif isinstance(e, DayCheckinRaised):
+            # Box-only: the push goes through a notification service, so it names what to do and never why. The
+            # signals (a night, a heart rate, a face) are read on the phone, from the box.
+            await ntfy.publish(topic, checkin_push(e), title="Check-in", tags=["wave"])
         elif narrated:
             return
         elif isinstance(e, DayPlanProposed):

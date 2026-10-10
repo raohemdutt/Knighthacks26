@@ -101,6 +101,34 @@ SAMPLES: dict[str, dict] = {
                                        "place_name": "Desk"}},
     "day.coach.corrected": {"day": "2026-10-11", "plan_id": "plan-2026-10-11-0815", "block_id": "m0", "break_index": 0,
                             "break_start": TS, "guess": "phone", "right": False, "answer": "bathroom", "note": None},
+    # The check-in (box-only). Every value here is invented: nothing was measured on anybody.
+    "day.checkin.raised": {
+        "day": "2026-10-11", "at": TS, "plan_id": "plan-2026-10-11-0815", "proposes_replan": True,
+        "signals": [
+            {"kind": "sleep", "summary": "Sleep: short", "minutes": 300, "evidence_refs": ["health:sleep:2026-10-11"],
+             "detail": "About 5 h asleep last night, at least an hour under your own usual night."},
+            {"kind": "resting_hr", "summary": "Heart rate: up", "evidence_refs": ["health:sleep:2026-10-11"],
+             "detail": "Today's resting heart rate is above your own recent baseline."},
+            {"kind": "expression", "summary": "Looked strained 20 min", "minutes": 20, "since": TS, "evidence_refs": ["expr-1", "expr-2"],
+             "detail": "Most of the looks the desk camera counted in the last 20 minutes read as strained."},
+            {"kind": "sitting", "summary": "At the desk 100 min", "minutes": 100, "since": TS,
+             "detail": "At the desk since 2 PM without a break of three minutes or more."},
+            {"kind": "drink", "summary": "No drink since 2:05 PM", "since": TS, "evidence_refs": ["frames:cam-desk:1760205900000"],
+             "detail": "The last time the desk camera saw a drink picked up was 2:05 PM; the bottle was in view at 3:40 PM."},
+            {"kind": "history", "summary": "3 days like this before", "evidence_refs": ["day-coach-plan-2026-10-07-0810-m1"],
+             "detail": "The last 3 days with a short night and resting heart rate up: each time, your study blocks fell apart by 4 PM."},
+        ],
+        "suggestions": [{"kind": "drink", "text": "Drink some water"}, {"kind": "walk", "text": "Take ten minutes outside"},
+                        {"kind": "move_block", "text": "Move the study block to after dinner"}],
+        "history": {"matches": 3, "outcome": "your study blocks fell apart by 4 PM", "by": "16:00",
+                    "days": [{"day": "2026-10-07", "text": "20 of 90 planned minutes at the desk from 3:30 PM on"},
+                             {"day": "2026-10-06", "text": "25 of 90 planned minutes at the desk from 4 PM on"},
+                             {"day": "2026-10-05", "text": "15 of 60 planned minutes at the desk from 3 PM on"}]},
+        "text": "You slept about 5 h, your resting heart rate is up, and you've looked strained for the last 20 minutes. The last 3 "
+                "times a day looked like this, your study blocks fell apart by 4 PM. You've been at the desk for 100 minutes "
+                "straight, and I haven't seen you pick up a drink since 2:05 PM. Drink some water, take ten minutes outside, and "
+                "I can move the study block to after dinner if you say yes."},
+    "day.checkin.answered": {"day": "2026-10-11", "checkin_id": "day-checkin-2026-10-11-1545", "answer": "done", "action_id": None},
     "day.status.changed": {"day": "2026-10-11", "plan_id": "plan-2026-10-11-0815", "now": TS, "block_id": "m0",
                            "block_title": "Study at Desk", "block_end": TS, "should_be": "apartment.desk", "should_be_name": "Desk",
                            "seen_at": "apartment.door", "seen_at_name": "Front door", "seen_how": "door camera", "seen_ts": TS,

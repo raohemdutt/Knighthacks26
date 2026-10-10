@@ -1,0 +1,329 @@
+/* The check-in card on the Now screen. Every colour, shadow and radius is a token from app/globals.css. */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 4px 0 18px;
+  padding: 18px 18px 16px 22px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--sh-raised), inset 5px 0 0 var(--accent);
+  min-width: 0;
+}
+
+.card p {
+  margin: 0;
+}
+
+.label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.unasked {
+  padding: 2px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 650;
+}
+
+.said {
+  font-size: 18px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.chips {
+  margin-top: 2px;
+}
+
+.chip {
+  padding: 8px 16px;
+  font-size: 15px;
+}
+
+.hint,
+.foot,
+.fine {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.evidence {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  min-width: 0;
+}
+
+.detail {
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 2px;
+}
+
+.buttons > * {
+  flex: 1 1 150px;
+}
+
+.moved {
+  font-size: 16px;
+}
+
+.link {
+  color: var(--accent-text);
+  font-weight: 650;
+}
+
+/* ---------- the night ---------- */
+
+.night,
+.resting,
+.drink {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.bar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.barHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.barHead strong {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.track {
+  height: 10px;
+  border-radius: 5px;
+  background: var(--surface);
+  box-shadow: var(--sh-inset-sm);
+  overflow: hidden;
+}
+
+.fill,
+.fillStrong {
+  height: 100%;
+  border-radius: 5px;
+  background: var(--accent);
+}
+
+.fillStrong {
+  background: var(--accent-text);
+}
+
+.stages {
+  display: flex;
+  gap: 2px; /* the surface shows between two segments */
+  height: 14px;
+}
+
+.stages i {
+  display: block;
+  min-width: 3px;
+  border-radius: 4px;
+}
+
+.stage_deep {
+  background: var(--accent-text);
+}
+
+.stage_core {
+  background: var(--accent);
+}
+
+.stage_rem {
+  background: var(--accent-bright);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.stage_awake {
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend i {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+  flex: none;
+}
+
+/* ---------- the resting heart rate: a shape, no values ---------- */
+
+.spark {
+  width: 100%;
+  max-width: 360px;
+  height: auto;
+  display: block;
+}
+
+.line {
+  fill: none;
+  stroke: var(--accent-text);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.base {
+  stroke: var(--muted);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+  opacity: 0.6;
+}
+
+.today {
+  fill: var(--accent-text);
+  stroke: var(--surface-2);
+  stroke-width: 2;
+}
+
+.legend i.keyLine {
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent-text);
+}
+
+.legend i.keyBase {
+  height: 0;
+  border-radius: 0;
+  border-top: 1px dashed var(--muted);
+}
+
+.legend i.keyToday {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent-text);
+}
+
+.numbers {
+  align-self: flex-start;
+  font-size: 14px;
+}
+
+/* ---------- the looks ---------- */
+
+.looks {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 56px;
+  padding: 6px 8px;
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--sh-inset-sm);
+}
+
+.looks i {
+  flex: 1;
+  min-width: 6px;
+  border-radius: 4px 4px 0 0;
+  background: var(--accent);
+}
+
+.looks i.lookHigh {
+  background: var(--accent-text);
+}
+
+/* ---------- the drink's frame ---------- */
+
+.frame {
+  position: relative;
+  display: block;
+  width: min(100%, 260px);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  overflow: hidden;
+  text-align: left;
+}
+
+.blurred > figure {
+  filter: blur(9px);
+}
+
+.reveal {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--on-media);
+  background: var(--on-media-scrim);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+/* ---------- the earlier days ---------- */
+
+.days {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.days li {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 15px;
+}
+
+.days li span {
+  color: var(--muted);
+}
