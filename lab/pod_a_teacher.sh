@@ -3,11 +3,11 @@
 # The GPU target comes from rocminfo, so the same steps build for the R9700 (gfx1201, DUB accounts A and B) and for
 # the Strix Halo (gfx1151, SJC accounts C and D); GFX=<target> overrides it.
 # Idempotent and resumable: re-run after a pod relaunch; finished steps are skipped.
-# Usage on the pod (JupyterLab terminal):  bash lab/pod_a_teacher.sh [facts|proxy|build|download|serve|models|stop|all]
+# Usage on the pod (JupyterLab terminal):  bash lab/pod_a_teacher.sh [facts|proxy|build|verify|download|serve|models|stop|all]
 # From the box, with nothing typed on the pod (the patch file is uploaded next to the script):
 #   python -m lab.controller run-script --account D --with lab/vllm-gfx1201.diff lab/pod_a_teacher.sh build
-# facts prints the pod's hour-0 facts and changes nothing; models asks the local server for /v1/models; stop ends
-# the server. build and download end with a line "### <step> wall_s=<seconds>" for the ledger.
+# facts prints the pod's hour-0 facts and changes nothing; verify checks a finished build; models asks the local server for /v1/models; stop ends
+# the server. build, download and serve end with a line "### <step> wall_s=<seconds> rc=<code>" for the ledger.
 # Callers reach the server at https://<hub>/user/<account>/proxy/8000/v1/... with header
 # "Authorization: token <hub API token>" (jupyter-server-proxy must be installed once: step "proxy").
 set -u
@@ -187,8 +187,11 @@ build() {
 download() {
   mkdir -p "$MODELS"
   local dir="$MODELS/$(basename "$TEACHER")"
-  [ -f "$dir/config.json" ] && [ -z "$(find "$dir" -name '*.incomplete' 2>/dev/null)" ] && { echo "checkpoint present: $dir"; return; }
-  hf download "$TEACHER" --local-dir "$dir"
+  if [ -f "$dir/config.json" ] && [ -z "$(find "$dir" -name '*.incomplete' 2>/dev/null)" ]; then
+    echo "checkpoint present: $dir ($(du -sh "$dir" | cut -f1), $(find "$dir" -maxdepth 1 -type f | wc -l) files)"; return
+  fi
+  hf download "$TEACHER" --local-dir "$dir" || return 1
+  echo "checkpoint: $dir ($(du -sh "$dir" | cut -f1), $(find "$dir" -maxdepth 1 -type f | wc -l) files)"
 }
 
 serve() {
@@ -211,13 +214,36 @@ serve() {
     --model "$dir" --served-model-name teacher --port "$PORT" --host 127.0.0.1 \
     --max-model-len "$MAX_LEN" --limit-mm-per-prompt '{"image":1}' --gpu-memory-utilization "$GPU_UTIL" \
     --dtype bfloat16 ${vit_attn[@]+"${vit_attn[@]}"} > "$SERVE_LOG" 2>&1 &
-  echo "vllm serve pid $! (log: $SERVE_LOG)"
+  local pid=$!
+  echo "vllm serve pid $pid (log: $SERVE_LOG)"
   # Readiness through python3, not curl: not every pod image ships curl.
   for i in $(seq 1 180); do
     python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:$PORT/v1/models', timeout=5)" 2>/dev/null       && { echo "teacher up on $PORT"; return; }
+    kill -0 "$pid" 2>/dev/null || { echo "the server process ended before it answered; see $SERVE_LOG"; tail -20 "$SERVE_LOG"; return 1; }
     sleep 5
   done
   echo "server did not come up; see $SERVE_LOG"; tail -20 "$SERVE_LOG"
+  return 1
+}
+
+verify() {
+  # After build: the patch's rejected hunks (none expected), the compiled extensions, and the platform vLLM resolves.
+  echo "vllm_commit: $(git -C "$VLLM_DIR" rev-parse --short=9 HEAD 2>/dev/null)"
+  echo "patched_files: $(git -C "$VLLM_DIR" diff --name-only 2>/dev/null | wc -l)"
+  echo "rejected_hunks: $(find "$VLLM_DIR" -name '*.rej' -not -path '*/.git/*' 2>/dev/null | tr '\n' ' ')"
+  mkdir -p "$SERVE_DIR" && cd "$SERVE_DIR"   # not $HOME: the ~/vllm checkout would shadow the installed package
+  python3 - <<'PY'
+import importlib
+import torch, vllm
+print(f"vllm: {vllm.__version__}")
+for name in ("vllm._C", "vllm._rocm_C", "vllm._moe_C"):
+    try:
+        importlib.import_module(name); print(f"{name}: imports")
+    except Exception as exc:
+        print(f"{name}: FAILS {type(exc).__name__}: {exc}")
+from vllm.platforms import current_platform
+print(f"platform: {type(current_platform).__name__}, torch sees {torch.cuda.device_count()} GPU")
+PY
 }
 
 models() {
@@ -240,10 +266,11 @@ case "$STEP" in
   facts) facts ;;
   proxy) proxy ;;
   build) timed build ;;
+  verify) verify ;;
   download) timed download ;;
-  serve) serve ;;
+  serve) timed serve ;;
   models) models ;;
   stop) stop ;;
-  all) proxy; timed build; timed download; serve ;;
+  all) proxy; timed build; timed download; timed serve ;;
   *) echo "unknown step $STEP"; exit 2 ;;
 esac
