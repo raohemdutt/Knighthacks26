@@ -142,6 +142,17 @@ const MORE: MoreTab[] = [
     ),
   },
   {
+    href: "/lab",
+    group: "Home",
+    label: "Learning lab",
+    icon: (
+      <>
+        <path d="M4 18.500l4.500-6 3.500 3 4-7 4 4.500" />
+        <path d="M4 5v15h16" />
+      </>
+    ),
+  },
+  {
     href: "/circle",
     group: "Friends",
     label: "Circle",
@@ -198,7 +209,7 @@ const SECTIONS: { title: string; hrefs: string[] }[] = [
   { title: "Everyday", hrefs: ["/", "/now", "/today", "/dayrun"] },
   { title: "The room", hrefs: ["/live", "/map", "/people"] },
   { title: "Plan", hrefs: ["/approvals", "/impact", "/spot"] },
-  { title: "Other", hrefs: ["/timeline", "/play", "/circle", "/teach", "/zones", "/privacy"] },
+  { title: "Other", hrefs: ["/timeline", "/play", "/circle", "/teach", "/lab", "/zones", "/privacy"] },
 ];
 
 /** The phone tab bar: the Everyday group. Everything else is one tap further, under More. */

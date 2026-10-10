@@ -1,0 +1,997 @@
+/*
+ * Learning lab (/lab): a guided replay of one training run.
+ *
+ * Colours and depth come only from the tokens in app/globals.css: raised cards (--sh-raised), sunken wells for
+ * the numbers and answers (--sh-inset-sm), blue (--accent, --accent-text) for progress and the selected step,
+ * --ok for right answers and gains, --danger for wrong answers and regressions, --watch for the sample banner,
+ * low-confidence marks and the power trace. Nothing here names a colour of its own.
+ */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+.headTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.task {
+  font-size: 19px;
+  max-width: 62ch;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 16px;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
+  color: var(--muted);
+  font-size: 16px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.status::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.statusGood {
+  color: var(--ok);
+}
+
+.statusBad {
+  color: var(--danger);
+}
+
+.statusLive {
+  color: var(--accent-text);
+}
+
+.statusLive::before {
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.linkBtn {
+  min-height: var(--tap);
+  padding: 8px 18px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 650;
+  transition: box-shadow var(--ease-press);
+}
+
+.linkBtn:active {
+  box-shadow: var(--sh-inset-sm);
+}
+
+/* ---------- the dock: sample banner and player, always in view ---------- */
+.dock {
+  position: sticky;
+  top: calc(72px + var(--safe-top)); /* under the phone header */
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--sh-float);
+  overflow: hidden;
+}
+
+@media (min-width: 1024px) {
+  .dock {
+    top: 14px; /* the sidebar layout has no header */
+  }
+}
+
+.banner {
+  display: flex;
+  gap: 4px 10px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  padding: 9px 18px;
+  background: color-mix(in srgb, var(--watch) 13%, var(--surface));
+  box-shadow: inset 5px 0 0 var(--watch);
+  color: var(--watch);
+  font-size: 15px;
+}
+
+.banner strong {
+  font-weight: 750;
+}
+
+.player {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px 14px;
+  align-items: center;
+  padding: 12px 14px;
+}
+
+.play {
+  min-height: 46px;
+  min-width: 108px;
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 16px;
+}
+
+.play svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+}
+
+.scrub {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.track {
+  position: relative;
+  display: flex;
+  gap: 4px;
+  height: 24px;
+}
+
+.seg {
+  position: relative;
+  height: 100%;
+  border-radius: 8px;
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.segFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--accent);
+}
+
+.segLabel {
+  position: relative;
+  padding-left: 7px;
+  line-height: 24px;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.segTitle {
+  display: none;
+  font-weight: 600;
+}
+
+@media (min-width: 900px) {
+  .segTitle {
+    display: inline;
+  }
+}
+
+.range {
+  position: absolute;
+  inset: -8px 0 auto 0;
+  width: 100%;
+  height: 40px;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.range:focus-visible + .now {
+  outline: 3px solid var(--accent-bright);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+.now {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.now b {
+  color: var(--text);
+  font-weight: 650;
+}
+
+/* ---------- sections: one column on a phone, two balanced columns beside the sidebar ---------- */
+.grid {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  min-width: 0;
+}
+
+/* on a phone the two column wrappers vanish and the sections read 1 to 5 */
+.col {
+  display: contents;
+}
+
+.o1 {
+  order: 1;
+}
+
+.o2 {
+  order: 2;
+}
+
+.o3 {
+  order: 3;
+}
+
+.o4 {
+  order: 4;
+}
+
+.o5 {
+  order: 5;
+}
+
+@media (min-width: 1280px) {
+  .grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 24px;
+  }
+
+  .col {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    min-width: 0;
+  }
+}
+
+.sec {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--sh-raised);
+  min-width: 0;
+  transition: box-shadow 0.3s;
+}
+
+/* the step the playhead is in: a blue ring, the same second cue a selected control gets */
+.secNow {
+  box-shadow: var(--sh-raised), 0 0 0 2px var(--accent);
+}
+
+.secHead h2 {
+  scroll-margin-top: 250px; /* clear of the header and the dock when the player scrolls a section into view */
+}
+
+.secHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.secNum {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 750;
+}
+
+.secNow .secNum {
+  background: var(--accent);
+  box-shadow: none;
+  color: var(--accent-ink);
+}
+
+.lead {
+  font-size: 17px;
+}
+
+.note {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.waiting,
+.gap {
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--sh-inset-sm);
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.gap b {
+  color: var(--text);
+  font-weight: 650;
+}
+
+/* numbers: small wells */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  min-width: 0;
+}
+
+.statNum {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: break-word;
+}
+
+.statNone {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.statLabel {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.low {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 7px;
+  border-radius: var(--radius-pill);
+  box-shadow: inset 0 0 0 1px currentColor;
+  color: var(--watch);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.good {
+  color: var(--ok);
+}
+
+.bad {
+  color: var(--danger);
+}
+
+/* 1. taught from */
+.cards {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  padding: 6px 6px 12px;
+  margin: -6px;
+  scroll-snap-type: x proximity;
+}
+
+.example {
+  flex: none;
+  width: 250px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
+  scroll-snap-align: start;
+  font-size: 15px;
+}
+
+.exampleQ {
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.exampleA {
+  color: var(--accent-text);
+}
+
+.split {
+  display: flex;
+  height: 32px;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  gap: 3px;
+  box-shadow: var(--sh-inset-sm);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.split > div {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.splitTrain {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.splitHeld {
+  background: repeating-linear-gradient(135deg, var(--surface-2) 0 6px, var(--sh-dark) 6px 12px);
+  color: var(--text);
+}
+
+/* 2. training */
+.chart {
+  width: 100%;
+  min-width: 0;
+}
+
+.chart svg {
+  overflow: visible;
+}
+
+.axis {
+  fill: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.gridline {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.lossLine {
+  fill: none;
+  stroke: var(--accent-text);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.lossGhost {
+  fill: none;
+  stroke: var(--sh-dark);
+  stroke-width: 1.5;
+  stroke-dasharray: 2 5;
+}
+
+.headDot {
+  fill: var(--accent-text);
+  stroke: var(--surface);
+  stroke-width: 2.5;
+}
+
+.headLabel {
+  fill: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 4px;
+}
+
+.powerArea {
+  fill: var(--watch);
+  fill-opacity: 0.2;
+}
+
+.powerLine {
+  fill: none;
+  stroke: var(--watch);
+  stroke-width: 1.8;
+}
+
+.playhead {
+  stroke: var(--muted);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.chartTitle {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+  margin-top: 4px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.chartTitle b {
+  color: var(--text);
+}
+
+.energy {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  font-size: 17px;
+}
+
+.energy b {
+  font-variant-numeric: tabular-nums;
+}
+
+.hint {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
+  color: var(--accent-text);
+  font-size: 14px;
+  font-weight: 700;
+  padding: 0;
+}
+
+.measured {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--sh-inset-sm), inset 5px 0 0 var(--ok);
+  font-size: 15px;
+}
+
+.measuredTag {
+  align-self: flex-start;
+  color: var(--ok);
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* 3. before / after */
+.tally {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.tallyCard {
+  --bar: transparent;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px 12px 18px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm), inset 5px 0 0 var(--bar);
+}
+
+.tallyGood {
+  --bar: var(--ok);
+}
+
+.tallyBad {
+  --bar: var(--danger);
+}
+
+.bars {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px 12px;
+  align-items: center;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.bar {
+  height: 16px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  overflow: hidden;
+}
+
+.barFill {
+  height: 100%;
+  border-radius: 8px;
+  background: var(--muted);
+  transition: width 0.25s ease-out;
+}
+
+.barAfter {
+  background: var(--ok);
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.qa {
+  --bar: var(--sh-dark);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 14px 14px 20px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm), inset 5px 0 0 var(--bar);
+}
+
+.qaFixed {
+  --bar: var(--ok);
+}
+
+.qaBroke {
+  --bar: var(--danger);
+}
+
+.qaHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.change {
+  flex: none;
+  padding: 2px 11px;
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  font-weight: 750;
+  white-space: nowrap;
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  color: var(--muted);
+}
+
+.changeFixed {
+  background: var(--ok);
+  box-shadow: none;
+  color: var(--surface);
+}
+
+.changeBroke {
+  background: var(--danger);
+  box-shadow: none;
+  color: var(--surface);
+}
+
+/* Only while the run is being played or scrubbed: a page opened on the finished run shows it still. */
+.live .flipIn {
+  animation: flip 0.45s ease-out;
+}
+
+@keyframes flip {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.96);
+  }
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ans {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  min-width: 0;
+}
+
+.ansLabel {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.ansRight .ansLabel {
+  color: var(--ok);
+}
+
+.ansWrong .ansLabel {
+  color: var(--danger);
+}
+
+.ansWait {
+  color: var(--muted);
+}
+
+/* 4. the gate */
+.verdict {
+  padding: 16px 18px 16px 22px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--ok) 9%, var(--surface));
+  box-shadow: var(--sh-raised-sm), inset 5px 0 0 var(--ok);
+  font-size: 21px;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.verdictBad {
+  background: var(--danger-soft);
+  box-shadow: var(--sh-raised-sm), inset 5px 0 0 var(--danger);
+}
+
+.verdictSub {
+  display: block;
+  margin-top: 4px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.why {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 16px;
+  padding-left: 18px;
+  list-style: disc;
+}
+
+.noiseBand {
+  fill: var(--muted);
+  fill-opacity: 0.25;
+}
+
+.scoreAxis {
+  stroke: var(--sh-dark);
+  stroke-width: 2;
+}
+
+.gainLine {
+  stroke: var(--ok);
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+
+.lossGain {
+  stroke: var(--danger);
+}
+
+.dotBefore {
+  fill: var(--surface);
+  stroke: var(--text);
+  stroke-width: 2.5;
+}
+
+.dotAfter {
+  fill: var(--ok);
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.dotAfterBad {
+  fill: var(--danger);
+}
+
+.teacherTick {
+  stroke: var(--muted);
+  stroke-width: 2;
+  stroke-dasharray: 3 3;
+}
+
+.gLabel {
+  fill: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.gUp {
+  fill: var(--ok);
+}
+
+.gDown {
+  fill: var(--danger);
+}
+
+.gFlat {
+  fill: var(--muted);
+}
+
+/* 5. on the box */
+.swap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.model {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  min-width: 0;
+  transition: opacity 0.3s, box-shadow 0.3s;
+}
+
+/* the model that is serving stands out; the other is pressed back into the surface */
+.modelOn {
+  box-shadow: var(--sh-raised-sm), 0 0 0 2px var(--accent);
+}
+
+.modelOff {
+  box-shadow: var(--sh-inset-sm);
+  color: var(--muted);
+}
+
+.modelName {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+}
+
+.swapArrow {
+  width: 44px;
+  color: var(--muted);
+}
+
+.swapBar {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  overflow: hidden;
+}
+
+.swapFill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--accent-bright), var(--accent));
+}
+
+/* drawers */
+.sourceList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sourceRow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  font-size: 15px;
+}
+
+.sourceTop {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sourceTop b {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.howto {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-left: 22px;
+  list-style: decimal;
+  font-size: 17px;
+}
+
+.flow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 6px;
+  align-items: center;
+  font-size: 16px;
+  color: var(--muted);
+}
+
+.flow span {
+  padding: 5px 13px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  color: var(--text);
+}
+
+.cta {
+  text-align: center;
+  text-decoration: none;
+}
+
+@media (max-width: 420px) {
+  .play {
+    min-width: 0;
+    padding: 8px 12px;
+  }
+
+  .segLabel {
+    font-size: 11px;
+    padding-left: 5px;
+  }
+}
