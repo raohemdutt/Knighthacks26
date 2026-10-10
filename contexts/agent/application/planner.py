@@ -97,6 +97,7 @@ class Planner:
         self._planned: set[str] = set()
         self._last_leaving: datetime | None = None
         self.presence = None  # PresenceBoard (G5), set by the composition root when the Circle is on
+        self.habits = None  # HabitTracker (H1), set by the composition root: meals, drinks, sleep so far today
 
     async def on_item(self, e: ItemSynced) -> list:
         """Bus handler for connector.item.synced: plan once per crunch item."""
@@ -156,6 +157,7 @@ class Planner:
             + (f"activity at the desk {len(late)} times, last at {self.qa._t(late[-1].start)}" if late else "no activity at the desk")
         )
         ev.lines.append(f"Usual bedtime {self.qa.sleep.bedtime:%I:%M %p}, wake {self.qa.sleep.wake:%I:%M %p}")
+        self._habit_lines(now, ev)
 
         blocks = free_blocks(now, until, busy, self.qa)
         topic = f"Study: {course or (item.title if item else 'focus time')}"
@@ -186,6 +188,20 @@ class Planner:
             )
         return out
 
+
+    def _habit_lines(self, now: datetime, ev: Evidence, only: tuple[str, ...] | None = None) -> None:
+        """Today's habit numbers from Habits (H1): meals, drinks, last night's sleep, desk time."""
+        if not self.habits:
+            return
+        try:
+            rows = self.habits.digest(now=now).get("habits", [])
+        except Exception:  # habits are context, never a reason to fail a plan
+            return
+        for r in rows:
+            if only and r["id"] not in only or not r.get("applies", True):
+                continue
+            state = "met" if r["met"] else "not met yet"
+            ev.lines.append(f"Habit {r['name']}: {r['value']} {r['unit']} today (target {r['direction'].replace('_', ' ')} {r['target']}, {state}, streak {r['streak']})")
 
     def _friends(self, now: datetime, ev: Evidence) -> None:
         """Where friends said they are (opt-in, coarse, unexpired)."""
@@ -240,6 +256,7 @@ class Planner:
             ev.add(f"Seen today at {self.qa._t(ep.start)}: {c}", Citation(episode_id=ep.id, ts=ep.start))
         if not eaten:
             ev.lines.append("No meals seen at the desk today.")
+        self._habit_lines(now, ev, only=("meals", "energy_drinks", "sleep"))
         self._friends(now, ev)
         night_start, night_end = self.qa.sleep.last_night(now)
         ev.lines.append(f"Sleep window last night: {self.qa._t(night_start)} to {self.qa._t(night_end)}")
