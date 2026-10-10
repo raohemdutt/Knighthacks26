@@ -1,0 +1,25 @@
+# A night at our table, for the golden-question eval (A5).
+# Times are America/New_York. "now" is when the questions are asked.
+now: "2026-10-11T09:30:00-04:00"
+
+episodes:
+  - {id: e01, camera_id: cam-desk, start: "2026-10-10T18:10:00-04:00", labels: [person, laptop],
+     captions: ["Two people work at the table with laptops."], keyframe_refs: ["frames:cam-desk:e01"]}
+  - {id: e02, camera_id: cam-desk, start: "2026-10-10T19:40:00-04:00", labels: [person, cup],
+     captions: ["A person puts a set of keys next to the coffee mug."], keyframe_refs: ["frames:cam-desk:e02"]}
+  - {id: e03, camera_id: cam-desk, start: "2026-10-10T21:15:00-04:00", labels: [person, laptop],
+     captions: ["A person packs a laptop and leaves the table."], keyframe_refs: ["frames:cam-desk:e03"]}
+  - {id: e04, camera_id: cam-desk, start: "2026-10-10T23:50:00-04:00", labels: [],
+     captions: ["The table is empty; a phone charger is still plugged in."], keyframe_refs: ["frames:cam-desk:e04"]}
+  - {id: e05, camera_id: cam-door, start: "2026-10-11T02:20:00-04:00", labels: [person],
+     captions: ["A person in a hoodie walks past the door."], keyframe_refs: ["frames:cam-door:e05"]}
+  - {id: e06, camera_id: cam-desk, start: "2026-10-11T06:45:00-04:00", labels: [person, cup],
+     captions: ["A person comes back, sits at the table and drinks coffee."], keyframe_refs: ["frames:cam-desk:e06"]}
+  - {id: e07, camera_id: cam-desk, start: "2026-10-11T07:30:00-04:00", labels: [person],
+     captions: ["The person stands up and leaves the table."], keyframe_refs: ["frames:cam-desk:e07"]}
+  - {id: e08, camera_id: cam-door, start: "2026-10-11T09:05:00-04:00", labels: [person, package],
+     captions: ["A courier drops a cardboard box at the door."], keyframe_refs: ["frames:cam-door:e08"]}
+
+sightings:
+  - {label: keys, camera_id: cam-desk, zone_id: desk, ts: "2026-10-10T19:41:00-04:00",
+     frame_ref: "frames:cam-desk:k1941", position: "next to the coffee mug"}

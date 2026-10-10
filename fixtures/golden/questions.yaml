@@ -1,0 +1,17 @@
+# Golden questions (A5). A question passes when every expected citation is
+# returned and, with a real model, the answer mentions one of the keywords.
+# `cite` matches episode ids or frame refs.
+- q: "What happened at our table overnight?"
+  cite: [e03, e04, e05, e06, e07]
+  keywords: [left, leave, came back, returned, empty]
+- q: "Where did I leave my keys?"
+  cite: ["frames:cam-desk:k1941"]
+  keywords: [mug, desk]
+- q: "Did anyone come to the door in the last hour?"
+  cite: [e08]
+  keywords: [courier, box, package]
+- q: "When did someone last leave the table?"
+  cite: [e07]
+  keywords: ["7:30"]
+- q: "Where is my wallet?"
+  no_evidence: true

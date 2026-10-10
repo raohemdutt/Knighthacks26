@@ -161,17 +161,20 @@ class QA:
         if s:
             where = f"{s.zone_id} zone on {s.camera_id}" if s.zone_id else s.camera_id
             pos = f", {s.position}" if s.position else ""
-            ev.add(f"{s.label} last seen {_t(s.ts)} in the {where}{pos}", Citation(frame_ref=s.frame_ref, ts=s.ts))
+            ev.add(f"{s.label} last seen {self._t(s.ts)} in the {where}{pos}", Citation(frame_ref=s.frame_ref, ts=s.ts))
 
     def episodes_between(self, start: datetime, end: datetime, ev: Evidence) -> None:
         for b in self.memory.window(start, end).hours:
             ref = b.keyframe_refs[0] if b.keyframe_refs else None
             eid = b.episode_ids[0] if b.episode_ids else None
-            ev.add(f"{_t(b.hour)} hour: " + " ".join(b.captions), Citation(episode_id=eid, frame_ref=ref, ts=b.hour))
+            ev.add(f"{self._t(b.hour)} hour: " + " ".join(b.captions), Citation(episode_id=eid, frame_ref=ref, ts=b.hour))
 
-    def search_memory(self, q: str, ev: Evidence) -> None:
-        for h in self.memory.search(q):
-            ev.add(f"{_t(h.ts)} on {h.camera_id}: {h.text}", Citation(episode_id=h.episode_id, frame_ref=h.frame_ref, ts=h.ts))
+    def search_memory(self, q: str, ev: Evidence, newest_first: bool = False) -> None:
+        hits = self.memory.search(q)
+        if newest_first:  # "when did X last..." : put the latest match on top for a small model
+            hits = sorted(hits, key=lambda h: h.ts, reverse=True)
+        for h in hits:
+            ev.add(f"{self._t(h.ts)} on {h.camera_id}: {h.text}", Citation(episode_id=h.episode_id, frame_ref=h.frame_ref, ts=h.ts))
 
     # --- pre-fetch (common shapes, no tool loop) ---
 
@@ -185,7 +188,7 @@ class QA:
             self.episodes_between(*window, ev)
             return ev
         if q.startswith("when did") or "last time" in q:
-            self.search_memory(question, ev)
+            self.search_memory(question, ev, newest_first=True)
             return ev
         return None
 
@@ -220,6 +223,10 @@ class QA:
             return Answer(NO_EVIDENCE, [], self.runtime.model_info().version)
         return self._answer_from(question, ev)
 
+    def _t(self, ts: datetime) -> str:
+        """Times the model sees are local to the household, e.g. "Sun 7:30 AM"."""
+        return ts.astimezone(self.sleep.tz).strftime("%a %I:%M %p").replace(" 0", " ")
+
     def _run_tool(self, call: ToolCall, ev: Evidence) -> None:
         args = call.arguments
         try:
@@ -233,7 +240,3 @@ class QA:
                 self.episodes_between(start.replace(tzinfo=start.tzinfo or tz), end.replace(tzinfo=end.tzinfo or tz), ev)
         except (KeyError, ValueError, json.JSONDecodeError):
             pass  # bad arguments from a small model: the tool returns nothing found
-
-
-def _t(ts: datetime) -> str:
-    return ts.strftime("%a %I:%M %p").replace(" 0", " ")
