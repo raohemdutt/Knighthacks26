@@ -3,10 +3,16 @@
 Every table is a projection of the event log, so the file can be deleted and
 rebuilt with `python -m contexts.memory rebuild`. Timestamps are stored as UTC
 ISO strings of fixed width, so text order is time order.
+
+The one exception is memory_vectors (M5): embeddings of the indexed texts come
+from a model, not from the log, so a rebuilt file has none until
+`python -m contexts.memory embed` or the live indexer makes them again.
 """
 
 import json
+import math
 import sqlite3
+import struct
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -73,6 +79,13 @@ CREATE TABLE IF NOT EXISTS memory_notes (
 CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5 (text, source UNINDEXED, ref UNINDEXED, tokenize = 'porter unicode61');
 -- Events already projected, so replaying the log into a live file changes nothing.
 CREATE TABLE IF NOT EXISTS memory_applied (event_id TEXT PRIMARY KEY) WITHOUT ROWID;
+-- One embedding per distinct indexed text (M5), so a caption that repeats across episodes is embedded once.
+CREATE TABLE IF NOT EXISTS memory_vectors (
+    text TEXT PRIMARY KEY,             -- exactly memory_fts.text
+    model TEXT NOT NULL,               -- the embedding model that made it; another model's vectors are ignored and re-made
+    dim INTEGER NOT NULL,
+    vector BLOB NOT NULL               -- little-endian float32, scaled to unit length so a dot product is the cosine
+) WITHOUT ROWID;
 """
 
 TABLES = ("memory_episodes", "memory_sightings", "memory_tracks", "memory_track_zones", "memory_items", "memory_notes", "memory_fts", "memory_applied")
@@ -86,6 +99,16 @@ def iso(ts: datetime) -> str:
 
 def parse(ts: str | None) -> datetime | None:
     return datetime.fromisoformat(ts.replace("Z", "+00:00")) if ts else None  # Python 3.10 (the Jetson) rejects a trailing Z
+
+
+def pack_vector(vector: list[float]) -> bytes:
+    """Unit length, little-endian float32. A zero vector stays zero (it then matches nothing)."""
+    norm = math.sqrt(sum(x * x for x in vector)) or 1.0
+    return struct.pack(f"<{len(vector)}f", *(x / norm for x in vector))
+
+
+def unpack_vector(blob: bytes) -> tuple[float, ...]:
+    return struct.unpack(f"<{len(blob) // 4}f", blob)
 
 
 def item_ref(connector: str, external_id: str) -> str:
@@ -214,6 +237,39 @@ class MemoryStore:
     def unindex(self, ref: str) -> None:
         self.db.execute("DELETE FROM memory_fts WHERE ref = ?", (ref,))
 
+    # --- vectors (M5) ---
+
+    def texts_without_vector(self, model: str, limit: int) -> list[str]:
+        """Indexed texts that `model` has not embedded yet, oldest first."""
+        rows = self.db.execute(
+            """SELECT f.text FROM memory_fts f LEFT JOIN memory_vectors v ON v.text = f.text AND v.model = ?
+               WHERE v.text IS NULL GROUP BY f.text ORDER BY MIN(f.rowid) LIMIT ?""",
+            (model, limit),
+        )
+        return [r["text"] for r in rows]
+
+    def put_vectors(self, model: str, vectors: dict[str, list[float]]) -> None:
+        self.db.executemany("INSERT OR REPLACE INTO memory_vectors VALUES (?, ?, ?, ?)",
+                            [(text, model, len(v), pack_vector(v)) for text, v in vectors.items()])
+
+    def prune_vectors(self) -> int:
+        """Drop vectors whose text left the index (an item was edited, a note rewritten). Returns how many."""
+        return self.db.execute("DELETE FROM memory_vectors WHERE text NOT IN (SELECT text FROM memory_fts)").rowcount
+
+    def clear_vectors(self) -> None:
+        self.db.execute("DELETE FROM memory_vectors")
+
+    def vector_count(self, model: str | None = None) -> int:
+        return self.db.execute("SELECT COUNT(*) FROM memory_vectors WHERE ? IS NULL OR model = ?", (model, model)).fetchone()[0]
+
+    def vector_rows(self, model: str, dim: int) -> list[sqlite3.Row]:
+        """Every indexed row that has a vector from `model` of size `dim`: rowid, text, source, ref, vector."""
+        return self.db.execute(
+            """SELECT f.rowid AS rowid, f.text AS text, f.source AS source, f.ref AS ref, v.vector AS vector
+               FROM memory_fts f JOIN memory_vectors v ON v.text = f.text WHERE v.model = ? AND v.dim = ? ORDER BY f.rowid""",
+            (model, dim),
+        ).fetchall()
+
     def dump(self) -> dict[str, list[tuple]]:
-        """Every row of every table in a stable order, for comparing two rebuilds."""
+        """Every row of every table in a stable order, for comparing two rebuilds. Vectors are not rebuilt, so not here."""
         return {t: sorted(tuple(r) for r in self.db.execute(f"SELECT * FROM {t}")) for t in TABLES}
