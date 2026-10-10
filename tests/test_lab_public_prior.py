@@ -57,7 +57,7 @@ def test_numeric_columns_are_numbers_or_empty(records):
 def test_the_csv_has_no_em_dashes(records):
     for rec in records:
         for value in rec.values():
-            assert "—" not in value and "–" not in value
+            assert "\u2014" not in value and "\u2013" not in value
 
 
 def test_rows_that_are_not_plain_single_node_decode_stay_out_of_the_fit(tmp_path):
