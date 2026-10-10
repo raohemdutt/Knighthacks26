@@ -2,9 +2,9 @@
 
 import { Empty, ErrorBox, Loading } from "@/components/States";
 import ui from "@/components/ui.module.css";
-import { api, type CircleSharing, type ShareKindStatus } from "@/lib/api";
+import { api, type CircleSharing, type FaceShareStatus, type ShareKindStatus } from "@/lib/api";
 import { useAtlasEvents } from "@/lib/atlas";
-import { dayTime, humanize, relative, time } from "@/lib/format";
+import { dayLabel, dayTime, humanize, relative, time } from "@/lib/format";
 import { useFetch } from "@/lib/useFetch";
 import { useRefresh } from "./SharedCalendar";
 
@@ -43,14 +43,17 @@ const KINDS: Record<string, { label: string; what: string }> = {
   },
 };
 
+const FACES = "Face templates of enrolled people";
 const NEVER = [
   "Pictures and video from the cameras",
   "Raw signals: what the cameras and the habit tracker noticed, moment by moment",
-  "Face templates of enrolled people",
+  FACES,
   "Your calendar, messages and anything else from connected apps",
 ];
 
-export function YouAreSharing() {
+/** `faceShare`: GET /api/circle/face-share, or null/undefined while face sharing is off on this box (the default). */
+export function YouAreSharing({ faceShare }: { faceShare?: FaceShareStatus | null }) {
+  const shared = (faceShare?.friends ?? []).filter((f) => f.outgoing.state === "shared");
   const sharing = useFetch((s) => api.circleSharing(s));
   useAtlasEvents(["circle.share.", "circle.place.shared"], () => sharing.reload());
   useRefresh(sharing.reload, REFRESH_MS);
@@ -71,14 +74,34 @@ export function YouAreSharing() {
       ) : (
         <Status status={sharing.data} />
       )}
+      {faceShare ? (
+        <div className={ui.card}>
+          <div className={`${ui.row} ${ui.between} ${ui.wrap}`}>
+            <h3>Your face template</h3>
+            <span className={shared.length ? `${ui.tag} ${ui.tagAccent}` : ui.tag}>{shared.length ? "Shared" : "Not shared"}</span>
+          </div>
+          <p>{faceShare.explanation}</p>
+          <p className={`${ui.muted} ${ui.small}`}>
+            {shared.length
+              ? `Right now: ${shared.map((f) => `${f.display_name} (until ${dayLabel(f.outgoing.expires_at)})`).join(", ")}. `
+              : "Right now nobody has it. "}
+            It is numbers, never a photo, and only ever your own. Share, renew or take it back on the People screen. The Circle&apos;s database holds it only as
+            ciphertext, and can see who shared with whom and when.
+          </p>
+        </div>
+      ) : null}
       <div className={ui.card}>
         <h3>Never leaves this box for the Circle</h3>
         <ul className={ui.list} style={{ gap: 6 }}>
           {NEVER.map((n) => (
-            <li key={n}>{n}</li>
+            <li key={n}>{faceShare && n === FACES ? "Face templates of anyone else enrolled here, and every photo a template was made from" : n}</li>
           ))}
         </ul>
-        <p className={`${ui.muted} ${ui.small}`}>The Circle only ever gets the short lines listed above. That holds whatever the settings are.</p>
+        <p className={`${ui.muted} ${ui.small}`}>
+          {faceShare
+            ? "The Circle only ever gets the short lines listed above, and your own face template when you share it with a friend."
+            : "The Circle only ever gets the short lines listed above. That holds whatever the settings are."}
+        </p>
       </div>
     </section>
   );

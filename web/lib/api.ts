@@ -132,16 +132,54 @@ export interface IdentitySettings {
   photos_available?: boolean; // false when the box cannot decode pictures (no OpenCV)
 }
 
-/** One row of GET /identity/members. The face template itself never leaves the box. */
+/**
+ * One row of GET /identity/members. The template is never in an answer. It leaves the box only through face share
+ * (off by default), and then only the box owner's own, sealed to a friend's box.
+ */
 export interface Member {
   member_id: string;
   name: string;
   enrolled_at: string;
   updated_at?: string | null;
   photos?: number; // how many looks the template is made of (up to 12)
-  source?: "live" | "scan" | "photos";
+  source?: "live" | "scan" | "photos" | "circle"; // circle: a friend's box shared it with this one (face share)
   expressions?: boolean; // this person switched "read my expressions" on
   circle_member_id?: string | null; // which Circle member this is, when someone said so
+  shared_by?: string | null; // source "circle" only: the friend's Circle member id
+  received_at?: string | null;
+  expires_at?: string | null; // when this box deletes it unless the friend renews
+}
+
+/** A box key as two friends compare it: "ab12 cd34 ef56 0a1b 2c3d". */
+export interface FaceShareKey {
+  known: boolean; // false until the friend's box has face sharing on and was heard from
+  fingerprint: string | null;
+  changed: boolean; // another key appeared under their name: sharing stops until it is compared and trusted
+  new_fingerprint: string | null;
+}
+
+export interface FaceShareFriend {
+  member_id: string;
+  display_name: string;
+  key: FaceShareKey;
+  /** My own template, to this friend's box. */
+  outgoing: { state: "none" | "waiting_approval" | "shared"; share_id: string | null; shared_at: string | null; expires_at: string | null; action_id: string | null };
+  /** This friend's template, on this box. `usable` is false while recognition is off here or the face models differ. */
+  incoming: { state: "none" | "offered" | "accepted"; received_at: string | null; expires_at: string | null; offered_at: string | null; usable: boolean | null };
+  renewal_offered: boolean;
+}
+
+/** GET /api/circle/face-share (contexts/circle/face_share_api.py). 409 while it is switched off, which is the default. */
+export interface FaceShareStatus {
+  enabled: true;
+  circle_id: string;
+  member_id: string;
+  expiry_days: number;
+  recognition_enabled: boolean;
+  recognition_available: boolean;
+  explanation: string;
+  me: { fingerprint: string; member: { member_id: string; name: string } | null; can_share: boolean; why_not: string | null };
+  friends: FaceShareFriend[];
 }
 
 /** Why the box did not take a photo or a still; `message` is the sentence to show. */
@@ -1806,6 +1844,20 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   circleThreads: (signal?: AbortSignal) => get<CircleThreads>("/api/circle/threads", undefined, signal),
   circleThread: (id: string, signal?: AbortSignal) => get<CircleThreadDetail>(`/api/circle/threads/${encodeURIComponent(id)}`, undefined, signal),
   circleMembers: (signal?: AbortSignal) => get<CircleMembers>("/api/circle/members", undefined, signal),
+  /** Face share, or null while it is switched off on this box (409), there is no Circle, or the box is older than it (404). */
+  faceShare: (signal?: AbortSignal) =>
+    get<FaceShareStatus>("/api/circle/face-share", undefined, signal).catch((err: unknown) => {
+      if (err instanceof ApiError && (err.status === 409 || err.status === 404)) return null;
+      throw err;
+    }),
+  /** Raises an approval card on this box; the template is sealed and sent only when it is approved. */
+  faceShareAsk: (friend: string) => post<{ action_id: string }>(`/api/circle/face-share/${encodeURIComponent(friend)}/share`, undefined),
+  faceShareRevoke: (friend: string) => post<{ revoked: string }>(`/api/circle/face-share/${encodeURIComponent(friend)}/revoke`, undefined),
+  /** Raises the Accept card again for a friend's offer that is still waiting. */
+  faceShareReview: (friend: string) => post<{ action_id: string }>(`/api/circle/face-share/${encodeURIComponent(friend)}/review`, undefined),
+  faceShareForget: (friend: string) => post<{ forgotten: string }>(`/api/circle/face-share/${encodeURIComponent(friend)}/forget`, undefined),
+  faceShareTrust: (friend: string, fingerprint: string) =>
+    post<{ trusted: string }>(`/api/circle/face-share/${encodeURIComponent(friend)}/trust-key`, { fingerprint }),
   /** Walking route to where a friend is sharing (404 when they are not, or the place is on no map). */
   routeToFriend: (from: string, member: string, signal?: AbortSignal) =>
     get<CampusRoute>("/api/play/campus-route", { from, to: `friend:${member}` }, signal),
