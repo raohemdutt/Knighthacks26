@@ -14,7 +14,7 @@ import contextlib
 import logging
 import os
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import yaml
@@ -25,6 +25,7 @@ from contexts.agent.application.planner import Planner
 from contexts.agent.application.qa import QA, SleepSchedule
 from contexts.agent.application.web_port import HubWebTools
 from contexts.agent.domain.rules import RuleEvaluator, load_rules
+from contexts.capture.application.retention import prune_frames
 from contexts.capture.application.service import CaptureService
 from contexts.circle.application.delivery import AgreedEventDelivery
 from contexts.circle.application.presence import PresenceBoard
@@ -112,6 +113,7 @@ class Atlas:
     wiper: Wiper | None = None
     capture: CaptureService | None = None  # cameras -> detector -> observations, only where there is a detector (C6)
     tasks: list[asyncio.Task] = field(default_factory=list)
+    _last_retention: datetime | None = None
 
     async def start(self) -> None:
         if self.settings.replay:
@@ -135,6 +137,7 @@ class Atlas:
                 ("presence", (lambda: asyncio.to_thread(self.presence_sync.sync, now)) if self.presence_sync else None),
                 ("agent loop", (lambda: self.loop.tick(now)) if self.loop.due(now) else None),
                 ("connectors", (lambda: self.hub.sync_due(now)) if self.settings.connectors else None),
+                ("retention", self._retention(now)),
             ]
             for name, job in jobs:
                 if job is None:
@@ -147,6 +150,19 @@ class Atlas:
                 except Exception:
                     log.exception("tick job %s failed", name)
             await asyncio.sleep(TICK_S)
+
+    def _retention(self, now: datetime):
+        """Once an hour, remove saved pictures older than the policy's keep_days (nothing when it is forever)."""
+        if not self.policy or not self.policy.keep_days:
+            return None
+        if self._last_retention and now - self._last_retention < timedelta(hours=1):
+            return None
+        self._last_retention = now
+        async def prune() -> list:
+            await asyncio.to_thread(prune_frames, self.settings.data_dir, self.policy.keep_days, now)
+            return []  # no events: the tick publishes whatever a job returns
+
+        return prune
 
     async def stop(self) -> None:
         if self.capture:
