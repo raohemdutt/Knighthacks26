@@ -115,6 +115,11 @@ _COMMON_VERBS: tuple[str, ...] = (
 #: The dispatcher's own help, which lists the verbs and changes nothing.
 _HELP: tuple[str, ...] = ("", " --help", " -h", " help")
 
+#: Verbs whose bare form, or a form that starts with a flag, is itself a read: rulings
+#: with no sub-verb lists the unanswered questions. Sub-verbs that change things (apply,
+#: mirror) are separate rules below, so a flag form never reaches them.
+_READ_FORMS: tuple[str, ...] = ("rulings", "rulings -*")
+
 #: What opus and fable add: the verbs a refinement pass and experiment planning use.
 _PASS_VERBS: tuple[str, ...] = ("rulings apply", "experiment add", "experiment result", "experiment rank")
 
@@ -176,6 +181,7 @@ def _allowed(*, web_search: bool, skills: Sequence[str], notion: Sequence[str], 
     rules += [f"mcp__{NOTION_SERVER}__notion-{name}" for name in notion]
     rules += [f"Bash({command})" for command in _SHELL]
     rules += [f"Bash({python} -m lab{help_form})" for help_form in _HELP for python in PYTHONS]
+    rules += [f"Bash({python} -m lab {form})" for form in _READ_FORMS for python in PYTHONS]
     rules += [f"Bash({python} -m lab {verb} *)" for verb in verbs for python in PYTHONS]
     return rules
 

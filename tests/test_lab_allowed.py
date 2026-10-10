@@ -176,6 +176,10 @@ def test_lab_verbs_are_allowed_by_tier_in_both_interpreter_spellings():
             for verb in ("ready", "digest", "ledger add --verb x", "slot request --gpu B", "slot done", "handoff --note n",
                          "draft --name v", "experiment run e1", "metrics report", "rulings list"):
                 assert run(tier, verb), (tier, verb)
+        for tier in TIERS:
+            assert run(tier, "rulings"), tier
+            assert run(tier, "rulings --track kernels"), tier
+            assert not run(tier, "rulings-apply"), tier
         for verb in ("rulings apply", "experiment add", "experiment result e1", "experiment rank"):
             assert [run(tier, verb) for tier in ("fable", "opus", "sonnet")] == [True, True, False], verb
         for verb in ("referee", "review", "mirror", "rulings mirror"):
