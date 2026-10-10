@@ -582,7 +582,10 @@ function OutcomeCard({ result }: { result: SimResult }) {
           </div>
           <div className={ui.stat}>
             <p className={ui.statNum}>{t.meals}</p>
-            <p className={ui.statLabel}>{t.meals === 1 ? "meal" : "meals"}</p>
+            <p className={ui.statLabel}>
+              {t.meals === 1 ? "meal" : "meals"}
+              {t.meals_before ? `, ${t.meals_before} of them before this board starts` : ""}
+            </p>
           </div>
           <div className={ui.stat}>
             <p className={ui.statNum}>{minutes(t.walk_minutes)}</p>

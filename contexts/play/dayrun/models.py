@@ -227,7 +227,8 @@ class Totals(BaseModel):
     focused_minutes: float = 0  # work actually done
     walk_minutes: float = 0
     sleep_hours: float = 0
-    meals: int = 0
+    meals: int = 0  # the day's meals: those already eaten when the board starts, plus those in its window
+    meals_before: int = 0  # of `meals`, how many were eaten before the board starts (Initial.meals)
     energy_end: float = 0
     energy_min: float = 0
     points: int = 0  # 0 to 100, for comparing plans

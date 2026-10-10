@@ -194,6 +194,32 @@ def test_the_bad_plan_fails_for_the_stated_reasons(dayrun, plans):
     assert [x.reason[:44] for x in r.rejected] == ["you miss the 12:00 Knight Hacks: judging and"]
 
 
+def test_meals_already_eaten_today_count_toward_the_meal_target(dayrun, plans):
+    """Testing round 2: "2 meals so far" sat directly above "Meals: 1 (2 needed)"."""
+    lunch = Move(slot="s2", kind="eat", place="ucf.dining_63", minutes=37)
+    fresh = dayrun.simulate([lunch], scenario="demo")  # the scripted day starts with nothing eaten
+    assert (fresh.totals.meals, fresh.totals.meals_before) == (1, 0)
+    meals = next(c for c in fresh.outcome.checks if c.id == "meals")
+    assert not meals.ok and meals.text == "Meals: 1 (2 needed)"
+
+    # the same board started mid-day with two meals behind you: the day's count is 2 + 1, and every line agrees
+    board = dayrun.board(scenario="demo", initial=InitialOverride(meals=2))
+    later = dayrun.simulate([lunch], scenario="demo", initial=InitialOverride(meals=2))
+    meals = next(c for c in later.outcome.checks if c.id == "meals")
+    assert board.initial.meals == later.totals.meals_before == 2
+    assert meals.ok and meals.value == later.totals.meals == 3
+    assert meals.text == "Meals: 3 (2 needed, 2 of them already eaten before this board starts)"
+    assert not any(r.startswith("Meals") for r in later.outcome.reasons)
+
+    # with no moves at all the meals so far still stand, so the check cannot contradict the board
+    idle = dayrun.simulate([], scenario="demo", initial=InitialOverride(meals=2))
+    assert next(c for c in idle.outcome.checks if c.id == "meals").value == idle.totals.meals == 2
+
+    # the scripted demo is untouched: three meals, all of them inside the board
+    good = dayrun.simulate(plans["good"], scenario="demo")
+    assert (good.totals.meals, good.totals.meals_before) == (3, 0) and good.outcome.summary.endswith("8.5 h of sleep, 3 meals.")
+
+
 def test_the_good_plan_wins_with_three_stars(dayrun, plans):
     r = dayrun.simulate(plans["good"], scenario="demo")
     assert r.outcome.won and r.stars == r.outcome.stars == 3 and r.rejected == [] and r.outcome.reasons == []
