@@ -46,6 +46,8 @@ def test_teach_then_deny_through_the_api(tmp_path):
         assert [a["id"] for a in c.get("/api/approvals").json()] == [action_id]
         r = c.post(f"/api/approvals/{action_id}", json={"decision": "deny"})
         assert r.status_code == 200 and r.json()["status"] == "denied"  # round 2: it said "proposed"
+        again = c.post(f"/api/approvals/{action_id}", json={"decision": "approve"})  # a later tap does nothing
+        assert again.status_code == 409 and again.json()["detail"] == "already denied"
         assert c.get("/api/approvals").json() == []
         assert c.post("/api/approvals/nope", json={"decision": "deny"}).status_code == 404
 
