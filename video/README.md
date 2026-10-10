@@ -9,6 +9,7 @@ two slots. The plan and why: Notion, Team Comms → "Rubric self-check + submiss
 cd video
 npm install
 npm run timeline     # slots, tracks and clips from contexts/demo/video.py -> src/timeline.json
+npm run totals       # measured hackathon totals from ../data's event log -> src/totals.json (D11)
 npm run studio       # preview and scrub in the browser
 npm run render       # out/atlas.mp4 (about 30 minutes on a laptop)
 npm run check        # length within 0.1 s of 9:58, and where each key lands
@@ -25,6 +26,8 @@ and on the placeholder itself.
 
 - The slot order, titles and tracks live only in `contexts/demo/video.py`. Change them there, never in
   `src/timeline.json`.
+- The intro's totals card shows only rows the event log measured (`src/totals.json`, empty by default: no card).
+  Run `npm run totals` against the Jetson's real `data/` (or copy its `--json` output) before the final render.
 - Charts and numbers come from measured files (the lab ledger, the eval JSON, `lab/slide_numbers.py`), never typed in.
 - Slot 5 says "the on-device Qwen VL understands the scene".
 - Remotion is free for individuals and small teams; read its license once before relying on it.

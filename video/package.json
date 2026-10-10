@@ -5,6 +5,7 @@
   "description": "The 9:58 submission video (D10/D12), programmed in Remotion and rendered locally",
   "scripts": {
     "timeline": "cd .. && python -m contexts.demo video json video/src/timeline.json",
+    "totals": "cd .. && python -m contexts.demo totals --data-dir data --json > video/src/totals.json",
     "studio": "remotion studio src/index.ts",
     "render": "remotion render src/index.ts Atlas out/atlas.mp4 --codec h264 --crf 18",
     "still": "remotion still src/index.ts Atlas out/frame.png --frame",
