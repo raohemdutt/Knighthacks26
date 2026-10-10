@@ -430,3 +430,47 @@ def test_unsure_spots_refusals_but_not_real_answers():
 
     assert unsure(NO_EVIDENCE) and unsure("I can't browse the web.") and unsure("I'm just an AI running on this box")
     assert not unsure("Your keys are on the desk.") and not unsure("UF won 24-13, I know it was close.")
+
+
+class RefusingTalk:
+    def __init__(self, text="I can't browse the web for sports results. I'm just an AI running on this box."):
+        self.text, self.asked = text, []
+
+    def wants(self, question):
+        return True
+
+    async def reply(self, question, stream=None):
+        from contexts.agent.application.qa import Answer
+
+        self.asked.append(question)
+        return Answer(self.text, [], "v1")
+
+
+def test_a_score_question_skips_small_talk_when_the_box_has_web():
+    q, rt, web = web_qa(calls(("web_search", {"query": "UCF UF score"})), "UCF beat UF 31-24 on Sep 5.")
+    q.talk = RefusingTalk()
+    a = asyncio.run(q.ask("What was the score in the most recent game against UF?"))
+    assert a.text == "UCF beat UF 31-24 on Sep 5." and q.talk.asked == []
+
+
+def test_small_talk_that_gives_up_falls_back_to_the_tools_with_web():
+    q, rt, web = web_qa(calls(("web_search", {"query": "pizza near campus"})), "Pizza Studio is open until 11.")
+    q.talk = RefusingTalk("I don't have access to that, sorry.")
+    a = asyncio.run(q.ask("Is the pizza place near campus open late?"))
+    assert a.text == "Pizza Studio is open until 11." and q.talk.asked
+
+
+def test_without_web_small_talk_keeps_its_answer():
+    q, rt = qa()
+    q.talk = RefusingTalk()
+    assert asyncio.run(q.ask("What was the score in the most recent game against UF?")).text == q.talk.text
+
+
+def test_outside_spots_games_and_scores_not_room_questions():
+    from contexts.agent.application.qa import OUTSIDE
+
+    for text in ("What was the score in the most recent game against UF?", "Who won the UCF vs UF game?",
+                 "When is the next game?", "Did UCF win?"):
+        assert OUTSIDE.search(text), text
+    for text in ("How are you?", "What did I play on Day Run?", "Where are my keys?"):
+        assert not OUTSIDE.search(text), text
