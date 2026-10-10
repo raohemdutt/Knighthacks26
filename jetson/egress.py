@@ -120,23 +120,27 @@ def resolvers() -> Resolved:
     return v4, v6
 
 
+MAX_PER_GROUP = 64  # addresses kept per group and IP version
+LOOKUPS = 3  # rotating DNS answers (CDNs, Canonical's connectivity check) differ per lookup: ask a few times
+
+
 def resolve_groups(groups: dict[str, list[str]], previous: dict[str, Resolved] | None = None) -> dict[str, Resolved]:
-    """Addresses per group. A group that resolves to nothing right now keeps what it had (a DNS blip must not cut it off)."""
+    """Addresses per group. Answers are added to what the group had (a host that rotates through many addresses is
+    allowed on all of them, and a DNS blip changes nothing), up to MAX_PER_GROUP of each IP version."""
     out: dict[str, Resolved] = {}
     for group, hosts in groups.items():
-        v4: set[str] = set()
-        v6: set[str] = set()
+        v4: set[str] = set(previous[group][0]) if previous and group in previous else set()
+        v6: set[str] = set(previous[group][1]) if previous and group in previous else set()
         for host in hosts:
             try:
                 ip = ipaddress.ip_address(host)
                 (v4 if ip.version == 4 else v6).add(str(ip))
             except ValueError:
-                a, b = resolve(host)
-                v4 |= a
-                v6 |= b
-        if not (v4 or v6) and previous and group in previous:
-            v4, v6 = previous[group]
-        out[group] = (v4, v6)
+                for _ in range(LOOKUPS):
+                    a, b = resolve(host)
+                    v4 |= a
+                    v6 |= b
+        out[group] = (set(sorted(v4)[-MAX_PER_GROUP:]), set(sorted(v6)[-MAX_PER_GROUP:]))
     return out
 
 
