@@ -20,6 +20,7 @@ from lab.machine.lock import FileLock, LockTimeout
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SPAWN = multiprocessing.get_context("spawn")
 JOIN_TIMEOUT = 300.0     # seconds; a spawned child still running after this has hung
+START_TIMEOUT = 60.0     # seconds a spawned child waits for its partner to start
 ROWS_PER_CHILD = 1000
 UTC = dt.timezone.utc
 
@@ -430,8 +431,13 @@ def _hold_lock_until_told(path: str, held, done) -> None:
     os._exit(0)
 
 
+def spawn(target, *args):
+    """A spawned child, daemonic so a hung one cannot keep the test run alive."""
+    return SPAWN.Process(target=target, args=args, daemon=True)
+
+
 def run_child(target, *args) -> int:
-    child = SPAWN.Process(target=target, args=args)
+    child = spawn(target, *args)
     child.start()
     child.join(JOIN_TIMEOUT)
     assert not child.is_alive(), f"{target.__name__} hung"
@@ -444,7 +450,7 @@ def test_the_lock_excludes_another_process_and_is_freed_when_its_holder_dies(tmp
         assert run_child(_try_lock, path, 0.2) == 11
     assert run_child(_try_lock, path, 0.2) == 10
     held, done = SPAWN.Event(), SPAWN.Event()
-    holder = SPAWN.Process(target=_hold_lock_until_told, args=(path, held, done))
+    holder = spawn(_hold_lock_until_told, path, held, done)
     holder.start()
     try:
         assert held.wait(JOIN_TIMEOUT), "the child never took the lock"
@@ -476,7 +482,7 @@ def test_append_gives_up_with_lock_timeout_while_the_ledger_lock_stays_busy():
 def _append_rows(state: str, actor: str, start, out: str) -> None:
     """Spawned child: wait for the other child, append ROWS_PER_CHILD rows as
     fast as it can, then write down the seq each append returned."""
-    start.wait(JOIN_TIMEOUT)
+    start.wait(START_TIMEOUT)
     returned = [ledger.append({"actor": actor, "tier": "sonnet", "task": "L3", "verb": "ledger.race",
                                "outcome": "ok", "metrics": {"i": i}, "refs": {}}, state_dir=state)
                 for i in range(ROWS_PER_CHILD)]
@@ -485,8 +491,7 @@ def _append_rows(state: str, actor: str, start, out: str) -> None:
 
 def test_two_processes_appending_1000_rows_each_lose_nothing(tmp_path, isolated_state):
     start = SPAWN.Barrier(2)
-    children = {name: SPAWN.Process(target=_append_rows,
-                                    args=(str(isolated_state), name, start, str(tmp_path / f"{name}.json")))
+    children = {name: spawn(_append_rows, str(isolated_state), name, start, str(tmp_path / f"{name}.json"))
                 for name in ("a", "b")}
     for child in children.values():
         child.start()
