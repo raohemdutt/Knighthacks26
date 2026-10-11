@@ -468,6 +468,8 @@ def look_back(card: dict | None, moments: list[dict]) -> tuple[str, str]:
     if not back:
         return SKIP, "no earlier look was similar enough (or it was forgotten): nothing is said about the past"
     said, text = back.get("said") or "", f"{card.get('display') or ''} {card.get('spoken') or ''} {card.get('text') or ''}"
+    if not said and back.get("evidence"):
+        return SKIP, "no single earlier look was similar enough to call back to: the card says what the counts say instead"
     then = next((m for m in moments if m.get("id") == back.get("moment_id")), None)
     if said not in text or not said:
         return FAIL, f"the callback line is not in what the card says: {said!r}"
@@ -481,6 +483,94 @@ def look_back(card: dict | None, moments: list[dict]) -> tuple[str, str]:
     if not right:
         return FAIL, f"the callback does not say the day it was ({named}, {gap} days before): {said!r}"
     return PASS, f"{said} {back.get('learned') or ''}".strip() + f" [{then['day']}, a {named}]"
+
+
+SMALL = "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty".split()
+ARM_SAYS = {"up": "getting up", "drink": "water alone", "stay": "staying at the"}
+
+
+def _said(n: int) -> str:
+    return SMALL[n] if 0 <= n < len(SMALL) else str(n)
+
+
+def recount(moments: list[dict]) -> dict:
+    """What the remembered looks themselves add up to, counted here and not by the box: for each thing the person was
+    seen to do in the half hour after (got up; only had a drink; stayed), (times the look eased, times seen), over the
+    looks whose outcome is known. The same reading as contexts/day/domain/look_model.py `did`, written out again on
+    purpose: the check is that the box's sentences match the looks it lists."""
+    arms = {"up": [0, 0], "drink": [0, 0], "stay": [0, 0]}
+    known = 0
+    for m in moments:
+        o = m.get("outcome") or {}
+        if not o.get("known") or o.get("eased") is None:
+            continue
+        known += 1
+        arm = "up" if o.get("got_up") else "drink" if o.get("drink") else "stay" if o.get("got_up") is False else None
+        if arm:
+            arms[arm][1] += 1
+            arms[arm][0] += int(bool(o["eased"]))
+    return {"known": known, "arms": {k: tuple(v) for k, v in arms.items()}}
+
+
+def counts_said(sentence: str, arm: str, eased: int, n: int) -> bool:
+    """Whether a spoken sentence about `arm` carries its real counts ("five of the last six times", "hasn't any of the
+    four times", "both times", "each of the last four times")."""
+    low = sentence.lower()
+    part = next((p for p in low.split(";") if ARM_SAYS[arm] in p), None)
+    if part is None:
+        return False
+    if n == 1:
+        return "the one time" in part
+    if n == 2 and eased in (0, 2):
+        return ("either time" if eased == 0 else "both times") in part
+    if eased in (0, n):
+        return f"{_said(n)} times" in part and ("hasn't" in part) == (eased == 0)
+    return f"{_said(eased)} of the last {_said(n)} times" in part or f"has {_said(eased)} of {_said(n)}" in part
+
+
+def look_learned(card: dict | None, looks: dict) -> tuple[str, str]:
+    """(status, note) for what Atlas has learned from its remembered looks (stage two): the People screen's findings
+    and the check-in's sentence carry counts that match the remembered looks themselves, recounted here; under the
+    minimum it says "not enough yet" and the check-in says nothing learned. SKIP when nobody's looks are remembered."""
+    learned, moments = looks.get("learned"), looks.get("moments") or []
+    if not learned or not moments:
+        return SKIP, "no looks remembered on this box, so nothing is learned (python -m contexts.demo checkin --data-dir <dir> --onto)"
+    who = moments[0].get("member_id")
+    mine = [m for m in moments if m.get("member_id") == who]
+    if looks.get("count", 0) > len(moments):
+        return SKIP, f"the box remembers {looks['count']} looks and listed {len(moments)}: too many to recount here"
+    got = recount(mine)
+    if (learned.get("looks"), learned.get("known")) != (len(mine), got["known"]):
+        return FAIL, (f"it says it learned from {learned.get('looks')} looks, {learned.get('known')} with a known outcome; "
+                      f"the looks it lists are {len(mine)}, {got['known']} with a known outcome")
+    back = (card or {}).get("callback") or {}
+    if not learned.get("enough"):
+        if back.get("evidence"):
+            return FAIL, f"the check-in says what it learned ({back.get('learned')!r}) from {got['known']} known outcome(s): under the minimum of {learned.get('min_known')}"
+        return PASS, f"not enough yet, and it says so: {learned.get('not_enough')}"
+    for f in learned.get("findings") or []:
+        if f.get("kind") in got["arms"] and (f.get("eased"), f.get("n")) != got["arms"][f["kind"]]:
+            return FAIL, f"a finding's counts do not match the looks: {f.get('text')!r} against {got['arms'][f['kind']]} recounted"
+    shown = " ".join(f.get("text", "") for f in learned.get("findings") or [])
+    if not back.get("evidence"):
+        return PASS, f"{shown} [{learned.get('evidence')}] (no check-in on screen says it)"
+    said, text = back.get("learned") or "", f"{card.get('display') or ''} {card.get('spoken') or ''} {card.get('text') or ''}"
+    if not said or said not in text:
+        return FAIL, f"the learned sentence is not in what the card says: {said!r}"
+    numbers = [int(x) for x in back["evidence"].replace(",", " ").split() if x.isdigit()]
+    if len(numbers) < 2 or numbers[1] > got["known"]:
+        return FAIL, f"the check-in's evidence line counts more known outcomes than the box remembers ({got['known']}): {back['evidence']!r}"
+    if numbers[1] < got["known"]:
+        return PASS, f"{said} [{back['evidence']} More looks have been remembered since: now {got['known']} known]"
+    named = [arm for arm in ("up", "drink", "stay") if ARM_SAYS[arm] in said.lower()]
+    wrong = [arm for arm in named if not counts_said(said, arm, *got["arms"][arm])]
+    if not named or wrong:
+        return FAIL, f"the learned sentence does not carry the looks' own counts ({ {a: got['arms'][a] for a in named or got['arms']} }): {said!r}"
+    spoken = f"{card.get('spoken') or ''} {card.get('display') or ''}"
+    if card.get("ahead") and card["ahead"] in spoken:
+        return FAIL, f"the card's quiet line is in what is said: {card['ahead']!r}"
+    counts = ", ".join(f"{ARM_SAYS[a].replace('staying at the', 'staying put')} {got['arms'][a][0]} of {got['arms'][a][1]}" for a in named)
+    return PASS, f"{said} [{counts}, recounted from the {len(mine)} looks listed; {back['evidence']}]" + (f" Card only: {card['ahead']}" if card.get("ahead") else "")
 
 
 def uc_day(run: Run) -> None:
@@ -500,6 +590,8 @@ def uc_day(run: Run) -> None:
     if checkin is not None and looks is not None:
         status, note = look_back(checkin.get("latest"), looks["moments"])
         run.add("the check-in calls back to an earlier look, on a real earlier day", status, None, note)
+        status, note = look_learned(checkin.get("latest"), looks)
+        run.add("what Atlas learned from its looks is said with counts that match the looks it remembers", status, None, note)
     run.fetch("today's plan", "/api/day/plan", ("moves", "blocks", "outcome"),
               note=lambda d: f"{d['outcome'].get('summary', '')} committed={d['committed']}")
     brief = run.fetch("the day in words", "/api/day/brief", ("mode", "engine", "latest"),

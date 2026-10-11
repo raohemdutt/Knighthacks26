@@ -407,46 +407,82 @@ Suggested once, added only after its card was approved, and told when to leave. 
 | --- | --- | --- | --- |
 | Pass: `contexts/demo/tests/test_optional_demo.py` (the lines above, the same for two directories, a gateway on the directory, a restart saying nothing again), `contexts/day/tests/test_optional_events.py`, `test_optional_suggest.py`, `tests/test_demo_walkthrough.py` | Pass, on a test gateway on the scene's own directory: `GET /api/day/plan` has the block (`fixed`, `origin: "optional"`, committed), `/api/day/now` has it as the next event with a 16 min walk and leave-by 4:59 PM, the brief has `latest.start` and `latest.suggest`, `check-api.mjs` all passed, the walkthrough's day and coach steps 16 PASS, 0 FAIL, 5 SKIP. On the seeded night (`seed --now`, today's plan made first) the whole walkthrough with `--approve-local` said yes to Board game night, the guard approved its card and the block was in the plan: 100 PASS, 1 FAIL (the known "while I was out" defect), 20 SKIP. The card read in Night and Day at 500x1000 and 1440x900. Simulated with: the invented day; template engine; fake model | Not run | Not run: nobody has heard the suggestion or answered it by voice; the card was read on screen in Night and Day |
 
-### 3b. The check-in, and the look Atlas remembers
+### 3b. The check-in, the look Atlas remembers, and what it has learned from its looks
 
 **Shows:** Atlas speaks up when several signals agree (a short night, resting heart rate up, a look
 that has held for twenty minutes, a long sitting, no drink seen), and calls back to an earlier time
-you looked like this: when it was, what was going on, and what helped then. It is stage one of
-"learning from it": remembered and said, in code, with no model. The memory is words and numbers on
-this box, never a picture.
+you looked like this: when it was, what was going on, and what helped then (stage one: remembered
+and said, in code). And, stage two, it has LEARNED from every look it remembers, for this one person:
+what tends to ease the look and when it tends to start, said as counts you can check against the
+list on People. The memory is words and numbers on this box, never a picture.
+
+**Say it plainly if asked what "learning" means here:** it is a per-person table of counts over a
+handful of remembered moments (`contexts/day/domain/look_model.py`), fitted on the box each time it
+is asked, with one significance test before it will say "helps". It is not a trained expression
+recogniser and trains none: the thing that reads a face is still the pre-trained model from
+OpenCV's zoo. Under four looks with a known outcome it says "not enough yet".
 
 **Setup:** the seeded night, then the check-in story on top of it (all invented, and labelled so):
 
     python -m contexts.demo circle --data-dir <dir>
     python -m contexts.demo checkin --data-dir <dir> --onto
 
-The second command prints the sentence, the chips and the earlier day it calls back to. With no
-`--end` it picks the first afternoon time the night's own plan leaves clear (the rule stays quiet in
-a class and before a time to leave). On an empty directory, `python -m contexts.demo checkin
---data-dir <empty dir>` shows the same afternoon alone. The demo owner is "Hemdutt", marked **Demo
-data**: scanned, expressions on.
+The second command prints the sentence, the chips, the earlier day it calls back to, what was
+learned (`learned:` and its findings) and the card's quiet line. With no `--end` it picks the first
+afternoon time the night's own plan leaves clear (the rule stays quiet in a class and before a time
+to leave). On an empty directory, `python -m contexts.demo checkin --data-dir <empty dir>` shows the
+same afternoon alone. The demo owner is "Hemdutt", marked **Demo data**: scanned, expressions on.
+
+The story holds ten earlier afternoons with a known outcome over the two weeks before (looks only,
+all invented): on six the owner got up for a few minutes (the look eased on five; on one, a
+four-minute break, it was still there), on four they stayed at the desk (still there each time).
+Every count Atlas says is its own count of these. No drink was seen on those days, so nothing is
+said about water: a drink would have to be a camera event on an earlier day, and Habits counts
+from those.
 
 **Steps**
 1. Open **Now** (`/now/`). The check-in card is at the top: "Check-in · Atlas spoke up".
-2. Read the sentence, then tap the last chip, **Looked tired · like <day>**.
+2. Read the sentence, then tap the last chip, **Looked tired · like <day>**. Under the chips, read
+   the quiet line (it is on the card only: Atlas never says it and never pushes it).
 3. Open **People** (`/people/`), the owner's card, under "Read my expressions": **Looks Atlas
-   remembers**.
+   remembers**, and under it **What Atlas has learned about your looks**.
 4. Ask: "When did I last look this tired?", "Why do you think I'm tired?", "What helped last time?"
-5. (Not in front of judges unless you mean it.) **Forget** on one row, or **Forget all**.
+5. Ask: "What usually helps when I look tired?", "What makes me look tired?", then "How do you know?"
+6. (Not in front of judges unless you mean it.) **Forget** on one row, **Forget all**, or **Forget
+   what it learned** (which says it forgets all of the looks: what was learned is only a count of them).
 
 **Expected** (seeded Sun 2026-10-11; the weekday is whatever day three days back really was)
 - Said aloud: "You slept about five hours, your resting heart rate is up, and you've looked strained
   for the last twenty minutes. That's the same look you had Thursday afternoon, when you'd gone two
-  hours without moving. Ten minutes away from the desk helped then. You've been at the desk for an
-  hour and three quarters straight, and I haven't seen you pick up a drink since two o'clock. Take
-  ten minutes outside and drink some water." The advice that was followed by the look easing last
-  time is said first. On screen the paragraph also keeps "The last 3 times a day looked like this,
-  your study blocks fell apart by 4 PM"; aloud it is one look back, not two.
-- The chip opens two lines: "Thursday afternoon, around 2:45 PM. At the desk for two hours." and
-  "Ten minutes away from the desk helped: the look eased within half an hour."
-- People lists the most recent five: this afternoon ("Too soon to say how it went."), Thursday
-  afternoon, and the two strained afternoons of the demo people's week ("At the desk for fifteen
-  minutes." / "I couldn't see how it went after.": Atlas says what it did not see).
+  hours without moving. Getting up has eased this five of the last six times; staying at the desk
+  hasn't any of the four times. You've been at the desk for an hour and three quarters straight, and
+  I haven't seen you pick up a drink since two o'clock. Take ten minutes outside and drink some
+  water." The advice order is the one the counts support (getting up first). On screen the paragraph
+  also keeps "It usually shows up after about ninety minutes at the desk." (aloud that clause is said
+  only when the check-in still fits its five sentences; here it does not) and "The last 3 times a day
+  looked like this, your study blocks fell apart by 4 PM"; aloud it is one look back, not two.
+- The chip opens three lines: "Thursday afternoon, around 2:45 PM. At the desk for two hours.",
+  "Ten minutes away from the desk helped: the look eased within half an hour." and "From 13
+  remembered looks, 10 with a known outcome."
+- Under the chips, on the card only: "You usually start to look strained around now. A short break
+  tends to help." with a link, "How Atlas knows", to People.
+- People lists the most recent five of 13: this afternoon ("Too soon to say how it went."), Thursday
+  afternoon, Tuesday afternoon ("Seven minutes away from the desk helped: ...") and the two strained
+  afternoons of the demo people's week ("At the desk for fifteen minutes." / "I couldn't see how it
+  went after.": Atlas says what it did not see).
+- **What Atlas has learned about your looks**: "Getting up helps: the look eased 5 of the 6 times you
+  got up, against 0 of the 4 times you didn't." (Likely between 57% and 95% of the time, on this
+  little.) "Staying at the desk: the look eased 0 of the 4 times you stayed at the desk." "It usually
+  starts after about 90 minutes at the desk: 11 of 13 looks did." Then the evidence line: "From 13
+  remembered looks, 10 with a known outcome. 3 are left out: I couldn't see how they went." (today's,
+  too soon; and the two of the people's week), and a note that what the looks share is a count, not a
+  cause.
+- The new answers: "Getting up, from what I've seen. The look eased five of the six times you got up,
+  and eased none of the four times you stayed at the desk."; "I can't say what causes it, only what
+  the looks share: eleven of the thirteen looks I remember started after ninety minutes or more at
+  the desk."; "From what I saw on this box, nothing more: getting up eased it five of six times, and
+  staying at the desk none of four. It's a count over the thirteen looks I remember, not a reading of
+  how you feel." ("How do you know?" on its own is only taken within three minutes of one of the others.)
 - The answers: "The last time you looked this tired was Thursday afternoon, when you'd gone two hours
   without moving."; "I can't know how you feel, only what I saw: your face has looked tired for a
   while, you'd been at the desk for about an hour and three quarters, and I hadn't seen you pick up a
@@ -463,13 +499,18 @@ data**: scanned, expressions on.
   rule ("never a forced callback"), not a fault.
 - The word on the chip is "tired" (or "tense"), the People screen's own two words for how a face
   looked. The spoken check-in never says either: it says "looked strained" and "the same look".
-- Switching "Read my expressions" off clears every remembered look. Do not flip it mid-demo.
+- Switching "Read my expressions" off clears every remembered look, and with them what was learned.
+  Do not flip it mid-demo. The same goes for **Forget what it learned**.
+- "Getting up: the look eased ... Too few to call it either way." instead of "Getting up helps": the
+  counts did not clear the test (one look forgotten can do it). That is the gate working, not a fault.
+- No quiet line on the card: the owner had not been at the desk for about as long as it usually takes
+  (75 to 120 minutes here) when the check-in was raised, or `day: {look_ahead: false}` is set.
 
 **Verification**
 
 | tests | seeded app | Jetson | real hardware |
 | --- | --- | --- | --- |
-| Pass: `contexts/day/tests/test_looks.py` (the rule, the sentences, replay, forget, and that nothing of it reaches a push, a Circle share, an export or the info log), `contexts/demo/tests/test_checkin_demo.py` (alone and `--onto` the night, the night's closed days unchanged), `contexts/agent/tests/test_look_memory.py`, `tests/test_demo_walkthrough.py` | Pass, Sun 2026-10-11 on a test gateway on the circle seed with the check-in added `--onto`: the walkthrough's two new steps PASS ("the looks Atlas remembers", "the check-in calls back to an earlier look, on a real earlier day": Thursday 2026-10-08), 95 PASS, 0 FAIL, 33 SKIP read-only; the card with the chip opened and the People list read at 500 px and 1440 px in Night and Day. Simulated with: invented looks, nights and desk events; template engine; fake model | Not run | Not run: no camera or face model has read a real face into it, and nobody has heard the line said |
+| Pass: `contexts/day/tests/test_looks.py` (the rule, the sentences, replay, forget, and that nothing of it reaches a push, a Circle share, an export or the info log), `contexts/day/tests/test_look_model.py` (the counts, the gate, an evaluation on invented people with a known truth, who is learned about, forgetting, replay, the card-only line, and that nothing learned reaches a push, a Circle share, an export or the info log), `contexts/demo/tests/test_checkin_demo.py` (alone and `--onto` the night, the night's closed days, alerts, Waste Watch and Memory unchanged), `contexts/agent/tests/test_look_memory.py`, `tests/test_demo_walkthrough.py` | Pass, Sun 2026-10-11 on a test gateway on the circle seed with the check-in added `--onto`: the walkthrough's three look steps PASS ("the looks Atlas remembers", "the check-in calls back to an earlier look, on a real earlier day": Thursday 2026-10-08, and "what Atlas learned from its looks is said with counts that match the looks it remembers": getting up 5 of 6, staying put 0 of 4, recounted by the script from the 13 looks the box lists), 96 PASS, 0 FAIL, 36 SKIP read-only; `check-api.mjs` all passed; the three new questions answered through `POST /api/ask` with the sentences above; the card with the chip opened and its quiet line, and the People list with "What Atlas has learned about your looks" (and its "Forget what it learned" confirmation), read at 500 px and 1440 px in Night and Day, no sideways scroll. Simulated with: invented looks, nights and desk events; template engine; fake model | Not run | Not run: no camera or face model has read a real face into it, nobody has heard the line said, and no real person's weeks of looks have been learned from |
 
 ---
 
