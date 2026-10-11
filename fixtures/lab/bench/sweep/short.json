@@ -1,0 +1,30 @@
+{
+  "id": "sweep-short-v1",
+  "about": "The short prompt class of the request-side settings sweep (lab/sweep_request.py): four text requests of a few sentences, two of them the text prompts of fixtures/lab/bench/prompts.json. Text only, never camera frames. Written by make_prompts.py; a change is a new prompt set.",
+  "prompts": [
+    {
+      "id": "text-kitchen",
+      "kind": "text",
+      "system": "You are a careful assistant in a home. Answer in plain sentences.",
+      "user": "Describe, step by step, how to tidy a small kitchen after cooking dinner for four people. Cover the counters, the stove, the sink, the dishes and the floor, in that order, and say why each step comes where it does."
+    },
+    {
+      "id": "text-schedule",
+      "kind": "text",
+      "system": "You are a careful assistant in a home. Answer in plain sentences.",
+      "user": "A family of three shares one car. Write a weekday plan that gets one parent to work by 8:30, a child to school by 8:00 and the other parent to a 9:15 appointment, and explain each choice."
+    },
+    {
+      "id": "text-laundry",
+      "kind": "text",
+      "system": "You are a careful assistant in a home. Answer in plain sentences.",
+      "user": "Explain how to sort, wash and dry a week of laundry for a family of four, and say which steps save the most energy and why."
+    },
+    {
+      "id": "text-plants",
+      "kind": "text",
+      "system": "You are a careful assistant in a home. Answer in plain sentences.",
+      "user": "Give a weekly routine for keeping six houseplants healthy in a flat with one sunny window, and explain the reason for each step."
+    }
+  ]
+}
