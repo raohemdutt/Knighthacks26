@@ -1588,7 +1588,19 @@ export interface EgressGroup {
   name: string;
   hosts: string[];
   packets: number;
+  /** Every byte sent to the group (V7: counted ahead of the conntrack accept). */
   bytes: number;
+  /** Connections opened to it. Absent from older firewall snapshots. */
+  connections?: number;
+}
+
+/** V7: camera pictures cleared to leave the box, each batch by an approved training export. */
+export interface EgressPictures {
+  video_bytes: number;
+  pictures: number;
+  picture_bytes: number;
+  approved_exports: number;
+  batches: { dataset_id: string; task: string; pictures: number; bytes: number; approval: string; ts: string }[];
 }
 
 export interface EgressBlock {
@@ -1609,6 +1621,8 @@ export interface Egress {
   recent_blocks?: EgressBlock[];
   updated?: string;
   stale?: boolean;
+  /** Present on boxes with V7, firewall or not. */
+  pictures?: EgressPictures;
 }
 
 export type WipeScope = "all" | "keyframes" | "memory";

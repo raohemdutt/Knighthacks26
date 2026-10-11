@@ -208,7 +208,7 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
     # GET /api/impact/story, GET/POST /api/impact/practice: the Impact screen (404 when Waste Watch is not set up)
     app.include_router(impact_router(atlas.impact, publish=atlas.bus.publish, guard=authorized))
     if atlas.policy:  # GET/PUT /vault/policy, POST /vault/wipe/request, POST /vault/wipe, GET /vault/egress
-        app.include_router(vault_router(atlas.policy, atlas.bus, wiper=atlas.wiper, guard=authorized))
+        app.include_router(vault_router(atlas.policy, atlas.bus, wiper=atlas.wiper, guard=authorized, pictures=atlas.pictures))
     if atlas.identity:  # /identity/settings, /identity/enroll/start, status, photos, scan/*; /identity/members, present, expressions (P9)
         # A person can be linked to a Circle member by id; the ids come from the configured Circle, nothing else crosses over.
         app.include_router(identity_router(atlas.identity, atlas.bus, guard=authorized, circle_members=lambda: (

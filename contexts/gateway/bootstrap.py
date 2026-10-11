@@ -76,7 +76,7 @@ from contexts.play.domain.places import PlaceSet
 from contexts.play.room.live import RoomLive
 from contexts.play.room.plan import RoomError, load_room, room_path
 from contexts.profiles import Profile, load_profile
-from contexts.vault import KeyRing, Policy, Vault, Wiper
+from contexts.vault import KeyRing, PictureLedger, Policy, Vault, Wiper
 from contexts.workspace.domain.approvals import Approvals
 from contexts.workspace.infrastructure.ntfy import Ntfy, PhoneNotifier, send_message_executor
 from contracts.types import ModelVersion
@@ -139,6 +139,7 @@ class Atlas:
     vault: Vault | None = None
     policy: Policy | None = None
     wiper: Wiper | None = None
+    pictures: PictureLedger | None = None  # V7: camera pictures cleared to leave, per approval
     learning: LearningBoard | None = None  # where each taught task is (X10)
     lab_view: LabView | None = None  # the Learning lab screen: one story per training run, rebuilt from the log
     capture: CaptureService | None = None  # cameras -> detector -> observations, only where there is a detector (C6)
@@ -328,6 +329,8 @@ def build(settings: Settings | None = None) -> Atlas:
     bus.subscribe("perception.identity", identity.on_changed, replay=True)
     wiper = Wiper(s.data_dir, memory_db=s.data_dir / "memory.sqlite", live_memory=store)  # the open store is emptied too
     bus.subscribe("vault.wipe.requested", wiper.on_wipe_requested)
+    pictures = PictureLedger(s.data_dir)  # V7: rebuilds from the log; GET /vault/egress shows it beside the firewall's bytes
+    pictures.subscribe(bus)
     bus.subscribe("vault.wipe.requested", identity.on_wipe)  # live only: a wipe of everything also empties the expression series in memory
     bus.subscribe("vault.wipe.requested", talk.on_wipe)  # live only: the turns of a conversation are not kept past a wipe
     EpisodeSummarizer(store, runtime).subscribe(bus)  # live only, in the background: one model call per closed episode (M3)
@@ -584,7 +587,7 @@ def build(settings: Settings | None = None) -> Atlas:
     return Atlas(settings=s, bus=bus, qa=qa, approvals=approvals, hub=hub, loop=loop, zones=zones, rules=rules, alerts=alerts, game=game, room=room,
                  waste=waste, circle=circle, presence=presence, zone_engine=zone_engine, sharing=sharing,
                  memory=memory, projection=projection, habits=habits, nudger=nudger,
-                 presence_sync=presence_sync, board=board, vault=vault, policy=policy, wiper=wiper,
+                 presence_sync=presence_sync, board=board, vault=vault, policy=policy, wiper=wiper, pictures=pictures,
                  places=places, dayrun=dayrun, day=day, capture=capture, identity=identity, learning=learning,
                  lab_view=lab_view,
                  telemetry=telemetry, profile=profile, league=league, league_sync=league_sync,
