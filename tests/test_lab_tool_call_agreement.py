@@ -176,3 +176,20 @@ def test_the_verb_refuses_a_server_that_is_not_greedy_and_writes_one_ledger_row(
     assert rows[0]["metrics"]["learning.tool_call_agreement.before"] == 1.0
     assert rows[0]["metrics"]["learning.tool_call_agreement.lost"] == 1
     assert rows[0]["refs"]["run_id"] == "run-fake" and rows[0]["conditions"]["side"] == "held_out"
+
+
+def test_an_arm_takes_each_examples_own_system_prompt_when_it_is_given_a_function(world):
+    examples = list(world.split.held_out)[:3]
+    seen: list[str] = []
+
+    class Echo:
+        def complete(self, prompt: str) -> dict:
+            seen.append(prompt)
+            return {"text": ""}
+
+    rows = tca.run_arm("before-1", Echo(), examples, world.expected, lambda example: f"system for {example.id}")
+    assert seen == [tca.prompt_for(f"system for {example.id}", example.context) for example in examples]
+    assert [row["correct"] for row in rows.values()] == [False, False, False]
+    seen.clear()
+    tca.run_arm("before-1", Echo(), examples, world.expected, world.system)     # one instruction for a dataset, as before
+    assert seen == [tca.prompt_for(world.system, example.context) for example in examples]
