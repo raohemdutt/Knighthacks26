@@ -154,6 +154,8 @@ EXPECTED_SEED = [
     ("teacher_batching.watts_avg", "pod-a", {"batch_size": 64}, 96.0499, "W", True),
     ("teacher_batching.watts_peak", "pod-a", {"batch_size": 64}, 98.0, "W", True),
     ("pod.idle_watts", "pod-a", {"server": "teacher loaded, no request"}, 10.44, "W", False),
+    # R21: the stock teacher on pod C compared with its own baseline (the K4 self-match floor), one compare
+    ("teacher.output_match_rate", "pod-a", {"chip": "gfx1151", "batch_size": 1}, 0.5, "fraction", True),
 ]
 
 # The numbers the lab setup measured, by metric name.
@@ -214,7 +216,8 @@ def test_every_low_confidence_seed_row_says_why():
         "telemetry.sampler_cpu_pct", "jetson.idle_watts", "student.watts_avg", "student.watts_peak"} | {
         # R26: the sweep's medians are of 3 repeats, under the 5 verdict() asks for
         "teacher_batching." + name
-        for name in ("decode_tok_s", "decode_tok_s_total", "ttft_s", "joules_per_token", "watts_avg", "watts_peak")}
+        for name in ("decode_tok_s", "decode_tok_s_total", "ttft_s", "joules_per_token", "watts_avg", "watts_peak")} | {
+        "teacher.output_match_rate"}
     for row in flagged:
         if row["conditions"].get("sampler") == SAMPLER:  # the sampler's rows: its error is "unknown" until a reference run
             assert row["conditions"]["error"] == "unknown", row["metric"]
