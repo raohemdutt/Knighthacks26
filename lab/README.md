@@ -442,8 +442,8 @@ python -m lab sampler-overhead analyze --rows fixtures/telemetry/sampler_overhea
   difference is inside it, and Welch's test from `lab/machine/verdict.py` beside it. Verdicts: `no_interference`,
   `interference`, `inconclusive`. Three repeats an arm is low confidence (the verdict module wants five).
 - Rows: `<out>/rows.jsonl`, `<out>/analysis.json` and ledger rows `sampler-overhead.repeat` and
-  `sampler-overhead.summary` on node pod-b. The measured run, its numbers and the proposed rubric line are in
-  `lab/T9_REPORT.md`; the rows are `fixtures/telemetry/sampler_overhead_*.jsonl`.
+  `sampler-overhead.summary` on node pod-b. The state of the measurement (not yet taken: the card was busy with an
+  unqueued job), what the slot met and the proposed rubric line are in `lab/T9_REPORT.md`.
 
 Tests: `tests/test_lab_sampler_overhead.py` drives the experiment against fakes (the slot queue over `slots_fake.py`,
 the bench harness over `teacher_fake.py`, a fake pod and a fake `/proc`) on a fake clock.
