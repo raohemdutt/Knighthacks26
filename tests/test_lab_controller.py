@@ -1342,3 +1342,14 @@ def test_a_setting_that_names_a_machine_other_than_the_two_roles_is_refused(two_
     assert (code, answer["outcome"]) == (2, "no_pod_role")
     assert "LAB_POD_ROLES" in answer["error"]
     assert two_hubs.sjc.calls == [] and ledger.read() == []
+
+
+# --- O51 deferred findings ------------------------------------------------------------------
+
+def test_the_readme_smoke_command_uploads_smoke_lora_py_beside_the_script():
+    # pods-run-script-pod-scripts-report-ok-on-failure: run-script uploads only the script unless --with names the
+    # sibling, so the documented command for the smoke step must carry --with lab/smoke_lora.py.
+    lines = (REPO / "lab" / "README.md").read_text(encoding="utf-8").splitlines()
+    commands = [line for line in lines if "run-script" in line and "lab/pod_b_trainer.sh smoke" in line]
+    assert commands
+    assert all("--with lab/smoke_lora.py" in line for line in commands), commands

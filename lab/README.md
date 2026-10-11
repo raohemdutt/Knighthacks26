@@ -214,7 +214,7 @@ python -m lab.controller quota --transactions         # balances, rates, recent 
 python -m lab.controller launch --account B --minutes 600 [--dry-run] [--no-wait]
 python -m lab.controller wait --account B
 python -m lab.controller keep-alive --minutes 90      # a ping every 10 minutes so the idle culler never fires
-python -m lab.controller run-script --account B lab/pod_b_trainer.sh smoke
+python -m lab.controller run-script --account B --with lab/smoke_lora.py lab/pod_b_trainer.sh smoke
 python -m lab.controller stop --account B
 ```
 
