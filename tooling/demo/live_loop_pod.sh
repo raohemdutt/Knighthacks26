@@ -261,7 +261,12 @@ act() {   # act <name> <circle> <run id> <members> [wait file]: one L10 run, wit
     bash "$L10/src/lab/pod_b_group_finetune.sh" run "$circle" "$TASK" "$run_id" \
     --grad-accum 1 --trainer-python "$RUN/trainer.sh" >> "$RUN/$name.log" 2>&1
   local rc=$?
-  printf '{"act":"%s","stage":"done","ts":"%s","rc":%d}\n' "$name" "$(now)" "$rc" >> "$STAGES"
+  local done_ts; done_ts="$(now)"
+  # the package's model file size (the relay posts it with the manifest): the gguf the manifest names, null when absent
+  local pkg="$HOME/data/packages/atlas-group-$TASK-$run_id" gguf="" bytes=null
+  [ -f "$pkg/manifest.json" ] && gguf="$(sed -n 's/.*"gguf": *"\([^"]*\)".*/\1/p' "$pkg/manifest.json" | head -n 1)"
+  if [ -n "$gguf" ] && [ -f "$pkg/$gguf" ]; then bytes="$(wc -c < "$pkg/$gguf" | tr -d ' ')"; fi
+  printf '{"act":"%s","stage":"done","ts":"%s","rc":%d,"package_bytes":%s}\n' "$name" "$done_ts" "$rc" "$bytes" >> "$STAGES"
   echo "$rc" > "$RUN/$name.exit"
 }
 
