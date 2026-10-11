@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { ASK_EVENT } from "@/components/Command";
 import { Evidence } from "@/components/Evidence";
 import { Logo } from "@/components/Logo";
 import ui from "@/components/ui.module.css";
@@ -314,6 +315,21 @@ export default function AskPage() {
       conversing.current = false;
       document.removeEventListener("visibilitychange", onVisibility);
     };
+  }, []);
+
+  // A question handed over by the palette: in the link (/?q=...) when it came from another screen, or as an event
+  // when the palette was opened here. Either way it is asked at once, as if it had been typed.
+  const askRef = useRef(ask);
+  askRef.current = ask;
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get("q");
+    if (q) {
+      window.history.replaceState(null, "", window.location.pathname);
+      void askRef.current(q);
+    }
+    const onAsk = (e: Event) => void askRef.current(String((e as CustomEvent<string>).detail ?? ""));
+    window.addEventListener(ASK_EVENT, onAsk);
+    return () => window.removeEventListener(ASK_EVENT, onAsk);
   }, []);
 
   // So does switching hands-free off.

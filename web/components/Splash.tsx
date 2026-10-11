@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Logo } from "./Logo";
 import styles from "./splash.module.css";
 
-const SHOW_MS = 1900; // matches the fade-out in splash.module.css
+const SHOW_MS = 2000; // matches the fade-out in splash.module.css
 
 /** The logo flashes over the app on every load, then fades away and unmounts. */
 export function Splash() {
@@ -19,6 +19,7 @@ export function Splash() {
       <div className={styles.mark}>
         <Logo size={132} draw />
         <span className={styles.word}>Atlas</span>
+        <span className={styles.tag}>Your desk, remembered</span>
       </div>
     </div>
   );
