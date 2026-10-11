@@ -551,5 +551,37 @@
       ],
       "speech_s": 4.2
     }
+  ],
+  "music": [
+    {
+      "at": 0.0,
+      "dur": 126.256,
+      "file": "assets/music/music-problem-db9cd56283.mp3",
+      "id": "problem"
+    },
+    {
+      "at": 158.244,
+      "dur": 29.544,
+      "file": "assets/music/music-lab-b109c6744d.mp3",
+      "id": "lab"
+    },
+    {
+      "at": 188.088,
+      "dur": 52.664,
+      "file": "assets/music/music-league-5eeca60ba4.mp3",
+      "id": "league"
+    },
+    {
+      "at": 241.052,
+      "dur": 51.276,
+      "file": "assets/music/music-plant-9cb66f685e.mp3",
+      "id": "plant"
+    },
+    {
+      "at": 292.628,
+      "dur": 6.748,
+      "file": "assets/music/music-end-0c8669aa41.mp3",
+      "id": "end"
+    }
   ]
 }

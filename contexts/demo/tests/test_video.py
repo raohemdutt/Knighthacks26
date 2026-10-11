@@ -136,6 +136,8 @@ def test_the_film_index_is_generated_from_its_layout_and_stays_under_five_minute
     assert html.count('<audio id="voice-') == sum(len(s["lines"]) for s in film["scenes"])
     # The sound effects (video/hf/sfx.yaml) are the only other audio, and every one points at a file that exists.
     sfx = re.findall(r'<audio id="sfx-\d+" src="([^"]+)"', html)
-    assert html.count("<audio ") == html.count('<audio id="voice-') + len(sfx)
-    assert all((root / "hf" / f).exists() for f in sfx)
+    music = re.findall(r'<audio id="music-[\w-]+" src="([^"]+)"', html)  # the music bed (video/hf/music.yaml)
+    assert html.count("<audio ") == html.count('<audio id="voice-') + len(sfx) + len(music)
+    assert all((root / "hf" / f).exists() for f in sfx + music)
+    assert [m["file"] for m in film.get("music", [])] == music  # film_render.py mixes these over the joined renders
     assert re.search(rf'data-composition-id="atlas"[^>]*data-duration="{film["total_s"]:.1f}"', html)

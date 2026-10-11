@@ -8,7 +8,10 @@
 #       a number             seconds after the scene starts
 #   vol: 0..1, kept well under the voice (the voice plays at 1).
 #
+# gain scales every cue's vol (Dom: 40 % quieter).
+#
 # Files live in assets/sfx/ (copied from the team's ui_chimes_and_clicks pack).
+gain: 0.6
 cues:
   # A dozen apps: the box wakes as the narrator names it.
   - { scene: problem, at: "1:0", sfx: chime_08_power_on_arpeggio, vol: 0.28 }

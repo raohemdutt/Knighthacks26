@@ -44,6 +44,23 @@ def join(parts: list[Path], out: Path) -> int:
     return rc
 
 
+def add_music(film: Path, out: Path) -> int:
+    """The music bed spans several scenes, so the scene renders carry only the voice and the sound effects; lay the
+    music sections (film.json "music", cut by film_build.py) over the joined film at their times."""
+    clips = json.loads((HF / "film.json").read_text(encoding="utf-8")).get("music", [])
+    cmd = ["ffmpeg", "-v", "error", "-y", "-i", str(film)]
+    for c in clips:
+        cmd += ["-i", str(HF / c["file"])]
+    if clips:
+        parts = [f"[{k + 1}:a]adelay={int(c['at'] * 1000)}:all=1[m{k}]" for k, c in enumerate(clips)]
+        mix = "".join(f"[m{k}]" for k in range(len(clips)))
+        graph = ";".join(parts) + f";[0:a]{mix}amix=inputs={len(clips) + 1}:duration=first:normalize=0[a]"
+        cmd += ["-filter_complex", graph, "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", str(out)]
+    else:
+        cmd += ["-c", "copy", str(out)]
+    return subprocess.run(cmd).returncode
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("scenes", nargs="+")
@@ -76,7 +93,8 @@ def main() -> int:
     if any(rcs):
         return 1
     if a.scenes == ["all"]:
-        rc = join([HF / "renders" / f"scene-{sid}{suffix}.mp4" for sid in ids], out_all)
+        bare = out_all.with_name(out_all.stem + "-nomusic.mp4")
+        rc = join([HF / "renders" / f"scene-{sid}{suffix}.mp4" for sid in ids], bare) or add_music(bare, out_all)
         print(f"{'joined' if rc == 0 else 'JOIN FAILED'} -> {out_all}")
         return rc
     return 0

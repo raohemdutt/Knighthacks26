@@ -205,7 +205,9 @@ def sfx_cues(scenes: list[dict]) -> list[dict]:
         return []
     by_id = {sc["id"]: sc for sc in scenes}
     out = []
-    for c in (yaml.safe_load(SFX_YAML.read_text(encoding="utf-8")) or {}).get("cues", []):
+    sheet = yaml.safe_load(SFX_YAML.read_text(encoding="utf-8")) or {}
+    gain = float(sheet.get("gain", 1.0))
+    for c in sheet.get("cues", []):
         sc = by_id.get(c["scene"])
         if sc is None:
             continue
@@ -213,7 +215,7 @@ def sfx_cues(scenes: list[dict]) -> list[dict]:
         if not f.exists():
             raise FileNotFoundError(f"sfx: missing {f}")
         out.append({"at": round(cue_time(sc, c["at"]), 3), "file": f"assets/sfx/{f.name}", "dur": round(duration(f), 3),
-                    "vol": float(c.get("vol", 0.3)), "name": c["sfx"]})
+                    "vol": round(float(c.get("vol", 0.3)) * gain, 3), "name": c["sfx"]})
     out.sort(key=lambda c: c["at"])
     ends = [-1.0, -1.0]
     for c in out:  # two tracks so a cue may ring on while the next starts
@@ -227,6 +229,50 @@ def sfx_tags(cues: list[dict], t0: float = 0.0, t1: float = 1e9) -> list[str]:
     return [f'      <audio id="sfx-{n}" src="{c["file"]}" data-start="{c["at"] - t0:.3f}" data-duration="{c["dur"]:.3f}" '
             f'data-track-index="{c["track"]}" data-volume="{c["vol"]}"></audio>'
             for n, c in enumerate(cues) if t0 <= c["at"] < t1]
+
+
+
+# The music bed (video/hf/music.yaml): sections of the song cut with their fades and level baked in, each an <audio>
+# clip spanning its scenes. A cut file is named by a hash of what went into it, so changing a section re-cuts it.
+MUSIC_YAML, MUSIC_DIR, SONG_END = HF / "music.yaml", HF / "assets" / "music", 129.6  # the song fades out by itself here
+
+
+def music_clips(scenes: list[dict]) -> list[dict]:
+    if not MUSIC_YAML.exists():
+        return []
+    sheet = yaml.safe_load(MUSIC_YAML.read_text(encoding="utf-8")) or {}
+    by_id = {sc["id"]: sc for sc in scenes}
+    MUSIC_DIR.mkdir(parents=True, exist_ok=True)
+    out = []
+    for m in sheet.get("sections", []):
+        a, b = by_id.get(m["from"]), by_id.get(m["to"])
+        if a is None or b is None:
+            continue
+        start, end = a["start"], b["start"] + b["duration"]
+        dur = round(end - start, 3)
+        off = round(SONG_END - dur, 3) if m.get("end_at_song_end") else float(m.get("offset", 0))
+        fi, fo, g = float(m.get("fade_in", 1.5)), float(m.get("fade_out", 1.2)), float(m.get("gain_db", -15))
+        key = hashlib.sha1(f"{off}|{dur}|{fi}|{fo}|{g}".encode()).hexdigest()[:10]
+        f = MUSIC_DIR / f"music-{m['from']}-{key}.mp3"
+        if not f.exists():
+            src = Path(sheet["source"])
+            if not src.exists():
+                raise FileNotFoundError(f"music: {f.name} needs cutting but the source {src} is missing")
+            af = f"volume={g}dB,afade=t=in:st=0:d={fi},afade=t=out:st={max(0.0, dur - fo):.3f}:d={fo}"
+            subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{off}", "-t", f"{dur}", "-i", str(src), "-af", af,
+                            "-ac", "2", "-ar", "44100", "-codec:a", "libmp3lame", "-b:a", "160k", str(f)], check=True)
+        out.append({"at": round(start, 3), "dur": dur, "file": f"assets/music/{f.name}", "id": m["from"]})
+    keep = {o["file"].split("/")[-1] for o in out}
+    for stale in MUSIC_DIR.glob("music-*.mp3"):
+        if stale.name not in keep:
+            stale.unlink()
+    return out
+
+
+def music_tags(clips: list[dict], t0: float = 0.0, t1: float = 1e9) -> list[str]:
+    """Clips overlapping [t0, t1); a clip that started before t0 is not cut into a scene preview (it would restart)."""
+    return [f'      <audio id="music-{c["id"]}" src="{c["file"]}" data-start="{c["at"] - t0:.3f}" data-duration="{c["dur"]:.3f}" '
+            f'data-track-index="7" data-volume="1"></audio>' for c in clips if t0 <= c["at"] < t1]
 
 
 # How the voice says a word that it would otherwise misread (the caption keeps the written word).
@@ -307,7 +353,8 @@ def main() -> int:
     for stale in ASSETS.glob("*.mp3"):
         if not any(l["file"].endswith(stale.name) for sc in scenes for l in sc["lines"]):
             stale.unlink()
-    OUT_JSON.write_text(json.dumps({"fps": FPS, "total_s": total, "scenes": scenes}, indent=2) + "\n", encoding="utf-8")
+    music = music_clips(scenes)  # film_render.py lays these over the joined scene renders
+    OUT_JSON.write_text(json.dumps({"fps": FPS, "total_s": total, "scenes": scenes, "music": music}, indent=2) + "\n", encoding="utf-8")
 
     hosts, audio, caps, tweens, imports, calls = [], [], [], [], [], []
     for sc in scenes:
@@ -351,6 +398,7 @@ def main() -> int:
       <div id="dip" style="{DIP_STYLE}"></div>
 {nl.join(audio)}
 {nl.join(sfx_tags(cues))}
+{nl.join(music_tags(music))}
     </div>
     <script>
       window.__hf = window.__hf || {{}}; window.__hf.buildReady = window.__hf.buildReady || {{}};

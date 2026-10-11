@@ -1,0 +1,25 @@
+# The music bed: sections of "Minimal Ambiance" (2:14) under the film, faded in and out at scene changes.
+# film_build.py cuts each section from `source` with ffmpeg (the fades and the level baked in) into
+# assets/music/<hash>.mp3 and places it as an <audio> clip from the first scene's start to the last scene's end.
+# The cut files are committed, so the source is only needed when a section changes.
+#
+#   from / to:  scene ids; the section plays from `from`'s start to `to`'s end
+#   offset:     where in the song (seconds) the section starts
+#   end_at_song_end: true lines the section up so the song's own ending lands on the film's last frame
+#   gain_db:    level under the voice (the song is about -13 dB RMS throughout; the voice sits well above)
+#   fade_in / fade_out: seconds
+#
+# The song is level all through; from about 1:26 it gets brighter and fuller, and it ends by itself at about 2:09.
+source: C:/Users/domdd/Downloads/Minimal_Ambiance.mp3
+sections:
+  # Act one, the day: the opening through the faces beat, the song from its start.
+  - { from: problem, to: faces, offset: 0, gain_db: -15, fade_in: 2.0, fade_out: 1.5 }
+  # The kitchen and its camera play without music: the security-camera view reads colder with only the room.
+  # The lab and the box on its own: the brighter, fuller part of the song.
+  - { from: lab, to: device, offset: 86, gain_db: -15, fade_in: 1.5, fade_out: 1.2 }
+  # Friends: back to the warm opening material.
+  - { from: league, to: lives, offset: 30, gain_db: -15, fade_in: 1.5, fade_out: 1.2 }
+  # The plant and Xander's shift: lower, so the triage and the numbers carry it.
+  - { from: plant, to: shift, offset: 62, gain_db: -18, fade_in: 1.5, fade_out: 1.0 }
+  # The end card: the song's own ending.
+  - { from: end, to: end, end_at_song_end: true, gain_db: -14, fade_in: 1.0, fade_out: 0.5 }
