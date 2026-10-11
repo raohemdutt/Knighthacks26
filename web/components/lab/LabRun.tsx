@@ -525,11 +525,13 @@ function OnTheBox({ story, frac, gated, boxNow }: { story: LabStory; frac: numbe
     />
   );
   if (!deploy.deployed) {
+    // a stand-in gate decided nothing about the model, so its refusal is not repeated here
+    const standIn = storyIsStandIn(story);
     return (
       <>
-        <p className={`${lab.verdict} ${story.status === "not deployed" ? lab.verdictBad : ""}`}>
+        <p className={`${lab.verdict} ${story.status === "not deployed" && !standIn ? lab.verdictBad : ""}`}>
           {story.status === "not deployed" ? "Nothing changed on the box." : "Not on the box yet."}
-          <span className={lab.verdictSub}>{deploy.deployed_reason}</span>
+          {standIn ? null : <span className={lab.verdictSub}>{deploy.deployed_reason}</span>}
         </p>
         {packageLine}
         {missing}

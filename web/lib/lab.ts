@@ -500,7 +500,9 @@ export type RunTone = "good" | "bad" | "plain";
 export function runStatus(r: Pick<LabRunSummary, "run_id" | "status" | "run_status" | "ended" | "started" | "model_version" | "tested">, box: BoxNow): { label: string; tone: RunTone } {
   const failed = r.status === "failed" || r.run_status === "failed";
   if (isLoopRun(r)) {
-    const tail = isLiveRun(r) ? ", training" : failed ? ", failed" : "";
+    // the loop trains a solo and a duo model side by side: the run id says which, so two runs of one minute differ
+    const side = /-(solo|duo)$/.exec(r.run_id)?.[1];
+    const tail = `${side ? `, ${side}` : ""}${isLiveRun(r) ? ", training" : failed ? ", failed" : ""}`;
     return { label: `Loop run · ${clock(r.started) || "no time recorded"}${tail}`, tone: failed ? "bad" : "plain" };
   }
   if (isLiveRun(r)) return { label: "Training", tone: "plain" };

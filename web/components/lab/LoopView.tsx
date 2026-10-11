@@ -130,7 +130,7 @@ export function LoopView({
           <b>{runState(loop, now, dayTime).line}</b>
         ) : run ? (
           <>
-            The run shown below: <b>{dayTime(run.started) || "no time recorded"}</b>, {label ? label.charAt(0).toLowerCase() + label.slice(1) : runRow(run as LoopRun).chip.toLowerCase()}
+            The run shown below: <b>{dayTime(run.started) || "no time recorded"}</b>, {label ? (label.startsWith("Loop run") ? "a run of the live loop" : label.charAt(0).toLowerCase() + label.slice(1)) : runRow(run as LoopRun).chip.toLowerCase()}
             {standIn ? "; its gate was a stand-in, so it has no held-out score" : ""}.
           </>
         ) : (
