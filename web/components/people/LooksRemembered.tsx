@@ -141,7 +141,12 @@ export function LooksRemembered({ memberId }: { memberId: string }) {
             </div>
           )}
         </div>
-      ) : null}
+      ) : (
+        <div className={l.learned} data-guide="people:looks-learned">
+          <h3>What Atlas has learned about your looks</h3>
+          <p className={`${ui.muted} ${ui.small}`}>Nothing yet. Atlas learns only from the looks it remembers, and it remembers none.</p>
+        </div>
+      )}
       {error ? <WriteError error={error} /> : null}
     </div>
   );
