@@ -58,6 +58,7 @@ VERBS: dict[str, str] = {
     "research-check": "lab.machine.research_check:main",
     "resume": "lab.machine.stop:resume_main",
     "review": "lab.machine.review:main",
+    "routing-closed-loop": "lab.routing_closed_loop:main",
     "rulings": "lab.machine.rulings:main",
     "sit": "lab.machine.sit:main",
     "slot": "lab.machine.slots:main",
