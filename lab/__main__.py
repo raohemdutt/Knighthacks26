@@ -52,6 +52,7 @@ VERBS: dict[str, str] = {
     "ledger": "lab.machine.ledger_cli:main",
     "metrics": "lab.machine.metrics_report:main",
     "mirror": "lab.machine.mirror:main",
+    "package": "lab.package:main",
     "placement": "lab.placement:main",
     "pool": "lab.machine.pool:main",
     "ready": "lab.machine.ready:main",
