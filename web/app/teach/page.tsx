@@ -205,7 +205,7 @@ function Form({ onStarted, control }: { onStarted: () => void; control: MutableR
       </label>
       <label className={teach.field}>
         <span className={teach.label}>What should Atlas do with each picture?</span>
-        <textarea className={teach.text} value={instruction} onChange={(e) => setInstruction(e.target.value)} placeholder="Name the small things on the desk, like keys, a wallet or a charger." />
+        <textarea className={teach.text} value={instruction} onChange={(e) => setInstruction(e.target.value)} placeholder="Name the small things on the desk, like a phone, a laptop or a water bottle." />
       </label>
       <div className={teach.field}>
         <span className={teach.label}>Which camera?</span>

@@ -33,15 +33,15 @@ const ARROW = (
 function SeesArt() {
   const boxes = [
     { label: "laptop", score: "0.97", x: 30, y: 30, w: 38, h: 42 },
-    { label: "mug", score: "0.94", x: 73, y: 44, w: 14, h: 26 },
-    { label: "keys", score: "0.91", x: 12, y: 66, w: 13, h: 14 },
+    { label: "water bottle", score: "0.94", x: 73, y: 30, w: 13, h: 40 },
+    { label: "phone", score: "0.91", x: 10, y: 62, w: 16, h: 18 },
   ];
   return (
     <div className={css.cam}>
       <div className={css.camDesk} />
       <div className={css.camLaptop} />
-      <div className={css.camMug} />
-      <div className={css.camKeys} />
+      <div className={css.camBottle} />
+      <div className={css.camPhone} />
       {boxes.map((b, i) => (
         <span key={b.label} className={css.camBox} style={{ left: `${b.x}%`, top: `${b.y}%`, width: `${b.w}%`, height: `${b.h}%`, "--i": i } as React.CSSProperties}>
           <b>
@@ -70,7 +70,7 @@ function RemembersArt() {
           <circle cx="11" cy="11" r="6" />
           <path d="M20 20l-4.5-4.5" />
         </svg>
-        where are my keys?
+        where is my phone?
       </div>
       <div className={css.memoryHit}>
         <span className={css.memoryThumb}>
@@ -193,7 +193,7 @@ const FEATURES: { title: string; text: string; art: ReactNode; size: "wide" | "n
   },
   {
     title: "It remembers",
-    text: "Every episode is kept as plain words and keyframes you can search. Ask where your keys are and get the frame that proves it.",
+    text: "Every episode is kept as plain words and keyframes you can search. Ask where your phone is and get the frame that proves it.",
     art: <RemembersArt />,
     size: "narrow",
   },
@@ -239,7 +239,7 @@ const FLOW: { label: string; sub: string; icon: ReactNode }[] = [
   { label: "Act", sub: "after your yes", icon: <path d="M12 3l7.5 3v5.5c0 4.5-3.2 8-7.5 9.5-4.3-1.5-7.5-5-7.5-9.5V6zM8.5 12l2.5 2.5 4.5-5" /> },
 ];
 
-const QUESTIONS = ["Where are my keys?", "What is due this week?", "What happened at the desk overnight?", "When do I need to leave for class?"];
+const QUESTIONS = ["Where is my phone?", "Where is my water bottle?", "Where did I leave my laptop?", "What is due this week?", "What happened at the desk overnight?", "When do I need to leave for class?"];
 
 /** A question box that hands its question to Ask Atlas (/?q=…), which asks it at once. The placeholder cycles. */
 function AskBox() {

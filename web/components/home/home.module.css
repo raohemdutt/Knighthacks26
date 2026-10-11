@@ -809,36 +809,48 @@
   background: linear-gradient(140deg, #5b8cff55, #a46bff33);
 }
 
-.camMug {
+.camBottle {
   position: absolute;
-  left: 74.5%;
-  top: 47%;
-  width: 10%;
-  height: 21%;
-  border-radius: 3px 3px 9px 9px;
-  background: linear-gradient(90deg, #cfd2d8, #a9adb5);
+  left: 75.5%;
+  top: 38%;
+  width: 9%;
+  height: 30%;
+  border-radius: 30% 30% 5px 5px / 18% 18% 5px 5px;
+  background: linear-gradient(90deg, #8fd0f0cc, #5fa8d6cc);
+  box-shadow: inset 0 -38% 0 #4f9fd8aa;
 }
 
-.camMug::after {
+/* the cap */
+.camBottle::after {
   content: "";
   position: absolute;
-  right: -34%;
-  top: 22%;
-  width: 40%;
-  height: 44%;
-  border: 3px solid #b6bac1;
-  border-left: 0;
-  border-radius: 0 40% 40% 0;
+  left: 28%;
+  top: -16%;
+  width: 44%;
+  height: 16%;
+  border-radius: 3px 3px 0 0;
+  background: #2f7ed8;
 }
 
-.camKeys {
+.camPhone {
   position: absolute;
-  left: 14%;
-  top: 70%;
-  width: 8%;
-  height: 7%;
-  border-radius: 40%;
-  background: radial-gradient(circle at 30% 40%, #f0c76b, #b98a2e);
+  left: 12%;
+  top: 64%;
+  width: 12%;
+  height: 14%;
+  border-radius: 4px;
+  background: #1d2025;
+  box-shadow: inset 0 0 0 2px #3a3f47;
+  transform: rotate(-12deg);
+}
+
+/* the lit screen */
+.camPhone::after {
+  content: "";
+  position: absolute;
+  inset: 14% 10%;
+  border-radius: 2px;
+  background: linear-gradient(140deg, #6fb3ff99, #a46bff66);
 }
 
 .camBox {

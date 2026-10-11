@@ -24,9 +24,9 @@ def test_the_default_box_reports_the_student_profile_with_no_overrides(tmp_path,
         got = c.get("/api/profile").json()
         assert got["name"] == "student" and got["overrides"] == {} and got["vocabulary"]["event"] == "class"
         assert got["words"]["Activity"] == "Study" and got["words"]["event_plural"] == "classes"
-        assert got["suggestions"] == ["Where did I leave my keys?", "What is due this week?", "What happened at our table overnight?",
+        assert got["suggestions"] == ["Where is my phone?", "Where is my water bottle?", "Where did I leave my laptop?", "What is due this week?", "What happened at our table overnight?",
                                       "What should I eat?", "Where should I go tonight?", "How's your day?", "Tell me a joke",
-                                      "I'm stressed about my exam"]  # the Ask screen's chips, as they have always been
+                                      "I'm stressed about my exam"]  # the Ask screen's chips: the demo desk's things first
         board = c.get("/api/dayrun/board", params={"scenario": "demo"}).json()
         titles = {o["title"] for s in board["slots"] for o in s["moves"]}
         assert any(t.startswith("Study at ") for t in titles)

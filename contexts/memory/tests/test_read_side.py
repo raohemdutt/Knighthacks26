@@ -89,6 +89,28 @@ def test_last_seen_keys_is_the_morning_sighting_on_the_desk(memory):
     assert keys.position == "left of the laptop, behind the coffee mug"
 
 
+def test_a_phone_or_water_bottle_is_found_under_the_detectors_name(tmp_path):
+    store = MemoryStore(tmp_path / "memory.sqlite")
+    seen = datetime(2026, 10, 11, 14, 0, tzinfo=NY)
+    store.put_track("cell phone", "cam-desk", 3, seen, "frames:cam-desk:1")
+    store.put_track("bottle", "cam-desk", 4, seen, "frames:cam-desk:1")
+    memory = SqliteMemory(store)
+    assert memory.last_seen("phone").label == "cell phone" and memory.last_seen("phone").frame_ref == "frames:cam-desk:1"
+    assert memory.last_seen("water bottle").label == "bottle"
+    assert memory.last_seen("wallet") is None
+
+
+def test_a_track_with_no_frame_yet_does_not_hide_the_sighting_with_a_picture(tmp_path):
+    store = MemoryStore(tmp_path / "memory.sqlite")
+    store.add_sighting(Sighting(label="laptop", camera_id="cam-desk", zone_id="desk", ts=datetime(2026, 10, 11, 11, 35, tzinfo=NY),
+                                frame_ref="frames:cam-desk:1", position="left of the bottle"))
+    store.put_track("laptop", "cam-desk", 6, datetime(2026, 10, 11, 11, 36, tzinfo=NY), None)
+    memory = SqliteMemory(store)
+    assert (memory.last_seen("laptop").frame_ref, memory.last_seen("laptop").position) == ("frames:cam-desk:1", "left of the bottle")
+    store.put_track("laptop", "cam-desk", 6, datetime(2026, 10, 11, 11, 37, tzinfo=NY), "frames:cam-desk:2")
+    assert memory.last_seen("laptop").frame_ref == "frames:cam-desk:2"  # once the track has a frame, it is the newer answer
+
+
 def test_window_groups_by_hour(memory):
     window = memory.window(datetime(2026, 10, 10, 13, tzinfo=NY), datetime(2026, 10, 10, 16, tzinfo=NY))
     assert [b.hour for b in window.hours] == [datetime(2026, 10, 10, h, tzinfo=NY) for h in (13, 14, 15)]

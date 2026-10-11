@@ -43,7 +43,9 @@ export const STUDENT_PROFILE: Profile = {
   scenario: "demo",
   // The Ask screen's chips. A box that sends no list (an older build) keeps these.
   suggestions: [
-    "Where did I leave my keys?",
+    "Where is my phone?",
+    "Where is my water bottle?",
+    "Where did I leave my laptop?",
     "What is due this week?",
     "What happened at our table overnight?",
     "What should I eat?",

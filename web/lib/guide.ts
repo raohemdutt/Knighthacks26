@@ -381,12 +381,16 @@ export function thingName(thing: string): string {
   return thing.split(" ").filter((w) => !FILLER.has(w)).join(" ") || thing;
 }
 
-/** The labels the box may know a thing by, most likely first: "my key" -> ["key", "keys"]; "the coffee mugs" -> ["coffee mugs", "coffee mug", "mugs", "mug"]. */
+/** The detector's (COCO) class for what a person calls a thing; memory's DETECTOR_NAMES says the same. */
+const DETECTOR_NAMES: Record<string, string> = { phone: "cell phone", phones: "cell phone", cellphone: "cell phone", "mobile phone": "cell phone" };
+
+/** The labels the box may know a thing by, most likely first: "my key" -> ["key", "keys"]; "the coffee mugs" -> ["coffee mugs", "coffee mug", "mugs", "mug"]; "my phone" -> [..., "cell phone"]. */
 export function labelsFor(thing: string): string[] {
   const name = thingName(thing);
   const forms = (w: string) => (w.length > 3 && w.endsWith("s") ? [w, w.slice(0, -1)] : [w, `${w}s`]);
   const last = name.split(" ").pop() ?? name;
-  return [...new Set([...forms(name), ...(last !== name ? forms(last) : [])])].filter(Boolean);
+  const detector = DETECTOR_NAMES[name] ?? DETECTOR_NAMES[last];
+  return [...new Set([...forms(name), ...(last !== name ? forms(last) : []), ...(detector ? [detector] : [])])].filter(Boolean);
 }
 
 /** Was it asked as the person's own thing ("my keys", "our charger")? A name ("Dominick") or a place is not. */

@@ -557,9 +557,10 @@ if (room) console.log(`        ${room.title}: ${room.furniture.length} pieces of
 await check("GET /api/room/live", "GET", "/api/room/live", ROOM_LIVE, { optional: NO_ROOM });
 
 console.log("\nRoom map");
-for (const label of ["keys", "wallet", "charger", "laptop", "phone"]) {
-  const s = await check(`GET /memory/objects/${label}/last-seen`, "GET", `/memory/objects/${label}/last-seen`, SIGHTING, { optional: { 404: "never seen" } });
-  if (s) console.log(`        ${s.camera_id} / ${s.zone_id ?? "no zone"}: ${s.position ?? "no position text"}`);
+for (const label of ["phone", "laptop", "water bottle"]) {
+  const path = `/memory/objects/${encodeURIComponent(label)}/last-seen`;
+  const s = await check(`GET ${path}`, "GET", path, SIGHTING, { optional: { 404: "never seen" } });
+  if (s) console.log(`        ${s.label} on ${s.camera_id} / ${s.zone_id ?? "no zone"}: ${s.position ?? "no position text"}, frame ${s.frame_ref || "none"}`);
 }
 {
   const r = await call("GET", "/api/zones");

@@ -24,6 +24,8 @@ from contracts.memory import Episode, EpisodeWindow, Item, MemoryStats, SearchHi
 # Question words that match every caption and only add noise to the ranking.
 STOPWORDS = frozenset("the and did does was were are has have had where what when who how for with any there you our about".split())
 RRF_K = 60  # reciprocal rank fusion: a result scores 1 / (RRF_K + rank) in each ranking that has it
+# What a person calls a thing -> the detector's (COCO) class for it, tried when nothing was seen under the asked name.
+DETECTOR_NAMES = {"phone": "cell phone", "cellphone": "cell phone", "mobile phone": "cell phone", "water bottle": "bottle"}
 
 
 def fts_query(q: str) -> str:
@@ -74,10 +76,17 @@ class SqliteMemory:
     def last_seen(self, label: str) -> Sighting | None:
         """The latest object-list sighting (it has a text position), unless the detector tracked the label after it.
 
-        A track gives the camera, the zone its zone events put it in, the time and the frame, and no position."""
+        A track gives the camera, the zone its zone events put it in, the time and the frame, and no position.
+        "phone" falls back to the detector's "cell phone" (DETECTOR_NAMES) when nothing was seen as "phone"."""
+        s = self._last_seen(label)
+        alias = DETECTOR_NAMES.get(label.strip().lower())
+        return s if s or not alias else self._last_seen(alias)
+
+    def _last_seen(self, label: str) -> Sighting | None:
         row = self.db.execute("SELECT * FROM memory_sightings WHERE label = ? ORDER BY ts DESC, id LIMIT 1", (label,)).fetchone()
         track = self.db.execute("SELECT * FROM memory_tracks WHERE label = ?", (label,)).fetchone()
-        if track and (row is None or track["ts"] > row["ts"]):
+        # a track whose frame is not stored yet would answer without a picture: the last sighting with one is better
+        if track and (row is None or (track["ts"] > row["ts"] and track["frame_ref"])):
             return Sighting(label=label, camera_id=track["camera_id"], zone_id=track["zone_id"], ts=parse(track["ts"]),
                             frame_ref=track["frame_ref"] or "", box=self.store.box_of(track["frame_ref"], label) if track["frame_ref"] else None)
         if row is None:
