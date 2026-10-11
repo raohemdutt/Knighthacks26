@@ -492,6 +492,9 @@ Account C's pod on SJC (`roscon01`), pod A, runs the teacher, at
 The GPU is a Radeon 8060S (Strix Halo, gfx1151, RDNA 3.5) with 64 GB of memory shared with the CPU. The same
 `lab/pod_a_teacher.sh` builds and serves it; what differs from the R9700 recipe above:
 
+- Tool calling: `serve` passes `--enable-auto-tool-choice --tool-call-parser "$TOOL_PARSER"` (default `qwen3_coder`, the parser for
+  the `<tool_call><function=...>` blocks this checkpoint's chat template writes; `hermes` expects JSON there). Without them a tool
+  call comes back as text in `content` and `lab/label.py` rejects it.
 - Build target and size: `PYTORCH_ROCM_ARCH` comes from `rocminfo` (gfx1151), and compile jobs are capped by RAM
   (20 jobs on 32 threads and 62 GB instead of 48). The build took 4 min 18 s on the pod's local disk (about an
   hour on DUB's NFS home). `cmake` is pinned below 4 as vLLM asks, and a pip constraint holds the image's torch
