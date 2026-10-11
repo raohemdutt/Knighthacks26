@@ -3,6 +3,7 @@
     python -m lab.profile_train self-check --quick [--out DIR]     # this machine: parser and writer on the fixtures
     python -m lab.profile_train run --dataset D --rows R --model M [--cpu] [--steps 20] [--out DIR] [-- TRAIN ARGS]
     python -m lab.profile_train ingest RUN_DIR [--chip-sheet FILE] [--out DIR] [--no-ledger] [--force]
+    python -m lab.profile_train record RESULT_JSON [--out DIR]     # a result made on the pod: file it, ledger row
 
 `python -m lab profile-train ...` is the same. Every call answers with one JSON line and exits 0 when it worked.
 
@@ -925,52 +926,110 @@ def child_main(args: argparse.Namespace) -> dict[str, Any]:
     return answer
 
 
-def train_argv(args: argparse.Namespace, out: Path) -> list[str]:
-    argv = ["--dataset", args.dataset, "--rows", args.rows, "--model", args.model, "--max-steps", str(args.steps),
+def train_argv(args: argparse.Namespace, out: Path, dataset: str, rows: str) -> list[str]:
+    argv = ["--dataset", dataset, "--rows", rows, "--model", args.model, "--max-steps", str(args.steps),
             "--out", str(out)]
     if args.cpu:
         argv.append("--cpu")
     return argv + [a for a in args.train_args if a != "--"]
 
 
+def pass_data(args: argparse.Namespace, out: Path, name: str) -> tuple[str, str]:
+    """The dataset and rows a pass trains on. On the pod lab/train.py deletes its data however a run ends, so each
+    pass trains on a copy of its own (deleted by that pass) and the originals are deleted once every pass is done;
+    a --cpu rehearsal keeps its data and trains on the originals."""
+    if args.cpu:
+        return args.dataset, args.rows
+    source = Path(args.dataset).expanduser()
+    folder = out / f"data-{name}" / source.name
+    if folder.exists():
+        shutil.rmtree(folder)
+    shutil.copytree(source, folder)
+    rows = out / f"data-{name}" / "rows.jsonl"
+    shutil.copyfile(Path(args.rows).expanduser(), rows)
+    return str(folder), str(rows)
+
+
+def _read_meta(out: Path) -> dict[str, Any]:
+    try:
+        return json.loads((out / "profile.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
 def run_main(args: argparse.Namespace) -> dict[str, Any]:
     """lab/train.py for --steps steps under the torch profiler in a process of its own, then under rocprofv3 when
-    it is on PATH (not with --cpu), then the ingest of the folder."""
+    it is on PATH (not with --cpu), then the ingest of the folder. --passes picks the passes, so each fits a slot;
+    a second call with the same --out adds its pass to the folder."""
     stamp = dt.datetime.now(dt.timezone.utc)
-    out = Path(args.out or f"train-profile-{stamp:%Y%m%dT%H%M%SZ}").resolve()
+    out = Path(args.out or f"train-profile-{stamp:%Y%m%dT%H%M%SZ}").expanduser().resolve()
     out.mkdir(parents=True, exist_ok=True)
-    meta = {"cpu": bool(args.cpu), "date": stamp.date().isoformat(), "steps": args.steps,
-            "started": stamp.isoformat(timespec="seconds")}
+    meta = _read_meta(out)
+    meta.update({"cpu": bool(args.cpu), "steps": args.steps})
+    meta.setdefault("date", stamp.date().isoformat())
+    meta.setdefault("started", stamp.isoformat(timespec="seconds"))
+    tools = meta.setdefault("tools", {})
     (out / "profile.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
     me = [sys.executable, "-m", "lab.profile_train", "_child"]
-    torch_cmd = [*me, "--mode", "torch", "--trace-dir", str(out / "torch"), *(["--cpu"] if args.cpu else []), "--",
-                 *train_argv(args, out / "train")]
-    env = {**os.environ, "PYTHONPATH": os.pathsep.join([str(REPO), os.environ.get("PYTHONPATH", "")]).rstrip(os.pathsep)}
-    done = subprocess.run(torch_cmd, cwd=str(REPO), env=env, capture_output=True, text=True, check=False)
-    (out / "torch.log").write_text(done.stderr[-200000:], encoding="utf-8")
-    tools = {"torch": {"ok": done.returncode == 0, "rc": done.returncode}}
-    if done.returncode != 0:
-        tools["torch"]["error"] = (done.stdout.strip().splitlines() or [done.stderr[-400:]])[-1][:400]
-    if (out / "train" / "run.json").is_file():
-        shutil.copy(out / "train" / "run.json", out / "run.json")
-    rocprof = shutil.which("rocprofv3")
-    if rocprof and not args.cpu and not args.no_rocprof:
-        cmd = [rocprof, "--kernel-trace", "--memory-copy-trace", "--output-format", "csv", "-d", str(out / "rocprof"),
-               "--", *me, "--mode", "rocprof", "--", *train_argv(args, out / "train-rocprof")]
+    env = {**os.environ, "PYTHONPATH": os.pathsep.join(p for p in (str(REPO), os.environ.get("PYTHONPATH")) if p)}
+    if "torch" in args.passes:
+        dataset, rows = pass_data(args, out, "torch")
+        cmd = [*me, "--mode", "torch", "--trace-dir", str(out / "torch"), *(["--cpu"] if args.cpu else []), "--",
+               *train_argv(args, out / "train", dataset, rows)]
         done = subprocess.run(cmd, cwd=str(REPO), env=env, capture_output=True, text=True, check=False)
-        (out / "rocprof.log").write_text(done.stderr[-200000:], encoding="utf-8")
-        tools["rocprofv3"] = {"ok": done.returncode == 0, "rc": done.returncode}
-    else:
-        tools["rocprofv3"] = {"ok": False, "skipped": "--cpu" if args.cpu else "--no-rocprof" if args.no_rocprof
-                              else "not on PATH"}
-    meta["tools"] = tools
+        (out / "torch.log").write_text(done.stderr[-200000:], encoding="utf-8")
+        tools["torch"] = {"ok": done.returncode == 0, "rc": done.returncode}
+        if done.returncode != 0:
+            tools["torch"]["error"] = (done.stdout.strip().splitlines() or [done.stderr[-400:]])[-1][:400]
+        if (out / "train" / "run.json").is_file():
+            shutil.copy(out / "train" / "run.json", out / "run.json")
+    if "rocprof" in args.passes:
+        rocprof = shutil.which("rocprofv3")
+        if rocprof and not args.cpu:
+            dataset, rows = pass_data(args, out, "rocprof")
+            cmd = [rocprof, "--kernel-trace", "--memory-copy-trace", "--output-format", "csv", "-d",
+                   str(out / "rocprof"), "--", *me, "--mode", "rocprof", "--",
+                   *train_argv(args, out / "train-rocprof", dataset, rows)]
+            done = subprocess.run(cmd, cwd=str(REPO), env=env, capture_output=True, text=True, check=False)
+            (out / "rocprof.log").write_text(done.stderr[-200000:], encoding="utf-8")
+            tools["rocprofv3"] = {"ok": done.returncode == 0, "rc": done.returncode}
+        else:
+            tools["rocprofv3"] = {"ok": False, "skipped": "--cpu" if args.cpu else "not on PATH"}
+    if not args.cpu and not args.keep_data:
+        from lab import train
+
+        deleted, how = train.delete_data(args.dataset, args.rows)
+        meta["data_deleted"] = "yes" if deleted else f"no: {how}"
     (out / "profile.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
-    if not tools["torch"]["ok"]:
-        return {"ok": False, "outcome": "train_failed", "dir": str(out), "tools": tools}
-    answer = ingest(out, out_dir=args.results or (out / "result" if args.cpu else None), chip_sheet=args.chip_sheet,
-                    ledger=not args.no_ledger, force=args.force)
-    answer.update(dir=str(out), tools=tools)
+    if not (tools.get("torch") or {}).get("ok"):
+        return {"ok": False, "outcome": "train_failed", "dir": str(out), "tools": tools,
+                "data_deleted": meta.get("data_deleted")}
+    answer = ingest(out, out_dir=args.results, chip_sheet=args.chip_sheet, ledger=not args.no_ledger,
+                    force=True)
+    answer.update(dir=str(out), tools=tools, data_deleted=meta.get("data_deleted"))
     return answer
+
+
+def record_main(args: argparse.Namespace) -> dict[str, Any]:
+    """A result written on the pod (with --no-ledger) brought back: copy it and its Markdown into the data folder
+    and write its ledger row here."""
+    from lab.machine.record import record
+
+    source = Path(args.result)
+    result = json.loads(source.read_text(encoding="utf-8"))
+    problems = check_result(result)
+    if problems:
+        return {"ok": False, "outcome": "invalid", "problems": problems}
+    json_path, md_path = write_outputs(result, args.out or DATA_DIR, force=args.force)
+    try:
+        where = str(json_path.resolve().relative_to(REPO)).replace("\\", "/")
+    except ValueError:
+        where = str(json_path)
+    seqs = [record(row["verb"], row["outcome"], row["metrics"], row["refs"], task=TASK, node=row["node"],
+                   units=row["units"], conditions=row["conditions"], source=row["source"],
+                   low_confidence=row["low_confidence"], note=row["note"]) for row in ledger_rows(result, where)]
+    return {"ok": True, "outcome": "recorded", "json": str(json_path), "markdown": str(md_path),
+            "ledger_seqs": seqs}
 
 
 # --- the entry point ------------------------------------------------------------------------------------------------
@@ -991,7 +1050,9 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--out", default=None, help="the run folder (default ./train-profile-<UTC stamp>)")
     run.add_argument("--results", default=None, help="where the JSON and Markdown go (default the data folder)")
     run.add_argument("--chip-sheet", default=None)
-    run.add_argument("--no-rocprof", action="store_true")
+    run.add_argument("--passes", type=lambda t: [x for x in t.split(",") if x], default=["torch", "rocprof"],
+                     help="comma list of torch and rocprof (default both)")
+    run.add_argument("--keep-data", action="store_true", help=argparse.SUPPRESS)   # tests: keep the originals
     run.add_argument("--no-ledger", action="store_true")
     run.add_argument("--force", action="store_true")
     run.add_argument("train_args", nargs=argparse.REMAINDER, help="after --: more lab/train.py arguments")
@@ -1003,6 +1064,11 @@ def build_parser() -> argparse.ArgumentParser:
     ing.add_argument("--warmup", type=int, default=None, help="steps left out of the means (default 2 of 6 or more)")
     ing.add_argument("--no-ledger", action="store_true")
     ing.add_argument("--force", action="store_true")
+
+    rec = sub.add_parser("record", help="a result JSON from the pod -> the data folder and its ledger row")
+    rec.add_argument("result")
+    rec.add_argument("--out", default=None)
+    rec.add_argument("--force", action="store_true")
 
     child = sub.add_parser("_child", help=argparse.SUPPRESS)
     child.add_argument("--mode", choices=("torch", "rocprof"), default="torch")
@@ -1019,7 +1085,7 @@ def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
     if args.cmd == "_child":
         args.train_args = [a for a in args.train_args if a != "--"]
         return child_main(args)
-    handlers = {"self-check": quick_main, "run": run_main}
+    handlers = {"self-check": quick_main, "run": run_main, "record": record_main}
     try:
         if args.cmd == "ingest":
             return ingest(args.run_dir, out_dir=args.out, chip_sheet=args.chip_sheet, ledger=not args.no_ledger,
