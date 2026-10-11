@@ -27,10 +27,10 @@ export async function loadHuman() {
 // Who wears what: per-person palettes (clothes by body region, painted per vertex from the skin weights) and hair.
 export const LOOKS = {
   hemdutt: { shirt: 0x5b7fb8, pants: 0x3d4656, shoes: 0xf1f3f6, skin: 0xb98a6a, hair: "Hair_SimpleParted", hairColor: 0x2a211c },
-  ilan: { shirt: 0x6f9a7a, pants: 0x55606f, shoes: 0x2f343b, skin: 0xe2bc9c, hair: "Hair_Long", hairColor: 0x4a3426 },
-  dominick: { shirt: 0xc98b5e, pants: 0x2f3a4a, shoes: 0xe9edf2, skin: 0xd8ad8a, hair: "Hair_SimpleParted", hairColor: 0x3a2a20 },
-  xander: { shirt: 0xe5d54a, pants: 0x3a4250, shoes: 0x4a3a2a, skin: 0xe7c3a5, hair: "Hair_SimpleParted", hairColor: 0x7a5a3a }, // hi-vis
-  trainee: { shirt: 0xd9e05a, pants: 0x4a4f5a, shoes: 0x3a3a3a, skin: 0x9a6a4a, hair: "Hair_SimpleParted", hairColor: 0x1e1a18 },
+  ilan: { shirt: 0x6f9a7a, pants: 0x55606f, shoes: 0x2f343b, skin: 0xe2bc9c, hair: "Hair_SimpleParted", hairColor: 0x2a211c },
+  dominick: { shirt: 0xc98b5e, pants: 0x2f3a4a, shoes: 0xe9edf2, skin: 0xd8ad8a, hair: "Hair_SimpleParted", hairColor: 0x2a211c },
+  xander: { shirt: 0xe5d54a, pants: 0x3a4250, shoes: 0x4a3a2a, skin: 0xe7c3a5, hair: "Hair_SimpleParted", hairColor: 0x2a211c }, // hi-vis
+  trainee: { shirt: 0xd9e05a, pants: 0x4a4f5a, shoes: 0x3a3a3a, skin: 0x9a6a4a, hair: "Hair_SimpleParted", hairColor: 0x2a211c },
 };
 const REGION = (name) => /Head|neck/.test(name) ? "skin" : /hand|index|middle|pinky|ring|thumb|lowerarm/.test(name) ? "skin"
   : /foot|ball/.test(name) ? "shoes" : /thigh|calf|pelvis/.test(name) ? "pants" : "shirt";
@@ -47,20 +47,31 @@ export function makeHuman(gltf, outfit = LOOKS.hemdutt) {
   // that moves it most, and the fragment shader takes the strongest region, so the edges (the collar, the sleeves,
   // the shoes) are crisp instead of a colour fading across the triangles that straddle them.
   const main = matte({ color: 0xffffff, roughness: 0.8 });
-  const RC = { uSkin: { value: new THREE.Color(outfit.skin) }, uShirt: { value: new THREE.Color(outfit.shirt) }, uPants: { value: new THREE.Color(outfit.pants) }, uShoes: { value: new THREE.Color(outfit.shoes) } };
+  const RC = { uSkin: { value: new THREE.Color(outfit.skin) }, uShirt: { value: new THREE.Color(outfit.shirt) }, uPants: { value: new THREE.Color(outfit.pants) }, uShoes: { value: new THREE.Color(outfit.shoes) },
+    uNeck: { value: new THREE.Vector3(0, 1.5, 0) } }; // the neck bone's bind position (metres): the crew neck is built round it
   main.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, RC);
     sh.vertexShader = `attribute vec4 region;
 varying vec4 vRegion;
+varying vec3 vBindPos;
 ` + sh.vertexShader.replace("#include <begin_vertex>", `#include <begin_vertex>
-  vRegion = region;`);
+  vRegion = region; vBindPos = position;`);
     sh.fragmentShader = `varying vec4 vRegion;
-uniform vec3 uSkin; uniform vec3 uShirt; uniform vec3 uPants; uniform vec3 uShoes;
+varying vec3 vBindPos;
+uniform vec3 uSkin; uniform vec3 uShirt; uniform vec3 uPants; uniform vec3 uShoes; uniform vec3 uNeck;
 ` + sh.fragmentShader.replace("#include <color_fragment>", `#include <color_fragment>
-  { vec3 rc = uShirt; float m = vRegion.y;
-    if (vRegion.x > m) { m = vRegion.x; rc = uSkin; }
-    if (vRegion.z > m) { m = vRegion.z; rc = uPants; }
-    if (vRegion.w > m) { m = vRegion.w; rc = uShoes; }
+  { vec3 rc = uShirt; float m = vRegion.y; int k = 1;
+    if (vRegion.x > m) { m = vRegion.x; rc = uSkin; k = 0; }
+    if (vRegion.z > m) { m = vRegion.z; rc = uPants; k = 2; }
+    if (vRegion.w > m) { m = vRegion.w; rc = uShoes; k = 3; }
+    // A round crew neck: near the neck (not the arms), the neck is skin inside a cylinder round the neck bone, down to
+    // a line just below the neck's base that dips a little at the front; the shoulders around it are shirt.
+    if ((k == 0 || k == 1) && abs(vBindPos.x - uNeck.x) < 0.2 && abs(vBindPos.y - uNeck.y) < 0.16) {
+      float r = length(vBindPos.xz - uNeck.xz);
+      float low = uNeck.y - 0.035 - 0.02 * smoothstep(0.0, 0.08, vBindPos.z - uNeck.z);
+      bool skin = vBindPos.y > uNeck.y + 0.07 || (r < 0.07 && vBindPos.y > low);
+      rc = skin ? uSkin : uShirt;
+    }
     diffuseColor.rgb *= rc; }`);
   };
   main.customProgramCacheKey = () => "atlas-person-regions";
@@ -91,6 +102,8 @@ uniform vec3 uSkin; uniform vec3 uShirt; uniform vec3 uPants; uniform vec3 uShoe
   const hi = skinned ? skinned.skeleton.bones.indexOf(bones.Head) : -1;
   const bindHead = hi >= 0 ? skinned.skeleton.boneInverses[hi].clone().invert() : new THREE.Matrix4();
   const headY = new THREE.Vector3().setFromMatrixPosition(bindHead).y;
+  const ni = skinned ? skinned.skeleton.bones.indexOf(bones.neck_01) : -1;
+  if (ni >= 0) RC.uNeck.value.setFromMatrixPosition(skinned.skeleton.boneInverses[ni].clone().invert());
   const headBox = new THREE.Box3(), vtx = new THREE.Vector3();
   for (const sk of skins) { // the mannequin is several skinned meshes (one per primitive): measure the head across all
     const pos = sk.geometry.attributes.position;
