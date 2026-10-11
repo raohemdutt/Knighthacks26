@@ -1,0 +1,40 @@
+{
+  "window_seq": [
+    38094,
+    38158
+  ],
+  "window_samples": 65,
+  "window_s": 64.0,
+  "job_wall_s": 62.6,
+  "mean_socket_w": 109.4,
+  "peak_socket_w": 129.0,
+  "idle_w_before": 10.0,
+  "energy_j_trapezoid_window": 7090.0,
+  "energy_j_mean_w_x_wall": 6851.0,
+  "examples": 200,
+  "prompt_tokens": 21606,
+  "completion_tokens": 627,
+  "tokens": 22233,
+  "j_per_completion_token": 10.93,
+  "j_per_token_prompt_plus_completion": 0.308,
+  "j_per_example": 34.3,
+  "examples_per_s": 3.19,
+  "completion_tok_s": 10.02,
+  "tokens_per_s_all": 355.2,
+  "one_stream_from_r60": {
+    "basis": "R60 batch 1 rows (metrics.jsonl 187-191 on main): per example TTFT 0.9399 s + completion at 12.3264 tok/s, at 96.72 W",
+    "wall_s": 238.8,
+    "energy_j": 23102.0,
+    "j_per_completion_token": 36.85,
+    "j_per_example": 115.5,
+    "decode_only_j_per_token_r60": 8.8161
+  },
+  "one_worker_measured_s3": {
+    "examples": 200,
+    "sum_request_s": 115.5,
+    "first_ts": "2026-10-11T07:02:53Z",
+    "last_ts": "2026-10-11T07:04:49Z"
+  },
+  "speedup_wall_vs_r60_one_stream": 3.82,
+  "energy_ratio_16_vs_1": 0.297
+}

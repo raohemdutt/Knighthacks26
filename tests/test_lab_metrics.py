@@ -307,6 +307,23 @@ EXPECTED_SEED = [
     ("telemetry.joules_per_answer", "pod-a", {"policy": "energy", "requests": 100}, 247.4741, "J", True),
     ("label.seconds", "pod-a", {"policy": "energy", "requests": 100}, 13.371, "s", False),
     ("learning.label_agreement", "pod-a", {"policy": "energy", "requests": 100}, 0.72, "fraction", False),
+    # L10: the pooled labeling job on the pod C teacher at 16 streams (measured), and at 1 stream (computed from R60)
+    ("label_pool.wall_s", "pod-a", {"streams": 16}, 62.6, "s", False),
+    ("label_pool.examples_per_s", "pod-a", {"streams": 16}, 3.19, "examples/s", False),
+    ("label_pool.watts_avg", "pod-a", {"streams": 16}, 109.4, "W", False),
+    ("label_pool.energy_j", "pod-a", {"streams": 16}, 6851.0, "J", False),
+    ("label_pool.joules_per_completion_token", "pod-a", {"streams": 16}, 10.93, "J/token", False),
+    ("label_pool.joules_per_token_all", "pod-a", {"streams": 16}, 0.308, "J/token", False),
+    ("label_pool.joules_per_example", "pod-a", {"streams": 16}, 34.3, "J/example", False),
+    ("label_pool.wall_s", "pod-a", {"streams": 1}, 238.8, "s", True),
+    ("label_pool.energy_j", "pod-a", {"streams": 1}, 23102.0, "J", True),
+    ("label_pool.joules_per_completion_token", "pod-a", {"streams": 1}, 36.85, "J/token", True),
+    ("label_pool.joules_per_example", "pod-a", {"streams": 1}, 115.5, "J/example", True),
+    # L10: the group fine-tune smoke run s3 on pod D (4 LoRA steps, stand-in gate)
+    ("group_finetune.run_wall_s", "pod-b", {"run_id": "s3"}, 243.0, "s", False),
+    ("group_finetune.train_s", "pod-b", {"run_id": "s3"}, 53.2, "s", False),
+    ("group_finetune.train_energy_j", "pod-b", {"run_id": "s3"}, 3155.265, "J", False),
+    ("group_finetune.train_watts_avg", "pod-b", {"run_id": "s3"}, 60.811, "W", False),
 ]
 
 # The numbers the lab setup measured, by metric name.
@@ -379,7 +396,9 @@ def test_every_low_confidence_seed_row_says_why():
         # E29: llama.cpp on pod D, cut short (1 to 3 runs per batch size) and one llama-bench call
         "teacher_llamacpp." + name
         for name in ("decode_tok_s", "decode_tok_s_total", "ttft_s", "joules_per_token", "watts_avg", "watts_peak",
-                     "llama_bench_pp512_tok_s", "llama_bench_tg128_tok_s")}
+                     "llama_bench_pp512_tok_s", "llama_bench_tg128_tok_s")} | {
+        # L10: the pooled labeling job at 1 stream, computed from R60's batch-1 rows, not run
+        "label_pool." + name for name in ("wall_s", "energy_j", "joules_per_completion_token", "joules_per_example")}
     for row in flagged:
         if row["conditions"].get("sampler") == SAMPLER:  # the sampler's rows: its error is "unknown" until a reference run
             assert row["conditions"]["error"] == "unknown", row["metric"]

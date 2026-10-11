@@ -30,6 +30,7 @@ adding one touches no shared file but this list.
 - [`eval-gate`](docs/eval-gate.md): Score current, candidate and teacher on the frozen held-out set and decide deploy or reject (L4).
 - [`experiment`](docs/experiment.md): Experiments as ledger rows: add, list, result (read by the verdict math), rank, and T0's checklist (--print).
 - [`gpu-power`](docs/gpu-power.md): Summarize pod GPU power samples, or store a window of them as a ledger row: summary | record.
+- [`group-finetune`](docs/group-finetune.md): Group fine-tune (L10): pool a Circle's opt-in exports, label, train one LoRA, gate per member, offer to all.
 - [`handoff`](docs/handoff.md): End the session: leave the owner a note (no sitting reads it) and record the handoff in the ledger.
 - [`interference`](docs/interference.md): Teacher decode and a LoRA run on one chip: alone and together (plan, pod script, collect).
 - [`lab-push`](docs/lab-push.md): Post a training run's steps, a gate's scores, a package's manifest and the lab's ledger to the box's Learning lab.
@@ -1854,3 +1855,63 @@ and downloads the base at its pinned commit to `~/models/Qwen3.5-4B`; `train <ru
 and leaves the adapter, telemetry, `run.json`, the log and the ledger rows in `~/adapters/l16-<run id>/`.
 `fixtures/demo/` holds what came back: the trainer log, the loss curve, the ledger rows and the screen recording the
 "It learns" fallback uses (owner ruling 7).
+
+## Group fine-tune (L10)
+
+`python -m lab group-finetune` trains one LoRA on the pooled opt-in exports of a Circle's members on the network GPU
+(pod D) and offers the packaged group model to every box in the Circle, with rollback. `lab/group_finetune.py` holds
+the steps (pool, merge, split, label, rows, train, package, gate, offer, delete); `lab/docs/group-finetune.md` the
+arguments; `lab/pod_b_group_finetune.sh` the pod side; `tests/test_lab_group_finetune.py` runs the whole flow on the
+two-member fixture pool `fixtures/learning/group-pool/` with every outside call faked (teacher, trainer, packaging
+toolchain, gate scorer, model servers, boxes).
+
+The pool on pod D is `~/pool/<circle>/<task>/`: `pool.json` is the roster (every member of the Circle, an uploader or
+not, and the model version each box serves now, which is that box's rollback version), and `<member>/<dataset_id>/`
+is one approved export as the box wrote it (`manifest.json` with the approval's action id, `examples.jsonl`, the
+blurred `images/`). The run labels the pooled set with the teacher through `lab/label.py` (L13's path), trains with
+`lab/train.py` (L3's flags, R36's baseline), packages with `lab/package.py` (L5), and runs `lab/eval_gate.py` (L4)
+once per member against that member's current model on the pooled held-out side (each uploader's frames are on it).
+A desk-objects run is scored by `lab/desk_score.py` through `DeskGateClient` (the gate has no registered desk
+scorer); the teacher's score goes through the hub proxy with the token. `group_offer.json` in the package folder lists
+every member with their gate decision (`recommended` when the gate deploys against their current model, `available`
+when it does not, `unscored` when their current model could not be served) and rollback version. The pooled exports
+and every copy are deleted on every way out, and a `group-finetune.delete` row says so; `--keep` is refused on a pod.
+
+Live sequence (pod D is account D; the teacher is pod C at `https://sjc.aupcloud.io/user/roscon01/proxy/8000`):
+
+```
+# 0. prerequisites on pod D, once: the L16 venv and base (bash lab/l16_run.sh prep), a llama.cpp tree and build (LLAMA_SRC,
+#    LLAMA_BUILD; on pod D today ~/e29/llama.cpp and its build-hip, prep links them and builds llama-quantize on the CPU),
+#    the base projector at ~/models/Qwen3.5-4B-GGUF/mmproj-F16.gguf, and each member's current model as a package
+#    under ~/data/packages/<current version>/ (atlas-base: the stock Q4_K_M and mmproj, manifest by jetson/make_manifest.py)
+# 1. workstation: the bundle, pushed to pod D, unpacked
+bash lab/pod_b_group_finetune.sh bundle
+python -m lab.transfer push-file --account D ../L10-data/l10-bundle.tar.gz l10/l10-bundle.tar.gz
+python -m lab.controller run-script --account D lab/pod_b_group_finetune.sh prep
+# 2. pod D: the Circle's roster (the third member uploads nothing)
+python -m lab.controller run-script --account D lab/pod_b_group_finetune.sh roster circle-knights desk-objects \
+    ilan=atlas-base dom=atlas-base rao=atlas-base
+# 3. box 1 and box 2: each person approves the export card on the phone (Teach -> export), then the box uploads it
+python -m lab.transfer push-dataset --account D data/exports/<dataset_id> --to pool/circle-knights/desk-objects/<member>
+# 4. pod D: the plan, with each member's count
+python -m lab.controller run-script --account D lab/pod_b_group_finetune.sh status circle-knights desk-objects
+# 5. the GPU Queue slot, then the run inside it (TEACHER_TOKEN is the pod C hub token; never printed or written)
+python -m lab slot request --task L10 --what "group fine-tune: one LoRA on pooled exports" --kind lora --minutes 60 \
+    --why "label, train, package and gate run as one job" --measured "<L16 wall time>"
+python -m lab slot start --row <row>
+GPU_SLOT=<row> TEACHER_TOKEN=<token> bash ~/l10/src/lab/pod_b_group_finetune.sh run circle-knights desk-objects g1
+# a smoke inside a 15-minute row: L10_STEPS=4 GATE=fake MIN_HELD_OUT=1 GPU_SLOT=... TEACHER_TOKEN=... bash ... run ... s1
+python -m lab slot done --row <row> --result "<members, examples, scores per member>"
+# 6. pod D: serve the package to the boxes
+bash ~/l10/src/lab/pod_b_group_finetune.sh serve
+# 7. every box, including rao who uploaded nothing: the offer, then take it (pull, swap, rollback on a failed swap)
+python -m lab.transfer pull-file --account D data/packages/atlas-group-desk-objects-g1/group_offer.json data/group_offer.json
+python -m lab group-finetune take --offer data/group_offer.json --member <member> --account D
+python -m lab group-finetune take --offer data/group_offer.json --member <member> --rollback     # back to the old model
+```
+
+What the demo shows: two phones approve an export card for the same task; the pod D log shows the pool (2 uploaders,
+their example counts, a third member with none), the teacher labeling, one LoRA training, the gate's current,
+candidate and teacher scores for each member, and `ls ~/pool/circle-knights/desk-objects` holding only `pool.json`
+afterwards; then the third box, which uploaded nothing, takes the group model and switches back with one command.
+`~/group-runs/<run id>/` keeps the log, the gate's scores, `metrics.jsonl` and a copy of the ledger rows.

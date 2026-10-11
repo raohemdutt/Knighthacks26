@@ -1,0 +1,14 @@
+{
+  "dataset_id": "desk-objects-dom-0001",
+  "spec": {
+    "task": "desk-objects",
+    "instruction": "Name the one object on the desk in this picture. Reply with only its name.",
+    "output_schema": {},
+    "camera": null,
+    "label": null,
+    "examples": []
+  },
+  "created": "2026-10-11T10:00:00Z",
+  "examples": 8,
+  "action_id": "approval-dom-0001"
+}

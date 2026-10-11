@@ -1,0 +1,132 @@
+{
+  "version": 1,
+  "circle": "circle-knights",
+  "task": "desk-objects",
+  "run_id": "s3",
+  "model_version": "atlas-group-desk-objects-s3",
+  "created": "2026-10-11T07:06:55.546463+00:00",
+  "account": "D",
+  "gate_mode": "fake",
+  "members": [
+    {
+      "member": "ilan",
+      "uploaded_examples": 100,
+      "exports": [
+        "desk-objects-ilan-smoke"
+      ],
+      "current_version": "atlas-base",
+      "rollback_version": "atlas-base",
+      "status": "recommended",
+      "gate": {
+        "decision": "deploy",
+        "scores": {
+          "current": 0.0,
+          "candidate": 1.0,
+          "teacher": 1.0,
+          "current.run_1.citations_ok": 1.0,
+          "current.run_1.answer_ok": 0.0,
+          "current.run_1.scorer_score": 0.0,
+          "current.run_1": 0.0,
+          "current.run_2.citations_ok": 1.0,
+          "current.run_2.answer_ok": 0.0,
+          "current.run_2.scorer_score": 0.0,
+          "current.run_2": 0.0,
+          "candidate.citations_ok": 1.0,
+          "candidate.answer_ok": 1.0,
+          "candidate.scorer_score": 1.0,
+          "teacher.citations_ok": 1.0,
+          "teacher.answer_ok": 1.0,
+          "teacher.scorer_score": 1.0,
+          "gate.noise": 0.0,
+          "gate.p_value": 1.7763568394002505e-15,
+          "gate.delta": 1.0,
+          "gate.n_items": 50.0,
+          "gate.n_groups": 50.0
+        },
+        "p_value": 1.7763568394002505e-15,
+        "reasons": []
+      }
+    },
+    {
+      "member": "dom",
+      "uploaded_examples": 100,
+      "exports": [
+        "desk-objects-dom-smoke"
+      ],
+      "current_version": "atlas-base",
+      "rollback_version": "atlas-base",
+      "status": "recommended",
+      "gate": {
+        "decision": "deploy",
+        "scores": {
+          "current": 0.0,
+          "candidate": 1.0,
+          "teacher": 1.0,
+          "current.run_1.citations_ok": 1.0,
+          "current.run_1.answer_ok": 0.0,
+          "current.run_1.scorer_score": 0.0,
+          "current.run_1": 0.0,
+          "current.run_2.citations_ok": 1.0,
+          "current.run_2.answer_ok": 0.0,
+          "current.run_2.scorer_score": 0.0,
+          "current.run_2": 0.0,
+          "candidate.citations_ok": 1.0,
+          "candidate.answer_ok": 1.0,
+          "candidate.scorer_score": 1.0,
+          "teacher.citations_ok": 1.0,
+          "teacher.answer_ok": 1.0,
+          "teacher.scorer_score": 1.0,
+          "gate.noise": 0.0,
+          "gate.p_value": 1.7763568394002505e-15,
+          "gate.delta": 1.0,
+          "gate.n_items": 50.0,
+          "gate.n_groups": 50.0
+        },
+        "p_value": 1.7763568394002505e-15,
+        "reasons": []
+      }
+    },
+    {
+      "member": "rao",
+      "uploaded_examples": 0,
+      "exports": [],
+      "current_version": "atlas-base",
+      "rollback_version": "atlas-base",
+      "status": "recommended",
+      "gate": {
+        "decision": "deploy",
+        "scores": {
+          "current": 0.0,
+          "candidate": 1.0,
+          "teacher": 1.0,
+          "current.run_1.citations_ok": 1.0,
+          "current.run_1.answer_ok": 0.0,
+          "current.run_1.scorer_score": 0.0,
+          "current.run_1": 0.0,
+          "current.run_2.citations_ok": 1.0,
+          "current.run_2.answer_ok": 0.0,
+          "current.run_2.scorer_score": 0.0,
+          "current.run_2": 0.0,
+          "candidate.citations_ok": 1.0,
+          "candidate.answer_ok": 1.0,
+          "candidate.scorer_score": 1.0,
+          "teacher.citations_ok": 1.0,
+          "teacher.answer_ok": 1.0,
+          "teacher.scorer_score": 1.0,
+          "gate.noise": 0.0,
+          "gate.p_value": 1.7763568394002505e-15,
+          "gate.delta": 1.0,
+          "gate.n_items": 50.0,
+          "gate.n_groups": 50.0
+        },
+        "p_value": 1.7763568394002505e-15,
+        "reasons": []
+      }
+    }
+  ],
+  "take": {
+    "pull": "python -m lab.package_pull pull --account D --version atlas-group-desk-objects-s3 --dest data/models",
+    "swap": "python jetson/atlas_swap.py swap atlas-group-desk-objects-s3",
+    "rollback": "python jetson/atlas_swap.py rollback"
+  }
+}

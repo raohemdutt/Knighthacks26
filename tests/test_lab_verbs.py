@@ -27,6 +27,7 @@ REGISTRY_BEFORE_DISCOVERY = {
     "eval-gate": "lab.eval_gate:main",
     "experiment": "lab.machine.experiments:main",
     "gpu-power": "lab.machine.gpu_power:main",
+    "group-finetune": "lab.group_finetune:main",
     "handoff": "lab.machine.handoff:main",
     "interference": "lab.interference:main",
     "lab-push": "lab.lab_push:main",
