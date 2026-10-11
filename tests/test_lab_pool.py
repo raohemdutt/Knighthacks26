@@ -1429,3 +1429,15 @@ def test_the_next_pass_in_order_is_offered_when_counter_and_log_agree(make_pool,
     p, _ = make_pool()
     offered_labels, reasons = _pass_view(p, lab)
     assert "pass telemetry" in offered_labels and reasons == []
+
+
+def test_a_log_whose_pass_numbers_break_the_track_rules_is_refused_with_the_rule(make_pool, lab, refine_root):
+    folder = _open_run(refine_root)
+    log = folder / "REFINE_LOG.md"  # passes 1 to 3: drop pass 2's entry, so the log reads 1, 3 and the counter 3
+    text = log.read_text(encoding="utf-8")
+    assert PASS_ENTRY.format(n=2, ending="") in text
+    log.write_text(text.replace(PASS_ENTRY.format(n=2, ending=""), ""), encoding="utf-8")
+    p, _ = make_pool()
+    offered_labels, reasons = _pass_view(p, lab)
+    assert "pass telemetry" not in offered_labels
+    assert len(reasons) == 1 and "track rules" in reasons[0] and "found [1, 3]" in reasons[0]
