@@ -31,7 +31,7 @@ import { useFetch } from "@/lib/useFetch";
  *   /lab/?t=0.4           start at a position on the bar (0 to 1); without it the finished run is shown
  *   /lab/?motion=reduce   as if the system asked for reduced motion
  *
- * More tabs sit beside the run, each on the lab's own records: "Alone vs together" (two runs compared, L31),
+ * More tabs sit beside the run, each on the lab's own records: "Alone vs with a friend" (two runs compared, L31),
  * "Speed and energy" (the benchmark rows), "Routing" (a what-if that runs the real routing hook) and "Experiments"
  * (the optimisation loop's timeline).
  *
@@ -127,6 +127,7 @@ export default function LabPage() {
             url.searchParams.set(which, id);
             window.history.replaceState(null, "", url);
           }}
+          forceReduced={params.reduce}
         />
       </>
     );

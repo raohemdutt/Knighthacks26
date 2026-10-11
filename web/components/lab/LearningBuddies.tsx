@@ -32,6 +32,8 @@ export interface LearningBuddiesProps {
   joulesPerExampleAlone?: number | null;
   /** Examples with friends over examples alone (2 for one friend's equal share). */
   examplesRatio?: number | null;
+  /** Why the loss curve is empty although steps were trained, such as a run whose per-step loss was not logged. */
+  lossReason?: string | null;
   forceReduced?: boolean;
   /** A line under the stage, such as which runs these are. */
   caption?: React.ReactNode;
@@ -142,7 +144,7 @@ function Sparks({ step }: { step: number }) {
 
 /* ---------- the loss curve ---------- */
 
-function LossCurve({ loss, steps, growKey }: { loss: number[]; steps: number; growKey: string }) {
+function LossCurve({ loss, steps, growKey, reason }: { loss: number[]; steps: number; growKey: string; reason: string | null }) {
   const W = 240;
   const H = 120;
   const pad = { l: 6, r: 10, t: 12, b: 18 };
@@ -156,8 +158,9 @@ function LossCurve({ loss, steps, growKey }: { loss: number[]; steps: number; gr
     <figure className={css.curve}>
       <figcaption className={css.curveHead}>
         <span>Loss</span>
-        <b>{last !== null ? fmt(last, 2) : "waiting"}</b>
+        <b>{last !== null ? fmt(last, 2) : reason ? "not logged" : "waiting"}</b>
       </figcaption>
+      {!loss.length && reason ? <span className={css.curveNote}>{reason}</span> : null}
       <svg viewBox={`0 0 ${W} ${H}`} className={css.curveSvg} role="img" aria-label={loss.length ? `Loss over ${loss.length} steps, from ${fmt(loss[0]!, 2)} to ${fmt(last!, 2)}` : "No training step reported yet"}>
         <line x1={pad.l} x2={W - pad.r} y1={H - pad.b} y2={H - pad.b} className={css.baseline} />
         {loss.length > 1 ? (
@@ -180,7 +183,7 @@ function LossCurve({ loss, steps, growKey }: { loss: number[]; steps: number; gr
 
 /* ---------- the whole stage ---------- */
 
-export function LearningBuddies({ state, steps, loss, joulesPerExample, friends, joulesPerExampleAlone = null, examplesRatio = null, forceReduced, caption }: LearningBuddiesProps) {
+export function LearningBuddies({ state, steps, loss, joulesPerExample, friends, joulesPerExampleAlone = null, examplesRatio = null, lossReason = null, forceReduced, caption }: LearningBuddiesProps) {
   const reduced = useReduced(forceReduced);
   const together = state === "with-friend";
   // The pooled count shows once the friend has arrived; the joules start dropping just after the bump.
@@ -247,18 +250,16 @@ export function LearningBuddies({ state, steps, loss, joulesPerExample, friends,
             </div>
           ) : null}
           <div className={css.counter}>
-            <span className={`${css.counterNum} ${together && jpe !== null && joulesPerExampleAlone !== null && jpe < joulesPerExampleAlone ? css.good : ""}`}>
-              {jpe !== null ? fmt(jpe) : "not measured"}
+            <span className={`${css.counterNum} ${jpe === null ? css.counterNone : ""} ${together && jpe !== null && joulesPerExampleAlone !== null && jpe < joulesPerExampleAlone ? css.good : ""}`}>
+              {jpe !== null ? fmt(jpe) : "not measured yet"}
               {jpe !== null ? <small> J</small> : null}
             </span>
-            <span className={css.counterLabel}>
-              per example
-              {together && joulesPerExampleAlone !== null ? <span className={css.was}> (alone: {fmt(joulesPerExampleAlone)} J)</span> : null}
-            </span>
+            <span className={css.counterLabel}>per example</span>
+            {together && joulesPerExampleAlone !== null ? <span className={css.was}>alone it was {fmt(joulesPerExampleAlone)} J</span> : null}
           </div>
         </div>
         )}
-        {state === "idle" ? null : <LossCurve loss={loss} steps={steps} growKey={state} />}
+        {state === "idle" ? null : <LossCurve loss={loss} steps={steps} growKey={state} reason={lossReason} />}
         {caption ? <p className={css.caption}>{caption}</p> : null}
       </div>
     </section>

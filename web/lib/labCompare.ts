@@ -19,6 +19,8 @@ export interface CompareStage {
   j_per_train_row?: number | null;
   gross_window_j?: number | null;
   overlap_s?: number | null;
+  loss_first?: number | null;
+  loss_last?: number | null;
 }
 
 export interface CompareTrace {
@@ -116,3 +118,43 @@ export function fmtValue(v: number | null | undefined, unit: string): string {
 export function fmtRatio(x: number | null | undefined): string {
   return typeof x === "number" ? `×${x.toFixed(x >= 10 ? 1 : 2)}` : "";
 }
+
+/* ---------- only what the box recorded ---------- */
+
+/**
+ * The gateway also reads the committed rehearsal under fixtures/learning/ (lab_compare.default_dirs). The screen shows
+ * only what a box has really recorded, so a run whose record is a committed fixture is left out, here and nowhere else.
+ */
+const COMMITTED = "fixtures/";
+
+export function isRecordedRun(r: CompareRun | null | undefined): r is CompareRun {
+  return !!r && !(r.source.kind === "loop" && r.source.ref.startsWith(COMMITTED));
+}
+
+export function isRecordedChoice(c: CompareChoice): boolean {
+  return !c.source.startsWith(COMMITTED);
+}
+
+/** The response with every committed fixture taken out: a run that is one becomes absent, and so do the ratios. */
+export function recordedOnly(d: LabCompare): LabCompare {
+  const a = isRecordedRun(d.a) ? d.a : null;
+  const b = isRecordedRun(d.b) ? d.b : null;
+  return { ...d, a, b, ratios: a && b ? d.ratios : null, runs: d.runs.filter(isRecordedChoice) };
+}
+
+/** Act 1 and act 2 by default: the newest measured run done alone, and the newest measured run pooled with friends. */
+export function defaultPair(runs: CompareChoice[]): { a: string | null; b: string | null } {
+  const measured = runs.filter((c) => c.measured);
+  const alone = measured.find((c) => c.act === "solo" || c.members === 1);
+  const pooled = measured.find((c) => (c.members ?? 0) > 1);
+  return { a: alone?.run_id ?? null, b: pooled?.run_id ?? null };
+}
+
+/** "2.00x", or "" when there is nothing to divide. */
+export function timesX(x: number | null | undefined): string {
+  return typeof x === "number" ? `${x.toFixed(x >= 10 ? 1 : 2)}x` : "";
+}
+
+/** Ratios where act 2 doing better means a number below 1 (energy per unit of work), or above 1 (examples). */
+export const LOWER_IS_BETTER = new Set(["labeling_j_per_token", "labeling_j_per_example", "training_j_per_step", "training_j_per_train_row", "j_per_example"]);
+export const HIGHER_IS_BETTER = new Set(["examples", "members"]);

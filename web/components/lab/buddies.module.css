@@ -37,7 +37,7 @@
 
 .stage {
   position: relative;
-  height: 220px;
+  height: 250px;
   min-width: 0;
   overflow: hidden;
   border-radius: var(--radius-sm);
@@ -73,8 +73,8 @@
 .slot {
   position: absolute;
   bottom: 28px;
-  left: calc(50% - 60px);
-  width: 120px;
+  left: calc(50% - 75px);
+  width: 150px;
   transition: left 700ms var(--ease-out), opacity var(--t-slow) ease;
 }
 
@@ -139,7 +139,7 @@
 
 /* with a friend: the friend slides in, the two bump, share a glow, then hop in sync */
 .root[data-state="with-friend"] .slotMe {
-  left: calc(50% - 120px);
+  left: calc(50% - 150px);
 }
 
 .root[data-state="with-friend"] .slotFriend {
@@ -175,7 +175,7 @@
 .contact {
   position: absolute;
   left: 50%;
-  bottom: 70px;
+  bottom: 84px;
   width: 54px;
   height: 54px;
   margin-left: -27px;
@@ -193,7 +193,7 @@
 .sparks {
   position: absolute;
   left: 50%;
-  top: 22px;
+  top: 28px;
   width: 0;
   height: 0;
   pointer-events: none;
@@ -236,7 +236,7 @@
 
 .counters {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
   gap: 10px;
 }
 
@@ -281,8 +281,16 @@
   color: var(--muted);
 }
 
+.counterNone {
+  font-size: 17px;
+  font-weight: 650;
+  color: var(--muted);
+  letter-spacing: 0;
+}
+
 .was {
-  white-space: nowrap;
+  font-size: 13px;
+  color: var(--muted);
 }
 
 .good {
@@ -308,6 +316,11 @@
   color: var(--text);
   font-size: 18px;
   font-variant-numeric: tabular-nums;
+}
+
+.curveNote {
+  font-size: 13px;
+  color: var(--muted);
 }
 
 .curveSvg {
