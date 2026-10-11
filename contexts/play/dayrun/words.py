@@ -213,3 +213,56 @@ def past(problem: str) -> str:
     """A problem as a few words about a day already lived: "missed judging and demos by 11 min"."""
     text = problem.split(";")[0].replace("You'd miss ", "the plan missed ").replace(" minutes", " min")
     return text[0].lower() + text[1:] if text else text
+
+
+# --- which source each number comes from (the small chip beside it) ---
+
+# The names a person knows the connectors by. A connector that is not listed is shown by its own name.
+CONNECTORS = {"canvas": "Canvas", "calendar": "Calendar", "outlook": "Outlook", "google_calendar": "Google Calendar",
+              "groupme": "GroupMe", "gmail": "Gmail", "circle": "Circle"}
+
+
+def src(id: str, label: str) -> dict:
+    """One source: `id` for the screen to key on, `label` the few words on the chip."""
+    return {"id": id, "label": label}
+
+
+def source_of_due(d: Deadline) -> dict | None:
+    """Where the deadline itself (its title and due time) was read from: the connector its item was synced by.
+    None when the item names none: the screen then shows no chip rather than a guessed one."""
+    if not d.source:
+        return None
+    return src(d.source, CONNECTORS.get(d.source, d.source.replace("_", " ").title()))
+
+
+def source_of_work(d: Deadline) -> dict:
+    """Where the work left came from: the person's own number, or the box's starting guess (config/dayrun.yaml)."""
+    return src("yours", "your estimate") if d.estimate_from == "yours" else src("guess", "Atlas's guess")
+
+
+def source_of_sleep(board: Board) -> dict:
+    """Last night's hours: the watch or the desk camera when Habits measured it, the person's own number, the
+    scripted day, or the box's default when nothing measured it. The same branches `why_sleep` words."""
+    origin = came_from(board.initial.source, "sleep")
+    if origin == "habits":
+        return {"watch": src("watch", "your watch"), "camera": src("camera", "desk camera")}.get(
+            board.initial.sleep_from or "", src("habits", "your habits"))
+    return {"scenario": src("scenario", "scripted day"), "request": src("yours", "your number")}.get(origin, src("guess", "Atlas's guess"))
+
+
+def source_of_meals(result: SimResult, board: Board) -> dict:
+    """Meals so far today: seen at the desk by the camera (Habits), the scripted day, or the person's own number.
+    With none counted before the plan starts, the number is only what this plan holds."""
+    if not result.totals.meals_before:
+        return src("plan", "this plan")
+    origin = came_from(board.initial.source, "meals")
+    return {"habits": src("camera", "desk camera"), "scenario": src("scenario", "scripted day"),
+            "request": src("yours", "your number")}.get(origin, src("plan", "this plan"))
+
+
+def source_of_walk(r: RouteTaken, board: Board, attribution: str | None = None) -> dict:
+    """A walk's minutes: measured along the pack's mapped footpaths (named after whose map data it is), else the
+    pack's set time between the two places. The same branch `why_walk` words."""
+    if r.meters and board.rules and board.rules.walk_meters_per_minute:
+        return src("map", "OpenStreetMap" if attribution and "openstreetmap" in attribution.lower() else "the map")
+    return src("set", "set time")
