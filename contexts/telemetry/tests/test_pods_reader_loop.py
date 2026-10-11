@@ -45,8 +45,8 @@ class FakePod:
 
 def test_a_publish_failure_mid_batch_keeps_the_rest_of_the_batch():
     events = recorded("samples_gpu-a.jsonl")[:10]
-    pod = FakePod("gpu-a", events)
-    reader = PodReader([PodEndpoint("gpu-a", "https://hub.test/user/acct/proxy/8790", TOKEN)],
+    pod = FakePod("pod-a", events)
+    reader = PodReader([PodEndpoint("pod-a", "https://hub.test/user/acct/proxy/8790", TOKEN)],
                        transport=httpx.MockTransport(pod.answer), clock=lambda: NOW,
                        sleep=lambda _: asyncio.sleep(0), rounds=1)
     published: list = []
@@ -62,7 +62,7 @@ def test_a_publish_failure_mid_batch_keeps_the_rest_of_the_batch():
     async def no_sleep(_seconds: float) -> None:
         await asyncio.sleep(0)
 
-    runner = SamplerRunner(reader, publish, nodes=["gpu-a"], sleep=no_sleep)
+    runner = SamplerRunner(reader, publish, nodes=["pod-a"], sleep=no_sleep)
 
     async def run() -> None:
         await asyncio.wait_for(runner.run(), timeout=10)
@@ -72,13 +72,13 @@ def test_a_publish_failure_mid_batch_keeps_the_rest_of_the_batch():
     # Every sample the pod held reaches the log once, in order, the one whose write failed on the retry.
     assert [e.event_id for e in published] == [e["event_id"] for e in events]
     # The cursor sits past what was published, not past what was merely fetched.
-    assert reader.status()["gpu-a"]["after"] == 10
+    assert reader.status()["pod-a"]["after"] == 10
 
 
 def test_a_stalled_pod_does_not_delay_the_other_pods_samples():
     a_events: list[dict] = []
-    b_events = [{**e, "node": "gpu-b"} for e in recorded("samples_gpu-b_stale.jsonl")[:3]]
-    a, b = FakePod("gpu-a", a_events), FakePod("gpu-b", b_events)
+    b_events = [{**e, "node": "pod-b"} for e in recorded("samples_gpu-b_stale.jsonl")[:3]]
+    a, b = FakePod("pod-a", a_events), FakePod("pod-b", b_events)
 
     async def route(request: httpx.Request) -> httpx.Response:
         if "/acct-a/" in request.url.path:
@@ -86,8 +86,8 @@ def test_a_stalled_pod_does_not_delay_the_other_pods_samples():
             return a.answer(request)
         return b.answer(request)
 
-    reader = PodReader([PodEndpoint("gpu-a", "https://hub.test/user/acct-a/proxy/8790", TOKEN),
-                        PodEndpoint("gpu-b", "https://hub.test/user/acct-b/proxy/8790", TOKEN)],
+    reader = PodReader([PodEndpoint("pod-a", "https://hub.test/user/acct-a/proxy/8790", TOKEN),
+                        PodEndpoint("pod-b", "https://hub.test/user/acct-b/proxy/8790", TOKEN)],
                        transport=httpx.MockTransport(route), clock=lambda: NOW,
                        sleep=lambda _: asyncio.sleep(0), timeout_s=5, rounds=1)
 
@@ -104,15 +104,15 @@ def test_a_stalled_pod_does_not_delay_the_other_pods_samples():
 
     waited, nodes = asyncio.run(asyncio.wait_for(first_b_event_after(), timeout=10))
 
-    assert nodes == ["gpu-b"] * 3
-    assert waited < 0.3, f"gpu-b's first sample came {waited:.2f} s after the read began, held up by gpu-a's stall"
+    assert nodes == ["pod-b"] * 3
+    assert waited < 0.3, f"pod-b's first sample came {waited:.2f} s after the read began, held up by pod-a's stall"
 
 
 def test_a_pod_whose_samples_name_another_node_is_logged_with_its_node_the_count_and_the_reason(caplog):
     events = recorded("samples_gpu-a.jsonl")[:3]
-    wrong = [{**e, "node": "gpu-b"} for e in events[:2]] + [events[2]]
-    pod = FakePod("gpu-a", wrong)
-    reader = PodReader([PodEndpoint("gpu-a", "https://hub.test/user/acct/proxy/8790", TOKEN)],
+    wrong = [{**e, "node": "pod-b"} for e in events[:2]] + [events[2]]
+    pod = FakePod("pod-a", wrong)
+    reader = PodReader([PodEndpoint("pod-a", "https://hub.test/user/acct/proxy/8790", TOKEN)],
                        transport=httpx.MockTransport(pod.answer), clock=lambda: NOW,
                        sleep=lambda _: asyncio.sleep(0), rounds=1)
 
@@ -123,19 +123,19 @@ def test_a_pod_whose_samples_name_another_node_is_logged_with_its_node_the_count
         got = asyncio.run(run())
 
     assert [e.event_id for e in got] == [events[2]["event_id"]]
-    assert reader.status()["gpu-a"]["rejected"] == 2
+    assert reader.status()["pod-a"]["rejected"] == 2
     warnings = [r for r in caplog.records if r.name == "atlas.telemetry.pods" and r.levelname == "WARNING"]
     assert len(warnings) == 1, [r.getMessage() for r in warnings]
     message = warnings[0].getMessage()
-    assert "gpu-a" in message and "2" in message and "gpu-b" in message, message
+    assert "pod-a" in message and "2" in message and "pod-b" in message, message
     assert TOKEN not in caplog.text
 
 
 def test_a_sample_that_is_not_a_contract_event_is_logged_with_the_reason(caplog):
     events = recorded("samples_gpu-a.jsonl")[:2]
     broken = [{**events[0], "socket_w": "lots"}, events[1]]
-    pod = FakePod("gpu-a", broken)
-    reader = PodReader([PodEndpoint("gpu-a", "https://hub.test/user/acct/proxy/8790", TOKEN)],
+    pod = FakePod("pod-a", broken)
+    reader = PodReader([PodEndpoint("pod-a", "https://hub.test/user/acct/proxy/8790", TOKEN)],
                        transport=httpx.MockTransport(pod.answer), clock=lambda: NOW,
                        sleep=lambda _: asyncio.sleep(0), rounds=1)
 
@@ -147,4 +147,4 @@ def test_a_sample_that_is_not_a_contract_event_is_logged_with_the_reason(caplog)
 
     assert [e.event_id for e in got] == [events[1]["event_id"]]
     warnings = [r.getMessage() for r in caplog.records if r.name == "atlas.telemetry.pods" and r.levelname == "WARNING"]
-    assert len(warnings) == 1 and "gpu-a" in warnings[0] and "1" in warnings[0] and "socket_w" in warnings[0], warnings
+    assert len(warnings) == 1 and "pod-a" in warnings[0] and "1" in warnings[0] and "socket_w" in warnings[0], warnings

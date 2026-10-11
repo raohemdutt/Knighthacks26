@@ -10,6 +10,11 @@
         agreed (one after a counter-offer) and one still open. It writes its own config directory (default
         <data-dir>/config; the committed config never names a member) and prints the command to run the app on it.
 
+    python -m contexts.demo checkin --data-dir <empty dir> [--end ISO]
+        The check-in (D4): one invented afternoon (a short night, resting heart rate up, strained looks, a bottle
+        not picked up, three earlier days like it) published through the real app, so the Day loop's own rule
+        raises it and the narrator says it. Prints the sentence and the command to run the app on it.
+
     python -m contexts.demo fake <context> [--data-dir data] [--now]
         A few realistic events of every type one context publishes, appended to the log.
 
@@ -17,7 +22,7 @@
         The T-15 checklist (D9): PASS/FAIL with the fix for each, plus a warm-up question and its time.
         --reset first clears alert cooldowns and leftover approval cards (memory is untouched).
 
-    python -m contexts.demo fake perception --gateway http://<box>:8000 [--token $ATLAS_TOKEN]
+    python -m contexts.demo fake perception --gateway http://<box>:8000 [--token $ATLAS_TOKEN] [--realtime]
         The camera scene pushed into a running box (POST /api/events), timed from now: its own zone
         engine, rules, Sort It and Waste Watch react live, as if the camera saw it.
         Contexts: perception connectors memory habits impact agent circle vault play day
@@ -57,12 +62,17 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--config-dir", type=Path, help="where to write the demo's config (default: <data-dir>/config)")
     c.add_argument("--end", type=datetime.fromisoformat, help="end the story at this time (with a UTC offset) instead of now")
     c.add_argument("--force", action="store_true", help="add to a data directory that already has an event log")
+    k = sub.add_parser("checkin", help="an invented afternoon that ends in a check-in, through the real app (D4)")
+    k.add_argument("--data-dir", type=Path, required=True)
+    k.add_argument("--end", type=datetime.fromisoformat, help="when the check-in is raised (with a UTC offset); default: now in "
+                                                             "the afternoon, else today 15:40 local")
     f = sub.add_parser("fake", help="publish a small sample of one context's events")
     f.add_argument("context", choices=fakes.CONTEXTS)
     f.add_argument("--data-dir", type=Path, default=Path("data"))
     f.add_argument("--now", action="store_true", help="start at the current time instead of the demo night's")
     f.add_argument("--gateway", help="push into a running box instead of writing the log, e.g. http://192.168.1.20:8000")
     f.add_argument("--token", default=os.environ.get("ATLAS_TOKEN"), help="the box's ATLAS_TOKEN, if it has one")
+    f.add_argument("--realtime", action="store_true", help="with --gateway: push each second of the scene as it happens")
     pf = sub.add_parser("preflight", help="check the box is ready for the demo (D9)")
     pf.add_argument("--gateway", default="http://127.0.0.1:8000")
     pf.add_argument("--token", default=os.environ.get("ATLAS_TOKEN"))
@@ -91,6 +101,19 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "preflight":
         return preflight(args.gateway, args.token, args.reset, args.question)
+
+    if args.command == "checkin":
+        from contexts.demo import checkin
+
+        if args.end and args.end.tzinfo is None:
+            p.error("--end needs a UTC offset, e.g. 2026-10-10T15:40:00-04:00")
+        try:
+            shown = asyncio.run(checkin.show(args.data_dir, args.end or checkin.default_end(datetime.now(UTC))))
+        except SeedRefused as refused:
+            print(refused, file=sys.stderr)
+            return 1
+        print(checkin.summary(shown))
+        return 0 if shown.checkins else 1
 
     if args.command == "circle":
         from contexts.demo import circle
@@ -129,7 +152,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.gateway:
-        return push(args.context, args.gateway, args.token)
+        return push(args.context, args.gateway, args.token, realtime=args.realtime)
     start = datetime.now(UTC).replace(microsecond=0) if args.now else load().now
     published = asyncio.run(fakes.publish(args.context, args.data_dir / "events", start))
     for e in published:
@@ -198,10 +221,12 @@ def video_command(action: str, file: Path | None) -> int:
     return 0 if ok else 1
 
 
-def push(context: str, gateway: str, token: str | None) -> int:
+def push(context: str, gateway: str, token: str | None, realtime: bool = False) -> int:
     """The context's fake, timed from now, POSTed to a running gateway. Only input the box accepts is sent;
-    zone events and the rest are what the box makes of it."""
+    zone events and the rest are what the box makes of it. `realtime` sends each second when its time comes,
+    so the room view and Sort It play out live instead of arriving all at once."""
     import tempfile
+    import time
 
     import httpx
 
@@ -213,13 +238,26 @@ def push(context: str, gateway: str, token: str | None) -> int:
     if not sent:
         print(f"{context} has no camera or connector input to push", file=sys.stderr)
         return 1
-    body = [e.model_dump(mode="json", exclude={"event_id"}) for e in sent]
     headers = {"Authorization": f"Bearer {token}"} if token else {}
-    r = httpx.post(gateway.rstrip("/") + "/api/events", json=body, headers=headers, timeout=60)
-    if r.status_code != 200:
-        print(f"{r.status_code}: {r.text}", file=sys.stderr)
-        return 1
-    print(f"pushed {r.json()['published']} events into {gateway}: {', '.join(r.json()['types'])}")
+    sent.sort(key=lambda e: e.ts)
+    batches = [sent]
+    if realtime:  # one request per second of the scene
+        by_second: dict = {}
+        for e in sent:
+            by_second.setdefault(e.ts.replace(microsecond=0), []).append(e)
+        batches = [by_second[s] for s in sorted(by_second)]
+    published, types = 0, set()
+    for batch in batches:
+        if realtime:
+            time.sleep(max(0.0, (batch[0].ts - datetime.now(UTC)).total_seconds()))
+        body = [e.model_dump(mode="json", exclude={"event_id"}) for e in batch]
+        r = httpx.post(gateway.rstrip("/") + "/api/events", json=body, headers=headers, timeout=60)
+        if r.status_code != 200:
+            print(f"{r.status_code}: {r.text}", file=sys.stderr)
+            return 1
+        published += r.json()["published"]
+        types |= set(r.json()["types"])
+    print(f"pushed {published} events into {gateway}: {', '.join(sorted(types))}")
     return 0
 
 

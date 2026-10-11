@@ -5,6 +5,15 @@ sleep:
   bedtime: "20:00"
   wake: "08:00"
 
+# Conversation: small talk and simple questions ("how's your day?", "tell me a joke") get a short spoken reply
+# instead of a memory search. Every key is optional; these are the defaults. ATLAS_TALK=0 switches it off too.
+# talk:
+#   enabled: true
+#   name: Atlas            # what it calls itself
+#   tone: ""               # one more line for its persona, e.g. "Dry humour, very brief."
+#   max_history_turns: 6   # exchanges kept in memory for follow-ups ("why?", "tell me another"); never logged
+#   history_ttl_s: 600     # a conversation this quiet is forgotten
+
 # Subreddit the agent searches for "what do students say" questions.
 subreddit: ucf
 
@@ -35,6 +44,11 @@ circle:
   chat_group: friends    # GroupMe group told when the circle agrees on an event (G1)
   emails: {}             # member id -> email, for calendar invites, e.g. {hemdutt: hemdutt@example.edu}
   share_summaries: false # opt in to sending habit/impact/game summaries to the Circle's leaderboards (E2)
+  face_share: false      # let named friends' boxes recognise you (your own face template, sealed to their box, after a
+                         # card on each side). Off: nothing is published and the endpoints answer 409. Also ATLAS_CIRCLE_FACE_SHARE=1
+  face_share_days: 30    # a shared template is deleted on the friend's box after this many days unless renewed
+  keep_days: 30          # this box removes its OWN plan messages, share receipts and expired place from the shared
+                         # database after this many days (never anyone else's rows). 0: never remove anything
   names:                 # member id -> display name; also who must say yes to a plan with no invitees (G1)
     dom: Dominick
     hemdutt: Hemdutt

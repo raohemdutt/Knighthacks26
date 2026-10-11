@@ -1,0 +1,51 @@
+== idle_start 2026-10-10T21:52:51Z
+    PID COMMAND         %CPU     TIME   RSS
+    518 python3          0.0        0  7200
+    914 llama-server     2.5       60 775448
+    955 python           0.4       10 23292
+   6520 python           0.9        8 13148
+   9775 python          93.0       26 1346236
+   9863 python           6.0        1 59396
+   9911 python          10.1        1 62556
+   9952 python           9.3        1 52948
+  10024 python          15.5        1 55520
+top - 17:52:51 up 39 min,  0 users,  load average: 1.87, 1.77, 1.37
+Tasks: 304 total,   1 running, 302 sleeping,   0 stopped,   1 zombie
+%Cpu(s): 15.6 us,  2.8 sy,  0.0 ni, 80.7 id,  0.0 wa,  0.9 hi,  0.0 si,  0.0 st
+MiB Mem :   7607.8 total,    149.9 free,   6752.4 used,    705.5 buff/cache
+MiB Swap:   3803.9 total,   3178.4 free,    625.5 used.    623.1 avail Mem 
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+   9775 alexand+  20   0   13.8g   1.3g 228304 S  94.1  17.1   0:27.17 python
+  10115 alexand+  20   0   12676   3160   2552 R  11.8   0.0   0:00.03 top
+      1 root      20   0  316352  10092   6084 S   0.0   0.1   0:11.56 systemd
+      2 root      20   0       0      0      0 S   0.0   0.0   0:00.01 kthreadd
+      3 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 rcu_gp
+      4 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 rcu_par_gp
+      5 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 slub_flushwq
+== idle_end 2026-10-10T21:58:09Z
+    PID COMMAND         %CPU     TIME   RSS
+    518 python3          0.0        0  6320
+    914 llama-server     2.8       77 721860
+    955 python           0.4       11 22544
+   6520 python           0.9       11 12744
+   9775 python           101      352 664932
+   9863 python           0.4        1 26680
+   9911 python           0.4        1  8596
+   9952 python           0.3        1 18640
+  10024 python           0.3        1 24820
+  10161 python           0.4        1 57864
+top - 17:58:09 up 45 min,  0 users,  load average: 1.40, 1.73, 1.51
+Tasks: 309 total,   1 running, 307 sleeping,   0 stopped,   1 zombie
+%Cpu(s): 14.4 us,  1.9 sy,  0.0 ni, 82.7 id,  0.0 wa,  1.0 hi,  0.0 si,  0.0 st
+MiB Mem :   7607.8 total,    132.8 free,   6664.7 used,    810.3 buff/cache
+MiB Swap:   3803.9 total,   2428.4 free,   1375.5 used.    709.6 avail Mem 
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+   9775 alexand+  20   0   13.7g 664932  40252 S  87.5   8.5   5:52.35 python
+    914 alexand+  20   0   73.8g 721860 556156 S   6.2   9.3   1:17.61 llama-server
+  10952 alexand+  20   0   12676   3192   2584 R   6.2   0.0   0:00.02 top
+      1 root      20   0  316352   8476   4916 S   0.0   0.1   0:11.68 systemd
+      2 root      20   0       0      0      0 S   0.0   0.0   0:00.01 kthreadd
+      3 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 rcu_gp
+      4 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 rcu_par_gp

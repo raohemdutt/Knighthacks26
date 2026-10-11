@@ -4,6 +4,8 @@ from pathlib import Path
 
 import httpx
 
+STRIX = {"gpu": "Radeon 8060S (Strix Halo), gfx1151"}
+
 spec = importlib.util.spec_from_file_location("slide_numbers", Path("lab/slide_numbers.py"))
 slide = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(slide)
@@ -41,7 +43,7 @@ def test_real_numbers_with_sources_and_tbd_for_missing(tmp_path):
     assert "0.50 (atlas-base) -> 0.83 (atlas-v3)" in md
     assert "| Detector FPS (Jetson) | 17.2 | http://box:8000/api/stats | unknown | no |" in md  # a bare number has no time
     assert f"| Watts, Jetson | 12.0 | {telemetry}:2 | 2026-10-11T04:00:00Z | no |" in md  # newest telemetry row wins
-    assert "| Teacher tok/s (R9700) | [TBD: R5 stats, T1-T4 telemetry or a lab metrics row not recorded yet] |" in md
+    assert "| Teacher tok/s (Strix Halo) | [TBD: R5 stats, T1-T4 telemetry or a lab metrics row not recorded yet] |" in md
 
 
 def test_without_any_source_everything_is_tbd():
@@ -54,10 +56,10 @@ def test_lab_numbers_cite_their_row_measurement_time_and_low_confidence(tmp_path
     """Q15 (telemetry rubric TT7): a flagged number never looks like a measured fact."""
     metrics = tmp_path / "metrics.jsonl"
     rows = [
-        {"metric": "teacher.decode_tok_s", "value": 6.6, "unit": "tok/s", "ts": "2026-10-10T10:22:13Z", "low_confidence": False},
-        {"metric": "teacher.decode_tok_s", "value": 7.7, "unit": "tok/s", "ts": "2026-10-10T10:22:13Z", "low_confidence": False},
-        {"metric": "teacher.joules_per_token", "value": 25.97, "unit": "J/token", "ts": "2026-10-10T10:22:13Z", "low_confidence": True},
-        {"metric": "teacher.watts_avg", "value": 200, "unit": "W", "ts": "2026-10-10T09:00:00Z", "low_confidence": False},
+        {"metric": "teacher.decode_tok_s", "value": 6.6, "unit": "tok/s", "ts": "2026-10-10T10:22:13Z", "low_confidence": False, "conditions": STRIX},
+        {"metric": "teacher.decode_tok_s", "value": 7.7, "unit": "tok/s", "ts": "2026-10-10T10:22:13Z", "low_confidence": False, "conditions": STRIX},
+        {"metric": "teacher.joules_per_token", "value": 25.97, "unit": "J/token", "ts": "2026-10-10T10:22:13Z", "low_confidence": True, "conditions": STRIX},
+        {"metric": "teacher.watts_avg", "value": 200, "unit": "W", "ts": "2026-10-10T09:00:00Z", "low_confidence": False, "conditions": STRIX},
     ]
     metrics.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
     stats = {"teacher_tok_s": 9.9, "gpu_watts": {"value": 210, "ts": "2026-10-10T11:00:00Z", "source": "R5 stats", "low_confidence": False}}
@@ -67,6 +69,62 @@ def test_lab_numbers_cite_their_row_measurement_time_and_low_confidence(tmp_path
 
     client = httpx.Client(transport=httpx.MockTransport(handle))
     md = slide.table(slide.measured_rows(client, "http://box/api/stats", [], metrics_file=metrics, ledger_dir=str(tmp_path)))
-    assert "| Teacher tok/s (R9700) | 7.7 tok/s | metrics.jsonl:2 | 2026-10-10T10:22:13Z | no |" in md  # timed row beats a bare number
+    assert "| Teacher tok/s (Strix Halo) | 7.7 tok/s | metrics.jsonl:2 | 2026-10-10T10:22:13Z | no |" in md  # timed row beats a bare number
     assert "| Teacher joules per token | 25.97 J/token | metrics.jsonl:3 | 2026-10-10T10:22:13Z | LOW |" in md
-    assert "| Watts, R9700 | 210 | R5 stats | 2026-10-10T11:00:00Z | no |" in md  # the endpoint's newer measurement wins
+    assert "| Watts, Strix Halo pod | 210 | R5 stats | 2026-10-10T11:00:00Z | no |" in md  # the endpoint's newer measurement wins
+
+
+def test_a_stats_figure_served_as_null_with_a_reason_is_not_printed_as_a_value(tmp_path):
+    """/runtime/stats (R5) serves a figure nothing has recorded as {value: null, reason}: the lab row fills it, or TBD."""
+    metrics = tmp_path / "metrics.jsonl"
+    metrics.write_text(json.dumps({"metric": "teacher.decode_tok_s", "value": 7.7, "unit": "tok/s",
+                                   "ts": "2026-10-10T10:22:13Z", "low_confidence": False,
+                                   "conditions": STRIX}) + "\n")
+    stats = {
+        "teacher_tok_s": {"value": None, "unit": "tok/s", "ts": None, "source": None, "low_confidence": False,
+                          "reason": "not recorded yet: telemetry is off on this box"},
+        "detector_fps": {"value": None, "unit": "frames/s", "ts": None, "source": None, "low_confidence": False,
+                         "reason": "not recorded yet: no detector.fps row for node jetson"},
+    }
+
+    def handle(request):
+        return httpx.Response(200, json=stats)
+
+    client = httpx.Client(transport=httpx.MockTransport(handle))
+    md = slide.table(slide.measured_rows(client, "http://box/runtime/stats", [], metrics_file=metrics,
+                                        ledger_dir=str(tmp_path / "no-ledger")))
+    assert "| Teacher tok/s (Strix Halo) | 7.7 tok/s | metrics.jsonl:1 | 2026-10-10T10:22:13Z | no |" in md
+    assert "| Detector FPS (Jetson) | [TBD: R5 stats, T1-T4 telemetry or a lab metrics row not recorded yet] |" in md
+    assert "reason" not in md
+
+
+def test_an_old_chip_row_only_fills_a_gap_and_says_so(tmp_path):
+    """The lab moved from the R9700s to the Strix Halo pods on Sat 4:25 PM ET: an R9700 number never passes as current."""
+    metrics = tmp_path / "metrics.jsonl"
+    rows = [
+        {"metric": "teacher.decode_tok_s", "value": 7.7, "unit": "tok/s", "ts": "2026-10-10T10:22:13Z"},  # untagged, before the move
+        {"metric": "teacher.decode_tok_s", "value": 2.82, "unit": "tok/s", "ts": "2026-10-10T19:59:08Z", "conditions": STRIX},
+        {"metric": "teacher.decode_tok_s", "value": 8.1, "unit": "tok/s", "ts": "2026-10-10T23:00:00Z",
+         "conditions": {"gpu": "Radeon AI PRO R9700, gfx1201"}},  # newer, but the old chip
+        {"metric": "trainer.samples_per_s", "value": 0.51, "unit": "samples/s", "ts": "2026-10-10T10:23:23Z"},
+    ]
+    metrics.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    md = slide.table(slide.measured_rows(httpx.Client(), None, [], metrics_file=metrics, ledger_dir=str(tmp_path / "no-ledger")))
+    assert "| Teacher tok/s (Strix Halo) | 2.82 tok/s | metrics.jsonl:2 | 2026-10-10T19:59:08Z | no |" in md
+    assert "| Trainer samples/s (Strix Halo) | 0.51 samples/s | metrics.jsonl:4 (R9700, not the current lab) | 2026-10-10T10:23:23Z | LOW |" in md
+
+
+def test_a_reference_row_from_another_chip_never_reaches_the_slide(tmp_path):
+    """R57's A100 rows say other_chip: true; even newer and with no lab row to beat, they never fill the slide."""
+    metrics = tmp_path / "metrics.jsonl"
+    rows = [
+        {"metric": "teacher.decode_tok_s", "value": 2.82, "unit": "tok/s", "ts": "2026-10-10T19:59:08Z", "conditions": STRIX},
+        {"metric": "teacher.decode_tok_s", "value": 64.956, "unit": "tok/s", "ts": "2026-10-11T01:52:01Z",
+         "node": "a100", "conditions": {"hub": "colab", "other_chip": True}},
+        {"metric": "teacher.joules_per_token", "value": 0.6003, "unit": "J/token", "ts": "2026-10-11T01:52:01Z",
+         "node": "a100", "conditions": {"hub": "colab", "other_chip": True}},
+    ]
+    metrics.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    found = slide.lab_metrics(metrics)
+    assert found["teacher.decode_tok_s"][:3] == (2.82, "tok/s", "metrics.jsonl:1")
+    assert "teacher.joules_per_token" not in found

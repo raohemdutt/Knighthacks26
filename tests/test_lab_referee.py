@@ -1039,8 +1039,11 @@ def test_without_a_token_the_verb_prints_what_a_sitting_does_by_hand_and_exits_2
     assert update["command"] == "update_properties" and update["page_id"] == "<page id of a Running row past its cap>"
     assert update["properties"]["Status"] == ENDED and answer["write"] == update["properties"]
     assert update["properties"]["date:Ended:start"] == "2026-10-10T14:00:00.000Z"
-    assert update["properties"]["Result"].startswith("Ended by the referee at 2026-10-10T14:00Z: ran <minutes since "
-                                                     "Started> min against a cap of <Minutes, plus 15 if Extended>")
+    # Result keeps what the row holds in front of the note, as the live end does (with_note): the plan says so in
+    # the property itself, not only in the rule beside it.
+    assert update["properties"]["Result"].startswith("<the Result as it is> | Ended by the referee at "
+                                                     "2026-10-10T14:00Z: ran <minutes since Started> min against a "
+                                                     "cap of <Minutes, plus 15 if Extended>")
     assert answer["ledger"]["command"].startswith("python -m lab ledger add referee ended --ref slot=")
     assert any("signed FYI on Ilan's Team Comms page" in step for step in answer["then"])
     assert "Status 'Ended by referee'" in answer["rule"] and slots.RULE_START in answer["rule"]
@@ -1077,17 +1080,25 @@ def decode_mcp(write: dict) -> dict:
 def test_the_properties_printed_without_a_token_are_the_columns_the_verb_sets_with_one(world):
     printed, code = referee.run([], environ={}, env_files=[], now=lambda: world.now)
     assert code == 2
-    row = world.running("L3: train", started_ago=75, minutes=60)
+    row = world.running("L3: train", started_ago=75, minutes=60, result="half the steps done")
     before = dict(world.stored(row))
     answer, code = world.referee()
     assert code == 0
     wanted = decode_mcp(printed["write"])
+    wanted["Result"] = wanted["Result"].replace("<the Result as it is>", before["Result"])
     after = world.stored(row)
     changed = {name for name in after if after[name] != before[name]}
     assert changed == set(wanted) == {"Status", "Ended", "Result"}
     assert after["Status"] == wanted["Status"]
     assert slots.parse_moment(after["Ended"]) == wanted["Ended"]
     assert after["Result"].split(": ran ")[0] == wanted["Result"].split(": ran ")[0]
+
+
+def test_the_row_of_a_slot_ended_carries_the_verb_alerts_reads_as_the_end(world, monkeypatch):
+    monkeypatch.setattr(alerts, "SLOT_REFEREE", "referee-renamed")
+    world.running("L3: train", started_ago=75, minutes=60)
+    world.referee()
+    assert [entry["verb"] for entry in ledger_rows()][0] == "referee-renamed"
 
 
 def test_the_ledger_command_printed_without_a_token_writes_the_row_the_verb_writes_with_one(world, capsys):

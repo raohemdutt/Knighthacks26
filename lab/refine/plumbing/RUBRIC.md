@@ -65,7 +65,9 @@ the disagreement is recorded in the log, never averaged.
    is cited at a pinned tag or commit: JupyterHub 5.4.4 (the version our hub reports at `GET /hub/api/`), the AUP
    repo at commit 9b4af19, vLLM b1388b1 (the commit pod A serves, `lab/pod_a_teacher.sh` L11), and, until the
    pod's own versions are confirmed (open item 9), the newest releases at the time of writing:
-   jupyter-server-proxy 4.6.0, Jupyter Server 2.21.1, Tornado 6.5.10, and huggingface_hub 2.2.0. Unpinned "stable"
+   jupyter-server-proxy 4.6.0, Tornado 6.5.10, and huggingface_hub 2.2.0; Jupyter Server is pinned to 2.20.0, the
+   version the SJC Strix Halo pods report (plumbing ruling 4, carried out by merge 2 for the pods that run;
+   measurements M24; DUB's pod A ran 2.19.0, M6). Unpinned "stable"
    docs do not count: JupyterHub's stable REST reference is already 6.0.1.
 4. The metrics file `lab/refine/metrics.jsonl`, later the ledger `lab/state/ledger.jsonl`.
 
@@ -212,9 +214,10 @@ reads, requests to pod A, calls to an account whose server is stopped), which a 
   crosses the link (it downloads on the pod from Hugging Face, `lab/README.md` L53).
 - Sources predict:
   - Push: Jupyter Server refuses a request body over `max_body_size`, 512 MiB by default (`serverapp.py`
-    L1238-L1249), and the contents API carries a file base64-encoded inside JSON. Its default contents manager
-    saves in chunks (`chunk` 1, 2, and so on, and -1 for the last; `AsyncLargeFileManager`, serverapp.py
-    L1618-L1622 and `largefilemanager.py` L85-L133), so a push of more than a few hundred MB must be chunked.
+    L1237-L1248 at v2.20.0), and the contents API carries a file base64-encoded inside JSON. Its default contents
+    manager saves in chunks (`chunk` 1, 2, and so on, and -1 for the last; `AsyncLargeFileManager`, serverapp.py
+    L1617-L1621 and `largefilemanager.py` L85-L133 at v2.20.0), so a push of more than a few hundred MB must be
+    chunked.
   - Pull: jupyter-server-proxy fetches from the pod port with tornado's AsyncHTTPClient at its defaults
     (handlers.py L429-L437; JupyterHub's single-user extension only adds TLS defaults, `singleuser/extension.py`
     L328-L341), which accepts at most a 100 MiB response body (`tornado/simple_httpclient.py` L106-L141;
@@ -255,7 +258,7 @@ reads, requests to pod A, calls to an account whose server is stopped), which a 
   L52), and the 18 GB checkpoint download (unmeasured). Three steps are by hand today: jupyter-server-proxy needs
   one relaunch after its install (`lab/README.md` L37; `lab/pod_a_teacher.sh` L20-L24), the private repo cannot be
   cloned at launch so `lab/` is uploaded after it (`lab/README.md` L32-L33), and the server is started from a
-  terminal (Jupyter Server's `POST /api/terminals`, `api.yaml` L608-L632 at v2.21.1; Design Doc section 8 lists
+  terminal (Jupyter Server's `POST /api/terminals`, `api.yaml` L608-L632 at v2.20.0; Design Doc section 8 lists
   the terminal and REST as the only access).
 - Checked by: one timed warm run on pod B in a slot; the cold case only when pod B's home is rebuilt anyway.
 - Moves: time from launch to serving.
@@ -292,6 +295,11 @@ judges):
   R6 is shared with Xander, so a pass proposes changes to it and never edits it (PASS_RULES.md, "What a pass may
   never change").
 - R10 pod-side package file server (R10 task page).
+- R13 controller live test, R14 push and pull speed measurement, R15 recovery drill, R16 secrets grep test,
+  R17 credit tracker and R18 proxy failure-mode map: added by merge 2 under plumbing ruling 3 (owner,
+  2026-10-10: the walk list is every plumbing task in Ilan's lane, R6 and R9 to R18, under the same rules).
+  R11 and R12 inside that range are the kernels track's (PASS_RULES.md, "The four tracks"; kernels ruling 1),
+  and the merge log's track map records the boundary.
 - Experiments queued on T0 whose metric is in this file's metric set (PASS_RULES.md, "The four tracks").
 - Any plumbing task a pass or the merge pass creates.
 
@@ -454,7 +462,10 @@ Found on 2026-10-10 from the sources below; none is measured yet.
    without a token on 2026-10-10), while JupyterHub's stable docs are 6.0.1, so cite 5.4.4 sources only.
    jupyter-server-proxy was installed with `pip install --user` on 2026-10-10 (Q1 answer), when PyPI's newest was
    4.6.0 (released 2026-09-21). Queue `pip show jupyter-server-proxy jupyter-server tornado huggingface_hub` for
-   the start of the next pod B slot, and correct any pinned citation that differs.
+   the start of the next pod B slot, and correct any pinned citation that differs. Read since: jupyter_server
+   2.19.0 on DUB's pod A (M6), 2.21.1 on the first REST-launched SJC pod (M20) and 2.20.0 on the SJC Strix Halo
+   pods (M24); merge 2 pinned the Jupyter Server citations to 2.20.0 under ruling 4; tornado and huggingface_hub
+   are still unread on a pod.
 10. Acceptable transfer speed (T6) has no owner rule yet. Recommended for a ruling: a few-GB package pull within
     10 minutes (about 5 MB/s for 3 GB), because a trainer run finishes in tens of minutes (Design Doc section 8)
     and shipping should not take longer than training. Until it is answered, a pass records the numbers and does
@@ -509,9 +520,9 @@ jupyter-server-proxy:
 - Release history (4.6.0, 2026-09-21): https://pypi.org/project/jupyter-server-proxy/
 
 Jupyter Server and Tornado:
-- Body limits (L1238-L1259) and the default contents manager (L1618-L1622): https://github.com/jupyter-server/jupyter_server/blob/v2.21.1/jupyter_server/serverapp.py#L1238-L1259
-- Chunked saves: https://github.com/jupyter-server/jupyter_server/blob/v2.21.1/jupyter_server/services/contents/largefilemanager.py
-- REST API spec, terminals: https://github.com/jupyter-server/jupyter_server/blob/v2.21.1/jupyter_server/services/api/api.yaml
+- Body limits (L1237-L1258) and the default contents manager (L1617-L1621), at v2.20.0, the version the SJC Strix Halo pods report (M24): https://github.com/jupyter-server/jupyter_server/blob/v2.20.0/jupyter_server/serverapp.py#L1237-L1258
+- Chunked saves: https://github.com/jupyter-server/jupyter_server/blob/v2.20.0/jupyter_server/services/contents/largefilemanager.py
+- REST API spec, terminals: https://github.com/jupyter-server/jupyter_server/blob/v2.20.0/jupyter_server/services/api/api.yaml
 - REST API docs: https://jupyter-server.readthedocs.io/en/latest/developers/rest-api.html
 - Client body limits: https://github.com/tornadoweb/tornado/blob/v6.5.10/tornado/simple_httpclient.py#L100-L141
 - Body limit enforcement: https://github.com/tornadoweb/tornado/blob/v6.5.10/tornado/http1connection.py#L146

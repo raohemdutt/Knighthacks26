@@ -55,6 +55,7 @@ class _State:
     keyframes: int = 0
     captions: int = 0
     decisions: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    completed: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     frames: float = 0.0
     health_last: dict[str, tuple[datetime, float]] = field(default_factory=dict)
     jetson_j: float = 0.0
@@ -104,6 +105,8 @@ def _fold(state: _State, e: dict) -> None:
         state.captions += len(e.get("captions") or [])
     elif kind == "experience.approval.decided":
         state.decisions[e.get("decision", "?")] += 1
+    elif kind == "workspace.action.completed":
+        state.completed[e.get("status") or "?"] += 1
     elif kind == "capture.camera.health":
         cam, fps = e.get("camera_id", "?"), float(e.get("fps_actual") or 0.0)
         prev = state.health_last.get(cam)
@@ -173,10 +176,16 @@ def totals(events: Iterable[dict], since: datetime | None = None) -> list[Total]
         counted("Actions proposed for approval", "agent.action.proposed"),
     ]
     decided = t.get("experience.approval.decided") or _Tally()
-    rows.append(Total("Approval taps (approve / deny)",
+    rows.append(Total("Approval decisions (approve / deny)",
                       f"{state.decisions['approve']} / {state.decisions['deny']}" if decided.n else "none in the log",
-                      f"`experience.approval.decided` x {decided.n}", decided.n, decided.first, decided.last))
-    rows.append(counted("Outside actions carried out", "workspace.action.completed", note="each one after a tap"))
+                      f"`experience.approval.decided` x {decided.n}; includes tests and pre-flight resets",
+                      decided.n, decided.first, decided.last))
+    done = t.get("workspace.action.completed") or _Tally()
+    others = ", ".join(f"{n} {s}" for s, n in sorted(state.completed.items()) if s != "done")
+    rows.append(Total("Outside actions carried out, each after an approval",
+                      f"{state.completed['done']:,}" if state.completed.get("done") else "none in the log",
+                      f"`workspace.action.completed` with status done, of {done.n}" + (f" ({others})" if others else ""),
+                      done.n, done.first, done.last))
     rows.append(counted("Connector items read", "connector.item.synced"))
     jetson = t.get("telemetry.jetson.power") or _Tally()
     rows.append(Total("Energy used by the Jetson", f"{state.jetson_j / 3600:,.1f} Wh" if state.jetson_j else "none in the log",
@@ -184,7 +193,7 @@ def totals(events: Iterable[dict], since: datetime | None = None) -> list[Total]
                       jetson.n, jetson.first, jetson.last))
     gpu = t.get("telemetry.gpu.power") or _Tally()
     gpu_wh = sum(state.gpu_j.values()) / 3600
-    rows.append(Total("Energy used by the R9700s", f"{gpu_wh:,.1f} Wh" if gpu_wh else "none in the log",
+    rows.append(Total("Energy used by the lab GPUs", f"{gpu_wh:,.1f} Wh" if gpu_wh else "none in the log",
                       f"estimated: socket_w from `telemetry.gpu.power` x {gpu.n} integrated over time"
                       + (f" ({', '.join(sorted(state.gpu_j))})" if state.gpu_j else ""),
                       gpu.n, gpu.first, gpu.last))

@@ -4,7 +4,8 @@ import { RouteSheet } from "@/components/dayrun/RouteSheet";
 import { useState, type FormEvent } from "react";
 import { Empty, ErrorBox, Loading, WriteError } from "@/components/States";
 import ui from "@/components/ui.module.css";
-import { ApiError, api, type CampusRoute, type CircleMember, type CircleMembers, type LeagueStanding, type PlacePack, type PlaceShared } from "@/lib/api";
+import { ApiError, api, type CampusRoute, type CircleMember, type CircleMembers, type FaceShareFriend, type FaceShareStatus, type LeagueStanding, type PlacePack, type PlaceShared } from "@/lib/api";
+import { useAtlasEvents } from "@/lib/atlas";
 import { relative, time } from "@/lib/format";
 import { useFetch, type Loadable } from "@/lib/useFetch";
 import c from "./circle.module.css";
@@ -18,6 +19,13 @@ import { colourOf } from "./shared";
  * GET /api/circle/members answers in every state. "Has a box" is what this box's own log shows: a member
  * whose Atlas sent a message or a summary, or whose desk camera shared a place. Otherwise it says so
  * plainly instead of guessing.
+ *
+ * "Here now" is this box's own cameras recognising someone who enrolled on the People screen and was linked to
+ * a Circle member (GET /identity/present: ids only). It says nothing about anyone who did not enroll here, and it
+ * is not shared with the Circle.
+ *
+ * "Can recognise you" and "Recognised here" are face share (off by default; set up on the People screen): you let
+ * that friend's Atlas recognise you, or they let this box recognise them. No chip while it is off.
  */
 
 /**
@@ -34,12 +42,18 @@ const BOX: Record<string, string> = {
   "this box": "this one",
 };
 
-export function People({ members, standings, packs, onChanged }: {
+export function People({ members, standings, packs, faceShare, onChanged }: {
   members: Loadable<CircleMembers>;
   standings: LeagueStanding[];
   packs: PlacePack[] | undefined;
+  /** GET /api/circle/face-share; null or undefined while it is off or not loaded. */
+  faceShare?: FaceShareStatus | null;
   onChanged: () => void;
 }) {
+  // Who this box recognises right now. No recognition on this box (or it is off): nobody, and no message about it.
+  const seen = useFetch((s) => api.presentNow(s).catch(() => ({ present: [] })));
+  useAtlasEvents(["perception.person", "perception.identity"], seen.reload);
+  const here = new Set((seen.data?.present ?? []).map((x) => x.circle_member_id).filter((id): id is string => !!id));
   if (members.error) return <ErrorBox what="the Circle's people" error={members.error} onRetry={members.reload} />;
   if (!members.data) return <Loading what="the Circle's people" />;
   const data = members.data;
@@ -58,7 +72,7 @@ export function People({ members, standings, packs, onChanged }: {
         </h2>
         <ul className={ui.list}>
           {data.members.map((m) => (
-            <Person key={m.member_id} member={m} all={data.members} standing={standings.find((s) => s.member_id === m.member_id)} packs={packs} from={mine?.place?.place} />
+            <Person key={m.member_id} member={m} here={here.has(m.member_id)} all={data.members} standing={standings.find((s) => s.member_id === m.member_id)} packs={packs} from={mine?.place?.place} face={faceShare?.friends.find((f) => f.member_id === m.member_id)} />
           ))}
         </ul>
       </section>
@@ -98,8 +112,10 @@ function startOf(packs: PlacePack[] | undefined, mine: string | undefined): stri
   return campus?.entry ? `${campus.name}.${campus.entry}` : null;
 }
 
-function Person({ member: m, all, standing, packs, from }: {
+function Person({ member: m, here, all, standing, packs, from, face }: {
   member: CircleMember;
+  face: FaceShareFriend | undefined;
+  here: boolean;
   all: CircleMember[];
   standing: LeagueStanding | undefined;
   packs: PlacePack[] | undefined;
@@ -152,6 +168,9 @@ function Person({ member: m, all, standing, packs, from }: {
           <p className={ui.muted}>{m.mine ? "You are not sharing a place right now." : "Not sharing a place right now."}</p>
         )}
         <div className={c.facts}>
+          {here ? <span className={`${ui.tag} ${ui.tagAccent}`}>Here now</span> : null}
+          {face?.outgoing.state === "shared" ? <span className={ui.tag}>Can recognise you</span> : null}
+          {face?.incoming.state === "accepted" ? <span className={ui.tag}>Recognised here</span> : null}
           <span className={ui.tag}>{m.has_box ? (m.mine ? "This box" : "Has a box") : "Phone only so far"}</span>
         </div>
         <p className={`${ui.muted} ${ui.small}`}>
@@ -173,7 +192,7 @@ function Person({ member: m, all, standing, packs, from }: {
               <button type="button" className={ui.btn} onClick={findRoute} disabled={!start || loading}>
                 {loading ? "Finding the way…" : `Route to ${m.display_name}`}
               </button>
-              <RouteSheet to={`friend:${m.member_id}`} what={`${m.display_name} is at ${m.place.place}`} />
+              <RouteSheet to={`friend:${m.member_id}`} what={`${m.display_name} is at ${m.place.place}`} label="On the map" />
             </div>
           </>
         ) : null}

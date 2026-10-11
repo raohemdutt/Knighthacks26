@@ -2,7 +2,7 @@
 # Copy this working tree to the Jetson and restart the app (the box has no GitHub login, so code reaches it this way).
 #
 #     ./jetson/push.sh                          # alexander@ubuntu.local, ~/Knighthacks26
-#     ./jetson/push.sh alexander@192.168.1.126  # a specific address
+#     ./jetson/push.sh alexander@172.20.10.6  # a specific address
 #     ./jetson/push.sh --web                    # also build the phone app first (needs node)
 #     ./jetson/push.sh --zones                  # also overwrite the box's config/zones.yaml with this tree's
 #
@@ -44,8 +44,10 @@ pack="$(mktemp -t atlas-push.XXXXXX)"
 trap 'rm -f "$pack"' EXIT
 tar czf "$pack" $zones_exclude --exclude=.git --exclude=.venv --exclude=node_modules --exclude=__pycache__ --exclude='*.pyc' \
     --exclude=.env --exclude=data --exclude='*.engine' --exclude='*.gguf' --exclude=web/.next --exclude=web/node_modules .
+# remove a leftover pack first: Windows scp does not truncate an existing file, so an older, larger one breaks tar
+ssh "$target" "rm -f /tmp/atlas-push.tgz"
 scp -q "$pack" "$target:/tmp/atlas-push.tgz"
-ssh "$target" "mkdir -p ~/$dest && cd ~/$dest && tar xzf /tmp/atlas-push.tgz && rm /tmp/atlas-push.tgz && sudo systemctl restart atlas-gateway"
+ssh "$target" "mkdir -p ~/$dest && cd ~/$dest && tar xzf /tmp/atlas-push.tgz; rc=\$?; rm -f /tmp/atlas-push.tgz; [ \$rc -eq 0 ] && sudo systemctl restart atlas-gateway"
 
 echo -n "waiting for the app"
 for _ in $(seq 1 40); do

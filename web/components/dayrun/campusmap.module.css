@@ -1,11 +1,78 @@
-/* The drawn campus (components/dayrun/CampusLayers.tsx). A dark street-map palette that sits in the app's dark theme. */
+/*
+ * The drawn campus (components/dayrun/CampusLayers.tsx). The map has a palette of its own, held as custom properties
+ * on .frame (and on .palette, for a map drawn outside a .frame: Play mode's): a pale street-map palette in Day, and a night map (dark ground, lighter roads, deep water and greens) in
+ * Night. The pins, the route and the "you" dot keep their colours in both; only the ground they sit on changes.
+ */
 
 .frame {
   position: relative;
   border-radius: var(--radius-sm);
   overflow: hidden;
-  border: 1px solid var(--line);
-  background: #161b21;
+  background: var(--map-ground);
+  box-shadow: var(--sh-inset);
+}
+
+.frame,
+.palette {
+  /* Day */
+  --map-land: #e6ebf3;
+  --map-ground: #f1f4f9;
+  --map-wood: #cfe3d3;
+  --map-green: #dcebdb;
+  --map-pitch: #c4dfc6;
+  --map-pitch-line: #9ec8a5;
+  --map-parking: #e1e6ee;
+  --map-water: #bcd7ef;
+  --map-pool: #9ecbe8;
+  --map-plaza: #e6eaf1;
+  --map-road: #ffffff;
+  --map-service: #dfe5ee;
+  --map-foot: #8b97a9;
+  --map-steps: #a07e1e;
+  --map-building: #d5dce8;
+  --map-building-line: #aeb8c8;
+  --map-building-on: #c9dbfb;
+  --map-building-closed: #f4d6d3;
+  --map-name: #3a4558;
+  --map-name-small: #4a5568;
+  --map-water-name: #2c6aa0;
+  --map-halo: rgba(241, 244, 249, 0.92); /* the stroke behind a label, so it reads over anything */
+  --map-label-halo: rgba(255, 255, 255, 0.94);
+  --map-case: #ffffff; /* the casing around the route and the ring around a dot */
+  --map-plate: rgba(255, 255, 255, 0.85);
+  --map-route-dim: #5f7a96;
+  --map-friend-name: #7a4f00;
+}
+
+:global(html[data-theme="dark"]) .frame,
+:global(html[data-theme="dark"]) .palette {
+  --map-land: #0a0f1c;
+  --map-ground: #101829;
+  --map-wood: #12292a;
+  --map-green: #152f2d;
+  --map-pitch: #183a33;
+  --map-pitch-line: #27594c;
+  --map-parking: #141d30;
+  --map-water: #142f52;
+  --map-pool: #1b4472;
+  --map-plaza: #172035;
+  --map-road: #2b3752;
+  --map-service: #1e2840;
+  --map-foot: #7f93b8;
+  --map-steps: #d8b05a;
+  --map-building: #1d2842;
+  --map-building-line: #30405f;
+  --map-building-on: #24407a;
+  --map-building-closed: #3d2230;
+  --map-name: #c3cde3;
+  --map-name-small: #a3b0cc;
+  --map-water-name: #7fb6e8;
+  --map-halo: rgba(16, 24, 41, 0.92);
+  --map-label-halo: rgba(16, 24, 41, 0.94);
+  --map-case: #101829;
+  --map-plate: rgba(18, 26, 44, 0.9);
+  --map-route-dim: #93a9cc;
+  --map-friend-name: #ffd166;
 }
 
 .svg {
@@ -23,42 +90,42 @@
 }
 
 .land {
-  fill: #12161b; /* beyond the downloaded box */
+  fill: var(--map-land); /* beyond the downloaded box */
 }
 
 .ground {
-  fill: #1b2128;
+  fill: var(--map-ground);
 }
 
 .wood {
-  fill: #1c3526;
+  fill: var(--map-wood);
 }
 
 .green {
-  fill: #213527;
+  fill: var(--map-green);
 }
 
 .pitch {
-  fill: #2a4a31;
-  stroke: #3a6343;
+  fill: var(--map-pitch);
+  stroke: var(--map-pitch-line);
   stroke-width: 0.8px;
   vector-effect: non-scaling-stroke;
 }
 
 .parking {
-  fill: #232a32;
+  fill: var(--map-parking);
 }
 
 .water {
-  fill: #1d3d5c;
+  fill: var(--map-water);
 }
 
 .pool {
-  fill: #2a6a94;
+  fill: var(--map-pool);
 }
 
 .plaza {
-  fill: #2c333c;
+  fill: var(--map-plaza);
 }
 
 .service,
@@ -73,28 +140,28 @@
 }
 
 .major {
-  stroke: #586473;
+  stroke: var(--map-road);
   stroke-width: var(--w-major, 3px);
 }
 
 .minor {
-  stroke: #46505d;
+  stroke: var(--map-road);
   stroke-width: var(--w-minor, 2px);
 }
 
 .service {
-  stroke: #353e49;
+  stroke: var(--map-service);
   stroke-width: var(--w-service, 1px);
 }
 
 .foot {
-  stroke: #a9b3bf;
+  stroke: var(--map-foot);
   stroke-width: var(--w-foot, 1px);
-  opacity: 0.5;
+  opacity: 0.6;
 }
 
 .steps {
-  stroke: #b9a26a;
+  stroke: var(--map-steps);
   stroke-width: var(--w-foot, 1px);
   stroke-dasharray: 2 2;
   stroke-linecap: butt;
@@ -102,15 +169,15 @@
 }
 
 .building {
-  fill: #3a4450;
-  stroke: #56626f;
+  fill: var(--map-building);
+  stroke: var(--map-building-line);
   stroke-width: 0.8px;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
 }
 
 .buildingOn {
-  fill: #23564e;
+  fill: var(--map-building-on);
   stroke: var(--accent);
   stroke-width: 1.6px;
   stroke-linejoin: round;
@@ -118,7 +185,7 @@
 }
 
 .buildingClosed {
-  fill: #4a2b2a;
+  fill: var(--map-building-closed);
   stroke: var(--danger);
   stroke-width: 1.6px;
   stroke-dasharray: 4 3;
@@ -129,16 +196,16 @@
 .waterName {
   font-size: 9.5px;
   font-weight: 600;
-  fill: #c3cbd4;
+  fill: var(--map-name);
   paint-order: stroke;
-  stroke: rgba(22, 27, 33, 0.85);
+  stroke: var(--map-halo);
   stroke-width: 2.6px;
   stroke-linejoin: round;
   pointer-events: none;
 }
 
 .waterName {
-  fill: #7fb2dd;
+  fill: var(--map-water-name);
   font-style: italic;
   font-weight: 500;
 }
@@ -154,7 +221,7 @@
 }
 
 .compass {
-  fill: rgba(19, 23, 28, 0.86);
+  fill: var(--map-plate);
   stroke: var(--line);
   stroke-width: 1;
 }
@@ -170,7 +237,7 @@
 }
 
 .plate {
-  fill: rgba(19, 23, 28, 0.82);
+  fill: var(--map-plate);
 }
 
 .scale {
@@ -193,7 +260,7 @@
 /* ---------- pins ---------- */
 
 .pin {
-  stroke: #0d1014;
+  stroke: var(--map-case);
   stroke-width: 1.6;
 }
 
@@ -227,17 +294,17 @@
 }
 
 .pinPlace {
-  fill: #c3cbd4;
+  fill: #aeb8c8;
 }
 
 .pinClosed {
-  fill: #5b3a39;
+  fill: #f4d6d3;
   stroke: var(--danger);
 }
 
 .pinGlyph {
   fill: none;
-  stroke: #10151a;
+  stroke: #10151a; /* the glyph is drawn on the pin's own pastel fill, which is the same in both themes */
   stroke-width: 1.35;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -254,7 +321,7 @@
   font-weight: 700;
   fill: var(--text);
   paint-order: stroke;
-  stroke: rgba(13, 16, 20, 0.92);
+  stroke: var(--map-label-halo);
   stroke-width: 3.2px;
   stroke-linejoin: round;
   pointer-events: none;
@@ -263,7 +330,7 @@
 .pinLabelSmall {
   font-size: 9.5px;
   font-weight: 600;
-  fill: #c3cbd4;
+  fill: var(--map-name-small);
 }
 
 .pinLabelClosed {
@@ -282,38 +349,38 @@
 }
 
 .routeCase {
-  stroke: #0d1014;
+  stroke: var(--map-case);
   stroke-width: 7.5;
-  opacity: 0.85;
+  opacity: 0.9;
 }
 
 .route {
-  stroke: var(--accent);
+  stroke: var(--accent-bright);
   stroke-width: 4.2;
 }
 
 .routeDim {
-  stroke: #9fb4c9;
+  stroke: var(--map-route-dim);
   stroke-width: 2.2;
   stroke-dasharray: 1 5;
   opacity: 0.8;
 }
 
 .routeDone {
-  stroke: var(--accent);
+  stroke: var(--accent-bright);
   stroke-width: 2.4;
-  opacity: 0.45;
+  opacity: 0.55;
 }
 
 .routeDot {
-  fill: #0d1014;
+  fill: var(--map-case);
   stroke: var(--accent);
   stroke-width: 2.4;
 }
 
 .badge {
   fill: var(--accent);
-  stroke: #0d1014;
+  stroke: var(--map-case);
   stroke-width: 1.2;
 }
 
@@ -326,7 +393,7 @@
 
 .you {
   fill: var(--accent);
-  stroke: #ffffff;
+  stroke: #ffffff; /* a white ring reads on both grounds */
   stroke-width: 2.4;
 }
 
@@ -337,23 +404,23 @@
 
 .friend {
   fill: #ffd166;
-  stroke: #0d1014;
+  stroke: #ffffff;
   stroke-width: 1.5;
 }
 
 .friendText {
   font-size: 9px;
   font-weight: 800;
-  fill: #2a1e00;
+  fill: #2a1e00; /* on the friend's own amber fill */
   pointer-events: none;
 }
 
 .friendName {
   font-size: 9.5px;
   font-weight: 700;
-  fill: #ffd166;
+  fill: var(--map-friend-name);
   paint-order: stroke;
-  stroke: rgba(13, 16, 20, 0.92);
+  stroke: var(--map-label-halo);
   stroke-width: 3px;
   pointer-events: none;
 }
@@ -382,25 +449,40 @@
 }
 
 .mapBtn {
-  min-height: 34px;
-  min-width: 34px;
-  padding: 4px 11px;
-  border-radius: 17px;
-  border: 1px solid var(--line);
-  background: rgba(19, 23, 28, 0.9);
+  min-height: var(--tap);
+  min-width: var(--tap);
+  padding: 4px 14px;
+  border-radius: var(--radius-sm);
+  border: 0;
+  background: var(--surface-solid);
+  box-shadow: var(--sh-raised-sm);
   color: var(--text);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   line-height: 1;
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .mapBtn:hover:not(:disabled) {
+    transform: translateY(-2px);
+  }
+}
+
+.mapBtn:active:not(:disabled) {
+  box-shadow: var(--sh-inset-sm);
+  transform: scale(0.97);
 }
 
 .mapBtn:disabled {
   opacity: 0.4;
+  box-shadow: none;
 }
 
-.mapBtnOn {
-  border-color: var(--accent);
-  color: var(--accent);
+.mapBtnOn,
+.mapBtnOn:active:not(:disabled) {
+  box-shadow: var(--sh-selected);
+  color: var(--accent-text);
 }
 
 /* ---------- the key under a map ---------- */
@@ -434,7 +516,7 @@
 }
 
 .keyLineDim {
-  border-top: 2px dotted #9fb4c9;
+  border-top: 2px dotted var(--muted);
 }
 
 .keyYou {
@@ -443,7 +525,8 @@
   height: 11px;
   border-radius: 50%;
   background: var(--accent);
-  border: 2px solid #fff;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 0 1px var(--line);
 }
 
 .keyFriend {
@@ -452,7 +535,8 @@
   height: 11px;
   border-radius: 50%;
   background: #ffd166;
-  border: 1.5px solid #0d1014;
+  border: 1.5px solid #ffffff;
+  box-shadow: 0 0 0 1px var(--line);
 }
 
 /* ---------- the route sheet ---------- */
@@ -464,7 +548,7 @@
 }
 
 .leaveSoon {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .leaveLate {
@@ -483,14 +567,27 @@
 }
 
 .routeBtn {
-  min-height: 34px;
-  padding: 4px 12px;
-  border-radius: 17px;
-  border: 1px solid var(--accent);
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 13.5px;
+  min-height: var(--tap);
+  padding: 4px 16px;
+  border-radius: var(--radius-pill);
+  border: 0;
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
+  color: var(--accent-text);
+  font-size: 14px;
   font-weight: 700;
   white-space: nowrap;
   flex: none;
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .routeBtn:hover {
+    transform: translateY(-2px);
+  }
+}
+
+.routeBtn:active {
+  box-shadow: var(--sh-inset-sm);
+  transform: scale(0.97);
 }

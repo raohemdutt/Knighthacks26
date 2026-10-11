@@ -15,7 +15,8 @@
                                desk, breaks and their likely triggers with evidence), the day in words, one or two
                                suggestions, the running forecast calibration, and the notes sent when blocks ended.
                                Evidence is cited by id in the events; here each one also gets its words and, when
-                               Memory has a picture of that moment, a `frame_ref` the phone can open.
+                               Memory has a picture of that moment, a `frame_ref` the phone can open. `feedback` is
+                               the "Was that right?" view (GET /api/day/coach/feedback) when that loop is wired, else null.
 
 - GET  /api/day/brief?moment=  the day in words (D3): the latest narration of each moment (morning, now, replan, coach,
                                evening) with `spoken` for the ear and `display` for the screen, the asks for pending
@@ -23,6 +24,15 @@
 - POST /api/day/brief          {moment, fast} narrate that moment again from the state as it is now (the "Brief me"
                                button): a "morning" brief asked for at 3 PM covers the rest of the day. `fast` never
                                waits for the model. Publishes `day.narrated` when the words are new.
+
+- GET  /api/day/checkin?numbers=  the check-in (D4): the newest one with its sentence, its signals and what is behind each
+                               (looked up on the box: the night, the resting heart rate's shape against the person's own
+                               baseline, the looks, the drink's last frame, the earlier days), the earlier check-ins, what the
+                               rule sees right now and why it is quiet, and its thresholds. The heart rate's values are only
+                               in the answer with `numbers=true`. Box-only: read by the owner's phone, sent nowhere.
+- POST /api/day/checkin/done   {id?} the person dismissed it (`day.checkin.answered`).
+- POST /api/day/checkin/move   {id?} "Move the block": publishes a re-plan (`day.replan.proposed`) and its approval card.
+                               The plan changes only when that card is approved.
 
 Every answer is what the log says: the plan and status are projections of `day.*` events.
 """
@@ -52,8 +62,12 @@ class BriefBody(BaseModel):
     fast: bool = False  # never wait for the model: its cached words for these facts, or the template's
 
 
+class CheckinBody(BaseModel):
+    id: str | None = None  # the check-in's id (`day.checkin.raised` event id); None: the newest
+
+
 def day_router(day: DayLoop, publish: Callable[[object], Awaitable] | None = None, guard: Callable | None = None,
-               memory=None, clock: Callable[[], datetime] = lambda: datetime.now(UTC)) -> APIRouter:
+               memory=None, clock: Callable[[], datetime] = lambda: datetime.now(UTC), feedback=None) -> APIRouter:
     router = APIRouter(prefix="/api/day", tags=["day"])
     writes = [Depends(guard)] if guard else []
     p, t = day.planner, day.tracker
@@ -149,7 +163,59 @@ def day_router(day: DayLoop, publish: Callable[[object], Awaitable] | None = Non
             "yesterday": p.reviews[which - timedelta(days=1)].model_dump(mode="json") if which - timedelta(days=1) in p.reviews else None,
             "friends": friends, "last_seen": last_seen(),
             "coach": coach[0] if coach else None, "coach_earlier": coach[1:],
+            "checkin": checkin_latest(),  # the check-in to show at the top, while it is fresh and unanswered or just answered
         }
+
+    # --- the check-in (D4) ---
+
+    def checkin_now() -> datetime:
+        last = day.checkin.raised[-1].ts if day.checkin.raised else None
+        return max(event_now(), last) if last else event_now()
+
+    def checkin_latest(numbers: bool = False) -> dict | None:
+        try:
+            e = day.checkin.latest(checkin_now())
+            return day.checkin.card(e, numbers) if e else None
+        except Exception:
+            return None
+
+    def checkin_of(body: CheckinBody | None):
+        e = day.checkin.find(body.id if body else None)
+        if e is None:
+            raise HTTPException(404, "no such check-in")
+        return e
+
+    @router.get("/checkin")
+    async def get_checkin(numbers: bool = False) -> dict:
+        """The newest check-in with what is behind each chip, the earlier ones, what the rule sees right now and its
+        thresholds. `numbers=true` adds the resting heart rate's values (the phone's explicit "show numbers")."""
+        return day.checkin.view(checkin_now(), numbers)
+
+    @router.post("/checkin/done", dependencies=writes)
+    async def checkin_done(body: CheckinBody | None = None) -> dict:
+        e = checkin_of(body)
+        answer = day.checkin.done(clock(), e)
+        if publish:
+            await publish(answer)
+        else:
+            day.checkin.on_answered(answer)
+        return {"id": e.event_id, "answered": "done"}
+
+    @router.post("/checkin/move", dependencies=writes)
+    async def checkin_move(body: CheckinBody | None = None) -> dict:
+        """"Move the block": a re-plan with its approval card. Nothing changes until the card is approved."""
+        e = checkin_of(body)
+        if not e.proposes_replan:
+            raise HTTPException(409, "this check-in did not offer to move a block")
+        events = day.checkin.move(clock(), e)
+        if not events:
+            raise HTTPException(409, "there is no block left to move to after a meal today")
+        if publish:
+            for event in events:
+                await publish(event)
+        head = events[0]
+        return {"id": e.event_id, "answered": "move", "plan_id": head.plan_id, "action_id": head.action_id,
+                "plan": head.model_dump(mode="json")}
 
     @router.get("/coach")
     async def get_coach(day_: date | None = Query(None, alias="day")) -> dict:
@@ -166,6 +232,7 @@ def day_router(day: DayLoop, publish: Callable[[object], Awaitable] | None = Non
             "calibration": body["calibration"].model_dump() if body["calibration"] else None, "block_minutes": body["block_minutes"],
             "desk_minutes_today": c.habits_desk_minutes(which, now),
             "notes": [noted(n) for n in notes], "latest": coach_latest(now), "limits": c.limits(),
+            "feedback": feedback.view(now) if feedback else None,  # "Was that right?" (CoachFeedback), when it is wired
         }
 
     @router.get("/plan")

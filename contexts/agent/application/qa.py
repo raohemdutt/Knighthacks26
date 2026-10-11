@@ -17,12 +17,13 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, time, timedelta
 from pathlib import Path
+from time import monotonic
 from zoneinfo import ZoneInfo
 
 import yaml
 
 from contexts.agent.application.memory_port import MemoryReader
-from contexts.agent.application.web_port import WebTools
+from contexts.agent.application.web_port import NOT_FOUND, SUMMARY_TITLE, WebTools
 from contracts.agent import AnswerGenerated
 from contracts.experience import QuestionAsked
 from contracts.types import ChatMessage, Citation, ToolCall
@@ -142,6 +143,40 @@ PREPARE_TOOL = {
         "parameters": {"type": "object", "properties": {"event": {"type": "string"}}, "required": ["event"]},
     },
 }
+# A small model often refuses in its own words instead of saying NO_EVIDENCE: treat that as unsure too (A13)
+REFUSAL = re.compile(
+    r"\b(?:can(?:no|['\u2019]?)t|unable to|not able to) (?:browse|access|check|search|look up|see)"
+    r"|\bdon['\u2019]?t have (?:access|the ability|real[- ]time|internet|any (?:information|data))"
+    r"|\bi don['\u2019]?t know\b|\bas an ai\b|\bi['\u2019]?m (?:just )?an ai\b|\bno (?:internet|web) access\b",
+    re.IGNORECASE)
+
+
+def unsure(text: str) -> bool:
+    return text.strip() == NO_EVIDENCE or bool(REFUSAL.search(text))
+
+
+# About the world outside the room, so only the web can answer: with web tools these skip small talk (A13)
+OUTSIDE = re.compile(
+    r"\b(?:scores?|standings|playoffs?|box score|final score|kickoff|tip-?off)\b"
+    r"|\b(?:game|match|matchup) (?:against|vs\.?|versus|with)\b|\b(?:last|latest|most recent|next|upcoming) (?:game|match)\b"
+    r"|\b(?:vs\.?|versus)\b|\bwho (?:won|is winning|plays)\b|\bdid (?:ucf|uf|the knights|the gators)\b",
+    re.IGNORECASE)
+
+
+WEB_BUDGET_S = 25.0  # a web question answers from what it has after this long (the 4B on the Jetson is slow)
+WEB_CALL_MIN_S = 3.0  # but one web call always gets at least this long
+WEB_CALL_MAX_S = 12.0  # and never longer than this (a page load that hangs)
+MAX_PAGES = 1  # pages read per question: each one is a slow browser load and a long prompt
+WEB_TOOL_NAMES = {"web_search", "reddit_search", "read_page"}
+NUMBER = re.compile(r"\d+")
+
+
+def grounded(answer: str, evidence: list[str]) -> bool:
+    """Every number in the answer (a score, a date, a price) appears in the evidence it was written from."""
+    seen = set(NUMBER.findall(" ".join(evidence)))
+    return all(n in seen for n in NUMBER.findall(answer))
+
+
 WEB_HINT = (" For news, sports scores, opening hours or anything outside this room, use web_search, "
             "then read_page on the best link.")
 HISTORY_HOURS = 24.0
@@ -193,6 +228,7 @@ class Evidence:
     citations: list[Citation] = field(default_factory=list)
     system: str | None = None  # a prompt for this shape of question, instead of SYSTEM
     direct: str | None = None  # an answer written from the data itself: no model call (lists the model garbles)
+    web_summary: str | None = None  # the search API's own summary of its results, when it gives one (A13)
     room_only: bool = False  # about objects or people in the room: no tool-loop fallback when nothing is found (A13)
 
     def add(self, line: str, citation: Citation) -> None:
@@ -343,6 +379,8 @@ class QA:
         self.load_keyframe = load_keyframe  # frame_ref -> blurred JPEG bytes
         self.tools = MEMORY_TOOLS + AGENT_TOOLS + ([KEYFRAME_TOOL] if load_keyframe else []) + (WEB_TOOLS if web else [])
         self.planner = None  # set by the composition root; answers "help me prep for ..." (A8)
+        self.talk = None  # set by the composition root; small talk and simple questions (talk.py)
+        self.monotonic: Callable[[], float] = monotonic  # the web time budget (A13); tests replace it
         self.on_delta: Callable[[str, str], None] | None = None  # (question_id, text): streamed answer pieces (A11)
 
     async def on_question(self, e: QuestionAsked) -> AnswerGenerated:
@@ -356,6 +394,13 @@ class QA:
             return Answer(plan.text or NO_EVIDENCE, plan.citations, plan.model_version)
         evidence = self.prefetch(question)
         if evidence is None:
+            if self.web and OUTSIDE.search(question):  # a score or a game: search at once, no tool-choice round
+                return await self.web_first(question, stream)
+            if self.talk and self.talk.wants(question):
+                a = await self.talk.reply(question, stream)
+                if self.web and unsure(a.text):  # small talk gave up ("I can't browse the web"): let the tools try
+                    return await self.tool_loop(question, stream)
+                return a
             return await self.tool_loop(question, stream)
         unsure_ok = self.web is not None and not evidence.room_only  # A13: may fall back to the tool loop
         if not evidence:
@@ -368,7 +413,7 @@ class QA:
             return Answer(evidence.direct, evidence.citations, self.runtime.model_info().version)
         if unsure_ok:  # not streamed: an unsure answer is replaced by the tool loop's
             a = await self._answer_from(question, evidence)
-            if a.text != NO_EVIDENCE:
+            if not unsure(a.text):
                 if stream:
                     stream(a.text)
                 return a
@@ -517,6 +562,8 @@ class QA:
 
     async def web_search(self, query: str, ev: Evidence) -> None:
         for r in await self.web.search(query):
+            if r.get("title") == SUMMARY_TITLE and r.get("summary"):
+                ev.web_summary = r["summary"]
             snippet = f": {r['summary']}" if r.get("summary") else ""
             ev.add(f"{r['title']}{snippet} ({r['url']})", Citation(url=r["url"], title=r["title"]))
 
@@ -601,24 +648,110 @@ class QA:
         ]
         tools = self.tools + ([PREPARE_TOOL] if self.planner else [])
         ev = Evidence()
+        searched = False  # the web was searched, by the model or by us
+        pages = 0
+        started = self.monotonic()
+
+        def left() -> float:
+            return WEB_BUDGET_S - (self.monotonic() - started)
+
         for _ in range(MAX_WEB_TOOL_CALLS if self.web else MAX_TOOL_CALLS):
+            if self.web and left() <= 0:
+                break  # out of time (model calls count too): answer from what was found so far
             r = await self._chat(msgs, tools)
             if not r.tool_calls:
                 text = (r.content.strip() if ev else NO_EVIDENCE) or NO_EVIDENCE
+                if self.web and not searched and unsure(text) and left() > 0:
+                    # the model gave up without trying the web: search with the question itself, answer from that
+                    found = Evidence()
+                    await self._web_call(ToolCall(id="auto-web", name="web_search", arguments={"query": question}),
+                                         found, left())
+                    if found:
+                        ev.lines += found.lines
+                        ev.citations += found.citations
+                        return await self._finish(question, ev, stream)
+                if self.web and ev:
+                    return self._checked(Answer(text, ev.citations, r.model_version), ev, stream)
                 if stream:
                     stream(text)
                 return Answer(text, ev.citations, r.model_version)
             msgs.append(ChatMessage(role="assistant", content=r.content, tool_calls=r.tool_calls))
             for call in r.tool_calls:
+                searched = searched or call.name == "web_search"
                 found = Evidence()
-                await self._run_tool(call, found)
+                note = ""
+                if call.name == "read_page" and pages >= MAX_PAGES:
+                    note = "skipped: one page per question; answer from what you have"
+                elif self.web and call.name in WEB_TOOL_NAMES:
+                    pages += call.name == "read_page"
+                    if not await self._web_call(call, found, left()):
+                        note = f"{call.name} timed out"
+                else:
+                    await self._run_tool(call, found)
                 ev.lines += found.lines
                 ev.citations += found.citations
-                result = "\n".join(found.lines) or "nothing found"
+                result = "\n".join(found.lines) or note or "nothing found"
                 msgs.append(ChatMessage(role="tool", content=result, tool_call_id=call.id))
         if not ev:
             return Answer(NO_EVIDENCE, [], self.runtime.model_info().version)
-        return await self._answer_from(question, ev, stream)
+        return await self._finish(question, ev, stream)
+
+    async def web_first(self, question: str, stream: Callable[[str], None] | None = None) -> Answer:
+        """Search with the question itself and answer from the results in one model call (checked). Saves the
+        small model's tool-choice round, the slowest part of a web question on the Jetson."""
+        ev = Evidence()
+        await self._web_call(ToolCall(id="web-first", name="web_search", arguments={"query": question}), ev,
+                             WEB_BUDGET_S)
+        if not ev:
+            return await self.tool_loop(question, stream)
+        if direct := self._summary_answer(ev):  # the search did the job: no model call (about 1 to 2 s)
+            if stream:
+                stream(direct.text)
+            return direct
+        return await self._finish(question, ev, stream)
+
+    def _summary_answer(self, ev: Evidence) -> Answer | None:
+        """The search API's summary as the answer, when it answers the question and every number in it is also in
+        one of the result pages (so a summary that invented a score is not said). Two sentences at most."""
+        summary = ev.web_summary
+        pages = [line for line in ev.lines if not line.startswith(SUMMARY_TITLE)]
+        if not summary or NOT_FOUND.search(summary) or unsure(summary) or not grounded(summary, pages):
+            return None
+        text = " ".join(re.split(r"(?<=[.!?])\s+", summary.strip())[:2])
+        seen, cites = set(), []
+        for c in ev.citations:
+            if c.url and c.url not in seen:
+                seen.add(c.url)
+                cites.append(c)
+        return Answer(text, cites[:3], self.runtime.model_info().version)
+
+    async def _web_call(self, call: ToolCall, ev: Evidence, left: float) -> bool:
+        """One web tool call inside the time budget. False when it ran out of time (nothing is added)."""
+        found = Evidence()
+        try:
+            await asyncio.wait_for(self._run_tool(call, found), timeout=min(WEB_CALL_MAX_S, max(WEB_CALL_MIN_S, left)))
+        except (TimeoutError, asyncio.TimeoutError):  # distinct classes on Python 3.10, which the Jetson runs
+            return False
+        ev.lines += found.lines
+        ev.citations += found.citations
+        ev.web_summary = ev.web_summary or found.web_summary
+        return True
+
+    async def _finish(self, question: str, ev: Evidence, stream: Callable[[str], None] | None) -> Answer:
+        if not self.web:
+            return await self._answer_from(question, ev, stream)
+        return self._checked(await self._answer_from(question, ev), ev, stream)  # checked before it is streamed
+
+    def _checked(self, a: Answer, ev: Evidence, stream: Callable[[str], None] | None) -> Answer:
+        """A web answer whose numbers are not in what was found is not said: the links are offered instead."""
+        if not grounded(a.text, ev.lines):
+            links = [c for c in ev.citations if c.url][:3]
+            where = "; ".join(c.title or c.url for c in links)
+            text = "I couldn't confirm that from what I found." + (f" These may have it: {where}." if where else "")
+            a = Answer(text, links, a.model_version)
+        if stream:
+            stream(a.text)
+        return a
 
     def _t(self, ts: datetime) -> str:
         """Times the model sees are local to the household, e.g. "Sun 7:30 AM"."""

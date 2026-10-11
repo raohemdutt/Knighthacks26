@@ -81,10 +81,14 @@ class DayPlanner:
         self.dayrun, self.clock = dayrun, clock
         self.habits, self.memory, self.presence, self.hub = habits, memory, presence, hub
         self.coach = None  # the study coach (DayLoop sets it): sessions for the review, advice for the next plan
+        # A port the composition root may fill: (day, now) -> one clause about the day's sorting, or None (Waste Watch's
+        # story, contexts/impact). The review's text and the evening narration carry it; this context never imports that one.
+        self.waste_clause = None
         # --- state, rebuilt from the log ---
         self.plans: dict[date, DayPlanProposed] = {}  # the morning plan of each day
         self.current: dict[date, DayPlanProposed | DayReplanProposed] = {}  # what the day is measured against
         self.pending: dict[date, DayReplanProposed] = {}  # a re-plan waiting for the phone
+        self.earlier: dict[date, list[DayPlanProposed | DayReplanProposed]] = {}  # the plans `current` replaced, oldest first
         self.cards: dict[str, tuple[date, str]] = {}  # action id -> (day, plan id)
         self.committed: set[str] = set()
         self.reviews: dict[date, DayReviewed] = {}
@@ -110,7 +114,7 @@ class DayPlanner:
     def on_plan_proposed(self, e: DayPlanProposed) -> None:
         self.ids.add(e.plan_id)
         self.plans[e.day] = e
-        self.current[e.day] = e
+        self._replace(e.day, e)
         self.pending.pop(e.day, None)  # a new plan supersedes a re-plan waiting on the old one
         if e.action_id:
             self.cards[e.action_id] = (e.day, e.plan_id)
@@ -128,7 +132,15 @@ class DayPlanner:
         self.committed.add(e.plan_id)
         replan = self.pending.get(e.day)
         if replan and replan.plan_id == e.plan_id:
-            self.current[e.day] = self.pending.pop(e.day)
+            self._replace(e.day, self.pending.pop(e.day))
+
+    def _replace(self, day: date, plan: DayPlanProposed | DayReplanProposed) -> None:
+        """`plan` is now what the day is measured against; the one before it is kept, because the hours it
+        covered were already lived (the coach still judges them: contexts/day/application/coach.py)."""
+        old = self.current.get(day)
+        if old is not None and old.plan_id != plan.plan_id:
+            self.earlier.setdefault(day, []).append(old)
+        self.current[day] = plan
 
     def on_reviewed(self, e: DayReviewed) -> None:
         self.reviews[e.day] = e
@@ -345,9 +357,14 @@ class DayPlanner:
 
     # --- a re-plan from where you are ---
 
-    def replan(self, now: datetime, start_place: str | None, why: str, asked: bool = False, for_event: str | None = None) -> list[Event]:
+    def replan(self, now: datetime, start_place: str | None, why: str, asked: bool = False, for_event: str | None = None,
+               adjust=None, draft: bool = False) -> list[Event]:
         """A new plan for the rest of the day from `start_place` (where the box thinks you are), with one card.
-        Drift triggers it (contexts/day/application/tracker.py); the person can ask for one at any time."""
+        Drift triggers it (contexts/day/application/tracker.py); the person can ask for one at any time.
+
+        `adjust(moves) -> moves | None` changes the chosen moves before they are simulated (the check-in's "move the
+        block to after dinner"); None, or a move the engine then rejects, means no re-plan at all. `draft` returns
+        the re-plan without its card, for looking at what it would be: nothing is proposed."""
         day = self.clock.day_of(now)
         current = self.current.get(day)
         if current is None:
@@ -355,9 +372,16 @@ class DayPlanner:
         board = self.dayrun.board(now, InitialOverride(start_place=start_place) if start_place else None)
         advice = self.advice(day)
         moves, result = choose(self.dayrun.cfg, self.dayrun.walks, board, preferred_block_minutes=advice[0].block_minutes if advice else None)
+        if adjust is not None:
+            moves = adjust(moves)
+            if moves is None:
+                return []
+            result = simulate(self.dayrun.cfg, self.dayrun.walks, board, moves)
+            if result.rejected:
+                return []
         plan_id = self.fresh_id(f"plan-{day}-{local(self.dayrun.cfg, now):%H%M}r")
         blocks = plan_moves(result, moves)
-        card = self.card(blocks, day, result, now, replace=True, why=why)
+        card = None if draft else self.card(blocks, day, result, now, replace=True, why=why)
         replan = DayReplanProposed(event_id=f"day-replan-{plan_id}", ts=now, day=day, plan_id=plan_id, replaces=current.plan_id,
                                    why=why, start=board.start, moves=blocks, dayrun_moves=[MoveIn(**m.model_dump()) for m in moves],
                                    outcome=plan_outcome(result), action_id=card.action_id if card else None, asked=asked,
@@ -389,6 +413,18 @@ class DayPlanner:
                     log.exception("the evening review of %s failed", day)
                     self.reviews.setdefault(day, None)  # type: ignore[arg-type]
         return out
+
+    def sorting(self, day: date, now: datetime) -> str | None:
+        """The day's sorting in one clause ("3 of 4 things you threw away went in the right bin; ...") when Waste Watch
+        is wired in and something was thrown away; None otherwise, and the review reads as it always did."""
+        if self.waste_clause is None:
+            return None
+        try:
+            clause = self.waste_clause(day, now)
+        except Exception:
+            log.exception("the day's sorting clause failed")
+            return None
+        return clause.strip().rstrip(".") or None if clause else None
 
     def review(self, day: date, now: datetime) -> DayReviewed:
         plan = self.current[day]
@@ -424,6 +460,9 @@ class DayPlanner:
         streak = (before.streak if before else 0) + 1 if stars > 0 else 0
         text = rv.text + (f" The real day scores {points} points and {stars} star{'s' if stars != 1 else ''} by Day Run's rules"
                           f" (the plan would have earned {plan_stars}); streak {streak}.")
+        waste = self.sorting(day, now)
+        if waste:
+            text += f" Waste Watch: {waste}."
         coach: dict = {}
         if self.coach is not None:  # the day's blocks of the main activity, against the desk camera
             try:

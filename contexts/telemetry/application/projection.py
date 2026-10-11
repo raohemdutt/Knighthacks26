@@ -3,7 +3,7 @@
     projection = TelemetryProjection()
     projection.subscribe(bus)                       # replay=True: the log rebuilds it on start
     projection.snapshot()                           # nodes, recent requests, training runs, counts
-    projection.readings("gpu-a", start, end)        # power readings in a window, oldest first
+    projection.readings("pod-a", start, end)        # power readings in a window, oldest first
 
 Per node and power source it keeps the latest watts, how many samples arrived (and how many had no
 reading), the configured period next to the period actually measured between samples, the longest
@@ -23,6 +23,7 @@ from datetime import datetime
 from typing import Any
 
 from bus import EventBus
+from contexts.telemetry.domain.nodes import canonical
 from contexts.telemetry.domain.power import PowerReading, reading_of
 from contracts.events import Event
 from contracts.telemetry import GpuPower, JetsonPower, RequestWindow, TrainStep
@@ -47,6 +48,9 @@ class TelemetryProjection:
         node = getattr(event, "node", None)
         if not isinstance(node, str) or not node:
             return  # every telemetry event names its node; anything else is not ours to fold
+        if canonical(node) != node:  # an old log or sampler names a pod gpu-a or gpu-b: fold it under pod-a, pod-b
+            node = canonical(node)
+            event = event.model_copy(update={"node": node})
         self.counts[event.type] += 1
         status = self._node(node)
         status["events"][event.type] = status["events"].get(event.type, 0) + 1

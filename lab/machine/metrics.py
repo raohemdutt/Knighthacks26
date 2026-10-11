@@ -23,6 +23,11 @@ history to compare like with like.
 The file is only ever appended to. add holds an exclusive lock on the file itself while it writes, so concurrent
 writers, separate processes included, never interleave or lose a row, and load takes the same lock so it never reads a
 half-written line. A corrupt line makes load refuse the whole file instead of dropping the row quietly.
+
+load_numbered reads the file the same way, under the same lock, and returns each row with its line number: lines count
+from 1 (FIRST_LINE_NUMBER), a blank line is skipped but still counted, and a CRLF ending is one line. These are the
+numbers load names in its error text, and load is built on load_numbered, so a reader that cites a row by its line
+takes the number from here instead of counting the file again.
 """
 from __future__ import annotations
 
@@ -46,7 +51,7 @@ else:
 
 __all__ = [
     "DEFAULT_PATH", "FIELDS", "LOCK_TIMEOUT", "FileLock", "MetricsFormatError", "MetricsLocked",
-    "add", "check_metric_name", "check_row", "history", "latest", "load",
+    "FIRST_LINE_NUMBER", "add", "check_metric_name", "check_row", "history", "latest", "load", "load_numbered",
 ]
 
 log = logging.getLogger("lab.metrics")
@@ -54,6 +59,7 @@ log = logging.getLogger("lab.metrics")
 DEFAULT_PATH = Path(__file__).resolve().parents[1] / "refine" / "metrics.jsonl"
 FIELDS = ("metric", "value", "unit", "node", "conditions", "source", "ts", "low_confidence")
 LOCK_TIMEOUT = 10.0  # seconds add and load wait for another process to let go of the file
+FIRST_LINE_NUMBER = 1  # the number load_numbered gives the first line of the file, and load names in its errors
 
 # The lock byte sits this far into the file on Windows, past any real content, so a held lock never overlaps the data a
 # reader wants (Windows refuses reads that overlap a locked range) and the file never grows because of it.
@@ -275,17 +281,21 @@ def _read_bytes(path: Path, timeout: float) -> bytes | None:
         lock.release()
 
 
-def load(path: Path | str = DEFAULT_PATH, *, lock_timeout: float = LOCK_TIMEOUT) -> list[dict]:
-    """Every row of the file in file order, each validated and normalized to FIELDS order. A missing file is an empty
-    list and is not created. Blank lines and CRLF endings are tolerated. A line that is not valid JSON, or a row that
-    breaks the schema, raises MetricsFormatError naming the line; the file is never read past a bad line. Raises
-    MetricsLocked when a writer keeps the lock for longer than `lock_timeout`."""
+def load_numbered(
+    path: Path | str = DEFAULT_PATH, *, lock_timeout: float = LOCK_TIMEOUT,
+) -> list[tuple[int, dict]]:
+    """Every row of the file in file order as (line number, row) pairs, each row validated and normalized to FIELDS
+    order. The file is read once, under the same lock add takes. Lines count from FIRST_LINE_NUMBER; a blank line
+    (whitespace only) is skipped but still counted, and a CRLF ending is one line, so the number is the one an editor
+    shows and the one MetricsFormatError names. A missing file is an empty list and is not created. A line that is not
+    valid JSON, or a row that breaks the schema, raises MetricsFormatError naming the line; the file is never read past
+    a bad line. Raises MetricsLocked when a writer keeps the lock for longer than `lock_timeout`."""
     path = Path(path)
     data = _read_bytes(path, lock_timeout)
     if data is None:
         return []
-    rows = []
-    for number, raw in enumerate(data.split(b"\n"), start=1):
+    numbered: list[tuple[int, dict]] = []
+    for number, raw in enumerate(data.split(b"\n"), start=FIRST_LINE_NUMBER):
         raw = raw.strip()
         if not raw:
             continue
@@ -294,8 +304,16 @@ def load(path: Path | str = DEFAULT_PATH, *, lock_timeout: float = LOCK_TIMEOUT)
             parsed = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, ValueError) as exc:
             raise MetricsFormatError(f"{where} is not valid JSON ({exc}); refusing to read a corrupt file") from exc
-        rows.append(_check_row(parsed, where=where, stamp_missing_ts=False))
-    return rows
+        numbered.append((number, _check_row(parsed, where=where, stamp_missing_ts=False)))
+    return numbered
+
+
+def load(path: Path | str = DEFAULT_PATH, *, lock_timeout: float = LOCK_TIMEOUT) -> list[dict]:
+    """Every row of the file in file order, each validated and normalized to FIELDS order: load_numbered without the
+    line numbers. A missing file is an empty list and is not created. Blank lines and CRLF endings are tolerated. A line
+    that is not valid JSON, or a row that breaks the schema, raises MetricsFormatError naming the line; the file is
+    never read past a bad line. Raises MetricsLocked when a writer keeps the lock for longer than `lock_timeout`."""
+    return [row for _, row in load_numbered(path, lock_timeout=lock_timeout)]
 
 
 def _require_complete_last_line(path: Path) -> None:

@@ -5,7 +5,7 @@
 Atlas is a private AI box with eyes. It sits on your desk, sees your space, remembers it, answers
 questions about it in plain English, and helps with your day. Everything it does at runtime happens on
 an NVIDIA Jetson Orin Nano, so no video leaves the room. When it needs a new skill, a big open model on
-two AMD Radeon AI PRO R9700s teaches it, and the smaller, smarter model is shipped back to the box.
+two AMD Strix Halo pods (Radeon 8060S, gfx1151) teaches it, and the smaller, smarter model is shipped back to the box.
 
 Atlas is **one everyday tool**. Finding your keys, the package alert, the study plan before an exam, the
 Circle of friends' Atlases, Waste Watch and Day Run are all use cases of the same box: the same cameras,
@@ -28,7 +28,7 @@ Built at Knight Hacks 2026 by Dominick Dupuy, Hemdutt Rao, Xander Robbins and Il
 - **Plans with friends.** Atlases in a Circle agree on a time through Neon Postgres; only free or busy
   leaves each box.
 - **Learns new skills.** You teach a task on the phone and approve the export of blurred examples.
-  Qwen3.8-27B on one R9700 labels them, a LoRA fine-tune of the Jetson's Qwen runs on the other, an eval
+  Qwen3.8-27B on one Strix Halo pod labels them, a LoRA fine-tune of the Jetson's Qwen runs on the other, an eval
   gate decides, and the winning model is quantized and hot-swapped onto the box.
 - **Works unplugged.** `make offline` cuts the internet. Seeing, remembering, alerting and answering
   carry on; only learning, connectors and the Circle pause.
@@ -58,7 +58,7 @@ flowchart LR
   Connectors["Connectors (MCP)<br/>Canvas, calendar, GroupMe, browser"] --> Bus
   Bus <--> Circle["Circle<br/>Neon Postgres + local outbox"]
 
-  subgraph Lab["AMD learning lab: 2x Radeon AI PRO R9700, ROCm"]
+  subgraph Lab["AMD learning lab: 2x Strix Halo (Radeon 8060S, gfx1151), ROCm, SJC hub"]
     Teacher["GPU A: vLLM<br/>Qwen3.8-27B teacher labels"]
     Trainer["GPU B: PEFT/TRL LoRA,<br/>eval gate, GGUF Q4_K_M package"]
     Teacher --> Trainer
@@ -85,7 +85,8 @@ The rules that keep it safe to change while it runs:
 | Whole pipeline, 30-minute soak with a video as the camera | 15 fps, 0 errors | Jetson soak test |
 | On-device Qwen3.5-4B Q4_K_M decode | 13 to 14 tok/s | llama-server on the Jetson |
 | Demo questions, 42 phrasings of 7 questions | 42/42 correct, 0.6 to 3.3 s | `python -m contexts.agent.eval` on the Jetson |
-| Teacher, Qwen3.8-27B on vLLM, one R9700 | 7.7 tok/s at 200 W average | `lab/refine/metrics.jsonl` |
+| Teacher, Qwen3.8-27B on vLLM, one Strix Halo (gfx1151) | 2.9 tok/s at about 120 W, 9 W idle, 0.39 s to the first text token | `lab/refine/metrics.jsonl` |
+| The same teacher on the R9700 (gfx1201), the other chip, not the lab's baseline | 7.7 tok/s at about 200 W, about 26 J per token | `lab/refine/metrics.jsonl` |
 | Trainer smoke LoRA run (a pipeline check, not a learned task) | loss 2.23 to 0.16 | `lab/refine/metrics.jsonl` |
 | First learned task: before vs after vs teacher | pending | the first real fine-tune has not run yet |
 
@@ -112,6 +113,10 @@ python -m contexts.demo preflight --gateway http://<jetson>:8000 --reset
 make offline    # and make online afterwards
 ```
 
+Every use case with its exact steps, expected results and how far it is verified:
+[`docs/demo-run-sheet.md`](docs/demo-run-sheet.md); `python scripts/demo_walkthrough.py --gateway http://<box>:8000`
+runs the steps that need no person.
+
 The lab side (teacher, trainer, packaging) is in `lab/README.md`.
 
 ## Repository map
@@ -124,7 +129,7 @@ contexts/    one folder per bounded context:
              capture perception memory agent workspace vault connectors learning telemetry
              circle habits day play impact profiles voice demo gateway
 web/         the phone PWA and the operator screen (Next.js, served by the Jetson)
-lab/         R9700 side: teacher, trainer, dataset reader, packaging, benchmarks
+lab/         Strix Halo side: teacher, trainer, dataset reader, packaging, benchmarks
 jetson/      setup, systemd services, egress firewall, model swap
 config/      models.yaml, zones, rules, connectors, .env.example
 fixtures/    sample episodes, datasets and the seeded demo night

@@ -1,0 +1,14 @@
+{
+  "dataset_id": "desk-fixture",
+  "spec": {
+    "task": "desk-objects",
+    "instruction": "Name the one object on the desk in this picture. Reply with only its name.",
+    "output_schema": {},
+    "camera": null,
+    "label": null,
+    "examples": []
+  },
+  "created": "2026-10-11T09:30:00Z",
+  "examples": 12,
+  "action_id": "fixture:desk-synthetic"
+}

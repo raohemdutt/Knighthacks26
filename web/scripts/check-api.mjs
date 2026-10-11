@@ -225,6 +225,53 @@ const LEADERBOARD = {
 const ROUTE = { item: "string", bin: "string", rows: "number", cols: "number", path: listOf({ row: "number", col: "number" }) };
 const ACCURACY = { session_id: "string", rounds: "number", first_round: "number?", round_5_on: "number?" };
 
+// The day in words, the coach's questions, the Circle's conversations, the Impact screen, "when to leave", the room
+// twin and the inspection dashboard: the fields lib/api.ts and the screens read, checked against the handlers.
+const NARRATION = { ...ENVELOPE, day: "string", moment: "string", plan_id: "string?", ref: "string?", spoken: "string", display: "string", engine: "string", facts_hash: "string", urgent: "boolean" };
+const mapOf = (spec) => (v) => {
+  if (typeOf(v) !== "object") return `expected an object, got ${typeOf(v)}`;
+  const bad = Object.entries(v).flatMap(([k, row]) => problems(row, spec, k));
+  return bad.length ? bad.slice(0, 3).join("; ") : undefined;
+};
+const BRIEF = { mode: oneOf("model", "template", "off"), engine: oneOf("model", "template", "off"), timeout_s: "number", gap_s: "number", latest: mapOf(NARRATION), asks: mapOf(NARRATION), model: "object" };
+const FEEDBACK_SESSION = { day: "string", block_id: "string", title: "string", start: isoDate, end: isoDate, planned_minutes: "number", measured: "boolean", breaks: "array", text: "string" };
+const COACH_FEEDBACK = {
+  now: isoDate, words: inner({ activity: "string", workplace: "string" }), options: listOf({ id: "string", label: "string" }),
+  sessions: listOf(FEEDBACK_SESSION), suggestions: stringList, precision: "array", answers: "number", progress: "array", threshold: "object",
+  learning: "array", notes: stringList,
+};
+const WHO = { member_id: "string", display_name: "string", mine: "boolean" };
+const CIRCLE_THREADS = {
+  configured: "boolean", circle_id: "string?", member_id: "string?", source: "string", offline: "boolean", members: listOf(WHO),
+  threads: listOf({
+    thread_id: "string", legs: stringList, title: "string", mine: "boolean", starts_at: isoDateOrNull, ends_at: isoDateOrNull, location: "string?",
+    state: "string", invitees: listOf(WHO), waiting_on: listOf(WHO), last_activity: isoDateOrNull, pending_action_id: "string?", messages_count: "number",
+  }),
+};
+const CIRCLE_MEMBERS = { configured: "boolean", circle_id: "string?", member_id: "string?", connect: "array", members: listOf({ ...WHO, has_box: "boolean" }) };
+const DISPOSAL = { item_id: "string", ts: isoDate, day: "string", label: "string", item: "string", bin: "string", zone: "string", correct: "boolean", belongs_in: "string", rule: "string", frame_ref: "string?", in_practice: "boolean" };
+const IMPACT_STORY = {
+  now: isoDate, week: inner({ start: "string", end: "string", today: "string" }), empty: "boolean", empty_text: "string?", rules: "object", total: "object",
+  this_week: "object", equivalents: "object", contamination: "object", feed: listOf(DISPOSAL), goal: "object",
+  days: listOf({ day: "string", disposals: "number", right: "number", wrong: "number", clean: "boolean" }), clean_streak: "number", milestones: "object", practice: "object",
+  // the story the screen plays: measured counts in a sentence, the week's disposals in order, the learn loop
+  headline: "string", loop: inner({ seen: "number", taught: "number", practised: "object", trend: "object" }),
+  flow: inner({ items: listOf({ item_id: "string", item: "string", bin: "string", correct: "boolean", rule: "string" }), recyclable_seen: "number", recycled: "number", not_binned: "number" }),
+};
+const IMPACT_PRACTICE = {
+  week_start: "string", member_id: "string?", size: "number", how: "string", rules: inner({ file: "string", name: "string", place: "string?" }),
+  items: listOf({ item: "string", mistakes: "number", asked: "boolean", last_wrong_at: isoDateOrNull, went_to: "string?", belongs_in: "string", zone: "string", rule: "string", frame_ref: "string?", members: stringList }),
+};
+const PLACE_ROUTE = {
+  from: "string", to: "string", from_name: "string", to_name: "string", mode: oneOf("arrive_by", "depart"), depart: isoDate, arrive: isoDate, minutes: "number",
+  walk_minutes: "number", meters: "number?", path: stringList, polyline: "array", sentence: "string", from_xy: pairOrNull, to_xy: pairOrNull, attribution: "string?",
+};
+const PLACE_MAP = { attribution: "string", pack: "string", bbox: "array", origin: "array", unit: "number", buildings: "array", areas: "array", roads: "array", walk: "object", places: "object" };
+const ROOM = { name: "string", title: "string", size: "array", outline: "array", doors: "array", windows: "array", furniture: listOf({ id: "string", type: "string", at: "array", size: "array" }), calibration: "object", play: "object", zones: "object", rooms: "array", uncalibrated: stringList };
+const ROOM_LIVE = { room: "string", ts: isoDateOrNull, tracks: "array", seen: "object", round: "object?", result: "object?" };
+const ROOM_ROUTE = { item: "string", bin: "string", bin_id: "string", zone: "string", room: "string", from: inner({ x: "number", y: "number", track: "string?" }), reachable: "boolean", points: "array", distance_m: "number", par_s: "number" };
+const NO_ROOM = { 404: "the room twin is not set up (no floor plan)" };
+
 // ---------- transport ----------
 
 async function call(method, path, body) {
@@ -383,11 +430,40 @@ await check("GET /api/habits/today", "GET", "/api/habits/today", HABITS_TODAY, {
 await check("GET /memory/items?from=<now>", "GET", `/memory/items?from=${encodeURIComponent(new Date().toISOString())}`, ITEM, { list: true });
 await check("GET /api/impact", "GET", "/api/impact", IMPACT, { optional: { 404: "Waste Watch is not configured" } });
 
+console.log("\nNow (the day in words, the coach's questions)");
+const NO_DAY = { 404: "the Day loop is not on this box (it needs the place packs)" };
+const brief = await check("GET /api/day/brief", "GET", "/api/day/brief", BRIEF, { optional: NO_DAY });
+if (brief) console.log(`        ${brief.engine} engine; said so far: ${Object.keys(brief.latest).join(", ") || "nothing"}`);
+const coachAsks = await check("GET /api/day/coach/feedback", "GET", "/api/day/coach/feedback", COACH_FEEDBACK, { optional: NO_DAY });
+if (coachAsks) console.log(`        ${coachAsks.sessions.length} sessions, ${coachAsks.sessions.reduce((n, x) => n + x.breaks.length, 0)} breaks to ask about, ${coachAsks.answers} answered`);
+{
+  // GET /api/day/coach carries the same view as `feedback` (null on a box without the feedback loop)
+  const r = await call("GET", "/api/day/coach");
+  if (r.status === 404) skip("GET /api/day/coach .feedback", `HTTP 404: ${r.data?.detail ?? NO_DAY[404]}`);
+  else if (r.status !== 200 || !("feedback" in (r.data ?? {}))) fail("GET /api/day/coach .feedback", `HTTP ${r.status}: no feedback field`);
+  else if (r.data.feedback === null) ok("GET /api/day/coach .feedback", "null: the feedback loop is not wired");
+  else {
+    const bad = problems(r.data.feedback, COACH_FEEDBACK, "feedback");
+    if (bad.length) fail("GET /api/day/coach .feedback", bad.join("; "));
+    else ok("GET /api/day/coach .feedback");
+  }
+}
+
+console.log("\nImpact");
+const NO_IMPACT = { 404: "Waste Watch is not configured" };
+const story = await check("GET /api/impact/story", "GET", "/api/impact/story", IMPACT_STORY, { optional: NO_IMPACT });
+if (story) console.log(`        ${story.empty ? "nothing counted yet" : `${story.feed.length} disposals in the feed, ${story.clean_streak} clean days in a row`}`);
+const practice = await check("GET /api/impact/practice", "GET", "/api/impact/practice", IMPACT_PRACTICE, { optional: NO_IMPACT });
+if (practice) console.log(`        ${practice.size} to practise${practice.items[0] ? `, first: ${practice.items[0].item} -> ${practice.items[0].belongs_in}` : ""}`);
+
 console.log("\nPeople");
 const NO_IDENTITY = { 404: "owner recognition is not wired into this gateway" };
 await check("GET /identity/settings", "GET", "/identity/settings", { identity_enabled: "boolean", available: "boolean", recognizer: "string?" }, { optional: NO_IDENTITY });
 await check("GET /identity/members", "GET", "/identity/members", { member_id: "string", name: "string", enrolled_at: "string" }, { list: true, optional: NO_IDENTITY });
 await check("GET /identity/enroll/status", "GET", "/identity/enroll/status", { state: "string", frames_needed: "number" }, { optional: NO_IDENTITY });
+await check("GET /identity/settings (face profile)", "GET", "/identity/settings", { everyone: "boolean", expressions_available: "boolean", expression_reader: "string?", photos_available: "boolean" }, { optional: NO_IDENTITY });
+await check("GET /identity/present", "GET", "/identity/present", { present: "array" }, { optional: NO_IDENTITY });
+await check("GET /identity/expressions", "GET", "/identity/expressions", { member_id: "string?", hours: "number", samples: "number", looked: "object", strained_share: "number?", windows: "array", note: "string" }, { optional: NO_IDENTITY });
 
 console.log("\nApprovals");
 await check("GET /api/approvals", "GET", "/api/approvals", APPROVAL, { list: true });
@@ -425,6 +501,10 @@ const calendar = await check("GET /api/circle/events", "GET", "/api/circle/event
 if (calendar) console.log(`        ${calendar.events.length} upcoming, from ${calendar.source}${calendar.offline ? " (shared calendar offline)" : ""}`);
 const sharing = await check("GET /api/circle/sharing", "GET", "/api/circle/sharing", CIRCLE_SHARING);
 if (sharing) console.log(`        summaries ${sharing.sharing_now ? "on" : "off"}; ${sharing.queued} queued, ${sharing.sent} sent; database ${sharing.database}`);
+const threads = await check("GET /api/circle/threads", "GET", "/api/circle/threads", CIRCLE_THREADS);
+if (threads) console.log(`        ${threads.threads.length} conversations (${threads.source}${threads.offline ? ", shared store offline" : ""}): ${threads.threads.map((t) => `${t.title} [${t.state}]`).join(", ") || "none"}`);
+const circleMembers = await check("GET /api/circle/members", "GET", "/api/circle/members", CIRCLE_MEMBERS);
+if (circleMembers) console.log(`        ${circleMembers.members.length} members${circleMembers.configured ? "" : " (the Circle is not configured)"}`);
 if (WRITES) {
   await check("POST /api/presence", "POST", "/api/presence", PLACE, {
     body: { place: "Library", hours: 1 },
@@ -439,6 +519,14 @@ for (const item of ["can", "cup"]) {
 }
 await check("GET /api/play/accuracy", "GET", "/api/play/accuracy", ACCURACY, { optional: { 404: "Sort It is not configured" } });
 
+const roomRoute = await check("GET /api/play/room-route?item=can", "GET", "/api/play/room-route?item=can", ROOM_ROUTE, { optional: NO_ROOM });
+if (roomRoute) console.log(`        can -> ${roomRoute.bin} in the ${roomRoute.room} room; ${roomRoute.distance_m} m, par ${roomRoute.par_s} s${roomRoute.reachable ? "" : " (not reachable)"}`);
+
+console.log("\nRoom twin");
+const room = await check("GET /api/room", "GET", "/api/room", ROOM, { optional: NO_ROOM });
+if (room) console.log(`        ${room.title}: ${room.furniture.length} pieces of furniture, cameras calibrated: ${Object.keys(room.calibration).join(", ") || "none"}`);
+await check("GET /api/room/live", "GET", "/api/room/live", ROOM_LIVE, { optional: NO_ROOM });
+
 console.log("\nRoom map");
 for (const label of ["keys", "wallet", "charger", "laptop", "phone"]) {
   const s = await check(`GET /memory/objects/${label}/last-seen`, "GET", `/memory/objects/${label}/last-seen`, SIGHTING, { optional: { 404: "never seen" } });
@@ -446,8 +534,13 @@ for (const label of ["keys", "wallet", "charger", "laptop", "phone"]) {
 }
 {
   const r = await call("GET", "/api/zones");
-  if (r.status === 404) ok("GET /api/zones", "404 as expected: no endpoint returns the zone polygons, so the app embeds config/zones.yaml at build time");
-  else fail("GET /api/zones", `HTTP ${r.status}: an endpoint now exists; lib/zones.generated.ts can be replaced by a fetch`);
+  // camera -> zone -> polygon of [x, y] in 0..1 (lib/useZones.ts reads it; the copy embedded at build time is the fallback)
+  const polygon = (p) => Array.isArray(p) && p.length >= 3 && p.every((xy) => Array.isArray(xy) && xy.length === 2 && xy.every((n) => typeof n === "number" && n >= 0 && n <= 1));
+  const cameras = typeOf(r.data) === "object" ? Object.entries(r.data) : [];
+  if (r.status === 404) ok("GET /api/zones", "404: this box does not serve its zones, so the app uses the copy embedded at build time");
+  else if (r.status !== 200 || typeOf(r.data) !== "object") fail("GET /api/zones", `HTTP ${r.status}: ${JSON.stringify(r.data)?.slice(0, 200)}`);
+  else if (!cameras.every(([, zones]) => typeOf(zones) === "object" && Object.values(zones).every(polygon))) fail("GET /api/zones", "expected {camera: {zone: [[x, y], ...]}} with every point in 0..1");
+  else ok("GET /api/zones", `${cameras.length} cameras, ${cameras.reduce((n, [, z]) => n + Object.keys(z).length, 0)} zones`);
 }
 
 console.log("\nPlaces");
@@ -458,6 +551,142 @@ if (packs) {
   const located = packs.flatMap((p) => Object.values(p.places)).filter((p) => typeof p.lat === "number" && typeof p.lon === "number").length;
   const all = packs.reduce((n, p) => n + Object.keys(p.places).length, 0);
   console.log(`        ${packs.length} packs, ${all} places, ${located} with coordinates (the rest are listed beside the map)`);
+}
+
+{
+  // "When to leave": the walk between the first two places that have coordinates, and the map it is drawn on.
+  const mapped = (packs ?? []).find((p) => typeof p.map === "string");
+  const NO_MAP = { 404: "no place pack has a drawn map" };
+  if (!mapped) skip("GET /api/places/route, GET /api/places/map/{pack}", NO_MAP[404]);
+  else {
+    const located = Object.entries(mapped.places).filter(([, p]) => typeof p.lat === "number" && typeof p.lon === "number").map(([id]) => `${mapped.name}.${id}`);
+    const [a, b] = located;
+    if (a && b) {
+      const arriveBy = new Date(Date.now() + 3600_000).toISOString();
+      const r = await check(`GET /api/places/route?from=${a}&to=${b}&arrive_by=`, "GET", `/api/places/route?from=${encodeURIComponent(a)}&to=${encodeURIComponent(b)}&arrive_by=${encodeURIComponent(arriveBy)}`, PLACE_ROUTE);
+      if (r) {
+        expect("  the route is for arriving by the time asked", r.mode === "arrive_by" && Date.parse(r.arrive) === Date.parse(arriveBy) && Date.parse(r.depart) <= Date.parse(r.arrive), `${r.mode}: ${r.depart} to ${r.arrive}`);
+        console.log(`        ${r.sentence}`);
+      }
+    }
+    await check(`GET /api/places/map/${mapped.name}`, "GET", `/api/places/map/${mapped.name}`, PLACE_MAP, { optional: NO_MAP });
+  }
+}
+
+console.log("\nInspection (SPOT)");
+// Every GET answers 200 also without a kit ({configured: false, note}); 404 only on a gateway without the context.
+const NO_SPOT = { 404: "the inspection context is not in this gateway" };
+const spotOverview = await check("GET /api/spot/overview", "GET", "/api/spot/overview", { configured: "boolean", model: "object" }, { optional: NO_SPOT });
+const spotTriage = await check("GET /api/spot/triage", "GET", "/api/spot/triage", { configured: "boolean", items: "array", uninspected: "array", next: "array" }, { optional: NO_SPOT });
+if (spotTriage) console.log(`        ${spotOverview?.configured ? `${spotTriage.items.length} assets ranked, ${spotTriage.uninspected.length} uninspected` : "no kit on this box: the screen says how to add one"}`);
+await check("GET /api/spot/findings", "GET", "/api/spot/findings", { configured: "boolean", findings: "array" }, { optional: NO_SPOT });
+await check("GET /api/spot/assets", "GET", "/api/spot/assets", { configured: "boolean", assets: "array" }, { optional: NO_SPOT });
+await check("GET /api/spot/locations", "GET", "/api/spot/locations", { configured: "boolean", locations: "array", plan: "object?" }, { optional: NO_SPOT });
+await check("GET /api/spot/handoff", "GET", "/api/spot/handoff", { configured: "boolean", lines: "array", text: "string" }, { optional: NO_SPOT });
+await check("GET /api/spot/assumptions", "GET", "/api/spot/assumptions", { configured: "boolean", assumptions: "array" }, { optional: NO_SPOT });
+await check("GET /api/spot/validation", "GET", "/api/spot/validation", { configured: "boolean", rows: "array", issues: "array" }, { optional: NO_SPOT });
+await check("GET /api/spot/work_orders", "GET", "/api/spot/work_orders", { configured: "boolean", work_orders: "array", folder: "string" }, { optional: NO_SPOT });
+await check("GET /api/spot/replay/state", "GET", "/api/spot/replay/state", { configured: "boolean", index: "number", total: "number", playing: "boolean" }, { optional: NO_SPOT });
+// Shift Run: plan a round and run it through the toy model (contexts/spot/domain/shiftrun.py). The simulation writes nothing.
+const runBoard = await check("GET /api/spot/shiftrun/board", "GET", "/api/spot/shiftrun/board", { configured: "boolean", candidates: "array" }, { optional: NO_SPOT });
+if (runBoard?.configured) {
+  const best = await check("GET /api/spot/shiftrun/recommended", "GET", "/api/spot/shiftrun/recommended", { configured: "boolean", route: "array", steps: "array", score: "number" }, { optional: NO_SPOT });
+  const mine = await check("POST /api/spot/shiftrun/simulate", "POST", "/api/spot/shiftrun/simulate", { configured: "boolean", score: "number", stars: "number", steps: "array", reasons: "array", differences: "array", recommended: "object" }, { optional: NO_SPOT, body: { route: runBoard.last_route, turn_back_at: 40 } });
+  if (best && mine) console.log(`        last round's route scores ${mine.score} (${mine.stars} of 3 stars); Atlas's plan ${best.score}`);
+}
+// the operator's first screen in plain words (contexts/spot/application/plain.py)
+const spotShift = await check("GET /api/spot/shift", "GET", "/api/spot/shift", { configured: "boolean", do_first: "array", watch: "array", assets: "array", rounds: "array", triage: "array", findings: "array" }, { optional: NO_SPOT });
+if (spotShift?.configured) {
+  console.log(`        ${spotShift.status.sentence}`);
+  await check(`GET /api/spot/shift/rounds/${spotShift.latest_round}`, "GET", `/api/spot/shift/rounds/${spotShift.latest_round}`, { configured: "boolean", label: "string", summary: "string", steps: "array" }, { optional: NO_SPOT });
+  // the look guide (contexts/spot/application/guide.py): where on the screen a thing is, and the walk to it over legs SPOT has walked
+  const asset = spotShift.assets[0]?.asset_id;
+  const pointed = await check("GET /api/spot/guide", "GET", `/api/spot/guide?q=${encodeURIComponent(`where is ${asset}`)}`, { configured: "boolean", query: "string", target: "string?", label: "string?", steps: "array", confidence: "number", alternatives: "array" }, { optional: NO_SPOT });
+  if (pointed) console.log(`        "where is ${asset}" -> ${pointed.target}: ${pointed.steps.at(-1)?.say}`);
+  const walk = await check("GET /api/spot/route", "GET", `/api/spot/route?to=${encodeURIComponent(asset)}`, { configured: "boolean", found: "boolean", from: "string?", to: "string?", path: "array", legs: "array", length: "number", say: "array", summary: "string", note: "string", places: "array" }, { optional: NO_SPOT });
+  if (walk) console.log(`        ${walk.summary}`);
+}
+
+console.log("\nLearning lab");
+// A number on the lab screen: its value, or null with the reason, and where it came from (lib/lab.ts LabNum).
+const labNum = (n) =>
+  typeOf(n) !== "object" ? `expected a number object, got ${typeOf(n)}`
+    : !("value" in n && "source" in n && "reason" in n && "low_confidence" in n) ? "a number without value, source, reason or low_confidence"
+      : n.value === null && !n.reason ? "a missing number without a reason"
+        : n.value !== null && !n.source ? "a number without a source" : undefined;
+const NO_LAB = { 404: "the learning lab is not on this box" };
+const lab = await check("GET /api/learning/lab", "GET", "/api/learning/lab", { runs: "array", sample: "boolean", sample_reason: "string?", real_runs: "number", current_model: "object?", measured: "array" }, { optional: NO_LAB });
+if (lab) {
+  console.log(`        ${lab.real_runs} real run${lab.real_runs === 1 ? "" : "s"}; showing ${lab.runs.length} ${lab.sample ? "SAMPLE " : ""}run${lab.runs.length === 1 ? "" : "s"}`);
+  expect("  a sample is shown only when the box has no real run", !lab.sample || lab.real_runs === 0, `sample with ${lab.real_runs} real runs`);
+  expect("  every sample run says it is one", !lab.sample || lab.runs.every((r) => r.sample === true), "a sample run without sample: true");
+  const first = lab.runs[0];
+  if (first) {
+    const LAB_STORY = {
+      run_id: "string", sample: "boolean", status: "string", task: "object", marks: "object", wall_s: labNum, dataset: "object", training: "object", power: "object",
+      eval: "object", package: "object", deploy: "object", box: "object", gaps: "array", sources: "array", measured: "array",
+    };
+    const run = await check(`GET /api/learning/lab/${first.run_id}`, "GET", `/api/learning/lab/${encodeURIComponent(first.run_id)}`, LAB_STORY);
+    if (run) {
+      expect("  the run says whether it is the sample, as the list does", run.sample === lab.sample, `run ${run.sample}, list ${lab.sample}`);
+      const bad = run.sources.map((n) => labNum(n) && `${n.label}: ${labNum(n)}`).filter(Boolean);
+      expect("  every number has a source, or is null with a reason", bad.length === 0, bad.slice(0, 3).join("; "));
+      for (const key of ["steps", "samples_per_s", "loss_last"]) expect(`  training.${key} is a number object`, !labNum(run.training[key]), labNum(run.training[key]));
+      for (const key of ["energy_j", "j_per_sample"]) expect(`  power.${key} is a number object`, !labNum(run.power[key]), labNum(run.power[key]));
+      for (const key of ["n_items", "noise", "p_value"]) expect(`  eval.${key} is a number object`, !labNum(run.eval[key]), labNum(run.eval[key]));
+      expect("  eval.scores has before, after and teacher", ["current", "candidate", "teacher"].every((k) => !labNum(run.eval.scores[k])), JSON.stringify(Object.keys(run.eval.scores)));
+      expect("  training.points and power.points are lists", Array.isArray(run.training.points) && Array.isArray(run.power.points), "not arrays");
+      expect("  eval.items is a list or null with a reason", Array.isArray(run.eval.items) || (run.eval.items === null && !!run.eval.items_reason), "null without items_reason");
+    }
+  }
+  await check("GET /api/learning/lab?sample=1", "GET", "/api/learning/lab?sample=1", { runs: "array", sample: "boolean", real_runs: "number" });
+}
+
+// The lab's other tabs (lib/labBench.ts): the benchmark rows, the routing what-if and the experiment timeline.
+const labBench = await check("GET /api/learning/lab/bench", "GET", "/api/learning/lab/bench",
+  { file: "string", rows: "number", skipped: "array", families: "array", sweeps: "array", student: "object?", power: "object", series: "array", charted_rows: "number", not_charted: "array" }, { optional: NO_LAB });
+if (labBench) {
+  const points = labBench.series.flatMap((s) => s.points);
+  console.log(`        ${labBench.rows} rows, ${labBench.sweeps.length} batching sweep${labBench.sweeps.length === 1 ? "" : "s"}, ${labBench.not_charted.length} metrics not charted`);
+  expect("  every row is served once, as a point", points.length === labBench.rows, `${points.length} points for ${labBench.rows} rows`);
+  const badPoint = points.map((p) => labNum(p) || (!/metrics\.jsonl:\d+$/.test(p.source.ref) && "no file line") || (p.low_confidence && !p.reason && "low confidence without a reason")).filter(Boolean);
+  expect("  every point names its line in the metrics file, and a low-confidence one says why", badPoint.length === 0, badPoint.slice(0, 3).join("; "));
+  const listed = labBench.not_charted.reduce((n, x) => n + x.lines.length, 0);
+  expect("  every row is charted or listed as not charted", labBench.charted_rows + listed === labBench.rows, `${labBench.charted_rows} + ${listed} of ${labBench.rows}`);
+  for (const s of labBench.sweeps) expect(`  sweep ${s.id} has a point per batch size`, Object.values(s.metrics).every((pts) => pts.length <= s.batches.length && pts.every((p) => s.batches.includes(p.x))), "a point off the batch list");
+  const st = labBench.student;
+  if (st?.j_per_token) expect("  the student's joules per token is marked derived, with its formula", st.j_per_token.kind === "derived" && !!st.j_per_token.formula, JSON.stringify(st.j_per_token.kind));
+}
+const LAB_SIM = { available: "boolean", label: oneOf("simulation", "what-if"), model_statement: "string", calls: "array", assumptions: "array", measured: "object?", measured_reason: "string?", presets: "array", params: "object", privacy: "object" };
+const labSim = await check("POST /api/learning/lab/routing/simulate", "POST", "/api/learning/lab/routing/simulate", LAB_SIM, { body: { preset: "burst" }, optional: NO_LAB });
+if (labSim) {
+  expect("  it is a what-if exactly when a closed-loop measurement exists", (labSim.label === "what-if") === (labSim.measured !== null) && (labSim.measured !== null || !!labSim.measured_reason), `${labSim.label}, measured ${labSim.measured !== null}`);
+  expect("  it names the real hook it calls", labSim.calls.includes("runtime.routing.route"), labSim.calls.join(", "));
+  if (labSim.available) {
+    const names = labSim.kinds.map((k) => k.kind);
+    const locked = new Set(labSim.kinds.filter((k) => k.locked).map((k) => k.kind));
+    console.log(`        ${labSim.compare.sentence}`);
+    for (const [name, run] of Object.entries(labSim.policies)) {
+      let energy = 0;
+      let leaked = 0;
+      [...run.targets].forEach((t, i) => {
+        const kind = names[labSim.requests.kind[i]];
+        energy += run.by_kind[kind].joules;
+        if (locked.has(kind) && t !== "p") leaked++;
+      });
+      expect(`  ${name}: the energy total is the sum of its requests`, Math.abs(energy - run.energy_j) < 0.05, `${energy} against ${run.energy_j}`);
+      expect(`  ${name}: no request behind the privacy line leaves the box`, leaked === 0, `${leaked} leaked`);
+    }
+    const again = await check("POST /api/learning/lab/routing/simulate (again)", "POST", "/api/learning/lab/routing/simulate", LAB_SIM, { body: { preset: "burst" } });
+    if (again) expect("  the same inputs give the same output", JSON.stringify(again) === JSON.stringify(labSim), "the two answers differ");
+  } else console.log(`        not available: ${labSim.reason}`);
+}
+const labTimeline = await check("GET /api/learning/lab/experiments", "GET", "/api/learning/lab/experiments", { cards: "array", counts: "object", experiments: "object", passes: "number", sessions: "number", summary: "string" }, { optional: NO_LAB });
+if (labTimeline) {
+  console.log(`        ${labTimeline.summary}`);
+  expect("  every card names the record it came from", labTimeline.cards.every((c) => c.source && c.source.ref && c.status && c.title), "a card without a source");
+  const bad = labTimeline.cards.flatMap((c) => c.numbers).map((n) => labNum(n)).filter(Boolean);
+  expect("  every card number has a source", bad.length === 0, bad.slice(0, 3).join("; "));
 }
 
 console.log("\nDay Run (scenario demo)");

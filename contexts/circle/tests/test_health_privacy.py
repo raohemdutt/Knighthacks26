@@ -76,3 +76,59 @@ def test_the_circle_agent_reads_calendar_events_from_memory_and_never_a_health_i
     memory = FakeMemory(items=[Item(connector="health", kind="health", external_id="sleep:2026-10-12", title="Sleep 7 h 28 min",
                                     when=wake, summary="asleep 7 h 28 min · resting HR 53 bpm")])
     assert busy(memory, wake - timedelta(hours=1), wake + timedelta(hours=1)) is False  # a night is not a calendar event
+
+
+# --- the check-in (contexts/day/application/checkin.py) is box-only: `day.checkin.*` never reaches the Circle ---
+
+
+def checkin_events():
+    """A check-in and its answer, from the contract samples (invented values: nothing measured on anybody)."""
+    from contracts import parse_event
+    from tests.test_contract_samples import SAMPLES
+
+    return [parse_event({"type": t, "ts": at(12, "15:40").isoformat(), **SAMPLES[t]}) for t in ("day.checkin.raised", "day.checkin.answered")]
+
+
+def test_a_check_in_queues_nothing_for_the_circle_and_nothing_of_it_is_synced(tmp_path):
+    from contracts.day import BOX_ONLY_EVENTS
+
+    raised, answered = checkin_events()
+    assert {raised.type, answered.type} == BOX_ONLY_EVENTS
+    said = [s.summary for s in raised.signals] + [s.detail for s in raised.signals] + [s.text for s in raised.suggestions] + [raised.text]
+    assert any("Heart rate" in line for line in said) and any("slept" in line for line in said)  # it really is about a body
+
+    async def run():
+        bus = EventBus(tmp_path / "events")
+        habits, sharing = wire(tmp_path, bus)
+        await bus.publish_all(sit(11, "21:00", "23:30") + sit(12, "08:30", "08:40"))
+        before = [r.payload for r in sharing.outbox.pending()]
+        await bus.publish_all([raised, answered])
+        assert [r.payload for r in sharing.outbox.pending()] == before  # a check-in is not a share
+        await bus.publish_all(habits.flush(at(13, "00:05")))
+        rows = sharing.outbox.pending()
+        assert {r.kind for r in rows} == {"habit_summary"} and all(set(r.payload) == HABIT_FIELDS for r in rows)
+        leaving = json.dumps([r.payload for r in rows])
+        assert not [line for line in said if line in leaving]
+        assert not [word for word in ("strained", "Heart rate", "heart rate", "No drink", "Drink some", "checkin", "check-in") if word in leaving]
+        pushed = sharing.sync(at(13, "00:06"))
+        assert len(pushed) == len(rows)
+
+    asyncio.run(run())
+
+
+def test_nothing_that_writes_to_the_circle_knows_the_day_context_or_a_check_in():
+    """Structural: the code that leaves the box (the Circle, the League's sync) imports nothing of the Day loop and
+    names no `day.` event, so no handler there can ever be handed a check-in."""
+    import re
+    from pathlib import Path
+
+    from contracts.day import BOX_ONLY_EVENTS
+
+    root = Path(__file__).resolve().parents[3]
+    for folder in ("contexts/circle", "contexts/play/league"):
+        for path in (root / folder).rglob("*.py"):
+            if "tests" in path.parts:
+                continue
+            text = path.read_text(encoding="utf-8")
+            assert not re.search(r"contracts\.day|contexts\.day|[\"']day\.|checkin|Checkin", text), path
+            assert not [t for t in BOX_ONLY_EVENTS if t in text], path

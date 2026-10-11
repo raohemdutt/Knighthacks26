@@ -37,9 +37,12 @@ browser:
   # K7: patchright search, Reddit and page reading as on-demand Agent tools.
   # Headful passes DuckDuckGo and Reddit bot checks; on the Jetson run under Xvfb.
   module: contexts.connectors.servers.browser
-  hosts: [html.duckduckgo.com, www.bing.com, www.reddit.com]
+  # "*": read almost any website (the egress firewall opens the web ports for this connector only when online);
+  # the named ones are listed for the Privacy screen.
+  hosts: [html.duckduckgo.com, www.bing.com, www.reddit.com, "*"]
   tools: [search, reddit, browse]
   writes: [submit_form]  # RSVPs, room bookings: only after an approval card
+  env: [DISPLAY, WAYLAND_DISPLAY]  # the Jetson's Xvfb display (atlas-xvfb.service, DISPLAY=:99 in .env); without one it runs headless
   options:
     headless: false
     channel: auto  # installed Chrome if present, else patchright's Chromium

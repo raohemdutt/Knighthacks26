@@ -48,6 +48,10 @@ web calls carry cookies and no token. The pod a form launch starts runs the real
 `rest_launch_ignored = True` makes a REST launch answer as usual, echo its options, and start a pod that runs the
 stock singleuser image (`STOCK_IMAGE`) with no GPU. `pod_image()` and `pod_has_gpu()` say what a pod runs, which
 is what a terminal on it would tell. `omit_xsrf = True` serves the login page without any `_xsrf` token.
+
+The pod's files. `files` maps (letter, path) to the text of a file in the pod's Jupyter root. The contents API PUTs and
+GETs a file as text and DELETEs one (204, or 404 when there is none); `GET /files/<path>` serves it as the Jupyter
+server's file route does, with byte ranges (lab/transfer.py's pull), the shapes FakePodProxy answers.
 """
 from __future__ import annotations
 
@@ -76,7 +80,8 @@ SESSION_COOKIE = "jupyterhub-hub-login"
 
 UTC = dt.timezone.utc
 HUB_VERSION = "5.4.4"
-DEFAULT_RATES = {"cpu": 1, "r9700": 4}
+DEFAULT_ACCELERATOR = "strix-halo"   # the SJC pods; "r9700" is the other chip, on DUB
+DEFAULT_RATES = {"cpu": 1, "strix-halo": 3, "r9700": 4}   # SJC's posted table (M24) and DUB's R9700 rate
 CLOUDFLARE_PAGE = "<html><head><title>Access denied</title></head><body>Error 1010: browser signature banned</body></html>"
 
 
@@ -175,6 +180,9 @@ class _Canned:
     raises: Exception | None = None
 
 
+FAKE_ROLES = {"A": "pod-a", "B": "pod-b", "C": "pod-a", "D": "pod-b"}
+
+
 class FakeHub:
     """The hub, as the callers' code sees it. See the module docstring."""
 
@@ -201,16 +209,19 @@ class FakeHub:
 
     def add_account(self, letter: str, *, user: str, token: str, balance: int = 59960, rate: int = 4,
                     unlimited: bool = False, quota_enabled: bool = True, url: str | None = None,
-                    password: str | None = None) -> Account:
+                    password: str | None = None, role: str | None = None) -> Account:
         """A hub account, returned in the form the callers take. url is the address it is given as its own
         (AUP_HUB_URL_<letter>); the fake itself answers on whatever address it is reached at. password lets the
-        account log in on the web side (the spawn form); without one the fake refuses every login as that user."""
+        account log in on the web side (the spawn form); without one the fake refuses every login as that user.
+        role is the pod role the account fills (LAB_POD_ROLES in real use); unset, the letter's role in FAKE_ROLES
+        (A and C the teacher's pod-a, B and D the trainer's pod-b), and none for any other letter. rate is what a
+        metered account is charged a minute for either GPU card, and the rate its quota posts for both."""
         self._accounts[letter] = _Account(letter, user, token, balance, rate, unlimited, quota_enabled, password,
                                           user_activity=self._hub_now())
-        return Account(letter, user, token, url, password)
+        return Account(letter, user, token, url, password, role=role or FAKE_ROLES.get(letter))
 
     def start_server(self, letter: str, *, runtime_minutes: int = 600, started_ago_s: float = 0.0, idle_s: float = 0.0,
-                     ready: bool = True, accelerator: str = "r9700", image: str = AUP_IMAGE) -> None:
+                     ready: bool = True, accelerator: str = DEFAULT_ACCELERATOR, image: str = AUP_IMAGE) -> None:
         """A pod that is already there: ready and running for started_ago_s, or still launching (ready=False)."""
         account = self._accounts[letter]
         now = self._hub_now()
@@ -225,7 +236,7 @@ class FakeHub:
         """A server the hub still lists after its spawn failed: not ready and with nothing pending."""
         account = self._accounts[letter]
         now = self._hub_now()
-        options = {"runtime_minutes": 600, "resource_type": "gpu", "gpu_selection": "r9700"}
+        options = {"runtime_minutes": 600, "resource_type": "gpu", "gpu_selection": DEFAULT_ACCELERATOR}
         account.sessions += 1
         account.server = _Server(now, 600, options, now, None, failed=True)
 
@@ -363,7 +374,7 @@ class FakeHub:
             return
         before = account.balance
         account.balance = max(0, before - amount)
-        accelerator = server.options.get("gpu_selection", "r9700")
+        accelerator = server.options.get("gpu_selection", DEFAULT_ACCELERATOR)
         account.transactions.append({
             "id": len(account.transactions) + 1, "username": account.user, "amount": -amount,
             "transaction_type": "usage", "resource_type": server.options.get("resource_type", "gpu"),
@@ -487,7 +498,7 @@ class FakeHub:
             return {"username": account.user, "balance": 0, "unlimited": True, "rates": dict(DEFAULT_RATES),
                     "enabled": False}
         return {"username": account.user, "balance": account.balance, "unlimited": account.unlimited,
-                "rates": {**DEFAULT_RATES, "r9700": account.rate}, "enabled": True}
+                "rates": {**DEFAULT_RATES, "strix-halo": account.rate, "r9700": account.rate}, "enabled": True}
 
     def _launch(self, account: _Account, options: Mapping[str, Any], image: str) -> httpx.Response:
         server = account.server
@@ -632,6 +643,9 @@ class FakeHub:
         contents = re.match(r"^/api/contents/(.+)$", rest)
         if contents:
             return self._contents(account, urllib.parse.unquote(contents.group(1)), call)
+        files = re.match(r"^/files/(.+)$", rest)
+        if files and method == "GET":
+            return self._file(account, urllib.parse.unquote(files.group(1)), request)
         if rest == "/api/terminals" and method == "POST":
             account.terminals += 1
             return httpx.Response(200, json={"name": str(account.terminals), "last_activity": _iso(server.last_activity)})
@@ -662,7 +676,22 @@ class FakeHub:
                 return httpx.Response(404, json={"message": f"No such file or directory: {path}", "reason": None})
             return httpx.Response(200, json={"name": path.rsplit("/", 1)[-1], "path": path, "type": "file",
                                              "format": "text", "content": self.files[key]})
+        if call.method == "DELETE":
+            if key not in self.files:
+                return httpx.Response(404, json={"message": f"No such file or directory: {path}", "reason": None})
+            del self.files[key]
+            return httpx.Response(204)
         return httpx.Response(405, json={"message": "Method Not Allowed"})
+
+    def _file(self, account: _Account, path: str, request: httpx.Request) -> httpx.Response:
+        """GET /files/<path>, the Jupyter server's own file route, with byte ranges as FakePodProxy serves them."""
+        from lab.proxy_fake import serve_range   # imported here: lab/proxy_fake.py imports this module
+
+        text = self.files.get((account.letter, path))
+        if text is None:
+            return httpx.Response(404, text="<html><body><h1>404 : Not Found</h1></body></html>",
+                                  headers={"content-type": "text/html"})
+        return serve_range(text.encode("utf-8"), request.headers.get("range"))
 
 
 def network(hubs: Mapping[str, FakeHub]) -> httpx.MockTransport:

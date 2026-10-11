@@ -1,8 +1,10 @@
 # Refinement goal for the kernels and speed track
 
 Created 2026-10-10. This file governs every refinement pass on the kernels and speed track: the
-teacher's serving path on the AMD Radeon AI PRO R9700 (gfx1201), the Triton and HIP kernels inside
-it, and the experiments that measure them. A pass that does not follow it is invalid and its edits
+teacher's serving path on the AMD Strix Halo pods of the SJC hub (Radeon 8060S, gfx1151, RDNA 3.5,
+64 GB shared with the CPU) [S44], the Triton and HIP kernels inside it, and the experiments that
+measure them. The AMD Radeon AI PRO R9700 (gfx1201, RDNA 4) the file was first written for is the
+other chip: its numbers stay here as that chip's record, labelled as such. A pass that does not follow it is invalid and its edits
 are reverted. Citations in square brackets point at the Sources section at the end; every source
 there was opened by the author of this file on 2026-10-10.
 
@@ -10,7 +12,7 @@ there was opened by the author of this file on 2026-10-10.
 
 Refine the kernels and speed track until every board task and queued experiment in the walk list
 below passes every dimension of the rubric, and the track's numbers move. The objective is the best
-tokens per second and joules per token on gfx1201, told honestly [S4].
+tokens per second and joules per token on gfx1151, told honestly [S4].
 
 Target: a run on this track ends at the first of three things: a pass that converges, the tenth pass
 of the run, or Ilan ending it [S9]. A pass converges when it has walked every board task and every
@@ -164,13 +166,16 @@ that misses the default's accuracy fails its profile [S30].
 
 ### K5. The 64 KB LDS limit, checked per kernel
 
-On gfx1201 one work-group may allocate at most 64 KB (65,536 bytes) of LDS, in 1 KB blocks, out of
-128 KB per work-group processor [S18][S19]. The ROCm specification table lists 128 KiB of LDS for the
-R9700 without saying per what [S20]; the per-work-group limit is the one a kernel hits. Every Triton
+On gfx1151 one work-group may allocate at most 64 KB (65,536 bytes) of LDS, in 1 KB blocks: LLVM
+gives gfx1151 the GFX11 feature set, which carries that size and granularity [S45]. The R9700 (gfx1201,
+the other chip) has the same per-work-group limit, out of 128 KB per work-group processor [S18][S19];
+the ROCm specification table lists 128 KiB of LDS for the R9700 without saying per what [S20]. The
+per-work-group limit is the one a kernel hits. Every Triton
 or HIP kernel a change touches has its LDS use checked against that limit, and a resource failure
 counts as a failure of the experiment [S4]. The first example is the `num_stages=1` fix in
-`lab/vllm-gfx1201.diff`: the unified attention kernel's default pipelining needed 66,560 bytes and
-Triton refused it, so double-buffering was removed [S2].
+`lab/vllm-gfx1201.diff`: on the R9700 the unified attention kernel's default pipelining needed 66,560
+bytes and Triton refused it, so double-buffering was removed [S2]; the same patch is applied unchanged
+on gfx1151 [S44].
 
 Check: (a) for a Triton kernel, record the compiled kernel's `metadata.shared`; Triton raises
 `OutOfResources` before launch when it exceeds the device maximum [S27], and the same byte count
@@ -194,7 +199,8 @@ a trade-off for a ruling, not a win.
 Check: (a) joules per token = the node's watts integrated over the measured window, the same way
 Telemetry defines joules per answer [S15], divided by the tokens generated in that window, at each
 batch size; (b) the idle-baseline policy is the telemetry track's and is applied identically to old
-and new [S14] (pod idle measured 38 to 40 W [S6]); (c) power comes from the pod sampler as reads
+and new [S14] (the Strix Halo pod idles at about 9 W, 9.2 W with the teacher loaded [S44]; the
+38 to 40 W of [S6] is the R9700's, the other chip's); (c) power comes from the pod sampler as reads
 only, because the pods allow no power caps or clock locks [S15], so the power-cap and undervolt
 levers that community ports report [S33] are out of reach and are not compared against; (d) each
 result is placed on the frontier of tokens per second against joules per token per batch size, and a
@@ -213,8 +219,8 @@ alone: engine commit, patch order, build flags, and the versions it was built ag
 
 Check: (a) the patch applies cleanly to the pinned commit with nothing rejected; (b) the recipe
 rebuilds when the patch changes; (c) the build-enabling hunks and each kernel change are separate
-patches (see K2) [S2]; (d) the rebuild time is recorded, since a vLLM build takes about an hour on the
-pod [S1]; (e) the pod's own toolchain is the build target (ROCm 7.13.0, torch 2.9.1+rocm7.13.0, Triton
+patches (see K2) [S2]; (d) the rebuild time is recorded, since a vLLM build took about an hour on the
+other hub's NFS home [S1] and 4 to 5 minutes on the SJC pods' local disk [S44]; (e) the pod's own toolchain is the build target (ROCm 7.13.0, torch 2.9.1+rocm7.13.0, Triton
 3.5.1+rocm7.13.0 [S1]), and a newer engine that pins another torch is a new stock record (K1). The
 existing recipe is `lab/pod_a_teacher.sh build` with the patch at `lab/vllm-gfx1201.diff` [S3][S2];
 R12 puts kernel diffs and their result rows under `gpu/` [S8]. Items (a) and (b) fail today; see Known
@@ -261,7 +267,12 @@ W11 are the subjects those tasks and experiments act on, walked with them.
 - W10. The build-enabling patch and its recipe: `lab/vllm-gfx1201.diff` and `lab/pod_a_teacher.sh
   build` (K2, K7) [S2][S3].
 - W11. Any engine change a pass proposes (a newer vLLM commit, Triton, or ROCm), which resets the
-  stock record (K1) and has its own documented regressions on this card [S35].
+  stock record (K1) and has its own documented regressions, measured on the R9700 [S35].
+- W12. R20 to R27, the run tasks of this track: R20 the stock matrix on pod B, R21 the correctness
+  harness, R22 thinking off for captions, R23 the Quark checkpoint, R24 the Conch config sweep, R25
+  FP8 weights or KV cache, R26 the batching sweep and R27 the Jetson power modes (shared with Xander,
+  so walked for findings only): added by merge 2 under kernels ruling 1 (owner, 2026-10-10: the walk
+  list is every kernels task in Ilan's lane, R11, R12, R20 to R27, under the same rules).
 
 ## The metric set
 
@@ -278,11 +289,13 @@ Names follow the metrics-file schema (`metric`, `value`, `unit`, `node`, `condit
 
 ## The baseline to beat
 
-The first recorded numbers, from the R2 lab setup (PR 37, merged as `bb351e6` on 2026-10-10)
-[S1][S5]. Stack: pod A, vLLM b1388b1 (2026-04-18) plus `lab/vllm-gfx1201.diff`, ROCm 7.13.0, torch
+The lab's baseline is the teacher on the Strix Halo (gfx1151), in the first bullet below, until R20
+measures the stock matrix on pod B with repeats [S44]. The table is the first recorded numbers, which
+are the R9700's (gfx1201, the other chip, DUB pod A), from the R2 lab setup (PR 37, merged as
+`bb351e6` on 2026-10-10) [S1][S5]; they stay as that chip's record. Stack: DUB pod A, vLLM b1388b1 (2026-04-18) plus `lab/vllm-gfx1201.diff`, ROCm 7.13.0, torch
 2.9.1+rocm7.13.0, Triton 3.5.1+rocm7.13.0 [S1][S2][S23]. Checkpoint: `RedHatAI/Qwen3.8-27B-INT4`,
 4-bit integer weights in groups of 128 with bf16 activations (W4A16) [S36]; 16k context and one image
-per prompt [S1]. All single runs at batch 1, measured on the pod on 2026-10-10:
+per prompt [S1]. All single runs at batch 1, measured on the R9700 on 2026-10-10:
 
 | Prompt | Time to first token | Decode |
 |---|---|---|
@@ -290,12 +303,18 @@ per prompt [S1]. All single runs at batch 1, measured on the pod on 2026-10-10:
 | Text, thinking on, 160 tokens out | 0.28 s | 7.7 tok/s |
 | 1280x720 JPEG caption, 28 tokens out | 1.09 s | 6.6 tok/s |
 
-- Power: about 200 W average while generating (the O4 task page gives about 202 W) and 300 W peak
+- On the Strix Halo (gfx1151, pod A, account C), the lab's numbers, same build and checkpoint, single
+  runs at batch 1 on 2026-10-10: text 2.88 tok/s with 0.39 s to the first token (77 tokens out), a
+  1280x720 JPEG caption 2.82 tok/s with 3.51 s to the first token, about 120 W average and 129 W peak
+  while decoding (the whole APU socket, `SOCKET_POWER`), 9.2 W idle with the model loaded, and so about
+  42 J per generated token (120 W over 2.88 tok/s, derived, nothing subtracted) [S44]. Engine ready
+  about 5 minutes after launch with a warm compile cache, 523 s cold [S44].
+- Power on the R9700 (the other chip): about 200 W average while generating (the O4 task page gives about 202 W) and 300 W peak
   [S1][S4][S5]. 300 W is the card's total board power [S21], so the peak reached the board limit.
-- Energy: about 26 J per generated token at batch 1 (200 to 202 W over 7.7 tok/s is 26.0 to 26.2 J),
-  whole-board power with nothing subtracted [S4]. With the 38 to 40 W pod idle removed [S6] it would
+- Energy on the R9700: about 26 J per generated token at batch 1 (200 to 202 W over 7.7 tok/s is 26.0 to 26.2 J),
+  whole-board power with nothing subtracted [S4]. With the R9700 pod's 38 to 40 W idle removed [S6] it would
   be about 21 J; which one is reported is the telemetry track's idle policy [S14].
-- Memory and start-up: the model holds 84% of VRAM with about 10x concurrency at 16k tokens; engine
+- Memory and start-up on the R9700: the model holds 84% of VRAM with about 10x concurrency at 16k tokens; engine
   start takes about 270 s with graph capture [S1].
 - Kernel: the W4A16 layers run on `ConchLinearKernel`, the Triton fallback, because at this commit
   ROCm's mixed-precision list is Conch then Exllama, while Marlin (inline PTX) and Machete (CUTLASS,
@@ -310,8 +329,11 @@ per prompt [S1]. All single runs at batch 1, measured on the pod on 2026-10-10:
 - The ceiling (an estimate, not a measurement): plain decode at batch 1 reads every language-model
   weight once per token. The model file is 18.60 GB (the 0.85 GB MTP file is not read in plain
   decode), and its 248,320 x 5,120 bf16 embedding table (2.54 GB) is read one row at a time [S36], so
-  at most about 16.1 GB moves per token; at 640 GB/s [S21] that allows roughly 40 tok/s or more before
-  memory bandwidth stops it, about five times the measured 7.7 tok/s. Showing such a bound is a
+  at most about 16.1 GB moves per token; at the R9700's 640 GB/s [S21] that allows roughly 40 tok/s or
+  more before memory bandwidth stops it, about five times the measured 7.7 tok/s. On the Radeon 8060S
+  the same bytes cross memory shared with the CPU, whose bandwidth this file has no source for yet;
+  its measured decode is about 2.7x slower than the R9700's, about the ratio of the two bandwidths
+  [S44], so the bound there is lower by about that factor. Showing such a bound is a
   benchmarking rule [S42]. Speculative decoding with the MTP head changes what one step produces, so
   it is a separate lever this bound does not cover; with it, a port reports 62 to 66 tok/s
   single-stream on two R9700s with FP8 or MXFP4 weights [S31].
@@ -438,3 +460,5 @@ Opened by the author of this file on 2026-10-10. Repo files are cited at the com
 - [S41] Chung et al., "The ML.ENERGY Benchmark: Toward Automated Inference Energy Measurement and Optimization", NeurIPS 2025 Datasets and Benchmarks, arXiv 2505.06371 v2: batch size significantly affects generation time and energy (section 3.2); the time-energy frontier is convex, and one energy-chosen configuration used 44% less energy than the latency-minimizing one (section 4.3); measured on A100 and H100 only. https://arxiv.org/abs/2505.06371
 - [S42] Hoefler and Belli, "Scientific Benchmarking of Parallel Computing Systems: Twelve ways to tell the masses when reporting performance results", SC '15: report confidence intervals for nondeterministic data (Rule 5), do not assume normality without checking (Rule 6), compare with non-overlapping intervals or ANOVA (Rule 7), document every varying factor (Rule 9), show upper performance bounds (Rule 11). https://htor.inf.ethz.ch/publications/img/hoefler-scientific-benchmarking.pdf
 - [S43] `AGENTS.md` at `bb351e6`, section 8.3: shared files (`contracts/`, `runtime/`, `bus/`, `contexts/gateway/bootstrap.py`, `pyproject.toml`, `AGENTS.md`) take additive changes only, with an FYI to everyone affected. https://github.com/raohemdutt/Knighthacks26/blob/bb351e6/AGENTS.md?plain=1#L232-L249
+- [S44] `lab/README.md` at `722d845`, "Teacher on SJC today (pod C, Strix Halo)" and "The same build on pod D, from scripts alone (R30)": the Radeon 8060S (gfx1151, RDNA 3.5, 64 GB shared), all 9 patch hunks applying unchanged, the build in 4 min 18 s and 292 s, the measured teacher table (2.88 and 2.82 tok/s, 0.39 and 3.51 s to the first token, 120 W average and 129 W peak), 9.2 W idle with the model loaded, engine ready in about 5 min warm and 523 s cold, and decode about 2.7x slower than the R9700's; the rows are the pod-c rows of `lab/refine/metrics.jsonl` (PR 194). https://github.com/raohemdutt/Knighthacks26/blob/722d845/lab/README.md
+- [S45] LLVM AMDGPU backend at the same commit as [S19]: `GFX1151` uses `FeatureISAVersion11_5_1` (GCNProcessors.td lines 254 to 256), which builds on `FeatureISAVersion11_5_Common` and `FeatureISAVersion11_Common` (AMDGPU.td lines 2385, 2371 and 2298), whose `FeatureGFX11` sets `AddressableLocalMemorySize65536` and `LDSAllocGranularity1024` (AMDGPU.td lines 1839 to 1842). https://github.com/llvm/llvm-project/blob/3378a49e6e49/llvm/lib/Target/AMDGPU/GCNProcessors.td#L254-L256 and https://github.com/llvm/llvm-project/blob/3378a49e6e49/llvm/lib/Target/AMDGPU/AMDGPU.td#L1839-L1842

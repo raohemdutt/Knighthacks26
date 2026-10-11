@@ -61,7 +61,7 @@ from typing import Any
 import httpx
 
 from lab.hub import Account
-from lab.hub_fake import FakeClock
+from lab.hub_fake import FAKE_ROLES, FakeClock
 
 __all__ = ["FakePodProxy", "FakeModelServer", "FakeFileServer", "FakeCall"]
 
@@ -321,7 +321,7 @@ class FakePodProxy:
     def add_account(self, letter: str, *, user: str, token: str) -> Account:
         """A hub account whose pod is running, returned in the form the callers take."""
         self._pods[letter] = _Pod(letter, user, token)
-        return Account(letter, user, token)
+        return Account(letter, user, token, role=FAKE_ROLES.get(letter))
 
     def pod(self, letter: str) -> _Pod:
         return self._pods[letter]

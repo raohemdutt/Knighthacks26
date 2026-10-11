@@ -35,7 +35,7 @@ def test_counts_come_from_the_events_and_say_where_from():
     assert rows["Questions asked"].source == "`experience.question.asked` x 2"
     assert rows["Questions asked"].first == T0
     assert rows["Answers given, with citations"].value == "1"
-    assert rows["Approval taps (approve / deny)"].value == "1 / 1"
+    assert rows["Approval decisions (approve / deny)"].value == "1 / 1"
     assert rows["Keyframes kept (faces blurred)"].value == "2"
     assert "0.5 h of activity" in rows["Episodes remembered"].source
 
@@ -62,8 +62,8 @@ def test_frames_and_joules_are_integrated_and_marked_estimated():
     assert rows["Frames seen by the cameras"].source.startswith("estimated")
     # 30-minute power gaps are longer than one sample covers, so they add nothing
     assert rows["Energy used by the Jetson"].value == "none in the log"
-    assert rows["Energy used by the R9700s"].value == "200.0 Wh"
-    assert "(gpu-a)" in rows["Energy used by the R9700s"].source
+    assert rows["Energy used by the lab GPUs"].value == "200.0 Wh"
+    assert "(gpu-a)" in rows["Energy used by the lab GPUs"].source
 
 
 def test_since_drops_earlier_events_and_bad_lines_are_skipped(tmp_path):
@@ -89,3 +89,11 @@ def test_the_seeded_demo_night_prints_a_full_card(tmp_path, capsys):
 def test_since_needs_an_offset():
     with pytest.raises(SystemExit):
         main(["totals", "--since", "2026-10-10T09:00:00"])
+
+
+def test_only_actions_that_ran_count_as_carried_out():
+    events = [ev("workspace.action.completed", n, action_id=str(n), status=s)
+              for n, s in enumerate(["expired", "denied", "done", "expired"])]
+    row = by_name(totals.totals(events))["Outside actions carried out, each after an approval"]
+    assert row.value == "1"
+    assert row.source == "`workspace.action.completed` with status done, of 4 (1 denied, 2 expired)"

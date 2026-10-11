@@ -15,6 +15,9 @@ working. What may leave:
     each connector's `hosts` from config/connectors.yaml,
     Neon, the ntfy relay, the Ubuntu connectivity check,
     config/egress.yaml extras                                 online mode only: their resolved IP addresses
+    a connector whose `hosts` has "*" (the browser):
+    web ports (tcp 80/443, udp 443) to any public address     online mode only, after every named group, so the
+                                                              named groups keep their own counts
     everything else                                           logged ("atlas-egress-drop") and rejected
 
 Each allowed group is counted under its own comment, which is how the phone shows bytes per connector. Offline mode (the
@@ -48,6 +51,8 @@ from urllib.parse import urlparse
 import yaml
 
 CHAIN = "ATLAS_EGRESS"
+ANY_HOST = "*"  # in a connector's `hosts`: any website, on the web ports only (Dominick: the browser may read almost any site)
+WEB_PORTS = [("tcp", "80,443"), ("udp", "443")]  # http, https and QUIC
 HUB_HOSTS = ["dub.aupcloud.io"]
 # The hub settings the telemetry pod reader and lab/hub.py read: one per AUP account letter, plus the all-accounts one.
 HUB_URL_ACCOUNT_ENV = re.compile(r"AUP_HUB_URL_[A-Z]")
@@ -195,6 +200,8 @@ def resolve_groups(groups: dict[str, list[str]], previous: dict[str, Resolved] |
         v4: set[str] = set(previous[group][0]) if previous and group in previous else set()
         v6: set[str] = set(previous[group][1]) if previous and group in previous else set()
         for host in hosts:
+            if host == ANY_HOST:  # not a name to resolve: render() opens the web ports for this group
+                continue
             try:
                 ip = ipaddress.ip_address(host)
                 (v4 if ip.version == 4 else v6).add(str(ip))
@@ -208,17 +215,49 @@ def resolve_groups(groups: dict[str, list[str]], previous: dict[str, Resolved] |
     return out
 
 
+def any_host_groups(groups: dict[str, list[str]]) -> frozenset[str]:
+    """The groups allowed to reach any website (a "*" in their hosts)."""
+    return frozenset(g for g, hosts in groups.items() if ANY_HOST in hosts)
+
+
 # --- the rules ------------------------------------------------------------------------------------------------------
 
 def _comment(text: str) -> str:
     return f'-m comment --comment "{text}"'
 
 
-def render(version: int, groups: dict[str, Resolved], dns: Resolved, offline: bool) -> str:
-    """The chain as an iptables-restore transaction for IPv4 (version 4) or IPv6 (version 6)."""
+ACCT = "acct:"  # comment prefix of the counting rules
+
+
+def accounting(version: int, groups: dict[str, Resolved], dns: Resolved, offline: bool) -> list[str]:
+    """Counting rules with no target, ahead of the ESTABLISHED accept: every packet of every flow passes them, so a
+    group's `acct:` counter holds all the bytes sent to it. (The accept rules below see only a flow's first packet,
+    because ESTABLISHED catches the rest first.) An address in two groups counts once, for the group whose accept
+    rule would match it first."""
+    pick = 0 if version == 4 else 1
+    rules = [f"-A {CHAIN} -d {net} {_comment(ACCT + 'lan')}" for net in LAN[version]]
+    if "tailscale" in groups or "tailscale-relays" in groups:
+        rules += [f"-A {CHAIN} -d {net} {_comment(ACCT + 'tailnet')}" for net in TAILNET[version]]
+    rules += [f"-A {CHAIN} -d {ip} -p {proto} --dport 53 {_comment(ACCT + 'dns')}" for ip in sorted(dns[pick]) for proto in ("udp", "tcp")]
+    rules.append(f"-A {CHAIN} -p udp --dport 123 {_comment(ACCT + 'ntp')}")
+    if not offline:
+        seen: set[str] = set()
+        for group, resolved in sorted(groups.items()):
+            for ip in sorted(resolved[pick] - seen):
+                rules.append(f"-A {CHAIN} -d {ip} {_comment(ACCT + group)}")
+                seen.add(ip)
+    return rules
+
+
+def render(version: int, groups: dict[str, Resolved], dns: Resolved, offline: bool,
+           any_host: frozenset[str] = frozenset()) -> str:
+    """The chain as an iptables-restore transaction for IPv4 (version 4) or IPv6 (version 6). Groups in `any_host` may
+    also reach any address on the web ports; those lines come last, so traffic to a named group is counted as that
+    group's."""
     pick = 0 if version == 4 else 1
     lines = ["*filter", f":{CHAIN} - [0:0]",
              f"-A {CHAIN} -o lo -j ACCEPT",
+             *accounting(version, groups, dns, offline),
              f"-A {CHAIN} -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT"]
     lines += [f"-A {CHAIN} -d {net} {_comment('lan')} -j ACCEPT" for net in LAN[version]]
     if "tailscale" in groups or "tailscale-relays" in groups:  # traffic to tailnet peers goes over tailscale0 and is ours end to end, like the LAN
@@ -234,6 +273,9 @@ def render(version: int, groups: dict[str, Resolved], dns: Resolved, offline: bo
             lines.append(f"-A {CHAIN} -p udp --sport {TAILSCALE_PORT} {_comment('tailscale')} -j ACCEPT")
         for group, resolved in sorted(groups.items()):
             lines += [f"-A {CHAIN} -d {ip} {_comment(group)} -j ACCEPT" for ip in sorted(resolved[pick])]
+        for group in sorted(any_host):
+            lines += [f"-A {CHAIN} -p {proto} -m multiport --dports {ports} {_comment(group)} -j ACCEPT"
+                      for proto, ports in WEB_PORTS]
     lines += [
         f'-A {CHAIN} -m limit --limit 10/second --limit-burst 20 -j LOG --log-prefix "atlas-egress-drop " --log-level 6',
         f"-A {CHAIN} -p tcp {_comment('blocked')} -j REJECT --reject-with tcp-reset",
@@ -279,8 +321,19 @@ def parse_drops(kernel_log: str, limit: int = 20) -> list[dict]:
 def snapshot(counters: dict[str, dict[str, int]], groups: dict[str, list[str]], drops: list[dict], offline: bool,
              now: datetime | None = None) -> dict:
     """What GET /vault/egress shows."""
-    allowed = [{"name": name, "hosts": groups.get(name, []), **counters.get(name, {"packets": 0, "bytes": 0})}
-               for name in ["lan", "ntp", "dns", *sorted(groups)] if not (offline and name in groups)]
+    def sent(name: str) -> dict[str, int]:
+        """All bytes to the group (its counting rule), and how many connections it opened (its accept rule)."""
+        opened = counters.get(name, {"packets": 0, "bytes": 0})
+        total = counters.get(ACCT + name, opened)  # rules loaded before the counting rules existed: first packets only
+        return {"packets": total["packets"], "bytes": total["bytes"], "connections": opened["packets"]}
+
+    allowed = [{"name": name, "hosts": groups.get(name, []), **sent(name)}
+               for name in ["lan", *(["tailnet"] if ACCT + "tailnet" in counters else []), "ntp", "dns", *sorted(groups)]
+               if not (offline and name in groups)]
+    for row in allowed:  # a group that may reach any website ("*"): its counting rules cover only its named addresses,
+        if "*" in row["hosts"]:  # so bytes to other sites are not in `bytes`; `connections` counts those flows too
+            row["open_web"] = True
+            row["bytes_cover"] = "named addresses only"
     blocked = counters.get("blocked", {"packets": 0, "bytes": 0})
     return {
         "enforced": True,
@@ -353,7 +406,7 @@ class Egress:
         groups = groups if groups is not None else host_groups(self.config_dir, read_env(self.env_file))
         resolved = resolved if resolved is not None else resolve_groups(groups, self.resolved)
         dns = dns if dns is not None else resolvers()
-        texts = {v: render(v, resolved, dns, offline) for v in (4, 6)}
+        texts = {v: render(v, resolved, dns, offline, any_host_groups(groups)) for v in (4, 6)}
         for v, text in texts.items():
             self.run(v, ["restore", "--test", "--noflush"], text)  # syntax check first: a bad ruleset must never replace a good one
         self.base = self.live_counters()
@@ -384,7 +437,7 @@ class Egress:
                     pass
 
     def unresolved(self) -> list[str]:
-        return [g for g, (v4, v6) in self.resolved.items() if not (v4 or v6)]
+        return [g for g, (v4, v6) in self.resolved.items() if not (v4 or v6) and set(self.groups.get(g, [])) != {ANY_HOST}]
 
     def write_snapshot(self) -> dict:
         snap = snapshot(self.live_counters(), self.groups, parse_drops(self.kernel_log()), bool(self.offline))
@@ -432,8 +485,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "render":
         groups = host_groups(args.config_dir, read_env(args.env_file))
         resolved, dns = resolve_groups(groups), resolvers()
-        print(render(4, resolved, dns, args.offline))
-        print(render(6, resolved, dns, args.offline))
+        print(render(4, resolved, dns, args.offline, any_host_groups(groups)))
+        print(render(6, resolved, dns, args.offline, any_host_groups(groups)))
     elif args.command == "apply":
         confirm = Path("/run/atlas-egress.ok")
         confirm.unlink(missing_ok=True)

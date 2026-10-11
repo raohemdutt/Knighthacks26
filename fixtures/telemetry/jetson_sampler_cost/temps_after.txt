@@ -1,0 +1,36 @@
+idle_100ms cpu-thermal 55531
+idle_100ms gpu-thermal 58468
+idle_100ms cv0-thermal 
+idle_100ms cv1-thermal 
+idle_100ms cv2-thermal 
+idle_100ms soc0-thermal 54437
+idle_100ms soc1-thermal 53468
+idle_100ms soc2-thermal 54750
+idle_100ms tj-thermal 58093
+idle_200ms cpu-thermal 56812
+idle_200ms gpu-thermal 59093
+idle_200ms cv0-thermal 
+idle_200ms cv1-thermal 
+idle_200ms cv2-thermal 
+idle_200ms soc0-thermal 55812
+idle_200ms soc1-thermal 55281
+idle_200ms soc2-thermal 56000
+idle_200ms tj-thermal 59375
+load_100ms cpu-thermal 65062
+load_100ms gpu-thermal 66750
+load_100ms cv0-thermal 
+load_100ms cv1-thermal 
+load_100ms cv2-thermal 
+load_100ms soc0-thermal 63031
+load_100ms soc1-thermal 62093
+load_100ms soc2-thermal 63531
+load_100ms tj-thermal 66843
+load_200ms cpu-thermal 64593
+load_200ms gpu-thermal 66968
+load_200ms cv0-thermal 
+load_200ms cv1-thermal 
+load_200ms cv2-thermal 
+load_200ms soc0-thermal 63093
+load_200ms soc1-thermal 62156
+load_200ms soc2-thermal 63500
+load_200ms tj-thermal 66781

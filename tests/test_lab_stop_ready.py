@@ -4,6 +4,7 @@ Every test gets its own state dir and sees no real secrets, no .env file and no 
 credentials are fake and the hub is a stand-in HTTP server on 127.0.0.1.
 """
 
+import http.client
 import json
 import os
 import re
@@ -636,7 +637,9 @@ def test_ready_passes_when_every_precondition_holds(isolated_lab, hub, monkeypat
     code, out, err = run_cli(["ready"], capsys)
 
     assert code == 0
-    assert one_json_line(out) == {
+    verdict = one_json_line(out)
+    assert verdict.pop("warnings", []) == []
+    assert verdict == {
         "ok": True,
         "ready": True,
         "outcome": "ready",
@@ -750,13 +753,15 @@ def test_ready_reports_an_account_the_hub_turns_away(
 
     code, out, err = run_cli(["ready"], capsys)
 
-    assert code == 1
+    assert code == 0
     result = one_json_line(out)
     assert result["checks"]["hub"]["accounts"] == {
         "A": {"ok": True, "status": 200},
         "B": {"ok": False, "status": status},
     }
-    assert result["reasons"] == [f"hub account B answered {status}"]
+    assert (result["ok"], result["ready"], result["outcome"]) == (True, True, "ready")
+    assert result["reasons"] == []
+    assert result["warnings"] == [f"hub account B answered {status}"]
     assert_no_secret_values(out, err)
 
 
@@ -766,11 +771,14 @@ def test_ready_does_not_follow_a_redirect_with_the_token(isolated_lab, hub, monk
 
     code, out, _ = run_cli(["ready"], capsys)
 
-    assert code == 1
-    assert one_json_line(out)["checks"]["hub"]["accounts"] == {
+    assert code == 0
+    result = one_json_line(out)
+    assert result["checks"]["hub"]["accounts"] == {
         "A": {"ok": False, "status": 302},
         "B": {"ok": False, "status": 302},
     }
+    assert (result["ready"], result["reasons"]) == (True, [])
+    assert result["warnings"] == ["hub account A answered 302", "hub account B answered 302"]
     assert [r["path"] for r in hub.requests] == [
         "/hub/api/users/fake-user-alpha",
         "/hub/api/users/fake-user-bravo",
@@ -783,14 +791,15 @@ def test_ready_rejects_a_200_that_is_not_a_json_object(isolated_lab, hub, monkey
 
     code, out, _ = run_cli(["ready"], capsys)
 
-    assert code == 1
+    assert code == 0
     result = one_json_line(out)
     assert result["checks"]["hub"]["accounts"]["A"] == {
         "ok": False,
         "status": 200,
         "error": "response is not a JSON object",
     }
-    assert result["reasons"] == [
+    assert (result["ready"], result["reasons"]) == (True, [])
+    assert result["warnings"] == [
         "hub account A answered 200 (response is not a JSON object)",
         "hub account B answered 200 (response is not a JSON object)",
     ]
@@ -801,14 +810,16 @@ def test_ready_reports_a_hub_that_cannot_be_reached(isolated_lab, monkeypatch, t
 
     code, out, err = run_cli(["ready"], capsys)
 
-    assert code == 1
+    assert code == 0
     result = one_json_line(out)
     for letter in ("A", "B"):
         probe = result["checks"]["hub"]["accounts"][letter]
         assert probe["ok"] is False
         assert "status" not in probe
-        assert probe["error"].startswith("URLError: ")
-    assert result["reasons"] == ["hub account A unreachable", "hub account B unreachable"]
+        # The one hub client's exception for a connection that never got an answer (lab/hub.py HubUnreachable).
+        assert probe["error"].startswith("HubUnreachable: ")
+    assert (result["ready"], result["reasons"]) == (True, [])
+    assert result["warnings"] == ["hub account A unreachable", "hub account B unreachable"]
     assert_no_secret_values(out, err)
 
 
@@ -819,6 +830,67 @@ def test_errors_from_the_transport_never_echo_a_credential():
     result = ready.check(environ=dict(SECRETS), env_files=[], fetch=leaky)
 
     assert result["checks"]["hub"]["accounts"]["A"] == {"ok": False, "error": "OSError: reset while talking to *** with ***"}
+    assert_no_secret_values(json.dumps(result))
+
+
+# A token sourced from a CRLF .env reaches the check with a CR or LF on its end, or a hand-typed one with spaces
+# around it. The text the check then has to clean spells the token bare, or with the line break escaped the way
+# http.client's "Invalid header value" does, so hiding only the exact text it was given leaves the token showing.
+TOKEN = SECRETS["AUP_HUB_TOKEN_A"]
+LINE_BREAKS = {"cr": "\r", "lf": "\n", "crlf": "\r\n"}
+PADDED = {**{name: TOKEN + ending for name, ending in LINE_BREAKS.items()}, "spaces": "  " + TOKEN + "  "}
+
+
+def send_through_http_client(url, headers, timeout):
+    """A fetch that puts the headers through the real http.client, which refuses a value ending in a line break."""
+    connection = http.client.HTTPConnection("hub.invalid")
+    connection.putrequest("GET", "/")
+    for name, value in headers.items():
+        connection.putheader(name, value)
+    return 200, {}
+
+
+@pytest.mark.parametrize("padded", PADDED.values(), ids=PADDED.keys())
+def test_scrub_hides_a_padded_secret_from_a_message_that_spells_it_stripped(padded):
+    message = f"the hub refused Authorization: token {TOKEN} for this call"
+
+    assert ready.scrub(message, [padded]) == "the hub refused Authorization: token *** for this call"
+
+
+@pytest.mark.parametrize("padded", PADDED.values(), ids=PADDED.keys())
+def test_scrub_still_hides_a_padded_secret_spelled_exactly_as_given(padded):
+    assert ready.scrub(f"echoed {padded}back", [padded]) == "echoed ***back"
+
+
+@pytest.mark.parametrize("blank", ["", " ", "   ", "\r\n"], ids=["empty", "space", "spaces", "crlf"])
+def test_scrub_leaves_the_text_alone_for_a_secret_that_is_blank(blank):
+    assert ready.scrub("two words,   a gap\r\n", [blank]) == "two words,   a gap\r\n"
+
+
+def test_scrub_skips_a_blank_secret_and_still_hides_the_others():
+    assert ready.scrub(f"token {TOKEN} ok", ["", TOKEN, "  "]) == "token *** ok"
+
+
+@pytest.mark.parametrize("ending", LINE_BREAKS.values(), ids=LINE_BREAKS.keys())
+def test_a_token_ending_in_a_line_break_is_hidden_from_the_error_http_client_raises(ending):
+    environ = dict(SECRETS, AUP_HUB_TOKEN_A=TOKEN + ending)
+
+    result = ready.check(environ=environ, env_files=[], fetch=send_through_http_client)
+
+    escaped = repr(ending)[1:-1]  # the two characters backslash and r, not the CR itself
+    accounts = result["checks"]["hub"]["accounts"]
+    assert accounts["A"] == {"ok": False, "error": f"ValueError: Invalid header value b'token ***{escaped}'"}
+    assert accounts["B"] == {"ok": True, "status": 200}
+    assert_no_secret_values(json.dumps(result))
+
+
+def test_a_token_with_spaces_around_it_is_hidden_from_an_error_that_spells_it_bare():
+    def echoes_the_token_bare(url, headers, timeout):
+        raise OSError(f"the hub said no to token {TOKEN}")
+
+    result = ready.check(environ=dict(SECRETS, AUP_HUB_TOKEN_A=f"  {TOKEN}  "), env_files=[], fetch=echoes_the_token_bare)
+
+    assert result["checks"]["hub"]["accounts"]["A"] == {"ok": False, "error": "OSError: the hub said no to token ***"}
     assert_no_secret_values(json.dumps(result))
 
 
@@ -869,6 +941,23 @@ def test_python_dash_m_lab_ready_prints_one_json_line(isolated_lab, hub, monkeyp
     assert_no_secret_values(result.stdout, result.stderr)
 
 
+def test_python_dash_m_lab_ready_exits_0_when_only_the_hub_is_down(isolated_lab, monkeypatch, tmp_path):
+    # A hub outage must not stop GPU-free sittings: stop, state dir and env are fine, every probe fails.
+    configure(monkeypatch, tmp_path, f"http://127.0.0.1:{closed_port()}")
+
+    result = run_module("ready")
+
+    verdict = one_json_line(result.stdout)
+    assert result.returncode == 0, result.stdout
+    assert (verdict["ok"], verdict["ready"], verdict["outcome"]) == (True, True, "ready")
+    assert verdict["reasons"] == []
+    assert verdict["checks"]["hub"]["ok"] is False
+    assert len(verdict["warnings"]) == 2
+    assert "account A" in verdict["warnings"][0]
+    assert "account B" in verdict["warnings"][1]
+    assert_no_secret_values(result.stdout, result.stderr)
+
+
 def test_python_dash_m_lab_ready_exits_1_while_stopped(isolated_lab, hub, monkeypatch, tmp_path):
     configure(monkeypatch, tmp_path, hub.url)
     write_stop(isolated_lab, "halt")
@@ -901,3 +990,104 @@ def test_python_dash_m_lab_with_no_arguments_prints_the_help():
     result = run_module()
     assert result.returncode == 0
     assert result.stdout.startswith("usage: python -m lab <verb>")
+
+
+class RecordingHub:
+    """Stands in for lab.hub.Hub (the hub boundary) and records how ready used it."""
+
+    constructed: list = []
+    gets: list = []
+
+    def __init__(self, account, *, base_url=None, **options):
+        self.account = account
+        self.base_url = base_url
+        type(self).constructed.append((account.user, account.token, base_url))
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return None
+
+    def close(self):
+        return None
+
+    def user_url(self, suffix=""):
+        return f"/hub/api/users/{self.account.user}{suffix}"
+
+    def get(self, path, **kwargs):
+        from lab import hub as lab_hub
+
+        type(self).gets.append((self.account.user, path))
+        return lab_hub.Reply(status=200, body={"name": self.account.user})
+
+
+def _imports_of(module) -> set:
+    import ast
+
+    tree = ast.parse(Path(module.__file__).read_text(encoding="utf-8"))
+    names = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            base = node.module or ""
+            names.add(base)
+            names.update(f"{base}.{alias.name}" for alias in node.names)
+    return names
+
+
+def test_ready_probes_the_hub_through_the_one_hub_client(monkeypatch):
+    """ready carries no second hub transport: it asks lab.hub.Hub, built per account, for user_url()."""
+    from lab import hub as lab_hub
+
+    problems = []
+    for leftover in ("fetch_json",):
+        if hasattr(ready, leftover):
+            problems.append(f"ready still defines {leftover}")
+
+    RecordingHub.constructed = []
+    RecordingHub.gets = []
+    monkeypatch.setattr(lab_hub, "Hub", RecordingHub)
+    # Keep an unfixed ready from reaching a network: its own transport is replaced by one that refuses.
+    def no_network(url, headers, timeout):
+        raise OSError("network is not allowed in a test")
+
+    monkeypatch.setattr(ready, "fetch_json", no_network, raising=False)
+
+    result = ready.check(environ=dict(SECRETS), env_files=[], base_url="http://hub.test")
+    hub_check = result["checks"]["hub"]
+
+    constructed = [(user, token, (base or "").rstrip("/")) for user, token, base in RecordingHub.constructed]
+    expected = [
+        (SECRETS["AUP_HUB_USER_A"], SECRETS["AUP_HUB_TOKEN_A"], "http://hub.test"),
+        (SECRETS["AUP_HUB_USER_B"], SECRETS["AUP_HUB_TOKEN_B"], "http://hub.test"),
+    ]
+    if constructed != expected:
+        problems.append(f"Hub constructed as {constructed!r}, expected {expected!r}")
+    expected_gets = [(user, f"/hub/api/users/{user}") for user in (SECRETS["AUP_HUB_USER_A"], SECRETS["AUP_HUB_USER_B"])]
+    if RecordingHub.gets != expected_gets:
+        problems.append(f"Hub.get called as {RecordingHub.gets!r}, expected {expected_gets!r}")
+    answers = {letter: probe["ok"] for letter, probe in hub_check["accounts"].items()}
+    if hub_check["ok"] is not True or answers != {"A": True, "B": True}:
+        problems.append(f"hub check answered {hub_check!r}, expected ok for both accounts")
+
+    assert problems == []
+
+
+def test_the_ledger_resolves_the_state_dir_through_stop(monkeypatch, tmp_path):
+    """One resolver for the state dir: stop owns the variable name and the default, and the ledger follows it on every call."""
+    from lab.machine import ledger
+
+    assert ledger.ENV_STATE_DIR == stop.STATE_DIR_ENV
+    assert ledger.DEFAULT_STATE_DIR == stop.DEFAULT_STATE_DIR
+
+    monkeypatch.delenv("LAB_STATE_DIR", raising=False)
+    moved_default = tmp_path / "moved-default"
+    monkeypatch.setattr(stop, "DEFAULT_STATE_DIR", moved_default)
+    assert ledger.resolve_state_dir() == moved_default, "the ledger must follow stop's default, not keep a copy"
+
+    moved_env = tmp_path / "moved-env"
+    monkeypatch.setenv("LAB_STATE_DIR", str(moved_env))
+    assert stop.state_dir() == moved_env
+    assert ledger.resolve_state_dir() == moved_env, "the ledger must read LAB_STATE_DIR through stop"

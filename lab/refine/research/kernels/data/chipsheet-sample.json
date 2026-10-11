@@ -1,0 +1,65 @@
+{
+  "format": "chipsheet/1",
+  "sample": true,
+  "about": "A sample of the chip sheet R33 writes as lab/refine/research/kernels/data/chipsheet-<gfx>-<date>.json. It documents the fields lab/placement.py reads (placement_reads below); the placement reader ignores every other field, so the real sheet may carry any more. A value is a number or an object whose 'value' is the number, with the command, the repeats and the spread beside it. In this sample the memory and power values are hour-0 facts and earlier measurements on the same chip, each with its source; bandwidth and matmul rate are null because nothing has measured them yet (R33 does). The placement plan marks every number it takes from a sheet with sample: true as a sample, never as a measurement.",
+  "placement_reads": {
+    "memory.visible_gib": "GiB of device memory torch reports (torch.cuda.get_device_properties(0).total_memory / 2**30); the teacher's vLLM share is a fraction of this",
+    "memory.free_gib": "GiB a new job can still take with nothing of ours running: torch.cuda.mem_get_info()[0] / 2**30 and MemAvailable, the smaller, since the APU's GPU memory is the host's RAM",
+    "bandwidth.copy_d2d_peak_gb_s": "the best achieved device-to-device copy bandwidth over the sizes in bandwidth.copy_d2d, GB/s (a list of {bytes, gb_s, repeats, spread_pct} rows is read when the peak is absent)",
+    "matmul.bf16_peak_tflops": "the best achieved bf16 matmul rate over the shapes in matmul.shapes, TFLOPS (a list of {use, dtype, m, n, k, tflops, repeats, spread_pct} rows is read when the peak is absent)",
+    "power.idle_w": "amd-smi SOCKET_POWER with nothing running, W (the whole APU package)",
+    "power.loaded_w": "amd-smi SOCKET_POWER averaged over the loaded measurements, W"
+  },
+  "chip": {
+    "name": "Radeon 8060S (Strix Halo, Ryzen AI Max+ 395)",
+    "gfx": "gfx1151",
+    "node": "pod-b",
+    "hub": "sjc.aupcloud.io",
+    "account": "D"
+  },
+  "measured": null,
+  "versions": {
+    "hip": "7.13.99004-3309c6114a",
+    "torch": "2.9.1+rocm7.13.0",
+    "triton": "3.5.1",
+    "source": "R30 task page, hour-0 facts of pod D, line of Sat 5:40 PM ET (https://app.notion.com/p/3f596ef5fec58118b653e4f3ae2d3024)"
+  },
+  "memory": {
+    "visible_gib": {
+      "value": 64.0,
+      "command": "torch.cuda.get_device_properties(0).total_memory / 2**30 (the torch_gpu line of bash lab/pod_a_teacher.sh facts)",
+      "source": "R30 task page, hour-0 facts of pod D: 64.0 GiB visible to torch, 1 device"
+    },
+    "free_gib": {
+      "value": 58.0,
+      "command": "MemAvailable in /proc/meminfo / 2**20 (the mem line of bash lab/pod_a_teacher.sh facts); torch.cuda.mem_get_info() was not read",
+      "source": "R30 task page, hour-0 facts of pod D: 62 GB RAM, 58 GB available"
+    }
+  },
+  "bandwidth": {
+    "copy_d2d_peak_gb_s": {
+      "value": null,
+      "source": "not measured yet: R33 measures device-to-device copies from 1 MB to 4 GB"
+    },
+    "copy_d2d": []
+  },
+  "matmul": {
+    "bf16_peak_tflops": {
+      "value": null,
+      "source": "not measured yet: R33 measures the 27B decode and 4B LoRA step shapes"
+    },
+    "shapes": []
+  },
+  "power": {
+    "idle_w": {
+      "value": 9,
+      "command": "amd-smi metric --power, SOCKET_POWER, ten reads one second apart: 19 12 10 9 9 9 9 8 9 9",
+      "source": "R30 task page, hour-0 facts of pod D (the settled reads)"
+    },
+    "loaded_w": {
+      "value": 120.3,
+      "command": "amd-smi metric --power, SOCKET_POWER, over the decode window of one teacher request",
+      "source": "lab/refine/metrics.jsonl:29 (teacher.watts_avg, pod C, the same chip, text decode)"
+    }
+  }
+}

@@ -22,8 +22,8 @@ from contracts.events import Event
 from contracts.perception import IdentityChanged, PersonIdentified, PersonLost
 from contracts.types import Box, CameraId, Track
 
-__all__ = ["IdentityChanged", "PersonIdentified", "PersonLost", "TrackTags", "Vector", "average", "best_match", "cosine",
-           "face_box", "normalize", "track_for_face"]
+__all__ = ["IdentityChanged", "PersonIdentified", "PersonLost", "TrackTags", "Vector", "average", "best_match", "consistent",
+           "cosine", "face_box", "normalize", "track_for_face"]
 
 Vector = list[float]
 
@@ -55,6 +55,21 @@ def best_match(vector: Vector, templates: dict[str, Vector], threshold: float) -
     return scored[0][1] if scored and scored[0][0] >= threshold else None
 
 
+def consistent(vectors: list[Vector], threshold: float) -> list[int]:
+    """Which of these looks are the same face, as indexes. Each look is compared with the mean of the
+    others; while one is less than `threshold` close, the one furthest from the rest is taken out and the
+    rest are asked again, so a stray picture cannot drag the mean. Looks that agree with nobody leave
+    nothing. With fewer than two there is nothing to compare, and all are kept."""
+    keep = list(range(len(vectors)))
+    while len(keep) >= 2:
+        scores = {i: cosine(vectors[i], average([vectors[j] for j in keep if j != i])) for i in keep}
+        worst = min(keep, key=lambda i: (scores[i], -i))
+        if scores[worst] >= threshold:
+            return keep
+        keep.remove(worst)
+    return keep if len(vectors) < 2 else []
+
+
 # --- faces and tracks ---
 
 
@@ -79,6 +94,7 @@ class _Tag:
     candidate: str | None = None
     votes: int = 0
     tries: int = 0
+    unknown: int = 0  # looks at this face that matched no member, in a row
     strikes: int = 0
     next_look: float = 0.0
     last_seen: float = 0.0
@@ -110,6 +126,11 @@ class TrackTags:
                 out.append(PersonLost(camera_id=self.camera_id, track_id=tid))
         return out
 
+    def strangers(self) -> set[int]:
+        """Tracks whose face was looked at `confirm` times or more and matched no member: not an enrolled
+        person, as far as the box can tell."""
+        return {tid for tid, t in self._tags.items() if t.member is None and t.candidate is None and t.unknown >= self.confirm}
+
     def due(self, now: float) -> set[int]:
         """Tracks worth a look at their face now: untagged ones, and tagged ones due a check."""
         return {tid for tid, tag in self._tags.items() if tag.last_seen == now and now >= tag.next_look}
@@ -128,9 +149,9 @@ class TrackTags:
             return [PersonLost(camera_id=self.camera_id, track_id=track_id)]
         self.missed(track_id, now)
         if member is None:
-            tag.candidate, tag.votes = None, 0
+            tag.candidate, tag.votes, tag.unknown = None, 0, tag.unknown + 1
             return []
-        tag.votes = tag.votes + 1 if member == tag.candidate else 1
+        tag.votes, tag.unknown = (tag.votes + 1 if member == tag.candidate else 1), 0
         tag.candidate = member
         if tag.votes < self.confirm:
             return []

@@ -1,0 +1,7 @@
+{"probe":"props","name":"AMD Radeon 8060S Graphics","gcnArchName":"gfx1151","totalGlobalMem":68719476736,"sharedMemPerBlock":65536,"maxSharedMemoryPerMultiProcessor":65536,"regsPerBlock":65536,"warpSize":32,"maxThreadsPerBlock":1024,"maxThreadsPerMultiProcessor":2048,"multiProcessorCount":40,"l2CacheSize":2097152,"clockRate_khz":2900000,"memoryClockRate_khz":1000000,"memoryBusWidth":256}
+{"probe":"wave","compiled_wave":32,"lanes":32,"device_warp_size":32}
+{"probe":"lds","max_ok_bytes":65536,"first_fail_bytes":65664,"fail_error":"invalid argument","attribute_max_shared_per_block":65536,"tries":11,"threads":256}
+{"probe":"occ_lds","kernel":"occ_lds","param":0,"blocks":1280,"threads":256,"iters":512,"blocks_per_cu":8,"ms":[3.100000,3.050000,3.120000]}
+{"probe":"occ_lds","kernel":"occ_lds","param":65536,"blocks":1280,"threads":256,"iters":512,"blocks_per_cu":1,"ms":[11.900000,12.050000,12.000000]}
+{"probe":"occ_vgpr","kernel":"occ_vgpr_4","param":4,"blocks":1280,"threads":256,"iters":512,"blocks_per_cu":8,"ms":[3.080000,3.110000,3.090000]}
+{"probe":"occ_vgpr","kernel":"occ_vgpr_240","param":240,"blocks":1280,"threads":256,"iters":512,"blocks_per_cu":2,"ms":[7.950000,8.010000,7.990000]}

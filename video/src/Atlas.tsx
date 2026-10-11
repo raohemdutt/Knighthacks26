@@ -1,9 +1,10 @@
 import { AbsoluteFill, OffthreadVideo, Sequence, staticFile } from "remotion";
+import { Explainer } from "./Explainer";
 import { IndexCard } from "./IndexCard";
 import { Intro3D } from "./Intro3D";
-import { Placeholder } from "./Placeholder";
 import { TitleCard } from "./TitleCard";
 import { MEASURED, TotalsCard } from "./TotalsCard";
+import { Voice } from "./Voice";
 import { TITLE_FRAMES, theme } from "./theme";
 import timeline from "./timeline.json";
 
@@ -12,7 +13,7 @@ export type Slot = (typeof timeline.slots)[number];
 const INDEX_FRAMES = 150; // the index card's 5 s at the start, and again in the intro's last 5 s
 const TOTALS_FRAMES = 210; // 7 s of measured totals before the second index card, when the log has any
 
-/** Slot k: a title card naming the tracks it serves, then its recording (or a placeholder until it exists). */
+/** Slot k: a title card naming the tracks it serves, then its recording (or its diagram until one exists), narrated. */
 function SlotBody({ slot }: { slot: Slot }) {
   const body = timeline.slot_frames - TITLE_FRAMES;
   return (
@@ -21,8 +22,9 @@ function SlotBody({ slot }: { slot: Slot }) {
         <TitleCard slot={slot} />
       </Sequence>
       <Sequence from={TITLE_FRAMES} durationInFrames={body}>
-        {slot.clip ? <OffthreadVideo src={staticFile(slot.clip)} /> : <Placeholder slot={slot} />}
+        {slot.clip ? <OffthreadVideo src={staticFile(slot.clip)} /> : <Explainer slot={slot} />}
       </Sequence>
+      <Voice slot={slot.key} />
     </AbsoluteFill>
   );
 }
@@ -47,6 +49,7 @@ function Intro({ slot }: { slot: Slot }) {
       <Sequence from={INDEX_FRAMES + middle} durationInFrames={INDEX_FRAMES}>
         <IndexCard />
       </Sequence>
+      <Voice slot={0} />
     </AbsoluteFill>
   );
 }

@@ -5,16 +5,16 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 18px 16px 16px;
-  border-radius: var(--radius);
+  padding: 22px 20px 20px;
+  border-radius: var(--radius-lg);
   background: linear-gradient(180deg, var(--accent-soft), transparent 70%), var(--surface);
-  border: 1px solid var(--line);
+  box-shadow: var(--sh-raised-lg);
   min-width: 0;
 }
 
 .heroWarn {
-  border-color: var(--danger);
   background: linear-gradient(180deg, var(--danger-soft), transparent 70%), var(--surface);
+  box-shadow: var(--sh-raised-lg), inset 0 0 0 2px var(--danger);
 }
 
 .greeting {
@@ -69,13 +69,26 @@
   align-items: center;
   gap: 8px;
   min-height: 44px;
-  padding: 8px 16px 8px 12px;
-  border-radius: 22px;
-  border: 1px solid var(--accent);
-  background: transparent;
-  color: var(--accent);
+  padding: 8px 18px 8px 14px;
+  border-radius: var(--radius-pill);
+  border: 0;
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
+  color: var(--accent-text);
   font-size: 16px;
   font-weight: 650;
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .speak:hover:not(:disabled) {
+    transform: translateY(-2px);
+  }
+}
+
+.speak:active:not(:disabled) {
+  box-shadow: var(--sh-inset-sm);
+  transform: scale(0.97);
 }
 
 .speak svg {
@@ -83,13 +96,16 @@
   height: 22px;
 }
 
-.speakOn {
-  background: var(--accent);
+.speakOn,
+.speakOn:active:not(:disabled) {
+  background: var(--accent-grad);
   color: var(--accent-ink);
+  box-shadow: var(--glow);
 }
 
 .speak:disabled {
   opacity: 0.5;
+  box-shadow: none;
 }
 
 .engine {
@@ -169,7 +185,7 @@
 .moreBody > * {
   min-height: 48px;
   font-size: 16px;
-  padding: 10px 12px;
+  padding: 10px 14px;
   text-align: center;
   display: flex;
   align-items: center;
@@ -181,13 +197,13 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   border-radius: var(--radius);
-  border: 1px solid var(--line);
   background: var(--surface);
+  box-shadow: var(--sh-raised);
   overflow: hidden;
 }
 
 .cell {
-  padding: 10px 6px;
+  padding: 14px 6px;
   text-align: center;
   min-width: 0;
 }
@@ -264,7 +280,8 @@
   height: 12px;
   border-radius: 50%;
   border: 2px solid var(--muted);
-  background: var(--bg);
+  background: var(--surface-solid);
+  box-shadow: var(--sh-raised-sm);
 }
 
 /* fixed, from the calendar: a filled square; a suggestion from Atlas: a hollow circle */
@@ -275,8 +292,8 @@
 }
 
 .dotNow {
-  border-color: var(--accent);
-  background: var(--accent);
+  border-color: var(--accent-bright);
+  background: var(--accent-bright);
   box-shadow: 0 0 0 5px var(--accent-soft);
 }
 
@@ -289,11 +306,12 @@
 }
 
 .body {
-  margin: 4px 0;
-  padding: 9px 12px;
+  margin: 6px 0;
+  padding: 12px 14px;
   border-radius: var(--radius-sm);
-  border: 1px dashed var(--line);
-  background: transparent;
+  border: 0;
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
   text-align: left;
   width: 100%;
   min-width: 0;
@@ -306,31 +324,50 @@
 
 button.body {
   cursor: pointer;
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
 }
 
+@media (hover: hover) {
+  button.body:hover {
+    transform: translateY(-2px);
+  }
+}
+
+button.body:active {
+  transform: scale(0.98);
+}
+
+/* a fixed item (from the calendar) is raised; a suggestion from Atlas is sunk into the page */
 .bodyFixed {
-  border-style: solid;
-  border-left: 4px solid var(--text);
   background: var(--surface);
+  box-shadow: var(--sh-raised-sm), inset 4px 0 0 var(--text);
+}
+
+button.bodyFixed:active {
+  box-shadow: var(--sh-inset-sm), inset 4px 0 0 var(--text);
+}
+
+button.body:active {
+  box-shadow: var(--sh-inset);
 }
 
 .bodyNow {
-  border: 1px solid var(--accent);
   background: var(--accent-soft);
+  box-shadow: var(--sh-inset-sm), inset 0 0 0 2px var(--accent);
 }
 
 .bodyNow.bodyFixed {
-  border-left-width: 4px;
+  background: var(--accent-soft);
+  box-shadow: var(--sh-raised-sm), inset 4px 0 0 var(--text), inset 0 0 0 2px var(--accent);
 }
 
 .bodyNext {
-  border-style: solid;
-  border-color: var(--muted);
+  box-shadow: var(--sh-inset-sm), inset 0 0 0 2px var(--muted);
 }
 
 .bodyWarn {
-  border-color: var(--danger);
   background: var(--danger-soft);
+  box-shadow: var(--sh-inset-sm), inset 0 0 0 2px var(--danger);
 }
 
 .past .body,
@@ -366,8 +403,8 @@ button.body {
 
 .pill {
   display: inline-block;
-  padding: 1px 9px;
-  border-radius: 11px;
+  padding: 2px 12px;
+  border-radius: var(--radius-pill);
   font-size: 13px;
   font-weight: 650;
   background: var(--surface-2);
@@ -376,7 +413,7 @@ button.body {
 }
 
 .pillHere {
-  background: var(--accent);
+  background: var(--accent-grad);
   color: var(--accent-ink);
 }
 
@@ -387,27 +424,51 @@ button.body {
 
 .pillGood {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .progress {
-  height: 6px;
-  border-radius: 3px;
+  height: 10px;
+  border-radius: 5px;
   background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
   overflow: hidden;
   margin-top: 2px;
 }
 
 .progressFill {
   height: 100%;
-  border-radius: 3px;
-  background: var(--accent);
-  transition: width 0.6s ease;
+  border-radius: 5px;
+  background: linear-gradient(90deg, var(--accent-bright), var(--accent));
+  transition: width 900ms var(--ease-out);
 }
 
 .leave {
   font-size: 15px;
   font-weight: 650;
+}
+
+/* When to leave for the next fixed block, with the route button: sits flush under that block. */
+.leaveRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: -2px 0 6px;
+  padding: 6px 8px 6px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border-left: 4px solid var(--accent);
+  min-width: 0;
+}
+
+.leaveRow .leave {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.leaveRowWarn {
+  border-left-color: var(--danger);
 }
 
 .reason {
@@ -420,11 +481,11 @@ button.body {
 }
 
 .here {
-  margin: 4px 0;
-  padding: 9px 12px;
+  margin: 6px 0;
+  padding: 12px 14px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--accent);
   background: var(--accent-soft);
+  box-shadow: var(--sh-inset-sm), inset 0 0 0 2px var(--accent);
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -432,11 +493,11 @@ button.body {
 }
 
 .note {
-  margin: 4px 0;
-  padding: 9px 12px;
+  margin: 6px 0;
+  padding: 12px 14px 12px 18px;
   border-radius: var(--radius-sm);
   background: var(--surface);
-  border-left: 4px solid var(--accent);
+  box-shadow: var(--sh-raised-sm), inset 4px 0 0 var(--accent);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -462,9 +523,16 @@ button.body {
 }
 
 .fold > summary {
-  min-height: 36px;
+  min-height: var(--tap);
   font-size: 14px;
   justify-content: flex-start;
+}
+
+/* The marker keeps its own place at the right edge, so a summary that wraps ("Was that right? Tell the coach about
+   the 2 breaks") and a short one beside it show the same "+" in the same spot, and a long one can never squeeze it out. */
+.fold > summary::after {
+  margin-left: auto;
+  flex: none;
 }
 
 .foldBody {
@@ -507,9 +575,9 @@ button.body {
 /* ---------- why this plan ---------- */
 .why {
   border-radius: var(--radius);
-  border: 1px solid var(--line);
   background: var(--surface);
-  padding: 4px 16px;
+  box-shadow: var(--sh-raised);
+  padding: 6px 20px;
   min-width: 0;
 }
 

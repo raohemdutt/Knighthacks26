@@ -1,0 +1,13 @@
+INFO 10-10 19:30:01 [api_server.py:1885] vLLM API server version 0.19.2+gfx1151
+INFO 10-10 19:30:01 [utils.py:328] non-default args: {'model': '/home/jovyan/models/Qwen3.8-27B-INT4', 'served_model_name': ['teacher'], 'max_model_len': 16384}
+INFO 10-10 19:30:05 [model.py:1546] Using max model len 16384
+(EngineCore_DP0 pid=4242) INFO 10-10 19:30:09 [core.py:93] Initializing a V1 LLM engine (v0.19.2+gfx1151) with config: model='/home/jovyan/models/Qwen3.8-27B-INT4', speculative_config=None, tokenizer='/home/jovyan/models/Qwen3.8-27B-INT4', skip_tokenizer_init=False, tokenizer_mode=auto, revision=None, trust_remote_code=False, dtype=torch.bfloat16, max_seq_len=16384, download_dir=None, load_format=auto, tensor_parallel_size=1, pipeline_parallel_size=1, quantization=compressed-tensors, enforce_eager=False, kv_cache_dtype=auto, device_config=cuda, seed=0, served_model_name=teacher, enable_prefix_caching=True
+(EngineCore_DP0 pid=4242) INFO 10-10 19:30:20 [compressed_tensors_wNa16.py:95] Using ConchLinearKernel for CompressedTensorsWNA16
+(EngineCore_DP0 pid=4242) INFO 10-10 19:30:20 [rocm.py:300] Using Triton Attention backend.
+(EngineCore_DP0 pid=4242) INFO 10-10 19:30:21 [mm_encoder_attention.py:88] Using TRITON_ATTN for MMEncoderAttention.
+(EngineCore_DP0 pid=4242) INFO 10-10 19:33:40 [gpu_worker.py:298] Available KV cache memory: 31.25 GiB
+(EngineCore_DP0 pid=4242) INFO 10-10 19:33:40 [kv_cache_utils.py:1087] GPU KV cache size: 163,840 tokens
+(EngineCore_DP0 pid=4242) INFO 10-10 19:33:40 [kv_cache_utils.py:1091] Maximum concurrency for 16,384 tokens per request: 10.00x
+(EngineCore_DP0 pid=4242) INFO 10-10 19:34:55 [core.py:210] init engine (profile, create kv cache, warmup model) took 285.11 seconds
+INFO 10-10 19:35:00 [launcher.py:44] Route: /v1/chat/completions, Methods: POST
+INFO:     Application startup complete.

@@ -1,0 +1,296 @@
+/**
+ * The Learning lab screen's data (GET /api/learning/lab, /api/learning/lab/{run_id}) and the small pure
+ * functions its player uses. The gateway's read model is contexts/learning/application/lab_view.py.
+ *
+ * Every number arrives as a LabNum: its value, where it came from, and, when the log does not hold it,
+ * `value: null` with the reason. The screen never fills a gap with a guess.
+ */
+
+export interface LabSource {
+  kind: "event" | "file" | "derived";
+  ref: string;
+  ids: string[];
+  events?: number;
+}
+
+export interface LabNum {
+  label: string;
+  value: number | null;
+  unit: string | null;
+  source: LabSource | null;
+  low_confidence: boolean;
+  reason: string | null;
+}
+
+export type LabStatus = "training" | "gated" | "deployed" | "not deployed" | "rolled back" | "failed";
+
+export interface LabRunSummary {
+  run_id: string;
+  task: string | null;
+  status: LabStatus;
+  started: string | null;
+  ended: string | null;
+  model_version: string | null;
+  verdict: string | null;
+  scores: { current: LabNum; candidate: LabNum; teacher: LabNum };
+}
+
+export interface LabMeasured extends LabNum {
+  metric: string;
+  node: string | null;
+  measured_at: string | null;
+  other_chip?: boolean; // measured on the R9700s, before the lab moved to the Strix Halo pods
+}
+
+export interface LabList {
+  runs: LabRunSummary[];
+  sample: boolean;
+  sample_reason: string | null;
+  real_runs: number;
+  current_model: { version: string; source: string } | null;
+  measured: LabMeasured[];
+}
+
+export interface LabRow {
+  id: string;
+  frame_ref: string;
+  context: string | null;
+  target: string | null;
+  verdict: "up" | "down" | null;
+  side: "train" | "held_out" | null;
+}
+
+export type LabChange = "fixed" | "broke" | "still_right" | "still_wrong";
+
+export interface LabItem {
+  id: string;
+  group: string | null;
+  question: string;
+  expected: string | null;
+  before: { answer: string; correct: boolean };
+  after: { answer: string; correct: boolean };
+  change: LabChange;
+}
+
+export interface LabBoxSide {
+  version: string | null;
+  j_per_answer: LabNum;
+  tok_s: LabNum;
+  answers: number;
+}
+
+export interface LabStory {
+  run_id: string;
+  sample: boolean;
+  sample_reason: string | null;
+  status: LabStatus;
+  phase: string | null;
+  task: { slug: string | null; instruction: string | null; instruction_reason: string | null };
+  marks: Record<"start" | "run_start" | "taught" | "exported" | "training_start" | "training_end" | "evaluated" | "packaged" | "deployed" | "end", string | null>;
+  wall_s: LabNum;
+  dataset: {
+    dataset_id: string | null;
+    examples: LabNum;
+    train: LabNum;
+    held_out: LabNum;
+    held_out_groups: LabNum;
+    rows: LabRow[] | null;
+    rows_reason: string | null;
+    approval: { asked: string | null; approved: string | null; reason: string | null; approved_reason?: string | null; approved_by_reason: string | null };
+  };
+  training: {
+    node: string | null;
+    base: string | null;
+    lora_rank: number | null;
+    epochs: number | null;
+    batch: number | null;
+    steps: LabNum;
+    of: LabNum;
+    wall_s: LabNum;
+    samples: LabNum;
+    samples_per_s: LabNum;
+    loss_first: LabNum;
+    loss_last: LabNum;
+    points: { t: number; step: number | null; loss: number | null }[];
+    points_reason: string | null;
+  };
+  power: {
+    node: string | null;
+    points: { t: number; w: number; dt?: number }[];
+    points_reason: string | null;
+    energy_j: LabNum;
+    mean_w: LabNum;
+    peak_w: LabNum;
+    j_per_sample: LabNum;
+  };
+  eval: {
+    scores: { current: LabNum; candidate: LabNum; teacher: LabNum };
+    decision: "deploy" | "reject" | null;
+    model_version: string | null;
+    n_items: LabNum;
+    n_groups: LabNum;
+    noise: LabNum;
+    p_value: LabNum;
+    alpha: number | null;
+    test: string | null;
+    decode: string | null;
+    noise_runs?: number[];
+    counts: Record<"n" | "before_right" | "after_right" | "fixed" | "broke" | "still_right" | "still_wrong", LabNum> | null;
+    items: LabItem[] | null;
+    items_reason: string | null;
+    groups: { group: string; n: number; before: number; after: number; diff: number }[] | null;
+    verdict: string | null;
+    verdict_detail: string[];
+  };
+  package: { model_version: string | null; gguf: string | null; base: string | null; quantization: string | null; sha256: string | null; reason: string | null; bytes: LabNum };
+  deploy: {
+    model_version: string | null;
+    previous_version: string | null;
+    deployed: string | null;
+    deployed_reason: string | null;
+    swap_s: LabNum;
+    rolled_back: { ts: string; to: string | null; reason?: string | null } | null;
+  };
+  box: { before: LabBoxSide | null; after: LabBoxSide | null; reason: string | null };
+  gaps: { label: string; reason: string }[];
+  sources: LabNum[];
+  measured: LabMeasured[];
+}
+
+/* ---------- the player: one position 0..1 drives every section ---------- */
+
+export type ChapterKey = "taught" | "training" | "answers" | "gate" | "box";
+
+export interface Chapter {
+  key: ChapterKey;
+  n: number;
+  title: string;
+  from: number;
+  to: number;
+}
+
+/** Shares of the bar, not of the wall clock: training would otherwise be a sliver beside the waiting. */
+export const CHAPTERS: Chapter[] = [
+  { key: "taught", n: 1, title: "Taught from", from: 0, to: 0.1 },
+  { key: "training", n: 2, title: "Training", from: 0.1, to: 0.55 },
+  { key: "answers", n: 3, title: "Before / after", from: 0.55, to: 0.8 },
+  { key: "gate", n: 4, title: "The gate", from: 0.8, to: 0.88 },
+  { key: "box", n: 5, title: "On the box", from: 0.88, to: 1 },
+];
+
+export const PLAY_SECONDS = 26;
+
+export function clamp01(x: number): number {
+  return x < 0 ? 0 : x > 1 ? 1 : x;
+}
+
+/** How far through a chapter the playhead is, 0 before it and 1 after it. */
+export function within(u: number, key: ChapterKey): number {
+  const c = CHAPTERS.find((x) => x.key === key)!;
+  return clamp01((u - c.from) / (c.to - c.from));
+}
+
+export function chapterAt(u: number): Chapter {
+  return CHAPTERS.find((c) => u < c.to) ?? CHAPTERS[CHAPTERS.length - 1]!;
+}
+
+/* ---------- words and numbers ---------- */
+
+export function isNum(n: LabNum | null | undefined): n is LabNum & { value: number } {
+  return !!n && typeof n.value === "number";
+}
+
+export function pct(fraction: number, digits = 0): string {
+  return `${(fraction * 100).toFixed(digits)}%`;
+}
+
+export function duration(seconds: number): string {
+  const s = Math.round(seconds);
+  if (s < 90) return `${s} s`;
+  const m = Math.floor(s / 60);
+  if (m < 90) return `${m} min ${s % 60} s`;
+  return `${Math.floor(m / 60)} h ${m % 60} min`;
+}
+
+export function fileSize(bytes: number): string {
+  return bytes >= 1e9 ? `${(bytes / 1e9).toFixed(2)} GB` : `${(bytes / 1e6).toFixed(0)} MB`;
+}
+
+export function clock(iso: string | null | undefined, seconds = false): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString([], seconds ? { hour: "numeric", minute: "2-digit", second: "2-digit" } : { hour: "numeric", minute: "2-digit" });
+}
+
+/** A number as the screen prints it, with its unit. */
+export function show(n: LabNum): string {
+  if (n.value === null) return "not in the log";
+  const v = n.value;
+  switch (n.unit) {
+    case "fraction right":
+    case "fraction":
+      return pct(v, v < 0.1 ? 1 : 0);
+    case "s":
+      return duration(v);
+    case "bytes":
+      return fileSize(v);
+    case "J":
+      return v >= 3600 ? `${(v / 3600).toFixed(1)} Wh (${Math.round(v).toLocaleString()} J)` : `${v.toFixed(1)} J`;
+    case null:
+      return String(Number(v.toPrecision(3)));
+    default:
+      return `${Number.isInteger(v) ? v.toLocaleString() : Number(v.toPrecision(4))} ${n.unit}`;
+  }
+}
+
+/**
+ * One everyday comparison for the training energy: full charges of a phone.
+ * Assumption, stated on the screen: one charge is 15 Wh (a 4,000 mAh battery at 3.85 V holds 15.4 Wh;
+ * charger losses are left out, so a real charge draws a little more from the wall).
+ */
+export const PHONE_CHARGE_WH = 15;
+export const PHONE_ASSUMPTION = "Assumes one full phone charge is 15 Wh: a 4,000 mAh battery at 3.85 V holds 15.4 Wh. Charger losses are left out.";
+
+export function phoneCharges(wh: number): string {
+  const n = wh / PHONE_CHARGE_WH;
+  if (n < 0.05) return "less than a twentieth of a phone charge";
+  if (n < 0.95) return `${Math.round(n * 100)}% of one phone charge`;
+  return `${n.toFixed(1)} phone charges`;
+}
+
+/** Energy in joules up to `t` seconds into training: each reading holds for its step (or until the next sample). */
+export function energyUpTo(points: { t: number; w: number; dt?: number }[], t: number): number {
+  let j = 0;
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i]!;
+    if (p.dt !== undefined) {
+      const start = p.t - p.dt;
+      if (t <= start) break;
+      j += p.w * Math.min(p.dt, t - start);
+    } else if (i > 0) {
+      const a = points[i - 1]!;
+      if (t <= a.t) break;
+      const end = Math.min(p.t, t);
+      const wEnd = a.w + ((p.w - a.w) * (end - a.t)) / (p.t - a.t || 1);
+      j += ((a.w + wEnd) / 2) * (end - a.t);
+    }
+  }
+  return j;
+}
+
+export const CHANGE_LABEL: Record<LabChange, string> = {
+  fixed: "Fixed",
+  broke: "Got worse",
+  still_right: "Still right",
+  still_wrong: "Still wrong",
+};
+
+export const STATUS_LABEL: Record<LabStatus, string> = {
+  training: "Training",
+  gated: "Cleared by the gate",
+  deployed: "Deployed",
+  "not deployed": "Not deployed",
+  "rolled back": "Rolled back",
+  failed: "Failed",
+};

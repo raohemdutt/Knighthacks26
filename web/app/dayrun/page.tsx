@@ -242,8 +242,8 @@ export default function DayRunPage() {
   return (
     <>
       <div className={ui.pageHead}>
-        <h1>Day Run</h1>
-        <p className={ui.muted}>Play the next 24 hours before you live them. Fill the open slots, watch the day run, and keep the plan that wins.</p>
+        <h1>Today&apos;s Plan</h1>
+        <p className={ui.muted}>Try out your next 24 hours, then keep the plan that works best.</p>
       </div>
 
       <div className={ui.segmented} role="group" aria-label="Which day">

@@ -20,9 +20,9 @@ missing keys. The same commands are methods of Controller, for the scripts that 
 recovery drill, the queue): they get the same ledger rows and the same checks.
 
 The hub. Launch is `POST /hub/api/users/<account>/server` with {runtime_minutes, resource_type: gpu,
-gpu_selection: r9700}; stop is `DELETE` on the same path; state is `GET /hub/api/users/<account>` and the balance
+gpu_selection: strix-halo}; stop is `DELETE` on the same path; state is `GET /hub/api/users/<account>` and the balance
 `GET /hub/api/quota/me`. The hub enforces no ceiling on runtime_minutes, so --minutes takes any whole number; the
-session is charged when it ends, 4 credits for each whole minute, so a launch whose cost the balance cannot cover
+session is charged when it ends, the card's rate for each whole minute (4 credits on DUB's R9700, the other chip), so a launch whose cost the balance cannot cover
 is refused here, with the longest runtime it can, before anything is sent. A hub that keeps no accounts (quota
 disabled: balance 0, unlimited, enabled false, as the SJC hub answers) refuses nothing: the launch goes ahead and
 the answer says "quota disabled on this hub". The keys are AUP_HUB_USER_<LETTER> and AUP_HUB_TOKEN_<LETTER>, found
@@ -40,7 +40,8 @@ default, launches by REST as before and, when the account has a password, asks t
 small script in a terminal reads JUPYTER_IMAGE_SPEC and /dev/kfd); a pod found to be the stock image is stopped and
 launched again through the form, and a pod that cannot be asked is left as it is and marked image_check unknown.
 --accelerator and --resource name the card and the catalog entry; their defaults are AUP_HUB_GPU_<LETTER> and
-AUP_HUB_RESOURCE_<LETTER>, else r9700 and gpu. The answer and the pod row of a launch say which path was used
+AUP_HUB_RESOURCE_<LETTER>, else strix-halo (the SJC pods) and gpu; r9700 is still a card the hubs know, for the
+other chip on DUB. The answer and the pod row of a launch say which path was used
 (launch_path) and the accelerator. The password is read like the other keys and is cut out of every answer, error
 and ledger row, as the token is.
 
@@ -69,9 +70,13 @@ read, and run on.
 The ledger. A command writes a row for the call (verbs `controller launch`, `controller stop`, ... through
 @recorded: outcome, start, end, duration) and, where it learned or changed something about a pod, a pod row in the
 words the alert rules read (lab/machine/alerts.py): verbs `pod launch`, `pod stop`, `pod status`, `pod wait`,
-`pod keep-alive`, `pod quota` and `pod run-script`, with node pod-a or pod-b and refs.account. The metrics on them
+`pod keep-alive`, `pod quota` and `pod run-script`, with refs.account and the node. The metrics on them
 are pod.start_s (the launch request to a ready pod) and pod.balance_credits. A script run on a pod also leaves its
-row here, because a pod's own ledger is never read. A ledger that cannot be written never undoes what the hub
+row here, because a pod's own ledger is never read. Nodes are pod roles, not accounts (telemetry ruling 3): pod-a the teacher's pod, pod-b the trainer's, read from
+LAB_POD_ROLES (environment, then the workspace .env; default A:pod-a,B:pod-b, the DUB pair; on SJC
+C:pod-a,D:pod-b). Never pod-c or pod-d. Every pod row's conditions carry `hub` (the host) and `account` (the
+letter), so a row says which hub and which account filled the role. An account with no role in the setting is
+refused (outcome no_pod_role, exit 2) rather than named pod-<letter>. A ledger that cannot be written never undoes what the hub
 did: the answer then carries ledger_error.
 
 Outcomes. launch: running, already_running, launching (--no-wait), refused_quota, refused, timeout, failed, error,
@@ -103,7 +108,8 @@ if __package__ in (None, ""):          # started as `python lab/controller.py`: 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from lab import hub as hubs
-from lab.hub import Account, Hub, HubUnreachable, MissingCredentials, Reply, load_accounts, one_line
+from lab.hub import (Account, Hub, HubUnreachable, MissingCredentials, PodRoleError, Reply, hub_of, load_accounts,
+                     one_line)
 from lab.machine import record
 from lab.machine import stop as kill_switch
 from lab.machine.record import recorded
@@ -113,7 +119,7 @@ __all__ = ["Controller", "Server", "Quota", "run", "main", "build_parser"]
 log = logging.getLogger("lab.controller")
 
 RESOURCE_TYPE = "gpu"
-ACCELERATOR = "r9700"
+ACCELERATOR = "strix-halo"           # the SJC pods (Radeon 8060S, gfx1151); "r9700" names the other chip on DUB
 NO_ANSWER = 0                       # the status of a Reply for a call that never got one
 POLL_S = 1.0                        # seconds between reads while a pod launches: the start time is only as fine as this
 STOP_POLL_S = 2.0                   # seconds between reads while a pod stops
@@ -346,6 +352,8 @@ class Controller:
                  sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.time,
                  poll_s: float = POLL_S, environ: Mapping[str, str] | None = None) -> None:
         self.accounts = dict(accounts)
+        for account in self.accounts.values():
+            account.node        # PodRoleError at once for an account that fills no role
         self.sleep = sleep
         self.clock = clock
         self.poll_s = poll_s
@@ -476,8 +484,8 @@ class Controller:
         fields: dict[str, Any] = {"node": account.node}
         if metrics and units:
             fields["units"] = {name: unit for name, unit in units.items() if name in metrics}
-        if conditions:
-            fields["conditions"] = dict(conditions)
+        fields["conditions"] = {**(conditions or {}), "hub": hub_of(self._hub(account.letter).base_url),
+                                "account": account.letter}
         if note:
             fields["note"] = one_line(self.scrub(str(note)), NOTE_CHARS)
         try:
@@ -554,7 +562,7 @@ class Controller:
         """Launch the account's pod for `minutes` and wait until it is ready (a no-op when it already runs).
 
         resource_type and accelerator default to the account's AUP_HUB_RESOURCE_<letter> and AUP_HUB_GPU_<letter>,
-        else gpu and r9700. The account's AUP_HUB_LAUNCH_<letter> says how the hub is asked: rest (the API call),
+        else gpu and strix-halo. The account's AUP_HUB_LAUNCH_<letter> says how the hub is asked: rest (the API call),
         form (the hub's web spawn form) or auto, the default (the API call, then a look at the image the pod runs
         when the account has a password, and the form if it is the stock one; --no-wait skips the look)."""
         self._guard()
@@ -563,7 +571,7 @@ class Controller:
         resource_type = (account.resource or RESOURCE_TYPE) if resource_type is None else resource_type
         accelerator = (account.gpu or ACCELERATOR) if accelerator is None else accelerator
         if not accelerator.strip() or accelerator.strip().lower() == "auto":
-            raise ValueError("the accelerator is named: auto picks the cheapest card the hub has free, not the R9700")
+            raise ValueError("the accelerator is named: auto picks the cheapest card the hub has free, not the Strix Halo")
         if not resource_type.strip():
             raise ValueError("the resource is named: gpu is the Basic GPU Environment")
         mode = self._launch_mode(account)
@@ -1329,7 +1337,9 @@ def run(argv: Sequence[str], *, environ: Mapping[str, str] | None = None, env_fi
     args = build_parser().parse_args(list(argv))
     environ = os.environ if environ is None else environ
     try:
-        accounts = load_accounts(_letters_of(args), environ=environ, env_files=env_files)
+        accounts = load_accounts(_letters_of(args), environ=environ, env_files=env_files, require_role=True)
+    except PodRoleError as exc:
+        return ({"ok": False, "command": args.command, "outcome": "no_pod_role", "error": str(exc)}, 2)
     except MissingCredentials as exc:
         return ({"ok": False, "command": args.command, "outcome": "no_credentials", "missing": exc.missing,
                  "error": "keys missing from the environment and the .env files",

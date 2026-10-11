@@ -1,0 +1,1 @@
+{"s": 5.798983400999987, "text": "Two men stand on a paved sidewalk in front of a blue and white electric bus, with one wearing a beige jacket and the other in a black jacket and sunglasses.", "usage": {"completion_tokens": 36, "prompt_tokens": 939, "total_tokens": 975, "prompt_tokens_details": {"cached_tokens": 0}}}

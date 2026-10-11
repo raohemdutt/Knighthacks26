@@ -82,9 +82,9 @@ def test_on_a_loop_each_node_keeps_its_own_period_across_the_seam_between_passes
         return [e.ts for e in second if e.node == node and e.type == type_name][0] - last
 
     assert seam("jetson", "telemetry.jetson.power") == timedelta(seconds=1)
-    assert seam("gpu-a", "telemetry.gpu.power") == timedelta(seconds=1)
-    assert seam("gpu-b", "telemetry.gpu.power") == timedelta(seconds=1)
-    assert seam("gpu-b", "telemetry.train.step") == timedelta(seconds=2.5)
+    assert seam("pod-a", "telemetry.gpu.power") == timedelta(seconds=1)
+    assert seam("pod-b", "telemetry.gpu.power") == timedelta(seconds=1)
+    assert seam("pod-b", "telemetry.train.step") == timedelta(seconds=2.5)
     assert second[0].ts - first[0].ts == timedelta(seconds=60)
     assert [e.ts for e in two_passes] == sorted(e.ts for e in two_passes)
     assert [without_times_and_id(e) for e in second] == [without_times_and_id(e) for e in first]

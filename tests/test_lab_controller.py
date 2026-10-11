@@ -30,7 +30,7 @@ REPO = Path(__file__).resolve().parents[1]
 TOKEN_A = "aaaa1111bbbb2222cccc3333dddd4444"
 TOKEN_B = "eeee5555ffff6666aaaa7777bbbb8888"
 ENV = {"AUP_HUB_USER_A": "acct-a", "AUP_HUB_TOKEN_A": TOKEN_A, "AUP_HUB_USER_B": "acct-b", "AUP_HUB_TOKEN_B": TOKEN_B}
-LAUNCH_KEYS = {"runtime_minutes": 600, "resource_type": "gpu", "gpu_selection": "r9700"}
+LAUNCH_KEYS = {"runtime_minutes": 600, "resource_type": "gpu", "gpu_selection": "strix-halo"}
 
 
 class World:
@@ -99,7 +99,8 @@ def test_launch_leaves_a_pod_row_with_its_node_and_a_row_for_the_call(world):
     assert (pod["node"], pod["outcome"], pod["actor"]) == ("pod-a", "running", "tester")
     assert pod["metrics"] == {"pod.start_s": 15.0, "pod.balance_credits": 59960}
     assert pod["units"] == {"pod.start_s": "s", "pod.balance_credits": "credits"}
-    assert pod["conditions"] == {"resource": "gpu", "accelerator": "r9700", "launch_path": "rest"}
+    assert pod["conditions"] == {"resource": "gpu", "accelerator": "strix-halo", "launch_path": "rest", "hub": "hub.test",
+                                 "account": "A"}
     assert pod["refs"]["account"] == "A"
 
     call = world.only_row("controller launch")
@@ -280,11 +281,18 @@ def test_a_runtime_that_is_not_a_positive_whole_number_is_refused(world, minutes
     assert world.only_row("controller launch")["outcome"] == "error"
 
 
-def test_the_automatic_accelerator_is_refused_because_it_is_not_the_r9700(world):
+def test_the_automatic_accelerator_is_refused_because_the_card_must_be_named(world):
     for accelerator in ("auto", "AUTO ", ""):
         with pytest.raises(ValueError):
             world.controller.launch("A", 10, accelerator=accelerator)
     assert world.hub.calls == []
+
+
+def test_the_r9700_is_still_a_card_a_launch_can_name(world):
+    world.controller.launch("A", 10, accelerator="r9700")
+
+    assert [call.json["gpu_selection"] for call in world.hub.calls_matching("POST", "/server")] == ["r9700"]
+    assert world.only_row("pod launch")["conditions"]["accelerator"] == "r9700"
 
 
 def test_an_unknown_account_is_refused(world):
@@ -304,7 +312,7 @@ def test_stop_deletes_once_and_reads_the_charge_from_the_balance(world):
     assert (answer["outcome"], answer["state"]) == ("ok", "stopped")
     assert answer["minutes_run"] == 61.5
     assert (answer["balance_before"], answer["balance_after"], answer["credits_charged"]) == (59960, 59716, 244)
-    assert world.hub.transactions("A")[0]["description"] == "Session 1: 61 min @ r9700 (4/min)"
+    assert world.hub.transactions("A")[0]["description"] == "Session 1: 61 min @ strix-halo (4/min)"
     assert world.hub.running("A") is False
 
     pod = world.only_row("pod stop")
@@ -407,7 +415,7 @@ def test_status_shows_both_accounts_with_balance_spend_and_the_scheduled_end(wor
         "node": "pod-a", "reachable": True, "running": True, "ready": True, "pending": None,
         "started": "2026-10-10T08:26:16Z", "runtime_minutes": 600, "scheduled_end": "2026-10-10T18:26:16Z",
         "minutes_run": 61.5, "minutes_left": 538.5, "last_activity": "2026-10-10T09:20:16Z", "idle_minutes": 7.5,
-        "resource_type": "gpu", "accelerator": "r9700",
+        "resource_type": "gpu", "accelerator": "strix-halo",
         "balance": 59960, "unlimited": False, "quota_enabled": True, "rate": 4,
         "credits_so_far": 244, "credits_if_run_to_end": 2400, "balance_if_stopped_now": 59716,
         "balance_at_scheduled_end": 57560, "exceeds_balance": False}
@@ -503,7 +511,7 @@ def test_quota_reads_the_balance_and_rates_for_each_account(world):
 
     assert answer["ok"] is True
     assert answer["accounts"]["A"] == {"node": "pod-a", "reachable": True, "balance": 59960, "unlimited": False,
-                                       "enabled": True, "rate": 4, "rates": {"cpu": 1, "r9700": 4}}
+                                       "enabled": True, "rate": 4, "rates": {"cpu": 1, "strix-halo": 4, "r9700": 4}}
     assert answer["accounts"]["B"]["balance"] == 59628
     assert [(row["node"], row["metrics"]) for row in world.rows("pod quota")] == [
         ("pod-a", {"pod.balance_credits": 59960}), ("pod-b", {"pod.balance_credits": 59628})]
@@ -518,7 +526,7 @@ def test_quota_can_add_the_recent_transactions_of_the_account(world):
     transactions = answer["accounts"]["A"]["transactions"]
     assert [(t["amount"], t["transaction_type"], t["balance_before"], t["balance_after"]) for t in transactions] == [
         (-244, "usage", 59960, 59716)]
-    assert transactions[0]["description"] == "Session 1: 61 min @ r9700 (4/min)"
+    assert transactions[0]["description"] == "Session 1: 61 min @ strix-halo (4/min)"
     assert "/hub/admin/api/quota/acct-a" in [call.path for call in world.hub.calls]
 
 
@@ -549,7 +557,7 @@ def test_the_idle_culler_stops_the_pod_nobody_pings_and_spares_the_one_that_is_p
 
     assert world.hub.running("A") is True
     assert world.hub.running("B") is False
-    assert world.hub.transactions("B")[0]["description"] == "Session 1: 60 min @ r9700 (4/min)"
+    assert world.hub.transactions("B")[0]["description"] == "Session 1: 60 min @ strix-halo (4/min)"
 
 
 def test_keep_alive_reports_a_pod_that_disappears_and_stops_when_none_is_left(world):
@@ -920,9 +928,9 @@ TOKEN_C = "cccc9999dddd0000eeee1111ffff2222"
 TOKEN_D = "dddd3333eeee4444ffff5555aaaa6666"
 DUB = "https://dub.test"
 SJC = "https://sjc.test"
-SJC_ENV = {"AUP_HUB_USER_C": "acct-c", "AUP_HUB_TOKEN_C": TOKEN_C, "AUP_HUB_URL_C": SJC,
+SJC_ENV = {"LAB_POD_ROLES": "C:pod-a,D:pod-b", "AUP_HUB_USER_C": "acct-c", "AUP_HUB_TOKEN_C": TOKEN_C, "AUP_HUB_URL_C": SJC,
            "AUP_HUB_USER_D": "acct-d", "AUP_HUB_TOKEN_D": TOKEN_D, "AUP_HUB_URL_D": SJC}
-BOTH_HUBS_ENV = {**ENV, **SJC_ENV, "LAB_HUB_URL": DUB}
+BOTH_HUBS_ENV = {**ENV, **SJC_ENV, "LAB_HUB_URL": DUB, "LAB_POD_ROLES": "A:pod-a,B:pod-b,C:pod-a,D:pod-b"}
 DISABLED = "quota disabled on this hub"
 
 
@@ -969,23 +977,23 @@ def test_status_of_c_asks_the_sjc_hub_with_the_token_of_c_and_nothing_else(two_h
 
     assert code == 0
     assert (answer["command"], answer["outcome"], answer["hub"]) == ("status", "ok", SJC)
-    assert answer["accounts"] == {"C": {"node": "pod-c", "reachable": True, "running": False, "balance": 0,
-                                        "unlimited": True, "quota_enabled": False, "rate": 4}}
+    assert answer["accounts"] == {"C": {"node": "pod-a", "reachable": True, "running": False, "balance": 0,
+                                        "unlimited": True, "quota_enabled": False, "rate": 3}}
     assert two_hubs.dub.calls == []
     assert {call.host for call in two_hubs.sjc.calls} == {"sjc.test"}
     assert {call.headers["authorization"] for call in two_hubs.sjc.calls} == {f"token {TOKEN_C}"}
     assert {call.account for call in two_hubs.sjc.calls} == {"C"}
-    assert two_hubs.only_row("pod status")["node"] == "pod-c"
+    assert two_hubs.only_row("pod status")["node"] == "pod-a"
 
 
 def test_quota_of_c_says_the_quota_is_disabled_instead_of_showing_an_empty_balance(two_hubs):
     answer, code = sjc_cli(two_hubs, "quota", "--account", "C")
 
     assert code == 0
-    assert answer["accounts"]["C"] == {"node": "pod-c", "reachable": True, "balance": 0, "unlimited": True,
-                                       "enabled": False, "rate": 4, "rates": {"cpu": 1, "r9700": 4}, "note": DISABLED}
+    assert answer["accounts"]["C"] == {"node": "pod-a", "reachable": True, "balance": 0, "unlimited": True,
+                                       "enabled": False, "rate": 3, "rates": {"cpu": 1, "strix-halo": 3, "r9700": 4}, "note": DISABLED}
     row = two_hubs.only_row("pod quota")
-    assert (row["node"], row["outcome"], row["metrics"]) == ("pod-c", "ok", {})
+    assert (row["node"], row["outcome"], row["metrics"]) == ("pod-a", "ok", {})
 
 
 def test_launch_on_a_hub_without_quota_goes_ahead_where_the_same_zero_balance_is_refused_on_a_metered_one(two_hubs):
@@ -1000,8 +1008,8 @@ def test_launch_on_a_hub_without_quota_goes_ahead_where_the_same_zero_balance_is
     assert answer["note"] == DISABLED
     assert "balance" not in answer and answer["cost_credits"] is None
     assert [(call.host, call.path, call.json) for call in two_hubs.sjc.calls_matching("POST", "/server")] == [
-        ("sjc.test", "/hub/api/users/acct-c/server", {"runtime_minutes": 30, "resource_type": "gpu", "gpu_selection": "r9700"})]
-    pod = two_hubs.only_row("pod launch", "pod-c")
+        ("sjc.test", "/hub/api/users/acct-c/server", {"runtime_minutes": 30, "resource_type": "gpu", "gpu_selection": "strix-halo"})]
+    pod = [row for row in two_hubs.rows("pod launch") if row["conditions"]["hub"] == "sjc.test"][0]
     assert (pod["outcome"], pod["metrics"]) == ("running", {"pod.start_s": 15.0})
 
 
@@ -1025,7 +1033,7 @@ def test_a_pod_on_d_lives_its_whole_life_through_the_command_line_with_no_credit
     assert answers["launch"][0]["outcome"] == "running"
     assert answers["wait"][0]["outcome"] == "ready"
     entry = answers["status"][0]["accounts"]["D"]
-    assert (entry["node"], entry["running"], entry["ready"], entry["quota_enabled"]) == ("pod-d", True, True, False)
+    assert (entry["node"], entry["running"], entry["ready"], entry["quota_enabled"]) == ("pod-b", True, True, False)
     assert not [key for key in entry if key.startswith(("credits_", "balance_")) or key == "exceeds_balance"]
     assert answers["keep-alive"][0]["outcome"] == "completed"
     assert answers["keep-alive"][0]["accounts"]["D"]["pings"] >= 1
@@ -1044,7 +1052,7 @@ def test_run_script_takes_c_and_asks_the_sjc_hub_whether_the_pod_is_there(two_hu
 
     answer, code = sjc_cli(two_hubs, "run-script", "--account", "C", str(script))
 
-    assert (code, answer["outcome"], answer["node"]) == (1, "not_running", "pod-c")
+    assert (code, answer["outcome"], answer["node"]) == (1, "not_running", "pod-a")
     assert [call.path for call in two_hubs.sjc.calls] == ["/hub/api/users/acct-c"]
     assert two_hubs.dub.calls == []
 
@@ -1093,7 +1101,8 @@ def test_an_account_without_its_own_address_uses_lab_hub_url_and_then_the_dub_de
 
 
 def test_an_account_without_keys_is_named_by_its_missing_keys_and_nothing_is_sent(two_hubs):
-    answer, code = sjc_cli(two_hubs, "launch", "--account", "c", "--minutes", "5", environ=ENV)
+    answer, code = sjc_cli(two_hubs, "launch", "--account", "c", "--minutes", "5",
+                        environ={**ENV, "LAB_POD_ROLES": "A:pod-a,B:pod-b,C:pod-a"})
 
     assert code == 2
     assert (answer["ok"], answer["outcome"]) == (False, "no_credentials")
@@ -1278,3 +1287,58 @@ def test_the_controller_runs_as_a_module_and_as_a_script_from_any_folder(argv, t
     assert done.returncode == 0, done.stderr
     for command in ("status", "launch", "stop", "wait", "keep-alive", "quota", "run-script"):
         assert command in done.stdout
+
+
+# --- rows are named by the pod role an account fills (LAB_POD_ROLES), R31 -----------------------
+
+@pytest.mark.parametrize("letter, host, node", [("A", "dub.test", "pod-a"), ("B", "dub.test", "pod-b"),
+                                                ("C", "sjc.test", "pod-a"), ("D", "sjc.test", "pod-b")])
+def test_every_pod_row_of_accounts_a_to_d_is_named_by_its_role_and_records_the_hub_and_the_letter(
+        two_hubs, letter, host, node):
+    for argv in (("status",), ("quota",), ("launch", "--minutes", "30"), ("stop",)):
+        answer, code = sjc_cli(two_hubs, argv[0], "--account", letter, *argv[1:])
+        assert code == 0, answer
+        assert node in json.dumps(answer) and "pod-c" not in json.dumps(answer) and "pod-d" not in json.dumps(answer)
+
+    rows = [row for verb in ("pod status", "pod quota", "pod launch", "pod stop") for row in two_hubs.rows(verb)]
+    assert len(rows) == 4
+    assert {row["node"] for row in rows} == {node}
+    assert all(row["conditions"]["hub"] == host and row["conditions"]["account"] == letter for row in rows)
+    assert {row["refs"]["account"] for row in rows} == {letter}
+    assert all(row.get("node") not in ("pod-c", "pod-d") for row in ledger.read())
+
+
+def test_the_setting_is_read_from_the_workspace_dotenv_when_the_environment_has_none(two_hubs, tmp_path):
+    dotenv = tmp_path / ".env"
+    dotenv.write_text("LAB_POD_ROLES=C:pod-b,D:pod-a\n", encoding="utf-8")
+    env = {key: value for key, value in BOTH_HUBS_ENV.items() if key != "LAB_POD_ROLES"}
+
+    answer, code = ctl_module.run(["status", "--account", "C"], environ=env, env_files=[dotenv],
+                                  transport=two_hubs.transport, sleep=two_hubs.clock.sleep, clock=two_hubs.clock.time)
+
+    assert code == 0 and answer["accounts"]["C"]["node"] == "pod-b"
+    assert two_hubs.only_row("pod status")["node"] == "pod-b"
+
+
+@pytest.mark.parametrize("letter", ["C", "D"])
+def test_an_account_with_no_role_in_the_setting_is_refused_with_a_clear_message_and_nothing_is_sent(two_hubs, letter):
+    env = {key: value for key, value in BOTH_HUBS_ENV.items() if key != "LAB_POD_ROLES"}    # the default A:pod-a,B:pod-b
+
+    answer, code = sjc_cli(two_hubs, "launch", "--account", letter, "--minutes", "5", environ=env)
+
+    assert (code, answer["ok"], answer["outcome"]) == (2, False, "no_pod_role")
+    assert f"account {letter} fills no pod role" in answer["error"] and "LAB_POD_ROLES" in answer["error"]
+    assert "pod-" + letter.lower() not in answer["error"].replace("pod-a", "").replace("pod-b", "")
+    assert two_hubs.dub.calls == [] and two_hubs.sjc.calls == []
+    assert ledger.read() == []
+
+
+@pytest.mark.parametrize("setting", ["C:pod-c,D:pod-d", "C-pod-a", "C:pod-a,C:pod-b", "CD:pod-a"])
+def test_a_setting_that_names_a_machine_other_than_the_two_roles_is_refused(two_hubs, setting):
+    env = {**BOTH_HUBS_ENV, "LAB_POD_ROLES": setting}
+
+    answer, code = sjc_cli(two_hubs, "status", "--account", "C", environ=env)
+
+    assert (code, answer["outcome"]) == (2, "no_pod_role")
+    assert "LAB_POD_ROLES" in answer["error"]
+    assert two_hubs.sjc.calls == [] and ledger.read() == []

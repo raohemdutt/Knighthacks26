@@ -126,13 +126,133 @@ export interface IdentitySettings {
   available: boolean; // false when the recognition model is not on this box
   recognizer: string | null;
   reason?: string;
+  /** The anonymous room mode: faces that match nobody are counted together, as nobody. */
+  everyone?: boolean;
+  expressions_available?: boolean; // false when the expression model is not on this box
+  photos_available?: boolean; // false when the box cannot decode pictures (no OpenCV)
 }
 
-/** One row of GET /identity/members. The face template itself never leaves the box. */
+/**
+ * One row of GET /identity/members. The template is never in an answer. It leaves the box only through face share
+ * (off by default), and then only the box owner's own, sealed to a friend's box.
+ */
 export interface Member {
   member_id: string;
   name: string;
   enrolled_at: string;
+  updated_at?: string | null;
+  photos?: number; // how many looks the template is made of (up to 12)
+  source?: "live" | "scan" | "photos" | "circle"; // circle: a friend's box shared it with this one (face share)
+  expressions?: boolean; // this person switched "read my expressions" on
+  circle_member_id?: string | null; // which Circle member this is, when someone said so
+  shared_by?: string | null; // source "circle" only: the friend's Circle member id
+  received_at?: string | null;
+  expires_at?: string | null; // when this box deletes it unless the friend renews
+}
+
+/** A box key as two friends compare it: "ab12 cd34 ef56 0a1b 2c3d". */
+export interface FaceShareKey {
+  known: boolean; // false until the friend's box has face sharing on and was heard from
+  fingerprint: string | null;
+  changed: boolean; // another key appeared under their name: sharing stops until it is compared and trusted
+  new_fingerprint: string | null;
+}
+
+export interface FaceShareFriend {
+  member_id: string;
+  display_name: string;
+  key: FaceShareKey;
+  /** My own template, to this friend's box. */
+  outgoing: { state: "none" | "waiting_approval" | "shared"; share_id: string | null; shared_at: string | null; expires_at: string | null; action_id: string | null };
+  /** This friend's template, on this box. `usable` is false while recognition is off here or the face models differ. */
+  incoming: { state: "none" | "offered" | "accepted"; received_at: string | null; expires_at: string | null; offered_at: string | null; usable: boolean | null };
+  renewal_offered: boolean;
+}
+
+/** GET /api/circle/face-share (contexts/circle/face_share_api.py). 409 while it is switched off, which is the default. */
+export interface FaceShareStatus {
+  enabled: true;
+  circle_id: string;
+  member_id: string;
+  expiry_days: number;
+  recognition_enabled: boolean;
+  recognition_available: boolean;
+  explanation: string;
+  me: { fingerprint: string; member: { member_id: string; name: string } | null; can_share: boolean; why_not: string | null };
+  friends: FaceShareFriend[];
+}
+
+/** Why the box did not take a photo or a still; `message` is the sentence to show. */
+export type PhotoReason =
+  | "unreadable" | "no_face" | "two_faces" | "too_small" | "turned" | "too_dark" | "too_bright" | "blurry" | "different" | "not_them"
+  | "enough_like_this";
+
+export interface PhotoResult {
+  index: number;
+  accepted: boolean;
+  reason: PhotoReason | null;
+  message: string | null;
+}
+
+/** POST /identity/enroll/photos and POST /identity/enroll/scan/finish. */
+export interface EnrollPhotosResult {
+  state: "done" | "failed";
+  member_id: string;
+  accepted: number;
+  rejected: number;
+  needed: number;
+  exemplars: number;
+  error: "not_enough_photos" | "already_enrolled" | null;
+  photos: PhotoResult[];
+}
+
+export type ScanPose = "front" | "left" | "right" | "up";
+
+/** POST /identity/enroll/scan/start and .../frame: where a guided scan stands. */
+export interface ScanStatus {
+  session: string;
+  member_id: string;
+  count: number;
+  needed: number;
+  poses: Record<ScanPose, number>;
+  want: ScanPose | null;
+  prompt: string | null;
+  done: boolean;
+  /** Only on a frame's answer: */
+  accepted?: boolean;
+  reason?: PhotoReason | null;
+  message?: string | null;
+  pose?: ScanPose | null;
+}
+
+export type Looked = "tense" | "tired" | "upbeat" | "neutral";
+
+/** GET /identity/expressions: stretches of apparent expression. A noisy signal, not an emotion and nothing about health. */
+export interface ExpressionSeries {
+  member_id: string | null; // null: the anonymous room aggregate
+  hours: number;
+  samples: number;
+  looked: Partial<Record<Looked, number>>; // share of the counted looks
+  strained_share: number | null;
+  windows: {
+    start: string;
+    end: string;
+    camera_id: string;
+    dominant: string;
+    looked: Looked;
+    shares: Record<string, number>;
+    samples: number;
+    confidence: number;
+    head_down: number | null;
+    turned_away: number | null;
+    people?: number | null;
+  }[];
+  note: string;
+}
+
+/** GET /identity/present: the enrolled people a camera recognises right now (ids only). */
+export interface PresentNow {
+  present: { member_id: string; circle_member_id: string | null; cameras: string[] }[];
 }
 
 /** GET /identity/enroll/status, and what POST /identity/enroll/start returns. */
@@ -500,6 +620,113 @@ export interface PlayAccuracy {
   round_5_on: number | null;
 }
 
+// ---------- the room twin (contexts/play/room) ----------
+
+export type RoomWall = "north" | "east" | "south" | "west";
+
+/** A box of furniture on the floor plan: metres, x east, y south; `rot` in degrees clockwise (0 = its front looks south). */
+export interface RoomFurniture {
+  id: string;
+  type: string; // bed desk chair wardrobe shelf fridge nightstand table rug bin
+  at: [number, number];
+  size: [number, number]; // width along its front, depth
+  rot: number;
+  height: number;
+  bin: string | null; // for a bin: its name in config/sorting.yaml
+  color: string | null;
+  label: string | null;
+}
+
+/** A door, a window or a poster on a wall. `at` is the centre, in metres along the wall from its west or north end. */
+export interface RoomOpening {
+  id?: string;
+  wall: RoomWall;
+  at: number;
+  width: number;
+  sill?: number;
+  height?: number;
+  art?: string;
+}
+
+/** GET /api/room: the floor plan, each camera's calibration, and the zones laid on the floor. */
+export interface RoomPlan {
+  name: string;
+  title: string;
+  size: [number, number];
+  wall_height: number;
+  doors: RoomOpening[];
+  windows: RoomOpening[];
+  posters: RoomOpening[];
+  furniture: RoomFurniture[];
+  /** `source`: "default" = the placeholder points the room file shipped with (positions are approximate); "set" = given for the real camera. */
+  calibration: Record<string, { image: [number, number][]; floor: [number, number][]; homography: number[][]; source?: "default" | "set" }>;
+  zones: Record<string, Record<string, [number, number][]>>; // camera -> zone -> floor polygon (m)
+  play: { walk_speed: number; body_radius: number; start: [number, number] };
+  rooms: string[];
+  uncalibrated: string[];
+}
+
+/** One tracked person or thing on the floor plan. */
+export interface FloorTrack {
+  key: string; // "<camera>:<track id>"
+  camera: string;
+  track_id: number;
+  label: string;
+  kind: "person" | "object";
+  x: number;
+  y: number;
+  z: number; // metres above the floor
+  on: string | null; // the furniture it rests on or sits in
+  held_by: string | null;
+  in_bin: string | null;
+  seated: boolean;
+  member_id: string | null;
+}
+
+export interface RoomRouteLeg {
+  player: number;
+  track: string | null;
+  points: { x: number; y: number }[];
+  distance_m: number;
+  par_s: number;
+  reachable: boolean;
+}
+
+export interface SeenOnFloor {
+  label: string;
+  x: number;
+  y: number;
+  z: number;
+  on: string | null;
+  camera: string;
+  ts: string;
+}
+
+/** GET /api/room/live. */
+export interface RoomLive {
+  room: string;
+  ts: string | null;
+  tracks: FloorTrack[];
+  seen: Record<string, SeenOnFloor>;
+  round: { round_id: string; item: string; target_bin: string; bin: string; players: number; started: string; routes: RoomRouteLeg[] } | null;
+  result: { round_id: string; item: string; correct: boolean; seconds: number; score: number; players: number; par_s: number | null; bin: string; ts: string; right: number; rounds: number } | null;
+  assist: { item: string; label: string; bin: string; bin_id: string; color: string | null; side: string; track: string; person: string; text: string } | null;
+}
+
+/** GET /api/play/room-route. `points` is empty when no way exists. */
+export interface RoomRouteAnswer {
+  item: string;
+  bin: string;
+  bin_id: string;
+  zone: string;
+  room: string;
+  from: { x: number; y: number; track: string | null };
+  reachable: boolean;
+  points: [number, number][];
+  distance_m: number;
+  par_s: number;
+}
+
 /** contracts.memory.Sighting: where a watch item was last seen. A zone and a text position; never coordinates. */
 export interface Sighting {
   label: string;
@@ -583,6 +810,8 @@ export interface Profile {
   meters: { habits: string[]; dayrun: string[] };
   shift: { start: string; end: string; sleep_after_minutes: number; sleep_hours: number } | null;
   scenario: string | null;
+  /** The Ask screen's suggested questions, in this profile's words (profile.yaml `suggestions:`). */
+  suggestions: string[];
   overrides: Record<string, string>;
 }
 
@@ -1142,6 +1371,64 @@ export interface DayNow {
   coach?: DayCoachNote | null;
   /** The blocks before that one in the last day, newest first. */
   coach_earlier?: DayCoachNote[];
+  /** The check-in to show at the top of the day, when Atlas raised one today; absent on a box without it. */
+  checkin?: CheckinCard | null;
+}
+
+export type CheckinKind = "sleep" | "resting_hr" | "expression" | "sitting" | "drink" | "history";
+
+/** contracts.day.CheckinSignal: one thing the box noticed, in plain words. Never a raw heart number. */
+export interface CheckinSignal {
+  kind: CheckinKind;
+  summary: string;
+  detail: string;
+  since: string | null;
+  minutes: number | null;
+  evidence_refs: string[];
+}
+
+/** What is behind each chip, looked up on the box when this phone asks. Only the kinds the check-in has. */
+export interface CheckinEvidence {
+  sleep?: { asleep_min: number | null; in_bed_min: number | null; stages: Record<string, number>; usual_min: number | null; nights: number };
+  /** `rel` is each day against the person's own baseline (1 = baseline). The values come only with `numbers=true`. */
+  resting_hr?: { series: { day: string; rel: number }[]; days: number; baseline?: number; today?: number; values?: number[] };
+  expression?: { windows: { start: string; end: string; samples: number; strained: number }[] };
+  sitting?: { since: string | null; minutes: number | null };
+  drink?: {
+    since: string | null;
+    picked_up: boolean;
+    frame_ref: string | null;
+    last_seen: { label: string; ts: string; frame_ref: string | null; zone_id: string | null; position: string | null } | null;
+  };
+  history?: { days: { day: string; text: string }[]; outcome: string; by: string | null };
+}
+
+/** contracts.day.DayCheckinRaised with its words, its answer and its evidence (GET /api/day/checkin, /api/day/now). Box-only. */
+export interface CheckinCard extends EventEnvelope {
+  type: "day.checkin.raised";
+  day: string;
+  at: string;
+  signals: CheckinSignal[];
+  suggestions: { kind: "drink" | "break" | "move_block" | "walk"; text: string }[];
+  history: { matches: number; outcome: string; by: string | null; days: { day: string; text: string }[] } | null;
+  proposes_replan: boolean;
+  plan_id: string | null;
+  text: string;
+  answered: "done" | "move" | null;
+  spoken: string | null;
+  display: string;
+  evidence: CheckinEvidence;
+}
+
+/** GET /api/day/checkin */
+export interface CheckinView {
+  now: string;
+  enabled: boolean;
+  latest: CheckinCard | null;
+  history: { id: string; at: string; day: string; text: string; signals: string[]; answered: "done" | "move" | null }[];
+  watching: { signals: string[]; agree: boolean; held: string | null };
+  rule: Record<string, number | string>;
+  limits: string[];
 }
 
 /** GET /api/day/plan?day= : `moves` go straight into POST /api/dayrun/simulate. */
@@ -1156,7 +1443,7 @@ export interface DayPlanOut {
   plan: DayPlan | DayReplan;
 }
 
-export type DayMoment = "morning" | "now" | "replan" | "coach" | "evening" | "approval";
+export type DayMoment = "morning" | "now" | "replan" | "coach" | "evening" | "approval" | "checkin";
 
 /** contracts.day.DayNarrated: one moment of the day in words, for the ear (`spoken`) and for the screen (`display`). */
 export interface DayNarration extends EventEnvelope {
@@ -1182,7 +1469,7 @@ export interface DayBrief {
   gap_s: number;
   latest: Partial<Record<DayMoment, DayNarration>>;
   asks: Record<string, DayNarration>;
-  model: { calls: number; used: number; rejected: number; timeouts: number; errors: number; last_problem: string | null };
+  model: { calls: number; used: number; unchanged?: number; rejected: number; timeouts: number; errors: number; last_problem: string | null };
 }
 
 export interface DayPattern {
@@ -1285,6 +1572,8 @@ export interface VoiceStatus {
   heard: string;
   answer: string;
   seconds_in_state: number;
+  /** True when the box is always listening for "Hey Atlas" (wake_word in config/voice.yaml). */
+  wake?: boolean;
   mic?: { ok: boolean; detail: string };
   speaker?: { ok: boolean; detail: string };
   speech_to_text?: { ok: boolean; detail: string };
@@ -1299,7 +1588,19 @@ export interface EgressGroup {
   name: string;
   hosts: string[];
   packets: number;
+  /** Every byte sent to the group (V7: counted ahead of the conntrack accept). */
   bytes: number;
+  /** Connections opened to it. Absent from older firewall snapshots. */
+  connections?: number;
+}
+
+/** V7: camera pictures cleared to leave the box, each batch by an approved training export. */
+export interface EgressPictures {
+  video_bytes: number;
+  pictures: number;
+  picture_bytes: number;
+  approved_exports: number;
+  batches: { dataset_id: string; task: string; pictures: number; bytes: number; approval: string; ts: string }[];
 }
 
 export interface EgressBlock {
@@ -1320,6 +1621,8 @@ export interface Egress {
   recent_blocks?: EgressBlock[];
   updated?: string;
   stale?: boolean;
+  /** Present on boxes with V7, firewall or not. */
+  pictures?: EgressPictures;
 }
 
 export type WipeScope = "all" | "keyframes" | "memory";
@@ -1497,12 +1800,23 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   voiceTalk: () => post<VoiceStatus>("/api/voice/talk", {}),
   voiceStop: () => post<VoiceStatus>("/api/voice/stop", {}),
   voiceEnabled: (enabled: boolean) => post<VoiceStatus>("/api/voice/enabled", { enabled }),
+  voiceListen: () => post<VoiceStatus>("/api/voice/listen", {}),
+  voiceSay: (text: string) => post<VoiceStatus>("/api/voice/say", { text }),
   setVaultPolicy: (body: Partial<VaultPolicy>) => put<VaultPolicy>("/vault/policy", body),
   egress: (signal?: AbortSignal) => get<Egress>("/vault/egress", undefined, signal),
   wipeRequest: (scope: WipeScope) => post<WipeToken>("/vault/wipe/request", { scope }),
   wipe: (token: string) => post<WipeResult>("/vault/wipe", { token }),
 
   learning: (signal?: AbortSignal) => get<LearningBoard>("/api/learning", undefined, signal),
+  /** The Learning lab: training runs as stories. `sample` asks for the committed sample run (types in lib/lab.ts). */
+  lab: (sample: boolean, signal?: AbortSignal) => get<import("./lab").LabList>("/api/learning/lab", sample ? { sample: 1 } : undefined, signal),
+  labRun: (runId: string, sample: boolean, signal?: AbortSignal) =>
+    get<import("./lab").LabStory>(`/api/learning/lab/${encodeURIComponent(runId)}`, sample ? { sample: 1 } : undefined, signal),
+  /** The lab's benchmark and energy rows, the routing what-if and the experiment timeline (types in lib/labBench.ts). */
+  labBench: (signal?: AbortSignal) => get<import("./labBench").LabBench>("/api/learning/lab/bench", undefined, signal),
+  labRoutingSim: (params: Partial<import("./labBench").SimParams>, signal?: AbortSignal) =>
+    post<import("./labBench").LabSim>("/api/learning/lab/routing/simulate", params, signal),
+  labExperiments: (signal?: AbortSignal) => get<import("./labBench").LabTimeline>("/api/learning/lab/experiments", undefined, signal),
   teach: (body: TeachBody) => post<{ task: string; action_id: string }>("/api/teach", body),
 
   episodes: (opts: { from?: string; to?: string; camera?: string; label?: string } = {}, signal?: AbortSignal) =>
@@ -1517,9 +1831,27 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   // People: opt-in owner recognition (P9).
   identitySettings: (signal?: AbortSignal) => get<IdentitySettings>("/identity/settings", undefined, signal),
   setIdentity: (on: boolean) => request<IdentitySettings>("PUT", "/identity/settings", { identity_enabled: on }),
+  /** The anonymous room mode. Switching it on has to be confirmed by the person, on the screen that says what it means. */
+  setEveryone: (on: boolean, confirm = false) => put<IdentitySettings>("/identity/settings", { everyone: on, confirm }),
   members: (signal?: AbortSignal) => get<Member[]>("/identity/members", undefined, signal),
   removeMember: (id: string) => request<{ removed: string }>("DELETE", `/identity/members/${encodeURIComponent(id)}`),
-  enrollStart: (name: string) => post<EnrollStatus>("/identity/enroll/start", { name }),
+  updateMember: (id: string, change: { expressions?: boolean; circle_member_id?: string }) =>
+    put<Member>(`/identity/members/${encodeURIComponent(id)}`, change),
+  /** `consent`: the person being enrolled agrees. The box refuses without it. */
+  enrollStart: (name: string, consent: boolean, circleMemberId?: string) =>
+    post<EnrollStatus>("/identity/enroll/start", { name, consent_ack: consent, ...(circleMemberId ? { circle_member_id: circleMemberId } : {}) }),
+  /** Photos as base64 (no data: prefix needed). For someone new send `name`; to add to someone send `member_id`. */
+  enrollPhotos: (who: { name?: string; member_id?: string; circle_member_id?: string }, photos: string[], consent: boolean) =>
+    post<EnrollPhotosResult>("/identity/enroll/photos", { ...who, consent_ack: consent, photos }),
+  scanStart: (who: { name?: string; member_id?: string; circle_member_id?: string }, consent: boolean) =>
+    post<ScanStatus>("/identity/enroll/scan/start", { ...who, consent_ack: consent }),
+  scanFrame: (session: string, photo: string, signal?: AbortSignal) =>
+    post<ScanStatus>("/identity/enroll/scan/frame", { session, photo }, signal),
+  scanFinish: (session: string) => post<EnrollPhotosResult>("/identity/enroll/scan/finish", { session }),
+  scanCancel: (session: string) => post<{ cancelled: boolean }>("/identity/enroll/scan/cancel", { session }),
+  expressions: (memberId: string | null, hours: number, signal?: AbortSignal) =>
+    get<ExpressionSeries>("/identity/expressions", { member_id: memberId ?? undefined, hours }, signal),
+  presentNow: (signal?: AbortSignal) => get<PresentNow>("/identity/present", undefined, signal),
   enrollStatus: (signal?: AbortSignal) => get<EnrollStatus>("/identity/enroll/status", undefined, signal),
   impact: (signal?: AbortSignal) => get<Impact>("/api/impact", undefined, signal),
   impactStory: (member?: string, signal?: AbortSignal) => get<import("./impact").ImpactStory>("/api/impact/story", { member }, signal),
@@ -1538,6 +1870,20 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   circleThreads: (signal?: AbortSignal) => get<CircleThreads>("/api/circle/threads", undefined, signal),
   circleThread: (id: string, signal?: AbortSignal) => get<CircleThreadDetail>(`/api/circle/threads/${encodeURIComponent(id)}`, undefined, signal),
   circleMembers: (signal?: AbortSignal) => get<CircleMembers>("/api/circle/members", undefined, signal),
+  /** Face share, or null while it is switched off on this box (409), there is no Circle, or the box is older than it (404). */
+  faceShare: (signal?: AbortSignal) =>
+    get<FaceShareStatus>("/api/circle/face-share", undefined, signal).catch((err: unknown) => {
+      if (err instanceof ApiError && (err.status === 409 || err.status === 404)) return null;
+      throw err;
+    }),
+  /** Raises an approval card on this box; the template is sealed and sent only when it is approved. */
+  faceShareAsk: (friend: string) => post<{ action_id: string }>(`/api/circle/face-share/${encodeURIComponent(friend)}/share`, undefined),
+  faceShareRevoke: (friend: string) => post<{ revoked: string }>(`/api/circle/face-share/${encodeURIComponent(friend)}/revoke`, undefined),
+  /** Raises the Accept card again for a friend's offer that is still waiting. */
+  faceShareReview: (friend: string) => post<{ action_id: string }>(`/api/circle/face-share/${encodeURIComponent(friend)}/review`, undefined),
+  faceShareForget: (friend: string) => post<{ forgotten: string }>(`/api/circle/face-share/${encodeURIComponent(friend)}/forget`, undefined),
+  faceShareTrust: (friend: string, fingerprint: string) =>
+    post<{ trusted: string }>(`/api/circle/face-share/${encodeURIComponent(friend)}/trust-key`, { fingerprint }),
   /** Walking route to where a friend is sharing (404 when they are not, or the place is on no map). */
   routeToFriend: (from: string, member: string, signal?: AbortSignal) =>
     get<CampusRoute>("/api/play/campus-route", { from, to: `friend:${member}` }, signal),
@@ -1553,6 +1899,11 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
 
   playRoute: (item: string, signal?: AbortSignal) => get<PlayRoute>("/api/play/route", { item }, signal),
   playAccuracy: (signal?: AbortSignal) => get<PlayAccuracy>("/api/play/accuracy", undefined, signal),
+  room: (signal?: AbortSignal) => get<RoomPlan>("/api/room", undefined, signal),
+  roomLive: (signal?: AbortSignal) => get<RoomLive>("/api/room/live", undefined, signal),
+  roomRoute: (item: string, fromTrack?: string | null, signal?: AbortSignal) => get<RoomRouteAnswer>("/api/play/room-route", { item, from_track: fromTrack ?? undefined }, signal),
+  setRoomCalibration: (camera: string, taps: { image: [number, number][]; floor: [number, number][] }) =>
+    put<RoomPlan>(`/api/room/calibration/${encodeURIComponent(camera)}`, taps),
 
   places: (signal?: AbortSignal) => get<PlacePack[]>("/api/places", undefined, signal),
   /** A pack's drawn map, by the path GET /api/places gave for it. Fetch it through lib/campusmap's loadCampusMap, which keeps it. */
@@ -1560,6 +1911,11 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   /** When to leave: `from` and `to` are pack ids ("ucf.eng2"), names, "friend:<member>" or "here". */
   placeRoute: (q: { from?: string; to: string; arrive_by?: string; depart?: string }, signal?: AbortSignal) => get<PlaceRoute>("/api/places/route", q, signal),
   lastSeen: (label: string, signal?: AbortSignal) => get<Sighting>(`/memory/objects/${encodeURIComponent(label)}/last-seen`, undefined, signal),
+  /** The same sighting for marking it in the picture: its box when one is known (else null), and the other boxed things in that frame. */
+  whereSeen: (label: string, signal?: AbortSignal) => get<import("./guide").WhereSeen>(`/memory/last-seen/${encodeURIComponent(label)}`, undefined, signal),
+  /** The detector's newest tracks for a camera: normalised boxes with labels, for drawing over its snapshot. */
+  captureTracks: (camera: string, signal?: AbortSignal) =>
+    get<{ camera_id: string; ts_ms: number | null; tracks: { label: string; track_id: number; confidence: number; box: import("./guide").BoxN }[] }>(`/capture/${encodeURIComponent(camera)}/tracks`, undefined, signal),
 
   // Day Run. `scenario` runs a scripted day from fixtures/play/ ("demo") instead of live sources.
   dayrunBoard: (scenario?: string, signal?: AbortSignal) => get<Board>("/api/dayrun/board", { scenario }, signal),
@@ -1589,4 +1945,53 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   coachCorrect: (body: import("./coachFeedback").CoachCorrectionBody) =>
     post<import("./coachFeedback").CoachCorrectionResult>("/api/day/coach/corrections", body),
   dayPatterns: (signal?: AbortSignal) => get<{ patterns: DayPattern[]; note?: string }>("/api/day/patterns", undefined, signal),
+  /** The check-in with its evidence. `numbers` asks for the resting heart rate's values: only after an explicit tap, on this device. */
+  dayCheckin: (numbers = false, signal?: AbortSignal) => get<CheckinView>("/api/day/checkin", numbers ? { numbers: "true" } : undefined, signal),
+  dayCheckinDone: (id: string) => post<{ id: string; answered: "done" }>("/api/day/checkin/done", { id }),
+  /** "Move the block": raises a re-plan with its approval card. Nothing changes until that card is approved. */
+  dayCheckinMove: (id: string) => post<{ id: string; answered: "move"; plan_id: string; action_id: string | null }>("/api/day/checkin/move", { id }),
+
+  // Inspection (SPOT): contexts/spot; shapes in components/spot/types.ts. Every GET answers 200 without a kit ({configured: false, note}).
+  spotOverview: (signal?: AbortSignal) => get<Spot.Overview>("/api/spot/overview", undefined, signal),
+  spotFindings: (signal?: AbortSignal) => get<{ configured: boolean; findings: Spot.Finding[] }>("/api/spot/findings", undefined, signal),
+  spotTriage: (signal?: AbortSignal) => get<Spot.Triage>("/api/spot/triage", undefined, signal),
+  spotLocations: (signal?: AbortSignal) => get<Spot.Locations>("/api/spot/locations", undefined, signal),
+  spotAssets: (signal?: AbortSignal) => get<{ configured: boolean; assets: Spot.AssetRow[] }>("/api/spot/assets", undefined, signal),
+  spotAsset: (id: string, signal?: AbortSignal) => get<Spot.AssetDetail>(`/api/spot/assets/${encodeURIComponent(id)}`, undefined, signal),
+  spotMission: (id: string, signal?: AbortSignal) => get<Spot.MissionDetail>(`/api/spot/missions/${encodeURIComponent(id)}`, undefined, signal),
+  spotHandoff: (signal?: AbortSignal) => get<Spot.Handoff>("/api/spot/handoff", undefined, signal),
+  spotAssumptions: (signal?: AbortSignal) => get<{ assumptions: Spot.Assumption[] }>("/api/spot/assumptions", undefined, signal),
+  spotValidation: (signal?: AbortSignal) => get<Spot.Validation>("/api/spot/validation", undefined, signal),
+  spotModel: (signal?: AbortSignal) => get<Spot.Model>("/api/spot/model", undefined, signal),
+  spotWorkOrders: (signal?: AbortSignal) => get<{ work_orders: Spot.WorkOrder[]; folder: string }>("/api/spot/work_orders", undefined, signal),
+  spotReplay: (signal?: AbortSignal) => get<Spot.Replay>("/api/spot/replay/state", undefined, signal),
+  spotReplayStart: () => post<Spot.Replay>("/api/spot/replay/start", {}),
+  spotReplayPause: () => post<Spot.Replay>("/api/spot/replay/pause", {}),
+  spotReplaySeek: (body: { index?: number; mission_id?: string; fraction?: number }) => post<Spot.Replay>("/api/spot/replay/seek", body),
+  spotReplaySpeed: (speed: number) => post<Spot.Replay>("/api/spot/replay/speed", { speed }),
+  spotAsk: (text: string, rephrase = false) => post<Spot.Answer>("/api/spot/ask", { text, rephrase }),
+  /** The operator's first screen in plain words (no statistics): status, do-this-first, watch-out, every asset, the rounds. */
+  // the look guide: "where do I look for X?" -> a place on the Inspection screen and the words to walk there (no model call)
+  spotGuide: (q: string, signal?: AbortSignal) => get<import("./guide").SpotGuide>("/api/spot/guide", { q }, signal),
+  spotRoute: (to: string, from?: string | null, signal?: AbortSignal) => get<import("./guideSpot").SpotRoute>("/api/spot/route", from ? { to, from } : { to }, signal),
+  /** The floor traced from the kit's plan picture (rooms, doors, equipment, stairs, walkable cells), and the traced line between every pair of waypoints. */
+  spotWalkable: (signal?: AbortSignal) => get<import("./guideSpot").SpotWalkable>("/api/spot/walkable", undefined, signal),
+  spotWalkableLegs: (signal?: AbortSignal) => get<{ configured: boolean; available: boolean; legs: Record<string, import("./guideWalk").TracedLeg> }>("/api/spot/walkable/legs", undefined, signal),
+  spotShift: (signal?: AbortSignal) => get<Spot.Shift>("/api/spot/shift", undefined, signal),
+  spotRound: (id: string, signal?: AbortSignal) => get<Spot.RoundView>(`/api/spot/shift/rounds/${encodeURIComponent(id)}`, undefined, signal),
+  /** The same cited answer, worded for an operator; `draft` keeps the exact wording. */
+  /** Shift Run: plan a round and run it through a toy model built from the recorded rounds. Pure: nothing is written. */
+  spotRunBoard: (signal?: AbortSignal) => get<Spot.RunBoard>("/api/spot/shiftrun/board", undefined, signal),
+  spotRunSimulate: (body: { route: string[]; turn_back_at: number; seed?: number; hard?: boolean }) => post<Spot.RunResult>("/api/spot/shiftrun/simulate", body),
+  /** The plan as a mission request: an approval card; a file on this box after Approve, nothing else. */
+  spotPlan: (body: { route: string[]; turn_back_at: number }) => post<{ action_id: string; reason: string }>("/api/spot/actions/plan", body),
+  spotAskPlain: (text: string) => post<Spot.Answer & { plain?: boolean }>("/api/spot/ask", { text, plain: true }),
+  /** Both raise an approval card on the box; nothing is written until it is approved. */
+  spotReinspect: (asset_id: string) => post<{ action_id: string; reason: string }>("/api/spot/actions/reinspect", { asset_id }),
+  spotWorkOrder: (anomaly_id: string) => post<{ action_id: string; reason: string }>("/api/spot/actions/work_order", { anomaly_id }),
 };
+
+import type * as Spot from "@/components/spot/types";
+
+/** Full URL of a gateway path the inspection screen puts in an <img> (the floor plan, the kit's sample pictures). */
+export const spotUrl = (path: string): string => HTTP_BASE + path;

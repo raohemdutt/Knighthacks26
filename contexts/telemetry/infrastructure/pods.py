@@ -1,6 +1,6 @@
 """Reading the pod power samplers from the Jetson, through the hub proxy, as telemetry events.
 
-    reader = PodReader(pod_endpoints(os.environ),        # gpu-a and gpu-b, from the AUP_HUB_* keys of their accounts
+    reader = PodReader(pod_endpoints(os.environ),        # pod-a and pod-b, from the AUP_HUB_* keys of their accounts
                        user_agent=hub_user_agent(os.environ))
     async for event in reader.samples(): ...             # telemetry.gpu.power, received_ts on this machine's clock
 
@@ -31,6 +31,12 @@ the other pod's are read and published meanwhile. A pod that does not answer is 
 and asked again at its next poll. The token is sent only in the Authorization header and appears in no log line or
 status.
 
+The pod's clock. Every answer carries pod_received and pod_sent (lab/pod_power.py), so each poll is one
+four-timestamp exchange: t1 and t4 on this reader's clock, around the request, and the pod's two. The reader keeps
+the last OFFSET_KEEP exchanges per pod and, on the first poll and every `offset_every` polls after, hands on a
+telemetry.clock.offset from the one with the smallest round trip (infrastructure/clock.py) ahead of that poll's
+samples. A sampler started under the pod's old name (--node gpu-a) is read as pod-a.
+
 The hub is spoken to by the rules of lab/hub.py, the lab's one hub client, whose module-level pieces are reused here
 rather than copied (its Hub class is a blocking httpx.Client with blocking retries, so the reader keeps its own async
 client): every request carries the browser-like lab.hub.USER_AGENT, or $LAB_HUB_USER_AGENT (lab.hub.ENV_USER_AGENT),
@@ -41,7 +47,7 @@ lab and jetson/egress.py read too), else lab.hub.DEFAULT_URL.
 
 import asyncio
 import logging
-from collections import Counter
+from collections import Counter, deque
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -50,10 +56,11 @@ from urllib.parse import quote
 
 import httpx
 
-from contexts.telemetry.domain.nodes import GPU_A, GPU_B, check_node
+from contexts.telemetry.domain.nodes import POD_A, POD_B, canonical, check_node
+from contexts.telemetry.infrastructure.clock import Exchange, best_offset, exchange_of
 from contracts import parse_event
 from contracts.events import Event
-from contracts.telemetry import GpuPower
+from contracts.telemetry import ClockOffset, GpuPower
 from lab import hub as lab_hub
 
 log = logging.getLogger("atlas.telemetry.pods")
@@ -62,7 +69,9 @@ HUB_URL = lab_hub.DEFAULT_URL  # the DUB hub, unless $LAB_HUB_URL (lab_hub.ENV_U
 DEFAULT_PORT = 8790  # lab/pod_power.py DEFAULT_PORT
 POLL_S = 2.0
 LIMIT = 1000
-ACCOUNTS = "gpu-a=A,gpu-b=B"  # which hub account runs which pod, unless ATLAS_POD_ACCOUNTS says otherwise
+OFFSET_EVERY = 30  # polls between two telemetry.clock.offset events of one pod: about a minute at the 2 s poll
+OFFSET_KEEP = 10  # exchanges an offset is chosen from, by the smallest round trip
+ACCOUNTS = "pod-a=A,pod-b=B"  # which hub account runs which pod, unless ATLAS_POD_ACCOUNTS says otherwise
 
 
 @dataclass(frozen=True)
@@ -73,13 +82,13 @@ class PodEndpoint:
 
 
 def pod_accounts(text: str) -> list[tuple[str, str]]:
-    """(node, account letter) pairs from text such as "gpu-a=C,gpu-b=D"."""
+    """(node, account letter) pairs from text such as "pod-a=C,pod-b=D"."""
     pairs = []
     for part in text.split(","):
         node, sep, letter = part.strip().partition("=")
-        node, letter = node.strip(), letter.strip().upper()
-        if not sep or node not in (GPU_A, GPU_B) or len(letter) != 1 or not letter.isalpha():
-            raise ValueError(f"ATLAS_POD_ACCOUNTS takes pairs such as gpu-a=A,gpu-b=B; got {part.strip()!r}")
+        node, letter = canonical(node.strip()), letter.strip().upper()  # the old names gpu-a, gpu-b still read
+        if not sep or node not in (POD_A, POD_B) or len(letter) != 1 or not letter.isalpha():
+            raise ValueError(f"ATLAS_POD_ACCOUNTS takes pairs such as pod-a=A,pod-b=B; got {part.strip()!r}")
         pairs.append((node, letter))
     if len({node for node, _ in pairs}) != len(pairs) or len({letter for _, letter in pairs}) != len(pairs):
         raise ValueError("ATLAS_POD_ACCOUNTS names a pod or an account twice")
@@ -89,7 +98,7 @@ def pod_accounts(text: str) -> list[tuple[str, str]]:
 def pod_endpoints(environ: Mapping[str, str], *, hub_url: str | None = None, port: int | None = None) -> list[PodEndpoint]:
     """The pods this machine can read: each account with both AUP_HUB_USER_<X> and AUP_HUB_TOKEN_<X> set.
 
-    ATLAS_POD_ACCOUNTS says which account runs which pod (default gpu-a=A,gpu-b=B). Each account's hub is
+    ATLAS_POD_ACCOUNTS says which account runs which pod (default pod-a=A,pod-b=B). Each account's hub is
     AUP_HUB_URL_<X> when set, else $LAB_HUB_URL (the setting lab/hub.py reads), else the DUB hub;
     ATLAS_POD_POWER_PORT moves the sampler's port.
     A half-set pair is an error naming the missing key (never its value); no pair at all is an error too."""
@@ -131,6 +140,7 @@ class PodPage:
     first_seq: int | None  # the oldest sample the pod still held when it answered
     received: datetime  # when the answer reached this reader, on the Jetson's clock
     samples: list[Any]  # the raw {"seq", "event"} items, oldest first
+    offset: ClockOffset | None = None  # the pod's clock against this reader's, when one is due with this page
 
 
 @dataclass(frozen=True)
@@ -150,11 +160,11 @@ class PodReader:
                  clock: Callable[[], datetime] = lambda: datetime.now(UTC),
                  sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
                  skip_until: Callable[[str], datetime | None] | None = None, rounds: int | None = None,
-                 user_agent: str = lab_hub.USER_AGENT) -> None:
+                 user_agent: str = lab_hub.USER_AGENT, offset_every: int = OFFSET_EVERY) -> None:
         if not pods:
             raise ValueError("a pod reader needs at least one pod")
         for pod in pods:
-            if check_node(pod.node) not in (GPU_A, GPU_B):
+            if check_node(pod.node) not in (POD_A, POD_B):
                 raise ValueError(f"{pod.node} is not a pod")
         if len({pod.node for pod in pods}) != len(pods):
             raise ValueError("each pod may appear once")
@@ -175,6 +185,10 @@ class PodReader:
             pod.node: {"after": 0, "sampler_started": None, "newest": None, "seeded": False, "fetched": 0, "lost": 0,
                        "rejected": 0, "repeats": 0, "restarts": 0, "error": None, "last_ok": None} for pod in pods}
         self._polls: list[asyncio.Task[None]] = []  # the poll tasks of the samples() call now running
+        self.offset_every = offset_every
+        self._exchanges: dict[str, deque[Exchange]] = {pod.node: deque(maxlen=OFFSET_KEEP) for pod in pods}
+        self._since_offset: dict[str, int | None] = {pod.node: None for pod in pods}  # None: none reported yet
+        self.offsets: dict[str, ClockOffset] = {}  # the latest reported per pod
 
     async def samples(self) -> AsyncIterator[Event]:
         """Every pod's new samples as they arrive, each pod polled by its own task; see the module docstring.
@@ -237,7 +251,7 @@ class PodReader:
             if isinstance(result, BaseException) and not isinstance(result, asyncio.CancelledError):
                 log.error("the %s poll ended on %s: %s", task.get_name(), type(result).__name__, result)
 
-    async def fetch(self, client: httpx.AsyncClient, pod: PodEndpoint) -> list[GpuPower]:
+    async def fetch(self, client: httpx.AsyncClient, pod: PodEndpoint) -> list[GpuPower | ClockOffset]:
         """One poll of one pod, taken whole: the samples it has after the cursor, stamped with their receive time.
 
         The cursor moves past every one of them, as for a caller that keeps all it is handed; samples() takes a
@@ -268,9 +282,20 @@ class PodReader:
         state["last_ok"] = received
         first_seq = body.get("first_seq")
         return PodPage(first_seq if isinstance(first_seq, int) and not isinstance(first_seq, bool) else None,
-                       received, list(body.get("samples") or []))
+                       received, list(body.get("samples") or []), self._offset_due(pod))
 
-    def _take(self, pod: PodEndpoint, page: PodPage) -> Iterator[GpuPower]:
+    def _offset_due(self, pod: PodEndpoint) -> ClockOffset | None:
+        """The pod's clock offset from its recent exchanges, when the first or the next one is due."""
+        exchanges = self._exchanges[pod.node]
+        since = self._since_offset[pod.node]
+        if not exchanges or (since is not None and since + 1 < self.offset_every):
+            if since is not None:
+                self._since_offset[pod.node] = since + 1
+            return None
+        self._since_offset[pod.node] = 0
+        return best_offset(pod.node, list(exchanges))
+
+    def _take(self, pod: PodEndpoint, page: PodPage) -> Iterator[GpuPower | ClockOffset]:
         """The page's samples for this pod, committing the cursor for each only when the next one is asked for.
 
         Samples skipped here (rejected, or already in the log) move the cursor at once, since nothing is published
@@ -282,6 +307,9 @@ class PodReader:
             state["after"] = page.first_seq - 1  # they are gone; counted once even if this page is read again
             log.warning("%d %s samples were dropped on the pod before they could be read", dropped, pod.node)
         rejected: Counter[str] = Counter()  # reason -> samples of this page rejected for it, logged once per page
+        if page.offset is not None and self.offsets.get(pod.node) is not page.offset:
+            yield page.offset  # before the samples, so they can be placed on this reader's clock as they arrive
+            self.offsets[pod.node] = page.offset
         try:
             for item in page.samples:
                 seq = item.get("seq") if isinstance(item, Mapping) else None
@@ -296,7 +324,7 @@ class PodReader:
                     rejected[f"they are not contract events ({_first_error(exc)})"] += 1
                     state["after"] = max(state["after"], seq)
                     continue
-                if not isinstance(event, GpuPower) or event.node != pod.node:
+                if not isinstance(event, GpuPower) or canonical(event.node) != pod.node:
                     state["rejected"] += 1  # only this pod's power samples come through this pod's address
                     rejected[f"they are {event.type} for node {getattr(event, 'node', None)!r}, not {pod.node}'s "
                              "power samples"] += 1
@@ -306,7 +334,8 @@ class PodReader:
                     state["repeats"] += 1  # already in the log
                     state["after"] = max(state["after"], seq)
                     continue
-                yield event.model_copy(update={"received_ts": page.received})
+                # a sampler started under the pod's old name (--node gpu-a) is read under its name today
+                yield event.model_copy(update={"received_ts": page.received, "node": pod.node})
                 state["after"] = max(state["after"], seq)  # handed on: the runner published it
                 state["newest"] = event.ts
                 state["fetched"] += 1
@@ -317,8 +346,10 @@ class PodReader:
     async def _get(self, client: httpx.AsyncClient, pod: PodEndpoint, after: int) -> dict[str, Any] | None:
         state = self.state[pod.node]
         try:
+            t1 = self.clock()
             reply = await client.get(f"{pod.base_url}/samples", params={"after": after, "limit": self.limit},
                                      headers={"Authorization": f"token {pod.token}"})
+            t4 = self.clock()
         except httpx.HTTPError as exc:
             return self._trouble(pod, f"no answer ({type(exc).__name__})")
         if reply.status_code != 200:
@@ -329,6 +360,9 @@ class PodReader:
             return self._trouble(pod, "an answer that is not JSON")
         if not isinstance(body, dict) or not isinstance(body.get("samples"), list):
             return self._trouble(pod, "an answer without samples")
+        exchange = exchange_of(t1, body, t4)  # the pod's two timestamps in every answer: one clock exchange
+        if exchange is not None:
+            self._exchanges[pod.node].append(exchange)
         if state["error"] is not None:
             log.info("the %s sampler answers again", pod.node)
             state["error"] = None
@@ -342,4 +376,7 @@ class PodReader:
         return None
 
     def status(self) -> dict[str, Any]:
-        return {node: {k: v for k, v in s.items() if k != "seeded"} for node, s in self.state.items()}
+        out = {node: {k: v for k, v in s.items() if k != "seeded"} for node, s in self.state.items()}
+        for node, offset in self.offsets.items():
+            out[node]["clock_offset"] = {"offset_s": offset.offset_s, "error_s": offset.error_s, "ts": offset.ts}
+        return out

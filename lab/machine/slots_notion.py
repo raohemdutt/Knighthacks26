@@ -29,7 +29,9 @@ What goes wrong is one exception type, NotionError, whose kind says what to do a
 A 429 (Notion's rate limit, an average of 3 requests a second on most plans), 503 and 529 are
 retried, up to MAX_RETRIES times, waiting what Retry-After says (at most MAX_WAIT_S a time;
 a longer ask is not waited out). Nothing else is retried: a request that may have reached
-Notion is never sent twice, so a timed-out create cannot add a second row.
+Notion is never sent twice, so a timed-out create cannot add a second row. For the same reason
+a create (POST /v1/pages) is retried only on a 429, which refuses it before it is made: a 503
+or 529 can come from a proxy after the create went through.
 
 The wire is the one boundary a test replaces: NotionClient(token, transport=fn) calls
 fn(method, url, headers, body, timeout) -> (status, body bytes, headers), which
@@ -48,6 +50,10 @@ import urllib.request
 from collections.abc import Callable, Mapping
 from typing import Any
 
+# ready's: the redirect handler that keeps the token at its address, and the length below which text is not worth
+# scrubbing out of a message (it would mangle the message).
+from lab.machine.ready import MIN_HIDDEN_CHARS, _NoRedirect
+
 __all__ = [
     "API_URL", "API_VERSION", "MAX_RETRIES", "MAX_WAIT_S", "NotionClient", "NotionError", "Transport",
     "checkbox", "date", "dashed_id", "number", "page_id_of", "plain_text", "rich_text", "select", "title",
@@ -61,11 +67,11 @@ MAX_BODY_BYTES = 5_000_000
 MAX_RETRIES = 3
 MAX_WAIT_S = 15.0
 RETRY_STATUSES = frozenset({429, 503, 529})
+CREATE_PATH = "/v1/pages"
+CREATE_RETRY_STATUSES = frozenset({429})   # a create is not idempotent: only a refusal before it is made is retried
 PAGE_SIZE = 100
 MAX_PAGES = 20            # a list longer than this many pages of PAGE_SIZE rows is cut short and refused
 USER_AGENT = "atlas-lab-slots"
-# Text shorter than this is not worth scrubbing out of a message; it would mangle the message.
-MIN_HIDDEN_CHARS = 6
 MAX_MESSAGE_CHARS = 300
 
 Transport = Callable[[str, str, Mapping[str, str], "bytes | None", float], "tuple[int, bytes, Mapping[str, str]]"]
@@ -85,13 +91,6 @@ class NotionError(RuntimeError):
 
 
 # --- the wire -------------------------------------------------------------------------
-
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    """Never follow a redirect: the token must only go to the address it was meant for."""
-
-    def redirect_request(self, *args: Any, **kwargs: Any) -> None:
-        return None
-
 
 def urllib_transport(method: str, url: str, headers: Mapping[str, str], body: bytes | None,
                      timeout: float) -> tuple[int, bytes, Mapping[str, str]]:
@@ -248,6 +247,7 @@ class NotionClient:
                    "Accept": "application/json", "User-Agent": USER_AGENT}
         if payload is not None:
             headers["Content-Type"] = "application/json"
+        retry_statuses = CREATE_RETRY_STATUSES if (method, path) == ("POST", CREATE_PATH) else RETRY_STATUSES
         attempt = 0
         while True:
             try:
@@ -256,7 +256,7 @@ class NotionClient:
                 reason = getattr(exc, "reason", None) or exc
                 raise NotionError(_scrub(_one_line(f"cannot reach Notion: {type(exc).__name__}: {reason}"), self._token),
                                   kind="transport") from None
-            if status in RETRY_STATUSES and attempt < MAX_RETRIES:
+            if status in retry_statuses and attempt < MAX_RETRIES:
                 attempt += 1
                 hinted = _retry_after(response_headers)
                 seconds = self._wait(attempt, hinted)
@@ -311,7 +311,7 @@ class NotionClient:
 
     def create_page(self, data_source_id: str, properties: Mapping[str, Any]) -> dict[str, Any]:
         body = {"parent": {"type": "data_source_id", "data_source_id": data_source_id}, "properties": dict(properties)}
-        return self.request("POST", "/v1/pages", body)
+        return self.request("POST", CREATE_PATH, body)
 
     def update_page(self, page_id: str, properties: Mapping[str, Any]) -> dict[str, Any]:
         return self.request("PATCH", f"/v1/pages/{dashed_id(page_id)}", {"properties": dict(properties)})

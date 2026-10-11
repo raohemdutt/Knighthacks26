@@ -164,6 +164,7 @@ const NARRATED_TOAST: Record<string, { title: string; tone: Toast["tone"] }> = {
   replan: { title: "Re-plan", tone: "warn" },
   coach: { title: "Coach", tone: "info" },
   evening: { title: "Your day, reviewed", tone: "info" },
+  checkin: { title: "Check-in", tone: "info" },
 };
 const RAW_DAY_TOASTS = new Set(["day.plan.proposed", "day.replan.proposed", "day.coach.noted", "day.reviewed"]);
 

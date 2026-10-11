@@ -1,0 +1,1 @@
+{"oc_events_per_sample": {"n": 300, "median_ms": 0.6272, "p95_ms": 0.7342, "max_ms": 1.262}, "ina3221_settings_every_10s": {"n": 100, "median_ms": 0.2525, "p95_ms": 0.3359, "max_ms": 0.509}, "nvpmodel_query_every_30s": {"n": 10, "median_ms": 6.5945, "p95_ms": 12.8675, "max_ms": 13.618}}

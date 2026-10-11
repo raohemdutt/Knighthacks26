@@ -1,9 +1,10 @@
 """Power readings in one unit: the single place where each source's sample becomes watts.
 
-A Jetson sample is module input power (the VDD_IN rail, reported in mW); a pod sample is the
-R9700's graphics package (socket) power in W. The two boundaries differ (the Jetson's carrier
-board and the pod's host are outside them), so every reading names its boundary and any number
-that compares nodes can say what it compares.
+A Jetson sample is module input power (the VDD_IN rail, reported in mW). A pod sample is socket_w, the firmware's
+socket power in W: on the Strix Halo pods the lab runs (Radeon 8060S, gfx1151, an APU) the socket is the whole APU
+package, CPU cores and graphics together, not the graphics alone as it was on the R9700. The boundaries differ (the
+Jetson's carrier board and the pod's memory, fans and supply are outside them), so every reading names its boundary
+and accelerator, and any number that compares nodes can say what it compares.
 """
 
 from dataclasses import dataclass
@@ -15,7 +16,16 @@ from contracts.telemetry import GpuPower, JetsonPower
 MODULE_RAIL = "VDD_IN"  # Jetson Orin Nano: "Total Module Power" on the INA3221
 BOUNDARY = {
     JetsonPower.TYPE: "module",  # Jetson module input, VDD_IN
-    GpuPower.TYPE: "graphics package",  # R9700 socket power
+    GpuPower.TYPE: "APU socket",  # Strix Halo socket power: CPU cores and graphics together
+}
+POWER_FIELD = {JetsonPower.TYPE: MODULE_RAIL, GpuPower.TYPE: "socket_w"}  # the reading integrated for energy
+BOUNDARY_TEXT = {  # what each boundary covers, as a stored value names it
+    JetsonPower.TYPE: "module input (VDD_IN: CPU, GPU, SoC and memory on the module; carrier board outside)",
+    GpuPower.TYPE: "APU socket (CPU cores and graphics together; memory, fans and supply outside)",
+}
+ACCELERATOR = {
+    JetsonPower.TYPE: "Jetson Orin Nano (Ampere GPU)",
+    GpuPower.TYPE: "Radeon 8060S (gfx1151, Strix Halo)",
 }
 
 

@@ -42,10 +42,12 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
+from contexts.day.domain import checkin as checkin_rule
 from contexts.day.domain import narration as words
 from contexts.day.domain.clock import DayClock
 from contexts.day.domain.narration import Narration, hhmm, short_place, short_title
 from contracts.day import (
+    DayCheckinRaised,
     DayCoachNoted,
     DayNarrated,
     DayPlanProposed,
@@ -67,6 +69,9 @@ QUESTION_TTL = timedelta(seconds=120)  # a question with no answer after this lo
 KEEP_ASKS = 20
 KEEP_CACHE = 200
 PRIORITY = "backfill"  # the runtime's lowest: never ahead of a person's question
+# A draft shorter than this ("Evening. A quiet one: a long rest first, then dinner.") has nothing to improve, and
+# asking anyway costs about 5 s on the box for words that come back the same. The template is said as it is.
+MIN_DRAFT_CHARS = 120
 
 
 @dataclass(frozen=True)
@@ -118,6 +123,7 @@ class Narrator:
         self.latest: dict[str, DayNarrated] = {}  # moment -> the newest narration
         self.asks: OrderedDict[str, DayNarrated] = OrderedDict()  # action id -> how to ask for it
         self.cache: OrderedDict[str, str] = OrderedDict()  # facts hash -> the model's accepted rewrite
+        self.checkin: DayCheckinRaised | None = None  # the newest check-in, for "say it again"
         # --- live only ---
         self.questions: dict[str, datetime] = {}  # questions waiting for an answer
         self.inflight = False
@@ -125,7 +131,7 @@ class Narrator:
         self.failed: set[str] = set()  # facts the model was already asked about and did not improve
         self.jobs: dict[str, Job] = {}  # handed to the background task, by source event id
         self.background = None  # bus.in_background(self.rewrite): set when subscribed
-        self.stats = {"calls": 0, "used": 0, "rejected": 0, "timeouts": 0, "errors": 0, "last_problem": None}
+        self.stats = {"calls": 0, "used": 0, "unchanged": 0, "rejected": 0, "timeouts": 0, "errors": 0, "last_problem": None}
 
     @property
     def mode(self) -> str:
@@ -141,13 +147,14 @@ class Narrator:
 
     def subscribe(self, bus) -> None:
         bus.subscribe("day.narrated", self.on_narrated, replay=True)
+        bus.subscribe("day.checkin.raised", self.on_checkin, replay=True)
         if self.mode == "off":
             return
         self.background = bus.in_background(self.rewrite)  # the model call runs as its own task, off the bus
         bus.subscribe("experience.question.asked", self.on_question)
         bus.subscribe("agent.answer.generated", self.on_answer)
         for prefix in ("day.plan.proposed", "day.status.changed", "day.replan.proposed", "day.coach.noted", "day.reviewed",
-                       "workspace.approval.requested"):
+                       "day.checkin.raised", "workspace.approval.requested"):
             bus.subscribe(prefix, self.on_event)  # live only: it publishes, and may call the model
 
     # --- state handlers (replay=True) ---
@@ -162,6 +169,10 @@ class Narrator:
             self.latest[e.moment] = e
         if e.engine == "model":
             self.remember(e.facts_hash, e.spoken)
+
+    def on_checkin(self, e: DayCheckinRaised) -> None:
+        if self.checkin is None or e.ts >= self.checkin.ts:
+            self.checkin = e
 
     def remember(self, facts_hash: str, spoken: str) -> None:
         self.cache[facts_hash] = spoken
@@ -210,6 +221,8 @@ class Narrator:
         if job.moment == "approval":
             return job.ref in self.asks
         last = self.latest.get(job.moment)
+        if job.moment == "checkin":  # each check-in is said once, also when it says what the last one said
+            return job.event_id in self.jobs or (last is not None and last.ref == job.ref)
         waiting = any(j.moment == job.moment and j.hash == job.hash for j in self.jobs.values())
         # the same facts, or different facts that come out as the same words (seen at the desk, then at the door)
         return waiting or (last is not None and (last.facts_hash == job.hash or last.display == job.draft.display))
@@ -217,7 +230,7 @@ class Narrator:
     def may_ask_model(self, job: Job) -> bool:
         if self.engine != "model" or job.moment == "approval" or job.urgent or self.inflight or job.hash in self.failed:
             return False
-        if self.question_waiting(job.ts):
+        if len(job.draft.spoken) < MIN_DRAFT_CHARS or self.question_waiting(job.ts):
             return False
         return self.last_model is None or abs((job.ts - self.last_model).total_seconds()) >= self.config.gap_s
 
@@ -275,6 +288,8 @@ class Narrator:
         text = words.reply_text(content)
         if text == job.draft.spoken:
             self.failed.add(job.hash)  # nothing to improve: the template stands, and is not asked about again
+            if count:
+                self.stats["unchanged"] += 1  # the model gave the draft back word for word: a call that changed nothing
             return None
         problems = words.check(text, job.facts, job.draft.spoken)
         if problems:
@@ -340,6 +355,8 @@ class Narrator:
             reviews = [r for r in p.reviews.values() if r is not None]
             review = p.reviews.get(day) or (max(reviews, key=lambda r: r.day) if reviews else None)
             return self.job_for(review, event_id=f"day-narrated-evening-{stamp}") if review else None
+        if moment == "checkin":
+            return self.job_for(self.checkin, event_id=f"day-narrated-checkin-{stamp}") if self.checkin else None
         return None
 
     # --- the facts of each moment ---
@@ -362,6 +379,9 @@ class Narrator:
             return self.job("coach", self.coach_facts(e), e.ts, e.day, e.plan_id, e.event_id, event_id=event_id)
         if isinstance(e, DayReviewed):
             return self.job("evening", self.review_facts(e), e.ts, e.day, e.plan_id, e.event_id, event_id=event_id)
+        if isinstance(e, DayCheckinRaised):  # never urgent: it is said once, and it can wait for a question
+            facts = checkin_rule.facts(e.signals, e.suggestions, e.history, self.clock.tz)
+            return self.job("checkin", facts, e.ts, e.day, e.plan_id, e.event_id, event_id=event_id)
         if isinstance(e, ApprovalRequested):
             facts = self.approval_facts(e)
             day = self.planner.cards[e.action_id][0] if e.action_id in self.planner.cards else self.clock.day_of(e.ts)
@@ -577,6 +597,9 @@ class Narrator:
             f["win"] = {"kind": "streak", "days": e.streak}
         if e.change_tomorrow:
             f["tomorrow"] = e.change_tomorrow
+        waste = self.planner.sorting(e.day, e.ts)  # Waste Watch's clause for that day, as the review's text has it
+        if waste:
+            f["waste"] = waste
         return f
 
     def approval_facts(self, e: ApprovalRequested) -> dict | None:

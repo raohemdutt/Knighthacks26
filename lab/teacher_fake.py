@@ -13,15 +13,16 @@ an account, the hub proxy in front of it. No GPU, no pod, no network, no real wa
     python -m lab.teacher_fake --port 8000      # serves the fixture's reference answers until stopped
 
 What it answers, as vLLM does at the commit the pod builds (b1388b1): GET /v1/models lists the served model with its
-checkpoint as root; POST /v1/chat/completions answers one choice, as one JSON body or, for "stream": true, as
-server-sent events ("data: {chunk}" lines, the text and each tool call's arguments in pieces, a last chunk with the
-finish reason, a usage chunk when stream_options.include_usage is set, then "data: [DONE]"); an unknown model is a
-404 whose body is {"error": {"message", "type", "param", "code"}}. A request whose chat_template_kwargs does not set
-enable_thinking to false gets a thinking block in front of its answer. A server started without a tool-call parser
-(tool_parser=False, the flags lab/pod_a_teacher.sh leaves out today) puts the model's call markup in the text and
-returns no tool_calls, as vLLM does when "auto" tool choice is asked of it without --enable-auto-tool-choice and
---tool-call-parser. Tokens are counted as one per four characters, and an answer longer than max_tokens is cut
-there with finish reason "length".
+checkpoint as root, and each of its aliases after it (vLLM's --served-model-name takes several names, answers to any
+of them and names the first in every reply); POST /v1/chat/completions answers one choice, as one JSON body or, for
+"stream": true, as server-sent events ("data: {chunk}" lines, the text and each tool call's arguments in pieces, a
+last chunk with the finish reason, a usage chunk when stream_options.include_usage is set, then "data: [DONE]"); an
+unknown model is a 404 whose body is {"error": {"message", "type", "param", "code"}}. A request whose
+chat_template_kwargs does not set enable_thinking to false gets a thinking block in front of its answer. A server
+started without a tool-call parser (tool_parser=False, the flags lab/pod_a_teacher.sh leaves out today) puts the
+model's call markup in the text and returns no tool_calls, as vLLM does when "auto" tool choice is asked of it without
+--enable-auto-tool-choice and --tool-call-parser. Tokens are counted as one per four characters, and an answer longer
+than max_tokens is cut there with finish reason "length".
 
 What the policy decides: what the model says, given the request body. reference_policy() answers like the fixture's
 reference (expected.jsonl): the reference's tool calls first, its answer once tool results are in. A policy may also
@@ -63,8 +64,10 @@ if not __package__:  # run by path: the repo root, one folder up, is what holds 
 import httpx
 
 from lab.hub import Account
+from lab.hub_fake import FAKE_ROLES
 
-__all__ = ["Turn", "Policy", "Seen", "FakeTeacher", "reference_policy", "text_policy", "main"]
+__all__ = ["Turn", "Policy", "Seen", "FakeTeacher", "reference_policy", "text_policy", "second_pass", "swayed_policy",
+           "main"]
 
 ROOT = "RedHatAI/Qwen3.8-27B-INT4"     # the checkpoint the teacher serves (lab/pod_a_teacher.sh)
 TTFT_S = 0.55                          # time to first token, text, thinking off: the R9700 number in lab/README.md
@@ -148,6 +151,37 @@ def reference_policy(expected: Mapping[str, Any]) -> Policy:
     return answer
 
 
+def second_pass(body: Mapping[str, Any]) -> bool:
+    """True for a request sent with a seed other than 0 (the label run's default): the second teacher pass."""
+    seed = body.get("seed")
+    return isinstance(seed, int) and seed != 0
+
+
+def swayed_policy(base: Policy, questions: Sequence[str], *, when: Callable[[Mapping[str, Any]], bool] = second_pass,
+                  fields: Sequence[str] = ("answer",)) -> Policy:
+    """A teacher that gives base's answers, except that when `when` holds for a request (by default the request
+    carries another seed than 0) its answer to each of the questions differs in the fields named: "answer" appends
+    a hedge to the text, "tool_calls" changes the first call's first argument. It stands for a model whose label moves
+    with the seed or the wording of the prompt; a question not listed is always answered as base answers it."""
+    swayed = set(questions)
+
+    def answer(body: Mapping[str, Any]) -> Turn:
+        turn = base(body)
+        if _question(body) not in swayed or not when(body):
+            return turn
+        if turn.tool_calls and "tool_calls" in fields:
+            (name, arguments), *rest = turn.tool_calls
+            if isinstance(arguments, Mapping) and arguments:
+                key = next(iter(arguments))
+                arguments = {**arguments, key: f"{arguments[key]} "}   # the same call with a different argument
+            turn = Turn(turn.content, ((name, arguments), *rest))
+        if turn.content and "answer" in fields:
+            turn = Turn(turn.content + " (not sure)", turn.tool_calls)
+        return turn
+
+    return answer
+
+
 def _tokens(text: str) -> int:
     return math.ceil(len(text) / 4)
 
@@ -183,17 +217,19 @@ def _vllm_error(status: int, kind: str, message: str, param: str | None = None) 
 class FakeTeacher:
     """The teacher server, and the hub proxy in front of it when user and token are given (see the module docstring).
 
-    policy decides what the model says; model is the served name and root its checkpoint; tool_parser False stands
-    for a server started without a tool-call parser; clock, a FakeClock, is moved by the time each answer takes."""
+    policy decides what the model says; model is the served name, aliases the further names it answers to, and root
+    its checkpoint; tool_parser False stands for a server started without a tool-call parser; clock, a FakeClock, is
+    moved by the time each answer takes."""
 
-    def __init__(self, policy: Policy, *, model: str = "teacher", root: str | None = ROOT, user: str | None = None,
-                 token: str | None = None, host: str = "teacher.test", port: int = 8000, tool_parser: bool = True,
-                 ttft_s: float = TTFT_S, decode_tok_s: float = DECODE_TOK_S,
+    def __init__(self, policy: Policy, *, model: str = "teacher", aliases: Sequence[str] = (), root: str | None = ROOT,
+                 user: str | None = None, token: str | None = None, host: str = "teacher.test", port: int = 8000,
+                 tool_parser: bool = True, ttft_s: float = TTFT_S, decode_tok_s: float = DECODE_TOK_S,
                  buffered_limit_s: float = BUFFERED_LIMIT_S, clock: Any = None) -> None:
         if (user is None) != (token is None):
             raise ValueError("give both user and token for the proxy, or neither for the server alone")
         self.policy = policy
         self.model = model
+        self.aliases = tuple(aliases)
         self.root = root
         self.user = user
         self.token = token
@@ -234,7 +270,8 @@ class FakeTeacher:
         """The hub account whose pod this fake stands behind, with the fake hub's address (or url)."""
         if not self.proxied:
             raise ValueError("this fake has no account: give it user and token")
-        return Account(letter, self.user or "", self.token or "", url or f"https://{self.host}")
+        return Account(letter, self.user or "", self.token or "", url or f"https://{self.host}",
+                       role=FAKE_ROLES.get(letter))
 
     # --- faults and state ----------------------------------------------------------------------
 
@@ -302,8 +339,8 @@ class FakeTeacher:
             path = path[len(self.prefix):]
         if method == "GET" and path == "/v1/models":
             return _json_reply(200, {"object": "list", "data": [{
-                "id": self.model, "object": "model", "created": 1760000000, "owned_by": "vllm", "root": self.root,
-                "parent": None, "max_model_len": MAX_MODEL_LEN}]})
+                "id": name, "object": "model", "created": 1760000000, "owned_by": "vllm", "root": self.root,
+                "parent": None, "max_model_len": MAX_MODEL_LEN} for name in (self.model, *self.aliases)]})
         if method == "GET" and path == "/health":
             return _Reply(200, {}, [b""])
         if method == "POST" and path == "/v1/chat/completions":
@@ -318,7 +355,7 @@ class FakeTeacher:
         return _json_reply(404, {"detail": "Not Found"})
 
     def _chat(self, body: Mapping[str, Any], headers: Mapping[str, str]) -> _Reply:
-        if body.get("model") != self.model:
+        if body.get("model") not in (self.model, *self.aliases):
             return _vllm_error(404, "NotFoundError", f"The model `{body.get('model')}` does not exist.", "model")
         turn = self.policy(body)
         content = turn.content
