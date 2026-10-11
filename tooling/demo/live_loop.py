@@ -23,7 +23,8 @@ While it runs, this relay
 Energy is T4's rule (contexts/telemetry/application/joules.py): gross joules, the trace integrated over the window by
 contexts/telemetry/domain/energy.py's integrate (bracketing samples, interpolated edges), nothing subtracted, the
 idle beside it (the calibrated figure of config/telemetry_idle.yaml and the quiet reading measured just before the
-start). Windows: labeling on pod C from the act's start to the trainer's start (the pool merge, under a second, is in
+start). The arithmetic lives in contexts/learning/application/loop_energy.py, which the box's compare route uses
+too, so the relay and the box compute the same numbers. Windows: labeling on pod C from the act's start to the trainer's start (the pool merge, under a second, is in
 it); training on pod D from the trainer's start to its end (the model load is in it); packaging on pod D from the
 trainer's end to the act's end (merge, GGUF, Q4_K_M, the stand-in gate and the offer, which take under a second). Each
 pod's clock is mapped onto this machine's from its own samples (the newest sample against the time it arrived).
@@ -41,7 +42,6 @@ import json
 import math
 import os
 import shutil
-import statistics
 import sys
 import tempfile
 import threading
@@ -57,7 +57,9 @@ sys.path.insert(0, str(REPO))
 
 import httpx  # noqa: E402
 
-from contexts.telemetry.domain.energy import Window, attribute, integrate  # noqa: E402
+from contexts.learning.application import loop_energy as le  # noqa: E402
+from contexts.learning.application.loop_energy import (ACTS, IDLE_W, integrate, iso_s, stage_seconds,  # noqa: E402,F401
+                                                       window)
 from lab import controller  # noqa: E402
 from lab.lab_push import Box, PodSource, Relay, complete_lines  # noqa: E402
 from lab.machine import ready  # noqa: E402
@@ -67,17 +69,11 @@ POD_SCRIPT = HERE / "live_loop_pod.sh"
 CARD = HERE / "live_loop_card.html"
 TASK = "desk-objects"
 SAMPLER_PORT = 8790
-IDLE_W = {"pod-c": 10.27, "pod-d": 10.27, "box": 15.76}   # config/telemetry_idle.yaml (pod-a's figure for both pods)
-ACTS = ("solo", "duo")
 COMMAND_T = time.time()   # the start command: the stopwatch's zero unless --on-approval waits for the phone
 
 
 def now_s() -> float:
     return time.time()
-
-
-def iso_s(text: str) -> float:
-    return datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp()
 
 
 def env_value(key: str) -> str | None:
@@ -223,76 +219,14 @@ class State:
         self.trigger: dict[str, Any] | None = None
 
 
-def stage_seconds(stages: list[dict[str, Any]], act: str) -> dict[str, float]:
-    """Pod-clock seconds of each stage of one act: labeling, waiting, training, packaging, total."""
-    at = {s["stage"]: iso_s(s["ts"]) for s in stages if s.get("act") == act and s.get("ts")}
-    out: dict[str, float] = {}
-    if "start" in at and "labeled" in at:
-        out["labeling"] = at["labeled"] - at["start"]
-    if "labeled" in at and "train" in at:
-        out["waiting"] = at["train"] - at["labeled"]
-    if "train" in at and "trained" in at:
-        out["training"] = at["trained"] - at["train"]
-    if "trained" in at and "done" in at:
-        out["packaging"] = at["done"] - at["trained"]
-    if "start" in at and "done" in at:
-        out["total"] = at["done"] - at["start"]
-    return {k: round(v, 1) for k, v in out.items()}
-
-
-def window(stages: list[dict[str, Any]], act: str, first: str, last: str) -> tuple[float, float] | None:
-    at = {s["stage"]: iso_s(s["ts"]) for s in stages if s.get("act") == act and s.get("ts")}
-    return (at[first], at[last]) if first in at and last in at else None
-
-
-def energy(trace: Trace, pod_d: Trace, span: tuple[float, float] | None) -> dict[str, Any] | None:
-    """Gross joules of `trace` over a window given on pod D's clock (moved through this machine's clock)."""
-    if span is None:
-        return None
-    points, _ = trace.snapshot()
-    a = trace.from_local(pod_d.to_local(span[0]))
-    b = trace.from_local(pod_d.to_local(span[1]))
-    j = integrate(points, a, b)
-    inside = [w for t, w in points if a <= t <= b]
-    secs = b - a
-    return {"seconds": round(secs, 1), "joules": None if j is None else round(j, 1),
-            "mean_w": None if j is None or secs <= 0 else round(j / secs, 2),
-            "peak_w": max(inside) if inside else None, "samples": len(inside)}
-
-
 def pod_d_shares(stages: list[dict[str, Any]], pod_d: Trace) -> tuple[dict[str, float | None], dict[str, float]]:
-    """Pod D's joules per stage window, an overlapping stretch split evenly (T4's split, no token weights), and how
-    many seconds of each window another stage shared."""
-    spans = {}
-    for act in ACTS:
-        for name, first, last in (("training", "train", "trained"), ("packaging", "trained", "done")):
-            w = window(stages, act, first, last)
-            if w:
-                spans[f"{act}.{name}"] = w
-    points, _ = pod_d.snapshot()
-    shared = attribute(points, [Window(k, a, b) for k, (a, b) in spans.items()]) if spans else {}
-    overlaps = {}
-    for k, (a, b) in spans.items():
-        overlaps[k] = round(sum(max(0.0, min(b, d) - max(a, c)) for j, (c, d) in spans.items() if j != k), 1)
-    return {k: None if v is None else round(v, 1) for k, v in shared.items()}, overlaps
+    """Pod D's joules per stage window, an overlapping stretch split evenly (loop_energy.pod_d_shares)."""
+    return le.pod_d_shares(stages, pod_d.snapshot()[0])
 
 
-def quiet_floor(trace: Trace, before_node_t: float, span_s: float = 30.0) -> float | None:
-    points, _ = trace.snapshot()
-    ws = [w for t, w in points if before_node_t - span_s <= t < before_node_t]
-    return round(statistics.median(ws), 2) if ws else None
-
-
-def ratio(a: Any, b: Any) -> float | None:
-    if isinstance(a, (int, float)) and isinstance(b, (int, float)) and b:
-        return round(a / b, 3)
-    return None
-
-
-def per(a: Any, b: Any, nd: int = 3) -> float | None:
-    if isinstance(a, (int, float)) and isinstance(b, (int, float)) and b:
-        return round(a / b, nd)
-    return None
+def node_traces(traces: dict[str, Trace]) -> dict[str, tuple[list[tuple[float, float]], float | None]]:
+    """The traces as loop_energy takes them: (points on the node's clock, the node's clock minus this machine's)."""
+    return {name: tr.snapshot() for name, tr in traces.items()}
 
 
 # --- the card server -----------------------------------------------------------------------------------
@@ -527,8 +461,7 @@ def run_loop(args: argparse.Namespace) -> int:
         stages = list(state.stages)
         acts = {a: dict(v) for a, v in state.acts.items()}
     (out / "stages.jsonl").write_text("".join(json.dumps(s) + "\n" for s in stages), encoding="utf-8")
-    comparison = compare(stages, acts, traces, source, out, t0, total)
-    comparison["stamp"] = stamp
+    comparison = compare(stages, acts, traces, source, out, t0, total, stamp)
     with state.lock:
         state.comparison = comparison
     (out / "comparison.json").write_text(json.dumps(comparison, indent=2) + "\n", encoding="utf-8")
@@ -608,99 +541,11 @@ def act_facts(source: PodSource, run_id: str) -> dict[str, Any]:
 
 
 def compare(stages: list[dict[str, Any]], acts: dict[str, dict[str, Any]], traces: dict[str, Trace],
-            source: PodSource, out: Path, t0: float, total: float) -> dict[str, Any]:
-    pod_c, pod_d, box = traces["pod-c"], traces["pod-d"], traces["box"]
-    go = [s for s in stages if s.get("stage") == "go"]
-    go_t = iso_s(go[0]["ts"]) if go else None
-    box_quiet = quiet_floor(box, box.from_local(t0)) or quiet_floor(box, box.from_local(t0 + 30.0))
-    result: dict[str, Any] = {"stamp": None, "t0": t0, "total_s": round(total, 1), "acts": {},
-                              "rule": "gross joules (T4), integrated by contexts/telemetry/domain/energy.integrate; "
-                                      "idle beside: calibrated (config/telemetry_idle.yaml) and quiet (median of the "
-                                      "30 s before the start)",
-                              "idle": {"pod-c": {"calibrated_w": IDLE_W["pod-c"],
-                                                 "quiet_w": quiet_floor(pod_c, pod_c.from_local(t0))},
-                                       "pod-d": {"calibrated_w": IDLE_W["pod-d"],
-                                                 "quiet_w": quiet_floor(pod_d, pod_d.from_local(t0))},
-                                       "box": {"calibrated_w": IDLE_W["box"],
-                                               "quiet_w": box_quiet,
-                                               "note": "bimodal: about 5 W between captions, about 18 W while the "
-                                                       "box's GPU captions (T13)"}},
-                              "clock_offsets_s": {k: None if t.offset is None else round(t.offset, 2)
-                                                  for k, t in traces.items()}}
-    shared, overlaps = pod_d_shares(stages, pod_d)
-    result["pod_d_split"] = ("pod D's training and packaging windows overlap when act 2 trains while act 1 packages; "
-                             "each overlapping stretch is split evenly between them (energy.attribute, no tokens), so "
-                             "the stages add up to the pod's joules; gross_window_j is the whole window's integral")
-    for act in ACTS:
-        run_id = acts.get(act, {}).get("run_id")
-        if not run_id:
-            continue
-        facts = act_facts(source, run_id)
-        secs = stage_seconds(stages, act)
-        label = energy(pod_c, pod_d, window(stages, act, "start", "labeled"))
-        train = energy(pod_d, pod_d, window(stages, act, "train", "trained"))
-        pack = energy(pod_d, pod_d, window(stages, act, "trained", "done"))
-        for part, key in ((train, f"{act}.training"), (pack, f"{act}.packaging")):
-            if part is not None:
-                part["gross_window_j"] = part["joules"]
-                part["joules"] = shared.get(key)
-                part["overlap_s"] = overlaps.get(key)
-        whole = window(stages, act, "start", "done")
-        box_e = energy(box, pod_d, whole)
-        lab_t = facts.get("labels", {})
-        tr = facts.get("trainer") or {}
-        counts = facts.get("counts") or {}
-        row: dict[str, Any] = {"run_id": run_id, "seconds": secs, "outcome": facts.get("outcome"),
-                               "examples": counts.get("examples"), "train_rows": counts.get("train_rows"),
-                               "held_out": counts.get("held_out"),
-                               "labeling": {**(label or {}), "examples": lab_t.get("examples"),
-                                            "tokens": lab_t.get("tokens"),
-                                            "completion_tokens": lab_t.get("completion_tokens"),
-                                            "j_per_token": per((label or {}).get("joules"), lab_t.get("tokens")),
-                                            "j_per_example": per((label or {}).get("joules"), lab_t.get("examples"), 1),
-                                            "idle_j": round(IDLE_W["pod-c"] * label["seconds"], 1) if label else None,
-                                            "node": "pod C (teacher)"},
-                               "training": {**(train or {}), "steps": tr.get("steps"),
-                                            "examples_seen": tr.get("examples_seen"), "tokens": tr.get("tokens"),
-                                            "train_s": tr.get("train_s"), "loss_first": tr.get("loss_first"),
-                                            "loss_last": tr.get("loss_last"),
-                                            "trainer_energy_j": tr.get("energy_j"),
-                                            "j_per_step": per((train or {}).get("joules"), tr.get("steps"), 1),
-                                            "j_per_example_seen": per((train or {}).get("joules"),
-                                                                      tr.get("examples_seen"), 2),
-                                            "j_per_train_row": per((train or {}).get("joules"),
-                                                                   counts.get("train_rows"), 2),
-                                            "idle_j": round(IDLE_W["pod-d"] * train["seconds"], 1) if train else None,
-                                            "node": "pod D (trainer)"},
-                               "packaging": {**(pack or {}),
-                                             "idle_j": round(IDLE_W["pod-d"] * pack["seconds"], 1) if pack else None,
-                                             "node": "pod D (trainer)"},
-                               "box": {**(box_e or {}),
-                                       "idle_j": round(IDLE_W["box"] * box_e["seconds"], 1) if box_e else None,
-                                       "node": "the box (Jetson VDD_IN)"}}
-        pods_j = [x.get("joules") for x in (label, train, pack) if x]
-        row["pods_joules"] = round(sum(pods_j), 1) if pods_j and all(j is not None for j in pods_j) else None
-        row["j_per_example"] = per(row["pods_joules"], row["examples"], 1)
-        row["start_s"] = round(pod_d.to_local(whole[0]) - t0, 1) if whole else None
-        row["end_s"] = round(pod_d.to_local(whole[1]) - t0, 1) if whole else None
-        result["acts"][act] = row
-    a1, a2 = result["acts"].get("solo"), result["acts"].get("duo")
-    if a1 and a2:
-        def g(row: dict[str, Any], *path: str) -> Any:
-            for p in path:
-                row = row.get(p) if isinstance(row, dict) else None
-            return row
-        keys = {"examples": ("examples",), "act_seconds": ("seconds", "total"),
-                "labeling_j": ("labeling", "joules"), "labeling_j_per_token": ("labeling", "j_per_token"),
-                "labeling_j_per_example": ("labeling", "j_per_example"), "training_j": ("training", "joules"),
-                "training_j_per_step": ("training", "j_per_step"),
-                "training_j_per_train_row": ("training", "j_per_train_row"),
-                "packaging_j": ("packaging", "joules"), "pods_joules": ("pods_joules",),
-                "j_per_example": ("j_per_example",), "box_j": ("box", "joules")}
-        result["duo_over_solo"] = {k: ratio(g(a2, *p), g(a1, *p)) for k, p in keys.items()}
-    if go_t is not None:
-        result["go_s"] = round(pod_d.to_local(go_t) - t0, 1)
-    return result
+            source: PodSource, out: Path, t0: float, total: float | None, stamp: str | None = None) -> dict[str, Any]:
+    """The comparison document (loop_energy.compare), with each act's counts read from its run folder on pod D."""
+    run_ids = {act: acts.get(act, {}).get("run_id") for act in ACTS}
+    facts = {act: act_facts(source, run_id) for act, run_id in run_ids.items() if run_id}
+    return le.compare(stages, run_ids, facts, node_traces(traces), t0, total, stamp)
 
 
 def write_rows(comparison: dict[str, Any], stamp: str) -> None:

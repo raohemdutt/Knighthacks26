@@ -724,7 +724,7 @@ class LabView:
         them still lights training from its steps and packaging from its package event."""
         by = {name: [p for p in progress if p.stage == name] for name in ("labeling", "training", "packaging")}
         offered = [p for p in by["packaging"] if p.progress >= 1 and (p.message or "").startswith("offered")]
-        done = lambda ps: next((p.ts for p in ps if p.progress >= 1), None)  # noqa: E731
+        done = lambda ps: next((p.ts for p in ps if p.progress >= 1), None)
         started = {"labeling": by["labeling"][0].ts if by["labeling"] else None,
                    "training": min([p.ts for p in by["training"]] + ([steps[0].ts] if steps else []), default=None),
                    "packaging": by["packaging"][0].ts if by["packaging"] else (package[0].ts if package else None),

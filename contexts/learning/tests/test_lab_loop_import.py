@@ -111,7 +111,7 @@ def test_a_power_window_takes_watts_under_either_name_and_refuses_what_is_not_a_
 
 
 def test_the_stage_lines_become_the_runs_progress_once(tmp_path):
-    client, view, bus = client_for(tmp_path)
+    client, _, bus = client_for(tmp_path)
     body = "\n".join(json.dumps(r) for r in stage_lines()) + "\n"
     r = client.post(f"/api/learning/lab/import?kind=stage&run_id={SOLO}&task=desk-objects", content=body)
     assert r.status_code == 200, r.text
@@ -148,7 +148,7 @@ def test_a_stage_body_is_refused_without_a_run_id_a_task_or_with_another_runs_li
 
 
 def test_a_task_on_the_lines_is_enough_and_unknown_stages_are_counted_not_guessed(tmp_path):
-    client, _, bus = client_for(tmp_path)
+    client, _, _ = client_for(tmp_path)
     go = {"act": "all", "stage": "go", "ts": "2026-10-11T08:03:48.850Z"}
     start = {**stage_lines()[0], "task": "desk-objects"}
     r = client.post(f"/api/learning/lab/import?kind=stage&run_id={SOLO}", content=f"{json.dumps(go)}\n{json.dumps(start)}\n")

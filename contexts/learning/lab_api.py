@@ -16,8 +16,11 @@ GET /api/learning/lab/{run_id}[?sample=1]
     from, and "measured". 404 when no run has that id.
 
 GET /api/learning/lab/compare[?a=<run_id>&b=<run_id>]
-    two runs side by side (contexts/learning/application/lab_compare.py): {a, b, ratios (b over a), runs, missing};
-    without a or b, the latest solo run against the latest pooled one.
+    two runs side by side (contexts/learning/application/lab_compare.py): the comparison document's shape (stamp, t0,
+    total_s, acts, rule, idle, clock_offsets_s, pod_d_split, duo_over_solo, go_s) plus `series` (the three power
+    traces on one time axis) and {a, b, ratios (b over a), ratio_keys, runs, asked, missing}; without a or b, the
+    newest live loop's solo run against its pooled one. Only what this box holds (<data_dir>/lab_loops, posted by the
+    relay) is served, never a fixture. 404 with a plain message when either run is not on the box yet: poll.
 
 The sample run is served only when the log has no real run, or when `?sample=1` asks for it. A real run is never
 mixed with the sample: a response is one or the other, and says which.
@@ -31,7 +34,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 
 from contexts.learning.application.lab_bench import chip_of
-from contexts.learning.application.lab_compare import compare_runs, default_dirs, load_loops
+from contexts.learning.application.lab_compare import CompareMissing, compare_runs, default_dirs, load_loops
 from contexts.learning.application.lab_runs import sync as sync_trainer_runs
 from contexts.learning.application.lab_sample import SAMPLE_DIR, cached_sample
 from contexts.learning.application.lab_view import SUGGESTED_EVENTS, LabView, by_file, collect_numbers, num
@@ -98,7 +101,10 @@ def lab_router(view: LabView, current_model: Callable[[], dict | None] | None = 
     @router.get("/api/learning/lab/compare")  # before /{run_id}, which would take this path
     def compare(a: str | None = None, b: str | None = None) -> dict:
         sync_trainer_runs(view)
-        return compare_runs(load_loops(loops_from), view, a, b)
+        try:
+            return compare_runs(load_loops(loops_from), view, a, b)
+        except CompareMissing as err:
+            raise HTTPException(404, str(err)) from None
 
     @router.get("/api/learning/lab/{run_id}")
     def run(run_id: str, sample: bool = False) -> dict:
