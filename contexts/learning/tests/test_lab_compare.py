@@ -3,8 +3,6 @@ own log, never from a fixture. The rehearsal under fixtures/learning/live-loop-2
 import route, the way the relay posts a live run, so the data shapes are the real ones."""
 
 import json
-import shutil
-from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -15,19 +13,20 @@ from contexts.learning.application.lab_view import LabView
 from contexts.learning.application.loop_energy import iso_s, window
 from contexts.learning.lab_api import lab_router
 from contexts.learning.lab_import import lab_import_router
+from contexts.learning.tests import rehearsal
+from contexts.learning.tests.rehearsal import REHEARSAL
 from contexts.learning.tests.test_lab_runs import LOSSES, write_steps
 
-REHEARSAL = Path(__file__).resolve().parents[3] / "fixtures" / "learning" / "live-loop-2026-10-11"
-SOLO, DUO = "live-1011-040342-solo", "live-1011-040342-duo"
+SOLO, DUO = "live-1011-990001-solo", "live-1011-990001-duo"
 COMPARISON_KEYS = {"stamp", "total_s", "acts", "rule", "idle", "clock_offsets_s", "pod_d_split", "duo_over_solo", "go_s"}
 
 
 def recorded():
-    return json.loads((REHEARSAL / "comparison.json").read_text(encoding="utf-8"))
+    return json.loads(rehearsal.text("comparison.json"))
 
 
 def stages():
-    return [json.loads(x) for x in (REHEARSAL / "stages.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+    return [json.loads(x) for x in rehearsal.text("stages.jsonl").splitlines() if x.strip()]
 
 
 def with_t0(doc):
@@ -38,7 +37,7 @@ def with_t0(doc):
 
 
 def power_rows(node):
-    return [json.loads(x) for x in (REHEARSAL / f"power-{node}.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+    return [json.loads(x) for x in rehearsal.text(f"power-{node}.jsonl").splitlines() if x.strip()]
 
 
 def windows_for(act, run_id):
@@ -125,7 +124,7 @@ def test_each_run_carries_its_stage_numbers_with_the_idle_floor_beside(tmp_path)
     assert a["labeling"]["joules"] == 3723.0 and a["labeling"]["idle_j"] == 329.7
     assert a["training"]["j_per_step"] == 340.9 and a["packaging"]["joules"] == 3333.9
     assert a["seconds"] == {"labeling": 32.1, "waiting": 0.0, "training": 53.9, "packaging": 71.1, "total": 157.0}
-    assert a["source"] == {"kind": "loop", "ref": "lab_loops/1011-040342/comparison.json", "stamp": "1011-040342",
+    assert a["source"] == {"kind": "loop", "ref": "lab_loops/1011-990001/comparison.json", "stamp": "1011-990001",
                            "rule": recorded()["rule"], "split": recorded()["pod_d_split"]}
     assert a["idle"]["pod-c"]["calibrated_w"] == 10.27
 
@@ -202,7 +201,7 @@ def test_a_run_from_the_log_alone_compares_with_empty_joules_and_a_reason(tmp_pa
 
 def test_a_relay_out_folder_copied_onto_the_box_is_read_with_its_own_traces(tmp_path):
     client, _ = box(tmp_path)
-    shutil.copytree(REHEARSAL, tmp_path / "data" / "lab_loops" / "1011-040342")   # copied by hand, power-*.jsonl beside it
+    rehearsal.copy_to(tmp_path / "data" / "lab_loops" / "1011-990001")   # copied by hand, power-*.jsonl beside it
     out = client.get("/api/learning/lab/compare").json()
     assert out["asked"] == {"a": SOLO, "b": DUO}
     assert all(len(body["points"]) > 50 for body in out["series"]["nodes"].values())

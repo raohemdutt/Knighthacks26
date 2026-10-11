@@ -85,6 +85,8 @@ class Loop:
         self.comparison: dict[str, Any] = json.loads((folder / lab_loops.COMPARISON).read_text(encoding="utf-8"))
         if not isinstance(self.comparison.get("acts"), dict):
             raise ValueError("no acts")
+        if lab_loops.under_fixtures(folder) or lab_loops.marked_fixture(self.comparison):
+            raise ValueError("a fixture: never served")
         self.stamp = str(self.comparison.get("stamp") or folder.name)
         self.stages = _jsonl(folder / "stages.jsonl")
         self.offsets = self.comparison.get("clock_offsets_s") or {}
@@ -100,7 +102,9 @@ class Loop:
         return iso_s(go[0]["ts"]) - float(self.offsets.get("pod-d") or 0.0) - float(self.comparison.get("go_s") or 0.0)
 
     def acts(self) -> dict[str, dict[str, Any]]:
-        return {act: row for act, row in self.comparison["acts"].items() if isinstance(row, dict) and row.get("run_id")}
+        """The acts with a run id, leaving out any run a committed rehearsal names (a fixture copied onto the box)."""
+        return {act: row for act, row in self.comparison["acts"].items()
+                if isinstance(row, dict) and row.get("run_id") and not lab_loops.is_fixture_run(row["run_id"])}
 
     def act_of(self, run_id: str) -> tuple[str, dict[str, Any]] | None:
         return next(((act, row) for act, row in self.acts().items() if row["run_id"] == run_id), None)
@@ -128,9 +132,11 @@ def load_loops(dirs: list[Path]) -> list[Loop]:
                 continue
             seen.add(folder)
             try:
-                loops.append(Loop(path.parent, root))
+                loop = Loop(path.parent, root)
             except (OSError, ValueError, KeyError, TypeError):
                 continue
+            if loop.acts():
+                loops.append(loop)
     return sorted(loops, key=lambda lp: lp.stamp, reverse=True)
 
 
@@ -206,7 +212,7 @@ def candidates(loops: list[Loop], view: Any | None) -> list[dict[str, Any]]:
             out.append({"run_id": row["run_id"], "act": act, "members": MEMBERS.get(act), "examples": row.get("examples"),
                         "measured": True, "stamp": loop.stamp, "source": loop.source})
     for r in (view.runs() if view is not None and getattr(view, "run_ids", None) else []):
-        if r["run_id"] not in seen:
+        if r["run_id"] not in seen and not lab_loops.is_fixture_run(r["run_id"]):
             seen.add(r["run_id"])
             out.append({"run_id": r["run_id"], "act": None, "members": None, "examples": None, "measured": False,
                         "stamp": r.get("started"), "source": "the box's log"})
@@ -219,7 +225,8 @@ def _find(loops: list[Loop], view: Any | None, run_id: str) -> tuple[Loop | None
         found = loop.act_of(run_id)
         if found:
             return loop, found[1], _from_loop(loop, *found)
-    story = view.story(run_id) if view is not None and run_id in getattr(view, "run_ids", ()) else None
+    real = view is not None and run_id in getattr(view, "run_ids", ()) and not lab_loops.is_fixture_run(run_id)
+    story = view.story(run_id) if real else None
     return None, None, (_from_story(story) if story else None)
 
 

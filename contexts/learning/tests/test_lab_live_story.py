@@ -2,7 +2,6 @@
 far, and the stage strip (labeling, training, packaging, offered) lit by the stage lines the relay posts."""
 
 import json
-from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -11,9 +10,9 @@ from bus import EventBus
 from contexts.learning.application.lab_view import LabView
 from contexts.learning.lab_api import lab_router
 from contexts.learning.lab_import import lab_import_router
+from contexts.learning.tests import rehearsal
 
-REHEARSAL = Path(__file__).resolve().parents[3] / "fixtures" / "learning" / "live-loop-2026-10-11"
-SOLO = "live-1011-040342-solo"
+SOLO = "live-1011-990001-solo"
 TASK = "desk-objects"
 
 
@@ -27,12 +26,12 @@ def box(tmp_path):
 
 
 def solo_lines():
-    rows = [json.loads(x) for x in (REHEARSAL / "stages.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+    rows = [json.loads(x) for x in rehearsal.text("stages.jsonl").splitlines() if x.strip()]
     return {r["stage"]: r for r in rows if r.get("act") == "solo"}
 
 
 def steps():
-    return (REHEARSAL / "solo" / "telemetry.jsonl").read_text(encoding="utf-8").splitlines()
+    return rehearsal.text("solo/telemetry.jsonl").splitlines()
 
 
 def post_stage(client, line):

@@ -26,6 +26,7 @@ import os
 import re
 import tempfile
 from datetime import datetime
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,58 @@ POWER_DIR = "_power"            # under lab_loops; a stamp cannot start with "_"
 COMPARISON = "comparison.json"
 MAX_SAMPLES = 20_000            # a 1 Hz sampler for 5 hours; the box's 3 Hz feed for nearly 2
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
+
+
+FIXTURES = Path(__file__).resolve().parents[3] / "fixtures"
+
+
+def under_fixtures(path: str | Path) -> bool:
+    """Whether a record lives in the checkout's fixtures/ (committed test data, never served)."""
+    try:
+        Path(path).resolve().relative_to(FIXTURES.resolve())
+        return True
+    except (ValueError, OSError):
+        return False
+
+
+def marked_fixture(doc: Any) -> bool:
+    """A document that says it is test data: `fixture` or `sample` true."""
+    return isinstance(doc, dict) and (doc.get("fixture") is True or doc.get("sample") is True)
+
+
+@lru_cache(maxsize=1)
+def fixture_run_ids() -> frozenset[str]:
+    """Every run id a committed live-loop record under fixtures/learning names (its comparison.json acts and its
+    stages.jsonl). Such a run is a rehearsal: the Learning lab never shows it, even when its files were pushed into a
+    box's log or copied into the box's lab_loops by hand."""
+    ids: set[str] = set()
+    root = FIXTURES / "learning"
+    if not root.is_dir():
+        return frozenset()
+    for path in [*root.glob("*/comparison.json"), *root.glob("*/*/comparison.json")]:
+        try:
+            acts = json.loads(path.read_text(encoding="utf-8")).get("acts") or {}
+        except (OSError, ValueError, AttributeError):
+            continue
+        ids |= {row["run_id"] for row in acts.values() if isinstance(row, dict) and isinstance(row.get("run_id"), str)}
+    for path in [*root.glob("*/stages.jsonl"), *root.glob("*/*/stages.jsonl")]:
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            for key in ("run_id", "solo", "duo"):
+                if isinstance(row, dict) and isinstance(row.get(key), str):
+                    ids.add(row[key])
+    return frozenset(ids)
+
+
+def is_fixture_run(run_id: Any) -> bool:
+    return isinstance(run_id, str) and run_id in fixture_run_ids()
 
 
 class Refused(ValueError):

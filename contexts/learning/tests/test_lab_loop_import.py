@@ -3,7 +3,6 @@ the stage lines as the run's progress, and the status every answer now carries. 
 fixtures/learning/live-loop-2026-10-11 is the data shape here only; the box never reads that folder."""
 
 import json
-from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -13,10 +12,10 @@ from contexts.learning.application import lab_loops
 from contexts.learning.application.lab_view import LabView
 from contexts.learning.lab_api import lab_router
 from contexts.learning.lab_import import lab_import_router
+from contexts.learning.tests import rehearsal
 from contracts.learning import RunProgress
 
-REHEARSAL = Path(__file__).resolve().parents[3] / "fixtures" / "learning" / "live-loop-2026-10-11"
-SOLO = "live-1011-040342-solo"
+SOLO = "live-1011-990001-solo"
 
 
 def client_for(tmp_path, data_dir=True):
@@ -29,7 +28,7 @@ def client_for(tmp_path, data_dir=True):
 
 
 def stage_lines(act="solo"):
-    rows = [json.loads(x) for x in (REHEARSAL / "stages.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+    rows = [json.loads(x) for x in rehearsal.text("stages.jsonl").splitlines() if x.strip()]
     return [r for r in rows if r.get("act") == act]
 
 
@@ -41,19 +40,19 @@ def window(run_id=SOLO, node="pod-c", n=5):
 
 def test_a_comparison_is_kept_by_its_stamp_and_the_same_bytes_again_write_nothing(tmp_path):
     client, _, _ = client_for(tmp_path)
-    raw = (REHEARSAL / "comparison.json").read_bytes()
+    raw = rehearsal.raw("comparison.json")
     first = client.post("/api/learning/lab/import?kind=compare", content=raw)
     assert first.status_code == 200, first.text
-    assert first.json() == {"kind": "compare", "changed": True, "stamp": "1011-040342",
-                            "runs": {"solo": SOLO, "duo": "live-1011-040342-duo"}, "complete": True,
-                            "stored": "lab_loops/1011-040342/comparison.json"}
-    assert (tmp_path / "data" / "lab_loops" / "1011-040342" / "comparison.json").read_bytes() == raw
+    assert first.json() == {"kind": "compare", "changed": True, "stamp": "1011-990001",
+                            "runs": {"solo": SOLO, "duo": "live-1011-990001-duo"}, "complete": True,
+                            "stored": "lab_loops/1011-990001/comparison.json"}
+    assert (tmp_path / "data" / "lab_loops" / "1011-990001" / "comparison.json").read_bytes() == raw
     assert client.post("/api/learning/lab/import?kind=compare", content=raw).json()["changed"] is False
 
 
 def test_a_comparison_after_act_one_only_is_kept_and_then_replaced_by_the_whole_one(tmp_path):
     client, _, _ = client_for(tmp_path)
-    whole = json.loads((REHEARSAL / "comparison.json").read_text(encoding="utf-8"))
+    whole = json.loads(rehearsal.text("comparison.json"))
     part = {**whole, "acts": {"solo": whole["acts"]["solo"]}}
     part.pop("duo_over_solo")
     assert client.post("/api/learning/lab/import?kind=compare", json=part).json()["complete"] is False
@@ -79,9 +78,9 @@ def test_a_gateway_that_passes_no_data_dir_keeps_them_in_its_own_data_dir(tmp_pa
     its data anyway (ATLAS_DATA_DIR, else ./data), and the compare route reads them from there."""
     monkeypatch.setenv("ATLAS_DATA_DIR", str(tmp_path / "gateway-data"))
     client, _, _ = client_for(tmp_path, data_dir=False)
-    assert client.post("/api/learning/lab/import?kind=compare", content=(REHEARSAL / "comparison.json").read_bytes()).status_code == 200
+    assert client.post("/api/learning/lab/import?kind=compare", content=rehearsal.raw("comparison.json")).status_code == 200
     assert client.post(f"/api/learning/lab/import?kind=power&run_id={SOLO}&stage=labeling", json=window()).status_code == 200
-    assert (tmp_path / "gateway-data" / "lab_loops" / "1011-040342" / "comparison.json").is_file()
+    assert (tmp_path / "gateway-data" / "lab_loops" / "1011-990001" / "comparison.json").is_file()
     assert (tmp_path / "gateway-data" / "lab_loops" / "_power" / SOLO / "labeling.pod-c.json").is_file()
     assert client.get("/api/learning/lab/compare").json()["asked"]["a"] == SOLO
 
@@ -173,7 +172,7 @@ def test_an_act_that_ends_badly_reads_failed(tmp_path):
 
 def test_a_partial_telemetry_file_is_taken_and_the_answer_says_running_with_the_steps_so_far(tmp_path):
     client, _, _ = client_for(tmp_path)
-    steps = (REHEARSAL / "solo" / "telemetry.jsonl").read_text(encoding="utf-8").splitlines()
+    steps = rehearsal.text("solo/telemetry.jsonl").splitlines()
     first = client.post(f"/api/learning/lab/import?run_id={SOLO}", content="\n".join(steps[:3]) + "\n").json()
     assert first["status"] == "running" and first["steps_so_far"] == 3
     grown = client.post(f"/api/learning/lab/import?run_id={SOLO}", content="\n".join(steps) + "\n").json()

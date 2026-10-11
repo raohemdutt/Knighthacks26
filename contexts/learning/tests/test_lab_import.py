@@ -75,7 +75,7 @@ def test_posting_the_file_shows_the_real_run_live_and_posting_it_again_adds_noth
     view, bus = LabView(), EventBus(log_dir=tmp_path / "events")
     view.subscribe(bus)
     with TestClient(app_with(view, bus)) as client:
-        assert client.get("/api/learning/lab").json()["sample"] is True
+        assert client.get("/api/learning/lab").json()["runs"] == []   # no run yet, and never the committed sample
         first = client.post("/api/learning/lab/import?run_id=run-l16", content=telemetry(tmp_path, LOSSES[:3]))
         body = first.json()
         assert "task is not known" in body.pop("note")   # no task yet, so no learning.run.progress (L29)

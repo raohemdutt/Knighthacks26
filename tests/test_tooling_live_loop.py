@@ -100,29 +100,32 @@ def test_the_relay_posts_stages_power_and_the_comparison_and_the_box_draws_them(
     box = live_loop.Box("http://box:8000", None, transport=transport)
     traces = recorded_traces(live_loop)
     where = {"pod-c": {"hub": "sjc.aupcloud.io", "account": "C"}, "pod-d": {"hub": "sjc.aupcloud.io", "account": "D"}}
-    doc = json.loads((FIX / "comparison.json").read_text(encoding="utf-8"))
-    go = next(s for s in stages() if s["stage"] == "go")
+    from contexts.learning.tests import rehearsal   # the night's data under a stamp of its own: the box never shows a fixture
+
+    doc = json.loads(rehearsal.text("comparison.json"))
+    lines_all = rehearsal.jsonl("stages.jsonl")
+    go = next(s for s in lines_all if s["stage"] == "go")
     doc["t0"] = live_loop.iso_s(go["ts"]) - doc["clock_offsets_s"]["pod-d"] - doc["go_s"]
     for act in ("solo", "duo"):
         run_id = doc["acts"][act]["run_id"]
-        lines = live_loop.act_lines(stages(), act)
+        lines = live_loop.act_lines(lines_all, act)
         assert all(x["task"] == live_loop.TASK for x in lines)
         answer = box.post("stage", "".join(json.dumps(x) + "\n" for x in lines).encode(), run_id, {"task": live_loop.TASK})
         assert answer.ok, answer.answer
-        said = live_loop.post_windows(box, stages(), act, run_id, traces, where)
+        said = live_loop.post_windows(box, lines_all, act, run_id, traces, where)
         assert said.count(" 200") == 6, said
     assert live_loop.post_comparison(box, doc).startswith("box 200, kept")
     out = client.get("/api/learning/lab/compare").json()
-    assert out["asked"] == {"a": "live-1011-040342-solo", "b": "live-1011-040342-duo"}
+    assert out["asked"] == {"a": "live-1011-990001-solo", "b": "live-1011-990001-duo"}
     assert out["duo_over_solo"] == doc["duo_over_solo"]
     runs = {r["run_id"]: r for r in out["series"]["runs"]}
-    assert runs["live-1011-040342-solo"]["start_s"] == 2.7 and runs["live-1011-040342-duo"]["start_s"] == 35.0
+    assert runs["live-1011-990001-solo"]["start_s"] == 2.7 and runs["live-1011-990001-duo"]["start_s"] == 35.0
     for node, body in out["series"]["nodes"].items():
         assert len(body["points"]) > 50, node
         assert {w["stage"] for w in body["windows"]} >= {"act"}
     pod_c = out["series"]["nodes"]["pod-c"]["windows"][0]
     assert pod_c["account"] == "C" and pod_c["hub"] == "sjc.aupcloud.io" and 900 <= pod_c["period_ms"] <= 1100
-    story = client.get("/api/learning/lab/live-1011-040342-solo").json()
+    story = client.get("/api/learning/lab/live-1011-990001-solo").json()
     assert story["run_status"] == "finished" and [s["state"] for s in story["stage_strip"]] == ["done"] * 4
 
 
