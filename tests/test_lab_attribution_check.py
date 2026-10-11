@@ -164,6 +164,9 @@ def test_a_tail_after_each_answer_is_what_the_windows_miss():
     assert r["missed_j"] == pytest.approx(550.0 + 6 * 70.0)
     assert r["verdict"]["label"] == "b_ahead"
     assert r["trustworthy"] is False
+    # the tail sits in the first half of every gap; the ramp up to the next answer in the second half
+    assert r["missed_split"]["after_end_j"] == pytest.approx(6 * 50.0 + 6 * 70.0)
+    assert r["missed_split"]["before_start_j"] == pytest.approx(5 * 50.0)
     assert any("miss" in reason for reason in r["reasons"])
 
 

@@ -260,6 +260,11 @@ def compute(samples: Iterable[Mapping[str, Any]], answers: Sequence[Answer], off
     residual = whole - answers_j - gap_j
     conserved = abs(residual) <= CONSERVATION_TOLERANCE * max(abs(whole), 1.0)
     missed = gap_j - idle_w * gap_s
+    # which side of the gaps the miss sits on: the first half (the tail after an answer, the sensor's lag) or the
+    # second (the ramp up to the next answer, an edge of the next window between two samples)
+    halves = [(a, (a + b) / 2, b) for a, b, _ in gaps]
+    after_end = sum(integrate(trace, a, m) - idle_w * (m - a) for a, m, _ in halves)
+    before_start = sum(integrate(trace, m, b) - idle_w * (b - m) for _, m, b in halves)
     share = missed / (answers_j + missed) if answers_j + missed else None
 
     arm_a = joules
@@ -307,6 +312,7 @@ def compute(samples: Iterable[Mapping[str, Any]], answers: Sequence[Answer], off
         "conservation": {"residual_j": residual, "relative": residual / whole if whole else None, "ok": conserved,
                          "tolerance": CONSERVATION_TOLERANCE},
         "missed_j": missed, "missed_share": share,
+        "missed_split": {"after_end_j": after_end, "before_start_j": before_start},
         "attribution_error_pct": None if share is None else -100.0 * share,
         "samples_per_window": {"median": float(statistics.median(counts)), "min": min(counts), "max": max(counts),
                                "under_min": under, "min_required": min_samples},
