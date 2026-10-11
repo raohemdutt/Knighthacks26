@@ -549,3 +549,13 @@ and L11 (`lab/public_prior.py`).
 | S178 | project doc | vLLM v0.31.0 release notes (released 2026-10-05 per the page; tag commit db9527a46 dated 2026-10-02): Quantization, AMD ROCm and Dependencies lines; first 100,000 characters read | https://github.com/vllm-project/vllm/releases/tag/v0.31.0 | 2026-10-11 | upgrade |
 | S179 | project doc | ROCm/vllm releases page (v0.7.2+rocm to v0.9.2; "Navi" lines only, no RDNA or gfx1151 line) | https://github.com/ROCm/vllm/releases | 2026-10-11 | upgrade |
 | S180 | project doc | triton-lang/triton releases page (3.4.0 to 3.8.0; AMD lines for gfx11, gfx12, RDNA 3, 3.5 and 4) | https://github.com/triton-lang/triton/releases | 2026-10-11 | upgrade |
+
+## Added by R54, speculative decoding on gfx1151 (2026-10-11)
+
+| Id | Kind | Source | Link or location | Opened | Cited in |
+| --- | --- | --- | --- | --- | --- |
+| S181 | code | vLLM commit 4a5299c93, "feat: spec decode with draft models" (#24322), 2026-01-19; in the pinned b1388b1 | https://github.com/vllm-project/vllm/commit/4a5299c93ff97c26def537b92562df5ada530fea | 2026-10-11 | speculative |
+| S182 | code | vLLM commit a9ec46d4b, "[ROCm][Perf] Support N=5 in wvSplitK skinny GEMM kernels for speculative decoding" (#40687), 2026-05-28; on main, not in b1388b1 | https://github.com/vllm-project/vllm/commit/a9ec46d4b7db6ae1d0cb0f27ce1a7ddb0f749ef8 | 2026-10-11 | speculative |
+| S183 | code | vLLM b1388b1 `vllm/v1/spec_decode/ngram_proposer.py::_find_longest_matched_ngram_and_propose_tokens`, `vllm/config/speculative.py` (methods, prompt-lookup defaults, equal-vocabulary check), `vllm/v1/attention/backends/gdn_attn.py` (speculative state indices), `vllm/model_executor/layers/utils.py::rocm_unquantized_gemm_impl`, `vllm/model_executor/models/qwen3_5_mtp.py`, `docs/features/speculative_decoding/` | https://github.com/vllm-project/vllm/blob/b1388b1fbf5aaef47937fabe98931211684666a6/vllm/v1/spec_decode/ngram_proposer.py | 2026-10-11 | speculative |
+| S184 | our files | `lab/speculative_estimate.py` and `lab/refine/research/kernels/data/speculative-acceptance-2026-10-11.json` (R54): vLLM's prompt-lookup rule on 314 assistant turns, proxy tokenizer | this repo, PR #323 | 2026-10-11 | speculative |
+| S185 | our files | `lab/refine/research/kernels/data/chipsheet-gfx1151-2026-10-11.md` (R33 run on pod-b): copy bandwidth, fp16, bf16 and int4 dequant matmul at 1, 4, 8 and 16 rows, loaded and idle watts | this repo | 2026-10-11 | speculative |
