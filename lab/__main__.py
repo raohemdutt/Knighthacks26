@@ -66,6 +66,7 @@ VERBS: dict[str, str] = {
     "quark-compare": "lab.quark_compare:main",
     "ready": "lab.machine.ready:main",
     "referee": "lab.machine.referee:main",
+    "report": "lab.report:main",
     "research-check": "lab.machine.research_check:main",
     "resume": "lab.machine.stop:resume_main",
     "review": "lab.machine.review:main",
