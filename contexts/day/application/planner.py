@@ -28,7 +28,7 @@ from contexts.play.dayrun.board import local
 from contexts.play.dayrun.engine import simulate
 from contexts.play.dayrun.models import Board, InitialOverride, Measured, Move, PlannedBlock, SimResult, Totals
 from contexts.play.dayrun.review import reality
-from contexts.play.dayrun.service import DayRun
+from contexts.play.dayrun.service import EVENT_PREFIX, DayRun
 from contracts.agent import ActionProposed
 from contracts.day import (
     DayPlanCommitted,
@@ -72,7 +72,7 @@ def hm(t: datetime) -> str:
 
 
 def card_events(moves: list[PlanMove]) -> list[dict]:
-    return [{"title": f"Day Run: {m.title}", "start": m.start.isoformat(), "end": m.end.isoformat(), "location": m.place_name}
+    return [{"title": f"{EVENT_PREFIX}{m.title}", "start": m.start.isoformat(), "end": m.end.isoformat(), "location": m.place_name}
             for m in moves if not m.fixed]
 
 
@@ -259,7 +259,7 @@ class DayPlanner:
         events = card_events(blocks)
         if not events:
             return None
-        verb = "Replace today's Day Run blocks with" if replace else "Add"
+        verb = "Replace today's plan with" if replace else "Add"
         reason = f"{verb} {len(events)} block(s) for {day:%a %b} {day.day}: " + ", ".join(
             f"{m.title} {hm(m.start)}" for m in blocks if not m.fixed)
         if why:
@@ -458,7 +458,7 @@ class DayPlanner:
             log.exception("the day's stars could not be scored")
         before = self.reviews.get(day - timedelta(days=1))
         streak = (before.streak if before else 0) + 1 if stars > 0 else 0
-        text = rv.text + (f" The real day scores {points} points and {stars} star{'s' if stars != 1 else ''} by Day Run's rules"
+        text = rv.text + (f" The real day scores {points} points and {stars} star{'s' if stars != 1 else ''} by Today's Plan's rules"
                           f" (the plan would have earned {plan_stars}); streak {streak}.")
         waste = self.sorting(day, now)
         if waste:

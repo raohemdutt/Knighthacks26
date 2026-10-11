@@ -46,6 +46,8 @@ IDLE_TWO_READERS = (
 )
 
 # (metric, node, conditions that select exactly one row, value, unit, low_confidence)
+R26 = "bench-20261010T215122Z-2c65"  # the stock teacher's batching sweep (April build, b1388b1)
+R60 = "bench-20261011T044643Z-6240"  # the same sweep on vLLM v0.31.0 with the RDNA hybrid W4A16 kernel
 EXPECTED_SEED = [
     ("teacher.decode_tok_s", "pod-a", {"prompt": "image"}, 6.6, "tok/s", False),
     ("teacher.decode_tok_s", "pod-a", {"prompt": "text", "thinking": "off"}, 7.8, "tok/s", False),
@@ -123,39 +125,67 @@ EXPECTED_SEED = [
     ("student.watts_avg", "jetson", {"rail": "VDD_IN", "period_ms": 1000}, 17.536, "W", True),
     ("student.watts_peak", "jetson", {"rail": "VDD_IN", "period_ms": 1000}, 19.127, "W", True),
     # R26: the batching sweep on the pod C teacher, attach mode, 3 repeats per concurrency (node pod-a, gfx1151)
-    ("teacher_batching.decode_tok_s", "pod-a", {"batch_size": 1}, 2.7021, "tok/s", True),
-    ("teacher_batching.decode_tok_s_total", "pod-a", {"batch_size": 1}, 2.6172, "tok/s", True),
-    ("teacher_batching.ttft_s", "pod-a", {"batch_size": 1}, 1.1809, "s", True),
-    ("teacher_batching.joules_per_token", "pod-a", {"batch_size": 1}, 36.6587, "J/token", True),
-    ("teacher_batching.watts_avg", "pod-a", {"batch_size": 1}, 96.0046, "W", True),
-    ("teacher_batching.watts_peak", "pod-a", {"batch_size": 1}, 97.0, "W", True),
-    ("teacher_batching.decode_tok_s", "pod-a", {"batch_size": 4}, 2.5218, "tok/s", True),
-    ("teacher_batching.decode_tok_s_total", "pod-a", {"batch_size": 4}, 9.3153, "tok/s", True),
-    ("teacher_batching.ttft_s", "pod-a", {"batch_size": 4}, 4.8672, "s", True),
-    ("teacher_batching.joules_per_token", "pod-a", {"batch_size": 4}, 10.3071, "J/token", True),
-    ("teacher_batching.watts_avg", "pod-a", {"batch_size": 4}, 96.0126, "W", True),
-    ("teacher_batching.watts_peak", "pod-a", {"batch_size": 4}, 97.0, "W", True),
-    ("teacher_batching.decode_tok_s", "pod-a", {"batch_size": 8}, 2.319, "tok/s", True),
-    ("teacher_batching.decode_tok_s_total", "pod-a", {"batch_size": 8}, 16.3616, "tok/s", True),
-    ("teacher_batching.ttft_s", "pod-a", {"batch_size": 8}, 7.7821, "s", True),
-    ("teacher_batching.joules_per_token", "pod-a", {"batch_size": 8}, 5.8676, "J/token", True),
-    ("teacher_batching.watts_avg", "pod-a", {"batch_size": 8}, 96.004, "W", True),
-    ("teacher_batching.watts_peak", "pod-a", {"batch_size": 8}, 97.0, "W", True),
-    ("teacher_batching.decode_tok_s", "pod-a", {"batch_size": 16}, 2.0712, "tok/s", True),
-    ("teacher_batching.decode_tok_s_total", "pod-a", {"batch_size": 16}, 26.946, "tok/s", True),
-    ("teacher_batching.ttft_s", "pod-a", {"batch_size": 16}, 14.9531, "s", True),
-    ("teacher_batching.joules_per_token", "pod-a", {"batch_size": 16}, 3.5628, "J/token", True),
-    ("teacher_batching.watts_avg", "pod-a", {"batch_size": 16}, 96.0052, "W", True),
-    ("teacher_batching.watts_peak", "pod-a", {"batch_size": 16}, 97.0, "W", True),
-    ("teacher_batching.decode_tok_s", "pod-a", {"batch_size": 64}, 0.8854, "tok/s", True),
-    ("teacher_batching.decode_tok_s_total", "pod-a", {"batch_size": 64}, 49.5288, "tok/s", True),
-    ("teacher_batching.ttft_s", "pod-a", {"batch_size": 64}, 24.3901, "s", True),
-    ("teacher_batching.joules_per_token", "pod-a", {"batch_size": 64}, 1.9384, "J/token", True),
-    ("teacher_batching.watts_avg", "pod-a", {"batch_size": 64}, 96.0499, "W", True),
-    ("teacher_batching.watts_peak", "pod-a", {"batch_size": 64}, 98.0, "W", True),
+    ("teacher_batching.decode_tok_s", "pod-a", {"batch_size": 1, "session": R26}, 2.7021, "tok/s", True),
+    ("teacher_batching.decode_tok_s_total", "pod-a", {"batch_size": 1, "session": R26}, 2.6172, "tok/s", True),
+    ("teacher_batching.ttft_s", "pod-a", {"batch_size": 1, "session": R26}, 1.1809, "s", True),
+    ("teacher_batching.joules_per_token", "pod-a", {"batch_size": 1, "session": R26}, 36.6587, "J/token", True),
+    ("teacher_batching.watts_avg", "pod-a", {"batch_size": 1, "session": R26}, 96.0046, "W", True),
+    ("teacher_batching.watts_peak", "pod-a", {"batch_size": 1, "session": R26}, 97.0, "W", True),
+    ("teacher_batching.decode_tok_s", "pod-a", {"batch_size": 4, "session": R26}, 2.5218, "tok/s", True),
+    ("teacher_batching.decode_tok_s_total", "pod-a", {"batch_size": 4, "session": R26}, 9.3153, "tok/s", True),
+    ("teacher_batching.ttft_s", "pod-a", {"batch_size": 4, "session": R26}, 4.8672, "s", True),
+    ("teacher_batching.joules_per_token", "pod-a", {"batch_size": 4, "session": R26}, 10.3071, "J/token", True),
+    ("teacher_batching.watts_avg", "pod-a", {"batch_size": 4, "session": R26}, 96.0126, "W", True),
+    ("teacher_batching.watts_peak", "pod-a", {"batch_size": 4, "session": R26}, 97.0, "W", True),
+    ("teacher_batching.decode_tok_s", "pod-a", {"batch_size": 8, "session": R26}, 2.319, "tok/s", True),
+    ("teacher_batching.decode_tok_s_total", "pod-a", {"batch_size": 8, "session": R26}, 16.3616, "tok/s", True),
+    ("teacher_batching.ttft_s", "pod-a", {"batch_size": 8, "session": R26}, 7.7821, "s", True),
+    ("teacher_batching.joules_per_token", "pod-a", {"batch_size": 8, "session": R26}, 5.8676, "J/token", True),
+    ("teacher_batching.watts_avg", "pod-a", {"batch_size": 8, "session": R26}, 96.004, "W", True),
+    ("teacher_batching.watts_peak", "pod-a", {"batch_size": 8, "session": R26}, 97.0, "W", True),
+    ("teacher_batching.decode_tok_s", "pod-a", {"batch_size": 16, "session": R26}, 2.0712, "tok/s", True),
+    ("teacher_batching.decode_tok_s_total", "pod-a", {"batch_size": 16, "session": R26}, 26.946, "tok/s", True),
+    ("teacher_batching.ttft_s", "pod-a", {"batch_size": 16, "session": R26}, 14.9531, "s", True),
+    ("teacher_batching.joules_per_token", "pod-a", {"batch_size": 16, "session": R26}, 3.5628, "J/token", True),
+    ("teacher_batching.watts_avg", "pod-a", {"batch_size": 16, "session": R26}, 96.0052, "W", True),
+    ("teacher_batching.watts_peak", "pod-a", {"batch_size": 16, "session": R26}, 97.0, "W", True),
+    ("teacher_batching.decode_tok_s", "pod-a", {"batch_size": 64, "session": R26}, 0.8854, "tok/s", True),
+    ("teacher_batching.decode_tok_s_total", "pod-a", {"batch_size": 64, "session": R26}, 49.5288, "tok/s", True),
+    ("teacher_batching.ttft_s", "pod-a", {"batch_size": 64, "session": R26}, 24.3901, "s", True),
+    ("teacher_batching.joules_per_token", "pod-a", {"batch_size": 64, "session": R26}, 1.9384, "J/token", True),
+    ("teacher_batching.watts_avg", "pod-a", {"batch_size": 64, "session": R26}, 96.0499, "W", True),
+    ("teacher_batching.watts_peak", "pod-a", {"batch_size": 64, "session": R26}, 98.0, "W", True),
+    # R60: the same sweep after the teacher moved to vLLM v0.31.0 (db9527a46) with the RDNA hybrid W4A16 kernel,
+    # attach mode, 3 repeats per concurrency, no 64 arm (node pod-a, gfx1151)
+    ("teacher_batching.decode_tok_s", "pod-a", {"batch_size": 1, "session": R60}, 12.3264, "tok/s", True),
+    ("teacher_batching.decode_tok_s_total", "pod-a", {"batch_size": 1, "session": R60}, 10.9589, "tok/s", True),
+    ("teacher_batching.ttft_s", "pod-a", {"batch_size": 1, "session": R60}, 0.9399, "s", True),
+    ("teacher_batching.joules_per_token", "pod-a", {"batch_size": 1, "session": R60}, 8.8161, "J/token", True),
+    ("teacher_batching.watts_avg", "pod-a", {"batch_size": 1, "session": R60}, 96.7243, "W", True),
+    ("teacher_batching.watts_peak", "pod-a", {"batch_size": 1, "session": R60}, 99.0, "W", True),
+    ("teacher_batching.decode_tok_s", "pod-a", {"batch_size": 4, "session": R60}, 9.2679, "tok/s", True),
+    ("teacher_batching.decode_tok_s_total", "pod-a", {"batch_size": 4, "session": R60}, 29.5444, "tok/s", True),
+    ("teacher_batching.ttft_s", "pod-a", {"batch_size": 4, "session": R60}, 3.8513, "s", True),
+    ("teacher_batching.joules_per_token", "pod-a", {"batch_size": 4, "session": R60}, 3.2719, "J/token", True),
+    ("teacher_batching.watts_avg", "pod-a", {"batch_size": 4, "session": R60}, 96.2464, "W", True),
+    ("teacher_batching.watts_peak", "pod-a", {"batch_size": 4, "session": R60}, 98.0, "W", True),
+    ("teacher_batching.decode_tok_s", "pod-a", {"batch_size": 8, "session": R60}, 5.8808, "tok/s", True),
+    ("teacher_batching.decode_tok_s_total", "pod-a", {"batch_size": 8, "session": R60}, 36.5269, "tok/s", True),
+    ("teacher_batching.ttft_s", "pod-a", {"batch_size": 8, "session": R60}, 6.7616, "s", True),
+    ("teacher_batching.joules_per_token", "pod-a", {"batch_size": 8, "session": R60}, 2.6888, "J/token", True),
+    ("teacher_batching.watts_avg", "pod-a", {"batch_size": 8, "session": R60}, 96.1088, "W", True),
+    ("teacher_batching.watts_peak", "pod-a", {"batch_size": 8, "session": R60}, 97.0, "W", True),
+    ("teacher_batching.decode_tok_s", "pod-a", {"batch_size": 16, "session": R60}, 4.244, "tok/s", True),
+    ("teacher_batching.decode_tok_s_total", "pod-a", {"batch_size": 16, "session": R60}, 51.0898, "tok/s", True),
+    ("teacher_batching.ttft_s", "pod-a", {"batch_size": 16, "session": R60}, 10.4472, "s", True),
+    ("teacher_batching.joules_per_token", "pod-a", {"batch_size": 16, "session": R60}, 1.8799, "J/token", True),
+    ("teacher_batching.watts_avg", "pod-a", {"batch_size": 16, "session": R60}, 96.0946, "W", True),
+    ("teacher_batching.watts_peak", "pod-a", {"batch_size": 16, "session": R60}, 97.0, "W", True),
     ("pod.idle_watts", "pod-a", {"server": "teacher loaded, no request"}, 10.44, "W", False),
     # R21: the stock teacher on pod C compared with its own baseline (the K4 self-match floor), one compare
-    ("teacher.output_match_rate", "pod-a", {"chip": "gfx1151", "batch_size": 1}, 0.5, "fraction", True),
+    ("teacher.output_match_rate", "pod-a", {"chip": "gfx1151", "batch_size": 1, "engine_commit": "b1388b1"}, 0.5, "fraction", True),
+    # R60: the new build against the stock baseline (1 of 4; the two image prompts and text-schedule diverge)
+    ("teacher.output_match_rate", "pod-a", {"chip": "gfx1151", "batch_size": 1, "engine_commit": "db9527a46"}, 0.25, "fraction", True),
     # R57: the A100 reference on Colab (other chip: NVIDIA A100-SXM4-40GB, stock vLLM 0.31.0), the same INT4 teacher
     # through lab/bench.py, 3 cold spawns per batch size; watts from nvidia-smi over each decode window
     # (fixtures/lab/bench/a100-2026-10-10, recomputed in test_a100_reference_rows_match_the_fixture)
@@ -222,6 +252,34 @@ EXPECTED_SEED = [
     ("teacher.joules_per_token", "pod-b", {"batch_size": 64, "session": "pod-b-2026-10-10"}, 1.9619, "J/token", True),
     ("teacher.watts_avg", "pod-b", {"batch_size": 64, "session": "pod-b-2026-10-10"}, 96.0237, "W", True),
     ("teacher.watts_peak", "pod-b", {"batch_size": 64, "session": "pod-b-2026-10-10"}, 97.7339, "W", True),
+    # E29: llama.cpp 23b0202 HIP serving the teacher's Q4_K_M GGUF on pod D (gfx1151), cut short for L5: batch 1 and 4
+    # over 3 runs, 8 and 16 once, 64 not run; and llama-bench's own pp512 and tg128
+    ("teacher_llamacpp.decode_tok_s", "pod-b", {"batch_size": 1}, 12.1185, "tok/s", True),
+    ("teacher_llamacpp.decode_tok_s_total", "pod-b", {"batch_size": 1}, 10.4758, "tok/s", True),
+    ("teacher_llamacpp.ttft_s", "pod-b", {"batch_size": 1}, 1.4634, "s", True),
+    ("teacher_llamacpp.joules_per_token", "pod-b", {"batch_size": 1}, 10.449, "J/token", True),
+    ("teacher_llamacpp.watts_avg", "pod-b", {"batch_size": 1}, 109.9128, "W", True),
+    ("teacher_llamacpp.watts_peak", "pod-b", {"batch_size": 1}, 117.0, "W", True),
+    ("teacher_llamacpp.decode_tok_s", "pod-b", {"batch_size": 4}, 9.0896, "tok/s", True),
+    ("teacher_llamacpp.decode_tok_s_total", "pod-b", {"batch_size": 4}, 23.419, "tok/s", True),
+    ("teacher_llamacpp.ttft_s", "pod-b", {"batch_size": 4}, 7.1765, "s", True),
+    ("teacher_llamacpp.joules_per_token", "pod-b", {"batch_size": 4}, 4.679, "J/token", True),
+    ("teacher_llamacpp.watts_avg", "pod-b", {"batch_size": 4}, 109.5083, "W", True),
+    ("teacher_llamacpp.watts_peak", "pod-b", {"batch_size": 4}, 122.0, "W", True),
+    ("teacher_llamacpp.decode_tok_s", "pod-b", {"batch_size": 8}, 3.7304, "tok/s", True),
+    ("teacher_llamacpp.decode_tok_s_total", "pod-b", {"batch_size": 8}, 21.5206, "tok/s", True),
+    ("teacher_llamacpp.ttft_s", "pod-b", {"batch_size": 8}, 14.4666, "s", True),
+    ("teacher_llamacpp.joules_per_token", "pod-b", {"batch_size": 8}, 4.7024, "J/token", True),
+    ("teacher_llamacpp.watts_avg", "pod-b", {"batch_size": 8}, 101.1975, "W", True),
+    ("teacher_llamacpp.watts_peak", "pod-b", {"batch_size": 8}, 128.0, "W", True),
+    ("teacher_llamacpp.decode_tok_s", "pod-b", {"batch_size": 16}, 4.5329, "tok/s", True),
+    ("teacher_llamacpp.decode_tok_s_total", "pod-b", {"batch_size": 16}, 41.9757, "tok/s", True),
+    ("teacher_llamacpp.ttft_s", "pod-b", {"batch_size": 16}, 27.5993, "s", True),
+    ("teacher_llamacpp.joules_per_token", "pod-b", {"batch_size": 16}, 2.2716, "J/token", True),
+    ("teacher_llamacpp.watts_avg", "pod-b", {"batch_size": 16}, 95.3507, "W", True),
+    ("teacher_llamacpp.watts_peak", "pod-b", {"batch_size": 16}, 101.0, "W", True),
+    ("teacher_llamacpp.llama_bench_pp512_tok_s", "pod-b", {"test": "pp512"}, 390.7811, "tok/s", True),
+    ("teacher_llamacpp.llama_bench_tg128_tok_s", "pod-b", {"test": "tg128"}, 12.1822, "tok/s", True),
 ]
 
 # The numbers the lab setup measured, by metric name.
@@ -286,7 +344,11 @@ def test_every_low_confidence_seed_row_says_why():
         "teacher.output_match_rate"} | {
         # R57: the A100 reference medians are of 3 spawns
         "telemetry.sampler_cpu_pct", "jetson.idle_watts", "student.watts_avg", "student.watts_peak",
-        "teacher.decode_tok_s", "teacher.decode_tok_s_total", "teacher.ttft_s"}
+        "teacher.decode_tok_s", "teacher.decode_tok_s_total", "teacher.ttft_s"} | {
+        # E29: llama.cpp on pod D, cut short (1 to 3 runs per batch size) and one llama-bench call
+        "teacher_llamacpp." + name
+        for name in ("decode_tok_s", "decode_tok_s_total", "ttft_s", "joules_per_token", "watts_avg", "watts_peak",
+                     "llama_bench_pp512_tok_s", "llama_bench_tg128_tok_s")}
     for row in flagged:
         if row["conditions"].get("sampler") == SAMPLER:  # the sampler's rows: its error is "unknown" until a reference run
             assert row["conditions"]["error"] == "unknown", row["metric"]

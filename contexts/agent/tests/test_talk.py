@@ -1,3 +1,5 @@
+# OWNER'S RULE (Hemdutt): only what was asked, said like a person; "how's it going?" is its work for you and an offer.
+# The guard tests for that rule are in test_natural_speech.py; these are the conversation's routing and mechanics.
 import asyncio
 from datetime import UTC, datetime, timedelta
 
@@ -208,33 +210,32 @@ def test_a_short_follow_up_belongs_to_the_conversation_under_way():
 
 
 def test_one_streamed_call_with_the_persona_the_facts_and_no_tools():
-    t, rt = talk("Pretty good, I watched you type for a while.")
+    t, rt = talk("You're a little behind, but the block was a good one.")
     t.about = "A student with classes, assignments on Canvas and a desk the box watches."
     t.day_facts = lambda: {"now": "You're in your study block until 4. Class is at 5; leave by 4:40.", "coach": "Good block: 45 of 50 minutes at the desk."}
     t.on_answer(None)
     t.on_answer(None)
     pieces = []
-    a = asyncio.run(t.reply("How's your day?", pieces.append))
-    assert a.text == "Pretty good, I watched you type for a while." and "".join(pieces) == a.text and len(pieces) > 3
+    a = asyncio.run(t.reply("How am I doing with my day?", pieces.append))
+    assert a.text == "You're a little behind, but the block was a good one." and "".join(pieces) == a.text and len(pieces) > 3
     assert a.citations == [] and a.model_version == "atlas-v9"
     assert len(rt.seen) == 1 and rt.seen[0]["tools"] is None and rt.seen[0]["priority"] == "chat" and rt.seen[0]["streamed"]
     system = system_prompt(rt)
     assert "You are Atlas" in system and "not a person" in system and "sexual orientation" in system and "988" in system
-    assert "use only the FACTS" in system and "No lists, no markdown, no emoji" in system
+    assert "use only the FACTS" in system and "No lists, no markdown, no emoji" in system and "Answer only what was asked" in system
     facts = system.split("FACTS\n")[1]
-    assert "It is Sunday 3:02 PM." in facts
-    assert "Your cameras logged 2 moments today and kept 2 keyframes. The last one was at 2:22 PM: A person types at the desk." in facts
-    assert "You have answered 2 questions since you started." in facts
+    assert "It is Sunday afternoon." in facts  # the clock only when the time is asked
     assert "Their day right now: You're in your study block until 4. Class is at 5; leave by 4:40." in facts
     assert "Your last coaching note to them: Good block: 45 of 50 minutes at the desk." in facts
     assert "Who you are talking to: A student with classes" in facts
+    assert "cameras" not in facts and "answered" not in facts and "running" not in facts  # not asked: not offered
     assert "Two days ago" not in system
-    assert rt.seen[0]["messages"][-1].role == "user" and rt.seen[0]["messages"][-1].content == "How's your day?"
+    assert rt.seen[0]["messages"][-1].role == "user" and rt.seen[0]["messages"][-1].content == "How am I doing with my day?"
 
 
 def test_the_system_prompt_stays_short_for_a_slow_model():
     t, rt = talk("Hi.")
-    asyncio.run(t.reply("hi"))
+    asyncio.run(t.reply("let's chat"))
     assert len(system_prompt(rt)) < 2200  # about 500 tokens with the facts; the model reads it once and caches it
 
 
@@ -275,8 +276,8 @@ def test_a_conversation_gone_quiet_is_forgotten_on_the_injected_clock():
     assert len(rt.seen[1]["messages"]) == 4
     clock.now += timedelta(minutes=11)
     assert not t.wants("anything else?") and not t.turns
-    asyncio.run(t.reply("hi"))
-    assert len(rt.seen[2]["messages"]) == 2  # the system prompt and "hi": nothing of the old conversation
+    asyncio.run(t.reply("let's chat"))
+    assert len(rt.seen[2]["messages"]) == 2  # the system prompt and the new words: nothing of the old conversation
 
 
 def test_a_wipe_clears_the_conversation():
@@ -294,7 +295,7 @@ def test_the_reply_is_cleaned_for_the_ear():
 def test_a_failed_or_empty_reply_is_a_friendly_line_never_the_no_evidence_line():
     for t, _ in (talk(fail=True), talk(""), talk("   "), talk("<think>hmm</think>")):
         pieces = []
-        a = asyncio.run(t.reply("how are you?", pieces.append))
+        a = asyncio.run(t.reply("do you like music?", pieces.append))
         assert a.text and a.text != NO_EVIDENCE and "".join(pieces).strip().endswith(a.text)
         assert a.citations == [] and a.model_version == "atlas-v9"
 
@@ -312,19 +313,21 @@ def test_a_self_harm_statement_gets_the_caring_line_and_no_model_call():
 def test_facts_survive_a_broken_port_and_an_empty_day():
     t, rt = talk("Quiet one.", memory=FakeMemory())
     t.day_facts = lambda: 1 / 0
-    asyncio.run(t.reply("how's your day?"))
+    t.done_for_you = lambda: 1 / 0
+    asyncio.run(t.reply("how long have you been running, and what's my day been like?"))
     facts = system_prompt(rt).split("FACTS\n")[1]
     assert "Your cameras have logged nothing today." in facts and "You have been running for less than a minute." in facts
     assert "Their day" not in facts and "answered" not in facts
+    assert asyncio.run(t.reply("how's it going?")).text == "Good, all quiet so far. What can I do for you?"
 
 
 def test_name_and_tone_come_from_config():
     t, rt = talk("Hello.", name="Jarvis", tone="Dry humour, very brief.")
-    asyncio.run(t.reply("hi"))
+    asyncio.run(t.reply("let's chat"))
     assert "You are Jarvis" in system_prompt(rt) and "Dry humour, very brief." in system_prompt(rt)
 
 
-def test_how_is_your_day_is_three_spoken_sentences_and_the_facts_are_never_cut_mid_word():
+def test_asked_how_they_are_doing_it_says_the_narrators_spoken_words_and_facts_are_never_cut_mid_word():
     busy = Episode(id="ep-busy", camera_id="cam-desk", start=NOW - timedelta(minutes=13), end=NOW - timedelta(minutes=10), labels=["person"],
                    summary=("Two people rehearse a presentation; one points at the monitor. On the desk: keys (left of the laptop, behind the "
                             "coffee mug), laptop (open in the middle), a charger, two mugs, a notebook, a water bottle and a phone face down."),
@@ -337,25 +340,25 @@ def test_how_is_your_day_is_three_spoken_sentences_and_the_facts_are_never_cut_m
                       "twenty to seven at the Student Union. Leave by twenty-five past six.",
         "plan": "Morning. " + "A study block, then a long walk across campus to the next thing on the calendar, " * 4 + "and that is the day.",
     }
-    said = asyncio.run(t.reply("How's your day?")).text
-    assert said == ("Pretty good, my cameras logged 1 moment today, the last at 2:49 PM: two people rehearse a presentation. "
-                    "You're about fifteen minutes behind on your study block, which runs until quarter to six. How's yours going?")
-    assert "(" not in said and "…" not in said and "keys" not in said  # the ear's wording: no brackets, no inventory of the desk
+    said = asyncio.run(t.reply("How am I doing?")).text
+    assert said == "You're about fifteen minutes behind on your study block, which runs until quarter to six."
+    assert "(" not in said and "…" not in said and "keys" not in said  # the ear's wording: no brackets, nothing the cameras saw
     # an initial in a name is not where the sentence ends
     t.day_facts = lambda: {"now_spoken": "You're about fifteen minutes behind: the plan has you at John C. Hitt Library. Head over."}
     t.forget()
-    assert asyncio.run(t.reply("how's your day?")).text.endswith("the plan has you at John C. Hitt Library. How's yours going?")
+    assert asyncio.run(t.reply("am I on track?")).text.endswith("the plan has you at John C. Hitt Library.")
     # without the narrator's spoken words, the first sentence of what there is
     t.day_facts = lambda: {"now": "You're in your study block until 4. Class is at 5; leave by 4:40."}
     t.forget()
-    assert asyncio.run(t.reply("how are you?")).text.endswith("presentation. You're in your study block until 4. How's yours going?")
+    assert asyncio.run(t.reply("how am I doing?")).text == "You're in your study block until 4."
 
-    # the model's FACTS: the same clause about the last moment, the screen's exact `now`, no line for the spoken copy,
-    # and a long line ends at a sentence or a clause, never inside a word
+    # the model's FACTS, when the question is about all of it: the clause about the last moment, the screen's exact `now`,
+    # no line for the spoken copy, and a long line ends at a sentence or a clause, never inside a word
     t.day_facts = lambda: {"now": "On plan.", "now_spoken": "You're on plan.", "plan": "Morning. " + "A study block, then a long walk across campus, " * 8}
-    facts = t.facts()
+    facts = t.facts("what did you see today, and what's my plan?")
     assert "Your cameras logged 1 moment today and kept 1 keyframe. The last one was at 2:49 PM: Two people rehearse a presentation." in facts
-    assert "Their day right now: On plan." in facts and not any("spoken" in f or "You're on plan" in f for f in facts)
+    assert "Their day right now: You're on plan." in facts  # the wording for the ear, not the screen's, and once
+    assert not any("spoken" in f or f == "Their day right now: On plan." for f in facts)
     plan = next(f for f in facts if f.startswith("Their plan for today"))
     assert len(plan) <= 240 and plan.endswith("across campus, A study block.") and "…" not in "".join(facts)
     long_caption = Episode(id="ep-long", camera_id="cam-desk", start=NOW - timedelta(minutes=5), end=NOW, labels=["person"],
@@ -372,9 +375,9 @@ def test_the_fake_runtime_gets_templates_not_an_echo():
     t = Talk(FakeRuntime(), Clock(), memory=MEMORY)
     t.day_facts = lambda: {"now": "You're in your study block until 4."}
     pieces = []
+    t.done_for_you = lambda: ["planned your day", "reminded you twice", "answered six questions"]
     day = asyncio.run(t.reply("How's your day?", pieces.append))
-    assert day.text == ("Pretty good, my cameras logged 2 moments today, the last at 2:22 PM: a person types at the desk. "
-                        "You're in your study block until 4. How's yours going?")
+    assert day.text == "Good. I've planned your day and reminded you twice so far. What else can I do for you?"
     assert "".join(pieces) == day.text and len(pieces) > 5 and day.model_version == "fake-0"
     assert "AI" in asyncio.run(t.reply("are you gay?")).text and "orientation" in asyncio.run(t.reply("what's your sexual orientation?")).text
     assert "not a person" in asyncio.run(t.reply("who are you?")).text
@@ -384,8 +387,8 @@ def test_the_fake_runtime_gets_templates_not_an_echo():
     assert first != second and "?" in first
     t.forget()
     seen = {asyncio.run(t.reply(q)).text for q in ("hi", "tell me a joke", "I'm stressed about my exam", "thanks", "bye", "I had a great day",
-                                                   "what's the capital of France?")}
-    assert len(seen) == 7 and NO_EVIDENCE not in seen and not any(s.startswith("(fake)") for s in seen)
+                                                   "what's the capital of France?", "how long have you been running?")}
+    assert len(seen) == 8 and NO_EVIDENCE not in seen and not any(s.startswith("(fake)") for s in seen)
     assert t.runtime.calls == []
 
 
@@ -406,10 +409,10 @@ def qa_with_talk(*replies, web=None):
 
 
 def test_qa_hands_conversation_to_talk_and_streams_it():
-    q, rt = qa_with_talk("Doing well, thanks for asking.")
+    q, rt = qa_with_talk("Love it, mostly whatever you hum.")
     pieces = []
-    a = asyncio.run(q.ask("How are you?", stream=pieces.append))
-    assert a.text == "Doing well, thanks for asking." and a.citations == [] and a.model_version == "v1"
+    a = asyncio.run(q.ask("Do you like music?", stream=pieces.append))
+    assert a.text == "Love it, mostly whatever you hum." and a.citations == [] and a.model_version == "v1"
     assert "".join(pieces) == a.text and len(rt.calls) == 1
     assert "You are Atlas, a warm" in rt.calls[0][1][0].content
 

@@ -202,6 +202,9 @@ function listenError(code: string): string {
  *
  *   useEffect(() => setScreenIntent("/dayrun/", handler), [handler]);   // returns the function that clears it
  *   const said = await screenIntent(pathname, text);                    // null: not for this screen
+ *
+ * Whatever takes words from anywhere in the app (the command palette today) offers them to the screen it is on
+ * first: `hasScreenIntent(pathname)` is the check that costs nothing, so on every other screen nothing changes.
  */
 export type ScreenIntent = (text: string) => Promise<string | null>;
 
@@ -218,6 +221,14 @@ export function setScreenIntent(route: string, handler: ScreenIntent): () => voi
     if (screenIntents.get(key) === handler) screenIntents.delete(key);
   };
 }
+
+/** True while the screen at `route` takes commands of its own. */
+export function hasScreenIntent(route: string | null | undefined): boolean {
+  return Boolean(route) && screenIntents.has(routeKey(route as string));
+}
+
+/** Words that ask something rather than change something: these are never taken as a screen's command. */
+export const ASKS = /\?\s*$|^\s*(what|where|when|who|whose|why|how|which|is|are|was|were|did|do|does|has|have|should|show|tell)\b/i;
 
 export async function screenIntent(route: string | null | undefined, text: string): Promise<string | null> {
   const handler = route ? screenIntents.get(routeKey(route)) : undefined;

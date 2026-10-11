@@ -53,6 +53,23 @@ export interface Episode {
   keyframe_refs: string[];
 }
 
+/** GET /api/digest -> contexts.agent.application.digest.DailyDigest (A6) */
+export interface DailyDigest {
+  day: string;
+  start: string;
+  end: string;
+  text: string;
+  episodes: number;
+  cameras: Record<string, number>;
+  seen_most: [string, number][];
+  people_episodes: number;
+  first: string | null;
+  last: string | null;
+  busiest_hour: string | null;
+  moments: { hour: string; episodes: number; text: string; citation: Citation }[];
+  citations: Citation[];
+}
+
 /** contracts.memory.MemoryStats */
 export interface MemoryStats {
   hours_recorded: number;
@@ -1161,6 +1178,9 @@ export interface Fix {
   moves: Move[] | null;
   changed: number | null;
   mends: boolean;
+  /** No edit of its own until another problem of the list is mended: that problem's id, and the line to show in place of a button. */
+  after?: string | null;
+  hint?: string | null;
 }
 
 /** POST /api/dayrun/explain: what needs fixing, and one true sentence per number a person might question. */
@@ -1183,6 +1203,8 @@ export interface EditResult {
   changed: number | null;
   options: { label: string; moves: Move[]; changed: number | null }[];
   warning: string | null;
+  /** Nothing in the words could be read: things that can be said about this plan (and then no `options`). */
+  examples?: string[];
 }
 
 /** One day of the date strip (GET /api/dayrun/days). The last six fields are only on days still ahead. */
@@ -1831,6 +1853,46 @@ const get = <T,>(path: string, params?: Params, signal?: AbortSignal) => request
 const post = <T,>(path: string, body: unknown, signal?: AbortSignal) => request<T>("POST", path, body, signal);
 const put = <T,>(path: string, body: unknown, signal?: AbortSignal) => request<T>("PUT", path, body, signal);
 
+/** GET /api/files -> contexts.workspace.domain.files.FileRecord (W1) */
+export interface InboxFile {
+  file_id: string;
+  name: string;
+  content_type: string;
+  size: number;
+  sha256: string;
+  added_at: string;
+  text_chars: number;
+  extractor: string | null;
+  excerpt: string;
+}
+
+/** POST /api/files: the file as the raw body (no multipart), its name in the query. */
+export async function uploadFile(file: File): Promise<InboxFile & { duplicate: boolean }> {
+  const headers: Record<string, string> = { "Content-Type": file.type || "application/octet-stream" };
+  const token = getToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  let res: Response;
+  try {
+    res = await fetch(HTTP_BASE + withQuery("/api/files", { name: file.name }), { method: "POST", headers, body: file });
+  } catch {
+    throw new ApiError(0, "Can't reach the Atlas box. Check that you are on the same network.");
+  }
+  if (!res.ok) {
+    let detail = res.statusText || `HTTP ${res.status}`;
+    try {
+      const data = (await res.json()) as { detail?: unknown };
+      if (typeof data.detail === "string") detail = data.detail;
+    } catch {
+      /* not JSON */
+    }
+    throw new ApiError(res.status, detail);
+  }
+  return (await res.json()) as InboxFile & { duplicate: boolean };
+}
+
+/** Where the phone downloads an inbox file, decrypted by the box. */
+export const fileUrl = (fileId: string) => `${HTTP_BASE}/api/files/${encodeURIComponent(fileId)}`;
+
 /** URL of the JPEG behind a frame ref. 404s when the box has no image for it (demo fixtures have none). */
 export interface CameraStatus {
   status: "ok" | "degraded" | "down";
@@ -1907,7 +1969,9 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   episodes: (opts: { from?: string; to?: string; camera?: string; label?: string } = {}, signal?: AbortSignal) =>
     get<Episode[]>("/memory/episodes", opts, signal),
   stats: (signal?: AbortSignal) => get<MemoryStats>("/memory/stats", undefined, signal),
+  digest: (day?: string, signal?: AbortSignal) => get<DailyDigest>("/api/digest", day ? { day } : undefined, signal),
   search: (q: string, limit = 20, signal?: AbortSignal) => get<SearchHit[]>("/memory/search", { q, limit }, signal),
+  files: (signal?: AbortSignal) => get<InboxFile[]>("/api/files", undefined, signal),
   items: (opts: { from?: string; to?: string; kind?: string } = {}, signal?: AbortSignal) =>
     get<Item[]>("/memory/items", opts, signal),
 

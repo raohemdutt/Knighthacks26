@@ -20,6 +20,11 @@ from contracts.learning import ModelDeployed
 class DeployedBody(BaseModel):
     model_version: str
     previous_version: str | None = None
+    base: str | None = None  # the rest is sent by `python -m lab deploy` (L6), which pulled the package
+    task: str | None = None
+    package_mb: float | None = None
+    pulled_seconds: float | None = None
+    checksums_ok: bool | None = None
 
 
 def learning_router(board: LearningBoard, publish: Callable[[ModelDeployed], Awaitable[None]] | None = None,
@@ -36,7 +41,7 @@ def learning_router(board: LearningBoard, publish: Callable[[ModelDeployed], Awa
         async def deployed(body: DeployedBody) -> dict:
             """The box switched models (jetson/atlas_swap.py calls this after a swap that answered its test question):
             publishes `learning.model.deployed`, which the Teach screen shows."""
-            await publish(ModelDeployed(model_version=body.model_version, previous_version=body.previous_version))
+            await publish(ModelDeployed(**body.model_dump()))
             return {"ok": True}
 
     return router

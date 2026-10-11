@@ -20,6 +20,7 @@ REGISTRY_BEFORE_DISCOVERY = {
     "chipsheet": "lab.kernels.chipsheet.ingest:main",
     "correctness": "lab.correctness:main",
     "credits": "lab.credits:main",
+    "deploy": "lab.deploy:main",
     "desk-score": "lab.desk_score:main",
     "digest": "lab.machine.digest:main",
     "draft": "lab.machine.draft:main",
