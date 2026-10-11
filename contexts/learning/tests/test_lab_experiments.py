@@ -62,10 +62,13 @@ def test_refinement_passes_and_benchmark_sessions_come_from_the_committed_record
     for c in passes:
         assert c["status"] in ("open", "converged") and c["day_only"] and c["source"]["ref"].startswith("lab/refine/")
         assert f"{c['ts']}\"" in c["source"]["ref"] and [n["unit"] for n in c["numbers"]] == ["changes", "findings", "questions"]
-    # the R26 sweep on pod C, R57's A100 reference on Colab, then R20's baseline matrix on pod D
-    session, a100, baseline = session_cards(ROWS)
-    assert (baseline["id"], baseline["node"], baseline["status"]) == ("pod-b-2026-10-10", "pod-b", "measured")
-    assert baseline["source"]["ref"] == "lab/refine/metrics.jsonl:130-159" and [n["value"] for n in baseline["numbers"]] == [30, 30]
+    # the R26 sweep on pod C, R57's A100 reference on Colab, R20's matrix on pod D, then R60's sweep of the upgraded
+    # teacher on pod C
+    session, a100, pod_b, upgraded = session_cards(ROWS)
+    assert pod_b["id"] == "pod-b-2026-10-10" and pod_b["node"] == "pod-b" and [n["value"] for n in pod_b["numbers"]] == [30, 30]
+    assert upgraded["id"] == "bench-20261011T044643Z-6240" and upgraded["status"] == "measured" and upgraded["node"] == "pod-a"
+    assert upgraded["lever"] == "batch size 1, 4, 8, 16" and [n["value"] for n in upgraded["numbers"]] == [24, 24]
+    assert upgraded["source"]["ref"] == "lab/refine/metrics.jsonl:187-210"
     assert a100["node"] == "a100" and [n["value"] for n in a100["numbers"]] == [30, 30]
     assert session["id"] == "bench-20261010T215122Z-2c65" and session["status"] == "measured" and session["node"] == "pod-a"
     assert session["lever"] == "batch size 1, 4, 8, 16, 64" and [n["value"] for n in session["numbers"]] == [30, 30]
@@ -77,5 +80,5 @@ def test_the_endpoint_serves_the_timeline(tmp_path):
     app.include_router(lab_bench_router(state_dir=tmp_path))
     with TestClient(app) as client:
         body = client.get("/api/learning/lab/experiments").json()
-        assert body["experiments"]["total"] == 5 and body["passes"] >= 10 and body["sessions"] == 3
+        assert body["experiments"]["total"] == 5 and body["passes"] >= 10 and body["sessions"] == 4
         assert all(c["source"]["ref"] for c in body["cards"])

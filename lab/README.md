@@ -1344,6 +1344,64 @@ attach-mode numbers on pod C within 3 percent.
   (node pod-b), recomputed from the fixture in `tests/test_lab_pod_b_llamacpp.py`. The first session's rows had the
   checkpoint path rewritten by Git Bash on the box (`C:/Program Files/Git/home/...`); the fixture carries the pod path,
   and the harness calls now set `MSYS_NO_PATHCONV=1`.
+### The teacher on vLLM v0.31.0 with the RDNA hybrid W4A16 kernel (R60, pod C)
+
+Since 2026-10-11 04:41 UTC the pod C teacher runs from `~/venv-vllm-new`: vLLM `0.31.2.dev0+gdb9527a46.gfx1151` (tag
+v0.31.0 plus `lab/patches/vllm-main-gfx1151-platform.diff`), torch 2.12.0+rocm7.14.0 with AMD's ROCm 7.14 SDK inside
+the venv, Triton 3.7.1. `lab/vllm_upgrade.sh` builds it beside the serving build (`build`, `status`, `verify`) and
+swaps it in (`serve`); the April build in the image's python and `~/vllm` is untouched. Model, served names, flags and
+port are the ones of `lab/pod_a_teacher.sh serve`; only the interpreter differs (`~/r60/teacher_cmdline_after.txt`
+against `~/r58/teacher_cmdline_before.txt` on the pod). The serve log says `Using RDNAHybridW4A16LinearKernel for
+CompressedTensorsWNA16`, decoder attention `ROCM_ATTN`, vision encoder `TRITON_ATTN`, KV cache 596,570 tokens. The
+start took 467 s (weights 26 s, engine init 393 s of which 71 s compilation). A tools request returns structured
+`tool_calls` on the pod and through the hub proxy.
+
+The same sweep as R26's above, run the same way against the new server (`python -m lab bench attach --account C
+--node pod-a --batches 1,4,8,16 --no-64 --repeats 3 --no-probe --idle-s 30 --max-len 16384 --quantization
+compressed-tensors-W4A16-INT4 --metric-prefix teacher_batching --metrics-file lab/refine/metrics.jsonl`, session
+`bench-20261011T044643Z-6240`, 04:46 to 05:21 UTC, one warm-up round, medians of 3 repeats, low confidence like R26's).
+The stock lines are R26's rows (`lab/refine/metrics.jsonl:67-90`), the new ones `lab/refine/metrics.jsonl:161-184`:
+
+| Concurrent | Build | tok/s per stream (min to max) | tok/s total | TTFT s | avg / peak W | J/token gross |
+|---|---|---|---|---|---|---|
+| 1 | April, b1388b1 | 2.70 (2.69 to 2.70) | 2.62 | 1.18 | 96.0 / 97 | 36.66 |
+| 1 | v0.31.0, hybrid kernel | 12.33 (12.32 to 12.33) | 10.96 | 0.94 | 96.7 / 99 | 8.82 |
+| 4 | April, b1388b1 | 2.52 (2.52 to 2.55) | 9.32 | 4.87 | 96.0 / 97 | 10.31 |
+| 4 | v0.31.0, hybrid kernel | 9.27 (9.18 to 9.68) | 29.54 | 3.85 | 96.2 / 98 | 3.27 |
+| 8 | April, b1388b1 | 2.32 (2.32 to 2.32) | 16.36 | 7.78 | 96.0 / 97 | 5.87 |
+| 8 | v0.31.0, hybrid kernel | 5.88 (5.60 to 6.04) | 36.53 | 6.76 | 96.1 / 97 | 2.69 |
+| 16 | April, b1388b1 | 2.07 (2.02 to 2.13) | 26.95 | 14.95 | 96.0 / 97 | 3.56 |
+| 16 | v0.31.0, hybrid kernel | 4.24 (4.16 to 4.40) | 51.09 | 10.45 | 96.1 / 97 | 1.88 |
+
+- **Gain.** One stream decodes 4.6 times faster (12.33 against 2.70 tok/s) at the same 96 W, so a token costs 0.24 of
+  what it did (8.82 against 36.66 J). The gain shrinks as streams are added: 3.7 times per stream at 4, 2.5 at 8, 2.0 at
+  16, where the total is 51.1 tok/s against 26.9 and a token costs 1.88 J against 3.56. That is above R59's predicted 7
+  to 10 tok/s and level with llama.cpp on the same pod (R58's runs of the same night, not merged yet: 12.25 tok/s Vulkan, 12.0 ROCm at
+  batch 1).
+- **Power.** The median stays near 96 W at every batch size, as on the stock build; single repeats at 1, 4 and 8
+  averaged 99 to 110 W with peaks to 124 W, which is why those rows' spread is wide. Loaded idle read 9.9 W (30 s
+  before the sweep).
+- **Outputs.** `python -m lab correctness compare` against the April build's baseline
+  (`fixtures/lab/correctness/vllm-gfx1151-2026-10-11.json`) matches 1 prompt of 4 token for token
+  (`lab/refine/metrics.jsonl:160`): the kitchen text matches; the schedule text diverges at token 106 by a logprob gap
+  of 0.06, the token where the April build diverged from itself; the two image prompts diverge at tokens 0 and 3, the
+  places where stock v0.31.0 on the A100 does (R57). Against the A100's v0.31.0 record
+  (`fixtures/lab/bench/a100-2026-10-10/vllm-a100-2026-10-10.json`) it matches 2 of 4 (the kitchen text and the bars
+  image; the schedule text at token 76, the shapes image at 67). So 0.25 against the old build, below its 0.5
+  self-match, and 0.5 against the same vLLM version on another chip: the image prompts changed with the vLLM version,
+  not with the kernel. Both full results are in `fixtures/lab/correctness/r60-2026-10-11/`.
+- **What the swap needed.** The image exports `LD_LIBRARY_PATH=/opt/rocm/lib` (ROCm 7.13). vLLM preloads from it before
+  it imports torch, and torch's own preload of the venv's 7.14 SDK then dies on `libamd_comgr.so.3` (`undefined symbol
+  ... version LLVM_23.0`): the first start ended at import after 5 s. `verify` had passed because it imported torch
+  first. `serve` and `verify` now drop that variable (`serve_env`) and `verify` imports vllm first. The `num_stages`
+  guard (`lab/patches/vllm-main-gfx1151-num-stages.diff`, `lds`) was not needed: no `OutOfResources` at start or under
+  16 streams. The log's `Failed to import Triton kernels ... is_hip_gfx1250` lines are the MXFP4 kernels this model
+  does not use.
+- **Back to the April build.** On pod C: `bash ~/r60/pod_a_teacher.sh stop`, then `bash ~/r60/vllm_upgrade.sh restore`
+  (about 5 minutes); `bash ~/r60/vllm_upgrade.sh serve` returns to this build (about 8 minutes). The serve pid is in
+  `~/serve/vllm-new.pid`, the log in `~/serve/vllm-new.log`.
+- **Attach.** The harness cannot read the engine through the proxy, so engine commit, torch, ROCm, Triton, the linear
+  kernel and the KV cache in these rows were read on the pod after the sweep and are marked `told`.
 
 ## Request-side settings sweep: `lab/sweep_request.py` (R52)
 
@@ -1420,13 +1478,14 @@ python -m lab.energy_model check <lab/bench.py rows.jsonl | sweep-request-gfx115
   `joules_per_token.b1`, gross, with `decode_tok_s.b1 >= 2.88` and `ttft_s.b1 <= 2.0` as outcome constraints.
 
 The before-and-after number of the night. Gross J/token from `lab/bench.py` (socket energy over the decode window
-over the tokens in it), medians of the runs named. The "after" row is filled from the best measured configuration on
-the rebuilt teacher (R53 / R60) once it is benchmarked; until then it is pending, not estimated.
+over the tokens in it), medians of the runs named. The "after" row is R60's sweep of the teacher rebuilt on vLLM v0.31.0 with the
+RDNA hybrid W4A16 kernel (the stock serve line, no tuned arm yet), at batch 1 like the before row; its other batch
+sizes are in the R60 table above.
 
 | | Build | Configuration | Batch | tok/s per stream | tok/s total | Avg W | J/token gross | J/token above idle | Conditions |
 |---|---|---|---|---|---|---|---|---|---|
 | Before | April build: vLLM 0.19.2 at b1388b1 plus `lab/vllm-gfx1201.diff`, Conch W4A16, `RedHatAI/Qwen3.8-27B-INT4` | stock serve line, thinking off, greedy | 1 | 2.70 | 2.62 | 96.0 | 36.66 | 32.67 | R26 attach sweep, pod C (SJC, account C), bench-v1, 4 x 128 tokens a stream, 3 repeats, idle 10.44 W, PR #269 (081c496) |
-| After | rebuilt teacher (R53 / R60) | best measured arm | pending | pending | pending | pending | pending | pending | pending: run, pod, prompt set, repeats, idle, commit |
+| After | v0.31.0 build: vLLM 0.31.2.dev0 at db9527a46 plus `lab/patches/vllm-main-gfx1151-platform.diff`, torch 2.12.0+rocm7.14.0, `RDNAHybridW4A16LinearKernel`, the same checkpoint | stock serve line, thinking off, greedy | 1 | 12.33 | 10.96 | 96.7 | 8.82 | 7.91 | R60 attach sweep, pod C (SJC, account C), bench-v1, 4 x 128 tokens a stream, 3 repeats, idle 9.93 W, session `bench-20261011T044643Z-6240` (`lab/refine/metrics.jsonl:161-166`) |
 
 For reference, the April build's own batch-1 smoke on pod C read 2.88 tok/s at 120 W, about 41.7 J/token
 (teacher section above); the R26 row is the before number because it ran through the same harness the after row will.
