@@ -419,8 +419,7 @@ def test_r63_rows_match_their_result_file():
 
 def test_seed_file_has_exactly_the_expected_rows_in_schema_order():
     rows = metrics.load()
-    assert len(rows) == len(EXPECTED_SEED) + len(_r62_rows())
-    assert len(rows) == len(EXPECTED_SEED) + len(_r63_rows())
+    assert len(rows) == len(EXPECTED_SEED) + len(_r62_rows()) + len(_r63_rows())
     for row in rows:
         assert list(row) == list(metrics.FIELDS)
 
