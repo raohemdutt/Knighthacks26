@@ -707,3 +707,230 @@ from `day.narrated` moment `suggest` (`ref` is the event's id; a suggestion said
 - A no said while the yes card is still open is recorded, and the card stays open: approving it afterwards still
   adds the event (the approval is the later decision).
 - The spoken yes and no were checked as code and by phrase list, not by ear.
+
+---
+
+## (i) Items 5 and 6: the demo scene, and the report section (f) asks for
+
+Written when items 1 to 5 were on the branch. Items 1 and 4 (the arbiter, block-start reminders) were built in
+another session on this branch; what is said about them here is read from their code and tests and seen in the
+runs below, not built in this one. Section (h) holds the API shapes and the differences from the design; this
+section does not repeat them. Where section (h) says items 5 and 6 are not started, this section is the later
+word: both are done with it.
+
+### 1. Branch, commits, test totals
+
+Branch `ctx/day/reminders-and-optional`, draft PR 311. Not rebased on `main` and `main` not merged in; it merges
+cleanly with `main` as of `a6390c4` (a trial merge that was not pushed: the day, demo, gateway, walkthrough and
+privacy tests passed on it, 577 passed and 1 skipped, `tsc` was clean and `check-guide.mjs` passed 392 checks).
+Commits since the hand-over (`a6aa65d`), oldest first:
+
+| Commit | What |
+| --- | --- |
+| `a17a1ad`, `ca81b54`, `6b90fee` | Item 1: the arbiter for everything said unasked, its rules and tests |
+| `5c92e66`, `3590d72` | Item 4: block-start reminders through the arbiter, one push per moment, tests |
+| `cd40673`, `3ddc580` | Web: one speaker, the two new moments; the box's speaker can say the unasked lines |
+| `01e9ef9`, `5d4ee10`, `a169d80` | Item 2: the read model, the API, the yes behind the approval, the leaving checklist, privacy tests |
+| `6698605`, `010bc2e`, `0826f5f` | Item 3: the suggestion tick through the arbiter, the web card, the spoken yes and no |
+| `c6f6c49` | Section (h) of this document |
+| `b273fed` to `db2d345` (eight checkpoints) and the commit that adds this section | Item 5: the scene, its tests, the walkthrough steps, the run sheet |
+
+Totals:
+
+- Full suite on Windows with the deselections of section (e), on `5614376`:
+  `6 failed, 6568 passed, 36 skipped, 87 deselected, 1 warning in 682.54s (0:11:22)`. None of the six is in this
+  work: the two file-mode tests in `contexts/circle/tests/test_face_share*.py` and the file-lock test in
+  `contexts/memory/tests/test_read_side.py` fail the same way on a clean clone of `main` on that machine;
+  `contexts/connectors/tests/test_health.py` fails between midnight and 7:26 AM on this branch's base and is
+  fixed on `main` (PR 325); one test each in `contexts/perception/tests/test_face_profile.py` and
+  `contexts/telemetry/tests/test_jetson_cpu.py` depends on timing and passed twice when run alone.
+- After that run two commits followed: `26fe9d4` moved one row of the run sheet, and `db2d345` moved the
+  optional event's calendar entry from `card_events` into `DayPlanner.card`, because `main` has since changed
+  `card_events` and the two changes could not be merged. On `db2d345` the day, demo, gateway, play and agent
+  contexts with the contract samples, the walkthrough's tests and the two privacy files:
+  `1057 passed, 1 skipped, 1 deselected, 1 warning in 126.02s (0:02:06)`.
+- CI on the pull request (Linux, the branch merged with `main`) for `db2d345`:
+  `77 failed, 7372 passed, 38 skipped, 4 warnings, 11 errors in 315.03s (0:05:15)`. All 88 are in five lab test
+  files (`tests/test_lab_metrics.py`, `tests/test_lab_routing_closed_loop.py`, `tests/test_lab_metrics_backfill.py`,
+  `contexts/learning/tests/test_lab_bench.py`, `contexts/learning/tests/test_lab_experiments.py`) and `main` itself
+  fails with the same 77 and 11 (`a6390c4`: `77 failed, 7249 passed, 38 skipped, 4 warnings, 11 errors`). The last
+  green CI run of this branch was on `a169d80`, before `main` turned red: 7058 passed, 39 skipped.
+- `python -m contexts.agent.eval`: `score 1.00 (48/48) model=fake-0`.
+- `web/`: `npx tsc --noEmit` exit 0; `npm run build` exit 0; `node scripts/check-guide.mjs`: 223 checks passed;
+  `node scripts/check-api.mjs` against a gateway on the scene's directory: all checks passed.
+- `scripts/demo_walkthrough.py --approve-local` against a gateway on the seeded night (`seed --now`, today's plan
+  made first): 100 PASS, 1 FAIL, 20 SKIP (121 steps). The FAIL is the run sheet's known defect 1 ("What happened
+  while I was out?"). Against a gateway on the scene's directory, `--only day,coach`: 16 PASS, 0 FAIL, 5 SKIP.
+
+### 2. The demo scene (item 5)
+
+```
+python -m contexts.demo optional --data-dir <an empty directory> [--day YYYY-MM-DD]
+```
+
+It publishes one invented day through the real app (`contexts/demo/optional.py`; every value is invented and the
+output says so) and prints each line. Its lines for `--day 2026-10-12`, the same on every run and for every
+directory (the command that runs the app on the directory goes to stderr, because it names the directory):
+
+```
+An invented Monday (2026-10-12), through the real app. Nothing here happened to anybody.
+
+   8:05 AM  Atlas  Morning. Today looks like this: breakfast first, then a long study block before COP4533 lecture at twenty to eleven. Leave by half past ten for that; it's an eight-minute walk. Project Milestone 1 is due tomorrow, and this plan covers the five hours it still needs. Want me to keep this as today's plan?
+   8:06 AM  You    Approve (demo, approved locally: no calendar connector on this box, nothing is written)
+   1:01 PM  Atlas  It's one o'clock: your study block on Project Milestone 1, ninety minutes. You're at the desk already.
+   4:00 PM  Atlas  Riley, Sam and Alex are having dinner at '63 South at quarter past five. It's a sixteen-minute walk and it fits before your study block. Want me to add it?
+   4:02 PM  You    Add it (yes to Friends' dinner)
+   4:02 PM  Plan   would change: Eat at Kitchen at 6:30 PM (dropped)
+   4:02 PM  Plan   would change: Study at Desk at 7:01 PM (dropped)
+   4:02 PM  Plan   would change: Rest at Desk at 8:31 PM (dropped)
+   4:02 PM  Plan   would change: Study at Desk at 9:16 PM (dropped)
+   4:02 PM  Atlas  Okay, I've worked Friends' dinner in: first up is Friends' dinner at quarter past five. Leave by five to five for that; it's a sixteen-minute walk. Want me to switch to that?
+   4:03 PM  You    Approve (demo, approved locally: no calendar connector on this box, nothing is written)
+   4:03 PM  Plan   Friends' dinner, 5:15 PM to 6:15 PM at '63 South, is a block of the day
+   4:50 PM  Atlas  Time to go. Friends' dinner starts at quarter past five at '63 South, a sixteen-minute walk from here; leave in five minutes.
+
+Suggested once, added only after its card was approved, and told when to leave. Every line Atlas says above is the app's own.
+```
+
+Against the acceptance lines of item 5:
+
+- Two runs into two empty directories print the same lines: `contexts/demo/tests/test_optional_demo.py`
+  (`test_two_runs_into_two_empty_directories_print_the_same_lines`), and by hand.
+- `contexts/demo/tests` for the seed and `nearby` are green and unchanged. No existing expectation was updated.
+- A gateway started on the scene's directory shows the block in `GET /api/day/plan` (`fixed: true`,
+  `origin: "optional"`, committed): the same test file, and by hand on a test gateway, where `/api/day/now` also
+  had it as the next event with a 16 minute walk and leave-by 4:59 PM, and `/api/day/brief` had `latest.suggest`
+  and `latest.start`.
+- The seeded story is untouched: nothing in `contexts/demo/seed.py`, `story.py`, `nearby.py` or the fixtures
+  changed, and the seeded plan, next event and leave-by are what the unchanged seed tests assert.
+- The golden eval is 48/48.
+
+Where the scene differs from the sketch in section (c) item 5, and why:
+
+- The sync is at 7:55 AM, before wake, and the plan is made at 8:05 AM when someone sits down. A sync at 8:05 AM
+  makes the plan on the first item that arrives, before the assignment and the dinner are in Memory.
+- The morning plan's card is approved too (locally, like the yes's card), and the scene watches the afternoon's
+  study block start. After the yes is approved the next block of the day is the dinner itself, which is announced
+  by its leave-now line, and the re-plan puts no chosen block before it: without the approved morning plan the
+  day would have no block-start line at all.
+- The yes is at 4:02 PM and the approval at 4:03 PM, not 4:01 and 4:02. A yes inside the arbiter's ninety seconds
+  after the suggestion makes the spoken "Okay, I've worked it in" wait for the gap (see "found" below).
+- The scene ends at the time to leave. The box's cameras are at home: past the leave-by the tracker can only see
+  that nobody left, and says the event will be missed.
+
+The run sheet has the flow as use case 3a (`docs/demo-run-sheet.md`), and `scripts/demo_walkthrough.py` reads the
+optional events in every mode and, only with `--approve-local`, says yes to one and puts its card through the
+existing guard (approved only when it stays on the box, else denied). It never says no.
+
+### 3. The event contract additions (all additive)
+
+- `PlanMove.origin` ("optional" for an accepted optional event); `DayReplanProposed.for_optional`.
+- `Moment` gains `suggest` and `start`.
+- `day.optional.answered` (`DayOptionalAnswered`: `day`, `id`, `answer`, `at`, `plan_id`, `action_id`, `until`),
+  box-only.
+- `DayNarrated.spoken_by` ("box" when the box's own speaker says the line) and `DayNarrated.merged_into` (said
+  inside that narration: shown, never said or pushed again).
+
+### 4. The rules, with defaults and config keys (`config/agent.yaml`, block `day:`)
+
+- Everything said unasked goes through one arbiter (`contexts/day/domain/arbiter.py`). Order, highest first:
+  leave now and late, approval asks and plans, check-in, block start, suggestion, coach note, evening review,
+  habit nudges; room alerts are their own urgent class. At least `speak_gap_s` (90) seconds between two unasked
+  lines, which urgent lines break. Two lines due in the same tick are said as one sentence when the second is a
+  block start or a suggestion. A held line older than `speak_stale_s` (120) seconds is dropped, except plans,
+  cards, check-ins and reviews. Nothing but urgent lines outside the wake and bedtime window. `speaker: box`
+  makes the box's own speaker say the lines and the phone stay silent.
+- Block-start reminders (`contexts/day/domain/reminders.py`, `block_reminders: true`): the chosen blocks of an
+  approved plan, and accepted optional events; said at the block's start, or at start minus the walk when the walk
+  is 3 minutes or more, within 5 minutes; nothing when carrying on with the same thing at the same place; short
+  blocks back to back are one line; 10 minutes between two reminders; never while a fixed block runs; an accepted
+  optional event with a walk gets its leave-now line instead; once per block and start time, also after a restart.
+- The suggestion (`contexts/day/domain/optional.py`): `suggest_optional: true`, `suggest_from_min: 90`,
+  `suggest_until_min: 30`, `suggest_cooldown_min: 45`; the full list is in section (h).
+
+### 5. Example lines
+
+- A suggestion: "Riley, Sam and Alex are having dinner at '63 South at quarter past five. It's a sixteen-minute
+  walk and it fits before your study block. Want me to add it?"
+- A suggestion that nearly fits: "Andria is hosting COP4533 review session at John C. Hitt Library at half past
+  six, with Maya and Priya. It's a thirteen-minute walk, and dinner would have to move to make room. Want me to
+  add it?"
+- A yes: "Okay, I've worked Friends' dinner in: first up is Friends' dinner at quarter past five. Leave by five to
+  five for that; it's a sixteen-minute walk. Want me to switch to that?" A later no to it: "Okay, Friends' dinner
+  is out: ..."
+- A block start without a walk: "It's one o'clock: your study block on Project Milestone 1, ninety minutes.
+  You're at the desk already."
+- A block start with a walk: "Time for lunch at Student Union; it's a seven-minute walk."
+- Short blocks as one: "It's two o'clock: three short study blocks from here, through to quarter to four. You're
+  at John C. Hitt Library already."
+- A block start and a suggestion due together: "Time for lunch at Student Union; it's a seven-minute walk; and
+  Riley's dinner is at '63 South at quarter past five if you want it."
+- The time to leave for an accepted event: "Time to go. Friends' dinner starts at quarter past five at '63 South,
+  a sixteen-minute walk from here; leave in five minutes."
+- The push of a suggestion (no names): "Atlas has a suggestion near you: Friends' dinner: 5:15 PM to 6:15 PM at
+  '63 South. 16 min walk, leave by 4:59 PM. Fits before your study block at 7:01 PM. Open Atlas to add it."
+
+### 6. Who sees an accepted optional event
+
+As in section (h): the plan and everything read from it (`/api/day/plan`, `/api/day/now`, the tracker, the
+narrator, block reminders, the review, the Day Run board) and the agent's leaving checklist. The Circle's
+free/busy and Habits' "leave ready" only after a calendar connector wrote the card's event and synced it back.
+
+### 7. What the seeded demo shows
+
+The seeded night (`seed`, `seed --now`, `circle`) is as it was: at its scripted end no optional event is inside
+its suggestion window, no plan in it is approved, so it shows no suggestion and no block-start line. With the app
+running on it, `GET /api/day/optional` lists the seven Near you events with their fit, and a yes to one works once
+there is a plan for today (the walkthrough did this with Board game night). The suggestion, the yes behind its
+card and the reminders are shown by the new scene (part 2).
+
+### 8. Existing lines changed in files this feature does not own
+
+- `contexts/agent/application/planner.py`: one attribute in `Planner.__init__` (`self.accepted_optional`), and the
+  `nearby:` guard in `Planner.leaving` lets accepted ids through.
+- `contexts/gateway/bootstrap.py`: one line that sets `planner.accepted_optional`.
+- `contracts/day.py`: `DayOptionalAnswered.until`.
+- `contexts/demo/__main__.py`: the import line `from datetime import UTC, datetime` became
+  `from datetime import UTC, date, datetime`; the rest (the help text, the `optional` command) is added.
+- `scripts/demo_walkthrough.py`, `tests/test_demo_walkthrough.py`, `docs/demo-run-sheet.md`,
+  `web/scripts/check-api.mjs`, `contexts/circle/tests/test_health_privacy.py`,
+  `contexts/learning/tests/test_export.py`: additions only.
+- `web/lib/atlas.tsx`: the provider's return now also renders `<OptionalSuggestion />` (one line became a block),
+  plus one import.
+- `web/lib/voice.tsx`: the `speechText` import line lists two more names; in `listen` a spoken answer to a
+  suggestion is looked for before the `if (active.discard)` branch; the `say(...)` call for a spoken event gained
+  an `onDone`; `say()` closes the answer window. `web/lib/api.ts` and `web/lib/speechText.ts`: additions only.
+- In the day context itself: `plan_moves` sets `origin`, `DayPlanner.card` and `DayPlanner.replan` gained
+  optional arguments (callers unchanged; `card_events` is as it was), and the `_suggest` template's screen line
+  lost " with <names>".
+- One expectation changed: the display string of a suggestion in `contexts/day/tests/test_optional.py`, because
+  the screen line no longer names who is going (section h). No hook, deep link or label was removed.
+- Not touched: `web/app/now/`, `web/app/dayrun/`, `web/components/dayrun/`, `contexts/voice`,
+  `web/components/operator/`, `web/components/Shell.tsx`, the design tokens, `lab/`, `runtime/`, `contexts/play`,
+  the Circle protocol.
+
+### 9. The note for Xander
+
+Section (g) stands, with the settled shapes in section (h). Two things to know beyond it: with no plan for today
+`fit` is worked out against an empty plan (it reads "yes") and `plan_id` is null, and a yes then answers 409;
+`suggest_held` says in words why Atlas is not bringing an event up. The app-wide card
+(`web/components/day/OptionalSuggestion.tsx`) shows only an event Atlas itself suggested, so it does not replace
+yes and no on the Calendar's own list.
+
+### 10. Not done, not verified, and found on the way
+
+- Nothing was heard: the spoken lines, the spoken yes and no and the 30-second window were checked as code and
+  by phrase list. Nothing was run on the Jetson.
+- Four decisions wait for a confirmation from the author of this document: the 200 with `proposed: false` for a
+  yes more than a day ahead, the port taken from the first yes on, the `until` field, and the screen line without
+  names.
+- Found, in the arbiter, not changed here: when a yes comes less than ninety seconds after the suggestion, the
+  re-plan's line is held for the gap, and the card's own ask ("I'd like to make these eight blocks today's plan.
+  Okay?") is then said two minutes later, also when the card was approved in between. `Arbiter.tick` does not
+  treat a held ask as part of its plan's narration (only `offer` does), and an ask is not dropped when its card
+  closes.
+- Found, in the block reminders, not changed here: the walk is counted from where the cameras last saw the
+  person, however long ago. When that lead time puts the reminder of the block after a fixed event inside the
+  event, it is lost, because nothing is said while a fixed block runs (on the scene's day: the study block at
+  6:20 PM, straight after the dinner).
+- The limits listed at the end of section (h) stand.
