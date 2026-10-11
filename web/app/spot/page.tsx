@@ -303,7 +303,7 @@ export default function SpotPage() {
             <div className={o.onlyNarrow}>
               <WatchOut items={d.watch} onWhy={why} />
             </div>
-            <LooksFine shift={d} onAll={() => goSpotView("equipment")} />
+            <LooksFine shift={d} onAll={() => goSpotView("equipment")} onPick={setAsset} />
           </div>
 
           </div>
