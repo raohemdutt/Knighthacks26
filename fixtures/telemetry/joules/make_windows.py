@@ -1,6 +1,6 @@
 """Writes the joules-per-answer replay fixtures of this folder: power samples, request windows, a clock offset.
 
-    python fixtures/telemetry/joules/make_windows.py      # rewrites overlap_pod_a.jsonl and conditions.jsonl
+    python fixtures/telemetry/joules/make_windows.py      # rewrites the three .jsonl files here
 
 Synthetic, not measured: plausible shapes for the nodes, scripted so the output is the same on every run.
 contexts/telemetry/tests/test_joules.py checks that the committed files are exactly what this writes.
@@ -15,6 +15,10 @@ each alone on its node: on the Jetson a window across a power-mode change (jetso
 counter rise (jetson-oc) and one in steady MAXN_SUPER (jetson-clean); on pod-b, whose window clock is its own, one
 with a throttled sample (pod-throttled) and one overlapping a training step (pod-train); on the Jetson one of four
 seconds (jetson-short, fewer than 10 samples).
+
+idle_sources.jsonl: pod-a and pod-b each answer twice, the second request starting 4.5 s after the first ended, so
+the latest quiet reading before it is on the pod's power tail (13 W, deep idle is 10.3 W); the idle-source tests give
+pod-a a calibrated idle and pod-b none.
 """
 
 from __future__ import annotations
@@ -98,6 +102,27 @@ def conditions() -> list[dict]:
     return sorted(events, key=lambda e: e["ts"])
 
 
+def idle_sources() -> list[dict]:
+    """Two nodes that each answer twice, the second request starting 4.5 s after the first one ended, while the pod
+    is still on its power tail (57, 28, 17, 13 W after the 110 W): the latest quiet reading before the second
+    request is the tail's 13 W, not the 10.3 W deep idle. pod-a is the node the test gives a calibrated idle (the
+    calibrated path); pod-b has none (the fallback)."""
+    events = []
+    for node in ("pod-a", "pod-b"):
+        for n in range(0, 300):  # 1 Hz on the pod's own clock (no offset)
+            tail = {33: 57.0, 34: 28.0, 35: 17.0, 36: 13.0}
+            if 20 <= n <= 32 or 37 <= n <= 49:
+                watts = 110.0
+            elif n in tail:
+                watts = tail[n]
+            else:
+                watts = 10.0 + (n % 3) * 0.3
+            events.append(pod_sample(n, float(n), watts, node=node, ahead=0.0))
+        events.append(request(f"{node}-first", node, 20.0, 32.0, 60, None))
+        events.append(request(f"{node}-second", node, 36.5, 48.5, 60, None))
+    return sorted(events, key=lambda e: e["ts"])
+
+
 def write(path: Path, events: list[dict]) -> None:
     path.write_text("".join(json.dumps(e, separators=(",", ":")) + "\n" for e in events), encoding="utf-8")
 
@@ -105,3 +130,4 @@ def write(path: Path, events: list[dict]) -> None:
 if __name__ == "__main__":
     write(HERE / "overlap_pod_a.jsonl", overlap_pod_a())
     write(HERE / "conditions.jsonl", conditions())
+    write(HERE / "idle_sources.jsonl", idle_sources())
