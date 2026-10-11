@@ -102,10 +102,10 @@ def test_after_a_restart_the_app_samples_again_and_rebuilds_the_projection_from_
     assert power["samples"] == len(after)  # the replayed samples and the new ones
 
 
-def test_the_sampler_settings_come_from_the_environment_with_100_ms_by_default():
+def test_the_sampler_settings_come_from_the_environment_with_350_ms_by_default():
     sampler = jetson_power_sampler({})
     assert (sampler.interval_ms, sampler.tegrastats.command, sampler.nvpmodel.command) == (
-        100, ["tegrastats"], ["/usr/sbin/nvpmodel"])
+        350, ["tegrastats"], ["/usr/sbin/nvpmodel"])
     sampler = jetson_power_sampler({"ATLAS_TELEMETRY_JETSON_INTERVAL_MS": "250",
                                     "ATLAS_TEGRASTATS": "/usr/bin/tegrastats --verbose",
                                     "ATLAS_NVPMODEL": "/opt/nvpmodel"})
