@@ -32,6 +32,16 @@ What is published, as source events through the app's own bus, so the rule that 
   sentence are the look memory's own, and the weekday it names is whatever day that really was. The demo owner
   (`m-demo`, made-up vectors marked as demo data: contexts/demo/people.py) is written to the identity store, so the
   People screen lists "Looks Atlas remembers".
+- and, for what Atlas LEARNS from its remembered looks (stage two, contexts/day/domain/look_model.py), nine more
+  early afternoons over the two weeks before (`THEN`), written the same way: ten remembered looks with a known
+  outcome in all. On six the owner got up for a few minutes (the look eased on five; on one, a four-minute break, it
+  was still there after: the counter-example), on four they stayed at the desk (still there each time). Every count
+  Atlas then says ("five of the last six times") is the look memory's own count of these; nothing about the model
+  is written by this file. Looks only, again: a drink seen picked up on one of those days would have to be a camera
+  event, and the first camera event of a day is where Habits starts counting it (the log is replayed day by day), so
+  the night's streaks would change. So this story has no "water alone": the box never saw a drink on those days,
+  and what Atlas says of them is "staying at the desk hasn't any of the four times". The tests of the look memory
+  itself cover a person a drink helps (contexts/day/tests/test_look_model.py).
 
 `--onto` adds the afternoon to a directory that already holds the demo night (`python -m contexts.demo circle`):
 its log is replayed, the earlier days are appended to it, and the afternoon is published live from after the
@@ -77,6 +87,24 @@ CALMER = {"neutral": 0.7, "happy": 0.2, "sad": 0.1}
 THEN_BACK, THEN_SAT = 3, time(12, 44)
 THEN_SIT_MIN = 120  # the look had held for the rule's twenty minutes two hours after sitting down
 THEN_UP_MIN, THEN_AWAY_MIN = 6, 10  # the last look before getting up came six minutes after that; then ten minutes away
+# Every earlier afternoon the look memory learns from, the callback's included: (days back, when the look had held
+# for the rule's twenty minutes, minutes at the desk by then, what the owner did, minutes away, whether the look
+# eased). Never a LIKE_THIS day, never yesterday (the night's), always early afternoon: clear of the people's week
+# of looks, and far enough from the story's own hour that the callback stays the most recent one, three days back.
+UP, STAYED = "up", "stayed"
+THEN = (
+    (14, time(13, 30), 114, UP, 12, True),
+    (13, time(13, 42), 102, STAYED, 0, False),
+    (12, time(13, 48), 126, UP, 8, True),
+    (11, time(13, 36), 96, STAYED, 0, False),
+    (10, time(13, 30), 105, UP, 4, False),  # the counter-example: four minutes away, and it was still there after
+    (9, time(13, 51), 111, UP, 15, True),
+    (8, time(13, 45), 90, STAYED, 0, False),
+    (7, time(13, 39), 108, STAYED, 0, False),
+    (5, time(13, 54), 93, UP, 7, True),
+    (THEN_BACK, time(14, 44), THEN_SIT_MIN, UP, THEN_AWAY_MIN, True),  # the one the check-in calls back to
+)
+STILL_MIN = 33  # staying put: the strained looks go on this long after the look held, past the half hour an outcome takes
 WINDOW_MIN = 3  # a window of looks
 ONTO_GUARD = timedelta(minutes=45)  # `--onto`: stay this clear of a fixed block of the night (the rule's own guard is 30, plus a walk)
 
@@ -172,17 +200,26 @@ def _looks(start: datetime, minutes: int, shares: dict[str, float], name: str) -
 
 
 def earlier(end: datetime) -> list[ExpressionObserved]:
-    """An earlier afternoon, THEN_BACK days before `end`, as the log of a box that had been running would hold the
-    owner's looks: calm from sitting down, strained for the twenty minutes up to the two-hour mark and six more, none
-    for ten minutes, calmer after. What the look memory makes of them is the look memory's."""
-    sat = datetime.combine(end.astimezone(LOCAL).date() - timedelta(days=THEN_BACK), THEN_SAT, LOCAL)
-    held = sat + timedelta(minutes=THEN_SIT_MIN)  # the rule's twenty minutes hold from here
-    strained = held - timedelta(minutes=18)  # ... because by then six of its seven windows are strained ones
-    up = held + timedelta(minutes=THEN_UP_MIN)
-    back = up + timedelta(minutes=THEN_AWAY_MIN)
-    return [*_looks(sat, int((strained - sat).total_seconds() // 60), CALMER, "then-looks"),
-            *_looks(strained, int((up - strained).total_seconds() // 60), STRAINED, "then-looks"),
-            *_looks(back, 18, CALMER, "then-looks")]
+    """The earlier afternoons (THEN), as the log of a box that had been running would hold the owner's looks: calm
+    from sitting down, strained for the twenty minutes up to the mark and after. Then, by what the owner did: up six
+    minutes later, no looks while away, and calmer ones after (or, once, strained ones still); or the strained looks
+    going on for half an hour and more. What the look memory remembers of them, and what it learns from them, is
+    the look memory's."""
+    day, out = end.astimezone(LOCAL).date(), []
+    for back_days, at, sit_min, did, away_min, eased in THEN:
+        held = datetime.combine(day - timedelta(days=back_days), at, LOCAL)  # the rule's twenty minutes hold from here
+        sat = held - timedelta(minutes=sit_min)
+        strained = held - timedelta(minutes=18)  # ... because by then six of its seven windows are strained ones
+        out += _looks(sat, sit_min - 18, CALMER, "then-looks")
+        if did == UP:
+            up = held + timedelta(minutes=THEN_UP_MIN)
+            back = up + timedelta(minutes=away_min)
+            out += _looks(strained, 18 + THEN_UP_MIN, STRAINED, "then-looks")
+            out += _looks(back, 18, CALMER, "then-looks") if eased else [*_looks(back, 21, STRAINED, "then-looks"),
+                                                                           *_looks(back + timedelta(minutes=21), 15, CALMER, "then-looks")]
+            continue
+        out += _looks(strained, 18 + STILL_MIN, STRAINED, "then-looks") + _looks(held + timedelta(minutes=STILL_MIN), 15, CALMER, "then-looks")
+    return sorted(out, key=lambda e: e.ts)
 
 
 def afternoon(end: datetime, zones: str | Path = ZONES) -> list[Event]:
@@ -288,10 +325,25 @@ async def show(data_dir: str | Path, end: datetime, config_dir: Path | None = No
                 lambda: app.day.tick(end)):
         await app.bus.publish_all(job())
         await settle()
-    # the habit nudge at `end` took the slot: the check-in's words follow on the tick after the arbiter's gap
-    await app.bus.publish_all(app.day.tick(end + timedelta(seconds=app.day.arbiter.rules.gap_s)))
-    await settle()
+    # the habit nudge at `end` took the slot: the check-in's words follow on the tick after the arbiter's gap. Onto a
+    # night whose own lines are due at the same minute (a re-plan, "you're behind") they wait one gap more, as on a box.
+    for gaps in range(1, 6):
+        if raised and any(n.ref == raised[-1].event_id for n in told):
+            break
+        await app.bus.publish_all(app.day.tick(end + gaps * timedelta(seconds=app.day.arbiter.rules.gap_s)))
+        await settle()
     return Shown(app=app, end=end, seconds=clocktime.perf_counter() - started, checkins=raised, told=told, published=len(events))
+
+
+def learned_lines(s: Shown, e: DayCheckinRaised) -> list[str]:
+    """What Atlas has learned from its remembered looks, as the command says it: the look memory's own words and counts."""
+    back, looks = e.callback, s.app.day.looks
+    if back is None or not back.evidence:
+        return ["  learned: not enough remembered looks with a known outcome yet, so the check-in is stage one's"]
+    found = looks.view(looks.clock_now(s.end), member_id=MEMBER)["learned"]
+    return [f"  learned: {back.learned}" + (f" {back.pattern}" if back.pattern else "") + f" ({back.evidence})",
+            *(f"    - {x['text']}" for x in found["findings"]),
+            f"  on the card only (never said, never pushed): {e.ahead}" if e.ahead else "  on the card only: nothing (not near the usual time)"]
 
 
 def summary(s: Shown) -> str:
@@ -309,8 +361,9 @@ def summary(s: Shown) -> str:
     lines += ["", f"Check-in raised at {e.at.astimezone(LOCAL):%H:%M} by the rule in contexts/day/domain/checkin.py:", "",
               f"  {said.spoken if said else e.text}", "",
               "  chips: " + " · ".join([x.summary for x in e.signals] + ([back.chip] if back else [])),
-              (f"  look memory: the earlier look was on {back.day:%A %Y-%m-%d}. " + " ".join(back.lines)) if back
+              (f"  look memory: the earlier look was on {back.day:%A %Y-%m-%d}. " + " ".join(back.lines)) if back and back.said
               else "  look memory: no earlier look was similar enough, so nothing is said about the past",
+              *learned_lines(s, e),
               "  suggestions: " + "; ".join(x.text for x in e.suggestions),
               f"  \"Move the block\" offered: {'yes' if e.proposes_replan else 'no (nothing to move to after a meal at this time of day)'}"]
     missing = {"sleep", "resting_hr", "expression", "sitting", "drink", "history"} - {x.kind for x in e.signals}
@@ -318,6 +371,7 @@ def summary(s: Shown) -> str:
         lines.append(f"  not in it at this time of day: {', '.join(sorted(missing))}")
     own = s.app.settings.data_dir / "config"  # the Circle demo's own config, when the afternoon was added onto that night
     config = f"ATLAS_CONFIG_DIR={own} " if s.app.settings.config_dir == own else ""
-    lines += ["", "Run the app on it, then open /now/ (the card, and its \"like <day>\" chip) and /people/ (\"Looks Atlas remembers\"):",
+    lines += ["", "Run the app on it, then open /now/ (the card, and its \"like <day>\" chip) and /people/ (\"Looks Atlas remembers\", and "
+              "\"What Atlas has learned about your looks\" under it):",
               f"  ATLAS_DATA_DIR={s.app.settings.data_dir} {config}ATLAS_MEMORY_FIXTURE= ATLAS_CONNECTORS=0 ATLAS_CAPTURE=0 python -m contexts.gateway"]
     return "\n".join(lines)
