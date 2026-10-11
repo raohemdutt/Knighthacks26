@@ -47,7 +47,7 @@ const WORK_STEP = 30;
 export function DueSoon({ board, explained, workLeft, onWorkLeft, readOnly }: { board: PlanBoard; explained: Explained | undefined; workLeft: Record<string, number>; onWorkLeft: (id: string, minutes: number) => void; readOnly: boolean }) {
   if (board.deadlines.length === 0) return null;
   return (
-    <section className={pl.pane} aria-label="Due soon">
+    <section className={pl.pane} aria-label="Due soon" data-guide="plan:due">
       <h2 className={pl.paneTitle}>Due soon</h2>
       <div className={pl.facts}>
         {board.deadlines.map((d) => {
@@ -98,7 +98,7 @@ export function PlanDetails({ result, explained, t, tomorrow, open }: { result: 
   const path = (pick: (k: SimResult["timeline"][number]) => number) => result.timeline.map((k, i) => `${i ? "L" : "M"}${x(k.t)} ${(100 - pick(k)).toFixed(1)}`).join("");
   const longest = [...result.routes].sort((a, b) => b.minutes - a.minutes)[0];
   return (
-    <details className={pl.fold} open={open}>
+    <details className={pl.fold} open={open} data-guide="plan:details">
       <summary>Details</summary>
       <div className={pl.foldBody}>
         {tomorrow ? <p className={pl.well}>Next time: {tomorrow}</p> : null}
@@ -158,7 +158,7 @@ export function NextDays({ days, selected, onSelect }: { days: StripDay[]; selec
   const ahead = days.filter((d) => d.when === "future");
   if (ahead.length === 0) return null;
   return (
-    <details className={pl.fold} open={ahead.some((d) => d.day === selected)}>
+    <details className={pl.fold} open={ahead.some((d) => d.day === selected)} data-guide="plan:ahead">
       <summary>The next few days</summary>
       <div className={pl.foldBody}>
         <div className={pl.ahead}>

@@ -57,7 +57,7 @@ export function TellAtlas({ ask, onApply }: { ask: (text: string) => Promise<Edi
 
   const canListen = voice.listenSupport?.ok === true;
   return (
-    <div className={pl.tell}>
+    <div className={pl.tell} data-guide="plan:tell">
       <form
         className={pl.tellRow}
         onSubmit={(e) => {

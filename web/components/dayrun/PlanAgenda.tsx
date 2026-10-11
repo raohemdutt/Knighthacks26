@@ -129,7 +129,7 @@ export function PlanAgenda({ board, result, moves, activity, past, readOnly = fa
       if (out) change(out.moves, out.index);
     };
     return (
-      <li key={r.key} className={pl.row} data-row={r.key}>
+      <li key={r.key} className={pl.row} data-row={r.key} data-guide={`plan:row:${b.id}`}>
         <div className={pl.rowTime}>
           <b>{t12(b.start)}</b>
           <span>{t12(b.end)}</span>

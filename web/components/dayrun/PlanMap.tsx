@@ -145,7 +145,7 @@ export function PlanMap({
 
   const label = `Map of today's plan: ${spots.length} places and ${result.routes.length} walks.${lit ? ` Showing the walk ${lit.route.purpose}.` : ""} Drag to move, pinch to zoom.`;
   return (
-    <div ref={wrap} className={`${cm.frame} ${pl.mapWell}`}>
+    <div ref={wrap} className={`${cm.frame} ${pl.mapWell}`} data-guide="plan:map">
       <svg {...controls.bind} className={pl.mapSvg} width={w} height={h} viewBox={`0 0 ${w} ${h}`} role="group" aria-label={label}>
         <CampusLayers map={map} view={view} width={w} height={h} highlight={{ on, closed: shut }} quiet={quiet} taken={taken} />
 

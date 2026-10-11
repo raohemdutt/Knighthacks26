@@ -32,7 +32,7 @@ export function DateStrip({ days, today, selected, onSelect }: { days: StripDay[
   const step = (dir: 1 | -1) => scroller.current?.scrollBy({ left: dir * 232, behavior: "smooth" });
 
   return (
-    <nav className={pl.dates} aria-label="Days">
+    <nav className={pl.dates} aria-label="Days" data-guide="plan:dates">
       <div className={pl.dateRow}>
         <button type="button" className={pl.dateNav} onClick={() => step(-1)} aria-label="Earlier days">
           ‹

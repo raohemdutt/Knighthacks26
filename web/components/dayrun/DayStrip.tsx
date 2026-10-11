@@ -34,7 +34,7 @@ export function DayStrip({ result, t, selected, onSeek }: { result: SimResult; t
   const at = t === null ? null : pct(t);
 
   return (
-    <section className={pl.strip} aria-label="The day at a glance">
+    <section className={pl.strip} aria-label="The day at a glance" data-guide="plan:strip">
       <svg className={pl.energy} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
         <path d={line} />
       </svg>

@@ -433,7 +433,7 @@ export default function TodaysPlanPage() {
       ) : (
         <div className={pl.split}>
           <div className={`${pl.pane} ${pl.left}`}>
-            <section className={`${pl.hero} ${alarm ? pl.heroFix : ""}`} aria-live="polite" aria-label="How this plan does">
+            <section className={`${pl.hero} ${alarm ? pl.heroFix : ""}`} aria-live="polite" aria-label="How this plan does" data-guide="plan:hero">
               <div className={pl.heroTop}>
                 <span className={pl.heroLabel}>{label}</span>
                 {starCount > 0 ? (
@@ -546,7 +546,7 @@ export default function TodaysPlanPage() {
           </div>
 
           <div className={pl.pane}>
-            <section className={pl.pane} aria-label="Your plan">
+            <section className={pl.pane} aria-label="Your plan" data-guide="plan:agenda">
               <h2 className={pl.paneTitle}>{past ? `${weekdayLong(day ?? "")}'s plan` : "Your plan"}</h2>
               {b.slots.length === 0 && shown.blocks.length === 0 ? (
                 <Empty title="Nothing to plan here">Your calendar fills this day, or the box has nothing for it yet.</Empty>
@@ -573,7 +573,7 @@ export default function TodaysPlanPage() {
             <DueSoon board={b} explained={explained} workLeft={workLeft} onWorkLeft={setWork} readOnly={past} />
 
             {past ? null : (
-              <section className={pl.action} aria-label="Keep this plan">
+              <section className={pl.action} aria-label="Keep this plan" data-guide="plan:keep">
                 {commit.done ? (
                   <>
                     <Link href="/approvals/" className={`${ui.btn} ${ui.btnPrimary} ${pl.primary}`}>
