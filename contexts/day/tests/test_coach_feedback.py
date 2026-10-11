@@ -8,12 +8,13 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from bus import EventBus
+from contexts.day.api import day_router
 from contexts.day.application.coach_feedback import TASK_PREFIX, TEACHABLE, CoachFeedback, coach_feedback_router
 from contexts.day.tests.test_coach import block, desk, plan_with, scene
 from contexts.day.tests.test_day import SUNDAY, FakeHabits, at, make, places  # noqa: F401
 from contexts.learning.application.board import LearningBoard
 from contexts.workspace.domain.approvals import Approvals
-from contracts.day import DayCoachCorrected
+from contracts.day import DayCoachCorrected, DayPlanCommitted
 from contracts.learning import ModelDeployed, RunEvaluated, RunProgress, TaskCreated, TaskSpec
 from contracts.memory import Episode
 
@@ -240,3 +241,43 @@ def test_when_the_model_for_that_task_is_deployed_the_coach_notes_it_once(places
     other = Box(places, tmp_path / "other").live()
     asyncio.run(other.bus.publish(TaskCreated(ts=NOW, task="desk-objects", instruction="List the objects.")))
     assert other.feedback.view(NOW)["learning"] == []
+
+
+# --- a re-plan ---
+
+
+def test_an_approved_replan_keeps_the_sessions_already_observed_and_their_answers(places, tmp_path):  # noqa: F811
+    box = Box(places, tmp_path, min_corrections=99).live()
+    box.http.app.include_router(day_router(box.loop, memory=box.loop.memory, clock=lambda: NOW, feedback=box.feedback))
+    box.answer("b0", right=False, answer="bathroom")
+    before = {s["block_id"]: s for s in box.http.get("/api/day/coach/feedback").json()["sessions"]}
+    assert len(before["b0"]["breaks"]) == 1 and before["b0"]["breaks"][0]["correction"]["answer"] == "bathroom"
+
+    async def replan():  # "Re-plan from here" at 2:20 PM, in the middle of the last block, then the phone approves it
+        re, card = box.loop.planner.replan(at(14, 20), "apartment.desk", "You asked.", asked=True)
+        await box.bus.publish(re)
+        await box.bus.publish(DayPlanCommitted(event_id=f"day-committed-{re.plan_id}", ts=at(14, 21), day=SUNDAY, plan_id=re.plan_id,
+                                               action_id=card.action_id))
+        return re
+
+    re = asyncio.run(replan())
+    assert box.loop.planner.current[SUNDAY].plan_id == re.plan_id
+    after = {(s["block_id"], s["start"]): s for s in box.http.get("/api/day/coach/feedback").json()["sessions"]}
+    for i, h in enumerate(HOURS[:5]):  # the five blocks that had ended are exactly as they were, the answer still on its break
+        assert after[f"b{i}", before[f"b{i}"]["start"]] == before[f"b{i}"]
+    cut = after["b5", before["b5"]["start"]]  # the block the re-plan interrupted is judged up to the re-plan
+    assert (cut["planned_minutes"], cut["desk_minutes"]) == (20, 15) and cut["end"] < before["b5"]["end"]
+    assert [b["start"] for b in cut["breaks"]] == [b["start"] for b in before["b5"]["breaks"]]
+    coach = box.http.get("/api/day/coach").json()
+    assert coach["plan_id"] == re.plan_id and [s["block_id"] for s in coach["sessions"]][:6] == [f"b{i}" for i in range(6)]
+    assert sum(len(s["breaks"]) for s in coach["sessions"][:6]) == 6 and coach["feedback"]["answers"] == 1
+    # an answer given after the re-plan lands on the old block's break, also when the new plan reuses a block id
+    b1 = before["b1"]["breaks"][0]["start"]
+    body = {"day": SUNDAY.isoformat(), "block_id": "b1", "break_index": 0, "right": True}
+    got = box.http.post("/api/day/coach/corrections", json={**body, "break_start": b1})
+    assert got.status_code == 200 and got.json()["session"]["breaks"][0]["correction"]["right"] is True
+    assert box.http.post("/api/day/coach/corrections", json={**body, "break_start": at(10, 11).isoformat()}).status_code == 404
+    # and a restart rebuilds the same day from the log
+    again = Box(places, tmp_path, name="b", min_corrections=99)
+    asyncio.run(again.bus.replay_into())
+    assert again.feedback.view(NOW)["sessions"] == box.feedback.view(NOW)["sessions"]
