@@ -25,6 +25,7 @@ import {
   speedStory,
   when,
 } from "@/lib/labBench";
+import type { SharedBrainPair } from "@/lib/sharedBrain";
 import { useFetch } from "@/lib/useFetch";
 import { type ChartTokens, LabEChart, chartAxis, chartBase, useChartTokens } from "./Charts";
 import { PointDetail, useReduced } from "./Labels";
@@ -93,13 +94,97 @@ function series(t: ChartTokens, id: string, name: string, color: string, data: {
 const streams = (n: number) => `${n} stream${n === 1 ? "" : "s"}`;
 
 /** "?" with the reason, for a tile whose row is missing. */
-function Tile({ value, label, sub, missing }: { value: string | null; label: string; sub: string; missing?: string }) {
+function Tile({ value, label, sub, missing, why }: { value: string | null; label: string; sub: string; missing?: string; why?: string }) {
   return (
     <div className={`${s.tile} ${value === null ? s.tileMissing : ""}`}>
       <span className={s.tileValue}>{value ?? "?"}</span>
       <span className={s.tileLabel}>{label}</span>
+      {why ? <span className={s.why}>{why}</span> : null}
       <span className={s.tileSub}>{value === null ? missing : sub}</span>
     </div>
+  );
+}
+
+/* ---------- 0. live meters ---------- */
+
+const LIVE_MS = 2000;
+
+/** GET /api/circle/shared-brain every 2 s while the tab is open; null until it first answers, never a made-up value. */
+function useSharedBrain(): { brain: SharedBrainPair | null; fresh: boolean } {
+  const [brain, setBrain] = useState<SharedBrainPair | null>(null);
+  const [at, setAt] = useState(0);
+  const [now, setNow] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    let ctl: AbortController | null = null;
+    const tick = () => {
+      ctl?.abort();
+      ctl = new AbortController();
+      api
+        .circleSharedBrain(ctl.signal)
+        .then((d) => {
+          if (!alive) return;
+          setBrain(d);
+          setAt(Date.now());
+        })
+        .catch(() => undefined);
+      setNow(Date.now());
+    };
+    tick();
+    const id = window.setInterval(tick, LIVE_MS);
+    return () => {
+      alive = false;
+      ctl?.abort();
+      window.clearInterval(id);
+    };
+  }, []);
+  return { brain, fresh: at > 0 && now - at < LIVE_MS * 3 };
+}
+
+function LiveTile({ title, value, sub, offline, fresh, reduced }: { title: string; value: string | null; sub?: string | null; offline: boolean; fresh: boolean; reduced: boolean }) {
+  return (
+    <div className={`${s.live} ${offline ? s.liveOff : ""}`}>
+      <span className={s.liveTitle}>
+        <span className={`${s.pulse} ${fresh && !offline && !reduced ? s.pulseOn : ""} ${offline ? s.pulseOff : ""}`} aria-hidden="true" />
+        {title}
+      </span>
+      <span className={s.liveValue}>{offline ? "offline" : (value ?? "no reading")}</span>
+      {sub ? <span className={s.liveSub}>{sub}</span> : null}
+    </div>
+  );
+}
+
+function LiveStrip({ brain, fresh, box, reduced }: { brain: SharedBrainPair | null; fresh: boolean; box: BenchPoint | null; reduced: boolean }) {
+  const member = (node: string) => brain?.members.find((m) => m.node === node) ?? null;
+  const pod = (node: string, title: string) => {
+    const m = member(node);
+    const off = !brain || !brain.configured || !m || !m.online;
+    return <LiveTile title={title} value={m?.watts_now !== null && m?.watts_now !== undefined ? `${fmt(m.watts_now, 1)} W` : null} sub={m?.watts_idle ? `idle is ${fmt(m.watts_idle, 1)} W` : null} offline={off} fresh={fresh} reduced={reduced} />;
+  };
+  const sv = brain?.serving;
+  const pairOff = !brain || !brain.configured || !brain.members.some((m) => m.online);
+  const busy = (sv?.requests_running ?? 0) > 0;
+  return (
+    <section className={s.section} aria-label="Live meters">
+      <div className={s.kicker}>
+        <span className={`${s.pulse} ${fresh && !reduced ? s.pulseOn : ""}`} aria-hidden="true" /> Live
+      </div>
+      <p className={s.why}>Live meters, right now.</p>
+      <div className={s.liveRow} aria-live="polite">
+        {pod("pod-a", "Pod C now")}
+        {pod("pod-b", "Pod D now")}
+        <LiveTile title="The box" value={box ? `${fmt(box.value, 1)} W` : null} sub={box ? `last reading, ${when(box.ts)}` : "no box power row yet"} offline={false} fresh={false} reduced={reduced} />
+        <LiveTile
+          title={busy ? "The pair is answering" : "The pair, last answers"}
+          value={sv?.tok_s !== null && sv?.tok_s !== undefined ? `${fmt(sv.tok_s, 1)} tok/s` : null}
+          sub={sv?.ttft_s !== null && sv?.ttft_s !== undefined ? `first token ${fmt(sv.ttft_s, 1)} s${busy ? `, ${sv.requests_running} running` : ""}` : null}
+          offline={pairOff}
+          fresh={fresh}
+          reduced={reduced}
+        />
+      </div>
+      {!brain ? <p className={s.foot}>Waiting for the pods&apos; meters (GET /api/circle/shared-brain).</p> : brain.reason ? <p className={s.foot}>{brain.reason}</p> : null}
+    </section>
   );
 }
 
@@ -179,6 +264,7 @@ function ChipFix({ story, reduced, a100, setA100, onPick }: { story: ReturnType<
       <h2 id="speed-fix" className={s.h2}>
         Same Strix Halo chip, same power, {speedup ? `${fmt(speedup, 1)} times` : "more"} the speed
       </h2>
+      <p className={s.why}>Same chip, same power, 4.5 times the work.</p>
       <div className={s.hero}>
         <div className={s.chartCard}>
           {after ? (
@@ -209,18 +295,21 @@ function ChipFix({ story, reduced, a100, setA100, onPick }: { story: ReturnType<
           <Tile
             value={speedup ? `${fmt(speedup, 1)}x` : null}
             label="faster for one person"
+            why="One person gets answers 4.5 times faster."
             sub={`${fmt(b1?.tok_s_stream ?? 0)} to ${fmt(a1?.tok_s_stream ?? 0)} tokens a second at one stream, vLLM before and after the kernel fix`}
             missing={after ? "No slower vLLM session before the fix in these rows, so no ratio." : "No vLLM session on a Strix Halo pod in these rows."}
           />
           <Tile
             value={wMid !== null ? `${fmt(wMid, 0)} W` : null}
             label="flat, however many streams"
+            why="More people cost no extra power."
             sub={`${fmt(wMin ?? 0, 1)} to ${fmt(wMax ?? 0, 1)} W from ${streams(jFirst?.batch ?? 1)} to ${streams(jLast?.batch ?? 1)}`}
             missing="No watts row for the vLLM session."
           />
           <Tile
             value={jFirst?.j_per_token && jLast?.j_per_token && jLast !== jFirst ? `${fmt(jFirst.j_per_token, 1)} to ${fmt(jLast.j_per_token, 1)} J` : null}
             label="per token"
+            why="Each token gets cheaper as more ask."
             sub={`from ${streams(jFirst?.batch ?? 1)} to ${streams(jLast?.batch ?? 1)}: the same watts spread over more tokens`}
             missing="The vLLM session needs two batch sizes with joules per token."
           />
@@ -348,6 +437,7 @@ function BiggerBrain({ story, reduced, both }: { story: ReturnType<typeof speedS
       <h2 id="speed-brain" className={s.h2}>
         Two pods together run a model {times ? `${fmt(times, 1)} times` : "several times"} the size
       </h2>
+      <p className={s.why}>Two chips hold what one cannot.</p>
       {pair && option ? (
         <div className={s.brain}>
           <div className={s.chartCard}>
@@ -399,7 +489,7 @@ function BiggerBrain({ story, reduced, both }: { story: ReturnType<typeof speedS
 
 /* ---------- 3. what it costs to be on ---------- */
 
-function PowerBars({ nodes, reduced, onPick, both }: { nodes: BenchPowerNode[]; reduced: boolean; onPick: (p: BenchPoint) => void; both: Both }) {
+function PowerBars({ nodes, reduced, onPick, both, brain }: { nodes: BenchPowerNode[]; reduced: boolean; onPick: (p: BenchPoint) => void; both: Both; brain: SharedBrainPair | null }) {
   const t = useChartTokens();
   // one row per real machine: rows under an older node name of the same machine merge, the newest row winning
   const shown = useMemo(() => {
@@ -419,6 +509,16 @@ function PowerBars({ nodes, reduced, onPick, both }: { nodes: BenchPowerNode[]; 
       })
       .filter((n) => n.idle || n.serving);
   }, [nodes, both]);
+  const nowTicks = useMemo(
+    () =>
+      brain?.configured
+        ? shown.flatMap((n, i) => {
+            const m = brain.members.find((x) => x.node === n.node);
+            return m && m.online && m.watts_now !== null ? [{ i, w: m.watts_now }] : [];
+          })
+        : [],
+    [brain, shown],
+  );
   const option = useMemo<EChartsOption>(() => {
     const axis = chartAxis(t);
     const label = (p: BenchPoint | null) => ({
@@ -447,7 +547,11 @@ function PowerBars({ nodes, reduced, onPick, both }: { nodes: BenchPowerNode[]; 
         ...(chartBase(t, reduced).tooltip as object),
         trigger: "item",
         formatter: (raw: unknown) => {
-          const p = raw as { seriesId: string; dataIndex: number };
+          const p = raw as { seriesId: string; dataIndex: number; value: unknown };
+          if (p.seriesId === "now") {
+            const v = p.value as [number, number];
+            return `<b>${machineName(shown[v[1]]?.node)}</b> right now: <b>${fmt(v[0], 1)} W</b>`;
+          }
           const n = shown[p.dataIndex];
           const pt = n?.[p.seriesId as "idle" | "serving"];
           if (!n || !pt) return "";
@@ -456,9 +560,28 @@ function PowerBars({ nodes, reduced, onPick, both }: { nodes: BenchPowerNode[]; 
       },
       xAxis: { ...axis, type: "value", name: "watts", nameLocation: "end", nameGap: 8, splitNumber: 3 },
       yAxis: { ...axis, type: "category", inverse: true, data: shown.map((n) => machineName(n.node)), axisLabel: { ...axis.axisLabel, color: t.text, fontSize: 13 }, splitLine: { show: false } },
-      series: [bar("idle", "On, idle", t.unknown), bar("serving", "Answering", t.accent)],
+      series: [
+        bar("idle", "On, idle", t.unknown),
+        bar("serving", "Answering", t.accent),
+        // a bright tick at each pod's watts right now, only while the shared-brain route answers with a reading
+        ...(nowTicks.length
+          ? [
+              {
+                id: "now",
+                name: "now",
+                type: "scatter" as const,
+                symbol: "rect",
+                symbolSize: [3, 30],
+                color: t.watch,
+                itemStyle: { color: t.watch, shadowBlur: 8, shadowColor: t.watch },
+                z: 5,
+                data: nowTicks.map((n) => ({ value: [n.w, n.i] })),
+              },
+            ]
+          : []),
+      ],
     };
-  }, [t, reduced, shown]);
+  }, [t, reduced, shown, nowTicks]);
   if (!shown.length) return <p className={s.empty}>No idle or answering power row in this response yet.</p>;
   return (
     <LabEChart
@@ -474,7 +597,131 @@ function PowerBars({ nodes, reduced, onPick, both }: { nodes: BenchPowerNode[]; 
   );
 }
 
-/* ---------- 4. sessions and rows ---------- */
+/* ---------- 4. how the two pods talk ---------- */
+
+/** The link and process-group rows (families link and dist): from the full payload, else from their sessions' rows. */
+function useTalkRows(sessions: BenchSession[], payload: BenchPayload | undefined): Map<string, BenchPoint[]> {
+  const [fetched, setFetched] = useState<Record<string, Partial<LabBench>>>({});
+  const full = (payload?.series?.length ?? 0) > 0;
+  const mine = sessions.filter((x) => (x.families ?? []).some((f) => f === "link" || f === "dist"));
+  const key = mine.map((x) => x.source ?? x.id).join("|");
+  useEffect(() => {
+    if (full) return;
+    for (const x of mine) {
+      const id = x.source ?? x.id;
+      if (fetched[id]) continue;
+      fetch(spotUrl(x.rows_url ?? `/api/learning/lab/bench/rows?session=${encodeURIComponent(id)}`))
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+        .then((d: Partial<LabBench>) => setFetched((m) => ({ ...m, [id]: d })))
+        .catch(() => undefined);
+    }
+  }, [key, full]);
+  return useMemo(() => {
+    const out = new Map<string, BenchPoint[]>();
+    const take = (p: Partial<LabBench> | undefined) => {
+      for (const sr of p?.series ?? []) {
+        if (!/^(link|dist)\./.test(sr.metric)) continue;
+        const list = out.get(sr.metric) ?? [];
+        for (const q of sr.points) if (!list.some((x) => x.line === q.line)) list.push(q);
+        out.set(sr.metric, list.sort((a, c) => (a.line ?? 0) - (c.line ?? 0)));
+      }
+    };
+    if (full) take(payload as Partial<LabBench>);
+    else for (const id of Object.keys(fetched)) take(fetched[id]);
+    return out;
+  }, [fetched, full, payload]);
+}
+
+const median = (xs: number[]) => {
+  const v = xs.slice().sort((a, c) => a - c);
+  return v.length ? (v.length % 2 ? v[(v.length - 1) / 2]! : (v[v.length / 2 - 1]! + v[v.length / 2]!) / 2) : null;
+};
+
+function PodsTalk({ rows }: { rows: Map<string, BenchPoint[]> }) {
+  const get = (m: string) => rows.get(m) ?? [];
+  // the tunnel's throughput, both directions (R66 tunnel-chisel-probe)
+  const send = get("link.pair.tunnel_send_mb_s").map((p) => p.value);
+  const sendMb = send.length ? send.reduce((a, c) => a + c, 0) / send.length : null;
+  // R66 measured each setting once without and then with the quick-ACK relay; the rows are in that order in the file,
+  // and the gloo rows also name their before or after fixture
+  const two = get("link.pair.two_write_rtt_ms");
+  const rttBefore = two.length >= 2 ? two[0]!.value : null;
+  const rttAfter = two.length ? two[two.length - 1]!.value : null;
+  const gloo = get("dist.pair.gloo_small_allreduce_ms");
+  const gBefore = (gloo.find((p) => /before/i.test(p.recorded_by ?? "")) ?? (gloo.length >= 2 ? gloo[0] : undefined))?.value ?? null;
+  const gAfter = (gloo.find((p) => /after/i.test(p.recorded_by ?? "")) ?? (gloo.length >= 2 ? gloo[gloo.length - 1] : undefined))?.value ?? null;
+  const bigMb = get("dist.pair.gloo_allreduce_mb_s").at(-1)?.value ?? null;
+  const init = get("dist.pair.gloo_init_s").at(-1)?.value ?? null;
+  // R65: each training run measured one delta exchange over the hub proxy and then over the Tailscale relay, in that order
+  const ex = get("link.exchange_s");
+  const byRun = new Map<string, BenchPoint[]>();
+  for (const p of ex) byRun.set(p.recorded_by ?? "", [...(byRun.get(p.recorded_by ?? "") ?? []), p]);
+  const pairs = [...byRun.values()].filter((l) => l.length >= 2);
+  const hub = median(pairs.map((l) => l[0]!.value));
+  const relay = pairs.map((l) => l[l.length - 1]!.value);
+  const relayMed = median(relay);
+  const bytes = get("link.exchange_bytes").at(-1)?.value ?? null;
+  const ratio = hub && relayMed ? relayMed / hub : null;
+  const stallMax = Math.max(gBefore ?? 0, gAfter ?? 0, 1);
+  return (
+    <section className={s.section} aria-labelledby="speed-talk">
+      <div className={s.kicker}>
+        <span className={s.step}>4</span> How the two pods talk
+      </div>
+      <h2 id="speed-talk" className={s.h2}>
+        A network built where none was allowed
+      </h2>
+      <p className={s.why}>No network between the pods, so we built one.</p>
+      <div className={s.talk}>
+        <div className={s.talkCol}>
+          <h3 className={s.talkHead}>For inference</h3>
+          <div className={`${s.tiles} ${s.talkTiles}`}>
+            <Tile value={sendMb !== null ? `${fmt(sendMb, 0)} MB/s` : null} label="through the cloud's own proxy" sub={`each way, ${send.length} directions measured`} why="A tunnel where no network was allowed." missing="No tunnel throughput row yet." />
+            <Tile value={rttAfter !== null ? `${fmt(rttAfter)} ms` : null} label="per message" sub={rttBefore !== null ? `${fmt(rttBefore)} ms before the quick-ACK relay` : "one setting measured"} why="A 40 ms stall found and removed." missing="No tunnel round-trip row yet." />
+            <Tile
+              value={gAfter !== null ? `${fmt(gAfter)} ms` : null}
+              label="to agree across two pods"
+              sub={[gBefore !== null ? `${fmt(gBefore)} ms before the relay` : null, bigMb !== null ? `64 MB all-reduce at ${fmt(bigMb)} MB/s` : null, init !== null ? `group up in ${fmt(init)} s` : null].filter(Boolean).join("; ")}
+              why="Two chips act as one group."
+              missing="No all-reduce row yet."
+            />
+          </div>
+        </div>
+        <div className={s.talkCol}>
+          <h3 className={s.talkHead}>For training</h3>
+          <div className={`${s.tiles} ${s.talkTiles}`}>
+            <Tile
+              value={bytes !== null && hub !== null ? `${fmt(bytes / 1e6, 0)} MB in ${fmt(hub, 1)} s` : null}
+              label="of deltas per round"
+              sub={`over the hub proxy, median of ${pairs.length} runs`}
+              why="Only the change moves, in 8 bits."
+              missing="No delta exchange row yet."
+            />
+            <Tile
+              value={ratio !== null ? `${fmt(ratio, 0)}x` : null}
+              label="faster than the relay path"
+              sub={relay.length ? `${fmt(Math.min(...relay), 1)} to ${fmt(Math.max(...relay), 1)} s over the Tailscale relay` : ""}
+              why="Same pods, better road."
+              missing="Needs both paths measured in one run."
+            />
+          </div>
+        </div>
+      </div>
+      {gBefore !== null && gAfter !== null ? (
+        <div className={s.stall} role="img" aria-label={`Small all-reduce median: ${fmt(gBefore)} ms before the quick-ACK relay, ${fmt(gAfter)} ms after`}>
+          <span className={s.foot}>Before the relay</span>
+          <span className={s.stallBar} style={{ width: `${(gBefore / stallMax) * 100}%` }} />
+          <b>{fmt(gBefore)} ms</b>
+          <span className={s.foot}>After</span>
+          <span className={`${s.stallBar} ${s.stallAfter}`} style={{ width: `${(gAfter / stallMax) * 100}%` }} />
+          <b>{fmt(gAfter)} ms</b>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+/* ---------- 5. sessions and rows ---------- */
 
 function What({ story }: { story: ReturnType<typeof speedStory> }) {
   const from = (l: StoryLine | null) => (l ? `${sessionTitle(l.session)} (${l.session.id})` : "no session in these rows");
@@ -683,6 +930,13 @@ export function SpeedEnergy({
   const summary = useMemo(() => benchSummary(payload), [payload]);
   const story = useMemo(() => speedStory(summary), [summary]);
   const pairSessions = useMemo(() => summary.sessions.filter(isPair), [summary]);
+  const live = useSharedBrain();
+  const talkRows = useTalkRows(summary.sessions, payload);
+  // no live route for the box's own watts: its newest power row, shown as "last reading"
+  const boxReading = useMemo(() => {
+    const j = (payload?.power?.nodes ?? []).find((n) => n.node === "jetson");
+    return [j?.idle ?? null, j?.serving ?? null].filter((x): x is BenchPoint => !!x).sort((a, c) => (c.ts ?? "").localeCompare(a.ts ?? ""))[0] ?? null;
+  }, [payload]);
   const llamaNote = useMemo(() => {
     const l = story.llama;
     if (!l || story.llamaSessions.length < 2) return null;
@@ -774,6 +1028,7 @@ export function SpeedEnergy({
       </div>
       {sessions.length === 0 ? <p className={b.banner}>{data.empty_reason ?? "No bench session in these rows yet."}</p> : null}
 
+      <LiveStrip brain={live.brain} fresh={live.fresh} box={boxReading} reduced={reduced} />
       <ChipFix story={story} reduced={reduced} a100={a100} setA100={setA100} onPick={pickFromChart} />
       <BiggerBrain story={story} reduced={reduced} both={both} />
 
@@ -784,8 +1039,9 @@ export function SpeedEnergy({
         <h2 id="speed-power" className={s.h2}>
           Idle and answering watts, one row per machine
         </h2>
+        <p className={s.why}>Idle is cheap; answering is the cost.</p>
         <div className={s.chartCard}>
-          <PowerBars nodes={nodes} reduced={reduced} onPick={pickPower} both={both} />
+          <PowerBars nodes={nodes} reduced={reduced} onPick={pickPower} both={both} brain={live.brain} />
           <div className={s.chartFoot}>
             <span className={s.foot}>
               <span className={s.lowDot} aria-hidden="true" /> marks a low-confidence row. Tap a bar for its row.
@@ -801,9 +1057,12 @@ export function SpeedEnergy({
         {data.power?.absent?.length ? <p className={s.foot}>No power row yet for {data.power.absent.join(", ")}; nothing is drawn for a machine the rows do not cover.</p> : null}
       </section>
 
+      <PodsTalk rows={talkRows} />
+
       <details id="speed-drawer" className={s.drawer} open={open} onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}>
         <summary className={s.drawerHead}>
           <span>Sessions and rows</span>
+          <span className={s.why}>Every row, with its source.</span>
           <span className={s.foot}>
             {sessions.length} sessions with numbers, {rows} rows
           </span>
