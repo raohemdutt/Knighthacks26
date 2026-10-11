@@ -84,8 +84,8 @@ class VoiceSession:
                 if busy and self._state == busy and name in last:
                     info[name] = last[name]
                 else:
-                    ok, detail = probe()
-                    info[name] = {"ok": ok, "detail": detail}
+                    ok, detail, *absent = probe()
+                    info[name] = {"ok": ok, "detail": detail, **({"absent": True} if absent and absent[0] else {})}
             self._probe = (now, info)
         return self._probe[1]
 
