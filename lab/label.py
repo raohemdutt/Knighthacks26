@@ -296,14 +296,16 @@ class Teacher:
 
     def served_checkpoint(self, expect: str | None = EXPECTED_MODEL) -> str | None:
         """The checkpoint the server serves under this client's model name (vLLM's root). TeacherError, fatal, when
-        it serves no such model, or when expect is given and the checkpoint's name does not hold it."""
+        it serves no such model, or when expect is given and the checkpoint's name does not hold it. `expect` may
+        name several checkpoints split by "|" (the live loop's "Qwen3.5-122B|Qwen3.8-27B"): any one of them will do."""
         entries = {entry.get("id"): entry for entry in self.models()}
         entry = entries.get(self.model)
         if entry is None:
             served = ", ".join(sorted(str(key) for key in entries)) or "nothing"
             raise TeacherError(f"the server does not serve {self.model!r} (it serves {served})", fatal=True)
         root = entry.get("root") if isinstance(entry.get("root"), str) else None
-        if expect and (root is None or expect.lower() not in root.lower()):
+        names = [name.strip().lower() for name in (expect or "").split("|") if name.strip()]  # "a|b": either one
+        if names and (root is None or not any(name in root.lower() for name in names)):
             raise TeacherError(f"{self.model!r} is served from {root or 'an unnamed checkpoint'}, not {expect}",
                                fatal=True)
         return root
@@ -981,7 +983,8 @@ def main(argv: Sequence[str] | None = None, *, transport: httpx.BaseTransport | 
                                          "(default: fixtures/golden)")
     parser.add_argument("--text-only", action="store_true", help="the examples carry no picture")
     parser.add_argument("--expect-model", default=EXPECTED_MODEL,
-                        help=f"what the served checkpoint's name must hold (default {EXPECTED_MODEL}; '' accepts any)")
+                        help=f"what the served checkpoint's name must hold (default {EXPECTED_MODEL}; "
+                             "'a|b' accepts either, '' accepts any)")
     parser.add_argument("--max-failures", type=int, default=MAX_FAILURES,
                         help="examples in a row with no usable answer before the run stops")
     args = parser.parse_args(argv)

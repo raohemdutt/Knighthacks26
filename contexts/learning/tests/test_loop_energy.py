@@ -2,6 +2,7 @@
 gives back the comparison the relay wrote that night, so the relay and the box compute the same numbers."""
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -101,3 +102,63 @@ def test_one_act_alone_gives_a_document_without_the_ratio():
     got = le.compare(stages()[:4], {"solo": doc["acts"]["solo"]["run_id"]}, {}, traces(), 0.0, None, "s")
     assert set(got["acts"]) == {"solo"} and "duo_over_solo" not in got and got["total_s"] is None
     assert got["acts"]["solo"]["seconds"] == {"labeling": 32.1, "waiting": 0.0}
+
+
+# --- the two-pod teacher and act 2 on both pods (L29) ---------------------------------------------------------------
+
+def rank1_lines():
+    """Pod C's rank 1 lines for act 2, on pod C's clock: the rehearsal's act 2 training window moved onto pod C."""
+    offsets = recorded()["clock_offsets_s"]
+    a, b = le.window(stages(), "duo", "train", "trained")
+    d = offsets["pod-c"] - offsets["pod-d"]
+    iso = lambda t: datetime.fromtimestamp(t, UTC).isoformat().replace("+00:00", "Z")  # noqa: E731
+    return [{"act": "duo", "stage": "rank1_train", "ts": iso(a + d + 1.0), "node": "pod-c"},
+            {"act": "duo", "stage": "rank1_trained", "ts": iso(b + d - 0.5), "node": "pod-c"}]
+
+
+def pair(split=False):
+    doc = recorded()
+    go = next(s for s in stages() if s["stage"] == "go")
+    t0 = le.iso_s(go["ts"]) - doc["clock_offsets_s"]["pod-d"] - doc["go_s"]
+    facts = {a: facts_of(doc["acts"][a]) for a in le.ACTS}
+    if split:
+        facts["duo"]["trainer_pods"] = {"pod-c": {"run_id": "r.pod-c", "steps": 8, "loss_first": 5.1, "loss_last": 2.2}}
+    lines = stages() + (rank1_lines() if split else [])
+    return le.compare(lines, {a: doc["acts"][a]["run_id"] for a in le.ACTS}, facts, traces(), t0, doc["total_s"],
+                      doc["stamp"], teacher_nodes=("pod-c", "pod-d"))
+
+
+facts_of = facts
+
+
+def test_with_the_pair_labeling_counts_both_pods_and_each_pods_stages_add_up_to_its_joules():
+    got = pair()
+    solo = got["acts"]["solo"]["labeling"]
+    assert set(solo["by_node"]) == {"pod-c", "pod-d"} and solo["node"] == "pods C and D (the two-pod teacher)"
+    assert solo["joules"] == pytest.approx(solo["by_node"]["pod-c"]["joules"] + solo["by_node"]["pod-d"]["joules"], abs=0.2)
+    assert solo["idle_j"] == round(2 * le.IDLE_W["pod-c"] * solo["seconds"], 1)
+    shares = le.node_shares(stages(), traces(), ("pod-c", "pod-d"))
+    pod_d = traces()["pod-d"][0]
+    first = le.window(stages(), "solo", "start", "labeled")[0]
+    last = le.window(stages(), "duo", "trained", "done")[1]
+    whole = le.integrate(pod_d, first, last)   # pod D's windows cover the run end to end, each stretch once
+    assert sum(x["joules"] for x in shares["pod-d"].values()) == pytest.approx(whole, rel=1e-3)
+    assert got["pod_d_split"] == le.NODE_SPLIT and got["teacher_nodes"] == ["pod-c", "pod-d"]
+    assert got["acts"]["solo"]["training"]["joules"] < recorded()["acts"]["solo"]["training"]["joules"]  # it shares pod D now
+
+
+def test_act_two_on_both_pods_sums_the_ranks_and_keeps_each_pods_row():
+    got = pair(split=True)
+    duo, solo = got["acts"]["duo"], got["acts"]["solo"]
+    assert duo["pods"] == ["pod-d", "pod-c"] and solo["pods"] == ["pod-d"] and duo["members"] == 2 and solo["members"] == 1
+    assert duo["training"]["pods"] == 2 and duo["training"]["node"] == "pods D and C (two-pod LoRA, R65)"
+    rows = duo["training_pods"]
+    assert set(rows) == {"pod-d", "pod-c"}
+    assert duo["training"]["joules"] == pytest.approx(rows["pod-d"]["joules"] + rows["pod-c"]["joules"], abs=0.2)
+    assert rows["pod-c"]["steps"] == 8 and rows["pod-c"]["run_id"] == "r.pod-c" and rows["pod-c"]["j_per_step"]
+    assert rows["pod-c"]["seconds"] == pytest.approx(rows["pod-d"]["seconds"] - 1.5, abs=0.2)
+    assert duo["pods_joules"] == pytest.approx(duo["labeling"]["joules"] + duo["training"]["joules"]
+                                              + duo["packaging"]["joules"], abs=0.3)
+    assert got["duo_over_solo"]["training_j"] == le.ratio(duo["training"]["joules"], solo["training"]["joules"])
+    # pod C's rank shares pod C with nothing else at that time (labeling ended before act 2 trained)
+    assert rows["pod-c"]["overlap_s"] == 0.0 and rows["pod-c"]["joules"] == rows["pod-c"]["gross_window_j"]

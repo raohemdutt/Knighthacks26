@@ -165,7 +165,9 @@ def _windows(loops: list[Loop], run_id: str) -> list[dict[str, Any]]:
 
 def _from_loop(loop: Loop, act: str, row: dict[str, Any]) -> dict[str, Any]:
     return {
-        "run_id": row["run_id"], "act": act, "members": MEMBERS.get(act), "examples": row.get("examples"),
+        "run_id": row["run_id"], "act": act, "members": row.get("members") or MEMBERS.get(act),
+        "pods": row.get("pods") or ["pod-d"], "teacher_nodes": row.get("teacher_nodes") or ["pod-c"],
+        "training_pods": row.get("training_pods"), "examples": row.get("examples"),
         "train_rows": row.get("train_rows"), "held_out": row.get("held_out"), "outcome": row.get("outcome"),
         "seconds": row.get("seconds") or {}, "labeling": row.get("labeling"), "training": row.get("training"),
         "packaging": row.get("packaging"), "box": row.get("box"), "pods_joules": row.get("pods_joules"),
@@ -186,7 +188,8 @@ def _from_story(story: dict[str, Any]) -> dict[str, Any]:
     steps, train_s, energy = _value(tr.get("steps")), _value(tr.get("wall_s")), _value(power.get("energy_j"))
     why = "no power sampler ran for this run, so its joules are not in any record"
     return {
-        "run_id": story["run_id"], "act": None, "members": None, "examples": _value(ds.get("examples")),
+        "run_id": story["run_id"], "act": None, "members": story.get("members"), "pods": story.get("pods"),
+        "teacher_nodes": None, "training_pods": None, "examples": _value(ds.get("examples")),
         "train_rows": _value(ds.get("train")), "held_out": _value(ds.get("held_out")), "outcome": story.get("status"),
         "seconds": {k: v for k, v in (("training", train_s), ("total", _value(story.get("wall_s")))) if v is not None},
         "labeling": None,
@@ -209,7 +212,8 @@ def candidates(loops: list[Loop], view: Any | None) -> list[dict[str, Any]]:
             if row["run_id"] in seen:
                 continue
             seen.add(row["run_id"])
-            out.append({"run_id": row["run_id"], "act": act, "members": MEMBERS.get(act), "examples": row.get("examples"),
+            out.append({"run_id": row["run_id"], "act": act, "members": row.get("members") or MEMBERS.get(act),
+                        "pods": row.get("pods") or ["pod-d"], "examples": row.get("examples"),
                         "measured": True, "stamp": loop.stamp, "source": loop.source})
     for r in (view.runs() if view is not None and getattr(view, "run_ids", None) else []):
         if r["run_id"] not in seen and not lab_loops.is_fixture_run(r["run_id"]):

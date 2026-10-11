@@ -144,8 +144,50 @@ def test_a_power_window_carries_the_samples_either_side_and_the_nodes_clock(live
 def test_the_local_card_is_off_unless_asked_for(live_loop, monkeypatch):
     seen = {}
     monkeypatch.setattr(live_loop, "run_loop", lambda args: seen.setdefault("card", args.card) and 0 or 0)
-    live_loop.main(["--slot", "row"])
+    live_loop.main(["--slot", "row", "--slot-c", "row-c"])
     assert seen["card"] is False
     seen.clear()
-    live_loop.main(["--slot", "row", "--card"])
+    live_loop.main(["--slot", "row", "--slot-c", "row-c", "--card"])
     assert seen["card"] is True
+
+
+# --- the two-pod teacher and act 2 on both pods (L29) ---------------------------------------------------------------
+
+def test_the_teacher_is_the_pair_by_default_and_the_27b_is_the_fallback(live_loop, monkeypatch):
+    assert live_loop.teacher_nodes_for(live_loop.TEACHER_PAIR) == ("pod-c", "pod-d")
+    assert live_loop.teacher_nodes_for(live_loop.TEACHER_SINGLE) == ("pod-c",)
+    assert live_loop.teacher_nodes_for("anything", "pod-c, pod-d") == ("pod-c", "pod-d")
+    seen = {}
+    monkeypatch.setattr(live_loop, "run_loop", lambda args: seen.update(vars(args)) or 0)
+    live_loop.main(["--slot", "row", "--slot-c", "row-c"])
+    assert seen["teacher_expect"] == "Qwen3.5-122B" and seen["duo_pods"] == 2
+    assert (seen["solo_examples"], seen["duo_examples"]) == (50, 50)
+    settings = live_loop.pod_settings(live_loop.argparse.Namespace(**seen), "c-user")
+    assert settings.splitlines() == ["SOLO_EXAMPLES=50", "DUO_EXAMPLES=50", "DUO_PODS=2", "TEACHER_EXPECT=Qwen3.5-122B",
+                                     "C_USER=c-user", "L29_SERIAL=0"]
+    with pytest.raises(SystemExit):   # act 2 on two pods needs pod C's own GPU Queue slot
+        live_loop.main(["--slot", "row"])
+    seen.clear()
+    live_loop.main(["--slot", "row", "--duo-pods", "1", "--teacher-expect", "Qwen3.8-27B", "--solo-examples", "100",
+                    "--duo-examples", "100"])
+    assert seen["duo_pods"] == 1 and seen["teacher_expect"] == "Qwen3.8-27B" and seen["duo_examples"] == 100
+
+
+def test_act_two_on_two_pods_posts_a_training_window_for_each_pod_on_its_own_clock(live_loop):
+    from datetime import UTC, datetime
+
+    traces = recorded_traces(live_loop)
+    offsets = json.loads((FIX / "comparison.json").read_text(encoding="utf-8"))["clock_offsets_s"]
+    a, b = live_loop.window(stages(), "duo", "train", "trained")
+    d = offsets["pod-c"] - offsets["pod-d"]
+    iso = lambda t: datetime.fromtimestamp(t, UTC).isoformat().replace("+00:00", "Z")  # noqa: E731
+    rank1 = [{"act": "duo", "stage": "rank1_train", "ts": iso(a + d), "node": "pod-c"},
+             {"act": "duo", "stage": "rank1_trained", "ts": iso(b + d), "node": "pod-c"}]
+    wins = {f"{st}.{w['node']}": w for st, w in live_loop.power_windows(stages() + rank1, "duo", "r", traces, {},
+                                                                        ("pod-c", "pod-d"))}
+    assert set(wins) == {"labeling.pod-c", "labeling.pod-d", "training.pod-d", "training.pod-c", "packaging.pod-d",
+                         "act.pod-c", "act.pod-d", "act.box"}
+    c = wins["training.pod-c"]
+    assert c["clock_offset_s"] == offsets["pod-c"] and c["start"] == rank1[0]["ts"]   # on pod C's own clock
+    ts = [live_loop.iso_s(x["ts"]) for x in c["samples"]]
+    assert ts[0] <= live_loop.iso_s(c["start"]) and ts[-1] >= live_loop.iso_s(c["end"])
