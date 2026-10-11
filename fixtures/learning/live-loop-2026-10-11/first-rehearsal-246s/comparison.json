@@ -1,0 +1,189 @@
+{
+  "stamp": "1011-035827",
+  "total_s": 246.4,
+  "acts": {
+    "solo": {
+      "run_id": "live-1011-035827-solo",
+      "seconds": {
+        "labeling": 31.8,
+        "waiting": 0.0,
+        "training": 60.1,
+        "packaging": 76.6,
+        "total": 168.6
+      },
+      "outcome": "offered",
+      "examples": 100,
+      "train_rows": 75,
+      "held_out": 25,
+      "labeling": {
+        "seconds": 31.8,
+        "joules": 3659.4,
+        "mean_w": 114.93,
+        "peak_w": 129.0,
+        "samples": 32,
+        "examples": 100,
+        "tokens": 11280,
+        "completion_tokens": 350,
+        "j_per_token": 0.324,
+        "j_per_example": 36.6,
+        "idle_j": 326.6,
+        "node": "pod C (teacher)"
+      },
+      "training": {
+        "seconds": 60.1,
+        "joules": 2811.3,
+        "mean_w": 46.77,
+        "peak_w": 110.0,
+        "samples": 60,
+        "gross_window_j": 2811.3,
+        "overlap_s": 0.0,
+        "steps": 8,
+        "examples_seen": 32,
+        "tokens": 3184,
+        "train_s": 45.999659799039364,
+        "loss_first": 4.751530170440674,
+        "loss_last": 0.39784976840019226,
+        "trainer_energy_j": 2336.927,
+        "j_per_step": 351.4,
+        "j_per_example_seen": 87.85,
+        "j_per_train_row": 37.48,
+        "idle_j": 617.2,
+        "node": "pod D (trainer)"
+      },
+      "packaging": {
+        "seconds": 76.6,
+        "joules": 3039.0,
+        "mean_w": 78.55,
+        "peak_w": 129.0,
+        "samples": 77,
+        "gross_window_j": 6019.2,
+        "overlap_s": 75.3,
+        "idle_j": 786.7,
+        "node": "pod D (trainer)"
+      },
+      "box": {
+        "seconds": 168.6,
+        "joules": 2037.7,
+        "mean_w": 12.09,
+        "peak_w": 20.616,
+        "samples": 354,
+        "idle_j": 2657.1,
+        "node": "the box (Jetson VDD_IN)"
+      },
+      "pods_joules": 9509.7,
+      "j_per_example": 95.1,
+      "start_s": 4.3,
+      "end_s": 172.9
+    },
+    "duo": {
+      "run_id": "live-1011-035827-duo",
+      "seconds": {
+        "labeling": 61.4,
+        "waiting": 0.0,
+        "training": 84.6,
+        "packaging": 59.7,
+        "total": 205.6
+      },
+      "outcome": "offered",
+      "examples": 200,
+      "train_rows": 150,
+      "held_out": 50,
+      "labeling": {
+        "seconds": 61.4,
+        "joules": 6743.6,
+        "mean_w": 109.79,
+        "peak_w": 121.0,
+        "samples": 61,
+        "examples": 200,
+        "tokens": 22230,
+        "completion_tokens": 624,
+        "j_per_token": 0.303,
+        "j_per_example": 33.7,
+        "idle_j": 630.6,
+        "node": "pod C (teacher)"
+      },
+      "training": {
+        "seconds": 84.6,
+        "joules": 3918.4,
+        "mean_w": 81.57,
+        "peak_w": 129.0,
+        "samples": 84,
+        "gross_window_j": 6898.5,
+        "overlap_s": 75.3,
+        "steps": 8,
+        "examples_seen": 32,
+        "tokens": 3167,
+        "train_s": 51.577542059123516,
+        "loss_first": 5.8294172286987305,
+        "loss_last": 2.047823667526245,
+        "trainer_energy_j": 4541.456,
+        "j_per_step": 489.8,
+        "j_per_example_seen": 122.45,
+        "j_per_train_row": 26.12,
+        "idle_j": 868.8,
+        "node": "pod D (trainer)"
+      },
+      "packaging": {
+        "seconds": 59.7,
+        "joules": 4384.5,
+        "mean_w": 73.5,
+        "peak_w": 126.0,
+        "samples": 60,
+        "gross_window_j": 4384.5,
+        "overlap_s": 0.0,
+        "idle_j": 613.1,
+        "node": "pod D (trainer)"
+      },
+      "box": {
+        "seconds": 205.6,
+        "joules": 2592.3,
+        "mean_w": 12.61,
+        "peak_w": 20.616,
+        "samples": 459,
+        "idle_j": 3240.3,
+        "node": "the box (Jetson VDD_IN)"
+      },
+      "pods_joules": 15046.5,
+      "j_per_example": 75.2,
+      "start_s": 36.2,
+      "end_s": 241.8
+    }
+  },
+  "rule": "gross joules (T4), integrated by contexts/telemetry/domain/energy.integrate; idle beside: calibrated (config/telemetry_idle.yaml) and quiet (median of the 30 s before the start)",
+  "idle": {
+    "pod-c": {
+      "calibrated_w": 10.27,
+      "quiet_w": 11.0
+    },
+    "pod-d": {
+      "calibrated_w": 10.27,
+      "quiet_w": 11.0
+    },
+    "box": {
+      "calibrated_w": 15.76,
+      "quiet_w": null,
+      "note": "bimodal: about 5 W between captions, about 18 W while the box's GPU captions (T13)"
+    }
+  },
+  "clock_offsets_s": {
+    "pod-c": 63.9,
+    "pod-d": 3.28,
+    "box": 45.78
+  },
+  "pod_d_split": "pod D's training and packaging windows overlap when act 2 trains while act 1 packages; each overlapping stretch is split evenly between them (energy.attribute, no tokens), so the stages add up to the pod's joules; gross_window_j is the whole window's integral",
+  "duo_over_solo": {
+    "examples": 2.0,
+    "act_seconds": 1.219,
+    "labeling_j": 1.843,
+    "labeling_j_per_token": 0.935,
+    "labeling_j_per_example": 0.921,
+    "training_j": 1.394,
+    "training_j_per_step": 1.394,
+    "training_j_per_train_row": 0.697,
+    "packaging_j": 1.443,
+    "pods_joules": 1.582,
+    "j_per_example": 0.791,
+    "box_j": 1.272
+  },
+  "go_s": 4.3
+}

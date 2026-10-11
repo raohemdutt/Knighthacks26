@@ -1,0 +1,31 @@
+live loop 1011-035827: card at http://127.0.0.1:8788/   out C:\Users\hackathon\Code\Knighthacks26\work\L29-data\1011-035827
+box Learning lab answers 200: 1 real runs before the start
+[   4.3 s] pod D started both acts (run-script 1.157 s)
+[   4.7 s] all: go at    4.4 s on the pod clock  
+[   4.7 s] solo: start at    4.4 s on the pod clock  
+[  39.6 s] solo: labeled at   36.2 s on the pod clock  labeling took 31.8 s
+[  39.6 s] solo: train at   36.2 s on the pod clock  waited 0.0 s
+[  39.6 s] duo: start at   36.2 s on the pod clock  
+[  90.2 s] solo: 3 step rows posted, box 200, 3 new, 0 already there
+[  95.0 s] solo: 8 step rows posted, box 200, 5 new, 3 already there
+[  99.6 s] solo: trained at   96.3 s on the pod clock  training took 60.1 s
+[  99.6 s] duo: labeled at   97.6 s on the pod clock  labeling took 61.4 s
+[  99.6 s] duo: train at   97.6 s on the pod clock  waited 0.0 s
+[ 174.6 s] solo: done at  172.9 s on the pod clock  packaging took 76.6 s, act 168.6 s, rc 0
+[ 175.8 s] solo: manifest box 200, 2 new, 0 already there
+[ 175.8 s] solo: stand-in scores box 200, 3 new, 0 already there
+[ 179.4 s] solo: the box's Learning lab lists live-1011-035827-solo: yes, status not deployed
+[ 179.9 s] duo: 7 step rows posted, box 200, 7 new, 0 already there
+[ 185.0 s] duo: trained at  182.2 s on the pod clock  training took 84.6 s
+[ 185.4 s] duo: 8 step rows posted, box 200, 1 new, 7 already there
+[ 245.0 s] duo: done at  241.8 s on the pod clock  packaging took 59.7 s, act 205.6 s, rc 0
+[ 245.0 s] all: end at  241.8 s on the pod clock  
+[ 245.5 s] duo: manifest box 200, 2 new, 0 already there
+[ 245.5 s] duo: stand-in scores box 200, 3 new, 0 already there
+[ 246.4 s] duo: the box's Learning lab lists live-1011-035827-duo: yes, status gated
+[ 246.4 s] both runs on the box: total 246.4 s from the start command
+total 246.4 s
+solo: 100 examples; seconds {'labeling': 31.8, 'waiting': 0.0, 'training': 60.1, 'packaging': 76.6, 'total': 168.6}; labeling 3659.4 J (0.324 J/token, 36.6 J/example); training 2811.3 J (351.4 J/step, 37.48 J/train row); packaging 3039.0 J; pods 9509.7 J = 95.1 J/example; box 2037.7 J
+duo: 200 examples; seconds {'labeling': 61.4, 'waiting': 0.0, 'training': 84.6, 'packaging': 59.7, 'total': 205.6}; labeling 6743.6 J (0.303 J/token, 33.7 J/example); training 3918.4 J (489.8 J/step, 26.12 J/train row); packaging 4384.5 J; pods 15046.5 J = 75.2 J/example; box 2592.3 J
+duo over solo: {'examples': 2.0, 'act_seconds': 1.219, 'labeling_j': 1.843, 'labeling_j_per_token': 0.935, 'labeling_j_per_example': 0.921, 'training_j': 1.394, 'training_j_per_step': 1.394, 'training_j_per_train_row': 0.697, 'packaging_j': 1.443, 'pods_joules': 1.582, 'j_per_example': 0.791, 'box_j': 1.272}
+card stays up at http://127.0.0.1:8788/ for 25.0 min (Ctrl-C ends it)

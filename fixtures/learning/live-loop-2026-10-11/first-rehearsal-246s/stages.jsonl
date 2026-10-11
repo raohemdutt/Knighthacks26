@@ -1,0 +1,12 @@
+{"act": "all", "stage": "go", "ts": "2026-10-11T07:58:35.050Z", "solo": "live-1011-035827-solo", "duo": "live-1011-035827-duo", "steps": 8, "workers": 16}
+{"act": "solo", "stage": "start", "ts": "2026-10-11T07:58:35.071Z", "run_id": "live-1011-035827-solo", "circle": "l29-solo"}
+{"act": "solo", "stage": "labeled", "ts": "2026-10-11T07:59:06.911Z"}
+{"act": "solo", "stage": "train", "ts": "2026-10-11T07:59:06.913Z"}
+{"act": "duo", "stage": "start", "ts": "2026-10-11T07:59:06.944Z", "run_id": "live-1011-035827-duo", "circle": "l29-duo"}
+{"act": "solo", "stage": "trained", "ts": "2026-10-11T08:00:07.024Z"}
+{"act": "duo", "stage": "labeled", "ts": "2026-10-11T08:00:08.366Z"}
+{"act": "duo", "stage": "train", "ts": "2026-10-11T08:00:08.368Z"}
+{"act": "solo", "stage": "done", "ts": "2026-10-11T08:01:23.655Z", "rc": 0}
+{"act": "duo", "stage": "trained", "ts": "2026-10-11T08:01:32.940Z"}
+{"act": "duo", "stage": "done", "ts": "2026-10-11T08:02:32.592Z", "rc": 0}
+{"act": "all", "stage": "end", "ts": "2026-10-11T08:02:32.593Z"}

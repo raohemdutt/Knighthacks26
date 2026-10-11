@@ -1,0 +1,13 @@
+{
+  "version": "atlas-group-desk-objects-live-1011-040342-solo",
+  "base": "Qwen/Qwen3.5-4B",
+  "task": "desk-objects",
+  "gguf": "atlas-group-desk-objects-live-1011-040342-solo-Q4_K_M.gguf",
+  "mmproj": "mmproj-F16.gguf",
+  "sha256": {
+    "atlas-group-desk-objects-live-1011-040342-solo-Q4_K_M.gguf": "cab2a1757564d1afe2cf399e88f8b06f11c9a4d23c11d84a47f38e4592b842c7",
+    "mmproj-F16.gguf": "cd88edcf8d031894960bb0c9c5b9b7e1fea6ebee02b9f7ce925a00d12891f864"
+  },
+  "scores": {},
+  "created": "2026-10-11T08:06:25.296054Z"
+}
