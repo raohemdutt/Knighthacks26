@@ -333,6 +333,112 @@ Seen in search results and not opened, so never cited: Steinkraus, Buck and Sima
 for machine learning algorithms", ICDAR 2005; Fujieda and Harada, "Neural Texture Block
 Compression", 2024; the Mesa merge request for ANV ASTC emulation (!25467) and the Phoronix
 articles on RADV bfloat16 and descriptor heaps (bot checks); the rocJPEG hardware page (HTTP 404).
+## Added by R51, the public Strix Halo benchmark dataset (2026-10-10)
+
+Note `public_strix_halo_benchmarks.md` (public) also cites L4 above. Each entry below is one source group of
+`data/public-strix-halo-benchmarks.csv`: a repository, gist, issue, PR or discussion. The row count and
+quality flags are those of the CSV, and "dated" is the span of the dates the rows carry. Every page or file
+was opened in this session on 2026-10-10 through github.com, gist.github.com or raw.githubusercontent.com;
+the individual file or comment each row came from is its `source_url`.
+
+| Id | Kind | Source | Link or location | Opened | Cited in |
+| --- | --- | --- | --- | --- | --- |
+| P1 | repository | strix-halo-testing llm-bench (lhl); 5257 rows (5257 reproducible-script); dated 2025-07-13 to 2025-10-28 | https://github.com/lhl/strix-halo-testing | 2026-10-10 | public |
+| P2 | repository | amd-strix-halo-toolboxes benchmark results.json (kyuz0); 5222 rows (5220 reproducible-script, 2 forum-post); dated 2025-08-09 to 2026-10 | https://github.com/kyuz0/amd-strix-halo-toolboxes | 2026-10-10 | public |
+| P3 | repository | strix-halo-guide structured benchmark data (hogeheer499-commits): moe_density_gate.csv; 709 rows (629 reproducible-script, 80 forum-post); dated 2026-03-20 to 2026-09-26 | https://github.com/hogeheer499-commits/strix-halo-guide | 2026-10-10 | public |
+| P4 | repository | strix-halo-llamacpp glance run (Nathanw1014); 506 rows (506 reproducible-script); dated 2026-07-26 to 2026-08-19 | https://github.com/Nathanw1014/strix-halo-llamacpp | 2026-10-10 | public |
+| P5 | repository | strix-halo-windows-llm-bench (ihanesman) phase C1; 276 rows (276 reproducible-script); dated 2026-09-24 to 2026-09-25 | https://github.com/ihanesman/strix-halo-windows-llm-bench | 2026-10-10 | public |
+| P6 | repository | Local LLM benchmarks on AMD Strix Halo (slb350); 137 rows (137 reproducible-script); dated 2026-09 to 2026-09-22 | https://github.com/slb350/strix-benchmarks | 2026-10-10 | public |
+| P7 | repository | kyuz0 amd-strix-halo-vllm-toolboxes benchmark results (vllm bench throughput); 110 rows (110 reproducible-script); dated 2025-12 | https://github.com/kyuz0/amd-strix-halo-vllm-toolboxes | 2026-10-10 | public |
+| P8 | issue | Vulkan batched decode throughput cliff at n_tokens=9 on many-expert MoE (ftoleedo) - density gate comment; 97 rows (97 reproducible-script); dated 2026-07-06 to 2026-08-30 | https://github.com/ggml-org/llama.cpp/issues/25356 | 2026-10-10 | public |
+| P9 | repository | lessing-systems llm-bench-strixhalo: Local LLM shoot-out (tables.md, REPORT.md); 89 rows (89 reproducible-script); dated 2026-10-06 | https://github.com/lessing-systems/llm-bench-strixhalo | 2026-10-10 | public |
+| P10 | repository | visorcraft strix-halo-llm-perf BENCHMARKS.md; 72 rows (72 reproducible-script); dated 2026-02-13 to 2026-03-03 | https://github.com/visorcraft/strix-halo-llm-perf | 2026-10-10 | public |
+| P11 | repository | inkling-strix-halo reference run (markhuguet); 67 rows (67 reproducible-script); dated 2026-10-08 | https://github.com/markhuguet/inkling-strix-halo | 2026-10-10 | public |
+| P12 | issue | Misc. bug: Inefficient defaults for gfx1151 cost substantial performance for prefill (ROCm), pedapudi; 56 rows (38 reproducible-script, 18 forum-post); dated 2026-04-02 to 2026-07-19 | https://github.com/ggml-org/llama.cpp/issues/21284 | 2026-10-10 | public |
+| P13 | repository | strix-halo-optimize FINDINGS (randomm): -ub calibration; 39 rows (39 reproducible-script); dated 2026-08-28 to 2026-10-01 | https://github.com/randomm/strix-halo-optimize | 2026-10-10 | public |
+| P14 | repository | strix-halo-sglang patch 7 ablation (JeremiahM37); 36 rows (36 reproducible-script); dated 2026-05 to 2026-08-18 | https://github.com/JeremiahM37/strix-halo-sglang | 2026-10-10 | public |
+| P15 | repository | vllm-awq4-qwen bench matrix (hec-ovi); 32 rows (32 reproducible-script); dated 2026-05-02 | https://github.com/hec-ovi/vllm-awq4-qwen | 2026-10-10 | public |
+| P16 | discussion | Llama-batched-bench speedups do not translate to llama-server (Mushoz); 30 rows (30 reproducible-script); dated 2025-08-13 to 2025-10-07 | https://github.com/ggml-org/llama.cpp/discussions/15290 | 2026-10-10 | public |
+| P17 | discussion | llama-bench Strix Halo (gfx1151) ROCm 7.2.3 + Qwen3.5 122B A10B MTP UD-Q6_K_XL, muslimpribadi; 28 rows (28 reproducible-script); dated 2026-05-25 | https://github.com/ggml-org/llama.cpp/discussions/23659 | 2026-10-10 | public |
+| P18 | discussion | Qwen3.8-Flash-Next on Strix Halo (gfx1151): 17 -> 47 tok/s, working MTP on ROCm, drluoto; 27 rows (27 forum-post); dated 2026-08-29 to 2026-09-20 | https://github.com/ggml-org/llama.cpp/discussions/27950 | 2026-10-10 | public |
+| P19 | repository | Bosgame Strix Halo 128 GB local LLM guide (ddifofeu); 25 rows (25 reproducible-script); dated 2026-09 to 2026-09-27 | https://github.com/ddifofeu/strix-halo-128gb-llm-guide | 2026-10-10 | public |
+| P20 | issue | Framework Desktop (Ryzen AI Max+ 395) AI benchmarks, geerlingguy; 25 rows (25 reproducible-script); dated 2025-08-07 | https://github.com/geerlingguy/ai-benchmarks/issues/21 | 2026-10-10 | public |
+| P21 | issue | Vulkan/AMD performance: vendored llama.cpp b7437 missing Wave32 FA and graphics queue (ollama), sagar-kale; 25 rows (23 forum-post, 2 reproducible-script); dated 2026-04-15 to 2026-04-17 | https://github.com/ollama/ollama/issues/15601 | 2026-10-10 | public |
+| P22 | repository | Qwen3.8-27B evaluation EVO-X2 (pablo-ross); 23 rows (23 reproducible-script); dated 2025-11-04 to 2026-08-17 | https://github.com/pablo-ross/strix-halo-gmktec-evo-x2 | 2026-10-10 | public |
+| P23 | repository | Qwen 3.8 Flash-Next on AMD Strix Halo, tuned llama.cpp branch (Aristo94 EngramHalo); 22 rows (22 reproducible-script); dated 2026-08-27 | https://github.com/Aristo94/EngramHalo.cpp | 2026-10-10 | public |
+| P24 | repository | halogen-flash-server README: Measured; 22 rows (22 reproducible-script); dated date not stated | https://github.com/peonist-ai/halogen-flash-server | 2026-10-10 | public |
+| P25 | gist | Beelink GTR9Pro (AI Max+ 395) benchmarks (KMouratidis gist); 22 rows (22 reproducible-script); dated 2025-10-22 | https://gist.github.com/KMouratidis/88456bea439ea8d38f452bb6df289b58 | 2026-10-10 | public |
+| P26 | repository | strix-halo-sglang Qwen3.8 single request vs prompt length (jvantuyl); 21 rows (21 reproducible-script); dated date not stated | https://github.com/jvantuyl/strix-halo-sglang | 2026-10-10 | public |
+| P27 | gist | AMD Ryzen AI MAX+ 395 - LLM Benchmark Results (Ollama & Lemonade) (ricog gist); 21 rows (21 forum-post); dated 2026-04-13 | https://gist.github.com/ricog/96ba9cc295a4706f548ad0d2f7ab616b | 2026-10-10 | public |
+| P28 | issue | MTP draft acceptance rate regression after v11.7.0 on gfx1151 (dup2, lemonade issue); 19 rows (19 reproducible-script); dated 2026-08-20 | https://github.com/lemonade-sdk/lemonade/issues/3269 | 2026-10-10 | public |
+| P29 | repository | Qwen 3.6-35B-A3B quantization comparison on EVO-X2 (nabe2030); 16 rows (16 reproducible-script); dated 2026-04-19 | https://github.com/nabe2030/qwen36-evo-x2 | 2026-10-10 | public |
+| P30 | issue | halogen-flash-server #125 decode regression report (kirkdis); 14 rows (14 forum-post); dated 2026-10-02 | https://github.com/peonist-ai/halogen-flash-server/issues/125 | 2026-10-10 | public |
+| P31 | issue | lemonade #1642 MLX Engine ROCm backend (ghost); 13 rows (13 forum-post); dated 2026-04-15 | https://github.com/lemonade-sdk/lemonade/issues/1642 | 2026-10-10 | public |
+| P32 | other | Strix Halo HomeLab Wiki: llama.cpp Performance (GitHub mirror of strixhalo.wiki/AI/llamacpp-performance); 12 rows (12 reproducible-script); dated 2025-11-01 | https://github.com/deseven/strixhalo-homelab | 2026-10-10 | public |
+| P33 | discussion | Known-Good Strix Halo ROCm + llama.cpp Stack, realugbun (4-month update); 11 rows (11 forum-post); dated 2026-03-22 to 2026-07-23 | https://github.com/ggml-org/llama.cpp/discussions/20856 | 2026-10-10 | public |
+| P34 | issue | [Performance]: Framework Desktop Ryzen AI Max+ 128GB - CPU Only (colibri); 11 rows (11 reproducible-script); dated 2026-07-10 to 2026-07-14 | https://github.com/JustVugg/colibri/issues/39 | 2026-10-10 | public |
+| P35 | issue | Vulkan flash attention performance regression on Strix Halo, ddpasa; 10 rows (10 reproducible-script); dated 2026-07-01 to 2026-07-02 | https://github.com/ggml-org/llama.cpp/issues/25207 | 2026-10-10 | public |
+| P36 | issue | Misc. bug: HIP backend performs poorly on AMD Ryzen AI MAX 395 (Strix Halo gfx1151), lhl; 9 rows (9 reproducible-script); dated 2025-05-15 to 2025-05-17 | https://github.com/ggml-org/llama.cpp/issues/13565 | 2026-10-10 | public |
+| P37 | repository | Qwen3.8-Flash-Next on Strix Halo: 32 to 61 tokens per second (drluoto); 8 rows (8 reproducible-script); dated 2026-09-21 | https://github.com/drluoto/flash-next-strix-halo | 2026-10-10 | public |
+| P38 | repository | Gemma 4 vs Qwen 3.5 on EVO-X2 (nabe2030); 8 rows (8 reproducible-script); dated 2026-05 | https://github.com/nabe2030/gemma4-vs-qwen35-evo-x2 | 2026-10-10 | public |
+| P39 | repository | minis-s1max-llm-bench README reference table (cites r/LocalLLM post); 8 rows (6 forum-post, 2 reproducible-script); dated 2026-10-03 | https://github.com/InterfaceX-co-jp/minis-s1max-llm-bench | 2026-10-10 | public |
+| P40 | repository | xCloudinfo-EnterpriseTeam ai395-strix-halo-llm README; 8 rows (8 reproducible-script); dated 2026-10-08 | https://github.com/xCloudinfo-EnterpriseTeam/ai395-strix-halo-llm | 2026-10-10 | public |
+| P41 | issue | Test distributed-llama for clustered AI (geerlingguy); 7 rows (7 reproducible-script); dated 2025-08-03 to 2025-08-05 | https://github.com/geerlingguy/beowulf-ai-cluster/issues/4 | 2026-10-10 | public |
+| P42 | issue | Beelink GTR9 Pro bench.sh results glm-5.3-exl3 (xXm-mXx); 7 rows (7 reproducible-script); dated 2026-10-09 | https://github.com/Yamz-Labs/kyojin/issues/48 | 2026-10-10 | public |
+| P43 | issue | bundled llamacpp:rocm backend produces incorrect output above ~5K prompt tokens on Strix Halo (ken8848); 7 rows (7 forum-post); dated 2026-09-17 | https://github.com/lemonade-sdk/lemonade/issues/3610 | 2026-10-10 | public |
+| P44 | issue | Performance regression: llama-server high CPU use when generating tokens (ollama issue) - comment by DTU-trave; 7 rows (7 forum-post); dated 2026-09-02 | https://github.com/ollama/ollama/issues/18038 | 2026-10-10 | public |
+| P45 | discussion | gfx1151 throughput datapoints Qwen3.8-27B MTP+ngram (simongonzalezdc); 6 rows (6 reproducible-script); dated 2026-08-16 | https://github.com/ggml-org/llama.cpp/discussions/27154 | 2026-10-10 | public |
+| P46 | issue | Increase llama.cpp performance - strategies for AMD Ryzen AI Max 395+ (comment by hogeheer499-commits); 6 rows (6 forum-post); dated 2026-06-01 | https://github.com/geerlingguy/beowulf-ai-cluster/issues/5 | 2026-10-10 | public |
+| P47 | issue | Bug: --ollama-engine runner ignores GGML_CUDA_INIT=1, breaking ROCm bootstrap on gfx1151 APUs (ftmng); 6 rows (6 forum-post); dated 2026-04-08 | https://github.com/ollama/ollama/issues/15420 | 2026-10-10 | public |
+| P48 | issue | vLLM #32180 (hogeheer499-commits comment); 5 rows (5 forum-post); dated 2026-06-01 to 2026-07-30 | https://github.com/vllm-project/vllm/issues/32180 | 2026-10-10 | public |
+| P49 | repository | halomarchy: services, speculative prefill (kinncj); 5 rows (5 forum-post); dated 2026-09 to 2026-09-11 | https://github.com/kinncj/halomarchy | 2026-10-10 | public |
+| P50 | PR | server: allow parallel requests for qwen35/qwen35moe (ollama PR) - comment by DTU-travelpals; 5 rows (5 forum-post); dated 2026-07-30 to 2026-09-25 | https://github.com/ollama/ollama/pull/17144 | 2026-10-10 | public |
+| P51 | issue | [gfx1151] mul_mat_q<Q8_0,128,true> Memory Fault during large-ubatch prompt processing on b1292 (blackdeathdrow; 5 rows (5 forum-post); dated 2026-06-19 | https://github.com/lemonade-sdk/llamacpp-rocm/issues/116 | 2026-10-10 | public |
+| P52 | discussion | Performance of llama.cpp on AMD ROCm (HIP) scoreboard; 4 rows (4 reproducible-script); dated date not stated | https://github.com/ggml-org/llama.cpp/discussions/15021 | 2026-10-10 | public |
+| P53 | issue | For gfx1151, llama.cpp should be built with -DGGML_HIP_ROCWMMA_FATTN=ON, lhl; 4 rows (4 reproducible-script); dated 2025-08-10 | https://github.com/lemonade-sdk/llamacpp-rocm/issues/7 | 2026-10-10 | public |
+| P54 | issue | ROCm build of llama.cpp is suboptimal for Strix Halo, pwilkin; 4 rows (4 reproducible-script); dated 2026-07-09 | https://github.com/lemonade-sdk/lemonade/issues/2624 | 2026-10-10 | public |
+| P55 | issue | Hp Zbook G1a bench report (alanoo81); 4 rows (4 reproducible-script); dated 2026-10-08 | https://github.com/Yamz-Labs/kyojin/issues/45 | 2026-10-10 | public |
+| P56 | issue | Vulkan on gfx1151 (Strix Halo): amdgpu compute-ring timeout / ErrorDeviceLost on long-prompt prefill (yonggony; 4 rows (4 forum-post); dated 2026-08-19 | https://github.com/ollama/ollama/issues/17870 | 2026-10-10 | public |
+| P57 | issue | AMD Strix Halo (Radeon 8060S) VRAM detection regression: only partial GPU utilization on 0.30.x (bg8erz); 4 rows (4 forum-post); dated 2026-06-04 | https://github.com/ollama/ollama/issues/16529 | 2026-10-10 | public |
+| P58 | issue | [Vulkan] Qwen3-30b-a3b - Severe degradation between 1.29.0 and 1.38.0/1.39.0 (waltercool, LM Studio bug tracke; 4 rows (4 forum-post); dated 2025-07-13 to 2025-07-14 | https://github.com/lmstudio-ai/lmstudio-bug-tracker/issues/761 | 2026-10-10 | public |
+| P59 | discussion | RFC: Add Atlas Inference backend for native Windows/Linux ROCm inference (lemonade discussion) - comment by Az; 4 rows (4 forum-post); dated 2026-09-25 | https://github.com/lemonade-sdk/lemonade/discussions/3643 | 2026-10-10 | public |
+| P60 | issue | Performance decrease on Beelink GTR9 Pro AMD Ryzen AI Max+ 395 (kevenboo, ollama issue); 4 rows (4 forum-post); dated 2026-06-02 | https://github.com/ollama/ollama/issues/16441 | 2026-10-10 | public |
+| P61 | issue | pytorch #171687 gfx1151 decode hipMemcpy bound (BellaDoggie); 3 rows (3 forum-post); dated 2026-01-08 | https://github.com/pytorch/pytorch/issues/171687 | 2026-10-10 | public |
+| P62 | vendor blog | AI Inference on AMD Ryzen AI Max Processor (AMD ROCm Blogs; Chengjia Huang, Daniel Huang, George Wang); 3 rows (3 vendor); dated 2026-05-25 | https://github.com/ROCm/rocm-blogs | 2026-10-10 | public |
+| P63 | issue | ds4: forced --ssd-streaming costs 4.4x on 128 GB Strix Halo (iKyi, lemonade issue); 3 rows (3 forum-post); dated 2026-08-29 | https://github.com/lemonade-sdk/lemonade/issues/3431 | 2026-10-10 | public |
+| P64 | issue | ROCm backend breaks tool discovery in real agent workloads (LM Studio bug tracker) - update comment by mlaihk; 3 rows (3 forum-post); dated 2026-09-12 | https://github.com/lmstudio-ai/lmstudio-bug-tracker/issues/2376 | 2026-10-10 | public |
+| P65 | repository | geerlingguy ai-benchmarks README Findings (obench.sh, Ollama eval rate); 3 rows (3 reproducible-script); dated 2025-08-07 | https://github.com/geerlingguy/ai-benchmarks | 2026-10-10 | public |
+| P66 | discussion | Performance of llama.cpp with Vulkan scoreboard; 2 rows (2 reproducible-script); dated date not stated | https://github.com/ggml-org/llama.cpp/discussions/10879 | 2026-10-10 | public |
+| P67 | PR | vllm-omni PR #6236 Document ROCm validation on gfx1151 (tangzzycc); 2 rows (2 reproducible-script); dated 2026-08-16 | https://github.com/vllm-project/vllm-omni/pull/6236 | 2026-10-10 | public |
+| P68 | issue | AMD Strix Halo (gfx1151) - ROCm Working Guide: 40 tok/s on 30B models (queensone); 2 rows (2 forum-post); dated 2026-03-14 | https://github.com/ollama/ollama/issues/14855 | 2026-10-10 | public |
+| P69 | issue | [llamacpp-hrx] Intermittent materialize host weight failed + GPU hang on gfx1151 (dg-w36, lemonade issue); 2 rows (2 forum-post); dated 2026-09-08 | https://github.com/lemonade-sdk/lemonade/issues/3517 | 2026-10-10 | public |
+| P70 | issue | ROCm backend on Strix Halo (gfx1151 iGPU) bleeds KV state across sequential requests (timames, ollama issue); 2 rows (2 forum-post); dated 2026-08-18 | https://github.com/ollama/ollama/issues/17847 | 2026-10-10 | public |
+| P71 | issue | gfx1151 (Radeon 8050S) silently falls back to CPU on Linux (ollama issue) - comment by blue-az; 2 rows (2 forum-post); dated 2026-01-01 to 2026-03-11 | https://github.com/ollama/ollama/issues/13589 | 2026-10-10 | public |
+| P72 | issue | AMD Strix Halo VRAM Detection Regression in Ollama 0.30+ (ollama issue) - comment by rick-github; 2 rows (2 forum-post); dated 2026-08-14 | https://github.com/ollama/ollama/issues/16462 | 2026-10-10 | public |
+| P73 | issue | serving model(llama4:scout) fails on gfx1151 (ollama issue) - comment by pnjacket; 2 rows (2 forum-post); dated 2025-05-18 | https://github.com/ollama/ollama/issues/10758 | 2026-10-10 | public |
+| P74 | issue | When will minimax-m2 be supported? (ollama issue) - comment by rick-github; 2 rows (2 forum-post); dated 2025-12-10 | https://github.com/ollama/ollama/issues/13049 | 2026-10-10 | public |
+| P75 | repository | patrickmfurbert ai-tools: llama.cpp build doc (r/LocalLLaMA community guide); 2 rows (2 forum-post); dated 2026-08-31 | https://github.com/patrickmfurbert/ai-tools | 2026-10-10 | public |
+| P76 | repository | strix-halo-evo-x2-evidence (ciru-ai); 1 rows (1 forum-post); dated 2026-06-14 | https://github.com/ciru-ai/strix-halo-evo-x2-evidence | 2026-10-10 | public |
+| P77 | issue | Test ROCm with llama.cpp on Fedora Rawhide (geerlingguy); 1 rows (1 reproducible-script); dated 2025-08-05 | https://github.com/geerlingguy/beowulf-ai-cluster/issues/7 | 2026-10-10 | public |
+| P78 | repository | Strix Halo Cluster (mightystudios); 1 rows (1 forum-post); dated 2026-09 | https://github.com/mightystudios/StrixHaloCluster | 2026-10-10 | public |
+| P79 | repository | Framework-strix-halo-llm-setup-V2 (Gygeek); 1 rows (1 forum-post); dated 2025-12-14 | https://github.com/Gygeek/Framework-strix-halo-llm-setup-V2 | 2026-10-10 | public |
+| P80 | PR | Add support for ROCm gfx1151 (dhiltgen, Ollama maintainer); 1 rows (1 forum-post); dated 2025-03-14 | https://github.com/ollama/ollama/pull/9773 | 2026-10-10 | public |
+| P81 | issue | ROCm backend does not detect GPU on Windows when AMD driver ships a newer HIP runtime than TheRock (blackdeath; 1 rows (1 forum-post); dated 2026-08-18 | https://github.com/lemonade-sdk/lemonade/issues/3213 | 2026-10-10 | public |
+| P82 | vendor doc | GAIA v0.20.0 Release Notes (AMD amd/gaia); 1 rows (1 vendor); dated 2026-06-03 | https://github.com/amd/gaia | 2026-10-10 | public |
+| P83 | issue | Nemotron3.5-lightning:30b stalling on AMD AI395+ (ollama issue) - comment by cipriancu; 1 rows (1 forum-post); dated 2026-08-12 | https://github.com/ollama/ollama/issues/17692 | 2026-10-10 | public |
+| P84 | issue | qwen3.5:122b crashes with 0xc0000409 on Strix Halo + Adrenalin 32.0.31019 (TenshuA); 1 rows (1 forum-post); dated 2026-06-15 | https://github.com/ollama/ollama/issues/16734 | 2026-10-10 | public |
+| P85 | PR | fix: name the gpt-oss-120b checkpoint instead of globbing (noamsto, lemonade PR); 1 rows (1 forum-post); dated 2026-09-03 | https://github.com/lemonade-sdk/lemonade/pull/3496 | 2026-10-10 | public |
+| P86 | repository | ds4-rocm README (lemonade-sdk, AMD-maintained); 1 rows (1 vendor); dated date not stated | https://github.com/lemonade-sdk/ds4-rocm | 2026-10-10 | public |
+
+Searched for R51 but not opened (each refused by the session's network policy, by DNS, or by the fetch tool;
+no number from these is in the CSV):
+
+- AMD pages (amd.com product and blog pages, rocm.blogs.amd.com, developer.amd.com, gpuopen.com), including AMD's Ryzen AI Max+ 395 LLM claims and their endnotes: not opened; searched 2026-10-10.
+- Press and review sites (Phoronix, OpenBenchmarking.org, ServeTheHome, Notebookcheck, Tom's Hardware, The Register, Chips and Cheese, TechPowerUp, jeffgeerling.com): not opened; searched 2026-10-10.
+- Forums and aggregators (reddit.com and old.reddit.com, news.ycombinator.com and hn.algolia.com, community.frame.work, forum.level1techs.com, llm-tracker.info, strixhalo.wiki, kyuz0.github.io): not opened; strixhalo.wiki was read through its GitHub mirror deseven/strixhalo-homelab instead; searched 2026-10-10.
+- Vendor and tool sites (lmstudio.ai, ollama.com, lemonade-server.ai, OEM sites) and YouTube: not opened; searched 2026-10-10.
+- Archives (web.archive.org, archive.ph): not opened; searched 2026-10-10.
+- ggml-org/llama.cpp discussions 10879 and 15021 beyond their AI Max rows, the LaurentZuijdwijk llama.cpp fork README, and halo-box/strix-llama.cpp PR 150: not opened (truncated, timed out or 404); searched 2026-10-10.
 ## Added by R49, fast settings optimization note (2026-10-10)
 
 Ids `B1` to `B60` belong to `fast_optimization.md` ("fast" in the Cited in column). They use the
