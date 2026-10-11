@@ -449,3 +449,48 @@ def test_match_collect_sends_greedy_batch_1_requests_and_checks_eager(tmp_path: 
     doc = json.loads(out.read_text())
     assert doc["enforce_eager"] is True and doc["batch"] == 1 and "--enforce-eager" in doc["server_argv"]
     assert doc["outputs"][0]["token_ids"] == [785, 9487]
+
+
+# --- part 6 helper: bands across the per-round bench sessions ---------------------------------------------------
+
+def _bench_rows(arm: str, rates: list[float], jpt: list[float]) -> list[dict]:
+    """R11 rows as lab/bench.py writes them with --share-spawn --batches 1,4: one session (one spawn) per round."""
+    rows = []
+    for i, (rate, j) in enumerate(zip(rates, jpt)):
+        session = f"{arm}-s{i}"
+        for b in (1, 4):
+            probe = ({"in_flight": 1, "decode_tok_s": rate, "ttft_s": 0.4, "mem_busy_pct": {"median": 50.0}}
+                     if b == 1 else {"in_flight": 1, "decode_tok_s": None, "reason": "no probe in this run"})
+            rows.append({"schema": "lab.bench.row/1", "run_id": f"{session}-r0-b{b}", "session": session,
+                         "engine": "vllm", "batch_size": b, "outcome": "ok", "spawn": {"index": 0, "cold": True},
+                         "probe": probe, "decode_tok_s": rate * (1 if b == 1 else 0.9),
+                         "decode_tok_s_total": rate * b * 0.9, "ttft_s": 0.4, "joules_per_token": j / b,
+                         "watts": {"avg_w": 120.0, "peak_w": 129.0}, "time_since_spawn_s": 400.0})
+    return rows
+
+
+def test_bands_pool_one_arm_across_sessions_and_compare_with_stock(tmp_path: Path) -> None:
+    from gpu import r12_bands
+    stock = tmp_path / "stock.jsonl"
+    stock.write_text("\n".join(json.dumps(r) for r in _bench_rows("stock", [2.88, 2.90, 2.86, 2.89, 2.87],
+                                                                    [41.7, 41.5, 41.9, 41.6, 41.8])) + "\n")
+    arm = tmp_path / "stages.jsonl"
+    arm.write_text("\n".join(json.dumps(r) for r in _bench_rows("stages", [2.89, 1.45, 2.88, 2.90, 1.44],
+                                                                  [41.8, 83.0, 41.9, 41.7, 83.4])) + "\n")
+    stock_rep = r12_bands.bands("stock", [stock])
+    assert [s["band"] for s in stock_rep["spawn_bands"]] == ["b1"] * 5
+    rep = r12_bands.bands("stages", [arm], stock=stock_rep)
+    assert sorted(s["band"] for s in rep["spawn_bands"]) == ["b1", "b1", "b1", "b2", "b2"]
+    assert {s["spawn"] for s in rep["spawn_bands"]} == {f"stages-s{i}:0" for i in range(5)}
+    b1 = rep["configurations"]["vllm b1"]
+    assert b1["bands"]["b1"]["spawns"] == 3 and b1["bands"]["b2"]["share"] == 0.4
+    # the change against stock is reported overall and within the fast band, a slower result included
+    vs = rep["vs_stock"]["vllm b1"]["joules_per_token"]
+    assert vs["stock_median"] == pytest.approx(41.7) and vs["overall_change_pct"] > 0
+    assert vs["fast_band_change_pct"] == pytest.approx((41.8 - 41.7) / 41.7 * 100, abs=1e-5)
+    out = tmp_path / "bands.json"
+    run = subprocess.run([sys.executable, str(GPU / "r12_bands.py"), "--arm", "stock", "--out", str(out), str(stock)],
+                         capture_output=True, text=True)
+    assert run.returncode == 0, run.stderr
+    assert json.loads(out.read_text())["arm"] == "stock"
+

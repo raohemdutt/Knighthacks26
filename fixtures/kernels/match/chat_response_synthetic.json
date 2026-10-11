@@ -6,10 +6,6 @@
  "choices": [
   {
    "index": 0,
-   "message": {
-    "role": "assistant",
-    "content": "The chart"
-   },
    "logprobs": {
     "content": [
      {
