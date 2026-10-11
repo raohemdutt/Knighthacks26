@@ -1,6 +1,6 @@
 # L16 retrain on tool-calling-v2: result (Sun 2026-10-11)
 
-The rules every number here was produced under are in `lab/L16V2_RULES.md`, with five dated amendments. The pod D
+The rules every number here was produced under are in `lab/L16V2_RULES.md`, with six dated amendments. The pod D
 numbers are the pod D seat's (lines marked `podD` in `work/L16v2-out/progress.log`, files in `work/L16v2pod-out/`).
 
 ## 1. What this fixes
@@ -19,12 +19,13 @@ Before = the base rebuilt through the package's path (`~/l4/Qwen3.5-4B-base-same
 
 | adapter | test set | before | after | 0 to 1 | 1 to 0 | McNemar (examples) | sign-flip (groups) |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| CHOSEN: trial 12's configuration at step 32 (`atlas-tool-calling-v2-a100-f2r4`) | tool-calling-v2 held out, 228 examples in 18 groups | 95 = 0.417 | 179 = 0.785 | 90 | 6 | p = 2.5e-20 | p = 1.5e-05 |
+| the choice at 5:13 AM: trial 12's configuration at step 32 (`atlas-tool-calling-v2-a100-f2r4`) | tool-calling-v2 held out, 228 examples in 18 groups | 95 = 0.417 | 179 = 0.785 | 90 | 6 | p = 2.5e-20 | p = 1.5e-05 |
 | the same | tool-calling-fixture held out, 58 examples in 4 groups | 42 = 0.724 | 43 = 0.741 | 1 | 0 | p = 1 | p = 1 |
 | grid run 1 (the fallback, `atlas-tool-calling-v2-a100-r01`) | tool-calling-v2 held out | 95 = 0.417 | 176 = 0.772 | 86 | 5 | p = 4.0e-20 | p = 1.5e-05 (17 groups up, 1 flat, 0 down) |
 | the same | tool-calling-fixture held out | 42 = 0.724 | 43 = 0.741 | 1 | 0 | p = 1 | p = 1 |
+| trial 9's configuration at step 32 (`atlas-tool-calling-v2-a100-f3r16`) | tool-calling-v2 held out | 95 = 0.417 | 177 = 0.776 | 90 | 8 | p = 1.1e-18 | p = 3.1e-05 |
 
-The eval gate and the third full-length adapter (trial 9's configuration): pending from the pod D seat.
+The eval gate, and the old fixture's 58 for the third adapter: pending from the pod D seat.
 
 How to read them:
 
@@ -174,7 +175,58 @@ Recipe for pod D: `--max-steps 62 --stop-step 32 --lr 0.000427627 --rank 4 --alp
 
 ### The edge round
 
-Pending (edge section).
+Ilan asked whether the edges were explored and whether the granularity was too small; the first table said yes to
+both (rank 32 never tried, rank 16 in 8 of 12 trials, the best 24-step trial on four edges at once, every learning
+rate below 8e-5 a loser, and continuous warmup and dropout searched finer than a 24-step trial can see). The edge
+round (rules amendment 5) widened the learning rate to 1e-3, the ranks to {2, 4, 8, 16, 32, 64}, made dropout and
+warmup coarse, forced the corners the sampler had skipped, and measured the noise of a trial. Same 24-step fidelity,
+20 minutes, in study `l16v2-edge` (Optuna cannot change a parameter's choices inside a study), into which 8 of the
+12 first trials were copied; the 4 below the new learning-rate floor could not be.
+
+| n | seen | kind | worker | learning rate | rank | alpha | dropout | warmup | seed | outcome | val loss, step 12 | val loss, step 24 | value |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 13 | 8 | edge | l16v2-a100 | 0.0002 | 32 | 64 | 0.05 | 0.05 | 42 | trained | 0.0195 | 0.0126 | 0.0126 |
+| 14 | 8 | edge | l16v2-a100-b | 0.0004 | 16 | 32 | 0.05 | 0.05 | 42 | trained | 0.0182 | 0.0120 | 0.0120 |
+| 15 | 9 | noise | l16v2-a100 | 0.000248 | 16 | 32 | 0.08 | 0.04 | 43 | trained | 0.0169 | 0.0120 | 0.0120 |
+| 16 | 10 | noise | l16v2-a100-b | 0.0001 | 16 | 32 | 0.05 | 0.10 | 42 | trained | 0.0258 | 0.0193 | 0.0193 |
+| 17 | 10 | edge | l16v2-a100 | 0.0004 | 32 | 64 | 0.05 | 0.05 | 42 | trained | 0.0195 | 0.0107 | 0.0107 |
+
+| rank | trials (both rounds) | completed | best value | best val loss at step 12 |
+| --- | --- | --- | --- | --- |
+| 2 | 0 | 0 | n/a | n/a |
+| 4 | 2 | 1 | 0.0142 | 0.0212 |
+| 8 | 2 | 0 | n/a | 0.0260 |
+| 16 | 8 | 4 | 0.0120 | 0.0182 |
+| 32 | 2 | 2 | 0.0107 | 0.0195 |
+| 64 | 0 | 0 | n/a | n/a |
+
+| learning rate | trials (both rounds) | completed | best value |
+| --- | --- | --- | --- |
+| below 8e-5 | 4 | 0 | n/a |
+| 8e-5 to 1e-4 | 1 | 0 | n/a |
+| 1e-4 to 2e-4 | 3 | 1 | 0.0157 |
+| 2e-4 to 4e-4 | 3 | 3 | 0.0126 |
+| 4e-4 to 1e-3 | 3 | 3 | 0.0107 |
+
+- The noise floor of a 24-step trial: trial 9's configuration gave 0.0150 with seed 42 and 0.0120 with seed 43, a
+  difference of 0.0030; the seed configuration gave 0.0193 as a proper 24-step trial against the 0.0133 that
+  trial 1 carried (step 24 of its 62-step run), a difference of 0.0061, which is fidelity more than noise. The
+  floor used was the larger, 0.0061.
+- No edge-round trial beat the best 24-step value (0.0142) by more than that floor (the best was 0.0107, rank 32 at
+  4e-4), so there was no fourth finalist and the choice stood.
+- What the round did show: at 24 steps the high learning rates and the larger ranks look best (0.0107 to 0.0126
+  for rank 16 and 32 at 2e-4 to 4e-4), and the same table shows why that cannot be trusted: the seed recipe, which
+  is the best full-length run so far (0.0081), is the worst of these as a 24-step trial (0.0193). A short trial
+  rewards a recipe for being fast, not for where it ends.
+- It ran short of its own plan: the budget check used the longest trial so far (414 s, slowed by the validation
+  scoring that shared its card) as the estimate for the next one, so it stopped proposing at 833 of 1,200 seconds.
+  Three of the five forced corners ran inside the budget; rank 4 at 8e-4 ran after it, for the table only (kind
+  edge-after-budget); rank 2 at 4e-4 and every model-chosen edge point did not run at 24 steps.
+
+Because of the second and third points, Ilan ordered an extended search of full-length runs until 7:00 AM ET
+(rules amendment 6): every run at full length with early stopping, validation tool-call agreement for every run,
+the forced configurations again at full length, and a challenger replacing the choice only on the mean of two
+seeds. Its result: pending (it ends at 7:00 AM ET).
 
 ## 6. Proof the data came back
 
@@ -190,6 +242,7 @@ Every product was pulled when its marker appeared and checked against the size a
 | `run-01-r01-lr0.0001-rank16-drop0.05.tar.gz` | 14,397 | `5469fcd8820b49bb948389b8c46da9f7caa17cd9aee942ad856c18f975e80acb` |
 | `run-e13-lr0.0002-rank32-a64-drop0.050-warm0.050.tar.gz` | 7,436 | `0f25014a02917027c0ce16e01527c4d65e147147d8d795e744a2f2c417c1f444` |
 | `run-e14-lr0.0004-rank16-a32-drop0.050-warm0.050.tar.gz` | 7,399 | `f9b5c1a7f05a3002bb186cd78e07bb602716e6c38d6303783bdf5187555aa3f0` |
+| `run-e17-lr0.0004-rank32-a64-drop0.050-warm0.050.tar.gz` | 7,435 | `f167487175304a63e48f8512ea62b47e4ae33ec83634a86ed51fd4a0e5df8390` |
 | `run-final2-t12-lr0.000428-rank4-a8-drop0.136-warm0.009.tar.gz` | 33,965,853 | `d1253d8cd9fee564e5f0319d934144e383d16cb7b92b811b559282fa94a82d01` |
 | `run-final3-t09-lr0.000248-rank16-a32-drop0.084-warm0.041.tar.gz` | 123,778,973 | `d64f17569343625a50ce2a7c70ec7118f13bd9ee26da6b6163ca25c689279ec8` |
 | `run-n15-trial9-seed43.tar.gz` | 7,405 | `70a4f78c2bd4d7283d267680220038086091178ca65c9670719ce23790719f24` |
@@ -263,11 +316,11 @@ it and when is the coordinator's call. Pending (pod retrain).
 
 ## 10. Files
 
-- `lab/L16V2_RULES.md`: the rules and their five amendments.
+- `lab/L16V2_RULES.md`: the rules and their six amendments.
 - `lab/l16v2/`: `colab_setup.sh`, `colab_worker_setup.sh`, `colab_trial.sh`, `vm_score.py`, `sweep.py` (the VM-side
   generator and scoring helpers, and the grid that ran one point), `colab_job.sh`, `colab_driver.sh`,
   `colab_keepalive.sh`, `colab_status.py` (the grid's job and driver), `colab_speed.sh`, `colab_parallel_test.sh`
-  (the timings), `bo_local.py` (the search driver), `bo_edge.py` (the edge round), `report.py` (the tables here),
+  (the timings), `bo_local.py` (the search driver), `bo_edge.py` (the edge round), `bo_ext.py` (the extended search), `report.py` (the tables here),
   `pod_run.sh`, `pod_step4.sh`, `score_pod.sh` (pod D).
 - Tests: `tests/test_lab_fixture_dataset_v2.py`, `tests/test_lab_train.py`, `tests/test_lab_tool_call_agreement.py`,
   `tests/test_lab_l16v2_sweep.py`, `tests/test_lab_l16v2_bo_local.py` (needs optuna; skipped where it is missing).
