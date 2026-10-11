@@ -54,8 +54,10 @@ def score(model: str, dtype: str, wins: list[list[int]], max_len: int, gpu_util:
     from vllm.inputs import TokensPrompt
 
     started = time.time()
+    # max_num_batched_tokens bounds the prompt-logprob logits (tokens x 248k vocab in float32) to a few GB.
     llm = LLM(model=model, dtype=dtype, max_model_len=max_len, gpu_memory_utilization=gpu_util,
-              limit_mm_per_prompt={"image": 0, "video": 0}, tokenizer=TOKENIZER)
+              max_num_batched_tokens=max_len, max_num_seqs=8, limit_mm_per_prompt={"image": 0, "video": 0},
+              tokenizer=TOKENIZER)
     loaded = time.time()
     outs = llm.generate([TokensPrompt(prompt_token_ids=w) for w in wins],
                         SamplingParams(max_tokens=1, prompt_logprobs=0, temperature=0.0))
@@ -64,9 +66,12 @@ def score(model: str, dtype: str, wins: list[list[int]], max_len: int, gpu_util:
         lps = o.prompt_logprobs or []
         rows.append([None if d is None else d[tok].logprob for tok, d in zip(w, lps)])
     ppl, n = perplexity(rows)
-    cfg = llm.llm_engine.model_config
+    engine = llm.llm_engine
+    cfg = getattr(engine, "model_config", None) or getattr(getattr(engine, "vllm_config", None), "model_config", None)
+    import vllm
+
     return {"ppl": round(ppl, 4), "tokens": n, "windows": len(wins), "quantization": getattr(cfg, "quantization", None),
-            "dtype": str(getattr(cfg, "dtype", dtype)), "load_s": round(loaded - started, 1),
+            "dtype": str(getattr(cfg, "dtype", dtype)), "vllm": vllm.__version__, "load_s": round(loaded - started, 1),
             "score_s": round(time.time() - loaded, 1)}
 
 
@@ -77,7 +82,7 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - runs on th
     ap.add_argument("--dtype", default="auto")
     ap.add_argument("--window", type=int, default=2048)
     ap.add_argument("--windows", type=int, default=0, help="0 = every full window of the test split")
-    ap.add_argument("--gpu-util", type=float, default=0.9)
+    ap.add_argument("--gpu-util", type=float, default=0.85)
     ap.add_argument("--out", required=True)
     args = ap.parse_args(argv)
     wins = windows(heldout_ids(), args.window, args.windows)
