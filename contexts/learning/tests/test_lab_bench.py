@@ -118,7 +118,7 @@ def test_a_new_node_and_a_new_metric_family_show_up_without_a_code_change(tmp_pa
     payload = bench(rows, skipped)
     assert [s["problem"] for s in payload["skipped"]] == ["not JSON", "no metric name or no numeric value"]
     ids = {s["id"] for s in payload["sweeps"]}
-    assert {"teacher_batching:pod-b:bench-r20", "kernel_hybrid:pod-b:bench-k"} <= ids and len(ids) == 5  # with R57's A100 reference and E29's llama.cpp sweep
+    assert {"teacher_batching:pod-b:bench-r20", "kernel_hybrid:pod-b:bench-k"} <= ids and len(ids) == 6  # with R57's A100 reference, R20's pod-b vLLM matrix and E29's llama.cpp sweep
     assert payload["sweeps"][0]["ts"] == max(x["ts"] for x in payload["sweeps"])  # newest first (E29's, 05:10)
     assert next(n for n in payload["power"]["nodes"] if n["node"] == "pod-b")["idle"]["value"] == 11.0 and payload["power"]["absent"] == []
     assert ("quant.perplexity", "pod-b") in {(x["metric"], x["node"]) for x in payload["not_charted"]}
