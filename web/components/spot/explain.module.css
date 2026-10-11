@@ -100,11 +100,18 @@
   color: var(--text);
   font-size: 15px;
   font-weight: 650;
-  transition: box-shadow var(--ease-press);
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .btn:hover {
+    transform: translateY(-2px);
+  }
 }
 
 .btn:active {
   box-shadow: var(--sh-inset-sm);
+  transform: scale(0.97);
 }
 
 .btnMain {
@@ -260,7 +267,7 @@
   fill: var(--bad);
   font-weight: 800;
   paint-order: stroke;
-  stroke: var(--surface);
+  stroke: var(--surface-solid);
   stroke-width: 8px;
   stroke-linejoin: round;
 }

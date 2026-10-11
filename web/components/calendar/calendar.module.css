@@ -184,8 +184,9 @@
   transform: translateX(-50%);
   padding: 1px 8px;
   border-radius: 10px;
-  background: var(--accent-text);
-  color: #ffffff;
+  background: var(--accent-grad);
+  color: var(--accent-ink);
+  box-shadow: var(--glow);
   font-size: 12px;
   font-style: normal;
   font-weight: 700;

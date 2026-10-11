@@ -1,9 +1,6 @@
-/* Inspection (SPOT). Same tokens as the rest of the app; status colours are local and always paired with words or shapes. */
+/* Inspection (SPOT). Same tokens as the rest of the app; the severity colours are local, one set per theme, and are
+   always paired with words or shapes. --ok, --watch, --bad and --unknown come from app/globals.css. */
 .page {
-  --ok: #0f7b5f;
-  --watch: #8a5a00;
-  --bad: #c0332b;
-  --unknown: #5f6b7a;
   --sev-critical: #c4213b;
   --sev-high: #b34e00;
   --sev-medium: #8a5a00;
@@ -14,6 +11,15 @@
   flex-direction: column;
   gap: 16px;
   min-width: 0;
+}
+
+:global(html[data-theme="dark"]) .page {
+  --sev-critical: #ff6b8a;
+  --sev-high: #ff9d5c;
+  --sev-medium: #ffc062;
+  --sev-low: #8a95ab;
+  --v1: #8a95ab;
+  --v2: #4ee0a0;
 }
 
 /* The page sits inside the shell (a phone column, or the sidebar layout from 1024 px): it no longer breaks out of it. */
@@ -74,11 +80,23 @@
   font-weight: 650;
   color: var(--text);
   text-decoration: none;
-  transition: box-shadow var(--ease-press);
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
+}
+
+/* the same lift every pressable thing in the app has on a pointer */
+@media (hover: hover) {
+  .linkBtn:hover,
+  .nextCard:hover,
+  .chip:hover,
+  .act:hover:not(:disabled),
+  .close:hover {
+    transform: translateY(-2px);
+  }
 }
 
 .linkBtn:active {
   box-shadow: var(--sh-inset-sm);
+  transform: scale(0.97);
 }
 
 .small {
@@ -107,7 +125,7 @@
   box-shadow: var(--sh-raised), inset 5px 0 0 var(--bar);
   text-align: left;
   color: var(--text);
-  transition: box-shadow var(--ease-press);
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
 }
 
 .nextCard:nth-child(2) {
@@ -120,6 +138,7 @@
 
 .nextCard:active {
   box-shadow: var(--sh-inset), inset 5px 0 0 var(--bar);
+  transform: scale(0.98);
 }
 
 .nextNum {
@@ -295,7 +314,7 @@
 }
 
 .seg button[aria-pressed="true"] {
-  background: var(--surface);
+  background: var(--surface-solid);
   box-shadow: var(--sh-raised-sm);
   color: var(--accent-text);
 }
@@ -311,7 +330,7 @@
   font-weight: 700;
   letter-spacing: 0.02em;
   white-space: nowrap;
-  background: color-mix(in srgb, currentColor 9%, var(--surface));
+  background: color-mix(in srgb, currentColor 12%, transparent);
   box-shadow: var(--sh-inset-sm);
 }
 
@@ -384,8 +403,35 @@ span.id {
   position: relative;
   border-radius: var(--radius-sm);
   overflow: hidden;
-  background: #f1f4f9;
+  background: var(--surface-2);
   box-shadow: var(--sh-inset);
+}
+
+/* The floor plan's own marks (FacilityMap.tsx, ReplayPanel.tsx) take their colour from here, so the wash that fades
+   the plan image, the disc behind a waypoint, the halo behind a label and the rings around an asset all follow the
+   theme instead of staying navy and white. */
+.wash {
+  fill: var(--surface-solid);
+}
+
+.plate {
+  fill: var(--surface-solid);
+}
+
+.halo {
+  stroke: var(--surface-solid);
+}
+
+.assetRing {
+  stroke: var(--muted);
+}
+
+.critRing {
+  stroke: var(--text);
+}
+
+.played {
+  fill: var(--text);
 }
 
 .mapWrap svg {
@@ -459,16 +505,23 @@ span.id {
   padding: 6px 20px;
   border-radius: var(--radius-sm);
   border: 0;
-  background: var(--accent);
-  box-shadow: 5px 5px 14px rgba(170, 200, 245, 0.32), -5px -5px 12px var(--sh-light);
+  background: var(--accent-grad);
+  box-shadow: var(--glow), inset 0 1px 0 rgba(255, 255, 255, 0.25);
   color: var(--accent-ink);
   font-size: 15px;
   font-weight: 700;
-  transition: box-shadow var(--ease-press);
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .play:hover {
+    transform: translateY(-2px);
+  }
 }
 
 .play:active {
-  box-shadow: inset 4px 4px 10px rgba(10, 30, 90, 0.45), inset -3px -3px 8px rgba(120, 160, 255, 0.35);
+  box-shadow: inset 0 3px 10px rgba(0, 0, 0, 0.35);
+  transform: scale(0.97);
 }
 
 .clock {
@@ -540,7 +593,7 @@ span.id {
   gap: 6px;
   padding: 4px 12px;
   border-radius: 12px;
-  background: rgba(138, 90, 0, 0.1);
+  background: color-mix(in srgb, var(--watch) 12%, transparent);
   box-shadow: var(--sh-inset-sm);
   color: var(--watch);
   font-size: 13.5px;
@@ -594,7 +647,7 @@ span.id {
   place-items: center;
   font-size: 12px;
   font-weight: 800;
-  background: var(--surface);
+  background: var(--surface-solid); /* solid, so the rail does not show through the mark */
   border: 2px solid var(--ok);
   color: var(--ok);
 }
@@ -724,12 +777,13 @@ span.id {
   height: 8px;
   border-radius: 4px;
   overflow: hidden;
-  background: var(--surface);
+  background: var(--surface-solid);
   box-shadow: var(--sh-inset-sm);
 }
 
 .scoreBar span {
   height: 100%;
+  transition: width 900ms var(--ease-out);
 }
 
 .parts {
@@ -778,21 +832,22 @@ span.id {
   color: var(--text);
   font-size: 14px;
   font-weight: 650;
-  transition: box-shadow var(--ease-press);
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
 }
 
 .act:active:not(:disabled) {
   box-shadow: var(--sh-inset-sm);
+  transform: scale(0.97);
 }
 
 .actPrimary {
-  background: var(--accent);
-  box-shadow: 4px 4px 12px rgba(170, 200, 245, 0.3), -4px -4px 10px var(--sh-light);
+  background: var(--accent-grad);
+  box-shadow: var(--glow), inset 0 1px 0 rgba(255, 255, 255, 0.25);
   color: var(--accent-ink);
 }
 
 .actPrimary:active:not(:disabled) {
-  box-shadow: inset 4px 4px 10px rgba(10, 30, 90, 0.45), inset -3px -3px 8px rgba(120, 160, 255, 0.35);
+  box-shadow: inset 0 3px 10px rgba(0, 0, 0, 0.35);
 }
 
 .act:disabled {
@@ -986,11 +1041,12 @@ button.barRow:hover .barLabel {
   box-shadow: var(--sh-raised-sm);
   color: var(--text);
   font-size: 13px;
-  transition: box-shadow var(--ease-press);
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
 }
 
 .chip:active {
   box-shadow: var(--sh-inset-sm);
+  transform: scale(0.97);
 }
 
 .answer {
@@ -1051,7 +1107,9 @@ button.barRow:hover .barLabel {
   position: fixed;
   inset: 0;
   z-index: 60;
-  background: rgba(27, 36, 51, 0.38);
+  background: rgba(3, 6, 14, 0.55); /* the same scrim as the app's sheets */
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   display: flex;
   justify-content: flex-end;
   align-items: flex-end;
@@ -1065,9 +1123,21 @@ button.barRow:hover .barLabel {
   flex-direction: column;
   gap: 12px;
   padding: 22px 20px calc(24px + var(--safe-bottom));
-  background: var(--surface);
-  box-shadow: 0 -12px 32px rgba(70, 100, 150, 0.3), 0 -2px 8px var(--sh-light);
+  background: var(--surface-solid);
+  box-shadow: var(--sh-float);
   border-radius: 28px 28px 0 0;
+  animation: drawer-up 520ms var(--ease-spring) both;
+}
+
+@keyframes drawer-up {
+  from {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 @media (min-width: 900px) {
@@ -1079,7 +1149,18 @@ button.barRow:hover .barLabel {
     max-height: none;
     height: 100dvh;
     border-radius: var(--radius-lg) 0 0 var(--radius-lg);
-    box-shadow: -12px 0 32px rgba(70, 100, 150, 0.3), -2px 0 8px var(--sh-light);
+    animation-name: drawer-in;
+  }
+}
+
+@keyframes drawer-in {
+  from {
+    opacity: 0;
+    transform: translateX(40px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
   }
 }
 
@@ -1103,11 +1184,12 @@ button.barRow:hover .barLabel {
   box-shadow: var(--sh-raised-sm);
   color: var(--text);
   font-size: 16px;
-  transition: box-shadow var(--ease-press);
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
 }
 
 .close:active {
   box-shadow: var(--sh-inset-sm);
+  transform: scale(0.94);
 }
 
 .sub {

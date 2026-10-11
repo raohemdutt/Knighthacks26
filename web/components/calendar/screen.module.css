@@ -325,7 +325,7 @@
   height: 12px;
   border-radius: 50%;
   border: 2px solid var(--c, var(--muted));
-  background: var(--bg);
+  background: var(--surface-solid);
 }
 
 /* from your calendar: filled; suggested by Atlas: hollow */
@@ -461,8 +461,8 @@ button.rowFixed:active {
 }
 
 .tagGoing {
-  background: var(--accent-text);
-  color: #fff;
+  background: var(--accent-grad);
+  color: var(--accent-ink);
 }
 
 .progress {
@@ -629,7 +629,7 @@ button.rowFixed:active {
 }
 
 .chipGood {
-  background: rgba(15, 123, 95, 0.12);
+  background: color-mix(in srgb, var(--ok) 14%, transparent);
   color: var(--ok);
 }
 
@@ -742,9 +742,9 @@ button.rowFixed:active {
 }
 
 .joinBtn {
-  background: var(--accent);
+  background: var(--accent-grad);
   color: var(--accent-ink);
-  box-shadow: 5px 5px 14px rgba(170, 200, 245, 0.32), -5px -5px 12px var(--sh-light);
+  box-shadow: var(--glow), inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 
 .skipBtn:active,
