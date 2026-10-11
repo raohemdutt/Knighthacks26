@@ -1354,3 +1354,34 @@ pass should add, with its citation; nothing under `lab/refine/` is written. One 
 outcome the verdict, `label.agreement_rate`, `label.agreement_sample`, `label.agreement_disagreements`). The dataset
 is never written; the sample is relabeled in a temporary copy. Tests use the fake teacher (`swayed_policy` makes it
 answer differently on a second seed); the run against the real teacher is in `lab/L14_REAL_RUN.md`.
+## Camera clips: `jetson/record_clip.py` (L22)
+
+The gateway (`atlas-gateway`) holds `/dev/video0` open, and `/dev/video1` is the same webcam's metadata channel (v4l2-ctl
+lists Metadata Capture, no Video Capture), so a second reader gets no picture and reading `/dev/video0` directly would
+also skip the face blur. The recorder goes through the gateway instead and opens no device, stops no service and needs no
+sudo. The capture command that worked on 2026-10-10, from Ilan's machine over Tailscale (the script goes over scp because
+the box has no git login; Python 3.10 and `gst-launch-1.0` are on the box, `ffmpeg` is not):
+
+```
+scp -o BatchMode=yes jetson/record_clip.py alexander@100.124.34.36:/tmp/record_clip.py
+ssh -o BatchMode=yes alexander@100.124.34.36 python3 /tmp/record_clip.py clip package-at-door --seconds 10 --fps auto
+ssh -o BatchMode=yes alexander@100.124.34.36 python3 /tmp/record_clip.py clip person-walks-through --seconds 10 --fps auto --when person-moves --wait-max 90
+ssh -o BatchMode=yes alexander@100.124.34.36 python3 /tmp/record_clip.py dataset keys-on-desk package-at-door --per-clip 6
+```
+
+It polls `GET http://127.0.0.1:8000/capture/cam-desk/snapshot.jpg` on the box (the camera node the gateway reads is
+`/dev/video0`; the blurred frames are the only ones the recorder keeps), keeps every new frame, and joins them with
+`nice -n 19 gst-launch-1.0 multifilesrc ! jpegdec ! videoconvert ! x264enc ! mp4mux`. Clips and their frames and
+`clip.json` (frame offsets, measured rate, policy, mp4 sha256) land in `~/atlas/fixtures/clips/` on the box; `dataset`
+writes `desk-clips-fixture/` there in the export layout, which `python lab/dataset.py <folder>` checks (12 examples, 0
+labeled). It refuses to record while the Vault policy has `blur_faces` off, and refuses a clip with a hole longer than
+1 s. A `degraded` camera (under 70% of the 15 fps target) is recorded and the status is written into `clip.json`.
+
+Frame rate: that evening the gateway reported 9.8 to 10.9 fps from the reader (`degraded`; the webcam lists 30 fps at
+1280x720 and has `exposure_dynamic_framerate` on, which lets it slow down in dim light, a likely but unconfirmed cause),
+and the snapshot endpoint served about half of those frames as new (it blurs and encodes each new frame on demand while
+the detector and the language model run; cause of the further drop not measured), so the clips came out at 5.4 to 5.6
+frames a second, below the plan's 15 to 30. `--fps auto` joins the frames at the measured rate so the clip plays in real time; `--fps 15`
+refuses such a camera rather than play it too fast. More frames need more light or `v4l2-ctl -d /dev/video0 -c
+exposure_dynamic_framerate=0` (not done: it changes the live camera) and a quieter box. What each clip shows, sizes and
+sha256 are in `fixtures/clips/README.md`; the person clip is kept on the box because the blur missed a very close face.

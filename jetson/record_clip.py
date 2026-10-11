@@ -40,6 +40,7 @@ import sys
 import time
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
+from fractions import Fraction
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -123,13 +124,14 @@ def check_gateway(gateway: Gateway, camera: str) -> dict:
         raise RecordError(f"the gateway did not answer properly ({type(err).__name__}: {err})") from None
     if health.get("ok") is not True:
         raise RecordError(f"the gateway says it is not ok: {health}")
-    if status is None or status.get("status") != "ok":
+    if status is None or status.get("status") not in ("ok", "degraded"):  # degraded: frames arrive, below 70% of the target
         raise RecordError(f"camera {camera} is not delivering frames: {status}")
     if policy.get("blur_faces") is not True:
         raise RecordError("the Vault policy has blur_faces off: nothing is recorded unblurred")
     if camera in (policy.get("paused_cameras") or []):
         raise RecordError(f"camera {camera} is paused by the Vault policy")
-    return {"fps_actual": status.get("fps_actual"), "dropped": status.get("dropped"), "blur_faces": True}
+    return {"status": status["status"], "fps_actual": status.get("fps_actual"), "dropped": status.get("dropped"),
+            "blur_faces": True}
 
 
 # --- a person arriving or moving -----------------------------------------------------------------
@@ -221,11 +223,12 @@ def jpeg_size(data: bytes) -> tuple[int, int]:
     raise ValueError("no start-of-frame marker")
 
 
-def gst_command(frames_dir: Path, fps: int, out: Path) -> list[str]:
+def gst_command(frames_dir: Path, fps: float, out: Path) -> list[str]:
     """The one GStreamer pipeline that joins the frames: JPEG in, H.264 main profile in an mp4 out, at low priority
     so the gateway's detector and the language model keep the CPU."""
+    rate = Fraction(str(fps)).limit_denominator(100)
     return ["nice", "-n", "19", "gst-launch-1.0", "-q", "-e",
-            "multifilesrc", f"location={frames_dir / FRAME_NAME}", "start-index=1", f"caps=image/jpeg,framerate={fps}/1",
+            "multifilesrc", f"location={frames_dir / FRAME_NAME}", "start-index=1", f"caps=image/jpeg,framerate={rate.numerator}/{rate.denominator}",
             "!", "jpegdec", "!", "videoconvert", "!",
             "x264enc", "speed-preset=veryfast", "pass=quant", "quantizer=22", "key-int-max=15", "bframes=0", "!",
             "video/x-h264,profile=main", "!", "h264parse", "!", "mp4mux", "faststart=true", "!",
@@ -254,7 +257,7 @@ def sha256_of(path: Path) -> str:
 
 
 def record(gateway: Gateway, name: str, out_dir: Path, *, camera: str = DEFAULT_CAMERA, seconds: float = 10.0,
-           fps: int = 15, when: str = "now", wait_max: float = 300.0,
+           fps: float | None = 15, when: str = "now", wait_max: float = 300.0,
            clock: Callable[[], float] = time.monotonic, sleep: Callable[[float], None] = time.sleep,
            runner: Callable[[list[str]], None] = run_gst) -> dict:
     """Record one clip and return its clip.json. Nothing is left under out_dir when it fails."""
@@ -278,9 +281,11 @@ def record(gateway: Gateway, name: str, out_dir: Path, *, camera: str = DEFAULT_
     if max(gaps) > MAX_GAP_S:
         raise RecordError(f"the picture stalled for {max(gaps):.1f} s during the clip; nothing was kept")
     measured = len(frames) / seconds
+    if fps is None:  # the rate the camera really gave, so the clip plays at true speed
+        fps = round(measured, 1)
     if abs(measured - fps) > RATE_TOLERANCE * fps:
         raise RecordError(f"the camera gave {measured:.1f} frames a second, not about {fps}: joined at {fps} the clip would "
-                          f"play at the wrong speed, so nothing was kept (--fps {round(measured)} records it as it is)")
+                          f"play at the wrong speed, so nothing was kept (--fps auto records it as it is)")
     width, height = jpeg_size(frames[0][1])
     try:
         (clip_dir / "frames").mkdir(parents=True)
@@ -359,7 +364,8 @@ def main(argv: list[str] | None = None) -> int:
     clip.add_argument("name")
     clip.add_argument("--camera", default=DEFAULT_CAMERA)
     clip.add_argument("--seconds", type=float, default=10.0)
-    clip.add_argument("--fps", type=int, default=15, help="the clip's frame rate (the gateway makes 15 frames a second)")
+    clip.add_argument("--fps", type=lambda v: None if v == "auto" else float(v), default=15,
+                      help="the clip's frame rate, or auto for the rate the camera really gave (default 15)")
     clip.add_argument("--gateway", default=DEFAULT_GATEWAY)
     clip.add_argument("--out", default=DEFAULT_OUT)
     clip.add_argument("--when", choices=("now", "person-moves"), default="now")

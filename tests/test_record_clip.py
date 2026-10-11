@@ -237,11 +237,24 @@ def test_record_keeps_nothing_when_the_picture_stalls(gateway, tmp_path):
 
 def test_record_refuses_a_camera_slower_than_the_clip_rate_and_says_how_to_record_it_as_it_is(gateway, tmp_path):
     gateway.every = 8  # 6.5 frames a second reach the recorder
-    with pytest.raises(record_clip.RecordError, match=r"6\.5 frames a second.*--fps 6"):
+    with pytest.raises(record_clip.RecordError, match=r"6\.5 frames a second.*--fps auto"):
         record_one(gateway, tmp_path, fps=15)
     assert list(tmp_path.iterdir()) == []
     gateway.asks = 0  # the same stretch of frames again
     assert record_one(gateway, tmp_path, fps=6)["fps_clip"] == 6
+
+
+def test_record_with_auto_rate_joins_the_clip_at_the_rate_the_camera_gave(gateway, tmp_path):
+    gateway.every = 8
+    meta = record_one(gateway, tmp_path, fps=None)
+    assert meta["fps_clip"] == meta["fps_measured"] == 6.5
+    assert "framerate=13/2" in " ".join(meta["gst"])
+
+
+def test_record_accepts_a_degraded_camera_and_says_so(gateway, tmp_path):
+    gateway.camera_status = "degraded"
+    meta = record_one(gateway, tmp_path)
+    assert meta["gateway_before"]["status"] == "degraded" and "error" not in meta["gateway_after"]
 
 
 def test_record_keeps_nothing_when_the_pipeline_fails(gateway, tmp_path):
@@ -267,7 +280,7 @@ def test_record_keeps_a_good_clip_and_says_so_when_the_gateway_looks_bad_afterwa
                               runner=encode_then_lose_the_camera)
     assert (tmp_path / "keys-on-desk.mp4").is_file() and (tmp_path / "keys-on-desk" / "clip.json").is_file()
     assert "not delivering frames" in meta["gateway_after"]["error"]
-    assert meta["gateway_before"] == {"fps_actual": 14.9, "dropped": 0, "blur_faces": True}
+    assert meta["gateway_before"] == {"status": "ok", "fps_actual": 14.9, "dropped": 0, "blur_faces": True}
 
 
 def test_record_will_not_overwrite_an_earlier_clip_of_the_same_name(gateway, tmp_path):
