@@ -27,13 +27,15 @@
   "steps": 4,
   "train_batch": 4,
   "grad_accum": 1,
-  "train_model": "~/models/Qwen3.5-4B"
+  "train_model": "~/models/Qwen3.5-4B",
+  "train_rows": 16
  },
  "power_reader": "synthetic (hand-made numbers, not a pod)",
  "facts": null,
  "arms": {
   "decode": {
    "rounds": 2,
+   "rounds_cut": 0,
    "answers": 8,
    "tokens": 800,
    "errors": 0,
@@ -57,11 +59,13 @@
   },
   "train": {
    "steps": 4,
+   "warm_steps": 0,
    "window": [
     1791700400.0,
     1791700440.0
    ],
    "seconds": 40.0,
+   "rows": 16,
    "samples": 16,
    "samples_per_s": 0.4,
    "steps_per_s": 0.1,
@@ -82,11 +86,13 @@
   "both": {
    "train": {
     "steps": 4,
+    "warm_steps": 0,
     "window": [
      1791701400.0,
      1791701450.0
     ],
     "seconds": 50.0,
+    "rows": 16,
     "samples": 16,
     "samples_per_s": 0.32,
     "steps_per_s": 0.08,
@@ -97,14 +103,15 @@
    },
    "decode": {
     "rounds": 2,
-    "answers": 8,
-    "tokens": 800,
+    "rounds_cut": 2,
+    "answers": 12,
+    "tokens": 1200,
     "errors": 0,
     "window": [
-     1791701405.0,
-     1791701435.0
+     1791701400.0,
+     1791701450.0
     ],
-    "busy_s": 30.0,
+    "busy_s": 45.0,
     "decode_tok_s": 26.6667,
     "answers_per_s": 0.2667,
     "decode_tok_s_per_stream_median": 10.0
@@ -116,7 +123,7 @@
     "energy_j": 5500.0,
     "reason": null
    },
-   "joules_per_answer_all": 687.5,
+   "joules_per_answer_all": 458.3333,
    "joules_per_step_all": 1375.0,
    "error": null
   }
@@ -125,12 +132,12 @@
   "decode_tok_s_change_pct": -33.33,
   "answers_per_s_change_pct": -33.33,
   "samples_per_s_change_pct": -20.0,
-  "serial_energy_j": 6000.0,
+  "serial_energy_j": 7000.0,
   "shared_energy_j": 5500.0,
-  "energy_change_pct": -8.33,
-  "serial_seconds": 60.0,
+  "energy_change_pct": -21.43,
+  "serial_seconds": 70.0,
   "shared_seconds": 50.0,
-  "time_change_pct": -16.67,
+  "time_change_pct": -28.57,
   "verdict": "share"
  },
  "open": []
