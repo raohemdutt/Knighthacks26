@@ -8,6 +8,7 @@ import { useAtlas } from "@/lib/atlas";
 import { missingForPlan, runReasons, type Job } from "@/lib/guideAttention";
 import { useFetch } from "@/lib/useFetch";
 import { FloorMap, LevelIcon } from "./FloorMap";
+import { ordersChanged } from "./Shift";
 import o from "./op.module.css";
 import { Battery, CheckIcon } from "./Round";
 import r from "./run.module.css";
@@ -56,9 +57,8 @@ function SendPlan({ route, turnBack, orders, stops, needing }: { route: string[]
     setBusy(true);
     setError(null);
     fn()
-      .then(() => approvals.reload())
       .catch((e: unknown) => setError(e instanceof ApiError ? (e.needsToken ? "This box asks for a token first (Settings)." : e.message) : String(e)))
-      .finally(() => setBusy(false));
+      .finally(() => (setBusy(false), approvals.reload(), ordersChanged()));
   };
   if (mine.length > 0) {
     const card = mine[0]!;
@@ -80,7 +80,7 @@ function SendPlan({ route, turnBack, orders, stops, needing }: { route: string[]
   }
   return (
     <>
-      <button type="button" className={`${ui.btn} ${o.act}`} disabled={busy || route.length === 0} onClick={() => first.check(() => missingForPlan(stops, needing, looks.seen), () => run(() => api.spotPlan({ route, turn_back_at: turnBack })))}>
+      <button type="button" className={`${ui.btn} ${o.act}`} disabled={busy || route.length === 0} onClick={() => first.check(() => missingForPlan(stops, needing, looks.seen), () => run(async () => void (await api.decide((await api.spotPlan({ route, turn_back_at: turnBack })).action_id, "approve"))))}>
         Send this plan
       </button>
       {first.prompt}

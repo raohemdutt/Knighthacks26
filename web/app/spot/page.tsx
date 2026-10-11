@@ -10,7 +10,7 @@ import { SpotMic } from "@/components/spot/SpotMic";
 import { Round } from "@/components/spot/Round";
 import { SpotApprovals } from "@/components/spot/SpotApprovals";
 import { ShiftRun, type RunLink } from "@/components/spot/ShiftRun";
-import { AssetSheet, DoFirst, LooksFine, StatusLine, TrustLine, WatchOut } from "@/components/spot/Shift";
+import { AssetSheet, DoFirst, LooksFine, ORDERS_CHANGED, StatusLine, TrustLine, WatchOut } from "@/components/spot/Shift";
 import type { Replay, Target } from "@/components/spot/types";
 import { Empty, ErrorBox, Loading } from "@/components/States";
 import ui from "@/components/ui.module.css";
@@ -45,6 +45,12 @@ type Tab = "shift" | "run" | "analysis";
 export default function SpotPage() {
   const shift = useFetch((sig) => api.spotShift(sig));
   const orders = useFetch((sig) => api.spotWorkOrders(sig));
+  // a button on this screen wrote something: read the list again (the live event does the same when the socket is up)
+  const reloadOrders = orders.reload;
+  useEffect(() => {
+    window.addEventListener(ORDERS_CHANGED, reloadOrders);
+    return () => window.removeEventListener(ORDERS_CHANGED, reloadOrders);
+  }, [reloadOrders]);
   const [live, setLive] = useState<Replay | null>(null);
   const view = useSpotView();
   const tab: Tab = view === "training" ? "run" : view === "analysis" ? "analysis" : "shift"; // the three layers

@@ -30,6 +30,14 @@ export function Why({ to, onWhy, children }: { to: Target; onWhy: (t: Target) =>
  * The one button on an item. It raises an approval card on the box (the same flow as before): nothing is written until
  * the person says yes, here or on the Approvals screen, and then only a file on this box.
  */
+/** Something was written on this box (a request, a work order): the page reads the list again, now and a moment later. */
+export function ordersChanged(): void {
+  const tell = () => window.dispatchEvent(new Event(ORDERS_CHANGED));
+  tell();
+  window.setTimeout(tell, 900);
+}
+export const ORDERS_CHANGED = "spot:orders";
+
 export function ActionButton({ action, orders, quiet, name, jobs }: { action: OpAction; orders: WorkOrder[]; quiet?: boolean; /** With a name, the attention check asks "have you looked at it?" first. */ name?: string; jobs?: Job[] }) {
   const { approvals } = useAtlas();
   const looks = useAttention();
@@ -45,11 +53,12 @@ export function ActionButton({ action, orders, quiet, name, jobs }: { action: Op
     setBusy(true);
     setError(null);
     fn()
-      .then(() => approvals.reload())
       .catch((e: unknown) => setError(e instanceof ApiError ? (e.needsToken ? "This box asks for a token first (Settings)." : e.message) : String(e)))
-      .finally(() => setBusy(false));
+      .finally(() => (setBusy(false), approvals.reload(), ordersChanged()));
   };
-  const send = () => run(() => (isOrder && action.anomaly_id ? api.spotWorkOrder(action.anomaly_id) : api.spotReinspect(action.asset_id)));
+  // The press is the approval: the request is raised as before and approved at once through the same door (POST /api/approvals/<id>),
+  // so the file is written on this box straight away. If approving fails, the card stays waiting below and the reason is shown.
+  const send = () => run(async () => void (await api.decide((await (isOrder && action.anomaly_id ? api.spotWorkOrder(action.anomaly_id) : api.spotReinspect(action.asset_id))).action_id, "approve")));
   // never blocks: a prompt and the pointer, then "Continue anyway"
   const ask = () => (name ? first.check(() => missingForAsset(action.asset_id, name, looks.seen, jobs ?? []), send) : send());
 
