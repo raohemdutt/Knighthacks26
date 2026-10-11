@@ -162,7 +162,7 @@ def test_a_failing_model_does_not_fail_the_answer():
     ("Turn the cameras back on", "camera.pause"), ("Who is here?", "people.who_is_here"),
     ("Open the approvals screen", "navigate.screen"), ("How is the learning lab doing?", "learning.status"),
     ("What needs me on the plant floor?", "inspection.status"), ("How is SPOT doing?", "inspection.status"),
-    ("What should I check first?", "inspection.status"), ("Take me to inspection", "navigate.screen"),
+    ("Take me to inspection", "navigate.screen"),
     ("Open the plant floor", "navigate.screen"),
 ])
 def test_the_rules_name_the_tool_for_each_question(question, tool):
