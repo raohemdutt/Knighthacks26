@@ -9,15 +9,22 @@ ranges, no ids, source tags, brackets, camera or zone ids.
     ear_about(t, now)              "around 3", "yesterday evening around 7:40 PM"
     ear_title("COP4533 lecture")   "your COP 4533 lecture"   (names={"COP4533": "algorithms"}: "your algorithms lecture")
     ear_spot("desk", "cam-desk")   "on the desk"
-    said_agenda / said_next / said_when / said_free / said_due / said_last_seen / said_visit / said_done
+    said_agenda / said_rundown / said_next / said_when / said_free / said_due / said_last_seen / said_visit / said_done
+    day_fact_lines(...)            the same day, as the FACTS a model is given for any other question about it
+
+THE CONTRACT (the owner, on why nothing here is a canned answer): the facts are always fetched live, every time.
+The sentences built here are only a FAST LANE for the phrasings the agent's patterns recognise. Any other way of
+asking about the day goes to the model, which is given the same live facts in this same wording (`day_fact_lines`),
+so Atlas can answer anything about the day from real data. Never a string that ignores the data.
 
 This sits next to the narrator's wording (narration.py) and reuses its names and numbers; it is not a second
 narrator: the narrator says moments of the day unprompted, these say the answer to a question. Everything is pure:
 no clock, no model, no I/O. The agent's fixed answer paths (contexts/agent/application/schedule.py, qa.py, talk.py)
 are written with it, so the wording holds with no model at all and a small model cannot undo it.
 
-A time with minutes after noon keeps its "PM" ("2:30 PM"): the voice reads a bare "2:30" as a 24-hour clock and
-would say "2:30 AM" (contexts/voice/text.py and web/lib/speechText.ts). A morning time and a whole hour need none.
+A time with minutes after noon keeps its "PM" ("2:30 PM"), so a bare "2:30" is always the morning's. The voice says
+a bare "10:40" as written (contexts/voice/text.py and web/lib/speechText.ts): a morning time and a whole hour need
+no "AM".
 """
 
 import re
@@ -29,6 +36,7 @@ MAX_SAID = 3  # things named in one answer unless everything was asked for
 MAX_EVERYTHING = 8
 OFFER = "What else can I do for you?"
 OFFER_QUIET = "What can I do for you?"
+PLAN_OFFER = "Want me to plan your day?"  # ends a rundown of a day with nothing of the person's own and no plan
 MORE = "Want the rest?"  # ends a rundown that named only the first things; "yes" then gets all of it (talk.py)
 
 COURSE_CODE = re.compile(r"\b([A-Z]{2,4}) ?(\d{3,4}[A-Z]?)\b")
@@ -146,6 +154,12 @@ def series(parts: list[str]) -> str:
 # An entry is {"title": str, "start": datetime, "end": datetime | None, "place": str | None}; times are local.
 
 def _named(e: dict, now: datetime, names: dict | None, tonight: bool = True, article: bool = True) -> str:
+    """One thing and when: "your COP 4533 lecture at 10:40". A block of the plan is already in the narrator's words
+    ("a study block at 9", "lunch at noon"); what is due is "HW 4, due at 5"."""
+    if e.get("block"):
+        return f"{e['title']} {ear_when(e['start'], now, tonight)}"
+    if e.get("due"):
+        return f"{ear_title(e['title'], names, article=False)}, due {_due_when(e, now)}"
     return f"{ear_title(e['title'], names, article)} {ear_when(e['start'], now, tonight)}"
 
 
@@ -178,9 +192,99 @@ def said_agenda(entries: list[dict], now: datetime, span: str = "today", *, name
     return f"{lead}you've got {said}.{tail}" if lead else f"You've got {said}.{tail}"
 
 
-def said_next(entry: dict | None, now: datetime, *, names: dict | None = None, where: bool = False, ends: bool = False) -> str:
-    """ "What's next?": one thing."""
+# ---------- the whole day: the calendar, the plan, what is due, and what is on nearby ----------
+# `things` are the person's own, in time order from now: calendar entries, and blocks of the agreed plan
+# ({"title": "a study block", "start": ..., "block": True}, worded by the narrator). `dues` are what is due today or
+# tomorrow. `listed` are campus or optional listings: never theirs, only offered. `leave` is {"title", "by"}: when to
+# set off for the next thing that needs travel.
+
+def _campus_count(n: int) -> str:
+    return "there's one thing on campus if you want it" if n == 1 else f"there are {say_number(n)} things on campus if you want them"
+
+
+def _due_clause(dues: list[dict], now: datetime, names: dict | None, everything: bool) -> str:
+    shown = dues[:MAX_EVERYTHING] if everything else dues[:1]
+    if not shown:
+        return ""
+    first = f"{cap(ear_title(shown[0]['title'], names, article=False))} is due {_due_when(shown[0], now)}"
+    return series([first] + [f"{ear_title(e['title'], names, article=False)} {_due_when(e, now)}" for e in shown[1:]])
+
+
+def said_rundown(things: list[dict], now: datetime, *, dues: list[dict] = (), listed: list[dict] = (), leave: dict | None = None,
+                 names: dict | None = None, everything: bool = False, planned: bool = False, earlier: bool = False) -> str:
+    """ "What does my day look like?": the whole day in two or three sentences. At most three things are named (the
+    first things in order, and the first thing due), then when to leave for the next one, one closing clause for what
+    is on nearby, and "Want the rest?" when there is more. With nothing of their own and no plan (`planned`): one
+    line saying so and an offer to plan the day. `everything`: all of it, the listings too. `earlier`: something of
+    theirs was on earlier today, so an empty rest of the day is "nothing else"."""
+    things, dues, listed = list(things), list(dues), list(listed)
+    out: list[str] = []
+    named: list[dict] = []
+    if not things:
+        out.append("Nothing else of yours today." if earlier or planned else "Nothing of yours is on today.")
+    else:
+        room = MAX_EVERYTHING if everything else MAX_SAID - (1 if dues else 0)
+        if len(things) <= room:
+            named = things
+            out.append(f"You've got {series([_named(e, now, names) for e in named])}.")
+        elif everything:
+            named = things[:room]
+            out.append(f"You've got {series([_named(e, now, names) for e in named])}. {cap(say_number(len(things) - room))} more after that.")
+        else:
+            named = things[:2]
+            out.append(f"You've got {say_number(len(things))} things today, starting with {_named(named[0], now, names)}, "
+                       f"then {_named(named[1], now, names)}.")
+    if leave and any(e["title"] == leave["title"] for e in named):
+        last = not everything and named[-1]["title"] == leave["title"]  # just named: "for that one", not its title again
+        out.append(f"Leave by {_clock(leave['by'], True, tonight=False)} for {'that one' if last else ear_title(leave['title'], names)}.")
+    due = _due_clause(dues, now, names, everything)
+    if listed and everything:
+        out += [f"{due}."] if due else []
+        out.append(f"On campus there's {series([_named(e, now, names) for e in listed[:MAX_EVERYTHING]])}.")
+    elif listed and due:
+        out.append(f"{due}, and {_campus_count(len(listed))}.")
+    elif listed:
+        out.append(f"Also, {_campus_count(len(listed))}." if things else f"{cap(_campus_count(len(listed)))}.")
+    elif due:
+        out.append(f"{due}.")
+    if not everything and (len(things) > len(named) or len(dues) > 1):
+        out.append(MORE)
+    elif not things and not planned and not earlier:
+        out.append(PLAN_OFFER)
+    return " ".join(out)
+
+
+def day_fact_lines(things: list[dict], now: datetime, *, dues: list[dict] = (), listed: list[dict] = (), leave: dict | None = None,
+                   names: dict | None = None, limit: int = 6) -> list[str]:
+    """The same day as `said_rundown`, as the FACTS a model is given for any question about the day the patterns do
+    not recognise ("is today going to be rough?", "when can I fit the gym in?"): one line per kind, in this module's
+    wording, with the campus listings marked as optional so the model never calls them the person's."""
+    def run(entries: list[dict]) -> str:
+        more = len(entries) - limit
+        return ", ".join(_named(e, now, names) for e in entries[:limit]) + (f", and {say_number(more)} more" if more > 0 else "")
+
+    events, blocks = [e for e in things if not e.get("block")], [e for e in things if e.get("block")]
+    lines = [f"Their own events for the rest of today: {run(events)}." if events else "They have no events of their own for the rest of today."]
+    if blocks:
+        lines.append(f"Blocks of the day plan they agreed to: {run(blocks)}.")
+    if leave:
+        lines.append(f"To be on time for {ear_title(leave['title'], names)} they should leave by {_clock(leave['by'], True, tonight=False)}.")
+    if dues:
+        lines.append("Due today or tomorrow: " + ", ".join(f"{ear_title(e['title'], names, article=False)} {_due_when(e, now)}" for e in dues[:limit]) + ".")
+    else:
+        lines.append("Nothing is due today or tomorrow.")
+    if listed:
+        lines.append(f"Optional campus events today (public listings, NOT their commitments; they are free during these): {run(list(listed))}.")
+    return lines
+
+
+def said_next(entry: dict | None, now: datetime, *, names: dict | None = None, where: bool = False, ends: bool = False,
+              nearby: dict | None = None) -> str:
+    """ "What's next?": one thing, and it is the person's own (an event, a class, a block of the plan, something due).
+    `nearby`, the next campus listing, is said only when nothing of theirs is next, and as "on campus"."""
     if entry is None:
+        if nearby:
+            return f"Nothing of yours is next. On campus there's {_named(nearby, now, names)}."
         return "Nothing else on your calendar today."
     lead = "Next up is" if not ear_day(entry["start"], now) else "Nothing else today. Next up is"
     return f"{lead} {_named(entry, now, names)}.{_extra(entry, where, ends)}"
@@ -203,12 +307,15 @@ def _extra(entry: dict, where: bool, ends: bool) -> str:
     return out
 
 
-def said_free(at: datetime, clash: dict | None, now: datetime, *, names: dict | None = None, busy: bool = False) -> str:
-    """ "Am I free at 3?" (or, with `busy`, "am I busy at 3?"): yes or no, and the one thing in the way."""
+def said_free(at: datetime, clash: dict | None, now: datetime, *, names: dict | None = None, busy: bool = False,
+              nearby: dict | None = None) -> str:
+    """ "Am I free at 3?" (or, with `busy`, "am I busy at 3?"): yes or no, and the one thing in the way. `nearby` is a
+    campus listing on at that time: it never makes the person busy, it is offered ("... on campus then if you want it")."""
     part = "this morning" if at.hour < 12 else "this afternoon" if at.hour < 17 else "this evening" if at.hour < 21 else "tonight"
     when = "right now" if abs(at - now) < timedelta(minutes=1) else f"at {ear_time(at)}" + ("" if ear_time(at) in ("noon", "midnight") else f" {part}")
     if clash is None:
-        return f"{'No' if busy else 'Yes'}, you're free {when}."
+        offer = f" There's {ear_title(nearby['title'], names)} on campus then if you want it." if nearby else ""
+        return f"{'No' if busy else 'Yes'}, you're free {when}.{offer}"
     until = f", until {ear_time(clash['end'])}" if clash.get("end") else ""
     return f"{'Yes' if busy else 'No'}, you've got {ear_title(clash['title'], names)} then{until}."
 
@@ -247,12 +354,23 @@ def said_visit(start: datetime, now: datetime, moments: list[str], more: int = 0
 
 # ---------- what Atlas did for you ----------
 
-def said_done(done: list[str], greeting: bool = False) -> str:
+def said_done(done: list[str], greeting: bool = False, full: bool = False) -> str:
     """ "How's it going?": a mood word, one clause on what Atlas has done for the person so far (at most two things,
-    each a past participle: "planned your day"), then the offer. A bare greeting gets the offer alone."""
+    each a past participle: "planned your day"), then the offer. A bare greeting gets the offer alone.
+    `full` is the answer to "what did you do for me today?": all of it (five things at most) in two sentences,
+    then the offer."""
     if greeting:
         return f"Hey. {OFFER_QUIET}"
-    done = [d.strip() for d in done if d and d.strip()][:2]
+    done = [d.strip() for d in done if d and d.strip()]
+    if full:
+        if not done:
+            return f"Nothing yet today, it's been quiet. {OFFER_QUIET}"
+        also = f" I've also {_and(done[2:5])}." if done[2:] else ""
+        return f"Today I've {_and(done[:2])}.{also} {OFFER}"
     if not done:
         return f"Good, all quiet so far. {OFFER_QUIET}"
-    return f"Good. I've {' and '.join(done)} so far. {OFFER}"
+    return f"Good. I've {' and '.join(done[:2])} so far. {OFFER}"
+
+
+def _and(parts: list[str]) -> str:
+    return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + f" and {parts[-1]}"

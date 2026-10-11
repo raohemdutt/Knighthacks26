@@ -99,6 +99,50 @@ def test_hows_it_going_is_a_mood_its_work_for_you_and_an_offer():
     assert ear.said_done(["planned your day"], greeting=True) == "Hey. What can I do for you?"
 
 
+def test_a_listing_is_offered_never_in_the_way_and_never_next_unless_nothing_of_theirs_is():
+    house = e("Theatre UCF Open House", 11, end=at(16))
+    assert ear.said_free(at(15), None, NOW, nearby=house) == "Yes, you're free at 3 this afternoon. There's Theatre UCF Open House on campus then if you want it."
+    assert ear.said_next(None, NOW, nearby=house) == "Nothing of yours is next. On campus there's Theatre UCF Open House at 11."
+    lecture = e("COP4533 lecture", 10, 40)
+    assert ear.said_next(lecture, NOW, nearby=house) == "Next up is your COP 4533 lecture at 10:40."
+    assert ear.said_next({"title": "a study block", "start": at(9, 15), "block": True}, NOW) == "Next up is a study block at 9:15."
+    assert ear.said_next({"title": "HW 4: linked lists", "start": at(23, 59), "due": True}, NOW) == "Next up is HW 4: linked lists, due today at 11:59 PM."
+
+
+def test_the_whole_day_is_two_or_three_sentences_and_the_same_facts_for_a_model():
+    block, lunch = {"title": "a study block", "start": at(9, 15), "block": True}, {"title": "lunch", "start": at(12), "block": True}
+    lecture, physics = e("COP4533 lecture", 10, 40), e("PHY2049 lecture", 14)
+    due = [{"title": "HW 4: linked lists", "start": at(23, 59), "due": True}, {"title": "Quiz 5", "start": at(10, 0, 1), "due": True}]
+    campus = [e("Theatre UCF Open House", 11), e("Graduate School Mixer", 15)]
+    leave = {"title": "COP4533 lecture", "by": at(10, 30)}
+    assert ear.said_rundown([block, lecture, lunch], NOW) == "You've got a study block at 9:15, your COP 4533 lecture at 10:40, then lunch at noon."
+    said = ear.said_rundown([block, lecture, lunch, physics], NOW, dues=due, listed=campus, leave=leave, planned=True)
+    assert said == ("You've got four things today, starting with a study block at 9:15, then your COP 4533 lecture at 10:40. Leave by 10:30 for that one. "
+                    "HW 4: linked lists is due today at 11:59 PM, and there are two things on campus if you want them. Want the rest?")
+    assert ear.said_rundown([lecture], NOW, listed=campus[:1]) == "You've got your COP 4533 lecture at 10:40. Also, there's one thing on campus if you want it."
+    assert ear.said_rundown([block, lecture, lunch, physics], NOW, dues=due, listed=campus, leave=leave, everything=True) == (
+        "You've got a study block at 9:15, your COP 4533 lecture at 10:40, lunch at noon, then your PHY 2049 lecture at 2. Leave by 10:30 for your COP 4533 lecture. "
+        "HW 4: linked lists is due today at 11:59 PM, then Quiz 5 tomorrow at 10. On campus there's Theatre UCF Open House at 11, then Graduate School Mixer at 3.")
+    assert ear.said_rundown([], NOW) == "Nothing of yours is on today. Want me to plan your day?"
+    assert ear.said_rundown([], NOW, listed=campus) == "Nothing of yours is on today. There are two things on campus if you want them. Want me to plan your day?"
+    assert ear.said_rundown([], NOW, planned=True) == "Nothing else of yours today." and ear.said_rundown([], NOW, earlier=True) == "Nothing else of yours today."
+    assert ear.day_fact_lines([block, lecture, lunch, physics], NOW, dues=due, listed=campus, leave=leave) == [
+        "Their own events for the rest of today: your COP 4533 lecture at 10:40, your PHY 2049 lecture at 2.",
+        "Blocks of the day plan they agreed to: a study block at 9:15, lunch at noon.",
+        "To be on time for your COP 4533 lecture they should leave by 10:30.",
+        "Due today or tomorrow: HW 4: linked lists today at 11:59 PM, Quiz 5 tomorrow at 10.",
+        "Optional campus events today (public listings, NOT their commitments; they are free during these): Theatre UCF Open House at 11, Graduate School Mixer at 3."]
+    assert ear.day_fact_lines([], NOW) == ["They have no events of their own for the rest of today.", "Nothing is due today or tomorrow."]
+
+
+def test_what_did_you_do_for_me_is_all_of_it_in_two_sentences_and_an_offer():
+    done = ["re-planned your day", "sent the message you approved", "reminded you twice", "checked in on you", "answered six questions", "flagged one thing for you"]
+    assert ear.said_done(done, full=True) == ("Today I've re-planned your day and sent the message you approved. I've also reminded you twice, "
+                                              "checked in on you and answered six questions. What else can I do for you?")
+    assert ear.said_done(done[:1], full=True) == "Today I've re-planned your day. What else can I do for you?"
+    assert ear.said_done([], full=True) == "Nothing yet today, it's been quiet. What can I do for you?"
+
+
 def test_nothing_here_ever_reads_like_a_record():
     day = [e("COP4533 lecture [calendar]", 10, 40, end=at(11, 30), place="CSE A101"), e("PHY2049 lecture (Fall2026)", 14, end=at(15, 15))]
     for said in (ear.said_agenda(day, NOW), ear.said_next(day[0], NOW, where=True, ends=True), ear.said_free(at(11), day[0], NOW),

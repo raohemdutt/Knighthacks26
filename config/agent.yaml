@@ -14,6 +14,17 @@ sleep:
 #   max_history_turns: 6   # exchanges kept in memory for follow-ups ("why?", "tell me another"); never logged
 #   history_ttl_s: 600     # a conversation this quiet is forgotten
 
+# Campus listings: stored items that are things going on nearby, NOT the person's own commitments. Atlas says them as
+# "on campus", never "you've got", they never make the person busy, and "what's next?" prefers the person's own next
+# thing. An item is a listing when any of these matches (contexts/agent/application/schedule.py `Listings`):
+listings:
+  connectors: [site, search, groupme]  # connectors that only list things
+  feeds: [campus]                      # calendar feeds by name (config/connectors.yaml calendar.options.feeds): the
+                                       # ics connector stores each event as "<feed>:<uid>:<start>"
+  hosts: [events.ucf.edu]              # where a listing's link points (subdomains count)
+  optional: [optional]                 # a word in the title or summary that marks an invitation
+  own: [attending, registered, rsvp]   # a word in the summary that makes a listed event the person's own again
+
 # Subreddit the agent searches for "what do students say" questions.
 subreddit: ucf
 

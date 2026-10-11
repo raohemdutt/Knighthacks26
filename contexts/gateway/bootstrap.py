@@ -24,6 +24,7 @@ from contexts.agent.application.loop import ODD_HOURS_DESCRIPTION, ODD_HOURS_RUL
 from contexts.agent.application.planner import Planner
 from contexts.agent.application.qa import QA, SleepSchedule
 from contexts.agent.application.done import DoneToday
+from contexts.agent.application.schedule import Listings
 from contexts.agent.application.talk import Talk, TalkConfig
 from contexts.agent.application.web_port import HubWebTools, TavilyWebTools
 from contexts.agent.domain.rules import AlertHistory, RuleEvaluator, load_rules
@@ -335,6 +336,7 @@ def build(settings: Settings | None = None) -> Atlas:
     talk = Talk(runtime, qa.clock, memory=memory, config=TalkConfig.of(agent_cfg.get("talk")), tz=qa.sleep.tz, web=bool(web))
     talk.about = profile.description
     qa.names = dict(talk.config.names)  # how a course code is said aloud (agent.yaml `talk.names`)
+    qa.listings = talk.listings = Listings.of(agent_cfg.get("listings"))  # which items are campus listings, not the person's own
     # "How's it going?" is answered with what Atlas did for the person today, counted from the log (a projection).
     done = DoneToday(qa.sleep.tz)
     for prefix in DoneToday.PREFIXES:
@@ -585,6 +587,9 @@ def build(settings: Settings | None = None) -> Atlas:
         day.subscribe(bus)
         planner.accepted_optional = lambda: day.optional.accepted  # the leaving checklist counts an optional event once it is accepted
         talk.day_facts = lambda: day.in_words(datetime.now(UTC))  # the person's day, in the narrator's words
+        # today's agreed plan from now (blocks and the leave-by time), for a day rundown and the model's FACTS: a port,
+        # so the agent never reads the Day loop's state
+        qa.day_plan = talk.day_plan = lambda: day.blocks(datetime.now(UTC))
         if ntfy:  # the plan, a re-plan and the review on the phone, in the narrator's words when it is on
             bus.subscribe("day.", day_phone(ntfy, s.ntfy_topic, narrated=day.narrator.mode != "off"))
         if (agent_cfg.get("day") or {}).get("speaker") == "box":  # one speaker: the box's own says the unasked lines

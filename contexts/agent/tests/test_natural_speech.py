@@ -19,7 +19,7 @@ from runtime import FakeRuntime
 NOW = datetime(2026, 10, 11, 13, 0, tzinfo=UTC)  # Sunday 9:00 AM in New York
 CAPTION = "Two people rehearse a presentation; one points at the monitor."
 TITLES = ("COP4533", "COP 4533", "PHY2049", "PHY 2049", "lecture", "mentor check-in", "Dinner with Maya", "Board game night", "Milestone")
-RECORD = re.compile(r"\b[AP]M to\b|\d ?(?:-|–|to) ?\d{1,2}(?::\d\d)? ?[AP]M|[\[\]()]|\bcam-?\w*\d*\b|\b(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d|;|Coming up"
+RECORD = re.compile(r"\b[AP]M to\b|\d ?(?:-|–|to) ?\d{1,2}(?::\d\d)? ?[AP]M|[\[\]()]|\bcam(?:-\w+|\d+)?\b|\b(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d|;|Coming up"
                     r"|\bcalendar_event\b|\bfake\b|Evidence:", re.I)
 
 
@@ -149,9 +149,12 @@ def test_facts_follow_the_topic_of_the_question():
 
 # --- (3) the calendar, said like a person ---
 
+# the whole day (section 6 below): the first two things, one closing clause for the optional evening, and the offer
+RUNDOWN = ("You've got four things today, starting with your COP 4533 lecture at 10:40, then your PHY 2049 lecture at 2. "
+           "Also, there's one thing on campus if you want it. Want the rest?")
 SCHEDULE = {
     "what's on my calendar today?": "You've got four things today. First is your COP 4533 lecture at 10:40, then your PHY 2049 lecture at 2. Want the rest?",
-    "What does my day look like?": "You've got four things today. First is your COP 4533 lecture at 10:40, then your PHY 2049 lecture at 2. Want the rest?",
+    "What does my day look like?": RUNDOWN,
     "what's next?": "Next up is your COP 4533 lecture at 10:40.",
     "Hey Atlas, what's next": "Next up is your COP 4533 lecture at 10:40.",
     "do I have anything this afternoon?": "Yes, you've got your PHY 2049 lecture at 2, then the mentor check-in at 4:30 PM.",
@@ -161,7 +164,7 @@ SCHEDULE = {
     "am I free at noon?": "Yes, you're free at noon.",
     "am I busy at 11?": "Yes, you've got your COP 4533 lecture then, until 11:30.",
     "what's on tonight?": "Tonight you've got Dinner with Maya at 7, and that's it tonight.",
-    "run me through my day": "You've got four things today. First is your COP 4533 lecture at 10:40, then your PHY 2049 lecture at 2. Want the rest?",
+    "run me through my day": RUNDOWN,
     "what's due this week?": "You've got Project Milestone 1 due Tuesday at 3:55 PM.",
 }
 ALLOWED = {"what's next?": 1, "Hey Atlas, what's next": 1, "when is my next class?": 1, "what time is my next class, and where?": 1, "am I free at 3?": 1,
@@ -191,12 +194,16 @@ def test_a_course_code_is_said_by_its_name_when_the_box_knows_one():
 
 def test_the_rest_comes_when_asked_for_and_everything_is_everything():
     qa, _ = box()
-    assert ask(qa, "what does my day look like?").endswith("Want the rest?")
+    assert ask(qa, "what's on my calendar today?").endswith("Want the rest?")
     rest = ask(qa, "yes")
     assert rest == "You've got your COP 4533 lecture at 10:40, your PHY 2049 lecture at 2, the mentor check-in at 4:30 PM, Dinner with Maya at 7 tonight, then Board game night at 8 tonight."
     assert not RECORD.search(rest)
     assert ask(qa, "what's everything on my calendar today?") == rest  # asked for all of it: the optional evening too
     assert qa.talk.rest is None and qa.talk.template("yes") != rest  # a later "yes" is just a yes
+    # the whole day's "rest" is all of it too, with the optional evening still said as on campus, never theirs
+    assert ask(qa, "what does my day look like?").endswith("Want the rest?")
+    assert ask(qa, "yes") == ("You've got your COP 4533 lecture at 10:40, your PHY 2049 lecture at 2, the mentor check-in at 4:30 PM, "
+                              "then Dinner with Maya at 7 tonight. On campus there's Board game night at 8 tonight.")
 
 
 def test_the_jetson_transcript_campus_listings_are_not_read_out_and_not_called_yours():
@@ -206,16 +213,19 @@ def test_the_jetson_transcript_campus_listings_are_not_read_out_and_not_called_y
         ("U Can Finish Race", 7, 30), ("Theatre UCF Open House", 11, 0), ("Fall Climbing Competition: Dungeons & Dynos", 12, 0),
         ("UCF Women's Soccer vs. Oklahoma State", 13, 0), ("Graduate School Mixer", 15, 0)])]
     night = datetime(2026, 10, 11, 5, 37, tzinfo=UTC)  # Sunday 1:37 AM
-    for question in ("What's on my calendar today?", "What does my day look like?"):
+    said = {"What's on my calendar today?": "There are five things on campus today. First is U Can Finish Race at 7:30, then Theatre UCF Open House at 11. Want the rest?",
+            "What does my day look like?": "Nothing of yours is on today. There are five things on campus if you want them. Want me to plan your day?"}
+    for question in said:
         qa, rt = box(Recorder("I don't know your day yet, but I can see you have classes and assignments on Canvas waiting for you."), items=campus)
         qa.clock = qa.talk.clock = lambda: night
         a = asyncio.run(qa.ask(question))
-        assert a.text == "There are five things on campus today. First is U Can Finish Race at 7:30, then Theatre UCF Open House at 11. Want the rest?"
+        assert a.text == said[question]
         assert len(a.citations) == 5 and rt.seen == []  # the same five items behind it, cited as before
     qa, rt = box(Recorder("I don't know what's next for you."), items=campus)
     qa.clock = qa.talk.clock = lambda: night
-    qa.talk.day_facts = None  # no Day plan on that box; with one, "what's next?" is the narrator's spoken words (below)
-    assert asyncio.run(qa.ask("What's next?")).text == "Nothing else on your calendar today."  # a listing is not their next thing
+    qa.talk.day_facts = None  # no Day plan on that box
+    # a listing is not their next thing: it is offered as on campus, only because nothing of theirs is next
+    assert asyncio.run(qa.ask("What's next?")).text == "Nothing of yours is next. On campus there's U Can Finish Race at 7:30."
     assert asyncio.run(qa.ask("do I have anything this afternoon?")).text == (
         "On campus this afternoon there's Dungeons & Dynos at noon, UCF Women's Soccer vs. Oklahoma State at 1, then Graduate School Mixer at 3.")
 
@@ -224,7 +234,7 @@ def test_an_empty_calendar_is_said_plainly():
     qa, _ = box(items=[])
     assert ask(qa, "what does my day look like?") == "You're on plan: your study block runs until twenty past ten. The lecture is at twenty to eleven."
     qa.talk.day_facts = None
-    assert ask(qa, "what does my day look like?") == "Nothing on your calendar today."
+    assert ask(qa, "what does my day look like?") == "Nothing of yours is on today. Want me to plan your day?"  # one line and an offer
     assert ask(qa, "what's on my calendar today?") == "Nothing on your calendar today."
     assert ask(qa, "anything due tomorrow?") == "Nothing due tomorrow."
 

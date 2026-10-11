@@ -45,6 +45,7 @@ from runtime.interface import Runtime
 log = logging.getLogger("atlas.talk")
 ENV = "ATLAS_TALK"  # "0" turns conversation off: every open-ended question goes to the tool loop, as before
 MAX_FACT_CHARS = 240  # one fact line; the model reads 14 tokens a second, the prompt has to stay small
+MAX_DAY_FACT_CHARS = 420  # one line of the day's rundown (up to six things said with their times)
 MAX_REPLY_CHARS = 900
 MAX_CLAUSE_CHARS = 90  # the last thing a camera saw, as one clause of a sentence
 
@@ -182,10 +183,28 @@ HOW_ARE_YOU = re.compile(
     r"|how(?:'s| is| was) your (?:day|night|morning|afternoon|evening)(?: going| been| so far)?|are you having a good day"
     r"|what(?:'s| is) new(?: with you)?|what have you been up to|what(?:'ve| have) you been doing|what are you up to)"
     r"(?: today| tonight| this (?:morning|afternoon|evening)| so far| then| atlas| buddy| man)*[?!. ]*$")
+# "what did you do for me today?": everything Atlas did for the person today (ear.said_done, full), never the camera log
+DONE_FOR_ME = re.compile(
+    r"\bwhat(?:'ve| have| did| all did| else did| else have) you (?:done|do|did|been doing|gotten done|got done|get done)\b.*\bfor me\b"
+    r"|\bwhat(?:'ve| have) you (?:done|been doing) (?:for me )?(?:today|so far)\b"
+    r"|\b(?:anything|something|what) (?:else )?(?:that )?you(?:'ve| have)? (?:did|done) for me\b"
+    r"|\b(?:did|have) you (?:do|done) anything for me\b|\bwhat (?:work )?have you done for me\b")
+# The person's day ahead, asked in a way no pattern answers ("is today going to be rough?", "what should I skip?"):
+# the model's question, with the whole day in its FACTS. Never anything in the past tense: that is the cameras'.
+DAY_AHEAD = re.compile(
+    r"\b(?:i|i'm|i'll|my|me|we|our)\b|\b(?:is|will|does|how(?:'s| is| does)|what(?:'s| is| does)) (?:today|tonight|the (?:rest of the )?day)\b"
+    r"|\b(?:today|tonight) (?:going to|gonna|will|look|looks|be)\b")
+LOOKS_BACK = re.compile(r"\b(?:was|were|did|had|been|happened|saw|seen|came|left|went|ago|earlier|yesterday|last (?:night|hour|week))\b")
+TODAY = re.compile(r"\b(?:today|tonight|this (?:morning|afternoon|evening))\b")
+# a question that only mentions today is about their day unless it is about the cameras, the box or Atlas's own work
+DAY_LOOSELY = re.compile(r"\b(?:today|tonight|this (?:morning|afternoon|evening))\b|\btime (?:for|to)\b")
 ABOUT = {
-    # the person's day: their plan, what is next, being busy
+    # the person's day: their plan, what is next, being busy, and anything about the day ahead
     "day": re.compile(r"\bmy (?:day|plans?|schedule|calendar|agenda|morning|afternoon|evening|night|week)\b|\bwhat(?:'s| is) next\b"
-                      r"|\bam i (?:busy|free)\b|\bwhat (?:should|do) i (?:do|be doing|have)\b|\bbrief me\b|\bplans? for (?:today|tonight|tomorrow)\b"),
+                      r"|\bam i (?:busy|free)\b|\bwhat (?:should|do|can|could) i (?:do|be doing|have|skip|drop|move|cut)\b|\bbrief me\b"
+                      r"|\bplans? for (?:today|tonight|tomorrow)\b"
+                      r"|\bwhen (?:can|could|should|do|will) i\b|\b(?:do|will) i have (?:time|room)\b|\bfit\b[^?]*\bin\b"
+                      r"|\b(?:skip|reschedule|squeeze)\b"),
     # how they are doing with it: the coach's note and the review
     "coach": re.compile(r"\bhow am i (?:doing|going)\b|\bhow'm i doing\b|\bam i (?:on track|on time|behind|late|ahead|slacking)\b"
                         r"|\bhow did i do\b|\bhow(?:'s| is| was| did) my (?:day|study\w*|focus|habits?|block|session|work|progress)\b"
@@ -283,6 +302,10 @@ class Talk:
         # --- set by the composition root, so this context imports no other ---
         self.day_facts: Callable[[], dict] | None = None  # the person's day in words: {"now": ..., "plan": ..., "coach": ...}
         self.done_for_you: Callable[[], list[str]] | None = None  # what Atlas did for them today: ["planned your day", ...] (done.py)
+        # today's agreed plan from now, in the narrator's words (DayLoop.blocks): [{"kind", "title": "a study block", "start",
+        # "end"}, ..., {"kind": "leave", "title": <the event>, "start": <leave by>}]; None when there is no plan
+        self.day_plan: Callable[[], list[dict] | None] | None = None
+        self.listings = schedule.Listings()  # which stored items are campus listings, not theirs (agent.yaml `listings:`)
         self.about: str = ""  # who the box is talking to (the profile's description)
         # --- live only: never logged, never replayed ---
         self.turns: deque[tuple[str, str]] = deque()  # (what they said, what Atlas said)
@@ -305,9 +328,28 @@ class Talk:
         q = LEAD.sub("", q, count=1) or q
         if FOLLOW_UP.search(q) and self.fresh():
             return True
+        if HOW_ARE_YOU.search(q) or DONE_FOR_ME.search(q):  # answered in code from its own work, whatever else the words look like
+            return True
+        ask = schedule.parse(question, self.clock(), self.tz)
+        if ask is not None and ask.rundown:  # "what do I have today?": the day's rundown, even when the day is empty
+            return True
         if self.web and WEB.search(q):
             return False
         return not (any(rx.search(q) for rx in TOOL_LOOP) or COURSE.search(question) or COURSE_SAID.search(q))
+
+    def owns(self, question: str) -> bool:
+        """True for a question QA's camera recap must not take just because it says "today". QA asks this ahead of its
+        time-window path ("what happened today?" is the cameras'): "how are you doing today?" is small talk, "what did
+        you do for me today?" is Atlas's own work, and a question about the person's day AHEAD that no pattern answers
+        ("is today going to be rough?") is the model's, with the whole day in its FACTS. Anything in the past tense, or
+        about the cameras, people or things in the home, stays where it was."""
+        if not self.config.enabled:
+            return False
+        q = normal(question)
+        q = LEAD.sub("", q, count=1) or q
+        if HOW_ARE_YOU.search(q) or DONE_FOR_ME.search(q):
+            return True
+        return bool(TODAY.search(q) and DAY_AHEAD.search(q)) and not LOOKS_BACK.search(q) and self.wants(question)
 
     def fresh(self) -> bool:
         """A conversation is under way: the last turn ended less than `history_ttl_s` ago. Forgets it otherwise."""
@@ -377,7 +419,10 @@ class Talk:
     def topics(self, question: str) -> set[str]:
         """What the question is about: "day", "coach", "saw", "box", "done", "time". Empty for everything else."""
         q = normal(question)
-        return {name for name, rx in ABOUT.items() if rx.search(q)}
+        about = {name for name, rx in ABOUT.items() if rx.search(q)}
+        if not about & {"saw", "box", "done", "day"} and DAY_LOOSELY.search(q):
+            about.add("day")
+        return about
 
     def facts(self, question: str = "") -> list[str]:
         """What is true right now, in lines the model may repeat, and only the ones the question is about: the part of
@@ -401,7 +446,33 @@ class Talk:
         lines += [f"{DAY_LABELS.get(k, k)}: {day.get(k + SPOKEN) or v}" for k, v in day.items() if v and k in wanted]
         if self.about and about:  # who they are helps with a real question; a chat needs no file on them
             lines.append(f"Who you are talking to: {self.about.rstrip('.')}.")
-        return [whole(line, MAX_FACT_CHARS) for line in lines]  # whole sentences: a cut-off word is not a fact
+        lines = [whole(line, MAX_FACT_CHARS) for line in lines]  # whole sentences: a cut-off word is not a fact
+        if "day" in about:  # the whole day, live: the same facts the fast lane's rundown is built from (schedule.day)
+            lines += [whole(line, MAX_DAY_FACT_CHARS) for line in self.day_lines(now)]
+        return lines
+
+    def day_lines(self, now: datetime) -> list[str]:
+        """Their day from now as FACTS lines, fetched live: own events, the plan's blocks, what is due, and the
+        campus listings marked optional (ear.day_fact_lines). [] without a memory to read."""
+        if self.memory is None:
+            return []
+        try:
+            d = schedule.day_from(self.memory, now, self.tz, self.listings, self.plan())
+        except Exception:
+            log.debug("no day for the conversation", exc_info=True)
+            return []
+        return ear.day_fact_lines(d["things"], now.astimezone(self.tz), dues=d["dues"], listed=d["listed"], leave=d["leave"],
+                                  names=dict(self.config.names))
+
+    def plan(self) -> list[dict] | None:
+        """Today's agreed plan through the Day context's port; None when there is none (or no port)."""
+        if not self.day_plan:
+            return None
+        try:
+            return self.day_plan()
+        except Exception:  # the plan is a nicety; an answer must not fail on it
+            log.debug("no day plan", exc_info=True)
+            return None
 
     def done(self) -> list[str]:
         if not self.done_for_you:
@@ -423,6 +494,8 @@ class Talk:
             return ear.said_done([], greeting=True)
         if HOW_ARE_YOU.search(bare):
             return ear.said_done(self.done())
+        if DONE_FOR_ME.search(bare) and not SECOND_ASK.search(bare):  # "what did you do for me today?": all of it, from real events
+            return ear.said_done(self.done(), full=True)
         return None
 
     def calendar(self, question: str) -> str | None:
@@ -447,11 +520,12 @@ class Talk:
 
     def said(self, ask: schedule.Ask, now: datetime) -> str | None:
         try:
-            text, named = schedule.said(ask, self.memory, now, self.tz, names=dict(self.config.names))
+            text, _, found = schedule.said(ask, self.memory, now, self.tz, names=dict(self.config.names), listings=self.listings,
+                                           plan=self.plan())
         except Exception:
             log.debug("no calendar for the conversation", exc_info=True)
             return None
-        if not named and ask.kind in ("next", "day") and not ask.yes_no:  # nothing on the calendar: the Day plan's words, if it has any
+        if not found and ask.kind in ("next", "day") and not ask.yes_no:  # nothing of any kind: the Day narrator's words, if it has any
             now_said = re.sub(r"\s+", " ", str(self.their_day().get("now" + SPOKEN) or "")).strip()
             if now_said:
                 return whole(" ".join(SENTENCE_END.split(now_said)[:2]), MAX_FACT_CHARS)
@@ -521,6 +595,13 @@ class Talk:
         about = self.topics(question)
         if "done" in about or re.search(r"\b(?:how are you|how're you|how you doing|how are things|what's up|how's it going)\b", q):
             return ear.said_done(self.done())
+        if "day" in about and "coach" not in about and self.memory is not None:
+            # no model to answer it: the rundown of the same live facts is the closest true thing to say
+            now = self.clock()
+            midnight = now.astimezone(self.tz).replace(hour=0, minute=0, second=0, microsecond=0)
+            whole_day = schedule.Ask("day", now.astimezone(self.tz), midnight + timedelta(days=1), rundown=True)
+            if said := self.said(whole_day, now):
+                return said
         if "coach" in about or "day" in about:
             return self.their_day_said()
         if "box" in about:
