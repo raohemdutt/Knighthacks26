@@ -34,6 +34,26 @@ export interface Answer extends EventEnvelope {
   answer: string;
   citations: Citation[];
   model_version: string;
+  /** Ask Atlas's tools (contexts/agent/application/ask_router.py), set on a box that routes questions to them:
+   * who answered ("the box", "the network brain", "the box's rules"), the tool, its arguments and result,
+   * a screen of this app to open, and the approval card the tool proposed. */
+  answered_by?: string | null;
+  tool?: string | null;
+  tool_args?: Record<string, unknown> | null;
+  tool_result?: AskToolResult | null;
+  link?: string | null;
+  action_id?: string | null;
+}
+
+/** What an Ask Atlas tool found: its words, whether it could do it, and the fields it returned. */
+export interface AskToolResult {
+  text: string;
+  ok: boolean;
+  events?: { title: string; when: string | null; url?: string | null; connector?: string; kind?: string }[];
+  event?: { title: string; start: string; end: string; location?: string | null; attendees?: string[] };
+  action_id?: string;
+  dry_run?: boolean;
+  [key: string]: unknown;
 }
 
 export interface Health {
@@ -305,7 +325,13 @@ export interface Impact {
   before_after_nudges: { before: ImpactCounts; after: ImpactCounts } | null;
 }
 
-export type ActionKind = "export_training_data" | "send_message" | "browse" | "connector_write" | "circle_share";
+export type ActionKind =
+  | "export_training_data"
+  | "send_message"
+  | "browse"
+  | "connector_write"
+  | "circle_share"
+  | "device_control";
 
 /** GET /api/approvals rows (contexts.workspace.domain.approvals.ActionRequest). Note: `id`, not `action_id`. */
 export interface ApprovalRequest {

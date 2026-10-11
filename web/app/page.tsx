@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { AskTool, OPENS_SCREEN } from "@/components/AskTool";
 import { ASK_EVENT } from "@/components/Command";
 import { Evidence } from "@/components/Evidence";
 import { Logo } from "@/components/Logo";
@@ -129,6 +130,9 @@ export default function AskPage() {
     try {
       const answer = await api.ask(q);
       setChat((turns) => [...turns, { id: nextId(), role: "atlas", answer }]);
+      // "Show me the room map", "open approvals": the tool named a screen, so the Ask tab opens it after the answer shows
+      const open = answer.tool && answer.link && OPENS_SCREEN.has(answer.tool) ? answer.link : null;
+      if (open) window.setTimeout(() => router.push(open), 1500);
       // as the box's voice counts them (contexts/voice/service.py evidence_count): only what the cameras saw is announced as
       // evidence; a calendar entry or a link behind "You've got your lecture at 10:40" is not
       reply = speechForAnswer(answer.answer, answer.citations.filter((c) => c.frame_ref || c.episode_id).length);
@@ -374,13 +378,15 @@ export default function AskPage() {
           const a = turn.answer;
           // Conversation ("how's your day?") cites nothing because nothing was looked up: no empty evidence block for it,
           // only a quiet note. An answer that looked and found nothing still says so.
-          const talk = a.citations.length === 0 && a.answer.trim() !== NO_EVIDENCE;
+          const talk = a.citations.length === 0 && a.answer.trim() !== NO_EVIDENCE && !a.tool;
           return (
             <article key={turn.id} className={`${ui.card} ${ui.answer}`} data-guide="answer">
               <AnswerText text={a.answer} />
-              {talk ? null : <Evidence citations={a.citations} />}
+              <AskTool answer={a} />
+              {talk || (a.tool && a.citations.length === 0) ? null : <Evidence citations={a.citations} />}
               <p className={ui.modelLine}>
-                Answered by <strong>{a.model_version}</strong> at {time(a.ts)}
+                {a.answered_by ? <>Answered by {a.answered_by} </> : <>Answered by </>}
+                <strong>{a.model_version}</strong> at {time(a.ts)}
                 {talk ? " · no sources attached" : null}
               </p>
             </article>

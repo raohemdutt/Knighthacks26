@@ -699,6 +699,13 @@ def build(settings: Settings | None = None) -> Atlas:
 
     spot = build_spot(s.data_dir, bus, runtime, approvals)
 
+    # Ask Atlas's tools (contexts/gateway/ask_wiring.py): the model picks a tool for the calendar, reminders, memory,
+    # the room, the cameras, the box and the lab before QA's fixed paths; writes still go through approval cards.
+    from contexts.gateway.ask_wiring import wire_ask_tools
+
+    wire_ask_tools(qa=qa, bus=bus, approvals=approvals, hub=hub, settings=s, room=room, identity=identity, capture=capture,
+                   policy=policy, telemetry=telemetry, lab_view=lab_view, shared_brain=shared_brain)
+
     return Atlas(settings=s, bus=bus, qa=qa, approvals=approvals, hub=hub, loop=loop, zones=zones, rules=rules, alerts=alerts, game=game, room=room,
                  waste=waste, circle=circle, presence=presence, zone_engine=zone_engine, sharing=sharing,
                  memory=memory, projection=projection, habits=habits, nudger=nudger,
