@@ -22,6 +22,7 @@ CELL_M = 0.1
 REACH_M = 0.35  # how close to a bin's edge a walker has to get to drop something in
 START_S = 1.5  # par allows this long to read the route and set off ...
 DROP_S = 1.0  # ... and this long for the drop itself
+EXPLORED_CAP = 1200  # cells of a search sent to a screen; a longer search is thinned evenly, in order
 SQRT2 = math.sqrt(2)
 
 
@@ -95,8 +96,11 @@ class FloorGrid:
                        for i in range(steps + 1))
 
 
-def astar(grid: FloorGrid, start: Cell, goals: set[Cell]) -> list[Cell] | None:
-    """Shortest 8-connected path from `start` to any goal cell; a diagonal step needs both of its sides free."""
+def astar(grid: FloorGrid, start: Cell, goals: set[Cell], trace: list[Cell] | None = None) -> list[Cell] | None:
+    """Shortest 8-connected path from `start` to any goal cell; a diagonal step needs both of its sides free.
+
+    `trace`, when given, receives every cell the search expands, in the order it expands them (the goal last):
+    the search's own record, for a screen that shows how the route was found."""
     if not goals or grid.blocked(start):
         return None
     gr = sum(g[0] for g in goals) / len(goals)
@@ -112,12 +116,16 @@ def astar(grid: FloorGrid, start: Cell, goals: set[Cell]) -> list[Cell] | None:
     while frontier:
         _, g, cell = heapq.heappop(frontier)
         if cell in goals:
+            if trace is not None:
+                trace.append(cell)
             path = [cell]
             while came[path[-1]] is not None:
                 path.append(came[path[-1]])
             return path[::-1]
         if g > cost[cell]:
             continue
+        if trace is not None:
+            trace.append(cell)
         r, c = cell
         for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)):
             nxt = (r + dr, c + dc)
@@ -157,6 +165,8 @@ class Route:
     distance_m: float
     par_s: float
     cells: list[Cell]  # the unsmoothed A* cells, for checking later whether something moved into the way
+    explored: list[Cell] = field(default_factory=list)  # every cell the search expanded, in order (astar's trace)
+    grid: FloorGrid | None = None  # the grid it was planned on: the room plus whatever was in the way just then
 
     def as_json(self) -> dict:
         return {"points": [[round(x, 3), round(y, 3)] for x, y in self.points], "distance_m": round(self.distance_m, 2),
@@ -179,7 +189,8 @@ def plan_route(grid: FloorGrid, start: Point, target: Point, footprint_radius: f
     """The walk from `start` to within reach of `target`, or None when every way is blocked."""
     first = grid.nearest_free(grid.cell_of(*start))
     goals = approach_cells(grid, target, footprint_radius)
-    cells = astar(grid, first, goals) if first is not None else None
+    explored: list[Cell] = []
+    cells = astar(grid, first, goals, explored) if first is not None else None
     if cells is None:
         return None
     points = [grid.center(c) for c in cells]
@@ -188,7 +199,31 @@ def plan_route(grid: FloorGrid, start: Point, target: Point, footprint_radius: f
     else:  # the walker's own spot is not free (in a chair, say): out to the first free cell, then the walk
         pulled = [start] + smooth(grid, points)
     d = length(pulled)
-    return Route(pulled, d, START_S + d / walk_speed + DROP_S, cells)
+    return Route(pulled, d, START_S + d / walk_speed + DROP_S, cells, explored, grid)
+
+
+def thin(cells: list[Cell], cap: int = EXPLORED_CAP) -> list[Cell]:
+    """At most `cap` of `cells`, evenly spaced and in the same order, the first and the last always kept."""
+    if cap < 2 or len(cells) <= cap:
+        return list(cells)
+    return [cells[round(i * (len(cells) - 1) / (cap - 1))] for i in range(cap)]
+
+
+def search_json(route: Route, cap: int = EXPLORED_CAP) -> dict | None:
+    """How a route was found, for a screen to draw: the grid, what was blocked, the cells the search expanded (in
+    the order it expanded them, thinned to `cap`) and the cells of the path it settled on.
+
+    Cells are numbers, `row * cols + col`. `blocked` is one string a row: "." free, "#" furniture or a wall (grown
+    by the body radius), "o" something that was in the way for this plan only (a person, a thing on the floor)."""
+    grid = route.grid
+    if grid is None:
+        return None
+    number = lambda c: c[0] * grid.cols + c[1]  # noqa: E731
+    return {"algorithm": "A*", "cell_m": grid.cell, "cols": grid.cols, "rows": grid.rows,
+            "blocked": ["".join("#" if (r, c) in grid.static else "o" if (r, c) in grid.dynamic else "." for c in range(grid.cols))
+                        for r in range(grid.rows)],
+            "explored": [number(c) for c in thin(route.explored, cap)], "explored_total": len(route.explored),
+            "path": [number(c) for c in route.cells]}
 
 
 def blocked_ahead(grid: FloorGrid, route: Route, at: Point, ignore_within: float = 0.45) -> bool:
