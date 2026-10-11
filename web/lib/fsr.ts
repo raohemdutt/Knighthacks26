@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { EASU_FRAG, ENCODE_FRAG, FULLSCREEN_VERT, RCAS_FRAG } from "./fsrShaders";
+import { EASU_FRAG, FULLSCREEN_VERT, RCAS_FRAG } from "./fsrShaders";
 
 /**
  * FSR 1 (EASU + RCAS) port as a three.js post-process. The shaders, and how they differ
@@ -27,8 +27,12 @@ import { EASU_FRAG, ENCODE_FRAG, FULLSCREEN_VERT, RCAS_FRAG } from "./fsrShaders
  *  - EASU and RCAS read and write those perceptual values untouched, and RCAS writes them
  *    straight to the canvas. The canvas is sRGB and these materials are raw shaders, so
  *    three.js adds no second conversion.
- * Tone mapping is not applied in a render target either; this pipeline assumes
- * `NoToneMapping` (the three.js default), so values are already in 0..1.
+ * Tone mapping is not applied in a render target either: three.js only tone maps when it
+ * draws to the canvas. So pass [2] does it, reading `renderer.toneMapping` and
+ * `renderer.toneMappingExposure` every frame: `ACESFilmicToneMapping` is applied with the
+ * same curve three.js uses (so the bypass path looks the same), anything else is treated as
+ * `NoToneMapping`. Target [1] is 8 bits a channel, so light above 1.0 is clipped before the
+ * curve; keep the exposure around 1 and the lights sized so that only the sun patch clips.
  *
  * FSR 1 also expects anti-aliased input, which is why target [1] is multisampled.
  *
@@ -90,6 +94,34 @@ export interface FsrPipeline {
 const MAX_PIXEL_RATIO = 2;
 let warned = false;
 
+/**
+ * Pass [2]: the encode shader with the renderer's tone mapping in front of the sRGB curve. The ACES fit is the one
+ * three.js ships (Stephen Hill's), including its 1/0.6 scale, so the picture matches a direct draw to the canvas.
+ */
+const ENCODE_TONE_FRAG = /* glsl */ `
+precision highp float;
+uniform sampler2D uScene;
+uniform float uExposure; // 0 means no tone mapping
+out vec4 outColor;
+vec3 toSrgb(vec3 c) {
+  c = clamp(c, 0.0, 1.0);
+  return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
+}
+vec3 aces(vec3 c) {
+  const mat3 toAces = mat3(0.59719, 0.07600, 0.02840, 0.35458, 0.90834, 0.13383, 0.04823, 0.01566, 0.83777);
+  const mat3 fromAces = mat3(1.60475, -0.10208, -0.00327, -0.53108, 1.10813, -0.07276, -0.07367, -0.00605, 1.07602);
+  c = toAces * c;
+  vec3 a = c * (c + 0.0245786) - 0.000090537;
+  vec3 b = c * (0.983729 * c + 0.4329510) + 0.238081;
+  return clamp(fromAces * (a / b), 0.0, 1.0);
+}
+void main() {
+  vec3 c = texelFetch(uScene, ivec2(gl_FragCoord.xy), 0).rgb;
+  if (uExposure > 0.0) c = aces(c * (uExposure / 0.6));
+  outColor = vec4(toSrgb(c), 1.0);
+}
+`;
+
 function warnOnce(reason: string) {
   if (warned) return;
   warned = true;
@@ -147,7 +179,7 @@ export function createFsrPipeline(renderer: THREE.WebGLRenderer, options: FsrOpt
     reason = "this browser gave a WebGL1 context, and the shaders need WebGL2";
   } else {
     const passes: [string, string][] = [
-      ["encode", ENCODE_FRAG],
+      ["encode", ENCODE_TONE_FRAG],
       ["EASU", options.simulate === "badshader" ? `${EASU_FRAG}\nthis is not GLSL;` : EASU_FRAG],
       ["RCAS", RCAS_FRAG],
     ];
@@ -172,7 +204,7 @@ export function createFsrPipeline(renderer: THREE.WebGLRenderer, options: FsrOpt
   triangle.setAttribute("position", new THREE.BufferAttribute(new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]), 3));
   const pass = (fragmentShader: string, uniforms: Record<string, THREE.IUniform>) =>
     new THREE.RawShaderMaterial({ glslVersion: THREE.GLSL3, vertexShader: FULLSCREEN_VERT, fragmentShader, uniforms, depthTest: false, depthWrite: false });
-  const encode = pass(ENCODE_FRAG, { uScene: { value: null } });
+  const encode = pass(ENCODE_TONE_FRAG, { uScene: { value: null }, uExposure: { value: 0 } });
   const easu = pass(EASU_FRAG, { uInput: { value: null }, uInOverOut: { value: new THREE.Vector2(1, 1) } });
   const rcas = pass(RCAS_FRAG, {
     uEasu: { value: null },
@@ -243,6 +275,7 @@ export function createFsrPipeline(renderer: THREE.WebGLRenderer, options: FsrOpt
       }
       renderer.setRenderTarget(sceneTarget);
       renderer.render(scene, camera);
+      encode.uniforms.uExposure!.value = renderer.toneMapping === THREE.ACESFilmicToneMapping ? renderer.toneMappingExposure : 0;
       if (!lowTarget || !easuTarget) {
         run(encode, null); // FSR off: the full-size picture, encoded for the canvas
         return;

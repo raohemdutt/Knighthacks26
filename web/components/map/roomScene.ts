@@ -1,5 +1,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import type { FloorTrack, RoomFurniture, RoomPlan } from "@/lib/api";
 import { humanize } from "@/lib/format";
 import { createFsrPipeline, type FsrInfo, type FsrPipeline } from "@/lib/fsr";
@@ -12,6 +14,7 @@ import {
   binDecal,
   blobTexture,
   buildBin,
+  buildFixture,
   buildFurniture,
   buildPerson,
   buildThing,
@@ -19,6 +22,8 @@ import {
   chevronTexture,
   contactTexture,
   glowTexture,
+  haloTexture,
+  poolTexture,
   sunTexture,
   posterTexture,
   rugTexture,
@@ -35,10 +40,16 @@ import {
  *   setPins   memory pins ("your keys are here")
  *   setRoutes Sort It: glowing routes on the floor, the right bin marked, the wrong one dimmed
  *
- * Cost, sized for a phone: all static geometry is merged into about fifteen draw calls, one 1024 px shadow map for
+ * Cost, sized for a phone: all static geometry is merged into about twenty draw calls, one 1024 px shadow map for
  * the sun through the window (redrawn only when something moved), contact shading painted once onto the floor, and
- * frames are drawn only while something is moving. Everything renders through the FSR 1 pipeline (lib/fsr.ts).
+ * frames are drawn only while something is moving. Everything renders through the FSR 1 pipeline (lib/fsr.ts),
+ * which applies the renderer's ACES tone mapping in its encode pass. Reflections on the gloss layer come from a
+ * room environment map built once with PMREMGenerator.
  * Names are DOM labels over the canvas, laid out every drawn frame so that none overlaps another.
+ *
+ * Day and night follow the page's theme: `<html data-theme="dark">` turns the sun into moonlight and lets the lamps
+ * (point lights at the bulbs the models registered) and the screens light the room. The attribute is watched, and
+ * the clear colour is re-read from the host's background whenever it flips.
  */
 
 export type TwinView = "iso" | "top";
@@ -104,6 +115,7 @@ interface Figure {
   group: THREE.Group;
   body?: THREE.Group;
   shirt?: THREE.MeshStandardMaterial;
+  sleeve?: THREE.MeshStandardMaterial;
   ring?: THREE.Mesh;
   shade?: THREE.Mesh;
   from: THREE.Vector3;
@@ -190,6 +202,17 @@ export class RoomScene {
   private camera = new THREE.PerspectiveCamera(FOV, 1, 0.1, 80);
   private controls: OrbitControls;
   private sun = new THREE.DirectionalLight(0xfff0dc, 2.5);
+  private hemi = new THREE.HemisphereLight(0xe6eeff, 0xa08a6e, 1.1);
+  private fill = new THREE.DirectionalLight(0xfff4e6, 0.5);
+  private lampLights: THREE.PointLight[] = [];
+  private envMap: THREE.Texture | null = null;
+  private dark = false;
+  private themeWatch: MutationObserver | null = null;
+  private themeTimer = 0;
+  private tinted: THREE.MeshStandardMaterial[] = []; // the floor, the rug, the posters: tinted cool at night
+  private sunPatch: THREE.MeshBasicMaterial | null = null;
+  private pools: THREE.Mesh | null = null; // warm light on the floor under the lamps, shown at night
+  private fixture: THREE.Group | null = null; // the ceiling pendant, hidden from straight above
   private watcher: ResizeObserver;
   private frame = 0;
   private dirty = true;
@@ -214,8 +237,9 @@ export class RoomScene {
   private routes: SceneRoute[] = [];
   private bob: THREE.Object3D[] = [];
   private chevrons: THREE.Texture[] = [];
-  private materials: { matte: THREE.MeshStandardMaterial; gloss: THREE.MeshStandardMaterial; glow: THREE.MeshBasicMaterial };
+  private materials: { matte: THREE.MeshStandardMaterial; gloss: THREE.MeshStandardMaterial; glow: THREE.MeshBasicMaterial; glass: THREE.MeshBasicMaterial };
   private blob = blobTexture();
+  private halo = haloTexture();
   private size = { w: 1, h: 1 };
 
   constructor(
@@ -225,13 +249,10 @@ export class RoomScene {
   ) {
     this.view = opts.view;
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
-    const backdrop = new THREE.Color(0xdbe6f8);
-    try {
-      backdrop.setStyle(getComputedStyle(host).backgroundColor);
-    } catch {
-      // keep the default
-    }
-    this.renderer.setClearColor(backdrop, 1);
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.0;
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.readBackdrop();
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.shadowMap.autoUpdate = false;
@@ -243,23 +264,49 @@ export class RoomScene {
     this.pipeline.setCompare(opts.compare, opts.split);
 
     this.materials = {
-      matte: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.86, metalness: 0 }),
-      gloss: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.32, metalness: 0.18 }),
+      matte: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0 }),
+      gloss: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.28, metalness: 0.3, envMapIntensity: 1.0 }),
       glow: new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }),
+      glass: new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }),
     };
 
-    // Soft sky and floor bounce everywhere, a shadowless fill from the viewer's side, and the sun through the window.
-    this.scene.add(new THREE.HemisphereLight(0xe6eeff, 0xa08a6e, 1.7));
-    const fill = new THREE.DirectionalLight(0xfff4e6, 0.7);
-    fill.position.set(6, 9, 8);
-    this.scene.add(fill);
+    // A room-shaped environment map, built once: the gloss layer reflects it, and it gives every surface a little
+    // soft light from all around.
+    try {
+      const pmrem = new THREE.PMREMGenerator(this.renderer);
+      const env = new RoomEnvironment();
+      this.envMap = pmrem.fromScene(env, 0.04).texture;
+      env.dispose();
+      pmrem.dispose();
+      this.scene.environment = this.envMap;
+    } catch {
+      this.envMap = null; // the lights below carry the picture on their own
+    }
+
+    // Soft sky and floor bounce everywhere, a shadowless fill from the viewer's side, the sun through the window,
+    // and three lamp lights that only come on at night (always in the scene so the shaders need not recompile).
+    this.scene.add(this.hemi);
+    this.fill.position.set(6, 9, 8);
+    this.scene.add(this.fill);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(1024, 1024);
     this.sun.shadow.bias = -0.0006;
     this.sun.shadow.normalBias = 0.025;
     this.sun.shadow.radius = 3;
     this.scene.add(this.sun, this.sun.target);
+    for (let i = 0; i < 3; i++) {
+      const lamp = new THREE.PointLight(0xffb66b, 0, 3.6, 2);
+      lamp.position.set(0, -10, 0);
+      this.lampLights.push(lamp);
+      this.scene.add(lamp);
+    }
     this.scene.add(this.room, this.zones, this.routeGroup, this.things, this.pinsGroup);
+    this.dark = this.themeIsDark();
+    this.applyTheme();
+    if (typeof MutationObserver !== "undefined") {
+      this.themeWatch = new MutationObserver(() => this.themeChanged());
+      this.themeWatch.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    }
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enablePan = false;
@@ -274,6 +321,101 @@ export class RoomScene {
     this.watcher = new ResizeObserver(() => this.resize());
     this.watcher.observe(host);
     this.resize();
+    (host as HTMLElement & { roomScene?: RoomScene }).roomScene = this; // for checking draw calls from the console
+  }
+
+  // ---------- day and night ----------
+
+  private themeIsDark(): boolean {
+    const set = document.documentElement.dataset.theme;
+    if (set === "dark") return true;
+    if (set === "light") return false;
+    return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
+  }
+
+  /**
+   * The clear colour is what shows behind the host: its background laid over its ancestors' (the stage is often a
+   * translucent card on a page), so the canvas blends in.
+   */
+  private readBackdrop() {
+    const backdrop = new THREE.Color(this.dark ? 0x161a22 : 0xe6ebf3);
+    try {
+      const layers: [THREE.Color, number][] = [];
+      let el: HTMLElement | null = this.host;
+      while (el) {
+        const bg = getComputedStyle(el).backgroundColor;
+        const m = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$/.exec(bg ?? "");
+        if (m) {
+          const a = m[4] === undefined ? 1 : Number(m[4]);
+          if (a > 0) layers.push([new THREE.Color(`rgb(${m[1]}, ${m[2]}, ${m[3]})`), Math.min(1, a)]);
+          if (a >= 1) break;
+        }
+        el = el.parentElement;
+      }
+      if (layers.length) {
+        const [bottom] = layers[layers.length - 1] as [THREE.Color, number];
+        backdrop.copy(bottom);
+        for (let i = layers.length - 2; i >= 0; i--) {
+          const [c, a] = layers[i] as [THREE.Color, number];
+          backdrop.lerp(c, a);
+        }
+      }
+    } catch {
+      // keep the default
+    }
+    this.renderer.setClearColor(backdrop, 1);
+  }
+
+  private themeChanged() {
+    const dark = this.themeIsDark();
+    if (dark !== this.dark) {
+      this.dark = dark;
+      this.applyTheme();
+    }
+    this.readBackdrop();
+    this.draw();
+    // the page's colours may be mid-transition: read the background again once it has settled
+    window.clearTimeout(this.themeTimer);
+    this.themeTimer = window.setTimeout(() => {
+      this.readBackdrop();
+      this.draw();
+    }, 450);
+  }
+
+  /** Set every light and tint for day or night. Cheap enough to call on every flip. */
+  private applyTheme() {
+    const dark = this.dark;
+    const tint = dark ? 0x8a94ac : 0xffffff;
+    if (dark) {
+      this.hemi.color.setHex(0x5b70a0);
+      this.hemi.groundColor.setHex(0x23283a);
+      this.hemi.intensity = 0.85;
+      this.sun.color.setHex(0x9db6f0);
+      this.sun.intensity = 0.5;
+      this.fill.color.setHex(0x7d8fb8);
+      this.fill.intensity = 0.12;
+      this.scene.environmentIntensity = 0.18;
+    } else {
+      this.hemi.color.setHex(0xe6eeff);
+      this.hemi.groundColor.setHex(0xa08a6e);
+      this.hemi.intensity = 0.8;
+      this.sun.color.setHex(0xffe6c4);
+      this.sun.intensity = 2.0;
+      this.fill.color.setHex(0xfff4e6);
+      this.fill.intensity = 0.35;
+      this.scene.environmentIntensity = 0.4;
+    }
+    for (const lamp of this.lampLights) lamp.intensity = dark && lamp.position.y > -5 ? 2.6 : 0;
+    this.materials.matte.color.setHex(tint);
+    this.materials.gloss.color.setHex(tint);
+    this.materials.glass.color.setHex(dark ? 0x1a2238 : 0xffffff);
+    for (const m of this.tinted) m.color.setHex(tint);
+    if (this.sunPatch) {
+      this.sunPatch.color.setHex(dark ? 0x9fb8ff : 0xffe2b0);
+      this.sunPatch.opacity = dark ? 0.2 : 0.34;
+    }
+    if (this.pools) this.pools.visible = dark;
+    this.shadowDirty = true;
   }
 
   // ---------- drawing ----------
@@ -304,6 +446,14 @@ export class RoomScene {
       for (const t of this.chevrons) t.offset.x = -((now / 1000) * 1.1) % 1;
       for (const o of this.bob) o.position.y = (o.userData.base as number) + Math.sin(now / 260) * 0.05;
       moving = true;
+    }
+    if (moving && !this.opts.calm) {
+      // a breath, only while frames are being drawn anyway
+      let i = 0;
+      for (const fig of this.figures.values()) {
+        if (fig.body && fig.person) fig.body.scale.x = fig.body.scale.z = 1 + Math.sin(now / 850 + i * 1.7) * 0.012;
+        i++;
+      }
     }
     const turned = this.controls.update();
     if (this.cutWalls()) this.shadowDirty = true;
@@ -472,6 +622,10 @@ export class RoomScene {
     const above = p.y > 3 && Math.hypot(p.x - this.controls.target.x, p.z - this.controls.target.z) < p.y * 0.3; // looking down: a floor plan
     const outside: Record<Wall, boolean> = { north: above || p.z < 0.25, south: above || p.z > d - 0.25, west: above || p.x < 0.25, east: above || p.x > w - 0.25 };
     let changed = false;
+    if (this.fixture && this.fixture.visible === above) {
+      this.fixture.visible = !above;
+      changed = true;
+    }
     for (const [wall, parts] of this.walls) {
       const hide = outside[wall];
       if (hide === parts.hidden) continue;
@@ -578,6 +732,8 @@ export class RoomScene {
     this.room = new THREE.Group();
     this.walls.clear();
     this.bins.clear();
+    this.tinted = [];
+    this.fixture = null;
     const [w, d] = plan.size;
     const high = plan.wall_height;
 
@@ -588,7 +744,9 @@ export class RoomScene {
     this.room.add(base);
     const wood = woodTexture();
     wood.repeat.set(w / 2, d / 2);
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshStandardMaterial({ map: wood, roughness: 0.78 }));
+    const floorMaterial = new THREE.MeshStandardMaterial({ map: wood, roughness: 0.62, metalness: 0.02, envMapIntensity: 0.3 });
+    this.tinted.push(floorMaterial);
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(w, d), floorMaterial);
     floor.rotation.x = -Math.PI / 2;
     floor.position.set(w / 2, 0, d / 2);
     floor.receiveShadow = true;
@@ -600,9 +758,11 @@ export class RoomScene {
     this.room.add(contact);
 
     for (const wall of WALLS) {
-      const parts = buildWall(wall, w, d, high, plan.doors, plan.windows, this.materials);
+      const parts = buildWall(wall, w, d, high, plan.doors, plan.windows, this.materials, this.materials.glass);
       for (const p of plan.posters.filter((x) => x.wall === wall)) {
-        const mesh = new THREE.Mesh(new THREE.PlaneGeometry(p.width, p.height ?? 0.6), new THREE.MeshStandardMaterial({ map: posterTexture(p.art), roughness: 0.9 }));
+        const posterMaterial = new THREE.MeshStandardMaterial({ map: posterTexture(p.art), roughness: 0.9 });
+        this.tinted.push(posterMaterial);
+        const mesh = new THREE.Mesh(new THREE.PlaneGeometry(p.width, p.height ?? 0.6), posterMaterial);
         const [x, z] = wallPoint(wall, p.at, -0.008, w, d);
         mesh.position.set(x, (p.sill ?? 1.3) + (p.height ?? 0.6) / 2, z);
         mesh.rotation.y = wallTurn(wall);
@@ -618,7 +778,9 @@ export class RoomScene {
     }
 
     for (const f of plan.furniture.filter((x) => x.type === "rug")) {
-      const rug = new THREE.Mesh(new THREE.PlaneGeometry(f.size[0], f.size[1]), new THREE.MeshStandardMaterial({ map: rugTexture(), roughness: 0.95 }));
+      const rugMaterial = new THREE.MeshStandardMaterial({ map: rugTexture(), roughness: 0.95 });
+      this.tinted.push(rugMaterial);
+      const rug = new THREE.Mesh(new THREE.PlaneGeometry(f.size[0], f.size[1]), rugMaterial);
       rug.rotation.set(-Math.PI / 2, 0, (f.rot * Math.PI) / 180);
       rug.position.set(f.at[0], 0.012, f.at[1]);
       rug.receiveShadow = true;
@@ -626,7 +788,26 @@ export class RoomScene {
       this.room.add(rug);
     }
     const plainChairs = plan.furniture.some((f) => f.type === "table");
-    this.room.add(buildFurniture(plan.furniture, plainChairs, this.materials));
+    const lamps: THREE.Vector3[] = [];
+    this.room.add(buildFurniture(plan.furniture, plainChairs, this.materials, [w, d], lamps));
+    this.fixture = buildFixture(w, d, high, this.materials);
+    this.fixture.traverse((o) => {
+      o.castShadow = false;
+    });
+    this.room.add(this.fixture);
+
+    // The lamps: a point light at each bulb (up to three), and warm pools on the floor under them, for the night.
+    lamps.sort((a, b) => a.y - b.y); // the low ones first: a desk lamp lights more of the room than a tall one
+    this.lampLights.forEach((light, i) => {
+      const at = lamps[i];
+      if (at) light.position.copy(at);
+      else light.position.set(0, -10, 0);
+    });
+    this.pools = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshBasicMaterial({ map: poolTexture(w, d, lamps.slice(0, this.lampLights.length)), transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending }));
+    this.pools.rotation.x = -Math.PI / 2;
+    this.pools.position.set(w / 2, 0.018, d / 2);
+    this.pools.renderOrder = 2;
+    this.room.add(this.pools);
 
     for (const f of plan.furniture.filter((x) => x.type === "bin")) {
       const made = buildBin(f, binDecal(f.bin ?? "trash"));
@@ -670,10 +851,11 @@ export class RoomScene {
       g.setAttribute("position", new THREE.Float32BufferAttribute([a[0], 0.02, a[1], b[0], 0.02, b[1], c[0], 0.02, c[1], e[0], 0.02, e[1]], 3));
       g.setAttribute("uv", new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2));
       g.setIndex([0, 1, 2, 0, 2, 3]);
-      const patch = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ map: sunTexture(), color: 0xffe2b0, transparent: true, opacity: 0.34, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+      this.sunPatch = new THREE.MeshBasicMaterial({ map: sunTexture(), color: 0xffe2b0, transparent: true, opacity: 0.34, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+      const patch = new THREE.Mesh(g, this.sunPatch);
       patch.renderOrder = 3;
       this.room.add(patch);
-    }
+    } else this.sunPatch = null;
     this.sun.target.position.set(w / 2, 0, d / 2);
     this.sun.position.copy(this.sun.target.position).addScaledVector(dir, -12);
     const reach = Math.hypot(w, d) / 2 + 1.2;
@@ -688,6 +870,7 @@ export class RoomScene {
 
     this.scene.add(this.room);
     this.setZones(plan);
+    this.applyTheme();
     this.shadowDirty = true;
     if (firstPlan || reshaped) this.home(false);
     this.cutWalls();
@@ -695,28 +878,51 @@ export class RoomScene {
     this.draw();
   }
 
+  /** Every zone's fill in one mesh and every outline in one set of lines, coloured per vertex: two draw calls. */
   private setZones(plan: RoomPlan) {
     this.scene.remove(this.zones);
     disposeTree(this.zones);
     this.zones = new THREE.Group();
+    const fills: THREE.BufferGeometry[] = [];
+    const lines: number[] = [];
+    const lineColors: number[] = [];
+    const c = new THREE.Color();
     for (const zones of Object.values(plan.zones)) {
       for (const [id, poly] of Object.entries(zones)) {
         if (poly.length < 3) continue;
-        const color = ZONE_COLORS[id] ?? 0xb794f6;
+        c.setHex(ZONE_COLORS[id] ?? 0xb794f6);
         const shape = new THREE.Shape(poly.map(([x, y]) => new THREE.Vector2(x, y)));
-        const geometry = new THREE.ShapeGeometry(shape);
+        const geometry = new THREE.ShapeGeometry(shape).toNonIndexed();
         geometry.rotateX(Math.PI / 2);
-        const fill = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.17, depthWrite: false, side: THREE.DoubleSide }));
+        geometry.deleteAttribute("uv");
+        const n = geometry.getAttribute("position").count;
+        const colors = new Float32Array(n * 3);
+        for (let i = 0; i < n; i++) c.toArray(colors, i * 3);
+        geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+        fills.push(geometry);
+        for (let i = 0; i < poly.length; i++) {
+          const [ax, ay] = poly[i] as [number, number];
+          const [bx, by] = poly[(i + 1) % poly.length] as [number, number];
+          lines.push(ax, 0.02, ay, bx, 0.02, by);
+          lineColors.push(c.r, c.g, c.b, c.r, c.g, c.b);
+        }
+      }
+    }
+    if (fills.length) {
+      const merged = mergeGeometries(fills, false);
+      for (const f of fills) f.dispose();
+      if (merged) {
+        const fill = new THREE.Mesh(merged, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.17, depthWrite: false, side: THREE.DoubleSide }));
         fill.position.y = 0.016;
         fill.renderOrder = 3;
         this.zones.add(fill);
-        const edge = new THREE.LineLoop(
-          new THREE.BufferGeometry().setFromPoints(poly.map(([x, y]) => new THREE.Vector3(x, 0.02, y))),
-          new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.75 }),
-        );
-        edge.renderOrder = 3;
-        this.zones.add(edge);
       }
+      const edges = new THREE.BufferGeometry();
+      edges.setAttribute("position", new THREE.Float32BufferAttribute(lines, 3));
+      edges.setAttribute("color", new THREE.Float32BufferAttribute(lineColors, 3));
+      const edge = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.75 }));
+      edge.renderOrder = 3;
+      this.zones.add(edge);
     }
     this.scene.add(this.zones);
   }
@@ -758,7 +964,7 @@ export class RoomScene {
         group.position.copy(to);
         this.things.add(group);
         const label = this.makeLabel(name, person ? this.opts.classes.person : this.opts.classes.thing, person ? 60 : 50, person);
-        fig = { key: t.key, person, group, body: made?.body, shirt: made?.shirt, ring, shade, from: to.clone(), to, t0: now, born: now, heading: 0, wantHeading: 0, seated: false, heldBy: null, label, top: person ? 1.8 : 0.34 };
+        fig = { key: t.key, person, group, body: made?.body, shirt: made?.shirt, sleeve: made?.sleeve, ring, shade, from: to.clone(), to, t0: now, born: now, heading: 0, wantHeading: 0, seated: false, heldBy: null, label, top: person ? 1.8 : 0.34 };
         this.figures.set(t.key, fig);
       } else {
         fig.from.copy(fig.group.position);
@@ -779,6 +985,7 @@ export class RoomScene {
         fig.top = t.seated ? 1.5 : 1.8;
         const color = player ? ROUTE_COLORS[(player - 1) % ROUTE_COLORS.length] : t.member_id ? MEMBER_COLORS[hash(t.member_id) % MEMBER_COLORS.length] : PERSON;
         fig.shirt?.color.setHex(color as number);
+        fig.sleeve?.color.setHex(color as number).offsetHSL(0, 0.02, -0.09);
         if (fig.ring) {
           fig.ring.visible = player !== undefined;
           (fig.ring.material as THREE.MeshBasicMaterial).color.setHex(ROUTE_COLORS[((player ?? 1) - 1) % ROUTE_COLORS.length] as number);
@@ -847,18 +1054,23 @@ export class RoomScene {
       const color = on ? 0x2563eb : 0x566176;
       const g = new THREE.Group();
       const tall = 0.62;
-      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, tall, 8), new THREE.MeshStandardMaterial({ color, roughness: 0.5 }));
-      stem.position.y = tall / 2;
-      const tip = new THREE.Mesh(new THREE.ConeGeometry(0.075, 0.16, 16), new THREE.MeshStandardMaterial({ color, roughness: 0.4 }));
-      tip.rotation.x = Math.PI;
-      tip.position.y = tall - 0.03;
-      const head = new THREE.Mesh(new THREE.SphereGeometry(on ? 0.11 : 0.095, 18, 12), new THREE.MeshStandardMaterial({ color, roughness: 0.35, emissive: color, emissiveIntensity: on ? 0.35 : 0.12 }));
-      head.position.y = tall + 0.08;
+      // the stem, the point and the head are one mesh: a pin is one draw call plus its ring and halo
+      const solid = mergeGeometries([
+        new THREE.CylinderGeometry(0.012, 0.012, tall, 8).translate(0, tall / 2, 0),
+        new THREE.ConeGeometry(0.075, 0.16, 16).rotateX(Math.PI).translate(0, tall - 0.03, 0),
+        new THREE.SphereGeometry(on ? 0.11 : 0.095, 16, 12).translate(0, tall + 0.08, 0),
+      ]);
+      const head = new THREE.Mesh(solid ?? new THREE.SphereGeometry(0.1, 16, 12), new THREE.MeshStandardMaterial({ color, roughness: 0.3, metalness: 0.1, emissive: color, emissiveIntensity: on ? 0.45 : 0.15 }));
+      head.castShadow = true;
       const ring = new THREE.Mesh(new THREE.RingGeometry(0.1, 0.135, 28), new THREE.MeshBasicMaterial({ color: 0x2563eb, transparent: true, opacity: on ? 0.95 : 0.6, depthWrite: false, side: THREE.DoubleSide }));
       ring.rotation.x = -Math.PI / 2;
       ring.position.y = 0.012;
       ring.renderOrder = 5;
-      g.add(stem, tip, head, ring);
+      const glow = new THREE.Mesh(new THREE.PlaneGeometry(on ? 0.62 : 0.46, on ? 0.62 : 0.46), new THREE.MeshBasicMaterial({ map: this.halo, color: 0x3b82f6, transparent: true, opacity: on ? 0.9 : 0.45, depthWrite: false, blending: THREE.AdditiveBlending }));
+      glow.rotation.x = -Math.PI / 2;
+      glow.position.y = 0.01;
+      glow.renderOrder = 4;
+      g.add(head, ring, glow);
       g.position.set(pin.x, pin.z, pin.y);
       this.pinsGroup.add(g);
       const label = this.makeLabel(pin.text, `${this.opts.classes.pin} ${on ? this.opts.classes.pinOn : ""}`, on ? 95 : 70, true, true);
@@ -899,8 +1111,10 @@ export class RoomScene {
       if (route.points.length < 2) continue;
       const color = ROUTE_COLORS[(route.player - 1) % ROUTE_COLORS.length] as number;
       const line = rounded(route.points);
-      const halo = new THREE.Mesh(ribbon(line, 0.3, 0.022), new THREE.MeshBasicMaterial({ color, map: glow, transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+      const halo = new THREE.Mesh(ribbon(line, 0.34, 0.022), new THREE.MeshBasicMaterial({ color, map: glow, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
       halo.renderOrder = 5;
+      const core = new THREE.Mesh(ribbon(line, 0.12, 0.025), new THREE.MeshBasicMaterial({ color, map: glow, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+      core.renderOrder = 5;
       const tex = chevronTexture();
       tex.repeat.set(1 / 0.34, 1); // an arrow head every 34 cm
       this.chevrons.push(tex);
@@ -911,7 +1125,7 @@ export class RoomScene {
       start.rotation.x = -Math.PI / 2;
       start.position.set(sx, 0.03, sy);
       start.renderOrder = 6;
-      this.routeGroup.add(halo, strip, start);
+      this.routeGroup.add(halo, core, strip, start);
     }
     for (const [id, bin] of this.bins) {
       const dim = this.target !== null && id !== this.target;
@@ -946,6 +1160,11 @@ export class RoomScene {
     this.gone = true;
     if (this.frame) cancelAnimationFrame(this.frame);
     this.watcher.disconnect();
+    this.themeWatch?.disconnect();
+    window.clearTimeout(this.themeTimer);
+    this.scene.environment = null;
+    this.envMap?.dispose();
+    this.halo.dispose();
     this.controls.dispose();
     for (const l of [...this.labels]) this.dropLabel(l);
     disposeRoom(this.room, this.materials);

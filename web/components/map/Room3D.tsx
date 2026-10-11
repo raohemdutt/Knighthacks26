@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { cameraName, humanize } from "@/lib/format";
 import { createFsrPipeline, type FsrInfo, type FsrPipeline } from "@/lib/fsr";
 import type { Point, RoomCamera, RoomPin } from "@/lib/room";
@@ -20,7 +21,11 @@ import css from "./room3d.module.css";
  *
  * Rendering: the scene can be drawn below the screen's resolution and upscaled with the
  * FSR 1 (EASU + RCAS) port in lib/fsr.ts. The control under the stage picks the mode, and
- * "Compare" splits the picture between a plain bilinear upscale and FSR.
+ * "Compare" splits the picture between a plain bilinear upscale and FSR. The picture is
+ * ACES tone mapped (the pipeline applies it in its encode pass), lit by a hemisphere light,
+ * a soft sun and a room environment map, and follows the page's theme: with
+ * `<html data-theme="dark">` the lights go cool and dim and the clear colour is re-read
+ * from the stage's background.
  *
  * Presenter and test links (they win over the remembered choice):
  *   /map/?view=3d&fsr=off | quality | performance     the render mode
@@ -209,14 +214,44 @@ export default function Room3D({ cameras, pins, selected, route }: Room3DProps) 
       setFailed(err instanceof Error ? err.message : String(err));
       return;
     }
-    // Opaque, in the stage's own colour: the upscaler works on colour only, not on alpha.
-    const backdrop = new THREE.Color(COLOR.floor);
-    try {
-      backdrop.setStyle(getComputedStyle(el).backgroundColor);
-    } catch {
-      // Keep the default.
-    }
-    renderer.setClearColor(backdrop, 1);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    // Opaque, in the stage's own colour (laid over its ancestors' when it is translucent): the upscaler works on
+    // colour only, not on alpha.
+    const isDark = () => {
+      const set = document.documentElement.dataset.theme;
+      if (set === "dark") return true;
+      if (set === "light") return false;
+      return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
+    };
+    const readBackdrop = () => {
+      const backdrop = new THREE.Color(isDark() ? 0x161a22 : COLOR.floor);
+      try {
+        const layers: [THREE.Color, number][] = [];
+        let node: HTMLElement | null = el;
+        while (node) {
+          const m = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$/.exec(getComputedStyle(node).backgroundColor ?? "");
+          if (m) {
+            const a = m[4] === undefined ? 1 : Number(m[4]);
+            if (a > 0) layers.push([new THREE.Color(`rgb(${m[1]}, ${m[2]}, ${m[3]})`), Math.min(1, a)]);
+            if (a >= 1) break;
+          }
+          node = node.parentElement;
+        }
+        if (layers.length) {
+          backdrop.copy((layers[layers.length - 1] as [THREE.Color, number])[0]);
+          for (let i = layers.length - 2; i >= 0; i--) {
+            const [c, a] = layers[i] as [THREE.Color, number];
+            backdrop.lerp(c, a);
+          }
+        }
+      } catch {
+        // Keep the default.
+      }
+      renderer.setClearColor(backdrop, 1);
+    };
+    readBackdrop();
     el.appendChild(renderer.domElement);
     renderer.domElement.setAttribute("aria-label", "The room in 3D. Drag to rotate and tilt.");
     renderer.domElement.setAttribute("role", "img");
@@ -228,10 +263,40 @@ export default function Room3D({ cameras, pins, selected, route }: Room3DProps) 
     pipeline.setCompare(choice.current.compare, Number.isFinite(at) ? at : 0.5);
 
     const scene = new THREE.Scene();
-    scene.add(new THREE.AmbientLight(0xffffff, 1.5));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.9);
+    const hemi = new THREE.HemisphereLight(0xe6eeff, 0xa08a6e, 1.0);
+    scene.add(hemi);
+    const sun = new THREE.DirectionalLight(0xffe6c4, 1.6);
     sun.position.set(-1.5, 3, 2);
     scene.add(sun);
+    let envMap: THREE.Texture | null = null;
+    try {
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      const env = new RoomEnvironment();
+      envMap = pmrem.fromScene(env, 0.04).texture;
+      env.dispose();
+      pmrem.dispose();
+      scene.environment = envMap;
+    } catch {
+      envMap = null; // the lights carry the picture on their own
+    }
+    const applyTheme = () => {
+      if (isDark()) {
+        hemi.color.setHex(0x5b70a0);
+        hemi.groundColor.setHex(0x23283a);
+        hemi.intensity = 0.8;
+        sun.color.setHex(0x9db6f0);
+        sun.intensity = 0.7;
+        scene.environmentIntensity = 0.2;
+      } else {
+        hemi.color.setHex(0xe6eeff);
+        hemi.groundColor.setHex(0xa08a6e);
+        hemi.intensity = 1.0;
+        sun.color.setHex(0xffe6c4);
+        sun.intensity = 1.6;
+        scene.environmentIntensity = 0.45;
+      }
+    };
+    applyTheme();
 
     const camera = new THREE.PerspectiveCamera(42, 1, 0.05, 50);
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -311,6 +376,19 @@ export default function Room3D({ cameras, pins, selected, route }: Room3DProps) 
     controls.addEventListener("start", grabbed);
     const watcher = new ResizeObserver(size);
     watcher.observe(el);
+    // The theme flips at runtime: relight, and re-read the background now and once its transition has settled.
+    let themeTimer = 0;
+    const themeWatch = typeof MutationObserver === "undefined" ? null : new MutationObserver(() => {
+      applyTheme();
+      readBackdrop();
+      draw();
+      window.clearTimeout(themeTimer);
+      themeTimer = window.setTimeout(() => {
+        readBackdrop();
+        draw();
+      }, 450);
+    });
+    themeWatch?.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
     stage.current = { renderer, scene, camera, pipeline, draw, home, report };
     size();
     home();
@@ -362,7 +440,11 @@ export default function Room3D({ cameras, pins, selected, route }: Room3DProps) 
       window.clearTimeout(benchTimer);
       if (frame) cancelAnimationFrame(frame);
       watcher.disconnect();
+      themeWatch?.disconnect();
+      window.clearTimeout(themeTimer);
       controls.dispose();
+      scene.environment = null;
+      envMap?.dispose();
       dispose(scene);
       pipeline.dispose();
       renderer.dispose();
