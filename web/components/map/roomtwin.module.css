@@ -61,8 +61,8 @@
   padding: 3px 10px;
   border: 0;
   border-radius: var(--radius-pill);
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 2px 2px 6px rgba(120, 136, 170, 0.35);
+  background: var(--surface-solid); /* a solid chip: the room behind it must not show through the text */
+  box-shadow: 0 0 0 1px var(--line), 0 2px 8px -2px var(--sh-dark);
   color: var(--text);
   font-size: 13px;
   font-weight: 650;
@@ -72,7 +72,8 @@
 }
 
 .person {
-  background: #ffffff;
+  background: var(--surface-solid);
+  box-shadow: 0 0 0 1px var(--accent-soft), 0 2px 8px -2px var(--sh-dark);
 }
 
 .thing {
@@ -84,8 +85,8 @@
 }
 
 .zone {
-  box-shadow: none;
-  background: rgba(255, 255, 255, 0.6);
+  box-shadow: 0 0 0 1px var(--line);
+  background: var(--bg-glass);
   color: var(--muted);
   font-size: 12px;
   font-weight: 600;
@@ -95,17 +96,28 @@
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  border: 1px solid #ffffff;
+  border: 1px solid var(--line);
 }
 
 .pin {
   min-height: 24px;
   padding: 3px 11px;
-  background: #ffffff;
+  background: var(--surface-solid);
   color: var(--text);
   font-size: 13px;
   pointer-events: auto;
   cursor: pointer;
+  transition: transform var(--t) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .pin:hover {
+    transform: translateY(-2px);
+  }
+}
+
+.pin:active {
+  transform: scale(0.97);
 }
 
 .pin::after {
@@ -145,7 +157,9 @@
   gap: 2px 7px;
   padding: 6px 14px;
   border-radius: var(--radius-sm);
-  background: rgba(234, 241, 252, 0.94);
+  background: var(--bg-glass);
+  backdrop-filter: blur(12px) saturate(1.4);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
   box-shadow: var(--sh-raised-sm);
   font-size: 14px;
   font-weight: 650;
@@ -175,7 +189,9 @@
   gap: 4px;
   padding: 4px;
   border-radius: var(--radius-sm);
-  background: rgba(234, 241, 252, 0.94);
+  background: var(--bg-glass);
+  backdrop-filter: blur(12px) saturate(1.4);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
   box-shadow: var(--sh-inset-sm);
   pointer-events: auto;
 }
@@ -190,11 +206,16 @@
   color: var(--muted);
   font-size: 14px;
   font-weight: 650;
-  transition: box-shadow var(--ease-press);
+  transition: box-shadow var(--ease-press), background var(--t), color var(--t), transform var(--t-fast);
 }
 
+.viewBtn:active {
+  transform: scale(0.96);
+}
+
+/* the chosen view rises out of the well, as the segmented control does */
 .viewOn {
-  background: var(--surface);
+  background: var(--surface-solid);
   box-shadow: var(--sh-raised-sm);
   color: var(--accent-text);
 }
@@ -205,8 +226,8 @@
   z-index: 1;
   padding: 3px 11px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 2px 2px 6px rgba(120, 136, 170, 0.35);
+  background: var(--surface-solid);
+  box-shadow: 0 0 0 1px var(--line), 0 2px 8px -2px var(--sh-dark);
   color: var(--text);
   font-size: 13px;
   font-weight: 650;
@@ -246,7 +267,7 @@
   width: min(100%, 520px);
   padding: 14px 18px;
   border-radius: var(--radius-sm);
-  background: rgba(234, 241, 252, 0.96);
+  background: var(--surface-solid);
   box-shadow: var(--sh-raised);
   pointer-events: auto;
 }
@@ -301,10 +322,11 @@
   height: 100%;
   border-radius: 4px;
   background: linear-gradient(90deg, var(--accent-bright), var(--accent));
+  transition: width 900ms var(--ease-out);
 }
 
 .meterOver {
-  background: #e08a1e;
+  background: var(--watch);
 }
 
 .meterPar {
@@ -377,11 +399,12 @@
   color: var(--text);
   font-size: 22px;
   line-height: 1;
-  transition: box-shadow var(--ease-press);
+  transition: box-shadow var(--ease-press), transform var(--t-fast);
 }
 
 .close:active {
   box-shadow: var(--sh-inset-sm);
+  transform: scale(0.94);
 }
 
 /* The operator screen's panel: the room fills its grid cell. */
@@ -458,11 +481,18 @@
   color: var(--text);
   font-size: 15px;
   font-weight: 600;
-  transition: box-shadow var(--ease-press);
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .pill:hover {
+    transform: translateY(-2px);
+  }
 }
 
 .pill:active {
   box-shadow: var(--sh-inset-sm);
+  transform: scale(0.97);
 }
 
 .pillOn,
