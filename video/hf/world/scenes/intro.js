@@ -42,7 +42,7 @@ export default function choreograph(tl, world, scene) {
   for (const [, lab] of named) tl.set(lab, { opacity: 0, lift: -0.25 }, t0);
   named.forEach(([k, lab, w], i) => {
     tl.to(hl, { [k]: 1, duration: 0.35, ease: "power2.out" }, w - 0.05);
-    tl.to(lab, { opacity: 1, lift: 0, duration: 0.5, ease: "power4.out" }, w);
+    tl.fromTo(lab, { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "sine.inOut" }, w); tl.to(lab, { lift: 0, duration: 0.5, ease: "power4.out" }, w);
     if (i < 2) tl.to(hl, { [k]: 0.25, duration: 0.4, ease: "power2.inOut" }, named[i + 1][2] - 0.05);
   });
   tl.to(state, { pulse: 1, duration: 0.6, ease: "power2.out" }, word("vision"));

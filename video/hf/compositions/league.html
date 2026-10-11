@@ -48,30 +48,30 @@
       <script>
         (function () {
           const tl = gsap.timeline({ paused: true });
-          tl.fromTo("#league-chapter", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 0.15);
+          tl.fromTo("#league-chapter", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "sine.inOut" }, 0.15); tl.fromTo("#league-chapter", { y: -12 }, { y: 0, duration: 0.5, ease: "power3.out" }, 0.15);
           tl.to("#league-chapter", { opacity: 0, duration: 0.4 }, 3.200);
-          tl.fromTo("#league-win1", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 0.300);
+          tl.fromTo("#league-win1", { opacity: 0 }, { opacity: 1, duration: 0.6, ease: "sine.inOut" }, 0.300); tl.fromTo("#league-win1", { y: 24 }, { y: 0, duration: 0.6, ease: "power3.out" }, 0.300);
           tl.to("#league-win1", { opacity: 0, duration: 0.35, ease: "power2.in" }, 18.122);
-          tl.fromTo("#league-win1-p0", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 0.400);
+          tl.fromTo("#league-win1-p0", { opacity: 0 }, { opacity: 1, duration: 0.45, ease: "sine.inOut" }, 0.400); tl.fromTo("#league-win1-p0", { y: 10 }, { y: 0, duration: 0.4, ease: "power2.out" }, 0.400);
           tl.to("#league-win1-p0", { opacity: 0, duration: 0.25, ease: "power2.in" }, 0.750);
-          tl.fromTo("#league-win1-tab0", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 0.400);
+          tl.fromTo("#league-win1-tab0", { opacity: 0 }, { opacity: 1, duration: 0.45, ease: "sine.inOut" }, 0.400); tl.fromTo("#league-win1-tab0", { y: 10 }, { y: 0, duration: 0.4, ease: "power2.out" }, 0.400);
           tl.to("#league-win1-tab0", { opacity: 0, duration: 0.25, ease: "power2.in" }, 0.750);
-          tl.fromTo("#league-win1-p1", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 1.000);
+          tl.fromTo("#league-win1-p1", { opacity: 0 }, { opacity: 1, duration: 0.45, ease: "sine.inOut" }, 1.000); tl.fromTo("#league-win1-p1", { y: 10 }, { y: 0, duration: 0.4, ease: "power2.out" }, 1.000);
           tl.to("#league-win1-p1", { opacity: 0, duration: 0.25, ease: "power2.in" }, 8.578);
-          tl.fromTo("#league-win1-tab1", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 1.000);
+          tl.fromTo("#league-win1-tab1", { opacity: 0 }, { opacity: 1, duration: 0.45, ease: "sine.inOut" }, 1.000); tl.fromTo("#league-win1-tab1", { y: 10 }, { y: 0, duration: 0.4, ease: "power2.out" }, 1.000);
           tl.to("#league-win1-tab1", { opacity: 0, duration: 0.25, ease: "power2.in" }, 8.578);
-          tl.fromTo("#league-win1-p2", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 8.828);
+          tl.fromTo("#league-win1-p2", { opacity: 0 }, { opacity: 1, duration: 0.45, ease: "sine.inOut" }, 8.828); tl.fromTo("#league-win1-p2", { y: 10 }, { y: 0, duration: 0.4, ease: "power2.out" }, 8.828);
           tl.to("#league-win1-p2", { opacity: 0, duration: 0.25, ease: "power2.in" }, 16.058);
-          tl.fromTo("#league-win1-tab2", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 8.828);
+          tl.fromTo("#league-win1-tab2", { opacity: 0 }, { opacity: 1, duration: 0.45, ease: "sine.inOut" }, 8.828); tl.fromTo("#league-win1-tab2", { y: 10 }, { y: 0, duration: 0.4, ease: "power2.out" }, 8.828);
           tl.to("#league-win1-tab2", { opacity: 0, duration: 0.25, ease: "power2.in" }, 16.058);
-          tl.fromTo("#league-win1-p3", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 16.308);
-          tl.fromTo("#league-win1-tab3", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 16.308);
-          tl.fromTo("#league-b0", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 4.100);
-          tl.fromTo("#league-b1", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 4.600);
-          tl.fromTo("#league-b2", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 5.100);
-          tl.fromTo("#league-c0", { opacity: 0, y: -14 }, { opacity: 1, y: 0, duration: 0.35, ease: "power3.out" }, 5.600);
-          tl.fromTo("#league-c1", { opacity: 0, y: -14 }, { opacity: 1, y: 0, duration: 0.35, ease: "power3.out" }, 5.600);
-          tl.fromTo("#league-c2", { opacity: 0, y: -14 }, { opacity: 1, y: 0, duration: 0.35, ease: "power3.out" }, 5.600);
+          tl.fromTo("#league-win1-p3", { opacity: 0 }, { opacity: 1, duration: 0.45, ease: "sine.inOut" }, 16.308); tl.fromTo("#league-win1-p3", { y: 10 }, { y: 0, duration: 0.4, ease: "power2.out" }, 16.308);
+          tl.fromTo("#league-win1-tab3", { opacity: 0 }, { opacity: 1, duration: 0.45, ease: "sine.inOut" }, 16.308); tl.fromTo("#league-win1-tab3", { y: 10 }, { y: 0, duration: 0.4, ease: "power2.out" }, 16.308);
+          tl.fromTo("#league-b0", { opacity: 0 }, { opacity: 1, duration: 0.45, ease: "sine.inOut" }, 4.100); tl.fromTo("#league-b0", { y: 10 }, { y: 0, duration: 0.35, ease: "power2.out" }, 4.100);
+          tl.fromTo("#league-b1", { opacity: 0 }, { opacity: 1, duration: 0.45, ease: "sine.inOut" }, 4.600); tl.fromTo("#league-b1", { y: 10 }, { y: 0, duration: 0.35, ease: "power2.out" }, 4.600);
+          tl.fromTo("#league-b2", { opacity: 0 }, { opacity: 1, duration: 0.45, ease: "sine.inOut" }, 5.100); tl.fromTo("#league-b2", { y: 10 }, { y: 0, duration: 0.35, ease: "power2.out" }, 5.100);
+          tl.fromTo("#league-c0", { opacity: 0 }, { opacity: 1, duration: 0.45, ease: "sine.inOut" }, 5.600); tl.fromTo("#league-c0", { y: -14 }, { y: 0, duration: 0.4, ease: "power3.out" }, 5.600);
+          tl.fromTo("#league-c1", { opacity: 0 }, { opacity: 1, duration: 0.45, ease: "sine.inOut" }, 5.600); tl.fromTo("#league-c1", { y: -14 }, { y: 0, duration: 0.4, ease: "power3.out" }, 5.600);
+          tl.fromTo("#league-c2", { opacity: 0 }, { opacity: 1, duration: 0.45, ease: "sine.inOut" }, 5.600); tl.fromTo("#league-c2", { y: -14 }, { y: 0, duration: 0.4, ease: "power3.out" }, 5.600);
           window.__timelines["league"] = tl;
         })();
       </script>

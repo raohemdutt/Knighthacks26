@@ -46,21 +46,21 @@
       <script>
         (function () {
           const tl = gsap.timeline({ paused: true });
-          tl.fromTo("#problem-chapter", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 0.15);
+          tl.fromTo("#problem-chapter", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "sine.inOut" }, 0.15); tl.fromTo("#problem-chapter", { y: -12 }, { y: 0, duration: 0.5, ease: "power3.out" }, 0.15);
           tl.to("#problem-chapter", { opacity: 0, duration: 0.4 }, 3.200);
-          tl.fromTo("#problem-card1", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 0.200);
+          tl.fromTo("#problem-card1", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "sine.inOut" }, 0.200); tl.fromTo("#problem-card1", { y: 14 }, { y: 0, duration: 0.45, ease: "power3.out" }, 0.200);
           tl.to("#problem-card1", { opacity: 0, duration: 0.35, ease: "power2.in" }, 7.550);
           tl.to("#problem-card1", { x: 570, y: 360, scale: 0.15, duration: 1.4, ease: "power3.in" }, 5.589);
-          tl.fromTo("#problem-card2", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 0.200);
+          tl.fromTo("#problem-card2", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "sine.inOut" }, 0.200); tl.fromTo("#problem-card2", { y: 14 }, { y: 0, duration: 0.45, ease: "power3.out" }, 0.200);
           tl.to("#problem-card2", { opacity: 0, duration: 0.35, ease: "power2.in" }, 7.550);
           tl.to("#problem-card2", { x: -10, y: 410, scale: 0.15, duration: 1.4, ease: "power3.in" }, 5.589);
-          tl.fromTo("#problem-card3", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 0.200);
+          tl.fromTo("#problem-card3", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "sine.inOut" }, 0.200); tl.fromTo("#problem-card3", { y: 14 }, { y: 0, duration: 0.45, ease: "power3.out" }, 0.200);
           tl.to("#problem-card3", { opacity: 0, duration: 0.35, ease: "power2.in" }, 7.550);
           tl.to("#problem-card3", { x: -590, y: 300, scale: 0.15, duration: 1.4, ease: "power3.in" }, 5.589);
-          tl.fromTo("#problem-card4", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 0.200);
+          tl.fromTo("#problem-card4", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "sine.inOut" }, 0.200); tl.fromTo("#problem-card4", { y: 14 }, { y: 0, duration: 0.45, ease: "power3.out" }, 0.200);
           tl.to("#problem-card4", { opacity: 0, duration: 0.35, ease: "power2.in" }, 7.550);
           tl.to("#problem-card4", { x: 450, y: -80, scale: 0.15, duration: 1.4, ease: "power3.in" }, 5.589);
-          tl.fromTo("#problem-card5", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 0.200);
+          tl.fromTo("#problem-card5", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "sine.inOut" }, 0.200); tl.fromTo("#problem-card5", { y: 14 }, { y: 0, duration: 0.45, ease: "power3.out" }, 0.200);
           tl.to("#problem-card5", { opacity: 0, duration: 0.35, ease: "power2.in" }, 7.550);
           tl.to("#problem-card5", { x: -470, y: -80, scale: 0.15, duration: 1.4, ease: "power3.in" }, 5.589);
           window.__timelines["problem"] = tl;

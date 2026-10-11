@@ -37,17 +37,17 @@
 </style>
       <div id="root" data-composition-id="lives" data-width="1920" data-height="1080">
         <div id="lives-chapter" class="chip-ch soft-raised soft-muted">Same box, other lives</div>
-        <div class="cardrow" id="lives-card1" style="left:110px;top:640px"><div style="display:flex;gap:26px"><div class="site-card mini" style="width:520px"><div class="ph" style="font-size:34px">Night shift</div><div class="pk">10 PM to 6 AM · keys, badge, phone, charger</div></div><div class="site-card mini" style="width:520px"><div class="ph" style="font-size:34px">Family</div><div class="pk">Leo: bins out · Ava: science fair poster</div></div><div class="site-card mini" style="width:520px"><div class="ph" style="font-size:34px">Plant floor</div><div class="pk">inspection rounds</div></div></div></div>
-        <div class="cardrow" id="lives-card2" style="left:840px;top:880px"><span class="site-tag">12 W at idle</span></div>
+        <div class="cardrow" id="lives-card1" style="left:110px;top:560px"><div style="display:flex;gap:26px"><div class="site-card mini" style="width:520px"><div class="ph" style="font-size:34px">Night shift</div><div class="pk">10 PM to 6 AM · keys, badge, phone, charger</div></div><div class="site-card mini" style="width:520px"><div class="ph" style="font-size:34px">Family</div><div class="pk">Leo: bins out · Ava: science fair poster</div></div><div class="site-card mini" style="width:520px"><div class="ph" style="font-size:34px">Plant floor</div><div class="pk">inspection rounds</div></div></div></div>
+        <div class="cardrow" id="lives-card2" style="left:840px;top:740px"><span class="site-tag">12 W at idle</span></div>
       </div>
       <script>
         (function () {
           const tl = gsap.timeline({ paused: true });
-          tl.fromTo("#lives-chapter", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 0.15);
+          tl.fromTo("#lives-chapter", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "sine.inOut" }, 0.15); tl.fromTo("#lives-chapter", { y: -12 }, { y: 0, duration: 0.5, ease: "power3.out" }, 0.15);
           tl.to("#lives-chapter", { opacity: 0, duration: 0.4 }, 3.200);
-          tl.fromTo("#lives-card1", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 1.000);
+          tl.fromTo("#lives-card1", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "sine.inOut" }, 1.000); tl.fromTo("#lives-card1", { y: 14 }, { y: 0, duration: 0.45, ease: "power3.out" }, 1.000);
           tl.to("#lives-card1", { opacity: 0, duration: 0.35, ease: "power2.in" }, 7.326);
-          tl.fromTo("#lives-card2", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 5.603);
+          tl.fromTo("#lives-card2", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "sine.inOut" }, 5.603); tl.fromTo("#lives-card2", { y: 14 }, { y: 0, duration: 0.45, ease: "power3.out" }, 5.603);
           tl.to("#lives-card2", { opacity: 0, duration: 0.35, ease: "power2.in" }, 7.326);
           window.__timelines["lives"] = tl;
         })();

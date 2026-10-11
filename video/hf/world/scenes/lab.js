@@ -30,7 +30,7 @@ export default function choreograph(tl, world, scene) {
   const lNet = world.label("lab-network", { text: "Network trainer", at: [15.15, 0.85, -2], size: 64, scale: 0.62 });
   const lYoursW = world.label("lab-yours-w", { text: "Your trainer", at: [11.4, 1.9, -2], size: 64, scale: 2.0 });
   const lNetW = world.label("lab-network-w", { text: "Network trainer", at: [16.6, 1.9, -2], size: 64, scale: 2.0 });
-  const show = (l, at, d = 0.6) => tl.fromTo(l, { opacity: 0, lift: -0.15 }, { opacity: 1, lift: 0, duration: d, ease: "power4.out" }, at);
+  const show = (l, at, d = 0.6) => tl.fromTo(l, { opacity: 0 }, { opacity: 1, duration: Math.max(d, 0.5), ease: "sine.inOut" }, at); tl.fromTo(l, { lift: -0.15 }, { lift: 0, duration: d, ease: "power4.out" }, at);
   const hide = (l, at, d = 0.4) => tl.to(l, { opacity: 0, duration: d, ease: "power2.in" }, at);
 
   // Shots.

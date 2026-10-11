@@ -7,7 +7,7 @@
 //
 // state.explode lifts the parts out the way the website does (TRAVEL, each part eased over its own stretch);
 // state.xray makes the white shell glassy; state.hl.{webcam, jetson, speaker, lid, front} tints a part toward the
-// accent; state.pulse breathes the light bar and the module; state.eyes lights the lens; state.spin turns it.
+// accent; state.pulse breathes the light bar and the module; state.eyes is accepted and ignored (the camera stays black); state.spin turns it.
 // state.drop is accepted and ignored (the intro no longer drops parts in). Units: the website's 1 unit = 9 cm; the
 // film's 1 unit = 10 cm, so the model is scaled 0.9 and stands on the desk (y = DESK_Y), facing +z.
 import * as THREE from "three";
@@ -46,13 +46,42 @@ function make() {
     for (const m of g.children) m.position.sub(c);
     g.position.add(c); g.rotation.x = Math.PI / 2;
   }
+  // The lens dome is a tinted blue glass on the website; in the film the camera reads black everywhere (Dom).
+  for (const m of own.webcam) if (m.transparent && m.color) { m.color.set(0x0d0f12); m.userData.base = m.color.clone(); m.envMapIntensity = 0.8; }
   const rest = {}; for (const [id, g] of Object.entries(dev.groups)) rest[id] = g.position.clone();
-  return { dev, own, rest };
+  // The front panel on the base (the grille, its frame and the dark plate behind it): the x-ray clears it completely,
+  // with the walls, so nothing hangs in front of the Jetson (Dom).
+  const front = [], bb = new THREE.Box3();
+  // The grille's grey frame is merged into the base's "seam" mesh (with the floor and the rim): split its triangles
+  // (everything on the front face, z >= D/2 - 0.01) into a mesh of their own so the x-ray can clear it.
+  for (const m of [...dev.groups.base.children]) if (m.isMesh && !m.geometry.index) {
+    const pos = m.geometry.attributes.position, keep = [], cut = [];
+    for (let i = 0; i < pos.count; i += 3) (pos.getZ(i) >= D / 2 - 0.01 && pos.getZ(i + 1) >= D / 2 - 0.01 && pos.getZ(i + 2) >= D / 2 - 0.01 ? cut : keep).push(i);
+    if (!cut.length || !keep.length) continue;
+    const pick = (tris) => {
+      const g = new THREE.BufferGeometry();
+      for (const [name, attr] of Object.entries(m.geometry.attributes)) {
+        const out = new Float32Array(tris.length * 3 * attr.itemSize);
+        tris.forEach((i, k) => { for (let j = 0; j < 3 * attr.itemSize; j++) out[k * 3 * attr.itemSize + j] = attr.array[i * attr.itemSize + j]; });
+        g.setAttribute(name, new THREE.BufferAttribute(out, attr.itemSize));
+      }
+      return g;
+    };
+    const panel = new THREE.Mesh(pick(cut), m.material.clone());
+    panel.material.userData = { ...m.material.userData };
+    panel.position.copy(m.position); panel.rotation.copy(m.rotation); panel.scale.copy(m.scale);
+    m.geometry = pick(keep); dev.groups.base.add(panel); own.base.push(panel.material);
+  }
+  for (const m of dev.groups.base.children) if (m.isMesh) {
+    m.updateMatrix(); m.geometry.computeBoundingBox(); bb.copy(m.geometry.boundingBox).applyMatrix4(m.matrix);
+    if (bb.min.z > D / 2 - 0.12 && bb.max.y - bb.min.y < H * 0.8) { m.material.transparent = true; m.material.needsUpdate = true; front.push(m); }
+  }
+  return { dev, own, rest, front };
 }
 
 /** The hero device: explode, x-ray, highlights, pulse, eyes, anchors. */
 export function buildAtlas() {
-  const { dev, own, rest } = make();
+  const { dev, own, rest, front } = make();
   const group = new THREE.Group(); group.name = "atlas";
   const inner = new THREE.Group(); inner.scale.setScalar(S); inner.position.y = DESK_Y; inner.add(dev.root); group.add(inner);
   const accentC = new THREE.Color(ACCENT);
@@ -109,6 +138,7 @@ export function buildAtlas() {
     dev.rotor.rotation.y = -t * (1.5 + ex * 6);
     // Highlights: tint toward the accent with a little glow.
     for (const [id, mats] of Object.entries(own)) {
+      if (id === "webcam") continue; // the camera stays black all film (Dom)
       let level = 0; for (const name of Object.keys(HL)) if (lit(id, name)) level = Math.max(level, clamp01(hl[name] || 0));
       for (const m of mats) {
         if (m.userData.base && m.color) m.color.copy(m.userData.base).lerp(accentC, level * 0.35);
@@ -118,11 +148,10 @@ export function buildAtlas() {
     }
     // X-ray: the white shell goes glassy so the board and the module show through.
     for (const m of shellMats) { m.opacity = (m.userData.baseOpacity ?? 1) * (1 - xr * 0.82); m.depthWrite = xr < 0.05; }
+    for (const m of front) { m.material.opacity = (m.material.userData.baseOpacity ?? 1) * (1 - xr); m.material.depthWrite = xr < 0.05; m.visible = xr < 0.99; }
     // Pulse: the light bar along the lid's front edge breathes; the module warms.
     for (const m of own.lid) if (m.emissive && m.userData.baseEmissive >= 1) m.emissiveIntensity = 0.6 + pulse * (0.6 + 0.6 * beat);
     for (const m of own.module) if (m.emissive) m.emissiveIntensity += pulse * beat * 0.25;
-    // Eyes: the lens takes the accent.
-    for (const m of own.webcam) if (m.emissive && m.metalness >= 0.5 && m.roughness < 0.2) { m.emissive.copy(accentC); m.emissiveIntensity = eyes * (0.9 + 0.1 * Math.sin(t * 1.3)); }
   }
 
   return { group, parts, P, at, update, LIFT };
@@ -134,14 +163,14 @@ export function buildAtlasLite() {
   const group = new THREE.Group(); group.name = "atlas-lite";
   const inner = new THREE.Group(); inner.scale.setScalar(S); inner.position.y = DESK_Y; inner.add(dev.root); group.add(inner);
   const accentC = new THREE.Color(ACCENT);
-  const all = Object.values(own).flat();
+  const all = Object.values(own).flat(), webcam = new Set(own.webcam);
   function update(v, t, eyes = 0) {
     const g = clamp01(v), beat = heartbeat(t);
     for (const m of all) {
+      if (webcam.has(m)) continue; // the camera stays black all film (Dom)
       if (m.userData.base && m.color) m.color.copy(m.userData.base).lerp(accentC, g * 0.2);
       if (m.emissive && m.userData.baseEmissive >= 1) m.emissiveIntensity = 0.6 + g * (0.6 + 0.5 * beat); // the light bar
     }
-    for (const m of own.webcam) if (m.emissive && m.metalness >= 0.5 && m.roughness < 0.2) { m.emissive.copy(accentC); m.emissiveIntensity = clamp01(Math.max(eyes, g)) * 0.9; }
     dev.rotor.rotation.y = -t * 1.5;
   }
   return { group, update };

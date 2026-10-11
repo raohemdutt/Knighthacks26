@@ -89,7 +89,7 @@ scenes:
   - who: A
     text: Your writeup's due Tuesday, and Maya says half the grade is the runtime analysis.
   - who: A
-    text: 'But first: that''s your third energy drink, over your limit, and no water in ninety minutes. Go fill your bottle and take a walk.'
+    text: But first, that's your third energy drink, which means you're over your limit. Drink some water and take a walk.
     hold: 1.0
   lead_s: 1.0
 - id: faces
@@ -105,10 +105,10 @@ scenes:
   beat: 7
   lines:
   - who: A
-    text: 'Hold on: cans go in recycling at UCF. The blue one.'
+    text: 'Hold on: cans go in recycling at UCF.'
     hold: 1.5
   - who: A
-    text: Right bin. Five of seven this week, seventy-one percent. Your goal's eighty.
+    text: That's the right bin. Your accuracy is seventy-one percent this week, but your goal is eighty percent.
   lead_s: 1.5
 - id: sorttech
   title: What the kitchen camera runs on

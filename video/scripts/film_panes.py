@@ -62,7 +62,7 @@ PAGE = """<!doctype html>
       <script>
         (function () {{
           const tl = gsap.timeline({{ paused: true }});
-          tl.fromTo("#{id}-chapter", {{ opacity: 0, y: -12 }}, {{ opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }}, 0.15);
+          tl.fromTo("#{id}-chapter", {{ opacity: 0 }}, {{ opacity: 1, duration: 0.5, ease: "sine.inOut" }}, 0.15); tl.fromTo("#{id}-chapter", {{ y: -12 }}, {{ y: 0, duration: 0.5, ease: "power3.out" }}, 0.15);
           tl.to("#{id}-chapter", {{ opacity: 0, duration: 0.4 }}, {chapter_out:.3f});
 {tweens}
           window.__timelines["{id}"] = tl;
@@ -98,7 +98,7 @@ class Scene:
 
     def show(self, sel: str, at, out=None, y=14, dur=0.45):
         a = self.t(at)
-        self.tweens.append(f'          tl.fromTo("{sel}", {{ opacity: 0, y: {y} }}, {{ opacity: 1, y: 0, duration: {dur}, ease: "power3.out" }}, {a:.3f});')
+        self.tweens.append(f'          tl.fromTo("{sel}", {{ opacity: 0 }}, {{ opacity: 1, duration: {max(dur, 0.5)}, ease: "sine.inOut" }}, {a:.3f}); tl.fromTo("{sel}", {{ y: {y} }}, {{ y: 0, duration: {dur}, ease: "power3.out" }}, {a:.3f});')
         if out is not None:
             self.tweens.append(f'          tl.to("{sel}", {{ opacity: 0, duration: 0.35, ease: "power2.in" }}, {self.t(out) - 0.35:.3f});')
 
@@ -119,7 +119,7 @@ class Scene:
             nxt = panes[k + 1][2] if k + 1 < len(panes) else out
             a, b = self.t(when), self.t(nxt)
             for sel in (f"#{wid}-p{k}", f"#{wid}-tab{k}"):
-                self.tweens.append(f'          tl.fromTo("{sel}", {{ opacity: 0, y: 10 }}, {{ opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }}, {a:.3f});')
+                self.tweens.append(f'          tl.fromTo("{sel}", {{ opacity: 0 }}, {{ opacity: 1, duration: 0.45, ease: "sine.inOut" }}, {a:.3f}); tl.fromTo("{sel}", {{ y: 10 }}, {{ y: 0, duration: 0.4, ease: "power2.out" }}, {a:.3f});')
                 if k + 1 < len(panes):
                     self.tweens.append(f'          tl.to("{sel}", {{ opacity: 0, duration: 0.25, ease: "power2.in" }}, {b - 0.25:.3f});')
         return wid
@@ -214,8 +214,8 @@ def morning(s: Scene):
             '<text x="380" y="70" font-size="24" font-family="Segoe UI" font-weight="700" fill="#c0332b">Keys here</text></svg></div>')
     s.window([("Today", today, "2:0"), ("Route", route, "2:0.55"), ("Today's Plan", plan, "3:0"), ("This week", week, "3:0.78"),
               ("Optional", opt, "4:0"), ("Goal", goal, "7:0"), ("Ask", keys, "8:1")], at="2:0")
-    s.tween(f'tl.to("#{s.id}-ans", {{ opacity: 1, duration: 0.3 }}, {s.t("9:0"):.3f});')
-    s.tween(f'tl.to("#{s.id}-frame", {{ opacity: 1, duration: 0.3 }}, {s.t("9:0.3"):.3f});')  # Atlas answers after he asks
+    s.tween(f'tl.to("#{s.id}-ans", {{ opacity: 1, duration: 0.45, ease: "sine.inOut" }}, {s.t("9:0"):.3f});')
+    s.tween(f'tl.to("#{s.id}-frame", {{ opacity: 1, duration: 0.45, ease: "sine.inOut" }}, {s.t("9:0.3"):.3f});')  # Atlas answers after he asks
     for rid, at in (("ROUTE", "2:0.6"), ("PLANROUTE", "3:0.05")):
         s.tween(f'tl.fromTo("#{rid}", {{ strokeDasharray: 900, strokeDashoffset: 900 }}, {{ strokeDashoffset: 0, duration: 2.2, ease: "power2.inOut" }}, {s.t(at):.3f});')
 
@@ -234,16 +234,16 @@ def sources(s: Scene):
     s.card(f'<div class="pk">what fed the brief</div><div class="chips">{chips}</div><div class="chips"><span class="site-tag">written on the Jetson · under 3 s</span><span class="site-tag">Approve? sent to the phone</span></div>',
            1040, 80, "0:0", out="1:0", w=820)
     steps = [("≈10,700", "frames"), ("9,738", "things seen"), ("19", "episodes"), ("55", "answers")]
-    cells = "".join(f'<div class="site-card mini" style="text-align:center"><div class="big" style="font-size:72px">{v}</div><div class="pk">{k}</div></div>' + ('<div class="ph" style="align-self:center">→</div>' if i < 3 else "")
+    cells = "".join(f'<div class="site-card mini" style="text-align:center"><div class="big" style="font-size:72px">{v}</div><div class="pk">{k}</div></div>'
                     for i, (v, k) in enumerate(steps))
     s.card(f'<div class="pk">what the camera captured at our table, Saturday (the box\'s own log)</div><div style="display:flex;gap:22px;margin-top:16px">{cells}</div>'
-           '<div class="chips"><span class="site-tag">with your OK: the examples it learns from</span></div>', 200, 560, "1:0", w=1520)
+           '<div class="chips"><span class="site-tag">with your OK: the examples it learns from</span></div>', 200, 470, "1:0", w=1520)
 
 
 def model(s: Scene):
-    s.card('<div class="pk">on the Jetson</div><div class="ph">Qwen · 27 billion parameters</div>', 140, 620, "0:0", w=620)
-    s.card('<div class="chips"><span class="site-chip">Fast</span><span class="site-chip">Accurate</span><span class="site-chip">Private</span></div>', 140, 820, "0:0.25")
-    s.card('<div class="pk">demo questions</div><div class="big">48 / 48</div>', 1380, 640, "0:0.6", w=420)
+    s.card('<div class="pk">on the Jetson</div><div class="ph">Qwen · 27 billion parameters</div>', 140, 470, "0:0", w=620)
+    s.card('<div class="chips"><span class="site-chip">Fast</span><span class="site-chip">Accurate</span><span class="site-chip">Private</span></div>', 140, 660, "0:0.25")
+    s.card('<div class="pk">demo questions</div><div class="big">48 / 48</div>', 1380, 470, "0:0.6", w=420)
 
 
 def desk(s: Scene):
@@ -256,7 +256,7 @@ def desk(s: Scene):
             '<div class="bub"><b>Jordan</b>weeks 5 and 6. the knapsack and interval scheduling slides basically walk through it</div>')
     notes = ('<div class="ph">Notes for the writeup</div>' + rows([("1", "Runtime analysis: half the grade", "GroupMe · class chat", False), ("2", "Knapsack, weeks 5 and 6", "r/ucf thread", False),
                                                                  ("3", "Interval scheduling proof", "two articles", False)]))
-    first = '<div class="ph">But first</div>' + rows([("💧", "Fill your bottle", "no water in 90 min", False), ("🚶", "Walk a few minutes", "sat 1 h 45", False)]) + '<div class="pk" style="margin-top:16px">I\'ll hold the notes.</div>'
+    first = '<div class="ph">But first</div>' + rows([("💧", "Drink some water", "3rd can · over your limit", False), ("🚶", "Walk a few minutes", "sat 1 h 45", False)]) + '<div class="pk" style="margin-top:16px">I\'ll hold the notes.</div>'
     s.window([("Check-in", check, "0:0"), ("GroupMe", chat, "1:0"), ("Notes", notes, "1:0.7"), ("Check-in", first, "2:0")], at="0:0")
 
 
@@ -266,8 +266,10 @@ def faces(s: Scene):
                                     '<path d="M70 134 Q100 120 130 134" stroke="#1b2433" stroke-width="7" fill="none" stroke-linecap="round"/></svg>'
                                     f'<div class="ph" style="font-size:32px">{label}</div><div class="pk">{sub}</div></div>')
     row = face(0, "Your own screen", "live · clear") + face(14, "Saved pictures", "blurred") + face(16, "Anything that leaves", "blurred")
-    cid = s.card(f'<div style="display:flex;gap:30px">{row}</div>', 260, 560, "0:0.35", cls="cardrow")
-    s.card('<span class="site-tag">looked tired · 30 s window · read on the device · opt-in</span>', 600, 470, "0:0.05", cls="cardrow")
+    # Both rows span the frame and centre their contents, so the three faces sit in the middle of the screen whatever
+    # their measured width; they end above the subtitle.
+    cid = s.card(f'<div style="display:flex;gap:30px;justify-content:center;width:100%">{row}</div>', 0, 430, "0:0.35", w=1920, cls="cardrow")
+    s.card('<div style="display:flex;justify-content:center;width:100%"><span class="site-tag">looked tired · 30 s window · read on the device · opt-in</span></div>', 0, 340, "0:0.05", w=1920, cls="cardrow")
 
 
 def kitchen(s: Scene):
@@ -290,7 +292,7 @@ def sortit(s: Scene):
     round_ = ('<div class="ph">Sort It</div><div class="pk">hold it up for two seconds</div>' + rows([("Cup", "goes in trash", "the grey bin · route drawn", False)]) +
               f'<div class="ph ok" id="{s.id}-score" style="margin-top:22px;opacity:0">Right bin · 6.0 s · 150 points</div>')
     s.window([("Sort It", round_, "0:0")], at="0:0")
-    s.tween(f'tl.to("#{s.id}-score", {{ opacity: 1, duration: 0.3 }}, {s.t("end-1.6"):.3f});')
+    s.tween(f'tl.to("#{s.id}-score", {{ opacity: 1, duration: 0.45, ease: "sine.inOut" }}, {s.t("end-1.6"):.3f});')
 
 
 def sorttech(s: Scene):
@@ -301,8 +303,8 @@ def sorttech(s: Scene):
 
 
 def lab(s: Scene):
-    s.card('<div class="pk">measured on AMD Strix Halo · lab/refine/metrics.jsonl</div><div class="ph">Teacher: 11 → 51 tokens a second</div><div class="pk">batched, at about 96 W</div>'
-           '<div class="chips"><span class="site-tag">8.8 J → 1.9 J per token</span><span class="site-tag">pod idle ≈ 10 W</span><span class="site-tag">Jetson idle 12.6 W</span></div>', 110, 450, "0:0.2", w=900)
+    s.card('<div class="pk">measured on AMD Strix Halo · lab/refine/metrics.jsonl</div><div class="ph">Teacher: 11 to 51 tokens a second</div><div class="pk">batched, at about 96 W</div>'
+           '<div class="chips"><span class="site-tag">8.8 J to 1.9 J per token</span><span class="site-tag">pod idle ≈ 10 W</span><span class="site-tag">Jetson idle 12.6 W</span></div>', 110, 450, "0:0.2", w=900)
     steps = "".join(f'<span class="site-chip">{x}</span>' for x in ["Test gate", "Hugging Face", "Box checks it", "Swaps in live", "Rolls back on failure"])
     s.card(f'<div class="chips">{steps}</div>', 110, 740, "1:0.1", w=1700, cls="cardrow")
 
@@ -331,9 +333,9 @@ def league(s: Scene):
     s.window([("League", table, 0.4), ("Calendars", cal, "0:0"), ("Places", dinner, "1:0.35"), ("Meals", meals, "3:0")], at=0.3, top=50, height=790)
     end0 = s.t("0:1")
     for k, dt in enumerate((-0.5, 0.0, 0.5)):
-        s.tween(f'tl.fromTo("#{s.id}-b{k}", {{ opacity: 0, y: 10 }}, {{ opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }}, {end0 + dt:.3f});')
+        s.tween(f'tl.fromTo("#{s.id}-b{k}", {{ opacity: 0 }}, {{ opacity: 1, duration: 0.45, ease: "sine.inOut" }}, {end0 + dt:.3f}); tl.fromTo("#{s.id}-b{k}", {{ y: 10 }}, {{ y: 0, duration: 0.35, ease: "power2.out" }}, {end0 + dt:.3f});')
     for i in range(3):
-        s.tween(f'tl.fromTo("#{s.id}-c{i}", {{ opacity: 0, y: -14 }}, {{ opacity: 1, y: 0, duration: 0.35, ease: "power3.out" }}, {end0 + 1.0:.3f});')
+        s.tween(f'tl.fromTo("#{s.id}-c{i}", {{ opacity: 0 }}, {{ opacity: 1, duration: 0.45, ease: "sine.inOut" }}, {end0 + 1.0:.3f}); tl.fromTo("#{s.id}-c{i}", {{ y: -14 }}, {{ y: 0, duration: 0.4, ease: "power3.out" }}, {end0 + 1.0:.3f});')
 
 
 def friends(s: Scene):
@@ -345,8 +347,8 @@ def friends(s: Scene):
 def lives(s: Scene):
     vs = [("Night shift", "10 PM to 6 AM · keys, badge, phone, charger"), ("Family", "Leo: bins out · Ava: science fair poster"), ("Plant floor", "inspection rounds")]
     row = "".join(f'<div class="site-card mini" style="width:520px"><div class="ph" style="font-size:34px">{a}</div><div class="pk">{b}</div></div>' for a, b in vs)
-    s.card(f'<div style="display:flex;gap:26px">{row}</div>', 110, 640, "0:0", cls="cardrow")
-    s.card('<span class="site-tag">12 W at idle</span>', 840, 880, "0:0.7", cls="cardrow")
+    s.card(f'<div style="display:flex;gap:26px">{row}</div>', 110, 560, "0:0", cls="cardrow")
+    s.card('<span class="site-tag">12 W at idle</span>', 840, 740, "0:0.7", cls="cardrow")
 
 
 def plant(s: Scene):
@@ -379,8 +381,8 @@ def shift(s: Scene):
     s.tween(f'tl.fromTo("#SPOTPATH", {{ strokeDasharray: 700, strokeDashoffset: 700 }}, {{ strokeDashoffset: 0, duration: 1.8, ease: "none" }}, {s.t("2:0.6"):.3f});')
     a = s.t("4:0.8")
     s.tween(f'tl.to("#{s.id}-yes", {{ scale: 0.94, duration: 0.12, yoyo: true, repeat: 1 }}, {a:.3f});')
-    s.tween(f'tl.to("#{s.id}-done", {{ opacity: 1, duration: 0.3 }}, {a + 0.3:.3f});')
-    s.tween(f'tl.to("#{s.id}-handoff", {{ opacity: 1, duration: 0.3 }}, {s.t("end-1.2"):.3f});')
+    s.tween(f'tl.to("#{s.id}-done", {{ opacity: 1, duration: 0.45, ease: "sine.inOut" }}, {a + 0.3:.3f});')
+    s.tween(f'tl.to("#{s.id}-handoff", {{ opacity: 1, duration: 0.45, ease: "sine.inOut" }}, {s.t("end-1.2"):.3f});')
 
 
 BUILDERS = {"problem": problem, "morning": morning, "sources": sources, "model": model, "desk": desk, "faces": faces,

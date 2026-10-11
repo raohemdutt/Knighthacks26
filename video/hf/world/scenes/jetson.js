@@ -30,7 +30,7 @@ export default function choreograph(tl, world, scene) {
   const labels = ["Cameras", "Blur", "Vision", "Answer"].map((text, i) =>
     world.label("jetson-" + text.toLowerCase(), { text, at: [-1.95, LY[i] + 0.05, 0.95], scale: 0.42 }));
   const showLabel = (i, when) =>
-    tl.fromTo(labels[i], { opacity: 0, lift: -0.18 }, { opacity: 1, lift: 0, duration: 0.6, ease: "power3.out" }, when);
+    tl.fromTo(labels[i], { opacity: 0 }, { opacity: 1, duration: 0.6, ease: "sine.inOut" }, when); tl.fromTo(labels[i], { lift: -0.18 }, { lift: 0, duration: 0.6, ease: "power3.out" }, when);
 
   // ---- "Everything live runs on this Jetson": rise high over the box and look down into it as it opens. ----
   world.leg(tl, t0, { x: 1.6, y: 7.4, z: 3.6, tx: 0, ty: 0.9, tz: 0, fov: 36 }, 2.6, "power2.inOut");

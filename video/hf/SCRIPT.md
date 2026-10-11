@@ -85,8 +85,8 @@ That's the same look you had Tuesday afternoon, when you'd gone two hours withou
 **A:** Your writeup's due Tuesday, and Maya says half the grade is the runtime analysis.
 [Window: the class GroupMe, Maya's message and Jordan's reply.]
 [Window: Notes, an outline with source tags (the chat, r/ucf, two articles).]
-**A:** But first: that's your third energy drink, over your limit, and no water in ninety minutes. Go fill your
-bottle and take a walk.
+**A:** But first, that's your third energy drink, which means you're over your limit. Drink some water and take a
+walk.
 [He nods, stands, stretches, and picks up his water bottle and the empty can.]
 
 ### 6 · Faces (spec)
@@ -99,10 +99,10 @@ You see yourself clear on your own screen. Saved pictures are blurred, and so is
 ### 7 · The kitchen (demo)
 [Hemdutt walks into the kitchen with his phone, the can and the bottle. He fills the bottle and steps toward the grey
 trash bin. The wall camera watches.]
-**A:** Hold on: cans go in recycling at UCF. The blue one.
+**A:** Hold on: cans go in recycling at UCF.
 [His phone and the window show the recycling card: "Can goes in recycling", the blue bin lit. He turns and drops it in
 the blue bin.]
-**A:** Right bin. Five of seven this week, seventy-one percent. Your goal's eighty.
+**A:** That's the right bin. Your accuracy is seventy-one percent this week, but your goal is eighty percent.
 [Window: the ring moves from 67 to 71, the goal tick at 80, a small "sources" chip under the weekly numbers.]
 
 ### 9 · What the kitchen camera runs on (spec)

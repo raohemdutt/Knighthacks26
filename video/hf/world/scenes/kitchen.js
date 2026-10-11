@@ -18,7 +18,7 @@ export default function choreograph(tl, world, scene) {
   const cut = at(0, 0.2);
   tl.set(cam, { ...SHOTS.binCam }, cut);
   // "a can go in the trash": the throw lands on "the trash".
-  // He drops it in the blue bin after Atlas says "The blue one" (in the hold before the count), seen from the wall camera.
+  // He drops it in the blue bin after Atlas tells him cans go in recycling (in the hold before the count), seen from the wall camera.
   tl.fromTo(state, { canThrow: 0 }, { canThrow: 1, duration: 1.15, ease: "none", immediateRender: false }, at(0, 1) + 0.05);
 
   // ---- Line 1: "It keeps the count": pan to the counter Atlas; it lights up as it counts. ----

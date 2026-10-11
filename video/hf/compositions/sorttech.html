@@ -64,7 +64,7 @@
       <script>
         (function () {
           const tl = gsap.timeline({ paused: true });
-          tl.fromTo("#sorttech-chapter", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 0.15);
+          tl.fromTo("#sorttech-chapter", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "sine.inOut" }, 0.15); tl.fromTo("#sorttech-chapter", { y: -12 }, { y: 0, duration: 0.5, ease: "power3.out" }, 0.15);
           tl.to("#sorttech-chapter", { opacity: 0, duration: 0.4 }, 3.200);
           tl.set("#sorttech-sec1", { opacity: 1 }, 0.000);
           tl.set("#sorttech-sec1", { opacity: 0 }, 12.988);
@@ -82,11 +82,11 @@
           tl.set("#sorttech-sec1-time", { textContent: "14:07:51" }, 10.000);
           tl.set("#sorttech-sec1-time", { textContent: "14:07:52" }, 11.000);
           tl.set("#sorttech-sec1-time", { textContent: "14:07:53" }, 12.000);
-          tl.fromTo("#sorttech-card2", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 1.000);
+          tl.fromTo("#sorttech-card2", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "sine.inOut" }, 1.000); tl.fromTo("#sorttech-card2", { y: 14 }, { y: 0, duration: 0.45, ease: "power3.out" }, 1.000);
           tl.to("#sorttech-card2", { opacity: 0, duration: 0.35, ease: "power2.in" }, 17.730);
-          tl.fromTo("#sorttech-card3", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 7.428);
+          tl.fromTo("#sorttech-card3", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "sine.inOut" }, 7.428); tl.fromTo("#sorttech-card3", { y: 14 }, { y: 0, duration: 0.45, ease: "power3.out" }, 7.428);
           tl.to("#sorttech-card3", { opacity: 0, duration: 0.35, ease: "power2.in" }, 17.730);
-          tl.fromTo("#sorttech-card4", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 12.988);
+          tl.fromTo("#sorttech-card4", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "sine.inOut" }, 12.988); tl.fromTo("#sorttech-card4", { y: 14 }, { y: 0, duration: 0.45, ease: "power3.out" }, 12.988);
           tl.to("#sorttech-card4", { opacity: 0, duration: 0.35, ease: "power2.in" }, 17.730);
           window.__timelines["sorttech"] = tl;
         })();

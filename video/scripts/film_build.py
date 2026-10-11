@@ -21,6 +21,7 @@ index.html by hand.
 import argparse
 import asyncio
 import hashlib
+import re
 import json
 import shutil
 import subprocess
@@ -56,7 +57,7 @@ OVERLAY_STUB = """<!doctype html>
       <script>
         (function () {{
           const tl = gsap.timeline({{ paused: true }});
-          tl.fromTo("#{id}-chapter", {{ opacity: 0, y: -12 }}, {{ opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }}, 0.2);
+          tl.fromTo("#{id}-chapter", {{ opacity: 0 }}, {{ opacity: 1, duration: 0.6, ease: "sine.inOut" }}, 0.2); tl.fromTo("#{id}-chapter", {{ y: -12 }}, {{ y: 0, duration: 0.6, ease: "power3.out" }}, 0.2);
           window.__timelines["{id}"] = tl;
         }})();
       </script>
@@ -133,7 +134,7 @@ def caption(sid: str, l: dict, at: float, cd: float) -> str:
 
 def cap_tweens(sid: str, l: dict, at: float, cd: float) -> list[str]:
     n = l["n"]
-    return [f'          tl.fromTo("#cap-{sid}-{n} .cap-card", {{ opacity: 0, y: 12 }}, {{ opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }}, {at:.3f});',
+    return [f'          tl.fromTo("#cap-{sid}-{n} .cap-card", {{ opacity: 0 }}, {{ opacity: 1, duration: 0.35, ease: "sine.inOut" }}, {at:.3f}); tl.fromTo("#cap-{sid}-{n} .cap-card", {{ y: 12 }}, {{ y: 0, duration: 0.3, ease: "power2.out" }}, {at:.3f});',
             f'          tl.to("#cap-{sid}-{n} .cap-card", {{ opacity: 0, duration: 0.3, ease: "power2.in" }}, {at + cd - 0.32:.3f});']
 
 
@@ -147,6 +148,17 @@ async def speak(text: str, voice: str, rate: str, path: Path) -> None:
     import edge_tts
 
     await edge_tts.Communicate(text, voice, rate=rate).save(str(path))
+
+
+
+# How the voice says a word that it would otherwise misread (the caption keeps the written word).
+PRONOUNCE = {r"YOLO": "Yoh-loh"}
+
+
+def say(text: str) -> str:
+    for pattern, spoken in PRONOUNCE.items():
+        text = re.sub(pattern, spoken, text)
+    return text
 
 
 def main() -> int:
@@ -176,7 +188,8 @@ def main() -> int:
             line = raw if isinstance(raw, dict) else {"who": "N", "text": raw}
             who, text, hold = line.get("who", "N"), line["text"].strip(), float(line.get("hold", 0.0))
             voice = voices.get(who, voices["N"])
-            digest = hashlib.sha1(f"{voice}|{rate}|{text}".encode()).hexdigest()[:10]
+            spoken = say(text)  # the words as the voice should say them; the caption keeps the written form
+            digest = hashlib.sha1(f"{voice}|{rate}|{spoken}".encode()).hexdigest()[:10]
             name = f"{sid}-{n}-{digest}.mp3"
             cached = CACHE / name
             if not cached.exists():
@@ -186,7 +199,7 @@ def main() -> int:
                 elif args.check:
                     continue  # CI has no voice cache; --check verifies the scene files and that film.json matches the words
                 else:
-                    asyncio.run(speak(text, voice, rate, cached))
+                    asyncio.run(speak(spoken, voice, rate, cached))
             if not (ASSETS / name).exists():
                 shutil.copy(cached, ASSETS / name)
             if args.check:
