@@ -1241,6 +1241,45 @@ On a machine with no GPU, `python -m lab chipsheet self-check` (or `python3 lab/
 self-check`) parses the recorded tool output in `fixtures/lab/chipsheet/`, writes a sheet marked self-check to a
 temporary folder, reads it back and exits 0; it measures nothing and `ingest` refuses its sheet.
 
+## Wavefront microbenchmarks: `lab/kernels/wavefront/` (R42)
+
+One kernel class of the student's training step per file, one lever per class, timed on a gfx1151 pod in the chip
+sheet's style: each row is one lever setting with its median, every repeat and their spread, the first call timed
+apart (compilation, MIOpen find steps, lazy loading), and for a Triton kernel the compiled `n_regs`, `n_spills` and
+shared bytes with the occupancy they imply on gfx1151 (waves per SIMD by VGPRs from LLVM's table, workgroups per WGP
+by LDS, whether the grid covers the 20 WGPs). The predictions each class tests, and the order to run them in, are in
+`lab/refine/research/kernels/wavefront_training_gfx1151.md`. No pod run has happened yet.
+
+| File | Class and lever |
+|---|---|
+| `gdn.py` | Gated DeltaNet chunk rule, one layer, forward plus backward; `impl` torch (transformers' reference) or fla |
+| `conv.py` | depthwise causal conv (8,192 channels, kernel 4), forward plus backward; `impl` torch (MIOpen) or fla (Triton) |
+| `launch.py` | per-op cost of a 2,000-op chain of tiny kernels; `mode` eager or graph (one HIP graph replay) |
+| `tile.py` | a Triton tile shaped like fla's state scan (512 workgroups); `num_stages` 1 or 2 at `num_warps` 4 |
+| `lora.py` | the LoRA A projection x @ A at rank 16; `split_k` torch (reference), 1 or 4 (Triton) |
+| `wavefront.py` | `run --node pod-b --only <class> [--quick]`, the no-GPU `self-check`, `pod-script` and `occupancy` |
+| `wavefront_format.py` | the sheet's JSON format (`atlas.wavefront/1`), its Markdown, the gfx1151 occupancy arithmetic and the parsers for Triton compile records, hipcc resource remarks and rocprofv3 kernel traces |
+| `pod_wavefront.sh` | what `run-script` runs on the pod: copies the uploaded files to `~/wavefront` and runs the class there |
+
+```bash
+python -m lab.kernels.wavefront.wavefront self-check                  # no GPU: fixtures, invented timings, write and re-read
+python -m lab.kernels.wavefront.wavefront pod-script --only gdn       # the one-line controller command and its slot minutes
+python -m lab.kernels.wavefront.wavefront occupancy <dir>/kernel_trace.csv --top 25   # top kernels of an R34 trace
+```
+
+`pod-script --only gdn` prints (account D is the trainer pod, node pod-b; 20 slot minutes):
+
+```bash
+python -m lab.controller run-script --account D --timeout 1200 --with lab/kernels/wavefront/wavefront.py --with lab/kernels/wavefront/wavefront_format.py --with lab/kernels/wavefront/gdn.py --with lab/kernels/wavefront/conv.py --with lab/kernels/wavefront/launch.py --with lab/kernels/wavefront/tile.py --with lab/kernels/wavefront/lora.py --with lab/kernels/chipsheet/chipsheet_format.py lab/kernels/wavefront/pod_wavefront.sh run --node pod-b --only gdn
+```
+
+The run refuses (exit 2) unless `--node` is pod-a or pod-b, the machine is x86_64 and rocminfo names gfx1151. A full
+run of one class stays inside 900 s of GPU time and `--quick` inside 240 s; a case past the budget, or whose package
+is missing (fla is not in the stock image, so the fla arms of `gdn` and `conv` are skipped with the reason until it
+is installed into the user site), is written as skipped. The sheet lands in `~/wavefront/wavefront-gfx1151-<date>.json`
+and `.md` on the pod. The fixtures in `fixtures/lab/wavefront/` are synthetic; occupancy from LDS assumes four SIMDs
+per WGP, which no opened source states.
+
 ## The LoRA trainer: `lab/train.py`
 
 LoRA SFT of the student (`Qwen/Qwen3.5-4B`, the base the Jetson runs) on the rows `lab/format_traces.py --split`
