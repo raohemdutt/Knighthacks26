@@ -109,6 +109,18 @@ export function buildRoom(scene, humanGltf) {
   const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.38, 0.95, 24), tint(0xc9b7a2, { roughness: 0.6 })); cup.position.y = 0.48; cup.castShadow = true; mug.add(cup);
   const handle = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.06, 8, 16), cup.material); handle.position.set(0.44, 0.5, 0); mug.add(handle);
   set.add(mug);
+  // His keys, behind the mug ("where are my keys?"): a ring and two keys lying on the desk.
+  const keyset = new THREE.Group(); keyset.position.set(-7.2, TOP + 0.05, 12.1); keyset.rotation.y = 0.6;
+  const steelK = matte({ color: 0xb8c0cb, roughness: 0.35, metalness: 0.6 });
+  const ringK = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.04, 8, 20), steelK); ringK.rotation.x = Math.PI / 2; keyset.add(ringK);
+  for (const [dx, a2, c] of [[0.42, 0.2, 0xb8c0cb], [0.36, -0.5, 0xc9a86a]]) {
+    const k = new THREE.Group(); k.rotation.y = a2; k.position.set(Math.cos(a2) * 0.2, 0, -Math.sin(a2) * 0.2);
+    const bow = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.05, 16), matte({ color: c, roughness: 0.35, metalness: 0.6 })); bow.position.x = dx * 0.6; k.add(bow);
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.04, 0.09), matte({ color: c, roughness: 0.35, metalness: 0.6 })); blade.position.x = dx * 0.6 + 0.38; k.add(blade);
+    keyset.add(k);
+  }
+  keyset.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  set.add(keyset);
   const note = at(rbox(2.8, 0.14, 2.1, tint(0x8f9cb0, { roughness: 0.9 }), 0.05, 2), -6.4, TOP + 0.07, 4.4); note.rotation.y = 0.18; set.add(note);
   const lamp = new THREE.Group(); lamp.position.set(-8.6, TOP, 3.6); lamp.rotation.y = Math.PI / 2;
   const lbase = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.85, 0.2, 28), white); lbase.position.y = 0.1; lbase.castShadow = true; lamp.add(lbase);
@@ -142,7 +154,8 @@ export function buildRoom(scene, humanGltf) {
   const SPOTS = {
     seat: [CHAIR[0] + 0.4, F, CHAIR[2]],          // the root of the seated pose, in the chair
     standDesk: [CHAIR[0] - 2.0, F, CHAIR[2]],     // standing in front of the chair, back to it, facing the desk
-    bedEdge: [BED_X - 5.6, F + 0.2, 7.5],          // sitting on the bed's edge, feet on the floor
+    bedEdge: [BED_X - 4.3, F + 0.6, 7.5],          // sitting on the mattress's edge (it starts at BED_X - 5.1), feet on the floor
+    bedLie: [BED_X - 0.2, F + 7.2, 17.8],          // lying on the back, head on the pillow (toward -z), feet at the foot end
     bedFront: [BED_X - 6.6, F, 7.5],               // standing up from the bed
     faceDesk: FACE_DESK,
   };
@@ -150,7 +163,7 @@ export function buildRoom(scene, humanGltf) {
   person.act([SEATED_ACT]);
 
   const head = new THREE.Vector3(), toBox = new THREE.Vector3(), BOX = new THREE.Vector3(0, -0.3, 0);
-  const P = { desk: [-6.8, TOP, 8.5], monitor: [-8.6, TOP + 3.3, 8.5], keyboard: [-5.4, TOP + 0.2, 8.5], shelf: [1.0, SHELF, 0.05], bed: [BED_X, BED_TOP, 8.6], chair: CHAIR, person: [CHAIR[0] + 0.2, F + 12.3, CHAIR[2]] };
+  const P = { keys: [-7.2, TOP + 0.05, 12.1], desk: [-6.8, TOP, 8.5], monitor: [-8.6, TOP + 3.3, 8.5], keyboard: [-5.4, TOP + 0.2, 8.5], shelf: [1.0, SHELF, 0.05], bed: [BED_X, BED_TOP, 8.6], chair: CHAIR, person: [CHAIR[0] + 0.2, F + 12.3, CHAIR[2]] };
   function update(state, t) {
     set.update(state.room || 0);
     const pv = clamp01(Math.min(state.room || 0, state.person || 0));

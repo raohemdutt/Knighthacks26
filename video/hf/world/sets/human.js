@@ -40,45 +40,67 @@ const angLerp = (a, b, u) => a + (((b - a + Math.PI) % (Math.PI * 2) + Math.PI *
 export function makeHuman(gltf, outfit = LOOKS.hemdutt) {
   const model = SkeletonUtils.clone(gltf.scene);
   model.scale.setScalar(10);
-  model.rotation.y = Math.PI; // the UE-rigged mannequin faces -z in its own space; turn it so the person faces +z
-  const root = new THREE.Group(); root.add(model);
+  // The mesh faces +z in its own space (the toes reach z = +0.21 m, the heels -0.16 m), so no turn is needed.
+  const root = new THREE.Group(); root.rotation.order = "YXZ"; root.add(model);
   const mats = [];
-  // One material, coloured per vertex by the bone that moves it most: shirt, trousers, shoes, skin (short sleeves).
-  const main = matte({ color: 0xffffff, roughness: 0.8, vertexColors: true });
+  // One material, coloured by region: each vertex carries a one-hot weight (skin, shirt, pants, shoes) from the bone
+  // that moves it most, and the fragment shader takes the strongest region, so the edges (the collar, the sleeves,
+  // the shoes) are crisp instead of a colour fading across the triangles that straddle them.
+  const main = matte({ color: 0xffffff, roughness: 0.8 });
+  const RC = { uSkin: { value: new THREE.Color(outfit.skin) }, uShirt: { value: new THREE.Color(outfit.shirt) }, uPants: { value: new THREE.Color(outfit.pants) }, uShoes: { value: new THREE.Color(outfit.shoes) } };
+  main.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, RC);
+    sh.vertexShader = `attribute vec4 region;
+varying vec4 vRegion;
+` + sh.vertexShader.replace("#include <begin_vertex>", `#include <begin_vertex>
+  vRegion = region;`);
+    sh.fragmentShader = `varying vec4 vRegion;
+uniform vec3 uSkin; uniform vec3 uShirt; uniform vec3 uPants; uniform vec3 uShoes;
+` + sh.fragmentShader.replace("#include <color_fragment>", `#include <color_fragment>
+  { vec3 rc = uShirt; float m = vRegion.y;
+    if (vRegion.x > m) { m = vRegion.x; rc = uSkin; }
+    if (vRegion.z > m) { m = vRegion.z; rc = uPants; }
+    if (vRegion.w > m) { m = vRegion.w; rc = uShoes; }
+    diffuseColor.rgb *= rc; }`);
+  };
+  main.customProgramCacheKey = () => "atlas-person-regions";
   mats.push(main);
   const bones = {}; model.traverse((o) => { if (o.isBone) bones[o.name] = o; });
   const C = { shirt: new THREE.Color(outfit.shirt), pants: new THREE.Color(outfit.pants), shoes: new THREE.Color(outfit.shoes), skin: new THREE.Color(outfit.skin) };
-  let skinned = null;
+  let skinned = null; const skins = [];
   model.traverse((o) => {
     if (!o.isMesh) return;
     o.material = main; o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false;
     if (o.isSkinnedMesh) {
-      skinned = o;
+      skinned = o; skins.push(o);
       const g = o.geometry = o.geometry.clone(), si = g.attributes.skinIndex, sw = g.attributes.skinWeight, n = si.count;
-      const col = new Float32Array(n * 3), names = o.skeleton.bones.map((b) => b.name);
+      const reg = new Float32Array(n * 4), names = o.skeleton.bones.map((b) => b.name), SLOT = { skin: 0, shirt: 1, pants: 2, shoes: 3 };
       for (let v = 0; v < n; v++) {
         let best = 0, bw = -1; for (let k = 0; k < 4; k++) { const w = sw.getComponent(v, k); if (w > bw) { bw = w; best = si.getComponent(v, k); } }
-        const c = C[REGION(names[best])]; col[v * 3] = c.r; col[v * 3 + 1] = c.g; col[v * 3 + 2] = c.b;
+        reg[v * 4 + SLOT[REGION(names[best])]] = 1;
       }
-      g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+      g.setAttribute("region", new THREE.BufferAttribute(reg, 4));
     }
   });
 
-  // A soft face on the head bone: eyes with lids, a mouth that smiles, flattens or talks. The head's front and centre
-  // are found from the vertices the head bone moves (rest pose), so the face sits on the surface.
+  // A soft face on the head bone: eyes with lids, a mouth that smiles, flattens or talks. Placed in BIND space (the
+  // mesh's own coordinates, front +z): the skeleton's rest pose is not the bind pose, so measuring the posed head puts
+  // things in the wrong place. The head is every vertex above the head bone's bind position. A head frame built in
+  // bind space hangs from the head bone through the bone's inverse-bind matrix, exactly as the skin follows it, so the
+  // face and the hair move with the head in every clip.
+  const hi = skinned ? skinned.skeleton.bones.indexOf(bones.Head) : -1;
+  const bindHead = hi >= 0 ? skinned.skeleton.boneInverses[hi].clone().invert() : new THREE.Matrix4();
+  const headY = new THREE.Vector3().setFromMatrixPosition(bindHead).y;
   const headBox = new THREE.Box3(), vtx = new THREE.Vector3();
-  if (skinned) {
-    const g = skinned.geometry, pos = g.attributes.position, si = g.attributes.skinIndex, sw = g.attributes.skinWeight;
-    const hi = skinned.skeleton.bones.indexOf(bones.Head);
-    for (let v = 0; v < pos.count; v++) {
-      let best = 0, bw = -1; for (let k = 0; k < 4; k++) { const w = sw.getComponent(v, k); if (w > bw) { bw = w; best = si.getComponent(v, k); } }
-      if (best === hi) headBox.expandByPoint(vtx.fromBufferAttribute(pos, v));
-    }
+  for (const sk of skins) { // the mannequin is several skinned meshes (one per primitive): measure the head across all
+    const pos = sk.geometry.attributes.position;
+    for (let v = 0; v < pos.count; v++) { vtx.fromBufferAttribute(pos, v); if (vtx.y > headY) headBox.expandByPoint(vtx); }
   }
-  const hc = headBox.getCenter(new THREE.Vector3()), hs = headBox.getSize(new THREE.Vector3());
-  // The mannequin's front is -z in its own (mesh) space, so the face sits on the head box's min z, turned to face out.
+  const hc = headBox.getCenter(new THREE.Vector3()), hs = headBox.getSize(new THREE.Vector3()), hcy = 0;
+  const headFrame = new THREE.Group(); // bind space: origin at the head's centre, +z forward, +y up
+  // In the head frame the face is the box's front (max z); its features are built along local -z, so it turns round.
   const face = new THREE.Group();
-  face.position.set(hc.x, hc.y - hs.y * 0.06, headBox.min.z + 0.004); face.rotation.y = Math.PI;
+  face.position.set(0, -hs.y * 0.06, headBox.max.z - hc.z - 0.004); face.rotation.y = Math.PI;
   const ink = new THREE.MeshBasicMaterial({ color: 0x1b2433, toneMapped: false, transparent: true });
   const lip = new THREE.MeshBasicMaterial({ color: 0x7a4a42, toneMapped: false, transparent: true });
   const hairMat = matte({ color: outfit.hairColor, roughness: 0.7 });
@@ -89,25 +111,31 @@ export function makeHuman(gltf, outfit = LOOKS.hemdutt) {
   const smile = new THREE.Mesh(new THREE.TorusGeometry(0.02, 0.0032, 6, 20, Math.PI * 0.8), lip); smile.rotation.z = Math.PI + Math.PI * 0.1; smile.position.set(0, -0.03, -0.006); face.add(smile);
   const flatM = new THREE.Mesh(new THREE.CapsuleGeometry(0.003, 0.026, 4, 8), lip); flatM.rotation.z = Math.PI / 2; flatM.position.set(0, -0.036, -0.004); face.add(flatM);
   const open = new THREE.Mesh(new THREE.SphereGeometry(0.011, 14, 10), lip); open.scale.set(1.2, 0.2, 0.35); open.position.set(0, -0.036, -0.004); face.add(open);
-  model.add(face); face.updateMatrixWorld(true); bones.Head.attach(face);
+  headFrame.add(face);
 
   // Hair: a soft cap fitted to the head (top and back, a little fringe at the front), in the person's hair colour.
   // Styles: "short" (a close cap), "long" (down to the neck at the back), "buzzed" (thin). Rest pose, mesh space.
   const style = outfit.hair === "Hair_Long" ? "long" : outfit.hair === "Hair_Buzzed" ? "buzzed" : "short";
-  const cap = new THREE.Group(); cap.position.copy(hc);
+  const cap = new THREE.Group(); cap.position.set(0, hcy, 0);
   const r = Math.max(hs.x, hs.z) / 2, grow = style === "buzzed" ? 1.03 : 1.08;
   const dome = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 20, 0, Math.PI * 2, 0, style === "long" ? Math.PI * 0.62 : Math.PI * 0.5), hairMat);
   dome.scale.set(hs.x / 2 * grow, hs.y / 2 * (style === "buzzed" ? 1.02 : 1.1), hs.z / 2 * grow); dome.position.y = hs.y * 0.06;
-  dome.rotation.x = 0.28; // tilt back: more hair over the back of the head, the forehead stays clear
+  dome.rotation.x = -0.28; // tilt back (toward -z): more hair over the back of the head, the forehead stays clear
   cap.add(dome);
   if (style !== "buzzed") {
     const fringe = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 10, 0, Math.PI * 2, 0, Math.PI * 0.35), hairMat);
-    fringe.scale.set(hs.x / 2 * 1.04, hs.y * 0.22, hs.z / 2 * 0.9); fringe.position.set(0, hs.y * 0.3, -r * 0.18); fringe.rotation.x = -0.5;
+    fringe.scale.set(hs.x / 2 * 1.04, hs.y * 0.22, hs.z / 2 * 0.9); fringe.position.set(0, hs.y * 0.3, r * 0.18); fringe.rotation.x = 0.5;
     cap.add(fringe);
   }
-  if (style === "long") { const back = new THREE.Mesh(new THREE.CapsuleGeometry(r * 0.75, hs.y * 0.45, 6, 16), hairMat); back.position.set(0, -hs.y * 0.18, r * 0.55); cap.add(back); }
+  if (style === "long") { const back = new THREE.Mesh(new THREE.CapsuleGeometry(r * 0.75, hs.y * 0.45, 6, 16), hairMat); back.position.set(0, -hs.y * 0.18, -r * 0.55); cap.add(back); }
   cap.traverse((o) => { if (o.isMesh) { o.castShadow = true; } });
-  model.add(cap); cap.updateMatrixWorld(true); bones.Head.attach(cap);
+  headFrame.add(cap);
+  // Bone-local transform = inverse bind of the head bone x (head centre in bind space).
+  if (hi >= 0) {
+    const local = skinned.skeleton.boneInverses[hi].clone().multiply(new THREE.Matrix4().makeTranslation(hc.x, hc.y, hc.z));
+    local.decompose(headFrame.position, headFrame.quaternion, headFrame.scale);
+    bones.Head.add(headFrame);
+  }
   /** Expressions, each 0..1, set every frame by the caller (pure function of t): smile, sleepy, strain, talk. */
   const expr = { smile: 0, sleepy: 0, strain: 0, talk: 0, t: 0 };
   function updateFace() {
@@ -156,7 +184,7 @@ export function makeHuman(gltf, outfit = LOOKS.hemdutt) {
   }
 
   // A schedule of acts on the film's clock. Each act: { t0, t1, clip, loop?, speed?, from?: [x,y,z], to?: [x,y,z],
-  // yaw?: [a, b] (radians about +y; 0 faces +z), fade? (crossfade from the previous act, s) }. Position and yaw ease
+  // yaw?: [a, b] (radians about +y; 0 faces +z), tip?: [a, b] (tipped back, radians; pi/2 = lying on the back), fade? (crossfade from the previous act, s) }. Position and yaw ease
   // from `from`/`yaw[0]` to `to`/`yaw[1]` over the act (linear for walks so the feet keep pace: set ease: "none").
   const acts = [];
   function act(list) { acts.push(...list); acts.sort((a, b) => a.t0 - b.t0); }
@@ -169,7 +197,8 @@ export function makeHuman(gltf, outfit = LOOKS.hemdutt) {
     const f = a.from || a.to, to = a.to || a.from;
     const p = f ? [lerp(f[0], to[0], e), lerp(f[1], to[1], e), lerp(f[2], to[2], e)] : null;
     const y = a.yaw ? angLerp(a.yaw[0], a.yaw[1] ?? a.yaw[0], e) : null;
-    return { p, y };
+    const k = a.tip ? lerp(a.tip[0], a.tip[1] ?? a.tip[0], e) : 0; // tipped back (radians): pi/2 lies on the back
+    return { p, y, k };
   };
   /** Pose and place the person for film time t from the schedule. */
   function at(t) {
@@ -182,6 +211,7 @@ export function makeHuman(gltf, outfit = LOOKS.hemdutt) {
     const c = place(cur, t), pv = prev && w < 1 ? place(prev, t) : null;
     if (c.p) root.position.set(...(pv?.p ? c.p.map((v, k) => lerp(pv.p[k], v, w)) : c.p));
     if (c.y !== null) root.rotation.y = pv && pv.y !== null ? angLerp(pv.y, c.y, w) : c.y;
+    root.rotation.x = -(pv ? lerp(pv.k, c.k, w) : c.k); // about the body's own left-right axis (order YXZ)
   }
 
   const _hv = new THREE.Vector3();

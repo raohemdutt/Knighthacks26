@@ -167,19 +167,16 @@ def morning(s: Scene):
     week = '<div class="ph">This week</div>' + rows([("Tue", "Algorithms writeup", "due 11:59 PM", False)])
     opt = '<div class="ph">Optional</div>' + rows([("8:00", "Board game night", "Student Union · with Sam, Riley", True)]) + \
         '<div class="chips"><span class="site-tag">via GroupMe</span><span class="site-tag">free</span></div>'
-    approve = ('<div class="ph">Lock today\'s plan?</div><div class="pk">nothing is booked until you say yes</div>' + rows([("Goal", "2 real meals today", "you asked for it", False)]) +
-               f'<div class="btnrow"><span class="site-btn" id="{s.id}-approve">Approve</span><span class="site-chip">Change</span></div>'
-               f'<div class="ph ok" id="{s.id}-locked" style="margin-top:22px;opacity:0">Locked ✓</div>')
-    keys = ('<div class="bub me">Where are my keys?</div><div class="bub"><b>Atlas</b>Behind the mug on your desk. You left them there last night.</div>'
-            '<div class="svgbox"><svg viewBox="0 0 600 190" width="600" height="190"><rect width="600" height="190" fill="#e6ebf3"/>'
+    goal = ("<div class=\"ph\">Today's plan is set</div><div class=\"pk\">you asked · no tap needed</div>" + rows([("Goal", "2 real meals today", "Atlas keeps track", False)]))
+    keys = (f'<div class="bub me">Where are my keys?</div><div class="bub" id="{s.id}-ans" style="opacity:0"><b>Atlas</b>Behind the mug on your desk. You left them there last night.</div>'
+            f'<div class="svgbox" id="{s.id}-frame" style="opacity:0"><svg viewBox="0 0 600 190" width="600" height="190"><rect width="600" height="190" fill="#e6ebf3"/>'
             '<rect x="40" y="110" width="520" height="22" rx="8" fill="#d8dfeb"/><rect x="250" y="60" width="54" height="56" rx="10" fill="#cfd7e5"/>'
             '<circle cx="330" cy="104" r="34" fill="none" stroke="#c0332b" stroke-width="6"/><circle cx="330" cy="104" r="8" fill="#566176"/>'
             '<text x="380" y="70" font-size="24" font-family="Segoe UI" font-weight="700" fill="#c0332b">Keys here</text></svg></div>')
     s.window([("Today", today, "2:0"), ("Route", route, "2:0.55"), ("Today's Plan", plan, "3:0"), ("This week", week, "3:0.78"),
-              ("Optional", opt, "4:0"), ("Approve", approve, "5:0.2"), ("Ask", keys, "8:0")], at="2:0")
-    a = s.t("7:0.7")
-    s.tween(f'tl.to("#{s.id}-approve", {{ scale: 0.94, duration: 0.12, yoyo: true, repeat: 1 }}, {a:.3f});')
-    s.tween(f'tl.to("#{s.id}-locked", {{ opacity: 1, duration: 0.3 }}, {a + 0.35:.3f});')
+              ("Optional", opt, "4:0"), ("Goal", goal, "7:0"), ("Ask", keys, "8:1")], at="2:0")
+    s.tween(f'tl.to("#{s.id}-ans", {{ opacity: 1, duration: 0.3 }}, {s.t("9:0"):.3f});')
+    s.tween(f'tl.to("#{s.id}-frame", {{ opacity: 1, duration: 0.3 }}, {s.t("9:0.3"):.3f});')  # Atlas answers after he asks
     for rid, at in (("ROUTE", "2:0.6"), ("PLANROUTE", "3:0.05")):
         s.tween(f'tl.fromTo("#{rid}", {{ strokeDasharray: 900, strokeDashoffset: 900 }}, {{ strokeDashoffset: 0, duration: 2.2, ease: "power2.inOut" }}, {s.t(at):.3f});')
 

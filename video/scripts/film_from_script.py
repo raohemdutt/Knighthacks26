@@ -22,7 +22,7 @@ FILM = ROOT / "hf" / "film.yaml"
 BEATS = {
     0: ("problem", "A dozen apps", 1.0, {}),
     1: ("intro", "Atlas", 2.0, {}),
-    2: ("morning", "Good morning", 1.0, {1: 0.5, 7: 1.0, 9: 1.5}),
+    2: ("morning", "Good morning", 2.2, {1: 0.5, 9: 1.5}),  # lead: he sits up in bed
     3: ("sources", "What fed the brief", 1.0, {}),
     4: ("model", "The model on the box", 1.0, {}),
     5: ("desk", "At the desk", 1.0, {2: 1.0}),
@@ -41,7 +41,7 @@ BEATS = {
 }
 
 HEAD = {
-    "rate": "+30%",  # Dom, Sun 4:20 AM: every voice at 1.3x
+    "rate": "+20%",  # Dom, Sun 5:20 AM: every voice back at 1.2x
     "voices": {
         "N": "en-US-AndrewMultilingualNeural",
         "A": "en-US-GuyNeural",  # until Piper en_US-ryan-medium (the box's own voice) is installed here
@@ -54,7 +54,7 @@ HEAD = {
     "names": {"N": "", "A": "Atlas", "H": "Hemdutt", "I": "Ilan", "D": "Dominick", "X": "Xander", "T": "Trainee"},
     "gap_s": 0.3,
     "pad_s": 0.3,
-    "tail_s": 0.7,
+    "tail_s": 0.5,
 }
 
 LINE = re.compile(r"\*\*([A-Z])[^*]*?\*\*(?:\s*\([^)]*\))?:?\s*(.*?)(?=\s*·\s*\*\*[A-Z]|\n\*\*[A-Z]|\Z)", re.S)

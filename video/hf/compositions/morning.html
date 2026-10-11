@@ -38,7 +38,7 @@
       <div id="root" data-composition-id="morning" data-width="1920" data-height="1080">
         <div id="morning-chapter" class="chip-ch soft-raised soft-muted">Good morning</div>
         <div class="win soft-raised" id="morning-win1" style="top:60px;height:640px">
-          <div class="win-bar"><div class="win-dot"></div><div class="win-app">Atlas</div><div class="win-tabs"><div class="win-tab" id="morning-win1-tab0">Today</div><div class="win-tab" id="morning-win1-tab1">Route</div><div class="win-tab" id="morning-win1-tab2">Today's Plan</div><div class="win-tab" id="morning-win1-tab3">This week</div><div class="win-tab" id="morning-win1-tab4">Optional</div><div class="win-tab" id="morning-win1-tab5">Approve</div><div class="win-tab" id="morning-win1-tab6">Ask</div></div></div>
+          <div class="win-bar"><div class="win-dot"></div><div class="win-app">Atlas</div><div class="win-tabs"><div class="win-tab" id="morning-win1-tab0">Today</div><div class="win-tab" id="morning-win1-tab1">Route</div><div class="win-tab" id="morning-win1-tab2">Today's Plan</div><div class="win-tab" id="morning-win1-tab3">This week</div><div class="win-tab" id="morning-win1-tab4">Optional</div><div class="win-tab" id="morning-win1-tab5">Goal</div><div class="win-tab" id="morning-win1-tab6">Ask</div></div></div>
           <div class="pane" id="morning-win1-p0"><div class="ph">Today</div><div class="pk">calendar blocks solid · Atlas's ideas dashed</div><div class="row"><div class="t">9:20</div><div class="w">Mentor check-in<small>Engineering II</small></div></div><div class="row"><div class="t">11:00</div><div class="w">Submissions close</div></div><div class="row"><div class="t">12:00</div><div class="w">Judging</div></div><div class="row"><div class="t">2:00</div><div class="w">Maya's study session<small>John C. Hitt Library</small></div></div><div class="row dash"><div class="t">8:00</div><div class="w">Board game night<small>optional</small></div></div></div>
           <div class="pane" id="morning-win1-p1"><div class="ph">Route</div><div class="pk">real UCF map · dorm to Engineering II</div><div class="svgbox"><svg viewBox="0 0 600 300" width="600" height="300"><rect width="600" height="300" fill="#e6ebf3"/>
 <g stroke="#c9d3e3" stroke-width="14" stroke-linecap="round" fill="none"><path d="M40 250 H560"/><path d="M120 30 V280"/><path d="M300 20 V280"/><path d="M40 140 H560"/><path d="M460 30 V280"/></g>
@@ -52,8 +52,8 @@
 <text x="140" y="275" font-size="22" font-family="Segoe UI" fill="#566176">Your dorm</text><text x="350" y="50" font-size="22" font-family="Segoe UI" fill="#566176">Engineering II</text></svg></div><div class="chips"><span class="site-tag">9:20 ✓</span><span class="site-tag">11:00 ✓</span><span class="site-tag">noon ✓</span><span class="site-tag">2:00 ✓</span></div></div>
           <div class="pane" id="morning-win1-p3"><div class="ph">This week</div><div class="row"><div class="t">Tue</div><div class="w">Algorithms writeup<small>due 11:59 PM</small></div></div></div>
           <div class="pane" id="morning-win1-p4"><div class="ph">Optional</div><div class="row dash"><div class="t">8:00</div><div class="w">Board game night<small>Student Union · with Sam, Riley</small></div></div><div class="chips"><span class="site-tag">via GroupMe</span><span class="site-tag">free</span></div></div>
-          <div class="pane" id="morning-win1-p5"><div class="ph">Lock today's plan?</div><div class="pk">nothing is booked until you say yes</div><div class="row"><div class="t">Goal</div><div class="w">2 real meals today<small>you asked for it</small></div></div><div class="btnrow"><span class="site-btn" id="morning-approve">Approve</span><span class="site-chip">Change</span></div><div class="ph ok" id="morning-locked" style="margin-top:22px;opacity:0">Locked ✓</div></div>
-          <div class="pane" id="morning-win1-p6"><div class="bub me">Where are my keys?</div><div class="bub"><b>Atlas</b>Behind the mug on your desk. You left them there last night.</div><div class="svgbox"><svg viewBox="0 0 600 190" width="600" height="190"><rect width="600" height="190" fill="#e6ebf3"/><rect x="40" y="110" width="520" height="22" rx="8" fill="#d8dfeb"/><rect x="250" y="60" width="54" height="56" rx="10" fill="#cfd7e5"/><circle cx="330" cy="104" r="34" fill="none" stroke="#c0332b" stroke-width="6"/><circle cx="330" cy="104" r="8" fill="#566176"/><text x="380" y="70" font-size="24" font-family="Segoe UI" font-weight="700" fill="#c0332b">Keys here</text></svg></div></div>
+          <div class="pane" id="morning-win1-p5"><div class="ph">Today's plan is set</div><div class="pk">you asked · no tap needed</div><div class="row"><div class="t">Goal</div><div class="w">2 real meals today<small>Atlas keeps track</small></div></div></div>
+          <div class="pane" id="morning-win1-p6"><div class="bub me">Where are my keys?</div><div class="bub" id="morning-ans" style="opacity:0"><b>Atlas</b>Behind the mug on your desk. You left them there last night.</div><div class="svgbox" id="morning-frame" style="opacity:0"><svg viewBox="0 0 600 190" width="600" height="190"><rect width="600" height="190" fill="#e6ebf3"/><rect x="40" y="110" width="520" height="22" rx="8" fill="#d8dfeb"/><rect x="250" y="60" width="54" height="56" rx="10" fill="#cfd7e5"/><circle cx="330" cy="104" r="34" fill="none" stroke="#c0332b" stroke-width="6"/><circle cx="330" cy="104" r="8" fill="#566176"/><text x="380" y="70" font-size="24" font-family="Segoe UI" font-weight="700" fill="#c0332b">Keys here</text></svg></div></div>
         </div>
       </div>
       <script>
@@ -61,38 +61,38 @@
           const tl = gsap.timeline({ paused: true });
           tl.fromTo("#morning-chapter", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 0.15);
           tl.to("#morning-chapter", { opacity: 0, duration: 0.4 }, 3.200);
-          tl.fromTo("#morning-win1", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 6.972);
-          tl.to("#morning-win1", { opacity: 0, duration: 0.35, ease: "power2.in" }, 43.418);
-          tl.fromTo("#morning-win1-p0", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 6.972);
-          tl.to("#morning-win1-p0", { opacity: 0, duration: 0.25, ease: "power2.in" }, 9.613);
-          tl.fromTo("#morning-win1-tab0", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 6.972);
-          tl.to("#morning-win1-tab0", { opacity: 0, duration: 0.25, ease: "power2.in" }, 9.613);
-          tl.fromTo("#morning-win1-p1", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 9.863);
-          tl.to("#morning-win1-p1", { opacity: 0, duration: 0.25, ease: "power2.in" }, 12.278);
-          tl.fromTo("#morning-win1-tab1", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 9.863);
-          tl.to("#morning-win1-tab1", { opacity: 0, duration: 0.25, ease: "power2.in" }, 12.278);
-          tl.fromTo("#morning-win1-p2", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 12.528);
-          tl.to("#morning-win1-p2", { opacity: 0, duration: 0.25, ease: "power2.in" }, 17.482);
-          tl.fromTo("#morning-win1-tab2", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 12.528);
-          tl.to("#morning-win1-tab2", { opacity: 0, duration: 0.25, ease: "power2.in" }, 17.482);
-          tl.fromTo("#morning-win1-p3", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 17.732);
-          tl.to("#morning-win1-p3", { opacity: 0, duration: 0.25, ease: "power2.in" }, 19.250);
-          tl.fromTo("#morning-win1-tab3", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 17.732);
-          tl.to("#morning-win1-tab3", { opacity: 0, duration: 0.25, ease: "power2.in" }, 19.250);
-          tl.fromTo("#morning-win1-p4", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 19.500);
-          tl.to("#morning-win1-p4", { opacity: 0, duration: 0.25, ease: "power2.in" }, 23.836);
-          tl.fromTo("#morning-win1-tab4", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 19.500);
-          tl.to("#morning-win1-tab4", { opacity: 0, duration: 0.25, ease: "power2.in" }, 23.836);
-          tl.fromTo("#morning-win1-p5", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 24.086);
-          tl.to("#morning-win1-p5", { opacity: 0, duration: 0.25, ease: "power2.in" }, 35.682);
-          tl.fromTo("#morning-win1-tab5", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 24.086);
-          tl.to("#morning-win1-tab5", { opacity: 0, duration: 0.25, ease: "power2.in" }, 35.682);
-          tl.fromTo("#morning-win1-p6", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 35.932);
-          tl.fromTo("#morning-win1-tab6", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 35.932);
-          tl.to("#morning-approve", { scale: 0.94, duration: 0.12, yoyo: true, repeat: 1 }, 33.689);
-          tl.to("#morning-locked", { opacity: 1, duration: 0.3 }, 34.039);
-          tl.fromTo("#ROUTE", { strokeDasharray: 900, strokeDashoffset: 900 }, { strokeDashoffset: 0, duration: 2.2, ease: "power2.inOut" }, 10.126);
-          tl.fromTo("#PLANROUTE", { strokeDasharray: 900, strokeDashoffset: 900 }, { strokeDashoffset: 0, duration: 2.2, ease: "power2.inOut" }, 12.862);
+          tl.fromTo("#morning-win1", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 9.540);
+          tl.to("#morning-win1", { opacity: 0, duration: 0.35, ease: "power2.in" }, 44.786);
+          tl.fromTo("#morning-win1-p0", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 9.540);
+          tl.to("#morning-win1-p0", { opacity: 0, duration: 0.25, ease: "power2.in" }, 12.418);
+          tl.fromTo("#morning-win1-tab0", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 9.540);
+          tl.to("#morning-win1-tab0", { opacity: 0, duration: 0.25, ease: "power2.in" }, 12.418);
+          tl.fromTo("#morning-win1-p1", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 12.668);
+          tl.to("#morning-win1-p1", { opacity: 0, duration: 0.25, ease: "power2.in" }, 15.278);
+          tl.fromTo("#morning-win1-tab1", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 12.668);
+          tl.to("#morning-win1-tab1", { opacity: 0, duration: 0.25, ease: "power2.in" }, 15.278);
+          tl.fromTo("#morning-win1-p2", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 15.528);
+          tl.to("#morning-win1-p2", { opacity: 0, duration: 0.25, ease: "power2.in" }, 20.913);
+          tl.fromTo("#morning-win1-tab2", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 15.528);
+          tl.to("#morning-win1-tab2", { opacity: 0, duration: 0.25, ease: "power2.in" }, 20.913);
+          tl.fromTo("#morning-win1-p3", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 21.163);
+          tl.to("#morning-win1-p3", { opacity: 0, duration: 0.25, ease: "power2.in" }, 22.802);
+          tl.fromTo("#morning-win1-tab3", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 21.163);
+          tl.to("#morning-win1-tab3", { opacity: 0, duration: 0.25, ease: "power2.in" }, 22.802);
+          tl.fromTo("#morning-win1-p4", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 23.052);
+          tl.to("#morning-win1-p4", { opacity: 0, duration: 0.25, ease: "power2.in" }, 33.446);
+          tl.fromTo("#morning-win1-tab4", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 23.052);
+          tl.to("#morning-win1-tab4", { opacity: 0, duration: 0.25, ease: "power2.in" }, 33.446);
+          tl.fromTo("#morning-win1-p5", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 33.696);
+          tl.to("#morning-win1-p5", { opacity: 0, duration: 0.25, ease: "power2.in" }, 38.810);
+          tl.fromTo("#morning-win1-tab5", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 33.696);
+          tl.to("#morning-win1-tab5", { opacity: 0, duration: 0.25, ease: "power2.in" }, 38.810);
+          tl.fromTo("#morning-win1-p6", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 39.060);
+          tl.fromTo("#morning-win1-tab6", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 39.060);
+          tl.to("#morning-ans", { opacity: 1, duration: 0.3 }, 39.360);
+          tl.to("#morning-frame", { opacity: 1, duration: 0.3 }, 40.613);
+          tl.fromTo("#ROUTE", { strokeDasharray: 900, strokeDashoffset: 900 }, { strokeDashoffset: 0, duration: 2.2, ease: "power2.inOut" }, 12.953);
+          tl.fromTo("#PLANROUTE", { strokeDasharray: 900, strokeDashoffset: 900 }, { strokeDashoffset: 0, duration: 2.2, ease: "power2.inOut" }, 15.889);
           window.__timelines["morning"] = tl;
         })();
       </script>

@@ -1,5 +1,5 @@
-// Scene "morning" (beat 2): "Good morning" from the bed, the brief while he walks to the desk and sits, the meals
-// goal and the approve tap, then "where are my keys?" and a soft label on the keys behind the mug. Hard cut in.
+// Scene "morning" (beat 2): he wakes in bed and sits up; "Good morning" from the bed's edge, the brief while he walks to the desk and sits, the meals
+// goal, then "where are my keys?" and a soft label on the keys behind the mug. Hard cut in.
 import { cut, at, camPath, yawTo } from "./_kit.js";
 
 export default function choreograph(tl, world, scene) {
@@ -12,8 +12,11 @@ export default function choreograph(tl, world, scene) {
   const exitAt = at(L, 1, 0.1);
   const W1 = [SPOTS.bedFront[0], F, SPOTS.bedFront[2]], W2 = [2.8, F, 13.6], W3 = SPOTS.standDesk;
   const w1 = exitAt + D("Sitting_Exit"), w2 = w1 + 1.35, w3 = w2 + 0.75, sit = w3 + D("Sitting_Enter");
+  // Lying on his back in bed, then he sits up onto the mattress's edge before he says good morning.
+  const upAt = Math.max(t0 + 0.3, at(L, 0, 0) - 1.7);
   person.act([
-    { t0, t1: exitAt, clip: "Sitting_Idle_Loop", loop: true, speed: 0.5, from: SPOTS.bedEdge, yaw: [SPOTS.faceDesk], fade: 0 },
+    { t0, t1: upAt, clip: "Idle_Loop", loop: true, speed: 0.3, from: SPOTS.bedLie, yaw: [0], tip: [Math.PI / 2], fade: 0 },
+    { t0: upAt, t1: exitAt, clip: "Sitting_Idle_Loop", loop: true, speed: 0.5, from: SPOTS.bedEdge, yaw: [SPOTS.faceDesk], tip: [0], fade: 1.4 },
     { t0: exitAt, t1: w1, clip: "Sitting_Exit", from: SPOTS.bedEdge, to: SPOTS.bedFront, yaw: [SPOTS.faceDesk], fade: 0.15 },
     { t0: w1, t1: w2, clip: "Walk_Loop", loop: true, speed: 0.95, from: W1, to: W2, yaw: [SPOTS.faceDesk, yawTo(W1, W2)], ease: "none", fade: 0.3 },
     { t0: w2, t1: w3, clip: "Walk_Loop", loop: true, speed: 0.95, offset: (w2 - w1) * 0.95, from: W2, to: W3, yaw: [yawTo(W1, W2), yawTo(W2, W3)], ease: "none", fade: 0 },
@@ -45,9 +48,9 @@ export default function choreograph(tl, world, scene) {
   tl.to(state, { personLook: 0, duration: 0.6, ease: "power2.inOut" }, at(L, 7, 1));
   tl.to(state, { personLook: 0.9, duration: 0.6, ease: "power2.inOut" }, at(L, 8, 0));
   // "Behind the mug on your desk": the camera finds the desk; a soft label lands on the keys.
-  const DESK = { x: -1.5, y: -2.0, z: 14.5, tx: -6.6, ty: -4.4, tz: 8.6, fov: 32 };
+  const DESK = { x: -2.6, y: 1.6, z: 16.4, tx: -7.0, ty: -4.4, tz: 12.6, fov: 30 }; // looking down: the mug and the keys behind it
   world.leg(tl, at(L, 9, 0), DESK, 1.4, "power2.inOut");
-  const keys = world.label("keys-here", { text: "Keys here", at: [P.desk[0] + 1.5, P.desk[1] + 0.9, P.desk[2] - 1.4], scale: 0.7 });
+  const keys = world.label("keys-here", { text: "Your keys", at: [P.keys[0], P.keys[1] + 0.9, P.keys[2]], scale: 0.5 });
   tl.set(keys, { opacity: 0 }, t0);
   tl.to(keys, { opacity: 1, duration: 0.4 }, at(L, 9, 0.5));
   tl.to(keys, { opacity: 0, duration: 0.3 }, tEnd - 0.4);

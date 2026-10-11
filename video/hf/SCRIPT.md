@@ -1,4 +1,4 @@
-# Atlas film: the whole script (v4.8)
+# Atlas film: the whole script (v4.9)
 
 This is the read-through. `FILM_PLAN.md` has the sources, the build list and the decisions behind every line.
 **N** = narrator · **A** = Atlas · **H** = Hemdutt (the person) · **I** = Ilan · **D** = Dominick · **X** = Xander
@@ -10,6 +10,9 @@ Demo beats: the product talks, no narrator. Spec beats: the narrator, short.
 v4.6 folds in Hemdutt's notes from Notion (Sun 3:21 AM, agreed by him): 48 of 48, Today's Plan, the face wording,
 beat 13's "recognise each other", a new beat 15, one clause per sponsor track, and a new last line. It also names the
 Encompass data-capture story in beat 3.
+
+v4.9 (Dom, Sun 5:20 AM): voices back to 1.2x; "Looks good" without "lock it"; no tap to approve (he asked, Atlas
+just does it); the keys question pops up after he finishes asking.
 
 v4.8 (Dom, Sun 5:05 AM): Sort It is out of the film. Beat 8 (the round) is gone; beat 9 keeps its sponsor clauses
 (the detector, UCF's bin rules, the impact sources, the look guide) as "What the kitchen camera runs on".
@@ -46,15 +49,15 @@ Tuesday night.
 This week.]
 **A:** And if you want a break, Sam and Riley are at board game night at 8.
 [Window: Optional, with friends' names.]
-**A:** Does this look good? I can lock this plan, or would you like something changed?
-**H:** Looks good, lock it. And help me eat two real meals today.
-**A:** Tap to approve. I'll track the meals.
-[He taps Approve on his phone. Window: the approval card, "Goal today: 2 meals", then "Locked".]
+**A:** Does this look good, or would you like something changed?
+**H:** Looks good. And help me eat two real meals today.
+**A:** Done. I'll keep track of the meals.
+[Window: "Today's plan is set" and "Goal today: 2 real meals".]
 [He pats his pockets.]
 **H:** Atlas, where are my keys?
 **A:** Behind the mug on your desk. You left them there last night.
-[A soft red ring lands on the keys. Window: the answer card with the frame, keys circled, then the room map with a
-"Keys here" pin. He picks them up.]
+[When he has finished asking, the window shows the question, then the answer card with the frame, keys circled. A
+soft label lands on the keys behind the mug.]
 
 ### 3 · What fed the brief (spec)
 [Labelled sparks fly into the box: the camera, Apple Watch, Outlook, Canvas, GroupMe, UCF Events, OpenStreetMap. Inside,
