@@ -683,6 +683,8 @@ def run_group_finetune(*, pool_root: str | os.PathLike[str], circle: str, task: 
         result.update(ok=True, outcome="offered", offer=str(folder / OFFER_FILE))
     except (GroupError, ds.DatasetError, LabelRefused, package.PackageError, eval_gate.GateError) as err:
         result.update(ok=False, outcome="failed", step=step, error=str(err)[:500])
+    except Exception as err:   # anything else (a missing file, a tool that crashed) is a failed run with its rows too
+        result.update(ok=False, outcome="failed", step=step, error=f"{type(err).__name__}: {err}"[:500])
     finally:
         paths = _pooled_paths(pool, work)
         if keep:
