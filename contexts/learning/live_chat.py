@@ -6,7 +6,7 @@ watts move, then the joules for that answer.
 
     event: token   data: {"text": str}                      words as the model server streams them
     event: tool    data: {"name": str, "arguments": {...}}  a tool the model called, run on the box's memory
-    event: done    data: {"answer", "target", "serving", "tokens", "seconds", "tok_s", "ttft_s", "calls",
+    event: done    data: {"answer", "target", "serving", "tokens", "seconds", "tok_s", "decode_s", "ttft_s", "calls",
                           "energy": {...} | null}
     event: error   data: {"error": str, "seconds": float}
 
@@ -18,7 +18,8 @@ executor), then one more streamed turn without tools gives the answer: one round
 
 `tokens` is the server's completion token count when it reports usage, else the number of streamed chunks that
 carried text or a tool call (vLLM and llama-server send one token per chunk). `ttft_s` is from the request to the
-first streamed chunk; `tok_s` is tokens over the time between each turn's first and last chunk. `energy` is computed
+first streamed chunk; `decode_s` is `seconds` less `ttft_s` (or `seconds` when there is no first chunk) and `tok_s`
+is tokens over decode_s. `energy` is computed
 the way deploy/ask does: for the pair, both pods' samplers over the request window
 (BrainPair.window_energy: {joules, watts_avg, seconds, pods: {C, D}}, each pod with its idle_w beside); for the box,
 the Jetson sampler (AnswerMeter.measure: {joules, idle_w, seconds, sampler, samples, above_idle_j, low_confidence})
@@ -220,8 +221,11 @@ async def run_chat(question: str, target: str, *, emit: Callable[[str, dict[str,
     ended = datetime.now(UTC)
     seconds = max(ended_at - began, 1e-9)
     tokens = sum(t.tokens for t in turns)
-    gen = sum((t.last - t.first) for t in turns if t.first is not None and t.last is not None)
     firsts = [t.first for t in turns if t.first is not None]
+    ttft = firsts[0] - began if firsts else None
+    # the decode time: the whole answer less the wait for its first chunk (a chunk-to-chunk window can be near zero
+    # when a proxy delivers the stream in a few bursts: it read 28453 tok/s on the box)
+    decode = seconds - ttft if ttft is not None and 0 <= ttft < seconds else seconds
     answer = " ".join(" ".join(t.shown for t in turns).split())
     energy = None
     try:
@@ -239,8 +243,8 @@ async def run_chat(question: str, target: str, *, emit: Callable[[str, dict[str,
     return {"answer": answer or "(no answer)", "target": target,
             "serving": lab_deploy.BRAIN_SERVING if target == "pair" else BOX_SERVING,
             "tokens": tokens, "seconds": round(seconds, 2),
-            "tok_s": round(tokens / gen, 1) if gen > 0 and tokens > 1 else None,
-            "ttft_s": round(firsts[0] - began, 2) if firsts else None, "calls": calls, "energy": energy}
+            "tok_s": round(tokens / decode, 1) if decode > 0 and tokens > 0 else None, "decode_s": round(decode, 2),
+            "ttft_s": round(ttft, 2) if ttft is not None else None, "calls": calls, "energy": energy}
 
 
 async def event_stream(question: str, target: str, *, timeout_s: float = TIMEOUT_S, **kwargs: Any

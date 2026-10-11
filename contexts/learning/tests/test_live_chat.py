@@ -105,6 +105,7 @@ def test_the_pair_streams_tokens_then_done_with_both_pods_joules(tmp_path):
     assert done["answer"] == "Hello there, friend." and done["tokens"] == 3 and done["target"] == "pair"
     assert done["energy"] == PAIR_ENERGY and len(pair.windows) == 1
     assert done["seconds"] >= 0 and done["ttft_s"] is not None
+    assert abs(done["decode_s"] - (done["seconds"] - done["ttft_s"])) < 0.02  # seconds less the first chunk's wait
     # through the hub proxy, port 8000, the head's token, served name "teacher", streamed, tools offered not forced
     assert server.urls[0] == "https://hub.test/user/u/proxy/8000/v1/chat/completions"
     assert server.headers[0]["authorization"] == "token head-token"
@@ -199,3 +200,31 @@ def test_visible_holds_back_a_tag_that_is_still_arriving():
     assert live_chat.visible("a < b") == "a < b"
     assert live_chat.visible("<think>x") == ""
     assert live_chat.visible("<think>x</think>Yes.") == "Yes."
+
+
+def test_tok_s_is_tokens_over_the_decode_time_not_a_burst_window():
+    """The box's live reading: 51 tokens that arrived in one burst over 12.11 s gave 28453 tok/s. With a fake clock,
+    the first chunk at 0.6 s and every chunk at the same instant, tok_s is tokens over seconds less ttft_s."""
+    import asyncio
+
+    ticks = iter([100.0] + [100.6] * 50 + [112.11] * 10)  # the start, one read per chunk, the end
+    server = FakeStreamServer([[*(chunk("w") for _ in range(50)), chunk(usage=51)]])
+    pair = FakeStreamPair(server, PAIR_ENERGY)
+    sent: list = []
+
+    async def emit(event, data):
+        sent.append(event)
+
+    done = asyncio.run(live_chat.run_chat("hi", "pair", emit=emit, qa=FakeQA(), pair=pair, clock=lambda: next(ticks)))
+    assert done["tokens"] == 51 and done["seconds"] == 12.11 and done["ttft_s"] == 0.6
+    assert done["decode_s"] == 11.51 and done["tok_s"] == round(51 / 11.51, 1)
+
+
+def test_without_a_first_chunk_decode_is_the_whole_answer():
+    import asyncio
+
+    ticks = iter([200.0] + [202.0] * 10)
+    server = FakeStreamServer([[chunk(usage=0)]])
+    done = asyncio.run(live_chat.run_chat("hi", "pair", emit=lambda e, d: asyncio.sleep(0), qa=FakeQA(),
+                                          pair=FakeStreamPair(server, None), clock=lambda: next(ticks)))
+    assert done["ttft_s"] is None and done["decode_s"] == 2.0 and done["tok_s"] is None
