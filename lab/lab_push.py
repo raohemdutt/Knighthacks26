@@ -4,11 +4,13 @@
     python -m lab lab-push --box http://<box>:8000 --run-dir runs/<run_id>
     python -m lab lab-push --box http://<box>:8000 --eval lab/state/eval-gate/<run_id>/scores.json --run-id <run_id>
     python -m lab lab-push --box http://<box>:8000 --account D --manifest data/packages/<version>/manifest.json --run-id <run_id>
+    python -m lab lab-push --box http://<box>:8000 --ledger lab/state/ledger.jsonl
 
 lab/train.py writes one telemetry.train.step line per optimizer step to <out>/telemetry.jsonl and run.json when it
 ends; nothing sends them anywhere. The box's Learning lab screen shows a run from POST /api/learning/lab/import
 (contexts/learning/lab_import.py): the steps file as it is, the gate's scores.json with kind=eval, a package's
-manifest.json with kind=manifest and the run's id. This verb is the relay between the two.
+manifest.json with kind=manifest and the run's id, and the lab's ledger with kind=ledger (the Experiments tab reads
+the copy the box keeps). This verb is the relay between the two.
 
 Where the files are read. With --account the paths are on that account's pod, relative to its Jupyter root (the home
 folder on the SJC pods), and each is read with one GET of /files/<path> through lab.proxy.PodLink, the same route
@@ -22,8 +24,10 @@ last whole line (a line the trainer is still writing would refuse the whole file
 from --run-id or else from the lines themselves. Posting the same lines again adds nothing on the box, which knows a
 step by its run and number, so a file that has grown adds only its new steps. --eval and --manifest are posted after
 the steps, each once, as they are. A manifest does not name its run, so it needs a run id from --run-id or from the
-steps posted in the same call. run.json is read only to learn that the run has ended (and kept by --save); the box has
-no import for it.
+steps posted in the same call. --ledger is the lab's ledger.jsonl, posted last and whole (cut back to its last whole
+line, as the steps are): the box checks every row, keeps the file in place of the copy it had, and answers with the
+rows, experiments and verdicts it now holds; a box older than that import answers 400 and names the kinds it knows.
+run.json is read only to learn that the run has ended (and kept by --save); the box has no import for it.
 
 --follow keeps doing that for a run that is still training: every --every seconds (60) it looks for run.json, then
 reads and posts the steps, and it stops after the first post that follows run.json, which holds the whole file. It
@@ -86,7 +90,9 @@ MIN_HIDDEN_CHARS = 4
 # Box answers that waiting will not change, and what each is called.
 FINAL_ANSWERS = {400: "box_refused_file", 401: "box_wants_token", 403: "box_wants_token", 404: "route_missing",
                  405: "route_missing", 413: "too_large"}
-CONTENT_TYPES = {"telemetry": "application/x-ndjson", "eval": "application/json", "manifest": "application/json"}
+CONTENT_TYPES = {"telemetry": "application/x-ndjson", "eval": "application/json", "manifest": "application/json",
+                 "ledger": "application/x-ndjson"}
+LINE_KINDS = ("ledger",)              # JSON-lines files that may be read while a line is being appended
 
 
 # --- the files ---------------------------------------------------------------------------------------
@@ -208,8 +214,11 @@ class BoxAnswer:
         return {"status": self.status, "answer": self.answer}
 
     def brief(self) -> str:
-        if self.ok and isinstance(self.answer, Mapping):
+        if self.ok and isinstance(self.answer, Mapping) and "published" in self.answer:
             return f"box 200, {self.answer.get('published')} new, {self.answer.get('already_there')} already there"
+        if self.ok and isinstance(self.answer, Mapping) and "rows" in self.answer:
+            return (f"box 200, {self.answer.get('rows')} rows, {self.answer.get('experiments')} experiments, "
+                    f"{'replaced the copy there' if self.answer.get('changed') else 'the same copy was already there'}")
         return f"box {self.status or 'did not answer'}: {_clip(json.dumps(self.answer), 200)}"
 
 
@@ -323,16 +332,21 @@ class Relay:
         return {"bytes": len(body), "lines": lines, "box": self.box.post("telemetry", body, self.run_id)}
 
     def one_file(self, kind: str, path: str) -> dict[str, Any]:
-        """Read a scores.json or a manifest.json and post it as it is."""
+        """Read a scores.json, a manifest.json or a ledger and post it as it is (a ledger up to its last whole line). The
+        run id rides with the first two; a ledger belongs to no run."""
         data = self.source.read(path)
         if data is None:
             return {"state": "absent"}
         self.keep(path, data)
+        if kind in LINE_KINDS:
+            data = complete_lines(data)
+            if not data.strip():
+                return {"state": "empty"}
         if len(data) > BOX_MAX_BYTES:
             return {"state": "too_large", "bytes": len(data)}
         if kind == "manifest" and not self.run_id:
             return {"state": "no_run_id", "bytes": len(data)}
-        return {"bytes": len(data), "box": self.box.post(kind, data, self.run_id)}
+        return {"bytes": len(data), "box": self.box.post(kind, data, None if kind in LINE_KINDS else self.run_id)}
 
 
 def _shown(part: Mapping[str, Any]) -> dict[str, Any]:
@@ -438,6 +452,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--run-dir", default=None, help=f"the trainer's --out folder: its {TELEMETRY_FILE} is posted")
     parser.add_argument("--eval", default=None, help="a gate's scores.json, posted with kind=eval")
     parser.add_argument("--manifest", default=None, help="a package's manifest.json, posted with kind=manifest (needs a run id)")
+    parser.add_argument("--ledger", default=None, help="the lab's ledger.jsonl, posted whole with kind=ledger")
     parser.add_argument("--run-id", default=None, help="the run the files belong to (default: the one the steps name)")
     parser.add_argument("--follow", action="store_true", help=f"keep posting the steps until {RUN_FILE} appears")
     parser.add_argument("--every", type=_seconds, default=DEFAULT_EVERY_S, help="seconds between rounds of --follow (60)")
@@ -446,6 +461,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dry-run", action="store_true", help="name every read and post; send nothing")
     parser.add_argument("--quiet", action="store_true", help="no progress lines on stderr")
     return parser
+
+
+def _single_files(args: argparse.Namespace) -> list[tuple[str, str]]:
+    """The files posted once each after the steps, in order: (kind, path)."""
+    return [(kind, path) for kind, path in (("eval", args.eval), ("manifest", args.manifest), ("ledger", args.ledger)) if path]
 
 
 def _plan(args: argparse.Namespace, source: Source, box: Box, run_id: str | None) -> dict[str, Any]:
@@ -470,13 +490,12 @@ def _plan(args: argparse.Namespace, source: Source, box: Box, run_id: str | None
                 else:
                     local[name] = {"bytes": len(data)}
         posts.append(f"POST {box.address('telemetry', run_id)}")
-    for kind, path in (("eval", args.eval), ("manifest", args.manifest)):
-        if path:
-            reads.append(source.where(path))
-            if is_local:
-                data = source.read(path)
-                local[Path(path).name] = None if data is None else {"bytes": len(data)}
-            posts.append(f"POST {box.address(kind, run_id)}")
+    for kind, path in _single_files(args):
+        reads.append(source.where(path))
+        if is_local:
+            data = source.read(path)
+            local[Path(path).name] = None if data is None else {"bytes": len(data)}
+        posts.append(f"POST {box.address(kind, None if kind in LINE_KINDS else run_id)}")
     plan: dict[str, Any] = {"ok": True, "outcome": "dry_run", "box": box.url, "source": source.label, "run_id": run_id,
                             "would_read": reads, "would_post": posts, "token": "sent" if box.sends_token else "none"}
     if is_local:
@@ -484,8 +503,9 @@ def _plan(args: argparse.Namespace, source: Source, box: Box, run_id: str | None
     if args.follow:
         plan["follow"] = {"every_s": args.every, "max_minutes": args.max_minutes,
                           "until": f"{RUN_FILE} appears in the run folder"}
-    if args.manifest and not run_id:
-        plan["note"] = "a manifest needs a run id: --run-id, or steps of one run posted in the same call"
+    if run_id is None and (args.run_dir or args.eval or args.manifest):
+        plan["note"] = ("no run id is known before the steps are read: it is taken from them then; "
+                        "a manifest posted without steps needs --run-id")
     return plan
 
 
@@ -493,11 +513,11 @@ def main(argv: Sequence[str] | None = None, *, environ: Mapping[str, str] | None
          env_files: Sequence[Path] | None = None, transport: httpx.BaseTransport | None = None,
          box_transport: httpx.BaseTransport | None = None, sleep: Callable[[float], None] = time.sleep,
          clock: Callable[[], float] = time.monotonic, stderr: TextIO | None = None) -> dict[str, Any]:
-    """Post a training run's steps, a gate's scores and a package's manifest to the box's Learning lab, from a pod or a folder."""
+    """Post a training run's steps, a gate's scores, a package's manifest and the lab's ledger to the box's Learning lab."""
     parser = build_parser()
     args = parser.parse_args(list(sys.argv[1:] if argv is None else argv))
-    if not (args.run_dir or args.eval or args.manifest):
-        parser.error("nothing to push: give --run-dir, --eval or --manifest")
+    if not (args.run_dir or args.eval or args.manifest or args.ledger):
+        parser.error("nothing to push: give --run-dir, --eval, --manifest or --ledger")
     if args.follow and not args.run_dir:
         parser.error("--follow needs --run-dir")
     environ = os.environ if environ is None else environ
@@ -515,7 +535,7 @@ def main(argv: Sequence[str] | None = None, *, environ: Mapping[str, str] | None
     try:
         if args.account:
             try:
-                for path in (args.run_dir, args.eval, args.manifest):
+                for path in (args.run_dir, args.eval, args.manifest, args.ledger):
                     if path:
                         clean_remote(path)
             except UnsafePath as exc:
@@ -547,9 +567,9 @@ def _push(args: argparse.Namespace, relay: Relay, *, sleep: Callable[[float], No
                              sleep=sleep, clock=clock, say=say)
         outcome = steps.pop("outcome")
         result.update(steps, telemetry=_shown(steps["telemetry"]))
-    for kind, path in (("eval", args.eval), ("manifest", args.manifest)):
-        if not path or outcome is not None:
-            continue
+    for kind, path in _single_files(args):
+        if outcome is not None:
+            break
         try:
             part = relay.one_file(kind, path)
         except ProxyError as exc:
@@ -563,7 +583,7 @@ def _push(args: argparse.Namespace, relay: Relay, *, sleep: Callable[[float], No
         result[kind] = _shown(part)
         box: BoxAnswer | None = part.get("box")
         say(f"{kind}: " + (box.brief() if box is not None else str(part.get("state"))))
-        outcome = "missing_file" if part.get("state") == "absent" else _verdict(part, one_shot=True)
+        outcome = {"absent": "missing_file", "empty": "empty_file"}.get(part.get("state")) or _verdict(part, one_shot=True)
     result["run_id"] = relay.run_id
     if relay.save_dir is not None:
         result["saved"] = dict(sorted(relay.saved.items()))

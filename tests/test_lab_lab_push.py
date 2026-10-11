@@ -4,12 +4,13 @@ Every test runs the real verb. The pod is lab.proxy_fake.FakePodProxy (the lab's
 Jupyter server, on lab.hub_fake.FakeClock, so a minute of waiting takes no time), and the box is FakeBox below: a real
 HTTP server on this machine that answers the import route with the box's own parsing and dedupe
 (contexts/learning/lab_import.py), the gateway's token rule and its size cap. The step lines are written by the trainer's
-own StepLog. Nothing here reaches a live pod or the live box."""
+own StepLog and the ledger by the lab's own experiments verb. Nothing here reaches a live pod or the live box."""
 from __future__ import annotations
 
 import asyncio
 import io
 import json
+import tempfile
 import threading
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -23,7 +24,8 @@ from contexts.learning import lab_import
 from contracts.learning import ModelManifest, RunEvaluated
 from contracts.telemetry import TrainStep
 from lab import lab_push, train
-from lab.hub_fake import FakeClock
+from lab.hub_fake import FakeClock, FakeHub
+from lab.machine import experiments
 from lab.proxy_fake import FakePodProxy
 
 HUB_TOKEN = "0123456789abcdef0123456789abcdef"
@@ -80,10 +82,13 @@ def manifest_json() -> bytes:
 
 class FakeBox:
     """The box's import route on a real socket. token: the gateway's ATLAS_TOKEN (None: writes are open). route=False:
-    a box that was not redeployed and has no such route. fail_next: statuses answered before anything else."""
+    a box that was not redeployed and has no such route; ledger=False: one whose import is older than kind=ledger.
+    fail_next: statuses answered before anything else. data_dir is where the box keeps a pushed ledger."""
 
-    def __init__(self, token: str | None = None, route: bool = True) -> None:
-        self.token, self.route = token, route
+    def __init__(self, token: str | None = None, route: bool = True, ledger: bool = True) -> None:
+        self.token, self.route, self.ledger = token, route, ledger
+        self._data = tempfile.TemporaryDirectory()
+        self.data_dir = Path(self._data.name)
         self.seen: set[tuple] = set()
         self.events: list = []
         self.posts: list[dict] = []
@@ -130,6 +135,10 @@ class FakeBox:
             return 413, {"detail": f"the file is over {lab_import.MAX_BYTES} bytes"}
         kind = query.get("kind", "telemetry")
         try:
+            if kind == lab_import.LEDGER and self.ledger:
+                return 200, lab_import.store_ledger(body, self.data_dir)
+            if kind == lab_import.LEDGER:
+                raise lab_import.ImportRefused([f"kind must be one of {list(lab_import.KINDS)}"])   # the answer before that kind
             events = lab_import.events_of(kind, body.decode("utf-8"), query.get("run_id"))
         except lab_import.ImportRefused as err:
             return 400, {"detail": {"refused": err.problems[:50], "problems": len(err.problems)}}
@@ -145,10 +154,15 @@ class FakeBox:
     def types(self) -> list[str]:
         return [e.type for e in self.events if not isinstance(e, TrainStep)]
 
+    def kept_ledger(self) -> bytes | None:
+        path = self.data_dir / "lab_state" / "ledger.jsonl"
+        return path.read_bytes() if path.is_file() else None
+
     def close(self) -> None:
         self.server.shutdown()
         self.server.server_close()
         self.thread.join(5)
+        self._data.cleanup()
 
 
 @pytest.fixture
@@ -428,6 +442,82 @@ def test_a_manifest_needs_a_run_id_and_a_missing_file_is_named(tmp_path, box):
     assert named["ok"] is True and box.types() == ["learning.package.built"] and box.events[0].run_id == RUN
     absent, _ = push(["--eval", str(tmp_path / "no-such-scores.json"), "--run-id", RUN], box=box)
     assert absent["ok"] is False and absent["outcome"] == "missing_file" and absent["eval"] == {"state": "absent"}
+
+
+# --- the lab's ledger ---------------------------------------------------------------------------------------
+
+def seeded_ledger(tmp_path: Path) -> Path:
+    """A ledger.jsonl written by the lab's own experiments verb: one `experiment add` row per seeded experiment."""
+    state = tmp_path / "state"
+    added = experiments.seed(state_dir=state)["added"]
+    assert added and (state / "ledger.jsonl").read_bytes().count(b"\n") == len(added)
+    return state / "ledger.jsonl"
+
+
+def test_the_ledger_is_posted_whole_and_the_box_keeps_it(tmp_path, box):
+    ledger = seeded_ledger(tmp_path)
+    rows = ledger.read_bytes().count(b"\n")
+    first, said = push(["--ledger", str(ledger)], box=box)
+    assert first["ok"] is True and first["outcome"] == "pushed" and first["run_id"] is None
+    assert [(p["query"], p["body"]) for p in box.posts] == [({"kind": "ledger"}, ledger.read_bytes())]
+    answer = first["ledger"]["box"]["answer"]
+    assert first["ledger"]["box"]["status"] == 200 and first["ledger"]["bytes"] == len(ledger.read_bytes())
+    assert (answer["kind"], answer["changed"], answer["rows"], answer["experiments"]) == ("ledger", True, rows, rows)
+    assert box.kept_ledger() == ledger.read_bytes()
+    assert f"{rows} rows" in said and "replaced the copy there" in said
+    again, _ = push(["--ledger", str(ledger)], box=box)
+    assert again["ok"] is True and again["ledger"]["box"]["answer"]["changed"] is False
+
+
+def test_a_ledger_row_still_being_appended_is_left_out_and_a_run_id_never_rides_with_a_ledger(tmp_path, box):
+    ledger = seeded_ledger(tmp_path)
+    whole = ledger.read_bytes()
+    ledger.write_bytes(whole + b'{"seq": 99, "verb": "experiment ad')
+    result, _ = push(["--ledger", str(ledger), "--run-id", RUN], box=box)
+    assert result["ok"] is True and box.posts[0]["query"] == {"kind": "ledger"} and box.kept_ledger() == whole
+
+
+def test_a_box_older_than_the_ledger_import_says_which_kinds_it_knows(tmp_path):
+    ledger, old = seeded_ledger(tmp_path), FakeBox(ledger=False)
+    try:
+        result, _ = push(["--ledger", str(ledger)], box=old)
+        assert result["ok"] is False and result["outcome"] == "box_refused_file"
+        assert result["ledger"]["box"] == {"status": 400, "answer": {"detail": {"problems": 1, "refused": [
+            "kind must be one of ['telemetry', 'eval', 'manifest']"]}}}
+        assert old.kept_ledger() is None
+    finally:
+        old.close()
+
+
+def test_an_empty_ledger_is_not_posted(tmp_path, box):
+    (tmp_path / "ledger.jsonl").write_bytes(b"")
+    result, _ = push(["--ledger", str(tmp_path / "ledger.jsonl")], box=box)
+    assert result["ok"] is False and result["outcome"] == "empty_file" and box.posts == []
+
+
+# --- the same verb against the lab's fake hub ---------------------------------------------------------------
+
+def test_the_run_is_read_through_the_fake_hub_with_gets_only(tmp_path, box):
+    clock = FakeClock()
+    hub = FakeHub(clock)
+    hub.add_account("D", user=USER, token=HUB_TOKEN)
+    hub.start_server("D")
+    lines = step_lines(tmp_path, 6)
+    hub.files[("D", f"{RUN_DIR}/telemetry.jsonl")] = b"".join(lines[:4]).decode()
+
+    def finish() -> None:
+        hub.files[("D", f"{RUN_DIR}/telemetry.jsonl")] = b"".join(lines).decode()
+        hub.files[("D", f"{RUN_DIR}/run.json")] = RUN_JSON.decode()
+
+    clock.call_later(90, finish)
+    result = lab_push.main(["--box", box.url, "--account", "D", "--run-dir", RUN_DIR, "--follow", "--every", "60"],
+                           environ=dict(ENV), env_files=[], transport=hub.transport, sleep=clock.sleep,
+                           clock=clock.time, stderr=io.StringIO())
+    assert result["ok"] is True and result["outcome"] == "pushed" and result["rounds"] == 3 and result["finished"] is True
+    assert box.steps() == [1, 2, 3, 4, 5, 6] and [len(p["body"].splitlines()) for p in box.posts] == [4, 4, 6]
+    pod_calls = hub.calls_matching(contains=f"/user/{USER}/")
+    assert len(pod_calls) == 6 and all(c.method == "GET" and "/files/" in c.path for c in pod_calls)
+    assert hub.running("D") is True
 
 
 # --- the dry run and the command line ---------------------------------------------------------------------
