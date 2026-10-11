@@ -40,6 +40,7 @@ from lab.machine import stop
 # One line per verb, alphabetical: "verb": "module:function".
 VERBS: dict[str, str] = {
     "alerts": "lab.machine.alerts:main",
+    "attribution-check": "lab.attribution_check:main",
     "bench": "lab.bench:main",
     "chipsheet": "lab.kernels.chipsheet.ingest:main",
     "correctness": "lab.correctness:main",
