@@ -325,3 +325,127 @@ def test_lds_check_refuses_a_missing_cache(tmp_path: Path) -> None:
     run = subprocess.run([sys.executable, str(GPU / "lds_check.py"), "--arm", "stages",
                           "--triton-cache", str(tmp_path / "nope")], capture_output=True, text=True)
     assert run.returncode == 2
+
+
+# --- part 4: the token-for-token match check --------------------------------------------------------------------
+
+MATCH = FIX / "match"
+
+
+def match_compare(*files: str, tmp: Path) -> tuple[subprocess.CompletedProcess, dict | None]:
+    out = tmp / "match.json"
+    stock1, stock2, changed = (str(MATCH / f) for f in files)
+    run = subprocess.run([sys.executable, str(GPU / "match_check.py"), "compare", "--stock", stock1, "--stock", stock2,
+                          "--changed", changed, "--out", str(out)], capture_output=True, text=True)
+    return run, (json.loads(out.read_text()) if out.exists() else None)
+
+
+def test_match_parses_a_chat_completion_with_token_ids_and_logprobs() -> None:
+    from gpu import match_check
+    resp = json.loads((MATCH / "chat_response_synthetic.json").read_text())
+    got = match_check.parse_choice(resp)
+    assert got["token_ids"] == [785, 9487]
+    assert got["logprobs"] == [-0.0123, -0.2]
+    assert got["top_logprobs"][0] == {"785": -0.0123, "1986": -4.51}
+
+
+def test_match_compares_two_runs_token_for_token() -> None:
+    from gpu import match_check
+    a = json.loads((MATCH / "stock_spawn1_synthetic.json").read_text())
+    b = json.loads((MATCH / "stock_spawn2_synthetic.json").read_text())
+    pair = match_check.compare_pair(a, b)
+    assert pair["prompts"] == 4 and pair["matched"] == 3 and pair["match_rate"] == 0.75
+    [miss] = pair["mismatches"]
+    assert miss["prompt_id"] == "image-shapes" and miss["first_divergence"] == 5
+    assert miss["reference_token"] == a["outputs"][3]["token_ids"][5]
+    assert miss["other_token"] == 27
+    # spawn 1 had the other build's token as its runner-up, 0.03 below its own pick
+    assert miss["logprob_gap"] == pytest.approx(0.03) and miss["logprob_gap_kind"] == "reference_margin"
+
+
+def test_match_passes_when_the_changed_build_matches_as_often_as_stock_matches_itself(tmp_path: Path) -> None:
+    run, rep = match_compare("stock_spawn1_synthetic.json", "stock_spawn2_synthetic.json",
+                             "changed_pass_synthetic.json", tmp=tmp_path)
+    assert run.returncode == 0, run.stdout + run.stderr
+    assert rep["stock_self"]["match_rate"] == 0.75
+    assert rep["changed_vs_stock"]["match_rate"] == 0.75 and rep["pass"] is True
+
+
+def test_match_fails_below_stocks_own_rate_and_records_each_divergence(tmp_path: Path) -> None:
+    run, rep = match_compare("stock_spawn1_synthetic.json", "stock_spawn2_synthetic.json",
+                             "changed_fail_synthetic.json", tmp=tmp_path)
+    assert run.returncode == 1, run.stdout + run.stderr
+    assert rep["pass"] is False and rep["changed_vs_stock"]["match_rate"] == 0.5
+    misses = {m["prompt_id"]: m for m in rep["changed_vs_stock"]["mismatches"]}
+    assert misses["image-bars"]["first_divergence"] == 2 and misses["image-bars"]["other_token"] == 9999
+    # 9999 is not in stock's top list, so the gap falls back to the two builds' own logprobs at that position
+    assert misses["image-bars"]["logprob_gap_kind"] == "chosen_logprob_diff"
+    assert isinstance(misses["image-bars"]["logprob_gap"], float)
+
+
+def test_match_refuses_runs_that_are_not_greedy_batch_1_eager(tmp_path: Path) -> None:
+    run, rep = match_compare("stock_spawn1_synthetic.json", "stock_spawn2_synthetic.json",
+                             "changed_not_eager_synthetic.json", tmp=tmp_path)
+    assert run.returncode == 2 and "enforce_eager" in run.stdout and rep is None
+
+
+def test_match_refuses_the_same_stock_spawn_twice(tmp_path: Path) -> None:
+    run, _ = match_compare("stock_spawn1_synthetic.json", "stock_spawn1_synthetic.json",
+                           "changed_pass_synthetic.json", tmp=tmp_path)
+    assert run.returncode == 2 and "two cold spawns" in run.stdout
+
+
+FAKE_SERVER = r'''
+import json, sys, http.server
+resp = json.load(open(sys.argv[1]))
+seen = open(sys.argv[2], "a")
+class H(http.server.BaseHTTPRequestHandler):
+    def do_POST(self):
+        body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        seen.write(json.dumps(body) + "\n"); seen.flush()
+        data = json.dumps(resp).encode()
+        self.send_response(200); self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+    def log_message(self, *a):
+        pass
+srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+open(sys.argv[3], "w").write(str(srv.server_port))
+srv.serve_forever()
+'''
+
+
+@pytest.mark.parametrize("eager", [True, False])
+def test_match_collect_sends_greedy_batch_1_requests_and_checks_eager(tmp_path: Path, eager: bool) -> None:
+    import time
+    script = tmp_path / "fake_server.py"
+    script.write_text(FAKE_SERVER)
+    seen, port_file, out = tmp_path / "seen.jsonl", tmp_path / "port", tmp_path / "stock-1.json"
+    argv = [sys.executable, str(script), str(MATCH / "chat_response_synthetic.json"), str(seen), str(port_file)]
+    proc = subprocess.Popen(argv + (["--enforce-eager"] if eager else []))
+    try:
+        for _ in range(100):
+            if port_file.exists() and port_file.read_text():
+                break
+            time.sleep(0.05)
+        run = subprocess.run([sys.executable, str(GPU / "match_check.py"), "collect",
+                              "--url", f"http://127.0.0.1:{port_file.read_text()}", "--pid", str(proc.pid),
+                              "--build", "stock", "--spawn", "stock-1", "--max-tokens", "2", "--out", str(out)],
+                             capture_output=True, text=True, timeout=60)
+    finally:
+        proc.kill()
+        proc.wait()
+    if not eager:
+        assert run.returncode == 2 and "--enforce-eager" in run.stdout and not out.exists()
+        return
+    assert run.returncode == 0, run.stdout + run.stderr
+    bodies = [json.loads(line) for line in seen.read_text().splitlines()]
+    prompts = json.loads((REPO / "fixtures/lab/bench/prompts.json").read_text())["prompts"]
+    assert len(bodies) == len(prompts)
+    for b in bodies:
+        assert b["temperature"] == 0.0 and b["top_p"] == 1.0 and b["seed"] == 0 and b["ignore_eos"] is True
+        assert b["logprobs"] is True and b["return_tokens_as_token_ids"] is True and b["stream"] is False
+        assert b["max_tokens"] == 2 and b["chat_template_kwargs"] == {"enable_thinking": False}
+        assert "[run " not in json.dumps(b["messages"])          # no nonce: every spawn sees the same prompt
+    doc = json.loads(out.read_text())
+    assert doc["enforce_eager"] is True and doc["batch"] == 1 and "--enforce-eager" in doc["server_argv"]
+    assert doc["outputs"][0]["token_ids"] == [785, 9487]

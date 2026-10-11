@@ -1,0 +1,83 @@
+{
+ "id": "chatcmpl-0",
+ "object": "chat.completion",
+ "created": 1791710000,
+ "model": "teacher",
+ "choices": [
+  {
+   "index": 0,
+   "message": {
+    "role": "assistant",
+    "content": "The chart"
+   },
+   "logprobs": {
+    "content": [
+     {
+      "token": "token_id:785",
+      "logprob": -0.0123,
+      "bytes": [
+       84,
+       104,
+       101
+      ],
+      "top_logprobs": [
+       {
+        "token": "token_id:785",
+        "logprob": -0.0123,
+        "bytes": [
+         84,
+         104,
+         101
+        ]
+       },
+       {
+        "token": "token_id:1986",
+        "logprob": -4.51,
+        "bytes": [
+         84,
+         104,
+         105,
+         115
+        ]
+       }
+      ]
+     },
+     {
+      "token": "token_id:9487",
+      "logprob": -0.2,
+      "bytes": [
+       32,
+       99,
+       104,
+       97,
+       114,
+       116
+      ],
+      "top_logprobs": [
+       {
+        "token": "token_id:9487",
+        "logprob": -0.2,
+        "bytes": [
+         32
+        ]
+       },
+       {
+        "token": "token_id:4933",
+        "logprob": -1.9,
+        "bytes": [
+         32
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "finish_reason": "length"
+  }
+ ],
+ "usage": {
+  "prompt_tokens": 412,
+  "completion_tokens": 2,
+  "total_tokens": 414
+ }
+}
