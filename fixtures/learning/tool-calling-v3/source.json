@@ -1,0 +1,200 @@
+{
+  "dataset_id": "tool-calling-v3",
+  "from": "the Atlas box (Jetson Orin Nano), data/events and data/memory.sqlite",
+  "events_sha256": "2758a056e65d16eac5c7963c5a14d0f930a4a5cdb483bc796d89f029d14ba08d",
+  "snapshot_sha256": "cc1ed2a561d68bc0a5b9540ac5c1d8a494a3cb8cd595c83c4ee8080599985aae",
+  "replayed_events": 85669,
+  "replayed_types": {
+    "perception.observation.recorded": 44990,
+    "perception.zone.event": 35844,
+    "perception.scene.described": 4685,
+    "memory.episode.closed": 94,
+    "agent.note.written": 56
+  },
+  "injected_dropped": {
+    "perception.observation.recorded": 124,
+    "perception.zone.event": 60,
+    "perception.scene.described": 4,
+    "memory.episode.closed": 2
+  },
+  "replay_matches_box_memory": {
+    "same": {
+      "episodes": true,
+      "tracks": true,
+      "notes": true,
+      "sightings": true
+    },
+    "episodes": 97,
+    "box_episodes": 97,
+    "sightings": 2259,
+    "box_sightings": 2259,
+    "tracks": 45,
+    "notes": 56
+  },
+  "span": {
+    "episodes": 95,
+    "first_time": "2026-10-10T11:42:41.073000+00:00",
+    "last_time": "2026-10-11T09:06:58.675454+00:00",
+    "parts": {
+      "train": [
+        "2026-10-10T11:42:41.073000+00:00",
+        "2026-10-11T05:09:18.219612+00:00"
+      ],
+      "validation": [
+        "2026-10-11T05:09:18.219612+00:00",
+        "2026-10-11T07:01:51.404547+00:00"
+      ],
+      "held_out": [
+        "2026-10-11T07:01:51.404547+00:00",
+        "2026-10-11T09:06:58.675455+00:00"
+      ]
+    }
+  },
+  "objects": {
+    "backpack": [
+      "held_out",
+      "2026-10-11T01:00:24.574372+00:00"
+    ],
+    "book": [
+      "train",
+      "2026-10-11T00:10:11.807520+00:00"
+    ],
+    "bottle": [
+      "train",
+      "2026-10-10T21:45:57.395000+00:00"
+    ],
+    "bowl": [
+      "train",
+      "2026-10-11T00:08:32.016408+00:00"
+    ],
+    "can": [
+      "validation",
+      "2026-10-10T21:45:57.395000+00:00"
+    ],
+    "cell phone": [
+      "train",
+      "2026-10-10T17:39:06.334590+00:00"
+    ],
+    "charger": [
+      "train",
+      "2026-10-10T16:52:03.203000+00:00"
+    ],
+    "cup": [
+      "held_out",
+      "2026-10-10T18:37:10.055680+00:00"
+    ],
+    "keyboard": [
+      "train",
+      "2026-10-10T21:50:11.361303+00:00"
+    ],
+    "keys": [
+      "held_out",
+      "2026-10-10T17:04:57.166000+00:00"
+    ],
+    "laptop": [
+      "train",
+      "2026-10-10T18:10:20.379109+00:00"
+    ],
+    "mouse": [
+      "train",
+      "2026-10-10T21:49:23.042014+00:00"
+    ],
+    "phone": [
+      "train",
+      "2026-10-10T11:42:41.073000+00:00"
+    ],
+    "potted plant": [
+      "train",
+      "2026-10-10T21:48:58.914077+00:00"
+    ],
+    "remote": [
+      "train",
+      "2026-10-10T21:49:24.090574+00:00"
+    ],
+    "suitcase": [
+      "held_out",
+      "2026-10-10T23:38:29.376774+00:00"
+    ],
+    "tie": [
+      "train",
+      "2026-10-10T18:24:10.541717+00:00"
+    ],
+    "toothbrush": [
+      "validation",
+      "2026-10-10T22:02:17.540153+00:00"
+    ],
+    "umbrella": [
+      "validation",
+      "2026-10-10T23:52:54.381353+00:00"
+    ],
+    "vase": [
+      "train",
+      "2026-10-10T23:21:26.740917+00:00"
+    ]
+  },
+  "scenes": {
+    "train": 67,
+    "validation": 12,
+    "held_out": 16
+  },
+  "labels": "reference: lab/fixture_dataset.py reference_trace() against the replayed memory at each clock",
+  "teacher_labeled": 55,
+  "teacher_ids": [
+    "t-5caef38879",
+    "t-e6037e7296",
+    "t-2c4941141e",
+    "t-cba9cb363f",
+    "t-c3722fd950",
+    "t-49c3540314",
+    "t-f2284a9ff5",
+    "t-114680cbd8",
+    "t-70bbf5b556",
+    "t-81e5d00eb1",
+    "t-60762ac0f9",
+    "t-4753619bd9",
+    "t-725fcfc446",
+    "t-b3ca380b3c",
+    "t-1d674e790f",
+    "t-2617b4ee44",
+    "t-50a1b9fa96",
+    "t-c34078ca3c",
+    "t-0c481435b2",
+    "t-8582fb6f4d",
+    "t-976ce9bd1d",
+    "t-a8a127234a",
+    "t-0282ff3dcc",
+    "t-9ba3695861",
+    "t-0ca34f05a8",
+    "t-c2999a2e44",
+    "t-1a807415ef",
+    "t-62b69b9e07",
+    "t-8cd02e925e",
+    "t-b3b0d2d1bb",
+    "t-48f39c0431",
+    "t-1171b2f626",
+    "t-a5c7879f8d",
+    "t-c5d11b883b",
+    "t-a6fbd60f36",
+    "t-a4f7b2aff4",
+    "t-3ae062b4e1",
+    "t-8bf40bd177",
+    "t-4cfc3ace18",
+    "t-6b5c90fe22",
+    "t-2aefbcdcb6",
+    "t-1e117048f1",
+    "t-bd338deb63",
+    "t-7cc3d8119d",
+    "t-810b27032a",
+    "t-6a99c54ae1",
+    "t-056016f872",
+    "t-220f9383a0",
+    "t-33a007b556",
+    "t-3c0a42a62d",
+    "t-38d6a32d03",
+    "t-6d1bbbbef2",
+    "t-06bb1f6e5f",
+    "t-81a6ae3326",
+    "t-3be585e277"
+  ],
+  "teacher": "pod C, model name teacher, by lab/fixture_dataset_v3_teacher.py"
+}
