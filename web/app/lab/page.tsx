@@ -12,7 +12,7 @@ import { Empty, ErrorBox, Loading } from "@/components/States";
 import ui from "@/components/ui.module.css";
 import { api } from "@/lib/api";
 import { useAtlasEvents } from "@/lib/atlas";
-import { STATUS_LABEL, clamp01, clock } from "@/lib/lab";
+import { STATUS_LABEL, clamp01, clock, isLive } from "@/lib/lab";
 import { LAB_TABS, type LabTab } from "@/lib/labBench";
 import { useFetch } from "@/lib/useFetch";
 
@@ -37,6 +37,8 @@ import { useFetch } from "@/lib/useFetch";
  *   /lab/?tab=speed&batch=16&ttft=1         see components/lab/SpeedEnergy.tsx
  *   /lab/?tab=routing&preset=burst&t=0.5    see components/lab/Routing.tsx
  */
+const LIVE_POLL_MS = 3000;
+
 export default function LabPage() {
   const [params, setParams] = useState<{ sample: boolean; run: string | null; t: number | null; reduce: boolean; q: URLSearchParams } | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
@@ -61,14 +63,15 @@ export default function LabPage() {
     reloadList();
     reloadStory();
   });
-  // A run read from the trainer's own files sends no event: while one is training, look again every few seconds.
-  const watching = tab === "run" && !!list.data && !list.data.sample && (runs.length === 0 || story.data?.status === "training");
+  // A run read from the trainer's own files sends no event: while one is still going (training, or cleared by the
+  // gate with packaging and the swap to come), look again every 3 s so its rows and stages arrive without a reload.
+  const watching = tab === "run" && !!list.data && !list.data.sample && (runs.length === 0 || (!!story.data && isLive(story.data)));
   useEffect(() => {
     if (!watching) return;
     const id = window.setInterval(() => {
       reloadList();
       reloadStory();
-    }, 5000);
+    }, LIVE_POLL_MS);
     return () => window.clearInterval(id);
   }, [watching, reloadList, reloadStory]);
 

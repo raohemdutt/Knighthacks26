@@ -124,6 +124,8 @@ export interface LabStory {
   task: { slug: string | null; instruction: string | null; instruction_reason: string | null };
   marks: Record<"start" | "run_start" | "taught" | "exported" | "training_start" | "training_end" | "evaluated" | "packaged" | "deployed" | "end", string | null>;
   wall_s: LabNum;
+  /** The run's learning.run.progress events in time order (labeling, training, eval, packaging, failed, ...). */
+  stages?: { stage: string; progress: number | null; ts: string; message: string | null; event_id: string }[];
   dataset: {
     dataset_id: string | null;
     examples: LabNum;
@@ -321,6 +323,55 @@ export const CHANGE_LABEL: Record<LabChange, string> = {
   still_right: "Still right",
   still_wrong: "Still wrong",
 };
+
+/* ---------- a run that is still going (L30) ---------- */
+
+/** Still moving: training, or cleared by the gate with packaging and the swap still to report. */
+export function isLive(story: Pick<LabStory, "sample" | "status">): boolean {
+  return !story.sample && (story.status === "training" || story.status === "gated");
+}
+
+export type StageKey = "taught" | "training" | "packaging" | "box";
+export type StageState = "done" | "now" | "waiting" | "failed";
+
+export const LIVE_STAGES: { key: StageKey; title: string }[] = [
+  { key: "taught", title: "Taught from" },
+  { key: "training", title: "Training" },
+  { key: "packaging", title: "Packaging" },
+  { key: "box", title: "On the box" },
+];
+
+/**
+ * Where each stage of a live run stands, from what the run has reported so far: its progress events, its marks and
+ * its training rows. A later stage reporting means the ones before it are done.
+ */
+export function stageStates(story: LabStory): Record<StageKey, StageState> {
+  const stages = story.stages ?? [];
+  const m = story.marks;
+  const has = (name: string, full = false) => stages.some((s) => s.stage === name && (!full || (s.progress ?? 0) >= 1));
+  const failed = story.status === "failed" || has("failed");
+  const box = !!m.deployed;
+  const packaged = box || !!m.packaged || has("packaging", true);
+  const packaging = packaged || has("packaging");
+  const trained = packaging || !!m.evaluated || has("eval") || has("training", true);
+  const training = trained || !!m.training_start || story.training.points.length > 0 || has("training");
+  const taught = training || !!m.taught || !!m.exported || has("labeling") || isNum(story.dataset.examples);
+  const state = (reported: boolean, finished: boolean): StageState => (finished ? "done" : reported ? "now" : "waiting");
+  return {
+    taught: state(taught, training || has("labeling", true)),
+    training: failed && !trained ? "failed" : state(training, trained),
+    packaging: state(packaging, packaged),
+    box: state(box, box),
+  };
+}
+
+/** Seconds from the run's first event to `now`. */
+export function elapsedSeconds(story: Pick<LabStory, "marks">, now: number): number | null {
+  const from = story.marks.run_start ?? story.marks.start;
+  if (!from) return null;
+  const t = Date.parse(from);
+  return Number.isNaN(t) ? null : Math.max(0, (now - t) / 1000);
+}
 
 export const STATUS_LABEL: Record<LabStatus, string> = {
   training: "Training",

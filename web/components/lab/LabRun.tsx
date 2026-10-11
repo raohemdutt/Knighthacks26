@@ -13,17 +13,22 @@ import {
   type LabMeasured,
   type LabNum,
   type LabStory,
+  LIVE_STAGES,
   PHONE_ASSUMPTION,
   PLAY_SECONDS,
   STATUS_LABEL,
+  type StageState,
   chapterAt,
   chipShort,
   clamp01,
   clock,
   duration,
+  elapsedSeconds,
   energyUpTo,
   fileSize,
+  isLive,
   isNum,
+  stageStates,
   pct,
   phoneCharges,
   show,
@@ -612,6 +617,38 @@ const HOW_TO: string[] = [
   "A number marked “Not in the log” was not recorded. Open Sources to see where every other number came from.",
 ];
 
+/* ---------- a run that is still going (L30) ---------- */
+
+const STAGE_WORD: Record<StageState, string> = { done: "done", now: "now", waiting: "waiting", failed: "failed" };
+
+/** The four stages of a live run, each lit as it reports. Shown only while the run is still going. */
+function LiveStages({ story }: { story: LabStory }) {
+  const states = stageStates(story);
+  return (
+    <ol className={lab.stages} aria-label="Where the run is">
+      {LIVE_STAGES.map((s) => (
+        <li key={s.key} className={`${lab.stage} ${lab[`stage_${states[s.key]}`]}`}>
+          <span className={lab.stageDot} aria-hidden="true" />
+          {s.title}
+          <span className={lab.srOnly}>: {STAGE_WORD[states[s.key]]}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** "Running · 1 min 12 s", counting up once a second on its own so the rest of the page does not redraw with it. */
+function Running({ story }: { story: LabStory }) {
+  const [now, setNow] = useState<number | null>(null); // null until mounted, so the static page and the client agree
+  useEffect(() => {
+    setNow(Date.now());
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  const elapsed = now === null ? null : elapsedSeconds(story, now);
+  return <>Running{elapsed !== null ? ` · ${duration(elapsed)}` : ""}</>;
+}
+
 /* ---------- the run ---------- */
 
 export function LabRun({ story, initial, forceReduced, picker }: { story: LabStory; initial: number | null; forceReduced: boolean; picker?: React.ReactNode }) {
@@ -690,8 +727,11 @@ export function LabRun({ story, initial, forceReduced, picker }: { story: LabSto
       <div className={ui.pageHead}>
         <div className={lab.headTop}>
           <h1>What Atlas learned</h1>
-          <span className={`${lab.status} ${good ? lab.statusGood : bad ? lab.statusBad : ""} ${running ? lab.statusLive : ""}`}>{STATUS_LABEL[story.status]}</span>
+          <span className={`${lab.status} ${good ? lab.statusGood : bad ? lab.statusBad : ""} ${running ? lab.statusLive : ""}`}>
+            {running && !story.sample ? <Running story={story} /> : STATUS_LABEL[story.status]}
+          </span>
         </div>
+        {isLive(story) ? <LiveStages story={story} /> : null}
         <p className={lab.task}>
           {story.task.instruction ? (
             <>
