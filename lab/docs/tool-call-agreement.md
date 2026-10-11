@@ -82,13 +82,29 @@ What makes the number weaker than it looks:
 
 - Seven of the eight losses are one question in several wordings ("in the last 60 minutes": the after model opens
   the window at 9:00 or 9:10 instead of 8:30). The eighth adds a second call.
-- The reference is `expected.jsonl`, the fixture's own rule. The adapter was trained on the teacher's labels of the
-  train examples, which were deleted with the dataset when the run ended. On the train side the after model adds a
-  `search_memory` call to 19 of the 24 `last_seen` questions and agrees with `expected.jsonl` no more often than the
-  base, so the labels it learned from very likely differ from this reference. The measure then shows that the
-  adapter moved away from `expected.jsonl`, not that it failed to learn its labels.
+- The reference is `expected.jsonl`, the fixture's own rule, and the adapter was not trained on it. It was trained
+  on the teacher's labels, `fixtures/learning/tool-calling-labels/examples.jsonl` (the sha256 the training run
+  recorded, `6ae7fb9e...`). Those labels equal `expected.jsonl` on 57 of the 84 train examples and 38 of the 58
+  held-out ones: the teacher adds a `search_memory` call after `last_seen` and picks other time windows. A student
+  that imitated this teacher perfectly would score 38/58 here, under the base model's 42/58. So this measure alone
+  cannot tell "did not learn" from "learned labels that disagree with the reference".
 - The score is an exact match: 38 of the 58 held-out references are time windows, and a window that differs by any
   amount is 0.
 - Greedy decoding was not fully repeatable: 56 of 58 before outputs and 55 of 58 after outputs were the same text in
   both runs.
 - 4 held-out groups, two tools (`episodes_between`, `last_seen`), one call per reference, both models at Q4_K_M.
+
+### Post hoc: the same outputs against the teacher's own labels
+
+Computed after the result above was seen, from the same recorded outputs (no model was asked again), with the same
+compare and the teacher's label as the reference. It is not the fixed rule; it is here because it settles the point
+above.
+
+| side | before | after |
+| --- | --- | --- |
+| train (84) | 41 | 80 |
+| held out (58) | 39 and 39 | 32 and 31 |
+
+Train: 40 up, 1 down. Held out: 1 up, 8 down; McNemar p = 0.039; sign-flip over the 4 groups p = 0.75. The adapter
+learned its training labels almost exactly and did not carry that over to the held-out question groups, whichever
+reference is used.
