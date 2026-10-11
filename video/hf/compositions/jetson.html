@@ -5,16 +5,87 @@
     <template>
       <link rel="stylesheet" href="world/soft.css" />
       <style>
-        #root { position: absolute; inset: 0; font-family: var(--font); }
+        #root { position: absolute; inset: 0; font-family: var(--font); overflow: hidden; }
         #jetson-chapter { position: absolute; left: 96px; top: 72px; padding: 14px 28px; font-size: 28px; opacity: 0; }
+
+        /* One real answer, measured on the Jetson tonight: a question well and an answer card, right third. */
+        #jetson-qa { position: absolute; right: 160px; top: 236px; width: 640px; display: flex; flex-direction: column; gap: 28px; }
+        #jetson-q { padding: 28px 38px; border-radius: 28px; font-size: 34px; font-weight: 500; color: var(--muted); line-height: 1.3; opacity: 0; }
+        #jetson-a { padding: 34px 42px; border-radius: 32px; opacity: 0; }
+        #jetson-a .ans { font-size: 56px; font-weight: 600; color: var(--ink); line-height: 1.1; letter-spacing: -0.01em; }
+        #jetson-a .cite { margin-top: 14px; font-size: 26px; font-weight: 500; color: var(--muted); display: flex; align-items: center; gap: 14px; }
+        #jetson-a .cite .src { color: var(--accent); font-weight: 600; }
+
+        /* The offline pill: a pressed well, a dark dot, one word. */
+        #jetson-offline { position: absolute; right: 160px; top: 72px; height: 84px; padding: 0 38px 0 30px; border-radius: 42px;
+          display: flex; align-items: center; gap: 18px; opacity: 0; }
+        #jetson-offline .dot { width: 18px; height: 18px; border-radius: 50%; background: var(--ink); box-shadow: inset 2px 2px 4px rgba(0,0,0,0.35); }
+        #jetson-offline .txt { font-size: 30px; font-weight: 600; color: var(--ink); letter-spacing: 0.01em; }
+
+        /* The chips: what keeps running while the cable is out. A right-aligned status block under the offline pill,
+           in the free right third (the box sits centre-left, the cable slides right under it). */
+        #jetson-chips { position: absolute; right: 160px; top: 196px; width: 700px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 22px 24px; }
+        .jetson-chip { height: 88px; padding: 0 40px 0 32px; border-radius: 44px; display: flex; align-items: center; gap: 18px;
+          font-size: 32px; font-weight: 600; color: var(--ink); opacity: 0; transform-origin: center; }
+        .jetson-chip .dot { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 5px rgba(217,119,74,0.16); }
+        .jetson-chip .tag { font-size: 24px; font-weight: 600; color: var(--muted); opacity: 0; margin-left: 2px; }
       </style>
       <div id="root" data-composition-id="jetson" data-width="1920" data-height="1080">
         <div id="jetson-chapter" class="soft-raised soft-muted">On the Jetson</div>
+
+        <div id="jetson-qa">
+          <div id="jetson-q" class="soft-well">What was the score of the last UCF vs UF game?</div>
+          <div id="jetson-a" class="soft-raised">
+            <div class="ans">UF won 24-13</div>
+            <div class="cite"><span>cites</span><span class="src">ESPN</span><span>· 15.6 s on the box</span></div>
+          </div>
+        </div>
+
+        <div id="jetson-offline" class="soft-pressed"><div class="dot"></div><div class="txt">offline</div></div>
+
+        <div id="jetson-chips">
+          <div class="jetson-chip soft-raised" id="jetson-chip-seeing"><div class="dot"></div>seeing</div>
+          <div class="jetson-chip soft-raised" id="jetson-chip-remembering"><div class="dot"></div>remembering</div>
+          <div class="jetson-chip soft-raised" id="jetson-chip-alerting"><div class="dot"></div>alerting</div>
+          <div class="jetson-chip soft-raised" id="jetson-chip-answering"><div class="dot"></div>answering</div>
+          <div class="jetson-chip soft-raised" id="jetson-chip-learning"><div class="dot"></div>learning<span class="tag">paused</span></div>
+        </div>
       </div>
       <script>
         (function () {
+          // Local time: 0 = scene start (absolute 120.652). Line 0 starts at 0, line 1 at 9.856 (film.json). Word offsets
+          // inside each line were measured on the narration; see world/scenes/jetson.js.
+          const L1 = 9.856;
+          const PRESSED = "inset 10px 10px 20px #b7c0cd, inset -10px -10px 20px #ffffff";
           const tl = gsap.timeline({ paused: true });
+
           tl.fromTo("#jetson-chapter", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 0.2);
+
+          // "answers in seconds" (8.03–9.04): the question, then the measured answer lands as the word ends.
+          tl.fromTo("#jetson-q", { opacity: 0, y: 22 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 8.0);
+          tl.fromTo("#jetson-a", { opacity: 0, y: 26, scale: 0.96 }, { opacity: 1, y: 0, scale: 1, duration: 0.7, ease: "power3.out" }, 8.85);
+
+          // "Pull the network cable" (L1 + 0.20–1.02): web answers need the network, so the answer goes first, then the question;
+          // the cable snaps out at L1 + 0.75 and the offline pill lands with it.
+          tl.to("#jetson-a", { opacity: 0, y: 14, duration: 0.5, ease: "power2.in" }, L1 + 0.55);
+          tl.to("#jetson-q", { opacity: 0, y: 10, duration: 0.5, ease: "power2.in" }, L1 + 0.7);
+          tl.fromTo("#jetson-offline", { opacity: 0, scale: 0.9, x: 16 }, { opacity: 1, scale: 1, x: 0, duration: 0.7, ease: "power4.out" }, L1 + 0.95);
+
+          // "It keeps seeing, remembering, alerting and answering": a chip rises as each word lands.
+          const chips = [["seeing", 1.6], ["remembering", 2.8], ["alerting", 3.7], ["answering", 4.5], ["learning", 5.45]];
+          for (const [id, when] of chips) {
+            tl.fromTo("#jetson-chip-" + id, { opacity: 0, y: 30, scale: 0.92 }, { opacity: 1, y: 0, scale: 1, duration: 0.7, ease: "power3.out" }, L1 + when);
+          }
+          // "Only learning pauses" (L1 + 5.51–6.47): the learning chip presses in and goes quiet on "pauses".
+          tl.to("#jetson-chip-learning", { boxShadow: PRESSED, color: "#6f7886", duration: 0.5, ease: "power2.inOut" }, L1 + 6.0);
+          tl.to("#jetson-chip-learning .dot", { backgroundColor: "#b7c0cd", boxShadow: "0 0 0 0px rgba(217,119,74,0)", duration: 0.5, ease: "power2.inOut" }, L1 + 6.0);
+          tl.fromTo("#jetson-chip-learning .tag", { opacity: 0, x: -8 }, { opacity: 1, x: 0, duration: 0.5, ease: "power3.out" }, L1 + 6.2);
+
+          // Clear the overlay as the camera comes home (scene ends at 17.872).
+          tl.to(".jetson-chip", { opacity: 0, y: 16, duration: 0.5, ease: "power2.in", stagger: 0.05 }, 17.0);
+          tl.to("#jetson-offline", { opacity: 0, scale: 0.94, duration: 0.5, ease: "power2.in" }, 17.2);
+          tl.to("#jetson-chapter", { opacity: 0, duration: 0.4, ease: "power2.in" }, 17.35);
+
           window.__timelines["jetson"] = tl;
         })();
       </script>

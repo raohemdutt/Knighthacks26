@@ -79,3 +79,31 @@ Rules for overlays (`compositions/slot-N.html`): a sub-composition (everything i
 `window.__timelines["slot-N"]`, local time). Prefix every id with `slot-N-`. Use `world/soft.css` classes.
 The title card (first 1.5 s): the key cap `N` pressed down, the slot title, the watcher line. Captions and
 narration are at the root; do not add them. The world canvas is under the overlay and transparent areas show it.
+
+## Additions
+
+New state fields (all additive; every older field keeps its meaning):
+
+- `state.drop` 0..1: the slabs are in the air above their rest positions (1 = fully raised, the bottom one lands
+  first as it falls to 0). A small negative value squashes the stack for a settle. The cable, the seams and the
+  contact shadow are hidden while the slabs are airborne. Used by the intro only; leave it at 0.
+- `state.eyes` 0..1: the two camera lenses warm up in the accent colour with a thin accent halo, and blink now and
+  then while awake. The intro returns it to 0 at its hand-over.
+- `state.layer[i]` at 1 now tints the slab 35 % toward the accent, adds a small emissive, and draws a thin accent
+  band around the slab's waist (unmistakable, still soft). `state.labGlow` does the same to the two Strix Halo pods
+  (32 % tint, a band near their foot, and the status LED goes accent).
+- `state.pulse` is a slow heartbeat (period 2 s, a strong bump and a softer echo) on all four slabs.
+- `world.pods` — the two lab pod meshes (1.6 × 1.2 × 1.6, front grille, name plate, LED) at lab-local x = ±1.15,
+  sitting on the desk; `world.P.lab` is unchanged. The loss ribbon floats above them (lab-local y ≈ 1.1 … 2.6,
+  z = 0.4) and draws left to right with `state.labCurve`.
+- Look: image-based light (RoomEnvironment through PMREM, `envMapIntensity` 0.35 on the matte materials, scene
+  factor 0.6), ACES filmic tone mapping at exposure 1.0, VSM soft shadows (2048², radius 7) whose camera covers
+  the lab at x = 14 and the friends at radius 9. Accent tubes, dots, labels and map textures are not tone mapped,
+  so the accent stays #d9774a. The desk shadow plane no longer writes depth (it is invisible, so it never occludes).
+
+Hand-over table (fill in your own row; the intro and end rows are set):
+
+| Scene | Starts from | Leaves the camera at | World state at hand-over |
+| --- | --- | --- | --- |
+| intro | its own opening frame (`tl.set` at t = 0 is the only hard cut; low left three-quarter hero) | `HOME` | `membrane` 0.3, everything else 0 |
+| end | the dayrun hero `{ x: 0, y: 6, z: 16, tx: 0, ty: 0, tz: 0, fov: 38 }` with campus 1, ring 1, membrane 1 | a slow push to `{ x: 0, y: 5.3, z: 13.6, fov: 37 }`, held; nothing is reset | `pulse` 0.7; the film ends here |

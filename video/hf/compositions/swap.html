@@ -5,16 +5,105 @@
     <template>
       <link rel="stylesheet" href="world/soft.css" />
       <style>
-        #root { position: absolute; inset: 0; font-family: var(--font); }
+        #root { position: absolute; inset: 0; font-family: var(--font); overflow: hidden; }
         #swap-chapter { position: absolute; left: 96px; top: 72px; padding: 14px 28px; font-size: 28px; opacity: 0; }
+
+        /* Line 0: check, swap, and the rollback slider; a column on the right (the box sits left of centre). */
+        #swap-col { position: absolute; left: 1180px; top: 200px; width: 620px; display: flex; flex-direction: column; gap: 24px; }
+        .swap-card { height: 104px; padding: 0 40px; border-radius: 52px; display: flex; align-items: center; gap: 22px; font-size: 38px; font-weight: 600; color: var(--ink); opacity: 0; }
+        .swap-card .k { color: var(--muted); font-weight: 500; }
+        .swap-card .ok { margin-left: auto; width: 60px; height: 60px; border-radius: 50%; display: grid; place-items: center; }
+        .swap-card .ok svg { width: 30px; height: 30px; }
+        .swap-card .ok path { fill: none; stroke: var(--accent); stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
+        #swap-roll { padding: 30px 40px 30px; opacity: 0; }
+        #swap-roll .row { display: flex; align-items: center; justify-content: space-between; font-size: 36px; font-weight: 600; color: var(--ink); }
+        #swap-roll .state { position: relative; height: 48px; width: 240px; }
+        #swap-roll .state span { position: absolute; right: 0; top: 0; white-space: nowrap; }
+        #swap-state-no { color: var(--muted); font-weight: 500; }
+        #swap-state-back { color: var(--accent); font-weight: 700; opacity: 0; }
+        #swap-roll .track { position: relative; margin-top: 20px; height: 64px; border-radius: 32px; }
+        #swap-roll .ends { margin-top: 14px; padding: 0 20px; display: flex; justify-content: space-between; font-size: 22px; font-weight: 600; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
+        #swap-knob { position: absolute; top: 6px; left: 6px; width: 52px; height: 52px; border-radius: 50%; box-shadow: 8px 8px 16px var(--shade), -6px -6px 14px var(--light); background: var(--surface); display: grid; place-items: center; }
+        #swap-knob .c { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); }
+
+        /* Line 1: three meters in a row along the top of the two-shot. */
+        #swap-meters { position: absolute; left: 0; right: 0; top: 130px; display: flex; justify-content: center; align-items: stretch; gap: 40px; }
+        .swap-meter { width: 440px; padding: 30px 38px 34px; opacity: 0; position: relative; }
+        .swap-meter .k { font-size: 24px; font-weight: 600; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
+        .swap-meter .v { margin-top: 6px; display: flex; align-items: baseline; gap: 12px; font-variant-numeric: tabular-nums; font-size: 80px; font-weight: 700; color: var(--ink); line-height: 1.05; letter-spacing: -0.02em; }
+        .swap-meter .u { font-size: 36px; font-weight: 600; color: var(--muted); }
+        .swap-meter .bar { margin-top: 20px; height: 16px; border-radius: 8px; overflow: hidden; }
+        .swap-meter .fill { display: block; width: 100%; height: 100%; border-radius: 8px; background: var(--accent); transform-origin: left center; }
+        #swap-m-j .v { font-size: 112px; color: var(--accent); }
+        #swap-m-j .u { color: var(--ink); }
+        #swap-m-j .s { margin-top: 14px; font-size: 24px; font-weight: 500; color: var(--muted); }
+        #swap-m-j .ex { position: absolute; right: 32px; bottom: -22px; height: 44px; padding: 0 18px; border-radius: 22px; display: flex; align-items: center; font-size: 22px; font-weight: 600; color: var(--muted); }
       </style>
       <div id="root" data-composition-id="swap" data-width="1920" data-height="1080">
         <div id="swap-chapter" class="soft-raised soft-muted">Box and lab</div>
+
+        <div id="swap-col">
+          <div class="swap-card soft-raised" id="swap-check"><span class="k">check</span>&middot; ok<div class="ok soft-pressed"><svg viewBox="0 0 48 48"><path id="swap-check-path" d="M10 25 L20 35 L38 14"/></svg></div></div>
+          <div class="swap-card soft-raised" id="swap-swap"><span class="k">swap</span>&middot; ok<div class="ok soft-pressed"><svg viewBox="0 0 48 48"><path id="swap-swap-path" d="M10 25 L20 35 L38 14"/></svg></div></div>
+          <div class="soft-raised" id="swap-roll">
+            <div class="row"><span>new model</span><div class="state"><span id="swap-state-no">no answer</span><span id="swap-state-back">rolled back</span></div></div>
+            <div class="track soft-well"><div id="swap-knob"><div class="c"></div></div></div>
+            <div class="ends"><span>previous</span><span>new</span></div>
+          </div>
+        </div>
+
+        <div id="swap-meters">
+          <div class="swap-meter soft-raised" id="swap-m-jetson"><div class="k">Jetson</div><div class="v"><span id="swap-m-jetson-n">0</span><span class="u">W</span></div><div class="bar soft-well"><span class="fill" id="swap-m-jetson-fill"></span></div></div>
+          <div class="swap-meter soft-raised" id="swap-m-gpu"><div class="k">GPUs</div><div class="v"><span id="swap-m-gpu-n">0</span><span class="u">W</span></div><div class="bar soft-well"><span class="fill" id="swap-m-gpu-fill"></span></div></div>
+          <div class="swap-meter soft-raised" id="swap-m-j"><div class="k">per answer</div><div class="v"><span id="swap-m-j-n">0</span><span class="u">J</span></div><div class="s">what one question costs</div><div class="ex soft-pressed">example</div></div>
+        </div>
       </div>
       <script>
         (function () {
+          // Timing comes from film.json through the host: <audio id="voice-swap-i" data-start> and #host-swap data-start.
+          // The fallback (copied from film.json) is only for previewing this file alone.
+          const FALLBACK = [{ start: 0, duration: 8.328 }, { start: 8.728, duration: 6.696 }];
+          function lines() {
+            const host = document.getElementById("host-swap"); if (!host) return FALLBACK;
+            const s0 = parseFloat(host.dataset.start), out = [];
+            for (let i = 0; ; i++) { const a = document.getElementById("voice-swap-" + i); if (!a) break; out.push({ start: parseFloat(a.dataset.start) - s0, duration: parseFloat(a.dataset.duration) }); }
+            return out.length === FALLBACK.length ? out : FALLBACK;
+          }
+          const LN = lines();
+          const L = (i, f) => LN[i].start + f * LN[i].duration;
           const tl = gsap.timeline({ paused: true });
+          const draw = (id, at) => { const p = document.getElementById(id), len = p.getTotalLength(); tl.fromTo(p, { strokeDasharray: len, strokeDashoffset: len }, { strokeDashoffset: 0, duration: 0.4, ease: "power2.out" }, at); };
+
           tl.fromTo("#swap-chapter", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 0.2);
+
+          // Line 0: "The box checks it" / "swaps it in" / "rolls back by itself if it does not answer".
+          tl.fromTo("#swap-check", { opacity: 0, x: 40 }, { opacity: 1, x: 0, duration: 0.6, ease: "power4.out" }, L(0, 0.34));
+          draw("swap-check-path", L(0, 0.34) + 0.25);
+          tl.fromTo("#swap-swap", { opacity: 0, x: 40 }, { opacity: 1, x: 0, duration: 0.6, ease: "power4.out" }, L(0, 0.48));
+          draw("swap-swap-path", L(0, 0.48) + 0.25);
+          tl.fromTo("#swap-roll", { opacity: 0, y: 28, scale: 0.96 }, { opacity: 1, y: 0, scale: 1, duration: 0.7, ease: "power3.out" }, L(0, 0.64));
+          // The knob starts on "new" (right end of a 540 px track: 540 - 6 - 52 - 6 = 476 px of travel).
+          tl.set("#swap-knob", { x: 476 }, 0);
+          // "if it does not answer": the knob snaps back to the previous model, by itself.
+          tl.to("#swap-knob", { x: 0, duration: 0.55, ease: "power4.out" }, L(0, 0.86));
+          tl.to("#swap-state-no", { opacity: 0, duration: 0.2, ease: "power2.in" }, L(0, 0.86));
+          tl.fromTo("#swap-state-back", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power3.out" }, L(0, 0.86) + 0.2);
+          // Clear the column as the camera goes back out.
+          tl.to("#swap-col > *", { opacity: 0, y: -14, duration: 0.45, ease: "power2.in", stagger: 0.05 }, L(1, 0.0) - 0.25);
+
+          // Line 1: "watts on the Jetson" / "watts on the GPUs" / "and joules per answer". Numbers are examples.
+          const meter = (id, target, fill, at, dur) => {
+            const n = document.getElementById("swap-m-" + id + "-n"), o = { v: 0 };
+            tl.fromTo("#swap-m-" + id, { opacity: 0, y: 30, scale: 0.96 }, { opacity: 1, y: 0, scale: 1, duration: 0.7, ease: "power4.out" }, at);
+            tl.to(o, { v: target, duration: dur, ease: "power3.out", onUpdate: () => { n.textContent = String(Math.round(o.v)); } }, at + 0.15);
+            if (fill) tl.fromTo("#swap-m-" + id + "-fill", { scaleX: 0 }, { scaleX: fill, duration: dur, ease: "power3.out" }, at + 0.15);
+          };
+          meter("jetson", 15, 0.3, L(1, 0.1), 1.3);
+          meter("gpu", 118, 0.79, L(1, 0.34), 1.3);
+          meter("j", 45, 0, L(1, 0.56), 1.5);
+          tl.to(".swap-meter", { opacity: 0, y: -14, duration: 0.5, ease: "power2.in", stagger: 0.06 }, L(1, 1.0) - 0.2);
+          tl.to("#swap-chapter", { opacity: 0, duration: 0.5, ease: "power2.in" }, L(1, 1.0) + 0.1);
+
           window.__timelines["swap"] = tl;
         })();
       </script>

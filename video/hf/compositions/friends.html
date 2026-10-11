@@ -5,16 +5,157 @@
     <template>
       <link rel="stylesheet" href="world/soft.css" />
       <style>
-        #root { position: absolute; inset: 0; font-family: var(--font); }
+        #root { position: absolute; inset: 0; font-family: var(--font); overflow: hidden; }
         #friends-chapter { position: absolute; left: 96px; top: 72px; padding: 14px 28px; font-size: 28px; opacity: 0; }
+
+        /* Screen anchors (midpoint of the slow push, see world/scenes/friends.js): box (942,546), box top (942,492),
+           friend 0 (1418,724) shell top (1442,587), friend 1 (424,656) shell top (398,525), friend 2 (992,354) shell top (993,253). */
+
+        /* "Private calendar" chips, one above each shell. */
+        .friends-priv { position: absolute; height: 72px; padding: 0 28px 0 22px; border-radius: 36px; display: flex; align-items: center; gap: 14px;
+          font-size: 26px; font-weight: 600; color: var(--ink); opacity: 0; transform-origin: 50% 100%; white-space: nowrap; }
+        .friends-priv svg { width: 26px; height: 26px; display: block; }
+        #friends-priv-0 { left: 1292px; top: 500px; }
+        #friends-priv-1 { left: 248px; top: 438px; }
+        #friends-priv-2 { left: 843px; top: 166px; }
+
+        /* The question under the box, later the approve button in the same spot. */
+        #friends-ask { position: absolute; left: 652px; top: 652px; width: 580px; height: 84px; border-radius: 42px; display: flex; align-items: center; justify-content: center;
+          font-size: 30px; font-weight: 500; color: var(--muted); opacity: 0; }
+        #friends-approve { position: absolute; left: 782px; top: 646px; width: 320px; height: 96px; border-radius: 48px; display: flex; align-items: center; justify-content: center; gap: 16px;
+          font-size: 34px; font-weight: 600; color: var(--ink); opacity: 0; transform-origin: 50% 50%; }
+        #friends-approve .chk { width: 30px; height: 30px; display: block; }
+        #friends-approve .chk path { fill: none; stroke: var(--accent); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+
+        /* Rails between the shell tops and the box top; tokens travel along them. The 3D links run underneath. */
+        #friends-rails { position: absolute; inset: 0; width: 1920px; height: 1080px; pointer-events: none; }
+        #friends-rails .rail { fill: none; stroke: #b7c0cd; stroke-width: 3; stroke-linecap: round; opacity: 0.7; }
+        #friends-rails .ripple { fill: none; stroke: #b7c0cd; stroke-width: 4; opacity: 0; }
+
+        .friends-token { position: absolute; left: 0; top: 0; height: 56px; padding: 0 22px 0 16px; border-radius: 28px; display: flex; align-items: center; gap: 12px;
+          font-size: 24px; font-weight: 600; color: var(--ink); opacity: 0; transform-origin: 50% 50%; white-space: nowrap; }
+        .friends-token .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--accent); }
+        .friends-token.busy .dot { background: var(--shade); }
+        .friends-token.busy { color: var(--muted); }
+
+        /* The calendar that tries to leave friend 1's shell and bounces off it. */
+        #friends-cal-try { position: absolute; left: 388px; top: 620px; width: 72px; height: 72px; border-radius: 16px; opacity: 0; overflow: hidden; transform-origin: 50% 50%; }
+        #friends-cal-try .hd { height: 18px; background: var(--shade); }
+        #friends-cal-try .gr { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 9px; }
+        #friends-cal-try .gr i { display: block; height: 8px; border-radius: 3px; background: var(--shade); opacity: 0.7; }
+        #friends-cal-try .gr i.ev { background: var(--accent); opacity: 1; }
+
+        /* The three small calendars the event lands in (same anchors as the chips). */
+        .friends-cal { position: absolute; width: 168px; height: 128px; border-radius: 22px; opacity: 0; overflow: hidden; transform-origin: 50% 100%; }
+        .friends-cal .hd { height: 30px; background: var(--shade); display: flex; align-items: center; padding: 0 14px; font-size: 18px; font-weight: 600; color: #fff; letter-spacing: 0.04em; }
+        .friends-cal .gr { display: grid; grid-template-columns: repeat(7, 1fr); gap: 7px; padding: 12px 14px; }
+        .friends-cal .gr i { display: block; height: 16px; border-radius: 4px; background: var(--shade); opacity: 0.55; }
+        .friends-cal .gr i.ev { background: var(--accent); opacity: 0; transform: scale(0.4); transform-origin: 50% 50%; }
+        #friends-cal-0 { left: 1358px; top: 448px; }
+        #friends-cal-1 { left: 314px; top: 386px; }
+        #friends-cal-2 { left: 909px; top: 114px; }
       </style>
       <div id="root" data-composition-id="friends" data-width="1920" data-height="1080">
         <div id="friends-chapter" class="soft-raised soft-muted">Friends' Atlases</div>
+
+        <svg id="friends-rails" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg">
+          <path class="rail" id="friends-rail-0" d="M 1442 587 L 942 492" />
+          <path class="rail" id="friends-rail-1" d="M 398 525 L 942 492" />
+          <path class="rail" id="friends-rail-2" d="M 993 253 L 942 492" />
+          <circle class="ripple" id="friends-ripple" cx="574" cy="624" r="40" />
+        </svg>
+
+        <div class="friends-priv soft-raised" id="friends-priv-0"><svg viewBox="0 0 24 24"><path d="M7 11V8a5 5 0 0 1 10 0v3" fill="none" stroke="#6f7886" stroke-width="2.2" stroke-linecap="round"/><rect x="5" y="11" width="14" height="10" rx="3" fill="#6f7886"/></svg>Private calendar</div>
+        <div class="friends-priv soft-raised" id="friends-priv-1"><svg viewBox="0 0 24 24"><path d="M7 11V8a5 5 0 0 1 10 0v3" fill="none" stroke="#6f7886" stroke-width="2.2" stroke-linecap="round"/><rect x="5" y="11" width="14" height="10" rx="3" fill="#6f7886"/></svg>Private calendar</div>
+        <div class="friends-priv soft-raised" id="friends-priv-2"><svg viewBox="0 0 24 24"><path d="M7 11V8a5 5 0 0 1 10 0v3" fill="none" stroke="#6f7886" stroke-width="2.2" stroke-linecap="round"/><rect x="5" y="11" width="14" height="10" rx="3" fill="#6f7886"/></svg>Private calendar</div>
+
+        <div id="friends-ask" class="soft-well">Find a time that works for everyone</div>
+
+        <div id="friends-cal-try" class="soft-raised"><div class="hd"></div><div class="gr"><i></i><i></i><i></i><i></i><i></i><i class="ev"></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+
+        <div class="friends-token soft-raised" id="friends-token-0"><div class="dot"></div>free</div>
+        <div class="friends-token soft-raised busy" id="friends-token-1"><div class="dot"></div>busy</div>
+        <div class="friends-token soft-raised" id="friends-token-2"><div class="dot"></div>free</div>
+
+        <div id="friends-approve" class="soft-raised"><svg class="chk" viewBox="0 0 24 24"><path id="friends-approve-tick" d="M5 12.5 L10 17.5 L19 7" /></svg><span>Approve</span></div>
+
+        <div class="friends-cal soft-raised" id="friends-cal-0"><div class="hd">THU</div><div class="gr"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="ev"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+        <div class="friends-cal soft-raised" id="friends-cal-1"><div class="hd">THU</div><div class="gr"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="ev"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+        <div class="friends-cal soft-raised" id="friends-cal-2"><div class="hd">THU</div><div class="gr"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="ev"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
       </div>
       <script>
         (function () {
+          // Local time: 0 = scene start (absolute 157.948). Line 0 starts at 0, line 1 at 4.912 (film.json). Word offsets
+          // inside each line were measured on the narration; see world/scenes/friends.js.
+          const L1 = 4.912;
+          const RAISED = "18px 18px 36px #b7c0cd, -18px -18px 36px #ffffff";
+          const PRESSED = "inset 10px 10px 20px #b7c0cd, inset -10px -10px 20px #ffffff";
           const tl = gsap.timeline({ paused: true });
+
           tl.fromTo("#friends-chapter", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 0.2);
+
+          // "Each person's Atlas keeps their own calendar private" (1.57–4.10): a chip settles over each shell as it rises.
+          [0, 1, 2].forEach((i) => {
+            tl.fromTo("#friends-priv-" + i, { opacity: 0, y: 18, scale: 0.9 }, { opacity: 1, y: 0, scale: 1, duration: 0.7, ease: "power3.out" }, 1.75 + i * 0.22);
+          });
+
+          // "Ask for a time that works for everyone" (L1 + 0.14–2.28): the question sits under the box.
+          tl.fromTo("#friends-ask", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, L1 + 0.25);
+
+          // "and the boxes negotiate" (L1 + 2.69–3.96): the chips give way to the rails, which draw from the shells to the box.
+          [0, 1, 2].forEach((i) => tl.to("#friends-priv-" + i, { opacity: 0, y: -10, duration: 0.45, ease: "power2.in" }, L1 + 2.45 + i * 0.08));
+          const rails = ["#friends-rail-0", "#friends-rail-1", "#friends-rail-2"].map((s) => document.querySelector(s));
+          rails.forEach((p, i) => {
+            const len = p.getTotalLength() * 1.02;
+            tl.fromTo(p, { strokeDasharray: len, strokeDashoffset: len }, { strokeDashoffset: 0, duration: 0.8, ease: "power2.out" }, L1 + 2.75 + i * 0.12);
+          });
+
+          // Friend 1's calendar tries to leave and bumps into its own shell (the ripple marks the glass), then slides back.
+          const F1 = { x: 424, y: 656 }, EDGE = { x: 574, y: 624 };
+          const tryCal = "#friends-cal-try"; // its CSS box is centred on F1
+          tl.fromTo(tryCal, { opacity: 0, x: 0, y: 0, scale: 0.8 }, { opacity: 1, scale: 1, duration: 0.4, ease: "power3.out" }, L1 + 3.3);
+          tl.to(tryCal, { x: EDGE.x - F1.x - 36, y: EDGE.y - F1.y - 8, duration: 0.5, ease: "power2.in" }, L1 + 3.75);
+          tl.to(tryCal, { scaleX: 0.86, duration: 0.08, ease: "power1.in" }, L1 + 4.25);
+          // The ripple rests invisible (its from-state must be, or a seek before the bump shows it), flashes on, then expands away.
+          tl.fromTo("#friends-ripple", { opacity: 0, scale: 0.3, transformOrigin: "50% 50%" }, { opacity: 0.9, scale: 0.5, duration: 0.08, ease: "power1.out" }, L1 + 4.3);
+          tl.to("#friends-ripple", { opacity: 0, scale: 1.6, duration: 0.55, ease: "power2.out" }, L1 + 4.38);
+          tl.to(tryCal, { scaleX: 1, x: 24, y: -4, duration: 0.6, ease: "power3.out" }, L1 + 4.33);
+          tl.to(tryCal, { opacity: 0, duration: 0.4, ease: "power2.in" }, L1 + 5.3);
+
+          // "Only free or busy leaves each box" (L1 + 4.53–6.51): only the tokens cross, from each shell top to the box top.
+          const TOPS = [{ x: 1442, y: 587 }, { x: 398, y: 525 }, { x: 993, y: 253 }], BOXTOP = { x: 942, y: 492 };
+          TOPS.forEach((p, i) => {
+            const el = "#friends-token-" + i, at = L1 + 4.75 + i * 0.3;
+            // Tokens are laid out at (0,0); x/y carry them, minus half their size so they sit centred on the rail.
+            const half = { x: 56, y: 28 };
+            tl.fromTo(el, { opacity: 0, scale: 0.8, x: p.x - half.x, y: p.y - half.y }, { opacity: 1, scale: 1, duration: 0.3, ease: "power3.out" }, at);
+            tl.to(el, { x: BOXTOP.x - half.x, y: BOXTOP.y - half.y, duration: 1.15, ease: "power2.inOut" }, at + 0.15);
+            tl.to(el, { opacity: 0, scale: 0.7, duration: 0.3, ease: "power2.in" }, at + 1.15);
+          });
+
+          // "The event lands after a tap" (L1 + 6.74–9.49): the question becomes an approve button; it presses on "tap"...
+          tl.to("#friends-ask", { opacity: 0, y: -10, duration: 0.4, ease: "power2.in" }, L1 + 6.4);
+          tl.fromTo("#friends-approve", { opacity: 0, y: 16, scale: 0.94 }, { opacity: 1, y: 0, scale: 1, duration: 0.6, ease: "power3.out" }, L1 + 6.7);
+          const tick = document.getElementById("friends-approve-tick"), tickLen = tick.getTotalLength() * 1.02;
+          tl.set(tick, { strokeDasharray: tickLen, strokeDashoffset: tickLen }, 0);
+          const PRESS_AT = L1 + 7.55, PRESS_DUR = 0.14;
+          tl.to("#friends-approve", { scale: 0.94, boxShadow: PRESSED, duration: PRESS_DUR, ease: "power1.in" }, PRESS_AT);
+          tl.to("#friends-approve", { scale: 1, boxShadow: RAISED, duration: 0.55, ease: "power3.out" }, PRESS_AT + PRESS_DUR);
+          tl.to(tick, { strokeDashoffset: 0, duration: 0.4, ease: "power2.out" }, PRESS_AT + PRESS_DUR);
+
+          // ...and the event lands in three small calendars, one in each shell.
+          [0, 1, 2].forEach((i) => {
+            const at = PRESS_AT + 0.55 + i * 0.16;
+            tl.fromTo("#friends-cal-" + i, { opacity: 0, y: 22, scale: 0.86 }, { opacity: 1, y: 0, scale: 1, duration: 0.6, ease: "power3.out" }, at);
+            tl.fromTo("#friends-cal-" + i + " .ev", { opacity: 0, scale: 0.4 }, { opacity: 1, scale: 1, duration: 0.45, ease: "power3.out" }, at + 0.45);
+          });
+
+          // Clear the overlay before the camera comes home (home leg starts at 14.07; scene ends at 16.024).
+          tl.to(".rail", { opacity: 0, duration: 0.5, ease: "power2.in" }, 13.75);
+          tl.to("#friends-approve", { opacity: 0, y: 10, duration: 0.45, ease: "power2.in" }, 14.0);
+          tl.to(".friends-cal", { opacity: 0, y: 12, duration: 0.5, ease: "power2.in", stagger: 0.08 }, 14.2);
+          tl.to("#friends-chapter", { opacity: 0, duration: 0.4, ease: "power2.in" }, 15.4);
+
           window.__timelines["friends"] = tl;
         })();
       </script>

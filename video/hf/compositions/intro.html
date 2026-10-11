@@ -6,15 +6,46 @@
       <link rel="stylesheet" href="world/soft.css" />
       <style>
         #root { position: absolute; inset: 0; font-family: var(--font); }
+        /* The wordmark: a soft-raised card high in the frame; the slabs fall in beneath it. */
+        #intro-mark { position: absolute; left: 50%; top: 132px; padding: 22px 84px 30px; opacity: 0; will-change: transform, opacity; }
+        #intro-tag { position: absolute; left: 0; right: 0; top: 352px; text-align: center; font-size: 40px; font-weight: 500; letter-spacing: 0.01em; opacity: 0; }
+        /* The chapter chip, like every other scene, once the wordmark has gone. */
         #intro-chapter { position: absolute; left: 96px; top: 72px; padding: 14px 28px; font-size: 28px; opacity: 0; }
+        /* The four layer chips at the right, bottom to top, in step with the words (and the 3D labels). */
+        .intro-chip { position: absolute; right: 96px; width: 300px; padding: 16px 28px 16px 24px; display: flex; align-items: center; gap: 16px; font-size: 30px; font-weight: 600; opacity: 0; transform-origin: 100% 50%; will-change: transform, opacity; }
+        .intro-chip i { width: 14px; height: 14px; border-radius: 50%; background: var(--accent); flex: none; box-shadow: 0 0 0 6px rgba(217,119,74,0.12); }
+        .intro-chip small { margin-left: auto; font-size: 20px; font-weight: 500; color: var(--muted); }
+        #intro-chip-0 { top: 776px; } #intro-chip-1 { top: 686px; } #intro-chip-2 { top: 596px; } #intro-chip-3 { top: 506px; }
       </style>
       <div id="root" data-composition-id="intro" data-width="1920" data-height="1080">
+        <div id="intro-mark" class="soft-raised soft-title">Atlas</div>
+        <div id="intro-tag" class="soft-muted">Private. On the box.</div>
         <div id="intro-chapter" class="soft-raised soft-muted">Atlas</div>
+        <div id="intro-chip-0" class="intro-chip soft-raised soft-ink"><i></i>Cameras<small>1</small></div>
+        <div id="intro-chip-1" class="intro-chip soft-raised soft-ink"><i></i>Vision<small>2</small></div>
+        <div id="intro-chip-2" class="intro-chip soft-raised soft-ink"><i></i>Memory<small>3</small></div>
+        <div id="intro-chip-3" class="intro-chip soft-raised soft-ink"><i></i>Agent<small>4</small></div>
       </div>
       <script>
         (function () {
+          // Local time: the scene starts at 0. The words (film.json, intro): first word 3.0; line 2 starts 18.752 and lasts
+          // 11.424; the layer words land at 0.155 / 0.34 / 0.575 / 0.685 of it. The scene lasts 31.376.
+          const FIRST = 3.0, L2 = 18.752, D2 = 11.424, DUR = 31.376, CLOSE = DUR - 3.0;
+          const words = [0.155, 0.34, 0.575, 0.685].map((f) => L2 + f * D2);
           const tl = gsap.timeline({ paused: true });
-          tl.fromTo("#intro-chapter", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 0.2);
+          // The wordmark arrives as the slabs fall, breathes, and leaves before the first word.
+          tl.fromTo("#intro-mark", { opacity: 0, scale: 0.94, y: 18, xPercent: -50 }, { opacity: 1, scale: 1, y: 0, xPercent: -50, duration: 1.2, ease: "power3.out", transformOrigin: "50% 50%" }, 0.25);
+          tl.fromTo("#intro-tag", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.9, ease: "power3.out" }, 1.0);
+          tl.to("#intro-tag", { opacity: 0, y: -8, duration: 0.45, ease: "power2.in" }, FIRST - 0.6);
+          tl.to("#intro-mark", { opacity: 0, scale: 0.97, y: -16, xPercent: -50, duration: 0.5, ease: "power2.in" }, FIRST - 0.45);
+          // The chapter chip takes over at the top left.
+          tl.fromTo("#intro-chapter", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, FIRST + 0.3);
+          // Layer chips pop in with the words (smooth settle, no bounce) and leave together before the close.
+          words.forEach((w, i) => {
+            tl.fromTo(`#intro-chip-${i}`, { opacity: 0, scale: 0.9, x: 24 }, { opacity: 1, scale: 1, x: 0, duration: 0.6, ease: "power3.out" }, w + 0.05);
+            tl.to(`#intro-chip-${i}`, { opacity: 0, x: 18, duration: 0.4, ease: "power2.in" }, CLOSE - 0.1 + i * 0.05);
+          });
+          tl.to("#intro-chapter", { opacity: 0, duration: 0.5, ease: "power2.in" }, DUR - 0.9);
           window.__timelines["intro"] = tl;
         })();
       </script>
