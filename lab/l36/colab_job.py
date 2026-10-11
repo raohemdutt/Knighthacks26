@@ -52,7 +52,7 @@ set -u
 cd {REPO}
 export LAB_STATE_DIR={ROOT}/state LAB_TASK=L36 PYTHONIOENCODING=utf-8 PYTHONUNBUFFERED=1
 {ONE_RUN.format(run=RUNS[0][0], root=ROOT, common=COMMON, recipe=RUNS[0][1])}
-s=$(grep "^{RUNS[0][0]} start" {ROOT}/times.txt | awk '{{print $3}}'); e=$(grep "^{RUNS[0][0]} end" {ROOT}/times.txt | awk '{{print $3}}')
+s=$(grep "^{RUNS[0][0]} start" {ROOT}/times.txt | awk '{{print $4}}'); e=$(grep "^{RUNS[0][0]} end" {ROOT}/times.txt | awk '{{print $4}}')
 if [ $((e - s)) -gt {LIMIT_A_S} ]; then
   echo "run a took $((e - s)) s, over {LIMIT_A_S} s: run b is skipped" > {ROOT}/runs/SKIPPED_B
 else
