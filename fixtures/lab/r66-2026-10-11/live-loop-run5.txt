@@ -1,0 +1,48 @@
+live loop 1011-081402: the box's Compare tab is http://100.124.34.36:8000/lab/?tab=compare   out C:\Users\hackathon\Code\Knighthacks26\work\L29-data\1011-081402
+box Learning lab answers 200: 8 real runs at the start
+[   2.8 s] pod C's rank 1 waits for act 2 (run-script 1.162 s)
+[   2.8 s] pod D started both acts (run-script 1.278 s); teacher Qwen3.5-122B on pod-c and pod-d; act 2 on 2 pod(s)
+[   3.2 s] all: go at    3.3 s on the pod clock  
+[   3.2 s] solo: start at    3.4 s on the pod clock  
+[   8.0 s] solo: labeled at    7.2 s on the pod clock  labeling took 3.8 s
+[   8.0 s] solo: train at    7.2 s on the pod clock  waited 0.0 s
+[   8.0 s] duo: start at    7.2 s on the pod clock  
+[  18.0 s] duo: labeled at   14.2 s on the pod clock  labeling took 7.4 s
+[  18.0 s] duo: train at   14.2 s on the pod clock  waited 0.0 s
+[  18.1 s] duo: pod C rank1_train 
+[  63.7 s] duo: pod C 2 step rows posted, box 200, 3 new, 0 already there
+[  73.5 s] duo: pod C 3 step rows posted, box 200, 2 new, 2 already there
+[  89.1 s] duo: 1 step rows posted, box 200, 2 new, 0 already there
+[  93.5 s] solo: 2 step rows posted, box 200, 3 new, 0 already there
+[  93.8 s] duo: 2 step rows posted, box 200, 2 new, 1 already there
+[ 108.6 s] solo: 4 step rows posted, box 200, 3 new, 2 already there
+[ 108.9 s] duo: 3 step rows posted, box 200, 2 new, 2 already there
+[ 113.4 s] duo: pod C 7 step rows posted, box 200, 5 new, 3 already there
+[ 113.7 s] solo: 7 step rows posted, box 200, 5 new, 4 already there
+[ 114.0 s] duo: 6 step rows posted, box 200, 4 new, 3 already there
+[ 118.0 s] solo: trained at  115.8 s on the pod clock  training took 109.0 s
+[ 118.4 s] duo: pod C 8 step rows posted, box 200, 2 new, 7 already there
+[ 118.8 s] solo: 8 step rows posted, box 200, 0 new, 8 already there
+[ 119.4 s] duo: 8 step rows posted, box 200, 3 new, 6 already there
+[ 123.0 s] duo: trained at  118.5 s on the pod clock  training took 104.3 s
+[ 123.1 s] duo: pod C rank1_trained rc 0
+[ 203.0 s] duo: done at  202.6 s on the pod clock  packaging took 84.1 s, act 195.8 s, rc 0
+[ 204.6 s] duo: manifest box 200, 2 new, 0 already there
+[ 204.6 s] duo: stand-in scores box 200, 3 new, 0 already there
+[ 205.2 s] duo: pod C 8 step rows posted, box 200, 0 new, 9 already there
+[ 205.2 s] duo: power windows labeling.pod-c 200, labeling.pod-d 200, training.pod-d 200, training.pod-c 200, packaging.pod-d 200, act.pod-c 200, act.pod-d 200, act.box 200
+[ 206.7 s] duo: comparison so far box 200, kept: lab_loops/1011-081402/comparison.json
+[ 207.4 s] duo: the box's Learning lab lists live-1011-081402-duo: yes, status not deployed
+[ 223.1 s] solo: done at  221.4 s on the pod clock  packaging took 105.7 s, act 218.5 s, rc 0
+[ 223.7 s] all: end at  221.4 s on the pod clock  
+[ 225.6 s] solo: manifest box 200, 2 new, 0 already there
+[ 225.6 s] solo: stand-in scores box 200, 3 new, 0 already there
+[ 225.8 s] solo: power windows labeling.pod-c 200, labeling.pod-d 200, training.pod-d 200, packaging.pod-d 200, act.pod-c 200, act.pod-d 200, act.box 200
+[ 227.3 s] solo: comparison so far box 200, kept: lab_loops/1011-081402/comparison.json
+[ 228.4 s] solo: the box's Learning lab lists live-1011-081402-solo: yes, status not deployed
+[ 228.4 s] both runs on the box: total 228.4 s from the start command
+[ 231.8 s] duo: pod C 8 step rows posted, box 200, 0 new, 9 already there
+solo: final power windows labeling.pod-c 200, labeling.pod-d 200, training.pod-d 200, packaging.pod-d 200, act.pod-c 200, act.pod-d 200, act.box 200
+duo: final power windows labeling.pod-c 200, labeling.pod-d 200, training.pod-d 200, training.pod-c 200, packaging.pod-d 200, act.pod-c 200, act.pod-d 200, act.box 200
+comparison on the box: box 200, kept: lab_loops/1011-081402/comparison.json
+total 228.4 s

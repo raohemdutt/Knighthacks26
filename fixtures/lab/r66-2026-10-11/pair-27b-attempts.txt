@@ -1,0 +1,90 @@
+### attempt 1, pod C stage (4 layers): root cause lines (run 20261011-101312-186d, 1.11 s, outcome ok)
+24:(Worker pid=161371) INFO 10-11 10:13:25 [parallel_state.py:1825] world_size=2 rank=0 local_rank=0 distributed_init_method=tcp://10.99.0.1:29727 backend=nccl
+26:[2026-10-11 10:13:26] jupyter-<account C>:161371:161371 [0] /__w/rockrel/rockrel/build/comm-libs/rccl/build/hipify/src/init.cc:303 NCCL WARN Missing "iommu=pt" from kernel command line which can lead to system instablity or hang!
+27:(Worker pid=161371) INFO 10-11 10:13:26 [pynccl.py:148] vLLM is using nccl==2.30.4
+29:[2026-10-11 10:13:26] jupyter-<account C>:161371:161371 [0] /__w/rockrel/rockrel/build/comm-libs/rccl/build/hipify/src/init.cc:303 NCCL WARN Missing "iommu=pt" from kernel command line which can lead to system instablity or hang!
+31:HIP version  : 7.14.60850-0000000
+34:Librccl path : /home/jovyan/venv-vllm-new/lib/python3.12/site-packages/_rocm_sdk_libraries/lib/librccl.so.1
+36:[2026-10-11 10:13:26] jupyter-<account C>:161371:161371 [0] /__w/rockrel/rockrel/build/comm-libs/rccl/build/hipify/src/misc/ibvwrap.cc:225 NCCL WARN lib wrapper not initialized.
+62:(Worker pid=161371) ERROR 10-11 10:13:27 [multiproc_executor.py:948]     raise ValueError(
+63:(Worker pid=161371) ERROR 10-11 10:13:27 [multiproc_executor.py:948] ValueError: Free memory on device cuda:0 (6.35/64.0 GiB) on startup is less than desired GPU memory utilization (0.33, 21.12 GiB). Decrease GPU memory utilization or reduce GPU memory used by other processes.
+187:    raise RuntimeError(
+188:RuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {}
+--- shim
+podshim pid 161371: bind fd 65 self:0 -> any:29612 (pinned)
+podshim pid 161371: connect fd 66 10.99.0.2:29608 -> 127.0.0.1:29808 family 2 rc -1 errno 115
+podshim pid 161371: connect fd 66 10.99.0.2:29611 -> 127.0.0.1:29811 family 2 rc -1 errno 115
+podshim pid 161371: connect fd 67 10.99.0.2:29611 -> 127.0.0.1:29811 family 2 rc -1 errno 115
+podshim pid 161371: connect fd 65 10.99.0.2:29608 -> 127.0.0.1:29808 family 2 rc -1 errno 115
+podshim pid 161371: bind fd 75 self:0 -> any:29613 (pinned)
+### END
+
+### attempt 3, pod C stage (2 layers): progress (run 20261011-103906-14cc, 1.068 s, outcome ok)
+alive: yes  log lines 274
+(Worker_PP1 pid=166372) INFO 10-11 10:38:07 [compressed_tensors_wNa16.py:138] Using RDNAHybridW4A16LinearKernel for CompressedTensorsWNA16
+(Worker_PP1 pid=166372) INFO 10-11 10:38:08 [default_loader.py:484] Loading weights took 0.52 seconds
+(Worker_PP1 pid=166372) INFO 10-11 10:38:09 [model_runner.py:407] Model loading took 6.11 GiB memory and 3.258558 seconds
+  warn("tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.")
+(Worker_PP1 pid=166372) INFO 10-11 10:40:02 [monitor.py:81] Initial profiling/warmup run took 78.22 s
+--- shim log lines 294
+podshim pid 166372: bind fd 64 self:0 -> any:29611 (pinned)
+podshim pid 166372: connect fd 69 10.99.0.2:29600 -> 127.0.0.1:29800 family 2 rc -1 errno 115
+podshim pid 166372: bind fd 76 self:0 -> any:29612 (pinned)
+### END
+
+### /dev/shm on pod C (run 20261011-100842-c7e1, 1.156 s, outcome ok)
+shm                   64     1        64   1% /dev/shm
+5
+1	/dev/shm
+/home/jovyan/vllm-new/vllm/envs.py:246:    VLLM_MQ_MAX_CHUNK_BYTES_MB: int = 16
+/home/jovyan/vllm-new/vllm/envs.py:1812:    "VLLM_MQ_MAX_CHUNK_BYTES_MB": lambda: int(
+/home/jovyan/vllm-new/vllm/envs.py:1813:        os.getenv("VLLM_MQ_MAX_CHUNK_BYTES_MB", "16")
+/home/jovyan/vllm-new/vllm/distributed/device_communicators/shm_broadcast.py:265:        max_chunk_bytes: int,
+/home/jovyan/vllm-new/vllm/distributed/device_communicators/shm_broadcast.py:285:        | max_chunks x max_chunk_bytes  | max_chunks x (1 + n_reader) bytes      |
+/home/jovyan/vllm-new/vllm/distributed/device_communicators/shm_broadcast.py:320:        self.max_chunk_bytes = max_chunk_bytes
+/home/jovyan/vllm-new/vllm/distributed/device_communicators/shm_broadcast.py:323:            self.max_chunk_bytes + self.metadata_size
+/home/jovyan/vllm-new/vllm/distributed/device_communicators/shm_broadcast.py:326:        self.metadata_offset = self.max_chunk_bytes * self.max_chunks
+/home/jovyan/vllm-new/vllm/distributed/device_communicators/shm_broadcast.py:366:            self.max_chunk_bytes,
+/home/jovyan/vllm-new/vllm/distributed/device_communicators/shm_broadcast.py:385:        start = self.data_offset + current_idx * self.max_chunk_bytes
+/home/jovyan/vllm-new/vllm/distributed/device_communicators/shm_broadcast.py:386:        end = start + self.max_chunk_bytes
+/home/jovyan/vllm-new/vllm/distributed/device_communicators/shm_broadcast.py:483:        max_chunk_bytes: int = 1024 * 1024 * 24,
+/home/jovyan/vllm-new/vllm/distributed/device_communicators/shm_broadcast.py:501:            self.buffer = ShmRingBuffer(n_local_reader, max_chunk_bytes, max_chunks)
+/home/jovyan/vllm-new/vllm/distributed/device_communicators/shm_broadcast.py:868:            if total_bytes + len(all_buffers[0]) >= self.buffer.max_chunk_bytes:
+/home/jovyan/vllm-new/vllm/distributed/device_communicators/shm_broadcast.py:938:        max_chunk_bytes,
+/home/jovyan/vllm-new/vllm/distributed/device_communicators/shm_broadcast.py:952:            max_chunk_bytes (int): Maximum size in bytes for each chunk in the buffer.
+/home/jovyan/vllm-new/vllm/distributed/device_communicators/shm_broadcast.py:977:            max_chunk_bytes=max_chunk_bytes,
+/home/jovyan/vllm-new/vllm/distributed/device_communicators/shm_broadcast.py:990:        max_chunk_bytes,
+/home/jovyan/vllm-new/vllm/distributed/device_communicators/shm_broadcast.py:1007:            max_chunk_bytes (int): Maximum size in bytes for each chunk in the buffer.
+/home/jovyan/vllm-new/vllm/distributed/device_communicators/shm_broadcast.py:1046:                    max_chunk_bytes=max_chunk_bytes,
+### END
+
+### /dev/shm on pod D (run 20261011-100844-666e, 1.07 s, outcome ok)
+shm                   64     1        64   1% /dev/shm
+4
+1	/dev/shm
+/home/jovyan/vllm-new/vllm/envs.py:246:    VLLM_MQ_MAX_CHUNK_BYTES_MB: int = 16
+/home/jovyan/vllm-new/vllm/envs.py:1835:    "VLLM_MQ_MAX_CHUNK_BYTES_MB": lambda: int(
+/home/jovyan/vllm-new/vllm/envs.py:1836:        os.getenv("VLLM_MQ_MAX_CHUNK_BYTES_MB", "16")
+/home/jovyan/vllm-new/vllm/distributed/device_communicators/shm_broadcast.py:265:        max_chunk_bytes: int,
+/home/jovyan/vllm-new/vllm/distributed/device_communicators/shm_broadcast.py:285:        | max_chunks x max_chunk_bytes  | max_chunks x (1 + n_reader) bytes      |
+/home/jovyan/vllm-new/vllm/distributed/device_communicators/shm_broadcast.py:320:        self.max_chunk_bytes = max_chunk_bytes
+/home/jovyan/vllm-new/vllm/distributed/device_communicators/shm_broadcast.py:323:            self.max_chunk_bytes + self.metadata_size
+/home/jovyan/vllm-new/vllm/distributed/device_communicators/shm_broadcast.py:326:        self.metadata_offset = self.max_chunk_bytes * self.max_chunks
+/home/jovyan/vllm-new/vllm/distributed/device_communicators/shm_broadcast.py:366:            self.max_chunk_bytes,
+/home/jovyan/vllm-new/vllm/distributed/device_communicators/shm_broadcast.py:385:        start = self.data_offset + current_idx * self.max_chunk_bytes
+/home/jovyan/vllm-new/vllm/distributed/device_communicators/shm_broadcast.py:386:        end = start + self.max_chunk_bytes
+/home/jovyan/vllm-new/vllm/distributed/device_communicators/shm_broadcast.py:483:        max_chunk_bytes: int = 1024 * 1024 * 24,
+/home/jovyan/vllm-new/vllm/distributed/device_communicators/shm_broadcast.py:501:            self.buffer = ShmRingBuffer(n_local_reader, max_chunk_bytes, max_chunks)
+/home/jovyan/vllm-new/vllm/distributed/device_communicators/shm_broadcast.py:868:            if total_bytes + len(all_buffers[0]) >= self.buffer.max_chunk_bytes:
+/home/jovyan/vllm-new/vllm/distributed/device_communicators/shm_broadcast.py:938:        max_chunk_bytes,
+/home/jovyan/vllm-new/vllm/distributed/device_communicators/shm_broadcast.py:952:            max_chunk_bytes (int): Maximum size in bytes for each chunk in the buffer.
+/home/jovyan/vllm-new/vllm/distributed/device_communicators/shm_broadcast.py:977:            max_chunk_bytes=max_chunk_bytes,
+/home/jovyan/vllm-new/vllm/distributed/device_communicators/shm_broadcast.py:990:        max_chunk_bytes,
+/home/jovyan/vllm-new/vllm/distributed/device_communicators/shm_broadcast.py:1007:            max_chunk_bytes (int): Maximum size in bytes for each chunk in the buffer.
+/home/jovyan/vllm-new/vllm/distributed/device_communicators/shm_broadcast.py:1046:                    max_chunk_bytes=max_chunk_bytes,
+### END
+
+### model config (run 20261011-101348-ba21, 1.232 s, outcome ok)
+arch ['Qwen3_5ForConditionalGeneration'] layers 64 hidden 5120 vocab 248320 tie False layer_types ['full_attention', 'linear_attention']
+quant ignore ['model.visual.blocks.0.attn.qkv', 'model.visual.blocks.0.attn.proj', 'model.visual.blocks.0.mlp.linear_fc1', 'model.visual.blocks.0.mlp.linear_fc2', 'model.visual.blocks.1.attn.qkv', 'model.visual.blocks.1.attn.proj']
+### END

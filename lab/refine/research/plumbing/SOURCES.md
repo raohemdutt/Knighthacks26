@@ -1,7 +1,7 @@
 # Sources for the plumbing research notes
 
 Index of every source cited in the notes in this folder: `hub-api-lifecycle.md` (hub), `proxy-path.md` (proxy),
-`transfers.md` (transfers), `idle-credits-recovery.md` (idle), `placement.md` (placement), `symmetric-pods.md` (symmetric-pods) and the measurement record
+`transfers.md` (transfers), `idle-credits-recovery.md` (idle), `placement.md` (placement), `symmetric-pods.md` (symmetric-pods), `network-shim.md` (network-shim) and the measurement record
 `measurements-2026-10-10.md`. Each source was opened on the date shown (the page, file or thread itself, not a
 search snippet) before it was cited. Keys are stable: a note cites `[S20]`, and a pass that relies on a finding
 cites the note's file and heading. Source code is cited at the tag or commit that matches what the live hub and
@@ -47,6 +47,10 @@ end of `hub-api-lifecycle.md`.
 | S69 | Zero to JupyterHub docs, "Security" | Kubernetes Network Policies: the singleuser policy's ingress (only pods labelled `hub.jupyter.org/network-access-singleuser=true`, notebook port) and egress defaults | vendor doc (stable) | https://z2jh.jupyter.org/en/stable/administrator/security.html | 2026-10-11 | symmetric-pods |
 | S70 | Tailscale docs, "Userspace networking mode (for containers)" | outbound through the SOCKS5 or HTTP proxy; the HTTP proxy only carries HTTP and HTTPS; meant for containers without /dev/net/tun | vendor doc | https://tailscale.com/kb/1112/userspace-networking | 2026-10-11 | symmetric-pods |
 | S71 | Tailscale docs, "DERP servers" | DERP is the last resort when no direct or peer-relay path forms; peer relays offer lower latency and better performance than DERP; no throughput figure given | vendor doc | https://tailscale.com/kb/1232/derp-servers | 2026-10-11 | symmetric-pods |
+| S72 | chisel README (jpillora/chisel) | Features; reverse port forwarding (`R:` remotes, server `--reverse`); client `--header` and `--hostname` | project doc | https://github.com/jpillora/chisel | 2026-10-11 | network-shim |
+| S73 | Linux man page tcp(7) | Socket options: TCP_NODELAY (disables Nagle), TCP_QUICKACK (not permanent, a switch to or from quickack mode) | reference | https://linux.die.net/man/7/tcp | 2026-10-11 | network-shim |
+| S74 | vLLM docs, "Parallelism and Scaling" | Running vLLM with MultiProcessing (multi-node `--nnodes`, `--node-rank`, `--master-addr`, `--headless`); uneven pipeline splits | project doc (stable) | https://docs.vllm.ai/en/stable/serving/parallelism_scaling/ | 2026-10-11 | network-shim |
+| S76 | Hugging Face model repo Qwen/Qwen3.5-122B-A10B-GPTQ-Int4 | config.json (Qwen3_5MoeForConditionalGeneration, 48 layers, full attention every 4th, 256 experts, 8 active; GPTQ 4-bit group 128 with attention, shared experts, MTP, vision and embeddings left unquantized); file list (78.9 GB, 39 shards) | model card and config | https://huggingface.co/Qwen/Qwen3.5-122B-A10B-GPTQ-Int4 | 2026-10-11 | network-shim |
 
 ## Source code at pinned versions
 
@@ -82,6 +86,7 @@ end of `hub-api-lifecycle.md`.
 
 | Key | Source | State | URL | Opened | Cited in |
 |---|---|---|---|---|---|
+| S75 | vLLM issue 54710, "resolve_kv_cache_layout asserts every worker reports identical KV layouts" (hybrid GDN model, VLLM_PP_LAYER_PARTITION 2,16,16,14: a stage with only linear-attention layers fails the layout check) | open, fix proposed in PR 54795 | https://github.com/vllm-project/vllm/issues/54710 | 2026-10-11 | network-shim |
 | S40 | jupyter-server-proxy PR #479, "feat: support stream api", and changelog v4.4.0 | merged 2024-08-29 | https://github.com/jupyterhub/jupyter-server-proxy/pull/479 | 2026-10-10 | proxy |
 | S41 | jupyter-server-proxy issue #502, "Responsive Proxy for other Stream Types" | open | https://github.com/jupyterhub/jupyter-server-proxy/issues/502 | 2026-10-10 | proxy |
 | S42 | jupyter-server-proxy issue #281, "Connection lost (HTTP ERROR 599) when downloading large files through proxy" | open since 2021, last comment 2026-05-11 | https://github.com/jupyterhub/jupyter-server-proxy/issues/281 | 2026-10-10 | proxy |

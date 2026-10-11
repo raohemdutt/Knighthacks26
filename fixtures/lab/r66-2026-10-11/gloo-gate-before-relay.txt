@@ -1,0 +1,12 @@
+### rank 0 on C (run 20261011-100258-9b62, 16.658 s, outcome ok)
+rank 0 self 10.99.0.1 backend gloo shim 1f975c69fe57
+tunnel process up
+R66JSON {"rank": 0, "backend": "gloo", "host": "<account C>", "torch": "2.12.0+rocm7.14.0", "import_s": 0.86, "env": {"GLOO_SOCKET_IFNAME": "pods0", "NCCL_SOCKET_IFNAME": "pods0"}, "preload": "shim.so", "init_s": 0.164, "first_allreduce_ms": 48.03, "allreduce_result": [3.0, 3.0, 3.0, 3.0], "ok": true, "small_allreduce_ms": {"min": 1.537, "median": 44.741, "p95": 92.486}, "allreduce_4MB_s": 0.115, "allreduce_4MB_MBps": 36.4, "allreduce_64MB_s": 1.638, "allreduce_64MB_MBps": 41.0, "p2p_roundtrip_16KB_ms": 45.58, "p2p_roundtrip_4096KB_ms": 115.62}
+### END
+
+### rank 1 on D (run 20261011-100255-3458, 16.672 s, outcome ok)
+rank 1 self 10.99.0.2 backend gloo shim 1f975c69fe57
+tunnel process up
+
+R66JSON {"rank": 1, "backend": "gloo", "host": "<account D>", "torch": "2.12.0+rocm7.14.0", "import_s": 0.83, "env": {"GLOO_SOCKET_IFNAME": "pods0", "NCCL_SOCKET_IFNAME": "pods0"}, "preload": "shim.so", "init_s": 3.582, "first_allreduce_ms": 87.88, "allreduce_result": [3.0, 3.0, 3.0, 3.0], "ok": true, "small_allreduce_ms": {"min": 1.482, "median": 43.845, "p95": 91.723}, "allreduce_4MB_s": 0.147, "allreduce_4MB_MBps": 28.5, "allreduce_64MB_s": 1.672, "allreduce_64MB_MBps": 40.1, "p2p_roundtrip_16KB_ms": 45.35, "p2p_roundtrip_4096KB_ms": 113.73}
+### END

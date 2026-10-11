@@ -1,0 +1,43 @@
+### C: plain tunnel, one vs two writes per round trip (run 20261011-100433-f410, 11.804 s, outcome ok)
+127.0.0.1:29810 nodelay=1 one write: min 0.33 median 0.36 p95 0.60 ms
+127.0.0.1:29810 nodelay=1 two writes: min 0.34 median 2.98 p95 43.83 ms
+127.0.0.1:29810 nodelay=0 one write: min 0.30 median 0.34 p95 4.38 ms
+127.0.0.1:29810 nodelay=0 two writes: min 42.48 median 45.04 p95 46.81 ms
+### END
+
+### C: second tunnel straight to chisel (/proxy/29997/) (run 20261011-101746-62a0, 16.929 s, outcome ok)
+2026/10/11 10:18:52 client: Connected (Latency 2.159317ms)
+127.0.0.1:30011 nodelay=1 one write: min 0.29 median 0.35 p95 0.54 ms
+127.0.0.1:30011 nodelay=1 two writes: min 0.32 median 1.67 p95 43.24 ms
+127.0.0.1:30011 nodelay=0 one write: min 0.27 median 0.33 p95 0.59 ms
+127.0.0.1:30011 nodelay=0 two writes: min 42.12 median 44.32 p95 46.71 ms
+### END
+
+### C: second tunnel through the quick-ACK relay on D (/proxy/29998/) (run 20261011-101804-b000, 16.787 s, outcome ok)
+2026/10/11 10:19:10 client: Connected (Latency 707.683µs)
+127.0.0.1:30010 nodelay=1 one write: min 0.31 median 0.35 p95 0.48 ms
+127.0.0.1:30010 nodelay=1 two writes: min 0.33 median 0.36 p95 0.57 ms
+127.0.0.1:30010 nodelay=0 one write: min 0.30 median 0.36 p95 0.43 ms
+127.0.0.1:30010 nodelay=0 two writes: min 41.60 median 44.14 p95 45.62 ms
+### END
+
+### D: D to C through the reverse remote, relay on pod D only (run 20261011-105841-237c, 11.621 s, outcome ok)
+127.0.0.1:29810 nodelay=1 one write: min 0.27 median 0.37 p95 0.62 ms
+127.0.0.1:29810 nodelay=1 two writes: min 0.33 median 0.62 p95 42.47 ms
+127.0.0.1:29810 nodelay=0 one write: min 0.29 median 0.36 p95 0.51 ms
+127.0.0.1:29810 nodelay=0 two writes: min 41.50 median 42.64 p95 43.91 ms
+### END
+
+### D: D to C, relay on pod C too (quick-ACK on the client side only) (run 20261011-105923-29f3, 16.8 s, outcome ok)
+127.0.0.1:29810 nodelay=1 one write: min 0.32 median 0.39 p95 0.54 ms
+127.0.0.1:29810 nodelay=1 two writes: min 0.34 median 0.87 p95 43.27 ms
+127.0.0.1:29810 nodelay=0 one write: min 0.32 median 0.38 p95 0.67 ms
+127.0.0.1:29810 nodelay=0 two writes: min 41.47 median 42.89 p95 44.88 ms
+### END
+
+### D: D to C, relay on pod C re-arming quick-ACK on both sockets (run 20261011-105957-2fd9, 11.69 s, outcome ok)
+127.0.0.1:29810 nodelay=1 one write: min 0.32 median 0.38 p95 0.61 ms
+127.0.0.1:29810 nodelay=1 two writes: min 0.36 median 0.90 p95 43.42 ms
+127.0.0.1:29810 nodelay=0 one write: min 0.32 median 0.39 p95 0.70 ms
+127.0.0.1:29810 nodelay=0 two writes: min 41.54 median 42.90 p95 44.45 ms
+### END

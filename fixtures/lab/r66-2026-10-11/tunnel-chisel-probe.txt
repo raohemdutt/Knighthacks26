@@ -1,0 +1,65 @@
+### C: chisel client start and C->D probe through 29700 (64 ports each way) (run 20261011-094401-ffee, 16.944 s, outcome ok)
+echo on 29600 for 5400 s
+1.12.0
+811362311f13ac4b
+health through hub proxy: 200 0.010553s
+2026/10/11 09:45:08 client: tun: proxy#127.0.0.1:29761=>29661: Listening
+2026/10/11 09:45:08 client: tun: proxy#127.0.0.1:29762=>29662: Listening
+2026/10/11 09:45:08 client: tun: proxy#127.0.0.1:29763=>29663: Listening
+2026/10/11 09:45:08 client: Connected (Latency 46.665911ms)
+--- forward C->D through 127.0.0.1:29700
+127.0.0.1:29700 connect 0.85 ms; 200 pings min 0.31 median 0.35 p95 0.58 ms
+send 256 MB in 2.64 s = 101.5 MB/s
+receive 256 MB in 2.45 s = 109.6 MB/s
+--- local baseline on C
+127.0.0.1:29600 connect 1.14 ms; 200 pings min 0.01 median 0.01 p95 0.01 ms
+send 256 MB in 0.03 s = 10288.8 MB/s
+receive 256 MB in 0.03 s = 9250.6 MB/s
+### END
+
+### D: D->C probe through the reverse remote (run 20261011-094457-fc4b, 11.517 s, outcome ok)
+echo on 29600 for 5400 s
+127.0.0.1:29600 answered by jupyter-<account D>
+Traceback (most recent call last):
+  File "/home/jovyan/r66/r66_probe.py", line 84, in <module>
+    client(sys.argv[2], int(sys.argv[3]), int(sys.argv[4]) if len(sys.argv) > 4 else 64)
+  File "/home/jovyan/r66/r66_probe.py", line 61, in client
+    print(f"{host}:{port} connect {conn_ms:.2f} ms; 200 pings min {rt[0]:.2f} median {statistics.median(rt):.2f} p95 {rt[189]:.2f} ms")
+BrokenPipeError: [Errno 32] Broken pipe
+--- through the tunnel port 29700
+127.0.0.1:29700 answered by jupyter-roscon01
+127.0.0.1:29700 connect 0.61 ms; 200 pings min 0.31 median 0.33 p95 0.58 ms
+send 256 MB in 2.53 s = 106.0 MB/s
+receive 256 MB in 2.91 s = 92.3 MB/s
+### END
+
+### C: C->D probe again (run 20261011-094510-e2de, 11.785 s, outcome ok)
+echo on 29600 for 5400 s
+127.0.0.1:29600 answered by jupyter-<account C>
+Traceback (most recent call last):
+  File "/home/jovyan/r66/r66_probe.py", line 84, in <module>
+    client(sys.argv[2], int(sys.argv[3]), int(sys.argv[4]) if len(sys.argv) > 4 else 64)
+  File "/home/jovyan/r66/r66_probe.py", line 61, in client
+    print(f"{host}:{port} connect {conn_ms:.2f} ms; 200 pings min {rt[0]:.2f} median {statistics.median(rt):.2f} p95 {rt[189]:.2f} ms")
+BrokenPipeError: [Errno 32] Broken pipe
+--- through the tunnel port 29700
+127.0.0.1:29700 answered by jupyter-roscon02
+127.0.0.1:29700 connect 0.79 ms; 200 pings min 0.30 median 0.34 p95 0.42 ms
+send 256 MB in 2.46 s = 108.9 MB/s
+receive 256 MB in 2.78 s = 96.5 MB/s
+### END
+
+### C: client restarted with 128 ports each way, offset 200 (run 20261011-094646-ff0e, 11.776 s, outcome ok)
+1.12.0
+811362311f13ac4b
+health through hub proxy: 200 0.012878s
+2026/10/11 09:47:53 client: tun: proxy#127.0.0.1:29925=>29725: Listening
+2026/10/11 09:47:53 client: tun: proxy#127.0.0.1:29926=>29726: Listening
+2026/10/11 09:47:53 client: tun: proxy#127.0.0.1:29927=>29727: Listening
+2026/10/11 09:47:53 client: Connected (Latency 5.308167ms)
+128
+127.0.0.1:29800 answered by jupyter-roscon02
+127.0.0.1:29800 connect 0.86 ms; 200 pings min 0.28 median 0.33 p95 0.52 ms
+send 64 MB in 0.65 s = 103.2 MB/s
+receive 64 MB in 0.60 s = 111.8 MB/s
+### END
