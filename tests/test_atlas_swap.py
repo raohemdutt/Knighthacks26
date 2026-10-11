@@ -1,10 +1,13 @@
 import importlib.util
+import json
 import os
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
+from lab.package_pull import FileResult, write_verified
+from runtime import modelstore
 from runtime.modelstore import ModelStore, ModelStoreError
 from tests.test_model_registry import make_version
 
@@ -67,3 +70,104 @@ def test_a_swap_that_fails_announces_nothing_and_an_unreachable_app_does_not_und
     atlas_swap.swap(store, "v2", restart=lambda: None, check=lambda: None, log=logged.append,
                     announce=lambda *a: "the app could not be reached")
     assert store.current() == "v2" and any("could not tell the app" in m for m in logged)
+
+
+# --- --trust-verified: the pull's .verified.json stands in for a second sha256 ------------------------------------
+
+@pytest.fixture
+def hashes(monkeypatch):
+    seen = []
+    real = modelstore.sha256_file
+
+    def counted(path):
+        seen.append(Path(path).name)
+        return real(path)
+
+    monkeypatch.setattr(modelstore, "sha256_file", counted)
+    return seen
+
+
+def record(root, version):
+    """What lab/package_pull.py writes after its sha256 pass over a version's files."""
+    folder = root / version
+    m = ModelStore(root).manifest(version)
+    files = [FileResult(name, (folder / name).stat().st_size, sha256=m.sha256[name],
+                        mtime_ns=(folder / name).stat().st_mtime_ns) for name in (m.gguf, m.mmproj)]
+    return write_verified(folder, version, files)
+
+
+def quiet_swap(store, version, **kwargs):
+    restarts = []
+    atlas_swap.swap(store, version, restart=lambda: restarts.append(store.current()), check=lambda: None,
+                    log=lambda m: None, **kwargs)
+    return restarts
+
+
+def test_with_the_record_present_a_trusting_swap_hashes_nothing(store, tmp_path, hashes):
+    record(tmp_path, "v2")
+    assert quiet_swap(store, "v2", trust_verified=True) == ["v2"] and hashes == []
+
+
+def test_without_the_flag_the_record_is_ignored_and_both_checks_hash(store, tmp_path, hashes):
+    record(tmp_path, "v2")
+    quiet_swap(store, "v2")
+    assert store.current() == "v2" and hashes == ["m.gguf", "mm.gguf"] * 2   # the swap's check, then the switch's
+
+
+def test_with_no_record_a_trusting_swap_hashes_as_before(store, hashes):
+    quiet_swap(store, "v2", trust_verified=True)
+    assert store.current() == "v2" and hashes == ["m.gguf", "mm.gguf"] * 2
+
+
+def test_a_file_whose_mtime_moved_is_hashed_again_and_the_other_trusted(store, tmp_path, hashes):
+    record(tmp_path, "v2")
+    path = tmp_path / "v2" / "m.gguf"
+    st = path.stat()
+    os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns + 5_000_000_000))
+    quiet_swap(store, "v2", trust_verified=True)
+    assert store.current() == "v2" and hashes == ["m.gguf", "m.gguf"]
+
+
+def test_a_file_whose_size_changed_is_hashed_and_refused_before_anything_is_touched(store, tmp_path, hashes):
+    record(tmp_path, "v2")
+    path = tmp_path / "v2" / "m.gguf"
+    st = path.stat()
+    path.write_bytes(b"weights, but longer")
+    os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns))     # the recorded mtime: the size alone must give it away
+    restarts = []
+    with pytest.raises(ModelStoreError, match="not safe"):
+        atlas_swap.swap(store, "v2", restart=lambda: restarts.append(1), check=lambda: None, log=lambda m: None,
+                        trust_verified=True)
+    assert store.current() == "v1" and restarts == [] and hashes == ["m.gguf"]
+
+
+def test_a_record_the_pull_did_not_write_or_with_another_checksum_is_not_trusted(store, tmp_path, hashes):
+    path = record(tmp_path, "v2")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    path.write_text(json.dumps({**data, "written_by": "someone else"}), encoding="utf-8")
+    assert store.verify("v2", trust_verified=True) == [] and hashes == ["m.gguf", "mm.gguf"]
+    hashes.clear()
+    data["files"][0]["sha256"] = "0" * 64                    # the manifest's checksum is not the one recorded
+    path.write_text(json.dumps(data), encoding="utf-8")
+    assert store.verify("v2", trust_verified=True) == [] and hashes == ["m.gguf"]
+    hashes.clear()
+    path.write_text("{not json", encoding="utf-8")
+    assert store.verify("v2", trust_verified=True) == [] and hashes == ["m.gguf", "mm.gguf"]
+
+
+def test_a_failed_trusting_swap_goes_back_without_hashing_a_recorded_old_version(store, tmp_path, hashes):
+    record(tmp_path, "v1")
+    record(tmp_path, "v2")
+    restarts, answers = [], iter(["did not load", None])
+    with pytest.raises(ModelStoreError, match="did not load"):
+        atlas_swap.swap(store, "v2", restart=lambda: restarts.append(store.current()), check=lambda: next(answers),
+                        log=lambda m: None, trust_verified=True)
+    assert store.current() == "v1" and restarts == ["v2", "v1"] and hashes == []
+
+
+@pytest.mark.parametrize(("argv", "trusted"), [([], False), (["--trust-verified"], True)])
+def test_the_command_line_passes_trust_verified_only_when_asked(tmp_path, monkeypatch, argv, trusted):
+    seen = {}
+    monkeypatch.setattr(atlas_swap, "swap", lambda store, version, **kwargs: seen.update(kwargs, version=version))
+    assert atlas_swap.main(["swap", "v2", "--models-dir", str(tmp_path), *argv]) == 0
+    assert (seen["version"], seen["trust_verified"]) == ("v2", trusted)

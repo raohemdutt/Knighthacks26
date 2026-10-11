@@ -4,8 +4,9 @@ On stage, one command on the box takes the retrained tool-calling model (v2, pac
 `atlas-tool-calling-v2-a100-f2r4`) from pod D's package to serving, in place of the base model. Everything that can be
 done ahead was done at 5 AM ET on Sun 2026-10-11: the box is back on the base model, the v2 package is already on the
 box with every sha256 checked, the v2 run's real results are in the box's Learning lab, and the command was dry-run and
-timed. Expected wall-clock of the live command: **about 240 s** (4 minutes), of which the model gives no answers for
-the last 70 s or so.
+timed. Expected wall-clock of the live command: **about 115 s, estimated** (one sha256 pass plus the restart; not yet
+run live with the hash-once code, see "The command" below), of which the model gives no answers for the last 70 s or
+so. With a box checkout that predates the hash-once change, or with `--no-trust`, it is the measured-basis 240 s.
 
 ## Starting state (set at 5:09 AM ET, checked again at 5:48 AM ET)
 
@@ -78,26 +79,32 @@ On the box:
 cd ~/atlas-l6 && LAB_ENV_FILES=$HOME/Knighthacks26/.env ~/atlas/venv-yolo/bin/python -m lab deploy atlas-tool-calling-v2-a100-f2r4 --from-pod D --models-dir ~/Knighthacks26/data/models --events-dir ~/Knighthacks26/data/events
 ```
 
-What it does, with the expected seconds (the files are already on the box, so nothing is downloaded):
+What it does, with the expected seconds (the files are already on the box, so nothing is downloaded). The box's
+checkout (`~/atlas-l6`) needs the hash-once change on main for these numbers; an older checkout hashes four times.
 
-| Step | What happens | Expected |
+| Step | What happens | Expected (estimated) |
 | --- | --- | --- |
 | resolve | reads the manifest from pod D through the hub proxy | 2 to 3 s |
-| pull | every file already there: hashes each against the manifest, sends nothing | 40 s |
-| verify | the deploy checks the installed copy against its manifest again | 40 s |
-| swap | `atlas_swap.py` swap: checks the sha256s (40 s), switches `current` (checks once more, 40 s), restarts `atlas-llm`, waits for health and the test question (67 s) | 147 s |
+| pull | every file already there: hashes each against the manifest (the one full pass), sends nothing, writes `.verified.json` beside `manifest.json` | 40 s |
+| verify | the deploy checks the installed copy against the pull's record: each file's size and mtime still match, so no hash | under 1 s |
+| swap | `atlas_swap.py` swap with `--trust-verified`: checks the files by the record (no hash), switches `current` (same check, no hash), restarts `atlas-llm`, waits for health and the test question (67 s) | 67 s |
 | check | one chat request through llama-server the way the gateway sends it | 3 to 10 s (waits behind a caption) |
 | publish | `learning.model.deployed` (version, previous_version atlas-base, base, task, package_mb 3381.2, pulled_seconds, checksums_ok) to the app | under 1 s |
-| total | | **about 240 s** |
+| total | | **about 115 s (110 to 120 s), estimated until the live run** |
 
 Where the seconds come from: one sha256 pass over the package (gguf plus mmproj, 3.38 GB) measured with `sha256sum`
 on the box at 5:47:43 AM ET: 40.4 s for f2r4 (32.1 s the gguf, 8.3 s the mmproj; r01, the same sizes, took 45.4 s at
-5:32 AM). The code hashes the whole
-package four times: `package_pull.pull_file` (a file already present is hashed before it is kept),
-`deploy.deploy` (`box.verify`), `atlas_swap.swap` (`store.verify`) and `ModelStore.activate` (verifies again). The box
-reads from its SD card and has about 500 MB free memory, so nothing stays cached between passes; the rollback's 88 s
-for two passes over atlas-base agrees. The restart-to-serving 67 s is the rollback's, measured. The model answers
-nothing only from the restart on (about 70 s); the hashing before it runs while the old model keeps serving.
+5:32 AM). The code used to hash the whole package four times: `package_pull.pull_file` (a file already present is
+hashed before it is kept), `deploy.deploy` (`box.verify`), `atlas_swap.swap` (`store.verify`) and
+`ModelStore.activate` (verifies again), which is where the earlier 240 s estimate came from. Now only the pull hashes;
+it then writes `data/models/<version>/.verified.json` (name, size, sha256 and mtime of each file it hashed), and the
+verify, the swap's check and the switch trust that record for a file whose size and mtime have not changed. A file
+that changed since, or no record at all, is hashed as before. The f2r4 copy on the box was pulled before the record
+existed, so the live command's pull hash is what writes it; nothing has to be done ahead. The box reads from its SD
+card and has about 500 MB free memory, so nothing stays cached between passes; the rollback's 88 s for two passes over
+atlas-base agrees. The restart-to-serving 67 s is the rollback's, measured. The model answers nothing only from the
+restart on (about 70 s); the hashing before it runs while the old model keeps serving. `--no-trust` on the command
+hashes at every step again (about 240 s).
 
 The pull line in the answer will read `"outcome": "already_present"` with no MB/s, and `pulled_seconds` in the event
 will be the hash time, not a download.
@@ -112,7 +119,9 @@ The same swap without the deploy's pull and extra verify, from `~/Knighthacks26`
 PYTHONPATH=. ~/atlas/venv-yolo/bin/python jetson/atlas_swap.py swap atlas-tool-calling-v2-a100-f2r4
 ```
 
-About 150 s (two hash passes plus the restart; the rollback this morning, the same code path, took 154.5 s). It also
+About 150 s (two hash passes plus the restart; the rollback this morning, the same code path, took 154.5 s).
+`--trust-verified` on it skips both passes only when a pull with the hash-once code has already written f2r4's
+`.verified.json` (a live deploy attempt that got past its pull does); otherwise the flag changes nothing. It also
 tells the app, so `learning.model.deployed` lands and the On the box card flips, but the event carries only
 version and previous_version (no package_mb, pulled_seconds or checksums_ok), and it skips the gateway-shaped check.
 It does not need pod D at all.
@@ -152,7 +161,7 @@ back by itself (below), so this command is for a v2 that serves but misbehaves.
 | --- | --- | --- |
 | pod D's package server down, pod D stopped, or the hub token refused | stops at resolve, before anything on the box changes: `"ok": false, "kind": "no_package"` (or `no_credentials`); writes `learning.run.progress` stage failed only if the version was resolved | run the faster command above: it needs only the files already on the box |
 | a hash mismatch (a damaged copy) | the pull deletes the bad file and downloads it again from pod D (14 to 19 min at the 3 to 4 MB/s measured this morning, too long for the stage); a mismatch at verify or swap stops before `current` changes, `"kind": "pull"` or `"swap"` | stay on base; say the box refused a model that did not match its checksum, which is the point of the check |
-| llama-server does not come up on v2, or its test question fails | the swap puts `current` back to atlas-base, restores `previous`, restarts again (another 45 s hash plus 67 s), `"kind": "swap"` | the box is on base again; carry on |
+| llama-server does not come up on v2, or its test question fails | the swap puts `current` back to atlas-base, restores `previous`, restarts again (another 45 s hash, since atlas-base has no `.verified.json`, plus 67 s), `"kind": "swap"` | the box is on base again; carry on |
 | the gateway-shaped check fails after the swap | switches back to atlas-base and writes `learning.run.progress` failed, `"kind": "check"`, `rolled_back_to` atlas-base | as above |
 | the app does not take the event | the model is serving; the event goes into `data/events/` directly, `"published": "log"` with `app_note`; the running gateway does not read that file until it restarts, so the card does not flip | show the deploy's JSON line and the question instead |
 | `/api/ask` slow or failing | not part of the deploy | the question goes to llama-server directly, see above |

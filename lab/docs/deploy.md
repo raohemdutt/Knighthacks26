@@ -7,16 +7,22 @@ Arguments: `python -m lab deploy -h`. The commands for pod D and the box are in 
 ```
 python -m lab deploy [VERSION] [--from-pod C|D] [--port 8300] [--dry-run] [--models-dir data/models]
                      [--events-dir data/events] [--part-mib 64] [--llm-url URL] [--app-url URL] [--no-app]
+                     [--no-trust]
 ```
 
 1. Resolves the version: the argument, or the newest complete package (by the manifest's `created`) in the listing of
    the pod's package server (`lab/package_server.py`, R10).
 2. Pulls every file the manifest names through `https://<hub>/user/<account>/proxy/<port>/<version>/<file>` in Range
    parts (`lab/package_pull.py`: resumable, a sha256 check per file, manifest.json last) into `data/models/<version>/`.
+   A file already there is hashed too; this is the one full sha256 pass of the deploy. After every file matched, the
+   pull writes `data/models/<version>/.verified.json`: per file the name, size, sha256 and mtime (`mtime_ns`) it had
+   when it was hashed, with `written_by: lab/package_pull.py`.
    The hub user, token and address are `AUP_HUB_USER_D`, `AUP_HUB_TOKEN_D` and `AUP_HUB_URL_D` (or `LAB_HUB_URL`),
    with `LAB_POD_ROLES=C:pod-a,D:pod-b`, from the environment or the .env search of `lab/hub.py` (`LAB_ENV_FILES`
    names the file directly).
-3. Swaps with `jetson/atlas_swap.py`'s `swap` (R7): checks every sha256 again, switches `data/models/current`,
+3. Swaps with `jetson/atlas_swap.py`'s `swap` (R7) with `trust_verified` (the script's `--trust-verified`): checks
+   every file against the manifest again, by the pull's record when the file still has the recorded size and mtime
+   and by sha256 otherwise, switches `data/models/current` (same check),
    restarts `atlas-llm` (`sudo -n systemctl restart`), waits for its health and test question; `previous` keeps the
    version that was serving, so `python jetson/atlas_swap.py rollback` goes back to it.
 4. Checks the model answers one request the way the gateway sends it (`runtime/llama.py`: POST
@@ -27,14 +33,27 @@ python -m lab deploy [VERSION] [--from-pod C|D] [--port 8300] [--dry-run] [--mod
    to `data/events/`; straight into `data/events/YYYY-MM-DD.jsonl` when the app cannot be reached or with `--no-app`.
    A failure after the version is known is written to the event log as `learning.run.progress` with stage `failed`.
 
+Hashing once. The verify after the pull, the swap's check, the switch (`ModelStore.activate`) and a switch back all
+read `.verified.json` (`runtime/modelstore.py`: `read_verified`, `record_vouches`). A file is taken as checked only
+when the record was written by the pull, names it with the manifest's sha256, and the file's size and mtime still
+match; anything else (no record, another writer, a size or mtime that moved, an unreadable record) hashes the file as
+before. The pull deletes the record before it touches the files and writes it only after all of them matched. On the
+box, with the 3.4 GB package already there, that is one hash pass (about 40 s) plus the model server restart (67 s):
+about 115 s for the whole verb, estimated until the live run, instead of the measured-basis 240 s of four passes.
+`--no-trust` hashes at every step, as before. The trade: a file rewritten in place with its size and mtime put back
+would be trusted; `--no-trust` is the answer if that is a worry.
+
 `--dry-run` resolves the version, reads its manifest and file sizes and prints the plan (files, MB, free disk, the
 current and previous version on the box); it writes and switches nothing.
 
 The answer is one JSON line: `ok`, `outcome` (`deployed`, `already_serving`, `dry_run`, `error`), `kind` for an error
 (`no_credentials`, `no_package`, `pull`, `swap`, `check`, `publish`), and the pull's `mb_s`, `bytes` and
-`wall_seconds`. The pull also writes R10's `link pull` ledger row (`link.pull_mb_s`).
+`wall_seconds`, and `trust_verified` (false with `--no-trust`). The pull also writes R10's `link pull` ledger row
+(`link.pull_mb_s`).
 
 Tests: `tests/test_lab_deploy.py`, on the fixture package `fixtures/learning/package/atlas-desk-objects-fixture/`
 (rebuilt by `fixtures/learning/package/make_fixture.py` with L5's manifest code), the real package server behind
 `lab/package_fake.py`'s proxy, a fake box (swap, llama-server, app), and the real `atlas_swap.py` swap where the
-machine can make symlinks.
+machine can make symlinks. The hash-once cases (record present, absent, written by someone else, stale by mtime, stale
+by size, a failed pull, `--no-trust`) count every sha256 the pull and the box run; `tests/test_atlas_swap.py` does
+the same for the swap and its `--trust-verified` flag.

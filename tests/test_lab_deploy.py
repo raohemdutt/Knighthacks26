@@ -4,7 +4,11 @@ publishes learning.model.deployed, and goes back to the serving version when the
 What is real: the pod's file server (lab/package_server.py on 127.0.0.1, serving the fixture package from
 fixtures/learning/package/), the Range pull (lab/package_pull.py), the event log (bus/bus.py), and in the last tests the
 model store and jetson/atlas_swap.py's swap. What is faked: the hub and its proxy (lab/hub_fake.py,
-lab/package_fake.py), the box's llama-server and app (an httpx MockTransport), the swap and restart (FakeBox)."""
+lab/package_fake.py), the box's llama-server and app (an httpx MockTransport), the swap and restart (FakeBox).
+
+Hashing once: the pull writes <version>/.verified.json after its sha256 pass, and the verify and the swap trust it
+while each file keeps its recorded size and mtime. The tests count every full-file sha256 (the pull's and the box's)
+with the record present, absent and stale, and with --no-trust."""
 from __future__ import annotations
 
 import hashlib
@@ -20,7 +24,7 @@ import pytest
 
 from contracts.events import parse_event
 from contracts.learning import ModelDeployed, ModelManifest, RunProgress
-from lab import deploy, package_server
+from lab import deploy, package_pull, package_server
 from lab.hub_fake import FakeClock, FakeHub
 from lab.package_fake import FakePodProxy, write_package
 
@@ -35,12 +39,16 @@ PART_MIB = str(16_384 / (1 << 20))          # 16 KiB parts: the 40 KB fixture mo
 
 class FakeBox:
     """data/models as the swap sees it, without symlinks: current and previous are attributes, verify is the store's
-    rule (every manifest file present and matching its sha256), swap and swap_back are recorded."""
+    rule (every manifest file present and matching its sha256, or vouched for by the pull's .verified.json when
+    trust_verified and its size and mtime still match), swap checks twice as the real one does (the swap's check and
+    the switch's), swap and swap_back are recorded. hashed lists every file the box sha256'd."""
 
     def __init__(self, models_dir: Path, current: str | None = "atlas-base", previous: str | None = "atlas-v1") -> None:
         self.models_dir = models_dir
         self._current, self._previous = current, previous
         self.calls: list[tuple] = []
+        self.trusts: list[bool] = []
+        self.hashed: list[str] = []
         self.swap_fails: str | None = None
         self.back_problem: str | None = None
 
@@ -50,22 +58,33 @@ class FakeBox:
     def previous(self):
         return self._previous
 
-    def verify(self, version):
+    def verify(self, version, *, trust_verified=False):
+        from runtime.modelstore import read_verified, record_vouches
         m = ModelManifest.model_validate_json((self.models_dir / version / "manifest.json").read_text())
+        record = read_verified(self.models_dir / version) if trust_verified else {}
         problems = []
         for name in [m.gguf, *([m.mmproj] if m.mmproj else [])]:
             path = self.models_dir / version / name
+            if path.is_file() and record_vouches(record.get(name), path, m.sha256.get(name, "")):
+                continue
+            if path.is_file():
+                self.hashed.append(name)
             if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != m.sha256.get(name):
                 problems.append(f"{name} does not match")
         return problems
 
-    def swap(self, version):
+    def swap(self, version, *, trust_verified=False):
         self.calls.append(("swap", version))
+        self.trusts.append(trust_verified)
+        for _ in range(2):                 # atlas_swap.swap's check, then ModelStore.activate's
+            problems = self.verify(version, trust_verified=trust_verified)
+            if problems:
+                raise deploy.DeployError("swap", f"{version} is not safe to switch to: " + "; ".join(problems))
         if self.swap_fails:
             raise deploy.DeployError("swap", self.swap_fails)
         self._current, self._previous = version, self._current
 
-    def swap_back(self, version, previous):
+    def swap_back(self, version, previous, *, trust_verified=False):
         self.calls.append(("swap_back", version, previous))
         self._current, self._previous = version, previous
         return self.back_problem
@@ -284,6 +303,165 @@ def test_the_app_publishes_what_deploy_sends():
     assert published[0].model_dump(include=set(body)) == body
 
 
+# --- hashing once: the pull's .verified.json --------------------------------------------------------------------
+
+GGUF_NAME, MMPROJ_NAME = f"{VERSION}-Q4_K_M.gguf", "mmproj-F16.gguf"
+
+
+@pytest.fixture
+def pull_hashes(monkeypatch):
+    """Every whole-file sha256 the pull runs (a file already on the box); a downloaded file is hashed as it streams."""
+    seen: list[str] = []
+    real = package_pull.sha256_file
+
+    def counted(path):
+        seen.append(Path(path).name)
+        return real(path)
+
+    monkeypatch.setattr(package_pull, "sha256_file", counted)
+    return seen
+
+
+def _on_the_box_already(world):
+    """The live demo's case: a first deploy put every file on the box; the box is back on atlas-base."""
+    assert world.run(VERSION, "--no-app")["ok"]
+    world.box._current, world.box._previous = "atlas-base", "atlas-v1"
+    for seen in (world.box.calls, world.box.trusts, world.box.hashed):
+        seen.clear()
+
+
+def _after_the_pull(monkeypatch, change):
+    """Run `change(folder)` right after the deploy's pull returns, before the verify and the swap."""
+    real = package_pull.pull_package
+
+    def pull_then_change(client, version, dest, **kwargs):
+        answer = real(client, version, dest, **kwargs)
+        change(Path(dest) / version)
+        return answer
+
+    monkeypatch.setattr(deploy.package_pull, "pull_package", pull_then_change)
+
+
+def test_the_pull_records_what_it_hashed_beside_the_manifest(world):
+    answer = world.run(VERSION, "--no-app")
+
+    assert answer["ok"] and answer["trust_verified"] is True
+    folder = world.models / VERSION
+    record = json.loads((folder / ".verified.json").read_text(encoding="utf-8"))
+    manifest = ModelManifest.model_validate_json((folder / "manifest.json").read_text(encoding="utf-8"))
+    assert (record["written_by"], record["version"]) == ("lab/package_pull.py", VERSION)
+    assert [(f["name"], f["size"], f["sha256"], f["mtime_ns"]) for f in record["files"]] == [
+        (name, (folder / name).stat().st_size, manifest.sha256[name], (folder / name).stat().st_mtime_ns)
+        for name in (GGUF_NAME, MMPROJ_NAME)]
+    # the files were hashed as they streamed in; the box trusted the record and hashed nothing
+    assert world.box.hashed == [] and world.box.trusts == [True]
+
+
+def test_files_already_on_the_box_are_hashed_once_on_the_live_path(world, pull_hashes):
+    _on_the_box_already(world)
+    pull_hashes.clear()
+
+    answer = world.run(VERSION, "--no-app")
+
+    assert (answer["ok"], answer["outcome"], answer["pull"]["outcome"]) == (True, "deployed", "already_present")
+    assert pull_hashes == [GGUF_NAME, MMPROJ_NAME]          # the one full pass: the pull's check of present files
+    assert world.box.hashed == []                            # verify, the swap's check and the switch trust the record
+    assert world.box.calls == [("swap", VERSION)] and world.box.trusts == [True]
+    assert world.box.current() == VERSION
+
+
+def test_no_trust_hashes_at_every_step_as_before(world, pull_hashes):
+    _on_the_box_already(world)
+    pull_hashes.clear()
+
+    answer = world.run(VERSION, "--no-app", "--no-trust")
+
+    assert answer["ok"] and answer["trust_verified"] is False and world.box.trusts == [False]
+    assert pull_hashes == [GGUF_NAME, MMPROJ_NAME]
+    assert world.box.hashed == [GGUF_NAME, MMPROJ_NAME] * 3    # the verify, the swap's check, the switch
+
+
+def test_with_no_record_every_step_hashes(world, pull_hashes, monkeypatch):
+    _on_the_box_already(world)
+    pull_hashes.clear()
+    _after_the_pull(monkeypatch, lambda folder: (folder / ".verified.json").unlink())
+
+    answer = world.run(VERSION, "--no-app")
+
+    assert answer["ok"] and answer["outcome"] == "deployed"
+    assert pull_hashes == [GGUF_NAME, MMPROJ_NAME]
+    assert world.box.hashed == [GGUF_NAME, MMPROJ_NAME] * 3
+
+
+def test_a_record_someone_else_wrote_is_not_trusted(world, monkeypatch):
+    def forge(folder):
+        path = folder / ".verified.json"
+        record = json.loads(path.read_text(encoding="utf-8"))
+        path.write_text(json.dumps({**record, "written_by": "someone else"}), encoding="utf-8")
+
+    _after_the_pull(monkeypatch, forge)
+    answer = world.run(VERSION, "--no-app")
+
+    assert answer["ok"] and world.box.hashed == [GGUF_NAME, MMPROJ_NAME] * 3
+
+
+def test_a_file_whose_mtime_moved_since_the_pull_is_hashed_again_and_the_rest_trusted(world, monkeypatch):
+    def touch(folder):
+        st = (folder / GGUF_NAME).stat()
+        os.utime(folder / GGUF_NAME, ns=(st.st_atime_ns, st.st_mtime_ns + 5_000_000_000))
+
+    _after_the_pull(monkeypatch, touch)
+    answer = world.run(VERSION, "--no-app")
+
+    assert answer["ok"] and answer["outcome"] == "deployed"
+    assert world.box.hashed == [GGUF_NAME] * 3               # the bytes still match, so the deploy goes on
+
+
+def test_a_file_changed_after_the_pull_with_the_same_size_is_caught_by_its_new_mtime(world, monkeypatch):
+    def damage(folder):
+        path = folder / GGUF_NAME
+        st = path.stat()
+        data = bytearray(path.read_bytes())
+        data[100] ^= 0xFF
+        path.write_bytes(bytes(data))
+        os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns + 5_000_000_000))
+
+    _after_the_pull(monkeypatch, damage)
+    answer = world.run(VERSION, "--no-app")
+
+    assert (answer["ok"], answer["kind"]) == (False, "pull") and GGUF_NAME in answer["error"]
+    assert world.box.calls == [] and world.box.current() == "atlas-base"
+    assert [e.type for e in world.logged()] == ["learning.run.progress"]
+
+
+def test_a_file_whose_size_changed_after_the_pull_is_hashed_again_and_refused(world, monkeypatch):
+    def grow(folder):
+        path = folder / GGUF_NAME
+        st = path.stat()
+        with path.open("ab") as handle:
+            handle.write(b"x")
+        os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns))  # same mtime as recorded: the size alone gives it away
+
+    _after_the_pull(monkeypatch, grow)
+    answer = world.run(VERSION, "--no-app")
+
+    assert (answer["ok"], answer["kind"]) == (False, "pull") and world.box.hashed == [GGUF_NAME]
+    assert world.box.calls == []
+
+
+def test_a_failed_pull_leaves_no_record_behind(world):
+    _on_the_box_already(world)
+    folder = world.models / VERSION
+    assert (folder / ".verified.json").is_file()
+    (folder / GGUF_NAME).write_bytes(b"damaged")
+    world.proxy.fail(404, contains="Q4_K_M", times=1)       # the damaged file cannot be fetched again
+
+    answer = world.run(VERSION, "--no-app")
+
+    assert (answer["ok"], answer["kind"]) == (False, "pull") and not (folder / ".verified.json").exists()
+    assert world.box.calls == []
+
+
 # --- the real swap: runtime/modelstore.py and jetson/atlas_swap.py, with the restart and the wait faked ------------
 
 @pytest.fixture
@@ -293,6 +471,21 @@ def symlinks(tmp_path):
     except (OSError, NotImplementedError):
         pytest.skip("this machine cannot create symlinks")
     (tmp_path / "probe").unlink()
+
+
+@pytest.fixture
+def store_hashes(monkeypatch):
+    """Every sha256 runtime/modelstore.py runs (the real box's verify, the swap's check and the switch's)."""
+    from runtime import modelstore
+    seen: list[str] = []
+    real = modelstore.sha256_file
+
+    def counted(path):
+        seen.append(Path(path).name)
+        return real(path)
+
+    monkeypatch.setattr(modelstore, "sha256_file", counted)
+    return seen
 
 
 def _real_box(world, restarts):
@@ -310,6 +503,23 @@ def test_the_real_swap_switches_current_and_keeps_the_serving_version_for_rollba
     answer = world.run(VERSION, "--no-app", box=box)
 
     assert answer["ok"] and (box.current(), box.previous()) == (VERSION, "atlas-base") and restarts == [VERSION]
+
+
+def test_the_real_box_hashes_once_on_the_live_path_and_three_more_times_with_no_trust(world, symlinks, pull_hashes,
+                                                                                       store_hashes):
+    restarts = []
+    box = _real_box(world, restarts)
+    assert world.run(VERSION, "--no-app", box=box)["ok"]
+    box.store.activate("atlas-base")
+    pull_hashes.clear(), store_hashes.clear()
+
+    assert world.run(VERSION, "--no-app", box=box)["ok"] and box.current() == VERSION
+    assert pull_hashes == [GGUF_NAME, MMPROJ_NAME] and store_hashes == []
+
+    box.store.activate("atlas-base")
+    pull_hashes.clear(), store_hashes.clear()
+    assert world.run(VERSION, "--no-app", "--no-trust", box=box)["ok"] and box.current() == VERSION
+    assert pull_hashes == [GGUF_NAME, MMPROJ_NAME] and store_hashes == [GGUF_NAME, MMPROJ_NAME] * 3
 
 
 def test_the_real_swap_goes_back_when_the_gateway_check_fails(world, symlinks):
