@@ -85,22 +85,24 @@ def test_the_teachers_cost_is_read_off_the_recorded_curve_and_never_invented_bey
     curve = {p["x"]: p["value"] for p in out["inputs"]["teacher"]["j_per_token"]}
     assert all("lab/refine/metrics.jsonl:" in p["source"]["ref"] for p in out["inputs"]["teacher"]["j_per_token"])
     pts = out["inputs"]["teacher"]["j_per_token"]
-    assert interp(pts, 1) == curve[1] and interp(pts, 64) == curve[64] and interp(pts, 500) == curve[64] and interp(pts, 0.2) == curve[1]
+    # the newest sweep on pod-a is R60's of the upgraded teacher: recorded from batch 1 to 16, held flat beyond
+    assert sorted(curve) == [1, 4, 8, 16] and out["inputs"]["teacher"]["session"] == "bench-20261011T044643Z-6240"
+    assert interp(pts, 1) == curve[1] and interp(pts, 16) == curve[16] and interp(pts, 500) == curve[16] and interp(pts, 0.2) == curve[1]
     assert curve[8] > interp(pts, 11) > curve[16]
     recorded = [p for p in out["break_even"]["curve"] if p["recorded"]]
     assert [(p["batch"], p["teacher_j_per_token"]) for p in recorded] == [(b, round(v, 4)) for b, v in sorted(curve.items())]
     for run in out["policies"].values():
-        assert run["teacher_batch"] is None or 1 <= run["teacher_batch"] <= 64
+        assert run["teacher_batch"] is None or 1 <= run["teacher_batch"] <= 16
 
 
 def test_the_two_policies_differ_only_where_the_recorded_numbers_let_them():
-    # whole-request basis: the teacher's best recorded figure (batch 64) is under the student's, so a busy teacher wins eval work
+    # whole-request basis: the teacher's best recorded figure (batch 16) is under the student's, so a busy teacher wins eval work
     busy = simulate({"preset": "burst", "student_basis": "request"}, ROWS)
     assert busy["policies"]["capability"]["by_kind"]["eval"]["target"] == "student"
     assert busy["policies"]["energy"]["by_kind"]["eval"]["target"] == "teacher"
     assert busy["compare"]["moved"] == busy["kinds"][NAMES.index("eval")]["n"] > 0 and busy["compare"]["saved_j"] > 0
     assert busy["compare"]["sentence"].startswith("Energy-aware routing sends ") and "% less" in busy["compare"]["sentence"]
-    assert 16 < busy["break_even"]["batch"] < 64 and busy["break_even"]["rpm_to_teacher"] > 0
+    assert 8 < busy["break_even"]["batch"] < 16 and busy["break_even"]["rpm_to_teacher"] > 0
     # decode-only basis: the box is cheaper per token at every recorded batch size, so nothing moves and it says why
     never = simulate({"preset": "burst", "student_basis": "decode"}, ROWS)
     assert never["compare"]["moved"] == 0 and never["break_even"]["batch"] is None and "never wins" in never["break_even"]["reason"]
