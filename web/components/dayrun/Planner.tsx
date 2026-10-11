@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import type { Board, Change, Move, MoveKind, MoveOption, OpenSlot, SimResult } from "@/lib/api";
 import { addMove, blockOfMove, clock, clockSpan, minutes, nextClock, placeName, shiftMove, type PlaceIndex } from "@/lib/dayrun";
 import { useWords, type Words } from "@/lib/profile";
@@ -251,7 +252,8 @@ function AddSheet({ slot, onPick, onClose }: { slot: OpenSlot; onPick: (o: MoveO
   }, [onClose]);
   const options = slot.moves.filter((o) => o.kind === kind);
 
-  return (
+  // Through a portal to <body>, as RouteSheet does: a section's entrance transform would otherwise hold the sheet.
+  return createPortal(
     <div className={ui.overlay} onClick={onClose}>
       <div className={ui.sheet} role="dialog" aria-modal="true" aria-label="Add a move" onClick={(e) => e.stopPropagation()}>
         <div className={`${ui.row} ${ui.between}`}>
@@ -296,6 +298,7 @@ function AddSheet({ slot, onPick, onClose }: { slot: OpenSlot; onPick: (o: MoveO
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

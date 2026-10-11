@@ -500,3 +500,45 @@
   box-shadow: var(--sh-selected);
   color: var(--accent-text);
 }
+
+/* The render controls, folded away on the Room screen: there for the AMD demo, out of the way for everyone else. */
+.tuck {
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+}
+
+.tuck summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 14px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--muted);
+}
+
+.tuck summary::-webkit-details-marker {
+  display: none;
+}
+
+.tuck summary svg {
+  width: 18px;
+  height: 18px;
+  transition: transform var(--t) var(--ease-spring);
+}
+
+.tuck[open] summary svg {
+  transform: rotate(180deg);
+}
+
+.tuckBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 14px 14px;
+}

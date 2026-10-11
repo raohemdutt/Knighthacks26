@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { AttentionLine, Seen, useAttention, useLookFirst } from "@/components/guide/Attention";
 import ui from "@/components/ui.module.css";
 import { ApiError, api, spotUrl } from "@/lib/api";
@@ -258,7 +259,7 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
-  return (
+  return createPortal(  // over the viewport: a transformed page section would otherwise trap position: fixed
     <div className={ui.overlay} onClick={onClose}>
       <div className={ui.sheet} role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
         <div className={`${ui.row} ${ui.between}`}>
@@ -270,7 +271,7 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
         {children}
       </div>
     </div>
-  );
+    , document.body);
 }
 
 function Fact({ label, children }: { label: string; children: ReactNode }) {

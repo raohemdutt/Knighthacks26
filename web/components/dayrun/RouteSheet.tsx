@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { api, type PlaceRoute } from "@/lib/api";
 import { distance, pinKind, toScreen, type Pt } from "@/lib/campusmap";
 import { clock, indexPlaces, minutes, ms } from "@/lib/dayrun";
@@ -101,7 +102,9 @@ function Sheet({ from, to, arriveBy, now, what, onClose }: { from: string; to: s
   const indoors = r ? r.path.filter((p) => typeof places.get(p)?.lat !== "number").length : 0;
   const badge = midpoint(line);
 
-  return (
+  // Through a portal to <body>: the page's entrance animation leaves a transform on every section, and a
+  // transformed ancestor makes `position: fixed` resolve against that section instead of the viewport.
+  return createPortal(
     <div className={ui.overlay} onClick={onClose}>
       <div className={ui.sheet} role="dialog" aria-modal="true" aria-label={r ? `Route to ${r.to_name}` : "Route"} onClick={(e) => e.stopPropagation()}>
         <div className={`${ui.row} ${ui.between}`}>
@@ -205,6 +208,7 @@ function Sheet({ from, to, arriveBy, now, what, onClose }: { from: string; to: s
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

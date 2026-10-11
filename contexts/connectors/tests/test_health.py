@@ -312,5 +312,9 @@ def test_the_server_syncs_the_fixture_through_the_hub_and_is_quiet_when_unset(mo
     assert [type(e) for e in events] == [ItemSynced] * 4
     assert {(e.connector, e.kind) for e in events} == {("health", "health")}
     today = now.astimezone(NY).date()
-    assert events[-1].external_id == f"sleep:{today}" and events[-1].when.astimezone(NY).time() == time(7, 26)
-    assert parse_summary(events[-1].summary).asleep_min == 448
+    assert events[-1].external_id == f"sleep:{today}"
+    # The rebased fixture's last night ends at 7:26 AM "today". Before then that night is not over, so what the server
+    # says about it is not the finished night: its wake time and total are checked only once 7:26 has passed.
+    if now.astimezone(NY).time() >= time(7, 26):
+        assert events[-1].when.astimezone(NY).time() == time(7, 26)
+        assert parse_summary(events[-1].summary).asleep_min == 448

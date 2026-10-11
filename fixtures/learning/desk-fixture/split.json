@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "dataset_id": "desk-fixture",
+  "rule": "Held out: whole frame_ref groups, taken in the order of the sha256 of their frame_ref until the held-out side holds at least 5 examples; train: every other group. No frame_ref is on both sides. Written once by python -m lab desk-score split; a new split starts a new baseline.",
+  "train": [
+    "desk-02-0",
+    "desk-02-1",
+    "desk-07-0",
+    "desk-01-0",
+    "desk-01-1",
+    "desk-05-0"
+  ],
+  "held_out": [
+    "desk-06-0",
+    "desk-04-0",
+    "desk-03-0",
+    "desk-03-1",
+    "desk-00-0",
+    "desk-00-1"
+  ]
+}

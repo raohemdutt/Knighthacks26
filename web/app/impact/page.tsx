@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import im from "@/components/impact/impact.module.css";
 import { WeekStory, rangeText } from "@/components/impact/WeekStory";
 import { Keyframe } from "@/components/Keyframe";
@@ -345,7 +346,7 @@ function Sheet({ title, onClose, children }: { title: string; onClose: () => voi
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
-  return (
+  return createPortal(  // over the viewport: a transformed page section would otherwise trap position: fixed
     <div className={ui.overlay} onClick={onClose}>
       <div className={ui.sheet} role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
         <div className={`${ui.row} ${ui.between}`}>
@@ -357,7 +358,7 @@ function Sheet({ title, onClose, children }: { title: string; onClose: () => voi
         {children}
       </div>
     </div>
-  );
+    , document.body);
 }
 
 /** What one wrong item does: the sourced statement, this week's measured count, and the problem here. */
