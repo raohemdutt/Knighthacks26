@@ -1022,7 +1022,7 @@ def test_the_dispatcher_lists_the_verb_and_answers_its_help(lab_state):
     listing = subprocess.run(
         [sys.executable, "-m", "lab", "--help"], cwd=REPO_ROOT, capture_output=True, text=True, encoding="utf-8", timeout=60
     )
-    assert re.search(r"^  research-check  Check research notes", listing.stdout, re.MULTILINE), listing.stdout
+    assert re.search(r"^  research-check\s+Check research notes", listing.stdout, re.MULTILINE), listing.stdout
 
 
 def test_the_verb_is_refused_while_the_stop_file_exists(tmp_path, monkeypatch):
