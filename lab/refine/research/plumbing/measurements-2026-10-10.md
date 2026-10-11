@@ -222,3 +222,32 @@ server `last_activity` 19:29:51Z for C and 19:08:32Z for D; quota as in M19 (bal
 false; `strix-halo` rate 3 in the table). `GET /user/<acct>/api` on pod C returned `{"version": "2.20.0"}`, and its
 Jupyter root listed 20 entries with the directories `checkpoints`, `lab`, `models`, `outputs`, `proxytest`,
 `serve` and `vllm`, and no `home` or `opt` entry.
+
+## M25. The SJC pods at the start of plumbing pass 3 (00:38 UTC on 2026-10-11, Sat 8:38 PM ET)
+
+Read-only GETs from the Windows workstation with the account C and D tokens (each 32 characters; never printed),
+at 00:38:09 workstation time (hub `Date` 00:38:56 and 00:38:57 GMT): `GET /hub/api/` answered 200 with
+`{"version": "5.4.4"}` and `server: cloudflare` for both accounts. Account C's server: ready, not pending,
+`started` 2026-10-10T19:07:12.411217Z, `last_activity` 2026-10-11T00:36:04Z, `user_options` `{resource_type: gpu,
+gpu_selection: strix-halo, runtime_minutes: 2400}`, so 331.7 minutes run by the hub's clock. Account D's server:
+ready, `started` 2026-10-10T21:24:08.430968Z (the relaunch R13 made), `last_activity` 2026-10-11T00:36:17Z, the same
+`user_options`, 194.8 minutes run by the hub's clock. `GET /hub/api/quota/me` for both: balance 0, unlimited true,
+enabled false, with the rate table `cpu` 1, `9070xt` 4, `phx` 2, `r9700` 4, `strix` 2, `strix-halo` 3. `GET
+/user/<acct>/api` answered `{"version": "2.20.0"}` on both pods (0.21 s and 0.18 s). The Jupyter root listed 22
+entries on pod C (directories `atlas-power`, `checkpoints`, `lab`, `models`, `outputs`, `proxytest`, `serve`, `vllm`)
+and 72 on pod D (directories `Knighthacks26`, `checkpoints`, `chipsheet`, `models`, `outputs`, `r14-link-speed`,
+`r20_bench`, `serve`, `vllm`), and no `home` entry on either. Nothing was written, launched, stopped or pinged; the
+probe's GETs to each pod's own Jupyter API may count as activity.
+
+## M26. The workstation clock at plumbing pass 3 (00:38 UTC on 2026-10-11)
+
+The hub's `Date` header ran 47 s ahead of the workstation clock (00:38:56 GMT against 00:38:09 local), the offset of
+M17 and M22.
+
+## M27. The lab's readiness check still reads DUB only (plumbing pass 3, about 00:30 UTC on 2026-10-11, workstation clock)
+
+`python -m lab ready` from a fresh clone of main at fba248a answered `{"ok": false, "ready": false, "outcome":
+"not_ready", "reasons": ["hub account A answered 502", "hub account B answered 502"], ...}` with `"hub": {"url":
+"https://dub.aupcloud.io", ...}` and `"env": {"present": ["AUP_HUB_TOKEN_A", "AUP_HUB_TOKEN_B", "AUP_HUB_USER_A",
+"AUP_HUB_USER_B"], ...}`: `lab/machine/ready.py` still sets `HUB_URL = "https://dub.aupcloud.io"` (L41) and asks
+accounts A and B only, after O54, O62 and R31 moved the controller, the hub client and the lab text to SJC.
