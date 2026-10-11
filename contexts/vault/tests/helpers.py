@@ -5,7 +5,7 @@ from fastapi import FastAPI, Header, HTTPException
 from fastapi.testclient import TestClient
 
 from bus import EventBus
-from contexts.vault import Policy, Wiper
+from contexts.vault import Policy, ViewTickets, Wiper
 from contexts.vault.api import vault_router
 
 T0 = datetime(2026, 10, 11, 12, tzinfo=UTC)
@@ -25,13 +25,14 @@ class Clock:
 class Box:
     """The vault wired the way the gateway wires it, on a data dir under tmp_path."""
 
-    def __init__(self, data_dir: Path, token: str | None = None) -> None:
+    def __init__(self, data_dir: Path, token: str | None = None, peer: tuple[str, int] = ("testclient", 50000)) -> None:
         self.bus = EventBus(data_dir / "events")
         self.policy = Policy(data_dir)
         self.policy.subscribe(self.bus)  # replayed
         self.wiper = Wiper(data_dir)
         self.bus.subscribe("vault.wipe.requested", self.wiper.on_wipe_requested)  # live only
         self.clock = Clock()
+        self.tickets = ViewTickets()
         self.seen: list = []
         self.bus.subscribe("vault.", self.seen.append)
 
@@ -40,5 +41,6 @@ class Box:
                 raise HTTPException(401, "missing or wrong token")
 
         app = FastAPI()
-        app.include_router(vault_router(self.policy, self.bus, wiper=self.wiper, guard=guard, clock=self.clock))
-        self.http = TestClient(app)
+        app.include_router(vault_router(self.policy, self.bus, wiper=self.wiper, guard=guard, clock=self.clock,
+                                        view_tickets=self.tickets, signed_in_possible=lambda: bool(token)))
+        self.http = TestClient(app, client=peer)
