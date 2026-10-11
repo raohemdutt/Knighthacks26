@@ -1,10 +1,13 @@
-# Atlas film v4.2: plan and tracking document
+# Atlas film v4.3: plan and tracking document
 
 Status: **PLAN, waiting for Dom's approval. Nothing is rendered until it is approved.**
 Branch `ctx/demo/video-hyperframes`. Owner: Dom (Notion task D12).
 v4.1 (Sun Oct 11): Dom's answers to v4 folded in; NextEra scene added; full order with every spec beat.
 v4.2: the friend is Ilan (not Maya); the meals goal set in the morning and called back at dinner; "where are my keys?" folded
 into the morning; the stake is driving; under 5:00; Atlas's voice as proposed; NextEra written as a story.
+v4.3: NextEra uses our Inspection page (`/spot`) and its simulations; a new NextEra spec (the replayable event log,
+answers computed in code); the operator is Xander. The full script is in `video/hf/SCRIPT.md`; **its wording wins** where this plan's
+beat notes are longer (the script was tightened to fit 5:00).
 
 Every fact on screen or in a line comes from the repo, with the source next to it, or Dom has said so explicitly
 (section 6 lists those). Tick a box only when it has been built *and* checked in a frame.
@@ -72,7 +75,7 @@ About 4:50 in total (**hard cap 5:00**). **D** = demo, **S** = spec.
 | 12 | **Friends: the league, three calendars agree, dinner with Ilan (meals goal callback)** | **D** | 55 | rebuild | [ ] |
 | 13 | How the boxes talk, the trusted group, many groups | S | 18 | rebuild (6.C) | [ ] |
 | 14 | Same box, other lives (more) | S | 16 | rebuild; the Day Run line is gone | [ ] |
-| 15 | NextEra: why it works on a plant floor | S | 12 | new | [ ] |
+| 15 | NextEra: one replayable log, findings computed in code (into the plant) | S | 12 | new | [ ] |
 | 16 | **NextEra: an operator's shift with SPOT** | **D** | 45 | new | [ ] |
 | 17 | End | narrator | 6 | as now | [ ] |
 
@@ -296,28 +299,42 @@ computer. Three panes side by side, then two. Maya stays only as the classmate i
   - "It's twelve watts at idle, it answers offline, and your data never has to leave."
 - Sources: `config/profiles/*`, `habits.yaml`; 12.62 W idle (`demo_numbers_2026-10-11.md:47`).
 
-### 15. NextEra: why it works on a plant floor (spec, about 12 s)
-- **Visual:** the box on a control-room console. Its shell widens to cover a plant floor plan. A small SPOT robot icon
-  walks a round; readings flow into the box, and nothing flows out.
-- **N:** "Point the same box at a plant. Atlas reads a SPOT robot's inspection missions, the locations, times,
-  readings and alarms, right on site. Inspection data never leaves the plant. Every answer cites the rows behind it,
-  and nothing reaches a robot or a work system without a person's yes."
-- Sources: `docs/spot.md:3-7, 14-20`; the track brief quoted there.
+### 15. NextEra: the part of the spec we haven't shown yet (spec, about 12 s)
+The privacy points (on the box, cited, approved) are already made in beats 6, 11 and 13, so this spec shows what is
+new and true and leads into the plant.
+- **Visual:** the dorm's day as a ribbon of events (Hemdutt waking, the brief, the can) running into the box as an
+  append-only log. The camera rewinds along it. The ribbon swaps to SPOT's mission log (missions, checks, readings,
+  alarms), the room dissolves into the plant's floor plan, and the same box sits on a control-room console.
+- **N:** "Under everything Atlas does is one log of events that it can replay, minute by minute. Swap the profile and
+  the same log holds a robot's inspection rounds instead of a student's day. The findings are computed in code, with
+  their error bars, and the model only puts them into words."
+- Sources:
+  - Append-only event log it can replay (`docs/spot.md:3-4`, AGENTS.md "the event log is the source of truth").
+  - The inspection profile changes the words only (`config/profiles/inspection/profile.yaml`, `docs/spot.md:146`).
+  - Findings are pure functions that return number, n, interval, sentence, caveat and evidence ids; no model call for
+    the plain words or the guide (`docs/spot.md:43, 172`, `contexts/spot/application/plain.py`, `guide.py`).
 
 ### 16. NextEra: an operator's shift with SPOT (demo, about 45 s)
-**Set:** a small control room at a plant. Atlas on the console. A big display shows Atlas's inspection screen; the
-top-right window mirrors it. Through the window, a glimpse of the plant floor with a SPOT robot standing by its dock.
-**Cast:** Rosa, the operator (hi-vis vest, coffee). A trainee, Sam, appears at the end.
+**Set:** a small control room at a plant. Atlas on the console. The big display and the top-right window show **our
+Inspection page** (`/spot`, nav label "Inspection", `web/app/spot/page.tsx`), rebuilt from its components: "Your
+shift" (`Shift.tsx`, `Triage.tsx`), the floor plan with the walking pointer (`FloorMap.tsx`, look guide), "A round,
+step by step" (`Round.tsx`, `ReplayPanel.tsx`), the animated explainers (`Explainers.tsx`), and Shift Run
+(`ShiftRun.tsx`). Through the window, a glimpse of the plant floor with a SPOT robot at its dock.
+**Cast:** **Xander**, the operator (hi-vis vest, coffee). A trainee appears at the end (name TBD).
+**Simulations shown:** the pointer walking the traced route, the round replay with SPOT moving and the battery
+draining, the battery explainer, and Shift Run's fast-forward round with stars. Optionally "Use my eyes to guide
+me": the pointer starts from where Xander is looking (the page's opt-in gaze guide). It echoes the expressions
+thread from the morning, if there's time.
 
 **The story, simply**
-1. **Start of shift.** Rosa sits down with her coffee. "Morning, Atlas. What should I check first?"
+1. **Start of shift.** Xander sits down with her coffee. "Morning, Atlas. What should I check first?"
 2. **Atlas gives her a short list, not a dashboard.** "Three things. First, heat exchanger 2 in the pipe gallery. It
    raised an alarm, but the check that raised it failed, and it hasn't had a good check in 88 hours. Send SPOT back
    before you send anyone."
    - Window: "Your shift", three cards: Do this first / Keep an eye / Looks fine. HX-202 is at the top, with a
      "Why?" button.
 3. **"Where is it?"** A red pointer drops onto HX-202 on the floor plan and walks there from the control room while
-   Atlas says the way: "Turn left, take the entrance steps, and go along the west passage." Rosa now knows where
+   Atlas says the way: "Turn left, take the entrance steps, and go along the west passage." Xander now knows where
    without reading a map.
 4. **Atlas tells her what the numbers hide.** "Heads up: mission status says ninety-six percent complete, but most of
    those rounds still had a failed check inside. And checks below forty percent battery fail about three times as
@@ -328,11 +345,11 @@ top-right window mirrors it. Through the window, a glimpse of the plant floor wi
    happened.
 6. **She acts, with one yes.** "Send SPOT back to it." An approval card: "Send SPOT back to heat exchanger 2?" Yes.
    **A:** "Done. A work order was written on this box. Nothing left the building."
-7. **Anyone can learn this job.** Sam, the trainee, steps in. **A:** "Want to plan the next round?" In **Shift Run**
+7. **Anyone can learn this job.** The trainee steps in. **A:** "Want to plan the next round?" In **Shift Run**
    he drags the stops into an order and presses Run. The round plays out fast, the battery matters, and he gets two
    stars out of three against Atlas's plan, with one line on why ("check the far exchangers before the battery
    drops").
-8. **Handoff.** End of shift: Rosa taps one button. "Shift handed off." Atlas's note for the next operator is ready.
+8. **Handoff.** End of shift: Xander taps one button. "Shift handed off." Atlas's note for the next operator is ready.
 
 **What the judges should take away:** it answers the track's questions (what happened, where, why it matters, what
 needs attention, is it getting better), in plain words, offline, with every number traceable to the rows.
@@ -346,8 +363,7 @@ needs attention, is it getting better), in plain words, offline, with every numb
   - Shift Run with stars against Atlas's plan (`contexts/spot/domain/shiftrun.py`); the shift handoff is one button.
 - Honest wording kept: the round is a replay of the kit's recorded synthetic data, not a live robot; the route is
   "about" (traced from the kit's picture); "we do not claim a cause".
-- Names: "Rosa" and "Sam" are placeholders for the operator and the trainee. Change them if you like (Sam is also a
-  friend in the friends' chat; trainee name TBD).
+- Names: Xander is the operator (Dom). Trainee name TBD.
 
 ### 17. End (as now)
 - The website's logo and splash, back on the shelf in the dorm.
@@ -432,7 +448,7 @@ needs attention, is it getting better), in plain words, offline, with every numb
   17 × 23 and the UCF score are cut.
 - ~~Q4 Stake~~ Dom: driving.
 - ~~Q5 Names~~ Dom: Hemdutt, **Ilan** (instead of Maya) and Dominick. Maya stays only as a classmate in the GroupMe.
-- **Q6** NextEra names: operator "Rosa", trainee (not "Sam", which is taken by a friend). Your call.
+- ~~Q6~~ Operator: Xander (Dom). **Trainee name still open.**
 
 ## 8. QA before any render
 
