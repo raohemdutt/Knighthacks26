@@ -60,7 +60,9 @@ export function OperatorAsk({ chips, onWhy, guideChips = [], jobs = [] }: { chip
       // hands busy: "next" steps through the do-first list with the pointer
       if (NEXT.test(plainText(question)) && (await guide(nextDoFirst()))) return setBusy(false), setText("");
       if (whereIntent(question) !== null && (await guide(question))) return setBusy(false);
-      api.spotAskPlain(question).then(setAnswer).catch(fail).finally(() => setBusy(false));
+      // the answer is said as well as shown when the speaker is on, like the guide's sentences and the Ask screen's answers
+      const aloud = (a: Answer & { plain?: boolean }) => (setAnswer(a), voice.canSpeak && voice.getSettings().speak ? voice.say(a.text, { tag: "answer", replace: true }) : undefined);
+      api.spotAskPlain(question).then(aloud).catch(fail).finally(() => setBusy(false));
     })();
   };
   const handoff = () => {
