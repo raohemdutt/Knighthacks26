@@ -50,7 +50,8 @@ KIT: tuple[Item, ...] = (
          "Tailscale and LAN addresses bookmarked."),
     Item("Printed QR to the Devpost", "Close",
          "Printed from `kit --devpost <url>`, taped to the table, scans to the project page on a phone."),
-    Item("'This table is recorded, faces are blurred on-device' sign", "the whole table", "Visible from the aisle.",
+    Item("Table sign: 'Saved pictures are always blurred. Nothing with a face leaves this box. Only your own signed-in screen shows you.'",
+         "the whole table", "Visible from the aisle.",
          required=False),
     Item("Empty can (Waste Watch)", "v2: Waste Watch", "Within reach; the Recycling and Trash zones drawn.", required=False),
 )

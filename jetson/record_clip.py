@@ -2,10 +2,12 @@
 
 The gateway owns the webcam: it keeps /dev/video0 open, and /dev/video1 is the same webcam's metadata channel, not a
 picture, so a second reader cannot get frames from either node. The gateway already serves every frame it reads at
-GET /capture/<camera>/snapshot.jpg, faces blurred while the Vault policy blur_faces is on. This script polls that
-endpoint, keeps each new frame, and has GStreamer join the frames into an H.264 mp4 (one `nice 19` process for a few
-seconds). It opens no video device, stops no service, writes nothing under data/, and refuses to record while
-blur_faces is off.
+GET /capture/<camera>/snapshot.jpg. This script polls that endpoint with ?blur=1: a recorded clip is shared, so its
+frames are asked for blurred, whatever the Vault policy says and whoever is signed in (the owner's own screen may show
+the live view clear; that picture is never what this script gets). The gateway blurs these frames again until no face
+is found, which takes about twice as long on a frame with a face in it: if the box then cannot keep up with --fps,
+record with --fps auto. The script keeps each new frame and has GStreamer join the frames into an H.264 mp4 (one
+`nice 19` process for a few seconds). It opens no video device, stops no service and writes nothing under data/.
 
 Stdlib only, Python 3.10. Run it on the box through key SSH with the script on stdin, so nothing is installed there:
 
@@ -104,8 +106,8 @@ class Gateway:
         return json.loads(body)
 
     def snapshot(self, camera: str) -> bytes | None:
-        """The newest blurred frame as JPEG bytes; None when the gateway has no picture right now (it answers 404)."""
-        status, body = self.get(f"/capture/{camera}/snapshot.jpg")
+        """The newest frame, faces blurred (?blur=1), as JPEG bytes; None when the gateway has no picture right now."""
+        status, body = self.get(f"/capture/{camera}/snapshot.jpg?blur=1")
         return body if status == 200 else None
 
     def close(self) -> None:
@@ -115,7 +117,7 @@ class Gateway:
 
 
 def check_gateway(gateway: Gateway, camera: str) -> dict:
-    """The gateway's own account of itself: answering, the camera delivering frames, faces being blurred."""
+    """The gateway's own account of itself: answering, the camera delivering frames, the camera not paused."""
     try:
         health = gateway.json("/health")
         status = gateway.json("/capture/status")["cameras"].get(camera)
@@ -126,12 +128,10 @@ def check_gateway(gateway: Gateway, camera: str) -> dict:
         raise RecordError(f"the gateway says it is not ok: {health}")
     if status is None or status.get("status") not in ("ok", "degraded"):  # degraded: frames arrive, below 70% of the target
         raise RecordError(f"camera {camera} is not delivering frames: {status}")
-    if policy.get("blur_faces") is not True:
-        raise RecordError("the Vault policy has blur_faces off: nothing is recorded unblurred")
     if camera in (policy.get("paused_cameras") or []):
         raise RecordError(f"camera {camera} is paused by the Vault policy")
     return {"status": status["status"], "fps_actual": status.get("fps_actual"), "dropped": status.get("dropped"),
-            "blur_faces": True}
+            "blur_faces": True}  # the frames are asked for with ?blur=1
 
 
 # --- a person arriving or moving -----------------------------------------------------------------

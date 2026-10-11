@@ -79,12 +79,16 @@ def test_blur_is_applied_unless_the_policy_turns_it_off(clip, tmp_path, monkeypa
     calls = []
 
     class Spy:
-        def __init__(self):
+        def __init__(self, **settings):
             pass
 
         def __call__(self, frame):
             calls.append(1)
             return frame
+
+        def scrambled_until_clear(self, frame):  # what a stored keyframe gets
+            calls.append(1)
+            return frame, 0
 
     monkeypatch.setattr("contexts.capture.application.service.FaceBlur", Spy)
     run(clip, tmp_path / "a", Policy(blur=True), seconds=1.0)
@@ -138,9 +142,15 @@ def test_the_live_screen_gets_a_blurred_snapshot_and_the_newest_tracks(clip, tmp
     calls = []
 
     class Spy:
+        def __init__(self, **settings):
+            pass
+
         def __call__(self, frame):
             calls.append(1)
             return frame
+
+        def scrambled_until_clear(self, frame):
+            return frame, 0
 
     monkeypatch.setattr("contexts.capture.application.service.FaceBlur", Spy)
     cameras = {"cam-desk": {"source": clip, "fps": 15, "width": 64, "height": 48, "faces": False}}
@@ -170,6 +180,80 @@ def test_the_live_screen_gets_a_blurred_snapshot_and_the_newest_tracks(clip, tmp
     assert holder["r"].status_code == 200 and holder["r"].headers["content-type"] == "image/jpeg"
     assert holder["r"].headers["cache-control"] == "no-store"
     assert holder["missing"].status_code == 404 and holder["paused"] is None
+
+
+class Blurs:
+    """Stands in for FaceBlur and writes down which blur ran: ("once" | "until clear", the settings it was built with)."""
+
+    ran: list = []
+
+    def __init__(self, **settings):
+        self.settings = settings
+
+    def __call__(self, frame):
+        Blurs.ran.append(("once", self.settings))
+        return frame
+
+    def scrambled_until_clear(self, frame):
+        Blurs.ran.append(("until clear", self.settings))
+        return frame, 0
+
+
+STRICT_BLUR = ("until clear", {"score": 0.5, "margin": 0.6})
+QUIET = {"faces": False, "keepalive_s": 1e9, "keyframe_every_s": 1e9}  # one keyframe at the start, then none
+
+
+def test_blur_1_is_blurred_with_the_strict_blur_whatever_the_policy_or_a_ticket_says(clip, tmp_path, monkeypatch):
+    """Adapted from #390: a recorder asks with ?blur=1, and gets a blurred frame on any box."""
+    monkeypatch.setattr("contexts.capture.application.service.FaceBlur", Blurs)
+    cameras = {"cam-desk": {"source": clip, "fps": 15, "width": 64, "height": 48, **QUIET}}
+    holder = {}
+
+    async def main():
+        policy = Policy(blur=False)  # a box that was switched to saving unblurred pictures
+        service = CaptureService(cameras, EventBus(persist=False), lambda: person, tmp_path / "data", policy)
+        service.start(asyncio.get_running_loop())
+        await asyncio.sleep(1.0)
+        app = FastAPI()
+        app.include_router(capture_router(service, clear=lambda ticket: ticket == "owner"))
+        http = TestClient(app)
+
+        def ask(query):
+            service._snapshot_cache.clear()
+            Blurs.ran.clear()
+            return http.get(f"/capture/cam-desk/{query}").status_code, [list(b) for b in Blurs.ran[:1]]
+
+        holder["plain"] = ask("snapshot.jpg")
+        holder["asked"] = ask("snapshot.jpg?blur=1")
+        policy.blur_faces, policy.live_faces = True, "clear"  # the usual box, and the owner's signed-in screen
+        holder["ticket"] = ask("snapshot.jpg?ticket=owner")
+        holder["both"] = ask("snapshot.jpg?ticket=owner&blur=1")
+        service.stop()
+
+    asyncio.run(main())
+    strict = [list(STRICT_BLUR)]
+    assert holder["plain"] == (200, [])  # that box's live picture is as it was: not blurred
+    assert holder["asked"] == (200, strict)  # a frame to keep or share: blurred until clear
+    assert holder["ticket"] == (200, [])  # the owner's ticket: clear
+    assert holder["both"] == (200, strict)  # blur=1 wins over the ticket
+
+
+@pytest.mark.parametrize("setting, expected", [({}, STRICT_BLUR), ({"keyframe_blur": "strict"}, STRICT_BLUR),
+                                               ({"keyframe_blur": "typo"}, STRICT_BLUR), ({"keyframe_blur": "fast"}, ("once", {}))])
+def test_a_stored_keyframe_is_blurred_until_clear_unless_the_camera_is_set_to_fast(clip, tmp_path, monkeypatch, setting, expected):
+    monkeypatch.setattr("contexts.capture.application.service.FaceBlur", Blurs)
+    cameras = {"cam-desk": {"source": clip, "fps": 15, "width": 64, "height": 48, "faces": False, **setting}}
+
+    async def main():
+        service = CaptureService(cameras, EventBus(persist=False), lambda: person, tmp_path / "data", Policy())
+        Blurs.ran.clear()
+        service.start(asyncio.get_running_loop())
+        await asyncio.sleep(0.8)
+        service.stop()
+
+    asyncio.run(main())
+    assert list((tmp_path / "data" / "frames" / "cam-desk").glob("*.jpg"))
+    assert Blurs.ran and all(ran == expected for ran in Blurs.ran)  # only the pipeline ran: no live picture was asked for
 
 
 def test_health_is_published_on_change_and_as_a_five_minute_heartbeat(clip, tmp_path):

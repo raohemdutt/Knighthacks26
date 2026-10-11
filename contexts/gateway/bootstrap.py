@@ -64,7 +64,7 @@ from contexts.play.domain.game import SortIt
 from contexts.perception.application.identity import IdentityService
 from contexts.perception.application.service import PerceptionService
 from contexts.perception.infrastructure.expression import build_expression_reader
-from contexts.perception.infrastructure.face_blur import FaceBlur
+from contexts.perception.infrastructure.face_blur import STRICT, FaceBlur
 from contexts.perception.infrastructure.identity_store import IdentityStore
 from contexts.perception.infrastructure.photo import build_photo_reader
 from contexts.perception.infrastructure.recognizer import build_recognizer
@@ -352,9 +352,11 @@ def build(settings: Settings | None = None) -> Atlas:
     alerts = AlertHistory()
 
     # The outbound gate: a picture that leaves the box (training export, phone alert photo) has its faces scrambled
-    # whatever "Blur faces before saving" is set to. Its own YuNet detector, loaded on first use; if it cannot run,
-    # the gate refuses and nothing is sent.
-    outbound = OutboundGate(jpeg_scrambler(FaceBlur().scrambled), on_release=lambda destination, purpose, pictures, size, faces: log.info(
+    # whatever is on this box's disk (policy.blur_faces off, or an older one-pass blur). Its own YuNet detector, loaded
+    # on first use; if it cannot run, the gate refuses and nothing is sent. The strict blur: lower score, wider margin,
+    # repeated until no face is found.
+    gate_blur = FaceBlur(**STRICT)
+    outbound = OutboundGate(jpeg_scrambler(gate_blur.scrambled_until_clear), on_release=lambda destination, purpose, pictures, size, faces: log.info(
         "outbound: %d picture to %s (%s), %d bytes, %d faces blurred", pictures, destination, purpose, size, faces))
 
     def keyframe_for_export(ref: str) -> bytes:

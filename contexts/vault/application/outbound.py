@@ -1,11 +1,13 @@
-"""The outbound gate: a camera picture that leaves the box has its faces scrambled, whatever the local switch says.
+"""The outbound gate: a camera picture that leaves the box has its faces scrambled, whatever is on this box's disk.
 
     gate = OutboundGate(jpeg_scrambler(scramble_frame))      # scramble_frame(frame) -> (frame, faces found)
     jpeg = gate.release(stored, destination="phone", purpose="alert photo")
 
-"Blur faces before saving" (policy.blur_faces) decides what is written to this box's own disk. It does not decide
-what leaves: every path that hands a picture to something outside the box (the training export, the photo on a
-phone alert) passes the stored JPEG through `release` first.
+Saved pictures are always blurred (policy.blur_faces is on by default and the app has no switch to turn it off), but
+a box may hold older pictures saved with it off, or with the earlier one-pass blur that could leave a small face
+findable. So what is on disk does not decide what leaves: every path that hands a picture to something outside the
+box (the training export, the photo on a phone alert) passes the stored JPEG through `release` first, and bootstrap
+gives the gate the strict blur, repeated until no face is found.
 
 - No face found: the INPUT BYTES come back untouched, so a frame that was blurred when it was saved is not
   re-encoded and stays byte-identical.

@@ -3,11 +3,18 @@
 Proved here on the real CaptureService, TrackingPipeline, KeyframeStore, keyframe loader and DatasetExporter, wired
 the way the gateway wires them, with three stand-ins so the run is exact and needs neither a camera nor OpenCV:
 - the camera reader hands out scripted frames (a "frame" is bytes with a face in it: b"... face=ALICE");
-- the face blur replaces the face (ALICE -> #####), so a blurred picture and a clear one differ visibly;
+- the face blur replaces the face, so a blurred picture and a clear one differ visibly, and the two blurs differ
+  from each other: one pass writes ALICE -> #####, the strict repeat-until-clear blur writes ALICE -> @@@@@;
 - the JPEG encoder is `b"JPEG<quality>:" + frame`, so "the same bytes as today" can be written down.
 
 The same frames are run twice, once with nobody holding a ticket and once with the owner's screen asking for the
 clear picture of every frame. Everything except those ticketed answers has to be byte for byte the same.
+
+What "the same as before" means since the blur rework: the live picture without a ticket is exactly what it was
+(one pass, quality 70). A saved keyframe is still always blurred, and now more strictly: with the strict settings
+(score 0.5, margin 0.6), repeated until no face is found. So the saved bytes here are `saved()` (@@@@@), where
+before the rework they were the one-pass bytes (#####); the files, their names, the events and the export are
+otherwise as they were, and the ticket still changes none of them.
 """
 
 import asyncio
@@ -37,7 +44,13 @@ FRAMES = [f"frame {i} desk mug face=ALICE".encode() for i in range(6)]
 
 
 def blurred(frame: bytes) -> bytes:
+    """One pass: the live picture for a screen without the ticket."""
     return frame.replace(b"ALICE", b"#####")
+
+
+def blurred_until_clear(frame: bytes) -> bytes:
+    """The strict blur: what is saved, and what ?blur=1 answers."""
+    return frame.replace(b"ALICE", b"@@@@@")
 
 
 def today_live(frame: bytes) -> bytes:
@@ -45,14 +58,22 @@ def today_live(frame: bytes) -> bytes:
     return b"JPEG70:" + blurred(frame)
 
 
-def today_saved(frame: bytes) -> bytes:
-    """What the keyframe store wrote before the clear view existed: blurred, quality 85."""
-    return b"JPEG85:" + blurred(frame)
+def saved(frame: bytes) -> bytes:
+    """What the keyframe store writes: blurred until clear with the strict settings, quality 85."""
+    return b"JPEG85:" + blurred_until_clear(frame)
 
 
 class Blur:
+    def __init__(self, **settings):
+        self.settings = settings
+
     def __call__(self, frame):
+        assert self.settings == {}  # the one-pass blur is the default detector
         return blurred(frame)
+
+    def scrambled_until_clear(self, frame):
+        assert self.settings == {"score": 0.5, "margin": 0.6}  # only the strict detector repeats
+        return blurred_until_clear(frame), frame.count(b"face=")
 
     def faces(self, frame):  # the face counter's question: counts only
         return [[0.0] * 15] * frame.count(b"face=")
@@ -166,11 +187,12 @@ def test_without_a_ticket_everything_is_byte_for_byte_what_it_was(tmp_path, monk
     expected = [b for f in FRAMES for b in (today_live(f), mjpeg(today_live(f)))]
     assert alone["live"] == expected and watched["live"] == expected
 
-    # Saved keyframes: the same files with the same bytes, every one blurred, also for the frames the owner saw clear.
-    assert alone["saved"] == {f"cam-desk/{T0_MS + i * 1000}.jpg": today_saved(f) for i, f in enumerate(FRAMES)}
+    # Saved keyframes: the same files with the same bytes, every one blurred (the strict blur, not the live view's one
+    # pass), also for the frames the owner saw clear.
+    assert alone["saved"] == {f"cam-desk/{T0_MS + i * 1000}.jpg": saved(f) for i, f in enumerate(FRAMES)}
     assert watched["saved"] == alone["saved"]
-    assert watched["loaded"] == alone["loaded"] == [today_saved(f) for f in FRAMES]
-    assert not [name for name, data in watched["saved"].items() if b"ALICE" in data]
+    assert watched["loaded"] == alone["loaded"] == [saved(f) for f in FRAMES]
+    assert not [name for name, data in watched["saved"].items() if b"ALICE" in data or b"#####" in data]
 
     # Detection and tracking: the same events (observations with their tracks and frame refs, and the face counts).
     assert watched["events"] == alone["events"]
@@ -181,7 +203,7 @@ def test_without_a_ticket_everything_is_byte_for_byte_what_it_was(tmp_path, monk
 
     # The training export: the same pictures and the same examples, all blurred.
     assert watched["export"] == alone["export"]
-    assert [alone["export"][f"images/{i:04d}.jpg"] for i in range(len(FRAMES))] == [today_saved(f) for f in FRAMES]
+    assert [alone["export"][f"images/{i:04d}.jpg"] for i in range(len(FRAMES))] == [saved(f) for f in FRAMES]
     assert b"ALICE" not in b"".join(watched["export"].values())
 
     # And what the ticket did change: the owner's own live picture, and nothing else.
@@ -226,6 +248,57 @@ def test_the_ticket_shows_faces_only_while_the_policy_says_clear(tmp_path, monke
     http.put("/vault/policy", json={"live_faces": "clear", "paused_cameras": ["cam-desk"]})
     assert http.get("/capture/cam-desk/snapshot.jpg", params=ticket).status_code == 404  # a paused camera shows nobody anything
     assert http.get("/capture/live/cam-desk", params=ticket).status_code == 404
+
+
+def shared(frame: bytes) -> bytes:
+    """What ?blur=1 answers: the live encoding of the strictly blurred frame."""
+    return b"JPEG70:" + blurred_until_clear(frame)
+
+
+def test_blur_1_is_blurred_until_clear_even_with_a_valid_ticket(tmp_path, monkeypatch):
+    """A recorder (jetson/record_clip.py) asks for a picture it will share: no ticket and no policy makes it clear."""
+    policy, tickets, bus, service, http = frozen(tmp_path, monkeypatch)
+    ticket = http.post("/vault/view-ticket").json()["ticket"]
+    for query in ({"blur": 1}, {"blur": 1, "ticket": ticket}, {"blur": "true", "ticket": ticket}, {"blur": 1, "ticket": "nonsense"}):
+        assert http.get("/capture/cam-desk/snapshot.jpg", params=query).content == shared(FRAMES[0]), query
+        assert http.get("/capture/live/cam-desk", params=query | {"max": 1}).content == mjpeg(shared(FRAMES[0])), query
+    # asking for it did not take the place of the other two pictures of the same frame
+    assert http.get("/capture/cam-desk/snapshot.jpg", params={"ticket": ticket}).content == b"JPEG70:" + FRAMES[0]
+    assert http.get("/capture/cam-desk/snapshot.jpg").content == today_live(FRAMES[0])
+    assert http.get("/capture/cam-desk/snapshot.jpg", params={"blur": 0, "ticket": ticket}).content == b"JPEG70:" + FRAMES[0]
+
+    http.put("/vault/policy", json={"blur_faces": False})  # a box switched to saving unblurred pictures
+    service.readers["cam-desk"].push(1)  # its next frame
+    assert http.get("/capture/cam-desk/snapshot.jpg").content == b"JPEG70:" + FRAMES[1]
+    assert http.get("/capture/cam-desk/snapshot.jpg", params={"blur": 1}).content == shared(FRAMES[1])
+    assert http.get("/capture/live/cam-desk", params={"blur": 1, "max": 1}).content == mjpeg(shared(FRAMES[1]))
+
+    http.put("/vault/policy", json={"paused_cameras": ["cam-desk"]})
+    assert http.get("/capture/cam-desk/snapshot.jpg", params={"blur": 1}).status_code == 404  # paused: nobody gets a picture
+
+
+def test_a_camera_set_to_fast_saves_one_pass_keyframes_and_they_are_still_blurred(tmp_path, monkeypatch):
+    """`keyframe_blur: fast` in config/cameras.yaml is the way back if a box cannot afford the second detector pass."""
+    stand_ins(monkeypatch)
+    out = {}
+
+    async def main():
+        policy = Policy(tmp_path)
+        cameras = {"cam-desk": {"source": "scripted", "detect_fps": 1000, "observe_every_s": 0, "keyframe_every_s": 0,
+                                "keyframe_blur": "fast"}}
+        service = CaptureService(cameras, EventBus(persist=False), lambda: detector, tmp_path / "data", policy)
+        service.start(asyncio.get_running_loop())
+        service.readers["cam-desk"].push(0)
+        for _ in range(400):
+            if service.pipelines["cam-desk"].detected:
+                break
+            await asyncio.sleep(0.005)
+        service.stop()
+        out["errors"] = service.pipelines["cam-desk"].errors
+
+    asyncio.run(main())
+    [file] = (tmp_path / "data" / "frames" / "cam-desk").glob("*.jpg")
+    assert out["errors"] == 0 and file.read_bytes() == b"JPEG85:" + blurred(FRAMES[0])
 
 
 def test_a_policy_that_knows_nothing_of_the_clear_view_is_served_as_before(tmp_path, monkeypatch):

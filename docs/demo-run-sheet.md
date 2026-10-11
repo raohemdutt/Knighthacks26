@@ -692,9 +692,9 @@ behind every wrong throw.
 
 ## 9. Identity
 
-**Shows:** recognition is off until you switch it on; you enrol your own face by a phone scan or
-photos; expressions for the coach and an anonymous room mood are separate opt-ins; "forget" removes
-you.
+**Shows:** recognition is off until you switch it on; you enrol your own face by a phone scan (the
+scan comes first: photos alone do not enrol, they add to a scan); expressions for the coach are a
+separate opt-in that waits for the scan; the anonymous room mood is retired; "forget" removes you.
 
 **Setup:** the face recognition model installed on the box. **It is not installed on the Jetson or
 the laptop today**, so every step below is unverified on a live screen.
@@ -704,9 +704,11 @@ the laptop today**, so every step below is unverified on a live screen.
 2. "Recognise enrolled people" → **Switch on** → **I understand, switch it on**.
 3. "Teach Atlas your face": type the **Name**, tick the consent box, then **Scan my face** (the
    phone's front camera; follow "Look straight", "Turn a little left", "A little right", "Chin slightly
-   up") or under **Other ways**: **Choose or take photos**, or **Start at the box**.
-4. "Read my expressions" (per person, for the coach).
-5. "Room mood from everyone (anonymous)" → **Switch on…** → **Confirm the room mood**.
+   up") or, under "Other ways", **Use the box's camera**. **Upload photos** alone does not enrol: the person shows as "Not
+   scanned yet" until a scan of them completes, and the photos then add to it.
+4. "Read my expressions" (per person, for the coach; only after that person's scan).
+5. "Room mood from everyone": shown "Off" / "Not available", with one sentence saying why. There is
+   nothing to switch on.
 6. "Enrolled" → the person → **Forget for good**.
 
 **Expected**
@@ -718,7 +720,8 @@ the laptop today**, so every step below is unverified on a live screen.
 **What can go wrong**
 - The model is missing: nothing can be shown live. Fallback: say what the screen says and show the
   test names; do not claim it.
-- "The camera was not allowed": the phone needs https (`ATLAS_HTTPS=1`) for the scan; use photos.
+- "The camera was not allowed": the phone needs https (`ATLAS_HTTPS=1`) for the scan; otherwise use
+  **Use the box's camera**. Photos alone leave the person "Not scanned yet".
 - "This face is already enrolled as someone else here, so nothing was saved."
 
 **Verification**
@@ -731,28 +734,38 @@ the laptop today**, so every step below is unverified on a live screen.
 
 ## 10. Privacy
 
-**Shows:** faces are blurred before anything is stored, the box proves what left it, and one screen
-deletes what it keeps.
+**Shows:** saved pictures are always blurred, nothing with a face leaves the box, only your own
+signed-in screen shows you, the box proves what left it, and one screen deletes what it keeps.
 
 **Setup:** the Jetson (the firewall only runs there).
 
 **Steps**
-1. **More → Privacy** (`/privacy/`). "Pictures": the **Blur faces** switch is on.
-2. **More → Timeline** → open a frame with a person in it.
-3. Privacy → "The internet": **Offline mode**. (Or `make offline` on the box.)
-4. "What left the box".
-5. "Delete": pick **Everything**, **Pictures only** or **Memory only** → **Delete…** → read the
+1. **More → Privacy** (`/privacy/`). "Faces" has three rows: **Your live view** (the switch "Show
+   faces on my own signed-in screen"), **Saved pictures** ("Always") and **Anything that leaves this
+   box** ("Always"). There is no switch for blurring saved pictures.
+2. **More → Timeline** → open a frame with a person in it. Then **Live** on the signed-in phone, and
+   the same address in a private window that is not signed in.
+3. Privacy → "What has left this box": **Offline mode**. (Or `make offline` on the box.)
+4. The list under it: what each group sent and what was blocked.
+5. "Erase": pick **Everything**, **Pictures only** or **Memory only** → **Delete…** → read the
    warning → **Cancel** (or **Yes, delete for good** on a throwaway box).
 
 **Expected**
-- "Faces are blurred on the box before a picture is written to disk."
-- A frame where the face is a blur.
+- Under "Saved pictures": "Always blurred before they are saved." Under "Anything that leaves this
+  box": "Always blurred." Under "Your live view": "Show faces on my own signed-in screen. Everyone
+  else sees the live view blurred."
+- A saved frame where the face is a blur. Live on the signed-in phone shows you; the window that is
+  not signed in shows the blur.
 - On the Jetson, the list of what each group sent and what was blocked (the API says: enforced, 13
   allowed destinations, 13 blocked). On a laptop: "No firewall on this box".
 - The wipe warning: "This will permanently delete all pictures, the memory, exports and the event
   log. The confirmation is valid for two minutes."
 
 **What can go wrong**
+- "Saved pictures" shows a warning and the button **Blur saved pictures from now on**: this box was
+  switched to saving unblurred pictures (`blur_faces` off; the walkthrough FAILS on it). Press the
+  button, check `GET /vault/policy` says `blur_faces: true`, and run `jetson/reblur_stored.py` for
+  what it already saved (`jetson/README.md`, section 13).
 - Do not press **Yes, delete for good** on the demo box. Show the warning and cancel.
 - Offline mode pauses connectors, the Circle and learning; switch it back before the next beat.
 

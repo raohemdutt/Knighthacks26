@@ -15,6 +15,9 @@ and GET /capture/live/<camera>[?fps=5] as a motion-JPEG stream (C5).
 Both pictures take `?ticket=`: with a view ticket the Vault gave the owner's signed-in screen (POST /vault/view-ticket)
 and the policy's `live_faces` at "clear", the faces are not blurred. Without one, or with one that is wrong or
 expired, the answer is the blurred picture exactly as before. `clear` is the Vault's check of a ticket.
+
+Both also take `?blur=1`, for a picture that will be kept or shared (jetson/record_clip.py): the faces are blurred
+with the strict blur whatever the policy says, and a ticket on the same request is ignored.
 """
 
 import asyncio
@@ -34,18 +37,22 @@ def capture_router(capture: CaptureService, clear: Callable[[str], bool] = lambd
         return {"cameras": capture.stats()}
 
     @router.get("/capture/{camera_id}/snapshot.jpg")
-    def snapshot(camera_id: str, ticket: str | None = None) -> Response:
-        """The newest frame (faces blurred unless the Vault policy turns blur off); 404 if paused or no frame yet."""
-        jpeg = capture.snapshot(camera_id, clear=True) if ticket and clear(ticket) else capture.snapshot(camera_id)
+    def snapshot(camera_id: str, ticket: str | None = None, blur: bool = False) -> Response:
+        """The newest frame (faces blurred unless the Vault policy turns blur off, and always with ?blur=1); 404 if
+        paused or no frame yet."""
+        if blur:  # asked for a picture to keep or share: blurred, and a ticket does not change that
+            jpeg = capture.snapshot(camera_id, blur=True)
+        else:
+            jpeg = capture.snapshot(camera_id, clear=True) if ticket and clear(ticket) else capture.snapshot(camera_id)
         if jpeg is None:
             raise HTTPException(404, "no picture from this camera right now")
         return Response(jpeg, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
     @router.get("/capture/live/{camera_id}")
     async def live(camera_id: str, request: Request, fps: float = 5.0, frames_max: int | None = Query(None, alias="max"),
-                   ticket: str | None = None) -> StreamingResponse:
-        """A motion-JPEG stream (multipart/x-mixed-replace) of the camera, faces blurred like the snapshot; `fps` up to 15;
-        `max` ends it after that many frames (for a test or a one-off `curl`)."""
+                   ticket: str | None = None, blur: bool = False) -> StreamingResponse:
+        """A motion-JPEG stream (multipart/x-mixed-replace) of the camera, faces blurred like the snapshot (`blur=1`
+        included); `fps` up to 15; `max` ends it after that many frames (for a test or a one-off `curl`)."""
         if capture.snapshot(camera_id) is None:
             raise HTTPException(404, "no picture from this camera right now")
         period = 1.0 / min(max(fps, 0.5), 15.0)
@@ -53,7 +60,9 @@ def capture_router(capture: CaptureService, clear: Callable[[str], bool] = lambd
         async def frames():
             last, sent = None, 0
             while (frames_max is None or sent < frames_max) and not await request.is_disconnected():
-                if ticket and clear(ticket):  # asked per frame: the stream is blurred again once the ticket runs out
+                if blur:
+                    jpeg = await asyncio.to_thread(capture.snapshot, camera_id, False, True)
+                elif ticket and clear(ticket):  # asked per frame: the stream is blurred again once the ticket runs out
                     jpeg = await asyncio.to_thread(capture.snapshot, camera_id, True)
                 else:
                     jpeg = await asyncio.to_thread(capture.snapshot, camera_id)

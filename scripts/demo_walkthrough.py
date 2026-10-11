@@ -797,12 +797,23 @@ def uc_identity(run: Run) -> None:
 
 def uc_privacy(run: Run) -> None:
     run.screen("/privacy/")
-    run.fetch("the privacy policy", "/vault/policy", ("blur_faces", "offline"), missing="the vault is not on this box",
-              check=lambda d: None if d["blur_faces"] else "face blur is OFF: stored pictures would show faces",
-              note=lambda d: f"blur faces on; offline={d['offline']}; paused cameras: {', '.join(d['paused_cameras']) or 'none'}; keep {d.get('keep_days') or 'for ever'}")
+    # The three "Faces" rows of the Privacy screen. Saved pictures are always blurred: a box with blur_faces off FAILS.
+    run.fetch("saved pictures are always blurred", "/vault/policy", ("blur_faces", "offline"), missing="the vault is not on this box",
+              check=lambda d: None if d["blur_faces"] is True else (
+                  "blur_faces is OFF: this box is saving pictures with faces showing. Privacy -> \"Blur saved pictures from now on\", "
+                  "then jetson/reblur_stored.py for what it already saved"),
+              note=lambda d: f"blur_faces on; offline={d['offline']}; paused cameras: {', '.join(d['paused_cameras']) or 'none'}; keep {d.get('keep_days') or 'for ever'}")
+    run.fetch("your live view: faces only on your own signed-in screen", "/vault/policy", ("live_faces",), missing="the vault is not on this box",
+              check=lambda d: None if d["live_faces"] in ("clear", "blurred") else f"live_faces is {d['live_faces']!r}, not clear or blurred",
+              note=lambda d: ("clear on the owner's signed-in screen, blurred for everyone else" if d["live_faces"] == "clear"
+                              else "blurred for everyone: the owner switched the clear view off"))
     run.fetch("what left the box (egress proof)", "/vault/egress", ("allowed", "blocked", "enforced"), missing="the vault is not on this box",
               note=lambda d: f"firewall {'enforced' if d['enforced'] else 'NOT enforced on this box'}; {len(d['allowed'])} allowed destinations, {d['blocked']} blocked")
-    run.manual("a stored frame shows blurred faces", "open a keyframe with a face in it on Timeline and look (table-day checklist)")
+    run.manual("a saved frame shows blurred faces", "open a keyframe with a face in it on Timeline and look (table-day checklist)")
+    run.manual("anything that leaves this box is blurred", "open an alert photo on the phone and an image in a lab dataset export "
+               "(data/exports/<id>/images) with a face in it and look")
+    run.manual("the live view shows faces only on your own signed-in screen", "Live on the signed-in phone shows you; the same address "
+               "in a private window (not signed in) shows the blur")
     run.manual("wipe scopes (Everything / Pictures only / Memory only)", "Privacy -> Delete…, on a throwaway box only; this script never wipes")
 
 

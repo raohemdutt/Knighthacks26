@@ -1,9 +1,12 @@
 """Which camera pictures were cleared to leave the box (V7).
 
-Video never leaves. A camera picture leaves only inside a training export (L1), which runs only after the owner
-approves the `export_training_data` card, and nothing else in the box sends a picture: phone alerts carry a link the
-phone fetches from the box itself. So the count of camera pictures that may have left is exactly what the approved
-exports hold, and this projection keeps that count from the log (`learning.dataset.exported`, replayed).
+Saved pictures are always blurred, nothing with a face leaves the box, and only the owner's own signed-in screen
+shows the live view clear. Video never leaves. A camera picture leaves only inside a training export (L1), which
+runs only after the owner approves the `export_training_data` card and passes every picture through the outbound
+gate (outbound.py: faces blurred again until none is found, whatever is on disk). Nothing else in the box sends a
+picture: phone alerts carry a link the phone fetches from the box itself, and that link is the gated copy too. So
+the count of camera pictures that may have left is exactly what the approved exports hold, and this projection
+keeps that count from the log (`learning.dataset.exported`, replayed).
 
 The firewall's numbers (jetson/egress.py, GET /vault/egress) say how many bytes went to each destination; this says
 how many of them could have been pictures, and which approval let each batch go.
