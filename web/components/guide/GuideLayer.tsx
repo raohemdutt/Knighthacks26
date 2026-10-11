@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { useAtlas } from "@/lib/atlas";
+import { boxLines } from "@/lib/boxSpeech";
 import { Dwell, landed as eyesLanded, snap, type Thing } from "@/lib/gaze";
 import { gaze, type GazeEstimate } from "@/lib/gazeTracker";
 import { FIXATION_MS, attention, simScript } from "@/lib/guideAttention";
@@ -126,13 +127,18 @@ export function GuideLayer() {
 
   const say = useCallback((text: string) => {
     const v = voiceRef.current;
-    if (text && v.canSpeak && v.getSettings().speak) v.say(text, { tag: "guide", raw: true, keepOnNavigate: true });
+    if (!text || !v.getSettings().speak) return;
+    const here = (line: string) => (voiceRef.current.canSpeak ? voiceRef.current.say(line, { tag: "guide", raw: true, keepOnNavigate: true }) : undefined);
+    // on the Inspection screen the lines come out of the box's own speaker when it has one working, in order; else, and on every other screen, out of this browser
+    if (samePath(pathRef.current, "/spot/")) boxLines.say(text, here);
+    else here(text);
   }, []);
 
   const cancel = useCallback(() => {
     turn.current++;
     el.current = null;
     voiceRef.current.cancel("guide");
+    boxLines.cancel();
     setView(null);
     setOffered(null);
     setOk(false);

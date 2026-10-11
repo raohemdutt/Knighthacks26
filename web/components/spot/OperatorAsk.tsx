@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useAttention } from "@/components/guide/Attention";
 import ui from "@/components/ui.module.css";
 import { ApiError, api } from "@/lib/api";
+import { speakOnBox } from "@/lib/boxSpeech";
 import { plainText, whereIntent } from "@/lib/guide";
 import { handoffLine, type Job } from "@/lib/guideAttention";
 import { pointAt } from "@/lib/guideBus";
@@ -60,8 +61,11 @@ export function OperatorAsk({ chips, onWhy, guideChips = [], jobs = [] }: { chip
       // hands busy: "next" steps through the do-first list with the pointer
       if (NEXT.test(plainText(question)) && (await guide(nextDoFirst()))) return setBusy(false), setText("");
       if (whereIntent(question) !== null && (await guide(question))) return setBusy(false);
-      // the answer is said as well as shown when the speaker is on, like the guide's sentences and the Ask screen's answers
-      const aloud = (a: Answer & { plain?: boolean }) => (setAnswer(a), voice.canSpeak && voice.getSettings().speak ? voice.say(a.text, { tag: "answer", replace: true }) : undefined);
+      // the answer is said as well as shown when the speaker is on, as on the Ask screen: on the box's speaker when that works, else in this browser
+      const aloud = (a: Answer & { plain?: boolean }) => {
+        setAnswer(a);
+        if (voice.getSettings().speak) void speakOnBox(a.text).then((onBox) => (!onBox && voice.canSpeak ? voice.say(a.text, { tag: "answer", replace: true }) : undefined));
+      };
       api.spotAskPlain(question).then(aloud).catch(fail).finally(() => setBusy(false));
     })();
   };
