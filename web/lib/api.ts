@@ -1161,6 +1161,9 @@ export interface Fix {
   moves: Move[] | null;
   changed: number | null;
   mends: boolean;
+  /** No edit of its own until another problem of the list is mended: that problem's id, and the line to show in place of a button. */
+  after?: string | null;
+  hint?: string | null;
 }
 
 /** POST /api/dayrun/explain: what needs fixing, and one true sentence per number a person might question. */
@@ -1183,6 +1186,8 @@ export interface EditResult {
   changed: number | null;
   options: { label: string; moves: Move[]; changed: number | null }[];
   warning: string | null;
+  /** Nothing in the words could be read: things that can be said about this plan (and then no `options`). */
+  examples?: string[];
 }
 
 /** One day of the date strip (GET /api/dayrun/days). The last six fields are only on days still ahead. */

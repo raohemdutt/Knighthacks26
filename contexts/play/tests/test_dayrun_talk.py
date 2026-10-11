@@ -226,6 +226,40 @@ def test_what_cannot_be_read_changes_nothing_and_says_so(say, good, text):
     out, _ = say(text)
     assert not out.ok and out.moves == good and out.understood and out.changed is None
     assert all(o.moves != good and o.label for o in out.options)
+    assert bool(out.options) != bool(out.examples)  # the nearest edits, or (nothing read at all) what can be said: never both
+
+
+@pytest.mark.parametrize("text", ["", "banana", "what is the weather", "to 3pm", "12345"])
+def test_when_nothing_at_all_is_read_it_says_what_can_be_said_about_this_plan_and_offers_no_edit(say, good, text):
+    out, _ = say(text)
+    assert not out.ok and out.moves == good and out.options == []
+    assert out.understood == ("I couldn't tell what to change." if text else "I didn't catch anything to change.")
+    # one to move, one to drop, one to add, in the names of this plan's own blocks
+    assert out.examples == ["move breakfast to 10 AM", "drop the second study block", "add Movie on the lawn"]
+    moved, block = say(out.examples[0])  # and each of them is read, and does what it says
+    assert moved.ok and moved.understood == "Moved breakfast to 10 AM." and clock(block) == "10:00"
+    dropped, _ = say(out.examples[1])
+    assert dropped.ok and dropped.moves == [m for i, m in enumerate(good) if i != 5]
+    added, block = say(out.examples[2])
+    assert added.ok and block.title == "Movie on the lawn"
+
+
+def test_a_part_read_keeps_its_nearest_edits_and_gets_no_examples(say):
+    for text in ("move", "drop", "lunch", "drop the gym"):  # a verb or a block was read: the offer is about that
+        out, _ = say(text)
+        assert not out.ok and out.options and out.examples == [], text
+
+
+def test_the_examples_follow_the_plan_they_are_about(say, service):
+    bad = Scenario.load("fixtures/play/demo.yaml").plans["bad"]
+    for moves in (bad, []):
+        out, _ = say("banana", moves)
+        assert not out.ok and out.options == [] and 2 <= len(out.examples) <= 3
+        for phrase in out.examples:
+            tried, _ = say(phrase, moves)
+            assert tried.ok, phrase
+    assert say("banana", [])[0].examples == ["add lunch", "add study for 2 hours", "add Movie on the lawn"]
+    assert say("banana", bad)[0].examples[0] == "move study at Desk to 8 PM"
 
 
 def test_every_answer_is_a_short_sentence(say):
@@ -233,3 +267,4 @@ def test_every_answer_is_a_short_sentence(say):
         out, _ = say(text)
         assert len(out.understood.split()) <= 14, out.understood
         assert all(len(o.label.split()) <= 10 for o in out.options)
+        assert all(len(e.split()) <= 8 for e in out.examples)

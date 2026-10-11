@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import ui from "./ui.module.css";
+import { PLAN_EDIT, hasScreenIntent, screenIntent } from "@/lib/voice";
 
 /** One thing the palette can do: open a screen. The groups come from the shell's sections. */
 export interface Command {
@@ -40,9 +41,11 @@ export function CommandPalette({ commands, path, onClose }: { commands: Command[
     const hits = commands.filter((c) => !needle || `${c.label} ${c.group} ${c.keywords ?? ""}`.toLowerCase().includes(needle));
     const out: Row[] = hits.map((command) => ({ kind: "go", command }));
     // A question, or anything no screen matches, can be asked.
-    if (query.length > 2 && (hits.length === 0 || QUESTION.test(needle))) out.unshift({ kind: "ask", question: query });
+    // On a screen that takes commands of its own (Today's Plan), so can a change to it: "drop the second study block".
+    const forScreen = hasScreenIntent(path) && PLAN_EDIT.test(needle);
+    if (query.length > 2 && (hits.length === 0 || QUESTION.test(needle) || forScreen)) out.unshift({ kind: "ask", question: query });
     return out;
-  }, [commands, needle, query]);
+  }, [commands, needle, query, path]);
 
   useEffect(() => setCursor(0), [needle]);
 
@@ -52,8 +55,14 @@ export function CommandPalette({ commands, path, onClose }: { commands: Command[
       router.push(row.command.href);
       return;
     }
-    if (path === "/") window.dispatchEvent(new CustomEvent(ASK_EVENT, { detail: row.question }));
-    else router.push(`/?q=${encodeURIComponent(row.question)}`);
+    const toAsk = () => {
+      if (path === "/") window.dispatchEvent(new CustomEvent(ASK_EVENT, { detail: row.question }));
+      else router.push(`/?q=${encodeURIComponent(row.question)}`);
+    };
+    // The screen this was typed on is offered the words first (Today's Plan: "move lunch to one" changes the plan
+    // there). Everywhere else, and when the screen says they are not for it, they go to Ask as before.
+    if (hasScreenIntent(path)) void screenIntent(path, row.question).then((taken) => (taken === null ? toAsk() : undefined));
+    else toAsk();
   };
 
   useEffect(() => {

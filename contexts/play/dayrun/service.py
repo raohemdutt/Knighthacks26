@@ -54,6 +54,9 @@ from contracts.agent import ActionProposed
 from contracts.memory import Item
 
 CALENDAR_WRITE = "calendar.create_event"
+# What a block of the plan is called on the calendar. Events written before the screen was renamed say "Day Run: ";
+# nothing reads either prefix back as a key (words.short drops any short "Name: " lead), so old events still read.
+EVENT_PREFIX = "Today's Plan: "
 SCENARIO_NAME = re.compile(r"^[a-z0-9_-]{1,40}$")
 
 
@@ -241,10 +244,10 @@ class DayRun:
         if self.hub is None or not self.hub.is_write(CALENDAR_WRITE):
             raise RuntimeError("the calendar connector cannot create events on this box")
         blocks = [b for b in result.blocks if not b.fixed]
-        events = [{"title": f"Day Run: {b.title}", "start": b.start.isoformat(), "end": b.end.isoformat(), "location": b.place_name}
+        events = [{"title": f"{EVENT_PREFIX}{b.title}", "start": b.start.isoformat(), "end": b.end.isoformat(), "location": b.place_name}
                   for b in blocks]
         day = result.start.date()
-        reason = f"Add {len(events)} Day Run block(s) for {day:%a %b} {day.day} ({result.stars}-star plan)"
+        reason = f"Add {len(events)} Today's Plan block(s) for {day:%a %b} {day.day} ({result.stars}-star plan)"
         proposal = self.hub.propose_write(CALENDAR_WRITE, {"events": events}, reason, now or self.clock())
         self.plans_dir.mkdir(parents=True, exist_ok=True)
         (self.plans_dir / f"{day}.json").write_text(json.dumps({
