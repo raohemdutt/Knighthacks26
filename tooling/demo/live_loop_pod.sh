@@ -36,7 +36,7 @@ BIGPOOL="${BIGPOOL:-$L10/bigpool.tar.gz}"   # the L10 smoke exports: ilan/desk-o
 TASK="desk-objects"
 SOLO="l29-solo"
 DUO="l29-duo"
-HANDOFF_PORT="${HANDOFF_PORT:-29610}"
+HANDOFF_PORT="${HANDOFF_PORT:-29562}"   # below 29600-29727, which the 122B pair's network shim pins (R66)
 PROXY_HOST="${PROXY_HOST:-proxy-public.jupyterhub.svc.cluster.local}"   # the hub proxy inside the cluster (R65)
 TS_BIN="${TS_BIN:-$HOME/ts/bin/tailscale}"
 TS_SOCK="${TS_SOCK:-$HOME/ts/tailscaled.sock}"
@@ -60,7 +60,12 @@ check() {
   [ -f "$BIGPOOL" ] || echo "no $BIGPOOL: needed on pod D only"
   echo "pool members in the bundle: $(tar -tzf "$BIGPOOL" 2>/dev/null | grep -c 'examples.jsonl$') exports"
   echo "two-pod LoRA in $L10/src: $(two_pod_ready "$L10/src" && echo yes || echo 'no (re-bundle and prep from main at or after PR 410 and this change)')"
-  echo "tailnet peers: pod-c $(peer_ip pod-c) pod-d $(peer_ip pod-d)"
+  local pc pd
+  pc="$(peer_ip pod-c)"; pd="$(peer_ip pod-d)"
+  echo "tailnet peers: pod-c ${pc:-none} pod-d ${pd:-none}"
+  # the two-pod act needs both names on the tailnet; printing them is not a test (R66: both daemons were dead and the
+  # check still passed, then rank 1 refused at the start)
+  [ -n "$pc" ] && [ -n "$pd" ] || { echo "missing: a tailnet peer (lab/pod_tailscale.sh up pod-c and up pod-d)"; ok=0; }
   echo "disk free in home: $(df -h "$HOME" | awk 'NR==2{print $4}')"
   echo "memory available: $(awk '/MemAvailable/{printf "%.1f GiB", $2/1048576}' /proc/meminfo)"
   echo "sampler: $(cat "$HOME/atlas-power/sampler.pid" 2>/dev/null) $(ps -p "$(cat "$HOME/atlas-power/sampler.pid" 2>/dev/null)" -o etime= 2>/dev/null)"
@@ -199,7 +204,7 @@ if [ "${L29_SPLIT:-0}" = 1 ] && [ "${1:-}" = "-u" ] && [ "${2:-}" = "lab/train.p
   ( umask 077; printf '%s' "$TEACHER_TOKEN" > "$L29_RUN/tokpeer0" )   # pod C's account token; r65 reads and deletes it
   readarray -t a0 < "$L29_RUN/rank0.args"
   "$L29_PY" -u "$L29_RUN/l29_rank.py" "${L29_MIN_HELD_OUT:-1}" --rank 0 --peer-tailnet "$L29_PEER_C" \
-    --peer-user "$L29_C_USER" --token-file "$L29_RUN/tokpeer0" --k 4 --no-relay-timing --wait-s 180 -- "${a0[@]}" --no-install
+    --peer-user "$L29_C_USER" --token-file "$L29_RUN/tokpeer0" --k 4 --no-relay-timing --ctl-port 29560 --box-port 29561 --wait-s 180 -- "${a0[@]}" --no-install
   rc=$?
   kill "$hs" 2>/dev/null
   rm -rf "$L29_RUN/handoff" "$L29_RUN/tokpeer0" "$L29_RUN/rows.rank0.jsonl"
@@ -357,7 +362,7 @@ rank1_wait() {
   mark1 rank1_train
   (cd "$L10/src" && PYTHONNOUSERSITE=1 PYTHONUNBUFFERED=1 LAB_STATE_DIR="$run/state" LAB_TASK=L29 \
     "$VENV/bin/python" -u "$run/l29_rank.py" 1 --rank 1 --peer-tailnet "$(peer_ip pod-d)" --peer-user "$d_user" \
-    --token-file "$run/tokpeer1" --k 4 --no-relay-timing --wait-s 180 -- "${a1[@]}" --no-install) >> "$run/rank1.log" 2>&1
+    --token-file "$run/tokpeer1" --k 4 --no-relay-timing --ctl-port 29560 --box-port 29561 --wait-s 180 -- "${a1[@]}" --no-install) >> "$run/rank1.log" 2>&1
   local rc=$?
   mark1 rank1_trained ",\"rc\":$rc"
 }
