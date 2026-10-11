@@ -111,7 +111,7 @@
   width: min(330px, calc(100vw - 24px));
   padding: 12px 14px;
   border-radius: var(--radius-sm);
-  background: var(--surface);
+  background: var(--surface-solid); /* over other text: the glass tone would let it show through */
   color: var(--text);
   box-shadow: var(--sh-float);
   border-left: 4px solid var(--danger);
@@ -393,4 +393,64 @@
   .ring {
     animation: none;
   }
+}
+
+/* ---------- spotting: a camera's refreshed picture with the thing, or the right bin, outlined ---------- */
+.spotting {
+  position: fixed;
+  right: 14px;
+  bottom: 84px;
+  width: min(340px, calc(100vw - 28px));
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-solid);
+  color: var(--text);
+  box-shadow: var(--sh-float);
+  border-left: 4px solid var(--danger);
+  font-size: 14.5px;
+  line-height: 1.4;
+  pointer-events: auto;
+}
+
+.spotFrame {
+  position: relative;
+  margin: 6px 0;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--surface-2);
+  min-height: 60px;
+}
+
+.spotFrame img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.spotBox {
+  position: absolute;
+  box-sizing: border-box;
+  border: 3px solid var(--danger);
+  border-radius: 6px;
+  transition: all 400ms ease;
+}
+
+.spotZones {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.zoneOn {
+  fill: none;
+  stroke: var(--danger);
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+}
+
+.zoneDim {
+  fill: var(--surface-solid);
+  fill-opacity: 0.55;
+  stroke: none;
 }
