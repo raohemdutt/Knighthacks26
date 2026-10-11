@@ -9,6 +9,7 @@ import { plainText, whereIntent } from "@/lib/guide";
 import { handoffLine, type Job } from "@/lib/guideAttention";
 import { pointAt } from "@/lib/guideBus";
 import { NEXT, nextDoFirst, spotRun } from "@/lib/guideSpot";
+import { speechForAnswer } from "@/lib/speechText";
 import { useVoice } from "@/lib/voice";
 import o from "./op.module.css";
 import { Why } from "./Shift";
@@ -64,7 +65,8 @@ export function OperatorAsk({ chips, onWhy, guideChips = [], jobs = [] }: { chip
       // the answer is said as well as shown when the speaker is on, as on the Ask screen: on the box's speaker when that works, else in this browser
       const aloud = (a: Answer & { plain?: boolean }) => {
         setAnswer(a);
-        if (voice.getSettings().speak) void speakOnBox(a.text).then((onBox) => (!onBox && voice.canSpeak ? voice.say(a.text, { tag: "answer", replace: true }) : undefined));
+        const reply = speechForAnswer(a.text); // prepared and said exactly as the Ask screen says its answers
+        if (reply && voice.getSettings().speak) void speakOnBox(reply).then((onBox) => (!onBox && voice.canSpeak ? voice.say(reply, { tag: "answer", replace: true, raw: true }) : undefined));
       };
       api.spotAskPlain(question).then(aloud).catch(fail).finally(() => setBusy(false));
     })();
