@@ -4,6 +4,7 @@ import pytest
 
 pytest.importorskip("cv2")
 import cv2  # noqa: E402
+import httpx  # noqa: E402
 import numpy as np  # noqa: E402
 from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -78,12 +79,16 @@ def test_blur_is_applied_unless_the_policy_turns_it_off(clip, tmp_path, monkeypa
     calls = []
 
     class Spy:
-        def __init__(self):
+        def __init__(self, **settings):
             pass
 
         def __call__(self, frame):
             calls.append(1)
             return frame
+
+        def scrambled_until_clear(self, frame):  # what a stored keyframe gets
+            calls.append(1)
+            return frame, 0
 
     monkeypatch.setattr("contexts.capture.application.service.FaceBlur", Spy)
     run(clip, tmp_path / "a", Policy(blur=True), seconds=1.0)
@@ -112,7 +117,11 @@ def test_status_endpoint(clip, tmp_path):
     app = FastAPI()
     app.include_router(capture_router(service))
     body = TestClient(app).get("/capture/status").json()
-    assert set(body["cameras"]["cam-desk"]) == {"status", "fps_actual", "dropped", "detected", "errors"}
+    cam = body["cameras"]["cam-desk"]
+    assert set(cam) == {"status", "fps_actual", "dropped", "detected", "errors", "detector_fps", "detector_ms"}
+    assert cam["detector_ms"] >= 0 and (cam["detector_fps"] is None or cam["detector_fps"] > 0)
+    speed = service.detector_speed()
+    assert speed["camera_id"] == "cam-desk" and 1 <= speed["samples"] <= 100 and speed["ts"]
 
 
 def test_the_detector_is_only_built_when_a_frame_arrives(tmp_path):
@@ -133,9 +142,15 @@ def test_the_live_screen_gets_a_blurred_snapshot_and_the_newest_tracks(clip, tmp
     calls = []
 
     class Spy:
+        def __init__(self, **settings):
+            pass
+
         def __call__(self, frame):
             calls.append(1)
             return frame
+
+        def scrambled_until_clear(self, frame):
+            return frame, 0
 
     monkeypatch.setattr("contexts.capture.application.service.FaceBlur", Spy)
     cameras = {"cam-desk": {"source": clip, "fps": 15, "width": 64, "height": 48, "faces": False}}
@@ -167,6 +182,80 @@ def test_the_live_screen_gets_a_blurred_snapshot_and_the_newest_tracks(clip, tmp
     assert holder["missing"].status_code == 404 and holder["paused"] is None
 
 
+class Blurs:
+    """Stands in for FaceBlur and writes down which blur ran: ("once" | "until clear", the settings it was built with)."""
+
+    ran: list = []
+
+    def __init__(self, **settings):
+        self.settings = settings
+
+    def __call__(self, frame):
+        Blurs.ran.append(("once", self.settings))
+        return frame
+
+    def scrambled_until_clear(self, frame):
+        Blurs.ran.append(("until clear", self.settings))
+        return frame, 0
+
+
+STRICT_BLUR = ("until clear", {"score": 0.5, "margin": 0.6})
+QUIET = {"faces": False, "keepalive_s": 1e9, "keyframe_every_s": 1e9}  # one keyframe at the start, then none
+
+
+def test_blur_1_is_blurred_with_the_strict_blur_whatever_the_policy_or_a_ticket_says(clip, tmp_path, monkeypatch):
+    """Adapted from #390: a recorder asks with ?blur=1, and gets a blurred frame on any box."""
+    monkeypatch.setattr("contexts.capture.application.service.FaceBlur", Blurs)
+    cameras = {"cam-desk": {"source": clip, "fps": 15, "width": 64, "height": 48, **QUIET}}
+    holder = {}
+
+    async def main():
+        policy = Policy(blur=False)  # a box that was switched to saving unblurred pictures
+        service = CaptureService(cameras, EventBus(persist=False), lambda: person, tmp_path / "data", policy)
+        service.start(asyncio.get_running_loop())
+        await asyncio.sleep(1.0)
+        app = FastAPI()
+        app.include_router(capture_router(service, clear=lambda ticket: ticket == "owner"))
+        http = TestClient(app)
+
+        def ask(query):
+            service._snapshot_cache.clear()
+            Blurs.ran.clear()
+            return http.get(f"/capture/cam-desk/{query}").status_code, [list(b) for b in Blurs.ran[:1]]
+
+        holder["plain"] = ask("snapshot.jpg")
+        holder["asked"] = ask("snapshot.jpg?blur=1")
+        policy.blur_faces, policy.live_faces = True, "clear"  # the usual box, and the owner's signed-in screen
+        holder["ticket"] = ask("snapshot.jpg?ticket=owner")
+        holder["both"] = ask("snapshot.jpg?ticket=owner&blur=1")
+        service.stop()
+
+    asyncio.run(main())
+    strict = [list(STRICT_BLUR)]
+    assert holder["plain"] == (200, [])  # that box's live picture is as it was: not blurred
+    assert holder["asked"] == (200, strict)  # a frame to keep or share: blurred until clear
+    assert holder["ticket"] == (200, [])  # the owner's ticket: clear
+    assert holder["both"] == (200, strict)  # blur=1 wins over the ticket
+
+
+@pytest.mark.parametrize("setting, expected", [({}, STRICT_BLUR), ({"keyframe_blur": "strict"}, STRICT_BLUR),
+                                               ({"keyframe_blur": "typo"}, STRICT_BLUR), ({"keyframe_blur": "fast"}, ("once", {}))])
+def test_a_stored_keyframe_is_blurred_until_clear_unless_the_camera_is_set_to_fast(clip, tmp_path, monkeypatch, setting, expected):
+    monkeypatch.setattr("contexts.capture.application.service.FaceBlur", Blurs)
+    cameras = {"cam-desk": {"source": clip, "fps": 15, "width": 64, "height": 48, "faces": False, **setting}}
+
+    async def main():
+        service = CaptureService(cameras, EventBus(persist=False), lambda: person, tmp_path / "data", Policy())
+        Blurs.ran.clear()
+        service.start(asyncio.get_running_loop())
+        await asyncio.sleep(0.8)
+        service.stop()
+
+    asyncio.run(main())
+    assert list((tmp_path / "data" / "frames" / "cam-desk").glob("*.jpg"))
+    assert Blurs.ran and all(ran == expected for ran in Blurs.ran)  # only the pipeline ran: no live picture was asked for
+
+
 def test_health_is_published_on_change_and_as_a_five_minute_heartbeat(clip, tmp_path):
     from datetime import timedelta
 
@@ -195,24 +284,30 @@ def test_health_is_published_on_change_and_as_a_five_minute_heartbeat(clip, tmp_
 
 
 def test_the_mjpeg_stream_sends_boundaries_with_jpegs(clip, tmp_path):
-    holder = {}
-
+    # The whole test runs on one event loop. The camera reader publishes onto the loop it was started on; once that
+    # loop is closed the reader thread dies on its first publish and the newest frame never changes again, and a
+    # stream asked for two frames waits for the second one for ever.
     async def main():
         bus = EventBus(persist=False)
         service = CaptureService({"cam-desk": {"source": clip, "fps": 15, "width": 64, "height": 48, "faces": False}}, bus,
                                  lambda: person, tmp_path / "data", Policy())
         service.start(asyncio.get_running_loop())
-        await asyncio.sleep(0.8)
-        holder["service"] = service
-        return service
+        try:
+            deadline = asyncio.get_running_loop().time() + 30.0  # the first frame: a bound, not a fixed sleep
+            while service.snapshot("cam-desk") is None:
+                assert asyncio.get_running_loop().time() < deadline, "the camera delivered no frame"
+                await asyncio.sleep(0.02)
+            app = FastAPI()
+            app.include_router(capture_router(service))
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://box") as http:
+                assert (await http.get("/capture/live/cam-nope")).status_code == 404
+                async with http.stream("GET", "/capture/live/cam-desk?fps=15&max=2") as r:
+                    assert r.status_code == 200
+                    assert r.headers["content-type"].startswith("multipart/x-mixed-replace; boundary=frame")
+                    return b"".join([part async for part in r.aiter_bytes()])
+        finally:
+            service.stop()
 
-    service = asyncio.run(main())
-    app = FastAPI()
-    app.include_router(capture_router(service))
-    http = TestClient(app)
-    assert http.get("/capture/live/cam-nope").status_code == 404
-    with http.stream("GET", "/capture/live/cam-desk?fps=15&max=2") as r:
-        assert r.status_code == 200 and r.headers["content-type"].startswith("multipart/x-mixed-replace; boundary=frame")
-        chunk = b''.join(r.iter_bytes())
+    chunk = asyncio.run(asyncio.wait_for(main(), 60.0))
     assert chunk.startswith(b"--frame\r\nContent-Type: image/jpeg") and b"\xff\xd8" in chunk
-    service.stop()
+    assert chunk.count(b"--frame\r\n") == 2  # max=2: two frames, then the stream ends

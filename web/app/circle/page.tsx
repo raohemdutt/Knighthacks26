@@ -5,6 +5,8 @@ import { Leaderboards } from "@/components/circle/Leaderboards";
 import { League } from "@/components/circle/League";
 import { People } from "@/components/circle/People";
 import { Plans } from "@/components/circle/Plans";
+import { SharedBrain } from "@/components/circle/SharedBrain";
+import { WhereToGo } from "@/components/circle/WhereToGo";
 import { useRefresh } from "@/components/circle/SharedCalendar";
 import { TABS, type CircleTab } from "@/components/circle/shared";
 import { YouAreSharing } from "@/components/circle/YouAreSharing";
@@ -105,7 +107,11 @@ export default function CirclePage() {
       </div>
 
       {tab === "people" ? (
-        <People members={members} standings={league.data?.standings ?? []} packs={packs.data} faceShare={faceShare.data} onChanged={members.reload} />
+        <>
+          <SharedBrain members={members.data} />
+          <WhereToGo friendsSharing={(members.data?.members ?? []).filter((m) => !m.mine && m.place).length} />
+          <People members={members} standings={league.data?.standings ?? []} packs={packs.data} faceShare={faceShare.data} onChanged={members.reload} />
+        </>
       ) : tab === "plans" ? (
         <Plans threads={threads} threadId={thread} onOpen={(id) => go("plans", id)} />
       ) : tab === "league" ? (

@@ -8,6 +8,9 @@
     outside a round                  -> "which bin?": someone holding a sortable thing near the bins
 
 State rebuilds from the log (observations replay); routes are only planned on live events. Event time throughout.
+
+Every plan of a round is kept with how it was found (the cells the A* search expanded, what it went around, and on
+a re-plan what moved into the way): `plans()`, for GET /api/play/route-search. The last round's stay until the next.
 """
 
 import math
@@ -16,7 +19,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from contexts.play.domain.pathfinding import SortingRules
-from contexts.play.room.grid import Disc, FloorGrid, Route, blocked_ahead, off_route, plan_route
+from contexts.play.room.grid import Disc, FloorGrid, Route, blocked_ahead, off_route, plan_route, search_json
 from contexts.play.room.plan import Furniture, RoomPlan
 from contracts.perception import ObservationRecorded, PersonIdentified, PersonLost
 from contracts.play import FloorPoint, PlannedRoute, RoundScored, RoundStarted, RoutePlanned
@@ -34,6 +37,22 @@ ASSIST_PERSON_M = 1.2  # "a person nearby"
 REPLAN_EVERY = timedelta(seconds=1)
 OFF_ROUTE_M = 0.8
 ROUND_TIMEOUT = timedelta(seconds=90)  # an abandoned round has no event: forget it after this long
+AROUND_M = 0.25  # a corner of the walk this close to something (past the body radius) went around it
+PLANS_KEPT = 6  # of one round: the first plan and the newest re-plans
+
+
+@dataclass(frozen=True)
+class InTheWay:
+    """Something a plan had to keep clear of, for this plan only."""
+
+    disc: Disc
+    kind: str  # "person", "thing", or "player" (the line of a route already given to another player)
+    label: str
+    key: str | None = None  # "<camera>:<track id>"
+
+    def as_json(self) -> dict:
+        return {"kind": self.kind, "label": self.label, "key": self.key, "x": round(self.disc[0], 3), "y": round(self.disc[1], 3),
+                "r": round(self.disc[2], 3)}
 
 
 @dataclass
@@ -137,6 +156,7 @@ class ActiveRound:
     players: int
     routes: list[tuple[PlannedRoute, Route | None]]
     planned: datetime
+    replans: int = 0
 
 
 class RoomLive:
@@ -150,9 +170,11 @@ class RoomLive:
         self.seen: dict[str, dict] = {}  # label -> where it was last seen on the floor
         self.now: datetime | None = None  # the newest observation's time
         self.round: ActiveRound | None = None
+        self._found: dict | None = None
         self.result: dict | None = None
         self.sessions: dict[str, list[int]] = {}  # session -> [right, rounds], for "3 of 4 right"
         self.assist: dict | None = None
+        self.searched: dict | None = None  # the current or the last round's plans, each with how it was found
 
     def set_plan(self, plan: RoomPlan) -> None:
         """A new calibration: positions from now on use it."""
@@ -207,17 +229,50 @@ class RoomLive:
 
     # --- Sort It on the floor ---
 
-    def _obstacles(self, walker: FloorTrack | None, item: str, others: list[tuple[float, float]] = ()) -> list[Disc]:
+    def in_the_way(self, walker: FloorTrack | None, item: str, others: list[tuple[float, float]] = ()) -> list[InTheWay]:
         """Everyone else, and whatever is lying on the floor; never the walker or the thing being sorted."""
-        discs: list[Disc] = [(x, y, PERSON_R + self.plan.body_radius) for x, y in others]
+        out = [InTheWay((x, y, PERSON_R + self.plan.body_radius), "player", "the other player's line") for x, y in others]
         for t in self.tracks():
             if walker is not None and (t.key == walker.key or t.held_by == walker.key):
                 continue
             if t.person:
-                discs.append((t.x, t.y, PERSON_R + self.plan.body_radius))
+                out.append(InTheWay((t.x, t.y, PERSON_R + self.plan.body_radius), "person", "person", t.key))
             elif t.z < 0.05 and not t.held_by and not t.in_bin and not self.rules.same_item(t.label, item):
-                discs.append((t.x, t.y, THING_R + self.plan.body_radius))
-        return discs
+                out.append(InTheWay((t.x, t.y, THING_R + self.plan.body_radius), "thing", t.label, t.key))
+        return out
+
+    def _obstacles(self, walker: FloorTrack | None, item: str, others: list[tuple[float, float]] = ()) -> list[Disc]:
+        return [o.disc for o in self.in_the_way(walker, item, others)]
+
+    def went_around(self, route: Route, things: list[InTheWay], target: Furniture | None = None) -> list[dict]:
+        """What the walk bends around: at each corner of the pulled line, the nearest thing it had to keep clear of.
+
+        A corner is only there because a straight walk past it was blocked, so the thing nearest to it (furniture,
+        a person, something on the floor, else the wall) is what the route went around. In walking order, once each."""
+        out: list[dict] = []
+        reach = self.plan.body_radius + AROUND_M
+        for x, y in route.points[1:-1]:
+            best: tuple[float, dict] | None = None
+            for f in self.plan.furniture:
+                if f.blocks and (target is None or f.id != target.id) and (d := f.distance(x, y)) <= reach and (best is None or d < best[0]):
+                    best = (d, {"id": f.id, "kind": "furniture", "label": f.label or (f"{f.bin} bin" if f.bin else f.type.replace("-", " ")),
+                                "x": f.at[0], "y": f.at[1]})
+            for o in things:
+                d = math.hypot(o.disc[0] - x, o.disc[1] - y) - o.disc[2] + self.plan.body_radius
+                if d <= reach and (best is None or d < best[0]):
+                    best = (d, {"id": o.key or o.kind, "kind": o.kind, "label": o.label, "x": round(o.disc[0], 3), "y": round(o.disc[1], 3)})
+            if best is None and min(x, y, self.plan.width - x, self.plan.depth - y) <= reach:
+                best = (0.0, {"id": "wall", "kind": "wall", "label": "wall", "x": round(x, 3), "y": round(y, 3)})
+            if best is not None and all(a["id"] != best[1]["id"] for a in out):
+                out.append(best[1])
+        return out
+
+    def describe(self, route: Route | None, things: list[InTheWay], target: Furniture | None = None) -> dict:
+        """How one route was found, for a screen: the search, what was in the way, and what the walk went around."""
+        seen = [o.as_json() for o in things if o.kind != "player"]
+        if route is None:
+            return {"search": None, "obstacles": seen, "around": []}
+        return {"search": search_json(route), "obstacles": seen, "around": self.went_around(route, things, target)}
 
     def players_for(self, item: str, count: int) -> list[FloorTrack]:
         """The people to route: whoever holds the item first, then whoever is nearest to it (or to the bin)."""
@@ -248,9 +303,15 @@ class RoomLive:
         thing = next((t for t in self.tracks() if not t.person and self.rules.same_item(t.label, item)), None)
         out: list[tuple[PlannedRoute, Route | None]] = []
         taken: list[tuple[float, float]] = []  # points along the routes already given out: the next player keeps clear
+        self._found = None  # how the first player's route was found, for `_keep`
         for n, walker in enumerate(walkers, start=1):
             start = (walker.x, walker.y) if walker else ((thing.x, thing.y) if thing else self.plan.start)
             target, route = self.route_for(item, start, walker, keep_clear=taken)
+            if n == 1:
+                self._found = {"from": {"x": round(start[0], 3), "y": round(start[1], 3), "track": walker.key if walker else None},
+                               "bin_id": target.id if target else None, "reachable": route is not None,
+                               **(route.as_json() if route else {"points": [], "distance_m": 0.0, "par_s": 0.0}),
+                               **self.describe(route, self.in_the_way(walker, item), target)}
             if route is None:
                 out.append((PlannedRoute(player=n, track=walker.key if walker else None, reachable=False), None))
                 continue
@@ -266,12 +327,45 @@ class RoomLive:
         return RoutePlanned(ts=ts, round_id=r.round_id, item=r.item, target_bin=r.target_bin, room=self.plan.name,
                             reason=reason, routes=[planned for planned, _ in r.routes])
 
+    def _keep(self, r: ActiveRound, reason: str, ts: datetime, rerouted: dict | None = None) -> None:
+        """Remember this plan of the round with how it was found: the first one, and the newest re-plans."""
+        if reason == "round_started" or self.searched is None or self.searched["round_id"] != r.round_id:
+            self.searched = {"round_id": r.round_id, "item": r.item, "bin": r.bin, "players": r.players,
+                             "started": r.started.isoformat(), "plans": []}
+        plans = self.searched["plans"]
+        plans.append({"seq": r.replans, "reason": reason, "ts": ts.isoformat(), "rerouted": rerouted, **(self._found or {})})
+        if len(plans) > PLANS_KEPT:
+            del plans[1:len(plans) - PLANS_KEPT + 1]
+
+    def plans(self, now: datetime | None = None) -> dict:
+        """GET /api/play/route-search: every plan of the round that is on, else of the last one, with its search.
+
+        `live` follows the same rule as `state`: a round the game has dropped, or one left running past
+        ROUND_TIMEOUT by the wall clock `now`, is not on any more; its plans are the last round's."""
+        s = self.searched
+        if s is None:
+            return {"room": self.plan.name, "round_id": None, "live": False, "plans": []}
+        r = self.round
+        on = r is not None and r.round_id == s["round_id"]
+        if on and ((self.active_round is not None and self.active_round() != r.round_id) or (now is not None and now - r.started > ROUND_TIMEOUT)):
+            on = False
+        return {"room": self.plan.name, **s, "live": on}
+
     def on_round_started(self, e: RoundStarted) -> list:
         self.result = None
         self.assist = None
         self.round = ActiveRound(e.round_id, e.item, e.target_bin, self.rules.bin_for(e.item), e.ts, e.players,
                                  self._plan_round(e.item, e.players), e.ts)
+        self._keep(self.round, "round_started", e.ts)
         return [self._event(self.round, "round_started", e.ts)]
+
+    def _moved_in(self, grid: FloorGrid, route: Route, at: tuple[float, float], things: list[InTheWay]) -> InTheWay | None:
+        """The first thing standing on the part of `route` still ahead of the walker at `at`."""
+        for cell in route.cells:
+            x, y = grid.center(cell)
+            if cell in grid.dynamic and math.hypot(x - at[0], y - at[1]) > 0.45:
+                return min(things, key=lambda o: math.hypot(o.disc[0] - x, o.disc[1] - y) - o.disc[2], default=None)
+        return None
 
     def _replan(self, now: datetime) -> list:
         """Plan again when something has moved onto a route, or its player has left it; say so only if it changed."""
@@ -280,16 +374,24 @@ class RoomLive:
             return []
         by_key = {t.key: t for t in self.tracks()}
         needed = False
+        why: dict | None = None  # the first reason found, for the screen: what moved into the way, or that the player left the line
         for planned, route in r.routes:
             walker = by_key.get(planned.track) if planned.track else None
             if walker is None:
                 continue
             if route is None:
                 needed = True  # there was no way: there may be one now
+                why = why or {"why": "opened", "kind": None, "label": None, "key": None}
                 continue
-            grid = self.grid.with_obstacles(self._obstacles(walker, r.item))
-            if blocked_ahead(grid, route, (walker.x, walker.y)) or off_route(route, (walker.x, walker.y)) > OFF_ROUTE_M:
+            things = self.in_the_way(walker, r.item)
+            grid = self.grid.with_obstacles([o.disc for o in things])
+            if blocked_ahead(grid, route, (walker.x, walker.y)):
                 needed = True
+                o = self._moved_in(grid, route, (walker.x, walker.y), things)
+                why = why or {"why": "blocked", "kind": o.kind if o else None, "label": o.label if o else None, "key": o.key if o else None}
+            elif off_route(route, (walker.x, walker.y)) > OFF_ROUTE_M:
+                needed = True
+                why = why or {"why": "off_route", "kind": None, "label": None, "key": None}
         if not needed:
             return []
         r.planned = now
@@ -297,6 +399,8 @@ class RoomLive:
         if [p for p, _ in fresh] == [p for p, _ in r.routes]:
             return []
         r.routes = fresh
+        r.replans += 1
+        self._keep(r, "replan", now, why)
         return [self._event(r, "replan", now)]
 
     def on_round_scored(self, e: RoundScored) -> None:
@@ -358,7 +462,7 @@ class RoomLive:
             "seen": self.seen,
             "round": None if r is None else {
                 "round_id": r.round_id, "item": r.item, "target_bin": r.target_bin, "bin": r.bin, "players": r.players,
-                "started": r.started.isoformat(), "routes": [p.model_dump() for p, _ in r.routes]},
+                "started": r.started.isoformat(), "routes": [p.model_dump() for p, _ in r.routes], "replans": r.replans},
             "result": self.result,
             "assist": self.assist if live else None,
         }

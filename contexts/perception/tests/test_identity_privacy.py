@@ -95,7 +95,8 @@ def test_no_template_face_crop_or_name_is_anywhere_in_plain_text(tmp_path, caplo
     call("GET", "/identity/settings")
     members = call("GET", "/identity/members")
     assert members == [{"member_id": member_id, "name": NAME, "enrolled_at": members[0]["enrolled_at"], "source": "live",
-                        "updated_at": members[0]["enrolled_at"], "photos": 5, "expressions": False, "circle_member_id": None}]
+                        "updated_at": members[0]["enrolled_at"], "photos": 5, "expressions": False, "circle_member_id": None,
+                        "scanned": True, "recognised": True}]  # a live look at the box's camera counts as the scan
     assert rig.service.errors == 0
 
     # What must not be found: the name, the crops, the template and every vector that was ever computed.
@@ -185,7 +186,7 @@ def test_writes_need_the_token_and_reads_never_return_a_template(tmp_path):
     assert c.get("/identity/enroll/status").json()["state"] == "idle"
     rig.enroll("m-ana", "Ana Example", b"ana")
     assert set(c.get("/identity/members").json()[0]) == {"member_id", "name", "enrolled_at", "updated_at", "photos", "source", "expressions",
-                                                      "circle_member_id"}
+                                                      "circle_member_id", "scanned", "recognised"}
     assert c.delete("/identity/members/m-ana", headers=auth).json() == {"removed": "m-ana"}
     assert c.delete("/identity/members/m-ana", headers=auth).status_code == 404
     assert c.get("/identity/members").json() == []

@@ -38,6 +38,9 @@ class VoiceConfig:
     debug_wake: bool = False  # log what the wake listener heard, to tune it; off because it writes what the room said
     debug_speech: bool = False  # log each question heard (with whisper's confidence) and each sentence spoken
     chime: bool = True  # a short blip once the question has been heard, so you know it is working on it
+    follow_up: bool = True  # after an answer, keep listening for a reply with no "Hey Atlas" (false = one turn per wake or tap)
+    follow_up_wait_s: float = 5.0  # how long the box waits for the reply to start; silence for this long ends the conversation
+    follow_up_max_turns: int = 8  # answers in one conversation before it goes back to waiting for "Hey Atlas"
     sample_rate: int = 16000  # what whisper wants; not a config key
 
     def __post_init__(self) -> None:

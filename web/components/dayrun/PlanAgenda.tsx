@@ -2,12 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { KIND, OTHER_KIND } from "@/components/calendar/DayBar";
-import type { DayBlock, Explained, Fix, Move, MoveOption, OpenSlot, PlanBoard, PlannedBlock, SimResult, Suggestion } from "@/lib/api";
+import type { DayBlock, Explained, Fix, Move, MoveOption, NumberSource, OpenSlot, PlanBoard, PlannedBlock, SimResult, Suggestion } from "@/lib/api";
 import { ms } from "@/lib/dayrun";
 import { blockTitle, clockAt, dur, freeTime, insertAt, isoAt, moveTo, placeShort, rowsOf, t12, type BlockRow, type GapRow, type Row } from "@/lib/plan";
 import { Sheet } from "../Portal";
 import ui from "../ui.module.css";
 import pl from "./plan.module.css";
+import { SourceChip } from "./PlanDetails";
 import { RouteSheet } from "./RouteSheet";
 
 /**
@@ -188,15 +189,22 @@ export function PlanAgenda({ board, result, moves, activity, past, readOnly = fa
                 <>
                   <RouteSheet from={r.walk.start} to={r.walk.end} arriveBy={b.start} now={board.start} what={blockTitle(b, activity)} walkMinutes={walkMin} />
                   {explained?.walks[String(r.walk.index)] ? (
-                    <button type="button" className={pl.whyBtn} aria-expanded={why === r.key} onClick={() => setWhy(why === r.key ? null : r.key)}>
-                      Why {walkMin} min?
-                    </button>
+                    explained.sources?.walks[String(r.walk.index)] ? (
+                      <span className={pl.srcFor}>
+                        {walkMin} min walk
+                        <SourceChip source={explained.sources.walks[String(r.walk.index)] as NumberSource} about={`${walkMin} min walk`} open={why === r.key} onToggle={() => setWhy(why === r.key ? null : r.key)} />
+                      </span>
+                    ) : (
+                      <button type="button" className={pl.whyBtn} aria-expanded={why === r.key} onClick={() => setWhy(why === r.key ? null : r.key)}>
+                        Why {walkMin} min?
+                      </button>
+                    )
                   ) : null}
                 </>
               ) : null}
             </div>
           ) : null}
-          {isOn && why === r.key && r.walk ? <p className={pl.well}>{explained?.walks[String(r.walk.index)]}</p> : null}
+          {isOn && why === r.key && r.walk ? <p className={pl.srcNote}>{explained?.walks[String(r.walk.index)]}</p> : null}
         </div>
       </li>
     );

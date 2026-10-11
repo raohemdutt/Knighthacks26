@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 import yaml
@@ -102,6 +102,9 @@ class HabitsConfig(BaseModel):
     nudges: NudgeSettings = NudgeSettings()
     schedule: Schedule = Schedule()
     vocabulary: Vocabulary = Vocabulary()  # the profile's words, for {workplace}, {event}, ... in nudge texts
+    # (item) -> bool: a public listing (a campus event), not the person's own commitment: nothing to be ready for.
+    # Not in habits.yaml: set by the composition root from agent.yaml `listings:`.
+    is_listing: Any = None
 
     def by_signal(self, signal: Signal) -> Habit | None:
         return next((h for h in self.habits if h.signal == signal), None)

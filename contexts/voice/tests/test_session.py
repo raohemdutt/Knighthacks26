@@ -126,6 +126,15 @@ def test_no_speaker_leaves_the_answer_on_screen():
     assert s.status()["speaker"]["ok"] is False
 
 
+def test_a_speaker_that_is_not_there_is_marked_absent_and_a_broken_one_is_not():
+    """The operator card says "No speaker" quietly for an absent speaker, and keeps a real fault in yellow."""
+    away = build(speaker=FakeSpeaker(missing=True))[0].status()["speaker"]
+    assert away["ok"] is False and away["absent"] is True
+    broken = build(speaker=FakeSpeaker(broken=True))[0].status()["speaker"]
+    assert broken["ok"] is False and "absent" not in broken
+    assert "absent" not in build()[0].status()["speaker"]
+
+
 def test_listen_only_keeps_what_was_heard_and_asks_nothing():
     s, mic, speaker, asked = build()
     assert s.talk(ask=False)["state"] == "listening"

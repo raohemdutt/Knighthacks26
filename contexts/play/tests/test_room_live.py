@@ -359,6 +359,12 @@ def test_the_fake_scene_plays_a_whole_round_through_the_gateway(tmp_path):
         assert {"keys", "package", "can", "cup"} <= set(state["seen"])
         assert (state["seen"]["keys"]["on"], state["seen"]["can"]["on"], state["seen"]["cup"]["on"]) == ("desk", "recycling-bin", "trash-bin")
         assert c.get("/api/play/accuracy").json()["rounds"] == 1
+        found = c.get("/api/play/route-search").json()  # both plans of the round, each with its own search, stay to be looked at
+        assert (found["item"], found["live"], [(p["reason"], (p["rerouted"] or {}).get("label")) for p in found["plans"]]) == (
+            "can", False, [("round_started", None), ("replan", "person")])
+        assert all(p["search"]["explored_total"] >= len(p["search"]["path"]) > 5 for p in found["plans"])
+        loop = c.get("/api/play/state").json()  # the last face count of the scene: one face, looking away
+        assert (loop["phase"], loop["faces"], loop["count"], loop["round"], loop["rounds"]["played"]) == ("looking", 0, 1, None, 1)
         assert c.get("/api/impact").json()["total"]["recycled"] == 2  # the two cans; the cup went to the trash
 
 
@@ -384,3 +390,72 @@ def test_route_events_are_not_planned_again_on_replay(tmp_path):
     again.subscribe("play.route", replayed.append, replay=True)
     asyncio.run(again.replay_into())
     assert replayed == out and fresh.round is None and fresh.seen["can"]["camera"] == "cam-door"
+
+
+# --- how a route was found: the search, what it went around, and why it was planned again ---
+
+
+def test_room_route_says_how_it_was_found_only_when_asked(tmp_path):
+    c, room, _ = room_client(tmp_path)
+    plain = c.get("/api/play/room-route", params={"item": "can"}).json()
+    assert "search" not in plain and "around" not in plain  # the twin's two-second poll stays small
+    r = c.get("/api/play/room-route", params={"item": "can", "search": 1}).json()
+    assert {k: r[k] for k in plain} == plain
+    s = r["search"]
+    assert (s["algorithm"], s["cell_m"], s["cols"], s["rows"]) == ("A*", 0.1, 42, 44)
+    start, end = 37 * 42 + 13, s["path"][-1]  # the room's start point [1.3, 3.7]
+    assert s["path"][0] == s["explored"][0] == start and s["explored"][-1] == end
+    assert set(s["path"]) <= set(s["explored"]) and s["explored_total"] == len(s["explored"]) <= 1200
+    assert all(s["blocked"][n // 42][n % 42] == "." for n in s["explored"])  # the search never entered a blocked cell
+    assert [(a["id"], a["kind"], a["label"]) for a in r["around"]] == [("chair", "furniture", "chair")] and r["obstacles"] == []
+    assert c.get("/api/play/room-route", params={"item": "can", "search": 1}).json() == r  # the same room, the same search
+    room.on_observation(ObservationRecorded(ts=datetime.now(UTC), camera_id="cam-door", tracks=[track(2, "package", 0.35, 0.8, 0.16, 0.14)]))
+    px, py = room.plan.to_floor("cam-door", 0.35, 0.8)
+    boxed = c.get("/api/play/room-route", params={"item": "can", "search": 1, "x": 1.3, "y": 3.7}).json()
+    assert boxed["obstacles"] == [{"kind": "thing", "label": "package", "key": "cam-door:2", "x": round(px, 3), "y": round(py, 3), "r": 0.43}]
+    row, col = room.grid.cell_of(px, py)
+    assert boxed["search"]["blocked"][row][col] == "o" and r["search"]["blocked"][row][col] == "."
+    assert "package" in [a["label"] for a in boxed["around"]] and boxed["distance_m"] > r["distance_m"]
+
+
+def test_every_plan_of_a_round_is_kept_with_what_moved_into_the_way(tmp_path):
+    c, room, _ = room_client(tmp_path)
+    assert c.get("/api/play/route-search").json() == {"room": "dorm", "round_id": None, "live": False, "plans": []}
+    me, can = track(5, "person", 0.6, 0.99), track(6, "can", 0.65, 0.53, 0.04, 0.07)
+    room.on_observation(obs(0, "cam-door", me, can))
+    [first] = room.on_round_started(started(0))
+    found = room.plans()
+    assert (found["round_id"], found["item"], found["bin"], found["live"], len(found["plans"])) == ("r1", "can", "recycling", True, 1)
+    one = found["plans"][0]
+    assert (one["seq"], one["reason"], one["rerouted"], one["from"]["track"], one["bin_id"]) == (0, "round_started", None, "cam-door:5", "recycling-bin")
+    assert one["distance_m"] == first.routes[0].distance_m and one["points"][0] == [2.24, 1.76] and one["obstacles"] == []
+    assert one["search"]["path"][0] == one["search"]["explored"][0] and room.state(at(0))["round"]["replans"] == 0
+    friend = track(8, "person", 0.448, 0.875)
+    [again] = room.on_observation(obs(2, "cam-door", me, can, friend))
+    found = room.plans()
+    two = found["plans"][1]
+    assert [p["seq"] for p in found["plans"]] == [0, 1] and room.state(at(2))["round"]["replans"] == 1
+    assert (two["reason"], two["rerouted"]) == ("replan", {"why": "blocked", "kind": "person", "label": "person", "key": "cam-door:8"})
+    assert ("cam-door:8", "person") in [(a["id"], a["kind"]) for a in two["around"]] and two["distance_m"] == again.routes[0].distance_m
+    assert [o["key"] for o in two["obstacles"]] == ["cam-door:8"] and "o" in "".join(two["search"]["blocked"])
+    assert "o" not in "".join(one["search"]["blocked"]) and two["search"]["explored_total"] != one["search"]["explored_total"]
+    assert room.on_observation(obs(3, "cam-door", me, can, friend)) == []
+    assert len(room.plans()["plans"]) == 2  # nothing changed: nothing added
+    room.on_round_scored(RoundScored(ts=at(6), round_id="r1", session_id="s1", players=1, item="can", correct=True, seconds=6.0, path_len=20, score=150))
+    after = c.get("/api/play/route-search").json()
+    assert not after["live"] and after["plans"] == found["plans"]  # the last round's plans stay to be looked at
+
+
+def test_only_the_first_plan_and_the_newest_replans_are_kept():
+    room = live()
+    room.on_observation(obs(0, "cam-door", track(5, "person", 0.6, 0.99)))
+    room.on_round_started(started(0))
+    for n in range(1, 10):
+        room.round.replans = n
+        room._keep(room.round, "replan", at(n), {"why": "off_route", "kind": None, "label": None, "key": None})
+    assert [p["seq"] for p in room.plans()["plans"]] == [0, 5, 6, 7, 8, 9]
+    room.on_round_started(started(20, round_id="r2"))
+    assert [(p["seq"], p["reason"]) for p in room.plans()["plans"]] == [(0, "round_started")] and room.plans()["round_id"] == "r2"
+    assert room.plans(at(30))["live"] and not room.plans(at(20 + 91))["live"]  # left running past the timeout: the last round, not a live one
+    room.active_round = lambda: None  # the game abandoned it (no face for ten seconds) and no observation has said so yet
+    assert not room.plans(at(30))["live"] and len(room.plans(at(30))["plans"]) == 1

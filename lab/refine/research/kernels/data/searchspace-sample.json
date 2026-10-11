@@ -1,0 +1,35 @@
+{
+  "schema": "atlas.searchspace.v1",
+  "name": "searchspace-sample",
+  "note": "lab/optimize_space.py (module docstring) documents both formats; this is a three-parameter sample in R35's format (atlas.searchspace.v1) for the optimizer's dry run and tests. The full spaces are searchspace-inference-gfx1151.json (R35, this format) and searchspace-training-gfx1151.json (R36, Ax-config style).",
+  "task": "R45",
+  "target": {"gfx": "gfx1151", "engine": "vllm", "launcher": "lab/bench.py"},
+  "objectives": [{"name": "j_per_token", "minimize": true}],
+  "parameters": [
+    {"name": "linear_kernel", "type": "choice", "values": ["conch_bf16", "exllama_fp16"], "value_type": "str", "is_ordered": false, "sort_values": false},
+    {"name": "num_speculative_tokens", "type": "choice", "values": [0, 1], "value_type": "int", "is_ordered": true, "sort_values": true},
+    {"name": "gpu_max_hw_queues", "type": "choice", "values": [1, 4], "value_type": "int", "is_ordered": true, "sort_values": true},
+    {"name": "max_model_len", "type": "fixed", "value": 16384, "value_type": "int"}
+  ],
+  "baseline": {"linear_kernel": "conch_bf16", "num_speculative_tokens": 0, "gpu_max_hw_queues": 4, "max_model_len": 16384},
+  "fixed_launch": {
+    "args": ["--served-model-name", "teacher", "--max-model-len", "16384"],
+    "env": {"VLLM_ROCM_USE_AITER": "0"},
+    "unset_env": ["VLLM_DISABLED_KERNELS", "HSA_ENABLE_SDMA"]
+  },
+  "mapping": {
+    "linear_kernel": {
+      "conch_bf16": {"args": ["--dtype", "bfloat16"], "env": {}},
+      "exllama_fp16": {"args": ["--dtype", "float16"], "env": {"VLLM_DISABLED_KERNELS": "ConchLinearKernel"}}
+    },
+    "num_speculative_tokens": {
+      "0": {"args": [], "env": {}},
+      "1": {"args": ["--speculative-config", "{\"method\":\"mtp\",\"num_speculative_tokens\":1}"], "env": {}}
+    },
+    "gpu_max_hw_queues": {
+      "1": {"args": [], "env": {"GPU_MAX_HW_QUEUES": "1"}},
+      "4": {"args": [], "env": {"GPU_MAX_HW_QUEUES": "4"}}
+    }
+  },
+  "interactions": []
+}

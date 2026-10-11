@@ -6,6 +6,14 @@
     python -m lab interference collect <output file> [--out DIR] [--no-ledger]       # the data file and ledger rows
     python -m lab interference pod-run --expect-user-sha256 HEX [...]                # on the pod: what the script runs
 
+In one line, from a clone's root two folders below the workspace (work/<ID>), in Git Bash, inside the slot:
+
+    .venv/Scripts/python -m lab interference pod-script && python ../../tooling/dispatcher/pod_exec.py D run lab/state/interference/pod_run.sh r43_pod_run.sh 2700 > lab/state/interference/pod_run.out && .venv/Scripts/python -m lab interference collect lab/state/interference/pod_run.out
+
+pod_exec.py is the workspace's own pod tool (not in this repo; it needs the websocket-client package, which the
+clone's venv does not hold, hence the plain python). pod-script answers with the same commands on the script's real
+path.
+
 The question. The placement plan (lab/placement.py) says a 27B INT4 teacher and a 4B LoRA job fit the 64 GB of one
 pod together on paper once the teacher is served at a smaller memory share. Whether they should share depends on what
 each slows the other: decode is memory-bound and a LoRA step is compute-bound, but both run on one GPU and one memory
@@ -15,17 +23,44 @@ chip and the same server:
   decode   the teacher alone: lab/bench.py's fixed prompt set (fixtures/lab/bench/prompts.json) at a fixed batch
            (default 4 streams at once, every stream on its own prompt, greedy, max_tokens with ignore_eos), round
            after round for --decode-s seconds;
-  train    the LoRA alone, with the teacher loaded and idle: lab/train.py for --steps optimizer steps (default 20)
-           on the tool-calling rows, a fresh copy per arm (the trainer deletes its copy of the data when it ends);
+  train    the LoRA alone, with the teacher loaded and idle: lab/train.py for --steps measured optimizer steps
+           (default 20) on the tool-calling rows, a fresh copy per arm (the trainer deletes its copy of the data
+           when it ends);
   both     the same LoRA run with the same decode rounds sent for as long as it trains.
 
 Each arm records decode tokens per second (all streams' tokens over the window), answers per second, the trainer's
-samples per second (steps x batch x gradient accumulation over the window of its steps, read from the trainer's own
+samples per second (the examples seen over its steps, over the window of those steps read from the trainer's own
 telemetry.jsonl) and its steps per second, the watts over the window (amd-smi, read in this process by lab/bench.py's
 LocalPower, the reader lab/profile_decode_pod.py uses) and the joules: per answer for the decode arm, per step for the
-train arm. In the both arm the window is the trainer's steps; only decode rounds wholly inside it count, the energy
-is the window's, and the comparison is against doing the same work one after the other: the decode arm's joules per
-answer times the answers plus the train arm's joules per step times the steps, and the same for time.
+train arm. In the both arm the window is the trainer's steps and the energy is the window's.
+
+Every step the same work. Each trainer run gets the first --train-rows rows of the rows file (default: one step's
+worth, batch x gradient accumulation, so 4 of the 6 bundled rows): every epoch is then one step over the same rows,
+every step has the same batch and the same padded length, and joules per step means one thing. With all six rows
+at batch 4 the steps would alternate between 4 and 2 examples and between padded lengths. Each run also takes
+--warm-steps more steps than --steps (default 2) and leaves its first ones out of its window: with one shape per
+step, whatever a run pays once (a kernel compiled, a convolution searched, the allocator growing to its peak) is
+paid there, in both arms alike. Without that the train arm, which runs first, would pay what the both arm finds
+ready, and sharing would look better than it is: L16's first epoch on this pod ran its full steps in 52.6 to 59.5 s
+against 37.0 to 44.3 s in the two epochs after. The examples seen are counted, not multiplied out (examples_seen:
+a rows file shorter than a batch, or epochs that end on a short batch, see fewer than steps x batch).
+
+Shared against one after the other. A decode round counts by the part of its time inside the both arm's window, so
+a round the window's edge cuts gives that fraction of its answers and tokens: rounds last tens of seconds against a
+window of a few minutes, and dropping the two cut rounds would charge their watts and seconds to the shared side
+while leaving their answers out of the comparison. The comparison is against doing the same work one after the
+other: the decode arm's joules per answer times the answers plus the train arm's joules per step times the steps,
+and the same for time. The verdict is share when together took less time for no more energy, serial otherwise.
+
+The trainer. lab/train.py runs from the venv L16's prep left on pod D (~/venvs/atlas-train: the pinned training
+stack over the image's torch) with --no-install, PYTHONNOUSERSITE=1 and its ledger rows in the arm's own folder.
+Run by the image's python3 instead, it would find its pins missing and `pip install --user` them into the user
+site, where pod D keeps its vLLM build: so the run checks, before the server starts, that the venv's Python is
+there and holds every pin of lab/requirements-train.txt, that the student's folder (~/models/Qwen3.5-4B) and the
+teacher's checkpoint exist, and refuses otherwise. It installs nothing but httpx for the image's python3 when that
+is missing (as the other pod scripts do). A trainer still running when the run ends, for whatever reason, is
+stopped with the server, and each run's adapter (about 130 MB that is not a model) is deleted once its telemetry
+is read: the run folder on the pod keeps the logs, the telemetry, raw.json and the result.
 
 The server. The run starts its own teacher (lab/bench.py's vLLM serve line, lab/pod_a_teacher.sh's flags) on port
 8100 with --gpu-memory-utilization at --share (default and ceiling MAX_SHARE): at the teacher's usual 0.90 it reserves
@@ -33,7 +68,7 @@ The server. The run starts its own teacher (lab/bench.py's vLLM serve line, lab/
 Halo, where the port is taken or where a vLLM server already runs (stop the pod's own teacher first: this run stops
 nothing it did not start), and it stops its server however it ends.
 
-The script is about 260 KB (the trainer, the bench and their imports, base64), so pod_exec.py's run mode, which
+The script is about 270 KB (the trainer, the bench and their imports, base64), so pod_exec.py's run mode, which
 uploads it through the Jupyter contents API and types only its bash line, is the way to send it; term mode types it
 all. 2700 s is the 30-minute slot plus its one 15-minute extension.
 
@@ -82,6 +117,7 @@ RESULT_PREFIX = f"interference-{CHIP}"
 STATE_DIR = REPO / "lab" / "state" / "interference"
 POD_SCRIPT = STATE_DIR / "pod_run.sh"
 SCRIPT_ROOT = "r43_interference"
+POD_NAME = "r43_pod_run.sh"        # the script's name in the pod's Jupyter root; its output is r43_pod_run.out there
 DEFAULT_ACCOUNT = "D"
 DEFAULT_PORT = 8100                # not the teacher's 8000
 DEFAULT_CHECKPOINT = "~/models/Qwen3.8-27B-INT4"
@@ -94,7 +130,13 @@ DEFAULT_MAX_TOKENS = 128
 DEFAULT_DECODE_S = 120.0
 DEFAULT_STEPS = 20
 DEFAULT_TRAIN_BATCH = 4
-DEFAULT_GRAD_ACCUM = 1             # 20 steps of 4 examples: 80 examples, not L16's 320
+DEFAULT_GRAD_ACCUM = 1             # 20 steps of one batch each, not L16's 18 steps of four
+DEFAULT_WARM_STEPS = 2             # a trainer run's first steps are its warm-up: run, recorded, outside its window
+DEFAULT_TRAIN_PYTHON = "~/venvs/atlas-train/bin/python"   # L16's venv on pod D: the pinned stack over the image's torch
+#: The trainer's environment: the user site (where pod D keeps vLLM and its numpy) is neither read nor written.
+TRAIN_ENV = {"PYTHONNOUSERSITE": "1", "PYTHONUNBUFFERED": "1"}
+PREFLIGHT_TIMEOUT_S = 120.0
+LEFTOVERS = ("adapter", "trainer")   # what lab/train.py leaves under --out besides telemetry.jsonl and run.json
 MAX_SHARE = 0.63                   # the largest teacher share that leaves room for the LoRA job (see SLOT_FACTS)
 DEFAULT_SHARE = MAX_SHARE
 MAX_LEN = 16384
@@ -146,23 +188,50 @@ def _pct(new: float | None, old: float | None) -> float | None:
 
 # --- the plan and the slot ----------------------------------------------------------------------------------------
 
+def examples_seen(steps: int, batch: int, grad_accum: int, rows: int | None = None) -> int:
+    """The examples a trainer has seen after this many optimizer steps over `rows` training rows. An epoch's last
+    batch holds what is left of the rows and its last step what is left of its batches (the Hugging Face Trainer's
+    loop, which lab/train.py runs), so short epochs see fewer than steps x batch x grad_accum: L16's 18 steps over
+    84 rows at 4 x 4 saw 252 examples where that product says 288. Without a row count the product is the answer."""
+    if steps <= 0 or batch <= 0 or grad_accum <= 0:
+        return 0
+    if not rows or rows <= 0:
+        return steps * batch * grad_accum
+    batches = -(-rows // batch)               # in an epoch
+    updates = -(-batches // grad_accum)       # optimizer steps in an epoch
+    epochs, rest = divmod(steps, updates)
+    return epochs * rows + min(rows, rest * grad_accum * batch)
+
+
+def count_rows(path: str | Path) -> int | None:
+    """The training rows in a rows file (its lines that are not blank), or None when it cannot be read."""
+    try:
+        return sum(1 for line in Path(path).expanduser().read_text(encoding="utf-8").splitlines() if line.strip())
+    except OSError:
+        return None
+
+
 def slot_estimate(*, decode_s: float = DEFAULT_DECODE_S, steps: int = DEFAULT_STEPS,
                   train_batch: int = DEFAULT_TRAIN_BATCH, grad_accum: int = DEFAULT_GRAD_ACCUM,
+                  rows: int | None = None, warm_steps: int = DEFAULT_WARM_STEPS,
                   cold: bool = True) -> dict[str, Any]:
     """The slot's minutes, part by part, from SLOT_FACTS. The both arm is costed as the train arm with its steps
-    taking half as long again; a slower shared run uses the one 15-minute extension."""
+    taking half as long again; a slower shared run uses the one 15-minute extension. rows is the number of rows a
+    trainer run gets (examples_seen says why it matters); a run takes warm_steps steps before the measured ones."""
     engine = SLOT_FACTS["engine_cold_s" if cold else "engine_warm_s"]["value"]
     rate = SLOT_FACTS["train_examples_per_s"]["value"]
     load = SLOT_FACTS["train_load_s"]["value"]
-    train_s = steps * train_batch * grad_accum / rate
+    all_examples = examples_seen(steps + warm_steps, train_batch, grad_accum, rows)
+    examples = all_examples - examples_seen(warm_steps, train_batch, grad_accum, rows)
+    train_s = all_examples / rate
     parts = {"paste_and_gate_s": 60.0, "server_start_s": engine, "warmup_s": 60.0, "decode_arm_s": decode_s,
              "train_arm_s": load + train_s, "both_arm_s": load + 1.5 * train_s, "stop_and_bundle_s": 60.0}
     total = sum(parts.values())
     minutes = int(-(-total // 60))
     slot = 15 if minutes <= 15 else 30 if minutes <= 30 else 60
     return {"parts_s": {k: round(v) for k, v in parts.items()}, "total_s": round(total), "minutes": minutes,
-            "slot_minutes": slot, "extension_minutes": 15, "train_examples": steps * train_batch * grad_accum,
-            "facts": SLOT_FACTS}
+            "slot_minutes": slot, "extension_minutes": 15, "train_examples": examples, "train_rows": rows,
+            "warm_steps": warm_steps, "facts": SLOT_FACTS}
 
 
 def memory_check(share: float) -> dict[str, Any]:
@@ -177,22 +246,40 @@ def memory_check(share: float) -> dict[str, Any]:
             "lora_peak_gib": peak, "left_gib": _r(left, 2), "fits": left > 0 and share <= MAX_SHARE}
 
 
+def local_rows(rows: str) -> int | None:
+    """The row count of a rows file named as the pod will see it: a repo path is read here, a pod path is unknown."""
+    return None if str(rows).startswith("~") else count_rows(REPO / rows)
+
+
+def rows_per_run(args: Any, available: int | None) -> int:
+    """The rows each trainer run gets: --train-rows, or one step's worth (batch x gradient accumulation), and never
+    more than the rows file holds."""
+    wanted = int(args.train_rows) or int(args.train_batch) * int(args.grad_accum)
+    return min(wanted, available) if available else wanted
+
+
 def plan(args: argparse.Namespace) -> dict[str, Any]:
     """What the pod run will do, in order, and what slot it needs; nothing is run or written."""
+    rows = rows_per_run(args, local_rows(args.rows))
     slot = slot_estimate(decode_s=args.decode_s, steps=args.steps, train_batch=args.train_batch,
-                         grad_accum=args.grad_accum)
+                         grad_accum=args.grad_accum, rows=rows, warm_steps=args.warm_steps)
     mem = memory_check(args.share)
     order = [
         f"gate: Strix Halo ({CHIP}), the account the script was made for (pod D), port {args.port} free, no vLLM "
-        "server running (stop the pod's own teacher first; this run stops nothing it did not start)",
+        "server running (stop the pod's own teacher first; this run stops nothing it did not start); then the "
+        f"teacher's checkpoint, the student's folder and the trainer's Python ({DEFAULT_TRAIN_PYTHON}, L16's venv) "
+        "with every pin of lab/requirements-train.txt installed: the run installs nothing in a slot",
         f"start the teacher ({args.checkpoint}) on port {args.port} at --gpu-memory-utilization {args.share:g}: it "
         f"holds about {mem['teacher_gib']} GiB, leaving {mem['left_gib']} GiB beside the LoRA's "
         f"{mem['lora_peak_gib']} GiB peak",
         f"warm up: every prompt once at batch 1 and once at batch {args.batch}, {WARMUP_TOKENS} tokens",
         f"decode arm: rounds of {args.batch} streams x {args.max_tokens} tokens for {args.decode_s:g} s",
-        f"train arm: lab/train.py --max-steps {args.steps} --batch {args.train_batch} --grad-accum "
-        f"{args.grad_accum} on {args.model}, rows {args.rows}, with the teacher idle",
-        "both arm: the same train run with decode rounds sent until it ends",
+        f"train arm: lab/train.py --max-steps {args.steps + args.warm_steps} --batch {args.train_batch} "
+        f"--grad-accum {args.grad_accum} --no-install on {args.model}, the first {rows} rows of {args.rows}, with "
+        f"the teacher idle; its first {args.warm_steps} steps are warm-up and the {args.steps} after them are "
+        f"measured ({slot['train_examples']} examples seen)",
+        "both arm: the same train run with decode rounds sent until it ends; a round counts by the part of it "
+        "inside the trainer's steps",
         "stop the server, print the result block",
     ]
     return {"ok": mem["fits"], "outcome": "plan", "task": TASK, "node": NODE, "account": args.account,
@@ -234,35 +321,68 @@ def train_window(steps: Sequence[Mapping[str, Any]]) -> tuple[float, float] | No
     return (start, ends[-1][0]) if ends[-1][0] > start else None
 
 
+def _count(value: float) -> int | float:
+    """A count that may hold a fraction of an answer: whole numbers stay whole."""
+    return int(round(value)) if abs(value - round(value)) < 1e-9 else round(value, 3)
+
+
+def measured_steps(steps: Sequence[Mapping[str, Any]], warm: int) -> list[Mapping[str, Any]]:
+    """A trainer run's steps without its first `warm` ones, in the order the trainer wrote them."""
+    return list(steps[max(0, int(warm)):])
+
+
 def decode_summary(rounds: Sequence[Mapping[str, Any]], window: tuple[float, float] | None = None) -> dict[str, Any]:
-    """Tokens, answers and their rates over the rounds (only those wholly inside window, when one is given)."""
-    kept = [r for r in rounds if r.get("start") is not None and r.get("end") is not None
-            and (window is None or (window[0] <= r["start"] and r["end"] <= window[1]))]
+    """Tokens, answers and their rates over the rounds. With a window, a round counts by the part of its time that
+    lies inside: a round the window's edge cuts gives that fraction of its answers and tokens, and only its seconds
+    inside are busy time. The answers and tokens are then what the server produced inside the window (a fraction
+    of an answer included), which is the work the window's energy paid for; rounds counts the whole ones and
+    rounds_cut the cut ones. Counting whole rounds only would leave out up to two rounds of work the window's watts
+    and seconds still carry, and make sharing look worse than it was."""
+    kept = []                                  # (round, its seconds inside, the fraction of it inside)
+    for r in rounds:
+        start, end = _num(r.get("start")), _num(r.get("end"))
+        if start is None or end is None or end <= start:
+            continue
+        lo, hi = (start, end) if window is None else (max(start, window[0]), min(end, window[1]))
+        if hi > lo:
+            kept.append((r, hi - lo, (hi - lo) / (end - start), lo, hi))
     if not kept:
-        return {"rounds": 0, "answers": 0, "tokens": 0, "errors": 0, "window": None, "decode_tok_s": None,
-                "answers_per_s": None}
-    start = min(r["start"] for r in kept)
-    end = max(r["end"] for r in kept)
-    busy = sum(r["end"] - r["start"] for r in kept)
-    requests = [q for r in kept for q in r.get("requests", [])]
-    good = [q for q in requests if not q.get("error")]
-    tokens = sum(int(q.get("tokens") or 0) for q in good)
-    per_request = [q["decode_tok_s"] for q in good if _num(q.get("decode_tok_s"))]
-    return {"rounds": len(kept), "answers": len(good), "tokens": tokens, "errors": len(requests) - len(good),
-            "window": [start, end], "busy_s": _r(busy, 3), "decode_tok_s": _r(_div(tokens, busy)),
-            "answers_per_s": _r(_div(len(good), busy)),
+        return {"rounds": 0, "rounds_cut": 0, "answers": 0, "tokens": 0, "errors": 0, "window": None,
+                "decode_tok_s": None, "answers_per_s": None}
+    busy = sum(seconds for _, seconds, _, _, _ in kept)
+    answers = tokens = 0.0
+    errors = 0
+    per_request = []
+    for r, _, part, _, _ in kept:
+        requests = r.get("requests") or []
+        good = [q for q in requests if not q.get("error")]
+        errors += len(requests) - len(good)
+        answers += part * len(good)
+        tokens += part * sum(int(q.get("tokens") or 0) for q in good)
+        per_request += [q["decode_tok_s"] for q in good if _num(q.get("decode_tok_s"))]
+    whole = sum(1 for _, _, part, _, _ in kept if part >= 1.0 - 1e-9)
+    return {"rounds": whole, "rounds_cut": len(kept) - whole, "answers": _count(answers), "tokens": _count(tokens),
+            "errors": errors, "window": [min(lo for *_, lo, _ in kept), max(hi for *_, hi in kept)],
+            "busy_s": _r(busy, 3), "decode_tok_s": _r(_div(tokens, busy)), "answers_per_s": _r(_div(answers, busy)),
             "decode_tok_s_per_stream_median": _r(sorted(per_request)[len(per_request) // 2]) if per_request else None}
 
 
 def train_summary(train: Mapping[str, Any]) -> dict[str, Any]:
-    steps = train.get("steps") or []
+    """The trainer's measured steps (those after its warm-up steps), their window and its rates. samples are the
+    examples seen over them (examples_seen, exact when the arm recorded its row count), not the trainer's own
+    steps x batch x grad_accum."""
+    every = train.get("steps") or []
+    warm = min(int(train.get("warm_steps") or 0), len(every))
+    steps = measured_steps(every, warm)
     window = train_window(steps)
     n = len(steps)
-    per_step = int(train.get("batch") or 0) * int(train.get("grad_accum") or 0)
+    rows = _num(train.get("rows"))
+    count = (int(train.get("batch") or 0), int(train.get("grad_accum") or 0), int(rows) if rows else None)
+    samples = examples_seen(len(every), *count) - examples_seen(warm, *count)
     seconds = window[1] - window[0] if window else None
     run = train.get("run") or {}
-    return {"steps": n, "window": list(window) if window else None, "seconds": _r(seconds, 3),
-            "samples": n * per_step, "samples_per_s": _r(_div(n * per_step, seconds)),
+    return {"steps": n, "warm_steps": warm, "window": list(window) if window else None, "seconds": _r(seconds, 3),
+            "rows": int(rows) if rows else None, "samples": samples, "samples_per_s": _r(_div(samples, seconds)),
             "steps_per_s": _r(_div(n, seconds)), "outcome": run.get("outcome"), "exit_code": train.get("exit_code"),
             "trainer_samples_per_s": _num((run.get("metrics") or {}).get("trainer.samples_per_s")),
             "trainer_peak_mem_gb": _num((run.get("metrics") or {}).get("trainer.peak_mem_gb"))}
@@ -325,8 +445,8 @@ def build_result(raw: Mapping[str, Any]) -> dict[str, Any]:
     if not dw["available"] or not tw["available"] or not bw["available"]:
         open_items.append("watts missing in an arm: " + "; ".join(
             f"{n}: {w['reason']}" for n, w in (("decode", dw), ("train", tw), ("both", bw)) if not w["available"]))
-    if arms["both"]["decode"]["rounds"] == 0:
-        open_items.append("no decode round fell wholly inside the shared train window")
+    if not arms["both"]["decode"]["answers"]:
+        open_items.append("no decode round ran inside the shared train window")
     serve = raw.get("serve") or {}
     workload = raw.get("workload") or {}
     return {"schema": SCHEMA, "task": TASK, "run_id": raw.get("run_id"), "date": date, "chip": CHIP,
@@ -376,11 +496,15 @@ def render_markdown(result: Mapping[str, Any], source: str | None = None) -> str
     d, t, b = arms["decode"], arms["train"], arms["both"]
     c = result["compare"]
     serve = result.get("serve") or {}
+    work = result.get("workload") or {}
     lines = [
         f"# Interference on one {CHIP} chip: teacher decode and a LoRA run ({result.get('date')})",
         "",
         f"Run {result.get('run_id')} on {result.get('node')} (hub {result.get('hub')}, account "
-        f"{result.get('account')}), teacher served at --gpu-memory-utilization {serve.get('share')}. Made by "
+        f"{result.get('account')}), teacher served at --gpu-memory-utilization {serve.get('share')}. Decode: rounds "
+        f"of {work.get('batch')} streams x {work.get('max_tokens')} tokens. LoRA: {t['steps']} measured steps of batch "
+        f"{work.get('train_batch')} x accumulation {work.get('grad_accum')} after {t['warm_steps']} warm-up steps"
+        + (f", over {t['rows']} rows" if t.get("rows") else "") + ". Made by "
         "`python -m lab interference`; the JSON beside this file holds every number"
         + (f" ({source})." if source else "."),
         "",
@@ -394,7 +518,8 @@ def render_markdown(result: Mapping[str, Any], source: str | None = None) -> str
         f"{_f(b['train']['samples_per_s'], 3)} | {_f(b['train']['steps_per_s'], 4)} | {_f(b['watts']['avg_w'], 1)} | "
         f"{_f(b['joules_per_answer_all'], 1)} (all) | {_f(b['joules_per_step_all'], 1)} (all) |",
         "",
-        "In the both row the joules are the whole window's, charged to all answers or to all steps.",
+        "In the both row the joules are the whole window's, charged to all answers or to all steps; a decode round "
+        "the window cuts counts by the part of it inside.",
         "",
         "## Shared against one after the other",
         "",
@@ -425,6 +550,8 @@ def ledger_rows(result: Mapping[str, Any], source: str) -> list[dict[str, Any]]:
             "batch": (result.get("workload") or {}).get("batch"),
             "max_tokens": (result.get("workload") or {}).get("max_tokens"),
             "steps": (result.get("workload") or {}).get("steps"),
+            "warm_steps": (result.get("workload") or {}).get("warm_steps"),
+            "train_rows": (result.get("workload") or {}).get("train_rows"),
             "train_model": (result.get("workload") or {}).get("train_model")}
     d, t, b = arms["decode"], arms["train"], arms["both"]
     per_arm = {
@@ -692,6 +819,8 @@ class PodRun:
         if power is None:
             power = bench.LocalPower.for_host(bench.Host(), node=NODE, period_s=POWER_PERIOD_S)
         self.power = power
+        self.train_rows = rows_per_run(args, count_rows(args.rows))     # the rows each trainer run gets
+        self.trainer: subprocess.Popen | None = None
         self.raw: dict[str, Any] = {
             "schema": RAW_SCHEMA, "run_id": self.run_id, "task": TASK, "node": NODE, "hub": args.hub,
             "account": args.account, "started": now_iso(), "ended": None,
@@ -701,9 +830,11 @@ class PodRun:
                             f"none: {getattr(power, 'reason', None)}",
             "workload": {"prompt_set": self.prompts.describe(), "batch": int(args.batch),
                          "max_tokens": int(args.max_tokens), "decode_s": float(args.decode_s),
-                         "steps": int(args.steps), "train_batch": int(args.train_batch),
+                         "steps": int(args.steps), "warm_steps": int(args.warm_steps),
+                         "train_batch": int(args.train_batch),
                          "grad_accum": int(args.grad_accum), "train_model": args.model,
-                         "dataset": args.dataset, "rows": args.rows},
+                         "dataset": args.dataset, "rows": args.rows, "train_rows": self.train_rows,
+                         "train_python": None if args.train_cmd else args.python},
             "arms": {}}
 
     def left_s(self) -> float:
@@ -765,40 +896,73 @@ class PodRun:
 
     def train_argv(self, arm_dir: Path, dataset: Path, rows: Path) -> list[str]:
         args = self.args
-        values = {"dataset": dataset, "rows": rows, "model": args.model, "steps": args.steps, "out": arm_dir / "run",
-                  "run_id": f"{self.run_id}-{arm_dir.name}", "batch": args.train_batch,
-                  "grad_accum": args.grad_accum, "python": args.python}
-        command = args.train_cmd or ["{python}", "lab/train.py", "--dataset", "{dataset}", "--rows", "{rows}",
+        values = {"dataset": dataset, "rows": rows, "model": Path(args.model).expanduser(),
+                  "steps": int(args.steps) + int(args.warm_steps),
+                  "out": arm_dir / "run", "run_id": f"{self.run_id}-{arm_dir.name}", "batch": args.train_batch,
+                  "grad_accum": args.grad_accum, "python": Path(args.python).expanduser()}
+        # --no-install: a slot never runs pip; preflight has checked the venv holds every pin
+        command = args.train_cmd or ["{python}", "-u", "lab/train.py", "--dataset", "{dataset}", "--rows", "{rows}",
                                      "--model", "{model}", "--max-steps", "{steps}", "--batch", "{batch}",
-                                     "--grad-accum", "{grad_accum}", "--out", "{out}", "--run-id", "{run_id}"]
+                                     "--grad-accum", "{grad_accum}", "--out", "{out}", "--run-id", "{run_id}",
+                                     "--no-install"]
         return [re.sub(r"\{(\w+)\}", lambda m: str(values[m.group(1)]) if m.group(1) in values else m.group(0), str(a))
                 for a in command]
 
     def start_train(self, name: str) -> tuple[subprocess.Popen, Path, Any]:
-        """A fresh copy of the dataset and rows (the trainer deletes its copy), then the trainer, logging to a file."""
+        """A fresh copy of the dataset and of the run's rows (the first train_rows of the rows file; the trainer
+        deletes its copy), then the trainer, logging to a file. The trainer runs under TRAIN_ENV, with its ledger
+        rows in the arm's own state folder."""
         arm_dir = self.dir / name
         data = arm_dir / "data"
         source = Path(self.args.dataset).expanduser()
         dataset = data / source.name
         shutil.copytree(source, dataset)
         rows = data / Path(self.args.rows).name
-        shutil.copyfile(Path(self.args.rows).expanduser(), rows)
+        lines = [line for line in Path(self.args.rows).expanduser().read_text(encoding="utf-8").splitlines()
+                 if line.strip()]
+        rows.write_text("".join(line + "\n" for line in lines[:self.train_rows]), encoding="utf-8", newline="\n")
         argv = self.train_argv(arm_dir, dataset, rows)
         log = open(arm_dir / "train.log", "wb")
         say(f"{name}: trainer starting ({' '.join(map(str, argv[:4]))} ...)")
-        proc = subprocess.Popen([str(a) for a in argv], stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                                cwd=str(Path.cwd()), start_new_session=os.name == "posix")
+        env = {**os.environ, **TRAIN_ENV, "LAB_STATE_DIR": str(arm_dir / "state"), "LAB_TASK": TASK}
+        try:
+            proc = subprocess.Popen([str(a) for a in argv], stdout=log, stderr=subprocess.STDOUT,
+                                    stdin=subprocess.DEVNULL, env=env, cwd=str(Path.cwd()),
+                                    start_new_session=os.name == "posix")
+        except OSError:
+            log.close()
+            raise
+        self.trainer = proc
         return proc, arm_dir, log
+
+    def stop_trainer(self, timeout_s: float = 60.0) -> int | None:
+        """End the trainer this run started if it still runs (its time is up, its arm failed, the run was signalled),
+        so nothing of this run stays on the chip after the slot. SIGTERM to its process group, then SIGKILL."""
+        proc = self.trainer
+        if proc is None:
+            return None
+        if proc.poll() is None:
+            for sig in ("SIGTERM", "SIGKILL"):
+                try:
+                    if os.name == "posix":
+                        os.killpg(proc.pid, getattr(signal, sig))
+                    elif sig == "SIGTERM":
+                        proc.terminate()
+                    else:
+                        proc.kill()
+                    proc.wait(timeout=timeout_s)
+                    break
+                except subprocess.TimeoutExpired:
+                    continue
+                except (ProcessLookupError, OSError):
+                    break
+        return proc.poll()
 
     def finish_train(self, proc: subprocess.Popen, arm_dir: Path, log: Any, timeout_s: float) -> dict[str, Any]:
         try:
             code = proc.wait(timeout=max(1.0, timeout_s))
         except subprocess.TimeoutExpired:
-            if os.name == "posix":
-                os.killpg(proc.pid, signal.SIGTERM)
-            else:
-                proc.terminate()
-            code = proc.wait(timeout=60)
+            code = self.stop_trainer()
         finally:
             log.close()
         run_dir = arm_dir / "run"
@@ -807,9 +971,12 @@ class PodRun:
         except (OSError, ValueError):
             run = {}
         steps = read_steps(run_dir / "telemetry.jsonl")
+        for leftover in LEFTOVERS:     # a few steps over four rows are not a model: only telemetry and run.json stay
+            shutil.rmtree(run_dir / leftover, ignore_errors=True)
         tail = (arm_dir / "train.log").read_text(encoding="utf-8", errors="replace").splitlines()[-20:]
-        return {"exit_code": code, "steps": steps, "batch": int(self.args.train_batch),
-                "grad_accum": int(self.args.grad_accum),
+        return {"exit_code": code, "steps": steps, "warm_steps": int(self.args.warm_steps),
+                "batch": int(self.args.train_batch), "grad_accum": int(self.args.grad_accum),
+                "rows": self.train_rows,
                 "run": {"outcome": run.get("outcome"), "ok": run.get("ok"), "metrics": run.get("metrics"),
                         "error": run.get("error")}, "log_tail": tail}
 
@@ -831,16 +998,21 @@ class PodRun:
     def train_arm(self) -> dict[str, Any]:
         proc, arm_dir, log = self.start_train("train")
         out = self.finish_train(proc, arm_dir, log, min(TRAIN_TIMEOUT_S, self.left_s() - 60.0))
-        window = train_window(out["steps"])
+        window = train_window(measured_steps(out["steps"], out["warm_steps"]))
         out["watts"] = self.watts(*(window or (None, None)))
         say(f"train: {len(out['steps'])} steps, exit {out['exit_code']}")
         return out
 
     def both_arm(self, endpoint: Any) -> dict[str, Any]:
         proc, arm_dir, log = self.start_train("both")
-        rounds = self.decode_until(endpoint, "b", lambda: proc.poll() is not None)
+        try:
+            rounds = self.decode_until(endpoint, "b", lambda: proc.poll() is not None)
+        except BaseException:      # a failed round: the trainer does not go on alone, and its arm is not a result
+            self.stop_trainer()
+            log.close()
+            raise
         out = self.finish_train(proc, arm_dir, log, min(TRAIN_TIMEOUT_S, self.left_s() - 60.0))
-        window = train_window(out["steps"])
+        window = train_window(measured_steps(out["steps"], out["warm_steps"]))
         out["rounds"] = rounds
         out["watts"] = self.watts(*(window or (None, None)))
         say(f"both: {len(out['steps'])} steps and {len(rounds)} decode rounds")
@@ -866,6 +1038,7 @@ class PodRun:
         except Exception as exc:
             self.raw["error"] = f"{type(exc).__name__}: {exc}"[:400]
         finally:
+            self.stop_trainer()
             if spawned is not None:
                 spawned.stop(timeout_s=120.0)
             self.power.stop()
@@ -900,6 +1073,53 @@ def run_and_report(run: PodRun) -> dict[str, Any]:
 
 # --- verbs --------------------------------------------------------------------------------------------------------
 
+PINS_CHECK = ("import json; from lab import train; "
+              "print(json.dumps(train.pins_to_install(train.read_pins())))")
+
+
+def preflight(args: Any, *, run: Callable[..., Any] = subprocess.run) -> list[str]:
+    """Why the arms cannot run on this pod although the gate passed (empty when they can): the teacher's checkpoint,
+    the student's folder, the rows or the trainer's Python is missing, or that Python does not hold every pin of
+    lab/requirements-train.txt. Checked before the server starts, because nothing is installed in a slot: the
+    trainer runs with --no-install from the venv L16's prep made (DEFAULT_TRAIN_PYTHON), under TRAIN_ENV. Started
+    with the image's python3 instead, lab/train.py would run `pip install --user` on its pins, into the user site
+    the pod's vLLM build lives in. A --serve-cmd or --train-cmd (tests) skips the checks of what it replaces."""
+    problems = []
+    if not args.serve_cmd and not Path(args.checkpoint).expanduser().is_dir():
+        problems.append(f"no teacher checkpoint at {args.checkpoint} (lab/pod_a_teacher.sh download puts it there)")
+    if not Path(args.dataset).expanduser().is_dir():
+        problems.append(f"no dataset folder at {args.dataset}")
+    if not Path(args.rows).expanduser().is_file():
+        problems.append(f"no rows file at {args.rows}")
+    if args.train_cmd:
+        return problems
+    if not Path(args.model).expanduser().is_dir():
+        problems.append(f"no student model folder at {args.model} (L16's prep downloads it; a Hub id would download "
+                        "inside the slot and is refused)")
+    python = Path(args.python).expanduser()
+    if not (python.is_file() and os.access(python, os.X_OK)):
+        problems.append(f"no trainer Python at {args.python}: make the training venv first (L16's prep: a venv over "
+                        "the image's torch with lab/requirements-train.txt installed); this run installs nothing")
+        return problems
+    try:
+        done = run([str(python), "-c", PINS_CHECK], capture_output=True, text=True, timeout=PREFLIGHT_TIMEOUT_S,
+                   env={**os.environ, **TRAIN_ENV}, cwd=str(Path.cwd()), check=False)
+    except (OSError, subprocess.SubprocessError) as exc:
+        problems.append(f"could not ask {args.python} what it holds: {type(exc).__name__}: {exc}"[:300])
+        return problems
+    try:
+        missing = json.loads((done.stdout or "").strip().splitlines()[-1]) if done.returncode == 0 else None
+    except (ValueError, IndexError):
+        missing = None
+    if not isinstance(missing, list):
+        tail = " ".join((done.stderr or done.stdout or "").split())[-200:]
+        problems.append(f"{args.python} could not read its training pins (exit {done.returncode}): {tail}")
+    elif missing:
+        problems.append(f"{args.python} does not hold the pinned training stack ({', '.join(map(str, missing))}); "
+                        "this run installs nothing in a slot: install them into the venv first")
+    return problems
+
+
 def pod_run_main(args: argparse.Namespace) -> dict[str, Any]:
     from lab import bench
     from lab import profile_decode_pod as pod
@@ -908,6 +1128,8 @@ def pod_run_main(args: argparse.Namespace) -> dict[str, Any]:
                         port=args.port, servers=lambda: pod.vllm_pids(pod.proc_table(bench.Host())))
     if args.share > MAX_SHARE:
         problems.append(f"--share {args.share:g} is above {MAX_SHARE}: the LoRA job would not fit beside the teacher")
+    if not problems:
+        problems = preflight(args)
     if problems:
         return {"ok": False, "outcome": "refused", "problems": problems}
 
@@ -937,22 +1159,25 @@ def pod_script_main(args: argparse.Namespace) -> dict[str, Any]:
                                     ".env (or pass --expect-user-sha256)") from exc
         expect = pod.user_sha256(account.user)
     run_args = ["--share", f"{args.share:g}", "--batch", str(args.batch), "--max-tokens", str(args.max_tokens),
-                "--decode-s", f"{args.decode_s:g}", "--steps", str(args.steps), "--train-batch", str(args.train_batch),
-                "--grad-accum", str(args.grad_accum), "--model", args.model, "--dataset", args.dataset,
-                "--rows", args.rows, "--checkpoint", args.checkpoint, "--port", str(args.port),
+                "--decode-s", f"{args.decode_s:g}", "--steps", str(args.steps), "--warm-steps", str(args.warm_steps),
+                "--train-batch", str(args.train_batch), "--grad-accum", str(args.grad_accum),
+                "--train-rows", str(args.train_rows), "--model", args.model, "--dataset", args.dataset,
+                "--rows", args.rows, "--python", args.python, "--checkpoint", args.checkpoint,
+                "--port", str(args.port),
                 "--deadline-min", f"{args.deadline_min:g}", "--hub", args.hub, "--account", args.account]
     script, info = pod_script(expect_user_sha256=expect, args=run_args, dataset=args.dataset, rows=args.rows)
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(script.encode("ascii"))
     slot = slot_estimate(decode_s=args.decode_s, steps=args.steps, train_batch=args.train_batch,
-                         grad_accum=args.grad_accum)
+                         grad_accum=args.grad_accum, rows=rows_per_run(args, local_rows(args.rows)),
+                         warm_steps=args.warm_steps)
     wait = (slot["slot_minutes"] + slot["extension_minutes"]) * 60
+    here, saved = out.resolve().as_posix(), out.resolve().with_suffix(".out").as_posix()
     return {"ok": True, "outcome": "written", "script": str(out), **info, "slot_minutes": slot["slot_minutes"],
-            "next": f"python tooling/dispatcher/pod_exec.py {args.account} run <this script> r43_pod_run.sh {wait} "
-                    "> <output file>",
-            "or": f"python tooling/dispatcher/pod_exec.py {args.account} term <this script> {wait} > <output file>",
-            "then": "python -m lab interference collect <output file>"}
+            "next": f"python tooling/dispatcher/pod_exec.py {args.account} run {here} {POD_NAME} {wait} > {saved}",
+            "or": f"python tooling/dispatcher/pod_exec.py {args.account} term {here} {wait} > {saved}",
+            "then": f"python -m lab interference collect {saved}"}
 
 
 def collect_main(args: argparse.Namespace) -> dict[str, Any]:
@@ -997,13 +1222,20 @@ def _workload_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--batch", type=int, default=DEFAULT_BATCH, help="decode streams at once")
     p.add_argument("--max-tokens", type=int, default=DEFAULT_MAX_TOKENS)
     p.add_argument("--decode-s", type=float, default=DEFAULT_DECODE_S, help="the decode arm's length")
-    p.add_argument("--steps", type=int, default=DEFAULT_STEPS, help="the LoRA run's optimizer steps")
+    p.add_argument("--steps", type=int, default=DEFAULT_STEPS, help="the LoRA run's measured optimizer steps")
+    p.add_argument("--warm-steps", type=int, default=DEFAULT_WARM_STEPS,
+                   help="steps each trainer run takes first, outside its window")
+    p.add_argument("--train-rows", type=int, default=0,
+                   help="rows each trainer run gets, from the top of --rows (default: batch x grad-accum, so every "
+                        "step is the same batch)")
     p.add_argument("--train-batch", type=int, default=DEFAULT_TRAIN_BATCH)
     p.add_argument("--grad-accum", type=int, default=DEFAULT_GRAD_ACCUM)
     p.add_argument("--model", default=DEFAULT_MODEL, help="the student the LoRA trains (a folder on the pod)")
     p.add_argument("--dataset", default=DEFAULT_DATASET, help="the tool-calling dataset folder (bundled when a repo "
                                                               "path)")
     p.add_argument("--rows", default=DEFAULT_ROWS, help="its training rows (bundled when a repo path)")
+    p.add_argument("--python", default=DEFAULT_TRAIN_PYTHON,
+                   help="the Python on the pod that runs lab/train.py: the training venv's, never the image's python3")
     p.add_argument("--checkpoint", default=DEFAULT_CHECKPOINT, help="the teacher checkpoint on the pod")
     p.add_argument("--port", type=int, default=DEFAULT_PORT)
     p.add_argument("--deadline-min", type=float, default=DEFAULT_DEADLINE_MIN)
@@ -1026,7 +1258,6 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--expect-user-sha256", required=True)
     run.add_argument("--out", default=DEFAULT_OUT)
     run.add_argument("--prompts", default=None)
-    run.add_argument("--python", default="python3")
     run.add_argument("--serve-dir", default=None)
     run.add_argument("--serve-cmd", type=json.loads, default=None, help=argparse.SUPPRESS)   # tests: a JSON argv
     run.add_argument("--train-cmd", type=json.loads, default=None, help=argparse.SUPPRESS)

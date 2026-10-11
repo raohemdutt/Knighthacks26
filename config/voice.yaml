@@ -34,3 +34,11 @@ wake_span_s: 3           # how much of the latest sound is checked...
 wake_step_s: 1.5         # ...this often
 debug_wake: false        # true = log what the wake listener heard (it writes what the room said to the journal), to tune the match
 debug_speech: false      # true = log each question heard (with whisper's confidence) and each sentence spoken, to tune min_confidence
+
+# A conversation: after an answer the box blips and listens again, so the next thing you say needs no "Hey Atlas". It ends
+# when nobody speaks, when you say "thanks" / "that's all" / "never mind" / "stop", on a tap, or after `follow_up_max_turns`
+# answers; then it waits for "Hey Atlas" again. Noise and the speaker's own voice are dropped without a word.
+# The reply itself is heard with `end_silence_s`, `max_seconds`, `speech_level` and `min_confidence` above.
+follow_up: true          # false = one question per "Hey Atlas" or tap, as before
+follow_up_wait_s: 5      # how long it waits for you to start speaking; raise it if it gives up too soon
+follow_up_max_turns: 8   # answers in one conversation, the first one included

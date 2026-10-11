@@ -55,3 +55,21 @@ def test_the_bundled_yunet_model_loads_and_finds_no_face_in_noise():
     assert MODEL.exists()
     out = FaceBlur()(noisy(360, 640))
     assert out.shape == (360, 640, 3)
+
+
+def test_scrambled_until_clear_blurs_again_while_a_face_is_still_found():
+    class Shrinking:  # finds the face twice, then nothing: the second pass covers what the first missed
+        def __init__(self):
+            self.calls = 0
+
+        def detect(self, frame):
+            self.calls += 1
+            return 1, (np.array([[100, 60, 60, 80, 0.9]], np.float32) if self.calls <= 2 else None)
+
+    finder = Shrinking()
+    out, faces = FaceBlur(detector=finder).scrambled_until_clear(noisy(), passes=5)
+    assert faces == 1 and finder.calls == 3 and out.shape == (240, 320, 3)
+    clear = FaceBlur(detector=FakeFaces([]))
+    frame = noisy()
+    out, faces = clear.scrambled_until_clear(frame)
+    assert faces == 0 and (out == frame).all()

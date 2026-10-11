@@ -1,21 +1,38 @@
 """The demo event feed.
 
-    python -m contexts.demo seed [--data-dir data] [--now | --end ISO] [--force] [--history]
+    python -m contexts.demo seed [--data-dir data] [--now | --end ISO] [--force] [--history] [--people]
         The whole demo night, published through the real app: every projection fills from the log.
         --history first lives the twelve days before it through the Day loop (plans, re-plans, reviews), so
         Today's Plan has earlier days on its date strip, three of them the old presenter presets.
+        --people adds demo people for the People screen (made-up vectors marked as demo data, never a face) and a
+        week of the owner's looks; nothing of the story changes.
         Then run the app on it:
             ATLAS_DATA_DIR=data ATLAS_MEMORY_FIXTURE= ATLAS_CONNECTORS=0 python -m contexts.gateway
 
     python -m contexts.demo circle --data-dir <dir> [--config-dir <dir>] [--end ISO] [--force]
         The same night plus a Circle of three on this one box, no network: names, places shared, two plans
-        agreed (one after a counter-offer) and one still open. It writes its own config directory (default
+        agreed (one after a counter-offer) and one still open, and three demo people for the People screen (made-up
+        vectors marked as demo data: contexts/demo/people.py). It writes its own config directory (default
         <data-dir>/config; the committed config never names a member) and prints the command to run the app on it.
+
+    python -m contexts.demo neon --circle <id> [--name "<name>"] [--members a,b] [--days 7] [--end YYYY-MM-DD]
+                                 [--dry-run | --apply] [--remove] [--into-existing]
+        Demo members in the SHARED database (Neon), written through the classes a box writes with: a week of
+        habit summaries, Waste Watch counts and Sort It scores each, two agreed plans, the League's last week.
+        The default is a dry run that prints every row; --remove deletes exactly what --apply wrote
+        (contexts/demo/neon_seed.py).
 
     python -m contexts.demo checkin --data-dir <empty dir> [--end ISO]
         The check-in (D4): one invented afternoon (a short night, resting heart rate up, strained looks, a bottle
         not picked up, three earlier days like it) published through the real app, so the Day loop's own rule
         raises it and the narrator says it. Prints the sentence and the command to run the app on it.
+
+    python -m contexts.demo optional --data-dir <empty dir> [--day YYYY-MM-DD]
+        An optional event ("Near you"), suggested and said yes to: one invented day published through the real
+        app. The morning plan is approved locally, Atlas says when the afternoon's study block starts, suggests
+        the friends' dinner, the yes raises a re-plan and its card, that card is approved locally, the dinner is
+        a block of the day and Atlas says when to leave. Prints each line (the same for the same day, whatever
+        the directory) and, on stderr, the command to run the app on it.
 
     python -m contexts.demo fake <context> [--data-dir data] [--now]
         A few realistic events of every type one context publishes, appended to the log.
@@ -47,10 +64,10 @@ import argparse
 import os
 import asyncio
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
-from contexts.demo import fakes
+from contexts.demo import fakes, neon_seed
 from contexts.demo.seed import SeedRefused, seed, summary
 from contexts.demo.story import load
 
@@ -65,15 +82,21 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--end", type=datetime.fromisoformat, help="move the story so it ends at this time (with a UTC offset)")
     s.add_argument("--force", action="store_true", help="add to a data directory that already has an event log")
     s.add_argument("--history", action="store_true", help="also the twelve days before the story, lived through the Day loop")
+    s.add_argument("--people", action="store_true", help="also demo people for the People screen (made-up vectors, marked as demo data)")
     c = sub.add_parser("circle", help="the demo night plus a Circle of three, on one box")
     c.add_argument("--data-dir", type=Path, required=True)
     c.add_argument("--config-dir", type=Path, help="where to write the demo's config (default: <data-dir>/config)")
     c.add_argument("--end", type=datetime.fromisoformat, help="end the story at this time (with a UTC offset) instead of now")
     c.add_argument("--force", action="store_true", help="add to a data directory that already has an event log")
+    n = sub.add_parser("neon", help="demo members in the shared database: leaderboards, plans, the League")
+    neon_seed.add_arguments(n)
     k = sub.add_parser("checkin", help="an invented afternoon that ends in a check-in, through the real app (D4)")
     k.add_argument("--data-dir", type=Path, required=True)
     k.add_argument("--end", type=datetime.fromisoformat, help="when the check-in is raised (with a UTC offset); default: now in "
                                                              "the afternoon, else today 15:40 local")
+    o = sub.add_parser("optional", help="an invented afternoon: an optional event suggested, said yes to and approved")
+    o.add_argument("--data-dir", type=Path, required=True)
+    o.add_argument("--day", type=date.fromisoformat, help="the invented day (default: today, local)")
     f = sub.add_parser("fake", help="publish a small sample of one context's events")
     f.add_argument("context", choices=fakes.CONTEXTS)
     f.add_argument("--data-dir", type=Path, default=Path("data"))
@@ -101,6 +124,9 @@ def main(argv: list[str] | None = None) -> int:
     t.add_argument("--since", type=datetime.fromisoformat, help="count only from this time (with a UTC offset)")
     t.add_argument("--json", action="store_true", help="JSON instead of a markdown table")
     args = p.parse_args(argv)
+
+    if args.command == "neon":
+        return neon_seed.main(args)
 
     if args.command == "totals":
         from contexts.demo import totals
@@ -141,6 +167,18 @@ def main(argv: list[str] | None = None) -> int:
         print(checkin.summary(shown))
         return 0 if shown.checkins else 1
 
+    if args.command == "optional":
+        from contexts.demo import optional
+
+        try:
+            shown = asyncio.run(optional.show(args.data_dir, args.day or optional.default_day(datetime.now(UTC))))
+        except SeedRefused as refused:
+            print(refused, file=sys.stderr)
+            return 1
+        print("\n".join(optional.lines(shown)))  # the same lines for the same day, whatever the directory
+        print("\n" + optional.run_it(shown), file=sys.stderr)  # the one part that names the directory
+        return 0 if shown.ok else 1
+
     if args.command == "circle":
         from contexts.demo import circle
 
@@ -151,7 +189,7 @@ def main(argv: list[str] | None = None) -> int:
         cfg = circle.config_dir(args.config_dir or args.data_dir / "config")
         try:
             seeded = asyncio.run(seed(args.data_dir, now=end, force=args.force, config_dir=cfg, extra=circle.circle_events,
-                                     history=True))
+                                     history=True, people=True))
         except SeedRefused as refused:
             print(refused, file=sys.stderr)
             return 1
@@ -167,7 +205,7 @@ def main(argv: list[str] | None = None) -> int:
             p.error("--end needs a UTC offset, e.g. 2026-10-11T09:30:00-04:00")
         end = datetime.now(UTC).replace(microsecond=0) if args.now else args.end
         try:
-            seeded = asyncio.run(seed(args.data_dir, now=end, force=args.force, history=args.history))
+            seeded = asyncio.run(seed(args.data_dir, now=end, force=args.force, history=args.history, people=args.people))
         except SeedRefused as refused:
             print(refused, file=sys.stderr)
             return 1

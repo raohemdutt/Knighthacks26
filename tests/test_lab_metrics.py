@@ -307,6 +307,73 @@ EXPECTED_SEED = [
     ("telemetry.joules_per_answer", "pod-a", {"policy": "energy", "requests": 100}, 247.4741, "J", True),
     ("label.seconds", "pod-a", {"policy": "energy", "requests": 100}, 13.371, "s", False),
     ("learning.label_agreement", "pod-a", {"policy": "energy", "requests": 100}, 0.72, "fraction", False),
+    # L10: the pooled labeling job on the pod C teacher at 16 streams (measured), and at 1 stream (computed from R60)
+    ("label_pool.wall_s", "pod-a", {"streams": 16}, 62.6, "s", False),
+    ("label_pool.examples_per_s", "pod-a", {"streams": 16}, 3.19, "examples/s", False),
+    ("label_pool.watts_avg", "pod-a", {"streams": 16}, 109.4, "W", False),
+    ("label_pool.energy_j", "pod-a", {"streams": 16}, 6851.0, "J", False),
+    ("label_pool.joules_per_completion_token", "pod-a", {"streams": 16}, 10.93, "J/token", False),
+    ("label_pool.joules_per_token_all", "pod-a", {"streams": 16}, 0.308, "J/token", False),
+    ("label_pool.joules_per_example", "pod-a", {"streams": 16}, 34.3, "J/example", False),
+    ("label_pool.wall_s", "pod-a", {"streams": 1}, 238.8, "s", True),
+    ("label_pool.energy_j", "pod-a", {"streams": 1}, 23102.0, "J", True),
+    ("label_pool.joules_per_completion_token", "pod-a", {"streams": 1}, 36.85, "J/token", True),
+    ("label_pool.joules_per_example", "pod-a", {"streams": 1}, 115.5, "J/example", True),
+    # L10: the group fine-tune smoke run s3 on pod D (4 LoRA steps, stand-in gate)
+    ("group_finetune.run_wall_s", "pod-b", {"run_id": "s3"}, 243.0, "s", False),
+    ("group_finetune.train_s", "pod-b", {"run_id": "s3"}, 53.2, "s", False),
+    ("group_finetune.train_energy_j", "pod-b", {"run_id": "s3"}, 3155.265, "J", False),
+    ("group_finetune.train_watts_avg", "pod-b", {"run_id": "s3"}, 60.811, "W", False),
+    # E29b: R58's llama.cpp runs on pod C (Vulkan and HIP, 1 and 8 streams, teacher stopped), then Vulkan at 1, 4 and
+    # 16 streams beside the serving teacher on pod C and HIP at 64 streams on pod D, one run each
+    ("teacher_llamacpp.decode_tok_s", "pod-a", {"batch_size": 1, "session": "bench-20261011T034447Z-6d10"}, 12.136, "tok/s", True),
+    ("teacher_llamacpp.decode_tok_s_total", "pod-a", {"batch_size": 1, "session": "bench-20261011T034447Z-6d10"}, 10.4759, "tok/s", True),
+    ("teacher_llamacpp.ttft_s", "pod-a", {"batch_size": 1, "session": "bench-20261011T034447Z-6d10"}, 1.449, "s", True),
+    ("teacher_llamacpp.joules_per_token", "pod-a", {"batch_size": 1, "session": "bench-20261011T034447Z-6d10"}, 10.3982, "J/token", True),
+    ("teacher_llamacpp.watts_avg", "pod-a", {"batch_size": 1, "session": "bench-20261011T034447Z-6d10"}, 109.9484, "W", True),
+    ("teacher_llamacpp.watts_peak", "pod-a", {"batch_size": 1, "session": "bench-20261011T034447Z-6d10"}, 112.0, "W", True),
+    ("teacher_llamacpp.decode_tok_s", "pod-a", {"batch_size": 8, "session": "bench-20261011T034447Z-6d10"}, 6.8318, "tok/s", True),
+    ("teacher_llamacpp.decode_tok_s_total", "pod-a", {"batch_size": 8, "session": "bench-20261011T034447Z-6d10"}, 34.0691, "tok/s", True),
+    ("teacher_llamacpp.ttft_s", "pod-a", {"batch_size": 8, "session": "bench-20261011T034447Z-6d10"}, 15.0107, "s", True),
+    ("teacher_llamacpp.joules_per_token", "pod-a", {"batch_size": 8, "session": "bench-20261011T034447Z-6d10"}, 2.8151, "J/token", True),
+    ("teacher_llamacpp.watts_avg", "pod-a", {"batch_size": 8, "session": "bench-20261011T034447Z-6d10"}, 95.5369, "W", True),
+    ("teacher_llamacpp.watts_peak", "pod-a", {"batch_size": 8, "session": "bench-20261011T034447Z-6d10"}, 100.0, "W", True),
+    ("teacher_llamacpp.decode_tok_s", "pod-a", {"batch_size": 1, "session": "bench-20261011T040507Z-1b34"}, 11.9569, "tok/s", True),
+    ("teacher_llamacpp.decode_tok_s_total", "pod-a", {"batch_size": 1, "session": "bench-20261011T040507Z-1b34"}, 10.4262, "tok/s", True),
+    ("teacher_llamacpp.ttft_s", "pod-a", {"batch_size": 1, "session": "bench-20261011T040507Z-1b34"}, 1.2609, "s", True),
+    ("teacher_llamacpp.joules_per_token", "pod-a", {"batch_size": 1, "session": "bench-20261011T040507Z-1b34"}, 9.4267, "J/token", True),
+    ("teacher_llamacpp.watts_avg", "pod-a", {"batch_size": 1, "session": "bench-20261011T040507Z-1b34"}, 98.2041, "W", True),
+    ("teacher_llamacpp.watts_peak", "pod-a", {"batch_size": 1, "session": "bench-20261011T040507Z-1b34"}, 104.9838, "W", True),
+    ("teacher_llamacpp.decode_tok_s", "pod-a", {"batch_size": 8, "session": "bench-20261011T040507Z-1b34"}, 5.4491, "tok/s", True),
+    ("teacher_llamacpp.decode_tok_s_total", "pod-a", {"batch_size": 8, "session": "bench-20261011T040507Z-1b34"}, 30.1297, "tok/s", True),
+    ("teacher_llamacpp.ttft_s", "pod-a", {"batch_size": 8, "session": "bench-20261011T040507Z-1b34"}, 14.0257, "s", True),
+    ("teacher_llamacpp.joules_per_token", "pod-a", {"batch_size": 8, "session": "bench-20261011T040507Z-1b34"}, 3.1755, "J/token", True),
+    ("teacher_llamacpp.watts_avg", "pod-a", {"batch_size": 8, "session": "bench-20261011T040507Z-1b34"}, 95.6778, "W", True),
+    ("teacher_llamacpp.watts_peak", "pod-a", {"batch_size": 8, "session": "bench-20261011T040507Z-1b34"}, 101.0, "W", True),
+    ("teacher_llamacpp.decode_tok_s", "pod-a", {"batch_size": 1, "session": "bench-20261011T071346Z-5b0c"}, 12.1669, "tok/s", True),
+    ("teacher_llamacpp.decode_tok_s_total", "pod-a", {"batch_size": 1, "session": "bench-20261011T071346Z-5b0c"}, 10.2959, "tok/s", True),
+    ("teacher_llamacpp.ttft_s", "pod-a", {"batch_size": 1, "session": "bench-20261011T071346Z-5b0c"}, 1.7367, "s", True),
+    ("teacher_llamacpp.joules_per_token", "pod-a", {"batch_size": 1, "session": "bench-20261011T071346Z-5b0c"}, 9.5872, "J/token", True),
+    ("teacher_llamacpp.watts_avg", "pod-a", {"batch_size": 1, "session": "bench-20261011T071346Z-5b0c"}, 98.7098, "W", True),
+    ("teacher_llamacpp.watts_peak", "pod-a", {"batch_size": 1, "session": "bench-20261011T071346Z-5b0c"}, 121.0, "W", True),
+    ("teacher_llamacpp.decode_tok_s", "pod-a", {"batch_size": 4, "session": "bench-20261011T071346Z-5b0c"}, 5.2865, "tok/s", True),
+    ("teacher_llamacpp.decode_tok_s_total", "pod-a", {"batch_size": 4, "session": "bench-20261011T071346Z-5b0c"}, 18.4087, "tok/s", True),
+    ("teacher_llamacpp.ttft_s", "pod-a", {"batch_size": 4, "session": "bench-20261011T071346Z-5b0c"}, 8.1077, "s", True),
+    ("teacher_llamacpp.joules_per_token", "pod-a", {"batch_size": 4, "session": "bench-20261011T071346Z-5b0c"}, 5.939, "J/token", True),
+    ("teacher_llamacpp.watts_avg", "pod-a", {"batch_size": 4, "session": "bench-20261011T071346Z-5b0c"}, 109.3296, "W", True),
+    ("teacher_llamacpp.watts_peak", "pod-a", {"batch_size": 4, "session": "bench-20261011T071346Z-5b0c"}, 122.0, "W", True),
+    ("teacher_llamacpp.decode_tok_s", "pod-a", {"batch_size": 16, "session": "bench-20261011T072237Z-a149"}, 3.1701, "tok/s", True),
+    ("teacher_llamacpp.decode_tok_s_total", "pod-a", {"batch_size": 16, "session": "bench-20261011T072237Z-a149"}, 32.048, "tok/s", True),
+    ("teacher_llamacpp.ttft_s", "pod-a", {"batch_size": 16, "session": "bench-20261011T072237Z-a149"}, 31.3553, "s", True),
+    ("teacher_llamacpp.joules_per_token", "pod-a", {"batch_size": 16, "session": "bench-20261011T072237Z-a149"}, 3.2974, "J/token", True),
+    ("teacher_llamacpp.watts_avg", "pod-a", {"batch_size": 16, "session": "bench-20261011T072237Z-a149"}, 105.6744, "W", True),
+    ("teacher_llamacpp.watts_peak", "pod-a", {"batch_size": 16, "session": "bench-20261011T072237Z-a149"}, 126.0, "W", True),
+    ("teacher_llamacpp.decode_tok_s", "pod-b", {"batch_size": 64, "session": "bench-20261011T071245Z-e4b6"}, 1.3453, "tok/s", True),
+    ("teacher_llamacpp.decode_tok_s_total", "pod-b", {"batch_size": 64, "session": "bench-20261011T071245Z-e4b6"}, 40.1498, "tok/s", True),
+    ("teacher_llamacpp.ttft_s", "pod-b", {"batch_size": 64, "session": "bench-20261011T071245Z-e4b6"}, 98.5663, "s", True),
+    ("teacher_llamacpp.joules_per_token", "pod-b", {"batch_size": 64, "session": "bench-20261011T071245Z-e4b6"}, 2.2777, "J/token", True),
+    ("teacher_llamacpp.watts_avg", "pod-b", {"batch_size": 64, "session": "bench-20261011T071245Z-e4b6"}, 91.4508, "W", True),
+    ("teacher_llamacpp.watts_peak", "pod-b", {"batch_size": 64, "session": "bench-20261011T071245Z-e4b6"}, 130.0, "W", True),
 ]
 
 # The numbers the lab setup measured, by metric name.
@@ -318,9 +385,54 @@ MEASURED_NAMES = {
 }
 
 
+# R62: the lookup-table GEMV bench on pod-b, every row recomputed from its result file (lab/kernels/lut_gemv.py)
+R62_RESULT = Path(__file__).resolve().parents[1] / "fixtures" / "lab" / "lut_gemv" / "lut_gemv-gfx1151-2026-10-11.json"
+
+
+def _r62_rows() -> list[dict]:
+    from lab.kernels import lut_gemv
+
+    result = json.loads(R62_RESULT.read_text(encoding="utf-8"))
+    return lut_gemv.metric_rows(result, "fixtures/lab/lut_gemv/lut_gemv-gfx1151-2026-10-11.json", "D")
+
+
+def test_r62_rows_match_their_result_file():
+    expected = _r62_rows()
+    found = [row for row in metrics.load() if row["metric"].startswith("lut_gemv.")]
+# R63: the dispatch head-to-head on pod-b, every row recomputed from its result file (lab/kernels/dispatch_bench.py)
+R63_RESULT = Path(__file__).resolve().parents[1] / "fixtures" / "lab" / "dispatch" / "dispatch-gfx1151-2026-10-11.json"
+
+
+def _r63_rows() -> list[dict]:
+    from lab.kernels import dispatch_bench
+
+    result = json.loads(R63_RESULT.read_text(encoding="utf-8"))
+    return dispatch_bench.metric_rows(result, "fixtures/lab/dispatch/dispatch-gfx1151-2026-10-11.json", "D")
+
+
+def test_r63_rows_match_their_result_file():
+    expected = _r63_rows()
+    found = [row for row in metrics.load()
+             if row["metric"].startswith(("dispatch.", "lut_gemv.mode4.")) and "R63" in row["source"]]
+    assert found == [dict(metrics.check_row(row)) for row in expected]
+
+
+def _r65_rows() -> list[dict]:
+    from lab import r65_rows
+
+    return r65_rows.all_rows()
+
+
+def test_r65_rows_match_their_files():
+    # R65: the two-pod rows (node pod-a+pod-b) and the role switch, rebuilt from fixtures/lab/r65-2026-10-11/
+    found = [row for row in metrics.load() if row["source"].startswith("R65")]
+    assert found == [dict(metrics.check_row(row)) for row in _r65_rows()]
+    assert {row["node"] for row in found} == {"pod-a+pod-b", "pod-b"}
+
+
 def test_seed_file_has_exactly_the_expected_rows_in_schema_order():
     rows = metrics.load()
-    assert len(rows) == len(EXPECTED_SEED)
+    assert len(rows) == len(EXPECTED_SEED) + len(_r62_rows()) + len(_r63_rows()) + len(_r65_rows())
     for row in rows:
         assert list(row) == list(metrics.FIELDS)
 
@@ -379,7 +491,13 @@ def test_every_low_confidence_seed_row_says_why():
         # E29: llama.cpp on pod D, cut short (1 to 3 runs per batch size) and one llama-bench call
         "teacher_llamacpp." + name
         for name in ("decode_tok_s", "decode_tok_s_total", "ttft_s", "joules_per_token", "watts_avg", "watts_peak",
-                     "llama_bench_pp512_tok_s", "llama_bench_tg128_tok_s")}
+                     "llama_bench_pp512_tok_s", "llama_bench_tg128_tok_s")} | {
+        # L10: the pooled labeling job at 1 stream, computed from R60's batch-1 rows, not run
+        "label_pool." + name for name in ("wall_s", "energy_j", "joules_per_completion_token", "joules_per_example")} | {
+        # R65: the two-pod runs, one run per setting, and the link probes, one run each
+        "trainer.split.samples_per_s", "trainer.split.train_s", "trainer.split.loss_last", "trainer.split.train_loss",
+        "trainer.split.peak_mem_gb", "trainer.split.heldout_passed", "link.exchange_s", "link.exchange_bytes", "link.exchange_pack_s",
+        "link.exchange_reconstruction_rel_err", "pod.teacher_start_s", "link.mb_s", "link.rtt_ms"}
     for row in flagged:
         if row["conditions"].get("sampler") == SAMPLER:  # the sampler's rows: its error is "unknown" until a reference run
             assert row["conditions"]["error"] == "unknown", row["metric"]
@@ -507,6 +625,8 @@ BAD_ROWS = [
     ("unit is not text", lambda r: r.update(unit=3), "unit"),
     ("node in capitals", lambda r: r.update(node="Pod-A"), "node"),
     ("node is empty", lambda r: r.update(node=""), "node"),
+    ("node ends with a plus", lambda r: r.update(node="pod-a+"), "node"),
+    ("node with two plusses", lambda r: r.update(node="pod-a++pod-b"), "node"),
     ("conditions is a list", lambda r: r.update(conditions=[1]), "conditions"),
     ("conditions not json", lambda r: r.update(conditions={"x": object()}), "conditions"),
     ("source is blank", lambda r: r.update(source="   "), "source"),
@@ -528,6 +648,13 @@ def test_add_rejects_a_bad_row_and_leaves_the_file_as_it_was(tmp_path, label, da
     with pytest.raises(metrics.MetricsFormatError, match=field):
         metrics.add(row, path=path)
     assert path.read_bytes() == before
+
+
+def test_a_row_two_pods_measured_together_names_both(tmp_path):
+    """R65: a two-pod run (one rank on each pod) is one row about both machines, joined with "+"."""
+    path = tmp_path / "m.jsonl"
+    metrics.add(make_row(node="pod-a+pod-b"), path=path)
+    assert [row["node"] for row in metrics.load(path)] == ["pod-a+pod-b"]
 
 
 def test_add_refuses_to_append_after_a_line_that_was_cut_short(tmp_path):

@@ -11,10 +11,14 @@ event log, Memory or an export. The switch is <data_dir>/vault/identity.json: {"
 
 A blob may also hold `vectors` (up to MAX_EXEMPLARS exemplar vectors: straight on, slight turns, with and
 without glasses; `vector` stays their mean), `expressions` (this member turned "read my expressions" on),
-`updated_at`, `source` (live, scan or photos), `consent_at` and `circle_member_id`. A blob written before those existed has none of
+`updated_at`, `source` (live, scan or photos), `consent_at`, `circle_member_id` and `scanned` (the person finished a
+face scan or a live look; false for photos alone, which do not enrol). A blob written before those existed has none of
 them and loads as before: its one vector is its only exemplar. identity.json holds `"everyone": true` only
 while the anonymous room mode is on. The switch file is read again when it changes on disk, so a wipe of
 everything switches the running box off without a restart.
+
+A blob the demo seed wrote (contexts/demo/people.py) has `demo: true` and a made-up vector under a model name no
+recognizer has: it fills the People screen on a laptop, and is never matched to a face or shared.
 
 A template a friend's box shared with this one (face share, contexts/circle) is the same kind of blob with
 `source: "circle"`, `shared_by` (the friend's Circle member id), `received_at`, `expires_at` and `share_id`.
@@ -51,6 +55,12 @@ class Member:
     received_at: str | None = None  # ... when this box's person accepted it
     expires_at: str | None = None  # ... when this box deletes it unless the sharer renews
     share_id: str | None = None  # ... which share it came in (an id)
+    # The person did the face scan (or a live look at the box's camera). False: uploaded photos only, kept but not
+    # matched until a scan completes. None: a blob from before this field; then `source` says how they enrolled.
+    scanned: bool | None = None
+    # Written by the demo seed (contexts/demo/people.py): the vector is made-up numbers, not a face. Such a member is
+    # listed (with a "Demo data" tag on the People screen) and is never matched, shared or added to.
+    demo: bool = False
 
     @property
     def exemplars(self) -> list[list[float]]:

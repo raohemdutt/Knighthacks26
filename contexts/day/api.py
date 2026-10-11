@@ -34,22 +34,34 @@
 - POST /api/day/checkin/move   {id?} "Move the block": publishes a re-plan (`day.replan.proposed`) and its approval card.
                                The plan changes only when that card is approved.
 
+- GET  /api/day/optional       optional events ("Near you") for today and the next days, from Memory's `nearby:` calendar
+                               items: each with who is going, whether it fits today's plan (`fit`: yes / nearly / no, what
+                               it would move, the walk and the leave-by) and its `state` (suggested | accepted | declined |
+                               passed); `awaiting_approval` and `action_id` while a card about it is open.
+- POST /api/day/optional/{id}  {answer: "yes" | "no"} (`id`: the event's external id, URL-encoded, or its slug). A yes never
+                               changes the plan: it publishes the answer, then a re-plan with the event as a block and one
+                               approval card, and says what would move (`moves`). The event is accepted only when that card
+                               is approved. A no is recorded and the event is not suggested again; a no to an accepted one
+                               raises a re-plan without it. 404 unknown event; 409 with the reason when it cannot be taken.
+
 Every answer is what the log says: the plan and status are projections of `day.*` events.
 """
 
 import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, date, datetime, timedelta
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from contexts.day.application.loop import DayLoop
+from contexts.day.application.optional import Refused
 from contexts.day.application.watch_history import export_patterns
 from contexts.day.domain.coach import FOOD_WORDS, PHONE_WORDS, mentions
 from contexts.day.domain.patterns import patterns
 from contexts.play.dayrun.models import Move
-from contracts.day import DayPlanProposed, DayReplanProposed, Moment, MoveIn
+from contracts.day import DayOptionalAnswered, DayPlanProposed, DayReplanProposed, Moment, MoveIn
 
 
 class PlanBody(BaseModel):
@@ -64,6 +76,10 @@ class BriefBody(BaseModel):
 
 class CheckinBody(BaseModel):
     id: str | None = None  # the check-in's id (`day.checkin.raised` event id); None: the newest
+
+
+class OptionalBody(BaseModel):
+    answer: Literal["yes", "no"]
 
 
 def day_router(day: DayLoop, publish: Callable[[object], Awaitable] | None = None, guard: Callable | None = None,
@@ -299,6 +315,29 @@ def day_router(day: DayLoop, publish: Callable[[object], Awaitable] | None = Non
         elif fresh:
             n.on_narrated(e)
         return {"mode": n.mode, "engine": n.engine, "moment": body.moment, "fresh": fresh, "narration": e.model_dump(mode="json")}
+
+    # --- optional events ("Near you") ---
+
+    @router.get("/optional")
+    async def get_optional() -> dict:
+        return day.optional.view(event_now())
+
+    @router.post("/optional/{offer_id:path}", dependencies=writes)
+    async def answer_optional(offer_id: str, body: OptionalBody) -> dict:
+        """A yes or a no to one optional event. A yes is a re-plan with its approval card: nothing changes until the
+        card is approved."""
+        try:
+            events, out = day.optional.answer(event_now(), offer_id, body.answer)
+        except LookupError:
+            raise HTTPException(404, "no such optional event") from None
+        except Refused as exc:
+            raise HTTPException(exc.status, exc.reason) from None
+        for e in events:
+            if publish:
+                await publish(e)
+            elif isinstance(e, DayOptionalAnswered):
+                day.optional.on_answered(e)
+        return out
 
     @router.get("/patterns")
     async def get_patterns() -> dict:

@@ -1,0 +1,14 @@
+--- /dev/net/tun: ls: cannot access '/dev/net/tun': No such file or directory
+--- max_user_namespaces: 255358
+--- unprivileged_userns_clone: cat: /proc/sys/kernel/unprivileged_userns_clone: No such file or directory
+--- unshare: /usr/bin/unshare
+USERNS_OK
+--- ip: none  slirp4netns: none  pasta: none
+CapEff:	0000000000000000
+CapBnd:	00000000a80425fb
+NoNewPrivs:	1
+Seccomp:	0
+Seccomp_filters:	0
+TUN_FAIL inside unshare: FileNotFoundError: [Errno 2] No such file or directory: '/dev/net/tun'
+TUN_FAIL in the pod's own namespace: FileNotFoundError: [Errno 2] No such file or directory: '/dev/net/tun'
+### END

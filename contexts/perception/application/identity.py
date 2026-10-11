@@ -20,7 +20,8 @@ Enrolling takes the consent of the person being enrolled (`consent_ack`), and ha
   (`_settle`); a pose is only used to ask for variety, and to stop eight stills of one pose counting as eight;
 - from photos: `enroll_photos(member_id, name, photos, consent_ack=True)` with 3 to 12 pictures. Each is
   decoded in memory, must show exactly one face that is large, sharp and lit well enough, and the faces
-  must agree with each other. Adding photos to a member who is already enrolled is how the box "learns
+  must agree with each other. Photos alone do not enrol anyone (see "The scan comes first" below): they are
+  a way to add to a member who has scanned. Adding photos to a member who is already enrolled is how the box "learns
   your face": the new looks join the stored exemplars (the newest MAX_EXEMPLARS are kept) and the template
   is their mean. No network is trained or fine-tuned: a template is exact, instant and deletable, and
   fine-tuning a face model on one person's photos would be none of those.
@@ -35,10 +36,24 @@ one exemplar carries a whole look's noise, and the best of twelve lets more stra
 is not refreshed from live matches: a template that rewrites itself from what the camera sees can drift
 onto someone else, and a biometric that changes without the person doing anything is not what they agreed to.
 
-Apparent expression (off by default, twice): a member can switch "read my expressions" on for themselves;
+The scan comes first. Until a person has done the face scan (or a live look at the box's camera), the box does
+not know who they are, so it reads no expression of theirs and matches no face to them:
+- `scanned(member)` is true after a scan or a live look, and stays true when photos are added later;
+- a member made from uploaded photos alone is stored with `scanned: false`: the vectors are kept, the member is
+  not matched (`_templates` leaves them out) and "read my expressions" is refused, until a scan of that member
+  completes. The answer to the upload says so (`scanned: false`, `message`);
+- a member who was enrolled from photos alone before this rule (a blob with `source: "photos"` and no `scanned`)
+  keeps being recognised, so nothing a box already did is lost on upgrade, but their expressions are not read
+  until they scan, and the People screen says "scan to finish". Their stored switch is kept, not cleared.
+A friend's shared template (`source: "circle"`) is matched as before: it was made from their own scan on their box.
+
+Apparent expression (off by default): a member who has scanned can switch "read my expressions" on for themselves;
 then, every `expression_every_s`, the face of a track tagged as them is read by the expression model and
-counted. The "everyone" switch (needs `confirm`) also counts faces that matched no member, together and
-anonymously per camera: no track, no vector, no identity. Looks are added up over windows
+counted. Nobody else is ever read. The "everyone" room mode, which counted the expressions of faces that matched
+no member, is retired: those are people who never scanned. `set_everyone(True)` is refused, `everyone` is always
+false, and a box that had it on stops at once. The room aggregates already in an event log still replay and are
+still answered by `expressions(None)`. Counting how many faces are in view (`perception.faces.counted`, in the
+tracking pipeline) is a different thing and is not touched. Looks are added up over windows
 (contexts/perception/domain/expression.py) and published as `perception.expression.observed` on a change
 or every few minutes, never per frame, and never with a picture, a vector or a landmark in it.
 
@@ -143,6 +158,17 @@ def shared_member_id(shared_by: str) -> str:
     return "c-" + hashlib.sha256(shared_by.encode()).hexdigest()[:16]
 
 
+SCAN_FIRST = "Finish the face scan first."
+NO_ROOM_MODE = ("Atlas reads expressions only for someone who has done the face scan and switched it on for themselves. "
+                "It no longer reads everyone in the room.")
+PHOTOS_ONLY = "Photos saved. Finish the face scan and Atlas will start to recognise this person."
+
+
+def scanned(member: Member) -> bool:
+    """The person did the face scan or a live look. A blob from before `scanned` existed is judged by its source."""
+    return member.source in ("live", "scan") if member.scanned is None else member.scanned
+
+
 def _alive(member: Member, now: datetime) -> bool:
     """A received template still has time left. One whose expiry cannot be read has none."""
     try:
@@ -196,7 +222,8 @@ class IdentityService:
 
     @property
     def everyone(self) -> bool:
-        return self.enabled and self.expression_reader is not None and self.store.everyone
+        """The anonymous room mode is retired (it read people who never scanned): never on, whatever the file says."""
+        return False
 
     def settings(self) -> dict:
         out = {"identity_enabled": self.enabled, "available": self.available,
@@ -219,19 +246,13 @@ class IdentityService:
         return self._changed()
 
     def set_everyone(self, on: bool, confirm: bool = False) -> list[Event]:
-        """The anonymous room mode. Switching it on has to be meant: `confirm` must be true."""
+        """The anonymous room mode, retired: switching it on is refused. Off clears the old switch from the file."""
         if on:
-            if not self.enabled:
-                raise IdentityError("recognition is switched off")
-            if self.expression_reader is None:
-                raise IdentityError("the expression model is not installed on this box")
-            if confirm is not True:
-                raise ValueError("confirm must be true: this counts how everyone in the room looked, anonymously")
-        self.store.set_everyone(on)
-        if not on:
-            with self._lock:
-                for key in [k for k in self._runs if k[1] is None]:
-                    del self._runs[key]
+            raise IdentityError(NO_ROOM_MODE)
+        self.store.set_everyone(False)
+        with self._lock:
+            for key in [k for k in self._runs if k[1] is None]:
+                del self._runs[key]
         return self._changed()
 
     def members(self) -> list[dict]:
@@ -243,8 +264,11 @@ class IdentityService:
         return {"member_id": m.member_id, "name": m.name, "enrolled_at": m.enrolled_at, "updated_at": m.updated_at,
                 "photos": len(m.exemplars), "source": m.source, "expressions": m.expressions,
                 "circle_member_id": m.circle_member_id,
+                # scanned: they did the face scan. recognised: the box matches faces to them (false for photos alone).
+                "scanned": m.source == SHARED or scanned(m), "recognised": m.scanned is not False,
                 **({"shared_by": m.shared_by, "received_at": m.received_at, "expires_at": m.expires_at}
-                   if m.source == SHARED else {})}
+                   if m.source == SHARED else {}),
+                **({"demo": True} if m.demo else {})}  # written by the demo seed: made-up numbers, never a face
 
     def present(self) -> list[dict]:
         """The enrolled members a camera is looking at right now (ids only), for "here now" on the phone."""
@@ -263,6 +287,8 @@ class IdentityService:
         if member is None:
             raise KeyError(member_id)
         self._local(member)
+        if expressions and not scanned(member):
+            raise IdentityError(SCAN_FIRST)
         if expressions and self.expression_reader is None:
             raise IdentityError("the expression model is not installed on this box")
         if name is not None:
@@ -290,7 +316,7 @@ class IdentityService:
     def _state(self) -> tuple:
         members = self.store.members()
         return (self.enabled, tuple(m.member_id for m in members), self.everyone,
-                tuple(m.member_id for m in members if m.expressions))
+                tuple(m.member_id for m in members if m.expressions and scanned(m)))  # whose expressions are read
 
     def _changed(self, **enrolment: Any) -> list[Event]:
         enabled, members, everyone, expressions = self._state()
@@ -388,7 +414,7 @@ class IdentityService:
             self.store.save(Member(member_id=e["member_id"], name=e["name"], enrolled_at=at, model=self.recognizer.name,
                                    frames=self.frames, vector=average(e["vectors"]), vectors=list(e["vectors"]),
                                    expressions=bool(before and before.expressions), updated_at=at, source="live", consent_at=at,
-                                   circle_member_id=link))
+                                   circle_member_id=link, scanned=True))
             member_id = e["member_id"]
             e.update(state="done", vectors=[], name="")
         return self._changed(enrolled_member=member_id, enrolled_via="live", consent_ack=True, circle_member_id=link)
@@ -419,9 +445,10 @@ class IdentityService:
 
     def enroll_photos(self, member_id: str | None, name: str | None, photos: list[bytes], *, consent_ack: bool = False,
                       circle_member_id: str | None = None) -> tuple[dict, list[Event]]:
-        """Enrol someone from uploaded pictures, or add pictures to someone already enrolled (how the box
-        "learns your face": more exemplars, a better mean; no model is trained). Returns what happened to
-        each photo and the events to publish. Slow (a detector and a recognizer per photo): call it off the
+        """Add pictures to someone already enrolled (how the box "learns your face": more exemplars, a better
+        mean; no model is trained), or keep the pictures' vectors for someone new, who is then "not yet scanned":
+        stored, not matched and not read until a scan of that member completes (photos alone do not enrol).
+        Returns what happened to each photo (with `scanned` and, when false, a `message`) and the events to publish. Slow (a detector and a recognizer per photo): call it off the
         event loop. Nothing from a photo is stored, logged or returned except the vectors kept in the vault."""
         member_id, name, existing = self._who(member_id, name, consent_ack, circle_member_id)
         least = 1 if existing else MIN_PHOTOS
@@ -444,7 +471,9 @@ class IdentityService:
         person already enrolled, they have to agree with each other, there have to be enough, and the face
         must not be someone else's. `results[i]` is told why picture i was left out."""
         threshold = self.recognizer.threshold
-        least = 1 if existing else MIN_PHOTOS
+        was_scanned = existing is not None and scanned(existing)
+        # More pictures of someone enrolled need one; a new template, and the scan that finishes a photos-only one, MIN_PHOTOS.
+        least = 1 if existing and (was_scanned or via == "photos") else MIN_PHOTOS
         same_model = existing is not None and existing.model == self.recognizer.name
         if same_model:  # more pictures of someone enrolled: each has to be them
             for i in [i for i, v in vectors.items() if cosine(v, existing.vector) < threshold]:
@@ -459,7 +488,8 @@ class IdentityService:
         for i in vectors:
             results[i]["accepted"] = True
         out = {"state": "failed", "member_id": member_id, "accepted": len(vectors), "rejected": len(results) - len(vectors),
-               "needed": least, "photos": results, "exemplars": len(existing.exemplars) if existing else 0, "error": None}
+               "needed": least, "photos": results, "exemplars": len(existing.exemplars) if existing else 0, "error": None,
+               "scanned": was_scanned, "message": None}
         if len(vectors) < least:
             out["error"] = "not_enough_photos"
             return out, []
@@ -472,12 +502,16 @@ class IdentityService:
         exemplars = ([*existing.exemplars, *new] if same_model else new)[-MAX_EXEMPLARS:]
         at = self._now().isoformat()
         link = circle_member_id if circle_member_id is not None else (existing.circle_member_id if existing else None)
+        # A scan settles it. Photos never do: they leave a scanned member scanned, a new one "not yet scanned" (False),
+        # and one enrolled from photos before this rule as they were (None: still matched, see the module docstring).
+        done = True if via == "scan" or was_scanned else (existing.scanned if existing else False)
         self.store.save(Member(
             member_id=member_id, name=name if name is not None else existing.name,
             enrolled_at=existing.enrolled_at if existing else at, model=self.recognizer.name, frames=len(exemplars),
             vector=average(exemplars), vectors=exemplars, expressions=bool(existing and existing.expressions),
-            updated_at=at, source=via if not same_model else existing.source, consent_at=at, circle_member_id=link))
-        out.update(state="done", exemplars=len(exemplars))
+            updated_at=at, source=via if not same_model or (via == "scan" and not was_scanned) else existing.source,
+            consent_at=at, circle_member_id=link, scanned=done))
+        out.update(state="done", exemplars=len(exemplars), scanned=done is True, message=None if done is True else PHOTOS_ONLY)
         return out, self._changed(enrolled_member=member_id, enrolled_via=via, consent_ack=True, circle_member_id=link)
 
     # A guided scan on the phone: the page sends one still at a time and is told at once what to change.
@@ -660,7 +694,7 @@ class IdentityService:
                 out += tags.looked(track_id, self.recognizer.match(self._embed(frame, mine[0]), templates), now)
         if reading is not None:
             self._read_at[camera_id] = now
-            out += self._read_expressions(camera_id, frame, tracks, rows, tags, reading, bool(templates))
+            out += self._read_expressions(camera_id, frame, tracks, rows, tags, reading)
         return out + self._idle(camera_id)
 
     def _enrolling(self, camera_id: CameraId, now: float) -> bool:
@@ -674,7 +708,9 @@ class IdentityService:
         if any(m.source == SHARED for m in members):  # a friend's template is never matched past its expiry,
             at = self._now()  # also if nothing came round to delete it yet
             members = [m for m in members if m.source != SHARED or _alive(m, at)]
-        return {m.member_id: m.vector for m in members if m.model == self.recognizer.name}
+        # photos alone (scanned False) are kept but not matched: the box does not know that person until they scan
+        return {m.member_id: m.vector for m in members
+                if m.model == self.recognizer.name and m.scanned is not False and not m.demo}  # demo data is never matched
 
     def tagged(self) -> dict[CameraId, dict[int, str]]:
         return {camera: tags.members for camera, tags in self._tags.items()}
@@ -682,32 +718,31 @@ class IdentityService:
     # --- apparent expression: looks in, one fact per stretch out ---
 
     def _reading(self, camera_id: CameraId, tags: TrackTags, tracks: list[Track], now: float) -> set[str] | None:
-        """The members whose expressions may be read on this camera now (an empty set: only the anonymous
-        room), or None when there is nothing to read or it is not time yet."""
+        """The members whose expressions may be read on this camera now: in view, switched on by themselves, and
+        scanned. None when there is nobody to read or it is not time yet."""
         if self.expression_reader is None or now - self._read_at.get(camera_id, float("-inf")) < self.expression_every_s:
             return None
         if not any(t.label == "person" for t in tracks):
             return None
-        wanted = {m.member_id for m in self.store.members() if m.expressions} & set(tags.members.values())
-        return wanted if wanted or self.everyone else None
+        wanted = {m.member_id for m in self.store.members() if m.expressions and scanned(m)} & set(tags.members.values())
+        return wanted or None
 
     def _read_expressions(self, camera_id: CameraId, frame: Any, tracks: list[Track], rows: list[Any], tags: TrackTags,
-                          wanted: set[str], enrolled: bool) -> list[Event]:
+                          wanted: set[str]) -> list[Event]:
+        """Only a face in the track of a member in `wanted` is read. A face that matched nobody, or was not
+        compared yet, is never read: that is someone who did not scan."""
         height, width = frame.shape[:2]
-        everyone, strangers, tagged = self.everyone, tags.strangers(), tags.members
+        tagged = tags.members
         at = self._now()
-        seen: dict[str | None, list[tuple[str | None, float, bool, bool]]] = {}
+        seen: dict[str, list[tuple[str | None, float, bool, bool]]] = {}
         for row in rows:
             if float(row[-1]) < MIN_FACE_SCORE:
                 continue
             track = track_for_face(face_box(row, width, height), tracks)
             member = tagged.get(track.track_id) if track is not None else None
-            if member in wanted:
-                key = member
-            elif everyone and member is None and (not enrolled or (track is not None and track.track_id in strangers)):
-                key = None  # matched nobody: counted with the room, as nobody in particular
-            else:
-                continue  # an enrolled person who did not switch this on, or a face not yet compared: not read
+            if member not in wanted:
+                continue  # matched nobody, not compared yet, or someone who did not switch this on (or has not scanned)
+            key = member
             pose = head_pose(row)
             label, confidence = None, 0.0
             if not pose.away:  # the model was trained on faces towards the camera: a profile is not read
@@ -715,9 +750,9 @@ class IdentityService:
                     label, confidence = top(self.expression_reader.read(frame, row))
             seen.setdefault(key, []).append((label, confidence, pose.away, pose.down))
         out: list[Event] = []
-        expressive = {m.member_id for m in self.store.members() if m.expressions}
+        expressive = {m.member_id for m in self.store.members() if m.expressions and scanned(m)}
         with self._lock:
-            for key in [k for k in self._runs if k[0] == camera_id and (not everyone if k[1] is None else k[1] not in expressive)]:
+            for key in [k for k in self._runs if k[0] == camera_id and k[1] not in expressive]:
                 del self._runs[key]  # switched off since: what was being counted is dropped, not published
             for member, looks in seen.items():
                 run = self._runs.setdefault((camera_id, member), ExpressionRun(**self._run_settings))
@@ -791,12 +826,16 @@ class IdentityService:
     def _local(member: Member | None) -> None:
         if member is not None and member.source == SHARED:
             raise IdentityError("this template was shared by a friend's box: it can only be forgotten here")
+        if member is not None and member.demo:
+            raise IdentityError("this is demo data, not a real enrolment: forget it, then enrol the person")
 
     def own_template(self, circle_member_id: str) -> dict:
         """The template that may be shared: the one person enrolled on this box, with consent, who is linked to
         this box's own Circle member. {member_id, name, model, vector, vectors}; only vectors and the name, never
         a picture or an expression. Anyone else who enrolled here is not this box's to share."""
-        mine = [m for m in self.store.members() if m.circle_member_id == circle_member_id and m.source != SHARED and m.consent_at]
+        mine = [m for m in self.store.members() if m.circle_member_id == circle_member_id and m.source != SHARED and m.consent_at
+                and m.scanned is not False  # photos alone are not a template yet: nothing to share until the scan
+                and not m.demo]  # demo data is made-up numbers: it never leaves the box
         if not mine:
             raise IdentityError("nobody enrolled on this box is linked to you as this box's Circle member: enrol yourself "
                                 "here and choose yourself under \"Which Circle member is this?\" first")

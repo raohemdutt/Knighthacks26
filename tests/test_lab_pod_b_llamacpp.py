@@ -146,7 +146,13 @@ def test_ledger_medians_match_the_fixture_rows(name, pick):
         assert len(stored) == 1
         assert stored[0]["value"] == round(statistics.median(pick(r) for r in runs), 4)
         assert stored[0]["conditions"]["runs"] == [r["run_id"] for r in runs]
-    assert not metrics.history(f"teacher_llamacpp.{name}", node="pod-b", conditions={"batch_size": 64})
+    # E29b: 64 streams, one run in its own session (its rows sit in e29b/, outside the glob above)
+    sixty_four = [json.loads(line) for path in sorted((FIXTURE / "e29b").glob("*.rows.jsonl"))
+                  for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    stored = metrics.history(f"teacher_llamacpp.{name}", node="pod-b", conditions={"batch_size": 64})
+    assert len(stored) == 1 and len(sixty_four) == 1
+    assert stored[0]["value"] == round(pick(sixty_four[0]), 4)
+    assert stored[0]["conditions"]["runs"] == [sixty_four[0]["run_id"]]
 
 
 def test_llama_bench_rows_match_its_json():

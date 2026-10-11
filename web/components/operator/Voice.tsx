@@ -60,7 +60,12 @@ export function VoicePanel() {
   );
 
   const { state } = status;
-  const trouble = [status.mic, status.speaker, status.speech_to_text, status.text_to_speech].find((d) => d && !d.ok);
+  // A speaker that is simply not there (switched off, not paired) is a quiet "No speaker", not a yellow warning:
+  // answers still show on screen. A speaker that is there but broken stays a warning.
+  const noSpeaker = !!status.speaker && !status.speaker.ok && !!status.speaker.absent;
+  const trouble = [status.mic, noSpeaker ? undefined : status.speaker, status.speech_to_text, status.text_to_speech].find(
+    (d) => d && !d.ok,
+  );
   const note = error || status.problem || (trouble ? trouble.detail : "");
 
   return (
@@ -68,7 +73,7 @@ export function VoicePanel() {
       <h2>Voice on the box</h2>
       <p className={op.big} role="status" aria-live="polite">
         <span className={op.voiceDot} aria-hidden="true" />
-        {state === "idle" && status.wake ? "Say “Hey Atlas”" : WORDS[state]}
+        {state === "idle" && status.wake ? "Say “Hey Atlas”" : state === "listening" && status.follow_up ? "Listening for your reply…" : WORDS[state]}
       </p>
       <div className={op.voiceButtons}>
         {state === "idle" ? (
@@ -110,6 +115,7 @@ export function VoicePanel() {
       {status.heard ? <p className={op.muted}>Heard: “{status.heard}”</p> : null}
       {status.answer ? <p className={op.voiceAnswer}>{status.answer.length > 160 ? `${status.answer.slice(0, 159)}…` : status.answer}</p> : null}
       {note ? <p className={op.voiceNote}>{note}</p> : null}
+      {noSpeaker && !note && state !== "off" ? <p className={op.muted}>No speaker. Answers show here.</p> : null}
     </div>
   );
 }

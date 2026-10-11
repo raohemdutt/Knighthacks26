@@ -6,6 +6,8 @@
 # fps: frames the reader keeps per second; detect_fps: how often the detector looks (10 keeps ByteTrack ids stable)
 # motion_threshold: publish capture.frames.captured only for frames that moved this much (0..1) plus one every
 # keepalive_event_s seconds (C3); leave it out to publish every frame
+# keyframe_blur: strict (the default: a stored keyframe is blurred again until no face is found) or fast (one pass,
+# which can leave a small or half-hidden face findable; only for a box that cannot afford the second detector pass)
 cameras:
   cam-desk:
     source: /dev/video0

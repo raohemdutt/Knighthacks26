@@ -11,6 +11,13 @@ error: its reader keeps retrying, and `stats()` reports it as down.
 
 The Vault policy is read live: faces are blurred before a keyframe is stored unless `policy.blur_faces` is off, and a
 paused camera is not looked at.
+
+Two blurs (contexts/perception/infrastructure/face_blur.py). A picture that is kept or shared gets the strict one,
+repeated until no face is found: every stored keyframe, and `snapshot(camera, blur=True)` for a recorder. The live
+picture for a screen without the owner's ticket gets one pass: it runs on every frame shown and nothing of it is kept.
+A camera can be set back to one pass for its keyframes with `keyframe_blur: fast` in config/cameras.yaml, if the box
+cannot afford the second detector pass (about twice the time of one pass on a keyframe with a face in it, the same
+on one without; keyframes are stored at most once per `observe_every_s`, usually every `keyframe_every_s`).
 """
 
 import asyncio
@@ -27,7 +34,7 @@ from contexts.capture.infrastructure.camera import CameraReader
 from contracts.capture import CameraHealth
 from contexts.perception.application.tracking import TrackingPipeline
 from contexts.perception.infrastructure.detector import build_detector, detector_available
-from contexts.perception.infrastructure.face_blur import FaceBlur
+from contexts.perception.infrastructure.face_blur import STRICT, FaceBlur
 from contexts.perception.infrastructure.face_counter import FaceCounter
 from contexts.perception.infrastructure.keyframe_store import KeyframeStore
 
@@ -55,6 +62,8 @@ class CaptureService:
         self.readers: dict[str, CameraReader] = {}
         self._snapshot_blur = FaceBlur()  # the Live screen's own detector: the pipeline's is used on another thread
         self._snapshot_lock = threading.Lock()
+        self._shared_blur = FaceBlur(**STRICT)  # for snapshot(blur=True): a frame that will be kept or shared
+        self._shared_lock = threading.Lock()  # its own, so a recording does not hold up the Live screen
         self._snapshot_cache: dict[str, tuple[int, bytes]] = {}
         self._health_sent: dict[str, tuple[str, datetime]] = {}  # camera -> (status last published, when)
         self.pipelines: dict[str, TrackingPipeline] = {}
@@ -82,8 +91,9 @@ class CaptureService:
                                   width=cfg.get("width", 1280), height=cfg.get("height", 720),
                                   motion_threshold=cfg.get("motion_threshold"), keepalive_s=float(cfg.get("keepalive_event_s", 5)))
             detector = LazyDetector(self.detector_factory)  # ByteTrack keeps its state in the model: one per camera
-            blur = FaceBlur()
-            store = KeyframeStore(self.data_dir, blur=lambda frame, blur=blur: blur(frame) if self._blur_on() else frame)
+            blur = FaceBlur()  # one pass: the face counter's finder, and the keyframe blur only with `keyframe_blur: fast`
+            strict = None if cfg.get("keyframe_blur", "strict") == "fast" else FaceBlur(**STRICT)  # anything else: strict
+            store = KeyframeStore(self.data_dir, blur=lambda frame, blur=blur, strict=strict: self._saved(frame, blur, strict))
             pipeline = TrackingPipeline(
                 camera_id, reader, detector, self.bus, loop, store=store,
                 detect_fps=float(cfg.get("detect_fps", 10)),
@@ -105,28 +115,54 @@ class CaptureService:
             reader.stop()
 
     def stats(self) -> dict[str, dict]:
-        return {cid: {**r.stats(), "detected": self.pipelines[cid].detected, "errors": self.pipelines[cid].errors}
-                for cid, r in self.readers.items()}
+        out = {}
+        for cid, r in self.readers.items():
+            p = self.pipelines[cid]
+            speed = p.detector_speed() or {}
+            out[cid] = {**r.stats(), "detected": p.detected, "errors": p.errors,
+                        "detector_fps": speed.get("fps"), "detector_ms": speed.get("ms")}
+        return out
 
-    def snapshot(self, camera_id: str) -> bytes | None:
+    def detector_speed(self) -> dict | None:
+        """The detector's speed on the camera timed most recently ({camera_id, fps, ms, samples, ts}), for
+        GET /runtime/stats; None before any camera has run its detector."""
+        timed = [{"camera_id": cid, **s} for cid, p in self.pipelines.items() if (s := p.detector_speed())]
+        return max(timed, key=lambda s: s["ts"]) if timed else None
+
+    def _saved(self, frame: Any, fast: Any, strict: Any) -> Any:
+        """The copy of a frame that goes to disk: blurred until no face is found (or once, for a `fast` camera)."""
+        if not self._blur_on():
+            return frame
+        return strict.scrambled_until_clear(frame)[0] if strict is not None else fast(frame)
+
+    def snapshot(self, camera_id: str, clear: bool = False, blur: bool = False) -> bytes | None:
         """The newest frame as a JPEG for the phone's Live screen, faces blurred unless the policy says otherwise.
-        None when the camera is unknown, paused, or has not delivered a frame yet."""
+        None when the camera is unknown, paused, or has not delivered a frame yet. `clear` (the caller holds the
+        owner's view ticket) leaves the faces as they are, and only while the policy's `live_faces` is "clear";
+        this is the live picture only, a saved keyframe is blurred as before. `blur` is for a picture that will be
+        kept or shared (a recorded clip): the strict blur, whatever the policy says, and `clear` is ignored."""
         import cv2
 
         reader = self.readers.get(camera_id)
         if reader is None or (self.policy and self.policy.is_paused(camera_id)) or reader.latest() is None:
             return None
         seq, _, frame = reader.latest()
-        with self._snapshot_lock:
-            cached = self._snapshot_cache.get(camera_id)
+        clear = clear and not blur and self._blur_on() and getattr(self.policy, "live_faces", None) == "clear"
+        # the pictures of one frame are never mixed up
+        key = f"{camera_id} shared" if blur else f"{camera_id} clear" if clear else camera_id
+        with self._shared_lock if blur else self._snapshot_lock:
+            cached = self._snapshot_cache.get(key)
             if cached and cached[0] == seq:
                 return cached[1]
-            shown = self._snapshot_blur(frame) if self._blur_on() else frame
+            if blur:
+                shown = self._shared_blur.scrambled_until_clear(frame)[0]
+            else:
+                shown = self._snapshot_blur(frame) if self._blur_on() and not clear else frame
             ok, jpeg = cv2.imencode(".jpg", shown, [cv2.IMWRITE_JPEG_QUALITY, 70])
             if not ok:
                 return None
-            self._snapshot_cache[camera_id] = (seq, jpeg.tobytes())
-            return self._snapshot_cache[camera_id][1]
+            self._snapshot_cache[key] = (seq, jpeg.tobytes())
+            return self._snapshot_cache[key][1]
 
     def health(self, now: datetime, every: timedelta = timedelta(minutes=5)) -> list[CameraHealth]:
         """`capture.camera.health` for each camera whose status changed since the last call, and for every camera at

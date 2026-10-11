@@ -1,4 +1,5 @@
-"""The face profile on top of P9: enrolling from photos, exemplars, apparent expression, the "everyone" mode.
+"""The face profile on top of P9: photos and exemplars, the scan that has to come first, apparent expression for a
+member who scanned, and the retired "everyone" mode (nobody who did not scan is ever read).
 Fakes stand in for the detector, the recognizer, the photo decoder and the expression model: no model file,
 no OpenCV and no network is needed here."""
 
@@ -18,7 +19,7 @@ from fastapi.testclient import TestClient
 
 from bus import EventBus
 from contexts.perception.api import MAX_BODY_BYTES, identity_router, parse_photos
-from contexts.perception.application.identity import MIN_FACE_PX, SCAN_FRAMES, IdentityError
+from contexts.perception.application.identity import MIN_FACE_PX, SCAN_FRAMES, IdentityError, scanned
 from contexts.perception.application.tracking import TrackingPipeline
 from contexts.perception.domain.expression import LABELS, ExpressionRun, head_pose
 from contexts.perception.domain.identity import average, consistent, cosine, normalize
@@ -58,6 +59,14 @@ def b64(data: bytes) -> str:
 
 def good_photos(who="ana", n=5):
     return [photo(who, i) for i in range(n)]
+
+
+def scan(rig: Rig, who: str, member_id: str | None = None, name: str | None = None, stills: int = 3):
+    """The face scan on the phone, for someone new or to finish someone who only sent photos: (result, events)."""
+    session = rig.service.scan_start(member_id, name, consent_ack=True)["session"]
+    for i in range(stills):
+        assert rig.service.scan_frame(session, photo(who, 900 + i))["accepted"] is True
+    return rig.service.scan_finish(session)
 
 
 # --- the store: old templates still load, exemplars, switches ---
@@ -167,7 +176,7 @@ def test_matching_the_mean_of_the_exemplars_is_not_worse_than_before_and_the_clo
 # --- enrolling from photos ---
 
 
-def test_each_photo_is_judged_and_told_why_and_the_good_ones_become_the_template(tmp_path):
+def test_each_photo_is_judged_and_told_why_and_the_good_ones_are_kept_but_photos_alone_do_not_enrol(tmp_path):
     rig = box(tmp_path)
     photos = [photo("ana", 0), photo("ana", 1, others=("ben",)), photo("ana", 2, brightness=20), photo("ana", 3, w=MIN_FACE_PX - 10),
               photo("ana", 4, sharpness=5), photo("ana", 5, score=0.5), photo("ana", 6, facing=False), b"not a picture",
@@ -181,17 +190,79 @@ def test_each_photo_is_judged_and_told_why_and_the_good_ones_become_the_template
     assert messages["two_faces"].startswith("two faces") and messages["too_dark"].startswith("too dark")
     assert messages["too_small"] == "too small: move closer" and messages["blurry"].startswith("blurry")
     assert (result["state"], result["accepted"], result["rejected"], result["exemplars"], result["error"]) == ("done", 3, 9, 3, None)
-    assert set(result) == {"state", "member_id", "accepted", "rejected", "needed", "photos", "exemplars", "error"}
+    assert set(result) == {"state", "member_id", "accepted", "rejected", "needed", "photos", "exemplars", "error", "scanned", "message"}
+    assert result["scanned"] is False and result["message"] == "Photos saved. Finish the face scan and Atlas will start to recognise this person."
 
     member = rig.store.get(result["member_id"])
     assert (member.name, member.source, member.frames, len(member.vectors)) == ("Ana Example", "photos", 3, 3)
     assert member.consent_at == member.enrolled_at == member.updated_at and member.vector == average(member.vectors)
     assert [(e.type, e.members, e.enrolled_member, e.enrolled_via, e.consent_ack) for e in events] == [
         ("perception.identity.changed", [member.member_id], member.member_id, "photos", True)]
+    assert member.scanned is False and not scanned(member)
+    row_ = rig.service.members()[0]
+    assert (row_["scanned"], row_["recognised"], row_["photos"], row_["expressions"]) == (False, False, 3, False)
     ana, ben = person(7, 0.05, 0.1, 0.45, 0.95), person(8, 0.55, 0.1, 0.95, 0.95)
-    for i in range(2):
+    for i in range(4):
         rig.look(Frame(face_in(ana, b"ana#desk%d" % i), face_in(ben, b"ben#desk%d" % i)), [ana, ben])
-    assert rig.service.tagged() == {"cam-desk": {7: member.member_id}}  # the photos are enough to know her; Ben stays nobody
+    assert rig.service.tagged() in ({}, {"cam-desk": {}})  # photos alone: the box does not know her yet, she is nobody like Ben
+    with pytest.raises(IdentityError, match="Finish the face scan first."):
+        rig.service.update_member(member.member_id, expressions=True)
+    assert rig.store.get(member.member_id).expressions is False
+
+    more, _ = rig.service.enroll_photos(member.member_id, None, [photo("ana", 20)], consent_ack=True)  # more photos do not finish it
+    assert (more["state"], more["exemplars"], more["scanned"]) == ("done", 4, False) and rig.store.get(member.member_id).scanned is False
+
+    short, events = scan(rig, "ana", member.member_id, stills=2)  # the scan that finishes it is a whole scan, not one still
+    assert (short["state"], short["error"], short["needed"], events) == ("failed", "not_enough_photos", 3, [])
+    assert rig.store.get(member.member_id).scanned is False
+    from_photos = rig.store.get(member.member_id).vectors
+    done, events = scan(rig, "ana", member.member_id)
+    after = rig.store.get(member.member_id)
+    assert (done["state"], done["scanned"], done["message"], done["exemplars"]) == ("done", True, None, 7)
+    assert (after.scanned, after.source, after.name, after.enrolled_at) == (True, "scan", "Ana Example", member.enrolled_at)
+    assert len(from_photos) == 4 and after.vectors[:4] == from_photos  # the photos' vectors are in the template: they added to it
+    assert [(e.enrolled_member, e.enrolled_via) for e in events] == [(member.member_id, "scan")]
+    row_ = rig.service.members()[0]
+    assert (row_["scanned"], row_["recognised"]) == (True, True)
+    for i in range(2):
+        rig.look(Frame(face_in(ana, b"ana#desk%d" % (10 + i)), face_in(ben, b"ben#desk%d" % (10 + i))), [ana, ben])
+    assert rig.service.tagged() == {"cam-desk": {7: member.member_id}}  # after her scan she is known; Ben stays nobody
+    assert rig.service.update_member(member.member_id, expressions=True)[0].expressions == [member.member_id]
+    later, _ = rig.service.enroll_photos(member.member_id, None, [photo("ana", 30)], consent_ack=True)
+    assert later["scanned"] is True and rig.store.get(member.member_id).scanned is True  # photos added later keep her scanned
+
+
+def test_someone_enrolled_from_photos_before_the_scan_rule_is_still_recognised_and_asked_to_scan(tmp_path):
+    """No silent loss on upgrade: an older box's photos-only member keeps being matched. Their expressions are not
+    read until they scan (the stored switch is kept), and the People screen is told to say "scan to finish"."""
+    vault = Vault(KeyRing(tmp_path))
+    vectors = [FakeRecognizer().embed(b"ana#photo%d" % i) for i in range(3)]
+    old = {"member_id": "m-ana", "name": "Ana Example", "enrolled_at": "2026-10-01T09:00:00+00:00", "model": "fake", "frames": 3,
+           "vector": average(vectors), "vectors": vectors, "expressions": True, "updated_at": "2026-10-01T09:00:00+00:00",
+           "source": "photos", "consent_at": "2026-10-01T09:00:00+00:00", "circle_member_id": None}  # as written before `scanned`
+    folder = tmp_path / "vault" / "identity"
+    folder.mkdir(parents=True)
+    (folder / "m-ana.face").write_bytes(vault.encrypt("identity", json.dumps(old).encode()))
+
+    rig = box(tmp_path)
+    row_ = rig.service.members()[0]
+    assert (row_["scanned"], row_["recognised"], row_["expressions"], row_["source"]) == (False, True, True, "photos")
+    ana = person(7)
+    events = watch(rig, 120, [ana], [(b"ana", face_in(ana, b"")[1])], {b"ana": "sad"})
+    assert rig.service.tagged() == {"cam-desk": {7: "m-ana"}}  # recognised, as before the upgrade
+    assert observed(events) == [] and rig.service.expression_reader.calls == 0  # but not read: she never scanned
+    assert rig.service._state()[3] == ()  # and the log is told nobody's expressions are read
+    with pytest.raises(IdentityError, match="Finish the face scan first."):
+        rig.service.update_member("m-ana", expressions=True)
+    rig.service.update_member("m-ana", name="Ana E.")  # everything else about her can still be changed
+    added, _ = rig.service.enroll_photos("m-ana", None, [photo("ana", 50)], consent_ack=True)
+    assert (added["state"], added["scanned"]) == ("done", False) and rig.store.get("m-ana").scanned is None  # photos change nothing here
+    assert rig.service.tagged() == {"cam-desk": {7: "m-ana"}}
+
+    done, _ = scan(rig, "ana", "m-ana")
+    assert done["scanned"] is True and rig.store.get("m-ana").expressions is True  # her own switch was kept, and now counts
+    got = observed(watch(rig, 120, [ana], [(b"ana", face_in(ana, b"")[1])], {b"ana": "sad"}))
+    assert got and {e.member_id for e in got} == {"m-ana"}
 
 
 def test_fewer_than_three_photos_that_agree_stores_nothing(tmp_path):
@@ -540,6 +611,8 @@ def test_a_member_can_be_linked_to_a_circle_member_by_id_and_seen_as_here_now(tm
     member_id = c.post("/identity/enroll/photos", json=good | {"circle_member_id": "maya"}).json()["member_id"]
     assert c.get("/identity/members").json()[0]["circle_member_id"] == "maya"
     assert rig.store.get(member_id).circle_member_id == "maya"
+    assert scan(rig, "maya", member_id)[0]["scanned"] is True  # photos alone do not enrol: her scan does, and keeps the link
+    assert rig.store.get(member_id).circle_member_id == "maya"
 
     rig.enroll("m-ana", "Ana Example", b"ana")  # someone with no link
     assert c.get("/identity/present").json() == {"present": []}
@@ -704,58 +777,60 @@ def test_a_face_turned_away_is_counted_as_a_look_but_not_read(tmp_path):
     assert observed(events) == [] and rig.service.expression_reader.calls == calls  # a profile is not put through the model
 
 
-def test_the_everyone_mode_needs_a_confirmation_and_counts_strangers_together_as_nobody(tmp_path):
+def test_the_everyone_mode_is_gone_and_nobody_who_did_not_scan_is_ever_read(tmp_path):
     rig = box(tmp_path)
     rig.enroll("m-ana", "Ana Example", b"ana")
-    with pytest.raises(ValueError, match="confirm"):
-        rig.service.set_everyone(True)
-    assert rig.service.everyone is False
-    changed = rig.service.set_everyone(True, confirm=True)
-    assert [(e.enabled, e.everyone, e.members) for e in changed] == [(True, True, ["m-ana"])]
-    assert rig.service.settings()["everyone"] is True
+    for kw in ({}, {"confirm": True}):
+        with pytest.raises(IdentityError, match="only for someone who has done the face scan"):
+            rig.service.set_everyone(True, **kw)
+    assert rig.service.everyone is False and rig.service.settings()["everyone"] is False
+    assert rig.store.everyone is False  # and nothing was written
 
     ana, guest1, guest2 = person(7, 0.02, 0.1, 0.3, 0.95), person(8, 0.35, 0.1, 0.62, 0.95), person(9, 0.68, 0.1, 0.98, 0.95)
     faces = [(b"ana", face_in(ana, b"")[1]), (b"guest1", face_in(guest1, b"")[1]), (b"guest2", face_in(guest2, b"")[1])]
-    events = watch(rig, 300, [ana, guest1, guest2], faces, {b"ana": "angry", b"guest1": "happy", b"guest2": "happy"})
-    got = observed(events)
-    assert got and {e.member_id for e in got} == {None}  # Ana is enrolled and did not switch hers on: she is not read at all
-    assert {e.dominant for e in got} == {"happy"} and {e.people for e in got} == {2}
+    moods = {b"ana": "angry", b"guest1": "happy", b"guest2": "happy"}
+    reader = rig.service.expression_reader
+
+    # A box that had the room mode on before the upgrade: the old switch is still in its file, and reads nobody.
+    rig.store.set_everyone(True)
+    assert json.loads(rig.store.settings_path.read_text()) == {"identity_enabled": True, "everyone": True}
+    assert rig.service.everyone is False and rig.service.settings()["everyone"] is False
+    events = watch(rig, 300, [ana, guest1, guest2], faces, moods)
+    assert observed(events) == [] and reader.calls == 0  # not the guests, and not Ana, who did not switch hers on
     assert rig.service.tagged() == {"cam-desk": {7: "m-ana"}}  # no guest was tagged, tracked as a person or given an id
     assert [e.type for e in events if e.type.startswith("perception.person")] == ["perception.person.identified"]
-    for e in got:
-        assert not {"track_id", "vector", "frame_ref", "name"} & set(json.loads(e.model_dump_json()))
     assert sorted(p.name for p in (tmp_path / "vault" / "identity").iterdir()) == ["m-ana.face"]  # no template of a guest
     assert [m.member_id for m in rig.store.members()] == ["m-ana"]
 
-    rig.service.update_member("m-ana", expressions=True)  # with hers on: hers is hers, and never part of the room's
-    both = observed(watch(rig, 300, [ana, guest1, guest2], faces, {b"ana": "angry", b"guest1": "happy", b"guest2": "happy"}))
-    assert {(e.member_id, e.dominant, e.people) for e in both} == {("m-ana", "angry", None), (None, "happy", 2)}
+    rig.service.update_member("m-ana", expressions=True)  # with hers on: hers is read, and still nobody else's
+    both = observed(watch(rig, 300, [ana, guest1, guest2], faces, moods))
+    assert {(e.member_id, e.dominant, e.people) for e in both} == {("m-ana", "angry", None)}
+    assert reader.calls == 150  # one face (hers) every two seconds: the guests' faces never reached the model
+    for e in both:
+        assert not {"track_id", "vector", "frame_ref", "name"} & set(json.loads(e.model_dump_json()))
 
-    off = rig.service.set_everyone(False)
-    assert off[0].everyone is False
-    after = observed(watch(rig, 200, [ana, guest1, guest2], faces, {b"ana": "angry", b"guest1": "sad", b"guest2": "sad"}))
-    assert {e.member_id for e in after} == {"m-ana"}  # the room is no longer counted
+    off = rig.service.set_everyone(False)  # switching the old switch off is allowed, and clears it from the file
+    assert off[0].everyone is False and json.loads(rig.store.settings_path.read_text()) == {"identity_enabled": True}
 
 
-def test_the_everyone_mode_cannot_outlive_recognition_and_needs_the_expression_model(tmp_path):
+def test_with_nobody_enrolled_no_face_is_read_and_expressions_still_need_the_model(tmp_path):
     rig = box(tmp_path)
-    rig.service.set_everyone(True, confirm=True)
+    rig.store.set_everyone(True)  # the old switch, left on in the file
     guest = person(8)
     got = observed(watch(rig, 100, [guest], [(b"guest", face_in(guest, b"")[1])], {b"guest": "surprised"}))
-    assert got and got[0].member_id is None and got[0].people == 1  # nobody is enrolled: every face is nobody
+    assert got == [] and rig.service.expression_reader.calls == 0  # nobody scanned: Atlas cannot tell anyone apart, and reads nobody
     rig.service.set_enabled(False)
     assert rig.service.everyone is False and rig.service.settings()["everyone"] is False
-    assert observed(watch(rig, 100, [guest], [(b"guest", face_in(guest, b"")[1])])) == []
-    with pytest.raises(IdentityError, match="switched off"):
+    with pytest.raises(IdentityError, match="face scan"):
         rig.service.set_everyone(True, confirm=True)
     rig.service.set_enabled(True)
-    assert rig.service.everyone is False  # switching recognition back on does not bring it back
+    assert rig.service.everyone is False and rig.store.everyone is False
 
     plain = Rig(tmp_path / "plain")  # no expression model on this box
     plain.service.set_enabled(True)
     plain.enroll("m-ana", "Ana Example", b"ana")
     assert plain.service.settings()["expressions_available"] is False
-    with pytest.raises(IdentityError, match="expression model"):
+    with pytest.raises(IdentityError, match="face scan"):
         plain.service.set_everyone(True, confirm=True)
     with pytest.raises(IdentityError, match="expression model"):
         plain.service.update_member("m-ana", expressions=True)
@@ -776,18 +851,37 @@ def test_the_switches_the_series_and_forget_me_over_http(tmp_path):
         "expression_reader": "fake", "photos_available": True}
     member_id = c.post("/identity/enroll/photos", json={"name": NAME, "consent_ack": True,
                                                          "photos": [b64(p) for p in good_photos("zeb")]}).json()["member_id"]
-    assert c.put("/identity/settings", json={"everyone": True}).status_code == 422  # not without the confirmation
     assert c.put("/identity/settings", json={}).status_code == 422
-    assert c.put("/identity/settings", json={"everyone": True, "confirm": True}).json()["everyone"] is True
+    for body in ({"everyone": True}, {"everyone": True, "confirm": True}):  # the room mode is gone: refused, in plain words
+        refused = c.put("/identity/settings", json=body)
+        assert refused.status_code == 409 and "only for someone who has done the face scan" in refused.json()["detail"]
+    assert c.put("/identity/settings", json={"everyone": False}).json()["everyone"] is False
+    listed = c.get("/identity/members").json()[0]
+    assert (listed["scanned"], listed["recognised"], listed["source"]) == (False, False, "photos")  # photos alone: not yet scanned
+    refused = c.put(f"/identity/members/{member_id}", json={"expressions": True})
+    assert (refused.status_code, refused.json()["detail"]) == (409, "Finish the face scan first.")
+    session = c.post("/identity/enroll/scan/start", json={"member_id": member_id, "consent_ack": True}).json()["session"]
+    for i in range(3):
+        assert c.post("/identity/enroll/scan/frame", json={"session": session, "photo": b64(photo("zeb", 900 + i))}).json()["accepted"]
+    finished = c.post("/identity/enroll/scan/finish", json={"session": session}).json()
+    assert (finished["state"], finished["scanned"], finished["message"]) == ("done", True, None)
     row_ = c.put(f"/identity/members/{member_id}", json={"expressions": True}).json()
-    assert (row_["expressions"], row_["photos"], row_["source"], row_["name"]) == (True, 5, "photos", NAME)
+    assert (row_["expressions"], row_["photos"], row_["source"], row_["name"], row_["scanned"]) == (True, 8, "scan", NAME, True)
     assert c.put("/identity/members/m-nobody", json={"expressions": True}).status_code == 404
     assert c.put(f"/identity/members/{member_id}", json={"name": " "}).status_code == 422
 
     zeb, guest = person(7, 0.05, 0.1, 0.45, 0.95), person(8, 0.55, 0.1, 0.95, 0.95)
     faces = [(b"zeb", face_in(zeb, b"")[1]), (b"guest", face_in(guest, b"")[1])]
-    asyncio.run(bus.publish_all(watch(rig, 300, [zeb, guest], faces, {b"zeb": "angry", b"guest": "happy"})))
-    asyncio.run(bus.publish_all(watch(rig, 100, [zeb, guest], faces, {b"zeb": "happy", b"guest": "happy"})))
+    live = watch(rig, 300, [zeb, guest], faces, {b"zeb": "angry", b"guest": "happy"})
+    live += watch(rig, 100, [zeb, guest], faces, {b"zeb": "happy", b"guest": "happy"})
+    assert {e.member_id for e in observed(live)} == {member_id}  # the guest, who never scanned, is in none of it
+    asyncio.run(bus.publish_all(live))
+    # A room aggregate an older box wrote while the "everyone" mode existed: it is still in the log, and still answered.
+    old_room = parse_event({"type": "perception.expression.observed", "ts": (T0 + timedelta(minutes=5)).isoformat(),
+                            "camera_id": "cam-desk", "member_id": None, "window_start": T0.isoformat(),
+                            "window_end": (T0 + timedelta(minutes=5)).isoformat(), "dominant": "happy", "shares": {"happy": 1.0},
+                            "samples": 40, "confidence": 0.9, "looks": 40, "head_down": 0.0, "turned_away": 0.0, "people": 1})
+    asyncio.run(bus.publish(old_room))
 
     mine = c.get("/identity/expressions", params={"member_id": member_id, "hours": 6}).json()
     assert mine["member_id"] == member_id and mine["samples"] > 100 and mine["windows"]
@@ -820,12 +914,13 @@ def test_the_switches_the_series_and_forget_me_over_http(tmp_path):
 def test_wiping_everything_removes_exemplars_switches_and_the_series(tmp_path):
     rig = box(tmp_path)
     rig.service.enroll_photos("m-ana", "Ana Example", good_photos(), consent_ack=True)
+    scan(rig, "ana", "m-ana")
     rig.service.update_member("m-ana", expressions=True)
-    rig.service.set_everyone(True, confirm=True)
+    rig.store.set_everyone(True)  # the old room switch, as an older box may still hold it
     ana = person(7)
     for e in observed(watch(rig, 100, [ana], [(b"ana", face_in(ana, b"")[1])])):
         rig.service.on_expression(e)
-    assert rig.service._observed and rig.service.everyone
+    assert rig.service._observed and rig.store.everyone
 
     wiper = Wiper(tmp_path)
     report = wiper.wipe("all")
@@ -849,9 +944,18 @@ def test_the_state_is_announced_when_the_log_misses_a_switch(tmp_path):
         if e.type == "perception.identity.changed":
             restarted.service.on_changed(e)  # replay
     assert restarted.service.announce() == []
-    restarted.service.store.set_everyone(True)  # the vault folder says more than the log does
+    restarted.service.update_member("m-ana", expressions=False)  # the vault folder says something the log does not
     said = restarted.service.announce()
-    assert [(e.enabled, e.members, e.everyone, e.expressions, e.enrolled_member) for e in said] == [(True, ["m-ana"], True, ["m-ana"], None)]
+    assert [(e.enabled, e.members, e.everyone, e.expressions, e.enrolled_member) for e in said] == [(True, ["m-ana"], False, [], None)]
+    for e in said:
+        restarted.service.on_changed(e)
+    restarted.service.store.set_everyone(True)  # the retired room switch in the file changes nothing: there is nothing to say
+    assert restarted.service.announce() == []
+
+    # A log from before the upgrade that says the room mode is on: the box says once that it no longer is.
+    old = said[0].model_copy(update={"everyone": True})
+    restarted.service.on_changed(old)
+    assert [(e.everyone, e.members) for e in restarted.service.announce()] == [(False, ["m-ana"])]
 
 
 # --- blur is untouched, with everything switched on ---
@@ -915,14 +1019,14 @@ def run_pipeline(data_dir, rig: Rig, hooked: bool, seconds: float = 1.2) -> dict
     return {int(p.stem): p.read_bytes() for p in folder.glob("*.jpg")}
 
 
-def test_stored_frames_are_blurred_the_same_with_recognition_expressions_and_everyone_all_on(tmp_path):
+def test_stored_frames_are_blurred_the_same_with_recognition_and_expressions_on(tmp_path):
     quick = {"window_s": 0.2, "heartbeat_s": 0.5, "min_samples": 2, "idle_s": 5.0}
     rig = box(tmp_path / "box", retry_s=0.05, expression_every_s=0.03, expression_settings=quick)
     rig.enroll("m-ana", "Ana Example", b"ana")
     rig.service.update_member("m-ana", expressions=True)
-    rig.service.set_everyone(True, confirm=True)
+    rig.store.set_everyone(True)  # the retired room switch, left on in the file: it must change nothing either
     assert rig.service.settings() | {"recognizer": 0, "expression_reader": 0} == {
-        "identity_enabled": True, "available": True, "recognizer": 0, "everyone": True, "expressions_available": True,
+        "identity_enabled": True, "available": True, "recognizer": 0, "everyone": False, "expressions_available": True,
         "expression_reader": 0, "photos_available": True}
     rig.service._clock = time.monotonic  # the pipeline runs on the real clock
     rig.service._now = lambda: T0 + timedelta(seconds=time.monotonic())
@@ -931,11 +1035,11 @@ def test_stored_frames_are_blurred_the_same_with_recognition_expressions_and_eve
     off = run_pipeline(tmp_path / "off", rig, hooked=False)
     on = run_pipeline(tmp_path / "on", rig, hooked=True)
 
-    # everything really ran: Ana was recognised, her expression and the room's were read and published
+    # everything really ran: Ana was recognised and her expression was read and published; the guest's never was
     assert rig.service.tagged() == {"cam-desk": {7: "m-ana"}} and rig.service.expression_reader.calls > 6
     log = [json.loads(line) for p in (tmp_path / "on" / "events").glob("*.jsonl") for line in p.read_text().splitlines()]
     seen = {(e["member_id"], e["dominant"]) for e in log if e["type"] == "perception.expression.observed"}
-    assert seen == {("m-ana", "sad"), (None, "happy")}
+    assert seen == {("m-ana", "sad")}
     assert not [e for e in (json.loads(line) for p in (tmp_path / "off" / "events").glob("*.jsonl") for line in p.read_text().splitlines())
                 if e["type"].startswith(("perception.expression", "perception.person"))]
 
@@ -988,10 +1092,10 @@ def test_the_real_keyframe_store_writes_the_same_blurred_jpeg_with_everything_on
             frame[58:138, 420:480] = original[58:138, 420:480]
             faces = faces_now
             rig.service.update_member("m-ana", expressions=True)
-            rig.service.set_everyone(True, confirm=True)
+            rig.store.set_everyone(True)  # the retired room switch, left on in the file
         detect(frame)
     assert rig.service.errors == 0 and rig.service.tagged() == {"cam-desk": {7: "m-ana"}}
-    assert {e.member_id for e in published if e.type == "perception.expression.observed"} == {"m-ana", None}
+    assert {e.member_id for e in published if e.type == "perception.expression.observed"} == {"m-ana"}  # never the stranger
 
     store("cam-desk", 1, frame)
     assert path.read_bytes() == before  # byte for byte the same file

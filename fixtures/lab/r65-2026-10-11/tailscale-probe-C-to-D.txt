@@ -1,0 +1,8 @@
+path: SOCKS5 127.0.0.1:1055
+connect 100.65.16.109:29555 ok in 22.13 ms, peer ('127.0.0.1', 1055)
+tcp ping 200: min 8626 us, median 10152 us, p95 11792 us, max 13439 us
+warm-up 64 MB: 67108864 bytes in 23.828 s = 0.02 Gbit/s (3 MB/s); receiver counted 67108864 in 23.818 s
+send 1 GB: 1073741824 bytes in 398.206 s = 0.02 Gbit/s (3 MB/s); receiver counted 1073741824 in 398.195 s
+### END
+
+[exited with code 0]

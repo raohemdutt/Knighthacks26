@@ -9,6 +9,7 @@ import { api, ApiError, type DailyDigest, type Episode, type SearchHit } from "@
 import { useAtlasEvents } from "@/lib/atlas";
 import { amount, cameraName, dayLabel, dayTime, humanize, safeUrl, span } from "@/lib/format";
 import { useFetch } from "@/lib/useFetch";
+import dg from "./digest.module.css";
 
 type View = "camera" | "apps";
 
@@ -148,6 +149,12 @@ function CameraView() {
   );
 }
 
+/** "3 AM" from the digest's hour stamps (ISO, the start of the hour); anything else as it came. */
+function hourLabel(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleTimeString([], { hour: "numeric" });
+}
+
 /** The daily digest (A6): one tap, the day's episodes in a paragraph written from the data, with its moments. */
 function DigestCard() {
   const [digest, setDigest] = useState<DailyDigest | null>(null);
@@ -167,25 +174,64 @@ function DigestCard() {
   if (error) return <ErrorBox what="today's digest" error={error} onRetry={load} />;
   if (!digest)
     return (
-      <div className={ui.row}>
-        <button type="button" className={`${ui.btn} ${ui.btnPrimary}`} onClick={load} disabled={busy}>
-          {busy ? "Summing up today..." : "Today's digest"}
-        </button>
-      </div>
+      <button type="button" className={dg.teaser} onClick={load} disabled={busy} aria-busy={busy}>
+        <span className={dg.mark} aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 5.5h14M5 10h14M5 14.5h9M5 19h6" />
+          </svg>
+        </span>
+        <span className={dg.teaserText}>
+          <span className={dg.teaserTitle}>Today&apos;s digest</span>
+          <span className={dg.teaserSub}>{busy ? "Summing up today…" : "Your day in one paragraph, written from what Atlas saw."}</span>
+        </span>
+        <span className={dg.go} aria-hidden="true">
+          {busy ? (
+            <span className={dg.spinner} />
+          ) : (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 6l6 6-6 6" />
+            </svg>
+          )}
+        </span>
+      </button>
     );
+  const facts = [
+    `${digest.episodes} episode${digest.episodes === 1 ? "" : "s"}`,
+    digest.busiest_hour ? `busiest at ${hourLabel(digest.busiest_hour)}` : null,
+    digest.first && digest.last ? `${dayTime(digest.first)} to ${dayTime(digest.last)}` : null,
+  ].filter((f): f is string => !!f);
   return (
-    <section className={`${ui.card} ${ui.section}`} aria-label="Today's digest">
-      <div className={`${ui.row} ${ui.between}`}>
-        <h2 className={ui.sectionTitle}>Today's digest</h2>
-        <button type="button" className={ui.btn} onClick={() => setDigest(null)}>
-          Close
+    <section className={dg.card} aria-label="Today's digest">
+      <div className={dg.head}>
+        <div>
+          <span className={dg.eyebrow}>Today&apos;s digest</span>
+          <h2 className={dg.title}>Your day, in a paragraph</h2>
+        </div>
+        <button type="button" className={dg.close} onClick={() => setDigest(null)} aria-label="Close the digest">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true">
+            <path d="M6 6l12 12M18 6L6 18" />
+          </svg>
         </button>
       </div>
-      <p className={ui.answerText}>{digest.text}</p>
-      {digest.moments.length > 0 ? (
-        <div className={ui.frames}>
+      <div className={dg.facts}>
+        {facts.map((f) => (
+          <span key={f} className={dg.fact}>
+            {f}
+          </span>
+        ))}
+      </div>
+      <p className={dg.text}>{digest.text}</p>
+      {digest.moments.some((m) => m.citation.frame_ref) ? (
+        <div className={dg.moments} role="list" aria-label="Moments from today">
           {digest.moments.map((m) =>
-            m.citation.frame_ref ? <Keyframe key={m.hour} frameRef={m.citation.frame_ref} compact /> : null,
+            m.citation.frame_ref ? (
+              <figure key={m.hour} className={dg.moment} role="listitem">
+                <Keyframe frameRef={m.citation.frame_ref} compact />
+                <figcaption>
+                  <b>{hourLabel(m.hour)}</b> {m.text}
+                </figcaption>
+              </figure>
+            ) : null,
           )}
         </div>
       ) : null}

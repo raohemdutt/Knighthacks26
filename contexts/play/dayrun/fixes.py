@@ -240,11 +240,31 @@ def _candidates(cfg: DayRunConfig, w: Walks, board: Board, moves: list[Move], re
     return out
 
 
+def _attribution(w: Walks, r) -> str | None:
+    """Whose map data the walk `r` was measured on: the attribution of its pack's path network, when it has one."""
+    for ref in r.places or [r.start, r.end]:  # a walk may start indoors, in a pack with no footpaths of its own
+        net = getattr(w.places.packs.get(ref.partition(".")[0]), "_net", None)
+        if getattr(net, "attribution", None):
+            return net.attribution
+    return None
+
+
 def explain(cfg: DayRunConfig, w: Walks, board: Board, moves: list[Move], result: SimResult) -> dict:
-    """The fixes, and one true sentence for each number a person might question."""
+    """The fixes, and one true sentence for each number a person might question.
+
+    `sources` (additive) names where each of those numbers comes from, for the small chip beside it: the connector
+    a deadline was synced from, whose estimate the work left is, what measured last night, what a walk was timed on.
+    Each is read from the same field its sentence is written from; a deadline with no connector on its item has no
+    `due` source, and the screen shows no chip for it."""
     fixes = suggest(cfg, w, board, moves, result)
     checks = {c.id: c for c in result.outcome.checks}
     return {
+        "sources": {
+            "deadlines": {d.id: {"due": words.source_of_due(d), "work": words.source_of_work(d)} for d in board.deadlines},
+            "sleep": words.source_of_sleep(board), "meals": words.source_of_meals(result, board),
+            "points": words.src("plan", "this plan"),
+            "walks": {str(r.index): words.source_of_walk(r, board, _attribution(w, r)) for r in result.routes},
+        },
         "headline": words.headline(len(fixes)),
         "fixes": fixes,
         "deadlines": {d.id: {"title": words.assignment(d.title), "due": words.day_clock(d.due), "work": words.why_work(d),

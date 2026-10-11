@@ -261,3 +261,169 @@ def test_the_json_output_is_written(tmp_path, monkeypatch, capsys):
     assert code == 0 and body["counts"]["FAIL"] == 0 and body["counts"]["SKIP"] == 4
     assert {r["status"] for r in body["rows"]} == {"SKIP"} and body["model"] == "fake-0"
     assert datetime.fromisoformat(body["started"]) <= datetime.now(UTC)
+
+
+# ---------- optional events (use case 3): a yes only with --approve-local, a card approved only when it stays on the box ----------
+
+DINNER = "nearby:friends-dinner:2026-10-12T17:15:00-04:00"
+LOCAL_PLAN = ("You said yes to Friends' dinner at 5:15 PM. Replace today's plan with 9 block(s) for Mon Oct 12 (Win, 3 stars). "
+              "No calendar connector on this box: approving keeps this as today's plan, nothing is written")
+
+
+# ---------- Privacy: the three "Faces" rows ----------
+class PolicyBox:
+    proxy = None
+
+    def __init__(self, **policy):
+        self.policy = {"blur_faces": True, "paused_cameras": [], "offline": False, "keep_days": None, "live_faces": "clear"} | policy
+        self.policy = {k: v for k, v in self.policy.items() if v != "left out"}
+        self.posts = []
+
+    def get(self, path, timeout=30):
+        if path == "/vault/policy":
+            return dw.Resp(200, self.policy, content_type="application/json")
+        if path == "/vault/egress":
+            return dw.Resp(200, {"allowed": [], "blocked": 0, "enforced": False}, content_type="application/json")
+        if path == "/privacy/":
+            return dw.Resp(200, None, "<html>", content_type="text/html")
+        return dw.Resp(404, {"detail": "not here"}, content_type="application/json")
+
+    def post(self, path, body=None, timeout=30):
+        self.posts.append(path)
+        return dw.Resp(404, {"detail": "not here"}, content_type="application/json")
+
+
+SAVED, LIVE = "saved pictures are always blurred", "your live view: faces only on your own signed-in screen"
+
+
+def privacy_rows(**policy):
+    run = dw.Run(PolicyBox(**policy), read_only=True, ask=False)
+    dw.uc_privacy(run)
+    assert run.api.posts == []  # the walkthrough reads the policy; it never changes it
+    return {r.step: (r.status, r.note) for r in run.rows}
+
+
+def test_privacy_checks_the_three_picture_rows_of_the_locked_design(capsys):
+    rows = privacy_rows()
+    assert rows[SAVED][0] == dw.PASS and rows[SAVED][1].startswith("blur_faces on; offline=False")
+    assert rows[LIVE] == (dw.PASS, "clear on the owner's signed-in screen, blurred for everyone else")
+    for seen_by_a_person in ("a saved frame shows blurred faces", "anything that leaves this box is blurred",
+                             "the live view shows faces only on your own signed-in screen"):
+        assert rows[seen_by_a_person][0] == dw.SKIP and rows[seen_by_a_person][1].startswith("needs a person: ")
+    assert privacy_rows(live_faces="blurred")[LIVE] == (dw.PASS, "blurred for everyone: the owner switched the clear view off")
+
+
+@pytest.mark.parametrize("off", [False, None, 0, "false"])
+def test_privacy_fails_on_a_box_that_saves_pictures_unblurred(off, capsys):
+    rows = privacy_rows(blur_faces=off)
+    assert rows[SAVED][0] == dw.FAIL
+    assert "blur_faces is OFF" in rows[SAVED][1] and "saving pictures with faces showing" in rows[SAVED][1]
+    assert rows[LIVE][0] == dw.PASS  # the other rows are still reported
+
+
+def test_privacy_fails_when_the_policy_does_not_carry_the_rows(capsys):
+    assert privacy_rows(blur_faces="left out")[SAVED] == (dw.FAIL, "missing field(s): blur_faces")
+    assert privacy_rows(live_faces="left out")[LIVE] == (dw.FAIL, "missing field(s): live_faces")  # a gateway from before #383
+    assert privacy_rows(live_faces="everyone")[LIVE][0] == dw.FAIL
+
+
+class OptionalBox:
+    """A box with one optional event on offer: serves the list, the brief and the plan, takes a yes and a decision."""
+    proxy = None
+
+    def __init__(self, reason=LOCAL_PLAN, suggested=True, fits="yes"):
+        self.reason, self.suggested, self.fits = reason, suggested, fits
+        self.calls, self.cards, self.approved = [], [], False
+
+    def event(self):
+        return {"id": DINNER, "slug": "friends-dinner", "title": "Friends' dinner", "start": "2026-10-12T17:15:00-04:00", "state": "suggested",
+                "answer": None, "awaiting_approval": False, "suggested_at": "2026-10-12T16:00:00-04:00" if self.suggested else None,
+                "fit": {"fits": self.fits}}
+
+    def get(self, path, timeout=30):
+        self.calls.append(("GET", path, None))
+        if path == "/api/day/optional":
+            data = {"now": "2026-10-12T16:01:00-04:00", "plan_id": "plan-1", "events": [self.event()]}
+        elif path == "/api/day/brief":
+            data = {"latest": {"suggest": {"display": "Friends' dinner: 5:15 PM to 6:15 PM at '63 South. Add it?"}} if self.suggested else {}}
+        elif path == "/api/day/plan":
+            block = {"id": "optional:friends-dinner", "title": "Friends' dinner", "origin": "optional", "place_name": "'63 South"}
+            data = {"plan_id": "plan-2" if self.approved else "plan-1", "blocks": [block] if self.approved else []}
+        elif path == "/api/approvals":
+            data = self.cards
+        else:
+            return dw.Resp(404, {"detail": "not here"}, content_type="application/json")
+        return dw.Resp(200, data, content_type="application/json")
+
+    def post(self, path, body=None, timeout=30):
+        self.calls.append(("POST", path, body))
+        if path.startswith("/api/day/optional/"):
+            self.cards = [card(reason=self.reason, params={"events": []}) | {"id": "c1"}]
+            return dw.Resp(200, {"id": DINNER, "answer": "yes", "state": "suggested", "proposed": True, "plan_id": "plan-2", "action_id": "c1",
+                                 "moves": [{"title": "Eat at Kitchen", "change": "dropped"}]}, content_type="application/json")
+        self.approved = body["decision"] == "approve"
+        return dw.Resp(200, {"status": "approved" if self.approved else "denied"}, content_type="application/json")
+
+
+def posts(api):
+    return [(path, body) for method, path, body in api.calls if method == "POST"]
+
+
+def optional_rows(run):
+    return {r.step: (r.status, r.note) for r in run.rows}
+
+
+def test_the_optional_events_are_only_read_without_the_approve_local_flag(capsys):
+    for run in (dw.Run(OptionalBox(), read_only=True, ask=False), dw.Run(OptionalBox())):
+        dw.uc_day_optional(run)
+        rows = optional_rows(run)
+        assert posts(run.api) == []  # no yes, no decision
+        assert rows["optional events near you"][0] == dw.PASS and "friends-dinner suggested/yes" in rows["optional events near you"][1]
+        assert rows["Atlas suggested one"] == (dw.PASS, "Friends' dinner: 5:15 PM to 6:15 PM at '63 South. Add it?")
+        assert rows["say yes to an optional event + its approval card"][0] == dw.SKIP
+
+
+def test_with_the_flag_a_yes_is_said_and_its_card_is_approved_only_because_it_stays_on_the_box(monkeypatch, capsys):
+    monkeypatch.setattr(dw.time, "sleep", lambda s: None)
+    run = dw.Run(OptionalBox(), approve_local=True)
+    dw.uc_day_optional(run)
+    rows = optional_rows(run)
+    assert posts(run.api) == [("/api/day/optional/nearby%3Afriends-dinner%3A2026-10-12T17%3A15%3A00-04%3A00", {"answer": "yes"}),
+                              ("/api/approvals/c1", {"decision": "approve"})]
+    assert rows["say yes to an optional event"][0] == dw.PASS and "the plan itself is unchanged" in rows["say yes to an optional event"][1]
+    assert rows["the yes's approval card"][0] == dw.PASS and "approved" in rows["the yes's approval card"][1]
+    assert rows["the event is a block of today's plan"] == (dw.PASS, "Friends' dinner at '63 South, fixed, origin optional")
+    assert run.raised == ["c1"] and not [r for r in run.rows if r.status == dw.FAIL]
+
+
+def test_a_yes_whose_card_would_write_to_a_real_calendar_is_denied_and_the_plan_stays(monkeypatch, capsys):
+    monkeypatch.setattr(dw.time, "sleep", lambda s: None)
+    run = dw.Run(OptionalBox(reason="You said yes to Friends' dinner at 5:15 PM. Replace today's plan with 9 block(s)"), approve_local=True)
+    dw.uc_day_optional(run)
+    rows = optional_rows(run)
+    assert [body for _, body in posts(run.api)] == [{"answer": "yes"}, {"decision": "deny"}]  # never approved by the script
+    assert rows["the yes's approval card"][0] == dw.PASS and "denied" in rows["the yes's approval card"][1]
+    assert rows["without the approval the plan is unchanged"] == (dw.PASS, "the event is still on offer")
+
+
+def test_no_yes_is_said_when_nothing_fits_or_the_box_refuses_and_a_no_is_never_said(monkeypatch, capsys):
+    monkeypatch.setattr(dw.time, "sleep", lambda s: None)
+    run = dw.Run(OptionalBox(fits="no", suggested=False), approve_local=True)
+    dw.uc_day_optional(run)
+    rows = optional_rows(run)
+    assert posts(run.api) == [] and rows["say yes to an optional event"][0] == dw.SKIP and rows["Atlas suggested one"][0] == dw.SKIP
+
+    class Refuses(OptionalBox):
+        def post(self, path, body=None, timeout=30):
+            self.calls.append(("POST", path, body))
+            return dw.Resp(409, {"detail": "there is no plan for today yet to work it into; make one first"}, content_type="application/json")
+
+    run = dw.Run(Refuses(), approve_local=True)
+    dw.uc_day_optional(run)
+    assert optional_rows(run)["say yes to an optional event"] == (dw.SKIP, "there is no plan for today yet to work it into; make one first")
+    assert not [body for _, body in posts(run.api) if body.get("answer") == "no" or "decision" in body]
+
+    missing = dw.Run(FakeApi([]))  # a build without the endpoint: FakeApi answers a list, the Day loop's 404 is the other case
+    missing.api.get = lambda path, timeout=30: dw.Resp(404, {"detail": "Not Found"}, content_type="application/json")
+    dw.uc_day_optional(missing)
+    assert [r.status for r in missing.rows] == [dw.SKIP]

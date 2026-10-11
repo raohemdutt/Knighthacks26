@@ -143,7 +143,7 @@ export interface IdentitySettings {
   available: boolean; // false when the recognition model is not on this box
   recognizer: string | null;
   reason?: string;
-  /** The anonymous room mode: faces that match nobody are counted together, as nobody. */
+  /** The retired anonymous room mode: always false now. Atlas reads nobody who has not done the face scan. */
   everyone?: boolean;
   expressions_available?: boolean; // false when the expression model is not on this box
   photos_available?: boolean; // false when the box cannot decode pictures (no OpenCV)
@@ -162,9 +162,15 @@ export interface Member {
   source?: "live" | "scan" | "photos" | "circle"; // circle: a friend's box shared it with this one (face share)
   expressions?: boolean; // this person switched "read my expressions" on
   circle_member_id?: string | null; // which Circle member this is, when someone said so
+  /** They did the face scan (or a live look at the box's camera). False: photos only, so no expressions are read. */
+  scanned?: boolean;
+  /** The box matches faces to them. False for photos alone, until a scan finishes. */
+  recognised?: boolean;
   shared_by?: string | null; // source "circle" only: the friend's Circle member id
   received_at?: string | null;
   expires_at?: string | null; // when this box deletes it unless the friend renews
+  /** Written by the demo seed (`python -m contexts.demo circle`): made-up numbers, nobody's face. Shown with a "Demo data" tag. */
+  demo?: boolean;
 }
 
 /** A box key as two friends compare it: "ab12 cd34 ef56 0a1b 2c3d". */
@@ -221,6 +227,9 @@ export interface EnrollPhotosResult {
   exemplars: number;
   error: "not_enough_photos" | "already_enrolled" | null;
   photos: PhotoResult[];
+  /** False after photos alone: they are kept, and the person is recognised only once a face scan finishes. */
+  scanned?: boolean;
+  message?: string | null;
 }
 
 export type ScanPose = "front" | "left" | "right" | "up";
@@ -591,6 +600,61 @@ export interface CircleMembers {
   members: CircleMember[];
 }
 
+/** GET /api/circle/brain: whether this member asks the group brain (G4) and where the text would go. */
+export interface BrainStatus {
+  configured: boolean;
+  circle_id: string | null;
+  member_id: string | null;
+  opted_in: boolean;
+  opt_in_ref: string | null;
+  changed_at: string | null;
+  node: string | null;
+  host: string | null;
+  badge: string;
+}
+
+/** POST /api/circle/brain/ask */
+export interface BrainAnswerReply {
+  answer: string;
+  badge: string;
+  ask_id: string;
+  opt_in_ref: string;
+  model: string;
+  latency_ms: number;
+}
+
+/** The energy of the last group-brain answer, from the pod's own power samples (contexts/circle/brain_power.py). */
+export interface BrainLastAnswer {
+  ask_id: string;
+  pending: boolean;
+  asked?: string;
+  answered?: string;
+  seconds?: number;
+  joules?: number | null;
+  above_idle_j?: number;
+  mean_w?: number | null;
+  samples?: number;
+  before_w?: number | null;
+  idle_w?: number;
+  low_confidence?: boolean;
+  reasons?: string[];
+  reason?: string;
+}
+
+/** GET /api/circle/brain/power: the teacher pod's watts, relayed by the box (the hub token never leaves it). */
+export interface BrainPower {
+  configured: boolean;
+  node: string | null;
+  host: string | null;
+  where: string;
+  idle_w: number;
+  samples: { seq: number; ts: string; w: number }[];
+  last_seq: number | null;
+  offset_s: number | null;
+  last_answer: BrainLastAnswer | null;
+  error: string | null;
+}
+
 /** GET /api/play/campus-route */
 export interface CampusRoute {
   path: string[];
@@ -725,7 +789,8 @@ export interface RoomLive {
   ts: string | null;
   tracks: FloorTrack[];
   seen: Record<string, SeenOnFloor>;
-  round: { round_id: string; item: string; target_bin: string; bin: string; players: number; started: string; routes: RoomRouteLeg[] } | null;
+  /** `replans`: how many times this round's route has been planned again (GET /api/play/route-search has each plan). */
+  round: { round_id: string; item: string; target_bin: string; bin: string; players: number; started: string; routes: RoomRouteLeg[]; replans?: number } | null;
   result: { round_id: string; item: string; correct: boolean; seconds: number; score: number; players: number; par_s: number | null; bin: string; ts: string; right: number; rounds: number } | null;
   assist: { item: string; label: string; bin: string; bin_id: string; color: string | null; side: string; track: string; person: string; text: string } | null;
 }
@@ -742,6 +807,105 @@ export interface RoomRouteAnswer {
   points: [number, number][];
   distance_m: number;
   par_s: number;
+}
+
+/**
+ * How a route was found (contexts/play/room/grid.py: search_json). Cells are numbers, `row * cols + col`.
+ * `blocked` is one string a row: "." free, "#" furniture or a wall (grown by the body radius), "o" something in the
+ * way for this plan only. `explored` is the cells the A* search expanded, in the order it expanded them (thinned
+ * evenly when there are more than the box sends; `explored_total` is the real count). `path` is the cells it settled on.
+ */
+export interface RouteSearch {
+  algorithm: string;
+  cell_m: number;
+  cols: number;
+  rows: number;
+  blocked: string[];
+  explored: number[];
+  explored_total: number;
+  path: number[];
+}
+
+/** Something the walk bends around: a piece of furniture, a person, a thing on the floor, or the wall. */
+export interface RouteAround {
+  id: string;
+  kind: "furniture" | "person" | "thing" | "player" | "wall";
+  label: string;
+  x: number;
+  y: number;
+}
+
+/** A person or a thing that was in the way when the route was planned (a disc on the floor, metres). */
+export interface RouteObstacle {
+  kind: "person" | "thing";
+  label: string;
+  key: string | null;
+  x: number;
+  y: number;
+  r: number;
+}
+
+/** The three fields GET /api/play/room-route adds with `search=1`, and every plan of a round carries. */
+export interface RouteFound {
+  search: RouteSearch | null; // null when no way exists
+  obstacles: RouteObstacle[];
+  around: RouteAround[];
+}
+
+/** One plan of a round: the first, or a re-plan with what caused it. */
+export interface RoundPlan extends RouteFound {
+  seq: number;
+  reason: "round_started" | "replan";
+  ts: string;
+  rerouted: { why: "blocked" | "off_route" | "opened"; kind: string | null; label: string | null; key: string | null } | null;
+  from: { x: number; y: number; track: string | null };
+  bin_id: string | null;
+  reachable: boolean;
+  points: [number, number][];
+  distance_m: number;
+  par_s: number;
+}
+
+/** GET /api/play/route-search: the plans of the round that is on (`live`), else of the last one. */
+export interface RoundPlans {
+  room: string;
+  round_id: string | null;
+  live: boolean;
+  item?: string;
+  bin?: string;
+  players?: number;
+  started?: string;
+  plans: RoundPlan[];
+}
+
+/** One scored round of this sitting. `estimate_s` is the route's time estimate the score is measured against. */
+export interface PlayedRound {
+  round: number;
+  item: string;
+  correct: boolean;
+  seconds: number;
+  estimate_s: number;
+  score: number;
+  players: number;
+  ts: string;
+}
+
+/**
+ * GET /api/play/state: where Sort It's loop is, as of the newest face count. Counts and seconds only.
+ * looking: nobody is facing the camera. holding: a face has been held for `held_s` of `hold_to_start_s`.
+ * round: a round is on. ending: a round is on and nobody has faced the camera for `idle_s` of `idle_to_end_s`.
+ */
+export interface PlayState {
+  phase: "looking" | "holding" | "round" | "ending";
+  faces: number; // facing the camera in the newest count
+  count: number; // faces in view in the newest count
+  heard: string | null; // when that count was taken; null when no face count has arrived
+  held_s: number;
+  hold_to_start_s: number;
+  idle_s: number;
+  idle_to_end_s: number;
+  round: { round_id: string; item: string; players: number; started: string } | null;
+  rounds: { session_id: string; played: number; first: PlayedRound | null; latest: PlayedRound | null };
 }
 
 /** contracts.memory.Sighting: where a watch item was last seen. A zone and a text position; never coordinates. */
@@ -1184,7 +1348,24 @@ export interface Fix {
 }
 
 /** POST /api/dayrun/explain: what needs fixing, and one true sentence per number a person might question. */
+/** Where a number comes from: `id` to key on ("canvas", "guess", "yours", "watch", "camera", "map", "set", "plan" ...), `label` the words on the chip. */
+export interface NumberSource {
+  id: string;
+  label: string;
+}
+
 export interface Explained {
+  /**
+   * The source of each number that has a sentence below (contexts/play/dayrun/words.py: source_of_*), read on the
+   * box from the same field the sentence is written from. `due` is null when the deadline's item names no connector.
+   */
+  sources?: {
+    deadlines: Record<string, { due: NumberSource | null; work: NumberSource }>;
+    sleep: NumberSource;
+    meals: NumberSource;
+    points: NumberSource;
+    walks: Record<string, NumberSource>;
+  };
   headline: string;
   fixes: Fix[];
   deadlines: Record<string, { title: string; due: string; work: string; status: string | null; risk: string | null }>;
@@ -1257,6 +1438,8 @@ export interface PlanMove {
   fixed: boolean;
   deadline: string | null;
   with_friend: string | null;
+  /** "optional": an optional event the person said yes to and approved. */
+  origin?: string | null;
 }
 
 /** Why the plan is what it is: one input the box already had. */
@@ -1316,6 +1499,8 @@ export interface DayReplan extends EventEnvelope {
   action_id: string | null;
   asked: boolean;
   for_event: string | null;
+  /** The optional event ("nearby:...") a yes asked to add, or a no asked to take out. */
+  for_optional?: string | null;
 }
 
 export interface NextEvent {
@@ -1550,7 +1735,96 @@ export interface DayPlanOut {
   plan: DayPlan | DayReplan;
 }
 
-export type DayMoment = "morning" | "now" | "replan" | "coach" | "evening" | "approval" | "checkin";
+/** One block of the plan an optional event would run into (GET /api/day/optional `fit`). */
+export interface OptionalTouched {
+  id: string;
+  title: string;
+  kind: string;
+  start: string;
+  end: string;
+  overlap_minutes: number;
+}
+
+/** How an optional event sits in today's plan. "nearly": only blocks Atlas chose would move, or you would leave a little early. */
+export interface OptionalFit {
+  fits: "yes" | "nearly" | "no";
+  reason: string;
+  walk_minutes: number;
+  /** null when the walk is under three minutes. */
+  leave_by: string | null;
+  from_place: string | null;
+  displaces: OptionalTouched[];
+  conflicts: OptionalTouched[];
+  leave_early_minutes: number;
+}
+
+export type OptionalState = "suggested" | "accepted" | "declined" | "passed";
+
+/** GET /api/day/optional: one optional event ("Near you"), from Memory's `nearby:` calendar items. */
+export interface OptionalEvent {
+  /** "nearby:<slug>:<start ISO>" */
+  id: string;
+  slug: string;
+  title: string;
+  start: string;
+  end: string;
+  place: string | null;
+  place_name: string | null;
+  tags: string[];
+  going: string[];
+  host: string | null;
+  source: string | null;
+  /** accepted only once the card a yes raised was approved. */
+  state: OptionalState;
+  answer: "yes" | "no" | null;
+  /** A card about this event (the re-plan that adds it, or takes it out) is open. */
+  awaiting_approval: boolean;
+  action_id: string | null;
+  plan_id: string | null;
+  /** When Atlas brought it up by itself, if it did. */
+  suggested_at: string | null;
+  /** Why Atlas is not bringing it up right now; null when it may. */
+  suggest_held: string | null;
+  fit: OptionalFit;
+}
+
+export interface OptionalView {
+  now: string;
+  plan_id: string | null;
+  events: OptionalEvent[];
+}
+
+/** What a yes would do to one block Atlas had chosen. Times are local "HH:MM". */
+export interface OptionalChange {
+  id: string;
+  title: string;
+  kind: string;
+  fixed: boolean;
+  change: "moved" | "shortened" | "lengthened" | "dropped";
+  start: string;
+  end: string;
+  new_start?: string;
+  new_end?: string;
+}
+
+/** POST /api/day/optional/{id}. A yes never changes the plan: `action_id` is the approval card it raised. */
+export interface OptionalAnswer {
+  id: string;
+  answer: "yes" | "no";
+  state: OptionalState;
+  /** A re-plan with its approval card was raised. */
+  proposed: boolean;
+  /** Why nothing was proposed (a yes to an event more than a day ahead). */
+  reason?: string;
+  plan_id?: string;
+  action_id?: string | null;
+  moves?: OptionalChange[];
+  adds?: { id: string; title: string; kind: string; start: string; end: string }[];
+  block?: PlanMove;
+  fit?: OptionalFit;
+}
+
+export type DayMoment = "morning" | "now" | "replan" | "coach" | "evening" | "approval" | "checkin" | "suggest" | "start";
 
 /** contracts.day.DayNarrated: one moment of the day in words, for the ear (`spoken`) and for the screen (`display`). */
 export interface DayNarration extends EventEnvelope {
@@ -1566,6 +1840,10 @@ export interface DayNarration extends EventEnvelope {
   facts_hash: string;
   /** A "now" worth saying aloud unasked: leave now, late. */
   urgent: boolean;
+  /** "box" when the box's own speaker says it: the phone stays silent for this line. */
+  spoken_by?: "box" | null;
+  /** Said inside that narration (its event id): shown, never said or pushed again. */
+  merged_into?: string | null;
 }
 
 /** GET /api/day/brief */
@@ -1668,6 +1946,8 @@ export interface VaultPolicy {
   offline: boolean;
   /** Days of pictures and memory to keep; null = forever. */
   keep_days: number | null;
+  /** The live picture on the owner's own signed-in screen: "clear" shows faces there. Everyone else: blurred. */
+  live_faces: "blurred" | "clear";
 }
 
 /** GET /api/voice/status: the box's own microphone and speaker (X16). "off" also means the voice service is not running. */
@@ -1681,8 +1961,11 @@ export interface VoiceStatus {
   seconds_in_state: number;
   /** True when the box is always listening for "Hey Atlas" (wake_word in config/voice.yaml). */
   wake?: boolean;
+  /** True while the box listens for a reply after its answer, with no "Hey Atlas" (follow_up in config/voice.yaml). */
+  follow_up?: boolean;
   mic?: { ok: boolean; detail: string };
-  speaker?: { ok: boolean; detail: string };
+  /** `absent`: the configured Bluetooth speaker is just not connected (off or unpaired), not broken. */
+  speaker?: { ok: boolean; detail: string; absent?: boolean };
   speech_to_text?: { ok: boolean; detail: string };
   text_to_speech?: { ok: boolean; detail: string };
 }
@@ -1926,9 +2209,66 @@ export function cameraOfFrame(ref: string): string | null {
   return parts.length >= 3 && parts[0] === "frames" ? (parts[1] ?? null) : null;
 }
 
-/** The newest frame from a camera (faces blurred by the box); add a changing query so the browser refetches. */
+// ---------- the clear live view: a ticket for this signed-in screen ----------
+//
+// The live picture is an <img>, which cannot send the Authorization header the rest of the app signs in with. So
+// the app asks POST /vault/view-ticket (with that header) for a short-lived ticket and puts it on the picture's
+// address. With a ticket, and while the Privacy screen's "Your live view" is on, the box leaves faces unblurred
+// in that picture. Without one (not signed in, the box refused, the box is unreachable) the address is the old
+// one and the picture is the blurred one, exactly as before. Nothing about saved pictures depends on this.
+
+type TicketProblem = "" | "not_signed_in" | "box_has_no_token" | "unreachable";
+let viewTicket: { value: string; until: number } | null = null; // `until`: this device's clock, ms
+let viewTicketAsk: Promise<void> | null = null;
+let viewTicketRetryAt = 0;
+let viewTicketProblem: TicketProblem = "";
+const TICKET_RENEW_BEFORE_MS = 120_000; // ask again two minutes before it runs out
+const TICKET_RETRY_MS = 60_000; // after a refusal, not more often than this
+
+function askViewTicket(): Promise<void> {
+  if (viewTicketAsk) return viewTicketAsk;
+  viewTicketAsk = post<{ ticket: string; expires_in: number }>("/vault/view-ticket", {})
+    .then((t) => {
+      viewTicket = { value: t.ticket, until: Date.now() + t.expires_in * 1000 };
+      viewTicketProblem = "";
+    })
+    .catch((err) => {
+      const status = err instanceof ApiError ? err.status : 0;
+      viewTicketProblem = status === 401 ? "not_signed_in" : status === 403 ? "box_has_no_token" : "unreachable";
+      viewTicketRetryAt = Date.now() + TICKET_RETRY_MS;
+    })
+    .finally(() => {
+      viewTicketAsk = null;
+    });
+  return viewTicketAsk;
+}
+
+/** The ticket to put on a live picture's address, or "" for the blurred picture. Renews itself in the background. */
+function currentViewTicket(): string {
+  if (typeof window === "undefined") return "";
+  const now = Date.now();
+  if ((!viewTicket || viewTicket.until - now < TICKET_RENEW_BEFORE_MS) && now >= viewTicketRetryAt) void askViewTicket();
+  return viewTicket && viewTicket.until > now ? viewTicket.value : "";
+}
+
+/** Resolves once this screen either holds a ticket or was told it gets none. Never rejects. */
+export function viewTicketReady(): Promise<void> {
+  if (typeof window === "undefined" || currentViewTicket()) return Promise.resolve();
+  return viewTicketAsk ?? Promise.resolve();
+}
+
+/** Why this screen has no ticket ("" when it holds one, or has not asked yet). */
+export function viewTicketState(): { held: boolean; problem: TicketProblem } {
+  return { held: currentViewTicket() !== "", problem: viewTicketProblem };
+}
+
+/**
+ * The newest frame from a camera; add a changing query so the browser refetches. Faces are blurred by the box
+ * unless this is the owner's signed-in screen and the Privacy screen's "Your live view" is on.
+ */
 export function snapshotUrl(camera: string, stamp: number): string {
-  return `${HTTP_BASE}/capture/${encodeURIComponent(camera)}/snapshot.jpg?t=${stamp}`;
+  const ticket = currentViewTicket();
+  return `${HTTP_BASE}/capture/${encodeURIComponent(camera)}/snapshot.jpg?t=${stamp}${ticket ? `&ticket=${encodeURIComponent(ticket)}` : ""}`;
 }
 
 export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", undefined, signal),
@@ -1943,6 +2283,8 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   demoZones: () => post<ZoneSet>("/api/zones/demo", {}),
   vaultPolicy: (signal?: AbortSignal) => get<VaultPolicy>("/vault/policy", undefined, signal),
   runtimeModels: (signal?: AbortSignal) => get<RuntimeModels>("/runtime/models", undefined, signal),
+  /** GET /runtime/stats (R5): the box's and the lab's numbers, each with its record (types in lib/stats.ts). */
+  runtimeStats: (signal?: AbortSignal) => get<import("./stats").RuntimeStats>("/runtime/stats", undefined, signal),
   voiceStatus: (signal?: AbortSignal) => get<VoiceStatus>("/api/voice/status", undefined, signal),
   voiceTalk: () => post<VoiceStatus>("/api/voice/talk", {}),
   voiceStop: () => post<VoiceStatus>("/api/voice/stop", {}),
@@ -1955,10 +2297,13 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   wipe: (token: string) => post<WipeResult>("/vault/wipe", { token }),
 
   learning: (signal?: AbortSignal) => get<LearningBoard>("/api/learning", undefined, signal),
-  /** The Learning lab: training runs as stories. `sample` asks for the committed sample run (types in lib/lab.ts). */
+  /** The Learning lab: training runs as stories (types in lib/lab.ts). The screen always passes sample=false. */
   lab: (sample: boolean, signal?: AbortSignal) => get<import("./lab").LabList>("/api/learning/lab", sample ? { sample: 1 } : undefined, signal),
   labRun: (runId: string, sample: boolean, signal?: AbortSignal) =>
     get<import("./lab").LabStory>(`/api/learning/lab/${encodeURIComponent(runId)}`, sample ? { sample: 1 } : undefined, signal),
+  /** Two runs side by side (L31); without a or b, the latest solo run against the latest pooled one (types in lib/labCompare.ts). */
+  labCompare: (a: string | null, b: string | null, signal?: AbortSignal) =>
+    get<import("./labCompare").LabCompare>("/api/learning/lab/compare", { a, b }, signal),
   /** The lab's benchmark and energy rows, the routing what-if and the experiment timeline (types in lib/labBench.ts). */
   labBench: (signal?: AbortSignal) => get<import("./labBench").LabBench>("/api/learning/lab/bench", undefined, signal),
   labRoutingSim: (params: Partial<import("./labBench").SimParams>, signal?: AbortSignal) =>
@@ -2019,6 +2364,11 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   circleThreads: (signal?: AbortSignal) => get<CircleThreads>("/api/circle/threads", undefined, signal),
   circleThread: (id: string, signal?: AbortSignal) => get<CircleThreadDetail>(`/api/circle/threads/${encodeURIComponent(id)}`, undefined, signal),
   circleMembers: (signal?: AbortSignal) => get<CircleMembers>("/api/circle/members", undefined, signal),
+  circleBrain: (signal?: AbortSignal) => get<BrainStatus>("/api/circle/brain", undefined, signal),
+  circleBrainConsent: (on: boolean) => post<BrainStatus>("/api/circle/brain/consent", { on }),
+  circleBrainAsk: (question: string, facts: string[] = []) => post<BrainAnswerReply>("/api/circle/brain/ask", { question, facts }),
+  circleBrainPower: (after?: number, signal?: AbortSignal) =>
+    get<BrainPower>("/api/circle/brain/power", after === undefined ? undefined : { after: String(after) }, signal),
   /** Face share, or null while it is switched off on this box (409), there is no Circle, or the box is older than it (404). */
   faceShare: (signal?: AbortSignal) =>
     get<FaceShareStatus>("/api/circle/face-share", undefined, signal).catch((err: unknown) => {
@@ -2051,6 +2401,10 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   room: (signal?: AbortSignal) => get<RoomPlan>("/api/room", undefined, signal),
   roomLive: (signal?: AbortSignal) => get<RoomLive>("/api/room/live", undefined, signal),
   roomRoute: (item: string, fromTrack?: string | null, signal?: AbortSignal) => get<RoomRouteAnswer>("/api/play/room-route", { item, from_track: fromTrack ?? undefined }, signal),
+  /** The same walk with how it was found: the grid, the cells A* looked at, what it went around. */
+  roomRouteFound: (item: string, signal?: AbortSignal) => get<RoomRouteAnswer & RouteFound>("/api/play/room-route", { item, search: "1" }, signal),
+  roundPlans: (signal?: AbortSignal) => get<RoundPlans>("/api/play/route-search", undefined, signal),
+  playState: (signal?: AbortSignal) => get<PlayState>("/api/play/state", undefined, signal),
   setRoomCalibration: (camera: string, taps: { image: [number, number][]; floor: [number, number][] }) =>
     put<RoomPlan>(`/api/room/calibration/${encodeURIComponent(camera)}`, taps),
 
@@ -2104,6 +2458,10 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   dayCheckinDone: (id: string) => post<{ id: string; answered: "done" }>("/api/day/checkin/done", { id }),
   /** "Move the block": raises a re-plan with its approval card. Nothing changes until that card is approved. */
   dayCheckinMove: (id: string) => post<{ id: string; answered: "move"; plan_id: string; action_id: string | null }>("/api/day/checkin/move", { id }),
+  /** Optional events ("Near you") for today and the next days, each with its fit, walk, leave-by and state. */
+  dayOptional: (signal?: AbortSignal) => get<OptionalView>("/api/day/optional", undefined, signal),
+  /** Yes or no to one (`id`: its full id or its slug). A yes raises a re-plan with its approval card; nothing changes until that card is approved. */
+  dayOptionalAnswer: (id: string, answer: "yes" | "no") => post<OptionalAnswer>(`/api/day/optional/${encodeURIComponent(id)}`, { answer }),
 
   // Inspection (SPOT): contexts/spot; shapes in components/spot/types.ts. Every GET answers 200 without a kit ({configured: false, note}).
   spotOverview: (signal?: AbortSignal) => get<Spot.Overview>("/api/spot/overview", undefined, signal),

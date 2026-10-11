@@ -2,7 +2,7 @@
 
 import math
 
-from contexts.play.room.grid import FloorGrid, astar, blocked_ahead, length, off_route, plan_route
+from contexts.play.room.grid import FloorGrid, approach_cells, astar, blocked_ahead, length, off_route, plan_route, search_json, thin
 from contexts.play.room.plan import load_room, parse_room
 
 
@@ -108,3 +108,47 @@ def test_off_route_distance():
     route = plan_route(grid, (0.5, 2.0), (3.5, 0.5), 0.18)
     assert off_route(route, (0.5, 2.0)) < 0.01
     assert off_route(route, (0.5, 3.5)) > 1.4
+
+
+# --- how the route was found (the search's own record, for the screen) ---
+
+
+def test_the_explored_cells_are_the_real_searchs_in_order_and_the_same_every_time():
+    plan = dorm()
+    grid = FloorGrid.of(plan)
+    goals = approach_cells(grid, plan.bins()["recycling"].at, 0.18)
+    start = grid.cell_of(*plan.start)
+    trace: list = []
+    path = astar(grid, start, goals, trace)
+    assert path == astar(grid, start, goals)  # recording the search does not change its answer
+    assert trace[0] == start and trace[-1] == path[-1] and trace[-1] in goals
+    assert set(path) <= set(trace) and not any(grid.blocked(c) for c in trace)  # the path came out of the search; nothing blocked was entered
+    assert len(trace) < grid.rows * grid.cols - len(grid.static)  # A*, not a flood: it did not open the whole floor
+    again: list = []
+    astar(grid, start, goals, again)
+    assert again == trace
+    route = plan_route(grid, plan.start, plan.bins()["recycling"].at, 0.18, plan.walk_speed)
+    assert route.explored == trace and route.cells == path and route.grid is grid
+
+
+def test_search_json_is_capped_in_order_and_marks_what_was_in_the_way():
+    plan = dorm()
+    person = (2.0, 2.0, 0.4)
+    grid = FloorGrid.of(plan).with_obstacles([person])
+    route = plan_route(grid, plan.start, plan.bins()["recycling"].at, 0.18, plan.walk_speed)
+    full = search_json(route)
+    assert (full["algorithm"], full["cell_m"], full["cols"], full["rows"]) == ("A*", 0.1, 42, 44)
+    assert len(full["blocked"]) == 44 and all(len(row) == 42 for row in full["blocked"])
+    row, col = grid.cell_of(2.0, 2.0)
+    assert full["blocked"][row][col] == "o" and full["blocked"][0][0] == "#" and full["blocked"][37][13] == "."
+    number = lambda c: c[0] * grid.cols + c[1]  # noqa: E731
+    assert full["explored_total"] == len(route.explored) and full["path"] == [number(c) for c in route.cells]
+    assert full["explored"] == [number(c) for c in route.explored][:1200] or full["explored_total"] > 1200
+    small = search_json(route, cap=50)
+    assert len(small["explored"]) == 50 and small["explored_total"] == len(route.explored) > 50
+    order = [number(c) for c in route.explored]
+    assert small["explored"][0] == order[0] and small["explored"][-1] == order[-1]
+    at = [order.index(n) for n in small["explored"]]
+    assert at == sorted(at)  # thinned, never reordered
+    assert thin(list(range(10)), 4) == [0, 3, 6, 9] and thin([1, 2], 5) == [1, 2]
+    assert search_json(route, cap=50) == small

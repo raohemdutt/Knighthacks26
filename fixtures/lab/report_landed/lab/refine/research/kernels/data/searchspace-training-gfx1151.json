@@ -1,0 +1,7 @@
+{
+ "name": "fixture-training-space",
+ "excluded": [
+  {"setting": "SETTING_A", "why": "a no-op on this build"},
+  {"setting": "setting b, with a comma", "why": "owned by another task"}
+ ]
+}

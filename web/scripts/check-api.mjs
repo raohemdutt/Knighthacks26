@@ -236,6 +236,20 @@ const mapOf = (spec) => (v) => {
   return bad.length ? bad.slice(0, 3).join("; ") : undefined;
 };
 const BRIEF = { mode: oneOf("model", "template", "off"), engine: oneOf("model", "template", "off"), timeout_s: "number", gap_s: "number", latest: mapOf(NARRATION), asks: mapOf(NARRATION), model: "object" };
+// Optional events ("Near you", contexts/day/application/optional.py): what lib/api.ts OptionalView reads.
+const TOUCHED = { id: "string", title: "string", kind: "string", start: isoDate, end: isoDate, overlap_minutes: "number" };
+const OPTIONAL_FIT = {
+  fits: oneOf("yes", "nearly", "no"), reason: "string", walk_minutes: "number", leave_by: isoDateOrNull, from_place: "string?",
+  displaces: listOf(TOUCHED), conflicts: listOf(TOUCHED), leave_early_minutes: "number",
+};
+const OPTIONAL_EVENT = {
+  id: "string", slug: "string", title: "string", start: isoDate, end: isoDate, place: "string?", place_name: "string?", tags: stringList,
+  going: stringList, host: "string?", source: "string?", state: oneOf("suggested", "accepted", "declined", "passed"),
+  answer: (v) => (v === null || v === "yes" || v === "no" ? undefined : `expected yes, no or null, got ${JSON.stringify(v)}`),
+  awaiting_approval: "boolean", action_id: "string?", plan_id: "string?", suggested_at: isoDateOrNull, suggest_held: "string?",
+  fit: (v) => problems(v, OPTIONAL_FIT, "").join("; ") || undefined,
+};
+const OPTIONAL_VIEW = { now: isoDate, plan_id: "string?", events: listOf(OPTIONAL_EVENT) };
 const FEEDBACK_SESSION = { day: "string", block_id: "string", title: "string", start: isoDate, end: isoDate, planned_minutes: "number", measured: "boolean", breaks: "array", text: "string" };
 const COACH_FEEDBACK = {
   now: isoDate, words: inner({ activity: "string", workplace: "string" }), options: listOf({ id: "string", label: "string" }),
@@ -272,6 +286,9 @@ const PLACE_MAP = { attribution: "string", pack: "string", bbox: "array", origin
 const ROOM = { name: "string", title: "string", size: "array", outline: "array", doors: "array", windows: "array", furniture: listOf({ id: "string", type: "string", at: "array", size: "array" }), calibration: "object", play: "object", zones: "object", rooms: "array", uncalibrated: stringList };
 const ROOM_LIVE = { room: "string", ts: isoDateOrNull, tracks: "array", seen: "object", round: "object?", result: "object?" };
 const ROOM_ROUTE = { item: "string", bin: "string", bin_id: "string", zone: "string", room: "string", from: inner({ x: "number", y: "number", track: "string?" }), reachable: "boolean", points: "array", distance_m: "number", par_s: "number" };
+const ROUTE_FOUND = { ...ROOM_ROUTE, search: inner({ algorithm: "string", cell_m: "number", cols: "number", rows: "number", blocked: "array", explored: "array", explored_total: "number", path: "array" }), obstacles: "array", around: "array" };
+const ROUND_PLANS = { room: "string", live: "boolean", plans: "array" };
+const PLAY_STATE = { phase: "string", faces: "number", count: "number", held_s: "number", hold_to_start_s: "number", idle_s: "number", idle_to_end_s: "number", rounds: inner({ session_id: "string", played: "number" }) };
 const NO_ROOM = { 404: "the room twin is not set up (no floor plan)" };
 
 // ---------- transport ----------
@@ -438,6 +455,8 @@ console.log("\nNow (the day in words, the coach's questions)");
 const NO_DAY = { 404: "the Day loop is not on this box (it needs the place packs)" };
 const brief = await check("GET /api/day/brief", "GET", "/api/day/brief", BRIEF, { optional: NO_DAY });
 if (brief) console.log(`        ${brief.engine} engine; said so far: ${Object.keys(brief.latest).join(", ") || "nothing"}`);
+const optional = await check("GET /api/day/optional", "GET", "/api/day/optional", OPTIONAL_VIEW, { optional: NO_DAY });
+if (optional) console.log(`        ${optional.events.length} optional events: ${optional.events.map((e) => `${e.slug} ${e.state}/${e.fit.fits}`).join(", ") || "none"}`);
 const coachAsks = await check("GET /api/day/coach/feedback", "GET", "/api/day/coach/feedback", COACH_FEEDBACK, { optional: NO_DAY });
 if (coachAsks) console.log(`        ${coachAsks.sessions.length} sessions, ${coachAsks.sessions.reduce((n, x) => n + x.breaks.length, 0)} breaks to ask about, ${coachAsks.answers} answered`);
 {
@@ -525,6 +544,12 @@ await check("GET /api/play/accuracy", "GET", "/api/play/accuracy", ACCURACY, { o
 
 const roomRoute = await check("GET /api/play/room-route?item=can", "GET", "/api/play/room-route?item=can", ROOM_ROUTE, { optional: NO_ROOM });
 if (roomRoute) console.log(`        can -> ${roomRoute.bin} in the ${roomRoute.room} room; ${roomRoute.distance_m} m, par ${roomRoute.par_s} s${roomRoute.reachable ? "" : " (not reachable)"}`);
+
+const found = await check("GET /api/play/room-route?item=can&search=1", "GET", "/api/play/room-route?item=can&search=1", ROUTE_FOUND, { optional: NO_ROOM });
+if (found) console.log(`        A* on a ${found.search.cols}x${found.search.rows} grid of ${found.search.cell_m} m cells: looked at ${found.search.explored_total}, kept ${found.search.path.length}; around: ${found.around.map((a) => a.label).join(", ") || "nothing"}`);
+await check("GET /api/play/route-search", "GET", "/api/play/route-search", ROUND_PLANS, { optional: NO_ROOM });
+const loop = await check("GET /api/play/state", "GET", "/api/play/state", PLAY_STATE, { optional: { 404: "Sort It is not configured" } });
+if (loop) console.log(`        face loop: ${loop.phase}; ${loop.faces} facing the camera; ${loop.rounds.played} round(s) this sitting`);
 
 console.log("\nRoom twin");
 const room = await check("GET /api/room", "GET", "/api/room", ROOM, { optional: NO_ROOM });

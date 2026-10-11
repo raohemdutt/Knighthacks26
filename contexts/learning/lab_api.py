@@ -15,6 +15,10 @@ GET /api/learning/lab/{run_id}[?sample=1]
     the run's story (contexts/learning/application/lab_view.py), plus "sources": every number with where it came
     from, and "measured". 404 when no run has that id.
 
+GET /api/learning/lab/compare[?a=<run_id>&b=<run_id>]
+    two runs side by side (contexts/learning/application/lab_compare.py): {a, b, ratios (b over a), runs, missing};
+    without a or b, the latest solo run against the latest pooled one.
+
 The sample run is served only when the log has no real run, or when `?sample=1` asks for it. A real run is never
 mixed with the sample: a response is one or the other, and says which.
 """
@@ -27,6 +31,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 
 from contexts.learning.application.lab_bench import chip_of
+from contexts.learning.application.lab_compare import compare_runs, default_dirs, load_loops
 from contexts.learning.application.lab_runs import sync as sync_trainer_runs
 from contexts.learning.application.lab_sample import SAMPLE_DIR, cached_sample
 from contexts.learning.application.lab_view import SUGGESTED_EVENTS, LabView, by_file, collect_numbers, num
@@ -63,8 +68,10 @@ def measured(metrics_file: str | Path | None = METRICS_FILE) -> list[dict[str, A
 
 
 def lab_router(view: LabView, current_model: Callable[[], dict | None] | None = None,
-               sample_dir: str | Path | None = SAMPLE_DIR, metrics_file: str | Path | None = METRICS_FILE) -> APIRouter:
+               sample_dir: str | Path | None = SAMPLE_DIR, metrics_file: str | Path | None = METRICS_FILE,
+               loop_dirs: list[Path] | None = None) -> APIRouter:
     router = APIRouter()
+    loops_from = loop_dirs if loop_dirs is not None else default_dirs(None)
 
     def pick(sample: bool) -> tuple[LabView | None, str | None]:
         """The view to answer from and, when it is the sample, why."""
@@ -87,6 +94,11 @@ def lab_router(view: LabView, current_model: Callable[[], dict | None] | None = 
                 "real_runs": len(view.run_ids), "current_model": model, "measured": measured(metrics_file),
                 "suggested_events": SUGGESTED_EVENTS,
                 **({"trainer_runs": trainer_runs} if trainer_runs else {})}  # run folders read from disk, when there are any
+
+    @router.get("/api/learning/lab/compare")  # before /{run_id}, which would take this path
+    def compare(a: str | None = None, b: str | None = None) -> dict:
+        sync_trainer_runs(view)
+        return compare_runs(load_loops(loops_from), view, a, b)
 
     @router.get("/api/learning/lab/{run_id}")
     def run(run_id: str, sample: bool = False) -> dict:

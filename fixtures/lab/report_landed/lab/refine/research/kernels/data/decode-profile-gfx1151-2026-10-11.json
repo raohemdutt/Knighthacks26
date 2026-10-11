@@ -1,0 +1,38 @@
+{
+ "schema": "lab.profile_decode/1",
+ "task": "R47",
+ "node": "pod-b",
+ "chip": "gfx1151",
+ "gpu": "AMD Radeon 8060S",
+ "ended": "2026-10-11T02:30:00.000Z",
+ "batches": {
+  "1": {
+   "batch": 1,
+   "available": true,
+   "breakdown_source": "torch",
+   "ms_per_step": {
+    "w4a16_matmul": 180.0,
+    "attention": 30.0,
+    "other_gpu": 30.0,
+    "sampling": 4.0,
+    "copies": 1.0,
+    "host_side": 55.0,
+    "step": 300.0
+   }
+  },
+  "4": {
+   "batch": 4,
+   "available": true,
+   "breakdown_source": "torch",
+   "ms_per_step": {
+    "w4a16_matmul": 200.0,
+    "attention": 60.0,
+    "other_gpu": 40.0,
+    "sampling": 8.0,
+    "copies": 2.0,
+    "host_side": 50.0,
+    "step": 360.0
+   }
+  }
+ }
+}

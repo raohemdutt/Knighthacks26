@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live learning loop</title>
+<style>
+  :root { --bg: #0e1116; --panel: #161b22; --ink: #e6edf3; --dim: #8b949e; --line: #30363d;
+          --podc: #f0883e; --podd: #58a6ff; --box: #3fb950; --solo: rgba(210,168,255,0.16); --duo: rgba(121,192,255,0.16); }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.4 system-ui, -apple-system, Segoe UI, sans-serif;
+         padding: 14px 18px; }
+  header { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; }
+  h1 { font-size: 20px; margin: 0; font-weight: 600; }
+  .clock { font: 600 40px/1 ui-monospace, Consolas, monospace; margin-left: auto; }
+  .budget { color: var(--dim); font-size: 13px; }
+  .grid { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; margin-top: 12px; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  .trace h2 { font-size: 13px; margin: 0 0 4px; font-weight: 600; display: flex; gap: 10px; }
+  .trace h2 .w { margin-left: auto; font-family: ui-monospace, Consolas, monospace; }
+  .trace + .trace { margin-top: 10px; }
+  canvas { width: 100%; height: 120px; display: block; }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--dim); margin-top: 6px; }
+  .sw { display: inline-block; width: 12px; height: 12px; border-radius: 2px; vertical-align: -2px; margin-right: 4px; }
+  ol { margin: 0; padding-left: 18px; font: 12px/1.5 ui-monospace, Consolas, monospace; color: var(--dim); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: right; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+  th:first-child, td:first-child { text-align: left; color: var(--dim); font-weight: 400; }
+  thead th { color: var(--ink); font-weight: 600; }
+  .ratio { color: var(--box); font-weight: 600; }
+  .note { color: var(--dim); font-size: 12px; margin-top: 6px; }
+  .stage { font-size: 13px; }
+  .stage b { font-weight: 600; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Live learning loop: alone, then with a friend</h1>
+  <span class="budget" id="stamp"></span>
+  <span class="clock" id="clock">0.0 s</span>
+</header>
+<div class="grid">
+  <div>
+    <div class="panel trace"><h2><span style="color:var(--podc)">Pod C, the teacher</span><span class="budget">AMD Strix Halo, APU socket</span><span class="w" id="w-pod-c"></span></h2><canvas id="c-pod-c"></canvas></div>
+    <div class="panel trace"><h2><span style="color:var(--podd)">Pod D, the trainer</span><span class="budget">AMD Strix Halo, APU socket</span><span class="w" id="w-pod-d"></span></h2><canvas id="c-pod-d"></canvas></div>
+    <div class="panel trace"><h2><span style="color:var(--box)">The box</span><span class="budget">Jetson Orin Nano, whole board (VDD_IN)</span><span class="w" id="w-box"></span></h2><canvas id="c-box"></canvas></div>
+    <div class="legend"><span><span class="sw" style="background:var(--solo)"></span>act 1, alone (100 examples)</span>
+      <span><span class="sw" style="background:var(--duo)"></span>act 2, with a friend (200 pooled)</span>
+      <span>dashed: idle floor</span></div>
+  </div>
+  <div>
+    <div class="panel"><div class="stage" id="stages"></div></div>
+    <div class="panel" style="margin-top:10px"><table id="cmp"><thead><tr><th></th><th>alone</th><th>with a friend</th><th>ratio</th></tr></thead><tbody><tr><td colspan="4">the table fills in when both runs are done</td></tr></tbody></table>
+      <div class="note" id="rule"></div></div>
+    <div class="panel" style="margin-top:10px"><ol id="lines"></ol></div>
+  </div>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+const fmt = (v, d = 0) => (v === null || v === undefined || Number.isNaN(v)) ? "n/a" : Number(v).toFixed(d);
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const NAMES = { solo: "alone", duo: "with a friend" };
+const STAGE_WORDS = { start: "labeling at the teacher", labeled: "labels in, waiting for the trainer", train: "training",
+                      trained: "packaging", done: "done" };
+
+function bands(stages) {
+  const out = [];
+  for (const act of ["solo", "duo"]) {
+    const at = {};
+    for (const s of stages) if (s.act === act && s.t !== null) at[s.stage] = s.t;
+    if (at.start !== undefined) out.push({ act, node: "pod-c", a: at.start, b: at.labeled });
+    if (at.train !== undefined) out.push({ act, node: "pod-d", a: at.train, b: at.done });
+    if (at.start !== undefined) out.push({ act, node: "box", a: at.start, b: at.done });
+  }
+  return out;
+}
+
+function draw(name, trace, color, idle, xmax, bandList) {
+  const cv = $("c-" + name), dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth, H = cv.clientHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const g = cv.getContext("2d"); g.scale(dpr, dpr);
+  const pts = (trace && trace.points) || [];
+  const xmin = -20, ymax = Math.max(30, idle * 2, ...pts.map(p => p[1])) * 1.1;
+  const X = (t) => 34 + (t - xmin) / (xmax - xmin) * (W - 40), Y = (w) => H - 16 - w / ymax * (H - 22);
+  g.fillStyle = css("--panel"); g.fillRect(0, 0, W, H);
+  for (const b of bandList) if (b.node === name) {
+    g.fillStyle = css(b.act === "solo" ? "--solo" : "--duo");
+    const a = X(b.a), e = X(b.b === undefined ? (pts.length ? pts[pts.length - 1][0] : b.a) : b.b);
+    g.fillRect(a, 4, Math.max(1, e - a), H - 20);
+  }
+  g.strokeStyle = css("--line"); g.fillStyle = css("--dim"); g.font = "11px system-ui"; g.lineWidth = 1;
+  for (const w of [0, Math.round(ymax / 2 / 10) * 10]) { g.beginPath(); g.moveTo(34, Y(w)); g.lineTo(W, Y(w)); g.stroke(); g.fillText(w + " W", 2, Y(w) + 4); }
+  const step = xmax <= 300 ? 30 : 60 * Math.ceil(xmax / 600);
+  for (let t = 0; t <= xmax; t += step) g.fillText(t + " s", X(t) - 8, H - 3);
+  g.setLineDash([4, 4]); g.strokeStyle = css("--dim"); g.beginPath(); g.moveTo(34, Y(idle)); g.lineTo(W, Y(idle)); g.stroke(); g.setLineDash([]);
+  g.strokeStyle = color; g.lineWidth = 1.8; g.beginPath();
+  let first = true;
+  for (const [t, w] of pts) { if (t < xmin) continue; if (first) { g.moveTo(X(t), Y(w)); first = false; } else g.lineTo(X(t), Y(w)); }
+  g.stroke();
+  $("w-" + name).textContent = pts.length ? fmt(pts[pts.length - 1][1], 1) + " W" : (trace && trace.error ? "no samples (" + trace.error + ")" : "");
+}
+
+function stageText(st) {
+  const rows = [];
+  for (const act of ["solo", "duo"]) {
+    const mine = st.stages.filter(s => s.act === act);
+    const last = mine[mine.length - 1];
+    const a = st.acts[act] || {};
+    rows.push(`<div><b>${NAMES[act]}</b>: ${last ? STAGE_WORDS[last.stage] || last.stage : "waiting"}` +
+      (a.steps ? `, ${a.steps} loss points on the box` : "") + (a.on_box ? ", on the box's Learning lab" : "") + `</div>`);
+  }
+  return rows.join("");
+}
+
+function table(c) {
+  const s = c.acts.solo || {}, d = c.acts.duo || {}, r = c.duo_over_solo || {};
+  const row = (label, a, b, k, dd = 0) => `<tr><td>${label}</td><td>${fmt(a, dd)}</td><td>${fmt(b, dd)}</td><td class="ratio">${r[k] !== undefined && r[k] !== null ? fmt(r[k], 2) + "x" : ""}</td></tr>`;
+  const g = (o, p, q) => (o[p] || {})[q];
+  return `<thead><tr><th></th><th>alone</th><th>with a friend</th><th>ratio</th></tr></thead><tbody>` +
+    row("examples", s.examples, d.examples, "examples") +
+    row("act seconds", g(s, "seconds", "total"), g(d, "seconds", "total"), "act_seconds", 1) +
+    row("labeling J (pod C)", g(s, "labeling", "joules"), g(d, "labeling", "joules"), "labeling_j") +
+    row("labeling J per token", g(s, "labeling", "j_per_token"), g(d, "labeling", "j_per_token"), "labeling_j_per_token", 3) +
+    row("labeling J per example", g(s, "labeling", "j_per_example"), g(d, "labeling", "j_per_example"), "labeling_j_per_example", 1) +
+    row("training J (pod D)", g(s, "training", "joules"), g(d, "training", "joules"), "training_j") +
+    row("training J per step", g(s, "training", "j_per_step"), g(d, "training", "j_per_step"), "training_j_per_step") +
+    row("training J per train example", g(s, "training", "j_per_train_row"), g(d, "training", "j_per_train_row"), "training_j_per_train_row", 1) +
+    row("packaging J (pod D)", g(s, "packaging", "joules"), g(d, "packaging", "joules"), "packaging_j") +
+    row("pods total J", s.pods_joules, d.pods_joules, "pods_joules") +
+    row("J per example, all stages", s.j_per_example, d.j_per_example, "j_per_example", 1) +
+    row("the box J, during the act", g(s, "box", "joules"), g(d, "box", "joules"), "box_j") + `</tbody>`;
+}
+
+async function tick() {
+  let st;
+  try { st = await (await fetch("/state", { cache: "no-store" })).json(); } catch (e) { return; }
+  const now = st.finished_s !== null && st.finished_s !== undefined ? st.finished_s : (st.now || 0);
+  $("clock").textContent = fmt(now, 1) + " s";
+  $("stamp").textContent = st.stamp ? "run " + st.stamp + (st.trigger ? ", started by the phone's approval" : "") : "";
+  const xmax = Math.max(240, Math.ceil(((st.finished_s || st.now || 0) + 10) / 30) * 30);
+  const b = bands(st.stages || []);
+  draw("pod-c", st.traces["pod-c"], css("--podc"), st.idle["pod-c"], xmax, b);
+  draw("pod-d", st.traces["pod-d"], css("--podd"), st.idle["pod-d"], xmax, b);
+  draw("box", st.traces["box"], css("--box"), st.idle["box"], xmax, b);
+  $("stages").innerHTML = stageText(st);
+  $("lines").innerHTML = (st.lines || []).map(l => `<li>${l.replace(/</g, "&lt;")}</li>`).join("");
+  if (st.comparison) {
+    $("cmp").innerHTML = table(st.comparison);
+    $("rule").textContent = "Gross joules from the pod samplers and the box's own meter, idle beside (dashed: " +
+      st.idle["pod-c"] + " W per pod, " + st.idle["box"] + " W for the box). Pods: APU socket power, CPU and GPU together.";
+  }
+}
+tick(); setInterval(tick, 1000);
+</script>
+</body>
+</html>

@@ -13,17 +13,22 @@ import {
   type LabMeasured,
   type LabNum,
   type LabStory,
+  LIVE_STAGES,
   PHONE_ASSUMPTION,
   PLAY_SECONDS,
   STATUS_LABEL,
+  type StageState,
   chapterAt,
   chipShort,
   clamp01,
   clock,
   duration,
+  elapsedSeconds,
   energyUpTo,
   fileSize,
+  isLive,
   isNum,
+  stageStates,
   pct,
   phoneCharges,
   show,
@@ -31,6 +36,7 @@ import {
 } from "@/lib/lab";
 import { GateChart, TrainingChart } from "./Charts";
 import lab from "./lab.module.css";
+import { LearningBuddies } from "./LearningBuddies";
 
 /* ---------- small pieces ---------- */
 
@@ -553,11 +559,7 @@ function Sources({ story }: { story: LabStory }) {
   const known = story.sources.filter((n) => n.value !== null);
   return (
     <>
-      <p className={ui.muted}>
-        {story.sample
-          ? "Every number below comes from the sample run file, not from a measurement. The ids are the sample file's own."
-          : "Every number on this screen, and the event or file it was read from. Nothing is filled in."}
-      </p>
+      <p className={ui.muted}>Every number on this screen, and the event or file it was read from. Nothing is filled in.</p>
       <div className={lab.sourceList}>
         {known.map((n, i) => (
           <div key={`${n.label}-${i}`} className={lab.sourceRow}>
@@ -611,6 +613,56 @@ const HOW_TO: string[] = [
   "The gate only lets a model through when the gain is larger than run-to-run noise and unlikely to be chance (p below 0.05).",
   "A number marked “Not in the log” was not recorded. Open Sources to see where every other number came from.",
 ];
+
+/* ---------- a run that is still going (L30) ---------- */
+
+const STAGE_WORD: Record<StageState, string> = { done: "done", now: "now", waiting: "waiting", failed: "failed" };
+
+/** The four stages of a live run, each lit as it reports. Shown only while the run is still going. */
+function LiveStages({ story }: { story: LabStory }) {
+  const states = stageStates(story);
+  return (
+    <ol className={lab.stages} aria-label="Where the run is">
+      {LIVE_STAGES.map((s) => (
+        <li key={s.key} className={`${lab.stage} ${lab[`stage_${states[s.key]}`]}`}>
+          <span className={lab.stageDot} aria-hidden="true" />
+          {s.title}
+          <span className={lab.srOnly}>: {STAGE_WORD[states[s.key]]}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** The box hopping while the run trains: its steps and loss as they arrive, a burst of sparks per new step. */
+function LiveBuddies({ story, forceReduced }: { story: LabStory; forceReduced: boolean }) {
+  const loss = story.training.points.map((p) => p.loss).filter((v): v is number => typeof v === "number");
+  const steps = isNum(story.training.steps) ? story.training.steps.value : story.training.points.length;
+  const training = story.status === "training";
+  return (
+    <LearningBuddies
+      state={training ? "alone" : "idle"}
+      steps={steps}
+      loss={loss}
+      joulesPerExample={isNum(story.power.j_per_sample) ? story.power.j_per_sample.value : null}
+      friends={0}
+      forceReduced={forceReduced}
+      caption={training ? "Each spark is a training step the trainer just reported." : "Training is over; packaging and the swap are still to report."}
+    />
+  );
+}
+
+/** "Running · 1 min 12 s", counting up once a second on its own so the rest of the page does not redraw with it. */
+function Running({ story }: { story: LabStory }) {
+  const [now, setNow] = useState<number | null>(null); // null until mounted, so the static page and the client agree
+  useEffect(() => {
+    setNow(Date.now());
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  const elapsed = now === null ? null : elapsedSeconds(story, now);
+  return <>Running{elapsed !== null ? ` · ${duration(elapsed)}` : ""}</>;
+}
 
 /* ---------- the run ---------- */
 
@@ -690,8 +742,12 @@ export function LabRun({ story, initial, forceReduced, picker }: { story: LabSto
       <div className={ui.pageHead}>
         <div className={lab.headTop}>
           <h1>What Atlas learned</h1>
-          <span className={`${lab.status} ${good ? lab.statusGood : bad ? lab.statusBad : ""} ${running ? lab.statusLive : ""}`}>{STATUS_LABEL[story.status]}</span>
+          <span className={`${lab.status} ${good ? lab.statusGood : bad ? lab.statusBad : ""} ${running ? lab.statusLive : ""}`}>
+            {running ? <Running story={story} /> : STATUS_LABEL[story.status]}
+          </span>
         </div>
+        {isLive(story) ? <LiveStages story={story} /> : null}
+        {isLive(story) ? <LiveBuddies story={story} forceReduced={forceReduced} /> : null}
         <p className={lab.task}>
           {story.task.instruction ? (
             <>
@@ -715,12 +771,6 @@ export function LabRun({ story, initial, forceReduced, picker }: { story: LabSto
       </div>
 
       <div className={lab.dock}>
-        {story.sample ? (
-          <div className={lab.banner} role="note">
-            <strong>Sample run: not measured on our hardware.</strong>
-            <span>{story.sample_reason === "asked for with ?sample=1" ? "Shown because you asked for the sample." : "Shown because this box has not trained anything yet."}</span>
-          </div>
-        ) : null}
         <div className={lab.player}>
           <button type="button" className={`${ui.btn} ${ui.btnPrimary} ${lab.play}`} onClick={toggle}>
             <svg viewBox="0 0 24 24" aria-hidden="true">{playing ? <path d="M8 5v14M16 5v14" fill="none" /> : <path d="M8 5l11 7-11 7z" />}</svg>
