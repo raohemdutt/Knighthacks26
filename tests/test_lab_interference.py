@@ -47,11 +47,13 @@ def test_the_dry_run_plans_three_arms_in_one_30_minute_slot_at_the_share_that_le
     assert answer["ok"] is True and answer["outcome"] == "plan"
     assert answer["slot"]["slot_minutes"] == 30 and answer["slot"]["minutes"] <= 30
     assert answer["slot"]["parts_s"]["server_start_s"] == 523            # pod D's cold start
-    # 20 steps over the six bundled rows at batch 4: ten epochs of a batch of 4 and a batch of 2, not 20 x 4
-    assert (answer["slot"]["train_rows"], answer["slot"]["train_examples"]) == (6, 60)
-    assert answer["slot"]["parts_s"]["train_arm_s"] == 308                # 120 s to load, 60 examples at 0.32 a second
+    # each run gets one batch's worth of the bundled rows, so every step is the same 4 examples: 20 measured steps
+    # see 80, after 2 warm-up steps that are run and left out
+    assert (answer["slot"]["train_rows"], answer["slot"]["warm_steps"], answer["slot"]["train_examples"]) == (4, 2, 80)
+    assert answer["slot"]["parts_s"]["train_arm_s"] == 395                # 120 s to load, 88 examples at 0.32 a second
     assert any("~/venvs/atlas-train/bin/python" in step and "installs nothing" in step for step in answer["order"])
-    assert any(step.startswith("train arm") and "--no-install" in step for step in answer["order"])
+    train = next(step for step in answer["order"] if step.startswith("train arm"))
+    assert "--max-steps 22" in train and "--no-install" in train and "the first 4 rows" in train
     assert answer["memory"] == {"share": 0.63, "visible_gib": 64.0, "free_gib": 58.0, "teacher_gib": 40.32,
                                 "lora_peak_gib": 11.1, "left_gib": 6.58, "fits": True}
     assert any(step.startswith("decode arm") for step in answer["order"])
@@ -111,6 +113,29 @@ def test_a_round_the_window_cuts_counts_by_the_part_of_it_inside():
     part = itf.decode_summary(broken, (10.0, 30.0))
     assert (part["answers"], part["tokens"], part["errors"], part["rounds"]) == (1.5, 150, 1, 0)
     assert itf.decode_summary(rounds, (100.0, 200.0))["answers"] == 0
+
+
+def test_a_trainer_run_s_warm_up_steps_are_recorded_and_left_out_of_its_window():
+    plain = itf.build_result(raw())["arms"]
+    record = raw()
+    for name, first_end, slow_ms in (("train", "2026-10-11T06:33:20Z", 45000.0),
+                                     ("both", "2026-10-11T06:50:00Z", 60000.0)):
+        arm = record["arms"][name]
+        arm["warm_steps"] = 1                      # one slow step before the four of the fixture
+        arm["steps"] = [{"ts": first_end, "step": 0, "step_ms": slow_ms, "loss": 2.0, "tokens": 512}, *arm["steps"]]
+    arms = itf.build_result(record)["arms"]
+    for name, got, want in (("train", arms["train"], plain["train"]), ("both", arms["both"]["train"],
+                                                                      plain["both"]["train"])):
+        assert got["warm_steps"] == 1 and want["warm_steps"] == 0, name
+        for key in ("steps", "window", "seconds", "samples", "samples_per_s", "steps_per_s"):
+            assert got[key] == want[key], (name, key)
+    assert arms["both"]["decode"] == plain["both"]["decode"]              # the rounds are cut by the same window
+    # a run that died inside its warm-up has no measured step
+    record["arms"]["train"]["warm_steps"] = 9
+    dead = itf.build_result(record)
+    assert dead["arms"]["train"]["steps"] == 0 and "the train arm has no step" in itf.check_result(dead)
+    assert itf.slot_estimate(steps=20, train_batch=4, grad_accum=1, rows=4, warm_steps=2)["train_examples"] == 80
+    assert itf.slot_estimate(steps=20, train_batch=4, grad_accum=1, rows=6, warm_steps=0)["train_examples"] == 60
 
 
 def test_the_examples_a_trainer_saw_are_counted_epoch_by_epoch_not_multiplied_out():
@@ -267,8 +292,9 @@ def test_a_whole_run_on_the_fake_pod_then_collect_writes_the_data_file_the_table
     assert not bench.port_open(args.port)                                   # the server is gone
     raw_record = json.loads((run.dir / "raw.json").read_text(encoding="utf-8"))
     assert raw_record["serve"]["share"] == 0.63
-    assert len(raw_record["arms"]["train"]["steps"]) == 6 and raw_record["arms"]["train"]["exit_code"] == 0
-    assert raw_record["workload"]["train_rows"] == 6 and raw_record["arms"]["both"]["rows"] == 6
+    assert len(raw_record["arms"]["train"]["steps"]) == 8 and raw_record["arms"]["train"]["exit_code"] == 0
+    assert raw_record["arms"]["train"]["warm_steps"] == 2                   # two steps before the six measured
+    assert raw_record["workload"]["train_rows"] == 4 and raw_record["arms"]["both"]["rows"] == 4
     assert raw_record["arms"]["both"]["rounds"]                             # decode ran while it trained
     assert (REPO_ROOT / itf.DEFAULT_DATASET / "split.json").is_file()       # the trainer deleted only its copy
     assert not (run.dir / "train" / "data" / "tool-calling-tiny").exists()
@@ -276,7 +302,8 @@ def test_a_whole_run_on_the_fake_pod_then_collect_writes_the_data_file_the_table
     assert itf.check_result(result) == []
     assert result["arms"]["decode"]["answers"] > 0 and result["arms"]["decode"]["watts"]["available"] is True
     assert result["arms"]["train"]["steps"] == 6 and result["arms"]["train"]["joules_per_step"] > 0
-    assert result["arms"]["train"]["samples"] == 18                         # three epochs of the six rows, not 6 x 4
+    assert result["arms"]["train"]["samples"] == 24                         # six steps of the same four rows
+    assert result["arms"]["both"]["train"]["steps"] == 6
     assert result["arms"]["both"]["decode"]["answers"] > 0
     assert result["compare"]["verdict"] in ("share", "serial")
 
@@ -317,7 +344,7 @@ def test_the_trainer_runs_from_the_training_venv_and_never_installs(tmp_path):
     argv = run.train_argv(arm, arm / "data" / "tool-calling-tiny", arm / "data" / "rows.jsonl")
     assert argv[0] == str(Path("~/venvs/atlas-train/bin/python").expanduser()) and argv[0] != "python3"
     assert argv[1:3] == ["-u", "lab/train.py"] and argv[-1] == "--no-install"
-    assert argv[argv.index("--max-steps") + 1] == "20" and argv[argv.index("--batch") + 1] == "4"
+    assert argv[argv.index("--max-steps") + 1] == "22" and argv[argv.index("--batch") + 1] == "4"   # 2 warm + 20
     assert argv[argv.index("--model") + 1] == str(Path("~/models/Qwen3.5-4B").expanduser())
     assert itf.TRAIN_ENV["PYTHONNOUSERSITE"] == "1"
     from lab import train
@@ -334,6 +361,11 @@ def test_the_trainer_gets_its_environment_and_is_stopped_when_the_run_ends_under
         env = json.loads((arm_dir / "run" / "env.json").read_text(encoding="utf-8"))
         assert env == {"PYTHONNOUSERSITE": "1", "PYTHONUNBUFFERED": "1", "LAB_STATE_DIR": str(arm_dir / "state"),
                        "LAB_TASK": "R43"}
+        # its rows are one batch's worth from the top of the rows file, so every step is the same batch
+        source = (REPO_ROOT / itf.DEFAULT_ROWS).read_text(encoding="utf-8").splitlines()
+        assert (arm_dir / "data" / "rows.jsonl").read_text(encoding="utf-8").splitlines() == source[:4]
+        assert len(source) == 6 and run.train_rows == 4
+        assert (arm_dir / "data" / "tool-calling-tiny" / "split.json").is_file()
         assert proc.poll() is None
         run.stop_trainer(timeout_s=20.0)
         assert proc.poll() is not None                                     # nothing of the run stays on the chip
@@ -342,6 +374,14 @@ def test_the_trainer_gets_its_environment_and_is_stopped_when_the_run_ends_under
         log.close()
         if proc.poll() is None:
             proc.kill()
+
+
+def test_the_rows_a_run_gets_can_be_set_and_are_never_more_than_the_file_holds(tmp_path):
+    def rows(*extra: str) -> int:
+        return itf.PodRun(pod_args(tmp_path, *extra), power=bench_fake.FakePower(tmp_path)).train_rows
+
+    assert rows() == 4 and rows("--train-rows", "6") == 6 and rows("--train-rows", "50") == 6
+    assert rows("--train-batch", "2") == 2 and rows("--train-batch", "2", "--grad-accum", "2") == 4
 
 
 def test_a_decode_round_that_fails_in_the_both_arm_does_not_leave_the_trainer_running(tmp_path):

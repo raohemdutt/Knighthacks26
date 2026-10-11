@@ -59,6 +59,7 @@
   },
   "train": {
    "steps": 4,
+   "warm_steps": 0,
    "window": [
     1791700400.0,
     1791700440.0
@@ -85,6 +86,7 @@
   "both": {
    "train": {
     "steps": 4,
+    "warm_steps": 0,
     "window": [
      1791701400.0,
      1791701450.0

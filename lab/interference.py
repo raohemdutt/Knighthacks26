@@ -23,22 +23,34 @@ chip and the same server:
   decode   the teacher alone: lab/bench.py's fixed prompt set (fixtures/lab/bench/prompts.json) at a fixed batch
            (default 4 streams at once, every stream on its own prompt, greedy, max_tokens with ignore_eos), round
            after round for --decode-s seconds;
-  train    the LoRA alone, with the teacher loaded and idle: lab/train.py for --steps optimizer steps (default 20)
-           on the tool-calling rows, a fresh copy per arm (the trainer deletes its copy of the data when it ends);
+  train    the LoRA alone, with the teacher loaded and idle: lab/train.py for --steps measured optimizer steps
+           (default 20) on the tool-calling rows, a fresh copy per arm (the trainer deletes its copy of the data
+           when it ends);
   both     the same LoRA run with the same decode rounds sent for as long as it trains.
 
 Each arm records decode tokens per second (all streams' tokens over the window), answers per second, the trainer's
 samples per second (the examples seen over its steps, over the window of those steps read from the trainer's own
 telemetry.jsonl) and its steps per second, the watts over the window (amd-smi, read in this process by lab/bench.py's
 LocalPower, the reader lab/profile_decode_pod.py uses) and the joules: per answer for the decode arm, per step for the
-train arm. The examples seen are counted, not multiplied out: the six bundled rows at batch 4 make epochs of one
-batch of 4 and one of 2, so 20 steps see 60 examples where steps x batch says 80 (examples_seen). In the both arm
-the window is the trainer's steps and the energy is the window's. A decode round counts by the part of its time
-inside that window, so a round the window's edge cuts gives that fraction of its answers and tokens: rounds last
-tens of seconds against a window of a few minutes, and dropping the two cut rounds would charge their watts and
-seconds to the shared side while leaving their answers out of the comparison. The comparison is against doing the
-same work one after the other: the decode arm's joules per answer times the answers plus the train arm's joules per
-step times the steps, and the same for time.
+train arm. In the both arm the window is the trainer's steps and the energy is the window's.
+
+Every step the same work. Each trainer run gets the first --train-rows rows of the rows file (default: one step's
+worth, batch x gradient accumulation, so 4 of the 6 bundled rows): every epoch is then one step over the same rows,
+every step has the same batch and the same padded length, and joules per step means one thing. With all six rows
+at batch 4 the steps would alternate between 4 and 2 examples and between padded lengths. Each run also takes
+--warm-steps more steps than --steps (default 2) and leaves its first ones out of its window: with one shape per
+step, whatever a run pays once (a kernel compiled, a convolution searched, the allocator growing to its peak) is
+paid there, in both arms alike. Without that the train arm, which runs first, would pay what the both arm finds
+ready, and sharing would look better than it is: L16's first epoch on this pod ran its full steps in 52.6 to 59.5 s
+against 37.0 to 44.3 s in the two epochs after. The examples seen are counted, not multiplied out (examples_seen:
+a rows file shorter than a batch, or epochs that end on a short batch, see fewer than steps x batch).
+
+Shared against one after the other. A decode round counts by the part of its time inside the both arm's window, so
+a round the window's edge cuts gives that fraction of its answers and tokens: rounds last tens of seconds against a
+window of a few minutes, and dropping the two cut rounds would charge their watts and seconds to the shared side
+while leaving their answers out of the comparison. The comparison is against doing the same work one after the
+other: the decode arm's joules per answer times the answers plus the train arm's joules per step times the steps,
+and the same for time. The verdict is share when together took less time for no more energy, serial otherwise.
 
 The trainer. lab/train.py runs from the venv L16's prep left on pod D (~/venvs/atlas-train: the pinned training
 stack over the image's torch) with --no-install, PYTHONNOUSERSITE=1 and its ledger rows in the arm's own folder.
@@ -55,7 +67,7 @@ The server. The run starts its own teacher (lab/bench.py's vLLM serve line, lab/
 Halo, where the port is taken or where a vLLM server already runs (stop the pod's own teacher first: this run stops
 nothing it did not start), and it stops its server however it ends.
 
-The script is about 260 KB (the trainer, the bench and their imports, base64), so pod_exec.py's run mode, which
+The script is about 270 KB (the trainer, the bench and their imports, base64), so pod_exec.py's run mode, which
 uploads it through the Jupyter contents API and types only its bash line, is the way to send it; term mode types it
 all. 2700 s is the 30-minute slot plus its one 15-minute extension.
 
@@ -118,6 +130,7 @@ DEFAULT_DECODE_S = 120.0
 DEFAULT_STEPS = 20
 DEFAULT_TRAIN_BATCH = 4
 DEFAULT_GRAD_ACCUM = 1             # 20 steps of one batch each, not L16's 18 steps of four
+DEFAULT_WARM_STEPS = 2             # a trainer run's first steps are its warm-up: run, recorded, outside its window
 DEFAULT_TRAIN_PYTHON = "~/venvs/atlas-train/bin/python"   # L16's venv on pod D: the pinned stack over the image's torch
 #: The trainer's environment: the user site (where pod D keeps vLLM and its numpy) is neither read nor written.
 TRAIN_ENV = {"PYTHONNOUSERSITE": "1", "PYTHONUNBUFFERED": "1"}
@@ -198,15 +211,17 @@ def count_rows(path: str | Path) -> int | None:
 
 def slot_estimate(*, decode_s: float = DEFAULT_DECODE_S, steps: int = DEFAULT_STEPS,
                   train_batch: int = DEFAULT_TRAIN_BATCH, grad_accum: int = DEFAULT_GRAD_ACCUM,
-                  rows: int | None = None, cold: bool = True) -> dict[str, Any]:
+                  rows: int | None = None, warm_steps: int = DEFAULT_WARM_STEPS,
+                  cold: bool = True) -> dict[str, Any]:
     """The slot's minutes, part by part, from SLOT_FACTS. The both arm is costed as the train arm with its steps
-    taking half as long again; a slower shared run uses the one 15-minute extension. rows is the number of training
-    rows (examples_seen says why it matters)."""
+    taking half as long again; a slower shared run uses the one 15-minute extension. rows is the number of rows a
+    trainer run gets (examples_seen says why it matters); a run takes warm_steps steps before the measured ones."""
     engine = SLOT_FACTS["engine_cold_s" if cold else "engine_warm_s"]["value"]
     rate = SLOT_FACTS["train_examples_per_s"]["value"]
     load = SLOT_FACTS["train_load_s"]["value"]
-    examples = examples_seen(steps, train_batch, grad_accum, rows)
-    train_s = examples / rate
+    all_examples = examples_seen(steps + warm_steps, train_batch, grad_accum, rows)
+    examples = all_examples - examples_seen(warm_steps, train_batch, grad_accum, rows)
+    train_s = all_examples / rate
     parts = {"paste_and_gate_s": 60.0, "server_start_s": engine, "warmup_s": 60.0, "decode_arm_s": decode_s,
              "train_arm_s": load + train_s, "both_arm_s": load + 1.5 * train_s, "stop_and_bundle_s": 60.0}
     total = sum(parts.values())
@@ -214,7 +229,7 @@ def slot_estimate(*, decode_s: float = DEFAULT_DECODE_S, steps: int = DEFAULT_ST
     slot = 15 if minutes <= 15 else 30 if minutes <= 30 else 60
     return {"parts_s": {k: round(v) for k, v in parts.items()}, "total_s": round(total), "minutes": minutes,
             "slot_minutes": slot, "extension_minutes": 15, "train_examples": examples, "train_rows": rows,
-            "facts": SLOT_FACTS}
+            "warm_steps": warm_steps, "facts": SLOT_FACTS}
 
 
 def memory_check(share: float) -> dict[str, Any]:
@@ -234,10 +249,18 @@ def local_rows(rows: str) -> int | None:
     return None if str(rows).startswith("~") else count_rows(REPO / rows)
 
 
+def rows_per_run(args: Any, available: int | None) -> int:
+    """The rows each trainer run gets: --train-rows, or one step's worth (batch x gradient accumulation), and never
+    more than the rows file holds."""
+    wanted = int(args.train_rows) or int(args.train_batch) * int(args.grad_accum)
+    return min(wanted, available) if available else wanted
+
+
 def plan(args: argparse.Namespace) -> dict[str, Any]:
     """What the pod run will do, in order, and what slot it needs; nothing is run or written."""
+    rows = rows_per_run(args, local_rows(args.rows))
     slot = slot_estimate(decode_s=args.decode_s, steps=args.steps, train_batch=args.train_batch,
-                         grad_accum=args.grad_accum, rows=local_rows(args.rows))
+                         grad_accum=args.grad_accum, rows=rows, warm_steps=args.warm_steps)
     mem = memory_check(args.share)
     order = [
         f"gate: Strix Halo ({CHIP}), the account the script was made for (pod D), port {args.port} free, no vLLM "
@@ -249,9 +272,10 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
         f"{mem['lora_peak_gib']} GiB peak",
         f"warm up: every prompt once at batch 1 and once at batch {args.batch}, {WARMUP_TOKENS} tokens",
         f"decode arm: rounds of {args.batch} streams x {args.max_tokens} tokens for {args.decode_s:g} s",
-        f"train arm: lab/train.py --max-steps {args.steps} --batch {args.train_batch} --grad-accum "
-        f"{args.grad_accum} --no-install on {args.model}, rows {args.rows} ({slot['train_examples']} examples seen), "
-        "with the teacher idle",
+        f"train arm: lab/train.py --max-steps {args.steps + args.warm_steps} --batch {args.train_batch} "
+        f"--grad-accum {args.grad_accum} --no-install on {args.model}, the first {rows} rows of {args.rows}, with "
+        f"the teacher idle; its first {args.warm_steps} steps are warm-up and the {args.steps} after them are "
+        f"measured ({slot['train_examples']} examples seen)",
         "both arm: the same train run with decode rounds sent until it ends; a round counts by the part of it "
         "inside the trainer's steps",
         "stop the server, print the result block",
@@ -300,6 +324,11 @@ def _count(value: float) -> int | float:
     return int(round(value)) if abs(value - round(value)) < 1e-9 else round(value, 3)
 
 
+def measured_steps(steps: Sequence[Mapping[str, Any]], warm: int) -> list[Mapping[str, Any]]:
+    """A trainer run's steps without its first `warm` ones, in the order the trainer wrote them."""
+    return list(steps[max(0, int(warm)):])
+
+
 def decode_summary(rounds: Sequence[Mapping[str, Any]], window: tuple[float, float] | None = None) -> dict[str, Any]:
     """Tokens, answers and their rates over the rounds. With a window, a round counts by the part of its time that
     lies inside: a round the window's edge cuts gives that fraction of its answers and tokens, and only its seconds
@@ -337,17 +366,20 @@ def decode_summary(rounds: Sequence[Mapping[str, Any]], window: tuple[float, flo
 
 
 def train_summary(train: Mapping[str, Any]) -> dict[str, Any]:
-    """The trainer's steps, their window and its rates. samples are the examples seen over the steps (examples_seen,
-    exact when the arm recorded its row count), not the trainer's own steps x batch x grad_accum."""
-    steps = train.get("steps") or []
+    """The trainer's measured steps (those after its warm-up steps), their window and its rates. samples are the
+    examples seen over them (examples_seen, exact when the arm recorded its row count), not the trainer's own
+    steps x batch x grad_accum."""
+    every = train.get("steps") or []
+    warm = min(int(train.get("warm_steps") or 0), len(every))
+    steps = measured_steps(every, warm)
     window = train_window(steps)
     n = len(steps)
     rows = _num(train.get("rows"))
-    samples = examples_seen(n, int(train.get("batch") or 0), int(train.get("grad_accum") or 0),
-                            int(rows) if rows else None)
+    count = (int(train.get("batch") or 0), int(train.get("grad_accum") or 0), int(rows) if rows else None)
+    samples = examples_seen(len(every), *count) - examples_seen(warm, *count)
     seconds = window[1] - window[0] if window else None
     run = train.get("run") or {}
-    return {"steps": n, "window": list(window) if window else None, "seconds": _r(seconds, 3),
+    return {"steps": n, "warm_steps": warm, "window": list(window) if window else None, "seconds": _r(seconds, 3),
             "rows": int(rows) if rows else None, "samples": samples, "samples_per_s": _r(_div(samples, seconds)),
             "steps_per_s": _r(_div(n, seconds)), "outcome": run.get("outcome"), "exit_code": train.get("exit_code"),
             "trainer_samples_per_s": _num((run.get("metrics") or {}).get("trainer.samples_per_s")),
@@ -511,6 +543,8 @@ def ledger_rows(result: Mapping[str, Any], source: str) -> list[dict[str, Any]]:
             "batch": (result.get("workload") or {}).get("batch"),
             "max_tokens": (result.get("workload") or {}).get("max_tokens"),
             "steps": (result.get("workload") or {}).get("steps"),
+            "warm_steps": (result.get("workload") or {}).get("warm_steps"),
+            "train_rows": (result.get("workload") or {}).get("train_rows"),
             "train_model": (result.get("workload") or {}).get("train_model")}
     d, t, b = arms["decode"], arms["train"], arms["both"]
     per_arm = {
@@ -778,7 +812,7 @@ class PodRun:
         if power is None:
             power = bench.LocalPower.for_host(bench.Host(), node=NODE, period_s=POWER_PERIOD_S)
         self.power = power
-        self.train_rows = count_rows(args.rows)
+        self.train_rows = rows_per_run(args, count_rows(args.rows))     # the rows each trainer run gets
         self.trainer: subprocess.Popen | None = None
         self.raw: dict[str, Any] = {
             "schema": RAW_SCHEMA, "run_id": self.run_id, "task": TASK, "node": NODE, "hub": args.hub,
@@ -789,7 +823,8 @@ class PodRun:
                             f"none: {getattr(power, 'reason', None)}",
             "workload": {"prompt_set": self.prompts.describe(), "batch": int(args.batch),
                          "max_tokens": int(args.max_tokens), "decode_s": float(args.decode_s),
-                         "steps": int(args.steps), "train_batch": int(args.train_batch),
+                         "steps": int(args.steps), "warm_steps": int(args.warm_steps),
+                         "train_batch": int(args.train_batch),
                          "grad_accum": int(args.grad_accum), "train_model": args.model,
                          "dataset": args.dataset, "rows": args.rows, "train_rows": self.train_rows,
                          "train_python": None if args.train_cmd else args.python},
@@ -854,7 +889,8 @@ class PodRun:
 
     def train_argv(self, arm_dir: Path, dataset: Path, rows: Path) -> list[str]:
         args = self.args
-        values = {"dataset": dataset, "rows": rows, "model": Path(args.model).expanduser(), "steps": args.steps,
+        values = {"dataset": dataset, "rows": rows, "model": Path(args.model).expanduser(),
+                  "steps": int(args.steps) + int(args.warm_steps),
                   "out": arm_dir / "run", "run_id": f"{self.run_id}-{arm_dir.name}", "batch": args.train_batch,
                   "grad_accum": args.grad_accum, "python": Path(args.python).expanduser()}
         # --no-install: a slot never runs pip; preflight has checked the venv holds every pin
@@ -866,15 +902,18 @@ class PodRun:
                 for a in command]
 
     def start_train(self, name: str) -> tuple[subprocess.Popen, Path, Any]:
-        """A fresh copy of the dataset and rows (the trainer deletes its copy), then the trainer, logging to a file.
-        The trainer runs under TRAIN_ENV, with its ledger rows in the arm's own state folder."""
+        """A fresh copy of the dataset and of the run's rows (the first train_rows of the rows file; the trainer
+        deletes its copy), then the trainer, logging to a file. The trainer runs under TRAIN_ENV, with its ledger
+        rows in the arm's own state folder."""
         arm_dir = self.dir / name
         data = arm_dir / "data"
         source = Path(self.args.dataset).expanduser()
         dataset = data / source.name
         shutil.copytree(source, dataset)
         rows = data / Path(self.args.rows).name
-        shutil.copyfile(Path(self.args.rows).expanduser(), rows)
+        lines = [line for line in Path(self.args.rows).expanduser().read_text(encoding="utf-8").splitlines()
+                 if line.strip()]
+        rows.write_text("".join(line + "\n" for line in lines[:self.train_rows]), encoding="utf-8", newline="\n")
         argv = self.train_argv(arm_dir, dataset, rows)
         log = open(arm_dir / "train.log", "wb")
         say(f"{name}: trainer starting ({' '.join(map(str, argv[:4]))} ...)")
@@ -926,8 +965,9 @@ class PodRun:
             run = {}
         steps = read_steps(run_dir / "telemetry.jsonl")
         tail = (arm_dir / "train.log").read_text(encoding="utf-8", errors="replace").splitlines()[-20:]
-        return {"exit_code": code, "steps": steps, "batch": int(self.args.train_batch),
-                "grad_accum": int(self.args.grad_accum), "rows": self.train_rows,
+        return {"exit_code": code, "steps": steps, "warm_steps": int(self.args.warm_steps),
+                "batch": int(self.args.train_batch), "grad_accum": int(self.args.grad_accum),
+                "rows": self.train_rows,
                 "run": {"outcome": run.get("outcome"), "ok": run.get("ok"), "metrics": run.get("metrics"),
                         "error": run.get("error")}, "log_tail": tail}
 
@@ -949,7 +989,7 @@ class PodRun:
     def train_arm(self) -> dict[str, Any]:
         proc, arm_dir, log = self.start_train("train")
         out = self.finish_train(proc, arm_dir, log, min(TRAIN_TIMEOUT_S, self.left_s() - 60.0))
-        window = train_window(out["steps"])
+        window = train_window(measured_steps(out["steps"], out["warm_steps"]))
         out["watts"] = self.watts(*(window or (None, None)))
         say(f"train: {len(out['steps'])} steps, exit {out['exit_code']}")
         return out
@@ -963,7 +1003,7 @@ class PodRun:
             log.close()
             raise
         out = self.finish_train(proc, arm_dir, log, min(TRAIN_TIMEOUT_S, self.left_s() - 60.0))
-        window = train_window(out["steps"])
+        window = train_window(measured_steps(out["steps"], out["warm_steps"]))
         out["rounds"] = rounds
         out["watts"] = self.watts(*(window or (None, None)))
         say(f"both: {len(out['steps'])} steps and {len(rounds)} decode rounds")
@@ -1110,8 +1150,9 @@ def pod_script_main(args: argparse.Namespace) -> dict[str, Any]:
                                     ".env (or pass --expect-user-sha256)") from exc
         expect = pod.user_sha256(account.user)
     run_args = ["--share", f"{args.share:g}", "--batch", str(args.batch), "--max-tokens", str(args.max_tokens),
-                "--decode-s", f"{args.decode_s:g}", "--steps", str(args.steps), "--train-batch", str(args.train_batch),
-                "--grad-accum", str(args.grad_accum), "--model", args.model, "--dataset", args.dataset,
+                "--decode-s", f"{args.decode_s:g}", "--steps", str(args.steps), "--warm-steps", str(args.warm_steps),
+                "--train-batch", str(args.train_batch), "--grad-accum", str(args.grad_accum),
+                "--train-rows", str(args.train_rows), "--model", args.model, "--dataset", args.dataset,
                 "--rows", args.rows, "--python", args.python, "--checkpoint", args.checkpoint,
                 "--port", str(args.port),
                 "--deadline-min", f"{args.deadline_min:g}", "--hub", args.hub, "--account", args.account]
@@ -1120,7 +1161,8 @@ def pod_script_main(args: argparse.Namespace) -> dict[str, Any]:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(script.encode("ascii"))
     slot = slot_estimate(decode_s=args.decode_s, steps=args.steps, train_batch=args.train_batch,
-                         grad_accum=args.grad_accum, rows=local_rows(args.rows))
+                         grad_accum=args.grad_accum, rows=rows_per_run(args, local_rows(args.rows)),
+                         warm_steps=args.warm_steps)
     wait = (slot["slot_minutes"] + slot["extension_minutes"]) * 60
     here, saved = out.resolve().as_posix(), out.resolve().with_suffix(".out").as_posix()
     return {"ok": True, "outcome": "written", "script": str(out), **info, "slot_minutes": slot["slot_minutes"],
@@ -1171,7 +1213,12 @@ def _workload_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--batch", type=int, default=DEFAULT_BATCH, help="decode streams at once")
     p.add_argument("--max-tokens", type=int, default=DEFAULT_MAX_TOKENS)
     p.add_argument("--decode-s", type=float, default=DEFAULT_DECODE_S, help="the decode arm's length")
-    p.add_argument("--steps", type=int, default=DEFAULT_STEPS, help="the LoRA run's optimizer steps")
+    p.add_argument("--steps", type=int, default=DEFAULT_STEPS, help="the LoRA run's measured optimizer steps")
+    p.add_argument("--warm-steps", type=int, default=DEFAULT_WARM_STEPS,
+                   help="steps each trainer run takes first, outside its window")
+    p.add_argument("--train-rows", type=int, default=0,
+                   help="rows each trainer run gets, from the top of --rows (default: batch x grad-accum, so every "
+                        "step is the same batch)")
     p.add_argument("--train-batch", type=int, default=DEFAULT_TRAIN_BATCH)
     p.add_argument("--grad-accum", type=int, default=DEFAULT_GRAD_ACCUM)
     p.add_argument("--model", default=DEFAULT_MODEL, help="the student the LoRA trains (a folder on the pod)")
