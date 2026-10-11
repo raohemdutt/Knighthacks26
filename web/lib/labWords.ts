@@ -577,8 +577,9 @@ export function modelHero(runs: LabRunSummary[], box: LabBoxNow | undefined, whe
   const said_yes = real.length - said_no;
   const tiles = [
     ...(real.length ? [{ value: `${said_yes} passed, ${said_no} refused`, label: "what the test has said so far" }] : []),
-    { value: box?.model_version ?? "not recorded", label: box?.model_version ? `on the box since ${when(box.since)}` : "which model is on the box" },
+    // which model the box is running is said once, by the On the box card under the loop, from the box's own model store
     { value: String(runs.length), label: runs.length === 1 ? "training run on this box" : "training runs on this box" },
+    ...(runs[0]?.started ? [{ value: when(runs[0].started), label: "the last run started" }] : []),
   ];
   if (!proof) return { run: null, hero: { big: [], line: "No run has been tested for real yet.", tiles, tone: "plain", sources: found.takeaway.sources } };
   const s = scoreWords(proof);
