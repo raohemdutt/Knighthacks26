@@ -143,8 +143,9 @@ def ext_tables(folder: Path) -> str:
         agree = f"{f['agree']}/126" if f.get("agree") is not None else "not scored"
         lines.append(f"| {f.get('number', 0) or ''} | {f.get('kind')} | {f['name'][:44]} | {f.get('seed', 42)} | {f['lr']:.3g} | {f['rank']} | "
                      f"{f['alpha']} | {f['dropout']:.2f} | {f['warmup_ratio']:.2f} | {f.get('steps') if f.get('ok') else f.get('outcome')} | "
-                     f"{f.get('best_step')} ({f.get('best_passes')}) | {num(f.get('best_val'))} | {agree} | {f.get('worker')} | "
-                     f"{f.get('wall_s')} |")
+                     + (f"{f.get('best_step')} ({f.get('best_passes')})" if f.get("best_step") is not None else "n/a")
+                     + f" | {num(f.get('best_val'))} | {agree} | {f.get('worker')} | "
+                     f"{f.get('wall_s') if f.get('wall_s') is not None else 'n/a'} |")
     out = ["\n".join(lines), "", "| configuration run with two seeds | validation agreement, seed 42 / 43 | mean | difference | "
            "best val loss, seed 42 / 43 | difference |", "| --- | --- | --- | --- | --- | --- |"]
     pairs = []
