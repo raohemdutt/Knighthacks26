@@ -1,9 +1,11 @@
 """Optional events ("Near you") you can say yes or no to (the application side of contexts/day/domain/optional.py).
 
-    optional = OptionalEvents(planner, tracker, clock, memory=memory)
+    optional = OptionalEvents(planner, tracker, clock, memory=memory, config=<agent.yaml's `day:` block>)
+    optional.narrator = narrator                     # DayLoop sets it: the suggestion is said through it (and its arbiter)
     optional.subscribe(bus)                          # DayLoop does both
     optional.view(now)                               # GET /api/day/optional: each event with its fit, walk, leave-by and state
     events, body = optional.answer(now, id, "yes")   # POST /api/day/optional/{id}: what to publish, and what to answer
+    ... every tick: optional.tick(now)               # the suggestion ("Want me to add it?"), once per event at most
 
 An optional event is a calendar item in Memory whose `external_id` starts with `nearby:`. Nothing treats it as a
 commitment until the person says yes AND approves the card that yes raises:
@@ -20,9 +22,16 @@ commitment until the person says yes AND approves the card that yes raises:
 - a no is recorded and the event is never suggested again. A no to an accepted event also raises a re-plan without
   it, and it stays accepted until that card is approved.
 
+The suggestion: on the tick (live only, looked at once a minute of event time at most), an event that starts in 90
+to 30 minutes, fits or nearly fits today's plan and names somebody is brought up once, as one `day.narrated` moment
+"suggest" whose `ref` is the event's id. The rule is `suggest_held` (contexts/day/domain/optional.py); the words are
+the "suggest" template; the line goes out through `Narrator.tell`, so the arbiter decides when it is said and what it
+is said with. agent.yaml `day:` keys: `suggest_optional` (true), `suggest_from_min` (90), `suggest_until_min` (30),
+`suggest_cooldown_min` (45). "Said once" is read from the log, so a restart never brings an event up again.
+
 State rebuilds from the log (every handler below is replay=True and pure): the answers, which plan carries which
 optional block, which are accepted, and what was already suggested. Building a re-plan happens only when the phone
-asks (the API), in event time.
+asks (the API), and suggesting only on the live tick, both in event time.
 
 This object sits in front of Day Run's `agreed` port only from the first yes on: a box nobody said yes on builds its
 boards exactly as it did before.
@@ -30,11 +39,14 @@ boards exactly as it did before.
 
 import logging
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import datetime, timedelta, tzinfo
 
+from contexts.day.domain import narration as words
 from contexts.day.domain import optional as rule
 from contexts.day.domain.clock import DayClock
-from contexts.day.domain.optional import Fit, Offer, Touched
+from contexts.day.domain.narration import hhmm, short_place, short_title
+from contexts.day.domain.optional import Fit, Gate, Offer, Touched
 from contexts.play.dayrun.board import to_tick
 from contracts.day import DayNarrated, DayOptionalAnswered, DayPlanCommitted, DayPlanProposed, DayReplanProposed, PlanMove
 from contracts.events import Event
@@ -44,6 +56,7 @@ log = logging.getLogger("atlas.day.optional")
 CONNECTOR = "day"  # the calendar item an accepted event is handed to the board as
 DAYS = 3  # the list covers today and this many days after it
 KEEP_PLANS = 200  # plans whose optional blocks are remembered
+EVERY = timedelta(minutes=1)  # how often the tick looks for something to suggest, in event time
 
 
 class Refused(Exception):
@@ -60,9 +73,14 @@ def clock_time(t: datetime, tz: tzinfo) -> str:
 
 
 class OptionalEvents:
-    def __init__(self, planner, tracker, clock: DayClock, memory=None, days: int = DAYS) -> None:
+    def __init__(self, planner, tracker, clock: DayClock, memory=None, days: int = DAYS, config: dict | None = None) -> None:
         self.planner, self.tracker, self.clock, self.memory, self.days = planner, tracker, clock, memory, days
         self.inner = None  # what Day Run's `agreed` port held before this object took its place (the Circle's agreed plans)
+        self.narrator = None  # DayLoop sets it: the suggestion's words, and the way out through the arbiter
+        raw = config or {}  # agent.yaml's `day:` block
+        self.rule = Gate(enabled=bool(raw.get("suggest_optional", True)), from_min=int(raw.get("suggest_from_min", rule.SUGGEST_FROM_MIN)),
+                         until_min=int(raw.get("suggest_until_min", rule.SUGGEST_UNTIL_MIN)),
+                         cooldown_min=int(raw.get("suggest_cooldown_min", rule.SUGGEST_COOLDOWN_MIN)))
         # --- state, rebuilt from the log ---
         self.answers: dict[str, DayOptionalAnswered] = {}  # offer id -> the latest answer
         self.carried: dict[str, frozenset[str]] = {}  # plan id -> the optional events its blocks carry
@@ -73,6 +91,8 @@ class OptionalEvents:
         # --- live only ---
         self._try: dict[str, datetime | None] = {}  # offers on the board for the re-plan being built (id -> its end, or None)
         self._drop: set[str] = set()  # ... and accepted ones left off it
+        self.looked_at: datetime | None = None  # when the tick last looked for something to suggest
+        self.asked: dict[str, datetime] = {}  # offer id -> when its suggestion was handed to the narrator (it may be said later)
 
     def subscribe(self, bus) -> None:
         bus.subscribe("day.optional.answered", self.on_answered, replay=True)
@@ -248,16 +268,132 @@ class OptionalEvents:
     def row(self, offer: Offer, now: datetime) -> dict:
         answer, pending = self.answers.get(offer.id), self.waiting(offer.id, now)
         said = self.suggested.get(offer.id)
+        try:
+            quiet = self.held(offer, now)
+        except Exception:
+            quiet = "unavailable"
         return {"id": offer.id, "slug": offer.slug, "title": offer.title, "start": offer.start.isoformat(), "end": offer.end.isoformat(),
                 "place": offer.place, "place_name": offer.place_name, "tags": list(offer.tags), "going": list(offer.going),
                 "host": offer.host, "source": offer.source, "state": self.state(offer, now),
                 "answer": answer.answer if answer else None, "awaiting_approval": pending is not None,
                 "action_id": pending.action_id if pending else None, "plan_id": pending.plan_id if pending else None,
-                "suggested_at": said.isoformat() if said else None, "fit": fit_out(self.fit(offer, now))}
+                "suggested_at": said.isoformat() if said else None, "suggest_held": quiet, "fit": fit_out(self.fit(offer, now))}
 
     def view(self, now: datetime) -> dict:
         plan = self.plan(now)
         return {"now": now.isoformat(), "plan_id": plan.plan_id if plan else None, "events": [self.row(o, now) for o in self.offers(now)]}
+
+    # --- the suggestion (live only: the tick) ---
+
+    def tick(self, now: datetime) -> list[Event]:
+        """Bring up the next optional event that may be suggested now, if there is one. Whatever is returned is to be
+        published; with the arbiter the line is queued there and comes out of the arbiter's own tick."""
+        if not self.rule.enabled or self.narrator is None or self.narrator.mode == "off":
+            return []
+        if self.looked_at is not None and abs(now - self.looked_at) < EVERY:
+            return []
+        self.looked_at = now
+        try:
+            return self.suggest(now)
+        except Exception:  # a suggestion must never stop the day
+            log.exception("the optional-event suggestion failed")
+            return []
+
+    def suggest(self, now: datetime) -> list[Event]:
+        plan = self.plan(now)
+        if plan is None:
+            return []
+        gate = self.gate(now)
+        for offer in self.offers(now):
+            fit = self.fit(offer, now)
+            if rule.suggest_held(now, offer, fit, self.state(offer, now), replace(gate, said=self.was_said(offer.id))) is not None:
+                continue
+            arbiter = getattr(self.narrator, "arbiter", None)
+            if arbiter is not None and arbiter.quiet("suggest", now) is not None:
+                return []  # a card or a check-in is open: not now, and nothing to queue for later either
+            self.asked[offer.id] = now
+            return self.narrator.tell("suggest", self.facts(offer, fit, plan), now, self.clock.day_of(now), plan.plan_id, offer.id,
+                                      about=[rule.block_id(offer.id)])
+        return []
+
+    def in_flight(self, offer_id: str) -> bool:
+        """Handed to the narrator and not out yet: waiting in the arbiter for a free slot, or with the model."""
+        n = self.narrator
+        if n is None or offer_id not in self.asked:
+            return False
+        event_id = f"day-narrated-suggest-{offer_id}"
+        arbiter = getattr(n, "arbiter", None)
+        return event_id in n.jobs or (arbiter is not None and any(j.event_id == event_id for j in arbiter.held))
+
+    def was_said(self, offer_id: str) -> bool:
+        return offer_id in self.suggested or self.in_flight(offer_id)
+
+    def gate(self, now: datetime) -> Gate:
+        """What may keep a suggestion back at `now`, apart from the event itself: the hour, a fixed block that is
+        running, a time to leave that is close, and the last suggestion (said, or on its way out)."""
+        day = self.clock.day_of(now)
+        plan = self.plan(now)
+        fixed = next((m.title for m in plan.moves if m.fixed and m.start <= now < m.end), None) if plan else None
+        leave_by = event_start = None
+        try:
+            status = self.tracker.compute(now)
+            if status is not None and status.next_event is not None:
+                leave_by, event_start = status.next_event.leave_by, status.next_event.start
+        except Exception:
+            log.debug("no status for the suggestion's gate", exc_info=True)
+        times = [*self.suggested.values(), *(t for o, t in self.asked.items() if self.in_flight(o))]
+        return replace(self.rule, awake=self.clock.wake_at(day) <= now < self.clock.bed_at(day), fixed=fixed, leave_by=leave_by,
+                       event_start=event_start, last=max(times, default=None))
+
+    def held(self, offer: Offer, now: datetime) -> str | None:
+        """Why this event is not being suggested right now, in a few words; None when the next tick may bring it up."""
+        if self.narrator is None or self.narrator.mode == "off":
+            return "narration is off"
+        if self.plan(now) is None:
+            return "no plan for today yet"
+        gate = replace(self.gate(now), said=self.was_said(offer.id))
+        why = rule.suggest_held(now, offer, self.fit(offer, now), self.state(offer, now), gate)
+        if why is None:
+            arbiter = getattr(self.narrator, "arbiter", None)
+            why = arbiter.quiet("suggest", now) if arbiter is not None else None
+        return why
+
+    def facts(self, offer: Offer, fit: Fit, plan) -> dict:
+        """What the "suggest" template says, from the offer and its fit: only what is there."""
+        tz, label = self.clock.tz, self.narrator.label
+        moves = {m.id: m for m in plan.moves}
+        f: dict = {"moment": "suggest", "title": short_title(offer.title), "who": list(offer.going), "at": hhmm(offer.start, tz),
+                   "until": hhmm(offer.end, tz), "fits": fit.fits}
+        if offer.host:
+            f["host"] = offer.host
+        place = short_place(offer.place_name) if offer.place_name else None
+        if place:
+            f["place"] = place
+        if fit.leave_by is not None:  # a walk worth leaving for
+            f["walk_min"], f["leave_by"] = fit.walk_minutes, hhmm(fit.leave_by, tz)
+        if fit.fits == "nearly" and fit.displaces:
+            f["moves"] = [label(moves.get(t.id), t.title, t.start) for t in fit.displaces]
+        elif fit.fits == "nearly":
+            nxt = next((m for m in sorted(plan.moves, key=lambda m: m.start) if m.fixed and m.place and m.start >= offer.end), None)
+            f["early_min"] = fit.leave_early_minutes
+            if nxt is not None:
+                f["next"] = label(nxt, nxt.title, nxt.start)
+        else:
+            after = self.after(offer, plan)
+            if after is not None:
+                night = after.kind == "sleep" and after.minutes >= words.NAP_MAX
+                f["before"] = {"title": "bed" if night else label(after, after.title, after.start), "at": hhmm(after.start, tz)}
+        return f
+
+    def after(self, offer: Offer, plan) -> PlanMove | None:
+        """The block to name in "it fits before ...": the plan's next one after the event that is not a rest, and not
+        a meal of its own when the event is a meal ("dinner ... fits before dinner" says nothing)."""
+        meal = any(m in offer.title.lower() for m in words.MEALS)
+        for m in sorted(plan.moves, key=lambda m: m.start):
+            if m.start < offer.end or m.id == rule.block_id(offer.id) or (not m.fixed and (m.kind == "rest" or (meal and m.kind == "eat"))):
+                continue
+            return m
+        return None
 
     # --- answering: a re-plan behind the usual card, never a change by itself ---
 

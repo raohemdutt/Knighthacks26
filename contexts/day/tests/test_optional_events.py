@@ -25,6 +25,7 @@ from contexts.day.application.optional import OptionalEvents, Refused
 from contexts.day.domain import optional as rule
 from contexts.day.tests.test_day import CLOCK, never, places, zone  # noqa: F401
 from contexts.demo.nearby import nearby_events
+from contexts.demo.seed import settle
 from contexts.play.dayrun.agreed import AgreedPlans
 from contexts.play.dayrun.service import DayRun
 from contexts.workspace.domain.approvals import Approvals
@@ -89,15 +90,26 @@ class Box:
         return TestClient(app)
 
     def publish(self, *events) -> None:
-        asyncio.run(self.bus.publish_all(events))
+        async def run() -> None:
+            await self.bus.publish_all(events)
+            await settle()  # a narration the model is asked about comes back from a background task
+
+        asyncio.run(run())
 
     def morning(self, now: datetime = at(8, 10)) -> None:
         """The morning plan (its card is left to expire, as on a box nobody looked at) and a person at the desk."""
         self.publish(*self.loop.planner.plan(now))
 
     def tick(self, now: datetime) -> None:
+        """One turn of the gateway's ticker at `now`: cards that ran out expire, then the Day loop looks at the day."""
         self.clock["now"] = now
-        self.publish(*self.approvals.expire(now), *self.loop.tick(now))
+
+        async def run() -> None:
+            await self.bus.publish_all(self.approvals.expire(now))
+            await self.bus.publish_all(self.loop.tick(now))
+            await settle()
+
+        asyncio.run(run())
 
     def approve(self, action_id: str, now: datetime) -> None:
         self.clock["now"] = now
@@ -110,12 +122,16 @@ class Box:
         return next(r for r in self.optional.view(now)["events"] if key in (r["id"], r["slug"]))
 
 
-def box(places, tmp_path, name: str = "a", items: list[Item] | None = None, writes: bool = False, agreed=None) -> Box:  # noqa: F811
-    """A Day loop on a bus with the approvals the gateway wires (contexts/gateway/bootstrap.py), and nothing else."""
+def box(places, tmp_path, name: str = "a", items: list[Item] | None = None, writes: bool = False, agreed=None,  # noqa: F811
+        day: dict | None = None, runtime=None) -> Box:
+    """A Day loop on a bus with the approvals the gateway wires (contexts/gateway/bootstrap.py), and nothing else.
+    `day` is agent.yaml's `day:` block; by default Atlas does not bring optional events up by itself here (the
+    suggestion has its own tests: test_optional_suggest.py), so these tests are about the answers alone."""
     memory = FakeMemory(items=calendar() + near() if items is None else items)
     hub = ConnectorHub([ConnectorSpec(name="calendar", module="x", writes=["create_event"])] if writes else [], factory=never)
     dayrun = DayRun(places, memory=memory, habits=None, hub=hub, data_dir=tmp_path / name, clock=lambda: at(16), agreed=agreed)
-    loop = DayLoop(dayrun, places, memory=memory, hub=hub, clock=CLOCK)
+    loop = DayLoop(dayrun, places, memory=memory, hub=hub, clock=CLOCK, runtime=runtime,
+                   narration={"suggest_optional": False} if day is None else day)
     bus = EventBus(tmp_path / "events")
     approvals = Approvals({"connector_write": lambda request: "kept as today's plan"})
     bus.subscribe("agent.action.proposed", approvals.on_proposed, replay=True)
@@ -168,7 +184,7 @@ def test_the_list_has_each_event_with_who_is_going_its_fit_the_walk_and_its_stat
         "id": DINNER, "slug": "friends-dinner", "title": "Friends' dinner", "start": at(17, 15).isoformat(), "end": at(18, 15).isoformat(),
         "place": "ucf.dining_63", "place_name": "'63 South", "tags": ["with Riley, Sam, Alex", "optional", "via GroupMe"],
         "going": ["Riley", "Sam", "Alex"], "host": None, "source": "GroupMe", "state": "suggested", "answer": None,
-        "awaiting_approval": False, "action_id": None, "plan_id": None, "suggested_at": None,
+        "awaiting_approval": False, "action_id": None, "plan_id": None, "suggested_at": None, "suggest_held": "suggestions are switched off",
         "fit": {"fits": "yes", "reason": "", "walk_minutes": 16, "leave_by": at(16, 59).isoformat(), "from_place": "apartment.desk",
                 "displaces": [], "conflicts": [], "leave_early_minutes": 0}}
     # the workshop began at half past twelve: it is over; the review would push the evening's blocks aside

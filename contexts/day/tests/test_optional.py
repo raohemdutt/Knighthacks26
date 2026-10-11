@@ -220,8 +220,8 @@ def test_a_suggestion_reads_naturally():
     said = render(SUGGEST)
     assert said.spoken == ("Riley, Sam and Alex are having dinner at '63 South at quarter past five. It's a seven-minute walk and it fits "
                            "before your study block. Want me to add it?")
-    assert said.display == ("Friends' dinner with Riley, Sam and Alex: 5:15 PM to 6:15 PM at '63 South. 7 min walk, leave by 5:08 PM. "
-                            "Fits before your study block at 6:30 PM. Add it?")
+    assert said.display == ("Friends' dinner: 5:15 PM to 6:15 PM at '63 South. 7 min walk, leave by 5:08 PM. "
+                            "Fits before your study block at 6:30 PM. Add it?")  # the screen's line (and a push) names nobody
 
 
 def test_a_suggestion_for_a_host_one_friend_no_walk_and_a_nearly():
@@ -234,6 +234,7 @@ def test_a_suggestion_for_a_host_one_friend_no_walk_and_a_nearly():
     assert one.spoken == ("Riley is going to Food truck night at Memory Mall at half past six. It's a twelve-minute walk, and your study block "
                           "would have to move to make room. Want me to add it?")
     assert "Nearly fits: your study block would move." in one.display
+    assert not [n for n in ("Andria", "Maya", "Priya", "Riley") if n in hosted.display + one.display]
     early = render({"moment": "suggest", "title": "Board game night", "who": ["Riley", "Sam"], "at": "20:00", "place": "Student Union",
                     "fits": "nearly", "early_min": 10, "next": "Lab"})
     assert early.spoken == ("Riley and Sam are going to Board game night at Student Union at eight o'clock. You'd leave ten minutes early for Lab. "

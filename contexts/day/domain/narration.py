@@ -772,8 +772,9 @@ def _suggest(f: dict, w: Words) -> Narration:
         opening = f"{_people(who)} {verb} {'having ' + meal if meal else 'going to ' + title}{where} at {say_time(f['at'])}"
     else:
         opening = f"{cap(the(title))} is{where} at {say_time(f['at'])}"
-    people = ([host] if host else []) + who
-    shown = title + (f" with {_people(people)}" if people else "") + f": {clock(f['at'])}" + (f" to {clock(f['until'])}" if f.get("until") else "")
+    # The screen's line names nobody: a push carries it through a notification service, and a line it is merged
+    # into shows it. Who is going is said aloud, and the phone shows it from the box's own list (GET /api/day/optional).
+    shown = title + f": {clock(f['at'])}" + (f" to {clock(f['until'])}" if f.get("until") else "")
     shown += f"{where}."
     walk = f.get("walk_min", 0)
     walk_s = f"it's {_walk_words(walk)}" if walk >= 3 else ""

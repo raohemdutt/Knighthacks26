@@ -52,7 +52,9 @@ class DayLoop:
         self.reminders = Reminders(self.planner, self.tracker, self.narrator, self.clock,
                                    enabled=bool((narration or {}).get("block_reminders", True)))
         # Optional events ("Near you"): a yes raises a re-plan behind the usual card; approved, the event is a block of the day.
-        self.optional = OptionalEvents(self.planner, self.tracker, self.clock, memory=memory)
+        # Atlas brings one up once, 90 to 30 minutes before it, through the arbiter. agent.yaml `day: {suggest_optional: false}`.
+        self.optional = OptionalEvents(self.planner, self.tracker, self.clock, memory=memory, config=narration)
+        self.optional.narrator = self.narrator
 
     def subscribe(self, bus) -> None:
         p, t, c = self.planner, self.tracker, self.coach
@@ -98,6 +100,7 @@ class DayLoop:
     def tick(self, now: datetime) -> list[Event]:
         out = self.planner.tick(now) + self.tracker.tick(now) + self.coach.tick(now) + self.checkin.tick(now)
         out += self.reminders.tick(now)  # queues its line in the arbiter
+        out += self.optional.tick(now)  # ... and so does the suggestion of an optional event coming up
         return out + self.arbiter.tick(now)  # last: the lines queued by this tick and the held ones
 
     def in_words(self, now: datetime) -> dict[str, str]:
@@ -129,6 +132,12 @@ def checkin_push(e: DayCheckinRaised) -> str:
     nudges = [s.text.rstrip(".") for s in e.suggestions if s.kind != "move_block"]
     todo = f" {nudges[0]}{''.join(', ' + n[:1].lower() + n[1:] for n in nudges[1:])}." if nudges else ""
     return f"Atlas has a check-in for you.{todo} Open Now to see why."
+
+
+def suggest_push(e: DayNarrated) -> str:
+    """What the push of an optional-event suggestion says: the event, its time and place and how it fits (the
+    narration's screen line, which names nobody), and where to answer it. Never who is going."""
+    return f"Atlas has a suggestion near you: {e.display.removesuffix('Add it?').strip()} Open Atlas to add it."
 
 
 def box_voice(say):
@@ -167,6 +176,9 @@ def day_phone(ntfy, topic: str, narrated: bool = False):
             elif narrated and e.moment == "now" and e.urgent:
                 pushed.add(k)
                 await ntfy.publish(topic, e.display, title="Time to move", tags=["walking"])
+            elif narrated and e.moment == "suggest":
+                pushed.add(k)
+                await ntfy.publish(topic, suggest_push(e), title="Near you", tags=["calendar"])
         elif isinstance(e, DayCheckinRaised):
             # Box-only: the push goes through a notification service, so it names what to do and never why. The
             # signals (a night, a heart rate, a face) are read on the phone, from the box.
