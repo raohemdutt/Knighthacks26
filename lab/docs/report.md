@@ -92,7 +92,8 @@ Section extras:
 - `engines`: `engines` (`{engine, name, best, rows, builds, setup}`), `compared_on` (the shared prompt, or null),
   `differences`, `unnamed`, `not_measured`, `priors`.
 - `finetune`: `run` (`{name, run_id, node, gpu, file, run_file}`), `loss`, `step_time` (milliseconds, as
-  logged), `median_step` (seconds), `numbers` (the run's totals and any trainer rows).
+  logged), `median_step` (seconds), `numbers` (the run's totals and any trainer rows), `notes` (the steps that
+  handled far fewer tokens than the others, when the telemetry records tokens).
 - `dropped`: `items` (`{what, verdict, note, kind, source, gpu, task}`; `kind` is `measured`, `ruled out` or
   `record`).
 
