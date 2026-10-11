@@ -124,7 +124,7 @@ def test_a_check_in_in_the_log_is_never_part_of_the_export(tmp_path):
     raised = next(e for e in events if e.type == "day.checkin.raised")
     bus = EventBus(tmp_path / "events")
     asyncio.run(bus.publish_all(events))
-    assert len(list(bus.read_log())) == len(BOX_ONLY_EVENTS) == 3  # the check-in, its answer, a yes to an optional event: in the log, on the box
+    assert len(list(bus.read_log())) == len(BOX_ONLY_EVENTS) == 4  # the check-in, its answer, a yes to an optional event, a look forgotten: on the box
 
     out = tmp_path / "datasets"
     out.mkdir()

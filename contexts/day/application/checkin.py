@@ -36,11 +36,12 @@ from datetime import date, datetime, timedelta
 
 from contexts.connectors.domain.health import night_day, parse_summary
 from contexts.day.domain import checkin as rule
+from contexts.day.domain import looks as look_rule
 from contexts.day.domain import narration as words
 from contexts.day.domain.checkin import DrinkWatch, Gate, Look, Night, PastSession, Reading
 from contexts.day.domain.clock import DayClock
 from contracts.connectors import ItemSynced
-from contracts.day import DayCheckinAnswered, DayCheckinRaised, DayReplanProposed
+from contracts.day import CheckinCallback, DayCheckinAnswered, DayCheckinRaised, DayReplanProposed
 from contracts.events import Event
 from contracts.perception import ExpressionObserved, ObservationRecorded, SceneDescribed
 
@@ -57,6 +58,7 @@ class CheckIn:
         self.planner, self.tracker, self.coach, self.clock = planner, tracker, coach, clock
         self.memory, self.enabled = memory, enabled
         self.narrator = None  # DayLoop sets it: the words of a check-in, for the card
+        self.look_memory = None  # DayLoop sets it: remembered looks to call back to (contexts/day/application/looks.py)
         v = planner.dayrun.cfg.vocabulary
         self.words = words.Words(activity=v.activity, workplace=v.workplace, event=v.event, deadline=v.deadline)
         # --- state, rebuilt from the log ---
@@ -165,12 +167,26 @@ class CheckIn:
         past = rule.history(r, found)
         move = self.offer(now)
         suggestions = rule.suggestions(found, move)
+        back = self.look_back(now, found)  # an earlier look like this one, when the look memory has one that is similar enough
+        if back is not None:
+            suggestions = look_rule.rerank(suggestions, back.lead)  # the same advice; what the look eased after last time comes first
         signals = found + ([past[1]] if past else [])
-        said = words.render(rule.facts(signals, suggestions, past[0] if past else None, self.clock.tz), self.words)
+        said = words.render(rule.facts(signals, suggestions, past[0] if past else None, self.clock.tz, callback=back), self.words)
         plan = self.planner.current.get(r.day)
         return DayCheckinRaised(event_id=f"day-checkin-{r.day}-{now.astimezone(self.clock.tz):%H%M}", ts=now, day=r.day, at=now,
                                 signals=signals, suggestions=suggestions, history=past[0] if past else None,
-                                proposes_replan=move is not None, plan_id=plan.plan_id if plan else None, text=said.display)
+                                proposes_replan=move is not None, plan_id=plan.plan_id if plan else None, text=said.display,
+                                callback=back)
+
+    def look_back(self, now: datetime, found: list) -> CheckinCallback | None:
+        """The look memory's callback, only when a look is one of the signals. Never a reason for a check-in to fail."""
+        if self.look_memory is None or "expression" not in rule.kinds(found):
+            return None
+        try:
+            return self.look_memory.callback(now)
+        except Exception:
+            log.exception("the look memory's callback failed")
+            return None
 
     def reading(self, now: datetime) -> Reading:
         window = timedelta(minutes=rule.EXPR_WINDOW_MIN)
@@ -276,7 +292,10 @@ class CheckIn:
         answer = self.answers.get(e.event_id)
         said = self.narrator.latest.get("checkin") if self.narrator is not None else None
         told = said if said is not None and said.ref == e.event_id else None
-        return {**e.model_dump(mode="json"), "answered": answer.answer if answer else None,
+        body = e.model_dump(mode="json")
+        if e.callback is not None and (self.look_memory is None or e.callback.moment_id not in self.look_memory.moments):
+            body["callback"] = None  # the remembered moment was forgotten since: its chip goes with it
+        return {**body, "answered": answer.answer if answer else None,
                 "spoken": told.spoken if told else None, "display": told.display if told else e.text,
                 "evidence": self.evidence(e, numbers)}
 

@@ -713,13 +713,22 @@ def _checkin(f: dict, w: Words) -> Narration:
     if said:
         spoken.append(cap(_series(said)) + ".")
         display.append(cap(_series(shown)) + ".")
-    # 2. the earlier days that looked like this one
+    # 2. the past. An earlier look like this one (the look memory, contexts/day/domain/looks.py) and what followed it;
+    # and the earlier days that looked like this one. Aloud it is one look back, not two: with a callback the days are
+    # left to the screen (their chip and the paragraph), so the spoken line stays short.
+    back = f.get("callback")
+    if back and back.get("said"):
+        for line in (back["said"], back.get("learned")):
+            if line:
+                spoken.append(line)
+                display.append(line)
     past = f.get("history")
     if past and past.get("matches"):
         outcome = (past.get("outcome") or "").strip().rstrip(".")
         by = past.get("by")
         heard = outcome.replace(clock(by), say_time(by)) if by else outcome
-        spoken.append(f"The last {say_number(past['matches'])} times a day looked like this, {heard}.")
+        if not (back and back.get("said")):
+            spoken.append(f"The last {say_number(past['matches'])} times a day looked like this, {heard}.")
         display.append(f"The last {past['matches']} times a day looked like this, {outcome}.")
     # 3. at the desk: the sitting, and the drink nobody saw
     said, shown = [], []

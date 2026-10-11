@@ -335,7 +335,8 @@ class DayCoachCorrected(TypedEvent):
 # carries the suggestions only (contexts/day/application/loop.py). Every field below is box-only; none is safe
 # to forward, the plain-word summaries included ("Heart rate: up" is still a statement about a person's body).
 # `day.optional.answered` is here too: which invitations a person took or turned down is nobody else's business.
-BOX_ONLY_EVENTS = frozenset({"day.checkin.raised", "day.checkin.answered", "day.optional.answered"})
+# `day.look.forgotten` (the look memory, contexts/day/application/looks.py): that a remembered look was forgotten.
+BOX_ONLY_EVENTS = frozenset({"day.checkin.raised", "day.checkin.answered", "day.optional.answered", "day.look.forgotten"})
 
 CheckinSignalKind = Literal["sleep", "resting_hr", "expression", "sitting", "drink", "history"]
 CheckinSuggestionKind = Literal["drink", "break", "move_block", "walk"]
@@ -372,6 +373,21 @@ class CheckinHistory(BaseModel):
     days: list[CheckinPastDay] = []
 
 
+class CheckinCallback(BaseModel):
+    """An earlier look this one is like, from the look memory (contexts/day/domain/looks.py): "That's the same look you
+    had Tuesday afternoon, when you'd gone two hours without moving." Words, a day and a label only: no picture, no
+    frame ref, no health value. Box-only with the check-in that carries it."""
+
+    moment_id: str  # the remembered moment ("look-<member>-<yyyymmdd>-<hhmm>"), looked up on the box
+    day: date  # the earlier local day
+    look: str = "strained"  # the label of the look, as the check-in already words it
+    said: str  # the callback sentence, for the ear and the screen
+    learned: str = ""  # what followed last time, when that is known: "Ten minutes away from the desk helped then."
+    lead: CheckinSuggestionKind | None = None  # the advice that was followed by the look easing: it is said first
+    chip: str = ""  # "Looked strained · like Tue"
+    lines: list[str] = []  # the remembered moment in one or two plain lines, for the chip
+
+
 @register
 class DayCheckinRaised(TypedEvent):
     """Atlas speaking up unasked: enough independent signals agreed (the rule is contexts/day/domain/checkin.py).
@@ -386,6 +402,7 @@ class DayCheckinRaised(TypedEvent):
     proposes_replan: bool = False  # "Move the block" can build a re-plan; the plan changes only through its approval card
     plan_id: str | None = None
     text: str = ""  # the whole check-in as one paragraph for the screen (the template's words, before any rewrite)
+    callback: CheckinCallback | None = None  # an earlier look like this one, when the look memory has one similar enough
 
 
 @register
@@ -397,6 +414,19 @@ class DayCheckinAnswered(TypedEvent):
     checkin_id: str  # the `day.checkin.raised` event's id
     answer: Literal["done", "move"]
     action_id: str | None = None  # the re-plan's approval card, when the answer was "move"
+
+
+# --- the look memory (contexts/day/application/looks.py): additive, and box-only ---
+
+
+@register
+class DayLookForgotten(TypedEvent):
+    """The person asked Atlas to forget a remembered look, or all of them. The memory itself is a projection of the
+    log (the looks, the desk, the plan); this event is what keeps a forgotten one forgotten on replay. Ids only."""
+
+    type: Literal["day.look.forgotten"] = "day.look.forgotten"
+    moment_id: str | None = None  # the remembered moment; None: every moment up to `ts`
+    member_id: str | None = None  # with no `moment_id`: whose are forgotten; None: everyone's
 
 
 # --- optional events (contexts/day/application/optional.py): additive, and box-only ---
