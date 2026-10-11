@@ -76,7 +76,7 @@ from lab import dataset
 from lab.dataset import MIN_HELD_OUT, DatasetError, Split
 from lab.desk_score import repo_commit
 from lab.eval_gate import DECODE as GATE_DECODE
-from lab.eval_gate import RealClient
+from lab.eval_gate import GateError, RealClient
 from lab.machine.record import record
 
 __all__ = ["TASK", "DATASET_TASK", "DATASET_ID", "DECODE", "SpotError", "SpotExample", "numbers", "parse_reply",
@@ -103,8 +103,9 @@ _ANCHOR = re.compile(r"\(through mission (M\d+)\)")
 _QUESTION = re.compile(r"^Question: (.*)$", re.M)
 
 
-class SpotError(RuntimeError):
-    """The SPOT scorer cannot go on: a split that exists already, a label missing or malformed, a server error."""
+class SpotError(GateError):
+    """The SPOT scorer cannot go on: a split that exists already, a label missing or malformed, a server error. A
+    GateError, so the gate refuses rather than scoring around it."""
 
 
 @dataclass(frozen=True)

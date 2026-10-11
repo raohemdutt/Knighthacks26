@@ -43,11 +43,16 @@ learning.run.evaluated event (contracts/learning.py) with the scores and the dec
 candidate's (runtime.registry.model_version of its manifest), written to <out>/learning.run.evaluated.jsonl and,
 with events_dir, published to that event log. <out>/scores.json for the demo slide, and <out>/<role>.json per score
 in the shape lab/slide_numbers.py reads (score is the held-out score; scorer_score is the scorer's own top line).
+
+Scorers by task. A task listed in SCORERS has its own scorer: the verb builds that scorer's client for the dataset
+folder instead of RealClient, and when the entry names a group rule, a text example's group is what that rule says
+of it instead of its frame_ref. spot-qa (lab/spot_score.py) pairs on the anchor mission.
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
+import importlib
 import json
 import math
 import os
@@ -55,7 +60,8 @@ import subprocess
 import sys
 import tempfile
 from collections import defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
 from typing import Any, Protocol
@@ -63,12 +69,13 @@ from typing import Any, Protocol
 from bus import EventBus
 from contexts.agent.eval import Result
 from contracts.learning import DatasetExample, ModelManifest, RunEvaluated
-from lab.dataset import MIN_HELD_OUT, DatasetError, Split, _question_key, load_split
+from lab.dataset import MIN_HELD_OUT, DatasetError, Split, _question_key, load, load_split
 from lab.machine.record import record
 from runtime.registry import load_models_config, model_version
 
 __all__ = ["DECODE", "MIN_ITEMS", "ALPHA", "MIN_CURRENT_RUNS", "PACKAGED_QUANT", "PREVIEW_KEY", "SCORES_FILE",
-           "EVENT_FILE", "GateError", "Client", "RealClient", "make_client", "sign_flip_p", "run_gate", "main"]
+           "EVENT_FILE", "SCORERS", "Scorer", "GateError", "Client", "RealClient", "make_client", "client_for",
+           "sign_flip_p", "run_gate", "main"]
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DECODE: dict[str, Any] = {"thinking": "off", "sampling": "greedy", "max_tokens": 512}
@@ -126,8 +133,33 @@ class RealClient:
         return git("rev-parse", "HEAD")
 
 
+@dataclass(frozen=True)
+class Scorer:
+    """A task's own scorer, as "module:name" paths: client(dataset folder) is the gate's Client; group(example), when
+    set, is the paired test's unit for a text example."""
+
+    client: str
+    group: str | None = None
+
+
+SCORERS: dict[str, Scorer] = {   # by the dataset manifest's task; every other task is scored by RealClient
+    "spot-qa": Scorer("lab.spot_score:GateClient", "lab.spot_score:group_of"),
+}
+
+
+def _named(path: str) -> Any:
+    module, name = path.split(":")
+    return getattr(importlib.import_module(module), name)
+
+
 def make_client() -> Client:
     return RealClient()
+
+
+def client_for(task: str | None, dataset: str | os.PathLike[str]) -> Client:
+    """The registered scorer's client for the task, else make_client()."""
+    scorer = SCORERS.get(task or "")
+    return _named(scorer.client)(dataset) if scorer else make_client()
 
 
 # --- the paired test ------------------------------------------------------------------------------------------------
@@ -190,12 +222,14 @@ def _match(split: Split, output: Mapping[str, Any], role: str) -> tuple[dict[str
     return found, outside
 
 
-def _groups(split: Split, episodes: Mapping[str, str] | None) -> dict[str, str]:
-    """{held-out example id: its group}: the frame_ref, or for an image example its episode."""
+def _groups(split: Split, episodes: Mapping[str, str] | None,
+            group: Callable[[DatasetExample], str] | None = None) -> dict[str, str]:
+    """{held-out example id: its group}: the frame_ref (or the task's group rule), or for an image example its
+    episode."""
     groups = {}
     for example in split.held_out:
         if not example.image:
-            groups[example.id] = example.frame_ref
+            groups[example.id] = group(example) if group else example.frame_ref
         elif episodes is None or example.frame_ref not in episodes:
             raise GateError(f"image example {example.id!r} has no episode; pass an episode map (frame_ref -> "
                             "episode id) so the test unit is the episode, never the single item")
@@ -249,8 +283,9 @@ def run_gate(*, client: Client, dataset: str | os.PathLike[str], current_url: st
     candidate_version, manifest = _candidate(candidate_manifest)
     current_version = current_version or _current_version()
     episode_map = json.loads(Path(episodes).read_text(encoding="utf-8")) if episodes else None
-    groups = _groups(split, episode_map)
     task = task or split.data.manifest.spec.task
+    scorer = SCORERS.get(task)
+    groups = _groups(split, episode_map, _named(scorer.group) if scorer and scorer.group else None)
     commit = client.scorer_commit()
 
     roles = [(f"current-{i}", "current", i, current_url, current_version) for i in range(1, current_runs + 1)]
@@ -403,7 +438,11 @@ def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
     args = parser.parse_args(argv)
     out = Path(args.out) if args.out else REPO_ROOT / "lab" / "state" / "eval-gate" / args.run_id
     try:
-        return run_gate(client=make_client(), dataset=args.dataset, current_url=args.current_url,
+        task = args.task or load(args.dataset, require_images=False).manifest.spec.task
+    except DatasetError:
+        task = args.task   # run_gate reports what is wrong with the dataset
+    try:
+        return run_gate(client=client_for(task, args.dataset), dataset=args.dataset, current_url=args.current_url,
                         candidate_url=args.candidate_url, teacher_url=args.teacher_url,
                         candidate_manifest=args.candidate_manifest, run_id=args.run_id, out_dir=out,
                         current_version=args.current_version, current_runs=args.current_runs,
