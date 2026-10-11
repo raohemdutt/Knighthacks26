@@ -373,8 +373,9 @@ class Assistant:
         """The code-built answer, at once. With `rephrase=True` a short draft is also offered to the model (bounded)."""
         d = self.draft(text)
         can = self.can_rephrase(d)
-        out = {**d, "question": text, "draft": d["text"], "rephrased": False, "model": "none (built from the tables by code)", "check": None,
-               "can_rephrase": can, "suggested": SUGGESTED}
+        # `matched` is False when no intent recognised the question (the overview stands in): the screen then asks the box instead
+        out = {**d, "matched": d["intent"] != "overview", "question": text, "draft": d["text"], "rephrased": False,
+               "model": "none (built from the tables by code)", "check": None, "can_rephrase": can, "suggested": SUGGESTED}
         if not rephrase or not can:
             return out
         try:

@@ -453,6 +453,8 @@ export interface Replay {
 
 export interface Answer {
   configured: boolean;
+  /** False when the Inspection assistant did not recognise the question (it then goes to the box's own ask). */
+  matched?: boolean;
   intent: string;
   question: string;
   text: string;
