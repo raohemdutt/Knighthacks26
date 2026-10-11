@@ -1220,6 +1220,41 @@ python -m lab sweep-request collect lab/state/sweep_request/pod_run.out --metric
   bundle runs the dry run with the standard library alone). `fixtures/lab/sweep_request/recorded_full.out` is the
   committed grid run on the fake, as the pod prints it (`make_fixture.py` records it again; the test checks the grid's
   sha256). Not yet seen on a pod: the pinned launch's flags on vLLM b1388b1, the real rates and the warm start time.
+### Hardware queues, E18: `lab/sweep_e18.py`
+
+The teacher build served with `GPU_MAX_HW_QUEUES=1` against the stock spawn, built from R52's serve and bench steps
+(`lab/sweep_request.py`: the same grid file, the same pinned launch, the same harness session per cell). The two arms
+differ in that one variable: `stock` is the pinned launch as R52 runs it (`GPU_MAX_HW_QUEUES=4`, the HIP default written
+out) and `queue1` sets 1; each arm's value is read back from the server process (`/proc/<pid>/environ`) and an arm
+whose server reads another value is reported invalid. Per arm, one cold spawn: idle watts, one warm-up round per batch
+size, one probe request alone (decode rate and `mem_busy_percent`, the harness's band inputs), the grid's base cells at
+batch 1 and 4 with its three repeats (serpentine), then the correctness harness's prompt set (`lab/correctness.py`:
+greedy, 128 tokens, token ids and logprobs; stock sends it twice, so the server's own repeat-to-repeat difference is
+measured beside queue1's). The result holds per cell the median of the repeats with the lowest and highest and the
+change of queue1 against stock (decode tok/s per stream and total, TTFT, watts, J/token), the reading (`b_ahead`,
+`a_ahead` or `no_difference` from the batch 1 per-stream rate, a change under 5 % or overlapping repeat ranges reading as
+no difference), the token-for-token match of queue1 with each stock pass beside stock against itself, and
+`classify_bands` over the spawns' probe rates. Two spawns are below the harness's four, so it draws no band and the
+result says so; the owner's ruling 6 (adopt the variable only if E18 reads `b_ahead` with outputs unchanged) is read
+from this with that caveat.
+
+```
+python -m lab sweep-e18 --dry-run [--arms stock,queue1]    # the cells, the arms, the slot minutes
+python -m lab sweep-e18 pod-script [--arms ...]            # writes lab/state/sweep_request/e18_run.sh (needs AUP_HUB_USER_D)
+python tooling/dispatcher/pod_exec.py D term <clone>/lab/state/sweep_request/e18_run.sh 3000 > <clone>/lab/state/sweep_request/e18_run.out
+python -m lab sweep-e18 collect lab/state/sweep_request/e18_run.out --r52 <the collected R52 json> --metrics-file
+```
+
+`--arms stock,queue1` is one slot (45 minutes: about 22 for the stock arm with its second output pass and 15 for queue1
+when the compile cache is warm, plus 10 %). `--arms stock` and `--arms queue1` are the same run in two slots: the first
+leaves its outputs in `~/sweep_request/e18/stock-outputs.json` on the pod and the second compares with them (25 minutes
+each). The pod gate is R52's (node pod-b, x86_64, rocminfo gfx1151, the Jupyter user hashing to account D, port 8100 free,
+no vLLM running). `collect` writes `lab/refine/research/kernels/data/e18-hwqueues-gfx1151-<date>.json` and `.md`, one
+`sweep_e18.cell` ledger row per arm and cell and one `sweep_e18.outputs` row, and with `--metrics-file` the arms'
+batch 1 headline medians (arm and the read-back variable in the conditions), the derived change rows and the output
+match rate, all low_confidence. Tested on the box against `lab/bench_fake.py` (`tests/test_lab_sweep_e18.py`); not yet seen
+on a pod.
+
 ## Eval gate: `python -m lab eval-gate` (L4)
 
 Scores the current Jetson model, the packaged Q4_K_M candidate (from L5) and the teacher on the held-out side of a

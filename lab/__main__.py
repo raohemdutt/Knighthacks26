@@ -68,6 +68,7 @@ VERBS: dict[str, str] = {
     "sit": "lab.machine.sit:main",
     "slot": "lab.machine.slots:main",
     "stop": "lab.machine.stop:stop_main",
+    "sweep-e18": "lab.sweep_e18:main",
     "sweep-request": "lab.sweep_request:main",
 }
 
