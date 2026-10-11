@@ -160,7 +160,7 @@ def test_stopping_during_the_window_ends_cleanly():
     s.close()
     s.wait()
     assert not s._thread.is_alive() and not s._wake_thread.is_alive() and not mic.is_open and s.state == "idle"
-    assert len(asked) == 1 and threading.active_count() == 1
+    assert len(asked) == 1  # this session's own threads are checked above; the process may hold other tests' threads
 
 
 def test_turning_the_voice_off_during_the_window_ends_it():
