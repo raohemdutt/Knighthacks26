@@ -20,14 +20,17 @@ set -u -o pipefail
 export PATH="$HOME/.local/bin:$PATH"
 STEP="${1:-all}"
 [ $# -gt 0 ] && shift
-# Options after the step (run-script passes them as arguments): --vllm-dir DIR, --venv DIR, --patch FILE, --jobs N.
+# Options after the step (run-script passes them as arguments): --vllm-dir DIR, --venv DIR, --patch FILE, --jobs N,
+# --speculative off|ngram|draft (serve only).
 while [ $# -gt 0 ]; do
   case "$1" in
     --vllm-dir) VLLM_DIR="${2:-}"; shift 2 ;;
     --venv) VLLM_VENV="${2:-}"; shift 2 ;;
     --patch) PATCH="${2:-}"; shift 2 ;;
     --jobs) BUILD_JOBS="${2:-}"; shift 2 ;;
-    *) echo "unknown option $1 (known: --vllm-dir, --venv, --patch, --jobs)"; exit 2 ;;
+    --speculative) [ $# -ge 2 ] || { echo "--speculative needs off, ngram or draft"; exit 2; }; SPECULATIVE="$2"; shift 2 ;;
+    --speculative=*) SPECULATIVE="${1#*=}"; shift ;;
+    *) echo "unknown option $1 (known: --vllm-dir, --venv, --patch, --jobs, --speculative)"; exit 2 ;;
   esac
 done
 DEFAULT_VLLM_DIR="$HOME/vllm"
@@ -281,20 +284,13 @@ download() {
 
 serve() {
   local dir="$MODELS/$(basename "$TEACHER")"
-  # Speculative decoding: serve [--speculative off|ngram|draft] (default $SPECULATIVE, else off). On gfx1151 a target
+  # Speculative decoding: serve --speculative off|ngram|draft (read into $SPECULATIVE above; default off). On gfx1151 a target
   # pass that checks up to 16 tokens costs about one weight read (the chip sheet's matmul and int4 dequant times are
   # flat from 1 to 16 rows), so each accepted draft token is close to free; see
   # lab/refine/research/kernels/speculative_gfx1151.md. ngram drafts from the request's own prompt and output (vLLM's
   # prompt lookup, no second model); draft runs a small model of the same vocabulary (vLLM refuses a different size)
   # from $MODELS. SPEC_K is num_speculative_tokens; SPEC_MIN and SPEC_MAX the prompt-lookup n-gram range.
   local spec="${SPECULATIVE:-off}"
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      --speculative) [ $# -ge 2 ] || { echo "--speculative needs off, ngram or draft"; return 2; }; spec="$2"; shift 2 ;;
-      --speculative=*) spec="${1#*=}"; shift ;;
-      *) echo "serve: unknown option $1"; return 2 ;;
-    esac
-  done
   local spec_args=()
   case "$spec" in
     off) ;;
@@ -402,7 +398,7 @@ case "$STEP" in
   build) timed build ;;
   verify) verify ;;
   download) timed download ;;
-  serve) timed serve "${@:2}" ;;
+  serve) timed serve ;;
   models) models ;;
   stop) stop ;;
   all) proxy && timed build && timed download && timed serve ;;
