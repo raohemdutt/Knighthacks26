@@ -1057,6 +1057,25 @@ steps. The row in `lab/refine/metrics.jsonl` records it as low confidence.
 Tested against `lab/bench_fake.py` (spawned as a real process; `--diverge-at`, `--retoken-at` and `--diverge-match`
 make a second server answer differently from a chosen position): record, compare equal, compare divergent, a
 same-text-different-token divergence, conditions that differ (refused, nothing sent, and `--allow-condition-drift`).
+## Quark INT4 checkpoint against the teacher's: `python -m lab quark-compare` (R23)
+
+`amd/Qwen3.8-27B-Quark-AWQ-INT4-W4A16` loads at b1388b1 only with the loader hunks at the end of
+`lab/vllm-gfx1201.diff` (Python only: the mapper takes the export's `algo_config`, a list of dicts, and the
+`QuarkW4A16Int4` scheme of vLLM PR #48606 is backported). Its key names are the ones b1388b1 reads;
+`lab/quark_keys.py` gives every key's disposition and is the pre-flight. The runner compares it with RedHat INT4 on
+pod B, same build and settings sheet (the pinned baseline of `data/searchspace-inference-gfx1151.json`):
+
+```
+python -m lab quark-compare preflight                    # checkpoint sizes, config keys, time plan; changes nothing
+python -m lab quark-compare slot [--row ID --reply TEXT] # the 60-minute pod B row (critique, then reply)
+python -m lab quark-compare run --batches 1,4            # on pod B in the slot: hunks on, bench, correctness, hunks off
+python -m lab quark-compare record --result F --control-rows R20_ROWS [--reference F] --row ID
+```
+
+`record` reads tok/s and J/token B against A per batch size with `lab/machine/verdict.py`, the exact-match rate
+against A's greedy outputs, writes a `quark-compare` ledger row, T0's E5 result (arms A and B) and
+`R23_T0_result.txt`, and releases the slot; `all` does the four in one process. Steps for the real run:
+`lab/R23_REAL_RUN.md`.
 
 ## Placement plan: `python -m lab placement` (R46)
 
