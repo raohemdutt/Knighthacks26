@@ -282,9 +282,7 @@ def test_the_table_has_one_line_per_package_and_direction_with_spread_and_checks
     header = next(line for line in text.splitlines() if line.startswith("| Package"))
     for column in ("Direction", "Chunk or part", "Runs ok", "MB/s mean", "stdev", "min", "max", "sha256"):
         assert column in header
-    table = text.split("| Package", 1)[1].split("
-
-", 1)[0].splitlines()
+    table = text.split("| Package", 1)[1].split(chr(10) * 2, 1)[0].splitlines()
     lines = [line for line in table if line.startswith("| 1MB") or line.startswith("| 3MB")]
     assert len(lines) == 4
     assert all("3 of 3" in line for line in lines)
