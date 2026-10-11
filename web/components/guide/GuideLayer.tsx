@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { useAtlas } from "@/lib/atlas";
 import { Dwell, landed as eyesLanded, snap, type Thing } from "@/lib/gaze";
 import { gaze, type GazeEstimate } from "@/lib/gazeTracker";
+import { FIXATION_MS, attention, simScript } from "@/lib/guideAttention";
 import { SCREENS, classify, ease, fromGaze, narration, pathPoint, pinTarget, pinnedThing, resolveApp, thingName, trail, travelMs, type GuideTarget, type Locator, type Pt, type Reveal } from "@/lib/guide";
 import { offer, onGuide, pointAt, type GuideMessage, type GuideRun } from "@/lib/guideBus";
 import { along, length as routeLength, pointerRoute, type Box } from "@/lib/guidePath";
@@ -105,6 +106,7 @@ export function GuideLayer() {
   const [offered, setOffered] = useState<Offer | null>(null);
   const [ok, setOk] = useState(false); // the eyes arrived
   const [calibrating, setCalibrating] = useState(false);
+  const [sim, setSim] = useState(false); // ?gazeSim: the camera is replaced by a script, and the screen says so
   const [debug, setDebug] = useState<{ on: boolean; e: GazeEstimate | null; snapped: Thing[]; several: boolean; why: string }>({ on: false, e: null, snapped: [], several: false, why: "" });
   const turn = useRef(0); // bumped by every new run and every cancel
   const el = useRef<Element | null>(null);
@@ -370,7 +372,50 @@ export function GuideLayer() {
         setDebug({ on: true, e, snapped: all.filter((t) => ids.includes(t.id)), several: s.kind === "several", why });
       }, 100);
     }
-    return () => (window.clearTimeout(timer), window.clearInterval(tick));
+    // the attention check: what the eyes rest on (a fixation that snaps to exactly one marked thing) is noted, in memory only
+    const watch = window.setInterval(() => {
+      attention.setMode(gaze.simulated() ? "sim" : gaze.usable() ? "gaze" : "off");
+      const e = gaze.estimate();
+      if (!e || e.rest.ms < FIXATION_MS || !samePath(window.location.pathname, "/spot/")) return;
+      const all = things(null);
+      const s = snap(restPoint(e), e.radius, all);
+      const hit = s.kind === "one" ? all.find((t) => t.id === s.id) : undefined;
+      if (hit) attention.note(hit.id, 100, { left: hit.left + window.scrollX, top: hit.top + window.scrollY, right: hit.right + window.scrollX, bottom: hit.bottom + window.scrollY });
+    }, 100);
+    // ?gazeSim=id,id,...: a scripted stand-in for the camera. Each id is "looked at" for 0.9 s, in order, through the same rules.
+    const script = simScript(q.get("gazeSim"));
+    let simAlive = script.length > 0;
+    if (simAlive) {
+      setSim(true);
+      gaze.simulate(null);
+      void (async () => {
+        await sleep(1800);
+        for (const id of script) {
+          let found: Element | null = null;
+          for (let i = 0; i < 40 && simAlive && !(found = locate({ id })); i++) await sleep(100);
+          if (!found || !simAlive) continue;
+          (found.getBoundingClientRect().width > 0 ? found : found.firstElementChild ?? found).scrollIntoView({ block: "center" });
+          await sleep(250);
+          for (let k = 0; k <= 18 && simAlive; k++) {
+            const r = visible(found);
+            if (r) {
+              const p = { x: (r.left + r.width / 2) / window.innerWidth, y: (r.top + r.height / 2) / window.innerHeight };
+              gaze.simulate({ ...p, raw: p, col: Math.floor(p.x * 6), row: Math.floor(p.y * 4), cols: 6, rows: 4, radius: 12, rest: { ms: k * 50, ...p }, at: performance.now() });
+            }
+            await sleep(50);
+          }
+          gaze.simulate(null);
+          await sleep(150);
+        }
+        document.documentElement.setAttribute("data-gaze-sim", "done");
+      })();
+    }
+    return () => {
+      window.clearTimeout(timer);
+      window.clearInterval(tick);
+      window.clearInterval(watch);
+      simAlive = false;
+    };
     // once per page load
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -459,7 +504,12 @@ export function GuideLayer() {
     </>
   ) : null;
   if (calibrating) return <Calibrate onDone={() => setCalibrating(false)} />;
-  if (!view && !offered) return debugBox ? <div className={g.layer}>{debugBox}</div> : null;
+  const simBanner = sim ? (
+    <div className={g.simBanner} data-gaze-sim-banner>
+      SIMULATED GAZE (?gazeSim): a script stands in for the camera. No camera is in use.
+    </div>
+  ) : null;
+  if (!view && !offered) return debugBox || simBanner ? <div className={g.layer}>{debugBox}{simBanner}</div> : null;
 
   const vw = typeof window === "undefined" ? 1024 : window.innerWidth;
   const vh = typeof window === "undefined" ? 768 : window.innerHeight;
@@ -499,6 +549,7 @@ export function GuideLayer() {
   return (
     <div className={g.layer} aria-live="polite" data-guide-layer={view?.phase ?? "offer"} data-guide-target={view?.run.target.id}>
       {debugBox}
+      {simBanner}
       {tail.length > 1 ? (
         <svg className={g.trail} aria-hidden="true">
           {tail.map((p, i) => (
