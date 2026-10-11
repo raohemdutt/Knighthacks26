@@ -96,6 +96,7 @@ from contexts.impact.api import impact_router
 from contexts.habits.api import habits_router
 from contexts.learning.application.export import teach
 from contexts.vault.api import vault_router
+from contexts.vault.application.tickets import ViewTickets
 from contexts.workspace.api import files_router
 from contexts.memory.api import build_router as memory_router
 from contexts.perception.api import identity_router
@@ -207,6 +208,8 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         if token and not hmac.compare_digest(authorization or "", f"Bearer {token}"):
             raise HTTPException(401, "missing or wrong token")
 
+    view_tickets = ViewTickets()  # the owner's signed-in screen asks for one to see faces in its live picture
+
     if atlas.dayrun:  # /api/dayrun/* (S4, S6)
         app.include_router(dayrun_router(atlas.dayrun, publish=atlas.bus.publish, guard=authorized))
     if atlas.day:  # GET /api/day/now, GET/POST /api/day/plan, GET /api/day/patterns (D1)
@@ -219,13 +222,14 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
     if atlas.files:  # /api/files: the file inbox, shared from the phone, encrypted on the box (W1)
         app.include_router(files_router(atlas.files, atlas.bus, guard=authorized))
     if atlas.policy:  # GET/PUT /vault/policy, POST /vault/wipe/request, POST /vault/wipe, GET /vault/egress
-        app.include_router(vault_router(atlas.policy, atlas.bus, wiper=atlas.wiper, guard=authorized, pictures=atlas.pictures))
+        app.include_router(vault_router(atlas.policy, atlas.bus, wiper=atlas.wiper, guard=authorized, pictures=atlas.pictures,
+                                        view_tickets=view_tickets, signed_in_possible=lambda: bool(atlas.settings.token)))
     if atlas.identity:  # /identity/settings, /identity/enroll/start, status, photos, scan/*; /identity/members, present, expressions (P9)
         # A person can be linked to a Circle member by id; the ids come from the configured Circle, nothing else crosses over.
         app.include_router(identity_router(atlas.identity, atlas.bus, guard=authorized, circle_members=lambda: (
             list(dict.fromkeys([atlas.circle.member_id, *(atlas.circle.members or [])])) if atlas.circle else None)))
     if atlas.capture:  # GET /capture/status (C6)
-        app.include_router(capture_router(atlas.capture))
+        app.include_router(capture_router(atlas.capture, clear=lambda ticket: view_tickets.valid(ticket, datetime.now(UTC))))
     if atlas.learning:  # GET /api/learning (X10)
         app.include_router(learning_router(atlas.learning, publish=atlas.bus.publish, guard=authorized))
     # GET /api/learning/lab/bench, /experiments, POST /routing/simulate: the lab's recorded numbers (before {run_id})
