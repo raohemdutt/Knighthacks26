@@ -157,6 +157,15 @@ def test_objective_names_harness_row_fields():
             assert constraint.split()[0] in bench.ROW_KEYS, constraint
 
 
+def test_night_config_optimizes_the_same_objective_under_the_interactive_constraints():
+    config = json.loads((REPO / "lab" / "refine" / "research" / "kernels" / "data" / "ax-config-night.json")
+                        .read_text(encoding="utf-8"))
+    lane = config["lanes"]["inference"]
+    assert lane["objective"] == {"metric": f"{em.OBJECTIVE['metric']}.b1", "goal": em.OBJECTIVE["goal"]}
+    interactive = em.OBJECTIVE["lanes"]["interactive"]["outcome_constraints"]
+    assert lane["outcome_constraints"] == [c.replace(" ", ".b1 ", 1) for c in interactive]
+
+
 def test_cli_prints_the_report_and_the_check(capsys):
     assert em.main(["--json"]) == 0
     rep = json.loads(capsys.readouterr().out)
