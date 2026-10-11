@@ -129,6 +129,7 @@ class Planner:
         self.places = None  # async (kind) -> nearby places (K8), set by the composition root
         self.place_set = None  # PlaceSet (S5): walking minutes from home to the next event
         self.home_place: str | None = None  # where the box is, e.g. "apartment.door" (config: leaving.home_place)
+        self.accepted_optional = lambda: ()  # ids of optional events the person said yes to and approved; set by the composition root
 
     async def on_item(self, e: ItemSynced) -> list:
         """Bus handler for connector.item.synced: plan once per crunch item."""
@@ -281,7 +282,7 @@ class Planner:
         ev = Evidence()
         lines = []
         upcoming = [i for i in self.qa.memory.items(now, now + timedelta(hours=8)) if i.kind in ("calendar_event", "assignment")
-                    and not i.external_id.startswith("nearby:")]  # an optional "near you" event is not what you are leaving for
+                    and (not i.external_id.startswith("nearby:") or i.external_id in self.accepted_optional())]  # an optional "near you" event is not what you are leaving for, unless accepted
         if upcoming:
             nxt = upcoming[0]
             walk, dest = self._walk_minutes(nxt)

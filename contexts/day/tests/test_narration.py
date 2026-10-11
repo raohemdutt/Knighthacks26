@@ -564,6 +564,7 @@ def test_an_approval_card_is_asked_in_plain_words(items, places, tmp_path):  # n
                                             reason="Start a League dare: No energy drinks for 3 days, inviting Maya", expires_at=at(8, 16)))
         await bus.publish(ApprovalRequested(ts=at(8, 12), action_id="msg", kind="send_message", target="dom", reason="Package at the door",
                                             expires_at=at(8, 17)))
+        await bus.publish_all(loop.tick(at(8, 12)))  # the dare's ask waited for the arbiter's gap after the plan's narration
         await settle()
         return plan, card
 

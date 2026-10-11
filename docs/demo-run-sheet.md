@@ -189,6 +189,7 @@ gave a cited answer that still began "I didn't see that."; "while I was out" gav
 | Laptop, seeded | `python -m contexts.demo circle --data-dir /tmp/atlas-demo` (includes the twelve earlier days for Today's Plan), then the command it prints, with `ATLAS_WEB_DIR=web/out` after `cd web && npm run build` |
 | Laptop, with an evening review | `python -m contexts.demo seed --history --data-dir /tmp/atlas-night` (the scripted time, Sun 9:30 AM; `--history` adds the earlier days on Today's Plan's date strip), then `ATLAS_DATA_DIR=/tmp/atlas-night ATLAS_MEMORY_FIXTURE= ATLAS_CONNECTORS=0 python -m contexts.gateway` |
 | The box, T-15 | `python -m contexts.demo preflight --gateway http://<jetson>:8000 --reset` |
+| Laptop, an optional event suggested and said yes to | `python -m contexts.demo optional --data-dir /tmp/atlas-optional` (an invented day; it prints each line Atlas says), then the command it prints (use case 3a) |
 | Live features without a camera | `python -m contexts.demo fake perception --gateway http://<box>:8000 --realtime` (a throwaway box only) |
 
 The phone app's tab bar is **Ask Atlas, Calendar, Today's Plan, More**. **More** lists: Everyday (Ask Atlas, Calendar,
@@ -325,6 +326,86 @@ evening review: a closed day in the log (the scripted-time seed, or the box afte
 | tests | seeded app | Jetson | real hardware |
 | --- | --- | --- | --- |
 | ✅ `contexts/day/tests/test_day.py`, `test_narration.py`, `test_choose.py`; watch sleep `contexts/habits/tests/test_watch_sleep.py`, `contexts/connectors/tests/test_health.py` (synthetic `fixtures/health/freereps.yaml`) | ✅ run A: plan, narration, "Brief me", leave-by route (41 points, 680 m), re-plan, card approved by the guard, plan committed. Evening review + Waste Watch clause PASS on the scripted-time seed (port 8955). Simulated with: the seeded night; template engine. `final/03-now-500.png`, `03-now-route-500.png`, `16-approvals-500.png`, `03-evening-now-500.png` | ⚠️ run B: plan (Win, 3 stars), model-written brief 2.7 s, route PASS; no evening review yet; re-plan not run (read-only) | ❌ the walk has not been walked against "leave by"; sleep from a watch is not connected (Now says "watch: no night measured") |
+
+### 3a. An optional event Atlas suggests, and the reminder when a planned block starts
+
+**Shows:** Atlas brings up an optional "Near you" event once, when it fits, and says who is going.
+"Add it" never changes the plan by itself: it raises a new plan with one approval card, and only
+once that card is approved is the event a block of the day, with its walk, its leave-by and "Time to
+go". On the same day Atlas says when a planned block starts.
+
+**Setup:** `python -m contexts.demo optional --data-dir /tmp/atlas-optional` (an invented day,
+everything in it labelled demo). It prints the lines under **Expected** and, on stderr, the command
+that runs the app on that directory. For the card on a live box instead: a plan for today, and an
+optional event 90 to 30 minutes ahead that fits and names somebody, between 8 AM and 8 PM, with no
+approval card open.
+
+**Steps** (the scene plays them in event time; on a live box they are these taps)
+1. Morning, **Approvals**: **Approve** the day's plan. Block reminders are for a plan that was approved.
+2. When a planned block starts Atlas says so (a "Next up" toast; spoken with "speak up on its own").
+3. 90 to 30 minutes before the event the card "NEAR YOU · Atlas suggests" opens over whatever screen
+   is up, and the same sentence is spoken. Tap **Add it**, or say "yes" / "add it" within 30 seconds
+   of the spoken line.
+4. The card now lists what would move and one button, **Review and approve** → **Approvals** →
+   **Approve**. Voice never approves.
+5. **Calendar** (`/now/`): the event is a block of the day. Ten minutes before the time to leave
+   Atlas says "Time to go".
+
+**Not today** at step 3 instead: the card goes away, the box records the no, and Atlas never
+suggests that event again.
+
+**Expected** (the scene's output; the same lines on every run for the same day, whatever the directory)
+
+```
+An invented Monday (2026-10-12), through the real app. Nothing here happened to anybody.
+
+   8:05 AM  Atlas  Morning. Today looks like this: breakfast first, then a long study block before COP4533 lecture at twenty to eleven. Leave by half past ten for that; it's an eight-minute walk. Project Milestone 1 is due tomorrow, and this plan covers the five hours it still needs. Want me to keep this as today's plan?
+   8:06 AM  You    Approve (demo, approved locally: no calendar connector on this box, nothing is written)
+   1:01 PM  Atlas  It's one o'clock: your study block on Project Milestone 1, ninety minutes. You're at the desk already.
+   4:00 PM  Atlas  Riley, Sam and Alex are having dinner at '63 South at quarter past five. It's a sixteen-minute walk and it fits before your study block. Want me to add it?
+   4:02 PM  You    Add it (yes to Friends' dinner)
+   4:02 PM  Plan   would change: Eat at Kitchen at 6:30 PM (dropped)
+   4:02 PM  Plan   would change: Study at Desk at 7:01 PM (dropped)
+   4:02 PM  Plan   would change: Rest at Desk at 8:31 PM (dropped)
+   4:02 PM  Plan   would change: Study at Desk at 9:16 PM (dropped)
+   4:02 PM  Atlas  Okay, I've worked Friends' dinner in: first up is Friends' dinner at quarter past five. Leave by five to five for that; it's a sixteen-minute walk. Want me to switch to that?
+   4:03 PM  You    Approve (demo, approved locally: no calendar connector on this box, nothing is written)
+   4:03 PM  Plan   Friends' dinner, 5:15 PM to 6:15 PM at '63 South, is a block of the day
+   4:50 PM  Atlas  Time to go. Friends' dinner starts at quarter past five at '63 South, a sixteen-minute walk from here; leave in five minutes.
+
+Suggested once, added only after its card was approved, and told when to leave. Every line Atlas says above is the app's own.
+```
+
+- With the app running on that directory: `GET /api/day/plan?day=2026-10-12` has the block
+  `Friends' dinner` with `fixed: true` and `origin: "optional"`; `GET /api/day/brief` has
+  `latest.suggest` and `latest.start`; `GET /api/day/optional` (on the scene's own day) says `accepted`.
+- The block-start line is the afternoon study block's. After the yes is approved the next block of
+  the day is the dinner itself, and an accepted event with a walk is announced by "Time to go", not by
+  a block-start line.
+- Nothing is written anywhere: both approvals are "keep this as today's plan" on a box with no
+  calendar connector.
+
+**What can go wrong**
+- No suggestion on a live box: `GET /api/day/optional` says why in `suggest_held` for each event
+  ("not within the suggestion window", "nobody is named", "does not fit: ...", "an approval card is
+  open", "outside waking hours", "already suggested"). Fallback: play the scene and read its lines.
+- The yes is refused (HTTP 409, the reason in words): there is no plan for today yet (make one on
+  Now first), or the event no longer fits.
+- The card expired: every approval card lasts 5 minutes. The event is still on offer: tap **Add it**
+  again.
+- A yes less than 90 seconds after the suggestion: the card on screen is there at once, but the
+  spoken "Okay, I've worked it in" waits for the arbiter's gap between two unasked lines. The scene
+  answers after two minutes for that reason.
+- With a calendar connector the same card writes real events. Then it is the owner's tap: the scene
+  stops and says so, and the walkthrough denies the card.
+- The box's cameras are at home: after "Time to go" Atlas cannot see the walk, so the scene ends at
+  the time to leave.
+
+**Verification**
+
+| tests | seeded app | Jetson | real hardware |
+| --- | --- | --- | --- |
+| Pass: `contexts/demo/tests/test_optional_demo.py` (the lines above, the same for two directories, a gateway on the directory, a restart saying nothing again), `contexts/day/tests/test_optional_events.py`, `test_optional_suggest.py`, `tests/test_demo_walkthrough.py` | Pass, on a test gateway on the scene's own directory: `GET /api/day/plan` has the block (`fixed`, `origin: "optional"`, committed), `/api/day/now` has it as the next event with a 16 min walk and leave-by 4:59 PM, the brief has `latest.start` and `latest.suggest`, `check-api.mjs` all passed, the walkthrough's day and coach steps 16 PASS, 0 FAIL, 5 SKIP. On the seeded night (`seed --now`, today's plan made first) the whole walkthrough with `--approve-local` said yes to Board game night, the guard approved its card and the block was in the plan: 100 PASS, 1 FAIL (the known "while I was out" defect), 20 SKIP. The card read in Night and Day at 500x1000 and 1440x900. Simulated with: the invented day; template engine; fake model | Not run | Not run: nobody has heard the suggestion or answered it by voice; the card was read on screen in Night and Day |
 
 ---
 

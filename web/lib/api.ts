@@ -1312,6 +1312,8 @@ export interface PlanMove {
   fixed: boolean;
   deadline: string | null;
   with_friend: string | null;
+  /** "optional": an optional event the person said yes to and approved. */
+  origin?: string | null;
 }
 
 /** Why the plan is what it is: one input the box already had. */
@@ -1371,6 +1373,8 @@ export interface DayReplan extends EventEnvelope {
   action_id: string | null;
   asked: boolean;
   for_event: string | null;
+  /** The optional event ("nearby:...") a yes asked to add, or a no asked to take out. */
+  for_optional?: string | null;
 }
 
 export interface NextEvent {
@@ -1605,7 +1609,96 @@ export interface DayPlanOut {
   plan: DayPlan | DayReplan;
 }
 
-export type DayMoment = "morning" | "now" | "replan" | "coach" | "evening" | "approval" | "checkin";
+/** One block of the plan an optional event would run into (GET /api/day/optional `fit`). */
+export interface OptionalTouched {
+  id: string;
+  title: string;
+  kind: string;
+  start: string;
+  end: string;
+  overlap_minutes: number;
+}
+
+/** How an optional event sits in today's plan. "nearly": only blocks Atlas chose would move, or you would leave a little early. */
+export interface OptionalFit {
+  fits: "yes" | "nearly" | "no";
+  reason: string;
+  walk_minutes: number;
+  /** null when the walk is under three minutes. */
+  leave_by: string | null;
+  from_place: string | null;
+  displaces: OptionalTouched[];
+  conflicts: OptionalTouched[];
+  leave_early_minutes: number;
+}
+
+export type OptionalState = "suggested" | "accepted" | "declined" | "passed";
+
+/** GET /api/day/optional: one optional event ("Near you"), from Memory's `nearby:` calendar items. */
+export interface OptionalEvent {
+  /** "nearby:<slug>:<start ISO>" */
+  id: string;
+  slug: string;
+  title: string;
+  start: string;
+  end: string;
+  place: string | null;
+  place_name: string | null;
+  tags: string[];
+  going: string[];
+  host: string | null;
+  source: string | null;
+  /** accepted only once the card a yes raised was approved. */
+  state: OptionalState;
+  answer: "yes" | "no" | null;
+  /** A card about this event (the re-plan that adds it, or takes it out) is open. */
+  awaiting_approval: boolean;
+  action_id: string | null;
+  plan_id: string | null;
+  /** When Atlas brought it up by itself, if it did. */
+  suggested_at: string | null;
+  /** Why Atlas is not bringing it up right now; null when it may. */
+  suggest_held: string | null;
+  fit: OptionalFit;
+}
+
+export interface OptionalView {
+  now: string;
+  plan_id: string | null;
+  events: OptionalEvent[];
+}
+
+/** What a yes would do to one block Atlas had chosen. Times are local "HH:MM". */
+export interface OptionalChange {
+  id: string;
+  title: string;
+  kind: string;
+  fixed: boolean;
+  change: "moved" | "shortened" | "lengthened" | "dropped";
+  start: string;
+  end: string;
+  new_start?: string;
+  new_end?: string;
+}
+
+/** POST /api/day/optional/{id}. A yes never changes the plan: `action_id` is the approval card it raised. */
+export interface OptionalAnswer {
+  id: string;
+  answer: "yes" | "no";
+  state: OptionalState;
+  /** A re-plan with its approval card was raised. */
+  proposed: boolean;
+  /** Why nothing was proposed (a yes to an event more than a day ahead). */
+  reason?: string;
+  plan_id?: string;
+  action_id?: string | null;
+  moves?: OptionalChange[];
+  adds?: { id: string; title: string; kind: string; start: string; end: string }[];
+  block?: PlanMove;
+  fit?: OptionalFit;
+}
+
+export type DayMoment = "morning" | "now" | "replan" | "coach" | "evening" | "approval" | "checkin" | "suggest" | "start";
 
 /** contracts.day.DayNarrated: one moment of the day in words, for the ear (`spoken`) and for the screen (`display`). */
 export interface DayNarration extends EventEnvelope {
@@ -1621,6 +1714,10 @@ export interface DayNarration extends EventEnvelope {
   facts_hash: string;
   /** A "now" worth saying aloud unasked: leave now, late. */
   urgent: boolean;
+  /** "box" when the box's own speaker says it: the phone stays silent for this line. */
+  spoken_by?: "box" | null;
+  /** Said inside that narration (its event id): shown, never said or pushed again. */
+  merged_into?: string | null;
 }
 
 /** GET /api/day/brief */
@@ -2164,6 +2261,10 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   dayCheckinDone: (id: string) => post<{ id: string; answered: "done" }>("/api/day/checkin/done", { id }),
   /** "Move the block": raises a re-plan with its approval card. Nothing changes until that card is approved. */
   dayCheckinMove: (id: string) => post<{ id: string; answered: "move"; plan_id: string; action_id: string | null }>("/api/day/checkin/move", { id }),
+  /** Optional events ("Near you") for today and the next days, each with its fit, walk, leave-by and state. */
+  dayOptional: (signal?: AbortSignal) => get<OptionalView>("/api/day/optional", undefined, signal),
+  /** Yes or no to one (`id`: its full id or its slug). A yes raises a re-plan with its approval card; nothing changes until that card is approved. */
+  dayOptionalAnswer: (id: string, answer: "yes" | "no") => post<OptionalAnswer>(`/api/day/optional/${encodeURIComponent(id)}`, { answer }),
 
   // Inspection (SPOT): contexts/spot; shapes in components/spot/types.ts. Every GET answers 200 without a kit ({configured: false, note}).
   spotOverview: (signal?: AbortSignal) => get<Spot.Overview>("/api/spot/overview", undefined, signal),

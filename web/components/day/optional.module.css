@@ -1,0 +1,163 @@
+/* Atlas suggesting an optional event: one small card over the open screen, in the place the toasts use (under the
+   header, clear of the tab bar and of the Ask screen's dock) and below any toast that is up (--below, set by the
+   component). Every colour, shadow and radius is a token from app/globals.css, so Night and Day both come from there. */
+
+.card {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: calc(var(--safe-top) + 70px + var(--below, 0px));
+  z-index: 35; /* over the page and the tab bar (30), under the toasts (40) */
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(calc(100% - 2 * var(--gutter)), 520px);
+  margin: 0 auto;
+  padding: 16px 16px 16px 20px;
+  border-radius: var(--radius);
+  background: var(--surface-solid);
+  color: var(--text);
+  box-shadow: var(--sh-float), inset 5px 0 0 var(--accent);
+  animation: suggestion-in 520ms var(--ease-spring);
+  /* what is left above the tab bar; never so little that a tall toast above it squeezes the card shut */
+  max-height: max(240px, calc(100dvh - var(--tabbar-h) - var(--safe-bottom) - var(--safe-top) - 96px - var(--below, 0px)));
+  overflow-y: auto;
+}
+
+.card p {
+  margin: 0;
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.unasked {
+  padding: 2px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 650;
+}
+
+.close {
+  flex: none;
+  width: var(--tap);
+  height: var(--tap);
+  margin: -6px -4px 0 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--muted);
+  box-shadow: var(--sh-raised-sm);
+  font-size: 22px;
+  line-height: 1;
+  transition: box-shadow var(--ease-press);
+}
+
+.close:active {
+  box-shadow: var(--sh-inset-sm);
+}
+
+.title {
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-size: 22px;
+  font-weight: 650;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.who {
+  font-size: 17px;
+  overflow-wrap: anywhere;
+}
+
+.when,
+.fine {
+  font-size: 15px;
+  color: var(--muted);
+}
+
+.line {
+  font-size: 16px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.changes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 12px 14px;
+  list-style: none;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  font-size: 15px;
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.buttons > * {
+  flex: 1 1 150px;
+}
+
+/* a link dressed as the primary button: the one way on after "Add it" */
+.go {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  text-decoration: none;
+}
+
+@keyframes suggestion-in {
+  from {
+    opacity: 0;
+    transform: translateY(-16px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    animation: none;
+  }
+}
+
+/* From 1024px there is a sidebar and room beside the page: the card sits at the top right of it. */
+@media (min-width: 1024px) {
+  .card {
+    left: auto;
+    right: var(--gutter);
+    margin: 0;
+    width: min(calc(100% - var(--side-w) - 2 * var(--gutter)), 440px);
+    max-height: max(240px, calc(100dvh - 120px - var(--below, 0px)));
+  }
+}

@@ -25,6 +25,10 @@ card's kind, target and parameters, and anything it does not recognise counts as
 raised itself and may not approve are denied again, so the box is left without stale cards. With --read-only
 nothing is raised, approved, denied, pushed or changed.
 
+Optional events ("Near you", use case 3) are read in every mode. A yes to one is said only with --approve-local:
+the box records it and raises a re-plan with its approval card, which goes through the same guard (approved only
+when it stays on the box, else denied). A no is never said: it would stop Atlas from suggesting that event.
+
 It does not repeat the pre-flight (`python -m contexts.demo preflight --gateway ...`, contexts/gateway/preflight.py):
 it reads GET /api/preflight and reports the count, and the run sheet says when to run the real one. The shapes
 of the answers are checked in depth by `node web/scripts/check-api.mjs`; here only what a presenter would see.
@@ -925,6 +929,70 @@ def uc_operator(run: Run) -> None:
     run.manual("draw a zone, watch Live", "Zones -> pick camera and zone, drag a box, Save zone; Live shows the camera (owner: teammates' screens)")
 
 
+def uc_day_optional(run: Run) -> None:
+    """Optional events ("Near you") and Atlas suggesting one: use case 3, after the re-plan step. The list and the
+    suggestion are read. A yes is said only with --approve-local: it is recorded on the box and raises a re-plan
+    with its approval card, which is then approved only when the guard says it stays on the box, else denied. A no
+    is never said here: it would stop Atlas from ever suggesting that event."""
+    listed = run.fetch("optional events near you", "/api/day/optional", ("now", "plan_id", "events"),
+                       missing="no optional events on this box (no Day loop, or a build without them)",
+                       note=lambda d: (f"{len(d['events'])} event(s): " + ", ".join(f"{e['slug']} {e['state']}/{e['fit']['fits']}" for e in d["events"][:6]))
+                       if d["events"] else "none in Memory for today or the next days")
+    if listed is None:
+        return
+    brief = run.api.get("/api/day/brief")
+    said = ((brief.data.get("latest") or {}).get("suggest") if isinstance(brief.data, dict) else None) or None
+    if said:
+        run.add("Atlas suggested one", PASS, brief.seconds, said.get("display", ""))
+    else:
+        run.add("Atlas suggested one", SKIP, brief.seconds, "no suggestion in this log yet: Atlas brings one up 90 to 30 minutes before an "
+                "event that fits and names somebody (play one with: python -m contexts.demo optional --data-dir <empty dir>)")
+    step = "say yes to an optional event"
+    if not run.writes:
+        run.add(step + " + its approval card", SKIP, None, "read-only: a yes is recorded on the box and raises a card")
+        return
+    if not run.approve_local:
+        run.add(step + " + its approval card", SKIP, None, "only with --approve-local: a yes is recorded on the box and raises a card")
+        return
+    open_ = [e for e in listed["events"] if e["state"] == "suggested" and e["fit"]["fits"] != "no" and not e["awaiting_approval"]]
+    open_.sort(key=lambda e: (e.get("suggested_at") is None, e["start"]))  # the one Atlas brought up first, else the soonest
+    if not open_:
+        run.add(step, SKIP, None, "no optional event is on offer and fits right now")
+        return
+    event = open_[0]
+    before = run.api.get("/api/day/plan")
+    plan_before = before.data.get("plan_id") if isinstance(before.data, dict) else None
+    r = run.api.post("/api/day/optional/" + urllib.parse.quote(event["id"], safe=""), {"answer": "yes"}, timeout=60)
+    if r.status in (404, 409):
+        run.add(step, SKIP, r.seconds, r.detail)
+        return
+    if r.status != 200 or not isinstance(r.data, dict):
+        run.add(step, FAIL, r.seconds, f"HTTP {r.status}: {r.detail}")
+        return
+    if not r.data.get("proposed"):
+        run.add(step, PASS, r.seconds, f"{event['title']}: noted, nothing proposed ({r.data.get('reason') or 'no reason given'})")
+        return
+    after = run.api.get("/api/day/plan")
+    plan_after = after.data.get("plan_id") if isinstance(after.data, dict) else None
+    if not r.data.get("action_id") or plan_after != plan_before:
+        run.add(step, FAIL, r.seconds, "a yes must raise an approval card and leave the plan as it is until that card is approved")
+        return
+    run.add(step, PASS, r.seconds, f"{event['title']}: a re-plan with its card; {len(r.data.get('moves') or [])} block(s) would change; the plan itself is unchanged")
+    card = run.card(r.data["action_id"])
+    expect = bool(card) and local_only_card(card)[0]  # local only when the box has no calendar connector
+    approved = run.settle_card("the yes's approval card", r.data["action_id"], expect_local=expect)
+    time.sleep(1.0)
+    plan = run.api.get("/api/day/plan")
+    blocks = plan.data.get("blocks") if isinstance(plan.data, dict) else None
+    mine = [b for b in blocks or [] if b.get("origin") == "optional" and b.get("title") == event["title"]]
+    if approved:
+        run.add("the event is a block of today's plan", PASS if mine else FAIL, plan.seconds,
+                f"{mine[0]['title']} at {mine[0].get('place_name')}, fixed, origin optional" if mine else "approved, but no block with origin optional in GET /api/day/plan")
+    else:
+        run.add("without the approval the plan is unchanged", PASS if not mine else FAIL, plan.seconds,
+                "the event is still on offer" if not mine else "the event is in the plan although its card was not approved")
+
+
 def walk(run: Run, only: set[str] | None, scene_pushed: bool, expect_profile: str | None) -> None:
     steps = {"ask": uc_ask, "talk": uc_talk, "day": uc_day, "coach": uc_coach, "dayrun": uc_dayrun, "circle": uc_circle,
              "sortit": lambda r: uc_sortit(r, scene_pushed), "impact": uc_impact, "identity": uc_identity, "privacy": uc_privacy,
@@ -939,6 +1007,7 @@ def walk(run: Run, only: set[str] | None, scene_pushed: bool, expect_profile: st
         todo = [(key, steps[key])]
         if key == "coach" and (only is None or "day" in only):
             todo.append(("day", uc_day_replan))  # use case 3's last step, after the coach has been looked at
+            todo.append(("day", uc_day_optional))  # ... and then the optional events: a yes there raises a re-plan as well
         for case, step in todo:
             run.case = case
             try:

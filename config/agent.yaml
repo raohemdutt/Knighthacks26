@@ -68,3 +68,15 @@ leaving:
 coach_feedback:
   min_corrections: 5
   min_negatives: 2
+
+# The day's unasked speech (contexts/day/domain/arbiter.py, contexts/day/domain/reminders.py). The defaults below
+# hold without this block; uncomment to change one.
+# day:
+#   speak_gap_s: 90         # the least time between two unasked lines (leave now / late and room alerts break it)
+#   speak_stale_s: 120      # a line held that long behind another is dropped (a plan, a card, a check-in, a review wait)
+#   block_reminders: true   # say once when a planned block starts
+#   speaker: box            # the box's own speaker says the unasked lines and the phone stays silent (default: the phone)
+#   suggest_optional: true    # bring up an optional "Near you" event that fits or nearly fits and names somebody, once
+#   suggest_from_min: 90      # ... not earlier than this many minutes before it starts
+#   suggest_until_min: 30     # ... and not later than this
+#   suggest_cooldown_min: 45  # the least time between two such suggestions

@@ -93,7 +93,7 @@ def test_a_check_in_queues_nothing_for_the_circle_and_nothing_of_it_is_synced(tm
     from contracts.day import BOX_ONLY_EVENTS
 
     raised, answered = checkin_events()
-    assert {raised.type, answered.type} == BOX_ONLY_EVENTS
+    assert {raised.type, answered.type} <= BOX_ONLY_EVENTS  # the set also holds `day.optional.answered` (tested below)
     said = [s.summary for s in raised.signals] + [s.detail for s in raised.signals] + [s.text for s in raised.suggestions] + [raised.text]
     assert any("Heart rate" in line for line in said) and any("slept" in line for line in said)  # it really is about a body
 
@@ -114,6 +114,37 @@ def test_a_check_in_queues_nothing_for_the_circle_and_nothing_of_it_is_synced(tm
         assert len(pushed) == len(rows)
 
     asyncio.run(run())
+
+
+# --- an accepted optional event (contexts/day/application/optional.py): the friends its tags name stay on the box ---
+
+
+def test_an_accepted_optional_event_names_no_friend_to_the_circle(tmp_path):
+    """Saying yes to "Friends' dinner ... with Riley, Sam, Alex" and approving the card makes it a block of the day.
+    The block has the title, the time and the place; who is going stays in the calendar item. What the Circle is sent
+    (the closed day's habit summaries) names neither a friend nor the event."""
+    from contexts.day.tests.test_optional_events import DINNER, FRIENDS, afternoon, said_yes
+    from contexts.day.tests.test_optional_events import at as on
+    from contexts.play.domain.places import PlaceSet
+    from contracts.day import BOX_ONLY_EVENTS
+
+    b = afternoon(PlaceSet.load("config/places"), tmp_path)  # the Day loop's box, Monday the 12th at 4 PM
+    habits, sharing = wire(tmp_path, b.bus)  # ... with Habits and the opted-in sharing on the same bus
+    body = said_yes(b, DINNER, on(16, 1))
+    b.approve(body["action_id"], on(16, 2))
+    assert b.optional.accepted == {DINNER} and [m.title for m in b.plan().moves if m.origin == "optional"] == ["Friends' dinner"]
+    b.publish(*sit(12, "16:05", "16:35"))
+    b.publish(*habits.flush(at(13, "00:05")))  # the day closes: this is what leaves
+    rows = sharing.outbox.pending()
+    assert rows and {r.kind for r in rows} == {"habit_summary"} and all(set(r.payload) == HABIT_FIELDS for r in rows)
+    leaving = json.dumps([r.payload for r in rows])
+    assert not [word for word in (*FRIENDS, "dinner", "nearby", "optional", "63 South", "GroupMe") if word in leaving]
+    # nothing a plan carries could take a name out either: no block's id, title or place holds one
+    plans = [e for e in b.out if e.type in ("day.plan.proposed", "day.replan.proposed")]
+    assert len(plans) >= 2 and not [m for e in plans for m in e.moves if [n for n in FRIENDS if n in f"{m.id} {m.title} {m.place_name}"]]
+    answers = [e for e in b.out if e.type == "day.optional.answered"]
+    assert [e.id for e in answers] == [DINNER] and {e.type for e in answers} <= BOX_ONLY_EVENTS
+    assert not [n for n in FRIENDS if n in answers[0].model_dump_json()]  # which event, never who
 
 
 def test_nothing_that_writes_to_the_circle_knows_the_day_context_or_a_check_in():

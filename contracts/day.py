@@ -29,6 +29,7 @@ class PlanMove(BaseModel):
     fixed: bool = False
     deadline: str | None = None  # study: the deadline it works on
     with_friend: str | None = None
+    origin: str | None = None  # "optional": an optional event the person said yes to (contexts/day/application/optional.py)
 
 
 class MoveIn(BaseModel):
@@ -246,6 +247,7 @@ class DayReplanProposed(TypedEvent):
     action_id: str | None = None
     asked: bool = False  # True when the person asked for it (POST /api/day/plan from_here), not drift
     for_event: str | None = None  # the fixed block the drift was about
+    for_optional: str | None = None  # the optional event ("nearby:...") a yes asked to add, or a no asked to take out
 
 
 @register
@@ -274,7 +276,8 @@ class DayReviewed(TypedEvent):
     block_minutes: int | None = None  # the block length the coach suggests for tomorrow
 
 
-Moment = Literal["morning", "now", "replan", "coach", "evening", "approval", "checkin"]
+# "suggest": an optional event coming up that fits ("Want me to add it?"); "start": a planned block is starting.
+Moment = Literal["morning", "now", "replan", "coach", "evening", "approval", "checkin", "suggest", "start"]
 
 
 @register
@@ -293,6 +296,11 @@ class DayNarrated(TypedEvent):
     engine: Literal["template", "model"] = "template"
     facts_hash: str
     urgent: bool = False  # a "now" worth saying aloud unasked: leave now, late, you will miss it
+    # One speaker (contexts/day/domain/arbiter.py): "box" when the box's own speaker says this line, so the phone's
+    # voice stays silent for it; None (the default, as before) when the phone or browser may say it.
+    spoken_by: Literal["box"] | None = None
+    # Said inside another narration (that one's event id): the screen may show it, nobody says or pushes it again.
+    merged_into: str | None = None
 
 
 # --- the coach's feedback loop (contexts/day/application/coach_feedback.py): additive ---
@@ -326,7 +334,8 @@ class DayCoachCorrected(TypedEvent):
 # camera episodes, never the event log: contexts/learning/tests/test_export.py), and the push that announces one
 # carries the suggestions only (contexts/day/application/loop.py). Every field below is box-only; none is safe
 # to forward, the plain-word summaries included ("Heart rate: up" is still a statement about a person's body).
-BOX_ONLY_EVENTS = frozenset({"day.checkin.raised", "day.checkin.answered"})
+# `day.optional.answered` is here too: which invitations a person took or turned down is nobody else's business.
+BOX_ONLY_EVENTS = frozenset({"day.checkin.raised", "day.checkin.answered", "day.optional.answered"})
 
 CheckinSignalKind = Literal["sleep", "resting_hr", "expression", "sitting", "drink", "history"]
 CheckinSuggestionKind = Literal["drink", "break", "move_block", "walk"]
@@ -388,3 +397,23 @@ class DayCheckinAnswered(TypedEvent):
     checkin_id: str  # the `day.checkin.raised` event's id
     answer: Literal["done", "move"]
     action_id: str | None = None  # the re-plan's approval card, when the answer was "move"
+
+
+# --- optional events (contexts/day/application/optional.py): additive, and box-only ---
+
+
+@register
+class DayOptionalAnswered(TypedEvent):
+    """The person said yes or no to an optional event ("Near you": a `connector.item.synced` calendar item whose
+    `external_id` starts with `nearby:`). A no is all there is to it: the event is not suggested again. A yes never
+    changes the plan by itself: it raises a re-plan (`day.replan.proposed`, `for_optional`) with its approval card,
+    and the event is a block of the day only once that card is approved (`day.plan.committed`). Box-only."""
+
+    type: Literal["day.optional.answered"] = "day.optional.answered"
+    day: date
+    id: str  # the optional event's `external_id`
+    answer: Literal["yes", "no"]
+    at: datetime
+    plan_id: str | None = None  # the re-plan the answer raised, when it raised one
+    action_id: str | None = None  # ... and its approval card
+    until: datetime | None = None  # a yes that means leaving early for the next fixed event: when its block ends in the plan
