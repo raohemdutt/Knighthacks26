@@ -270,6 +270,63 @@ LOCAL_PLAN = ("You said yes to Friends' dinner at 5:15 PM. Replace today's plan 
               "No calendar connector on this box: approving keeps this as today's plan, nothing is written")
 
 
+# ---------- Privacy: the three "Pictures" rows ----------
+class PolicyBox:
+    proxy = None
+
+    def __init__(self, **policy):
+        self.policy = {"blur_faces": True, "paused_cameras": [], "offline": False, "keep_days": None, "live_faces": "clear"} | policy
+        self.policy = {k: v for k, v in self.policy.items() if v != "left out"}
+        self.posts = []
+
+    def get(self, path, timeout=30):
+        if path == "/vault/policy":
+            return dw.Resp(200, self.policy, content_type="application/json")
+        if path == "/vault/egress":
+            return dw.Resp(200, {"allowed": [], "blocked": 0, "enforced": False}, content_type="application/json")
+        if path == "/privacy/":
+            return dw.Resp(200, None, "<html>", content_type="text/html")
+        return dw.Resp(404, {"detail": "not here"}, content_type="application/json")
+
+    def post(self, path, body=None, timeout=30):
+        self.posts.append(path)
+        return dw.Resp(404, {"detail": "not here"}, content_type="application/json")
+
+
+SAVED, LIVE = "saved pictures are always blurred", "your live view: faces only on your own signed-in screen"
+
+
+def privacy_rows(**policy):
+    run = dw.Run(PolicyBox(**policy), read_only=True, ask=False)
+    dw.uc_privacy(run)
+    assert run.api.posts == []  # the walkthrough reads the policy; it never changes it
+    return {r.step: (r.status, r.note) for r in run.rows}
+
+
+def test_privacy_checks_the_three_picture_rows_of_the_locked_design(capsys):
+    rows = privacy_rows()
+    assert rows[SAVED][0] == dw.PASS and rows[SAVED][1].startswith("blur_faces on; offline=False")
+    assert rows[LIVE] == (dw.PASS, "clear on the owner's signed-in screen, blurred for everyone else")
+    for seen_by_a_person in ("a saved frame shows blurred faces", "anything that leaves this box is blurred",
+                             "the live view shows faces only on your own signed-in screen"):
+        assert rows[seen_by_a_person][0] == dw.SKIP and rows[seen_by_a_person][1].startswith("needs a person: ")
+    assert privacy_rows(live_faces="blurred")[LIVE] == (dw.PASS, "blurred for everyone: the owner switched the clear view off")
+
+
+@pytest.mark.parametrize("off", [False, None, 0, "false"])
+def test_privacy_fails_on_a_box_that_saves_pictures_unblurred(off, capsys):
+    rows = privacy_rows(blur_faces=off)
+    assert rows[SAVED][0] == dw.FAIL
+    assert "blur_faces is OFF" in rows[SAVED][1] and "saving pictures with faces showing" in rows[SAVED][1]
+    assert rows[LIVE][0] == dw.PASS  # the other rows are still reported
+
+
+def test_privacy_fails_when_the_policy_does_not_carry_the_rows(capsys):
+    assert privacy_rows(blur_faces="left out")[SAVED] == (dw.FAIL, "missing field(s): blur_faces")
+    assert privacy_rows(live_faces="left out")[LIVE] == (dw.FAIL, "missing field(s): live_faces")  # a gateway from before #383
+    assert privacy_rows(live_faces="everyone")[LIVE][0] == dw.FAIL
+
+
 class OptionalBox:
     """A box with one optional event on offer: serves the list, the brief and the plan, takes a yes and a decision."""
     proxy = None
