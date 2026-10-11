@@ -540,8 +540,10 @@ def test_the_nonce_keeps_measured_requests_from_hitting_the_prefix_cache(tmp_pat
     assert all(r["cached_prompt_tokens"] > 0 for r in without["rows"][0]["requests"])   # the warm-up filled it
 
 
-def stalling(config, *, timeout_s=1.0):
-    """A run whose measured streams the fake slows past the harness's bound (grace 0, timeout_s per request)."""
+def stalling(config, *, timeout_s=2.0):
+    """A run whose measured streams the fake leaves stuck (stall_tok_s=0: a first token, then only keep-alives), so
+    the harness's bound (grace 0, timeout_s per request) is what ends them. The bound is wide enough that the warm-ups
+    and the probe (eight tokens at 400 tok/s) finish inside it on a loaded test box; the stuck streams never do."""
     return dataclasses.replace(config, request_timeout_s=timeout_s, stream_grace_s=0.0)
 
 
@@ -554,7 +556,7 @@ def assert_stuck_row_keeps_what_ran(row, n_prompts):
 
 
 def test_a_stuck_run_on_a_shared_spawn_ends_the_spawn_and_keeps_its_warmup_and_probe(tmp_path):
-    config, host, power = fake_config(tmp_path, batches=(1, 4), stall_match="b1-measure-", stall_tok_s=4.0)
+    config, host, power = fake_config(tmp_path, batches=(1, 4), stall_match="b1-measure-", stall_tok_s=0.0)
     config = stalling(dataclasses.replace(config, share_spawn=True))
     result = bench.run_session(config, host=host, power=power)
     first, second = result["rows"]
@@ -567,7 +569,7 @@ def test_a_stuck_run_on_a_shared_spawn_ends_the_spawn_and_keeps_its_warmup_and_p
 def test_a_stuck_run_while_attached_still_writes_every_row_and_the_summary(tmp_path):
     root = tmp_path / "pod"
     port_file = tmp_path / "serve.port"
-    argv = bench.fill_command(bench_fake.serve_command(root=str(root), stall_match="b1-measure-", stall_tok_s=4.0),
+    argv = bench.fill_command(bench_fake.serve_command(root=str(root), stall_match="b1-measure-", stall_tok_s=0.0),
                               {"port": 0, "port_file": port_file, "log": tmp_path / "serve.log"})
     server = subprocess.Popen(argv)
     try:
