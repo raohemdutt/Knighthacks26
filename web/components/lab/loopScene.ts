@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { type DeviceModel, type DeviceTextures, type Materials, buildDevice, makeMaterials, makeTextures } from "@/components/home/deviceModel";
-import type { LoopKey, LoopStage, LoopState } from "@/lib/labWords";
+import type { LoopKey, LoopStage, LoopState } from "@/lib/labLoop";
 
 /**
  * The learning loop in three dimensions: the Atlas box on the left, the lab's two pods on the right, and the path a
@@ -23,7 +23,7 @@ import type { LoopKey, LoopStage, LoopState } from "@/lib/labWords";
 export interface LoopOptions {
   calm: boolean;
   dark: boolean;
-  /** The class of a stage's tag in the overlay (story.module.css loopTag). */
+  /** The class of a stage's tag in the overlay (loop.module.css loopTag). */
   tagClass: string;
 }
 

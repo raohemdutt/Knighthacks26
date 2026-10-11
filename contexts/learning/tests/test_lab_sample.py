@@ -190,8 +190,7 @@ def test_measured_numbers_come_from_the_labs_metrics_file_with_their_line_and_ar
     assert speed["chip"]["name"] == "Radeon R9700" and speed["other_chip"] is True  # before the move, no chip named
     assert client(LabView(), metrics_file=None, sample_dir=None).get("/api/learning/lab").json() == {
         "runs": [], "sample": False, "sample_reason": None, "real_runs": 0, "current_model": None, "measured": [],
-        "box_now": body["box_now"], "suggested_events": body["suggested_events"]}
-    assert body["box_now"]["model_version"] is None and body["box_now"]["reason"]  # no install in the log: said, not guessed
+        "suggested_events": body["suggested_events"]}
 
 
 def test_measured_numbers_from_the_committed_file_each_cite_a_line_that_holds_that_metric_and_value():

@@ -37,21 +37,6 @@ export interface LabRunSummary {
   verdict: string | null;
   scores: { current: LabNum; candidate: LabNum; teacher: LabNum };
   run_status?: RunStatus | null;
-  /** What the test said, in counts when the box holds them. null until the run is tested; absent on an older box. */
-  tested?: { decision: "deploy" | "reject"; n_items: number | null; right_before: number | null; right_after: number | null; rehearsal: string | null; source: LabSource | null } | null;
-  deployed?: string | null;
-  rolled_back?: { ts: string; to: string | null; reason?: string | null } | null;
-}
-
-/** The newest install the box's log holds (whichever run it belongs to), or `reason` when it holds none. */
-export interface LabBoxNow {
-  model_version: string | null;
-  previous_version: string | null;
-  since: string | null;
-  source: LabSource | null;
-  reason: string | null;
-  /** In a run's story: whether that install is this run's model. */
-  this_run?: boolean | null;
 }
 
 /**
@@ -103,7 +88,6 @@ export interface LabList {
   sample_reason: string | null;
   real_runs: number;
   current_model: { version: string; source: string } | null;
-  box_now?: LabBoxNow;
   measured: LabMeasured[];
 }
 
@@ -200,10 +184,6 @@ export interface LabStory {
     groups: { group: string; n: number; before: number; after: number; diff: number }[] | null;
     verdict: string | null;
     verdict_detail: string[];
-    /** Why the per-question answers cannot be the model's own (a rehearsal of the loop), or null. Absent on an older box. */
-    rehearsal?: string | null;
-    correct?: Record<string, LabNum>;
-    source?: LabSource | null;
   };
   package: { model_version: string | null; gguf: string | null; base: string | null; quantization: string | null; sha256: string | null; reason: string | null; bytes: LabNum };
   deploy: {
@@ -215,10 +195,6 @@ export interface LabStory {
     rolled_back: { ts: string; to: string | null; reason?: string | null } | null;
   };
   box: { before: LabBoxSide | null; after: LabBoxSide | null; reason: string | null };
-  box_now?: LabBoxNow;
-  /** The live loop's stages as the gateway lit them (lab_view._strip): labeling, training, packaging, offered. */
-  stage_strip?: { stage: string; state: "done" | "now" | "waiting" | "failed" | "not reported"; started: string | null; ended: string | null; seconds: number | null; message: string | null }[];
-  steps_so_far?: number;
   gaps: { label: string; reason: string }[];
   sources: LabNum[];
   measured: LabMeasured[];
@@ -241,7 +217,7 @@ export const CHAPTERS: Chapter[] = [
   { key: "taught", n: 1, title: "Taught from", from: 0, to: 0.1 },
   { key: "training", n: 2, title: "Training", from: 0.1, to: 0.55 },
   { key: "answers", n: 3, title: "Before / after", from: 0.55, to: 0.8 },
-  { key: "gate", n: 4, title: "The test", from: 0.8, to: 0.88 },
+  { key: "gate", n: 4, title: "The gate", from: 0.8, to: 0.88 },
   { key: "box", n: 5, title: "On the box", from: 0.88, to: 1 },
 ];
 
@@ -303,13 +279,11 @@ export function show(n: LabNum): string {
     case "bytes":
       return fileSize(v);
     case "J":
-      return v >= 3600 ? `${(v / 3600).toFixed(1)} Wh (${Math.round(v).toLocaleString()} J)` : v >= 100 ? `${Math.round(v).toLocaleString()} J` : `${v.toFixed(1)} J`;
-    case "samples/s":
-      return `${Number(v.toPrecision(2))} examples a second`;
+      return v >= 3600 ? `${(v / 3600).toFixed(1)} Wh (${Math.round(v).toLocaleString()} J)` : `${v.toFixed(1)} J`;
     case null:
       return String(Number(v.toPrecision(3)));
     default:
-      return `${Number.isInteger(v) ? v.toLocaleString() : Math.abs(v) >= 100 ? Math.round(v).toLocaleString() : Number(v.toPrecision(3))} ${n.unit}`;
+      return `${Number.isInteger(v) ? v.toLocaleString() : Number(v.toPrecision(4))} ${n.unit}`;
   }
 }
 

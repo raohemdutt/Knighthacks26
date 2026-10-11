@@ -91,16 +91,9 @@ class SimError(ValueError):
 
 def recorded_inputs(rows: list[dict[str, Any]]) -> dict[str, Any]:
     """What the model stands on: the teacher's newest batching sweep on the routing hook's teacher node and the
-    student's figures on the Jetson. `missing` says what the file does not hold; the simulator refuses to run then.
-
-    The newest sweep with three load levels or more is taken before a newer one with only two: two points are a line,
-    not a curve, and the what-if would read "the largest batch measured" as 4. It is the same sweep the Speed and
-    energy tab opens on (web/lib/labWords.ts headlineSweep), so the two tabs stand on the same rows."""
-    def has(s: dict[str, Any], n: int) -> bool:
-        return s["node"] == TEACHER_NODE and all(len(s["metrics"].get(m, [])) >= n for m in ("joules_per_token", "decode_tok_s", "ttft_s"))
-
-    found = sweeps(rows)  # newest first
-    sweep = next((s for s in found if has(s, 3)), None) or next((s for s in found if has(s, 2)), None)
+    student's figures on the Jetson. `missing` says what the file does not hold; the simulator refuses to run then."""
+    sweep = next((s for s in sweeps(rows) if s["node"] == TEACHER_NODE and all(
+        len(s["metrics"].get(m, [])) >= 2 for m in ("joules_per_token", "decode_tok_s", "ttft_s"))), None)
     ref = student(rows)
     missing = []
     if sweep is None:
@@ -406,8 +399,6 @@ def simulate(params: dict[str, Any] | None, rows: list[dict[str, Any]]) -> dict[
                 "inputs": inputs}
     model = Model(inputs, resolved["tokens"], resolved["student_basis"])
     resolved["student_basis"] = model.basis
-    span = inputs["teacher"]["batches"]  # the range this sweep really recorded, said as it is (not always 1 to 64)
-    head["assumptions"] = [a.replace("recorded range of 1 to 64", f"recorded range of {span[0]} to {span[-1]}") for a in ASSUMPTIONS]
     times, kinds = stream(resolved)
     window = resolved["minutes"] * 60.0
     runs = {name: run_policy(model, name, times, kinds, window) for name in (CAPABILITY, ENERGY)}

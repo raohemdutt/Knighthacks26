@@ -7,7 +7,6 @@ GET /api/learning/lab
      "sample": false, "sample_reason": null,            kept for the screen; the committed sample is never served
      "real_runs": int,                                  runs in this box's own log that are shown
      "current_model": {version, source} | null,         what the box serves now (never from the sample)
-     "box_now": {model_version, since, source, reason}, the newest install the box's log holds, or why it holds none
      "measured": [number],                              the trainer numbers measured on our hardware (lab metrics file)
      "suggested_events": [...],                         the additive events this view can use and the lab does not send yet
      "trainer_runs": [...]}                             only when the trainer's run folders were read from disk (lab_runs.py)
@@ -42,7 +41,6 @@ from contexts.learning.application.lab_bench import chip_of
 from contexts.learning.application.lab_compare import CompareMissing, compare_runs, env_dirs, load_loops
 from contexts.learning.application.lab_runs import sync as sync_trainer_runs
 from contexts.learning.application.lab_loops import is_fixture_run
-from contexts.learning.application.lab_rehearsal import rehearsal_compare
 from contexts.learning.application.lab_sample import SAMPLE_DIR  # the old default of sample_dir, now unused
 from contexts.learning.application.lab_view import SUGGESTED_EVENTS, LabView, by_file, collect_numbers, num
 
@@ -96,7 +94,6 @@ def lab_router(view: LabView, current_model: Callable[[], dict | None] | None = 
         runs = [r for r in view.runs() if not is_fixture_run(r["run_id"])]
         return {"runs": runs, "sample": False, "sample_reason": None,
                 "real_runs": len(shown()), "current_model": model, "measured": measured(metrics_file),
-                "box_now": view.box_now(),  # the newest install the box's log holds, or why it holds none
                 "suggested_events": SUGGESTED_EVENTS,
                 **({"trainer_runs": trainer_runs} if trainer_runs else {})}  # run folders read from disk, when there are any
 
@@ -107,14 +104,6 @@ def lab_router(view: LabView, current_model: Callable[[], dict | None] | None = 
             return compare_runs(load_loops(loops_from if loops_from is not None else env_dirs()), view, a, b)
         except CompareMissing as err:
             raise HTTPException(404, str(err)) from None
-
-    @router.get("/api/learning/lab/rehearsal")  # before /{run_id} too; a second source, never mixed into /compare
-    def rehearsal() -> dict:
-        """The lab's recorded rehearsal of alone against with a friend, labelled as such (application/lab_rehearsal.py)."""
-        answer = rehearsal_compare()
-        if answer is None:
-            raise HTTPException(404, "the lab's recorded rehearsal is not in this checkout")
-        return answer
 
     @router.get("/api/learning/lab/{run_id}")
     def run(run_id: str, sample: bool = False) -> dict:  # noqa: ARG001 - accepted and ignored
