@@ -1,0 +1,30 @@
+{
+ "tile.num_stages_1.t256_w4": {
+  "n_regs": 88,
+  "n_spills": 0,
+  "shared": 20480,
+  "num_warps": 4,
+  "num_stages": 1
+ },
+ "tile.num_stages_2.t256_w4": {
+  "n_regs": 112,
+  "n_spills": 0,
+  "shared": 40960,
+  "num_warps": 4,
+  "num_stages": 2
+ },
+ "lora.split_k_1.m1024_k2560": {
+  "n_regs": 40,
+  "n_spills": 0,
+  "shared": 10240,
+  "num_warps": 4,
+  "num_stages": 2
+ },
+ "lora.split_k_4.m1024_k2560": {
+  "n_regs": 40,
+  "n_spills": 0,
+  "shared": 10240,
+  "num_warps": 4,
+  "num_stages": 2
+ }
+}
