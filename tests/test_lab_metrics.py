@@ -222,6 +222,34 @@ EXPECTED_SEED = [
     ("teacher.joules_per_token", "pod-b", {"batch_size": 64, "session": "pod-b-2026-10-10"}, 1.9619, "J/token", True),
     ("teacher.watts_avg", "pod-b", {"batch_size": 64, "session": "pod-b-2026-10-10"}, 96.0237, "W", True),
     ("teacher.watts_peak", "pod-b", {"batch_size": 64, "session": "pod-b-2026-10-10"}, 97.7339, "W", True),
+    # E29: llama.cpp 23b0202 HIP serving the teacher's Q4_K_M GGUF on pod D (gfx1151), cut short for L5: batch 1 and 4
+    # over 3 runs, 8 and 16 once, 64 not run; and llama-bench's own pp512 and tg128
+    ("teacher_llamacpp.decode_tok_s", "pod-b", {"batch_size": 1}, 12.1185, "tok/s", True),
+    ("teacher_llamacpp.decode_tok_s_total", "pod-b", {"batch_size": 1}, 10.4758, "tok/s", True),
+    ("teacher_llamacpp.ttft_s", "pod-b", {"batch_size": 1}, 1.4634, "s", True),
+    ("teacher_llamacpp.joules_per_token", "pod-b", {"batch_size": 1}, 10.449, "J/token", True),
+    ("teacher_llamacpp.watts_avg", "pod-b", {"batch_size": 1}, 109.9128, "W", True),
+    ("teacher_llamacpp.watts_peak", "pod-b", {"batch_size": 1}, 117.0, "W", True),
+    ("teacher_llamacpp.decode_tok_s", "pod-b", {"batch_size": 4}, 9.0896, "tok/s", True),
+    ("teacher_llamacpp.decode_tok_s_total", "pod-b", {"batch_size": 4}, 23.419, "tok/s", True),
+    ("teacher_llamacpp.ttft_s", "pod-b", {"batch_size": 4}, 7.1765, "s", True),
+    ("teacher_llamacpp.joules_per_token", "pod-b", {"batch_size": 4}, 4.679, "J/token", True),
+    ("teacher_llamacpp.watts_avg", "pod-b", {"batch_size": 4}, 109.5083, "W", True),
+    ("teacher_llamacpp.watts_peak", "pod-b", {"batch_size": 4}, 122.0, "W", True),
+    ("teacher_llamacpp.decode_tok_s", "pod-b", {"batch_size": 8}, 3.7304, "tok/s", True),
+    ("teacher_llamacpp.decode_tok_s_total", "pod-b", {"batch_size": 8}, 21.5206, "tok/s", True),
+    ("teacher_llamacpp.ttft_s", "pod-b", {"batch_size": 8}, 14.4666, "s", True),
+    ("teacher_llamacpp.joules_per_token", "pod-b", {"batch_size": 8}, 4.7024, "J/token", True),
+    ("teacher_llamacpp.watts_avg", "pod-b", {"batch_size": 8}, 101.1975, "W", True),
+    ("teacher_llamacpp.watts_peak", "pod-b", {"batch_size": 8}, 128.0, "W", True),
+    ("teacher_llamacpp.decode_tok_s", "pod-b", {"batch_size": 16}, 4.5329, "tok/s", True),
+    ("teacher_llamacpp.decode_tok_s_total", "pod-b", {"batch_size": 16}, 41.9757, "tok/s", True),
+    ("teacher_llamacpp.ttft_s", "pod-b", {"batch_size": 16}, 27.5993, "s", True),
+    ("teacher_llamacpp.joules_per_token", "pod-b", {"batch_size": 16}, 2.2716, "J/token", True),
+    ("teacher_llamacpp.watts_avg", "pod-b", {"batch_size": 16}, 95.3507, "W", True),
+    ("teacher_llamacpp.watts_peak", "pod-b", {"batch_size": 16}, 101.0, "W", True),
+    ("teacher_llamacpp.llama_bench_pp512_tok_s", "pod-b", {"test": "pp512"}, 390.7811, "tok/s", True),
+    ("teacher_llamacpp.llama_bench_tg128_tok_s", "pod-b", {"test": "tg128"}, 12.1822, "tok/s", True),
 ]
 
 # The numbers the lab setup measured, by metric name.
@@ -286,7 +314,11 @@ def test_every_low_confidence_seed_row_says_why():
         "teacher.output_match_rate"} | {
         # R57: the A100 reference medians are of 3 spawns
         "telemetry.sampler_cpu_pct", "jetson.idle_watts", "student.watts_avg", "student.watts_peak",
-        "teacher.decode_tok_s", "teacher.decode_tok_s_total", "teacher.ttft_s"}
+        "teacher.decode_tok_s", "teacher.decode_tok_s_total", "teacher.ttft_s"} | {
+        # E29: llama.cpp on pod D, cut short (1 to 3 runs per batch size) and one llama-bench call
+        "teacher_llamacpp." + name
+        for name in ("decode_tok_s", "decode_tok_s_total", "ttft_s", "joules_per_token", "watts_avg", "watts_peak",
+                     "llama_bench_pp512_tok_s", "llama_bench_tg128_tok_s")}
     for row in flagged:
         if row["conditions"].get("sampler") == SAMPLER:  # the sampler's rows: its error is "unknown" until a reference run
             assert row["conditions"]["error"] == "unknown", row["metric"]
