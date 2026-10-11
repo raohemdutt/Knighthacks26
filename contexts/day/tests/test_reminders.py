@@ -234,3 +234,24 @@ def test_the_busy_quarter_hour(items, places, tmp_path):  # noqa: F811
     assert ("day-narrated-suggest-nearby:food-truck-night", "drop", "a check-in card is open") in loop.arbiter.log  # raised, not answered
     non_urgent = [e.ts for e in loud if not e.urgent]
     assert all((b - a).total_seconds() >= loop.arbiter.rules.gap_s for a, b in zip(non_urgent, non_urgent[1:]))
+
+
+def test_one_speaker_the_box_says_the_line_and_it_is_marked_for_the_phone_to_stay_silent(items, places, tmp_path):  # noqa: F811
+    from contexts.day.application.loop import box_voice
+
+    loop, bus, _ = build(items, places, tmp_path, runtime=FakeRuntime())
+    loop.arbiter.speaker = lambda: "box"
+    heard: list[str] = []
+
+    async def say(text: str) -> None:
+        heard.append(text)
+
+    bus.subscribe("day.narrated", box_voice(say))
+
+    async def scenario():
+        await committed(loop, bus)
+        return await tick(loop, bus, at(14))
+
+    [start] = [e for e in asyncio.run(scenario()) if e.moment == "start"]
+    assert start.spoken_by == "box" and heard[-1] == start.spoken
+    assert len([t for t in heard if t == start.spoken]) == 1

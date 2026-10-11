@@ -124,6 +124,18 @@ def checkin_push(e: DayCheckinRaised) -> str:
     return f"Atlas has a check-in for you.{todo} Open Now to see why."
 
 
+def box_voice(say):
+    """A live bus handler that hands the lines the arbiter gave to the box's speaker (`spoken_by == "box"`) to
+    `say(text)` (the voice service's POST /say); the phone stays silent for those. A line said inside another
+    (`merged_into`) is never said again. Off unless agent.yaml `day: {speaker: box}` (contexts/gateway/bootstrap.py)."""
+
+    async def on(e: Event) -> None:
+        if isinstance(e, DayNarrated) and e.spoken_by == "box" and not e.merged_into and e.spoken:
+            await say(e.spoken)
+
+    return on
+
+
 def day_phone(ntfy, topic: str, narrated: bool = False):
     """A bus handler that pushes the plan, a re-plan, the review and the coach's sentence after a block to the
     phones (the card itself goes out as every approval does, through PhoneNotifier.on_approval).

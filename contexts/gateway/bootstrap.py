@@ -37,7 +37,7 @@ from contexts.circle.infrastructure.neon import CircleBoard, NeonCircleStore, Ne
 from contexts.circle.infrastructure.outbox import CircleOutbox
 from contexts.connectors.application.hub import ConnectorHub
 from contexts.connectors.domain.spec import load_specs
-from contexts.day.application.loop import DayLoop, day_phone
+from contexts.day.application.loop import DayLoop, box_voice, day_phone
 from contexts.connectors.infrastructure.mcp_client import McpConnector
 from contexts.learning.application.board import LearningBoard
 from contexts.learning.application.export import DatasetExporter
@@ -508,6 +508,9 @@ def build(settings: Settings | None = None) -> Atlas:
         talk.day_facts = lambda: day.in_words(datetime.now(UTC))  # the person's day, in the narrator's words
         if ntfy:  # the plan, a re-plan and the review on the phone, in the narrator's words when it is on
             bus.subscribe("day.", day_phone(ntfy, s.ntfy_topic, narrated=day.narrator.mode != "off"))
+        if (agent_cfg.get("day") or {}).get("speaker") == "box":  # one speaker: the box's own says the unasked lines
+            day.arbiter.speaker = lambda: "box"
+            bus.subscribe("day.narrated", box_voice(_box_say))  # live only
 
     # The League (contexts/play/league): the friends' weekly game. The standings rebuild from the log; the
     # follow-ups (GroupMe post, Circle plan) and the stake/dare executor are live and behind approval cards.
@@ -593,3 +596,17 @@ def build(settings: Settings | None = None) -> Atlas:
                  telemetry=telemetry, profile=profile, league=league, league_sync=league_sync,
                  face_share=face_share,
                  impact=impact, coach_feedback=coach_feedback, spot=spot)
+
+
+async def _box_say(text: str) -> None:
+    """An unasked line on the box's speaker, through the voice service's POST /say (contexts/voice). The service
+    speaks only while idle; a busy or absent service is logged, never raised into the bus."""
+    import httpx
+
+    from contexts.voice.proxy import voice_url
+
+    try:
+        async with httpx.AsyncClient(timeout=3) as client:
+            (await client.post(voice_url() + "/say", json={"text": text})).raise_for_status()
+    except httpx.HTTPError as exc:
+        logging.getLogger("atlas.day").info("the box's voice did not take the line: %s", exc)
