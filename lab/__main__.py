@@ -67,6 +67,7 @@ VERBS: dict[str, str] = {
     "resume": "lab.machine.stop:resume_main",
     "review": "lab.machine.review:main",
     "rulings": "lab.machine.rulings:main",
+    "sampler-overhead": "lab.sampler_overhead:main",
     "sit": "lab.machine.sit:main",
     "slot": "lab.machine.slots:main",
     "stop": "lab.machine.stop:stop_main",
