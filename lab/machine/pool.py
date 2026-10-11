@@ -413,6 +413,7 @@ class TrackState:
     ended_at: dt.datetime | None = None
     unreconciled: int = 0
     problem: str | None = None
+    refusal: str | None = None
 
 
 @dataclass
@@ -439,6 +440,26 @@ def _cap_pass(track_log: rf.Log) -> int | None:
     return None
 
 
+def pass_refusal(track: str, log: rf.Log, counter: int) -> str | None:
+    """Why a sitting for the track's next pass (counter + 1) must not start, None when it may: the log
+    already records that pass as finished, it would skip a number, or the track's files break the
+    numbering rules of the combined track check (refine_merge.check_track)."""
+    numbers = [entry.number for entry in log.passes]
+    following = counter + 1
+    if following in numbers:
+        return (f"pass {following} is already finished in REFINE_LOG.md, but refine_pass.txt reads {counter}; "
+                "the counter is written last, so a pass left it behind")
+    expected = (numbers[-1] if numbers else 0) + 1
+    if following != expected:
+        return (f"pass {following} would skip pass {expected}: refine_pass.txt reads {counter}, "
+                f"the last pass in REFINE_LOG.md is {expected - 1}")
+    # the numbering rules of the combined track check; its entry-content and report rules are the suite's
+    # business, not a reason to hold a pass
+    problems = [p for p in refine_merge.check_track(track, log, counter, {})
+                if p.startswith((f"{track}: pass entries are numbered", f"{track}: refine_pass.txt reads"))]
+    return f"the track's files break the track rules: {problems[0]}" if problems else None
+
+
 def read_refine(files: RefineFiles) -> RefineState:
     """The refinement loop's state from its files. A track whose log or counter cannot be read
     has a problem and is never offered a pass; an unreadable merge log offers no merge."""
@@ -462,6 +483,7 @@ def read_refine(files: RefineFiles) -> RefineState:
             problems.append(state.problem)
             continue
         logs[track] = track_log
+        state.refusal = pass_refusal(track, track_log, state.counter)
         run = track_log.current_run
         state.run_open = bool(run) and not run[-1].ending
         cap = _cap_pass(track_log)
@@ -998,6 +1020,9 @@ def _refine_candidates(refine: RefineState, index: BoardIndex, running: set[str]
         if state.problem or state.counter is None:
             continue
         if track in passes_running:
+            continue
+        if state.refusal:
+            skips.append(Skip(label, f"refused: {state.refusal}", PASS_TIER))
             continue
         if state.capped:
             skips.append(Skip(label, "the run reached its cap and the cap ruling has no Answer", PASS_TIER))
