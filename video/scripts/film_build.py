@@ -136,12 +136,13 @@ def main() -> int:
                 if legacy:
                     shutil.copy(legacy[0], cached)
                 elif args.check:
-                    problems.append(f"{sid} line {n}: not synthesised yet")
-                    continue
+                    continue  # CI has no voice cache; --check verifies the scene files and that film.json matches the words
                 else:
                     asyncio.run(speak(text, voice, rate, cached))
             if not (ASSETS / name).exists():
                 shutil.copy(cached, ASSETS / name)
+            if args.check:
+                continue
             d = duration(cached)
             lines.append({"n": n, "text": text, "start": round(cursor, 3), "duration": round(d, 3), "file": f"assets/voice/{name}"})
             cursor += d + gap
@@ -157,6 +158,11 @@ def main() -> int:
     for p in problems:
         print("  " + p)
     if args.check:
+        committed = json.loads(OUT_JSON.read_text(encoding="utf-8")) if OUT_JSON.exists() else {"scenes": []}
+        said = [[l["text"] for l in sc["lines"]] for sc in committed["scenes"]]
+        want = [[t.strip() for t in sc.get("lines", [])] for sc in cfg["scenes"]]
+        if said != want:
+            problems.append("film.json is stale: run python video/scripts/film_build.py")
         return 1 if problems else 0
     for stale in ASSETS.glob("*.mp3"):
         if not any(l["file"].endswith(stale.name) for sc in scenes for l in sc["lines"]):
