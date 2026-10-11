@@ -7,10 +7,10 @@
 
 `python -m lab profile-train ...` is the same. Every call answers with one JSON line and exits 0 when it worked.
 
-`run` trains with lab/train.py for --steps optimizer steps (20 by default) in a process of its own under the torch
-profiler (record_shapes and profile_memory on, with_stack off; one ProfilerStep per optimizer step), with forward
-hooks that open a record_function range around every layer of a kind this profile reports, named
-`atlas::<kind>::<module>`:
+`run` trains with lab/train.py for --steps optimizer steps (20 by default; --active N profiles only the last N) in a
+process of its own under the torch profiler (record_shapes and profile_memory on, with_stack off; one ProfilerStep
+per optimizer step), with forward hooks that open a record_function range around every layer of a kind this profile
+reports, named `atlas::<kind>::<module>`:
 
     gdn          a Gated DeltaNet layer (`*.linear_attn`)
     attention    a full attention layer (`*.self_attn`)
@@ -660,7 +660,8 @@ def render_markdown(result: Mapping[str, Any]) -> str:
     for key in SHARE_KEYS:
         lines.append(f"| {key} | {_pct(result['shares'].get(key))} | {_fmt(result['ms_per_step'].get(key), 3)} |")
     lines += ["", "## Top kernels", "", f"{result['top_basis']}, top {TOP}.", "",
-              "| # | Name | Bucket | Launches | per step | ms per step | share of step |", "|---|---|---|---|---|---|---|"]
+              "| # | Name | Bucket | Launches | per step | ms per step | share of step |",
+              "|---|---|---|---|---|---|---|"]
     for row in result.get("top") or []:
         lines.append(f"| {row['rank']} | `{_cell(row['name'], 70)}` | {row.get('bucket')} | {row['launches']} | "
                      f"{_fmt(row.get('launches_per_step'), 2)} | {_fmt(row.get('ms_per_step'), 4)} | "
@@ -674,6 +675,7 @@ def render_markdown(result: Mapping[str, Any]) -> str:
             lines.append(f"| {row['rank']} | `{_cell(row['name'], 70)}` | {row['category']} | {row['launches']} | "
                          f"{_fmt(row.get('ms_per_step'), 4)} |")
     bw = result["bandwidth"]
+    ref = result.get("reference") or {}
     lines += ["", "## Bandwidth and matmul rate", "", f"How: {bw['how']}.", "",
               "| What | Value | Chip sheet | Fraction |", "|---|---|---|---|",
               f"| bytes per step | {_fmt(bw.get('bytes_per_step'), 0)} | | |",
@@ -685,8 +687,7 @@ def render_markdown(result: Mapping[str, Any]) -> str:
               f"{_fmt(bw.get('reference_matmul_tflops'))} | {_pct(bw.get('fraction_of_matmul_step'))} |",
               f"| matmul TFLOP/s over matmul time | {_fmt(bw.get('matmul_tflops_matmul_time'), 4)} | "
               f"{_fmt(bw.get('reference_matmul_tflops'))} | {_pct(bw.get('fraction_of_matmul_matmul_time'))} |", "",
-              f"Chip sheet: {(result.get('reference') or {}).get('chip_sheet')} "
-              f"({(result.get('reference') or {}).get('copy_id')}, {(result.get('reference') or {}).get('matmul_id')})."]
+              f"Chip sheet: {ref.get('chip_sheet')} ({ref.get('copy_id')}, {ref.get('matmul_id')})."]
     mem = result["memory"]
     dev = mem.get("device") or {}
     lines += ["", "## Memory", "", f"Peak allocated {_fmt(dev.get('peak_allocated_gib'))} GiB, peak reserved "
@@ -933,7 +934,8 @@ def child_main(args: argparse.Namespace) -> dict[str, Any]:
     def make_profiler() -> Any:
         return torch.profiler.profile(
             activities=activities, record_shapes=True, profile_memory=True, with_stack=False,
-            schedule=torch.profiler.schedule(wait=0, warmup=0, active=args.steps, repeat=1),
+            schedule=torch.profiler.schedule(wait=max(0, args.steps - args.active), warmup=0, active=args.active,
+                                             repeat=1),
             on_trace_ready=lambda prof: prof.export_chrome_trace(str(trace_dir / "trace.json")))
 
     answer = train.main(argv, callbacks=[profiler_callback(make_profiler, ranges)])
@@ -987,12 +989,20 @@ def run_main(args: argparse.Namespace) -> dict[str, Any]:
     meta.setdefault("date", stamp.date().isoformat())
     meta.setdefault("started", stamp.isoformat(timespec="seconds"))
     tools = meta.setdefault("tools", {})
+    if not args.cpu and not args.no_install:   # as lab/train.py's own entry point does, around the pod's torch
+        from lab import train
+
+        installed = train.install()
+        meta["install"] = installed.get("outcome")
+        if not installed.get("ok"):
+            return {"ok": False, "outcome": "install_failed", "error": installed.get("error"), "dir": str(out)}
     (out / "profile.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
     me = [sys.executable, "-m", "lab.profile_train", "_child"]
     env = {**os.environ, "PYTHONPATH": os.pathsep.join(p for p in (str(REPO), os.environ.get("PYTHONPATH")) if p)}
     if "torch" in args.passes:
         dataset, rows = pass_data(args, out, "torch")
         cmd = [*me, "--mode", "torch", "--trace-dir", str(out / "torch"), "--steps", str(args.steps),
+               "--active", str(min(args.active or args.steps, args.steps)),
                *(["--cpu"] if args.cpu else []), "--",
                *train_argv(args, out / "train", dataset, rows)]
         done = subprocess.run(cmd, cwd=str(REPO), env=env, capture_output=True, text=True, check=False)
@@ -1066,6 +1076,9 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--model", required=True)
     run.add_argument("--steps", type=int, default=DEFAULT_STEPS)
     run.add_argument("--cpu", action="store_true", help="the rehearsal: lab/train.py --cpu, a tiny model")
+    run.add_argument("--active", type=int, default=None,
+                     help="profile only the last N of the steps (default all): a smaller trace when a slot is short")
+    run.add_argument("--no-install", action="store_true", help="do not install lab/requirements-train.txt's pins")
     run.add_argument("--out", default=None, help="the run folder (default ./train-profile-<UTC stamp>)")
     run.add_argument("--results", default=None, help="where the JSON and Markdown go (default the data folder)")
     run.add_argument("--chip-sheet", default=None)
@@ -1094,6 +1107,7 @@ def build_parser() -> argparse.ArgumentParser:
     child.add_argument("--trace-dir", default="torch")
     child.add_argument("--cpu", action="store_true")
     child.add_argument("--steps", type=int, default=DEFAULT_STEPS)
+    child.add_argument("--active", type=int, default=DEFAULT_STEPS)
     child.add_argument("train_args", nargs=argparse.REMAINDER)
     return p
 

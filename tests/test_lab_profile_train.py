@@ -428,8 +428,9 @@ def test_a_pod_run_trains_each_pass_on_its_own_copy_and_deletes_the_originals(tm
 
     monkeypatch.setattr(pt.subprocess, "run", fake_run)
     monkeypatch.setattr(pt.shutil, "which", lambda name: None)
-    answer = pt.main(["run", "--dataset", str(dataset), "--rows", str(rows), "--model", "m", "--steps", "3",
-                      "--out", str(tmp_path / "run"), "--results", str(tmp_path / "data"), "--no-ledger"])
+    answer = pt.main(["run", "--no-install", "--dataset", str(dataset), "--rows", str(rows), "--model", "m",
+                      "--steps", "3", "--out", str(tmp_path / "run"), "--results", str(tmp_path / "data"),
+                      "--no-ledger"])
     assert answer["ok"] is True, answer
     assert answer["tools"]["rocprofv3"] == {"ok": False, "skipped": "not on PATH"}
     assert answer["data_deleted"] == "yes" and not dataset.exists() and not rows.exists()
