@@ -10,15 +10,15 @@ W="${L16V2_WORKSPACE:-/c/Users/hackathon/Code/Knighthacks26}"
 C="bash ${L16V2_COLAB:-$W/tooling/dispatcher/colab.sh}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 OUT="$W/work/L16v2-out/colab"
-PIDF="$OUT/keepalive.pid"
+PIDF="$OUT/keepalive.$S.pid"; STOP="$OUT/keepalive.$S.stop"     # one copy per session
 mkdir -p "$OUT"
 if [ -f "$PIDF" ] && kill -0 "$(cat "$PIDF")" 2>/dev/null; then exit 0; fi
 echo $$ > "$PIDF"
-rm -f "$OUT/keepalive.stop"
+rm -f "$STOP" "$OUT/keepalive.stop"
 plog() { echo "$(date -u -d '-4 hours' '+%-I:%M %p ET') $*" >> "$W/work/L16v2-out/progress.log"; }
 clean() { sed -e 's/\x1b\[[0-9;]*[A-Za-z]//g' | tr -cd '\11\12\15\40-\176'; }   # no ANSI codes, ASCII only
 plog "keepalive started session=$S pid=$$"
-while [ ! -e "$OUT/keepalive.stop" ]; do
+while [ ! -e "$STOP" ] && [ ! -e "$OUT/keepalive.stop" ]; do
   ok=0
   for i in 1 2 3 4; do      # a failed or unreadable answer is a retry, never a dead poll
     o=$(timeout 150 $C exec -s "$S" --timeout 90 -f "$(cygpath -m "$HERE/colab_status.py")" 2>&1 | clean)
@@ -31,7 +31,7 @@ while [ ! -e "$OUT/keepalive.stop" ]; do
   else
     plog "PROBLEM stage=keepalive status exec failed 4 times in a row; next try in 75 s"
   fi
-  for i in $(seq 1 15); do [ -e "$OUT/keepalive.stop" ] && break; sleep 5; done
+  for i in $(seq 1 15); do { [ -e "$STOP" ] || [ -e "$OUT/keepalive.stop" ]; } && break; sleep 5; done
 done
 rm -f "$PIDF"
 plog "keepalive stopped session=$S (the driver is polling)"
