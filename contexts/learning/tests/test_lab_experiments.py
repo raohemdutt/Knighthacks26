@@ -25,7 +25,8 @@ def test_without_a_ledger_the_cards_are_the_seeded_queue_and_say_so(tmp_path):
     assert [c["id"] for c in cards] and {c["id"] for c in cards} == {s["id"] for s in lab_experiments.SEEDS}
     assert all(c["status"] == "queued" and c["ts"] is None and c["verdict"] is None for c in cards)
     assert all(c["source"] == {"kind": "file", "ref": "lab/machine/experiments.py SEEDS", "ids": []} for c in cards)
-    assert payload["experiments"]["source"]["kind"] == "seeds" and "no lab ledger" in payload["summary"]
+    assert payload["experiments"]["source"]["kind"] == "seeds" and "no lab ledger" in payload["experiments"]["source"]["note"]
+    assert payload["summary"] == "5 experiments in the queue the lab's code starts from: 5 queued, 0 running, 0 with a verdict."
     assert payload["experiments"] | {"source": None} == {"total": 5, "queued": 5, "running": 0, "run": 0, "dropped": 0, "source": None}
     assert not (tmp_path / "ledger.jsonl").exists()  # reading never creates the lab's ledger
 

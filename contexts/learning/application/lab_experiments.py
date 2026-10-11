@@ -198,6 +198,6 @@ def _summary(exp: list[dict[str, Any]], run: int, origin: dict[str, Any]) -> str
         return "No experiment is recorded on this box."
     queued = sum(c["status"] == "queued" for c in exp)
     running = sum(c["status"] == "running" for c in exp)
-    where = "in the lab ledger" if origin["kind"] == "ledger" else "seeded in the lab's code; this box has no lab ledger"
+    where = "in the lab ledger" if origin["kind"] == "ledger" else "in the queue the lab's code starts from"
     return (f"{len(exp)} experiment{'s' if len(exp) != 1 else ''} {where}: {queued} queued, {running} running, "
             f"{run} with a verdict.")
