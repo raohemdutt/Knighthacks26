@@ -2295,7 +2295,7 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   wipe: (token: string) => post<WipeResult>("/vault/wipe", { token }),
 
   learning: (signal?: AbortSignal) => get<LearningBoard>("/api/learning", undefined, signal),
-  /** The Learning lab: training runs as stories. `sample` asks for the committed sample run (types in lib/lab.ts). */
+  /** The Learning lab: training runs as stories (types in lib/lab.ts). The screen always passes sample=false. */
   lab: (sample: boolean, signal?: AbortSignal) => get<import("./lab").LabList>("/api/learning/lab", sample ? { sample: 1 } : undefined, signal),
   labRun: (runId: string, sample: boolean, signal?: AbortSignal) =>
     get<import("./lab").LabStory>(`/api/learning/lab/${encodeURIComponent(runId)}`, sample ? { sample: 1 } : undefined, signal),
