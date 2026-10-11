@@ -494,11 +494,15 @@ def render_markdown(result: Mapping[str, Any], source: str | None = None) -> str
     d, t, b = arms["decode"], arms["train"], arms["both"]
     c = result["compare"]
     serve = result.get("serve") or {}
+    work = result.get("workload") or {}
     lines = [
         f"# Interference on one {CHIP} chip: teacher decode and a LoRA run ({result.get('date')})",
         "",
         f"Run {result.get('run_id')} on {result.get('node')} (hub {result.get('hub')}, account "
-        f"{result.get('account')}), teacher served at --gpu-memory-utilization {serve.get('share')}. Made by "
+        f"{result.get('account')}), teacher served at --gpu-memory-utilization {serve.get('share')}. Decode: rounds "
+        f"of {work.get('batch')} streams x {work.get('max_tokens')} tokens. LoRA: {t['steps']} measured steps of batch "
+        f"{work.get('train_batch')} x accumulation {work.get('grad_accum')} after {t['warm_steps']} warm-up steps"
+        + (f", over {t['rows']} rows" if t.get("rows") else "") + ". Made by "
         "`python -m lab interference`; the JSON beside this file holds every number"
         + (f" ({source})." if source else "."),
         "",
@@ -512,7 +516,8 @@ def render_markdown(result: Mapping[str, Any], source: str | None = None) -> str
         f"{_f(b['train']['samples_per_s'], 3)} | {_f(b['train']['steps_per_s'], 4)} | {_f(b['watts']['avg_w'], 1)} | "
         f"{_f(b['joules_per_answer_all'], 1)} (all) | {_f(b['joules_per_step_all'], 1)} (all) |",
         "",
-        "In the both row the joules are the whole window's, charged to all answers or to all steps.",
+        "In the both row the joules are the whole window's, charged to all answers or to all steps; a decode round "
+        "the window cuts counts by the part of it inside.",
         "",
         "## Shared against one after the other",
         "",
