@@ -1,0 +1,31 @@
+[bench 00:57:02] spawn 0 (repeat 0, batch 1): pid 8122
+[bench 01:05:57] bench-20261011T005700Z-d9c3-r0-b1: ok decode 64.741 tok/s per stream, 60.9982 total, ttft 0.1192 s, J/token None
+[bench 01:05:57] spawn 1 (repeat 0, batch 4): pid 11186
+[bench 01:09:02] bench-20261011T005700Z-d9c3-r0-b4: ok decode 59.1913 tok/s per stream, 198.767 total, ttft 0.4949 s, J/token None
+[bench 01:09:02] spawn 2 (repeat 0, batch 8): pid 12221
+[bench 01:12:10] bench-20261011T005700Z-d9c3-r0-b8: ok decode 52.6137 tok/s per stream, 321.3743 total, ttft 0.8243 s, J/token None
+[bench 01:12:10] spawn 3 (repeat 0, batch 16): pid 13295
+[bench 01:15:23] bench-20261011T005700Z-d9c3-r0-b16: ok decode 36.0495 tok/s per stream, 459.7984 total, ttft 0.9873 s, J/token None
+[bench 01:15:23] spawn 4 (repeat 0, batch 64): pid 14401
+[bench 01:19:18] bench-20261011T005700Z-d9c3-r0-b64: ok decode 11.2768 tok/s per stream, 636.3307 total, ttft 1.9203 s, J/token None
+[bench 01:19:18] spawn 5 (repeat 1, batch 1): pid 15803
+[bench 01:22:19] bench-20261011T005700Z-d9c3-r1-b1: ok decode 64.956 tok/s per stream, 61.2391 total, ttft 0.1166 s, J/token None
+[bench 01:22:19] spawn 6 (repeat 1, batch 4): pid 16835
+[bench 01:25:24] bench-20261011T005700Z-d9c3-r1-b4: ok decode 59.3182 tok/s per stream, 199.0177 total, ttft 0.4965 s, J/token None
+[bench 01:25:24] spawn 7 (repeat 1, batch 8): pid 17890
+[bench 01:28:31] bench-20261011T005700Z-d9c3-r1-b8: ok decode 52.7272 tok/s per stream, 321.6374 total, ttft 0.8233 s, J/token None
+[bench 01:28:31] spawn 8 (repeat 1, batch 16): pid 18953
+[bench 01:31:45] bench-20261011T005700Z-d9c3-r1-b16: ok decode 35.9059 tok/s per stream, 462.3296 total, ttft 1.056 s, J/token None
+[bench 01:31:45] spawn 9 (repeat 1, batch 64): pid 20066
+[bench 01:35:41] bench-20261011T005700Z-d9c3-r1-b64: ok decode 11.5089 tok/s per stream, 636.6592 total, ttft 1.9381 s, J/token None
+[bench 01:35:41] spawn 10 (repeat 2, batch 1): pid 21454
+[bench 01:38:42] bench-20261011T005700Z-d9c3-r2-b1: ok decode 64.9722 tok/s per stream, 61.2077 total, ttft 0.1184 s, J/token None
+[bench 01:38:42] spawn 11 (repeat 2, batch 4): pid 22473
+[bench 01:41:46] bench-20261011T005700Z-d9c3-r2-b4: ok decode 59.2302 tok/s per stream, 198.933 total, ttft 0.4942 s, J/token None
+[bench 01:41:46] spawn 12 (repeat 2, batch 8): pid 23510
+[bench 01:44:53] bench-20261011T005700Z-d9c3-r2-b8: ok decode 52.5928 tok/s per stream, 321.3442 total, ttft 0.8258 s, J/token None
+[bench 01:44:53] spawn 13 (repeat 2, batch 16): pid 24573
+[bench 01:48:06] bench-20261011T005700Z-d9c3-r2-b16: ok decode 36.4207 tok/s per stream, 462.4725 total, ttft 1.0901 s, J/token None
+[bench 01:48:06] spawn 14 (repeat 2, batch 64): pid 25675
+[bench 01:52:01] bench-20261011T005700Z-d9c3-r2-b64: ok decode 11.2975 tok/s per stream, 634.6118 total, ttft 2.0409 s, J/token None
+bench exit 0

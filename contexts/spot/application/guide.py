@@ -21,7 +21,12 @@ from difflib import SequenceMatcher
 
 from contexts.spot.application import plain
 from contexts.spot.application.service import Spot
+from contexts.spot.domain.directions import directions
 from contexts.spot.domain.route import WalkNet, heading
+
+TRACED_NOTE = "Paths traced from the kit's floor-plan picture; the kit has no walkway data."
+TRACED_REASON = "traced from the picture"
+TAP_SNAP_PX = 60.0  # a tap this close to walkable floor is taken to mean that floor
 
 CONFIDENT = 0.75  # at or above: point there. Below: offer the closest instead of guessing
 OFFER = 0.34  # the least an alternative may score
@@ -359,7 +364,7 @@ class Guide:
         acts = kit.actions_of.get(kit.missions[-1].mission_id, []) if kit.missions else []
         return acts[0].location_id if acts else (kit.locations[0].location_id if kit.locations else None)
 
-    def route(self, start: str | None, goal: str) -> dict:
+    def leg_route(self, start: str | None, goal: str) -> dict:
         """A walking route between two places (or pieces of equipment), over legs SPOT has walked, with the words for it."""
         note = "Route follows paths SPOT has walked in the recorded rounds. Lengths are plan units, not metres."
         base = {"configured": self.spot.configured, "from": None, "to": None, "path": [], "legs": [], "length": 0.0, "floor_changes": 0,
@@ -394,6 +399,112 @@ class Guide:
         summary = (f"{name(a)} to {name(b)}: {n} leg{'s' if n != 1 else ''}"
                    + (f", {found['floor_changes']} change of floor" if found["floor_changes"] else "") + ", all walked by SPOT before.")
         return {**base, **found, "found": True, "say": say[:4] + ([f"{n - 4} more legs after that."] if n > 4 else []), "summary": summary}
+
+    # --- the way there on the traced floor ---
+
+    def _point(self, ref: str | None) -> tuple[int, float, float] | None:
+        """A tapped start, 'xy:0.31,0.52' (normalised on the plan picture) -> (floor, x, y)."""
+        m = re.fullmatch(r"xy:(0?\.\d+|[01](?:\.\d+)?),(0?\.\d+|[01](?:\.\d+)?)", (ref or "").strip().lower())
+        wk = self.spot.walkable
+        if not m or wk is None:
+            return None
+        x, y = float(m.group(1)), float(m.group(2))
+        floor = wk.floor_at(x, y)
+        return (floor, x, y) if floor is not None else None
+
+    def route(self, start: str | None, goal: str) -> dict:
+        """A walking route between two places, pieces of equipment, or from a tapped point, on the traced walkable floor.
+
+        The legs SPOT walked stay in the answer (`via_walked_legs`, and the old top-level `path`, `legs`, `length`): they are
+        what the data vouches for. The routed line is ours, from the picture, so it is always `precision: "about"`.
+        Without a traced floor (no plan picture on the box) the answer is the walked-legs route, as before.
+        """
+        tapped = (start or "").strip().lower().startswith("xy:")
+        legs = self.leg_route(None if tapped else start, goal)
+        wk = self.spot.walkable if self.spot.configured else None
+        if wk is None:
+            return legs
+        kit = self.spot.kit
+        via = {k: legs[k] for k in ("found", "path", "legs", "length", "floor_changes", "say", "summary", "note")}
+        base = {**legs, "found": False, "say": [], "steps": [], "summary": "", "note": TRACED_NOTE, "via_walked_legs": None if tapped else via,
+                "precision": "about", "precision_reason": TRACED_REASON, "walked": False, "times_walked": 0, "routed": None}
+        b = legs["to"]
+        if b is None:
+            return {**base, "say": ["I do not know that place on this plan."], "summary": "Unknown place."}
+        key = goal.strip().upper().split(":")[-1]
+        goal_name = plain.asset_name(kit, key) if key in kit.asset else plain.place_name(kit, b)
+        end = wk.stand(b)
+        if tapped:
+            point = self._point(start)
+            got = wk.snap(point[0], point[1], point[2], limit_px=TAP_SNAP_PX) if point else None
+            if got is None or point is None:
+                line = "That spot is not on the floor I traced. Tap a corridor or a room on the plan."
+                return {**base, "from": None, "say": [line], "summary": line}
+            a, start_name, begin, start_floor = None, "where you are", got, point[0]
+        else:
+            a = legs["from"]
+            if a is None:
+                return {**base, "say": ["I do not know that place on this plan."], "summary": "Unknown place."}
+            start_name, begin, start_floor = plain.place_name(kit, a), wk.stand(a), kit.location[a].floor
+        if begin is None or end is None:
+            line = "I could not place that waypoint on the traced floor."
+            return {**base, "from": a, "say": [line], "summary": line}
+        goal_floor = kit.location[b].floor
+        pin = wk.pins[b]
+        ends = {"start": {"floor": start_floor, "x": begin[0], "y": begin[1], "snapped_px": begin[2], "waypoint": a, "name": start_name},
+                "end": {"floor": goal_floor, "x": end[0], "y": end[1], "snapped_px": end[2], "waypoint": b, "name": goal_name,
+                        "pin": {"x": pin["x"], "y": pin["y"]}}}
+        if a == b:
+            line = f"You are already at {plain.place_name(kit, b)}."
+            return {**base, "from": a, "found": True, "say": [line], "summary": line, "walked": True,
+                    "steps": [{"say": line, "floor": goal_floor, "length_px": 0.0, "upto": 1.0, "arrive": True}],
+                    "routed": {"found": True, "connector": None, "length_px": 0.0, "floors": [], **ends}}
+        routed = wk.route((start_floor, begin[0], begin[1]), (goal_floor, end[0], end[1]))
+        if not routed["found"]:
+            line = f"I cannot find a way from {start_name} to {goal_name} on the floor I traced."
+            return {**base, "from": a, "say": [line], "summary": line}
+        times = self._net.walked.get((min(a, b), max(a, b)), 0) if a else 0
+        steps = directions(wk, routed, start_name, goal_name, b, a)
+        for part in routed["floors"]:
+            part["walked"] = times > 0
+        summary = (f"{start_name[0].upper()}{start_name[1:]} to {goal_name}: {len(steps)} steps"
+                   + (f", changing floor by {routed.get('connector_name', 'the stairs')}" if routed["connector"] else "") + ". "
+                   + (f"SPOT has walked between these two places {times} time{'s' if times != 1 else ''}." if times
+                      else "SPOT has not walked this leg; the line is from the traced plan only."))
+        return {**base, "from": a, "found": True, "say": [s["say"] for s in steps], "steps": steps, "summary": summary, "walked": times > 0,
+                "times_walked": times, "routed": {**routed, **ends}}
+
+    def walkable(self) -> dict:
+        """The traced floor, for drawing: rooms, doors, obstacles, stairs, the grid's free cells, and where each waypoint stands."""
+        wk = self.spot.walkable if self.spot.configured else None
+        if wk is None:
+            return {"configured": self.spot.configured, "available": False, "floors": {}, "waypoints": {}, "caption": ""}
+        points = {}
+        for loc in self.spot.kit.locations:
+            pin, stand = wk.pins.get(loc.location_id), wk.stand(loc.location_id)
+            if pin:
+                points[loc.location_id] = {"floor": loc.floor, "pin": {"x": pin["x"], "y": pin["y"]},
+                                           "stand": {"x": stand[0], "y": stand[1]} if stand else None, "snapped_px": stand[2] if stand else None}
+        return {"configured": True, "available": True, "source": wk.source, "caption": TRACED_NOTE, "precision": "about",
+                "precision_reason": TRACED_REASON, "width": wk.width, "height": wk.height, "cell_px": wk.cell, "clearance_px": wk.clearance,
+                "snap_px": wk.snap_px, "floors": wk.geometry(), "waypoints": points}
+
+    def walkable_legs(self) -> dict:
+        """The routed line between every pair of waypoints (to draw a round or a plan along real paths), and whether SPOT walked it."""
+        wk = self.spot.walkable if self.spot.configured else None
+        if wk is None:
+            return {"configured": self.spot.configured, "available": False, "legs": {}}
+        if self._net is None:
+            self._net = WalkNet.of(self.spot.kit)
+        ids = sorted(wk.pins)
+        legs = {}
+        for i, a in enumerate(ids):
+            for b in ids[i + 1:]:
+                leg = wk.leg(a, b)
+                if leg:
+                    n = self._net.walked.get((a, b), 0)
+                    legs[f"{a}>{b}"] = {"floors": leg["floors"], "connector": leg["connector"], "walked": n > 0, "times_walked": n}
+        return {"configured": True, "available": True, "legs": legs, "note": "Keyed 'A>B' with A before B; walk the points backwards for B to A."}
 
     @staticmethod
     def _brief(t: Target, score: float) -> dict:

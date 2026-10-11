@@ -815,15 +815,28 @@ sentences are captions and (with Speak answers on) speech. One layer for every s
 **Setup:** none for the pointer. For eyes: Settings → **Use my eyes to guide me** on `https://` or `localhost`.
 
 **Steps and what you should see**
-1. **Ask → "Where did I leave my keys?"** The answer arrives as before; then the dot travels to the picture under it
-   and the picture is outlined with a dashed "About here" (the box keeps a zone and words, not a box in the picture).
-   The caption carries the answer's first sentence and **Show me in the room**, which opens the room map on that
-   thing's pin. On the seeded laptop the picture is the "Frame not stored on this box" placeholder and the caption says so.
+1. **Ask → "Where did I leave my keys?"** (any thing: there is no list of nouns). The answer arrives as before; then
+   the dot travels to the picture under it. What is drawn follows what the box has for that frame
+   (`GET /memory/last-seen/<label>`): a **tight solid outline, "Here it is"** only when the box has a box for the thing;
+   a **soft dashed region, "About here"** placed from its words beside something that does have a box ("behind the
+   monitor stand"); with neither, the **whole picture is ringed, "About here"**. The words are under the picture, and
+   the caption says "Your keys are here." or "Your wallet is about here: behind the monitor stand." **Show me in the
+   room** opens the Room screen, picks the thing in its finder and lands on its pin card. A thing the box has never
+   seen: "I haven't seen that", nothing marked. On the seeded laptop there are no boxes at all (every thing is
+   "about") and the picture is the "Frame not stored on this box" placeholder; the caption says so.
+1b. **Ask, with a camera running → "Where is my bottle?"** (a class the detector tracks, and no picture under the
+   answer): a small **Spotting** panel, bottom right, shows that camera's picture with the track outlined, refreshed
+   every 1.5 s ("the camera's picture, refreshed … It is not video"). Where no camera runs the answer card is ringed and
+   the note says the camera is not running. **Needs the Jetson**: not seen by anyone yet.
 2. **Ask → "Where's my League?"** No question goes to the box. Circle opens, the League tab is pressed, the tab is ringed.
 3. **Ask → "Which bin for the cup?"** Sort It opens, the room lights the trash bin ("Cup goes here"), the route is
    drawn, the dot fades, and the caption reads "Throw it here: Cup → Trash" with the rule sentence from the rules file.
-4. **Inspection → "Where is Heat exchanger 2?"** (or the Guide me chip). The plan switches floor if needed, green
-   dashes draw the walk from "You are here", the dot follows it, the mark is ringed "Here it is". Then type **next**:
+4. **Inspection → "Where is Heat exchanger 2?"** (or the Guide me chip). The plan switches floor if needed (to Both
+   when the way changes floor), a red line is drawn from "You are here" round the walls and the equipment, the dot walks
+   it while one instruction per stretch is captioned and said ("Turn left, take the entrance steps and go along the
+   west passage"), and the mark is ringed "Here it is". The line is solid where SPOT has walked that leg and dashed
+   where it is from the traced plan only; the note says the way is about, traced from the picture. Try **Tap the plan
+   to set it** and **From SPOT** for the start, and **Show the traced floor**. Then type **next**:
    the dot steps to the next do-first item. **"Where do I look for the battery?"** opens the Analysis tab first.
 5. **Attention (simulated):** open `/spot/?gazeSim=do-first:1,trust,card:watch`. A banner says the gaze is simulated;
    "✓ seen" appears on those three; "You've looked at 1 of 3 things that need you". Tap **Send a technician** on item
@@ -831,7 +844,10 @@ sentences are captions and (with Speak answers on) speech. One layer for every s
    `/spot/?tab=run&route=last&show=result&gazeSim=shiftrun:turn-back,shiftrun:run` shows "Where you looked" and the scan path.
 
 **Links that hold the pointer for a screenshot:** `/?guide=keys&t=1`, `/?guide=where's my League?&t=1`,
-`/?guide=which bin for the cup?&t=1`, `/spot/?guide=where is HX-202&t=0.5`, `/spot/?guide=explainer:battery&t=1`.
+`/?guide=which bin for the cup?&t=1`, `/spot/?guide=where is HX-202&t=0.5`, `/spot/?guide=explainer:battery&t=1`,
+`/spot/?guide=where is HX-210&t=0.6&here=WP06` (two floors), `/spot/?guide=where is PANEL-212&t=1&here=xy:0.30,0.57`
+(a tapped start), `/spot/?guide=where is HX-202&t=0.5&here=spot&walkable=1`, `/map/?guide=pin:keys&t=1`,
+`/home/?guide=home:what&t=1`.
 
 **What can go wrong**
 - Nothing moves: Escape or a tap anywhere ends a run by design. Ask again.
@@ -911,6 +927,10 @@ stage that it is the stand-in.
 | 11 | **Show Inspection on the real display,** full screen at 1920 × 1080. | Three cards fully visible. | Zoom out once (defect 5) |
 | 13 | **Eyes: the two-minute test.** On the demo laptop (https or localhost): Settings → **Use my eyes to guide me** → allow the camera → **Start**; look at each of the 9 dots, then the 4 check dots, until the ring fills. Open `/spot/?gazeDebug=1` and look at the four corners. Then look at the far left and type **Where is Heat exchanger 2?** | The result line with a measured number ("Accurate to about 1/8 of the screen width (… px …)"); expect roughly 1/8 to 1/15 of the width on a laptop camera at arm's length, worse with glasses glare or low light. The debug dot and dashed cell follow your eyes; the caption starts "From where you are, look …"; the ring turns green with "That's it." after about 0.7 s on the mark. | Gaze off: the pointer starts from the middle and everything else is the same. If the check says "not good enough to use", that is the feature working: say so. |
 | 14 | **Attention, with real eyes.** With row 13 done, open Inspection, read item 1 of "Do this first", then tap **Send a technician** on item 2 without looking at it. | "✓ seen" on item 1; "You haven't looked at Heat exchanger 4's alarm yet" with the dot on it and **Continue anyway**. | `/spot/?gazeSim=do-first:1,trust,card:watch`, and say it is the simulated path (the banner says it too). |
+| 15 | **The spotlight on a real object.** With the desk camera running and keys on the desk: Ask → "Where are my keys?". Then `curl http://<jetson>:8000/memory/last-seen/keys`. | If `box` is not null: a tight outline on the keys in the picture, "Here they are". If `box` is null (the on-device model's `find_objects` returns words only today): the dashed "About here" beside the laptop when the laptop has a box in that frame, else the whole picture ringed. Either is correct; say which one it is. | The seeded keys answer: placeholder picture, "About here" |
+| 16 | **Live spotting.** Camera running, a bottle (or cup, laptop: a detector class) in view; Ask → "Where is my bottle?" when the answer has no picture, or watch after it. | The Spotting panel bottom right: the camera's picture refreshing every 1.5 s, the bottle outlined, the outline following it when you move it; the line "It is not video". | Say it is not shown; the room pin and the answer still are |
+| 17 | **The right bin on the camera picture.** Camera running and the bins' zones drawn (row 2): Ask → "Which bin for the can?". | Sort It lights the bin in the room, and the Spotting panel shows the bin camera's picture with the recycling zone outlined in red and the other zones dimmed. | The room twin's lit bin alone |
+| 18 | **Calibrated means exact.** After row 3, open Room → Keys → **Point me to it**. | The muted line "Not calibrated for these cameras yet…" under the room is gone, and the ring is solid "Here they are" when the pin was projected from a track; before row 3 it is dashed "About here". | Leave it uncalibrated and say positions are approximate |
 | 12 | **Run the pre-flight at T-15.** `python -m contexts.demo preflight --gateway http://<jetson>:8000 --reset` | "N/N ready - go." | Fix what it names; each line says how |
 
 ---
