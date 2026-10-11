@@ -21,8 +21,12 @@ and the measured speed are not here yet: they need the Colab A100 run and the po
   - Implication: the loader of a current vLLM already accepts our 3-bit and 2-bit checkpoints; only the kernel choice stands in the way (next topic).
   - Candidate experiment: KL1, as specified under "The ceiling each width predicts". Confidence: high.
 - **[practitioner]** At b1388b1, the April commit the teacher runs on, the same scheme accepts only 4 and 8 bits (`{4: uint4b8, 8: uint8b128}`) with an integer pack factor `32 // num_bits`; 2 to 7 bits arrived with commit 56ca5997e, "Humming support for 2/3/5/6/7-bit pack-quantized weight-only inference (#46389)", which lies between b1388b1 and 276fbcf. Source: [S185] vLLM `compressed_tensors_wNa16.py` at b1388b1; [S193] vLLM commit 56ca5997e.
-  - Implication: a low-bit teacher needs the upgraded vLLM that R60 builds (`lab/vllm_upgrade.sh` pins main 5281e4990 of 2026-10-07, which contains 56ca5997e), never the b1388b1 build; `lab/vllm-lowbit.diff` does not apply at b1388b1 and would not help there. Source for the pin: [S203].
+  - Implication: a low-bit checkpoint in compressed-tensors format needs the upgraded vLLM that R60 builds (`lab/vllm_upgrade.sh` pins main 5281e4990 of 2026-10-07, which contains 56ca5997e), never the b1388b1 build; `lab/vllm-lowbit.diff` does not apply at b1388b1 and would not help there. Source for the pin: [S203]. The GPTQ-format route in the next finding is the one that can serve on b1388b1.
   - Candidate experiment: none beyond KL1, which runs on the R60 build. Expected movement: none on its own. Minimum sample size: 1 load. Confidence: high.
+
+- **[practitioner]** At b1388b1, vLLM's native GPTQ quantization method (checkpoints in GPTQ format, not compressed-tensors) accepts 2, 3, 4 and 8 bits, and its linear method calls `gptq_shuffle` and the same `gptq_gemm` ExLlama kernels. Source: [S204] vLLM `vllm/model_executor/layers/quantization/gptq.py`, `GPTQConfig.__init__` (the bits check) and `GPTQLinearMethod.process_weights_after_loading`, at b1388b1.
+  - Implication: a 3-bit or 2-bit checkpoint repacked into GPTQ format can be served on the teacher's current b1388b1 build without `lab/vllm-lowbit.diff`, using the same kernels, so the pod D test does not have to wait for R60 if the checkpoint is in that format. Both routes end in `gptq_gemm`, so their speed should match; only the loader differs.
+  - Candidate experiment: KL1 on b1388b1 with a GPTQ-format 3-bit checkpoint, beside the compressed-tensors one on the R60 build. Expected movement: decode tok/s within 5 percent between the two routes. Minimum sample size: 3 spawns per route at batch 1. Confidence: medium.
 
 ## The kernel that serves 3 and 2 bits on ROCm
 
