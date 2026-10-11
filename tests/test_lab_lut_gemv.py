@@ -148,6 +148,7 @@ def test_channel_table_mode_reference(bits):
 
 
 def test_channel_table_mode_refuses_a_plain_layer():
+    pytest.importorskip("triton")  # the channel-table check builds a Triton layer; no Triton on this machine means skip, not fail
     torch = pytest.importorskip("torch")
     p = L.quantize(torch.zeros(32, 256).half(), 3)
     with pytest.raises(ValueError, match="channel_lut"):
