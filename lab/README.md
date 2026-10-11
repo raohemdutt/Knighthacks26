@@ -925,6 +925,7 @@ Content-Range through, the status it answers to a whole file over 100 MiB (599 i
 the real MB/s of a single stream of 64 MiB parts, and that the SJC pod image has `python3` and the proxy extension.
 The `/files/` route of the Jupyter server (Range without a pod-side server, but only under the Jupyter root) is
 the other path; experiment E9 on the queue compares them.
+
 ## Deploy to the box (L6)
 
 The box pulls the packaged model (L5's `lab/package.py` leaves it on pod D) through the hub proxy, checks it, hot-swaps
