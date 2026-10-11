@@ -32,6 +32,7 @@ from lab.machine import refine_formats as rf
 
 __all__ = ["LABELS", "check", "check_reference", "label_of", "main", "slugify"]
 
+CLI_VERB = "research-check"   # registers python -m lab research-check
 LABELS = ("measured", "practitioner", "anecdote", "opinion")
 
 # What a track asks of a candidate experiment besides its expected movement. A folder that is not a track gets the default.

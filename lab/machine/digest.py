@@ -86,6 +86,7 @@ __all__ = ["MAX_LINES", "DEFAULT_WINDOW_HOURS", "BOARD_FILE", "BOARD_STALE_MINUT
            "SCHEMA_VERSION", "BoardError", "Board", "load_board", "parse_board", "save_board",
            "board_path", "queue_slot", "open_queue", "compute", "fit", "render", "text", "main"]
 
+CLI_VERB = "digest"   # registers python -m lab digest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RULINGS_FILE = "OWNER_RULINGS.md"
 BOARD_FILE = "board.json"

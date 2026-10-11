@@ -30,6 +30,19 @@ def test_whisper_noise_tags_are_dropped():
     assert clean_transcript("(music) Where are my keys? [noise]") == "Where are my keys?"
 
 
+def test_words_whisper_invents_for_a_noise_are_not_a_question():
+    for heard in (" Thank you.", "you", "Thanks for watching!", " Bye. ", " ♪♪♪", "..."):
+        assert clean_transcript(heard) == ""
+    assert clean_transcript("Thank you, where are my keys?") == "Thank you, where are my keys?"
+
+
+def test_a_phrase_whisper_wrote_twice_is_kept_once():
+    assert clean_transcript("nothing much are you. Nothing much are you.") == "nothing much are you."
+    assert clean_transcript("How are you doing today? How are you doing today?") == "How are you doing today?"
+    assert clean_transcript("Where are my keys?") == "Where are my keys?"
+    assert clean_transcript("very very good") == "very very good"
+
+
 def test_hey_atlas_is_the_wake_phrase_however_whisper_spells_it():
     for heard in ("Hey Atlas.", "hey, atlas", "Hey Atlus!", "Hey at last", "Okay Atlas", "  Hay Atlas  ", "Hey Alice", "Atlas.",
                   "Okay, Atlas Okay Atlas Okay Atlas Okay Atlas"):
