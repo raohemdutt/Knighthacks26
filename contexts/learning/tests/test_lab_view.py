@@ -236,3 +236,78 @@ def test_runs_are_listed_newest_first_and_an_unknown_run_is_none():
     view = fold(LabView(), [*todays_events(), *later])
     assert [r["run_id"] for r in view.runs()] == ["r2", "r1"] and view.runs()[0]["status"] == "training"
     assert view.story("nope") is None
+
+
+def answered(i: int, expected: str, before: str, after: str, right_before: bool = False, right_after: bool = True) -> dict:
+    return {"id": f"q{i}", "group": f"g{i}", "question": f"question {i}?", "expected": expected,
+            "before": {"answer": before, "correct": right_before}, "after": {"answer": after, "correct": right_after}}
+
+
+def reported(items: list[dict], decision: str = "deploy", p_value: float = 1e-3) -> list[Event]:
+    right = {"current": sum(i["before"]["correct"] for i in items), "candidate": sum(i["after"]["correct"] for i in items)}
+    return [RunProgress(ts=at(5), task="desk-objects", run_id="r1", stage="training", progress=1.0),
+            extra("learning.eval.reported", at(12), task="desk-objects", run_id="r1", n_items=len(items), n_groups=len(items),
+                  correct=right, noise=0.0, p_value=p_value, items=items),
+            RunEvaluated(ts=at(12), task="desk-objects", run_id="r1", scores={"current": 0.0, "candidate": 1.0},
+                         decision=decision, model_version="atlas-v2")]
+
+
+def test_a_test_whose_answers_are_one_placeholder_is_called_a_rehearsal_and_a_real_one_never_is():
+    """The loop rehearsal's gate marks every question right for the same text; one text cannot be several right answers."""
+    fake = [answered(i, expected, "fake miss", "fake answer") for i, expected in enumerate(("mug", "Keys", "cup", "phone charger"))]
+    why = fold(LabView(), reported(fake)).story("r1")["eval"]["rehearsal"]
+    assert why and "fake answer" in why and "4 questions" in why and "did not ask the model" in why
+    assert fold(LabView(), reported(fake)).runs()[0]["tested"]["rehearsal"] == why
+    # answers that differ as the questions do: a real test, whatever its score
+    real = [answered(i, expected, "search_memory()", f'last_seen(label="{expected}")') for i, expected in enumerate(("mug", "keys", "cup"))]
+    assert fold(LabView(), reported(real)).story("r1")["eval"]["rehearsal"] is None
+    # one repeated answer that is marked wrong somewhere, or one right answer shared by every question, proves nothing
+    mixed = [answered(0, "mug", "x", "same"), answered(1, "keys", "x", "same", right_after=False)]
+    assert fold(LabView(), reported(mixed)).story("r1")["eval"]["rehearsal"] is None
+    one_answer = [answered(i, "yes", "no", "yes") for i in range(3)]
+    assert fold(LabView(), reported(one_answer)).story("r1")["eval"]["rehearsal"] is None
+    assert fold(LabView(), todays_events()).story("r1")["eval"]["rehearsal"] is None  # no per-question answers: not known
+
+
+def test_the_run_list_carries_the_test_in_counts_and_none_before_a_test():
+    view = fold(LabView(), full_run())
+    tested = view.runs()[0]["tested"]
+    assert (tested["decision"], tested["n_items"], tested["right_before"], tested["right_after"]) == ("deploy", 4, 2, 2)
+    assert tested["source"]["ref"].startswith("learning.run.evaluated") and view.runs()[0]["deployed"] is not None
+    assert fold(LabView(), todays_events()[:7]).runs()[0]["tested"] is None  # still training
+    counts = fold(LabView(), todays_events()).runs()[0]["tested"]  # scored, but no report: no counts are invented
+    assert (counts["decision"], counts["n_items"], counts["right_before"], counts["right_after"]) == ("deploy", None, None, None)
+
+
+def test_a_model_the_test_refused_but_that_was_installed_never_reads_not_deployed():
+    """The gate card and the On the box card must not say two things: the verdict follows what the log holds."""
+    events = todays_events()
+    events[-2] = events[-2].model_copy(update={"decision": "reject"})
+    story = fold(LabView(), events).story("r1")
+    assert story["status"] == "deployed" and story["deploy"]["deployed"] is not None
+    assert "not deployed" not in story["eval"]["verdict"] and "installed on the box anyway" in story["eval"]["verdict"]
+    back = ModelDeployed(ts=at(30), model_version="atlas-base", previous_version="atlas-v2")
+    undone = fold(LabView(), [*events, back]).story("r1")
+    assert undone["status"] == "rolled back" and "went back to the old model" in undone["eval"]["verdict"]
+    assert "not deployed" not in undone["eval"]["verdict"]
+
+
+def test_what_the_box_runs_now_is_the_newest_install_in_the_log_or_said_to_be_unknown():
+    events = todays_events()
+    none = fold(LabView(), events[:-1])
+    assert none.box_now()["model_version"] is None and "no install" in none.box_now()["reason"]
+    assert none.story("r1")["box_now"]["this_run"] is None
+    on = fold(LabView(), events).story("r1")["box_now"]
+    assert (on["model_version"], on["previous_version"], on["this_run"], on["reason"]) == ("atlas-v2", "atlas-base", True, None)
+    assert on["source"]["ref"].startswith("learning.model.deployed")
+    back = ModelDeployed(ts=at(30), model_version="atlas-base", previous_version="atlas-v2")
+    after = fold(LabView(), [*events, back]).story("r1")["box_now"]
+    assert (after["model_version"], after["this_run"]) == ("atlas-base", False)
+
+
+def test_a_vanishing_p_value_is_said_in_words_not_as_a_fifteen_digit_number():
+    real = [answered(i, expected, "a", f"b{i}") for i, expected in enumerate(("mug", "keys"))]
+    tiny = " ".join(fold(LabView(), reported(real, p_value=1.78e-15)).story("r1")["eval"]["verdict_detail"])
+    assert "less than 1 time in a million" in tiny and "p is below 0.000001" in tiny and "562" not in tiny
+    usual = " ".join(fold(LabView(), reported(real, p_value=0.004)).story("r1")["eval"]["verdict_detail"])
+    assert "p = 0.004" in usual and "about 1 time in 250" in usual
