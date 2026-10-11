@@ -52,6 +52,7 @@ REGISTRY_BEFORE_DISCOVERY = {
     "sampler-overhead": "lab.sampler_overhead:main",
     "sit": "lab.machine.sit:main",
     "slot": "lab.machine.slots:main",
+    "speculative-estimate": "lab.speculative_estimate:main",
     "spot-score": "lab.spot_score:main",
     "stop": "lab.machine.stop:stop_main",
     "sweep-request": "lab.sweep_request:main",

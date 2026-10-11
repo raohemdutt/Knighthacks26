@@ -1,0 +1,1373 @@
+{
+  "format": "atlas.speculative-acceptance/1",
+  "rule": {
+    "vllm_commit": "b1388b1fbf5aaef47937fabe98931211684666a6",
+    "function": "vllm/v1/spec_decode/ngram_proposer.py:_find_longest_matched_ngram_and_propose_tokens",
+    "sampling": "greedy"
+  },
+  "tokenizer": "proxy (lab/speculative_estimate.py ProxyTokenizer)",
+  "inputs": {
+    "teacher_labels": {
+      "path": "fixtures/learning/tool-calling-labels",
+      "traces_sha256": "38299fd618a0c515e26831245c24106c7aeeed9ac124f88f445aa6cebbe41192"
+    },
+    "template_cases": {
+      "path": "fixtures/lab/qwen35-template/rendered.jsonl",
+      "sha256": "8dcd0c83724f6355276e72da48285fb8778a47da03d858330f130302784f9e62"
+    }
+  },
+  "requests": 314,
+  "settings": [
+    {
+      "prompt_lookup_min": 1,
+      "prompt_lookup_max": 3,
+      "num_speculative_tokens": 2,
+      "groups": {
+        "all": {
+          "requests": 314,
+          "tokens": 17940,
+          "decode_steps": 9041,
+          "baseline_decode_steps": 17626,
+          "drafted": 16510,
+          "accepted": 8737,
+          "tokens_per_step": 1.9496,
+          "acceptance_rate": 0.5292,
+          "accepted_per_step": 0.9664
+        },
+        "teacher_labels": {
+          "requests": 284,
+          "tokens": 16960,
+          "decode_steps": 8519,
+          "baseline_decode_steps": 16676,
+          "drafted": 15620,
+          "accepted": 8294,
+          "tokens_per_step": 1.9575,
+          "acceptance_rate": 0.531,
+          "accepted_per_step": 0.9736
+        },
+        "teacher_labels/answer": {
+          "requests": 142,
+          "tokens": 4667,
+          "decode_steps": 2982,
+          "baseline_decode_steps": 4525,
+          "drafted": 4952,
+          "accepted": 1680,
+          "tokens_per_step": 1.5174,
+          "acceptance_rate": 0.3393,
+          "accepted_per_step": 0.5634
+        },
+        "teacher_labels/call": {
+          "requests": 142,
+          "tokens": 12293,
+          "decode_steps": 5537,
+          "baseline_decode_steps": 12151,
+          "drafted": 10668,
+          "accepted": 6614,
+          "tokens_per_step": 2.1945,
+          "acceptance_rate": 0.62,
+          "accepted_per_step": 1.1945
+        },
+        "template_cases": {
+          "requests": 30,
+          "tokens": 980,
+          "decode_steps": 522,
+          "baseline_decode_steps": 950,
+          "drafted": 890,
+          "accepted": 443,
+          "tokens_per_step": 1.8199,
+          "acceptance_rate": 0.4978,
+          "accepted_per_step": 0.8487
+        },
+        "template_cases/answer": {
+          "requests": 16,
+          "tokens": 159,
+          "decode_steps": 97,
+          "baseline_decode_steps": 143,
+          "drafted": 134,
+          "accepted": 59,
+          "tokens_per_step": 1.4742,
+          "acceptance_rate": 0.4403,
+          "accepted_per_step": 0.6082
+        },
+        "template_cases/call": {
+          "requests": 14,
+          "tokens": 821,
+          "decode_steps": 425,
+          "baseline_decode_steps": 807,
+          "drafted": 756,
+          "accepted": 384,
+          "tokens_per_step": 1.8988,
+          "acceptance_rate": 0.5079,
+          "accepted_per_step": 0.9035
+        }
+      }
+    },
+    {
+      "prompt_lookup_min": 1,
+      "prompt_lookup_max": 3,
+      "num_speculative_tokens": 3,
+      "groups": {
+        "all": {
+          "requests": 314,
+          "tokens": 17940,
+          "decode_steps": 8125,
+          "baseline_decode_steps": 17626,
+          "drafted": 22017,
+          "accepted": 9662,
+          "tokens_per_step": 2.1694,
+          "acceptance_rate": 0.4388,
+          "accepted_per_step": 1.1892
+        },
+        "teacher_labels": {
+          "requests": 284,
+          "tokens": 16960,
+          "decode_steps": 7646,
+          "baseline_decode_steps": 16676,
+          "drafted": 20811,
+          "accepted": 9177,
+          "tokens_per_step": 2.181,
+          "acceptance_rate": 0.441,
+          "accepted_per_step": 1.2002
+        },
+        "teacher_labels/answer": {
+          "requests": 142,
+          "tokens": 4667,
+          "decode_steps": 2706,
+          "baseline_decode_steps": 4525,
+          "drafted": 6600,
+          "accepted": 1824,
+          "tokens_per_step": 1.6722,
+          "acceptance_rate": 0.2764,
+          "accepted_per_step": 0.6741
+        },
+        "teacher_labels/call": {
+          "requests": 142,
+          "tokens": 12293,
+          "decode_steps": 4940,
+          "baseline_decode_steps": 12151,
+          "drafted": 14211,
+          "accepted": 7353,
+          "tokens_per_step": 2.4597,
+          "acceptance_rate": 0.5174,
+          "accepted_per_step": 1.4885
+        },
+        "template_cases": {
+          "requests": 30,
+          "tokens": 980,
+          "decode_steps": 479,
+          "baseline_decode_steps": 950,
+          "drafted": 1206,
+          "accepted": 485,
+          "tokens_per_step": 1.9833,
+          "acceptance_rate": 0.4022,
+          "accepted_per_step": 1.0125
+        },
+        "template_cases/answer": {
+          "requests": 16,
+          "tokens": 159,
+          "decode_steps": 83,
+          "baseline_decode_steps": 143,
+          "drafted": 159,
+          "accepted": 62,
+          "tokens_per_step": 1.7229,
+          "acceptance_rate": 0.3899,
+          "accepted_per_step": 0.747
+        },
+        "template_cases/call": {
+          "requests": 14,
+          "tokens": 821,
+          "decode_steps": 396,
+          "baseline_decode_steps": 807,
+          "drafted": 1047,
+          "accepted": 423,
+          "tokens_per_step": 2.0379,
+          "acceptance_rate": 0.404,
+          "accepted_per_step": 1.0682
+        }
+      }
+    },
+    {
+      "prompt_lookup_min": 1,
+      "prompt_lookup_max": 3,
+      "num_speculative_tokens": 4,
+      "groups": {
+        "all": {
+          "requests": 314,
+          "tokens": 17940,
+          "decode_steps": 7407,
+          "baseline_decode_steps": 17626,
+          "drafted": 26478,
+          "accepted": 10532,
+          "tokens_per_step": 2.3796,
+          "acceptance_rate": 0.3978,
+          "accepted_per_step": 1.4219
+        },
+        "teacher_labels": {
+          "requests": 284,
+          "tokens": 16960,
+          "decode_steps": 6947,
+          "baseline_decode_steps": 16676,
+          "drafted": 24947,
+          "accepted": 10013,
+          "tokens_per_step": 2.4005,
+          "acceptance_rate": 0.4014,
+          "accepted_per_step": 1.4413
+        },
+        "teacher_labels/answer": {
+          "requests": 142,
+          "tokens": 4667,
+          "decode_steps": 2514,
+          "baseline_decode_steps": 4525,
+          "drafted": 8032,
+          "accepted": 2153,
+          "tokens_per_step": 1.7999,
+          "acceptance_rate": 0.2681,
+          "accepted_per_step": 0.8564
+        },
+        "teacher_labels/call": {
+          "requests": 142,
+          "tokens": 12293,
+          "decode_steps": 4433,
+          "baseline_decode_steps": 12151,
+          "drafted": 16915,
+          "accepted": 7860,
+          "tokens_per_step": 2.741,
+          "acceptance_rate": 0.4647,
+          "accepted_per_step": 1.7731
+        },
+        "template_cases": {
+          "requests": 30,
+          "tokens": 980,
+          "decode_steps": 460,
+          "baseline_decode_steps": 950,
+          "drafted": 1531,
+          "accepted": 519,
+          "tokens_per_step": 2.0652,
+          "acceptance_rate": 0.339,
+          "accepted_per_step": 1.1283
+        },
+        "template_cases/answer": {
+          "requests": 16,
+          "tokens": 159,
+          "decode_steps": 81,
+          "baseline_decode_steps": 143,
+          "drafted": 204,
+          "accepted": 77,
+          "tokens_per_step": 1.7654,
+          "acceptance_rate": 0.3775,
+          "accepted_per_step": 0.9506
+        },
+        "template_cases/call": {
+          "requests": 14,
+          "tokens": 821,
+          "decode_steps": 379,
+          "baseline_decode_steps": 807,
+          "drafted": 1327,
+          "accepted": 442,
+          "tokens_per_step": 2.1293,
+          "acceptance_rate": 0.3331,
+          "accepted_per_step": 1.1662
+        }
+      }
+    },
+    {
+      "prompt_lookup_min": 1,
+      "prompt_lookup_max": 3,
+      "num_speculative_tokens": 8,
+      "groups": {
+        "all": {
+          "requests": 314,
+          "tokens": 17940,
+          "decode_steps": 6447,
+          "baseline_decode_steps": 17626,
+          "drafted": 45258,
+          "accepted": 11491,
+          "tokens_per_step": 2.734,
+          "acceptance_rate": 0.2539,
+          "accepted_per_step": 1.7824
+        },
+        "teacher_labels": {
+          "requests": 284,
+          "tokens": 16960,
+          "decode_steps": 6038,
+          "baseline_decode_steps": 16676,
+          "drafted": 42607,
+          "accepted": 10921,
+          "tokens_per_step": 2.7618,
+          "acceptance_rate": 0.2563,
+          "accepted_per_step": 1.8087
+        },
+        "teacher_labels/answer": {
+          "requests": 142,
+          "tokens": 4667,
+          "decode_steps": 2450,
+          "baseline_decode_steps": 4525,
+          "drafted": 15552,
+          "accepted": 2216,
+          "tokens_per_step": 1.8469,
+          "acceptance_rate": 0.1425,
+          "accepted_per_step": 0.9045
+        },
+        "teacher_labels/call": {
+          "requests": 142,
+          "tokens": 12293,
+          "decode_steps": 3588,
+          "baseline_decode_steps": 12151,
+          "drafted": 27055,
+          "accepted": 8705,
+          "tokens_per_step": 3.3866,
+          "acceptance_rate": 0.3218,
+          "accepted_per_step": 2.4261
+        },
+        "template_cases": {
+          "requests": 30,
+          "tokens": 980,
+          "decode_steps": 409,
+          "baseline_decode_steps": 950,
+          "drafted": 2651,
+          "accepted": 570,
+          "tokens_per_step": 2.3227,
+          "acceptance_rate": 0.215,
+          "accepted_per_step": 1.3936
+        },
+        "template_cases/answer": {
+          "requests": 16,
+          "tokens": 159,
+          "decode_steps": 80,
+          "baseline_decode_steps": 143,
+          "drafted": 400,
+          "accepted": 78,
+          "tokens_per_step": 1.7875,
+          "acceptance_rate": 0.195,
+          "accepted_per_step": 0.975
+        },
+        "template_cases/call": {
+          "requests": 14,
+          "tokens": 821,
+          "decode_steps": 329,
+          "baseline_decode_steps": 807,
+          "drafted": 2251,
+          "accepted": 492,
+          "tokens_per_step": 2.4529,
+          "acceptance_rate": 0.2186,
+          "accepted_per_step": 1.4954
+        }
+      }
+    },
+    {
+      "prompt_lookup_min": 2,
+      "prompt_lookup_max": 4,
+      "num_speculative_tokens": 2,
+      "groups": {
+        "all": {
+          "requests": 314,
+          "tokens": 17940,
+          "decode_steps": 9940,
+          "baseline_decode_steps": 17626,
+          "drafted": 12310,
+          "accepted": 7848,
+          "tokens_per_step": 1.7732,
+          "acceptance_rate": 0.6375,
+          "accepted_per_step": 0.7895
+        },
+        "teacher_labels": {
+          "requests": 284,
+          "tokens": 16960,
+          "decode_steps": 9350,
+          "baseline_decode_steps": 16676,
+          "drafted": 11644,
+          "accepted": 7472,
+          "tokens_per_step": 1.7835,
+          "acceptance_rate": 0.6417,
+          "accepted_per_step": 0.7991
+        },
+        "teacher_labels/answer": {
+          "requests": 142,
+          "tokens": 4667,
+          "decode_steps": 3161,
+          "baseline_decode_steps": 4525,
+          "drafted": 2544,
+          "accepted": 1368,
+          "tokens_per_step": 1.4315,
+          "acceptance_rate": 0.5377,
+          "accepted_per_step": 0.4328
+        },
+        "teacher_labels/call": {
+          "requests": 142,
+          "tokens": 12293,
+          "decode_steps": 6189,
+          "baseline_decode_steps": 12151,
+          "drafted": 9100,
+          "accepted": 6104,
+          "tokens_per_step": 1.9633,
+          "acceptance_rate": 0.6708,
+          "accepted_per_step": 0.9863
+        },
+        "template_cases": {
+          "requests": 30,
+          "tokens": 980,
+          "decode_steps": 590,
+          "baseline_decode_steps": 950,
+          "drafted": 666,
+          "accepted": 376,
+          "tokens_per_step": 1.6102,
+          "acceptance_rate": 0.5646,
+          "accepted_per_step": 0.6373
+        },
+        "template_cases/answer": {
+          "requests": 16,
+          "tokens": 159,
+          "decode_steps": 102,
+          "baseline_decode_steps": 143,
+          "drafted": 64,
+          "accepted": 44,
+          "tokens_per_step": 1.402,
+          "acceptance_rate": 0.6875,
+          "accepted_per_step": 0.4314
+        },
+        "template_cases/call": {
+          "requests": 14,
+          "tokens": 821,
+          "decode_steps": 488,
+          "baseline_decode_steps": 807,
+          "drafted": 602,
+          "accepted": 332,
+          "tokens_per_step": 1.6537,
+          "acceptance_rate": 0.5515,
+          "accepted_per_step": 0.6803
+        }
+      }
+    },
+    {
+      "prompt_lookup_min": 2,
+      "prompt_lookup_max": 4,
+      "num_speculative_tokens": 3,
+      "groups": {
+        "all": {
+          "requests": 314,
+          "tokens": 17940,
+          "decode_steps": 9128,
+          "baseline_decode_steps": 17626,
+          "drafted": 16029,
+          "accepted": 8809,
+          "tokens_per_step": 1.931,
+          "acceptance_rate": 0.5496,
+          "accepted_per_step": 0.9651
+        },
+        "teacher_labels": {
+          "requests": 284,
+          "tokens": 16960,
+          "decode_steps": 8576,
+          "baseline_decode_steps": 16676,
+          "drafted": 15144,
+          "accepted": 8384,
+          "tokens_per_step": 1.9445,
+          "acceptance_rate": 0.5536,
+          "accepted_per_step": 0.9776
+        },
+        "teacher_labels/answer": {
+          "requests": 142,
+          "tokens": 4667,
+          "decode_steps": 3060,
+          "baseline_decode_steps": 4525,
+          "drafted": 3513,
+          "accepted": 1607,
+          "tokens_per_step": 1.4788,
+          "acceptance_rate": 0.4574,
+          "accepted_per_step": 0.5252
+        },
+        "teacher_labels/call": {
+          "requests": 142,
+          "tokens": 12293,
+          "decode_steps": 5516,
+          "baseline_decode_steps": 12151,
+          "drafted": 11631,
+          "accepted": 6777,
+          "tokens_per_step": 2.2029,
+          "acceptance_rate": 0.5827,
+          "accepted_per_step": 1.2286
+        },
+        "template_cases": {
+          "requests": 30,
+          "tokens": 980,
+          "decode_steps": 552,
+          "baseline_decode_steps": 950,
+          "drafted": 885,
+          "accepted": 425,
+          "tokens_per_step": 1.721,
+          "acceptance_rate": 0.4802,
+          "accepted_per_step": 0.7699
+        },
+        "template_cases/answer": {
+          "requests": 16,
+          "tokens": 159,
+          "decode_steps": 101,
+          "baseline_decode_steps": 143,
+          "drafted": 93,
+          "accepted": 56,
+          "tokens_per_step": 1.4158,
+          "acceptance_rate": 0.6022,
+          "accepted_per_step": 0.5545
+        },
+        "template_cases/call": {
+          "requests": 14,
+          "tokens": 821,
+          "decode_steps": 451,
+          "baseline_decode_steps": 807,
+          "drafted": 792,
+          "accepted": 369,
+          "tokens_per_step": 1.7894,
+          "acceptance_rate": 0.4659,
+          "accepted_per_step": 0.8182
+        }
+      }
+    },
+    {
+      "prompt_lookup_min": 2,
+      "prompt_lookup_max": 4,
+      "num_speculative_tokens": 4,
+      "groups": {
+        "all": {
+          "requests": 314,
+          "tokens": 17940,
+          "decode_steps": 8578,
+          "baseline_decode_steps": 17626,
+          "drafted": 19166,
+          "accepted": 9361,
+          "tokens_per_step": 2.0548,
+          "acceptance_rate": 0.4884,
+          "accepted_per_step": 1.0913
+        },
+        "teacher_labels": {
+          "requests": 284,
+          "tokens": 16960,
+          "decode_steps": 8032,
+          "baseline_decode_steps": 16676,
+          "drafted": 18011,
+          "accepted": 8928,
+          "tokens_per_step": 2.0762,
+          "acceptance_rate": 0.4957,
+          "accepted_per_step": 1.1116
+        },
+        "teacher_labels/answer": {
+          "requests": 142,
+          "tokens": 4667,
+          "decode_steps": 2855,
+          "baseline_decode_steps": 4525,
+          "drafted": 3864,
+          "accepted": 1812,
+          "tokens_per_step": 1.5849,
+          "acceptance_rate": 0.4689,
+          "accepted_per_step": 0.6347
+        },
+        "teacher_labels/call": {
+          "requests": 142,
+          "tokens": 12293,
+          "decode_steps": 5177,
+          "baseline_decode_steps": 12151,
+          "drafted": 14147,
+          "accepted": 7116,
+          "tokens_per_step": 2.3471,
+          "acceptance_rate": 0.503,
+          "accepted_per_step": 1.3745
+        },
+        "template_cases": {
+          "requests": 30,
+          "tokens": 980,
+          "decode_steps": 546,
+          "baseline_decode_steps": 950,
+          "drafted": 1155,
+          "accepted": 433,
+          "tokens_per_step": 1.7399,
+          "acceptance_rate": 0.3749,
+          "accepted_per_step": 0.793
+        },
+        "template_cases/answer": {
+          "requests": 16,
+          "tokens": 159,
+          "decode_steps": 98,
+          "baseline_decode_steps": 143,
+          "drafted": 112,
+          "accepted": 60,
+          "tokens_per_step": 1.4592,
+          "acceptance_rate": 0.5357,
+          "accepted_per_step": 0.6122
+        },
+        "template_cases/call": {
+          "requests": 14,
+          "tokens": 821,
+          "decode_steps": 448,
+          "baseline_decode_steps": 807,
+          "drafted": 1043,
+          "accepted": 373,
+          "tokens_per_step": 1.8013,
+          "acceptance_rate": 0.3576,
+          "accepted_per_step": 0.8326
+        }
+      }
+    },
+    {
+      "prompt_lookup_min": 2,
+      "prompt_lookup_max": 4,
+      "num_speculative_tokens": 8,
+      "groups": {
+        "all": {
+          "requests": 314,
+          "tokens": 17940,
+          "decode_steps": 7662,
+          "baseline_decode_steps": 17626,
+          "drafted": 30986,
+          "accepted": 10276,
+          "tokens_per_step": 2.3004,
+          "acceptance_rate": 0.3316,
+          "accepted_per_step": 1.3412
+        },
+        "teacher_labels": {
+          "requests": 284,
+          "tokens": 16960,
+          "decode_steps": 7164,
+          "baseline_decode_steps": 16676,
+          "drafted": 29063,
+          "accepted": 9795,
+          "tokens_per_step": 2.3277,
+          "acceptance_rate": 0.337,
+          "accepted_per_step": 1.3673
+        },
+        "teacher_labels/answer": {
+          "requests": 142,
+          "tokens": 4667,
+          "decode_steps": 2830,
+          "baseline_decode_steps": 4525,
+          "drafted": 7528,
+          "accepted": 1836,
+          "tokens_per_step": 1.5989,
+          "acceptance_rate": 0.2439,
+          "accepted_per_step": 0.6488
+        },
+        "teacher_labels/call": {
+          "requests": 142,
+          "tokens": 12293,
+          "decode_steps": 4334,
+          "baseline_decode_steps": 12151,
+          "drafted": 21535,
+          "accepted": 7959,
+          "tokens_per_step": 2.8036,
+          "acceptance_rate": 0.3696,
+          "accepted_per_step": 1.8364
+        },
+        "template_cases": {
+          "requests": 30,
+          "tokens": 980,
+          "decode_steps": 498,
+          "baseline_decode_steps": 950,
+          "drafted": 1923,
+          "accepted": 481,
+          "tokens_per_step": 1.9076,
+          "acceptance_rate": 0.2501,
+          "accepted_per_step": 0.9659
+        },
+        "template_cases/answer": {
+          "requests": 16,
+          "tokens": 159,
+          "decode_steps": 98,
+          "baseline_decode_steps": 143,
+          "drafted": 224,
+          "accepted": 60,
+          "tokens_per_step": 1.4592,
+          "acceptance_rate": 0.2679,
+          "accepted_per_step": 0.6122
+        },
+        "template_cases/call": {
+          "requests": 14,
+          "tokens": 821,
+          "decode_steps": 400,
+          "baseline_decode_steps": 807,
+          "drafted": 1699,
+          "accepted": 421,
+          "tokens_per_step": 2.0175,
+          "acceptance_rate": 0.2478,
+          "accepted_per_step": 1.0525
+        }
+      }
+    },
+    {
+      "prompt_lookup_min": 3,
+      "prompt_lookup_max": 5,
+      "num_speculative_tokens": 2,
+      "groups": {
+        "all": {
+          "requests": 314,
+          "tokens": 17940,
+          "decode_steps": 10975,
+          "baseline_decode_steps": 17626,
+          "drafted": 10198,
+          "accepted": 6963,
+          "tokens_per_step": 1.606,
+          "acceptance_rate": 0.6828,
+          "accepted_per_step": 0.6344
+        },
+        "teacher_labels": {
+          "requests": 284,
+          "tokens": 16960,
+          "decode_steps": 10330,
+          "baseline_decode_steps": 16676,
+          "drafted": 9682,
+          "accepted": 6629,
+          "tokens_per_step": 1.6143,
+          "acceptance_rate": 0.6847,
+          "accepted_per_step": 0.6417
+        },
+        "teacher_labels/answer": {
+          "requests": 142,
+          "tokens": 4667,
+          "decode_steps": 3618,
+          "baseline_decode_steps": 4525,
+          "drafted": 1800,
+          "accepted": 1048,
+          "tokens_per_step": 1.2507,
+          "acceptance_rate": 0.5822,
+          "accepted_per_step": 0.2897
+        },
+        "teacher_labels/call": {
+          "requests": 142,
+          "tokens": 12293,
+          "decode_steps": 6712,
+          "baseline_decode_steps": 12151,
+          "drafted": 7882,
+          "accepted": 5581,
+          "tokens_per_step": 1.8103,
+          "acceptance_rate": 0.7081,
+          "accepted_per_step": 0.8315
+        },
+        "template_cases": {
+          "requests": 30,
+          "tokens": 980,
+          "decode_steps": 645,
+          "baseline_decode_steps": 950,
+          "drafted": 516,
+          "accepted": 334,
+          "tokens_per_step": 1.4729,
+          "acceptance_rate": 0.6473,
+          "accepted_per_step": 0.5178
+        },
+        "template_cases/answer": {
+          "requests": 16,
+          "tokens": 159,
+          "decode_steps": 122,
+          "baseline_decode_steps": 143,
+          "drafted": 50,
+          "accepted": 36,
+          "tokens_per_step": 1.1721,
+          "acceptance_rate": 0.72,
+          "accepted_per_step": 0.2951
+        },
+        "template_cases/call": {
+          "requests": 14,
+          "tokens": 821,
+          "decode_steps": 523,
+          "baseline_decode_steps": 807,
+          "drafted": 466,
+          "accepted": 298,
+          "tokens_per_step": 1.543,
+          "acceptance_rate": 0.6395,
+          "accepted_per_step": 0.5698
+        }
+      }
+    },
+    {
+      "prompt_lookup_min": 3,
+      "prompt_lookup_max": 5,
+      "num_speculative_tokens": 3,
+      "groups": {
+        "all": {
+          "requests": 314,
+          "tokens": 17940,
+          "decode_steps": 10018,
+          "baseline_decode_steps": 17626,
+          "drafted": 12426,
+          "accepted": 7919,
+          "tokens_per_step": 1.7594,
+          "acceptance_rate": 0.6373,
+          "accepted_per_step": 0.7905
+        },
+        "teacher_labels": {
+          "requests": 284,
+          "tokens": 16960,
+          "decode_steps": 9412,
+          "baseline_decode_steps": 16676,
+          "drafted": 11769,
+          "accepted": 7548,
+          "tokens_per_step": 1.7718,
+          "acceptance_rate": 0.6413,
+          "accepted_per_step": 0.802
+        },
+        "teacher_labels/answer": {
+          "requests": 142,
+          "tokens": 4667,
+          "decode_steps": 3383,
+          "baseline_decode_steps": 4525,
+          "drafted": 1995,
+          "accepted": 1284,
+          "tokens_per_step": 1.3376,
+          "acceptance_rate": 0.6436,
+          "accepted_per_step": 0.3795
+        },
+        "teacher_labels/call": {
+          "requests": 142,
+          "tokens": 12293,
+          "decode_steps": 6029,
+          "baseline_decode_steps": 12151,
+          "drafted": 9774,
+          "accepted": 6264,
+          "tokens_per_step": 2.0154,
+          "acceptance_rate": 0.6409,
+          "accepted_per_step": 1.039
+        },
+        "template_cases": {
+          "requests": 30,
+          "tokens": 980,
+          "decode_steps": 606,
+          "baseline_decode_steps": 950,
+          "drafted": 657,
+          "accepted": 371,
+          "tokens_per_step": 1.5677,
+          "acceptance_rate": 0.5647,
+          "accepted_per_step": 0.6122
+        },
+        "template_cases/answer": {
+          "requests": 16,
+          "tokens": 159,
+          "decode_steps": 118,
+          "baseline_decode_steps": 143,
+          "drafted": 63,
+          "accepted": 39,
+          "tokens_per_step": 1.2119,
+          "acceptance_rate": 0.619,
+          "accepted_per_step": 0.3305
+        },
+        "template_cases/call": {
+          "requests": 14,
+          "tokens": 821,
+          "decode_steps": 488,
+          "baseline_decode_steps": 807,
+          "drafted": 594,
+          "accepted": 332,
+          "tokens_per_step": 1.6537,
+          "acceptance_rate": 0.5589,
+          "accepted_per_step": 0.6803
+        }
+      }
+    },
+    {
+      "prompt_lookup_min": 3,
+      "prompt_lookup_max": 5,
+      "num_speculative_tokens": 4,
+      "groups": {
+        "all": {
+          "requests": 314,
+          "tokens": 17940,
+          "decode_steps": 9580,
+          "baseline_decode_steps": 17626,
+          "drafted": 14811,
+          "accepted": 8359,
+          "tokens_per_step": 1.8399,
+          "acceptance_rate": 0.5644,
+          "accepted_per_step": 0.8725
+        },
+        "teacher_labels": {
+          "requests": 284,
+          "tokens": 16960,
+          "decode_steps": 8979,
+          "baseline_decode_steps": 16676,
+          "drafted": 13955,
+          "accepted": 7981,
+          "tokens_per_step": 1.8572,
+          "acceptance_rate": 0.5719,
+          "accepted_per_step": 0.8889
+        },
+        "teacher_labels/answer": {
+          "requests": 142,
+          "tokens": 4667,
+          "decode_steps": 3364,
+          "baseline_decode_steps": 4525,
+          "drafted": 2584,
+          "accepted": 1303,
+          "tokens_per_step": 1.3451,
+          "acceptance_rate": 0.5043,
+          "accepted_per_step": 0.3873
+        },
+        "teacher_labels/call": {
+          "requests": 142,
+          "tokens": 12293,
+          "decode_steps": 5615,
+          "baseline_decode_steps": 12151,
+          "drafted": 11371,
+          "accepted": 6678,
+          "tokens_per_step": 2.164,
+          "acceptance_rate": 0.5873,
+          "accepted_per_step": 1.1893
+        },
+        "template_cases": {
+          "requests": 30,
+          "tokens": 980,
+          "decode_steps": 601,
+          "baseline_decode_steps": 950,
+          "drafted": 856,
+          "accepted": 378,
+          "tokens_per_step": 1.5807,
+          "acceptance_rate": 0.4416,
+          "accepted_per_step": 0.629
+        },
+        "template_cases/answer": {
+          "requests": 16,
+          "tokens": 159,
+          "decode_steps": 118,
+          "baseline_decode_steps": 143,
+          "drafted": 84,
+          "accepted": 40,
+          "tokens_per_step": 1.2119,
+          "acceptance_rate": 0.4762,
+          "accepted_per_step": 0.339
+        },
+        "template_cases/call": {
+          "requests": 14,
+          "tokens": 821,
+          "decode_steps": 483,
+          "baseline_decode_steps": 807,
+          "drafted": 772,
+          "accepted": 338,
+          "tokens_per_step": 1.6708,
+          "acceptance_rate": 0.4378,
+          "accepted_per_step": 0.6998
+        }
+      }
+    },
+    {
+      "prompt_lookup_min": 3,
+      "prompt_lookup_max": 5,
+      "num_speculative_tokens": 8,
+      "groups": {
+        "all": {
+          "requests": 314,
+          "tokens": 17940,
+          "decode_steps": 8765,
+          "baseline_decode_steps": 17626,
+          "drafted": 23087,
+          "accepted": 9173,
+          "tokens_per_step": 2.011,
+          "acceptance_rate": 0.3973,
+          "accepted_per_step": 1.0465
+        },
+        "teacher_labels": {
+          "requests": 284,
+          "tokens": 16960,
+          "decode_steps": 8212,
+          "baseline_decode_steps": 16676,
+          "drafted": 21759,
+          "accepted": 8747,
+          "tokens_per_step": 2.0307,
+          "acceptance_rate": 0.402,
+          "accepted_per_step": 1.0651
+        },
+        "teacher_labels/answer": {
+          "requests": 142,
+          "tokens": 4667,
+          "decode_steps": 3337,
+          "baseline_decode_steps": 4525,
+          "drafted": 4952,
+          "accepted": 1329,
+          "tokens_per_step": 1.356,
+          "acceptance_rate": 0.2684,
+          "accepted_per_step": 0.3983
+        },
+        "teacher_labels/call": {
+          "requests": 142,
+          "tokens": 12293,
+          "decode_steps": 4875,
+          "baseline_decode_steps": 12151,
+          "drafted": 16807,
+          "accepted": 7418,
+          "tokens_per_step": 2.4925,
+          "acceptance_rate": 0.4414,
+          "accepted_per_step": 1.5216
+        },
+        "template_cases": {
+          "requests": 30,
+          "tokens": 980,
+          "decode_steps": 553,
+          "baseline_decode_steps": 950,
+          "drafted": 1328,
+          "accepted": 426,
+          "tokens_per_step": 1.7179,
+          "acceptance_rate": 0.3208,
+          "accepted_per_step": 0.7703
+        },
+        "template_cases/answer": {
+          "requests": 16,
+          "tokens": 159,
+          "decode_steps": 118,
+          "baseline_decode_steps": 143,
+          "drafted": 168,
+          "accepted": 40,
+          "tokens_per_step": 1.2119,
+          "acceptance_rate": 0.2381,
+          "accepted_per_step": 0.339
+        },
+        "template_cases/call": {
+          "requests": 14,
+          "tokens": 821,
+          "decode_steps": 435,
+          "baseline_decode_steps": 807,
+          "drafted": 1160,
+          "accepted": 386,
+          "tokens_per_step": 1.8552,
+          "acceptance_rate": 0.3328,
+          "accepted_per_step": 0.8874
+        }
+      }
+    },
+    {
+      "prompt_lookup_min": 5,
+      "prompt_lookup_max": 5,
+      "num_speculative_tokens": 2,
+      "groups": {
+        "all": {
+          "requests": 314,
+          "tokens": 17940,
+          "decode_steps": 12637,
+          "baseline_decode_steps": 17626,
+          "drafted": 7030,
+          "accepted": 4992,
+          "tokens_per_step": 1.3948,
+          "acceptance_rate": 0.7101,
+          "accepted_per_step": 0.395
+        },
+        "teacher_labels": {
+          "requests": 284,
+          "tokens": 16960,
+          "decode_steps": 11890,
+          "baseline_decode_steps": 16676,
+          "drafted": 6696,
+          "accepted": 4787,
+          "tokens_per_step": 1.4025,
+          "acceptance_rate": 0.7149,
+          "accepted_per_step": 0.4026
+        },
+        "teacher_labels/answer": {
+          "requests": 142,
+          "tokens": 4667,
+          "decode_steps": 4167,
+          "baseline_decode_steps": 4525,
+          "drafted": 746,
+          "accepted": 359,
+          "tokens_per_step": 1.0859,
+          "acceptance_rate": 0.4812,
+          "accepted_per_step": 0.0862
+        },
+        "teacher_labels/call": {
+          "requests": 142,
+          "tokens": 12293,
+          "decode_steps": 7723,
+          "baseline_decode_steps": 12151,
+          "drafted": 5950,
+          "accepted": 4428,
+          "tokens_per_step": 1.5734,
+          "acceptance_rate": 0.7442,
+          "accepted_per_step": 0.5734
+        },
+        "template_cases": {
+          "requests": 30,
+          "tokens": 980,
+          "decode_steps": 747,
+          "baseline_decode_steps": 950,
+          "drafted": 334,
+          "accepted": 205,
+          "tokens_per_step": 1.2718,
+          "acceptance_rate": 0.6138,
+          "accepted_per_step": 0.2744
+        },
+        "template_cases/answer": {
+          "requests": 16,
+          "tokens": 159,
+          "decode_steps": 139,
+          "baseline_decode_steps": 143,
+          "drafted": 8,
+          "accepted": 5,
+          "tokens_per_step": 1.0288,
+          "acceptance_rate": 0.625,
+          "accepted_per_step": 0.036
+        },
+        "template_cases/call": {
+          "requests": 14,
+          "tokens": 821,
+          "decode_steps": 608,
+          "baseline_decode_steps": 807,
+          "drafted": 326,
+          "accepted": 200,
+          "tokens_per_step": 1.3273,
+          "acceptance_rate": 0.6135,
+          "accepted_per_step": 0.3289
+        }
+      }
+    },
+    {
+      "prompt_lookup_min": 5,
+      "prompt_lookup_max": 5,
+      "num_speculative_tokens": 3,
+      "groups": {
+        "all": {
+          "requests": 314,
+          "tokens": 17940,
+          "decode_steps": 11846,
+          "baseline_decode_steps": 17626,
+          "drafted": 8172,
+          "accepted": 5782,
+          "tokens_per_step": 1.4879,
+          "acceptance_rate": 0.7075,
+          "accepted_per_step": 0.4881
+        },
+        "teacher_labels": {
+          "requests": 284,
+          "tokens": 16960,
+          "decode_steps": 11139,
+          "baseline_decode_steps": 16676,
+          "drafted": 7791,
+          "accepted": 5538,
+          "tokens_per_step": 1.4971,
+          "acceptance_rate": 0.7108,
+          "accepted_per_step": 0.4972
+        },
+        "teacher_labels/answer": {
+          "requests": 142,
+          "tokens": 4667,
+          "decode_steps": 4140,
+          "baseline_decode_steps": 4525,
+          "drafted": 1038,
+          "accepted": 386,
+          "tokens_per_step": 1.093,
+          "acceptance_rate": 0.3719,
+          "accepted_per_step": 0.0932
+        },
+        "teacher_labels/call": {
+          "requests": 142,
+          "tokens": 12293,
+          "decode_steps": 6999,
+          "baseline_decode_steps": 12151,
+          "drafted": 6753,
+          "accepted": 5152,
+          "tokens_per_step": 1.7361,
+          "acceptance_rate": 0.7629,
+          "accepted_per_step": 0.7361
+        },
+        "template_cases": {
+          "requests": 30,
+          "tokens": 980,
+          "decode_steps": 707,
+          "baseline_decode_steps": 950,
+          "drafted": 381,
+          "accepted": 244,
+          "tokens_per_step": 1.3437,
+          "acceptance_rate": 0.6404,
+          "accepted_per_step": 0.3451
+        },
+        "template_cases/answer": {
+          "requests": 16,
+          "tokens": 159,
+          "decode_steps": 139,
+          "baseline_decode_steps": 143,
+          "drafted": 12,
+          "accepted": 5,
+          "tokens_per_step": 1.0288,
+          "acceptance_rate": 0.4167,
+          "accepted_per_step": 0.036
+        },
+        "template_cases/call": {
+          "requests": 14,
+          "tokens": 821,
+          "decode_steps": 568,
+          "baseline_decode_steps": 807,
+          "drafted": 369,
+          "accepted": 239,
+          "tokens_per_step": 1.4208,
+          "acceptance_rate": 0.6477,
+          "accepted_per_step": 0.4208
+        }
+      }
+    },
+    {
+      "prompt_lookup_min": 5,
+      "prompt_lookup_max": 5,
+      "num_speculative_tokens": 4,
+      "groups": {
+        "all": {
+          "requests": 314,
+          "tokens": 17940,
+          "decode_steps": 11574,
+          "baseline_decode_steps": 17626,
+          "drafted": 9803,
+          "accepted": 6055,
+          "tokens_per_step": 1.5229,
+          "acceptance_rate": 0.6177,
+          "accepted_per_step": 0.5232
+        },
+        "teacher_labels": {
+          "requests": 284,
+          "tokens": 16960,
+          "decode_steps": 10875,
+          "baseline_decode_steps": 16676,
+          "drafted": 9327,
+          "accepted": 5802,
+          "tokens_per_step": 1.5334,
+          "acceptance_rate": 0.6221,
+          "accepted_per_step": 0.5335
+        },
+        "teacher_labels/answer": {
+          "requests": 142,
+          "tokens": 4667,
+          "decode_steps": 4134,
+          "baseline_decode_steps": 4525,
+          "drafted": 1360,
+          "accepted": 392,
+          "tokens_per_step": 1.0946,
+          "acceptance_rate": 0.2882,
+          "accepted_per_step": 0.0948
+        },
+        "teacher_labels/call": {
+          "requests": 142,
+          "tokens": 12293,
+          "decode_steps": 6741,
+          "baseline_decode_steps": 12151,
+          "drafted": 7967,
+          "accepted": 5410,
+          "tokens_per_step": 1.8026,
+          "acceptance_rate": 0.6791,
+          "accepted_per_step": 0.8026
+        },
+        "template_cases": {
+          "requests": 30,
+          "tokens": 980,
+          "decode_steps": 699,
+          "baseline_decode_steps": 950,
+          "drafted": 476,
+          "accepted": 253,
+          "tokens_per_step": 1.3591,
+          "acceptance_rate": 0.5315,
+          "accepted_per_step": 0.3619
+        },
+        "template_cases/answer": {
+          "requests": 16,
+          "tokens": 159,
+          "decode_steps": 139,
+          "baseline_decode_steps": 143,
+          "drafted": 16,
+          "accepted": 5,
+          "tokens_per_step": 1.0288,
+          "acceptance_rate": 0.3125,
+          "accepted_per_step": 0.036
+        },
+        "template_cases/call": {
+          "requests": 14,
+          "tokens": 821,
+          "decode_steps": 560,
+          "baseline_decode_steps": 807,
+          "drafted": 460,
+          "accepted": 248,
+          "tokens_per_step": 1.4411,
+          "acceptance_rate": 0.5391,
+          "accepted_per_step": 0.4429
+        }
+      }
+    },
+    {
+      "prompt_lookup_min": 5,
+      "prompt_lookup_max": 5,
+      "num_speculative_tokens": 8,
+      "groups": {
+        "all": {
+          "requests": 314,
+          "tokens": 17940,
+          "decode_steps": 10848,
+          "baseline_decode_steps": 17626,
+          "drafted": 13783,
+          "accepted": 6781,
+          "tokens_per_step": 1.6248,
+          "acceptance_rate": 0.492,
+          "accepted_per_step": 0.6251
+        },
+        "teacher_labels": {
+          "requests": 284,
+          "tokens": 16960,
+          "decode_steps": 10183,
+          "baseline_decode_steps": 16676,
+          "drafted": 13103,
+          "accepted": 6494,
+          "tokens_per_step": 1.6376,
+          "acceptance_rate": 0.4956,
+          "accepted_per_step": 0.6377
+        },
+        "teacher_labels/answer": {
+          "requests": 142,
+          "tokens": 4667,
+          "decode_steps": 4119,
+          "baseline_decode_steps": 4525,
+          "drafted": 2600,
+          "accepted": 407,
+          "tokens_per_step": 1.0986,
+          "acceptance_rate": 0.1565,
+          "accepted_per_step": 0.0988
+        },
+        "teacher_labels/call": {
+          "requests": 142,
+          "tokens": 12293,
+          "decode_steps": 6064,
+          "baseline_decode_steps": 12151,
+          "drafted": 10503,
+          "accepted": 6087,
+          "tokens_per_step": 2.0038,
+          "acceptance_rate": 0.5795,
+          "accepted_per_step": 1.0038
+        },
+        "template_cases": {
+          "requests": 30,
+          "tokens": 980,
+          "decode_steps": 665,
+          "baseline_decode_steps": 950,
+          "drafted": 680,
+          "accepted": 287,
+          "tokens_per_step": 1.4286,
+          "acceptance_rate": 0.4221,
+          "accepted_per_step": 0.4316
+        },
+        "template_cases/answer": {
+          "requests": 16,
+          "tokens": 159,
+          "decode_steps": 139,
+          "baseline_decode_steps": 143,
+          "drafted": 32,
+          "accepted": 5,
+          "tokens_per_step": 1.0288,
+          "acceptance_rate": 0.1562,
+          "accepted_per_step": 0.036
+        },
+        "template_cases/call": {
+          "requests": 14,
+          "tokens": 821,
+          "decode_steps": 526,
+          "baseline_decode_steps": 807,
+          "drafted": 648,
+          "accepted": 282,
+          "tokens_per_step": 1.5342,
+          "acceptance_rate": 0.4352,
+          "accepted_per_step": 0.5361
+        }
+      }
+    }
+  ],
+  "best": {
+    "prompt_lookup_min": 1,
+    "prompt_lookup_max": 3,
+    "num_speculative_tokens": 8,
+    "tokens_per_step": 2.734,
+    "acceptance_rate": 0.2539
+  }
+}

@@ -4,6 +4,7 @@
 # the Strix Halo (gfx1151, SJC accounts C and D); GFX=<target> overrides it.
 # Idempotent and resumable: re-run after a pod relaunch; finished steps are skipped.
 # Usage on the pod (JupyterLab terminal):  bash lab/pod_a_teacher.sh [facts|proxy|build|verify|download|serve|models|stop|all]
+#   serve takes --speculative off|ngram|draft (see serve below).
 # From the box, with nothing typed on the pod (the patch file is uploaded next to the script):
 #   python -m lab.controller run-script --account D --with lab/vllm-gfx1151.diff lab/pod_a_teacher.sh build
 # Beside a serving teacher, into its own folder and venv (the serving build is not touched):
@@ -19,14 +20,17 @@ set -u -o pipefail
 export PATH="$HOME/.local/bin:$PATH"
 STEP="${1:-all}"
 [ $# -gt 0 ] && shift
-# Options after the step (run-script passes them as arguments): --vllm-dir DIR, --venv DIR, --patch FILE, --jobs N.
+# Options after the step (run-script passes them as arguments): --vllm-dir DIR, --venv DIR, --patch FILE, --jobs N,
+# --speculative off|ngram|draft (serve only).
 while [ $# -gt 0 ]; do
   case "$1" in
     --vllm-dir) VLLM_DIR="${2:-}"; shift 2 ;;
     --venv) VLLM_VENV="${2:-}"; shift 2 ;;
     --patch) PATCH="${2:-}"; shift 2 ;;
     --jobs) BUILD_JOBS="${2:-}"; shift 2 ;;
-    *) echo "unknown option $1 (known: --vllm-dir, --venv, --patch, --jobs)"; exit 2 ;;
+    --speculative) [ $# -ge 2 ] || { echo "--speculative needs off, ngram or draft"; exit 2; }; SPECULATIVE="$2"; shift 2 ;;
+    --speculative=*) SPECULATIVE="${1#*=}"; shift ;;
+    *) echo "unknown option $1 (known: --vllm-dir, --venv, --patch, --jobs, --speculative)"; exit 2 ;;
   esac
 done
 DEFAULT_VLLM_DIR="$HOME/vllm"
@@ -280,6 +284,25 @@ download() {
 
 serve() {
   local dir="$MODELS/$(basename "$TEACHER")"
+  # Speculative decoding: serve --speculative off|ngram|draft (read into $SPECULATIVE above; default off). On gfx1151 a target
+  # pass that checks up to 16 tokens costs about one weight read (the chip sheet's matmul and int4 dequant times are
+  # flat from 1 to 16 rows), so each accepted draft token is close to free; see
+  # lab/refine/research/kernels/speculative_gfx1151.md. ngram drafts from the request's own prompt and output (vLLM's
+  # prompt lookup, no second model); draft runs a small model of the same vocabulary (vLLM refuses a different size)
+  # from $MODELS. SPEC_K is num_speculative_tokens; SPEC_MIN and SPEC_MAX the prompt-lookup n-gram range.
+  local spec="${SPECULATIVE:-off}"
+  local spec_args=()
+  case "$spec" in
+    off) ;;
+    ngram)
+      spec_args=(--speculative-config "{\"method\": \"ngram\", \"num_speculative_tokens\": ${SPEC_K:-4}, \"prompt_lookup_min\": ${SPEC_MIN:-1}, \"prompt_lookup_max\": ${SPEC_MAX:-3}}") ;;
+    draft)
+      local draft_dir="$MODELS/$(basename "${DRAFT:-Qwen/Qwen3.5-0.8B}")"
+      [ -f "$draft_dir/config.json" ] || { echo "draft checkpoint missing: hf download ${DRAFT:-Qwen/Qwen3.5-0.8B} --local-dir $draft_dir"; return 1; }
+      spec_args=(--speculative-config "{\"method\": \"draft_model\", \"model\": \"$draft_dir\", \"num_speculative_tokens\": ${SPEC_K:-4}}") ;;
+    *) echo "--speculative must be off, ngram or draft, not $spec"; return 2 ;;
+  esac
+  echo "speculative decoding: $spec"
   # Never launch from $HOME: the ~/vllm checkout would shadow the installed package as a namespace package.
   mkdir -p "$SERVE_DIR" && cd "$SERVE_DIR"
   pkill -f "vllm.entrypoints" 2>/dev/null; sleep 2
@@ -304,7 +327,7 @@ serve() {
     --scheduling-policy priority \
     --enable-auto-tool-choice --tool-call-parser "$TOOL_PARSER" \
     --max-model-len "$MAX_LEN" --limit-mm-per-prompt '{"image":1}' --gpu-memory-utilization "$GPU_UTIL" \
-    --dtype bfloat16 ${vit_attn[@]+"${vit_attn[@]}"} > "$SERVE_LOG" 2>&1 &
+    --dtype bfloat16 ${vit_attn[@]+"${vit_attn[@]}"} ${spec_args[@]+"${spec_args[@]}"} > "$SERVE_LOG" 2>&1 &
   local pid=$!
   echo "vllm serve pid $pid (log: $SERVE_LOG)"
   # Readiness through python3, not curl: not every pod image ships curl.

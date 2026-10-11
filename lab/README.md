@@ -55,6 +55,7 @@ adding one touches no shared file but this list.
 - [`sampler-overhead`](docs/sampler-overhead.md): The pod sampler's own cost on pod B, measured with and without it (T9).
 - [`sit`](docs/sit.md): Start one headless agent sitting for a task, a pass, the merge or the referee, and record it.
 - [`slot`](docs/slot.md): The GPU queue for pod B: request, start, extend, done, complain, status.
+- [`speculative-estimate`](docs/speculative-estimate.md): How many tokens n-gram speculative decoding would accept on our own conversations, measured offline.
 - [`spot-score`](docs/spot-score.md): Score a model on the held-out SPOT questions (L26): split joins the set's two folders, score scores.
 - [`stop`](docs/stop.md): Create the STOP file: every verb but ready, resume and stop is refused.
 - [`sweep-request`](docs/sweep-request.md): Request-side settings sweep of the teacher on one spawn: the dry run, the pod script, the pod run, collect.
