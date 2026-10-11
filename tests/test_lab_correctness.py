@@ -284,6 +284,43 @@ def test_a_server_that_sends_no_logprobs_is_recorded_by_its_chunks():
     assert out["logprobs"] == [None] * 3 and out["completion_tokens"] == 3 and out["error"] is None
 
 
+def test_a_llama_server_token_id_beside_the_token_text_is_recorded_as_a_token_id():
+    # llama-server ignores return_tokens_as_token_ids and sends logprobs only for top_logprobs >= 1, with an "id".
+    seen = []
+
+    class Llama:
+        def events(self, body):
+            seen.append(body)
+            for tid, word in ((5170, "First"), (11, ",")):
+                entry = {"id": tid, "token": word, "bytes": list(word.encode()), "logprob": -0.5, "top_logprobs": []}
+                yield 0.0, json.dumps({"choices": [{"delta": {"content": word}, "finish_reason": None,
+                                                    "logprobs": {"content": [entry]}}]})
+            yield 0.0, json.dumps({"choices": [], "usage": {"prompt_tokens": 80, "completion_tokens": 2}})
+            yield 0.0, "[DONE]"
+
+    prompts = bench.PromptSet.load()
+    out = correctness.generate(Llama(), prompts, bench.Settings(model="teacher", prefix_caching=False), 0,
+                               top_logprobs=1)
+    assert seen[0]["top_logprobs"] == 1 and seen[0]["logprobs"] is True
+    assert out["token_kind"] == "token_id" and out["tokens"] == [5170, 11] and out["logprobs"] == [-0.5, -0.5]
+    assert out["text"] == "First," and out["error"] is None
+
+
+def test_top_logprobs_stays_zero_unless_asked(tmp_path, monkeypatch):
+    seen = []
+    real = bench.DirectEndpoint.events
+
+    def spy(self, body):
+        seen.append(body)
+        return real(self, body)
+
+    monkeypatch.setattr(bench.DirectEndpoint, "events", spy)
+    with server(tmp_path) as url:
+        record(tmp_path, url)
+        compare(tmp_path, url, tmp_path / "fixtures" / f"vllm-{CHIP}-2026-10-10.json", "--top-logprobs", "1")
+    assert [b["top_logprobs"] for b in seen] == [0] * 4 + [1] * 4
+
+
 def test_the_verb_is_registered_once_and_listed():
     assert lab_main.VERBS["correctness"] == "lab.correctness:main"
     assert list(lab_main.VERBS) == sorted(lab_main.VERBS)
