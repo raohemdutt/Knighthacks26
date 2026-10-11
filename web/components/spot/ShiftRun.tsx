@@ -231,6 +231,7 @@ export function ShiftRun({ shift, orders, link }: { shift: Shift; orders: WorkOr
           robotAt={current?.location_id ?? null}
           route2={atlas && result ? result.recommended.route_places : undefined}
           routeLabel="Your route"
+          guide="shiftrun:map"
           onPick={planning ? toggle : undefined}
           note={
             atlas ? (
@@ -244,7 +245,7 @@ export function ShiftRun({ shift, orders, link }: { shift: Shift; orders: WorkOr
         />
 
         <div className={`${o.card} ${r.panel}`}>
-          <div className={r.turn}>
+          <div className={r.turn} data-guide="shiftrun:turn-back">
             <label htmlFor="turnback">
               Turn back to charge at <b>{turnBack}%</b> battery
             </label>
@@ -281,10 +282,10 @@ export function ShiftRun({ shift, orders, link }: { shift: Shift; orders: WorkOr
           ) : null}
 
           <div className={o.controls}>
-            <button type="button" className={`${ui.btn} ${ui.btnPrimary} ${o.play}`} disabled={!steps.length || phase === "play"} onClick={() => (setAt(0), setPhase("play"))}>
+            <button type="button" className={`${ui.btn} ${ui.btnPrimary} ${o.play}`} data-guide="shiftrun:run" disabled={!steps.length || phase === "play"} onClick={() => (setAt(0), setPhase("play"))}>
               {phase === "result" ? "Run it again" : "Run my plan"}
             </button>
-            <button type="button" className={ui.btn} onClick={() => edit(b.last_route ?? [])}>
+            <button type="button" className={ui.btn} data-guide="shiftrun:last" onClick={() => edit(b.last_route ?? [])}>
               Start from last round
             </button>
             <button type="button" className={ui.btn} onClick={() => edit([])} disabled={route.length === 0}>
@@ -299,7 +300,7 @@ export function ShiftRun({ shift, orders, link }: { shift: Shift; orders: WorkOr
           {hard && b.hard?.words ? <p className={o.note}>{b.hard.words}</p> : null}
 
           {planning ? (
-            <div className={r.pool}>
+            <div className={r.pool} data-guide="shiftrun:pool">
               <h3 className={r.poolTitle}>
                 Add a stop <span>{route.length} of {max} chosen</span>
               </h3>

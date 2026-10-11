@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ExpressionStrip } from "@/components/people/ExpressionStrip";
+import { FaceShare } from "@/components/people/FaceShare";
 import { FaceScan, canScan } from "@/components/people/FaceScan";
 import { PhotoEnroll } from "@/components/people/PhotoEnroll";
 import p from "@/components/people/people.module.css";
@@ -36,13 +37,24 @@ export default function PeoplePage() {
   const settings = useFetch((s) => api.identitySettings(s));
   const people = useFetch((s) => api.members(s));
   const circle = useFetch((s) => api.circleMembers(s));
+  // Face share: null while it is switched off on this box (the default), and then nothing about it is shown.
+  const sharing = useFetch((s) => api.faceShare(s));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<ApiError | undefined>(undefined);
 
   useAtlasEvents(["perception.identity"], () => {
     settings.reload();
     people.reload();
+    sharing.reload();
   });
+  useAtlasEvents(["circle.face_share", "agent.action.proposed", "workspace.action.completed"], () => {
+    sharing.reload();
+    people.reload();
+  });
+  const reloadSharing = useCallback(() => {
+    sharing.reload();
+    people.reload();
+  }, [sharing.reload, people.reload]);
 
   const toggle = async () => {
     if (!settings.data) return;
@@ -60,6 +72,8 @@ export default function PeoplePage() {
 
   const on = settings.data?.identity_enabled ?? false;
   const friends = circle.data?.configured ? circle.data.members : [];
+  const enrolled = (people.data ?? []).filter((m) => m.source !== "circle"); // people who enrolled on this box
+  const received = (people.data ?? []).filter((m) => m.source === "circle"); // templates friends' boxes shared with it
 
   return (
     <>
@@ -85,7 +99,11 @@ export default function PeoplePage() {
             <div className={ui.card}>
               <p>
                 When this is on, Atlas counts habits only for people who enrolled their face here and for nobody else; a face is kept as an
-                encrypted template on this box, never as a picture, it never leaves the box, and stored pictures stay blurred for everyone.
+                encrypted template on this box, never as a picture,{" "}
+                {sharing.data
+                  ? "it leaves the box only when you share your own with a friend below (encrypted for their box alone),"
+                  : "it never leaves the box,"}{" "}
+                and stored pictures stay blurred for everyone.
               </p>
               <div className={`${ui.row} ${ui.between} ${ui.wrap}`}>
                 <span className={on ? `${ui.tag} ${ui.tagAccent}` : ui.tag}>{on ? "On" : "Off"}</span>
@@ -124,18 +142,31 @@ export default function PeoplePage() {
               <ErrorBox what="who is enrolled" error={people.error} onRetry={people.reload} />
             ) : !people.data ? (
               <Loading what="who is enrolled" />
-            ) : people.data.length === 0 ? (
+            ) : enrolled.length === 0 ? (
               <Empty title="Nobody is enrolled">
                 Until someone enrolls, habits describe this desk as a whole. Everyone who has not enrolled stays anonymous.
               </Empty>
             ) : (
               <ul className={ui.list}>
-                {people.data.map((m) => (
+                {enrolled.map((m) => (
                   <Person key={m.member_id} member={m} settings={settings.data!} friends={friends} on={on} onChanged={people.reload} />
                 ))}
               </ul>
             )}
           </section>
+
+          {sharing.data ? (
+            <FaceShare status={sharing.data} received={received} onChanged={reloadSharing} />
+          ) : received.length > 0 ? (
+            <section className={ui.section}>
+              <h2 className={ui.sectionTitle}>Friends this box recognises</h2>
+              <ul className={ui.list}>
+                {received.map((m) => (
+                  <LeftOver key={m.member_id} member={m} onChanged={people.reload} />
+                ))}
+              </ul>
+            </section>
+          ) : null}
 
           <section className={ui.section}>
             <h2 className={ui.sectionTitle}>Room mood from everyone (anonymous)</h2>
@@ -503,6 +534,40 @@ function Person({ member, settings, friends, on, onChanged }: {
           ) : null}
         </>
       ) : null}
+      {error ? <WriteError error={error} /> : null}
+    </li>
+  );
+}
+
+/** A template a friend's box shared, on a box where face sharing has since been switched off: it can only be forgotten. */
+function LeftOver({ member, onChanged }: { member: Member; onChanged: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<ApiError | undefined>(undefined);
+  const forget = async () => {
+    setBusy(true);
+    setError(undefined);
+    try {
+      await api.removeMember(member.member_id);
+      onChanged();
+    } catch (err) {
+      setError(asApiError(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <li className={`${ui.card} ${p.stack}`}>
+      <div className={`${ui.row} ${ui.between} ${ui.wrap}`}>
+        <div className={ui.grow}>
+          <h3 className={ui.breakWords}>{member.name}</h3>
+          <p className={`${ui.muted} ${ui.small}`}>
+            Shared by a friend&apos;s Atlas. Face sharing is switched off on this box now, so this is deleted the next time the box checks the Circle.
+          </p>
+        </div>
+        <button type="button" className={`${ui.btn} ${ui.btnDeny}`} disabled={busy} onClick={forget}>
+          {busy ? "Forgetting…" : "Forget now"}
+        </button>
+      </div>
       {error ? <WriteError error={error} /> : null}
     </li>
   );

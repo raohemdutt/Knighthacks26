@@ -23,7 +23,7 @@
       "balance": 0,
       "unlimited": true,
       "quota_enabled": false,
-      "rate": null,
+      "rate": 3,
       "serving": {
         "port": 8000,
         "models": [
@@ -50,7 +50,7 @@
       "balance": 0,
       "unlimited": true,
       "quota_enabled": false,
-      "rate": null,
+      "rate": 3,
       "serving": {
         "port": 8000,
         "models": [],

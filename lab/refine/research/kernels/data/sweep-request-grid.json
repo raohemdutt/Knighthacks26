@@ -1,0 +1,74 @@
+{
+  "schema": "atlas.sweep_request.grid/1",
+  "task": "R52",
+  "about": "The fixed grid of the request-side settings sweep (lab/sweep_request.py) of the stock teacher on pod D: the settings a request carries, so one server spawn serves every cell and no cell restarts it. Each slice changes one setting from the defaults and runs at every batch size; each cell is measured three times, the repeats interleaved across the grid. Restart settings (environment, engine flags, kernels) stay at the pinned baseline of the inference settings sheet's search space, which the server is launched from.",
+  "note": "lab/refine/research/kernels/settings_inference_gfx1151.md",
+  "batches": [1, 4, 8, 16],
+  "repeats": 3,
+  "order": "serpentine",
+  "defaults": {"thinking": "off", "max_tokens": 128, "prompt": "short", "sampling": "greedy", "requests_per_stream": 1},
+  "prompts": {
+    "short": {"file": "fixtures/lab/bench/sweep/short.json", "tokens_est": 90,
+              "why": "a few sentences, as the text request the sheet's baseline was measured on (31 tokens in, 77 out)"},
+    "long": {"file": "fixtures/lab/bench/sweep/long.json", "tokens_est": 1100,
+             "why": "about a thousand tokens, the prompt length of a 1280x720 caption request (902 in); the note's KS8 names context length as what moves attention time"}
+  },
+  "sampling": {
+    "greedy": {"temperature": 0.0, "top_p": 1.0,
+               "why": "the sheet's baseline and the labeling path (lab/label.py) decode greedily"}
+  },
+  "slices": [
+    {"id": "base", "set": {},
+     "why": "the defaults at every batch size; batch is the harness's workload variable, not a server setting (the note's max_num_seqs finding), and base-b1 is the sheet's baseline operating point"},
+    {"id": "tokens-32", "set": {"max_tokens": 32},
+     "why": "max tokens 32 against base's 128: short answers such as captions (27 out on pod C) against the harness's 128"},
+    {"id": "thinking-on-32", "set": {"max_tokens": 32, "thinking": "on"},
+     "why": "thinking on against tokens-32's off at the same 32 tokens"},
+    {"id": "prompt-long", "set": {"prompt": "long"},
+     "why": "the long prompt class against base's short one at the same 128 tokens"}
+  ],
+  "held": [
+    {"setting": "sampling", "value": "greedy",
+     "why": "the note marks no sampling setting as changing decode work on the pinned server: its only sampling line, KS2, is the MTP acceptance rate, and MTP (num_speculative_tokens) is a restart setting the pinned baseline keeps at 0; a profile under sampling and a slice that sets it adds the axis with no code change"},
+    {"setting": "prefix caching", "value": "on, with a per-request nonce at the front",
+     "why": "a restart setting (the note's KS9); the harness's nonce keeps every measured request from hitting the cache"},
+    {"setting": "requests per stream", "value": 1,
+     "why": "batch B is B concurrent requests started together, so the cell measures B requests decoding at once"}
+  ],
+  "quick": ["base"],
+  "baseline_cell": "base-b1",
+  "baseline_source": "the pinned baseline of lab/refine/research/kernels/data/searchspace-inference-gfx1151.json (R35): server launched from its baseline mapping and fixed launch; request at batch 1, thinking off, temperature 0, the harness's 128 tokens with ignore_eos, a short text prompt",
+  "best_by": "decode_tok_s_total",
+  "warmup": {"max_tokens": 16,
+             "why": "one discarded round per batch size and prompt class before the first measured cell, so a first-use compile is never measured"},
+  "server": {
+    "account": "D",
+    "node": "pod-b",
+    "launches": ["pinned", "stock"],
+    "search_space": "lab/refine/research/kernels/data/searchspace-inference-gfx1151.json",
+    "checkpoint": "~/models/Qwen3.8-27B-INT4",
+    "engine_dir": "~/vllm",
+    "patch": "lab/vllm-gfx1201.diff",
+    "model": "teacher",
+    "max_len": 16384,
+    "port": 8100,
+    "run_dir": "~/sweep_request/server",
+    "ready_timeout_s": 900,
+    "request_timeout_s": 300,
+    "stream_grace_s": 60,
+    "idle_s": 10,
+    "power_period_s": 0.5
+  },
+  "timing": {
+    "ready_s": 523,
+    "stop_s": 30,
+    "decode_tok_s_b1": 2.88,
+    "per_stream_slowdown": 0.05,
+    "ttft_s": 0.4,
+    "prefill_tok_s": 400,
+    "per_cell_overhead_s": 2,
+    "margin": 0.1,
+    "round_to_min": 5,
+    "why": "ready_s is pod D's cold start (R30); 2.88 tok/s and 0.4 s are pod C's batch-1 baseline; the per-stream slowdown (5 % per extra stream) and the prefill rate are guesses on the slow side, and a run never starts a cell its deadline cannot hold"
+  }
+}

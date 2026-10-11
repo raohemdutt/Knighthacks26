@@ -59,6 +59,7 @@ import os
 import sys
 import threading
 import time
+import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -193,8 +194,13 @@ class FakeEngine:
             for i in range(n):
                 if i:
                     time.sleep(1.0 / rate)
-                self._event(handler, {"object": "chat.completion.chunk", "model": a.model,
-                                      "choices": [{"index": 0, "delta": {"content": f"t{i} "}, "finish_reason": None}]})
+                text, token_id, logprob = self.token(prompt_text, i)
+                choice: dict[str, Any] = {"index": 0, "delta": {"content": text}, "finish_reason": None}
+                if body.get("logprobs"):   # as vLLM answers return_tokens_as_token_ids: the id stands for the token
+                    name = f"token_id:{token_id}" if body.get("return_tokens_as_token_ids") else text
+                    choice["logprobs"] = {"content": [{"token": name, "logprob": logprob,
+                                                       "bytes": list(text.encode()), "top_logprobs": []}]}
+                self._event(handler, {"object": "chat.completion.chunk", "model": a.model, "choices": [choice]})
             self._event(handler, {"object": "chat.completion.chunk", "model": a.model,
                                   "choices": [{"index": 0, "delta": {}, "finish_reason": finish}]})
         finally:
@@ -210,6 +216,20 @@ class FakeEngine:
                                             "prompt_tokens_details": {"cached_tokens": prompt_tokens if hit else 0}}})
         handler.wfile.write(b"data: [DONE]\n\n")
         handler.wfile.flush()
+
+    def token(self, prompt_text: str, i: int) -> tuple[str, int, float]:
+        """Token i of the answer: its text, a token id fixed by the prompt and the position, and a logprob. From
+        --diverge-at (and --retoken-at) on, for the prompts that contain --diverge-match, the answer differs from the
+        default one: the text and the id (diverge), or the id alone (retoken, the same text under another id)."""
+        a = self.args
+        text, token_id, logprob = f"t{i} ", 1000 + (zlib.crc32(prompt_text.encode()) + 7919 * i) % 50000, -0.01 * (i + 1)
+        if a.diverge_match and a.diverge_match not in prompt_text:
+            return text, token_id, logprob
+        if a.diverge_at is not None and i >= a.diverge_at:
+            return f"x{i} ", token_id + 1, logprob - 0.5
+        if a.retoken_at is not None and i == a.retoken_at:
+            return text, token_id + 1, logprob
+        return text, token_id, logprob
 
     @staticmethod
     def _event(handler: BaseHTTPRequestHandler, chunk: dict[str, Any]) -> None:
@@ -296,6 +316,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--startup-s", type=float, default=0.05)
     s.add_argument("--queues", type=int, default=3)
     s.add_argument("--prefix-caching", choices=("on", "off"), default="on")
+    s.add_argument("--diverge-at", type=int, default=None, help="from this position on, the answer's text and ids differ")
+    s.add_argument("--retoken-at", type=int, default=None, help="at this position, the same text under another id")
+    s.add_argument("--diverge-match", default=None, help="only prompts containing this text are changed by the two")
     s.add_argument("--set-env", action="append", metavar="K=V")
     return p
 

@@ -24,7 +24,7 @@ from contexts.agent.application.loop import ODD_HOURS_DESCRIPTION, ODD_HOURS_RUL
 from contexts.agent.application.planner import Planner
 from contexts.agent.application.qa import QA, SleepSchedule
 from contexts.agent.application.talk import Talk, TalkConfig
-from contexts.agent.application.web_port import HubWebTools
+from contexts.agent.application.web_port import HubWebTools, TavilyWebTools
 from contexts.agent.domain.rules import AlertHistory, RuleEvaluator, load_rules
 from contexts.capture.application.retention import prune_frames
 from contexts.capture.application.service import CaptureService
@@ -150,6 +150,7 @@ class Atlas:
     impact: ImpactStory | None = None  # the Impact screen's story over Waste Watch; GET /api/impact/story
     coach_feedback: CoachFeedback | None = None  # "Was that right?" about a break; GET /api/day/coach/feedback
     spot: object | None = None  # SpotContext: the inspection (SPOT) dashboard, contexts/spot; GET /api/spot/*
+    face_share: object | None = None  # FaceShare (contexts/circle): a friend's box recognises you; off by default
     tasks: list[asyncio.Task] = field(default_factory=list)
     _last_retention: datetime | None = None
     _offline: set[str] = field(default_factory=set)  # tick jobs whose Neon is down (logged once)
@@ -180,6 +181,7 @@ class Atlas:
                 ("circle", (lambda: asyncio.to_thread(self.circle.poll)) if self.circle else None),  # network I/O with Neon
                 ("shares", (lambda: asyncio.to_thread(self.sharing.sync, now)) if self.sharing else None),
                 ("presence", (lambda: asyncio.to_thread(self.presence_sync.sync, now)) if self.presence_sync else None),
+                ("face share", (lambda: asyncio.to_thread(self.face_share.poll)) if self.face_share else None),  # expiry, then the Circle
                 ("league", (lambda: self.league.flush(now)) if self.league else None),  # close a week the clock passed
                 ("league sync", (lambda: asyncio.to_thread(self.league_sync.sync, now)) if self.league_sync else None),
                 ("agent loop", (lambda: self.loop.tick(now)) if self.loop.due(now) else None),
@@ -238,6 +240,8 @@ def circle_from_env(cfg: dict, env) -> dict:
         out["circle_id"] = env["ATLAS_CIRCLE_ID"]
     if env.get("ATLAS_CIRCLE_SHARE") == "1":
         out["share_presence"] = out["share_summaries"] = True
+    if env.get("ATLAS_CIRCLE_FACE_SHARE") == "1":  # face share: its own switch, independent of the ones above
+        out["face_share"] = True
     return out
 
 
@@ -276,6 +280,8 @@ def build(settings: Settings | None = None) -> Atlas:
     specs = load_specs(s.config_dir / "connectors.yaml") if s.connectors else []
     hub = ConnectorHub(specs, factory=McpConnector)
     web = HubWebTools(hub) if "browser" in hub.specs else None
+    if os.environ.get("TAVILY_API_KEY"):  # fast search over an API; the browser keeps Reddit and page reading
+        web = TavilyWebTools(os.environ["TAVILY_API_KEY"], fallback=web)
 
     qa = QA(runtime, memory, clock=lambda: datetime.now(UTC), sleep=SleepSchedule.load(s.config_dir / "agent.yaml"),
             web=web, subreddit=agent_cfg.get("subreddit", "ucf"), load_keyframe=load_keyframe)
@@ -516,6 +522,24 @@ def build(settings: Settings | None = None) -> Atlas:
         if neon and board:
             league_sync = LeagueSync(NeonLeague(neon, board), league)
 
+    # Face share (contexts/circle/application/face_share.py), OFF unless `circle.face_share: true` or
+    # ATLAS_CIRCLE_FACE_SHARE=1: a member enrolled on their own box lets named friends' boxes recognise them. The
+    # template leaves only sealed to one friend's box, after a card on each side. While off, a box that never had it
+    # on reads and writes nothing for it, and the endpoints answer 409. It wraps the circle_share executor the way
+    # the League does: only its own two card kinds (face_share, face_accept) are handled, the rest pass through.
+    face_share = None
+    if circle:
+        from contexts.circle.application.face_share import FaceShare, InMemorySealedStore
+        from contexts.circle.infrastructure.neon_sealed import NeonSealedStore
+
+        face_share = FaceShare(circle_cfg["circle_id"], circle_cfg["member_id"],
+                               NeonSealedStore(neon) if neon else InMemorySealedStore(), identity, vault, s.data_dir,
+                               enabled=bool(circle_cfg.get("face_share")), names=circle_cfg.get("names") or {},
+                               days=int(circle_cfg.get("face_share_days") or 30), tz=qa.sleep.tz, publish=bus.publish)
+        face_share.fallback = approvals.executors.get("circle_share")
+        approvals.executors["circle_share"] = face_share.executor
+        bus.subscribe("vault.wipe.requested", bus.in_background(face_share.on_wipe))  # live only: takes the shares back
+
     # Learning board (X10): the Teach screen's view of tasks, runs and deployed models; rebuilt from the log.
     learning = LearningBoard()
     learning.subscribe(bus)
@@ -564,4 +588,5 @@ def build(settings: Settings | None = None) -> Atlas:
                  places=places, dayrun=dayrun, day=day, capture=capture, identity=identity, learning=learning,
                  lab_view=lab_view,
                  telemetry=telemetry, profile=profile, league=league, league_sync=league_sync,
+                 face_share=face_share,
                  impact=impact, coach_feedback=coach_feedback, spot=spot)

@@ -16,3 +16,12 @@ vocabulary:
 meters:
   habits: []                # all of the base habits; none are inspection-specific
   dayrun: []
+
+# The Ask screen's suggested questions, in the operator's words (the student's when a profile lists none).
+suggestions:
+  - "Where did I leave my keys?"
+  - "Which work orders are due this week?"
+  - "What happened at the plant overnight?"
+  - "How's your day?"
+  - "Tell me a joke"
+  - "I'm tired after this shift"

@@ -73,11 +73,12 @@ async def publish(context: str, log_dir: str | Path, start: datetime) -> list[Ev
     bus.subscribe("", published.append)
     if context == "perception":  # the scripted camera scene, with the zone events the real engine makes of it
         from contexts.perception.domain.zones import ZoneEngine
-        from contexts.perception.fakes.script import ROOM_LENGTH_S, play, room_scene
+        from contexts.perception.fakes.script import ROOM_LENGTH_S, desk_described, play, room_scene
 
         engine = ZoneEngine.load(ZONES)
         bus.subscribe("perception.observation", engine.on_observation)
         await play(bus, start, scene=room_scene)  # the half minute of script(), then a Sort It round for the room twin
+        await bus.publish(desk_described(start))  # where the keys lie at the end: the last sighting keeps a place and a frame
         await bus.publish_all(engine.flush(start + timedelta(seconds=ROOM_LENGTH_S) + engine.exit_after))
     await bus.publish_all(events(context, start))
     return published

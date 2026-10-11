@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "dataset_id": "tool-calling-fixture",
+  "folder": "tool-calling-labels",
+  "source": "teacher",
+  "created": "2026-10-11T01:27:34+00:00",
+  "date": "2026-10-10",
+  "teacher": {
+    "model": "teacher",
+    "checkpoint": "/home/jovyan/models/Qwen3.8-27B-INT4",
+    "served": [
+      {
+        "id": "teacher",
+        "root": "/home/jovyan/models/Qwen3.8-27B-INT4",
+        "max_model_len": 16384,
+        "owned_by": "vllm"
+      },
+      {
+        "id": "group-brain",
+        "root": "/home/jovyan/models/Qwen3.8-27B-INT4",
+        "max_model_len": 16384,
+        "owned_by": "vllm"
+      }
+    ],
+    "endpoint": "hub proxy, account C (SJC), port 8000, streamed",
+    "engine": "vLLM at commit b1388b1 with lab/vllm-gfx1201.diff (lab/README.md), pod A on the Strix Halo (gfx1151)",
+    "flags_seen": {
+      "how": "read from the server's behavior; the client cannot read the serve command",
+      "before_restart": "a request with the agent's tool list at 2026-10-11T00:31Z was refused with HTTP 400: auto tool choice requires --enable-auto-tool-choice and --tool-call-parser to be set",
+      "after_restart": "the same request at 2026-10-11T00:52Z returned a structured tool_calls entry (last_seen), so --enable-auto-tool-choice and a tool-call parser are set (the parser's name is not visible from the client)",
+      "thinking": "off on every request (chat_template_kwargs enable_thinking false), as label.py sends it",
+      "served_names": [
+        "teacher",
+        "group-brain"
+      ],
+      "max_model_len": 16384
+    },
+    "tools_offered": "TOOLS of contexts/agent/application/qa.py (the three memory tools), run over fixtures/golden at 2026-10-11T09:30:00-04:00"
+  },
+  "decode": {
+    "thinking": false,
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "max_tokens": 512,
+    "seed": 0,
+    "stream": true
+  },
+  "runs": [
+    "label-20261011T005255Z-0f7b"
+  ],
+  "input": {
+    "dataset": "tool-calling-fixture",
+    "examples": 142,
+    "groups": 16,
+    "examples_sha256": "3302cce32c6c0cab1c6cdc1a6020e0dfbe57e41cec0f5a8900508ad13b130b64",
+    "manifest_sha256": "c2f4b58434e6137330d16a4a4c97b093c592dda2c76907946d39aa70a2d048ce",
+    "split_sha256": "59227ead6c24d0b7b525ba99c6e2c06f1f7178d2c6f20bd8d556bc16d2c3de39",
+    "train": 84,
+    "held_out": 58,
+    "expected_sha256": "b6c66e01528a8cd13778951c7c2f7aad6931ff7bc3968afc87a26a9f915e5cac"
+  },
+  "counts": {
+    "asked": 142,
+    "accepted": 142,
+    "rejected": {},
+    "failed": {},
+    "examples": 142,
+    "labeled": 142,
+    "unlabeled": 0
+  },
+  "per_example": {
+    "label.seconds.mean": 55.748,
+    "label.prompt_tokens.mean": 1304.549,
+    "label.completion_tokens.mean": 101.007,
+    "label.tokens.mean": 1405.556,
+    "label.requests.mean": 2.197,
+    "label.tool_calls.mean": 1.204,
+    "label.seconds.total": 7916.244,
+    "label.prompt_tokens.total": 185246.0,
+    "label.completion_tokens.total": 14343.0,
+    "label.tokens.total": 199589.0,
+    "label.requests.total": 312.0,
+    "label.tool_calls.total": 171.0,
+    "wall_seconds.total": 2014.399,
+    "wall_seconds.per_example": 14.186
+  },
+  "files": {
+    "examples.jsonl": "6ae7fb9e0b19521b860f3503fb05a7c77a8946890905840091bfb9e47f855f0f",
+    "label_ledger.jsonl": "8028af85bf7b93af5d12603b1e006f783ebbb7c9204b87a636d31bfabeffb4a0",
+    "manifest.json": "c2f4b58434e6137330d16a4a4c97b093c592dda2c76907946d39aa70a2d048ce",
+    "rejects.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "split.json": "59227ead6c24d0b7b525ba99c6e2c06f1f7178d2c6f20bd8d556bc16d2c3de39",
+    "traces.jsonl": "38299fd618a0c515e26831245c24106c7aeeed9ac124f88f445aa6cebbe41192"
+  }
+}

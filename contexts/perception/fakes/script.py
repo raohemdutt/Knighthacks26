@@ -2,7 +2,7 @@
 
     0 s   a person walks in through the door zone (cam-door) ...
     5 s   ... and sits at the desk (cam-desk)
-    8 s   keys are left on the desk
+    8 s   keys are left on the desk (`desk_described` says where on it, at the end of the longer room scene)
     10 s  a package is put down in the door zone and stays
     20 s  a can is carried across the room and dropped in the recycling zone
 
@@ -14,8 +14,8 @@ import asyncio
 from datetime import datetime, timedelta
 
 from bus import EventBus
-from contracts.perception import ObservationRecorded
-from contracts.types import Box, Track
+from contracts.perception import ObservationRecorded, SceneDescribed
+from contracts.types import Box, ObjectHit, Track, frame_ref
 
 Step = tuple[int, str, Track]  # second from the start, camera, what it sees
 LENGTH_S = 30
@@ -81,6 +81,25 @@ def room_scene(start: datetime) -> list[ObservationRecorded]:
     steps = (person_arrives(until=33) + keys_left(until=ROOM_LENGTH_S) + package_left(until=ROOM_LENGTH_S) + can_recycled()
              + sort_round() + which_bin())
     return observations(start, steps, ROOM_LENGTH_S)
+
+
+KEYS_AT = "left of the laptop, behind the coffee mug"  # the words the seeded night uses for the same spot on the desk
+
+
+def desk_described(start: datetime, at: int = ROOM_LENGTH_S) -> SceneDescribed:
+    """The desk's object list in the scene's last second, as the object finder words it: where the keys lie, with
+    that second's frame.
+
+    The detector tracks the keys until the scene ends, and a track is the later sighting: Memory then answers
+    "where are my keys?" from it, with a zone but no position and no frame. On a box that already knew where the
+    keys were (a seeded night) the scene took both away. A real box follows its tracks with an object list of the
+    desk; this is that list, at the same second as the last track, so the last word on the keys has a place in
+    words and a frame to cite."""
+    ts = start + timedelta(seconds=at)
+    ms = int(ts.timestamp() * 1000)
+    return SceneDescribed(event_id=f"fake-desk-described-{ms}", ts=ts, camera_id="cam-desk", zone_id="desk",
+                          caption=f"On the desk: keys ({KEYS_AT}).", objects=[ObjectHit(label="keys", position=KEYS_AT)],
+                          frame_ref=frame_ref("cam-desk", ms), model_version="fake")
 
 
 def observations(start: datetime, steps: list[Step], length_s: int | None = None) -> list[ObservationRecorded]:

@@ -42,7 +42,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from lab.machine import ledger, stop
+from lab.machine import ledger, record, stop
 from lab.machine.lock import FileLock, LockTimeout
 
 __all__ = ["VERB", "OUTCOME", "NOTES_DIR", "NOTES_LOCK", "ENV_ACTOR", "ENV_TIER", "LOCK_TIMEOUT",
@@ -54,8 +54,8 @@ VERB = "handoff"
 OUTCOME = "handoff"
 NOTES_DIR = "notes"            # under the state dir; allowed.py keeps every sitting out of it
 NOTES_LOCK = "notes.lock"      # in the state dir, beside ledger.lock
-ENV_ACTOR = "LAB_ACTOR"
-ENV_TIER = "LAB_TIER"
+ENV_ACTOR = record.ENV_ACTOR   # record.py owns the names of the variables that identify a sitting
+ENV_TIER = record.ENV_TIER
 LOCK_TIMEOUT = ledger.LOCK_TIMEOUT   # seconds a note waits while another sitting is appending
 
 StateDir = str | os.PathLike[str] | None

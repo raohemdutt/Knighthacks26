@@ -1,6 +1,7 @@
 """Circle: friends' Atlases plan together through Neon. Only approved summaries,
 proposals, counts and scores leave the box; never frames or raw signals. A planning
-question to the group brain (G4) leaves as text only, after the member's opt-in."""
+question to the group brain (G4) leaves as text only, after the member's opt-in. A face template (face share,
+off by default) leaves only as ciphertext sealed to one named friend's box, after an approval on both boxes."""
 
 from datetime import datetime
 from typing import Literal
@@ -138,3 +139,49 @@ class BrainAnswered(TypedEvent):
     error: str | None = None  # when ok is false: "pod_stopped", "unreachable", "model_server_error", ...
     latency_ms: int
     model: str | None = None
+
+
+# --- face share (off by default): a member's own face template, sealed to one named friend's box ---
+# The sealed channel is separate from agent_messages: a box that does not know it never reads it. Version 1.
+
+SEALED_VERSION = 1
+SealedKind = Literal["box_key", "face_share", "face_revoke"]
+
+
+class SealedMessage(BaseModel):
+    """One row of the Circle's sealed channel. `kind` and `v` are plain values, not a closed list: a box skips
+    every row whose kind or version it does not know.
+
+    - box_key: a box's two public keys, self-signed. `to_member` is None (everyone in the Circle may read it).
+    - face_share: a signed header and the ciphertext of one template, readable only by `to_member`'s box.
+    - face_revoke: a signed header and nothing else; `to_member`'s box deletes what `from_member` shared.
+    Nothing identity-derived is in a row except the ciphertext of a face_share."""
+
+    id: str
+    v: int = SEALED_VERSION
+    circle_id: str
+    from_member: str
+    to_member: str | None = None
+    kind: str
+    body: dict
+    created_at: datetime
+
+
+@register
+class FaceShareChanged(TypedEvent):
+    """Something happened to a face share between this box's member and one friend. Ids, a state word and times
+    only: never a name, a key, a vector or ciphertext.
+
+    direction "out": this member's own template, to `peer`. shared (sent after the approval), revoked, expired.
+    direction "in": `peer`'s template, to this box. offered (the card was raised), received (accepted and stored),
+    declined, forgotten, revoked (by the sharer), expired, ignored (`reason` says why, in one fixed word)."""
+
+    type: Literal["circle.face_share.changed"] = "circle.face_share.changed"
+    circle_id: str
+    member_id: str  # this box's member
+    peer: str  # the friend's member id
+    direction: Literal["out", "in"]
+    state: Literal["shared", "revoked", "expired", "offered", "received", "declined", "forgotten", "ignored"]
+    share_id: str | None = None
+    expires_at: datetime | None = None
+    reason: str | None = None  # ignored only: switched_off, unknown_member, bad_signature, replayed, expired, too_large, malformed

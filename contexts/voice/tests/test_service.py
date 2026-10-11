@@ -50,6 +50,15 @@ def test_the_gateway_proxy_reaches_the_service_and_guards_the_buttons():
     assert s.heard
 
 
+def test_say_goes_through_the_gateway_with_the_token_and_speaks_on_the_box():
+    s = make_session()
+    c = gateway_in_front(s, token="secret")
+    assert c.post("/api/voice/say", json={"text": "Hello."}).status_code == 401
+    assert c.post("/api/voice/say", json={"text": "Hello."}, headers={"Authorization": "Bearer secret"}).json()["state"] == "thinking"
+    s.wait()
+    assert s.tts.said == ["Hello."] and s.state == "idle"
+
+
 def test_without_the_service_the_screen_sees_off_not_an_error():
     app = FastAPI()
     dead = httpx.MockTransport(lambda request: (_ for _ in ()).throw(httpx.ConnectError("refused")))

@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from contexts.demo.nearby import nearby_events
 from contexts.demo.story import ROOT, load, story
 from contexts.gateway.bootstrap import Atlas, Settings, build
 from contexts.play.league.demo import friend_summaries
@@ -72,6 +73,18 @@ async def settle() -> None:
         await asyncio.gather(*pending, return_exceptions=True)
 
 
+async def expire(app: Atlas, now: datetime) -> None:
+    """The ticker's approvals job, in the story's time: a card nobody answered expires five minutes after it was
+    raised, as it does on a running box. Without it every card of the story stayed "waiting" in the log, the Day loop
+    held back its later re-plans behind the first one, and the gateway that then started on the seeded directory
+    expired them all at once and raised the held-back re-plan as a new card: one stray pending card on every fresh
+    seed (it failed the pre-flight's "no stale approval cards")."""
+    done = app.approvals.expire(now)
+    if done:
+        await app.bus.publish_all(done)
+        await settle()
+
+
 async def seed(data_dir: str | Path, now: datetime | None = None, force: bool = False, config_dir: Path | None = None,
                extra: Callable[[datetime], list[Event]] | None = None) -> Seeded:
     """Publish the night into `data_dir`. `now` moves the story so it ends then (default: the script's own time).
@@ -107,18 +120,21 @@ async def seed(data_dir: str | Path, now: datetime | None = None, force: bool = 
     if app.league:  # the League's second member: a friend's shared summaries, demo fixture only (fixtures/demo/league.yaml)
         events = sorted(events + friend_summaries(now, circle_id=app.league.circle_id), key=lambda e: (e.ts, e.event_id))
 
+    events = sorted(events + nearby_events(now), key=lambda e: e.ts)  # "Near you": optional events (fixtures/demo/nearby.yaml)
+
     if extra:
         events = sorted(events + extra(now), key=lambda e: e.ts)  # stable: the story keeps its own order
 
     app.bus.subscribe("", note)  # live only: sees exactly what is appended to the log
     for e in events:
         clock["now"] = e.ts
+        await expire(app, e.ts)
         await app.bus.publish(e)
         await settle()
 
     # The ticker's event-time jobs, once, at the end of the story (contexts.gateway.bootstrap.Atlas._ticks).
     clock["now"] = now
-    for job in (lambda: app.zone_engine.flush(now), lambda: app.projection.flush(now),
+    for job in (lambda: app.approvals.expire(now), lambda: app.zone_engine.flush(now), lambda: app.projection.flush(now),
                 lambda: app.habits.flush(now) + app.nudger.check(now),
                 lambda: app.day.tick(now) if app.day else []):  # the Day loop's status at the end of the story
         await app.bus.publish_all(job())

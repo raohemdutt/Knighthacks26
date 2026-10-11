@@ -96,9 +96,12 @@ anything because of it, and its entry lists every source it opened.
    `lab/refine/research/<track>/` with citations, within the search bound in `RESEARCH_FORMAT.md`.
 4. Walks every board task and every queued experiment of the track against every dimension of the
    rubric, and lists every finding by dimension whether or not it fixes it.
-5. Makes the changes its findings justify, highest impact first. Each change records BEFORE, AFTER,
-   SOURCE, WHY and the metric it is meant to move, and its Plan changes line is posted at the moment
-   the change is made, so a pass that dies midway still leaves what it did and what it replaced.
+5. Makes the changes its findings justify, highest impact first, and at most 5 changes in one pass
+   (the change cap; a change is one numbered block of the entry's Changes section, and telemetry
+   ruling 6 in `lab/refine/telemetry/OWNER_RULINGS.md` set the number). Each change records BEFORE,
+   AFTER, SOURCE, WHY and the metric it is meant to move, and its Plan changes line is posted at the
+   moment the change is made, so a pass that dies midway still leaves what it did and what it
+   replaced. A finding the change cap leaves unfixed stays OPEN, with the cap as its reason.
 6. Raises a ruling for anything it cannot decide (see "Telling Ilan what changed").
 7. If it ran anything, writes the metrics-after block, measured the same way as the before block.
    If it ran nothing, the entry says so.

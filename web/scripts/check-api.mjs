@@ -254,6 +254,9 @@ const IMPACT_STORY = {
   now: isoDate, week: inner({ start: "string", end: "string", today: "string" }), empty: "boolean", empty_text: "string?", rules: "object", total: "object",
   this_week: "object", equivalents: "object", contamination: "object", feed: listOf(DISPOSAL), goal: "object",
   days: listOf({ day: "string", disposals: "number", right: "number", wrong: "number", clean: "boolean" }), clean_streak: "number", milestones: "object", practice: "object",
+  // the story the screen plays: measured counts in a sentence, the week's disposals in order, the learn loop
+  headline: "string", loop: inner({ seen: "number", taught: "number", practised: "object", trend: "object" }),
+  flow: inner({ items: listOf({ item_id: "string", item: "string", bin: "string", correct: "boolean", rule: "string" }), recyclable_seen: "number", recycled: "number", not_binned: "number" }),
 };
 const IMPACT_PRACTICE = {
   week_start: "string", member_id: "string?", size: "number", how: "string", rules: inner({ file: "string", name: "string", place: "string?" }),
@@ -596,6 +599,12 @@ const spotShift = await check("GET /api/spot/shift", "GET", "/api/spot/shift", {
 if (spotShift?.configured) {
   console.log(`        ${spotShift.status.sentence}`);
   await check(`GET /api/spot/shift/rounds/${spotShift.latest_round}`, "GET", `/api/spot/shift/rounds/${spotShift.latest_round}`, { configured: "boolean", label: "string", summary: "string", steps: "array" }, { optional: NO_SPOT });
+  // the look guide (contexts/spot/application/guide.py): where on the screen a thing is, and the walk to it over legs SPOT has walked
+  const asset = spotShift.assets[0]?.asset_id;
+  const pointed = await check("GET /api/spot/guide", "GET", `/api/spot/guide?q=${encodeURIComponent(`where is ${asset}`)}`, { configured: "boolean", query: "string", target: "string?", label: "string?", steps: "array", confidence: "number", alternatives: "array" }, { optional: NO_SPOT });
+  if (pointed) console.log(`        "where is ${asset}" -> ${pointed.target}: ${pointed.steps.at(-1)?.say}`);
+  const walk = await check("GET /api/spot/route", "GET", `/api/spot/route?to=${encodeURIComponent(asset)}`, { configured: "boolean", found: "boolean", from: "string?", to: "string?", path: "array", legs: "array", length: "number", say: "array", summary: "string", note: "string", places: "array" }, { optional: NO_SPOT });
+  if (walk) console.log(`        ${walk.summary}`);
 }
 
 console.log("\nLearning lab");

@@ -111,6 +111,7 @@ export function FloorMap({
   order,
   route2,
   routeLabel,
+  guide,
   children,
 }: {
   map: NonNullable<Shift["map"]>;
@@ -132,6 +133,8 @@ export function FloorMap({
   /** A second route to compare with (drawn as a thin dashed line). */
   route2?: string[];
   routeLabel?: string;
+  /** The look guide's name for this plan ("map"): its floor buttons, marks and places are tagged under it. */
+  guide?: string;
   children?: ReactNode;
 }) {
   const geo = useMemo(() => geometry(map), [map]);
@@ -201,13 +204,13 @@ export function FloorMap({
   const robot = robotAt && visible(robotAt) ? geo.pos[robotAt] : undefined;
 
   return (
-    <section className={`${o.card} ${o.mapCard}`} aria-label={title}>
+    <section className={`${o.card} ${o.mapCard}`} aria-label={title} data-guide={guide}>
       <div className={o.cardHead}>
         <h2>{title}</h2>
         {floors.length > 1 ? (
           <div className={o.floors} role="group" aria-label="Floor">
             {floors.map((f) => (
-              <button type="button" key={f} className={`${o.floorBtn} ${view === f ? o.floorOn : ""}`} aria-pressed={view === f} onClick={() => setView(f)}>
+              <button type="button" key={f} data-guide={guide ? `${guide}:floor:${f}` : undefined} className={`${o.floorBtn} ${view === f ? o.floorOn : ""}`} aria-pressed={view === f} onClick={() => setView(f)}>
                 Floor {f}
                 {!quiet && count(f) > 0 ? <span className={o.floorCount} aria-label={`${count(f)} need you`}>{count(f)}</span> : null}
               </button>
@@ -262,7 +265,8 @@ export function FloorMap({
             const rows = n > 3 ? Math.ceil(n / 2) : n ? 1 : 0;
             const empty = n === 0;
             return (
-              <g key={l.location_id}>
+              <g key={l.location_id} data-guide={guide === "map" ? `place:${l.location_id}` : undefined}>
+                {guide === "map" ? <circle data-guide={`at:${l.location_id}`} cx={p.x} cy={p.y} r={2 * u} fill="none" /> : null}
                 {empty ? <circle cx={p.x} cy={p.y} r={4 * u} fill="var(--surface)" stroke="var(--muted)" strokeWidth={1.5 * u} /> : null}
                 {roomy ? (
                   <text className={o.placeLabel} x={p.x} y={p.y + ((rows > 0 ? (rows - 1) * 34 + 16 : 6) + 14) * u} textAnchor="middle" fontSize={11.5 * u} strokeWidth={3.5 * u}>
@@ -282,6 +286,7 @@ export function FloorMap({
               return (
                 <g
                   key={a.asset_id}
+                  data-guide={guide === "map" ? `asset:${a.asset_id}` : undefined}
                   className={`${o.dot} ${quiet ? o.dotQuiet : ""}`}
                   transform={`translate(${x} ${y})`}
                   tabIndex={onPick ? 0 : undefined}

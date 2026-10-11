@@ -44,10 +44,12 @@ export default function CirclePage() {
   const threads = useFetch((s) => api.circleThreads(s));
   const league = useFetch((s) => api.league(s));
   const packs = useFetch((s) => api.places(s));
+  const faceShare = useFetch((s) => api.faceShare(s)); // null while face sharing is off on this box (the default)
 
   useAtlasEvents(["circle.place.shared", "circle.message.received", "play.league."], () => members.reload());
   useAtlasEvents(["circle.message.received", "circle.event.agreed", "agent.action.proposed", "workspace.action.completed"], () => threads.reload());
   useAtlasEvents(["play.league.", "habits.day.closed"], () => league.reload());
+  useAtlasEvents(["circle.face_share", "perception.identity"], () => faceShare.reload());
   const refresh = useCallback(() => {
     members.reload(); // a shared place runs out without an event
     threads.reload(); // and an approval card does too
@@ -85,7 +87,10 @@ export default function CirclePage() {
     <>
       <div className={ui.pageHead}>
         <h1>Circle</h1>
-        <p className={ui.muted}>Friends who also run Atlas. You share only place names, one-word answers, counts and scores, never video.</p>
+        <p className={ui.muted}>
+          Friends who also run Atlas. You share only place names, one-word answers, counts and scores, never video.
+          {faceShare.data ? " Face sharing is on: your own face template goes only to the friends you choose, encrypted for their box." : ""}
+        </p>
       </div>
 
       {off ? <NotConnected lines={members.data?.connect ?? []} /> : null}
@@ -100,7 +105,7 @@ export default function CirclePage() {
       </div>
 
       {tab === "people" ? (
-        <People members={members} standings={league.data?.standings ?? []} packs={packs.data} onChanged={members.reload} />
+        <People members={members} standings={league.data?.standings ?? []} packs={packs.data} faceShare={faceShare.data} onChanged={members.reload} />
       ) : tab === "plans" ? (
         <Plans threads={threads} threadId={thread} onOpen={(id) => go("plans", id)} />
       ) : tab === "league" ? (
@@ -109,7 +114,7 @@ export default function CirclePage() {
           <Leaderboards circleOff={off} />
         </>
       ) : (
-        <YouAreSharing />
+        <YouAreSharing faceShare={faceShare.data} />
       )}
 
       {tab !== "sharing" ? (

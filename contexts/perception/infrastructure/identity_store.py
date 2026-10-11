@@ -15,6 +15,9 @@ without glasses; `vector` stays their mean), `expressions` (this member turned "
 them and loads as before: its one vector is its only exemplar. identity.json holds `"everyone": true` only
 while the anonymous room mode is on. The switch file is read again when it changes on disk, so a wipe of
 everything switches the running box off without a restart.
+
+A template a friend's box shared with this one (face share, contexts/circle) is the same kind of blob with
+`source: "circle"`, `shared_by` (the friend's Circle member id), `received_at`, `expires_at` and `share_id`.
 """
 
 import json
@@ -41,9 +44,13 @@ class Member:
     vectors: list[list[float]] = field(default_factory=list)  # the exemplars; empty in a blob from before they existed
     expressions: bool = False  # this member switched "read my expressions" on
     updated_at: str | None = None  # the last time looks or photos were added
-    source: str = "live"  # live (the camera) or photos (uploaded)
+    source: str = "live"  # live (the camera), scan, photos (uploaded), or circle (shared by a friend's box)
     consent_at: str | None = None  # when the person being enrolled was confirmed to agree
     circle_member_id: str | None = None  # which Circle member this is, when someone said so: an id, nothing else
+    shared_by: str | None = None  # source "circle" only: the Circle member whose box sent this template (their own)
+    received_at: str | None = None  # ... when this box's person accepted it
+    expires_at: str | None = None  # ... when this box deletes it unless the sharer renews
+    share_id: str | None = None  # ... which share it came in (an id)
 
     @property
     def exemplars(self) -> list[list[float]]:

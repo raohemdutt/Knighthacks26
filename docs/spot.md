@@ -30,9 +30,9 @@ animated explainers with the tables behind them).
 | in real time | A round, step by step: press Play and the box replays the recorded events in order; SPOT moves on the plan, each check arrives as it happened, the battery drains, and the label reads "Live · following SPOT". | It is a replay of recorded data. There is no live robot and no robot feed. The kit's event stream stops at event 500; the last 94 events are rebuilt from the tables and marked as rebuilt. |
 | after a mission | The same section with the round picker: any of the 27 rounds as ten steps (tick, cross, alarm), one sentence per step, Back, Next and a slider. | One robot, 27 rounds, 270 actions. |
 | clear, readable | One status sentence, three cards of at most three items, three levels that differ by shape as well as colour, 44 px targets, phone first. No statistics words on the shift screen; a test checks every sentence for raw enums, row ids and jargon. | The sentences are templates: correct but not graceful. Ask still answers some questions in the analyst's wording ("Exact wording" shows it). |
-| actionable | "Do this first" gives one button per item: Send SPOT back or Send a technician. It raises an approval card; after "Yes, do it" a work order file is written on the box. Shift Run turns a planned round into a mission request the same way. The shift handoff is one button. | Nothing reaches a robot or a maintenance system: the result is a JSON file on the box. That is deliberate, and it is all there is. |
+| actionable | "Do this first" gives one button per item: Send SPOT back or Send a technician. It raises an approval card; after "Yes, do it" a work order file is written on the box. Shift Run turns a planned round into a mission request the same way. The shift handoff is one button. **Take me to it:** ask "where is HX-202?" or "show me the pump room" (typed or spoken) and a red pointer lands on its mark, the plan switches floor if it has to, and the walk there is drawn and spoken. Say "next" to step through the do-first list without touching the screen. | Nothing reaches a robot or a maintenance system: the result is a JSON file on the box. That is deliberate, and it is all there is. The walk is drawn only over waypoint-to-waypoint legs SPOT walked in the 27 rounds, never from the picture; in this kit consecutive checks are often far apart, so most routes are a single direct leg, and lengths are plan units, not metres. |
 | build confidence in SPOT | The trust line at the top ("21 of 26 completed rounds still had a failed check inside. We show you the checks, not just the round"), "Looks fine" with how many were checked recently, every "Why?" playing a short explainer, and Shift Run, where a trainee sees why order and battery matter. | Confidence here means knowing when not to trust a result. The data does not let us say SPOT is reliable: 49 of 270 checks failed. Shift Run is a toy model from 27 rounds, a training aid, not a prediction. |
-| without needing to become technical experts | Words come from a glossary (round, check, alarm, not confirmed, usual range). Six animated explainers show the analysis one idea at a time; "Show the numbers" opens the intervals and rows for whoever wants them. | The Analysis tab's tables are still analyst material. Not tested with a real operator. |
+| without needing to become technical experts | Words come from a glossary (round, check, alarm, not confirmed, usual range). Six animated explainers show the analysis one idea at a time; "Show the numbers" opens the intervals and rows for whoever wants them. **Where do I look?** Nobody has to learn the screen: "where do I look for the battery?", "where can I plan the next round?", "is V2 better?" each open the right tab or fold and walk the person there in short sentences, with captions. With the opt-in "Use my eyes to guide me", the pointer starts from where the person is looking and notices when their eyes arrive. | The Analysis tab's tables are still analyst material. Not tested with a real operator. Webcam gaze is only as accurate as its own check measures on that screen (typically a few centimetres on a laptop at arm's length, worse with glasses glare or low light): it tells a region and which marked thing, never a pixel, and it switches itself off when the check is poor. Not yet built: tracking what the operator has looked at before acting, and scoring attention in Shift Run. |
 | Kit Part Two (Spot User Guide R1.1): how we used it | Vocabulary: a round is one Autowalk mission (p. 39), a check is an action (p. 40), and the section that plays a round back is no longer called "replay", because in the guide "replaying a mission" means SPOT walking it (p. 43). "The manual says…" notes on failed steps and two patterns: stuck at an obstacle (p. 44), lost (p. 44), connection lost and a weak battery (p. 11, p. 44), unevenly lit fiducials (p. 41), dusty floors (p. 11). Shift Run's hard mode is the guide's "skip part of the mission" (p. 43). | We were given pp. 1 to 12 and from p. 23 on (Autowalk is pp. 39 to 44); pp. 13 to 22, with battery life and charging, were not in the files. The pages we read state no battery life, runtime, walking speed or return-to-dock rule, so Shift Run uses only the kit's measured battery drop and minutes per step. The guide says not to use Autowalk on stairs (p. 40); the kit's rounds cross two floors and do not say how. The notes are the vendor's general guidance, never a diagnosis of this fictional plant. |
 
 ### What is new on the screen
@@ -62,6 +62,31 @@ animated explainers with the tables behind them).
   the overview load when a "Why?" or the Analysis tab is first opened; the tables load when their fold is opened.
 - **Links**: `?asset=HX-202`, `?round=M017&step=8`, `?why=battery` (`&at=end` or `&at=mid`),
   `?numbers=battery`, `?tab=analysis`, `?tab=run&route=last&turn=40&show=result`, `?floor=2`, `?all=1`.
+
+### The look guide ("where do I look for X?")
+
+- **Ask it.** In "Ask SPOT's data", type or say a where-question ("Where is Heat exchanger 2?", "Where do I look for the
+  battery?", "Show me what to do first"), tap a "Guide me" chip, or say "next" to step through the do-first list.
+  Anything that is not a where-question is answered as before.
+- **What happens.** `GET /api/spot/guide?q=` (`contexts/spot/application/guide.py`) resolves the question by code: tags
+  and ids first (HX-202, WP05, M017, round 27, floor 2), then names with a little spelling tolerance against about 120
+  targets (20 pieces of equipment, 15 places, 27 rounds, 18 findings, the cards, tabs, explainers and controls). No
+  model is called. It returns a guide id, short sentences, and the closest alternatives when it is not sure. The page
+  switches tab, floor, round or fold as needed, a red pointer travels there around the cards (A* on a coarse grid of the
+  screen, `web/lib/guidePath.ts`, the same algorithm as the room twin's router), a ring pulses on the target, and the
+  sentences are shown as captions and spoken when "Speak answers" is on.
+- **The walk.** For equipment and places, `GET /api/spot/route?from=&to=` (`contexts/spot/domain/route.py`) plans the
+  way over the legs SPOT has walked: two waypoints are joined only if some round has two actions in a row at them (taken
+  as walkable both ways), and floors are joined only where a round shows SPOT changing floor. It is drawn as green dashes
+  from "You are here" (a picker under the plan; by default where SPOT's last round started), with the line "Route follows
+  paths SPOT has walked in the recorded rounds". Nothing is inferred from the plan picture.
+- **Eyes (opt-in, Settings).** MediaPipe Face Landmarker, served from `web/public/gaze/` (no CDN; see its README for
+  versions, checksums and why the package is pinned to 0.10.35). Nine calibration dots, then four fresh dots that
+  measure the miss; that measured miss sets the grid the estimate is rounded to and the snap radius, and a poor result
+  turns gaze off with the reason. The camera picture never leaves the browser and nothing but the calibration fit is stored.
+- **Links for a demo:** `/spot/?guide=where is HX-202&t=1` (the pointer held at the end of its way), `&t=0.5` (half
+  way), `?guide=explainer:battery`, `?guide=shiftrun:turn-back`, `?guide=round 17`; add `&gazeDebug=1` to see the gaze estimate.
+- **Checks:** `pytest contexts/spot/tests/test_guide.py contexts/spot/tests/test_route.py`; `node web/scripts/check-guide.mjs`.
 
 ## Run it
 
