@@ -1,0 +1,10 @@
+R55 2-bit run (AutoRound W2A16, lab/quantize_teacher.py --width 2), Colab session r55-a100, stopped unfinished.
+Read at 2026-10-11T06:45:45Z from /content/r55_w2.log (last lines) and ps on the VM:
+
+ps: python3 lab/quantize_teacher.py --width 2 --calibration fixtures/lab/quant/calibration-mixed-512.jsonl --out /content/quant  (started 05:59)
+(18/65): Calibrating: 100%|##########| 512/512 [00:17<00:00, 30.00it/s]
+2026-10-11T06:44:23.5961 | apply_autoround | INFO - Applying AutoRound on layer model.language_model.layers.16
+GPU: 17866 MiB used, 60 % utilization
+
+Pace: layers 0 to 15 done in about 45 minutes (05:59:02 to 06:44:23), about 2.8 minutes a layer; 64 decoder layers.
+Session stopped at 2026-10-11T06:46:48Z (workstation clock): no 2-bit checkpoint or perplexity was produced.

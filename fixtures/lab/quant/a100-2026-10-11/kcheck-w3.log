@@ -1,0 +1,8 @@
+quantized linears: 400 checked: 6
+model.language_model.layers.0.linear_attn.in_proj_qkv (10240, 5120) rel_err=1.17e-03
+model.language_model.layers.0.linear_attn.out_proj (5120, 6144) rel_err=1.25e-03
+model.language_model.layers.0.mlp.down_proj (5120, 17408) rel_err=1.85e-03
+model.language_model.layers.3.self_attn.o_proj (5120, 6144) rel_err=1.25e-03
+model.language_model.layers.3.self_attn.q_proj (12288, 5120) rel_err=1.17e-03
+model.language_model.layers.63.mlp.gate_proj (17408, 5120) rel_err=1.17e-03
+WORST 0.0018515917472541332

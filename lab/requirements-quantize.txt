@@ -1,0 +1,11 @@
+# What lab/quantize_teacher.py needs on the Colab A100 beyond the runtime's own CUDA torch.
+#
+# Install on the Colab machine before the run:
+#     pip install -r requirements-quantize.txt
+# llm-compressor and compressed-tensors are pinned to the commits whose Qwen3.8 example, W3A16 and W2A16 presets and
+# AutoRoundModifier were read for lab/refine/research/kernels/lowbit_teacher.md (both 2026-10-09). The rest is left
+# to their own requirements (torch>=2.10, transformers>=5.15, auto-round>=0.14.1, datasets>=4.8.4), so pip keeps the
+# runtime's CUDA torch when it already satisfies them. This file is never installed on a Strix Halo pod.
+llmcompressor @ git+https://github.com/vllm-project/llm-compressor@229758564a9a9607b858daccb65edb0c633315ec
+compressed-tensors @ git+https://github.com/vllm-project/compressed-tensors@41103c0bf3db81fc42d9c90349c42ddf0ca6ff22
+huggingface_hub>=1.0

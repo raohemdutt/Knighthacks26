@@ -1,0 +1,85 @@
+{
+  "run_id": "agr-label-20261011T061334Z-79e0",
+  "dataset_id": "tool-calling-fixture",
+  "task": "tool-calling",
+  "verdict": "consistent",
+  "sample": {
+    "mode": "first",
+    "seed": null,
+    "size": 30,
+    "wanted": 30,
+    "ids": [
+      "golden-01",
+      "golden-01-1",
+      "golden-01-2",
+      "golden-01-3",
+      "golden-01-4",
+      "golden-01-5",
+      "golden-02",
+      "golden-02-1",
+      "golden-02-2",
+      "golden-02-3",
+      "golden-02-4",
+      "golden-02-5",
+      "golden-03",
+      "golden-03-1",
+      "golden-03-2",
+      "golden-03-3",
+      "golden-03-4",
+      "golden-03-5",
+      "golden-06",
+      "golden-06-1",
+      "golden-06-2",
+      "golden-06-3",
+      "golden-06-4",
+      "golden-06-5",
+      "v-446faf1b",
+      "v-1ad7bdb7",
+      "v-fb73a588",
+      "v-0663ece2",
+      "v-b0a83206",
+      "v-8ad80728"
+    ]
+  },
+  "second_pass": {
+    "seed": 1,
+    "first_seed": 0,
+    "rewording": "none (R64 control arm: prefix removed)"
+  },
+  "threshold": {
+    "value": 0.9,
+    "source": "default: lab/refine/learning/RUBRIC.md LT2 names no number, so 0.9 is used"
+  },
+  "overall": {
+    "agree": 59,
+    "total": 60,
+    "rate": 0.9833333333333333
+  },
+  "fields": {
+    "answer": {
+      "agree": 29,
+      "total": 30,
+      "rate": 0.9666666666666667
+    },
+    "tool_calls": {
+      "agree": 30,
+      "total": 30,
+      "rate": 1.0
+    }
+  },
+  "examples": {
+    "agree": 29,
+    "total": 30
+  },
+  "unanswered": [],
+  "disagreements": [
+    {
+      "id": "golden-01-2",
+      "field": "answer",
+      "first": "Last night, two people worked at the table with laptops around 6 PM, a person put keys next to a coffee mug at 7 PM, and someone packed a laptop and left at 9 PM. The table was empty by 11 PM, and a person in a hoodie walked past the door around 2 AM.",
+      "second": "Last night, two people worked at the table with laptops from 6 PM, a person put keys next to a coffee mug at 7 PM, and someone packed a laptop and left at 9 PM. The table was empty by 11 PM, and a person in a hoodie walked past the door at 2 AM."
+    }
+  ],
+  "proposed_rubric_line": "LT2 label agreement: a second teacher pass (seed 1, reworded prompt) over 30 labeled examples must agree field by field on at least 0.90 (default: lab/refine/learning/RUBRIC.md LT2 names no number, so 0.9 is used); measured 0.983, verdict consistent. Source: lab/label_agreement.py run agr-label-20261011T061334Z-79e0 (ledger verb label-agreement, refs run_id agr-label-20261011T061334Z-79e0), dataset tool-calling-fixture.",
+  "proposed_rubric_note": "Not written to lab/refine/learning/RUBRIC.md: tasks never write rubrics, the merge pass does. Add the line to LT2 with its citation."
+}

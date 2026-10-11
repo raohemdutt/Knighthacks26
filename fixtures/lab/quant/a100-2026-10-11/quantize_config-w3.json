@@ -1,0 +1,18 @@
+{
+  "quant_method": "gptq",
+  "bits": 3,
+  "group_size": 128,
+  "desc_act": false,
+  "sym": true,
+  "lm_head": false,
+  "checkpoint_format": "gptq",
+  "dynamic": {
+    "-:.*visual\\..*": {},
+    "-:.*linear_attn\\.in_proj_(a|b|ba)$": {},
+    "-:.*lm_head$": {},
+    "-:.*mtp\\..*": {}
+  },
+  "true_sequential": true,
+  "damp_percent": 0.01,
+  "converted_from": "compressed-tensors pack-quantized (lab/ct_to_gptq.py)"
+}
