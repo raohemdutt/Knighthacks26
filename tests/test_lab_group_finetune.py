@@ -211,6 +211,20 @@ def test_the_pooled_data_is_deleted_even_when_training_fails(pool_root, tmp_path
     assert rows("group-finetune.delete")[-1]["outcome"] == "deleted"
 
 
+class _MissingFileTrainer(FakeTrainer):
+    def train(self, **kwargs):
+        raise FileNotFoundError("jetson/make_manifest.py")   # what pod D's first bundle hit in the package step
+
+
+def test_an_unexpected_error_still_deletes_the_pool_and_writes_the_failed_run_row(pool_root, tmp_path, pod):
+    result, *_ = run(pool_root, tmp_path, pod, trainer=_MissingFileTrainer())
+    assert not result["ok"] and result["outcome"] == "failed" and result["step"] == "train"
+    assert result["error"].startswith("FileNotFoundError")
+    assert sorted(p.name for p in (pool_root / CIRCLE / TASK).iterdir()) == [gf.POOL_FILE]
+    assert rows("group-finetune.run")[-1]["outcome"] == "failed"
+    assert rows("group-finetune.delete")[-1]["outcome"] == "deleted"
+
+
 def test_keep_leaves_the_pool_for_debugging_and_records_that(pool_root, tmp_path, pod):
     result, *_ = run(pool_root, tmp_path, pod, keep=True)
     assert result["ok"] and (pool_root / CIRCLE / TASK / "ilan").is_dir()
