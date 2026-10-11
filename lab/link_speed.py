@@ -38,6 +38,7 @@ import base64
 import dataclasses
 import datetime as dt
 import hashlib
+import itertools
 import json
 import random
 import re
@@ -63,7 +64,7 @@ from lab.package_pull import PackageClient
 from lab.proxy import PodLink, ProxyError
 from lab.transfer import PodFiles, TransferError, TransferStats, sha256_file
 
-__all__ = ["Summary", "Run", "SizeResult", "ProbeStep", "Probe", "Report", "Target", "LiveTarget", "make_payload",
+__all__ = ["FreshLink", "Summary", "Run", "SizeResult", "ProbeStep", "Probe", "Report", "Target", "LiveTarget", "make_payload",
            "size_label", "summarize", "manifest_bytes", "probe_part_limit", "measure", "serve_script", "stop_script",
            "build_parser", "main"]
 
@@ -416,6 +417,25 @@ exit 0
 """
 
 
+class FreshLink(PodLink):
+    """A PodLink whose reads of the contents API cannot come from Cloudflare's cache. Measured on the SJC hub on
+    2026-10-11: `GET /user/<account>/api/contents/<path>?content=0` is answered `cache-control: public, max-age=14400`
+    with `cf-cache-status: HIT`, so the size of a file read back after it was rewritten stays the old size for four
+    hours (a changed query string is a MISS). lab/transfer.py reads the size back after every push and before every
+    retry; on a repeat of the same path that read would report the previous push's size. Every GET below /api/contents
+    here carries a query parameter that is never repeated. (The proxy route /proxy/<port>/ answers `no-store`.)"""
+
+    _tick = itertools.count(1)
+
+    def request(self, method: str, rel: str, **kwargs: Any) -> Any:
+        if method.upper() == "GET" and "/api/contents" in rel:
+            salt = self.__dict__.setdefault("_salt", secrets.token_hex(3))
+            params = dict(kwargs.get("params") or {})
+            params["_"] = f"{salt}{next(FreshLink._tick)}"
+            kwargs["params"] = params
+        return super().request(method, rel, **kwargs)
+
+
 class LiveTarget:
     """One account's pod reached through the hub: the contents API for the push (lab/transfer.py), the proxy for the pull
     (lab/package_pull.py), and the controller's run_script for the file server. transport and pull_transport replace the
@@ -436,7 +456,7 @@ class LiveTarget:
         self._transport = transport
         self._serve = serve
         self._unserve = unserve
-        self.link = PodLink.for_account(account, base_url=base_url, transport=transport, environ=environ, sleep=sleep, clock=clock)
+        self.link = FreshLink.for_account(account, base_url=base_url, transport=transport, environ=environ, sleep=sleep, clock=clock)
         self.files = PodFiles(self.link)
         self.client = PackageClient(account, port, base_url=base_url, transport=pull_transport or transport, sleep=sleep,
                                     environ=environ)

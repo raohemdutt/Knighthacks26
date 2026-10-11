@@ -16,13 +16,15 @@ import threading
 import zlib
 from pathlib import Path
 
+import httpx
 import pytest
 
 from lab import __main__ as lab_main
-from lab import link_speed, package_server
+from lab import link_speed, package_server, transfer
 from lab.hub_fake import FakeClock, FakeHub
 from lab.link_speed import LiveTarget
 from lab.machine import ledger
+from lab.proxy import PodLink
 from lab.package_fake import FakePodProxy as PackageProxy
 from lab.proxy_fake import FakePodProxy
 
@@ -51,10 +53,35 @@ class StepClock:
         return self.now
 
 
+class CloudflareCache(httpx.BaseTransport):
+    """What the SJC edge does to the contents API (measured 2026-10-11): a GET answered once is answered again from memory
+    for the same address, so a size read back after the file changed is the old size. A new query string is a new entry."""
+
+    def __init__(self, inner: httpx.BaseTransport) -> None:
+        self.inner = inner
+        self.kept: dict[str, tuple[int, bytes]] = {}
+        self.hits = 0
+
+    def handle_request(self, request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and "/api/contents" in request.url.path:
+            key = str(request.url)
+            if key in self.kept:
+                self.hits += 1
+                status, content = self.kept[key]
+                return httpx.Response(status, content=content, headers={"content-type": "application/json"})
+            response = self.inner.handle_request(request)
+            response.read()
+            if response.status_code == 200:                                # an error answer is not kept
+                self.kept[key] = (response.status_code, response.content)
+            return response
+        return self.inner.handle_request(request)
+
+
 class World:
     """One pod D on the fake proxy with a file server on PORT, and the target that measures it."""
 
-    def __init__(self, tmp_path: Path, *, edge_body_cap: int = 100_000_000, bandwidth: float | None = 2_000_000) -> None:
+    def __init__(self, tmp_path: Path, *, edge_body_cap: int = 100_000_000, bandwidth: float | None = 2_000_000,
+                 cache: bool = False) -> None:
         self.tmp = tmp_path
         self.clock = FakeClock()
         self.fake = FakePodProxy(self.clock, edge_body_cap=edge_body_cap, proxy_response_cap=RESPONSE_CAP, bandwidth=bandwidth)
@@ -64,7 +91,9 @@ class World:
         self.listener = None
         self.served = 0
         self.stopped = 0
-        self.target = LiveTarget(self.account, port=PORT, base_url=URL, transport=self.fake.transport,
+        self.cache = CloudflareCache(self.fake.transport) if cache else None
+        self.transport = self.cache or self.fake.transport
+        self.target = LiveTarget(self.account, port=PORT, base_url=URL, transport=self.transport,
                                  sleep=self.clock.sleep, clock=self.clock.time, serve=self.serve, unserve=self.unserve)
 
     def serve(self, scratch: str, version: str) -> None:
@@ -334,6 +363,38 @@ def test_the_pull_works_against_the_real_package_server_through_the_package_fake
         server.shutdown()
         server.server_close()
         proxy.close()
+
+
+# --- the edge's cache ---------------------------------------------------------------------------------------
+
+def test_a_cached_size_read_back_would_fool_the_plain_push_check(tmp_path):
+    world = World(tmp_path, cache=True)
+    try:
+        link = PodLink.for_account(world.account, base_url=URL, transport=world.transport, sleep=world.clock.sleep,
+                                   clock=world.clock.time)
+        plain = transfer.PodFiles(link)
+        first, second = tmp_path / "a.bin", tmp_path / "b.bin"
+        link_speed.make_payload(first, 300_000, 1)
+        link_speed.make_payload(second, 500_000, 2)
+        transfer.push_file(plain, first, "x/p.bin", chunk_bytes=CHUNK)
+        with pytest.raises(transfer.TransferError):                  # the second push is whole, but the read back says 300000
+            transfer.push_file(plain, second, "x/p.bin", chunk_bytes=CHUNK)
+        link.close()
+    finally:
+        world.close()
+
+
+def test_repeats_to_one_path_are_verified_by_reads_the_cache_cannot_answer(tmp_path):
+    world = World(tmp_path, cache=True)
+    try:
+        report = world.measure(sizes=[MB], repeats=3)
+        assert report.ok and report.sizes[0].pass_rate == (3, 3)
+        reads = [call for call in world.fake.calls_matching("GET", "/api/contents")]
+        assert reads and all("_=" in call.query for call in reads)
+        assert len({call.query for call in reads}) == len(reads)    # no read repeats an address
+        assert world.fake.pod("D").files == {} and world.fake.pod("D").dirs == {""}
+    finally:
+        world.close()
 
 
 # --- the pod-side scripts -----------------------------------------------------------------------------------

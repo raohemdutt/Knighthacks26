@@ -821,6 +821,10 @@ python -m lab link-speed --account D [--sizes-mb 1000,3000] [--repeats 3] [--chu
 - One ledger row per run (`link push`, `link pull`) with `link.push_mb_s` or `link.pull_mb_s`, bytes, seconds,
   `chunk_bytes` or `part_bytes`, the node, `hub` and `refs.account`; a failed run is an `error` row with no speed. The probe
   is one row (`link part-probe`, metric `link.max_part_mb`). The Markdown table is written to `--report`.
+- On SJC the edge caches `GET /user/<account>/api/contents/<path>?content=0` for four hours (`cache-control: public,
+  max-age=14400`, `cf-cache-status: HIT`), so a size read back after a rewrite is the old size. This verb adds a
+  never-repeated query parameter to every contents read (`FreshLink`); `lab/transfer.py` does not, and a push of a
+  different size to a path it has read before can fail its size check. The proxy route answers `no-store`.
 - A push's seconds cover the whole call (folders, chunks, size read back); a pull's seconds are its requests only.
   No MB/s bar applies; this measures.
 - Rehearsal: `tests/test_lab_link_speed.py` runs it at 1 MB and 3 MB against `lab/proxy_fake.py` and `lab/package_fake.py`.
