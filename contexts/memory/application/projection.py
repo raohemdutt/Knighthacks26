@@ -60,7 +60,7 @@ class MemoryProjection:
                 return []
             for t in e.tracks:
                 if t.label not in NOT_OBJECTS:
-                    self.store.put_track(t.label, e.camera_id, t.track_id, e.ts, e.frame_ref)
+                    self.store.put_track(t.label, e.camera_id, t.track_id, e.ts, e.frame_ref, t.box)
             return self._activity(e.camera_id, e.ts, labels=[t.label for t in e.tracks], first_frame=e.frame_ref)
 
     def on_zone_event(self, e: ZoneEvent) -> list:
@@ -76,7 +76,7 @@ class MemoryProjection:
                 return []
             for o in e.objects:
                 self.store.add_sighting(Sighting(label=o.label, camera_id=e.camera_id, zone_id=e.zone_id, ts=e.ts,
-                                                 frame_ref=e.frame_ref, position=o.position))
+                                                 frame_ref=e.frame_ref, position=o.position, box=o.box))
             return self._activity(e.camera_id, e.ts, caption=e.caption, keyframe=e.frame_ref)
 
     def on_item(self, e: ItemSynced) -> list:

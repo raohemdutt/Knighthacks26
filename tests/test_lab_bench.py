@@ -494,6 +494,33 @@ def test_rows_reach_the_ledger_and_the_metrics_file_through_the_recorded_hook(tm
         assert r["low_confidence"] is True and "spawn" in r["conditions"]["low_confidence_reason"]
 
 
+def test_a_told_condition_reaches_every_row_the_ledger_and_the_metrics_file(tmp_path):
+    # Two llama.cpp builds of one commit (Vulkan, ROCm) differ only in what the harness is told: --condition.
+    config, host, power = fake_config(tmp_path, engine="llamacpp", batches=(1,))
+    metrics_file = tmp_path / "metrics.jsonl"
+    argv = ["run", "--engine", "llamacpp", "--serve-cmd", json.dumps(config.command), "--checkpoint", "q4.gguf",
+            "--node", "pod-b", "--port", "0", "--batches", "1", "--no-64", "--repeats", "1",
+            "--max-tokens", str(MAX_TOKENS), "--requests-per-stream", "2", "--idle-s", "0.05",
+            "--power-period-s", str(power.period_s), "--request-timeout-s", "20", "--out", str(config.out_dir),
+            "--metrics-file", str(metrics_file), "--condition", "backend=vulkan", "--condition", "driver=radv"]
+    answer = bench.main(argv, host=host, power=power)
+    assert answer["ok"] is True, answer
+    row = json.loads(Path(answer["rows_path"]).read_text().splitlines()[0])
+    assert row["conditions"]["backend"] == "vulkan" and row["conditions"]["driver"] == "radv"
+    runs = [r for r in ledger.read(state_dir=tmp_path / "state") if r["verb"] == "bench.run"]
+    assert runs[0]["conditions"]["backend"] == "vulkan"
+    written = metrics.load(metrics_file)
+    assert written and all(r["conditions"]["backend"] == "vulkan" and r["conditions"]["driver"] == "radv"
+                           and r["conditions"]["engine"] == "llamacpp" for r in written)
+
+
+def test_a_condition_the_harness_records_itself_cannot_be_told(tmp_path):
+    answer = bench.main(["run", "--engine", "llamacpp", "--checkpoint", "q4.gguf", "--out", str(tmp_path / "out"),
+                         "--condition", "engine=vllm"])
+    assert answer["ok"] is False and "engine" in answer["error"]
+    assert not (tmp_path / "out").exists()
+
+
 def test_the_64_arm_is_skipped_with_its_reason_when_it_does_not_fit(tmp_path):
     _, result = run(tmp_path, batches=(1,), add_64=True, kv_tokens=4000)
     rows = result["rows"]

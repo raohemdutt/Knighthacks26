@@ -1,6 +1,6 @@
 /*
  * The drawn campus (components/dayrun/CampusLayers.tsx). The map has a palette of its own, held as custom properties
- * on .frame: a pale street-map palette in Day, and a night map (dark ground, lighter roads, deep water and greens) in
+ * on .frame (and on .palette, for a map drawn outside a .frame: Play mode's): a pale street-map palette in Day, and a night map (dark ground, lighter roads, deep water and greens) in
  * Night. The pins, the route and the "you" dot keep their colours in both; only the ground they sit on changes.
  */
 
@@ -10,7 +10,10 @@
   overflow: hidden;
   background: var(--map-ground);
   box-shadow: var(--sh-inset);
+}
 
+.frame,
+.palette {
   /* Day */
   --map-land: #e6ebf3;
   --map-ground: #f1f4f9;
@@ -41,7 +44,8 @@
   --map-friend-name: #7a4f00;
 }
 
-:global(html[data-theme="dark"]) .frame {
+:global(html[data-theme="dark"]) .frame,
+:global(html[data-theme="dark"]) .palette {
   --map-land: #0a0f1c;
   --map-ground: #101829;
   --map-wood: #12292a;

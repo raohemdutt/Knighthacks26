@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { AttentionLine, Seen, useAttention, useLookFirst } from "@/components/guide/Attention";
 import ui from "@/components/ui.module.css";
 import { ApiError, api, spotUrl } from "@/lib/api";
 import { useAtlas } from "@/lib/atlas";
+import { missingForAsset, type Job } from "@/lib/guideAttention";
 import { LevelIcon } from "./FloorMap";
 import { ManualNote } from "./Round";
 import o from "./op.module.css";
@@ -27,8 +30,10 @@ export function Why({ to, onWhy, children }: { to: Target; onWhy: (t: Target) =>
  * The one button on an item. It raises an approval card on the box (the same flow as before): nothing is written until
  * the person says yes, here or on the Approvals screen, and then only a file on this box.
  */
-export function ActionButton({ action, orders, quiet }: { action: OpAction; orders: WorkOrder[]; quiet?: boolean }) {
+export function ActionButton({ action, orders, quiet, name, jobs }: { action: OpAction; orders: WorkOrder[]; quiet?: boolean; /** With a name, the attention check asks "have you looked at it?" first. */ name?: string; jobs?: Job[] }) {
   const { approvals } = useAtlas();
+  const looks = useAttention();
+  const first = useLookFirst();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isOrder = action.kind === "work_order";
@@ -44,7 +49,9 @@ export function ActionButton({ action, orders, quiet }: { action: OpAction; orde
       .catch((e: unknown) => setError(e instanceof ApiError ? (e.needsToken ? "This box asks for a token first (Settings)." : e.message) : String(e)))
       .finally(() => setBusy(false));
   };
-  const ask = () => run(() => (isOrder && action.anomaly_id ? api.spotWorkOrder(action.anomaly_id) : api.spotReinspect(action.asset_id)));
+  const send = () => run(() => (isOrder && action.anomaly_id ? api.spotWorkOrder(action.anomaly_id) : api.spotReinspect(action.asset_id)));
+  // never blocks: a prompt and the pointer, then "Continue anyway"
+  const ask = () => (name ? first.check(() => missingForAsset(action.asset_id, name, looks.seen, jobs ?? []), send) : send());
 
   if (mine.length > 0) {
     const r = mine[0]!;
@@ -69,6 +76,7 @@ export function ActionButton({ action, orders, quiet }: { action: OpAction; orde
       <button type="button" className={`${ui.btn} ${quiet ? "" : ui.btnPrimary} ${o.act}`} disabled={busy} onClick={ask}>
         {action.label}
       </button>
+      {first.prompt}
       {written.length > 0 ? (
         <p className={o.done}>
           <LevelIcon level="ok" size={18} /> Done: {written[0]!.work_order_id} is written on this box.
@@ -115,6 +123,7 @@ export function TrustLine({ trust, onWhy }: { trust: NonNullable<Shift["trust"]>
       </span>
       <span className={o.trustText}>
         <b>{trust.question}</b> {trust.sentence}
+        <Seen id="trust" />
       </span>
       <span className={o.whyInline}>Why?</span>
     </button>
@@ -148,9 +157,10 @@ export function DoFirst({ shift, orders, onAsset, onWhy, onAll }: { shift: Shift
               <button type="button" className={o.itemTitle} onClick={() => onAsset(it.asset_id)}>
                 {it.headline}
               </button>
+              <Seen id={`do-first:${i + 1}`} also={[`asset:${it.asset_id}`]} />
               <p className={o.sentence}>{it.sentence}</p>
               <div className={o.itemActs}>
-                {it.action ? <ActionButton action={it.action} orders={orders} /> : null}
+                {it.action ? <ActionButton action={it.action} orders={orders} name={it.name} jobs={items} /> : null}
                 <Why to={it.why_ref} onWhy={onWhy} />
               </div>
             </div>
@@ -168,6 +178,7 @@ export function DoFirst({ shift, orders, onAsset, onWhy, onAll }: { shift: Shift
           </>
         ) : null}
       </p>
+      {items.length > 0 ? <AttentionLine jobs={items} /> : null}
     </section>
   );
 }
@@ -197,6 +208,7 @@ export function WatchOut({ items, onWhy }: { items: PlainFinding[]; onWhy: (t: T
   return (
     <section className={o.card} aria-label="Watch out" data-guide="card:watch">
       <CardHead level="watch" title="Watch out" hint="patterns that affect today" />
+      <Seen id="card:watch" />
       {items.length === 0 ? <p className={o.sentence}>No pattern stands out in the rounds so far.</p> : null}
       <ul className={o.items}>
         {items.map((it) => (
@@ -247,7 +259,7 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
-  return (
+  return createPortal(  // over the viewport: a transformed page section would otherwise trap position: fixed
     <div className={ui.overlay} onClick={onClose}>
       <div className={ui.sheet} role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
         <div className={`${ui.row} ${ui.between}`}>
@@ -259,7 +271,7 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
         {children}
       </div>
     </div>
-  );
+    , document.body);
 }
 
 function Fact({ label, children }: { label: string; children: ReactNode }) {

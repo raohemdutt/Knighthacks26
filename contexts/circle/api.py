@@ -12,6 +12,7 @@
      "database": "connected"|"offline"|"unknown"|"not_configured", "database_note", "last_reached_at",
      "queued", "sent", "last_synced_at", "oldest_queued_at",
      "kinds": [{"kind", "on", "queued", "sent", "last_synced_at"}], "place": {"place", "source", "expires_at"}|null}
+    kind "presence": queued is 1 while the latest place (or "stop sharing") has not reached Neon, else 0; sent is null.
 - POST /api/circle/proposals  {title, start, end, location?, invitees?} -> {"action_id", "thread_id"}
     "Find a time for all of us": CircleAgent.propose, which only raises an approval card. Nothing is
     sent to the Circle until the card is approved. 404 without a Circle; needs the token like other writes.
@@ -86,10 +87,10 @@ def _zone(config_dir: Path | None) -> ZoneInfo:
         return ZoneInfo("UTC")
 
 
-def circle_router(bus, *, circle=None, sharing=None, presence=None, board: CalendarRemote | None = None,
+def circle_router(bus, *, circle=None, sharing=None, presence=None, presence_sync=None, board: CalendarRemote | None = None,
                   config_dir: Path | None = None, clock: Callable[[], datetime] = lambda: datetime.now(UTC),
                   guard: Callable | None = None) -> APIRouter:
-    """`circle`, `sharing`, `presence` and `board` are the Atlas fields of the same names; any may be None."""
+    """`circle`, `sharing`, `presence`, `presence_sync` and `board` are the Atlas fields of the same names; any may be None."""
     router = APIRouter()
     config = _circle_config(config_dir)
     names = config.get("names") if isinstance(config.get("names"), dict) else {}
@@ -181,9 +182,12 @@ def circle_router(bus, *, circle=None, sharing=None, presence=None, board: Calen
             s = stats.get(kind, {})
             kinds.append({"kind": kind, "on": sharing is not None and summaries, "queued": s.get("queued") or 0,
                           "sent": s.get("sent") or 0, "last_synced_at": s.get("last_synced_at")})
-        # A named place leaves only through Neon's presence table, and only for a member who opted in.
+        # A named place leaves only through Neon's presence table, and only for a member who opted in. At most one
+        # waits: the latest place (or "stop sharing") Neon does not have yet. Sent ones are not counted.
+        waiting = getattr(presence_sync, "pending", None)
         kinds.append({"kind": "presence", "on": presence is not None and places and board is not None,
-                      "queued": None, "sent": None, "last_synced_at": None})
+                      "queued": None if presence_sync is None else int(waiting is not None), "sent": None,
+                      "last_synced_at": None})
         # Plans: a proposal after its approval card, and one word (free / busy / another time) in reply.
         kinds.append({"kind": "event_plan", "on": circle is not None and board is not None,
                       "queued": None, "sent": None, "last_synced_at": None})

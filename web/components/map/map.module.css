@@ -1,0 +1,437 @@
+/* The Room screen: find a thing, see who is in the room, and get pointed the right way. Phone first; two columns on a wide screen. */
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  font-size: 15px;
+  color: var(--muted);
+}
+
+.status strong {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.liveDot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+  vertical-align: -1px;
+}
+
+.liveDot[data-on="true"] {
+  background: var(--ok);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 22%, transparent), 0 0 10px var(--ok);
+  animation: pulse 2.4s ease-in-out infinite;
+}
+
+/* ---------- the finder: one card per thing worth finding ---------- */
+.finder {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.thing {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-height: 88px;
+  padding: 14px 16px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
+  color: var(--text);
+  text-align: left;
+  transition: transform var(--t) var(--ease-out), box-shadow var(--t);
+}
+
+@media (hover: hover) {
+  .thing:hover {
+    transform: translateY(-2px);
+  }
+}
+
+.thing:active {
+  transform: scale(0.97);
+}
+
+.thingOn {
+  box-shadow: var(--sh-selected);
+}
+
+.thingName {
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.thingWhen {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.thingWhere {
+  font-size: 14px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.thingOn .thingWhere {
+  color: var(--text);
+}
+
+/* the freshness dot in the corner: green when seen in the last hour, amber today, grey otherwise */
+.fresh {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--unknown);
+}
+
+.fresh[data-fresh="now"] {
+  background: var(--ok);
+  box-shadow: 0 0 8px var(--ok);
+}
+
+.fresh[data-fresh="today"] {
+  background: var(--watch);
+  box-shadow: 0 0 8px var(--watch);
+}
+
+/* ---------- the room and the rail beside it ---------- */
+.room {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+@media (min-width: 1024px) {
+  .layout {
+    grid-template-columns: minmax(0, 7fr) minmax(300px, 4fr);
+  }
+
+  .rail {
+    position: sticky;
+    top: 24px;
+  }
+}
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.stageCard {
+  padding: 12px;
+}
+
+.viewRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.seg {
+  display: inline-grid;
+  grid-auto-flow: column;
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+}
+
+.segBtn {
+  min-height: 38px;
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 650;
+  transition: background var(--t), color var(--t);
+}
+
+.segOn {
+  background: var(--surface-solid);
+  color: var(--accent-text);
+  box-shadow: var(--sh-raised-sm);
+}
+
+/* ---------- the detail card for the thing in focus ---------- */
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: in 420ms var(--ease-spring) both;
+}
+
+.detailHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.detailTitle {
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.where {
+  font-size: 19px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.whereNote {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 16px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
+  color: var(--text);
+  text-decoration: none;
+  font-size: 15px;
+  font-weight: 650;
+  transition: transform var(--t) var(--ease-out);
+}
+
+.action svg {
+  width: 18px;
+  height: 18px;
+}
+
+@media (hover: hover) {
+  .action:hover {
+    transform: translateY(-2px);
+  }
+}
+
+.action:active {
+  transform: scale(0.97);
+}
+
+.actionPrimary {
+  background: var(--accent-grad);
+  color: var(--accent-ink);
+  box-shadow: var(--glow);
+}
+
+/* ---------- who and what the cameras see right now ---------- */
+.now {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.track {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  animation: in 360ms var(--ease-out) both;
+}
+
+.trackIcon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.trackIcon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.trackIconPerson {
+  background: color-mix(in srgb, var(--ok) 16%, transparent);
+  color: var(--ok);
+}
+
+.trackText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  font-size: 16px;
+}
+
+.trackSub {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.quiet {
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  color: var(--muted);
+  font-size: 15px;
+}
+
+/* ---------- the cameras and their zones ---------- */
+.cameras {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+}
+
+.camera {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+}
+
+.cameraName {
+  font-weight: 700;
+}
+
+.zones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.zone {
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.zoneOn {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+/* ---------- which bin ---------- */
+.bin {
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--sh-raised);
+}
+
+.bin summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 56px;
+  padding: 14px 20px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  list-style: none;
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.bin summary::-webkit-details-marker {
+  display: none;
+}
+
+.bin summary svg {
+  width: 20px;
+  height: 20px;
+  color: var(--muted);
+  transition: transform var(--t) var(--ease-spring);
+}
+
+.bin[open] summary svg {
+  transform: rotate(180deg);
+}
+
+.binBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 20px 20px;
+}
+
+@keyframes in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.25);
+  }
+}

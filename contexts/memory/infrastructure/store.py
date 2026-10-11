@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from contracts.memory import Episode, Item, Sighting
+from contracts.types import Box
 
 log = logging.getLogger("atlas.memory")
 
@@ -44,6 +45,15 @@ CREATE TABLE IF NOT EXISTS memory_sightings (
     position TEXT
 );
 CREATE INDEX IF NOT EXISTS memory_sightings_label ON memory_sightings (label, ts);
+-- Where a thing is inside a frame, when a box is known: from the model's object list ('scene') or the detector's
+-- latest track of that label ('track', one row per label). A sighting with no row here is known in words only.
+CREATE TABLE IF NOT EXISTS memory_boxes (
+    frame_ref TEXT NOT NULL,
+    label TEXT NOT NULL,
+    source TEXT NOT NULL,
+    box TEXT NOT NULL,                 -- JSON [x1, y1, x2, y2], normalised 0..1
+    PRIMARY KEY (frame_ref, label)
+);
 -- The detector's latest track per label: where something was last seen when no object list named it.
 CREATE TABLE IF NOT EXISTS memory_tracks (
     label TEXT PRIMARY KEY,
@@ -91,7 +101,15 @@ CREATE TABLE IF NOT EXISTS memory_vectors (
 ) WITHOUT ROWID;
 """
 
-TABLES = ("memory_episodes", "memory_sightings", "memory_tracks", "memory_track_zones", "memory_items", "memory_notes", "memory_fts", "memory_applied")
+TABLES = ("memory_episodes", "memory_sightings", "memory_boxes", "memory_tracks", "memory_track_zones", "memory_items", "memory_notes", "memory_fts", "memory_applied")
+
+
+def _box(raw: str) -> Box | None:
+    try:
+        x1, y1, x2, y2 = (float(v) for v in json.loads(raw))
+    except (TypeError, ValueError):
+        return None
+    return Box(x1=x1, y1=y1, x2=x2, y2=y2)
 
 
 def iso(ts: datetime) -> str:
@@ -241,9 +259,28 @@ class MemoryStore:
             "INSERT OR REPLACE INTO memory_sightings VALUES (?, ?, ?, ?, ?, ?, ?)",
             (sid, s.label, s.camera_id, s.zone_id, iso(s.ts), s.frame_ref, s.position),
         )
+        if s.box is not None and s.frame_ref:
+            self.put_box(s.frame_ref, s.label, "scene", s.box)
 
-    def put_track(self, label: str, camera_id: str, track_id: int, ts: datetime, frame_ref: str | None) -> None:
+    def put_box(self, frame_ref: str, label: str, source: str, box: Box) -> None:
+        self.db.execute("INSERT OR REPLACE INTO memory_boxes VALUES (?, ?, ?, ?)",
+                        (frame_ref, label, source, json.dumps([box.x1, box.y1, box.x2, box.y2])))
+
+    def box_of(self, frame_ref: str, label: str) -> Box | None:
+        row = self.db.execute("SELECT box FROM memory_boxes WHERE frame_ref = ? AND label = ?", (frame_ref, label)).fetchone()
+        return _box(row["box"]) if row else None
+
+    def boxes_in(self, frame_ref: str) -> list[tuple[str, Box]]:
+        """Every boxed thing the box knows in one frame, by label."""
+        rows = self.db.execute("SELECT label, box FROM memory_boxes WHERE frame_ref = ? ORDER BY label", (frame_ref,))
+        return [(r["label"], b) for r in rows if (b := _box(r["box"])) is not None]
+
+    def put_track(self, label: str, camera_id: str, track_id: int, ts: datetime, frame_ref: str | None, box: Box | None = None) -> None:
         """The detector saw `label` at `ts`: keep it if it is the latest, with the zone that track is in."""
+        latest = self.db.execute("SELECT ts FROM memory_tracks WHERE label = ?", (label,)).fetchone()
+        if box is not None and frame_ref and (latest is None or iso(ts) >= latest["ts"]):
+            self.db.execute("DELETE FROM memory_boxes WHERE label = ? AND source = 'track'", (label,))  # one detector box per label: the newest
+            self.put_box(frame_ref, label, "track", box)
         zone = self.db.execute("SELECT zone_id FROM memory_track_zones WHERE camera_id = ? AND track_id = ?", (camera_id, track_id)).fetchone()
         self.db.execute(
             """INSERT INTO memory_tracks VALUES (?, ?, ?, ?, ?, ?)

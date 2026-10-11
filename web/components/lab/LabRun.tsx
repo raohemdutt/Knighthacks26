@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Keyframe } from "@/components/Keyframe";
 import ui from "@/components/ui.module.css";
 import {
@@ -67,7 +68,7 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
-  return (
+  return createPortal(  // over the viewport: a transformed page section would otherwise trap position: fixed
     <div className={ui.overlay} onClick={onClose}>
       <div className={ui.sheet} role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
         <div className={`${ui.row} ${ui.between}`}>
@@ -79,7 +80,7 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
         {children}
       </div>
     </div>
-  );
+    , document.body);
 }
 
 /* ---------- 1. taught from ---------- */

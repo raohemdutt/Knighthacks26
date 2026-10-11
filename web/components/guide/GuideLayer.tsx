@@ -6,13 +6,19 @@ import { api } from "@/lib/api";
 import { useAtlas } from "@/lib/atlas";
 import { Dwell, landed as eyesLanded, snap, type Thing } from "@/lib/gaze";
 import { gaze, type GazeEstimate } from "@/lib/gazeTracker";
-import { SCREENS, classify, ease, fromGaze, narration, pathPoint, pinTarget, pinnedThing, resolveApp, thingName, trail, travelMs, type GuideTarget, type Locator, type Pt, type Reveal } from "@/lib/guide";
+import { FIXATION_MS, attention, simScript } from "@/lib/guideAttention";
+import { SCREENS, classify, ease, fromGaze, labelsFor, narration, ownThing, pathPoint, pinTarget, precisionOf, resolveApp, resolveThing, spotWords, thingName, trail, travelMs, type GuideTarget, type ThingFound, type Locator, type Pt, type Reveal } from "@/lib/guide";
 import { offer, onGuide, pointAt, type GuideMessage, type GuideRun } from "@/lib/guideBus";
 import { along, length as routeLength, pointerRoute, type Box } from "@/lib/guidePath";
+import { alongStops, stepAt, walkFraction } from "@/lib/guideWalk";
+import { binRun } from "@/lib/guideBin";
 import { spotRun } from "@/lib/guideSpot";
+import { findLive, frameSpots, whereSeen } from "@/lib/guideSpotlight";
+import { cameraOfZone } from "@/lib/room";
 import { oneSentence } from "@/lib/speechText";
 import { useVoice } from "@/lib/voice";
 import { Calibrate } from "./Calibrate";
+import { Spotting, type SpottingAsk } from "./Spotting";
 import g from "./guide.module.css";
 
 /**
@@ -32,7 +38,7 @@ import g from "./guide.module.css";
  * ?gazeDebug=1 draws the screen region the eyes are estimated to be in.
  */
 
-type Phase = "reveal" | "travel" | "arrived" | "found";
+type Phase = "reveal" | "travel" | "walk" | "arrived" | "found";
 
 interface View {
   run: GuideRun;
@@ -46,6 +52,8 @@ interface View {
   rect: DOMRect | null;
   lines: string[];
   note: string | null;
+  /** A paced walk (run.pace): the route's points on the page and each one's share of the way. In phase "walk", `t` is the share of the walk's time. */
+  walk?: { els: Element[]; at: number[] } | null;
 }
 
 interface Offer {
@@ -105,6 +113,8 @@ export function GuideLayer() {
   const [offered, setOffered] = useState<Offer | null>(null);
   const [ok, setOk] = useState(false); // the eyes arrived
   const [calibrating, setCalibrating] = useState(false);
+  const [spotting, setSpotting] = useState<SpottingAsk | null>(null); // a camera's refreshed picture with the thing (or the bin) outlined
+  const [sim, setSim] = useState(false); // ?gazeSim: the camera is replaced by a script, and the screen says so
   const [debug, setDebug] = useState<{ on: boolean; e: GazeEstimate | null; snapped: Thing[]; several: boolean; why: string }>({ on: false, e: null, snapped: [], several: false, why: "" });
   const turn = useRef(0); // bumped by every new run and every cancel
   const el = useRef<Element | null>(null);
@@ -243,13 +253,50 @@ export function GuideLayer() {
       const arrive = run.arrive ?? words.arrive;
       const note = run.note?.(found) ?? null;
       // around the cards rather than across their text; through the walking route's waypoints when there is one
-      const stops = (run.via ?? []).map((at) => locate(at)).filter((x): x is Element => x !== null).map((x) => visible(x)!).map((r) => ({ x: r.left + r.width / 2, y: r.top + r.height / 2 }));
+      const onPage = (run.via ?? []).map((at, i) => ({ el: locate(at), share: run.pace?.at[i] ?? 0 })).filter((x): x is { el: Element; share: number } => x.el !== null);
+      const stops = onPage.map((x) => visible(x.el)!).map((r) => ({ x: r.left + r.width / 2, y: r.top + r.height / 2 }));
       const first = stops[0] ?? centre;
       const around = pointerRoute(origin, first, obstacles(found), [], vw, vh);
-      const route = stops.length > 0 ? [...(around ?? [origin, first]), ...stops.slice(1), centre] : around;
-      show({ start: origin, route, anchor: centre, rect: last, note });
+      const pace = run.pace && onPage.length > 1 ? run.pace : null;
+      const route = pace ? around ?? [origin, first] : stops.length > 0 ? [...(around ?? [origin, first]), ...stops.slice(1), centre] : around;
+      show({ start: origin, route, anchor: centre, rect: last, note, walk: pace ? { els: onPage.map((x) => x.el), at: onPage.map((x) => x.share) } : null });
 
-      if (held || still) {
+      if (pace) {
+        // a walk: to its start quickly, then along it at a walking pace, one instruction per stretch as the dot starts on it
+        for (const line of words.travel) tell(line);
+        let said = -1;
+        const upTo = (tf: number) => {
+          const now = tf <= 0 ? 0 : stepAt(pace, Math.min(tf, 0.9999));
+          for (; said < now; said++) tell(pace.steps[said + 1]!.say);
+        };
+        if (held || still) {
+          const tf = held ? Math.max(0, Math.min(1, run.t!)) : 1;
+          upTo(tf);
+          if (tf >= 1) tell(arrive);
+          show({ phase: tf >= 1 ? "arrived" : "walk", t: tf });
+        } else {
+          const animate = (ms: number, each: (t: number) => void) =>
+            new Promise<void>((resolve) => {
+              const t0 = performance.now();
+              const frame = (now: number) => {
+                if (!alive()) return resolve();
+                const t = Math.min(1, (now - t0) / ms);
+                each(t);
+                if (t < 1) window.requestAnimationFrame(frame);
+                else resolve();
+              };
+              window.requestAnimationFrame(frame);
+            });
+          show({ phase: "travel", t: 0 });
+          await animate(Math.round(Math.max(500, Math.min(1100, 300 + routeLength(route ?? [origin, first]) * 1.1))), (t) => show({ t }));
+          if (!alive()) return;
+          show({ phase: "walk", t: 0 });
+          await animate(pace.ms, (t) => (upTo(t), show({ t })));
+          if (!alive()) return;
+          tell(arrive);
+          show({ phase: "arrived", t: 1 });
+        }
+      } else if (held || still) {
         const at = held ? Math.max(0, Math.min(1, run.t!)) : 1;
         for (const line of [...words.travel, ...(run.extra ?? [])]) tell(line);
         if (at >= 1) tell(arrive);
@@ -302,13 +349,51 @@ export function GuideLayer() {
     [cancel, router, say],
   );
 
+  /**
+   * A thing the box was asked about, after its answer: resolved against the answer's own picture, then a live camera
+   * track, then the room's pin (lib/guide.ts `resolveThing`). Nothing found: "I haven't seen that" for the person's
+   * own thing, and nothing at all for a name or a place (the answer stands as it is).
+   */
+  const followThing = useCallback(
+    async (thing: string, answer: string, frame: string | null, citations: number, t: number | null) => {
+      const where = await whereSeen(thing);
+      const live = frame ? null : await findLive(thing);
+      const found = resolveThing({ thing, citationFrame: frame, where, live: live !== null && live !== "off" });
+      if (found.source === "none") {
+        if (ownThing(thing) && citations === 0) offer(found.say, []);
+        return;
+      }
+      if (frame && found.spotlight) frameSpots.set(frame, found.spotlight);
+      if (found.source === "live-track" && live && live !== "off") {
+        setSpotting({ camera: live.camera, labels: labelsFor(thing), name: thingName(thing) });
+        await sleep(350);
+        const name = thingName(thing);
+        return void start({
+          target: { id: "spotting", route: null, label: `Your ${name}, on camera`, at: [{ id: "spotting:box" }, { id: "spotting" }], steps: [{ say: "Look at the camera picture, bottom right." }, { say: found.say }] },
+          t,
+          precision: found.precision ?? undefined,
+          spot: { label: spotWords(found.precision ?? precisionOf("picture"), /s$/.test(name)) },
+        });
+      }
+      await sleep(frame ? 250 : 0); // the picture draws its spotlight first, so the pointer can land on it
+      void start(evidenceRun(thing, answer, found, t, live === "off"));
+    },
+    [start],
+  );
+
   /** A question or a guide id from a link or a "Did you mean" button, on whatever screen this is. */
   const ask = useCallback(
     async (query: string, t: number | null = null) => {
       const here = pathRef.current;
+      const bin = await binRun(query, t).catch(() => null);
+      if (bin) {
+        // where a camera runs, its picture with the right bin's zone outlined and the others dimmed
+        if (bin.zone) void findLive("").then((live) => (live === "off" ? undefined : setSpotting({ camera: cameraOfZone(bin.zone!) ?? null, zone: bin.zone, name: bin.zone! })));
+        return void start(bin);
+      }
       if (samePath(here, "/spot/")) {
         try {
-          const { run, found } = await spotRun(query, t);
+          const { run, found } = await spotRun(query, t, Boolean(voiceRef.current.canSpeak && voiceRef.current.getSettings().speak));
           if (run) return void start(run);
           if (found && found.alternatives.length > 0) return offer(found.steps[0]?.say ?? "Did you mean one of these?", found.alternatives.map((a) => ({ label: a.label, ask: a.target })));
         } catch {
@@ -316,27 +401,28 @@ export function GuideLayer() {
         }
       }
       const asked = classify(query, here);
-      const room = asked?.kind === "room" ? asked.thing : pinnedThing(query.toLowerCase()) ? query.toLowerCase() : null;
-      if (room !== null && samePath(here, "/")) {
-        // a thing in the room, from a link: ask the box as the person would, then follow its answer
-        const q = asked ? query : `Where are my ${thingName(room)}?`;
+      // a bare word that is no part of the app ("keys") is a thing to look for, like the question would be
+      const thing = asked?.kind === "thing" ? asked.thing : asked === null && resolveApp(query, here).target === null && /^[a-z ]{2,30}$/i.test(query.trim()) ? `my ${query.trim().toLowerCase()}` : null;
+      if (thing !== null && samePath(here, "/")) {
+        // from a link: ask the box as the person would, then follow its answer
+        const q = asked ? query : `Where are my ${thingName(thing)}?`;
         try {
           const answer = await api.ask(q);
           const id = `g${Date.now()}`;
           handled.current = `${id}-a`;
           setChat((turns) => [...turns, { id, role: "you", text: q }, { id: `${id}-a`, role: "atlas", answer }]);
           await sleep(150);
-          return void start(evidenceRun(room, answer.answer, answer.citations.some((c) => c.frame_ref), t));
+          return void followThing(thing, answer.answer, answer.citations.find((c) => c.frame_ref)?.frame_ref ?? null, answer.citations.length, t);
         } catch {
           return;
         }
       }
       const app = resolveApp(query, here);
-      if (app.target) return void start({ target: app.target, t });
+      if (app.target) return void start(app.target.id.startsWith("pin:") ? { target: app.target, t, precision: precisionOf("zone-pin"), spot: { label: spotWords(precisionOf("zone-pin")) } } : { target: app.target, t }); // a pin from a link: its calibration is not known here, so about
       if (app.alternatives.length > 0) offer("I am not sure what to point at. Did you mean one of these?", app.alternatives.map((a) => ({ label: a.label, run: { target: a } })));
       else offer("I do not know where that is in the app. Try asking the question on the Ask screen.", []);
     },
-    [setChat, start],
+    [setChat, start, followThing],
   );
 
   // requests from the screens
@@ -370,7 +456,50 @@ export function GuideLayer() {
         setDebug({ on: true, e, snapped: all.filter((t) => ids.includes(t.id)), several: s.kind === "several", why });
       }, 100);
     }
-    return () => (window.clearTimeout(timer), window.clearInterval(tick));
+    // the attention check: what the eyes rest on (a fixation that snaps to exactly one marked thing) is noted, in memory only
+    const watch = window.setInterval(() => {
+      attention.setMode(gaze.simulated() ? "sim" : gaze.usable() ? "gaze" : "off");
+      const e = gaze.estimate();
+      if (!e || e.rest.ms < FIXATION_MS || !samePath(window.location.pathname, "/spot/")) return;
+      const all = things(null);
+      const s = snap(restPoint(e), e.radius, all);
+      const hit = s.kind === "one" ? all.find((t) => t.id === s.id) : undefined;
+      if (hit) attention.note(hit.id, 100, { left: hit.left + window.scrollX, top: hit.top + window.scrollY, right: hit.right + window.scrollX, bottom: hit.bottom + window.scrollY });
+    }, 100);
+    // ?gazeSim=id,id,...: a scripted stand-in for the camera. Each id is "looked at" for 0.9 s, in order, through the same rules.
+    const script = simScript(q.get("gazeSim"));
+    let simAlive = script.length > 0;
+    if (simAlive) {
+      setSim(true);
+      gaze.simulate(null);
+      void (async () => {
+        await sleep(1800);
+        for (const id of script) {
+          let found: Element | null = null;
+          for (let i = 0; i < 40 && simAlive && !(found = locate({ id })); i++) await sleep(100);
+          if (!found || !simAlive) continue;
+          (found.getBoundingClientRect().width > 0 ? found : found.firstElementChild ?? found).scrollIntoView({ block: "center" });
+          await sleep(250);
+          for (let k = 0; k <= 18 && simAlive; k++) {
+            const r = visible(found);
+            if (r) {
+              const p = { x: (r.left + r.width / 2) / window.innerWidth, y: (r.top + r.height / 2) / window.innerHeight };
+              gaze.simulate({ ...p, raw: p, col: Math.floor(p.x * 6), row: Math.floor(p.y * 4), cols: 6, rows: 4, radius: 12, rest: { ms: k * 50, ...p }, at: performance.now() });
+            }
+            await sleep(50);
+          }
+          gaze.simulate(null);
+          await sleep(150);
+        }
+        document.documentElement.setAttribute("data-gaze-sim", "done");
+      })();
+    }
+    return () => {
+      window.clearTimeout(timer);
+      window.clearInterval(tick);
+      window.clearInterval(watch);
+      simAlive = false;
+    };
     // once per page load
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -390,12 +519,11 @@ export function GuideLayer() {
     const before = chat[chat.length - 2];
     if (!before || before.role !== "you" || !samePath(pathRef.current, "/")) return;
     const asked = classify(before.text, "/");
-    const framed = lastTurn.answer.citations.some((c) => c.frame_ref);
-    if (!asked || asked.kind === "app" || (asked.kind === "unsure" && !framed)) return;
-    const run = evidenceRun(asked.thing, lastTurn.answer.answer, framed, null);
-    const timer = window.setTimeout(() => void start(run), 250);
+    if (!asked || asked.kind === "app") return;
+    const a = lastTurn.answer;
+    const timer = window.setTimeout(() => void followThing(asked.thing, a.answer, a.citations.find((c) => c.frame_ref)?.frame_ref ?? null, a.citations.length, null), 250);
     return () => window.clearTimeout(timer);
-  }, [chat, start]);
+  }, [chat, followThing]);
 
   // Escape, or a tap anywhere but the caption, ends it
   const active = view !== null || offered !== null;
@@ -459,13 +587,24 @@ export function GuideLayer() {
     </>
   ) : null;
   if (calibrating) return <Calibrate onDone={() => setCalibrating(false)} />;
-  if (!view && !offered) return debugBox ? <div className={g.layer}>{debugBox}</div> : null;
+  const simBanner = sim ? (
+    <div className={g.simBanner} data-gaze-sim-banner>
+      SIMULATED GAZE (?gazeSim): a script stands in for the camera. No camera is in use.
+    </div>
+  ) : null;
+  const panel = spotting ? <Spotting ask={spotting} onClose={() => setSpotting(null)} /> : null;
+  if (!view && !offered) return debugBox || simBanner || panel ? <div className={g.layer}>{debugBox}{simBanner}{panel}</div> : null;
 
   const vw = typeof window === "undefined" ? 1024 : window.innerWidth;
   const vh = typeof window === "undefined" ? 768 : window.innerHeight;
   const rect = view && el.current ? visible(el.current) ?? view.rect : view?.rect ?? null;
   const centre = rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null;
   const moving = view && centre && view.phase === "travel";
+  // a paced walk: the route's points are measured again on every frame, so a scroll does not leave the dot behind
+  const walk = view?.phase === "walk" && view.walk && view.run.pace ? view.walk : null;
+  const walkPts = walk ? walk.els.map((e, i) => ({ r: visible(e), share: walk.at[i]! })).filter((x) => x.r).map((x) => ({ x: x.r!.left + x.r!.width / 2, y: x.r!.top + x.r!.height / 2, share: x.share })) : [];
+  const walkAt = (u: number): Pt => alongStops(walkPts, walkPts.map((p) => p.share), u);
+  const walked = walk && view?.run.pace ? walkFraction(view.run.pace, view.t) : 0;
   // on a planned route the end follows the target: the whole way is nudged by however far the target has moved since
   const onRoute = (u: number): Pt => {
     const p = along(view!.route!, u);
@@ -473,13 +612,19 @@ export function GuideLayer() {
     return { x: p.x + (centre!.x - view!.anchor!.x) * k, y: p.y + (centre!.y - view!.anchor!.y) * k };
   };
   const routed = Boolean(view?.route && view.anchor && centre);
-  const at = view && centre ? (routed ? onRoute(ease(view.t)) : pathPoint(view.start, centre, ease(view.t))) : null;
+  // on the approach to a walk the way ends at the walk's first point, not at the target
+  const approach = Boolean(view?.walk && view.run.pace && view.phase === "travel" && view.route);
+  const at = walk && walkPts.length > 1 ? walkAt(walked) : approach ? along(view!.route!, ease(view!.t)) : view && centre ? (routed ? onRoute(ease(view.t)) : pathPoint(view.start, centre, ease(view.t))) : null;
   const tail =
-    moving && view.t > 0 && view.t < 1
-      ? routed
-        ? Array.from({ length: 18 }, (_, i) => onRoute(Math.max(0, ease(view.t) - 0.22 + (0.22 * i) / 17)))
-        : trail(view.start, centre!, view.t)
-      : [];
+    walk && walkPts.length > 1 && view!.t > 0
+      ? Array.from({ length: 14 }, (_, i) => walkAt(Math.max(0, walked - 0.05 + (0.05 * i) / 13)))
+      : approach
+        ? []
+        : moving && view.t > 0 && view.t < 1
+          ? routed
+            ? Array.from({ length: 18 }, (_, i) => onRoute(Math.max(0, ease(view.t) - 0.22 + (0.22 * i) / 17)))
+            : trail(view.start, centre!, view.t)
+          : [];
   const landed = view?.phase === "arrived";
   const small = rect ? Math.max(rect.width, rect.height) < 64 : false;
   const pad = small ? 8 : 6;
@@ -493,12 +638,33 @@ export function GuideLayer() {
     const below = rect.bottom + pad + 14;
     capY = below + 150 < vh ? below : Math.max(12, rect.top - pad - 14 - 150);
     if (rect.height > vh * 0.6) capY = Math.max(12, Math.min(vh - 170, rect.top + 24)); // a tall target: inside its top
+    // the thing lights up by itself (a bin in the room): keep the caption off it, at the foot of the screen
+    if (view?.run.spot?.ring === false) {
+      capX = Math.max(12, Math.min(vw - capW - 12, rect.right - capW - 16));
+      capY = Math.max(12, Math.min(vh - 210, rect.bottom - 200));
+    }
+  }
+  // a walk on a plan: the caption keeps off the plan, so the line and the dot stay in view (beside it, else under it, else at the foot)
+  const plan = view?.run.pace && el.current ? el.current.closest("svg")?.getBoundingClientRect() ?? null : null;
+  if (plan) {
+    if (vw - plan.right >= capW + 24) {
+      capX = plan.right + 12;
+      capY = Math.max(12, Math.min(vh - 210, plan.top));
+    } else if (plan.bottom + 180 < vh) {
+      capX = Math.max(12, Math.min(vw - capW - 12, plan.left));
+      capY = plan.bottom + 10;
+    } else {
+      capX = (vw - capW) / 2;
+      capY = Math.max(12, vh - 200);
+    }
   }
   const lines = view?.lines ?? [];
 
   return (
-    <div className={g.layer} aria-live="polite" data-guide-layer={view?.phase ?? "offer"} data-guide-target={view?.run.target.id}>
+    <div className={g.layer} aria-live="polite" data-guide-layer={view?.phase ?? "offer"} data-guide-target={view?.run.target.id} data-guide-walked={walk ? walked.toFixed(3) : undefined}>
       {debugBox}
+      {simBanner}
+      {panel}
       {tail.length > 1 ? (
         <svg className={g.trail} aria-hidden="true">
           {tail.map((p, i) => (
@@ -506,16 +672,19 @@ export function GuideLayer() {
           ))}
         </svg>
       ) : null}
-      {rect && landed ? (
+      {rect && landed && view?.run.spot?.ring !== false ? (
         <div
-          className={`${g.ring} ${small ? g.ringRound : ""} ${ok ? g.ringOk : ""} ${view?.run.t != null ? g.ringStill : ""}`}
+          data-precision={view?.run.precision?.precision ?? "exact"}
+          className={`${g.ring} ${view?.run.precision?.precision === "about" ? g.ringAbout : ""} ${small ? g.ringRound : ""} ${ok ? g.ringOk : ""} ${view?.run.t != null ? g.ringStill : ""}`}
           style={{ transform: `translate(${rect.left - pad}px, ${rect.top - pad}px)`, width: rect.width + 2 * pad, height: rect.height + 2 * pad }}
-        />
+        >
+          {view?.run.spot?.label ? <span className={g.spotLabel}>{view.run.spot.label}</span> : null}
+        </div>
       ) : null}
       {at && !landed ? <div className={g.dot} style={{ transform: `translate(${at.x}px, ${at.y}px)` }} /> : null}
       <div className={`${g.caption} ${ok ? g.captionOk : ""}`} style={{ transform: `translate(${capX}px, ${capY}px)` }} data-guide-caption role="status">
         <p className={g.label}>
-          <span>{view ? view.run.target.label : "Where is it?"}</span>
+          <span>{view ? (landed && view.run.spot?.ring === false && view.run.spot.label ? `${view.run.spot.label}: ${view.run.target.label}` : view.run.target.label) : "Where is it?"}</span>
           <button type="button" className={g.close} onClick={cancel} aria-label="Stop pointing">
             Close
           </button>
@@ -595,28 +764,40 @@ function obstacles(target: Element): Box[] {
   return out;
 }
 
-/** The pointer's run for an answer about a thing in the room: to the picture under the answer, or to the answer when it has none. */
-function evidenceRun(thing: string, answer: string, framed: boolean, t: number | null): GuideRun {
+/**
+ * The pointer's run for an answer about a thing: to the spotlight on the picture under the answer (a tight outline when
+ * the box has a box for it, a soft region from the words, or the whole picture), or to the answer when it has no picture.
+ * The drawing and the sentence both follow `found.precision`.
+ */
+function evidenceRun(thing: string, answer: string, found: ThingFound, t: number | null, off = false): GuideRun {
   const name = thingName(thing);
-  const pinned = pinnedThing(thing);
+  const framed = found.spotlight !== null;
   const newest = "main article[data-guide='answer']:last-of-type";
+  const about = precisionOf("zone-pin");
   const target: GuideTarget = {
     id: "evidence",
     route: "/",
     label: `Where your ${name} ${/s$/.test(name) ? "are" : "is"}`,
-    at: framed ? [{ sel: `${newest} [data-guide='frame']` }, { sel: newest }] : [{ sel: newest }],
+    at: framed ? [...(found.spotlight?.rect ? [{ sel: `${newest} [data-guide='spot']` }] : []), { sel: `${newest} [data-guide='frame']` }, { sel: newest }] : [{ sel: newest }],
     steps: [{ say: framed ? "Under my answer: the picture it comes from." : "This is my answer. I have no picture to show for it." }, { say: "" }],
   };
+  const spot = found.spotlight;
   return {
     target,
     t,
-    arrive: oneSentence(answer, 170) || "That is all I know about it.",
-    note: (found) =>
+    arrive: framed ? found.say : oneSentence(answer, 170) || found.say,
+    note: (el) =>
       !framed
-        ? "No camera frame is attached to this answer."
-        : found.querySelector("[role=img]")
+        ? `No camera frame is attached to this answer.${off ? " The camera is not running on this box right now, so there is no live picture either." : ""}`
+        : el.closest("[data-guide='frame']")?.querySelector("[role=img]") ?? el.querySelector("[role=img]")
           ? "The picture for that moment is not stored on this box, so this is where it would be."
-          : "The box keeps the zone and a description, not the spot inside the picture, so the whole picture is ringed.",
-    action: pinned ? { label: "Show me in the room", run: { target: pinTarget(pinned) } } : undefined,
+          : spot?.kind === "box"
+            ? "Exact: the box put a box round it in this picture."
+            : spot?.kind === "about"
+              ? `About: placed from the box's words beside the ${spot.anchor}. There is no box for it.`
+              : "About: the box keeps the zone and a description, not the spot inside the picture, so the whole picture is ringed.",
+    action: found.source !== "none" ? { label: "Show me in the room", run: { target: pinTarget(labelsFor(thing)[0] ?? name), precision: about, spot: { label: spotWords(about) } } } : undefined,
+    precision: found.precision ?? precisionOf("words"),
+    spot: { label: spot ? spot.label : undefined },
   };
 }

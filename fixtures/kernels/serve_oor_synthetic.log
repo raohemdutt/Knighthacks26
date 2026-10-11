@@ -1,0 +1,5 @@
+INFO 10-11 09:12:03 [rocm.py:302] Using Triton Attention backend.
+INFO 10-11 09:14:41 [gpu_model_runner.py:3410] Model loading took 17.9 GiB memory and 81.2 seconds
+(EngineCore_DP0 pid=4121) ERROR 10-11 09:16:02 [core.py:842]     raise OutOfResources(self.metadata.shared, max_shared, "shared memory")
+(EngineCore_DP0 pid=4121) ERROR 10-11 09:16:02 [core.py:842] triton.runtime.errors.OutOfResources: out of resource: shared memory, Required: 66560, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+error: local memory (69632) exceeds limit (65536) in function 'wvSplitK_hf_sml_'
