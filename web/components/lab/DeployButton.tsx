@@ -52,8 +52,23 @@ function StageStrip({ run }: { run: DeployRun }) {
   );
 }
 
-function Outcome({ run }: { run: DeployRun }) {
+/**
+ * A swap the record calls failed while the box serves its very version and the health route says ok: a restart cut the
+ * swap short after the switch (the gateway was restarted mid-check). Said plainly, not as a failure.
+ */
+export function swapInterrupted(run: DeployRun, current: string | null, health: { ok: boolean; model?: string | null } | null): boolean {
+  return run.state === "failed" && !!run.version && current === run.version && !!health?.ok && (!health.model || health.model === run.version);
+}
+
+function Outcome({ run, interrupted }: { run: DeployRun; interrupted: boolean }) {
   const target = run.version ?? "the model";
+  if (interrupted) {
+    return (
+      <p className={dep.line}>
+        The last swap was interrupted by a restart; the box is serving {target} and healthy.
+      </p>
+    );
+  }
   const took = run.seconds !== null ? duration(run.seconds) : null;
   if (run.state === "running") {
     return (
@@ -171,11 +186,17 @@ export function DeployButton({ onBoxChanged }: { onBoxChanged?: () => void }) {
   const [view, setView] = useState<DeployView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const [health, setHealth] = useState<{ ok: boolean; model?: string | null } | null>(null);
   const lastState = useRef<string | null>(null);
   const changed = useRef(onBoxChanged);
   changed.current = onBoxChanged;
 
   const load = useCallback((signal?: AbortSignal) => {
+    // the health route says whether the box answers, and with which model (read only for a failed swap's wording)
+    api
+      .health(signal)
+      .then((h) => setHealth({ ok: !!h.ok, model: h.model ?? null }))
+      .catch(() => setHealth(null));
     return api
       .labDeploy(signal)
       .then((v) => {
@@ -271,8 +292,8 @@ export function DeployButton({ onBoxChanged }: { onBoxChanged?: () => void }) {
 
       {deploy.state !== "idle" ? (
         <div aria-live="polite">
-          <StageStrip run={deploy} />
-          <Outcome run={deploy} />
+          {swapInterrupted(deploy, current, health) ? null : <StageStrip run={deploy} />}
+          <Outcome run={deploy} interrupted={swapInterrupted(deploy, current, health)} />
         </div>
       ) : null}
       {error ? <p className={`${dep.line} ${dep.lineBad}`}>{error}</p> : null}
