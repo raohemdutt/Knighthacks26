@@ -46,7 +46,7 @@ export default function TodayPage() {
   return (
     <>
       <div className={ui.pageHead}>
-        <h1>Today</h1>
+        <h1>Dailies</h1>
         {/* the date itself (never the word "Today" again, straight under the heading) */}
         {habits.data?.day ? <p className={ui.muted}>{dayLabel(`${habits.data.day}T12:00:00`, new Date(0))} · what Atlas has seen so far</p> : null}
       </div>

@@ -164,7 +164,7 @@ temp file in RAM for the 2 seconds whisper reads it). It needs nothing from the 
 **One-time setup** (the tools come from a laptop with internet, because the box's firewall blocks GitHub and Hugging Face):
 
 ```bash
-./jetson/voice-fetch.sh alexander@192.168.1.126      # on the laptop: downloads, copies, builds whisper.cpp on the box
+./jetson/voice-fetch.sh alexander@172.20.10.6      # on the laptop: downloads, copies, builds whisper.cpp on the box
 sudo dpkg -i ~/atlas/voice/debs/pulseaudio-module-bluetooth_arm64.deb && pulseaudio -k   # on the box: lets PulseAudio use a Bluetooth speaker
 ```
 
@@ -224,6 +224,19 @@ curl localhost:8000/identity/settings       # available: true (SFace), expressio
 Without SFace recognition cannot be switched on; without the expression model "Read my expressions" and the anonymous
 room mode stay unavailable and everything else works. `./jetson/push.sh` leaves the box's model files alone. Everything is
 off until someone switches it on in the app, and stored pictures are blurred in every mode.
+
+
+## 12. Recording camera clips (for the lab and for replay)
+
+The gateway keeps the webcam open, so nothing else can read `/dev/video0`. `jetson/record_clip.py` records through the
+gateway instead: it polls the blurred `GET /capture/<camera>/snapshot.jpg`, keeps every new frame and has GStreamer join
+them into an mp4, without a video device, a stopped service or sudo. It also picks frames from recorded clips into a
+dataset folder in the box's export layout. The commands that were used, the clips they made and where the frames go next
+are in `lab/README.md` (section "Camera clips") and `fixtures/clips/README.md`.
+
+```bash
+ssh -o BatchMode=yes alexander@<ip> python3 - clip keys-on-desk --seconds 10 < jetson/record_clip.py
+```
 
 ## Firmware update (boards with old factory firmware)
 

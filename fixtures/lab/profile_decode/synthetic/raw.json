@@ -1,0 +1,875 @@
+{
+ "schema": "lab.profile_decode.raw/1",
+ "run_id": "r47-synthetic",
+ "task": "R47",
+ "node": "pod-b",
+ "hub": "sjc",
+ "account": "D",
+ "started": "2026-10-10T23:00:00.000Z",
+ "ended": "2026-10-10T23:27:00.000Z",
+ "args": {
+  "phases": [
+   "torch",
+   "rocprof"
+  ],
+  "max_tokens": 6,
+  "port": 8100
+ },
+ "unavailable": {},
+ "facts": {
+  "hub": "sjc",
+  "account": "D",
+  "hostname": "synthetic-pod-d",
+  "kernel_release": "6.18.6-061806-generic",
+  "amdgpu_driver": "6.18.6",
+  "firmware": null,
+  "asic_serial": null,
+  "chip": "gfx1151",
+  "market_name": "AMD Radeon 8060S",
+  "unavailable": {}
+ },
+ "versions": {
+  "torch": "2.9.1+rocm7.13.0",
+  "triton": "3.5.1",
+  "hip": "7.13.99004",
+  "python": "3.12.3"
+ },
+ "engine": {
+  "vllm_commit": "b1388b1fb",
+  "vllm_version": "0.19.2+gfx1151",
+  "unavailable": {},
+  "introspection": {
+   "classes": {
+    "ConchLinearKernel": "/home/jovyan/vllm/vllm/model_executor/kernels/linear/mixed_precision/conch.py",
+    "ExllamaLinearKernel": "/home/jovyan/vllm/vllm/model_executor/kernels/linear/mixed_precision/exllama.py"
+   },
+   "triton_kernels": {
+    "_gemm_kernel": "/home/jovyan/.local/lib/python3.12/site-packages/conch/kernels/quantization/gemm.py",
+    "_dequantize": "/home/jovyan/.local/lib/python3.12/site-packages/conch/kernels/quantization/gemm.py"
+   },
+   "quant_triton_kernels": [
+    "_dequantize",
+    "_gemm_kernel"
+   ],
+   "errors": [],
+   "conch_version": "1.2.1"
+  }
+ },
+ "checkpoint": {
+  "path": "/home/jovyan/models/Qwen3.8-27B-INT4",
+  "name": "Qwen3.8-27B-INT4",
+  "bytes": {
+   "files": 12,
+   "tensors": 2000,
+   "groups": {
+    "dense": 1200000000,
+    "embedding": 1556000000,
+    "lm_head": 1556000000,
+    "mtp": 400000000,
+    "quantized": 13000000000,
+    "vision": 800000000
+   },
+   "total": 18512000000,
+   "decode_read": 15756000000,
+   "quantized_read": 13000000000,
+   "tied_embedding": false
+  }
+ },
+ "tools": {
+  "rocprofv3": {
+   "path": "/opt/rocm/bin/rocprofv3",
+   "version": "rocprofv3 1.0.0 (synthetic)"
+  },
+  "amd_smi": "/opt/rocm/bin/amd-smi"
+ },
+ "workload": {
+  "prompt_set": {
+   "id": "bench-v1",
+   "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+   "prompts": 4,
+   "images": 2
+  },
+  "prompt_ids": [
+   "text-kitchen",
+   "image-bars",
+   "text-schedule",
+   "image-shapes"
+  ],
+  "max_tokens": 6,
+  "warmup_tokens": 16,
+  "temperature": 0.0,
+  "ignore_eos": true,
+  "thinking": false,
+  "batches": [
+   1,
+   4
+  ],
+  "batch_layout": "batch 1: one request per prompt, one at a time; batch 4: four streams at once"
+ },
+ "clocks_start": {
+  "realtime": 1791673200000000000,
+  "monotonic": 400000000000000,
+  "boottime": 401000000000000
+ },
+ "clocks_end": {
+  "realtime": 1791674820000000000,
+  "monotonic": 401620000000000,
+  "boottime": 402620000000000
+ },
+ "power": {
+  "idle_no_server_w": 9.0,
+  "period_s": 0.5,
+  "reader": null
+ },
+ "power_samples": "power.json",
+ "phases": {
+  "torch": {
+   "kind": "torch",
+   "ok": true,
+   "error": null,
+   "server": {
+    "argv": [
+     "python3",
+     "-m",
+     "vllm.entrypoints.openai.api_server",
+     "--model",
+     "/home/jovyan/models/Qwen3.8-27B-INT4"
+    ],
+    "profiler_config": {
+     "profiler": "torch",
+     "torch_profiler_dir": "/home/jovyan/x/torch"
+    },
+    "ready_s": 297.0,
+    "loaded_idle_w": 9.4,
+    "log": "serve-torch.log",
+    "log_facts": {
+     "linear_kernels": {
+      "CompressedTensorsWNA16": "ConchLinearKernel"
+     },
+     "attention_backends": [
+      "Triton",
+      "TRITON_ATTN (MMEncoderAttention)"
+     ],
+     "kv_cache_tokens": 163840,
+     "max_concurrency": 10.0,
+     "concurrency_tokens": 16384,
+     "max_model_len": 16384,
+     "quantization": "compressed-tensors",
+     "checkpoint": "/home/jovyan/models/Qwen3.8-27B-INT4",
+     "engine_build": null,
+     "prefix_caching": true
+    },
+    "memory_log": {
+     "weights_gib": 17.98,
+     "kv_cache_gib": 31.25,
+     "graph_pool_gib": 0.62
+    },
+    "stopped": true
+   },
+   "amdsmi_memory": {
+    "available": true,
+    "values": {
+     "TOTAL_VRAM": "512 MB",
+     "USED_VRAM": "301 MB",
+     "TOTAL_GTT": "62000 MB",
+     "USED_GTT": "53500 MB"
+    }
+   },
+   "runs": {
+    "b1_baseline": {
+     "name": "b1_baseline",
+     "kind": "baseline",
+     "batch": 1,
+     "requests": [
+      {
+       "role": "baseline",
+       "stream": 0,
+       "index": 0,
+       "prompt": "text-kitchen",
+       "sent": null,
+       "first_token": null,
+       "last_token": null,
+       "chunks": 6,
+       "tokens": 6,
+       "prompt_tokens": 31,
+       "finish_reason": "length",
+       "ttft_s": 0.4,
+       "decode_tok_s": 3.3333,
+       "buffered": false,
+       "cached_prompt_tokens": 0,
+       "error": null,
+       "sent_t": 1791673210.1,
+       "first_t": 1791673210.5,
+       "last_t": 1791673212.0,
+       "token_times": [
+        1791673210.5,
+        1791673210.8,
+        1791673211.11,
+        1791673211.3999999,
+        1791673211.705,
+        1791673212.0
+       ]
+      },
+      {
+       "role": "baseline",
+       "stream": 0,
+       "index": 1,
+       "prompt": "image-bars",
+       "sent": null,
+       "first_token": null,
+       "last_token": null,
+       "chunks": 6,
+       "tokens": 6,
+       "prompt_tokens": 31,
+       "finish_reason": "length",
+       "ttft_s": 0.4,
+       "decode_tok_s": 3.3333,
+       "buffered": false,
+       "cached_prompt_tokens": 0,
+       "error": null,
+       "sent_t": 1791673212.6,
+       "first_t": 1791673213.0,
+       "last_t": 1791673214.5,
+       "token_times": [
+        1791673213.0,
+        1791673213.302,
+        1791673213.6000001,
+        1791673213.9,
+        1791673214.2,
+        1791673214.5
+       ]
+      }
+     ],
+     "decode_windows": [
+      [
+       1791673210.5,
+       1791673212.0
+      ],
+      [
+       1791673213.0,
+       1791673214.5
+      ]
+     ],
+     "watts": {
+      "available": true,
+      "reason": null,
+      "avg_w": 118.2,
+      "peak_w": 126.0,
+      "energy_j": 177.3,
+      "samples": 3,
+      "source": "amd-smi",
+      "power_field": "SOCKET_POWER",
+      "sampler": "lab/pod_power.py 1",
+      "period_s": 0.5,
+      "throttled": null
+     },
+     "errors": []
+    },
+    "b4_baseline": {
+     "name": "b4_baseline",
+     "kind": "baseline",
+     "batch": 4,
+     "requests": [
+      {
+       "role": "baseline",
+       "stream": 0,
+       "index": 0,
+       "prompt": "text-kitchen",
+       "sent": null,
+       "first_token": null,
+       "last_token": null,
+       "chunks": 6,
+       "tokens": 6,
+       "prompt_tokens": 31,
+       "finish_reason": "length",
+       "ttft_s": 0.4,
+       "decode_tok_s": 3.125,
+       "buffered": false,
+       "cached_prompt_tokens": 0,
+       "error": null,
+       "sent_t": 1791673219.6,
+       "first_t": 1791673220.0,
+       "last_t": 1791673221.5999997,
+       "token_times": [
+        1791673220.0,
+        1791673220.32,
+        1791673220.6399999,
+        1791673220.9599998,
+        1791673221.2799997,
+        1791673221.5999997
+       ]
+      },
+      {
+       "role": "baseline",
+       "stream": 1,
+       "index": 1,
+       "prompt": "image-bars",
+       "sent": null,
+       "first_token": null,
+       "last_token": null,
+       "chunks": 6,
+       "tokens": 6,
+       "prompt_tokens": 31,
+       "finish_reason": "length",
+       "ttft_s": 0.4,
+       "decode_tok_s": 3.125,
+       "buffered": false,
+       "cached_prompt_tokens": 0,
+       "error": null,
+       "sent_t": 1791673219.6,
+       "first_t": 1791673220.0,
+       "last_t": 1791673221.5999997,
+       "token_times": [
+        1791673220.0,
+        1791673220.32,
+        1791673220.6399999,
+        1791673220.9599998,
+        1791673221.2799997,
+        1791673221.5999997
+       ]
+      },
+      {
+       "role": "baseline",
+       "stream": 2,
+       "index": 2,
+       "prompt": "text-schedule",
+       "sent": null,
+       "first_token": null,
+       "last_token": null,
+       "chunks": 6,
+       "tokens": 6,
+       "prompt_tokens": 31,
+       "finish_reason": "length",
+       "ttft_s": 0.4,
+       "decode_tok_s": 3.125,
+       "buffered": false,
+       "cached_prompt_tokens": 0,
+       "error": null,
+       "sent_t": 1791673219.6,
+       "first_t": 1791673220.0,
+       "last_t": 1791673221.5999997,
+       "token_times": [
+        1791673220.0,
+        1791673220.32,
+        1791673220.6399999,
+        1791673220.9599998,
+        1791673221.2799997,
+        1791673221.5999997
+       ]
+      },
+      {
+       "role": "baseline",
+       "stream": 3,
+       "index": 3,
+       "prompt": "image-shapes",
+       "sent": null,
+       "first_token": null,
+       "last_token": null,
+       "chunks": 6,
+       "tokens": 6,
+       "prompt_tokens": 31,
+       "finish_reason": "length",
+       "ttft_s": 0.4,
+       "decode_tok_s": 3.125,
+       "buffered": false,
+       "cached_prompt_tokens": 0,
+       "error": null,
+       "sent_t": 1791673219.6,
+       "first_t": 1791673220.0,
+       "last_t": 1791673221.5999997,
+       "token_times": [
+        1791673220.0,
+        1791673220.32,
+        1791673220.6399999,
+        1791673220.9599998,
+        1791673221.2799997,
+        1791673221.5999997
+       ]
+      }
+     ],
+     "decode_windows": [
+      [
+       1791673220.0,
+       1791673221.5999997
+      ]
+     ],
+     "watts": {
+      "available": true,
+      "reason": null,
+      "avg_w": 118.2,
+      "peak_w": 126.0,
+      "energy_j": 177.3,
+      "samples": 3,
+      "source": "amd-smi",
+      "power_field": "SOCKET_POWER",
+      "sampler": "lab/pod_power.py 1",
+      "period_s": 0.5,
+      "throttled": null
+     },
+     "errors": []
+    },
+    "b1_torch": {
+     "name": "b1_torch",
+     "kind": "torch",
+     "batch": 1,
+     "requests": [
+      {
+       "role": "torch",
+       "stream": 0,
+       "index": 0,
+       "prompt": "text-kitchen",
+       "sent": null,
+       "first_token": null,
+       "last_token": null,
+       "chunks": 7,
+       "tokens": 7,
+       "prompt_tokens": 31,
+       "finish_reason": "length",
+       "ttft_s": 0.4,
+       "decode_tok_s": 3.0303,
+       "buffered": false,
+       "cached_prompt_tokens": 0,
+       "error": null,
+       "sent_t": 1791673230.0,
+       "first_t": 1791673230.4,
+       "last_t": 1791673232.3799996,
+       "token_times": [
+        1791673230.4,
+        1791673230.73,
+        1791673231.06,
+        1791673231.3899999,
+        1791673231.7199998,
+        1791673232.0499997,
+        1791673232.3799996
+       ]
+      }
+     ],
+     "decode_windows": [
+      [
+       1791673230.4,
+       1791673232.3799996
+      ]
+     ],
+     "watts": {
+      "available": true,
+      "reason": null,
+      "avg_w": 118.2,
+      "peak_w": 126.0,
+      "energy_j": 177.3,
+      "samples": 3,
+      "source": "amd-smi",
+      "power_field": "SOCKET_POWER",
+      "sampler": "lab/pod_power.py 1",
+      "period_s": 0.5,
+      "throttled": null
+     },
+     "errors": [],
+     "trace": "torch/b1.pt.trace.json.gz",
+     "trace_bytes": 0,
+     "stop_profile_s": 12.0
+    },
+    "b4_torch": {
+     "name": "b4_torch",
+     "kind": "torch",
+     "batch": 4,
+     "requests": [
+      {
+       "role": "torch",
+       "stream": 0,
+       "index": 0,
+       "prompt": "text-kitchen",
+       "sent": null,
+       "first_token": null,
+       "last_token": null,
+       "chunks": 6,
+       "tokens": 6,
+       "prompt_tokens": 31,
+       "finish_reason": "length",
+       "ttft_s": 0.4,
+       "decode_tok_s": 2.8571,
+       "buffered": false,
+       "cached_prompt_tokens": 0,
+       "error": null,
+       "sent_t": 1791673239.6,
+       "first_t": 1791673240.0,
+       "last_t": 1791673241.7499995,
+       "token_times": [
+        1791673240.0,
+        1791673240.35,
+        1791673240.6999998,
+        1791673241.0499997,
+        1791673241.3999996,
+        1791673241.7499995
+       ]
+      },
+      {
+       "role": "torch",
+       "stream": 1,
+       "index": 1,
+       "prompt": "image-bars",
+       "sent": null,
+       "first_token": null,
+       "last_token": null,
+       "chunks": 6,
+       "tokens": 6,
+       "prompt_tokens": 31,
+       "finish_reason": "length",
+       "ttft_s": 0.4,
+       "decode_tok_s": 2.8571,
+       "buffered": false,
+       "cached_prompt_tokens": 0,
+       "error": null,
+       "sent_t": 1791673239.6,
+       "first_t": 1791673240.0,
+       "last_t": 1791673241.7499995,
+       "token_times": [
+        1791673240.0,
+        1791673240.35,
+        1791673240.6999998,
+        1791673241.0499997,
+        1791673241.3999996,
+        1791673241.7499995
+       ]
+      },
+      {
+       "role": "torch",
+       "stream": 2,
+       "index": 2,
+       "prompt": "text-schedule",
+       "sent": null,
+       "first_token": null,
+       "last_token": null,
+       "chunks": 6,
+       "tokens": 6,
+       "prompt_tokens": 31,
+       "finish_reason": "length",
+       "ttft_s": 0.4,
+       "decode_tok_s": 2.8571,
+       "buffered": false,
+       "cached_prompt_tokens": 0,
+       "error": null,
+       "sent_t": 1791673239.6,
+       "first_t": 1791673240.0,
+       "last_t": 1791673241.7499995,
+       "token_times": [
+        1791673240.0,
+        1791673240.35,
+        1791673240.6999998,
+        1791673241.0499997,
+        1791673241.3999996,
+        1791673241.7499995
+       ]
+      },
+      {
+       "role": "torch",
+       "stream": 3,
+       "index": 3,
+       "prompt": "image-shapes",
+       "sent": null,
+       "first_token": null,
+       "last_token": null,
+       "chunks": 6,
+       "tokens": 6,
+       "prompt_tokens": 31,
+       "finish_reason": "length",
+       "ttft_s": 0.4,
+       "decode_tok_s": 2.8571,
+       "buffered": false,
+       "cached_prompt_tokens": 0,
+       "error": null,
+       "sent_t": 1791673239.6,
+       "first_t": 1791673240.0,
+       "last_t": 1791673241.7499995,
+       "token_times": [
+        1791673240.0,
+        1791673240.35,
+        1791673240.6999998,
+        1791673241.0499997,
+        1791673241.3999996,
+        1791673241.7499995
+       ]
+      }
+     ],
+     "decode_windows": [
+      [
+       1791673240.0,
+       1791673241.7499995
+      ]
+     ],
+     "watts": {
+      "available": true,
+      "reason": null,
+      "avg_w": 118.2,
+      "peak_w": 126.0,
+      "energy_j": 177.3,
+      "samples": 3,
+      "source": "amd-smi",
+      "power_field": "SOCKET_POWER",
+      "sampler": "lab/pod_power.py 1",
+      "period_s": 0.5,
+      "throttled": null
+     },
+     "errors": [],
+     "trace": "torch/b4.pt.trace.json.gz",
+     "trace_bytes": 0,
+     "stop_profile_s": 9.0
+    }
+   }
+  },
+  "rocprof": {
+   "kind": "rocprof",
+   "ok": true,
+   "error": null,
+   "server": {
+    "argv": [
+     "/opt/rocm/bin/rocprofv3",
+     "--kernel-trace"
+    ],
+    "output_dir": "rocprof",
+    "env": {
+     "VLLM_WORKER_MULTIPROC_METHOD": "spawn"
+    },
+    "ready_s": 330.0,
+    "log": "serve-rocprof.log",
+    "log_facts": {
+     "linear_kernels": {
+      "CompressedTensorsWNA16": "ConchLinearKernel"
+     },
+     "attention_backends": [
+      "Triton",
+      "TRITON_ATTN (MMEncoderAttention)"
+     ],
+     "kv_cache_tokens": 163840,
+     "max_concurrency": 10.0,
+     "concurrency_tokens": 16384,
+     "max_model_len": 16384,
+     "quantization": "compressed-tensors",
+     "checkpoint": "/home/jovyan/models/Qwen3.8-27B-INT4",
+     "engine_build": null,
+     "prefix_caching": true
+    },
+    "memory_log": {
+     "weights_gib": 17.98,
+     "kv_cache_gib": 31.2,
+     "graph_pool_gib": 0.62
+    },
+    "stop": {
+     "core": 4243,
+     "api": 4242,
+     "core_exit_s": 41.0,
+     "server_exit_s": 6.0,
+     "forced": false
+    }
+   },
+   "files": {
+    "kernel": [
+     "rocprof/4243/run_kernel_trace.csv"
+    ],
+    "copy": [
+     "rocprof/4243/run_memory_copy_trace.csv"
+    ]
+   },
+   "runs": {
+    "b1_rocprof": {
+     "name": "b1_rocprof",
+     "kind": "rocprof",
+     "batch": 1,
+     "requests": [
+      {
+       "role": "rocprof",
+       "stream": 0,
+       "index": 0,
+       "prompt": "text-kitchen",
+       "sent": null,
+       "first_token": null,
+       "last_token": null,
+       "chunks": 6,
+       "tokens": 6,
+       "prompt_tokens": 31,
+       "finish_reason": "length",
+       "ttft_s": 0.4,
+       "decode_tok_s": 3.3333,
+       "buffered": false,
+       "cached_prompt_tokens": 0,
+       "error": null,
+       "sent_t": 1791673259.6,
+       "first_t": 1791673260.0,
+       "last_t": 1791673261.4999998,
+       "token_times": [
+        1791673260.0,
+        1791673260.3,
+        1791673260.6,
+        1791673260.8999999,
+        1791673261.1999998,
+        1791673261.4999998
+       ]
+      }
+     ],
+     "decode_windows": [
+      [
+       1791673260.0,
+       1791673261.4999998
+      ]
+     ],
+     "watts": {
+      "available": true,
+      "reason": null,
+      "avg_w": 118.2,
+      "peak_w": 126.0,
+      "energy_j": 177.3,
+      "samples": 3,
+      "source": "amd-smi",
+      "power_field": "SOCKET_POWER",
+      "sampler": "lab/pod_power.py 1",
+      "period_s": 0.5,
+      "throttled": null
+     },
+     "errors": []
+    },
+    "b4_rocprof": {
+     "name": "b4_rocprof",
+     "kind": "rocprof",
+     "batch": 4,
+     "requests": [
+      {
+       "role": "rocprof",
+       "stream": 0,
+       "index": 0,
+       "prompt": "text-kitchen",
+       "sent": null,
+       "first_token": null,
+       "last_token": null,
+       "chunks": 6,
+       "tokens": 6,
+       "prompt_tokens": 31,
+       "finish_reason": "length",
+       "ttft_s": 0.4,
+       "decode_tok_s": 3.125,
+       "buffered": false,
+       "cached_prompt_tokens": 0,
+       "error": null,
+       "sent_t": 1791673269.6,
+       "first_t": 1791673270.0,
+       "last_t": 1791673271.5999997,
+       "token_times": [
+        1791673270.0,
+        1791673270.32,
+        1791673270.6399999,
+        1791673270.9599998,
+        1791673271.2799997,
+        1791673271.5999997
+       ]
+      },
+      {
+       "role": "rocprof",
+       "stream": 1,
+       "index": 1,
+       "prompt": "image-bars",
+       "sent": null,
+       "first_token": null,
+       "last_token": null,
+       "chunks": 6,
+       "tokens": 6,
+       "prompt_tokens": 31,
+       "finish_reason": "length",
+       "ttft_s": 0.4,
+       "decode_tok_s": 3.125,
+       "buffered": false,
+       "cached_prompt_tokens": 0,
+       "error": null,
+       "sent_t": 1791673269.6,
+       "first_t": 1791673270.0,
+       "last_t": 1791673271.5999997,
+       "token_times": [
+        1791673270.0,
+        1791673270.32,
+        1791673270.6399999,
+        1791673270.9599998,
+        1791673271.2799997,
+        1791673271.5999997
+       ]
+      },
+      {
+       "role": "rocprof",
+       "stream": 2,
+       "index": 2,
+       "prompt": "text-schedule",
+       "sent": null,
+       "first_token": null,
+       "last_token": null,
+       "chunks": 6,
+       "tokens": 6,
+       "prompt_tokens": 31,
+       "finish_reason": "length",
+       "ttft_s": 0.4,
+       "decode_tok_s": 3.125,
+       "buffered": false,
+       "cached_prompt_tokens": 0,
+       "error": null,
+       "sent_t": 1791673269.6,
+       "first_t": 1791673270.0,
+       "last_t": 1791673271.5999997,
+       "token_times": [
+        1791673270.0,
+        1791673270.32,
+        1791673270.6399999,
+        1791673270.9599998,
+        1791673271.2799997,
+        1791673271.5999997
+       ]
+      },
+      {
+       "role": "rocprof",
+       "stream": 3,
+       "index": 3,
+       "prompt": "image-shapes",
+       "sent": null,
+       "first_token": null,
+       "last_token": null,
+       "chunks": 6,
+       "tokens": 6,
+       "prompt_tokens": 31,
+       "finish_reason": "length",
+       "ttft_s": 0.4,
+       "decode_tok_s": 3.125,
+       "buffered": false,
+       "cached_prompt_tokens": 0,
+       "error": null,
+       "sent_t": 1791673269.6,
+       "first_t": 1791673270.0,
+       "last_t": 1791673271.5999997,
+       "token_times": [
+        1791673270.0,
+        1791673270.32,
+        1791673270.6399999,
+        1791673270.9599998,
+        1791673271.2799997,
+        1791673271.5999997
+       ]
+      }
+     ],
+     "decode_windows": [
+      [
+       1791673270.0,
+       1791673271.5999997
+      ]
+     ],
+     "watts": {
+      "available": true,
+      "reason": null,
+      "avg_w": 118.2,
+      "peak_w": 126.0,
+      "energy_j": 177.3,
+      "samples": 3,
+      "source": "amd-smi",
+      "power_field": "SOCKET_POWER",
+      "sampler": "lab/pod_power.py 1",
+      "period_s": 0.5,
+      "throttled": null
+     },
+     "errors": []
+    }
+   }
+  }
+ }
+}

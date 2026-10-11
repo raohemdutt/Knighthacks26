@@ -43,6 +43,7 @@
 - GET  /api/places/map/{pack} the pack's campus map (buildings, paths; © OpenStreetMap contributors) for the phone to draw
 - GET  /api/learning        taught tasks: stage, progress, scores, deployed models (X10)
 - GET  /api/learning/lab    training runs as stories for the Learning lab screen; /api/learning/lab/{run_id} is one
+- GET  /api/learning/lab/bench    the lab's benchmark and energy rows; /experiments is its timeline; POST /routing/simulate
 - GET  /api/profile         who this box serves: name, description, vocabulary, overridden config files
 - GET  /api/league          the League: this week's standings, worst and best with reasons, stake, dares, team waste line
 - GET  /api/league/me       this member's breakdown by target
@@ -104,7 +105,12 @@ from contracts.experience import ApprovalDecided, QuestionAsked
 from contracts.learning import TaskSpec
 from contexts.capture.api import capture_router
 from contexts.learning.api import learning_router
+from contexts.learning.application.lab_runs import attach as attach_trainer_runs
+from contexts.learning.application.lab_runs import default_runs_dir
 from contexts.learning.lab_api import lab_router
+from contexts.learning.application.lab_experiments import imported_state_dir
+from contexts.learning.lab_bench_api import lab_bench_router
+from contexts.learning.lab_import import lab_import_router
 from contexts.telemetry.runtime_stats import build_runtime_stats
 from runtime.api import runtime_router
 from runtime.stats_api import stats_router
@@ -203,7 +209,7 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
     # GET /api/impact/story, GET/POST /api/impact/practice: the Impact screen (404 when Waste Watch is not set up)
     app.include_router(impact_router(atlas.impact, publish=atlas.bus.publish, guard=authorized))
     if atlas.policy:  # GET/PUT /vault/policy, POST /vault/wipe/request, POST /vault/wipe, GET /vault/egress
-        app.include_router(vault_router(atlas.policy, atlas.bus, wiper=atlas.wiper, guard=authorized))
+        app.include_router(vault_router(atlas.policy, atlas.bus, wiper=atlas.wiper, guard=authorized, pictures=atlas.pictures))
     if atlas.identity:  # /identity/settings, /identity/enroll/start, status, photos, scan/*; /identity/members, present, expressions (P9)
         # A person can be linked to a Circle member by id; the ids come from the configured Circle, nothing else crosses over.
         app.include_router(identity_router(atlas.identity, atlas.bus, guard=authorized, circle_members=lambda: (
@@ -212,13 +218,19 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         app.include_router(capture_router(atlas.capture))
     if atlas.learning:  # GET /api/learning (X10)
         app.include_router(learning_router(atlas.learning, publish=atlas.bus.publish, guard=authorized))
+    # GET /api/learning/lab/bench, /experiments, POST /routing/simulate: the lab's recorded numbers (before {run_id})
+    app.include_router(lab_bench_router(imported_dir=imported_state_dir(atlas.settings.data_dir)))  # + the ledger the lab pushed
+    if atlas.lab_view:  # the trainer's own step files, folded into the same stories as they are written
+        attach_trainer_runs(atlas.lab_view, default_runs_dir(atlas.settings.data_dir))
+        # POST /api/learning/lab/import: a run's telemetry.jsonl (or eval scores, or manifest) pushed from the lab's side
+        app.include_router(lab_import_router(atlas.lab_view, atlas.bus.publish, guard=authorized, data_dir=atlas.settings.data_dir))
     if atlas.lab_view:  # GET /api/learning/lab, /api/learning/lab/{run_id}: the Learning lab screen
         app.include_router(lab_router(atlas.lab_view, current_model=lambda: {
             "version": atlas.qa.runtime.model_info().version, "source": "the runtime on this box (the model that answers)"}))
     # GET /api/circle/events, /api/circle/sharing: read-only, and they answer in every state (no Circle, no Neon)
     # POST /api/circle/proposals: an approval card for a plan with friends (G1)
     app.include_router(circle_router(atlas.bus, circle=atlas.circle, sharing=atlas.sharing, presence=atlas.presence,
-                                     board=atlas.board, config_dir=atlas.settings.config_dir, guard=authorized))
+                                     presence_sync=atlas.presence_sync, board=atlas.board, config_dir=atlas.settings.config_dir, guard=authorized))
     # /api/circle/face-share: every endpoint answers 409 while face sharing is off (the default) or there is no Circle
     app.include_router(face_share_router(atlas.face_share, atlas.bus, guard=authorized))
     # GET /api/league, /api/league/me (200 in every state); POST /api/league/stake, /api/league/challenges -> approval cards

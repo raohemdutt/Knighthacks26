@@ -2,9 +2,11 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { ASK_EVENT } from "@/components/Command";
 import { Evidence } from "@/components/Evidence";
+import { Logo } from "@/components/Logo";
 import ui from "@/components/ui.module.css";
-import { VoiceBar } from "@/components/voice/VoiceBar";
+import { VoiceBar, type VoicePhase } from "@/components/voice/VoiceBar";
 import v from "@/components/voice/voice.module.css";
 import { ApiError, api, type ApprovalRequest } from "@/lib/api";
 import { useAnswerStream, useAtlas } from "@/lib/atlas";
@@ -50,6 +52,8 @@ export default function AskPage() {
   const [text, setText] = useState("");
   const [waiting, setWaiting] = useState<string | null>(null); // the question being answered
   const [note, setNote] = useState<Note | null>(null); // what the voice last did, shown above the mic
+  const [boxMic, setBoxMic] = useState(false); // the box has a working microphone and speech-to-text: the mic button uses it, not this computer's
+  const [boxPhase, setBoxPhase] = useState<VoicePhase | null>(null); // what the box's microphone is doing while a turn is under way
   const endRef = useRef<HTMLDivElement>(null);
   const busy = useRef(false); // `waiting`, for callbacks that outlive a render
   const alive = useRef(true);
@@ -74,20 +78,41 @@ export default function AskPage() {
     }, RELISTEN_MS);
   }, [voice]);
 
-  /** Say `reply` if the speaker is on, then carry the conversation on. */
+  /** Say it on the box's own speaker, if the box has one working. False means nothing was said there. */
+  const speakOnBox = async (text: string): Promise<boolean> => {
+    try {
+      const box = await api.voiceStatus();
+      if (!box.running || box.state === "off" || !box.speaker?.ok || !box.text_to_speech?.ok) return false;
+      await api.voiceSay(text);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  /** Say `reply` if the speaker is on, then carry the conversation on. It comes out of the box's speaker when that works, and out of this browser when it does not. */
   const respond = (reply: string | null) => {
     if (!alive.current) return; // the answer is in the conversation; nobody is on this screen to hear it
-    if (reply && voice.canSpeak && voice.getSettings().speak) {
-      voice.say(reply, {
-        tag: "answer",
-        replace: true,
-        raw: true,
-        onDone: (finished) => {
-          if (finished) relisten();
-          else conversing.current = false; // stopped by hand or cut off: do not open the microphone uninvited
-        },
-      });
-    } else relisten();
+    if (!reply || !voice.getSettings().speak) {
+      relisten();
+      return;
+    }
+    void speakOnBox(reply).then((onBox) => {
+      if (!alive.current) return;
+      if (onBox) {
+        conversing.current = false; // the box is talking and this screen cannot tell when it stops: the microphone is not reopened
+      } else if (voice.canSpeak) {
+        voice.say(reply, {
+          tag: "answer",
+          replace: true,
+          raw: true,
+          onDone: (finished) => {
+            if (finished) relisten();
+            else conversing.current = false; // stopped by hand or cut off: do not open the microphone uninvited
+          },
+        });
+      } else relisten();
+    });
   };
 
   const ask = async (question: string, spoken = false) => {
@@ -224,7 +249,49 @@ export default function AskPage() {
   };
   startListeningRef.current = startListening;
 
+  // The box's own microphone (the webcam on the Jetson) when it works; this computer's only when it does not.
+  useEffect(() => {
+    const check = () =>
+      api
+        .voiceStatus()
+        .then((b) => setBoxMic(b.running && b.state !== "off" && b.mic?.ok === true && b.speech_to_text?.ok === true))
+        .catch(() => setBoxMic(false));
+    void check();
+    const t = window.setInterval(check, 15000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  /** One question through the box's microphone: it listens and writes down what it heard, and this screen asks and shows the answer. */
+  const listenOnBox = async () => {
+    setNote(null);
+    try {
+      let status = await api.voiceListen();
+      if (status.state !== "listening") {
+        setNote({ text: status.problem || "The box is busy. Tap the mic again in a moment.", tone: "info" });
+        return;
+      }
+      for (let i = 0; i < 150 && alive.current; i++) {
+        setBoxPhase(status.state === "thinking" ? "thinking" : "listening");
+        await new Promise((r) => window.setTimeout(r, 600));
+        status = await api.voiceStatus();
+        if (status.state !== "listening" && status.state !== "thinking") break;
+      }
+      setBoxPhase(null);
+      if (!alive.current) return;
+      if (status.heard) heard(status.heard);
+      else setNote({ text: status.problem || "I did not hear anything.", tone: "info" });
+    } catch (err) {
+      setBoxPhase(null);
+      const e = err instanceof ApiError ? err : new ApiError(0, String(err));
+      setNote({ text: e.needsToken ? "This box asks for a token before it listens. Add it under Settings." : `The box's microphone could not be used: ${e.message}`, tone: "error" });
+    }
+  };
+
   const onTalk = () => {
+    if (boxMic) {
+      void listenOnBox();
+      return;
+    }
     setNote(null);
     conversing.current = true;
     startListening();
@@ -248,6 +315,21 @@ export default function AskPage() {
       conversing.current = false;
       document.removeEventListener("visibilitychange", onVisibility);
     };
+  }, []);
+
+  // A question handed over by the palette: in the link (/?q=...) when it came from another screen, or as an event
+  // when the palette was opened here. Either way it is asked at once, as if it had been typed.
+  const askRef = useRef(ask);
+  askRef.current = ask;
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get("q");
+    if (q) {
+      window.history.replaceState(null, "", window.location.pathname);
+      void askRef.current(q);
+    }
+    const onAsk = (e: Event) => void askRef.current(String((e as CustomEvent<string>).detail ?? ""));
+    window.addEventListener(ASK_EVENT, onAsk);
+    return () => window.removeEventListener(ASK_EVENT, onAsk);
   }, []);
 
   // So does switching hands-free off.
@@ -298,6 +380,9 @@ export default function AskPage() {
 
   return (
     <>
+      <div className={ui.watermark} aria-hidden="true">
+        <Logo size={420} />
+      </div>
       {chat.length === 0 ? (
         <div className={ui.pageHead}>
           <h1>Ask Atlas</h1>
@@ -362,10 +447,10 @@ export default function AskPage() {
 
       <div className={v.dock}>
         <VoiceBar
-          phase={waiting ? "thinking" : voice.status}
+          phase={waiting ? "thinking" : (boxPhase ?? voice.status)}
           note={note}
           onTalk={onTalk}
-          onFinish={() => voice.stopListening(true)}
+          onFinish={() => (boxPhase === "listening" ? void api.voiceTalk() : voice.stopListening(true))}
           onStop={onStopSpeaking}
         />
         <form className={v.typeRow} onSubmit={onSubmit}>

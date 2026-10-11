@@ -1,0 +1,221 @@
+/* ---------- connected apps: one small row ---------- */
+.apps {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
+  align-self: flex-start;
+  max-width: 100%;
+}
+
+.appsTitle {
+  flex: none;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.appList {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.app {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.logo {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  object-fit: cover;
+}
+
+.appCount {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-text);
+}
+
+/* ---------- the day as one bar ---------- */
+.day {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 30px 18px 16px;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--sh-raised);
+}
+
+.bar {
+  position: relative;
+  height: 34px;
+  border-radius: 17px;
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+}
+
+.seg {
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  border-radius: 12px;
+  outline: none;
+  cursor: default;
+}
+
+/* the colour is a layer of its own so a suggested block can be paler without fading its tooltip */
+.seg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--c);
+  box-shadow: 0 0 0 1.5px var(--surface-2);
+  transition: transform 120ms ease, filter 120ms ease;
+}
+
+.segSuggested::before {
+  opacity: 0.55;
+}
+
+.segFree::before {
+  display: none;
+}
+
+.seg:hover,
+.seg:focus-visible,
+.now:hover,
+.now:focus-visible {
+  z-index: 4;
+}
+
+.seg:hover::before,
+.seg:focus-visible::before {
+  transform: scaleY(1.22);
+  filter: saturate(1.25);
+}
+
+.segFree:hover {
+  background: var(--accent-soft);
+}
+
+.now {
+  position: absolute;
+  top: -6px;
+  bottom: -6px;
+  width: 3px;
+  margin-left: -1.5px;
+  border-radius: 2px;
+  background: var(--accent-text);
+  z-index: 2;
+  outline: none;
+}
+
+/* a wider invisible target, so the thin marker is easy to hover */
+.now::after {
+  content: "";
+  position: absolute;
+  inset: 0 -9px;
+}
+
+/* the hover label: instant, above the part it describes */
+.tip {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  width: max-content;
+  max-width: 260px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--sh-float);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.3;
+  pointer-events: none;
+}
+
+.tip b {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.tip em {
+  font-style: normal;
+  color: var(--muted);
+}
+
+.tipStart {
+  left: 0;
+  transform: none;
+}
+
+.tipEnd {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
+.seg:hover > .tip,
+.seg:focus-visible > .tip,
+.now:hover > .tip,
+.now:focus-visible > .tip {
+  display: flex;
+}
+
+.now i {
+  position: absolute;
+  top: -22px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: var(--accent-grad);
+  color: var(--accent-ink);
+  box-shadow: var(--glow);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.ends {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.key li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.key i {
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+}

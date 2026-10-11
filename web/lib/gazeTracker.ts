@@ -93,6 +93,8 @@ class Tracker {
   private filter = new OneEuro();
   private fixation = new Fixation();
   private last: GazeEstimate | null = null;
+  private sim: GazeEstimate | null = null;
+  private simOn = false;
   private booted = false;
   private run = 0;
 
@@ -170,8 +172,22 @@ class Tracker {
     return s.status === "on" && s.face === "ok" && s.calibration !== null && s.calibration.validation !== null && s.calibration.quality !== "poor";
   }
 
+  /**
+   * A scripted stand-in for the camera (?gazeSim=...): the page feeds estimates itself so the attention check can be shown
+   * and tested without a webcam. It goes through the same snap and fixation rules; the screen says it is simulated.
+   */
+  simulate(e: GazeEstimate | null, on = true): void {
+    this.simOn = on;
+    this.sim = e;
+  }
+
+  simulated(): boolean {
+    return this.simOn;
+  }
+
   /** The current estimate, or null when gaze should not be used now. */
   estimate(): GazeEstimate | null {
+    if (this.simOn) return this.sim;
     if (!this.usable() || !this.last) return null;
     if (document.visibilityState !== "visible" || performance.now() - this.last.at > STALE_MS) return null;
     return this.last;

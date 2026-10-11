@@ -112,11 +112,12 @@
   box-shadow: var(--sh-raised-sm);
   color: var(--text);
   font-size: 16px;
-  transition: box-shadow var(--ease-press);
+  transition: box-shadow var(--ease-press), transform var(--t-fast);
 }
 
 .rowBtns button:active:not(:disabled) {
   box-shadow: var(--sh-inset-sm);
+  transform: scale(0.94);
 }
 
 .rowBtns button:disabled {
@@ -169,11 +170,18 @@
   color: var(--text);
   text-align: left;
   font-size: 15.5px;
-  transition: box-shadow var(--ease-press);
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .cand:hover:not(:disabled) {
+    transform: translateY(-2px);
+  }
 }
 
 .cand:active:not(:disabled) {
   box-shadow: var(--sh-inset-sm);
+  transform: scale(0.98);
 }
 
 .cand:disabled {
@@ -230,7 +238,7 @@
 
 .starOff {
   fill: var(--surface-2);
-  stroke: var(--sh-dark);
+  stroke: var(--muted);
   stroke-width: 1.5;
 }
 

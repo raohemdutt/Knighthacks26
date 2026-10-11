@@ -23,7 +23,7 @@ from zoneinfo import ZoneInfo
 import yaml
 
 from contexts.agent.application.memory_port import MemoryReader
-from contexts.agent.application.web_port import WebTools
+from contexts.agent.application.web_port import NOT_FOUND, SUMMARY_TITLE, WebTools
 from contracts.agent import AnswerGenerated
 from contracts.experience import QuestionAsked
 from contracts.types import ChatMessage, Citation, ToolCall
@@ -228,6 +228,7 @@ class Evidence:
     citations: list[Citation] = field(default_factory=list)
     system: str | None = None  # a prompt for this shape of question, instead of SYSTEM
     direct: str | None = None  # an answer written from the data itself: no model call (lists the model garbles)
+    web_summary: str | None = None  # the search API's own summary of its results, when it gives one (A13)
     room_only: bool = False  # about objects or people in the room: no tool-loop fallback when nothing is found (A13)
 
     def add(self, line: str, citation: Citation) -> None:
@@ -561,6 +562,8 @@ class QA:
 
     async def web_search(self, query: str, ev: Evidence) -> None:
         for r in await self.web.search(query):
+            if r.get("title") == SUMMARY_TITLE and r.get("summary"):
+                ev.web_summary = r["summary"]
             snippet = f": {r['summary']}" if r.get("summary") else ""
             ev.add(f"{r['title']}{snippet} ({r['url']})", Citation(url=r["url"], title=r["title"]))
 
@@ -701,7 +704,26 @@ class QA:
                              WEB_BUDGET_S)
         if not ev:
             return await self.tool_loop(question, stream)
+        if direct := self._summary_answer(ev):  # the search did the job: no model call (about 1 to 2 s)
+            if stream:
+                stream(direct.text)
+            return direct
         return await self._finish(question, ev, stream)
+
+    def _summary_answer(self, ev: Evidence) -> Answer | None:
+        """The search API's summary as the answer, when it answers the question and every number in it is also in
+        one of the result pages (so a summary that invented a score is not said). Two sentences at most."""
+        summary = ev.web_summary
+        pages = [line for line in ev.lines if not line.startswith(SUMMARY_TITLE)]
+        if not summary or NOT_FOUND.search(summary) or unsure(summary) or not grounded(summary, pages):
+            return None
+        text = " ".join(re.split(r"(?<=[.!?])\s+", summary.strip())[:2])
+        seen, cites = set(), []
+        for c in ev.citations:
+            if c.url and c.url not in seen:
+                seen.add(c.url)
+                cites.append(c)
+        return Answer(text, cites[:3], self.runtime.model_info().version)
 
     async def _web_call(self, call: ToolCall, ev: Evidence, left: float) -> bool:
         """One web tool call inside the time budget. False when it ran out of time (nothing is added)."""
@@ -712,6 +734,7 @@ class QA:
             return False
         ev.lines += found.lines
         ev.citations += found.citations
+        ev.web_summary = ev.web_summary or found.web_summary
         return True
 
     async def _finish(self, question: str, ev: Evidence, stream: Callable[[str], None] | None) -> Answer:

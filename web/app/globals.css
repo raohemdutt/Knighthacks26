@@ -1,63 +1,84 @@
 /*
- * Design tokens and element defaults: a soft (neumorphic) light theme.
+ * Design tokens and element defaults.
  *
- * One surface colour. Depth comes only from a light source at the top-left: a white highlight
- * on the top-left edge and a cool grey shade on the bottom-right. Raised things use the
- * --sh-raised* shadows, pressed or sunken things (inputs, wells, active buttons) use --sh-inset*.
- * Blue is the only accent and is kept for primary actions, selected states, progress and icons.
+ * Two themes on one set of tokens. "Night" (the default) is deep navy glass over a slow aurora: cards are
+ * translucent, lit by a hairline along their top edge and a soft drop shadow, and the one accent is an
+ * electric blue that fades into violet. "Day" is the soft (neumorphic) light theme: one surface colour, depth
+ * from a light source at the top-left, a white highlight on the top-left edge and a cool grey shade on the
+ * bottom-right. Raised things use --sh-raised*, pressed or sunken things (inputs, wells, active buttons) use
+ * --sh-inset*. Blue is kept for primary actions, selected states, progress and icons.
  *
- * Contrast (checked against --bg): --text 13.9:1, --muted 5.5:1, --accent-text 4.6:1 (--accent-ink on --accent
- * 11:1), --danger 5.0:1, --ok 4.7:1, --watch 5.3:1. --accent-bright is for non-text marks only.
+ * The theme is `data-theme` on <html>, set before the first paint by the script in layout.tsx and flipped by
+ * the toggle in the header. Everything else, the 3D room included, reads the tokens or that attribute.
+ *
+ * Contrast in Night (checked against --bg): --text 15.8:1, --muted 6.1:1, --accent-text 7.2:1, --danger 6.3:1,
+ * --ok 8.9:1, --watch 9.4:1. In Day (--bg #eaf1fc): --text 14:1, --muted 5.6:1, --accent-text 6.2:1; --danger, --ok and --watch were
+ * checked on an earlier, lighter surface. --accent-bright is for non-text marks only.
  */
 :root {
   /* surface */
-  --bg: #eef2f8;
-  --surface: #eef2f8;
-  --surface-2: #e6ebf3; /* a slightly sunken tone for wells and tags */
-  --line: rgba(120, 136, 165, 0.22); /* hairline dividers only, never an outline around a control */
+  --bg: #070b14;
+  --bg-glass: rgba(9, 13, 24, 0.72); /* the header, tab bar and sheets: blurred over the aurora */
+  --surface: rgba(17, 24, 41, 0.74);
+  --surface-solid: #121a2c; /* where translucency would show through to the wrong thing */
+  --surface-2: rgba(5, 8, 16, 0.5); /* a sunken tone for wells and tags */
+  --line: rgba(150, 178, 255, 0.14); /* hairline dividers and the glass edge */
+  --edge: rgba(255, 255, 255, 0.07); /* the lit top edge of a card */
 
   /* text */
-  --text: #1b2433;
-  --muted: #566176;
+  --text: #e9eefb;
+  --muted: #98a5c3;
 
-  /* accent (blue) */
-  --accent: #b9d1f7; /* pastel: fills, rings, strokes */
-  --accent-text: #456cb3; /* the same blue deepened so text and icons stay readable */
-  --accent-bright: #d6e5fb;
-  --accent-ink: #1b2433; /* text on a pastel fill */
-  --accent-soft: rgba(140, 180, 240, 0.16);
+  /* accent (electric blue, fading into violet) */
+  --accent: #5b8cff;
+  --accent-2: #a46bff;
+  --accent-3: #43e0c0;
+  --accent-text: #9dbbff; /* lighter, so text and icons stay readable on the dark surface */
+  --accent-bright: #7ea6ff;
+  --accent-ink: #050b1c; /* text on an accent fill */
+  --accent-soft: rgba(91, 140, 255, 0.16);
+  --accent-grad: linear-gradient(135deg, #5b8cff 0%, #7b7cff 55%, #a46bff 100%);
+  --logo-a: #8fb4ff; /* the mark's gradient, top-left to bottom-right */
+  --logo-b: #c48cff;
 
   /* status */
-  --danger: #c0332b;
-  --danger-soft: rgba(192, 51, 43, 0.09);
-  --ok: #0f7b5f;
-  --watch: #8a5a00;
-  --bad: #c0332b;
-  --unknown: #5f6b7a;
+  --danger: #ff7b72;
+  --danger-soft: rgba(255, 123, 114, 0.12);
+  --ok: #4ee0a0;
+  --watch: #ffc062;
+  --bad: #ff7b72;
+  --unknown: #8a95ab;
 
   /* text and marks drawn on top of camera frames or 3D scenes, which stay dark */
   --on-media: #ffffff;
-  --on-media-scrim: rgba(15, 20, 30, 0.72);
-  --media-bg: #0f141d;
+  --on-media-scrim: rgba(5, 8, 16, 0.72);
+  --media-bg: #05080f;
 
-  /* shadow colours: light from the top-left */
-  --sh-light: #ffffff;
-  --sh-dark: #c9d3e3;
+  /* shadow colours */
+  --sh-light: rgba(255, 255, 255, 0.05);
+  --sh-dark: rgba(0, 0, 0, 0.6);
 
-  /* raised: sits above the surface */
-  --sh-raised-sm: 3px 3px 8px var(--sh-dark), -3px -3px 8px var(--sh-light);
-  --sh-raised: 6px 6px 14px var(--sh-dark), -6px -6px 14px var(--sh-light);
-  --sh-raised-lg: 10px 10px 24px var(--sh-dark), -10px -10px 24px var(--sh-light);
-  /* inset: pressed in, for the active state of a control and for fields and wells */
-  --sh-inset-sm: inset 2px 2px 5px var(--sh-dark), inset -2px -2px 5px var(--sh-light);
-  --sh-inset: inset 4px 4px 9px var(--sh-dark), inset -4px -4px 9px var(--sh-light);
-  /* a selected control: pressed in, with a blue ring as a second cue that does not depend on shadow */
-  --sh-selected: var(--sh-inset-sm), 0 0 0 2px var(--accent);
-  /* a lone element laid over other content (toasts, sheets) */
-  --sh-float: 0 18px 40px rgba(86, 100, 130, 0.28), -4px -4px 12px var(--sh-light);
+  /* raised: glass that sits above the aurora */
+  --sh-raised-sm: 0 1px 0 var(--edge) inset, 0 0 0 1px var(--line), 0 6px 16px -8px var(--sh-dark);
+  --sh-raised: 0 1px 0 var(--edge) inset, 0 0 0 1px var(--line), 0 14px 34px -14px var(--sh-dark);
+  --sh-raised-lg: 0 1px 0 var(--edge) inset, 0 0 0 1px var(--line), 0 24px 56px -20px var(--sh-dark), 0 0 60px -30px var(--accent);
+  /* inset: pressed in, for fields, wells and the active state of a control */
+  --sh-inset-sm: inset 0 2px 6px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(150, 178, 255, 0.08);
+  --sh-inset: inset 0 3px 10px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(150, 178, 255, 0.1);
+  /* a selected control: pressed in, with an accent ring that does not depend on shadow */
+  --sh-selected: var(--sh-inset-sm), 0 0 0 2px var(--accent), 0 0 18px -4px var(--accent);
+  /* a lone element laid over other content (toasts, sheets, the palette) */
+  --sh-float: 0 1px 0 var(--edge) inset, 0 0 0 1px var(--line), 0 30px 80px -20px rgba(0, 0, 0, 0.8);
+  --glow: 0 0 28px -4px rgba(91, 140, 255, 0.55);
+
+  /* the aurora behind everything */
+  --aurora-a: rgba(91, 140, 255, 0.5);
+  --aurora-b: rgba(164, 107, 255, 0.42);
+  --aurora-c: rgba(67, 224, 192, 0.3);
+  --aurora-opacity: 0.9;
 
   /* corner radii */
-  --radius-lg: 24px;
+  --radius-lg: 26px;
   --radius: 20px;
   --radius-sm: 16px;
   --radius-pill: 999px;
@@ -69,6 +90,65 @@
   --safe-top: env(safe-area-inset-top, 0px);
 
   --ease-press: 120ms ease-out;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --t-fast: 160ms;
+  --t: 260ms;
+  --t-slow: 520ms;
+
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --bg: #eaf1fc;
+  --bg-glass: rgba(234, 241, 252, 0.84);
+  --surface: #eaf1fc;
+  --surface-solid: #eaf1fc;
+  --surface-2: #dbe6f8;
+  --line: rgba(100, 130, 180, 0.22);
+  --edge: rgba(255, 255, 255, 0.9);
+
+  --text: #1b2433;
+  --muted: #566176;
+
+  --accent: #9bbcf2;
+  --accent-2: #c2b4f0;
+  --accent-3: #b6ebdf;
+  --accent-text: #355a9c;
+  --accent-bright: #d6e5fb;
+  --accent-ink: #1b2433;
+  --accent-soft: rgba(140, 180, 240, 0.16);
+  --accent-grad: linear-gradient(135deg, #9bbcf2 0%, #aeb8f3 55%, #c2b4f0 100%);
+  --logo-a: #9bbcf2;
+  --logo-b: #355a9c;
+
+  --danger: #c0332b;
+  --danger-soft: rgba(192, 51, 43, 0.09);
+  --ok: #0f7b5f;
+  --watch: #8a5a00;
+  --bad: #c0332b;
+  --unknown: #5f6b7a;
+
+  --on-media: #ffffff;
+  --on-media-scrim: rgba(15, 20, 30, 0.72);
+  --media-bg: #0f141d;
+
+  --sh-light: #ffffff;
+  --sh-dark: #c2d0e8;
+
+  --sh-raised-sm: 3px 3px 8px var(--sh-dark), -3px -3px 8px var(--sh-light);
+  --sh-raised: 6px 6px 14px var(--sh-dark), -6px -6px 14px var(--sh-light);
+  --sh-raised-lg: 10px 10px 24px var(--sh-dark), -10px -10px 24px var(--sh-light);
+  --sh-inset-sm: inset 2px 2px 5px var(--sh-dark), inset -2px -2px 5px var(--sh-light);
+  --sh-inset: inset 4px 4px 9px var(--sh-dark), inset -4px -4px 9px var(--sh-light);
+  --sh-selected: var(--sh-inset-sm), 0 0 0 2px var(--accent);
+  --sh-float: 0 18px 40px rgba(70, 100, 150, 0.28), -4px -4px 12px var(--sh-light);
+  --glow: 0 0 24px -6px rgba(69, 108, 179, 0.35);
+
+  --aurora-a: rgba(140, 180, 240, 0.55);
+  --aurora-b: rgba(190, 170, 250, 0.45);
+  --aurora-c: rgba(150, 230, 210, 0.4);
+  --aurora-opacity: 0.85;
 
   color-scheme: light;
 }
@@ -79,25 +159,52 @@
   box-sizing: border-box;
 }
 
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
 
-html,
-body {
-  margin: 0;
+html {
   background: var(--bg);
   color: var(--text);
+  scrollbar-color: var(--line) transparent;
+  transition: background-color var(--t-slow) ease, color var(--t-slow) ease;
+}
+
+/* body stays transparent so the aurora, which sits behind it, shows through */
+body {
+  margin: 0;
+  background: transparent;
+  color: inherit;
 }
 
 body {
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--font-body), system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   font-size: 18px;
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
   overscroll-behavior-y: none;
+}
+
+/*
+ * The aurora (components/Aurora.tsx): one small canvas stretched over the window. The browser's upscaling is what
+ * makes the colour fields soft, and there is only one tiny layer to composite.
+ */
+.aurora {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: var(--aurora-opacity);
+  transition: opacity var(--t-slow) ease;
 }
 
 h1,
@@ -123,15 +230,16 @@ h3 {
 }
 
 h1 {
-  font-size: 30px;
-  line-height: 1.15;
-  letter-spacing: -0.01em;
+  font-size: 32px;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
   font-weight: 700;
 }
 
 h2 {
   font-size: 22px;
   line-height: 1.2;
+  letter-spacing: -0.01em;
   font-weight: 650;
 }
 
@@ -169,6 +277,11 @@ svg {
   max-width: 100%;
 }
 
+::selection {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
 /* desktop: roomier gutters and room for the sidebar (components/ui.module.css) */
 :root {
   --side-w: 288px;
@@ -180,11 +293,33 @@ svg {
   }
 }
 
+/* the theme flip: a circle that grows from the toggle (Shell.tsx uses the View Transitions API when it exists) */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-new(root) {
+  animation: theme-reveal 560ms var(--ease-out);
+  clip-path: circle(0 at var(--vt-x, 90%) var(--vt-y, 4%));
+}
+
+@keyframes theme-reveal {
+  to {
+    clip-path: circle(160vmax at var(--vt-x, 90%) var(--vt-y, 4%));
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.001ms !important;
     transition-duration: 0.001ms !important;
+  }
+
+  .aurora {
+    opacity: calc(var(--aurora-opacity) * 0.8);
   }
 }

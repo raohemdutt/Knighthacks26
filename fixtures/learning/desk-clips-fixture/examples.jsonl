@@ -1,0 +1,12 @@
+{"id": "keys-on-desk-00001", "image": "images/0000.jpg", "frame_ref": "fixture:clip:keys-on-desk:00001", "ts": "2026-10-10T23:51:06.779039+00:00", "context": null, "target": null, "verdict": null}
+{"id": "keys-on-desk-00012", "image": "images/0001.jpg", "frame_ref": "fixture:clip:keys-on-desk:00012", "ts": "2026-10-10T23:51:08.777039+00:00", "context": null, "target": null, "verdict": null}
+{"id": "keys-on-desk-00023", "image": "images/0002.jpg", "frame_ref": "fixture:clip:keys-on-desk:00023", "ts": "2026-10-10T23:51:10.711039+00:00", "context": null, "target": null, "verdict": null}
+{"id": "keys-on-desk-00034", "image": "images/0003.jpg", "frame_ref": "fixture:clip:keys-on-desk:00034", "ts": "2026-10-10T23:51:12.657039+00:00", "context": null, "target": null, "verdict": null}
+{"id": "keys-on-desk-00045", "image": "images/0004.jpg", "frame_ref": "fixture:clip:keys-on-desk:00045", "ts": "2026-10-10T23:51:14.632039+00:00", "context": null, "target": null, "verdict": null}
+{"id": "keys-on-desk-00056", "image": "images/0005.jpg", "frame_ref": "fixture:clip:keys-on-desk:00056", "ts": "2026-10-10T23:51:16.623039+00:00", "context": null, "target": null, "verdict": null}
+{"id": "package-at-door-00001", "image": "images/0006.jpg", "frame_ref": "fixture:clip:package-at-door:00001", "ts": "2026-10-10T23:50:48.619147+00:00", "context": null, "target": null, "verdict": null}
+{"id": "package-at-door-00012", "image": "images/0007.jpg", "frame_ref": "fixture:clip:package-at-door:00012", "ts": "2026-10-10T23:50:50.559147+00:00", "context": null, "target": null, "verdict": null}
+{"id": "package-at-door-00023", "image": "images/0008.jpg", "frame_ref": "fixture:clip:package-at-door:00023", "ts": "2026-10-10T23:50:52.535147+00:00", "context": null, "target": null, "verdict": null}
+{"id": "package-at-door-00034", "image": "images/0009.jpg", "frame_ref": "fixture:clip:package-at-door:00034", "ts": "2026-10-10T23:50:54.528147+00:00", "context": null, "target": null, "verdict": null}
+{"id": "package-at-door-00045", "image": "images/0010.jpg", "frame_ref": "fixture:clip:package-at-door:00045", "ts": "2026-10-10T23:50:56.540147+00:00", "context": null, "target": null, "verdict": null}
+{"id": "package-at-door-00056", "image": "images/0011.jpg", "frame_ref": "fixture:clip:package-at-door:00056", "ts": "2026-10-10T23:50:58.503147+00:00", "context": null, "target": null, "verdict": null}
