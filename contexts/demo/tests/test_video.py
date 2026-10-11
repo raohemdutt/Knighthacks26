@@ -133,5 +133,9 @@ def test_the_film_index_is_generated_from_its_layout_and_stays_under_five_minute
         assert re.search(rf'data-composition-id="{scene["id"]}"[^>]*data-start="{scene["start"]:.3f}"', html), scene["id"]
         assert (root / "hf" / "world" / "scenes" / f"{scene['id']}.js").exists()
         assert (root / "hf" / "compositions" / f"{scene['id']}.html").exists()
-    assert html.count("<audio ") == sum(len(s["lines"]) for s in film["scenes"])
+    assert html.count('<audio id="voice-') == sum(len(s["lines"]) for s in film["scenes"])
+    # The sound effects (video/hf/sfx.yaml) are the only other audio, and every one points at a file that exists.
+    sfx = re.findall(r'<audio id="sfx-\d+" src="([^"]+)"', html)
+    assert html.count("<audio ") == html.count('<audio id="voice-') + len(sfx)
+    assert all((root / "hf" / f).exists() for f in sfx)
     assert re.search(rf'data-composition-id="atlas"[^>]*data-duration="{film["total_s"]:.1f}"', html)
