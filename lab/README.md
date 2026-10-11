@@ -567,6 +567,37 @@ conditions; the per-second samples are `fixtures/telemetry/pod_power/strixhalo_2
 sampler stays up under nohup (`bash ~/lab/pod_power.sh stop`).
 The 39 W `pod.idle_watts` row is the R9700, the other chip.
 
+### A100 reference (Colab)
+
+The same checkpoint, `RedHatAI/Qwen3.8-27B-INT4`, measured on another chip as a reference (R57, 2026-10-10 evening ET,
+UTC 2026-10-11): a Google Colab A100 runtime (NVIDIA A100-SXM4-40GB, 400 W limit, driver 580.82.07, CUDA 13.0) with
+stock vLLM 0.31.0 from PyPI (torch 2.13.0+cu130; no build, no patch), served as `teacher` with `--max-model-len 16384
+--gpu-memory-utilization 0.90`, thinking off. The run used `python -m lab bench run --node a100 --repeats 3`: one cold
+spawn per run, batch sizes 1, 4, 8 and 16, plus 64 because the KV cache (288,165 tokens, fp8 as vLLM picked it under
+`auto`) holds it. Warm-ups were discarded, each request was greedy with 128 tokens, and all 15 runs came back ok. The
+harness reads amd-smi only, so it ran without watts. `nvidia-smi --query-gpu=timestamp,power.draw -l 1` sampled the
+board power beside it, and `fixtures/lab/bench/a100-2026-10-10/analyze.py` integrates those samples over each run's
+decode window. Medians of 3 spawns (peak is the max):
+
+| batch | tok/s per stream | tok/s total | TTFT | avg W | peak W | J/token gross | idle W (no server) |
+|---|---|---|---|---|---|---|---|
+| 1 | 65.0 | 61.2 | 0.118 s | 306 | 408 | 5.02 | 46.1 |
+| 4 | 59.2 | 198.9 | 0.495 s | 303 | 412 | 1.52 | 46.1 |
+| 8 | 52.6 | 321.4 | 0.824 s | 321 | 419 | 1.00 | 46.1 |
+| 16 | 36.0 | 462.3 | 1.056 s | 356 | 413 | 0.77 | 46.1 |
+| 64 | 11.3 | 636.3 | 1.938 s | 382 | 425 | 0.60 | 46.1 |
+
+Next to the Strix Halo at batch 1 (2.9 tok/s, 42 J per generated token, and a chip-sheet ceiling of about 12 tok/s for
+4-bit decode), the A100 decodes about 22 times faster at about an eighth of the energy per token. The A100 runs
+Marlin W4A16 kernels and FlashInfer attention, and its HBM2 has several times the Strix Halo's memory bandwidth. These
+rows are a reference, not the lab's numbers. They sit in `lab/refine/metrics.jsonl` on node `a100` with `hub: colab`
+and `other_chip: true`, and they are `low_confidence` (3 spawns, under the 5 that verdict() needs). Board power is
+nvidia-smi's reading at 1 Hz, so a batch-1 decode window of 8.4 s holds only about 9 samples. A cold spawn took 3 to
+9 minutes: torch.compile, the profiling pass and CUDA graph capture, with the first spawn's compile cached for the rest.
+The fixture folder also holds the per-run rows and the harness summary, the first spawn's serve log, the raw nvidia-smi
+samples, and `greedy_outputs.json`. That file has the four prompts of `prompts.json` at temperature 0, seed 0, thinking
+off, no nonce and 256 tokens, with each token's logprob, for R21's cross-chip correctness comparison.
+
 ### The same build on pod D, from scripts alone (R30)
 
 Account D's pod on SJC (pod B's role, the trainer; the kernels experiments run there) holds the same stock build and

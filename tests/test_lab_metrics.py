@@ -156,6 +156,40 @@ EXPECTED_SEED = [
     ("pod.idle_watts", "pod-a", {"server": "teacher loaded, no request"}, 10.44, "W", False),
     # R21: the stock teacher on pod C compared with its own baseline (the K4 self-match floor), one compare
     ("teacher.output_match_rate", "pod-a", {"chip": "gfx1151", "batch_size": 1}, 0.5, "fraction", True),
+    # R57: the A100 reference on Colab (other chip: NVIDIA A100-SXM4-40GB, stock vLLM 0.31.0), the same INT4 teacher
+    # through lab/bench.py, 3 cold spawns per batch size; watts from nvidia-smi over each decode window
+    # (fixtures/lab/bench/a100-2026-10-10, recomputed in test_a100_reference_rows_match_the_fixture)
+    ("teacher.decode_tok_s", "a100", {"batch_size": 1}, 64.956, "tok/s", True),
+    ("teacher.decode_tok_s_total", "a100", {"batch_size": 1}, 61.2077, "tok/s", True),
+    ("teacher.ttft_s", "a100", {"batch_size": 1}, 0.1184, "s", True),
+    ("teacher.watts_avg", "a100", {"batch_size": 1}, 306.0747, "W", True),
+    ("teacher.watts_peak", "a100", {"batch_size": 1}, 407.97, "W", True),
+    ("teacher.joules_per_token", "a100", {"batch_size": 1}, 5.0174, "J/token", True),
+    ("teacher.decode_tok_s", "a100", {"batch_size": 4}, 59.2302, "tok/s", True),
+    ("teacher.decode_tok_s_total", "a100", {"batch_size": 4}, 198.933, "tok/s", True),
+    ("teacher.ttft_s", "a100", {"batch_size": 4}, 0.4949, "s", True),
+    ("teacher.watts_avg", "a100", {"batch_size": 4}, 302.8075, "W", True),
+    ("teacher.watts_peak", "a100", {"batch_size": 4}, 411.5, "W", True),
+    ("teacher.joules_per_token", "a100", {"batch_size": 4}, 1.5234, "J/token", True),
+    ("teacher.decode_tok_s", "a100", {"batch_size": 8}, 52.6137, "tok/s", True),
+    ("teacher.decode_tok_s_total", "a100", {"batch_size": 8}, 321.3743, "tok/s", True),
+    ("teacher.ttft_s", "a100", {"batch_size": 8}, 0.8243, "s", True),
+    ("teacher.watts_avg", "a100", {"batch_size": 8}, 321.0224, "W", True),
+    ("teacher.watts_peak", "a100", {"batch_size": 8}, 418.76, "W", True),
+    ("teacher.joules_per_token", "a100", {"batch_size": 8}, 0.999, "J/token", True),
+    ("teacher.decode_tok_s", "a100", {"batch_size": 16}, 36.0495, "tok/s", True),
+    ("teacher.decode_tok_s_total", "a100", {"batch_size": 16}, 462.3296, "tok/s", True),
+    ("teacher.ttft_s", "a100", {"batch_size": 16}, 1.056, "s", True),
+    ("teacher.watts_avg", "a100", {"batch_size": 16}, 355.9959, "W", True),
+    ("teacher.watts_peak", "a100", {"batch_size": 16}, 412.96, "W", True),
+    ("teacher.joules_per_token", "a100", {"batch_size": 16}, 0.7743, "J/token", True),
+    ("teacher.decode_tok_s", "a100", {"batch_size": 64}, 11.2975, "tok/s", True),
+    ("teacher.decode_tok_s_total", "a100", {"batch_size": 64}, 636.3307, "tok/s", True),
+    ("teacher.ttft_s", "a100", {"batch_size": 64}, 1.9381, "s", True),
+    ("teacher.watts_avg", "a100", {"batch_size": 64}, 382.1646, "W", True),
+    ("teacher.watts_peak", "a100", {"batch_size": 64}, 424.61, "W", True),
+    ("teacher.joules_per_token", "a100", {"batch_size": 64}, 0.6003, "J/token", True),
+    ("pod.idle_watts", "a100", {"hub": "colab"}, 46.14, "W", True),
 ]
 
 # The numbers the lab setup measured, by metric name.
@@ -217,13 +251,39 @@ def test_every_low_confidence_seed_row_says_why():
         # R26: the sweep's medians are of 3 repeats, under the 5 verdict() asks for
         "teacher_batching." + name
         for name in ("decode_tok_s", "decode_tok_s_total", "ttft_s", "joules_per_token", "watts_avg", "watts_peak")} | {
-        "teacher.output_match_rate"}
+        "teacher.output_match_rate"} | {
+        # R57: the A100 reference medians are of 3 spawns
+        "teacher.decode_tok_s", "teacher.decode_tok_s_total", "teacher.ttft_s"}
     for row in flagged:
         if row["conditions"].get("sampler") == SAMPLER:  # the sampler's rows: its error is "unknown" until a reference run
             assert row["conditions"]["error"] == "unknown", row["metric"]
             continue
         reason = row["conditions"].get("low_confidence_reason")
         assert isinstance(reason, str) and reason.strip() != "", row["metric"]
+
+
+A100_FIXTURE = ROOT / "fixtures" / "lab" / "bench" / "a100-2026-10-10"
+A100_SUMMARY_NAMES = ("decode_tok_s", "decode_tok_s_total", "ttft_s", "watts_avg", "watts_peak", "joules_per_token")
+
+
+def test_a100_reference_rows_match_the_fixture(tmp_path):
+    # analyze.py recomputes the joules from the nvidia-smi samples and the harness rows; its table is the rows' values
+    for name in ("analyze.py", "rows.jsonl", "nvidia_smi_power.csv", "idle_window.txt"):
+        (tmp_path / name).write_bytes((A100_FIXTURE / name).read_bytes())
+    subprocess.run([sys.executable, "-I", str(tmp_path / "analyze.py"), str(tmp_path)], check=True, capture_output=True)
+    summary = json.loads((tmp_path / "summary_a100.json").read_text(encoding="utf-8"))
+    assert summary == json.loads((A100_FIXTURE / "summary_a100.json").read_text(encoding="utf-8"))
+    rows = [row for row in metrics.load() if row["node"] == "a100"]
+    for batch, entry in summary["per_batch"].items():
+        assert entry["runs_ok"] == entry["runs"] == 3
+        for name in A100_SUMMARY_NAMES:
+            matches = [r for r in rows if r["metric"] == f"teacher.{name}" and r["conditions"]["batch_size"] == int(batch)]
+            assert len(matches) == 1, (name, batch)
+            assert matches[0]["value"] == round(entry[name], 4), (name, batch)
+            assert matches[0]["conditions"]["other_chip"] is True
+            assert matches[0]["conditions"]["hub"] == "colab"
+    idle = [r for r in rows if r["metric"] == "pod.idle_watts"]
+    assert [r["value"] for r in idle] == [round(summary["idle_no_server"]["avg_w"], 2)]
 
 
 def test_seed_file_is_plain_ascii_with_unix_line_endings():
