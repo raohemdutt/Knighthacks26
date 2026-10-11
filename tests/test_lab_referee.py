@@ -1094,6 +1094,13 @@ def test_the_properties_printed_without_a_token_are_the_columns_the_verb_sets_wi
     assert after["Result"].split(": ran ")[0] == wanted["Result"].split(": ran ")[0]
 
 
+def test_the_row_of_a_slot_ended_carries_the_verb_alerts_reads_as_the_end(world, monkeypatch):
+    monkeypatch.setattr(alerts, "SLOT_REFEREE", "referee-renamed")
+    world.running("L3: train", started_ago=75, minutes=60)
+    world.referee()
+    assert [entry["verb"] for entry in ledger_rows()][0] == "referee-renamed"
+
+
 def test_the_ledger_command_printed_without_a_token_writes_the_row_the_verb_writes_with_one(world, capsys):
     row = world.running("L3: train", started_ago=75, minutes=60)
     world.referee()

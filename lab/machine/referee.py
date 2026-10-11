@@ -98,7 +98,7 @@ import os
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
-from lab.machine import record, slots, stop
+from lab.machine import alerts, record, slots, stop
 from lab.machine import slots_notion as notion
 
 __all__ = [
@@ -108,7 +108,7 @@ __all__ = [
 
 log = logging.getLogger("lab.referee")
 
-VERB = "referee"                  # the ledger verb of a slot ended: lab/machine/alerts.py reads it as the end
+VERB = alerts.SLOT_REFEREE        # the ledger verb of a slot ended: lab/machine/alerts.py reads it as the end
 SCAN_VERB = "referee scan"        # the ledger verb of the call itself
 CRITIQUE_VERB = "referee critique"  # the ledger verb of a critique written
 ENDED_BY_REFEREE = slots.ENDED_BY_REFEREE
@@ -608,7 +608,8 @@ def _record_end(slot: slots.Slot, entry: Mapping[str, Any], environ: Mapping[str
     who = _who(environ)
     who["task"] = slot.task_id or who["task"]
     return record.record(
-        VERB, "ended", metrics={"slot.ran_min": entry["ran_min"], "slot.overrun_min": entry["overrun_min"]},
+        alerts.SLOT_REFEREE, "ended",
+        metrics={"slot.ran_min": entry["ran_min"], "slot.overrun_min": entry["overrun_min"]},
         refs={"slot": slot.id}, state_dir=state_dir, node=_node_of(slot), gpu=slot.gpu,
         minutes=slots.tidy(slot.minutes_or_default),
         note=f"ran {entry['ran_min']} min against a cap of {entry['cap_min']}, {entry['overrun_min']} min over",
@@ -620,7 +621,7 @@ def _record_failure(slot: slots.Slot, entry: Mapping[str, Any], environ: Mapping
     """The ledger row of a slot that could not be ended (alerts.py ignores a failed outcome)."""
     who = _who(environ)
     who["task"] = slot.task_id or who["task"]
-    return record.record(VERB, "error", refs={"slot": slot.id}, state_dir=state_dir, node=_node_of(slot),
+    return record.record(alerts.SLOT_REFEREE, "error", refs={"slot": slot.id}, state_dir=state_dir, node=_node_of(slot),
                          gpu=slot.gpu, kind=entry["kind"], note=flat(entry["error"], record.NOTE_CHARS), **who)
 
 

@@ -1471,6 +1471,13 @@ def _ledger_metrics(verb: str, outcome: str, slot: Mapping[str, Any]) -> dict[st
     return {alerts.SLOT_MINUTES: minutes} if isinstance(minutes, (int, float)) and not isinstance(minutes, bool) else {}
 
 
+def ledger_verb(sub: str) -> str:
+    """The ledger verb of a slot call: the name lab/machine/alerts.py reads for it, else "slot <sub>"."""
+    known = {"request": alerts.SLOT_REQUEST, "start": alerts.SLOT_START, "extend": alerts.SLOT_EXTEND,
+             "done": alerts.SLOT_DONE, "complain": alerts.SLOT_COMPLAIN}
+    return known.get(sub, f"slot {sub}")
+
+
 def _record(args: argparse.Namespace, answer: Mapping[str, Any], environ: Mapping[str, str],
             state_dir: str | os.PathLike[str] | None) -> int:
     """Append the ledger row of a finished call (lab.machine.record) and return its seq."""
@@ -1485,7 +1492,7 @@ def _record(args: argparse.Namespace, answer: Mapping[str, Any], environ: Mappin
         (letter for letter, name in GPUS.items() if name == slot.get("gpu")), DEFAULT_GPU)
     task = getattr(args, "task", None) or slot.get("task") or record.current_task(environ)
     return record.record(
-        f"slot {args.sub}", answer["outcome"], refs={"slot": answer.get("row") or getattr(args, "row", None)},
+        ledger_verb(args.sub), answer["outcome"], refs={"slot": answer.get("row") or getattr(args, "row", None)},
         task=task, actor=record.current_actor(environ), tier=record.current_tier(environ), state_dir=state_dir,
         node=NODES[gpu_letter], **extras)
 

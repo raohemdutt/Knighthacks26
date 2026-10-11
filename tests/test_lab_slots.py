@@ -1945,6 +1945,18 @@ def test_the_properties_printed_without_a_token_are_the_ones_the_verb_sets_with_
     assert changed == {name for name in wanted if after[name] != before[name]}
 
 
+def test_the_ledger_verbs_of_the_slot_rows_are_the_names_alerts_reads(world, monkeypatch):
+    # The writer takes each verb from lab/machine/alerts.py, so a rename there cannot leave the slot rows unread.
+    for name in ("SLOT_REQUEST", "SLOT_START", "SLOT_EXTEND", "SLOT_DONE"):
+        monkeypatch.setattr(alerts, name, getattr(alerts, name).replace("slot ", "slot-renamed "))
+    row = world.call("request", "--task", "L3", "--what", "smoke")[0]["row"]
+    world.call("start", "--row", row)
+    world.call("extend", "--row", row, "--note", "loss fell")
+    world.call("done", "--row", row, "--result", "7.7 tok/s")
+    assert [entry["verb"] for entry in ledger_rows()] == [
+        alerts.SLOT_REQUEST, alerts.SLOT_START, alerts.SLOT_EXTEND, alerts.SLOT_DONE]
+
+
 @pytest.mark.parametrize("argv", [
     ["request", "--task", "L3", "--what", "x"], ["start", "--row", ROW], ["extend", "--row", ROW, "--note", "n"],
     ["done", "--row", ROW, "--result", "r"], ["complain", "--row", ROW], ["status"]])
