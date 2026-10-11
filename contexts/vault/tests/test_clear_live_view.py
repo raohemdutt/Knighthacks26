@@ -49,7 +49,7 @@ def blurred(frame: bytes) -> bytes:
 
 
 def blurred_until_clear(frame: bytes) -> bytes:
-    """The strict blur: what is saved."""
+    """The strict blur: what is saved, and what ?blur=1 answers."""
     return frame.replace(b"ALICE", b"@@@@@")
 
 
@@ -248,6 +248,33 @@ def test_the_ticket_shows_faces_only_while_the_policy_says_clear(tmp_path, monke
     http.put("/vault/policy", json={"live_faces": "clear", "paused_cameras": ["cam-desk"]})
     assert http.get("/capture/cam-desk/snapshot.jpg", params=ticket).status_code == 404  # a paused camera shows nobody anything
     assert http.get("/capture/live/cam-desk", params=ticket).status_code == 404
+
+
+def shared(frame: bytes) -> bytes:
+    """What ?blur=1 answers: the live encoding of the strictly blurred frame."""
+    return b"JPEG70:" + blurred_until_clear(frame)
+
+
+def test_blur_1_is_blurred_until_clear_even_with_a_valid_ticket(tmp_path, monkeypatch):
+    """A recorder (jetson/record_clip.py) asks for a picture it will share: no ticket and no policy makes it clear."""
+    policy, tickets, bus, service, http = frozen(tmp_path, monkeypatch)
+    ticket = http.post("/vault/view-ticket").json()["ticket"]
+    for query in ({"blur": 1}, {"blur": 1, "ticket": ticket}, {"blur": "true", "ticket": ticket}, {"blur": 1, "ticket": "nonsense"}):
+        assert http.get("/capture/cam-desk/snapshot.jpg", params=query).content == shared(FRAMES[0]), query
+        assert http.get("/capture/live/cam-desk", params=query | {"max": 1}).content == mjpeg(shared(FRAMES[0])), query
+    # asking for it did not take the place of the other two pictures of the same frame
+    assert http.get("/capture/cam-desk/snapshot.jpg", params={"ticket": ticket}).content == b"JPEG70:" + FRAMES[0]
+    assert http.get("/capture/cam-desk/snapshot.jpg").content == today_live(FRAMES[0])
+    assert http.get("/capture/cam-desk/snapshot.jpg", params={"blur": 0, "ticket": ticket}).content == b"JPEG70:" + FRAMES[0]
+
+    http.put("/vault/policy", json={"blur_faces": False})  # a box switched to saving unblurred pictures
+    service.readers["cam-desk"].push(1)  # its next frame
+    assert http.get("/capture/cam-desk/snapshot.jpg").content == b"JPEG70:" + FRAMES[1]
+    assert http.get("/capture/cam-desk/snapshot.jpg", params={"blur": 1}).content == shared(FRAMES[1])
+    assert http.get("/capture/live/cam-desk", params={"blur": 1, "max": 1}).content == mjpeg(shared(FRAMES[1]))
+
+    http.put("/vault/policy", json={"paused_cameras": ["cam-desk"]})
+    assert http.get("/capture/cam-desk/snapshot.jpg", params={"blur": 1}).status_code == 404  # paused: nobody gets a picture
 
 
 def test_a_camera_set_to_fast_saves_one_pass_keyframes_and_they_are_still_blurred(tmp_path, monkeypatch):

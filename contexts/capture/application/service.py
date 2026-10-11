@@ -13,7 +13,7 @@ The Vault policy is read live: faces are blurred before a keyframe is stored unl
 paused camera is not looked at.
 
 Two blurs (contexts/perception/infrastructure/face_blur.py). A picture that is kept or shared gets the strict one,
-repeated until no face is found: every stored keyframe. The live
+repeated until no face is found: every stored keyframe, and `snapshot(camera, blur=True)` for a recorder. The live
 picture for a screen without the owner's ticket gets one pass: it runs on every frame shown and nothing of it is kept.
 A camera can be set back to one pass for its keyframes with `keyframe_blur: fast` in config/cameras.yaml, if the box
 cannot afford the second detector pass (about twice the time of one pass on a keyframe with a face in it, the same
@@ -62,6 +62,8 @@ class CaptureService:
         self.readers: dict[str, CameraReader] = {}
         self._snapshot_blur = FaceBlur()  # the Live screen's own detector: the pipeline's is used on another thread
         self._snapshot_lock = threading.Lock()
+        self._shared_blur = FaceBlur(**STRICT)  # for snapshot(blur=True): a frame that will be kept or shared
+        self._shared_lock = threading.Lock()  # its own, so a recording does not hold up the Live screen
         self._snapshot_cache: dict[str, tuple[int, bytes]] = {}
         self._health_sent: dict[str, tuple[str, datetime]] = {}  # camera -> (status last published, when)
         self.pipelines: dict[str, TrackingPipeline] = {}
@@ -133,24 +135,29 @@ class CaptureService:
             return frame
         return strict.scrambled_until_clear(frame)[0] if strict is not None else fast(frame)
 
-    def snapshot(self, camera_id: str, clear: bool = False) -> bytes | None:
+    def snapshot(self, camera_id: str, clear: bool = False, blur: bool = False) -> bytes | None:
         """The newest frame as a JPEG for the phone's Live screen, faces blurred unless the policy says otherwise.
         None when the camera is unknown, paused, or has not delivered a frame yet. `clear` (the caller holds the
         owner's view ticket) leaves the faces as they are, and only while the policy's `live_faces` is "clear";
-        this is the live picture only, a saved keyframe is blurred as before."""
+        this is the live picture only, a saved keyframe is blurred as before. `blur` is for a picture that will be
+        kept or shared (a recorded clip): the strict blur, whatever the policy says, and `clear` is ignored."""
         import cv2
 
         reader = self.readers.get(camera_id)
         if reader is None or (self.policy and self.policy.is_paused(camera_id)) or reader.latest() is None:
             return None
         seq, _, frame = reader.latest()
-        clear = clear and self._blur_on() and getattr(self.policy, "live_faces", None) == "clear"
-        key = f"{camera_id} clear" if clear else camera_id  # the two pictures of one frame are never mixed up
-        with self._snapshot_lock:
+        clear = clear and not blur and self._blur_on() and getattr(self.policy, "live_faces", None) == "clear"
+        # the pictures of one frame are never mixed up
+        key = f"{camera_id} shared" if blur else f"{camera_id} clear" if clear else camera_id
+        with self._shared_lock if blur else self._snapshot_lock:
             cached = self._snapshot_cache.get(key)
             if cached and cached[0] == seq:
                 return cached[1]
-            shown = self._snapshot_blur(frame) if self._blur_on() and not clear else frame
+            if blur:
+                shown = self._shared_blur.scrambled_until_clear(frame)[0]
+            else:
+                shown = self._snapshot_blur(frame) if self._blur_on() and not clear else frame
             ok, jpeg = cv2.imencode(".jpg", shown, [cv2.IMWRITE_JPEG_QUALITY, 70])
             if not ok:
                 return None
