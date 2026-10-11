@@ -17,6 +17,7 @@ from contexts.day.application.planner import DayPlanner
 from contexts.day.application.reminders import Reminders
 from contexts.day.application.tracker import DayTracker
 from contexts.day.domain import arbiter as arbiter_rule
+from contexts.day.domain import narration as words
 from contexts.day.domain.arbiter import Rules
 from contexts.day.domain.clock import DayClock
 from contexts.play.dayrun.service import DayRun
@@ -122,6 +123,44 @@ class DayLoop:
             if said is not None and said.day == day:
                 out[key] = said.display
                 out[f"{key}_spoken"] = said.spoken
+        return out
+
+    def blocks(self, now: datetime) -> list[dict] | None:
+        """Today's plan from `now`, for whoever answers a question about the day (the agent's rundown and the facts
+        it gives its model): the blocks the plan chose, in the narrator's words and in time order, as
+        {"kind": "study", "title": "a study block", "start", "end"}, then at most one
+        {"kind": "leave", "title": <the event's title>, "start": <when to leave>} for the next fixed event that needs
+        a walk. Fixed events are the calendar's own and are left out; short breaks inside the main activity and the
+        night's sleep are not said. None when there is no plan for today. Reads state, publishes nothing, no model."""
+        plan = self.planner.current.get(self.clock.day_of(now))
+        if plan is None and self.planner.current:  # after midnight the plan still running is yesterday's (as the narrator takes it)
+            latest = self.planner.current[max(self.planner.current)]
+            plan = latest if any(m.end > now for m in latest.moves) else None
+        if plan is None:
+            return None
+        w, tz = self.narrator.words, self.clock.tz
+        ahead = sorted((m for m in plan.moves if m.start >= now), key=lambda m: m.start)
+        night = next((m for m in ahead if m.kind == "sleep" and m.minutes >= words.NAP_MAX), None)
+        out: list[dict] = []
+        for m in ahead:
+            if m.fixed or m is night or (night is not None and m.start >= night.start):
+                continue
+            kind = "nap" if m.kind == "sleep" else "meal" if m.kind == "eat" else m.kind
+            if kind == "rest" and m.minutes <= words.BREAK_MAX:
+                continue  # a breather, not something a person lists
+            if kind == "study" and out and out[-1]["kind"] == "study" and (m.start - out[-1]["end"]).total_seconds() <= words.BREAK_MAX * 60:
+                out[-1].update(end=m.end, min=out[-1]["min"] + m.minutes)  # one sitting, said once
+                out[-1]["title"] = words.beat_words({"kind": "study", "count": 1, "min": out[-1]["min"]}, w)
+                continue
+            beat = {"kind": kind, "count": 1, "min": m.minutes, "at": words.hhmm(m.start, tz), "title": words.short_title(m.title)}
+            out.append({"kind": kind, "title": words.beat_words(beat, w), "start": m.start, "end": m.end, "min": m.minutes})
+        try:
+            status = self.tracker.compute(now) or self.tracker.status
+        except Exception:
+            status = self.tracker.status
+        nxt = status.next_event if status is not None else None
+        if nxt is not None and nxt.leave_by is not None and nxt.walk_minutes > 0 and nxt.leave_by >= now and nxt.start > now:
+            out.append({"kind": "leave", "title": nxt.title, "start": nxt.leave_by})
         return out
 
 

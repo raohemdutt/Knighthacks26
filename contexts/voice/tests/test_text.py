@@ -1,4 +1,4 @@
-from contexts.voice.text import SentenceStream, clean_transcript, find_wake, speech_for_answer, without_wake
+from contexts.voice.text import MAX_SPOKEN_CHARS, SentenceStream, clean_transcript, find_wake, speech_for_answer, without_wake
 
 
 def test_times_links_and_frame_refs_are_made_sayable():
@@ -13,7 +13,7 @@ def test_one_citation_is_singular_and_none_is_silent():
 
 def test_long_answers_are_cut_at_a_sentence():
     said = speech_for_answer(" ".join(f"Sentence number {i} is here." for i in range(60)))
-    assert len(said) <= 420 and said.endswith(".")
+    assert len(said) <= MAX_SPOKEN_CHARS and said.endswith(".") and "number 59" not in said
 
 
 def test_empty_answer_has_a_fallback():

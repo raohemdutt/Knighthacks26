@@ -12,7 +12,7 @@ export interface SpeechTextOptions {
 }
 
 /** Longest answer read aloud, in characters, before it is cut at a sentence end. */
-export const MAX_SPOKEN_CHARS = 420;
+export const MAX_SPOKEN_CHARS = 900; // room for a whole day walked through (the box's voice has the same cap: contexts/voice/text.py); was 420
 /** In the offline demo the "answer" is the evidence list itself: read this many lines of it. */
 const MAX_FAKE_LINES = 3;
 /** Chrome stops in the middle of a long utterance, so speech is fed to it a sentence or two at a time. */
@@ -110,8 +110,12 @@ function naturalTimes(text: string, o: SpeechTextOptions): string {
       return `${sayClock(hour24, Number(min ?? 0))}${end === undefined ? "" : `.${end}`}`; // "p.m." that ends a sentence keeps the full stop
     },
   );
-  // 24-hour clock: "15:40", "07:05:00"
-  t = t.replace(/\b([01]?\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?\b(?!\s*[AP]M)/g, (_m, h: string, min: string) => sayClock(Number(h), Number(min)));
+  // 24-hour clock: "15:40", "07:05:00". A bare "10:40" or "2:30" is already how a person says it (the box's answers write a
+  // morning time that way: contexts/day/domain/ear.py) and is left as written; appending "AM" to it was a guess.
+  t = t.replace(/\b([01]?\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?\b(?!\s*[AP]M)/g, (m, h: string, min: string) => {
+    const bare = Number(h) >= 1 && Number(h) <= 12 && !h.startsWith("0") && m.split(":").length === 2;
+    return bare ? m : sayClock(Number(h), Number(min));
+  });
   // a dash between two times or numbers is a range
   t = t.replace(/(\d|[AP]M|noon|midnight)\s*[–—]\s*(?=\d|noon|midnight)/g, "$1 to ");
   t = t.replace(/\b(\d{1,2}(?::\d{2})?)\s*-\s*(\d{1,2}(?::\d{2})? ?[AP]M)\b/g, "$1 to $2");
@@ -403,7 +407,11 @@ export function sentenceForEvent(e: { type: string } & Record<string, unknown>, 
 
 // ---------- what a heard phrase means ----------
 
-export type VoiceCommand = "stop" | "yes" | "no" | "brief" | "status" | null;
+// "Brief me", "what's my day", "what's next" and "how's it going" are NOT commands: they are questions, and they go to
+// /api/ask like every other one. The Ask screen used to answer them itself from the day narrator (#171), so the phone and
+// the box's voice (which posts straight to /api/ask) could say different things for the same words. One path now: the
+// box answers (contexts/agent/application/schedule.py and talk.py). The morning brief itself is the Now screen's button.
+export type VoiceCommand = "stop" | "yes" | "no" | null;
 
 const POLITE = /\b(?:please|thanks|thank you|atlas|hey|ok|okay|now)\b/g;
 const STOP = /^(?:stop|stop listening|stop talking|that s all|that is all|thats all|that s it|that will be all|never mind|nevermind|forget it|be quiet|quiet|goodbye|bye|i m done|we re done|done)$/;
@@ -411,11 +419,6 @@ const STOP = /^(?:stop|stop listening|stop talking|that s all|that is all|thats 
 // "No" acts, so it has to be the whole utterance.
 const YES = /^(?:(?:yes|yeah|yep|yup|sure|approve|approved|do it|go ahead|go for it|confirm|allow|it|that)(?:\s+|$))+$/;
 const NO = /^(?:no\s+)*(?:no|nope|nah|deny|deny it|deny that|denied|don t|do not|don t do it|do not do it|reject|reject it|cancel|cancel it)$/;
-// Answered on the phone from the narrator's words, without a model call: the day ahead, and how it is going.
-const BRIEF =
-  /^(?:brief me|give me (?:a|the|my) (?:brief|briefing|rundown)|(?:what s|what is|whats) (?:my|the) (?:day|plan|schedule)(?: (?:look|looking) like| like| today| for today)?|what does my day look like|how s my day looking|how does my day look|what s on today|what is on today|what s next|what is next|whats next)$/;
-const STATUS =
-  /^(?:how am i doing|how m i doing|how are we doing|how s it going|how is it going|am i on track|am i on time|am i behind|am i late|where should i be|where am i supposed to be|status|status report)$/;
 
 // Right after Atlas offered an optional event ("Want me to add it?"). A yes only ever raises an approval card, so
 // it may be loose ("yeah add it", "sure go ahead"). A no is recorded, so it has to be the whole utterance.
@@ -463,10 +466,5 @@ export function voiceCommand(transcript: string, expecting: "question" | "yes-no
     if (YES.test(said) || /^(?:ok|okay)$/.test(raw)) return "yes";
   }
   if (STOP.test(said) || (expecting === "question" && /^(?:cancel|no thanks|no thank you)$/.test(raw))) return "stop";
-  if (expecting === "question") {
-    const asked = said.replace(/\b(?:right|so|and|then|today)\b/g, " ").replace(/\s+/g, " ").trim();
-    if (BRIEF.test(said) || BRIEF.test(asked)) return "brief";
-    if (STATUS.test(said) || STATUS.test(asked)) return "status";
-  }
   return null;
 }

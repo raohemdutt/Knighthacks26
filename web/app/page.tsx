@@ -12,7 +12,7 @@ import { ApiError, api, type ApprovalRequest } from "@/lib/api";
 import { useAnswerStream, useAtlas } from "@/lib/atlas";
 import { time } from "@/lib/format";
 import { useProfile } from "@/lib/profile";
-import { briefMe, useBrief } from "@/lib/brief";
+import { useBrief } from "@/lib/brief";
 import { askGuide } from "@/lib/guideBus";
 import { approvalSentence, narratedAsk, speechForAnswer, voiceCommand } from "@/lib/speechText";
 import { useVoice } from "@/lib/voice";
@@ -129,7 +129,9 @@ export default function AskPage() {
     try {
       const answer = await api.ask(q);
       setChat((turns) => [...turns, { id: nextId(), role: "atlas", answer }]);
-      reply = speechForAnswer(answer.answer, answer.citations.length);
+      // as the box's voice counts them (contexts/voice/service.py evidence_count): only what the cameras saw is announced as
+      // evidence; a calendar entry or a link behind "You've got your lecture at 10:40" is not
+      reply = speechForAnswer(answer.answer, answer.citations.filter((c) => c.frame_ref || c.episode_id).length);
     } catch (err) {
       const e = err instanceof ApiError ? err : new ApiError(0, String(err));
       const message =
@@ -146,39 +148,6 @@ export default function AskPage() {
       setWaiting(null);
     }
     respond(reply);
-  };
-
-  /**
-   * "Brief me", "what's my day", "how am I doing": answered here from the narrator's words (contexts/day), without
-   * a question to the model. The paragraph goes into the conversation; its spoken form is what is said.
-   */
-  const brief = async (what: "brief" | "status", said: string) => {
-    if (busy.current) return;
-    busy.current = true;
-    setNote(null);
-    setText("");
-    setWaiting(said);
-    setChat((turns) => [...turns, { id: nextId(), role: "you", text: said }]);
-    const n = await briefMe(what);
-    busy.current = false;
-    setWaiting(null);
-    if (!n) {
-      setChat((turns) => [...turns, { id: nextId(), role: "error", text: "There is no plan for today yet. Open Now to make one.", needsToken: false }]);
-      respond("I don't have a plan for today yet.");
-      return;
-    }
-    const answer = {
-      event_id: n.event_id,
-      type: "agent.answer.generated" as const,
-      version: 1,
-      ts: n.ts,
-      question_id: `brief-${n.event_id}`,
-      answer: n.display,
-      citations: [],
-      model_version: n.engine === "model" ? "the day narrator (model)" : "the day narrator",
-    };
-    setChat((turns) => [...turns, { id: nextId(), role: "atlas", answer }]);
-    respond(n.spoken);
   };
 
   /** "No" to the request Atlas just asked about. Denying is the only decision the voice can make. */
@@ -219,10 +188,8 @@ export default function AskPage() {
       setNote({ text: "Stopped listening. Tap the mic to talk again.", tone: "info" });
       return;
     }
-    if (command === "brief" || command === "status") {
-      void brief(command, said);
-      return;
-    }
+    // "brief me", "what's my day", "what's next", "how's it going": questions like any other. The box answers them
+    // (/api/ask), so the phone and the box's voice say the same thing.
     void ask(said, true);
   };
 
@@ -373,9 +340,7 @@ export default function AskPage() {
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
-    const command = voiceCommand(text);
-    if (command === "brief" || command === "status") void brief(command, text.trim());
-    else void ask(text);
+    void ask(text);
   };
 
   return (

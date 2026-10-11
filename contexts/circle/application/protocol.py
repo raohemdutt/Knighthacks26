@@ -72,11 +72,13 @@ class InMemoryCircleStore:
         self.events.setdefault(thread_id, proposal)
 
 
-def busy(memory: MemoryReader, start: datetime, end: datetime) -> bool:
-    """My own calendar, checked on my own box. Events without an end count as one hour."""
+def busy(memory: MemoryReader, start: datetime, end: datetime, listed=None) -> bool:
+    """My own calendar, checked on my own box. Events without an end count as one hour. `listed` says which items are
+    public listings (campus events): like the optional "near you" ones, they never make me busy."""
     for item in memory.items(start - timedelta(hours=12), end, kind="calendar_event"):
         item_end = item.when + timedelta(hours=1)
-        if item.when < end and start < item_end and not item.external_id.startswith("nearby:"):  # optional, not a commitment
+        if item.when < end and start < item_end and not item.external_id.startswith("nearby:") \
+                and not (listed is not None and listed(item)):  # optional or only listed: not a commitment
             return True
     return False
 
@@ -91,6 +93,7 @@ class CircleAgent:
         self.clock = clock
         self.auto_reply = auto_reply  # replies carry only free/busy/counter, so they need no approval
         self.members = members or []  # everyone in the circle (config); a proposal with no invitees means all of them
+        self.listed = None  # (item) -> bool: a public listing, never busy (set by the composition root; agent.yaml `listings:`)
         self._seen: datetime | None = None
         self._handled: set[str] = set()  # message ids already acted on (rebuilt from the log on start)
         self._agreed: set[str] = set()  # threads already agreed (rebuilt from the log on start)
@@ -127,12 +130,12 @@ class CircleAgent:
     # --- 2/3. read and reply ---
 
     def decide(self, p: Proposal) -> Reply:
-        if not busy(self.memory, p.start, p.end):
+        if not busy(self.memory, p.start, p.end, self.listed):
             return Reply(answer="free")
         length = p.end - p.start
         for shift in range(1, MAX_COUNTER_SHIFTS + 1):
             start = p.start + timedelta(hours=shift)
-            if not busy(self.memory, start, start + length):
+            if not busy(self.memory, start, start + length, self.listed):
                 return Reply(answer="counter", counter=p.model_copy(update={"start": start, "end": start + length}))
         return Reply(answer="busy")
 
