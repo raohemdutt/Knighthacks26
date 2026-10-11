@@ -53,6 +53,31 @@ python -m lab routing-closed-loop --account C \
 - The answer is one JSON line with `run_id`, the three verdict labels, `changed`, `keep_policy_two`,
   `rubric_tt6_met` and the path of `t0_result.txt`.
 
+## The same run from a workstation
+
+When the gateway on the Jetson does not log the pods (its restart with `ATLAS_TELEMETRY_SOURCE=tegrastats,pods`
+needs sudo), the loop runs on a workstation that reaches both nodes, with three processes side by side:
+
+```
+# 1. the student, through a tunnel that is reopened when it drops
+while true; do ssh -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
+    -i <key> -N -L 18080:127.0.0.1:8080 <user>@<jetson>; sleep 5; done
+# 2. both nodes' power samples in one file (tegrastats over SSH, the pod sampler through the hub proxy)
+python -m lab.t11_power_bridge --out lab/state/t11-run/power.jsonl --raw lab/state/t11-run/tegrastats.raw \
+    --jetson <user>@<jetson> --ssh-key <key> --account C --minutes 240
+# 3. the loop, with the outage rule and a progress file
+python -m lab.t11_offbox_run --progress lab/state/t11-run/progress.jsonl -- --account C \
+    --student-url http://127.0.0.1:18080 --student-model atlas-base --power-log lab/state/t11-run/power.jsonl \
+    --window-clock jetson --n 100 --seed 11 --probes 1 --settle-s 3 --wait-s 60 \
+    --metrics-file --row-condition "gpu=Radeon 8060S (Strix Halo), gfx1151" --row-condition hub=sjc
+```
+
+- `lab/t11_power_bridge.py` only reads. The Jetson's samples are stamped with the workstation's clock as they arrive,
+  and the pod's clock offset is measured against the same clock, so `--window-clock jetson` holds here too.
+- `lab/t11_offbox_run.py` runs the loop unchanged. A 5xx or a dropped connection pauses the request and asks again
+  every 2 minutes, for at most 20 minutes; each pause and each answer is a line of the progress file, and
+  `python -m lab.t11_offbox_run --progress <file> --summarize` reads the arms from it when a run stops early.
+
 ## After the run
 
 1. Post the text of `lab/state/routing-closed-loop/<run id>/t0_result.txt` on T0 as the experiment result (the
