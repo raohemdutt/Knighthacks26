@@ -16,7 +16,8 @@ invariants of a track's files that the merge pass relies on when it judges a rou
   listed this way, filed in that pass's own track.
 - A change to a RUBRIC.md or to a Priority cites an answered ruling as '<track>/OWNER_RULINGS.md <n>'. A file
   name Notion turned into a link, [OWNER_RULINGS.md](http://OWNER_RULINGS.md), reads as the name.
-- A track's pass entries are numbered 1, 2, 3 in file order and each is valid; refine_pass.txt equals the
+- A track's pass entries are numbered 1, 2, 3 in file order and each is valid, which includes holding no more
+  changes than the cap PASS_RULES.md states and naming it on the Changes line; refine_pass.txt equals the
   last pass number; every pass has its report, whose first line names its track and pass, whose second line
   says when it ended and which quotes its entry's heading; and no report lacks its pass. check_track states
   these once, and refine_track.check_track reads a track folder through it.
@@ -294,9 +295,12 @@ def read_reports(track_dir: Path) -> dict[int, str]:
     return reports
 
 
-def check_track(track: str, log: rf.Log, counter: int | None, reports: Mapping[int, str]) -> list[str]:
+def check_track(
+    track: str, log: rf.Log, counter: int | None, reports: Mapping[int, str], cap: int | None = None
+) -> list[str]:
     """List what one track's files break, each problem named by the file it is in. counter is the value of
-    refine_pass.txt (None skips that check); reports maps a pass number to the text of pass_reports/pass_NN.md.
+    refine_pass.txt (None skips that check); reports maps a pass number to the text of pass_reports/pass_NN.md;
+    cap is the per-pass change cap of PASS_RULES.md (None skips it), which every pass entry must hold to.
 
     This is the one statement of a track folder's rules. The merge pass reads it through check_tree, and a track
     pass through refine_track.check_track, which adds what only a pass checks (metric citations, dry runs).
@@ -312,7 +316,7 @@ def check_track(track: str, log: rf.Log, counter: int | None, reports: Mapping[i
             f"{f'pass {last}' if numbers else 'none'}; a pass writes the counter last, after its entry"
         )
     for entry in log.passes:
-        problems.extend(f"REFINE_LOG.md: {problem}" for problem in rf.check_pass_entry(entry))
+        problems.extend(f"REFINE_LOG.md: {problem}" for problem in rf.check_pass_entry(entry, cap))
     for entry in log.passes:
         text = reports.get(entry.number)
         if text is None:
@@ -377,6 +381,14 @@ def check_tree(root: Path) -> list[str]:
             problems.append(f"{path.relative_to(root).as_posix()} is missing")
             return None
 
+    cap: int | None = None
+    rules_text = read(root / "PASS_RULES.md")
+    if rules_text is not None:
+        try:
+            cap = rf.change_cap_in(rules_text)
+        except rf.FormatError as error:
+            problems.append(f"PASS_RULES.md: {error}")
+
     for track in TRACKS:
         folder = root / track
         log: rf.Log | None = None
@@ -396,7 +408,7 @@ def check_tree(root: Path) -> list[str]:
         rulings_text = read(folder / "OWNER_RULINGS.md")
         if log is not None:
             track_logs[track] = log
-            problems.extend(f"{track}: {problem}" for problem in check_track(track, log, counter, read_reports(folder)))
+            problems.extend(f"{track}: {problem}" for problem in check_track(track, log, counter, read_reports(folder), cap))
         if rulings_text is not None:
             try:
                 rulings[track] = rf.parse_rulings(rulings_text)

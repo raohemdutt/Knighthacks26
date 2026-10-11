@@ -11,6 +11,10 @@ counter and report rules are refine_merge.check_track's, so a pass and the merge
 An empty list means the folder holds together, which is what a pass checks before it commits and what the suite
 checks for every track.
 
+The most changes a pass entry may make is set in lab/refine/PASS_RULES.md, not here: change_cap() reads it, and
+the entries check_track() and check_dry_run() look at must hold no more changes than that and name it on their
+'Changes (<n> of at most <cap>):' line.
+
 A dry-run record is a pass report (TEMPLATES.md section 4) with three differences:
 
     Dry run of <track> refinement pass <N> (<who>), <YYYY-MM-DD>. <what it did not touch>
@@ -43,9 +47,11 @@ from lab.machine import refine_merge
 
 __all__ = [
     "METRICS_PATH",
+    "PASS_RULES_PATH",
     "REFINE_DIR",
     "TRACKS",
     "DryRun",
+    "change_cap",
     "check_dry_run",
     "check_track",
     "metric_citation_problems",
@@ -55,6 +61,7 @@ __all__ = [
 TRACKS = rf.TRACKS
 REFINE_DIR = Path(__file__).resolve().parents[1] / "refine"
 METRICS_PATH = metrics.DEFAULT_PATH
+PASS_RULES_PATH = REFINE_DIR / "PASS_RULES.md"
 
 _DRY_RUN_HEADER = re.compile(
     r"^Dry run of (?P<track>[a-z]+) refinement pass (?P<number>[0-9]+) \((?P<who>[^()\n]*)\), "
@@ -104,6 +111,14 @@ def parse_dry_run(text: str) -> DryRun:
     return DryRun(header["track"], number, header["who"].strip(), header["date"], ended, entry)
 
 
+def change_cap(rules_path: Path | str = PASS_RULES_PATH) -> int:
+    """The most changes one pass may make, read from the 'at most <N> changes' sentence of PASS_RULES.md.
+
+    FormatError when the file states no such number or two different ones; OSError when it cannot be read.
+    """
+    return rf.change_cap_in(_read(Path(rules_path)))
+
+
 def metric_citation_problems(readings: Iterable[rf.Reading], metrics_lines: list[str], where: str) -> list[str]:
     """Check every reading that cites metrics.jsonl:<line> against that line: same metric, node and value.
 
@@ -140,7 +155,9 @@ def metric_citation_problems(readings: Iterable[rf.Reading], metrics_lines: list
     return problems
 
 
-def check_dry_run(path: Path | str, metrics_path: Path | str = METRICS_PATH) -> list[str]:
+def check_dry_run(
+    path: Path | str, metrics_path: Path | str = METRICS_PATH, rules_path: Path | str = PASS_RULES_PATH
+) -> list[str]:
     """List what is wrong with one dry-run record; an empty list means it is a valid rehearsal of one pass."""
     path = Path(path)
     name = path.name
@@ -148,7 +165,11 @@ def check_dry_run(path: Path | str, metrics_path: Path | str = METRICS_PATH) -> 
         record = parse_dry_run(path.read_text(encoding="utf-8"))
     except (OSError, rf.FormatError) as exc:
         return [f"{name}: {exc}"]
-    problems = [f"{name}: {problem}" for problem in rf.check_pass_entry(record.entry)]
+    try:
+        cap = change_cap(rules_path)
+    except (OSError, rf.FormatError) as exc:
+        return [f"{name}: PASS_RULES.md: {exc}"]
+    problems = [f"{name}: {problem}" for problem in rf.check_pass_entry(record.entry, cap)]
     named = _DRY_RUN_NAME.match(name)
     if not named:
         problems.append(f"{name}: a dry-run record is named <YYYY-MM-DD>-pass-<NN>.md")
@@ -167,7 +188,9 @@ def check_dry_run(path: Path | str, metrics_path: Path | str = METRICS_PATH) -> 
     return problems
 
 
-def check_track(track_dir: Path | str, metrics_path: Path | str = METRICS_PATH) -> list[str]:
+def check_track(
+    track_dir: Path | str, metrics_path: Path | str = METRICS_PATH, rules_path: Path | str = PASS_RULES_PATH
+) -> list[str]:
     """List what is wrong with a track folder's log, counter, reports and dry-run records; [] when they hold together.
 
     The log, counter and report rules are refine_merge.check_track's, the ones the merge pass reads the folder by;
@@ -182,14 +205,18 @@ def check_track(track_dir: Path | str, metrics_path: Path | str = METRICS_PATH) 
         counter = rf.parse_counter(_read(track_dir / "refine_pass.txt"))
     except (OSError, rf.FormatError) as exc:
         return [f"refine_pass.txt: {exc}"]
-    problems = refine_merge.check_track(track_dir.name, log, counter, refine_merge.read_reports(track_dir))
+    try:
+        cap = change_cap(rules_path)
+    except (OSError, rf.FormatError) as exc:
+        return [f"PASS_RULES.md: {exc}"]
+    problems = refine_merge.check_track(track_dir.name, log, counter, refine_merge.read_reports(track_dir), cap)
     metrics_lines = _lines(metrics_path)
     for entry in log.passes:
         problems += metric_citation_problems(
             entry.metrics_before + entry.metrics_after, metrics_lines, f"REFINE_LOG.md pass {entry.number}"
         )
     for record in sorted((track_dir / "dry_runs").glob("*.md")):
-        problems += [f"dry_runs/{problem}" for problem in check_dry_run(record, metrics_path)]
+        problems += [f"dry_runs/{problem}" for problem in check_dry_run(record, metrics_path, rules_path)]
     return problems
 
 
