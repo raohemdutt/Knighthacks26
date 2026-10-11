@@ -40,7 +40,7 @@ def test_a_title_loses_its_tags_and_a_course_code_is_said_by_name_when_there_is_
     assert ear.ear_title("Knight Hacks: mentor check-in") == "the mentor check-in"
     assert ear.ear_title("Board game night (optional)") == "Board game night"
     assert ear.ear_title("Study session") == "your study session"
-    assert ear.ear_title("Project - Milestone1 Fall2026 [COP4533]", article=False) == "Project - Milestone1 Fall2026"
+    assert ear.ear_title("Project - Milestone1 Fall2026 [COP4533]", article=False) == "Project Milestone 1"
     assert ear.ear_title("HW 4: linked lists", article=False) == "HW 4: linked lists"  # what is due keeps its whole name
 
 

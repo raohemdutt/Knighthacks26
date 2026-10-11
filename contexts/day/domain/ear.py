@@ -97,7 +97,7 @@ def ear_title(title: str, names: dict | None = None, article: bool = True) -> st
     """A calendar title as it is said: no brackets or tags, a course code as its spoken name when `names` has one
     ("COP4533" -> "algorithms", else "COP 4533"), and "your" or "the" in front where a person would put one."""
     # what is due keeps its whole name ("HW 4: linked lists"); an event loses its organiser ("Knight Hacks: dinner" -> "dinner")
-    t = short_title(title) if article else re.sub(r"\s+", " ", re.sub(r"\[[^\]]*\]|\([^)]*\)", " ", title or "")).strip(" -:,.") or title
+    t = short_title(title) if article else short_title((title or "").replace(": ", " \x00 ")).replace(" \x00 ", ": ")
     named = False
 
     def code(m: re.Match) -> str:

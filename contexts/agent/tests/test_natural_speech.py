@@ -162,7 +162,7 @@ SCHEDULE = {
     "am I busy at 11?": "Yes, you've got your COP 4533 lecture then, until 11:30.",
     "what's on tonight?": "Tonight you've got Dinner with Maya at 7, and that's it tonight.",
     "run me through my day": "You've got four things today. First is your COP 4533 lecture at 10:40, then your PHY 2049 lecture at 2. Want the rest?",
-    "what's due this week?": "You've got Project - Milestone1 Fall2026 due Tuesday at 3:55 PM.",
+    "what's due this week?": "You've got Project Milestone 1 due Tuesday at 3:55 PM.",
 }
 ALLOWED = {"what's next?": 1, "Hey Atlas, what's next": 1, "when is my next class?": 1, "what time is my next class, and where?": 1, "am I free at 3?": 1,
            "am I free at noon?": 0, "am I busy at 11?": 1}
