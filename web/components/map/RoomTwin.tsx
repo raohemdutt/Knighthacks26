@@ -421,7 +421,7 @@ export default function RoomTwin({ plan, live, pins = [], preview = null, contro
               <p className={css.roundSub}>{tally ?? `${result.right} of ${result.rounds} right this sitting`}</p>
             </div>
           ) : pin ? (
-            <div className={css.pinCard} data-keepclear data-hud="pin">
+            <div className={css.pinCard} data-keepclear data-hud="pin" data-guide={`pin:${pin.label}`}>
               <div>
                 <p className={css.resultTitle}>{pin.title}</p>
                 <p className={css.resultLine}>{pin.detail}</p>
