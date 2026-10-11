@@ -228,7 +228,8 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         app.include_router(files_router(atlas.files, atlas.bus, guard=authorized))
     if atlas.policy:  # GET/PUT /vault/policy, POST /vault/wipe/request, POST /vault/wipe, GET /vault/egress
         app.include_router(vault_router(atlas.policy, atlas.bus, wiper=atlas.wiper, guard=authorized, pictures=atlas.pictures,
-                                        view_tickets=view_tickets, signed_in_possible=lambda: bool(atlas.settings.token)))
+                                        view_tickets=view_tickets, signed_in_possible=lambda: bool(atlas.settings.token),
+                                        owner=lambda: atlas.identity.owner_status() if atlas.identity else None))
     if atlas.identity:  # /identity/settings, /identity/enroll/start, status, photos, scan/*; /identity/members, present, expressions (P9)
         # A person can be linked to a Circle member by id; the ids come from the configured Circle, nothing else crosses over.
         app.include_router(identity_router(atlas.identity, atlas.bus, guard=authorized, circle_members=lambda: (

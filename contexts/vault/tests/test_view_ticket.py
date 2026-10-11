@@ -132,7 +132,7 @@ def test_an_event_from_before_the_field_still_parses_and_replays_to_clear(tmp_pa
     assert box.policy.live_faces == "clear"  # nothing applied yet
     assert asyncio.run(box.bus.replay_into()) == 1
     assert box.policy.snapshot() == {"blur_faces": True, "paused_cameras": ["cam-door"], "offline": False,
-                                     "keep_days": None, "live_faces": "clear"}  # nothing recorded: clear, no switch touched
+                                     "keep_days": None, "live_faces": "clear", "train_faces": "blurred"}  # nothing recorded: clear, no switch touched
     assert box.policy.live_clear and box.http.get("/vault/policy").json()["live_faces"] == "clear"
     assert json.loads((events / "2026-10-01.jsonl").read_text().splitlines()[0]) == OLD_EVENT  # the old event is not rewritten
 

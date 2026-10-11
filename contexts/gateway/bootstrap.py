@@ -641,6 +641,7 @@ def build(settings: Settings | None = None) -> Atlas:
     # the League does: only its own two card kinds (face_share, face_accept) are handled, the rest pass through.
     face_share = None
     if circle:
+        identity.owner_circle_id = circle_cfg["member_id"]  # with several people scanned here, "you" is this box's own member
         from contexts.circle.application.face_share import FaceShare, InMemorySealedStore
         from contexts.circle.infrastructure.neon_sealed import NeonSealedStore
 
@@ -680,6 +681,8 @@ def build(settings: Settings | None = None) -> Atlas:
 
     # Cameras (C1, P1, P2, P6): config/cameras.yaml; None unless a detector engine is on this machine.
     capture = CaptureService.load(s.config_dir / "cameras.yaml", bus, models_yaml=models_yaml, data_dir=s.data_dir, policy=policy)
+    if capture:  # "Only me clear" on the owner's screen: which faces sit in a person track recognition tagged as the owner
+        capture.owner_faces = identity.owner_faces
 
     # Telemetry: per-node power samples, request windows and training steps as events, folded into a projection
     # the log rebuilds. Off unless ATLAS_TELEMETRY_SOURCE names a sampler ("fake" replays recorded samples).

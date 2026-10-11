@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import priv from "@/components/privacy/privacy.module.css";
 import { Empty, ErrorBox, Loading, WriteError } from "@/components/States";
 import ui from "@/components/ui.module.css";
-import { ApiError, api, liveClear, viewTicketReady, viewTicketState, type Egress, type VaultPolicy, type WipeResult, type WipeScope, type WipeToken } from "@/lib/api";
+import Link from "next/link";
+import { ApiError, api, viewTicketReady, viewTicketState, type Egress, type IdentitySettings, type LiveFaces, type VaultPolicy, type VaultPolicyChange, type WipeResult, type WipeScope, type WipeToken } from "@/lib/api";
 import { bytes, groupLabel, internetSummary, picturesLine } from "@/lib/egress";
 import { cameraName } from "@/lib/format";
 import { useFetch } from "@/lib/useFetch";
@@ -19,7 +20,26 @@ import { ZONES } from "@/lib/zones.generated";
  *
  * Five calm sections, each a heading over one card, one idea per row: Faces, Cameras, What is kept, What has left
  * this box, Erase. Every row and section carries a data-guide hook (web/lib/guide.ts, web/lib/guide-hooks.json).
+ *
+ * Faces holds every face privacy control, in the order a picture travels: on my screen (three choices), saved
+ * pictures (always blurred), sent off this box (blurred by default, with the opt-in for my own face in training),
+ * and the recognition master switch (GET/POST /identity/settings; the People screen is about the person, this is
+ * the switch).
  */
+
+/** The three choices for the live view on the owner's own signed-in screen (`live_faces`). */
+const ON_MY_SCREEN: { id: LiveFaces; label: string; what: string }[] = [
+  { id: "clear", label: "Everyone clear", what: "Every face shows on your own signed-in screen." },
+  { id: "owner", label: "Only me clear", what: "Only your own scanned face shows on your signed-in screen. Every other face is blurred, even for you." },
+  { id: "blurred", label: "Everyone blurred", what: "Every face is blurred on your signed-in screen too." },
+];
+
+/**
+ * The training opt-in ("Allow my own face unblurred for training with trusted friends") is built on the box side of
+ * the policy (`train_faces`) but the export that honours it is not shipped yet: until it is, the row is a disabled
+ * switch that says so. Flip this when the gate, the approval card text and the preview have landed.
+ */
+const TRAIN_FACES_READY = false;
 
 /**
  * PROFILE HEADER SLOT (for Xander). A profile header for this screen (an avatar, the owner's name, "signed in on
@@ -58,7 +78,13 @@ function Row({ title, help, note, guide, stack, children }: { title: string; hel
 }
 
 /** Faces, Cameras and What is kept: the switches of GET/PUT /vault/policy. `change` saves one of them. */
-function Controls({ policy, cameras, busy, change }: { policy: VaultPolicy; cameras: string[]; busy: boolean; change: (body: Partial<VaultPolicy>) => void }) {
+function Controls({ policy, cameras, busy, change, recognition }: {
+  policy: VaultPolicy;
+  cameras: string[];
+  busy: boolean;
+  change: (body: VaultPolicyChange) => void;
+  recognition: { settings: IdentitySettings | null; saving: boolean; toggle: () => void };
+}) {
   const [days, setDays] = useState(policy.keep_days ?? KEEP_FOREVER);
   useEffect(() => setDays(policy.keep_days ?? KEEP_FOREVER), [policy.keep_days]);
 
@@ -71,13 +97,17 @@ function Controls({ policy, cameras, busy, change }: { policy: VaultPolicy; came
       alive = false;
     };
   }, []);
+  const scanned = policy.owner?.ready ?? false; // "Only me" needs the face scan (and recognition on)
+  const scanFirst = policy.owner?.reason ?? "Do the face scan first.";
+  const chosen = ON_MY_SCREEN.find((c) => c.id === policy.live_faces) ?? ON_MY_SCREEN[0];
   const liveHelp =
-    "Show faces on my own signed-in screen. Everyone else sees the live view blurred." +
+    `${chosen?.what ?? ""} Everyone else always sees the live view blurred.` +
     (ticket.problem === "not_signed_in"
       ? " This screen is not signed in, so it shows the blurred view."
       : ticket.problem === "box_has_no_token"
         ? " This box has no sign-in token yet, so only a screen plugged into the box itself can show faces."
         : "");
+  const rec = recognition.settings;
 
   const togglePause = (camera: string, pause: boolean) =>
     change({ paused_cameras: pause ? [...policy.paused_cameras, camera] : policy.paused_cameras.filter((c) => c !== camera) });
@@ -87,8 +117,38 @@ function Controls({ policy, cameras, busy, change }: { policy: VaultPolicy; came
       <section className={ui.section} data-guide="privacy:faces">
         <h2 className={ui.sectionTitle}>Faces</h2>
         <div className={priv.card}>
-          <Row title="Your live view" help={liveHelp} guide="privacy:live-view">
-            <Switch on={liveClear(policy)} label="Show faces on my own signed-in screen" disabled={busy} onChange={(v) => change({ live_faces: v ? "clear" : "blurred" })} />
+          <Row
+            title="On my screen"
+            help={liveHelp}
+            note={policy.live_faces === "owner" && policy.faces_note ? `Blurred for now: ${policy.faces_note}` : !scanned ? `Only me clear: ${scanFirst}` : undefined}
+            guide="privacy:live-view"
+            stack
+          >
+            <div className={ui.chips} role="radiogroup" aria-label="Faces on my own signed-in screen" data-guide="privacy:on-my-screen">
+              {ON_MY_SCREEN.map((c) => {
+                const locked = c.id === "owner" && !scanned && policy.live_faces !== "owner";
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={policy.live_faces === c.id}
+                    className={`${ui.chip} ${policy.live_faces === c.id ? ui.chipOn : ""}`}
+                    disabled={busy || locked}
+                    title={locked ? scanFirst : c.what}
+                    data-choice={c.id}
+                    onClick={() => change({ live_faces: c.id })}
+                  >
+                    {c.label}
+                  </button>
+                );
+              })}
+              {!scanned ? (
+                <Link className={ui.btn} href="/people/" data-guide="privacy:scan-first">
+                  Scan my face
+                </Link>
+              ) : null}
+            </div>
           </Row>
           {policy.blur_faces ? (
             <Row title="Saved pictures" help="Always blurred before they are saved." guide="privacy:saved-pictures">
@@ -106,8 +166,41 @@ function Controls({ policy, cameras, busy, change }: { policy: VaultPolicy; came
               </button>
             </Row>
           )}
-          <Row title="Anything that leaves this box" help="Always blurred." guide="privacy:leaves">
-            <span className={priv.pill}>Always</span>
+          <Row title="Sent off this box" help="Blurred by default: alert photos, recordings and anything a friend's Atlas gets never show a face." guide="privacy:leaves">
+            <span className={priv.pill}>Blurred</span>
+          </Row>
+          <Row
+            title="Allow my own face unblurred for training with trusted friends"
+            help={
+              TRAIN_FACES_READY
+                ? "Off unless you switch it on. Each time still asks you first, and everyone else stays blurred."
+                : "Not available yet. It will need your face scan and your approval each time."
+            }
+            note={TRAIN_FACES_READY && !scanned ? scanFirst : undefined}
+            guide="privacy:train-faces"
+          >
+            <Switch
+              on={TRAIN_FACES_READY && policy.train_faces === "owner_clear"}
+              label="Allow my own face unblurred for training with trusted friends"
+              disabled={!TRAIN_FACES_READY || busy || (!scanned && policy.train_faces !== "owner_clear")}
+              onChange={(v) => change({ train_faces: v ? "owner_clear" : "blurred" })}
+            />
+          </Row>
+          <Row
+            title="Recognise people who scanned"
+            help={
+              !rec
+                ? "Recognition is not set up on this box: Atlas tells nobody apart here."
+                : !rec.available
+                  ? `This box cannot recognise anyone yet: ${rec.reason ?? "the face recognition model is not installed"}.`
+                  : rec.identity_enabled
+                    ? "On. Atlas tells apart only people who did the face scan on the People screen. A face is kept as encrypted numbers, never as a picture."
+                    : "Off. Nobody is recognised, nobody can scan, and “Only me clear” shows everyone blurred."
+            }
+            note="Atlas reads expressions only for someone who has done the face scan and switched it on for themselves. It no longer reads everyone in the room."
+            guide="privacy:recognition"
+          >
+            <Switch on={rec?.identity_enabled ?? false} label="Recognise people who scanned" disabled={!rec || recognition.saving || (!rec.identity_enabled && !rec.available)} onChange={recognition.toggle} />
           </Row>
         </div>
       </section>
@@ -115,6 +208,7 @@ function Controls({ policy, cameras, busy, change }: { policy: VaultPolicy; came
       <section className={ui.section} data-guide="privacy:cameras">
         <h2 className={ui.sectionTitle}>Cameras</h2>
         <div className={priv.card}>
+          {cameras.length === 0 ? <Row title="No cameras yet" help="Cameras are listed in config/cameras.yaml and start with the box. Each one gets a pause switch here." /> : null}
           {cameras.map((camera) => (
             <Row key={camera} title={`Pause the ${cameraName(camera).toLowerCase()}`} help="A paused camera is not looked at or saved. Live shows nothing for it.">
               <Switch on={policy.paused_cameras.includes(camera)} label={`Pause ${cameraName(camera)}`} disabled={busy} onChange={(v) => togglePause(camera, v)} />
@@ -288,7 +382,7 @@ export default function PrivacyPage() {
   const [error, setError] = useState<ApiError | null>(null);
 
   /** Save one switch of the policy; every section's controls go through here, so one is saved at a time. */
-  async function change(body: Partial<VaultPolicy>) {
+  async function change(body: VaultPolicyChange) {
     setBusy(true);
     setError(null);
     try {
@@ -297,6 +391,24 @@ export default function PrivacyPage() {
       setError(err instanceof ApiError ? err : new ApiError(0, String(err)));
     } finally {
       setBusy(false);
+    }
+  }
+
+  // The recognition master switch lives here with the other face controls (GET/POST /identity/settings).
+  const identity = useFetch((signal) => api.identitySettings(signal));
+  const [savingRec, setSavingRec] = useState(false);
+  async function toggleRecognition() {
+    if (!identity.data) return;
+    setSavingRec(true);
+    setError(null);
+    try {
+      await api.setIdentity(!identity.data.identity_enabled);
+      identity.reload();
+      setCurrent(await api.vaultPolicy()); // "Only me clear" depends on it: read what the box now says
+    } catch (err) {
+      setError(err instanceof ApiError ? err : new ApiError(0, String(err)));
+    } finally {
+      setSavingRec(false);
     }
   }
 
@@ -313,7 +425,9 @@ export default function PrivacyPage() {
       {policy.loading && !shown ? <Loading what="your privacy settings" /> : null}
       {policy.error && !shown ? <ErrorBox what="your privacy settings" error={policy.error} onRetry={policy.reload} /> : null}
       {error ? <WriteError error={error} /> : null}
-      {shown ? <Controls policy={shown} cameras={cameras} busy={busy} change={change} /> : null}
+      {shown ? (
+        <Controls policy={shown} cameras={cameras} busy={busy} change={change} recognition={{ settings: identity.data ?? null, saving: savingRec, toggle: toggleRecognition }} />
+      ) : null}
       <section className={ui.section} data-guide="privacy:left">
         <h2 className={ui.sectionTitle}>What has left this box</h2>
         {shown ? (

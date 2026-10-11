@@ -18,6 +18,12 @@ picture for a screen without the owner's ticket gets one pass: it runs on every 
 A camera can be set back to one pass for its keyframes with `keyframe_blur: fast` in config/cameras.yaml, if the box
 cannot afford the second detector pass (about twice the time of one pass on a keyframe with a face in it, the same
 on one without; keyframes are stored at most once per `observe_every_s`, usually every `keyframe_every_s`).
+
+The live picture for the owner's ticket has three settings (`policy.live_faces`): "clear" (every face as it is),
+"blurred" (the one-pass blur, the same bytes as without a ticket) and "owner": one pass again, but the faces that
+`owner_faces` says are the scanned owner's are left as they are. `owner_faces(camera_id, rows, tracks, width, height)
+-> [bool per face]` is handed in by bootstrap (the identity service's person tags; nothing is recognised per frame
+here). While it is not set, fails, or answers False (nobody scanned, recognition off, no tag yet), the face is blurred.
 """
 
 import asyncio
@@ -67,6 +73,7 @@ class CaptureService:
         self._snapshot_cache: dict[str, tuple[int, bytes]] = {}
         self._health_sent: dict[str, tuple[str, datetime]] = {}  # camera -> (status last published, when)
         self.pipelines: dict[str, TrackingPipeline] = {}
+        self.owner_faces: Any = None  # see the module docstring; None: "only me" is the blurred picture
 
     @classmethod
     def load(cls, cameras_file: str | Path, bus: Any, *, models_yaml: str | Path = "config/models.yaml",
@@ -138,24 +145,29 @@ class CaptureService:
     def snapshot(self, camera_id: str, clear: bool = False, blur: bool = False) -> bytes | None:
         """The newest frame as a JPEG for the phone's Live screen, faces blurred unless the policy says otherwise.
         None when the camera is unknown, paused, or has not delivered a frame yet. `clear` (the caller holds the
-        owner's view ticket) leaves the faces as they are, unless the owner switched that off (`policy.live_clear`);
-        this is the live picture only, a saved keyframe is blurred as before. `blur` is for a picture that will be
-        kept or shared (a recorded clip): the strict blur, whatever the policy says, and `clear` is ignored."""
+        owner's view ticket) leaves the faces as they are while `policy.live_clear`, leaves only the scanned owner's
+        own face as it is while `policy.live_owner_only` (see the module docstring), and changes nothing once the owner
+        chose "blurred"; this is the live picture only, a saved keyframe is blurred as before. `blur` is for a picture
+        that will be kept or shared (a recorded clip): the strict blur, whatever the policy says, and `clear` is ignored."""
         import cv2
 
         reader = self.readers.get(camera_id)
         if reader is None or (self.policy and self.policy.is_paused(camera_id)) or reader.latest() is None:
             return None
         seq, _, frame = reader.latest()
-        clear = clear and not blur and self._blur_on() and getattr(self.policy, "live_clear", False)
+        ticket = clear and not blur and self._blur_on()
+        clear = ticket and getattr(self.policy, "live_clear", False)
+        mine = ticket and not clear and self.owner_faces is not None and getattr(self.policy, "live_owner_only", False)
         # the pictures of one frame are never mixed up
-        key = f"{camera_id} shared" if blur else f"{camera_id} clear" if clear else camera_id
+        key = f"{camera_id} shared" if blur else f"{camera_id} clear" if clear else f"{camera_id} owner" if mine else camera_id
         with self._shared_lock if blur else self._snapshot_lock:
             cached = self._snapshot_cache.get(key)
             if cached and cached[0] == seq:
                 return cached[1]
             if blur:
                 shown = self._shared_blur.scrambled_until_clear(frame)[0]
+            elif mine:
+                shown = self._snapshot_blur.scrambled(frame, keep=self._owner(camera_id, frame))[0]
             else:
                 shown = self._snapshot_blur(frame) if self._blur_on() and not clear else frame
             ok, jpeg = cv2.imencode(".jpg", shown, [cv2.IMWRITE_JPEG_QUALITY, 70])
@@ -163,6 +175,22 @@ class CaptureService:
                 return None
             self._snapshot_cache[key] = (seq, jpeg.tobytes())
             return self._snapshot_cache[key][1]
+
+    def _owner(self, camera_id: str, frame: Any) -> Any:
+        """`keep` for the one-pass blur: which of the faces it found are the owner's, by the person tracks of the
+        newest detection. The blur itself treats a failure or a wrong answer as "nobody" and blurs every face."""
+        pipeline = self.pipelines.get(camera_id)
+        latest = pipeline.latest if pipeline is not None else None
+        tracks = list(latest[1]) if latest else []
+        height, width = frame.shape[:2]
+
+        def keep(rows: list[Any]) -> list[bool]:
+            try:
+                return list(self.owner_faces(camera_id, rows, tracks, width, height)) if tracks else [False] * len(rows)
+            except Exception:  # cannot tell: blur everyone
+                return [False] * len(rows)
+
+        return keep
 
     def health(self, now: datetime, every: timedelta = timedelta(minutes=5)) -> list[CameraHealth]:
         """`capture.camera.health` for each camera whose status changed since the last call, and for every camera at

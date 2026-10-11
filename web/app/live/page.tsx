@@ -1,5 +1,6 @@
 "use client";
 
+import { ScanPrompt } from "@/components/people/ScanPrompt";
 import { useEffect, useState } from "react";
 import live from "@/components/live/live.module.css";
 import { Empty, ErrorBox, Loading } from "@/components/States";
@@ -128,6 +129,7 @@ export default function LivePage() {
         <h1>Live</h1>
         <p className={ui.muted} data-live-view={view}>{liveViewLine(view)}</p>
       </div>
+      <ScanPrompt />
       {cameras.loading && !cameras.data ? <Loading what="the cameras" /> : null}
       {cameras.error && !cameras.data && !cameras.error.notConfigured ? <ErrorBox what="the cameras" error={cameras.error} onRetry={cameras.reload} /> : null}
       {(cameras.data && entries.length === 0) || (cameras.error && !cameras.data && cameras.error.notConfigured) ? (
