@@ -1,0 +1,48 @@
+# Sound effects (UI chimes and clicks), placed on the film's moments. film_build.py turns each cue into an <audio>
+# clip on the film's clock, in the film and in the per-scene renders, so the cues follow the voice when lines change.
+#
+#   at: "<line>:<fraction>"   a point inside spoken line <line> (0 = start, 1 = its end), as in film_panes.py
+#       "<line>:<fraction>+<s>" or "-<s>"   ... shifted by seconds
+#       "end-<s>"            seconds before the scene ends
+#       "word:<line>:<word>" when <word> is said in line <line> (estimated from its place in the text)
+#       a number             seconds after the scene starts
+#   vol: 0..1, kept well under the voice (the voice plays at 1).
+#
+# Files live in assets/sfx/ (copied from the team's ui_chimes_and_clicks pack).
+cues:
+  # A dozen apps: the box wakes as the narrator names it.
+  - { scene: problem, at: "1:0", sfx: chime_08_power_on_arpeggio, vol: 0.28 }
+  # What's inside: the logo, then a blip as each of the Jetson's three jobs is said.
+  - { scene: intro, at: 0.2, sfx: chime_10_airy_shimmer, vol: 0.22 }
+  - { scene: intro, at: "word:0:vision", sfx: click_08_hover_blip, vol: 0.4 }
+  - { scene: intro, at: "word:0:memory", sfx: click_08_hover_blip, vol: 0.4 }
+  - { scene: intro, at: "word:0:agent", sfx: click_08_hover_blip, vol: 0.4 }
+  # Good morning: Atlas answers with a soft bell; its window opens; the goal is set; the keys answer arrives.
+  - { scene: morning, at: "1:0-0.15", sfx: chime_01_single_soft_bell, vol: 0.22 }
+  - { scene: morning, at: "2:0", sfx: click_09_select_pluck, vol: 0.3 }
+  - { scene: morning, at: "7:0", sfx: chime_04_success_3note, vol: 0.24 }
+  - { scene: morning, at: "9:0", sfx: chime_09_message_received, vol: 0.26 }
+  # The model on the box: 48 / 48.
+  - { scene: model, at: "0:0.6", sfx: chime_06_glass_ping, vol: 0.22 }
+  # At the desk: the check-in window opens; "But first" nudges.
+  - { scene: desk, at: "0:0", sfx: click_09_select_pluck, vol: 0.3 }
+  - { scene: desk, at: "2:0", sfx: chime_03_notification_up_2note, vol: 0.24 }
+  # The kitchen: the wall camera's feed comes on; Atlas's window opens; right bin.
+  - { scene: kitchen, at: "0:0", sfx: click_09_select_pluck, vol: 0.3 }
+  - { scene: kitchen, at: "0:0.2+0.3", sfx: click_12_lock_snap, vol: 0.26 }
+  - { scene: kitchen, at: "1:0", sfx: chime_04_success_3note, vol: 0.24 }
+  # On the device: the network cable comes out.
+  - { scene: device, at: "0:0+1.0", sfx: click_05_toggle_off, vol: 0.35 }
+  # Friends: the three boxes reply one by one, the 8:30 block lands, the meals goal is met.
+  - { scene: league, at: "0:1-0.5", sfx: click_07_bubble_pop, vol: 0.3 }
+  - { scene: league, at: "0:1", sfx: click_07_bubble_pop, vol: 0.3 }
+  - { scene: league, at: "0:1+0.5", sfx: click_07_bubble_pop, vol: 0.3 }
+  - { scene: league, at: "0:1+1.0", sfx: click_04_toggle_on, vol: 0.3 }
+  - { scene: league, at: "3:0", sfx: chime_04_success_3note, vol: 0.24 }
+  # How the boxes talk: the pooled-training card.
+  - { scene: friends, at: "2:0.05", sfx: click_09_select_pluck, vol: 0.28 }
+  # Xander's shift: the approval tap, then the hand-off.
+  - { scene: shift, at: "4:0.8", sfx: click_03_button_press, vol: 0.35 }
+  - { scene: shift, at: "end-1.2", sfx: chime_04_success_3note, vol: 0.24 }
+  # The end card.
+  - { scene: end, at: 0.1, sfx: chime_10_airy_shimmer, vol: 0.24 }
