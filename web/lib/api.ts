@@ -1845,7 +1845,8 @@ export interface VoiceStatus {
   /** True when the box is always listening for "Hey Atlas" (wake_word in config/voice.yaml). */
   wake?: boolean;
   mic?: { ok: boolean; detail: string };
-  speaker?: { ok: boolean; detail: string };
+  /** `absent`: the configured Bluetooth speaker is just not connected (off or unpaired), not broken. */
+  speaker?: { ok: boolean; detail: string; absent?: boolean };
   speech_to_text?: { ok: boolean; detail: string };
   text_to_speech?: { ok: boolean; detail: string };
 }
