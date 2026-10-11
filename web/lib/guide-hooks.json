@@ -19,7 +19,11 @@
     {"screen": "Inspection (/spot/)", "why": "the ask box, the guide chips and the handoff", "files": ["web/components/spot/OperatorAsk.tsx"], "need": ["data-guide=\"ask\"", "data-guide=\"guide-me\"", "data-guide=\"handoff\""]},
     {"screen": "Inspection (/spot/)", "why": "a round: its picker, steps and Play", "files": ["web/components/spot/Round.tsx"], "need": ["data-guide=\"round:pick\"", "data-guide=\"round:steps\"", "data-guide=\"round:play\""]},
     {"screen": "Inspection (/spot/)", "why": "Shift Run's parts", "files": ["web/components/spot/ShiftRun.tsx"], "need": ["data-guide=\"shiftrun:turn-back\"", "data-guide=\"shiftrun:pool\"", "data-guide=\"shiftrun:run\"", "data-guide=\"shiftrun:last\""]},
-    {"screen": "Inspection (/spot/)", "why": "the Analysis folds, findings and explainers", "files": ["web/components/spot/AnalysisLayer.tsx", "web/components/spot/Explainers.tsx"], "need": ["data-guide=\"analysis:findings\"", "data-guide=\"analysis:tables\"", "data-guide=\"analysis:data-check\"", "data-guide=\"analysis:assumptions\"", "data-guide={`finding:${", "data-guide={`explainer:${"]}
+    {"screen": "Inspection (/spot/)", "why": "the Analysis folds, findings and explainers", "files": ["web/components/spot/AnalysisLayer.tsx", "web/components/spot/Explainers.tsx"], "need": ["data-guide=\"analysis:findings\"", "data-guide=\"analysis:tables\"", "data-guide=\"analysis:data-check\"", "data-guide=\"analysis:assumptions\"", "data-guide={`finding:${", "data-guide={`explainer:${"]},
+    {"screen": "Privacy (/privacy/)", "why": "the three Faces rows (live view, saved pictures, anything that leaves), Offline mode, and the five sections", "files": ["web/app/privacy/page.tsx"], "need": ["guide=\"privacy:live-view\"", "guide=\"privacy:saved-pictures\"", "guide=\"privacy:leaves\"", "guide=\"privacy:offline\"", "data-guide=\"privacy:faces\"", "data-guide=\"privacy:cameras\"", "data-guide=\"privacy:kept\"", "data-guide=\"privacy:left\"", "data-guide=\"privacy:proof\"", "data-guide=\"privacy:erase\"", "data-guide={guide}"]},
+    {"screen": "People (/people/)", "why": "the state line, the Demo data tag, the scan button, the expressions switch and \"scan to finish\"", "files": ["web/app/people/page.tsx"], "need": ["data-guide=\"people:state\"", "data-guide=\"people:demo\"", "data-guide=\"people:scan\"", "data-guide=\"people:expressions\"", "data-guide=\"people:scan-to-finish\""]},
+    {"screen": "Teach (/teach/)", "why": "the form, its examples, Start teaching and Progress", "files": ["web/app/teach/page.tsx"], "need": ["data-guide=\"teach:form\"", "data-guide=\"teach:examples\"", "data-guide=\"teach:start\"", "data-guide=\"teach:progress\""]},
+    {"screen": "Teach (/teach/)", "why": "the Atlas mic docked at the foot", "files": ["web/components/teach/TeachMic.tsx"], "need": ["data-guide=\"teach:mic\""]}
   ],
   "headings": [
     {"screen": "Today's Plan (/dayrun/)", "files": ["web/components/dayrun/TellAtlas.tsx"], "text": ["aria-label=\"Tell Atlas what to change\""]},
@@ -29,7 +33,9 @@
     {"screen": "Today's Plan (/dayrun/)", "files": ["web/app/dayrun/page.tsx", "web/components/dayrun/PlanDetails.tsx"], "text": ["Your plan", "Due soon", "Details", "Keep this plan", "Watch the day"]},
     {"screen": "Impact (/impact/)", "files": ["web/app/impact/page.tsx"], "text": ["This week&apos;s goal", "Practise in Sort It", "What went where"]},
     {"screen": "Sort It (/play/)", "files": ["web/app/play/page.tsx"], "text": ["Are you getting better", "aria-label=\"Item\""]},
-    {"screen": "People (/people/)", "files": ["web/app/people/page.tsx", "web/components/people/FaceShare.tsx"], "text": ["Enrolled", "Teach Atlas your face"]},
-    {"screen": "Circle (/circle/)", "files": ["web/app/circle/page.tsx"], "text": ["League", "People", "Plans", "Sharing"]}
+    {"screen": "People (/people/)", "files": ["web/app/people/page.tsx", "web/components/people/FaceShare.tsx"], "text": ["Enrolled", "Teach Atlas your face", "Finish the face scan"]},
+    {"screen": "Circle (/circle/)", "files": ["web/app/circle/page.tsx"], "text": ["League", "People", "Plans", "Sharing"]},
+    {"screen": "Privacy (/privacy/)", "files": ["web/app/privacy/page.tsx"], "text": ["Faces", "Cameras", "What is kept", "What has left this box", "Erase"]},
+    {"screen": "Teach (/teach/)", "files": ["web/app/teach/page.tsx"], "text": ["Teach it something new", "Progress", "Start teaching"]}
   ]
 }

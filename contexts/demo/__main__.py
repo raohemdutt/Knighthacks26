@@ -1,15 +1,18 @@
 """The demo event feed.
 
-    python -m contexts.demo seed [--data-dir data] [--now | --end ISO] [--force] [--history]
+    python -m contexts.demo seed [--data-dir data] [--now | --end ISO] [--force] [--history] [--people]
         The whole demo night, published through the real app: every projection fills from the log.
         --history first lives the twelve days before it through the Day loop (plans, re-plans, reviews), so
         Today's Plan has earlier days on its date strip, three of them the old presenter presets.
+        --people adds demo people for the People screen (made-up vectors marked as demo data, never a face) and a
+        week of the owner's looks; nothing of the story changes.
         Then run the app on it:
             ATLAS_DATA_DIR=data ATLAS_MEMORY_FIXTURE= ATLAS_CONNECTORS=0 python -m contexts.gateway
 
     python -m contexts.demo circle --data-dir <dir> [--config-dir <dir>] [--end ISO] [--force]
         The same night plus a Circle of three on this one box, no network: names, places shared, two plans
-        agreed (one after a counter-offer) and one still open. It writes its own config directory (default
+        agreed (one after a counter-offer) and one still open, and three demo people for the People screen (made-up
+        vectors marked as demo data: contexts/demo/people.py). It writes its own config directory (default
         <data-dir>/config; the committed config never names a member) and prints the command to run the app on it.
 
     python -m contexts.demo neon --circle <id> [--name "<name>"] [--members a,b] [--days 7] [--end YYYY-MM-DD]
@@ -79,6 +82,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--end", type=datetime.fromisoformat, help="move the story so it ends at this time (with a UTC offset)")
     s.add_argument("--force", action="store_true", help="add to a data directory that already has an event log")
     s.add_argument("--history", action="store_true", help="also the twelve days before the story, lived through the Day loop")
+    s.add_argument("--people", action="store_true", help="also demo people for the People screen (made-up vectors, marked as demo data)")
     c = sub.add_parser("circle", help="the demo night plus a Circle of three, on one box")
     c.add_argument("--data-dir", type=Path, required=True)
     c.add_argument("--config-dir", type=Path, help="where to write the demo's config (default: <data-dir>/config)")
@@ -185,7 +189,7 @@ def main(argv: list[str] | None = None) -> int:
         cfg = circle.config_dir(args.config_dir or args.data_dir / "config")
         try:
             seeded = asyncio.run(seed(args.data_dir, now=end, force=args.force, config_dir=cfg, extra=circle.circle_events,
-                                     history=True))
+                                     history=True, people=True))
         except SeedRefused as refused:
             print(refused, file=sys.stderr)
             return 1
@@ -201,7 +205,7 @@ def main(argv: list[str] | None = None) -> int:
             p.error("--end needs a UTC offset, e.g. 2026-10-11T09:30:00-04:00")
         end = datetime.now(UTC).replace(microsecond=0) if args.now else args.end
         try:
-            seeded = asyncio.run(seed(args.data_dir, now=end, force=args.force, history=args.history))
+            seeded = asyncio.run(seed(args.data_dir, now=end, force=args.force, history=args.history, people=args.people))
         except SeedRefused as refused:
             print(refused, file=sys.stderr)
             return 1

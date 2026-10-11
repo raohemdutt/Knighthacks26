@@ -45,6 +45,8 @@ class Seeded:
     nudges: list[Event] = field(default_factory=list)
     plans: list[Event] = field(default_factory=list)
     rounds: list[Event] = field(default_factory=list)  # Sort It rounds scored
+    people: list[str] = field(default_factory=list)  # demo people written to the identity store now (contexts/demo/people.py)
+    looks: int = 0  # ... and the owner's expression stretches handed to the bus
 
     @property
     def last_full_day(self):
@@ -87,11 +89,13 @@ async def expire(app: Atlas, now: datetime) -> None:
 
 
 async def seed(data_dir: str | Path, now: datetime | None = None, force: bool = False, config_dir: Path | None = None,
-               extra: Callable[[datetime], list[Event]] | None = None, history: bool = False) -> Seeded:
+               extra: Callable[[datetime], list[Event]] | None = None, history: bool = False, people: bool = False) -> Seeded:
     """Publish the night into `data_dir`. `now` moves the story so it ends then (default: the script's own time).
     `config_dir` builds the app on another config directory; `extra(now)` adds more source events to the story.
     `history` first lives the twelve days before the story through the Day loop (contexts/demo/history.py), so the
     date strip on Today's Plan has earlier days to open.
+    `people` adds the demo people and a week of the owner's looks (contexts/demo/people.py: made-up vectors marked as
+    demo data), after the story and its closing jobs, so nothing of the story changes.
 
     Refuses a directory that already has an event log or a memory file unless `force`; never deletes.
     With `force` the existing log is replayed first, so seeding the same story twice adds nothing."""
@@ -144,6 +148,11 @@ async def seed(data_dir: str | Path, now: datetime | None = None, force: bool = 
                 lambda: app.day.tick(now) if app.day else []):  # the Day loop's status at the end of the story
         await app.bus.publish_all(job())
         await settle()
+    if people:
+        from contexts.demo import people as demo_people  # here, not at the top: it reads the check-in story, which imports this module
+
+        out.people, out.looks = await demo_people.publish(app, now, story(now), settle)
+        out.source_events += out.looks
     out.seconds = time.perf_counter() - started
     return out
 
@@ -180,6 +189,14 @@ def summary(s: Seeded) -> str:
         lines += [f"  {view['summary']}", f"  Stake: {view['stake']['text_for_week']}", f"  Waste Watch {view['team_waste']['line']}"]
     lines.append(f"Sort It: {len(s.rounds)} round(s) scored" + "".join(
         f"; {r.item} in the {'right' if r.correct else 'wrong'} bin in {r.seconds:.0f} s, {r.score:g} points" for r in s.rounds))
+    if s.people or s.looks or any(m.get("demo") for m in (app.identity.members() if app.identity else [])):
+        rows = app.identity.members()
+        lines += ["", f"People (DEMO DATA: made-up vectors, never a face; {s.looks} stretches of looks for the owner):"]
+        lines += [f"  {m['name']:10s} " + ("recognised through the Circle" if m["source"] == "circle" else "scanned" if m["scanned"]
+                                           else "photos only: scan to finish") + (", reads expressions" if m["expressions"] else "")
+                  for m in rows if m.get("demo")]
+        if not app.identity.available:
+            lines.append("  This machine has no face model, so nobody will be recognised live.")
     for title, events, text in ((f"Alerts raised ({len(s.alerts)})", s.alerts, lambda e: f"[{e.rule_id}] {e.message}"),
                                 (f"Nudges raised ({len(s.nudges)})", s.nudges, lambda e: f"[{e.habit_id}] {e.message}"),
                                 (f"Plans created ({len(s.plans)})", s.plans, lambda e: f"[{e.subject}] {e.text}")):

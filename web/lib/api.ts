@@ -169,6 +169,8 @@ export interface Member {
   shared_by?: string | null; // source "circle" only: the friend's Circle member id
   received_at?: string | null;
   expires_at?: string | null; // when this box deletes it unless the friend renews
+  /** Written by the demo seed (`python -m contexts.demo circle`): made-up numbers, nobody's face. Shown with a "Demo data" tag. */
+  demo?: boolean;
 }
 
 /** A box key as two friends compare it: "ab12 cd34 ef56 0a1b 2c3d". */

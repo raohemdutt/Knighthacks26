@@ -263,3 +263,41 @@
   letter-spacing: 0.04em;
   overflow-wrap: anywhere;
 }
+
+/* ---------- where things stand, and who is in the list ---------- */
+
+/* One plain line above the sections: recognition on or off, or no face model on this machine. */
+.stateLine {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 20px;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+}
+
+.stateLine p {
+  margin: 0;
+}
+
+.demoLine {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+
+/* "Demo data": the same pill as every tag, with a dashed outline so it reads as a label, not a state. */
+.demoTag {
+  outline: 1px dashed var(--muted);
+  outline-offset: -1px;
+}
+
+/* A name with its state next to it; the tags drop under the name on a narrow phone. */
+.nameRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}

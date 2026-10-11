@@ -1,14 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { Empty, ErrorBox, Loading, WriteError } from "@/components/States";
+import { TeachMic } from "@/components/teach/TeachMic";
 import teach from "@/components/teach/teach.module.css";
 import ui from "@/components/ui.module.css";
 import { ApiError, api, keyframeUrl, type LearningStage, type LearningTask } from "@/lib/api";
 import { useAtlas, useAtlasEvents } from "@/lib/atlas";
 import { cameraName, dayTime } from "@/lib/format";
 import { useFetch } from "@/lib/useFetch";
+import { ASKS, setScreenIntent } from "@/lib/voice";
 import { ZONES } from "@/lib/zones.generated";
 
 /**
@@ -18,7 +21,38 @@ import { ZONES } from "@/lib/zones.generated";
  *     POST /api/teach. That raises an approval card: nothing is exported until you approve it on Approvals.
  *  2. Progress comes from GET /api/learning (rebuilt from the learning.* events) and refreshes as they arrive:
  *     labeling, training, eval, packaging, deploying. After eval it shows the before and after scores.
+ *
+ * The Atlas mic is docked at the foot (components/teach/TeachMic.tsx): a spoken question goes to the box as on Ask,
+ * and three things this screen already has are taken as commands of its own (`teachIntent` below): "start teaching"
+ * presses Start teaching (which raises the approval card, never approves it), "how is the run going" reads Progress,
+ * "open the Learning lab" follows the link.
  */
+
+/** What the Start teaching button would do right now, for the voice: the form's own state and its own press. */
+interface FormControl {
+  ready: boolean;
+  missing: string | null; // what to fill in first, in words
+  start: () => Promise<string | null>; // the task that is now waiting for approval, or null when it could not be asked
+}
+
+const START = /^(?:please )?(?:start|begin) (?:teaching|a run|the run|training|it)\b|^teach (?:it|atlas) (?:this|that)\b|^start$/i;
+const PROGRESS = /\b(?:how(?: is|'s| are) (?:it|the run|the training|training|teaching|that|things?)(?: going| doing)?|progress|status|how far|is it done|what is atlas learning|what are you learning)\b/i;
+const LAB = /\b(?:open|show|go to|take me to) (?:the )?(?:learning )?lab\b/i;
+
+/** Where one taught task stands, as Atlas would say it: short, no ids, no numbers read out as records. */
+function saidProgress(tasks: LearningTask[]): string {
+  const t = [...tasks].sort((a, b) => b.updated.localeCompare(a.updated))[0];
+  if (!t) return "Nothing is being taught yet. Describe a task here and I will ask you before any picture leaves.";
+  const name = t.task.replace(/-/g, " ");
+  const more = tasks.length > 1 ? ` That is the newest of ${tasks.length}.` : "";
+  if (t.stage === "waiting for approval") return `${name} is waiting for you. Nothing leaves until you approve it on Approvals.${more}`;
+  if (t.stage === "done") return `${name} is done${t.deployed ? " and installed" : t.decision === "reject" ? ", and I did not install it" : ""}.${more}`;
+  if (t.stage === "failed") return `${name} failed. The reason is on the screen.${more}`;
+  if (t.stage === "denied") return `${name} was not approved, so nothing was sent.${more}`;
+  if (t.stage === "expired") return `${name} timed out waiting for approval, so nothing was sent.${more}`;
+  const doing: Partial<Record<LearningStage, string>> = { exported: "The pictures are sent", labeling: "I am labeling the pictures", training: "I am training", eval: "I am testing it", packaging: "I am packaging it", deploying: "I am installing it" };
+  return `${doing[t.stage] ?? "I am working"} for ${name}, about ${Math.round(t.progress * 100)} percent through that step.${more}`;
+}
 
 const STEPS: LearningStage[] = ["waiting for approval", "exported", "labeling", "training", "eval", "packaging", "deploying", "done"];
 const STEP_LABEL: Record<LearningStage, string> = {
@@ -102,7 +136,7 @@ function TaskCard({ task }: { task: LearningTask }) {
   );
 }
 
-function Form({ onStarted }: { onStarted: () => void }) {
+function Form({ onStarted, control }: { onStarted: () => void; control: MutableRefObject<FormControl | null> }) {
   const [name, setName] = useState("");
   const [instruction, setInstruction] = useState("");
   const [camera, setCamera] = useState<string | null>(null);
@@ -127,7 +161,7 @@ function Form({ onStarted }: { onStarted: () => void }) {
   const id = slug(name);
   const ready = id.length > 0 && instruction.trim().length > 3 && !busy;
 
-  async function start() {
+  async function start(): Promise<string | null> {
     setBusy(true);
     setError(null);
     try {
@@ -140,12 +174,20 @@ function Form({ onStarted }: { onStarted: () => void }) {
       });
       setStarted(out.task);
       onStarted();
+      return out.task;
     } catch (err) {
       setError(err instanceof ApiError ? err : new ApiError(0, String(err)));
+      return null;
     } finally {
       setBusy(false);
     }
   }
+  // the voice presses the same button with the same rules
+  control.current = {
+    ready,
+    missing: busy ? "It is already being asked." : id.length === 0 ? "Give it a name first." : instruction.trim().length <= 3 ? "Say what I should do with each picture first." : null,
+    start,
+  };
 
   const mark = (ref: string, v: "up" | "down") =>
     setVerdicts((cur) => {
@@ -156,7 +198,7 @@ function Form({ onStarted }: { onStarted: () => void }) {
     });
 
   return (
-    <div className={teach.card}>
+    <div className={teach.card} data-guide="teach:form">
       <label className={teach.field}>
         <span className={teach.label}>What should it be called?</span>
         <input className={teach.text} value={name} onChange={(e) => setName(e.target.value)} placeholder="Desk objects" maxLength={40} />
@@ -184,7 +226,7 @@ function Form({ onStarted }: { onStarted: () => void }) {
         <p className={teach.help}>One of the things the camera already recognizes, such as person or laptop.</p>
       </label>
       <div className={teach.field}>
-        <span className={teach.label}>Show it a few examples</span>
+        <span className={teach.label} data-guide="teach:examples">Show it a few examples</span>
         <p className={teach.help}>Thumbs up: like this. Thumbs down: not this. Optional, but a handful helps a lot.</p>
         {episodes.loading && !episodes.data ? <Loading what="recent pictures" /> : null}
         {episodes.error ? <ErrorBox what="recent pictures" error={episodes.error} onRetry={episodes.reload} /> : null}
@@ -214,7 +256,7 @@ function Form({ onStarted }: { onStarted: () => void }) {
         </div>
       </div>
       {error ? <WriteError error={error} /> : null}
-      <button type="button" className={`${ui.btn} ${ui.btnPrimary}`} disabled={!ready} onClick={start}>
+      <button type="button" className={`${ui.btn} ${ui.btnPrimary}`} data-guide="teach:start" disabled={!ready} onClick={() => void start()}>
         Start teaching
       </button>
       {started ? (
@@ -234,6 +276,35 @@ export default function TeachPage() {
 
   const tasks = board.data?.tasks ?? [];
   const latest = board.data?.deployments[0];
+
+  // This screen's own commands, by voice or from the command palette. Each is something already on the screen.
+  const router = useRouter();
+  const form = useRef<FormControl | null>(null);
+  const tasksRef = useRef(tasks);
+  tasksRef.current = tasks;
+  // What a command answered, shown above the mic: also when the words came from the command palette, which shows nothing itself.
+  const [heard, setHeard] = useState<{ asked: string; answer: string } | null>(null);
+  useEffect(
+    () =>
+      setScreenIntent("/teach/", async (text) => {
+        const said = text.trim();
+        const answer = await (async (): Promise<string | null> => {
+          if (LAB.test(said)) {
+            router.push("/lab/");
+            return "Opening the Learning lab.";
+          }
+          if (PROGRESS.test(said)) return saidProgress(tasksRef.current);
+          if (ASKS.test(said) || !START.test(said)) return null; // a question, or not for this screen: it goes to Ask's path
+          const f = form.current;
+          if (!f || !f.ready) return f?.missing ?? "The form is not ready yet.";
+          const task = await f.start(); // the same press as the button: it raises the approval card and sends nothing
+          return task ? "I asked. Nothing leaves the box until you approve it on Approvals." : "I could not ask for that. The reason is on the screen.";
+        })();
+        if (answer !== null) setHeard({ asked: said, answer });
+        return answer;
+      }),
+    [router],
+  );
   return (
     <>
       <div className={ui.pageHead}>
@@ -245,9 +316,9 @@ export default function TeachPage() {
       </div>
       <section className={teach.section}>
         <h2>Teach it something new</h2>
-        <Form onStarted={reload} />
+        <Form onStarted={reload} control={form} />
       </section>
-      <section className={teach.section}>
+      <section className={teach.section} data-guide="teach:progress">
         <h2>Progress</h2>
         <p className={ui.muted}>
           See a training run step by step, and why a model was or was not installed, in the <Link href="/lab">Learning lab</Link>.
@@ -259,6 +330,7 @@ export default function TeachPage() {
           <TaskCard key={t.task} task={t} />
         ))}
       </section>
+      <TeachMic heard={heard} />
     </>
   );
 }
