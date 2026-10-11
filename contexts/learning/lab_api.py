@@ -8,7 +8,8 @@ GET /api/learning/lab[?sample=1]
      "real_runs": int,                                  runs in this box's own log, whatever is shown
      "current_model": {version, source} | null,         what the box serves now (never from the sample)
      "measured": [number],                              the trainer numbers measured on our hardware (lab metrics file)
-     "suggested_events": [...]}                         the additive events this view can use and the lab does not send yet
+     "suggested_events": [...],                         the additive events this view can use and the lab does not send yet
+     "trainer_runs": [...]}                             only when the trainer's run folders were read from disk (lab_runs.py)
 
 GET /api/learning/lab/{run_id}[?sample=1]
     the run's story (contexts/learning/application/lab_view.py), plus "sources": every number with where it came
@@ -25,6 +26,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
+from contexts.learning.application.lab_runs import sync as sync_trainer_runs
 from contexts.learning.application.lab_sample import SAMPLE_DIR, cached_sample
 from contexts.learning.application.lab_view import SUGGESTED_EVENTS, LabView, by_file, collect_numbers, num
 
@@ -72,6 +74,7 @@ def lab_router(view: LabView, current_model: Callable[[], dict | None] | None = 
 
     @router.get("/api/learning/lab")
     def lab(sample: bool = False) -> dict:
+        trainer_runs = sync_trainer_runs(view)  # the trainer's own files, when a run folder is attached (lab_runs.py)
         chosen, why = pick(sample)
         model = current_model() if current_model else None
         if model is None and view.deployments:  # the newest swap the log holds
@@ -79,10 +82,12 @@ def lab_router(view: LabView, current_model: Callable[[], dict | None] | None = 
             model = {"version": last.model_version, "source": f"learning.model.deployed {last.event_id}"}
         return {"runs": chosen.runs() if chosen else [], "sample": bool(chosen and chosen.sample), "sample_reason": why,
                 "real_runs": len(view.run_ids), "current_model": model, "measured": measured(metrics_file),
-                "suggested_events": SUGGESTED_EVENTS}
+                "suggested_events": SUGGESTED_EVENTS,
+                **({"trainer_runs": trainer_runs} if trainer_runs else {})}  # run folders read from disk, when there are any
 
     @router.get("/api/learning/lab/{run_id}")
     def run(run_id: str, sample: bool = False) -> dict:
+        sync_trainer_runs(view)
         chosen, why = pick(sample)
         story = chosen.story(run_id) if chosen else None
         if story is None:
