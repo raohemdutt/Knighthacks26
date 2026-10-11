@@ -107,8 +107,65 @@ def speech_for_answer(answer: str, citation_count: int = 0) -> str:
     if not re.search(r"[.!?]$", said):
         said += "."
     if citation_count > 0:
-        said += f" Based on {citation_count} {'piece' if citation_count == 1 else 'pieces'} of evidence."
+        said += " " + evidence_line(citation_count)
     return said
+
+
+def evidence_line(citation_count: int) -> str:
+    return f"Based on {citation_count} {'piece' if citation_count == 1 else 'pieces'} of evidence."
+
+
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+|\n+")
+MIN_SPOKEN_CHUNK = 20  # "Sure." or "1." is joined to the next sentence, so the speaker is not fed one word at a time
+
+
+class SentenceStream:
+    """Cuts an answer that is still being written into sentences, as soon as each one is finished."""
+
+    def __init__(self) -> None:
+        self._buf = ""
+        self._held = ""  # a sentence too short to say alone
+
+    def feed(self, piece: str) -> list[str]:
+        self._buf += piece
+        out = []
+        while m := _SENTENCE_END.search(self._buf):
+            sentence, self._buf = f"{self._held} {self._buf[:m.start()]}".strip(), self._buf[m.end():]
+            if len(sentence) >= MIN_SPOKEN_CHUNK:
+                out.append(sentence)
+                self._held = ""
+            else:
+                self._held = sentence
+        return out
+
+    def flush(self) -> str:
+        """Whatever is left once the answer has ended."""
+        rest, self._buf, self._held = f"{self._held} {self._buf}".strip(), "", ""
+        return rest
+
+
+# whisper tiny.en spells the name a few ways: "Atlas", "Atlus", "At last", and sometimes "Alice". "Hey" is required, so the name
+# alone inside a sentence ("the atlas is on the shelf") is not a wake; the name as the only word said is.
+_NAME = r"(?:atlas|atlus|atlis|atlast|athlas|adlas|alas|alice|atlantis|atlanta|at\s+las|at\s+last)"
+_WAKE = re.compile(r"\b(?:hey|hay|hi|okay|ok)\W+" + _NAME + r"\b", re.I)
+_NAME_ALONE = re.compile(r"^\W*" + _NAME + r"\W*$", re.I)
+MIN_WORDS_FOR_QUESTION = 2  # "Hey Atlas. you" is a wake and a stray word, not a question
+
+
+def without_wake(text: str) -> str:
+    """The words with every "Hey Atlas" taken out: said again and again while waiting, it is not part of the question."""
+    spaced = re.sub(r"\s+", " ", _WAKE.sub(" ", text))
+    return re.sub(r"^[\W_]+", "", spaced).strip()
+
+
+def find_wake(transcript: str) -> str | None:
+    """None: this was not said to Atlas. Otherwise what followed "Hey Atlas": "" when that was all (Atlas answers "What's up?"
+    and listens), or the question when it came in the same breath."""
+    m = _WAKE.search(transcript)
+    if not m:
+        return "" if _NAME_ALONE.match(transcript) else None
+    rest = without_wake(transcript[m.end():])
+    return rest if len(re.findall(r"\w+", rest)) >= MIN_WORDS_FOR_QUESTION else ""
 
 
 def clean_transcript(raw: str) -> str:
