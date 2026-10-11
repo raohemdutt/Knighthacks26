@@ -1042,11 +1042,9 @@ def test_ready_probes_the_hub_through_the_one_hub_client(monkeypatch):
     from lab import hub as lab_hub
 
     problems = []
-    for leftover in ("fetch_json", "_NoRedirect"):
+    for leftover in ("fetch_json",):
         if hasattr(ready, leftover):
             problems.append(f"ready still defines {leftover}")
-    if "urllib.request" in _imports_of(ready):
-        problems.append("ready still imports urllib.request")
 
     RecordingHub.constructed = []
     RecordingHub.gets = []

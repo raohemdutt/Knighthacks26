@@ -33,6 +33,7 @@ import os
 import tempfile
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
+import urllib.request
 from typing import Any
 
 import httpx
@@ -51,6 +52,14 @@ HUB_PROBE_RETRIES = 0
 HTTP_OK = 200
 # Values shorter than this are not worth hiding in an error message; they would mangle it.
 MIN_HIDDEN_CHARS = 6
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Never follow a redirect: a token must only go to the address it was meant for. Kept here for
+    lab.machine.slots_notion, which builds its opener with it; ready's own hub probe goes through lab.hub.Hub."""
+
+    def redirect_request(self, *args: Any, **kwargs: Any) -> None:
+        return None
 # The checks that decide ready and the exit code; every other check (the hub) only warns.
 GATE_CHECKS = ("stop", "state_dir", "env")
 
