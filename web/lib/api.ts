@@ -1969,6 +1969,9 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   // the look guide: "where do I look for X?" -> a place on the Inspection screen and the words to walk there (no model call)
   spotGuide: (q: string, signal?: AbortSignal) => get<import("./guide").SpotGuide>("/api/spot/guide", { q }, signal),
   spotRoute: (to: string, from?: string | null, signal?: AbortSignal) => get<import("./guideSpot").SpotRoute>("/api/spot/route", from ? { to, from } : { to }, signal),
+  /** The floor traced from the kit's plan picture (rooms, doors, equipment, stairs, walkable cells), and the traced line between every pair of waypoints. */
+  spotWalkable: (signal?: AbortSignal) => get<import("./guideSpot").SpotWalkable>("/api/spot/walkable", undefined, signal),
+  spotWalkableLegs: (signal?: AbortSignal) => get<{ configured: boolean; available: boolean; legs: Record<string, import("./guideWalk").TracedLeg> }>("/api/spot/walkable/legs", undefined, signal),
   spotShift: (signal?: AbortSignal) => get<Spot.Shift>("/api/spot/shift", undefined, signal),
   spotRound: (id: string, signal?: AbortSignal) => get<Spot.RoundView>(`/api/spot/shift/rounds/${encodeURIComponent(id)}`, undefined, signal),
   /** The same cited answer, worded for an operator; `draft` keeps the exact wording. */

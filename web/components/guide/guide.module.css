@@ -111,7 +111,7 @@
   width: min(330px, calc(100vw - 24px));
   padding: 12px 14px;
   border-radius: var(--radius-sm);
-  background: var(--surface);
+  background: var(--surface-solid); /* over other text: the glass tone would let it show through */
   color: var(--text);
   box-shadow: var(--sh-float);
   border-left: 4px solid var(--danger);

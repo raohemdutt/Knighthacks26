@@ -10,6 +10,7 @@ import { FIXATION_MS, attention, simScript } from "@/lib/guideAttention";
 import { SCREENS, classify, ease, fromGaze, narration, pathPoint, pinTarget, pinnedThing, precisionOf, resolveApp, spotWords, thingName, trail, travelMs, type GuideTarget, type Locator, type Pt, type Reveal } from "@/lib/guide";
 import { offer, onGuide, pointAt, type GuideMessage, type GuideRun } from "@/lib/guideBus";
 import { along, length as routeLength, pointerRoute, type Box } from "@/lib/guidePath";
+import { alongStops, stepAt, walkFraction } from "@/lib/guideWalk";
 import { binRun } from "@/lib/guideBin";
 import { spotRun } from "@/lib/guideSpot";
 import { oneSentence } from "@/lib/speechText";
@@ -34,7 +35,7 @@ import g from "./guide.module.css";
  * ?gazeDebug=1 draws the screen region the eyes are estimated to be in.
  */
 
-type Phase = "reveal" | "travel" | "arrived" | "found";
+type Phase = "reveal" | "travel" | "walk" | "arrived" | "found";
 
 interface View {
   run: GuideRun;
@@ -48,6 +49,8 @@ interface View {
   rect: DOMRect | null;
   lines: string[];
   note: string | null;
+  /** A paced walk (run.pace): the route's points on the page and each one's share of the way. In phase "walk", `t` is the share of the walk's time. */
+  walk?: { els: Element[]; at: number[] } | null;
 }
 
 interface Offer {
@@ -246,13 +249,50 @@ export function GuideLayer() {
       const arrive = run.arrive ?? words.arrive;
       const note = run.note?.(found) ?? null;
       // around the cards rather than across their text; through the walking route's waypoints when there is one
-      const stops = (run.via ?? []).map((at) => locate(at)).filter((x): x is Element => x !== null).map((x) => visible(x)!).map((r) => ({ x: r.left + r.width / 2, y: r.top + r.height / 2 }));
+      const onPage = (run.via ?? []).map((at, i) => ({ el: locate(at), share: run.pace?.at[i] ?? 0 })).filter((x): x is { el: Element; share: number } => x.el !== null);
+      const stops = onPage.map((x) => visible(x.el)!).map((r) => ({ x: r.left + r.width / 2, y: r.top + r.height / 2 }));
       const first = stops[0] ?? centre;
       const around = pointerRoute(origin, first, obstacles(found), [], vw, vh);
-      const route = stops.length > 0 ? [...(around ?? [origin, first]), ...stops.slice(1), centre] : around;
-      show({ start: origin, route, anchor: centre, rect: last, note });
+      const pace = run.pace && onPage.length > 1 ? run.pace : null;
+      const route = pace ? around ?? [origin, first] : stops.length > 0 ? [...(around ?? [origin, first]), ...stops.slice(1), centre] : around;
+      show({ start: origin, route, anchor: centre, rect: last, note, walk: pace ? { els: onPage.map((x) => x.el), at: onPage.map((x) => x.share) } : null });
 
-      if (held || still) {
+      if (pace) {
+        // a walk: to its start quickly, then along it at a walking pace, one instruction per stretch as the dot starts on it
+        for (const line of words.travel) tell(line);
+        let said = -1;
+        const upTo = (tf: number) => {
+          const now = tf <= 0 ? 0 : stepAt(pace, Math.min(tf, 0.9999));
+          for (; said < now; said++) tell(pace.steps[said + 1]!.say);
+        };
+        if (held || still) {
+          const tf = held ? Math.max(0, Math.min(1, run.t!)) : 1;
+          upTo(tf);
+          if (tf >= 1) tell(arrive);
+          show({ phase: tf >= 1 ? "arrived" : "walk", t: tf });
+        } else {
+          const animate = (ms: number, each: (t: number) => void) =>
+            new Promise<void>((resolve) => {
+              const t0 = performance.now();
+              const frame = (now: number) => {
+                if (!alive()) return resolve();
+                const t = Math.min(1, (now - t0) / ms);
+                each(t);
+                if (t < 1) window.requestAnimationFrame(frame);
+                else resolve();
+              };
+              window.requestAnimationFrame(frame);
+            });
+          show({ phase: "travel", t: 0 });
+          await animate(Math.round(Math.max(500, Math.min(1100, 300 + routeLength(route ?? [origin, first]) * 1.1))), (t) => show({ t }));
+          if (!alive()) return;
+          show({ phase: "walk", t: 0 });
+          await animate(pace.ms, (t) => (upTo(t), show({ t })));
+          if (!alive()) return;
+          tell(arrive);
+          show({ phase: "arrived", t: 1 });
+        }
+      } else if (held || still) {
         const at = held ? Math.max(0, Math.min(1, run.t!)) : 1;
         for (const line of [...words.travel, ...(run.extra ?? [])]) tell(line);
         if (at >= 1) tell(arrive);
@@ -313,7 +353,7 @@ export function GuideLayer() {
       if (bin) return void start(bin);
       if (samePath(here, "/spot/")) {
         try {
-          const { run, found } = await spotRun(query, t);
+          const { run, found } = await spotRun(query, t, Boolean(voiceRef.current.canSpeak && voiceRef.current.getSettings().speak));
           if (run) return void start(run);
           if (found && found.alternatives.length > 0) return offer(found.steps[0]?.say ?? "Did you mean one of these?", found.alternatives.map((a) => ({ label: a.label, ask: a.target })));
         } catch {
@@ -519,6 +559,11 @@ export function GuideLayer() {
   const rect = view && el.current ? visible(el.current) ?? view.rect : view?.rect ?? null;
   const centre = rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null;
   const moving = view && centre && view.phase === "travel";
+  // a paced walk: the route's points are measured again on every frame, so a scroll does not leave the dot behind
+  const walk = view?.phase === "walk" && view.walk && view.run.pace ? view.walk : null;
+  const walkPts = walk ? walk.els.map((e, i) => ({ r: visible(e), share: walk.at[i]! })).filter((x) => x.r).map((x) => ({ x: x.r!.left + x.r!.width / 2, y: x.r!.top + x.r!.height / 2, share: x.share })) : [];
+  const walkAt = (u: number): Pt => alongStops(walkPts, walkPts.map((p) => p.share), u);
+  const walked = walk && view?.run.pace ? walkFraction(view.run.pace, view.t) : 0;
   // on a planned route the end follows the target: the whole way is nudged by however far the target has moved since
   const onRoute = (u: number): Pt => {
     const p = along(view!.route!, u);
@@ -526,13 +571,19 @@ export function GuideLayer() {
     return { x: p.x + (centre!.x - view!.anchor!.x) * k, y: p.y + (centre!.y - view!.anchor!.y) * k };
   };
   const routed = Boolean(view?.route && view.anchor && centre);
-  const at = view && centre ? (routed ? onRoute(ease(view.t)) : pathPoint(view.start, centre, ease(view.t))) : null;
+  // on the approach to a walk the way ends at the walk's first point, not at the target
+  const approach = Boolean(view?.walk && view.run.pace && view.phase === "travel" && view.route);
+  const at = walk && walkPts.length > 1 ? walkAt(walked) : approach ? along(view!.route!, ease(view!.t)) : view && centre ? (routed ? onRoute(ease(view.t)) : pathPoint(view.start, centre, ease(view.t))) : null;
   const tail =
-    moving && view.t > 0 && view.t < 1
-      ? routed
-        ? Array.from({ length: 18 }, (_, i) => onRoute(Math.max(0, ease(view.t) - 0.22 + (0.22 * i) / 17)))
-        : trail(view.start, centre!, view.t)
-      : [];
+    walk && walkPts.length > 1 && view!.t > 0
+      ? Array.from({ length: 14 }, (_, i) => walkAt(Math.max(0, walked - 0.05 + (0.05 * i) / 13)))
+      : approach
+        ? []
+        : moving && view.t > 0 && view.t < 1
+          ? routed
+            ? Array.from({ length: 18 }, (_, i) => onRoute(Math.max(0, ease(view.t) - 0.22 + (0.22 * i) / 17)))
+            : trail(view.start, centre!, view.t)
+          : [];
   const landed = view?.phase === "arrived";
   const small = rect ? Math.max(rect.width, rect.height) < 64 : false;
   const pad = small ? 8 : 6;
@@ -552,10 +603,24 @@ export function GuideLayer() {
       capY = Math.max(12, Math.min(vh - 210, rect.bottom - 200));
     }
   }
+  // a walk on a plan: the caption keeps off the plan, so the line and the dot stay in view (beside it, else under it, else at the foot)
+  const plan = view?.run.pace && el.current ? el.current.closest("svg")?.getBoundingClientRect() ?? null : null;
+  if (plan) {
+    if (vw - plan.right >= capW + 24) {
+      capX = plan.right + 12;
+      capY = Math.max(12, Math.min(vh - 210, plan.top));
+    } else if (plan.bottom + 180 < vh) {
+      capX = Math.max(12, Math.min(vw - capW - 12, plan.left));
+      capY = plan.bottom + 10;
+    } else {
+      capX = (vw - capW) / 2;
+      capY = Math.max(12, vh - 200);
+    }
+  }
   const lines = view?.lines ?? [];
 
   return (
-    <div className={g.layer} aria-live="polite" data-guide-layer={view?.phase ?? "offer"} data-guide-target={view?.run.target.id}>
+    <div className={g.layer} aria-live="polite" data-guide-layer={view?.phase ?? "offer"} data-guide-target={view?.run.target.id} data-guide-walked={walk ? walked.toFixed(3) : undefined}>
       {debugBox}
       {simBanner}
       {tail.length > 1 ? (

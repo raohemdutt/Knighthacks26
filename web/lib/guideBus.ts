@@ -16,6 +16,11 @@ export interface GuideRun {
   t?: number | null;
   /** Points the pointer passes through on its way, in order (a walking route's waypoints on a map). Those not on screen are skipped. */
   via?: Locator[];
+  /**
+   * A walk along `via` at a walking pace: the dot covers each stretch in the time its sentence takes, and that sentence is
+   * said (and captioned) as the dot starts on it (lib/guideWalk.ts). `at` holds one share of the way per `via` point.
+   */
+  pace?: import("./guideWalk").WalkPlan;
   /** More sentences for the way there, after the target's own (the walking route in words). */
   extra?: string[];
   /** Said and shown on arrival instead of the target's own last sentence. */

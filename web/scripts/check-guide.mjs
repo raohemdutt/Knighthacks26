@@ -341,6 +341,51 @@ try {
   eq("attention: the sim script", A.simScript(" do-first:1, trust ,,asset:HX-202"), ["do-first:1", "trust", "asset:HX-202"]);
   A.attention.reset();
   eq("attention: reset forgets everything", [Object.keys(A.attention.get().seen).length, A.attention.get().scan.length], [0, 0]);
+
+  // ---- the walk on the plant floor (lib/guideWalk.ts): the dot and the voice in step, a tap snapped to the floor
+  {
+  const WK = await load("guideWalk");
+  const size = { w: 1000, h: 500 };
+  const oneFloor = [{ floor: 1, points: [[0.1, 0.2], [0.3, 0.2], [0.3, 0.6]] }]; // 200 px right, then 200 px down
+  const twoSteps = [
+    { say: "From the yard, go along the corridor.", floor: 1, length_px: 200, upto: 0.5 },
+    { say: "Turn right and go into the hall.", floor: 1, length_px: 200, upto: 1 },
+    { say: "Pump 5 is on your left.", floor: 1, length_px: 0, upto: 1, arrive: true },
+  ];
+  const quiet = WK.planWalk(oneFloor, twoSteps, size, false);
+  eq("walk: each point's share of the way", quiet.at, [0, 0.5, 1]);
+  eq("walk: the arrival sentence is kept for the end", [quiet.arrive, quiet.steps.length], ["Pump 5 is on your left.", 2]);
+  eq("walk: silent, the pace is by length", [quiet.ms, quiet.steps.map((s) => [s.t0, s.t1])], [WK.paceMs(400), [[0, 0.5], [0.5, 1]]]);
+  eq("walk: pace is clamped", [WK.paceMs(10), WK.paceMs(400), WK.paceMs(5000)], [2500, 3600, 12000]);
+  const spoken = WK.planWalk(oneFloor, twoSteps, size, true);
+  eq("walk: spoken, a stretch lasts as long as its sentence", spoken.ms, WK.sayMs(twoSteps[0].say) + WK.sayMs(twoSteps[1].say));
+  yes("walk: spoken is slower than silent", spoken.ms > quiet.ms);
+  eq("walk: which stretch at which time", [WK.stepAt(quiet, 0), WK.stepAt(quiet, 0.49), WK.stepAt(quiet, 0.5), WK.stepAt(quiet, 1)], [0, 0, 1, 1]);
+  eq("walk: share of the way at a share of the time", [WK.walkFraction(quiet, 0), WK.walkFraction(quiet, 0.25), WK.walkFraction(quiet, 0.75), WK.walkFraction(quiet, 1)], [0, 0.25, 0.75, 1]);
+  const screen = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }];
+  eq("walk: the dot along the stops", [WK.alongStops(screen, quiet.at, 0.25), WK.alongStops(screen, quiet.at, 0.75), WK.alongStops(screen, quiet.at, 2)], [{ x: 50, y: 0 }, { x: 100, y: 50 }, { x: 100, y: 100 }]);
+  eq("walk: no stops, no crash", WK.alongStops([], [], 0.5), { x: 0, y: 0 });
+  const stairs = WK.planWalk(
+    [{ floor: 1, points: [[0.1, 0.2], [0.3, 0.2]] }, { floor: 2, points: [[0.7, 0.2], [0.9, 0.2]] }],
+    [{ say: "Go along the corridor.", floor: 1, length_px: 200, upto: 0.5 }, { say: "Take the stairs up to floor 2.", floor: 1, length_px: 0, upto: 0.5, stairs: true },
+     { say: "On floor 2, go along the landing.", floor: 2, length_px: 200, upto: 1 }, { say: "It is here.", floor: 2, length_px: 0, upto: 1, arrive: true }],
+    size, false);
+  yes("walk: stairs get a stretch of their own", stairs.steps[1].stairs && stairs.steps[1].upto > stairs.steps[1].from && stairs.steps[1].t1 > stairs.steps[1].t0);
+  eq("walk: the jump between floors sits where the stairs stretch is", [stairs.at[1], stairs.at[2]].map((v) => Number(v.toFixed(3))), [stairs.steps[1].from, stairs.steps[1].upto].map((v) => Number(v.toFixed(3))));
+  yes("walk: the stretches cover the whole way and the whole time", stairs.steps[0].from === 0 && stairs.steps[2].upto === 1 && stairs.steps[2].t1 === 1 && stairs.at[3] === 1);
+  eq("walk: an empty route does not divide by zero", WK.walkFraction(WK.planWalk([], [], size, true), 0.4), 0.4);
+  // a 10 x 4 grid of 10 px cells from (0.1, 0.1): row 1 is free in columns 2..5, row 2 in columns 2..3
+  const grid = { x0: 0.1, y0: 0.1, cell_x: 0.01, cell_y: 0.02, cols: 10, rows: 4, free: 6, runs: [[1, 2, 5], [2, 2, 3]] };
+  eq("floor: free and not", [WK.isFree(grid, 0.125, 0.13), WK.isFree(grid, 0.165, 0.13), WK.isFree(grid, 0.145, 0.15), WK.isFree(grid, 0.125, 0.11)], [true, false, false, false]);
+  eq("floor: a tap on the floor stays put", WK.snapToFloor(grid, 0.125, 0.13, size), { x: 0.125, y: 0.13, moved: 0 });
+  eq("floor: a tap just off it snaps to the nearest cell", WK.snapToFloor(grid, 0.17, 0.13, size), { x: 0.155, y: 0.13, moved: 15 });
+  eq("floor: a tap far from any floor is refused", WK.snapToFloor(grid, 0.6, 0.6, size), null);
+  eq("floor: which floor a point is on", [WK.floorAt({ 1: grid, 2: { ...grid, x0: 0.5 } }, 0.15, 0.12), WK.floorAt({ 1: grid, 2: { ...grid, x0: 0.5 } }, 0.55, 0.12), WK.floorAt({ 1: grid }, 0.9, 0.9)], [1, 2, null]);
+  const legs = { "WP01>WP02": { floors: [{ floor: 1, points: [[0, 0], [1, 0], [1, 1]] }, { floor: 2, points: [[5, 5], [6, 6]] }], connector: "s", walked: true, times_walked: 2 } };
+  eq("legs: forwards as stored", WK.legBetween(legs, "WP01", "WP02").floors[0].points, [[0, 0], [1, 0], [1, 1]]);
+  eq("legs: backwards is the same line walked the other way", WK.legBetween(legs, "WP02", "WP01").floors.map((f) => [f.floor, f.points]), [[2, [[6, 6], [5, 5]]], [1, [[1, 1], [1, 0], [0, 0]]]]);
+  eq("legs: none, and none to itself", [WK.legBetween(legs, "WP01", "WP09"), WK.legBetween(legs, "WP01", "WP01")], [null, null]);
+  }
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }
