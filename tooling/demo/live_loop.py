@@ -4,17 +4,27 @@
     bash tooling/demo/live_loop.sh --slot <row> --on-approval          # start when the phone approves an export
     bash tooling/demo/live_loop.sh --check                             # what the run needs, nothing started
 
-Two acts of the L10 group fine-tune on pod D (tooling/demo/live_loop_pod.sh), one after the other:
-act 1 "solo" is one member's 100 examples, act 2 "duo" is two members' 200 pooled. Each act labels at the pod C
-teacher (16 streams), trains a LoRA (8 short steps, a loss row per step), packages and offers. Pod C labels act 2
-while pod D trains act 1; act 2 trains on pod D's GPU while act 1 packages on its CPU.
+Two acts of the L10 group fine-tune (tooling/demo/live_loop_pod.sh), one after the other: act 1 "solo" is one
+member's examples, act 2 "duo" is two members' pooled (--solo-examples and --duo-examples per member, 50 each by
+default, to keep the run under 4 minutes; the budget is in LIVE_LOOP_RUN_OF_SHOW.md). Each act labels at the teacher
+(16 streams), trains a LoRA (8 short steps, a loss row per step), packages and offers.
+
+The teacher is the 122B pair served across pods C and D (vLLM pipeline-parallel, its API on pod C's port 8000 as
+"teacher" and "group-brain", the same URL and token as before): --teacher-expect Qwen3.5-122B is the checkpoint the
+labeling checks for, and its energy is both pods'. The 27B on pod C alone is the fallback: --teacher-expect
+Qwen3.8-27B (its energy is pod C's). Act 1 trains on pod D alone. Act 2 trains on both pods at once with R65's
+two-pod LoRA (lab/r65_local_sgd.py: rank 0 on pod D, rank 1 on pod C, each on half the rows, int8 deltas swapped
+through the hub proxy every 4 steps; --duo-pods 1 keeps it on pod D). Act 2 labels while act 1 trains, and trains
+while act 1 packages on pod D's CPU.
 
 While it runs, this relay
   - reads ~/l29/<stamp>/stages.jsonl and each act's telemetry.jsonl from pod D every --every seconds through the hub
     (lab/lab_push.py's PodSource, never written) and posts new step rows to the box's import route (lab_push's Box
     and Relay: the box keeps a step by run and number, so a grown file adds only its new steps); when an act is done it
     posts the package manifest and the stand-in gate's scores, then checks GET /api/learning/lab for the run;
-  - posts each act's stage lines as they appear (kind=stage: the Training run tab's stage strip and "running");
+  - posts each act's stage lines as they appear (kind=stage: the Training run tab's stage strip and "running"); act
+    2's start line carries "2 members" and its pods, and pod C's rank 1 posts its own lines and steps under the part
+    run id live-<stamp>-duo.pod-c, which the box shows inside act 2;
   - prints a stopwatch line per stage change;
   - records three power traces: pod C's and pod D's samplers (lab/pod_power.py serve, :8790 through the hub proxy,
     every second) and the box's own VDD_IN (telemetry.jetson.power on the gateway's /ws);
@@ -74,6 +84,9 @@ POD_SCRIPT = HERE / "live_loop_pod.sh"
 CARD = HERE / "live_loop_card.html"
 TASK = "desk-objects"
 SAMPLER_PORT = 8790
+TEACHER_PAIR = "Qwen3.5-122B"      # the two-pod teacher's checkpoint (pods C and D, API on pod C's port 8000)
+TEACHER_SINGLE = "Qwen3.8-27B"     # the fallback: the 27B on pod C alone
+PART = ".pod-c"                    # act 2's rank 1 on pod C posts under <duo run id>.pod-c
 COMMAND_T = time.time()   # the start command: the stopwatch's zero unless --on-approval waits for the phone
 
 
@@ -222,6 +235,7 @@ class State:
         self.comparison: dict[str, Any] | None = None
         self.finished_s: float | None = None
         self.trigger: dict[str, Any] | None = None
+        self.stages_c: list[dict[str, Any]] = []   # pod C's rank 1 lines (act 2 on two pods), on pod C's clock
 
 
 def pod_d_shares(stages: list[dict[str, Any]], pod_d: Trace) -> tuple[dict[str, float | None], dict[str, float]]:
@@ -303,20 +317,30 @@ def act_lines(rows: list[dict[str, Any]], act: str) -> list[dict[str, Any]]:
     return [{**r, "task": TASK} for r in rows if r.get("act") == act]
 
 
+def teacher_nodes_for(expect: str, given: str | None = None) -> tuple[str, ...]:
+    """The pods the teacher runs on: --teacher-nodes, else both pods for the pair and pod C for the 27B."""
+    if given:
+        return tuple(n.strip() for n in given.split(",") if n.strip())
+    return ("pod-c", "pod-d") if TEACHER_PAIR.lower() in expect.lower() else ("pod-c",)
+
+
 def power_windows(stages: list[dict[str, Any]], act: str, run_id: str, traces: dict[str, Trace],
-                  where: dict[str, dict[str, Any]]) -> list[tuple[str, dict[str, Any]]]:
+                  where: dict[str, dict[str, Any]], teacher_nodes: tuple[str, ...] = ("pod-c",)
+                  ) -> list[tuple[str, dict[str, Any]]]:
     """(stage, window) for each of the act's windows the traces cover, in the box's kind=power shape: the samples on
     the node's own clock a few seconds either side, the node's clock offset, the sampler and its measured period, the
-    idle floor, and the hub and account of a pod."""
-    pod_d_off = traces["pod-d"].offset
+    idle floor, and the hub and account of a pod. Labeling on every teacher pod, training on every pod that trains
+    (pod C's rank 1 on pod C's clock), packaging on pod D, and the whole act on all three nodes."""
+    whole = le.window(stages, act, "start", "done")
+    spans = [(stage, node, span, clock) for stage, node, span, clock in le.act_windows(stages, act, teacher_nodes)]
+    spans += [("act", node, whole, "pod-d") for node in ("pod-c", "pod-d", "box")] if whole else []
     out = []
-    for stage, first, last, node in le.POWER_WINDOWS:
-        span = le.window(stages, act, first, last)
+    for stage, node, span, clock in spans:
         tr = traces.get(node)
-        if span is None or tr is None:
+        if tr is None:
             continue
         points, off = tr.snapshot()
-        a, b = le.moved(span, pod_d_off, off)
+        a, b = le.moved(span, traces[clock].offset, off)
         inside = [(t, w) for t, w in points if a - EDGE_S <= t <= b + EDGE_S]
         if not inside:
             continue
@@ -332,10 +356,10 @@ def power_windows(stages: list[dict[str, Any]], act: str, run_id: str, traces: d
 
 
 def post_windows(box: Box, stages: list[dict[str, Any]], act: str, run_id: str, traces: dict[str, Trace],
-                 where: dict[str, dict[str, Any]]) -> str:
+                 where: dict[str, dict[str, Any]], teacher_nodes: tuple[str, ...] = ("pod-c",)) -> str:
     """Post the act's power windows; one line of what the box said."""
     said = []
-    for stage, body in power_windows(stages, act, run_id, traces, where):
+    for stage, body in power_windows(stages, act, run_id, traces, where, teacher_nodes):
         answer = box.post("power", json.dumps(body).encode(), run_id, {"stage": stage})
         said.append(f"{stage}.{body['node']} {answer.status or 'no answer'}")
     return ", ".join(said) or "no samples to post yet"
@@ -356,21 +380,47 @@ def pod_where(link: PodLink) -> dict[str, Any]:
 
 # --- the run -------------------------------------------------------------------------------------------
 
-def start_pod(stamp: str, slot: str, steps: int, log: Log) -> dict[str, Any]:
-    token = env_value("AUP_HUB_TOKEN_C")
-    if not token:
-        return {"ok": False, "error": "AUP_HUB_TOKEN_C is not in the environment or the .env files"}
+def pod_settings(args: argparse.Namespace, c_user: str | None) -> str:
+    """The l29_env file pod D reads (KEY=VALUE, only known keys; never a token)."""
+    lines = {"SOLO_EXAMPLES": args.solo_examples, "DUO_EXAMPLES": args.duo_examples, "DUO_PODS": args.duo_pods,
+             "TEACHER_EXPECT": args.teacher_expect, "C_USER": c_user or "", "L29_SERIAL": 1 if args.serial else 0}
+    return "".join(f"{k}={v}\n" for k, v in lines.items())
+
+
+def run_script(account: str, files: dict[str, str], args: list[str]) -> dict[str, Any]:
+    """One pod script run with small files beside it (written to a temporary folder here, removed at once)."""
     tmp = Path(tempfile.mkdtemp(prefix="l29-"))
     try:
-        tt = tmp / "l29_tt"
-        tt.write_text(token, encoding="utf-8")
-        answer, code = controller.run(["run-script", "--account", "D", "--timeout", "90", "--with", str(tt),
-                                       str(POD_SCRIPT), "start", stamp, slot, str(steps)])
+        withs = []
+        for name, text in files.items():
+            (tmp / name).write_text(text, encoding="utf-8")
+            withs += ["--with", str(tmp / name)]
+        answer, code = controller.run(["run-script", "--account", account, "--timeout", "90", *withs,
+                                       str(POD_SCRIPT), *args])
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     tail = str(answer.get("output_tail") or "")
-    return {"ok": code == 0 and "started" in tail, "seconds": answer.get("seconds"), "tail": tail[-400:],
-            "outcome": answer.get("outcome"), "error": answer.get("error")}
+    return {"ok": code == 0 and ("started" in tail or "waiting" in tail), "seconds": answer.get("seconds"),
+            "tail": tail[-400:], "outcome": answer.get("outcome"), "error": answer.get("error")}
+
+
+def start_pod(stamp: str, slot: str, steps: int, log: Log, settings: str = "") -> dict[str, Any]:
+    """Pod D: both acts. The teacher's token (pod C's account: the API is on pod C's port 8000 for the pair and the
+    27B alike) rides in l29_tt, deleted by the pod script at once; nothing prints it."""
+    token = env_value("AUP_HUB_TOKEN_C")
+    if not token:
+        return {"ok": False, "error": "AUP_HUB_TOKEN_C is not in the environment or the .env files"}
+    files = {"l29_tt": token, **({"l29_env": settings} if settings else {})}
+    return run_script("D", files, ["start", stamp, slot, str(steps)])
+
+
+def start_rank1(stamp: str, slot: str, d_user: str) -> dict[str, Any]:
+    """Pod C: rank 1 of act 2, waiting for pod D's handoff. Pod D's account token (rank 1 reads pod D's handoff and
+    mailbox through the hub proxy) rides in l29_td, moved off the upload path at once and deleted when rank 1 ends."""
+    token = env_value("AUP_HUB_TOKEN_D")
+    if not token:
+        return {"ok": False, "error": "AUP_HUB_TOKEN_D is not in the environment or the .env files"}
+    return run_script("C", {"l29_td": token}, ["rank1", stamp, slot, d_user])
 
 
 def run_loop(args: argparse.Namespace) -> int:
@@ -386,6 +436,9 @@ def run_loop(args: argparse.Namespace) -> int:
     accounts = controller.load_accounts(["C", "D"])
     link_c, link_d, link_files = (PodLink.for_account(accounts["C"]), PodLink.for_account(accounts["D"]),
                                   PodLink.for_account(accounts["D"]))
+    link_c_files = PodLink.for_account(accounts["C"])
+    teachers = teacher_nodes_for(args.teacher_expect, args.teacher_nodes)
+    two_pods = args.duo_pods == 2
     stop = threading.Event()
     traces = {"pod-c": Trace("pod-c"), "pod-d": Trace("pod-d"), "box": Trace("box")}
     pod_d = traces["pod-d"]
@@ -430,12 +483,24 @@ def run_loop(args: argparse.Namespace) -> int:
     def clock() -> str:
         return f"[{now_s() - t0:6.1f} s]"
 
-    started = start_pod(stamp, args.slot, args.steps, log)
+    if two_pods:   # rank 1 first, so it is waiting when act 2's handoff appears; its start overlaps pod D's
+        rank1: dict[str, Any] = {}
+        waiter = threading.Thread(target=lambda: rank1.update(start_rank1(stamp, args.slot_c, accounts["D"].user)))
+        waiter.start()
+    started = start_pod(stamp, args.slot, args.steps, log, pod_settings(args, accounts["C"].user))
+    if two_pods:
+        waiter.join()
+        if not rank1.get("ok"):
+            say(f"{clock()} pod C did not start rank 1: {rank1}")
+            stop.set()
+            return 1
+        say(f"{clock()} pod C's rank 1 waits for act 2 (run-script {rank1.get('seconds')} s)")
     if not started["ok"]:
         say(f"{clock()} pod D did not start the run: {started}")
         stop.set()
         return 1
-    say(f"{clock()} pod D started both acts (run-script {started['seconds']} s)")
+    say(f"{clock()} pod D started both acts (run-script {started['seconds']} s); teacher {args.teacher_expect} on "
+        f"{' and '.join(teachers)}; act 2 on {args.duo_pods} pod(s)")
 
     def listed(act: str, run_id: str) -> None:
         """Whether the box's Learning lab lists the run now (its own API, the same list the screen draws)."""
@@ -452,9 +517,38 @@ def run_loop(args: argparse.Namespace) -> int:
             say(f"{clock()} {act}: the box's Learning lab did not answer ({type(exc).__name__})")
 
     source = PodSource(link_files)
+    source_c = PodSource(link_c_files)
     box = Box(box_url, env_value("ATLAS_TOKEN"))
     stages_path = f"l29/{stamp}/stages.jsonl"
     seen_stages = 0
+    rank1_relay = Relay(source_c, box, run_id=f"live-{stamp}-duo{PART}", save_dir=out / "duo-pod-c")
+    rank1_state = {"lines": 0, "stage_posted": 0, "steps": 0}
+
+    def read_rank1(final: bool = False) -> list[dict[str, Any]]:
+        """Pod C's rank 1: its stage lines (posted under the part run id, kept for the energy windows) and its steps."""
+        if not two_pods:
+            return []
+        part = rank1_relay.run_id
+        data = safe_read(source_c, f"l29/{stamp}/stages-c.jsonl")
+        lines = [json.loads(x) for x in complete_lines(data or b"").decode().splitlines() if x.strip()]
+        for s in lines[rank1_state["lines"]:]:
+            say(f"{clock()} duo: pod C {s.get('stage')} {('rc ' + str(s.get('rc'))) if 'rc' in s else ''}")
+        rank1_state["lines"] = len(lines)
+        if len(lines) > rank1_state["stage_posted"]:
+            answer = box.post("stage", "".join(json.dumps({**x, "task": TASK}) + "\n" for x in lines).encode(), part,
+                              {"task": TASK})
+            if answer.ok:
+                rank1_state["stage_posted"] = len(lines)
+        tel = f"l29/{stamp}/rank1/telemetry.jsonl"
+        n = complete_lines(safe_read(source_c, tel) or b"").count(b"\n")
+        if n > rank1_state["steps"] or (final and n):
+            try:
+                answer = rank1_relay.steps(tel)
+                rank1_state["steps"] = n
+                say(f"{clock()} duo: pod C {n} step rows posted, {answer['box'].brief() if 'box' in answer else answer}")
+            except Exception as exc:
+                say(f"{clock()} duo: pod C steps read failed ({type(exc).__name__}), next round")
+        return lines
     stage_posted: dict[str, int] = {a: 0 for a in ACTS}
     relays: dict[str, Relay] = {}
     lines_posted: dict[str, int] = {}
@@ -481,7 +575,9 @@ def run_loop(args: argparse.Namespace) -> int:
             if s.get("stage") == "failed" or (s.get("stage") == "done" and s.get("rc") not in (0, None)):
                 failed = True
         seen_stages = len(rows)
+        rows_c = read_rank1()
         with state.lock:
+            state.stages_c = rows_c
             acts = {a: dict(v) for a, v in state.acts.items()}
         for act in ACTS:   # the stage strip on the box: each act's lines as they appear (the same lines again add nothing)
             run_id, lines = acts[act].get("run_id"), act_lines(rows, act)
@@ -526,10 +622,14 @@ def run_loop(args: argparse.Namespace) -> int:
                 if not args.no_scores:
                     say(f"{clock()} {act}: stand-in scores {post_scores(source, box, run_id, out / act)}")
                 finished[act] = True
-                say(f"{clock()} {act}: power windows {post_windows(box, rows, act, run_id, traces, where)}")
+                if act == "duo":
+                    rows_c = read_rank1(final=True)
+                every = rows + rows_c
+                say(f"{clock()} {act}: power windows "
+                    f"{post_windows(box, every, act, run_id, traces, where, teachers)}")
                 done_ids = {a: acts[a].get("run_id") if finished[a] else None for a in ACTS}
-                part = compare(rows, {a: {"run_id": r} for a, r in done_ids.items()}, traces, source, out, t0,
-                               now_s() - t0 if all(finished.values()) else None, stamp)
+                part = compare(every, {a: {"run_id": r} for a, r in done_ids.items()}, traces, source, out, t0,
+                               now_s() - t0 if all(finished.values()) else None, stamp, teachers, source_c)
                 say(f"{clock()} {act}: comparison so far {post_comparison(box, part)}")
                 if all(finished.values()):
                     listed(act, run_id)
@@ -547,17 +647,19 @@ def run_loop(args: argparse.Namespace) -> int:
         f"total {total:.1f} s from the start command")
 
     time.sleep(3.0)   # one more second of samples past the end on every trace
+    rows_c = read_rank1(final=True)
     with state.lock:
-        stages = list(state.stages)
+        stages = list(state.stages) + rows_c
         acts = {a: dict(v) for a, v in state.acts.items()}
     (out / "stages.jsonl").write_text("".join(json.dumps(s) + "\n" for s in stages), encoding="utf-8")
-    comparison = compare(stages, acts, traces, source, out, t0, total, stamp)
+    comparison = compare(stages, acts, traces, source, out, t0, total, stamp, teachers, source_c)
     with state.lock:
         state.comparison = comparison
     (out / "comparison.json").write_text(json.dumps(comparison, indent=2) + "\n", encoding="utf-8")
     for act in ACTS:   # the windows again with the last seconds of samples, then the whole comparison
         if finished.get(act) and acts[act].get("run_id"):
-            log(f"{act}: final power windows {post_windows(box, stages, act, acts[act]['run_id'], traces, where)}")
+            log(f"{act}: final power windows "
+                f"{post_windows(box, stages, act, acts[act]['run_id'], traces, where, teachers)}")
     log(f"comparison on the box: {post_comparison(box, comparison)}")
     for name, tr in traces.items():
         (out / f"power-{name}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in tr.raw), encoding="utf-8")
@@ -634,12 +736,33 @@ def act_facts(source: PodSource, run_id: str) -> dict[str, Any]:
     return facts
 
 
+def rank_facts(source: PodSource | None, path: str, run_id: str) -> dict[str, Any] | None:
+    """A rank's own run.json (lab/train.py's answer): its steps and losses, for the act's per-pod training row."""
+    data = safe_read(source, path) if source is not None else None
+    try:
+        answer = json.loads(data) if data else None
+    except ValueError:
+        answer = None
+    if not isinstance(answer, dict):
+        return None
+    m = answer.get("metrics") or {}
+    return {"run_id": run_id, "steps": m.get("trainer.steps"), "loss_first": m.get("trainer.loss_first"),
+            "loss_last": m.get("trainer.loss_last"), "train_s": m.get("trainer.train_s"), "outcome": answer.get("outcome")}
+
+
 def compare(stages: list[dict[str, Any]], acts: dict[str, dict[str, Any]], traces: dict[str, Trace],
-            source: PodSource, out: Path, t0: float, total: float | None, stamp: str | None = None) -> dict[str, Any]:
-    """The comparison document (loop_energy.compare), with each act's counts read from its run folder on pod D."""
+            source: PodSource, out: Path, t0: float, total: float | None, stamp: str | None = None,
+            teacher_nodes: tuple[str, ...] = ("pod-c",), source_c: PodSource | None = None) -> dict[str, Any]:
+    """The comparison document (loop_energy.compare), with each act's counts read from its run folder on pod D, and
+    for an act that trained on both pods, pod C's rank from its own run.json."""
     run_ids = {act: acts.get(act, {}).get("run_id") for act in ACTS}
     facts = {act: act_facts(source, run_id) for act, run_id in run_ids.items() if run_id}
-    return le.compare(stages, run_ids, facts, node_traces(traces), t0, total, stamp)
+    for act, run_id in run_ids.items():
+        if run_id and "pod-c" in le.trains_on(stages, act):
+            stamp_of = run_id.removeprefix("live-").rsplit("-", 1)[0]
+            rank1 = rank_facts(source_c, f"l29/{stamp_of}/rank1/run.json", f"{run_id}{PART}")
+            facts[act]["trainer_pods"] = {"pod-c": rank1 or {"run_id": f"{run_id}{PART}"}}
+    return le.compare(stages, run_ids, facts, node_traces(traces), t0, total, stamp, teacher_nodes)
 
 
 def write_rows(comparison: dict[str, Any], stamp: str) -> None:
@@ -763,14 +886,31 @@ def check(args: argparse.Namespace) -> int:
         print(f"pod C teacher queue: {busy} (labeling at 16 streams wants these near 0)")
     except Exception as exc:
         print(f"pod C teacher metrics: no answer ({type(exc).__name__})")
-    answer, code = controller.run(["run-script", "--account", "D", "--timeout", "90", str(POD_SCRIPT), "check"])
-    print(str(answer.get("output_tail") or answer.get("error")))
+    print(f"teacher expected: {args.teacher_expect} on {' and '.join(teacher_nodes_for(args.teacher_expect, args.teacher_nodes))}"
+          f"; act 2 on {args.duo_pods} pod(s); act sizes {args.solo_examples} and {args.duo_examples} per member")
+    code = 0
+    for letter in ("D", "C") if args.duo_pods == 2 else ("D",):
+        answer, rc = controller.run(["run-script", "--account", letter, "--timeout", "90", str(POD_SCRIPT), "check"])
+        print(f"pod {letter}: " + str(answer.get("output_tail") or answer.get("error")))
+        code = code or rc
     return code
 
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--slot", help="the GPU Queue row id that is Running for pod D (python -m lab slot start)")
+    p.add_argument("--slot-c", help="the GPU Queue row id that is Running for pod C (act 2's rank 1; --duo-pods 2)")
+    p.add_argument("--teacher-expect", default=TEACHER_PAIR,
+                   help=f"the teacher checkpoint labeling checks for (default {TEACHER_PAIR}, the pair on pods C and "
+                        f"D; fallback {TEACHER_SINGLE}, the 27B on pod C; 'a|b' takes either)")
+    p.add_argument("--teacher-nodes", help="the pods the teacher's energy is counted on, comma-separated (default: "
+                                           "pod-c,pod-d for the pair, pod-c otherwise)")
+    p.add_argument("--solo-examples", type=int, default=50, help="act 1's examples (one member)")
+    p.add_argument("--duo-examples", type=int, default=50, help="act 2's examples per member (two members)")
+    p.add_argument("--duo-pods", type=int, choices=(1, 2), default=2,
+                   help="act 2 trains on both pods (2, R65's two-pod LoRA) or on pod D alone (1)")
+    p.add_argument("--serial", action="store_true", help="act 2 trains only after act 1 has packaged (slower, less "
+                                                         "memory on pod D at once)")
     p.add_argument("--steps", type=int, default=8, help="optimizer steps per act (one loss row each)")
     p.add_argument("--every", type=float, default=5.0, help="seconds between reads of the pod's run folder")
     p.add_argument("--box", help="the box's address (default: the `jetson` key of .env)")
@@ -794,6 +934,10 @@ def main(argv: list[str] | None = None) -> int:
         return fallback(args)
     if not args.slot:
         p.error("--slot is required: GPU time on pod D only inside a GPU Queue slot")
+    if args.duo_pods == 2 and not args.slot_c:
+        p.error("--slot-c is required with --duo-pods 2: act 2's rank 1 trains on pod C, inside its own GPU Queue slot")
+    if min(args.solo_examples, args.duo_examples) < 8:
+        p.error("--solo-examples and --duo-examples are at least 8: a quarter is held out, the rest trains")
     if args.every < 2:
         p.error("--every is at least 2 seconds")
     return run_loop(args)
