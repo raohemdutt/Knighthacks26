@@ -15,6 +15,7 @@ import ui from "@/components/ui.module.css";
 import { api } from "@/lib/api";
 import { useAtlasEvents } from "@/lib/atlas";
 import { spotWalk, useTraced } from "@/lib/guideSpot";
+import { goSpotView, useSpotView } from "@/lib/spotView";
 import { useFetch } from "@/lib/useFetch";
 
 /**
@@ -129,7 +130,25 @@ export default function SpotPage() {
   const pick = (t: Tab) => {
     if (t === "analysis") setEvidence(true);
     setTab(t);
+    goSpotView(t === "run" ? "training" : t === "analysis" ? "analysis" : "shift"); // the sidebar's menu follows the tab
   };
+
+  // The sidebar's Inspection menu (and old ?tab= links) name a view in the address; open what that view is today.
+  const view = useSpotView();
+  const ready = Boolean(shift.data && link);
+  useEffect(() => {
+    if (!ready) return;
+    setTab(view === "training" ? "run" : view === "analysis" ? "analysis" : "shift");
+    if (view === "analysis") setEvidence(true);
+    if (view === "equipment") setAll(true);
+    if (view !== "rounds" && view !== "handoff") return;
+    const t = window.setTimeout(() => {
+      const el = document.querySelector<HTMLElement>(view === "rounds" ? "#round" : '[data-guide="handoff"]');
+      el?.scrollIntoView({ block: view === "rounds" ? "start" : "center" });
+      if (view === "handoff") el?.click(); // the existing "Write my shift handoff" button
+    }, 60);
+    return () => window.clearTimeout(t);
+  }, [view, ready]);
 
   if (shift.error) return <ErrorBox what="the inspection data" error={shift.error} onRetry={shift.reload} />;
   if (!shift.data || link === null) return <Loading what="your shift" />;
