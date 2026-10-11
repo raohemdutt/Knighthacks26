@@ -338,6 +338,8 @@ def circle_work(db: NeonDb) -> dict:
         "presence.push": lambda: presence.push(OutboxRow("e4", "team", "dom", "presence", place, NOW)),
         "presence.active": lambda: presence.active("team", NOW),
         "cleanup.sweep": lambda: NeonCleanup(db).sweep("team", "dom", timedelta(days=30)),
+        "cleanup.sweep with face share on": lambda: NeonCleanup(db, sealed_keep=timedelta(days=30)).sweep(
+            "team", "dom", timedelta(days=30)),
         "sealed.post": lambda: sealed.post(sealed_row),
         "sealed.inbox": lambda: sealed.inbox("team", "bob"),
         "sealed.delete": lambda: sealed.delete("team", ["s1", "s2"]),
@@ -357,6 +359,7 @@ REQUESTS = {
     "board.habit_summaries": [1], "board.impact_counters": [1], "board.upcoming_events": [1],
     "presence.push": [3], "presence.active": [1],
     "cleanup.sweep": [1, 1, 1],  # `rowcount` after each delete
+    "cleanup.sweep with face share on": [1, 1, 1, 1],  # and the dead sealed rows
     "sealed.post": [3], "sealed.inbox": [1], "sealed.delete": [1],
     "league.push_stake": [3], "league.push_week": [2], "league.push_challenge": [4],
 }
@@ -716,26 +719,38 @@ def test_a_connection_string_without_a_host_is_offline_not_a_crash():
 
 class FakeDatabase:
     """Answers the schema tool's own questions for a database that holds `tables` (name -> columns), every index
-    and view of schema.sql unless `missing`, and two members in one circle."""
+    and view of schema.sql unless `missing` (a table, index or view by name, a column as "table.column"), and two
+    members in one circle. It keeps what --apply creates, so a second look sees it."""
 
     def __init__(self, missing: tuple[str, ...] = ()):
         want = schema.expected(schema.SCHEMA.read_text())
-        self.tables = {t: cols for t, cols in want["tables"].items() if t not in missing}
+        self.tables = {t: [c for c in cols if f"{t}.{c}" not in missing] for t, cols in want["tables"].items() if t not in missing}
         self.indexes = {i: t for i, t in want["indexes"].items() if t in self.tables and i not in missing}
         self.views = [v for v in want["views"] if v not in missing]
         self.created: list[str] = []
+        self._want = want
 
     def __call__(self, body: dict, headers: dict):
-        if any(q["query"].startswith("CREATE") for q in body.get("queries", [body])) and headers.get("neon-batch-read-only"):
+        writes = any(q["query"].startswith(("CREATE", "ALTER")) for q in body.get("queries", [body]))
+        if writes and headers.get("neon-batch-read-only"):
             return 400, {"message": "cannot execute CREATE TABLE in a read-only transaction", "code": "25006"}
         return 200, reply(body, self.one)
 
     def one(self, q: dict) -> dict:
         sql = q["query"]
         text = lambda *rows: table([("x", 25)], [list(r) for r in rows])  # noqa: E731
-        if sql.startswith("CREATE"):
+        if sql.startswith(("CREATE", "ALTER")):
+            kind, name = next((k, n) for k, n, statement in schema.statements(sql + ";"))
             self.created.append(" ".join(sql.split()[:6]))
-            return {"command": "CREATE", "rowCount": None, "rows": [], "fields": [], "rowAsArray": True}
+            if kind == "table":
+                self.tables[name] = list(self._want["tables"][name])
+            elif kind == "index":
+                self.indexes[name] = self._want["indexes"][name]
+            elif kind == "view":
+                self.views.append(name)
+            elif name.split(".")[1] not in self.tables[name.split(".")[0]]:  # ADD COLUMN IF NOT EXISTS
+                self.tables[name.split(".")[0]].append(name.split(".")[1])
+            return {"command": sql.split()[0], "rowCount": None, "rows": [], "fields": [], "rowAsArray": True}
         if sql == "SHOW server_version":
             return text(["17.5"])
         if "pg_database_size" in sql:
@@ -743,9 +758,11 @@ class FakeDatabase:
         if "extract(epoch" in sql:
             assert float(q["params"][0]) > 1e9
             return table([("?column?", 1700)], [["0.4"]])
-        if "information_schema.tables" in sql or "pg_class" in sql:
-            names = sorted(self.tables) + (sorted({*self.indexes, *self.views}) if "pg_class" in sql else [])
-            return text(*[[n] for n in names])
+        if "pg_class" in sql:  # --apply's one look: every table, index and view (NULL), then every column
+            names = [[n, None] for n in sorted({*self.tables, *self.indexes, *self.views})]
+            return table([("relname", 19), ("attname", 19)], names + [[t, c] for t, cols in sorted(self.tables.items()) for c in cols])
+        if "information_schema.tables" in sql:
+            return text(*[[n] for n in sorted(self.tables)])
         if "information_schema.columns" in sql:
             return table([("t", 25), ("c", 25), ("k", 25), ("n", 25)],
                          [[t, c, "text", "NO"] for t, cols in sorted(self.tables.items()) for c in cols])
@@ -803,12 +820,37 @@ def test_schema_apply_over_https_creates_what_is_missing_in_one_transaction(sche
     db = schema_over_https.answer = FakeDatabase(missing=("sealed_messages", "presence_circle_expiry"))
     schema.main(["--apply"])
     out = capsys.readouterr().out
-    assert "created: index presence_circle_expiry, table sealed_messages, index sealed_messages_inbox" in out
+    assert "created: index presence_circle_expiry, table sealed_messages, index sealed_messages_inbox\n" in out
     looked, created = schema_over_https.requests[0], schema_over_https.requests[1]
     assert "query" in looked[1] and "pg_class" in looked[1]["query"]  # the read: its own request
-    assert [q["query"].split()[1] for q in created[1]["queries"]] == ["INDEX", "TABLE", "INDEX"]  # then one transaction
+    assert [q["query"].split()[1] for q in created[1]["queries"]] == ["INDEX", "TABLE", "TABLE", "INDEX"]  # then one transaction
     assert all(q["params"] == [] for q in created[1]["queries"]) and "neon-batch-read-only" not in created[0]
-    assert len(db.created) == 3 and all("neon-batch-read-only" in h for h, _ in schema_over_https.requests[2:])
+    # the table came with its expires_at column: the ADD COLUMN after it ran as a no-op and is not reported
+    assert [q["query"].split()[:2] for q in created[1]["queries"]][-2] == ["ALTER", "TABLE"] and "column" not in out
+    assert len(db.created) == 4 and all("neon-batch-read-only" in h for h, _ in schema_over_https.requests[2:])
+    assert out.rstrip().endswith("against schema.sql: matches")
+
+
+def test_a_column_schema_sql_gained_is_reported_by_check_and_added_by_apply(schema_over_https, capsys):
+    """The live database when this landed: every table of schema.sql, and sealed_messages without expires_at."""
+    db = schema_over_https.answer = FakeDatabase(missing=("sealed_messages.expires_at",))
+    assert schema.main(["--check"]) == 1
+    assert capsys.readouterr().out == (
+        "transport: https (port 443)\nagainst schema.sql: 1 difference(s)\n"
+        "  - column sealed_messages.expires_at is in schema.sql but not in the database (apply schema.sql)\n")
+    assert db.created == []  # --check only reads
+
+    schema_over_https.requests.clear()
+    assert schema.main(["--apply"]) == 0
+    assert capsys.readouterr().out == ("transport: https (port 443)\ncreated: column sealed_messages.expires_at\n"
+                                       "against schema.sql: matches\n")
+    wrote = [b for h, b in schema_over_https.requests if "neon-batch-read-only" not in h][1]
+    assert wrote == {"query": "ALTER TABLE sealed_messages ADD COLUMN IF NOT EXISTS expires_at timestamptz", "params": []}
+    assert db.created == ["ALTER TABLE sealed_messages ADD COLUMN IF"]  # that one statement and nothing else
+
+    assert schema.main(["--apply"]) == 0  # again: nothing left to do, nothing sent but reads
+    assert "created: nothing (every table, column, index and view was already there)" in capsys.readouterr().out
+    assert len(db.created) == 1
 
 
 @pytest.mark.parametrize("transport", ["https", "auto", "tcp"])

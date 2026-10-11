@@ -43,27 +43,44 @@ pictures, Memory, the day plan, health, approvals and the event log stay on each
 | `game_scores` | one scored Sort It round | the member's box (`share_summaries`) | kept |
 | `presence` | the named place a member shares now, and when it ends | the member's box (`share_presence`); "stop sharing" ends the row | one row per member, overwritten; removed by its own box once expired for `circle.keep_days` |
 | `league_stakes`, `league_weeks`, `league_challenges` | the week's stake, a declared week's standings, a dare | the box whose person set, closed or started it | kept |
-| `sealed_messages` | face share only (off by default): a box's public keys, a face template as ciphertext for one friend's box, a revoke | the sharing box | the boxes delete a share when it is used, taken back or revoked |
+| `sealed_messages` | face share only (off by default): a box's public keys, a face template as ciphertext for one friend's box, a revoke | the sharing box | the boxes delete a share when it is used, taken back or revoked. A share also carries its expiry in the `expires_at` column: past it the row is no longer handed to anyone, and the sender's box removes it in its daily sweep (as it does its own revokes older than `circle.face_share_days`) |
 
 Two views, `habit_leaderboard` and `impact_leaderboard`, are read by the Circle screen.
 
 **Set up.** `pip install -e ".[neon]"`, then `NEON_DATABASE_URL=` in `.env` (the pooled connection string, the
 same on every box in the circle). `schema.sql` is the intended state. Check the database against it, and create
-what is missing, once for a new database and again whenever `schema.sql` gains a table or an index:
+what is missing, once for a new database and again whenever `schema.sql` gains a table, a column or an index:
 
 ```bash
 python -m contexts.circle.schema --check    # read-only: what differs between the database and schema.sql
-python -m contexts.circle.schema --apply    # creates the missing tables, indexes and views; nothing else
+python -m contexts.circle.schema --apply    # creates the missing tables, columns, indexes and views; nothing else
 python -m contexts.circle.schema --counts   # read-only: --check plus columns, indexes, sizes, rows per circle
 ```
 
 None of the three prints the connection string or a row's contents (ids are shortened to two letters).
-`--apply` runs `schema.sql`'s own `CREATE ... IF NOT EXISTS` statements in one transaction and only for objects
-that do not exist; it cannot alter, replace or drop anything, and it leaves an existing view as it is. A column
-that `schema.sql` gained on an existing table is reported by `--check` and needs a written migration.
+`--apply` runs `schema.sql`'s own statements in one transaction and only for objects that do not exist; it
+cannot change, replace or drop anything that is there, and it leaves an existing view as it is. The one thing it
+does to an existing table is add a column `schema.sql` gained, when `schema.sql` adds it by name with
+`ALTER TABLE … ADD COLUMN IF NOT EXISTS <column> <type>`: a plain type only, so the column is nullable, existing
+rows read NULL and nothing is rewritten (the tool refuses a `NOT NULL`, a `DEFAULT`, a constraint or a second
+action in that statement). `--check` reports such a column as a difference until `--apply` has run. The first
+one is `sealed_messages.expires_at`: on a database from before it,
+
+```
+$ python -m contexts.circle.schema --check
+against schema.sql: 1 difference(s)
+  - column sealed_messages.expires_at is in schema.sql but not in the database (apply schema.sql)
+$ python -m contexts.circle.schema --apply
+created: column sealed_messages.expires_at
+against schema.sql: matches
+```
+
 (`psql "$NEON_DATABASE_URL" -1 -f contexts/circle/infrastructure/schema.sql` does the same and also re-creates
-the two views.) A table that is missing (for example `sealed_messages` on a database set up before face share)
-makes that feature's timer job fail on every tick with an error in the log; the rest of the Circle keeps working.
+the two views.) `--apply` needs the role that owns the tables. A table that is missing (for example
+`sealed_messages` on a database set up before face share) makes that feature's timer job fail on every tick with
+an error in the log; the rest of the Circle keeps working. A missing column does not: a box that is newer than
+the database notices on its first statement, logs one line (`the column sealed_messages.expires_at is not there
+yet`) and works the way it did before the column until it is restarted after `--apply`.
 
 **Which box is in which circle.** `circle.member_id` and `circle.circle_id` in `config/agent.yaml`, or without
 editing the committed file: `ATLAS_CIRCLE_MEMBER`, `ATLAS_CIRCLE_ID`, `ATLAS_CIRCLE_SHARE=1` (opt in to places
@@ -242,6 +259,24 @@ skips rows whose kind or version it does not know. It is a separate channel on p
 every `agent_messages` row into a `circle.message.received` whose `kind` is a closed list, so a new kind in that
 table would break the poll of a box that does not know it. A box without this code never reads `sealed_messages`.
 
+**Expiry on the database's side.** The expiry of a share is inside its signed header, which only the two boxes
+read. So that a share nobody accepts does not sit in the table for good (the friend's box is switched off, or
+never polls), the sharing box also writes that same moment to the row's `expires_at` column
+(`NeonSealedStore.post`). Two things act on it, both without reading a body:
+
+- the inbox query leaves out a row that is past its `expires_at` on the database's clock, so it is not handed to
+  any box again, deleted or not;
+- the sharing box's daily sweep (`NeonCleanup`, only while face share is switched on, and never with
+  `circle.keep_days: 0`) deletes the rows **it addressed to someone** that are past their `expires_at`. Rows with
+  no `expires_at` (a revoke, or a share written by a box from before the column) go once they are older than
+  `circle.face_share_days`. Public key records are not swept. A box never removes another member's sealed rows
+  this way: if the sharing box itself is gone for good, its expired rows stay in the table, unread.
+
+The column is a copy for housekeeping, not something a box trusts: the friend's box still checks the signed
+header's own expiry before it offers or accepts a share. No index was added for it: the inbox query is served by
+`sealed_messages_inbox (circle_id, to_member, created_at)` and filters a circle's handful of rows; the sweep runs
+once a day per box over the same few rows.
+
 **Limits, said plainly.**
 
 - **Keys are trusted on first use.** A box keeps the first key it sees for a member. Someone who controls the
@@ -263,8 +298,9 @@ table would break the poll of a box that does not know it. A box without this co
 - A share works only between boxes with the same face model (the header names it; the card says when it differs).
 - A wipe of everything deletes the templates friends shared and takes this member's own shares back (when the
   Circle can be reached; otherwise they run out). It keeps the box key, as it keeps the vault's master key.
-- **Not run against the real Neon database or with real faces.** The store is tested in memory and on the fake
-  connection; the faces in the tests are bytes the fake recogniser turns into vectors.
+- **Not run with real faces.** The store is tested in memory, on the fake connection over both transports, and
+  (the tests marked `needs_neon`) on whatever Postgres `NEON_DATABASE_URL` names; the faces in the tests are bytes
+  the fake recogniser turns into vectors.
 
 ## Conversations (`GET /api/circle/threads`, `/api/circle/threads/{id}`)
 

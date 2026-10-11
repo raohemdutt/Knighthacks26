@@ -6,6 +6,7 @@ real Postgres when NEON_DATABASE_URL is set, each under its own throwaway `test-
 
 import asyncio
 import logging
+import re
 import threading
 from datetime import UTC, date, datetime, timedelta
 
@@ -397,6 +398,48 @@ def test_real_sealed_messages_and_league_tables_take_our_rows():
 
 
 @needs_neon
+def test_real_sealed_rows_past_their_expiry_are_left_out_of_the_inbox_and_swept_by_their_sender():
+    """Runs against a database with `sealed_messages.expires_at` and against one from before it (the owner has
+    not run --apply yet): there the store falls back, nothing is left out of the inbox, and the sweep goes by age."""
+    db, c = open_test_circle()
+    try:
+        sealed, a, b = NeonSealedStore(db), f"{c}-a", f"{c}-b"
+        now = datetime.now(UTC)
+
+        def post(name, sender, to, kind, at, until=None):
+            header = {"v": 1, "kind": kind} | ({"expires_at": until.isoformat()} if until else {})
+            sealed.post(SealedMessage(id=f"{c}-{name}", circle_id=c, from_member=sender, to_member=to, kind=kind,
+                                      body={"header": header, "ciphertext": "AAAA"}, created_at=at))
+
+        post("key", a, None, "box_key", now - timedelta(days=400))  # a key record: never swept, however old
+        post("live", a, b, "face_share", now - timedelta(days=3), until=now + timedelta(days=27))
+        post("dead", a, b, "face_share", now - timedelta(days=2), until=now - timedelta(hours=1))
+        post("revoke", a, b, "face_revoke", now - timedelta(days=1))  # no expiry, and young
+        post("old", a, b, "face_revoke", now - timedelta(days=40))  # no expiry, older than face_share_days
+        post("theirs", b, a, "face_share", now - timedelta(days=50), until=now - timedelta(days=20))  # the friend's own
+
+        def ids(member):
+            return [m.id.removeprefix(f"{c}-") for m in sealed.inbox(c, member)]
+
+        has_column = "sealed_messages.expires_at" not in db.lacks
+        assert ids(b) == (["key", "old", "live", "revoke"] if has_column else ["key", "old", "live", "dead", "revoke"])
+        assert ids(a) == (["key"] if has_column else ["key", "theirs"])
+
+        removed = NeonCleanup(db, sealed_keep=timedelta(days=30)).sweep(c, a, timedelta(days=30))
+        assert removed["sealed_messages"] == (2 if has_column else 1)  # "dead" by its expiry, "old" by its age
+        assert ids(b) == (["key", "live", "revoke"] if has_column else ["key", "live", "dead", "revoke"])
+
+        def left(cur):
+            cur.execute("SELECT id FROM sealed_messages WHERE circle_id = %s AND from_member = %s", (c, b))
+            return cur.fetchall()
+
+        assert db.run(left) == [(f"{c}-theirs",)]  # someone else's row is theirs to remove, expired or not
+        assert NeonCleanup(db, sealed_keep=timedelta(days=30)).sweep(c, a, timedelta(days=30))["sealed_messages"] == 0
+    finally:
+        assert drop_test_circle(db, c) == 0
+
+
+@needs_neon
 def test_real_face_share_key_exchange_share_accept_revoke_and_expiry(tmp_path):
     """The whole face share flow of test_face_share.py, with the two boxes meeting only in the real table.
     The "faces" are the fake recogniser's synthetic vectors; the days are shortened to one."""
@@ -469,9 +512,38 @@ def test_the_schema_tool_reads_schema_sql_and_runs_only_its_creates():
     assert want["tables"]["presence"] == ["member_id", "circle_id", "place", "source", "shared_at", "expires_at"]
     assert want["indexes"]["presence_circle_expiry"] == "presence" and "habit_leaderboard" in want["views"]
     kinds = {kind for kind, _, _ in schema.statements(schema.SCHEMA.read_text())}
-    assert kinds == {"table", "index", "view"}
+    assert kinds == {"table", "index", "view", "column"}
     for bad in ("ALTER TABLE presence ADD COLUMN x text;", "DROP TABLE presence;", "DELETE FROM presence;",
                 "CREATE TABLE presence (x text);"):
+        with pytest.raises(ValueError):
+            schema.statements(bad)
+
+
+def test_the_only_change_to_an_existing_table_the_schema_tool_runs_is_a_plain_nullable_column():
+    sql = schema.SCHEMA.read_text()
+    assert schema.statements("ALTER TABLE presence ADD COLUMN IF NOT EXISTS note text;  -- why\n"
+                             "ALTER TABLE presence ADD COLUMN IF NOT EXISTS score double precision;") == [
+        ("column", "presence.note", "ALTER TABLE presence ADD COLUMN IF NOT EXISTS note text"),
+        ("column", "presence.score", "ALTER TABLE presence ADD COLUMN IF NOT EXISTS score double precision")]
+    assert [(k, n) for k, n, _ in schema.statements(sql) if k == "column"] == [("column", "sealed_messages.expires_at")]
+    want = schema.expected(sql)
+    assert want["added"] == [("sealed_messages", "expires_at")] and want["tables"]["sealed_messages"][-1] == "expires_at"
+    # every added column is also in its CREATE TABLE, so a new database and an upgraded one end up the same
+    for table, column in want["added"]:
+        body = re.search(rf"CREATE TABLE IF NOT EXISTS {table} \((.*?)\n\);", sql, re.S).group(1)
+        assert re.search(rf"^\s+{column}\s+\w+,?$", body, re.M), (table, column)
+    for bad in ("ALTER TABLE presence ADD COLUMN IF NOT EXISTS x text NOT NULL;",
+                "ALTER TABLE presence ADD COLUMN IF NOT EXISTS x text DEFAULT 'a';",
+                "ALTER TABLE presence ADD COLUMN IF NOT EXISTS x integer default 0;",
+                "ALTER TABLE presence ADD COLUMN IF NOT EXISTS x text REFERENCES members(id);",
+                "ALTER TABLE presence ADD COLUMN IF NOT EXISTS x text references members;",
+                "ALTER TABLE presence ADD COLUMN IF NOT EXISTS x text unique;",
+                "ALTER TABLE presence ADD COLUMN IF NOT EXISTS x text, DROP COLUMN place;",
+                "ALTER TABLE presence ADD COLUMN IF NOT EXISTS x text drop column place;",
+                "ALTER TABLE presence ADD COLUMN IF NOT EXISTS x numeric(10, 2);",
+                "ALTER TABLE presence DROP COLUMN IF EXISTS place;", "ALTER TABLE presence ALTER COLUMN place TYPE int;",
+                "ALTER TABLE presence RENAME TO gone;", "ALTER TABLE IF EXISTS presence ADD COLUMN IF NOT EXISTS x text;",
+                "TRUNCATE presence;", "UPDATE presence SET place = '';"):
         with pytest.raises(ValueError):
             schema.statements(bad)
 

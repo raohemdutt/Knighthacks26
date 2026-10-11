@@ -51,6 +51,8 @@ KEEPALIVE = {"keepalives": 1, "keepalives_idle": 10, "keepalives_interval": 5, "
              "tcp_user_timeout": 20000}
 
 MESSAGE_COLUMNS = "id, circle_id, thread_id, from_member, kind, proposal, reply, created_at"
+UNDEFINED_COLUMN = "42703"  # Postgres's code for a statement that names a column the table does not have
+SEALED_EXPIRY = "sealed_messages.expires_at"  # added to schema.sql after sealed_messages: see NeonDb.run_with
 
 
 def _tcp_connect(url: str):
@@ -151,6 +153,7 @@ class NeonDb:
         self.offline: str | None = None  # why the last attempt failed; None once one succeeds
         self.retry_s, self.busy_timeout_s, self._monotonic = retry_s, busy_timeout_s, monotonic
         self._retry_at = 0.0  # while offline: no new attempt before this (monotonic seconds)
+        self.lacks: set[str] = set()  # "table.column" names schema.sql has and this database was found not to have
 
     def run(self, work: Callable):
         """Run `work(cursor)` in a transaction and return its result. Reconnects and retries once."""
@@ -190,6 +193,24 @@ class NeonDb:
                 if self._conn is not None:
                     self._conn.rollback()
                 raise
+
+    def run_with(self, column: str, work: Callable, before: Callable):
+        """`run(work)`, where `work` uses `column` ("table.column"), which schema.sql gained after some databases were
+        created. Against a database that does not have it yet (the box was updated before the owner ran
+        `python -m contexts.circle.schema --apply`), Postgres refuses the statement (SQLSTATE 42703) and nothing of
+        `work` is kept; `before`, the same work as it was before the column, runs instead. Found out once: from
+        then on this process goes straight to `before`, and one log line says so. A restart looks again."""
+        if column not in self.lacks:
+            try:
+                return self.run(work)
+            except Exception as e:  # psycopg's UndefinedColumn and NeonHttpsError both carry the code
+                if getattr(e, "sqlstate", None) != UNDEFINED_COLUMN:
+                    raise
+            self.lacks.add(column)
+            # never the exception's own text: nothing here names the database, and the column name is ours
+            log.warning("Circle database: the column %s is not there yet, so this box works without it. The owner runs"
+                        " `python -m contexts.circle.schema --apply` once; restart this box afterwards.", column)
+        return self.run(before)
 
     def close(self) -> None:
         with self._lock:
@@ -475,20 +496,29 @@ class NeonCleanup:
     - `agent_messages` this member sent more than `keep` ago (the conversation view reads back 14 days);
     - `shares` this member pushed more than `keep` ago (the receipt; the summary rows they fed are kept);
     - this member's `presence` row once it has been expired for longer than `keep`.
-    Agreed events, habit summaries, counters, scores and the League's weeks are history the Circle reads: kept."""
+    Agreed events, habit summaries, counters, scores and the League's weeks are history the Circle reads: kept.
 
-    def __init__(self, db: NeonDb, limit: int = 500) -> None:
+    With `sealed_keep` (the box has face share switched on; it is `circle.face_share_days`), also the sealed rows
+    this member ADDRESSED TO SOMEONE that are dead: past their own `expires_at`, or, where that is NULL (a revoke,
+    or a share written by a box from before the column), older than `sealed_keep`. A friend whose box never polls
+    would otherwise leave that ciphertext in the table for good. Public key records (addressed to nobody) are not
+    swept: a box takes its own key out when face share is switched off. Without `sealed_keep` the table is never
+    touched, so a box with face share off still reads and writes nothing there."""
+
+    def __init__(self, db: NeonDb, limit: int = 500, sealed_keep: timedelta | None = None) -> None:
         self.db = db
         self.limit = limit
+        self.sealed_keep = sealed_keep
 
     def sweep(self, circle_id: str, member_id: str, keep: timedelta) -> dict[str, int]:
-        """Rows removed per table. `keep` is measured on the database's clock.
+        """Rows removed per table. `keep` and `sealed_keep` are measured on the database's clock.
 
-        Over https each of the three deletes is its own transaction (`rowcount` is read after each). Nothing
-        depends on them happening together: a sweep that stops half-way has removed some old rows, the next
-        one removes the rest; only the count in the log line is lost."""
+        Over https each delete is its own transaction (`rowcount` is read after each). Nothing depends on them
+        happening together: a sweep that stops half-way has removed some old rows, the next one removes the
+        rest; only the count in the log line is lost. The sealed rows are a transaction of their own on tcp
+        too, so a database without `sealed_messages.expires_at` costs that one statement, not the others."""
         if keep <= timedelta(0):
-            return {}
+            return {}  # circle.keep_days: 0 means this box removes nothing, sealed rows included
 
         def work(cur):
             removed = {}
@@ -504,4 +534,26 @@ class NeonCleanup:
             removed["presence"] = cur.rowcount
             return removed
 
-        return self.db.run(work)
+        removed = self.db.run(work)
+        if self.sealed_keep is not None and self.sealed_keep > timedelta(0):
+            removed["sealed_messages"] = self._sweep_sealed(circle_id, member_id)
+        return removed
+
+    def _sweep_sealed(self, circle_id: str, member_id: str) -> int:
+        def delete(dead: str) -> Callable:
+            def work(cur):
+                cur.execute(
+                    "DELETE FROM sealed_messages WHERE id IN (SELECT id FROM sealed_messages WHERE circle_id = %s"
+                    f" AND from_member = %s AND to_member IS NOT NULL AND {dead} ORDER BY created_at LIMIT %s)",
+                    (circle_id, member_id, self.sealed_keep, self.limit),
+                )
+                return cur.rowcount
+
+            return work
+
+        # without the column every row is as a NULL one: only its age can say it is dead
+        return self.db.run_with(
+            SEALED_EXPIRY,
+            delete("(expires_at < now() OR (expires_at IS NULL AND created_at < now() - %s))"),
+            before=delete("created_at < now() - %s"),
+        )

@@ -2,7 +2,7 @@
 
     python -m contexts.circle.schema --check    # read-only: what differs between the database and schema.sql
     python -m contexts.circle.schema --counts   # read-only: --check plus tables, columns, indexes, sizes, rows per circle
-    python -m contexts.circle.schema --apply    # create the tables, indexes and views that are missing; nothing else
+    python -m contexts.circle.schema --apply    # create the tables, columns, indexes and views that are missing; nothing else
 
 NEON_DATABASE_URL comes from the environment, else from `.env` (ATLAS_ENV_FILE). The connection string is never
 printed, and a failed connection says only what kind of failure it was (the driver's own message names the host).
@@ -16,8 +16,12 @@ and --apply looks at what exists in one request and creates what is missing in a
 circle ids are shortened to two letters unless they are `test-…` rows. Exit status 0: the database matches.
 
 --apply runs schema.sql's own statements, in one transaction, only for objects that do not exist yet. It cannot
-alter, replace or drop anything: an existing table keeps its columns (a column schema.sql gained needs a written
-migration, which --check reports), and an existing view is left as it is.
+change, replace or drop anything that is there: an existing table keeps every column it has, and an existing view
+is left as it is. The one thing it does to an existing table is add a column schema.sql gained, and only when
+schema.sql says so itself with `ALTER TABLE <table> ADD COLUMN IF NOT EXISTS <column> <type>`: a plain type and
+nothing else (no NOT NULL, no DEFAULT, no constraint), so the column is nullable, existing rows read NULL and no
+row is rewritten. --check reports such a column as a difference until it is there. A column schema.sql names only
+inside its CREATE TABLE cannot be added this way: --check says it needs a written migration.
 """
 
 import argparse
@@ -36,14 +40,19 @@ TIME_COLUMNS = ("created_at", "joined_at", "shared_at", "updated_at", "played_at
 
 
 def expected(sql: str) -> dict:
-    """The tables (with their columns), indexes and views schema.sql creates."""
+    """The tables (with their columns), indexes and views schema.sql creates. `added`: the (table, column) pairs it
+    also adds to a table that already exists, which are the only columns --apply can create."""
     tables = {}
     for name, body in re.findall(r"CREATE TABLE IF NOT EXISTS (\w+) \((.*?)\n\);", sql, re.S):
         lines = [re.sub(r"--.*", "", line).strip() for line in body.splitlines()]
         tables[name] = [line.split()[0] for line in lines
                         if line and line.split()[0] not in ("CHECK", "PRIMARY", "UNIQUE", "FOREIGN", "CONSTRAINT")]
+    added = [tuple(name.split(".")) for kind, name, _ in statements(sql) if kind == "column"]
+    for table, column in added:
+        if column not in tables.setdefault(table, []):
+            tables[table].append(column)
     return {"tables": tables, "indexes": dict(re.findall(r"CREATE INDEX IF NOT EXISTS (\w+) ON (\w+)", sql)),
-            "views": re.findall(r"CREATE OR REPLACE VIEW (\w+)", sql)}
+            "views": re.findall(r"CREATE OR REPLACE VIEW (\w+)", sql), "added": added}
 
 
 def short(value) -> str:
@@ -112,7 +121,8 @@ def audit(conn, out=print, counts: bool = True) -> list[str]:
             wrong.append(f"table {t} is in schema.sql but not in the database (apply schema.sql)")
             continue
         got = [c for c, _, _ in have[t]]
-        wrong += [f"{t}.{c} is in schema.sql but not in the database (needs a migration: CREATE TABLE IF NOT EXISTS"
+        wrong += [f"column {t}.{c} is in schema.sql but not in the database (apply schema.sql)" if (t, c) in want["added"]
+                  else f"{t}.{c} is in schema.sql but not in the database (needs a migration: CREATE TABLE IF NOT EXISTS"
                   " does not add columns)" for c in cols if c not in got]
         wrong += [f"{t}.{c} is in the database but not in schema.sql" for c in got if c not in cols]
     wrong += [f"index {i} on {t} is in schema.sql but not in the database (apply schema.sql)"
@@ -126,38 +136,57 @@ def audit(conn, out=print, counts: bool = True) -> list[str]:
 
 
 CREATES = re.compile(r"CREATE (TABLE|INDEX) IF NOT EXISTS (\w+)|CREATE OR REPLACE (VIEW) (\w+)")
+# The whole statement: one table, one column, a type made of plain words ("timestamptz", "double precision").
+# Brackets, commas, quotes and a second action cannot match, and the words below are refused.
+ADD_COLUMN = re.compile(r"ALTER TABLE (\w+) ADD COLUMN IF NOT EXISTS (\w+) ([a-z]+(?: [a-z]+)*)\Z")
+NOT_JUST_A_TYPE = {"not", "null", "default", "references", "primary", "unique", "check", "generated", "constraint",
+                   "collate", "drop", "alter", "rename", "add", "using", "set"}
+# What is there: every table, index and view by name (column NULL), and every column of each.
+THERE = ("SELECT c.relname, NULL::name FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace"
+         " WHERE n.nspname = current_schema()"
+         " UNION ALL SELECT c.relname, a.attname FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid"
+         " JOIN pg_namespace n ON n.oid = c.relnamespace"
+         " WHERE n.nspname = current_schema() AND a.attnum > 0 AND NOT a.attisdropped")
 
 
 def statements(sql: str) -> list[tuple[str, str, str]]:
-    """schema.sql as (kind, name, statement). Raises ValueError for anything that is not one of its three creates."""
+    """schema.sql as (kind, name, statement): its three creates, and `ALTER TABLE t ADD COLUMN IF NOT EXISTS c type`
+    as kind "column", name "t.c". Raises ValueError for anything else, including a column that is more than a type."""
     out = []
     for raw in re.sub(r"--[^\n]*", "", sql).split(";"):
         text = raw.strip()
         if not text:
             continue
-        m = CREATES.match(text)
-        if m is None:
+        m, column = CREATES.match(text), ADD_COLUMN.match(text)
+        if column and not NOT_JUST_A_TYPE & set(column.group(3).split()):
+            out.append(("column", f"{column.group(1)}.{column.group(2)}", text))
+        elif m:
+            out.append(((m.group(1) or m.group(3)).lower(), m.group(2) or m.group(4), text))
+        else:
             raise ValueError(f"schema.sql holds a statement --apply will not run: {text.split(chr(10))[0][:60]}")
-        out.append(((m.group(1) or m.group(3)).lower(), m.group(2) or m.group(4), text))
     return out
 
 
 def apply(conn, out=print) -> list[str]:
-    """Create what schema.sql has and the database lacks, in one transaction. Never alters, replaces or drops:
-    a table or index that exists is skipped by IF NOT EXISTS, and a view that exists is left exactly as it is."""
+    """Create what schema.sql has and the database lacks, in one transaction. Never changes, replaces or drops what
+    is there: a table or index that exists is skipped by IF NOT EXISTS, a view that exists is left exactly as it
+    is, and a table that exists only ever gains a nullable column schema.sql adds by name (see `statements`)."""
     todo = statements(SCHEMA.read_text())
     cur = conn.cursor()
-    cur.execute("SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace"
-                " WHERE n.nspname = current_schema()")
-    there = {name for (name,) in cur.fetchall()}
+    cur.execute(THERE)
+    found = cur.fetchall()
+    there = {name for name, column in found if column is None}
+    columns = {f"{name}.{column}" for name, column in found if column is not None}
     created = []
     for kind, name, text in todo:
-        if name in there:
+        if name in (columns if kind == "column" else there):
             continue
         cur.execute(text)
+        if kind == "column" and name.split(".")[0] not in there:
+            continue  # its table was created just now, with the column in it: IF NOT EXISTS made this a no-op
         created.append(f"{kind} {name}")
     conn.commit()
-    out("created: " + (", ".join(created) if created else "nothing (every table, index and view was already there)"))
+    out("created: " + (", ".join(created) if created else "nothing (every table, column, index and view was already there)"))
     return created
 
 
@@ -166,7 +195,7 @@ def main(argv: list[str] | None = None) -> int:
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--check", action="store_true", help="read-only: what differs from schema.sql (the default)")
     mode.add_argument("--counts", action="store_true", help="read-only: --check plus shapes and row counts")
-    mode.add_argument("--apply", action="store_true", help="create what is missing; never alters or drops")
+    mode.add_argument("--apply", action="store_true", help="create what is missing; never changes or drops what is there")
     args = parser.parse_args(argv)
     url = url_from_env()
     if not url:
