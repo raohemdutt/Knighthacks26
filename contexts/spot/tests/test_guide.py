@@ -76,7 +76,7 @@ def guide():
     ("where can I find the assumptions", "analysis:assumptions"),
     ("show me the data check", "analysis:data-check"),
     ("show me the tables", "analysis:tables"),
-    ("where is listening checks fail most", "finding:reliability_by_type"),
+    ("where is the uninspected risk", "analysis:tables"),
     # a guide id, as a link carries it
     ("asset:HX-202", "asset:HX-202"),
     ("explainer:battery", "explainer:battery"),
@@ -100,7 +100,16 @@ def test_the_walk_through_names_the_floor_the_mark_and_the_equipment(guide):
     battery = guide.resolve("where do I look for the battery")
     assert battery["steps"][0] == {"reveal": "tab:analysis", "say": "I am opening the Analysis tab."}
     assert guide.resolve("show me round 17")["steps"][1]["reveal"] == "round:pick:M017"
-    assert guide.resolve("finding:battery")["steps"][1]["reveal"] == "open:analysis:findings"
+
+
+@pytest.mark.parametrize("question", ["where are the findings", "show me every finding", "finding:battery", "analysis:findings", "where is listening checks fail most",
+                                      "where is the trained scorer"])
+def test_what_the_analysis_tab_no_longer_lists_is_never_pointed_at(guide, question):
+    out = guide.resolve(question)
+    ids = [out["target"] or ""] + [a["target"] for a in out["alternatives"]]
+    assert not any(i.startswith("finding:") or i == "analysis:findings" for i in ids), ids
+    assert out["target"] or out["alternatives"]  # the nearest thing still on the screen, or "did you mean"
+    assert not any(s.get("reveal") == "open:analysis:findings" for s in out["steps"])
 
 
 @pytest.mark.parametrize("question", ["where is the coffee machine", "show me the weather", "where is heat exchanger 99", "where is the motor or the valve"])

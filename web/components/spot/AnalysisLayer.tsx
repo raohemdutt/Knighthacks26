@@ -1,19 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { EvidenceLine, OpenCtx, pct, range, type Opener } from "@/components/spot/bits";
+import { OpenCtx, pct, range, type Opener } from "@/components/spot/bits";
 import { Loading } from "@/components/States";
 import { api } from "@/lib/api";
 import { useFetch } from "@/lib/useFetch";
-import { AskBox, HandoffCard } from "./AskBox";
 import { Detail } from "./Detail";
-import { BatteryCard, ModelCard, OverTimeCard, RateCard, VersionCard } from "./EvidencePanels";
 import { ExplainSheet, ExplainerGrid, type ExplainId, type Force } from "./Explainers";
 import { FacilityMap } from "./FacilityMap";
-import { LevelIcon } from "./FloorMap";
 import o from "./op.module.css";
-import { MissionTimeline, ReplayBar } from "./ReplayPanel";
-import { Why } from "./Shift";
+import { ReplayBar } from "./ReplayPanel";
 import s from "./spot.module.css";
 import { TriageQueue, UninspectedRisk } from "./Triage";
 import type { Replay, Shift, Target, WorkOrder } from "./types";
@@ -58,10 +54,6 @@ export function AnalysisLayer({
   const heavy = wanted ? "on" : "off"; // the tables load only when their fold is opened
   const triage = useFetch((sig) => (wanted ? api.spotTriage(sig) : Promise.resolve(null)), heavy);
   const assets = useFetch((sig) => (wanted ? api.spotAssets(sig) : Promise.resolve(null)), heavy);
-  const scorer = useFetch((sig) => (wanted ? api.spotModel(sig) : Promise.resolve(null)), heavy);
-  const handoff = useFetch((sig) => (wanted ? api.spotHandoff(sig) : Promise.resolve(null)), heavy);
-  const latestId = shift.latest_round ?? "";
-  const latest = useFetch((sig) => (wanted && latestId ? api.spotMission(latestId, sig) : Promise.resolve(null)), `${heavy}:${latestId}`);
 
   const index = overview.data?.index;
   const opener = useMemo<Opener>(() => {
@@ -83,8 +75,6 @@ export function AnalysisLayer({
   }, [shift, index, setTarget]);
 
   const o_ = overview.data;
-  const byId = Object.fromEntries((findings.data?.findings ?? []).map((f) => [f.id, f]));
-  const overall = locations.data?.overall ? locations.data.overall.k / Math.max(locations.data.overall.n, 1) : 0.18;
   const control = (call: () => Promise<Replay>) => () => void call().then(onLive).catch(() => undefined);
 
   return (
@@ -115,25 +105,8 @@ export function AnalysisLayer({
             <Loading what="the analysis" />
           )}
 
-          <details className={o.fold} data-guide="analysis:findings">
-            <summary>Every finding in one sentence ({shift.findings.length})</summary>
-            <ul className={o.claims}>
-              {shift.findings.map((f) => (
-                <li key={f.id} data-guide={`finding:${f.id}`}>
-                  <LevelIcon level={f.level} size={18} />
-                  <span>
-                    <b>{f.headline}.</b> {f.sentence} {f.note ? <i>{f.note}</i> : null}
-                  </span>
-                  <Why to={{ kind: "finding", id: f.finding_id }} onWhy={setTarget}>
-                    The numbers
-                  </Why>
-                </li>
-              ))}
-            </ul>
-          </details>
-
           <details className={o.fold} data-guide="analysis:tables" open={tables} onToggle={(e) => setTables((e.target as HTMLDetailsElement).open)}>
-            <summary>The full tables: ranked queue, intervals, the trained scorer, replay of every round</summary>
+            <summary>The full tables: ranked queue, replay of every round</summary>
             {tables ? (
               <div className={o.foldBody}>
           <section aria-label="Key numbers" className={s.kpis}>
@@ -176,51 +149,6 @@ export function AnalysisLayer({
             </div>
           </div>
 
-          <h2 className={s.sub} style={{ fontSize: 14 }}>
-            Evidence: each panel says what was found, on how many rows, and what cannot be concluded
-          </h2>
-          {findings.data ? (
-            <div className={s.evidence}>
-              {byId.version_comparison ? <VersionCard f={byId.version_comparison} /> : null}
-              {byId.battery ? <BatteryCard f={byId.battery} overall={overall} /> : null}
-              {byId.reliability_by_type ? <RateCard f={byId.reliability_by_type} overall={overall} /> : null}
-              {byId.reliability_by_location ? <RateCard f={byId.reliability_by_location} overall={overall} limit={8} onRow={(b) => setTarget({ kind: "location", id: b.key })} /> : null}
-              {byId.reliability_by_asset ? <RateCard f={byId.reliability_by_asset} overall={overall} limit={8} onRow={(b) => setTarget({ kind: "asset", id: b.key })} /> : null}
-              {byId.over_time ? <OverTimeCard f={byId.over_time} /> : null}
-              {scorer.data?.configured ? <ModelCard m={scorer.data} /> : null}
-              {byId.hidden_failures ? <RateCard f={byId.hidden_failures} overall={overall} limit={8} onRow={(b) => setTarget({ kind: "mission", id: b.key })} /> : null}
-              {byId.navigation_hotspot ? <RateCard f={byId.navigation_hotspot} overall={overall} limit={5} onRow={(b) => setTarget({ kind: "location", id: b.key })} /> : null}
-              {byId.anomalies_hidden ? <RateCard f={{ ...byId.anomalies_hidden, rows: [] }} overall={overall} /> : null}
-              {byId.reading_trends ? <RateCard f={{ ...byId.reading_trends, rows: [] }} overall={overall} /> : null}
-            </div>
-          ) : (
-            <Loading what="the findings" />
-          )}
-
-          <div className={s.grid}>
-            <div className={s.col}>
-              <MissionTimeline live={live} latest={latest.data ?? null} alerts={live?.alerts ?? []} />
-            </div>
-            <div className={s.col}>
-              <AskBox modelLine={o_?.model.role} />
-              {handoff.data?.configured ? <HandoffCard handoff={handoff.data} /> : null}
-              {o_?.next?.length ? (
-                <div className={s.card}>
-                  <div className={s.cardHead}>
-                    <h2>Investigate next, as the analysis words it</h2>
-                  </div>
-                  {o_.next.map((n) => (
-                    <div key={n.key}>
-                      <p className={s.sentence}>
-                        <b>{n.title}.</b> {n.sentence}
-                      </p>
-                      <EvidenceLine evidence={n.evidence} max={8} />
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          </div>
               </div>
             ) : null}
           </details>

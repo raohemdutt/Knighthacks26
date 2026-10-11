@@ -247,19 +247,13 @@ class Guide:
         # the analysis
         for eid, (title, shows, names) in EXPLAINERS.items():
             add(f"explainer:{eid}", title, names, ANALYSIS, say("Look at the pictures under the heading."), say(f"This one is {title}. It shows {shows}."))
-        add("analysis:findings", "Every finding in one sentence", ["all findings", "every finding", "findings", "list of findings", "findings list", "everything you found"],
-            ANALYSIS, say("Look below the pictures."), say("This fold lists every finding in one sentence."))
-        add("analysis:tables", "The full tables", ["tables", "full tables", "the tables", "ranked queue", "triage queue", "trained scorer", "scorer", "the model", "intervals",
+        add("analysis:tables", "The full tables", ["tables", "full tables", "the tables", "ranked queue", "triage queue", "uninspected risk",
                                                     "key numbers", "raw numbers"],
-            ANALYSIS, say("Look below the pictures."), say("This fold holds the full tables: the ranked queue, the intervals and the trained scorer."))
+            ANALYSIS, say("Look below the pictures."), say("This fold holds the full tables: the ranked queue and the replay of every round."))
         add("analysis:assumptions", "Assumptions and method", ["assumptions", "method", "assumptions and method", "how it was worked out", "methodology"],
             ANALYSIS, say("Look at the top of the analysis, on the right."), say("This opens every assumption the analysis makes."))
         add("analysis:data-check", "Data check", ["data check", "validation", "data quality", "check the data", "does the data agree"],
             ANALYSIS, say("Look at the top of the analysis, on the right."), say("This compares our numbers with the kit's own."))
-        for f in view["findings"]:
-            add(f"finding:{f['id']}", f["headline"], [f["headline"], f["id"].replace("_", " ")],
-                ANALYSIS, {"reveal": "open:analysis:findings", "say": "I am opening the list of findings."}, say("Look at the list of findings."),
-                say(f"This line: {f['headline']}."))
 
         # equipment and places, on the plan
         by_place: dict[str, list[dict]] = {}
