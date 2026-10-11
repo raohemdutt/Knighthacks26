@@ -24,7 +24,7 @@ from contexts.agent.application.loop import ODD_HOURS_DESCRIPTION, ODD_HOURS_RUL
 from contexts.agent.application.planner import Planner
 from contexts.agent.application.qa import QA, SleepSchedule
 from contexts.agent.application.talk import Talk, TalkConfig
-from contexts.agent.application.web_port import HubWebTools
+from contexts.agent.application.web_port import HubWebTools, TavilyWebTools
 from contexts.agent.domain.rules import AlertHistory, RuleEvaluator, load_rules
 from contexts.capture.application.retention import prune_frames
 from contexts.capture.application.service import CaptureService
@@ -280,6 +280,8 @@ def build(settings: Settings | None = None) -> Atlas:
     specs = load_specs(s.config_dir / "connectors.yaml") if s.connectors else []
     hub = ConnectorHub(specs, factory=McpConnector)
     web = HubWebTools(hub) if "browser" in hub.specs else None
+    if os.environ.get("TAVILY_API_KEY"):  # fast search over an API; the browser keeps Reddit and page reading
+        web = TavilyWebTools(os.environ["TAVILY_API_KEY"], fallback=web)
 
     qa = QA(runtime, memory, clock=lambda: datetime.now(UTC), sleep=SleepSchedule.load(s.config_dir / "agent.yaml"),
             web=web, subreddit=agent_cfg.get("subreddit", "ucf"), load_keyframe=load_keyframe)
