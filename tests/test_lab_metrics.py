@@ -417,9 +417,22 @@ def test_r63_rows_match_their_result_file():
     assert found == [dict(metrics.check_row(row)) for row in expected]
 
 
+def _r65_rows() -> list[dict]:
+    from lab import r65_rows
+
+    return r65_rows.all_rows()
+
+
+def test_r65_rows_match_their_files():
+    # R65: the two-pod rows (node pod-a+pod-b) and the role switch, rebuilt from fixtures/lab/r65-2026-10-11/
+    found = [row for row in metrics.load() if row["source"].startswith("R65")]
+    assert found == [dict(metrics.check_row(row)) for row in _r65_rows()]
+    assert {row["node"] for row in found} == {"pod-a+pod-b", "pod-b"}
+
+
 def test_seed_file_has_exactly_the_expected_rows_in_schema_order():
     rows = metrics.load()
-    assert len(rows) == len(EXPECTED_SEED) + len(_r62_rows()) + len(_r63_rows())
+    assert len(rows) == len(EXPECTED_SEED) + len(_r62_rows()) + len(_r63_rows()) + len(_r65_rows())
     for row in rows:
         assert list(row) == list(metrics.FIELDS)
 
@@ -480,7 +493,11 @@ def test_every_low_confidence_seed_row_says_why():
         for name in ("decode_tok_s", "decode_tok_s_total", "ttft_s", "joules_per_token", "watts_avg", "watts_peak",
                      "llama_bench_pp512_tok_s", "llama_bench_tg128_tok_s")} | {
         # L10: the pooled labeling job at 1 stream, computed from R60's batch-1 rows, not run
-        "label_pool." + name for name in ("wall_s", "energy_j", "joules_per_completion_token", "joules_per_example")}
+        "label_pool." + name for name in ("wall_s", "energy_j", "joules_per_completion_token", "joules_per_example")} | {
+        # R65: the two-pod runs, one run per setting, and the link probes, one run each
+        "trainer.split.samples_per_s", "trainer.split.train_s", "trainer.split.loss_last", "trainer.split.train_loss",
+        "trainer.split.peak_mem_gb", "link.exchange_s", "link.exchange_bytes", "link.exchange_pack_s",
+        "link.exchange_reconstruction_rel_err", "pod.teacher_start_s", "link.mb_s", "link.rtt_ms"}
     for row in flagged:
         if row["conditions"].get("sampler") == SAMPLER:  # the sampler's rows: its error is "unknown" until a reference run
             assert row["conditions"]["error"] == "unknown", row["metric"]

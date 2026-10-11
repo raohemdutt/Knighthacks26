@@ -119,12 +119,12 @@ the teacher's quality are out of scope.
   784.5 s). The same 252 examples took 1.82 times less wall-clock (1.89 times on the trainer's runtime). Peak memory
   was 11.0 to 11.1 GB a rank, as L16's 11.1, and pod C never fell below 24.8 GiB available.
   Source: `fixtures/lab/r65-2026-10-11/lsgd1/rank0-run.json`, `fixtures/lab/r65-2026-10-11/lsgd1/rank1-run.json`,
-  `fixtures/demo/l16-run.json`, `lab/refine/metrics.jsonl:1220`
+  `fixtures/demo/l16-run.json`, `lab/refine/metrics.jsonl:1225`
   - Implication: a second pod roughly doubles the rate a LoRA job takes in data, so in a fixed slot the pair trains
     on twice the examples one pod would, with twice the batch per step (two ranks of 16) at the same memory a rank.
     The largest batch a pod takes was not measured; at L16's 11.1 GB a rank, both pods have room for more.
   - Candidate experiment: the same run with each rank on all 84 rows (twice L16's data in the pair's 7 minutes), and
-    once each with k 1 and k 9. Expected movement: `trainer.samples_per_s` for the pair stays near 0.67; the loss at
+    once each with k 1 and k 9. Expected movement: `trainer.split.samples_per_s` for the pair stays near 0.67; the loss at
     equal examples moves toward L16's as k falls.
 - **[measured]** The training loss did not reach the single pod's: the last step's loss was 0.028 on rank 0 and 0.023
   on rank 1 against L16's 0.0095, and the mean over the run 0.064 and 0.071 against 0.054. Each rank took 9 optimizer
@@ -169,7 +169,7 @@ the teacher's quality are out of scope.
   same examples in 1.82 times less wall-clock with an exchange that takes under a second through the hub proxy,
   while the model split needs a network on which every rank reaches every other rank's address, which neither the
   cluster (its policy) nor Tailscale in userspace mode (no interface, DERP only) gives.
-  Source: `lab/refine/metrics.jsonl:1220`, `fixtures/lab/r65-2026-10-11/reach-from-pod-C.txt`,
+  Source: `lab/refine/metrics.jsonl:1225`, `fixtures/lab/r65-2026-10-11/reach-from-pod-C.txt`,
   `fixtures/lab/r65-2026-10-11/tun-userns-pod-C.txt`
   - Implication: data-parallel training with compressed, infrequent exchanges tolerates a slow or roundabout link,
     because a LoRA delta is 32 MB against a 45 s step; a split model sends activations at every stage for every token
