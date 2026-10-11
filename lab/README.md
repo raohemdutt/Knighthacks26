@@ -2097,8 +2097,11 @@ are in `fixtures/lab/r66-2026-10-11/`.
   the teacher (pod C has 6.35 GiB free and a stage costs at least 5.7 GiB before its layers).
 - **The 122B pair** (`Qwen/Qwen3.5-122B-A10B-GPTQ-Int4`, in `~/models` on both pods): the head on pod C serves
   "teacher" and "group-brain" on port 8000 (where the live loop and the box already look), pod D runs headless; text
-  only (`--language-model-only`), `--max-num-seqs 32`, utilization 0.65 so about 22 GB stays free on each pod for a
-  LoRA. Start it from the workstation with the tunnel, relay and shim up: `vllm_pair.sh 0 pp MASTER=10.99.0.1
+  only at first (`--language-model-only`), now with the vision tower (`TEXT_ONLY=0`: image limit 1, Triton encoder
+  attention, as the 27B had), `--max-num-seqs 32`, utilization 0.65 so about 22 GB stays free on each pod for a
+  LoRA, `VLLM_MQ_MAX_CHUNK_BYTES_MB=1`. The pods' `/dev/shm` is 64 MB and the pair's RCCL buffers hold about 50 MB of
+  it, so a trainer beside the pair runs its DataLoader in-process (`ATLAS_TRAIN_WORKERS=0`, PR 437); clear leaked
+  `/dev/shm/psm_*` segments after a killed start. Start it from the workstation with the tunnel, relay and shim up: `vllm_pair.sh 0 pp MASTER=10.99.0.1
   'MODEL=~/models/Qwen3.5-122B-A10B-GPTQ-Int4' TEXT_ONLY=1 GPU_UTIL=0.65 SERVED=teacher,group-brain PORT=8000
   MAX_SEQS=32` on pod C and the same with `1` on pod D. The labeler needs `--expect-model Qwen3.5-122B` (or
   `TEACHER_EXPECT=Qwen3.5-122B` for the live loop). The 27B teacher's launch line for a fallback is
