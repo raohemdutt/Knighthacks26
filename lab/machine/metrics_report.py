@@ -71,6 +71,7 @@ __all__ = [
     "parse_time", "pooled", "render_md", "report", "series_of",
 ]
 
+CLI_VERB = "metrics"   # registers python -m lab metrics
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 HIGHER = "higher"

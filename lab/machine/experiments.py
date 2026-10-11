@@ -109,6 +109,7 @@ __all__ = [
     "add", "amend", "record_result", "runs_from_ledger", "rank", "checklist", "checklist_line", "seed", "main",
 ]
 
+CLI_VERB = "experiment"   # registers python -m lab experiment
 VERB_ADD = "experiment add"
 VERB_AMEND = "experiment amend"
 VERB_RESULT = "experiment result"

@@ -10,6 +10,47 @@ R9700 (gfx1201, RDNA 4, 32 GB) on the DUB hub (accounts A and B) is **the other 
 and measured there, and every R9700 number below is labelled as that chip's, never as the lab's baseline. Logins and
 hub API tokens are on the Notion Credentials page and in your local `.env`; never put them in this repo.
 
+## Verbs: `python -m lab <verb>`
+
+Every verb has a page under `lab/docs/` (one line here per verb, alphabetical; `python -m lab` prints the same
+list). A verb registers itself with `CLI_VERB = "name"` in its module (see the top of `lab/__main__.py`), so
+adding one touches no shared file but this list.
+
+- [`alerts`](docs/alerts.md): Scan the ledger for trouble and append what is new to today's alerts file.
+- [`attribution-check`](docs/attribution-check.md): Validate joules per answer on pod A: answers, gaps and whole-run energy, idle watts, the missed share.
+- [`bench`](docs/bench.md): Benchmark a model server: decode tok/s, TTFT and joules per token, one cold spawn per run.
+- [`capacity`](docs/capacity.md): Probe one chip (free memory, bandwidth, bf16 matmul, name, ROCm) in under two minutes; write a capacity record.
+- [`chipsheet`](docs/chipsheet.md): File a chip sheet measured on a pod and write its ledger rows: ingest | self-check.
+- [`correctness`](docs/correctness.md): Record greedy outputs from a running server as a baseline, or compare a later run with it.
+- [`credits`](docs/credits.md): Credits left on the pod accounts, credits per hour, and whether they last until judging.
+- [`digest`](docs/digest.md): What a sitting starts from: what ran, metrics that moved, GPU queue, rulings, Ilan's lane, next tasks.
+- [`draft`](docs/draft.md): Ask for a verb the lab lacks: leaves the owner a request and a stub (once per sitting; nothing runs).
+- [`eval-gate`](docs/eval-gate.md): Score current, candidate and teacher on the frozen held-out set and decide deploy or reject (L4).
+- [`experiment`](docs/experiment.md): Experiments as ledger rows: add, list, result (read by the verdict math), rank, and T0's checklist (--print).
+- [`gpu-power`](docs/gpu-power.md): Summarize pod GPU power samples, or store a window of them as a ledger row: summary | record.
+- [`handoff`](docs/handoff.md): End the session: leave the owner a note (no sitting reads it) and record the handoff in the ledger.
+- [`label-agreement`](docs/label-agreement.md): Re-label 30 labeled examples with a second teacher pass and report how often the labels agree.
+- [`ledger`](docs/ledger.md): Add to, tail and search the lab ledger (ledger add, tail, grep).
+- [`link-speed`](docs/link-speed.md): Measure push and pull speed of a synthetic package on a pod through the hub, and write the table.
+- [`metrics`](docs/metrics.md): Report each metric's latest reading against its previous one, or compare a metric across a time window.
+- [`mirror`](docs/mirror.md): Mirror the lab digest to Overnight Status and the refinement plan changes to Ilan's Team Comms page.
+- [`package`](docs/package.md): Package a LoRA adapter for the Jetson: merge, GGUF, Q4_K_M, manifest, scores, dry-run install.
+- [`placement`](docs/placement.md): Which pod serves the teacher and where the sampler, benchmarks, Ax trials and LoRA jobs go (--check a request).
+- [`pool`](docs/pool.md): Keep sittings running under the 16-unit budget (Sonnet 1, Opus 2, Fable 8); pool status shows the units.
+- [`profile-decode`](docs/profile-decode.md): Decode profile of the stock teacher on gfx1151: --quick here, pod-script, pod-run on the pod, collect.
+- [`publish-adapter`](docs/publish-adapter.md): Publish the trained LoRA adapter and its model card to the team Hugging Face repo.
+- [`ready`](docs/ready.md): Check what a sitting needs: no STOP, a writable state dir, .env key names; the hub only warns.
+- [`referee`](docs/referee.md): Referee of the GPU queue: end slots past their cap, list complaints and rows that could start.
+- [`research-check`](docs/research-check.md): Check research notes and SOURCES.md indexes against lab/refine/RESEARCH_FORMAT.md.
+- [`resume`](docs/resume.md): Remove the STOP file so verbs run again.
+- [`review`](docs/review.md): Write the owner's morning file: what happened, numbers moved, rulings, complaints and open PRs.
+- [`rulings`](docs/rulings.md): Owner rulings: list the open ones, record the answered ones as owner rules, mirror the waiting ones to Notion.
+- [`sampler-overhead`](docs/sampler-overhead.md): The pod sampler's own cost on pod B, measured with and without it (T9).
+- [`sit`](docs/sit.md): Start one headless agent sitting for a task, a pass, the merge or the referee, and record it.
+- [`slot`](docs/slot.md): The GPU queue for pod B: request, start, extend, done, complain, status.
+- [`stop`](docs/stop.md): Create the STOP file: every verb but ready, resume and stop is refused.
+- [`sweep-request`](docs/sweep-request.md): Request-side settings sweep of the teacher on one spawn: the dry run, the pod script, the pod run, collect.
+
 ## Which hub is live today (2026-10-10)
 
 | Hub | Accounts | State |
@@ -97,36 +138,6 @@ Authorization: token <hub token>
 
 where `<hub>` is `sjc.aupcloud.io` for C and D or `dub.aupcloud.io` for A and B, `<account>` is the user name the hub
 knows the account by (not the letter), and `<port>` is the port the server listens on.
-
-## Credits: `python -m lab credits`
-
-```
-python -m lab credits                       # accounts C,D (the SJC hub)
-python -m lab credits --account A,B --window-hours 6 --until 2026-10-11T16:00:00Z --no-ledger
-```
-
-Read-only (GET requests only; it also runs while `lab/state/STOP` exists). It answers with one JSON object: per
-account the figures, `alerts`, and `lines`, one sentence per account. Exit 0 when every account was read (an alert is
-a result, outcome `alert`, still exit 0), 1 when one could not be (outcome `error`), 2 for bad arguments or missing
-keys. `--account all` takes every letter that has both keys; an account's hub is `AUP_HUB_URL_<letter>`, else
-`$LAB_HUB_URL`, else DUB.
-
-- **Metered hub** (DUB, the other hub: quota enabled, 4 credits a minute on the R9700, the other chip). The hub deducts a session only when it
-  stops, so the balance is flat while a pod runs. The tracker adds the running session (whole minutes x rate, from the
-  server's `started`) and the settled ones (the usage transactions, spread over the minutes they ran) to give
-  `credits_left`, `credits_per_hour` over `--window-hours` (default 3), `burn_per_hour` (the higher of that and what
-  the running servers burn now), `hours_left` and `runs_out_at`. It alerts when the credits are gone or would not last
-  until `--until` (default judging, Sunday 2026-10-11 12:00 ET); after that moment it never alerts.
-- **Unmetered hub** (SJC, the lab: quota disabled, balance 0, unlimited). Nothing is projected and nothing alerts; the line is
-  `unmetered: usage N minutes today, M sessions` from `/hub/api/stats/me`, today being the hub's UTC day.
-- Times come from the hub's clock (its `Date` header), not the workstation's.
-- **Ledger.** One row per account (verb `credits`, node the role the account fills (`pod-a` for C on SJC, `LAB_POD_ROLES`), `refs.account`, `hub` and `account` in conditions, outcome `ok`, `alert`,
-  `unmetered` or `error`) unless `--no-ledger`. Metered rows carry `pod.balance_credits`, `pod.credits_left`,
-  `pod.credits_per_hour`, `pod.credits_burn_per_hour`, `pod.credits_hours_left`; unmetered rows `pod.usage_min_today`,
-  `pod.sessions_today`, `pod.usage_min_window`. A partly read answer is marked `low_confidence`. Tokens and account
-  names are never printed or written.
-
-Tests: `tests/test_lab_credits.py` replays the recordings in `fixtures/lab/credits/` and drives `lab/hub_fake.py`.
 
 ## Secret scan: `tests/test_no_secrets.py`
 
@@ -418,37 +429,6 @@ one run per cell and no external meter, error unmeasured); the raw output (top a
 timings, temperatures) is `fixtures/telemetry/jetson_sampler_cost/`. Consequence: a sampler that fits 1 percent needs
 about a 350 ms period, or tegrastats read in place of a Python loop per line.
 
-## Pod sampler overhead: `python -m lab sampler-overhead` (T9)
-
-Does the pod power sampler (`lab/pod_power.py`) slow the work it watches? Rubric test TT5 says decode tok/s and time to
-first token with the sampler on must stay within the run-to-run spread of the same runs with it off. This verb runs that
-experiment on pod B (account D) inside one GPU Queue slot: one discarded warm-up with the sampler off, then off, on, off,
-on, off, on (three repeats an arm, interleaved). A repeat is one pass of the bench harness's fixed prompt set
-(`fixtures/lab/bench/prompts.json`, batch 4, so every prompt once) against the server on the pod through the hub proxy,
-with the harness's own power reading and ledger rows left off. CPU percent is read on the pod in the middle of the repeat
-(two `/proc/stat` snapshots 12 s apart through run-script, plus the sampler's own `/proc/<pid>/stat`).
-
-```
-python -m lab sampler-overhead run --account D --dry-run             # the schedule and the steps; touches nothing
-python -m lab sampler-overhead run --account D                       # request the slot, wait (every 2 min, up to 90), run, release
-python -m lab sampler-overhead run --account D --row <id>            # use a slot that is already Running
-python -m lab sampler-overhead analyze --rows fixtures/telemetry/sampler_overhead_rows.jsonl
-```
-
-- The slot goes through `lab/machine/slots.py` (`slots.run`), so every request, start, extension and release is a ledger
-  row and a queue row as `python -m lab slot` makes them. A slot that never starts is cancelled and nothing runs on the pod.
-- A model server is served with `pod_a_teacher.sh serve` only when none answers on the proxy, and stopped at the end;
-  the sampler is put back as it was found; the slot is extended once, with a note, if the repeats will not fit.
-- Per metric: mean and sd of each arm, on minus off (and as a percent of off), the spread (the larger sd), whether the
-  difference is inside it, and Welch's test from `lab/machine/verdict.py` beside it. Verdicts: `no_interference`,
-  `interference`, `inconclusive`. Three repeats an arm is low confidence (the verdict module wants five).
-- Rows: `<out>/rows.jsonl`, `<out>/analysis.json` and ledger rows `sampler-overhead.repeat` and
-  `sampler-overhead.summary` on node pod-b. The state of the measurement (not yet taken: the card was busy with an
-  unqueued job), what the slot met and the proposed rubric line are in `lab/T9_REPORT.md`.
-
-Tests: `tests/test_lab_sampler_overhead.py` drives the experiment against fakes (the slot queue over `slots_fake.py`,
-the bench harness over `teacher_fake.py`, a fake pod and a fake `/proc`) on a fake clock.
-
 ## Teacher (pod A)
 
 ```
@@ -729,31 +709,6 @@ time-weighted average of the three states (about 45 W here) would describe the w
 is not part of the answer's window; its 46 J (2 to 5 percent of a 9 to 27 s answer at 110 W) is stored as `excess_j_median` on
 `pod.settle_s`, not folded into the idle.
 
-## Attribution check: `python -m lab attribution-check` (T8)
-
-Do the answers' windows hold the energy the teacher's pod spends on them? From the box, against the running teacher
-on pod A and the pod sampler already running there (nothing is started, stopped or changed on the pod):
-
-```
-python -m lab attribution-check run --account C [--requests 100] [--idle-s 60] [--gap-s 10] [--wait-min 30]
-python -m lab attribution-check replay --tag <date> [--record]      # the numbers again from the saved rows
-```
-
-It checks that vLLM's `/metrics` shows nothing in flight (and waits, two minutes at a time, up to `--wait-min`),
-reads the idle watts for 60 s, then sends bench's text prompts one at a time (greedy, thinking off, 128 tokens,
-ignore_eos), each followed by a 10 s gap with nothing in flight. Every number is gross (telemetry ruling 1): each
-answer's joules come from T4's attribution (`contexts/telemetry/application/joules.py`) fed the pod's samples, the
-windows and the pod's clock offset as the box feeds it; the gaps and the whole run are integrated the same way, and
-answers plus gaps must equal the whole run (conservation). The gap energy above the idle watts times the gap time is
-what the windows missed (the sensor's averaging lag and the tail after each answer); its share of the answers' energy
-is the relative error. The verdict (`lab/machine/verdict.py`) reads each answer's joules plus the gap after it above
-idle against its joules alone: no_difference, with at least 10 samples in every window, conservation, a quiet idle
-window and no other client's request during the run (vLLM's counters before and after), calls the attribution
-trustworthy at the sampler's rate. The raw rows go to `fixtures/telemetry/attribution_check_<tag>_{samples,requests,run}.jsonl`
-and one ledger row (verb `attribution-check`, task T8, node pod-a, `low_confidence` while the sensor's own error is
-unmeasured) holds the result. Tests: `tests/test_lab_attribution_check.py` (a synthetic trace through the real pod
-sampler and a fake teacher, worked out by hand).
-
 ## Trainer (pod B)
 
 ```
@@ -961,33 +916,6 @@ Content-Range through, the status it answers to a whole file over 100 MiB (599 i
 the real MB/s of a single stream of 64 MiB parts, and that the SJC pod image has `python3` and the proxy extension.
 The `/files/` route of the Jupyter server (Range without a pod-side server, but only under the Jupyter root) is
 the other path; experiment E9 on the queue compares them.
-## Link speed: `python -m lab link-speed` (R14)
-
-Measures how fast a few-GB package crosses the hub: a seeded random file (it does not compress) goes up to the pod
-through the contents API in base64 chunks (`lab/transfer.py`), comes back through the proxy from R10's file server in
-Range parts (`lab/package_pull.py`), and is checked by sha256, three repeats each way. A short probe first doubles one
-single PUT until the contents API refuses it and keeps the last size it accepted.
-
-```
-python -m lab link-speed --account D [--sizes-mb 1000,3000] [--repeats 3] [--chunk-mib 64] [--part-mib 64]
-                         [--port 8301] [--probe-ceiling-mib 256] [--no-probe] [--scratch r14-link-speed] [--report lab/R14_REPORT.md]
-```
-
-- It runs the file server on its own port (8301) from a copy named `r14_file_server.py` in `~/.r14_link_speed`, so a
-  standing package server on 8300 is left alone, and it serves the folder the push wrote to. At the end it stops that
-  server, deletes `~/.r14_link_speed`, the scratch folder and the controller's script files, so the pod is as found.
-  No GPU and no server restart; it needs a ready pod with `jupyter-server-proxy`.
-- One ledger row per run (`link push`, `link pull`) with `link.push_mb_s` or `link.pull_mb_s`, bytes, seconds,
-  `chunk_bytes` or `part_bytes`, the node, `hub` and `refs.account`; a failed run is an `error` row with no speed. The probe
-  is one row (`link part-probe`, metric `link.max_part_mb`). The Markdown table is written to `--report`.
-- On SJC the edge caches `GET /user/<account>/api/contents/<path>?content=0` for four hours (`cache-control: public,
-  max-age=14400`, `cf-cache-status: HIT`), so a size read back after a rewrite is the old size. This verb adds a
-  never-repeated query parameter to every contents read (`FreshLink`); `lab/transfer.py` does not, and a push of a
-  different size to a path it has read before can fail its size check. The proxy route answers `no-store`.
-- A push's seconds cover the whole call (folders, chunks, size read back); a pull's seconds are its requests only.
-  No MB/s bar applies; this measures.
-- Rehearsal: `tests/test_lab_link_speed.py` runs it at 1 MB and 3 MB against `lab/proxy_fake.py` and `lab/package_fake.py`.
-
 ## Labeling with the teacher: `lab/label.py`
 
 `lab/label.py` asks the teacher about every example of a dataset that has no `target` yet, checks each answer and
@@ -1597,40 +1525,6 @@ python lab/label_fallback.py convert fixtures/learning/tool-calling-fixture fixt
 `convert` is the route for a night when the teacher is not labeling: it turns the reference traces in `expected.jsonl`
 into the same folder, checks every row against the task's output schema, and writes `"source": "reference traces,
 teacher unavailable"` in the manifest. This run did not need it: the manifest says `"source": "teacher"`.
-## Publishing the adapter: `python -m lab publish-adapter` (L8)
-
-Puts the trained LoRA adapter and its model card on the team Hugging Face repo. The card is filled by code from the
-evaluation gate's ledger row (`lab/model_card_template.md`): the task and its instruction from a `TaskSpec` JSON file,
-the current, candidate and teacher scores, n as items and as groups, the run-to-run noise and the paired p-value, none
-typed by hand. The metadata sets `license: apache-2.0`, `base_model: Qwen/Qwen3.5-4B`, `base_model_relation: adapter`,
-`library_name: peft` and no `datasets` entry; the upload carries `LICENSE` (the Apache 2.0 text) and a line saying the
-adapter is a LoRA fine-tune of the base.
-
-```
-python -m lab publish-adapter --fake --repo <owner>/<name> --adapter-dir <dir> --task-spec <spec.json> [--run-id R]
-```
-
-`--fake` runs every step against `lab/hf_fake.py` and uploads nothing; without it the command needs `HF_TOKEN` in the
-environment (the name only; the value is never printed) and `huggingface_hub`, which is imported only then. Before any
-push it reads the base model's card again and stops unless the license is `apache-2.0`, and scans every file of the
-upload folder for an image, a caption, a label, a `frame_ref`, a `data/` path or a camera id, stopping on any hit. The
-exact command for the real publish is in `lab/L8_REAL_RUN.md`.
-
-## Label agreement spot-check: `python -m lab label-agreement`
-
-`lab/label_agreement.py` asks the teacher again about 30 labeled examples (the first 30, or `--sample seeded
---sample-seed N`) with another sampling seed (`--seed`, default 1; the labels were made with 0) and a reworded prompt
-(`REWORD_PREFIX` in front of the instruction), compares the two labels one top-level field at a time (`tool_calls`
-and `answer` for the fixture; free text and lists are one field, `label`), and writes `label_agreement.json` and
-`label_agreement.md` (`--out`) with the agreement rate per field and overall, every disagreement (example id, field,
-first value, second value), the examples the second pass could not label (counted as disagreeing) and a verdict:
-`consistent` at or above the threshold, `inconsistent` below it, `insufficient` when fewer than 30 are labeled. The
-threshold is the number LT2 in `lab/refine/learning/RUBRIC.md` names for the agreement check; it names none today,
-so the default is 0.9 and the report says so (`--threshold` overrides). The report holds the rubric line the merge
-pass should add, with its citation; nothing under `lab/refine/` is written. One ledger row (verb `label-agreement`,
-outcome the verdict, `label.agreement_rate`, `label.agreement_sample`, `label.agreement_disagreements`). The dataset
-is never written; the sample is relabeled in a temporary copy. Tests use the fake teacher (`swayed_policy` makes it
-answer differently on a second seed); the run against the real teacher is in `lab/L14_REAL_RUN.md`.
 ## Camera clips: `jetson/record_clip.py` (L22)
 
 The gateway (`atlas-gateway`) holds `/dev/video0` open, and `/dev/video1` is the same webcam's metadata channel (v4l2-ctl
