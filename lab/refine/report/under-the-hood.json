@@ -81,7 +81,7 @@
      "label": "weights read per decoded token (teacher, 27B INT4)",
      "value": 15.5,
      "unit": "GB",
-     "kind": "derived",
+     "kind": "stated",
      "formula": "the byte budget of the teacher's weights, as lab/public_prior.py TARGETS states it",
      "inputs": [],
      "source": {
@@ -1976,7 +1976,7 @@
    "label": "weights read per decoded token (teacher, 27B INT4)",
    "value": 15.5,
    "unit": "GB",
-   "kind": "derived",
+   "kind": "stated",
    "formula": "the byte budget of the teacher's weights, as lab/public_prior.py TARGETS states it",
    "inputs": [],
    "source": {

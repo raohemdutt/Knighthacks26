@@ -20,8 +20,9 @@ the run that would fill it; nothing is invented or interpolated.
 
 Every number in the pack is a dict: {id, label, value, unit, kind, source: {file, line, ref}, gpu, chip,
 conditions, ts, low_confidence, reason, other_chip}. `kind` is "measured" (a row's own value), "derived"
-(worked out here from other numbers, with `formula` and `inputs`) or "prior" (the public prior's prediction,
-never a measurement). `gpu` is the row's conditions.gpu, `chip` its conditions.chip; either may be None.
+(worked out here from other numbers, with `formula` and `inputs`), "stated" (an estimate a committed file states,
+such as the teacher's weight bytes), "prior" (the public prior's prediction, never a measurement) or
+"not measured" (value None, with `why`). `gpu` is the row's conditions.gpu, `chip` its conditions.chip; either may be None.
 Rows from another chip (the R9700s, by lab/slide_numbers.py's own rule, which the Learning lab's bench reader
 uses too) are never drawn with Strix Halo rows: they sit in each section's `other_chip` list and in a panel of
 their own on the page.
@@ -244,7 +245,7 @@ def bytes_per_token(root: Path) -> dict[str, Any]:
                        f"lab/public_prior.py states no {TEACHER_TARGET} byte budget")
     match = re.search(r":\s*([0-9.]+)", path.read_text(encoding="utf-8").splitlines()[line - 1])
     return {"id": "public_prior:teacher_gb", "label": "weights read per decoded token (teacher, 27B INT4)",
-            "value": float(match.group(1)) if match else None, "unit": "GB", "kind": "derived",
+            "value": float(match.group(1)) if match else None, "unit": "GB", "kind": "stated",
             "formula": "the byte budget of the teacher's weights, as lab/public_prior.py TARGETS states it",
             "inputs": [], "source": {"file": "lab/public_prior.py", "line": line,
                                      "ref": "TARGETS; the note public_strix_halo_benchmarks.md gives the same figure"},
@@ -621,7 +622,7 @@ class Page:
         where = f"{src['file']}:{src['line']}" if src.get("line") else src["file"]
         bits = [f'<a href="{esc(href(self.page_dir, self.root, src["file"]))}" data-line="{esc(src.get("line") or "")}">'
                 f'{esc(where)}</a>', esc(gpu_text(n))]
-        if n.get("kind") in ("derived", "prior"):
+        if n.get("kind") in ("derived", "prior", "stated"):
             bits.append(esc(n["kind"]))
         if n.get("low_confidence"):
             bits.append(f'<span class="flag">low confidence{": " + esc(n["reason"]) if n.get("reason") else ""}</span>')
