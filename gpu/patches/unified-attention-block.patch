@@ -1,0 +1,41 @@
+R12 lever 2 of 2: the decode KV tile (TILE_SIZE, the kernel's block over keys) of unified attention
+(git apply ignores this text). Not the KV-cache page (--block-size), which the hybrid model rule fixes at 784.
+Base: vLLM b1388b1 with only the build-enabling hunks of lab/vllm-gfx1201.diff (see the stages patch).
+Stock arm: the whole diff (num_stages=1, decode tile 16 for bf16).
+This arm: num_stages=1 on both launches as in stock, and TILE_SIZE_DECODE 16 -> 32 for 16-bit dtypes, which
+kernel_unified_attention_3d and reduce_segments both take. One lever: the decode tile, 16 -> 32.
+Apply and rebuild with gpu/rebuild.sh block.
+
+diff --git a/vllm/v1/attention/ops/triton_unified_attention.py b/vllm/v1/attention/ops/triton_unified_attention.py
+index ca5d0e3..bb68141 100644
+--- a/vllm/v1/attention/ops/triton_unified_attention.py
++++ b/vllm/v1/attention/ops/triton_unified_attention.py
+@@ -878,7 +878,9 @@ def _get_tile_size(
+     # Default behavior
+     if is_prefill:
+         return 32
+-    return 16 if element_size >= 2 else 32
++    # R12 block lever: decode KV tile 32 for 16-bit dtypes too (upstream: 16), half the tile
++    # iterations per segment. The decode launch keeps the known fix's num_stages=1.
++    return 32
+ 
+ 
+ def unified_attention(
+@@ -1040,6 +1042,8 @@ def unified_attention(
+             num_seqs=num_seqs,
+             BLOCK_M=BLOCK_M,
+             USE_FP8=output_scale is not None,
++            # The known gfx1201/gfx1151 fix, kept: default pipelining asked for 66560 bytes of LDS.
++            num_stages=1,
+         )
+     else:
+         kernel_unified_attention_3d[
+@@ -1092,6 +1096,8 @@ def unified_attention(
+             num_seqs=num_seqs,
+             BLOCK_M=BLOCK_M,
+             NUM_SEGMENTS_PER_SEQ=num_par_softmax_segments,
++            # The known fix, kept: one stage, so only the tile size differs from the stock build.
++            num_stages=1,
+         )
+         reduce_segments[(q.shape[0], num_query_heads)](
+             output_ptr=out,
