@@ -1,0 +1,379 @@
+{
+ "schema": "r64.correctness.three_way/1",
+ "fixtures": {
+  "new": "fixtures/lab/correctness/vllm-gfx1151-v0.31.0-2026-10-11.json",
+  "old": "fixtures/lab/correctness/vllm-gfx1151-2026-10-11.json",
+  "a100": "fixtures/lab/bench/a100-2026-10-10/vllm-a100-2026-10-10.json",
+  "new_r60_0442": "fixtures/lab/correctness/r60-2026-10-11/compare-with-april-baseline.json (branch ctx/runtime/vllm-upgrade), its outputs"
+ },
+ "pairs": [
+  {
+   "run": "new",
+   "baseline": "old",
+   "label": "new build against the old Strix baseline",
+   "summary": {
+    "prompts": 4,
+    "matches": 1,
+    "divergences": 3,
+    "match_rate": 0.25,
+    "normalised_text_matches": 1,
+    "first_divergence_prompt": "image-bars",
+    "first_divergence_index": 0
+   },
+   "prompts": [
+    {
+     "prompt": "text-kitchen",
+     "kind": "text",
+     "tokens_match": true,
+     "first_divergence": null,
+     "baseline_tokens": 128,
+     "run_tokens": 128,
+     "baseline_token_at": null,
+     "run_token_at": null,
+     "logprob_baseline": null,
+     "logprob_run": null,
+     "logprob_difference": null,
+     "text_equal": true,
+     "text_normalised_equal": true,
+     "finish_reason": {
+      "baseline": "length",
+      "run": "length"
+     }
+    },
+    {
+     "prompt": "image-bars",
+     "kind": "image",
+     "tokens_match": false,
+     "first_divergence": 0,
+     "baseline_tokens": 128,
+     "run_tokens": 128,
+     "baseline_token_at": 27775,
+     "run_token_at": 1919,
+     "logprob_baseline": -0.00017009719158522785,
+     "logprob_run": -0.5411731004714966,
+     "logprob_difference": -0.541003,
+     "text_equal": false,
+     "text_normalised_equal": false,
+     "finish_reason": {
+      "baseline": "length",
+      "run": "length"
+     }
+    },
+    {
+     "prompt": "text-schedule",
+     "kind": "text",
+     "tokens_match": false,
+     "first_divergence": 106,
+     "baseline_tokens": 128,
+     "run_tokens": 128,
+     "baseline_token_at": 279,
+     "run_token_at": 836,
+     "logprob_baseline": -0.6956763863563538,
+     "logprob_run": -0.6354346871376038,
+     "logprob_difference": 0.060242,
+     "text_equal": false,
+     "text_normalised_equal": false,
+     "finish_reason": {
+      "baseline": "length",
+      "run": "length"
+     }
+    },
+    {
+     "prompt": "image-shapes",
+     "kind": "image",
+     "tokens_match": false,
+     "first_divergence": 3,
+     "baseline_tokens": 128,
+     "run_tokens": 128,
+     "baseline_token_at": 1103,
+     "run_token_at": 11346,
+     "logprob_baseline": -0.1368020921945572,
+     "logprob_run": -0.20856453478336334,
+     "logprob_difference": -0.071762,
+     "text_equal": false,
+     "text_normalised_equal": false,
+     "finish_reason": {
+      "baseline": "length",
+      "run": "length"
+     }
+    }
+   ]
+  },
+  {
+   "run": "new",
+   "baseline": "a100",
+   "label": "new build against the A100 record",
+   "summary": {
+    "prompts": 4,
+    "matches": 2,
+    "divergences": 2,
+    "match_rate": 0.5,
+    "normalised_text_matches": 2,
+    "first_divergence_prompt": "text-schedule",
+    "first_divergence_index": 76
+   },
+   "prompts": [
+    {
+     "prompt": "text-kitchen",
+     "kind": "text",
+     "tokens_match": true,
+     "first_divergence": null,
+     "baseline_tokens": 128,
+     "run_tokens": 128,
+     "baseline_token_at": null,
+     "run_token_at": null,
+     "logprob_baseline": null,
+     "logprob_run": null,
+     "logprob_difference": null,
+     "text_equal": true,
+     "text_normalised_equal": true,
+     "finish_reason": {
+      "baseline": "length",
+      "run": "length"
+     }
+    },
+    {
+     "prompt": "image-bars",
+     "kind": "image",
+     "tokens_match": true,
+     "first_divergence": null,
+     "baseline_tokens": 128,
+     "run_tokens": 128,
+     "baseline_token_at": null,
+     "run_token_at": null,
+     "logprob_baseline": null,
+     "logprob_run": null,
+     "logprob_difference": null,
+     "text_equal": true,
+     "text_normalised_equal": true,
+     "finish_reason": {
+      "baseline": "length",
+      "run": "length"
+     }
+    },
+    {
+     "prompt": "text-schedule",
+     "kind": "text",
+     "tokens_match": false,
+     "first_divergence": 76,
+     "baseline_tokens": 128,
+     "run_tokens": 128,
+     "baseline_token_at": 23,
+     "run_token_at": 22,
+     "logprob_baseline": -0.6936522722244263,
+     "logprob_run": -0.7488395571708679,
+     "logprob_difference": -0.055187,
+     "text_equal": false,
+     "text_normalised_equal": false,
+     "finish_reason": {
+      "baseline": "length",
+      "run": "length"
+     }
+    },
+    {
+     "prompt": "image-shapes",
+     "kind": "image",
+     "tokens_match": false,
+     "first_divergence": 67,
+     "baseline_tokens": 128,
+     "run_tokens": 128,
+     "baseline_token_at": 5893,
+     "run_token_at": 1576,
+     "logprob_baseline": -0.6634812951087952,
+     "logprob_run": -0.7833424806594849,
+     "logprob_difference": -0.119861,
+     "text_equal": false,
+     "text_normalised_equal": false,
+     "finish_reason": {
+      "baseline": "length",
+      "run": "length"
+     }
+    }
+   ]
+  },
+  {
+   "run": "old",
+   "baseline": "a100",
+   "label": "old Strix baseline against the A100 record",
+   "summary": {
+    "prompts": 4,
+    "matches": 1,
+    "divergences": 3,
+    "match_rate": 0.25,
+    "normalised_text_matches": 1,
+    "first_divergence_prompt": "image-bars",
+    "first_divergence_index": 0
+   },
+   "prompts": [
+    {
+     "prompt": "text-kitchen",
+     "kind": "text",
+     "tokens_match": true,
+     "first_divergence": null,
+     "baseline_tokens": 128,
+     "run_tokens": 128,
+     "baseline_token_at": null,
+     "run_token_at": null,
+     "logprob_baseline": null,
+     "logprob_run": null,
+     "logprob_difference": null,
+     "text_equal": true,
+     "text_normalised_equal": true,
+     "finish_reason": {
+      "baseline": "length",
+      "run": "length"
+     }
+    },
+    {
+     "prompt": "image-bars",
+     "kind": "image",
+     "tokens_match": false,
+     "first_divergence": 0,
+     "baseline_tokens": 128,
+     "run_tokens": 128,
+     "baseline_token_at": 1919,
+     "run_token_at": 27775,
+     "logprob_baseline": -0.5462220907211304,
+     "logprob_run": -0.00017009719158522785,
+     "logprob_difference": 0.546052,
+     "text_equal": false,
+     "text_normalised_equal": false,
+     "finish_reason": {
+      "baseline": "length",
+      "run": "length"
+     }
+    },
+    {
+     "prompt": "text-schedule",
+     "kind": "text",
+     "tokens_match": false,
+     "first_divergence": 76,
+     "baseline_tokens": 128,
+     "run_tokens": 128,
+     "baseline_token_at": 23,
+     "run_token_at": 22,
+     "logprob_baseline": -0.6936522722244263,
+     "logprob_run": -0.7496986985206604,
+     "logprob_difference": -0.056046,
+     "text_equal": false,
+     "text_normalised_equal": false,
+     "finish_reason": {
+      "baseline": "length",
+      "run": "length"
+     }
+    },
+    {
+     "prompt": "image-shapes",
+     "kind": "image",
+     "tokens_match": false,
+     "first_divergence": 3,
+     "baseline_tokens": 128,
+     "run_tokens": 128,
+     "baseline_token_at": 11346,
+     "run_token_at": 1103,
+     "logprob_baseline": -0.2512829005718231,
+     "logprob_run": -0.1368020921945572,
+     "logprob_difference": 0.114481,
+     "text_equal": false,
+     "text_normalised_equal": false,
+     "finish_reason": {
+      "baseline": "length",
+      "run": "length"
+     }
+    }
+   ]
+  },
+  {
+   "run": "new",
+   "baseline": "new_r60_0442",
+   "label": "new build now against the same build at 04:42 UTC (R60's compare run)",
+   "summary": {
+    "prompts": 4,
+    "matches": 4,
+    "divergences": 0,
+    "match_rate": 1.0,
+    "normalised_text_matches": 4,
+    "first_divergence_prompt": null,
+    "first_divergence_index": null
+   },
+   "prompts": [
+    {
+     "prompt": "text-kitchen",
+     "kind": "text",
+     "tokens_match": true,
+     "first_divergence": null,
+     "baseline_tokens": 128,
+     "run_tokens": 128,
+     "baseline_token_at": null,
+     "run_token_at": null,
+     "logprob_baseline": null,
+     "logprob_run": null,
+     "logprob_difference": null,
+     "text_equal": true,
+     "text_normalised_equal": true,
+     "finish_reason": {
+      "baseline": "length",
+      "run": "length"
+     }
+    },
+    {
+     "prompt": "image-bars",
+     "kind": "image",
+     "tokens_match": true,
+     "first_divergence": null,
+     "baseline_tokens": 128,
+     "run_tokens": 128,
+     "baseline_token_at": null,
+     "run_token_at": null,
+     "logprob_baseline": null,
+     "logprob_run": null,
+     "logprob_difference": null,
+     "text_equal": true,
+     "text_normalised_equal": true,
+     "finish_reason": {
+      "baseline": "length",
+      "run": "length"
+     }
+    },
+    {
+     "prompt": "text-schedule",
+     "kind": "text",
+     "tokens_match": true,
+     "first_divergence": null,
+     "baseline_tokens": 128,
+     "run_tokens": 128,
+     "baseline_token_at": null,
+     "run_token_at": null,
+     "logprob_baseline": null,
+     "logprob_run": null,
+     "logprob_difference": null,
+     "text_equal": true,
+     "text_normalised_equal": true,
+     "finish_reason": {
+      "baseline": "length",
+      "run": "length"
+     }
+    },
+    {
+     "prompt": "image-shapes",
+     "kind": "image",
+     "tokens_match": true,
+     "first_divergence": null,
+     "baseline_tokens": 128,
+     "run_tokens": 128,
+     "baseline_token_at": null,
+     "run_token_at": null,
+     "logprob_baseline": null,
+     "logprob_run": null,
+     "logprob_difference": null,
+     "text_equal": true,
+     "text_normalised_equal": true,
+     "finish_reason": {
+      "baseline": "length",
+      "run": "length"
+     }
+    }
+   ]
+  }
+ ]
+}
