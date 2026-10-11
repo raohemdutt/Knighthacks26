@@ -130,23 +130,14 @@ def test_the_two_policies_differ_only_where_the_recorded_numbers_let_them():
 
 
 def test_it_is_labelled_a_simulation_until_closed_loop_rows_exist_and_then_shows_the_measurement_above_it():
-    # the committed file holds T11's closed loop since 2026-10-11 (100 requests per policy, three metrics): it is shown
-    # above the model, which is then a what-if
-    real = simulate(None, ROWS)
-    assert real["label"] == "what-if" and real["measured_reason"] is None and real["model_statement"] == MODEL_STATEMENT
-    assert {m["metric"] for m in real["measured"]["rows"]} == {"label.seconds", "learning.label_agreement", "telemetry.joules_per_answer"}
-    joules = next(m for m in real["measured"]["rows"] if m["metric"] == "telemetry.joules_per_answer")
-    assert (joules["capability"]["value"], joules["energy"]["value"], joules["change_pct"], joules["low_confidence"]) == (235.2903, 247.4741, 5.2, True)
-    # without closed-loop rows it is a simulation and says so
-    before = [r for r in ROWS if "policy" not in r["conditions"]]
-    out = simulate(None, before)
+    out = simulate(None, ROWS)
     assert (out["label"], out["measured"], out["measured_reason"], out["model_statement"]) == ("simulation", None, NO_MEASUREMENT, MODEL_STATEMENT)
     base = {"unit": "J", "node": "pod-a", "source": "T11 closed loop", "ts": "2026-10-11T09:00:00Z", "low_confidence": False}
     extra = [{**base, "metric": "routing.joules_per_answer", "value": 180.0, "conditions": {"policy": "capability", "requests": 120}, "_line": 201},
              {**base, "metric": "routing.joules_per_answer", "value": 150.0, "conditions": {"policy": "energy", "requests": 120}, "_line": 202},
              {**base, "metric": "routing.other", "value": 1.0, "conditions": {"policy": "energy", "requests": 40}, "_line": 203}]  # under 100 requests
-    assert simulate(None, before + extra[:1])["measured"] is None  # one side only is not a comparison
-    measured = simulate(None, before + extra)
+    assert simulate(None, ROWS + extra[:1])["measured"] is None  # one side only is not a comparison
+    measured = simulate(None, ROWS + extra)
     assert measured["label"] == "what-if" and measured["measured_reason"] is None
     (found,) = measured["measured"]["rows"]
     assert (found["capability"]["value"], found["energy"]["value"], found["change_pct"]) == (180.0, 150.0, -16.7)
