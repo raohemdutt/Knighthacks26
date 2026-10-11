@@ -828,13 +828,6 @@
 }
 
 /* ---------- ask and handoff ---------- */
-/* the ask card keeps to a reading column on a desktop; a phone uses the full width as before */
-@media (min-width: 1024px) {
-  .askCard {
-    max-width: 720px;
-  }
-}
-
 .askRow {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

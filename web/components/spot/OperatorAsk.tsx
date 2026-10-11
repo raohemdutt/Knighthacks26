@@ -85,7 +85,7 @@ export function OperatorAsk({ chips, onWhy, guideChips = [], jobs = [] }: { chip
   };
 
   return (
-    <section className={`${o.card} ${o.askCard}`} aria-label="Ask and handoff" data-guide="ask">
+    <section className={o.card} aria-label="Ask and handoff" data-guide="ask">
       <div className={o.cardHead}>
         <h2>Ask SPOT's data</h2>
         <span className={o.hint}>answers come from this box</span>
