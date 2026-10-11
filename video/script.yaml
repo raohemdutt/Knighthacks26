@@ -36,7 +36,7 @@ slots:
   3:
     title: The learning lab
     lines:
-      - text: The lab is two AMD Radeon R9700 cards. One serves the teacher, a twenty-seven billion parameter Qwen. The other trains.
+      - text: The lab is two AMD Strix Halo pods, each a Radeon GPU with sixty-four gigabytes of shared memory. One serves the teacher, a twenty-seven billion parameter Qwen. The other trains.
       - text: Labeling, training, testing and packaging run on ROCm, and every run is recorded, with its loss curve, its minutes and its watts.
       - text: The box and the lab share two files, a dataset out and a model package back. Nothing else crosses.
 

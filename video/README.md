@@ -15,6 +15,26 @@ npm run render       # out/atlas.mp4 (about 30 minutes on a laptop)
 npm run check        # length within 0.1 s of 9:58, and where each key lands
 ```
 
+## The three-minute film (HyperFrames)
+
+`video/hf/` is the short cinematic cut, built with [HyperFrames](https://github.com/heygen-com/hyperframes): HTML,
+GSAP and Three.js rendered by headless Chrome. One continuous 3D world (the box and its four layers, the privacy
+membrane, the time ring on the desk, the lab, friends' boxes, the campus) under soft-UI overlays, ten scenes back to
+back, no keys and no app recordings. `video/hf/WORLD.md` is the contract.
+
+```
+python video/scripts/film_build.py       # speaks video/hf/film.yaml, writes film.json + index.html (never edit index.html)
+cd video/hf
+npx hyperframes@0.8.145 lint             # 0 errors before anything else
+npx hyperframes@0.8.145 snapshot --at 8,40,100   # frames at absolute seconds, read the PNGs
+npx hyperframes@0.8.145 preview          # the browser editor (click anything, scrub)
+npx hyperframes@0.8.145 render --quality delivery --output out/atlas-film.mp4
+```
+
+Words live in `film.yaml`; each scene is a choreography (`world/scenes/<id>.js`, numbers tweened on the root
+timeline at absolute seconds from `film.json`) plus an overlay (`compositions/<id>.html`, a sub-composition in local
+time). It renders natively on Windows, macOS and Linux (Node 22, FFmpeg); Docker is optional (`render --docker`).
+
 ## Narration and diagrams
 
 - `script.yaml` is the script, one entry per slot, plain words. `python video/scripts/voice.py` speaks every line with

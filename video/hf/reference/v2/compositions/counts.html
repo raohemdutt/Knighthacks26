@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+  <head><meta charset="UTF-8"></head>
+  <body>
+    <template>
+      <link rel="stylesheet" href="world/soft.css">
+      <style>
+        #root { position: absolute; inset: 0; font-family: var(--font); overflow: hidden; }
+        #counts-chapter { position: absolute; left: 96px; top: 72px; padding: 14px 28px; font-size: 28px; opacity: 0; }
+
+        /* frames -> events -> episodes: three chips along the top right, a grooved line between them. */
+        #counts-steps { position: absolute; left: 900px; top: 140px; width: 924px; height: 100px; }
+        #counts-steps svg { position: absolute; inset: 0; width: 924px; height: 100px; }
+        .counts-groove-shade { fill: none; stroke: var(--shade); stroke-width: 4; stroke-linecap: round; }
+        .counts-groove-light { fill: none; stroke: var(--light); stroke-width: 4; stroke-linecap: round; }
+        .counts-groove-accent { fill: none; stroke: var(--accent); stroke-width: 6; stroke-linecap: round; }
+        .counts-step { position: absolute; top: 12px; height: 76px; border-radius: 26px; display: flex; align-items: center; gap: 14px; padding: 0 26px 0 22px; font-size: 36px; font-weight: 600; color: var(--muted); opacity: 0; white-space: nowrap; }
+        .counts-step-dot { width: 16px; height: 16px; border-radius: 50%; background: var(--shade); flex: none; }
+        .counts-step-text { display: block; }
+
+        /* Bins with counts. */
+        #counts-bins-float { position: absolute; left: 1180px; top: 290px; width: 644px; }
+        #counts-bins { position: relative; width: 644px; padding: 28px 36px 32px; opacity: 0; }
+        .counts-head { display: flex; justify-content: space-between; align-items: baseline; }
+        .counts-bin-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 20px; }
+        .counts-bin { height: 150px; border-radius: 24px; padding: 18px 0 0; text-align: center; opacity: 0; }
+        .counts-bin-name { font-size: 26px; font-weight: 600; color: var(--muted); }
+        .counts-bin-n { display: inline-block; margin-top: 6px; font-size: 64px; font-weight: 700; color: var(--ink); line-height: 1.1; font-variant-numeric: tabular-nums; }
+
+        /* Sorted right: before / after bars. */
+        #counts-sorted-float { position: absolute; left: 1180px; top: 620px; width: 644px; }
+        #counts-sorted { position: relative; width: 644px; padding: 28px 36px 32px; opacity: 0; }
+        .counts-tag { padding: 6px 14px; border-radius: 14px; font-size: 22px; font-weight: 600; color: var(--muted); }
+        .counts-bar-row { display: grid; grid-template-columns: 110px 1fr 96px; align-items: center; gap: 18px; margin-top: 22px; opacity: 0; }
+        .counts-bar-label { font-size: 28px; font-weight: 600; color: var(--muted); }
+        .counts-track { height: 36px; border-radius: 18px; overflow: hidden; position: relative; }
+        .counts-fill { position: absolute; left: 0; top: 0; width: 100%; height: 100%; border-radius: 18px; }
+        .counts-fill-before { background: var(--shade); }
+        .counts-fill-after { background: var(--accent); }
+        .counts-bar-n { font-size: 32px; font-weight: 700; color: var(--ink); text-align: right; font-variant-numeric: tabular-nums; }
+
+        /* The shell: a number passes through, a picture bounces off. */
+        #counts-shell { position: absolute; left: 1230px; top: 120px; width: 594px; height: 170px; opacity: 0; }
+        #counts-shell svg { position: absolute; inset: 0; width: 594px; height: 170px; }
+        #counts-shell-arc { fill: none; stroke: var(--shade); stroke-width: 5; stroke-linecap: round; }
+        #counts-shell-glint { fill: none; stroke: var(--light); stroke-width: 4; stroke-linecap: round; }
+        #counts-num { position: absolute; left: 0; top: 46px; height: 60px; padding: 0 22px; border-radius: 20px; display: grid; place-items: center; font-size: 30px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; opacity: 0; }
+        #counts-pic { position: absolute; left: 0; top: 50px; width: 64px; height: 52px; opacity: 0; }
+        #counts-pic svg { width: 64px; height: 52px; display: block; }
+        .counts-pic-frame { fill: var(--surface); stroke: var(--muted); stroke-width: 3; }
+        .counts-pic-sun { fill: var(--muted); }
+        .counts-pic-hill { fill: none; stroke: var(--muted); stroke-width: 3; stroke-linejoin: round; }
+        .counts-shell-cap { position: absolute; top: 128px; font-size: 24px; font-weight: 600; color: var(--muted); opacity: 0; white-space: nowrap; }
+      </style>
+      <div data-hf-id="hf-8fu7" id="root" data-composition-id="counts" data-width="1920" data-height="1080">
+        <div data-hf-id="hf-7bkx" id="counts-chapter" class="soft-raised soft-muted">Data into counts</div>
+
+        <div data-hf-id="hf-91dz" id="counts-steps">
+          <svg data-hf-id="hf-jvq3" viewBox="0 0 924 100">
+            <line data-hf-id="hf-mzaq" class="counts-groove-shade" x1="246" y1="49" x2="330" y2="49" /><line data-hf-id="hf-d361" class="counts-groove-light" x1="246" y1="53" x2="330" y2="53" />
+            <line data-hf-id="hf-xwho" class="counts-groove-shade" x1="586" y1="49" x2="676" y2="49" /><line data-hf-id="hf-tsqz" class="counts-groove-light" x1="586" y1="53" x2="676" y2="53" />
+            <line data-hf-id="hf-ig90" class="counts-groove-accent" id="counts-link0" x1="246" y1="51" x2="330" y2="51" />
+            <line data-hf-id="hf-q03b" class="counts-groove-accent" id="counts-link1" x1="586" y1="51" x2="676" y2="51" />
+          </svg>
+          <div data-hf-id="hf-plmx" class="counts-step soft-raised" id="counts-s0" style="left:0px"><div data-hf-id="hf-d78p" class="counts-step-dot"></div><span data-hf-id="hf-1mau" class="counts-step-text">frames</span></div>
+          <div data-hf-id="hf-ortl" class="counts-step soft-raised" id="counts-s1" style="left:340px"><div data-hf-id="hf-xtct" class="counts-step-dot"></div><span data-hf-id="hf-i1l9" class="counts-step-text">events</span></div>
+          <div data-hf-id="hf-ff77" class="counts-step soft-raised" id="counts-s2" style="left:686px"><div data-hf-id="hf-z09w" class="counts-step-dot"></div><span data-hf-id="hf-a2n6" class="counts-step-text">episodes</span></div>
+        </div>
+
+        <div data-hf-id="hf-vdpt" id="counts-bins-float">
+          <div data-hf-id="hf-9yoq" id="counts-bins" class="soft-raised">
+            <div data-hf-id="hf-3her" class="counts-head"><div data-hf-id="hf-sfje" class="soft-body" style="font-weight:600">The bins</div><div data-hf-id="hf-ggr1" class="soft-small">today, this building</div></div>
+            <div data-hf-id="hf-c2hl" class="counts-bin-grid">
+              <div data-hf-id="hf-acop" class="counts-bin soft-well" id="counts-bin0"><div data-hf-id="hf-k5wy" class="counts-bin-name">Recycling</div><div data-hf-id="hf-s8ve" class="counts-bin-n" id="counts-n0">0</div></div>
+              <div data-hf-id="hf-9l0w" class="counts-bin soft-well" id="counts-bin1"><div data-hf-id="hf-kusb" class="counts-bin-name">Compost</div><div data-hf-id="hf-kmct" class="counts-bin-n" id="counts-n1">0</div></div>
+              <div data-hf-id="hf-kgij" class="counts-bin soft-well" id="counts-bin2"><div data-hf-id="hf-gt0c" class="counts-bin-name">Landfill</div><div data-hf-id="hf-id8c" class="counts-bin-n" id="counts-n2">0</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div data-hf-id="hf-khwk" id="counts-sorted-float">
+          <div data-hf-id="hf-9dn3" id="counts-sorted" class="soft-raised">
+            <div data-hf-id="hf-0gyr" class="counts-head"><div data-hf-id="hf-qo9m" class="soft-body" style="font-weight:600">Sorted right</div><div data-hf-id="hf-ddag" class="counts-tag soft-well">example</div></div>
+            <div data-hf-id="hf-hwwq" class="counts-bar-row" id="counts-row-before"><div data-hf-id="hf-rroq" class="counts-bar-label">before</div><div data-hf-id="hf-9lcb" class="counts-track soft-well"><div data-hf-id="hf-tkak" class="counts-fill counts-fill-before" id="counts-fill-before"></div></div><div data-hf-id="hf-ob1g" class="counts-bar-n" id="counts-pct-before">0%</div></div>
+            <div data-hf-id="hf-igpf" class="counts-bar-row" id="counts-row-after"><div data-hf-id="hf-cwo5" class="counts-bar-label">after</div><div data-hf-id="hf-p9d7" class="counts-track soft-well"><div data-hf-id="hf-z016" class="counts-fill counts-fill-after" id="counts-fill-after"></div></div><div data-hf-id="hf-axrn" class="counts-bar-n" id="counts-pct-after">0%</div></div>
+          </div>
+        </div>
+
+        <div data-hf-id="hf-bwsg" id="counts-shell">
+          <svg data-hf-id="hf-ehcb" viewBox="0 0 594 170">
+            <path data-hf-id="hf-34rb" id="counts-shell-arc" d="M 318 12 C 262 40, 262 130, 318 158" />
+            <path data-hf-id="hf-yzh6" id="counts-shell-glint" d="M 312 30 C 286 50, 284 72, 290 84" />
+          </svg>
+          <div data-hf-id="hf-yyj2" id="counts-num" class="soft-raised">312</div>
+          <div data-hf-id="hf-64iy" id="counts-pic"><svg data-hf-id="hf-5x92" viewBox="0 0 64 52"><rect data-hf-id="hf-mqws" class="counts-pic-frame" x="2" y="2" width="60" height="48" rx="10" /><circle data-hf-id="hf-taeq" class="counts-pic-sun" cx="20" cy="18" r="6" /><path data-hf-id="hf-zmp1" class="counts-pic-hill" d="M 8 42 L 26 26 L 38 36 L 46 30 L 58 42" /></svg></div>
+          <div data-hf-id="hf-xgl7" class="counts-shell-cap" id="counts-cap-left" style="left:0px">pictures stay home</div>
+          <div data-hf-id="hf-9erx" class="counts-shell-cap" id="counts-cap-right" style="left:360px">counts are shared</div>
+        </div>
+      </div>
+      <script>
+        (function () {
+          // Local time: 0 = scene start. Line starts come from film.json ("counts"): absolute 139.024 / 146.552,
+          // durations 7.128 / 9.696; the scene lasts 18.424 s.
+          const L0 = 0, D0 = 7.128, L1 = 146.552 - 139.024, D1 = 9.696, END = 18.424;
+          const tl = gsap.timeline({ paused: true });
+          const F = 1 / 30;
+
+          tl.fromTo("#counts-chapter", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 0.2);
+
+          const breathe = (sel, amp, period, from) => {
+            const n = Math.max(0, Math.floor((END - from) / period) - 1);
+            tl.fromTo(sel, { y: 0 }, { y: -amp, duration: period / 2, ease: "sine.inOut", yoyo: true, repeat: 2 * n + 1 }, from);
+          };
+          breathe("#counts-bins-float", 5, 4.0, 0.0);
+          breathe("#counts-sorted-float", 5, 4.8, 0.0);
+
+          // ---- Line 0: "a room into data": the three chips whip in; each lights as its word lands, the groove fills between. ----
+          const links = ["#counts-link0", "#counts-link1"].map((s) => { const el = document.querySelector(s); const len = el.getTotalLength(); el.style.strokeDasharray = len; el.style.strokeDashoffset = len; return el; });
+          let t = L0 + 0.2 * D0;
+          for (let i = 0; i < 3; i++) {
+            tl.set("#counts-s" + i, { opacity: 1, y: 64 }, t);
+            tl.to("#counts-s" + i, { y: 0, duration: 0.2, ease: "power4.out" }, t);
+            t += 0.2 - F;
+          }
+          const light = (i, when) => {
+            tl.to("#counts-s" + i + " .counts-step-dot", { backgroundColor: "#d9774a", duration: 0.25, ease: "power2.out" }, when);
+            tl.to("#counts-s" + i + " .counts-step-text", { color: "#2b313b", duration: 0.25, ease: "power2.out" }, when);
+            tl.to("#counts-s" + i, { scale: 1.06, duration: 0.18, ease: "power2.out" }, when);
+            tl.to("#counts-s" + i, { scale: 1, duration: 0.5, ease: "power3.out" }, when + 0.18);
+          };
+          light(0, L0 + 0.36 * D0);
+          tl.to(links[0], { strokeDashoffset: 0, duration: 0.5, ease: "power2.out" }, L0 + 0.42 * D0);
+          light(1, L0 + 0.52 * D0);
+          tl.to(links[1], { strokeDashoffset: 0, duration: 0.5, ease: "power2.out" }, L0 + 0.6 * D0);
+          light(2, L0 + 0.7 * D0);
+          tl.to("#counts-steps", { opacity: 0, y: -16, duration: 0.5, ease: "power2.in" }, L1 + 0.25);
+
+          // ---- Line 1: "Point it at the bins": three bins, counts climbing together (one chord). ----
+          tl.fromTo("#counts-bins", { opacity: 0, y: 36, scale: 0.96 }, { opacity: 1, y: 0, scale: 1, duration: 0.7, ease: "power3.out" }, L1 + 0.55);
+          for (let i = 0; i < 3; i++) tl.fromTo("#counts-bin" + i, { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, L1 + 0.85 + i * 0.1);
+          const totals = [312, 148, 97], count = { a: 0, b: 0, c: 0 };
+          const nEls = [0, 1, 2].map((i) => document.getElementById("counts-n" + i));
+          const COUNT_AT = L1 + 1.2, COUNT_DUR = 1.5;
+          tl.to(count, { a: totals[0], b: totals[1], c: totals[2], duration: COUNT_DUR, ease: "power3.out", onUpdate: () => {
+            nEls[0].textContent = Math.round(count.a); nEls[1].textContent = Math.round(count.b); nEls[2].textContent = Math.round(count.c);
+          } }, COUNT_AT);
+          tl.fromTo(".counts-bin-n", { scale: 0.6 }, { scale: 1, duration: COUNT_DUR, ease: "power3.out" }, COUNT_AT);
+
+          // "How much was sorted right, before and after a nudge": two bars, the second one orange.
+          tl.fromTo("#counts-sorted", { opacity: 0, y: 36, scale: 0.96 }, { opacity: 1, y: 0, scale: 1, duration: 0.7, ease: "power3.out" }, L1 + 0.44 * D1);
+          const pct = { before: 0, after: 0 };
+          const pb = document.getElementById("counts-pct-before"), pa = document.getElementById("counts-pct-after");
+          const BEFORE_AT = L1 + 0.5 * D1, AFTER_AT = L1 + 0.63 * D1;
+          tl.fromTo("#counts-row-before", { opacity: 0, x: -20 }, { opacity: 1, x: 0, duration: 0.5, ease: "power3.out" }, BEFORE_AT - 0.2);
+          tl.fromTo("#counts-fill-before", { scaleX: 0, transformOrigin: "0% 50%" }, { scaleX: 0.41, duration: 1.0, ease: "power2.out" }, BEFORE_AT);
+          tl.to(pct, { before: 41, duration: 1.0, ease: "power2.out", onUpdate: () => { pb.textContent = Math.round(pct.before) + "%"; } }, BEFORE_AT);
+          tl.fromTo("#counts-row-after", { opacity: 0, x: -20 }, { opacity: 1, x: 0, duration: 0.5, ease: "power3.out" }, AFTER_AT - 0.2);
+          tl.fromTo("#counts-fill-after", { scaleX: 0, transformOrigin: "0% 50%" }, { scaleX: 0.68, duration: 1.1, ease: "power2.out" }, AFTER_AT);
+          tl.to(pct, { after: 68, duration: 1.1, ease: "power2.out", onUpdate: () => { pa.textContent = Math.round(pct.after) + "%"; } }, AFTER_AT);
+
+          // "Tables share counts, never pictures": a number passes through the shell; a picture bounces off it.
+          const SHELL_AT = L1 + 0.74 * D1;
+          const arcs = ["#counts-shell-arc", "#counts-shell-glint"].map((s) => { const el = document.querySelector(s); const len = el.getTotalLength(); el.style.strokeDasharray = len; el.style.strokeDashoffset = len; return el; });
+          tl.fromTo("#counts-shell", { opacity: 0 }, { opacity: 1, duration: 0.3, ease: "power2.out" }, SHELL_AT);
+          tl.to(arcs[0], { strokeDashoffset: 0, duration: 0.6, ease: "power2.out" }, SHELL_AT);
+          tl.to(arcs[1], { strokeDashoffset: 0, duration: 0.4, ease: "power2.out" }, SHELL_AT + 0.3);
+          tl.fromTo("#counts-num", { opacity: 0, x: 60 }, { opacity: 1, x: 90, duration: 0.3, ease: "power2.out" }, SHELL_AT + 0.3);
+          tl.to("#counts-num", { x: 470, duration: 1.25, ease: "power2.inOut" }, SHELL_AT + 0.65);
+          tl.fromTo("#counts-pic", { opacity: 0, x: 40 }, { opacity: 1, x: 90, duration: 0.3, ease: "power2.out" }, SHELL_AT + 1.2);
+          tl.to("#counts-pic", { x: 236, duration: 0.55, ease: "power2.in" }, SHELL_AT + 1.5);
+          tl.to("#counts-pic", { x: 120, rotation: -8, duration: 0.7, ease: "power3.out" }, SHELL_AT + 2.05);
+          tl.fromTo("#counts-cap-right", { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, SHELL_AT + 1.7);
+          tl.fromTo("#counts-cap-left", { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, SHELL_AT + 2.3);
+
+          // ---- Out. ----
+          tl.to(["#counts-bins", "#counts-sorted", "#counts-shell"], { opacity: 0, y: -18, duration: 0.5, ease: "power2.in", stagger: 0.06 }, END - 0.95);
+          tl.to("#counts-chapter", { opacity: 0, duration: 0.4, ease: "power2.in" }, END - 0.6);
+
+          window.__timelines["counts"] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+  <head><meta charset="UTF-8"></head>
+  <body>
+    <template>
+      <link rel="stylesheet" href="world/soft.css">
+      <style>
+        #root { position: absolute; inset: 0; font-family: var(--font); overflow: hidden; }
+        #slot-5-title { position: absolute; left: 160px; top: 120px; display: flex; align-items: center; gap: 48px; }
+        #slot-5-key { transform-origin: center; }
+        #slot-5-name { opacity: 0; }
+        #slot-5-watch { position: absolute; left: 368px; top: 300px; opacity: 0; }
+
+        /* The offline pill: a pressed well, a dark dot, one word. */
+        #slot-5-offline { position: absolute; right: 160px; top: 150px; height: 88px; padding: 0 40px 0 32px; border-radius: 44px;
+          display: flex; align-items: center; gap: 20px; opacity: 0; }
+        #slot-5-offline .dot { width: 18px; height: 18px; border-radius: 50%; background: var(--ink); box-shadow: inset 2px 2px 4px rgba(0,0,0,0.35); }
+        #slot-5-offline .txt { font-size: 32px; font-weight: 600; color: var(--ink); letter-spacing: 0.01em; }
+
+        /* One real answer, measured on the Jetson: a question well and an answer card (right third, during "answers"). */
+        #slot-5-qa { position: absolute; right: 160px; top: 250px; width: 620px; display: flex; flex-direction: column; gap: 28px; }
+        #slot-5-q { padding: 28px 36px; border-radius: 28px; font-size: 34px; font-weight: 500; color: var(--muted); line-height: 1.3; opacity: 0; }
+        #slot-5-a { padding: 32px 40px; border-radius: 32px; opacity: 0; }
+        #slot-5-a .ans { font-size: 48px; font-weight: 600; color: var(--ink); line-height: 1.15; }
+        #slot-5-a .cite { margin-top: 12px; font-size: 26px; font-weight: 500; color: var(--muted); }
+
+        /* The chips: what keeps running while the cable is out. */
+        #slot-5-chips { position: absolute; left: 0; right: 0; top: 770px; display: flex; justify-content: center; gap: 28px; }
+        .slot-5-chip { height: 84px; padding: 0 40px 0 32px; border-radius: 42px; display: flex; align-items: center; gap: 18px;
+          font-size: 32px; font-weight: 600; color: var(--ink); opacity: 0; transform-origin: center; }
+        .slot-5-chip .dot { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 5px rgba(217,119,74,0.16); }
+        .slot-5-chip .tag { font-size: 24px; font-weight: 600; color: var(--muted); opacity: 0; margin-left: 2px; }
+        #slot-5-chip-learning { margin-left: 32px; }
+
+        /* The clip host: a teammate may add assets/clips/slot-5.mp4 (phone recording of the live feed). Keep the video
+           INSIDE this sub-composition with its own timing; animate the wrapper, never the clip itself.
+        #slot-5-clipwrap { position: absolute; right: 160px; top: 270px; width: 560px; height: 420px; padding: 18px; border-radius: 40px; opacity: 0; }
+        #slot-5-clipwrap video { width: 100%; height: 100%; object-fit: cover; border-radius: 26px; display: block; }
+        */
+      </style>
+      <div data-hf-id="hf-fmxx" id="root" data-composition-id="slot-5" data-width="1920" data-height="1080">
+        <div data-hf-id="hf-an9e" id="slot-5-title">
+          <div data-hf-id="hf-u7aj" id="slot-5-key" class="soft-key">5</div>
+          <div data-hf-id="hf-p6la" id="slot-5-name" class="soft-title">On the Jetson</div>
+        </div>
+        <div data-hf-id="hf-m78a" id="slot-5-watch" class="soft-small">For NVIDIA and Encompass</div>
+
+        <div data-hf-id="hf-58iy" id="slot-5-qa">
+          <div data-hf-id="hf-bof0" id="slot-5-q" class="soft-well">What was the score of the last UCF vs UF game?</div>
+          <div data-hf-id="hf-oj23" id="slot-5-a" class="soft-raised"><div data-hf-id="hf-ye72" class="ans">UF won 24-13</div><div data-hf-id="hf-0qkt" class="cite">cites ESPN · 15.6 s</div></div>
+        </div>
+
+        <div data-hf-id="hf-xhcv" id="slot-5-offline" class="soft-pressed"><div data-hf-id="hf-lu65" class="dot"></div><div data-hf-id="hf-qw1j" class="txt">offline</div></div>
+
+        <div data-hf-id="hf-d8kp" id="slot-5-chips">
+          <div data-hf-id="hf-1lxy" class="slot-5-chip soft-raised" id="slot-5-chip-seeing"><div data-hf-id="hf-ww7l" class="dot"></div>seeing</div>
+          <div data-hf-id="hf-87qk" class="slot-5-chip soft-raised" id="slot-5-chip-remembering"><div data-hf-id="hf-y34o" class="dot"></div>remembering</div>
+          <div data-hf-id="hf-f79o" class="slot-5-chip soft-raised" id="slot-5-chip-alerting"><div data-hf-id="hf-xotn" class="dot"></div>alerting</div>
+          <div data-hf-id="hf-vpks" class="slot-5-chip soft-raised" id="slot-5-chip-answering"><div data-hf-id="hf-vpai" class="dot"></div>answering</div>
+          <div data-hf-id="hf-tm74" class="slot-5-chip soft-raised" id="slot-5-chip-learning"><div data-hf-id="hf-vazh" class="dot"></div>learning<span data-hf-id="hf-zaap" class="tag">paused</span></div>
+        </div>
+
+        <!-- Clip host for the live-feed recording (not recorded yet). Uncomment with the CSS above when the file exists.
+        <div id="slot-5-clipwrap" class="soft-raised">
+          <video id="slot-5-clip" class="clip" src="assets/clips/slot-5.mp4" muted playsinline data-start="1.5" data-duration="58.3" data-track-index="1"></video>
+        </div>
+        -->
+      </div>
+      <script>
+        (function () {
+          const RAISED = "18px 18px 36px #b7c0cd, -18px -18px 36px #ffffff";
+          const PRESSED = "inset 10px 10px 20px #b7c0cd, inset -10px -10px 20px #ffffff";
+          const tl = gsap.timeline({ paused: true });
+
+          // Title card (0–1.5 s), then the title clears for the dive at "Cameras in" (~4.5 s).
+          tl.fromTo("#slot-5-key", { boxShadow: RAISED }, { boxShadow: PRESSED, duration: 0.35, ease: "power2.in" }, 0.1);
+          tl.fromTo("#slot-5-name", { opacity: 0, x: -24 }, { opacity: 1, x: 0, duration: 0.6, ease: "power3.out" }, 0.3);
+          tl.fromTo("#slot-5-watch", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 0.6);
+          tl.to("#slot-5-name", { opacity: 0, duration: 0.5, ease: "power2.in" }, 4.0);
+          tl.to("#slot-5-watch", { opacity: 0, duration: 0.4, ease: "power2.in" }, 4.0);
+          tl.to("#slot-5-key", { scale: 0.6, x: -40, y: -40, duration: 0.6, ease: "power2.inOut" }, 4.0);
+
+          // "answers in a few seconds" (9.8): the question, then the measured answer.
+          tl.fromTo("#slot-5-q", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 9.9);
+          tl.fromTo("#slot-5-a", { opacity: 0, y: 24, scale: 0.96 }, { opacity: 1, y: 0, scale: 1, duration: 0.7, ease: "power3.out" }, 10.7);
+          // "Pull the network cable" (12.4): web answers need the network, so the answer fades back as the cable comes out.
+          tl.to("#slot-5-a", { opacity: 0, y: 14, duration: 0.6, ease: "power2.in" }, 13.1);
+          tl.to("#slot-5-q", { opacity: 0, y: 10, duration: 0.5, ease: "power2.in" }, 13.2);
+          // The cable snaps out at ~13.5; the pill lands with it.
+          tl.fromTo("#slot-5-offline", { opacity: 0, scale: 0.9 }, { opacity: 1, scale: 1, duration: 0.7, ease: "power4.out" }, 13.5);
+
+          // "It keeps seeing, remembering, alerting and answering" (14.0–17.7): chips rise as each word lands.
+          const chips = [["seeing", 14.35], ["remembering", 15.05], ["alerting", 15.95], ["answering", 16.75], ["learning", 17.15]];
+          for (const [id, when] of chips) {
+            tl.fromTo("#slot-5-chip-" + id, { opacity: 0, y: 28, scale: 0.92 }, { opacity: 1, y: 0, scale: 1, duration: 0.7, ease: "power3.out" }, when);
+          }
+          // "Only learning pauses" (17.7–19.2): the learning chip presses in and goes quiet.
+          tl.to("#slot-5-chip-learning", { boxShadow: PRESSED, color: "#6f7886", duration: 0.5, ease: "power2.inOut" }, 18.3);
+          tl.to("#slot-5-chip-learning .dot", { backgroundColor: "#b7c0cd", boxShadow: "0 0 0 0px rgba(217,119,74,0)", duration: 0.5, ease: "power2.inOut" }, 18.3);
+          tl.fromTo("#slot-5-chip-learning .tag", { opacity: 0, x: -8 }, { opacity: 1, x: 0, duration: 0.5, ease: "power3.out" }, 18.5);
+
+          // The box runs offline for the rest of the slot; clear the overlay before the camera comes home.
+          tl.to(".slot-5-chip", { opacity: 0, y: 16, duration: 0.6, ease: "power2.in", stagger: 0.06 }, 53.4);
+          tl.to("#slot-5-offline", { opacity: 0, scale: 0.94, duration: 0.5, ease: "power2.in" }, 55.9);
+
+          window.__timelines["slot-5"] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>

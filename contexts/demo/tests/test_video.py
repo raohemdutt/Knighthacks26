@@ -1,6 +1,8 @@
+import json
 import shutil
 from pathlib import Path
 import subprocess
+import sys
 
 import pytest
 
@@ -117,3 +119,19 @@ def test_the_spoken_script_covers_every_slot_and_fits_each_minute():
         slot = timing[str(key)]
         assert slot["ends_at_s"] <= video.SLOT_S, f"slot {key} narration overflows its slot"
         assert [l["text"] for l in slot["lines"]] == [l["text"].strip() for l in script["slots"][key]["lines"]], f"slot {key}: voice.json is stale, run video/scripts/voice.py"
+
+
+def test_the_film_index_is_generated_from_its_layout_and_stays_under_five_minutes():
+    import re
+
+    root = Path(__file__).parents[3] / "video"
+    assert subprocess.run([sys.executable, str(root / "scripts" / "film_build.py"), "--check"], capture_output=True, text=True).returncode == 0
+    film = json.loads((root / "hf" / "film.json").read_text(encoding="utf-8"))
+    html = (root / "hf" / "index.html").read_text(encoding="utf-8")
+    assert 270 <= film["total_s"] < 300  # the 5:00 cap (Dom), measured with every line spoken
+    for scene in film["scenes"]:
+        assert re.search(rf'data-composition-id="{scene["id"]}"[^>]*data-start="{scene["start"]:.3f}"', html), scene["id"]
+        assert (root / "hf" / "world" / "scenes" / f"{scene['id']}.js").exists()
+        assert (root / "hf" / "compositions" / f"{scene['id']}.html").exists()
+    assert html.count("<audio ") == sum(len(s["lines"]) for s in film["scenes"])
+    assert re.search(rf'data-composition-id="atlas"[^>]*data-duration="{film["total_s"]:.1f}"', html)

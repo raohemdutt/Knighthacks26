@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+  <head><meta charset="UTF-8"></head>
+  <body>
+    <template>
+      <link rel="stylesheet" href="world/soft.css">
+      <style>
+        #root { position: absolute; inset: 0; font-family: var(--font); overflow: hidden; }
+        #lab-chapter { position: absolute; left: 96px; top: 72px; padding: 14px 28px; font-size: 28px; opacity: 0; }
+
+        /* Line 0: the hardware card, left column (the pods are centred in the landing shot). */
+        #lab-hw { position: absolute; left: 1264px; top: 190px; width: 560px; padding: 32px 44px 34px; opacity: 0; }
+        #lab-hw .k { font-size: 24px; font-weight: 600; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 12px; }
+        #lab-hw .v { font-size: 52px; font-weight: 700; color: var(--ink); line-height: 1.1; letter-spacing: -0.01em; }
+        #lab-hw .v b { color: var(--accent); }
+        #lab-hw .s { margin-top: 14px; font-size: 26px; font-weight: 500; color: var(--muted); }
+
+        /* Line 1: the four steps waterfall in on the left, the ROCm tag under them; the watts card on the right. */
+        #lab-steps { position: absolute; left: 96px; top: 200px; display: flex; flex-direction: column; gap: 22px; }
+        .lab-step { height: 92px; width: 380px; padding: 0 36px; border-radius: 46px; display: flex; align-items: center; gap: 20px; font-size: 36px; font-weight: 600; color: var(--ink); opacity: 0; }
+        .lab-step .n { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; font-size: 22px; font-weight: 700; color: var(--accent); }
+        #lab-rocm { position: absolute; left: 96px; top: 672px; height: 72px; padding: 0 30px; border-radius: 36px; display: flex; align-items: center; gap: 16px; font-size: 28px; font-weight: 600; color: var(--muted); opacity: 0; }
+        #lab-rocm b { color: var(--ink); font-weight: 700; }
+        #lab-watts { position: absolute; left: 1380px; top: 130px; width: 444px; padding: 32px 40px 36px; opacity: 0; }
+        #lab-watts .k { font-size: 24px; font-weight: 600; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
+        #lab-watts .v { margin-top: 6px; font-size: 88px; font-weight: 700; color: var(--ink); line-height: 1.05; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; display: flex; align-items: baseline; gap: 12px; }
+        #lab-watts .u { font-size: 40px; font-weight: 600; color: var(--muted); }
+        #lab-watts .bar { margin-top: 22px; height: 18px; border-radius: 9px; overflow: hidden; }
+        #lab-watts .fill { display: block; width: 100%; height: 100%; border-radius: 9px; background: var(--accent); transform-origin: left center; }
+        #lab-watts .s { margin-top: 16px; font-size: 24px; font-weight: 500; color: var(--muted); }
+        #lab-watts .ex { position: absolute; right: 32px; bottom: -22px; height: 44px; padding: 0 18px; border-radius: 22px; display: flex; align-items: center; font-size: 22px; font-weight: 600; color: var(--muted); }
+
+        /* Line 2: the two files that cross, top centre on the two-shot, and the rule that nothing else does. */
+        #lab-files { position: absolute; left: 0; right: 0; top: 140px; display: flex; justify-content: center; gap: 36px; }
+        .lab-file { height: 100px; padding: 0 44px; border-radius: 50px; display: flex; align-items: center; gap: 22px; font-size: 36px; font-weight: 600; color: var(--ink); opacity: 0; }
+        .lab-file .arr { font-size: 40px; color: var(--accent); font-weight: 700; }
+        .lab-file .dot { width: 18px; height: 18px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 6px rgba(217,119,74,0.16); }
+        #lab-none { position: absolute; left: 50%; top: 272px; width: 520px; margin-left: -260px; height: 84px; border-radius: 42px; display: flex; align-items: center; justify-content: center; gap: 18px; font-size: 32px; font-weight: 600; color: var(--ink); opacity: 0; }
+        #lab-none .x { width: 22px; height: 22px; border-radius: 50%; background: var(--ink); box-shadow: inset 2px 2px 4px rgba(0,0,0,0.35); }
+      </style>
+      <div data-hf-id="hf-y086" id="root" data-composition-id="lab" data-width="1920" data-height="1080">
+        <div data-hf-id="hf-ox7k" id="lab-chapter" class="soft-raised soft-muted">The learning lab</div>
+
+        <div data-hf-id="hf-3tgu" id="lab-hw" class="soft-raised"><div data-hf-id="hf-hny9" class="k">The lab</div><div data-hf-id="hf-78y5" class="v">2 × <b data-hf-id="hf-f5xx">AMD</b> Strix Halo</div></div>
+
+        <div data-hf-id="hf-xh1c" id="lab-steps">
+          <div data-hf-id="hf-zq6w" class="lab-step soft-raised" id="lab-step-label"><div data-hf-id="hf-gieq" class="n soft-pressed">1</div>Label</div>
+          <div data-hf-id="hf-lbx0" class="lab-step soft-raised" id="lab-step-train"><div data-hf-id="hf-gwpr" class="n soft-pressed">2</div>Train</div>
+          <div data-hf-id="hf-mr7s" class="lab-step soft-raised" id="lab-step-test"><div data-hf-id="hf-hb0s" class="n soft-pressed">3</div>Test</div>
+          <div data-hf-id="hf-jgrs" class="lab-step soft-raised" id="lab-step-package"><div data-hf-id="hf-hpbt" class="n soft-pressed">4</div>Package</div>
+        </div>
+        <div data-hf-id="hf-gtx8" id="lab-rocm" class="soft-pressed">all on <b data-hf-id="hf-kbgu">ROCm</b></div>
+
+        <div data-hf-id="hf-ufgc" id="lab-watts" class="soft-raised">
+          <div data-hf-id="hf-o5j9" class="k">Pod B while training</div>
+          <div data-hf-id="hf-mxpy" class="v"><span data-hf-id="hf-1ol2" id="lab-watts-n">0</span><span data-hf-id="hf-qn7j" class="u">W</span></div>
+          <div data-hf-id="hf-35de" class="bar soft-well"><span data-hf-id="hf-zvvl" class="fill" id="lab-watts-fill"></span></div>
+          <div data-hf-id="hf-xm9y" class="ex soft-pressed">example</div>
+        </div>
+
+        <div data-hf-id="hf-soi4" id="lab-files">
+          <div data-hf-id="hf-eg0k" class="lab-file soft-raised" id="lab-file-out"><div data-hf-id="hf-lu65" class="dot"></div>dataset<span data-hf-id="hf-8mm0" class="arr">→</span></div>
+          <div data-hf-id="hf-w1gq" class="lab-file soft-raised" id="lab-file-back"><span data-hf-id="hf-7tzy" class="arr">←</span>model package<div data-hf-id="hf-ww7l" class="dot"></div></div>
+        </div>
+        <div data-hf-id="hf-h0yt" id="lab-none" class="soft-pressed"><div data-hf-id="hf-3ecg" class="x"></div>nothing else crosses</div>
+      </div>
+      <script>
+        (function () {
+          // Timing comes from film.json through the host: <audio id="voice-lab-i" data-start> and #host-lab data-start.
+          // The fallback (copied from film.json) is only for previewing this file alone.
+          const FALLBACK = [{ start: 0, duration: 8.328 }, { start: 8.728, duration: 8.544 }, { start: 17.672, duration: 6.984 }];
+          function lines() {
+            const host = document.getElementById("host-lab"); if (!host) return FALLBACK;
+            const s0 = parseFloat(host.dataset.start), out = [];
+            for (let i = 0; ; i++) { const a = document.getElementById("voice-lab-" + i); if (!a) break; out.push({ start: parseFloat(a.dataset.start) - s0, duration: parseFloat(a.dataset.duration) }); }
+            return out.length === FALLBACK.length ? out : FALLBACK;
+          }
+          const LN = lines();
+          const L = (i, f) => LN[i].start + f * LN[i].duration;
+          const tl = gsap.timeline({ paused: true });
+
+          tl.fromTo("#lab-chapter", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 0.2);
+
+          // Line 0: "two AMD Strix Halo pods": the hardware card lands with the camera.
+          tl.fromTo("#lab-hw", { opacity: 0, x: 40 }, { opacity: 1, x: 0, duration: 0.8, ease: "power4.out" }, L(0, 0.24));
+          tl.to("#lab-hw", { opacity: 0, x: 24, duration: 0.5, ease: "power2.in" }, L(1, 0.0) - 0.4);
+
+          // Line 1: "Labeling, training, testing and packaging": a waterfall, each step before the previous settles.
+          const steps = [["label", 0.02], ["train", 0.1], ["test", 0.18], ["package", 0.27]];
+          for (const [id, f] of steps) {
+            tl.fromTo("#lab-step-" + id, { opacity: 0, y: 44 }, { opacity: 1, y: 0, duration: 0.55, ease: "power4.out" }, L(1, f));
+          }
+          // "run on ROCm".
+          tl.fromTo("#lab-rocm", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, L(1, 0.4));
+          // "and its watts": the card counts up with its fill; the number and the bar land as one beat.
+          tl.fromTo("#lab-watts", { opacity: 0, y: 28, scale: 0.96 }, { opacity: 1, y: 0, scale: 1, duration: 0.7, ease: "power3.out" }, L(1, 0.8));
+          const w = { v: 0 }, wEl = document.getElementById("lab-watts-n");
+          tl.to(w, { v: 118, duration: 1.4, ease: "power3.out", onUpdate: () => { wEl.textContent = String(Math.round(w.v)); } }, L(1, 0.84));
+          tl.fromTo("#lab-watts-fill", { scaleX: 0 }, { scaleX: 0.79, duration: 1.4, ease: "power3.out" }, L(1, 0.84));
+          // Line 2 starts: the lab column and the card clear as the camera pulls back.
+          tl.to(".lab-step", { opacity: 0, y: -14, duration: 0.45, ease: "power2.in", stagger: 0.05 }, L(2, 0.0));
+          tl.to("#lab-rocm", { opacity: 0, duration: 0.4, ease: "power2.in" }, L(2, 0.0));
+          tl.to("#lab-watts", { opacity: 0, y: -14, duration: 0.5, ease: "power2.in" }, L(2, 0.0));
+
+          // Line 2: "a dataset out" / "and a model package back" / "Nothing else crosses".
+          tl.fromTo("#lab-file-out", { opacity: 0, y: 30, scale: 0.92 }, { opacity: 1, y: 0, scale: 1, duration: 0.7, ease: "power4.out" }, L(2, 0.32));
+          tl.fromTo("#lab-file-back", { opacity: 0, y: 30, scale: 0.92 }, { opacity: 1, y: 0, scale: 1, duration: 0.7, ease: "power4.out" }, L(2, 0.52));
+          tl.fromTo("#lab-none", { opacity: 0, scale: 0.9 }, { opacity: 1, scale: 1, duration: 0.6, ease: "power4.out" }, L(2, 0.78));
+          tl.to(".lab-file", { opacity: 0, y: -12, duration: 0.5, ease: "power2.in", stagger: 0.05 }, L(2, 1.0) + 0.45);
+          tl.to("#lab-none", { opacity: 0, duration: 0.5, ease: "power2.in" }, L(2, 1.0) + 0.55);
+          tl.to("#lab-chapter", { opacity: 0, duration: 0.5, ease: "power2.in" }, L(2, 1.0) + 0.6);
+
+          window.__timelines["lab"] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>

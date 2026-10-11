@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html>
+  <head><meta charset="UTF-8"></head>
+  <body>
+    <template>
+      <link rel="stylesheet" href="world/soft.css">
+      <style>
+        #root { position: absolute; inset: 0; font-family: var(--font); overflow: hidden; }
+        #day-chapter { position: absolute; left: 96px; top: 72px; padding: 14px 28px; font-size: 28px; opacity: 0; }
+
+        /* Right column: the week strip on top, the brief card / coach card under it. Bottom 180 px stay free. */
+        #day-week { position: absolute; left: 1250px; top: 72px; width: 600px; padding: 26px 32px 28px; opacity: 0; }
+        .day-head { display: flex; justify-content: space-between; align-items: baseline; }
+        .day-head-title { font-size: 40px; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; }
+        .day-days { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-top: 16px; }
+        .day-day { height: 48px; display: grid; place-items: center; font-size: 28px; font-weight: 600; border-radius: 16px; opacity: 0; }
+        .day-grid { position: relative; height: 150px; margin-top: 14px; border-radius: 22px; }
+        .day-col { position: absolute; top: 12px; bottom: 12px; width: 2px; background: var(--shade); opacity: 0.35; }
+        .day-block { position: absolute; width: 92px; height: 56px; border-radius: 16px; display: grid; place-items: center; font-size: 24px; font-weight: 600; color: var(--ink); opacity: 0;
+          background: var(--surface); box-shadow: 6px 6px 12px var(--shade), -6px -6px 12px var(--light); }
+        .day-due { position: absolute; width: 92px; height: 56px; border-radius: 16px; display: grid; place-items: center; font-size: 24px; font-weight: 700; color: #fff; background: var(--accent); opacity: 0;
+          box-shadow: 6px 6px 12px var(--shade), -6px -6px 12px var(--light); }
+        #day-dot { position: absolute; width: 28px; height: 28px; border-radius: 50%; background: var(--accent); opacity: 0; box-shadow: 0 0 0 8px rgba(69,108,179,0.18); }
+        #day-dot-ring { position: absolute; width: 28px; height: 28px; border-radius: 50%; border: 3px solid var(--accent); opacity: 0; }
+
+        /* The morning brief. */
+        #day-brief { position: absolute; left: 1250px; top: 398px; width: 600px; padding: 26px 32px 28px; opacity: 0; }
+        .day-brief-top { display: flex; gap: 22px; margin-top: 14px; align-items: stretch; }
+        .day-brief-text { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+        .day-first-k { font-size: 28px; font-weight: 600; color: var(--muted); opacity: 0; }
+        .day-first-v { font-size: 40px; font-weight: 700; color: var(--ink); line-height: 1.15; white-space: nowrap; opacity: 0; }
+        .day-leave { font-size: 28px; font-weight: 500; color: var(--ink); margin-top: 10px; white-space: nowrap; opacity: 0; }
+        .day-leave b { color: var(--accent); font-weight: 700; }
+        #day-map { flex: none; width: 196px; height: 150px; border-radius: 22px; position: relative; opacity: 0; }
+        #day-map svg { position: absolute; inset: 0; width: 196px; height: 150px; }
+        .day-map-street { fill: none; stroke: var(--shade); stroke-width: 10; stroke-linecap: round; opacity: 0.45; }
+        #day-route { fill: none; stroke: var(--accent); stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
+        #day-home { fill: var(--ink); }
+        #day-pin { fill: var(--accent); }
+        #day-replan { position: relative; margin-top: 18px; height: 76px; border-radius: 22px; padding: 0 22px; display: flex; align-items: center; justify-content: space-between; opacity: 0; }
+        .day-replan-text { font-size: 28px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+        .day-tag { flex: none; padding: 6px 14px; border-radius: 14px; font-size: 24px; font-weight: 600; color: var(--muted); background: var(--surface); box-shadow: 5px 5px 10px var(--shade), -5px -5px 10px var(--light); }
+        #day-approve { position: relative; margin-top: 18px; height: 84px; opacity: 0; }
+        #day-approve-raised, #day-approve-pressed { position: absolute; inset: 0; border-radius: 26px; }
+        #day-approve-pressed { opacity: 0; }
+        .day-approve-face { position: absolute; inset: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 22px 0 30px; }
+        .day-approve-label { font-size: 40px; font-weight: 700; color: var(--ink); }
+        #day-check svg { width: 52px; height: 52px; display: block; }
+        #day-check-ring { fill: none; stroke: var(--shade); stroke-width: 3; }
+        #day-check-fill { fill: var(--accent); opacity: 0; }
+        #day-check-mark { fill: none; stroke: #fff; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; opacity: 0; }
+
+        /* The break coach. */
+        #day-coach { position: absolute; left: 1250px; top: 398px; width: 600px; padding: 30px 32px 32px; opacity: 0; }
+        .day-coach-k { display: flex; align-items: center; gap: 14px; }
+        .day-coach-dot { width: 18px; height: 18px; border-radius: 50%; background: var(--accent); }
+        .day-coach-break { font-size: 40px; font-weight: 700; color: var(--ink); }
+        #day-coach-q { font-size: 40px; font-weight: 500; color: var(--ink); margin-top: 14px; line-height: 1.2; opacity: 0; }
+        .day-chips { display: flex; gap: 18px; margin-top: 24px; }
+        .day-chip { position: relative; height: 76px; border-radius: 24px; opacity: 0; }
+        .day-chip-raised, .day-chip-pressed { position: absolute; inset: 0; border-radius: 24px; }
+        .day-chip-pressed { opacity: 0; }
+        .day-chip-label { position: relative; height: 76px; padding: 0 32px; display: flex; align-items: center; font-size: 28px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+        #day-noted { margin-top: 20px; font-size: 28px; font-weight: 500; color: var(--muted); opacity: 0; }
+      </style>
+      <div data-hf-id="hf-p8bb" id="root" data-composition-id="day" data-width="1920" data-height="1080">
+        <div data-hf-id="hf-1elq" id="day-chapter" class="soft-raised soft-muted">Your day</div>
+
+        <div data-hf-id="hf-frwc" id="day-week" class="soft-raised">
+          <div data-hf-id="hf-d7h5" class="day-head"><div data-hf-id="hf-8ov0" class="day-head-title">This week</div><div data-hf-id="hf-ixen" class="soft-small">classes and calendar</div></div>
+          <div data-hf-id="hf-xryu" class="day-days">
+            <div data-hf-id="hf-j02x" class="day-day soft-well soft-muted" id="day-d0">Mon</div>
+            <div data-hf-id="hf-lpxq" class="day-day soft-well soft-muted" id="day-d1">Tue</div>
+            <div data-hf-id="hf-sqcp" class="day-day soft-well soft-muted" id="day-d2">Wed</div>
+            <div data-hf-id="hf-iamt" class="day-day soft-well soft-muted" id="day-d3">Thu</div>
+            <div data-hf-id="hf-zmjg" class="day-day soft-well soft-muted" id="day-d4">Fri</div>
+          </div>
+          <div data-hf-id="hf-xx2u" class="day-grid soft-well">
+            <div data-hf-id="hf-kazn" class="day-col" style="left:106px"></div><div data-hf-id="hf-0hnm" class="day-col" style="left:213px"></div><div data-hf-id="hf-wib1" class="day-col" style="left:320px"></div><div data-hf-id="hf-b08h" class="day-col" style="left:427px"></div>
+            <div data-hf-id="hf-9wym" class="day-block" id="day-b0" style="left:8px; top:14px">Algo</div>
+            <div data-hf-id="hf-b01e" class="day-block" id="day-b1" style="left:222px; top:80px">Calc</div>
+            <div data-hf-id="hf-ed4f" class="day-block" id="day-b2" style="left:329px; top:14px">Phys</div>
+            <div data-hf-id="hf-l0lw" class="day-due" id="day-due" style="left:436px; top:80px">Due</div>
+            <div data-hf-id="hf-c02r" id="day-dot-ring" style="left:146px; top:94px"></div>
+            <div data-hf-id="hf-gq70" id="day-dot" style="left:146px; top:94px"></div>
+          </div>
+        </div>
+
+        <div data-hf-id="hf-3fm0" id="day-brief" class="soft-raised">
+          <div data-hf-id="hf-u4fh" class="day-head"><div data-hf-id="hf-nhh4" class="day-head-title">This morning</div><div data-hf-id="hf-7keq" class="soft-small">brief</div></div>
+          <div data-hf-id="hf-rmz7" class="day-brief-top">
+            <div data-hf-id="hf-armf" class="day-brief-text">
+              <div data-hf-id="hf-z28e" class="day-first-k" id="day-first-k">First</div>
+              <div data-hf-id="hf-ohbn" class="day-first-v" id="day-first-v">Algorithms, 9:00</div>
+              <div data-hf-id="hf-zru5" class="day-leave" id="day-leave"><b data-hf-id="hf-lmza">Leave by 8:41</b> · 10 min walk</div>
+            </div>
+            <div data-hf-id="hf-fzky" id="day-map" class="soft-well">
+              <svg data-hf-id="hf-sddn" viewBox="0 0 196 150">
+                <path data-hf-id="hf-kn77" class="day-map-street" d="M 0 116 H 196 M 0 64 H 196 M 64 0 V 150 M 140 0 V 150" />
+                <path data-hf-id="hf-xmb7" id="day-route" pathLength="1" stroke-dasharray="1 1" stroke-dashoffset="1" d="M 30 116 H 64 V 64 H 140 V 36 H 162" />
+                <circle data-hf-id="hf-q94e" id="day-home" cx="30" cy="116" r="9" />
+                <circle data-hf-id="hf-jdhd" id="day-pin" cx="162" cy="36" r="12" />
+              </svg>
+            </div>
+          </div>
+          <div data-hf-id="hf-n70q" id="day-replan" class="soft-well">
+            <div data-hf-id="hf-h8zx" class="day-replan-text">Study block moves to 4:30</div>
+            <div data-hf-id="hf-xavz" class="day-tag">re-planned</div>
+          </div>
+          <div data-hf-id="hf-3xop" id="day-approve">
+            <div data-hf-id="hf-02js" id="day-approve-raised" class="soft-raised"></div>
+            <div data-hf-id="hf-hepy" id="day-approve-pressed" class="soft-pressed"></div>
+            <div data-hf-id="hf-i68c" class="day-approve-face">
+              <div data-hf-id="hf-c7xg" class="day-approve-label">Approve</div>
+              <div data-hf-id="hf-ru4u" id="day-check"><svg data-hf-id="hf-q4oj" viewBox="0 0 52 52"><circle data-hf-id="hf-66dg" id="day-check-ring" cx="26" cy="26" r="22" /><circle data-hf-id="hf-qo1b" id="day-check-fill" cx="26" cy="26" r="22" /><path data-hf-id="hf-0cnw" id="day-check-mark" d="M 16 27 L 23 34 L 37 19" /></svg></div>
+            </div>
+          </div>
+        </div>
+
+        <div data-hf-id="hf-24ni" id="day-coach" class="soft-raised">
+          <div data-hf-id="hf-0w47" class="day-coach-k"><div data-hf-id="hf-yje9" class="day-coach-dot"></div><div data-hf-id="hf-k914" class="day-coach-break">Break, 17 min</div></div>
+          <div data-hf-id="hf-y6tb" id="day-coach-q">Was it the group chat?</div>
+          <div data-hf-id="hf-zqr0" class="day-chips">
+            <div data-hf-id="hf-b4x5" class="day-chip" id="day-yes"><div data-hf-id="hf-2kmv" class="day-chip-raised soft-raised"></div><div data-hf-id="hf-bfg7" class="day-chip-label">Yes</div></div>
+            <div data-hf-id="hf-dki5" class="day-chip" id="day-no"><div data-hf-id="hf-s1zw" class="day-chip-raised soft-raised" id="day-no-raised"></div><div data-hf-id="hf-dfg0" class="day-chip-pressed soft-pressed" id="day-no-pressed"></div><div data-hf-id="hf-0p03" class="day-chip-label">No: phone</div></div>
+          </div>
+          <div data-hf-id="hf-h9ti" id="day-noted">Noted: the phone pulls you away</div>
+        </div>
+      </div>
+      <script>
+        (function () {
+          // Local time: 0 = scene start (film.json "day": start 27.336, duration 24.0).
+          // Lines: 27.336 (5.736 s), 33.472 (8.736 s), 42.608 (4.368 s) -> local 0 / 6.136 / 15.272.
+          const L1 = 6.136, L2 = 15.272, END = 24.0;
+          const tl = gsap.timeline({ paused: true });
+          const F = 1 / 30;
+          const IN = { opacity: 0, y: 36, scale: 0.96 }, ON = { opacity: 1, y: 0, scale: 1 };
+
+          tl.fromTo("#day-chapter", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 0.2);
+
+          // ---- Line 0: "Point it at your week": the week strip; day chips whip in, then the classes, then the deadline. ----
+          tl.fromTo("#day-week", IN, { ...ON, duration: 0.7, ease: "power4.out" }, 0.8);
+          let t = 1.15;
+          for (let i = 0; i < 5; i++) {
+            const dur = 0.18 - i * 0.01;
+            tl.fromTo("#day-d" + i, { opacity: 0, y: 44 - i * 4 }, { opacity: 1, y: 0, duration: dur, ease: "power4.out" }, t);
+            t += dur - F;
+          }
+          for (let i = 0; i < 3; i++) tl.fromTo("#day-b" + i, { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.3, ease: "power4.out" }, 1.8 + i * 0.16);
+          tl.fromTo("#day-due", { opacity: 0, scale: 0.5 }, { opacity: 1, scale: 1, duration: 0.45, ease: "power4.out" }, 2.9);
+
+          // ---- Line 1: "Each morning it briefs you. What is first, when to leave, the walk drawn on the map." ----
+          tl.fromTo("#day-brief", IN, { ...ON, duration: 0.7, ease: "power4.out" }, 6.85);
+          tl.fromTo("#day-first-k", { opacity: 0, x: -20 }, { opacity: 1, x: 0, duration: 0.45, ease: "power4.out" }, 7.6);
+          tl.fromTo("#day-first-v", { opacity: 0, x: -20 }, { opacity: 1, x: 0, duration: 0.45, ease: "power4.out" }, 7.7);
+          tl.fromTo("#day-leave", { opacity: 0, x: -20 }, { opacity: 1, x: 0, duration: 0.45, ease: "power4.out" }, 8.5);
+          tl.fromTo("#day-map", { opacity: 0, scale: 0.9 }, { opacity: 1, scale: 1, duration: 0.45, ease: "power4.out" }, 8.9);
+          tl.fromTo("#day-route", { strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: 1.2, ease: "power2.inOut" }, 9.3);
+          tl.fromTo("#day-pin", { scale: 0, transformOrigin: "50% 50%" }, { scale: 1, duration: 0.4, ease: "power4.out" }, 10.4);
+          // "Fall behind, and it re-plans": the re-plan row slides in.
+          tl.fromTo("#day-replan", { opacity: 0, x: 80 }, { opacity: 1, x: 0, duration: 0.55, ease: "power4.out" }, 11.1);
+          // "One tap puts the new plan on your calendar": the Approve button arrives, is pressed once, the dot lands.
+          tl.fromTo("#day-approve", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.4, ease: "power4.out" }, 11.9);
+          const tap = 12.55;
+          tl.fromTo("#day-approve", { scale: 1 }, { scale: 0.965, duration: 0.12, ease: "power2.in", immediateRender: false }, tap);
+          tl.to("#day-approve", { scale: 1, duration: 0.35, ease: "power4.out" }, tap + 0.12);
+          tl.fromTo("#day-approve-raised", { opacity: 1 }, { opacity: 0, duration: 0.12, ease: "none", immediateRender: false }, tap);
+          tl.fromTo("#day-approve-pressed", { opacity: 0 }, { opacity: 1, duration: 0.12, ease: "none", immediateRender: false }, tap);
+          tl.fromTo("#day-check-fill", { opacity: 0 }, { opacity: 1, duration: 0.2, ease: "power2.out" }, tap + 0.1);
+          tl.fromTo("#day-check-mark", { opacity: 0 }, { opacity: 1, duration: 0.2, ease: "power2.out" }, tap + 0.15);
+          tl.fromTo("#day-dot", { opacity: 0, scale: 0, y: -60 }, { opacity: 1, scale: 1, y: 0, duration: 0.5, ease: "power4.out" }, tap + 0.55);
+          tl.fromTo("#day-dot-ring", { opacity: 0.9, scale: 1 }, { opacity: 0, scale: 2.6, duration: 0.8, ease: "power2.out" }, tap + 1.0);
+
+          // ---- Line 2: "It notices your breaks, asks whether it guessed right, and learns what pulls you away." ----
+          tl.to("#day-brief", { opacity: 0, y: -20, duration: 0.4, ease: "power2.in" }, L2 - 0.2);
+          tl.fromTo("#day-coach", IN, { ...ON, duration: 0.7, ease: "power4.out" }, 15.85);
+          tl.fromTo("#day-coach-q", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: "power4.out" }, 16.45);
+          tl.fromTo("#day-yes", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.35, ease: "power4.out" }, 16.95);
+          tl.fromTo("#day-no", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.35, ease: "power4.out" }, 17.07);
+          const press = 18.0;
+          tl.fromTo("#day-no", { scale: 1 }, { scale: 0.95, duration: 0.12, ease: "power2.in", immediateRender: false }, press);
+          tl.to("#day-no", { scale: 1, duration: 0.35, ease: "power4.out" }, press + 0.12);
+          tl.fromTo("#day-no-raised", { opacity: 1 }, { opacity: 0, duration: 0.12, ease: "none", immediateRender: false }, press);
+          tl.fromTo("#day-no-pressed", { opacity: 0 }, { opacity: 1, duration: 0.12, ease: "none", immediateRender: false }, press);
+          tl.fromTo("#day-noted", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.45, ease: "power4.out" }, press + 0.45);
+
+          // ---- Out: everything clears before "remember". ----
+          tl.to(["#day-coach", "#day-week"], { opacity: 0, y: -16, duration: 0.5, ease: "power2.in" }, END - 1.6);
+          tl.to("#day-chapter", { opacity: 0, duration: 0.4, ease: "power2.in" }, END - 0.6);
+
+          window.__timelines["day"] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>

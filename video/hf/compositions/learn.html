@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+  <head><meta charset="UTF-8"></head>
+  <body>
+    <template>
+      <link rel="stylesheet" href="world/soft.css">
+      <style>
+        #root { position: absolute; inset: 0; font-family: var(--font); overflow: hidden; }
+        .learn-row { position: absolute; left: 0; right: 0; top: 150px; display: flex; justify-content: center; pointer-events: none; }
+        #learn-chapter { position: absolute; left: 96px; top: 72px; padding: 14px 28px; font-size: 28px; opacity: 0; }
+
+        /* Line 0: the model card (top right), the three words (left column), the score (right, under the card). */
+        #learn-qwen { position: absolute; right: 96px; top: 150px; padding: 26px 44px 30px; opacity: 0; }
+        #learn-qwen .k { font-size: 28px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+        #learn-qwen .v { font-size: 64px; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; line-height: 1.1; white-space: nowrap; }
+        #learn-qwen .v span { color: var(--muted); font-weight: 600; }
+
+        #learn-words { position: absolute; left: 96px; top: 250px; display: flex; flex-direction: column; gap: 28px; }
+        .learn-word { height: 112px; padding: 0 48px 0 36px; border-radius: 56px; display: flex; align-items: center; gap: 24px; font-size: 64px; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; opacity: 0; align-self: flex-start; }
+        .learn-word i { width: 22px; height: 22px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 8px rgba(69,108,179,0.16); }
+
+        #learn-score { position: absolute; right: 96px; top: 380px; width: 520px; padding: 30px 44px 34px; opacity: 0; text-align: left; }
+        #learn-score .n { font-size: 112px; font-weight: 700; color: var(--ink); line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        #learn-score .n b { color: var(--accent); font-weight: 700; }
+        #learn-score .n span { color: var(--muted); font-weight: 600; }
+        #learn-score .s { margin-top: 14px; font-size: 28px; font-weight: 500; color: var(--muted); }
+
+        /* Line 1: the new tool, typed in, top centre. */
+        #learn-tool { position: relative; min-width: 980px; padding: 28px 52px 34px; opacity: 0; }
+        #learn-tool .k { display: flex; align-items: center; gap: 14px; font-size: 28px; font-weight: 600; color: var(--muted); margin-bottom: 10px; }
+        #learn-tool .k i { width: 14px; height: 14px; border-radius: 50%; background: var(--accent); }
+        #learn-tool .v { font-size: 64px; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; line-height: 1.1; white-space: nowrap; min-height: 72px; }
+        #learn-caret { display: inline-block; width: 5px; height: 60px; margin-left: 6px; background: var(--accent); vertical-align: -6px; border-radius: 3px; }
+      </style>
+      <div data-hf-id="hf-zw33" id="root" data-composition-id="learn" data-width="1920" data-height="1080">
+        <div data-hf-id="hf-6ejt" id="learn-chapter" class="soft-raised soft-muted">It learns</div>
+
+        <div data-hf-id="hf-bc71" id="learn-qwen" class="soft-raised"><div data-hf-id="hf-jxnb" class="k">The model</div><div data-hf-id="hf-dfs5" class="v">Qwen<span data-hf-id="hf-fw89"> · on the Jetson</span></div></div>
+
+        <div data-hf-id="hf-elrx" id="learn-words">
+          <div data-hf-id="hf-7aoo" class="learn-word soft-raised" id="learn-word-fast"><i data-hf-id="hf-wt6k"></i>Fast</div>
+          <div data-hf-id="hf-saus" class="learn-word soft-raised" id="learn-word-accurate"><i data-hf-id="hf-zeb8"></i>Accurate</div>
+          <div data-hf-id="hf-j9iw" class="learn-word soft-raised" id="learn-word-private"><i data-hf-id="hf-y7e5"></i>Private</div>
+        </div>
+
+        <div data-hf-id="hf-8a72" id="learn-score" class="soft-raised"><div data-hf-id="hf-cmxa" class="n"><b data-hf-id="hf-nlik" id="learn-score-n">0</b><span data-hf-id="hf-pykk"> / 42</span></div><div data-hf-id="hf-o9at" class="s">demo questions</div></div>
+
+        <div data-hf-id="hf-no8x" class="learn-row" id="learn-tool-row"><div data-hf-id="hf-bhby" id="learn-tool" class="soft-raised"><div data-hf-id="hf-lj2r" class="k"><i data-hf-id="hf-ylp6"></i>New tool</div><div data-hf-id="hf-mxpy" class="v"><span data-hf-id="hf-21cd" id="learn-tool-text"></span><span data-hf-id="hf-s1li" id="learn-caret"></span></div></div></div>
+      </div>
+      <script>
+        (function () {
+          // Timing comes from film.json through the host: <audio id="voice-learn-i" data-start> and #host-learn data-start.
+          // The fallback (film.json, local seconds) is only for previewing this file alone.
+          const FALLBACK = [{ start: 0, duration: 9.648 }, { start: 10.048, duration: 6.84 }];
+          function lines() {
+            const host = document.getElementById("host-learn"); if (!host) return FALLBACK;
+            const s0 = parseFloat(host.dataset.start), out = [];
+            for (let i = 0; ; i++) { const a = document.getElementById("voice-learn-" + i); if (!a) break; out.push({ start: parseFloat(a.dataset.start) - s0, duration: parseFloat(a.dataset.duration) }); }
+            return out.length === FALLBACK.length ? out : FALLBACK;
+          }
+          const LN = lines();
+          const W = (i, s) => LN[i].start + s; // measured word moments, see world/scenes/learn.js
+          const END = W(1, 0) + LN[1].duration + 2.6; // about the scene end
+          const tl = gsap.timeline({ paused: true });
+
+          tl.fromTo("#learn-chapter", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 0.2);
+
+          // "A highly capable Qwen runs right here": the card lands with the push-in.
+          tl.fromTo("#learn-qwen", { opacity: 0, x: 40 }, { opacity: 1, x: 0, duration: 0.8, ease: "power4.out" }, W(0, 3.1));
+          // "Fast," "accurate," "and private."
+          [["fast", 5.39], ["accurate", 5.98], ["private", 6.42]].forEach(([id, s]) => {
+            tl.fromTo("#learn-word-" + id, { opacity: 0, x: -36, scale: 0.94 }, { opacity: 1, x: 0, scale: 1, duration: 0.5, ease: "power4.out" }, W(0, s) - 0.05);
+          });
+          // "Forty-two demo questions, forty-two right": the count lands on the second "forty-two".
+          tl.fromTo("#learn-score", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.6, ease: "power4.out" }, W(0, 7.15));
+          const n = { v: 0 }, nEl = document.getElementById("learn-score-n");
+          tl.fromTo(n, { v: 0 }, { v: 42, duration: 1.75, ease: "power2.out", onUpdate: () => { nEl.textContent = String(Math.round(n.v)); } }, W(0, 7.3));
+          tl.fromTo("#learn-score .n", { scale: 1 }, { scale: 1.06, duration: 0.18, ease: "power2.out", transformOrigin: "0% 50%", yoyo: true, repeat: 1 }, W(0, 9.05));
+
+          // Line 1 starts: line 0 clears as the camera pulls back.
+          tl.to(["#learn-qwen", "#learn-score"], { opacity: 0, y: -14, duration: 0.45, ease: "power2.in" }, W(1, 0) - 0.2);
+          tl.to(".learn-word", { opacity: 0, x: -24, duration: 0.4, ease: "power2.in", stagger: 0.05 }, W(1, 0) - 0.2);
+
+          // "Atlas learns the tool": the card arrives empty. "You describe the task": the request types in.
+          tl.fromTo("#learn-tool", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.6, ease: "power4.out" }, W(1, 2.0));
+          const TEXT = "notice when I skip lunch", tEl = document.getElementById("learn-tool-text"), ty = { c: 0 };
+          tl.fromTo(ty, { c: 0 }, { c: TEXT.length, duration: 1.6, ease: "none", onUpdate: () => { tEl.textContent = TEXT.slice(0, Math.round(ty.c)); } }, W(1, 3.3));
+          // The caret blinks while waiting, then rests once the request is sent.
+          tl.fromTo("#learn-caret", { opacity: 1 }, { opacity: 0, duration: 0.25, ease: "none", yoyo: true, repeat: 3 }, W(1, 2.3));
+          tl.to("#learn-caret", { opacity: 0, duration: 0.3, ease: "power2.in" }, W(1, 5.2));
+          tl.to("#learn-tool", { opacity: 0, y: -14, duration: 0.5, ease: "power2.in" }, END - 1.6);
+          tl.to("#learn-chapter", { opacity: 0, duration: 0.5, ease: "power2.in" }, END - 1.0);
+
+          window.__timelines["learn"] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>
