@@ -69,7 +69,8 @@ python -m lab.t11_power_bridge --out lab/state/t11-run/power.jsonl --raw lab/sta
 python -m lab.t11_offbox_run --progress lab/state/t11-run/progress.jsonl -- --account C \
     --student-url http://127.0.0.1:18080 --student-model atlas-base --power-log lab/state/t11-run/power.jsonl \
     --window-clock jetson --n 100 --seed 11 --probes 1 --settle-s 3 --wait-s 60 \
-    --metrics-file --row-condition "gpu=Radeon 8060S (Strix Halo), gfx1151" --row-condition hub=sjc
+    --metrics-file --row-condition "gpu=Radeon 8060S (Strix Halo), gfx1151" --row-condition hub=sjc \
+    --row-condition account=C --row-condition power_period_ms=350
 ```
 
 - `lab/t11_power_bridge.py` only reads. The Jetson's samples are stamped with the workstation's clock as they arrive,
