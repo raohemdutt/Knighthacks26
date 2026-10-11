@@ -1,0 +1,35 @@
+Workstation re-hash of the two 3-bit checkpoint folders under work/R55-data/ (Ilan's machine), 2026-10-11 about 06:47Z.
+Command: cd <folder> && sha256sum -c ../SHA256SUMS-w3-<form>
+
+== Qwen3.8-27B-W3A16-G128-GPTQ-atlas-gptq (SHA256SUMS-w3-gptq)
+atlas_quant.json: OK
+chat_template.jinja: OK
+config.json: OK
+generation_config.json: OK
+model.safetensors: OK
+model.safetensors.index.json: OK
+model_mtp.safetensors: OK
+processor_config.json: OK
+quantize_config.json: OK
+recipe.yaml: OK
+tokenizer.json: OK
+tokenizer_config.json: OK
+
+== Qwen3.8-27B-W3A16-G128-compressed-tensors (SHA256SUMS-w3-ct)
+atlas_quant.json: OK
+chat_template.jinja: OK
+config.json: OK
+generation_config.json: OK
+model.safetensors: OK
+model.safetensors.index.json: OK
+model_mtp.safetensors: OK
+processor_config.json: OK
+recipe.yaml: OK
+tokenizer.json: OK
+tokenizer_config.json: OK
+
+== sizes in bytes
+15645426816 Qwen3.8-27B-W3A16-G128-GPTQ-atlas-gptq/model.safetensors
+849400424 Qwen3.8-27B-W3A16-G128-GPTQ-atlas-gptq/model_mtp.safetensors
+15562513160 Qwen3.8-27B-W3A16-G128-compressed-tensors/model.safetensors
+849400392 Qwen3.8-27B-W3A16-G128-compressed-tensors/model_mtp.safetensors

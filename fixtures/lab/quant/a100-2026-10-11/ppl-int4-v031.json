@@ -1,0 +1,14 @@
+{
+  "label": "int4-v031",
+  "model": "/content/models/Qwen3.8-27B-INT4",
+  "text": "wikitext-2-raw-v1 test",
+  "window": 2048,
+  "ppl": 7.1982,
+  "tokens": 296815,
+  "windows": 145,
+  "quantization": "compressed-tensors",
+  "dtype": "torch.bfloat16",
+  "vllm": "0.31.0",
+  "load_s": 444.4,
+  "score_s": 89.3
+}

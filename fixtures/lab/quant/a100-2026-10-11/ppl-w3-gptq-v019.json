@@ -1,0 +1,14 @@
+{
+  "label": "w3-gptq-v019",
+  "model": "/content/quant/Qwen3.8-27B-W3A16-G128-GPTQ-atlas-gptq",
+  "text": "wikitext-2-raw-v1 test",
+  "window": 2048,
+  "ppl": 8.1225,
+  "tokens": 296815,
+  "windows": 145,
+  "quantization": "gptq",
+  "dtype": "torch.float16",
+  "vllm": "0.19.1",
+  "load_s": 314.7,
+  "score_s": 85.5
+}
