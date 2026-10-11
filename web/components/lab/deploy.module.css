@@ -12,6 +12,11 @@
   border-top: 1px solid var(--line);
 }
 
+/* the two model tiles take the taller one's height, so a long version name does not leave the other floating */
+.links {
+  align-items: stretch;
+}
+
 .buttons {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
@@ -19,7 +24,12 @@
 }
 
 @media (max-width: 420px) {
-  .buttons {
+  /* the two model tiles take the taller one's height, so a long version name does not leave the other floating */
+.links {
+  align-items: stretch;
+}
+
+.buttons {
     grid-template-columns: 1fr;
   }
 }

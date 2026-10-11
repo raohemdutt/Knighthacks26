@@ -115,6 +115,7 @@ def box(tmp_path, monkeypatch):
 
 
 def runner_for(box, **kwargs) -> DeployRunner:
+    kwargs.setdefault("featured", None)
     return DeployRunner(box["models"], box["state"], script=box["script"], cwd=REPO, llm_url="http://llm:8080", **kwargs)
 
 
@@ -144,7 +145,7 @@ def test_idle_lists_the_versions_on_disk_the_links_and_the_suggested_version(box
     view = client_for(runner_for(box)).get("/api/learning/lab/deploy").json()
     assert [v["version"] for v in view["versions"]] == ["v2", "v1", "atlas-base"]   # newest first, no half-pulled
     assert view["current"] == "atlas-base" and view["previous"] is None and view["base"] == "atlas-base"
-    assert view["suggested"] == "v2"
+    assert view["suggested"] == "v2" and view["featured"] == "v2"     # no featured version on disk: the newest
     assert all(v["verified"] and v["record"] == "none" for v in view["versions"])
     assert view["deploy"]["state"] == "idle" and [s["name"] for s in view["deploy"]["stages"]] == \
         ["verify", "switch", "restart", "check", "publish"]
@@ -164,6 +165,13 @@ def test_the_record_is_read_not_hashed_and_a_stale_one_unverifies_the_version(bo
     view = client.get("/api/learning/lab/deploy").json()
     assert (view["versions"][0]["verified"], view["versions"][0]["record"]) == (False, "stale")
     assert view["suggested"] == "v1"                                 # the newest VERIFIED version that is not current
+
+
+def test_the_featured_version_wins_over_a_newer_package_and_never_is_the_base(box):
+    make_version(box["models"], "v3-r01", created=datetime(2026, 10, 12, tzinfo=UTC))
+    assert client_for(runner_for(box, featured="v2")).get("/api/learning/lab/deploy").json()["featured"] == "v2"
+    assert client_for(runner_for(box, featured="atlas-base")).get("/api/learning/lab/deploy").json()["featured"] == "v3-r01"
+    assert client_for(runner_for(box, featured="gone")).get("/api/learning/lab/deploy").json()["featured"] == "v3-r01"
 
 
 # --- the state machine --------------------------------------------------------------------------------------------
@@ -186,6 +194,7 @@ def test_a_deploy_runs_in_the_background_lights_its_stages_and_refuses_a_second_
     assert all(isinstance(s["seconds"], float) for s in view["deploy"]["stages"])
     assert view["deploy"]["result"] == {"ok": True, "returncode": 0, "message": "told the app", "rolled_back_to": None}
     assert view["current"] == "v2" and view["previous"] == "atlas-base" and view["suggested"] == "v1"
+    assert view["featured"] == "v2"                                   # still v2, now serving: the card disables it
     assert "v2 is serving" in view["deploy"]["log_tail"] and not any(line.startswith("STAGE") for line in view["deploy"]["log_tail"])
     args = json.loads((box["ctl"] / "args.json").read_text())
     assert args[:2] == ["swap", "v2"] and "--trust-verified" in args

@@ -199,28 +199,41 @@ export function DeployButton({ onBoxChanged }: { onBoxChanged?: () => void }) {
     return error ? <p className={`${dep.line} ${dep.lineBad}`}>Could not read the box&apos;s models ({error}).</p> : <p className={lab.waiting}>Reading the box&apos;s models…</p>;
   }
 
-  const { current, previous, base, suggested, deploy } = view;
+  const { current, previous, base, featured, deploy } = view;
   const busy = running || sending;
-  const next = suggested;
+  const next = featured;
+  const stageDone = (name: string) => deploy.stages.some((s) => s.name === name && s.state === "done");
+  // While a swap runs the link moves before the model server does: say what actually answers.
+  const restarted = running && stageDone("restart");
+  const nowName = running ? (restarted ? deploy.version : deploy.from) : current;
+  const nowLabel = running ? (restarted ? "starting up, not answering yet" : "serving until the restart") : "on the box now";
+  // Before the restart the right tile is the model coming in; after it, the one that went out.
+  const beforeName = running ? (restarted ? deploy.from : deploy.version) : previous;
+  const beforeLabel = running && !restarted ? "next, after the restart" : "before it";
   return (
     <div className={dep.panel}>
-      <div className={lab.swap}>
+      <div className={`${lab.swap} ${dep.links}`}>
         <div className={`${lab.model} ${lab.modelOn}`}>
-          <span className={lab.statLabel}>{running ? "serving until the restart" : "on the box now"}</span>
-          <span className={lab.modelName}>{current ?? "no current link"}</span>
+          <span className={lab.statLabel}>{nowLabel}</span>
+          <span className={lab.modelName}>{nowName ?? "no current link"}</span>
         </div>
         <svg className={lab.swapArrow} viewBox="0 0 44 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M40 12H6M14 5l-8 7 8 7" />
         </svg>
         <div className={`${lab.model} ${lab.modelOff}`}>
-          <span className={lab.statLabel}>before it</span>
-          <span className={lab.modelName}>{previous ?? "nothing recorded"}</span>
+          <span className={lab.statLabel}>{beforeLabel}</span>
+          <span className={lab.modelName}>{beforeName ?? "nothing recorded"}</span>
         </div>
       </div>
 
       <div className={dep.buttons}>
-        <button type="button" className={`${ui.btn} ${ui.btnPrimary}`} disabled={busy || !next} onClick={() => next && start(() => api.labDeployStart(next))}>
-          {next ? `Put ${shortVersion(next)} on the box` : "No other model on the box"}
+        <button
+          type="button"
+          className={`${ui.btn} ${ui.btnPrimary}`}
+          disabled={busy || !next || next === current}
+          onClick={() => next && start(() => api.labDeployStart(next))}
+        >
+          {!next ? "No trained model on the box" : next === current && !running ? `${shortVersion(next)} is on the box` : `Put ${shortVersion(next)} on the box`}
         </button>
         <button
           type="button"
@@ -231,7 +244,11 @@ export function DeployButton({ onBoxChanged }: { onBoxChanged?: () => void }) {
           Back to base
         </button>
       </div>
-      {next ? <p className={lab.note}>{next} is on the box&apos;s disk already: nothing is downloaded, every file is checked against its manifest first.</p> : null}
+      {next && next !== current ? (
+        <p className={lab.note}>
+          {next} is on the box&apos;s disk already: nothing is downloaded, and its files are checked against the manifest before the switch.
+        </p>
+      ) : null}
 
       {deploy.state !== "idle" ? (
         <div aria-live="polite">

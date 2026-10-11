@@ -9,6 +9,10 @@ GET  /api/learning/lab/deploy
      "current": str | null, "previous": str | null,          data/models/current and data/models/previous
      "base": "atlas-base" | null,                             when that version is on disk
      "suggested": str | null,                                 the newest verified version that is not current
+     "featured": str | null,                                  what the card's "Put v2 on the box" deploys: FEATURED
+                                                              (ATLAS_LAB_DEPLOY_VERSION) when it is on disk and
+                                                              verified, else the newest verified version; never the
+                                                              base. It may be current: the card then disables it
      "deploy": {state: idle|running|done|failed, action: deploy|rollback, version, from, started, ended, seconds,
                 stages: [{name, state, seconds}],             verify, switch, restart, check, publish
                 log_tail: [str], result: {ok, returncode, message, rolled_back_to} | null}}
@@ -56,6 +60,9 @@ REPO = Path(__file__).resolve().parents[2]
 SWAP_SCRIPT = REPO / "jetson" / "atlas_swap.py"
 QUESTIONS = REPO / "tooling" / "demo" / "live_deploy_question.json"
 BASE_VERSION = "atlas-base"
+# The package the stage demo puts on the box (tooling/demo/LIVE_DEPLOY_RUN_OF_SHOW.md). Other v2 packages sit beside
+# it on the box's disk (r01), so the newest-by-manifest rule alone could pick the wrong one.
+FEATURED_VERSION = os.environ.get("ATLAS_LAB_DEPLOY_VERSION", "atlas-tool-calling-v2-a100-f2r4")
 STAGES = ("verify", "switch", "restart", "check", "publish")
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 RESERVED = {"current", "previous", "current.tmp"}
@@ -136,7 +143,7 @@ class DeployRunner:
     def __init__(self, models_dir: str | Path, state_dir: str | Path, *, llm_url: str | None = None,
                  app_url: str | None = None, python: str = sys.executable, script: str | Path = SWAP_SCRIPT,
                  cwd: str | Path = REPO, trust_verified: bool = True, clock: Callable[[], float] = time.time,
-                 alive: Callable[[int | None], bool] = pid_alive) -> None:
+                 alive: Callable[[int | None], bool] = pid_alive, featured: str | None = FEATURED_VERSION) -> None:
         self.models_dir = Path(models_dir).resolve()
         self.state_dir = Path(state_dir).resolve()
         self.store = ModelStore(self.models_dir)
@@ -148,6 +155,7 @@ class DeployRunner:
         self.trust_verified = trust_verified
         self.clock = clock
         self.alive = alive
+        self.featured = featured
         self._lock = threading.Lock()
         self._proc: subprocess.Popen | None = None
 
@@ -307,11 +315,13 @@ class DeployRunner:
     def view(self) -> dict[str, Any]:
         versions = self.versions()
         current = self.store.current()
-        suggested = next((v["version"] for v in versions if v["verified"] and not v["current"]
-                          and v["version"] != BASE_VERSION), None)
+        candidates = [v for v in versions if v["verified"] and v["version"] != BASE_VERSION]
+        suggested = next((v["version"] for v in candidates if not v["current"]), None)
+        featured = next((v["version"] for v in candidates if v["version"] == self.featured), None)
         return {"versions": versions, "current": current, "previous": self.store.previous(),
                 "base": BASE_VERSION if any(v["version"] == BASE_VERSION for v in versions) else None,
-                "suggested": suggested, "deploy": self.deploy_state()}
+                "suggested": suggested, "featured": featured or (candidates[0]["version"] if candidates else None),
+                "deploy": self.deploy_state()}
 
 
 # --- the question, before and after -----------------------------------------------------------------------------

@@ -52,6 +52,8 @@ export interface DeployView {
   base: string | null;
   /** the newest verified version that is not current (and not the base) */
   suggested: string | null;
+  /** what "Put v2 on the box" deploys: the demo's package when it is on disk and verified, else the newest; may be current */
+  featured: string | null;
   deploy: DeployRun;
 }
 
