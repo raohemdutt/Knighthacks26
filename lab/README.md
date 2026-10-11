@@ -1235,6 +1235,22 @@ Python when the pod has it (`~/venvs/atlas-train`, the venv L16 left, without th
 `python3` otherwise; it installs nothing. The sheet lands in `~/wavefront/wavefront-gfx1151-<date>.json`
 and `.md` on the pod. The fixtures in `fixtures/lab/wavefront/` are synthetic; occupancy from LDS assumes four SIMDs
 per WGP, which no opened source states.
+### Lookup-table dequant GEMV: `lab/kernels/lut_gemv.py` (R62)
+
+A Triton GEMV for 2-, 3- and 4-bit weight-only layers (BITS constexpr, groups of 128 along K) that turns each code
+into a weight by a table lookup on chip (`tl.gather`), with the plain scale-and-zero path and a per-channel table
+(FLUTE's layout, mode 4) in the same kernel. `quantize` / `quantize_channel_lut` pack a weight, `reference` is the
+torch answer, `lut_gemv(a, packed, mode)` runs it. The pod bench reuses the chip sheet's timing helper and power
+reader; files go up under an `r62_` prefix so nothing in the Jupyter root is overwritten:
+
+```
+python -m lab.controller run-script --account D --timeout 620 --with <stage>/r62_lut_gemv.py     --with <stage>/r62_chipsheet.py --with <stage>/r62_chipsheet_format.py --with <stage>/r62_pod_power.py     lab/kernels/pod_lut_gemv.sh bench --node pod-b --budget-s 420
+python -m lab.transfer pull-file --account D r62_lut/lut_gemv-gfx1151-<date>.json fixtures/lab/lut_gemv/lut_gemv-gfx1151-<date>.json
+python -m lab.kernels.lut_gemv ingest --result fixtures/lab/lut_gemv/lut_gemv-gfx1151-<date>.json --account D
+```
+
+The 2026-10-11 run (125 s of GPU), its `lut_gemv.*` rows and what they mean: `lab/refine/research/kernels/lut_dequant_gfx1151.md`.
+Tests: `tests/test_lab_lut_gemv.py` (packing and reference on the CPU; the kernel at the decode shapes on a GPU).
 
 ## The LoRA trainer: `lab/train.py`
 
