@@ -13,7 +13,9 @@ from contexts.day.application.checkin import CheckIn
 from contexts.day.application.coach import DayCoach
 from contexts.day.application.narrator import NarrationConfig, Narrator
 from contexts.day.application.planner import DayPlanner
+from contexts.day.application.reminders import Reminders
 from contexts.day.application.tracker import DayTracker
+from contexts.day.domain import arbiter as arbiter_rule
 from contexts.day.domain.arbiter import Rules
 from contexts.day.domain.clock import DayClock
 from contexts.play.dayrun.service import DayRun
@@ -45,6 +47,9 @@ class DayLoop:
         # agent.yaml `day: {speak_gap_s: 90}`.
         self.arbiter = Arbiter(self.narrator, self.planner, self.clock, rules=Rules.of(narration))
         self.narrator.arbiter = self.arbiter
+        # Block-start reminders: said once when a planned block starts. agent.yaml `day: {block_reminders: false}` turns them off.
+        self.reminders = Reminders(self.planner, self.tracker, self.narrator, self.clock,
+                                   enabled=bool((narration or {}).get("block_reminders", True)))
 
     def subscribe(self, bus) -> None:
         p, t, c = self.planner, self.tracker, self.coach
@@ -81,9 +86,11 @@ class DayLoop:
         # Last, so the planner, the tracker and the coach have already taken the event in: the day in words.
         self.narrator.subscribe(bus)
         self.arbiter.subscribe(bus)  # what was said and what is open, from the log; the held lines are live only
+        self.reminders.subscribe(bus)  # which starts were said, from the log; saying one is the tick's (live)
 
     def tick(self, now: datetime) -> list[Event]:
         out = self.planner.tick(now) + self.tracker.tick(now) + self.coach.tick(now) + self.checkin.tick(now)
+        out += self.reminders.tick(now)  # queues its line in the arbiter
         return out + self.arbiter.tick(now)  # last: the lines queued by this tick and the held ones
 
     def in_words(self, now: datetime) -> dict[str, str]:
@@ -107,7 +114,7 @@ class DayLoop:
 
 
 MOMENT_PUSH = {"morning": ("Your day", "sunrise"), "replan": ("Re-plan", "arrows_counterclockwise"),
-               "coach": ("Coach", "dart"), "evening": ("Your day, reviewed", "moon")}
+               "coach": ("Coach", "dart"), "evening": ("Your day, reviewed", "moon"), "start": ("Next up", "bell")}
 
 
 def checkin_push(e: DayCheckinRaised) -> str:
@@ -125,12 +132,21 @@ def day_phone(ntfy, topic: str, narrated: bool = False):
     the screen shows and the voice says, plus an urgent "now" (leave now, late); the raw events are not pushed
     as well. With it off, the events' own texts go out as before."""
 
+    pushed: set[str] = set()  # one push per moment: day + moment + ref (contexts/day/domain/arbiter.py `key`)
+
     async def push(e: Event) -> None:
         if isinstance(e, DayNarrated):
+            if e.merged_into:  # said inside another narration, which was pushed
+                return
+            k = arbiter_rule.key(e.day, e.moment, e.ref)
+            if k in pushed:
+                return
             if narrated and e.moment in MOMENT_PUSH:
+                pushed.add(k)
                 title, tag = MOMENT_PUSH[e.moment]
                 await ntfy.publish(topic, e.display, title=title, tags=[tag])
             elif narrated and e.moment == "now" and e.urgent:
+                pushed.add(k)
                 await ntfy.publish(topic, e.display, title="Time to move", tags=["walking"])
         elif isinstance(e, DayCheckinRaised):
             # Box-only: the push goes through a notification service, so it names what to do and never why. The
