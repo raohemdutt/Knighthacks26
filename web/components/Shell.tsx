@@ -295,6 +295,12 @@ const SPOT_ICON: Record<SpotView, ReactNode> = {
     </>
   ),
 };
+/**
+ * The look guide's hooks for Inspection's three old tabs now sit on the menu items that replaced them: a guide step that
+ * presses or points at "tab:analysis" presses or points at Analysis here. `aria-selected` is what tells the guide a
+ * press is not needed; "tab:shift" counts as on for every view that came out of Your shift (the page opens the right one).
+ */
+const SPOT_GUIDE: Partial<Record<SpotView, string>> = { shift: "tab:shift", training: "tab:shift-run", analysis: "tab:analysis" };
 const BACK_ICON = <path d="M10.5 6l-6 6 6 6M5 12h14.5" />;
 
 /** How the screens are grouped, in the sidebar, the phone's More sheet and the palette. URLs are unchanged. */
@@ -444,12 +450,14 @@ export function Shell({ children }: { children: ReactNode }) {
                   <span>Back to Atlas</span>
                 </Link>
               </div>
-              <div className={ui.sideGroup}>
+              <div className={ui.sideGroup} data-guide="tabs">
                 <span className={ui.sideGroupTitle}>Inspection</span>
                 {SPOT_MENU.map((m) => {
                   const on = spotView === m.view;
+                  const hook = SPOT_GUIDE[m.view];
+                  const pressed = m.view === "shift" ? spotView !== "training" && spotView !== "analysis" : on;
                   return (
-                    <Link key={m.view} href={m.href} className={`${ui.sideLink} ${on ? ui.sideLinkOn : ""}`} aria-current={on ? "page" : undefined}>
+                    <Link key={m.view} href={m.href} className={`${ui.sideLink} ${on ? ui.sideLinkOn : ""}`} aria-current={on ? "page" : undefined} data-guide={hook} aria-selected={hook ? pressed : undefined}>
                       <svg className={ui.sideIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         {SPOT_ICON[m.view]}
                       </svg>

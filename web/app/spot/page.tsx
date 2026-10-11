@@ -35,8 +35,8 @@ import { useFetch } from "@/lib/useFetch";
  * The Shift Run tab is a training game on the same plan: plan a round, run it through a toy model, compare with Atlas's.
  *
  * Inspection is a workspace of views (lib/spotView.ts; the sidebar lists them): My shift, Equipment, Rounds, Training
- * (Shift Run), Analysis, Handoff and Approvals (Inspection's own cards). The address names the view and the page renders only that view's sections. The three
- * buttons at the top stay for the look guide, which reveals things by pressing them.
+ * (Shift Run), Analysis, Handoff and Approvals (Inspection's own cards). The address names the view and the page renders only that view's sections. The look
+ * guide's "tab:" hooks sit on the sidebar's My shift, Training and Analysis items (components/Shell.tsx).
  *
  * Deep links: ?tab=run&route=last&turn=40&show=result opens Shift Run with a plan already run, ?asset=HX-202 opens that equipment's panel, ?round=M017&step=6 puts that round, at that step, at the top of the page, ?why=battery plays that finding's explainer (&at=end or &at=mid draws it at that step), ?numbers=battery opens its rows, ?tab=analysis opens the analysis, ?floor=2 picks the floor, ?all=1 lists all equipment.
  */
@@ -47,7 +47,7 @@ export default function SpotPage() {
   const orders = useFetch((sig) => api.spotWorkOrders(sig));
   const [live, setLive] = useState<Replay | null>(null);
   const view = useSpotView();
-  const tab: Tab = view === "training" ? "run" : view === "analysis" ? "analysis" : "shift"; // the three buttons at the top
+  const tab: Tab = view === "training" ? "run" : view === "analysis" ? "analysis" : "shift"; // the three layers
   const [asset, setAsset] = useState<string | null>(null);
   const [target, setTarget] = useState<Target | null>(null);
   const [explain, setExplain] = useState<ExplainId | null>(null);
@@ -139,13 +139,17 @@ export default function SpotPage() {
     if (view === "analysis") setEvidence(true);
   }, [view]);
 
-  // The look guide reveals a thing on "Your shift" by pressing that button. Those things now sit in two views, so open
-  // the one that holds what it is about to point at: the round, or the shift cards and the plan.
+  // The look guide reveals a thing by pressing a "tab:" hook, which is now a sidebar menu item (hidden on a phone). Open
+  // the view that holds what it is about to point at here, so it lands at any width: Analysis, Training, the round, or
+  // the shift cards and the plan.
   useEffect(
     () =>
       onGuide((m) => {
-        if (m.kind !== "run" || !m.run.target.reveal?.some((r) => r.key === "tab:shift")) return;
-        goSpotView(/^round(:|$)/.test(m.run.target.id) ? "rounds" : "shift");
+        if (m.kind !== "run") return;
+        const keys = (m.run.target.reveal ?? []).map((r) => r.key);
+        if (keys.includes("tab:analysis")) (setEvidence(true), goSpotView("analysis"));
+        else if (keys.includes("tab:shift-run")) goSpotView("training");
+        else if (keys.includes("tab:shift")) goSpotView(/^round(:|$)/.test(m.run.target.id) ? "rounds" : "shift");
       }),
     [],
   );
@@ -193,19 +197,6 @@ export default function SpotPage() {
     <div className={o.page}>
       <div className={o.top}>
         <StatusLine shift={d} />
-        <div className={`${ui.segmented} ${o.tabs}`} role="tablist" aria-label="View" data-guide="tabs">
-          {(
-            [
-              ["shift", "Your shift"],
-              ["run", "Shift Run"],
-              ["analysis", "Analysis"],
-            ] as [Tab, string][]
-          ).map(([k, label]) => (
-            <button type="button" key={k} role="tab" data-guide={`tab:${k === "run" ? "shift-run" : k}`} aria-selected={tab === k} className={`${ui.seg} ${tab === k ? ui.segOn : ""}`} onClick={() => pick(k)}>
-              {label}
-            </button>
-          ))}
-        </div>
       </div>
 
       {view === "shift" ? (
