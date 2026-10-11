@@ -65,6 +65,27 @@ export interface DeployAnswer {
   expected: { name: string; arguments: Record<string, unknown> }[] | null;
   seconds: number;
   prompt: "eval" | "eval template";
+  /** What the answer cost on the box (G6): null while the Jetson's power sampler is off; absent on an older gateway. */
+  energy?: AnswerEnergy | null;
+}
+
+/** contexts/learning/answer_energy.py: the box's power over the answer's window, gross, with its idle beside it. */
+export interface AnswerEnergy {
+  joules: number;
+  idle_w: number | null;
+  seconds: number;
+  sampler: string;
+  samples?: number;
+  above_idle_j?: number | null;
+  low_confidence?: boolean;
+}
+
+/** "this answer cost about 41 J on the box"; "sampler off" when it was not measured; null from an older gateway. */
+export function energyLine(energy: AnswerEnergy | null | undefined): string | null {
+  if (energy === undefined) return null;
+  if (energy === null) return "sampler off";
+  const j = energy.joules >= 10 ? Math.round(energy.joules).toString() : energy.joules.toFixed(1);
+  return `this answer cost about ${j} J on the box`;
 }
 
 export const DEPLOY_STAGES: { key: DeployStageName; title: string }[] = [

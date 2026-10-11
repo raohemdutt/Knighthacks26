@@ -123,6 +123,7 @@ from contexts.learning.lab_api import lab_router
 from contexts.learning.application.lab_compare import default_dirs as default_loop_dirs
 from contexts.learning.application.lab_experiments import imported_state_dir
 from contexts.learning.lab_bench_api import lab_bench_router
+from contexts.learning.answer_energy import AnswerMeter
 from contexts.learning.lab_deploy import DeployRunner, lab_deploy_router
 from contexts.learning.lab_import import lab_import_router
 from contexts.telemetry.runtime_stats import build_runtime_stats
@@ -244,7 +245,8 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
     app.include_router(lab_bench_router(imported_dir=imported_state_dir(atlas.settings.data_dir)))  # + the ledger the lab pushed
     # GET/POST /api/learning/lab/deploy, /deploy/rollback, /deploy/ask: the On the box card's deploy button (L35)
     app.include_router(lab_deploy_router(DeployRunner(atlas.settings.data_dir / "models", atlas.settings.data_dir / "lab_deploy",
-                                                      llm_url=atlas.settings.llm_url), guard=authorized))
+                                                      llm_url=atlas.settings.llm_url), guard=authorized,
+                                     meter=AnswerMeter(atlas.telemetry)))  # + what each answer cost on the box (G6)
     if atlas.lab_view:  # the trainer's own step files, folded into the same stories as they are written
         attach_trainer_runs(atlas.lab_view, default_runs_dir(atlas.settings.data_dir))
         # POST /api/learning/lab/import: a run's telemetry.jsonl (or eval scores, or manifest) pushed from the lab's side

@@ -125,6 +125,12 @@ try {
   is("watts", S.wattsText(61.4), "61 W");
   is("no watts", S.wattsText(null), "--");
 
+  // ---- what an answer on the box cost (lib/labDeploy.ts energyLine, the Ask panel)
+  const D = await load("labDeploy");
+  is("cost line", D.energyLine({ joules: 41.26, idle_w: 15.76, seconds: 2.4, sampler: "tegrastats", samples: 7 }), "this answer cost about 41 J on the box");
+  is("cost line small", D.energyLine({ joules: 3.24, idle_w: 15.76, seconds: 0.2, sampler: "tegrastats", samples: 2 }), "this answer cost about 3.2 J on the box");
+  is("sampler off", D.energyLine(null), "sampler off");
+  is("older gateway", D.energyLine(undefined), null);
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }

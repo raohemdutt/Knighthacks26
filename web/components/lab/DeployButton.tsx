@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import ui from "@/components/ui.module.css";
 import { ApiError, api } from "@/lib/api";
 import { duration } from "@/lib/lab";
-import { DEPLOY_STAGES, type DeployAnswer, type DeployRun, type DeployStageState, type DeployView, callText, shortVersion } from "@/lib/labDeploy";
+import { DEPLOY_STAGES, type DeployAnswer, type DeployRun, type DeployStageState, type DeployView, callText, energyLine, shortVersion } from "@/lib/labDeploy";
 import dep from "./deploy.module.css";
 import lab from "./lab.module.css";
 
@@ -139,12 +139,31 @@ function Ask({ disabled }: { disabled: boolean }) {
                     {right ? "the call the eval expects" : `the eval expects ${a.expected.map(callText).join(", ")}`}
                   </span>
                 ) : null}
+                <Cost a={a} />
               </li>
             );
           })}
         </ul>
       ) : null}
     </div>
+  );
+}
+
+/** Beat 6: what the answer cost on the box, from the Jetson's power sampler over the answer (gross, idle beside it). */
+function Cost({ a }: { a: DeployAnswer }) {
+  const line = energyLine(a.energy);
+  if (line === null) return null;
+  const e = a.energy;
+  return (
+    <span className={dep.cost}>
+      <b className={e ? dep.costOn : dep.costOff}>{line}</b>
+      {e ? (
+        <span className={dep.sub}>
+          {e.seconds.toFixed(1)} s on the {e.sampler} sampler, gross{e.idle_w !== null ? `; the box idles at ${e.idle_w} W` : ""}
+          {e.low_confidence ? `; ${e.samples ?? "few"} samples, a rough figure` : ""}
+        </span>
+      ) : null}
+    </span>
   );
 }
 
