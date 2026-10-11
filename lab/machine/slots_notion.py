@@ -50,6 +50,10 @@ import urllib.request
 from collections.abc import Callable, Mapping
 from typing import Any
 
+# ready's: the redirect handler that keeps the token at its address, and the length below which text is not worth
+# scrubbing out of a message (it would mangle the message).
+from lab.machine.ready import MIN_HIDDEN_CHARS, _NoRedirect
+
 __all__ = [
     "API_URL", "API_VERSION", "MAX_RETRIES", "MAX_WAIT_S", "NotionClient", "NotionError", "Transport",
     "checkbox", "date", "dashed_id", "number", "page_id_of", "plain_text", "rich_text", "select", "title",
@@ -68,8 +72,6 @@ CREATE_RETRY_STATUSES = frozenset({429})   # a create is not idempotent: only a 
 PAGE_SIZE = 100
 MAX_PAGES = 20            # a list longer than this many pages of PAGE_SIZE rows is cut short and refused
 USER_AGENT = "atlas-lab-slots"
-# Text shorter than this is not worth scrubbing out of a message; it would mangle the message.
-MIN_HIDDEN_CHARS = 6
 MAX_MESSAGE_CHARS = 300
 
 Transport = Callable[[str, str, Mapping[str, str], "bytes | None", float], "tuple[int, bytes, Mapping[str, str]]"]
@@ -89,13 +91,6 @@ class NotionError(RuntimeError):
 
 
 # --- the wire -------------------------------------------------------------------------
-
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    """Never follow a redirect: the token must only go to the address it was meant for."""
-
-    def redirect_request(self, *args: Any, **kwargs: Any) -> None:
-        return None
-
 
 def urllib_transport(method: str, url: str, headers: Mapping[str, str], body: bytes | None,
                      timeout: float) -> tuple[int, bytes, Mapping[str, str]]:

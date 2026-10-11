@@ -153,6 +153,12 @@ def test_a_query_follows_the_cursor_to_the_end_of_the_list():
     assert len([r for r in world.fake.requests if r[0] == "POST"]) == 3
 
 
+def test_the_client_takes_the_no_redirect_handler_and_the_scrub_floor_from_ready_not_a_copy():
+    from lab.machine import ready
+    assert slots_notion._NoRedirect is ready._NoRedirect
+    assert slots_notion.MIN_HIDDEN_CHARS is ready.MIN_HIDDEN_CHARS
+
+
 def test_a_429_is_retried_after_the_wait_notion_asks_for(world):
     row = world.seed("L3: job")
     world.fake.fail_next(2, status=429, code="rate_limited", retry_after="2")
