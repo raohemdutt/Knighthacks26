@@ -160,7 +160,11 @@ uniform vec3 uSkin; uniform vec3 uShirt; uniform vec3 uPants; uniform vec3 uShoe
   const duration = (name) => clips[name].duration;
 
   /** Pose from clips: [[name, time, weight], ...]. Weights should add up to 1. */
+  // look() turns the neck and head ON TOP of their current rotation; a clip that does not animate them would never
+  // reset them, so the turn would pile up frame after frame (the head spinning in the kitchen). Reset them first.
+  const restQ = ["neck_01", "Head"].filter((n) => bones[n]).map((n) => [bones[n], bones[n].quaternion.clone()]);
   function sample(list) {
+    for (const [b, q] of restQ) b.quaternion.copy(q);
     for (const a of Object.values(actions)) a.setEffectiveWeight(0);
     for (const [name, time, w] of list) { const a = action(name); a.time = Math.max(0, Math.min(time, clips[name].duration - 1e-4)); a.setEffectiveWeight(w); }
     mixer.update(0);
