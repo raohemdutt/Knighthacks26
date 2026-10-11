@@ -1710,6 +1710,45 @@ export interface CheckinCard extends EventEnvelope {
   spoken: string | null;
   display: string;
   evidence: CheckinEvidence;
+  /** An earlier look this one is like, from the look memory; null when none was similar enough, or it was forgotten since. */
+  callback?: CheckinCallback | null;
+}
+
+/** contracts.day.CheckinCallback: words, a day and a label. No picture, no health value. Box-only. */
+export interface CheckinCallback {
+  moment_id: string;
+  day: string;
+  look: string;
+  said: string;
+  learned: string;
+  lead: "drink" | "break" | "move_block" | "walk" | null;
+  /** "Looked tired · like Tue" */
+  chip: string;
+  /** The remembered moment in one or two plain lines: what was going on, what helped. */
+  lines: string[];
+}
+
+/** One remembered look (GET /api/day/looks): when, what was going on, what helped. Labels and numbers only. */
+export interface LookMoment {
+  id: string;
+  look: string;
+  at: string;
+  day: string;
+  /** "Tuesday afternoon", "Yesterday afternoon" */
+  when: string;
+  /** "3 PM", to five minutes */
+  time: string;
+  going_on: string;
+  helped: string;
+}
+
+/** GET /api/day/looks: the look memory, most recent first. Box-only: read by the owner's screen, sent nowhere. */
+export interface LooksView {
+  on: boolean;
+  count: number;
+  kept_days: number;
+  moments: LookMoment[];
+  note: string;
 }
 
 /** GET /api/day/checkin */
@@ -2456,6 +2495,11 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   /** The check-in with its evidence. `numbers` asks for the resting heart rate's values: only after an explicit tap, on this device. */
   dayCheckin: (numbers = false, signal?: AbortSignal) => get<CheckinView>("/api/day/checkin", numbers ? { numbers: "true" } : undefined, signal),
   dayCheckinDone: (id: string) => post<{ id: string; answered: "done" }>("/api/day/checkin/done", { id }),
+  /** The looks Atlas remembers, most recent first (the look memory). */
+  dayLooks: (memberId: string, signal?: AbortSignal) => get<LooksView>("/api/day/looks", { member: memberId }, signal),
+  /** Forget one remembered look, or all of them. Each goes through the signed-in route and is kept forgotten on a restart. */
+  dayForgetLook: (id: string) => request<{ forgotten: string; left: number }>("DELETE", `/api/day/looks/${encodeURIComponent(id)}`),
+  dayForgetLooks: (memberId: string) => request<{ forgotten: number; left: number }>("DELETE", withQuery("/api/day/looks", { member: memberId })),
   /** "Move the block": raises a re-plan with its approval card. Nothing changes until that card is approved. */
   dayCheckinMove: (id: string) => post<{ id: string; answered: "move"; plan_id: string; action_id: string | null }>("/api/day/checkin/move", { id }),
   /** Optional events ("Near you") for today and the next days, each with its fit, walk, leave-by and state. */

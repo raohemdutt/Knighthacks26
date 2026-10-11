@@ -11,6 +11,7 @@ from pathlib import Path
 from contexts.day.application.arbiter import Arbiter
 from contexts.day.application.checkin import CheckIn
 from contexts.day.application.coach import DayCoach
+from contexts.day.application.looks import LookMemory
 from contexts.day.application.narrator import NarrationConfig, Narrator
 from contexts.day.application.optional import OptionalEvents
 from contexts.day.application.planner import DayPlanner
@@ -45,6 +46,10 @@ class DayLoop:
         self.checkin = CheckIn(self.planner, self.tracker, self.coach, self.clock, memory=memory,
                                enabled=bool((narration or {}).get("checkin", True)))
         self.checkin.narrator = self.narrator
+        # The look memory: a sustained look is remembered with what was going on around it, and a later check-in calls
+        # back to the most similar one. A projection of the log; box-only (contexts/day/application/looks.py).
+        self.looks = LookMemory(self.planner, self.coach, self.checkin, self.clock, habits=habits, words=self.checkin.words)
+        self.checkin.look_memory = self.looks
         # The arbiter: one gate for everything said unasked (order, a global gap, merging, suppression, one speaker).
         # agent.yaml `day: {speak_gap_s: 90}`.
         self.arbiter = Arbiter(self.narrator, self.planner, self.clock, rules=Rules.of(narration))
@@ -91,7 +96,9 @@ class DayLoop:
 
         # The check-in: its signals rebuild from the log (replay=True inside); looking at the rule and raising one is
         # live only, so a restart never raises an old check-in again. After the coach: it reads the coach's desk presence.
+        self.looks.subscribe_looks(bus)  # the look memory's windows first: a check-in raised by a window finds it already there
         self.checkin.subscribe(bus)
+        self.looks.subscribe(bus)  # the rest after the check-in: it reads the check-in's drink watch as each desk event arrives
 
         # Last, so the planner, the tracker and the coach have already taken the event in: the day in words.
         self.narrator.subscribe(bus)
@@ -100,6 +107,7 @@ class DayLoop:
 
     def tick(self, now: datetime) -> list[Event]:
         out = self.planner.tick(now) + self.tracker.tick(now) + self.coach.tick(now) + self.checkin.tick(now)
+        out += self.looks.tick(now)  # publishes nothing: an outcome that is known by now is kept
         out += self.reminders.tick(now)  # queues its line in the arbiter
         out += self.optional.tick(now)  # ... and so does the suggestion of an optional event coming up
         return out + self.arbiter.tick(now)  # last: the lines queued by this tick and the held ones

@@ -198,6 +198,16 @@ DONE_FOR_ME = re.compile(
     r"|\bwhat(?:'ve| have) you (?:done|been doing) (?:for me )?(?:today|so far)\b"
     r"|\b(?:anything|something|what) (?:else )?(?:that )?you(?:'ve| have)? (?:did|done) for me\b"
     r"|\b(?:did|have) you (?:do|done) anything for me\b|\bwhat (?:work )?have you done for me\b")
+# The look memory (the Day loop's, through a port): "when did I last look this tired?", "why do you think I'm tired?",
+# "what helped last time?". Answered in code from what the box remembered; never a guess about how the person feels.
+_LOOKED = r"(?:tired|strained|worn out|wiped|drained|stressed|exhausted|rough|beat|like this|like that)"
+LOOK_ASKED = {
+    "last": re.compile(rf"\bwhen (?:did|have) i (?:last |ever )?look(?:ed)? (?:this |so |that |as )?{_LOOKED}\b"
+                       rf"|\bwhen was the last time i looked (?:this |so |that |as )?{_LOOKED}\b|\bhave i looked (?:this |so |that )?{_LOOKED} before\b"),
+    "why": re.compile(rf"\bwhy do you (?:think|say)(?: that)? i(?:'m| am| look| seem)(?: so| this| that)? {_LOOKED}\b"
+                      rf"|\bwhy do i (?:look|seem) (?:so |this |that )?{_LOOKED}\b|\bwhat makes you (?:think|say) i(?:'m| am| look)(?: so)? {_LOOKED}\b"),
+    "helped": re.compile(r"\bwhat (?:helped|worked)(?: for me| me)? (?:the )?last time\b|\bwhat (?:helped|worked)(?: for me| me)? (?:before|then)\b"),
+}
 # The person's day ahead, asked in a way no pattern answers ("is today going to be rough?", "what should I skip?"):
 # the model's question, with the whole day in its FACTS. Never anything in the past tense: that is the cameras'.
 DAY_AHEAD = re.compile(
@@ -327,6 +337,10 @@ class Talk:
         # composition root; without it the line is "I can plan it with you on Today's Plan." instead.
         self.plan_day: Callable[[], object] | None = None  # may be async
         self.plan_offered: datetime | None = None  # when the offer was last made
+        # The look memory (contexts/day/application/looks.py `said`), through a port: ("last" | "why" | "helped") -> a
+        # sentence for the ear, or None when nobody's looks are remembered on this box. Box-only: the answer is said to
+        # the person who asked and goes nowhere else.
+        self.look_memory: Callable[[str], str | None] | None = None
 
     # --- routing ---
 
@@ -499,7 +513,28 @@ class Talk:
             log.debug("no done-for-you list", exc_info=True)
             return []
 
-    # --- answered in code: hello, and the calendar ---
+    # --- answered in code: the look memory, hello, and the calendar ---
+
+    def look(self, question: str) -> str | None:
+        """ "When did I last look this tired?", "why do you think I'm tired?", "what helped last time?": the Day loop's look
+        memory, in its own words. None for anything else, for two questions in one, and when nothing is remembered here."""
+        if not self.config.enabled or self.look_memory is None:
+            return None
+        q = normal(question)
+        q = LEAD.sub("", q, count=1) or q
+        kind = next((k for k, rx in LOOK_ASKED.items() if rx.search(q)), None)
+        if kind is None or SECOND_ASK.search(q):
+            return None
+        try:
+            return self.look_memory(kind) or None
+        except Exception:  # a nicety; a conversation must not fail on it
+            log.debug("no look memory", exc_info=True)
+            return None
+
+    def answer_look(self, question: str, stream: Callable[[str], None] | None = None) -> Answer | None:
+        """The same, as a finished turn of the conversation; None when it is not a question for the look memory."""
+        said = self.look(question)
+        return self._done(question, said, self.runtime.model_info().version, stream) if said else None
 
     def hello(self, question: str) -> str | None:
         """A greeting or "how's it going?": one short line and an offer, or what Atlas did for them today and an offer.

@@ -400,7 +400,7 @@ class Narrator:
         if isinstance(e, DayReviewed):
             return self.job("evening", self.review_facts(e), e.ts, e.day, e.plan_id, e.event_id, event_id=event_id)
         if isinstance(e, DayCheckinRaised):  # never urgent: it is said once, and it can wait for a question
-            facts = checkin_rule.facts(e.signals, e.suggestions, e.history, self.clock.tz)
+            facts = checkin_rule.facts(e.signals, e.suggestions, e.history, self.clock.tz, callback=e.callback)
             return self.job("checkin", facts, e.ts, e.day, e.plan_id, e.event_id, event_id=event_id)
         if isinstance(e, ApprovalRequested):
             facts = self.approval_facts(e)
