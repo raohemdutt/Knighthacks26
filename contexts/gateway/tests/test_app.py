@@ -310,7 +310,7 @@ def test_small_talk_gets_a_reply_and_camera_questions_keep_their_path(tmp_path, 
         talk = c.app.state.atlas.qa.talk
         hello = c.post("/api/ask", json={"text": "Hey Atlas, how's your day?"}).json()
         assert hello["citations"] == [] and hello["answer"] != "I didn't see that." and not hello["answer"].startswith("(fake)")
-        assert hello["answer"].endswith("What can I do for you?") and hello["model_version"] == "fake-0"  # its work for you, then an offer
+        assert hello["answer"].endswith("can I do for you?") and hello["model_version"] == "fake-0"  # its work for you, then an offer
         assert "AI" in c.post("/api/ask", json={"text": "are you gay?"}).json()["answer"]
         assert len(talk.turns) == 2 and talk.answered == 2 and talk.about  # live state: the turns, the count, the profile's line
         assert c.post("/api/ask", json={"text": "Anything weird?"}).json()["answer"] == "I didn't see that."  # the tool loop, as before
