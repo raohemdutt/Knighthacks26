@@ -48,6 +48,10 @@ web calls carry cookies and no token. The pod a form launch starts runs the real
 `rest_launch_ignored = True` makes a REST launch answer as usual, echo its options, and start a pod that runs the
 stock singleuser image (`STOCK_IMAGE`) with no GPU. `pod_image()` and `pod_has_gpu()` say what a pod runs, which
 is what a terminal on it would tell. `omit_xsrf = True` serves the login page without any `_xsrf` token.
+
+The pod's files. `files` maps (letter, path) to the text of a file in the pod's Jupyter root. The contents API PUTs and
+GETs a file as text and DELETEs one (204, or 404 when there is none); `GET /files/<path>` serves it as the Jupyter
+server's file route does, with byte ranges (lab/transfer.py's pull), the shapes FakePodProxy answers.
 """
 from __future__ import annotations
 
@@ -639,6 +643,9 @@ class FakeHub:
         contents = re.match(r"^/api/contents/(.+)$", rest)
         if contents:
             return self._contents(account, urllib.parse.unquote(contents.group(1)), call)
+        files = re.match(r"^/files/(.+)$", rest)
+        if files and method == "GET":
+            return self._file(account, urllib.parse.unquote(files.group(1)), request)
         if rest == "/api/terminals" and method == "POST":
             account.terminals += 1
             return httpx.Response(200, json={"name": str(account.terminals), "last_activity": _iso(server.last_activity)})
@@ -669,7 +676,22 @@ class FakeHub:
                 return httpx.Response(404, json={"message": f"No such file or directory: {path}", "reason": None})
             return httpx.Response(200, json={"name": path.rsplit("/", 1)[-1], "path": path, "type": "file",
                                              "format": "text", "content": self.files[key]})
+        if call.method == "DELETE":
+            if key not in self.files:
+                return httpx.Response(404, json={"message": f"No such file or directory: {path}", "reason": None})
+            del self.files[key]
+            return httpx.Response(204)
         return httpx.Response(405, json={"message": "Method Not Allowed"})
+
+    def _file(self, account: _Account, path: str, request: httpx.Request) -> httpx.Response:
+        """GET /files/<path>, the Jupyter server's own file route, with byte ranges as FakePodProxy serves them."""
+        from lab.proxy_fake import serve_range   # imported here: lab/proxy_fake.py imports this module
+
+        text = self.files.get((account.letter, path))
+        if text is None:
+            return httpx.Response(404, text="<html><body><h1>404 : Not Found</h1></body></html>",
+                                  headers={"content-type": "text/html"})
+        return serve_range(text.encode("utf-8"), request.headers.get("range"))
 
 
 def network(hubs: Mapping[str, FakeHub]) -> httpx.MockTransport:
