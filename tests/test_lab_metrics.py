@@ -608,6 +608,8 @@ BAD_ROWS = [
     ("unit is not text", lambda r: r.update(unit=3), "unit"),
     ("node in capitals", lambda r: r.update(node="Pod-A"), "node"),
     ("node is empty", lambda r: r.update(node=""), "node"),
+    ("node ends with a plus", lambda r: r.update(node="pod-a+"), "node"),
+    ("node with two plusses", lambda r: r.update(node="pod-a++pod-b"), "node"),
     ("conditions is a list", lambda r: r.update(conditions=[1]), "conditions"),
     ("conditions not json", lambda r: r.update(conditions={"x": object()}), "conditions"),
     ("source is blank", lambda r: r.update(source="   "), "source"),
@@ -629,6 +631,13 @@ def test_add_rejects_a_bad_row_and_leaves_the_file_as_it_was(tmp_path, label, da
     with pytest.raises(metrics.MetricsFormatError, match=field):
         metrics.add(row, path=path)
     assert path.read_bytes() == before
+
+
+def test_a_row_two_pods_measured_together_names_both(tmp_path):
+    """R65: a two-pod run (one rank on each pod) is one row about both machines, joined with "+"."""
+    path = tmp_path / "m.jsonl"
+    metrics.add(make_row(node="pod-a+pod-b"), path=path)
+    assert [row["node"] for row in metrics.load(path)] == ["pod-a+pod-b"]
 
 
 def test_add_refuses_to_append_after_a_line_that_was_cut_short(tmp_path):
