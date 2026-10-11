@@ -168,3 +168,14 @@
   text-transform: uppercase;
   color: var(--muted);
 }
+
+/* the "why" under a headline number: short, muted, set apart in italics with a thin accent rule */
+.loopWhy {
+  margin: 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--accent);
+  font-size: 14px;
+  font-style: italic;
+  color: var(--muted);
+  line-height: 1.35;
+}

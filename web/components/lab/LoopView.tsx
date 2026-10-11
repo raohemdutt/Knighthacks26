@@ -123,6 +123,7 @@ export function LoopView({
   return (
     <section className={s.loop} aria-label="The learning loop" data-guide="lab:loop">
       <Scene stages={stages} runKey={story?.run_id ?? "none"} forceReduced={forceReduced} />
+      <p className={s.loopWhy}>One loop: label, train, test, ship.</p>
       <p className={s.loopLine} role="status" data-guide="lab:now">
         {empty ? (
           "Nothing has run yet. This is the path a run takes: out to the lab, through the test, and back."
