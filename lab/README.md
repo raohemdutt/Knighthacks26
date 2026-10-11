@@ -1329,4 +1329,3 @@ pass should add, with its citation; nothing under `lab/refine/` is written. One 
 outcome the verdict, `label.agreement_rate`, `label.agreement_sample`, `label.agreement_disagreements`). The dataset
 is never written; the sample is relabeled in a temporary copy. Tests use the fake teacher (`swayed_policy` makes it
 answer differently on a second seed); the run against the real teacher is in `lab/L14_REAL_RUN.md`.
->>>>>>> a6bda57 (Document label-agreement and the real run for L14)
