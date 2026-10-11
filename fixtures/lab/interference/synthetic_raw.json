@@ -1,0 +1,352 @@
+{
+ "schema": "lab.interference.raw/1",
+ "run_id": "r43-synthetic",
+ "task": "R43",
+ "node": "pod-b",
+ "hub": "sjc",
+ "account": "D",
+ "started": "2026-10-11T06:00:00Z",
+ "ended": "2026-10-11T07:00:00Z",
+ "power_reader": "synthetic (hand-made numbers, not a pod)",
+ "serve": {
+  "share": 0.63,
+  "port": 8100,
+  "ready_s": 523.0,
+  "checkpoint": "~/models/Qwen3.8-27B-INT4",
+  "argv": [
+   "python3",
+   "-m",
+   "vllm.entrypoints.openai.api_server"
+  ]
+ },
+ "workload": {
+  "batch": 4,
+  "max_tokens": 100,
+  "decode_s": 20,
+  "steps": 4,
+  "train_batch": 4,
+  "grad_accum": 1,
+  "train_model": "~/models/Qwen3.5-4B"
+ },
+ "arms": {
+  "decode": {
+   "rounds": [
+    {
+     "start": 1791699400.0,
+     "end": 1791699410.0,
+     "requests": [
+      {
+       "role": "measure",
+       "stream": 0,
+       "tokens": 100,
+       "decode_tok_s": 10.0,
+       "error": null
+      },
+      {
+       "role": "measure",
+       "stream": 1,
+       "tokens": 100,
+       "decode_tok_s": 10.0,
+       "error": null
+      },
+      {
+       "role": "measure",
+       "stream": 2,
+       "tokens": 100,
+       "decode_tok_s": 10.0,
+       "error": null
+      },
+      {
+       "role": "measure",
+       "stream": 3,
+       "tokens": 100,
+       "decode_tok_s": 10.0,
+       "error": null
+      }
+     ]
+    },
+    {
+     "start": 1791699410.0,
+     "end": 1791699420.0,
+     "requests": [
+      {
+       "role": "measure",
+       "stream": 0,
+       "tokens": 100,
+       "decode_tok_s": 10.0,
+       "error": null
+      },
+      {
+       "role": "measure",
+       "stream": 1,
+       "tokens": 100,
+       "decode_tok_s": 10.0,
+       "error": null
+      },
+      {
+       "role": "measure",
+       "stream": 2,
+       "tokens": 100,
+       "decode_tok_s": 10.0,
+       "error": null
+      },
+      {
+       "role": "measure",
+       "stream": 3,
+       "tokens": 100,
+       "decode_tok_s": 10.0,
+       "error": null
+      }
+     ]
+    }
+   ],
+   "watts": {
+    "available": true,
+    "avg_w": 100.0,
+    "peak_w": 120.0,
+    "energy_j": 2000.0,
+    "samples": 40,
+    "source": "amd-smi",
+    "power_field": "SOCKET_POWER"
+   }
+  },
+  "train": {
+   "steps": [
+    {
+     "ts": "2026-10-11T06:33:30Z",
+     "step": 1,
+     "step_ms": 10000.0,
+     "loss": 1.0,
+     "tokens": 512
+    },
+    {
+     "ts": "2026-10-11T06:33:40Z",
+     "step": 2,
+     "step_ms": 10000.0,
+     "loss": 0.5,
+     "tokens": 512
+    },
+    {
+     "ts": "2026-10-11T06:33:50Z",
+     "step": 3,
+     "step_ms": 10000.0,
+     "loss": 0.3333333333333333,
+     "tokens": 512
+    },
+    {
+     "ts": "2026-10-11T06:34:00Z",
+     "step": 4,
+     "step_ms": 10000.0,
+     "loss": 0.25,
+     "tokens": 512
+    }
+   ],
+   "batch": 4,
+   "grad_accum": 1,
+   "exit_code": 0,
+   "run": {
+    "outcome": "trained",
+    "metrics": {
+     "trainer.samples_per_s": 0.38
+    }
+   },
+   "watts": {
+    "available": true,
+    "avg_w": 100.0,
+    "peak_w": 120.0,
+    "energy_j": 4000.0,
+    "samples": 80,
+    "source": "amd-smi",
+    "power_field": "SOCKET_POWER"
+   }
+  },
+  "both": {
+   "steps": [
+    {
+     "ts": "2026-10-11T06:50:12.500000Z",
+     "step": 1,
+     "step_ms": 12500.0,
+     "loss": 1.0,
+     "tokens": 512
+    },
+    {
+     "ts": "2026-10-11T06:50:25Z",
+     "step": 2,
+     "step_ms": 12500.0,
+     "loss": 0.5,
+     "tokens": 512
+    },
+    {
+     "ts": "2026-10-11T06:50:37.500000Z",
+     "step": 3,
+     "step_ms": 12500.0,
+     "loss": 0.3333333333333333,
+     "tokens": 512
+    },
+    {
+     "ts": "2026-10-11T06:50:50Z",
+     "step": 4,
+     "step_ms": 12500.0,
+     "loss": 0.25,
+     "tokens": 512
+    }
+   ],
+   "batch": 4,
+   "grad_accum": 1,
+   "exit_code": 0,
+   "run": {
+    "outcome": "trained",
+    "metrics": {
+     "trainer.samples_per_s": 0.3
+    }
+   },
+   "rounds": [
+    {
+     "start": 1791701390.0,
+     "end": 1791701405.0,
+     "requests": [
+      {
+       "role": "measure",
+       "stream": 0,
+       "tokens": 100,
+       "decode_tok_s": 10.0,
+       "error": null
+      },
+      {
+       "role": "measure",
+       "stream": 1,
+       "tokens": 100,
+       "decode_tok_s": 10.0,
+       "error": null
+      },
+      {
+       "role": "measure",
+       "stream": 2,
+       "tokens": 100,
+       "decode_tok_s": 10.0,
+       "error": null
+      },
+      {
+       "role": "measure",
+       "stream": 3,
+       "tokens": 100,
+       "decode_tok_s": 10.0,
+       "error": null
+      }
+     ]
+    },
+    {
+     "start": 1791701405.0,
+     "end": 1791701420.0,
+     "requests": [
+      {
+       "role": "measure",
+       "stream": 0,
+       "tokens": 100,
+       "decode_tok_s": 10.0,
+       "error": null
+      },
+      {
+       "role": "measure",
+       "stream": 1,
+       "tokens": 100,
+       "decode_tok_s": 10.0,
+       "error": null
+      },
+      {
+       "role": "measure",
+       "stream": 2,
+       "tokens": 100,
+       "decode_tok_s": 10.0,
+       "error": null
+      },
+      {
+       "role": "measure",
+       "stream": 3,
+       "tokens": 100,
+       "decode_tok_s": 10.0,
+       "error": null
+      }
+     ]
+    },
+    {
+     "start": 1791701420.0,
+     "end": 1791701435.0,
+     "requests": [
+      {
+       "role": "measure",
+       "stream": 0,
+       "tokens": 100,
+       "decode_tok_s": 10.0,
+       "error": null
+      },
+      {
+       "role": "measure",
+       "stream": 1,
+       "tokens": 100,
+       "decode_tok_s": 10.0,
+       "error": null
+      },
+      {
+       "role": "measure",
+       "stream": 2,
+       "tokens": 100,
+       "decode_tok_s": 10.0,
+       "error": null
+      },
+      {
+       "role": "measure",
+       "stream": 3,
+       "tokens": 100,
+       "decode_tok_s": 10.0,
+       "error": null
+      }
+     ]
+    },
+    {
+     "start": 1791701440.0,
+     "end": 1791701455.0,
+     "requests": [
+      {
+       "role": "measure",
+       "stream": 0,
+       "tokens": 100,
+       "decode_tok_s": 10.0,
+       "error": null
+      },
+      {
+       "role": "measure",
+       "stream": 1,
+       "tokens": 100,
+       "decode_tok_s": 10.0,
+       "error": null
+      },
+      {
+       "role": "measure",
+       "stream": 2,
+       "tokens": 100,
+       "decode_tok_s": 10.0,
+       "error": null
+      },
+      {
+       "role": "measure",
+       "stream": 3,
+       "tokens": 100,
+       "decode_tok_s": 10.0,
+       "error": null
+      }
+     ]
+    }
+   ],
+   "watts": {
+    "available": true,
+    "avg_w": 110.0,
+    "peak_w": 130.0,
+    "energy_j": 5500.0,
+    "samples": 100,
+    "source": "amd-smi",
+    "power_field": "SOCKET_POWER"
+   }
+  }
+ }
+}
