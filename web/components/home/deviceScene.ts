@@ -20,35 +20,49 @@ export type { DevicePart };
 /**
  * The Atlas device on the Home page, with no React in it: Device.tsx owns one of these and drives it.
  *
- *   setExplode(t)   0 is the sealed box, 1 is everything pulled apart; the page maps scroll onto it
+ *   setExplode(t)   0 is the sealed box, 1 is the end of the stage's scroll; the page maps scroll onto it
  *   setPointer      a gentle tilt towards the pointer
  *   setTheme        relight for Night or Day
  *   setActive       stop drawing while the stage is off screen
  *
  * The model itself is in deviceModel.ts. This file owns the renderer, the lights, the camera, the explode
- * choreography (each part has its own stretch of the eased factor, so the pull-apart reads as a sequence rather
- * than one jump), the fan and the breathing glows, and the callouts: DOM chips in the overlay, laid out beside the
- * device and tied to their part by a thin line, drawn only when the layout changed.
+ * choreography (each part has its own stretch of the factor, so the pull-apart reads as a sequence rather than one
+ * jump), the fan and the breathing glows, and the callouts: numbered DOM chips in the overlay, laid out beside the
+ * device and tied to their part by a thin line. Only the part named most recently shows its full text; the rest
+ * stay as a name, so eight of them never bury the device.
  *
- * The canvas is transparent so the page's aurora shows through, and the camera is fitted to the whole exploded
- * stack at any aspect: it eases between a close frame of the sealed box and a wide one of the stack.
+ * The canvas is transparent so the page's aurora shows through, and it covers the whole stage. The camera is fitted
+ * twice: the sealed box into the room the hero copy leaves, and the whole exploded stack into the room the chip
+ * columns leave. Scrolling eases between the two, so the box glides out from beside the copy to the middle as it
+ * opens, while the view rises a little to show the layers from above.
  */
 
 export interface DeviceOptions {
   /** prefers-reduced-motion: no idle sway, no fan motion, no breathing. */
   calm: boolean;
   dark: boolean;
-  classes: { callout: string; calloutOn: string; line: string };
+  classes: { callout: string; calloutOn: string; calloutActive: string; line: string };
+  /** The hero copy over the stage: the sealed box is framed clear of it (beside it when wide, above it when not). */
+  hero?: HTMLElement | null;
+  /** The bar along the bottom of the stage: nothing is framed under it. */
+  footer?: HTMLElement | null;
+  /** The part named most recently changed: its place in the order (-1 while the box is sealed), the count, its name. */
+  onStep?: (index: number, total: number, name: string) => void;
 }
 
 const FOV = 28;
-const VIEW_DIR = new THREE.Vector3(0.55, 0.42, 1).normalize(); // from the front, a little above and to the right
-const HIDE_BELOW = 0.15; // no callouts until the lid has clearly started to lift
+const VIEW_SEALED = new THREE.Vector3(0.62, 0.36, 1).normalize(); // front right, a little above: the box as a product shot
+const VIEW_APART = new THREE.Vector3(0.42, 0.52, 1).normalize(); // higher and more frontal, so the layers read
+const EXPLODE_FROM = 0.06; // the share of the scroll before anything moves, so the hero reads first
+const EXPLODE_TO = 0.9; // after this the stack holds, fully apart, until the stage scrolls away
+const CHIP_GAP = 48; // pixels between a chip column and the device
 const MIN_DELTA = 0.5; // a chip or a line is restyled only when it moved by more than this many pixels
 const NARROW = 700; // below this many pixels wide, one callout at a time: two columns would cover the device
 
 interface Callout {
   id: PartId;
+  index: number;
+  name: string;
   el: HTMLElement;
   line: HTMLElement;
   group: THREE.Group;
@@ -65,17 +79,26 @@ interface Callout {
   lastLine: string;
 }
 
+/** Pixels of the host kept clear on each side. */
+interface Reserve {
+  l: number;
+  r: number;
+  t: number;
+  b: number;
+}
+
 interface Fit {
   aim: THREE.Vector3;
   dist: number;
+  dir: THREE.Vector3;
 }
 
-function easeInOut(t: number): number {
-  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+function clamp01(x: number): number {
+  return Math.min(1, Math.max(0, x));
 }
 
 function smoothstep(a: number, b: number, x: number): number {
-  const k = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  const k = clamp01((x - a) / (b - a));
   return k * k * (3 - 2 * k);
 }
 
@@ -95,25 +118,28 @@ export class DeviceScene {
   private dark: boolean;
   private watcher: ResizeObserver;
   private size = { w: 1, h: 1 }; // the host, where the canvas is
-  private area = { w: 1, h: 1 }; // the overlay, where the chips go; it may be wider than the host
+  private area = { w: 1, h: 1 }; // the overlay, where the chips go
   private shift = { x: 0, y: 0 }; // the host's top left in the overlay
   private frame = 0;
   private active = true;
   private gone = false;
   private last = 0;
-  private t = 0; // as set
-  private te = 0; // eased
-  private applied = -1; // the eased factor the parts were last moved to
+  private te = 0; // the explode factor: the scroll with the lead-in and the hold taken off
+  private applied = -1; // the factor the parts were last moved to
   private pointer = { x: 0, y: 0 };
   private tilt = { yaw: 0, pitch: 0 };
   private spin = 0;
-  private box0 = new THREE.Box3();
-  private box1 = new THREE.Box3();
-  private fit0: Fit = { aim: new THREE.Vector3(), dist: 6 };
-  private fit1: Fit = { aim: new THREE.Vector3(), dist: 9 };
+  private box0 = new THREE.Box3(); // sealed
+  private box1 = new THREE.Box3(); // fully apart
+  private boxNow = new THREE.Box3(); // as the parts stand now, in the model's frame
+  private fit0: Fit = { aim: new THREE.Vector3(), dist: 6, dir: VIEW_SEALED.clone() };
+  private fit1: Fit = { aim: new THREE.Vector3(), dist: 9, dir: VIEW_APART.clone() };
   private callouts: Callout[] = [];
+  private latest: Callout | null = null;
   private glow = { bar: 1.2, logo: 0.15 };
   private v = new THREE.Vector3();
+  private dir = new THREE.Vector3();
+  private part = new THREE.Box3();
   private corners: THREE.Vector3[] = Array.from({ length: 8 }, () => new THREE.Vector3());
 
   constructor(
@@ -134,7 +160,7 @@ export class DeviceScene {
     canvas.style.width = "100%";
     canvas.style.height = "100%";
     canvas.setAttribute("role", "img");
-    canvas.setAttribute("aria-label", "The Atlas device: a small white box with a webcam set into its top, shown pulled apart into its parts.");
+    canvas.setAttribute("aria-label", "The Atlas device: a small white box with a webcam on its top, shown pulled apart into its parts.");
     host.insertBefore(canvas, host.firstChild);
 
     // A room-shaped environment lights the metal and the glass from all around.
@@ -157,7 +183,7 @@ export class DeviceScene {
 
     // One soft key from the upper left with the only shadow map, a hemisphere fill, and for the night a cool rim
     // from behind and a warm accent low in front (always in the scene, at zero when it is day).
-    this.key.position.set(-2.6, 4.6, 3.2);
+    this.key.position.set(-2.6, 5.2, 3.2);
     this.key.castShadow = true;
     this.key.shadow.mapSize.set(1024, 1024);
     this.key.shadow.bias = -0.0004;
@@ -177,6 +203,7 @@ export class DeviceScene {
     this.watcher = new ResizeObserver(() => this.resize());
     this.watcher.observe(host);
     if (overlay !== host) this.watcher.observe(overlay);
+    if (opts.hero) this.watcher.observe(opts.hero);
     this.resize();
     (host as HTMLElement & { deviceScene?: DeviceScene }).deviceScene = this; // for checking draw calls from the console
     this.frame = requestAnimationFrame(this.tick);
@@ -185,8 +212,9 @@ export class DeviceScene {
   // ---------- the public surface ----------
 
   setExplode(t: number): void {
-    this.t = Math.min(1, Math.max(0, Number.isFinite(t) ? t : 0));
-    this.te = easeInOut(this.t);
+    const k = Number.isFinite(t) ? t : 0;
+    // Scroll is already under the reader's hand, so it maps straight on; each part eases over its own stretch.
+    this.te = clamp01((k - EXPLODE_FROM) / (EXPLODE_TO - EXPLODE_FROM));
   }
 
   setPointer(x: number, y: number): void {
@@ -286,7 +314,7 @@ export class DeviceScene {
 
   // ---------- the pull-apart ----------
 
-  /** Move every part to where it stands at eased factor `te`; also the ribbon and the shadow under the base. */
+  /** Move every part to where it stands at factor `te`, and note the bounds of the whole as it now stands. */
   private applyExplode(te: number): void {
     this.applied = te;
     const groups = this.model.groups;
@@ -298,28 +326,30 @@ export class DeviceScene {
       if (id === "lid") g.position.add(this.model.lidPivot);
       if (spec.tilt) g.rotation.set(spec.tilt.x * p, spec.tilt.y * p, spec.tilt.z * p);
     }
-    this.model.setRibbon(groups.webcam.position);
-    // The base drops away from the desk, so its shadow spreads and fades.
-    const drop = smoothstep(TRAVEL.base.from, TRAVEL.base.to, te);
-    this.model.blob.scale.setScalar(1 + drop * 0.4);
-    const blobMat = this.model.blob.material as THREE.MeshBasicMaterial;
-    blobMat.opacity = (this.dark ? 0.45 : 0.6) * (1 - drop * 0.6);
+    this.measure(this.boxNow, false);
+  }
+
+  /**
+   * The bounds of the parts as they stand, in the model's own frame (the sway is taken off while measuring). From
+   * the parts only: the shadow's plane under the base is far wider than the box and must not count.
+   */
+  private measure(box: THREE.Box3, precise: boolean): void {
+    const { base, lid, board } = this.model.groups;
+    const turn = this.pivot.rotation.clone();
+    this.pivot.rotation.set(0, 0, 0);
+    this.pivot.updateMatrixWorld(true);
+    box.makeEmpty();
+    for (const g of [base, lid, board]) box.union(this.part.setFromObject(g, precise));
+    this.pivot.rotation.copy(turn);
+    this.pivot.updateMatrixWorld(true);
   }
 
   /** The device's bounds sealed and apart, found by standing the parts at each end once. */
   private measureBounds(): void {
-    // From the parts only: the shadow's plane under the base is far wider than the box and must not count.
-    const { base, lid, board } = this.model.groups;
-    const measure = (box: THREE.Box3) => {
-      this.model.root.updateMatrixWorld(true);
-      box.makeEmpty();
-      for (const g of [base, lid, board]) box.union(new THREE.Box3().setFromObject(g, true));
-    };
-    this.applyExplode(0);
-    measure(this.box0);
     this.applyExplode(1);
-    measure(this.box1);
+    this.measure(this.box1, true);
     this.applyExplode(0);
+    this.measure(this.box0, true);
     // The shadow camera covers the whole exploded stack.
     const centre = this.box1.getCenter(new THREE.Vector3());
     const radius = this.box1.getSize(new THREE.Vector3()).length() / 2;
@@ -338,48 +368,50 @@ export class DeviceScene {
   // ---------- camera ----------
 
   /**
-   * The nearest camera along VIEW_DIR from which every corner of `box` stays inside the given share of the frame.
-   * `reserveL` and `reserveR` are pixels of the host kept clear on each side for a column of chips: the model is
-   * fitted into the window that is left and the aim is slid sideways so it sits in the middle of that window.
+   * The nearest camera along `dir` from which every corner of `box` stays inside the given share of the window
+   * that `keep` leaves clear. The model is fitted into that window and the aim is slid so it sits in its middle.
    */
-  private fit(box: THREE.Box3, marginX: number, marginY: number, reserveL = 0, reserveR = 0): Fit {
+  private fit(box: THREE.Box3, dir: THREE.Vector3, marginX: number, marginY: number, keep: Reserve): Fit {
     const aim = box.getCenter(new THREE.Vector3());
     const corners: THREE.Vector3[] = [];
     for (const x of [box.min.x, box.max.x]) for (const y of [box.min.y, box.max.y]) for (const z of [box.min.z, box.max.z]) corners.push(new THREE.Vector3(x, y, z));
-    const xLo = -1 + (2 * reserveL) / this.size.w;
-    const xHi = 1 - (2 * reserveR) / this.size.w;
-    const half = Math.max(0.2, ((xHi - xLo) / 2) * marginX);
-    const centre = (xLo + xHi) / 2;
+    const xLo = -1 + (2 * keep.l) / this.size.w;
+    const xHi = 1 - (2 * keep.r) / this.size.w;
+    const yLo = -1 + (2 * keep.b) / this.size.h;
+    const yHi = 1 - (2 * keep.t) / this.size.h;
+    const halfX = Math.max(0.2, ((xHi - xLo) / 2) * marginX);
+    const halfY = Math.max(0.2, ((yHi - yLo) / 2) * marginY);
+    const cx = (xLo + xHi) / 2;
+    const cy = (yLo + yHi) / 2;
     const probe = this.camera.clone();
     const v = new THREE.Vector3();
     let lo = 0.5;
     let hi = 60;
     for (let i = 0; i < 24; i++) {
       const mid = (lo + hi) / 2;
-      probe.position.copy(aim).addScaledVector(VIEW_DIR, mid);
+      probe.position.copy(aim).addScaledVector(dir, mid);
       probe.lookAt(aim);
       probe.updateMatrixWorld();
       const fits = corners.every((c) => {
         v.copy(c).project(probe);
-        return Math.abs(v.x) < half && Math.abs(v.y) < marginY;
+        return Math.abs(v.x) < halfX && Math.abs(v.y) < halfY;
       });
       if (fits) hi = mid;
       else lo = mid;
     }
-    if (centre !== 0) {
-      // Moving the aim one way moves the picture the other way, by the frame's half width at that distance.
-      const right = new THREE.Vector3().crossVectors(VIEW_DIR.clone().negate(), new THREE.Vector3(0, 1, 0)).normalize();
-      const halfWidth = hi * Math.tan((FOV * Math.PI) / 360) * this.camera.aspect;
-      aim.addScaledVector(right, -centre * halfWidth);
-    }
-    return { aim, dist: hi };
+    // Moving the aim one way moves the picture the other way, by the frame's half size at that distance.
+    const forward = dir.clone().negate();
+    const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+    const up = new THREE.Vector3().crossVectors(right, forward).normalize();
+    const halfH = hi * Math.tan((FOV * Math.PI) / 360);
+    aim.addScaledVector(right, -cx * halfH * this.camera.aspect).addScaledVector(up, -cy * halfH);
+    return { aim, dist: hi, dir: dir.clone() };
   }
 
   private resize(): void {
     const w = this.host.clientWidth || 1;
     const h = this.host.clientHeight || 1;
     this.size = { w, h };
-    // The chips live in the overlay, which need not be the host's box (the page may keep the device to one side).
     const hostRect = this.host.getBoundingClientRect();
     const overRect = this.overlay.getBoundingClientRect();
     this.area = { w: this.overlay.clientWidth || w, h: this.overlay.clientHeight || h };
@@ -388,28 +420,41 @@ export class DeviceScene {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-    // Where the overlay has no room beside the host for a column of chips, the exploded stack leaves that room
-    // itself (a phone-width overlay shows one chip at a time instead, so it reserves nothing).
+
+    const footer = this.opts.footer?.getBoundingClientRect();
+    const foot = footer && footer.height ? Math.max(0, hostRect.bottom - footer.top) : 0;
+    // Sealed: clear of the hero copy, beside it on a wide stage and above it on a narrow one.
+    const sealed: Reserve = { l: 0, r: 0, t: 0, b: foot };
+    const hero = this.opts.hero?.getBoundingClientRect();
+    if (hero && hero.width && hero.height) {
+      if (hero.width < w * 0.62) sealed.l = Math.min(w * 0.6, Math.max(0, hero.right - hostRect.left + 16));
+      else sealed.b = Math.min(h * 0.6, Math.max(foot, hostRect.bottom - hero.top + 8));
+    }
+    // Apart: a column of chips each side on a wide stage; a narrow one shows one chip at a time over the device.
     let chipW = 0;
     for (const c of this.callouts) {
       c.w = 0;
       c.h = 0;
       chipW = Math.max(chipW, c.el.offsetWidth);
     }
-    const need = this.area.w < NARROW ? 0 : chipW + 40;
-    const reserveL = Math.min(w * 0.35, Math.max(0, need - this.shift.x));
-    const reserveR = Math.min(w * 0.35, Math.max(0, need - (this.area.w - this.shift.x - w)));
-    // The sealed box sits with air around it; the exploded stack fills the frame but for a margin.
-    this.fit0 = this.fit(this.box0, 0.72, 0.62);
-    this.fit1 = this.fit(this.box1, 0.9, 0.9, reserveL, reserveR);
+    const side = this.area.w < NARROW ? 0 : chipW + CHIP_GAP;
+    const apart: Reserve = { l: side, r: side, t: 8, b: foot };
+    this.fit0 = this.fit(this.box0, VIEW_SEALED, 0.74, 0.6, sealed);
+    this.fit1 = this.fit(this.box1, VIEW_APART, 0.94, 0.9, apart);
     if (!this.frame && !this.gone && this.active) this.frame = requestAnimationFrame(this.tick);
   }
 
+  /** How far the camera has gone from the sealed frame to the apart one. It follows the lid, the tallest move. */
+  private framing(): number {
+    return smoothstep(0, 0.6, this.te);
+  }
+
   private pose(): void {
-    const k = this.te;
+    const k = this.framing();
     this.v.lerpVectors(this.fit0.aim, this.fit1.aim, k);
     const dist = this.fit0.dist + (this.fit1.dist - this.fit0.dist) * k;
-    this.camera.position.copy(this.v).addScaledVector(VIEW_DIR, dist);
+    this.dir.lerpVectors(this.fit0.dir, this.fit1.dir, k).normalize();
+    this.camera.position.copy(this.v).addScaledVector(this.dir, dist);
     this.camera.lookAt(this.v);
   }
 
@@ -422,8 +467,9 @@ export class DeviceScene {
     this.last = now;
     const calm = this.opts.calm;
 
-    // The idle sway and the pointer tilt, both eased so nothing snaps.
-    if (!calm) this.spin = Math.sin((now / 10000) * Math.PI * 2) * 0.07;
+    // The idle sway and the pointer tilt, both eased so nothing snaps. The sway settles as the device opens, so
+    // the chips' lines hold still while they are being read.
+    if (!calm) this.spin = Math.sin((now / 10000) * Math.PI * 2) * 0.07 * (1 - 0.6 * this.framing());
     const wantYaw = this.spin + this.pointer.x * 0.12;
     const wantPitch = -this.pointer.y * 0.06;
     const ease = 1 - Math.exp(-dt * 4);
@@ -448,47 +494,59 @@ export class DeviceScene {
 
   private makeCallouts(): void {
     const { callout, line } = this.opts.classes;
-    for (const part of DEVICE_PARTS) {
+    DEVICE_PARTS.forEach((part, index) => {
       const anchor = ANCHORS.find((a) => a.part === part.id);
-      if (!anchor) continue;
+      if (!anchor) return;
       const el = document.createElement("div");
       el.className = callout;
+      const num = document.createElement("em");
+      num.textContent = String(index + 1).padStart(2, "0");
+      const text = document.createElement("div");
       const name = document.createElement("strong");
       name.textContent = part.name;
       const blurb = document.createElement("span");
       blurb.textContent = part.blurb;
-      el.append(name, blurb);
+      text.append(name, blurb);
+      el.append(num, text);
       el.style.visibility = "hidden";
       const lead = document.createElement("i");
       lead.className = line;
       lead.style.visibility = "hidden";
       this.overlay.append(el, lead); // the line right after its chip, so the stylesheet can pair them
-      this.callouts.push({ id: part.id, el, line: lead, group: this.model.groups[anchor.group], local: anchor.local, threshold: anchor.threshold, side: anchor.side, w: 0, h: 0, on: false, x: 0, y: 0, placed: false, lastChip: "", lastLine: "" });
-    }
+      this.callouts.push({ id: part.id, index, name: part.name, el, line: lead, group: this.model.groups[anchor.group], local: anchor.local, threshold: anchor.threshold, side: anchor.side, w: 0, h: 0, on: false, x: 0, y: 0, placed: false, lastChip: "", lastLine: "" });
+    });
   }
 
   /**
-   * Lay the chips out and tie each to its part with a line whose far end carries the dot. On a wide overlay every
-   * chip whose threshold the explode factor has passed sits beside the device on its part's side, stacked so none
-   * overlaps another. On a narrow one (a phone) two columns would cover the device, so only the part revealed
-   * most recently is named, as a tooltip under or over its anchor. Styles are written only when something moved.
+   * Lay the chips out and tie each to its part with a line whose far end carries the dot. The part revealed most
+   * recently is the active one: its chip opens to show the blurb. On a wide overlay every chip whose threshold the
+   * factor has passed sits beside the device on its part's side, stacked so none overlaps another. On a narrow one
+   * (a phone) two columns would cover the device, so only the active chip shows, as a tooltip under or over its
+   * anchor. Styles are written only when something moved.
    */
   private layoutCallouts(): void {
     const { w, h } = this.area;
     const hostW = this.size.w;
     const hostH = this.size.h;
     const { x: ox, y: oy } = this.shift;
-    const showAny = this.t >= HIDE_BELOW;
     const narrow = w < NARROW;
-    // On a narrow overlay, the one chip to show: the highest threshold the factor has passed.
     let latest: Callout | null = null;
-    if (narrow && showAny) for (const c of this.callouts) if (this.te >= c.threshold && (!latest || c.threshold > latest.threshold)) latest = c;
+    for (const c of this.callouts) if (this.te >= c.threshold && (!latest || c.threshold > latest.threshold)) latest = c;
+    if (latest !== this.latest) {
+      const active = this.opts.classes.calloutActive;
+      for (const c of [this.latest, latest]) {
+        if (!c) continue;
+        c.el.classList.toggle(active, c === latest);
+        c.w = 0; // its size changes with the blurb shown or hidden
+        c.h = 0;
+      }
+      this.latest = latest;
+      this.opts.onStep?.(latest ? latest.index : -1, this.callouts.length, latest ? latest.name : "");
+    }
     // The device's extent on screen, from the corners of its current bounds, so the columns sit just outside it.
     let left = w;
     let right = 0;
-    const k = this.te;
-    const min = this.box0.min.clone().lerp(this.box1.min, k);
-    const max = this.box0.max.clone().lerp(this.box1.max, k);
+    const { min, max } = this.boxNow;
     let i = 0;
     for (const x of [min.x, max.x]) {
       for (const y of [min.y, max.y]) {
@@ -504,7 +562,7 @@ export class DeviceScene {
     const columns: Record<"left" | "right", Callout[]> = { left: [], right: [] };
     const want = new Map<Callout, [number, number]>(); // the anchor on screen
     for (const c of this.callouts) {
-      const on = narrow ? c === latest : showAny && this.te >= c.threshold;
+      const on = narrow ? c === latest : this.te >= c.threshold;
       if (on !== c.on) {
         c.on = on;
         c.el.classList.toggle(this.opts.classes.calloutOn, on);
@@ -516,7 +574,7 @@ export class DeviceScene {
       if (!on) continue; // a chip fading out stays where it was, so the stylesheet's transition can finish
       if (!c.w || !c.h) {
         c.w = c.el.offsetWidth || 220;
-        c.h = c.el.offsetHeight || 56;
+        c.h = c.el.offsetHeight || 44;
       }
       this.v.copy(c.local);
       c.group.localToWorld(this.v).project(this.camera);
@@ -524,7 +582,7 @@ export class DeviceScene {
       const sy = (-this.v.y * 0.5 + 0.5) * hostH + oy;
       want.set(c, [sx, sy]);
       columns[c.side].push(c);
-      // A column never covers the point it names: a part eased to its full travel may be past the lerped bounds.
+      // A column never covers the point it names.
       if (c.side === "left") left = Math.min(left, sx - 12);
       else right = Math.max(right, sx + 12);
     }
@@ -537,7 +595,7 @@ export class DeviceScene {
       this.placeChip(latest, tx, ty, sx, sy, (c) => [c.x + c.w / 2, below ? c.y : c.y + c.h]);
       return;
     }
-    const gap = 10;
+    const gap = 8;
     for (const side of ["left", "right"] as const) {
       const list = columns[side];
       if (list.length === 0) continue;
