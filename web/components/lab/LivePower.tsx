@@ -16,6 +16,7 @@ import {
 } from "@/lib/livePower";
 import type { SharedBrainPair } from "@/lib/sharedBrain";
 import { LabEChart, chartAxis, chartBase, useChartTokens } from "./Charts";
+import { LiveChat } from "./LiveChat";
 import { useReduced } from "./Labels";
 import p from "./livePower.module.css";
 
@@ -87,7 +88,11 @@ export function useSharedBrain(): { brain: SharedBrainPair | null; fresh: boolea
 const clock = (t: number) => new Date(t).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit" });
 
 /** The graph, fed by polls someone else makes (the Speed and energy tab already polls the route for its live strip). */
-export function LivePower({ poll, reduced, compact = false }: { poll: SharedBrainPoll | null; reduced: boolean; compact?: boolean }) {
+export function LivePower({ poll, reduced, compact = false, chat = false }: { poll: SharedBrainPoll | null; reduced: boolean; compact?: boolean; chat?: boolean }) {
+  // the live chat's answers, as time windows on this graph's clock: end null while the answer is still streaming
+  const [windows, setWindows] = useState<{ start: number; end: number | null }[]>([]);
+  const onWindow = (start: number, end: number | null) =>
+    setWindows((w) => [...w.filter((x) => x.start !== start && x.start > Date.now() - POWER_SPAN_MS - 10_000), { start, end }]);
   const t = useChartTokens();
   const [buf, setBuf] = useState<PowerReading[]>([]);
   const [joules, setJoules] = useState(0);
@@ -150,6 +155,7 @@ export function LivePower({ poll, reduced, compact = false }: { poll: SharedBrai
       },
       yAxis: { ...axis, type: "value", min: 0, max: top, splitNumber: compact ? 2 : 4, axisLabel: { ...axis.axisLabel, fontSize: compact ? 11 : 12, formatter: "{value} W" } },
       series: POWER_PODS.map((pod, i) => {
+        const shade = i === 0 ? windows.filter((w) => (w.end ?? now) >= now - POWER_SPAN_MS) : [];
         const data = podLine(shown, pod.node);
         const tail = data.length ? data[data.length - 1]![1] : "-";
         const floor = idle[pod.node];
@@ -165,6 +171,15 @@ export function LivePower({ poll, reduced, compact = false }: { poll: SharedBrai
           lineStyle: { width: compact ? 2 : 2.5, color },
           areaStyle: { color: { type: "linear" as const, x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: `${color}2e` }, { offset: 1, color: `${color}00` }] } },
           data,
+          markArea: shade.length
+            ? {
+                silent: true,
+                animation: false,
+                itemStyle: { color: `${t.accent2}26`, borderColor: `${t.accent2}88`, borderWidth: 1 },
+                label: { show: true, position: "insideTop" as const, color: t.text, fontSize: 12, fontWeight: 600, formatter: "answering" },
+                data: shade.map((w) => [{ xAxis: Math.max(w.start, now - POWER_SPAN_MS) }, { xAxis: Math.min(w.end ?? now, now) }]),
+              }
+            : { data: [] },
           endLabel: {
             show: typeof tail === "number",
             color,
@@ -196,7 +211,7 @@ export function LivePower({ poll, reduced, compact = false }: { poll: SharedBrai
         };
       }),
     };
-  }, [t, reduced, compact, buf, idle, newest]);
+  }, [t, reduced, compact, buf, idle, newest, windows]);
 
   const label = newest
     ? `Watts over the last two minutes. ${POWER_PODS.map((pod) => {
@@ -228,7 +243,13 @@ export function LivePower({ poll, reduced, compact = false }: { poll: SharedBrai
         </div>
       </div>
       <p className={p.caption}>Watts as the meters read them, this second.</p>
-      {option ? <LabEChart option={option} height={compact ? 150 : 260} label={label} /> : <p className={p.empty}>Waiting for the first reading from the pods&apos; meters.</p>}
+      <div className={chat && !compact ? p.split : undefined}>
+        <div className={p.graph}>
+          {option ? <LabEChart option={option} height={compact ? 150 : 260} label={label} /> : <p className={p.empty}>Waiting for the first reading from the pods&apos; meters.</p>}
+          {windows.some((w) => w.end === null) ? <p className={p.note}>The shaded stretch is the answer streaming in beside the graph.</p> : null}
+        </div>
+        {chat && !compact ? <LiveChat reduced={reduced} onWindow={onWindow} /> : null}
+      </div>
       {offline && reason ? <p className={p.note}>{reason}</p> : null}
       <p className={p.energy}>
         energy drawn while you watched: <b>{kjText(joules)}</b>

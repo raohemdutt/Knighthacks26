@@ -88,3 +88,21 @@
   color: var(--muted);
   font-size: 14px;
 }
+
+/* the graph and the live chat side by side on desktop (two thirds, one third), stacked on a phone */
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+@media (min-width: 900px) {
+  .split {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    align-items: start;
+  }
+}
+
+.graph {
+  min-width: 0;
+}
