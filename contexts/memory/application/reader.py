@@ -85,7 +85,8 @@ class SqliteMemory:
     def _last_seen(self, label: str) -> Sighting | None:
         row = self.db.execute("SELECT * FROM memory_sightings WHERE label = ? ORDER BY ts DESC, id LIMIT 1", (label,)).fetchone()
         track = self.db.execute("SELECT * FROM memory_tracks WHERE label = ?", (label,)).fetchone()
-        if track and (row is None or track["ts"] > row["ts"]):
+        # a track whose frame is not stored yet would answer without a picture: the last sighting with one is better
+        if track and (row is None or (track["ts"] > row["ts"] and track["frame_ref"])):
             return Sighting(label=label, camera_id=track["camera_id"], zone_id=track["zone_id"], ts=parse(track["ts"]),
                             frame_ref=track["frame_ref"] or "", box=self.store.box_of(track["frame_ref"], label) if track["frame_ref"] else None)
         if row is None:
