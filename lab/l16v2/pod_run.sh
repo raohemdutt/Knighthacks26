@@ -12,7 +12,7 @@
 # (python -m lab.controller run-script --account D lab/l16v2/pod_run.sh <step> ...):
 #   facts                          read-only: who is on the card, the ports, the inputs, memory
 #   prep                           unpack the bundle and the inputs under ~/l16v2; check the venv imports
-#   package <version> <adapter dir> <run id>   python -m lab package build, as the first package was built
+#   package <version> <a100 | pod:<run id>> <run id>   python -m lab package build, as the first package was built
 #   serve <version>                two llama-server (HIP build) with the box's flags plus --top-k 1:
 #                                  8100 = before (the base rebuilt through the package's path, checked by sha256),
 #                                  8101 = the package's GGUF; then check
@@ -112,7 +112,12 @@ prep() {
 }
 
 package() {
-  local version="${1:?version}" adapter="${2:?adapter dir}" run_id="${3:?run id}" t0 rc
+  local version="${1:?version}" adapter="${2:?adapter: a100, pod:<run id> or a folder}" run_id="${3:?run id}" t0 rc
+  case "$adapter" in       # run-script quotes its arguments, so a path under the pod's home is named, not written
+    a100) adapter="$L/a100/adapter" ;;
+    pod:*) adapter="$HOME/adapters/l16v2-${adapter#pod:}/adapter" ;;
+  esac
+  [ -f "$adapter/adapter_config.json" ] || die "no adapter at $adapter"
   export PYTHONNOUSERSITE=1 LAB_STATE_DIR="$L/state" LAB_TASK=L16
   [ -e "$HOME/packages/$version" ] && die "$HOME/packages/$version exists: a version is built once"
   t0=$(date +%s)
