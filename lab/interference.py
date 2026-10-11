@@ -768,7 +768,8 @@ class PodRun:
         command = args.train_cmd or ["{python}", "lab/train.py", "--dataset", "{dataset}", "--rows", "{rows}",
                                      "--model", "{model}", "--max-steps", "{steps}", "--batch", "{batch}",
                                      "--grad-accum", "{grad_accum}", "--out", "{out}", "--run-id", "{run_id}"]
-        return self.bench.fill_command(command, values)
+        return [re.sub(r"\{(\w+)\}", lambda m: str(values[m.group(1)]) if m.group(1) in values else m.group(0), str(a))
+                for a in command]
 
     def start_train(self, name: str) -> tuple[subprocess.Popen, Path, Any]:
         """A fresh copy of the dataset and rows (the trainer deletes its copy), then the trainer, logging to a file."""
@@ -881,6 +882,8 @@ def run_and_report(run: PodRun) -> dict[str, Any]:
         result = build_result(raw)
         files["result.json"] = json.dumps(result, indent=1).encode()
         files["summary_pod.md"] = render_markdown(result).encode()
+        (run.dir / "result.json").write_bytes(files["result.json"])
+        (run.dir / "summary_pod.md").write_bytes(files["summary_pod.md"])
     except Exception as exc:  # the raw data must still come back for a second look
         error = f"{type(exc).__name__}: {exc}"
         files["analysis_error.txt"] = error.encode()
