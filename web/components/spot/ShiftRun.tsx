@@ -243,6 +243,7 @@ export function ShiftRun({ shift, orders, link }: { shift: Shift; orders: WorkOr
           done={planning ? undefined : at}
           robotAt={current?.location_id ?? null}
           robotMs={1400}
+          dog
           route2={atlas && result ? result.recommended.route_places : undefined}
           routeLabel="Your route"
           guide="shiftrun:map"

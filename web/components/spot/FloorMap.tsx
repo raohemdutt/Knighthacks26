@@ -112,6 +112,7 @@ export function FloorMap({
   done,
   robotAt,
   robotMs,
+  dog,
   quiet,
   title,
   note,
@@ -137,6 +138,8 @@ export function FloorMap({
   robotAt?: string | null;
   /** How long SPOT takes to move to the next point (Shift Run plays slower); the plan's own 700 ms when not given. */
   robotMs?: number;
+  /** Shift Run: SPOT is drawn as a small walking robot dog, facing the way it goes and standing still at each stop. */
+  dog?: boolean;
   /** Round view: the equipment marks step back so the route reads first. */
   quiet?: boolean;
   title: string;
@@ -240,6 +243,20 @@ export function FloorMap({
     if (lines ? lines.length > 0 : visible(a) && visible(b)) segs2.push({ a, b, lines });
   }
   const robot = robotAt && visible(robotAt) ? geo.pos[robotAt] : undefined;
+  // the dog walks while it moves to the next stop and stands while that stop's check is shown; it faces the way it goes
+  const [gait, setGait] = useState<{ walking: boolean; left: boolean }>({ walking: false, left: false });
+  const lastAt = useRef<{ x: number; y: number } | null>(null);
+  const rx = robot?.x;
+  const ry = robot?.y;
+  useEffect(() => {
+    if (!dog || rx === undefined || ry === undefined) return; // off the floor in view for a moment: where it last stood is kept
+    const from = lastAt.current;
+    lastAt.current = { x: rx, y: ry };
+    if (!from || (Math.abs(from.x - rx) < 0.5 && Math.abs(from.y - ry) < 0.5)) return;
+    setGait((g) => ({ walking: true, left: Math.abs(from.x - rx) < 0.5 ? g.left : rx < from.x }));
+    const t = window.setTimeout(() => setGait((g) => ({ ...g, walking: false })), robotMs ?? 700);
+    return () => window.clearTimeout(t);
+  }, [dog, rx, ry, robotMs]);
 
   // the look guide's walk: its parts on the floors in view, every point tagged for the pointer, and where it starts
   const routed = geo.image && walk?.found && walk.routed ? walk.routed : null;
@@ -443,10 +460,26 @@ export function FloorMap({
           {robot ? (
             <g className={o.robot} style={{ transform: `translate(${robot.x}px, ${robot.y - 26 * u}px)`, transitionDuration: robotMs ? `${robotMs}ms` : undefined }} aria-label="SPOT is here">
               <path d={`M ${-5 * u} ${11 * u} L 0 ${19 * u} L ${5 * u} ${11 * u} Z`} fill="var(--accent-text)" />
+              {dog ? (
+                <g className={`${o.dog} ${gait.walking ? o.dogWalk : ""}`} transform={`scale(${(gait.left ? -1 : 1) * u} ${u})`} data-dog={gait.walking ? "walking" : "standing"}>
+                  <g stroke="var(--accent-text)" strokeWidth="3.4" strokeLinecap="round">
+                    <line className={o.dogLegA} x1="-11" y1="-3" x2="-11" y2="9" />
+                    <line className={o.dogLegB} x1="-7" y1="-3" x2="-7" y2="9" />
+                    <line className={o.dogLegB} x1="7" y1="-3" x2="7" y2="9" />
+                    <line className={o.dogLegA} x1="11" y1="-3" x2="11" y2="9" />
+                  </g>
+                  <rect x="-15" y="-11" width="30" height="10" rx="4" fill="var(--accent-text)" stroke="var(--surface)" strokeWidth="1.5" />
+                  <rect x="12" y="-18" width="11" height="8" rx="3" fill="var(--accent-text)" stroke="var(--surface)" strokeWidth="1.5" />
+                  <circle cx="19.5" cy="-14.5" r="1.3" fill="var(--on-media)" />
+                </g>
+              ) : (
+                <>
               <rect x={-22 * u} y={-11 * u} width={44 * u} height={22 * u} rx={11 * u} fill="var(--accent-text)" stroke="var(--surface)" strokeWidth={2 * u} />
               <text x="0" y={4.2 * u} textAnchor="middle" fontSize={12 * u} fontWeight="800" fill="var(--on-media)">
                 SPOT
               </text>
+                </>
+              )}
             </g>
           ) : null}
         </svg>

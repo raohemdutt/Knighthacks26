@@ -615,6 +615,50 @@
   pointer-events: none;
 }
 
+/* SPOT as a small robot dog (Shift Run): two frames of a walk while it moves, still at a stop */
+.dog {
+  pointer-events: none;
+}
+
+.dogLegA,
+.dogLegB {
+  transform-box: fill-box;
+  transform-origin: 50% 0;
+}
+
+.dogWalk .dogLegA {
+  animation: dogStepA 360ms steps(1) infinite;
+}
+
+.dogWalk .dogLegB {
+  animation: dogStepB 360ms steps(1) infinite;
+}
+
+@keyframes dogStepA {
+  0% {
+    transform: rotate(22deg);
+  }
+  50% {
+    transform: rotate(-22deg);
+  }
+}
+
+@keyframes dogStepB {
+  0% {
+    transform: rotate(-22deg);
+  }
+  50% {
+    transform: rotate(22deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dogWalk .dogLegA,
+  .dogWalk .dogLegB {
+    animation: none;
+  }
+}
+
 .legend {
   display: flex;
   flex-wrap: wrap;
