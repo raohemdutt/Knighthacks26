@@ -494,3 +494,33 @@ def test_bands_pool_one_arm_across_sessions_and_compare_with_stock(tmp_path: Pat
     assert run.returncode == 0, run.stderr
     assert json.loads(out.read_text())["arm"] == "stock"
 
+
+# --- parts 5 and 6: the pre-registration and the real-run steps -------------------------------------------------
+
+def test_the_prereg_names_a_batch_size_and_an_expected_joules_per_token_change_for_each_lever() -> None:
+    text = (GPU / "R12_T0_PREREG.md").read_text()
+    for lever in ("R12a", "R12b"):
+        line = text.split(f"(kernels) {lever}:")[1].split("**E-next")[0]
+        assert re.search(r"Expected change in joules per token at batch 1: \*\*[-+]?\d+\.\d %", line)
+        assert "Confidence:" in line and "Minimum runs:" in line and "Citations:" in line
+    assert "--attention-backend TRITON_ATTN" in text
+
+
+def test_the_real_run_orders_build_gate_then_bench_and_keeps_slower_results() -> None:
+    text = (GPU / "R12_REAL_RUN.md").read_text()
+    order = [text.index(s) for s in ("R12_T0_PREREG.md", "gpu/rebuild.sh stock", "match_check.py collect",
+                                     "lds_check.py --arm stages", "match_check.py compare", "lab/bench.py run",
+                                     "r12_bands.py", "pull-file", "slower result is still a result")]
+    assert order == sorted(order)
+    assert "pod B" in text and "never on pod A" in text
+    assert "--enforce-eager" in text and "--attention-backend TRITON_ATTN" in text
+    # environment variable names only: no NAME=value for anything secret-shaped
+    assert not re.search(r"(TOKEN|PASS)\w*=\S", text)
+
+
+@pytest.mark.parametrize("name", ["R12_T0_PREREG.md", "R12_REAL_RUN.md", "rebuild.sh", "lds_check.py",
+                                  "match_check.py", "r12_bands.py", "patches/unified-attention-stages.patch",
+                                  "patches/unified-attention-block.patch"])
+def test_gpu_files_use_plain_hyphens(name: str) -> None:
+    text = (GPU / name).read_text()
+    assert "\u2014" not in text and "\u2013" not in text
