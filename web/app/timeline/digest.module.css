@@ -1,0 +1,242 @@
+/* Today's digest on Timeline (A6), in the app's glass look: a teaser row that opens into the day's paragraph. */
+
+.teaser {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 14px 16px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--sh-raised);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform var(--t-fast) var(--ease-press), box-shadow var(--t-fast) var(--ease-out);
+}
+
+.teaser:hover {
+  box-shadow: var(--sh-raised-lg);
+}
+
+.teaser:active {
+  transform: scale(0.985);
+}
+
+.teaser:focus-visible,
+.close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.teaser:disabled {
+  cursor: progress;
+}
+
+.mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: var(--accent-grad);
+  color: var(--accent-ink);
+  box-shadow: 0 6px 18px -6px var(--glow);
+}
+
+.mark svg {
+  width: 22px;
+  height: 22px;
+}
+
+.teaserText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.teaserTitle {
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.teaserSub {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.go {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  color: var(--accent-text);
+}
+
+.go svg {
+  width: 18px;
+  height: 18px;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 18px 16px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--sh-raised), inset 0 1px 0 var(--edge);
+  overflow: hidden;
+  animation: open var(--t) var(--ease-out);
+}
+
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: var(--accent-grad);
+}
+
+@keyframes open {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.eyebrow {
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-text);
+}
+
+.title {
+  margin: 2px 0 0;
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.close {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.close svg {
+  width: 16px;
+  height: 16px;
+}
+
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.fact {
+  padding: 4px 11px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.text {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.55;
+  max-width: 62ch;
+}
+
+.moments {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(150px, 46%);
+  gap: 10px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding-bottom: 4px;
+}
+
+.moment {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  scroll-snap-align: start;
+  min-width: 0;
+}
+
+.moment figcaption {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.moment figcaption b {
+  color: var(--text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .teaser,
+  .card {
+    transition: none;
+    animation: none;
+  }
+
+  .spinner {
+    animation-duration: 2.4s;
+  }
+}
