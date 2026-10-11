@@ -24,6 +24,11 @@ export interface ImpactEquivalentRow {
   co2e_kg: Range | null;
   material_source: string | null;
   material_confidence: Confidence | null;
+  mass_url?: string | null;
+  material_url?: string | null;
+  /** The factors themselves, so the screen can show count x mass x factor. */
+  energy_kwh_per_kg?: Range | null;
+  co2e_kg_per_kg?: Range | null;
 }
 
 /** The week's recycled items in real units, from config/impact.yaml. Estimates, always. */
@@ -37,6 +42,10 @@ export interface ImpactEquivalents {
   phone_charges: Range;
   phone_charge_source: string | null;
   phone_charge_confidence: Confidence;
+  phone_charge_wh?: Range;
+  phone_charge_url?: string | null;
+  /** What kind of energy this is (life-cycle energy of every kind, not socket electricity). */
+  energy_note?: string | null;
   co2e_kg: Range;
   by_item: ImpactEquivalentRow[];
   unweighed: { item: string; count: number }[];
@@ -122,9 +131,46 @@ export interface ImpactRules {
   note: string | null;
   overridden: boolean;
   bins: string[];
-  items: { label: string; bin: string; rule: string }[];
+  /** basis: "stated" by the place's published list, "assumed" (ours), or null when the file does not say. */
+  items: { label: string; bin: string; rule: string; basis?: "stated" | "assumed" | null }[];
   default_rule: string | null;
+  /** The published list the rules file was checked against. */
+  source?: { title: string; publisher: string; url: string; read: string } | null;
+  /** The same item under the rules around this place: values are a bin name or "not listed". */
+  compare?: { item: string; [place: string]: string }[];
+  compare_sources?: string[];
   swap: string;
+}
+
+export interface ImpactFlowItem {
+  item_id: string;
+  item: string;
+  bin: string;
+  correct: boolean;
+  belongs_in: string;
+  rule: string;
+  ts: string;
+}
+
+export interface ImpactFlow {
+  items: ImpactFlowItem[];
+  /** Earlier disposals this week that are not in `items`. */
+  more: number;
+  recyclable_seen: number;
+  recycled: number;
+  recyclable_in_trash: number;
+  /** Recyclables the camera saw that never entered a bin zone. */
+  not_binned: number;
+  wrong_in_recycling: number;
+}
+
+/** Mistake seen -> taught -> practised in Sort It -> the same mistakes next week. Only what the log holds. */
+export interface ImpactLoop {
+  seen: number;
+  taught: number;
+  practised: { rounds: number; right: number };
+  trend: { available: boolean; previous: number | null; current: number; text: string };
+  weeks: { week_start: string; disposals: number; mistakes: number; by_item: Record<string, number> }[];
 }
 
 /** GET /api/impact/story */
@@ -141,14 +187,27 @@ export interface ImpactStory {
   equivalents: ImpactEquivalents | null;
   contamination: {
     wrong_in_recycling: number;
-    spoils_bag_at: number;
+    /** null: no published threshold, so none is claimed. */
+    spoils_bag_at: number | null;
     at_risk: boolean;
     good_items_sharing_the_bin: number;
     text: string;
     source: string | null;
     confidence: Confidence;
     rule_of_thumb: boolean;
+    /** A statement quoted word for word, who said it, and where. */
+    quote?: string | null;
+    attribution?: string | null;
+    url?: string | null;
+    rates?: { scope: string; text: string; source: string }[];
   };
+  /** Measured counts in one sentence. */
+  headline?: string;
+  /** This week's disposals, oldest first, and where the recyclables seen ended up. */
+  flow?: ImpactFlow;
+  /** "The problem here": one sourced paragraph; each claim says whose figure it is. */
+  problem?: { text: string; sources: { scope: string; claim: string; source: string }[] } | null;
+  loop?: ImpactLoop;
   feed: ImpactDisposal[];
   goal: {
     diversion: {

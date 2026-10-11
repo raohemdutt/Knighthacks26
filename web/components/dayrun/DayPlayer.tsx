@@ -30,6 +30,7 @@ import {
 } from "@/lib/dayplay";
 import { clock, clockSpan, dateLabel, minutes, ms, parentPlace, placeName, riskPercent, stars, type PlaceIndex } from "@/lib/dayrun";
 import ui from "../ui.module.css";
+import cm from "./campusmap.module.css";
 import dr from "./dayrun.module.css";
 import { CampusLayers, MapFurniture, PlacePin, layoutPins, lineBoxes, type ScreenBox } from "./CampusLayers";
 import { pinName } from "./CampusMap";
@@ -548,7 +549,7 @@ export function DayPlayer({
 
       <div className={dr.plCols}>
         <div className={dr.plCol}>
-      <div className={dr.plMapWrap}>
+      <div className={`${dr.plMapWrap} ${cm.palette}`}>
         <svg className={dr.plMap} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Campus map. ${dayName} ${now.hhmm}: ${nowText}. ${whereText}.`}>
           {/* the campus itself, or on a hand-made pack the walkways the box has routed over */}
           {map ? (

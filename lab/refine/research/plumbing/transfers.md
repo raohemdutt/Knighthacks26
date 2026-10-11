@@ -156,3 +156,38 @@ Until a relaunch proves it either way, treat SJC pushes as lost on relaunch and 
   Implies: as on DUB (section 1), the contents API most likely writes into the image's working directory, which a relaunch wipes, so R6's push helper and E10 must move a pushed dataset under `~/data/` on the pod (or delete a test file) whichever hub they run on; the relaunch of the SJC pods through the web form would then have dropped every script uploaded to the root before it, and a vLLM build or model download kept in the root's `vllm` or `models` directory would be lost at the next relaunch (RT, MB/s, TTS).
 
   Experiment: XFR-1 as specified in section 1, run on SJC account D at its next relaunch. Expected: the marker file is gone from the root after the relaunch and present under `~/data/`. Minimum sample: 1 each.
+
+## 7. The paths R6 and R10 shipped, and where the root is on SJC (plumbing pass 3, 2026-10-10)
+
+### Takeaway
+The box's push and pull are now code on main: pushes go through the contents API in 8 MiB chunks by default (at
+most 64 MiB), and pulls come in 64 MiB Range parts (never 96 MiB or more) either through the Jupyter server's own
+`/files/` route (`lab/transfer.py`, its default) or through `/proxy/<port>/` from R10's Range-capable server
+(`lab/package_pull.py`), with one whole-file probe kept as the measurement of the 100 MiB limit. The queued
+experiments E9 and E10 were written before this code, and their controls are not what it does. On the
+form-launched SJC pods the Jupyter root is the persistent home, which section 6 did not expect.
+
+### Cited findings
+- **[practitioner]** `lab/transfer.py` (R6) pulls a file in HTTP Range parts of 64 MiB (never more than 96 MiB) with a sha256 check and resume, through the Jupyter server's own `/files/<path>` route by default (`--via files`) or through `/proxy/<port>/` (`--via proxy --port N`); `pull-package`, the box half of L6's deploy, takes the same default. `lab/package_pull.py` (R10) pulls each file of a package from `lab/package_server.py` on the pod through `/proxy/<port>/<version>/<file>` in the same 64 MiB parts, and its `probe` command makes one whole-file GET of the GGUF, once and with no retry, recording the status, the announced length and the bytes that arrived; every R10 pull writes link.pull_mb_s with the bytes, seconds, part size, hub and account. Source: `lab/transfer.py`, module docstring and the `--via` option (default `files`), and `lab/package_pull.py`, module docstring, main at fba248a [S64]
+
+  Implies: the box has two shipped pull paths, `/files/` Range parts (R6's default, and so L6's) and proxy Range parts from R10's server, and E9 compares neither pair: its control is a whole file from `python3 -m http.server`, which no shipped code sends, and its second arm (files pre-split on the pod) is not shipped either; only its third arm (`/files/` Range) is a shipped path. Which of the two shipped paths is faster, and whether the whole file really fails, are untested (section 3's M12 timed `/files/` on DUB only), and R14 times one path at a time (MB/s, FCR).
+
+  Experiment (XFR-11): one 1 GB package file pulled from pod D, arm A `/files/` Range parts (`python -m lab.transfer pull-file --via files`, R6's default and L6's path, control) and arm B proxy Range parts from R10's server (`python -m lab.package_pull pull`, port 8300), 64 MiB parts in both, sha256 checked, plus one `python -m lab.package_pull probe` of the whole file. Expected: both arms succeed, A at least as fast as B (section 3, M12), the probe refused above 100 MiB. Minimum sample: 3 runs per arm.
+
+- **[practitioner]** `lab/transfer.py` (R6) pushes a file larger than one chunk through the contents API in chunks (`chunk` 1 creates the file, 2 and up append, -1 the last), 8 MiB of the file per request unless told otherwise and at most 64 MiB (about 85 MB on the wire, under Cloudflare's 100 MB), and re-sends a chunk only when a read-back of the file's size says it did not land. Source: `lab/transfer.py`, module docstring and `push_file`, main at fba248a [S64]
+
+  Implies: the shipped push already runs at E10's arm B (8 MiB); E10's control, 1 MiB, is JupyterLab's default and not ours, so E10's verdict would rank chunk sizes against a path the box does not use, while R14 times pushes at whatever chunk its run picks (MB/s).
+
+  Experiment (XFR-12): a 200 MB file pushed to pod D with `python -m lab.transfer push-file` at `--chunk-mib` 8 (the shipped default, control), 32 and 64, sha256 checked after each. Expected: MB/s rises with chunk size, 64 MiB still under Cloudflare's cap. Minimum sample: 3 runs per arm.
+
+- **[practitioner]** jupyter_server's `largefilemanager.py` is identical at v2.19.0 (DUB's pod A) and v2.20.0 (the SJC Strix Halo pods, M25), and at v2.20.0 `serverapp.py` still caps a request body at 512 MiB (`max_body_size`, L1237-L1248) and still defaults the contents manager to `AsyncLargeFileManager` (L1617-L1621). Source: jupyter_server `jupyter_server/services/contents/largefilemanager.py` at v2.19.0 and v2.20.0 and `jupyter_server/serverapp.py` at v2.20.0, https://github.com/jupyter-server/jupyter_server/blob/v2.20.0/jupyter_server/serverapp.py#L1237-L1248 [S68]
+
+  Implies: section 2's push findings, cited at v2.19.0, hold unchanged on the pods that run (owner ruling 8: pin to 2.20.0 and re-open the cited lines before a change rests on them), so a push line on T0 can cite v2.20.0 without changing what it predicts (MB/s).
+
+  Experiment: XFR-12, as in the previous finding.
+
+- **[measured]** On pod D (SJC account D, form-launched) R30 read `/home/jovyan` as a 984 GB volume of the persistent kind (ubuntu-vg docker-lv, 565 GB free) and found the Jupyter root to be that same folder, so files that `run-script` uploads land in the persistent home; at 00:38Z both pods' roots held the work of the day (pod D: `vllm`, `models`, `serve`, `chipsheet`, `r14-link-speed`, `r20_bench`; pod C: `vllm`, `models`, `serve`, `lab`, `atlas-power`). Source: R30 task page, line of Sat 5:40 PM (Hemdutt's agent), table row "Home" [S61]; `measurements-2026-10-10.md` M25 [S63]
+
+  Implies: section 6's reading (a push on SJC most likely lands in ephemeral storage) does not hold for the form-launched pods: a pushed dataset, a build and a checkpoint in the root are in the home, so E10's note to move or delete pushed files is a matter of space, not of loss, and P14's loss of the root's `vllm` and `models` at a relaunch is not expected; no relaunch with those folders in place has yet been watched (RT, MB/s, TTS).
+
+  Experiment: XFR-1 as specified in section 1, run on SJC account D at its next relaunch. Expected: the marker file is still in the root after the relaunch. Minimum sample: 1.

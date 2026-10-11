@@ -1,56 +1,76 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import im from "@/components/impact/impact.module.css";
+import { WeekStory, rangeText } from "@/components/impact/WeekStory";
 import { Keyframe } from "@/components/Keyframe";
 import { Empty, ErrorBox, Loading, WriteError } from "@/components/States";
 import ui from "@/components/ui.module.css";
-import { ApiError, api } from "@/lib/api";
+import { ApiError, type LeagueView, api } from "@/lib/api";
 import { useAtlasEvents } from "@/lib/atlas";
-import { dayLabel, humanize, percent, timeOrDay } from "@/lib/format";
+import { dayLabel, humanize, percent, safeUrl, timeOrDay } from "@/lib/format";
 import type { Confidence, ImpactDisposal, ImpactStory, Range } from "@/lib/impact";
 import { useFetch } from "@/lib/useFetch";
 
 /**
- * Impact: what Waste Watch's counts mean, and what the table can do about them this week.
+ * Impact: one table's recycling this week, as a short story and the facts under it.
  *
- * Counts (items, right or wrong bin, diversion rate) are measured by the camera. Everything in grams,
- * kWh, phone charges or CO2e is an ESTIMATE from config/impact.yaml: it is shown as a range, tagged
- * "estimate", and the factors with their sources and confidence are one tap away.
+ * Two kinds of number, always labelled. MEASURED: counts from this table's camera (items, right or wrong bin,
+ * the diversion rate). ESTIMATE: those counts multiplied by published factors in config/impact.yaml, always a
+ * range. Nothing on this screen is a projection.
+ *
+ *   /impact/?t=0.4            open with the story paused part-way (0 to 1); without it the finished story is shown
+ *   /impact/?explain=why      open the "Why it matters" panel (also: how)
+ *   /impact/?motion=reduce    as if the system asked for reduced motion
  */
-
-/** Two significant figures: 81 -> 81, 227 -> 230, 2725 -> 2700. A range is not a place for false precision. */
-function sig2(n: number): number {
-  if (n === 0) return 0;
-  const p = Math.pow(10, Math.floor(Math.log10(Math.abs(n))) - 1);
-  return Math.round(n / p) * p;
-}
-
-function tidy(n: number): string {
-  const r = sig2(n);
-  return r >= 100 ? String(Math.round(r)) : String(Math.round(r * 100) / 100);
-}
-
-function range(r: Range): string {
-  const a = tidy(r.low);
-  const b = tidy(r.high);
-  return a === b ? a : `${a}–${b}`;
-}
-
-/** Grams under a kilogram, kilograms above: [number, unit]. */
-function mass(g: Range): [string, string] {
-  return g.high >= 1000 ? [range({ low: g.low / 1000, high: g.high / 1000 }), "kg"] : [range(g), "g"];
-}
 
 const CONFIDENCE: Record<Confidence, string> = { high: "high confidence", medium: "medium confidence", low: "low confidence" };
 const WEEKDAY = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+type Panel = "why" | "how" | null;
+
+/** Grams under a kilogram, kilograms above. */
+function mass(g: Range): string {
+  return g.high >= 1000 ? `${rangeText({ low: g.low / 1000, high: g.high / 1000 })} kg` : `${rangeText(g)} g`;
+}
+
+/** A citation as text, with its last URL made into a link. */
+function Cite({ text }: { text: string | null | undefined }) {
+  if (!text) return null;
+  const parts = text.split(/(https:\/\/\S+)/);
+  return (
+    <span className={ui.breakWords}>
+      {parts.map((p, i) => {
+        const url = p.startsWith("https://") ? safeUrl(p) : null;
+        return url ? (
+          <a key={i} href={url} target="_blank" rel="noreferrer">
+            {p}
+          </a>
+        ) : (
+          p
+        );
+      })}
+    </span>
+  );
+}
 
 export default function ImpactPage() {
   const [member, setMember] = useState<string | undefined>(undefined);
+  const [params, setParams] = useState<{ t: number | null; reduce: boolean; panel: Panel } | null>(null);
   const story = useFetch((s) => api.impactStory(member, s), member ?? "");
   const people = useFetch((s) => api.members(s)); // names for the picker; 404 on a box without recognition
-  useAtlasEvents(["impact."], () => story.reload());
+  const league = useFetch((s) => api.league(s)); // the friends' tables, for the end of the story
+  const reloadLeague = league.reload;
+  useAtlasEvents(["impact.", "play.round.scored"], () => story.reload());
+  useAtlasEvents(["play.league.", "impact.count.updated"], () => reloadLeague());
+
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const t = q.get("t");
+    const e = q.get("explain");
+    setParams({ t: t !== null && !Number.isNaN(Number(t)) ? Math.min(1, Math.max(0, Number(t))) : null, reduce: q.get("motion") === "reduce", panel: e === "why" || e === "how" ? e : null });
+  }, []);
 
   return (
     <>
@@ -71,11 +91,13 @@ export default function ImpactPage() {
         ) : (
           <ErrorBox what="the Impact screen" error={story.error} onRetry={story.reload} />
         )
-      ) : !story.data ? (
+      ) : !story.data || !params ? (
         <Loading what="this week's impact" />
       ) : (
         <Story
           v={story.data}
+          league={league.data}
+          params={params}
           member={member}
           setMember={setMember}
           nameOf={(id) => people.data?.find((m) => m.member_id === id)?.name ?? id}
@@ -88,134 +110,37 @@ export default function ImpactPage() {
 
 function Story({
   v,
+  league,
+  params,
   member,
   setMember,
   nameOf,
   reload,
 }: {
   v: ImpactStory;
+  league: LeagueView | undefined;
+  params: { t: number | null; reduce: boolean; panel: Panel };
   member: string | undefined;
   setMember: (m: string | undefined) => void;
   nameOf: (id: string) => string;
   reload: () => void;
 }) {
-  const eq = v.equivalents;
   const g = v.goal.diversion;
-  const [num, unit] = eq ? mass(eq.kept_out_g) : ["", ""];
   const ba = v.before_after;
+  const [panel, setPanel] = useState<Panel>(params.panel);
+  const close = useCallback(() => setPanel(null), []);
 
   return (
     <>
       {v.empty ? <Empty title="Nothing counted yet">{v.empty_text}</Empty> : null}
 
-      {/* What it means, in real units */}
+      {/* The week as a short story */}
       <section className={ui.section}>
-        <div className={im.hero}>
-          <p className={im.heroLabel}>Kept out of landfill this week</p>
-          {eq && eq.items > 0 ? (
-            <>
-              <p className={im.heroNum}>
-                {num} <span className={im.heroUnit}>{unit}</span> <span className={im.estimate}>estimate</span>
-              </p>
-              <p className={ui.muted}>
-                {g.recycled} of {g.recyclable} recyclables the camera saw reached recycling (that count is measured).
-              </p>
-            </>
-          ) : (
-            <>
-              <p className={im.heroNum}>
-                {g.recycled} <span className={im.heroUnit}>items</span>
-              </p>
-              <p className={ui.muted}>
-                {eq ? "The first can, bottle or sheet of paper in the recycling bin starts this number." : "No factors file on this box, so counts are not turned into grams or energy."}
-              </p>
-            </>
-          )}
-          {v.milestones.latest ? (
-            <div className={im.milestone}>
-              <p>
-                {/* The count above is live; a milestone is a threshold passed earlier, so it is named as one unless the two agree. */}
-                <strong>
-                  {v.milestones.latest.kind === "kept_out" && v.milestones.latest.threshold !== g.recycled
-                    ? `Last milestone: ${v.milestones.latest.threshold} ${v.milestones.latest.threshold === 1 ? "item" : "items"} kept out of landfill (${g.recycled} so far this week).`
-                    : v.milestones.latest.text}
-                </strong>
-              </p>
-              {v.milestones.next ? <p className={`${ui.muted} ${ui.small}`}>{v.milestones.next.text}</p> : null}
-            </div>
-          ) : v.milestones.next && !v.empty ? (
-            <p className={`${ui.muted} ${ui.small}`}>{v.milestones.next.text}</p>
-          ) : null}
-        </div>
-
-        {eq && eq.items > 0 ? (
-          <>
-            <div className={im.tiles}>
-              <div className={im.tile}>
-                <p className={im.tileNum}>{range(eq.phone_charges)}</p>
-                <p className={im.tileLabel}>
-                  phone charges&apos; worth of energy saved <span className={im.estimate}>estimate</span>
-                </p>
-              </div>
-              <div className={im.tile}>
-                <p className={im.tileNum}>{range(eq.energy_kwh)} kWh</p>
-                <p className={im.tileLabel}>
-                  not spent making new material <span className={im.estimate}>estimate</span>
-                </p>
-              </div>
-              <div className={im.tile}>
-                <p className={im.tileNum}>{range(eq.co2e_kg)} kg</p>
-                <p className={im.tileLabel}>
-                  CO2e avoided <span className={im.estimate}>estimate</span>
-                </p>
-              </div>
-              <div className={im.tile}>
-                <p className={im.tileNum}>{v.contamination.wrong_in_recycling}</p>
-                <p className={im.tileLabel}>wrong {v.contamination.wrong_in_recycling === 1 ? "item" : "items"} in recycling (measured)</p>
-              </div>
-            </div>
-            <details className={im.details}>
-              <summary>How these are estimated</summary>
-              <div className={im.detailsBody}>
-                <p>{eq.disclaimer}</p>
-                <p className={ui.muted}>
-                  Each figure is the measured count multiplied by a low and a high factor from <code>{eq.file}</code>. They are illustrative
-                  factors, to be replaced with a campus&apos;s own.
-                </p>
-                {eq.by_item.map((r) => (
-                  <div key={r.item} className={im.factor}>
-                    <p>
-                      <strong>
-                        {r.count} × {r.item}
-                      </strong>
-                      : {r.each_g.low}–{r.each_g.high} g each ({CONFIDENCE[r.mass_confidence]})
-                    </p>
-                    <p className={`${ui.muted} ${ui.small}`}>{r.mass_source}</p>
-                    {r.material_source ? (
-                      <p className={`${ui.muted} ${ui.small}`}>
-                        {humanize(r.material ?? "material")} ({r.material_confidence ? CONFIDENCE[r.material_confidence] : "no confidence given"}):{" "}
-                        {r.material_source}
-                      </p>
-                    ) : (
-                      <p className={`${ui.muted} ${ui.small}`}>No energy or CO2e is claimed for this material.</p>
-                    )}
-                  </div>
-                ))}
-                {eq.unweighed.length > 0 ? (
-                  <p className={im.factor}>
-                    Counted but given no weight (no entry in the factors file): {eq.unweighed.map((u) => `${u.count} × ${u.item}`).join(", ")}.
-                  </p>
-                ) : null}
-                <p className={`${im.factor} ${ui.muted} ${ui.small}`}>
-                  Phone charge ({CONFIDENCE[eq.phone_charge_confidence]}): {eq.phone_charge_source}
-                </p>
-              </div>
-            </details>
-          </>
-        ) : null}
+        <h2 className={im.headline}>{v.headline ?? `${g.recycled} of ${g.recyclable} recyclables reached recycling this week.`}</h2>
+        <WeekStory v={v} league={league} initial={params.t} forceReduced={params.reduce} onWhy={() => setPanel("why")} onHow={() => setPanel("how")} />
       </section>
 
-      {/* Goals and momentum */}
+      {/* The goal */}
       <section className={ui.section}>
         <h2 className={ui.sectionTitle}>This week&apos;s goal</h2>
         <div className={ui.card}>
@@ -223,18 +148,7 @@ function Story({
             <h3>{g.value === null ? "No recyclables yet" : `${percent(g.value)} of recyclables recycled`}</h3>
             <span className={`${ui.tag} ${g.met ? ui.tagAccent : ""}`}>{g.met ? "goal met" : `goal ${percent(g.target)}`}</span>
           </div>
-          <div className={im.goalBar} role="img" aria-label={`${g.value === null ? "nothing" : percent(g.value)} against a goal of ${percent(g.target)}`}>
-            <div className={`${im.goalFill} ${g.met ? im.goalFillMet : ""}`} style={{ width: `${Math.round((g.value ?? 0) * 100)}%` }} />
-            <span className={im.goalMark} style={{ left: `${Math.round(g.target * 100)}%` }} aria-hidden="true" />
-            <span className={im.goalMarkLabel} style={{ left: `${Math.round(g.target * 100)}%` }} aria-hidden="true">
-              goal {percent(g.target)}
-            </span>
-          </div>
           <p>{g.text}</p>
-          <p className={v.goal.contamination.met ? `${ui.small} ${ui.muted}` : ui.small}>
-            Wrong items in recycling: {v.goal.contamination.value} of at most {v.goal.contamination.ceiling} this week
-            {v.goal.contamination.met ? (v.goal.contamination.left > 0 ? ` (${v.goal.contamination.left} to spare).` : " (none to spare).") : ": over the ceiling."}
-          </p>
           <div className={im.week} role="list" aria-label="Each day this week">
             {v.days.map((d, i) => {
               const future = d.day > v.week.today;
@@ -248,23 +162,21 @@ function Story({
               );
             })}
           </div>
-          <p className={`${ui.small} ${ui.muted}`}>Right bin / thrown away, per day. A highlighted day had nothing in the wrong bin.</p>
-        </div>
-        <div className={im.pair}>
-          <div className={im.tile}>
-            <p className={im.tileNum}>
-              {v.clean_streak} {v.clean_streak === 1 ? "day" : "days"}
+          <p className={`${ui.small} ${ui.muted}`}>
+            Right bin / thrown away, per day; a highlighted day had nothing in the wrong bin. {v.clean_streak > 0 ? `${v.clean_streak} clean ${v.clean_streak === 1 ? "day" : "days"} in a row. ` : ""}
+            Wrong items in recycling: {v.goal.contamination.value} of at most {v.goal.contamination.ceiling}
+            {v.goal.contamination.met ? "." : ": over the ceiling."}
+            {v.milestones.next ? ` ${v.milestones.next.text}` : ""}
+          </p>
+          {ba.available && ba.enough && ba.before && ba.after ? (
+            <p className={ui.small}>
+              Before the first sorting nudge ({timeOrDay(ba.nudges_on_at)}): {percent(ba.before.diversion_rate ?? 0)} of {ba.before.n} recyclables recycled. After:{" "}
+              {percent(ba.after.diversion_rate ?? 0)} of {ba.after.n}. <span className={im.measured}>measured</span> Small numbers: a direction, not a result.
             </p>
-            <p className={im.tileLabel}>{v.clean_streak > 0 ? "clean in a row" : "clean streak: the next day with nothing in the wrong bin starts one"}</p>
-          </div>
-          <div className={im.tile}>
-            <p className={im.tileNum}>{v.best_day ? dayLabel(`${v.best_day.day}T12:00:00`) : "–"}</p>
-            <p className={im.tileLabel}>
-              {v.best_day ? `best day: ${v.best_day.right} of ${v.best_day.disposals} in the right bin` : "best day: needs a day with two or more items"}
-            </p>
-          </div>
+          ) : ba.available ? (
+            <p className={`${ui.small} ${ui.muted}`}>Before and after nudges: {ba.text.replace(/^Not enough data yet: /, "not enough data yet, ")}</p>
+          ) : null}
         </div>
-        <p className={`${ui.small} ${ui.muted}`}>{v.projection.text}</p>
       </section>
 
       {/* The moment of disposal */}
@@ -297,9 +209,31 @@ function Story({
         )}
       </section>
 
-      {/* The practice set */}
+      {/* The practice set, and the loop it closes */}
       <section className={ui.section}>
         <h2 className={ui.sectionTitle}>Practise in Sort It</h2>
+        {v.loop ? (
+          <ol className={im.loop} aria-label="From a mistake to fewer of them">
+            <li>
+              <strong>{v.loop.seen}</strong>
+              <span>{v.loop.seen === 1 ? "mistake" : "mistakes"} seen</span>
+            </li>
+            <li>
+              <strong>{v.loop.taught}</strong>
+              <span>&quot;Teach me&quot; taps</span>
+            </li>
+            <li>
+              <strong>{v.loop.practised.rounds}</strong>
+              <span>
+                Sort It {v.loop.practised.rounds === 1 ? "round" : "rounds"} on them{v.loop.practised.rounds ? `, ${v.loop.practised.right} right` : ""}
+              </span>
+            </li>
+            <li className={v.loop.trend.available ? "" : im.loopWaiting}>
+              <strong>{v.loop.trend.available ? `${v.loop.trend.previous} → ${v.loop.trend.current}` : "–"}</strong>
+              <span>{v.loop.trend.available ? "wrong, last week to this" : "next week: needs a second week to show a trend"}</span>
+            </li>
+          </ol>
+        ) : null}
         {v.practice.size === 0 ? (
           <Empty title="Nothing to practise">Items that land in the wrong bin this week, and any you tap &quot;Teach me&quot; on, are listed here for a round of Sort It.</Empty>
         ) : (
@@ -322,74 +256,22 @@ function Story({
         )}
       </section>
 
-      {/* Before and after nudges */}
-      <section className={ui.section}>
-        <h2 className={ui.sectionTitle}>Before and after nudges</h2>
-        <div className={ui.card}>
-          {ba.available && ba.enough && ba.before && ba.after ? (
-            <>
-              <div className={im.bars} role="img" aria-label={`Recyclables recycled: ${percent(ba.before.diversion_rate ?? 0)} before nudges, ${percent(ba.after.diversion_rate ?? 0)} after`}>
-                <div className={im.barCol} title={`Before: ${ba.before.recycled} of ${ba.before.n} recycled`}>
-                  <span className={im.barValue}>{percent(ba.before.diversion_rate ?? 0)}</span>
-                  <div className={im.bar} style={{ height: `${Math.round((ba.before.diversion_rate ?? 0) * 75)}%` }} />
-                </div>
-                <div className={im.barCol} title={`After: ${ba.after.recycled} of ${ba.after.n} recycled`}>
-                  <span className={im.barValue}>{percent(ba.after.diversion_rate ?? 0)}</span>
-                  <div className={`${im.bar} ${im.barAfter}`} style={{ height: `${Math.round((ba.after.diversion_rate ?? 0) * 75)}%` }} />
-                </div>
-              </div>
-              <div className={im.barLabels}>
-                <span>
-                  Before · n = {ba.before.n}
-                </span>
-                <span>
-                  After · n = {ba.after.n}
-                </span>
-              </div>
-              <p className={`${ui.small} ${ui.muted}`}>
-                Share of recyclables that reached recycling, before and after the first sorting nudge ({timeOrDay(ba.nudges_on_at)}). n is the
-                recyclables seen on each side. Measured counts from this table; small numbers, so read it as a direction, not a result.
-              </p>
-            </>
-          ) : (
-            <>
-              <h3>Not enough data yet</h3>
-              <p className={ui.muted}>{ba.text}</p>
-            </>
-          )}
-        </div>
-      </section>
-
-      {/* The cost of contamination */}
-      <section className={ui.section}>
-        <h2 className={ui.sectionTitle}>Why a wrong item matters</h2>
-        <div className={ui.card}>
-          <p>
-            {v.contamination.text} <span className={im.estimate}>rule of thumb</span>
-          </p>
-          <p className={`${ui.small} ${ui.muted}`}>
-            {v.contamination.source} ({CONFIDENCE[v.contamination.confidence]}.)
-          </p>
-          {v.contamination.wrong_in_recycling > 0 ? (
-            <p className={ui.small}>
-              This week: {v.contamination.wrong_in_recycling} wrong {v.contamination.wrong_in_recycling === 1 ? "item" : "items"} in recycling, on days when{" "}
-              {v.contamination.good_items_sharing_the_bin} good {v.contamination.good_items_sharing_the_bin === 1 ? "item" : "items"} went in the same
-              bin.
-            </p>
-          ) : null}
-        </div>
-      </section>
-
-      {/* Which rules file is active */}
+      {/* Which rules file is active, and where it comes from */}
       <section className={ui.section}>
         <h2 className={ui.sectionTitle}>The rules in use</h2>
         <div className={ui.card}>
           <h3>{v.rules.name}</h3>
           <p className={`${ui.small} ${ui.muted} ${ui.breakWords}`}>
+            {v.rules.source ? (
+              <>
+                From <a href={safeUrl(v.rules.source.url) ?? undefined} target="_blank" rel="noreferrer">{`“${v.rules.source.title}”, ${v.rules.source.publisher}`}</a>, read {v.rules.source.read}.{" "}
+              </>
+            ) : v.rules.note ? (
+              `${v.rules.note} `
+            ) : null}
             <code>{v.rules.file}</code>
             {v.rules.overridden && v.profile ? ` (the ${v.profile} profile's file replaces config/sorting.yaml)` : ""}
           </p>
-          {v.rules.note ? <p className={ui.small}>{v.rules.note}</p> : null}
           <div className={im.rulesGrid}>
             {v.rules.bins.map((b) => (
               <div key={b}>
@@ -400,16 +282,199 @@ function Story({
                     .map((i) => (
                       <li key={i.label} title={i.rule}>
                         {i.label}
+                        {i.basis === "assumed" ? <span className={im.assumed}> *</span> : null}
                       </li>
                     ))}
                 </ul>
               </div>
             ))}
           </div>
+          {v.rules.items.some((i) => i.basis === "assumed") ? (
+            <p className={`${ui.small} ${ui.muted}`}>
+              <span className={im.assumed}>*</span> Not stated by {v.rules.place ?? "the published list"}: our assumption.
+            </p>
+          ) : null}
+          {v.rules.compare && v.rules.compare.length > 0 ? (
+            <details className={im.inlineDetails}>
+              <summary>Same item, different rule nearby</summary>
+              <table className={ui.table}>
+                <thead>
+                  <tr>
+                    <th scope="col">Item</th>
+                    {Object.keys(v.rules.compare[0]!)
+                      .filter((k) => k !== "item")
+                      .map((k) => (
+                        <th key={k} scope="col">
+                          {k === "ucf" ? "UCF" : humanize(k)}
+                        </th>
+                      ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {v.rules.compare.map((c) => (
+                    <tr key={c.item}>
+                      <td>{c.item}</td>
+                      {Object.keys(c)
+                        .filter((k) => k !== "item")
+                        .map((k) => (
+                          <td key={k}>{c[k]}</td>
+                        ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {(v.rules.compare_sources ?? []).map((s) => (
+                <p key={s} className={`${ui.small} ${ui.muted}`}>
+                  <Cite text={s} />
+                </p>
+              ))}
+            </details>
+          ) : null}
           <p className={`${ui.small} ${ui.muted}`}>{v.rules.swap}</p>
         </div>
       </section>
+
+      {panel === "why" ? <Why v={v} onClose={close} /> : null}
+      {panel === "how" ? <How v={v} onClose={close} /> : null}
     </>
+  );
+}
+
+function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return createPortal(  // over the viewport: a transformed page section would otherwise trap position: fixed
+    <div className={ui.overlay} onClick={onClose}>
+      <div className={ui.sheet} role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
+        <div className={`${ui.row} ${ui.between}`}>
+          <h2>{title}</h2>
+          <button type="button" className={ui.btn} onClick={onClose}>
+            Close
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+    , document.body);
+}
+
+/** What one wrong item does: the sourced statement, this week's measured count, and the problem here. */
+function Why({ v, onClose }: { v: ImpactStory; onClose: () => void }) {
+  const c = v.contamination;
+  return (
+    <Sheet title="Why it matters" onClose={onClose}>
+      {c.quote ? (
+        <blockquote className={im.quote}>
+          <p>“{c.quote}”</p>
+          <footer className={`${ui.small} ${ui.muted}`}>
+            {c.url ? (
+              <a href={safeUrl(c.url) ?? undefined} target="_blank" rel="noreferrer">
+                {c.attribution}
+              </a>
+            ) : (
+              c.attribution
+            )}
+          </footer>
+        </blockquote>
+      ) : (
+        <p>
+          {c.text} <span className={im.estimate}>rule of thumb</span>
+        </p>
+      )}
+      <p className={ui.small}>
+        <span className={im.measured}>measured</span> This week at this table: {c.wrong_in_recycling} wrong {c.wrong_in_recycling === 1 ? "item" : "items"} in recycling
+        {c.wrong_in_recycling > 0 ? `, on days when ${c.good_items_sharing_the_bin} good ${c.good_items_sharing_the_bin === 1 ? "item" : "items"} went in the same bin` : ""}.
+      </p>
+      <p className={`${ui.small} ${ui.muted}`}>
+        EPA says &quot;can&quot;, not &quot;will&quot;, and gives no number. We found no published count of wrong items that spoils a bag, so this screen does not claim one.
+      </p>
+      {v.problem ? (
+        <>
+          <h3>The problem here</h3>
+          <p>{v.problem.text}</p>
+          <ul className={im.sources}>
+            {v.problem.sources.map((s) => (
+              <li key={s.claim} className={ui.small}>
+                <span className={ui.tag}>{s.scope}</span> {s.claim} <span className={ui.muted}><Cite text={s.source} /></span>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+    </Sheet>
+  );
+}
+
+/** How the estimate was made: count x mass x factor for each item, with the document each number came from. */
+function How({ v, onClose }: { v: ImpactStory; onClose: () => void }) {
+  const eq = v.equivalents;
+  if (!eq) return null;
+  return (
+    <Sheet title="How we got this number" onClose={onClose}>
+      <p>
+        <span className={im.estimate}>estimate</span> {eq.disclaimer}
+      </p>
+      <div className={im.sum}>
+        <div>
+          <strong>{mass(eq.kept_out_g)}</strong>
+          <span>kept out of landfill</span>
+        </div>
+        <div>
+          <strong>{rangeText(eq.energy_kwh)} kWh</strong>
+          <span>energy not spent</span>
+        </div>
+        <div>
+          <strong>{rangeText(eq.co2e_kg)} kg</strong>
+          <span>CO2e avoided</span>
+        </div>
+        <div>
+          <strong>{rangeText(eq.phone_charges)}</strong>
+          <span>phone charges</span>
+        </div>
+      </div>
+      {eq.by_item.map((r) => (
+        <div key={r.item} className={im.factor}>
+          <p>
+            <strong>
+              {r.count} × {r.item}
+            </strong>{" "}
+            × {r.each_g.low}–{r.each_g.high} g{r.energy_kwh_per_kg ? ` × ${r.energy_kwh_per_kg.low}–${r.energy_kwh_per_kg.high} kWh/kg` : ""}
+            {r.energy_kwh ? ` = ${rangeText(r.energy_kwh)} kWh` : ` = ${rangeText(r.mass_g)} g`}
+            {r.co2e_kg && r.co2e_kg_per_kg ? `; × ${r.co2e_kg_per_kg.low}–${r.co2e_kg_per_kg.high} kg CO2e/kg = ${rangeText(r.co2e_kg)} kg CO2e` : ""}
+          </p>
+          <p className={`${ui.muted} ${ui.small}`}>
+            Mass ({CONFIDENCE[r.mass_confidence]}): <Cite text={r.mass_source} />
+          </p>
+          {r.material_source ? (
+            <p className={`${ui.muted} ${ui.small}`}>
+              {humanize(r.material ?? "material")} ({r.material_confidence ? CONFIDENCE[r.material_confidence] : "no confidence given"}): <Cite text={r.material_source} />
+            </p>
+          ) : (
+            <p className={`${ui.muted} ${ui.small}`}>No energy or CO2e is claimed for this material.</p>
+          )}
+        </div>
+      ))}
+      {eq.unweighed.length > 0 ? (
+        <p className={im.factor}>
+          Counted, but given no weight (no published mass was found): {eq.unweighed.map((u) => `${u.count} × ${u.item}`).join(", ")}.
+        </p>
+      ) : null}
+      <div className={im.factor}>
+        <p>
+          <strong>Phone charges</strong> = energy ÷ {eq.phone_charge_wh ? `${eq.phone_charge_wh.low}–${eq.phone_charge_wh.high} Wh` : "one charge"} a charge
+        </p>
+        <p className={`${ui.muted} ${ui.small}`}>
+          ({CONFIDENCE[eq.phone_charge_confidence]}) <Cite text={eq.phone_charge_source} />
+        </p>
+        {eq.energy_note ? <p className={ui.small}>{eq.energy_note}</p> : null}
+      </div>
+      <p className={`${ui.muted} ${ui.small}`}>
+        Every factor is in <code>{eq.file}</code> with its source and the unit conversion. They are US averages, not UCF&apos;s own figures.
+      </p>
+    </Sheet>
   );
 }
 

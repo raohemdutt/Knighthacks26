@@ -67,7 +67,7 @@ function Body({ v, reload }: { v: CoachFeedbackView; reload: () => void }) {
         ) : (
           <ul className={ui.list}>
             {withBreaks.map((s) => (
-              <li key={`${s.day}/${s.block_id}`} className={ui.card}>
+              <li key={`${s.day}/${s.block_id}/${s.start}`} className={ui.card}>
                 <h3>{s.title}</h3>
                 <p className={`${ui.small} ${ui.muted}`}>
                   {dayLabel(s.start)} {span(s.start, s.end)}

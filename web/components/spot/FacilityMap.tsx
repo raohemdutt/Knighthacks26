@@ -132,7 +132,7 @@ export function FacilityMap({ data, assets, live }: { data: Locations; assets: A
           {geo.image ? (
             <>
               <image href={geo.image} x="0" y="0" width={geo.w} height={geo.h} preserveAspectRatio="none" />
-              <rect x="0" y="0" width={geo.w} height={geo.h} fill="#eef2f8" opacity="0.35" />
+              <rect className={s.wash} x="0" y="0" width={geo.w} height={geo.h} fill="#eaf1fc" opacity="0.35" />
             </>
           ) : (
             Object.entries(geo.panels).map(([f, p]) => (
@@ -203,12 +203,12 @@ export function FacilityMap({ data, assets, live }: { data: Locations; assets: A
                   return (
                     <g key={a.asset_id} onClick={(e) => (e.stopPropagation(), open({ kind: "asset", id: a.asset_id }))}>
                       <title>{`${a.asset_id} ${a.asset_name}: ${a.criticality} criticality, ${a.anomalies} anomaly rows`}</title>
-                      <circle cx={ax} cy={ay} r={5 * u} fill={sev ? SEV_COLOR[sev] : "var(--surface)"} stroke={a.criticality === "CRITICAL" ? "#1b2433" : "#8e9bb0"} strokeWidth={ring * u} />
-                      {a.criticality === "CRITICAL" ? <circle cx={ax} cy={ay} r={8 * u} fill="none" stroke="#1b2433" strokeWidth={1 * u} /> : null}
+                      <circle className={a.criticality === "CRITICAL" ? s.critRing : s.assetRing} cx={ax} cy={ay} r={5 * u} fill={sev ? SEV_COLOR[sev] : "var(--surface)"} stroke={a.criticality === "CRITICAL" ? "#1b2433" : "#8e9bb0"} strokeWidth={ring * u} />
+                      {a.criticality === "CRITICAL" ? <circle className={s.critRing} cx={ax} cy={ay} r={8 * u} fill="none" stroke="#1b2433" strokeWidth={1 * u} /> : null}
                     </g>
                   );
                 })}
-                <circle cx={p.x} cy={p.y} r={r + 2.5 * u} fill="#ffffff" opacity="0.9" />
+                <circle className={s.plate} cx={p.x} cy={p.y} r={r + 2.5 * u} fill="#ffffff" opacity="0.9" />
                 <circle cx={p.x} cy={p.y} r={r} fill={color} stroke={here ? "#1b2433" : "transparent"} strokeWidth={2.5 * u} />
                 <text x={p.x} y={p.y + 3.8 * u} textAnchor="middle" fontSize={10.5 * u} fontWeight="800" fill="#ffffff">
                   {label}
@@ -222,7 +222,7 @@ export function FacilityMap({ data, assets, live }: { data: Locations; assets: A
                   </g>
                 ) : null}
                 {!geo.image ? (
-                  <text x={p.x} y={p.y + r + 13 * u} textAnchor="middle" fontSize={11 * u} fontWeight="700" fill="var(--text)" stroke="#eef2f8" strokeWidth={3 * u} paintOrder="stroke">
+                  <text className={s.halo} x={p.x} y={p.y + r + 13 * u} textAnchor="middle" fontSize={11 * u} fontWeight="700" fill="var(--text)" stroke="#eaf1fc" strokeWidth={3 * u} paintOrder="stroke">
                     {l.location_id}
                   </text>
                 ) : null}

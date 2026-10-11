@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ScanPath, Seen, useAttention, useLookFirst } from "@/components/guide/Attention";
 import ui from "@/components/ui.module.css";
 import { ApiError, api } from "@/lib/api";
 import { useAtlas } from "@/lib/atlas";
+import { missingForPlan, runReasons, type Job } from "@/lib/guideAttention";
 import { useFetch } from "@/lib/useFetch";
 import { FloorMap, LevelIcon } from "./FloorMap";
 import o from "./op.module.css";
@@ -41,8 +43,10 @@ function Stars({ n }: { n: number }) {
   );
 }
 
-function SendPlan({ route, turnBack, orders }: { route: string[]; turnBack: number; orders: WorkOrder[] }) {
+function SendPlan({ route, turnBack, orders, stops, needing }: { route: string[]; turnBack: number; orders: WorkOrder[]; stops: Job[]; needing: Job[] }) {
   const { approvals } = useAtlas();
+  const looks = useAttention();
+  const first = useLookFirst();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const key = route.join(", ");
@@ -76,9 +80,10 @@ function SendPlan({ route, turnBack, orders }: { route: string[]; turnBack: numb
   }
   return (
     <>
-      <button type="button" className={`${ui.btn} ${o.act}`} disabled={busy || route.length === 0} onClick={() => run(() => api.spotPlan({ route, turn_back_at: turnBack }))}>
+      <button type="button" className={`${ui.btn} ${o.act}`} disabled={busy || route.length === 0} onClick={() => first.check(() => missingForPlan(stops, needing, looks.seen), () => run(() => api.spotPlan({ route, turn_back_at: turnBack })))}>
         Send this plan
       </button>
+      {first.prompt}
       {written.length > 0 ? (
         <p className={o.done}>
           <LevelIcon level="ok" size={18} /> Done: {written[0]!.work_order_id} is written on this box.
@@ -140,6 +145,8 @@ export function ShiftRun({ shift, orders, link }: { shift: Shift; orders: WorkOr
   const [phase, setPhase] = useState<"plan" | "play" | "result">("plan");
   const [at, setAt] = useState(0); // stops played so far
   const [atlas, setAtlas] = useState(false); // Atlas's route drawn on the plan
+  const looks = useAttention();
+  const [strict, setStrict] = useState(false); // "training: attention counts": a star off when something that mattered was never looked at
   const seeded = useRef(false);
   const turn = useRef(0);
 
@@ -207,6 +214,12 @@ export function ShiftRun({ shift, orders, link }: { shift: Shift; orders: WorkOr
   const battery = current ? current.battery_pct : planning || !result ? b.start_battery_pct ?? null : at >= steps.length ? result.end_battery_pct : b.start_battery_pct ?? null;
   const left = b.candidates.filter((c) => !route.includes(c.asset_id));
   const turnAt = b.turn_back ?? { choices: [40], default: 40, low: 40, danger: 20 };
+  // the attention check: the stops as jobs, the ones that need the operator, and what the eyes did
+  const stops: Job[] = route.map((id) => ({ asset_id: id, name: b.candidates.find((c) => c.asset_id === id)?.name ?? id }));
+  const needing: Job[] = shift.do_first.map((a) => ({ asset_id: a.asset_id, name: a.name }));
+  const eyes = looks.mode === "off" ? [] : runReasons(looks, stops, needing);
+  const missed = eyes.some((x) => x.tone === "bad");
+  const names: Record<string, string> = { "shiftrun:turn-back": "battery turn-back", "shiftrun:pool": "the stops to add", "shiftrun:run": "Run my plan", ...Object.fromEntries(b.candidates.map((c) => [`run-asset:${c.asset_id}`, c.name])) };
 
   return (
     <section className={r.wrap} aria-label="Shift Run">
@@ -231,6 +244,7 @@ export function ShiftRun({ shift, orders, link }: { shift: Shift; orders: WorkOr
           robotAt={current?.location_id ?? null}
           route2={atlas && result ? result.recommended.route_places : undefined}
           routeLabel="Your route"
+          guide="shiftrun:map"
           onPick={planning ? toggle : undefined}
           note={
             atlas ? (
@@ -244,9 +258,10 @@ export function ShiftRun({ shift, orders, link }: { shift: Shift; orders: WorkOr
         />
 
         <div className={`${o.card} ${r.panel}`}>
-          <div className={r.turn}>
+          <div className={r.turn} data-guide="shiftrun:turn-back">
             <label htmlFor="turnback">
               Turn back to charge at <b>{turnBack}%</b> battery
+              <Seen id="shiftrun:turn-back" />
             </label>
             <input
               id="turnback"
@@ -281,10 +296,10 @@ export function ShiftRun({ shift, orders, link }: { shift: Shift; orders: WorkOr
           ) : null}
 
           <div className={o.controls}>
-            <button type="button" className={`${ui.btn} ${ui.btnPrimary} ${o.play}`} disabled={!steps.length || phase === "play"} onClick={() => (setAt(0), setPhase("play"))}>
+            <button type="button" className={`${ui.btn} ${ui.btnPrimary} ${o.play}`} data-guide="shiftrun:run" disabled={!steps.length || phase === "play"} onClick={() => (setAt(0), setPhase("play"))}>
               {phase === "result" ? "Run it again" : "Run my plan"}
             </button>
-            <button type="button" className={ui.btn} onClick={() => edit(b.last_route ?? [])}>
+            <button type="button" className={ui.btn} data-guide="shiftrun:last" onClick={() => edit(b.last_route ?? [])}>
               Start from last round
             </button>
             <button type="button" className={ui.btn} onClick={() => edit([])} disabled={route.length === 0}>
@@ -299,7 +314,7 @@ export function ShiftRun({ shift, orders, link }: { shift: Shift; orders: WorkOr
           {hard && b.hard?.words ? <p className={o.note}>{b.hard.words}</p> : null}
 
           {planning ? (
-            <div className={r.pool}>
+            <div className={r.pool} data-guide="shiftrun:pool">
               <h3 className={r.poolTitle}>
                 Add a stop <span>{route.length} of {max} chosen</span>
               </h3>
@@ -323,7 +338,7 @@ export function ShiftRun({ shift, orders, link }: { shift: Shift; orders: WorkOr
         <div className={r.result}>
           <div className={`${o.card} ${r.mine}`}>
             <div className={r.scoreRow}>
-              <Stars n={result.stars} />
+              <Stars n={strict && missed ? Math.max(0, result.stars - 1) : result.stars} />
               <div>
                 <h3 className={r.verdict}>{result.verdict}</h3>
                 <p className={o.note}>
@@ -339,8 +354,33 @@ export function ShiftRun({ shift, orders, link }: { shift: Shift; orders: WorkOr
                 </li>
               ))}
             </ul>
+            <div data-guide="shiftrun:attention">
+              <h3 className={r.poolTitle}>Where you looked</h3>
+              {looks.mode === "off" ? (
+                <p className={o.note}>Turn on “Use my eyes” in Settings to train attention.</p>
+              ) : (
+                <>
+                  <ul className={r.reasons}>
+                    {eyes.map((x, i) => (
+                      <li key={i}>
+                        <LevelIcon level={x.tone === "good" ? "ok" : "watch"} size={20} />
+                        <span>{x.text}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <ScanPath names={names} />
+                  <p className={o.note}>
+                    <button type="button" className={`${ui.chip} ${strict ? ui.chipOn : ""}`} aria-pressed={strict} onClick={() => setStrict((v) => !v)}>
+                      Training: attention counts
+                    </button>{" "}
+                    {strict ? (missed ? "One star is taken off because something that mattered was never looked at." : "Nothing was missed, so the stars stand.") : "Off: the stars are for the plan alone."} Looked at means the eyes
+                    rested there{looks.mode === "sim" ? " (simulated here)" : ""}; it does not mean it was understood.
+                  </p>
+                </>
+              )}
+            </div>
             <div className={o.itemActs}>
-              <SendPlan route={route} turnBack={turnBack} orders={orders} />
+              <SendPlan route={route} turnBack={turnBack} orders={orders} stops={stops} needing={needing} />
               <button type="button" className={o.why} onClick={() => setPhase("plan")}>
                 Change my plan
               </button>

@@ -34,6 +34,17 @@ PROFILE_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
 LAYERED = ("habits.yaml", "dayrun.yaml", "agent.yaml")  # merged over the base file
 REPLACED = ("sorting.yaml", "rules.yaml", "league.yaml")  # the profile's file is used instead of the base one
 OVERRIDABLE = LAYERED + REPLACED
+# The Ask screen's suggested questions for a profile that lists none in profile.yaml (`suggestions:`): the student's.
+DEFAULT_SUGGESTIONS = (
+    "Where did I leave my keys?",
+    "What is due this week?",
+    "What happened at our table overnight?",
+    "What should I eat?",
+    "Where should I go tonight?",
+    "How's your day?",
+    "Tell me a joke",
+    "I'm stressed about my exam",
+)
 
 
 class ProfileError(ValueError):
@@ -112,6 +123,7 @@ class ProfileSpec(BaseModel):
     meters: Meters = Meters()
     shift: Shift | None = None
     scenario: str | None = None  # the Day Run scenario that demos this profile (a file under scenarios/ or fixtures/play/)
+    suggestions: list[str] = []  # the Ask screen's suggested questions, in this person's words; empty = the student's
 
 
 @dataclass(frozen=True)
@@ -182,6 +194,7 @@ class Profile:
             "meters": self.spec.meters.model_dump(),
             "shift": self.spec.shift.model_dump(mode="json") if self.spec.shift else None,
             "scenario": self.spec.scenario,
+            "suggestions": [s for s in self.spec.suggestions if s.strip()] or list(DEFAULT_SUGGESTIONS),
             "overrides": dict(self.overrides),
         }
 

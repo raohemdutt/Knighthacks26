@@ -33,7 +33,7 @@ def round_scored(round_id="r1", score=88.0, **kw):
 
 def sharing(tmp_path, neon=None, opted_in=True, circle="team", member="dom"):
     neon = neon or FakeNeon()
-    return CircleSharing(CircleOutbox(tmp_path / "circle.sqlite"), NeonShares(NeonDb(neon.connect)), circle, member, opted_in)
+    return CircleSharing(CircleOutbox(tmp_path / "circle.sqlite"), NeonShares(NeonDb(neon.connect, retry_s=0)), circle, member, opted_in)
 
 
 def test_enqueue_writes_locally_and_returns_share_queued(tmp_path):

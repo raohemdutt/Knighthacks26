@@ -17,7 +17,14 @@ Read (every one answers 200 without a kit: {"configured": false, "note": how to 
 - GET  /api/spot/assumptions         every assumption the analysis makes
 - GET  /api/spot/validation          our numbers next to the kit's validation_results.json, and every data surprise
 - GET  /api/spot/model               the small anomaly scorer trained on the kit: honest evaluation, weights, what it flags
-- GET  /api/spot/work_orders         work orders written on this box (after approval)
+- GET  /api/spot/guide?q=            "where do I look for X?" -> the guide id of a place on the Inspection screen, the short sentences that
+                                     walk a person there, and the closest alternatives when unsure (application/guide.py). No model call.
+- GET  /api/spot/route?from=&to=     a walking route between two places or pieces of equipment (or from a tapped point, from=xy:0.31,0.52), found
+                                     on the walkable floor traced from the plan picture (domain/walkable.py, domain/directions.py): the polyline per
+                                     floor, turn-by-turn steps, precision "about". The legs SPOT walked (domain/route.py) stay under via_walked_legs.
+- GET  /api/spot/walkable            the traced floor for drawing (rooms, doors, obstacles, stairs, free cells, where each waypoint stands)
+- GET  /api/spot/walkable/legs       the routed line between every pair of waypoints, and whether SPOT has walked that leg
+- GET  /api/spot/work_orders        work orders written on this box (after approval)
 - GET  /api/spot/kit/assets/{path}   an image from the kit's assets folder (read-only; only files the loader listed)
 - GET  /api/spot/plan/image          the floor plan re-encoded small, when fixtures/spot/floor_plan.jpg exists
 
@@ -37,12 +44,13 @@ Write (token-guarded like every other write):
 from collections.abc import Callable
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from contexts.spot.application import plain
 from contexts.spot.application.assistant import SUGGESTED
+from contexts.spot.application.guide import Guide
 from contexts.spot.application.service import not_configured
 from contexts.spot.wiring import SpotContext
 
@@ -253,6 +261,26 @@ def spot_router(spot: SpotContext, bus, guard: Callable | None = None) -> APIRou
             words = plain.answer(read, out)
             out.update(plain=words is not None, text=words or out["text"])
         return out
+
+    # --- the look guide: where on the Inspection screen is the thing someone asked for ---
+
+    guide_for = Guide(read)
+
+    @router.get("/guide")
+    def guide(q: str = Query(min_length=1, max_length=300)) -> dict:
+        return guide_for.resolve(q)
+
+    @router.get("/route")
+    def route(to: str = Query(min_length=1, max_length=60), start: str | None = Query(default=None, alias="from", max_length=60)) -> dict:
+        return guide_for.route(start, to)
+
+    @router.get("/walkable")
+    def walkable() -> dict:
+        return guide_for.walkable()
+
+    @router.get("/walkable/legs")
+    def walkable_legs() -> dict:
+        return guide_for.walkable_legs()
 
     # --- Shift Run: plan a round, see how it would probably go (a toy model from the recorded rounds) ---
 

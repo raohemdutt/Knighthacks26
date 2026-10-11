@@ -24,7 +24,7 @@ from contexts.agent.application.loop import ODD_HOURS_DESCRIPTION, ODD_HOURS_RUL
 from contexts.agent.application.planner import Planner
 from contexts.agent.application.qa import QA, SleepSchedule
 from contexts.agent.application.talk import Talk, TalkConfig
-from contexts.agent.application.web_port import HubWebTools
+from contexts.agent.application.web_port import HubWebTools, TavilyWebTools
 from contexts.agent.domain.rules import AlertHistory, RuleEvaluator, load_rules
 from contexts.capture.application.retention import prune_frames
 from contexts.capture.application.service import CaptureService
@@ -33,8 +33,8 @@ from contexts.circle.application.presence import PresenceBoard
 from contexts.circle.application.protocol import CircleAgent, InMemoryCircleStore
 from contexts.circle.application.sharing import CircleOffline, CircleSharing
 from contexts.circle.application.presence_sync import PresenceSync
-from contexts.circle.infrastructure.neon import CircleBoard, NeonCircleStore, NeonDb, NeonPresence, NeonShares
-from contexts.circle.infrastructure.outbox import CircleOutbox
+from contexts.circle.infrastructure.neon import CircleBoard, NeonCircleStore, NeonCleanup, NeonDb, NeonPresence, NeonShares
+from contexts.circle.infrastructure.outbox import CircleOutbox, PresenceQueue
 from contexts.connectors.application.hub import ConnectorHub
 from contexts.connectors.domain.spec import load_specs
 from contexts.day.application.loop import DayLoop, day_phone
@@ -76,7 +76,7 @@ from contexts.play.domain.places import PlaceSet
 from contexts.play.room.live import RoomLive
 from contexts.play.room.plan import RoomError, load_room, room_path
 from contexts.profiles import Profile, load_profile
-from contexts.vault import KeyRing, Policy, Vault, Wiper
+from contexts.vault import KeyRing, PictureLedger, Policy, Vault, Wiper
 from contexts.workspace.domain.approvals import Approvals
 from contexts.workspace.infrastructure.ntfy import Ntfy, PhoneNotifier, send_message_executor
 from contracts.types import ModelVersion
@@ -85,6 +85,8 @@ from runtime.registry import build_runtime
 
 log = logging.getLogger("atlas")
 TICK_S = 30
+NEON_JOB_TIMEOUT_S = 20  # a tick job that talks to Neon gets this long; then the tick moves on and tries next time
+CIRCLE_KEEP_DAYS = 30  # this box removes its own old rows from the shared tables after this long (circle.keep_days)
 
 
 @dataclass
@@ -132,6 +134,7 @@ class Atlas:
     memory: SqliteMemory | None = None
     projection: MemoryProjection | None = None
     presence_sync: PresenceSync | None = None
+    circle_cleanup: object | None = None  # removes this box's own old rows from Neon; only with Neon
     board: CircleBoard | None = None
     places: PlaceSet | None = None
     dayrun: DayRun | None = None
@@ -139,6 +142,7 @@ class Atlas:
     vault: Vault | None = None
     policy: Policy | None = None
     wiper: Wiper | None = None
+    pictures: PictureLedger | None = None  # V7: camera pictures cleared to leave, per approval
     learning: LearningBoard | None = None  # where each taught task is (X10)
     lab_view: LabView | None = None  # the Learning lab screen: one story per training run, rebuilt from the log
     capture: CaptureService | None = None  # cameras -> detector -> observations, only where there is a detector (C6)
@@ -150,8 +154,10 @@ class Atlas:
     impact: ImpactStory | None = None  # the Impact screen's story over Waste Watch; GET /api/impact/story
     coach_feedback: CoachFeedback | None = None  # "Was that right?" about a break; GET /api/day/coach/feedback
     spot: object | None = None  # SpotContext: the inspection (SPOT) dashboard, contexts/spot; GET /api/spot/*
+    face_share: object | None = None  # FaceShare (contexts/circle): a friend's box recognises you; off by default
     tasks: list[asyncio.Task] = field(default_factory=list)
     _last_retention: datetime | None = None
+    _last_cleanup: datetime | None = None
     _offline: set[str] = field(default_factory=set)  # tick jobs whose Neon is down (logged once)
 
     async def start(self) -> None:
@@ -177,11 +183,14 @@ class Atlas:
                 ("habits", (lambda: self.habits.flush(now) + self.nudger.check(now)) if self.habits else None),
                 ("zones", (lambda: self.zone_engine.flush(now)) if self.zone_engine else None),
                 ("episodes", (lambda: self.projection.flush(now)) if self.projection else None),  # close quiet episodes
-                ("circle", (lambda: asyncio.to_thread(self.circle.poll)) if self.circle else None),  # network I/O with Neon
-                ("shares", (lambda: asyncio.to_thread(self.sharing.sync, now)) if self.sharing else None),
-                ("presence", (lambda: asyncio.to_thread(self.presence_sync.sync, now)) if self.presence_sync else None),
+                # Neon is network I/O: off the event loop, and bounded so a database that stops answering cannot stop the ticks
+                ("circle", (lambda: off_loop(self.circle.poll)) if self.circle else None),
+                ("shares", (lambda: off_loop(self.sharing.sync, now)) if self.sharing else None),
+                ("presence", (lambda: off_loop(self.presence_sync.sync, now)) if self.presence_sync else None),
+                ("face share", (lambda: off_loop(self.face_share.poll)) if self.face_share else None),  # expiry, then the Circle
                 ("league", (lambda: self.league.flush(now)) if self.league else None),  # close a week the clock passed
-                ("league sync", (lambda: asyncio.to_thread(self.league_sync.sync, now)) if self.league_sync else None),
+                ("league sync", (lambda: off_loop(self.league_sync.sync, now)) if self.league_sync else None),
+                ("circle cleanup", self._cleanup(now)),
                 ("agent loop", (lambda: self.loop.tick(now)) if self.loop.due(now) else None),
                 ("day", (lambda: self.day.tick(now)) if self.day else None),  # the morning plan, status, evening review
                 ("connectors", (lambda: self.hub.sync_due(now)) if self.settings.connectors else None),
@@ -204,6 +213,24 @@ class Atlas:
                 except Exception:
                     log.exception("tick job %s failed", name)
             await asyncio.sleep(TICK_S)
+
+    def _cleanup(self, now: datetime):
+        """Once a day (and once soon after start), remove this box's own old rows from the Circle's shared tables."""
+        if not self.circle_cleanup or (self._last_cleanup and now - self._last_cleanup < timedelta(days=1)):
+            return None
+        self._last_cleanup = now
+
+        async def sweep() -> list:
+            try:
+                removed = await off_loop(self.circle_cleanup)
+            except CircleOffline:
+                self._last_cleanup = None  # not done: try again on the next tick, not tomorrow
+                raise
+            if any(removed.values()):
+                log.info("circle cleanup: removed this box's old rows from Neon: %s", removed)
+            return []
+
+        return sweep
 
     def _retention(self, now: datetime):
         """Once an hour, remove saved pictures older than the policy's keep_days (nothing when it is forever)."""
@@ -228,6 +255,15 @@ class Atlas:
         await self.hub.close()
 
 
+async def off_loop(fn, *args):
+    """Run a blocking Neon call in a thread, for at most NEON_JOB_TIMEOUT_S. No answer in time counts as offline:
+    the caller retries on the next tick (the thread ends on its own when the driver gives up on the connection)."""
+    try:
+        return await asyncio.wait_for(asyncio.to_thread(fn, *args), NEON_JOB_TIMEOUT_S)
+    except TimeoutError:
+        raise CircleOffline(f"no answer from Neon within {NEON_JOB_TIMEOUT_S}s") from None
+
+
 def circle_from_env(cfg: dict, env) -> dict:
     """Join a Circle from `.env` without editing the committed config (G6: the Jetson and a laptop in one circle):
     ATLAS_CIRCLE_MEMBER, ATLAS_CIRCLE_ID, and ATLAS_CIRCLE_SHARE=1 to opt in to presence and summaries."""
@@ -238,6 +274,8 @@ def circle_from_env(cfg: dict, env) -> dict:
         out["circle_id"] = env["ATLAS_CIRCLE_ID"]
     if env.get("ATLAS_CIRCLE_SHARE") == "1":
         out["share_presence"] = out["share_summaries"] = True
+    if env.get("ATLAS_CIRCLE_FACE_SHARE") == "1":  # face share: its own switch, independent of the ones above
+        out["face_share"] = True
     return out
 
 
@@ -276,6 +314,8 @@ def build(settings: Settings | None = None) -> Atlas:
     specs = load_specs(s.config_dir / "connectors.yaml") if s.connectors else []
     hub = ConnectorHub(specs, factory=McpConnector)
     web = HubWebTools(hub) if "browser" in hub.specs else None
+    if os.environ.get("TAVILY_API_KEY"):  # fast search over an API; the browser keeps Reddit and page reading
+        web = TavilyWebTools(os.environ["TAVILY_API_KEY"], fallback=web)
 
     qa = QA(runtime, memory, clock=lambda: datetime.now(UTC), sleep=SleepSchedule.load(s.config_dir / "agent.yaml"),
             web=web, subreddit=agent_cfg.get("subreddit", "ucf"), load_keyframe=load_keyframe)
@@ -322,6 +362,8 @@ def build(settings: Settings | None = None) -> Atlas:
     bus.subscribe("perception.identity", identity.on_changed, replay=True)
     wiper = Wiper(s.data_dir, memory_db=s.data_dir / "memory.sqlite", live_memory=store)  # the open store is emptied too
     bus.subscribe("vault.wipe.requested", wiper.on_wipe_requested)
+    pictures = PictureLedger(s.data_dir)  # V7: rebuilds from the log; GET /vault/egress shows it beside the firewall's bytes
+    pictures.subscribe(bus)
     bus.subscribe("vault.wipe.requested", identity.on_wipe)  # live only: a wipe of everything also empties the expression series in memory
     bus.subscribe("vault.wipe.requested", talk.on_wipe)  # live only: the turns of a conversation are not kept past a wipe
     EpisodeSummarizer(store, runtime).subscribe(bus)  # live only, in the background: one model call per closed episode (M3)
@@ -440,7 +482,9 @@ def build(settings: Settings | None = None) -> Atlas:
                              clock=lambda: datetime.now(UTC), members=list(names))
         bus.subscribe("circle.message.received", circle.on_message, replay=True)  # state only: never answer twice
         bus.subscribe("circle.event.agreed", circle.on_agreed, replay=True)  # state only: never agree twice
-        approvals.executors["circle_share"] = circle.share_executor
+        # the approved proposal is written to the store: in a thread, so a slow Neon never freezes the event loop
+        approvals.executors["circle_share"] = (lambda req: asyncio.to_thread(circle.share_executor, req)) if neon \
+            else circle.share_executor
         # G1 step 4: once everyone says yes, propose the calendar invite and the group chat message.
         delivery = AgreedEventDelivery(hub, circle_cfg["member_id"], qa.sleep.tz, emails=circle_cfg.get("emails") or {},
                                        chat_group=circle_cfg.get("chat_group", "friends"), public_url=s.public_url)
@@ -465,10 +509,17 @@ def build(settings: Settings | None = None) -> Atlas:
         planner.presence = presence
 
     # Presence delivery (G5): my places to Neon, friends' places back as events.
-    presence_sync = None
+    # A place (or "stop sharing") that could not be sent waits in data/circle.sqlite, across restarts too.
+    presence_sync = circle_cleanup = None
     if presence and neon:
-        presence_sync = PresenceSync(NeonPresence(neon), circle_cfg["circle_id"], circle_cfg["member_id"])
+        presence_sync = PresenceSync(NeonPresence(neon), circle_cfg["circle_id"], circle_cfg["member_id"],
+                                     queue=PresenceQueue(s.data_dir / "circle.sqlite"))
         bus.subscribe("circle.place.shared", presence_sync.on_shared)  # live only: it writes
+        bus.subscribe("circle.place.shared", presence_sync.on_friend, replay=True)  # state only: what friends' places show
+        keep_days = circle_cfg.get("keep_days")
+        keep = timedelta(days=CIRCLE_KEEP_DAYS if keep_days is None else float(keep_days))  # 0: never remove anything
+        cleanup = NeonCleanup(neon)
+        circle_cleanup = lambda: cleanup.sweep(circle_cfg["circle_id"], circle_cfg["member_id"], keep)  # noqa: E731
 
     # Place packs (S5): shipped packs in config/places, uploads in data/places (later wins).
     try:
@@ -516,6 +567,24 @@ def build(settings: Settings | None = None) -> Atlas:
         if neon and board:
             league_sync = LeagueSync(NeonLeague(neon, board), league)
 
+    # Face share (contexts/circle/application/face_share.py), OFF unless `circle.face_share: true` or
+    # ATLAS_CIRCLE_FACE_SHARE=1: a member enrolled on their own box lets named friends' boxes recognise them. The
+    # template leaves only sealed to one friend's box, after a card on each side. While off, a box that never had it
+    # on reads and writes nothing for it, and the endpoints answer 409. It wraps the circle_share executor the way
+    # the League does: only its own two card kinds (face_share, face_accept) are handled, the rest pass through.
+    face_share = None
+    if circle:
+        from contexts.circle.application.face_share import FaceShare, InMemorySealedStore
+        from contexts.circle.infrastructure.neon_sealed import NeonSealedStore
+
+        face_share = FaceShare(circle_cfg["circle_id"], circle_cfg["member_id"],
+                               NeonSealedStore(neon) if neon else InMemorySealedStore(), identity, vault, s.data_dir,
+                               enabled=bool(circle_cfg.get("face_share")), names=circle_cfg.get("names") or {},
+                               days=int(circle_cfg.get("face_share_days") or 30), tz=qa.sleep.tz, publish=bus.publish)
+        face_share.fallback = approvals.executors.get("circle_share")
+        approvals.executors["circle_share"] = face_share.executor
+        bus.subscribe("vault.wipe.requested", bus.in_background(face_share.on_wipe))  # live only: takes the shares back
+
     # Learning board (X10): the Teach screen's view of tasks, runs and deployed models; rebuilt from the log.
     learning = LearningBoard()
     learning.subscribe(bus)
@@ -560,8 +629,9 @@ def build(settings: Settings | None = None) -> Atlas:
     return Atlas(settings=s, bus=bus, qa=qa, approvals=approvals, hub=hub, loop=loop, zones=zones, rules=rules, alerts=alerts, game=game, room=room,
                  waste=waste, circle=circle, presence=presence, zone_engine=zone_engine, sharing=sharing,
                  memory=memory, projection=projection, habits=habits, nudger=nudger,
-                 presence_sync=presence_sync, board=board, vault=vault, policy=policy, wiper=wiper,
+                 presence_sync=presence_sync, circle_cleanup=circle_cleanup, board=board, vault=vault, policy=policy, wiper=wiper, pictures=pictures,
                  places=places, dayrun=dayrun, day=day, capture=capture, identity=identity, learning=learning,
                  lab_view=lab_view,
                  telemetry=telemetry, profile=profile, league=league, league_sync=league_sync,
+                 face_share=face_share,
                  impact=impact, coach_feedback=coach_feedback, spot=spot)

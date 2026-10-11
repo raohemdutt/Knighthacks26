@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { spotUrl } from "@/lib/api";
+import { useTraced, type SpotRoute } from "@/lib/guideSpot";
+import { floorAt, legBetween, snapToFloor, type WalkFloor } from "@/lib/guideWalk";
 import o from "./op.module.css";
 import type { AssetState, Level, Shift } from "./types";
 
@@ -9,6 +11,11 @@ import type { AssetState, Level, Shift } from "./types";
  * The floor plan for the person on shift: one mark per piece of equipment, in three levels that differ by shape as well as
  * colour (a round "!" needs you, a triangle is one to keep an eye on, a small tick is fine), SPOT's route drawn lightly, and
  * SPOT itself when a round is being replayed.
+ *
+ * Routes are drawn along the floor traced from the plan picture (GET /api/spot/walkable/legs) when the box has that
+ * trace: the round's legs, a planned round's legs, and the look guide's walk (`walk`: solid where SPOT has walked that
+ * leg, dashed where the line is from the trace only). Lines end at a pin's tip, where the kit's pin points; the marks sit
+ * on the pin's head. `showFloor` lays the traced walkable area faintly over the picture.
  *
  * Backdrop and pin positions are the same as the analyst map (FacilityMap): the kit's plan image with marks on its pins
  * (fixtures/spot/waypoint_pixels.json), or a schematic from locations.csv x/y when the box has no plan image.
@@ -111,6 +118,11 @@ export function FloorMap({
   order,
   route2,
   routeLabel,
+  guide,
+  walk,
+  hereAt,
+  onTap,
+  showFloor,
   children,
 }: {
   map: NonNullable<Shift["map"]>;
@@ -132,8 +144,19 @@ export function FloorMap({
   /** A second route to compare with (drawn as a thin dashed line). */
   route2?: string[];
   routeLabel?: string;
+  /** The look guide's name for this plan ("map"): its floor buttons, marks and places are tagged under it. */
+  guide?: string;
+  /** The look guide's walk on the traced floor: drawn and kept, with the start marked "You are here". */
+  walk?: SpotRoute | null;
+  /** Where the operator said they are, before any walk is planned (normalised on the picture). */
+  hereAt?: { floor: number; x: number; y: number } | null;
+  /** The next tap on the plan sets "You are here": it is snapped to walkable floor, or null comes back when it is nowhere near any. */
+  onTap?: ((at: { floor: number; x: number; y: number; moved: number } | null) => void) | null;
+  /** Lay the traced walkable area over the picture (faint). */
+  showFloor?: boolean;
   children?: ReactNode;
 }) {
+  const traced = useTraced();
   const geo = useMemo(() => geometry(map), [map]);
   const floors = Object.keys(geo.panels).map(Number).sort();
   const [view, setView] = useState<FloorView>(initialFloor ?? floors[0] ?? 1);
@@ -188,31 +211,67 @@ export function FloorMap({
     return out;
   }, [byHome, geo, u, roomy]);
 
+  // a leg between two waypoints: along the traced floor when the box has the trace (the part on the floor in view), else a straight line
+  const onTrace = Boolean(geo.image) && Object.keys(traced.legs).length > 0;
+  const shown = (f: number) => view === "both" || f === view;
+  const line = (points: number[][]) => points.map((p) => `${(p[0]! * geo.w).toFixed(1)},${(p[1]! * geo.h).toFixed(1)}`).join(" ");
+  const legLines = (a: string, b: string): string[] | null => {
+    const leg = onTrace ? legBetween(traced.legs, a, b) : null;
+    return leg ? leg.floors.filter((f) => shown(f.floor) && f.points.length > 1).map((f) => line(f.points)) : null;
+  };
   const pts = (route ?? []).filter((id) => geo.pos[id]);
-  const segs: { a: string; b: string; passed: boolean }[] = [];
+  const segs: { a: string; b: string; passed: boolean; lines: string[] | null }[] = [];
   for (let i = 1; i < pts.length; i++) {
     const a = pts[i - 1]!;
     const b = pts[i]!;
-    if (visible(a) && visible(b)) segs.push({ a, b, passed: done === undefined ? false : i < done });
+    const lines = a === b ? null : legLines(a, b);
+    if (lines ? lines.length > 0 : visible(a) && visible(b)) segs.push({ a, b, passed: done === undefined ? false : i < done, lines });
   }
   const pts2 = (route2 ?? []).filter((id) => geo.pos[id]);
-  const segs2: { a: string; b: string }[] = [];
-  for (let i = 1; i < pts2.length; i++) if (visible(pts2[i - 1]!) && visible(pts2[i]!) && pts2[i - 1] !== pts2[i]) segs2.push({ a: pts2[i - 1]!, b: pts2[i]! });
+  const segs2: { a: string; b: string; lines: string[] | null }[] = [];
+  for (let i = 1; i < pts2.length; i++) {
+    const a = pts2[i - 1]!;
+    const b = pts2[i]!;
+    if (a === b) continue;
+    const lines = legLines(a, b);
+    if (lines ? lines.length > 0 : visible(a) && visible(b)) segs2.push({ a, b, lines });
+  }
   const robot = robotAt && visible(robotAt) ? geo.pos[robotAt] : undefined;
 
+  // the look guide's walk: its parts on the floors in view, every point tagged for the pointer, and where it starts
+  const routed = geo.image && walk?.found && walk.routed ? walk.routed : null;
+  let nth = 0;
+  const walkParts = (routed?.floors ?? []).map((f: WalkFloor) => ({ ...f, first: (nth += f.points.length) - f.points.length }));
+  const startAt = routed ? routed.start : geo.image && hereAt ? hereAt : null;
+  const floorData = geo.image && showFloor && traced.floor ? Object.entries(traced.floor.floors).filter(([f]) => shown(Number(f))) : [];
+
+  const svg = useRef<SVGSVGElement>(null);
+  const tap = (e: React.MouseEvent) => {
+    if (!onTap || !svg.current || !traced.floor) return;
+    const m = svg.current.getScreenCTM();
+    if (!m) return;
+    const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
+    const x = p.x / geo.w;
+    const y = p.y / geo.h;
+    const grids = Object.fromEntries(Object.entries(traced.floor.floors).map(([f, v]) => [f, v.grid]));
+    const f = floorAt(grids, x, y);
+    const at = f !== null && shown(f) ? snapToFloor(grids[String(f)]!, x, y, { w: geo.w, h: geo.h }) : null;
+    onTap(at && f !== null ? { floor: f, ...at } : null);
+  };
+
   return (
-    <section className={`${o.card} ${o.mapCard}`} aria-label={title}>
+    <section className={`${o.card} ${o.mapCard}`} aria-label={title} data-guide={guide}>
       <div className={o.cardHead}>
         <h2>{title}</h2>
         {floors.length > 1 ? (
           <div className={o.floors} role="group" aria-label="Floor">
             {floors.map((f) => (
-              <button type="button" key={f} className={`${o.floorBtn} ${view === f ? o.floorOn : ""}`} aria-pressed={view === f} onClick={() => setView(f)}>
+              <button type="button" key={f} data-guide={guide ? `${guide}:floor:${f}` : undefined} className={`${o.floorBtn} ${view === f ? o.floorOn : ""}`} aria-pressed={view === f} onClick={() => setView(f)}>
                 Floor {f}
                 {!quiet && count(f) > 0 ? <span className={o.floorCount} aria-label={`${count(f)} need you`}>{count(f)}</span> : null}
               </button>
             ))}
-            <button type="button" className={`${o.floorBtn} ${view === "both" ? o.floorOn : ""}`} aria-pressed={view === "both"} onClick={() => setView("both")}>
+            <button type="button" data-guide={guide ? `${guide}:floor:both` : undefined} className={`${o.floorBtn} ${view === "both" ? o.floorOn : ""}`} aria-pressed={view === "both"} onClick={() => setView("both")}>
               Both
             </button>
           </div>
@@ -220,7 +279,7 @@ export function FloorMap({
       </div>
 
       <div className={o.mapWrap} ref={wrap}>
-        <svg viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`} role="group" aria-label="Floor plan with one mark per piece of equipment">
+        <svg ref={svg} viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`} role="group" aria-label="Floor plan with one mark per piece of equipment" onClick={onTap ? tap : undefined} style={onTap ? { cursor: "crosshair" } : undefined} data-tap={onTap ? "on" : undefined}>
           {geo.image ? (
             <>
               <image className={o.planImage} href={geo.image} x="0" y="0" width={geo.w} height={geo.h} preserveAspectRatio="none" />
@@ -237,24 +296,83 @@ export function FloorMap({
             ))
           )}
 
-          {segs.map((sg, i) => (
-            <line
-              key={i}
-              x1={geo.pos[sg.a]!.x}
-              y1={geo.pos[sg.a]!.y}
-              x2={geo.pos[sg.b]!.x}
-              y2={geo.pos[sg.b]!.y}
-              stroke="var(--accent-text)"
-              strokeWidth={(sg.passed ? 3.5 : 2.5) * u}
-              strokeDasharray={sg.passed ? undefined : `${2 * u} ${7 * u}`}
-              strokeLinecap="round"
-              opacity={sg.passed ? 0.85 : 0.6}
-            />
+          {floorData.map(([f, fl]) => (
+            <g key={`floor${f}`} data-walkable={f} pointerEvents="none">
+              {fl.grid.runs.map((r, i) => (
+                <rect key={i} x={(fl.grid.x0 + r[1]! * fl.grid.cell_x) * geo.w} y={(fl.grid.y0 + r[0]! * fl.grid.cell_y) * geo.h} width={(r[2]! - r[1]! + 1) * fl.grid.cell_x * geo.w} height={fl.grid.cell_y * geo.h + 0.4} fill="var(--ok)" opacity="0.2" />
+              ))}
+              {fl.obstacles.map((ob, i) => (
+                <rect key={`o${i}`} x={ob.rect[0] * geo.w} y={ob.rect[1] * geo.h} width={(ob.rect[2] - ob.rect[0]) * geo.w} height={(ob.rect[3] - ob.rect[1]) * geo.h} fill="var(--muted)" fillOpacity="0.16" stroke="var(--muted)" strokeWidth={1 * u} />
+              ))}
+              {fl.doors.map((d, i) => (
+                <rect key={`d${i}`} x={d.rect[0] * geo.w} y={d.rect[1] * geo.h} width={(d.rect[2] - d.rect[0]) * geo.w} height={(d.rect[3] - d.rect[1]) * geo.h} fill="none" stroke="var(--watch)" strokeWidth={1.6 * u} strokeDasharray={d.seen ? undefined : `${3 * u} ${3 * u}`} />
+              ))}
+              {fl.connectors.map((c) => (
+                <rect key={c.id} x={c.x * geo.w - 5 * u} y={c.y * geo.h - 5 * u} width={10 * u} height={10 * u} rx={2 * u} fill="var(--accent-text)" stroke="var(--surface)" strokeWidth={1.5 * u} />
+              ))}
+            </g>
           ))}
 
-          {segs2.map((sg, i) => (
-            <line key={`b${i}`} x1={geo.pos[sg.a]!.x + 5 * u} y1={geo.pos[sg.a]!.y + 5 * u} x2={geo.pos[sg.b]!.x + 5 * u} y2={geo.pos[sg.b]!.y + 5 * u} stroke="var(--ok)" strokeWidth={2.5 * u} strokeDasharray={`${8 * u} ${6 * u}`} strokeLinecap="round" opacity="0.8" />
+          {segs.map((sg, i) =>
+            sg.lines ? (
+              sg.lines.map((points, k) => (
+                <polyline key={`${i}-${k}`} points={points} fill="none" stroke="var(--accent-text)" strokeWidth={(sg.passed ? 3.5 : 2.5) * u} strokeDasharray={sg.passed ? undefined : `${2 * u} ${7 * u}`} strokeLinecap="round" strokeLinejoin="round" opacity={sg.passed ? 0.85 : 0.6} />
+              ))
+            ) : (
+              <line
+                key={i}
+                x1={geo.pos[sg.a]!.x}
+                y1={geo.pos[sg.a]!.y}
+                x2={geo.pos[sg.b]!.x}
+                y2={geo.pos[sg.b]!.y}
+                stroke="var(--accent-text)"
+                strokeWidth={(sg.passed ? 3.5 : 2.5) * u}
+                strokeDasharray={sg.passed ? undefined : `${2 * u} ${7 * u}`}
+                strokeLinecap="round"
+                opacity={sg.passed ? 0.85 : 0.6}
+              />
+            ),
+          )}
+
+          {segs2.map((sg, i) =>
+            sg.lines ? (
+              sg.lines.map((points, k) => <polyline key={`b${i}-${k}`} points={points} transform={`translate(${3 * u} ${3 * u})`} fill="none" stroke="var(--ok)" strokeWidth={2.5 * u} strokeDasharray={`${8 * u} ${6 * u}`} strokeLinecap="round" strokeLinejoin="round" opacity="0.8" />)
+            ) : (
+              <line key={`b${i}`} x1={geo.pos[sg.a]!.x + 5 * u} y1={geo.pos[sg.a]!.y + 5 * u} x2={geo.pos[sg.b]!.x + 5 * u} y2={geo.pos[sg.b]!.y + 5 * u} stroke="var(--ok)" strokeWidth={2.5 * u} strokeDasharray={`${8 * u} ${6 * u}`} strokeLinecap="round" opacity="0.8" />
+            ),
+          )}
+
+          {walkParts.filter((f) => shown(f.floor)).map((f) => (
+            <g key={`walk${f.floor}`} data-walk-floor={f.floor} data-walked={f.walked ? "yes" : "no"} pointerEvents="none">
+              <polyline points={line(f.points)} fill="none" stroke="var(--surface-solid)" strokeWidth={7 * u} strokeLinecap="round" strokeLinejoin="round" opacity="0.9" />
+              <polyline points={line(f.points)} fill="none" stroke="var(--danger)" strokeWidth={3.5 * u} strokeDasharray={f.walked ? undefined : `${9 * u} ${7 * u}`} strokeLinecap="round" strokeLinejoin="round" />
+              {f.points.map((p, i) => (
+                <circle key={i} data-guide={`walk:${f.first + i}`} cx={p[0]! * geo.w} cy={p[1]! * geo.h} r={2 * u} fill="none" />
+              ))}
+            </g>
           ))}
+          {routed && routed.floors.length > 1
+            ? routed.floors.filter((f) => shown(f.floor)).map((f, i) => {
+                const p = routed.floors[0] === f ? f.points[f.points.length - 1]! : f.points[0]!;
+                return (
+                  <g key={`st${i}`} transform={`translate(${p[0]! * geo.w} ${p[1]! * geo.h})`} pointerEvents="none">
+                    <rect x={-7 * u} y={-7 * u} width={14 * u} height={14 * u} rx={3 * u} fill="var(--danger)" stroke="var(--surface)" strokeWidth={2 * u} />
+                    <text className={o.placeLabel} y={-11 * u} textAnchor="middle" fontSize={11.5 * u} strokeWidth={3.5 * u}>
+                      {routed.connector_name?.replace(/^the /, "") ?? "stairs"}
+                    </text>
+                  </g>
+                );
+              })
+            : null}
+          {startAt && shown(startAt.floor) ? (
+            <g transform={`translate(${startAt.x * geo.w} ${startAt.y * geo.h})`} data-here pointerEvents="none">
+              <circle r={9 * u} fill="var(--accent-text)" stroke="var(--surface)" strokeWidth={2.5 * u} />
+              <circle r={3 * u} fill="var(--on-media)" />
+              <text className={o.placeLabel} y={22 * u} textAnchor="middle" fontSize={12 * u} strokeWidth={3.5 * u} style={{ fill: "var(--accent-text)", fontWeight: 800 }}>
+                You are here
+              </text>
+            </g>
+          ) : null}
 
           {map.places.filter((l) => visible(l.location_id)).map((l) => {
             const p = geo.pos[l.location_id]!;
@@ -262,7 +380,8 @@ export function FloorMap({
             const rows = n > 3 ? Math.ceil(n / 2) : n ? 1 : 0;
             const empty = n === 0;
             return (
-              <g key={l.location_id}>
+              <g key={l.location_id} data-guide={guide === "map" ? `place:${l.location_id}` : undefined}>
+                {guide === "map" ? <circle data-guide={`at:${l.location_id}`} cx={p.x} cy={p.y} r={2 * u} fill="none" /> : null}
                 {empty ? <circle cx={p.x} cy={p.y} r={4 * u} fill="var(--surface)" stroke="var(--muted)" strokeWidth={1.5 * u} /> : null}
                 {roomy ? (
                   <text className={o.placeLabel} x={p.x} y={p.y + ((rows > 0 ? (rows - 1) * 34 + 16 : 6) + 14) * u} textAnchor="middle" fontSize={11.5 * u} strokeWidth={3.5 * u}>
@@ -282,6 +401,7 @@ export function FloorMap({
               return (
                 <g
                   key={a.asset_id}
+                  data-guide={guide === "map" ? `asset:${a.asset_id}` : guide === "shiftrun:map" ? `run-asset:${a.asset_id}` : undefined}
                   className={`${o.dot} ${quiet ? o.dotQuiet : ""}`}
                   transform={`translate(${x} ${y})`}
                   tabIndex={onPick ? 0 : undefined}
@@ -341,6 +461,16 @@ export function FloorMap({
           <span>
             <i className={o.routeKey} /> {routeLabel ?? (done === undefined ? "SPOT's last route" : "SPOT's route")}
           </span>
+        ) : null}
+        {routed && routed.floors.length > 0 ? (
+          <>
+            <span data-legend="walked">
+              <i className={o.routeKey} style={{ borderTop: "3px solid var(--danger)" }} /> The way there: SPOT has walked this leg
+            </span>
+            <span data-legend="traced">
+              <i className={o.routeKey} style={{ borderTop: "3px dashed var(--danger)" }} /> from the traced plan only
+            </span>
+          </>
         ) : null}
       </div>
       {note}

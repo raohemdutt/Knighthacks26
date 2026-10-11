@@ -76,7 +76,7 @@ function BreakQuestion({
     setBusy(true);
     setError(undefined);
     try {
-      const result = await api.coachCorrect({ day, block_id: blockId, break_index: b.index, right, answer, note: text || undefined });
+      const result = await api.coachCorrect({ day, block_id: blockId, break_index: b.index, break_start: b.start, right, answer, note: text || undefined });
       setChoosing(false);
       setOther(false);
       setNote("");

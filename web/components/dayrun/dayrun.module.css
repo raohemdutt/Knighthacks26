@@ -1,8 +1,9 @@
 /* Day Run and Room map. Uses the tokens in app/globals.css; only the three meter colours are new. */
 
 /*
- * The three meters. Chosen for the light surface (each is at least 4:1 against --bg).
- * Risk is also dashed, so the lines never rely on colour alone.
+ * The three meters. The Day set is chosen for the light surface (each is at least 4:1 against --bg); the Night set
+ * below is the same three hues lifted so they read on the dark chart. Risk is also dashed, so the lines never rely
+ * on colour alone. The friend's blue and the amber "warn" mark follow the same rule.
  */
 .sEnergy {
   --c: #0f8f78;
@@ -14,6 +15,39 @@
 
 .sRisk {
   --c: #b45f06;
+}
+
+:global(html[data-theme="dark"]) .sEnergy {
+  --c: #4ee0a0;
+}
+
+:global(html[data-theme="dark"]) .sFocus {
+  --c: #7ea6ff;
+}
+
+:global(html[data-theme="dark"]) .sRisk {
+  --c: #ffc062;
+}
+
+:global(html[data-theme="dark"]) .riskFill {
+  background: #ffc062;
+}
+
+:global(html[data-theme="dark"]) .friendRing {
+  stroke: #7ea6ff;
+}
+
+:global(html[data-theme="dark"]) .dotFriend {
+  border-color: #7ea6ff;
+}
+
+:global(html[data-theme="dark"]) .figFriend {
+  --fig: #7ea6ff;
+}
+
+:global(html[data-theme="dark"]) .figShadow {
+  fill: #000000;
+  opacity: 0.4;
 }
 
 /* ---------- top of the screen ---------- */
@@ -157,11 +191,23 @@
   box-shadow: var(--sh-raised-sm);
   font-size: 19px;
   line-height: 1;
-  transition: box-shadow var(--ease-press);
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
 }
 
 .tool:active:not(:disabled) {
   box-shadow: var(--sh-inset-sm);
+  transform: scale(0.97);
+}
+
+/* the same lift every pressable thing in the app has on a pointer */
+@media (hover: hover) {
+  .tool:hover:not(:disabled),
+  .pill:hover,
+  .option:hover:not(:disabled),
+  .routeRow:hover,
+  .pinItem:hover {
+    transform: translateY(-2px);
+  }
 }
 
 .tool:disabled {
@@ -204,11 +250,12 @@
   box-shadow: var(--sh-raised-sm);
   font-size: 15px;
   font-weight: 600;
-  transition: box-shadow var(--ease-press);
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
 }
 
 .pill:active {
   box-shadow: var(--sh-inset-sm);
+  transform: scale(0.97);
 }
 
 .pillOn,
@@ -262,11 +309,12 @@
   background: var(--surface);
   box-shadow: var(--sh-raised-sm);
   text-align: left;
-  transition: box-shadow var(--ease-press);
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
 }
 
 .option:active:not(:disabled) {
   box-shadow: var(--sh-inset-sm);
+  transform: scale(0.98);
 }
 
 .option:disabled {
@@ -344,11 +392,11 @@
 }
 
 .bandFixed {
-  fill: rgba(27, 36, 51, 0.07);
+  fill: color-mix(in srgb, var(--text) 7%, transparent);
 }
 
 .bandPlanned {
-  fill: rgba(170, 200, 245, 0.1);
+  fill: var(--accent-soft);
 }
 
 .grid {
@@ -394,7 +442,7 @@
 
 .cursorDot {
   fill: var(--c);
-  stroke: var(--surface);
+  stroke: var(--surface-solid);
   stroke-width: 2;
 }
 
@@ -416,11 +464,11 @@
 }
 
 .swatchFixed {
-  background: rgba(27, 36, 51, 0.12);
+  background: color-mix(in srgb, var(--text) 12%, transparent);
 }
 
 .swatchPlanned {
-  background: rgba(170, 200, 245, 0.22);
+  background: var(--accent-soft);
 }
 
 .details summary,
@@ -559,11 +607,12 @@
   background: var(--surface);
   box-shadow: var(--sh-raised-sm);
   text-align: left;
-  transition: box-shadow var(--ease-press);
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
 }
 
 .routeRow:active {
   box-shadow: var(--sh-inset-sm);
+  transform: scale(0.98);
 }
 
 .routeRowOn,
@@ -771,14 +820,14 @@
 }
 
 .zone {
-  fill: rgba(27, 36, 51, 0.05);
+  fill: color-mix(in srgb, var(--text) 5%, transparent);
   stroke: var(--muted);
   stroke-width: 1.5;
 }
 
 .zoneOn {
   fill: var(--accent-soft);
-  stroke: var(--accent-bright);
+  stroke: var(--accent-text);
   stroke-width: 2;
 }
 
@@ -801,8 +850,9 @@
   stroke-dasharray: 3 2.5; /* dashed: the position inside the zone is not measured */
 }
 
+/* the chosen pin uses --accent-text: the only accent that reads as a line or a glyph in both themes */
 .pinOn {
-  stroke: var(--accent-bright);
+  stroke: var(--accent-text);
   stroke-width: 2.5;
 }
 
@@ -815,7 +865,7 @@
 }
 
 .pinNumberOn {
-  fill: var(--accent);
+  fill: var(--accent-text);
 }
 
 /* The list under the map: which numbered pin is which item. */
@@ -842,11 +892,12 @@
   font-size: 16px;
   font-weight: 600;
   text-align: left;
-  transition: box-shadow var(--ease-press);
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
 }
 
 .pinItem:active {
   box-shadow: var(--sh-inset-sm);
+  transform: scale(0.98);
 }
 
 .pinItemOn,
@@ -1161,12 +1212,12 @@
 
 .plNode {
   fill: none;
-  stroke: var(--accent);
+  stroke: var(--accent-text);
   stroke-width: 2;
 }
 
 .plNodeText {
-  fill: var(--accent);
+  fill: var(--accent-text);
   font-size: 11px;
   font-weight: 700;
   paint-order: stroke;
@@ -1212,7 +1263,7 @@
 }
 
 .plPulseWarn {
-  stroke: #b45f06;
+  stroke: var(--watch);
 }
 
 @keyframes plPulse {
@@ -1234,7 +1285,7 @@
   bottom: 8px;
   padding: 10px 14px 10px 18px;
   border-radius: var(--radius-sm);
-  background: var(--surface);
+  background: var(--surface-solid);
   box-shadow: var(--sh-float), inset 5px 0 0 var(--line);
   font-size: 15px;
   font-weight: 650;
@@ -1249,7 +1300,7 @@
 }
 
 .plFlashWarn {
-  box-shadow: var(--sh-float), inset 5px 0 0 #b45f06;
+  box-shadow: var(--sh-float), inset 5px 0 0 var(--watch);
 }
 
 .plFlashOk {
@@ -1275,7 +1326,7 @@
   gap: 8px;
   padding: 16px 18px 16px 22px;
   overflow-y: auto;
-  background: rgba(238, 242, 248, 0.96);
+  background: var(--surface-solid);
   box-shadow: var(--sh-raised), inset 6px 0 0 var(--line);
   border-radius: var(--radius-sm);
   font-size: 15px;
@@ -1370,6 +1421,7 @@
   height: 100%;
   border-radius: 6px;
   background: var(--c);
+  transition: width 900ms var(--ease-out);
 }
 
 .plBarLow {

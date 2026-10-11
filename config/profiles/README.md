@@ -7,8 +7,9 @@ profile is running; it reads `contexts/profiles.load_profile(config_dir)`.
 
 **Selection:** `ATLAS_PROFILE=<name>` in the environment, else `profile: <name>` in
 `config/agent.yaml`, else `student`. An unknown name refuses to boot and lists what exists.
-`GET /api/profile` tells the phone the name, description, vocabulary (`words`), meters, shift
-and which files are overridden.
+`GET /api/profile` tells the phone the name, description, vocabulary (`words`), meters, shift,
+the Ask screen's suggested questions (`suggestions:` in `profile.yaml`; the student's when a
+profile lists none) and which files are overridden.
 
 Shipped: `student` (the base files as they are; overrides nothing), `shift-worker`
 (nights: the sleep window follows the shift, handovers, a leave-for-shift item list, the

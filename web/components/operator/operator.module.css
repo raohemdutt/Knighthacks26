@@ -48,7 +48,7 @@
 }
 
 .badgeWarn {
-  background: rgba(138, 90, 0, 0.1);
+  background: color-mix(in srgb, var(--watch) 12%, transparent);
   color: var(--watch);
 }
 
@@ -58,11 +58,18 @@
   color: var(--muted);
   box-shadow: var(--sh-raised-sm);
   min-height: var(--tap);
-  transition: box-shadow var(--ease-press);
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .badgeLink:hover {
+    transform: translateY(-2px);
+  }
 }
 
 .badgeLink:active {
   box-shadow: var(--sh-inset-sm);
+  transform: scale(0.97);
 }
 
 .badgeBad {
@@ -223,7 +230,7 @@
   height: 100%;
   border-radius: var(--radius-pill);
   background: linear-gradient(90deg, var(--accent-bright), var(--accent));
-  transition: width 0.4s ease;
+  transition: width 900ms var(--ease-out);
 }
 
 .scores {
@@ -341,17 +348,25 @@
   border: 0;
   border-radius: var(--radius-pill);
   cursor: pointer;
-  transition: box-shadow var(--ease-press);
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .voicePrimary:hover,
+  .voiceSecondary:hover {
+    transform: translateY(-2px);
+  }
 }
 
 .voicePrimary {
   color: var(--accent-ink);
-  background: var(--accent);
-  box-shadow: 5px 5px 14px rgba(170, 200, 245, 0.32), -5px -5px 12px var(--sh-light);
+  background: var(--accent-grad);
+  box-shadow: var(--glow), inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 
 .voicePrimary:active {
-  box-shadow: inset 4px 4px 10px rgba(10, 30, 90, 0.45), inset -3px -3px 8px rgba(120, 160, 255, 0.35);
+  box-shadow: inset 0 3px 10px rgba(0, 0, 0, 0.35);
+  transform: scale(0.97);
 }
 
 .voiceSecondary {
@@ -362,6 +377,7 @@
 
 .voiceSecondary:active {
   box-shadow: var(--sh-inset);
+  transform: scale(0.97);
 }
 
 .voiceAnswer {

@@ -122,6 +122,74 @@ EXPECTED_SEED = [
     ("jetson.idle_watts", "jetson", {"rail": "VDD_IN", "period_ms": 1000}, 12.62, "W", True),
     ("student.watts_avg", "jetson", {"rail": "VDD_IN", "period_ms": 1000}, 17.536, "W", True),
     ("student.watts_peak", "jetson", {"rail": "VDD_IN", "period_ms": 1000}, 19.127, "W", True),
+    # R26: the batching sweep on the pod C teacher, attach mode, 3 repeats per concurrency (node pod-a, gfx1151)
+    ("teacher_batching.decode_tok_s", "pod-a", {"batch_size": 1}, 2.7021, "tok/s", True),
+    ("teacher_batching.decode_tok_s_total", "pod-a", {"batch_size": 1}, 2.6172, "tok/s", True),
+    ("teacher_batching.ttft_s", "pod-a", {"batch_size": 1}, 1.1809, "s", True),
+    ("teacher_batching.joules_per_token", "pod-a", {"batch_size": 1}, 36.6587, "J/token", True),
+    ("teacher_batching.watts_avg", "pod-a", {"batch_size": 1}, 96.0046, "W", True),
+    ("teacher_batching.watts_peak", "pod-a", {"batch_size": 1}, 97.0, "W", True),
+    ("teacher_batching.decode_tok_s", "pod-a", {"batch_size": 4}, 2.5218, "tok/s", True),
+    ("teacher_batching.decode_tok_s_total", "pod-a", {"batch_size": 4}, 9.3153, "tok/s", True),
+    ("teacher_batching.ttft_s", "pod-a", {"batch_size": 4}, 4.8672, "s", True),
+    ("teacher_batching.joules_per_token", "pod-a", {"batch_size": 4}, 10.3071, "J/token", True),
+    ("teacher_batching.watts_avg", "pod-a", {"batch_size": 4}, 96.0126, "W", True),
+    ("teacher_batching.watts_peak", "pod-a", {"batch_size": 4}, 97.0, "W", True),
+    ("teacher_batching.decode_tok_s", "pod-a", {"batch_size": 8}, 2.319, "tok/s", True),
+    ("teacher_batching.decode_tok_s_total", "pod-a", {"batch_size": 8}, 16.3616, "tok/s", True),
+    ("teacher_batching.ttft_s", "pod-a", {"batch_size": 8}, 7.7821, "s", True),
+    ("teacher_batching.joules_per_token", "pod-a", {"batch_size": 8}, 5.8676, "J/token", True),
+    ("teacher_batching.watts_avg", "pod-a", {"batch_size": 8}, 96.004, "W", True),
+    ("teacher_batching.watts_peak", "pod-a", {"batch_size": 8}, 97.0, "W", True),
+    ("teacher_batching.decode_tok_s", "pod-a", {"batch_size": 16}, 2.0712, "tok/s", True),
+    ("teacher_batching.decode_tok_s_total", "pod-a", {"batch_size": 16}, 26.946, "tok/s", True),
+    ("teacher_batching.ttft_s", "pod-a", {"batch_size": 16}, 14.9531, "s", True),
+    ("teacher_batching.joules_per_token", "pod-a", {"batch_size": 16}, 3.5628, "J/token", True),
+    ("teacher_batching.watts_avg", "pod-a", {"batch_size": 16}, 96.0052, "W", True),
+    ("teacher_batching.watts_peak", "pod-a", {"batch_size": 16}, 97.0, "W", True),
+    ("teacher_batching.decode_tok_s", "pod-a", {"batch_size": 64}, 0.8854, "tok/s", True),
+    ("teacher_batching.decode_tok_s_total", "pod-a", {"batch_size": 64}, 49.5288, "tok/s", True),
+    ("teacher_batching.ttft_s", "pod-a", {"batch_size": 64}, 24.3901, "s", True),
+    ("teacher_batching.joules_per_token", "pod-a", {"batch_size": 64}, 1.9384, "J/token", True),
+    ("teacher_batching.watts_avg", "pod-a", {"batch_size": 64}, 96.0499, "W", True),
+    ("teacher_batching.watts_peak", "pod-a", {"batch_size": 64}, 98.0, "W", True),
+    ("pod.idle_watts", "pod-a", {"server": "teacher loaded, no request"}, 10.44, "W", False),
+    # R21: the stock teacher on pod C compared with its own baseline (the K4 self-match floor), one compare
+    ("teacher.output_match_rate", "pod-a", {"chip": "gfx1151", "batch_size": 1}, 0.5, "fraction", True),
+    # R57: the A100 reference on Colab (other chip: NVIDIA A100-SXM4-40GB, stock vLLM 0.31.0), the same INT4 teacher
+    # through lab/bench.py, 3 cold spawns per batch size; watts from nvidia-smi over each decode window
+    # (fixtures/lab/bench/a100-2026-10-10, recomputed in test_a100_reference_rows_match_the_fixture)
+    ("teacher.decode_tok_s", "a100", {"batch_size": 1}, 64.956, "tok/s", True),
+    ("teacher.decode_tok_s_total", "a100", {"batch_size": 1}, 61.2077, "tok/s", True),
+    ("teacher.ttft_s", "a100", {"batch_size": 1}, 0.1184, "s", True),
+    ("teacher.watts_avg", "a100", {"batch_size": 1}, 306.0747, "W", True),
+    ("teacher.watts_peak", "a100", {"batch_size": 1}, 407.97, "W", True),
+    ("teacher.joules_per_token", "a100", {"batch_size": 1}, 5.0174, "J/token", True),
+    ("teacher.decode_tok_s", "a100", {"batch_size": 4}, 59.2302, "tok/s", True),
+    ("teacher.decode_tok_s_total", "a100", {"batch_size": 4}, 198.933, "tok/s", True),
+    ("teacher.ttft_s", "a100", {"batch_size": 4}, 0.4949, "s", True),
+    ("teacher.watts_avg", "a100", {"batch_size": 4}, 302.8075, "W", True),
+    ("teacher.watts_peak", "a100", {"batch_size": 4}, 411.5, "W", True),
+    ("teacher.joules_per_token", "a100", {"batch_size": 4}, 1.5234, "J/token", True),
+    ("teacher.decode_tok_s", "a100", {"batch_size": 8}, 52.6137, "tok/s", True),
+    ("teacher.decode_tok_s_total", "a100", {"batch_size": 8}, 321.3743, "tok/s", True),
+    ("teacher.ttft_s", "a100", {"batch_size": 8}, 0.8243, "s", True),
+    ("teacher.watts_avg", "a100", {"batch_size": 8}, 321.0224, "W", True),
+    ("teacher.watts_peak", "a100", {"batch_size": 8}, 418.76, "W", True),
+    ("teacher.joules_per_token", "a100", {"batch_size": 8}, 0.999, "J/token", True),
+    ("teacher.decode_tok_s", "a100", {"batch_size": 16}, 36.0495, "tok/s", True),
+    ("teacher.decode_tok_s_total", "a100", {"batch_size": 16}, 462.3296, "tok/s", True),
+    ("teacher.ttft_s", "a100", {"batch_size": 16}, 1.056, "s", True),
+    ("teacher.watts_avg", "a100", {"batch_size": 16}, 355.9959, "W", True),
+    ("teacher.watts_peak", "a100", {"batch_size": 16}, 412.96, "W", True),
+    ("teacher.joules_per_token", "a100", {"batch_size": 16}, 0.7743, "J/token", True),
+    ("teacher.decode_tok_s", "a100", {"batch_size": 64}, 11.2975, "tok/s", True),
+    ("teacher.decode_tok_s_total", "a100", {"batch_size": 64}, 636.3307, "tok/s", True),
+    ("teacher.ttft_s", "a100", {"batch_size": 64}, 1.9381, "s", True),
+    ("teacher.watts_avg", "a100", {"batch_size": 64}, 382.1646, "W", True),
+    ("teacher.watts_peak", "a100", {"batch_size": 64}, 424.61, "W", True),
+    ("teacher.joules_per_token", "a100", {"batch_size": 64}, 0.6003, "J/token", True),
+    ("pod.idle_watts", "a100", {"hub": "colab"}, 46.14, "W", True),
 ]
 
 # The numbers the lab setup measured, by metric name.
@@ -179,13 +247,56 @@ def test_every_low_confidence_seed_row_says_why():
     assert {row["metric"] for row in flagged} == {
         "teacher.joules_per_token", "pod.idle_watts", "pod.balance_credits", "teacher.watts_avg", "teacher.watts_peak",
         "pod.settle_s", "pod.idle_state_share",
-        "telemetry.sampler_cpu_pct", "jetson.idle_watts", "student.watts_avg", "student.watts_peak"}
+        "telemetry.sampler_cpu_pct", "jetson.idle_watts", "student.watts_avg", "student.watts_peak"} | {
+        # R26: the sweep's medians are of 3 repeats, under the 5 verdict() asks for
+        "teacher_batching." + name
+        for name in ("decode_tok_s", "decode_tok_s_total", "ttft_s", "joules_per_token", "watts_avg", "watts_peak")} | {
+        "teacher.output_match_rate"} | {
+        # R57: the A100 reference medians are of 3 spawns
+        "teacher.decode_tok_s", "teacher.decode_tok_s_total", "teacher.ttft_s"}
     for row in flagged:
         if row["conditions"].get("sampler") == SAMPLER:  # the sampler's rows: its error is "unknown" until a reference run
             assert row["conditions"]["error"] == "unknown", row["metric"]
             continue
         reason = row["conditions"].get("low_confidence_reason")
         assert isinstance(reason, str) and reason.strip() != "", row["metric"]
+
+
+A100_FIXTURE = ROOT / "fixtures" / "lab" / "bench" / "a100-2026-10-10"
+A100_SUMMARY_NAMES = ("decode_tok_s", "decode_tok_s_total", "ttft_s", "watts_avg", "watts_peak", "joules_per_token")
+
+
+def test_a100_reference_rows_match_the_fixture(tmp_path):
+    # analyze.py recomputes the joules from the nvidia-smi samples and the harness rows; its table is the rows' values
+    for name in ("analyze.py", "rows.jsonl", "nvidia_smi_power.csv", "idle_window.txt"):
+        (tmp_path / name).write_bytes((A100_FIXTURE / name).read_bytes())
+    subprocess.run([sys.executable, "-I", str(tmp_path / "analyze.py"), str(tmp_path)], check=True, capture_output=True)
+    summary = json.loads((tmp_path / "summary_a100.json").read_text(encoding="utf-8"))
+    assert summary == json.loads((A100_FIXTURE / "summary_a100.json").read_text(encoding="utf-8"))
+    rows = [row for row in metrics.load() if row["node"] == "a100"]
+    for batch, entry in summary["per_batch"].items():
+        assert entry["runs_ok"] == entry["runs"] == 3
+        for name in A100_SUMMARY_NAMES:
+            matches = [r for r in rows if r["metric"] == f"teacher.{name}" and r["conditions"]["batch_size"] == int(batch)]
+            assert len(matches) == 1, (name, batch)
+            assert matches[0]["value"] == round(entry[name], 4), (name, batch)
+            assert matches[0]["conditions"]["other_chip"] is True
+            assert matches[0]["conditions"]["hub"] == "colab"
+    idle = [r for r in rows if r["metric"] == "pod.idle_watts"]
+    assert [r["value"] for r in idle] == [round(summary["idle_no_server"]["avg_w"], 2)]
+
+
+def test_a100_greedy_record_is_an_r21_baseline_beside_the_strix_halo_one():
+    from lab import correctness
+
+    a100 = correctness.load_baseline(A100_FIXTURE / "vllm-a100-2026-10-10.json")
+    strix = correctness.load_baseline(ROOT / "fixtures" / "lab" / "correctness" / "vllm-gfx1151-2026-10-11.json")
+    assert a100["conditions"]["chip"] == "a100" and a100["conditions"]["other_chip"] is True
+    assert a100["conditions"]["prompt_set"] == strix["conditions"]["prompt_set"]
+    assert [len(o["tokens"]) for o in a100["outputs"]] == [128] * 4
+    rows = {r["prompt"]: r["first_divergence"] for r in correctness.compare_outputs(strix["outputs"], a100["outputs"])}
+    # the cross-chip picture on 2026-10-10: the kitchen text matches token for token, the rest diverge
+    assert rows == {"text-kitchen": None, "image-bars": 0, "text-schedule": 76, "image-shapes": 3}
 
 
 def test_seed_file_is_plain_ascii_with_unix_line_endings():

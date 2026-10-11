@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { AnalysisLayer } from "@/components/spot/AnalysisLayer";
 import { EXPLAINS, type ExplainId, type Force } from "@/components/spot/Explainers";
 import { FloorMap } from "@/components/spot/FloorMap";
@@ -14,6 +14,7 @@ import { Empty, ErrorBox, Loading } from "@/components/States";
 import ui from "@/components/ui.module.css";
 import { api } from "@/lib/api";
 import { useAtlasEvents } from "@/lib/atlas";
+import { spotWalk, useTraced } from "@/lib/guideSpot";
 import { useFetch } from "@/lib/useFetch";
 
 /**
@@ -44,7 +45,12 @@ export default function SpotPage() {
   const [explain, setExplain] = useState<ExplainId | null>(null);
   const [force, setForce] = useState<Force>(null);
   const [evidence, setEvidence] = useState(false); // becomes true the first time the analysis is needed, and stays
+  const walking = useSyncExternalStore(spotWalk.subscribe, spotWalk.get, spotWalk.get); // the look guide's walking route, and "you are here"
   const [link, setLink] = useState<{ round: string | null; step: number | null; floor: number | null; run: RunLink } | null>(null);
+  const traced = useTraced(); // the floor traced from the plan picture: where a tap lands, and the faint overlay
+  const [tapping, setTapping] = useState(false); // the next tap on the plan sets "You are here"
+  const [tapMsg, setTapMsg] = useState<string | null>(null);
+  const [showFloor, setShowFloor] = useState(false);
 
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
@@ -58,6 +64,10 @@ export default function SpotPage() {
     if (q.get("tab") === "analysis") (setTab("analysis"), setEvidence(true));
     if (q.get("tab") === "run") setTab("run");
     if (q.get("all")) setAll(true);
+    if (q.get("walkable")) setShowFloor(true);
+    const here = q.get("here"); // ?here=WP04, ?here=xy:0.30,0.57 or ?here=spot (where SPOT is in the round on show): where the walk starts
+    if (here?.toLowerCase() === "spot") fromSpot.current = true;
+    else if (here) spotWalk.setHere(/^xy:/i.test(here) ? here.toLowerCase() : here.toUpperCase());
     setLink({ round: up("round"), step: q.get("step") ? Number(q.get("step")) : null, floor: q.get("floor") ? Number(q.get("floor")) : null,
       run: { route: q.get("route"), turn: q.get("turn") ? Number(q.get("turn")) : null, show: q.get("show"), hard: Boolean(q.get("hard")) },
     });
@@ -87,6 +97,13 @@ export default function SpotPage() {
       });
   }, []);
   useEffect(readLive, [readLive]);
+  const fromSpot = useRef(false);
+  const liveAt = live?.robot?.location_id ?? null;
+  useEffect(() => {
+    if (!fromSpot.current || !liveAt) return;
+    fromSpot.current = false;
+    spotWalk.setHere(liveAt);
+  }, [liveAt]);
   useAtlasEvents(["spot."], (e) => (e.type === "spot.work_order.created" ? orders.reload() : readLive()));
   const playing = Boolean(live?.playing);
   useEffect(() => {
@@ -130,12 +147,26 @@ export default function SpotPage() {
   const written = orders.data?.work_orders ?? [];
   const open = asset ? d.assets.find((a) => a.asset_id === asset) : undefined;
   const robotAt = playing ? live?.robot?.location_id ?? null : null;
+  const spotAt = live?.robot?.location_id ?? null; // where SPOT is in the round on show, playing or not
+  const tapped = /^xy:([\d.]+),([\d.]+)$/.exec(walking.here ?? "");
+  const stand = walking.here && !tapped ? traced.floor?.waypoints[walking.here] : undefined;
+  const hereAt = tapped
+    ? { floor: Number(tapped[1]) > (d.map.plan?.panels["2"]?.x0 ?? 2) ? 2 : 1, x: Number(tapped[1]), y: Number(tapped[2]) }
+    : stand?.stand
+      ? { floor: stand.floor, ...stand.stand }
+      : null;
+  const onTap = (at: { floor: number; x: number; y: number; moved: number } | null) => {
+    setTapping(false);
+    if (!at) return setTapMsg("That spot is not on the floor I traced. Tap a corridor or a room.");
+    setTapMsg(at.moved > 0 ? "Moved to the nearest floor you can stand on." : null);
+    spotWalk.setHere(`xy:${at.x.toFixed(4)},${at.y.toFixed(4)}`);
+  };
 
   return (
     <div className={o.page}>
       <div className={o.top}>
         <StatusLine shift={d} />
-        <div className={`${ui.segmented} ${o.tabs}`} role="tablist" aria-label="View">
+        <div className={`${ui.segmented} ${o.tabs}`} role="tablist" aria-label="View" data-guide="tabs">
           {(
             [
               ["shift", "Your shift"],
@@ -143,7 +174,7 @@ export default function SpotPage() {
               ["analysis", "Analysis"],
             ] as [Tab, string][]
           ).map(([k, label]) => (
-            <button type="button" key={k} role="tab" aria-selected={tab === k} className={`${ui.seg} ${tab === k ? ui.segOn : ""}`} onClick={() => pick(k)}>
+            <button type="button" key={k} role="tab" data-guide={`tab:${k === "run" ? "shift-run" : k}`} aria-selected={tab === k} className={`${ui.seg} ${tab === k ? ui.segOn : ""}`} onClick={() => pick(k)}>
               {label}
             </button>
           ))}
@@ -161,12 +192,82 @@ export default function SpotPage() {
                 map={d.map}
                 assets={d.assets}
                 title="The plant floor"
+                guide="map"
+                walk={walking.walk}
+                hereAt={hereAt}
+                onTap={tapping ? onTap : null}
+                showFloor={showFloor}
                 route={d.map.route}
                 robotAt={robotAt}
                 selected={asset}
                 onPick={setAsset}
                 initialFloor={link.floor}
-                note={<p className={o.note}>Tap a mark to see what SPOT found there. The picture is the kit's sample floor plan; it is practice data, not a real plant.</p>}
+                note={
+                  <>
+                    <p className={o.note}>Tap a mark to see what SPOT found there. The picture is the kit's sample floor plan; it is practice data, not a real plant.</p>
+                    <p className={o.note} data-guide="walk">
+                      <label>
+                        You are here:{" "}
+                        <select className={ui.input} style={{ display: "inline-block", width: "auto", padding: "4px 8px" }} value={walking.here ?? ""} onChange={(e) => (setTapMsg(null), spotWalk.setHere(e.target.value || null))} aria-label="Where you are on the plan">
+                          <option value="">where SPOT's last round started</option>
+                          {walking.here?.startsWith("xy:") ? <option value={walking.here}>the spot you tapped</option> : null}
+                          {d.map.places.map((p) => (
+                            <option key={p.location_id} value={p.location_id}>
+                              {p.name} (floor {p.floor})
+                            </option>
+                          ))}
+                        </select>
+                      </label>{" "}
+                      {traced.floor ? (
+                        <button type="button" className={o.link} aria-pressed={tapping} data-guide="walk:tap" onClick={() => (setTapMsg(null), setTapping((v) => !v))}>
+                          {tapping ? "Now tap the plan (or cancel)" : "Tap the plan to set it"}
+                        </button>
+                      ) : null}{" "}
+                      {spotAt ? (
+                        <button type="button" className={o.link} data-guide="walk:from-spot" onClick={() => (setTapMsg(null), spotWalk.setHere(spotAt))}>
+                          From SPOT ({d.map.places.find((p) => p.location_id === spotAt)?.name ?? spotAt})
+                        </button>
+                      ) : null}
+                      {tapMsg ? <b> {tapMsg}</b> : null}
+                    </p>
+                    <p className={o.note} data-guide="walk:words">
+                      {walking.walk?.found && walking.walk.routed && walking.walk.routed.floors.length > 0 ? (
+                        <>
+                          <b>{walking.walk.summary}</b> The way is about, not exact: {walking.walk.precision_reason ?? "traced from the picture"}, and the picture has no scale, so no distances.{" "}
+                          <button type="button" className={o.link} onClick={spotWalk.clear}>
+                            Hide the route
+                          </button>
+                        </>
+                      ) : walking.walk?.found && walking.walk.path.length > 1 ? (
+                        <>
+                          <b>{walking.walk.summary}</b> {walking.walk.note}{" "}
+                          <button type="button" className={o.link} onClick={spotWalk.clear}>
+                            Hide the route
+                          </button>
+                        </>
+                      ) : walking.walk ? (
+                        walking.walk.summary
+                      ) : (
+                        "Ask “where is…” and the red dot walks you there on the plan."
+                      )}
+                    </p>
+                    {walking.walk?.found && walking.walk.steps && walking.walk.steps.length > 1 ? (
+                      <ol className={o.note} data-guide="walk:steps" style={{ margin: 0, paddingLeft: 22 }}>
+                        {walking.walk.steps.map((st, i) => (
+                          <li key={i}>{st.say}</li>
+                        ))}
+                      </ol>
+                    ) : null}
+                    {traced.floor ? (
+                      <p className={o.note} data-guide="walk:caption">
+                        {traced.floor.caption}{" "}
+                        <label>
+                          <input type="checkbox" checked={showFloor} onChange={(e) => setShowFloor(e.target.checked)} /> Show the traced floor
+                        </label>
+                      </p>
+                    ) : null}
+                  </>
+                }
               />
             </div>
             <div className={o.sideCol}>
@@ -182,12 +283,12 @@ export default function SpotPage() {
               <WatchOut items={d.watch} onWhy={why} />
             </div>
             <LooksFine shift={d} onAll={() => setAll(true)} />
-            <OperatorAsk chips={d.ask ?? []} onWhy={why} />
+            <OperatorAsk chips={d.ask ?? []} onWhy={why} jobs={d.do_first} guideChips={[d.do_first[0] ? `Where is ${d.do_first[0].name}?` : "Where is the plan?", "Where do I look for the battery?", "Show me what to do first"]} />
           </div>
 
           </div>
 
-          <div id="round" className={link.round ? o.roundFirst : undefined}>
+          <div id="round" data-guide="round" className={link.round ? o.roundFirst : undefined}>
             <Round shift={d} live={live} onLive={setLive} onWhy={why} startRound={link.round} startStep={link.step} />
           </div>
 

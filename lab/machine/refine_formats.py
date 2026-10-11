@@ -14,15 +14,19 @@ what to fix.
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date as _date
 from datetime import datetime
 
 __all__ = [
     "Change",
+    "CodeBlock",
+    "FILE_EXTENSIONS",
     "Finding",
     "FormatError",
     "Log",
+    "METRIC_NAME",
     "OwnerCorrection",
     "PassEntry",
     "RaisedRuling",
@@ -30,19 +34,30 @@ __all__ = [
     "Ruling",
     "RunState",
     "Source",
+    "TRACKS",
     "Walk",
     "check_pass_entry",
+    "code_blocks",
     "parse_counter",
     "parse_log",
     "parse_report_end",
     "parse_rulings",
+    "unlink_file_names",
 ]
 
+#: The four refinement tracks, in the order lab/refine/PASS_RULES.md lists them ("The four tracks"). Every module of
+#: the loop reads this tuple; changing the set takes a ruling and a board task.
+TRACKS: tuple[str, ...] = ("telemetry", "learning", "plumbing", "kernels")
+
+#: A metric name: dotted lowercase words, each starting with a letter (teacher.decode_tok_s). It is the rule
+#: lab/machine/metrics.py applies to lab/refine/metrics.jsonl, so a name a reading cites or an experiment moves is
+#: one that file can hold.
+METRIC_NAME = re.compile(r"[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+")
+
 # A dimension id is the label a track's RUBRIC.md gives one of its tests (D1, T3, ...); U1 and U2 are
-# the two universal rules. A metric name is dotted and lowercase, as in lab/refine/metrics.jsonl.
+# the two universal rules.
 _DIM = r"[A-Z]{1,3}[0-9]{1,2}"
 _DIM_LIST = rf"{_DIM}(?:\s*,\s*{_DIM})*"
-_METRIC = r"[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+"
 _DATE = r"[0-9]{4}-[0-9]{2}-[0-9]{2}"
 
 _PASS_HEADING = re.compile(rf"^## (?P<kind>Pass|Merge) (?P<number>[0-9]+), (?P<date>{_DATE})\s*$")
@@ -68,11 +83,16 @@ _SECTION_NAMES = {
     "Left for the next pass": "next",
     "Checks run": "checks",
 }
-# A section starts at the beginning of a line with its label, an optional free-text parenthetical,
-# and a colon. The parenthetical may itself contain colons.
+# A section starts at the beginning of a line with its label, an optional free-text parenthetical (its
+# note), and a colon. The parenthetical may itself contain colons.
 _SECTION_LINE = re.compile(
-    r"^(?P<label>" + "|".join(re.escape(label) for label in _SECTION_NAMES) + r")(?:\s*\([^)\n]*\))?:[ \t]*(?P<rest>.*)$"
+    r"^(?P<label>"
+    + "|".join(re.escape(label) for label in _SECTION_NAMES)
+    + r")(?:\s*\((?P<note>[^)\n]*)\))?:[ \t]*(?P<rest>.*)$"
 )
+_CHANGE_CAP = re.compile(r"\bat most (?P<cap>[0-9]+) changes\b")
+# The note on a pass entry's Changes line: how many changes it holds, and the cap it was written against.
+_CHANGES_NOTE = re.compile(r"^(?P<made>[0-9]+)\s+of\s+at\s+most\s+(?P<cap>[0-9]+)$")
 
 _COLUMNS = ("metric", "value", "unit", "node", "conditions", "source")
 _LINE_REF = re.compile(r"[\w./-]*(?:metrics\.jsonl|ledger(?:\.jsonl)?):[0-9]+")
@@ -86,12 +106,85 @@ _RULING_REF = re.compile(r"\bRULING \((?P<labels>[a-z](?:\s*,\s*[a-z])*)\)")
 _RAISED_START = re.compile(r"^\((?P<label>[a-z])\)\s+(?P<question>.+)$")
 _RULINGS_APPLIED = re.compile(r"^Rulings applied:\s*(?P<numbers>[0-9]+(?:\s*,\s*[0-9]+)*)\s*$")
 
+#: The extensions of the source and data files the loop cites by name (research notes cite a file as a source).
+FILE_EXTENSIONS: tuple[str, ...] = (
+    "py", "pyi", "sh", "ps1", "yml", "yaml", "json", "jsonl", "toml", "cfg", "ini", "md", "txt", "csv", "log", "diff",
+    "patch", "c", "cc", "cpp", "cu", "h", "hpp", "hip", "js", "ts", "tsx", "go", "rs", "ipynb", "sql",
+)
+# A file name with an optional line or line range, and a markdown link to a web address, for unlink_file_names.
+_FILE_NAME = re.compile(r"[\w.-]+\.(?:" + "|".join(FILE_EXTENSIONS) + r")(?::[0-9]+(?:-[0-9]+)?)?", re.IGNORECASE)
+_WEB_LINK = re.compile(r"\[(?P<text>[^\[\]\s]+)\]\(https?://(?P<address>[^()\s]+)\)", re.IGNORECASE)
+
+# A code fence: three or more backticks or tildes, after any indentation; what follows is the info string.
+_FENCE = re.compile(r"^\s*(?P<fence>`{3,}|~{3,})(?P<info>.*)$")
+
 _RAISED_FIELDS = {"Now": "now", "Recommend": "recommend", "Source of tension": "tension", "Answer": "answer"}
 _RULING_FIELDS = {**_RAISED_FIELDS, "Tension": "tension"}
 
 
 class FormatError(ValueError):
     """A refinement file breaks the structure documented in lab/refine/TEMPLATES.md."""
+
+
+@dataclass(frozen=True)
+class CodeBlock:
+    """A fenced code block of a markdown text, by line index: the opening fence (start), the closing fence (end, or
+    the text's last line when the block never closes), the opener's info string and the lines between the fences."""
+
+    start: int
+    end: int
+    info: str
+    body: tuple[str, ...]
+    closed: bool
+
+    @property
+    def indexes(self) -> range:
+        """The indexes of every line the block covers, its fences included."""
+        return range(self.start, self.end + 1)
+
+
+def unlink_file_names(text: str) -> str:
+    """The text with the links Notion makes of file names read back as the names.
+
+    Notion shows a file name such as experiments.py as [experiments.py](http://experiments.py), because .py, .md
+    and other file extensions are also web domain endings, and text copied from a Notion page keeps the link. A
+    link whose text is a file name (FILE_EXTENSIONS, optionally with :line) and whose address is that same name
+    becomes the name; a link to a web page, even one named after its address, is left as it is.
+    """
+
+    def plain(link: re.Match[str]) -> str:
+        name = link["text"]
+        if _FILE_NAME.fullmatch(name) and link["address"].rstrip("/").lower() == name.lower():
+            return name
+        return link[0]
+
+    return _WEB_LINK.sub(plain, text)
+
+
+def code_blocks(lines: Sequence[str]) -> list[CodeBlock]:
+    """The fenced code blocks among a markdown text's lines, read as CommonMark reads them.
+
+    A block opens at a line of three or more backticks or tildes (any indentation, then an optional info string)
+    and closes at the next line holding only a fence of the same character at least as long. A shorter fence, a
+    fence of the other character or a fence with text after it is a line of the block, so a block can quote
+    another. A block that never closes runs to the end of the text.
+    """
+    blocks: list[CodeBlock] = []
+    opened: tuple[int, str, str] | None = None
+    for index, line in enumerate(lines):
+        if opened is None:
+            found = _FENCE.match(line)
+            if found:
+                opened = (index, found["fence"], found["info"].strip())
+            continue
+        start, fence, info = opened
+        if re.fullmatch(rf"\s*{re.escape(fence[0])}{{{len(fence)},}}\s*", line):
+            blocks.append(CodeBlock(start, index, info, tuple(lines[start + 1:index]), True))
+            opened = None
+    if opened is not None:
+        start, _, info = opened
+        blocks.append(CodeBlock(start, len(lines) - 1, info, tuple(lines[start + 1:]), False))
+    return blocks
 
 
 @dataclass(frozen=True)
@@ -192,6 +285,8 @@ class PassEntry:
 
     ending is converged or cap when the entry closes with 'CONVERGED at pass N' or
     'CAP REACHED at pass N, not converged' (ending_number is that N), and '' otherwise.
+    changes_note is the parenthetical of the 'Changes' line, such as '3 of at most 5', and '' when the
+    line has none.
     """
 
     kind: str
@@ -204,6 +299,7 @@ class PassEntry:
     walked: tuple[Walk, ...] = ()
     findings: tuple[Finding, ...] = ()
     changes: tuple[Change, ...] = ()
+    changes_note: str = ""
     rulings_raised: tuple[RaisedRuling, ...] = ()
     metrics_after: tuple[Reading, ...] = ()
     metrics_after_note: str = ""
@@ -363,14 +459,28 @@ def parse_rulings(text: str) -> tuple[Ruling, ...]:
     return tuple(rulings)
 
 
-def check_pass_entry(entry: PassEntry) -> list[str]:
+def change_cap_in(rules_text: str) -> int:
+    """The per-pass change cap PASS_RULES.md states, as 'at most <N> changes'; FormatError when it states none or two."""
+    caps = sorted({int(found["cap"]) for found in _CHANGE_CAP.finditer(" ".join(rules_text.split()))})
+    if not caps:
+        raise FormatError("no per-pass change cap found; 'What a pass does' must say 'at most <N> changes'")
+    if len(caps) > 1:
+        raise FormatError(f"more than one per-pass change cap found: {', '.join(str(cap) for cap in caps)}")
+    return caps[0]
+
+
+def check_pass_entry(entry: PassEntry, cap: int | None = None) -> list[str]:
     """List what a pass or merge entry is missing; an empty list means the entry is valid.
 
     A pass entry needs a research step with sources, a metrics-before table whose rows cite a
     metrics-file or ledger line, a walk, dispositioned findings, complete numbered changes that trace
     to findings, rulings raised with a blank Answer line, and a Converged verdict that agrees with its
-    closing CONVERGED or CAP REACHED line. A merge entry needs the same except the research step, the
+    closing CONVERGED or CAP REACHED line; a YES verdict comes with no change and no new ruling. A merge entry needs the same except the research step, the
     metrics-before table, the METRIC line and the finding for each change.
+
+    cap is the per-pass change cap that lab/refine/PASS_RULES.md sets (refine_track.change_cap reads
+    it). When it is given, a pass entry may hold no more changes than that, and its Changes line must
+    name it, 'Changes (<n> of at most <cap>):'. Merge entries are not held to it.
     """
     who = f"{entry.kind} {entry.number}"
     full = entry.kind == "pass"
@@ -410,6 +520,8 @@ def check_pass_entry(entry: PassEntry) -> list[str]:
     numbers = [change.number for change in entry.changes]
     if numbers != list(range(1, len(numbers) + 1)):
         add(f"changes must be numbered 1 to {len(numbers)} in order, found {numbers}")
+    if cap is not None and full and "changes" in entry.sections:
+        _check_change_cap(add, entry, cap)
     for change in entry.changes:
         _check_change(add, change, full)
     referenced = {n for finding in entry.findings for n in finding.fixed}
@@ -445,6 +557,11 @@ def check_pass_entry(entry: PassEntry) -> list[str]:
         add("'Converged' must start with YES or NO")
     if entry.converged and entry.changes:
         add(f"Converged is YES but the entry makes {len(entry.changes)} change(s); a converged walk changes nothing")
+    if entry.converged and entry.rulings_raised:
+        add(
+            f"Converged is YES but the entry raises {len(entry.rulings_raised)} ruling(s); "
+            "a converged walk raises no new ruling"
+        )
     if entry.converged and entry.ending != "converged":
         add(f"Converged is YES, so the entry must end with the line 'CONVERGED at pass {entry.number}'")
     if entry.ending == "converged" and entry.converged is False:
@@ -464,7 +581,7 @@ def check_pass_entry(entry: PassEntry) -> list[str]:
 
 def _check_readings(add, name: str, readings: tuple[Reading, ...], allow_absent: bool) -> None:
     for reading in readings:
-        if not re.fullmatch(_METRIC, reading.metric):
+        if not METRIC_NAME.fullmatch(reading.metric):
             add(f"{name}: {reading.metric!r} is not a dotted lowercase metric name")
         if not reading.value:
             add(f"{name}: {reading.metric} has no value")
@@ -473,6 +590,17 @@ def _check_readings(add, name: str, readings: tuple[Reading, ...], allow_absent:
                 f"{name}: {reading.metric} needs a metrics-file or ledger line in the source column "
                 f"(metrics.jsonl:<line> or ledger:<seq>), found {reading.source!r}"
             )
+
+
+def _check_change_cap(add, entry: PassEntry, cap: int) -> None:
+    if len(entry.changes) > cap:
+        add(f"the entry makes {len(entry.changes)} changes but a pass makes at most {cap}")
+    named = _CHANGES_NOTE.match(entry.changes_note)
+    if not named:
+        found = f"Changes ({entry.changes_note})" if entry.changes_note else "Changes"
+        add(f"the Changes line must read 'Changes (<n> of at most {cap}):', found '{found}'")
+    elif int(named["cap"]) != cap:
+        add(f"the Changes line names a cap of {int(named['cap'])} but a pass makes at most {cap}")
 
 
 def _check_change(add, change: Change, full: bool) -> None:
@@ -485,19 +613,19 @@ def _check_change(add, change: Change, full: bool) -> None:
     if full:
         if not change.metric:
             add(f"change {n} has no METRIC")
-        elif not (re.match(_METRIC, change.metric) or change.metric.lower().startswith("none")):
+        elif not (METRIC_NAME.match(change.metric) or change.metric.lower().startswith("none")):
             add(f"change {n}: METRIC must start with a dotted metric name or 'none - <reason>'")
 
 
 def _split_h2(text: str) -> tuple[list[str], list[tuple[str, list[str]]]]:
-    """Return the lines before the first '## ' heading and each heading with its body lines."""
+    """Return the lines before the first '## ' heading and each heading with its body lines. A '## ' line inside a
+    fenced code block (code_blocks) is a line of the body, not a heading."""
     header: list[str] = []
     blocks: list[tuple[str, list[str]]] = []
-    in_fence = False
-    for line in text.splitlines():
-        if line.lstrip().startswith("```"):
-            in_fence = not in_fence
-        if not in_fence and line.startswith("## "):
+    lines = text.splitlines()
+    fenced = {index for block in code_blocks(lines) for index in block.indexes}
+    for index, line in enumerate(lines):
+        if index not in fenced and line.startswith("## "):
             blocks.append((line.rstrip(), []))
         elif blocks:
             blocks[-1][1].append(line)
@@ -545,6 +673,7 @@ def _parse_pass(match: re.Match[str], heading: str, body: list[str]) -> PassEntr
     sections: dict[str, list[str]] = {}
     current = summary_lines
     ending, ending_number = "", None
+    changes_note = ""
     for line in body:
         section = _SECTION_LINE.match(line)
         closing = _ENDING.match(line)
@@ -557,6 +686,8 @@ def _parse_pass(match: re.Match[str], heading: str, body: list[str]) -> PassEntr
             name = _SECTION_NAMES[section["label"]]
             if name in sections:
                 raise FormatError(f"{heading!r}: section '{section['label']}' appears twice")
+            if name == "changes":
+                changes_note = (section["note"] or "").strip()
             current = sections[name] = []
             if section["rest"].strip():
                 current.append(section["rest"])
@@ -612,6 +743,7 @@ def _parse_pass(match: re.Match[str], heading: str, body: list[str]) -> PassEntr
         walked=tuple(walked),
         findings=tuple(findings),
         changes=changes,
+        changes_note=changes_note,
         rulings_raised=raised,
         metrics_after=after,
         metrics_after_note=after_note,

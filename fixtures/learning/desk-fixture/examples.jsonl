@@ -1,0 +1,12 @@
+{"id":"desk-00-0","image":"images/desk-00.png","frame_ref":"frames:desk:1760175000000","ts":"2026-10-11T09:30:00Z","context":"A white mug on the desk next to a laptop.","target":"mug","verdict":null}
+{"id":"desk-00-1","image":"images/desk-00.png","frame_ref":"frames:desk:1760175000000","ts":"2026-10-11T09:30:00Z","context":"A white mug on the desk next to a laptop.","target":"mug","verdict":null}
+{"id":"desk-01-0","image":"images/desk-01.png","frame_ref":"frames:desk:1760175060000","ts":"2026-10-11T09:30:00Z","context":"A ring of keys by the keyboard.","target":"keys","verdict":null}
+{"id":"desk-01-1","image":"images/desk-01.png","frame_ref":"frames:desk:1760175060000","ts":"2026-10-11T09:30:00Z","context":"A ring of keys by the keyboard.","target":"keys","verdict":null}
+{"id":"desk-02-0","image":"images/desk-02.png","frame_ref":"frames:desk:1760175120000","ts":"2026-10-11T09:30:00Z","context":"A black stapler at the edge of the desk.","target":"stapler","verdict":null}
+{"id":"desk-02-1","image":"images/desk-02.png","frame_ref":"frames:desk:1760175120000","ts":"2026-10-11T09:30:00Z","context":"A black stapler at the edge of the desk.","target":"stapler","verdict":null}
+{"id":"desk-03-0","image":"images/desk-03.png","frame_ref":"frames:desk:1760175180000","ts":"2026-10-11T09:30:00Z","context":"A phone charger plugged in beside the monitor.","target":"phone charger","verdict":null}
+{"id":"desk-03-1","image":"images/desk-03.png","frame_ref":"frames:desk:1760175180000","ts":"2026-10-11T09:30:00Z","context":"A phone charger plugged in beside the monitor.","target":"phone charger","verdict":null}
+{"id":"desk-04-0","image":"images/desk-04.png","frame_ref":"frames:desk:1760175240000","ts":"2026-10-11T09:30:00Z","context":"A mug of coffee by the notebook.","target":"mug","verdict":null}
+{"id":"desk-05-0","image":"images/desk-05.png","frame_ref":"frames:desk:1760175300000","ts":"2026-10-11T09:30:00Z","context":"Keys on top of a notebook.","target":"keys","verdict":null}
+{"id":"desk-06-0","image":"images/desk-06.png","frame_ref":"frames:desk:1760175360000","ts":"2026-10-11T09:30:00Z","context":"A stapler beside a stack of paper.","target":"stapler","verdict":null}
+{"id":"desk-07-0","image":"images/desk-07.png","frame_ref":"frames:desk:1760175420000","ts":"2026-10-11T09:30:00Z","context":"A charger coiled on the desk.","target":"phone charger","verdict":null}

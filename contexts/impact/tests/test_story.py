@@ -16,6 +16,7 @@ from contexts.impact.application.story import Factors, ImpactStory, RuleBook, we
 from contexts.impact.domain.waste_watch import WasteWatch
 from contracts.habits import NudgeRaised
 from contracts.impact import ItemDisposed, MilestoneReached, PracticeAdded
+from contracts.play import RoundScored
 from contracts.perception import IdentityChanged, ObservationRecorded, PersonIdentified, PersonLost, ZoneEvent
 from contracts.types import Box, Track
 
@@ -77,16 +78,21 @@ def lived(tmp_path, events=WEEK, **kw):
 def test_equivalents_are_ranges_from_the_factors_file_and_say_they_are_estimates(tmp_path):
     _, waste, story = lived(tmp_path)
     eq = story.view(at(2, 20))["equivalents"]
-    # three cans and a bottle reached recycling: 3 x (13..15 g) + (10..25 g)
-    assert eq["items"] == 4 and eq["kept_out_g"] == {"low": 49, "high": 70}
-    assert eq["estimate"] is True and "illustrative" in eq["disclaimer"] and "Replace" in eq["disclaimer"]
+    # three cans and a bottle reached recycling: 3 x (13.2..13.34 g) + (9.25..23.9 g)
+    assert eq["items"] == 4 and eq["kept_out_g"] == {"low": 49, "high": 64}
+    assert eq["estimate"] is True and "not measurements" in eq["disclaimer"] and "not UCF's own" in eq["disclaimer"]
     assert eq["energy_kwh"]["low"] < eq["energy_kwh"]["high"] and eq["co2e_kg"]["low"] < eq["co2e_kg"]["high"]
-    # fewest charges: the least energy into the hungriest phone
-    assert eq["energy_kwh"]["low"] == 1.62  # 39 g of aluminium x 40 kWh/kg + 10 g of PET x 6 kWh/kg
-    assert eq["phone_charges"] == {"low": 81, "high": 227}  # 1.62 kWh / 20 Wh up to 2.725 kWh / 12 Wh
+    # 39.6 g of aluminium x 44.5 kWh/kg + 9.25 g of PET x 8.4 kWh/kg, up to 40.02 g x 54.4 + 23.9 g x 10.3
+    assert eq["energy_kwh"] == {"low": 1.84, "high": 2.42}
+    # fewest charges: the least energy into the hungriest phone. 1.84 kWh / 19.4 Wh up to 2.42 kWh / 19 Wh (EPA: 0.019 kWh a charge)
+    assert eq["phone_charges"] == {"low": 94, "high": 127}
+    assert eq["phone_charge_wh"] == {"low": 19.0, "high": 19.4} and "epa.gov" in eq["phone_charge_url"] and "not electricity" in eq["energy_note"]
     can = next(r for r in eq["by_item"] if r["item"] == "can")
     assert can["count"] == 3 and can["material"] == "aluminium" and can["mass_confidence"] == "high"
     assert "WARM" in can["material_source"] and can["material_confidence"] == "medium" and can["mass_source"]
+    # the factors travel with the row, so the screen can show count x mass x factor with its source
+    assert can["each_g"] == {"low": 13.2, "high": 13.34} and can["energy_kwh_per_kg"] == {"low": 44.5, "high": 54.4}
+    assert can["mass_url"].startswith("https://www.epa.gov/") and can["material_url"].startswith("https://www.epa.gov/")
 
 
 def test_every_factor_has_a_source_and_a_confidence_and_every_range_is_a_range():
@@ -96,9 +102,45 @@ def test_every_factor_has_a_source_and_a_confidence_and_every_range_is_a_range()
         for key in ("mass_g", "energy_kwh_per_kg", "co2e_kg_per_kg"):
             if key in f:
                 assert 0 < f[key]["low"] < f[key]["high"], (name, key)
-    assert raw["contamination"]["rule_of_thumb"] is True and raw["contamination"]["confidence"] == "low"
     for name, f in raw["items"].items():
         assert f["material"] == "mixed" or f["material"] in raw["materials"], name
+
+
+def test_every_factor_cites_a_document_with_a_url_and_nothing_is_recalled_from_memory():
+    """The track is judged on measurable impact: a factor with no openable source is not in the file at all."""
+    text = Path("config/impact.yaml").read_text()
+    for phrase in ("recalled offline", "from memory", "illustrative", "order of magnitude", "rule of thumb, not a measurement"):
+        assert phrase not in text.lower(), phrase
+    raw = yaml.safe_load(text)
+    for name, f in {**raw["items"], **raw["materials"]}.items():
+        assert "https://" in f["source"] and f["url"].startswith("https://") and f["url"] in f["source"], name
+        assert f["confidence"] in ("high", "medium", "low"), name
+    eq = raw["equivalents"]
+    assert eq["phone_charge_url"] in eq["phone_charge_source"] and eq["phone_charge_confidence"] in ("high", "medium", "low")
+    assert 0 < eq["phone_charge_wh"]["low"] <= eq["phone_charge_wh"]["high"]
+    c = raw["contamination"]
+    assert c["quote"] in c["text"] and c["url"] in c["source"] and c["confidence"] in ("high", "medium", "low")
+    assert c["rule_of_thumb"] is False and c["threshold"] is None  # a quoted statement, and no invented number
+    for r in c["rates"]:
+        assert r["scope"] in ("local", "national") and "https://" in r["source"], r
+    assert raw["problem"]["text"] and all("https://" in s["source"] and s["scope"] for s in raw["problem"]["sources"])
+    assert set(raw["items"]) == {"can", "bottle"}  # the only items a published mass was found for
+
+
+def test_the_ucf_rules_cite_ucfs_page_and_say_which_items_are_our_assumption():
+    raw = yaml.safe_load(UCF.read_text())
+    assert raw["source"]["url"] == "https://fo.ucf.edu/recycling-at-ucf/" and raw["source"]["read"]
+    assert set(raw["basis"]) == set(raw["items"]) and set(raw["basis"].values()) == {"stated", "assumed"}
+    assert {i for i, b in raw["basis"].items() if b == "assumed"} == {"cup", "food container", "chip bag"}
+    # what UCF's page states outright
+    assert raw["items"]["can"] == raw["items"]["bottle"] == raw["items"]["paper"] == raw["items"]["cardboard"] == "recycling"
+    assert raw["items"]["wine glass"] == raw["items"]["napkin"] == raw["items"]["banana"] == "trash"
+    summary = RuleBook.load(UCF, "config").summary()
+    assert summary["source"]["publisher"] == "UCF Facilities Operations"
+    assert {i["label"]: i["basis"] for i in summary["items"]}["chip bag"] == "assumed"
+    glass = next(c for c in summary["compare"] if c["item"].startswith("Glass"))
+    assert (glass["ucf"], glass["orange_county"], glass["orlando"]) == ("trash", "recycling", "recycling")
+    assert RuleBook.load(HOME, "config").summary()["source"] is None  # the example file claims no source
 
 
 def test_an_item_with_no_mass_is_counted_but_claims_nothing_and_no_factors_file_means_no_equivalents(tmp_path):
@@ -109,12 +151,72 @@ def test_an_item_with_no_mass_is_counted_but_claims_nothing_and_no_factors_file_
     assert Factors.load(tmp_path / "missing.yaml").equivalents(["can"]) is None
 
 
-def test_the_cost_of_contamination_is_a_flagged_rule_of_thumb(tmp_path):
+def test_the_cost_of_contamination_is_a_quoted_statement_with_no_invented_threshold(tmp_path):
     _, _, story = lived(tmp_path)
     c = story.view(at(2, 20))["contamination"]
-    assert c["wrong_in_recycling"] == 1 and c["spoils_bag_at"] == 2 and not c["at_risk"]
-    assert c["rule_of_thumb"] is True and c["confidence"] == "low" and c["text"].startswith("2 wrong items can spoil a bag")
+    assert c["wrong_in_recycling"] == 1 and c["spoils_bag_at"] is None and c["at_risk"]  # no threshold: one wrong item is the risk
+    assert c["quote"] == "Non-recyclable items can contaminate a whole load of recyclables, causing them to all be thrown out."
+    assert c["attribution"].startswith("US EPA") and c["url"] == "https://www.epa.gov/recycle/frequent-questions-recycling"
+    assert c["rule_of_thumb"] is False and c["confidence"] == "medium" and c["quote"] in c["text"]
+    assert [r["scope"] for r in c["rates"]] == ["local", "national"]
     assert c["good_items_sharing_the_bin"] == 1  # Tuesday's one can shared the bin with the cup
+    # a file with a threshold of its own still works, and an unsourced file is flagged as a rule of thumb
+    old = Factors({"contamination": {"spoils_bag_at": 2, "text": "{n} wrong items can spoil a bag."}}, loaded=True).contamination(1, 0)
+    assert old["spoils_bag_at"] == 2 and not old["at_risk"] and old["rule_of_thumb"] and old["text"].startswith("2 wrong items")
+
+
+# --- the story the screen plays ---
+
+
+def test_the_headline_and_the_flow_replay_the_weeks_disposals_in_order(tmp_path):
+    _, waste, story = lived(tmp_path)
+    v = story.view(at(2, 20))
+    assert v["headline"] == "This week this table kept 4 items out of landfill and got 2 wrong."
+    flow = v["flow"]
+    assert [(i["item"], i["bin"], i["correct"]) for i in flow["items"]] == [
+        ("can", "recycling", True), ("bottle", "recycling", True), ("napkin", "trash", True), ("cup", "recycling", False),
+        ("can", "trash", False), ("can", "recycling", True), ("can", "recycling", True), ("food container", "trash", True)]
+    assert flow["items"][3]["rule"].startswith("Cups go in trash at UCF") and flow["items"][3]["belongs_in"] == "trash"
+    # where the recyclables went adds up to what Waste Watch counted
+    assert (flow["recyclable_seen"], flow["recycled"], flow["recyclable_in_trash"], flow["not_binned"]) == (5, 4, 1, 0)
+    assert flow["recycled"] == waste.metrics()["recycled"] and flow["wrong_in_recycling"] == waste.metrics()["contamination"] == 1
+    assert v["problem"]["text"].startswith("UCF collects recycling single-stream") and len(v["problem"]["sources"]) == 5
+    assert Factors({}, loaded=True).problem is None
+
+
+def test_a_recyclable_that_never_reaches_a_bin_is_said_so_and_an_empty_week_has_its_own_headline(tmp_path):
+    carried = ObservationRecorded(event_id="o-9", ts=at(0, 9), camera_id=CAM, frame_ref=None,
+                                  tracks=[Track(track_id=9, label="bottle", confidence=0.9, box=BOX)])
+    _, _, story = lived(tmp_path, [carried, *toss(at(0, 10), 1, "can", "recycling")])
+    v = story.view(at(0, 20))
+    assert (v["flow"]["recyclable_seen"], v["flow"]["recycled"], v["flow"]["not_binned"]) == (2, 1, 1)
+    assert v["headline"] == "This week this table kept 1 item out of landfill and got none wrong."
+    assert story.view(at(8, 9))["headline"] == "Nothing has gone into the bins at this table yet this week."
+
+
+def test_the_loop_counts_what_the_log_holds_and_claims_a_trend_only_with_two_weeks(tmp_path):
+    def played(n, hour, item, correct):
+        return RoundScored(event_id=f"r{n}", ts=at(2, hour), round_id=f"r{n}", session_id="s", players=1, item=item, correct=correct,
+                           seconds=4, path_len=3, score=80 if correct else 0)
+
+    rounds = [played(1, 13, "cup", True), played(2, 14, "soda can", False), played(3, 15, "napkin", True)]
+    bus, _, story = lived(tmp_path, [*WEEK, PracticeAdded(ts=at(2, 12), label="cup"), *rounds])
+    loop = story.view(at(2, 20))["loop"]
+    assert loop["seen"] == 2 and loop["taught"] == 1  # the cup and the can; "teach me" was tapped on the cup
+    assert loop["practised"] == {"rounds": 2, "right": 1}  # the napkin round is not practice: nobody got a napkin wrong
+    assert loop["weeks"] == [{"week_start": "2026-10-05", "disposals": 8, "mistakes": 2, "by_item": {"cup": 1, "can": 1}}]
+    assert not loop["trend"]["available"] and loop["trend"]["previous"] is None and "second week" in loop["trend"]["text"]
+
+    # the next week, with one mistake: now there is a week to compare with, and it is still called a direction
+    async def more():
+        for e in [*toss(at(7, 10), 30, "cup", "recycling"), *toss(at(7, 11), 31, "can", "recycling")]:
+            await bus.publish(e)
+
+    asyncio.run(more())
+    loop = story.view(at(8, 9))["loop"]
+    assert loop["trend"] == {"available": True, "previous": 2, "current": 1,
+                             "text": "1 wrong this week against 2 last week (measured; small numbers, so a direction, not a result)."}
+    assert [w["mistakes"] for w in loop["weeks"]] == [2, 1]
 
 
 # --- the moment of disposal ---
@@ -126,7 +228,7 @@ def test_the_feed_is_newest_first_with_the_rule_for_a_wrong_one(tmp_path):
     assert [f["item"] for f in feed] == ["food container", "can", "can", "can", "cup", "napkin", "bottle", "can"]
     cup = next(f for f in feed if f["item"] == "cup")
     assert (cup["bin"], cup["correct"], cup["belongs_in"]) == ("recycling", False, "trash")
-    assert cup["rule"] == "Paper cups with a plastic lining go in trash at UCF: the lining cannot be pulped with paper."
+    assert cup["rule"] == "Cups go in trash at UCF: UCF does not recycle plastic cups, and it does not list paper cups, so they stay out too."
     assert cup["frame_ref"].startswith("frames:cam-door:") and cup["frame_stored"] is False and cup["in_practice"]
     assert all(f["correct"] == waste.disposed[f["item_id"]].correct for f in feed)  # Waste Watch stays the judge
     # a stored keyframe is said to be stored
@@ -235,7 +337,7 @@ def test_the_practice_set_ranks_the_weeks_mistakes_and_teach_me_adds_to_it(tmp_p
     assert [(r["item"], r["mistakes"], r["went_to"], r["belongs_in"], r["zone"]) for r in p["items"]] == [
         ("cup", 2, "recycling", "trash", "trash"), ("can", 1, "trash", "recycling", "recycling")]
     assert p["size"] == 2 and p["week_start"] == "2026-10-05" and p["rules"]["file"] == "config/sorting.yaml"
-    assert p["items"][0]["rule"].startswith("Paper cups with a plastic lining go in trash at UCF")
+    assert p["items"][0]["rule"].startswith("Cups go in trash at UCF")
 
     app = FastAPI()
     app.include_router(impact_router(story, publish=bus.publish, clock=lambda: at(2, 20)))
@@ -287,7 +389,7 @@ def test_the_same_event_stream_gets_different_verdicts_and_explanations_under_tw
         return {f["item"]: (f["correct"], f["rule"]) for f in story.view(at(0, 20))["feed"]}
 
     a, b = verdicts(ucf), verdicts(home)
-    assert a["cup"] == (False, "Paper cups with a plastic lining go in trash at UCF: the lining cannot be pulped with paper.")
+    assert a["cup"] == (False, "Cups go in trash at UCF: UCF does not recycle plastic cups, and it does not list paper cups, so they stay out too.")
     assert b["cup"] == (True, "Paper cups go in recycling at home: this kerbside programme accepts them empty, lids off.")
     assert a["food container"][0] is False and "go in trash at UCF" in a["food container"][1]
     assert b["food container"][0] is True and "go in recycling at home once they are rinsed" in b["food container"][1]

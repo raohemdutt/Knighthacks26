@@ -19,6 +19,9 @@ before a change rested on them; its search log is at the end of `hub-api-lifecyc
 Plumbing pass 2 (2026-10-10, 2:57 to 3:12 PM ET) added S49 to S59, re-opened S44, and wrote `contention.md`; its search
 log is at the end of `hub-api-lifecycle.md`.
 
+Plumbing pass 3 (2026-10-10, 8:30 to 9:10 PM ET) added S63 to S68 and re-opened S15 and S61; its search log is at the
+end of `hub-api-lifecycle.md`.
+
 ## Vendor and project documentation
 
 | Key | Source | Section | Type | URL | Opened | Cited in |
@@ -70,6 +73,7 @@ log is at the end of `hub-api-lifecycle.md`.
 | S46 | Zero to JupyterHub 4.3.3 | `jupyterhub/files/hub/jupyterhub_config.py`: `hub_bind_url`, `hub_connect_url` | https://github.com/jupyterhub/zero-to-jupyterhub-k8s/blob/4.3.3/jupyterhub/files/hub/jupyterhub_config.py | 2026-10-10 | idle |
 | S51 | vLLM b1388b1 | `vllm/config/cache.py`: `CacheConfig.gpu_memory_utilization` (L41-L48: fraction of GPU memory, default 0.9, a per-instance limit) | https://github.com/vllm-project/vllm/blob/b1388b1fbf5aaef47937fabe98931211684666a6/vllm/config/cache.py | 2026-10-10 | contention, placement |
 | S60 | vLLM b1388b1 | `vllm/v1/worker/utils.py`: `request_memory` (L403-L423: asks for the device's total memory times `gpu_memory_utilization` at start and raises when the free memory is less) | https://github.com/vllm-project/vllm/blob/b1388b1fbf5aaef47937fabe98931211684666a6/vllm/v1/worker/utils.py | 2026-10-10 | placement |
+| S68 | jupyter_server v2.19.0 and v2.20.0 | `jupyter_server/services/contents/largefilemanager.py` (identical at both tags) and, at v2.20.0, `jupyter_server/serverapp.py` (`max_body_size` 512 MiB, L1237-L1248; `contents_manager_class` default `AsyncLargeFileManager`, L1617-L1621) | https://github.com/jupyter-server/jupyter_server/blob/v2.20.0/jupyter_server/serverapp.py#L1237-L1248 | 2026-10-10 | transfers |
 
 ## Issues and pull requests
 
@@ -105,6 +109,11 @@ log is at the end of `hub-api-lifecycle.md`.
 | S59 | Ilan's Team Comms page, FYI of Sat 2:47 PM ET (the pods moved to SJC; quota off there; code must take the hub from a setting) | https://app.notion.com/p/3f596ef5fec58163bbefd0e7ea5acea7 | 2026-10-10 | pass 2 log |
 | S61 | R30 task page (pod D's hour-0 facts at 21:35 UTC: 64.0 GiB visible to torch, 62 GB RAM with 58 GB available, idle 9 W; the vLLM build and checkpoint left in pod D's home; engine ready 523 s after a cold start; nothing listening on port 8000 after 22:21 UTC) | https://app.notion.com/p/3f596ef5fec58118b653e4f3ae2d3024 | 2026-10-10 | placement |
 | S62 | `lab/refine/metrics.jsonl` lines 14, 24, 29, 34, 35 and 36 (LoRA peak 8.7 GiB on the R9700; on pod C the teacher's 2.88 tok/s, 120.3 W decoding, 297 s warm start, 10.2 W idle loaded, 106.8 W in request windows), main at 7208c59 | https://github.com/raohemdutt/Knighthacks26/blob/7208c59/lab/refine/metrics.jsonl | 2026-10-10 | placement |
+| S63 | Read-only probes by plumbing pass 3, 2026-10-11 00:30 to 00:39 UTC (M25 SJC accounts C and D, their servers, quota and Jupyter roots; M26 clock; M27 `python -m lab ready`) | `lab/refine/research/plumbing/measurements-2026-10-10.md` | 2026-10-10 | hub, transfers |
+| S64 | `lab/credits.py` (module docstring, `_assess_unmetered`), `lab/package_pull.py` and `lab/package_server.py` (module docstrings), `lab/transfer.py` (module docstring, `push_file`, the `--via` option, default `files`), `lab/placement.py` and `jetson/egress.py` (L56-L61, L119-L120), main at fba248a | https://github.com/raohemdutt/Knighthacks26/blob/fba248a/lab/transfer.py | 2026-10-10 | hub, transfers, contention |
+| S65 | `lab/refine/metrics.jsonl` lines 38 to 41 (R13 on pod D: 5.55 s to ready by form launch, first request 11.7 s, keep-alive 70 min, 0 credits per hour unmetered) and 49 to 58 (R18 on pod D: the proxy's answers by case, 294.1 s restart to ready, streamed and buffered first byte, 5 MB body, 20 concurrent), main at fba248a | https://github.com/raohemdutt/Knighthacks26/blob/fba248a/lab/refine/metrics.jsonl | 2026-10-10 | hub, proxy, contention |
+| S66 | `lab/README.md` at fba248a: "Controlling the pods: `lab/controller.py`" (R13's measured paragraph), "Failure-mode map of the proxy path on SJC (R18)" and "The same build on pod D, from scripts alone (R30)" | https://github.com/raohemdutt/Knighthacks26/blob/fba248a/lab/README.md | 2026-10-10 | hub, proxy |
+| S67 | Task pages R10, R13, R14, R15, R17, R18, R31 and R43 as fetched by plumbing pass 3 (R18's open stopped-pod clause, Sat 7:06 PM; R43's placement rule from Ilan, signed Sat 9:08 PM ET by the Ilan1 agent's clock; R14 and R15 handed to Hemdutt's agents, Sat 5:23 PM ET) | https://app.notion.com/p/3f596ef5fec5813082b348fe147d739e | 2026-10-10 | proxy, contention |
 
 ## Opened but not cited
 

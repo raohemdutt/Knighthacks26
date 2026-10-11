@@ -1,0 +1,129 @@
+{
+  "_about": "Where a person or SPOT can walk on the kit's 04_ASSETS/fictional_floor_plan.png. Ours, not the sponsor's: the kit has no walkway, wall or door data. Every rectangle is [x0, y0, x1, y1], normalised 0..1 on the whole picture (x / width, y / height, origin top-left), the same frame as waypoint_pixels.json.",
+  "source": "Traced by eye from the kit's floor-plan picture (gridded crops at 3.6x, read to about +/- 6 px). The picture is an illustration: it has no scale, and it does not always show where a room is entered or which stairs join the two floors. Doors with seen=false and both stair pairings are our assumption and are marked as such.",
+  "image": "fictional_floor_plan.png",
+  "width": 1095,
+  "height": 595,
+  "cell_px": 4.6,
+  "clearance_px": 3,
+  "snap_px": 30,
+  "rules": [
+    "Walkable = inside a room, corridor, steps or door rectangle, and at least clearance_px from every obstacle rectangle. Everything else (walls, outdoors, roofs) is not walkable.",
+    "Obstacles are the big things: tanks, turbines, pump and compressor skids, cabinets, crates, pipe racks. Single thin pipes on the floor are not traced.",
+    "A waypoint pin marks an area and its tip often sits on the equipment the area is named after; such a pin is snapped to the nearest walkable cell within snap_px."
+  ],
+  "floors": {
+    "1": {
+      "rooms": [
+        {"id": "yard", "name": "the entrance yard", "kind": "yard", "wp": "WP01", "rect": [0.062, 0.725, 0.148, 0.9]},
+        {"id": "entrance-path", "name": "the entrance path", "kind": "corridor", "rect": [0.148, 0.84, 0.18, 0.9]},
+        {"id": "entrance-steps", "name": "the entrance steps", "kind": "steps", "rect": [0.153, 0.72, 0.178, 0.84]},
+        {"id": "west-passage", "name": "the west passage", "kind": "corridor", "rect": [0.153, 0.6, 0.182, 0.72]},
+        {"id": "electrical", "name": "the Electrical Room", "kind": "room", "wp": "WP02", "rect": [0.062, 0.43, 0.143, 0.7]},
+        {"id": "south-corridor", "name": "the south corridor", "kind": "corridor", "rect": [0.153, 0.56, 0.33, 0.6]},
+        {"id": "junction", "name": "the corner by the pipe gallery", "kind": "corridor", "rect": [0.279, 0.538, 0.33, 0.6]},
+        {"id": "gallery-south", "name": "the walkway south of the pipe gallery", "kind": "corridor", "rect": [0.279, 0.512, 0.612, 0.538]},
+        {"id": "turbine-north", "name": "Turbine Hall North", "kind": "room", "wp": "WP08", "rect": [0.265, 0.538, 0.418, 0.86]},
+        {"id": "turbine-south", "name": "Turbine Hall South", "kind": "room", "wp": "WP09", "rect": [0.44, 0.55, 0.56, 0.85]},
+        {"id": "west-catwalk", "name": "the catwalk west of the pipe gallery", "kind": "corridor", "rect": [0.276, 0.283, 0.293, 0.512]},
+        {"id": "north-corridor", "name": "the north corridor", "kind": "corridor", "rect": [0.11, 0.258, 0.293, 0.283]},
+        {"id": "workshop", "name": "the workshop", "kind": "room", "rect": [0.06, 0.15, 0.142, 0.415]},
+        {"id": "pump-bay", "name": "the Pump Bay", "kind": "room", "wp": "WP04", "rect": [0.152, 0.08, 0.32, 0.25]},
+        {"id": "cooling-loop", "name": "the Cooling Loop room", "kind": "room", "wp": "WP03", "rect": [0.152, 0.305, 0.276, 0.553]},
+        {"id": "north-catwalk", "name": "the catwalk north of the pipe gallery", "kind": "corridor", "rect": [0.283, 0.247, 0.394, 0.275]},
+        {"id": "mid-corridor", "name": "the corridor beside the stairs", "kind": "corridor", "rect": [0.394, 0.1, 0.418, 0.275]},
+        {"id": "gallery-north", "name": "the walkway north of the pipe gallery", "kind": "corridor", "rect": [0.394, 0.275, 0.612, 0.298]},
+        {"id": "pipe-gallery", "name": "the Pipe Gallery crossover", "kind": "corridor", "wp": "WP05", "rect": [0.397, 0.298, 0.42, 0.49]},
+        {"id": "compressor", "name": "the Compressor Area", "kind": "room", "wp": "WP06", "rect": [0.45, 0.095, 0.58, 0.238]},
+        {"id": "east-passage", "name": "the Control Room Corridor", "kind": "corridor", "wp": "WP07", "rect": [0.565, 0.298, 0.645, 0.622]},
+        {"id": "valve-station", "name": "the Valve Station", "kind": "room", "wp": "WP10", "rect": [0.584, 0.64, 0.642, 0.85]}
+      ],
+      "doors": [
+        {"id": "d-electrical", "name": "the Electrical Room door", "seen": true, "rect": [0.143, 0.625, 0.153, 0.69]},
+        {"id": "d-pump-bay", "name": "the Pump Bay opening", "seen": true, "rect": [0.247, 0.25, 0.28, 0.258]},
+        {"id": "d-cooling", "name": "the Cooling Loop door", "seen": false, "rect": [0.205, 0.283, 0.27, 0.305]},
+        {"id": "d-compressor", "name": "the Compressor Area opening", "seen": true, "rect": [0.525, 0.238, 0.553, 0.275]},
+        {"id": "d-turbine-south", "name": "the Turbine Hall South door", "seen": false, "rect": [0.445, 0.538, 0.474, 0.55]},
+        {"id": "d-valve", "name": "the Valve Station door", "seen": false, "rect": [0.586, 0.622, 0.608, 0.64]}
+      ],
+      "obstacles": [
+        {"kind": "cabinets", "label": "the switchgear cabinets", "wp": "WP02", "rect": [0.068, 0.445, 0.137, 0.543]},
+        {"kind": "cabinets", "label": "the lower cabinets", "wp": "WP02", "rect": [0.068, 0.6, 0.137, 0.648]},
+        {"kind": "bench", "label": "the workshop benches", "rect": [0.06, 0.15, 0.1, 0.415]},
+        {"kind": "skid", "label": "the west pump skid", "wp": "WP04", "rect": [0.163, 0.105, 0.193, 0.228]},
+        {"kind": "skid", "label": "the east pump skid", "wp": "WP04", "rect": [0.207, 0.105, 0.245, 0.228]},
+        {"kind": "skid", "label": "the pump between the skids", "wp": "WP04", "rect": [0.193, 0.178, 0.207, 0.228]},
+        {"kind": "pump", "label": "a small pump", "rect": [0.258, 0.1, 0.275, 0.137]},
+        {"kind": "tank", "label": "the grey tank", "wp": "WP04", "rect": [0.287, 0.1, 0.313, 0.233]},
+        {"kind": "tank", "label": "the west cooling tanks and pipework", "wp": "WP03", "rect": [0.157, 0.336, 0.228, 0.55]},
+        {"kind": "tank", "label": "the east cooling tank and pipework", "wp": "WP03", "rect": [0.243, 0.336, 0.276, 0.55]},
+        {"kind": "pipes", "label": "the cooling pipework", "wp": "WP03", "rect": [0.228, 0.44, 0.243, 0.55]},
+        {"kind": "pipes", "label": "the west pipe runs", "wp": "WP05", "rect": [0.293, 0.3, 0.397, 0.5]},
+        {"kind": "pipes", "label": "the east pipe runs", "wp": "WP05", "rect": [0.42, 0.3, 0.556, 0.5]},
+        {"kind": "stairs", "label": "the north stairs", "rect": [0.423, 0.098, 0.448, 0.236]},
+        {"kind": "compressor", "label": "the compressor", "wp": "WP06", "rect": [0.468, 0.118, 0.546, 0.203]},
+        {"kind": "cabinets", "label": "the control cabinets", "wp": "WP07", "rect": [0.614, 0.268, 0.645, 0.505]},
+        {"kind": "cabinets", "label": "a cabinet", "rect": [0.616, 0.53, 0.645, 0.565]},
+        {"kind": "cabinets", "label": "a cabinet", "rect": [0.622, 0.585, 0.645, 0.618]},
+        {"kind": "tank", "label": "the blue tank", "wp": "WP08", "rect": [0.335, 0.552, 0.397, 0.616]},
+        {"kind": "crates", "label": "the blue crates", "wp": "WP08", "rect": [0.27, 0.645, 0.298, 0.776]},
+        {"kind": "turbine", "label": "the north turbine", "wp": "WP08", "rect": [0.33, 0.636, 0.378, 0.846]},
+        {"kind": "skid", "label": "the auxiliary unit", "wp": "WP08", "rect": [0.39, 0.655, 0.412, 0.8]},
+        {"kind": "cabinets", "label": "a cabinet", "rect": [0.265, 0.8, 0.292, 0.86]},
+        {"kind": "stairs", "label": "the centre stairs", "rect": [0.44, 0.722, 0.47, 0.85]},
+        {"kind": "tank", "label": "the grey tank", "wp": "WP09", "rect": [0.482, 0.556, 0.54, 0.612]},
+        {"kind": "turbine", "label": "the south turbine", "wp": "WP09", "rect": [0.485, 0.645, 0.526, 0.842]},
+        {"kind": "pipes", "label": "the pipe riser", "wp": "WP09", "rect": [0.543, 0.575, 0.56, 0.8]},
+        {"kind": "valves", "label": "the valve manifold", "wp": "WP10", "rect": [0.586, 0.66, 0.6, 0.8]},
+        {"kind": "skid", "label": "the green unit", "wp": "WP10", "rect": [0.62, 0.655, 0.642, 0.705]},
+        {"kind": "tank", "label": "the small tank", "wp": "WP10", "rect": [0.62, 0.745, 0.642, 0.832]}
+      ],
+      "connectors": [
+        {"id": "centre-stairs", "name": "the centre stairs", "x": 0.455, "y": 0.708, "paired": "assumed"},
+        {"id": "north-stairs", "name": "the north stairs", "x": 0.456, "y": 0.17, "paired": "assumed"}
+      ]
+    },
+    "2": {
+      "rooms": [
+        {"id": "battery", "name": "the Battery Room", "kind": "room", "wp": "WP11", "rect": [0.712, 0.15, 0.832, 0.37]},
+        {"id": "landing", "name": "the north landing", "kind": "corridor", "rect": [0.775, 0.1, 0.836, 0.135]},
+        {"id": "spine", "name": "the corridor between the rooms", "kind": "corridor", "rect": [0.836, 0.1, 0.858, 0.385]},
+        {"id": "hx-area", "name": "the Heat Exchanger Area", "kind": "room", "wp": "WP12", "rect": [0.864, 0.09, 0.972, 0.368]},
+        {"id": "cross-corridor", "name": "the cross corridor", "kind": "corridor", "rect": [0.712, 0.385, 0.972, 0.42]},
+        {"id": "warehouse", "name": "the Warehouse Corridor", "kind": "room", "wp": "WP13", "rect": [0.712, 0.432, 0.833, 0.69]},
+        {"id": "aux-bay", "name": "the Auxiliary Systems Bay", "kind": "room", "wp": "WP14", "rect": [0.866, 0.432, 0.972, 0.69]},
+        {"id": "dock", "name": "the Inspection Dock", "kind": "room", "wp": "WP15", "rect": [0.712, 0.715, 0.972, 0.93]}
+      ],
+      "doors": [
+        {"id": "d-battery", "name": "the Battery Room door", "seen": false, "rect": [0.832, 0.32, 0.836, 0.348]},
+        {"id": "d-hx", "name": "the Heat Exchanger Area door", "seen": false, "rect": [0.924, 0.368, 0.942, 0.385]},
+        {"id": "d-warehouse-north", "name": "the Warehouse Corridor north door", "seen": false, "rect": [0.798, 0.42, 0.822, 0.432]},
+        {"id": "d-warehouse-south", "name": "the Warehouse Corridor south door", "seen": true, "rect": [0.794, 0.69, 0.816, 0.715]},
+        {"id": "d-aux", "name": "the Auxiliary Systems Bay door", "seen": true, "rect": [0.884, 0.69, 0.912, 0.715]}
+      ],
+      "obstacles": [
+        {"kind": "cabinets", "label": "the battery racks", "wp": "WP11", "rect": [0.728, 0.185, 0.768, 0.247]},
+        {"kind": "cabinets", "label": "the battery racks", "wp": "WP11", "rect": [0.784, 0.185, 0.822, 0.247]},
+        {"kind": "cabinets", "label": "the battery racks", "wp": "WP11", "rect": [0.728, 0.271, 0.768, 0.318]},
+        {"kind": "cabinets", "label": "the battery racks", "wp": "WP11", "rect": [0.784, 0.271, 0.822, 0.318]},
+        {"kind": "bench", "label": "the benches", "rect": [0.716, 0.338, 0.8, 0.368]},
+        {"kind": "pipes", "label": "the pipe rack", "wp": "WP12", "rect": [0.866, 0.095, 0.897, 0.345]},
+        {"kind": "pipes", "label": "the riser", "wp": "WP12", "rect": [0.899, 0.095, 0.909, 0.345]},
+        {"kind": "exchanger", "label": "the heat exchanger", "wp": "WP12", "rect": [0.923, 0.105, 0.948, 0.325]},
+        {"kind": "crates", "label": "the boxes", "wp": "WP13", "rect": [0.728, 0.452, 0.758, 0.6]},
+        {"kind": "crates", "label": "the boxes by the door", "wp": "WP13", "rect": [0.728, 0.635, 0.758, 0.676]},
+        {"kind": "skid", "label": "the pumps and pipework", "wp": "WP14", "rect": [0.872, 0.432, 0.964, 0.55]},
+        {"kind": "cabinets", "label": "the grey cabinet", "wp": "WP14", "rect": [0.866, 0.558, 0.879, 0.603]},
+        {"kind": "skid", "label": "the unit by the east wall", "wp": "WP14", "rect": [0.932, 0.555, 0.964, 0.602]},
+        {"kind": "barrier", "label": "the west barrier", "wp": "WP15", "rect": [0.757, 0.735, 0.772, 0.9]},
+        {"kind": "barrier", "label": "the east barrier", "wp": "WP15", "rect": [0.898, 0.735, 0.914, 0.9]},
+        {"kind": "cabinets", "label": "a cabinet", "rect": [0.716, 0.86, 0.745, 0.905]},
+        {"kind": "skid", "label": "the unit in the corner", "rect": [0.925, 0.83, 0.966, 0.912]}
+      ],
+      "connectors": [
+        {"id": "centre-stairs", "name": "the centre stairs", "x": 0.848, "y": 0.41, "paired": "assumed"},
+        {"id": "north-stairs", "name": "the north stairs", "x": 0.797, "y": 0.118, "paired": "assumed"}
+      ]
+    }
+  }
+}

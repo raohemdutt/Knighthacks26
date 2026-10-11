@@ -12,11 +12,14 @@ field (T0, the standing ticket whose experiment queue lists them, unless the exp
 experiment is now is those rows folded in ledger order (fold, load): the first add defines it, each amend changes
 it, the latest result is its result. A second add of the same id is ignored and reported as a problem, so two
 writers that raced cannot replace a definition. Writers hold a lock of their own (experiments.lock in the state
-dir) while they read the ledger and append, so an id is never handed out twice.
+dir) while they read the ledger and append, so one state dir never hands an id out twice. Clones with state dirs of
+their own share nothing, so an add without an id is refused by a ledger that holds no E number beyond the seeds: it
+cannot know which numbers T0 handed out since, and the caller gives the id, one above the highest on T0.
 
 The definition (DEFINITION_FIELDS):
 
-    id              E1, E2, ... (the next free E number when none is given), or a research id such as KE2
+    id              E1, E2, ... (the ledger's next free E number when none is given, see add), or a research id
+                    such as KE2
     title           a short name for the queue line, or None
     track           telemetry, learning, plumbing or kernels: the refinement track whose metric it moves
     task            the Task Board ID the experiment belongs to; T0 by default
@@ -71,6 +74,8 @@ The verb, `python -m lab experiment <sub-verb>`:
         ledger rows whose refs.run_id is one of those ids, one value per row in ledger order
     rank [--track T] [--all] [--print]
     seed                                  add the experiments of T0's queue (SEEDS) that the ledger lacks
+    run ID [...]                          run a kernels experiment on pod B and record its verdict
+                                          (lab/machine/experiment_run.py; python -m lab experiment run -h)
 
 Each call answers with one JSON line, except --print on list and rank: that prints the queue as checklist lines, one
 per experiment, in the form the standing ticket T0 keeps them (`- [ ] E3 (kernels) ...`, checked once done or
@@ -89,7 +94,8 @@ import sys
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
-from lab.machine import ledger
+from lab.machine import ledger, record
+from lab.machine import refine_formats
 from lab.machine import verdict as verdict_math
 from lab.machine.lock import FileLock
 
@@ -97,7 +103,7 @@ log = logging.getLogger("lab.experiments")
 
 __all__ = [
     "VERB_ADD", "VERB_AMEND", "VERB_RESULT", "VERBS", "TRACKS", "KINDS", "BETTER", "STATUSES", "SETTABLE_STATUSES",
-    "QUEUED", "RUNNING", "DONE", "DROPPED", "MEASURE", "RATE", "HIGHER", "LOWER", "DEFAULT_TASK", "DEFAULT_ACTOR",
+    "QUEUED", "RUNNING", "DONE", "DROPPED", "MEASURE", "RATE", "HIGHER", "LOWER", "DEFAULT_TASK",
     "DEFINITION_FIELDS", "LOCK_FILE", "SEEDS", "ExperimentError",
     "validate_definition", "default_min_n", "planned_min_n", "expected_gain", "score_of", "fold", "load", "next_id",
     "add", "amend", "record_result", "runs_from_ledger", "rank", "checklist", "checklist_line", "seed", "main",
@@ -108,7 +114,7 @@ VERB_AMEND = "experiment amend"
 VERB_RESULT = "experiment result"
 VERBS = (VERB_ADD, VERB_AMEND, VERB_RESULT)
 
-TRACKS = ("telemetry", "learning", "plumbing", "kernels")
+TRACKS = refine_formats.TRACKS
 MEASURE, RATE = "measure", "rate"
 KINDS = (MEASURE, RATE)
 HIGHER, LOWER = "higher", "lower"
@@ -120,9 +126,6 @@ SETTABLE_STATUSES = (QUEUED, RUNNING, DROPPED)
 OPEN_STATUSES = (QUEUED, RUNNING)
 
 DEFAULT_TASK = "T0"
-DEFAULT_ACTOR = "cli"
-ACTOR_ENV = "LAB_ACTOR"
-TIER_ENV = "LAB_TIER"
 LOCK_FILE = "experiments.lock"
 LOCK_TIMEOUT = 30.0
 
@@ -133,7 +136,7 @@ _OPTIONAL_TEXT = ("title", "expected", "node", "note")
 
 _ID = re.compile(r"[A-Za-z][A-Za-z0-9._-]{0,31}")
 _ARM = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,15}")
-_METRIC = re.compile(r"[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+")
+_METRIC = refine_formats.METRIC_NAME
 _TASK = re.compile(r"[A-Z]{1,3}[0-9]{1,3}")
 _E_NUMBER = re.compile(r"E([0-9]+)")
 
@@ -425,11 +428,26 @@ def load(state_dir: str | os.PathLike[str] | None = None) -> dict[str, dict[str,
 
 
 def next_id(existing: Iterable[str]) -> str:
-    """One past the highest E number in existing and in SEEDS, so a new experiment never takes the id of a line
-    T0 already has, seeded or not."""
+    """One past the highest E number in existing and in SEEDS, so a new experiment never takes one of T0's seeded
+    ids or an id of the ledger existing comes from. It cannot see an E number T0 handed out through another ledger:
+    add takes it only from a ledger that already holds an E number beyond the seeds."""
     taken = [*existing, *(seed_def["id"] for seed_def in SEEDS)]
     numbers_taken = [int(m.group(1)) for eid in taken if (m := _E_NUMBER.fullmatch(eid))]
     return f"E{max(numbers_taken, default=0) + 1}"
+
+
+def _own_e_numbers(existing: Iterable[str]) -> list[str]:
+    """The E-numbered ids in existing that are not among the seeds."""
+    seeded = {seed_def["id"] for seed_def in SEEDS}
+    return [eid for eid in existing if _E_NUMBER.fullmatch(eid) and eid not in seeded]
+
+
+def _no_id_here() -> str:
+    seeded = sorted((seed_def["id"] for seed_def in SEEDS if _E_NUMBER.fullmatch(seed_def["id"])),
+                    key=lambda eid: int(eid[1:]))
+    return (f"no id was given, and this ledger holds no E-numbered experiment beyond T0's seeded {seeded[0]} to "
+            f"{seeded[-1]}, so it cannot know which E numbers T0 has handed out since; give the id, one above the "
+            "highest E number on T0")
 
 
 # --- writing --------------------------------------------------------------------------------------------------
@@ -440,30 +458,29 @@ def _lock(state_dir: str | os.PathLike[str] | None) -> FileLock:
     return FileLock(path, timeout=LOCK_TIMEOUT)
 
 
-def _actor() -> str:
-    return (os.environ.get(ACTOR_ENV) or "").strip() or DEFAULT_ACTOR
-
-
-def _tier() -> str | None:
-    return (os.environ.get(TIER_ENV) or "").strip().lower() or None
-
-
 def _append(verb: str, task: str, payload: dict[str, Any], outcome: str, *, state_dir: Any,
             refs: Mapping[str, Any] | None = None, source: str | None = None) -> int:
-    row: dict[str, Any] = {"actor": _actor(), "tier": _tier(), "task": task, "verb": verb, "outcome": outcome,
-                           "metrics": {}, "refs": dict(refs or {}), "experiment": payload}
-    if source:
-        row["source"] = source
-    return ledger.append(row, state_dir=state_dir)
+    """Write one experiment row through record.record, which names the writer (actor and tier) the way every
+    ledger row is named."""
+    extra = {"source": source} if source else {}
+    return record.record(verb, outcome, refs=dict(refs or {}), task=task, state_dir=state_dir, experiment=payload,
+                         **extra)
 
 
 def add(fields: Mapping[str, Any], *, state_dir: str | os.PathLike[str] | None = None,
         source: str | None = None) -> dict[str, Any]:
-    """Add a new experiment and return it as folded, with its "seq". The id is the next free E number when fields
-    give none. ExperimentError, writing nothing, when the id is taken or the definition has problems."""
+    """Add a new experiment and return it as folded, with its "seq". When fields give no id, the id is the ledger's
+    next free E number (next_id), and only a ledger that already holds an E number beyond SEEDS gives one: a fresh
+    state dir, or one holding only the seeds, cannot know which numbers T0 handed out since, so add refuses there
+    and the caller gives the id. ExperimentError, writing nothing, when no id can be given, the id is taken or the
+    definition has problems."""
     with _lock(state_dir):
         experiments = load(state_dir)
-        eid = fields.get("id") or next_id(experiments)
+        eid = fields.get("id")
+        if not eid:
+            if not _own_e_numbers(experiments):
+                raise ExperimentError([_no_id_here()])
+            eid = next_id(experiments)
         if eid in experiments:
             raise ExperimentError([f"{eid} already exists (status {experiments[eid]['status']}); change it with "
                                    f"add {eid} --amend, or pick another id"])
@@ -948,12 +965,18 @@ def _run_seed(args: argparse.Namespace) -> dict[str, Any]:
     return {"ok": True, "outcome": "seeded", **outcome}
 
 
+def _run_run(args: argparse.Namespace) -> dict[str, Any]:
+    from lab.machine import experiment_run   # imported here: only a run needs the pod and queue helpers
+    return experiment_run.main(args.rest)
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m lab experiment", description=main.__doc__)
-    subs = parser.add_subparsers(dest="sub", required=True, metavar="{add,list,result,rank,seed}")
+    subs = parser.add_subparsers(dest="sub", required=True, metavar="{add,list,result,rank,seed,run}")
 
     p = subs.add_parser("add", help="add an experiment, or change one with --amend")
-    p.add_argument("id", nargs="?", help="E<n> when left out")
+    p.add_argument("id", nargs="?", help="when left out, the next E number of a ledger that already holds one "
+                                         "beyond T0's seeds; otherwise give it, one above the highest on T0")
     _definition_args(p)
     p.add_argument("--amend", action="store_true", help="change an existing experiment")
     p.add_argument("--status", choices=SETTABLE_STATUSES, help="with --amend: queued, running or dropped")
@@ -986,11 +1009,17 @@ def _parser() -> argparse.ArgumentParser:
 
     p = subs.add_parser("seed", help="add the experiments of T0's queue that the ledger lacks")
     p.set_defaults(run=_run_seed)
+
+    p = subs.add_parser("run", add_help=False, help="run a kernels experiment on pod B and record its verdict")
+    p.add_argument("rest", nargs=argparse.REMAINDER, help="the arguments of lab/machine/experiment_run.py")
+    p.set_defaults(run=_run_run)
     return parser
 
 
 def main(argv: Sequence[str]) -> dict[str, Any] | int:
     """Experiments as ledger rows: add, list, result (read by the verdict math), rank, and T0's checklist (--print)."""
+    if list(argv[:1]) == ["run"]:   # every argument after run is the runner's own, -h included
+        return _run_run(argparse.Namespace(rest=list(argv[1:])))
     args = _parser().parse_args(list(argv))
     return args.run(args)
 

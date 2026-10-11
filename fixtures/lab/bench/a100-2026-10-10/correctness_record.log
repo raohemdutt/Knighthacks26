@@ -1,0 +1,6 @@
+[correctness 02:33:14] text-kitchen: 128 tokens in 2.427 s
+[correctness 02:33:17] image-bars: 128 tokens in 2.415 s
+[correctness 02:33:19] text-schedule: 128 tokens in 2.104 s
+[correctness 02:33:21] image-shapes: 128 tokens in 2.173 s
+record exit 0
+0 MiB

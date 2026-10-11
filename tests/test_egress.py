@@ -258,3 +258,41 @@ def test_the_browser_connector_may_read_any_website():
     groups = egress.host_groups(Path(__file__).parent.parent / "config", {})
     assert "*" in groups["connector:browser"]
     assert egress.any_host_groups(groups) == {"connector:browser"}
+
+
+def test_counting_rules_come_before_the_established_accept_and_count_each_address_once():
+    shared = {"hub": ({"104.18.0.205"}, set()), "neon": ({"104.18.0.205", "3.3.3.3"}, set())}
+    v4 = egress.render(4, shared, DNS, offline=False)
+    established = v4.index("--ctstate ESTABLISHED")
+    assert v4.index('--comment "acct:hub"') < established and v4.index('--comment "acct:lan"') < established
+    assert '-A ATLAS_EGRESS -d 104.18.0.205 -m comment --comment "acct:hub"\n' in v4  # no target: count and fall through
+    assert v4.count("-d 104.18.0.205 -m comment --comment \"acct:") == 1  # shared address: counted for hub only
+    assert '-d 3.3.3.3 -m comment --comment "acct:neon"' in v4
+    offline = egress.render(4, shared, DNS, offline=True)
+    assert "acct:hub" not in offline and "acct:lan" in offline
+
+
+def test_snapshot_reports_every_byte_from_the_counting_rule_and_connections_from_the_accept():
+    counters = egress.parse_counters("""\
+[900:1200000] -A ATLAS_EGRESS -d 104.18.0.205/32 -m comment --comment "acct:hub"
+[3:180] -A ATLAS_EGRESS -d 104.18.0.205/32 -m comment --comment "hub" -j ACCEPT
+[40:9000] -A ATLAS_EGRESS -d 100.64.0.0/10 -m comment --comment "acct:tailnet"
+""")
+    snap = egress.snapshot(counters, {"hub": ["dub.aupcloud.io"]}, [], offline=False)
+    hub = next(a for a in snap["allowed"] if a["name"] == "hub")
+    assert (hub["bytes"], hub["packets"], hub["connections"]) == (1200000, 900, 3)
+    assert next(a for a in snap["allowed"] if a["name"] == "tailnet")["bytes"] == 9000
+    old = egress.snapshot(egress.parse_counters(SAVE), {"hub": []}, [], offline=False)  # rules from before this change
+    assert next(a for a in old["allowed"] if a["name"] == "hub")["bytes"] == 1300
+    assert not any(a["name"] == "tailnet" for a in old["allowed"])
+
+
+def test_a_group_that_may_reach_any_website_says_its_bytes_cover_named_addresses_only():
+    counters = egress.parse_counters("""\
+[50:70000] -A ATLAS_EGRESS -d 9.9.9.9/32 -m comment --comment "acct:connector:browser"
+[4:240] -A ATLAS_EGRESS -d 9.9.9.9/32 -m comment --comment "connector:browser" -j ACCEPT
+""")
+    snap = egress.snapshot(counters, {"connector:browser": ["html.duckduckgo.com", "*"], "hub": ["dub.aupcloud.io"]}, [], offline=False)
+    browser = next(a for a in snap["allowed"] if a["name"] == "connector:browser")
+    assert browser["open_web"] is True and browser["bytes_cover"] == "named addresses only" and browser["bytes"] == 70000
+    assert "open_web" not in next(a for a in snap["allowed"] if a["name"] == "hub")

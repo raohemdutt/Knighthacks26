@@ -1,4 +1,4 @@
-from contexts.voice.text import clean_transcript, speech_for_answer
+from contexts.voice.text import SentenceStream, clean_transcript, find_wake, speech_for_answer, without_wake
 
 
 def test_times_links_and_frame_refs_are_made_sayable():
@@ -28,3 +28,45 @@ def test_the_offline_demo_model_reads_its_evidence_lines_only():
 def test_whisper_noise_tags_are_dropped():
     assert clean_transcript(" [BLANK_AUDIO] ") == ""
     assert clean_transcript("(music) Where are my keys? [noise]") == "Where are my keys?"
+
+
+def test_hey_atlas_is_the_wake_phrase_however_whisper_spells_it():
+    for heard in ("Hey Atlas.", "hey, atlas", "Hey Atlus!", "Hey at last", "Okay Atlas", "  Hay Atlas  ", "Hey Alice", "Atlas.",
+                  "Okay, Atlas Okay Atlas Okay Atlas Okay Atlas"):
+        assert find_wake(heard) == "", heard
+
+
+def test_a_question_in_the_same_breath_is_passed_on():
+    assert find_wake("Hey Atlas, where are my keys?") == "where are my keys?"
+    assert find_wake("Hey Atlas. you") == ""  # a stray word is not a question
+
+
+def test_other_speech_is_not_a_wake():
+    for heard in ("where are my keys", "the atlas is on the shelf", "hey there", "Alice is in the kitchen", ""):
+        assert find_wake(heard) is None, heard
+
+
+def test_an_answer_is_cut_into_sentences_as_it_arrives():
+    s = SentenceStream()
+    got = []
+    for piece in ["You left them", " on the desk at 8 PM.", " They were next to", " the laptop.", " Anything else?"]:
+        got += s.feed(piece)
+    assert got == ["You left them on the desk at 8 PM.", "They were next to the laptop."]  # the last is not finished yet
+    assert s.flush() == "Anything else?"
+
+
+def test_a_very_short_sentence_is_joined_to_the_next_one():
+    s = SentenceStream()
+    assert s.feed("Sure. The keys are on the desk. ") == ["Sure. The keys are on the desk."]
+    assert s.feed("1. ") == [] and s.flush() == "1."
+
+
+def test_a_time_with_a_dot_is_not_a_sentence_end():
+    s = SentenceStream()
+    assert s.feed("It was at 3.40 in the afternoon, I think. ") == ["It was at 3.40 in the afternoon, I think."]
+
+
+def test_hey_atlas_said_again_is_not_part_of_the_question():
+    assert without_wake("hey Atlas hey Atlas what time is it") == "what time is it"
+    assert without_wake("Hey Atlas.") == ""
+    assert find_wake("Hey Atlas, hey Atlas, where are my keys") == "where are my keys"

@@ -5,6 +5,7 @@
 - WS  /ws                      every bus event as JSON, live (the PWA's feed); while an answer is being written,
                                also {"type": "agent.answer.delta", "question_id", "text"} pieces (not logged; A11)
 - POST /api/ask                {text} -> the answer with citations (also on /ws)
+- POST /api/ask/stream         the same as lines of JSON as the answer is written: {"delta"}..., then {"final"} (the box's voice)
 - GET  /api/approvals          pending approval cards
 - POST /api/approvals/{id}     {decision: approve|deny} (ntfy buttons call this)
 - POST /api/teach              {task, instruction, ...} -> approval card for the export
@@ -33,6 +34,8 @@
 - GET  /api/circle/events      the Circle's shared calendar: agreed events, soonest first
 - POST /api/circle/proposals   {title, start, end, location?, invitees?} -> approval card for a plan with friends (G1)
 - GET  /api/circle/sharing     what leaves this box for the Circle: settings, outbox counts, Neon up or down
+- GET  /api/circle/face-share  friends whose boxes can recognise you and the other way round; POST .../{friend}/share,
+                               /revoke, /review, /forget, /trust-key. 409 while it is switched off (the default)
 - GET  /api/invites[/{name}]   calendar invites (.ics) created after approval, to open or share (K2)
 - GET  /api/places             place packs; POST one as YAML/JSON (validated) (S5)
 - GET  /api/play/campus-route  ?from=ucf.union&to=ucf.hec[&depart=&due=] or to=friend:<member> (S5)
@@ -40,6 +43,7 @@
 - GET  /api/places/map/{pack} the pack's campus map (buildings, paths; © OpenStreetMap contributors) for the phone to draw
 - GET  /api/learning        taught tasks: stage, progress, scores, deployed models (X10)
 - GET  /api/learning/lab    training runs as stories for the Learning lab screen; /api/learning/lab/{run_id} is one
+- GET  /api/learning/lab/bench    the lab's benchmark and energy rows; /experiments is its timeline; POST /routing/simulate
 - GET  /api/profile         who this box serves: name, description, vocabulary, overridden config files
 - GET  /api/league          the League: this week's standings, worst and best with reasons, stake, dares, team waste line
 - GET  /api/league/me       this member's breakdown by target
@@ -72,13 +76,14 @@ from uuid import uuid4
 
 import yaml
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from contexts.gateway.bootstrap import Atlas, Settings, build
 from contexts.agent.application.rule_compiler import RuleCompileError, compile_rule
 from contexts.circle.api import circle_router
+from contexts.circle.face_share_api import face_share_router
 from contexts.circle.application.sharing import CircleOffline
 from contexts.day.api import day_router
 from contexts.day.application.coach_feedback import coach_feedback_router
@@ -100,7 +105,12 @@ from contracts.experience import ApprovalDecided, QuestionAsked
 from contracts.learning import TaskSpec
 from contexts.capture.api import capture_router
 from contexts.learning.api import learning_router
+from contexts.learning.application.lab_runs import attach as attach_trainer_runs
+from contexts.learning.application.lab_runs import default_runs_dir
 from contexts.learning.lab_api import lab_router
+from contexts.learning.application.lab_experiments import imported_state_dir
+from contexts.learning.lab_bench_api import lab_bench_router
+from contexts.learning.lab_import import lab_import_router
 from contexts.telemetry.runtime_stats import build_runtime_stats
 from runtime.api import runtime_router
 from runtime.stats_api import stats_router
@@ -133,6 +143,7 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
     atlas = atlas or build(settings)
     sockets: set[WebSocket] = set()
     waiting: dict[str, asyncio.Future] = {}
+    streams: dict[str, asyncio.Queue] = {}  # question_id -> pieces for a /api/ask/stream caller
 
     async def fan_out(e: Event) -> None:
         if e.type == "agent.answer.generated" and (f := waiting.pop(e.question_id, None)) and not f.done():
@@ -157,9 +168,13 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         """Called from the model's worker thread with each new piece of an answer (A11): straight to the phones,
         never to the log. The final agent.answer.generated is unchanged."""
         loop = app.state.loop
-        if loop is not None and sockets:
+        if loop is None:
+            return
+        if sockets:
             data = json.dumps({"type": "agent.answer.delta", "question_id": question_id, "text": text})
             loop.call_soon_threadsafe(lambda: loop.create_task(send_all(data)))
+        if (pieces := streams.get(question_id)) is not None:
+            loop.call_soon_threadsafe(pieces.put_nowait, text)
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -194,7 +209,7 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
     # GET /api/impact/story, GET/POST /api/impact/practice: the Impact screen (404 when Waste Watch is not set up)
     app.include_router(impact_router(atlas.impact, publish=atlas.bus.publish, guard=authorized))
     if atlas.policy:  # GET/PUT /vault/policy, POST /vault/wipe/request, POST /vault/wipe, GET /vault/egress
-        app.include_router(vault_router(atlas.policy, atlas.bus, wiper=atlas.wiper, guard=authorized))
+        app.include_router(vault_router(atlas.policy, atlas.bus, wiper=atlas.wiper, guard=authorized, pictures=atlas.pictures))
     if atlas.identity:  # /identity/settings, /identity/enroll/start, status, photos, scan/*; /identity/members, present, expressions (P9)
         # A person can be linked to a Circle member by id; the ids come from the configured Circle, nothing else crosses over.
         app.include_router(identity_router(atlas.identity, atlas.bus, guard=authorized, circle_members=lambda: (
@@ -203,13 +218,21 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         app.include_router(capture_router(atlas.capture))
     if atlas.learning:  # GET /api/learning (X10)
         app.include_router(learning_router(atlas.learning, publish=atlas.bus.publish, guard=authorized))
+    # GET /api/learning/lab/bench, /experiments, POST /routing/simulate: the lab's recorded numbers (before {run_id})
+    app.include_router(lab_bench_router(imported_dir=imported_state_dir(atlas.settings.data_dir)))  # + the ledger the lab pushed
+    if atlas.lab_view:  # the trainer's own step files, folded into the same stories as they are written
+        attach_trainer_runs(atlas.lab_view, default_runs_dir(atlas.settings.data_dir))
+        # POST /api/learning/lab/import: a run's telemetry.jsonl (or eval scores, or manifest) pushed from the lab's side
+        app.include_router(lab_import_router(atlas.lab_view, atlas.bus.publish, guard=authorized, data_dir=atlas.settings.data_dir))
     if atlas.lab_view:  # GET /api/learning/lab, /api/learning/lab/{run_id}: the Learning lab screen
         app.include_router(lab_router(atlas.lab_view, current_model=lambda: {
             "version": atlas.qa.runtime.model_info().version, "source": "the runtime on this box (the model that answers)"}))
     # GET /api/circle/events, /api/circle/sharing: read-only, and they answer in every state (no Circle, no Neon)
     # POST /api/circle/proposals: an approval card for a plan with friends (G1)
     app.include_router(circle_router(atlas.bus, circle=atlas.circle, sharing=atlas.sharing, presence=atlas.presence,
-                                     board=atlas.board, config_dir=atlas.settings.config_dir, guard=authorized))
+                                     presence_sync=atlas.presence_sync, board=atlas.board, config_dir=atlas.settings.config_dir, guard=authorized))
+    # /api/circle/face-share: every endpoint answers 409 while face sharing is off (the default) or there is no Circle
+    app.include_router(face_share_router(atlas.face_share, atlas.bus, guard=authorized))
     # GET /api/league, /api/league/me (200 in every state); POST /api/league/stake, /api/league/challenges -> approval cards
     app.include_router(league_router(atlas.bus, league=atlas.league, guard=authorized))
     if atlas.spot:  # /api/spot/*: the inspection (SPOT) dashboard; 200 in every state, also without a kit
@@ -238,6 +261,41 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
             raise HTTPException(504, "the model took too long") from None
         finally:
             waiting.pop(qid, None)
+
+    @app.post("/api/ask/stream", dependencies=[Depends(authorized)])
+    async def ask_stream(body: AskBody):
+        """/api/ask for a caller that wants to start using the answer before it is finished (the box's voice speaks the
+        first sentence while the rest is still being written). Lines of JSON: {"delta": text} for each piece as it comes,
+        then one {"final": <the agent.answer.generated event>}, or {"error": why}."""
+        loop = asyncio.get_running_loop()
+        qid = uuid4().hex
+        answer = waiting[qid] = loop.create_future()
+        pieces = streams[qid] = asyncio.Queue()
+
+        async def lines():
+            try:
+                await atlas.bus.publish(QuestionAsked(question_id=qid, text=body.text))  # may answer before returning
+                deadline = loop.time() + ASK_TIMEOUT_S
+                while True:
+                    next_piece = asyncio.ensure_future(pieces.get())
+                    done, _ = await asyncio.wait({next_piece, answer}, timeout=max(0.0, deadline - loop.time()),
+                                                 return_when=asyncio.FIRST_COMPLETED)
+                    if next_piece in done:
+                        yield json.dumps({"delta": next_piece.result()}) + "\n"
+                        continue
+                    next_piece.cancel()
+                    if answer in done:
+                        while not pieces.empty():
+                            yield json.dumps({"delta": pieces.get_nowait()}) + "\n"
+                        yield json.dumps({"final": answer.result().model_dump(mode="json")}) + "\n"
+                    else:
+                        yield json.dumps({"error": "the model took too long"}) + "\n"
+                    return
+            finally:
+                waiting.pop(qid, None)
+                streams.pop(qid, None)
+
+        return StreamingResponse(lines(), media_type="application/x-ndjson")
 
     @app.get("/api/approvals")
     async def approvals():
