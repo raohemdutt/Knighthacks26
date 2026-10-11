@@ -78,6 +78,9 @@ from contexts.learning.application.loop_energy import (ACTS, IDLE_W, integrate, 
                                                        window)
 from lab import controller  # noqa: E402
 from lab.lab_push import Box, PodSource, Relay, complete_lines  # noqa: E402
+from lab.lab_push import CONTENT_TYPES  # noqa: E402
+
+CONTENT_TYPES.setdefault("run", "application/json")   # the trainer's run.json (kind=run), which lab_push's Box does not list
 from lab.machine import ready  # noqa: E402
 from lab.proxy import PodLink  # noqa: E402
 
@@ -554,6 +557,7 @@ def run_loop(args: argparse.Namespace) -> int:
     relays: dict[str, Relay] = {}
     lines_posted: dict[str, int] = {}
     finished: dict[str, bool] = {a: False for a in ACTS}
+    card_extras: dict[str, dict[str, Any]] = {}   # per act: the run card's fields the relay posts (card_fields)
     failed = False
     deadline = t0 + args.max_seconds
     while now_s() < deadline:
@@ -615,13 +619,14 @@ def run_loop(args: argparse.Namespace) -> int:
                 if "box" in answer:
                     lines_posted[act] = answer.get("lines", lines_posted.get(act, 0))
                 version = f"atlas-group-{TASK}-{run_id}"
+                pkg_bytes = package_bytes(rows, act)
                 try:
-                    man = relay.one_file("manifest", f"data/packages/{version}/manifest.json")
+                    man = post_manifest(source, box, run_id, version, pkg_bytes, out / act)
                 except Exception as exc:
-                    man = {"state": f"read failed ({type(exc).__name__})"}
-                say(f"{clock()} {act}: manifest {man['box'].brief() if 'box' in man else man}")
-                if not args.no_scores:
-                    say(f"{clock()} {act}: stand-in scores {post_scores(source, box, run_id, out / act)}")
+                    man = f"read failed ({type(exc).__name__})"
+                say(f"{clock()} {act}: manifest {man}")
+                if not args.no_scores:   # the pod runs the stand-in gate (GATE=fake in live_loop_pod.sh)
+                    say(f"{clock()} {act}: stand-in scores {post_scores(source, box, run_id, out / act, stand_in=True)}")
                 finished[act] = True
                 if act == "duo":
                     rows_c = read_rank1(final=True)
@@ -631,6 +636,11 @@ def run_loop(args: argparse.Namespace) -> int:
                 done_ids = {a: acts[a].get("run_id") if finished[a] else None for a in ACTS}
                 part = compare(every, {a: {"run_id": r} for a, r in done_ids.items()}, traces, source, out, t0,
                                now_s() - t0 if all(finished.values()) else None, stamp, teachers, source_c)
+                run_json = read_json(source, f"group-runs/{run_id}/runs/{run_id}/run.json")
+                extras = card_fields(run_json, rank1_run(source_c, every, act, run_id), part["acts"].get(act), pkg_bytes)
+                card_extras[act] = extras
+                add_card_fields(part, card_extras)
+                say(f"{clock()} {act}: trainer settings {post_run(box, run_id, run_json, extras, out / act)}")
                 say(f"{clock()} {act}: comparison so far {post_comparison(box, part)}")
                 if all(finished.values()):
                     listed(act, run_id)
@@ -654,6 +664,11 @@ def run_loop(args: argparse.Namespace) -> int:
         acts = {a: dict(v) for a, v in state.acts.items()}
     (out / "stages.jsonl").write_text("".join(json.dumps(s) + "\n" for s in stages), encoding="utf-8")
     comparison = compare(stages, acts, traces, source, out, t0, total, stamp, teachers, source_c)
+    for act, extras in card_extras.items():   # the card fields again with the final joules (package size and settings kept)
+        run_json = read_json(source, f"group-runs/{acts[act]['run_id']}/runs/{acts[act]['run_id']}/run.json")
+        card_extras[act] = card_fields(run_json, rank1_run(source_c, stages, act, acts[act]["run_id"]),
+                                       comparison["acts"].get(act), extras.get("package_bytes"))
+    add_card_fields(comparison, card_extras)
     with state.lock:
         state.comparison = comparison
     (out / "comparison.json").write_text(json.dumps(comparison, indent=2) + "\n", encoding="utf-8")
@@ -676,13 +691,37 @@ def run_loop(args: argparse.Namespace) -> int:
     return 0 if all(finished.values()) and not failed else 1
 
 
-def post_scores(source: PodSource, box: Box, run_id: str, save: Path) -> str:
-    """The stand-in gate's scores.json for the first member, its event moved onto the trainer's run id."""
+STAND_IN_ANSWERS = frozenset({"fake answer", "fake miss"})   # lab/eval_gate_fake.py's canned answers
+STAND_IN_NOTE = ("a stand-in gate: the live loop scored canned answers (fake answer, fake miss) with no model servers, "
+                 "so these scores and this p-value are not a real held-out check and the model is never deployed from them")
+
+
+def is_stand_in(scores: dict[str, Any]) -> bool:
+    """True when every answer the scores.json lists is one of the stand-in gate's canned ones (or it says gate fake)."""
+    if scores.get("gate_mode") == "fake":
+        return True
+    answers = {side.get("answer") for item in scores.get("items") or [] if isinstance(item, dict)
+               for side in (item.get("before"), item.get("after")) if isinstance(side, dict)}
+    return bool(answers) and answers <= STAND_IN_ANSWERS
+
+
+def mark_stand_in(scores: dict[str, Any], known: bool = False) -> dict[str, Any]:
+    """The scores.json with an added `gate: {stand_in: true, note}` when the gate was the stand-in. Nothing else in it
+    changes, and a real gate's scores come back untouched."""
+    if not (known or is_stand_in(scores)):
+        return scores
+    gate = scores.get("gate") if isinstance(scores.get("gate"), dict) else {}
+    return {**scores, "gate": {**gate, "stand_in": True, "note": STAND_IN_NOTE}}
+
+
+def post_scores(source: PodSource, box: Box, run_id: str, save: Path, stand_in: bool = False) -> str:
+    """The gate's scores.json for the first member, its event moved onto the trainer's run id, marked as the stand-in
+    gate (`gate.stand_in`) when it was one: `stand_in` says the relay knows it was, else the canned answers show it."""
     for member in ("ilan", "dom"):
         data = safe_read(source, f"group-runs/{run_id}/gate/{member}/scores.json")
         if not data:
             continue
-        body = json.loads(data)
+        body = mark_stand_in(json.loads(data), stand_in)
         if isinstance(body.get("event"), dict):
             body["event"]["run_id"] = run_id
         payload = json.dumps(body).encode()
@@ -690,6 +729,101 @@ def post_scores(source: PodSource, box: Box, run_id: str, save: Path) -> str:
         (save / "scores.json").write_bytes(payload)
         return box.post("eval", payload, run_id).brief()
     return "no scores.json on the pod"
+
+
+def package_bytes(stages: list[dict[str, Any]], act: str) -> int | None:
+    """The model file's size the pod wrote on the act's done line (live_loop_pod.sh), else None."""
+    for s in reversed(stages):
+        if s.get("act") == act and s.get("stage") == "done":
+            n = s.get("package_bytes")
+            return n if isinstance(n, int) and not isinstance(n, bool) and n > 0 else None
+    return None
+
+
+def read_json(source: PodSource | None, path: str) -> dict[str, Any] | None:
+    data = safe_read(source, path) if source is not None else None
+    try:
+        answer = json.loads(data) if data else None
+    except ValueError:
+        return None
+    return answer if isinstance(answer, dict) else None
+
+
+def rank1_run(source_c: PodSource | None, stages: list[dict[str, Any]], act: str, run_id: str) -> dict[str, Any] | None:
+    """Pod C's rank's run.json for an act that trained on both pods, else None."""
+    if source_c is None or "pod-c" not in le.trains_on(stages, act):
+        return None
+    stamp_of = run_id.removeprefix("live-").rsplit("-", 1)[0]
+    return read_json(source_c, f"l29/{stamp_of}/rank1/run.json")
+
+
+def _n(value: Any) -> float | None:
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def card_fields(run_json: dict[str, Any] | None, rank1: dict[str, Any] | None, act_row: dict[str, Any] | None,
+                pkg_bytes: int | None) -> dict[str, Any]:
+    """What the Training run card showed as "Not in the log": samples per training step (the trainer's batch times its
+    gradient accumulation, from run.json), energy per training example (the training power window's joules, every
+    training pod's, over the examples the trainer saw on every rank, else the training rows) and the package's model
+    file size (the pod's packaging step). A figure the files do not hold is None."""
+    m = (run_json or {}).get("metrics") or {}
+    batch, accum = _n(m.get("trainer.batch")), _n(m.get("trainer.grad_accum"))
+    per_step = int(batch * (accum or 1)) if batch is not None else None
+    seen = [_n(x.get("trainer.examples_seen")) for x in (m, ((rank1 or {}).get("metrics") or {})) if x]
+    seen = [x for x in seen if x is not None]
+    examples = int(sum(seen)) if seen else (int(n) if (n := _n(m.get("trainer.examples"))) is not None else None)
+    training = (act_row or {}).get("training") or {}
+    joules = _n(training.get("joules"))
+    return {"batch": int(batch) if batch is not None else None, "grad_accum": int(accum) if accum is not None else None,
+            "samples_per_step": per_step, "train_joules": round(joules, 1) if joules is not None else None,
+            "train_examples": examples,
+            "j_per_example": round(joules / examples, 2) if joules is not None and examples else None,
+            "package_bytes": pkg_bytes,
+            "source": {"samples_per_step": "run.json trainer.batch x trainer.grad_accum",
+                       "train_joules": "the training power window (kind=power stage training), every training pod",
+                       "train_examples": "run.json trainer.examples_seen, every rank (else trainer.examples)",
+                       "package_bytes": "the gguf's size on the pod (live_loop_pod.sh done line)"}}
+
+
+def add_card_fields(comparison: dict[str, Any], extras: dict[str, dict[str, Any]]) -> None:
+    """Each act's card fields into the comparison document as an added `card` object (nothing else changes)."""
+    for act, fields in extras.items():
+        row = comparison.get("acts", {}).get(act)
+        if isinstance(row, dict):
+            row["card"] = fields
+
+
+def post_manifest(source: PodSource, box: Box, run_id: str, version: str, pkg_bytes: int | None, save: Path) -> str:
+    """The package's manifest.json with an added `bytes` (the model file's size) when the pod measured it."""
+    data = safe_read(source, f"data/packages/{version}/manifest.json")
+    if not data:
+        return "no manifest.json on the pod"
+    body = json.loads(data)
+    if pkg_bytes is not None and isinstance(body, dict):
+        body["bytes"] = pkg_bytes
+    payload = json.dumps(body).encode()
+    save.mkdir(parents=True, exist_ok=True)
+    (save / "manifest.json").write_bytes(payload)
+    return box.post("manifest", payload, run_id).brief()
+
+
+def post_run(box: Box, run_id: str, run_json: dict[str, Any] | None, extras: dict[str, Any], save: Path) -> str:
+    """The trainer's run.json as kind=run (the box's learning.training.started: batch, steps, examples), with the card
+    fields added as `live_loop` (and as trainer.* metrics) beside what the trainer wrote."""
+    if not run_json:
+        return "no run.json on the pod"
+    body = dict(run_json)
+    body["live_loop"] = {k: v for k, v in extras.items() if v is not None}
+    metrics = dict(body.get("metrics") or {})
+    for key in ("samples_per_step", "train_joules", "train_examples", "j_per_example", "package_bytes"):
+        if extras.get(key) is not None:
+            metrics.setdefault(f"live_loop.{key}", extras[key])
+    body["metrics"] = metrics
+    payload = json.dumps(body).encode()
+    save.mkdir(parents=True, exist_ok=True)
+    (save / "run.json").write_bytes(payload)
+    return box.post("run", payload, run_id).brief()
 
 
 def safe_read(source: PodSource, path: str) -> bytes | None:

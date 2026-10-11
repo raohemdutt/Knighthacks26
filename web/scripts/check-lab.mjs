@@ -116,6 +116,30 @@ try {
   is("the swap buttons are where the lab put them, in LabRun", readFileSync(join(web, "components", "lab", "LabRun.tsx"), "utf8").includes("<DeployButton"), true);
   is("looking again never restarts a request in flight", /setInterval/.test(page) || !page.includes("usePoll([list, story], watching"), false);
 
+  // ---- stand-in gates, honest statuses and the run the tab opens on (lib/lab.ts)
+  const fake = { before: { answer: "fake miss" }, after: { answer: "fake answer" } };
+  is("a stand-in gate, by its flag", L.gateIsStandIn({ stand_in: true }), true);
+  is("a stand-in gate, by the box's explanation", L.gateIsStandIn({ rehearsal: "the test did not ask the model" }), true);
+  is("a stand-in gate, by a note that says so", L.gateIsStandIn({ note: "a stand-in test: not proof" }), true);
+  is("a stand-in gate, by its literal answers", L.gateIsStandIn({ items: [fake] }), true);
+  is("a real gate is not a stand-in", L.gateIsStandIn({ rehearsal: null, verdict: "Better by more than chance", items: [{ before: { answer: "x" }, after: { answer: "y" } }] }), false);
+  const loopRow = { run_id: "live-1011-081402-duo", status: "not deployed", run_status: "finished", started: "2026-10-11T12:14:12Z", ended: "2026-10-11T12:17:28Z", model_version: "atlas-group-desk", tested: { decision: "reject", n_items: 6, right_before: 0, right_after: 6, rehearsal: "fake answer" } };
+  const realRow = { run_id: "final2-t12", status: "rolled back", run_status: "finished", started: "2026-10-11T08:55:02Z", ended: "2026-10-11T11:16:22Z", model_version: "atlas-tool-calling-v2-a100-f2r4", tested: { decision: "deploy", n_items: 228, right_before: 95, right_after: 179, rehearsal: null } };
+  const oldRow = { run_id: "train-7dd098", status: "rolled back", run_status: "finished", started: "2026-10-11T03:23:12Z", ended: "2026-10-11T06:42:14Z", model_version: "atlas-tool-calling-train-7dd098", tested: { decision: "reject", n_items: 24, right_before: 24, right_after: 24, rehearsal: null } };
+  is("the tab opens on the newest run with a real gate", L.defaultRunId([loopRow, realRow, oldRow]), "final2-t12");
+  is("with no real gate, the newest run", L.defaultRunId([oldRow, { ...loopRow }].map((r) => ({ ...r, tested: null }))), "live-1011-081402-duo");
+  const onBox = { current: "atlas-tool-calling-v2-a100-f2r4", swapRolledBack: null };
+  is("its package is on the box now", L.runStatus(realRow, onBox).label, "On the box");
+  is("cleared by the gate, the box serves another", L.runStatus(realRow, { current: "atlas-base", swapRolledBack: null }).label, "Cleared by the gate");
+  is("rolled back only when the swap itself rolled back", L.runStatus(realRow, { current: "atlas-base", swapRolledBack: "atlas-tool-calling-v2-a100-f2r4" }).label, "Rolled back");
+  is("a refused run that was later taken off is not 'Rolled back'", L.runStatus(oldRow, onBox).label, "Not cleared by the gate");
+  is("a loop run reads Loop run and its time", L.runStatus(loopRow, onBox).label.startsWith("Loop run · "), true);
+  is("low confidence: power yes", L.lowConfidence({ low_confidence: true, unit: "W" }), true);
+  is("low confidence: a count never", L.lowConfidence({ low_confidence: true, unit: "steps" }), false);
+  is("one line for what the log lacks", L.missingLine(["Training speed", "Energy per training sample"]), "the relay did not post training speed or energy per training sample for this run");
+  is("a short model name", L.modelShort("atlas-tool-calling-v2-a100-f2r4"), "v2 f2r4");
+  is("a short base name", L.modelShort("atlas-base"), "base");
+
   // ---- the loop's five stages, from one run's own story (lib/labLoop.ts)
   const P = await load("labLoop");
   const when = (iso) => (iso ? "then" : "");
@@ -134,6 +158,10 @@ try {
   is("the test, in the gate card's counts", stages[3].value, "95 → 179 of 228");
   is("passed, not installed", `${stages[3].state},${stages[4].state},${stages[4].value}`, "done,waiting,not installed yet");
   is("a stage the run did not report says so", `${stages[1].state},${stages[1].note}`, "none,not reported for this run");
+  const standInStages = P.loopStages({ ...loopStory, eval: { ...loopStory.eval, decision: "reject", rehearsal: "fake answer" } }, when, { standIn: true });
+  is("a stand-in gate's caption shows no count", `${standInStages[3].value},${standInStages[3].note}`, "stand-in gate,no held-out score");
+  const onBoxStages = P.loopStages({ ...loopStory, package: { bytes: num(null), model_version: "v2" } }, when, { onBox: "v2" });
+  is("the box caption says when the run's model is on the box now", `${onBoxStages[4].state},${onBoxStages[4].value}`, "done,on the box now");
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }

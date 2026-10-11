@@ -112,6 +112,7 @@ class EvalReported(_Optional):
     split_sha256: str | None = None
     low_confidence: bool = False
     items: list[EvalItem] = []
+    gate: dict[str, Any] | None = None  # the relay's marker: {stand_in: true, note} when the gate was the live loop's stand-in
 
 
 class PackageBuilt(_Optional):
@@ -244,6 +245,7 @@ class LabView:
         self.requests: deque[RequestWindow] = deque(maxlen=keep)
         self.keep = keep
         self.rejected: list[dict[str, str]] = []  # optional events that did not have the fields this view needs
+        self.newest: datetime | None = None  # the newest event time this view has folded: "now" for a stalled run
 
     def subscribe(self, bus: EventBus) -> None:
         for prefix in ("learning.", "telemetry.train.step", "telemetry.gpu.power", "telemetry.request",
@@ -257,6 +259,8 @@ class LabView:
             self.run_ids.append(run_id)
 
     def on_event(self, e: Event) -> None:
+        if isinstance(getattr(e, "ts", None), datetime) and (self.newest is None or e.ts > self.newest):
+            self.newest = e.ts
         if isinstance(e, TaskCreated):
             self.tasks[e.task] = e
         elif isinstance(e, ActionProposed):
@@ -319,6 +323,7 @@ class LabView:
             out.append({"run_id": run_id, "task": s["task"]["slug"], "status": s["status"], "started": s["marks"]["run_start"],
                         "ended": s["marks"]["end"], "scores": ev["scores"], "model_version": ev["model_version"],
                         "verdict": ev["verdict"], "run_status": s["run_status"],
+                        "last_event_ts": s["last_event_ts"], "stalled": s["stalled"], "gate": s["gate"],
                         # the headline's inputs, so the screen can say "N of M" without opening every run
                         "tested": {"decision": ev["decision"], "n_items": ev["n_items"]["value"], "right_before": right["current"],
                                    "right_after": right["candidate"], "rehearsal": ev["rehearsal"],
@@ -386,6 +391,17 @@ class LabView:
         story["stage_strip"] = self._strip(progress, steps, evaluated, package, deployed)
         story.update(self._loop(run_id, story["stage_strip"]))
         story["run_status"] = _run_state(status, progress, story["stage_strip"])
+        loop = self.loop_acts.get(run_id)
+        last = max([p.ts for p in progress] + [st.ts for st in steps] + ([loop[0].ts] if loop else []), default=None)
+        story["last_event_ts"] = last
+        story["stalled"] = None
+        if story["run_status"] == "running" and last is not None and self.newest is not None                 and (self.newest - last).total_seconds() > STALL_S:
+            story["run_status"] = "stalled"  # `status` keeps what the log says; only the liveness changes
+            story["stalled"] = {"since": last, "newest_event": self.newest, "quiet_s": _secs(last, self.newest),
+                                "after_s": STALL_S,
+                                "reason": f"no step or stage event for this run in the {STALL_S // 60:g} minutes before "
+                                          "the newest event on this box (event time), so it is not training now"}
+        story["gate"] = ev["gate"]
         story["steps_so_far"] = len(steps)
         story["gaps"] = [{"label": n["label"], "reason": n["reason"]} for n in collect_numbers(story) if n["value"] is None]
         return mark_sample(story) if self.sample else story
@@ -616,7 +632,8 @@ class LabView:
         out: dict[str, Any] = {"scores": scores, "decision": evaluated.decision if evaluated else None,
                                "model_version": evaluated.model_version if evaluated else None,
                                "source": by_event(evaluated) if evaluated else None,
-                               "rehearsal": None}  # set below when the answers show the test did not ask the model
+                               "rehearsal": None,  # set below when the answers show the test did not ask the model
+                               "gate": None}  # {stand_in: true, note, ...} when the gate was the live loop's stand-in
         if report is None:
             for key, label, unit in (("n_items", "Held-out questions scored", "items"), ("n_groups", "Groups they stand on", "groups"),
                                      ("noise", "Run-to-run noise", "fraction"), ("p_value", "p-value", None)):
@@ -626,6 +643,7 @@ class LabView:
         e, r = report
         src = by_event(e)
         low = r.low_confidence
+        out["gate"] = stand_in_gate(r)
         out["n_items"] = num("Held-out questions scored", r.n_items, "items", src, low_confidence=low)
         out["n_groups"] = (num("Groups they stand on", r.n_groups, "groups", src, low_confidence=low) if r.n_groups is not None
                            else missing("Groups they stand on", "groups", "the eval report does not say"))
@@ -858,6 +876,23 @@ class LabView:
 
 
 STRIP = ("labeling", "training", "packaging", "offered")
+STALL_S = 300  # a running run with no step or stage event for this long (event time) is stalled, not training
+STAND_IN_ANSWERS = frozenset({"fake answer", "fake miss"})  # lab/eval_gate_fake.py's canned answers
+STAND_IN_NOTE = ("a stand-in gate: the live loop scored canned answers (fake answer, fake miss) with no model servers, "
+                 "so its scores and p-value are not a test of the model")
+
+
+def stand_in_gate(r: "EvalReported") -> dict[str, Any] | None:
+    """`{stand_in: true, note, marked_by}` when the run's gate was the live loop's stand-in, else None. Either the
+    relay marked it (the report's `gate.stand_in`) or every answer the report lists is one of the stand-in's canned
+    ones. A real gate's report is never changed: this is a field beside it."""
+    if isinstance(r.gate, dict) and r.gate.get("stand_in") is True:
+        note = r.gate.get("note")
+        return {"stand_in": True, "note": note if isinstance(note, str) and note.strip() else STAND_IN_NOTE, "marked_by": "relay"}
+    answers = [str(x.answer).strip().casefold() for it in r.items for x in (it.before, it.after)]
+    if answers and all(a in STAND_IN_ANSWERS for a in answers):
+        return {"stand_in": True, "note": STAND_IN_NOTE, "marked_by": "answers"}
+    return None
 
 
 def _run_state(status: str, progress: list[RunProgress], strip: list[dict[str, Any]]) -> str:

@@ -212,11 +212,11 @@ def test_the_endpoint_serves_the_file_and_rereads_it_when_it_changes(tmp_path):
     app = FastAPI()
     app.include_router(lab_bench_router(metrics_file=path, state_dir=tmp_path))
     with TestClient(app) as client:
-        assert client.get("/api/learning/lab/bench").json()["rows"] == 1
+        assert client.get("/api/learning/lab/bench?all=1").json()["rows"] == 1
         path.write_text(path.read_text() + json.dumps(row("proxy.status", 500, unit="http")) + "\n")
-        assert client.get("/api/learning/lab/bench").json()["rows"] == 2
+        assert client.get("/api/learning/lab/bench?all=1").json()["rows"] == 2
         path.write_text("\n".join(json.dumps(r) for r in recorded()) + "\n")
-        body = client.get("/api/learning/lab/bench").json()
+        body = client.get("/api/learning/lab/bench?all=1").json()
         assert body["rows"] == 73 and body["sweeps"][0]["node"] == "pod-a"
 
 
@@ -224,7 +224,7 @@ def test_the_endpoint_serves_the_committed_file_by_default():
     app = FastAPI()
     app.include_router(lab_bench_router())
     with TestClient(app) as client:
-        body = client.get("/api/learning/lab/bench").json()
+        body = client.get("/api/learning/lab/bench?all=1").json()
     check_bench(body, raw_lines(METRICS_FILE))
     assert body["file"] == "lab/refine/metrics.jsonl" and body["rows"] == len(read_rows(METRICS_FILE)[0])
 
@@ -310,7 +310,7 @@ def test_the_a100_reference_is_a_reference_on_colab_not_an_r9700_and_the_smoke_r
     app = FastAPI()
     app.include_router(lab_bench_router(metrics_file=path))
     with TestClient(app) as client:
-        payload = client.get("/api/learning/lab/bench").json()
+        payload = client.get("/api/learning/lab/bench?all=1").json()
     check_bench(payload, raw_lines(path))
     current, reference = payload["sweeps"]
     assert (current["chip"]["key"], current["other_chip"]) == ("strix-halo", False)
@@ -323,3 +323,48 @@ def test_the_a100_reference_is_a_reference_on_colab_not_an_r9700_and_the_smoke_r
     assert {names[n] for n in A100_LINES} == {"NVIDIA A100"} and {names[n] for n in (1, 2, 4, 5)} == {"Radeon R9700"}
     assert all(p["other_chip"] is True for p in every_point(payload) if p["line"] in (1, 2, 4, 5, 43, 73))
     assert [(g["name"], g["lines"]) for g in payload["power"]["other_chips"] if g["role"] == "earlier"] == [("Radeon R9700", [2, 3, 5])]
+
+
+def test_the_default_answer_is_a_small_summary_with_each_sessions_headline_and_the_whole_payload_moved_not_lost(tmp_path):
+    path = write(tmp_path, recorded())
+    app = FastAPI()
+    app.include_router(lab_bench_router(metrics_file=path))
+    with TestClient(app) as client:
+        body = client.get("/api/learning/lab/bench").json()
+        whole = client.get("/api/learning/lab/bench?all=1").json()
+        assert client.get("/api/learning/lab/bench/rows?all=1").json() == whole
+        assert client.get("/api/learning/lab/bench/rows").status_code == 400
+        assert client.get("/api/learning/lab/bench/rows?session=nope").status_code == 404
+        pod_a = next(s for s in body["sessions"] if s["id"] == POD_A_SESSION)
+        one = client.get(pod_a["rows_url"]).json()
+    check_bench(whole, raw_lines(path))
+    assert body["summary"] is True and body["rows"] == whole["rows"] == 73
+    for key in ("file", "low_confidence_rows", "repeated_rows", "other_chip_rows", "newest", "student", "power", "empty_reason"):
+        assert body[key] == whole[key], key
+    assert all(body[k] == [] for k in body["omitted"]["keys"]) and whole["sweeps"] and whole["series"]
+    assert sum(s["rows"] + s["repeated_rows"] for s in body["sessions"]) == 73
+    assert pod_a["chip"]["key"] == "strix-halo" and pod_a["lever"] and pod_a["rows"] > 0
+    raw = raw_lines(path)
+    for cell in pod_a["headline"]:
+        assert cell["batch"] in BATCHES and cell["confidence"]["level"] in ("low", "repeated", "single run")
+        for name in ("tok_s_stream", "tok_s_total", "ttft_s", "watts", "j_per_token"):
+            if cell[name] is not None:  # every headline number is a row of the file, by its line
+                assert raw[cell[name]["line"]]["value"] == cell[name]["value"]
+    assert any(c["tok_s_stream"] for c in pod_a["headline"])
+    assert one["session"] == POD_A_SESSION and one["rows"] == pod_a["rows"] + pod_a["repeated_rows"]
+
+
+def test_the_summary_is_built_once_per_version_of_the_file(tmp_path, monkeypatch):
+    import contexts.learning.lab_bench_api as api
+    calls = []
+    real = api.summary
+    monkeypatch.setattr(api, "summary", lambda *a: calls.append(1) or real(*a))
+    path = write(tmp_path, [row("proxy.status", 200, unit="http")])
+    app = FastAPI()
+    app.include_router(api.lab_bench_router(metrics_file=path))
+    with TestClient(app) as client:
+        assert client.get("/api/learning/lab/bench").json()["rows"] == 1
+        assert client.get("/api/learning/lab/bench").json()["rows"] == 1
+        assert len(calls) == 1
+        path.write_text(path.read_text() + json.dumps(row("proxy.status", 500, unit="http")) + chr(10))
+        assert client.get("/api/learning/lab/bench").json()["rows"] == 2 and len(calls) == 2

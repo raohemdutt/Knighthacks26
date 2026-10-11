@@ -15,7 +15,7 @@ import { Empty, ErrorBox, Loading } from "@/components/States";
 import ui from "@/components/ui.module.css";
 import { api } from "@/lib/api";
 import { useAtlasEvents } from "@/lib/atlas";
-import { STATUS_LABEL, clamp01, clock, isLive } from "@/lib/lab";
+import { type BoxNow, clamp01, clock, defaultRunId, hasRealGate, isLive, isLoopRun, modelShort, runStatus, storyIsStandIn } from "@/lib/lab";
 import { LAB_TABS, type LabTab } from "@/lib/labBench";
 import { LAB_GROUPS, type LabGroup, labGroupOf, labTabParam, labViewOf } from "@/lib/labTabs";
 import { useFetch } from "@/lib/useFetch";
@@ -108,13 +108,29 @@ export default function LabPage() {
   const list = useFetch((signal) => (params ? api.lab(false, signal) : new Promise<never>(() => {})), params ? "list" : "wait");
   // A list the gateway filled from its committed sample is no run at all: the screen shows only what the box recorded.
   const runs = list.data && !list.data.sample ? list.data.runs : [];
-  const runId = picked ?? (params?.run && runs.some((r) => r.run_id === params.run) ? params.run : (runs[0]?.run_id ?? null));
+  // The tab opens on the newest run with a real gate result; the loop's runs (a stand-in gate) stay one press away.
+  const runId = picked ?? (params?.run && runs.some((r) => r.run_id === params.run) ? params.run : defaultRunId(runs));
+  // What the box serves now, from the deploy record (the run list's own word as a fallback): "On the box" means this.
+  const deployView = useFetch((signal) => (params ? api.labDeploy(signal) : new Promise<never>(() => {})), params ? "deploy" : "wait");
+  const dv = deployView.data;
+  const box: BoxNow = {
+    current: dv?.current ?? list.data?.current_model?.version ?? null,
+    swapRolledBack: dv && dv.deploy.state === "failed" && dv.deploy.result?.rolled_back_to ? dv.deploy.version : null,
+  };
+  const realRun = [...runs].filter(hasRealGate).sort((a, b) => Date.parse(b.started ?? "") - Date.parse(a.started ?? ""))[0] ?? null;
+  const pickRun = (id: string) => {
+    setPicked(id);
+    const url = new URL(window.location.href);
+    url.searchParams.set("run", id);
+    window.history.replaceState(null, "", url);
+  };
   const story = useFetch((signal) => (runId ? api.labRun(runId, false, signal) : new Promise<never>(() => {})), runId ? `run-${runId}` : "none");
   const shown = story.data && !story.data.sample ? story.data : null;
   // a request still on its way is left to finish, never restarted (lib/usePoll.ts)
   useAtlasEvents(["learning.", "telemetry.train.step"], () => {
     if (!list.loading) list.reload();
     if (!story.loading) story.reload();
+    if (!deployView.loading) deployView.reload();
   });
   // A run read from the trainer's own files sends no event: until the box has a run, and while one is still going
   // (training, or cleared by the gate with packaging and the swap to come), look again every 3 s so it arrives
@@ -195,10 +211,11 @@ export default function LabPage() {
     );
 
   // The model: the loop, then the Training run view, then the Experiments view.
+  const shownRow = runs.find((r) => r.run_id === runId) ?? null;
   const model = (run: React.ReactNode) => (
     <>
       {tabs}
-      <LoopView story={shown} run={runs.find((r) => r.run_id === runId) ?? null} empty={!!list.data && runs.length === 0} forceReduced={params.reduce} />
+      <LoopView story={shown} run={shownRow} label={shownRow ? runStatus(shownRow, box).label : null} standIn={!!shown && storyIsStandIn(shown)} onBox={box.current} empty={!!list.data && runs.length === 0} forceReduced={params.reduce} />
       <section id="run" className={loop.view} aria-label="Training run" data-guide="lab:run">
         {named("run")}
         {run}
@@ -246,8 +263,8 @@ export default function LabPage() {
     runs.length > 1 ? (
       <div className={ui.segmented} role="group" aria-label="Which run">
         {runs.map((r) => (
-          <button key={r.run_id} type="button" className={`${ui.seg} ${r.run_id === runId ? ui.segOn : ""}`} aria-pressed={r.run_id === runId} onClick={() => setPicked(r.run_id)}>
-            {clock(r.started)} · {STATUS_LABEL[r.status]}
+          <button key={r.run_id} type="button" className={`${ui.seg} ${r.run_id === runId ? ui.segOn : ""}`} aria-pressed={r.run_id === runId} onClick={() => pickRun(r.run_id)} title={r.model_version ?? r.run_id}>
+            {isLoopRun(r) ? runStatus(r, box).label : `${clock(r.started)} · ${runStatus(r, box).label}`}
           </button>
         ))}
       </div>
@@ -260,7 +277,20 @@ export default function LabPage() {
       ) : !shown ? (
         <Loading what="this training run" />
       ) : (
-        <LabRun key={shown.run_id} story={shown} initial={params.t} forceReduced={params.reduce} picker={picker} onBoxChanged={story.reload} />
+        <LabRun key={shown.run_id}
+          story={shown}
+          initial={params.t}
+          forceReduced={params.reduce}
+          picker={picker}
+          onBoxChanged={() => {
+            story.reload();
+            deployView.reload();
+          }}
+          status={shownRow ? runStatus(shownRow, box) : null}
+          boxNow={box.current}
+          realRun={realRun && realRun.run_id !== shown.run_id ? { id: realRun.run_id, label: `the ${clock(realRun.started)} run${realRun.model_version ? ` (${modelShort(realRun.model_version)})` : ""}` } : null}
+          onPickRun={pickRun}
+        />
       )}
     </>,
   );
