@@ -151,6 +151,26 @@ async def speak(text: str, voice: str, rate: str, path: Path) -> None:
 
 
 
+
+# Every scene fades out to the page colour and the next fades in (Dom: nothing should just vanish on a cut). The dip
+# sits above everything; it is fully up across the gap between scenes, where the world cuts to its next shot.
+DIP_STYLE = "position:absolute;inset:0;background:var(--surface);opacity:0;pointer-events:none"
+DIP_IN, DIP_OUT = 0.5, 0.55
+
+
+def dips(scenes: list[dict], t0: float, t1: float = 1e9) -> list[str]:
+    """GSAP lines on `tl` for the dips that fall inside [t0, t1), at local time (minus t0)."""
+    out = []
+    for k, sc in enumerate(scenes):
+        end = sc["start"] + sc["duration"]
+        if k + 1 < len(scenes) and t0 <= end < t1 + 1:
+            a = end - 0.05 - DIP_IN - t0
+            out.append(f'      tl.fromTo("#dip", {{ opacity: 0 }}, {{ opacity: 1, duration: {DIP_IN}, ease: "sine.inOut", immediateRender: false }}, {max(0.0, a):.3f});')
+        if k > 0 and t0 - 0.01 <= sc["start"] < t1:
+            out.append(f'      tl.fromTo("#dip", {{ opacity: 1 }}, {{ opacity: 0, duration: {DIP_OUT}, ease: "sine.inOut", immediateRender: false }}, {sc["start"] + 0.05 - t0:.3f});')
+    return out
+
+
 # How the voice says a word that it would otherwise misread (the caption keeps the written word).
 PRONOUNCE = {r"YOLO": "Yoh-loh"}
 
@@ -269,6 +289,7 @@ def main() -> int:
       <div class="soft-grain"></div>
 {nl.join(hosts)}
       <div id="host-captions" data-track-kind="captions" data-composition-id="captions" data-composition-src="compositions/captions.html" data-start="0" data-duration="{total:.1f}" data-track-index="4" data-width="1920" data-height="1080"></div>
+      <div id="dip" style="{DIP_STYLE}"></div>
 {nl.join(audio)}
     </div>
     <script>
@@ -286,6 +307,7 @@ def main() -> int:
       const clock = {{ t: 0 }};
       tl.to(clock, {{ t: {total:.1f}, duration: {total:.1f}, ease: "none", onUpdate: () => world.render(clock.t) }}, 0);
 {nl.join(calls)}
+{nl.join(dips(scenes, 0.0))}
       window.__timelines["atlas"] = tl;
       tl.seek(0); world.render(0);
       if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
@@ -321,6 +343,7 @@ def main() -> int:
       <div class="soft-grain"></div>
 {host}
       <div id="host-{cid}" data-track-kind="captions" data-composition-id="{cid}" data-composition-src="compositions/{cid}.html" data-start="0" data-duration="{d:.3f}" data-track-index="4" data-width="1920" data-height="1080"></div>
+      <div id="dip" style="{DIP_STYLE}"></div>
 {nl.join(voices)}
     </div>
     <script>
@@ -340,6 +363,7 @@ def main() -> int:
 {nl.join(calls).replace("(tl, world", "(full, world")}
       const tl = gsap.timeline({{ paused: true }});
       tl.add(full.tweenFromTo({s0:.3f}, {s0 + d:.3f}, {{ ease: "none", immediateRender: false }}), 0);
+{nl.join(dips(scenes, s0, s0 + d))}
       window.__timelines["atlas"] = tl;
       tl.seek(0); full.seek({s0:.3f}); world.render({s0:.3f});
       if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();

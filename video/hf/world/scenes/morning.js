@@ -18,7 +18,7 @@ export default function choreograph(tl, world, scene) {
   // mattress's edge, says good morning, and then stands.
   const upAt = Math.max(t0 + 0.3, at(L, 0, 0) - 2.3), swing = upAt + 1.1, edge = swing + 1.2;
   person.act([
-    { t0, t1: upAt, clip: "Idle_Loop", loop: true, speed: 0.3, from: SPOTS.bedLie, yaw: [0], tip: [Math.PI / 2], fade: 0 },
+    { t0, t1: upAt, clip: "Idle_Loop", loop: true, speed: 0.3, from: SPOTS.bedLie, yaw: [0], tip: [Math.PI / 2], flat: true, fade: 0 },
     { t0: upAt, t1: swing, clip: "Sitting_Idle_Loop", loop: true, speed: 0.5, from: SPOTS.bedSitUp, yaw: [0], tip: [0], fade: 1.1 },
     { t0: swing, t1: edge, clip: "Sitting_Idle_Loop", loop: true, speed: 0.5, offset: 0.55, from: SPOTS.bedSitUp, to: SPOTS.bedEdge, yaw: [0, SPOTS.faceDesk], fade: 0 },
     { t0: edge, t1: exitAt, clip: "Sitting_Idle_Loop", loop: true, speed: 0.5, offset: 1.15, from: SPOTS.bedEdge, yaw: [SPOTS.faceDesk], fade: 0 },

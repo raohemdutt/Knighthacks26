@@ -49,3 +49,17 @@
 /* A component seen in perspective: put it in a .site-stage and tween rotationX/rotationY/z on the child with GSAP. */
 .site-stage { perspective: 1800px; perspective-origin: 50% 40%; }
 .site-stage > * { transform-style: preserve-3d; backface-visibility: hidden; }
+
+/* Frosted glass (Dom: low-opacity boxes, not white ones). Every card, window and caption is a see-through panel that
+   blurs what is behind it; the blur and a light tint keep dark ink readable (ink on the tint is well over 7:1, the
+   muted grey over 4.5:1) whatever the scene behind is. Later rules win over the solid ones above. */
+:root { --glass: rgba(238, 242, 248, 0.58); --glass-2: rgba(226, 232, 242, 0.5); --glass-edge: rgba(255, 255, 255, 0.55); --glass-shadow: rgba(20, 32, 56, 0.16); --muted: #4a5468; }
+.soft-raised, .site-card, .site-you, .soft-well, .soft-pressed {
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(18px) saturate(1.25); backdrop-filter: blur(18px) saturate(1.25);
+  box-shadow: 0 14px 34px var(--glass-shadow), inset 0 0 0 1.5px var(--glass-edge);
+}
+.site-you { box-shadow: 0 10px 26px var(--glass-shadow), inset 0 0 0 3px var(--accent-bright); }
+.site-card .site-card, .soft-raised .site-card, .soft-raised .soft-raised { background: var(--glass-2); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: inset 0 0 0 1.5px var(--glass-edge); }
+.site-tag { background: var(--glass-2); box-shadow: inset 0 0 0 1.5px var(--glass-edge); }
+.site-chip { background: var(--glass); box-shadow: 0 6px 16px var(--glass-shadow), inset 0 0 0 1.5px var(--glass-edge); }

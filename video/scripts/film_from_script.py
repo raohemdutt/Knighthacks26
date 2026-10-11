@@ -31,7 +31,7 @@ BEATS = {
     # 8 (the Sort It round) was cut by Dom, Sun 5:05 AM.
     9: ("sorttech", "What the kitchen camera runs on", 1.0, {}),
     10: ("lab", "The learning lab", 1.0, {}),
-    11: ("device", "On the device", 1.0, {}),
+    11: ("device", "On the device", 1.0, {0: 1.2}),  # hold: the camera comes home and the glass turns solid
     12: ("league", "Friends", 1.0, {0: 1.5, 2: 0.5}),
     13: ("friends", "How the boxes talk", 1.0, {}),
     14: ("lives", "Same box, other lives", 1.0, {}),

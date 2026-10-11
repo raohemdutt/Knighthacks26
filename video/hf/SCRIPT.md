@@ -36,7 +36,7 @@ sleep app, a map. They drift together into a small white box on a shelf.]
 
 ### 1 · What's inside (spec, as now)
 [The Atlas logo draws in. The box assembles, opens, and goes see-through: webcam, speaker, Jetson.]
-**N:** Inside: a camera, a speaker, and a Jetson that runs the vision, the memory, and an agent that acts for you.
+**N:** Inside: a camera, a speaker, and a Jetson that runs it all: vision, memory, an agent that acts for you.
 
 ### 2 · Good morning (demo)
 [Hemdutt lies in bed. He sits up, sleepy, and stretches.]
@@ -54,7 +54,7 @@ This week.]
 [Window: Optional, with friends' names.]
 **A:** Does this look good, or would you like something changed?
 **H:** Looks good. And help me eat two real meals today.
-**A:** Done. I'll keep track of the meals.
+**A:** Done. I'll keep track of your meals.
 [Window: "Today's plan is set" and "Goal today: 2 real meals".]
 [He pats his pockets.]
 **H:** Atlas, where are my keys?
@@ -94,7 +94,7 @@ walk.
 that stays inside. Beside it, a saved frame of the same moment with the face blurred. A frame slides to the shell's
 edge, and the face blurs as it crosses.]
 **N:** If you turn it on, Atlas reads your expressions on the device, to coach you and to train your own model.
-You see yourself clear on your own screen. Saved pictures are blurred, and so is anything that leaves.
+You see yourself clear on your own screen, but saved pictures are blurred, as well as anything that leaves.
 
 ### 7 · The kitchen (demo)
 [Hemdutt walks into the kitchen with his phone, the can and the bottle. He fills the bottle and steps toward the grey
@@ -122,11 +122,9 @@ everyone's consent, learns from all of them, so every Atlas gets better.
 swaps it in live, and rolls back if anything fails.
 
 ### 11 · On the device (spec, as now)
-[The box see-through, the network cable pulled, chips: seeing, remembering, answering, speaking, learning (paused). A
-question cuts ahead of the camera queue. The ledger: 13 allowed, 13 blocked.]
-**N:** Pull the network cable: it keeps seeing, remembering and answering, out loud, on the box. Only learning
-pauses. When the cameras are busy, your question still goes first.
-**N:** And a ledger shows what left: thirteen allowed, thirteen blocked.
+[The box see-through, the network cable pulled, chips: seeing, remembering, answering, speaking, learning (paused).]
+**N:** Pull the network cable, and it keeps seeing, remembering, and answering on the box. Only the learning
+process stops.
 
 ### 12 · Friends (demo)
 [Sunday evening. Three panes: Hemdutt in his dorm; Ilan at '63 South on his phone; Dominick at his desk on his
@@ -151,6 +149,8 @@ links of learning grow between their models. Zoom out: many small groups across 
 what each person chose to share.
 **N:** In a group you trust, friends can let their boxes recognise each other, and learn from each other's
 examples, and every group runs its own network.
+**N:** Two boxes pooled their examples: twice the data for one and a half times the energy, and training got 37
+percent cheaper per example.
 
 ### 14 · Same box, other lives (spec)
 [Three quick vignettes, each with its own window: a night-shift worker's afternoon "morning" (shift 10 PM-6 AM,

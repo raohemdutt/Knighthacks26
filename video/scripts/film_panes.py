@@ -24,18 +24,18 @@ BASE_CSS = """
 .win-dot { width: 18px; height: 18px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 6px rgba(69,108,179,0.16); }
 .win-app { font-family: var(--font); font-size: 30px; font-weight: 700; color: var(--ink); letter-spacing: 0.02em; }
 .win-tabs { position: relative; flex: 1; height: 40px; }
-.win-tab { position: absolute; right: 0; top: 0; padding: 4px 18px; border-radius: 999px; font-size: 24px; font-weight: 700; color: var(--accent); background: var(--surface-2); box-shadow: inset 3px 3px 7px var(--shade), inset -3px -3px 7px var(--light); opacity: 0; white-space: nowrap; }
+.win-tab { position: absolute; right: 0; top: 0; padding: 4px 18px; border-radius: 999px; font-size: 24px; font-weight: 700; color: var(--accent); background: var(--glass-2); box-shadow: inset 0 0 0 1.5px var(--glass-edge); opacity: 0; white-space: nowrap; }
 .pane { position: absolute; left: 28px; right: 28px; top: 100px; bottom: 24px; opacity: 0; }
 .ph { font-family: var(--font); font-size: 38px; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; }
 .pk { font-family: var(--font-body); font-size: 24px; font-weight: 600; color: var(--muted); }
-.row { display: flex; align-items: center; gap: 18px; padding: 14px 20px; margin-top: 12px; border-radius: 20px; background: var(--surface); box-shadow: 6px 6px 14px var(--shade), -6px -6px 14px var(--light); }
+.row { display: flex; align-items: center; gap: 18px; padding: 14px 20px; margin-top: 12px; border-radius: 20px; background: var(--glass-2); box-shadow: inset 0 0 0 1.5px var(--glass-edge); }
 .row.dash { box-shadow: none; border: 3px dashed var(--shade); }
 .row .t { width: 96px; font-family: var(--font); font-size: 28px; font-weight: 700; color: var(--accent); }
 .row .w { font-family: var(--font-body); font-size: 28px; font-weight: 600; color: var(--ink); line-height: 1.2; }
 .row .w small { display: block; font-size: 22px; color: var(--muted); font-weight: 500; }
-.bub { max-width: 520px; margin-top: 16px; padding: 16px 22px; border-radius: 24px 24px 24px 8px; background: var(--surface); box-shadow: 6px 6px 14px var(--shade), -6px -6px 14px var(--light); font-family: var(--font-body); font-size: 26px; font-weight: 500; color: var(--ink); line-height: 1.3; }
+.bub { max-width: 520px; margin-top: 16px; padding: 16px 22px; border-radius: 24px 24px 24px 8px; background: var(--glass-2); box-shadow: inset 0 0 0 1.5px var(--glass-edge); font-family: var(--font-body); font-size: 26px; font-weight: 500; color: var(--ink); line-height: 1.3; }
 .bub b { display: block; font-size: 22px; color: var(--accent); }
-.bub.me { margin-left: auto; border-radius: 24px 24px 8px 24px; box-shadow: 6px 6px 14px var(--shade), -6px -6px 14px var(--light), inset 0 0 0 3px var(--accent-bright); }
+.bub.me { margin-left: auto; border-radius: 24px 24px 8px 24px; box-shadow: inset 0 0 0 3px var(--accent-bright); }
 .chips { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 18px; }
 .chips .site-tag { font-size: 24px; }
 .big { font-family: var(--font); font-size: 92px; font-weight: 700; color: var(--accent); line-height: 1; }
@@ -311,8 +311,7 @@ def lab(s: Scene):
 
 def device(s: Scene):
     chips = "".join(f'<span class="site-chip{" on" if x != "learning (paused)" else ""}">{x}</span>' for x in ["seeing", "remembering", "answering", "speaking", "learning (paused)"])
-    s.card(f'<div class="pk">network cable pulled</div><div class="chips">{chips}</div><div class="chips"><span class="site-tag">your question goes ahead of the cameras</span></div>', 110, 500, "0:0.1", w=1200)
-    s.card('<div class="pk">ledger of what left</div><div style="display:flex;gap:40px"><div><div class="big">13</div><div class="pk">allowed</div></div><div><div class="big" style="color:var(--danger)">13</div><div class="pk">blocked</div></div></div>', 1400, 480, "1:0", w=420)
+    s.card(f'<div class="pk">network cable pulled</div><div class="chips">{chips}</div>', 110, 700, "0:0.3", w=1560)
 
 
 def league(s: Scene):
@@ -339,9 +338,11 @@ def league(s: Scene):
 
 
 def friends(s: Scene):
-    s.card('<div class="pk">where the boxes meet</div><div class="ph">Neon Postgres</div><div class="chips"><span class="site-tag">only what each person chose to share</span><span class="site-tag">presence · league · RSVPs</span><span class="site-tag">works over 443</span></div>', 110, 620, "0:0.45", w=900)
+    s.card('<div class="pk">where the boxes meet</div><div class="ph">Neon Postgres</div><div class="chips"><span class="site-tag">only what each person chose to share</span><span class="site-tag">presence · league · RSVPs</span><span class="site-tag">works over 443</span></div>', 110, 620, "0:0.45", out="2:0", w=900)
     s.card('<div class="pk">a group you trust</div><div class="chips"><span class="site-chip on">Ilan</span><span class="site-chip on">Dominick</span><span class="site-chip on">Hemdutt</span></div>'
-           '<div class="chips"><span class="site-tag">boxes recognise each other · face numbers, never pictures</span><span class="site-tag">learn from each other\'s examples</span></div>', 1050, 600, "1:0", w=760)
+           '<div class="chips"><span class="site-tag">boxes recognise each other · face numbers, never pictures</span><span class="site-tag">learn from each other\'s examples</span></div>', 1050, 600, "1:0", out="2:0", w=760)
+    s.card('<div class="pk">two boxes pooled their examples · measured on the pods</div><div class="chips"><span class="site-chip on">2× the data</span><span class="site-chip">1.5× the energy</span><span class="site-chip">37% cheaper per example</span></div>',
+           110, 120, "2:0.05", w=1100)  # the two cards above fade out as this one comes in
 
 
 def lives(s: Scene):
@@ -355,9 +356,9 @@ def plant(s: Scene):
     # The triage is the real one (docs/spot.md, "Triage"): HX-202 re-inspect, HX-204 send a technician, GAUGE-209 48 h.
     tri = "".join(f'<div class="site-card mini" style="width:420px"><div class="pk">{a}</div><div class="ph" style="font-size:32px">{b}</div></div>'
                   for a, b in [("Do this first", "HX-202 · re-inspect"), ("Then", "HX-204 · a technician"), ("Keep an eye", "GAUGE-209 · 48 h")])
-    s.card(f'<div class="pk">the brief becomes a shift triage</div><div style="display:flex;gap:22px;margin-top:12px">{tri}</div>', 110, 560, "0:0.1", out="1:0", w=1400)
-    s.card('<div class="pk">every number is computed from the rows and cites them</div><div class="chips"><span class="site-tag">21 of 26 completed missions hide a failed action</span></div>', 110, 600, "1:0", w=820)
-    s.card("<div class=\"pk\">the lab's SPOT test</div><div class=\"ph\">cites the right rows · every expected number</div><div class=\"chips\"><span class=\"site-tag\">before it's allowed on the box</span></div>", 980, 560, "1:0.45", w=840)
+    s.card(f'<div class="pk">the brief becomes a shift triage</div><div style="display:flex;gap:22px;margin-top:12px">{tri}</div>', 110, 700, "0:0.1", out="1:0", w=1400)
+    s.card('<div class="pk">every number is computed from the rows and cites them</div><div class="chips"><span class="site-tag">21 of 26 completed missions hide a failed action</span></div>', 110, 720, "1:0", w=820)
+    s.card("<div class=\"pk\">the lab's SPOT test</div><div class=\"ph\">cites the right rows · every expected number</div><div class=\"chips\"><span class=\"site-tag\">before it's allowed on the box</span></div>", 1060, 80, "1:0.45", w=760)
 
 
 def shift(s: Scene):

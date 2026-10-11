@@ -34,7 +34,7 @@ scenes:
   beat: 1
   lines:
   - who: N
-    text: 'Inside: a camera, a speaker, and a Jetson that runs the vision, the memory, and an agent that acts for you.'
+    text: 'Inside: a camera, a speaker, and a Jetson that runs it all: vision, memory, an agent that acts for you.'
     hold: 1.0
   lead_s: 2.4
 - id: morning
@@ -57,7 +57,7 @@ scenes:
   - who: H
     text: Looks good. And help me eat two real meals today.
   - who: A
-    text: Done. I'll keep track of the meals.
+    text: Done. I'll keep track of your meals.
   - who: H
     text: Atlas, where are my keys?
   - who: A
@@ -97,7 +97,7 @@ scenes:
   beat: 6
   lines:
   - who: N
-    text: If you turn it on, Atlas reads your expressions on the device, to coach you and to train your own model. You see yourself clear on your own screen. Saved pictures are blurred, and so is anything
+    text: If you turn it on, Atlas reads your expressions on the device, to coach you and to train your own model. You see yourself clear on your own screen, but saved pictures are blurred, as well as anything
       that leaves.
   lead_s: 1.0
 - id: kitchen
@@ -133,9 +133,8 @@ scenes:
   beat: 11
   lines:
   - who: N
-    text: 'Pull the network cable: it keeps seeing, remembering and answering, out loud, on the box. Only learning pauses. When the cameras are busy, your question still goes first.'
-  - who: N
-    text: 'And a ledger shows what left: thirteen allowed, thirteen blocked.'
+    text: Pull the network cable, and it keeps seeing, remembering, and answering on the box. Only the learning process stops.
+    hold: 1.2
   lead_s: 1.0
 - id: league
   title: Friends
@@ -160,6 +159,8 @@ scenes:
     text: Each box reads only its own calendar and answers in one word. They meet in a Neon database that holds only what each person chose to share.
   - who: N
     text: In a group you trust, friends can let their boxes recognise each other, and learn from each other's examples, and every group runs its own network.
+  - who: N
+    text: 'Two boxes pooled their examples: twice the data for one and a half times the energy, and training got 37 percent cheaper per example.'
   lead_s: 1.0
 - id: lives
   title: Same box, other lives

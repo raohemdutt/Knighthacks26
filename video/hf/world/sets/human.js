@@ -90,7 +90,9 @@ export function makeHuman(gltf, outfit = LOOKS.hemdutt) {
   // the shoes) are crisp instead of a colour fading across the triangles that straddle them.
   const main = matte({ color: 0xffffff, roughness: 0.8 });
   const RC = { uSkin: { value: new THREE.Color(outfit.skin) }, uShirt: { value: new THREE.Color(outfit.shirt) }, uPants: { value: new THREE.Color(outfit.pants) }, uShoes: { value: new THREE.Color(outfit.shoes) },
-    uNeck: { value: new THREE.Vector3(0, 1.5, 0) } }; // the neck bone's bind position (metres): the crew neck is built round it
+    uNeck: { value: new THREE.Vector3(0, 1.5, 0) }, // the neck bone's bind position (metres): the crew neck is built round it
+    uWaist: { value: new THREE.Vector3(0, 1.0, 0) }, // the waistband: x and z at the hips' centre, y its height (bind space)
+    uAnkle: { value: 0.12 } }; // the shoes' top edge (bind-space height)
   main.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, RC);
     sh.vertexShader = `attribute vec4 region;
@@ -100,7 +102,7 @@ varying vec3 vBindPos;
   vRegion = region; vBindPos = position;`);
     sh.fragmentShader = `varying vec4 vRegion;
 varying vec3 vBindPos;
-uniform vec3 uSkin; uniform vec3 uShirt; uniform vec3 uPants; uniform vec3 uShoes; uniform vec3 uNeck;
+uniform vec3 uSkin; uniform vec3 uShirt; uniform vec3 uPants; uniform vec3 uShoes; uniform vec3 uNeck; uniform vec3 uWaist; uniform float uAnkle;
 ` + sh.fragmentShader.replace("#include <color_fragment>", `#include <color_fragment>
   { vec3 rc = uShirt; float m = vRegion.y; int k = 1;
     if (vRegion.x > m) { m = vRegion.x; rc = uSkin; k = 0; }
@@ -114,6 +116,10 @@ uniform vec3 uSkin; uniform vec3 uShirt; uniform vec3 uPants; uniform vec3 uShoe
       bool skin = vBindPos.y > uNeck.y + 0.07 || (r < 0.07 && vBindPos.y > low);
       rc = skin ? uSkin : uShirt;
     }
+    // A clean, level waistband (Dom): round the hips the shirt and the trousers meet on one horizontal line, not along
+    // the bones' jagged weight boundary. The shoes' tops are a level line too.
+    if ((k == 1 || k == 2) && abs(vBindPos.x - uWaist.x) < 0.24 && abs(vBindPos.y - uWaist.y) < 0.2) rc = vBindPos.y > uWaist.y ? uShirt : uPants;
+    if ((k == 2 || k == 3) && vBindPos.y < uAnkle + 0.12) rc = vBindPos.y < uAnkle ? uShoes : uPants;
     diffuseColor.rgb *= rc; }`);
   };
   main.customProgramCacheKey = () => "atlas-person-regions";
@@ -150,6 +156,10 @@ uniform vec3 uSkin; uniform vec3 uShirt; uniform vec3 uPants; uniform vec3 uShoe
   const headY = new THREE.Vector3().setFromMatrixPosition(bindHead).y;
   const ni = skinned ? skinned.skeleton.bones.indexOf(bones.neck_01) : -1;
   if (ni >= 0) RC.uNeck.value.setFromMatrixPosition(skinned.skeleton.boneInverses[ni].clone().invert());
+  const bindOf = (name) => { const i = skinned ? skinned.skeleton.bones.indexOf(bones[name]) : -1; return i >= 0 ? new THREE.Vector3().setFromMatrixPosition(skinned.skeleton.boneInverses[i].clone().invert()) : null; };
+  { const pel = bindOf("pelvis"), sp = bindOf("spine_01"), fl = bindOf("foot_l"), fr = bindOf("foot_r");
+    if (pel && sp) RC.uWaist.value.set(pel.x, sp.y + 0.02, pel.z); // the band sits just above the lowest spine joint
+    if (fl && fr) RC.uAnkle.value = Math.max(fl.y, fr.y) + 0.025; }
   const headBox = new THREE.Box3(), vtx = new THREE.Vector3();
   for (const sk of skins) { // the mannequin is several skinned meshes (one per primitive): measure the head across all
     const pos = sk.geometry.attributes.position;
@@ -237,6 +247,9 @@ uniform vec3 uSkin; uniform vec3 uShirt; uniform vec3 uPants; uniform vec3 uShoe
   // look() turns the neck and head ON TOP of their current rotation; a clip that does not animate them would never
   // reset them, so the turn would pile up frame after frame (the head spinning in the kitchen). Reset them first.
   const restQ = ["neck_01", "Head"].filter((n) => bones[n]).map((n) => [bones[n], bones[n].quaternion.clone()]);
+  // The legs' rest pose (straight and together), for lying flat: the idle clip's weight-on-one-leg stance, tipped onto
+  // the back, put one leg through the mattress and the other in the air (Dom).
+  const legRest = ["thigh_l", "calf_l", "foot_l", "ball_l", "thigh_r", "calf_r", "foot_r", "ball_r"].filter((n) => bones[n]).map((n) => [bones[n], bones[n].quaternion.clone()]);
   function sample(list) {
     for (const [b, q] of restQ) b.quaternion.copy(q);
     for (const a of Object.values(actions)) a.setEffectiveWeight(0);
@@ -262,7 +275,7 @@ uniform vec3 uSkin; uniform vec3 uShirt; uniform vec3 uPants; uniform vec3 uShoe
   }
 
   // A schedule of acts on the film's clock. Each act: { t0, t1, clip, loop?, speed?, from?: [x,y,z], to?: [x,y,z],
-  // yaw?: [a, b] (radians about +y; 0 faces +z), tip?: [a, b] (tipped back, radians; pi/2 = lying on the back), fade? (crossfade from the previous act, s) }. Position and yaw ease
+  // yaw?: [a, b] (radians about +y; 0 faces +z), tip?: [a, b] (tipped back, radians; pi/2 = lying on the back), flat? (legs straight), fade? (crossfade from the previous act, s) }. Position and yaw ease
   // from `from`/`yaw[0]` to `to`/`yaw[1]` over the act (linear for walks so the feet keep pace: set ease: "none").
   const acts = [];
   function act(list) { acts.push(...list); acts.sort((a, b) => a.t0 - b.t0); }
@@ -290,6 +303,9 @@ uniform vec3 uSkin; uniform vec3 uShirt; uniform vec3 uPants; uniform vec3 uShoe
     if (c.p) root.position.set(...(pv?.p ? c.p.map((v, k) => lerp(pv.p[k], v, w)) : c.p));
     if (c.y !== null) root.rotation.y = pv && pv.y !== null ? angLerp(pv.y, c.y, w) : c.y;
     root.rotation.x = -(pv ? lerp(pv.k, c.k, w) : c.k); // about the body's own left-right axis (order YXZ)
+    // flat: true lies with the legs straight (their rest pose), blended in and out with the act's crossfade.
+    const fl = (cur.flat ? w : 0) + (prev && w < 1 && prev.flat ? 1 - w : 0);
+    if (fl > 0) for (const [bone, q] of legRest) bone.quaternion.slerp(q, Math.min(1, fl));
   }
 
   const _hv = new THREE.Vector3();

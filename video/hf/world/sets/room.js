@@ -106,7 +106,7 @@ export function buildRoom(scene, humanGltf) {
   for (let r = 0; r < 4; r++) for (let c = 0; c < 16; c++) { km.makeTranslation(-1.98 + c * 0.264, 0.2, -0.5 + r * 0.33); keys.setMatrixAt(ki++, km); }
   keys.castShadow = false; keys.receiveShadow = true; kb.add(keys);
   set.add(kb);
-  const mouse = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 12), white); mouse.scale.set(1.1, 0.35, 0.75); mouse.position.set(-5.2, TOP + 0.12, 11.4); mouse.castShadow = true; set.add(mouse);
+  const mouse = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 12), white); mouse.scale.set(1.1, 0.35, 0.75); mouse.position.set(-5.2, TOP + 0.12, 5.6); // on his right of the keyboard (he faces -x, so his right is -z) mouse.castShadow = true; set.add(mouse);
   const mug = new THREE.Group(); mug.position.set(-6.0, TOP, 13.4);
   const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.38, 0.95, 24), tint(0xd2a23c, { roughness: 0.6 })); cup.position.y = 0.48; cup.castShadow = true; mug.add(cup);
   const handle = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.06, 8, 16), cup.material); handle.position.set(0.44, 0.5, 0); mug.add(handle);

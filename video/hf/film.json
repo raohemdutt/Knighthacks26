@@ -1,6 +1,6 @@
 {
   "fps": 30,
-  "total_s": 296.8,
+  "total_s": 299.7,
   "scenes": [
     {
       "id": "problem",
@@ -33,32 +33,32 @@
       "id": "intro",
       "title": "Atlas",
       "start": 11.268,
-      "duration": 10.62,
+      "duration": 10.956,
       "lines": [
         {
           "n": 0,
           "who": "N",
           "name": "",
-          "text": "Inside: a camera, a speaker, and a Jetson that runs the vision, the memory, and an agent that acts for you.",
+          "text": "Inside: a camera, a speaker, and a Jetson that runs it all: vision, memory, an agent that acts for you.",
           "start": 13.668,
-          "duration": 6.72,
-          "file": "assets/voice/intro-0-13d33a422c.mp3"
+          "duration": 7.056,
+          "file": "assets/voice/intro-0-7357ab240a.mp3"
         }
       ],
-      "speech_s": 6.7
+      "speech_s": 7.1
     },
     {
       "id": "morning",
       "title": "Good morning",
-      "start": 22.188,
-      "duration": 45.936,
+      "start": 22.524,
+      "duration": 45.984,
       "lines": [
         {
           "n": 0,
           "who": "H",
           "name": "Hemdutt",
           "text": "Good morning.",
-          "start": 24.788,
+          "start": 25.124,
           "duration": 1.872,
           "file": "assets/voice/morning-0-ffd84ae579.mp3"
         },
@@ -67,7 +67,7 @@
           "who": "A",
           "name": "Atlas",
           "text": "Good morning. Seven and a half hours, right on your usual.",
-          "start": 26.96,
+          "start": 27.296,
           "duration": 4.368,
           "file": "assets/voice/morning-1-b759a093ad.mp3"
         },
@@ -76,7 +76,7 @@
           "who": "A",
           "name": "Atlas",
           "text": "Big day. Your mentor check-in is at 9:20 in Engineering II, so leave by ten past.",
-          "start": 32.128,
+          "start": 32.464,
           "duration": 5.688,
           "file": "assets/voice/morning-2-cc80e4fe41.mp3"
         },
@@ -85,7 +85,7 @@
           "who": "A",
           "name": "Atlas",
           "text": "Submissions close at 11, judging's at noon, and Maya's study session is at 2. Your algorithms writeup is due Tuesday night.",
-          "start": 38.116,
+          "start": 38.452,
           "duration": 7.224,
           "file": "assets/voice/morning-3-67d66e221d.mp3"
         },
@@ -94,7 +94,7 @@
           "who": "A",
           "name": "Atlas",
           "text": "And if you want a break, Sam and Riley are at board game night at 8.",
-          "start": 45.64,
+          "start": 45.976,
           "duration": 3.696,
           "file": "assets/voice/morning-4-840117a754.mp3"
         },
@@ -103,7 +103,7 @@
           "who": "A",
           "name": "Atlas",
           "text": "Does this look good, or would you like something changed?",
-          "start": 49.636,
+          "start": 49.972,
           "duration": 3.072,
           "file": "assets/voice/morning-5-711ba07ce6.mp3"
         },
@@ -112,7 +112,7 @@
           "who": "H",
           "name": "Hemdutt",
           "text": "Looks good. And help me eat two real meals today.",
-          "start": 53.008,
+          "start": 53.344,
           "duration": 2.976,
           "file": "assets/voice/morning-6-83eafc4f36.mp3"
         },
@@ -120,17 +120,17 @@
           "n": 7,
           "who": "A",
           "name": "Atlas",
-          "text": "Done. I'll keep track of the meals.",
-          "start": 56.284,
-          "duration": 3.192,
-          "file": "assets/voice/morning-7-bbc335f83a.mp3"
+          "text": "Done. I'll keep track of your meals.",
+          "start": 56.62,
+          "duration": 3.24,
+          "file": "assets/voice/morning-7-f247f6ba50.mp3"
         },
         {
           "n": 8,
           "who": "H",
           "name": "Hemdutt",
           "text": "Atlas, where are my keys?",
-          "start": 59.776,
+          "start": 60.16,
           "duration": 1.872,
           "file": "assets/voice/morning-8-18f2ed10d0.mp3"
         },
@@ -139,17 +139,17 @@
           "who": "A",
           "name": "Atlas",
           "text": "Behind the mug on your desk. You left them there last night.",
-          "start": 61.948,
+          "start": 62.332,
           "duration": 4.176,
           "file": "assets/voice/morning-9-0a9455cdfd.mp3"
         }
       ],
-      "speech_s": 38.1
+      "speech_s": 38.2
     },
     {
       "id": "sources",
       "title": "What fed the brief",
-      "start": 68.424,
+      "start": 68.808,
       "duration": 15.72,
       "lines": [
         {
@@ -157,7 +157,7 @@
           "who": "N",
           "name": "",
           "text": "That brief came from your watch, calendars, chats and the campus map, written on the Jetson in under three seconds.",
-          "start": 69.424,
+          "start": 69.808,
           "duration": 6.624,
           "file": "assets/voice/sources-0-0f401894ed.mp3"
         },
@@ -166,7 +166,7 @@
           "who": "N",
           "name": "",
           "text": "And what the camera sees becomes events, then moments it remembers, then answers, and, with your OK, the examples it learns from.",
-          "start": 76.348,
+          "start": 76.732,
           "duration": 7.296,
           "file": "assets/voice/sources-1-46c19a034b.mp3"
         }
@@ -176,7 +176,7 @@
     {
       "id": "model",
       "title": "The model on the box",
-      "start": 84.444,
+      "start": 84.828,
       "duration": 8.988,
       "lines": [
         {
@@ -184,7 +184,7 @@
           "who": "N",
           "name": "",
           "text": "A twenty-seven-billion-parameter Qwen runs right here: fast, accurate, and private. Forty-eight demo questions, forty-eight right.",
-          "start": 85.444,
+          "start": 85.828,
           "duration": 7.488,
           "file": "assets/voice/model-0-888f04927c.mp3"
         }
@@ -194,7 +194,7 @@
     {
       "id": "desk",
       "title": "At the desk",
-      "start": 93.732,
+      "start": 94.116,
       "duration": 20.092,
       "lines": [
         {
@@ -202,7 +202,7 @@
           "who": "A",
           "name": "Atlas",
           "text": "You look tired: the look you get after a long stretch without moving. You've been sitting an hour and forty-five minutes.",
-          "start": 94.732,
+          "start": 95.116,
           "duration": 6.36,
           "file": "assets/voice/desk-0-baf62fb48f.mp3"
         },
@@ -211,7 +211,7 @@
           "who": "A",
           "name": "Atlas",
           "text": "Your writeup's due Tuesday, and Maya says half the grade is the runtime analysis.",
-          "start": 101.392,
+          "start": 101.776,
           "duration": 4.344,
           "file": "assets/voice/desk-1-6aa2aa6cec.mp3"
         },
@@ -220,7 +220,7 @@
           "who": "A",
           "name": "Atlas",
           "text": "But first, that's your third energy drink, which means you're over your limit. Drink some water and take a walk.",
-          "start": 106.036,
+          "start": 106.42,
           "duration": 6.288,
           "file": "assets/voice/desk-2-21de46013f.mp3"
         }
@@ -230,25 +230,25 @@
     {
       "id": "faces",
       "title": "Faces",
-      "start": 114.124,
-      "duration": 11.532,
+      "start": 114.508,
+      "duration": 11.748,
       "lines": [
         {
           "n": 0,
           "who": "N",
           "name": "",
-          "text": "If you turn it on, Atlas reads your expressions on the device, to coach you and to train your own model. You see yourself clear on your own screen. Saved pictures are blurred, and so is anything that leaves.",
-          "start": 115.124,
-          "duration": 10.032,
-          "file": "assets/voice/faces-0-087bf98e46.mp3"
+          "text": "If you turn it on, Atlas reads your expressions on the device, to coach you and to train your own model. You see yourself clear on your own screen, but saved pictures are blurred, as well as anything that leaves.",
+          "start": 115.508,
+          "duration": 10.248,
+          "file": "assets/voice/faces-0-10df4eba91.mp3"
         }
       ],
-      "speech_s": 10.0
+      "speech_s": 10.2
     },
     {
       "id": "kitchen",
       "title": "The kitchen",
-      "start": 125.956,
+      "start": 126.556,
       "duration": 12.872,
       "lines": [
         {
@@ -256,7 +256,7 @@
           "who": "A",
           "name": "Atlas",
           "text": "Hold on: cans go in recycling at UCF.",
-          "start": 127.456,
+          "start": 128.056,
           "duration": 3.216,
           "file": "assets/voice/kitchen-0-e446af0e54.mp3"
         },
@@ -265,7 +265,7 @@
           "who": "A",
           "name": "Atlas",
           "text": "That's the right bin. Your accuracy is seventy-one percent this week, but your goal is eighty percent.",
-          "start": 132.472,
+          "start": 133.072,
           "duration": 5.856,
           "file": "assets/voice/kitchen-1-bc29727556.mp3"
         }
@@ -275,7 +275,7 @@
     {
       "id": "sorttech",
       "title": "What the kitchen camera runs on",
-      "start": 139.128,
+      "start": 139.728,
       "duration": 18.48,
       "lines": [
         {
@@ -283,7 +283,7 @@
           "who": "N",
           "name": "",
           "text": "The kitchen camera runs a YOLO detector at forty-one frames a second and tracks every item. The bin rules are UCF's own, and every impact number cites its source. Only counts leave the box.",
-          "start": 140.128,
+          "start": 140.728,
           "duration": 11.688,
           "file": "assets/voice/sorttech-0-58693cd95d.mp3"
         },
@@ -292,7 +292,7 @@
           "who": "N",
           "name": "",
           "text": "The look guide follows your eyes to point the way, and those frames never leave the browser.",
-          "start": 152.116,
+          "start": 152.716,
           "duration": 4.992,
           "file": "assets/voice/sorttech-1-d9e3b5b3a9.mp3"
         }
@@ -302,7 +302,7 @@
     {
       "id": "lab",
       "title": "The learning lab",
-      "start": 157.908,
+      "start": 158.508,
       "duration": 20.28,
       "lines": [
         {
@@ -310,7 +310,7 @@
           "who": "N",
           "name": "",
           "text": "The lab is two AMD Strix Halo pods. One fine-tunes your own model on your own examples. The other, with everyone's consent, learns from all of them, so every Atlas gets better.",
-          "start": 158.908,
+          "start": 159.508,
           "duration": 10.152,
           "file": "assets/voice/lab-0-1d1520a7bb.mp3"
         },
@@ -319,7 +319,7 @@
           "who": "N",
           "name": "",
           "text": "A test decides if the new model ships. When one passes, it goes up on Hugging Face, and the box checks it, swaps it in live, and rolls back if anything fails.",
-          "start": 169.36,
+          "start": 169.96,
           "duration": 8.328,
           "file": "assets/voice/lab-1-cf09a42379.mp3"
         }
@@ -329,34 +329,25 @@
     {
       "id": "device",
       "title": "On the device",
-      "start": 178.488,
-      "duration": 14.712,
+      "start": 179.088,
+      "duration": 8.988,
       "lines": [
         {
           "n": 0,
           "who": "N",
           "name": "",
-          "text": "Pull the network cable: it keeps seeing, remembering and answering, out loud, on the box. Only learning pauses. When the cameras are busy, your question still goes first.",
-          "start": 179.488,
-          "duration": 9.264,
-          "file": "assets/voice/device-0-66afef40f2.mp3"
-        },
-        {
-          "n": 1,
-          "who": "N",
-          "name": "",
-          "text": "And a ledger shows what left: thirteen allowed, thirteen blocked.",
-          "start": 189.052,
-          "duration": 3.648,
-          "file": "assets/voice/device-1-af3d20424b.mp3"
+          "text": "Pull the network cable, and it keeps seeing, remembering, and answering on the box. Only the learning process stops.",
+          "start": 180.088,
+          "duration": 6.288,
+          "file": "assets/voice/device-0-f7a140e415.mp3"
         }
       ],
-      "speech_s": 12.9
+      "speech_s": 6.3
     },
     {
       "id": "league",
       "title": "Friends",
-      "start": 193.5,
+      "start": 188.376,
       "duration": 18.872,
       "lines": [
         {
@@ -364,7 +355,7 @@
           "who": "D",
           "name": "Dominick",
           "text": "Board game night at the Union. Eight o'clock.",
-          "start": 194.5,
+          "start": 189.376,
           "duration": 3.6,
           "file": "assets/voice/league-0-ad37ce7b17.mp3"
         },
@@ -373,7 +364,7 @@
           "who": "A",
           "name": "Atlas",
           "text": "Ilan's at '63 South, and you're free till 8:30. Dinner? It'd be your second real meal.",
-          "start": 199.9,
+          "start": 194.776,
           "duration": 6.936,
           "file": "assets/voice/league-1-5d738b868e.mp3"
         },
@@ -382,7 +373,7 @@
           "who": "H",
           "name": "Hemdutt",
           "text": "Yeah, tell him I'm coming.",
-          "start": 207.136,
+          "start": 202.012,
           "duration": 1.872,
           "file": "assets/voice/league-2-e5096e3a30.mp3"
         },
@@ -391,7 +382,7 @@
           "who": "A",
           "name": "Atlas",
           "text": "Logged: goal met.",
-          "start": 209.808,
+          "start": 204.684,
           "duration": 2.064,
           "file": "assets/voice/league-3-69f2714882.mp3"
         }
@@ -401,15 +392,15 @@
     {
       "id": "friends",
       "title": "How the boxes talk",
-      "start": 212.672,
-      "duration": 17.088,
+      "start": 207.548,
+      "duration": 25.116,
       "lines": [
         {
           "n": 0,
           "who": "N",
           "name": "",
           "text": "Each box reads only its own calendar and answers in one word. They meet in a Neon database that holds only what each person chose to share.",
-          "start": 213.672,
+          "start": 208.548,
           "duration": 7.824,
           "file": "assets/voice/friends-0-c6886f263e.mp3"
         },
@@ -418,17 +409,26 @@
           "who": "N",
           "name": "",
           "text": "In a group you trust, friends can let their boxes recognise each other, and learn from each other's examples, and every group runs its own network.",
-          "start": 221.796,
+          "start": 216.672,
           "duration": 7.464,
           "file": "assets/voice/friends-1-8c19ffebc9.mp3"
+        },
+        {
+          "n": 2,
+          "who": "N",
+          "name": "",
+          "text": "Two boxes pooled their examples: twice the data for one and a half times the energy, and training got 37 percent cheaper per example.",
+          "start": 224.436,
+          "duration": 7.728,
+          "file": "assets/voice/friends-2-ab4fe577b9.mp3"
         }
       ],
-      "speech_s": 15.3
+      "speech_s": 23.0
     },
     {
       "id": "lives",
       "title": "Same box, other lives",
-      "start": 230.06,
+      "start": 232.964,
       "duration": 8.076,
       "lines": [
         {
@@ -436,7 +436,7 @@
           "who": "N",
           "name": "",
           "text": "Not just for students: a night-shift worker's upside-down day, a family's chores, a plant floor, at twelve watts idle.",
-          "start": 231.06,
+          "start": 233.964,
           "duration": 6.576,
           "file": "assets/voice/lives-0-cfae3c7ce9.mp3"
         }
@@ -446,7 +446,7 @@
     {
       "id": "plant",
       "title": "Same engine, different data",
-      "start": 238.436,
+      "start": 241.34,
       "duration": 19.872,
       "lines": [
         {
@@ -454,7 +454,7 @@
           "who": "N",
           "name": "",
           "text": "Point the same box at a plant and the same pieces line up. The brief becomes a shift triage. The pointer that found your keys walks a floor plan, over paths SPOT has actually walked.",
-          "start": 239.436,
+          "start": 242.34,
           "duration": 9.504,
           "file": "assets/voice/plant-0-d52c9bd435.mp3"
         },
@@ -463,7 +463,7 @@
           "who": "N",
           "name": "",
           "text": "Every number is computed from the inspection rows and cites them. And the lab re-trains the model on the plant's own data and tests it before it's allowed on the box.",
-          "start": 249.24,
+          "start": 252.144,
           "duration": 8.568,
           "file": "assets/voice/plant-1-b272034932.mp3"
         }
@@ -473,7 +473,7 @@
     {
       "id": "shift",
       "title": "Xander's shift",
-      "start": 258.608,
+      "start": 261.512,
       "duration": 31.104,
       "lines": [
         {
@@ -481,7 +481,7 @@
           "who": "X",
           "name": "Xander",
           "text": "Morning, Atlas. What should I check first?",
-          "start": 259.108,
+          "start": 262.012,
           "duration": 3.24,
           "file": "assets/voice/shift-0-2677cb1fa2.mp3"
         },
@@ -490,7 +490,7 @@
           "who": "A",
           "name": "Atlas",
           "text": "Three things. First, heat exchanger 2. Its alarm came from a check that failed, and it hasn't had a good check in 88 hours. Send SPOT back before you send anyone.",
-          "start": 262.648,
+          "start": 265.552,
           "duration": 10.68,
           "file": "assets/voice/shift-1-7dd2096a3c.mp3"
         },
@@ -499,7 +499,7 @@
           "who": "X",
           "name": "Xander",
           "text": "Where is it?",
-          "start": 273.628,
+          "start": 276.532,
           "duration": 1.872,
           "file": "assets/voice/shift-2-f00a1d0da1.mp3"
         },
@@ -508,7 +508,7 @@
           "who": "A",
           "name": "Atlas",
           "text": "Heads up: missions show ninety-six percent complete, but most hide a failed check.",
-          "start": 277.3,
+          "start": 280.204,
           "duration": 4.32,
           "file": "assets/voice/shift-3-0e2bee36d7.mp3"
         },
@@ -517,7 +517,7 @@
           "who": "X",
           "name": "Xander",
           "text": "Send SPOT back to it.",
-          "start": 281.92,
+          "start": 284.824,
           "duration": 1.944,
           "file": "assets/voice/shift-4-5497f2f6da.mp3"
         },
@@ -526,7 +526,7 @@
           "who": "A",
           "name": "Atlas",
           "text": "Done. Nothing left the building.",
-          "start": 284.964,
+          "start": 287.868,
           "duration": 3.048,
           "file": "assets/voice/shift-5-6afa923a20.mp3"
         }
@@ -536,7 +536,7 @@
     {
       "id": "end",
       "title": "Atlas",
-      "start": 290.012,
+      "start": 292.916,
       "duration": 6.748,
       "lines": [
         {
@@ -544,7 +544,7 @@
           "who": "N",
           "name": "",
           "text": "Atlas. It sees your day, learns you, and keeps you to itself.",
-          "start": 290.012,
+          "start": 292.916,
           "duration": 4.248,
           "file": "assets/voice/end-0-34290ef4ab.mp3"
         }
