@@ -473,3 +473,69 @@ def test_facts_read_with_the_teacher_up_are_not_charged_for_its_share_twice(tmp_
     share = next(s for s in plan.sharing if s.jobs == ("teacher", "lora"))
     assert "more than the 58.6 GiB free" in placement.plain(share.reason)
     assert "leaving 1 GiB" in placement.plain(plan.line("lora").reason)
+
+
+# --- the measured interference (lab/interference.py's data file) ------------------------------------------------
+
+INTERFERENCE = REPO_ROOT / "fixtures" / "lab" / "interference" / "interference-gfx1151-2026-10-11.json"
+
+
+def test_with_a_measured_interference_file_the_sharing_line_gives_the_measured_cost_instead_of_a_paper_estimate():
+    plan = placement.default_plan(facts=FACTS, now=NOW, interference=INTERFERENCE)
+    share = next(s for s in plan.sharing if s.jobs == ("teacher", "lora"))
+    text = placement.plain(share.reason)
+    assert "unmeasured" not in text
+    assert ("Measured on pod D with the teacher at a share of 0.63 "
+            "(fixtures/lab/interference/interference-gfx1151-2026-10-11.json): beside the LoRA the teacher's decode "
+            "went from 40 tok/s to 26.67 tok/s (-33.33 %) and the LoRA's samples per second from 0.4 samples/s to "
+            "0.32 samples/s (-20 %); doing the work together changed its time by -16.67 % and its energy by "
+            "-8.33 % against one after the other, so sharing pays.") in text
+    assert share.view()["measured"]["file"] == "fixtures/lab/interference/interference-gfx1151-2026-10-11.json"
+    assert share.view()["measured"]["decode_change"]["value"] == -33.33
+    assert any("the decode slowdown measured beside a LoRA is -33.33 %" in placement.plain(lever)
+               for lever in plan.levers)
+    for number in plan.trace.views():
+        if "interference-gfx1151" in number["source"]:
+            assert number["kind"] == "measured"
+            assert (REPO_ROOT / number["source"].split(":")[0]).is_file(), number
+
+
+def test_a_measured_run_where_sharing_costs_more_says_to_run_them_one_after_the_other(tmp_path):
+    data = json.loads(INTERFERENCE.read_text(encoding="utf-8"))
+    data["compare"].update(time_change_pct=12.5, energy_change_pct=3.0)
+    path = tmp_path / "interference-gfx1151-2026-10-12.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    plan = placement.default_plan(facts=FACTS, now=NOW, rules=placement.Rules(teacher_share=0.6), interference=path)
+    share = next(s for s in plan.sharing if s.jobs == ("teacher", "lora"))
+    assert share.allowed is True
+    assert "so sharing does not pay: run them one after the other." in placement.plain(share.reason)
+
+
+def test_without_a_usable_interference_file_the_line_stays_a_paper_estimate(tmp_path):
+    pods, manifest = placement.load_pods(FACTS)
+    assert placement.newest_interference(tmp_path) is None
+    plan = placement.build_plan(pods, manifest=manifest, now=NOW, interference_dir=tmp_path)
+    share = next(s for s in plan.sharing if s.jobs == ("teacher", "lora"))
+    assert "is unmeasured (R43)" in placement.plain(share.reason) and share.measured is None
+    broken = tmp_path / "interference-gfx1151-2026-10-11.json"
+    broken.write_text('{"schema": "something else"}', encoding="utf-8")
+    assert placement.newest_interference(tmp_path) == broken
+    assert placement.read_interference(broken) is None
+    plan = placement.build_plan(pods, manifest=manifest, now=NOW, interference_dir=tmp_path)
+    assert next(s for s in plan.sharing if s.jobs == ("teacher", "lora")).measured is None
+
+
+def test_the_newest_interference_file_beside_the_chip_sheets_is_the_default(tmp_path):
+    for day in ("2026-10-11", "2026-10-13"):
+        shutil.copy(INTERFERENCE, tmp_path / f"interference-gfx1151-{day}.json")
+    (tmp_path / "interference-gfx1151-2026-10-14.md").write_text("not json", encoding="utf-8")
+    assert placement.newest_interference(tmp_path).name == "interference-gfx1151-2026-10-13.json"
+
+
+def test_python_m_lab_placement_takes_an_interference_file(capsys):
+    text, answer, code = placement.run(["--no-queue", "--now", NOW.isoformat(), "--facts", str(FACTS),
+                                        "--interference", str(INTERFERENCE)])
+    assert code == 0
+    share = next(s for s in answer["sharing"] if s["jobs"] == ["teacher", "lora"])
+    assert share["measured"]["time_change"]["value"] == -16.67
+    assert "so sharing pays" in placement.plain(text)

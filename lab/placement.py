@@ -270,7 +270,7 @@ def read_interference(path: Path | str) -> dict[str, Num] | None:
     out: dict[str, Num] = {}
     for key, (value, unit, field) in fields.items():
         number = _number(value)
-        out[key] = (Num(number, unit, f"{relative(path)} {field}", "measured") if number is not None
+        out[key] = (Num(number, unit, f"{relative(path)}: {field}", "measured") if number is not None
                     else unknown(unit, f"{relative(path)} has no {field}"))
     if not (out["time_change"].known and out["energy_change"].known):
         return None
