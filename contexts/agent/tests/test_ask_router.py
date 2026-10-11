@@ -123,7 +123,7 @@ def test_no_tool_from_the_box_for_a_tool_question_goes_to_the_network_brain():
     r = route(router, "Turn off the camera")
     assert (r.answered_by, r.tool) == (NETWORK, "camera.pause") and r.model_version == "teacher"
     body = json.loads(seen[0].content)
-    assert body["model"] == "teacher" and body["tool_choice"] == "auto" and len(body["tools"]) == 16
+    assert body["model"] == "teacher" and body["tool_choice"] == "auto" and len(body["tools"]) == 17
     assert seen[0].headers["Authorization"] == "token t"
     assert bus[0].kind == "device_control"
 
@@ -161,6 +161,9 @@ def test_a_failing_model_does_not_fail_the_answer():
     (NINE[5], "camera.pause"), (NINE[6], "room.map"), (NINE[7], "box.model"), (NINE[8], "box.energy_last_answer"),
     ("Turn the cameras back on", "camera.pause"), ("Who is here?", "people.who_is_here"),
     ("Open the approvals screen", "navigate.screen"), ("How is the learning lab doing?", "learning.status"),
+    ("What needs me on the plant floor?", "inspection.status"), ("How is SPOT doing?", "inspection.status"),
+    ("What should I check first?", "inspection.status"), ("Take me to inspection", "navigate.screen"),
+    ("Open the plant floor", "navigate.screen"),
 ])
 def test_the_rules_name_the_tool_for_each_question(question, tool):
     assert rules(question).name == tool

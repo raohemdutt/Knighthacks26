@@ -39,6 +39,7 @@ SCREENS = {
     "lab": "/lab/", "box stats": "/stats/", "stats": "/stats/", "energy": "/stats/", "power": "/stats/",
     "circle": "/circle/", "friends": "/circle/", "privacy": "/privacy/", "people": "/people/", "files": "/files/",
     "impact": "/impact/", "play": "/play/", "sort it": "/play/", "teach": "/teach/", "inspection": "/spot/",
+    "plant floor": "/spot/",
 }
 
 
@@ -71,6 +72,9 @@ class Ports:
     energy: Callable[[], dict | None] | None = None  # the last answer's {"joules", "seconds", "watts", "model"}
     learning: Callable[[], dict | None] | None = None  # {"run", "task", "score", "status"}
     shared_brain: Callable[[], dict | None] | None = None  # the Circle's shared-brain state
+    # Inspection's own shift summary, in its own words: {"status": str, "do_first": [{"headline", "sentence"}],
+    # "do_first_total": int, "watch": int}; None when no kit is loaded on the box
+    inspection: Callable[[], dict | None] | None = None
 
 
 @dataclass
@@ -480,6 +484,25 @@ def friends_shared_brain(args: dict, p: Ports, now: datetime, dry_run: bool = Fa
     return ToolResult(said, s, link="/circle/")
 
 
+INSPECTION_JOBS = 2  # how many do-first jobs are said; the rest are on the screen
+
+
+def inspection_status(args: dict, p: Ports, now: datetime, dry_run: bool = False) -> ToolResult:
+    """The plant floor in Inspection's own words (contexts/spot): its status sentence, which already counts what needs
+    the operator and what to keep an eye on, then the first do-first jobs in order. No sentence is written here."""
+    s = p.inspection() if p.inspection else None
+    if not s or not s.get("status"):
+        return _not_here("Inspection")
+    jobs = [j for j in s.get("do_first") or [] if j.get("headline")]
+    lines = [str(s["status"]).strip()]
+    for n, j in enumerate(jobs[:INSPECTION_JOBS], 1):
+        parts = [str(x).strip().rstrip(".") for x in (j["headline"], j.get("sentence") or "") if str(x).strip()]
+        lines.append(f"{n}. " + ". ".join(parts) + ".")
+    data = {"available": True, "status": s["status"], "do_first": jobs, "do_first_total": s.get("do_first_total", len(jobs)),
+            "watch": s.get("watch", 0)}
+    return ToolResult(" ".join(lines), data, link="/spot/")
+
+
 def navigate_screen(args: dict, p: Ports, now: datetime, dry_run: bool = False) -> ToolResult:
     want = str(args.get("screen") or args.get("name") or "").strip().lower()
     want = re.sub(r"^(?:the|my)\s+|\s+(?:screen|page|tab)$", "", want)
@@ -515,6 +538,8 @@ TOOLS: list[Tool] = [
     Tool("friends.shared_brain", "The friends Circle's shared brain: on or off and what it shares.", _obj(), friends_shared_brain),
     Tool("navigate.screen", "Open a screen of the app: calendar, approvals, room map, cameras, timeline, learning lab, box stats, circle, privacy, people.",
          _obj({"screen": S}, ["screen"]), navigate_screen),
+    Tool("inspection.status", "The plant floor inspection (SPOT robot): what needs the operator, what to check first, what to watch.",
+         _obj(), inspection_status),
 ]
 
 

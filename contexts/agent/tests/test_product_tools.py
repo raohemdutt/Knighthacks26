@@ -48,7 +48,7 @@ def run(name: str, args: dict | None = None, p: Ports | None = None, dry_run: bo
 def test_every_tool_has_a_short_description_and_an_object_schema_the_model_can_call():
     names = [s["function"]["name"] for s in REG.schemas()]
     assert names == [t.name.replace(".", "_") for t in TOOLS]
-    assert len(set(names)) == len(names) == 16
+    assert len(set(names)) == len(names) == 17
     for s in REG.schemas():
         assert s["type"] == "function"
         assert s["function"]["parameters"]["type"] == "object"
@@ -222,7 +222,8 @@ def test_box_model_energy_learning_and_the_shared_brain():
 
 
 @pytest.mark.parametrize("screen,path", [("calendar", "/now/"), ("the approvals screen", "/approvals/"),
-                                         ("room map", "/map/"), ("learning lab", "/lab/"), ("Box stats page", "/stats/")])
+                                         ("room map", "/map/"), ("learning lab", "/lab/"), ("Box stats page", "/stats/"),
+                                         ("inspection", "/spot/"), ("the plant floor", "/spot/")])
 def test_navigate_screen_returns_the_apps_path(screen, path):
     r = run("navigate.screen", {"screen": screen})
     assert r.link == path and r.data["path"] == path
@@ -230,3 +231,30 @@ def test_navigate_screen_returns_the_apps_path(screen, path):
 
 def test_navigate_screen_says_so_for_an_unknown_screen():
     assert not run("navigate.screen", {"screen": "kitchen sink"}).ok
+
+
+# --- Inspection: the plant floor, in the Inspection context's own words ---
+
+SHIFT = {"status": "SPOT has run 27 rounds. 2 things need you. 1 to keep an eye on. Everything else looks normal.",
+         "watch": 1, "do_first_total": 2,
+         "do_first": [{"headline": "Send SPOT back to Heat exchanger 2 (HX-202)", "sentence": "The alarm is not confirmed. Send SPOT back."},
+                      {"headline": "Send a technician to Heat exchanger 4 (HX-204)", "sentence": "The alarm stands."},
+                      {"headline": "Send SPOT back to Heat exchanger 13 (HX-213)", "sentence": "No check here has worked for 32 hours."}]}
+
+
+def test_inspection_status_says_the_status_then_the_first_jobs_in_order_from_the_ports_own_words():
+    r = run("inspection.status", p=ports(inspection=lambda: SHIFT))
+    assert r.ok and r.link == "/spot/"
+    assert r.text == (SHIFT["status"] + " 1. Send SPOT back to Heat exchanger 2 (HX-202). The alarm is not confirmed. Send SPOT back."
+                      " 2. Send a technician to Heat exchanger 4 (HX-204). The alarm stands.")
+    assert "HX-213" not in r.text and len(r.data["do_first"]) == 3  # the third job is on the screen and in the data
+    assert (r.data["watch"], r.data["do_first_total"], r.data["available"]) == (1, 2, True)
+    quiet = run("inspection.status", p=ports(inspection=lambda: {"status": "SPOT has run 3 rounds. Nothing needs you right now.", "do_first": []}))
+    assert quiet.text == "SPOT has run 3 rounds. Nothing needs you right now."
+    assert run("inspection.status", p=ports(inspection=lambda: SHIFT), dry_run=True).proposal is None  # read-only
+
+
+def test_inspection_status_says_it_is_not_here_without_the_port_or_without_a_kit():
+    for p in (ports(), ports(inspection=lambda: None)):
+        r = run("inspection.status", p=p)
+        assert not r.ok and r.text == "Inspection isn't set up on this box." and r.data == {"available": False}

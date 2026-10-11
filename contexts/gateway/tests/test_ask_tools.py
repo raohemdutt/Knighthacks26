@@ -60,3 +60,16 @@ def test_a_question_for_no_tool_is_answered_as_before(client):
     body = client.post("/api/ask", json={"text": "Where did I leave my keys?"}).json()
     assert body["tool"] is None and body["answered_by"] == "the box"
     assert body["citations"][0]["frame_ref"] == "frames:cam-desk:k1941"  # the pre-fetch, as before
+
+
+def test_what_needs_me_on_the_plant_floor_is_answered_in_inspections_own_words(client):
+    shift = client.get("/api/spot/shift").json()
+    body = client.post("/api/ask", json={"text": "What needs me on the plant floor?"}).json()
+    assert body["tool"] == "inspection.status" and body["answered_by"] == "the box's rules"
+    assert body["answer"].startswith(shift["status"]["sentence"])
+    first = shift["do_first"][0]
+    assert f"1. {first['headline']}. {first['sentence']}" in body["answer"]
+    assert body["tool_result"]["watch"] == shift["status"]["watch"]
+    for question in ("Take me to inspection", "Open the plant floor"):
+        go = client.post("/api/ask", json={"text": question}).json()
+        assert go["tool"] == "navigate.screen" and go["tool_result"]["path"] == "/spot/", question
