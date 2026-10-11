@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 import socket
-import sys
 from pathlib import Path
 
 import pytest
@@ -251,7 +250,6 @@ def test_the_fake_trainer_takes_the_real_trainer_s_arguments(tmp_path):
     assert len(itf.read_steps(tmp_path / "out" / "telemetry.jsonl")) == 3
     assert not data.exists() and not rows.exists()
     assert json.loads((tmp_path / "out" / "run.json").read_text())["outcome"] == "trained"
-    assert sys.executable
 
 
 def test_the_research_note_states_the_plan_s_rules_with_the_data_file_s_format_and_is_clean():

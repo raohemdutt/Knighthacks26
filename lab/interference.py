@@ -61,7 +61,6 @@ import signal
 import subprocess
 import sys
 import tarfile
-import tempfile
 import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
@@ -905,15 +904,12 @@ def pod_run_main(args: argparse.Namespace) -> dict[str, Any]:
     from lab import bench
     from lab import profile_decode_pod as pod
 
-    if not args.serve_cmd:
-        problems = pod.gate(expect_user_sha256=args.expect_user_sha256, environ=os.environ,
-                            rocminfo=pod.read_rocminfo, port=args.port,
-                            servers=lambda: pod.vllm_pids(pod.proc_table(bench.Host())))
-        if args.share > MAX_SHARE:
-            problems.append(f"--share {args.share:g} is above {MAX_SHARE}: the LoRA job would not fit beside the "
-                            "teacher")
-        if problems:
-            return {"ok": False, "outcome": "refused", "problems": problems}
+    problems = pod.gate(expect_user_sha256=args.expect_user_sha256, environ=os.environ, rocminfo=pod.read_rocminfo,
+                        port=args.port, servers=lambda: pod.vllm_pids(pod.proc_table(bench.Host())))
+    if args.share > MAX_SHARE:
+        problems.append(f"--share {args.share:g} is above {MAX_SHARE}: the LoRA job would not fit beside the teacher")
+    if problems:
+        return {"ok": False, "outcome": "refused", "problems": problems}
 
     def stop_here(signum: int, frame: Any) -> None:
         raise SystemExit(f"signal {signum}")
