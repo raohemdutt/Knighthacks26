@@ -37,6 +37,7 @@ class FakeProxy:
         self.down: set[str] = set()  # "<user>:<port>" that do not answer
         self.slow: set[str] = set()  # "<user>:<port>" that answer after 10 s
         self.calls: list[str] = []
+        self.chats: list[dict] = []
         self.pod_now = T0 + 100
         self.watts = {"roscon01": 61.0, "roscon02": 48.0}
         self.metrics = {"running": 1, "ttft_sum": 2.9, "ttft_count": 10, "itl_sum": 50.0, "itl_count": 500}
@@ -56,6 +57,9 @@ class FakeProxy:
                 return httpx.Response(200, json={"object": "list", "data": [{"id": "teacher"}, {"id": "group-brain"}]})
             if path == "/metrics":
                 return httpx.Response(200, text=METRICS.format(**self.metrics))
+            if path == "/v1/chat/completions" and request.method == "POST":
+                self.chats.append(json.loads(request.content))
+                return httpx.Response(200, json={"choices": [{"message": {"role": "assistant", "content": "On the desk."}}]})
         if port == "8790":
             last = 100
             stamp = {"pod_received": iso(self.pod_now), "pod_sent": iso(self.pod_now)}
@@ -267,3 +271,54 @@ def test_the_route_answers_200_without_wiring_or_when_reading_breaks():
     r = client(p).get("/api/circle/shared-brain")
     assert r.status_code == 200 and r.json()["configured"] is True
     assert [m["online"] for m in r.json()["members"]] == [False, False]
+
+
+# --- asking the brain and what the answer cost on both pods (the Ask panel's comparison) ---
+
+def test_chat_goes_to_the_head_with_its_token_and_never_to_pod_d():
+    proxy = FakeProxy()
+    reply = asyncio.run(pair(proxy).chat({"model": "teacher", "messages": [{"role": "user", "content": "hi"}]}))
+    assert reply["choices"][0]["message"]["content"] == "On the desk."
+    assert proxy.chats[0]["model"] == "teacher"
+    assert [c for c in proxy.calls if "chat" in c] == ["roscon01:8000/v1/chat/completions"]
+
+
+def test_chat_with_a_refused_token_raises_with_the_status_only():
+    proxy = FakeProxy()
+    proxy.users["roscon01"] = "another"
+    try:
+        asyncio.run(pair(proxy).chat({"messages": []}))
+    except RuntimeError as exc:
+        assert str(exc) == "the head pod answered HTTP 302" and "token" not in str(exc)
+    else:
+        raise AssertionError("no error")
+
+
+def test_window_energy_integrates_both_pods_on_their_own_clocks():
+    proxy = FakeProxy()  # the pods' clock is 100 s ahead of this box's (T0): the offset is measured, not assumed
+    energy = asyncio.run(pair(proxy).window_energy(T0 - 20, T0 - 10))
+    assert energy["pods"]["C"]["joules"] == 610.0 and energy["pods"]["D"]["joules"] == 480.0  # 61 W and 48 W, 10 s
+    assert energy["joules"] == 1090.0 and energy["watts_avg"] == 109.0 and energy["seconds"] == 10.0
+    assert energy["pods"]["C"]["idle_w"] == 10.27 and energy["pods"]["C"]["samples"] == 11
+
+
+def test_window_energy_with_one_sampler_down_counts_the_other_and_waits_no_longer_than_asked():
+    proxy = FakeProxy()
+    proxy.down.add("roscon02:8790")
+    slept = []
+
+    async def sleep(s):
+        slept.append(s)
+
+    energy = asyncio.run(pair(proxy).window_energy(T0 - 20, T0 - 10, wait_s=2, sleep=sleep))
+    assert energy["pods"]["D"] is None and energy["joules"] == 610.0 and sum(slept) <= 2
+
+
+def test_window_energy_is_null_when_no_sampler_covers_the_window():
+    proxy = FakeProxy()
+    proxy.down |= {"roscon01:8790", "roscon02:8790"}
+
+    async def sleep(s):
+        return None
+
+    assert asyncio.run(pair(proxy).window_energy(T0 - 20, T0 - 10, sleep=sleep)) is None

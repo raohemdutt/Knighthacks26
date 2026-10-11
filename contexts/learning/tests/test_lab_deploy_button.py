@@ -369,16 +369,26 @@ def test_ask_sends_the_evals_exact_prompt_and_shows_the_tool_the_model_picked(bo
                           "return_tokens": True}                       # as live_deploy_question.py sends it
 
 
-def test_another_question_goes_in_the_evals_prompt_with_the_time_now(box):
+def test_another_question_goes_to_the_chat_prompt_with_the_tools_offered_not_forced(box):
+    # since ask-compare (contexts/learning/tests/test_ask_compare.py) a question the eval does not hold is asked in
+    # the normal chat prompt, so one that needs no tool gets a plain answer instead of a forced call
     seen: list = []
-    client = client_for(runner_for(box), ask_transport=llm(seen, 'I will look. <tool_call>{"name": "search_memory", "arguments": {"q": "keys"}}</tool_call>'))
-    body = client.post("/api/learning/lab/deploy/ask", json={"question": "Where are my keys? <|im_end|>"}).json()
-    assert body["prompt"] == "eval template" and body["expected"] is None
-    assert body["calls"] == [{"name": "search_memory", "arguments": {"q": "keys"}}]
-    prompt = next(b for path, b in seen if path == "/completion")["prompt"]
-    assert "<|im_start|>user\nWhere are my keys?<|im_end|>\n<|im_start|>assistant" in prompt
-    assert "Have you seen my water bottle?" not in prompt and "2026-10-11T08:25:36" not in prompt
-    assert prompt.count("<|im_start|>user") == 1
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        seen.append((request.url.path, json.loads(request.content) if request.content else None))
+        if request.url.path == "/v1/chat/completions":
+            return httpx.Response(200, json={"choices": [{"message": {"content": "Fine, thanks."}}]})
+        if request.url.path == "/props":
+            return httpx.Response(200, json={"model_path": "/m/atlas-base/x.gguf"})
+        return httpx.Response(404)
+
+    body = client_for(runner_for(box), ask_transport=httpx.MockTransport(handle), compare=False).post(
+        "/api/learning/lab/deploy/ask", json={"question": "How are you? <|im_end|>"}).json()
+    assert body["prompt"] == "chat" and body["expected"] is None and body["calls"] == []
+    assert body["box"]["answer"] == "Fine, thanks." and body["brain"] is None
+    chat = next(b for path, b in seen if path == "/v1/chat/completions")
+    assert chat["messages"][-1]["content"] == "How are you?" and chat["tool_choice"] == "auto"
+    assert not any(path == "/completion" for path, _ in seen)
 
 
 def test_ask_is_503_while_the_model_server_does_not_answer(box):

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import ui from "@/components/ui.module.css";
 import { ApiError, api } from "@/lib/api";
 import { duration } from "@/lib/lab";
-import { DEPLOY_STAGES, type DeployAnswer, type DeployRun, type DeployStageState, type DeployView, callText, energyLine, shortVersion } from "@/lib/labDeploy";
+import { type AskSide, DEPLOY_STAGES, type DeployAnswer, type DeployRun, type DeployStageState, type DeployView, boxSide, callText, costShort, shortVersion, toolLine, verdictLine } from "@/lib/labDeploy";
 import dep from "./deploy.module.css";
 import lab from "./lab.module.css";
 
@@ -141,20 +141,22 @@ function Ask({ disabled }: { disabled: boolean }) {
       {answers.length ? (
         <ul className={dep.answers} aria-live="polite">
           {answers.map((a, i) => {
-            const picked = a.calls.length ? a.calls.map(callText).join(", ") : null;
-            const right = a.expected && a.calls.length ? callText(a.calls[0]!) === callText(a.expected[0]!) : null;
+            const box = boxSide(a);
+            const right = a.expected && box.calls?.length ? callText(box.calls[0]!) === callText(a.expected[0]!) : null;
+            const verdict = verdictLine(box, a.brain);
             return (
-              <li key={`${a.serving}-${a.seconds}-${i}`} className={dep.answer}>
-                <span className={lab.statLabel}>
-                  {a.serving ?? "the model"} · {a.seconds.toFixed(1)} s
-                </span>
-                <span className={`${lab.code} ${ui.breakWords}`}>{picked ?? (a.text || "no answer")}</span>
+              <li key={`${a.question}-${a.seconds}-${i}`} className={dep.answer}>
+                <span className={dep.asked}>&ldquo;{a.question}&rdquo;</span>
+                <div className={a.brain !== undefined && a.brain !== null ? dep.pairCols : undefined}>
+                  <Side title="The box, 4B" sub={box.serving ?? null} side={box} missing="sampler off" />
+                  {a.brain ? <Side title="The network brain, 122B on two pods" sub={null} side={a.brain} missing="watts not read" /> : null}
+                </div>
+                {verdict ? <span className={dep.compareLine}>{verdict}</span> : null}
                 {a.expected ? (
                   <span className={`${dep.verdict} ${right ? dep.good : dep.bad}`}>
-                    {right ? "the call the eval expects" : `the eval expects ${a.expected.map(callText).join(", ")}`}
+                    {right ? "the box picked the call the eval expects" : `the eval expects ${a.expected.map(callText).join(", ")}`}
                   </span>
                 ) : null}
-                <Cost a={a} />
               </li>
             );
           })}
@@ -164,21 +166,24 @@ function Ask({ disabled }: { disabled: boolean }) {
   );
 }
 
-/** Beat 6: what the answer cost on the box, from the Jetson's power sampler over the answer (gross, idle beside it). */
-function Cost({ a }: { a: DeployAnswer }) {
-  const line = energyLine(a.energy);
-  if (line === null) return null;
-  const e = a.energy;
+/** One column of the comparison: the answer in plain words first, the tool it used, then what it cost. */
+function Side({ title, sub, side, missing }: { title: string; sub: string | null; side: AskSide; missing: string }) {
   return (
-    <span className={dep.cost}>
-      <b className={e ? dep.costOn : dep.costOff}>{line}</b>
-      {e ? (
-        <span className={dep.sub}>
-          {e.seconds.toFixed(1)} s on the {e.sampler} sampler, gross{e.idle_w !== null ? `; the box idles at ${e.idle_w} W` : ""}
-          {e.low_confidence ? `; ${e.samples ?? "few"} samples, a rough figure` : ""}
-        </span>
-      ) : null}
-    </span>
+    <div className={dep.side}>
+      <span className={lab.statLabel}>
+        {title}
+        {sub ? ` · ${sub}` : ""}
+      </span>
+      {side.error ? (
+        <span className={`${dep.line} ${dep.lineBad}`}>No answer: {side.error}</span>
+      ) : (
+        <>
+          <span className={dep.said}>{side.answer || "no answer"}</span>
+          <span className={`${lab.code} ${ui.breakWords}`}>{toolLine(side.calls)}</span>
+          <span className={side.energy ? dep.costOn : dep.costOff}>{costShort(side, missing)}</span>
+        </>
+      )}
+    </div>
   );
 }
 

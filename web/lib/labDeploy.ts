@@ -67,6 +67,75 @@ export interface DeployAnswer {
   prompt: "eval" | "eval template";
   /** What the answer cost on the box (G6): null while the Jetson's power sampler is off; absent on an older gateway. */
   energy?: AnswerEnergy | null;
+  /** The comparison (ask-compare): the box's answer and the 122B pair's; absent on an older gateway. */
+  box?: AskSide;
+  brain?: AskSide | null;
+}
+
+export type ToolCallShape = { name: string; arguments: Record<string, unknown> };
+
+/** Both pods' power over the brain's request window, gross, each pod's idle beside it. */
+export interface BrainEnergy {
+  joules: number;
+  watts_avg: number;
+  seconds?: number;
+  pods: Record<string, { joules: number; watts_avg: number; idle_w: number | null; samples: number } | null>;
+}
+
+/** One side of the comparison: an answer, or why there is none. */
+export interface AskSide {
+  answer?: string;
+  calls?: ToolCallShape[];
+  serving?: string | null;
+  seconds?: number;
+  energy?: AnswerEnergy | BrainEnergy | null;
+  error?: string;
+}
+
+/** The box's side from an answer, also from a gateway older than the comparison (its top-level fields). */
+export function boxSide(a: DeployAnswer): AskSide {
+  return a.box ?? { answer: a.text, calls: a.calls, serving: a.serving, seconds: a.seconds, energy: a.energy ?? null };
+}
+
+/** "about 41 J in 2.4 s"; without a reading, what is missing and the seconds. */
+export function costShort(side: AskSide, missing: string): string {
+  const secs = side.seconds !== undefined ? `${side.seconds.toFixed(1)} s` : "";
+  const e = side.energy;
+  if (!e) return secs ? `${missing} · ${secs}` : missing;
+  const j = e.joules >= 10 ? Math.round(e.joules).toLocaleString("en-US") : e.joules.toFixed(1);
+  return `about ${j} J${secs ? ` in ${secs}` : ""}`;
+}
+
+/** The tool a side used, in one line: "last_seen(label=\"keys\")", or "no tool". */
+export function toolLine(calls: ToolCallShape[] | undefined): string {
+  return calls && calls.length ? calls.map(callText).join(", ") : "no tool";
+}
+
+/** What a side's tools did, in plain words: "checked last seen", "looked back over the last 25 minutes". */
+export function toolWords(calls: ToolCallShape[] | undefined): string {
+  if (!calls || !calls.length) return "answered without a tool";
+  const c = calls[0]!;
+  if (c.name === "last_seen") return "checked last seen";
+  if (c.name === "search_memory") return "searched memory";
+  if (c.name === "episodes_between") {
+    const a = Date.parse(String(c.arguments.start ?? ""));
+    const b = Date.parse(String(c.arguments.end ?? ""));
+    if (Number.isFinite(a) && Number.isFinite(b) && b > a) {
+      const min = Math.round((b - a) / 60000);
+      return min >= 120 && min % 60 === 0 ? `looked back over the last ${min / 60} hours` : `looked back over the last ${min} minutes`;
+    }
+    return "looked back over a stretch of time";
+  }
+  return `used ${c.name}`;
+}
+
+/** One line under both answers: "both checked last seen", or "the box searched memory, the brain checked last seen". */
+export function verdictLine(box: AskSide, brain: AskSide | null | undefined): string | null {
+  if (!brain || box.error || brain.error) return null;
+  const a = toolWords(box.calls);
+  const b = toolWords(brain.calls);
+  if (a === b) return a === "answered without a tool" ? "both answered without a tool" : `both ${a}`;
+  return `the box ${a}, the brain ${b}`;
 }
 
 /** contexts/learning/answer_energy.py: the box's power over the answer's window, gross, with its idle beside it. */

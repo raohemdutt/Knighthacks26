@@ -98,6 +98,24 @@ try {
   is("sampler off", D.energyLine(null), "sampler off");
   is("older gateway", D.energyLine(undefined), null);
 
+  // ---- the Ask panel's comparison (ask-compare): the box and the network brain side by side
+  const look = (min) => ({ name: "episodes_between", arguments: { start: "2026-10-11T14:00:00-04:00", end: new Date(Date.parse("2026-10-11T14:00:00-04:00") + min * 60000).toISOString() } });
+  const seen = { name: "last_seen", arguments: { label: "keys" } };
+  const search = { name: "search_memory", arguments: { q: "keys" } };
+  is("both looked back", D.verdictLine({ answer: "a", calls: [look(25)] }, { answer: "b", calls: [look(25)] }), "both looked back over the last 25 minutes");
+  is("tools differ", D.verdictLine({ answer: "a", calls: [search] }, { answer: "b", calls: [seen] }), "the box searched memory, the brain checked last seen");
+  is("no tool on either", D.verdictLine({ answer: "a", calls: [] }, { answer: "b", calls: [] }), "both answered without a tool");
+  is("a side that failed has no verdict", D.verdictLine({ answer: "a", calls: [] }, { error: "no answer in 60 s" }), null);
+  is("no brain, no verdict", D.verdictLine({ answer: "a", calls: [] }, null), null);
+  is("hours", D.toolWords([look(180)]), "looked back over the last 3 hours");
+  is("tool line", D.toolLine([seen]), 'last_seen(label="keys")');
+  is("no tool line", D.toolLine([]), "no tool");
+  is("cost short", D.costShort({ seconds: 2.43, energy: { joules: 41.3 } }, "sampler off"), "about 41 J in 2.4 s");
+  is("cost short brain", D.costShort({ seconds: 9.5, energy: { joules: 1234.5, watts_avg: 130, pods: {} } }, "watts not read"), "about 1,235 J in 9.5 s");
+  is("cost short off", D.costShort({ seconds: 2.4, energy: null }, "sampler off"), "sampler off · 2.4 s");
+  const oldAnswer = { question: "q", serving: "atlas-base", text: "t", calls: [seen], expected: null, seconds: 1, prompt: "eval", energy: null };
+  is("an older gateway's answer is the box side", D.boxSide(oldAnswer).answer, "t");
+
   // ---- three tabs, as a grouping of the five views (lib/labTabs.ts): nothing is dropped, old links land
   const B = await load("labBench");
   const T = await load("labTabs");

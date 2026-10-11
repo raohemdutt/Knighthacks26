@@ -138,3 +138,35 @@
 .bad {
   color: var(--danger);
 }
+
+/* the comparison (ask-compare): the box and the network brain side by side, the answer first and large */
+.asked {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.pairCols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.said {
+  font-size: 20px;
+  font-weight: 650;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.compareLine {
+  font-size: 16px;
+  font-weight: 650;
+  color: var(--accent-text, var(--accent));
+}
