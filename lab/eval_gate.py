@@ -70,6 +70,7 @@ from runtime.registry import load_models_config, model_version
 __all__ = ["DECODE", "MIN_ITEMS", "ALPHA", "MIN_CURRENT_RUNS", "PACKAGED_QUANT", "PREVIEW_KEY", "SCORES_FILE",
            "EVENT_FILE", "GateError", "Client", "RealClient", "make_client", "sign_flip_p", "run_gate", "main"]
 
+CLI_VERB = "eval-gate"   # registers python -m lab eval-gate
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DECODE: dict[str, Any] = {"thinking": "off", "sampling": "greedy", "max_tokens": 512}
 MIN_ITEMS = MIN_HELD_OUT       # held-out items a deploy needs (the owner's ruling, the same floor as the split's)

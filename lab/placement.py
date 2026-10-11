@@ -64,6 +64,7 @@ __all__ = [
     "check_request", "render", "main", "run",
 ]
 
+CLI_VERB = "placement"   # registers python -m lab placement
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_FACTS = REPO_ROOT / "fixtures" / "lab" / "placement"
 CHIPSHEET_DIR = REPO_ROOT / "lab" / "refine" / "research" / "kernels" / "data"

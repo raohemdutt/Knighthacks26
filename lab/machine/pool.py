@@ -143,6 +143,7 @@ from lab.machine.lock import FileLock, LockTimeout
 
 log = logging.getLogger("lab.pool")
 
+CLI_VERB = "pool"   # registers python -m lab pool
 ACTOR = "lab pool"
 REPO_ROOT = Path(__file__).resolve().parents[2]
 REFINE_DIR = "lab/refine"

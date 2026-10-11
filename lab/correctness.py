@@ -71,6 +71,7 @@ from lab import bench  # noqa: E402
 from lab.machine import metrics as metrics_file  # noqa: E402
 from lab.machine.record import recorded  # noqa: E402
 
+CLI_VERB = "correctness"   # registers python -m lab correctness
 HARNESS = "lab/correctness.py 1"
 BASELINE_SCHEMA = "lab.correctness.baseline/1"
 RESULT_SCHEMA = "lab.correctness.result/1"
