@@ -43,7 +43,8 @@ def test_every_row_of_the_committed_file_is_served_once_with_its_own_line_value_
 
 
 def test_the_batching_sweep_is_the_recorded_one_point_per_batch_size_all_flagged_low_confidence():
-    (sweep,) = [s for s in bench(ROWS)["sweeps"] if not s["other_chip"]]  # R57's A100 reference is a sweep of its own
+    # R57's A100 reference and E29's llama.cpp run on pod B are sweeps of their own
+    (sweep,) = [s for s in bench(ROWS)["sweeps"] if not s["other_chip"] and s["family"] == "teacher_batching"]
     assert (sweep["family"], sweep["node"], sweep["batches"]) == ("teacher_batching", "pod-a", [1, 4, 8, 16, 64])
     assert set(sweep["metrics"]) == {"decode_tok_s", "decode_tok_s_total", "joules_per_token", "ttft_s", "watts_avg", "watts_peak"}
     assert sweep["points"] == 30 == sweep["low_confidence"] and sweep["other_metrics"] == []
@@ -76,7 +77,8 @@ def test_the_student_reference_is_the_jetson_rows_and_its_joules_per_token_is_ma
 def test_power_is_the_newest_idle_and_serving_row_per_node_and_a_node_without_a_row_is_absent_not_zero():
     power = bench(ROWS)["power"]
     by_node = {n["node"]: n for n in power["nodes"]}
-    assert {"jetson", "pod-a"} <= set(by_node) and "pod-b" in power["absent"] and "pod-b" not in by_node
+    # pod-b has serving watts since E29's llama.cpp rows and no idle row of its own; nothing is absent
+    assert {"jetson", "pod-a", "pod-b"} <= set(by_node) and power["absent"] == [] and by_node["pod-b"]["idle"] is None
     for node in by_node.values():
         for key, suffix in (("idle", ".idle_watts"), ("serving", ".watts_avg")):
             if node[key]:
@@ -116,8 +118,8 @@ def test_a_new_node_and_a_new_metric_family_show_up_without_a_code_change(tmp_pa
     payload = bench(rows, skipped)
     assert [s["problem"] for s in payload["skipped"]] == ["not JSON", "no metric name or no numeric value"]
     ids = {s["id"] for s in payload["sweeps"]}
-    assert {"teacher_batching:pod-b:bench-r20", "kernel_hybrid:pod-b:bench-k"} <= ids and len(ids) == 4  # with R57's A100 reference
-    assert payload["sweeps"][0]["ts"] == "2026-10-11T03:00:00Z"  # newest first
+    assert {"teacher_batching:pod-b:bench-r20", "kernel_hybrid:pod-b:bench-k"} <= ids and len(ids) == 6  # with R57's A100 reference, R20's pod-b vLLM matrix and E29's llama.cpp sweep
+    assert payload["sweeps"][0]["ts"] == max(x["ts"] for x in payload["sweeps"])  # newest first (E29's, 05:10)
     assert next(n for n in payload["power"]["nodes"] if n["node"] == "pod-b")["idle"]["value"] == 11.0 and payload["power"]["absent"] == []
     assert ("quant.perplexity", "pod-b") in {(x["metric"], x["node"]) for x in payload["not_charted"]}
     assert {"kernel_hybrid", "quant"} <= {f["family"] for f in payload["families"]}
@@ -143,7 +145,7 @@ def test_the_endpoint_serves_the_file_and_rereads_it_when_it_changes(tmp_path):
         real.include_router(lab_bench_router())
         with TestClient(real) as committed:
             body = committed.get("/api/learning/lab/bench").json()
-            assert body["rows"] == len(RAW) and body["sweeps"][0]["node"] == "pod-a"
+            assert body["rows"] == len(RAW) and {s["node"] for s in body["sweeps"]} >= {"pod-a", "pod-b"}
 
 
 def test_each_row_is_named_for_the_chip_it_was_measured_on_and_only_the_current_lab_is_on_its_curve(tmp_path):
@@ -211,7 +213,8 @@ def test_the_committed_a100_reference_is_a_reference_on_colab_not_an_r9700_and_t
     app.include_router(lab_bench_router())
     with TestClient(app) as client:
         payload = client.get("/api/learning/lab/bench").json()
-    current, reference = payload["sweeps"]
+    current = next(s for s in payload["sweeps"] if s["family"] == "teacher_batching")
+    (reference,) = [s for s in payload["sweeps"] if s["other_chip"]]
     assert (current["chip"]["key"], current["other_chip"]) == ("strix-halo", False)
     assert (reference["node"], reference["chip"]["name"], reference["chip"]["where"], reference["chip"]["role"], reference["other_chip"]) == ("a100", "NVIDIA A100", "Colab", "reference", True)
     assert [c["id"] for c in current["comparisons"]] == [reference["id"]] and current["comparisons"][0]["batches"] == [1, 4, 8, 16, 64]
