@@ -247,9 +247,14 @@ def test_an_ok_measurement_carries_its_compile_record_and_occupancy(monkeypatch)
 @pytest.mark.parametrize("node, gfx, machine, ok", [
     ("pod-b", "gfx1151", "x86_64", True), ("pod-a", "gfx1151", "x86_64", True),
     ("pod-d", "gfx1151", "x86_64", False), ("pod-b", "gfx1201", "x86_64", False),
-    ("pod-b", None, "x86_64", False), ("pod-b", "gfx1151", "aarch64", False)])
+    ("pod-b", None, "x86_64", False), ("pod-b", "gfx1151", "aarch64", False),
+    ("pod-b", None, "AMD64", False), ("pod-b", "gfx1151", "AMD64", True), ("pod-b", "gfx1151", "arm64", False)])
 def test_the_node_gate(node, gfx, machine, ok):
     assert (wv.gate(node, gfx, machine) is None) is ok
+
+
+def test_a_windows_box_is_refused_by_its_chip_not_by_the_name_of_its_architecture():
+    assert "gfx1151" in wv.gate("pod-b", None, "AMD64") and "aarch64" in wv.gate("pod-b", "gfx1151", "aarch64")
 
 
 def test_run_refuses_here_before_touching_a_gpu(monkeypatch, capsys):

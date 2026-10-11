@@ -108,11 +108,12 @@ def rocminfo_gfx() -> str | None:
 
 
 def gate(node: str, gfx: str | None, machine: str | None = None) -> str | None:
-    """Why this machine must not run the measurements, or None when it is a gfx1151 pod under a known name."""
+    """Why this machine must not run the measurements, or None when it is a gfx1151 pod under a known name.
+    x86_64 is AMD64 where the system spells it so (Windows); such a machine is then refused by its chip."""
     machine = machine or platform.machine()
     if node not in wf.NODES:
         return f"--node must be one of {', '.join(wf.NODES)}, not {node!r}"
-    if machine != "x86_64":
+    if machine.lower() not in ("x86_64", "amd64"):
         return f"this machine is {machine}, not a pod (x86_64); the Jetson is aarch64"
     if gfx != POD_GFX:
         return f"rocminfo names {gfx or 'no gfx'}, not {POD_GFX}: not a Strix Halo pod"
