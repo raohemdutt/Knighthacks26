@@ -8,7 +8,7 @@ import v from "@/components/voice/voice.module.css";
 import { ApiError, api, type Answer as AtlasAnswer } from "@/lib/api";
 import { speakOnBox, stopBoxSpeech } from "@/lib/boxSpeech";
 import { time } from "@/lib/format";
-import { plainText, whereIntent } from "@/lib/guide";
+import { plainText, precisionOf, spotTarget, whereIntent } from "@/lib/guide";
 import { handoffLine, type Job } from "@/lib/guideAttention";
 import { cancelGuide, onGuide, pointAt } from "@/lib/guideBus";
 import { NEXT, nextDoFirst, spotRun } from "@/lib/guideSpot";
@@ -23,6 +23,8 @@ type Note = { text: string; tone: "info" | "error" };
 type Turn = { asked: string; spot?: Answer & { plain?: boolean; matched?: boolean }; atlas?: AtlasAnswer };
 
 const RELISTEN_MS = 350;
+/** The pause between two stops of the shift tour, after a stop's line has been said. */
+const TOUR_PAUSE_MS = 700;
 
 /**
  * The Atlas mic on Inspection: the same bar as on Ask and Teach (components/voice/VoiceBar.tsx), docked at the foot of
@@ -172,6 +174,31 @@ export function SpotMic({ chips, onWhy, guideChips = [], jobs = [] }: { chips: s
     [fresh, guide, respond],
   );
 
+  /**
+   * "Walk me through my shift": the stops the box lists (GET /api/spot/guide/tour, each one a guide answer), one after another
+   * through the guide. A stop is over when its pointer has arrived and its line has been said; a new question, Escape or
+   * leaving ends the whole walk (the stop under way never reports back, so nothing follows it).
+   */
+  const tour = () => {
+    setOpen(false);
+    setNote(null);
+    void (async () => {
+      const mine = await fresh();
+      try {
+        const { stops } = await api.spotGuideTour();
+        for (const stop of stops) {
+          if (!alive.current || mine !== seq.current) return;
+          const target = spotTarget(stop);
+          if (!target) continue;
+          await new Promise<void>((resolve) => pointAt({ target, precision: precisionOf("element"), onArrived: resolve }));
+          await new Promise<void>((resolve) => window.setTimeout(resolve, TOUR_PAUSE_MS));
+        }
+      } catch {
+        /* the box is not answering: there is nothing to walk through */
+      }
+    })();
+  };
+
   const ask = (q: string) => {
     setText("");
     setOpen(false);
@@ -277,6 +304,9 @@ export function SpotMic({ chips, onWhy, guideChips = [], jobs = [] }: { chips: s
                   {q}
                 </button>
               ))}
+              <button type="button" className={ui.chip} onClick={tour}>
+                Walk me through my shift
+              </button>
             </div>
           ) : null}
           <div>

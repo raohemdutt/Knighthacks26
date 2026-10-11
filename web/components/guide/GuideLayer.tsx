@@ -249,6 +249,10 @@ export function GuideLayer() {
       if (!found) {
         tell("I could not find that on this screen.");
         show({ phase: "found" });
+        if (run.onArrived) {
+          await quiet(8000);
+          if (alive()) run.onArrived();
+        }
         return;
       }
       el.current = found;
@@ -386,6 +390,7 @@ export function GuideLayer() {
       }
       if (!held) {
         await quiet(30_000); // the caption stays until its last line has been said
+        if (alive()) run.onArrived?.();
         await sleep(run.action ? 14_000 : 9000);
         if (alive()) cancel();
       }

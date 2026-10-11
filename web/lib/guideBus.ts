@@ -37,6 +37,8 @@ export interface GuideRun {
   precision?: import("./guide").Precision;
   /** A camera zone to outline on that camera's refreshed picture where one runs (the right bin); its other zones are dimmed. */
   zone?: string;
+  /** Called once the pointer has arrived and the arrival line has been said (or the target was not found): a tour then goes on to its next stop. Not called when the run is cancelled. */
+  onArrived?: () => void;
   /** One button in the caption ("Show me in the room"). */
   action?: { label: string; run: GuideRun };
 }
