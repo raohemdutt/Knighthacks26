@@ -136,7 +136,10 @@ function Lab({ task }: { task: LearningTask | undefined }) {
       </div>
     );
   }
-  const scores = Object.entries(task.scores ?? {});
+  // The gate's role scores only: a real scores.json also carries per-repeat and per-check keys
+  // ("current.run_1.citations_ok", "gate.p_value", ...) that would flood a screen read from across the room.
+  const scores = ROLE_SCORES.flatMap(([key, label]) => (typeof task.scores?.[key] === "number" ? [[label, task.scores[key]!] as const] : []));
+  const verdict = task.deployed ? "Installed" : task.decision === "reject" ? "Not installed" : task.decision === "deploy" ? "Cleared by the gate" : null;
   return (
     <div className={op.panel}>
       <h2>Lab</h2>
@@ -151,16 +154,23 @@ function Lab({ task }: { task: LearningTask | undefined }) {
       </div>
       {scores.length ? (
         <p className={op.scores}>
-          {scores.map(([k, v]) => (
-            <span key={k}>
-              {humanize(k)} <b>{v.toFixed(2)}</b>
+          {scores.map(([label, v]) => (
+            <span key={label}>
+              {label} <b>{percent(v)}</b>
             </span>
           ))}
+          {verdict ? <span>{verdict}</span> : null}
         </p>
       ) : null}
     </div>
   );
 }
+
+const ROLE_SCORES: [string, string][] = [
+  ["current", "Before"],
+  ["candidate", "After"],
+  ["teacher", "Teacher"],
+];
 
 export default function OperatorPage() {
   const { link, model, subscribe } = useAtlas();
