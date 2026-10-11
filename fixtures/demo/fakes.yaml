@@ -107,6 +107,8 @@ circle:
   - {type: circle.brain.consent.changed, at: 70}
   - {type: circle.brain.asked, at: 75}
   - {type: circle.brain.answered, at: 116}
+  # Face share (off by default): this member let a friend's box recognise them. Ids, a state and times only.
+  - {type: circle.face_share.changed, at: 130, expires_at: "+2592000s"}
 
 vault:
   - {type: vault.policy.changed, at: 0}

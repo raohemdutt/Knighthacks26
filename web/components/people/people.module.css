@@ -198,3 +198,62 @@
   display: grid;
   gap: 12px;
 }
+
+/* Face share: one friend per row, and the key fingerprints behind a tap. */
+.friend {
+  display: grid;
+  gap: 8px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.friend:first-child {
+  padding-top: 0;
+}
+
+.friend:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.friends {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.keys summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap);
+  color: var(--accent-text);
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.keys dl {
+  display: grid;
+  gap: 4px;
+  margin: 4px 0 0;
+}
+
+.keys dt {
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.keys dd {
+  margin: 0 0 6px;
+}
+
+.fingerprint {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 17px;
+  letter-spacing: 0.04em;
+  overflow-wrap: anywhere;
+}

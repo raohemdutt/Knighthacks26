@@ -77,7 +77,6 @@ REQUIRED_EVERYWHERE = {
     "points at AGENTS.md section 8": r"AGENTS\.md section 8",
     "points at the GPU queue section of the skill": r"section 4b",
     "reaches the GPU only through the queue verbs": r"python -m lab slot",
-    "honors the stop file": r"lab/state/STOP",
     "drafts a missing verb instead of working around it": (
         r"python -m lab draft --name <[^>]+> --goal"
     ),
@@ -287,3 +286,19 @@ def test_prompt_points_at_agents_md_sections_that_exist(tier):
         if not re.search(rf"^{level} {re.escape(ref)}[. ]", agents, re.M):
             missing.append(ref)
     assert not missing, f"{tier}.md points at AGENTS.md sections that do not exist: {missing}"
+
+
+@pytest.mark.parametrize("tier", TIERS)
+def test_prompt_names_the_stop_file_through_the_launchers_state_dir(tier):
+    """A sitting runs in its own clone, so a cwd-relative lab/state/STOP is a file that never exists."""
+    text = read_prompt(tier)
+    assert "lab/state/STOP" not in text, (
+        f"{tier}.md names the STOP file by the cwd-relative path lab/state/STOP; "
+        "name it through LAB_STATE_DIR instead"
+    )
+    assert re.search(r"LAB_STATE_DIR\W{0,2}[/\\]STOP\b", text), (
+        f"{tier}.md does not name the STOP file as $LAB_STATE_DIR/STOP"
+    )
+    assert re.search(r"(?i)\bstopped\b[^.\n]*\bhand off\b", text), (
+        f"{tier}.md no longer says a verb answering stopped means hand off"
+    )

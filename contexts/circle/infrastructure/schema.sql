@@ -3,6 +3,9 @@
 --
 -- Only approved summaries, proposals, counts and scores live here. Frames, raw
 -- habit signals, connector items and face templates never leave the box.
+-- (One exception, off by default: sealed_messages at the end of this file holds a
+-- member's own face template as ciphertext only the one friend's box it is
+-- addressed to can read. Nothing in this database can read a face from it.)
 
 CREATE TABLE IF NOT EXISTS circles (
     id          text PRIMARY KEY,
@@ -175,3 +178,22 @@ CREATE OR REPLACE VIEW impact_leaderboard AS
 SELECT i.circle_id, i.member_id, m.display_name, i.items_seen, i.recycled, i.contamination, i.diversion_rate
 FROM impact_counters i
 JOIN members m ON m.id = i.member_id;
+
+-- The sealed channel (face share, off by default; contracts.circle.SealedMessage, version 1).
+-- box_key: a box's two public keys, self-signed (to_member is NULL). face_share: a signed
+-- header and ciphertext readable only by to_member's box. face_revoke: a signed header.
+-- `kind` has no CHECK on purpose: a box skips kinds and versions it does not know, so
+-- later kinds stay additive. Rows are small and deleted by the boxes when used or revoked.
+CREATE TABLE IF NOT EXISTS sealed_messages (
+    id           text PRIMARY KEY,
+    v            integer NOT NULL DEFAULT 1,
+    circle_id    text NOT NULL REFERENCES circles(id) ON DELETE CASCADE,
+    from_member  text NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+    to_member    text,
+    kind         text NOT NULL,
+    body         jsonb NOT NULL,
+    created_at   timestamptz NOT NULL DEFAULT now(),
+    CHECK (pg_column_size(body) <= 400000)
+);
+
+CREATE INDEX IF NOT EXISTS sealed_messages_inbox ON sealed_messages (circle_id, to_member, created_at);

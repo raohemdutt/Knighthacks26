@@ -5,9 +5,11 @@ to lab/refine/<track>/REFINE_LOG.md, saves its report as pass_reports/pass_<NN>.
 Its rehearsal mode, --dry-run, writes one record under lab/refine/<track>/dry_runs/ and nothing else.
 
 check_track() reads a track folder and returns one sentence per problem: an entry that check_pass_entry()
-rejects, pass numbers that do not run from 1 to the counter, a pass without its report, a metrics-file line
-cited for a value it does not hold, a dry-run record that does not parse. An empty list means the folder holds
-together, which is what a pass checks before it commits and what the suite checks for every track.
+rejects, pass numbers that do not run from 1 to the counter, a pass without its report or a report without its
+pass, a metrics-file line cited for a value it does not hold, a dry-run record that does not parse. The log,
+counter and report rules are refine_merge.check_track's, so a pass and the merge pass judge a track folder alike.
+An empty list means the folder holds together, which is what a pass checks before it commits and what the suite
+checks for every track.
 
 A dry-run record is a pass report (TEMPLATES.md section 4) with three differences:
 
@@ -19,6 +21,8 @@ A dry-run record is a pass report (TEMPLATES.md section 4) with three difference
     ...
     ```
 
+The entry block is the fenced code block whose info string is "text dry-run:pass-entry", its fences read as
+refine_formats.code_blocks reads them, so a longer fence may wrap output that holds a fenced block of its own.
 Its file is named <YYYY-MM-DD>-pass-<NN>.md after the date and the pass it rehearses. A dry run is not a pass:
 its entry never counts toward the counter, and no pass cites a record as a source. parse_dry_run() reads one
 and raises FormatError when its structure is wrong.
@@ -33,7 +37,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from lab.machine import metrics
 from lab.machine import refine_formats as rf
+from lab.machine import refine_merge
 
 __all__ = [
     "METRICS_PATH",
@@ -46,17 +52,16 @@ __all__ = [
     "parse_dry_run",
 ]
 
-TRACKS = ("telemetry", "learning", "plumbing", "kernels")
+TRACKS = rf.TRACKS
 REFINE_DIR = Path(__file__).resolve().parents[1] / "refine"
-METRICS_PATH = REFINE_DIR / "metrics.jsonl"
+METRICS_PATH = metrics.DEFAULT_PATH
 
 _DRY_RUN_HEADER = re.compile(
     r"^Dry run of (?P<track>[a-z]+) refinement pass (?P<number>[0-9]+) \((?P<who>[^()\n]*)\), "
     r"(?P<date>[0-9]{4}-[0-9]{2}-[0-9]{2})\."
 )
 _DRY_RUN_NAME = re.compile(r"^(?P<date>[0-9]{4}-[0-9]{2}-[0-9]{2})-pass-(?P<number>[0-9]{2,})\.md$")
-_DRY_RUN_FENCE = re.compile(r"^```text dry-run:pass-entry[ \t]*\n(?P<body>.*?)^```[ \t]*$", re.MULTILINE | re.DOTALL)
-_REPORT_FIRST_LINE = re.compile(r"^Verbatim report returned by (?P<track>[a-z]+) refinement pass (?P<number>[0-9]+) \(")
+_DRY_RUN_INFO = "text dry-run:pass-entry"  # the info string of the fenced block that holds the rehearsed entry
 _METRICS_LINE = re.compile(r"(?:^|/)metrics\.jsonl:(?P<line>[0-9]+)$")
 
 
@@ -83,10 +88,10 @@ def parse_dry_run(text: str) -> DryRun:
     if len(lines) < 2 or not lines[1].startswith("Ended:"):
         raise rf.FormatError("the second line of a dry-run record states when it ended: 'Ended: <date>T<time><offset>'")
     ended = rf.parse_report_end(lines[1])
-    fences = list(_DRY_RUN_FENCE.finditer("\n".join(lines)))
+    fences = [block for block in rf.code_blocks(lines) if block.closed and block.info == _DRY_RUN_INFO]
     if len(fences) != 1:
         raise rf.FormatError(f"a dry-run record holds exactly one ```text dry-run:pass-entry block, found {len(fences)}")
-    log = rf.parse_log(fences[0]["body"])
+    log = rf.parse_log("\n".join(fences[0].body))
     entries = [entry for entry in log.entries if isinstance(entry, rf.PassEntry) and entry.kind == "pass"]
     if len(log.entries) != 1 or len(entries) != 1:
         raise rf.FormatError(f"the dry-run block holds one '## Pass N, YYYY-MM-DD' entry and nothing else, found {len(log.entries)} entries")
@@ -163,9 +168,12 @@ def check_dry_run(path: Path | str, metrics_path: Path | str = METRICS_PATH) -> 
 
 
 def check_track(track_dir: Path | str, metrics_path: Path | str = METRICS_PATH) -> list[str]:
-    """List what is wrong with a track folder's log, counter, reports and dry-run records; [] when they hold together."""
+    """List what is wrong with a track folder's log, counter, reports and dry-run records; [] when they hold together.
+
+    The log, counter and report rules are refine_merge.check_track's, the ones the merge pass reads the folder by;
+    this adds the metric citations of each entry against the metrics file and the dry-run records.
+    """
     track_dir = Path(track_dir)
-    track = track_dir.name
     try:
         log = rf.parse_log(_read(track_dir / "REFINE_LOG.md"))
     except (OSError, rf.FormatError) as exc:
@@ -174,48 +182,14 @@ def check_track(track_dir: Path | str, metrics_path: Path | str = METRICS_PATH) 
         counter = rf.parse_counter(_read(track_dir / "refine_pass.txt"))
     except (OSError, rf.FormatError) as exc:
         return [f"refine_pass.txt: {exc}"]
-    problems: list[str] = []
-    numbers = [entry.number for entry in log.passes]
-    if numbers != list(range(1, counter + 1)):
-        problems.append(
-            f"refine_pass.txt reads {counter} but the log's pass entries are numbered {numbers}; "
-            "they must run from 1 to the counter, which a pass writes last"
-        )
+    problems = refine_merge.check_track(track_dir.name, log, counter, refine_merge.read_reports(track_dir))
     metrics_lines = _lines(metrics_path)
     for entry in log.passes:
-        problems += [f"REFINE_LOG.md: {problem}" for problem in rf.check_pass_entry(entry)]
         problems += metric_citation_problems(
             entry.metrics_before + entry.metrics_after, metrics_lines, f"REFINE_LOG.md pass {entry.number}"
         )
-        problems += _report_problems(track_dir, track, entry)
     for record in sorted((track_dir / "dry_runs").glob("*.md")):
         problems += [f"dry_runs/{problem}" for problem in check_dry_run(record, metrics_path)]
-    return problems
-
-
-def _report_problems(track_dir: Path, track: str, entry: rf.PassEntry) -> list[str]:
-    name = f"pass_{entry.number:02d}.md"
-    path = track_dir / "pass_reports" / name
-    if not path.is_file():
-        return [f"pass {entry.number} has no report at pass_reports/{name}"]
-    lines = _read(path).split("\n")
-    problems: list[str] = []
-    first = _REPORT_FIRST_LINE.match(lines[0])
-    if not first or (first["track"], int(first["number"])) != (track, entry.number):
-        problems.append(
-            f"pass_reports/{name}: the first line must read "
-            f"'Verbatim report returned by {track} refinement pass {entry.number} (...'"
-        )
-    if len(lines) < 2 or not lines[1].startswith("Ended:"):
-        problems.append(f"pass_reports/{name}: the second line must state when the pass ended: 'Ended: <date>T<time><offset>'")
-    else:
-        try:
-            rf.parse_report_end(lines[1])
-        except rf.FormatError as exc:
-            problems.append(f"pass_reports/{name}: {exc}")
-    heading = f"## Pass {entry.number}, {entry.date}"
-    if heading not in (line.rstrip() for line in lines):
-        problems.append(f"pass_reports/{name}: does not quote its entry; no line reads '{heading}'")
     return problems
 
 

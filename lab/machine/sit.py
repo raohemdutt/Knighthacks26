@@ -10,13 +10,19 @@ refuses to run while LAB_ACTOR names a sitting).
     python -m lab sit --tier fable --merge                      the merge pass: /refine-merge
     python -m lab sit --tier fable --referee                    the referee duty: python -m lab referee first
     python -m lab sit --tier <tier> --rehearse                  a fake task, capped at REHEARSE_MINUTES
-        [--minutes N] [--budget-usd X] [--dry-run]
+        [--minutes N] [--budget-usd X] [--force] [--dry-run]
 
 One call, in order:
 1. Refusals before anything runs or is written: the STOP file (stop.py), an item the
    tier cannot do (exit 2: --merge and --referee are Fable duties, a pass is Opus's or
    Fable's), no workspace, no tier prompt, no agent CLI and, for anything but a
-   rehearsal, no digest.
+   rehearsal, no digest. Last, the live sittings: the sittings the ledger shows as
+   running (pool.read_live_sittings, every sit row in the ledger, the pool's own count),
+   whoever started them. Outcome no_units when their units plus this tier's
+   (pool.COST) would pass pool.BUDGET_UNITS; outcome running when one of them has the
+   same item, which the answer names. --force (force=True in run()) is the owner's
+   override of both. A pool seat never needs it: the pool starts a sitting only inside
+   its own count of the same live sittings, so a pool launch is never refused here.
 2. The prompt: the tier prompt (prompts/<tier>.md), the digest (python -m lab digest,
    run through the dispatcher in this process just before the session starts) and,
    last, the instruction: the sitting id, the cap and the item.
@@ -67,6 +73,11 @@ after that: outcome stopped. Ctrl+C kills it too: outcome interrupted. The CLI r
 cost only in its result line, so a session killed before that line has no cost, and
 the row says nothing rather than zero. A session that printed its result and was
 killed while it lingered (the CLI waits for background work) is judged by its result.
+On Windows the session runs in a job object of its own that kills everything in it when
+its last handle closes; the launcher holds that handle for the session's life, so a
+launcher that dies (closed console, killed process) takes the session tree with it
+instead of leaving it running with no cap, no STOP kill and no end row. On POSIX the
+session leads a process group of its own instead.
 Nothing here keeps the model's own words: the ledger and the answer carry numbers and
 codes, and the transcript lives only in the stream file.
 
@@ -75,10 +86,12 @@ task (run python -m lab --help once, answer one line, change nothing) and a cap 
 REHEARSE_MINUTES (a smaller --minutes lowers it); without a digest it still runs and
 the prompt says why there is none. --dry-run answers the command, the launcher's
 environment variables, the working directory, the instruction and the prompt's size;
-it starts nothing and writes nothing.
+it starts nothing and writes nothing, and it answers no_units or running where the
+sitting itself would.
 
 run() is the same call for a caller in this process, such as the pool:
-run("opus", Item("task", "O20")) returns the answer as a dict.
+run("opus", Item("task", "O20")) returns the answer as a dict, and
+run(..., force=True) is --force.
 """
 
 from __future__ import annotations
@@ -104,7 +117,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import IO, Any
 
-from lab.machine import allowed, ledger, stop
+from lab.machine import allowed, ledger, record, refine_merge, stop
 from lab.machine.lock import LockTimeout
 
 log = logging.getLogger("lab.sit")
@@ -115,8 +128,9 @@ ACTOR = "lab sit"
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PROMPTS_DIR = Path(__file__).with_name("prompts")
 
-#: The refinement tracks a pass may name (lab/refine/<track>/).
-TRACKS: tuple[str, ...] = ("kernels", "learning", "plumbing", "telemetry")
+#: The refinement tracks a pass may name (lab/refine/<track>/): the one list, refine_merge.TRACKS,
+#: so --pass and item_problem accept exactly the tracks the merge pass reconciles.
+TRACKS: tuple[str, ...] = refine_merge.TRACKS
 #: The tiers whose allow-lists carry the refine-track skill.
 PASS_TIERS: tuple[str, ...] = ("fable", "opus")
 #: The tier of the merge pass and the referee duty.
@@ -127,9 +141,11 @@ TASK_ID = re.compile(r"[A-Z]{1,4}[0-9]{1,4}")
 
 WORKSPACE_ENV = "LAB_WORKSPACE"
 WORKSPACE_MARKER: tuple[str, ...] = (".claude", "skills", "open-ticket", "SKILL.md")
-ACTOR_ENV = "LAB_ACTOR"
-TIER_ENV = "LAB_TIER"
-TASK_ENV = "LAB_TASK"
+#: The actor, tier and task names a sitting is started under: record.py's, the names every
+#: ledger row of the sitting is read back from, so the launcher sets exactly what record() reads.
+ACTOR_ENV = record.ENV_ACTOR
+TIER_ENV = record.ENV_TIER
+TASK_ENV = record.ENV_TASK
 PYTHONPATH_ENV = "PYTHONPATH"
 #: What the launcher sets in a session's environment beyond the state dir, actor and tier:
 #: no auto memory, and no connectors of the owner's web account (see "Where it runs" above).
@@ -194,6 +210,8 @@ OUTCOME_NO_CLI = "no_cli"
 OUTCOME_NO_DIGEST = "no_digest"
 OUTCOME_LEDGER = "ledger_error"
 OUTCOME_DRY_RUN = "dry_run"
+OUTCOME_NO_UNITS = "no_units"  # the live sittings leave too few of pool.BUDGET_UNITS for this tier
+OUTCOME_RUNNING = "running"    # a live sitting already has this item
 
 #: The CLI's result subtypes the launcher tells apart.
 SUCCESS_SUBTYPE = "success"
@@ -520,6 +538,118 @@ def _new_group() -> dict[str, Any]:
     return {} if os.name == "nt" else {"start_new_session": True}
 
 
+# Windows job object constants (winnt.h), used only by SessionJob.
+JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
+JOB_OBJECT_EXTENDED_LIMIT_INFORMATION_CLASS = 9   # JobObjectExtendedLimitInformation
+PROCESS_SET_QUOTA = 0x0100
+PROCESS_TERMINATE = 0x0001
+
+
+class SessionJob:
+    """Windows: a job object with JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE that holds one session.
+    The launcher keeps the only handle to it, so when the launcher dies, however it dies,
+    the system closes the handle and ends every process in the job; the session cannot
+    outlive the cap and STOP watch that run_session keeps. close() at the session's end
+    also ends anything the session left behind. Other platforms: a no-op, the session's
+    own process group (_new_group) stands in. A job that cannot be made, or a process the
+    system refuses to put in one, is logged and the session runs without it."""
+
+    def __init__(self) -> None:
+        self._handle: int | None = None
+
+    @property
+    def active(self) -> bool:
+        return self._handle is not None
+
+    def adopt(self, proc: subprocess.Popen) -> None:
+        """Put proc in a new kill-on-close job, right after it started."""
+        if os.name != "nt":
+            return
+        try:
+            self._handle = _assign_kill_on_close_job(proc.pid)
+        except OSError as exc:
+            log.error("lab sit: the session (pid %s) runs without a kill-on-close job object, so it would "
+                      "outlive a launcher that dies: %s", proc.pid, exc)
+
+    def close(self) -> None:
+        """Close the job handle: the system ends whatever is still in the job."""
+        handle, self._handle = self._handle, None
+        if handle is None:
+            return
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+        kernel32.CloseHandle.restype = wintypes.BOOL
+        if not kernel32.CloseHandle(handle):
+            log.error("lab sit: closing the session's job object failed: %s",
+                      ctypes.WinError(ctypes.get_last_error()))
+
+
+def _assign_kill_on_close_job(pid: int) -> int:
+    """Windows only: make a job object that kills its processes when its last handle
+    closes, put pid in it, and return the job handle. Raises OSError, with the system's
+    reason, on any refusal; no handle leaks on the way out."""
+    import ctypes
+    from ctypes import wintypes
+
+    class IoCounters(ctypes.Structure):
+        _fields_ = [(name, ctypes.c_ulonglong) for name in (
+            "ReadOperationCount", "WriteOperationCount", "OtherOperationCount",
+            "ReadTransferCount", "WriteTransferCount", "OtherTransferCount")]
+
+    class BasicLimitInformation(ctypes.Structure):
+        _fields_ = [("PerProcessUserTimeLimit", ctypes.c_longlong), ("PerJobUserTimeLimit", ctypes.c_longlong),
+                    ("LimitFlags", wintypes.DWORD), ("MinimumWorkingSetSize", ctypes.c_size_t),
+                    ("MaximumWorkingSetSize", ctypes.c_size_t), ("ActiveProcessLimit", wintypes.DWORD),
+                    ("Affinity", ctypes.c_size_t), ("PriorityClass", wintypes.DWORD),
+                    ("SchedulingClass", wintypes.DWORD)]
+
+    class ExtendedLimitInformation(ctypes.Structure):
+        _fields_ = [("BasicLimitInformation", BasicLimitInformation), ("IoInfo", IoCounters),
+                    ("ProcessMemoryLimit", ctypes.c_size_t), ("JobMemoryLimit", ctypes.c_size_t),
+                    ("PeakProcessMemoryUsed", ctypes.c_size_t), ("PeakJobMemoryUsed", ctypes.c_size_t)]
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateJobObjectW.argtypes = (wintypes.LPVOID, wintypes.LPCWSTR)
+    kernel32.CreateJobObjectW.restype = wintypes.HANDLE
+    kernel32.SetInformationJobObject.argtypes = (wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD)
+    kernel32.SetInformationJobObject.restype = wintypes.BOOL
+    kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.AssignProcessToJobObject.argtypes = (wintypes.HANDLE, wintypes.HANDLE)
+    kernel32.AssignProcessToJobObject.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+    kernel32.CloseHandle.restype = wintypes.BOOL
+
+    def refused(step: str) -> OSError:
+        error = ctypes.WinError(ctypes.get_last_error())
+        return OSError(error.errno, f"{step}: {error.strerror}")
+
+    job = kernel32.CreateJobObjectW(None, None)  # no security attributes: the handle is not inherited
+    if not job:
+        raise refused("CreateJobObjectW")
+    try:
+        info = ExtendedLimitInformation()
+        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        if not kernel32.SetInformationJobObject(job, JOB_OBJECT_EXTENDED_LIMIT_INFORMATION_CLASS,
+                                                ctypes.byref(info), ctypes.sizeof(info)):
+            raise refused("SetInformationJobObject")
+        process = kernel32.OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, False, pid)
+        if not process:
+            raise refused("OpenProcess")
+        try:
+            if not kernel32.AssignProcessToJobObject(job, process):
+                raise refused("AssignProcessToJobObject")
+        finally:
+            kernel32.CloseHandle(process)
+    except OSError:
+        kernel32.CloseHandle(job)
+        raise
+    return int(job)
+
+
 def kill_tree(proc: subprocess.Popen) -> None:
     """End the session and every process it started: taskkill /T /F on Windows; on POSIX
     SIGTERM to its process group (the CLI's own clean exit), then SIGKILL."""
@@ -547,7 +677,8 @@ def run_session(cmd: Sequence[str], prompt: str, *, cwd: Path, env: Mapping[str,
                 cap_seconds: float) -> Session:
     """Run one session to its end: the prompt on stdin, stdout copied to stream_path as it
     comes, the process tree killed at cap_seconds, or STOP_GRACE_SECONDS after the STOP
-    file appeared, or on Ctrl+C."""
+    file appeared, or on Ctrl+C. On Windows the session runs in a SessionJob for its whole
+    life, so it also ends when this launcher dies."""
     session = Session()
     started = time.monotonic()
     with contextlib.suppress(OSError):  # a folder that cannot be made shows up as the stream's error
@@ -559,6 +690,8 @@ def run_session(cmd: Sequence[str], prompt: str, *, cwd: Path, env: Mapping[str,
         session.error = f"could not run {cmd[0]}: {exc}"
         session.duration_s = round(time.monotonic() - started, 1)
         return session
+    job = SessionJob()
+    job.adopt(proc)
     reader = _StdoutReader(proc.stdout, stream_path)
     errors = _StderrReader(proc.stderr)
     reader.start()
@@ -602,6 +735,7 @@ def run_session(cmd: Sequence[str], prompt: str, *, cwd: Path, env: Mapping[str,
         except subprocess.TimeoutExpired:
             log.error("lab sit: the session (pid %s) has not exited %.0f seconds after it was killed",
                       proc.pid, KILL_WAIT_SECONDS)
+        job.close()
         reader.join(READER_JOIN_SECONDS)
         errors.join(READER_JOIN_SECONDS)
     session.returncode = proc.returncode
@@ -735,11 +869,49 @@ def _stopped_answer() -> dict[str, Any]:
             "file": str(stop.stop_file())}
 
 
+def live_refusal(tier: str, item: Item, state_dir: Path, now: dt.datetime) -> dict[str, Any] | None:
+    """Why the sittings the ledger shows as running refuse this one, as the fields of a
+    refusal (outcome, error, live), or None when they leave room for it. The live sittings
+    are pool.read_live_sittings: every sit row in the ledger, no lookback, because a sitting
+    whose cap runs past pool.LEDGER_LOOKBACK_HOURS still holds its units. running when a
+    live sitting has the same item; no_units when their units plus this tier's would pass
+    pool.BUDGET_UNITS. ledger_error when the ledger cannot be read: the budget cannot be
+    checked, and --force is the way past it."""
+    from lab.machine import pool  # imported here: pool imports sit
+
+    try:
+        # the pool's own reader, so a hand sitting and a pool seat count the same live sittings
+        live = pool.read_live_sittings(state_dir, now)
+    except (FileNotFoundError, NotADirectoryError):
+        # no ledger yet (or a state dir that is not a directory): nothing runs, and the start-row write
+        # is the step that reports a state dir that cannot be written
+        live = []
+    except OSError as exc:
+        return {"outcome": OUTCOME_LEDGER,
+                "error": f"the ledger cannot be read, so the live sittings and the unit budget cannot be checked "
+                         f"({type(exc).__name__}: {exc}); --force starts the sitting without the check"}
+    summaries = [info.summary() for info in live]
+    same = [info.sitting for info in live if info.item == item.label]
+    if same:
+        return {"outcome": OUTCOME_RUNNING, "live": summaries,
+                "error": f"{item.label} already runs in sitting {', '.join(same)}; --force starts a second one"}
+    in_use = sum(info.units for info in live)
+    cost = pool.COST[tier]
+    if in_use + cost > pool.BUDGET_UNITS:
+        return {"outcome": OUTCOME_NO_UNITS, "live": summaries, "units_in_use": in_use, "units_needed": cost,
+                "error": f"{in_use} of {pool.BUDGET_UNITS} units are in use by {len(live)} live sittings "
+                         f"({', '.join(info.sitting for info in live)}) and a {tier} sitting needs {cost}; "
+                         "--force starts it over the budget"}
+    return None
+
+
 def run(tier: str, item: Item, *, minutes: float | None = None, budget_usd: float | None = None,
-        dry_run: bool = False) -> dict[str, Any]:
+        dry_run: bool = False, force: bool = False) -> dict[str, Any]:
     """Start one sitting of this tier for this item and wait for it to end; the answer
     as a dict (see the module docstring). minutes is the cap, budget_usd the CLI's
-    --max-budget-usd; dry_run answers what would run and starts nothing."""
+    --max-budget-usd; dry_run answers what would run and starts nothing; force skips the
+    live-sittings check (live_refusal), the owner's override of the unit budget and of an
+    item that already runs."""
     tier = str(tier).strip().lower()
     problem = item_problem(tier, item)
     for name, value in (("minutes", minutes), ("budget_usd", budget_usd)):
@@ -781,6 +953,10 @@ def run(tier: str, item: Item, *, minutes: float | None = None, budget_usd: floa
     cmd = session_command(program, tier, budget_usd)
     env = session_env(os.environ, state_dir=state_dir, sitting=sitting, tier=tier, task=item.task)
     base = {"sitting": sitting, **base}
+    if not force:
+        refusal = live_refusal(tier, item, state_dir, dt.datetime.now(dt.timezone.utc))
+        if refusal is not None:
+            return {"ok": False, **base, **refusal}
     if dry_run:
         return {"ok": True, "outcome": OUTCOME_DRY_RUN, **base, "command": cmd, "cwd": str(workspace),
                 "env": {key: env.get(key) for key in LAUNCHER_ENV_KEYS},
@@ -862,6 +1038,10 @@ def _parser() -> argparse.ArgumentParser:
                         help=f"kill the session after this many minutes (default {DEFAULT_MINUTES:g}; "
                              f"a rehearsal never runs past {REHEARSE_MINUTES:g})")
     parser.add_argument("--budget-usd", type=_positive, help="passed to the CLI as --max-budget-usd")
+    parser.add_argument("--force", action="store_true",
+                        help="the owner's override: start even when the live sittings in the ledger hold too many "
+                             f"of the budget's units or already run this item (outcomes {OUTCOME_NO_UNITS} and "
+                             f"{OUTCOME_RUNNING})")
     parser.add_argument("--dry-run", action="store_true",
                         help="answer the command, environment and prompt size; start and write nothing")
     return parser
@@ -886,4 +1066,5 @@ def main(argv: Sequence[str]) -> dict[str, Any]:
     problem = item_problem(args.tier, item)
     if problem:
         parser.error(problem)
-    return run(args.tier, item, minutes=args.minutes, budget_usd=args.budget_usd, dry_run=args.dry_run)
+    return run(args.tier, item, minutes=args.minutes, budget_usd=args.budget_usd, dry_run=args.dry_run,
+               force=args.force)

@@ -33,6 +33,8 @@
 - GET  /api/circle/events      the Circle's shared calendar: agreed events, soonest first
 - POST /api/circle/proposals   {title, start, end, location?, invitees?} -> approval card for a plan with friends (G1)
 - GET  /api/circle/sharing     what leaves this box for the Circle: settings, outbox counts, Neon up or down
+- GET  /api/circle/face-share  friends whose boxes can recognise you and the other way round; POST .../{friend}/share,
+                               /revoke, /review, /forget, /trust-key. 409 while it is switched off (the default)
 - GET  /api/invites[/{name}]   calendar invites (.ics) created after approval, to open or share (K2)
 - GET  /api/places             place packs; POST one as YAML/JSON (validated) (S5)
 - GET  /api/play/campus-route  ?from=ucf.union&to=ucf.hec[&depart=&due=] or to=friend:<member> (S5)
@@ -79,6 +81,7 @@ from pydantic import BaseModel, Field
 from contexts.gateway.bootstrap import Atlas, Settings, build
 from contexts.agent.application.rule_compiler import RuleCompileError, compile_rule
 from contexts.circle.api import circle_router
+from contexts.circle.face_share_api import face_share_router
 from contexts.circle.application.sharing import CircleOffline
 from contexts.day.api import day_router
 from contexts.day.application.coach_feedback import coach_feedback_router
@@ -210,6 +213,8 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
     # POST /api/circle/proposals: an approval card for a plan with friends (G1)
     app.include_router(circle_router(atlas.bus, circle=atlas.circle, sharing=atlas.sharing, presence=atlas.presence,
                                      board=atlas.board, config_dir=atlas.settings.config_dir, guard=authorized))
+    # /api/circle/face-share: every endpoint answers 409 while face sharing is off (the default) or there is no Circle
+    app.include_router(face_share_router(atlas.face_share, atlas.bus, guard=authorized))
     # GET /api/league, /api/league/me (200 in every state); POST /api/league/stake, /api/league/challenges -> approval cards
     app.include_router(league_router(atlas.bus, league=atlas.league, guard=authorized))
     if atlas.spot:  # /api/spot/*: the inspection (SPOT) dashboard; 200 in every state, also without a kit

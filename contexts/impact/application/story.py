@@ -16,10 +16,13 @@ wrong; nothing here counts an item a second time. This module reads its `seen` a
   nudges with n on each side (and "not enough data yet" under a minimum n);
 - milestones, as `impact.milestone.reached` (live only; once per week, kind and threshold);
 - the practice set: the items the table got wrong this week, plus the ones someone tapped "teach me" on
-  (`impact.practice.added`).
+  (`impact.practice.added`);
+- the story the screen plays: a one-sentence headline, the week's disposals in order (`flow`), the sourced
+  "problem here" paragraph, and the learn-and-improve loop (mistakes seen, taught, practised in Sort It, and
+  the same mistakes per week, which is a trend only once the log holds two weeks).
 
 State that rebuilds from the log (those handlers replay): who was tagged on which camera (owner
-recognition), which disposal belongs to whom, the milestones already said, the practice taps.
+recognition), which disposal belongs to whom, the milestones already said, the practice taps, Sort It rounds.
 Publishing a milestone is live only. Every duration is event time; nothing here reads the wall clock.
 """
 
@@ -67,6 +70,10 @@ class RuleBook:
     reasons: dict[str, str] = field(default_factory=dict)
     default_reason: str | None = None
     overridden: bool = False  # True when a profile's file replaced the base one
+    basis: dict[str, str] = field(default_factory=dict)  # item -> "stated" (the place publishes it) or "assumed" (ours)
+    source: dict | None = None  # the published list the file was checked against: title, publisher, url, read
+    compare: list[dict] = field(default_factory=list)  # the same item under neighbouring rules
+    compare_sources: list[str] = field(default_factory=list)
 
     @classmethod
     def load(cls, path: str | Path = "config/sorting.yaml", config_dir: str | Path | None = None) -> "RuleBook":
@@ -82,7 +89,9 @@ class RuleBook:
                 pass
         return cls(SortingRules(raw["bins"], raw["items"], raw.get("aliases") or {}), file=shown,
                    name=raw.get("name") or path.stem, place=raw.get("place"), note=raw.get("note"),
-                   reasons=dict(raw.get("reasons") or {}), default_reason=raw.get("default_reason"), overridden=overridden)
+                   reasons=dict(raw.get("reasons") or {}), default_reason=raw.get("default_reason"), overridden=overridden,
+                   basis=dict(raw.get("basis") or {}), source=raw.get("source") or None, compare=list(raw.get("compare") or []),
+                   compare_sources=list(raw.get("compare_sources") or []))
 
     def item(self, label: str) -> str:
         """The listed item a detector label names ("soda can" -> "can"); the label itself when unlisted."""
@@ -106,8 +115,10 @@ class RuleBook:
     def summary(self) -> dict:
         return {"file": self.file, "name": self.name, "place": self.place, "note": self.note, "overridden": self.overridden,
                 "bins": list(self.rules.bins),
-                "items": [{"label": i, "bin": b, "rule": self.reason(i)} for i, b in self.rules.items.items()],
-                "default_rule": self.default_reason,
+                # basis: "stated" by the place's published list, "assumed" (ours), or None when the file does not say
+                "items": [{"label": i, "bin": b, "rule": self.reason(i), "basis": self.basis.get(i)} for i, b in self.rules.items.items()],
+                "default_rule": self.default_reason, "source": self.source, "compare": self.compare,
+                "compare_sources": self.compare_sources,
                 "swap": "Another campus reuses Waste Watch by replacing this one file (or adding config/profiles/<name>/sorting.yaml)."}
 
 
@@ -162,8 +173,11 @@ class Factors:
             m = materials.get(f.get("material")) or {}
             row = {"item": item, "count": n, "material": m.get("name") or f.get("material"),
                    "mass_g": {"low": round(lo, 1), "high": round(hi, 1)}, "each_g": f["mass_g"],
-                   "mass_source": f.get("source"), "mass_confidence": f.get("confidence", "low"),
-                   "energy_kwh": None, "co2e_kg": None, "material_source": m.get("source"), "material_confidence": m.get("confidence")}
+                   "mass_source": f.get("source"), "mass_url": f.get("url"), "mass_confidence": f.get("confidence", "low"),
+                   "energy_kwh": None, "co2e_kg": None, "material_source": m.get("source"), "material_url": m.get("url"),
+                   "material_confidence": m.get("confidence"),
+                   # the factors themselves, so the screen can show count x mass x factor
+                   "energy_kwh_per_kg": m.get("energy_kwh_per_kg"), "co2e_kg_per_kg": m.get("co2e_kg_per_kg")}
             if m.get("energy_kwh_per_kg"):
                 e = (lo / 1000 * float(m["energy_kwh_per_kg"]["low"]), hi / 1000 * float(m["energy_kwh_per_kg"]["high"]))
                 kwh[0] += e[0]
@@ -181,13 +195,16 @@ class Factors:
         charges = {"low": int(kwh[0] * 1000 // float(charge["high"])), "high": int(kwh[1] * 1000 // float(charge["low"]))}
         return {
             "estimate": True,
-            "disclaimer": self.raw.get("disclaimer") or "Estimates from illustrative factors, not measurements.",
+            "disclaimer": self.raw.get("disclaimer") or "Estimates from published average factors, not measurements.",
             "file": self.file,
             "items": len(items),
             "kept_out_g": {"low": round(g[0]), "high": round(g[1])},
             "energy_kwh": {"low": round(kwh[0], 2), "high": round(kwh[1], 2)},
             "phone_charges": charges,
+            "phone_charge_wh": charge,
             "phone_charge_source": eq.get("phone_charge_source"),
+            "phone_charge_url": eq.get("phone_charge_url"),
+            "energy_note": eq.get("energy_note"),
             "phone_charge_confidence": eq.get("phone_charge_confidence", "medium"),
             "co2e_kg": {"low": round(co2[0], 2), "high": round(co2[1], 2)},
             "by_item": rows,
@@ -195,12 +212,26 @@ class Factors:
         }
 
     def contamination(self, wrong_in_recycling: int, good_in_same_bin: int) -> dict:
+        """What a wrong item does: a quoted, attributed statement when the file has one. `spoils_bag_at` is None
+        unless the file names a threshold; without one, a single wrong item in recycling is "at risk"."""
         c = self.raw.get("contamination") or {}
-        at = int(c.get("spoils_bag_at", 2))
-        text = (c.get("text") or "{n} wrong items can spoil a bag.").format(n=at)
-        return {"wrong_in_recycling": wrong_in_recycling, "spoils_bag_at": at, "at_risk": wrong_in_recycling >= at,
+        at = c.get("threshold", c.get("spoils_bag_at"))
+        at = int(at) if at is not None else None
+        text = c.get("text") or "A wrong item in recycling can get the good items around it thrown out too."
+        if at is not None:
+            text = text.replace("{n}", str(at))
+        sourced = bool(c.get("quote") and c.get("url"))
+        return {"wrong_in_recycling": wrong_in_recycling, "spoils_bag_at": at, "at_risk": wrong_in_recycling >= (at or 1),
                 "good_items_sharing_the_bin": good_in_same_bin, "text": text, "source": c.get("source"),
-                "confidence": c.get("confidence", "low"), "rule_of_thumb": bool(c.get("rule_of_thumb", True))}
+                "confidence": c.get("confidence", "low"), "rule_of_thumb": bool(c.get("rule_of_thumb", not sourced)),
+                "quote": c.get("quote"), "attribution": c.get("attribution"), "url": c.get("url"),
+                "rates": list(c.get("rates") or [])}
+
+    @property
+    def problem(self) -> dict | None:
+        """"The problem here": one sourced paragraph, each claim with its scope (the campus, the county, the nation)."""
+        p = self.raw.get("problem") or {}
+        return {"text": p["text"], "sources": list(p.get("sources") or [])} if p.get("text") else None
 
 
 # --- the story ---
@@ -222,6 +253,7 @@ class ImpactStory:
         self.said: dict[tuple[date, str, str | None], MilestoneReached] = {}  # (week, kind, member) -> the highest said
         self.milestones: list[MilestoneReached] = []
         self.asked: list[PracticeAdded] = []  # "teach me" taps
+        self.rounds: dict[str, tuple[datetime, str, bool]] = {}  # Sort It round id -> (when, item, right)
 
     def subscribe(self, bus) -> None:
         bus.subscribe("perception.identity", self.on_identity, replay=True)
@@ -229,6 +261,7 @@ class ImpactStory:
         bus.subscribe("impact.item.disposed", self.on_disposed, replay=True)  # state only: whose it was
         bus.subscribe("impact.milestone.reached", self.on_milestone, replay=True)
         bus.subscribe("impact.practice.added", self.on_practice, replay=True)
+        bus.subscribe("play.round.scored", self.on_round, replay=True)  # state only: what was practised in Sort It
         bus.subscribe("impact.item.disposed", self.celebrate)  # live only: publishes
 
     # --- state handlers (replay=True) ---
@@ -265,6 +298,9 @@ class ImpactStory:
 
     def on_practice(self, e: PracticeAdded) -> None:
         self.asked.append(e)
+
+    def on_round(self, e: Event) -> None:
+        self.rounds[e.round_id] = (e.ts, self.book.item(e.item), bool(e.correct))
 
     # --- time ---
 
@@ -399,6 +435,63 @@ class ImpactStory:
             member = self.who.get(item_id)
         return PracticeAdded(ts=now, label=item, item_id=item_id, member_id=member)
 
+    # --- the story the screen plays ---
+
+    def flow(self, start: datetime, end: datetime, limit: int = 60) -> dict:
+        """This week's disposals, oldest first, for the screen to replay, and where the recyclables seen ended up.
+        `not_binned` are recyclables the camera saw that never entered a bin zone (carried away, or still on the
+        table): they count against the diversion rate, so the screen has to be able to say so."""
+        ds = self.disposals(start, end)
+        seen = {s.item_id for s in self.waste.seen.values() if start <= s.ts < end and s.recyclable}
+        binned = {d.item_id for d in ds}
+        return {"items": [{"item_id": d.item_id, "item": self.book.item(d.label), "bin": d.bin, "correct": d.correct,
+                           "belongs_in": self.book.rules.bin_for(d.label), "rule": self.book.reason(d.label), "ts": d.ts.isoformat()}
+                          for d in ds[-limit:]],
+                "more": max(0, len(ds) - limit),
+                "recyclable_seen": len(seen),
+                "recycled": sum(1 for d in ds if d.bin == "recycling" and d.item_id in seen),
+                "recyclable_in_trash": sum(1 for d in ds if d.bin != "recycling" and d.item_id in seen),
+                "not_binned": len(seen - binned),
+                "wrong_in_recycling": sum(1 for d in ds if d.bin == "recycling" and not d.correct)}
+
+    def loop(self, now: datetime, practice: dict) -> dict:
+        """Mistake seen -> rule taught -> practised in Sort It -> fewer of that mistake next week. Counts only what
+        the log holds; with one week of disposals there is no trend, and it says so."""
+        week, start, end = self.week_span(now)
+        by_week: dict[date, dict[str, int]] = {}
+        totals: dict[date, int] = {}
+        for d in self.disposals(until=end):
+            w = week_of(self.day_of(d.ts))
+            totals[w] = totals.get(w, 0) + 1
+            row = by_week.setdefault(w, {})
+            if not d.correct:
+                item = self.book.item(d.label)
+                row[item] = row.get(item, 0) + 1
+        weeks = [{"week_start": w.isoformat(), "disposals": totals[w], "mistakes": sum(by_week[w].values()), "by_item": by_week[w]}
+                 for w in sorted(totals)]
+        items = {p["item"] for p in practice["items"]}
+        played = [right for ts, item, right in self.rounds.values() if start <= ts < end and item in items]
+        seen = sum(p["mistakes"] for p in practice["items"])
+        last = week - timedelta(days=7)
+        if last in totals:
+            before = sum(by_week[last].values())
+            trend = {"available": True, "previous": before, "current": seen,
+                     "text": f"{seen} wrong this week against {before} last week (measured; small numbers, so a direction, not a result)."}
+        else:
+            trend = {"available": False, "previous": None, "current": seen,
+                     "text": "Needs a second week to show a trend: the log has no disposals from last week."}
+        return {"seen": seen, "taught": sum(1 for p in practice["items"] if p["asked"]),
+                "practised": {"rounds": len(played), "right": sum(1 for r in played if r)},
+                "trend": trend, "weeks": weeks}
+
+    @staticmethod
+    def headline(kept: int, wrong: int, disposals: int) -> str:
+        """One live sentence of measured counts: "This week this table kept 4 items out of landfill and got 2 wrong."."""
+        if not disposals:
+            return "Nothing has gone into the bins at this table yet this week."
+        return (f"This week this table kept {kept} item{'' if kept == 1 else 's'} out of landfill and got "
+                f"{wrong or 'none'} wrong.")
+
     # --- the view ---
 
     def view(self, now: datetime, member: str | None = None) -> dict:
@@ -471,6 +564,7 @@ class ImpactStory:
         }
 
         practice = self.practice(now, member)
+        week_ds = self.disposals(start, end)
         wrong_days = {d["day"] for d in days if d["contamination"]}
         good_sharing = sum(d["recycled"] for d in days if d["day"] in wrong_days)
         return {
@@ -478,6 +572,11 @@ class ImpactStory:
             "week": {"start": week.isoformat(), "end": (week + timedelta(days=6)).isoformat(), "today": today.isoformat()},
             "empty": total["items_seen"] == 0,
             "empty_text": EMPTY_TEXT if total["items_seen"] == 0 else None,
+            # measured counts in one sentence; "wrong" is every disposal in the wrong bin, either way round
+            "headline": self.headline(done, sum(1 for d in week_ds if not d.correct), len(week_ds)),
+            "flow": self.flow(start, end),
+            "problem": self.factors.problem,
+            "loop": self.loop(now, practice if member is None else self.practice(now)),
             "rules": self.book.summary(),
             "profile": self.profile,
             "scope": {"per_person": self.recognition, "members": self.members if self.recognition else [], "member_id": member,
