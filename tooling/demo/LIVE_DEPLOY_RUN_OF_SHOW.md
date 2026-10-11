@@ -1,12 +1,45 @@
 # The live deploy: run of show (L34)
 
-On stage, one command on the box takes the retrained tool-calling model (v2, package
+On stage, a button in the box's Learning lab (beat 5b below; the command further down is the fallback) takes the
+retrained tool-calling model (v2, package
 `atlas-tool-calling-v2-a100-f2r4`) from pod D's package to serving, in place of the base model. Everything that can be
 done ahead was done at 5 AM ET on Sun 2026-10-11: the box is back on the base model, the v2 package is already on the
 box with every sha256 checked, the v2 run's real results are in the box's Learning lab, and the command was dry-run and
 timed. Expected wall-clock of the live command: **about 115 s, estimated** (one sha256 pass plus the restart; not yet
 run live with the hash-once code, see "The command" below), of which the model gives no answers for the last 70 s or
 so. With a box checkout that predates the hash-once change, or with `--no-trust`, it is the measured-basis 240 s.
+
+## Beat 5b: the deploy from the button (L35)
+
+Everything happens on the box's own web app, Learning lab, the v2 run, section 5 "On the box". No laptop, no pod D,
+no hub: the v2 package is already on the box's disk. The card always shows the model on the box now and the one
+before it.
+
+1. Before: in "Ask the model itself" under the buttons, press Ask on the default question "Have you seen my water
+   bottle?". The answer line names the serving model (atlas-base) and the tool it picked, with the call the eval
+   expects (`last_seen(label="water bottle")`). Estimated 3 to 12 s.
+2. Press "Put v2 on the box". No confirm dialog. The stage strip lights up with seconds, polled every 2 s:
+   verify, switch, restart, check, published. Both buttons stay disabled while it runs. The model gives no answers
+   from "restart" until "check" turns green (about 67 s, measured at the 5:06 AM rollback).
+3. When it ends, the left tile reads `atlas-tool-calling-v2-a100-f2r4` "on the box now", atlas-base "before it", and a
+   line says how long the swap took. If the check failed, the line says it rolled back to atlas-base instead.
+4. After: press Ask again on the same question. The new answer line names v2 and the tool it picked.
+5. To do it again: "Back to base", then "Put v2 on the box" once more. It is repeatable as many times as the segment
+   allows.
+
+| Press | What runs on the box | Expected (estimated, not yet run on the box) |
+| --- | --- | --- |
+| first "Put v2 on the box" | `atlas_swap.py swap atlas-tool-calling-v2-a100-f2r4 --trust-verified`: one sha256 pass (about 40 s, f2r4 has no `.verified.json` yet, the swap writes one), switch, restart, test question, tell the app | about 110 s |
+| first "Back to base" | the same swap to atlas-base: one pass over atlas-base (about 44 s), restart, check, tell the app | about 110 s |
+| every later press, either button | nothing hashed (the records hold while sizes and mtimes do), restart, check, tell the app | about 70 s |
+
+Before the show: the box's gateway runs this branch's code and `web/out` (a gateway restart loads the new routes),
+the gateway's user can run `sudo -n systemctl restart atlas-llm`, and if the box sets `ATLAS_TOKEN`, the browser on
+stage has the token in Settings (the buttons answer "This box asks for a token first" otherwise). A rehearsal press
+of both buttons before doors open also writes both `.verified.json` records, so every press on stage is the 70 s
+kind.
+
+If the button fails for a reason that is not the model (a 401, the page not loading), use the command below.
 
 ## Starting state (set at 5:09 AM ET, checked again at 5:48 AM ET)
 
@@ -144,7 +177,7 @@ starts (it said v1 at 5:09 AM while base was serving) and nobody restarts the ga
 
 ## Rollback
 
-From `~/Knighthacks26`:
+On stage: the card's "Back to base" button (beat 5b). From a terminal, from `~/Knighthacks26`:
 
 ```bash
 PYTHONPATH=. ~/atlas/venv-yolo/bin/python jetson/atlas_swap.py rollback

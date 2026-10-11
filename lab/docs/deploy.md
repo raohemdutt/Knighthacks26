@@ -57,3 +57,40 @@ Tests: `tests/test_lab_deploy.py`, on the fixture package `fixtures/learning/pac
 machine can make symlinks. The hash-once cases (record present, absent, written by someone else, stale by mtime, stale
 by size, a failed pull, `--no-trust`) count every sha256 the pull and the box run; `tests/test_atlas_swap.py` does
 the same for the swap and its `--trust-verified` flag.
+
+## From the button (L35)
+
+On stage the swap runs from the Learning lab, section 5 "On the box", on the box itself; no laptop, no pod, no hub.
+The card always shows the model on the box now (`data/models/current`) and the one before it (`previous`), and two
+buttons:
+
+- "Put v2 on the box": `POST /api/learning/lab/deploy {"version": "atlas-tool-calling-v2-a100-f2r4"}`. The target is
+  `featured` from `GET /api/learning/lab/deploy`: that package (`ATLAS_LAB_DEPLOY_VERSION` in the gateway's
+  environment changes it) when it is on disk and verified, else the newest verified version; disabled while it serves.
+- "Back to base": `POST /api/learning/lab/deploy/rollback {"version": "atlas-base"}`; disabled while base serves.
+
+Either one starts `jetson/atlas_swap.py swap <version> --trust-verified --models-dir <data>/models` as a background
+subprocess of the gateway (the gateway's own Python, the checkout as PYTHONPATH, the gateway's `ATLAS_LLM_URL` as
+`--url`), one at a time: a second press while one runs is a 409, a version with no `manifest.json` on disk a 404, and
+nothing is ever pulled. The card polls `GET /api/learning/lab/deploy` every 2 s and lights the five stages (verify,
+switch, restart, check, published) from the `STAGE <name> <start|done|failed> <unix seconds>` lines the swap prints,
+with each stage's seconds; when it ends, a line says how long it took or that it rolled back. The state and the swap's
+output are kept in `<data>/lab_deploy/status.json` and `swap.log`, so a gateway restart does not lose the last deploy.
+
+Hashing from the button. There is no pull, so the swap writes `.verified.json` itself after a full hash passes (same
+fields and writer marker as the pull's, `hashed_by: jetson/atlas_swap.py`). The first press for a version with no
+record (f2r4 and atlas-base on the box today) hashes it once; every later press, back and forth, hashes nothing while
+the files keep their size and mtime. Estimated, not yet run on the box: first press about 110 s (one 40 to 45 s hash
+pass plus the 67 s restart to serving), later presses about 70 s.
+
+Below the buttons, "Ask the model itself" sends a question to llama-server the way
+`tooling/demo/live_deploy_question.py` does (`POST /api/learning/lab/deploy/ask {"question"}`: the eval's exact
+prompt for a question in `live_deploy_question.json`, else that prompt with the question and the time put in) and
+shows the tool call the serving model wrote, with the call the eval expects. It answers 503 while the model server
+restarts.
+
+What the box needs: the gateway's user can run `sudo -n systemctl restart atlas-llm` (the swap's restart; a gateway
+unit with `NoNewPrivileges=yes` would block it), and when `ATLAS_TOKEN` is set, the browser on stage has the token in
+Settings (the three POSTs are guarded like every other write). Tests:
+`contexts/learning/tests/test_lab_deploy_button.py` (a fake swap script and model store: the state machine, 409, 404,
+rollback, persistence, the ask route) and `tests/test_atlas_swap.py` (the record the swap writes, the stage lines).
