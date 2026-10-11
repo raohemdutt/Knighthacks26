@@ -1,13 +1,13 @@
 #!/bin/bash
 # R66 tunnel control on one pod.
-#   r66_tun.sh server            start the chisel server (pod D) on 127.0.0.1:29999 behind Jupyter's /proxy/29999/
-#   r66_tun.sh client PEERUSER   start the chisel client (pod C) with the peer account token from ./tokpeer.txt
-#   r66_tun.sh echo SECONDS      start the probe echo server on 29600 for SECONDS
-#   r66_tun.sh probe HOST PORT MB
-#   r66_tun.sh stop              stop what this script started (pid files only)
-#   r66_tun.sh facts
+#   chisel_tunnel.sh server            start the chisel server (pod D) on 127.0.0.1:29999 behind Jupyter's /proxy/29999/
+#   chisel_tunnel.sh client PEERUSER   start the chisel client (pod C) with the peer account token from ./tokpeer.txt
+#   chisel_tunnel.sh echo SECONDS      start the probe echo server on 29600 for SECONDS
+#   chisel_tunnel.sh probe HOST PORT MB
+#   chisel_tunnel.sh stop              stop what this script started (pid files only)
+#   chisel_tunnel.sh facts
 HERE="$(cd "$(dirname "$0")" && pwd)"
-W=~/r66; mkdir -p $W; cp -f "$HERE"/r66_probe.py $W/ 2>/dev/null
+W=~/r66; mkdir -p $W; cp -f "$HERE"/probe.py $W/ 2>/dev/null
 BASE=${R66_BASE:-29600}; N=${R66_N:-64}; OFF=${R66_OFF:-100}
 getchisel() {
   if [ ! -x $W/chisel ]; then
@@ -38,7 +38,7 @@ client)
   TOK="$(cat "$HERE/tokpeer.txt" 2>/dev/null)"; rm -f "$HERE/tokpeer.txt"
   [ -n "$TOK" ] || { echo "no token"; exit 1; }
   getchisel
-  U="http://proxy-public.jupyterhub.svc.cluster.local/user/$2/proxy/29999"
+  U="http://proxy-public.jupyterhub.svc.cluster.local/user/$2/proxy/${R66_PPORT:-29999}"
   echo "health through hub proxy: $(curl -s -m 5 -H "Host: sjc.aupcloud.io" -H "Authorization: token $TOK" -o /dev/null -w '%{http_code} %{time_total}s' $U/health)"
   REM=""
   for i in $(seq 0 $((N-1))); do
@@ -53,11 +53,11 @@ client)
   grep -v -i "token" $W/cli.log | tail -4
   ;;
 echo)
-  setsid nohup python3 $W/r66_probe.py serve $BASE "$2" > $W/echo.log 2>&1 < /dev/null &
+  setsid nohup python3 $W/probe.py serve $BASE "$2" > $W/echo.log 2>&1 < /dev/null &
   echo $! > $W/echo.pid; sleep 1; echo "echo on $BASE for $2 s"
   ;;
 probe)
-  python3 $W/r66_probe.py client "$2" "$3" "${4:-64}"
+  python3 $W/probe.py client "$2" "$3" "${4:-64}"
   ;;
 stop)
   for p in cli srv echo; do [ -f $W/$p.pid ] && kill "$(cat $W/$p.pid)" 2>/dev/null && echo "stopped $p"; rm -f $W/$p.pid; done

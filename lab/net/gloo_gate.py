@@ -1,6 +1,6 @@
 """R66 gate: one gloo rank per pod through the network shim and the chisel tunnel.
 
-  python r66_gloo.py RANK MASTER_ADDR MASTER_PORT [nccl]
+  python gloo_gate.py RANK MASTER_ADDR MASTER_PORT [nccl]
 Prints one JSON line with the init time, the all-reduce result and timings.
 """
 import datetime, json, os, socket, statistics, sys, time

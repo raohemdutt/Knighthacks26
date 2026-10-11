@@ -2069,3 +2069,29 @@ python -m lab.controller run-script --account C lab/pod_role.sh auto C   # the f
   the proxy and about 15 s over the Tailscale relay. `python lab/r65_rows.py --write` rebuilds the rows from
   `fixtures/lab/r65-2026-10-11/`; they are named `trainer.split.*` so the box's single-pod figures stay single-pod.
   `lab/r65_score.sh` packages and serves an adapter for that check.
+
+## A network between the pods, and one model across both (R66)
+
+Since 2026-10-11 the two SJC pods have a TCP network between them that the hub does not provide (R65 found every
+pod-to-pod connection refused). `lab/refine/research/plumbing/network-shim.md` has every number below; the raw outputs
+are in `fixtures/lab/r66-2026-10-11/`.
+
+- **The tunnel** (`lab/net/chisel_tunnel.sh`): chisel 1.12.0 (static binary in `~/r66/chisel`) with its server on pod D
+  behind Jupyter's `/proxy/29999/` and its client on pod C through the hub's in-cluster proxy, with pod D's hub token
+  (uploaded as `tokpeer.txt`, read and deleted at start). 128 ports each way: on either pod, 127.0.0.1:P+200 reaches the
+  other pod's 127.0.0.1:P for P in 29600 to 29727. About 100 MB/s each way and 0.34 ms for a one-write round trip.
+- **The relay** (`lab/net/ackrelay.py`): a small relay on pod D between Jupyter's proxy and chisel (the client dials
+  `/proxy/29996/`) that sets TCP_NODELAY and re-arms TCP_QUICKACK after each read. It removes a 40 ms stall that hit
+  every second small write from C to D; the D to C direction keeps it at the p95 (the stalling socket is inside the
+  hub's proxy chain).
+- **The shim** (R66b, `~/r66/shim.so` and `~/r66/shim.env` on both pods): `LD_PRELOAD` gives each pod an interface
+  `pods0` (10.99.0.1 on C, 10.99.0.2 on D), pins binds into 29600 to 29727 and sends connects to the peer's address
+  through the tunnel. With it, gloo and RCCL form across the pods: a small gloo all-reduce takes 1.4 ms median.
+- **Checks**: `lab/net/gate.sh RANK [gloo|nccl]` (rank 0 on C, rank 1 on D, at once) runs `lab/net/gloo_gate.py`;
+  `lab/net/latency.py` measures one-write and two-write round trips; `python lab/r66_rows.py --write` rebuilds the
+  link and process-group rows (`link.pair.*`, `dist.pair.*`, node `pod-a+pod-b`).
+- **vLLM across the pods** (`lab/net/vllm_pair.sh RANK pp KEY=VALUE...`): pipeline parallel 2 with `--nnodes 2
+  --node-rank`, `--master-addr` on the fake address, `--master-port 29727` (the shim pins port-0 binds from 29600 up),
+  node 1 `--headless`, `VLLM_HOST_IP` the pod's fake address, `VLLM_MQ_MAX_CHUNK_BYTES_MB=2` (the pods' `/dev/shm` is 64
+  MB), and the hybrid Qwen3.5-family rule that every stage holds a linear-attention layer. The 27B could not run beside
+  the teacher (pod C has 6.35 GiB free and a stage costs at least 5.7 GiB before its layers).
