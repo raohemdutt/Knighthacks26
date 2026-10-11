@@ -1454,6 +1454,43 @@ finished run from the pod (`--save` kept `telemetry.jsonl`, 5462 bytes, and `run
 18 already there. Tests: `tests/test_lab_lab_push.py`, against the lab's fake pod (`lab/proxy_fake.py`, and once
 `lab/hub_fake.py`) and a small HTTP server that answers the import route with the box's own parsing.
 
+## Joules per token on the teacher: the energy model and the number of the night (R56)
+
+`lab/energy_model.py` predicts joules per generated token on the Strix Halo (gfx1151) from the committed chip sheet,
+and checks a measured batch curve against the prediction; `lab/refine/research/kernels/energy_model_gfx1151.md`
+derives it, gives the measurement protocol and the optimizer's objective. Standard library only, runs anywhere.
+
+```
+python -m lab.energy_model                       # predicted J/token at batch 1, 4, 8, 16 and the knees
+python -m lab.energy_model --batches 1,16,48,64 --json
+python -m lab.energy_model check fixtures/lab/energy_model/attach-sweep-pod-c-2026-10-10.jsonl
+python -m lab.energy_model check <lab/bench.py rows.jsonl | sweep-request-gfx1151-<date>.json>
+```
+
+- **Model.** J/token = P(B) / tok_s(B). Decode is weight-read bound, so the socket draws about the same watts at batch
+  1 as at 16 while tok/s grows almost with the batch. Predicted gross J/token decoding alone at a 512-token context:
+  April build 41.7, 10.6, 5.4, 2.8 at batch 1, 4, 8, 16; a build reading weights at the 210.5 GB/s ceiling 8.1, 2.2,
+  1.2, 0.7. The curve flattens near batch 45 to 52 for the teacher at the ceiling and 72 to 201 for the bf16 student.
+- **Checked against R26** (the attach sweep above, the fixture is its rows): stated as the April build (2.88 tok/s,
+  120 W at batch 1) the throughput holds within 7 % at every batch and the watts miss (96.0 W measured, flat, against
+  120 to 129 W predicted), so J/token holds at 1 and 4 and misses by 15 to 23 % at 8, 16 and 64; anchored on the
+  sweep's own batch-1 point every batch holds within 7 %. The real loaded idle is 10.44 W, read after the sweep; the
+  82.4 W read before it caught an earlier attempt's requests.
+- **Objective.** The night optimizer (`lab/refine/research/kernels/data/ax-config-night.json`) minimizes
+  `joules_per_token.b1`, gross, with `decode_tok_s.b1 >= 2.88` and `ttft_s.b1 <= 2.0` as outcome constraints.
+
+The before-and-after number of the night. Gross J/token from `lab/bench.py` (socket energy over the decode window
+over the tokens in it), medians of the runs named. The "after" row is filled from the best measured configuration on
+the rebuilt teacher (R53 / R60) once it is benchmarked; until then it is pending, not estimated.
+
+| | Build | Configuration | Batch | tok/s per stream | tok/s total | Avg W | J/token gross | J/token above idle | Conditions |
+|---|---|---|---|---|---|---|---|---|---|
+| Before | April build: vLLM 0.19.2 at b1388b1 plus `lab/vllm-gfx1201.diff`, Conch W4A16, `RedHatAI/Qwen3.8-27B-INT4` | stock serve line, thinking off, greedy | 1 | 2.70 | 2.62 | 96.0 | 36.66 | 32.67 | R26 attach sweep, pod C (SJC, account C), bench-v1, 4 x 128 tokens a stream, 3 repeats, idle 10.44 W, PR #269 (081c496) |
+| After | rebuilt teacher (R53 / R60) | best measured arm | pending | pending | pending | pending | pending | pending | pending: run, pod, prompt set, repeats, idle, commit |
+
+For reference, the April build's own batch-1 smoke on pod C read 2.88 tok/s at 120 W, about 41.7 J/token
+(teacher section above); the R26 row is the before number because it ran through the same harness the after row will.
+
 ## Eval gate: `python -m lab eval-gate` (L4)
 
 Scores the current Jetson model, the packaged Q4_K_M candidate (from L5) and the teacher on the held-out side of a
