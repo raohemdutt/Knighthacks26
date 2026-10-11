@@ -1,0 +1,799 @@
+{
+  "session": "bench-20261011T005700Z-d9c3",
+  "harness": "lab/bench.py 1",
+  "engine": "vllm",
+  "node": "a100",
+  "prompt_set": {
+    "id": "bench-v1",
+    "sha256": "b25ab2bda117925f5eb8a2d5ffe6455de8169b7f2a33a3777eda10c97c37b760",
+    "prompts": 4,
+    "images": 2
+  },
+  "rows": 15,
+  "band_rule": {
+    "method": "largest-gap split of each spawn's probe decode rate, gap >= 10% of the median, at least 4 spawns",
+    "clusters": [
+      {
+        "band": "b1",
+        "spawns": [
+          "2",
+          "12",
+          "13",
+          "6",
+          "10",
+          "3",
+          "14",
+          "4",
+          "5",
+          "7",
+          "9",
+          "11",
+          "8",
+          "1",
+          "0"
+        ],
+        "rate_min": 64.7562,
+        "rate_max": 65.028,
+        "mem_busy_median": null
+      }
+    ],
+    "boundaries": []
+  },
+  "configurations": {
+    "vllm b1": {
+      "engine": "vllm",
+      "batch_size": 1,
+      "spawns": [
+        {
+          "run_id": "bench-20261011T005700Z-d9c3-r0-b1",
+          "spawn": "0",
+          "band": "b1",
+          "outcome": "ok",
+          "decode_tok_s": 64.741,
+          "decode_tok_s_total": 60.9982,
+          "ttft_s": 0.1192,
+          "joules_per_token": null,
+          "watts_avg": null,
+          "watts_peak": null,
+          "time_since_spawn_s": 525.6877
+        },
+        {
+          "run_id": "bench-20261011T005700Z-d9c3-r1-b1",
+          "spawn": "5",
+          "band": "b1",
+          "outcome": "ok",
+          "decode_tok_s": 64.956,
+          "decode_tok_s_total": 61.2391,
+          "ttft_s": 0.1166,
+          "joules_per_token": null,
+          "watts_avg": null,
+          "watts_peak": null,
+          "time_since_spawn_s": 171.2661
+        },
+        {
+          "run_id": "bench-20261011T005700Z-d9c3-r2-b1",
+          "spawn": "10",
+          "band": "b1",
+          "outcome": "ok",
+          "decode_tok_s": 64.9722,
+          "decode_tok_s_total": 61.2077,
+          "ttft_s": 0.1184,
+          "joules_per_token": null,
+          "watts_avg": null,
+          "watts_peak": null,
+          "time_since_spawn_s": 171.2686
+        }
+      ],
+      "stats": {
+        "decode_tok_s": {
+          "n": 3,
+          "median": 64.956,
+          "min": 64.741,
+          "max": 64.9722,
+          "mean": 64.88973333333333,
+          "sd": 0.12906127743569587
+        },
+        "decode_tok_s_total": {
+          "n": 3,
+          "median": 61.2077,
+          "min": 60.9982,
+          "max": 61.2391,
+          "mean": 61.14833333333333,
+          "sd": 0.13096374816465042
+        },
+        "ttft_s": {
+          "n": 3,
+          "median": 0.1184,
+          "min": 0.1166,
+          "max": 0.1192,
+          "mean": 0.11806666666666667,
+          "sd": 0.001331665623695882
+        },
+        "joules_per_token": {
+          "n": 0,
+          "median": null,
+          "min": null,
+          "max": null,
+          "mean": null,
+          "sd": null
+        },
+        "watts_avg": {
+          "n": 0,
+          "median": null,
+          "min": null,
+          "max": null,
+          "mean": null,
+          "sd": null
+        },
+        "watts_peak": {
+          "n": 0,
+          "median": null,
+          "min": null,
+          "max": null,
+          "mean": null,
+          "sd": null
+        }
+      },
+      "bands": {
+        "b1": {
+          "spawns": 3,
+          "share": 1.0,
+          "stats": {
+            "decode_tok_s": {
+              "n": 3,
+              "median": 64.956,
+              "min": 64.741,
+              "max": 64.9722,
+              "mean": 64.88973333333333,
+              "sd": 0.12906127743569587
+            },
+            "decode_tok_s_total": {
+              "n": 3,
+              "median": 61.2077,
+              "min": 60.9982,
+              "max": 61.2391,
+              "mean": 61.14833333333333,
+              "sd": 0.13096374816465042
+            },
+            "ttft_s": {
+              "n": 3,
+              "median": 0.1184,
+              "min": 0.1166,
+              "max": 0.1192,
+              "mean": 0.11806666666666667,
+              "sd": 0.001331665623695882
+            },
+            "joules_per_token": {
+              "n": 0,
+              "median": null,
+              "min": null,
+              "max": null,
+              "mean": null,
+              "sd": null
+            },
+            "watts_avg": {
+              "n": 0,
+              "median": null,
+              "min": null,
+              "max": null,
+              "mean": null,
+              "sd": null
+            },
+            "watts_peak": {
+              "n": 0,
+              "median": null,
+              "min": null,
+              "max": null,
+              "mean": null,
+              "sd": null
+            }
+          }
+        }
+      }
+    },
+    "vllm b4": {
+      "engine": "vllm",
+      "batch_size": 4,
+      "spawns": [
+        {
+          "run_id": "bench-20261011T005700Z-d9c3-r0-b4",
+          "spawn": "1",
+          "band": "b1",
+          "outcome": "ok",
+          "decode_tok_s": 59.1913,
+          "decode_tok_s_total": 198.767,
+          "ttft_s": 0.4949,
+          "joules_per_token": null,
+          "watts_avg": null,
+          "watts_peak": null,
+          "time_since_spawn_s": 172.9284
+        },
+        {
+          "run_id": "bench-20261011T005700Z-d9c3-r1-b4",
+          "spawn": "6",
+          "band": "b1",
+          "outcome": "ok",
+          "decode_tok_s": 59.3182,
+          "decode_tok_s_total": 199.0177,
+          "ttft_s": 0.4965,
+          "joules_per_token": null,
+          "watts_avg": null,
+          "watts_peak": null,
+          "time_since_spawn_s": 172.9345
+        },
+        {
+          "run_id": "bench-20261011T005700Z-d9c3-r2-b4",
+          "spawn": "11",
+          "band": "b1",
+          "outcome": "ok",
+          "decode_tok_s": 59.2302,
+          "decode_tok_s_total": 198.933,
+          "ttft_s": 0.4942,
+          "joules_per_token": null,
+          "watts_avg": null,
+          "watts_peak": null,
+          "time_since_spawn_s": 171.9373
+        }
+      ],
+      "stats": {
+        "decode_tok_s": {
+          "n": 3,
+          "median": 59.2302,
+          "min": 59.1913,
+          "max": 59.3182,
+          "mean": 59.246566666666666,
+          "sd": 0.06501387031498113
+        },
+        "decode_tok_s_total": {
+          "n": 3,
+          "median": 198.933,
+          "min": 198.767,
+          "max": 199.0177,
+          "mean": 198.90589999999997,
+          "sd": 0.12752815375437432
+        },
+        "ttft_s": {
+          "n": 3,
+          "median": 0.4949,
+          "min": 0.4942,
+          "max": 0.4965,
+          "mean": 0.49520000000000003,
+          "sd": 0.0011789826122551687
+        },
+        "joules_per_token": {
+          "n": 0,
+          "median": null,
+          "min": null,
+          "max": null,
+          "mean": null,
+          "sd": null
+        },
+        "watts_avg": {
+          "n": 0,
+          "median": null,
+          "min": null,
+          "max": null,
+          "mean": null,
+          "sd": null
+        },
+        "watts_peak": {
+          "n": 0,
+          "median": null,
+          "min": null,
+          "max": null,
+          "mean": null,
+          "sd": null
+        }
+      },
+      "bands": {
+        "b1": {
+          "spawns": 3,
+          "share": 1.0,
+          "stats": {
+            "decode_tok_s": {
+              "n": 3,
+              "median": 59.2302,
+              "min": 59.1913,
+              "max": 59.3182,
+              "mean": 59.246566666666666,
+              "sd": 0.06501387031498113
+            },
+            "decode_tok_s_total": {
+              "n": 3,
+              "median": 198.933,
+              "min": 198.767,
+              "max": 199.0177,
+              "mean": 198.90589999999997,
+              "sd": 0.12752815375437432
+            },
+            "ttft_s": {
+              "n": 3,
+              "median": 0.4949,
+              "min": 0.4942,
+              "max": 0.4965,
+              "mean": 0.49520000000000003,
+              "sd": 0.0011789826122551687
+            },
+            "joules_per_token": {
+              "n": 0,
+              "median": null,
+              "min": null,
+              "max": null,
+              "mean": null,
+              "sd": null
+            },
+            "watts_avg": {
+              "n": 0,
+              "median": null,
+              "min": null,
+              "max": null,
+              "mean": null,
+              "sd": null
+            },
+            "watts_peak": {
+              "n": 0,
+              "median": null,
+              "min": null,
+              "max": null,
+              "mean": null,
+              "sd": null
+            }
+          }
+        }
+      }
+    },
+    "vllm b8": {
+      "engine": "vllm",
+      "batch_size": 8,
+      "spawns": [
+        {
+          "run_id": "bench-20261011T005700Z-d9c3-r0-b8",
+          "spawn": "2",
+          "band": "b1",
+          "outcome": "ok",
+          "decode_tok_s": 52.6137,
+          "decode_tok_s_total": 321.3743,
+          "ttft_s": 0.8243,
+          "joules_per_token": null,
+          "watts_avg": null,
+          "watts_peak": null,
+          "time_since_spawn_s": 173.5212
+        },
+        {
+          "run_id": "bench-20261011T005700Z-d9c3-r1-b8",
+          "spawn": "7",
+          "band": "b1",
+          "outcome": "ok",
+          "decode_tok_s": 52.7272,
+          "decode_tok_s_total": 321.6374,
+          "ttft_s": 0.8233,
+          "joules_per_token": null,
+          "watts_avg": null,
+          "watts_peak": null,
+          "time_since_spawn_s": 172.5413
+        },
+        {
+          "run_id": "bench-20261011T005700Z-d9c3-r2-b8",
+          "spawn": "12",
+          "band": "b1",
+          "outcome": "ok",
+          "decode_tok_s": 52.5928,
+          "decode_tok_s_total": 321.3442,
+          "ttft_s": 0.8258,
+          "joules_per_token": null,
+          "watts_avg": null,
+          "watts_peak": null,
+          "time_since_spawn_s": 172.5276
+        }
+      ],
+      "stats": {
+        "decode_tok_s": {
+          "n": 3,
+          "median": 52.6137,
+          "min": 52.5928,
+          "max": 52.7272,
+          "mean": 52.64456666666666,
+          "sd": 0.07232152745437372
+        },
+        "decode_tok_s_total": {
+          "n": 3,
+          "median": 321.3743,
+          "min": 321.3442,
+          "max": 321.6374,
+          "mean": 321.4519666666667,
+          "sd": 0.1612936555892246
+        },
+        "ttft_s": {
+          "n": 3,
+          "median": 0.8243,
+          "min": 0.8233,
+          "max": 0.8258,
+          "mean": 0.8244666666666666,
+          "sd": 0.0012583057392117633
+        },
+        "joules_per_token": {
+          "n": 0,
+          "median": null,
+          "min": null,
+          "max": null,
+          "mean": null,
+          "sd": null
+        },
+        "watts_avg": {
+          "n": 0,
+          "median": null,
+          "min": null,
+          "max": null,
+          "mean": null,
+          "sd": null
+        },
+        "watts_peak": {
+          "n": 0,
+          "median": null,
+          "min": null,
+          "max": null,
+          "mean": null,
+          "sd": null
+        }
+      },
+      "bands": {
+        "b1": {
+          "spawns": 3,
+          "share": 1.0,
+          "stats": {
+            "decode_tok_s": {
+              "n": 3,
+              "median": 52.6137,
+              "min": 52.5928,
+              "max": 52.7272,
+              "mean": 52.64456666666666,
+              "sd": 0.07232152745437372
+            },
+            "decode_tok_s_total": {
+              "n": 3,
+              "median": 321.3743,
+              "min": 321.3442,
+              "max": 321.6374,
+              "mean": 321.4519666666667,
+              "sd": 0.1612936555892246
+            },
+            "ttft_s": {
+              "n": 3,
+              "median": 0.8243,
+              "min": 0.8233,
+              "max": 0.8258,
+              "mean": 0.8244666666666666,
+              "sd": 0.0012583057392117633
+            },
+            "joules_per_token": {
+              "n": 0,
+              "median": null,
+              "min": null,
+              "max": null,
+              "mean": null,
+              "sd": null
+            },
+            "watts_avg": {
+              "n": 0,
+              "median": null,
+              "min": null,
+              "max": null,
+              "mean": null,
+              "sd": null
+            },
+            "watts_peak": {
+              "n": 0,
+              "median": null,
+              "min": null,
+              "max": null,
+              "mean": null,
+              "sd": null
+            }
+          }
+        }
+      }
+    },
+    "vllm b16": {
+      "engine": "vllm",
+      "batch_size": 16,
+      "spawns": [
+        {
+          "run_id": "bench-20261011T005700Z-d9c3-r0-b16",
+          "spawn": "3",
+          "band": "b1",
+          "outcome": "ok",
+          "decode_tok_s": 36.0495,
+          "decode_tok_s_total": 459.7984,
+          "ttft_s": 0.9873,
+          "joules_per_token": null,
+          "watts_avg": null,
+          "watts_peak": null,
+          "time_since_spawn_s": 173.8489
+        },
+        {
+          "run_id": "bench-20261011T005700Z-d9c3-r1-b16",
+          "spawn": "8",
+          "band": "b1",
+          "outcome": "ok",
+          "decode_tok_s": 35.9059,
+          "decode_tok_s_total": 462.3296,
+          "ttft_s": 1.056,
+          "joules_per_token": null,
+          "watts_avg": null,
+          "watts_peak": null,
+          "time_since_spawn_s": 174.8808
+        },
+        {
+          "run_id": "bench-20261011T005700Z-d9c3-r2-b16",
+          "spawn": "13",
+          "band": "b1",
+          "outcome": "ok",
+          "decode_tok_s": 36.4207,
+          "decode_tok_s_total": 462.4725,
+          "ttft_s": 1.0901,
+          "joules_per_token": null,
+          "watts_avg": null,
+          "watts_peak": null,
+          "time_since_spawn_s": 173.8379
+        }
+      ],
+      "stats": {
+        "decode_tok_s": {
+          "n": 3,
+          "median": 36.0495,
+          "min": 35.9059,
+          "max": 36.4207,
+          "mean": 36.12536666666667,
+          "sd": 0.26565310714036755
+        },
+        "decode_tok_s_total": {
+          "n": 3,
+          "median": 462.3296,
+          "min": 459.7984,
+          "max": 462.4725,
+          "mean": 461.5335,
+          "sd": 1.5043384293436166
+        },
+        "ttft_s": {
+          "n": 3,
+          "median": 1.056,
+          "min": 0.9873,
+          "max": 1.0901,
+          "mean": 1.0444666666666667,
+          "sd": 0.05236146802118271
+        },
+        "joules_per_token": {
+          "n": 0,
+          "median": null,
+          "min": null,
+          "max": null,
+          "mean": null,
+          "sd": null
+        },
+        "watts_avg": {
+          "n": 0,
+          "median": null,
+          "min": null,
+          "max": null,
+          "mean": null,
+          "sd": null
+        },
+        "watts_peak": {
+          "n": 0,
+          "median": null,
+          "min": null,
+          "max": null,
+          "mean": null,
+          "sd": null
+        }
+      },
+      "bands": {
+        "b1": {
+          "spawns": 3,
+          "share": 1.0,
+          "stats": {
+            "decode_tok_s": {
+              "n": 3,
+              "median": 36.0495,
+              "min": 35.9059,
+              "max": 36.4207,
+              "mean": 36.12536666666667,
+              "sd": 0.26565310714036755
+            },
+            "decode_tok_s_total": {
+              "n": 3,
+              "median": 462.3296,
+              "min": 459.7984,
+              "max": 462.4725,
+              "mean": 461.5335,
+              "sd": 1.5043384293436166
+            },
+            "ttft_s": {
+              "n": 3,
+              "median": 1.056,
+              "min": 0.9873,
+              "max": 1.0901,
+              "mean": 1.0444666666666667,
+              "sd": 0.05236146802118271
+            },
+            "joules_per_token": {
+              "n": 0,
+              "median": null,
+              "min": null,
+              "max": null,
+              "mean": null,
+              "sd": null
+            },
+            "watts_avg": {
+              "n": 0,
+              "median": null,
+              "min": null,
+              "max": null,
+              "mean": null,
+              "sd": null
+            },
+            "watts_peak": {
+              "n": 0,
+              "median": null,
+              "min": null,
+              "max": null,
+              "mean": null,
+              "sd": null
+            }
+          }
+        }
+      }
+    },
+    "vllm b64": {
+      "engine": "vllm",
+      "batch_size": 64,
+      "spawns": [
+        {
+          "run_id": "bench-20261011T005700Z-d9c3-r0-b64",
+          "spawn": "4",
+          "band": "b1",
+          "outcome": "ok",
+          "decode_tok_s": 11.2768,
+          "decode_tok_s_total": 636.3307,
+          "ttft_s": 1.9203,
+          "joules_per_token": null,
+          "watts_avg": null,
+          "watts_peak": null,
+          "time_since_spawn_s": 182.3904
+        },
+        {
+          "run_id": "bench-20261011T005700Z-d9c3-r1-b64",
+          "spawn": "9",
+          "band": "b1",
+          "outcome": "ok",
+          "decode_tok_s": 11.5089,
+          "decode_tok_s_total": 636.6592,
+          "ttft_s": 1.9381,
+          "joules_per_token": null,
+          "watts_avg": null,
+          "watts_peak": null,
+          "time_since_spawn_s": 183.3686
+        },
+        {
+          "run_id": "bench-20261011T005700Z-d9c3-r2-b64",
+          "spawn": "14",
+          "band": "b1",
+          "outcome": "ok",
+          "decode_tok_s": 11.2975,
+          "decode_tok_s_total": 634.6118,
+          "ttft_s": 2.0409,
+          "joules_per_token": null,
+          "watts_avg": null,
+          "watts_peak": null,
+          "time_since_spawn_s": 182.4398
+        }
+      ],
+      "stats": {
+        "decode_tok_s": {
+          "n": 3,
+          "median": 11.2975,
+          "min": 11.2768,
+          "max": 11.5089,
+          "mean": 11.361066666666666,
+          "sd": 0.1284450985181353
+        },
+        "decode_tok_s_total": {
+          "n": 3,
+          "median": 636.3307,
+          "min": 634.6118,
+          "max": 636.6592,
+          "mean": 635.8672333333334,
+          "sd": 1.0995738735225327
+        },
+        "ttft_s": {
+          "n": 3,
+          "median": 1.9381,
+          "min": 1.9203,
+          "max": 2.0409,
+          "mean": 1.9664333333333335,
+          "sd": 0.06510125446820017
+        },
+        "joules_per_token": {
+          "n": 0,
+          "median": null,
+          "min": null,
+          "max": null,
+          "mean": null,
+          "sd": null
+        },
+        "watts_avg": {
+          "n": 0,
+          "median": null,
+          "min": null,
+          "max": null,
+          "mean": null,
+          "sd": null
+        },
+        "watts_peak": {
+          "n": 0,
+          "median": null,
+          "min": null,
+          "max": null,
+          "mean": null,
+          "sd": null
+        }
+      },
+      "bands": {
+        "b1": {
+          "spawns": 3,
+          "share": 1.0,
+          "stats": {
+            "decode_tok_s": {
+              "n": 3,
+              "median": 11.2975,
+              "min": 11.2768,
+              "max": 11.5089,
+              "mean": 11.361066666666666,
+              "sd": 0.1284450985181353
+            },
+            "decode_tok_s_total": {
+              "n": 3,
+              "median": 636.3307,
+              "min": 634.6118,
+              "max": 636.6592,
+              "mean": 635.8672333333334,
+              "sd": 1.0995738735225327
+            },
+            "ttft_s": {
+              "n": 3,
+              "median": 1.9381,
+              "min": 1.9203,
+              "max": 2.0409,
+              "mean": 1.9664333333333335,
+              "sd": 0.06510125446820017
+            },
+            "joules_per_token": {
+              "n": 0,
+              "median": null,
+              "min": null,
+              "max": null,
+              "mean": null,
+              "sd": null
+            },
+            "watts_avg": {
+              "n": 0,
+              "median": null,
+              "min": null,
+              "max": null,
+              "mean": null,
+              "sd": null
+            },
+            "watts_peak": {
+              "n": 0,
+              "median": null,
+              "min": null,
+              "max": null,
+              "mean": null,
+              "sd": null
+            }
+          }
+        }
+      }
+    }
+  }
+}
