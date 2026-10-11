@@ -3,9 +3,14 @@
 # bundle, build tool-calling-v2 on the VM, sweep, choose by validation, then score the held-out side in bf16.
 # Runs detached (launched with setsid nohup). Every stage writes a marker under /content/l16v2/markers when its
 # product and the product's .sha256 are whole; a failed stage writes FAILED_<stage> and the job goes on where it can.
-#   usage: bash colab_job.sh <branch> [sweep budget seconds]
+#   usage: bash colab_job.sh <branch> [sweep budget seconds] [kernels: torch|fla] [sweep.py flags ...]
+# kernels says which Gated DeltaNet and causal conv path the model takes: transformers' torch fallback (what the pod
+# has) or flash-linear-attention and causal-conv1d (installed or removed here to match). The sweep.py flags carry the
+# A100's split of the effective batch and --no-gradient-checkpointing; every run records all of it in its row.
 set -x
-BRANCH="${1:?branch}"; BUDGET="${2:-2400}"
+BRANCH="${1:?branch}"; BUDGET="${2:-2400}"; KERNELS="${3:-torch}"
+shift 3 2>/dev/null || shift $#
+SWEEP_FLAGS=("$@")
 OUT=/content/l16v2
 MODEL=/content/models/Qwen3.5-4B
 REPO=/content/Knighthacks26
@@ -25,6 +30,18 @@ git -C $REPO log --format='repo %H %s' -1 >> $OUT/versions.txt
 cd $REPO
 export LAB_STATE_DIR=$OUT/state LAB_TASK=L16 LAB_ACTOR="Ilan1 agent" LAB_TIER=opus PYTHONIOENCODING=utf-8
 mkdir -p $LAB_STATE_DIR
+
+if [ "$KERNELS" = fla ]; then
+  ( timeout 420 pip install flash-linear-attention causal-conv1d 2>&1 | tail -n 1 ) >> $OUT/versions.txt
+else
+  pip uninstall -y flash-linear-attention fla-core causal-conv1d > /dev/null 2>&1
+fi
+python3 -c "
+import importlib.metadata as m
+for d in ('flash-linear-attention', 'fla-core', 'causal-conv1d'):
+    try: print('kernel package', d, m.version(d))
+    except Exception: print('kernel package', d, 'not installed')
+print('kernels asked:', '$KERNELS', '| sweep flags:', '${SWEEP_FLAGS[*]}')" >> $OUT/versions.txt
 
 stamp dataset_start; status dataset
 DS=$OUT/data/tool-calling-v2
@@ -53,16 +70,20 @@ echo "dataset reused=$REUSED tarball $(cat $OUT/products/dataset-tool-calling-v2
 echo "dataset reused=$REUSED sha256_rows_train=$(sha256sum $DS/rows-train.jsonl | cut -d' ' -f1) sha256_split=$(sha256sum $DS/split.json | cut -d' ' -f1)" >> $OUT/finished.txt
 stamp "dataset_done_reused_$REUSED"
 
-stamp smoke_start; status smoke
-python3 lab/l16v2/sweep.py --dataset $OUT/data/tool-calling-v2 --model $MODEL --out $OUT --only smoke > $OUT/smoke.log 2>&1
-if [ $? -ne 0 ]; then
-  ( cd $OUT && tar -czf products/failed-smoke.tar.gz smoke.log runs/smoke/train.log runs/smoke/stdout.json 2>/dev/null )
-  product failed-smoke.tar.gz FAILED_smoke; stamp smoke_failed; exit 1
+if [ -e $OUT/markers/SMOKE_DONE ]; then
+  stamp smoke_skipped_passed_earlier_on_this_vm
+else
+  stamp smoke_start; status smoke
+  python3 lab/l16v2/sweep.py --dataset $OUT/data/tool-calling-v2 --model $MODEL --out $OUT --only smoke "${SWEEP_FLAGS[@]}" > $OUT/smoke.log 2>&1
+  if [ $? -ne 0 ]; then
+    ( cd $OUT && tar -czf products/failed-smoke.tar.gz smoke.log runs/smoke/train.log runs/smoke/stdout.json 2>/dev/null )
+    product failed-smoke.tar.gz FAILED_smoke; stamp smoke_failed; exit 1
+  fi
+  stamp smoke_done; echo smoke > $OUT/markers/SMOKE_DONE
 fi
-stamp smoke_done; echo smoke > $OUT/markers/SMOKE_DONE
 
 stamp sweep_start
-python3 lab/l16v2/sweep.py --dataset $OUT/data/tool-calling-v2 --model $MODEL --out $OUT --budget-s "$BUDGET" > $OUT/sweep.log 2>&1
+python3 lab/l16v2/sweep.py --dataset $OUT/data/tool-calling-v2 --model $MODEL --out $OUT --budget-s "$BUDGET" "${SWEEP_FLAGS[@]}" > $OUT/sweep.log 2>&1
 RC=$?
 stamp "sweep_script_end_rc_$RC"
 status bundle

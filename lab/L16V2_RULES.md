@@ -78,6 +78,33 @@ The rule, as `lab/l16v2/sweep.py` holds it (`CHOICE_RULE`):
 > agreement is measured for reference and takes no part. The held-out side is not read until chosen.json is
 > written, and nothing is chosen again after it is read.
 
+### Amendment 1, made before any sweep run finished (Sun 2026-10-11, 3:53 AM ET)
+
+No sweep run had produced a validation number when this was written: the first one was stopped a few steps in, and
+only the smoke run (2 steps, not a grid point) and timing runs of 5 steps had run.
+
+What was measured on the A100 (5 optimizer steps of 16 examples each, the first left out): 2.39 examples a second
+with the pod's own settings (batch 4 by accumulation 4, gradient checkpointing, transformers' torch fallback for the
+Gated DeltaNet and causal conv layers; 11.2 GB), 2.39 with batch 16 by 1 and checkpointing (20.0 GB), out of memory
+on the 40 GB card with batch 16 and no checkpointing (with either kernel), and 1.07 with flash-linear-attention
+0.5.2 installed (batch 16 by 1, checkpointing, 16.2 GB: steps of 3.6 and 4.2 s alternate with steps of 25.9 s, a
+first step of 74 s, as its kernel is built again for each new batch shape; slower over the run, so it was taken out
+again). causal-conv1d would not install in the time given (a source build). One validation pass over the 126 rows takes 23 s. So a run of 62 steps
+with its 8 validation passes is about ten minutes, not the two or three the grid was sized for.
+
+What changes, by Ilan's coordinator's instruction for this case:
+
+- The grid is its first three points in the planned order: learning rate 1e-4, 2e-4, 5e-5 at rank 16 (alpha 32),
+  dropout 0.05. Rank 8 and dropout 0.1 are not run. The 40-minute budget rule as written would have stopped the
+  sweep after the same three runs.
+- Warmup is 10 percent of the planned steps (6 of 62) instead of 6 percent.
+- The A100 runs keep the pod's settings (batch 4 by accumulation 4, gradient checkpointing, torch fallback kernels),
+  since nothing else was faster. Each run's row records them.
+
+Nothing else changes: the split, the validation cadence, keep-best, early stopping after 3 evaluations without
+improvement, the choice rule (its "3 eligible runs with the lowest score" are now all the runs that train), the
+scoring rules, and what is never done.
+
 ## The pod D retrain (second pass)
 
 The chosen recipe is repeated on pod D with the same flags and `--stop-step <the chosen run's best step>`, so the

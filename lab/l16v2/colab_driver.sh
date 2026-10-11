@@ -3,7 +3,8 @@
 # upload the branch as a git bundle with the job script, launch the job detached on the VM, then poll and pull every
 # product the moment its marker appears, so the 20-minute idle reclaim cannot take a result with it.
 #
-#   bash lab/l16v2/colab_driver.sh <session> <branch> [sweep budget s]        # upload, launch, poll, pull, stop
+#   bash lab/l16v2/colab_driver.sh <session> <branch> [sweep budget s] [torch|fla] [sweep.py flags ...]
+#                                                                             # upload, launch, poll, pull, stop
 #   bash lab/l16v2/colab_driver.sh <session> <branch> --attach                # a job is already running: poll and pull
 #
 # A launch on a VM that already holds the dataset keeps it: the job rebuilds it from the new commit, compares the
@@ -27,7 +28,9 @@
 # has something polling it.
 set -u
 export MSYS_NO_PATHCONV=1
-S="${1:?session}"; BRANCH="${2:?branch}"; MODE="${3:-2400}"
+S="${1:?session}"; BRANCH="${2:?branch}"; MODE="${3:-2400}"; KERNELS="${4:-torch}"
+shift 4 2>/dev/null || shift $#
+SWEEP_FLAGS="$*"
 W="${L16V2_WORKSPACE:-/c/Users/hackathon/Code/Knighthacks26}"
 C="bash ${L16V2_COLAB:-$W/tooling/dispatcher/colab.sh}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -101,15 +104,15 @@ if [ "$MODE" != "--attach" ]; then
   [ -n "$COMMIT" ] || { plog "PROBLEM driver refuses to start: no commit for branch $BRANCH in $REPO"; exit 1; }
   [ -z "$(cd "$REPO" && git status --porcelain -- lab contexts contracts runtime fixtures config 2>/dev/null)" ] \
     || plog "note: the clone has uncommitted changes under lab/ or the agent's folders; the bundle holds commit $COMMIT only"
-  plog "driver start session=$S branch=$BRANCH commit=$COMMIT budget_s=$MODE"
+  plog "driver start session=$S branch=$BRANCH commit=$COMMIT budget_s=$MODE kernels=$KERNELS sweep_flags=\"$SWEEP_FLAGS\""
   rm -f "$OUT/l16v2.bundle"
   (cd "$REPO" && git bundle create "$(WIN "$OUT/l16v2.bundle")" "$BRANCH") > "$OUT/bundle.log" 2>&1
   [ -s "$OUT/l16v2.bundle" ] || { plog "PROBLEM git bundle failed: $(tail -1 "$OUT/bundle.log" | cut -c1-140)"; exit 1; }
   plog "bundle made commit=$COMMIT bytes=$(stat -c %s "$OUT/l16v2.bundle")"
   cat > "$OUT/launch/launch_job.py" <<PY
 import subprocess
-subprocess.run("pkill -f '[c]olab_job.sh'; pkill -f '[l]ab/train.py'; pkill -f '[l]16v2/sweep.py'; rm -rf /content/l16v2/runs /content/l16v2/finished.txt /content/l16v2/status.txt; find /content/l16v2/markers -type f ! -name DATASET_DONE -delete 2>/dev/null; find /content/l16v2/products -type f ! -name 'dataset-*' -delete 2>/dev/null", shell=True)
-subprocess.Popen("setsid nohup bash /content/colab_job.sh $BRANCH $MODE > /content/colab_job.log 2>&1 &", shell=True)
+subprocess.run("pkill -f '[c]olab_job.sh'; pkill -f '[c]olab_speed.sh'; pkill -f '[l]ab/train.py'; pkill -f '[l]16v2/sweep.py'; rm -rf /content/l16v2/runs/r* /content/l16v2/finished.txt /content/l16v2/status.txt; find /content/l16v2/markers -type f ! -name DATASET_DONE ! -name SMOKE_DONE -delete 2>/dev/null; find /content/l16v2/products -type f ! -name 'dataset-*' -delete 2>/dev/null", shell=True)
+subprocess.Popen("setsid nohup bash /content/colab_job.sh $BRANCH $MODE $KERNELS $SWEEP_FLAGS > /content/colab_job.log 2>&1 &", shell=True)
 print("launched job")
 PY
   up "$OUT/l16v2.bundle" /content/l16v2.bundle || { plog "PROBLEM upload of the bundle failed; driver stops, session left up"; exit 1; }

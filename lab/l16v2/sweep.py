@@ -47,12 +47,23 @@ sys.path.insert(0, str(REPO_ROOT))
 
 BASE_REVISION = "851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a"
 # (learning rate, rank, dropout); alpha is twice the rank. The order is the order of running, fixed here.
-GRID = [(1e-4, 16, 0.05), (2e-4, 16, 0.05), (5e-5, 16, 0.05), (1e-4, 8, 0.05), (2e-4, 8, 0.05), (5e-5, 8, 0.05),
-        (1e-4, 16, 0.1), (2e-4, 16, 0.1), (5e-5, 16, 0.1), (1e-4, 8, 0.1), (2e-4, 8, 0.1), (5e-5, 8, 0.1)]
-WARMUP_RATIO = 0.06
+# The grid as first planned had twelve points (these three, then rank 8, then all six again with dropout 0.1). The
+# A100 timing before the sweep (lab/L16V2_RULES.md, amendment 1) measured 2.4 examples a second on every setting
+# tried, about ten minutes a run, so the 40-minute budget holds three runs: the first three of the planned order.
+GRID = [(1e-4, 16, 0.05), (2e-4, 16, 0.05), (5e-5, 16, 0.05)]
+WARMUP_RATIO = 0.10
 EVAL_STEPS = 8
 EARLY_STOP = 3
-BATCH, GRAD_ACCUM = 4, 4          # the pod's pinned effective batch of 16, so the recipe is the same there
+BATCH, GRAD_ACCUM = 4, 4          # the pod's pinned split of the effective batch of 16 (the recipe's flags for pod D)
+EFFECTIVE_BATCH = 16              # every run here and on the pod: --batch x --grad-accum must give this
+POD_DIFFERENCES = (
+    "The A100 runs and the pod D run share the rows, the seed, the learning rate schedule, the LoRA settings, the "
+    "effective batch of 16 and the optimizer steps. They differ in what makes the A100 fast and the pod fit: the "
+    "split of the 16 (the A100's --batch x --grad-accum as each run records, the pod's 4 x 4: the loss of a step is "
+    "then a mean over 4 micro-batch means instead of one mean over 16 examples), gradient checkpointing (as each run "
+    "records; on, on the pod: the same gradients), the Gated DeltaNet and causal conv kernels (as each run records "
+    "in refs.settings; transformers' torch fallback on the pod), the chip and the torch build."
+)
 MAX_STEPS = 62                    # 62 x 16 = 992 example passes: what pod D trains in about 45 minutes
 POD_PASSES = 1000
 TOP = 3
@@ -135,8 +146,10 @@ def train_once(job: Job, args: argparse.Namespace, name: str, lr: float, rank: i
                "--rows", str(dataset / "rows-train.jsonl"), "--val-rows", str(dataset / "rows-validation.jsonl"),
                "--model", args.model, "--base-revision", BASE_REVISION, "--out", str(out), "--run-id", name,
                "--max-steps", str(max_steps), "--lr", f"{lr:g}", "--rank", str(rank), "--alpha", str(2 * rank),
-               "--dropout", f"{dropout:g}", "--warmup-ratio", str(WARMUP_RATIO), "--batch", str(BATCH),
-               "--grad-accum", str(GRAD_ACCUM), "--eval-steps", str(EVAL_STEPS), "--keep-best",
+               "--dropout", f"{dropout:g}", "--warmup-ratio", str(WARMUP_RATIO), "--batch", str(args.batch),
+               "--grad-accum", str(args.grad_accum),
+               *(["--no-gradient-checkpointing"] if args.no_gradient_checkpointing else []),
+               "--eval-steps", str(EVAL_STEPS), "--keep-best",
                "--early-stop", str(EARLY_STOP), "--seed", "42", *(extra or []),
                *(["--torch-loss-head"] if torch_loss else [])]
     began = time.time()
@@ -159,12 +172,20 @@ def train_once(job: Job, args: argparse.Namespace, name: str, lr: float, rank: i
     except (OSError, ValueError, IndexError):
         pass
     metrics = answer.get("metrics", {})
+    try:
+        settings = json.loads(answer.get("refs", {}).get("settings") or "{}")
+    except ValueError:
+        settings = {}
     fact = {"name": name, "lr": lr, "rank": rank, "alpha": 2 * rank, "dropout": dropout, "max_steps": max_steps,
             "warmup_ratio": WARMUP_RATIO, "outcome": answer.get("outcome", f"exit {process.returncode}"),
             "ok": bool(answer.get("ok")), "error": answer.get("error"), "wall_s": round(wall, 1),
             "torch_loss_head": torch_loss,
             "steps": metrics.get("trainer.steps"), "passes": metrics.get("trainer.examples_seen"),
-            "planned_passes": max_steps * BATCH * GRAD_ACCUM,
+            "planned_passes": max_steps * args.batch * args.grad_accum,
+            "batch": args.batch, "grad_accum": args.grad_accum,
+            "gradient_checkpointing": not args.no_gradient_checkpointing,
+            "gdn_kernel": settings.get("gdn_kernel"), "causal_conv1d_kernel": settings.get("causal_conv1d_kernel"),
+            "loss_head": answer.get("refs", {}).get("loss_head"), "device": answer.get("refs", {}).get("device"),
             "best_step": metrics.get("trainer.best_step"), "best_passes": metrics.get("trainer.best_examples_seen"),
             "best_val": metrics.get("trainer.best_eval_loss"), "final_val": metrics.get("trainer.final_eval_loss"),
             "loss_first": metrics.get("trainer.loss_first"), "loss_last": metrics.get("trainer.loss_last"),
@@ -216,7 +237,9 @@ def sweep(job: Job, args: argparse.Namespace) -> list[dict[str, Any]]:
         job.finished(f"run={index}/{total} name={name} lr={lr:g} rank={rank} drop={dropout:g} outcome={fact['outcome']} "
                      f"steps={fact['steps']} passes={fact['passes']} best_step={fact['best_step']} "
                      f"best_passes={fact['best_passes']} best_val={fmt(fact['best_val'])} final_val={fmt(fact['final_val'])} "
-                     f"loss_last={fmt(fact['loss_last'])} wall_s={fact['wall_s']} "
+                     f"loss_last={fmt(fact['loss_last'])} wall_s={fact['wall_s']} train_s={fmt(fact['train_s'], 1)} "
+                     f"batch={fact['batch']}x{fact['grad_accum']} ckpt={fact['gradient_checkpointing']} "
+                     f"gdn_kernel={fact['gdn_kernel']} conv_kernel={fact['causal_conv1d_kernel']} "
                      f"samples_per_s={fmt(fact['samples_per_s'], 2)} peak_mem_gb={fmt(fact['peak_mem_gb'], 1)}")
         (job.out / "sweep.json").write_text(json.dumps({"rule": CHOICE_RULE, "runs": facts}, indent=2) + "\n", encoding="utf-8")
     return facts
@@ -357,6 +380,9 @@ def choose(job: Job, args: argparse.Namespace, facts: list[dict[str, Any]]) -> d
         "chosen": {key: best[key] for key in ("name", "index", "lr", "rank", "alpha", "dropout", "warmup_ratio",
                                               "max_steps", "best_step", "best_passes", "best_val", "final_val",
                                               "passes", "wall_s", "torch_loss_head", "val_agreement")},
+        "a100_run": {key: best.get(key) for key in ("batch", "grad_accum", "gradient_checkpointing", "gdn_kernel",
+                                                    "causal_conv1d_kernel", "loss_head", "device")},
+        "differences_a100_vs_pod": POD_DIFFERENCES,
         "recipe_flags": ["--max-steps", str(best["max_steps"]), "--stop-step", str(best["best_step"]),
                          "--lr", f"{best['lr']:g}", "--rank", str(best["rank"]), "--alpha", str(best["alpha"]),
                          "--dropout", f"{best['dropout']:g}", "--warmup-ratio", str(WARMUP_RATIO),
@@ -445,7 +471,12 @@ def main() -> int:
     parser.add_argument("--budget-s", type=float, default=2400.0)
     parser.add_argument("--max-steps", type=int, default=MAX_STEPS)
     parser.add_argument("--only", choices=("smoke", "sweep", "choose", "held_out"))
+    parser.add_argument("--batch", type=int, default=BATCH, help="per-device batch of the runs here")
+    parser.add_argument("--grad-accum", type=int, default=GRAD_ACCUM)
+    parser.add_argument("--no-gradient-checkpointing", action="store_true")
     args = parser.parse_args()
+    if args.batch * args.grad_accum != EFFECTIVE_BATCH:
+        parser.error(f"--batch x --grad-accum must be {EFFECTIVE_BATCH}, the effective batch of every run")
     job = Job(Path(args.out), args.budget_s)
     (job.out / "choice_rule.txt").write_text(CHOICE_RULE + "\n", encoding="utf-8")
     if args.only == "smoke":   # two optimizer steps with an evaluation after each: the flags work on this GPU
