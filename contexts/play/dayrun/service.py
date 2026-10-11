@@ -349,10 +349,12 @@ class DayRun:
         return talk.edit(self.cfg, self.walks, self.board(start, initial, scenario), moves, text)
 
     def today(self) -> date:
-        """The local day the strip calls today: the clock's, or the newest planned day on a log that ends later."""
-        now = local(self.cfg, self.clock())
-        latest = self.book.latest()
-        return max(now.date(), local(self.cfg, latest).date()) if latest else now.date()
+        """The local day the strip calls today: the clock's when the log has a plan for it (or has no plans at all),
+        else the newest planned day, which is what the Calendar screen shows on a log that ends on another day
+        (contexts/day/api.py `plan_for`)."""
+        now = local(self.cfg, self.clock()).date()
+        planned = [d for d, r in self.book.days().items() if r.plan]
+        return now if now in planned or not planned else max(planned)
 
     def _wake(self, day: date) -> datetime:
         return datetime.combine(day, self.cfg.sleep.wake, self.cfg.tz)

@@ -77,8 +77,3 @@ class DayBook:
                 continue
         self._seen, self._days = sig, days
         return days
-
-    def latest(self) -> datetime | None:
-        """The start of the newest plan in the log: on a replayed or seeded log, "today" is that day."""
-        plans = [r.plan for r in self.days().values() if r.plan]
-        return max((datetime.fromisoformat(p["start"]) for p in plans), default=None)
