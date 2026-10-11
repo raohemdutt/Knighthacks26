@@ -175,6 +175,21 @@ Kernel speed and model quality are out of scope.
     7 to 9 GB to spare, and the step is not slower beside the pair.
   - Candidate experiment: both pods' LoRA at once while the pair labels at 16 workers. Expected movement: step time and
     labeling time each up by the share of the GPU the other takes; memory as above. Minimum sample size: 1 run.
+- **[measured]** With the vision tower (no `--language-model-only`, `--limit-mm-per-prompt {"image":1}` and
+  `--mm-encoder-attn-backend TRITON_ATTN` as the 27B teacher had), the stages loaded 34.58 GiB (pod C) and 36.0 GiB
+  (pod D) and the KV caches came out at 3.31 GiB (157,988 tokens on pod C) and 3.26 GiB, with about 23 and 21 GB still
+  free. A drawn picture (a red circle, a blue square, the word ATLAS; 170 prompt tokens) was described correctly with
+  the first token at 0.83 s and 9.27 tok/s; text decoded at 10.10 tok/s with a 0.32 s first token; a tools request
+  came back structured. The live loop's labeler then labeled 12 of 12 desk-objects examples with pictures through
+  the hub proxy. A LoRA beside this pair failed in its DataLoader with a bus error: the pods' 64 MB `/dev/shm` was
+  held to 60 MB by vLLM's message queues (`VLLM_MQ_MAX_CHUNK_BYTES_MB=2`) and by segments leaked from killed starts.
+  Source: `fixtures/lab/r66-2026-10-11/pair-122b.txt`
+  - Implication: the pair is a full replacement for the 27B teacher (pictures, text, tools) at about the 27B's
+    single-stream speed; on these pods `/dev/shm` is the scarce resource when serving and training share a pod, so
+    the queue chunks go to 1 MB and leaked `psm_*` segments are removed after any killed start.
+  - Candidate experiment: the LoRA beside the pair with 1 MB queue chunks. Expected movement: the DataLoader starts
+    and the step time stays near 128 s. Minimum sample size: 1 run per pod.
+
 ## Open questions
 
 - Would a second tunnel in the other direction (server and relay on pod C) remove the D to C stall?
