@@ -599,6 +599,12 @@ const spotShift = await check("GET /api/spot/shift", "GET", "/api/spot/shift", {
 if (spotShift?.configured) {
   console.log(`        ${spotShift.status.sentence}`);
   await check(`GET /api/spot/shift/rounds/${spotShift.latest_round}`, "GET", `/api/spot/shift/rounds/${spotShift.latest_round}`, { configured: "boolean", label: "string", summary: "string", steps: "array" }, { optional: NO_SPOT });
+  // the look guide (contexts/spot/application/guide.py): where on the screen a thing is, and the walk to it over legs SPOT has walked
+  const asset = spotShift.assets[0]?.asset_id;
+  const pointed = await check("GET /api/spot/guide", "GET", `/api/spot/guide?q=${encodeURIComponent(`where is ${asset}`)}`, { configured: "boolean", query: "string", target: "string?", label: "string?", steps: "array", confidence: "number", alternatives: "array" }, { optional: NO_SPOT });
+  if (pointed) console.log(`        "where is ${asset}" -> ${pointed.target}: ${pointed.steps.at(-1)?.say}`);
+  const walk = await check("GET /api/spot/route", "GET", `/api/spot/route?to=${encodeURIComponent(asset)}`, { configured: "boolean", found: "boolean", from: "string?", to: "string?", path: "array", legs: "array", length: "number", say: "array", summary: "string", note: "string", places: "array" }, { optional: NO_SPOT });
+  if (walk) console.log(`        ${walk.summary}`);
 }
 
 console.log("\nLearning lab");

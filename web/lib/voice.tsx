@@ -102,6 +102,8 @@ export interface Voice {
   say: (text: string, options?: SayOptions) => void;
   /** Stop talking and forget everything queued. */
   stop: () => void;
+  /** Drop what is queued or playing with this tag (the look guide's sentences), and nothing else. */
+  cancel: (tag: string) => void;
   /** Start listening for one utterance. Stops any speech first. False when it could not start. */
   listen: (handlers: ListenHandlers) => boolean;
   /** Stop listening. `submit` hands what was heard so far to onFinal; otherwise it is thrown away. */
@@ -393,6 +395,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   );
 
   const stop = useCallback(() => cancelWhere(() => true), [cancelWhere]);
+  const cancel = useCallback((tag: string) => cancelWhere((j) => j.options.tag === tag), [cancelWhere]);
 
   const say = useCallback(
     (text: string, options: SayOptions = {}) => {
@@ -642,8 +645,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<Voice>(
-    () => ({ ready, canSpeak, listenSupport, status, unlocked, voiceName, settings, getSettings, setSetting, say, stop, listen, stopListening }),
-    [ready, canSpeak, listenSupport, status, unlocked, voiceName, settings, getSettings, setSetting, say, stop, listen, stopListening],
+    () => ({ ready, canSpeak, listenSupport, status, unlocked, voiceName, settings, getSettings, setSetting, say, stop, cancel, listen, stopListening }),
+    [ready, canSpeak, listenSupport, status, unlocked, voiceName, settings, getSettings, setSetting, say, stop, cancel, listen, stopListening],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

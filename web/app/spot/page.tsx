@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { AnalysisLayer } from "@/components/spot/AnalysisLayer";
 import { EXPLAINS, type ExplainId, type Force } from "@/components/spot/Explainers";
 import { FloorMap } from "@/components/spot/FloorMap";
@@ -14,6 +14,7 @@ import { Empty, ErrorBox, Loading } from "@/components/States";
 import ui from "@/components/ui.module.css";
 import { api } from "@/lib/api";
 import { useAtlasEvents } from "@/lib/atlas";
+import { spotWalk } from "@/lib/guideSpot";
 import { useFetch } from "@/lib/useFetch";
 
 /**
@@ -44,6 +45,7 @@ export default function SpotPage() {
   const [explain, setExplain] = useState<ExplainId | null>(null);
   const [force, setForce] = useState<Force>(null);
   const [evidence, setEvidence] = useState(false); // becomes true the first time the analysis is needed, and stays
+  const walking = useSyncExternalStore(spotWalk.subscribe, spotWalk.get, spotWalk.get); // the look guide's walking route, and "you are here"
   const [link, setLink] = useState<{ round: string | null; step: number | null; floor: number | null; run: RunLink } | null>(null);
 
   useEffect(() => {
@@ -135,7 +137,7 @@ export default function SpotPage() {
     <div className={o.page}>
       <div className={o.top}>
         <StatusLine shift={d} />
-        <div className={`${ui.segmented} ${o.tabs}`} role="tablist" aria-label="View">
+        <div className={`${ui.segmented} ${o.tabs}`} role="tablist" aria-label="View" data-guide="tabs">
           {(
             [
               ["shift", "Your shift"],
@@ -143,7 +145,7 @@ export default function SpotPage() {
               ["analysis", "Analysis"],
             ] as [Tab, string][]
           ).map(([k, label]) => (
-            <button type="button" key={k} role="tab" aria-selected={tab === k} className={`${ui.seg} ${tab === k ? ui.segOn : ""}`} onClick={() => pick(k)}>
+            <button type="button" key={k} role="tab" data-guide={`tab:${k === "run" ? "shift-run" : k}`} aria-selected={tab === k} className={`${ui.seg} ${tab === k ? ui.segOn : ""}`} onClick={() => pick(k)}>
               {label}
             </button>
           ))}
@@ -161,12 +163,43 @@ export default function SpotPage() {
                 map={d.map}
                 assets={d.assets}
                 title="The plant floor"
+                guide="map"
+                route2={walking.walk?.found ? walking.walk.path : undefined}
                 route={d.map.route}
                 robotAt={robotAt}
                 selected={asset}
                 onPick={setAsset}
                 initialFloor={link.floor}
-                note={<p className={o.note}>Tap a mark to see what SPOT found there. The picture is the kit's sample floor plan; it is practice data, not a real plant.</p>}
+                note={
+                  <>
+                    <p className={o.note}>Tap a mark to see what SPOT found there. The picture is the kit's sample floor plan; it is practice data, not a real plant.</p>
+                    <p className={o.note} data-guide="walk">
+                      <label>
+                        You are here:{" "}
+                        <select className={ui.input} style={{ display: "inline-block", width: "auto", padding: "4px 8px" }} value={walking.here ?? ""} onChange={(e) => spotWalk.setHere(e.target.value || null)} aria-label="Where you are on the plan">
+                          <option value="">where SPOT's last round started</option>
+                          {d.map.places.map((p) => (
+                            <option key={p.location_id} value={p.location_id}>
+                              {p.name} (floor {p.floor})
+                            </option>
+                          ))}
+                        </select>
+                      </label>{" "}
+                      {walking.walk?.found && walking.walk.path.length > 1 ? (
+                        <>
+                          <b>Green dashes: {walking.walk.summary}</b> {walking.walk.note}{" "}
+                          <button type="button" className={o.link} onClick={spotWalk.clear}>
+                            Hide the route
+                          </button>
+                        </>
+                      ) : walking.walk && !walking.walk.found ? (
+                        walking.walk.summary
+                      ) : (
+                        "Ask “where is…” and the way there is drawn over the paths SPOT has walked."
+                      )}
+                    </p>
+                  </>
+                }
               />
             </div>
             <div className={o.sideCol}>
@@ -182,12 +215,12 @@ export default function SpotPage() {
               <WatchOut items={d.watch} onWhy={why} />
             </div>
             <LooksFine shift={d} onAll={() => setAll(true)} />
-            <OperatorAsk chips={d.ask ?? []} onWhy={why} />
+            <OperatorAsk chips={d.ask ?? []} onWhy={why} guideChips={[d.do_first[0] ? `Where is ${d.do_first[0].name}?` : "Where is the plan?", "Where do I look for the battery?", "Show me what to do first"]} />
           </div>
 
           </div>
 
-          <div id="round" className={link.round ? o.roundFirst : undefined}>
+          <div id="round" data-guide="round" className={link.round ? o.roundFirst : undefined}>
             <Round shift={d} live={live} onLive={setLive} onWhy={why} startRound={link.round} startStep={link.step} />
           </div>
 

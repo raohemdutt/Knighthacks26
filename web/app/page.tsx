@@ -11,6 +11,7 @@ import { useAnswerStream, useAtlas } from "@/lib/atlas";
 import { time } from "@/lib/format";
 import { useProfile } from "@/lib/profile";
 import { briefMe, useBrief } from "@/lib/brief";
+import { askGuide } from "@/lib/guideBus";
 import { approvalSentence, narratedAsk, speechForAnswer, voiceCommand } from "@/lib/speechText";
 import { useVoice } from "@/lib/voice";
 
@@ -92,6 +93,7 @@ export default function AskPage() {
   const ask = async (question: string, spoken = false) => {
     const q = question.trim();
     if (!q || busy.current) return;
+    if (askGuide(q, "/")) return setText(""); // "where do I find the League?": the look guide points, no question to the box
     busy.current = true;
     let reply: string | null = null;
     setNote(null);
@@ -324,7 +326,7 @@ export default function AskPage() {
           // only a quiet note. An answer that looked and found nothing still says so.
           const talk = a.citations.length === 0 && a.answer.trim() !== NO_EVIDENCE;
           return (
-            <article key={turn.id} className={`${ui.card} ${ui.answer}`}>
+            <article key={turn.id} className={`${ui.card} ${ui.answer}`} data-guide="answer">
               <AnswerText text={a.answer} />
               {talk ? null : <Evidence citations={a.citations} />}
               <p className={ui.modelLine}>
@@ -369,6 +371,7 @@ export default function AskPage() {
         <form className={v.typeRow} onSubmit={onSubmit}>
           <input
             className={ui.input}
+            data-guide="ask:input"
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder={voice.status === "listening" ? "Listening…" : "Ask anything"}
