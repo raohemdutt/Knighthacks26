@@ -14,15 +14,19 @@ DeltaNet in_proj_a and in_proj_b. The calibration set is fixtures/lab/quant/cali
 turns, made by fixtures/lab/quant/make_calibration.py); upload it next to this file and pass its path.
 
 This file is self-contained (standard library at import time; torch, transformers, datasets, llmcompressor and
-huggingface_hub only inside the run) so the Colab CLI can ship it alone with `colab exec -f`. The GPU stack is
-lab/requirements-quantize.txt. The run refuses a ROCm torch and a CPU-only torch: the quantization is meant for the
-Colab A100, never a Strix Halo pod or the Jetson.
+huggingface_hub only inside the run) so the Colab CLI can ship it alone with `colab exec -f`. That command sends the
+file's text to the runtime's Jupyter kernel and forwards no arguments, so inside a kernel the arguments are read from
+an uploaded file instead, /content/quant/args.txt (or the path in QUANT_ARGS_FILE), one shell-quoted line such as
+fixtures/lab/quant/args-w3.txt. --install runs `pip install -r <--requirements>` (lab/requirements-quantize.txt,
+uploaded beside it) before anything imports torch. The run refuses a ROCm torch and a CPU-only torch: the
+quantization is meant for the Colab A100, never a Strix Halo pod or the Jetson.
 
 Output, per width, in <out>/<name>/: the compressed checkpoint, the tokenizer and processor, recipe.yaml, and
 atlas_quant.json (the plan, the calibration file's sha256, package versions, timings, free GPU memory and a short
 sample answer). With --upload the folder goes to the Hugging Face Hub as a private model repo named
-<namespace>/<name>, where the namespace comes from the environment variable QUANT_HUB_NAMESPACE and the token from
-HF_TOKEN. The token is read from the environment only, is never printed and is never written to a file.
+<namespace>/<name>, where the namespace is --namespace or the environment variable QUANT_HUB_NAMESPACE, and the token
+is the environment variable HF_TOKEN or, in a kernel where no environment can be passed, the file named by
+--token-file (uploaded by the person who holds the token). The token is never printed and never written anywhere.
 """
 from __future__ import annotations
 
@@ -30,7 +34,9 @@ import argparse
 import hashlib
 import json
 import os
+import shlex
 import shutil
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -40,6 +46,9 @@ GROUP_SIZE = 128
 NAMESPACE_ENV = "QUANT_HUB_NAMESPACE"
 TOKEN_ENV = "HF_TOKEN"
 DEFAULT_CALIBRATION = "fixtures/lab/quant/calibration.jsonl"
+KERNEL_ARGS_FILE = "/content/quant/args.txt"
+ARGS_FILE_ENV = "QUANT_ARGS_FILE"
+PLACEHOLDER = "REPLACE_WITH_HUB_ACCOUNT"
 
 # Modules kept in bf16, as in the serving INT4 teacher and llm-compressor's Qwen3.8 W4A16 example.
 IGNORE = [
@@ -136,16 +145,42 @@ def check_disk(path: Path, need_gb: float = NEED_DISK_GB) -> None:
         raise QuantError(f"{path} has {free_gb:.0f} GB free, the run needs {need_gb} GB")
 
 
-def hub_target(width: int, upload: bool, environ=os.environ) -> str | None:
+def hub_token(environ=os.environ, token_file: str | None = None) -> str:
+    """The Hub token from HF_TOKEN, else from --token-file; empty when neither holds one. Never printed."""
+    token = environ.get(TOKEN_ENV, "").strip()
+    if not token and token_file and Path(token_file).is_file():
+        token = Path(token_file).read_text(encoding="utf-8").strip()
+    return token
+
+
+def hub_target(width: int, upload: bool, environ=os.environ, namespace: str | None = None,
+               token_file: str | None = None) -> str | None:
     """The Hub repo an upload goes to, checked before the hours of quantization rather than after."""
     if not upload:
         return None
-    namespace = environ.get(NAMESPACE_ENV, "").strip()
-    if not namespace:
-        raise QuantError(f"--upload needs the environment variable {NAMESPACE_ENV} (the Hub account or org)")
-    if not environ.get(TOKEN_ENV, "").strip():
-        raise QuantError(f"--upload needs the environment variable {TOKEN_ENV}")
+    namespace = (namespace or environ.get(NAMESPACE_ENV, "")).strip()
+    if not namespace or PLACEHOLDER in namespace:
+        raise QuantError(f"--upload needs --namespace or the environment variable {NAMESPACE_ENV} (the Hub account)")
+    if not hub_token(environ, token_file):
+        raise QuantError(f"--upload needs the environment variable {TOKEN_ENV} or a --token-file that holds the token")
     return f"{namespace}/{checkpoint_name(width)}"
+
+
+def kernel_argv(argv0: str, environ=os.environ) -> list[str] | None:
+    """Inside a Jupyter kernel (how `colab exec -f` runs a file) the arguments come from the args file; else None."""
+    if "ipykernel" not in Path(argv0 or "").name:
+        return None
+    path = Path(environ.get(ARGS_FILE_ENV, KERNEL_ARGS_FILE))
+    if not path.is_file():
+        raise QuantError(f"running in a kernel with no arguments: upload the args file to {path}")
+    return shlex.split(path.read_text(encoding="utf-8"), comments=True)
+
+
+def install(requirements: str) -> None:
+    """pip install -r the requirements before anything imports torch (a kernel keeps what it imported)."""
+    if not Path(requirements).is_file():
+        raise QuantError(f"requirements file {requirements} not found: upload it next to this script")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "-r", requirements])
 
 
 def read_calibration(path: Path) -> list[str]:
@@ -172,9 +207,9 @@ def versions() -> dict:
     return found
 
 
-def run(width: int, calibration: Path, out_dir: Path, upload: bool) -> dict:  # pragma: no cover - needs the GPU
-    """Quantizes one width and saves (and optionally uploads) it. Imports the GPU stack only here."""
-    repo = hub_target(width, upload)
+def run(width: int, calibration: Path, out_dir: Path, repo: str | None,
+        token_file: str | None = None) -> dict:  # pragma: no cover - needs the GPU
+    """Quantizes one width and saves (and optionally uploads) it to `repo`. Imports the GPU stack only here."""
     import torch
 
     check_torch(torch)
@@ -240,7 +275,7 @@ def run(width: int, calibration: Path, out_dir: Path, upload: bool) -> dict:  # 
     if repo:
         from huggingface_hub import HfApi
 
-        api = HfApi(token=os.environ[TOKEN_ENV].strip())
+        api = HfApi(token=hub_token(os.environ, token_file))
         api.create_repo(repo, private=True, exist_ok=True, repo_type="model")
         api.upload_folder(folder_path=str(target), repo_id=repo, repo_type="model",
                           commit_message=f"{checkpoint_name(width)} from lab/quantize_teacher.py")
@@ -261,20 +296,29 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--calibration", default=DEFAULT_CALIBRATION, help="the calibration jsonl")
     ap.add_argument("--out", default="quant-out", help="output folder (one subfolder per width)")
     ap.add_argument("--upload", action="store_true", help=f"upload to the Hub ({NAMESPACE_ENV}, {TOKEN_ENV})")
+    ap.add_argument("--namespace", default=None, help=f"the Hub account; default ${NAMESPACE_ENV}")
+    ap.add_argument("--token-file", default=None, help=f"a file holding the Hub token when ${TOKEN_ENV} is unset")
+    ap.add_argument("--install", action="store_true", help="pip install -r --requirements first")
+    ap.add_argument("--requirements", default="lab/requirements-quantize.txt")
     ap.add_argument("--dry-run", action="store_true", help="print the plan and exit; imports no GPU package")
-    args = ap.parse_args(argv)
-
-    if args.dry_run:
-        print(json.dumps(plan(args.width, args.calibration, os.environ.get(NAMESPACE_ENV) or None), indent=2))
-        return 0
     try:
-        for width in args.width:
-            hub_target(width, args.upload)  # fail fast, before any download
+        if argv is None:
+            argv = kernel_argv(sys.argv[0])
+            argv = sys.argv[1:] if argv is None else argv
+        args = ap.parse_args(argv)
+        namespace = args.namespace or os.environ.get(NAMESPACE_ENV) or None
+        if args.dry_run:
+            print(json.dumps(plan(args.width, args.calibration, namespace), indent=2))
+            return 0
+        repos = {w: hub_target(w, args.upload, namespace=args.namespace, token_file=args.token_file)
+                 for w in args.width}  # fail fast, before any download
         calibration = Path(args.calibration)
         if not calibration.is_file():
             raise QuantError(f"calibration file {calibration} not found: upload it next to this script")
+        if args.install:
+            install(args.requirements)
         for width in args.width:
-            manifest = run(width, calibration, Path(args.out), args.upload)
+            manifest = run(width, calibration, Path(args.out), repos[width], args.token_file)
             print(json.dumps({k: manifest[k] for k in ("hub_repo", "minutes", "peak_gpu_gb", "sample")}))
     except QuantError as exc:
         print(f"quantize_teacher: {exc}", file=sys.stderr)

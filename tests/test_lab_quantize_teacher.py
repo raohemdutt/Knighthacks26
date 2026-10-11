@@ -156,3 +156,48 @@ def test_requirements_pin_the_read_commits():
     assert "llm-compressor@229758564a9a9607b858daccb65edb0c633315ec" in req
     assert "compressed-tensors@41103c0bf3db81fc42d9c90349c42ddf0ca6ff22" in req
     assert not any(line.startswith("torch") for line in req.splitlines())
+
+
+def test_outside_a_kernel_the_command_line_is_used():
+    assert qt.kernel_argv("/usr/bin/python3", environ={}) is None
+    assert qt.kernel_argv("lab/quantize_teacher.py", environ={}) is None
+
+
+def test_inside_a_kernel_the_args_file_is_read(tmp_path):
+    args = tmp_path / "args.txt"
+    args.write_text("# a comment\n--width 3 --out '/content/quant/out dir'\n", encoding="utf-8")
+    argv0 = "/usr/local/lib/python3.12/dist-packages/ipykernel_launcher.py"
+    assert qt.kernel_argv(argv0, environ={qt.ARGS_FILE_ENV: str(args)}) == ["--width", "3", "--out",
+                                                                         "/content/quant/out dir"]
+    with pytest.raises(qt.QuantError, match="args file"):
+        qt.kernel_argv(argv0, environ={qt.ARGS_FILE_ENV: str(tmp_path / "missing.txt")})
+
+
+def test_the_committed_args_files_parse_and_point_at_the_uploaded_files():
+    for width in (3, 2):
+        text = (REPO_ROOT / "fixtures" / "lab" / "quant" / f"args-w{width}.txt").read_text(encoding="utf-8")
+        argv = qt.shlex.split(text, comments=True)
+        assert argv[argv.index("--width") + 1] == str(width)
+        assert argv[argv.index("--calibration") + 1] == "/content/quant/calibration.jsonl"
+        assert argv[argv.index("--requirements") + 1] == "/content/quant/requirements-quantize.txt"
+        assert "--install" in argv and "--upload" in argv and "--token-file" in argv
+
+
+def test_the_placeholder_namespace_is_refused():
+    with pytest.raises(qt.QuantError, match="namespace"):
+        qt.hub_target(3, True, {qt.TOKEN_ENV: "x"}, namespace=qt.PLACEHOLDER)
+
+
+def test_the_token_may_come_from_a_file(tmp_path):
+    token_file = tmp_path / "hf_token"
+    token_file.write_text("  abc  \n", encoding="utf-8")
+    assert qt.hub_token({}, str(token_file)) == "abc"
+    assert qt.hub_token({qt.TOKEN_ENV: "env"}, str(token_file)) == "env"
+    assert qt.hub_target(3, True, {}, namespace="someone", token_file=str(token_file)).startswith("someone/")
+    with pytest.raises(qt.QuantError, match="token"):
+        qt.hub_target(3, True, {}, namespace="someone", token_file=str(tmp_path / "none"))
+
+
+def test_install_refuses_a_missing_requirements_file(tmp_path):
+    with pytest.raises(qt.QuantError, match="requirements"):
+        qt.install(str(tmp_path / "requirements-quantize.txt"))

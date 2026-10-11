@@ -1,0 +1,3 @@
+# lab/quantize_teacher.py arguments for the 2-bit run on the Colab A100, read from /content/quant/args.txt when
+# the file runs in the Colab kernel (colab exec -f forwards no arguments). Replace the namespace before uploading.
+--install --requirements /content/quant/requirements-quantize.txt --width 2 --calibration /content/quant/calibration.jsonl --out /content/quant/out --upload --namespace REPLACE_WITH_HUB_ACCOUNT --token-file /content/quant/hf_token
