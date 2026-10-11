@@ -2,7 +2,7 @@
 // scene = { id, title, start, duration, lines: [{ text, start, duration }] } with every start in ABSOLUTE seconds.
 //
 // In the dorm room (room 1, person 1 inherited from "day"; re-asserted at t0 in case they are not). The person is the
-// focus: a three-quarter from beyond the device, so when they turn from the monitor to the box we see their face.
+// focus: a three-quarter from beyond the device, so we see them turn from the monitor to the box.
 // Line 0 "Ask where you left your keys...": the camera settles on the person and the device; they turn to it; the lens
 // wakes as it answers. Line 1 "It can just talk...": a slow drift while the answer cards fall in (overlay).
 // Hand-over: room 0, person 0, personLook 0, eyes 0, camera at HOME by the end (learn starts in the studio).
@@ -12,9 +12,11 @@ export default function choreograph(tl, world, scene) {
   const word = (i, w, d = 0) => { const l = L[i], k = l.text.indexOf(w); return l.start + (k < 0 ? 0 : k / l.text.length) * l.duration + d; };
 
   // The person and the device in one frame, weighted to screen-left (the overlay owns the right third).
-  const ASK = { x: -1.6, y: 5.4, z: 12.0, tx: -0.55, ty: 0.4, tz: 0.6, fov: 34 };
-  const ASK_DRIFT = { x: -1.3, y: 5.0, z: 11.0, tx: -0.55, ty: 0.35, tz: 0.6, fov: 33 };
-  const TALK = { x: 10.8, y: 7.0, z: -3.9, tx: -2.65, ty: 0.7, tz: 1.15, fov: 38 };
+  // From the desk side: the person in the chair turning to Atlas on its shelf (screen-left), the overlay on the right.
+  const ASK = { x: -2.0, y: 3.0, z: 38.0, tx: 3.6, ty: -3.6, tz: 5.0, fov: 30 };
+  const ASK_DRIFT = { x: -1.6, y: 2.8, z: 36.5, tx: 3.6, ty: -3.6, tz: 5.0, fov: 29.5 };
+  // From the desk side: the person facing us, Atlas on its shelf at their eye height, aimed at them.
+  const TALK = { x: -15.0, y: 2.0, z: 26.0, tx: 7.5, ty: -3.8, tz: 4.0, fov: 32 };
 
   tl.to(state, { room: 1, person: 1, duration: 0.6, ease: "power2.out" }, t0);
   world.leg(tl, t0, ASK, 1.6, "power2.inOut");

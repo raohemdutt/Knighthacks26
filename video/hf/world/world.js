@@ -1,7 +1,7 @@
 // The Atlas world: one Three.js scene the whole video lives in. See WORLD.md for the contract.
 // Everything that moves is a number on world.cam / world.state / world.flows[id] / world.labels[id];
 // render(t) is a pure function of those numbers and t. No clocks, no Math.random.
-// Sets live in world/sets/: the enclosure (enclosure.js), the dorm room (room.js), the kitchen (kitchen.js), the person (person.js).
+// Sets live in world/sets/: the enclosure (enclosure.js), the dorm room (room.js), the kitchen (kitchen.js), the person (human.js).
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
@@ -9,6 +9,7 @@ import { SURFACE_3D, SHADE, LIGHT, INK, ACCENT, MUTED, ENV_INTENSITY, DESK_Y, ha
 import { buildEnclosure, buildEnclosureLite } from "./sets/enclosure.js";
 import { buildRoom } from "./sets/room.js";
 import { buildKitchen, KX } from "./sets/kitchen.js";
+import { loadHuman } from "./sets/human.js";
 import UCF from "../assets/ucf-route.json" with { type: "json" };
 
 export { hash };
@@ -233,8 +234,9 @@ scene.add(route);
   cableSlide.add(cable, plug);
 
   // The sets.
-  const room = buildRoom(scene);
-  const kitchen = buildKitchen(scene);
+  const humanGltf = await loadHuman(); // the person: Quaternius' Universal Animation Library mannequin (CC0)
+  const room = buildRoom(scene, humanGltf);
+  const kitchen = buildKitchen(scene, humanGltf);
 
   // Studio three-quarter of the enclosure (no room): from the front-right, a touch high.
   const HOME = { x: 3.0, y: 1.1, z: 4.6, tx: 0, ty: -0.42, tz: 0.05, fov: 30 };
@@ -244,9 +246,9 @@ scene.add(route);
     hero: { x: -3.2, y: -0.3, z: 4.4, tx: 0, ty: -0.3, tz: 0, fov: 30 },                        // low left three-quarter
     exploded: { x: 5.4, y: 2.2, z: 7.0, tx: 0, ty: 0.05, tz: 0.2, fov: 36 },                    // the whole exploded diagram
     xray: { x: 2.7, y: 1.7, z: 3.9, tx: 0, ty: -0.55, tz: -0.05, fov: 30 },                     // a high three-quarter into the box
-    deskClose: { x: 2.4, y: 0.35, z: 4.4, tx: -0.2, ty: -0.45, tz: 0, fov: 30 },                // the device on the desk
-    roomWide: { x: 15.5, y: 6.2, z: 9.0, tx: -5.5, ty: -1.2, tz: 0.2, fov: 46 },              // the room, three-quarter from the right
-    overShoulder: { x: -2.2, y: 5.6, z: 13.2, tx: -2.0, ty: 0.3, tz: -2.4, fov: 38 },           // behind the person
+    deskClose: { x: 2.4, y: 0.35, z: 4.4, tx: -0.2, ty: -0.45, tz: 0, fov: 30 },                // the device on its shelf (studio or room)
+    roomWide: { x: 30, y: 7.0, z: 42, tx: 3.5, ty: -5.5, tz: 6.5, fov: 40 },                    // the dorm: bed, chair, desk, the shelf
+    overShoulder: { x: 15.0, y: 8.5, z: 25.0, tx: -3.5, ty: -4.0, tz: 5.0, fov: 35 },            // behind the seated person: desk ahead, Atlas on their right
     kitchenWide: { x: KX - 5, y: 8.5, z: 44, tx: KX + 2.5, ty: 0.5, tz: 0, fov: 40 },
     binCam: { x: KX - 8.4, y: 13.0, z: -2.0, tx: KX - 6.2, ty: 1.4, tz: 3.6, fov: 76 },        // from the wall camera
     counterAtlas: { x: KX + 6.0, y: 1.9, z: 3.0, tx: KX + 3.3, ty: 0.9, tz: -1.9, fov: 30 },

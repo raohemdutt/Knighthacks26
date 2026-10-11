@@ -46,7 +46,7 @@ export default function choreograph(tl, world, scene) {
   tl.to(state, { xray: 1, duration: 1.0, ease: "power2.inOut" }, OPEN_AT);
   tl.to(state, { explode: 1, duration: 1.5, ease: "power4.out" }, OPEN_AT + 0.25);
   world.leg(tl, OPEN_AT, { x: 4.9, y: 2.3, z: 6.3, tx: 0.45, ty: 0.3, tz: -0.25, fov: 36 }, 1.6, "power2.inOut");
-  const CLOSE = Math.min(word(3, "squire") - 0.1, END - 1.9);
+  const CLOSE = Math.min(word(3, "assistant") - 0.1, END - 1.9);
   world.leg(tl, OPEN_AT + 1.6, { x: 4.6, y: 2.15, z: 6.0, tx: 0.45, ty: 0.3, tz: -0.25, fov: 36 }, CLOSE - (OPEN_AT + 1.6), "none");
 
   // Labels beside each part on the exploded diagram (offset to screen-left of the part from the exploded view).

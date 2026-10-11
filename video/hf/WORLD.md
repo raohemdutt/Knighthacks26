@@ -8,7 +8,7 @@ the **kitchen** set far to the left, and the older axes (time ring, lab, friends
 | Axis / set | What it shows | Objects |
 | --- | --- | --- |
 | Depth | the enclosure and its parts: webcam, lid, Jetson, speaker, honeycomb front, cardboard walls | `atlas`, `parts`, `state.explode`, `state.xray`, `state.hl.*` |
-| Room | the desk the box sits on, the person at the monitor | `room`, `state.room`, `state.person`, `state.personLook` |
+| Room | the dorm: Atlas on a wall shelf at the seated person's eye height, aimed at their chair; desk, bed | `room`, `state.room`, `state.person`, `state.personLook`, `world.room.person.act([...])` |
 | Kitchen | the bins, the bin camera, a second Atlas, the can | `kitchen`, `state.kitchen`, `state.canThrow`, `state.binCount` |
 | Time | the day as a ring on the desk; frames become beads, beads become bars | `ring`, `beads`, `state.ring`, `state.beads`, `state.bars` |
 | Space | desk, then lab (two AMD Strix Halo pods, "Trainer A" / "Trainer B"), friends' boxes, campus | `lab`, `friends`, `campus` |
@@ -24,7 +24,7 @@ video/hf/
   world/world.js          the shared Three.js world (renderer, light, camera rig, state, axes, particles, labels)
   world/sets/common.js    palette, hash, mm()/mmBox()/boxMesh() (CAD mm -> world), materials, fadingSet
   world/sets/enclosure.js the Atlas enclosure (hero) and the shell-only copy (friends, kitchen)
-  world/sets/person.js    the stylised person rig (seated / standing poses, look())
+  world/sets/human.js     the person: Quaternius' Universal Animation Library mannequin (CC0, assets/people/), clips on a schedule
   world/sets/room.js      the dorm room set
   world/sets/kitchen.js   the kitchen set (KX = -42)
   world/ENCLOSURE.md      the real dimensions the enclosure is built from
@@ -70,9 +70,9 @@ absolute time (`t0 + local seconds`). Never read the clock, never randomise.
 | `hero` | low left three-quarter (the cable side) |
 | `xray` | high three-quarter into the box (use with `xray` 1) |
 | `exploded` | the whole exploded diagram (use with `explode` 1) |
-| `deskClose` | tight on the device on the desk (room or studio) |
-| `roomWide` | the room from the right: the person in profile at the monitor, the device on the desk, window and shelf |
-| `overShoulder` | behind the person toward the monitor and the device |
+| `deskClose` | tight on the device on its shelf (room or studio) |
+| `roomWide` | the whole dorm from the front-right: bed, chair, desk, Atlas on its shelf |
+| `overShoulder` | behind the seated person: the desk ahead, Atlas on its shelf to their right |
 | `kitchenWide` | the kitchen: three bins, the wall camera, the counter with the second Atlas, the fridge, the person |
 | `binCam` | from the wall camera, looking down at the bins and the person (wide angle, like a security cam) |
 | `counterAtlas` | tight on the counter device |
@@ -100,11 +100,14 @@ The enclosure:
   `layer[0]` = hl.webcam, `layer[1..3]` = hl.jetson. `world.SLAB` and `world.layerY(i)` still exist and point at the new parts.
 
 The sets:
-- `room` 0..1 — the dorm room rises and fades in around the desk (desk, monitor with a clip-on webcam, keyboard,
-  mouse, mug, notebook, lamp, chair, rug, back wall with a window over the bed on the left, a shelf with books on the
-  right). The studio shadow plane gives way to the room's own surfaces.
-- `person` 0..1 — the seated person (shows only while `room` > 0). `personLook` 0..1 turns their head (and a little
-  of the torso) from the monitor to the device.
+- `room` 0..1 — the dorm room rises and fades in. The device stays at the origin: it stands on a wall shelf (y = -1.0)
+  1.1 m above the room floor (y = -12), at the seated person's eye height, its camera aimed at the desk chair. The
+  person faces the desk (-x: monitor without a webcam, keyboard, mouse, mug, notebook, lamp); the bed is behind them
+  (+x, its long side facing the desk). Back wall with a window over the desk.
+- `person` 0..1 — the person (sets/human.js; shows only while `room` > 0). By default seated in the chair. A scene
+  gives them a schedule on the film clock: `world.room.person.act([{ t0, t1, clip, loop, speed, from, to, yaw, fade }])`
+  with Quaternius clips (Sitting_Idle_Loop, Sitting_Exit, Walk_Loop, Sitting_Enter, Idle_Loop, Interact, ...) and
+  `world.room.SPOTS` (seat, standDesk, bedEdge, bedFront, faceDesk). `personLook` 0..1 turns their head to the device.
 - `kitchen` 0..1 — the kitchen rises in at x = -42 (the person standing by the bins with a can comes with it; the
   shadow frustum slides there as it rises).
 - `canThrow` 0..1 — 0..0.18 the arm swings, then the can flies in an arc from the hand into the grey trash bin (lands at 1).
@@ -131,7 +134,7 @@ The axes (unchanged meaning, rescaled to the real box):
 | `P.front` | the honeycomb front's face |
 | `P.ethernet` | the Ethernet jack on the back wall |
 | `P.lab`, `P.friend[i]`, `P.ring(a)` | as before (lab `[14, 0.8, -2]`; friends at radius 5.5; ring radius 3) |
-| `P.desk`, `P.monitor`, `P.keyboard`, `P.person` | the room (person = the head) |
+| `P.desk`, `P.monitor`, `P.keyboard`, `P.shelf`, `P.bed`, `P.chair`, `P.person` | the room (person = the seated head) |
 | `P.kitchen`, `P.bins[0..2]`, `P.binCam`, `P.counterAtlas` | the kitchen (bins: blue recycle, green compost, grey trash, at the rim) |
 
 `world.at(name, e)` returns an anchor or part position at explode `e` (default 0), e.g. `world.at("jetson", 1)` for a

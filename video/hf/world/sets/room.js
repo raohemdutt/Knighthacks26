@@ -1,8 +1,11 @@
-// The dorm room set, around the desk the device sits on (the device stays at the origin). state.room rises/fades it in,
-// state.person shows the person, state.personLook turns their head toward the device. Units: 1 = 100 mm.
+// The dorm room set. The device stays at the origin: here it stands on a wall shelf at the person's eye height, to the
+// right of their desk chair, its camera aimed at them. The person (sets/human.js, the Quaternius mannequin) faces the
+// desk (-x); the bed is behind them (+x). state.room rises/fades the set in, state.person shows the person,
+// state.personLook turns their head toward the device. The scene files give the person a schedule of acts
+// (room.person.act): sitting up on the bed, standing, walking, sitting down at the desk. Units: 1 = 100 mm.
 import * as THREE from "three";
 import { SHADE, INK, ACCENT, MUTED, FLOOR_Y, hash, clamp01, lerp, softTexture, FONT, flat, matte, tint, between, fadingSet, RoundedBoxGeometry } from "./common.js";
-import { makePerson, SEATED } from "./person.js";
+import { makeHuman } from "./human.js";
 
 const WOOD = 0xe0d6c8, WALL = 0xe1e6ed, FABRIC = 0xa9b4c5, BOOKS = [0x8f9cb0, 0xc9b7a2, 0x9fb09c, 0xd2c2b0, 0x566176, 0xb4a6b8, 0xa7b8c4, 0xd9cbb9];
 
@@ -32,80 +35,82 @@ function rugTexture() {
   }, 512, 420);
 }
 
-export function buildRoom(scene) {
+export function buildRoom(scene, humanGltf) {
   const root = new THREE.Group(); root.name = "room"; scene.add(root);
   const set = fadingSet(root);
-  const F = FLOOR_Y, TOP = -1.002; // desk top a hair under the device's base (the studio shadow plane sits at -1.0)
+  // The device's shelf is at DESK_Y (-1.0). The room floor sits 1.1 m below it, so the device is at a seated person's
+  // eye height; the desk top is a normal 75 cm.
+  const F = -12.0, SHELF = -1.002, TOP = F + 7.5;
   const wood = matte({ color: WOOD, roughness: 0.75 }), white = matte({ roughness: 0.8 }), wall = matte({ color: WALL, roughness: 0.95 });
   const ink = matte({ color: 0x3a404a, roughness: 0.5 }), fabric = tint(FABRIC, { roughness: 1 }), soft = matte({ color: 0xd3dae3, roughness: 0.9 });
   const at = (m, x, y, z) => { m.position.set(x, y, z); return m; };
 
-  // Floor shadows (the floor itself is the page colour, so only the shadow shows).
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(60, 50), new THREE.ShadowMaterial({ opacity: 0.2, color: SHADE, depthWrite: false }));
-  floor.rotation.x = -Math.PI / 2; floor.position.set(0, F, 2); floor.receiveShadow = true; floor.renderOrder = -5; set.add(floor);
-  const rug = new THREE.Mesh(new THREE.PlaneGeometry(11, 9), flat({ map: rugTexture(), transparent: true, depthWrite: false }));
-  rug.rotation.x = -Math.PI / 2; rug.position.set(-4.2, F + 0.01, 6.6); rug.renderOrder = -4; set.add(rug);
+  // Floor shadows (the floor itself is the page colour, so only the shadow shows), and a rug under the chair.
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(70, 50), new THREE.ShadowMaterial({ opacity: 0.2, color: SHADE, depthWrite: false }));
+  floor.rotation.x = -Math.PI / 2; floor.position.set(4, F, 10); floor.receiveShadow = true; floor.renderOrder = -5; set.add(floor);
+  const rug = new THREE.Mesh(new THREE.PlaneGeometry(12, 10), flat({ map: rugTexture(), transparent: true, depthWrite: false }));
+  rug.rotation.x = -Math.PI / 2; rug.position.set(3.5, F + 0.01, 8.5); rug.renderOrder = -4; set.add(rug);
 
-  // Back wall with a window on the right, a shelf with books on the left.
-  const backWall = at(rbox(40, 26, 0.4, wall, 0.1, 2), -6, F + 13, -4.4); backWall.castShadow = false; set.add(backWall);
-  const win = new THREE.Group(); win.position.set(-14.6, 4.4, -4.15);
+  // The back wall behind the device, with a window over the desk.
+  const backWall = at(rbox(46, 28, 0.4, wall, 0.1, 2), 4, F + 14, -1.45); backWall.castShadow = false; set.add(backWall);
+  const win = new THREE.Group(); win.position.set(-8.5, F + 15.5, -1.2);
   const glass = new THREE.Mesh(new THREE.PlaneGeometry(7.6, 7.6), flat({ color: 0xf6f8fb })); glass.position.z = -0.02; win.add(glass);
   for (const [w, h, x, y] of [[8.4, 0.4, 0, 4.0], [8.4, 0.4, 0, -4.0], [0.4, 8.4, 4.0, 0], [0.4, 8.4, -4.0, 0], [7.6, 0.18, 0, 0], [0.18, 7.6, 0, 0]]) win.add(at(rbox(w, h, 0.4, white, 0.08, 2), x, y, 0.1));
   win.add(at(rbox(9.2, 0.25, 0.9, white, 0.08, 2), 0, -4.3, 0.4));
   set.add(win);
-  const shelf = new THREE.Group(); shelf.position.set(1.2, 5.6, -3.4);
-  shelf.add(at(rbox(8.2, 0.26, 1.7, wood, 0.08, 2), 0, 0, 0));
-  for (const x of [-3.3, 3.3]) shelf.add(at(rbox(0.2, 0.9, 1.2, white, 0.05, 2), x, -0.55, -0.1));
-  let bx = -3.7;
-  for (let i = 0; i < 9; i++) {
-    const w = 0.34 + hash(i, 61) * 0.3, h = 1.5 + hash(i, 62) * 0.9, d = 1.1 + hash(i, 63) * 0.3;
-    const b = at(rbox(w, h, d, tint(BOOKS[i % BOOKS.length], { roughness: 0.85 }), 0.06, 2), bx + w / 2, 0.13 + h / 2, 0.05);
-    if (i === 8) { b.rotation.z = -0.32; b.position.x += 0.35; b.position.y -= 0.12; }
-    shelf.add(b); bx += w + 0.04;
+
+  // The device's shelf: a wall shelf under the box, two brackets, a few books and a plant beside it.
+  const shelf = new THREE.Group(); shelf.position.set(1.0, SHELF, 0.05);
+  shelf.add(at(rbox(6.2, 0.26, 2.6, wood, 0.08, 2), 0, -0.13, 0));
+  for (const x of [-2.4, 2.4]) { const b = at(rbox(0.22, 1.3, 1.6, white, 0.05, 2), x, -0.9, -0.4); shelf.add(b); }
+  let bx = 1.35;
+  for (let i = 0; i < 5; i++) {
+    const w = 0.3 + hash(i, 61) * 0.22, h = 1.3 + hash(i, 62) * 0.6, d = 1.1 + hash(i, 63) * 0.3;
+    const b = at(rbox(w, h, d, tint(BOOKS[i % BOOKS.length], { roughness: 0.85 }), 0.05, 2), bx + w / 2, h / 2, -0.4);
+    if (i === 4) { b.rotation.z = -0.3; b.position.x += 0.3; b.position.y -= 0.1; }
+    shelf.add(b); bx += w + 0.03;
   }
-  const pot = at(new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.34, 0.75, 20), white), 2.4, 0.5, 0.1); pot.castShadow = true; shelf.add(pot);
-  for (let k = 0; k < 5; k++) { const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.42, 14, 10), tint(0x9fb09c, { roughness: 0.9 })); leaf.scale.set(0.6, 1.2, 0.6); leaf.position.set(2.4 + (hash(k, 64) - 0.5) * 0.6, 1.25 + hash(k, 65) * 0.3, 0.1 + (hash(k, 66) - 0.5) * 0.5); leaf.rotation.z = (hash(k, 67) - 0.5) * 1.2; leaf.castShadow = true; shelf.add(leaf); }
+  const pot = at(new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.3, 0.62, 20), white), -2.3, 0.31, -0.2); pot.castShadow = true; shelf.add(pot);
+  for (let k = 0; k < 5; k++) { const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.36, 14, 10), tint(0x9fb09c, { roughness: 0.9 })); leaf.scale.set(0.6, 1.2, 0.6); leaf.position.set(-2.3 + (hash(k, 64) - 0.5) * 0.5, 0.95 + hash(k, 65) * 0.3, -0.2 + (hash(k, 66) - 0.5) * 0.4); leaf.rotation.z = (hash(k, 67) - 0.5) * 1.2; leaf.castShadow = true; shelf.add(leaf); }
   set.add(shelf);
 
-  // The bed edge, right and behind.
-  const bed = new THREE.Group(); bed.position.set(-15.2, F, -0.2);
-  bed.add(at(rbox(10.2, 1.6, 7.8, wood, 0.15), 0, 1.6, 0));
-  bed.add(at(rbox(9.9, 1.9, 7.5, white, 0.45, 4), 0, 3.3, 0));
-  bed.add(at(rbox(10.1, 0.5, 5.0, fabric, 0.25, 3), 0, 4.3, 1.3));
-  bed.add(at(rbox(4.0, 0.9, 1.9, soft, 0.42, 4), 1.6, 4.65, -2.6));
-  bed.add(at(rbox(10.2, 4.6, 0.45, wood, 0.15), 0, 2.3, -3.85));
+  // The bed, behind the person: headboard on the back wall, long side facing the desk.
+  const BED_X = 19.0, BED_TOP = F + 5.0;
+  const bed = new THREE.Group(); bed.position.set(BED_X, F, 8.6);
+  bed.add(at(rbox(10.2, 2.4, 20.0, wood, 0.15), 0, 1.2, 0));
+  bed.add(at(rbox(9.9, 2.6, 19.6, white, 0.45, 4), 0, 3.7, 0));
+  bed.add(at(rbox(10.0, 0.5, 12.0, fabric, 0.25, 3), 0.1, 5.05, 3.6));
+  bed.add(at(rbox(6.5, 1.0, 3.0, soft, 0.45, 4), 0, 5.4, -7.6));
+  bed.add(at(rbox(10.2, 7.0, 0.45, wood, 0.15), 0, 3.5, -9.8));
   set.add(bed);
 
-  // The desk: top, two side panels.
+  // The desk, along the left: the person faces it (-x).
   const desk = new THREE.Group();
-  desk.add(at(rbox(14.6, 0.32, 7.2, wood, 0.1, 2), -2.6, TOP - 0.16, -0.35));
-  for (const x of [-9.4, 4.2]) desk.add(at(rbox(0.36, TOP - 0.32 - F, 6.6, white, 0.08, 2), x, (TOP - 0.32 + F) / 2, -0.35));
+  desk.add(at(rbox(6.4, 0.32, 13.0, wood, 0.1, 2), -6.8, TOP - 0.16, 8.5));
+  for (const z of [2.3, 14.7]) desk.add(at(rbox(6.0, TOP - 0.32 - F, 0.36, white, 0.08, 2), -6.8, (TOP - 0.32 + F) / 2, z));
   set.add(desk);
 
-  // Monitor (with a webcam clipped on top), keyboard, mouse, a mug, a notebook, the lamp.
-  const mon = new THREE.Group(); mon.position.set(-4.5, TOP, -2.4);
+  // Monitor (no webcam: Atlas is the only camera in this room), keyboard, mouse, a mug, a notebook, the lamp.
+  const mon = new THREE.Group(); mon.position.set(-8.8, TOP, 8.5); mon.rotation.y = Math.PI / 2;
   mon.add(at(rbox(2.4, 0.12, 1.6, white, 0.05, 2), 0, 0.06, 0));
   mon.add(at(rbox(0.38, 2.4, 0.3, white, 0.1, 2), 0, 1.3, -0.15));
   mon.add(at(rbox(6.3, 3.75, 0.28, white, 0.1, 3), 0, 3.3, 0.02));
   const scr = new THREE.Mesh(new THREE.PlaneGeometry(5.95, 3.38), flat({ map: screenTexture() })); scr.position.set(0, 3.32, 0.165); mon.add(scr);
-  const mcam = at(rbox(1.0, 0.32, 0.42, ink, 0.12, 3), 0, 5.35, 0.08); mon.add(mcam);
-  const mlens = new THREE.Mesh(new THREE.CircleGeometry(0.07, 16), flat({ color: 0x15181d })); mlens.position.set(0, 5.35, 0.295); mon.add(mlens);
-  mon.add(at(rbox(0.5, 0.36, 0.16, ink, 0.05, 2), 0, 5.12, -0.12));
   set.add(mon);
-  const kb = new THREE.Group(); kb.position.set(-4.5, TOP, 1.35);
+  const kb = new THREE.Group(); kb.position.set(-5.4, TOP, 8.5); kb.rotation.y = Math.PI / 2;
   kb.add(at(rbox(4.5, 0.16, 1.5, white, 0.06, 2), 0, 0.08, 0));
   const keys = new THREE.InstancedMesh(new RoundedBoxGeometry(0.24, 0.08, 0.24, 1, 0.04), matte({ color: 0xedf1f6, roughness: 0.7 }), 64);
   const km = new THREE.Matrix4(); let ki = 0;
   for (let r = 0; r < 4; r++) for (let c = 0; c < 16; c++) { km.makeTranslation(-1.98 + c * 0.264, 0.2, -0.5 + r * 0.33); keys.setMatrixAt(ki++, km); }
   keys.castShadow = false; keys.receiveShadow = true; kb.add(keys);
   set.add(kb);
-  const mouse = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 12), white); mouse.scale.set(0.75, 0.35, 1.1); mouse.position.set(-1.4, TOP + 0.12, 1.5); mouse.castShadow = true; set.add(mouse);
-  const mug = new THREE.Group(); mug.position.set(2.5, TOP, 1.9);
+  const mouse = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 12), white); mouse.scale.set(1.1, 0.35, 0.75); mouse.position.set(-5.2, TOP + 0.12, 11.4); mouse.castShadow = true; set.add(mouse);
+  const mug = new THREE.Group(); mug.position.set(-6.0, TOP, 13.4);
   const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.38, 0.95, 24), tint(0xc9b7a2, { roughness: 0.6 })); cup.position.y = 0.48; cup.castShadow = true; mug.add(cup);
   const handle = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.06, 8, 16), cup.material); handle.position.set(0.44, 0.5, 0); mug.add(handle);
   set.add(mug);
-  const note = at(rbox(2.1, 0.14, 2.8, tint(0x8f9cb0, { roughness: 0.9 }), 0.05, 2), -8.0, TOP + 0.07, 1.2); note.rotation.y = 0.18; set.add(note);
-  const lamp = new THREE.Group(); lamp.position.set(-8.3, TOP, -2.5);
+  const note = at(rbox(2.8, 0.14, 2.1, tint(0x8f9cb0, { roughness: 0.9 }), 0.05, 2), -6.4, TOP + 0.07, 4.4); note.rotation.y = 0.18; set.add(note);
+  const lamp = new THREE.Group(); lamp.position.set(-8.6, TOP, 3.6); lamp.rotation.y = Math.PI / 2;
   const lbase = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.85, 0.2, 28), white); lbase.position.y = 0.1; lbase.castShadow = true; lamp.add(lbase);
   const j1 = new THREE.Vector3(0, 0.2, 0), j2 = new THREE.Vector3(0.3, 4.0, -0.4), j3 = new THREE.Vector3(-0.9, 4.7, 1.1);
   for (const [a, b] of [[j1, j2], [j2, j3]]) { const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, a.distanceTo(b), 10), white); arm.castShadow = true; lamp.add(between(arm, a, b)); }
@@ -114,11 +119,12 @@ export function buildRoom(scene) {
   const bulb = new THREE.Mesh(new THREE.CircleGeometry(0.62, 24), flat({ color: 0xfbf6ef })); bulb.rotation.x = Math.PI / 2; bulb.position.copy(shade.position); bulb.position.y -= 0.5; bulb.position.x -= 0.15; lamp.add(bulb);
   set.add(lamp);
 
-  // The chair.
-  const chair = new THREE.Group(); chair.position.set(-4.5, F, 6.6);
+  // The chair, pulled out from the desk, facing it; the person sits down into it.
+  const CHAIR = [0.6, F, 8.5];
+  const chair = new THREE.Group(); chair.position.set(...CHAIR); chair.rotation.y = -Math.PI / 2;
   chair.add(at(rbox(4.4, 0.6, 4.2, fabric, 0.28, 3), 0, 4.3, 0));
   const back = at(rbox(4.2, 4.6, 0.55, fabric, 0.28, 3), 0, 7.6, 2.25); back.rotation.x = 0.1; chair.add(back);
-  for (const s of [-1, 1]) chair.add(at(rbox(0.25, 3.0, 0.3, ink, 0.1, 2), s * 1.4, 5.9, 2.1));
+  for (const sd of [-1, 1]) chair.add(at(rbox(0.25, 3.0, 0.3, ink, 0.1, 2), sd * 1.4, 5.9, 2.1));
   const post = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 3.4, 12), ink); post.position.y = 2.3; post.castShadow = true; chair.add(post);
   for (let k = 0; k < 5; k++) {
     const a = (k / 5) * Math.PI * 2 + 0.3, leg = rbox(2.3, 0.22, 0.32, ink, 0.1, 2);
@@ -127,27 +133,41 @@ export function buildRoom(scene) {
   }
   set.add(chair);
 
-  // The person, seated, facing the monitor.
-  const person = makePerson(); person.pose(SEATED);
-  const pHolder = new THREE.Group(); pHolder.position.set(-4.5, -3.2, 6.15); pHolder.add(person.root); root.add(pHolder);
+  // The person (sets/human.js). Default: seated at the desk, facing it. Scenes add acts (bed, stand, walk, sit).
+  const person = makeHuman(humanGltf);
   for (const m of person.mats) { m.transparent = true; m.userData.baseOpacity = m.opacity; }
-  const HEAD = new THREE.Vector3(-4.5, -3.2 + 6.7, 6.15);
-  const toDevice = new THREE.Vector3(0, -0.5, 0).sub(HEAD), toMonitor = new THREE.Vector3(-4.5, 2.3, -2.4).sub(HEAD);
-  const yawOf = (v) => -Math.atan2(v.x, -v.z), pitchOf = (v) => Math.atan2(-v.y, Math.hypot(v.x, v.z));
+  root.add(person.root);
+  const FACE_DESK = -Math.PI / 2;
+  // Where the acts happen (room coordinates = world, the set does not move).
+  const SPOTS = {
+    seat: [CHAIR[0] + 0.4, F, CHAIR[2]],          // the root of the seated pose, in the chair
+    standDesk: [CHAIR[0] - 2.0, F, CHAIR[2]],     // standing in front of the chair, back to it, facing the desk
+    bedEdge: [BED_X - 5.6, F + 0.2, 7.5],          // sitting on the bed's edge, feet on the floor
+    bedFront: [BED_X - 6.6, F, 7.5],               // standing up from the bed
+    faceDesk: FACE_DESK,
+  };
+  const SEATED_ACT = { t0: -1e9, t1: 1e9, clip: "Sitting_Idle_Loop", loop: true, speed: 0.6, from: SPOTS.seat, yaw: [FACE_DESK] };
+  person.act([SEATED_ACT]);
 
-  const P = { desk: [-2.6, TOP, -0.35], monitor: [-4.5, 0.9, -2.2], person: HEAD.toArray(), keyboard: [-4.5, TOP + 0.2, 1.35] };
+  const head = new THREE.Vector3(), toBox = new THREE.Vector3(), BOX = new THREE.Vector3(0, -0.3, 0);
+  const P = { desk: [-6.8, TOP, 8.5], monitor: [-8.6, TOP + 3.3, 8.5], keyboard: [-5.4, TOP + 0.2, 8.5], shelf: [1.0, SHELF, 0.05], bed: [BED_X, BED_TOP, 8.6], chair: CHAIR, person: [CHAIR[0] + 0.2, F + 12.3, CHAIR[2]] };
   function update(state, t) {
     set.update(state.room || 0);
     const pv = clamp01(Math.min(state.room || 0, state.person || 0));
-    pHolder.visible = pv > 0.001;
-    if (pHolder.visible) {
-      for (const m of person.mats) { m.opacity = m.userData.baseOpacity * pv; m.depthWrite = pv > 0.6; }
-      pHolder.position.y = -3.2 - (1 - pv) * 0.6;
-      const l = clamp01(state.personLook || 0), e = l * l * (3 - 2 * l);
-      // A breath (pure function of t), and the head turning from the monitor to the device.
-      person.J.spine.position.y = 0.04 * Math.sin(t * 1.4);
-      person.look(lerp(yawOf(toMonitor), yawOf(toDevice), e), lerp(pitchOf(toMonitor), pitchOf(toDevice), e));
+    person.root.visible = pv > 0.001;
+    if (!person.root.visible) return;
+    for (const m of person.mats) { m.opacity = m.userData.baseOpacity * pv; m.depthWrite = pv > 0.6; }
+    person.at(t);
+    person.root.position.y -= (1 - pv) * 0.6;
+    // The head turns from where the body faces toward the device on the shelf.
+    const l = clamp01(state.personLook || 0), e = l * l * (3 - 2 * l);
+    if (e > 0.001) {
+      person.headPos(head); toBox.copy(BOX).sub(head);
+      const want = Math.atan2(toBox.x, toBox.z), have = person.root.rotation.y;
+      let yaw = want - have; yaw = ((yaw + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+      const pitch = Math.atan2(-toBox.y, Math.hypot(toBox.x, toBox.z));
+      person.look(yaw * e, pitch * e * 0.8);
     }
   }
-  return { root, update, P, person };
+  return { root, update, P, person, SPOTS, F };
 }

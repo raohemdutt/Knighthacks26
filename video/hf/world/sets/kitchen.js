@@ -4,7 +4,7 @@
 // throws the can into the grey bin, state.binCount lights the counter device. Units: 1 = 100 mm.
 import * as THREE from "three";
 import { SHADE, INK, FLOOR_Y, DESK_Y, hash, clamp01, lerp, softTexture, FONT, flat, matte, tint, fadingSet, RoundedBoxGeometry } from "./common.js";
-import { makePerson, STANDING } from "./person.js";
+import { makeHuman } from "./human.js";
 import { buildEnclosureLite } from "./enclosure.js";
 
 export const KX = -42;
@@ -28,7 +28,7 @@ function plateTexture(text, ink) {
   }, 512, 160);
 }
 
-export function buildKitchen(scene) {
+export function buildKitchen(scene, humanGltf) {
   const root = new THREE.Group(); root.name = "kitchen"; root.position.x = KX; scene.add(root);
   const set = fadingSet(root);
   const F = FLOOR_Y, TOP = 0.5; // counter top (90 cm)
@@ -96,32 +96,32 @@ export function buildKitchen(scene) {
   atlas.group.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   set.add(atlasHolder);
 
-  // The person, standing by the bins, a can in the right hand.
-  const person = makePerson(); person.pose(STANDING);
-  const pHolder = new THREE.Group(); pHolder.position.set(-1.6, F + 9.25, 6.2); pHolder.rotation.y = 0.5; pHolder.add(person.root); set.add(pHolder);
+  // The person (sets/human.js), standing by the bins with a can; Quaternius' "Interact" clip is the reach to drop it.
+  const person = makeHuman(humanGltf);
+  const pHolder = new THREE.Group(); pHolder.position.set(-1.6, F, 6.2); pHolder.rotation.y = 0.5 + Math.PI; pHolder.add(person.root); set.add(pHolder);
+  const REACH = 0.9; // seconds into "Interact" where the hand is furthest out: the can leaves the hand here
   const can = new THREE.Group();
   const canBody = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.33, 1.2, 22), steel); canBody.castShadow = true; can.add(canBody);
   const band = new THREE.Mesh(new THREE.CylinderGeometry(0.335, 0.335, 0.6, 22), tint(0xb98478, { roughness: 0.5 })); can.add(band);
   const lidTop = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.31, 0.08, 22), steel); lidTop.position.y = 0.63; can.add(lidTop);
   set.add(can);
-  const RELEASE = { "shoulderR.x": 1.2, "shoulderR.z": -0.32, "elbowR.x": 0.3, "elbowR.z": 0.05 };
   const binTarget = new THREE.Vector3(BINS[2].x + 0.1, F + 1.0, BIN_Z); // inside the grey bin, kitchen-local
-  // Release point = the hand at the release pose (kitchen-local), computed once.
-  person.pose(RELEASE); const rel = root.worldToLocal(person.handPos("R")).clone(); person.pose(STANDING);
+  // Release point = the hand at the reach (kitchen-local), computed once.
+  person.sample([["Interact", REACH, 1]]); root.updateMatrixWorld(true); const rel = root.worldToLocal(person.handPos("R").clone()).clone(); person.sample([["Idle_Loop", 0, 1]]);
   const hv = new THREE.Vector3();
 
   const P = {
     kitchen: [KX, 0, 0], counterAtlas: [KX + 3.4, TOP + 0.45, -1.9], binCam: [KX - 8.4, 13.0, -2.0],
-    bins: BINS.map((b) => [KX + b.x, F + BH, BIN_Z]), person: [KX - 1.6, F + 9.25 + 6.7, 6.2],
+    bins: BINS.map((b) => [KX + b.x, F + BH, BIN_Z]), person: [KX - 1.6, F + 16.6, 6.2],
   };
   function update(state, t) {
     const v = state.kitchen || 0; set.update(v);
     if (!root.visible) return;
     const c = clamp01(state.canThrow || 0), swing = clamp01(c / 0.18), sw = swing * swing * (3 - 2 * swing);
-    const pose = {}; for (const k in RELEASE) pose[k] = lerp(STANDING[k], RELEASE[k], sw); person.pose(pose);
-    person.J.spine.position.y = 0.04 * Math.sin(t * 1.3);
-    person.look(lerp(0.05, -0.25, sw), lerp(0.55, 0.75, c));
-    if (c < 0.18) { root.worldToLocal(person.handPos("R", hv)); can.position.copy(hv); can.position.y -= 0.2; can.rotation.set(0, 0, 0); }
+    const w = clamp01(c / 0.05), it = Math.min(swing, 1) * REACH + clamp01((c - 0.18) / 0.82) * (person.duration("Interact") - REACH);
+    person.sample(w < 1 ? [["Idle_Loop", (t * 0.8) % person.duration("Idle_Loop"), 1 - w], ["Interact", it, w]] : [["Interact", it, 1]]);
+    person.look(0, lerp(0.35, 0.5, c));
+    if (c < 0.18) { root.worldToLocal(person.handPos("R", hv)); can.position.copy(hv); can.position.y -= 0.35; can.rotation.set(0, 0, 0); }
     else {
       const u = (c - 0.18) / 0.82;
       can.position.lerpVectors(rel, binTarget, u); can.position.y += Math.sin(u * Math.PI) * 2.4 * (1 - u * 0.3);

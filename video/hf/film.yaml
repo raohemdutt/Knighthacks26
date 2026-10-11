@@ -19,7 +19,7 @@ scenes:
       - This is Atlas. The personal AI computer.
       - It sits on your desk, learns how you live, and works for you. It remembers what matters, answers in plain words, and adapts as your life changes.
       - Everything it knows about you stays on the device in front of you.
-      - Inside, a camera on top, a speaker in front, and a Jetson that runs the vision, the memory, and an agent that acts on your behalf, like a squire.
+      - Inside, a camera on top, a speaker in front, and a Jetson that runs the vision, the memory, and an agent that acts on your behalf, like an assistant.
 
   - id: day
     title: Your day

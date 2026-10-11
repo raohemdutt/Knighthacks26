@@ -18,13 +18,13 @@
         #intro-words { position: absolute; right: 120px; top: 300px; display: flex; flex-direction: column; align-items: flex-end; gap: 30px; }
         .intro-word { padding: 22px 44px 24px 36px; border-radius: 40px; display: flex; align-items: center; gap: 22px; font-size: 64px; font-weight: 600; letter-spacing: -0.01em; color: var(--ink); opacity: 0; }
         .intro-word i { width: 18px; height: 18px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 7px rgba(69,108,179,0.14); flex: none; }
-        /* Line 3: the Jetson's three jobs, and the squire card. */
+        /* Line 3: the Jetson's three jobs, and the assistant card. */
         #intro-jobs { position: absolute; right: 120px; top: 230px; display: flex; flex-direction: column; align-items: flex-end; gap: 24px; }
         .intro-chip { height: 92px; padding: 0 40px 0 30px; border-radius: 46px; display: flex; align-items: center; gap: 18px; font-size: 40px; font-weight: 600; color: var(--ink); opacity: 0; }
         .intro-chip i { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 6px rgba(69,108,179,0.14); }
-        #intro-squire { position: absolute; right: 120px; top: 640px; width: 460px; padding: 30px 38px; border-radius: 32px; opacity: 0; }
-        #intro-squire .k { font-size: 28px; font-weight: 600; color: var(--accent); letter-spacing: 0.02em; }
-        #intro-squire .v { margin-top: 6px; font-size: 40px; font-weight: 600; color: var(--ink); line-height: 1.2; }
+        #intro-assistant { position: absolute; right: 120px; top: 640px; width: 460px; padding: 30px 38px; border-radius: 32px; opacity: 0; }
+        #intro-assistant .k { font-size: 28px; font-weight: 600; color: var(--accent); letter-spacing: 0.02em; }
+        #intro-assistant .v { margin-top: 6px; font-size: 40px; font-weight: 600; color: var(--ink); line-height: 1.2; }
       </style>
       <div id="root" data-composition-id="intro" data-width="1920" data-height="1080">
         <div id="intro-stage" class="site-stage"><div id="intro-mark">
@@ -48,15 +48,15 @@
           <div id="intro-chip-1" class="intro-chip soft-raised"><i></i>Memory</div>
           <div id="intro-chip-2" class="intro-chip soft-raised"><i></i>Agent</div>
         </div>
-        <div id="intro-squire" class="soft-raised"><div class="k">Like a squire</div><div class="v">Acts on your behalf</div></div>
+        <div id="intro-assistant" class="soft-raised"><div class="k">Your assistant</div><div class="v">Acts on your behalf</div></div>
       </div>
       <script>
         (function () {
           // LOCAL time (the intro starts at 0). Word times come from film.json: line 1 starts 5.804 (8.280 long), line 3
           // starts 18.028 (7.608 long); a word's time = line.start + (char offset / line length) * line.duration.
-          // learns 7.06, remembers 9.52, adapts 12.49; vision 21.81, memory 22.44, agent 23.22, acts ~23.9, squire 25.27.
+          // learns 7.06, remembers 9.52, adapts 12.49; vision 21.94, memory 22.59, agent 23.40, acts 24.0, assistant 25.57.
           // Re-derive these if the words in film.yaml change. The scene lasts 26.836.
-          const DUR = 26.836, FIRST = 2.5;
+          const DUR = 27.316, FIRST = 2.5;
           const tl = gsap.timeline({ paused: true });
           const PRESSED = "inset 8px 8px 16px #c9d3e3, inset -8px -8px 16px #ffffff";
 
@@ -81,13 +81,13 @@
           });
           tl.to(".intro-word", { opacity: 0, x: 24, duration: 0.45, ease: "power2.in", stagger: 0.06 }, 14.2);
 
-          // Line 3: the Jetson's jobs in the right column, then the squire card.
-          [21.81, 22.44, 23.22].forEach((w, i) => {
+          // Line 3: the Jetson's jobs in the right column, then the assistant card.
+          [21.94, 22.59, 23.4].forEach((w, i) => {
             tl.fromTo("#intro-chip-" + i, { opacity: 0, x: 30, scale: 0.92 }, { opacity: 1, x: 0, scale: 1, duration: 0.6, ease: "power4.out" }, w - 0.05);
           });
-          tl.fromTo("#intro-squire", { opacity: 0, y: 26, scale: 0.95 }, { opacity: 1, y: 0, scale: 1, duration: 0.7, ease: "power4.out" }, 23.85);
-          tl.to(".intro-chip", { opacity: 0, x: 24, duration: 0.4, ease: "power2.in", stagger: 0.05 }, 25.3);
-          tl.to("#intro-squire", { opacity: 0, y: 14, duration: 0.45, ease: "power2.in" }, 25.45);
+          tl.fromTo("#intro-assistant", { opacity: 0, y: 26, scale: 0.95 }, { opacity: 1, y: 0, scale: 1, duration: 0.7, ease: "power4.out" }, 24.0);
+          tl.to(".intro-chip", { opacity: 0, x: 24, duration: 0.4, ease: "power2.in", stagger: 0.05 }, 25.7);
+          tl.to("#intro-assistant", { opacity: 0, y: 14, duration: 0.45, ease: "power2.in" }, 25.85);
           tl.to("#intro-chapter", { opacity: 0, duration: 0.4, ease: "power2.in" }, DUR - 0.5);
           window.__timelines["intro"] = tl;
         })();
