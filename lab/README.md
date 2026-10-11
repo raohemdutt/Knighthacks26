@@ -1040,3 +1040,16 @@ the node check, deletion, the install, the entry point's refusals) runs everywhe
 trains tiny Qwen3.5 models, text and image-text, on the CPU and is skipped where the training stack is not
 installed (CI). `fixtures/learning/train-tiny/` is six labeled train examples of the no-camera fixture with that
 split's held-out side, and the rows `format_traces.py --split` writes for them.
+
+## The first real fine-tune on pod B (L16)
+
+`lab/l16_run.sh` is the whole run, step by step, and `lab/L16_CONFIG.md` is its config with the source of every
+number (R36's pinned baseline: LoRA r 16, alpha 32, lr 2e-4, batch 4 by accumulation 4, 3 epochs, seed 42). On the
+workstation `dataset` writes the labeled train rows (L13's labels when they are in the repo, else the reference traces
+of `expected.jsonl`, learning ruling 12), `bundle` packs `lab/` and `contracts/` for the pod and `dry-run` runs the
+same command line on the CPU. On pod D, inside the GPU Queue slot, `prep` makes `~/venvs/atlas-train` over the image's
+torch (pip runs only in the venv, with `PYTHONNOUSERSITE=1`, so the user site where pod D keeps vLLM is never touched)
+and downloads the base at its pinned commit to `~/models/Qwen3.5-4B`; `train <run id> <dataset id>` runs the trainer
+and leaves the adapter, telemetry, `run.json`, the log and the ledger rows in `~/adapters/l16-<run id>/`.
+`fixtures/demo/` holds what came back: the trainer log, the loss curve, the ledger rows and the screen recording the
+"It learns" fallback uses (owner ruling 7).
