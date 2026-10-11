@@ -54,7 +54,12 @@ class SFaceRecognizer(Recognizer):
         return self._net
 
     def crop(self, frame: Any, face_row: Any) -> Any:
-        return self._sface().alignCrop(frame, face_row)  # 112x112, eyes and mouth where the model expects them
+        import numpy as np
+
+        # A row from a scan or an uploaded photo is a plain list (scaled back from the detector's small copy), and
+        # alignCrop takes only an array: without this every scan frame was refused and no scan could finish.
+        row = np.asarray(face_row, dtype=np.float32)
+        return self._sface().alignCrop(frame, row)  # 112x112, eyes and mouth where the model expects them
 
     def embed(self, face_crop: Any) -> Vector:
         return normalize([float(x) for x in self._sface().feature(face_crop).flatten()])
