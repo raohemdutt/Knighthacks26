@@ -432,7 +432,9 @@ class Controller:
             if account.password and len(account.password) >= hubs.MIN_HIDDEN_CHARS:
                 text = text.replace(account.password, "***")
             if len(account.user) >= MIN_NAME_CHARS:
-                text = text.replace(account.user, f"<account {account.letter}>")
+                quoted = urllib.parse.quote(account.user, safe="")
+                for name in dict.fromkeys((quoted, account.user)):     # the quoted form first: it may contain the raw
+                    text = text.replace(name, f"<account {account.letter}>")
         return text
 
     @staticmethod

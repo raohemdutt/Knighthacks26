@@ -18,6 +18,7 @@ import threading
 from pathlib import Path
 from unittest import mock
 
+import httpx
 import pytest
 
 from lab import controller as ctl_module
@@ -1375,3 +1376,23 @@ def test_keep_alive_interval_leaves_room_for_one_failed_ping_inside_the_culler_h
     assert caught.value.code == 2
     assert "1200" in capsys.readouterr().err
     world.controller.keep_alive(["A"], interval_s=1200, minutes=10)
+
+
+def test_an_account_name_that_the_address_quotes_is_scrubbed_in_both_forms(world):
+    # pods-scrub-misses-url-quoted-account-name: the transport error names the address with the user URL-quoted
+    # (amd%20user%401), and scrub replaced only the raw name.
+    user = "amd user@1"
+    account = world.hub.add_account("A", user=user, token=TOKEN_A)
+
+    def dropped(request):
+        raise httpx.ConnectError(f"connection to {request.url} was reset")
+
+    controller = Controller({"A": account}, base_url="https://hub.test", transport=httpx.MockTransport(dropped),
+                            sleep=world.clock.sleep, clock=world.clock.time)
+
+    answer = controller.status(["A"])
+
+    shown = json.dumps(answer) + ledger.ledger_path().read_text(encoding="utf-8")
+    assert "amd%20user%401" not in shown and user not in shown
+    assert "<account A>" in answer["accounts"]["A"]["error"]
+    assert "<account A>" in ledger.ledger_path().read_text(encoding="utf-8")
