@@ -245,17 +245,20 @@ export function FloorMap({
   const robot = robotAt && visible(robotAt) ? geo.pos[robotAt] : undefined;
   // the dog walks while it moves to the next stop and stands while that stop's check is shown; it faces the way it goes
   const [gait, setGait] = useState<{ walking: boolean; left: boolean }>({ walking: false, left: false });
-  const lastAt = useRef<{ x: number; y: number } | null>(null);
+  const lastAt = useRef<{ x: number; y: number; floor: number | null } | null>(null);
   const rx = robot?.x;
   const ry = robot?.y;
   useEffect(() => {
     if (!dog || rx === undefined || ry === undefined) return; // off the floor in view for a moment: where it last stood is kept
     const from = lastAt.current;
-    lastAt.current = { x: rx, y: ry };
+    lastAt.current = { x: rx, y: ry, floor: robotFloor };
     if (!from || (Math.abs(from.x - rx) < 0.5 && Math.abs(from.y - ry) < 0.5)) return;
-    setGait((g) => ({ walking: true, left: Math.abs(from.x - rx) < 0.5 ? g.left : rx < from.x }));
+    // left or right is read off two points on the same floor; on a change of floor (or straight up or down) it keeps facing as it was
+    const turn = from.floor === robotFloor && Math.abs(from.x - rx) >= 0.5;
+    setGait((g) => ({ walking: true, left: turn ? rx < from.x : g.left }));
     const t = window.setTimeout(() => setGait((g) => ({ ...g, walking: false })), robotMs ?? 700);
     return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dog, rx, ry, robotMs]);
 
   // the look guide's walk: its parts on the floors in view, every point tagged for the pointer, and where it starts
@@ -461,16 +464,22 @@ export function FloorMap({
             <g className={o.robot} style={{ transform: `translate(${robot.x}px, ${robot.y - 26 * u}px)`, transitionDuration: robotMs ? `${robotMs}ms` : undefined }} aria-label="SPOT is here">
               <path d={`M ${-5 * u} ${11 * u} L 0 ${19 * u} L ${5 * u} ${11 * u} Z`} fill="var(--accent-text)" />
               {dog ? (
-                <g className={`${o.dog} ${gait.walking ? o.dogWalk : ""}`} transform={`scale(${(gait.left ? -1 : 1) * u} ${u})`} data-dog={gait.walking ? "walking" : "standing"}>
-                  <g stroke="var(--accent-text)" strokeWidth="3.4" strokeLinecap="round">
-                    <line className={o.dogLegA} x1="-11" y1="-3" x2="-11" y2="9" />
-                    <line className={o.dogLegB} x1="-7" y1="-3" x2="-7" y2="9" />
-                    <line className={o.dogLegB} x1="7" y1="-3" x2="7" y2="9" />
-                    <line className={o.dogLegA} x1="11" y1="-3" x2="11" y2="9" />
+                // about 90 px wide on the page, standing just above the stop's marks with the pointer under it (beside them at the top edge of the plan, where it would be cut off); light with a dark outline so it reads on the grey plan
+                <g className={`${o.dog} ${gait.walking ? o.dogWalk : ""}`} transform={`translate(${robot.y - box.y < 100 * u ? `${64 * u} ${40 * u}` : `0 ${-14 * u}`}) scale(${(gait.left ? -2 : 2) * u} ${2 * u})`} data-dog={gait.walking ? "walking" : "standing"}>
+                  <g fill="#aab3c5" stroke="#10131c" strokeWidth="1">
+                    <rect className={o.dogLegB} x="-13.5" y="-3" width="3.6" height="13" rx="1.6" />
+                    <rect className={o.dogLegA} x="10.5" y="-3" width="3.6" height="13" rx="1.6" />
                   </g>
-                  <rect x="-15" y="-11" width="30" height="10" rx="4" fill="var(--accent-text)" stroke="var(--surface)" strokeWidth="1.5" />
-                  <rect x="12" y="-18" width="11" height="8" rx="3" fill="var(--accent-text)" stroke="var(--surface)" strokeWidth="1.5" />
-                  <circle cx="19.5" cy="-14.5" r="1.3" fill="var(--on-media)" />
+                  <path d="M -15 -9 L -20 -15" stroke="#10131c" strokeWidth="3.6" strokeLinecap="round" />
+                  <path d="M -15 -9 L -20 -15" stroke="#f5f7fb" strokeWidth="1.8" strokeLinecap="round" />
+                  <rect x="-16" y="-12" width="32" height="10.5" rx="4.5" fill="#f5f7fb" stroke="#10131c" strokeWidth="1.2" />
+                  <path d="M 11 -11 L 14 -19 L 24.5 -19 Q 27 -19 27 -16.5 L 27 -14.5 Q 27 -12.5 24.5 -12.5 L 17 -12.5 L 15 -8 Z" fill="#f5f7fb" stroke="#10131c" strokeWidth="1.2" strokeLinejoin="round" />
+                  <path d="M 14.5 -19 L 16 -23.5 L 19 -19 Z" fill="#f5f7fb" stroke="#10131c" strokeWidth="1.1" strokeLinejoin="round" />
+                  <circle cx="22" cy="-16.2" r="1.3" fill="#10131c" />
+                  <g fill="#f5f7fb" stroke="#10131c" strokeWidth="1">
+                    <rect className={o.dogLegA} x="-10" y="-3" width="3.6" height="13" rx="1.6" />
+                    <rect className={o.dogLegB} x="7" y="-3" width="3.6" height="13" rx="1.6" />
+                  </g>
                 </g>
               ) : (
                 <>
