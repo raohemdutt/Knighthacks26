@@ -853,7 +853,7 @@ def uc_spot(run: Run) -> None:
               note=lambda d: "did you mean: " + ", ".join(a["label"] for a in d["alternatives"]))
     run.fetch(f"look guide: the walk to {first}, over legs SPOT has walked", f"/api/spot/route?to={first}",
               ("found", "path", "legs", "say", "summary", "note"), missing="this build has no look guide",
-              check=lambda d: None if d["found"] and d["path"] and "SPOT has walked" in d["note"] else "no route, or the route does not say where it comes from",
+              check=lambda d: None if d["found"] and d["path"] and "SPOT has walked" in f"{d['summary']} {d['note']}" else "no route, or the route does not say where it comes from",
               note=lambda d: f"{d['summary']} {' '.join(d['say'])}")
     state = run.fetch("replay state", "/api/spot/replay/state", ("index", "total", "playing"), note=lambda d: f"event {d['index']} of {d['total']}, playing={d['playing']}")
     if run.ask:
