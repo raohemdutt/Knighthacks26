@@ -42,6 +42,15 @@ POOL="$HOME/pool"
 # prep makes ~/l10/llama.cpp, a folder of links in the layout lab/package.py reads (<dir>/build/bin/...), and builds a
 # CPU-only llama-quantize in ~/l10/llama-quant when the build has none (cmake from PATH, else pip's cmake in the
 # venv). Nothing in LLAMA_SRC or LLAMA_BUILD is changed.
+# Unset, the first tree with a built llama-server wins: ~/llama.cpp/build, then ~/e29/llama.cpp/build-hip.
+if [ -z "${LLAMA_SRC:-}" ]; then
+  for pair in "$HOME/llama.cpp:build" "$HOME/e29/llama.cpp:build-hip"; do
+    if [ -x "${pair%%:*}/${pair##*:}/bin/llama-server" ]; then
+      LLAMA_SRC="${pair%%:*}" LLAMA_BUILD="${LLAMA_BUILD:-${pair%%:*}/${pair##*:}}"
+      break
+    fi
+  done
+fi
 LLAMA_SRC="${LLAMA_SRC:-$HOME/llama.cpp}"
 LLAMA_BUILD="${LLAMA_BUILD:-$LLAMA_SRC/build}"
 LLAMA="$L10/llama.cpp"

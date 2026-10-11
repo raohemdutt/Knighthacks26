@@ -1880,7 +1880,8 @@ and every copy are deleted on every way out, and a `group-finetune.delete` row s
 Live sequence (pod D is account D; the teacher is pod C at `https://sjc.aupcloud.io/user/roscon01/proxy/8000`):
 
 ```
-# 0. prerequisites on pod D, once: the L16 venv and base (bash lab/l16_run.sh prep), llama.cpp (pod_b_trainer.sh llama),
+# 0. prerequisites on pod D, once: the L16 venv and base (bash lab/l16_run.sh prep), a llama.cpp tree and build (LLAMA_SRC,
+#    LLAMA_BUILD; on pod D today ~/e29/llama.cpp and its build-hip, prep links them and builds llama-quantize on the CPU),
 #    the base projector at ~/models/Qwen3.5-4B-GGUF/mmproj-F16.gguf, and each member's current model as a package
 #    under ~/data/packages/<current version>/ (atlas-base: the stock Q4_K_M and mmproj, manifest by jetson/make_manifest.py)
 # 1. workstation: the bundle, pushed to pod D, unpacked
@@ -1899,6 +1900,7 @@ python -m lab slot request --task L10 --what "group fine-tune: one LoRA on poole
     --why "label, train, package and gate run as one job" --measured "<L16 wall time>"
 python -m lab slot start --row <row>
 GPU_SLOT=<row> TEACHER_TOKEN=<token> bash ~/l10/src/lab/pod_b_group_finetune.sh run circle-knights desk-objects g1
+# a smoke inside a 15-minute row: L10_STEPS=4 GATE=fake MIN_HELD_OUT=1 GPU_SLOT=... TEACHER_TOKEN=... bash ... run ... s1
 python -m lab slot done --row <row> --result "<members, examples, scores per member>"
 # 6. pod D: serve the package to the boxes
 bash ~/l10/src/lab/pod_b_group_finetune.sh serve
