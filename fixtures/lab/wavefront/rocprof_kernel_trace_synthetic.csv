@@ -1,0 +1,58 @@
+Kind,Agent_Id,Queue_Id,Kernel_Id,Kernel_Name,Correlation_Id,Start_Timestamp,End_Timestamp,LDS_Block_Size,Scratch_Size,VGPR_Count,Accum_VGPR_Count,SGPR_Count,Workgroup_Size_X,Workgroup_Size_Y,Workgroup_Size_Z,Grid_Size_X,Grid_Size_Y,Grid_Size_Z
+KERNEL_DISPATCH,1,1,1,"Cijk_Alik_Bljk_BBS_BH_MT128x128x32_MI16x16x16_SN.kd",1,1000000,1318000,40960,0,128,0,32,256,1,1,40960,1,1
+KERNEL_DISPATCH,1,1,2,"Cijk_Alik_Bljk_BBS_BH_MT128x128x32_MI16x16x16_SN.kd",2,1322000,1640000,40960,0,128,0,32,256,1,1,40960,1,1
+KERNEL_DISPATCH,1,1,3,"Cijk_Alik_Bljk_BBS_BH_MT128x128x32_MI16x16x16_SN.kd",3,1644000,1962000,40960,0,128,0,32,256,1,1,40960,1,1
+KERNEL_DISPATCH,1,1,4,"Cijk_Alik_Bljk_BBS_BH_MT128x128x32_MI16x16x16_SN.kd",4,1966000,2284000,40960,0,128,0,32,256,1,1,40960,1,1
+KERNEL_DISPATCH,1,1,5,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",5,2288000,2297000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,6,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",6,2301000,2310000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,7,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",7,2314000,2323000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,8,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",8,2327000,2336000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,9,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",9,2340000,2349000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,10,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",10,2353000,2362000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,11,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",11,2366000,2375000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,12,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",12,2379000,2388000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,13,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",13,2392000,2401000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,14,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",14,2405000,2414000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,15,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",15,2418000,2427000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,16,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",16,2431000,2440000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,17,"trsm_small_kernel_batched<float, 64>.kd",17,2444000,2485000,16384,0,96,0,32,64,1,1,32768,1,1
+KERNEL_DISPATCH,1,1,18,"trsm_small_kernel_batched<float, 64>.kd",18,2489000,2530000,16384,0,96,0,32,64,1,1,32768,1,1
+KERNEL_DISPATCH,1,1,19,"miopenSp3AsmConv_v21_1_3_gfx11_fp16_stride1.kd",19,2534000,3734000,0,0,64,0,32,256,1,1,8192,1,1
+KERNEL_DISPATCH,1,1,20,"Cijk_Alik_Bljk_BBS_BH_MT128x128x32_MI16x16x16_SN.kd",20,3738000,4056000,40960,0,128,0,32,256,1,1,40960,1,1
+KERNEL_DISPATCH,1,1,21,"Cijk_Alik_Bljk_BBS_BH_MT128x128x32_MI16x16x16_SN.kd",21,4060000,4378000,40960,0,128,0,32,256,1,1,40960,1,1
+KERNEL_DISPATCH,1,1,22,"Cijk_Alik_Bljk_BBS_BH_MT128x128x32_MI16x16x16_SN.kd",22,4382000,4700000,40960,0,128,0,32,256,1,1,40960,1,1
+KERNEL_DISPATCH,1,1,23,"Cijk_Alik_Bljk_BBS_BH_MT128x128x32_MI16x16x16_SN.kd",23,4704000,5022000,40960,0,128,0,32,256,1,1,40960,1,1
+KERNEL_DISPATCH,1,1,24,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",24,5026000,5035000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,25,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",25,5039000,5048000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,26,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",26,5052000,5061000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,27,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",27,5065000,5074000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,28,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",28,5078000,5087000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,29,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",29,5091000,5100000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,30,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",30,5104000,5113000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,31,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",31,5117000,5126000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,32,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",32,5130000,5139000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,33,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",33,5143000,5152000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,34,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",34,5156000,5165000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,35,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",35,5169000,5178000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,36,"trsm_small_kernel_batched<float, 64>.kd",36,5182000,5223000,16384,0,96,0,32,64,1,1,32768,1,1
+KERNEL_DISPATCH,1,1,37,"trsm_small_kernel_batched<float, 64>.kd",37,5227000,5268000,16384,0,96,0,32,64,1,1,32768,1,1
+KERNEL_DISPATCH,1,1,38,"miopenSp3AsmConv_v21_1_3_gfx11_fp16_stride1.kd",38,5272000,6472000,0,0,64,0,32,256,1,1,8192,1,1
+KERNEL_DISPATCH,1,1,39,"Cijk_Alik_Bljk_BBS_BH_MT128x128x32_MI16x16x16_SN.kd",39,6476000,6794000,40960,0,128,0,32,256,1,1,40960,1,1
+KERNEL_DISPATCH,1,1,40,"Cijk_Alik_Bljk_BBS_BH_MT128x128x32_MI16x16x16_SN.kd",40,6798000,7116000,40960,0,128,0,32,256,1,1,40960,1,1
+KERNEL_DISPATCH,1,1,41,"Cijk_Alik_Bljk_BBS_BH_MT128x128x32_MI16x16x16_SN.kd",41,7120000,7438000,40960,0,128,0,32,256,1,1,40960,1,1
+KERNEL_DISPATCH,1,1,42,"Cijk_Alik_Bljk_BBS_BH_MT128x128x32_MI16x16x16_SN.kd",42,7442000,7760000,40960,0,128,0,32,256,1,1,40960,1,1
+KERNEL_DISPATCH,1,1,43,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",43,7764000,7773000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,44,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",44,7777000,7786000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,45,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",45,7790000,7799000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,46,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",46,7803000,7812000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,47,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",47,7816000,7825000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,48,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",48,7829000,7838000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,49,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",49,7842000,7851000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,50,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",50,7855000,7864000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,51,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",51,7868000,7877000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,52,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",52,7881000,7890000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,53,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",53,7894000,7903000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,54,"void at::native::elementwise_kernel<128, 4, at::native::mul_kernel_cuda>.kd",54,7907000,7916000,0,0,16,0,32,128,1,1,524288,1,1
+KERNEL_DISPATCH,1,1,55,"trsm_small_kernel_batched<float, 64>.kd",55,7920000,7961000,16384,0,96,0,32,64,1,1,32768,1,1
+KERNEL_DISPATCH,1,1,56,"trsm_small_kernel_batched<float, 64>.kd",56,7965000,8006000,16384,0,96,0,32,64,1,1,32768,1,1
+KERNEL_DISPATCH,1,1,57,"miopenSp3AsmConv_v21_1_3_gfx11_fp16_stride1.kd",57,8010000,9210000,0,0,64,0,32,256,1,1,8192,1,1
