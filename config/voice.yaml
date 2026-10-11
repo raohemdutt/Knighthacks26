@@ -13,6 +13,16 @@ speaker_sink: ""         # a PulseAudio sink name (pactl list short sinks); empt
 
 max_seconds: 8           # longest question
 wait_for_speech_s: 5     # give up if nobody speaks within this long
-end_silence_s: 1.0       # this much quiet after speech ends the question
+end_silence_s: 0.8       # this much quiet after speech ends the question
 speech_level: 0.03       # louder than this (0 to 1, RMS) counts as speech; the room's own noise raises it if needed
 whisper_threads: 4
+chime: true             # a short blip once your question is heard, so you know it is working on it
+
+# Always listening for "Hey Atlas". The box answers "What's up?" and then listens for the question. The microphone stays
+# open and the last few seconds are checked for the wake phrase every step, so music or a crowd in the room does not hide
+# it. Everything heard while waiting is transcribed on the box and dropped unless it is the wake phrase. false = push to talk only.
+wake_word: true
+wake_reply: "What's up?"
+wake_span_s: 3           # how much of the latest sound is checked...
+wake_step_s: 1.5         # ...this often
+debug_wake: false        # true = log what the wake listener heard (it writes what the room said to the journal), to tune the match
