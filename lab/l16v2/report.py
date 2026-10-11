@@ -1,6 +1,6 @@
 """The search of the L16 retrain as tables: every trial in order of proposal, what the search learned, the choice.
 
-    python lab/l16v2/report.py <folder holding bo.json and chosen.json> [--line]
+    python lab/l16v2/report.py <folder holding bo.json and chosen.json> [--line] [--edge] [--downloads <colab folder>]
 
 Prints Markdown for lab/L16V2_RESULT.md; with --line, one short paragraph for the channel. It reads the two files
 lab/l16v2/bo_local.py wrote on the workstation (work/L16v2-out/bo/) and computes nothing new beyond sums and means.
@@ -91,5 +91,51 @@ def main() -> int:
     return 0
 
 
-if __name__ == "__main__":
-    sys.exit(main())
+
+
+# --- the edge round and the products (appended tables) ----------------------------------------------------------------
+
+def edge_tables(folder: Path) -> str:
+    """The edge round's trials, its noise repeats, and best value per rank and per learning-rate band."""
+    edge = json.loads((folder / "bo-edge.json").read_text(encoding="utf-8"))
+    first = [t for t in json.loads((folder / "bo.json").read_text(encoding="utf-8"))["trials"] if t.get("max_steps") == FIDELITY_STEPS]
+    lines = ["| n | seen | kind | worker | learning rate | rank | alpha | dropout | warmup | seed | outcome | val loss, step 12 | "
+             "val loss, step 24 | value |", "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
+    rows = sorted([*edge["trials"], *edge.get("noise", {}).values()], key=lambda t: t["number"])
+    for t in rows:
+        lines.append(f"| {t['number']} | {t.get('seen')} | {t['kind']} | {t.get('worker')} | {t['lr']:.3g} | {t['rank']} | {t['alpha']} | "
+                     f"{t['dropout']:.2f} | {t['warmup_ratio']:.2f} | {t.get('seed', 42)} | {t.get('outcome')} | "
+                     f"{num(t.get('val_at_12'))} | {num(t.get('val_at_24'))} | {num(t.get('value'))} |")
+    everything = [t for t in [*first, *edge["trials"]] if t.get("value") is not None]
+    out = ["\n".join(lines), "", "| rank | trials (both rounds) | completed | best value | best val loss at step 12 |", "| --- | --- | --- | --- | --- |"]
+    for rank in edge["space"]["rank"]:
+        of = [t for t in everything if t["rank"] == rank]
+        done = [t["value"] for t in of if t.get("outcome") != "pruned"]
+        at_12 = [t["val_at_12"] for t in of if t.get("val_at_12") is not None]
+        out.append(f"| {rank} | {len(of)} | {len(done)} | {num(min(done) if done else None)} | {num(min(at_12) if at_12 else None)} |")
+    out += ["", "| learning rate | trials (both rounds) | completed | best value |", "| --- | --- | --- | --- |"]
+    bands = (("below 8e-5", 0.0, 8e-5), ("8e-5 to 1e-4", 8e-5, 1e-4), ("1e-4 to 2e-4", 1e-4, 2e-4), ("2e-4 to 4e-4", 2e-4, 4e-4),
+             ("4e-4 to 1e-3", 4e-4, 1.0))
+    for label, low, high in bands:
+        of = [t for t in everything if low <= t["lr"] < high]
+        done = [t["value"] for t in of if t.get("outcome") != "pruned"]
+        out.append(f"| {label} | {len(of)} | {len(done)} | {num(min(done) if done else None)} |")
+    return "\n".join(out)
+
+
+def downloads_table(colab: Path) -> str:
+    """Every product that came back, once each (the last verified line of colab/downloads.txt per name)."""
+    seen: dict[str, tuple[str, str]] = {}
+    for line in (colab / "downloads.txt").read_text(encoding="ascii").splitlines():
+        part = line.split()
+        if len(part) >= 4 and part[3] == "verified":
+            seen[part[0]] = (part[1], part[2])
+    lines = ["| product (under work/L16v2-out/colab/) | bytes | sha256 |", "| --- | --- | --- |"]
+    lines += [f"| `{name}` | {int(size):,} | `{digest}` |" for name, (size, digest) in sorted(seen.items())]
+    return "\n".join(lines)
+
+
+if __name__ == "__main__" and "--edge" in sys.argv:
+    print("\n" + edge_tables(Path(sys.argv[1])))
+if __name__ == "__main__" and "--downloads" in sys.argv:
+    print("\n" + downloads_table(Path(sys.argv[sys.argv.index("--downloads") + 1])))
