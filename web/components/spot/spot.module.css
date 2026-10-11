@@ -1066,7 +1066,7 @@ button.barRow:hover .barLabel {
   gap: 12px;
   padding: 22px 20px calc(24px + var(--safe-bottom));
   background: var(--surface);
-  box-shadow: 0 -12px 32px rgba(86, 100, 130, 0.3), 0 -2px 8px var(--sh-light);
+  box-shadow: 0 -12px 32px rgba(70, 100, 150, 0.3), 0 -2px 8px var(--sh-light);
   border-radius: 28px 28px 0 0;
 }
 
@@ -1079,7 +1079,7 @@ button.barRow:hover .barLabel {
     max-height: none;
     height: 100dvh;
     border-radius: var(--radius-lg) 0 0 var(--radius-lg);
-    box-shadow: -12px 0 32px rgba(86, 100, 130, 0.3), -2px 0 8px var(--sh-light);
+    box-shadow: -12px 0 32px rgba(70, 100, 150, 0.3), -2px 0 8px var(--sh-light);
   }
 }
 

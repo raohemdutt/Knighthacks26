@@ -164,7 +164,7 @@ temp file in RAM for the 2 seconds whisper reads it). It needs nothing from the 
 **One-time setup** (the tools come from a laptop with internet, because the box's firewall blocks GitHub and Hugging Face):
 
 ```bash
-./jetson/voice-fetch.sh alexander@192.168.1.126      # on the laptop: downloads, copies, builds whisper.cpp on the box
+./jetson/voice-fetch.sh alexander@172.20.10.6      # on the laptop: downloads, copies, builds whisper.cpp on the box
 sudo dpkg -i ~/atlas/voice/debs/pulseaudio-module-bluetooth_arm64.deb && pulseaudio -k   # on the box: lets PulseAudio use a Bluetooth speaker
 ```
 

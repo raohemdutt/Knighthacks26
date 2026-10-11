@@ -16,7 +16,7 @@ type Tab = { href: string; label: string; icon: ReactNode };
 const TABS: Tab[] = [
   {
     href: "/now",
-    label: "Now",
+    label: "Calendar",
     icon: (
       <>
         <circle cx="12" cy="12" r="8.5" />
@@ -25,10 +25,10 @@ const TABS: Tab[] = [
       </>
     ),
   },
-  { href: "/", label: "Ask", icon: <path d="M4 5.5h16v10.5H10l-4.5 3.5V16H4z" /> },
+  { href: "/", label: "Ask Atlas", icon: <path d="M4 5.5h16v10.5H10l-4.5 3.5V16H4z" /> },
   {
     href: "/today",
-    label: "Today",
+    label: "Dailies",
     icon: (
       <>
         <circle cx="12" cy="12" r="4" />
@@ -38,7 +38,7 @@ const TABS: Tab[] = [
   },
   {
     href: "/dayrun",
-    label: "Day Run",
+    label: "Today's Plan",
     icon: (
       <>
         <path d="M5 21V4M5 5h11l-2 3.5 2 3.5H5" />
@@ -205,15 +205,15 @@ const INSPECTION = "/spot";
 const ALL = [...TABS, ...MORE];
 
 /** How the screens are grouped, in the sidebar and in the phone's More sheet. URLs are unchanged. */
-const SECTIONS: { title: string; hrefs: string[] }[] = [
-  { title: "Everyday", hrefs: ["/", "/now", "/today", "/dayrun"] },
-  { title: "The room", hrefs: ["/live", "/map", "/people"] },
-  { title: "Plan", hrefs: ["/approvals", "/impact", "/spot"] },
-  { title: "Other", hrefs: ["/timeline", "/play", "/circle", "/teach", "/lab", "/zones", "/privacy"] },
+const SECTIONS: { title: string; hrefs: string[]; collapsible?: boolean }[] = [
+  { title: "Everyday", hrefs: ["/", "/now", "/dayrun"] },
+  { title: "The room", hrefs: ["/live", "/map", "/people", "/approvals"] },
+  { title: "Plan", hrefs: ["/today", "/impact", "/spot"] },
+  { title: "Other", hrefs: ["/timeline", "/play", "/circle", "/teach", "/lab", "/zones", "/privacy"], collapsible: true },
 ];
 
 /** The phone tab bar: the Everyday group. Everything else is one tap further, under More. */
-const BAR = ["/", "/now", "/today", "/dayrun"].map((href) => ALL.find((t) => t.href === href)!);
+const BAR = ["/", "/now", "/dayrun"].map((href) => ALL.find((t) => t.href === href)!);
 
 /** Inspection shows on the inspection profile, on a box with a kit, or when that screen is the one open. */
 function useShowInspection(path: string): boolean {
@@ -233,6 +233,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const { link, model, toasts, dismissToast, approvals } = useAtlas();
   const [settings, setSettings] = useState(false);
   const [more, setMore] = useState(false);
+  const [otherOpen, setOtherOpen] = useState(false); // the sidebar's collapsed group; a screen inside it keeps it open
   const inMore = !BAR.some((t) => t.href === path);
   useEffect(() => setMore(false), [path]); // the sheet closes once its link has been followed
   const pending = approvals.items.length;
@@ -257,8 +258,17 @@ export function Shell({ children }: { children: ReactNode }) {
         <nav className={ui.sideNav}>
           {SECTIONS.map((g) => (
             <div key={g.title} className={ui.sideGroup}>
-              <span className={ui.sideGroupTitle}>{g.title}</span>
-              {g.hrefs.filter((href) => href !== INSPECTION || inspection).map((href) => {
+              {g.collapsible ? (
+                <button type="button" className={ui.sideGroupToggle} aria-expanded={otherOpen || g.hrefs.includes(path)} onClick={() => setOtherOpen((o) => !o)}>
+                  {g.title}
+                  <svg className={ui.sideChevron} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M7 10l5 5 5-5" />
+                  </svg>
+                </button>
+              ) : (
+                <span className={ui.sideGroupTitle}>{g.title}</span>
+              )}
+              {(g.collapsible && !otherOpen && !g.hrefs.includes(path) ? [] : g.hrefs).filter((href) => href !== INSPECTION || inspection).map((href) => {
                 const t = ALL.find((x) => x.href === href)!;
                 const on = path === t.href;
                 return (

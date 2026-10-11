@@ -1,0 +1,825 @@
+/* ======================================================================
+   The Calendar screen: your schedule on one side, Near you on the other.
+   Phone first; two columns once the sidebar layout has room (1100px).
+   ====================================================================== */
+
+/* ---------- layout ---------- */
+.split {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+.paneOff {
+  display: none;
+}
+
+.switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--sh-inset);
+}
+
+.switchBtn {
+  min-height: var(--tap);
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  font-weight: 650;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.switchOn {
+  background: var(--surface);
+  color: var(--accent-text);
+  box-shadow: var(--sh-raised-sm);
+}
+
+.switchCount {
+  min-width: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 13px;
+  line-height: 22px;
+}
+
+@media (min-width: 1100px) {
+  .split {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    gap: 28px;
+    align-items: start;
+  }
+  .switch {
+    display: none;
+  }
+  .paneOff {
+    display: flex;
+  }
+  .right {
+    position: sticky;
+    top: 20px;
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+    padding: 4px 8px 20px 4px;
+    margin: -4px -8px 0 -4px;
+    scrollbar-width: thin;
+  }
+}
+
+.paneHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.paneTitle {
+  font-size: 24px;
+  font-weight: 750;
+}
+
+.paneSub {
+  font-size: 15px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.countPill {
+  flex: none;
+  padding: 4px 14px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* ---------- up next ---------- */
+.next {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, var(--accent-soft), transparent 75%), var(--surface);
+  box-shadow: var(--sh-raised-lg);
+  min-width: 0;
+}
+
+.nextWarn {
+  background: linear-gradient(180deg, var(--danger-soft), transparent 75%), var(--surface);
+  box-shadow: var(--sh-raised-lg), inset 0 0 0 2px var(--danger);
+}
+
+.nextTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.nextHello {
+  font-size: 15px;
+  color: var(--muted);
+}
+
+.nextHello strong {
+  font-size: 17px;
+  color: var(--text);
+}
+
+.nextLabel {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--accent-text);
+}
+
+.nextTitle {
+  font-size: 26px;
+  line-height: 1.2;
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+
+.nextFacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  font-size: 16px;
+  color: var(--muted);
+}
+
+.nextFacts b {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.nextRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.lead {
+  font-size: 16px;
+  line-height: 1.45;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- your schedule ---------- */
+.agenda {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.agendaDay {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.agendaHead {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 19px;
+  font-weight: 750;
+  padding: 6px 2px 0;
+}
+
+.agendaHead span {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.dayGap {
+  height: 10px;
+}
+
+.nothing {
+  padding: 4px 2px 8px;
+  font-size: 15px;
+  color: var(--muted);
+}
+
+.earlier > summary {
+  cursor: pointer;
+  list-style: none;
+  min-height: var(--tap);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--muted);
+}
+
+.earlier > summary::-webkit-details-marker {
+  display: none;
+}
+
+.earlier > summary::after {
+  content: "+";
+  font-size: 18px;
+}
+
+.earlier[open] > summary::after {
+  content: "–";
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 64px 16px minmax(0, 1fr);
+  column-gap: 8px;
+  min-width: 0;
+}
+
+.rowPast .rowCard,
+.rowPast .rowTime {
+  opacity: 0.55;
+}
+
+.rowTime {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  padding-top: 14px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.rowTime b {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.rowTime span {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.rowRail {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+
+.rowRail::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--line);
+}
+
+.rows > .row:first-child .rowRail::before {
+  top: 20px;
+}
+
+.rows > .row:last-child .rowRail::before {
+  bottom: calc(100% - 20px);
+}
+
+.rowDot {
+  position: relative;
+  z-index: 1;
+  margin-top: 16px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--c, var(--muted));
+  background: var(--bg);
+}
+
+/* from your calendar: filled; suggested by Atlas: hollow */
+.rowDotFixed {
+  background: var(--c, var(--text));
+}
+
+.rowDotNow {
+  box-shadow: 0 0 0 5px var(--accent-soft);
+  border-color: var(--accent-text);
+  background: var(--accent-text);
+}
+
+.rowCell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.rowCard {
+  margin: 5px 0;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  text-align: left;
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font: inherit;
+  color: inherit;
+}
+
+button.rowCard {
+  cursor: pointer;
+}
+
+button.rowCard:active {
+  box-shadow: var(--sh-inset);
+}
+
+.rowFixed {
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm), inset 5px 0 0 var(--c, var(--text));
+}
+
+button.rowFixed:active {
+  box-shadow: var(--sh-inset-sm), inset 5px 0 0 var(--c, var(--text));
+}
+
+.rowGoing {
+  background: var(--accent-soft);
+  box-shadow: var(--sh-raised-sm), inset 5px 0 0 var(--c, var(--accent));
+}
+
+.rowNow {
+  box-shadow: var(--sh-raised-sm), inset 5px 0 0 var(--c, var(--text)), inset 0 0 0 2px var(--accent);
+}
+
+.rowWarn {
+  background: var(--danger-soft);
+  box-shadow: var(--sh-inset-sm), inset 0 0 0 2px var(--danger);
+}
+
+.rowDue {
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm), inset 5px 0 0 var(--danger);
+}
+
+.rowTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.rowTitle {
+  font-size: 17px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.rowTags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.rowMeta {
+  font-size: 14px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.rowReason {
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+  font-size: 15px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.tagPill {
+  display: inline-block;
+  padding: 1px 11px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.tagNow {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.tagNext {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.tagWarn,
+.tagDue {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.tagGoing {
+  background: var(--accent-text);
+  color: #fff;
+}
+
+.progress {
+  display: block;
+  height: 8px;
+  margin-top: 4px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  overflow: hidden;
+}
+
+.progressFill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--accent-bright), var(--accent));
+  transition: width 0.6s ease;
+}
+
+/* ---------- near you ---------- */
+.nearby {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.filter {
+  min-height: 40px;
+  padding: 6px 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.filterOn {
+  box-shadow: var(--sh-selected);
+  color: var(--accent-text);
+}
+
+.dayGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dayHead {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.event {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--sh-raised);
+  min-width: 0;
+}
+
+.eventHero {
+  box-shadow: var(--sh-raised), inset 0 0 0 2px var(--accent);
+}
+
+.eventTop {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+}
+
+.eventWhen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 72px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.eventWhen b {
+  font-size: 16px;
+}
+
+.eventWhen span {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.eventTitle {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.eventMeta {
+  font-size: 14.5px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.walk {
+  color: var(--accent-text);
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.srcLogo {
+  border-radius: 7px;
+  object-fit: cover;
+  align-self: start;
+}
+
+.chipsRow {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.chipsRow:empty {
+  display: none;
+}
+
+.chip {
+  padding: 2px 11px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.chipAccent {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.chipGood {
+  background: rgba(15, 123, 95, 0.12);
+  color: var(--ok);
+}
+
+.people {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 15px;
+}
+
+.who {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 600;
+}
+
+.who em {
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  font-style: normal;
+  font-size: 13px;
+  font-weight: 750;
+  color: var(--accent-ink);
+  box-shadow: var(--sh-raised-sm);
+}
+
+.going {
+  color: var(--muted);
+}
+
+.quote {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.quote p {
+  overflow-wrap: anywhere;
+}
+
+.quote cite {
+  display: block;
+  margin-top: 4px;
+  font-size: 13px;
+  font-style: normal;
+  color: var(--muted);
+}
+
+.helps {
+  font-size: 14.5px;
+  color: var(--text);
+  padding-left: 10px;
+  border-left: 4px solid var(--ok);
+}
+
+.helps b {
+  color: var(--ok);
+}
+
+.clash {
+  font-size: 14.5px;
+  font-weight: 650;
+  color: var(--danger);
+}
+
+.eventActions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.skipBtn,
+.joinBtn {
+  min-height: 46px;
+  padding: 8px 20px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  font-size: 16px;
+  font-weight: 700;
+  transition: box-shadow var(--ease-press);
+}
+
+/* the directions button (if any) stays left; No and Yes sit together on the right */
+.skipBtn {
+  margin-left: auto;
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
+  color: var(--muted);
+}
+
+.joinBtn {
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: 5px 5px 14px rgba(170, 200, 245, 0.32), -5px -5px 12px var(--sh-light);
+}
+
+.skipBtn:active,
+.joinBtn:active {
+  box-shadow: var(--sh-inset-sm);
+}
+
+.skipped > summary {
+  cursor: pointer;
+  min-height: var(--tap);
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--muted);
+}
+
+.skippedList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14.5px;
+}
+
+.skippedList li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.skippedList em {
+  font-style: normal;
+  color: var(--muted);
+}
+
+/* on a phone, Directions has a row of its own and No / Yes share the one under it */
+@media (max-width: 480px) {
+  .eventActions > :first-child:not(.skipBtn):not(.joinBtn) {
+    flex: 1 0 100%;
+  }
+  .skipBtn,
+  .joinBtn {
+    flex: 1;
+    margin-left: 0;
+  }
+}
+
+.undoBtn {
+  align-self: flex-start;
+  min-height: 40px;
+  margin: -2px 0 6px 4px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
+  color: var(--danger);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.linkBtn {
+  min-height: 36px;
+  padding: 0 10px;
+  border: 0;
+  background: none;
+  color: var(--accent-text);
+  font-size: 14.5px;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progressFill {
+    transition: none;
+  }
+}

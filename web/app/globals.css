@@ -6,23 +6,23 @@
  * --sh-raised* shadows, pressed or sunken things (inputs, wells, active buttons) use --sh-inset*.
  * Blue is the only accent and is kept for primary actions, selected states, progress and icons.
  *
- * Contrast (checked against --bg): --text 13.9:1, --muted 5.5:1, --accent-text 4.6:1 (--accent-ink on --accent
- * 11:1), --danger 5.0:1, --ok 4.7:1, --watch 5.3:1. --accent-bright is for non-text marks only.
+ * Contrast (checked against --bg #eaf1fc): --text 14:1, --muted 5.6:1, --accent-text 6.2:1. --danger, --ok and --watch
+ * were checked on the earlier, lighter surface and are worth a recheck. --accent-bright is for non-text marks only.
  */
 :root {
   /* surface */
-  --bg: #eef2f8;
-  --surface: #eef2f8;
-  --surface-2: #e6ebf3; /* a slightly sunken tone for wells and tags */
-  --line: rgba(120, 136, 165, 0.22); /* hairline dividers only, never an outline around a control */
+  --bg: #eaf1fc;
+  --surface: #eaf1fc;
+  --surface-2: #dbe6f8; /* a slightly sunken tone for wells and tags */
+  --line: rgba(100, 130, 180, 0.22); /* hairline dividers only, never an outline around a control */
 
   /* text */
   --text: #1b2433;
   --muted: #566176;
 
   /* accent (blue) */
-  --accent: #b9d1f7; /* pastel: fills, rings, strokes */
-  --accent-text: #456cb3; /* the same blue deepened so text and icons stay readable */
+  --accent: #9bbcf2; /* pastel: fills, rings, strokes */
+  --accent-text: #355a9c; /* the same blue deepened so text and icons stay readable */
   --accent-bright: #d6e5fb;
   --accent-ink: #1b2433; /* text on a pastel fill */
   --accent-soft: rgba(140, 180, 240, 0.16);
@@ -42,7 +42,7 @@
 
   /* shadow colours: light from the top-left */
   --sh-light: #ffffff;
-  --sh-dark: #c9d3e3;
+  --sh-dark: #c2d0e8;
 
   /* raised: sits above the surface */
   --sh-raised-sm: 3px 3px 8px var(--sh-dark), -3px -3px 8px var(--sh-light);
@@ -54,7 +54,7 @@
   /* a selected control: pressed in, with a blue ring as a second cue that does not depend on shadow */
   --sh-selected: var(--sh-inset-sm), 0 0 0 2px var(--accent);
   /* a lone element laid over other content (toasts, sheets) */
-  --sh-float: 0 18px 40px rgba(86, 100, 130, 0.28), -4px -4px 12px var(--sh-light);
+  --sh-float: 0 18px 40px rgba(70, 100, 150, 0.28), -4px -4px 12px var(--sh-light);
 
   /* corner radii */
   --radius-lg: 24px;
@@ -87,8 +87,26 @@ html {
 html,
 body {
   margin: 0;
-  background: var(--bg);
   color: var(--text);
+}
+
+/* the page colour is on html alone: body must stay transparent so the Ask screen's logo (z-index -1) can sit behind everything */
+html {
+  background-color: var(--bg);
+  /* a slow drift between white and the page blue, only just visible; cards stay on --bg */
+  background-image: linear-gradient(115deg, #f8fbff 0%, #dde8fa 28%, #f6f9ff 52%, #dbe7fa 76%, #f8fbff 100%);
+  background-size: 300% 300%;
+  background-attachment: fixed;
+  animation: drift 70s ease-in-out infinite alternate;
+}
+
+@keyframes drift {
+  from {
+    background-position: 0% 20%;
+  }
+  to {
+    background-position: 100% 80%;
+  }
 }
 
 body {
@@ -181,6 +199,10 @@ svg {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  html {
+    animation: none;
+  }
+
   *,
   *::before,
   *::after {
