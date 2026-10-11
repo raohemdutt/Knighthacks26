@@ -1,10 +1,11 @@
 #!/bin/bash
 # Teacher vLLM upgrade on a Strix Halo pod (gfx1151, ROCm 7.13, torch 2.9.1+rocm7.13.0): build a newer vLLM that
 # carries the RDNA W4A16 decode kernel (RDNAHybridW4A16LinearKernel, vLLM #40977 and follow-ups) into its OWN tree
-# (~/vllm-new) and its OWN venv (~/venv-vllm-new), so the running teacher (~/vllm, user site) is never touched while
-# it builds. The audit behind the pin and the patch rump is lab/refine/research/kernels/vllm_upgrade_gfx1151.md (R59).
+# (~/vllm-new) and its OWN isolated venv (~/venv-vllm-new, torch 2.12 from AMD), so the running teacher (~/vllm, user
+# site, image torch 2.9.1) is never touched while it builds. The audit behind the pin and the patch rump is lab/refine/research/kernels/vllm_upgrade_gfx1151.md (R59).
 #
-# Usage on the pod:  bash lab/vllm_upgrade.sh [build|status|verify|lds|serve|restore|models]
+# Usage on the pod:  bash lab/vllm_upgrade.sh [torch|build|status|verify|lds|serve|restore|models]
+#   torch    only the isolated venv with the AMD torch wheel and its GPU check (the build runs it first).
 #   build    clone + patch + venv + compile in the background at nice 19 and MAX_JOBS<=8; returns at once.
 #            Progress: ~/vllm_new_build.log, final line in ~/vllm_new_build.status ("ok" or "fail <step>").
 #   status   the status line and the build log's last lines.
@@ -21,6 +22,10 @@ VLLM_COMMIT="${VLLM_COMMIT:-5281e4990}"        # main 2026-10-07 (#52619); v0.31
 VLLM_DIR="${VLLM_DIR:-$HOME/vllm-new}"
 VENV="${VENV:-$HOME/venv-vllm-new}"
 JOBS="${JOBS:-8}"                              # the teacher keeps the rest of the 32 threads
+TORCH_INDEX="${TORCH_INDEX:-https://repo.amd.com/rocm/whl-multi-arch/}"
+TORCH_VERSION="${TORCH_VERSION:-2.12.0+rocm7.14.0}"          # v0.31.0's requirements/build/rocm.txt pins
+TORCHVISION_VERSION="${TORCHVISION_VERSION:-0.27.0+rocm7.14.0}"
+ROCM_WHEEL_VERSION="${ROCM_WHEEL_VERSION:-7.14.0}"
 PATCH_DIR="${PATCH_DIR:-$HERE/patches}"
 PLATFORM_PATCH="$PATCH_DIR/vllm-main-gfx1151-platform.diff"
 LDS_PATCH="$PATCH_DIR/vllm-main-gfx1151-num-stages.diff"
@@ -40,10 +45,49 @@ SKIP_REQS='^(grpcio|grpcio-reflection|datasets|peft|pytest-asyncio|tensorizer|ru
 
 build_env() {
   # The venv's python and pip first, then ~/.local/bin for the pkg-config symlink lab/pod_a_teacher.sh left there;
-  # the libdrm stub it built satisfies torch's LoadHIP.cmake the same way.
-  export PATH="$VENV/bin:$HOME/.local/bin:$PATH"
-  export PKG_CONFIG_PATH="$HOME/.local/lib/pkgconfig:/opt/rocm/lib/pkgconfig"
+  # the libdrm stub it built satisfies torch's LoadHIP.cmake the same way. The compiler and HIP are the venv's own
+  # ROCm 7.14 SDK (rocm[devel]), the one torch 2.12 was built with, never the image's /opt/rocm 7.13: a mix would
+  # load two HIP runtimes into one process.
+  local rocm
+  rocm="$("$VENV/bin/rocm-sdk" path --root 2>/dev/null)"
+  if [ -n "$rocm" ]; then
+    export ROCM_PATH="$rocm" ROCM_HOME="$rocm" HIP_PATH="$rocm"
+    export CMAKE_PREFIX_PATH="$rocm/lib/cmake:$rocm"
+  fi
+  export PATH="$VENV/bin:${rocm:+$rocm/bin:}$HOME/.local/bin:$PATH"
+  export PKG_CONFIG_PATH="$HOME/.local/lib/pkgconfig:${rocm:+$rocm/lib/pkgconfig:}/opt/rocm/lib/pkgconfig"
   export LIBRARY_PATH="$HOME/.local/lib"
+}
+
+torch_venv() {
+  # An isolated venv (no system site packages: the image's torch 2.9.1 never mixes in, and nothing installed here
+  # reaches the serving build). The image has no ensurepip, so the system pip bootstraps pip into the venv.
+  # torch comes from AMD's multi-arch wheel index, the one v0.31.0's requirements/build/rocm.txt names.
+  # The multi-arch wheels hold no GPU code of their own: each chip's kernels come as a device-<gfx> extra
+  # (amd-torch-device-gfx1151, amd-torchvision-device-gfx1151, rocm-sdk-device-gfx1151). Without them the first
+  # kernel launch fails with hipErrorInvalidImage ("device kernel image is invalid").
+  local gfx="${GFX:-$(rocminfo 2>/dev/null | grep -m1 -o 'gfx[0-9a-f]\+')}"
+  [ -n "$gfx" ] || { echo "fail rocminfo" > "$STATUS"; return 1; }
+  TORCH_SPEC="${TORCH_SPEC:-torch[device-$gfx]==$TORCH_VERSION torchvision[device-$gfx]==$TORCHVISION_VERSION rocm[libraries,devel,device-$gfx]==$ROCM_WHEEL_VERSION}"
+  echo "### step torch $TORCH_SPEC"
+  if [ -f "$VENV/pyvenv.cfg" ] && grep -q "include-system-site-packages = true" "$VENV/pyvenv.cfg"; then
+    rm -rf "$VENV"   # the earlier attempt's venv saw the image's packages
+  fi
+  [ -x "$VENV/bin/python" ] || python3 -m venv --without-pip "$VENV" || { echo "fail venv" > "$STATUS"; return 1; }
+  [ -x "$VENV/bin/pip" ] || python3 -m pip --python "$VENV/bin/python" install --quiet pip || { echo "fail pip" > "$STATUS"; return 1; }
+  # shellcheck disable=SC2086
+  nice -n 19 "$VENV/bin/python" -m pip install --quiet --extra-index-url "$TORCH_INDEX" $TORCH_SPEC \
+    || { echo "fail torch-install" > "$STATUS"; return 1; }
+  "$VENV/bin/python" -m pip uninstall -y --quiet amdsmi 2>/dev/null
+  # The wheel must load and reach the GPU on this pod's driver and ROCm 7.13 runtime before anything compiles.
+  ( cd /tmp && "$VENV/bin/python" - <<'PY' ) || { echo "fail torch-runtime" > "$STATUS"; return 1; }
+import torch
+print("torch", torch.__version__, "hip", torch.version.hip, "from", torch.__file__)
+assert torch.cuda.is_available(), "torch.cuda.is_available() is False"
+print("device", torch.cuda.get_device_name(0), torch.cuda.get_device_properties(0).gcnArchName)
+a = torch.randn(512, 512, device="cuda", dtype=torch.bfloat16)
+print("matmul ok", float((a @ a).float().abs().mean()))
+PY
 }
 
 build_inner() {
@@ -65,13 +109,8 @@ build_inner() {
   if [ -f tools/use_existing_torch.py ]; then python3 tools/use_existing_torch.py; else python3 use_existing_torch.py; fi \
     || { echo "fail use_existing_torch" > "$STATUS"; return 1; }
   git diff --stat | tail -1
-  echo "### step venv"
-  # The image has no ensurepip, so the venv is made without pip and uses the system pip module, which installs into
-  # the venv because sys.prefix is the venv. --system-site-packages keeps the image's torch, Triton and numpy;
-  # the user site (where the old vLLM lives) is not visible inside a venv.
-  [ -x "$VENV/bin/python" ] || python3 -m venv --without-pip --system-site-packages "$VENV" || { echo "fail venv" > "$STATUS"; return 1; }
+  torch_venv || return 1
   build_env
-  python -m pip --version
   python - > "$HOME/.cache/vllm-new-constraints.txt" <<'PY' || { echo "fail constraints" > "$STATUS"; return 1; }
 from importlib import metadata
 for name in ("torch", "torchvision", "torchaudio", "triton", "pytorch-triton-rocm"):
@@ -84,9 +123,9 @@ PY
   export PIP_CONSTRAINT="$HOME/.cache/vllm-new-constraints.txt"
   python -m pip install --quiet "cmake>=3.26.1,<4" ninja "packaging>=24.2" "setuptools>=78.1.1,<80" "setuptools-scm>=8" \
     "setuptools-rust>=1.9.0" wheel "jinja2>=3.1.6" regex || { echo "fail build-tools" > "$STATUS"; return 1; }
-  echo "### step compile"
+  echo "### step compile ROCM_PATH=$ROCM_PATH hipcc=$(command -v hipcc)"
   version="0.31.2.dev0+g$(git rev-parse --short=9 HEAD).$gfx"
-  # --no-deps: the runtime requirements go in next, filtered; a no-isolation build against the image's torch.
+  # --no-deps: the runtime requirements go in next, filtered; a no-isolation build against the venv torch.
   SETUPTOOLS_SCM_PRETEND_VERSION="$version" VLLM_RS_BUILD_VERSION="$version" VLLM_TARGET_DEVICE=rocm \
     PYTORCH_ROCM_ARCH="$gfx" MAX_JOBS="$JOBS" CMAKE_BUILD_PARALLEL_LEVEL="$JOBS" \
     nice -n 19 python -m pip install --no-build-isolation --no-deps -v -e "$VLLM_DIR" \
@@ -126,12 +165,15 @@ verify() {
 import importlib, torch, triton, vllm
 print(f"vllm: {vllm.__version__} from {vllm.__file__}")
 print(f"torch: {torch.__version__} triton: {triton.__version__}")
-for name in ("vllm._C", "vllm._rocm_C", "vllm._moe_C", "vllm._C_stable_libtorch"):
+for name in ("vllm._C", "vllm._rocm_C", "vllm._C_stable_libtorch", "vllm._moe_C_stable_libtorch"):
     try:
         importlib.import_module(name); print(f"{name}: imports")
     except Exception as exc:
         print(f"{name}: FAILS {type(exc).__name__}: {exc}")
 from vllm.platforms import current_platform
+# One HIP runtime per process: the venv's ROCm 7.14 copy, which torch loads first, not the image's /opt/rocm 7.13.
+hip = sorted({l.split()[-1] for l in open("/proc/self/maps") if "libamdhip64" in l})
+print("libamdhip64 loaded:", hip)
 print(f"platform: {type(current_platform).__name__}, torch sees {torch.cuda.device_count()} GPU")
 try:
     from vllm.model_executor.kernels.linear.mixed_precision.rdna_hybrid_w4a16 import RDNAHybridW4A16LinearKernel
@@ -205,6 +247,7 @@ models() {
 case "$STEP" in
   build) build ;;
   build-inner) build_inner ;;
+  torch) mkdir -p "$HOME/.cache"; torch_venv ;;
   status) status ;;
   verify) verify ;;
   lds) lds ;;
