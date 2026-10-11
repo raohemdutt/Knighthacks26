@@ -82,6 +82,7 @@ from lab.dataset import Dataset, load
 from lab.fixture_dataset import Expected, load_expected
 from lab.label import Decode, Teacher, Toolbox, _Labeler, golden_toolbox
 from lab.machine import experiments, stop
+from lab.machine import metrics as metrics_file
 from lab.machine import verdict as verdict_math
 from lab.machine.record import record
 from runtime.routing import Policy, RouteRequest, route
@@ -104,6 +105,11 @@ SETTLE_S = 2.0                              # samples past a window's end before
 WAIT_S = 30.0                               # longest wait for an answer's joules
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "learning" / "tool-calling-fixture"
 DEFAULT_OUT = Path(__file__).resolve().parent / "state" / VERB
+# The ids of the two T0 experiments this test adds. lab/machine/experiments.py hands out the next E number only from
+# a ledger that already holds one beyond T0's seeds, which a fresh state dir (a --fake run, a workstation) does not,
+# so the test names its own: ids no E number can collide with. --experiment-ids replaces them with the two E numbers
+# T0 gave, when it has.
+EXPERIMENT_IDS = ("T11-energy", "T11-quality")
 REQUESTS_FILE = "requests.jsonl"
 REPORT_FILE = "report.json"
 T0_FILE = "t0_result.txt"
@@ -437,24 +443,58 @@ def _ledger_rows(summary: Mapping[str, Any], *, run_id: str, source: str, fake: 
     return seqs
 
 
-def _experiment(state_dir: Any, title: str, fields: Mapping[str, Any]) -> str:
-    """The id of the T0 experiment with this title, added the first time."""
-    for eid, e in experiments.load(state_dir).items():
+def metrics_rows(summary: Mapping[str, Any], *, run_id: str, source: str, node: str = TEACHER_NODE,
+                 conditions: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
+    """The run as rows of the baseline metrics file (lab/refine/metrics.jsonl): per arm, the mean of each of the three
+    metrics, with conditions.policy naming the arm's policy and conditions.requests its number of requests. That is
+    what the Learning lab's Routing tab reads as the measured closed loop (closed_loop in
+    contexts/learning/application/lab_routing.py: the same metric and node once per policy, at least 100 requests
+    each). The loop spans both nodes, so the rows carry one name for it, the teacher's by default, and `targets` says
+    which node answered how many. `conditions` are the told ones (the card, the hub, the teacher's build)."""
+    rows = []
+    for arm, policy, _ in ARMS:
+        a = summary["arms"][arm]
+        for metric in (JOULES, LATENCY, QUALITY):
+            stats = a[metric]
+            if stats["mean"] is None:
+                continue
+            c: dict[str, Any] = {
+                "policy": policy, "requests": a["requests"], "arm": arm, "session": run_id,
+                "statistic": "mean over the arm's requests", "stats": dict(stats), "targets": dict(a["targets"]),
+                "decided_by": dict(a["decided_by"]), "unmeasured": a["unmeasured"],
+                "verdict_b_against_a": summary["verdicts"][metric]["label"], **dict(conditions or {})}
+            low = source == "fake" or (metric == JOULES and (a["low_confidence"] > 0 or a["unmeasured"] > 0))
+            if low:
+                c["low_confidence_reason"] = (
+                    "the fakes' canned numbers, not a measurement" if source == "fake" else
+                    f"{a['low_confidence']} of {a['requests']} joules values are low confidence (no measured sensor "
+                    f"error, telemetry ruling 7) and {a['unmeasured']} answers have no joules value")
+            rows.append({"metric": metric, "value": round(stats["mean"], 4), "unit": UNITS[metric], "node": node,
+                         "conditions": c, "source": f"lab/routing_closed_loop.py {source} {run_id}",
+                         "low_confidence": low})
+    return rows
+
+
+def _experiment(state_dir: Any, eid: str, title: str, fields: Mapping[str, Any]) -> str:
+    """The id of the T0 experiment with this title, added under `eid` the first time."""
+    for known, e in experiments.load(state_dir).items():
         if e.get("title") == title and e.get("task") == experiments.DEFAULT_TASK:
-            return eid
-    return experiments.add({"title": title, **fields}, state_dir=state_dir)["id"]
+            return known
+    return experiments.add({"id": eid, "title": title, **fields}, state_dir=state_dir)["id"]
 
 
 def _t0(summary: Mapping[str, Any], records: Sequence[Record], *, run_id: str, source: str, citation: str,
-        state_dir: Any) -> tuple[str, list[str]]:
+        state_dir: Any, experiment_ids: Sequence[str] = EXPERIMENT_IDS) -> tuple[str, list[str]]:
+    if len(experiment_ids) != 2 or len(set(experiment_ids)) != 2:
+        raise LoopError(f"the test adds two T0 experiments (energy, quality): give two different ids, not {list(experiment_ids)}")
     arms_text = {"A": "policy one, capability (the control)", "B": "policy two, energy: reads the telemetry snapshot"}
     common = {"track": "telemetry", "lever": "the routing hook's policy (routing.policy in config/models.yaml)",
               "arms": arms_text, "citation": citation, "node": None,
               "note": "T11 closed loop: arms interleaved request by request over the same labeling requests"}
-    energy_id = _experiment(state_dir, "T11 routing hook: energy policy, joules per answer", {
+    energy_id = _experiment(state_dir, experiment_ids[0], "T11 routing hook: energy policy, joules per answer", {
         **common, "hypothesis": "routing by the snapshot's joules per answer lowers the joules each label costs",
         "kind": "measure", "metric": JOULES, "better": "lower", "secondary": [LATENCY]})
-    quality_id = _experiment(state_dir, "T11 routing hook: energy policy, label agreement", {
+    quality_id = _experiment(state_dir, experiment_ids[1], "T11 routing hook: energy policy, label agreement", {
         **common, "hypothesis": "routing by joules per answer leaves the label agreement where it was",
         "kind": "rate", "metric": QUALITY, "better": "higher"})
     by_arm = {arm: [r for r in records if r.arm == arm] for arm in ("A", "B")}
@@ -490,11 +530,14 @@ class Result:
     folder: Path
     experiments: list[str] = field(default_factory=list)
     seqs: dict[str, int] = field(default_factory=dict)
+    metrics_rows: int = 0                     # rows appended to the metrics file (--metrics-file)
 
 
 def run(requests: Sequence[Request], probes: Sequence[Request], targets: Mapping[str, Target], meter: Meter, *,
         data: Dataset, toolbox: Toolbox, out_dir: str | os.PathLike[str], state_dir: Any, source: str, fake: bool,
-        run_id: str | None = None, conditions: Mapping[str, Any] | None = None) -> Result:
+        run_id: str | None = None, conditions: Mapping[str, Any] | None = None,
+        experiment_ids: Sequence[str] = EXPERIMENT_IDS, metrics_path: str | os.PathLike[str] | None = None,
+        row_conditions: Mapping[str, Any] | None = None) -> Result:
     """Route, answer and measure every request under both arms, then write the records, the report, the ledger
     rows and the T0 text."""
     run_id = run_id or f"t11-{dt.datetime.now(dt.UTC):%Y%m%dT%H%M%SZ}-{secrets.token_hex(2)}"
@@ -511,12 +554,18 @@ def run(requests: Sequence[Request], probes: Sequence[Request], targets: Mapping
                 f"{len(requests)} labeling requests from {data.dataset_id}, no golden question; per-request records "
                 f"{REQUESTS_FILE} and {REPORT_FILE} of the run; ledger rows seq {seqs['A']} (arm A) and {seqs['B']} "
                 f"(arm B), verb {VERB}, task {TASK}; {SOURCES}")
-    text, eids = _t0(summary, records, run_id=run_id, source=source, citation=citation, state_dir=state_dir)
+    text, eids = _t0(summary, records, run_id=run_id, source=source, citation=citation, state_dir=state_dir,
+                     experiment_ids=experiment_ids)
     (folder / T0_FILE).write_text(text, encoding="utf-8", newline="\n")
     report = {"run_id": run_id, "source": source, "requests": len(requests), "dataset_id": data.dataset_id,
               "experiments": eids, "ledger_seqs": seqs, "citation": citation, **summary}
     (folder / REPORT_FILE).write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8", newline="\n")
-    return Result(run_id, records, probed, summary, folder, eids, seqs)
+    written = 0
+    if metrics_path is not None:
+        for row in metrics_rows(summary, run_id=run_id, source=source, conditions=row_conditions):
+            metrics_file.add(row, path=metrics_path)
+            written += 1
+    return Result(run_id, records, probed, summary, folder, eids, seqs, written)
 
 
 # --- the fakes ------------------------------------------------------------------------------------------------------
@@ -537,7 +586,9 @@ class FakeSetup:
 
 def run_fake(*, n: int = MIN_REQUESTS, seed: int = DEFAULT_SEED, probes: int = DEFAULT_PROBES,
              out_dir: str | os.PathLike[str], state_dir: Any = None, fake: FakeSetup | None = None,
-             root: str | os.PathLike[str] = FIXTURE, student_can: bool = True, run_id: str | None = None) -> Result:
+             root: str | os.PathLike[str] = FIXTURE, student_can: bool = True, run_id: str | None = None,
+             experiment_ids: Sequence[str] = EXPERIMENT_IDS, metrics_path: str | os.PathLike[str] | None = None,
+             row_conditions: Mapping[str, Any] | None = None) -> Result:
     """The whole test on the teacher and student fakes, on a fake clock."""
     fake = fake or FakeSetup()
     from lab import student_fake as sf
@@ -572,7 +623,8 @@ def run_fake(*, n: int = MIN_REQUESTS, seed: int = DEFAULT_SEED, probes: int = D
         return run(draw_requests(root, n=n, seed=seed, student_can=student_can),
                    draw_requests(root, n=probes, seed=seed, skip=n, student_can=student_can) if probes else [],
                    targets, meter, data=data, toolbox=golden_toolbox(), out_dir=out_dir, state_dir=state,
-                   source="fake", fake=True, run_id=run_id, conditions=conditions)
+                   source="fake", fake=True, run_id=run_id, conditions=conditions, experiment_ids=experiment_ids,
+                   metrics_path=metrics_path, row_conditions=row_conditions)
     finally:
         for t in targets.values():
             t.client.close()
@@ -606,10 +658,26 @@ def _real(args: argparse.Namespace) -> Result:
                    draw_requests(args.dataset, n=args.probes, seed=args.seed, skip=args.n,
                                  student_can=args.student_can == "yes") if args.probes else [],
                    targets, meter, data=load(args.dataset, require_images=False), toolbox=golden_toolbox(),
-                   out_dir=args.out, state_dir=args.state_dir, source="real", fake=False, conditions=conditions)
+                   out_dir=args.out, state_dir=args.state_dir, source="real", fake=False, conditions=conditions,
+                   experiment_ids=args.experiment_ids, metrics_path=args.metrics_file,
+                   row_conditions=_told(args.row_condition))
     finally:
         teacher.close()
         student.close()
+
+
+def _told(pairs: Sequence[str]) -> dict[str, Any]:
+    """--row-condition NAME=VALUE pairs as conditions; a value that reads as JSON (a number, true, a list) is one."""
+    told: dict[str, Any] = {}
+    for pair in pairs:
+        name, sep, value = pair.partition("=")
+        if not sep or not name.strip():
+            raise LoopError(f"--row-condition takes NAME=VALUE, not {pair!r}")
+        try:
+            told[name.strip()] = json.loads(value)
+        except ValueError:
+            told[name.strip()] = value
+    return told
 
 
 @stop.guarded
@@ -631,6 +699,13 @@ def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
     p.add_argument("--student-model", default="atlas-base")
     p.add_argument("--power-log", nargs="+", default=[], help="JSONL files of telemetry events to read power from")
     p.add_argument("--window-clock", default=None, help="the node whose clock the run uses (jetson on the Jetson)")
+    p.add_argument("--experiment-ids", nargs=2, default=list(EXPERIMENT_IDS), metavar=("ENERGY", "QUALITY"),
+                   help="the ids of the two T0 experiments (default: %(default)s; the E numbers T0 gave, when it has)")
+    p.add_argument("--metrics-file", nargs="?", const=str(metrics_file.DEFAULT_PATH), default=None,
+                   help="also append the run to the metrics file as one row per arm and metric, with "
+                        "conditions.policy and conditions.requests (the real run; default path: %(const)s)")
+    p.add_argument("--row-condition", action="append", default=[], metavar="NAME=VALUE",
+                   help="a told condition for those rows, such as gpu, hub, account or the teacher's build (repeatable)")
     p.add_argument("--settle-s", type=float, default=SETTLE_S)
     p.add_argument("--wait-s", type=float, default=WAIT_S)
     args = p.parse_args(list(argv) if argv is not None else None)
@@ -639,7 +714,8 @@ def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
             raise LoopError(f"the closed-loop test needs at least {MIN_REQUESTS} requests, not {args.n}")
         if args.fake:
             result = run_fake(n=args.n, seed=args.seed, probes=args.probes, out_dir=args.out,
-                              state_dir=args.state_dir, root=args.dataset, student_can=args.student_can == "yes")
+                              state_dir=args.state_dir, root=args.dataset, student_can=args.student_can == "yes",
+                              experiment_ids=args.experiment_ids)
         else:
             result = _real(args)
     except LoopError as err:
@@ -649,6 +725,7 @@ def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
             "changed": s["changed"], "keep_policy_two": s["keep_policy_two"], "rubric_tt6_met": s["rubric_tt6"]["met"],
             "verdicts": {m: v["label"] for m, v in s["verdicts"].items()}, "experiments": result.experiments,
             "folder": str(result.folder), "t0_text": str(result.folder / T0_FILE),
+            "metrics_rows": result.metrics_rows,
             "refs": {"run_id": result.run_id}}
 
 

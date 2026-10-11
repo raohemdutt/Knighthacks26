@@ -23,6 +23,7 @@ from bus import EventBus
 from contexts.agent.application.loop import ODD_HOURS_DESCRIPTION, ODD_HOURS_RULE, AgentLoop
 from contexts.agent.application.planner import Planner
 from contexts.agent.application.qa import QA, SleepSchedule
+from contexts.agent.application.done import DoneToday
 from contexts.agent.application.talk import Talk, TalkConfig
 from contexts.agent.application.web_port import HubWebTools, TavilyWebTools
 from contexts.agent.domain.rules import AlertHistory, RuleEvaluator, load_rules
@@ -77,7 +78,9 @@ from contexts.play.room.live import RoomLive
 from contexts.play.room.plan import RoomError, load_room, room_path
 from contexts.profiles import Profile, load_profile
 from contexts.vault import KeyRing, PictureLedger, Policy, Vault, Wiper
+from contexts.workspace.application.inbox import FileInbox
 from contexts.workspace.domain.approvals import Approvals
+from contexts.workspace.infrastructure.file_store import EncryptedFileStore
 from contexts.workspace.infrastructure.ntfy import Ntfy, PhoneNotifier, send_message_executor
 from contracts.types import ModelVersion
 from runtime import FakeRuntime
@@ -155,6 +158,7 @@ class Atlas:
     coach_feedback: CoachFeedback | None = None  # "Was that right?" about a break; GET /api/day/coach/feedback
     spot: object | None = None  # SpotContext: the inspection (SPOT) dashboard, contexts/spot; GET /api/spot/*
     face_share: object | None = None  # FaceShare (contexts/circle): a friend's box recognises you; off by default
+    files: FileInbox | None = None  # W1: files shared from the phone, encrypted under data/files; /api/files
     tasks: list[asyncio.Task] = field(default_factory=list)
     _last_retention: datetime | None = None
     _last_cleanup: datetime | None = None
@@ -326,6 +330,12 @@ def build(settings: Settings | None = None) -> Atlas:
     # Conversation: small talk and simple questions, after the planner and the pre-fetch passed (agent.yaml `talk:`).
     talk = Talk(runtime, qa.clock, memory=memory, config=TalkConfig.of(agent_cfg.get("talk")), tz=qa.sleep.tz, web=bool(web))
     talk.about = profile.description
+    qa.names = dict(talk.config.names)  # how a course code is said aloud (agent.yaml `talk.names`)
+    # "How's it going?" is answered with what Atlas did for the person today, counted from the log (a projection).
+    done = DoneToday(qa.sleep.tz)
+    for prefix in DoneToday.PREFIXES:
+        bus.subscribe(prefix, done.on_event, replay=True)
+    talk.done_for_you = lambda: done.clauses(qa.clock())
     if talk.config.enabled:  # ATLAS_TALK=0 or `talk.enabled: false`: every open-ended question goes to the tool loop
         qa.talk = talk
     rules = RuleEvaluator(load_rules(profile.path("rules.yaml")), builtin={ODD_HOURS_RULE: ODD_HOURS_DESCRIPTION})
@@ -356,6 +366,9 @@ def build(settings: Settings | None = None) -> Atlas:
     policy.subscribe(bus)
     # Owner recognition (P9): opt-in, templates encrypted under data/vault/identity/. Unavailable without the SFace model.
     # Face profile: photos need OpenCV; apparent expression needs its model file too (each reports itself unavailable without).
+    # File inbox (W1): files shared from the phone, sealed with the vault; the list rebuilds from the log, Memory indexes it.
+    files = FileInbox(EncryptedFileStore(s.data_dir / "files", vault))
+    bus.subscribe("workspace.file.added", files.handle, replay=True)
     identity = IdentityService(IdentityStore(s.data_dir, vault), build_recognizer(),
                                expression_reader=build_expression_reader(), photo_reader=build_photo_reader())
     bus.subscribe("perception.expression", identity.on_expression, replay=True)  # the series GET /identity/expressions answers from
@@ -634,4 +647,4 @@ def build(settings: Settings | None = None) -> Atlas:
                  lab_view=lab_view,
                  telemetry=telemetry, profile=profile, league=league, league_sync=league_sync,
                  face_share=face_share,
-                 impact=impact, coach_feedback=coach_feedback, spot=spot)
+                 impact=impact, coach_feedback=coach_feedback, spot=spot, files=files)

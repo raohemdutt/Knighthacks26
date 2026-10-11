@@ -310,7 +310,7 @@ def test_small_talk_gets_a_reply_and_camera_questions_keep_their_path(tmp_path, 
         talk = c.app.state.atlas.qa.talk
         hello = c.post("/api/ask", json={"text": "Hey Atlas, how's your day?"}).json()
         assert hello["citations"] == [] and hello["answer"] != "I didn't see that." and not hello["answer"].startswith("(fake)")
-        assert "How's yours going?" in hello["answer"] and hello["model_version"] == "fake-0"
+        assert hello["answer"].endswith("can I do for you?") and hello["model_version"] == "fake-0"  # its work for you, then an offer
         assert "AI" in c.post("/api/ask", json={"text": "are you gay?"}).json()["answer"]
         assert len(talk.turns) == 2 and talk.answered == 2 and talk.about  # live state: the turns, the count, the profile's line
         assert c.post("/api/ask", json={"text": "Anything weird?"}).json()["answer"] == "I didn't see that."  # the tool loop, as before
@@ -333,3 +333,12 @@ def test_ask_stream_sends_the_pieces_then_the_same_final_answer(tmp_path):
         final = lines[-1]["final"]
         assert final["type"] == "agent.answer.generated" and final["citations"][0]["frame_ref"] == "frames:cam-desk:k1941"
 
+
+
+def test_daily_digest_is_served(tmp_path):
+    with client(tmp_path) as c:
+        r = c.get("/api/digest", params={"day": "2026-10-11"})
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["day"] == "2026-10-11" and isinstance(body["text"], str) and body["text"]
+        assert c.get("/api/digest", params={"day": "soon"}).status_code == 422

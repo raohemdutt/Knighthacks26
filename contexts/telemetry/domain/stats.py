@@ -89,6 +89,16 @@ def decode_rate(windows: Iterable[RequestWindow]) -> tuple[float, int, datetime]
     return (tokens / seconds, used, last) if used else None
 
 
+def mean_latency(windows: Iterable[RequestWindow]) -> tuple[float, int, datetime] | None:
+    """(mean seconds from a request's start to its end, windows used, end of the newest window used), or None."""
+    total, used, last = 0.0, 0, None
+    for w in windows:
+        total += (w.ended - w.started).total_seconds()
+        used += 1
+        last = w.ended if last is None or w.ended > last else last
+    return (total / used, used, last) if used else None
+
+
 def run_minutes(first_ts: datetime, last_ts: datetime, step_ms: float | None) -> float:
     """A training run's length in minutes from its first and last step events and one step's length in ms."""
     return ((last_ts - first_ts).total_seconds() + (step_ms or 0.0) / 1000.0) / 60.0

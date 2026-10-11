@@ -23,6 +23,7 @@ from contracts.agent import NoteWritten
 from contracts.connectors import ItemSynced
 from contracts.memory import Episode, EpisodeClosed, EpisodeOpened, Item, Sighting
 from contracts.perception import ObservationRecorded, SceneDescribed, ZoneEvent
+from contracts.workspace import FileAdded
 
 QUIET_S = 30
 MAX_EPISODE_S = 600
@@ -49,6 +50,7 @@ class MemoryProjection:
         bus.subscribe("connector.item.synced", self.on_item, replay=True)
         bus.subscribe("memory.episode.closed", self.on_episode_closed, replay=True)
         bus.subscribe("agent.note.written", self.on_note, replay=True)
+        bus.subscribe("workspace.file.added", self.on_file, replay=True)
 
     # --- handlers ---
 
@@ -85,6 +87,14 @@ class MemoryProjection:
                 item = Item(connector=e.connector, kind=e.kind, external_id=e.external_id, title=e.title,
                             when=e.when, url=e.url, summary=e.summary)
                 self.store.put_item(item, synced_at=e.ts)
+        return []
+
+    def on_file(self, e: FileAdded) -> list:
+        """A file shared into the Workspace inbox (W1): searchable like a connector item, its link the download."""
+        with self.store.db:
+            if self.store.first_time(e.event_id):
+                self.store.put_item(Item(connector="files", kind="file", external_id=e.file_id, title=e.name,
+                                         url=f"/api/files/{e.file_id}", summary=e.text or None), synced_at=e.ts)
         return []
 
     def on_note(self, e: NoteWritten) -> list:

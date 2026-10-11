@@ -1,0 +1,17 @@
+{
+  "version": "atlas-desk-objects-fixture",
+  "base": "Qwen/Qwen3.5-4B",
+  "task": "desk-objects",
+  "gguf": "atlas-desk-objects-fixture-Q4_K_M.gguf",
+  "mmproj": "mmproj-F16.gguf",
+  "sha256": {
+    "atlas-desk-objects-fixture-Q4_K_M.gguf": "33de5e207b40716ba74180d9d65cdc7504cf78cd8f9f38a0b304bca54429f454",
+    "mmproj-F16.gguf": "a2781b3810569dd0fb4a09757266deee243550acc19bdc855f1e5d0104f4b816"
+  },
+  "scores": {
+    "current": 0.41,
+    "candidate": 0.78,
+    "teacher": 0.86
+  },
+  "created": "2026-10-11T05:00:00Z"
+}

@@ -166,6 +166,76 @@ def test_the_t0_experiment_result_text_is_written_with_its_citation(cheap_teache
     assert len(folded) == 2 and all(e["status"] == "done" and e["task"] == "T0" for e in folded.values())
 
 
+def test_the_two_t0_experiments_are_added_under_the_tests_own_ids_on_a_fresh_ledger(cheap_teacher):
+    # experiments.add hands out an E number only from a ledger that already holds one beyond T0's seeds; a fresh
+    # state dir holds none, so the test names its two experiments itself
+    result, state, _, _ = cheap_teacher
+    assert result.experiments == list(loop.EXPERIMENT_IDS)
+    assert sorted(experiments.load(state)) == sorted(loop.EXPERIMENT_IDS)
+
+
+def test_the_ids_t0_gave_replace_the_default_ones_and_a_second_run_reuses_them(tmp_path):
+    state, out = tmp_path / "state", tmp_path / "out"
+    first = loop.run_fake(n=100, seed=11, state_dir=state, out_dir=out, experiment_ids=("E61", "E62"))
+    assert first.experiments == ["E61", "E62"]
+    again = loop.run_fake(n=100, seed=11, state_dir=state, out_dir=out, experiment_ids=("E63", "E64"))
+    assert again.experiments == ["E61", "E62"] and sorted(experiments.load(state)) == ["E61", "E62"]  # found by title
+    with pytest.raises(loop.LoopError, match="two different ids"):
+        loop.run_fake(n=100, seed=11, state_dir=tmp_path / "other", out_dir=out, experiment_ids=("E61", "E61"))
+
+
+# --- the metrics-file rows: what the Learning lab's Routing tab reads as the measured closed loop ---
+
+def test_the_run_goes_into_the_metrics_file_as_one_row_per_policy_and_metric_that_the_routing_tab_reads(tmp_path):
+    from contexts.learning.application import lab_bench, lab_routing
+
+    path = tmp_path / "metrics.jsonl"
+    told = {"gpu": "Radeon 8060S (Strix Halo), gfx1151", "hub": "sjc", "account": "C"}
+    result = loop.run_fake(n=100, seed=11, state_dir=tmp_path / "state", out_dir=tmp_path / "out",
+                           metrics_path=path, row_conditions=told)
+    assert result.metrics_rows == 6
+    rows, skipped = lab_bench.read_rows(path)
+    assert not skipped and len(rows) == 6
+    for row in rows:
+        c = row["conditions"]
+        assert c["policy"] in (CAPABILITY, ENERGY) and c["requests"] == 100 and c["session"] == result.run_id
+        assert c["gpu"] == told["gpu"] and c["hub"] == "sjc" and row["node"] == "pod-a"
+        assert row["low_confidence"] is True and c["low_confidence_reason"]  # the fakes are never a measurement
+    measured = lab_routing.closed_loop(rows)
+    assert measured is not None and measured["min_requests"] == 100
+    assert {m["metric"] for m in measured["rows"]} == {loop.JOULES, loop.LATENCY, loop.QUALITY}
+    arms = result.summary["arms"]
+    for m in measured["rows"]:
+        assert m["capability"]["value"] == round(arms["A"][m["metric"]]["mean"], 4)
+        assert m["energy"]["value"] == round(arms["B"][m["metric"]]["mean"], 4)
+
+
+def test_a_real_runs_rows_are_low_confidence_only_for_joules_and_say_why():
+    stats = {"n": 100, "mean": 2.0, "sd": 0.5}
+    arm = {"requests": 100, "targets": {"student": 100}, "decided_by": {"capability": 100}, "unmeasured": 3,
+           "low_confidence": 97, loop.JOULES: stats, loop.LATENCY: stats, loop.QUALITY: stats}
+    summary = {"arms": {"A": arm, "B": arm}, "verdicts": {m: {"label": "no difference"} for m in loop.UNITS}}
+    rows = loop.metrics_rows(summary, run_id="t11-x", source="real", conditions={"gpu": "gfx1151"})
+    assert [(r["metric"], r["conditions"]["policy"]) for r in rows] == [
+        (m, policy) for policy in (CAPABILITY, ENERGY) for m in (loop.JOULES, loop.LATENCY, loop.QUALITY)]
+    for row in rows:
+        assert row["low_confidence"] is (row["metric"] == loop.JOULES)
+        assert ("low_confidence_reason" in row["conditions"]) is (row["metric"] == loop.JOULES)
+    assert "97 of 100" in rows[0]["conditions"]["low_confidence_reason"]
+
+
+def test_no_metrics_row_is_written_unless_a_file_is_named(dear_teacher):
+    result, _, _ = dear_teacher
+    assert result.metrics_rows == 0
+
+
+def test_told_row_conditions_are_name_value_pairs_and_a_json_value_is_read_as_one():
+    assert loop._told(["gpu=Radeon 8060S (Strix Halo), gfx1151", "requests_per_s=0.5", "quiet=true"]) == {
+        "gpu": "Radeon 8060S (Strix Halo), gfx1151", "requests_per_s": 0.5, "quiet": True}
+    with pytest.raises(loop.LoopError, match="NAME=VALUE"):
+        loop._told(["gpu"])
+
+
 def test_a_ledger_row_per_arm(cheap_teacher):
     result, state, _, _ = cheap_teacher
     rows = ledger.read(state_dir=state, verb=loop.VERB)
