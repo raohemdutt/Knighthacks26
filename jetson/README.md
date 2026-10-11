@@ -119,8 +119,9 @@ curl localhost:8000/runtime/models                  # current model version and 
 
 Cameras are listed in `config/cameras.yaml` (id, `/dev/video0` or a video file, fps). Capture starts only where
 `yolo11n.engine` exists (section 6), so laptops and CI skip it; `ATLAS_CAPTURE=0` turns it off. A camera that is not
-plugged in is retried every 2 s and shows as `down`. The Vault policy is honoured live: faces are blurred before a
-keyframe is stored unless `blur_faces` is off, and a paused camera is not looked at. Settings and secrets go in the
+plugged in is retried every 2 s and shows as `down`. The Vault policy is honoured live: stored keyframes and the Live
+screen are unblurred by default (`blur_faces` off; switch it on to blur them too), every picture that leaves the box (a
+lab dataset export, a recorded clip) has its faces blurred regardless, and a paused camera is not looked at. Settings and secrets go in the
 repo's `.env` (never in git). The unit sets `ATLAS_MEMORY_FIXTURE=` empty, so a real box holds only what its cameras
 saw; put `ATLAS_MEMORY_FIXTURE=fixtures/memory/memory.yaml` in `.env` for the canned demo night.
 
@@ -225,13 +226,13 @@ curl localhost:8000/identity/settings       # available: true (SFace), expressio
 
 Without SFace recognition cannot be switched on; without the expression model "Read my expressions" and the anonymous
 room mode stay unavailable and everything else works. `./jetson/push.sh` leaves the box's model files alone. Everything is
-off until someone switches it on in the app, and stored pictures are blurred in every mode.
+off until someone switches it on in the app, and pictures that leave the box are blurred in every mode.
 
 
 ## 12. Recording camera clips (for the lab and for replay)
 
 The gateway keeps the webcam open, so nothing else can read `/dev/video0`. `jetson/record_clip.py` records through the
-gateway instead: it polls the blurred `GET /capture/<camera>/snapshot.jpg`, keeps every new frame and has GStreamer join
+gateway instead: it polls `GET /capture/<camera>/snapshot.jpg?blur=1` (faces always blurred), keeps every new frame and has GStreamer join
 them into an mp4, without a video device, a stopped service or sudo. It also picks frames from recorded clips into a
 dataset folder in the box's export layout. The commands that were used, the clips they made and where the frames go next
 are in `lab/README.md` (section "Camera clips") and `fixtures/clips/README.md`.

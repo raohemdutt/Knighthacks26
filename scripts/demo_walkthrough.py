@@ -782,11 +782,10 @@ def uc_identity(run: Run) -> None:
 def uc_privacy(run: Run) -> None:
     run.screen("/privacy/")
     run.fetch("the privacy policy", "/vault/policy", ("blur_faces", "offline"), missing="the vault is not on this box",
-              check=lambda d: None if d["blur_faces"] else "face blur is OFF: stored pictures would show faces",
-              note=lambda d: f"blur faces on; offline={d['offline']}; paused cameras: {', '.join(d['paused_cameras']) or 'none'}; keep {d.get('keep_days') or 'for ever'}")
+              note=lambda d: f"blur stored pictures {'on' if d['blur_faces'] else 'off (blurred only when exported)'}; offline={d['offline']}; paused cameras: {', '.join(d['paused_cameras']) or 'none'}; keep {d.get('keep_days') or 'for ever'}")
     run.fetch("what left the box (egress proof)", "/vault/egress", ("allowed", "blocked", "enforced"), missing="the vault is not on this box",
               note=lambda d: f"firewall {'enforced' if d['enforced'] else 'NOT enforced on this box'}; {len(d['allowed'])} allowed destinations, {d['blocked']} blocked")
-    run.manual("a stored frame shows blurred faces", "open a keyframe with a face in it on Timeline and look (table-day checklist)")
+    run.manual("an exported frame shows blurred faces", "open an image in a lab dataset export (data/exports/<id>/images) with a face in it and look (table-day checklist)")
     run.manual("wipe scopes (Everything / Pictures only / Memory only)", "Privacy -> Delete…, on a throwaway box only; this script never wipes")
 
 

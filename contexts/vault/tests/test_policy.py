@@ -5,28 +5,28 @@ from contexts.vault import Policy
 from contexts.vault.tests.helpers import Box
 from contracts.vault import PolicyChanged, RetentionChanged
 
-DEFAULTS = {"blur_faces": True, "paused_cameras": [], "offline": False, "keep_days": None}
+DEFAULTS = {"blur_faces": False, "paused_cameras": [], "offline": False, "keep_days": None}
 
 
-def test_defaults_are_private_and_nothing_is_written_until_something_changes(tmp_path):
+def test_defaults_leave_stored_pictures_unblurred_and_nothing_is_written_until_something_changes(tmp_path):
     box = Box(tmp_path)
     assert box.http.get("/vault/policy").json() == DEFAULTS
-    assert box.policy.blur_faces and not box.policy.is_paused("cam-door")
+    assert not box.policy.blur_faces and not box.policy.is_paused("cam-door")
     assert not box.policy.path.exists()
 
 
 def test_put_changes_the_policy_and_publishes_the_contract_events(tmp_path):
     box = Box(tmp_path)
-    r = box.http.put("/vault/policy", json={"blur_faces": False, "paused_cameras": ["cam-door", "cam-door"], "keep_days": 7})
+    r = box.http.put("/vault/policy", json={"blur_faces": True, "paused_cameras": ["cam-door", "cam-door"], "keep_days": 7})
     assert r.status_code == 200
-    assert r.json() == {"blur_faces": False, "paused_cameras": ["cam-door"], "offline": False, "keep_days": 7}
+    assert r.json() == {"blur_faces": True, "paused_cameras": ["cam-door"], "offline": False, "keep_days": 7}
     assert box.http.get("/vault/policy").json() == r.json()
-    assert not box.policy.blur_faces and box.policy.keep_days == 7
+    assert box.policy.blur_faces and box.policy.keep_days == 7
     assert box.policy.is_paused("cam-door") and not box.policy.is_paused("cam-desk")
 
     changed, retention = box.seen
     assert isinstance(changed, PolicyChanged) and isinstance(retention, RetentionChanged)
-    assert (changed.blur_faces, changed.paused_cameras, changed.offline) == (False, ["cam-door"], False)
+    assert (changed.blur_faces, changed.paused_cameras, changed.offline) == (True, ["cam-door"], False)
     assert retention.keep_days == 7
     assert json.loads(box.policy.path.read_text()) == r.json()  # snapshot on disk follows
 
@@ -36,7 +36,7 @@ def test_put_keeps_what_it_does_not_mention_and_retention_event_only_on_change(t
     box.http.put("/vault/policy", json={"paused_cameras": ["cam-desk"], "keep_days": 30})
     box.seen.clear()
     r = box.http.put("/vault/policy", json={"offline": True, "keep_days": 30})  # same retention
-    assert r.json() == {"blur_faces": True, "paused_cameras": ["cam-desk"], "offline": True, "keep_days": 30}
+    assert r.json() == {"blur_faces": False, "paused_cameras": ["cam-desk"], "offline": True, "keep_days": 30}
     assert [e.type for e in box.seen] == ["vault.policy.changed"]
 
     box.seen.clear()
@@ -49,23 +49,23 @@ def test_put_keeps_what_it_does_not_mention_and_retention_event_only_on_change(t
 def test_put_rejects_bad_bodies_and_needs_the_token(tmp_path):
     box = Box(tmp_path, token="s3cret")
     auth = {"Authorization": "Bearer s3cret"}
-    assert box.http.put("/vault/policy", json={"blur_faces": False}).status_code == 401
+    assert box.http.put("/vault/policy", json={"blur_faces": True}).status_code == 401
     assert box.http.put("/vault/policy", json={"keep_days": 0}, headers=auth).status_code == 422
     assert box.http.put("/vault/policy", json={"blur": False}, headers=auth).status_code == 422
-    assert box.seen == [] and box.policy.blur_faces
+    assert box.seen == [] and not box.policy.blur_faces
     assert box.http.get("/vault/policy").status_code == 200  # reads are open on the tailnet
-    assert box.http.put("/vault/policy", json={"blur_faces": False}, headers=auth).status_code == 200
+    assert box.http.put("/vault/policy", json={"blur_faces": True}, headers=auth).status_code == 200
 
 
 def test_policy_survives_a_restart_from_the_file_alone(tmp_path):
-    Box(tmp_path).http.put("/vault/policy", json={"blur_faces": False, "paused_cameras": ["cam-door"], "keep_days": 14})
+    Box(tmp_path).http.put("/vault/policy", json={"blur_faces": True, "paused_cameras": ["cam-door"], "keep_days": 14})
     restarted = Policy(tmp_path)  # before any replay
-    assert not restarted.blur_faces and restarted.is_paused("cam-door") and restarted.keep_days == 14
+    assert restarted.blur_faces and restarted.is_paused("cam-door") and restarted.keep_days == 14
 
 
 def test_the_log_wins_over_the_file_on_replay(tmp_path):
     box = Box(tmp_path)
-    box.http.put("/vault/policy", json={"blur_faces": False, "keep_days": 14})
+    box.http.put("/vault/policy", json={"blur_faces": True, "keep_days": 14})
     box.http.put("/vault/policy", json={"paused_cameras": ["cam-desk"]})
     truth = box.http.get("/vault/policy").json()
 
@@ -93,12 +93,12 @@ def test_the_log_wins_over_the_file_on_replay(tmp_path):
 
 def test_with_no_policy_events_in_the_log_the_file_stands(tmp_path):
     box = Box(tmp_path)
-    box.http.put("/vault/policy", json={"blur_faces": False})
+    box.http.put("/vault/policy", json={"blur_faces": True})
     for f in (tmp_path / "events").glob("*.jsonl"):  # what a wipe of the log leaves behind
         f.unlink()
     after = Box(tmp_path)
     assert asyncio.run(after.bus.replay_into()) == 0
-    assert not after.policy.blur_faces
+    assert after.policy.blur_faces
 
 
 def test_egress_is_an_honest_placeholder(tmp_path):

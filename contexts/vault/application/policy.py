@@ -2,7 +2,7 @@
 
     policy = Policy(data_dir)
     policy.subscribe(bus)              # replay=True: the log rebuilds it
-    policy.blur_faces                  # default ON
+    policy.blur_faces                  # default OFF: blur stored and live pictures too
     policy.is_paused("cam-door")
 
 The event log is the source of truth. <data_dir>/vault/policy.json is a
@@ -26,7 +26,7 @@ log = logging.getLogger("atlas.vault")
 
 
 class PolicyState(BaseModel):
-    blur_faces: bool = True
+    blur_faces: bool = False  # pictures that leave the box are blurred regardless (vault OutboundGate)
     paused_cameras: list[CameraId] = []
     offline: bool = False
     keep_days: int | None = None  # None = keep forever

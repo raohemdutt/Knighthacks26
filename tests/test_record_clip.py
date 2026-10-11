@@ -74,7 +74,7 @@ class StandIn:
             body = {"blur_faces": self.blur_faces, "paused_cameras": [], "offline": False, "keep_days": None}
         elif path == "/capture/cam-desk/tracks":
             body = {"camera_id": "cam-desk", "ts_ms": 1, "tracks": self.tracks()}
-        elif path == "/capture/cam-desk/snapshot.jpg":
+        elif path == "/capture/cam-desk/snapshot.jpg?blur=1":  # the recorder always asks for blurred faces
             return 200, self.snapshot(), "image/jpeg"
         else:
             return 404, b"{}", "application/json"
@@ -214,11 +214,10 @@ def test_record_keeps_every_frame_the_gateway_served_and_joins_them_with_the_pip
     assert json.loads((tmp_path / "keys-on-desk" / "clip.json").read_text()) == meta
 
 
-def test_record_refuses_to_record_while_faces_are_not_blurred(gateway, tmp_path):
-    gateway.blur_faces = False
-    with pytest.raises(record_clip.RecordError, match="blur_faces off"):
-        record_one(gateway, tmp_path)
-    assert list(tmp_path.iterdir()) == [] and gateway.asks == 0
+def test_record_asks_for_blurred_frames_even_when_stored_pictures_are_unblurred(gateway, tmp_path):
+    gateway.blur_faces = False  # the default policy: the gateway blurs only frames asked for with ?blur=1
+    meta = record_one(gateway, tmp_path)
+    assert meta["blur_faces"] is True and gateway.asks > 0
 
 
 def test_record_refuses_a_camera_that_is_not_delivering(gateway, tmp_path):
@@ -311,10 +310,6 @@ def test_record_gives_up_when_nobody_comes_and_writes_nothing(gateway, tmp_path)
 def test_the_command_line_gives_exit_code_1_for_a_refusal_and_3_for_no_person(gateway, tmp_path, capsys):
     assert record_clip.main(["clip", "Not A Name", "--gateway", gateway.url, "--out", str(tmp_path)]) == 1
     assert "not a clip name" in capsys.readouterr().err
-    gateway.blur_faces = False
-    assert record_clip.main(["clip", "keys-on-desk", "--gateway", gateway.url, "--out", str(tmp_path)]) == 1
-    assert "blur_faces off" in capsys.readouterr().err
-    gateway.blur_faces = True
     assert record_clip.main(["clip", "walk", "--gateway", gateway.url, "--out", str(tmp_path), "--when", "person-moves",
                              "--wait-max", "0.3"]) == 3
     assert "nobody arrived or moved" in capsys.readouterr().err

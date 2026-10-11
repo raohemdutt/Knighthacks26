@@ -4,7 +4,7 @@
 
 {"cameras": {"cam-desk": {"status": "ok", "fps_actual": 15.0, "dropped": 0, "detected": 912, "errors": 0}}}
 
-Also for the Live screen (X3): GET /capture/<camera>/snapshot.jpg (a blurred JPEG) and GET /capture/<camera>/tracks,
+Also for the Live screen (X3): GET /capture/<camera>/snapshot.jpg[?blur=1] (a JPEG, faces blurred when the policy or `blur` asks) and GET /capture/<camera>/tracks,
 and GET /capture/live/<camera>[?fps=5] as a motion-JPEG stream (C5).
 `status` is the reader's: ok, degraded (under 70% of the target rate) or down (no frame for 3 s).
 """
@@ -25,16 +25,17 @@ def capture_router(capture: CaptureService) -> APIRouter:
         return {"cameras": capture.stats()}
 
     @router.get("/capture/{camera_id}/snapshot.jpg")
-    def snapshot(camera_id: str) -> Response:
-        """The newest frame (faces blurred unless the Vault policy turns blur off); 404 if paused or no frame yet."""
-        jpeg = capture.snapshot(camera_id)
+    def snapshot(camera_id: str, blur: bool = False) -> Response:
+        """The newest frame (faces blurred when the Vault policy blurs, or always with ?blur=1 for frames that will be
+        shared); 404 if paused or no frame yet."""
+        jpeg = capture.snapshot(camera_id, blur=blur)
         if jpeg is None:
             raise HTTPException(404, "no picture from this camera right now")
         return Response(jpeg, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
     @router.get("/capture/live/{camera_id}")
     async def live(camera_id: str, request: Request, fps: float = 5.0, frames_max: int | None = Query(None, alias="max")) -> StreamingResponse:
-        """A motion-JPEG stream (multipart/x-mixed-replace) of the camera, faces blurred like the snapshot; `fps` up to 15;
+        """A motion-JPEG stream (multipart/x-mixed-replace) of the camera, faces blurred when the Vault policy blurs; `fps` up to 15;
         `max` ends it after that many frames (for a test or a one-off `curl`)."""
         if capture.snapshot(camera_id) is None:
             raise HTTPException(404, "no picture from this camera right now")

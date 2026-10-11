@@ -9,8 +9,9 @@ reader, tracking detector and blurred keyframe store, started with the gateway a
 off with ATLAS_CAPTURE=0, or no detector engine on this machine (laptops, CI). A camera that is unplugged is not an
 error: its reader keeps retrying, and `stats()` reports it as down.
 
-The Vault policy is read live: faces are blurred before a keyframe is stored unless `policy.blur_faces` is off, and a
-paused camera is not looked at.
+The Vault policy is read live: faces are blurred before a keyframe is stored, and on the Live screen, only while
+`policy.blur_faces` is on (off by default: pictures are blurred when they leave the box, not on it), and a paused
+camera is not looked at. `snapshot(camera, blur=True)` blurs regardless, for a picture recorded to be shared.
 """
 
 import asyncio
@@ -55,7 +56,7 @@ class CaptureService:
         self.readers: dict[str, CameraReader] = {}
         self._snapshot_blur = FaceBlur()  # the Live screen's own detector: the pipeline's is used on another thread
         self._snapshot_lock = threading.Lock()
-        self._snapshot_cache: dict[str, tuple[int, bytes]] = {}
+        self._snapshot_cache: dict[tuple[str, bool], tuple[int, bytes]] = {}  # (camera, blurred) -> (seq, jpeg)
         self._health_sent: dict[str, tuple[str, datetime]] = {}  # camera -> (status last published, when)
         self.pipelines: dict[str, TrackingPipeline] = {}
 
@@ -108,25 +109,27 @@ class CaptureService:
         return {cid: {**r.stats(), "detected": self.pipelines[cid].detected, "errors": self.pipelines[cid].errors}
                 for cid, r in self.readers.items()}
 
-    def snapshot(self, camera_id: str) -> bytes | None:
-        """The newest frame as a JPEG for the phone's Live screen, faces blurred unless the policy says otherwise.
-        None when the camera is unknown, paused, or has not delivered a frame yet."""
+    def snapshot(self, camera_id: str, blur: bool = False) -> bytes | None:
+        """The newest frame as a JPEG for the phone's Live screen, faces blurred when the policy says so or `blur` is
+        set (a recorder that shares the frames). None when the camera is unknown, paused, or has no frame yet."""
         import cv2
 
         reader = self.readers.get(camera_id)
         if reader is None or (self.policy and self.policy.is_paused(camera_id)) or reader.latest() is None:
             return None
         seq, _, frame = reader.latest()
+        blurred = blur or self._blur_on()
+        key = (camera_id, blurred)
         with self._snapshot_lock:
-            cached = self._snapshot_cache.get(camera_id)
+            cached = self._snapshot_cache.get(key)
             if cached and cached[0] == seq:
                 return cached[1]
-            shown = self._snapshot_blur(frame) if self._blur_on() else frame
+            shown = self._snapshot_blur(frame) if blurred else frame
             ok, jpeg = cv2.imencode(".jpg", shown, [cv2.IMWRITE_JPEG_QUALITY, 70])
             if not ok:
                 return None
-            self._snapshot_cache[camera_id] = (seq, jpeg.tobytes())
-            return self._snapshot_cache[camera_id][1]
+            self._snapshot_cache[key] = (seq, jpeg.tobytes())
+            return self._snapshot_cache[key][1]
 
     def health(self, now: datetime, every: timedelta = timedelta(minutes=5)) -> list[CameraHealth]:
         """`capture.camera.health` for each camera whose status changed since the last call, and for every camera at

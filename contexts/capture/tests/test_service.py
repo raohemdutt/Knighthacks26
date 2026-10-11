@@ -167,6 +167,36 @@ def test_the_live_screen_gets_a_blurred_snapshot_and_the_newest_tracks(clip, tmp
     assert holder["missing"].status_code == 404 and holder["paused"] is None
 
 
+def test_with_blur_off_the_live_screen_is_unblurred_and_blur_1_still_blurs(clip, tmp_path, monkeypatch):
+    calls = []
+
+    class Spy:
+        def __call__(self, frame):
+            calls.append(1)
+            return frame
+
+    monkeypatch.setattr("contexts.capture.application.service.FaceBlur", Spy)
+    cameras = {"cam-desk": {"source": clip, "fps": 15, "width": 64, "height": 48, "faces": False}}
+    holder = {}
+
+    async def main():
+        service = CaptureService(cameras, EventBus(persist=False), lambda: person, tmp_path / "data", Policy(blur=False))
+        service.start(asyncio.get_running_loop())
+        await asyncio.sleep(1.0)
+        app = FastAPI()
+        app.include_router(capture_router(service))
+        http = TestClient(app)
+        holder["plain"] = http.get("/capture/cam-desk/snapshot.jpg")
+        holder["plain_calls"] = len(calls)
+        holder["blurred"] = http.get("/capture/cam-desk/snapshot.jpg?blur=1")
+        holder["blurred_calls"] = len(calls)
+        service.stop()
+
+    asyncio.run(main())
+    assert holder["plain"].status_code == 200 and holder["plain_calls"] == 0  # the owner's view: nothing blurred
+    assert holder["blurred"].status_code == 200 and holder["blurred_calls"] >= 1  # a frame to share: blurred
+
+
 def test_health_is_published_on_change_and_as_a_five_minute_heartbeat(clip, tmp_path):
     from datetime import timedelta
 

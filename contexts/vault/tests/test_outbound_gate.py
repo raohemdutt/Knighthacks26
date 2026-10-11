@@ -13,6 +13,7 @@ import ast
 import asyncio
 import hashlib
 import os
+import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -287,7 +288,7 @@ ALLOWED = {
     "runtime/llama.py":
         "the on-box model call: llama-server on loopback (config/models.yaml, jetson/atlas-gateway.service)",
     "jetson/record_clip.py":
-        "the fixture recorder: reads the box's own snapshot route and refuses to record while blur_faces is off",
+        "the fixture recorder: reads the box's own snapshot route with ?blur=1, which blurs whatever blur_faces says",
 }
 
 
@@ -374,7 +375,8 @@ def test_only_the_gated_keyframe_link_is_ever_sent_to_a_phone():
     assert links and all("?view=out" in link for link in links), links
 
 
-def test_the_recorder_still_refuses_when_blur_is_off():
-    """record_clip.py is allowed because of this refusal; if the line goes, so does the reason."""
+def test_the_recorder_asks_for_blurred_frames():
+    """record_clip.py is allowed because it only asks for frames with ?blur=1; if that goes, so does the reason."""
     source = (REPO / "jetson/record_clip.py").read_text()
-    assert 'policy.get("blur_faces") is not True' in source and "nothing is recorded unblurred" in source
+    asks = re.findall(r'self\.get\(f?"(/capture/[^"]*snapshot\.jpg[^"]*)"', source)
+    assert asks and all(ask.endswith("?blur=1") for ask in asks), asks
