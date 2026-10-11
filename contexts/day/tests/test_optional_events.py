@@ -493,6 +493,21 @@ def test_leaving_early_for_the_next_fixed_event_is_part_of_the_yes(places, tmp_p
     assert next(x for x in again.dayrun.board(at(8, 32)).blocks if x.id.startswith("optional:")).end == at(10, 30)
 
 
+def test_a_new_yes_is_planned_with_the_events_own_end_not_an_older_early_one(places, tmp_path):  # noqa: F811
+    """An earlier yes meant leaving ten minutes early and its card ran out. Asked again when nothing is in the way any
+    more, the block is the whole event: the early end belonged to that earlier answer."""
+    b = afternoon(places, tmp_path)
+    known = b.loop.memory.items(at(0), at(0, 0, 14))
+    b.optional.until[DINNER] = at(18, 5)
+    with b.optional.board_with(add={DINNER: None}):
+        [whole] = b.optional.items(at(0), at(0, 0, 14), TZ, known)
+    with b.optional.board_with(add={DINNER: at(18)}):
+        [early] = b.optional.items(at(0), at(0, 0, 14), TZ, known)
+    assert (whole.summary, early.summary) == ("until 6:15 PM · '63 South", "until 6:00 PM · '63 South")
+    body = said_yes(b)
+    assert body["block"]["end"] == at(18, 15).isoformat() and DINNER not in b.optional.until  # the new answer has no early end
+
+
 def test_a_replan_that_would_touch_a_fixed_event_is_refused(places, tmp_path):  # noqa: F811
     """The fit is read from the plan; the re-plan is built from the calendar as it is now. An event the calendar gained
     since the plan was made is caught by comparing the day re-planned with and without the optional event."""

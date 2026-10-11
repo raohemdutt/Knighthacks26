@@ -168,7 +168,8 @@ class OptionalEvents:
             if offer is None:
                 continue
             done.add(offer.id)
-            end = self._try.get(offer.id) or self.until.get(offer.id) or offer.end
+            # the re-plan being built says where its event ends; an accepted one ends where its yes said
+            end = (self._try[offer.id] if offer.id in self._try else self.until.get(offer.id)) or offer.end
             if end <= lo or offer.start >= hi or end <= offer.start or key(offer.title, offer.start) in taken:
                 continue
             until = "until " + end.astimezone(tz).strftime("%I:%M %p").lstrip("0")
