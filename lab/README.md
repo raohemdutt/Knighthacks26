@@ -1265,6 +1265,144 @@ as `teacher_batching.*`.
 - **64 fits.** Attach cannot read the serve log, so the harness could not say whether 64 requests fit (`fits` is null in the
   rows); vLLM's `/metrics` reports 778 GPU blocks of 784 tokens and 64 requests of about 1,100 tokens ran with no error or
   rejection (about 52 in flight on average). The model is hybrid, so that block count is not a plain token count.
+## llama.cpp on the Strix Halo (pod B)
+
+E29 (kernels): does llama.cpp reach the chip's decode ceiling on our pod, where the April vLLM teacher sits at a
+quarter of it? The chip sheet (R33) measured about 210 GB/s, and the 4-bit 27B GGUF is 17.4 GB, so one stream cannot
+decode faster than about 12 tok/s. R48's research note cites 12.4 tok/s for llama.cpp's Vulkan build on an 8060S.
+Measured on pod D (account D, `roscon02`, hub sjc, gfx1151, node `pod-b`) on 2026-10-11 between 04:17 and 05:05 UTC.
+**The run was cut short twice to give the card to L5**, so batch 1 and 4 have 3 runs each, batch 8 and 16 one run, and
+batch 64, the correctness record and the coherence checks did not run.
+
+```
+python -m lab.controller run-script --account D --timeout 900 lab/pod_b_llamacpp.sh build      # 77 to 81 s, 20 jobs
+python -m lab.controller run-script --account D lab/pod_b_llamacpp.sh download                 # sha256 of both files
+python -m lab.controller run-script --account D --with lab/pod_power.py --with lab/pod_power.sh lab/pod_b_llamacpp.sh sampler
+python -m lab slot request --task E29 --kind bench --what "..."; python -m lab slot start --row <row>
+python -m lab.controller run-script --account D lab/pod_b_llamacpp.sh bench                    # llama-bench, card idle
+python -m lab.controller run-script --account D --timeout 600 lab/pod_b_llamacpp.sh serve 16 65536
+MSYS_NO_PATHCONV=1 python -m lab bench attach --account D --port 8100 --engine llamacpp --node pod-b \
+    --checkpoint /home/jovyan/models/Qwen3.8-27B-GGUF/Qwen3.8-27B-Q4_K_M.gguf --quantization Q4_K_M --max-len 4096 \
+    --batches 1,4,8,16 --repeats 3 --no-probe --idle-s 30 --condition backend=HIP --condition build_commit=23b0202 ...
+python -m lab.controller run-script --account D lab/pod_b_llamacpp.sh stop; python -m lab slot done --row <row> ...
+```
+
+- **Build.** `lab/pod_b_llamacpp.sh` builds llama.cpp 23b0202 (master of 2026-10-10, b11552) with `GGML_HIP=ON`,
+  `GPU_TARGETS=gfx1151` and `/opt/rocm/llvm/bin/clang++` as the HIP compiler (CMake refuses the hipcc wrapper), cmake
+  and ninja from pip. It builds in its own tree (`~/e29/llama.cpp`, `build-hip`) and refuses a checkout at another
+  commit, so it never moves another task's tree. The first session ran binaries built the same way from the same
+  commit in `~/llama.cpp/build-hip-gfx1151`; the second ran the script's own tree.
+- **Model.** `bartowski/Qwen3.8-27B-GGUF` at revision 0c92138c: `Qwen3.8-27B-Q4_K_M.gguf` (17.4 GB, `qwen35 27B
+  Q4_K - Medium`, sha256 880a52af...c673) and `mmproj-Qwen3.8-27B-f16.gguf` (0.93 GB, sha256 cb0a71fe...212b), both
+  checked by the script. No conversion was needed.
+- **Server.** `llama-server -ngl 999 -fa on -c 65536 -np 16 --jinja --mmproj ... --alias teacher` on 127.0.0.1:8100,
+  16 slots of 4,096 tokens (a bench request is at most 1,137 prompt tokens plus 128 out). Ready 5 to 15 s after start
+  with a warm page cache. 64 streams need `serve 64 131072` (2,048 tokens per slot); not run.
+- **Method.** R11's harness in attach mode from the box through the hub proxy, as R26 measured the vLLM teacher: prompt
+  set bench-v1, 4 requests per stream, 128 tokens with `ignore_eos`, greedy, thinking off, per-request nonce, watts from
+  the T6 sampler on port 8790 (node `gpu-b`, 1 s). Engine commit, backend, GGUF, hub, account and chip are in every
+  metrics row's conditions; the second session's raw rows also carry them as `--condition` labels.
+
+| Streams | llama.cpp tok/s per stream (min to max) | llama.cpp tok/s total | TTFT s | avg / peak W | J/token gross | J/token above idle | runs | vLLM April, pod C (R26): per stream / total / J per token | vLLM April, pod D (R20): per stream / total / J per token |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | 12.12 (11.99 to 12.13) | 10.48 | 1.46 | 110 / 117 | 10.45 | 9.53 | 3 | 2.70 / 2.62 / 36.66 | 2.73 / 2.67 / 36.40 |
+| 4 | 9.09 (5.32 to 9.10) | 23.42 | 7.18 | 110 / 122 | 4.68 | 4.27 | 3 | 2.52 / 9.32 / 10.31 | 2.58 / 9.48 / 10.33 |
+| 8 | 3.73 | 21.52 | 14.47 | 101 / 128 | 4.70 | 4.24 | 1 | 2.32 / 16.36 / 5.87 | 2.37 / 16.54 / 5.81 |
+| 16 | 4.53 | 41.98 | 27.60 | 95 / 101 | 2.27 | 2.04 | 1 | 2.07 / 26.95 / 3.56 | 2.06 / 27.45 / 3.50 |
+| 64 | not run | not run | | | | | 0 | 0.89 / 49.53 / 1.94 | 0.88 / 48.96 / 1.96 |
+
+`llama-bench -ngl 999 -fa 1 -p 512 -n 128 -r 3` on the same GGUF with the card idle (the engine's own view, no proxy,
+no server): **tg128 12.18 tok/s** (sd 0.01) and pp512 391 tok/s (sd 11). Idle with the server loaded and no request:
+9.9 W (9.7 W in the second session), the "above idle" column's subtrahend. The last column is R20's stock vLLM
+(b1388b1) matrix on this same pod (`teacher.*`, session `pod-b-2026-10-10`, cold spawns), which agrees with R26's
+attach-mode numbers on pod C within 3 percent.
+
+- **Batch 1 is at the ceiling.** 12.1 tok/s through the proxy and 12.18 in llama-bench is 17.4 GB x 12.18 = 212 GB/s
+  of weights read per second, the chip sheet's 210 GB/s: the HIP backend decodes one stream at the memory bandwidth,
+  as R48's Vulkan figure (12.4) predicted. Against the April vLLM build (R26: 2.70 tok/s, 36.7 J/token) that is 4.5
+  times the speed for 3.5 times fewer joules. Pod C's teacher now runs a rebuilt vLLM (0.31.2 for gfx1151 with the
+  RDNA hybrid W4A16 kernel) at 12.0 tok/s at batch 1 (Ilan1's R58/R60 on the channel, 12:40 AM ET; its J/token was
+  not in hand here), so the rebuilt vLLM and llama.cpp now meet at the same ceiling for one stream.
+- **Batching scales poorly on HIP.** The server's own timings show every slot of an 8-stream round decoding at 2.69
+  tok/s: 8 tokens a step cost 372 ms against 82 ms for one, 4.5 times the time for 8 times the tokens, and the total
+  stays near 21 to 23 tok/s at 4 and 8 streams. Image prompts also stall the other slots while the projector encodes
+  (TTFT 7 s at 4 streams, 14 s at 8, 28 s at 16). 16 streams still give 42 tok/s and 2.27 J/token, better than the
+  April vLLM at 16 (27 tok/s, 3.56 J/token); whether llama.cpp keeps that lead at 64, where the April vLLM made 49.5
+  tok/s at 1.94 J/token, was not measured.
+- **Spread.** One batch-4 run made 5.32 tok/s per stream against 9.09 and 9.10 in the other two, and the first
+  session's second repeat drew 95 W at batch 1 against 110 W in the other two runs at the same speed; three runs cannot
+  say which state is normal. Every row is `low_confidence`.
+- **Not done.** Batch 64; the second and third repeats at 8 and 16; the correctness harness's greedy outputs on the
+  prompt set (`python -m lab correctness record --account D --port 8100 --engine llamacpp ...`), so llama.cpp and vLLM
+  outputs are not yet compared token for token; and the two coherence checks (a chat with thinking off and an image
+  caption through the proxy). The bench requests all finished with 128 tokens and the image prompts were encoded
+  (about 1,008 prompt tokens each in the server log), but the harness keeps no output text, so coherence is not
+  verified here. The Vulkan backend did not run on pod D: the image has no Vulkan loader, and R58's user-space Mesa
+  RADV (in `~/vk`) ran it on pod C.
+- **Files.** Raw rows of both sessions, `llama-bench`'s JSON and the tail of the 16-slot server log are in
+  `fixtures/lab/bench/pod-b-llamacpp-2026-10-11/`; the medians are `teacher_llamacpp.*` in `lab/refine/metrics.jsonl`
+  (node pod-b), recomputed from the fixture in `tests/test_lab_pod_b_llamacpp.py`. The first session's rows had the
+  checkpoint path rewritten by Git Bash on the box (`C:/Program Files/Git/home/...`); the fixture carries the pod path,
+  and the harness calls now set `MSYS_NO_PATHCONV=1`.
+### The teacher on vLLM v0.31.0 with the RDNA hybrid W4A16 kernel (R60, pod C)
+
+Since 2026-10-11 04:41 UTC the pod C teacher runs from `~/venv-vllm-new`: vLLM `0.31.2.dev0+gdb9527a46.gfx1151` (tag
+v0.31.0 plus `lab/patches/vllm-main-gfx1151-platform.diff`), torch 2.12.0+rocm7.14.0 with AMD's ROCm 7.14 SDK inside
+the venv, Triton 3.7.1. `lab/vllm_upgrade.sh` builds it beside the serving build (`build`, `status`, `verify`) and
+swaps it in (`serve`); the April build in the image's python and `~/vllm` is untouched. Model, served names, flags and
+port are the ones of `lab/pod_a_teacher.sh serve`; only the interpreter differs (`~/r60/teacher_cmdline_after.txt`
+against `~/r58/teacher_cmdline_before.txt` on the pod). The serve log says `Using RDNAHybridW4A16LinearKernel for
+CompressedTensorsWNA16`, decoder attention `ROCM_ATTN`, vision encoder `TRITON_ATTN`, KV cache 596,570 tokens. The
+start took 467 s (weights 26 s, engine init 393 s of which 71 s compilation). A tools request returns structured
+`tool_calls` on the pod and through the hub proxy.
+
+The same sweep as R26's above, run the same way against the new server (`python -m lab bench attach --account C
+--node pod-a --batches 1,4,8,16 --no-64 --repeats 3 --no-probe --idle-s 30 --max-len 16384 --quantization
+compressed-tensors-W4A16-INT4 --metric-prefix teacher_batching --metrics-file lab/refine/metrics.jsonl`, session
+`bench-20261011T044643Z-6240`, 04:46 to 05:21 UTC, one warm-up round, medians of 3 repeats, low confidence like R26's).
+The stock lines are R26's rows (`lab/refine/metrics.jsonl:67-90`), the new ones `lab/refine/metrics.jsonl:161-184`:
+
+| Concurrent | Build | tok/s per stream (min to max) | tok/s total | TTFT s | avg / peak W | J/token gross |
+|---|---|---|---|---|---|---|
+| 1 | April, b1388b1 | 2.70 (2.69 to 2.70) | 2.62 | 1.18 | 96.0 / 97 | 36.66 |
+| 1 | v0.31.0, hybrid kernel | 12.33 (12.32 to 12.33) | 10.96 | 0.94 | 96.7 / 99 | 8.82 |
+| 4 | April, b1388b1 | 2.52 (2.52 to 2.55) | 9.32 | 4.87 | 96.0 / 97 | 10.31 |
+| 4 | v0.31.0, hybrid kernel | 9.27 (9.18 to 9.68) | 29.54 | 3.85 | 96.2 / 98 | 3.27 |
+| 8 | April, b1388b1 | 2.32 (2.32 to 2.32) | 16.36 | 7.78 | 96.0 / 97 | 5.87 |
+| 8 | v0.31.0, hybrid kernel | 5.88 (5.60 to 6.04) | 36.53 | 6.76 | 96.1 / 97 | 2.69 |
+| 16 | April, b1388b1 | 2.07 (2.02 to 2.13) | 26.95 | 14.95 | 96.0 / 97 | 3.56 |
+| 16 | v0.31.0, hybrid kernel | 4.24 (4.16 to 4.40) | 51.09 | 10.45 | 96.1 / 97 | 1.88 |
+
+- **Gain.** One stream decodes 4.6 times faster (12.33 against 2.70 tok/s) at the same 96 W, so a token costs 0.24 of
+  what it did (8.82 against 36.66 J). The gain shrinks as streams are added: 3.7 times per stream at 4, 2.5 at 8, 2.0 at
+  16, where the total is 51.1 tok/s against 26.9 and a token costs 1.88 J against 3.56. That is above R59's predicted 7
+  to 10 tok/s and level with llama.cpp on the same pod (R58's runs of the same night, not merged yet: 12.25 tok/s Vulkan, 12.0 ROCm at
+  batch 1).
+- **Power.** The median stays near 96 W at every batch size, as on the stock build; single repeats at 1, 4 and 8
+  averaged 99 to 110 W with peaks to 124 W, which is why those rows' spread is wide. Loaded idle read 9.9 W (30 s
+  before the sweep).
+- **Outputs.** `python -m lab correctness compare` against the April build's baseline
+  (`fixtures/lab/correctness/vllm-gfx1151-2026-10-11.json`) matches 1 prompt of 4 token for token
+  (`lab/refine/metrics.jsonl:160`): the kitchen text matches; the schedule text diverges at token 106 by a logprob gap
+  of 0.06, the token where the April build diverged from itself; the two image prompts diverge at tokens 0 and 3, the
+  places where stock v0.31.0 on the A100 does (R57). Against the A100's v0.31.0 record
+  (`fixtures/lab/bench/a100-2026-10-10/vllm-a100-2026-10-10.json`) it matches 2 of 4 (the kitchen text and the bars
+  image; the schedule text at token 76, the shapes image at 67). So 0.25 against the old build, below its 0.5
+  self-match, and 0.5 against the same vLLM version on another chip: the image prompts changed with the vLLM version,
+  not with the kernel. Both full results are in `fixtures/lab/correctness/r60-2026-10-11/`.
+- **What the swap needed.** The image exports `LD_LIBRARY_PATH=/opt/rocm/lib` (ROCm 7.13). vLLM preloads from it before
+  it imports torch, and torch's own preload of the venv's 7.14 SDK then dies on `libamd_comgr.so.3` (`undefined symbol
+  ... version LLVM_23.0`): the first start ended at import after 5 s. `verify` had passed because it imported torch
+  first. `serve` and `verify` now drop that variable (`serve_env`) and `verify` imports vllm first. The `num_stages`
+  guard (`lab/patches/vllm-main-gfx1151-num-stages.diff`, `lds`) was not needed: no `OutOfResources` at start or under
+  16 streams. The log's `Failed to import Triton kernels ... is_hip_gfx1250` lines are the MXFP4 kernels this model
+  does not use.
+- **Back to the April build.** On pod C: `bash ~/r60/pod_a_teacher.sh stop`, then `bash ~/r60/vllm_upgrade.sh restore`
+  (about 5 minutes); `bash ~/r60/vllm_upgrade.sh serve` returns to this build (about 8 minutes). The serve pid is in
+  `~/serve/vllm-new.pid`, the log in `~/serve/vllm-new.log`.
+- **Attach.** The harness cannot read the engine through the proxy, so engine commit, torch, ROCm, Triton, the linear
+  kernel and the KV cache in these rows were read on the pod after the sweep and are marked `told`.
+
 ## Request-side settings sweep: `lab/sweep_request.py` (R52)
 
 The settings a request carries, measured on one server spawn of the stock teacher on pod D, so no cell restarts the
@@ -1340,13 +1478,14 @@ python -m lab.energy_model check <lab/bench.py rows.jsonl | sweep-request-gfx115
   `joules_per_token.b1`, gross, with `decode_tok_s.b1 >= 2.88` and `ttft_s.b1 <= 2.0` as outcome constraints.
 
 The before-and-after number of the night. Gross J/token from `lab/bench.py` (socket energy over the decode window
-over the tokens in it), medians of the runs named. The "after" row is filled from the best measured configuration on
-the rebuilt teacher (R53 / R60) once it is benchmarked; until then it is pending, not estimated.
+over the tokens in it), medians of the runs named. The "after" row is R60's sweep of the teacher rebuilt on vLLM v0.31.0 with the
+RDNA hybrid W4A16 kernel (the stock serve line, no tuned arm yet), at batch 1 like the before row; its other batch
+sizes are in the R60 table above.
 
 | | Build | Configuration | Batch | tok/s per stream | tok/s total | Avg W | J/token gross | J/token above idle | Conditions |
 |---|---|---|---|---|---|---|---|---|---|
 | Before | April build: vLLM 0.19.2 at b1388b1 plus `lab/vllm-gfx1201.diff`, Conch W4A16, `RedHatAI/Qwen3.8-27B-INT4` | stock serve line, thinking off, greedy | 1 | 2.70 | 2.62 | 96.0 | 36.66 | 32.67 | R26 attach sweep, pod C (SJC, account C), bench-v1, 4 x 128 tokens a stream, 3 repeats, idle 10.44 W, PR #269 (081c496) |
-| After | rebuilt teacher (R53 / R60) | best measured arm | pending | pending | pending | pending | pending | pending | pending: run, pod, prompt set, repeats, idle, commit |
+| After | v0.31.0 build: vLLM 0.31.2.dev0 at db9527a46 plus `lab/patches/vllm-main-gfx1151-platform.diff`, torch 2.12.0+rocm7.14.0, `RDNAHybridW4A16LinearKernel`, the same checkpoint | stock serve line, thinking off, greedy | 1 | 12.33 | 10.96 | 96.7 | 8.82 | 7.91 | R60 attach sweep, pod C (SJC, account C), bench-v1, 4 x 128 tokens a stream, 3 repeats, idle 9.93 W, session `bench-20261011T044643Z-6240` (`lab/refine/metrics.jsonl:161-166`) |
 
 For reference, the April build's own batch-1 smoke on pod C read 2.88 tok/s at 120 W, about 41.7 J/token
 (teacher section above); the R26 row is the before number because it ran through the same harness the after row will.

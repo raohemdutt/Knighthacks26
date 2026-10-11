@@ -41,6 +41,7 @@ def build_runtime(path: str | Path = "config/models.yaml", llm_url: str | None =
         raise ValueError(f"unknown atlas_model backend {backend!r}")
 
     from runtime.llama import LlamaServerRuntime
+    from runtime.scheduler import GpuScheduler
 
     emb = cfg.get("embeddings", {})
     return LlamaServerRuntime(
@@ -49,4 +50,5 @@ def build_runtime(path: str | Path = "config/models.yaml", llm_url: str | None =
         text_embedder=text_embedder_from(emb.get("text")),
         image_embedder=image_embedder_from(emb.get("image")),
         timeout_s=float(atlas.get("timeout_s", 120)),
+        scheduler=GpuScheduler.from_config(cfg.get("scheduler")),
     )

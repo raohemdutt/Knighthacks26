@@ -8,9 +8,9 @@ plugged in as a callable so this module never imports ultralytics.
 
 import base64
 import contextlib
+import hashlib
 import json
 import re
-import threading
 import time
 from collections.abc import Callable
 from typing import Any
@@ -19,6 +19,7 @@ import httpx
 
 from contracts.types import Box, ChatMessage, ChatResult, Detection, ModelVersion, ObjectHit, ToolCall, Track
 from runtime.interface import Priority
+from runtime.scheduler import GpuScheduler
 
 FIND_OBJECTS_PROMPT = (
     "List the small objects you can see. Reply with only a JSON array like "
@@ -71,6 +72,7 @@ class LlamaServerRuntime:
         load_image: Callable[[str], bytes] | None = None,
         timeout_s: float = 120.0,
         transport: httpx.BaseTransport | None = None,
+        scheduler: GpuScheduler | None = None,
     ) -> None:
         self.model = model
         self.detector = detector
@@ -78,17 +80,18 @@ class LlamaServerRuntime:
         self.image_embedder = image_embedder
         self.load_image = load_image  # frame_ref -> jpeg bytes, for ChatMessage.images
         self.http = httpx.Client(base_url=base_url, timeout=timeout_s, transport=transport)
-        self.gate = PriorityGate()  # llama-server runs one request at a time (-np 1): questions go first
+        # R4: priority order, VLM rate cap, batching over llama-server's slots (models.yaml `scheduler:`)
+        self.gate = scheduler or GpuScheduler()
 
     def detect_track(self, frame: Any) -> list[Track]:
         if self.detector is None:
             raise RuntimeError("no detector configured")
         return self.detector(frame)
 
-    def detect_open(self, jpeg: bytes, labels: list[str]) -> list[Detection]:
+    def detect_open(self, jpeg: bytes, labels: list[str], priority: Priority = "caption") -> list[Detection]:
         prompt = DETECT_OPEN_PROMPT.format(labels=", ".join(labels))
         content = [_image_part(jpeg), {"type": "text", "text": prompt}]
-        text = self._complete([{"role": "user", "content": content}], max_tokens=300)["content"]
+        text = self._complete([{"role": "user", "content": content}], max_tokens=300, priority=priority)["content"]
         out = []
         for item in _parse_json_array(text):
             box = _box_1000(item.get("box") or item.get("bbox_2d") or item.get("bbox"))
@@ -106,22 +109,22 @@ class LlamaServerRuntime:
             raise RuntimeError("no image embedding model configured (models.yaml: embeddings.image)")
         return self.image_embedder(jpeg)
 
-    def caption(self, jpeg: bytes, prompt: str = "Describe the scene in one sentence.") -> str:
+    def caption(self, jpeg: bytes, prompt: str = "Describe the scene in one sentence.", priority: Priority = "caption") -> str:
         content = [_image_part(jpeg), {"type": "text", "text": prompt}]
-        return self._complete([{"role": "user", "content": content}], max_tokens=80)["content"].strip()
+        return self._complete([{"role": "user", "content": content}], max_tokens=80, priority=priority)["content"].strip()
 
-    def find_objects(self, jpeg: bytes, items: list[str] | None = None) -> list[ObjectHit]:
+    def find_objects(self, jpeg: bytes, items: list[str] | None = None, priority: Priority = "caption") -> list[ObjectHit]:
         prompt = FIND_OBJECTS_PROMPT
         if items:
             prompt += " Only include: " + ", ".join(items) + "."
         content = [_image_part(jpeg), {"type": "text", "text": prompt}]
-        text = self._complete([{"role": "user", "content": content}], max_tokens=256)["content"]
+        text = self._complete([{"role": "user", "content": content}], max_tokens=256, priority=priority)["content"]
         hits = [ObjectHit(label=i["label"], position=str(i.get("position", ""))) for i in _parse_json_array(text)]
         return [h for h in hits if items is None or h.label in items]
 
-    def summarize(self, captions: list[str]) -> str:
+    def summarize(self, captions: list[str], priority: Priority = "summary") -> str:
         prompt = "Summarize what happened in one or two sentences:\n" + "\n".join(f"- {c}" for c in captions)
-        return self._complete([{"role": "user", "content": prompt}], max_tokens=120)["content"].strip()
+        return self._complete([{"role": "user", "content": prompt}], max_tokens=120, priority=priority)["content"].strip()
 
     def chat(
         self,
@@ -133,10 +136,10 @@ class LlamaServerRuntime:
     ) -> ChatResult:
         start = time.monotonic()
         if on_text and not tools and not json_schema:
-            text = self._stream([self._to_openai(m) for m in messages], on_text, max_tokens=512)
+            text = self._stream([self._to_openai(m) for m in messages], on_text, max_tokens=512, priority=priority)
             return ChatResult(content=text, model_version=self.model.version, latency_ms=int((time.monotonic() - start) * 1000))
         msg = self._complete([self._to_openai(m) for m in messages], tools=tools, max_tokens=512, json_schema=json_schema,
-                             urgent=priority == "chat")
+                             priority=priority)
         calls = [
             ToolCall(id=c["id"], name=c["function"]["name"], arguments=json.loads(c["function"]["arguments"] or "{}"))
             for c in msg.get("tool_calls") or []
@@ -164,11 +167,13 @@ class LlamaServerRuntime:
             out["tool_call_id"] = m.tool_call_id
         return out
 
-    def _stream(self, messages: list[dict], on_text: Callable[[str], None], max_tokens: int = 256) -> str:
+    def _stream(self, messages: list[dict], on_text: Callable[[str], None], max_tokens: int = 256,
+                priority: Priority = "chat") -> str:
         """OpenAI-style server-sent events from llama-server: each `data:` line carries a delta."""
         body = {"messages": messages, "max_tokens": max_tokens, "temperature": 0.2, "stream": True}
         parts: list[str] = []
-        with self.gate.slot(urgent=True), self.http.stream("POST", "/v1/chat/completions", json=body) as r:
+        with self.gate.slot(priority, vlm=_has_image(messages)), \
+                self.http.stream("POST", "/v1/chat/completions", json=body) as r:
             r.raise_for_status()
             for line in r.iter_lines():
                 if not line.startswith("data:"):
@@ -183,47 +188,37 @@ class LlamaServerRuntime:
         return "".join(parts)
 
     def _complete(self, messages: list[dict], tools: list[dict] | None = None, max_tokens: int = 256,
-                  json_schema: dict | None = None, urgent: bool = False) -> dict:
+                  json_schema: dict | None = None, priority: Priority = "caption") -> dict:
         body: dict[str, Any] = {"messages": messages, "max_tokens": max_tokens, "temperature": 0.2}
         if tools:
             body["tools"] = tools
         if json_schema:  # OpenAI-style structured output; llama-server turns it into a grammar
             body["response_format"] = {"type": "json_schema", "json_schema": {"name": "reply", "schema": json_schema, "strict": True}}
-        with self.gate.slot(urgent):
-            r = self.http.post("/v1/chat/completions", json=body)
-        r.raise_for_status()
-        return r.json()["choices"][0]["message"]
+
+        def post() -> dict:
+            with self.gate.slot(priority, vlm=_has_image(messages)):
+                r = self.http.post("/v1/chat/completions", json=body)
+            r.raise_for_status()
+            return r.json()["choices"][0]["message"]
+
+        # Identical requests in flight at the same rank share one answer (e.g. two cameras' summaries of the
+        # same captions, a retried caption). The key is the exact body, so nothing different is ever merged.
+        key = (priority, hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest())
+        return self.gate.coalesce(key, post)
 
 
-class PriorityGate:
-    """The device scheduler's first rule (interface.py: chat > captions > summaries > backfill), in-process.
+def _has_image(messages: list[dict]) -> bool:
+    return any(isinstance(m.get("content"), list) and any(p.get("type") == "image_url" for p in m["content"])
+               for m in messages)
 
-    llama-server answers one request at a time, and the perception service captions keyframes with the same
-    model every few seconds; on the Jetson a question waited behind a queue of captions (7-11 s for a
-    12-word answer). Here a request holds the one slot, and background work (captions, object lists,
-    summaries) never takes it while a question is waiting, so a question waits for at most the one
-    background request already running."""
 
-    def __init__(self) -> None:
-        self._cv = threading.Condition()
-        self._busy = False
-        self._urgent_waiting = 0
+class PriorityGate(GpuScheduler):
+    """The pre-R4 two-level gate's interface (`slot(urgent)`), on the R4 scheduler: urgent = chat, else caption.
+
+    Kept so older callers and tests keep working; new code uses GpuScheduler.slot(priority)."""
 
     @contextlib.contextmanager
-    def slot(self, urgent: bool = False):
-        with self._cv:
-            if urgent:
-                self._urgent_waiting += 1
-            try:
-                while self._busy or (not urgent and self._urgent_waiting):
-                    self._cv.wait()
-            finally:
-                if urgent:
-                    self._urgent_waiting -= 1
-            self._busy = True
-        try:
+    def slot(self, urgent: bool | str = False, vlm: bool = False):  # type: ignore[override]
+        priority = urgent if isinstance(urgent, str) else ("chat" if urgent else "caption")
+        with super().slot(priority, vlm=vlm):
             yield
-        finally:
-            with self._cv:
-                self._busy = False
-                self._cv.notify_all()

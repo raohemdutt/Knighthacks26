@@ -19,6 +19,13 @@ atlas_model:
 routing:
   policy: capability
 
+# The device GPU scheduler (R4, runtime/scheduler.py) in front of llama-server:
+# detection > alerts > chat > captions > summaries > backfill, first come first served within a rank.
+scheduler:
+  slots: 1              # = llama-server -np (jetson/atlas-llm.sh). >1 batches requests; background keeps one free for chat
+  vlm_max_per_min: 24   # background image calls (captions, object lists) per rolling minute; chat is never capped
+  coalesce: true        # identical requests in flight share one answer
+
 detector:
   # Real-time detect + track (P1, P2): ultralytics on a TensorRT engine, plugged in by Perception.
   backend: ultralytics

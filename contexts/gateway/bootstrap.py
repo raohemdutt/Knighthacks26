@@ -23,6 +23,7 @@ from bus import EventBus
 from contexts.agent.application.loop import ODD_HOURS_DESCRIPTION, ODD_HOURS_RULE, AgentLoop
 from contexts.agent.application.planner import Planner
 from contexts.agent.application.qa import QA, SleepSchedule
+from contexts.agent.application.done import DoneToday
 from contexts.agent.application.talk import Talk, TalkConfig
 from contexts.agent.application.web_port import HubWebTools, TavilyWebTools
 from contexts.agent.domain.rules import AlertHistory, RuleEvaluator, load_rules
@@ -326,6 +327,12 @@ def build(settings: Settings | None = None) -> Atlas:
     # Conversation: small talk and simple questions, after the planner and the pre-fetch passed (agent.yaml `talk:`).
     talk = Talk(runtime, qa.clock, memory=memory, config=TalkConfig.of(agent_cfg.get("talk")), tz=qa.sleep.tz, web=bool(web))
     talk.about = profile.description
+    qa.names = dict(talk.config.names)  # how a course code is said aloud (agent.yaml `talk.names`)
+    # "How's it going?" is answered with what Atlas did for the person today, counted from the log (a projection).
+    done = DoneToday(qa.sleep.tz)
+    for prefix in DoneToday.PREFIXES:
+        bus.subscribe(prefix, done.on_event, replay=True)
+    talk.done_for_you = lambda: done.clauses(qa.clock())
     if talk.config.enabled:  # ATLAS_TALK=0 or `talk.enabled: false`: every open-ended question goes to the tool loop
         qa.talk = talk
     rules = RuleEvaluator(load_rules(profile.path("rules.yaml")), builtin={ODD_HOURS_RULE: ODD_HOURS_DESCRIPTION})

@@ -24,6 +24,11 @@
         The T-15 checklist (D9): PASS/FAIL with the fix for each, plus a warm-up question and its time.
         --reset first clears alert cooldowns and leftover approval cards (memory is untouched).
 
+    python -m contexts.demo kit --gateway http://<box>:8000 [--ntfy URL] [--topic atlas] [--devpost URL] [--out data/kit]
+        The demo staging kit (D6): the physical checklist with the beat each item serves, then the software half
+        checked against the box (app served and installable, ntfy and its topic, preflight); --devpost writes a
+        printable QR card to --out.
+
     python -m contexts.demo fake perception --gateway http://<box>:8000 [--token $ATLAS_TOKEN] [--realtime]
         The camera scene pushed into a running box (POST /api/events), timed from now: its own zone
         engine, rules, Sort It and Waste Watch react live, as if the camera saw it.
@@ -81,6 +86,13 @@ def main(argv: list[str] | None = None) -> int:
     pf.add_argument("--token", default=os.environ.get("ATLAS_TOKEN"))
     pf.add_argument("--reset", action="store_true", help="clear cooldowns and leftover approval cards first")
     pf.add_argument("--question", default="Where are my keys?", help="the warm-up question")
+    kt = sub.add_parser("kit", help="the demo staging kit: physical checklist and software checks (D6)")
+    kt.add_argument("--gateway", default="http://127.0.0.1:8000")
+    kt.add_argument("--ntfy", default=os.environ.get("NTFY_URL"), help="default: NTFY_URL, else the gateway's host on :8090")
+    kt.add_argument("--topic", default=os.environ.get("NTFY_TOPIC", "atlas"))
+    kt.add_argument("--devpost", default=os.environ.get("DEVPOST_URL"), help="the project page; writes the printable QR card")
+    kt.add_argument("--out", type=Path, default=Path("data/kit"), help="where the QR card goes (gitignored)")
+    kt.add_argument("--list", action="store_true", help="only print the physical checklist")
     v = sub.add_parser("video", help="the submission video's number-key layout (D10)")
     v.add_argument("action", choices=["check", "chapters", "cards", "json"])
     v.add_argument("file", nargs="?", type=Path, help="check: the exported video; cards: where to write the HTML")
@@ -101,6 +113,17 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "video":
         return video_command(args.action, args.file)
+
+    if args.command == "kit":
+        from contexts.demo import kit
+
+        print(kit.checklist())
+        if args.list:
+            return 0
+        checks = kit.software_checks(args.gateway, args.ntfy, args.topic, args.devpost, args.out)
+        print()
+        print(kit.report(checks))
+        return 0 if all(c.ok for c in checks) else 1
 
     if args.command == "preflight":
         return preflight(args.gateway, args.token, args.reset, args.question)

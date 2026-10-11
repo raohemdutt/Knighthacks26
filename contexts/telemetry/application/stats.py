@@ -14,9 +14,13 @@
 
 Each Figure is {value, unit, node, ts, source, low_confidence, reason} (domain/stats.py). It measures nothing and
 calls nothing: no model server, pod, hub or Jetson tool is asked. A figure takes the newest of its candidates:
-- the lab's metrics file and ledger (infrastructure/lab_records.py), under the metric names in FIGURES;
+- the lab's metrics file and ledger (infrastructure/lab_records.py), under the metric names in FIGURES, plus the
+  ledger copy the lab pushed to the box (POST /api/learning/lab/import?kind=ledger) when the gateway names its folder;
+  train_minutes also takes the trainer's own `train` ledger row, whose trainer.train_s (seconds of trainer.train())
+  is served in minutes;
 - the telemetry projection, when the gateway runs telemetry: decode rates over the newest RECENT_WINDOWS
-  `telemetry.request` windows of the node that answered (jetson for the on-device model, pod-a for the teacher);
+  `telemetry.request` windows of the node that answered (jetson for the on-device model, pod-a for the teacher), and
+  the mean start-to-end seconds of the newest RECENT_WINDOWS jetson windows whose kind is "caption";
 - the training runs (application/train_runs.py), folded from `telemetry.train.step` on pod-b whether or not the box
   runs a sampler, since lab/train.py's steps reach the log through contexts/learning/lab_import.py (POST
   /api/learning/lab/import, or the command), not through a sampler:
@@ -28,13 +32,13 @@ calls nothing: no model server, pod, hub or Jetson tool is asked. A figure takes
 On a tie the metrics file is cited first, then the ledger (a ledger backfill copies metrics rows with their times).
 When no candidate exists the figure is null and its reason names the metric, the node and the events looked for.
 
-Most figures have no producer in the repo yet, so they can only be null until one is built or a number is recorded by
-hand (`python -m lab ledger add ...`, or a row in lab/refine/metrics.jsonl). Nothing writes a detector.fps,
-student.decode_tok_s, student.caption_s or trainer.run_minutes row; nothing publishes `telemetry.request` (the
-Jetson's only telemetry source, tegrastats, publishes power readings); `telemetry.train.step` arrives only when the lab
-pushes a run's telemetry.jsonl to the box; and `learning.run.evaluated` only with a pushed scores.json, so until then a
-deployed model's before and after scores are null with their reason. This endpoint does not measure anything itself:
-the producers belong to the contexts that run the detector, the on-device model and the trainer.
+Some figures still have no producer on the box, so they stay null until one is built or a number is recorded by hand
+(`python -m lab ledger add ...`, or a row in lab/refine/metrics.jsonl): nothing writes a detector.fps row, and nothing
+publishes `telemetry.request` yet (the runtime client does not report the on-device model's answers and captions, and
+the Jetson's only telemetry source, tegrastats, publishes power readings). `telemetry.train.step` arrives only when
+the lab pushes a run's telemetry.jsonl to the box, and `learning.run.evaluated` only with a pushed scores.json, so until
+then a deployed model's before and after scores are null with their reason. This endpoint does not measure anything
+itself: the producers belong to the contexts that run the detector, the on-device model and the trainer.
 
 The projection and the eval fold are read on the event loop, where their events land; the files are read in a
 worker thread, so a slow disk or a held lock never stalls the loop.
@@ -48,7 +52,7 @@ from contexts.telemetry.application.evals import EvalScores
 from contexts.telemetry.application.projection import TelemetryProjection
 from contexts.telemetry.application.train_runs import TrainRuns
 from contexts.telemetry.domain.nodes import JETSON, POD_A, POD_B
-from contexts.telemetry.domain.stats import Figure, decode_rate, missing, newest, run_minutes
+from contexts.telemetry.domain.stats import Figure, decode_rate, mean_latency, missing, newest, run_minutes
 from contexts.telemetry.infrastructure.lab_records import LabRecords
 
 TELEMETRY_OFF = "telemetry is off on this box (ATLAS_TELEMETRY_SOURCE is not set)"
@@ -61,24 +65,27 @@ class Spec:
     unit: str
     metric: str  # its name in the lab's metrics file and ledger
     node: str | None  # the node its lab rows must name; None for any
-    telemetry: str | None = None  # "decode" (a request-window rate, from the projection), or from the training runs
-    #                               "run" (minutes) or "loss" (the newest loss)
+    telemetry: str | None = None  # from the projection "decode" (a request-window rate) or "caption" (seconds per
+    #                               caption window), or from the training runs "run" (minutes) or "loss" (the newest)
     telemetry_node: str | None = None  # the node whose telemetry events it is computed from
     no_telemetry: str = ""  # why telemetry cannot give it, for a figure it cannot
+    scaled: tuple[tuple[str, float], ...] = ()  # other lab metrics that give it once multiplied: (metric, factor)
 
 
 FIGURES = (
     Spec("detector_fps", "frames/s", "detector.fps", JETSON, no_telemetry=(
         "the gateway keeps no detector timing (GET /capture/status counts detections without timing them)")),
     Spec("student_tok_s", "tok/s", "student.decode_tok_s", JETSON, telemetry="decode", telemetry_node=JETSON),
-    Spec("caption_latency_s", "s", "student.caption_s", JETSON,
-         no_telemetry="telemetry.request windows do not say which requests were captions"),
+    Spec("caption_latency_s", "s", "student.caption_s", JETSON, telemetry="caption", telemetry_node=JETSON),
     Spec("trainer_samples_per_s", "samples/s", "trainer.samples_per_s", None,
          no_telemetry="telemetry.train.step carries no sample count"),
-    Spec("train_minutes", "min", "trainer.run_minutes", None, telemetry="run", telemetry_node=POD_B),
+    # lab/train.py's `train` ledger row carries trainer.train_s, the wall time of trainer.train() in seconds.
+    Spec("train_minutes", "min", "trainer.run_minutes", None, telemetry="run", telemetry_node=POD_B,
+         scaled=(("trainer.train_s", 1 / 60),)),
     Spec("train_loss", "loss", "trainer.loss", None, telemetry="loss", telemetry_node=POD_B),
     Spec("teacher_tok_s", "tok/s", "teacher.decode_tok_s", None, telemetry="decode", telemetry_node=POD_A),
 )
+CAPTION = "caption"  # RequestWindow.kind of an on-device caption (contracts/telemetry.py)
 
 
 class RuntimeStats:
@@ -92,15 +99,19 @@ class RuntimeStats:
     async def snapshot(self) -> dict[str, Any]:
         telemetry = {s.key: self._from_telemetry(s) for s in FIGURES}  # (figure or None, why not)
         evals = self.evals.snapshot()
-        found, problems = await asyncio.to_thread(self.lab.find, [(s.metric, s.node) for s in FIGURES])
+        wanted = [(m, s.node) for s in FIGURES for m in (s.metric, *(name for name, _ in s.scaled))]
+        found, problems = await asyncio.to_thread(self.lab.find, list(dict.fromkeys(wanted)))
         out: dict[str, Any] = {}
         for s in FIGURES:
             figure, why_not = telemetry[s.key]
-            best = newest([*found[(s.metric, s.node)], figure])
+            lab = [*found[(s.metric, s.node)],
+                   *(_scaled(f, name, factor, s.unit) for name, factor in s.scaled for f in found[(name, s.node)])]
+            best = newest([*lab, figure])
             if best is None:
                 node = f" for node {s.node}" if s.node else ""
+                names = " or ".join([s.metric, *(name for name, _ in s.scaled)])
                 best = missing(s.unit, "; ".join([
-                    f"not recorded yet: no {s.metric} row{node} in the lab metrics file or the lab ledger", why_not,
+                    f"not recorded yet: no {names} row{node} in the lab metrics file or the lab ledger", why_not,
                     *problems]))
             out[s.key] = best.model_dump(mode="json")
         out["eval_scores"] = evals
@@ -116,6 +127,8 @@ class RuntimeStats:
             return self._loss(s.telemetry_node)
         if self.projection is None:
             return None, TELEMETRY_OFF
+        if s.telemetry == CAPTION:
+            return self._caption_seconds(s.telemetry_node, s.unit)
         node = s.telemetry_node
         rate = decode_rate(self.projection.requests(node)[-RECENT_WINDOWS:])
         if rate is None:
@@ -138,6 +151,16 @@ class RuntimeStats:
         return Figure(value=run["loss"], unit="loss", node=node, ts=run["loss_ts"], source=source,
                       low_confidence=not ended), ""
 
+    def _caption_seconds(self, node: str, unit: str) -> tuple[Figure | None, str]:
+        captions = [w for w in self.projection.requests(node) if w.kind == CAPTION][-RECENT_WINDOWS:]
+        latency = mean_latency(captions)
+        if latency is None:
+            return None, f"no telemetry.request window from node {node} with kind {CAPTION}"
+        value, used, last = latency
+        return Figure(value=value, unit=unit, node=node, ts=last,
+                      source=f"telemetry.request: {used} {CAPTION} window{'s' if used != 1 else ''} from node "
+                             f"{node}"), ""
+
     def _run_minutes(self, node: str) -> tuple[Figure | None, str]:
         runs = self.runs.on_node(node)
         if not runs:
@@ -149,3 +172,9 @@ class RuntimeStats:
             source += " (no learning.run.evaluated for it yet, so it may still be training)"
         return Figure(value=run_minutes(run["first_ts"], run["last_ts"], run["step_ms"]), unit="min", node=node,
                       ts=run["last_ts"], source=source, low_confidence=not ended), ""
+
+
+def _scaled(figure: Figure, metric: str, factor: float, unit: str) -> Figure:
+    """A lab row of another metric that gives this figure once multiplied (trainer.train_s in minutes)."""
+    return figure.model_copy(update={"value": figure.value * factor, "unit": unit,
+                                     "source": f"{figure.source} ({metric} x {factor:.6g})"})

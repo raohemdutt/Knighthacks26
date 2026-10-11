@@ -44,6 +44,7 @@
 - GET  /api/learning        taught tasks: stage, progress, scores, deployed models (X10)
 - GET  /api/learning/lab    training runs as stories for the Learning lab screen; /api/learning/lab/{run_id} is one
 - GET  /api/learning/lab/bench    the lab's benchmark and energy rows; /experiments is its timeline; POST /routing/simulate
+- GET  /api/digest          [?day=YYYY-MM-DD] the day's episodes in one paragraph, cited, no model call (A6)
 - GET  /api/profile         who this box serves: name, description, vocabulary, overridden config files
 - GET  /api/league          the League: this week's standings, worst and best with reasons, stake, dares, team waste line
 - GET  /api/league/me       this member's breakdown by target
@@ -81,6 +82,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from contexts.gateway.bootstrap import Atlas, Settings, build
+from contexts.agent.api import digest_router
+from contexts.agent.application.digest import Digester
 from contexts.agent.application.rule_compiler import RuleCompileError, compile_rule
 from contexts.circle.api import circle_router
 from contexts.circle.face_share_api import face_share_router
@@ -193,6 +196,8 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         app.include_router(profile_router(atlas.profile), prefix="/api")
     if atlas.memory:  # GET /memory/... (M4)
         app.include_router(memory_router(atlas.memory, atlas.settings.data_dir / "frames"))
+    # GET /api/digest: the day's episodes in one paragraph, from the data (A6)
+    app.include_router(digest_router(Digester(atlas.qa.memory, atlas.qa.clock, atlas.qa.sleep.tz)))
 
     def authorized(authorization: str | None = Header(default=None)) -> None:
         token = atlas.settings.token
@@ -244,7 +249,8 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
     app.include_router(room_router(lambda: atlas.room, atlas.settings.config_dir, guard=authorized))
     app.include_router(voice_router(guard=authorized), prefix="/api")  # GET /api/voice/status, POST /api/voice/talk|stop|enabled (X16)
     app.include_router(runtime_router(ModelStore(atlas.settings.data_dir / "models"), llm_url=atlas.settings.llm_url))  # GET /runtime/models (R7)
-    app.include_router(stats_router(build_runtime_stats(atlas.bus, atlas.telemetry).snapshot))  # GET /runtime/stats (R5)
+    app.include_router(stats_router(build_runtime_stats(  # GET /runtime/stats (R5), + the ledger the lab pushed
+        atlas.bus, atlas.telemetry, imported_dir=imported_state_dir(atlas.settings.data_dir)).snapshot))
 
     @app.get("/health")
     async def health():

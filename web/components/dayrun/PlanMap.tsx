@@ -161,7 +161,7 @@ export function PlanMap({
           const isLit = ref === litPlace || (lit && (outdoor(lit.route.end) === ref || outdoor(lit.route.start) === ref));
           const below = where.get(ref);
           const name = `${pinName(p?.name ?? "", p?.aliases ?? [])}${closed.includes(ref) ? " · closed" : ""}`;
-          const r = 9;
+          const r = 9 + (closed.includes(ref) ? 5 : 0); // a closed pin's cross reaches past the pin: its name stands clear of it
           return (
             <a
               key={ref}
