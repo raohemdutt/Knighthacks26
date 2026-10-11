@@ -41,6 +41,7 @@ if (existsSync(pkg)) {
     const to = join(out, "wasm", f);
     if (!existsSync(to) || statSync(to).size !== statSync(from).size) copyFileSync(from, to);
   }
+  copyFileSync(join(pkg, "vision_bundle.mjs"), join(out, "vision_bundle.mjs")); // loaded by the page at run time, same origin
   const version = JSON.parse(readFileSync(join(pkg, "package.json"), "utf8")).version;
   console.log(`gaze: wasm runtime copied from @mediapipe/tasks-vision ${version} to public/gaze/wasm/`);
 } else {

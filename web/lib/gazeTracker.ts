@@ -57,6 +57,11 @@ export interface GazeEstimate {
 const KEY = "atlas.gaze";
 const VERSION = 2;
 const MODEL_URL = "/gaze/face_landmarker.task";
+const BUNDLE_URL = "/gaze/vision_bundle.mjs";
+type VisionModule = {
+  FilesetResolver: { forVisionTasks(wasm: string): Promise<unknown> };
+  FaceLandmarker: { createFromOptions(files: unknown, options: Record<string, unknown>): Promise<unknown> };
+};
 const WASM_URL = "/gaze/wasm";
 const INTERVAL_MS = 40; // up to 25 looks a second
 const STALE_MS = 600;
@@ -189,7 +194,14 @@ class Tracker {
         return;
       }
       if (!this.landmarker) {
-        const vision = await import("@mediapipe/tasks-vision");
+        // Loaded at run time from this app's own files (the prebuild step copies the bundle to public/gaze/), not bundled:
+        // a checkout that has not installed the package still builds, and the switch then says the runtime is missing.
+        const bundle = await fetch(BUNDLE_URL, { method: "HEAD" });
+        if (!bundle.ok || (bundle.headers.get("content-type") ?? "").includes("text/html")) {
+          this.set({ status: "no-model", detail: "The eye-tracking runtime is not installed on this box (run npm install, then build). The pointer still works without it." });
+          return;
+        }
+        const vision = (await import(/* webpackIgnore: true */ BUNDLE_URL)) as VisionModule;
         const files = await vision.FilesetResolver.forVisionTasks(WASM_URL);
         this.landmarker = (await vision.FaceLandmarker.createFromOptions(files, {
           baseOptions: { modelAssetPath: MODEL_URL, delegate: "CPU" },
