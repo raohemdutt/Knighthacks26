@@ -170,7 +170,8 @@ def test_due_this_week_answers_from_connector_items_with_links():
     assert [c.url for c in a.citations] == ["https://canvas/a"]  # the essay is next week; judging isn't "due"
     cal = asyncio.run(QA(FakeRuntime(), FakeMemory(items=items), clock=lambda: sunday_10am).ask("What's on my calendar today?"))
     assert [c.title for c in cal.citations] == ["Judging"]
-    assert asyncio.run(QA(FakeRuntime(), FakeMemory(), clock=lambda: sunday_10am).ask("Anything due tomorrow?")).text == NO_EVIDENCE
+    assert cal.text == "You've got Judging at 11, and that's it for today."  # said like a person, never "Coming up today: Judging, Sun 11:00 AM."
+    assert asyncio.run(QA(FakeRuntime(), FakeMemory(), clock=lambda: sunday_10am).ask("Anything due tomorrow?")).text == "Nothing due tomorrow."
 
 
 def test_search_hits_for_connector_items_cite_their_link():
@@ -249,7 +250,8 @@ def test_due_lists_are_answered_from_the_data_and_hedges_are_dropped():
                 when=NOW + timedelta(days=4), url="https://canvas/ex1")
     rt = FakeRuntime()
     a = asyncio.run(QA(rt, FakeMemory(items=[exam, hw]), clock=lambda: NOW).ask("Any assignments due this week?"))
-    assert a.text.startswith("Due this week: HW 4: linked lists, ") and "; Exam 1, " in a.text
+    assert a.text.startswith("You've got HW 4: linked lists due Tuesday at ") and ", then Exam 1 Thursday at " in a.text
+    assert ";" not in a.text and "Due this week:" not in a.text  # a sentence, not the list the screen used to get
     assert [c.url for c in a.citations] == ["https://canvas/hw4", "https://canvas/ex1"] and not rt.calls  # no model call
     assert tidy("Your keys were last seen at 7:41 PM. I didn't see that.") == "Your keys were last seen at 7:41 PM."
     assert tidy(NO_EVIDENCE) == NO_EVIDENCE
@@ -271,7 +273,8 @@ def test_a_visit_is_the_latest_stretch_of_people_and_everything_seen_during_it()
     a = QA(FakeRuntime(), memory, clock=lambda: NOW)
     ev = a.prefetch("What happened while the judges were here?")
     assert [c.episode_id for c in ev.citations] == ["v1", "obj", "v2"]
-    assert ev.direct.startswith("The latest visit started") and "phone is left on the desk" in ev.direct
+    assert ev.direct.startswith("The last visit started around ") and "phone is left on the desk" in ev.direct
+    assert "cam-desk" not in ev.direct and not __import__("re").search(r"\b(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d", ev.direct)  # no camera id, no stamps
     assert "Two people eat lunch" not in ev.direct  # the earlier visit
 
 
@@ -284,7 +287,7 @@ def test_no_person_in_view_recently_means_no_visit():
 def test_while_we_were_asleep_is_still_the_night_not_a_visit():
     a = QA(FakeRuntime(), MEMORY, clock=lambda: NOW)
     assert a.prefetch("What went on while we were asleep?").direct is None
-    assert a.prefetch("Recap their visit").direct.startswith("The latest visit")
+    assert a.prefetch("Recap their visit").direct.startswith("The last visit")
 
 
 # --- A13: fall back to the tool loop when the fixed path is unsure; more tools ---
