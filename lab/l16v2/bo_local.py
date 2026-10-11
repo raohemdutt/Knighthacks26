@@ -47,6 +47,7 @@ import sqlite3
 import subprocess
 import sys
 import tarfile
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -108,12 +109,23 @@ def clean(raw: bytes) -> str:
 
 
 def colab(*args: str, timeout: int = 200) -> str:
+    """One call of the Colab CLI. Its output goes to a file, not a pipe, and on a timeout the whole process tree is
+    killed: a pipe held open by a grandchild (bash, wsl, the CLI) once left a worker's thread waiting for ever."""
     env = {**os.environ, "MSYS_NO_PATHCONV": "1"}
-    try:
-        done = subprocess.run([BASH, WRAPPER, *args], capture_output=True, timeout=timeout, env=env)
-        return clean(done.stdout + done.stderr)
-    except subprocess.TimeoutExpired:
-        return "TIMEOUT"
+    with tempfile.TemporaryFile() as sink:
+        process = subprocess.Popen([BASH, WRAPPER, *args], stdout=sink, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                                   env=env, creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
+        try:
+            process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            subprocess.run(["taskkill", "/T", "/F", "/PID", str(process.pid)], capture_output=True, check=False)
+            try:
+                process.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                pass
+            return "TIMEOUT"
+        sink.seek(0)
+        return clean(sink.read())
 
 
 def wsl(path: Path) -> str:
@@ -125,7 +137,7 @@ def remote(session: str, code: str, word: str, label: str, tries: int = 5, timeo
     """Run Python on the session's VM and return its ASCII output; None after `tries` failed or unreadable answers
     (a failed read is a retry, never a dead poll). `word` must be in a good answer."""
     LAUNCH.mkdir(parents=True, exist_ok=True)
-    file = LAUNCH / f"{session}-{label}.py"
+    file = LAUNCH / f"{session}-{label}-{threading.get_ident()}.py"     # one file per calling thread
     file.write_text(code, encoding="ascii", errors="replace", newline="\n")
     for attempt in range(1, tries + 1):
         answer = colab("exec", "-s", session, "--timeout", str(max(30, timeout - 60)), "-f", str(file).replace("\\", "/"),
@@ -344,7 +356,11 @@ def run_on(session: str, name: str, flags: list[str], adapter: bool, line: Any, 
             asked = True
             if at_mid(status["val"][EVAL_AT]):
                 pruned = True
-                shell(session, f"pkill -INT -f '[r]un-id {name} '; sleep 1; echo killed", "prune")
+                # SIGTERM: the trainer was started detached in the background, where SIGINT is ignored (the first
+                # pruned trials ran on to step 24 for that reason); colab_trial.sh then packs what there is.
+                shell(session, f"pkill -TERM -f '[r]un-id {name} '; sleep 2; pkill -KILL -f '[r]un-id {name} '; echo stopped", "prune")
+                plog(f"decision trial {name} pruned by the median rule at step {EVAL_AT} (val {status['val'][EVAL_AT]:.4f}): "
+                     f"its trainer on {session} is stopped now")
         if status["state"] == "done":
             break
         if status["state"] == "absent" and time.time() - began > 120:
@@ -411,12 +427,22 @@ class Search:
                        f"startup {self.startup} = {RANDOM_STARTUP} random after {self.seeded} seeded) "
                        f"MedianPruner(startup {PRUNER_STARTUP}, warmup 1), sqlite on the workstation, asynchronous workers")
         self.numbers = max((t["number"] for t in self.trials), default=0)
+        # Trials an earlier driver left running: each is followed to its end by the worker that holds it.
+        self.orphans: dict[str, Any] = {}
+        for frozen in self.study.get_trials(deepcopy=False, states=(TrialState.RUNNING,)):
+            holder, name = frozen.user_attrs.get("worker"), frozen.user_attrs.get("name")
+            if holder and name and holder not in self.orphans:
+                self.orphans[holder] = frozen
+                self.numbers = max(self.numbers, int(name[1:3]))
+            else:
+                self.study.tell(frozen.number, state=TrialState.FAIL)
         self.longest = max((t.get("wall_s") or 0 for t in self.trials if t.get("max_steps") == FIDELITY_STEPS), default=0.0)
         self.stopped = False
         self.checked_boundary = False
         self.duplicates = 0
         self.best = "none"
         self.workers: list[str] = []
+        self.slots: dict[str, int] = {}
         plog(f"decision bo engine: {self.engine}; study file {str(BO / 'study.db')}; trials already in it: {existing}")
         if not existing:
             self.seed_from_grid()
@@ -559,13 +585,32 @@ class Search:
                  + (" pruned_by_median_at_step_12" if fact["outcome"] == "pruned" else "")
                  + (f" error={str(fact.get('error'))[:100]}" if fact.get("value") is None else ""))
 
-    def worker(self, session: str) -> None:
-        """One session's loop: ask only when free, run the trial, tell. Ends when the study stops proposing."""
+    def adopt(self, worker: str) -> tuple[Any, dict[str, Any], dict[str, Any]] | None:
+        """The trial an earlier driver started on this worker and did not see end, as if it had just been asked."""
+        with self.lock:
+            frozen = self.orphans.pop(worker, None)
+            if frozen is None:
+                return None
+            trial = self.optuna.trial.Trial(self.study, frozen._trial_id)
+            params = dict(frozen.params)
+            name = frozen.user_attrs["name"]
+            fact = {"number": int(name[1:3]), "total": int(name[1:3]), "kind": frozen.user_attrs.get("kind"),
+                    "seen": frozen.user_attrs.get("seen"), "worker": worker, "name": name, "lr": params["lr"],
+                    "rank": params["rank"], "alpha": params["rank"] * params["alpha_mult"],
+                    "alpha_mult": params["alpha_mult"], "dropout": params["dropout"], "warmup_ratio": params["warmup"],
+                    "max_steps": FIDELITY_STEPS, "study_trial": frozen.number, "adopted": True}
+            plog(f"decision worker={worker} adopts trial {fact['number']} ({name}), left running by the driver before this one")
+            return trial, params, fact
+
+    def worker(self, worker: str) -> None:
+        """One worker's loop: ask only when free, run the trial, tell. Ends when the study stops proposing."""
+        session = worker.split("#")[0]
         while True:
-            asked = self.next_trial(session)
+            asked = self.adopt(worker) or self.next_trial(worker)
             if asked is None:
                 return
             trial, params, fact = asked
+            fact["concurrent_on_card"] = self.slots.get(session, 1)
             flags = ["--max-steps", str(FIDELITY_STEPS), "--eval-steps", str(EVAL_AT), "--lr", f"{params['lr']:.6g}",
                      "--rank", str(params["rank"]), "--alpha", str(fact["alpha"]), "--dropout", f"{params['dropout']:.4f}",
                      "--warmup-ratio", f"{params['warmup']:.4f}"]
@@ -589,10 +634,10 @@ class Search:
                     self.study.tell(trial, state=self.State.FAIL)
                     self.study.enqueue_trial({k: params[k] for k in ("lr", "rank", "alpha_mult", "dropout", "warmup")})
                     self.numbers -= 0
-                    plog(f"PROBLEM worker={session} lost during trial {fact['number']}; its point is enqueued again and "
+                    plog(f"PROBLEM worker={worker} lost during trial {fact['number']}; its point is enqueued again and "
                          "this worker leaves the search")
-                    if session in self.workers:
-                        self.workers.remove(session)
+                    if worker in self.workers:
+                        self.workers.remove(worker)
                 return
             self.finish(trial, fact)
 
@@ -712,7 +757,8 @@ def main() -> int:
     parser.add_argument("--skip-search", action="store_true", help="the search is over: finalists and the choice only")
     parser.add_argument("--skip-held-out", action="store_true")
     args = parser.parse_args()
-    sessions = [name for name in args.sessions.split(",") if name]
+    slots = {item.split(":")[0]: int(item.split(":")[1]) if ":" in item else 1 for item in args.sessions.split(",") if item}
+    sessions = list(slots)
     commit = subprocess.run(["git", "rev-parse", args.branch], capture_output=True, text=True, cwd=REPO).stdout.strip()
     if not commit:
         plog(f"PROBLEM bo driver refuses to start: no commit for branch {args.branch}")
@@ -729,7 +775,11 @@ def main() -> int:
     plog(f"bo driver start sessions={','.join(sessions)} branch={args.branch} commit={commit[:7]} budget_s={int(args.budget_s)} "
          f"study={str(BO / 'study.db')}")
     search = Search(args)
+    search.slots = slots
     ready: dict[str, bool] = {}
+
+    def worker_ids(session: str) -> list[str]:    # the first worker of a session carries the session's own name
+        return [session if slot == 1 else f"{session}#{slot}" for slot in range(1, slots.get(session, 1) + 1)]
 
     def join(session: str) -> None:
         """Set the session up if it needs it, then work trials until the study stops proposing."""
@@ -745,10 +795,16 @@ def main() -> int:
             plog(f"PROBLEM worker={session} did not join the search ({state})")
             return
         with search.lock:
-            search.workers.append(session)
-        plog(f"decision worker={session} joins the search ({state}); workers now: {','.join(search.workers)}")
+            search.workers.extend(worker_ids(session))
+        plog(f"decision session={session} joins the search ({state}) with {slots.get(session, 1)} worker(s) on its card; "
+             f"workers now: {','.join(search.workers)}")
         if not args.skip_search:
-            search.worker(session)
+            loops = [threading.Thread(target=search.worker, args=(worker,), daemon=True) for worker in worker_ids(session)]
+            for loop in loops:
+                loop.start()
+                time.sleep(5)
+            for loop in loops:
+                loop.join()
 
     joined: dict[str, threading.Thread] = {}
 
@@ -765,9 +821,11 @@ def main() -> int:
             extra = (BO / "extra-sessions.txt").read_text(encoding="ascii").split()
         except OSError:
             extra = []
-        for session in extra:
+        for item in extra:
+            session = item.split(":")[0]
             if session not in joined:
                 sessions.append(session)
+                slots[session] = int(item.split(":")[1]) if ":" in item else 1
                 plog(f"decision session {session} was granted later: it is set up and joins the search")
                 start(session)
     search.table()
@@ -777,7 +835,11 @@ def main() -> int:
     completed = [t for t in search.trials if t.get("ok") and t.get("outcome") != "pruned" and t.get("value") is not None
                  and t.get("max_steps") == FIDELITY_STEPS]
     top = sorted(completed, key=lambda t: (t["value"], t["number"]))[:FINALISTS]
-    workers = [session for session in sessions if ready.get(session)]
+    # one finalist per free trainer place, a place on each session first, then the second places
+    workers = [worker for slot in range(max(slots.values())) for session in sessions
+               if ready.get(session) and slot < slots.get(session, 1) for worker in [worker_ids(session)[slot]]]
+    refreshed: dict[str, bool] = {}
+    refresh_lock = threading.Lock()
     if not top or not workers:
         plog("PROBLEM no completed trial or no worker: no finalist can train; the fallback adapter (grid run 1) stands")
     plog("decision finalists: " + " | ".join(
@@ -788,9 +850,13 @@ def main() -> int:
     queue = list(enumerate(top, 1))
     final_lock = threading.Lock()
 
-    def finalist_worker(session: str) -> None:
-        if session_ready(session, commit) != "ready" and not prepare(session, args.branch, commit, bundle, full=False):
-            plog(f"PROBLEM worker={session} could not be brought to commit {commit[:7]} for a finalist")
+    def finalist_worker(worker: str) -> None:
+        session = worker.split("#")[0]
+        with refresh_lock:      # once per session: its clone at this commit (the full-length flags need it)
+            if session not in refreshed:
+                refreshed[session] = session_ready(session, commit) == "ready" or prepare(session, args.branch, commit, bundle, full=False)
+        if not refreshed[session]:
+            plog(f"PROBLEM worker={worker} could not be brought to commit {commit[:7]} for a finalist")
             return
         while True:
             with final_lock:
@@ -805,7 +871,7 @@ def main() -> int:
 
             def line(status: dict[str, Any], place: int = place, trial: dict[str, Any] = trial) -> str:
                 latest = status["val"][max(status["val"])] if status["val"] else None
-                return (f"stage=finalists final={place}/{len(top)} from_trial={trial['number']} worker={session} lr={trial['lr']:.3g} "
+                return (f"stage=finalists final={place}/{len(top)} from_trial={trial['number']} worker={worker} lr={trial['lr']:.3g} "
                         f"rank={trial['rank']} alpha={trial['alpha']} drop={trial['dropout']:.3f} warm={trial['warmup_ratio']:.3f} "
                         f"step={status['step']}/{FULL_STEPS} loss={fmt(status['loss'])} val={fmt(latest)} "
                         f"best_val={fmt(min(status['val'].values()) if status['val'] else None)} step_s={fmt(status['step_s'], 2)}")
@@ -813,19 +879,20 @@ def main() -> int:
             fact = run_on(session, name, flags, True, line)
             fact.update(place=place, from_trial=trial["number"], trial_kind=trial["kind"], trial_value=trial["value"],
                         lr=trial["lr"], rank=trial["rank"], alpha=trial["alpha"], alpha_mult=trial["alpha_mult"],
-                        dropout=trial["dropout"], warmup_ratio=trial["warmup_ratio"], max_steps=FULL_STEPS, full_length=True)
+                        dropout=trial["dropout"], warmup_ratio=trial["warmup_ratio"], max_steps=FULL_STEPS, full_length=True,
+                        worker=worker, concurrent_on_card=min(slots.get(session, 1), len(top)))
             adapter = COLAB / "runs" / name / "adapter" / "adapter_model.safetensors"
             if fact.get("ok") and adapter.exists():
                 fact["adapter_path"] = str(adapter.parent).replace("\\", "/")
                 fact["adapter_sha256"] = sha256_of(adapter)
                 plog(final_adapter_line(fact))
             else:
-                plog(f"PROBLEM finalist {place} ({name}) on worker={session} did not give an adapter: outcome={fact.get('outcome')} "
+                plog(f"PROBLEM finalist {place} ({name}) on worker={worker} did not give an adapter: outcome={fact.get('outcome')} "
                      f"error={str(fact.get('error'))[:120]}")
             with final_lock:
                 finals.append(fact)
 
-    threads = [threading.Thread(target=finalist_worker, args=(session,), daemon=True) for session in workers[:max(1, len(top))]]
+    threads = [threading.Thread(target=finalist_worker, args=(worker,), daemon=True) for worker in workers[:max(1, len(top))]]
     for thread in threads:
         thread.start()
         time.sleep(3)
@@ -853,8 +920,8 @@ def main() -> int:
         f"{f['name']} val={fmt(f['best_val'])} at step {f.get('best_step')}" for f in ranked) + f"; the {len(scored)} lowest are scored")
     by_session: dict[str, list[str]] = {}
     for f in scored:
-        by_session.setdefault(f["worker"], []).append(f["name"])
-    by_session.setdefault(scored[0]["worker"], []).insert(0, "base")
+        by_session.setdefault(f["worker"].split("#")[0], []).append(f["name"])
+    by_session.setdefault(scored[0]["worker"].split("#")[0], []).insert(0, "base")
     results: dict[str, dict[str, Any]] = {}
 
     def score_worker(session: str, arms: list[str]) -> None:
@@ -911,8 +978,8 @@ def main() -> int:
     plog(f"RESULT chosen recipe: {' '.join(chosen['recipe_flags'])}; chosen.json at {str(BO / 'chosen.json')}")
 
     # --- after the choice: base against chosen on the held-out side of both datasets, generated on the A100 --------
-    if not args.skip_held_out and best.get("worker") in workers:
-        session = best["worker"]
+    if not args.skip_held_out and best.get("worker", "").split("#")[0] in sessions:
+        session = best["worker"].split("#")[0]
         command = (f"cd /content/Knighthacks26 && setsid nohup python3 /content/vm_score.py held_out {best['name']} "
                    f"> /content/l16v2/score-held-out.log 2>&1 &")
         code = f"import subprocess\nsubprocess.Popen({command!r}, shell=True)\nprint('LAUNCHED')\n"
