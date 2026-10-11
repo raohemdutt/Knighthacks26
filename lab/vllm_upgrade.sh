@@ -59,6 +59,16 @@ build_env() {
   export LIBRARY_PATH="$HOME/.local/lib"
 }
 
+serve_env() {
+  # The pod image exports LD_LIBRARY_PATH=/opt/rocm/lib (ROCm 7.13). vllm/env_override.py preloads libraries by name
+  # before it imports torch, so with that path the process maps the image's 7.13 copies first, and torch's own
+  # preload of the venv's 7.14 SDK then dies on libamd_comgr.so.3 ("undefined symbol ... version LLVM_23.0"): the
+  # first start on pod C, 2026-10-11. Without the path every ROCm library comes from the venv's SDK. Only the
+  # steps that run the installed build drop it; the compile keeps the environment it was verified with.
+  build_env
+  unset LD_LIBRARY_PATH
+}
+
 torch_venv() {
   # An isolated venv (no system site packages: the image's torch 2.9.1 never mixes in, and nothing installed here
   # reaches the serving build). The image has no ensurepip, so the system pip bootstraps pip into the venv.
@@ -158,11 +168,12 @@ status() {
 }
 
 verify() {
-  build_env
+  serve_env
   mkdir -p "$SERVE_DIR" && cd "$SERVE_DIR"
   echo "vllm_commit: $(git -C "$VLLM_DIR" rev-parse --short=9 HEAD) patched: $(git -C "$VLLM_DIR" diff --name-only | tr '\n' ' ')"
   python - <<'PY'
-import importlib, torch, triton, vllm
+import vllm  # first, as `python -m vllm.entrypoints...` does: vllm loads torch itself, after its own preloads
+import importlib, torch, triton
 print(f"vllm: {vllm.__version__} from {vllm.__file__}")
 print(f"torch: {torch.__version__} triton: {triton.__version__}")
 for name in ("vllm._C", "vllm._rocm_C", "vllm._C_stable_libtorch", "vllm._moe_C_stable_libtorch"):
@@ -210,7 +221,7 @@ serve() {
   # scheduling, the tool flags the labeler needs, the 16k context, one image, bf16, Triton encoder attention.
   local dir="$MODELS/$(basename "$TEACHER")" pid t0
   [ -x "$VENV/bin/python" ] || { echo "no venv at $VENV: build first"; return 1; }
-  build_env
+  serve_env
   mkdir -p "$SERVE_DIR" && cd "$SERVE_DIR"
   stop_server || return 1
   t0=$(date +%s)
@@ -222,6 +233,7 @@ serve() {
     --max-model-len "$MAX_LEN" --limit-mm-per-prompt '{"image":1}' --gpu-memory-utilization "$GPU_UTIL" \
     --dtype bfloat16 --mm-encoder-attn-backend TRITON_ATTN > "$SERVE_LOG" 2>&1 &
   pid=$!
+  echo "$pid" > "$SERVE_DIR/vllm-new.pid"   # for whoever stops or measures this server next
   echo "new vllm serve pid $pid (log: $SERVE_LOG)"
   for i in $(seq 1 240); do
     python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:$PORT/v1/models', timeout=5)" 2>/dev/null \
