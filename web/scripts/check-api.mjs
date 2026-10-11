@@ -254,6 +254,9 @@ const IMPACT_STORY = {
   now: isoDate, week: inner({ start: "string", end: "string", today: "string" }), empty: "boolean", empty_text: "string?", rules: "object", total: "object",
   this_week: "object", equivalents: "object", contamination: "object", feed: listOf(DISPOSAL), goal: "object",
   days: listOf({ day: "string", disposals: "number", right: "number", wrong: "number", clean: "boolean" }), clean_streak: "number", milestones: "object", practice: "object",
+  // the story the screen plays: measured counts in a sentence, the week's disposals in order, the learn loop
+  headline: "string", loop: inner({ seen: "number", taught: "number", practised: "object", trend: "object" }),
+  flow: inner({ items: listOf({ item_id: "string", item: "string", bin: "string", correct: "boolean", rule: "string" }), recyclable_seen: "number", recycled: "number", not_binned: "number" }),
 };
 const IMPACT_PRACTICE = {
   week_start: "string", member_id: "string?", size: "number", how: "string", rules: inner({ file: "string", name: "string", place: "string?" }),
