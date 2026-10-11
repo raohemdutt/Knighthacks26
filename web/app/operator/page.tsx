@@ -14,7 +14,8 @@ import { useFetch } from "@/lib/useFetch";
 /**
  * Operator: one page for the big display, no phone needed. Open /operator/ on the laptop or TV.
  *
- *  - Cameras: the blurred picture with boxes, track ids and zone outlines (same sources as Live).
+ *  - Cameras: the live picture with boxes, track ids and zone outlines (same sources as Live). Faces are blurred
+ *    in it unless this is the owner's signed-in screen and "Your live view" is on; saved pictures are always blurred.
  *  - Ticker: events as they arrive on /ws, in plain words. Per-frame noise is left out.
  *  - Model badge: the version llama-server really serves (/runtime/models) and its speed. The speed is read off the
  *    answer stream (agent.answer.delta pieces per second, about one piece per token), or from telemetry.request

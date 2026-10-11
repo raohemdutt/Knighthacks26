@@ -4,11 +4,13 @@ import { useEffect, useState } from "react";
 import { api, snapshotUrl, type ZoneSet } from "@/lib/api";
 import { cameraName, humanize } from "@/lib/format";
 import type { BoxN } from "@/lib/guide";
+import { liveViewLine, useLiveView } from "@/lib/useLiveView";
 import g from "./guide.module.css";
 
 /**
  * "Spotting": a camera's picture with the thing outlined where the detector has it now, or the right bin's zone
- * outlined and the others dimmed. The picture is the camera's blurred snapshot (GET /capture/<camera>/snapshot.jpg),
+ * outlined and the others dimmed. The picture is the camera's snapshot (GET /capture/<camera>/snapshot.jpg; faces
+ * blurred unless this is the owner's signed-in screen with "Your live view" on, and the note under it says which),
  * fetched again every 1.5 s with the newest tracks (GET /capture/<camera>/tracks): refreshed stills, not video, and the
  * panel says so. Where no camera runs (the seeded laptop) it says that instead of showing an empty frame.
  */
@@ -26,6 +28,7 @@ export interface SpottingAsk {
 
 export function Spotting({ ask, onClose }: { ask: SpottingAsk; onClose: () => void }) {
   const [stamp, setStamp] = useState(() => Date.now());
+  const view = useLiveView();
   const [box, setBox] = useState<BoxN | null>(null);
   const [state, setState] = useState<"loading" | "on" | "lost" | "off">(ask.camera ? "loading" : "off");
   const [zones, setZones] = useState<ZoneSet | null>(null);
@@ -87,7 +90,7 @@ export function Spotting({ ask, onClose }: { ask: SpottingAsk; onClose: () => vo
           </div>
           <p className={g.line}>{state === "lost" ? `The camera does not see your ${ask.name} right now.` : ask.zone ? `${humanize(ask.zone)}: throw it here.` : box ? "Here it is." : "Looking…"}</p>
           <p className={g.note}>
-            {cameraName(ask.camera)}: the camera&apos;s picture, refreshed every {EVERY_MS / 1000} s with faces blurred. It is not video.
+            {cameraName(ask.camera)}: the camera&apos;s picture, refreshed every {EVERY_MS / 1000} s. It is not video. {liveViewLine(view)}
           </p>
         </>
       )}

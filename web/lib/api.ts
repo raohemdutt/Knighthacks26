@@ -143,7 +143,7 @@ export interface IdentitySettings {
   available: boolean; // false when the recognition model is not on this box
   recognizer: string | null;
   reason?: string;
-  /** The anonymous room mode: faces that match nobody are counted together, as nobody. */
+  /** The retired anonymous room mode: always false now. Atlas reads nobody who has not done the face scan. */
   everyone?: boolean;
   expressions_available?: boolean; // false when the expression model is not on this box
   photos_available?: boolean; // false when the box cannot decode pictures (no OpenCV)
@@ -162,6 +162,10 @@ export interface Member {
   source?: "live" | "scan" | "photos" | "circle"; // circle: a friend's box shared it with this one (face share)
   expressions?: boolean; // this person switched "read my expressions" on
   circle_member_id?: string | null; // which Circle member this is, when someone said so
+  /** They did the face scan (or a live look at the box's camera). False: photos only, so no expressions are read. */
+  scanned?: boolean;
+  /** The box matches faces to them. False for photos alone, until a scan finishes. */
+  recognised?: boolean;
   shared_by?: string | null; // source "circle" only: the friend's Circle member id
   received_at?: string | null;
   expires_at?: string | null; // when this box deletes it unless the friend renews
@@ -221,6 +225,9 @@ export interface EnrollPhotosResult {
   exemplars: number;
   error: "not_enough_photos" | "already_enrolled" | null;
   photos: PhotoResult[];
+  /** False after photos alone: they are kept, and the person is recognised only once a face scan finishes. */
+  scanned?: boolean;
+  message?: string | null;
 }
 
 export type ScanPose = "front" | "left" | "right" | "up";
@@ -1668,6 +1675,8 @@ export interface VaultPolicy {
   offline: boolean;
   /** Days of pictures and memory to keep; null = forever. */
   keep_days: number | null;
+  /** The live picture on the owner's own signed-in screen: "clear" shows faces there. Everyone else: blurred. */
+  live_faces: "blurred" | "clear";
 }
 
 /** GET /api/voice/status: the box's own microphone and speaker (X16). "off" also means the voice service is not running. */
@@ -1926,9 +1935,66 @@ export function cameraOfFrame(ref: string): string | null {
   return parts.length >= 3 && parts[0] === "frames" ? (parts[1] ?? null) : null;
 }
 
-/** The newest frame from a camera (faces blurred by the box); add a changing query so the browser refetches. */
+// ---------- the clear live view: a ticket for this signed-in screen ----------
+//
+// The live picture is an <img>, which cannot send the Authorization header the rest of the app signs in with. So
+// the app asks POST /vault/view-ticket (with that header) for a short-lived ticket and puts it on the picture's
+// address. With a ticket, and while the Privacy screen's "Your live view" is on, the box leaves faces unblurred
+// in that picture. Without one (not signed in, the box refused, the box is unreachable) the address is the old
+// one and the picture is the blurred one, exactly as before. Nothing about saved pictures depends on this.
+
+type TicketProblem = "" | "not_signed_in" | "box_has_no_token" | "unreachable";
+let viewTicket: { value: string; until: number } | null = null; // `until`: this device's clock, ms
+let viewTicketAsk: Promise<void> | null = null;
+let viewTicketRetryAt = 0;
+let viewTicketProblem: TicketProblem = "";
+const TICKET_RENEW_BEFORE_MS = 120_000; // ask again two minutes before it runs out
+const TICKET_RETRY_MS = 60_000; // after a refusal, not more often than this
+
+function askViewTicket(): Promise<void> {
+  if (viewTicketAsk) return viewTicketAsk;
+  viewTicketAsk = post<{ ticket: string; expires_in: number }>("/vault/view-ticket", {})
+    .then((t) => {
+      viewTicket = { value: t.ticket, until: Date.now() + t.expires_in * 1000 };
+      viewTicketProblem = "";
+    })
+    .catch((err) => {
+      const status = err instanceof ApiError ? err.status : 0;
+      viewTicketProblem = status === 401 ? "not_signed_in" : status === 403 ? "box_has_no_token" : "unreachable";
+      viewTicketRetryAt = Date.now() + TICKET_RETRY_MS;
+    })
+    .finally(() => {
+      viewTicketAsk = null;
+    });
+  return viewTicketAsk;
+}
+
+/** The ticket to put on a live picture's address, or "" for the blurred picture. Renews itself in the background. */
+function currentViewTicket(): string {
+  if (typeof window === "undefined") return "";
+  const now = Date.now();
+  if ((!viewTicket || viewTicket.until - now < TICKET_RENEW_BEFORE_MS) && now >= viewTicketRetryAt) void askViewTicket();
+  return viewTicket && viewTicket.until > now ? viewTicket.value : "";
+}
+
+/** Resolves once this screen either holds a ticket or was told it gets none. Never rejects. */
+export function viewTicketReady(): Promise<void> {
+  if (typeof window === "undefined" || currentViewTicket()) return Promise.resolve();
+  return viewTicketAsk ?? Promise.resolve();
+}
+
+/** Why this screen has no ticket ("" when it holds one, or has not asked yet). */
+export function viewTicketState(): { held: boolean; problem: TicketProblem } {
+  return { held: currentViewTicket() !== "", problem: viewTicketProblem };
+}
+
+/**
+ * The newest frame from a camera; add a changing query so the browser refetches. Faces are blurred by the box
+ * unless this is the owner's signed-in screen and the Privacy screen's "Your live view" is on.
+ */
 export function snapshotUrl(camera: string, stamp: number): string {
-  return `${HTTP_BASE}/capture/${encodeURIComponent(camera)}/snapshot.jpg?t=${stamp}`;
+  const ticket = currentViewTicket();
+  return `${HTTP_BASE}/capture/${encodeURIComponent(camera)}/snapshot.jpg?t=${stamp}${ticket ? `&ticket=${encodeURIComponent(ticket)}` : ""}`;
 }
 
 export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", undefined, signal),
