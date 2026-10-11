@@ -54,6 +54,9 @@ POST /api/learning/lab/live-chat          {question, target: "pair" | "box"}
     the same question answered as Server-Sent Events, token by token, then {answer, tokens, seconds, tok_s, ttft_s,
     energy}: the Speed and energy tab's live chat beside the power graph (contexts/learning/live_chat.py).
     503 when the model server does not answer (it does not for about a minute of every swap).
+GET  /api/learning/lab/train-burst / POST {pods: ["C", "D"], seconds: 60}
+    the "Train for a minute" button on the live power graph: a real LoRA burst on the pods through lab.controller,
+    then its joules from both pods' samplers (contexts/learning/train_burst.py has the shapes).
 
 The stages come from the `STAGE <name> <start|done|failed> <unix seconds>` lines atlas_swap.py prints. The status is
 kept in <state_dir>/status.json and the swap's output in <state_dir>/swap.log, so a gateway restart does not lose
@@ -656,11 +659,13 @@ def default_pair() -> Any | None:
 
 def lab_deploy_router(runner: DeployRunner, *, guard: Callable | None = None, questions: str | Path = QUESTIONS,
                       ask_transport: httpx.AsyncBaseTransport | None = None, meter: Any | None = None,
-                      qa: Any | None = None, pair: Any | None = None, compare: bool | None = None) -> APIRouter:
+                      qa: Any | None = None, pair: Any | None = None, compare: bool | None = None,
+                      burst: Any | None = None) -> APIRouter:
     """`meter` (contexts/learning/answer_energy.AnswerMeter) measures each answer; without one `energy` is null.
     `qa` is the agent's QA (its tool executor and the box's memory; default the app's, app.state.atlas.qa), `pair`
     the 122B pair (default contexts/circle/brain_pair.py from .env), `compare` False leaves the brain out (default:
-    on unless ATLAS_ASK_COMPARE=off)."""
+    on unless ATLAS_ASK_COMPARE=off). `burst` runs the "Train for a minute" button (contexts/learning/train_burst.py
+    BurstRunner; default one on the pods through lab.controller)."""
     router = APIRouter()
     guarded = [Depends(guard)] if guard else []
 
@@ -743,5 +748,21 @@ def lab_deploy_router(runner: DeployRunner, *, guard: Callable | None = None, qu
                                    llm_url=runner.llm_url or DEFAULT_LLM_URL, transport=ask_transport, meter=meter)
         return StreamingResponse(stream, media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    # the "Train for a minute" button on the live power graph: a real LoRA burst on the pods (train_burst.py)
+    from contexts.learning import train_burst as tb
+
+    bursts = burst if burst is not None else tb.BurstRunner()
+
+    @router.get("/api/learning/lab/train-burst")
+    def train_burst_view() -> dict:
+        return bursts.view()
+
+    @router.post("/api/learning/lab/train-burst", status_code=202, dependencies=guarded)
+    def train_burst(body: dict[str, Any] | None = Body(default=None)) -> dict:
+        try:
+            return bursts.start((body or {}).get("pods"), (body or {}).get("seconds"))
+        except tb.Refused as err:
+            raise HTTPException(err.status, err.message) from None
 
     return router

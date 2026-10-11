@@ -2455,6 +2455,10 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
     post<import("./labDeploy").DeployView>("/api/learning/lab/deploy/rollback", version ? { version } : {}),
   labDeployAsk: (question: string, signal?: AbortSignal) =>
     post<import("./labDeploy").DeployAnswer>("/api/learning/lab/deploy/ask", { question }, signal),
+  /** The "Train for a minute" button (L37): a real LoRA burst on the pods and its joules (lib/trainBurst.ts). */
+  trainBurst: (signal?: AbortSignal) => get<import("./trainBurst").BurstView>("/api/learning/lab/train-burst", undefined, signal),
+  trainBurstStart: (pods: import("./trainBurst").BurstPod[], seconds = 60) =>
+    post<import("./trainBurst").BurstView>("/api/learning/lab/train-burst", { pods, seconds }),
   teach: (body: TeachBody) => post<{ task: string; action_id: string }>("/api/teach", body),
 
   episodes: (opts: { from?: string; to?: string; camera?: string; label?: string } = {}, signal?: AbortSignal) =>
