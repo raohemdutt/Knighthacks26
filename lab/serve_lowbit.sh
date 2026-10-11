@@ -13,6 +13,8 @@
 #   bench     lab/bench.py run: one cold spawn per repeat at batch 1 and 4, --dtype float16 (the ExLlama kernel that
 #             serves these widths takes fp16 activations only), rows under lab/state/bench/<session>/rows.jsonl.
 #   all       the three in order.
+#   serve     start the same server in the background on $PORT (default 8100) for the correctness compare and the L4
+#             eval, log in ~/serve/lowbit-w<width>.log, pid in ~/serve/lowbit.pid; `stop` ends it.
 # Then, from the box: python lab/lowbit_report.py report --bench 3=<session dir> ... (see its docstring).
 #
 # Node gate: refuses to run (outside DRY_RUN) unless rocminfo reports gfx1151, and refuses aarch64 (the Jetson).
@@ -31,6 +33,8 @@ BATCHES="${BATCHES:-1,4}"
 REPEATS="${REPEATS:-3}"
 MAX_LEN="${MAX_LEN:-16384}"
 GPU_UTIL="${GPU_UTIL:-0.90}"
+PORT="${PORT:-8100}"
+SERVE_DIR="${SERVE_DIR:-$HOME/serve}"
 DRY_RUN="${DRY_RUN:-0}"
 
 die() { echo "serve_lowbit: $*" >&2; exit 2; }
@@ -94,11 +98,31 @@ bench() {
     --serve-cmd "$serve_cmd"
 }
 
+serve_bg() {
+  run mkdir -p "$SERVE_DIR"
+  local cmd=("$VENV/bin/vllm" serve "$CKPT" --served-model-name "$MODEL_NAME" --port "$PORT" --max-model-len "$MAX_LEN"
+             --dtype float16 --quantization compressed-tensors --gpu-memory-utilization "$GPU_UTIL")
+  printf '+ nohup'; printf ' %q' "${cmd[@]}"; printf ' > %q 2>&1 &\n' "$SERVE_DIR/lowbit-w$WIDTH.log"
+  [ "$DRY_RUN" = "1" ] && return 0
+  nohup "${cmd[@]}" > "$SERVE_DIR/lowbit-w$WIDTH.log" 2>&1 &
+  echo $! > "$SERVE_DIR/lowbit.pid"
+  echo "serving $MODEL_NAME on port $PORT, pid $(cat "$SERVE_DIR/lowbit.pid")"
+}
+
+stop_bg() {
+  local pid_file="$SERVE_DIR/lowbit.pid"
+  if [ "$DRY_RUN" = "1" ]; then echo "+ kill \$(cat $pid_file)"; return 0; fi
+  [ -f "$pid_file" ] || { echo "no low-bit server pid in $pid_file"; return 0; }
+  kill "$(cat "$pid_file")" 2>/dev/null; rm -f "$pid_file"; echo "stopped"
+}
+
 gate
 case "$STEP" in
   download) download ;;
   patch) patch_vllm ;;
   bench) bench ;;
   all) download && patch_vllm && bench ;;
-  *) die "unknown step '$STEP' (all, download, patch, bench)" ;;
+  serve) serve_bg ;;
+  stop) stop_bg ;;
+  *) die "unknown step '$STEP' (all, download, patch, bench, serve, stop)" ;;
 esac

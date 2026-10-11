@@ -247,3 +247,13 @@ def test_correctness_compare_lines_are_read(tmp_path):
     path.write_text(json.dumps(line) + "\n", encoding="utf-8")
     assert lr.read_correctness(path) == {"prompts": 4, "match_rate": 0.25, "normalised_text_matches": 2,
                                          "condition_drift": True}
+
+
+def test_dry_run_serve_starts_a_float16_server_on_8100_and_stop_ends_it():
+    env = {"DRY_RUN": "1", "WIDTH": "2", "HUB_REPO": "someone/Qwen3.8-27B-W2A16-G128-AUTOROUND-atlas"}
+    out = serve(env=env, step="serve")
+    assert out.returncode == 0, out.stderr
+    assert "/bin/vllm serve " in out.stdout
+    assert "--port 8100" in out.stdout and "--dtype float16" in out.stdout and "teacher-w2" in out.stdout
+    stop = serve(env=env, step="stop")
+    assert stop.returncode == 0 and "kill" in stop.stdout
