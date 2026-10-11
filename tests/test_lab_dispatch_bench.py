@@ -152,3 +152,16 @@ def test_decide_keeps_the_channel_mode_out_of_the_verdict():
     assert out["verdict"]["lookup_wins"] is False
     assert all(r["lut_kernel"] is None or "channel" not in r["lut_kernel"] for r in out["table"])
     assert len(out["channel"]) == 4 and out["channel"][0]["us"] == 10.0
+
+
+def test_mode4_rows_keep_their_lut_gemv_names():
+    from lab.machine import metrics as ledger_metrics
+
+    res = _result(1.5)
+    e = _entry("k5120_n6144", 1, "cold", "lut.channel_lut.b3.v_bn32_bk128_s1_w4", 90.0, section="channel")
+    e["id"] = "lut_gemv.mode4.b3.k5120_n6144.m1.cold"
+    res["measurements"].append(e)
+    rows = [r for r in D.metric_rows(res, "x.json") if r["metric"].startswith("lut_gemv.mode4.")]
+    assert {r["metric"] for r in rows} >= {"lut_gemv.mode4.b3.k5120_n6144.m1.cold.us_per_call"}
+    for row in rows:
+        ledger_metrics.check_row(row)
