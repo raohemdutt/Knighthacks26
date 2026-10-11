@@ -1,662 +1,416 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { EChartsOption } from "echarts";
 import { ErrorBox, Loading } from "@/components/States";
 import ui from "@/components/ui.module.css";
-import { api } from "@/lib/api";
-import { type LabChip, chipLabel, chipRole, chipShort } from "@/lib/lab";
-import { type BenchChipRows, type BenchPoint, type BenchPowerNode, type BenchSweep, type LabBench, batchReadout, fmt, shortRef, when } from "@/lib/labBench";
+import { api, spotUrl } from "@/lib/api";
+import { chipShort } from "@/lib/lab";
+import {
+  type BenchHeadline,
+  type BenchPayload,
+  type BenchPoint,
+  type BenchPowerNode,
+  type BenchSession,
+  type LabBench,
+  type StoryLine,
+  benchSummary,
+  engineOf,
+  fmt,
+  isLowConfidence,
+  machineName,
+  modelBillions,
+  speedStory,
+  when,
+} from "@/lib/labBench";
 import { useFetch } from "@/lib/useFetch";
-import { LabelKey, PointDetail, Tag, useReduced, useWidth } from "./Labels";
+import { type ChartTokens, LabEChart, chartAxis, chartBase, useChartTokens } from "./Charts";
+import { PointDetail, useReduced } from "./Labels";
 import { Sheet } from "./LabRun";
 import b from "./bench.module.css";
+import s from "./speed.module.css";
 
 /**
- * Speed and energy: the lab's recorded benchmark rows (GET /api/learning/lab/bench), drawn as they are.
+ * Speed and energy, told as one story from the lab's bench rows (GET /api/learning/lab/bench):
  *
- * The batching story is three small charts on one batch-size axis (tokens a second per person, tokens a second in
- * total, joules per token), with the teacher's watts on a strip under them. One selector moves a cursor through all of
- * them and rewrites the sentence above from the rows at that batch size. A low-confidence point is hollow and its
- * line dashed; tapping any point shows the row it came from.
+ *   1. The chip fix: energy per token against streams for the teacher on one Strix Halo pod, vLLM after the kernel
+ *      fix beside llama.cpp, with the pod's watts on a second axis. The tiles beside it are computed from the rows.
+ *   2. The bigger brain: the 122B pair across two pods against the 27B on one pod, at the pair's batch sizes.
+ *   3. What it costs to be on: idle and answering watts per machine.
+ *   4. Sessions and rows: every session, its numbers and their source rows, in a drawer at the bottom.
  *
- * Every row carries the chip it was measured on (lib/lab.ts LabChip). The main chart is the current lab's sweep. A
- * sweep from any other chip is a section of its own under that chip's name ("Reference: NVIDIA A100 (Colab)",
- * "Earlier lab cards: Radeon R9700") and is never joined to the lab's curve. Where another chip recorded the same
- * metrics at the same batch sizes, "Compare with" lays its rows beside the lab's as a grey series with its own marker.
+ * The route returns the summary shape (sessions and headline points); until it does, the same summary is derived
+ * from today's full payload (lib/labBench.ts summaryFromFull). Sessions are picked by engine, chip and date, never
+ * by a number written here.
  *
- *   /lab/?tab=speed&batch=16      open at a batch size
- *   /lab/?tab=speed&ttft=1        with the time-to-first-token chart
- *   /lab/?tab=speed&point=joules_per_token   with that point's source open
- *   /lab/?tab=speed&compare=1     with the first comparison on (or compare=<chip key>, such as nvidia-a100)
- *   /lab/?tab=speed&sweep=<chip key>         open another chip's own section
+ *   /lab/?tab=speed&compare=1          the hero chart with the NVIDIA A100 reference on
+ *   /lab/?tab=speed&sweep=<session>    the drawer open at that session
+ *   /lab/?tab=speed&drawer=what|rows   with that sheet open
  */
 
-type Shape = "circle" | "square" | "diamond" | "triangle";
-type Tone = "speed" | "energy" | "neutral";
-const PAD = { left: 46, right: 20 };
-const SOLID: Record<Tone, string> = { speed: b.dotSolidSpeed!, energy: b.dotSolidEnergy!, neutral: b.dotSolidNeutral! };
-const CMP = "cmp:"; // a comparison series' name: the other chip's rows of the same metric
+const ENGINE_NAME: Record<string, string> = { vllm: "vLLM", llamacpp: "llama.cpp", other: "other engine" };
+const engineName = (e: string) => ENGINE_NAME[engineOf(e)] ?? e;
 
-/** "metrics.jsonl:7, 8, 17" as it is; a long list as "metrics.jsonl:1 to 22", or "between metrics.jsonl:102 and 129" when lines between them are not in it. */
-function lineList(lines: number[]): string {
-  if (lines.length <= 6) return `metrics.jsonl:${lines.join(", ")}`;
-  const first = lines[0]!;
-  const last = lines[lines.length - 1]!;
-  return last - first + 1 === lines.length ? `metrics.jsonl:${first} to ${last}` : `between metrics.jsonl:${first} and ${last}`;
+function sessionTitle(x: BenchSession): string {
+  const where = x.node ? machineName(x.node) : chipShortName(x.chip);
+  return `${engineName(x.engine)} · ${where} · ${x.model ?? "model not named"}${x.date ? ` · ${when(x.date)}` : ""}`;
 }
 
-/** "3 from Radeon R9700 (the lab's earlier cards, …); 11 from NVIDIA A100 (Colab) (a reference, …)". */
-function chipCounts(groups: BenchChipRows[], withLines = false): string {
-  return groups.map((g) => `${g.rows} from ${chipShort(g)} (${chipRole(g)}${withLines ? `; ${lineList(g.lines)}` : ""})`).join("; ");
+function chipShortName(chip: string): string {
+  if (/strix|8060s|gfx1151/i.test(chip)) return "Strix Halo";
+  if (/a100/i.test(chip)) return "NVIDIA A100";
+  return chip || "chip not named";
 }
 
-function mark(shape: Shape, x: number, y: number, r: number, className: string, key?: string) {
-  if (shape === "square") return <rect key={key} className={className} x={x - r} y={y - r} width={2 * r} height={2 * r} rx={1.5} />;
-  if (shape === "diamond") return <path key={key} className={className} d={`M${x},${y - r - 1.5} L${x + r + 1.5},${y} L${x},${y + r + 1.5} L${x - r - 1.5},${y} Z`} />;
-  if (shape === "triangle") return <path key={key} className={className} d={`M${x},${y - r - 1} L${x + r + 1},${y + r} L${x - r - 1},${y + r} Z`} />;
-  return <circle key={key} className={className} cx={x} cy={y} r={r} />;
+const at = (l: StoryLine | null, batch: number) => l?.points.find((p) => p.batch === batch) ?? null;
+const first = (l: StoryLine | null) => l?.points[0] ?? null;
+const last = (l: StoryLine | null) => (l?.points.length ? l.points[l.points.length - 1]! : null);
+const lineData = (l: StoryLine | null, pick: (p: BenchHeadline) => number | null) =>
+  (l?.points ?? []).flatMap((p) => {
+    const v = pick(p);
+    return v === null || v <= 0 ? [] : [{ value: [p.batch, v] as [number, number], low: isLowConfidence(p.confidence) }];
+  });
+
+/** A line series in the product's look: low-confidence points hollow, the rest filled. */
+function series(t: ChartTokens, id: string, name: string, color: string, data: { value: [number, number]; low: boolean }[], extra: Record<string, unknown> = {}) {
+  return {
+    id,
+    name,
+    type: "line" as const,
+    smooth: 0.25,
+    symbol: "circle",
+    symbolSize: 10,
+    color,
+    lineStyle: { width: 3, color },
+    emphasis: { focus: "series" as const, scale: 1.4 },
+    data: data.map((d) => ({ value: d.value, itemStyle: d.low ? { color: t.surface, borderColor: color, borderWidth: 2.5 } : { color, borderColor: color } })),
+    ...extra,
+  };
 }
 
-function niceMax(v: number): number {
-  const p = 10 ** Math.floor(Math.log10(v || 1));
-  for (const m of [1, 1.5, 2, 3, 4, 5, 8, 10]) if (m * p >= v) return m * p;
-  return 10 * p;
-}
+const streams = (n: number) => `${n} stream${n === 1 ? "" : "s"}`;
 
-interface Ref {
-  lo: number;
-  hi: number;
-  label: string;
-}
-
-/** One measure against batch size. `cursor` is the selector's position as a fraction along the batch list. */
-function Panel({
-  title,
-  hint,
-  unit,
-  series,
-  batches,
-  cursor,
-  selected,
-  log,
-  height = 132,
-  refBand,
-  edgeNote,
-  picked,
-  onPick,
-  width,
-}: {
-  title: string;
-  hint: string;
-  unit: string;
-  series: { name: string; label: string; short?: string; points: BenchPoint[]; tone: Tone; shape: Shape; lineless?: boolean }[];
-  batches: number[];
-  cursor: number;
-  selected: number;
-  log?: boolean;
-  height?: number;
-  refBand?: Ref | null;
-  edgeNote?: string | null;
-  picked: string | null;
-  onPick: (key: string) => void;
-  width: number;
-}) {
-  const w = Math.max(width, 260);
-  const inner = w - PAD.left - PAD.right;
-  const lx = (v: number) => Math.log2(v);
-  const x0 = lx(batches[0]!);
-  const x1 = lx(batches[batches.length - 1]!);
-  const x = (batch: number) => PAD.left + ((lx(batch) - x0) / (x1 - x0 || 1)) * inner;
-  const top = 14;
-  const bot = height - 22;
-  const values = series.flatMap((s) => s.points.map((p) => p.value)).concat(refBand ? [refBand.lo, refBand.hi] : []);
-  const vMax = Math.max(...values, 0.001);
-  const vMin = Math.min(...values);
-  let y: (v: number) => number;
-  let ticks: number[];
-  if (log) {
-    const lo = Math.floor(Math.log10(vMin));
-    const hi = Math.ceil(Math.log10(vMax));
-    y = (v) => bot - ((Math.log10(v) - lo) / (hi - lo || 1)) * (bot - top);
-    ticks = [];
-    for (let e = lo; e <= hi; e++) ticks.push(10 ** e);
-    if (hi - lo <= 2) for (let e = lo; e < hi; e++) ticks.push(3 * 10 ** e);
-  } else {
-    const max = niceMax(vMax);
-    y = (v) => bot - (v / max) * (bot - top);
-    ticks = [0, max / 2, max];
-  }
-  // the cursor sits between two batch sizes while it moves
-  const i = Math.min(batches.length - 1, Math.max(0, Math.floor(cursor)));
-  const j = Math.min(batches.length - 1, i + 1);
-  const cx = x(batches[i]!) + (x(batches[j]!) - x(batches[i]!)) * (cursor - i);
-  const now = series[0]?.points.find((p) => p.x === selected);
-  const beside = series.find((s) => s.name.startsWith(CMP));
-  const besideNow = beside?.points.find((p) => p.x === selected);
-
+/** "?" with the reason, for a tile whose row is missing. */
+function Tile({ value, label, sub, missing }: { value: string | null; label: string; sub: string; missing?: string }) {
   return (
-    <>
-      <div className={b.panelTitle}>
-        <span>
-          <b>{title}</b> {hint}
-        </span>
-        {now ? (
-          <span className={b.panelNow}>
-            {fmt(now.value)} {unit}
-            {beside && besideNow ? (
-              <span className={b.note}>
-                {" "}
-                · {beside.short}: {fmt(besideNow.value)}
-              </span>
-            ) : null}
-          </span>
-        ) : null}
-      </div>
-      <svg width={w} height={height} role="group" aria-label={`${title} by batch size`}>
-        {ticks.map((v) => (
-          <g key={v}>
-            <line className={b.gridline} x1={PAD.left} x2={w - PAD.right} y1={y(v)} y2={y(v)} />
-            <text className={b.axis} x={PAD.left - 8} y={y(v) + 4} textAnchor="end">
-              {v >= 10 ? v.toFixed(0) : String(Number(v.toPrecision(2)))}
-            </text>
-          </g>
-        ))}
-        {batches.map((batch) => (
-          <text key={batch} className={b.axis} x={x(batch)} y={height - 5} textAnchor="middle">
-            {batch === batches[0] ? `batch ${batch}` : batch}
-          </text>
-        ))}
-        <rect className={b.cursorBand} x={cx - 13} y={top - 8} width={26} height={bot - top + 12} rx={8} />
-        <line className={b.cursor} x1={cx} x2={cx} y1={top - 6} y2={bot + 2} />
-        {refBand ? (
-          <g>
-            <rect className={b.refBand} x={PAD.left} width={inner} y={y(refBand.hi)} height={Math.max(3, y(refBand.lo) - y(refBand.hi))} />
-            <line className={b.refLine} x1={PAD.left} x2={w - PAD.right} y1={y(refBand.hi)} y2={y(refBand.hi)} />
-            <line className={b.refLine} x1={PAD.left} x2={w - PAD.right} y1={y(refBand.lo)} y2={y(refBand.lo)} />
-            <text className={b.refLabel} x={PAD.left + 6} y={y(refBand.hi) - 6}>
-              {refBand.label}
-            </text>
-          </g>
-        ) : null}
-        {edgeNote ? (
-          <text className={b.refLabel} x={w - PAD.right} y={top - 2} textAnchor="end">
-            {edgeNote}
-          </text>
-        ) : null}
-        {series.map((s) =>
-          s.lineless
-            ? null
-            : s.points.slice(1).map((p, k) => {
-                const a = s.points[k]!;
-                return <line key={`${s.name}-${p.x}`} className={`${b.line} ${b[s.tone]} ${a.low_confidence || p.low_confidence ? b.lineLow : ""}`} x1={x(a.x!)} y1={y(a.value)} x2={x(p.x!)} y2={y(p.value)} />;
+    <div className={`${s.tile} ${value === null ? s.tileMissing : ""}`}>
+      <span className={s.tileValue}>{value ?? "?"}</span>
+      <span className={s.tileLabel}>{label}</span>
+      <span className={s.tileSub}>{value === null ? missing : sub}</span>
+    </div>
+  );
+}
+
+/* ---------- 1. the chip fix ---------- */
+
+function ChipFix({ story, reduced, a100, setA100, onPick }: { story: ReturnType<typeof speedStory>; reduced: boolean; a100: boolean; setA100: (v: boolean) => void; onPick: (session: string, metric: string, batch: number) => void }) {
+  const t = useChartTokens();
+  const { after, before, llama } = story;
+  const ref = a100 ? story.a100 : null;
+
+  const a1 = at(after, 1);
+  const b1 = at(before, 1);
+  const speedup = a1?.tok_s_stream && b1?.tok_s_stream ? a1.tok_s_stream / b1.tok_s_stream : null;
+  const watts = (after?.points ?? []).map((p) => p.watts).filter((w): w is number => w !== null);
+  const wMin = watts.length ? Math.min(...watts) : null;
+  const wMax = watts.length ? Math.max(...watts) : null;
+  const wMid = watts.length ? watts.slice().sort((x, y) => x - y)[Math.floor(watts.length / 2)]! : null;
+  const jFirst = first(after);
+  const jLast = last(after);
+  const l1 = at(llama, 1);
+  const shared = (llama?.points ?? []).filter((p) => at(after, p.batch)).map((p) => p.batch);
+  const top = shared.length ? shared[shared.length - 1]! : null;
+
+  const option = useMemo<EChartsOption>(() => {
+    const axis = chartAxis(t);
+    const lines = [after, llama, ref].filter(Boolean) as StoryLine[];
+    const maxB = Math.max(2, ...lines.flatMap((l) => l.points.map((p) => p.batch)));
+    const wTop = Math.max(10, ...(after?.points ?? []).map((p) => p.watts ?? 0)); // the watts axis is the vLLM pod's own
+    return {
+      ...chartBase(t, reduced),
+      grid: { left: 56, right: 60, top: 84, bottom: 52 },
+      legend: { top: 0, left: 0, icon: "roundRect", itemWidth: 14, itemHeight: 4, itemGap: 18, textStyle: { color: t.text, fontSize: 13 } },
+      tooltip: {
+        ...(chartBase(t, reduced).tooltip as object),
+        trigger: "axis",
+        axisPointer: { type: "line", lineStyle: { color: t.line, width: 1 } },
+        formatter: (raw: unknown) => {
+          const ps = (Array.isArray(raw) ? raw : [raw]) as { seriesName: string; value: [number, number]; color: string; seriesId: string }[];
+          if (!ps.length) return "";
+          const head = `<b>${streams(ps[0]!.value[0])}</b>`;
+          const rows = ps.map((p) => `<span style="color:${p.color}">&#9679;</span> ${p.seriesName}: <b>${fmt(p.value[1])}</b> ${p.seriesId.endsWith(":w") ? "W" : "J per token"}`);
+          return [head, ...rows].join("<br/>");
+        },
+      },
+      xAxis: { ...axis, type: "log", logBase: 2, min: 1, max: maxB, name: "streams answered at once", nameLocation: "middle", nameGap: 32, splitLine: { show: false }, axisLabel: { ...axis.axisLabel, formatter: (v: number) => String(Math.round(v)) } },
+      yAxis: [
+        { ...axis, type: "log", logBase: 10, name: "joules per token (log)", nameLocation: "end", nameGap: 14, axisLabel: { ...axis.axisLabel, formatter: (v: number) => String(Number(v.toPrecision(2))) } },
+        { ...axis, type: "value", min: 0, max: Math.ceil((wTop * 1.6) / 50) * 50, name: "watts", nameLocation: "end", nameGap: 14, splitLine: { show: false }, position: "right" },
+      ],
+      series: [
+        ...(after
+          ? [
+              series(t, `${after.session.id}:j`, "vLLM after the kernel fix", t.accent3, lineData(after, (p) => p.j_per_token), {
+                areaStyle: { color: { type: "linear", x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: `${t.accent3}33` }, { offset: 1, color: `${t.accent3}00` }] } },
               }),
-        )}
-        {series.map((s) =>
-          s.points.map((p) => {
-            const key = `${s.name}@${p.x}`;
-            const px = x(p.x!);
-            const py = y(p.value);
-            const on = p.x === selected;
-            return (
-              <g key={key}>
-                {mark(s.shape, px, py, on ? 6.5 : 5, p.low_confidence ? `${b.dot} ${b[s.tone]}` : `${b.dot} ${SOLID[s.tone]}`)}
-                {picked === key ? <circle className={b.picked} cx={px} cy={py} r={12} /> : null}
-                {on && !s.lineless ? (
-                  <text className={b.valueLabel} x={px + (px > w - 90 ? -12 : 12)} y={py + (py < top + 16 ? 18 : -10)} textAnchor={px > w - 90 ? "end" : "start"}>
-                    {fmt(p.value)}
-                  </text>
-                ) : null}
-                <circle
-                  className={b.hit}
-                  cx={px}
-                  cy={py}
-                  r={17}
-                  tabIndex={0}
-                  role="button"
-                  aria-label={`${s.label} at batch ${p.x}: ${fmt(p.value)} ${unit}${p.low_confidence ? ", low confidence" : ""}. Show its source.`}
-                  onClick={() => onPick(key)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      onPick(key);
-                    }
-                  }}
-                />
-              </g>
-            );
-          }),
-        )}
-      </svg>
-    </>
-  );
-}
-
-function LegendMark({ shape, tone, hollow }: { shape: Shape; tone: Tone; hollow?: boolean }) {
-  return (
-    <svg width={30} height={14} aria-hidden="true">
-      <line className={`${b.line} ${b[tone]} ${hollow ? b.lineLow : ""}`} x1={1} x2={29} y1={7} y2={7} />
-      {mark(shape, 15, 7, 4.5, hollow ? `${b.dot} ${b[tone]}` : `${b.dot} ${SOLID[tone]}`)}
-    </svg>
-  );
-}
-
-function Batching({
-  sweep,
-  bench,
-  initialBatch,
-  initialTtft,
-  initialPoint,
-  initialCompare,
-  reduced,
-}: {
-  sweep: BenchSweep;
-  bench: LabBench;
-  initialBatch: number | null;
-  initialTtft: boolean;
-  initialPoint: string | null;
-  initialCompare: string | null;
-  reduced: boolean;
-}) {
-  const batches = sweep.batches;
-  // other chips' sweeps that can be read beside this one; only the current lab's sweep offers any
-  const offers = useMemo(() => sweep.comparisons.flatMap((c) => bench.sweeps.filter((s) => s.id === c.id).map((other) => ({ ...c, other }))), [sweep, bench]);
-  const [compareId, setCompareId] = useState<string | null>(() => (initialCompare ? (sweep.comparisons.find((c) => c.chip.key === initialCompare) ?? (initialCompare === "1" ? sweep.comparisons[0] : undefined))?.id ?? null : null));
-  const cmp = offers.find((c) => c.id === compareId) ?? null;
-  const start = Math.max(0, initialBatch !== null ? batches.indexOf(initialBatch) : batches.length > 3 ? 3 : batches.length - 1);
-  const [sel, setSel] = useState(start);
-  const [cursor, setCursor] = useState(start);
-  const [ttft, setTtft] = useState(initialTtft);
-  const [playing, setPlaying] = useState(false);
-  const [picked, setPicked] = useState<string | null>(initialPoint ? `${initialPoint}@${batches[start]}` : null);
-  const [ref, width] = useWidth();
-  const cursorRef = useRef(cursor);
-  cursorRef.current = cursor;
-  const batch = batches[sel]!;
-
-  // the cursor glides to the chosen batch size; with reduced motion it is simply there
-  useEffect(() => {
-    if (reduced) {
-      setCursor(sel);
-      return;
-    }
-    const from = cursorRef.current;
-    const t0 = performance.now();
-    let raf = 0;
-    const tick = (now: number) => {
-      const u = Math.min(1, (now - t0) / 420);
-      setCursor(from + (sel - from) * (1 - (1 - u) ** 3));
-      if (u < 1) raf = window.requestAnimationFrame(tick);
+              series(t, `${after.session.id}:w`, "Pod watts (vLLM)", t.watch, lineData(after, (p) => p.watts), { yAxisIndex: 1, smooth: false, symbolSize: 6, lineStyle: { width: 2, type: "dashed", color: t.watch } }),
+            ]
+          : []),
+        ...(llama ? [series(t, `${llama.session.id}:j`, "llama.cpp Vulkan", t.accent2, lineData(llama, (p) => p.j_per_token))] : []),
+        ...(ref ? [series(t, `${ref.session.id}:j`, "NVIDIA A100 (reference)", t.unknown, lineData(ref, (p) => p.j_per_token), { symbol: "triangle", lineStyle: { width: 2, type: "dotted", color: t.unknown } })] : []),
+      ],
     };
-    raf = window.requestAnimationFrame(tick);
-    return () => window.cancelAnimationFrame(raf);
-  }, [sel, reduced]);
-
-  useEffect(() => {
-    if (!playing) return;
-    const id = window.setTimeout(() => {
-      if (sel >= batches.length - 1) setPlaying(false);
-      else setSel(sel + 1);
-    }, 1500);
-    return () => window.clearTimeout(id);
-  }, [playing, sel, batches.length]);
-
-  const m = sweep.metrics;
-  const student = bench.student;
-  const jLo = student?.j_per_token?.value;
-  const jHi = student?.j_per_token_request?.value;
-  const band: Ref | null = jLo !== undefined ? { lo: Math.min(jLo, jHi ?? jLo), hi: Math.max(jLo, jHi ?? jLo), label: `Jetson student ${fmt(jLo)}${jHi !== undefined ? ` to ${fmt(jHi)}` : ""} J/token (derived)` } : null;
-  const pick = useCallback((key: string) => setPicked((p) => (p === key ? null : key)), []);
-  const pickedPoint = useMemo(() => {
-    if (!picked) return null;
-    const [name = "", at] = picked.split("@");
-    const from = name.startsWith(CMP) ? cmp?.other.metrics[name.slice(CMP.length)] : m[name];
-    return from?.find((p) => String(p.x) === at) ?? null;
-  }, [picked, m, cmp]);
-  const readout = batchReadout(sweep, batch);
-  const shared = { batches, cursor, selected: batch, picked, onPick: pick, width };
-  const allLow = sweep.low_confidence === sweep.points;
-  // the other chip's rows of one metric, at the batch sizes both ran, as a grey series with a marker of its own
-  const cmpShort = cmp ? chipShort(cmp.chip) : "";
-  const beside = (name: string, label: string) => {
-    const pts = cmp && cmp.metrics.includes(name) ? (cmp.other.metrics[name] ?? []).filter((p) => p.x !== null && p.x !== undefined && cmp.batches.includes(p.x)) : [];
-    return pts.length ? [{ name: CMP + name, label: `${cmpShort}: ${label}`, short: cmpShort, points: pts, tone: "neutral" as Tone, shape: "triangle" as Shape }] : [];
-  };
-  const mineAt = (name: string) => m[name]?.find((p) => p.x === batch);
-  const theirsAt = (name: string) => (cmp && cmp.metrics.includes(name) ? cmp.other.metrics[name]?.find((p) => p.x === batch) : undefined);
-  const wMine = mineAt("watts_avg");
-  const wTheirs = theirsAt("watts_avg");
-  const scale = cmp ? ", log scale while comparing" : "";
+  }, [t, reduced, after, llama, ref]);
 
   return (
-    <div className={b.card}>
-      <div className={b.cardHead}>
-        <h2>One teacher, many people at once</h2>
-        <Tag kind="measured" />
+    <section className={s.section} aria-labelledby="speed-fix">
+      <div className={s.kicker}>
+        <span className={s.step}>1</span> The chip fix
       </div>
-      {sweep.other_chip ? (
-        <p className={`${b.banner} ${b.bannerWatch}`}>
-          <span>
-            <b>{chipLabel(sweep.chip)}.</b>{" "}
-            {sweep.chip.role === "earlier"
-              ? "These rows were measured on the lab's earlier cards, not on the Strix Halo pods it runs now."
-              : sweep.chip.role === "reference"
-                ? `These rows were measured on a different chip${sweep.chip.where ? `, on ${sweep.chip.where}` : ""}, not on the lab's Strix Halo pods.${sweep.chip_note ? ` The rows say: ${sweep.chip_note}.` : ""}`
-                : "These rows mark themselves as measured on another chip and do not name it. They are not the lab's Strix Halo pods."}
-            {sweep.chip.reason ? <span className={b.note}> How we know: {sweep.chip.reason}.</span> : null}
-          </span>
-        </p>
-      ) : null}
-      <p className={b.note}>
-        {sweep.model ?? "The teacher"} on {sweep.node}
-        {sweep.gpu ? ` (${sweep.gpu})` : ""}, measured {when(sweep.ts)}. Batch size is how many requests it answers at the same time.
-      </p>
-
-      <div className={b.stepper} role="group" aria-label="Batch size">
-        <button type="button" className={b.stepBtn} disabled={sel === 0} aria-label="Smaller batch" onClick={() => (setPlaying(false), setSel(sel - 1))}>
-          ‹
-        </button>
-        {batches.map((v, k) => (
-          <button key={v} type="button" className={`${b.stepBtn} ${k === sel ? b.stepOn : ""}`} aria-pressed={k === sel} onClick={() => (setPlaying(false), setSel(k))}>
-            {v}
-          </button>
-        ))}
-        <button type="button" className={b.stepBtn} disabled={sel === batches.length - 1} aria-label="Larger batch" onClick={() => (setPlaying(false), setSel(sel + 1))}>
-          ›
-        </button>
-        {reduced ? null : (
-          <button type="button" className={b.stepBtn} onClick={() => (playing ? setPlaying(false) : (sel >= batches.length - 1 && setSel(0), setPlaying(true)))}>
-            {playing ? "Pause" : "Play 1 to " + batches[batches.length - 1]}
-          </button>
-        )}
-      </div>
-
-      <input
-        className={b.slider}
-        type="range"
-        min={0}
-        max={batches.length - 1}
-        step={1}
-        value={sel}
-        aria-label="Batch size"
-        aria-valuetext={`batch ${batch}`}
-        onChange={(e) => (setPlaying(false), setSel(Number(e.target.value)))}
-      />
-
-      {readout ? (
-        <p className={b.readout} role="status">
-          {readout}
-          <span className={b.readoutSub}>
-            Computed from {["decode_tok_s", "joules_per_token"].map((n) => shortRef(m[n]?.find((p) => p.x === batch)?.source.ref)).join(" and ")}.
-          </span>
-          {cmp && (theirsAt("decode_tok_s") || theirsAt("joules_per_token")) ? (
-            <span className={b.readoutSub}>
-              For comparison, {cmpShort} at batch {batch}:{" "}
-              {[
-                [theirsAt("decode_tok_s"), "tokens a second for each request"],
-                [theirsAt("joules_per_token"), "J for each token"],
-              ]
-                .filter((x): x is [BenchPoint, string] => !!x[0])
-                .map(([p, words]) => `${fmt(p.value)} ${words} (${shortRef(p.source.ref)})`)
-                .join(", ")}
-              . A different chip, not the lab&apos;s.
-            </span>
-          ) : null}
-        </p>
-      ) : null}
-
-      {offers.length ? (
-        <div className={ui.chips} role="group" aria-label="Compare with another chip">
-          {offers.map((c) => (
-            <button key={c.id} type="button" className={`${ui.chip} ${c.id === compareId ? ui.chipOn : ""}`} aria-pressed={c.id === compareId} onClick={() => (setPicked(null), setCompareId(c.id === compareId ? null : c.id))}>
-              Compare with: {chipShort(c.chip)}
-            </button>
-          ))}
-        </div>
-      ) : null}
-      {cmp ? (
-        <p className={b.banner}>
-          <span>
-            <b>
-              {chipLabel(cmp.chip)}, in grey. Not the lab&apos;s hardware.
-            </b>{" "}
-            A different{wMine && wTheirs && wTheirs.value >= 2 * wMine.value ? ", much larger" : ""} chip{cmp.other.gpu ? ` (${cmp.other.gpu})` : ""}
-            {cmp.chip.where ? `, measured on ${cmp.chip.where}` : ", measured elsewhere"} {when(cmp.other.ts)}
-            {cmp.other.chip_note ? `. The rows say: ${cmp.other.chip_note}` : ""}.{" "}
-            {wMine && wTheirs
-              ? `At batch ${batch} it drew ${fmt(wTheirs.value)} W against ${fmt(wMine.value)} W on ${sweep.node}${cmp.other.power_source ? `, and its power is read another way (${cmp.other.power_source})` : ""}. `
-              : ""}
-            {cmp.same_model ? `The same model (${cmp.other.model})` : `A different model (${cmp.other.model ?? "not named"})`}
-            {cmp.other.build ? `, ${cmp.other.build}` : ""}; {cmp.batches.length === batches.length ? "the same batch sizes" : `batch sizes ${cmp.batches.join(", ")} only`}. {cmp.other.confidence_note} Tap a grey point to see its row.
-          </span>
-        </p>
-      ) : null}
-
-      <div ref={ref} className={b.chart}>
-        {width > 0 ? (
-          <>
-            {m.decode_tok_s ? (
-              <Panel
-                {...shared}
-                title="Speed for each person"
-                hint={`tokens a second per request: falls as more share the card${scale}`}
-                unit="tok/s"
-                log={!!cmp}
-                series={[{ name: "decode_tok_s", label: "Tokens a second per request", points: m.decode_tok_s, tone: "speed", shape: "circle" }, ...beside("decode_tok_s", "tokens a second per request")]}
-                edgeNote={student?.tok_s && !cmp && student.tok_s.value > niceMax(Math.max(...m.decode_tok_s.map((p) => p.value))) ? `Jetson student: ${fmt(student.tok_s.value)} tok/s, above this scale` : null}
-              />
-            ) : null}
-            {m.decode_tok_s_total ? (
-              <Panel
-                {...shared}
-                title="Speed in total"
-                hint={`tokens a second across all requests: rises${scale}`}
-                unit="tok/s"
-                log={!!cmp}
-                series={[{ name: "decode_tok_s_total", label: "Tokens a second in total", points: m.decode_tok_s_total, tone: "speed", shape: "square" }, ...beside("decode_tok_s_total", "tokens a second in total")]}
-              />
-            ) : null}
-            {m.joules_per_token ? (
-              <Panel
-                {...shared}
-                title="Energy for each token"
-                hint="joules per token, log scale: falls steeply"
-                unit="J/token"
-                log
-                height={170}
-                refBand={band}
-                series={[{ name: "joules_per_token", label: "Joules per token", points: m.joules_per_token, tone: "energy", shape: "diamond" }, ...beside("joules_per_token", "joules per token")]}
-              />
-            ) : null}
-            {ttft && m.ttft_s ? (
-              <Panel
-                {...shared}
-                title="Wait before the first word"
-                hint={`seconds to the first token: the price of sharing${scale}`}
-                unit="s"
-                log={!!cmp}
-                series={[{ name: "ttft_s", label: "Time to first token", points: m.ttft_s, tone: cmp ? "speed" : "neutral", shape: cmp ? "circle" : "triangle" }, ...beside("ttft_s", "time to first token")]}
-              />
-            ) : null}
-            {m.watts_avg ? (
-              <Panel
-                {...shared}
-                title="Power drawn"
-                hint={cmp ? "watts, average (line) and the lab's peak (squares)" : `watts, average (line) and peak (squares)${sweep.other_chip ? "" : ": flat, so more answers per watt"}`}
-                unit="W"
-                height={cmp ? 132 : 96}
-                series={[
-                  { name: "watts_avg", label: "Average watts", points: m.watts_avg, tone: "energy", shape: "circle" },
-                  ...(m.watts_peak ? [{ name: "watts_peak", label: "Peak watts", points: m.watts_peak, tone: (cmp ? "energy" : "neutral") as Tone, shape: "square" as Shape, lineless: true }] : []),
-                  ...beside("watts_avg", "average watts"),
-                ]}
-              />
-            ) : null}
-          </>
-        ) : null}
-      </div>
-
-      <div className={b.legend}>
-        <span>
-          <LegendMark shape="circle" tone="speed" hollow /> hollow and dashed: low confidence
-        </span>
-        <span>
-          <LegendMark shape="circle" tone="speed" /> solid: confident
-        </span>
-        <span>
-          <svg width={30} height={14} aria-hidden="true">
-            <line className={b.refLine} x1={1} x2={29} y1={7} y2={7} />
-          </svg>
-          Jetson student, for reference
-        </span>
-        {cmp ? (
-          <span>
-            <LegendMark shape="triangle" tone="neutral" hollow={cmp.other.low_confidence > 0} /> grey: {cmpShort}, a different chip, for comparison
-          </span>
-        ) : null}
-      </div>
-      <p className={`${b.banner} ${allLow ? b.bannerWatch : ""}`}>
-        <span>
-          <b>{allLow ? "Read these as a first look, not a result." : `${sweep.low_confidence} of ${sweep.points} points are low confidence.`}</b> {sweep.confidence_note} Tap a point to see its row.
-        </span>
-      </p>
-      {pickedPoint ? <PointDetail p={pickedPoint} onClose={() => setPicked(null)} /> : null}
-      {m.ttft_s ? (
-        <button type="button" className={`${ui.chip} ${ttft ? ui.chipOn : ""}`} aria-pressed={ttft} onClick={() => setTtft((v) => !v)} style={{ alignSelf: "flex-start" }}>
-          {ttft ? "Hide" : "Show"} time to first token
-        </button>
-      ) : null}
-    </div>
-  );
-}
-
-function StudentCard({ bench }: { bench: LabBench }) {
-  const s = bench.student;
-  const [open, setOpen] = useState<string | null>(null);
-  if (!s)
-    return (
-      <div className={b.card}>
-        <h2>The box&apos;s own model</h2>
-        <p className={b.note}>The metrics file has no row for the student on the Jetson yet.</p>
-      </div>
-    );
-  const cells: [string, string, BenchPoint | null][] = [
-    ["watts", "power while answering", s.watts],
-    ["tok", "decode speed", s.tok_s],
-    ["jpt", "per token while decoding", s.j_per_token],
-    ["jptr", "per token, whole request", s.j_per_token_request],
-  ];
-  const shown = cells.find(([k]) => k === open)?.[2] ?? null;
-  return (
-    <div className={b.card}>
-      <div className={b.cardHead}>
-        <h2>The box&apos;s own model, for comparison</h2>
-      </div>
-      <p className={b.note}>The small student model on the Jetson answers one request at a time. Its joules per token is not measured directly: it is worked out from its watts and its speed.</p>
-      <div className={b.stats}>
-        {cells.map(([key, label, p]) =>
-          p ? (
-            <button key={key} type="button" className={`${b.stat} ${open === key ? b.statOn : ""}`} aria-expanded={open === key} onClick={() => setOpen(open === key ? null : key)}>
-              <span className={b.statNum}>
-                {fmt(p.value)} {p.unit}
-              </span>
-              <span className={b.statLabel}>{label}</span>
-              <span>
-                <Tag kind={p.kind} />
-                {p.low_confidence ? <span className={b.low}> low confidence</span> : null}
-              </span>
-              {p.kind === "derived" && p.formula ? <span className={b.note}>= {p.formula}</span> : null}
-            </button>
-          ) : null,
-        )}
-      </div>
-      {shown ? <PointDetail p={shown} onClose={() => setOpen(null)} /> : <p className={b.note}>Tap a number to see the row it came from.</p>}
-    </div>
-  );
-}
-
-function PowerCard({ bench }: { bench: LabBench }) {
-  const [open, setOpen] = useState<string | null>(null);
-  const nodes = bench.power.nodes;
-  const max = Math.max(1, ...nodes.flatMap((n) => [n.idle?.value ?? 0, n.serving?.value ?? 0]));
-  const find = (key: string): BenchPoint | null => {
-    const [node, which] = key.split("|");
-    const n = nodes.find((x) => x.node === node);
-    return (n?.[which as "idle" | "serving"] as BenchPoint | null | undefined) ?? null;
-  };
-  const row = (n: BenchPowerNode, which: "idle" | "serving") => {
-    const p = n[which];
-    const key = `${n.node}|${which}`;
-    return (
-      <div key={key} style={{ display: "contents" }}>
-        <span className={b.note}>{which === "idle" ? "On, idle" : "Answering"}</span>
-        {p ? (
-          <button type="button" className={b.barTrack} aria-expanded={open === key} aria-label={`${n.node} ${which}: ${fmt(p.value)} watts${p.low_confidence ? ", low confidence" : ""}. Show its source.`} onClick={() => setOpen(open === key ? null : key)}>
-            <span className={`${b.barFill} ${which === "idle" ? b.barIdle : ""} ${p.low_confidence ? b.barLow : ""}`} style={{ width: `${Math.max(1, (p.value / max) * 72)}%` }} />
-            <span className={b.barValue}>{fmt(p.value)} W</span>
-            {p.low_confidence ? <span className={b.low}>low confidence</span> : null}
-          </button>
-        ) : (
-          <span className={b.note}>no row yet</span>
-        )}
-      </div>
-    );
-  };
-  if (nodes.length === 0) return null;
-  const shown = open ? find(open) : null;
-  return (
-    <div className={b.card}>
-      <div className={b.cardHead}>
-        <h2>What it costs to be on</h2>
-        <Tag kind="measured" />
-      </div>
-      <p className={b.note}>The newest idle and answering power row for each machine. A striped bar is a low-confidence row.</p>
-      <div className={b.bars}>
-        {nodes.map((n) => (
-          <div key={n.node} style={{ display: "contents" }}>
-            <span className={b.barNode}>
-              {n.node === "jetson" ? "Jetson (the box)" : n.node}
-              {n.serving?.state && n.node !== "jetson" ? <span className={b.note}> · answering at {n.serving.state}</span> : null}
-            </span>
-            {row(n, "idle")}
-            {row(n, "serving")}
+      <h2 id="speed-fix" className={s.h2}>
+        Same Strix Halo chip, same power, {speedup ? `${fmt(speedup, 1)} times` : "more"} the speed
+      </h2>
+      <div className={s.hero}>
+        <div className={s.chartCard}>
+          {after ? (
+            <LabEChart
+              option={option}
+              height={390}
+              label={`Energy per token against streams answered at once, ${after ? "vLLM after the kernel fix" : ""}${llama ? " and llama.cpp Vulkan" : ""}, with the pod's watts on a second axis`}
+              onClick={(p) => {
+                const id = p.seriesId ?? "";
+                const session = id.replace(/:[jw]$/, "");
+                const l = [after, llama, ref].find((x) => x?.session.id === session);
+                const pt = l?.points.filter((q) => (id.endsWith(":w") ? q.watts : q.j_per_token) !== null)[p.dataIndex];
+                if (pt) onPick(session, id.endsWith(":w") ? "watts_avg" : "joules_per_token", pt.batch);
+              }}
+            />
+          ) : (
+            <p className={s.empty}>No vLLM session on a Strix Halo pod in these rows yet, so there is nothing to draw.</p>
+          )}
+          <div className={s.chartFoot}>
+            <label className={s.toggle}>
+              <input type="checkbox" checked={a100} disabled={!story.a100} onChange={(e) => setA100(e.target.checked)} />
+              <span>{story.a100 ? "Show the NVIDIA A100 reference" : "No A100 reference session in these rows"}</span>
+            </label>
+            <span className={s.foot}>Hollow points are low confidence. Tap a point for its row.</span>
           </div>
-        ))}
+        </div>
+        <div className={s.tiles}>
+          <Tile
+            value={speedup ? `${fmt(speedup, 1)}x` : null}
+            label="faster for one person"
+            sub={`${fmt(b1?.tok_s_stream ?? 0)} to ${fmt(a1?.tok_s_stream ?? 0)} tokens a second at one stream, vLLM before and after the kernel fix`}
+            missing={after ? "No slower vLLM session before the fix in these rows, so no ratio." : "No vLLM session on a Strix Halo pod in these rows."}
+          />
+          <Tile
+            value={wMid !== null ? `${fmt(wMid, 0)} W` : null}
+            label="flat, however many streams"
+            sub={`${fmt(wMin ?? 0, 1)} to ${fmt(wMax ?? 0, 1)} W from ${streams(jFirst?.batch ?? 1)} to ${streams(jLast?.batch ?? 1)}`}
+            missing="No watts row for the vLLM session."
+          />
+          <Tile
+            value={jFirst?.j_per_token && jLast?.j_per_token && jLast !== jFirst ? `${fmt(jFirst.j_per_token, 1)} to ${fmt(jLast.j_per_token, 1)} J` : null}
+            label="per token"
+            sub={`from ${streams(jFirst?.batch ?? 1)} to ${streams(jLast?.batch ?? 1)}: the same watts spread over more tokens`}
+            missing="The vLLM session needs two batch sizes with joules per token."
+          />
+        </div>
       </div>
-      {bench.power.other_chip.length ? (
-        <p className={b.note}>
-          Not drawn: {bench.power.other_chip.length} power row{bench.power.other_chip.length === 1 ? "" : "s"} that {bench.power.other_chip.length === 1 ? "is" : "are"} not from the current lab:{" "}
-          {chipCounts(bench.power.other_chips, true)}. They are in &ldquo;All rows&rdquo;.
-        </p>
-      ) : null}
-      {bench.power.absent.length ? <p className={b.note}>No power row yet for {bench.power.absent.join(", ")}. Nothing is drawn for a machine the file does not cover.</p> : null}
-      {shown ? <PointDetail p={shown} onClose={() => setOpen(null)} /> : null}
-    </div>
+      <p className={s.story}>
+        {l1?.tok_s_stream && a1?.tok_s_stream && l1.j_per_token && a1.j_per_token ? (
+          <>
+            llama.cpp on Vulkan ties at one stream ({fmt(l1.tok_s_stream)} against {fmt(a1.tok_s_stream)} tokens a second) but each token costs {fmt((l1.j_per_token / a1.j_per_token - 1) * 100, 0)} percent more
+            energy there
+            {top && top > 1 && at(llama, top)?.tok_s_stream && at(after, top)?.tok_s_stream
+              ? `, and it cannot batch: at ${streams(top)} each person gets ${fmt(at(llama, top)!.tok_s_stream!)} tokens a second against vLLM's ${fmt(at(after, top)!.tok_s_stream!)}.`
+              : "."}
+          </>
+        ) : (
+          "No llama.cpp session on a Strix Halo pod in these rows, so there is no second engine to compare."
+        )}
+      </p>
+    </section>
   );
 }
 
-function What({ bench, sweep }: { bench: LabBench; sweep: BenchSweep | undefined }) {
-  const ref = (name: string) => {
-    const pts = sweep?.metrics[name] ?? [];
-    return pts.length ? `${shortRef(pts[0]!.source.ref)} to ${pts[pts.length - 1]!.line}` : "no row";
-  };
+/* ---------- 2. the bigger brain ---------- */
+
+function BiggerBrain({ story, reduced }: { story: ReturnType<typeof speedStory>; reduced: boolean }) {
+  const t = useChartTokens();
+  const { pair, base } = story;
+  const option = useMemo<EChartsOption | null>(() => {
+    if (!pair) return null;
+    const axis = chartAxis(t);
+    const maxB = Math.max(2, ...pair.points.map((p) => p.batch));
+    return {
+      ...chartBase(t, reduced),
+      grid: { left: 56, right: 24, top: 84, bottom: 52 },
+      legend: { top: 0, left: 0, icon: "roundRect", itemWidth: 14, itemHeight: 4, itemGap: 18, textStyle: { color: t.text, fontSize: 13 } },
+      tooltip: {
+        ...(chartBase(t, reduced).tooltip as object),
+        trigger: "axis",
+        axisPointer: { type: "line", lineStyle: { color: t.line, width: 1 } },
+        formatter: (raw: unknown) => {
+          const ps = (Array.isArray(raw) ? raw : [raw]) as { seriesName: string; value: [number, number]; color: string; seriesId: string }[];
+          if (!ps.length) return "";
+          const batch = ps[0]!.value[0];
+          const rows = ps.map((p) => {
+            const l = p.seriesId === "pair" ? pair : base;
+            const q = at(l, batch);
+            return `<span style="color:${p.color}">&#9679;</span> ${p.seriesName}: <b>${fmt(p.value[1])}</b> J per token${q?.tok_s_total ? `, ${fmt(q.tok_s_total)} tok/s in total` : ""}${q?.watts ? `, ${fmt(q.watts, 0)} W` : ""}`;
+          });
+          return [`<b>${streams(batch)}</b>`, ...rows].join("<br/>");
+        },
+      },
+      xAxis: { ...axis, type: "log", logBase: 2, min: 1, max: maxB, name: "streams answered at once", nameLocation: "middle", nameGap: 32, splitLine: { show: false }, axisLabel: { ...axis.axisLabel, formatter: (v: number) => String(Math.round(v)) } },
+      yAxis: { ...axis, type: "log", logBase: 10, name: "joules per token (log)", nameLocation: "end", nameGap: 14, axisLabel: { ...axis.axisLabel, formatter: (v: number) => String(Number(v.toPrecision(2))) } },
+      series: [
+        series(t, "pair", `${modelBillions(pair.session.model) ?? "Big"}B across two pods`, t.accent, lineData(pair, (p) => p.j_per_token)),
+        ...(base ? [series(t, "base", `${modelBillions(base.session.model) ?? "Small"}B on one pod`, t.accent3, lineData(base, (p) => p.j_per_token))] : []),
+      ],
+    };
+  }, [t, reduced, pair, base]);
+
+  const shared = pair && base ? pair.points.filter((p) => at(base, p.batch)?.j_per_token && p.j_per_token).map((p) => p.batch) : [];
+  const top = shared.length ? shared[shared.length - 1]! : null;
+  const pj = top !== null ? at(pair, top)?.j_per_token : null;
+  const bj = top !== null ? at(base, top)?.j_per_token : null;
+  const more = pj && bj ? (pj / bj - 1) * 100 : null;
+  const pb = modelBillions(pair?.session.model);
+  const bb = modelBillions(base?.session.model);
+  const times = pb && bb ? pb / bb : null;
+
+  return (
+    <section className={s.section} aria-labelledby="speed-brain">
+      <div className={s.kicker}>
+        <span className={s.step}>2</span> The bigger brain
+      </div>
+      <h2 id="speed-brain" className={s.h2}>
+        Two pods together run a model {times ? `${fmt(times, 1)} times` : "several times"} the size
+      </h2>
+      {pair && option ? (
+        <div className={s.brain}>
+          <div className={s.chartCard}>
+            <LabEChart option={option} height={330} label="Energy per token against streams answered at once, the big model across two pods and the 27B on one pod" />
+          </div>
+          <table className={s.table}>
+            <thead>
+              <tr>
+                <th scope="col">Streams</th>
+                <th scope="col">Tokens a second</th>
+                <th scope="col">Watts</th>
+                <th scope="col">J per token</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pair.points.map((p) => (
+                <tr key={p.batch}>
+                  <th scope="row">{p.batch}</th>
+                  <td>{p.tok_s_total !== null ? fmt(p.tok_s_total) : "no row"}</td>
+                  <td>{p.watts !== null ? fmt(p.watts, 0) : "no row"}</td>
+                  <td>
+                    {p.j_per_token !== null ? fmt(p.j_per_token) : "no row"}
+                    {isLowConfidence(p.confidence) ? <span className={s.lowDot} title="low confidence" aria-label="low confidence" /> : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <caption className={s.caption}>{pb ? `${pb}B` : "The big model"} across two pods, every number from its own row.</caption>
+          </table>
+        </div>
+      ) : (
+        <p className={s.empty}>The pair rows are not on this box yet. This section draws the big model across two pods as soon as its bench rows arrive; nothing is drawn in their place.</p>
+      )}
+      {more !== null && top !== null ? (
+        <p className={s.story}>
+          A bigger brain costs more joules per token; under load ({streams(top)}), {fmt(more, 0)} percent more for {times ? `${fmt(times, 1)} times` : "a much bigger"} the model.
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+/* ---------- 3. what it costs to be on ---------- */
+
+function PowerBars({ nodes, reduced, onPick }: { nodes: BenchPowerNode[]; reduced: boolean; onPick: (p: BenchPoint) => void }) {
+  const t = useChartTokens();
+  const shown = nodes.filter((n) => n.idle || n.serving);
+  const option = useMemo<EChartsOption>(() => {
+    const axis = chartAxis(t);
+    const label = (p: BenchPoint | null) => ({
+      show: !!p,
+      position: "right" as const,
+      color: t.text,
+      fontSize: 13,
+      formatter: () => (p ? `${fmt(p.value, p.value >= 100 ? 0 : 1)} W${p.low_confidence ? " {dot|}" : ""}` : ""),
+      rich: { dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: t.watch, padding: 0 } },
+    });
+    const bar = (which: "idle" | "serving", name: string, color: string) => ({
+      id: which,
+      name,
+      type: "bar" as const,
+      barWidth: 12,
+      barGap: "45%",
+      itemStyle: { color, borderRadius: [0, 6, 6, 0] },
+      emphasis: { focus: "series" as const },
+      data: shown.map((n) => ({ value: n[which]?.value ?? 0, label: label(n[which]) })),
+    });
+    return {
+      ...chartBase(t, reduced),
+      grid: { left: 130, right: 70, top: 36, bottom: 24 },
+      legend: { top: 0, left: 0, icon: "roundRect", itemWidth: 14, itemHeight: 8, itemGap: 18, textStyle: { color: t.text, fontSize: 13 } },
+      tooltip: {
+        ...(chartBase(t, reduced).tooltip as object),
+        trigger: "item",
+        formatter: (raw: unknown) => {
+          const p = raw as { seriesId: string; dataIndex: number };
+          const n = shown[p.dataIndex];
+          const pt = n?.[p.seriesId as "idle" | "serving"];
+          if (!n || !pt) return "";
+          return `<b>${machineName(n.node)}</b>, ${p.seriesId === "idle" ? "on and idle" : "answering"}: <b>${fmt(pt.value)} W</b>${pt.state ? `<br/><span style="color:${t.muted}">${pt.state.length > 90 ? `${pt.state.slice(0, 90)}...` : pt.state}</span>` : ""}${pt.low_confidence ? `<br/><span style="color:${t.watch}">low confidence</span>` : ""}`;
+        },
+      },
+      xAxis: { ...axis, type: "value", name: "watts", nameLocation: "end", nameGap: 8, splitNumber: 3 },
+      yAxis: { ...axis, type: "category", inverse: true, data: shown.map((n) => machineName(n.node)), axisLabel: { ...axis.axisLabel, color: t.text, fontSize: 13 }, splitLine: { show: false } },
+      series: [bar("idle", "On, idle", t.unknown), bar("serving", "Answering", t.accent)],
+    };
+  }, [t, reduced, shown]);
+  if (!shown.length) return <p className={s.empty}>No idle or answering power row in this response yet.</p>;
+  return (
+    <LabEChart
+      option={option}
+      height={70 + shown.length * 52}
+      label={`Idle and answering watts per machine: ${shown.map((n) => `${machineName(n.node)} ${n.idle ? `${fmt(n.idle.value)} W idle` : "no idle row"}, ${n.serving ? `${fmt(n.serving.value)} W answering` : "no answering row"}`).join("; ")}`}
+      onClick={(p) => {
+        const n = shown[p.dataIndex];
+        const pt = n?.[p.seriesId as "idle" | "serving"];
+        if (pt) onPick(pt);
+      }}
+    />
+  );
+}
+
+/* ---------- 4. sessions and rows ---------- */
+
+function What({ story }: { story: ReturnType<typeof speedStory> }) {
+  const from = (l: StoryLine | null) => (l ? `${sessionTitle(l.session)} (${l.session.id})` : "no session in these rows");
   const lines: [string, string][] = [
-    ["Batch size is how many requests the big teacher model answers at the same moment.", "conditions.batch_size of each row"],
-    ["Each person gets fewer tokens a second as the batch grows; together they get more.", `${ref("decode_tok_s")}; ${ref("decode_tok_s_total")}`],
-    ["The card draws about the same power either way, so each token costs far less energy.", `${ref("joules_per_token")}; ${ref("watts_avg")}`],
-    ["The green band is the small model on the box: derived from its watts and its speed, not measured.", bench.student?.j_per_token?.source.ref.replace(/lab\/refine\//g, "") ?? "no row"],
-    ["Hollow points and dashed lines are low confidence. Tap any point for its row and the reason.", `${bench.low_confidence_rows} of ${bench.rows} rows in ${shortRef(bench.file)}`],
-    ...(sweep?.comparisons ?? []).map((c): [string, string] => [
-      `"Compare with: ${chipShort(c.chip)}" adds grey triangles: the same measurement on a different chip that is not the lab's. They are never joined to the lab's line.`,
-      `${c.chip.reason ?? "the rows' own chip"}; sweep ${c.id}`,
-    ]),
+    ["Streams are how many people the teacher model answers at the same moment (the batch size of each row).", "conditions.batch_size of each row"],
+    ["The chip fix: vLLM on one Strix Halo pod after the kernel fix, the newest vLLM session on that chip.", from(story.after)],
+    ["The 'before' in the first tile: the newest older vLLM session of the same model that was slower at one stream.", from(story.before)],
+    ["llama.cpp Vulkan: the newest llama.cpp session on a Strix Halo pod with two or more batch sizes.", from(story.llama)],
+    ["The bigger brain: the newest session of the big model across two pods, against the vLLM session above at the same batch sizes.", from(story.pair)],
+    ["What it costs to be on: the newest idle and answering power row of each machine. A small amber dot marks a low-confidence row.", "power rows (jetson.idle_watts, pod idle and serving watts)"],
+    ["Hollow points are low confidence: fewer repeats than a verdict needs. Tap a point or a number for its row.", "each row's own confidence and reason"],
   ];
   return (
     <ol className={b.howto}>
-      {lines.map(([text, from]) => (
+      {lines.map(([text, src]) => (
         <li key={text}>
           {text}
           <span className={b.note} style={{ display: "block" }}>
-            From: <span className={b.code}>{from}</span>
+            From: <span className={b.code}>{src}</span>
           </span>
         </li>
       ))}
@@ -664,59 +418,156 @@ function What({ bench, sweep }: { bench: LabBench; sweep: BenchSweep | undefined
   );
 }
 
-function AllRows({ bench }: { bench: LabBench }) {
+function AllRows({ bench, sessions }: { bench: BenchPayload; sessions: BenchSession[] }) {
   return (
     <>
       <p className={ui.muted}>
-        {bench.rows} rows in {bench.file}; {bench.charted_rows} are drawn on this screen or on the Training tab. The rest are listed here so none is dropped silently. {bench.other_chip_rows} rows
-        were not measured on the lab&apos;s Strix Halo pods: {chipCounts(bench.chips.filter((g) => !g.current), true)}. They are never drawn as the current lab&apos;s; a chip with a sweep of its own
-        has its own named section.
+        {bench.rows ?? sessions.reduce((n, x) => n + x.rows, 0)} rows{bench.file ? ` in ${bench.file}` : ""}
+        {bench.charted_rows !== undefined ? `; ${bench.charted_rows} are drawn on this screen or on the Training tab` : ""}. The rest are listed here so none is dropped silently.
       </p>
-      <h3>Present but not charted</h3>
+      <h3>Sessions</h3>
       <div className={b.list}>
-        {bench.not_charted.map((x) => (
-          <div key={`${x.metric}|${x.node}`} className={b.listRow}>
+        {sessions.map((x) => (
+          <div key={x.id} className={b.listRow}>
             <div className={b.listTop}>
-              <span>
-                {x.metric} <span className={b.note}>on {x.node}</span>
-              </span>
-              <b>
-                {fmt(x.latest.value)} {x.unit}
-              </b>
+              <span>{sessionTitle(x)}</span>
+              <b>{x.rows} rows</b>
             </div>
             <span className={b.note}>
-              {x.rows} row{x.rows === 1 ? "" : "s"}: <span className={b.code}>metrics.jsonl:{x.lines.join(", ")}</span>
-              {x.latest.low_confidence ? " · newest is low confidence" : ""}
-              {x.other_chip ? ` · not the current lab: ${x.other_chips.map((g) => `${g.rows === x.rows ? "all" : g.rows} from ${chipShort(g)}`).join(", ")}` : ""}
+              <span className={b.code}>{x.id}</span>
+              {x.lever ? ` · ${x.lever.replace(/_/g, " ")}` : ""}
             </span>
           </div>
         ))}
       </div>
-      <h3>Metric families</h3>
-      <div className={b.list}>
-        {bench.families.map((f) => (
-          <div key={f.family} className={b.listRow}>
-            <div className={b.listTop}>
-              <span>{f.family}</span>
-              <b>
-                {f.charted} of {f.rows} drawn
-              </b>
-            </div>
-            <span className={b.note}>
-              {f.metrics.length} metric{f.metrics.length === 1 ? "" : "s"} on {f.nodes.join(", ")}; {f.low_confidence} low confidence
-            </span>
+      {bench.not_charted?.length ? (
+        <>
+          <h3>Present but not charted</h3>
+          <div className={b.list}>
+            {bench.not_charted.map((x) => (
+              <div key={`${x.metric}|${x.node}`} className={b.listRow}>
+                <div className={b.listTop}>
+                  <span>
+                    {x.metric} <span className={b.note}>on {x.node}</span>
+                  </span>
+                  <b>
+                    {fmt(x.latest.value)} {x.unit}
+                  </b>
+                </div>
+                <span className={b.note}>
+                  {x.rows} row{x.rows === 1 ? "" : "s"}: <span className={b.code}>metrics.jsonl:{x.lines.join(", ")}</span>
+                  {x.other_chip ? ` · not the current lab: ${x.other_chips.map((g) => `${g.rows === x.rows ? "all" : g.rows} from ${chipShort(g)}`).join(", ")}` : ""}
+                </span>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-      {bench.skipped.length ? <p className={b.note}>Lines that are not rows: {bench.skipped.map((s) => `${s.line} (${s.problem})`).join(", ")}.</p> : null}
+        </>
+      ) : null}
+      {bench.skipped?.length ? <p className={b.note}>Lines that are not rows: {bench.skipped.map((k) => `${k.line} (${k.problem})`).join(", ")}.</p> : null}
     </>
   );
 }
 
+const METRIC_OF: Record<string, string> = { tok_s_stream: "decode_tok_s", tok_s_total: "decode_tok_s_total", ttft_s: "ttft_s", watts: "watts_avg", j_per_token: "joules_per_token" };
+
+function Sessions({
+  sessions,
+  points,
+  selected,
+  setSelected,
+  findPoint,
+  picked,
+  setPicked,
+  rows,
+  openSheet,
+  rowsState,
+}: {
+  sessions: BenchSession[];
+  points: BenchHeadline[];
+  selected: string | null;
+  setSelected: (id: string) => void;
+  findPoint: (session: string, metric: string, batch: number) => BenchPoint | null;
+  picked: BenchPoint | null;
+  setPicked: (p: BenchPoint | null) => void;
+  rows: number;
+  openSheet: (which: "what" | "rows") => void;
+  rowsState: "loading" | "error" | "ready" | null;
+}) {
+  const current = sessions.find((x) => x.id === selected) ?? sessions[0];
+  const mine = points.filter((p) => p.session === current?.id).sort((x, y) => x.batch - y.batch);
+  const cell = (p: BenchHeadline, key: keyof typeof METRIC_OF, digits?: number) => {
+    const v = p[key as keyof BenchHeadline] as number | null;
+    if (v === null) return <span className={s.muted}>no row</span>;
+    const src = current ? findPoint(current.id, METRIC_OF[key]!, p.batch) : null;
+    const text = fmt(v, digits);
+    return src ? (
+      <button type="button" className={s.num} onClick={() => setPicked(picked === src ? null : src)} aria-label={`${key.replace(/_/g, " ")} at ${streams(p.batch)}: ${text}. Show its row.`}>
+        {text}
+      </button>
+    ) : (
+      text
+    );
+  };
+  return (
+    <div className={s.drawerBody}>
+      <div className={s.drawerButtons}>
+        <button type="button" className={ui.btn} onClick={() => openSheet("what")}>
+          What am I looking at?
+        </button>
+        <button type="button" className={ui.btn} onClick={() => openSheet("rows")}>
+          All {rows} rows
+        </button>
+      </div>
+      <div className={ui.chips} role="group" aria-label="Measurement sessions, newest first">
+        {sessions.map((x) => (
+          <button key={x.id} type="button" className={`${ui.chip} ${x.id === current?.id ? ui.chipOn : ""}`} aria-pressed={x.id === current?.id} onClick={() => setSelected(x.id)}>
+            {sessionTitle(x)}
+          </button>
+        ))}
+      </div>
+      {current ? (
+        <div className={s.tableWrap}>
+          <table className={s.table}>
+            <thead>
+              <tr>
+                <th scope="col">Streams</th>
+                <th scope="col">Tok/s each</th>
+                <th scope="col">Tok/s total</th>
+                <th scope="col">First token (s)</th>
+                <th scope="col">Watts</th>
+                <th scope="col">J per token</th>
+              </tr>
+            </thead>
+            <tbody>
+              {mine.map((p) => (
+                <tr key={p.batch}>
+                  <th scope="row">
+                    {p.batch}
+                    {isLowConfidence(p.confidence) ? <span className={s.lowDot} title="low confidence" aria-label="low confidence" /> : null}
+                  </th>
+                  <td>{cell(p, "tok_s_stream")}</td>
+                  <td>{cell(p, "tok_s_total")}</td>
+                  <td>{cell(p, "ttft_s")}</td>
+                  <td>{cell(p, "watts", 1)}</td>
+                  <td>{cell(p, "j_per_token")}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+      {picked ? (
+        <PointDetail p={picked} onClose={() => setPicked(null)} />
+      ) : (
+        <p className={s.foot}>
+          {rowsState === "loading" ? "Fetching this session's rows..." : rowsState === "error" ? "This session's rows did not load; the numbers above are its headline." : "Tap a number to see the row it came from."}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function SpeedEnergy({
-  initialBatch,
-  initialTtft,
-  initialPoint,
   initialDrawer,
   initialCompare = null,
   initialSweep = null,
@@ -732,82 +583,145 @@ export function SpeedEnergy({
 }) {
   const bench = useFetch((signal) => api.labBench(signal), "bench");
   const reduced = useReduced(forceReduced);
-  const [sweepId, setSweepId] = useState<string | null>(null);
-  const [drawer, setDrawer] = useState<"what" | "rows" | null>(initialDrawer === "what" || initialDrawer === "rows" ? initialDrawer : null);
-  const close = useCallback(() => setDrawer(null), []);
+  const [a100, setA100] = useState(initialCompare === "1" || /a100/i.test(initialCompare ?? ""));
+  const [sheet, setSheet] = useState<"what" | "rows" | null>(initialDrawer === "what" || initialDrawer === "rows" ? initialDrawer : null);
+  const [open, setOpen] = useState(initialSweep !== null || initialDrawer !== null);
+  const [selected, setSelected] = useState<string | null>(initialSweep);
+  const [pickedPoint, setPickedPoint] = useState<BenchPoint | null>(null);
+  const [pickedKey, setPickedKey] = useState<{ session: string; metric: string; batch: number } | null>(null);
+  // a session's rows (GET .../bench/rows?session=) and the whole payload (?all=1), fetched only when the drawer needs them
+  const [rowsOf, setRowsOf] = useState<Record<string, Partial<LabBench> | "loading" | "error">>({});
+  const [all, setAll] = useState<Partial<LabBench> | "loading" | "error" | null>(null);
+  const close = useCallback(() => setSheet(null), []);
+  const payload = bench.data as BenchPayload | undefined;
+  const summary = useMemo(() => benchSummary(payload), [payload]);
+  const story = useMemo(() => speedStory(summary), [summary]);
+  // the drawer lists the sessions that have headline numbers, newest first; the rest are counted in "All rows"
+  const sessions = useMemo(() => {
+    const withNumbers = new Set(summary.points.map((p) => p.session));
+    return summary.sessions.filter((x) => withNumbers.has(x.id)).sort((x, y) => (y.date ?? "").localeCompare(x.date ?? ""));
+  }, [summary]);
+  const current = sessions.find((x) => x.id === selected) ?? sessions.find((x) => x.id === story.after?.session.id) ?? sessions[0];
+  const fullHere = (payload?.sweeps?.length ?? 0) > 0;
+
+  useEffect(() => {
+    if (!open || !current || fullHere) return;
+    const key = current.source ?? current.id;
+    if (rowsOf[key]) return;
+    setRowsOf((m) => ({ ...m, [key]: "loading" }));
+    fetch(spotUrl(current.rows_url ?? `/api/learning/lab/bench/rows?session=${encodeURIComponent(key)}`))
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((d: Partial<LabBench>) => setRowsOf((m) => ({ ...m, [key]: d })))
+      .catch(() => setRowsOf((m) => ({ ...m, [key]: "error" })));
+  }, [open, current, fullHere, rowsOf]);
+
+  useEffect(() => {
+    if (sheet !== "rows" || all !== null || fullHere) return;
+    setAll("loading");
+    fetch(spotUrl("/api/learning/lab/bench?all=1"))
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((d: Partial<LabBench>) => setAll(d))
+      .catch(() => setAll("error"));
+  }, [sheet, all, fullHere]);
+
+  const findPoint = useCallback(
+    (session: string, metric: string, batch: number): BenchPoint | null => {
+      const x = sessions.find((q) => q.id === session);
+      const from = fullHere ? payload : rowsOf[x?.source ?? session];
+      if (!from || typeof from === "string") return null;
+      const sweeps = (from.sweeps ?? []).filter((w) => w.id === session || !fullHere);
+      for (const w of sweeps) {
+        if (x?.node && w.node && w.node !== x.node) continue;
+        const p = w.metrics[metric]?.find((q) => q.x === batch);
+        if (p) return p;
+      }
+      return null;
+    },
+    [sessions, fullHere, payload, rowsOf],
+  );
+  const picked = pickedPoint ?? (pickedKey ? findPoint(pickedKey.session, pickedKey.metric, pickedKey.batch) : null);
+  const setPicked = useCallback((p: BenchPoint | null) => {
+    setPickedPoint(p);
+    setPickedKey(null);
+  }, []);
+  const pickFromChart = useCallback(
+    (session: string, metric: string, batch: number) => {
+      setSelected(session);
+      setOpen(true);
+      setPickedPoint(null);
+      setPickedKey({ session, metric, batch });
+      if (typeof document !== "undefined") document.getElementById("speed-drawer")?.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+    },
+    [reduced],
+  );
+  const pickPower = useCallback(
+    (p: BenchPoint) => {
+      setPicked(p);
+      setOpen(true);
+      if (typeof document !== "undefined") document.getElementById("speed-drawer")?.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+    },
+    [reduced, setPicked],
+  );
+
   if (bench.loading && !bench.data) return <Loading what="the lab's measurements" />;
   if (bench.error && !bench.data) return <ErrorBox what="the lab's measurements" error={bench.error} onRetry={bench.reload} />;
-  const data = bench.data!;
-  const sweep = data.sweeps.find((s) => s.id === sweepId) ?? (initialSweep ? data.sweeps.find((s) => s.chip.key === initialSweep || s.id === initialSweep) : undefined) ?? data.sweeps[0];
-  // the runs, one group per chip: the current lab first, then each other chip under its own name
-  const groups: { chip: LabChip; sweeps: BenchSweep[] }[] = [];
-  for (const s of data.sweeps) {
-    const mine = groups.find((g) => (g.chip.current && s.chip.current) || (g.chip.key === s.chip.key && (g.chip.role !== "reference" || g.chip.where === s.chip.where)));
-    if (mine) mine.sweeps.push(s);
-    else groups.push({ chip: s.chip, sweeps: [s] });
-  }
+  const data = payload!;
+  const rows = data.rows ?? summary.sessions.reduce((n, x) => n + x.rows, 0);
+  const nodes = data.power?.nodes ?? [];
+
   return (
-    <div className={b.page}>
+    <div className={`${b.page} ${s.page}`}>
       <div className={ui.pageHead}>
         <h1>Speed and energy</h1>
-        <p className={b.sub}>What the lab measured on its own hardware: how fast the big teacher model answers, and what each token costs in energy.</p>
-        <div className={b.cardHead} style={{ justifyContent: "flex-start", marginTop: 8 }}>
-          <button type="button" className={`${ui.btn}`} onClick={() => setDrawer("what")}>
-            What am I looking at?
-          </button>
-          <button type="button" className={`${ui.btn}`} onClick={() => setDrawer("rows")}>
-            All {data.rows} rows
-          </button>
-        </div>
+        <p className={b.sub}>What the lab measured on AMD Strix Halo: the fix that made the teacher fast, the bigger model two pods can run together, and what each machine draws.</p>
       </div>
-      <LabelKey kinds={["measured", "derived"]} />
-      {data.rows === 0 ? <p className={b.banner}>{data.empty_reason}</p> : null}
-      {data.sweeps.length > 1 ? (
-        <div className={b.col} style={{ gap: 12 }}>
-          {groups.map((g) => {
-            const title = g.chip.current ? `The lab now: ${g.chip.name}` : chipLabel(g.chip);
-            return (
-              <div key={`${g.chip.key}|${g.chip.where ?? ""}`} className={b.col} style={{ gap: 6 }}>
-                <span className={b.note}>
-                  {title}
-                  {g.chip.current ? "" : ` · ${chipRole(g.chip)}`}
-                </span>
-                <div className={ui.chips} role="group" aria-label={`Measurement runs, ${title}`}>
-                  {g.sweeps.map((s) => (
-                    <button key={s.id} type="button" className={`${ui.chip} ${s.id === sweep?.id ? ui.chipOn : ""}`} aria-pressed={s.id === sweep?.id} onClick={() => setSweepId(s.id)}>
-                      {s.family.replace(/_/g, " ")} · {s.node} · {when(s.ts)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
+      {sessions.length === 0 ? <p className={b.banner}>{data.empty_reason ?? "No bench session in these rows yet."}</p> : null}
+
+      <ChipFix story={story} reduced={reduced} a100={a100} setA100={setA100} onPick={pickFromChart} />
+      <BiggerBrain story={story} reduced={reduced} />
+
+      <section className={s.section} aria-labelledby="speed-power">
+        <div className={s.kicker}>
+          <span className={s.step}>3</span> What it costs to be on
         </div>
-      ) : null}
-      <div className={b.two}>
-        {sweep ? (
-          <Batching key={sweep.id} sweep={sweep} bench={data} initialBatch={initialBatch} initialTtft={initialTtft} initialPoint={initialPoint} initialCompare={initialCompare} reduced={reduced} />
-        ) : (
-          <div className={b.card}>
-            <h2>No batching measurement yet</h2>
-            <p className={b.note}>The metrics file has no metric measured at two or more batch sizes. The chart appears as soon as the lab records one.</p>
+        <h2 id="speed-power" className={s.h2}>
+          Idle and answering watts, one row per machine
+        </h2>
+        <div className={s.chartCard}>
+          <PowerBars nodes={nodes} reduced={reduced} onPick={pickPower} />
+          <div className={s.chartFoot}>
+            <span className={s.foot}>
+              <span className={s.lowDot} aria-hidden="true" /> marks a low-confidence row. Tap a bar for its row.
+            </span>
           </div>
-        )}
-        <div className={b.col}>
-          <StudentCard bench={data} />
-          <PowerCard bench={data} />
         </div>
-      </div>
-      {drawer === "what" ? (
+        {data.power?.absent?.length ? <p className={s.foot}>No power row yet for {data.power.absent.join(", ")}; nothing is drawn for a machine the rows do not cover.</p> : null}
+      </section>
+
+      <details id="speed-drawer" className={s.drawer} open={open} onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}>
+        <summary className={s.drawerHead}>
+          <span>Sessions and rows</span>
+          <span className={s.foot}>
+            {sessions.length} sessions with numbers, {rows} rows
+          </span>
+        </summary>
+        {open ? (
+          <Sessions sessions={sessions} points={summary.points} selected={current?.id ?? null} setSelected={setSelected} findPoint={findPoint} picked={picked} setPicked={setPicked} rows={rows} openSheet={setSheet} rowsState={fullHere || !current ? null : rowsOf[current.source ?? current.id] === undefined ? "loading" : typeof rowsOf[current.source ?? current.id] === "string" ? (rowsOf[current.source ?? current.id] as "loading" | "error") : "ready"} />
+        ) : null}
+      </details>
+
+      {sheet === "what" ? (
         <Sheet title="What am I looking at?" onClose={close}>
-          <What bench={data} sweep={sweep} />
+          <What story={story} />
         </Sheet>
       ) : null}
-      {drawer === "rows" ? (
+      {sheet === "rows" ? (
         <Sheet title="Every row" onClose={close}>
-          <AllRows bench={data} />
+          <AllRows bench={fullHere ? data : all && typeof all !== "string" ? { ...data, ...all } : data} sessions={summary.sessions} />
+          {all === "loading" ? <p className={s.foot}>Fetching every row (a few megabytes on the box)...</p> : all === "error" ? <p className={s.foot}>The whole payload did not load; the sessions above are from the summary.</p> : null}
         </Sheet>
       ) : null}
+      {picked && !open ? <PointDetail p={picked} onClose={() => setPicked(null)} /> : null}
     </div>
   );
 }
