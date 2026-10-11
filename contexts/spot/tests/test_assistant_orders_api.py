@@ -282,6 +282,11 @@ def test_api_with_the_kit(tmp_path):
         ans = c.post("/api/spot/ask", json={"text": "what should I check first this shift?"}).json()
         assert ans["intent"] == "investigate_next" and "HX-202" in ans["citations"]["assets"] and ans["rephrased"] is False
         assert ans["text"] == ans["draft"] and ans["model"] == "none (built from the tables by code)"
+        # a recognised question says so; one the assistant has no intent for is flagged, so the screen can ask the box instead
+        assert ans["matched"] is True
+        for plain in (False, True):
+            other = c.post("/api/spot/ask", json={"text": "Can you design a new equipment space", "plain": plain}).json()
+            assert other["matched"] is False and other["intent"] == "overview"
         again = c.post("/api/spot/ask", json={"text": "summarize the last mission", "rephrase": True}).json()
         assert again["rephrased"] is False and again["can_rephrase"] is False  # no model on this box: the draft stands
 

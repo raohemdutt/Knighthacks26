@@ -37,11 +37,13 @@ export interface GuideRun {
   precision?: import("./guide").Precision;
   /** A camera zone to outline on that camera's refreshed picture where one runs (the right bin); its other zones are dimmed. */
   zone?: string;
+  /** Called once the pointer has arrived and the arrival line has been said (or the target was not found): a tour then goes on to its next stop. Not called when the run is cancelled. */
+  onArrived?: () => void;
   /** One button in the caption ("Show me in the room"). */
   action?: { label: string; run: GuideRun };
 }
 
-export type GuideMessage = { kind: "run"; run: GuideRun } | { kind: "offer"; say: string; options: { label: string; run?: GuideRun; ask?: string }[] } | { kind: "calibrate" };
+export type GuideMessage = { kind: "run"; run: GuideRun } | { kind: "offer"; say: string; options: { label: string; run?: GuideRun; ask?: string }[] } | { kind: "calibrate" } | { kind: "cancel" };
 
 const listeners = new Set<(m: GuideMessage) => void>();
 let waiting: GuideMessage | null = null;
@@ -64,6 +66,11 @@ function send(m: GuideMessage): void {
 export const pointAt = (run: GuideRun): void => send({ kind: "run", run });
 export const offer = (say: string, options: { label: string; run?: GuideRun; ask?: string }[]): void => send({ kind: "offer", say, options });
 export const calibrateGaze = (): void => send({ kind: "calibrate" });
+/** Stop the guide where it is: the pointer, its walk, its captions and its spoken lines. Nothing is kept for a guide that is not mounted. */
+export const cancelGuide = (): void => {
+  waiting = null;
+  for (const fn of listeners) fn({ kind: "cancel" });
+};
 
 /** A where-question about the app itself: point there and say true. Anything else: false, and the caller carries on as before. */
 export function askGuide(question: string, route: string | null): boolean {

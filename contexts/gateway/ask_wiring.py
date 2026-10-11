@@ -186,6 +186,18 @@ def _shared_brain(shared) -> dict | None:
             "reason": getattr(shared, "reason", None)}
 
 
+def _inspection(spot) -> dict | None:
+    """Inspection's shift summary (contexts/spot, the words its first screen shows), cut down to what the tool says."""
+    read = getattr(spot, "read", None)
+    if read is None or not read.configured:
+        return None
+    from contexts.spot.application import plain
+
+    view = plain.shift(read)
+    return {"status": view["status"]["sentence"], "watch": view["status"]["watch"], "do_first_total": view["do_first_total"],
+            "do_first": [{"headline": i["headline"], "sentence": i["sentence"]} for i in view["do_first"]]}
+
+
 def enabled_for(runtime) -> bool:
     flag = os.environ.get("ATLAS_ASK_TOOLS", "").strip().lower()
     if flag in ("0", "off", "false", "no"):
@@ -194,7 +206,7 @@ def enabled_for(runtime) -> bool:
 
 
 def wire_ask_tools(*, qa: QA, bus, approvals, hub, settings, room=None, identity=None, capture=None, policy=None,
-                   telemetry=None, lab_view=None, shared_brain=None) -> AskRouter | None:
+                   telemetry=None, lab_view=None, shared_brain=None, spot=None) -> AskRouter | None:
     """Build the ports and the router, attach it to QA, and add the two executors. None when the router is off."""
     if not enabled_for(qa.runtime):
         return None
@@ -217,6 +229,7 @@ def wire_ask_tools(*, qa: QA, bus, approvals, hub, settings, room=None, identity
         energy=lambda: _energy(qa, telemetry),
         learning=(lambda: _learning(lab_view)) if lab_view is not None else None,
         shared_brain=(lambda: _shared_brain(shared_brain)) if shared_brain is not None else None,
+        inspection=(lambda: _inspection(spot)) if spot is not None else None,
     )
     network = NetworkBrain.from_env()
     router = AskRouter(qa.runtime, ports, qa.clock, publish=bus.publish, network=network)

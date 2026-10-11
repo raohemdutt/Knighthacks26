@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { spotUrl } from "@/lib/api";
 import { useTraced, type SpotRoute } from "@/lib/guideSpot";
 import { floorAt, legBetween, snapToFloor, type WalkFloor } from "@/lib/guideWalk";
+import pl from "@/components/dayrun/plan.module.css";
 import o from "./op.module.css";
 import type { AssetState, Level, Shift } from "./types";
 
@@ -111,6 +112,9 @@ export function FloorMap({
   route,
   done,
   robotAt,
+  robotMs,
+  dog,
+  zoomable,
   quiet,
   title,
   note,
@@ -134,6 +138,12 @@ export function FloorMap({
   /** How many points of `route` SPOT has already passed (drawn stronger). */
   done?: number;
   robotAt?: string | null;
+  /** How long SPOT takes to move to the next point (Shift Run plays slower); the plan's own 700 ms when not given. */
+  robotMs?: number;
+  /** Shift Run: SPOT is drawn as a small walking robot dog, facing the way it goes and standing still at each stop. */
+  dog?: boolean;
+  /** The plan can be made larger and moved about, with the same buttons as the day's map: fit, plus, minus; drag to move when zoomed. */
+  zoomable?: boolean;
   /** Round view: the equipment marks step back so the route reads first. */
   quiet?: boolean;
   title: string;
@@ -184,6 +194,39 @@ export function FloorMap({
   const box: Rect = panel ? { x: panel.x - pad, y: panel.y - pad, w: panel.w + 2 * pad, h: panel.h + 2 * pad } : { x: 0, y: 0, w: geo.w, h: geo.h };
   const u = box.w / Math.max(width, 240);
   const roomy = width >= 620;
+  // zoom: the same picture, larger, about a middle point (0..1 of the plan in view); marks, route and SPOT grow together
+  const [zoom, setZoom] = useState({ z: 1, cx: 0.5, cy: 0.5 });
+  // another floor: the zoom is kept, about SPOT when it is on the plan (a round goes on being followed), else about the middle
+  useEffect(() => {
+    setZoom((v) => (robot ? { z: v.z, cx: (robot.x - box.x) / box.w, cy: (robot.y - box.y) / box.h } : { z: v.z, cx: 0.5, cy: 0.5 }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
+  const ZOOM_MAX = 4.1;
+  const zoomBy = (k: number) => setZoom((v) => ({ ...v, z: Math.max(1, Math.min(ZOOM_MAX, Math.abs(v.z * k - 1) < 0.01 ? 1 : v.z * k)) }));
+  const within = (c: number, z: number) => Math.max(0.5 / z, Math.min(1 - 0.5 / z, c));
+  const seen: Rect = { x: box.x + (within(zoom.cx, zoom.z) - 0.5 / zoom.z) * box.w, y: box.y + (within(zoom.cy, zoom.z) - 0.5 / zoom.z) * box.h, w: box.w / zoom.z, h: box.h / zoom.z };
+  const drag = useRef<{ x: number; y: number; cx: number; cy: number; moved: boolean } | null>(null);
+  const pan =
+    zoomable && zoom.z > 1
+      ? {
+          onPointerDown: (e: React.PointerEvent) => void (drag.current = { x: e.clientX, y: e.clientY, cx: within(zoom.cx, zoom.z), cy: within(zoom.cy, zoom.z), moved: false }),
+          onPointerMove: (e: React.PointerEvent<SVGSVGElement>) => {
+            const d = drag.current;
+            if (!d) return;
+            const dx = e.clientX - d.x;
+            const dy = e.clientY - d.y;
+            if (!d.moved && Math.hypot(dx, dy) < 5) return;
+            if (!d.moved) e.currentTarget.setPointerCapture(e.pointerId);
+            d.moved = true;
+            const high = (width * box.h) / box.w;
+            setZoom((v) => ({ z: v.z, cx: within(d.cx - dx / (width * v.z), v.z), cy: within(d.cy - dy / (high * v.z), v.z) }));
+          },
+          onPointerUp: () => void window.setTimeout(() => (drag.current = null), 0),
+          onPointerCancel: () => void (drag.current = null),
+          // a drag is not a tap on a mark
+          onClickCapture: (e: React.MouseEvent) => (drag.current?.moved ? (e.stopPropagation(), e.preventDefault()) : undefined),
+        }
+      : {};
   const visible = (loc: string) => Boolean(geo.pos[loc]) && (view === "both" || geo.pos[loc]?.floor === view);
 
   const byHome = useMemo(() => {
@@ -237,6 +280,23 @@ export function FloorMap({
     if (lines ? lines.length > 0 : visible(a) && visible(b)) segs2.push({ a, b, lines });
   }
   const robot = robotAt && visible(robotAt) ? geo.pos[robotAt] : undefined;
+  // the dog walks while it moves to the next stop and stands while that stop's check is shown; it faces the way it goes
+  const [gait, setGait] = useState<{ walking: boolean; left: boolean }>({ walking: false, left: false });
+  const lastAt = useRef<{ x: number; y: number; floor: number | null } | null>(null);
+  const rx = robot?.x;
+  const ry = robot?.y;
+  useEffect(() => {
+    if (!dog || rx === undefined || ry === undefined) return; // off the floor in view for a moment: where it last stood is kept
+    const from = lastAt.current;
+    lastAt.current = { x: rx, y: ry, floor: robotFloor };
+    if (!from || (Math.abs(from.x - rx) < 0.5 && Math.abs(from.y - ry) < 0.5)) return;
+    // left or right is read off two points on the same floor; on a change of floor (or straight up or down) it keeps facing as it was
+    const turn = from.floor === robotFloor && Math.abs(from.x - rx) >= 0.5;
+    setGait((g) => ({ walking: true, left: turn ? rx < from.x : g.left }));
+    const t = window.setTimeout(() => setGait((g) => ({ ...g, walking: false })), robotMs ?? 700);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dog, rx, ry, robotMs]);
 
   // the look guide's walk: its parts on the floors in view, every point tagged for the pointer, and where it starts
   const routed = geo.image && walk?.found && walk.routed ? walk.routed : null;
@@ -278,8 +338,8 @@ export function FloorMap({
         ) : null}
       </div>
 
-      <div className={o.mapWrap} ref={wrap}>
-        <svg ref={svg} viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`} role="group" aria-label="Floor plan with one mark per piece of equipment" onClick={onTap ? tap : undefined} style={onTap ? { cursor: "crosshair" } : undefined} data-tap={onTap ? "on" : undefined}>
+      <div className={`${o.mapWrap} ${zoomable ? o.mapZoomable : ""}`} ref={wrap}>
+        <svg ref={svg} {...pan} viewBox={`${seen.x} ${seen.y} ${seen.w} ${seen.h}`} role="group" aria-label={`Floor plan with one mark per piece of equipment${zoomable ? ". Drag to move when zoomed." : ""}`} onClick={onTap ? tap : undefined} style={onTap ? { cursor: "crosshair" } : zoomable && zoom.z > 1 ? { cursor: "grab", touchAction: "none" } : undefined} data-tap={onTap ? "on" : undefined} data-zoom={zoomable ? zoom.z.toFixed(2) : undefined}>
           {geo.image ? (
             <>
               <image className={o.planImage} href={geo.image} x="0" y="0" width={geo.w} height={geo.h} preserveAspectRatio="none" />
@@ -438,15 +498,75 @@ export function FloorMap({
             : null}
 
           {robot ? (
-            <g className={o.robot} style={{ transform: `translate(${robot.x}px, ${robot.y - 26 * u}px)` }} aria-label="SPOT is here">
+            <g className={o.robot} style={{ transform: `translate(${robot.x}px, ${robot.y - 26 * u}px)`, transitionDuration: robotMs ? `${robotMs}ms` : undefined }} aria-label="SPOT is here">
               <path d={`M ${-5 * u} ${11 * u} L 0 ${19 * u} L ${5 * u} ${11 * u} Z`} fill="var(--accent-text)" />
+              {dog ? (
+                // SPOT as the robot looks: a slim flat yellow body standing tall on four black legs with the knees bent back, and a short dark block at
+                // the front where the cameras are. No tail, no logo. About one and a half marks tall, in the plan's own units, so it grows and shrinks with the
+                // marks. It stands just above the stop's marks with the pointer under it (beside them at the top edge of the plan, where it would be cut off).
+                <g className={`${o.dog} ${gait.walking ? o.dogWalk : ""}`} transform={`translate(${robot.y - box.y < 72 * u ? `${46 * u} ${44 * u}` : `0 0`}) scale(${(gait.left ? -1.6 : 1.6) * u} ${1.6 * u})`} data-dog={gait.walking ? "walking" : "standing"}>
+                  <g transform="translate(-9 -19)">
+                    <g className={o.dogLegB}>
+                      <rect x="-5.5" y="0" width="11" height="19" fill="none" />
+                      <polyline points="0,0 -5,9 -1,19" fill="none" stroke="#eef1f7" strokeWidth="4.9" strokeLinecap="round" strokeLinejoin="round" />
+                      <polyline points="0,0 -5,9 -1,19" fill="none" stroke="#454a58" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                      <circle cx="-5" cy="9" r="2" fill="#454a58" />
+                    </g>
+                  </g>
+                  <g transform="translate(14 -19)">
+                    <g className={o.dogLegA}>
+                      <rect x="-5.5" y="0" width="11" height="19" fill="none" />
+                      <polyline points="0,0 -5,9 -1,19" fill="none" stroke="#eef1f7" strokeWidth="4.9" strokeLinecap="round" strokeLinejoin="round" />
+                      <polyline points="0,0 -5,9 -1,19" fill="none" stroke="#454a58" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                      <circle cx="-5" cy="9" r="2" fill="#454a58" />
+                    </g>
+                  </g>
+                  <rect x="-15" y="-24.5" width="30" height="6" rx="2.6" fill="#f6c21c" stroke="#10131c" strokeWidth="1.1" />
+                  <path d="M 12.5 -25.6 L 18 -25.6 Q 20.4 -25.6 20.4 -23.2 L 20.4 -20.2 Q 20.4 -17.8 18 -17.8 L 12.5 -17.8 Z" fill="#16181f" stroke="#eef1f7" strokeWidth="1" />
+                  <circle cx="17.6" cy="-22" r="1.1" fill="#9aa3b5" />
+                  <g transform="translate(-12 -19)">
+                    <g className={o.dogLegA}>
+                      <rect x="-5.5" y="0" width="11" height="19" fill="none" />
+                      <polyline points="0,0 -5,9 -1,19" fill="none" stroke="#eef1f7" strokeWidth="4.9" strokeLinecap="round" strokeLinejoin="round" />
+                      <polyline points="0,0 -5,9 -1,19" fill="none" stroke="#16181f" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                      <circle cx="-5" cy="9" r="2" fill="#16181f" />
+                    </g>
+                  </g>
+                  <g transform="translate(11 -19)">
+                    <g className={o.dogLegB}>
+                      <rect x="-5.5" y="0" width="11" height="19" fill="none" />
+                      <polyline points="0,0 -5,9 -1,19" fill="none" stroke="#eef1f7" strokeWidth="4.9" strokeLinecap="round" strokeLinejoin="round" />
+                      <polyline points="0,0 -5,9 -1,19" fill="none" stroke="#16181f" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                      <circle cx="-5" cy="9" r="2" fill="#16181f" />
+                    </g>
+                  </g>
+                  <circle cx="-12" cy="-19" r="2.6" fill="#16181f" stroke="#eef1f7" strokeWidth="0.9" />
+                  <circle cx="11" cy="-19" r="2.6" fill="#16181f" stroke="#eef1f7" strokeWidth="0.9" />
+                </g>
+              ) : (
+                <>
               <rect x={-22 * u} y={-11 * u} width={44 * u} height={22 * u} rx={11 * u} fill="var(--accent-text)" stroke="var(--surface)" strokeWidth={2 * u} />
               <text x="0" y={4.2 * u} textAnchor="middle" fontSize={12 * u} fontWeight="800" fill="var(--on-media)">
                 SPOT
               </text>
+                </>
+              )}
             </g>
           ) : null}
         </svg>
+        {zoomable ? (
+          <div className={pl.mapTools}>
+            <button type="button" className={pl.mapTool} onClick={() => setZoom({ z: 1, cx: 0.5, cy: 0.5 })} disabled={zoom.z === 1} aria-label="Fit the plan in view">
+              ⤢
+            </button>
+            <button type="button" className={pl.mapTool} onClick={() => zoomBy(1.6)} disabled={zoom.z >= ZOOM_MAX - 0.05} aria-label="Zoom in">
+              +
+            </button>
+            <button type="button" className={pl.mapTool} onClick={() => zoomBy(1 / 1.6)} disabled={zoom.z === 1} aria-label="Zoom out">
+              −
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <div className={o.legend}>

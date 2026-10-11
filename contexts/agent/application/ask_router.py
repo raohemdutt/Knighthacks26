@@ -48,7 +48,7 @@ HUB_USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 
 SYSTEM = (
     "You are Atlas, a home assistant box with cameras. Call the one tool that does what the person asks: "
     "the calendar (list, add, find), reminders, what the cameras saw, the room map, who is here, the cameras, "
-    "the box's model, energy, the learning lab, friends, or opening a screen. "
+    "the box's model, energy, the learning lab, friends, the plant floor inspection (SPOT), or opening a screen. "
     "If no tool fits (small talk, a general or web question), reply with only the word NONE."
 )
 
@@ -56,7 +56,8 @@ SYSTEM = (
 NAMES_A_TOOL = re.compile(
     r"\b(?:calendar|schedule|meeting|appointment|event|remind(?:er|ers)?|camera|cameras|room map|map of the room|"
     r"the map|room plan|model|energy|joules?|watts?|learning lab|lab run|training run|shared brain|who(?:'s| is) here|"
-    r"who(?:'s| is) in the room|open the|go to the|show me the|approvals?)\b", re.I)
+    r"who(?:'s| is) in the room|open the|go to the|show me the|approvals?|plant floor|inspection|how is spot|"
+    r"spot (?:doing|robot))\b", re.I)
 
 # Tool calls written into the text instead of the tool_calls field (a vLLM server without a tool parser, or a small
 # model): <tool_call>{"name": ..., "arguments": {...}}</tool_call>, or a bare {"name": ..., "arguments": ...}.
@@ -99,6 +100,8 @@ BRAIN = re.compile(r"\bshared brain\b", re.I)
 CALENDAR = re.compile(r"\b(?:calendar|schedule|agenda)\b", re.I)
 DAY_WORD = re.compile(r"\b(?:today|tomorrow|yesterday|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{4}-\d{2}-\d{2})\b", re.I)
 RECAP = re.compile(r"\bwhat (?:did i do|happened|did you see)\b.*\b(?P<part>this morning|this afternoon|this evening|today|last hour|yesterday)\b", re.I)
+# Inspection (contexts/spot): asked after every older rule, so no question an older rule answered changes its tool
+INSPECTION = re.compile(r"\b(?:plant floor|inspection|how is spot|spot (?:doing|robot))\b", re.I)
 OPEN = re.compile(r"\b(?:open|go to|show me|take me to)\s+(?:the\s+|my\s+)?(?P<s>[a-z ]+?)(?:\s+(?:screen|page|tab))?[?.!]*$", re.I)
 
 
@@ -144,6 +147,8 @@ def rules(question: str) -> ToolCall | None:
         return call("calendar.list", day=m.group(0).lower() if m else "today")
     if m := OPEN.search(q):
         return call("navigate.screen", screen=m["s"])
+    if INSPECTION.search(q):
+        return call("inspection.status")
     return None
 
 

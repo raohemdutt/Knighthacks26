@@ -2642,6 +2642,8 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   /** The operator's first screen in plain words (no statistics): status, do-this-first, watch-out, every asset, the rounds. */
   // the look guide: "where do I look for X?" -> a place on the Inspection screen and the words to walk there (no model call)
   spotGuide: (q: string, signal?: AbortSignal) => get<import("./guide").SpotGuide>("/api/spot/guide", { q }, signal),
+  /** "Walk me through my shift": the guide's own answer for each stop on the My shift page, in order (a stop with nothing to show is left out). */
+  spotGuideTour: (signal?: AbortSignal) => get<{ configured: boolean; stops: import("./guide").SpotGuide[] }>("/api/spot/guide/tour", undefined, signal),
   spotRoute: (to: string, from?: string | null, signal?: AbortSignal) => get<import("./guideSpot").SpotRoute>("/api/spot/route", from ? { to, from } : { to }, signal),
   /** The floor traced from the kit's plan picture (rooms, doors, equipment, stairs, walkable cells), and the traced line between every pair of waypoints. */
   spotWalkable: (signal?: AbortSignal) => get<import("./guideSpot").SpotWalkable>("/api/spot/walkable", undefined, signal),

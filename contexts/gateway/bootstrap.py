@@ -704,7 +704,7 @@ def build(settings: Settings | None = None) -> Atlas:
     from contexts.gateway.ask_wiring import wire_ask_tools
 
     wire_ask_tools(qa=qa, bus=bus, approvals=approvals, hub=hub, settings=s, room=room, identity=identity, capture=capture,
-                   policy=policy, telemetry=telemetry, lab_view=lab_view, shared_brain=shared_brain)
+                   policy=policy, telemetry=telemetry, lab_view=lab_view, shared_brain=shared_brain, spot=spot)
 
     return Atlas(settings=s, bus=bus, qa=qa, approvals=approvals, hub=hub, loop=loop, zones=zones, rules=rules, alerts=alerts, game=game, room=room,
                  waste=waste, circle=circle, presence=presence, zone_engine=zone_engine, sharing=sharing,

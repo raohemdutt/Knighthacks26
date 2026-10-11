@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from contexts.gateway.app import create_app
 from contexts.gateway.bootstrap import Settings
-from contexts.spot.application.guide import CONFIDENT, Guide, similarity, words
+from contexts.spot.application.guide import CONFIDENT, TOUR, Guide, similarity, words
 from contexts.spot.application.service import Spot
 from contexts.spot.infrastructure.kit import load_kit
 
@@ -76,7 +76,7 @@ def guide():
     ("where can I find the assumptions", "analysis:assumptions"),
     ("show me the data check", "analysis:data-check"),
     ("show me the tables", "analysis:tables"),
-    ("where is listening checks fail most", "finding:reliability_by_type"),
+    ("where is the uninspected risk", "analysis:tables"),
     # a guide id, as a link carries it
     ("asset:HX-202", "asset:HX-202"),
     ("explainer:battery", "explainer:battery"),
@@ -100,7 +100,16 @@ def test_the_walk_through_names_the_floor_the_mark_and_the_equipment(guide):
     battery = guide.resolve("where do I look for the battery")
     assert battery["steps"][0] == {"reveal": "tab:analysis", "say": "I am opening the Analysis tab."}
     assert guide.resolve("show me round 17")["steps"][1]["reveal"] == "round:pick:M017"
-    assert guide.resolve("finding:battery")["steps"][1]["reveal"] == "open:analysis:findings"
+
+
+@pytest.mark.parametrize("question", ["where are the findings", "show me every finding", "finding:battery", "analysis:findings", "where is listening checks fail most",
+                                      "where is the trained scorer"])
+def test_what_the_analysis_tab_no_longer_lists_is_never_pointed_at(guide, question):
+    out = guide.resolve(question)
+    ids = [out["target"] or ""] + [a["target"] for a in out["alternatives"]]
+    assert not any(i.startswith("finding:") or i == "analysis:findings" for i in ids), ids
+    assert out["target"] or out["alternatives"]  # the nearest thing still on the screen, or "did you mean"
+    assert not any(s.get("reveal") == "open:analysis:findings" for s in out["steps"])
 
 
 @pytest.mark.parametrize("question", ["where is the coffee machine", "show me the weather", "where is heat exchanger 99", "where is the motor or the valve"])
@@ -142,3 +151,32 @@ def test_the_endpoint(tmp_path):
         assert set(out) >= {"configured", "query", "target", "label", "steps", "confidence", "alternatives"}
         assert client.get("/api/spot/guide", params={"q": "where is the coffee machine"}).json()["target"] is None
         assert client.get("/api/spot/guide").status_code == 422
+
+
+# --- "walk me through my shift": the stops, as data ---
+
+def test_the_tour_is_the_guides_own_answer_for_each_stop_in_order(guide):
+    tour = guide.tour()
+    assert tour["configured"] is True
+    assert [s["target"] for s in tour["stops"]] == ["status", "card:do-first", "do-first:1", "card:watch", "map"] == list(TOUR)
+    ids = {t.id for t in guide.targets()}
+    for stop in tour["stops"]:
+        assert stop["target"] in ids and stop["label"] and stop["confidence"] == 1.0
+        assert stop == guide.resolve(stop["target"])  # nothing of its own: every line is one the guide already says
+        assert stop["steps"] and all(step["say"].strip() for step in stop["steps"])
+        assert all(step.get("reveal", "tab:shift") == "tab:shift" for step in stop["steps"])  # it never leaves the My shift page
+
+
+def test_the_tour_leaves_out_a_stop_that_does_not_resolve(guide):
+    quiet = Guide(guide.spot)
+    quiet._targets = [t for t in guide.targets() if not t.id.startswith("do-first:")]  # a shift with nothing to do first
+    assert [s["target"] for s in quiet.tour()["stops"]] == ["status", "card:do-first", "card:watch", "map"]
+    assert Guide(Spot(None)).tour() == {"configured": False, "stops": []}
+
+
+def test_the_tour_endpoint(tmp_path, guide):
+    app = create_app(Settings(data_dir=tmp_path, connectors=False, memory_fixture=""))
+    with TestClient(app) as client:
+        r = client.get("/api/spot/guide/tour")
+        assert r.status_code == 200 and r.json() == guide.tour()
+        assert r.json()["stops"][0] == client.get("/api/spot/guide", params={"q": "status"}).json()

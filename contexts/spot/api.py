@@ -19,6 +19,8 @@ Read (every one answers 200 without a kit: {"configured": false, "note": how to 
 - GET  /api/spot/model               the small anomaly scorer trained on the kit: honest evaluation, weights, what it flags
 - GET  /api/spot/guide?q=            "where do I look for X?" -> the guide id of a place on the Inspection screen, the short sentences that
                                      walk a person there, and the closest alternatives when unsure (application/guide.py). No model call.
+- GET  /api/spot/guide/tour          "walk me through my shift": {"stops": [...]}, the same answer /guide gives for the status line, Do this
+                                     first, its first job, Watch out and the plan, in that order. A stop with nothing to show is left out.
 - GET  /api/spot/route?from=&to=     a walking route between two places or pieces of equipment (or from a tapped point, from=xy:0.31,0.52), found
                                      on the walkable floor traced from the plan picture (domain/walkable.py, domain/directions.py): the polyline per
                                      floor, turn-by-turn steps, precision "about". The legs SPOT walked (domain/route.py) stay under via_walked_legs.
@@ -269,6 +271,10 @@ def spot_router(spot: SpotContext, bus, guard: Callable | None = None) -> APIRou
     @router.get("/guide")
     def guide(q: str = Query(min_length=1, max_length=300)) -> dict:
         return guide_for.resolve(q)
+
+    @router.get("/guide/tour")
+    def guide_tour() -> dict:
+        return guide_for.tour()
 
     @router.get("/route")
     def route(to: str = Query(min_length=1, max_length=60), start: str | None = Query(default=None, alias="from", max_length=60)) -> dict:

@@ -2,19 +2,22 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { AnalysisLayer } from "@/components/spot/AnalysisLayer";
+import { EquipmentList } from "@/components/spot/EquipmentList";
 import { EXPLAINS, type ExplainId, type Force } from "@/components/spot/Explainers";
 import { FloorMap } from "@/components/spot/FloorMap";
 import o from "@/components/spot/op.module.css";
-import { OperatorAsk } from "@/components/spot/OperatorAsk";
+import { SpotMic } from "@/components/spot/SpotMic";
 import { Round } from "@/components/spot/Round";
 import { ShiftRun, type RunLink } from "@/components/spot/ShiftRun";
-import { AllSheet, AssetSheet, DoFirst, LooksFine, StatusLine, TrustLine, WatchOut } from "@/components/spot/Shift";
+import { AssetSheet, DoFirst, LooksFine, ORDERS_CHANGED, StatusLine, TrustLine, WatchOut } from "@/components/spot/Shift";
 import type { Replay, Target } from "@/components/spot/types";
 import { Empty, ErrorBox, Loading } from "@/components/States";
 import ui from "@/components/ui.module.css";
 import { api } from "@/lib/api";
 import { useAtlasEvents } from "@/lib/atlas";
+import { onGuide } from "@/lib/guideBus";
 import { spotWalk, useTraced } from "@/lib/guideSpot";
+import { goSpotView, useSpotView } from "@/lib/spotView";
 import { useFetch } from "@/lib/useFetch";
 
 /**
@@ -30,6 +33,10 @@ import { useFetch } from "@/lib/useFetch";
  *
  * The Shift Run tab is a training game on the same plan: plan a round, run it through a toy model, compare with Atlas's.
  *
+ * Inspection is a workspace of views (lib/spotView.ts; the sidebar lists them): My shift, Equipment, Rounds, Training
+ * (Shift Run), Analysis and Handoff. The address names the view and the page renders only that view's sections. The look
+ * guide's "tab:" hooks sit on the sidebar's My shift, Training and Analysis items (components/Shell.tsx).
+ *
  * Deep links: ?tab=run&route=last&turn=40&show=result opens Shift Run with a plan already run, ?asset=HX-202 opens that equipment's panel, ?round=M017&step=6 puts that round, at that step, at the top of the page, ?why=battery plays that finding's explainer (&at=end or &at=mid draws it at that step), ?numbers=battery opens its rows, ?tab=analysis opens the analysis, ?floor=2 picks the floor, ?all=1 lists all equipment.
  */
 type Tab = "shift" | "run" | "analysis";
@@ -37,10 +44,16 @@ type Tab = "shift" | "run" | "analysis";
 export default function SpotPage() {
   const shift = useFetch((sig) => api.spotShift(sig));
   const orders = useFetch((sig) => api.spotWorkOrders(sig));
+  // a button on this screen wrote something: read the list again (the live event does the same when the socket is up)
+  const reloadOrders = orders.reload;
+  useEffect(() => {
+    window.addEventListener(ORDERS_CHANGED, reloadOrders);
+    return () => window.removeEventListener(ORDERS_CHANGED, reloadOrders);
+  }, [reloadOrders]);
   const [live, setLive] = useState<Replay | null>(null);
-  const [tab, setTab] = useState<Tab>("shift");
+  const view = useSpotView();
+  const tab: Tab = view === "training" ? "run" : view === "analysis" ? "analysis" : "shift"; // the three layers
   const [asset, setAsset] = useState<string | null>(null);
-  const [all, setAll] = useState(false);
   const [target, setTarget] = useState<Target | null>(null);
   const [explain, setExplain] = useState<ExplainId | null>(null);
   const [force, setForce] = useState<Force>(null);
@@ -61,9 +74,6 @@ export default function SpotPage() {
     const asked = q.get("why");
     if (asked) (EXPLAINS[asked] ? setExplain(EXPLAINS[asked]!) : setTarget({ kind: asked === "validation" ? "validation" : "finding", id: asked }), setEvidence(true));
     if (q.get("numbers")) (setTarget({ kind: "finding", id: q.get("numbers")! }), setEvidence(true));
-    if (q.get("tab") === "analysis") (setTab("analysis"), setEvidence(true));
-    if (q.get("tab") === "run") setTab("run");
-    if (q.get("all")) setAll(true);
     if (q.get("walkable")) setShowFloor(true);
     const here = q.get("here"); // ?here=WP04, ?here=xy:0.30,0.57 or ?here=spot (where SPOT is in the round on show): where the walk starts
     if (here?.toLowerCase() === "spot") fromSpot.current = true;
@@ -128,8 +138,34 @@ export default function SpotPage() {
   );
   const pick = (t: Tab) => {
     if (t === "analysis") setEvidence(true);
-    setTab(t);
+    goSpotView(t === "run" ? "training" : t === "analysis" ? "analysis" : "shift");
   };
+  useEffect(() => {
+    if (view === "analysis") setEvidence(true);
+  }, [view]);
+
+  // The look guide reveals a thing by pressing a "tab:" hook, which is now a sidebar menu item (hidden on a phone). Open
+  // the view that holds what it is about to point at here, so it lands at any width: Analysis, Training, the round, or
+  // the shift cards and the plan.
+  useEffect(
+    () =>
+      onGuide((m) => {
+        if (m.kind !== "run") return;
+        const keys = (m.run.target.reveal ?? []).map((r) => r.key);
+        if (keys.includes("tab:analysis")) (setEvidence(true), goSpotView("analysis"));
+        else if (keys.includes("tab:shift-run")) goSpotView("training");
+        else if (keys.includes("tab:shift")) goSpotView(/^round(:|$)/.test(m.run.target.id) ? "rounds" : "shift");
+      }),
+    [],
+  );
+
+  // Handoff: the note is written by the existing button, as soon as the view opens.
+  const ready = Boolean(shift.data && link);
+  useEffect(() => {
+    if (!ready || view !== "handoff") return;
+    const t = window.setTimeout(() => document.querySelector<HTMLElement>('[data-guide="handoff"]')?.click(), 60);
+    return () => window.clearTimeout(t);
+  }, [view, ready]);
 
   if (shift.error) return <ErrorBox what="the inspection data" error={shift.error} onRetry={shift.reload} />;
   if (!shift.data || link === null) return <Loading what="your shift" />;
@@ -166,22 +202,9 @@ export default function SpotPage() {
     <div className={o.page}>
       <div className={o.top}>
         <StatusLine shift={d} />
-        <div className={`${ui.segmented} ${o.tabs}`} role="tablist" aria-label="View" data-guide="tabs">
-          {(
-            [
-              ["shift", "Your shift"],
-              ["run", "Shift Run"],
-              ["analysis", "Analysis"],
-            ] as [Tab, string][]
-          ).map(([k, label]) => (
-            <button type="button" key={k} role="tab" data-guide={`tab:${k === "run" ? "shift-run" : k}`} aria-selected={tab === k} className={`${ui.seg} ${tab === k ? ui.segOn : ""}`} onClick={() => pick(k)}>
-              {label}
-            </button>
-          ))}
-        </div>
       </div>
 
-      {tab === "shift" ? (
+      {view === "shift" ? (
         <>
           {d.trust ? <TrustLine trust={d.trust} onWhy={why} /> : null}
 
@@ -271,7 +294,7 @@ export default function SpotPage() {
               />
             </div>
             <div className={o.sideCol}>
-              <DoFirst shift={d} orders={written} onAsset={setAsset} onWhy={why} onAll={() => setAll(true)} />
+              <DoFirst shift={d} orders={written} onAsset={setAsset} onWhy={why} onAll={() => goSpotView("equipment")} />
               <div className={o.onlyWide}>
                 <WatchOut items={d.watch} onWhy={why} />
               </div>
@@ -282,14 +305,9 @@ export default function SpotPage() {
             <div className={o.onlyNarrow}>
               <WatchOut items={d.watch} onWhy={why} />
             </div>
-            <LooksFine shift={d} onAll={() => setAll(true)} />
-            <OperatorAsk chips={d.ask ?? []} onWhy={why} jobs={d.do_first} guideChips={[d.do_first[0] ? `Where is ${d.do_first[0].name}?` : "Where is the plan?", "Where do I look for the battery?", "Show me what to do first"]} />
+            <LooksFine shift={d} onAll={() => goSpotView("equipment")} onPick={setAsset} />
           </div>
 
-          </div>
-
-          <div id="round" data-guide="round" className={link.round ? o.roundFirst : undefined}>
-            <Round shift={d} live={live} onLive={setLive} onWhy={why} startRound={link.round} startStep={link.step} />
           </div>
 
           <button type="button" className={o.more} onClick={() => pick("analysis")}>
@@ -302,11 +320,21 @@ export default function SpotPage() {
         </>
       ) : null}
 
+      {view === "equipment" ? <EquipmentList shift={d} onPick={setAsset} /> : null}
+
+
+      {view === "rounds" ? (
+        <div id="round" data-guide="round" className={link.round ? o.roundFirst : undefined}>
+          <Round shift={d} live={live} onLive={setLive} onWhy={why} startRound={link.round} startStep={link.step} />
+        </div>
+      ) : null}
+
       {tab === "run" ? <ShiftRun shift={d} orders={written} link={link.run} /> : null}
 
       {evidence ? <AnalysisLayer shift={d} show={tab === "analysis"} target={target} setTarget={numbers} explain={explain} setExplain={setExplain} force={force} live={live} onLive={setLive} orders={written} /> : null}
 
-      {all ? <AllSheet shift={d} onClose={() => setAll(false)} onPick={(id) => (setAll(false), setAsset(id))} /> : null}
+      {/* The Atlas mic, docked at the foot of every view: the one place to ask on Inspection, so the guide's "ask" hook stays unique. */}
+      <SpotMic chips={d.ask ?? []} onWhy={why} jobs={d.do_first} guideChips={[d.do_first[0] ? `Where is ${d.do_first[0].name}?` : "Where is the plan?", "Where do I look for the battery?", "Show me what to do first"]} />
       {open ? <AssetSheet asset={open} orders={written} onClose={() => setAsset(null)} onWhy={why} /> : null}
     </div>
   );

@@ -8,6 +8,7 @@ import { useAtlas } from "@/lib/atlas";
 import { missingForPlan, runReasons, type Job } from "@/lib/guideAttention";
 import { useFetch } from "@/lib/useFetch";
 import { FloorMap, LevelIcon } from "./FloorMap";
+import { ordersChanged } from "./Shift";
 import o from "./op.module.css";
 import { Battery, CheckIcon } from "./Round";
 import r from "./run.module.css";
@@ -56,9 +57,8 @@ function SendPlan({ route, turnBack, orders, stops, needing }: { route: string[]
     setBusy(true);
     setError(null);
     fn()
-      .then(() => approvals.reload())
       .catch((e: unknown) => setError(e instanceof ApiError ? (e.needsToken ? "This box asks for a token first (Settings)." : e.message) : String(e)))
-      .finally(() => setBusy(false));
+      .finally(() => (setBusy(false), approvals.reload(), ordersChanged()));
   };
   if (mine.length > 0) {
     const card = mine[0]!;
@@ -80,7 +80,7 @@ function SendPlan({ route, turnBack, orders, stops, needing }: { route: string[]
   }
   return (
     <>
-      <button type="button" className={`${ui.btn} ${o.act}`} disabled={busy || route.length === 0} onClick={() => first.check(() => missingForPlan(stops, needing, looks.seen), () => run(() => api.spotPlan({ route, turn_back_at: turnBack })))}>
+      <button type="button" className={`${ui.btn} ${o.act}`} disabled={busy || route.length === 0} onClick={() => first.check(() => missingForPlan(stops, needing, looks.seen), () => run(async () => void (await api.decide((await api.spotPlan({ route, turn_back_at: turnBack })).action_id, "approve"))))}>
         Send this plan
       </button>
       {first.prompt}
@@ -189,10 +189,10 @@ export function ShiftRun({ shift, orders, link }: { shift: Shift; orders: WorkOr
   useEffect(() => {
     if (phase !== "play" || !result || link.show === "mid") return;
     if (at >= result.steps.length) {
-      const t = window.setTimeout(() => setPhase("result"), still ? 0 : 700);
+      const t = window.setTimeout(() => setPhase("result"), still ? 0 : 1400);
       return () => window.clearTimeout(t);
     }
-    const t = window.setTimeout(() => setAt((v) => v + 1), still ? 0 : 850);
+    const t = window.setTimeout(() => setAt((v) => v + 1), still ? 0 : 1700);
     return () => window.clearTimeout(t);
   }, [phase, at, result, still, link.show]);
 
@@ -233,7 +233,7 @@ export function ShiftRun({ shift, orders, link }: { shift: Shift; orders: WorkOr
         </span>
       </div>
 
-      <div className={o.roundGrid}>
+      <div className={`${o.roundGrid} ${r.even}`}>
         <FloorMap
           map={shift.map}
           assets={shift.assets}
@@ -242,6 +242,9 @@ export function ShiftRun({ shift, orders, link }: { shift: Shift; orders: WorkOr
           route={steps.length ? steps.map((s) => s.location_id) : route.map((id) => b.candidates.find((c) => c.asset_id === id)?.location_id ?? "")}
           done={planning ? undefined : at}
           robotAt={current?.location_id ?? null}
+          robotMs={1400}
+          dog
+          zoomable
           route2={atlas && result ? result.recommended.route_places : undefined}
           routeLabel="Your route"
           guide="shiftrun:map"

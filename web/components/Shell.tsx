@@ -7,6 +7,7 @@ import { api, getToken, setToken } from "@/lib/api";
 import { useAtlas, type LinkState } from "@/lib/atlas";
 import { modelShort } from "@/lib/lab";
 import { useProfileState } from "@/lib/profile";
+import { SPOT_MENU, useSpotView, type SpotView } from "@/lib/spotView";
 import { useTheme } from "@/lib/theme";
 import { useFetch } from "@/lib/useFetch";
 import { CommandPalette, type Command } from "./Command";
@@ -259,6 +260,48 @@ const INSPECTION = "/spot";
 
 const ALL = [...TABS, ...MORE];
 
+/**
+ * Inspection is its own workspace: while /spot is open, the sidebar lists Inspection's views (lib/spotView.ts) in place
+ * of Atlas's sections, under one way back. Every other screen's sidebar is untouched.
+ */
+const SPOT_ICON: Record<SpotView, ReactNode> = {
+  shift: MORE.find((t) => t.href === INSPECTION)!.icon,
+  equipment: (
+    <>
+      <rect x="4" y="4" width="7" height="7" rx="1.5" />
+      <rect x="13" y="4" width="7" height="7" rx="1.5" />
+      <rect x="4" y="13" width="7" height="7" rx="1.5" />
+      <rect x="13" y="13" width="7" height="7" rx="1.5" />
+    </>
+  ),
+  rounds: (
+    <>
+      <path d="M19.5 12a7.5 7.5 0 1 1-2.5-5.6" />
+      <path d="M17.5 3v3.8h-3.8" />
+    </>
+  ),
+  training: <path d="M5 21V4M5 5h11l-2 3.5 2 3.5H5" />,
+  analysis: (
+    <>
+      <path d="M4 5v15h16" />
+      <path d="M8.5 16v-4M12.5 16V8M16.5 16v-6" />
+    </>
+  ),
+  handoff: (
+    <>
+      <path d="M7 3.5h10v17H7z" />
+      <path d="M10 8h4M10 11.5h4M10 15h2.5" />
+    </>
+  ),
+};
+/**
+ * The look guide's hooks for Inspection's three old tabs now sit on the menu items that replaced them: a guide step that
+ * presses or points at "tab:analysis" presses or points at Analysis here. `aria-selected` is what tells the guide a
+ * press is not needed; "tab:shift" counts as on for every view that came out of Your shift (the page opens the right one).
+ */
+const SPOT_GUIDE: Partial<Record<SpotView, string>> = { shift: "tab:shift", training: "tab:shift-run", analysis: "tab:analysis" };
+const BACK_ICON = <path d="M10.5 6l-6 6 6 6M5 12h14.5" />;
+
 /** How the screens are grouped, in the sidebar, the phone's More sheet and the palette. URLs are unchanged. */
 const SECTIONS: { title: string; hrefs: string[]; collapsible?: boolean }[] = [
   { title: "Everyday", hrefs: ["/home", "/", "/now", "/dayrun"] },
@@ -336,6 +379,8 @@ export function Shell({ children }: { children: ReactNode }) {
   useEffect(() => setMore(false), [path]); // the sheet closes once its link has been followed
   const pending = approvals.items.length;
   const inspection = useShowInspection(path);
+  const inSpot = path === INSPECTION;
+  const spotView = useSpotView();
   useSpotlight();
 
   // Ctrl or Cmd + K opens the palette from anywhere; typing "/" outside a field does too.
@@ -364,6 +409,7 @@ export function Shell({ children }: { children: ReactNode }) {
         return { href: t.href, label: t.label, group: g.title, icon: t.icon, keywords: t.keywords };
       }),
   );
+  if (inSpot) commands.push(...SPOT_MENU.filter((m) => m.view !== "shift").map((m) => ({ href: m.href, label: m.label, group: "Inspection", icon: SPOT_ICON[m.view], keywords: m.keywords })));
 
   // The pill under the current tab: the index of the tab that is on, or of More when the screen is behind it.
   const barIndex = BAR.findIndex((t) => t.href === path);
@@ -392,7 +438,34 @@ export function Shell({ children }: { children: ReactNode }) {
           <span className={ui.kbd}>Ctrl K</span>
         </button>
         <nav className={ui.sideNav}>
-          {SECTIONS.map((g) => (
+          {inSpot ? (
+            <>
+              <div className={ui.sideGroup}>
+                <Link href="/home" className={ui.sideLink}>
+                  <svg className={ui.sideIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    {BACK_ICON}
+                  </svg>
+                  <span>Back to Atlas</span>
+                </Link>
+              </div>
+              <div className={ui.sideGroup} data-guide="tabs">
+                <span className={ui.sideGroupTitle}>Inspection</span>
+                {SPOT_MENU.map((m) => {
+                  const on = spotView === m.view;
+                  const hook = SPOT_GUIDE[m.view];
+                  const pressed = m.view === "shift" ? spotView !== "training" && spotView !== "analysis" : on;
+                  return (
+                    <Link key={m.view} href={m.href} className={`${ui.sideLink} ${on ? ui.sideLinkOn : ""}`} aria-current={on ? "page" : undefined} data-guide={hook} aria-selected={hook ? pressed : undefined}>
+                      <svg className={ui.sideIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        {SPOT_ICON[m.view]}
+                      </svg>
+                      <span>{m.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </>
+          ) : SECTIONS.map((g) => (
             <div key={g.title} className={ui.sideGroup}>
               {g.collapsible ? (
                 <button type="button" className={ui.sideGroupToggle} aria-expanded={otherOpen || g.hrefs.includes(path)} onClick={() => setOtherOpen((o) => !o)}>
@@ -546,6 +619,7 @@ function useEscape(onClose: () => void) {
 function MoreSheet({ path, onClose }: { path: string; onClose: () => void }) {
   useEscape(onClose);
   const inspection = useShowInspection(path);
+  const spotView = useSpotView();
   return (
     <div className={`${ui.overlay} ${ui.overlayAboveTabs}`} onClick={onClose}>
       <div className={ui.sheet} role="dialog" aria-modal="true" aria-label="More screens" onClick={(e) => e.stopPropagation()}>
@@ -558,6 +632,26 @@ function MoreSheet({ path, onClose }: { path: string; onClose: () => void }) {
             </button>
           </div>
         </div>
+        {path === INSPECTION ? (
+          <div className={ui.moreGroup}>
+            <h3 className={ui.moreGroupTitle}>Inspection</h3>
+            <ul className={ui.list}>
+              {SPOT_MENU.map((m) => {
+                const on = spotView === m.view;
+                return (
+                  <li key={m.view}>
+                    <Link href={m.href} className={`${ui.moreLink} ${on ? ui.moreLinkOn : ""}`} aria-current={on ? "page" : undefined} onClick={onClose}>
+                      <svg className={ui.tabIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        {SPOT_ICON[m.view]}
+                      </svg>
+                      <span>{m.label}</span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ) : null}
         {SECTIONS.map((g) => (
           <div key={g.title} className={ui.moreGroup}>
             <h3 className={ui.moreGroupTitle}>{g.title}</h3>

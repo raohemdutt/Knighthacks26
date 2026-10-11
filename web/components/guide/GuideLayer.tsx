@@ -11,7 +11,7 @@ import { FIXATION_MS, attention, simScript } from "@/lib/guideAttention";
 import { SCREENS, classify, ease, fromGaze, labelsFor, narration, ownThing, pathPoint, pinTarget, precisionOf, resolveApp, resolveThing, spotWords, thingName, trail, travelMs, type GuideTarget, type ThingFound, type Locator, type Pt, type Reveal } from "@/lib/guide";
 import { offer, onGuide, pointAt, type GuideMessage, type GuideRun } from "@/lib/guideBus";
 import { along, length as routeLength, pointerRoute, type Box } from "@/lib/guidePath";
-import { alongStops, stepAt, walkFraction } from "@/lib/guideWalk";
+import { alongStops, sayMs, stepAt, walkFraction } from "@/lib/guideWalk";
 import { binRun } from "@/lib/guideBin";
 import { spotRun } from "@/lib/guideSpot";
 import { findLive, frameSpots, whereSeen } from "@/lib/guideSpotlight";
@@ -125,10 +125,18 @@ export function GuideLayer() {
   pathRef.current = path;
   const handled = useRef<string | null>(null); // the newest answer already looked at
 
+  const unsaid = useRef(0); // guide lines handed to the browser's voice and not yet said
+  /** Is a guide line still waiting or being said (on the box's speaker or in this browser)? */
+  const talking = useCallback(() => boxLines.busy() || unsaid.current > 0, []);
+
   const say = useCallback((text: string) => {
     const v = voiceRef.current;
     if (!text || !v.getSettings().speak) return;
-    const here = (line: string) => (voiceRef.current.canSpeak ? voiceRef.current.say(line, { tag: "guide", raw: true, keepOnNavigate: true }) : undefined);
+    const here = (line: string) => {
+      if (!voiceRef.current.canSpeak) return;
+      unsaid.current++;
+      voiceRef.current.say(line, { tag: "guide", raw: true, keepOnNavigate: true, onDone: () => (unsaid.current = Math.max(0, unsaid.current - 1)) });
+    };
     // on the Inspection screen the lines come out of the box's own speaker when it has one working, in order; else, and on every other screen, out of this browser
     if (samePath(pathRef.current, "/spot/")) boxLines.say(text, here);
     else here(text);
@@ -139,6 +147,7 @@ export function GuideLayer() {
     el.current = null;
     voiceRef.current.cancel("guide");
     boxLines.cancel();
+    unsaid.current = 0;
     setView(null);
     setOffered(null);
     setOk(false);
@@ -153,6 +162,12 @@ export function GuideLayer() {
       const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
       const held = run.t !== null && run.t !== undefined;
       const lines: string[] = [];
+      // On the Inspection screen the pointer keeps step with the voice: it does not start a stretch, arrive or leave while an
+      // earlier line is still being said. `quiet` waits for the voice (never for ever); with the speaker off it returns at once.
+      const paced = () => samePath(window.location.pathname, "/spot/");
+      const quiet = async (most: number) => {
+        for (let waited = 0; alive() && paced() && talking() && waited < most; waited += 50) await sleep(50);
+      };
       const show = (patch: Partial<View>) => alive() && setView((v) => ({ ...(v ?? { run, phase: "reveal", t: 0, start: { x: 0, y: 0 }, route: null, anchor: null, rect: null, lines: [], note: null }), ...patch }));
       const tell = (text: string) => {
         if (!text || !alive()) return;
@@ -234,6 +249,10 @@ export function GuideLayer() {
       if (!found) {
         tell("I could not find that on this screen.");
         show({ phase: "found" });
+        if (run.onArrived) {
+          await quiet(8000);
+          if (alive()) run.onArrived();
+        }
         return;
       }
       el.current = found;
@@ -268,7 +287,7 @@ export function GuideLayer() {
       show({ start: origin, route, anchor: centre, rect: last, note, walk: pace ? { els: onPage.map((x) => x.el), at: onPage.map((x) => x.share) } : null });
 
       if (pace) {
-        // a walk: to its start quickly, then along it at a walking pace, one instruction per stretch as the dot starts on it
+        // a walk: to its start quickly, then along it, one instruction per stretch
         for (const line of words.travel) tell(line);
         let said = -1;
         const upTo = (tf: number) => {
@@ -297,7 +316,25 @@ export function GuideLayer() {
           await animate(Math.round(Math.max(500, Math.min(1100, 300 + routeLength(route ?? [origin, first]) * 1.1))), (t) => show({ t }));
           if (!alive()) return;
           show({ phase: "walk", t: 0 });
-          await animate(pace.ms, (t) => (upTo(t), show({ t })));
+          if (paced() && voiceRef.current.getSettings().speak && (voiceRef.current.canSpeak || talking())) {
+            // Spoken, on Inspection: the dot and the words are one unit. It stands where a stretch starts while that stretch's
+            // line is said to its end, waits a moment, walks the stretch, and only then is the next line said.
+            await quiet(15_000);
+            for (let i = 0; i < pace.steps.length && alive(); i++) {
+              const st = pace.steps[i]!;
+              tell(st.say);
+              said = i;
+              await quiet(25_000);
+              await sleep(STOP_PAUSE_MS);
+              if (!alive()) return;
+              await animate(Math.round(Math.max(600, Math.min(3000, (st.upto - st.from) * 9000))), (k) => show({ t: st.t0 + (st.t1 - st.t0) * k }));
+            }
+            if (!alive()) return;
+            await sleep(STOP_PAUSE_MS);
+          } else {
+            // not spoken: the timed walk, one instruction per stretch as the dot starts on it
+            await animate(pace.ms, (t) => (upTo(t), show({ t })));
+          }
           if (!alive()) return;
           tell(arrive);
           show({ phase: "arrived", t: 1 });
@@ -310,7 +347,9 @@ export function GuideLayer() {
       } else {
         for (const line of [...words.travel, ...(run.extra ?? [])]) tell(line);
         show({ phase: "travel", t: 0 });
-        const ms = route ? Math.round(Math.max(900, Math.min(3200, 500 + routeLength(route) * 1.3))) : travelMs(origin, centre);
+        const way = route ? Math.round(Math.max(900, Math.min(3200, 500 + routeLength(route) * 1.3))) : travelMs(origin, centre);
+        // on Inspection the way takes as long as its sentences, so the dot arrives as the voice gets to the last one
+        const ms = paced() && talking() ? Math.max(way, Math.min(12_000, lines.reduce((n, line) => n + sayMs(line), 0))) : way;
         const t0 = performance.now();
         await new Promise<void>((resolve) => {
           const frame = (now: number) => {
@@ -322,6 +361,8 @@ export function GuideLayer() {
           };
           window.requestAnimationFrame(frame);
         });
+        if (!alive()) return;
+        await quiet(6000);
         if (!alive()) return;
         tell(arrive);
         show({ phase: "arrived", t: 1 });
@@ -348,11 +389,13 @@ export function GuideLayer() {
         }
       }
       if (!held) {
+        await quiet(30_000); // the caption stays until its last line has been said
+        if (alive()) run.onArrived?.();
         await sleep(run.action ? 14_000 : 9000);
         if (alive()) cancel();
       }
     },
-    [cancel, router, say],
+    [cancel, router, say, talking],
   );
 
   /**
@@ -437,6 +480,7 @@ export function GuideLayer() {
       onGuide((m: GuideMessage) => {
         if (m.kind === "run") void start(m.run);
         else if (m.kind === "calibrate") (cancel(), setCalibrating(true));
+        else if (m.kind === "cancel") cancel();
         else (cancel(), setOffered({ say: m.say, options: m.options }), say(m.say));
       }),
     [start, cancel, say],
@@ -725,6 +769,8 @@ export function GuideLayer() {
 }
 
 const TARGET = "\u0000target";
+/** The pause between the end of a stop's line and the pointer moving on. */
+const STOP_PAUSE_MS = 250;
 
 /** Where the eyes are resting when they rest, else the filtered estimate; in pixels. */
 function restPoint(e: GazeEstimate): { x: number; y: number } {

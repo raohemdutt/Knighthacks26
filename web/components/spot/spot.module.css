@@ -440,6 +440,16 @@ span.id {
   touch-action: manipulation;
 }
 
+/* wide: in a card stretched to its row, the plan's well takes the spare height with the picture in its middle */
+@media (min-width: 1024px) {
+  .card > .mapWrap {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
 .wp {
   cursor: pointer;
 }

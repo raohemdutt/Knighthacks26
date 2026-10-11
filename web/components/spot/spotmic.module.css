@@ -1,0 +1,63 @@
+/* The Atlas mic on Inspection (SpotMic.tsx): what sits in the shared dock (components/voice/voice.module.css) beside the
+   shared VoiceBar. Tokens only. */
+
+.dock {
+  margin-top: 6px;
+}
+
+/* the line to type on: suggestions, the question, Ask */
+.row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.more {
+  min-width: 44px;
+  padding-inline: 0;
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* what was asked and what came back, above the bar */
+.said {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 34vh;
+  overflow-y: auto;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+}
+
+.said p {
+  margin: 0;
+}
+
+.saidHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.asked {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.answer {
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+
+/* the suggestions, the guide chips and the handoff */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 40vh;
+  overflow-y: auto;
+}

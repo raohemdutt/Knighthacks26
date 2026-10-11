@@ -30,6 +30,14 @@ export function Why({ to, onWhy, children }: { to: Target; onWhy: (t: Target) =>
  * The one button on an item. It raises an approval card on the box (the same flow as before): nothing is written until
  * the person says yes, here or on the Approvals screen, and then only a file on this box.
  */
+/** Something was written on this box (a request, a work order): the page reads the list again, now and a moment later. */
+export function ordersChanged(): void {
+  const tell = () => window.dispatchEvent(new Event(ORDERS_CHANGED));
+  tell();
+  window.setTimeout(tell, 900);
+}
+export const ORDERS_CHANGED = "spot:orders";
+
 export function ActionButton({ action, orders, quiet, name, jobs }: { action: OpAction; orders: WorkOrder[]; quiet?: boolean; /** With a name, the attention check asks "have you looked at it?" first. */ name?: string; jobs?: Job[] }) {
   const { approvals } = useAtlas();
   const looks = useAttention();
@@ -45,11 +53,12 @@ export function ActionButton({ action, orders, quiet, name, jobs }: { action: Op
     setBusy(true);
     setError(null);
     fn()
-      .then(() => approvals.reload())
       .catch((e: unknown) => setError(e instanceof ApiError ? (e.needsToken ? "This box asks for a token first (Settings)." : e.message) : String(e)))
-      .finally(() => setBusy(false));
+      .finally(() => (setBusy(false), approvals.reload(), ordersChanged()));
   };
-  const send = () => run(() => (isOrder && action.anomaly_id ? api.spotWorkOrder(action.anomaly_id) : api.spotReinspect(action.asset_id)));
+  // The press is the approval: the request is raised as before and approved at once through the same door (POST /api/approvals/<id>),
+  // so the file is written on this box straight away. If approving fails, the card stays waiting below and the reason is shown.
+  const send = () => run(async () => void (await api.decide((await (isOrder && action.anomaly_id ? api.spotWorkOrder(action.anomaly_id) : api.spotReinspect(action.asset_id))).action_id, "approve")));
   // never blocks: a prompt and the pointer, then "Continue anyway"
   const ask = () => (name ? first.check(() => missingForAsset(action.asset_id, name, looks.seen, jobs ?? []), send) : send());
 
@@ -227,10 +236,12 @@ export function WatchOut({ items, onWhy }: { items: PlainFinding[]; onWhy: (t: T
   );
 }
 
-export function LooksFine({ shift, onAll }: { shift: Shift; onAll: () => void }) {
+export function LooksFine({ shift, onAll, onPick }: { shift: Shift; onAll: () => void; onPick?: (id: string) => void }) {
   const fine = shift.fine;
   const st = shift.status;
   if (!fine || !st) return null;
+  // every piece of equipment, as "See all" lists it; the ones that look fine come first here. Shown on a wide screen, where the card is as tall as the plan.
+  const groups = [...(shift.levels ?? [])].sort((a, b) => Number(b.level === "ok") - Number(a.level === "ok")).map((lv) => ({ lv, rows: shift.assets.filter((a) => a.level === lv.level) }));
   return (
     <section className={o.card} aria-label="Looks fine" data-guide="card:fine">
       <CardHead level="ok" title="Looks fine" />
@@ -246,6 +257,28 @@ export function LooksFine({ shift, onAll }: { shift: Shift; onAll: () => void })
         </div>
       </div>
       <p className={o.sentence}>{fine.sentence}</p>
+      <div className={o.fineList}>
+        {groups.map(({ lv, rows }) =>
+          rows.length === 0 ? null : (
+            <section key={lv.level}>
+              <h3 className={o.fineGroup}>
+                <LevelIcon level={lv.level} size={18} /> {lv.words} · {rows.length}
+              </h3>
+              <ul>
+                {rows.map((a) => (
+                  <li key={a.asset_id}>
+                    <button type="button" className={o.fineItem} onClick={() => (onPick ? onPick(a.asset_id) : onAll())}>
+                      <b>{a.label}</b>
+                      <span>{a.place}</span>
+                      <span className={o.rowSentence}>{a.sentence}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ),
+        )}
+      </div>
       <button type="button" className={`${ui.btn} ${o.act}`} data-guide="all-equipment" onClick={onAll}>
         See all {fine.total}
       </button>

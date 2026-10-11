@@ -28,6 +28,9 @@ TRACED_NOTE = "Paths traced from the kit's floor-plan picture; the kit has no wa
 TRACED_REASON = "traced from the picture"
 TAP_SNAP_PX = 60.0  # a tap this close to walkable floor is taken to mean that floor
 
+# "Walk me through my shift": the stops, in order. Guide ids on the My shift page only (status, cards, plan).
+TOUR = ("status", "card:do-first", "do-first:1", "card:watch", "map")
+
 CONFIDENT = 0.75  # at or above: point there. Below: offer the closest instead of guessing
 OFFER = 0.34  # the least an alternative may score
 
@@ -247,19 +250,13 @@ class Guide:
         # the analysis
         for eid, (title, shows, names) in EXPLAINERS.items():
             add(f"explainer:{eid}", title, names, ANALYSIS, say("Look at the pictures under the heading."), say(f"This one is {title}. It shows {shows}."))
-        add("analysis:findings", "Every finding in one sentence", ["all findings", "every finding", "findings", "list of findings", "findings list", "everything you found"],
-            ANALYSIS, say("Look below the pictures."), say("This fold lists every finding in one sentence."))
-        add("analysis:tables", "The full tables", ["tables", "full tables", "the tables", "ranked queue", "triage queue", "trained scorer", "scorer", "the model", "intervals",
+        add("analysis:tables", "The full tables", ["tables", "full tables", "the tables", "ranked queue", "triage queue", "uninspected risk",
                                                     "key numbers", "raw numbers"],
-            ANALYSIS, say("Look below the pictures."), say("This fold holds the full tables: the ranked queue, the intervals and the trained scorer."))
+            ANALYSIS, say("Look below the pictures."), say("This fold holds the full tables: the ranked queue and the replay of every round."))
         add("analysis:assumptions", "Assumptions and method", ["assumptions", "method", "assumptions and method", "how it was worked out", "methodology"],
             ANALYSIS, say("Look at the top of the analysis, on the right."), say("This opens every assumption the analysis makes."))
         add("analysis:data-check", "Data check", ["data check", "validation", "data quality", "check the data", "does the data agree"],
             ANALYSIS, say("Look at the top of the analysis, on the right."), say("This compares our numbers with the kit's own."))
-        for f in view["findings"]:
-            add(f"finding:{f['id']}", f["headline"], [f["headline"], f["id"].replace("_", " ")],
-                ANALYSIS, {"reveal": "open:analysis:findings", "say": "I am opening the list of findings."}, say("Look at the list of findings."),
-                say(f"This line: {f['headline']}."))
 
         # equipment and places, on the plan
         by_place: dict[str, list[dict]] = {}
@@ -327,6 +324,12 @@ class Guide:
         names = [t.label for _, t in offers]
         sentence = "I am not sure what to point at. Did you mean " + (", ".join(names[:-1]) + " or " + names[-1] if len(names) > 1 else names[0]) + "?"
         return {**base, "confidence": best, "steps": [{"say": sentence}], "alternatives": [self._brief(t, s) for s, t in offers]}
+
+    def tour(self) -> dict:
+        """The shift, walked through: the guide's own answer for each stop of TOUR, in order. A stop that does not
+        resolve to itself (nothing to do first, no kit) is left out; no sentence is written here."""
+        stops = [out for out in map(self.resolve, TOUR if self.spot.configured else ()) if out["target"] == out["query"]]
+        return {"configured": self.spot.configured, "stops": stops}
 
     def _by_id(self, thing: str, by_id: dict[str, Target]) -> Target | None:
         """An id said or typed outright: HX-202, hx 202, WP05, waypoint 5, M027, round 27, floor 2."""
