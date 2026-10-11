@@ -63,6 +63,7 @@ from urllib.parse import quote
 import httpx
 from fastapi import APIRouter
 
+from contexts.telemetry.domain.energy import clock_offset, integrate
 from lab import hub as lab_hub
 
 log = logging.getLogger("atlas.circle.brain_pair")
@@ -73,6 +74,7 @@ MODEL_PORT = 8000  # the head's vLLM server (lab/pod_a_teacher.sh)
 SAMPLER_PORT = 8790  # lab/pod_power.py DEFAULT_PORT
 TIMEOUT_S = 3.0
 CACHE_S = 2.0
+CHAT_TIMEOUT_S = 60.0  # one chat completion from the head (the Ask panel's comparison)
 STALE_S = 15.0  # a sampler reads once a second: a newest sample older than this is not "now"
 MODEL = {"name": "Qwen3.5-122B-A10B", "params_b": 122, "active_b": 10, "quant": "int4"}
 LAYERS = 24  # pipeline parallel 2: 48 layers, 24 on each pod
@@ -167,6 +169,7 @@ class BrainPair:
         self._last_seq: dict[str, int] = {}
         self._ttft = _Mean()
         self._itl = _Mean()
+        self._chat_client: httpx.AsyncClient | None = None
 
     @property
     def configured(self) -> bool:
@@ -293,10 +296,95 @@ class BrainPair:
             self._cached_at = self.monotonic()
             return self._cached
 
+    # --- asking the brain, and what an answer cost on both pods (the Ask panel's comparison) ---
+
+    async def chat(self, body: Mapping[str, Any], timeout_s: float = CHAT_TIMEOUT_S) -> dict[str, Any]:
+        """One OpenAI chat completion from the head (port 8000) through the hub proxy, with the head's token.
+        Raises RuntimeError for anything but a 200 with JSON, httpx errors for no answer."""
+        if self.head.base is None:
+            raise RuntimeError(self.reason or "this box has no keys for the head pod")
+        if self._chat_client is None:
+            self._chat_client = httpx.AsyncClient(transport=self.transport, timeout=timeout_s, follow_redirects=False,
+                                                  headers={"User-Agent": self.user_agent})
+        reply = await self._chat_client.post(f"{self.head.base}/{MODEL_PORT}/v1/chat/completions", json=dict(body),
+                                             headers={"Authorization": f"token {self.head.token}"})
+        if reply.status_code != 200:
+            raise RuntimeError(f"the head pod answered HTTP {reply.status_code}")
+        data = reply.json()
+        if not isinstance(data, dict):
+            raise RuntimeError("the head pod's answer is not a chat completion")
+        return data
+
+    async def _pod_window(self, pod: Pod, start: float, end: float) -> dict[str, Any] | None:
+        """That pod's gross joules over [start, end] on this box's clock, moved onto the pod's clock by the offset
+        measured from this very read (four timestamps). None when its sampler does not cover the window."""
+        if pod.base is None:
+            return None
+        if pod.name not in self._last_seq:
+            await self._watts(pod)  # learns where the sampler's count is
+        known = self._last_seq.get(pod.name)
+        if known is None:
+            return None
+        span = int(self.clock() - start) + 20
+        t1 = self.clock()
+        body = self._json(await self._get(pod, SAMPLER_PORT, "/samples", {"after": max(0, known - span),
+                                                                            "limit": span + 600}))
+        t4 = self.clock()
+        if body is None:
+            return None
+        if isinstance(body.get("last_seq"), int):
+            self._last_seq[pod.name] = body["last_seq"]
+        try:
+            off = clock_offset(t1, _epoch(body["pod_received"]), _epoch(body["pod_sent"]), t4)[0]
+        except (KeyError, TypeError, ValueError):
+            off = 0.0
+        trace = []
+        for sample in body.get("samples") or []:
+            event = (sample or {}).get("event") or {}
+            w = event.get("socket_w")
+            if isinstance(w, int | float) and not isinstance(w, bool) and event.get("ts"):
+                trace.append((_epoch(str(event["ts"])), float(w)))
+        trace.sort()
+        joules = integrate(trace, start + off, end + off) if trace else None
+        if joules is None:
+            return None
+        seconds = max(end - start, 1e-9)
+        return {"joules": round(joules, 1), "watts_avg": round(joules / seconds, 1),
+                "idle_w": self.idle.get(pod.node),
+                "samples": sum(1 for t, _ in trace if start + off <= t <= end + off)}
+
+    async def window_energy(self, start: float, end: float, *, wait_s: float = 2.5,
+                            sleep: Callable[[float], Any] = asyncio.sleep) -> dict[str, Any] | None:
+        """Both pods' gross joules over a request window (epoch seconds on this box's clock), the T4 rule: their
+        power integrated over the window, nothing subtracted, each pod's idle beside it. Waits up to wait_s for each
+        sampler's first sample after the end (they read once a second). None when neither pod's sampler covers it.
+
+            {"joules", "watts_avg", "seconds", "pods": {"C": {"joules", "watts_avg", "idle_w", "samples"}, "D": ...}}"""
+        pods: dict[str, Any] = {}
+        waited = 0.0
+        for pod in (self.head, self.half):
+            letter = pod.name.split()[-1]
+            got = await self._pod_window(pod, start, end)
+            while got is None and pod.base is not None and waited < wait_s:
+                await sleep(1.0)
+                waited += 1.0
+                got = await self._pod_window(pod, start, end)
+            pods[letter] = got
+        measured = [p["joules"] for p in pods.values() if p]
+        if not measured:
+            return None
+        seconds = max(end - start, 1e-9)
+        total = sum(measured)
+        return {"joules": round(total, 1), "watts_avg": round(total / seconds, 1), "seconds": round(end - start, 2),
+                "pods": pods}
+
     async def aclose(self) -> None:
         if self._client is not None:
             await self._client.aclose()
             self._client = None
+        if self._chat_client is not None:
+            await self._chat_client.aclose()
+            self._chat_client = None
 
 
 def _pod(role: str, kind: str, roles: Mapping[str, str], environ: Mapping[str, str] | None,
