@@ -35,8 +35,15 @@ cost inside a sitting), PowerShell, every MCP server but Notion, and rm of any k
 the launcher, not a sitting, deletes a finished clone. DENIED adds a second line for
 the worst cases: no pod launch or stop except through the queue verbs, no push to
 main or force push, no merge of a pull request, no recursive force delete, no Notion
-page deletion, no bypassing the commit hook, and nothing from the owner's notes,
-the machine's state files or .env.
+page deletion, no bypassing the commit hook (--no-verify or a prefix of it, or -n
+first, after other arguments, or folded after one short flag as in -an), no rebase
+that runs a command (--exec, --exec=..., a shorter prefix such as --ex, or -x first or
+after other arguments: git runs that command itself, so no deny rule ever sees it),
+nothing from the owner's notes, the machine's state files or .env, and no allowed
+shell command but the interpreter (cp, mv, touch, an output redirect) whose text
+names the state dir. A force push includes a + refspec anywhere in the push, and a
+remote delete includes a :refs/... refspec, because git push origin ctx/* also takes
+a teammate's branch after its own.
 
 Verbs that do not exist yet. When this file was written lab/__main__.py registered
 only ready, resume and stop. The other verbs named here do not exist yet; their
@@ -44,7 +51,7 @@ patterns are named in advance and match nothing that runs until the verb is adde
 verb with sub-verbs registers once, under its first word). VERBS in lab/__main__.py
 is the authority on what exists, so nothing here changes when a verb lands.
   allowed to sittings: ready, digest, handoff, draft, ledger, metrics, slot, rulings,
-    experiment, referee, review, mirror, placement
+    experiment, research-check, referee, review, mirror, placement
   the owner's, denied to every sitting: pool, resume, sit, stop
 A pod controller script (lab/controller.py) is denied by the same logic for its
 launch and stop commands; its command line is not final, so adjust _PODS when it lands.
@@ -122,7 +129,9 @@ _HELP: tuple[str, ...] = ("", " --help", " -h", " help")
 _READ_FORMS: tuple[str, ...] = ("rulings", "rulings -*")
 
 #: What opus and fable add: the verbs a refinement pass and experiment planning use.
-_PASS_VERBS: tuple[str, ...] = ("rulings apply", "experiment add", "experiment result", "experiment rank")
+_PASS_VERBS: tuple[str, ...] = (
+    "rulings apply", "experiment add", "experiment result", "experiment rank", "research-check",
+)
 
 #: What fable alone adds: the referee duties and the machine's account of itself.
 _REFEREE_VERBS: tuple[str, ...] = ("referee", "review", "mirror", "rulings mirror")
@@ -235,9 +244,29 @@ _PUSH_TO_MAIN: list[str] = [
     )
 ]
 
-#: No force push, no remote delete, no mirror of every ref, and the commit hook (which
-#: strips attribution) is never bypassed. A pattern must not end in ":*": the CLI reads
-#: that as its older spelling of a trailing " *", so a delete refspec is caught as :ctx/*.
+#: git commit flags that take no argument and so may stand before n in one short-flag
+#: group (-an is -a -n): -a, -s, -q and -v.
+_COMMIT_FLAGS_BEFORE_N: tuple[str, ...] = ("a", "s", "q", "v")
+
+#: The commit hook (which strips attribution) is never bypassed. --no-v* is --no-verify
+#: and every prefix git accepts for it. -n* after "git commit*" is -n as the first
+#: argument or after other arguments (git commit -m wip -n), alone or first in a group
+#: (-nq). The group rules catch -n folded after one flag (-an, -sn). Not caught: -n
+#: third or later in a group (-asn), since deny rules are a second line, not a boundary;
+#: and -amn is not -n at all (the n is -m's message). A message with " -n" in it is
+#: refused too: reword it.
+_COMMIT_NO_VERIFY: list[str] = [
+    "Bash(git commit *--no-v*)",
+    "Bash(git commit* -n*)",
+    *(f"Bash(git commit* -{flag}n*)" for flag in _COMMIT_FLAGS_BEFORE_N),
+]
+
+#: No force push, no remote delete, no mirror of every ref, and the commit hook is never
+#: bypassed (_COMMIT_NO_VERIFY). A pattern must not end in ":*": the CLI reads that as its
+#: older spelling of a trailing " *", so a delete refspec is caught as :ctx/* and as
+#: :refs/* (:refs/heads/ctx/<theirs>). The allow rule git push origin ctx/* takes
+#: further refspecs after the branch, so a + refspec is refused anywhere after git push:
+#: +ctx/<theirs> force-updates a teammate's branch without --force.
 _PUSH_AND_COMMIT_FLAGS: list[str] = [
     "Bash(git push *--force*)",
     "Bash(git push -f*)",
@@ -246,12 +275,27 @@ _PUSH_AND_COMMIT_FLAGS: list[str] = [
     "Bash(git push -d*)",
     "Bash(git push * -d*)",
     "Bash(git push * :ctx/*)",
+    "Bash(git push * :refs/*)",
+    "Bash(git push *+*)",
     "Bash(git push *--mirror*)",
     "Bash(git push *--all*)",
     "Bash(git push *--prune*)",
     "Bash(git push *--no-verify*)",
-    "Bash(git commit *--no-verify*)",
-    "Bash(git commit -n*)",
+    *_COMMIT_NO_VERIFY,
+]
+
+#: git rebase runs the argument of --exec (or -x) as a shell command after each commit it
+#: replays. A deny rule matches the command part as written, so a push, an rm or a write to
+#: the state dir inside that argument is never seen by the rules above: 'git rebase *' stays
+#: allowed for ordinary rebases, and every spelling that carries a command is refused.
+#: --ex* also catches --exec=<cmd> and the prefixes git accepts for --exec (--exe, --ex),
+#: which no other rebase option starts with; -x is caught as the first argument (also
+#: stuck to its command, -x<cmd>) and after other arguments. A short-flag group that ends
+#: in x (-mx) is not caught: deny rules are a second line, not a boundary.
+_REBASE_EXEC: list[str] = [
+    "Bash(git rebase *--ex*)",
+    "Bash(git rebase -x*)",
+    "Bash(git rebase * -x*)",
 ]
 
 #: A pull request is merged by a person, never by a sitting.
@@ -285,8 +329,33 @@ _PATHS: list[str] = [
     f"Edit(//**/{STATE_DIR}/**)",
 ]
 
+#: The state dir as a command may spell it: with forward slashes, and with the Windows
+#: backslashes a quoted path keeps.
+_STATE_SPELLINGS: tuple[str, ...] = (STATE_DIR, STATE_DIR.replace("/", "\\"))
+
+#: The first words of the shell commands a sitting may run, apart from the interpreter.
+#: The interpreter is left out because it is how the verbs run, and a verb may name the
+#: state dir in its arguments (a handoff note that says it did not read the notes); it
+#: also runs code a sitting writes, so no rule on its command text bounds what it touches.
+_WRITING_COMMANDS: tuple[str, ...] = tuple(
+    sorted({command.split(" ", 1)[0] for command in _SHELL} - set(PYTHONS))
+)
+
+#: The Edit rule above does not reach Bash: cp, mv, touch and mkdir take the state dir as
+#: an argument, and an output redirect (date > lab/state/STOP) writes there through any
+#: allowed command. So each of those commands is refused when its text names the state
+#: dir. A rule cannot hold the redirect character itself (the cmd.exe shim would eat it),
+#: hence one rule per command, built from _SHELL so a command added there is covered.
+#: Read-only commands (ls, cat, grep, test) need no allow rule and stay free to read the
+#: state dir, and the verbs stay free to change it. A commit message or pull request text
+#: that names the state dir is refused too: reword it.
+_STATE_WRITES: list[str] = [
+    f"Bash({command} *{spelling}*)" for spelling in _STATE_SPELLINGS for command in _WRITING_COMMANDS
+]
+
 DENIED: list[str] = [
-    *_PODS, *_PUSH_TO_MAIN, *_PUSH_AND_COMMIT_FLAGS, *_MERGE, *_RM, *_NOTION_DELETE, *_OWNER, *_PATHS,
+    *_PODS, *_PUSH_TO_MAIN, *_PUSH_AND_COMMIT_FLAGS, *_REBASE_EXEC, *_MERGE, *_RM, *_NOTION_DELETE,
+    *_OWNER, *_PATHS, *_STATE_WRITES,
 ]
 
 # --- the argument vector ------------------------------------------------------------------

@@ -28,7 +28,7 @@ The skill carries the flow (lock, own clone, red test first, fresh test output b
 - AGENTS.md section 8 and the open-ticket skill's hard constraints bind you, merging included; if your allow-list refuses gh pr merge, leave the PR open and say so in the handoff.
 - GPUs: pod A is a shared service, so call it, never reserve or restart it. Pod B only through the queue (section 4b of the open-ticket skill, python -m lab slot). Nothing that trains, serves or writes data/events runs without the node gate and Ilan's go.
 - Zero attribution anywhere: no trailer, generated-by line, session link or mention of any AI tool; only the signed Notion line is exempt.
-- If lab/state/STOP exists or a verb answers stopped, start nothing new, leave the work safe and hand off.
+- If $LAB_STATE_DIR/STOP exists (ready reports that dir) or a verb answers stopped, start nothing new, leave the work safe and hand off.
 - Do not guess what is Ilan's to decide (scope, priority, anything irreversible): write waiting on Ilan on the task page and set Status Blocked.
 
 ## End

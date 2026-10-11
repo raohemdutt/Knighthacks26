@@ -631,6 +631,24 @@ def test_a_sitting_that_started_nothing_pauses_the_pool_without_a_failure(make_p
     assert "task O1" in started(p)
 
 
+def test_a_child_that_died_after_its_sitting_started_counts_as_a_failed_sitting_not_a_refusal(make_pool, lab):
+    save_board(lab, [task("S1", tier="Sonnet")])
+    p, fake = make_pool()
+    p.begin()
+    p.fill(NOW)
+    fake.wait_calls(1)
+    assert started(p) == ["task S1"]
+    # The sit child wrote its start row, then died before printing its answer: the launcher
+    # answers with the no-answer error and no ledger key.
+    sit_row(lab, "sit-crashed-1", "sonnet", "task S1", ts=NOW)
+    crashed = {"ok": False, "outcome": "error",
+               "error": "python -m lab sit exited 1 without an answer: Traceback (most recent call last)"}
+    settle(p, fake, "task S1", crashed)
+    record = p.history.get("task S1")
+    assert (record.last_result, record.failures) == (pool.RESULT_FAILED, 1)
+    assert [row for row in rows(lab) if row["verb"] == pool.V_PAUSE] == []
+
+
 def test_five_failed_sittings_in_a_row_pause_the_pool(make_pool, lab):
     save_board(lab, [task(f"S{n}", tier="Sonnet", wave=n) for n in range(1, 8)])
     p, fake = make_pool(budget=5)
@@ -1225,3 +1243,145 @@ def test_a_first_pass_or_the_first_merge_never_starts_without_its_board_task(mak
     assert reasons["pass kernels"] == ("a track's first pass runs as its board task, and the snapshot has no open "
                                        "first-pass task for it")
     assert reasons["merge"] == "the first merge runs as its board task, and the snapshot has no open merge task"
+
+
+def test_the_title_recognisers_are_built_from_the_refine_merge_track_list():
+    from lab.machine import refine_merge
+
+    source = Path(pool.__file__).read_text(encoding="utf-8")
+    assert "telemetry|learning" not in source, (
+        "pool.py types the track alternation into its regexes; build it from refine_merge.TRACKS")
+    for name, regex in (("_PASS_TITLE", pool._PASS_TITLE), ("_LOOP_TITLE", pool._LOOP_TITLE)):
+        missing = [track for track in refine_merge.TRACKS if track not in regex.pattern]
+        assert missing == [], f"{name} does not name every refine_merge.TRACKS entry, missing {missing}"
+
+
+class FailingFetchFiles:
+    """A RefineFiles stand-in for a ref whose git fetch fails: refresh() reports it, nothing can be read."""
+
+    where = "origin/main"
+
+    def __init__(self, problem: str) -> None:
+        self.problem = problem
+
+    def refresh(self) -> list[str]:
+        return [self.problem]
+
+    def read(self, rel: str) -> str | None:
+        return None
+
+
+def test_a_failed_refine_fetch_is_written_to_pool_json_and_answered_by_status(lab, clock):
+    fetch_failure = "git fetch origin failed: fatal: unable to access"
+    save_board(lab, [task("O1")])
+    conf = pool.Settings(state_dir=lab, budget=16, refine=FailingFetchFiles(fetch_failure),
+                         verbs=lambda: ["digest", "sit"])
+    fake = FakeLauncher()
+    p = pool.Pool(conf, launcher=fake, tick_seconds=0.01, exit_when_idle=False, clock=clock)
+    try:
+        assert p.begin() is None
+        p.fill(NOW)
+        fake.wait_calls(1)
+        saved = json.loads(pool.state_path(lab).read_text(encoding="utf-8"))
+        answer = pool.status(lab, NOW + dt.timedelta(minutes=1))
+    finally:
+        fake.release_all()
+        p.lock.release()
+    assert f"refine: {fetch_failure}" in saved.get("problems", [])
+    assert (answer["ok"], answer["outcome"], answer["running"]) == (True, "running", True)
+    assert f"refine: {fetch_failure}" in (answer.get("problems") or [])
+
+
+# --- a restarted pool adopts the outcomes its predecessor never recorded ---------------------------
+
+
+def test_a_restarted_pool_adopts_the_outcome_of_a_sitting_its_predecessor_never_recorded(make_pool, lab):
+    started_at = NOW - dt.timedelta(hours=2)
+    # an earlier pool: it began, started a seat for task T1, and died before it wrote the pool end row
+    ledger.append({"ts": started_at - dt.timedelta(minutes=1), "actor": pool.ACTOR, "tier": None, "task": None,
+                   "verb": pool.V_BEGIN, "outcome": "started", "metrics": {}, "refs": {}}, state_dir=lab)
+    ledger.append({"ts": started_at, "actor": pool.ACTOR, "tier": "opus", "task": "T1", "verb": pool.V_START,
+                   "outcome": "started", "metrics": {}, "refs": {}, "item": "task T1", "seat": "seat-1",
+                   "units_held": 2, "source": "board", "why": "test", "progress": {}}, state_dir=lab)
+    # its sitting ran on its own and ended in error
+    sit_row(lab, "sit-old", "opus", "task T1", ts=started_at + dt.timedelta(seconds=30))
+    sit_row(lab, "sit-old", "opus", "task T1", outcome="error", ts=started_at + dt.timedelta(minutes=40))
+    assert [row["verb"] for row in rows(lab) if row["verb"] == pool.V_END] == []
+
+    p, _ = make_pool()
+    assert p.begin() is None
+
+    record = p.history.get("task T1")
+    assert record is not None
+    assert (record.last_result, record.failures) == ("failed", 1)
+    ends = [row for row in rows(lab) if row["verb"] == pool.V_END]
+    assert [(row["item"], row["result"], row["refs"].get("run_id")) for row in ends] == [
+        ("task T1", "failed", "sit-old")]
+
+
+# --- the breaker belongs to the history, not to one caller -----------------------------------------
+
+
+def test_an_outage_that_trips_the_breaker_every_round_benches_no_item(make_pool, lab, clock):
+    """Five failed sittings in a row, whatever the items, are the pool's problem and not the items':
+    an outage that keeps tripping the breaker must not bench the items it failed."""
+    save_board(lab, [task(f"S{n}", tier="Sonnet", wave=n) for n in range(1, 7)], taken_at=clock.now)
+    p, fake = make_pool(FakeLauncher(default=ran("error")), referee=True)
+    assert p.begin() is None
+    for outage_round in range(3):
+        if outage_round:
+            clock.advance(minutes=pool.PAUSE_MINUTES + 1)
+            save_board(lab, [task(f"S{n}", tier="Sonnet", wave=n) for n in range(1, 7)], taken_at=clock.now)
+        deadline = time.monotonic() + 20
+        p.tick(1)
+        while p.seats and time.monotonic() < deadline:
+            p.tick(0.2)
+        assert p.seats == {}, f"round {outage_round + 1}: the seats did not all end"
+        pauses = [row for row in rows(lab) if row["verb"] == pool.V_PAUSE]
+        assert len(pauses) == outage_round + 1, f"round {outage_round + 1}: expected one breaker pause per round"
+        assert pauses[-1]["reason"] == f"{pool.BREAKER_FAILURES} sittings in a row failed"
+    benched = [(row["item"], row["failures"]) for row in rows(lab) if row["verb"] == pool.V_BENCH]
+    assert benched == []
+    saved = json.loads(pool.state_path(lab).read_text(encoding="utf-8"))
+    assert saved["benched"] == []
+    worst = {label: record.failures for label, record in p.history.items.items()}
+    assert all(count < pool.MAX_RESTARTS + 1 for count in worst.values()), worst
+
+
+def test_replaying_the_end_rows_reproduces_the_breaker_the_live_history_applies(lab):
+    """Seven failed sittings of seven different items, oldest first: the fifth trips the breaker, so
+    the streak starts over and the items that failed before it are cleared. The replay of the pool's
+    end rows and a live history fed the same endings must agree on that."""
+    labels = [f"task S{n}" for n in range(1, 8)]
+    stamps = [NOW + dt.timedelta(minutes=n) for n in range(7)]
+    end_rows = [{"verb": pool.V_END, "ts": pool.iso(when), "item": label, "tier": "sonnet",
+                 "result": pool.RESULT_FAILED, "progress": {}} for label, when in zip(labels, stamps)]
+    replayed = pool.History.from_rows(end_rows)
+    live = pool.History()
+    for label, when in zip(labels, stamps):
+        live.ended(label, "sonnet", pool.RESULT_FAILED, when, {})
+    for name, history in (("replayed", replayed), ("live", live)):
+        assert history.streak == 2, name
+        assert [history.get(label).failures for label in labels[:5]] == [0, 0, 0, 0, 0], name
+    assert {label: replayed.get(label).failures for label in labels} == {
+        label: live.get(label).failures for label in labels}
+
+
+# --- a sitting with a long cap holds its units for its whole cap -----------------------------------
+
+
+def test_a_sitting_with_a_cap_over_a_day_still_holds_its_units_and_its_item_is_not_offered(lab, refine_root):
+    long_cap_minutes = 1600  # 26.7 h: still running 25 h after its start row, which a 24 h read of the ledger misses
+    sit_row(lab, "sit-long-1", "sonnet", "task S1", ts=NOW - dt.timedelta(hours=25), cap=long_cap_minutes)
+    save_board(lab, [task("S1", tier="Sonnet", wave=1)])
+
+    answer = pool.status(lab, NOW)
+    assert answer["units_in_use"] == 1
+    assert [(f["sitting"], f["tier"], f["item"], f["units"]) for f in answer["foreign"]] == [
+        ("sit-long-1", "sonnet", "task S1", 1)]
+
+    settings = pool.Settings(state_dir=lab, refine=pool.TreeFiles(refine_root), verbs=lambda: ["digest", "sit"])
+    dry = pool.dry_run(settings, NOW)
+    assert dry["units_in_use"] == 1
+    assert [f["sitting"] for f in dry["foreign"]] == ["sit-long-1"]
+    assert [entry["item"] for entry in dry["schedule"]] == []
