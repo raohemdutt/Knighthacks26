@@ -3,7 +3,7 @@ frame refs or ids, times the way a person says them, and a few sentences at most
 
 import re
 
-MAX_SPOKEN_CHARS = 420
+MAX_SPOKEN_CHARS = 900  # room for a whole day walked through ("run me through my day" is said in full, never cut off); was 420
 NOTHING_TO_SAY = "I don't have an answer to read out for that."
 
 _URL = re.compile(r"\b(?:https?://|www\.)[^\s<>()\]]+", re.I)

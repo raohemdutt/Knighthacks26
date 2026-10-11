@@ -53,6 +53,18 @@ def test_an_afternoon_time_keeps_its_pm_so_the_voice_cannot_call_it_morning():
     assert " ".join(s.tts.said) == answer == "Yes, you've got your PHY 2049 lecture at 2, then the mentor check-in at 4:30 PM."
 
 
+def test_a_whole_day_walked_through_is_spoken_to_the_end_not_cut_off():
+    """The owner's rule: "run me through my day" is the WHOLE day. At the old 420-character cap the voice stopped before the
+    campus clause and the closing offer, and on a fuller day it would have dropped the person's own commitments."""
+    from contexts.agent.tests.test_natural_speech_2 import WHOLE_DAY
+
+    said = WHOLE_DAY.replace("&", "and")  # the one thing the voice rewords in it
+    assert len(WHOLE_DAY) > 420 and speech_for_answer(WHOLE_DAY) == said
+    stream = SentenceStream()
+    pieces = [s for i in range(0, len(WHOLE_DAY), 9) for s in stream.feed(WHOLE_DAY[i:i + 9])] + [stream.flush()]
+    assert " ".join(clean_for_speech(p) for p in pieces) == said
+
+
 def test_a_bare_time_is_spoken_as_written_and_only_a_24_hour_clock_is_reworded():
     for said in ("Next up is your COP 4533 lecture at 10:40.", "Leave by 10:30 for that one.", "You're free at 2.", "It starts at 9:15, then lunch at noon.",
                  "The mentor check-in is at 4:30 PM."):

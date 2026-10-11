@@ -12,7 +12,7 @@ export interface SpeechTextOptions {
 }
 
 /** Longest answer read aloud, in characters, before it is cut at a sentence end. */
-export const MAX_SPOKEN_CHARS = 420;
+export const MAX_SPOKEN_CHARS = 900; // room for a whole day walked through (the box's voice has the same cap: contexts/voice/text.py); was 420
 /** In the offline demo the "answer" is the evidence list itself: read this many lines of it. */
 const MAX_FAKE_LINES = 3;
 /** Chrome stops in the middle of a long utterance, so speech is fed to it a sentence or two at a time. */
