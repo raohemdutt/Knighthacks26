@@ -57,7 +57,8 @@ circle:
   share_summaries: false # opt in to sending habit/impact/game summaries to the Circle's leaderboards (E2)
   face_share: false      # let named friends' boxes recognise you (your own face template, sealed to their box, after a
                          # card on each side). Off: nothing is published and the endpoints answer 409. Also ATLAS_CIRCLE_FACE_SHARE=1
-  face_share_days: 30    # a shared template is deleted on the friend's box after this many days unless renewed
+  face_share_days: 30    # a shared template is deleted on the friend's box after this many days unless renewed; the
+                         # sealed row in the shared database carries the same expiry and this box sweeps it once dead
   keep_days: 30          # this box removes its OWN plan messages, share receipts and expired place from the shared
                          # database after this many days (never anyone else's rows). 0: never remove anything
   names:                 # member id -> display name; also who must say yes to a plan with no invitees (G1)

@@ -3,12 +3,14 @@ In-memory Circle store only (NEON_DATABASE_URL is taken out of the environment).
 
 import json
 import time
+from datetime import timedelta
 
 import pytest
 import yaml
 from fastapi.testclient import TestClient
 
 from contexts.circle.application.protocol import InMemoryCircleStore
+from contexts.gateway import bootstrap
 from contexts.gateway.app import create_app
 from contexts.gateway.bootstrap import Settings, build, circle_from_env
 
@@ -91,3 +93,24 @@ def test_switched_on_it_answers_publishes_a_key_and_plans_still_get_their_cards(
                 break
             time.sleep(0.02)
         assert done and (done["status"], done["result"]) == ("done", "proposed to the circle: Study session")
+
+
+def test_the_daily_sweep_covers_sealed_rows_only_while_face_share_is_on(tmp_path, env):
+    """Off: the cleanup never names sealed_messages (a box that never had it on reads and writes nothing there).
+    On: this member's dead sealed rows go too, kept as long as a share lasts (circle.face_share_days)."""
+    made = []
+
+    class Recorded(bootstrap.NeonCleanup):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            made.append(self)
+
+    env.setattr(bootstrap, "NeonCleanup", Recorded)
+    env.setenv("NEON_DATABASE_URL", "postgresql://nobody@127.0.0.1:1/nothing")  # never connected to: build() sends nothing
+    env.setenv("ATLAS_CIRCLE_MEMBER", "hemdutt")
+    env.setenv("ATLAS_CIRCLE_ID", "kh-test")
+    env.setenv("ATLAS_CIRCLE_SHARE", "1")
+    assert build(settings(tmp_path / "off")).circle_cleanup and [c.sealed_keep for c in made] == [None]
+    env.setenv("ATLAS_CIRCLE_FACE_SHARE", "1")
+    atlas = build(settings(tmp_path / "on"))
+    assert atlas.circle_cleanup and made[1].sealed_keep == timedelta(days=atlas.face_share.days) == timedelta(days=30)

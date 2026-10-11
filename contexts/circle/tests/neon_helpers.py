@@ -40,6 +40,16 @@ class FakeNeon:
         self.down = False
         self.transport = transport or TRANSPORT
         self.requests: list[tuple[dict, dict]] = []  # https only: (headers, body) of each request that got through
+        self.lacks: set[str] = set()  # "table.column": a statement naming both is refused, as by a database without it
+        self.refused = 0  # statements refused that way
+
+    def refuses(self, sql: str) -> str | None:
+        """Postgres's message for a statement that names a column this database does not have, else None."""
+        for table, column in (name.split(".") for name in self.lacks):
+            if re.search(rf"\b{table}\b", sql) and re.search(rf"\b{column}\b", sql):
+                self.refused += 1
+                return f'column "{column}" of relation "{table}" does not exist'
+        return None
 
     def connect(self):
         if self.transport == "https":
@@ -54,11 +64,18 @@ class FakeNeon:
         return [sql.split()[2] for sql, _ in self.statements if sql.startswith("INSERT INTO")]
 
 
+class UndefinedColumn(Exception):
+    """What the driver raises for a column that is not there (psycopg.errors.UndefinedColumn has the same code)."""
+
+    sqlstate = "42703"
+
+
 class _FakeConnection:
     rowcount = 1
 
     def __init__(self, neon: FakeNeon):
         self.neon = neon
+        self._committed = len(neon.statements)
 
     def cursor(self):
         return self
@@ -67,6 +84,9 @@ class _FakeConnection:
         if self.neon.drops:
             self.neon.drops -= 1
             raise ConnectionError("server closed the connection unexpectedly")
+        why = self.neon.refuses(sql)
+        if why:
+            raise UndefinedColumn(why)
         self.neon.statements.append((sql, tuple(params)))
 
     @property
@@ -78,9 +98,10 @@ class _FakeConnection:
 
     def commit(self):
         self.neon.commits += 1
+        self._committed = len(self.neon.statements)
 
     def rollback(self):
-        pass
+        del self.neon.statements[self._committed:]  # as over https: `statements` holds what was committed, or is about to be
 
     def close(self):
         pass
@@ -121,6 +142,10 @@ class _FakeHttps(HttpsConnection):
         for q in queries:  # what a real server would refuse
             assert "%s" not in q["query"] and all(p is None or isinstance(p, str) for p in q["params"])
             assert {int(n) for n in re.findall(r"\$(\d+)", q["query"])} == set(range(1, len(q["params"]) + 1))
+        for q in queries:  # one refused statement refuses the whole request: nothing of it is kept
+            why = neon.refuses(q["query"])
+            if why:
+                return 400, json.dumps({"message": why, "code": "42703"}).encode()
         answers = [wire_result(neon.rows, neon.columns, q["query"]) for q in queries]
         return 200, json.dumps({"results": answers} if "queries" in request else answers[0]).encode()
 

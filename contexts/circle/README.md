@@ -43,27 +43,44 @@ pictures, Memory, the day plan, health, approvals and the event log stay on each
 | `game_scores` | one scored Sort It round | the member's box (`share_summaries`) | kept |
 | `presence` | the named place a member shares now, and when it ends | the member's box (`share_presence`); "stop sharing" ends the row | one row per member, overwritten; removed by its own box once expired for `circle.keep_days` |
 | `league_stakes`, `league_weeks`, `league_challenges` | the week's stake, a declared week's standings, a dare | the box whose person set, closed or started it | kept |
-| `sealed_messages` | face share only (off by default): a box's public keys, a face template as ciphertext for one friend's box, a revoke | the sharing box | the boxes delete a share when it is used, taken back or revoked |
+| `sealed_messages` | face share only (off by default): a box's public keys, a face template as ciphertext for one friend's box, a revoke | the sharing box | the boxes delete a share when it is used, taken back or revoked. A share also carries its expiry in the `expires_at` column: past it the row is no longer handed to anyone, and the sender's box removes it in its daily sweep (as it does its own revokes older than `circle.face_share_days`) |
 
 Two views, `habit_leaderboard` and `impact_leaderboard`, are read by the Circle screen.
 
 **Set up.** `pip install -e ".[neon]"`, then `NEON_DATABASE_URL=` in `.env` (the pooled connection string, the
 same on every box in the circle). `schema.sql` is the intended state. Check the database against it, and create
-what is missing, once for a new database and again whenever `schema.sql` gains a table or an index:
+what is missing, once for a new database and again whenever `schema.sql` gains a table, a column or an index:
 
 ```bash
 python -m contexts.circle.schema --check    # read-only: what differs between the database and schema.sql
-python -m contexts.circle.schema --apply    # creates the missing tables, indexes and views; nothing else
+python -m contexts.circle.schema --apply    # creates the missing tables, columns, indexes and views; nothing else
 python -m contexts.circle.schema --counts   # read-only: --check plus columns, indexes, sizes, rows per circle
 ```
 
 None of the three prints the connection string or a row's contents (ids are shortened to two letters).
-`--apply` runs `schema.sql`'s own `CREATE ... IF NOT EXISTS` statements in one transaction and only for objects
-that do not exist; it cannot alter, replace or drop anything, and it leaves an existing view as it is. A column
-that `schema.sql` gained on an existing table is reported by `--check` and needs a written migration.
+`--apply` runs `schema.sql`'s own statements in one transaction and only for objects that do not exist; it
+cannot change, replace or drop anything that is there, and it leaves an existing view as it is. The one thing it
+does to an existing table is add a column `schema.sql` gained, when `schema.sql` adds it by name with
+`ALTER TABLE … ADD COLUMN IF NOT EXISTS <column> <type>`: a plain type only, so the column is nullable, existing
+rows read NULL and nothing is rewritten (the tool refuses a `NOT NULL`, a `DEFAULT`, a constraint or a second
+action in that statement). `--check` reports such a column as a difference until `--apply` has run. The first
+one is `sealed_messages.expires_at`: on a database from before it,
+
+```
+$ python -m contexts.circle.schema --check
+against schema.sql: 1 difference(s)
+  - column sealed_messages.expires_at is in schema.sql but not in the database (apply schema.sql)
+$ python -m contexts.circle.schema --apply
+created: column sealed_messages.expires_at
+against schema.sql: matches
+```
+
 (`psql "$NEON_DATABASE_URL" -1 -f contexts/circle/infrastructure/schema.sql` does the same and also re-creates
-the two views.) A table that is missing (for example `sealed_messages` on a database set up before face share)
-makes that feature's timer job fail on every tick with an error in the log; the rest of the Circle keeps working.
+the two views.) `--apply` needs the role that owns the tables. A table that is missing (for example
+`sealed_messages` on a database set up before face share) makes that feature's timer job fail on every tick with
+an error in the log; the rest of the Circle keeps working. A missing column does not: a box that is newer than
+the database notices on its first statement, logs one line (`the column sealed_messages.expires_at is not there
+yet`) and works the way it did before the column until it is restarted after `--apply`.
 
 **Which box is in which circle.** `circle.member_id` and `circle.circle_id` in `config/agent.yaml`, or without
 editing the committed file: `ATLAS_CIRCLE_MEMBER`, `ATLAS_CIRCLE_ID`, `ATLAS_CIRCLE_SHARE=1` (opt in to places
@@ -107,10 +124,14 @@ What is different over HTTPS:
 
 - **Transactions.** There is no open transaction over HTTP. Statements wait until the code needs an answer or
   finishes, and go as one request that commits as a whole. A write that only inserts (a share, a place, a plan
-  message, a sealed message, a League row) is as atomic as over TCP. Two calls read an answer in between and so
-  commit in two steps: recording an agreed event (the event first, its RSVP rows second: if the second request is
-  lost the calendar shows that event with nobody listed, and a repeat does not add them) and the daily cleanup
-  (three independent deletes; a half-finished sweep is finished by the next one).
+  message, a sealed message, a League row) is as atomic as over TCP. So is recording an agreed event: the event
+  and its RSVP rows are one statement (`RECORD_EVENT` in `infrastructure/neon.py`), written together or not at
+  all on either transport. One call still reads an answer in between and so commits in steps: the daily cleanup
+  (independent deletes; a half-finished sweep is finished by the next one).
+  Until October 2026 the event and its RSVPs were two requests over HTTPS, and losing the second left an event
+  on the calendar with nobody listed. Such a record repairs itself: when the proposer's box records that thread
+  again (it does after a restart), an event with no RSVP row at all gets its attendees. A record that has any is
+  never added to, and the first title, time and place always stay.
 - **Offline is the same.** A refused connection, a timeout, an HTTP error or a sign-in page instead of an answer
   all count as "the database cannot be reached": the outbox and the place queue wait and the tick carries on. A
   request gives up after 10 s.
@@ -238,6 +259,24 @@ skips rows whose kind or version it does not know. It is a separate channel on p
 every `agent_messages` row into a `circle.message.received` whose `kind` is a closed list, so a new kind in that
 table would break the poll of a box that does not know it. A box without this code never reads `sealed_messages`.
 
+**Expiry on the database's side.** The expiry of a share is inside its signed header, which only the two boxes
+read. So that a share nobody accepts does not sit in the table for good (the friend's box is switched off, or
+never polls), the sharing box also writes that same moment to the row's `expires_at` column
+(`NeonSealedStore.post`). Two things act on it, both without reading a body:
+
+- the inbox query leaves out a row that is past its `expires_at` on the database's clock, so it is not handed to
+  any box again, deleted or not;
+- the sharing box's daily sweep (`NeonCleanup`, only while face share is switched on, and never with
+  `circle.keep_days: 0`) deletes the rows **it addressed to someone** that are past their `expires_at`. Rows with
+  no `expires_at` (a revoke, or a share written by a box from before the column) go once they are older than
+  `circle.face_share_days`. Public key records are not swept. A box never removes another member's sealed rows
+  this way: if the sharing box itself is gone for good, its expired rows stay in the table, unread.
+
+The column is a copy for housekeeping, not something a box trusts: the friend's box still checks the signed
+header's own expiry before it offers or accepts a share. No index was added for it: the inbox query is served by
+`sealed_messages_inbox (circle_id, to_member, created_at)` and filters a circle's handful of rows; the sweep runs
+once a day per box over the same few rows.
+
 **Limits, said plainly.**
 
 - **Keys are trusted on first use.** A box keeps the first key it sees for a member. Someone who controls the
@@ -259,8 +298,9 @@ table would break the poll of a box that does not know it. A box without this co
 - A share works only between boxes with the same face model (the header names it; the card says when it differs).
 - A wipe of everything deletes the templates friends shared and takes this member's own shares back (when the
   Circle can be reached; otherwise they run out). It keeps the box key, as it keeps the vault's master key.
-- **Not run against the real Neon database or with real faces.** The store is tested in memory and on the fake
-  connection; the faces in the tests are bytes the fake recogniser turns into vectors.
+- **Not run with real faces.** The store is tested in memory, on the fake connection over both transports, and
+  (the tests marked `needs_neon`) on whatever Postgres `NEON_DATABASE_URL` names; the faces in the tests are bytes
+  the fake recogniser turns into vectors.
 
 ## Conversations (`GET /api/circle/threads`, `/api/circle/threads/{id}`)
 
@@ -288,7 +328,10 @@ States: `proposed` (your card is waiting; nothing sent), `waiting`, `countered`,
 
 ## One box, no network: the seeded demo
 
-A believable Circle of three on one machine, from the log alone. Nothing here touches Neon or a second box.
+A believable Circle of three on one machine, from the log alone. Nothing here touches Neon or a second box,
+**as long as `NEON_DATABASE_URL` is not exported in the shell you run it from** (the command does not read
+`.env`, so normally it is not). With it exported, the seed builds the app on the real database and the three
+plans this box "approves" in the story are posted there, under `demo-circle`, with new ids on every run.
 
 ```bash
 python -m contexts.demo circle --data-dir /tmp/atlas-circle
@@ -311,6 +354,51 @@ directory again needs `--force` and adds nothing (every event has a fixed id).
 On one box nobody answers a **new** proposal: the friends here are events in the log, not running boxes. A plan
 you start shows its card, then "…'s Atlas is checking the calendar", then "no answer yet". For real answers,
 use two boxes (below). To throw the demo away: `rm -rf /tmp/atlas-circle`.
+
+## Demo members in the shared database (`python -m contexts.demo neon`)
+
+The one-box demo above fills one box's own log. The leaderboards on the Circle screen, the shared calendar and the
+friends in the League come from the shared database, and stay empty until boxes have shared for a while. This
+command puts a few demo members' rows there (`contexts/demo/neon_seed.py`), through the classes a box itself
+writes with:
+
+```bash
+python -m contexts.demo neon --circle kh-judges                    # dry run: every row it would write, by table
+python -m contexts.demo neon --circle kh-judges --apply            # writes them; again: adds nothing
+python -m contexts.demo neon --circle kh-judges --remove           # dry run of the removal
+python -m contexts.demo neon --circle kh-judges --remove --apply   # deletes exactly those rows
+```
+
+| What | Rows | Written by |
+| --- | --- | --- |
+| Per member and day: six habit summaries and a Waste Watch count; two Sort It rounds each | `shares`, `habit_summaries`, `impact_counters`, `game_scores` | `CircleSharing` shapes the share, `NeonShares.push` lands it |
+| "Dinner" (6:30 PM) and "Board game night" (8:30 PM) on the evening of `--end`: a proposal, each invitee's "free", the agreed event | `agent_messages`, `events`, `rsvps` | `NeonCircleStore.post`, `record_event` |
+| The last complete week: its stake, its standings, a five-day dare and who kept it | `league_stakes`, `league_weeks`, `league_challenges` | the real League projection declares them from the summaries above; `NeonLeague` pushes them |
+| The circle, with a name that is not its id | `circles` | the seed's one statement of its own: a box names a circle after its id, and the name is how the seed knows a circle is its own |
+
+`--members a,b` (or `a=Display Name`) gives explicit ids, used as they are; the default is `demo-hemdutt`,
+`demo-ilan`, `demo-dominick`. `--days` (7) is how far back the summaries go; the whole last week is always
+covered so its League result is a real one. `--end YYYY-MM-DD` (today) is the story's last day. No place is
+written: a `presence` row expires within hours and is rewritten on every push.
+
+Everything is a function of the circle, the members, the days and the **date** of `--end`, so a second `--apply`
+the same day adds nothing and `--remove` with the same values works from any machine. `--apply` also writes a
+manifest (`<data-dir>/neon-seed/<circle>.json`) so on the same machine `--remove` needs only `--circle`.
+
+What it will not do:
+
+- **Use a member id that is someone's.** Member ids are global in the database (one `members` row per id, one
+  habit row per member, habit and day). A seed id that belongs to another circle, or has any row this run would
+  not write, is refused. On another day, remove yesterday's seed first.
+- **Touch a circle that has other members' rows**, unless `--into-existing`. With it only the demo members'
+  rows are added, a League week or stake someone already declared is left alone, and nothing is updated.
+- **Delete anything it did not write.** `--remove` deletes by exact key and owner, a demo member only when
+  nothing refers to it any more, and the circle only when it carries the seed's name and is empty.
+
+For a box to show it: `ATLAS_CIRCLE_ID=<the circle>` and `ATLAS_CIRCLE_MEMBER=<its own id, not a seeded one>` in
+`.env`, with `NEON_DATABASE_URL`. The leaderboards and the calendar show the names stored with the members
+("Hemdutt"); the League shows a member under its id unless that box's `circle.names` has it. The seeded plans
+name their invitees, so no real box is asked to answer them.
 
 ## Two boxes, live: the real demo
 

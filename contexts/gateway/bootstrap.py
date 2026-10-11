@@ -548,7 +548,7 @@ def build(settings: Settings | None = None) -> Atlas:
 
     # Presence delivery (G5): my places to Neon, friends' places back as events.
     # A place (or "stop sharing") that could not be sent waits in data/circle.sqlite, across restarts too.
-    presence_sync = circle_cleanup = None
+    presence_sync = circle_cleanup = cleanup = None
     if presence and neon:
         presence_sync = PresenceSync(NeonPresence(neon), circle_cfg["circle_id"], circle_cfg["member_id"],
                                      queue=PresenceQueue(s.data_dir / "circle.sqlite"))
@@ -645,6 +645,8 @@ def build(settings: Settings | None = None) -> Atlas:
         face_share.fallback = approvals.executors.get("circle_share")
         approvals.executors["circle_share"] = face_share.executor
         bus.subscribe("vault.wipe.requested", bus.in_background(face_share.on_wipe))  # live only: takes the shares back
+        if cleanup and face_share.enabled:  # the daily sweep also removes this member's dead sealed rows (ciphertext
+            cleanup.sealed_keep = timedelta(days=face_share.days)  # past its expiry); off: the table is never touched
 
     # Learning board (X10): the Teach screen's view of tasks, runs and deployed models; rebuilt from the log.
     learning = LearningBoard()

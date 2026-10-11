@@ -12,6 +12,13 @@
         agreed (one after a counter-offer) and one still open. It writes its own config directory (default
         <data-dir>/config; the committed config never names a member) and prints the command to run the app on it.
 
+    python -m contexts.demo neon --circle <id> [--name "<name>"] [--members a,b] [--days 7] [--end YYYY-MM-DD]
+                                 [--dry-run | --apply] [--remove] [--into-existing]
+        Demo members in the SHARED database (Neon), written through the classes a box writes with: a week of
+        habit summaries, Waste Watch counts and Sort It scores each, two agreed plans, the League's last week.
+        The default is a dry run that prints every row; --remove deletes exactly what --apply wrote
+        (contexts/demo/neon_seed.py).
+
     python -m contexts.demo checkin --data-dir <empty dir> [--end ISO]
         The check-in (D4): one invented afternoon (a short night, resting heart rate up, strained looks, a bottle
         not picked up, three earlier days like it) published through the real app, so the Day loop's own rule
@@ -57,7 +64,7 @@ import sys
 from datetime import UTC, date, datetime
 from pathlib import Path
 
-from contexts.demo import fakes
+from contexts.demo import fakes, neon_seed
 from contexts.demo.seed import SeedRefused, seed, summary
 from contexts.demo.story import load
 
@@ -77,6 +84,8 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--config-dir", type=Path, help="where to write the demo's config (default: <data-dir>/config)")
     c.add_argument("--end", type=datetime.fromisoformat, help="end the story at this time (with a UTC offset) instead of now")
     c.add_argument("--force", action="store_true", help="add to a data directory that already has an event log")
+    n = sub.add_parser("neon", help="demo members in the shared database: leaderboards, plans, the League")
+    neon_seed.add_arguments(n)
     k = sub.add_parser("checkin", help="an invented afternoon that ends in a check-in, through the real app (D4)")
     k.add_argument("--data-dir", type=Path, required=True)
     k.add_argument("--end", type=datetime.fromisoformat, help="when the check-in is raised (with a UTC offset); default: now in "
@@ -111,6 +120,9 @@ def main(argv: list[str] | None = None) -> int:
     t.add_argument("--since", type=datetime.fromisoformat, help="count only from this time (with a UTC offset)")
     t.add_argument("--json", action="store_true", help="JSON instead of a markdown table")
     args = p.parse_args(argv)
+
+    if args.command == "neon":
+        return neon_seed.main(args)
 
     if args.command == "totals":
         from contexts.demo import totals
