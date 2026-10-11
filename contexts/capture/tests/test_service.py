@@ -4,6 +4,7 @@ import pytest
 
 pytest.importorskip("cv2")
 import cv2  # noqa: E402
+import httpx  # noqa: E402
 import numpy as np  # noqa: E402
 from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -195,24 +196,30 @@ def test_health_is_published_on_change_and_as_a_five_minute_heartbeat(clip, tmp_
 
 
 def test_the_mjpeg_stream_sends_boundaries_with_jpegs(clip, tmp_path):
-    holder = {}
-
+    # The whole test runs on one event loop. The camera reader publishes onto the loop it was started on; once that
+    # loop is closed the reader thread dies on its first publish and the newest frame never changes again, and a
+    # stream asked for two frames waits for the second one for ever.
     async def main():
         bus = EventBus(persist=False)
         service = CaptureService({"cam-desk": {"source": clip, "fps": 15, "width": 64, "height": 48, "faces": False}}, bus,
                                  lambda: person, tmp_path / "data", Policy())
         service.start(asyncio.get_running_loop())
-        await asyncio.sleep(0.8)
-        holder["service"] = service
-        return service
+        try:
+            deadline = asyncio.get_running_loop().time() + 30.0  # the first frame: a bound, not a fixed sleep
+            while service.snapshot("cam-desk") is None:
+                assert asyncio.get_running_loop().time() < deadline, "the camera delivered no frame"
+                await asyncio.sleep(0.02)
+            app = FastAPI()
+            app.include_router(capture_router(service))
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://box") as http:
+                assert (await http.get("/capture/live/cam-nope")).status_code == 404
+                async with http.stream("GET", "/capture/live/cam-desk?fps=15&max=2") as r:
+                    assert r.status_code == 200
+                    assert r.headers["content-type"].startswith("multipart/x-mixed-replace; boundary=frame")
+                    return b"".join([part async for part in r.aiter_bytes()])
+        finally:
+            service.stop()
 
-    service = asyncio.run(main())
-    app = FastAPI()
-    app.include_router(capture_router(service))
-    http = TestClient(app)
-    assert http.get("/capture/live/cam-nope").status_code == 404
-    with http.stream("GET", "/capture/live/cam-desk?fps=15&max=2") as r:
-        assert r.status_code == 200 and r.headers["content-type"].startswith("multipart/x-mixed-replace; boundary=frame")
-        chunk = b''.join(r.iter_bytes())
+    chunk = asyncio.run(asyncio.wait_for(main(), 60.0))
     assert chunk.startswith(b"--frame\r\nContent-Type: image/jpeg") and b"\xff\xd8" in chunk
-    service.stop()
+    assert chunk.count(b"--frame\r\n") == 2  # max=2: two frames, then the stream ends
