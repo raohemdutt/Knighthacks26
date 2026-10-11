@@ -33,6 +33,21 @@ What is read, and what it becomes:
 --manifest / kind=manifest     a package's `manifest.json` (contracts/learning.py ModelManifest) becomes one
     `learning.package.built` event {run_id, model_version, base, gguf, sha256}, id `import:<run_id>:package.built`.
     The manifest does not name its run, so a run id must be given.
+--run / kind=run               lab/train.py's `<out>/run.json` (its one JSON answer: ok, outcome, refs, metrics) becomes
+    one `learning.training.started` {task, dataset_id, node, base, steps, batch (samples per optimizer step: the
+    per-device batch times gradient accumulation), train_examples, epochs, lora_rank}, id
+    `import:<run_id>:training.started`, which gives the lab view its samples per second. A run id given that is not
+    the file's refs.run_id refuses the file.
+
+Where the stage goes (L29). The phone's Teach screen (application/board.py) and the operator screen follow
+`learning.run.progress`, which no file holds, so each import also says where the run is, once the run's task is known
+(from `&task=` / `--task`, else from a training.started or an eval already in the log or in the same import):
+telemetry -> stage training, progress = the last step over the planned steps (0 while those are not known), loss =
+the last finite loss, id `import:<run_id>:progress.training.<step>`; run -> stage training at 1.0 with the final loss
+for a trained run, else stage failed with the trainer's error, id `import:<run_id>:progress.trained` or
+`.progress.failed`; eval -> stage eval at 1.0, id `import:<run_id>:progress.eval`; manifest -> stage packaging at
+1.0 (when the manifest names its task), id `import:<run_id>:progress.packaging`. A telemetry import whose run has no
+known task publishes no progress and its answer says so. The loss curve still comes from the steps alone.
 
 --ledger / kind=ledger         the lab's ledger (lab/machine/ledger.py, `<state dir>/ledger.jsonl`), whole. It is not
     turned into events: the box keeps the file as it is at `<data-dir>/lab_state/ledger.jsonl` (never lab/state in the
@@ -58,7 +73,9 @@ import os
 import re
 import sys
 import tempfile
-from collections.abc import Awaitable, Callable, Iterable
+from collections.abc import Awaitable, Callable, Iterable, Mapping
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -70,11 +87,12 @@ from contexts.learning.application.lab_experiments import imported_state_dir, re
 from contexts.learning.application.lab_view import LabView
 from contracts import parse_event
 from contracts.events import Event
-from contracts.learning import ModelManifest, RunEvaluated
+from contracts.learning import ModelManifest, RunEvaluated, RunProgress
 from contracts.telemetry import TrainStep
 
 MAX_BYTES = 8 * 1024 * 1024  # a 10,000-step telemetry file is about 3 MB
-KINDS = ("telemetry", "eval", "manifest")  # the files that become events; "ledger" is kept as a file instead
+KINDS = ("telemetry", "eval", "manifest", "run")  # the files that become events; "ledger" is kept as a file instead
+STARTED = "learning.training.started"
 LEDGER = "ledger"
 PROBLEMS_SHOWN = 50
 _FIELD = re.compile(r"[A-Za-z_][A-Za-z0-9_.-]{0,39}")
@@ -152,14 +170,158 @@ def manifest_events(text: str, run_id: str | None) -> list[Event]:
                          "gguf": manifest.gguf, "sha256": manifest.sha256.get(manifest.gguf)})]
 
 
-def events_of(kind: str, text: str, run_id: str | None) -> list[Event]:
+@dataclass(frozen=True)
+class RunFacts:
+    """What the log already says about a run, for the progress an import adds: its task, its planned steps and the
+    time of its first and last step."""
+
+    task: str | None = None
+    steps: int | None = None
+    first_ts: datetime | None = None
+    last_ts: datetime | None = None
+    past_training: bool = False   # evaluated, packaged or a later stage: a late step file must not move it back
+
+
+def _facts_of(view: LabView) -> dict[str, RunFacts]:
+    out: dict[str, RunFacts] = {}
+    for run in {*view.steps, *view.started, *view.evaluated, *view.progress, *view.packages}:
+        started = view.started.get(run, (None, None))[1]
+        evaluated = view.evaluated.get(run)
+        progress = view.progress.get(run) or []
+        task = (started.task if started else None) or (evaluated.task if evaluated else None) or (progress[-1].task if progress else None)
+        stamps = [s.ts for s in (view.steps.get(run) or {}).values()]
+        past = evaluated is not None or run in view.packages or any(p.stage not in ("labeling", "training") for p in progress)
+        out[run] = RunFacts(task, started.steps if started else None, min(stamps) if stamps else None,
+                            max(stamps) if stamps else None, past)
+    return out
+
+
+def facts_in(events: Iterable[Event]) -> dict[str, RunFacts]:
+    """RunFacts from a list of events (the log, or what one import is about to publish), through the lab view's fold."""
+    view = LabView()
+    for event in events:
+        view.on_event(event)
+    return _facts_of(view)
+
+
+def _merge(older: Mapping[str, RunFacts], newer: Mapping[str, RunFacts]) -> dict[str, RunFacts]:
+    out = dict(older)
+    for run, facts in newer.items():
+        was = out.get(run, RunFacts())
+        firsts = [t for t in (was.first_ts, facts.first_ts) if t]
+        lasts = [t for t in (was.last_ts, facts.last_ts) if t]
+        out[run] = RunFacts(facts.task or was.task, facts.steps or was.steps, min(firsts) if firsts else None,
+                            max(lasts) if lasts else None, facts.past_training or was.past_training)
+    return out
+
+
+def _number(metrics: Mapping[str, Any], key: str) -> float | None:
+    value = metrics.get(key)
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def run_events(text: str, run_id: str | None, facts: Mapping[str, RunFacts] | None = None) -> list[Event]:
+    """lab/train.py's run.json as one learning.training.started (see the module docstring)."""
+    try:
+        answer = json.loads(text)
+        refs, metrics = answer["refs"], answer.get("metrics") or {}
+        file_run = refs["run_id"]
+    except (ValueError, KeyError, TypeError):
+        raise ImportRefused(["not a trainer run.json (lab/train.py): it needs refs.run_id"]) from None
+    if not isinstance(file_run, str) or not isinstance(metrics, dict) or not isinstance(refs, dict):
+        raise ImportRefused(["not a trainer run.json (lab/train.py): refs.run_id must be text and metrics an object"])
+    if run_id is not None and file_run != run_id:
+        raise ImportRefused([f"the run.json is for run {file_run!r}, not {run_id!r}"])
+    known = (facts or {}).get(file_run, RunFacts())
+    steps, batch, accum = (_number(metrics, f"trainer.{k}") for k in ("steps", "batch", "grad_accum"))
+    body: dict[str, Any] = {"type": STARTED, "event_id": f"import:{file_run}:training.started", "run_id": file_run,
+                            "ts": known.first_ts or datetime.now(UTC)}
+    fields = {"task": refs.get("task"), "dataset_id": refs.get("dataset_id"), "node": refs.get("node"), "base": refs.get("base_model"),
+              "steps": int(steps) if steps is not None else None,
+              "batch": int(batch * (accum or 1)) if batch is not None else None,
+              "train_examples": int(n) if (n := _number(metrics, "trainer.examples")) is not None else None,
+              "epochs": _number(metrics, "trainer.epochs"),
+              "lora_rank": int(r) if (r := _number(metrics, "trainer.lora_rank")) is not None else None}
+    body.update({key: value for key, value in fields.items() if value is not None})
+    return [parse_event(body)]
+
+
+def _run_end(text: str, task: str | None, facts: Mapping[str, RunFacts]) -> list[Event]:
+    """The progress a run.json closes the training stage with: trained (1.0, final loss) or failed (the error)."""
+    answer = json.loads(text)
+    refs, metrics = answer["refs"], answer.get("metrics") or {}
+    run = refs["run_id"]
+    task = task or refs.get("task") or facts.get(run, RunFacts()).task
+    if not task or facts.get(run, RunFacts()).past_training:
+        return []
+    ts = facts.get(run, RunFacts()).last_ts or datetime.now(UTC)
+    if answer.get("ok") and answer.get("outcome") == "trained":
+        seconds = _number(metrics, "trainer.train_s")
+        steps = _number(metrics, "trainer.steps")
+        message = "trained" + (f" {int(steps)} steps" if steps is not None else "") + (f" in {seconds:.0f} s" if seconds is not None else "")
+        return [RunProgress(event_id=f"import:{run}:progress.trained", ts=ts, task=task, run_id=run, stage="training",
+                            progress=1.0, loss=_number(metrics, "trainer.loss_last"), message=message)]
+    why = str(answer.get("error") or answer.get("outcome") or "the trainer did not finish")[:200]
+    return [RunProgress(event_id=f"import:{run}:progress.failed", ts=ts, task=task, run_id=run, stage="failed",
+                        progress=0.0, message=why)]
+
+
+def _training_progress(steps: list[TrainStep], task: str | None, facts: Mapping[str, RunFacts]) -> list[Event]:
+    """One progress per run in a telemetry file: its last step over the planned steps, when the run's task is known."""
+    out: list[Event] = []
+    for run in sorted({s.run_id for s in steps}):
+        mine = sorted((s for s in steps if s.run_id == run), key=lambda s: s.step)
+        known = facts.get(run, RunFacts())
+        run_task = task or known.task
+        if not run_task or known.past_training:
+            continue
+        last = mine[-1]
+        losses = [s.loss for s in mine if s.loss is not None]
+        planned = known.steps
+        progress = min(1.0, last.step / planned) if planned else 0.0
+        message = f"step {last.step}" + (f" of {planned}" if planned else ", planned steps not known yet")
+        out.append(RunProgress(event_id=f"import:{run}:progress.training.{last.step}", ts=last.ts, task=run_task, run_id=run,
+                               stage="training", progress=progress, loss=losses[-1] if losses else None, message=message))
+    return out
+
+
+def events_of(kind: str, text: str, run_id: str | None, task: str | None = None,
+              facts: Mapping[str, RunFacts] | None = None) -> list[Event]:
+    """The file's own events, then the learning.run.progress that says where its run is (module docstring, L29).
+    `facts` is what the log already knows about each run; the file's own events are added to it."""
     if kind == "telemetry":
-        return list(parse_steps(text, run_id))
-    if kind == "eval":
-        return eval_events(text, run_id)
-    if kind == "manifest":
-        return manifest_events(text, run_id)
-    raise ImportRefused([f"kind must be one of {[*KINDS, LEDGER]}"])
+        own: list[Event] = list(parse_steps(text, run_id))
+    elif kind == "eval":
+        own = eval_events(text, run_id)
+    elif kind == "manifest":
+        own = manifest_events(text, run_id)
+    elif kind == "run":
+        own = run_events(text, run_id, facts)
+    else:
+        raise ImportRefused([f"kind must be one of {[*KINDS, LEDGER]}"])
+    known = _merge(facts or {}, facts_in(own))
+    if kind == "telemetry":
+        return own + _training_progress([e for e in own if isinstance(e, TrainStep)], task, known)
+    if kind == "run":
+        return own + _run_end(text, task, known)
+    run = next((getattr(e, "run_id", None) for e in own if getattr(e, "run_id", None)), None)
+    stage_task = task or (known.get(run, RunFacts()).task if run else None) or next((getattr(e, "task", None) for e in own if getattr(e, "task", None)), None)
+    if not run or not stage_task:
+        return own
+    stage = "eval" if kind == "eval" else "packaging"
+    return own + [RunProgress(event_id=f"import:{run}:progress.{stage}", ts=own[0].ts, task=stage_task, run_id=run, stage=stage,
+                              progress=1.0)]
+
+
+def progress_note(kind: str, events: list[Event], facts: Mapping[str, RunFacts] | None = None) -> str | None:
+    """Why an import said nothing of where its run is, for the answer."""
+    if kind not in ("telemetry", "run") or any(isinstance(e, RunProgress) for e in events):
+        return None
+    runs = {getattr(e, "run_id", None) for e in events} - {None}
+    if runs and all((facts or {}).get(r, RunFacts()).past_training for r in runs):
+        return "no learning.run.progress: the run is already past training (evaluated or packaged), so its stage stays"
+    return ("no learning.run.progress: the run's task is not known yet; give &task= (or --task), or import its "
+            "run.json or eval first")
 
 
 # --- the lab's ledger: kept as a file, not turned into events -------------------------------------------------
@@ -331,7 +493,8 @@ def seen_in(events: Iterable[Event]) -> set[tuple]:
 def seen_in_view(view: LabView) -> set[tuple]:
     seen = {("step", run_id, step) for run_id, steps in view.steps.items() for step in steps}
     seen |= {("id", e.event_id) for e in view.evaluated.values()}
-    seen |= {("id", e.event_id) for table in (view.reports, view.packages) for e, _ in table.values()}
+    seen |= {("id", e.event_id) for table in (view.reports, view.packages, view.started) for e, _ in table.values()}
+    seen |= {("id", e.event_id) for progress in view.progress.values() for e in progress}
     return seen
 
 
@@ -341,7 +504,7 @@ def lab_import_router(view: LabView, publish: Callable[[Event], Awaitable[None]]
     router = APIRouter()
 
     @router.post("/api/learning/lab/import", dependencies=[Depends(guard)] if guard else [])
-    async def lab_import(request: Request, kind: str = "telemetry", run_id: str | None = None) -> dict:
+    async def lab_import(request: Request, kind: str = "telemetry", run_id: str | None = None, task: str | None = None) -> dict:
         """Body: the file's text. 400 with every problem when the file is refused; 413 over MAX_BYTES."""
         if int(request.headers.get("content-length") or 0) > MAX_BYTES:
             raise HTTPException(413, f"the file is over {MAX_BYTES} bytes")
@@ -355,13 +518,17 @@ def lab_import_router(view: LabView, publish: Callable[[Event], Awaitable[None]]
                 return store_ledger(raw, data_dir)
             except ImportRefused as err:
                 raise HTTPException(400, {"refused": err.problems[:PROBLEMS_SHOWN], "problems": len(err.problems)}) from None
+        facts = _facts_of(view)
         try:
-            events = events_of(kind, raw.decode("utf-8"), run_id)
+            events = events_of(kind, raw.decode("utf-8"), run_id, task, facts)
         except UnicodeDecodeError:
             raise HTTPException(400, {"refused": ["the body is not UTF-8 text"]}) from None
         except ImportRefused as err:
             raise HTTPException(400, {"refused": err.problems[:PROBLEMS_SHOWN], "problems": len(err.problems)}) from None
-        return {"kind": kind, **await publish_new(events, seen_in_view(view), publish)}
+        answer = {"kind": kind, **await publish_new(events, seen_in_view(view), publish)}
+        if note := progress_note(kind, events, facts):
+            answer["note"] = note
+        return answer
 
     return router
 
@@ -371,14 +538,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--telemetry", type=Path, help="lab/train.py's telemetry.jsonl")
     parser.add_argument("--eval", type=Path, help="lab/eval_gate.py's scores.json")
     parser.add_argument("--manifest", type=Path, help="a model package's manifest.json")
+    parser.add_argument("--run", type=Path, help="lab/train.py's run.json (becomes learning.training.started)")
+    parser.add_argument("--task", help="the run's task, for the learning.run.progress the Teach screen follows")
     parser.add_argument("--ledger", type=Path, help="the lab's ledger.jsonl, kept whole under <data-dir>/lab_state for the Experiments tab")
     parser.add_argument("--run-id", help="the run the files belong to; a line of another run refuses the file")
     parser.add_argument("--data-dir", type=Path, default=Path(os.environ.get("ATLAS_DATA_DIR") or "data"))
     args = parser.parse_args(argv)
-    files = [(kind, getattr(args, kind)) for kind in KINDS if getattr(args, kind)]
+    # run.json first, so the steps after it know the run's task and planned steps; then the stages in their order
+    files = [(kind, getattr(args, kind)) for kind in ("run", "telemetry", "eval", "manifest") if getattr(args, kind)]
     if not files and not args.ledger:
-        parser.error("give --telemetry, --eval, --manifest or --ledger")
+        parser.error("give --telemetry, --eval, --manifest, --run or --ledger")
     run_id = args.run_id
+    log_events = EventBus(log_dir=args.data_dir / "events").read_log() if files and (args.data_dir / "events").is_dir() else []
+    facts = facts_in(log_events)
     try:
         batches = []
         raw_ledger = args.ledger.read_bytes() if args.ledger else None
@@ -390,8 +562,9 @@ def main(argv: list[str] | None = None) -> int:
             except UnicodeDecodeError:
                 raise ImportRefused(["the ledger is not UTF-8 text"]) from None
         for kind, path in files:  # every file is checked before anything is published
-            events = events_of(kind, path.read_text(encoding="utf-8"), run_id)
+            events = events_of(kind, path.read_text(encoding="utf-8"), run_id, args.task, facts)
             run_id = run_id or next((e.run_id for e in events if getattr(e, "run_id", None)), None)
+            facts = _merge(facts, facts_in(events))   # a later file of the same command knows what the earlier ones said
             batches.append((kind, events))
     except (ImportRefused, OSError) as err:
         print(json.dumps({"ok": False, "refused": getattr(err, "problems", [str(err)])}, indent=2), file=sys.stderr)
