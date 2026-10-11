@@ -161,9 +161,9 @@ def test_the_teacher_is_the_pair_by_default_and_the_27b_is_the_fallback(live_loo
     monkeypatch.setattr(live_loop, "run_loop", lambda args: seen.update(vars(args)) or 0)
     live_loop.main(["--slot", "row", "--slot-c", "row-c"])
     assert seen["teacher_expect"] == "Qwen3.5-122B" and seen["duo_pods"] == 2
-    assert (seen["solo_examples"], seen["duo_examples"]) == (50, 50)
+    assert (seen["solo_examples"], seen["duo_examples"]) == (12, 12)   # the pair's 2.34 s a label: about 212 s
     settings = live_loop.pod_settings(live_loop.argparse.Namespace(**seen), "c-user")
-    assert settings.splitlines() == ["SOLO_EXAMPLES=50", "DUO_EXAMPLES=50", "DUO_PODS=2", "TEACHER_EXPECT=Qwen3.5-122B",
+    assert settings.splitlines() == ["SOLO_EXAMPLES=12", "DUO_EXAMPLES=12", "DUO_PODS=2", "TEACHER_EXPECT=Qwen3.5-122B",
                                      "C_USER=c-user", "L29_SERIAL=0"]
     with pytest.raises(SystemExit):   # act 2 on two pods needs pod C's own GPU Queue slot
         live_loop.main(["--slot", "row"])
