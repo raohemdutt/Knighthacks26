@@ -63,6 +63,7 @@ VERBS: dict[str, str] = {
     "pool": "lab.machine.pool:main",
     "profile-decode": "lab.profile_decode:main",
     "publish-adapter": "lab.publish_adapter:main",
+    "quark-compare": "lab.quark_compare:main",
     "ready": "lab.machine.ready:main",
     "referee": "lab.machine.referee:main",
     "research-check": "lab.machine.research_check:main",

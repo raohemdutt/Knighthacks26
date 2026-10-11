@@ -229,7 +229,7 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
     # GET /api/circle/events, /api/circle/sharing: read-only, and they answer in every state (no Circle, no Neon)
     # POST /api/circle/proposals: an approval card for a plan with friends (G1)
     app.include_router(circle_router(atlas.bus, circle=atlas.circle, sharing=atlas.sharing, presence=atlas.presence,
-                                     board=atlas.board, config_dir=atlas.settings.config_dir, guard=authorized))
+                                     presence_sync=atlas.presence_sync, board=atlas.board, config_dir=atlas.settings.config_dir, guard=authorized))
     # /api/circle/face-share: every endpoint answers 409 while face sharing is off (the default) or there is no Circle
     app.include_router(face_share_router(atlas.face_share, atlas.bus, guard=authorized))
     # GET /api/league, /api/league/me (200 in every state); POST /api/league/stake, /api/league/challenges -> approval cards
