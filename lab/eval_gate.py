@@ -81,6 +81,7 @@ __all__ = ["DECODE", "MIN_ITEMS", "ALPHA", "MIN_CURRENT_RUNS", "PACKAGED_QUANT",
            "EVENT_FILE", "SCORERS", "Scorer", "GateError", "Client", "RealClient", "make_client", "client_for",
            "sign_flip_p", "run_gate", "main"]
 
+CLI_VERB = "eval-gate"   # registers python -m lab eval-gate
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DECODE: dict[str, Any] = {"thinking": "off", "sampling": "greedy", "max_tokens": 512}
 MIN_ITEMS = MIN_HELD_OUT       # held-out items a deploy needs (the owner's ruling, the same floor as the split's)

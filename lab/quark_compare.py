@@ -826,3 +826,5 @@ def run_all(args: argparse.Namespace, opts: RunOptions, **kw: Any) -> dict[str, 
 def main(argv: Sequence[str]) -> dict[str, Any]:
     """R23: the AMD Quark INT4 checkpoint against RedHat INT4 on pod B (preflight, slot, run, record, all)."""
     return run(argv)
+
+CLI_VERB = "quark-compare"

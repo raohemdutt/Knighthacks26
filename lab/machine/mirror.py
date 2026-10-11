@@ -95,6 +95,7 @@ log = logging.getLogger("lab.mirror")
 
 UTC = dt.timezone.utc
 VERB = "mirror"
+CLI_VERB = "mirror"   # registers python -m lab mirror
 ENV_TOKEN = rulings.TOKEN_ENV
 
 OVERNIGHT_PAGE = rulings.OVERNIGHT_PAGE

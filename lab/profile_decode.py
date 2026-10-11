@@ -84,6 +84,7 @@ if not __package__:  # run by path: the repo root, one folder up, holds lab/
 
 from lab import trace_profile as tp  # noqa: E402
 
+CLI_VERB = "profile-decode"   # registers python -m lab profile-decode
 SCHEMA = "lab.profile_decode/1"
 TASK = "R47"
 NODE = "pod-b"

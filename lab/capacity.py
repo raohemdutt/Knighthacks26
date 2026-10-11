@@ -34,6 +34,7 @@ from typing import Any, Protocol
 from lab import placement
 from lab.placement import Num, relative, unknown
 
+CLI_VERB = "capacity"   # registers python -m lab capacity
 FORMAT = "capacity/1"
 BUDGET_S = 120.0
 ROLES = {"pod-a": "teacher", "pod-b": "trainer"}

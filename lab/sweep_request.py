@@ -80,6 +80,7 @@ from lab.machine import metrics as metrics_file  # noqa: E402
 from lab.machine.record import record, recorded  # noqa: E402
 from lab.machine.verdict import MIN_RUNS_PER_ARM  # noqa: E402
 
+CLI_VERB = "sweep-request"   # registers python -m lab sweep-request
 SWEEP = "lab/sweep_request.py 1"
 GRID_SCHEMA = "atlas.sweep_request.grid/1"
 RAW_SCHEMA = "atlas.sweep_request.raw/1"
