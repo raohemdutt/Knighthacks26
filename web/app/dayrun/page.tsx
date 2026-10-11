@@ -12,7 +12,7 @@ import pl from "@/components/dayrun/plan.module.css";
 import { TellAtlas } from "@/components/dayrun/TellAtlas";
 import { Empty, ErrorBox, Loading, WriteError } from "@/components/States";
 import ui from "@/components/ui.module.css";
-import { ApiError, api, type CommitResult, type Explained, type HardResult, type Move, type SimResult } from "@/lib/api";
+import { ApiError, api, type CommitResult, type EditResult, type Explained, type HardResult, type Move, type SimResult } from "@/lib/api";
 import { useAtlas } from "@/lib/atlas";
 import { buildShow, buildWorld, paceAt, showMoment, type Moment } from "@/lib/dayplay";
 import { indexPlaces, ms, placeName } from "@/lib/dayrun";
@@ -20,7 +20,7 @@ import { DEMO_BAD_PLAN, DEMO_DISRUPTIONS, DEMO_GOOD_PLAN, DEMO_SCENARIO } from "
 import { blockTitle, clockAt, dateWords, hoursShort, placeShort, stars, weekdayLong } from "@/lib/plan";
 import { useProfileState } from "@/lib/profile";
 import { useFetch } from "@/lib/useFetch";
-import { setScreenIntent } from "@/lib/voice";
+import { ASKS, PLAN_EDIT, setScreenIntent } from "@/lib/voice";
 
 /**
  * Today's Plan: try your day before you live it.
@@ -303,12 +303,20 @@ export default function TodaysPlanPage() {
   );
 
   // ---------- say a change ----------
+  const [heard, setHeard] = useState<EditResult | null>(null);
   const ask = useCallback((text: string) => api.planEdit({ text, moves, start: boardStart, scenario, initial }), [moves, boardStart, scenario, initial]);
   useEffect(() => {
     if (past || !boardStart) return;
+    // Words from elsewhere in the app (the command palette) while this screen is open. A question is never taken
+    // ("what should I add?" goes to Ask). A change that was read is made; one that was not is taken only when it
+    // began as a change ("move the gym"), and its answer shows under the box below as if it had been typed there.
     return setScreenIntent("/dayrun/", async (text) => {
+      if (ASKS.test(text)) return null;
       const out = await ask(text);
+      if (!out.ok && !PLAN_EDIT.test(text)) return null;
       if (out.ok) applyMoves(out.moves, out.changed);
+      setHeard(out);
+      document.querySelector('[data-guide="plan:tell"]')?.scrollIntoView({ block: "nearest", behavior: calm.current ? "auto" : "smooth" });
       return out.warning ? `${out.understood} ${out.warning}.` : out.understood;
     });
   }, [ask, applyMoves, past, boardStart]);
@@ -457,6 +465,8 @@ export default function TodaysPlanPage() {
                         <button type="button" className={pl.fixBtn} onClick={() => applyMoves(f.moves as Move[], f.changed)}>
                           Fix it
                         </button>
+                      ) : f.hint ? (
+                        <span className={pl.fixWait}>{f.hint}</span>
                       ) : null}
                     </div>
                   ))}
@@ -541,7 +551,7 @@ export default function TodaysPlanPage() {
               </div>
               {hard?.error ? <WriteError error={hard.error} /> : null}
 
-              {past ? null : <TellAtlas ask={ask} onApply={applyMoves} />}
+              {past ? null : <TellAtlas ask={ask} onApply={applyMoves} heard={heard} />}
             </section>
           </div>
 
@@ -588,7 +598,7 @@ export default function TodaysPlanPage() {
                     <button type="button" className={`${ui.btn} ${ui.btnPrimary} ${pl.primary}`} disabled={!works || commit.busy || sim.busy} onClick={doCommit}>
                       {commit.busy ? "Sending…" : "Keep this plan"}
                     </button>
-                    <p className={pl.hint}>{works ? "Atlas asks before anything goes on your calendar." : "Fix what is left and you can keep it."}</p>
+                    <p className={`${pl.hint} ${works ? "" : pl.hintWhy}`}>{works ? "Atlas asks before anything goes on your calendar." : "Fix what is left and you can keep it."}</p>
                   </>
                 )}
                 {commit.error ? <CommitError error={commit.error} /> : null}

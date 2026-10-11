@@ -90,6 +90,38 @@ The box talks to the database only from its 30 s timer and from a few screen rea
 A connect attempt gives up after 10 s; after a failure every call fails at once for 15 s, so a tick pays for one
 attempt instead of one per job; a job that gets no answer in 20 s is dropped and tried again on the next tick.
 
+**When the network blocks port 5432.** Some networks refuse Postgres's port and leave 443 open. The box can
+reach the same database over Neon's HTTPS SQL endpoint instead (`infrastructure/neon_https.py`; standard library
+only, so it also works without the `neon` extra). `ATLAS_NEON_TRANSPORT` in `.env` chooses:
+
+| Value | What it does |
+| --- | --- |
+| `auto` (default) | psycopg on 5432. If that cannot connect (refused, timed out, driver not installed), HTTPS on 443 for the rest of the process; 5432 is tried again only after a restart. One log line says which is in use. |
+| `tcp` | psycopg on 5432 only, as before. |
+| `https` | HTTPS on 443 only. Set this before a demo on a network known to block 5432: `auto` spends up to 10 s finding out. |
+
+The schema tool follows the same setting and prints the transport on its first line:
+`ATLAS_NEON_TRANSPORT=https python -m contexts.circle.schema --check`.
+
+What is different over HTTPS:
+
+- **Transactions.** There is no open transaction over HTTP. Statements wait until the code needs an answer or
+  finishes, and go as one request that commits as a whole. A write that only inserts (a share, a place, a plan
+  message, a sealed message, a League row) is as atomic as over TCP. Two calls read an answer in between and so
+  commit in two steps: recording an agreed event (the event first, its RSVP rows second: if the second request is
+  lost the calendar shows that event with nobody listed, and a repeat does not add them) and the daily cleanup
+  (three independent deletes; a half-finished sweep is finished by the next one).
+- **Offline is the same.** A refused connection, a timeout, an HTTP error or a sign-in page instead of an answer
+  all count as "the database cannot be reached": the outbox and the place queue wait and the tick carries on. A
+  request gives up after 10 s.
+- **Egress.** The request goes to the host named in `NEON_DATABASE_URL`, on 443 instead of 5432. The Jetson's
+  egress allowlist (`jetson/egress.py`, group `neon`) allows that host by address on any port, so it needs no change.
+- **Secrets.** The connection string travels in a request header over TLS. It is never logged, and errors say
+  only what kind of failure it was. A redirect is never followed.
+
+The request and reply shapes are written down in `infrastructure/neon_wire.py`, the one file to correct if the
+service differs from what it assumes.
+
 **Clocks.** A place's expiry is stored and read against the database's clock, so a box whose own clock is wrong
 neither hides a friend's place early nor shows it late. Plan messages carry the writer's own time; each poll
 re-reads the last 10 minutes to allow for a slow clock.

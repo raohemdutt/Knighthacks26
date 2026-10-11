@@ -57,10 +57,13 @@ def short(title: str) -> str:
 
 
 def assignment(title: str) -> str:
-    """A deadline's title as a person would say it: no course tag, course code, term or dash ("Project Milestone1")."""
+    """A deadline's title as a person would say it: no course tag, course code, term or dash, and a number run onto
+    the end of a word set apart ("Project - Milestone1 Fall2026 [COP4533]" -> "Project Milestone 1"). For display
+    only: the stored title is never changed."""
     title = re.sub(r"\s*\[[^\]]+\]\s*$", "", title).strip()
     title = re.sub(r"^[A-Z]{3}\s?\d{4}[A-Z]?\s+(?=\S)", "", title)
     title = re.sub(r"\s+(Fall|Spring|Summer)\s?\d{4}$", "", title)
+    title = re.sub(r"(?<=[a-z])(?=\d)", " ", title)  # Milestone1 -> Milestone 1, as the narrator says it (HW3 and COP4533 stay)
     return re.sub(r"\s+-\s+", " ", title).strip() or title
 
 
@@ -69,6 +72,17 @@ def count(n: int, word: str) -> str:
 
 
 # --- what needs fixing ---
+
+
+def fix_first(other: str, board: Board, above: bool) -> str:
+    """For a problem that has no edit until another one of the list (`other`, by its id) is mended. `above`: that
+    one is the row right above this one, so it needs no name."""
+    if above:
+        return "Fix the one above first"
+    if other in ("sleep", "meals"):
+        return f"Fix your {other} first"
+    due = next((d for d in board.deadlines if d.id == other), None)
+    return f"Fix {assignment(due.title)} first" if due else "Fix what doesn't fit first"
 
 
 def headline(problems: int) -> str:
