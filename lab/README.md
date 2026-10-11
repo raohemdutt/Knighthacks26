@@ -1203,3 +1203,31 @@ under a scratch `data/models/`, switches `current` to it (every sha256 checked) 
 (`adapter_config.json`, `adapter_model.safetensors`); the trainer has no script on main yet. `--toolchain fake`
 rehearses the whole step with `lab/package_toolchain_fake.py`, which writes small placeholder GGUFs. Tests:
 `tests/test_lab_package.py`. The commands for the real run on pod B are in `lab/L5_REAL_RUN.md`.
+
+## Labeled tool-calling fixture: `fixtures/learning/tool-calling-labels/` (L13)
+
+The 142 examples of `fixtures/learning/tool-calling-fixture` with a label each, made by `lab/label.py` against the
+teacher (account C, through the hub proxy, thinking off, greedy, 4 examples at a time) once the teacher was served with
+`--enable-auto-tool-choice` and a tool-call parser; before that restart the same request got HTTP 400. The folder
+loads with `lab/dataset.py` and goes through `lab/format_traces.py --split` unchanged (84 training rows).
+
+| File | What it is |
+|---|---|
+| `examples.jsonl` | the fixture's examples, each with `target`: `{"tool_calls": [{"name", "arguments"}], "answer"}` |
+| `traces.jsonl` | the same labels with what each call returned, as the teacher saw it |
+| `label_manifest.json` | the source, the teacher model and checkpoint, the server behavior seen, the date, the sha256 of the input (`examples.jsonl`, `manifest.json`, `split.json`), counts, rejects by reason, per-example seconds and tokens, the sha256 of every file here |
+| `rejects.jsonl` | one row per example with no label and its reason as a word; empty when all are labeled |
+| `label_ledger.jsonl` | the run's `label-example` ledger rows (seconds, prompt and completion tokens, requests, tool calls per example) |
+| `manifest.json`, `split.json` | the fixture's, unchanged |
+
+`expected.jsonl` stays in the fixture folder and was not touched: it is the gold of the agreement check, not a label.
+
+```
+python lab/label.py <copy of the fixture named tool-calling-fixture> --account C --workers 4
+python lab/label_fallback.py package <that copy> fixtures/learning/tool-calling-fixture fixtures/learning/tool-calling-labels --state-dir <ledger folder> --run-id <id> --teacher-info info.json
+python lab/label_fallback.py convert fixtures/learning/tool-calling-fixture fixtures/learning/tool-calling-labels   # cut-off route, owner ruling 12
+```
+
+`convert` is the route for a night when the teacher is not labeling: it turns the reference traces in `expected.jsonl`
+into the same folder, checks every row against the task's output schema, and writes `"source": "reference traces,
+teacher unavailable"` in the manifest. This run did not need it: the manifest says `"source": "teacher"`.
