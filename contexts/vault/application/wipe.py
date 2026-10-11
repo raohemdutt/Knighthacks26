@@ -43,7 +43,7 @@ log = logging.getLogger("atlas.vault")
 
 TOKEN_TTL = timedelta(minutes=2)
 SCOPES = {"keyframes": ("frames",), "memory": ("memory",),
-          "all": ("frames", "memory", "exports", "events", "invites", "dayrun/plans", "places")}
+          "all": ("frames", "memory", "exports", "events", "invites", "dayrun/plans", "places", "files")}
 
 
 class LiveMemory(Protocol):
