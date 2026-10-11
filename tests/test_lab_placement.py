@@ -507,8 +507,15 @@ def test_a_measured_run_where_sharing_costs_more_says_to_run_them_one_after_the_
     path.write_text(json.dumps(data), encoding="utf-8")
     plan = placement.default_plan(facts=FACTS, now=NOW, rules=placement.Rules(teacher_share=0.6), interference=path)
     share = next(s for s in plan.sharing if s.jobs == ("teacher", "lora"))
-    assert share.allowed is True
-    assert "so sharing does not pay: run them one after the other." in placement.plain(share.reason)
+    assert (share.allowed, share.on_paper) == (False, True)
+    text = placement.plain(share.reason)
+    assert text.startswith("not on pod-a: they fit (the teacher's")
+    assert text.endswith("so sharing does not pay: run them one after the other.")
+    assert plan.where["lora"] == ["pod-b"]
+    assert placement.check(plan, gpu="A", text="L3: smoke LoRA")["verdict"] == "contradicts"
+    paid = placement.default_plan(facts=FACTS, now=NOW, rules=placement.Rules(teacher_share=0.6),
+                                  interference=INTERFERENCE)
+    assert paid.where["lora"] == ["pod-b", "pod-a"]
 
 
 def test_without_a_usable_interference_file_the_line_stays_a_paper_estimate(tmp_path):

@@ -869,10 +869,16 @@ def build_plan(pods: Mapping[str, Pod], *, rows: Sequence[Any] | None = None, ru
                          f"{reserve.text()}") if lora_budget.known and weights.known
                  else unknown("GiB", "no LoRA peak or no checkpoint size"))
         allowed = bool(need.known and free.known and need.value <= free.value)
+        pays = measured is None or (measured["time_change"].value < 0 and measured["energy_change"].value <= 0)
         on_paper = bool(paper.known and free.known and paper.value <= free.value)
         margin_left = (derived(free.value - need.value, "GiB", f"free - needed: {free.text()} - {need.text()}")
                        if need.known and free.known else None)
-        if allowed:
+        if allowed and not pays:
+            allowed = False
+            reason = (f"not on {teacher_node}: they fit (the teacher's {t.say(hold)}, a LoRA budget of "
+                      f"{t.say(lora_budget)} and a {t.say(reserve)} host reserve come to {t.say(need)} of "
+                      f"{t.say(free)} free), but " + interference_sentence(measured, t.say, interference_path))
+        elif allowed:
             reason = (f"yes on {teacher_node}: the teacher's {t.say(hold)}, a LoRA budget of {t.say(lora_budget)} "
                       f"({t.say(lora_peak)} peak plus a {t.say(margin)} margin) and a {t.say(reserve)} host reserve "
                       f"come to {t.say(need)} of {t.say(free)} free. Start the teacher first: vLLM checks free memory "
