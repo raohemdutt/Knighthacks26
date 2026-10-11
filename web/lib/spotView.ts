@@ -7,21 +7,17 @@ import { useSyncExternalStore } from "react";
  * views in place of Atlas's sections, and the page renders the one the address names. The address is the only state:
  * ?view=<name>, or the older ?tab=run / ?tab=analysis, so old links keep opening the same thing.
  */
-export type SpotView = "shift" | "equipment" | "rounds" | "approvals" | "training" | "analysis" | "handoff";
+export type SpotView = "shift" | "equipment" | "rounds" | "training" | "analysis" | "handoff";
 
 /** The menu, in order. The labels are the menu's own; each one opens a part of Inspection that already exists. */
 export const SPOT_MENU: { view: SpotView; label: string; href: string; keywords: string }[] = [
   { view: "shift", label: "My shift", href: "/spot", keywords: "inspection status floor plan do this first watch out" },
   { view: "equipment", label: "Equipment", href: "/spot?view=equipment", keywords: "inspection assets all equipment list" },
   { view: "rounds", label: "Rounds", href: "/spot?view=rounds", keywords: "inspection round mission steps replay" },
-  { view: "approvals", label: "Approvals", href: "/spot?view=approvals", keywords: "inspection approve deny work order" },
   { view: "training", label: "Training", href: "/spot?tab=run", keywords: "inspection shift run plan a round game" },
   { view: "analysis", label: "Analysis", href: "/spot?tab=analysis", keywords: "inspection findings evidence numbers" },
   { view: "handoff", label: "Handoff", href: "/spot?view=handoff", keywords: "inspection shift handoff note" },
 ];
-
-/** Inspection's approval cards: spot.reinspect, spot.work_order, spot.mission_request. */
-export const isSpotApproval = (r: { target: string }): boolean => r.target.startsWith("spot.");
 
 const VIEWS = new Set<string>(SPOT_MENU.map((m) => m.view));
 

@@ -7,7 +7,7 @@ import { api, getToken, setToken } from "@/lib/api";
 import { useAtlas, type LinkState } from "@/lib/atlas";
 import { modelShort } from "@/lib/lab";
 import { useProfileState } from "@/lib/profile";
-import { SPOT_MENU, isSpotApproval, useSpotView, type SpotView } from "@/lib/spotView";
+import { SPOT_MENU, useSpotView, type SpotView } from "@/lib/spotView";
 import { useTheme } from "@/lib/theme";
 import { useFetch } from "@/lib/useFetch";
 import { CommandPalette, type Command } from "./Command";
@@ -280,7 +280,6 @@ const SPOT_ICON: Record<SpotView, ReactNode> = {
       <path d="M17.5 3v3.8h-3.8" />
     </>
   ),
-  approvals: TABS.find((t) => t.href === "/approvals")!.icon,
   training: <path d="M5 21V4M5 5h11l-2 3.5 2 3.5H5" />,
   analysis: (
     <>
@@ -379,7 +378,6 @@ export function Shell({ children }: { children: ReactNode }) {
   const inMore = !BAR.some((t) => t.href === path);
   useEffect(() => setMore(false), [path]); // the sheet closes once its link has been followed
   const pending = approvals.items.length;
-  const spotPending = approvals.items.filter(isSpotApproval).length; // Inspection's own cards, for its menu
   const inspection = useShowInspection(path);
   const inSpot = path === INSPECTION;
   const spotView = useSpotView();
@@ -462,11 +460,6 @@ export function Shell({ children }: { children: ReactNode }) {
                         {SPOT_ICON[m.view]}
                       </svg>
                       <span>{m.label}</span>
-                      {m.view === "approvals" && spotPending > 0 ? (
-                        <span className={ui.sideBadge} aria-label={`${spotPending} waiting`}>
-                          {spotPending}
-                        </span>
-                      ) : null}
                     </Link>
                   );
                 })}
