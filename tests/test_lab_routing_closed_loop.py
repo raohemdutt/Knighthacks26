@@ -198,9 +198,13 @@ def test_the_run_goes_into_the_metrics_file_as_one_row_per_policy_and_metric_tha
     assert not skipped and len(rows) == 6
     for row in rows:
         c = row["conditions"]
-        assert c["policy"] in (CAPABILITY, ENERGY) and c["requests"] == 100 and c["session"] == result.run_id
+        assert c["policy"] in (CAPABILITY, ENERGY) and c["requests"] == 100 and c["run_id"] == result.run_id
+        assert "session" not in c  # a shared session is a benchmark session to the Learning lab; this is not one
         assert c["gpu"] == told["gpu"] and c["hub"] == "sjc" and row["node"] == "pod-a"
         assert row["low_confidence"] is True and c["low_confidence_reason"]  # the fakes are never a measurement
+        # the measured-row fields: what read it, how many requests stand behind the mean, an error nobody has measured
+        assert c["sampler"] == loop.ROW_SAMPLERS[row["metric"]] and c["samples"] == 100 and c["error"] == "unknown"
+        assert c["period_ms"] is None  # no period was told
     measured = lab_routing.closed_loop(rows)
     assert measured is not None and measured["min_requests"] == 100
     assert {m["metric"] for m in measured["rows"]} == {loop.JOULES, loop.LATENCY, loop.QUALITY}
@@ -222,6 +226,8 @@ def test_a_real_runs_rows_are_low_confidence_only_for_joules_and_say_why():
         assert row["low_confidence"] is (row["metric"] == loop.JOULES)
         assert ("low_confidence_reason" in row["conditions"]) is (row["metric"] == loop.JOULES)
     assert "97 of 100" in rows[0]["conditions"]["low_confidence_reason"]
+    timed = loop.metrics_rows(summary, run_id="t11-x", source="real", conditions={"power_period_ms": 350})
+    assert [r["conditions"]["period_ms"] for r in timed] == [350, None, None, 350, None, None]  # the joules rows only
 
 
 def test_no_metrics_row_is_written_unless_a_file_is_named(dear_teacher):
