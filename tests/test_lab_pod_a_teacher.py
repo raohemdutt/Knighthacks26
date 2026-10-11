@@ -117,6 +117,14 @@ def speculative_config(argv: list[str]) -> dict:
     return json.loads(found[0])
 
 
+def as_python_spells_it(path: str) -> Path:
+    """A path bash printed, as Python spells it: Git Bash on Windows writes the stand-in home C:/Users/... as
+    /c/Users/..., so the two are compared as paths, not as text."""
+    if os.name == "nt" and len(path) > 2 and path[0] == "/" and path[1].isalpha() and path[2] == "/":
+        path = f"{path[1]}:{path[2:]}"
+    return Path(path)
+
+
 @pytest.mark.parametrize("args", [(), ("--speculative", "off"), ("--speculative=off",)])
 def test_speculative_decoding_is_off_unless_asked_for(tmp_path, args):
     argv = serve_arguments(tmp_path, "gfx1151", args)
@@ -148,7 +156,9 @@ def test_draft_speculation_runs_the_small_model_from_the_models_folder(tmp_path)
     (draft / "config.json").write_text("{}", encoding="utf-8")
     argv = serve_arguments(tmp_path, "gfx1151", ("--speculative", "draft"))
 
-    assert speculative_config(argv) == {"method": "draft_model", "model": str(draft), "num_speculative_tokens": 4}
+    config = speculative_config(argv)
+    assert as_python_spells_it(config.pop("model")) == draft
+    assert config == {"method": "draft_model", "num_speculative_tokens": 4}
     assert "--enable-auto-tool-choice" in argv
 
 
