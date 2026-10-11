@@ -1422,6 +1422,58 @@ attach-mode numbers on pod C within 3 percent.
   (node pod-b), recomputed from the fixture in `tests/test_lab_pod_b_llamacpp.py`. The first session's rows had the
   checkpoint path rewritten by Git Bash on the box (`C:/Program Files/Git/home/...`); the fixture carries the pod path,
   and the harness calls now set `MSYS_NO_PATHCONV=1`.
+#### Engine table holes: Vulkan at 4 and 16 streams, HIP at 64 (E29b, 2026-10-11)
+
+R58's llama.cpp runs on pod C were never pushed; they are now in the repo, with this session's runs. R58 ran on pod C
+(account C, node `pod-a`) from 03:44 to 04:24 UTC with the April teacher stopped, as cold spawns on the pod (`lab/bench.py
+run`, one spawn per repeat shared by 1 and 8 streams, 3 repeats, `-np 8 --ctx-size 16384`, watts from the harness's own
+amd-smi reader). Its handoff called the ROCm arm not done; the arm in fact finished at 04:24 (3 spawns), so its rows are
+here too. This session (E29b) ran from the box through the hub proxy in attach mode, like E29, with the T6 sampler on
+port 8790 (1 s): the Vulkan server on pod C port 8101 beside the serving v0.31.0 teacher on 8000 (never touched; its
+`/metrics` counters were read before and after each call), and the HIP server on pod D in one 15-minute GPU Queue slot.
+Prompt set bench-v1 (sha256 b25ab2bd...b760), 128 tokens with `ignore_eos`, greedy, thinking off, per-request nonce.
+
+| Streams | Engine, pod | tok/s per stream | tok/s total | TTFT s | avg W | J/token gross | runs | rows (`lab/refine/metrics.jsonl`) |
+|---|---|---|---|---|---|---|---|---|
+| 1 | llama.cpp Vulkan, pod C, teacher stopped (R58) | 12.14 | 10.48 | 1.45 | 109.9 | 10.40 | 3 | 227-232 |
+| 1 | llama.cpp Vulkan, pod C, beside the teacher | 12.17 | 10.30 | 1.74 | 98.7 | 9.59 | 1 | 251-256 |
+| 1 | llama.cpp HIP, pod C, teacher stopped (R58) | 11.96 | 10.43 | 1.26 | 98.2 | 9.43 | 3 | 239-244 |
+| 4 | llama.cpp Vulkan, pod C, beside the teacher | 5.29 | 18.41 | 8.11 | 109.3 | 5.94 | 1 | 257-262 |
+| 8 | llama.cpp Vulkan, pod C, teacher stopped (R58) | 6.83 | 34.07 | 15.01 | 95.5 | 2.82 | 3 | 233-238 |
+| 8 | llama.cpp HIP, pod C, teacher stopped (R58) | 5.45 | 30.13 | 14.03 | 95.7 | 3.18 | 3 | 245-250 |
+| 16 | llama.cpp Vulkan, pod C, beside the teacher | 3.17 | 32.05 | 31.36 | 105.7 | 3.30 | 1 | 263-268 |
+| 64 | llama.cpp HIP, pod D (see below) | 1.35 | 40.15 | 98.57 | 91.5 | 2.28 | 1, failed | 269-274 |
+
+For the same stream counts: llama.cpp HIP on pod D (E29 above) made 23.42 total at 4 (4.68 J), 21.52 at 8 and 41.98 at
+16 (2.27 J); vLLM v0.31.0 on pod C (R60) 29.54 at 4 (3.27 J), 36.53 at 8 (2.69 J) and 51.09 at 16 (1.88 J); the April
+vLLM (R26) 49.53 total at 64 (1.94 J).
+
+- **Vulkan beside the teacher.** The teacher holds 54.4 GB of the 64 GB VRAM carve-out. Loaded with defaults, the
+  Vulkan server filled the carve-out to 150 MB of free VRAM (14 GB VRAM plus 6.8 GB GTT), which could starve the
+  teacher, so it was restarted at once with `GGML_VK_PREFER_HOST_MEMORY=1`: weights and KV cache then sit in GTT (21 to
+  23 GB) and the teacher's VRAM did not move. That costs nothing at one stream: 12.17 tok/s against R58's 12.14 with the
+  card to itself. The teacher was idle through the 1- and 4-stream runs (its token counters unchanged) and served one
+  small request (27 prompt and 28 generated tokens) early in the 16-stream run's warm-up. The loaded-idle reads
+  include the idle teacher: 10.0 W and 17.4 W.
+- **Vulkan batches poorly here.** 4 streams gave 18.4 tok/s total, under R58's 34.1 at 8 and E29's HIP 23.4 at 4; 16
+  gave 32.0, under R58's 34.1 at 8. One run each, so the dip at 4 may be noise (E29's HIP had one batch-4 run at 5.32 per
+  stream against 9.09 in the other two, the same per-stream rate as this one), but neither run beats vLLM v0.31.0 at the
+  same width (29.5 at 4, 51.1 at 16).
+- **HIP at 64 streams.** `lab/pod_b_llamacpp.sh serve 64 131072` (64 slots of 2,048 tokens), one run, 2 requests per stream
+  instead of 4 and no warm-up round (one short text request warmed the server), to fit the 15-minute slot. 5 of the 128
+  requests got the hub's 524 gateway timeout: with 64 prompts (32 of them images) queued for prefill, they sent no byte in
+  125 s (median TTFT 98.6 s), so the harness marked the run `fail`. The numbers are over the 123 requests that finished
+  (15,744 tokens): 40.1 tok/s total at 2.28 J/token, below the April vLLM's 49.5 tok/s and 1.94 J at 64 and barely above
+  HIP's own 42.0 at 16. Through this proxy, 64 streams of this workload are past what llama.cpp HIP serves usefully.
+- **Not run, by order (2026-10-11 3:20 AM ET, to free both pods for other seats).** Vulkan at 64 streams; second and
+  third repeats of Vulkan at 4 and 16 (the batch-8 anchor beside the teacher was stopped mid-run and is not kept);
+  the HIP repeats at 8 and 16 on pod D; vLLM v0.31.0 at 64 streams. Every row is `low_confidence`; the ones with 1 run
+  say so in `low_confidence_reason`.
+- **Files.** R58's raw rows, summaries and pod-side metrics in `fixtures/lab/bench/pod-c-llamacpp-2026-10-11/r58-*`, its
+  greedy token-id records (4 prompts x 128 tokens, Vulkan and HIP) in `fixtures/lab/correctness/r58-2026-10-11/`; this
+  session's Vulkan rows in `fixtures/lab/bench/pod-c-llamacpp-2026-10-11/e29b-*` and the HIP 64 row in
+  `fixtures/lab/bench/pod-b-llamacpp-2026-10-11/e29b/`. Every metrics row carries the sampler, `period_ms`, `samples`,
+  `error`, hub, account, engine version, prompt set sha256, `streams` and its fixture.
 ### The teacher on vLLM v0.31.0 with the RDNA hybrid W4A16 kernel (R60, pod C)
 
 Since 2026-10-11 04:41 UTC the pod C teacher runs from `~/venv-vllm-new`: vLLM `0.31.2.dev0+gdb9527a46.gfx1151` (tag

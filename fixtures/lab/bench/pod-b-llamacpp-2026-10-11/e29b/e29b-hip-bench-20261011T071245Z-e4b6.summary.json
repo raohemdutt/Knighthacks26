@@ -1,0 +1,100 @@
+{
+  "session": "bench-20261011T071245Z-e4b6",
+  "harness": "lab/bench.py 1",
+  "engine": "llamacpp",
+  "node": "pod-b",
+  "prompt_set": {
+    "id": "bench-v1",
+    "sha256": "b25ab2bda117925f5eb8a2d5ffe6455de8169b7f2a33a3777eda10c97c37b760",
+    "prompts": 4,
+    "images": 2
+  },
+  "rows": 1,
+  "band_rule": {
+    "method": "largest-gap split of each spawn's probe decode rate, gap >= 10% of the median, at least 4 spawns",
+    "clusters": [
+      {
+        "band": "b1",
+        "spawns": [
+          "attached"
+        ],
+        "rate_min": 1.3453,
+        "rate_max": 1.3453,
+        "mem_busy_median": null
+      }
+    ],
+    "boundaries": []
+  },
+  "configurations": {
+    "llamacpp b64": {
+      "engine": "llamacpp",
+      "batch_size": 64,
+      "spawns": [
+        {
+          "run_id": "bench-20261011T071245Z-e4b6-r0-b64",
+          "spawn": "attached",
+          "band": "b1",
+          "outcome": "fail",
+          "decode_tok_s": 1.3453,
+          "decode_tok_s_total": 40.1498,
+          "ttft_s": 98.5663,
+          "joules_per_token": 2.277741,
+          "watts_avg": 91.4508,
+          "watts_peak": 130.0,
+          "time_since_spawn_s": null
+        }
+      ],
+      "stats": {
+        "decode_tok_s": {
+          "n": 0,
+          "median": null,
+          "min": null,
+          "max": null,
+          "mean": null,
+          "sd": null
+        },
+        "decode_tok_s_total": {
+          "n": 0,
+          "median": null,
+          "min": null,
+          "max": null,
+          "mean": null,
+          "sd": null
+        },
+        "ttft_s": {
+          "n": 0,
+          "median": null,
+          "min": null,
+          "max": null,
+          "mean": null,
+          "sd": null
+        },
+        "joules_per_token": {
+          "n": 0,
+          "median": null,
+          "min": null,
+          "max": null,
+          "mean": null,
+          "sd": null
+        },
+        "watts_avg": {
+          "n": 0,
+          "median": null,
+          "min": null,
+          "max": null,
+          "mean": null,
+          "sd": null
+        },
+        "watts_peak": {
+          "n": 0,
+          "median": null,
+          "min": null,
+          "max": null,
+          "mean": null,
+          "sd": null
+        }
+      },
+      "bands": {}
+    }
+  }
+}
