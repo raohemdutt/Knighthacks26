@@ -59,7 +59,8 @@ site, where pod D keeps its vLLM build: so the run checks, before the server sta
 there and holds every pin of lab/requirements-train.txt, that the student's folder (~/models/Qwen3.5-4B) and the
 teacher's checkpoint exist, and refuses otherwise. It installs nothing but httpx for the image's python3 when that
 is missing (as the other pod scripts do). A trainer still running when the run ends, for whatever reason, is
-stopped with the server.
+stopped with the server, and each run's adapter (about 130 MB that is not a model) is deleted once its telemetry
+is read: the run folder on the pod keeps the logs, the telemetry, raw.json and the result.
 
 The server. The run starts its own teacher (lab/bench.py's vLLM serve line, lab/pod_a_teacher.sh's flags) on port
 8100 with --gpu-memory-utilization at --share (default and ceiling MAX_SHARE): at the teacher's usual 0.90 it reserves
@@ -135,6 +136,7 @@ DEFAULT_TRAIN_PYTHON = "~/venvs/atlas-train/bin/python"   # L16's venv on pod D:
 #: The trainer's environment: the user site (where pod D keeps vLLM and its numpy) is neither read nor written.
 TRAIN_ENV = {"PYTHONNOUSERSITE": "1", "PYTHONUNBUFFERED": "1"}
 PREFLIGHT_TIMEOUT_S = 120.0
+LEFTOVERS = ("adapter", "trainer")   # what lab/train.py leaves under --out besides telemetry.jsonl and run.json
 MAX_SHARE = 0.63                   # the largest teacher share that leaves room for the LoRA job (see SLOT_FACTS)
 DEFAULT_SHARE = MAX_SHARE
 MAX_LEN = 16384
@@ -969,6 +971,8 @@ class PodRun:
         except (OSError, ValueError):
             run = {}
         steps = read_steps(run_dir / "telemetry.jsonl")
+        for leftover in LEFTOVERS:     # a few steps over four rows are not a model: only telemetry and run.json stay
+            shutil.rmtree(run_dir / leftover, ignore_errors=True)
         tail = (arm_dir / "train.log").read_text(encoding="utf-8", errors="replace").splitlines()[-20:]
         return {"exit_code": code, "steps": steps, "warm_steps": int(self.args.warm_steps),
                 "batch": int(self.args.train_batch), "grad_accum": int(self.args.grad_accum),

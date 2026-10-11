@@ -376,6 +376,23 @@ def test_the_trainer_gets_its_environment_and_is_stopped_when_the_run_ends_under
             proc.kill()
 
 
+LEAVER = ("import json, sys, pathlib; out = pathlib.Path(sys.argv[1]); (out / 'adapter').mkdir(parents=True); "
+          "(out / 'adapter' / 'adapter_model.safetensors').write_bytes(b'x' * 64); (out / 'trainer').mkdir(); "
+          "(out / 'telemetry.jsonl').write_text(json.dumps({'type': 'telemetry.train.step', 'step': 1, "
+          "'ts': '2026-10-11T06:00:10Z', 'step_ms': 10000.0}) + chr(10)); "
+          "(out / 'run.json').write_text(json.dumps({'ok': True, 'outcome': 'trained', 'metrics': {}}))")
+
+
+def test_a_run_s_adapter_is_deleted_once_its_telemetry_is_read(tmp_path):
+    args = pod_args(tmp_path, "--train-cmd", json.dumps([sys.executable, "-c", LEAVER, "{out}"]), "--warm-steps", "0")
+    run = itf.PodRun(args, power=bench_fake.FakePower(tmp_path))
+    out = run.finish_train(*run.start_train("train"), 30.0)
+    assert out["exit_code"] == 0 and len(out["steps"]) == 1 and out["run"]["outcome"] == "trained"
+    kept = sorted(p.name for p in (run.dir / "train" / "run").iterdir())
+    assert kept == ["run.json", "telemetry.jsonl"]                         # no adapter, no trainer folder
+    assert (run.dir / "train" / "train.log").is_file()
+
+
 def test_the_rows_a_run_gets_can_be_set_and_are_never_more_than_the_file_holds(tmp_path):
     def rows(*extra: str) -> int:
         return itf.PodRun(pod_args(tmp_path, *extra), power=bench_fake.FakePower(tmp_path)).train_rows
