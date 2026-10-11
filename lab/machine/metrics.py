@@ -76,7 +76,8 @@ _BINARY = getattr(os, "O_BINARY", 0)
 #: lab.machine.refine_formats and lab.machine.ledger use this object. Non-capturing, as no caller reads a group.
 METRIC_NAME_RE = re.compile(r"[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+")
 _METRIC_RE = METRIC_NAME_RE
-_NODE_RE = re.compile(r"[a-z0-9][a-z0-9._-]*")
+#: A node label, or several joined with "+" for a row two machines measured together (R65: "pod-a+pod-b").
+_NODE_RE = re.compile(r"[a-z0-9][a-z0-9._-]*(?:\+[a-z0-9][a-z0-9._-]*)*")
 _TS_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?Z")
 
 

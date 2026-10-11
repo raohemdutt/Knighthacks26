@@ -1,7 +1,7 @@
 # Sources for the plumbing research notes
 
 Index of every source cited in the notes in this folder: `hub-api-lifecycle.md` (hub), `proxy-path.md` (proxy),
-`transfers.md` (transfers), `idle-credits-recovery.md` (idle), `placement.md` (placement) and the measurement record
+`transfers.md` (transfers), `idle-credits-recovery.md` (idle), `placement.md` (placement), `symmetric-pods.md` (symmetric-pods) and the measurement record
 `measurements-2026-10-10.md`. Each source was opened on the date shown (the page, file or thread itself, not a
 search snippet) before it was cited. Keys are stable: a note cites `[S20]`, and a pass that relies on a finding
 cites the note's file and heading. Source code is cited at the tag or commit that matches what the live hub and
@@ -44,6 +44,9 @@ end of `hub-api-lifecycle.md`.
 | S17 | Cloudflare docs, "Error 524" | cause and resolutions | vendor doc | https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-5xx-errors/error-524/ | 2026-10-10 | proxy |
 | S44 | Cloudflare docs, "Error 502 or 504" | 502/504 from Cloudflare; 502/504 from your origin web server | vendor doc | https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-5xx-errors/error-502-504/ | 2026-10-10 | hub |
 | S50 | Cloudflare docs, "Error responses" | Content negotiation; Response fields; Error categories; Retry-After header | vendor doc | https://developers.cloudflare.com/fundamentals/reference/error-responses/ | 2026-10-10 | hub |
+| S69 | Zero to JupyterHub docs, "Security" | Kubernetes Network Policies: the singleuser policy's ingress (only pods labelled `hub.jupyter.org/network-access-singleuser=true`, notebook port) and egress defaults | vendor doc (stable) | https://z2jh.jupyter.org/en/stable/administrator/security.html | 2026-10-11 | symmetric-pods |
+| S70 | Tailscale docs, "Userspace networking mode (for containers)" | outbound through the SOCKS5 or HTTP proxy; the HTTP proxy only carries HTTP and HTTPS; meant for containers without /dev/net/tun | vendor doc | https://tailscale.com/kb/1112/userspace-networking | 2026-10-11 | symmetric-pods |
+| S71 | Tailscale docs, "DERP servers" | DERP is the last resort when no direct or peer-relay path forms; peer relays offer lower latency and better performance than DERP; no throughput figure given | vendor doc | https://tailscale.com/kb/1232/derp-servers | 2026-10-11 | symmetric-pods |
 
 ## Source code at pinned versions
 

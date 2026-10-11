@@ -1,0 +1,7 @@
+input pod: C (10.42.6.28), friend pod: D at 100.65.16.109:29555 (from tailscale status, through the tailscaled SOCKS5 proxy)
+input friend answers its beacon: yes   ({"host": "jupyter-<account D>", "big_model": false, "teacher_model": true, "train_venv": true})
+input big checkpoint here (/home/jovyan/models/big-w4a16): no   on the friend: no
+decision serve: the 27B teacher alone on pod C (a split model needs a pod-to-pod network, POD_TO_POD=yes; R65 found none)
+decision train: two ranks, one on each pod (lab/r65_rank.sh: local SGD, control over the tailnet, data over the hub proxy)
+### pod_role auto C apply=0 wall_s=0 rc=0
+### END
