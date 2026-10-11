@@ -81,6 +81,30 @@ export function SpotMic({ chips, onWhy, guideChips = [], jobs = [] }: { chips: s
     };
   }, []);
 
+  // what is scrolled into view (by the guide, by focus) stops above the dock, not under it
+  const dock = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = dock.current;
+    if (!el) return;
+    // the page's own scroller: the nearest ancestor that scrolls, else the document
+    let root: HTMLElement = document.documentElement;
+    for (let n = el.parentElement; n && n !== document.body; n = n.parentElement) {
+      const oy = getComputedStyle(n).overflowY;
+      if (oy === "auto" || oy === "scroll") {
+        root = n;
+        break;
+      }
+    }
+    const set = () => root.style.setProperty("scroll-padding-bottom", `${Math.ceil(el.getBoundingClientRect().height) + 12}px`);
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      root.style.removeProperty("scroll-padding-bottom");
+    };
+  }, []);
+
   // the guide is about to point at something in the panel: open it first
   useEffect(() => onGuide((g) => (g.kind === "run" && /^(guide-me|handoff)$/.test(g.run.target.id) ? setOpen(true) : undefined)), []);
   useEffect(() => {
@@ -243,7 +267,7 @@ export function SpotMic({ chips, onWhy, guideChips = [], jobs = [] }: { chips: s
   const spot = turn?.spot;
   const atlas = turn?.atlas;
   return (
-    <div className={`${v.dock} ${m.dock}`} data-guide="ask" role="region" aria-label="Ask and handoff">
+    <div ref={dock} className={`${v.dock} ${m.dock}`} data-guide="ask" role="region" aria-label="Ask and handoff">
       {turn || meant.length > 0 ? (
         <div className={m.said} role="status" aria-live="polite">
           <div className={m.saidHead}>
