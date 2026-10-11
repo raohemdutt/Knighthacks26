@@ -1543,3 +1543,34 @@ Tests: `tests/test_lab_desk_score.py`, on `lab/desk_fake.py` (a fake llama-serve
 `fixtures/learning/desk-fixture/` (12 synthetic examples on 8 frame_refs; `python -m lab.desk_fake build-fixture`
 rebuilds it). The real runs on the Jetson and on a pod are in `lab/L24_REAL_RUN.md`.
 >>>>>>> 2fbf5f3 (L24: README section and the real-run steps for the desk scorer)
+## Experiment runner: `python -m lab experiment run` (O29)
+
+One kernels-track experiment from its ledger definition to its verdict on pod B, in one call
+(`lab/machine/experiment_run.py`):
+
+```
+python -m lab experiment run E3 --dry-run                  # check and prepare only: the plan and the pod script, nothing sent
+python -m lab experiment run E3 [--task O29] [--row <row>] [--reply "..."] [--repeats N] [--config FILE]
+```
+
+- **Check.** The experiment is on the kernels track, its metric is one `lab/bench.py` measures, it has a run config
+  (`RUN_CONFIGS`, today E3, or `--config FILE` in the same shape), the account (`--account`, default D) fills the node
+  the experiment names, and the placement plan puts benchmarks there. Anything else is refused before the queue or the
+  pod is asked.
+- **Prepare and upload.** One `lab/bench.py run` per distinct argument set the arms need (E3's four batch sizes share
+  one spawn per repeat and are split by `batch_size`), `--repeats` from the experiment's `min_n`. The harness travels
+  inside the script as a base64 tarball, so the pod needs only python3 and httpx. The script and its plan go into
+  the Jupyter root before the slot is asked for.
+- **Slot.** `slot request` (kind bench; a 60-minute slot carries the config's justification) and `slot start`. A start
+  the queue refuses ends the call with outcome `waiting`: the uploads are removed and the row stays Queued; run the
+  same command again (`--row`, and `--reply` once the referee has written its critique).
+- **Run, pull, record.** `run-script` runs the script; each harness call is interrupted (SIGINT, so it stops the
+  server it spawned) 4 minutes before the slot's cap. The rows are pulled with `lab/transfer.py`, each measured run
+  becomes a `bench.run` ledger row (refs run_id, slot, experiment, arm) and the arms go to `experiment result`.
+- **Release and clean.** `slot done` with one result line, then `lab_exp/<run id>/` and every file the call put in the
+  Jupyter root are removed. Whatever fails after the slot starts, the slot is still released, the pod still cleaned,
+  and the `experiment run` ledger row names the failed step. The runner never launches or stops a pod and never
+  touches a server the pod was running.
+
+Tested against `lab/hub_fake.py` (its file store on disk, the pod script run by bash), `lab/machine/slots_fake.py` and
+`lab/bench_fake.py`. The commands of the first real run are in `lab/O29_REAL_RUN.md`.
