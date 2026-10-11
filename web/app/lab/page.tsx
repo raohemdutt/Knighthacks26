@@ -198,7 +198,7 @@ export default function LabPage() {
       ) : !shown ? (
         <Loading what="this training run" />
       ) : (
-        <LabRun key={shown.run_id} story={shown} initial={params.t} forceReduced={params.reduce} picker={picker} />
+        <LabRun key={shown.run_id} story={shown} initial={params.t} forceReduced={params.reduce} picker={picker} onBoxChanged={story.reload} />
       )}
     </>
   );

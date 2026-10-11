@@ -2348,6 +2348,13 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   labRoutingSim: (params: Partial<import("./labBench").SimParams>, signal?: AbortSignal) =>
     post<import("./labBench").LabSim>("/api/learning/lab/routing/simulate", params, signal),
   labExperiments: (signal?: AbortSignal) => get<import("./labBench").LabTimeline>("/api/learning/lab/experiments", undefined, signal),
+  /** The On the box card's deploy button (L35): versions on disk, the links, the last or running swap (lib/labDeploy.ts). */
+  labDeploy: (signal?: AbortSignal) => get<import("./labDeploy").DeployView>("/api/learning/lab/deploy", undefined, signal),
+  labDeployStart: (version: string) => post<import("./labDeploy").DeployView>("/api/learning/lab/deploy", { version }),
+  labDeployRollback: (version?: string) =>
+    post<import("./labDeploy").DeployView>("/api/learning/lab/deploy/rollback", version ? { version } : {}),
+  labDeployAsk: (question: string, signal?: AbortSignal) =>
+    post<import("./labDeploy").DeployAnswer>("/api/learning/lab/deploy/ask", { question }, signal),
   teach: (body: TeachBody) => post<{ task: string; action_id: string }>("/api/teach", body),
 
   episodes: (opts: { from?: string; to?: string; camera?: string; label?: string } = {}, signal?: AbortSignal) =>

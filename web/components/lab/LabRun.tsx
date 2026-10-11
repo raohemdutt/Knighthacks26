@@ -36,6 +36,7 @@ import {
   within,
 } from "@/lib/lab";
 import { GateChart, TrainingChart } from "./Charts";
+import { DeployButton } from "./DeployButton";
 import lab from "./lab.module.css";
 import { LearningBuddies } from "./LearningBuddies";
 
@@ -674,7 +675,20 @@ function Running({ story }: { story: LabStory }) {
 
 /* ---------- the run ---------- */
 
-export function LabRun({ story, initial, forceReduced, picker }: { story: LabStory; initial: number | null; forceReduced: boolean; picker?: React.ReactNode }) {
+export function LabRun({
+  story,
+  initial,
+  forceReduced,
+  picker,
+  onBoxChanged,
+}: {
+  story: LabStory;
+  initial: number | null;
+  forceReduced: boolean;
+  picker?: React.ReactNode;
+  /** a swap started from the On the box card ended: the page reads the run again (L35) */
+  onBoxChanged?: () => void;
+}) {
   const [u, setU] = useState(initial ?? 1);
   const [playing, setPlaying] = useState(false);
   const [reduced, setReduced] = useState(forceReduced);
@@ -841,6 +855,7 @@ export function LabRun({ story, initial, forceReduced, picker }: { story: LabSto
           </Section>
           <Section n={5} title="On the box" now={is("box")} className={lab.o5}>
             <OnTheBox story={story} frac={within(u, "box")} gated={u >= CHAPTERS[3]!.from - 1e-6} />
+            <DeployButton onBoxChanged={onBoxChanged} />
           </Section>
         </div>
       </div>
