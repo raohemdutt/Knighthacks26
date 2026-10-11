@@ -809,6 +809,19 @@ def section_finetune(root: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
                          round(statistics.median(n["value"] for n in step_time) / 1000, 1), "s",
                          "median of the logged step times, in seconds", step_time,
                          gpu=step_time[0]["gpu"], chip=step_time[0]["chip"])
+    notes = []
+    sized = [(n["conditions"]["step"], _num(n["conditions"].get("tokens"))) for n in step_time]
+    if len(sized) >= 3 and all(tokens for _, tokens in sized):  # the steps that handled far fewer tokens than usual
+        usual = statistics.median(tokens for _, tokens in sized)
+        small = [(step, tokens) for step, tokens in sized if tokens < usual / 2]
+        if small:
+            names = [f"{step:g}" for step, _ in small]
+            listed = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+            others = statistics.median(tokens for _, tokens in sized if tokens >= usual / 2)
+            notes.append(f"{'Step' if len(names) == 1 else 'Steps'} {listed} handled about "
+                         f"{round(statistics.mean(t for _, t in small), -2):,.0f} tokens against about "
+                         f"{round(others, -2):,.0f} for the others, and "
+                         f"{'is the short one' if len(names) == 1 else 'are the short ones'} on the step-time chart.")
     if loss:
         reading = (f"The fine-tune's loss went from {loss[0]['value']:.3g} to {loss[-1]['value']:.3g} over "
                    f"{len(loss)} logged steps on the Strix Halo"
@@ -820,7 +833,7 @@ def section_finetune(root: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
                                      if apart and not here else "."))
         state = "partial" if here else "empty"
     return {"id": "finetune", "title": "The fine-tune run", "reading": reading, "state": state, "loss": loss,
-            "step_time": step_time, "median_step": median, "numbers": here,
+            "step_time": step_time, "median_step": median, "numbers": here, "notes": notes,
             "run": {k: run[k] for k in ("name", "run_id", "node", "gpu", "file", "run_file")} if run else None,
             "other_chip": apart, "awaiting": _awaiting("finetune")}
 
@@ -1570,7 +1583,7 @@ def render_html(pack: dict[str, Any], root: Path = REPO, page_dir: Path | None =
                                    title="Seconds per training step"), page.measured_on(s["step_time"]))
     else:
         key = empty("no per-step loss or step time from the Strix Halo is on main.")
-    more += page.coming(s)
+    more += notes(s["notes"]) + page.coming(s)
     body.append(_body(viz, key, more))
     body.append(page.nums([*([s["median_step"]] if s["median_step"] else []), *s["numbers"], *s["loss"],
                            *s["step_time"]], "The numbers behind this run"))

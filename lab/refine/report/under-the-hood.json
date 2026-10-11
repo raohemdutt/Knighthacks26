@@ -6942,6 +6942,9 @@
      "chip_label": "gfx1151"
     }
    ],
+   "notes": [
+    "Steps 6, 12 and 18 handled about 2,800 tokens against about 11,000 for the others, and are the short ones on the step-time chart."
+   ],
    "run": {
     "name": "l16",
     "run_id": "train-20261011T032149Z-7dd098",

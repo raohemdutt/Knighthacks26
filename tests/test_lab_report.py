@@ -196,6 +196,23 @@ def test_a_line_that_repeats_an_earlier_row_is_counted_once(tmp_path):
     assert "Left out of every number above: 1 line of" in page and "repeat an earlier row" in page and "(line 3)" in page
 
 
+def test_a_short_training_step_is_explained_by_the_tokens_it_handled(tmp_path):
+    """The last step of an epoch handles a part batch; the page says so from the rows instead of leaving a dip."""
+    root = tmp_path / "tree"
+    (root / report.RUN_DIR).mkdir(parents=True)
+    steps = [(1, 0.4, 50000.0, 11000), (2, 0.3, 52000.0, 10800), (3, 0.2, 6000.0, 2700), (4, 0.1, 51000.0, 11200)]
+    (root / report.RUN_DIR / "run9-telemetry.jsonl").write_text("".join(json.dumps({
+        "type": "telemetry.train.step", "ts": f"2026-10-11T03:0{step}:00Z", "node": "pod-b", "run_id": "r9",
+        "step": step, "loss": loss, "step_ms": ms, "tokens": tokens}) + "\n" for step, loss, ms, tokens in steps),
+        encoding="utf-8")
+    tune = section(report.build_pack(root), "finetune")
+    assert tune["state"] == "measured" and tune["run"]["name"] == "run9" and tune["run"]["gpu"] is None
+    assert tune["median_step"]["value"] == 50.5 and [n["value"] for n in tune["step_time"]] == [s[2] for s in steps]
+    assert tune["notes"] == ["Step 3 handled about 2,700 tokens against about 11,000 for the others, and is the short "
+                             "one on the step-time chart."]
+    assert section(report.build_pack(LANDED), "finetune")["notes"] == []  # every step the same size: nothing to say
+
+
 def test_names_tell_builds_and_engines_apart():
     first = {"engine": "vllm@b1388b1+lab/vllm-gfx1201.diff, 0.19.2+gfx1151"}
     assert report.build_label(first) == "vLLM b1388b1 + gfx1201 patch"
