@@ -36,10 +36,13 @@ export interface BenchPoint extends Omit<LabNum, "value" | "source"> {
   session?: string | null;
   state?: string | null;
   inputs?: string[];
+  other_chip?: boolean; // measured on the R9700s, before the lab moved to the Strix Halo pods
+  chip?: string | null;
 }
 
 export interface BenchSweep {
   id: string;
+  other_chip: boolean;
   family: string;
   node: string | null;
   session: string | null;
@@ -89,10 +92,12 @@ export interface LabBench {
   families: { family: string; metrics: string[]; nodes: string[]; rows: number; charted: number; low_confidence: number }[];
   sweeps: BenchSweep[];
   student: BenchStudent | null;
-  power: { nodes: BenchPowerNode[]; absent: string[] };
+  power: { nodes: BenchPowerNode[]; absent: string[]; other_chip: BenchPoint[] };
+  other_chip_rows: number;
+  other_chip_label: string;
   series: { metric: string; family: string; node: string | null; points: BenchPoint[] }[];
   charted_rows: number;
-  not_charted: { metric: string; node: string | null; rows: number; of: number; unit: string | null; latest: BenchPoint; lines: number[] }[];
+  not_charted: { metric: string; node: string | null; rows: number; of: number; other_chip: number; unit: string | null; latest: BenchPoint; lines: number[] }[];
   empty_reason: string | null;
 }
 

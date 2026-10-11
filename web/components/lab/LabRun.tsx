@@ -225,7 +225,8 @@ function Training({ story, frac, measured }: { story: LabStory; frac: number; me
         <div className={lab.measured}>
           <span className={lab.measuredTag}>Measured on our hardware</span>
           <span>
-            A 20-step smoke run on the lab&apos;s trainer{speed?.node ? ` (${speed.node})` : ""}
+            A 20-step smoke run on {speed?.other_chip || first?.other_chip ? "one Radeon R9700, the lab's earlier card" : "the lab's trainer"}
+            {speed?.node ? ` (${speed.node})` : ""}
             {speed ? (
               <>
                 : <b>{speed.value} samples/s</b>
@@ -243,7 +244,7 @@ function Training({ story, frac, measured }: { story: LabStory; frac: number; me
               .filter((m): m is LabMeasured => !!m)
               .map((m) => m.source?.ref)
               .join(", ")}
-            . Not this run: a real measurement, shown so the run above can be judged against it. The lab is two Strix Halo pods (Radeon 8060S, gfx1151).
+            . Not this run: a real measurement, shown so the run above can be judged against it. {speed?.other_chip || first?.other_chip ? "The lab has since moved to" : "The lab is"} two Strix Halo pods (Radeon 8060S, gfx1151).
           </span>
         </div>
       ) : null}

@@ -271,6 +271,11 @@ function Batching({ sweep, bench, initialBatch, initialTtft, initialPoint, reduc
         <h2>One teacher, many people at once</h2>
         <Tag kind="measured" />
       </div>
+      {sweep.other_chip ? (
+        <p className={`${b.banner} ${b.bannerWatch}`}>
+          <b>Other chip (R9700).</b> These rows were measured on the lab&apos;s earlier cards, not on the Strix Halo pods it runs now.
+        </p>
+      ) : null}
       <p className={b.note}>
         {sweep.model ?? "The teacher"} on {sweep.node}
         {sweep.chip ? ` (${sweep.chip})` : ""}, measured {when(sweep.ts)}. Batch size is how many requests it answers at the same time.
@@ -498,6 +503,12 @@ function PowerCard({ bench }: { bench: LabBench }) {
           </div>
         ))}
       </div>
+      {bench.power.other_chip.length ? (
+        <p className={b.note}>
+          Not drawn: {bench.power.other_chip.length} power row{bench.power.other_chip.length === 1 ? "" : "s"} from the other chip (R9700) or untagged from before the lab moved (
+          <span className={b.code}>metrics.jsonl:{bench.power.other_chip.map((p) => p.line).join(", ")}</span>). They are in &ldquo;All rows&rdquo;.
+        </p>
+      ) : null}
       {bench.power.absent.length ? <p className={b.note}>No power row yet for {bench.power.absent.join(", ")}. Nothing is drawn for a machine the file does not cover.</p> : null}
       {shown ? <PointDetail p={shown} onClose={() => setOpen(null)} /> : null}
     </div>
@@ -534,7 +545,8 @@ function AllRows({ bench }: { bench: LabBench }) {
   return (
     <>
       <p className={ui.muted}>
-        {bench.rows} rows in {bench.file}; {bench.charted_rows} are drawn on this screen or on the Training tab. The rest are listed here so none is dropped silently.
+        {bench.rows} rows in {bench.file}; {bench.charted_rows} are drawn on this screen or on the Training tab. The rest are listed here so none is dropped silently. {bench.other_chip_rows} rows
+        are from the other chip (R9700) or untagged from before the lab moved to the Strix Halo pods; they are never drawn on the current lab&apos;s charts.
       </p>
       <h3>Present but not charted</h3>
       <div className={b.list}>
@@ -551,6 +563,7 @@ function AllRows({ bench }: { bench: LabBench }) {
             <span className={b.note}>
               {x.rows} row{x.rows === 1 ? "" : "s"}: <span className={b.code}>metrics.jsonl:{x.lines.join(", ")}</span>
               {x.latest.low_confidence ? " · newest is low confidence" : ""}
+              {x.other_chip ? ` · ${x.other_chip === x.rows ? "all" : x.other_chip} from the other chip (R9700), not the current lab` : ""}
             </span>
           </div>
         ))}
@@ -607,6 +620,7 @@ export function SpeedEnergy({ initialBatch, initialTtft, initialPoint, initialDr
           {data.sweeps.map((s) => (
             <button key={s.id} type="button" className={`${ui.chip} ${s.id === sweep?.id ? ui.chipOn : ""}`} aria-pressed={s.id === sweep?.id} onClick={() => setSweepId(s.id)}>
               {s.family.replace(/_/g, " ")} · {s.node} · {when(s.ts)}
+              {s.other_chip ? " · other chip (R9700)" : ""}
             </button>
           ))}
         </div>
