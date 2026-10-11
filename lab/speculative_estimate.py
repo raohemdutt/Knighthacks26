@@ -50,7 +50,7 @@ RULE = "vllm/v1/spec_decode/ngram_proposer.py:_find_longest_matched_ngram_and_pr
 # (prompt_lookup_min, prompt_lookup_max): vLLM's default when neither is given is (5, 5); the rest are the
 # settings its docs and the field reports use.
 LOOKUPS: tuple[tuple[int, int], ...] = ((1, 3), (2, 4), (3, 5), (5, 5))
-DRAFT_LENGTHS: tuple[int, ...] = (2, 4, 8)
+DRAFT_LENGTHS: tuple[int, ...] = (2, 3, 4, 8)
 
 _PROXY = re.compile(r"<\|[A-Za-z_]+\|>|\d| ?[A-Za-z]+| ?[^\sA-Za-z\d]+|\n|[ \t]+")
 
