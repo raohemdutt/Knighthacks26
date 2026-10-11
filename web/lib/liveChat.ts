@@ -81,3 +81,55 @@ export function footerText(d: ChatDone): string {
 export function keepLast<T>(list: T[], keep = 3): T[] {
   return list.length > keep ? list.slice(list.length - keep) : list;
 }
+
+/** Who the chat asks: one side or both at once. */
+export type ChatMode = "both" | ChatTarget;
+
+export const CHAT_MODES: { id: ChatMode; label: string }[] = [
+  { id: "box", label: "only the box" },
+  { id: "pair", label: "only the pair" },
+  { id: "both", label: "both" },
+];
+
+/** The heading over each side's transcript. */
+export const SIDE_NAMES: Record<ChatTarget, string> = {
+  box: "The box, 4B",
+  pair: "The network brain, 122B on two pods",
+};
+
+export const targetsOf = (mode: ChatMode): ChatTarget[] => (mode === "both" ? ["box", "pair"] : [mode]);
+
+const toolSet = (d: ChatDone) => Array.from(new Set(d.calls.map((c) => c.name))).sort();
+
+function times(r: number): string {
+  return `${r >= 10 ? Math.round(r) : Number(r.toFixed(1))}x`;
+}
+
+/**
+ * One line comparing the two answers in words, from their done events only: which tools each used, and how their
+ * joules compare. A side without a reading says so instead of a ratio.
+ */
+export function compareText(box: ChatDone, pair: ChatDone): string {
+  const a = toolSet(box);
+  const b = toolSet(pair);
+  const tools =
+    a.join(",") === b.join(",")
+      ? a.length
+        ? `same tool (${a.join(", ")})`
+        : "neither looked in memory"
+      : `different tools: the box used ${a.join(", ") || "none"}, the brain used ${b.join(", ") || "none"}`;
+  const jb = box.energy && typeof box.energy.joules === "number" ? box.energy.joules : null;
+  const jp = pair.energy && typeof pair.energy.joules === "number" ? pair.energy.joules : null;
+  let energy: string;
+  if (jb === null || jp === null) {
+    const off = [jb === null ? "the box" : null, jp === null ? "the pods" : null].filter(Boolean).join(" and ");
+    energy = `joules not compared, meters offline on ${off}`;
+  } else if (jb <= 0 || jp <= 0) {
+    energy = "joules not compared, a reading of zero";
+  } else if (jp >= jb) {
+    energy = `the brain used ${times(jp / jb)} the joules`;
+  } else {
+    energy = `the box used ${times(jb / jp)} the joules`;
+  }
+  return `${tools}, ${energy}`;
+}

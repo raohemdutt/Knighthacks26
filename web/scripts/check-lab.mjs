@@ -224,6 +224,14 @@ try {
   is("footer", LC.footerText(done), "42 tokens in 3.0 s, 18.2 tok/s, about 513 joules");
   is("footer, meters offline", LC.footerText({ ...done, energy: null, tok_s: null, tokens: 1 }), "1 token in 3.0 s, meters offline");
   is("keep the last three", LC.keepLast([1, 2, 3, 4]).join(","), "2,3,4");
+  const call = (name) => ({ name, arguments: {} });
+  const boxD = { ...done, target: "box", calls: [call("last_seen")], energy: { joules: 40 } };
+  const pairD = { ...done, calls: [call("last_seen")], energy: { joules: 280 } };
+  is("compare: same tool, ratio", LC.compareText(boxD, pairD), "same tool (last_seen), the brain used 7x the joules");
+  is("compare: different tools", LC.compareText({ ...boxD, calls: [] }, pairD), "different tools: the box used none, the brain used last_seen, the brain used 7x the joules");
+  is("compare: meters offline", LC.compareText(boxD, { ...pairD, energy: null }), "same tool (last_seen), joules not compared, meters offline on the pods");
+  is("compare: a fractional ratio", LC.compareText({ ...boxD, energy: { joules: 100 } }, pairD), "same tool (last_seen), the brain used 2.8x the joules");
+  is("both asks two", LC.targetsOf("both").join(","), "box,pair");
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }
