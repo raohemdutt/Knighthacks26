@@ -464,21 +464,39 @@ export function FloorMap({
             <g className={o.robot} style={{ transform: `translate(${robot.x}px, ${robot.y - 26 * u}px)`, transitionDuration: robotMs ? `${robotMs}ms` : undefined }} aria-label="SPOT is here">
               <path d={`M ${-5 * u} ${11 * u} L 0 ${19 * u} L ${5 * u} ${11 * u} Z`} fill="var(--accent-text)" />
               {dog ? (
-                // about 90 px wide on the page, standing just above the stop's marks with the pointer under it (beside them at the top edge of the plan, where it would be cut off); light with a dark outline so it reads on the grey plan
-                <g className={`${o.dog} ${gait.walking ? o.dogWalk : ""}`} transform={`translate(${robot.y - box.y < 100 * u ? `${64 * u} ${40 * u}` : `0 ${-14 * u}`}) scale(${(gait.left ? -2 : 2) * u} ${2 * u})`} data-dog={gait.walking ? "walking" : "standing"}>
-                  <g fill="#aab3c5" stroke="#10131c" strokeWidth="1">
-                    <rect className={o.dogLegB} x="-13.5" y="-3" width="3.6" height="13" rx="1.6" />
-                    <rect className={o.dogLegA} x="10.5" y="-3" width="3.6" height="13" rx="1.6" />
+                // SPOT as the robot looks: a yellow body, black legs with the knees pointing back, a dark front where the cameras are. No head, no tail, no logo.
+                // About one and a third marks tall, in the plan's own units, so it grows and shrinks with the marks. It stands just above the stop's marks with the
+                // pointer under it (beside them at the top edge of the plan, where it would be cut off).
+                <g className={`${o.dog} ${gait.walking ? o.dogWalk : ""}`} transform={`translate(${robot.y - box.y < 62 * u ? `${44 * u} ${34 * u}` : `0 ${-10 * u}`}) scale(${(gait.left ? -1.6 : 1.6) * u} ${1.6 * u})`} data-dog={gait.walking ? "walking" : "standing"}>
+                  <g transform="translate(-10 -5)">
+                    <g className={o.dogLegB}>
+                      <rect x="-4.5" y="0" width="9" height="15" fill="none" />
+                      <polyline points="0,0 -4,7 -0.5,15" fill="none" stroke="#3d424f" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                    </g>
                   </g>
-                  <path d="M -15 -9 L -20 -15" stroke="#10131c" strokeWidth="3.6" strokeLinecap="round" />
-                  <path d="M -15 -9 L -20 -15" stroke="#f5f7fb" strokeWidth="1.8" strokeLinecap="round" />
-                  <rect x="-16" y="-12" width="32" height="10.5" rx="4.5" fill="#f5f7fb" stroke="#10131c" strokeWidth="1.2" />
-                  <path d="M 11 -11 L 14 -19 L 24.5 -19 Q 27 -19 27 -16.5 L 27 -14.5 Q 27 -12.5 24.5 -12.5 L 17 -12.5 L 15 -8 Z" fill="#f5f7fb" stroke="#10131c" strokeWidth="1.2" strokeLinejoin="round" />
-                  <path d="M 14.5 -19 L 16 -23.5 L 19 -19 Z" fill="#f5f7fb" stroke="#10131c" strokeWidth="1.1" strokeLinejoin="round" />
-                  <circle cx="22" cy="-16.2" r="1.3" fill="#10131c" />
-                  <g fill="#f5f7fb" stroke="#10131c" strokeWidth="1">
-                    <rect className={o.dogLegA} x="-10" y="-3" width="3.6" height="13" rx="1.6" />
-                    <rect className={o.dogLegB} x="7" y="-3" width="3.6" height="13" rx="1.6" />
+                  <g transform="translate(14 -5)">
+                    <g className={o.dogLegA}>
+                      <rect x="-4.5" y="0" width="9" height="15" fill="none" />
+                      <polyline points="0,0 -4,7 -0.5,15" fill="none" stroke="#3d424f" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                    </g>
+                  </g>
+                  <rect x="-17" y="-13.5" width="32" height="8.5" rx="3" fill="#f6c21c" stroke="#10131c" strokeWidth="1.1" />
+                  <rect x="-15.5" y="-6.6" width="29" height="2.6" rx="1.3" fill="#16181f" />
+                  <path d="M 12.5 -14 L 17 -14 Q 19.5 -14 19.5 -11.5 L 19.5 -7 Q 19.5 -4.6 17 -4.6 L 12.5 -4.6 Z" fill="#16181f" stroke="#10131c" strokeWidth="0.8" />
+                  <circle cx="17" cy="-10.6" r="1.1" fill="#9aa3b5" />
+                  <circle cx="-13" cy="-5" r="2.5" fill="#16181f" />
+                  <circle cx="11" cy="-5" r="2.5" fill="#16181f" />
+                  <g transform="translate(-13 -5)">
+                    <g className={o.dogLegA}>
+                      <rect x="-4.5" y="0" width="9" height="15" fill="none" />
+                      <polyline points="0,0 -4,7 -0.5,15" fill="none" stroke="#16181f" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                    </g>
+                  </g>
+                  <g transform="translate(11 -5)">
+                    <g className={o.dogLegB}>
+                      <rect x="-4.5" y="0" width="9" height="15" fill="none" />
+                      <polyline points="0,0 -4,7 -0.5,15" fill="none" stroke="#16181f" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                    </g>
                   </g>
                 </g>
               ) : (
