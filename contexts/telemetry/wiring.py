@@ -14,8 +14,11 @@ and one joules-per-answer computation; "fake" runs alone):
   only on a Jetson. On the box it runs inside the gateway, so the atlas-gateway systemd unit starts
   it at boot and again after every restart; a tegrastats that dies is started again by the runner.
   Settings, all optional:
-    ATLAS_TELEMETRY_JETSON_INTERVAL_MS  sampling period in ms (default 100; never shorter than the
-                                        INA3221 update interval)
+    ATLAS_TELEMETRY_JETSON_INTERVAL_MS  sampling period in ms (default 350, for the 1 percent CPU
+                                        budget; never shorter than the INA3221 update interval)
+  jetson/atlas-gateway.service sets ATLAS_TELEMETRY_SOURCE=tegrastats and the 350 ms period, so the
+  box samples from boot (telemetry owner ruling 8). The unit's settings win over .env; change them on
+  a box with `systemctl edit atlas-gateway` (e.g. "tegrastats,pods", or an empty source to turn it off).
     ATLAS_TEGRASTATS                    the tegrastats command (default "tegrastats")
     ATLAS_NVPMODEL                      the nvpmodel command (default "/usr/sbin/nvpmodel")
 - "pods" reads the pod power samplers (lab/pod_power.py) through the hub proxy and publishes their
@@ -31,6 +34,9 @@ and one joules-per-answer computation; "fake" runs alone):
   (telemetry.clock.offset) on the first poll and about once a minute after, the best of its last ten exchanges.
   The old node names in ATLAS_POD_ACCOUNTS (gpu-a, gpu-b) still read as pod-a and pod-b.
 
+ATLAS_TELEMETRY_IDLE_W (pod-a=10.27,pod-b=10.27,jetson=15.76) sets the calibrated idle per node over
+config/telemetry_idle.yaml, the figure stored beside each joules-per-answer value (application/idle.py).
+
 Every source also gets joules per answer (application/joules.py): the service publishes each answered request's
 telemetry.joules_per_answer once its window has settled, and `service.stats()` gives the stats page watts now,
 joules per answer and energy per day per node. Nothing is measured about the sensors yet (Calibration), so every
@@ -45,6 +51,7 @@ from pathlib import Path
 import httpx
 
 from bus import EventBus
+from contexts.telemetry.application.idle import idle_figures
 from contexts.telemetry.application.jetson_sampler import DEFAULT_INTERVAL_MS, JetsonPowerSampler
 from contexts.telemetry.application.joules import Calibration, JoulesPerAnswerProjection
 from contexts.telemetry.application.projection import TelemetryProjection
@@ -80,6 +87,7 @@ def build_telemetry(source: str, bus: EventBus, *, fixture: str | Path | None = 
     projection = TelemetryProjection()
     runners = [_runner(name, bus, projection, fixture=fixture, speed=speed, loop=loop, on_jetson=on_jetson, env=env,
                        transport=transport) for name in names]
+    calibration = calibration or Calibration(idle=idle_figures(env))  # the nodes' calibrated idle, stored beside values
     service = TelemetryService(projection, runners, source=",".join(names),
                                joules=JoulesPerAnswerProjection(calibration))
     service.subscribe(bus)

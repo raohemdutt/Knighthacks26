@@ -1133,6 +1133,91 @@ export interface PlanBody {
   moves: Move[];
   start?: string;
   scenario?: string;
+  /** Numbers the person knows better than the box: `work_left` is focused minutes by deadline id. */
+  initial?: { work_left?: Record<string, number> };
+}
+
+// ---------- Today's Plan: additive to Day Run (contexts/play/dayrun: fixes.py, words.py, talk.py, history.py) ----------
+
+/** A "Near you" event that falls in an open slot: offered in the gap, never placed (Board.suggestions). */
+export interface Suggestion extends OptionalEvent {
+  slot: string | null;
+  walk_minutes: number | null;
+  leave_by: string | null;
+  note: string | null;
+}
+
+/** Board fields added for Today's Plan. Older boxes do not send them. */
+export interface PlanBoard extends Board {
+  suggestions?: Suggestion[];
+  deadlines: (Deadline & { estimate_from?: "kind" | "default" | "yours" | null; estimate_minutes?: number | null })[];
+}
+
+/** One thing to fix, in plain words, with the edit that would mend it (the whole plan with the edit applied). */
+export interface Fix {
+  id: string;
+  problem: string;
+  label: string | null;
+  moves: Move[] | null;
+  changed: number | null;
+  mends: boolean;
+}
+
+/** POST /api/dayrun/explain: what needs fixing, and one true sentence per number a person might question. */
+export interface Explained {
+  headline: string;
+  fixes: Fix[];
+  deadlines: Record<string, { title: string; due: string; work: string; status: string | null; risk: string | null }>;
+  sleep: string;
+  meals: string;
+  points: string;
+  stars: string;
+  walks: Record<string, string>;
+}
+
+/** POST /api/dayrun/edit: a change said in plain words, as the new plan. `ok` false: nothing changed, see `options`. */
+export interface EditResult {
+  ok: boolean;
+  understood: string;
+  moves: Move[];
+  changed: number | null;
+  options: { label: string; moves: Move[]; changed: number | null }[];
+  warning: string | null;
+}
+
+/** One day of the date strip (GET /api/dayrun/days). The last six fields are only on days still ahead. */
+export interface StripDay {
+  day: string;
+  when: "past" | "today" | "future";
+  has_data: boolean;
+  label: string;
+  summary: string;
+  won?: boolean;
+  stars?: number | null;
+  score?: number | null;
+  fixed?: number;
+  agreed?: number;
+  optional?: number;
+  free_minutes?: number;
+  busy_minutes?: number;
+  due?: { id: string; title: string; due: string; work_left: number }[];
+  pressure?: number;
+}
+
+export interface DayBlock extends PlanMove {
+  mark: "done" | "missed" | null;
+  moved: boolean;
+}
+
+/** GET /api/dayrun/day?day=: a past day against its review, today's plan, or a draft for a day ahead. */
+export interface PlanDay extends StripDay {
+  start: string | null;
+  moves: Move[];
+  blocks: DayBlock[];
+  review: { score: number | null; stars: number; points: number; plan_stars: number; followed: string[]; slipped: string[]; change_tomorrow: string } | null;
+  changes: { at: string; why: string }[];
+  first: { start: string; moves: Move[] } | null;
+  outcome: PlanOutcome | null;
 }
 
 // ---------- the Day loop (contracts/day.py, contexts/day) ----------
@@ -1911,9 +1996,19 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   /** When to leave: `from` and `to` are pack ids ("ucf.eng2"), names, "friend:<member>" or "here". */
   placeRoute: (q: { from?: string; to: string; arrive_by?: string; depart?: string }, signal?: AbortSignal) => get<PlaceRoute>("/api/places/route", q, signal),
   lastSeen: (label: string, signal?: AbortSignal) => get<Sighting>(`/memory/objects/${encodeURIComponent(label)}/last-seen`, undefined, signal),
+  /** The same sighting for marking it in the picture: its box when one is known (else null), and the other boxed things in that frame. */
+  whereSeen: (label: string, signal?: AbortSignal) => get<import("./guide").WhereSeen>(`/memory/last-seen/${encodeURIComponent(label)}`, undefined, signal),
+  /** The detector's newest tracks for a camera: normalised boxes with labels, for drawing over its snapshot. */
+  captureTracks: (camera: string, signal?: AbortSignal) =>
+    get<{ camera_id: string; ts_ms: number | null; tracks: { label: string; track_id: number; confidence: number; box: import("./guide").BoxN }[] }>(`/capture/${encodeURIComponent(camera)}/tracks`, undefined, signal),
 
   // Day Run. `scenario` runs a scripted day from fixtures/play/ ("demo") instead of live sources.
   dayrunBoard: (scenario?: string, signal?: AbortSignal) => get<Board>("/api/dayrun/board", { scenario }, signal),
+  planBoard: (q: { start?: string; scenario?: string }, signal?: AbortSignal) => get<PlanBoard>("/api/dayrun/board", q, signal),
+  planExplain: (body: PlanBody, signal?: AbortSignal) => post<Explained>("/api/dayrun/explain", body, signal),
+  planEdit: (body: PlanBody & { text: string }) => post<EditResult>("/api/dayrun/edit", body),
+  planDays: (signal?: AbortSignal) => get<{ today: string; days: StripDay[] }>("/api/dayrun/days", undefined, signal),
+  planDay: (day: string, signal?: AbortSignal) => get<PlanDay>("/api/dayrun/day", { day }, signal),
   dayrunScenario: (name: string, signal?: AbortSignal) => get<ScenarioScript>(`/api/dayrun/scenarios/${encodeURIComponent(name)}`, undefined, signal),
   dayrunSimulate: (body: PlanBody, signal?: AbortSignal) => post<SimResult>("/api/dayrun/simulate", body, signal),
   dayrunHard: (body: PlanBody & { seed?: number; count?: number; disruptions?: Disruption[] }) => post<HardResult>("/api/dayrun/hard", body),
@@ -1969,6 +2064,9 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   // the look guide: "where do I look for X?" -> a place on the Inspection screen and the words to walk there (no model call)
   spotGuide: (q: string, signal?: AbortSignal) => get<import("./guide").SpotGuide>("/api/spot/guide", { q }, signal),
   spotRoute: (to: string, from?: string | null, signal?: AbortSignal) => get<import("./guideSpot").SpotRoute>("/api/spot/route", from ? { to, from } : { to }, signal),
+  /** The floor traced from the kit's plan picture (rooms, doors, equipment, stairs, walkable cells), and the traced line between every pair of waypoints. */
+  spotWalkable: (signal?: AbortSignal) => get<import("./guideSpot").SpotWalkable>("/api/spot/walkable", undefined, signal),
+  spotWalkableLegs: (signal?: AbortSignal) => get<{ configured: boolean; available: boolean; legs: Record<string, import("./guideWalk").TracedLeg> }>("/api/spot/walkable/legs", undefined, signal),
   spotShift: (signal?: AbortSignal) => get<Spot.Shift>("/api/spot/shift", undefined, signal),
   spotRound: (id: string, signal?: AbortSignal) => get<Spot.RoundView>(`/api/spot/shift/rounds/${encodeURIComponent(id)}`, undefined, signal),
   /** The same cited answer, worded for an operator; `draft` keeps the exact wording. */

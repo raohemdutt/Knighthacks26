@@ -477,6 +477,7 @@ def test_the_schema_tool_reads_schema_sql_and_runs_only_its_creates():
 
 
 def test_the_schema_tool_never_prints_the_connection_string(monkeypatch, capsys):
+    pytest.importorskip("psycopg")  # without the driver the tool answers 2 before it tries to connect (CI installs .[dev] only)
     monkeypatch.setenv("NEON_DATABASE_URL", "postgresql://someone:s3cret@127.0.0.1:1/nothing?connect_timeout=1")
     assert schema.main(["--check"]) == 1
     said = capsys.readouterr()

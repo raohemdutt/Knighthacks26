@@ -249,7 +249,10 @@ def test_a_link_that_leads_out_of_the_root_is_not_served(pod):
     outside = pod.tmp / "outside"
     outside.mkdir()
     (outside / "secret.gguf").write_bytes(b"outside the root")
-    (pod.root / "v1" / "leak.gguf").symlink_to(outside / "secret.gguf")
+    try:
+        (pod.root / "v1" / "leak.gguf").symlink_to(outside / "secret.gguf")
+    except OSError:     # Windows without Developer Mode or admin rights cannot make one (WinError 1314); pods can
+        pytest.skip("this machine cannot create symlinks")
     (pod.root / "escape").symlink_to(outside, target_is_directory=True)
     (pod.root / "v1" / "inside.gguf").symlink_to(pod.root / "v1" / "model.gguf")
 

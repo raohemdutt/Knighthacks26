@@ -5,7 +5,11 @@
 # Idempotent and resumable: re-run after a pod relaunch; finished steps are skipped.
 # Usage on the pod (JupyterLab terminal):  bash lab/pod_a_teacher.sh [facts|proxy|build|verify|download|serve|models|stop|all]
 # From the box, with nothing typed on the pod (the patch file is uploaded next to the script):
-#   python -m lab.controller run-script --account D --with lab/vllm-gfx1201.diff lab/pod_a_teacher.sh build
+#   python -m lab.controller run-script --account D --with lab/vllm-gfx1151.diff lab/pod_a_teacher.sh build
+# Beside a serving teacher, into its own folder and venv (the serving build is not touched):
+#   python -m lab.controller run-script --account C --timeout 3600 --with lab/vllm-gfx1151.diff lab/pod_a_teacher.sh \
+#     build --vllm-dir /home/jovyan/vllm-hybrid --venv /home/jovyan/venv-hybrid
+# The same names work as environment variables (VLLM_DIR, VLLM_VENV, PATCH, BUILD_JOBS) when the script is run by hand.
 # facts prints the pod's hour-0 facts and changes nothing; verify checks a finished build; models asks the local server for /v1/models; stop ends
 # the server. build, download and serve end with a line "### <step> wall_s=<seconds> rc=<code>" for the ledger.
 # Callers reach the server at https://<hub>/user/<account>/proxy/8000/v1/... with header
@@ -14,12 +18,41 @@
 set -u -o pipefail
 export PATH="$HOME/.local/bin:$PATH"
 STEP="${1:-all}"
-VLLM_DIR="$HOME/vllm"
-VLLM_COMMIT="b1388b1fb"                      # April 2026 main; builds against the pod's torch 2.9.1+rocm7.13
+[ $# -gt 0 ] && shift
+# Options after the step (run-script passes them as arguments): --vllm-dir DIR, --venv DIR, --patch FILE, --jobs N.
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --vllm-dir) VLLM_DIR="${2:-}"; shift 2 ;;
+    --venv) VLLM_VENV="${2:-}"; shift 2 ;;
+    --patch) PATCH="${2:-}"; shift 2 ;;
+    --jobs) BUILD_JOBS="${2:-}"; shift 2 ;;
+    *) echo "unknown option $1 (known: --vllm-dir, --venv, --patch, --jobs)"; exit 2 ;;
+  esac
+done
+DEFAULT_VLLM_DIR="$HOME/vllm"
+VLLM_DIR="${VLLM_DIR:-$DEFAULT_VLLM_DIR}"
+# Empty: vLLM is installed into the user site (the teacher's usual build). A path: a separate venv that sees the
+# image's torch (--system-site-packages) and nothing of the user site, so a second build can sit beside the first.
+VLLM_VENV="${VLLM_VENV:-}"
+VLLM_COMMIT="${VLLM_COMMIT:-b1388b1fbf5aaef47937fabe98931211684666a6}"   # April 2026 main; builds against torch 2.9.1
 # The patch sits beside this script: in lab/ of the clone, or in the Jupyter root when run-script uploads it with
-# --with. PATCH overrides; the clone at ~/Knighthacks26/lab is tried last.
-PATCH="${PATCH:-$(cd "$(dirname "$0")" && pwd)/vllm-gfx1201.diff}"
-[ -f "$PATCH" ] || [ ! -f "$HOME/Knighthacks26/lab/vllm-gfx1201.diff" ] || PATCH="$HOME/Knighthacks26/lab/vllm-gfx1201.diff"
+# --with. vllm-gfx1151.diff (the April patch plus the RDNA hybrid W4A16 kernel) is the default;
+# PATCH=vllm-gfx1201.diff (or a full path) selects the April patch alone. The clone at ~/Knighthacks26/lab is tried last.
+PATCH="${PATCH:-vllm-gfx1151.diff}"
+case "$PATCH" in
+  /*) ;;
+  *) if [ -f "$PATCH" ]; then PATCH="$(pwd)/$PATCH"
+     elif [ -f "$(cd "$(dirname "$0")" && pwd)/$(basename "$PATCH")" ]; then PATCH="$(cd "$(dirname "$0")" && pwd)/$(basename "$PATCH")"
+     elif [ -f "$HOME/Knighthacks26/lab/$(basename "$PATCH")" ]; then PATCH="$HOME/Knighthacks26/lab/$(basename "$PATCH")"
+     else PATCH="$(cd "$(dirname "$0")" && pwd)/$(basename "$PATCH")"
+     fi ;;
+esac
+PY=python3
+[ -n "$VLLM_VENV" ] && PY="$VLLM_VENV/bin/python"
+BUILD_LOG="$HOME/vllm_build.log"
+[ "$VLLM_DIR" = "$DEFAULT_VLLM_DIR" ] || BUILD_LOG="$HOME/vllm_build-$(basename "$VLLM_DIR").log"
+STAMP="$VLLM_DIR/.atlas-build-stamp"
+STEP_MARKS=""                                 # extra key=value fields a step adds to its "### <step>" line
 MODELS="$HOME/models"
 # RedHatAI/Qwen3.8-27B-INT4 (compressed-tensors W4A16, 18 GB) is what serves on this vLLM commit.
 # amd/Qwen3.8-27B-Quark-AWQ-INT4-W4A16 (Aug 2026 Quark export) fails in this commit's Quark weight mapper; see lab/README.md.
@@ -39,7 +72,7 @@ timed() {
   local t0 rc
   t0=$(date +%s)
   "$@"; rc=$?
-  echo "### $1 wall_s=$(( $(date +%s) - t0 )) rc=$rc"
+  echo "### $1 wall_s=$(( $(date +%s) - t0 )) rc=$rc${STEP_MARKS:+ $STEP_MARKS}"
   return $rc
 }
 
@@ -107,11 +140,14 @@ gpu_arch() {
 }
 
 build_jobs() {
-  # One compile job per 3 GB of RAM, at most one per thread and at most 48: 48 on the R9700 host
-  # (128 threads, 502 GB), 20 on the Strix Halo (32 threads, 62 GB), where more jobs run out of memory.
+  # One compile job per 3 GB of available RAM, at most one per thread and at most 48: 48 on the R9700 host
+  # (128 threads, 502 GB), 20 on an idle Strix Halo (32 threads, 62 GB), where more jobs run out of memory. Available,
+  # not total: beside a serving teacher most of the shared 64 GB is the model's, and an out-of-memory kill could take
+  # the server with it. BUILD_JOBS overrides.
+  if [ -n "${BUILD_JOBS:-}" ]; then echo "$BUILD_JOBS"; return; fi
   local threads mem_gb jobs
   threads=$(nproc)
-  mem_gb=$(awk '/MemTotal/ {print int($2 / 1048576)}' /proc/meminfo)
+  mem_gb=$(awk '/MemAvailable/ {print int($2 / 1048576)}' /proc/meminfo)
   jobs=$((mem_gb / 3))
   [ "$jobs" -gt "$threads" ] && jobs=$threads
   [ "$jobs" -gt 48 ] && jobs=48
@@ -162,7 +198,7 @@ EOF
 
 torch_constraints() {
   # The pod's own torch stack as pip constraints, so no vLLM dependency can swap in a CUDA wheel from PyPI.
-  python3 - <<'PY'
+  "$PY" - <<'PY'
 from importlib import metadata
 for name in ("torch", "torchvision", "torchaudio", "triton", "pytorch-triton-rocm"):
     try:
@@ -172,26 +208,64 @@ for name in ("torch", "torchvision", "torchaudio", "triton", "pytorch-triton-roc
 PY
 }
 
+build_stamp() {
+  # What a finished build was made from: the vLLM commit, the patch's content hash and the gfx target. A build whose
+  # stamp differs (an older patch, another commit, no stamp at all) is rebuilt, not skipped because vllm imports.
+  echo "commit=$VLLM_COMMIT patch=$(sha256sum "$PATCH" | cut -c1-16) gfx=$1"
+}
+
+make_venv() {
+  # A venv beside the user site: it sees the image's torch 2.9.1+rocm7.13 (system site) and not the user site, so the
+  # serving teacher's vLLM there neither shadows this build nor is replaced by it.
+  [ -x "$PY" ] || python3 -m venv --system-site-packages "$VLLM_VENV" || { echo "could not create the venv $VLLM_VENV"; return 1; }
+  "$PY" -c "import torch, sys; sys.exit(0 if torch.version.hip else 1)" 2>/dev/null \
+    || { echo "the venv $VLLM_VENV does not see the image's ROCm torch"; return 1; }
+  "$PY" -m pip install --quiet "cmake>=3.26.1,<4" ninja packaging "setuptools>=77,<81" setuptools-scm wheel jinja2 regex \
+    || { echo "pip could not install the build tools into $VLLM_VENV"; return 1; }
+}
+
 build() {
-  if python3 -c "import vllm" 2>/dev/null; then echo "vllm already importable: $(python3 -c 'import vllm;print(vllm.__version__)')"; return; fi
-  local gfx jobs constraints
+  local gfx jobs constraints want
   gfx="$(gpu_arch)"
   [ -n "$gfx" ] || { echo "no gfx target from rocminfo; set GFX=<target>"; return 1; }
-  [ -f "$PATCH" ] || { echo "no patch at $PATCH: upload lab/vllm-gfx1201.diff beside the script (run-script --with) or set PATCH"; return 2; }
+  case "$gfx" in
+    gfx11*|gfx12*) ;;
+    *) echo "these patches are for RDNA (gfx11, gfx12); rocminfo says $gfx"; return 1 ;;
+  esac
+  [ -f "$PATCH" ] || { echo "no patch at $PATCH: upload lab/$(basename "$PATCH") beside the script (run-script --with) or set PATCH"; return 2; }
+  if [ "$VLLM_DIR" != "$DEFAULT_VLLM_DIR" ] && [ -z "$VLLM_VENV" ]; then
+    echo "VLLM_DIR is $VLLM_DIR but no venv is given: a user-site install would replace the serving build; pass --venv DIR"
+    return 2
+  fi
+  want="$(build_stamp "$gfx")"
+  mkdir -p "$SERVE_DIR"
+  if [ -f "$STAMP" ] && [ "$(cat "$STAMP")" = "$want" ] && (cd "$SERVE_DIR" && "$PY" -c "import vllm") 2>/dev/null; then
+    echo "vllm already built from $want in $VLLM_DIR"; return
+  fi
+  [ -f "$STAMP" ] && echo "rebuilding: $VLLM_DIR holds $(cat "$STAMP"), wanted $want"
   jobs="$(build_jobs)"
   deps || return 1
-  constraints="$HOME/.cache/vllm-torch-constraints.txt"
-  mkdir -p "$HOME/.cache" && torch_constraints > "$constraints" || { echo "could not read the pod's torch versions"; return 1; }
+  if [ -n "$VLLM_VENV" ]; then make_venv || return 1; fi
+  constraints="$HOME/.cache/vllm-torch-constraints-$(basename "$VLLM_DIR").txt"
+  mkdir -p "$HOME/.cache" && torch_constraints > "$constraints" && [ -s "$constraints" ] \
+    || { echo "could not read the pod's torch versions"; return 1; }
   [ -d "$VLLM_DIR/.git" ] || git clone https://github.com/vllm-project/vllm.git "$VLLM_DIR" || { echo "could not clone vLLM"; return 1; }
   cd "$VLLM_DIR" || return 1
-  git checkout -q "$VLLM_COMMIT" || { echo "could not check out vLLM $VLLM_COMMIT"; return 1; }
-  git checkout -- . && git apply --reject --whitespace=nowarn "$PATCH" || { echo "the patch $PATCH did not apply"; return 1; }
-  python3 use_existing_torch.py || { echo "use_existing_torch.py failed"; return 1; }
-  echo "building vLLM $VLLM_COMMIT for $gfx with $jobs jobs (log: ~/vllm_build.log)"
+  rm -f "$STAMP"
+  # Back to the clean commit: tracked files reset, files an earlier patch added removed (build/ is ignored and stays,
+  # so a rebuild reuses what it can).
+  git checkout -q -- . && git clean -q -f -d && git checkout -q "$VLLM_COMMIT" \
+    || { echo "could not check out vLLM $VLLM_COMMIT"; return 1; }
+  git apply --reject --whitespace=nowarn "$PATCH" || { echo "the patch $PATCH did not apply"; return 1; }
+  "$PY" use_existing_torch.py || { echo "use_existing_torch.py failed"; return 1; }
+  echo "building vLLM $VLLM_COMMIT + $(basename "$PATCH") for $gfx with $jobs jobs into ${VLLM_VENV:-the user site} (log: $BUILD_LOG)"
+  local install=(pip install --user)
+  [ -n "$VLLM_VENV" ] && install=("$PY" -m pip install)
   # SETUPTOOLS_SCM_PRETEND_VERSION: `git describe` on the NFS home times out (40 s) and kills the build otherwise.
   SETUPTOOLS_SCM_PRETEND_VERSION="0.19.2+$gfx" VLLM_TARGET_DEVICE=rocm PYTORCH_ROCM_ARCH="$gfx" \
     MAX_JOBS="$jobs" CMAKE_BUILD_PARALLEL_LEVEL="$jobs" PIP_CONSTRAINT="$constraints" \
-    pip install --user --no-build-isolation -e . 2>&1 | tee "$HOME/vllm_build.log" | tail -3
+    "${install[@]}" --no-build-isolation -e . 2>&1 | tee "$BUILD_LOG" | tail -3 || return 1
+  echo "$want" > "$STAMP"
 }
 
 download() {
@@ -225,7 +299,7 @@ serve() {
   # preempts the highest: planning asks at -10, labeling sends none (0), so a planning question never queues behind
   # a labeling run, and continuous batching keeps the labels decoding beside it. Requests are not logged
   # (--enable-log-requests stays off), so no prompt is written to the server log or to disk.
-  nohup python3 -m vllm.entrypoints.openai.api_server \
+  nohup "$PY" -m vllm.entrypoints.openai.api_server \
     --model "$dir" --served-model-name teacher group-brain --port "$PORT" --host 127.0.0.1 \
     --scheduling-policy priority \
     --enable-auto-tool-choice --tool-call-parser "$TOOL_PARSER" \
@@ -235,7 +309,8 @@ serve() {
   echo "vllm serve pid $pid (log: $SERVE_LOG)"
   # Readiness through python3, not curl: not every pod image ships curl.
   for i in $(seq 1 180); do
-    python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:$PORT/v1/models', timeout=5)" 2>/dev/null       && { echo "teacher up on $PORT"; return; }
+    python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:$PORT/v1/models', timeout=5)" 2>/dev/null \
+      && { serve_kernel; echo "teacher up on $PORT (quantized matmul kernel: ${STEP_MARKS#kernel=})"; return; }
     kill -0 "$pid" 2>/dev/null || { echo "the server process ended before it answered; see $SERVE_LOG"; tail -20 "$SERVE_LOG"; return 1; }
     sleep 5
   done
@@ -243,13 +318,22 @@ serve() {
   return 1
 }
 
+serve_kernel() {
+  # vLLM logs the kernel it picked for the 4-bit linear layers once at load ("Using ConchLinearKernel for
+  # CompressedTensorsWNA16"); it goes on the serve step's ledger line as kernel=<name>.
+  local name
+  name=$(grep -o 'Using [A-Za-z0-9_]* for CompressedTensorsWNA16' "$SERVE_LOG" 2>/dev/null | head -1 | awk '{print $2}')
+  STEP_MARKS="kernel=${name:-unknown}"
+}
+
 verify() {
   # After build: the patch's rejected hunks (none expected), the compiled extensions, and the platform vLLM resolves.
   echo "vllm_commit: $(git -C "$VLLM_DIR" rev-parse --short=9 HEAD 2>/dev/null)"
   echo "patched_files: $(git -C "$VLLM_DIR" diff --name-only 2>/dev/null | wc -l)"
   echo "rejected_hunks: $(find "$VLLM_DIR" -name '*.rej' -not -path '*/.git/*' 2>/dev/null | tr '\n' ' ')"
+  echo "build_stamp: $(cat "$STAMP" 2>/dev/null || echo none)"
   mkdir -p "$SERVE_DIR" && cd "$SERVE_DIR"   # not $HOME: the ~/vllm checkout would shadow the installed package
-  python3 - <<'PY'
+  "$PY" - <<'PY'
 import importlib
 import torch, vllm
 print(f"vllm: {vllm.__version__}")
@@ -260,6 +344,12 @@ for name in ("vllm._C", "vllm._rocm_C", "vllm._moe_C"):
         print(f"{name}: FAILS {type(exc).__name__}: {exc}")
 from vllm.platforms import current_platform
 print(f"platform: {type(current_platform).__name__}, torch sees {torch.cuda.device_count()} GPU")
+print(f"vllm_from: {vllm.__file__}")
+try:
+    import vllm._rocm_C  # noqa: F401
+    print(f"hybrid_w4a16_op: {'present' if hasattr(torch.ops._rocm_C, 'wvSplitK_int4_g') else 'absent'}")
+except Exception as exc:
+    print(f"hybrid_w4a16_op: unknown ({type(exc).__name__})")
 PY
 }
 

@@ -35,11 +35,47 @@ export interface LabRunSummary {
   scores: { current: LabNum; candidate: LabNum; teacher: LabNum };
 }
 
+/**
+ * The chip a lab row was measured on, worked out by the gateway from the row itself (lab_bench.chip_of): the lab's
+ * Strix Halo pods ("current"), the R9700s it had before ("earlier"), any other named chip ("reference", such as the
+ * A100 on Colab) or a row that only says it is another chip ("unnamed"). `reason` is how that was decided.
+ */
+export interface LabChip {
+  key: string;
+  name: string;
+  where: string | null;
+  current: boolean;
+  role: "current" | "earlier" | "reference" | "unnamed";
+  reason?: string;
+}
+
+/** "NVIDIA A100 (Colab)": a reference chip with where it ran; the lab's own cards by name alone. */
+export function chipShort(chip: Pick<LabChip, "name" | "where" | "role">): string {
+  return chip.role === "reference" && chip.where ? `${chip.name} (${chip.where})` : chip.name;
+}
+
+/** The heading for a chip that is not the current lab: "Reference: NVIDIA A100 (Colab)", "Earlier lab cards: Radeon R9700". */
+export function chipLabel(chip: Pick<LabChip, "name" | "where" | "role">): string {
+  if (chip.role === "earlier") return `Earlier lab cards: ${chip.name}`;
+  if (chip.role === "reference") return `Reference: ${chipShort(chip)}`;
+  if (chip.role === "unnamed") return `Another chip, not named${chip.where ? ` (${chip.where})` : ""}`;
+  return chip.name;
+}
+
+/** What a chip is to the lab, in a few words. */
+export function chipRole(chip: Pick<LabChip, "role">): string {
+  if (chip.role === "earlier") return "the lab's earlier cards, or untagged rows from before the lab moved";
+  if (chip.role === "reference") return "a reference, not the lab's hardware";
+  if (chip.role === "unnamed") return "rows that mark themselves as another chip without naming it";
+  return "the lab now";
+}
+
 export interface LabMeasured extends LabNum {
   metric: string;
   node: string | null;
   measured_at: string | null;
-  other_chip?: boolean; // measured on the R9700s, before the lab moved to the Strix Halo pods
+  other_chip?: boolean; // not measured on the current lab's chip
+  chip?: LabChip; // which chip it was
 }
 
 export interface LabList {

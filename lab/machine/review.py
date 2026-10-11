@@ -63,6 +63,7 @@ log = logging.getLogger("lab.review")
 UTC = dt.timezone.utc
 
 VERB = "review"
+CLI_VERB = "review"   # registers python -m lab review
 REVIEW_DIR = "review"                                   # under the state dir
 REPO = "raohemdutt/Knighthacks26"
 GH_COMMAND = ("gh", "pr", "list", "--repo", REPO, "--state", "open", "--limit", "100", "--json",

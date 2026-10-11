@@ -142,10 +142,11 @@ export const SCREENS: Record<string, string> = {
   "/": "Ask",
   "/now/": "Now",
   "/today/": "Today",
-  "/dayrun/": "Day Run",
+  "/dayrun/": "Today's Plan",
   "/circle/": "Circle",
   "/impact/": "Impact",
-  "/map/": "Room map",
+  "/home/": "Home",
+  "/map/": "the Room screen",
   "/play/": "Sort It",
   "/approvals/": "Approvals",
   "/teach/": "Teach",
@@ -172,7 +173,7 @@ const ROWS: Row[] = [
   // Now
   { id: "now:next", route: "/now/", label: "What is next", names: ["next class", "next event", "what is next", "my next class", "next thing", "leave by", "when do i leave", "when to leave", "where should i be"], at: [{ id: "now:next" }, { sel: "main section[aria-live='polite']" }, HEAD], say: ["Look at the top of the Now screen.", "This is what is next, and when to leave for it."] },
   { id: "now:action", route: "/now/", label: "What to do now", names: ["what to do", "what to do now", "what should i do", "the one thing", "do now"], at: [{ sel: "main section[aria-label='What to do']" }, HEAD], say: ["Look just under the top of the Now screen.", "This is the one thing to do right now."] },
-  { id: "now:plan", route: "/now/", label: "Your day", names: ["my plan", "the plan", "plan ribbon", "ribbon", "my day", "my schedule", "today plan", "day plan", "the blocks"], at: [{ id: "now:plan" }, { sel: "main section[aria-label='Your day']" }, HEAD], say: ["Look at the list called Your day.", "These are today's blocks in order. Tap one to see why it is there."] },
+  { id: "now:plan", route: "/now/", label: "Your day", names: ["my plan", "the plan", "plan ribbon", "ribbon", "my day", "my schedule", "day plan", "the blocks"], at: [{ id: "now:plan" }, { sel: "main section[aria-label='Your day']" }, HEAD], say: ["Look at the list called Your day.", "These are today's blocks in order. Tap one to see why it is there."] },
   { id: "now:checkin", route: "/now/", label: "The check-in", names: ["check in", "checkin", "check in card", "how am i", "wellbeing", "the check"], at: [{ sel: "main section[aria-label='Check-in from Atlas']" }, HEAD], say: ["Look above the list called Your day.", "When Atlas has a check-in for you, it is this card."] },
   { id: "now:brief", route: "/now/", label: "Brief me", names: ["brief me", "the brief", "morning brief", "briefing", "read my day"], at: [{ sel: "main button", text: "^(Brief me|Stop)$" }, HEAD], say: ["Look at the top of the Now screen.", "Tap Brief me and Atlas reads your day aloud."] },
   { id: "now:sofar", route: "/now/", label: "Today so far", names: ["today so far", "so far", "what i did", "progress today"], at: [{ sel: "main section[aria-label='Today so far']" }, HEAD], say: ["Look at the strip called Today so far.", "This is what the box measured today."] },
@@ -181,11 +182,19 @@ const ROWS: Row[] = [
   { id: "today:due", route: "/today/", label: "Due next", names: ["due next", "what is due", "deadlines", "assignments", "homework", "due this week"], at: [section("^Due next"), HEAD], say: ["Look at the part called Due next.", "Your next deadlines, soonest first."] },
   { id: "today:coming", route: "/today/", label: "Coming up", names: ["coming up", "upcoming", "events today", "what is coming"], at: [section("^Coming up"), HEAD], say: ["Look at the part called Coming up.", "The events on your calendar."] },
   { id: "today:waste", route: "/today/", label: "Waste Watch", names: ["waste watch", "waste", "what i threw away"], at: [section("^Waste Watch"), HEAD], say: ["Look at the part called Waste Watch.", "What went into which bin."] },
-  // Day Run
-  { id: "dayrun:plan", route: "/dayrun/", label: "Your plan in Day Run", names: ["day run plan", "day run", "plan my day", "the game", "day game"], at: [section("^Your plan"), HEAD], say: ["Look at the part called Your plan.", "Move the blocks here; every change is run on the box."] },
-  { id: "dayrun:play", route: "/dayrun/", label: "Play the day", names: ["play", "play the day", "watch the day", "play mode", "watch my day"], at: [{ sel: "main button", text: "^(Watch|Play)" }, HEAD], say: ["Look near the top of Day Run.", "This plays your day, with a figure walking the campus."] },
-  { id: "dayrun:map", route: "/dayrun/", label: "Where the day takes you", names: ["day map", "campus map", "where the day takes me", "the route", "campus"], at: [section("^Where the day takes you"), HEAD], say: ["Look at the part called Where the day takes you.", "The map of today's walks."] },
-  { id: "dayrun:board", route: "/dayrun/", label: "The board", names: ["the board", "board", "the deadlines board", "risk"], at: [section("^The board"), HEAD], say: ["Look at the part called The board.", "Everything that has to fit into the day."] },
+  // Today's Plan (the route and the ids keep their old name). Each part of the screen carries a data-guide hook
+  // (plan:hero, plan:map, plan:strip, plan:dates, plan:agenda, plan:row:<block id>, plan:tell, plan:keep, plan:due,
+  // plan:details, plan:ahead), listed in lib/guide-hooks.json.
+  { id: "dayrun:tell", route: "/dayrun/", label: "Tell Atlas what to change", names: ["tell atlas", "change the plan", "change my plan", "edit the plan", "edit my plan", "say a change", "tell atlas what to change"], at: [{ id: "plan:tell" }, { id: "plan:hero" }, HEAD], say: ["Look at the bottom of the card at the top.", "Type or say a change, like move lunch to one."] },
+  { id: "dayrun:plan", route: "/dayrun/", label: "Your plan in Today's Plan", names: ["today's plan", "todays plan", "my plan", "the plan", "day run plan", "day run", "plan my day", "the game", "day game", "my plan today", "the agenda"], at: [{ id: "plan:agenda" }, section("^Your plan"), HEAD], say: ["Look at the part called Your plan.", "Tap a block to move it, or tap Add in a gap; every change is tried at once."] },
+  { id: "dayrun:verdict", route: "/dayrun/", label: "Whether the plan works", names: ["does my plan work", "what needs fixing", "things to fix", "fix it", "the verdict", "is my plan ok"], at: [{ id: "plan:hero" }, HEAD], say: ["Look at the card at the top of Today's Plan.", "It says whether the plan works, and what to fix if it does not."] },
+  { id: "dayrun:play", route: "/dayrun/", label: "Watch the day", names: ["play", "play the day", "watch the day", "play mode", "watch my day"], at: [{ sel: "main button", text: "^(Watch|Pause|Play)" }, { id: "plan:hero" }, HEAD], say: ["Look at the card at the top of Today's Plan.", "This plays your day, with a figure walking the campus."] },
+  { id: "dayrun:map", route: "/dayrun/", label: "The map of your plan", names: ["the map", "map", "day map", "campus map", "where the day takes me", "the route", "campus", "plan map"], at: [{ id: "plan:map" }, { id: "plan:hero" }, HEAD], say: ["Look at the map in the card at the top.", "Tap a block of your plan and its walk lights up here."] },
+  { id: "dayrun:strip", route: "/dayrun/", label: "The day at a glance", names: ["the day bar", "day strip", "the timeline of my day", "energy", "my energy", "hour by hour"], at: [{ id: "plan:strip" }, { id: "plan:hero" }, HEAD], say: ["Look under the map, at the bar.", "The whole day in one bar; drag along it to move through the day."] },
+  { id: "dayrun:dates", route: "/dayrun/", label: "Other days", names: ["yesterday", "previous days", "past days", "earlier days", "last week", "tomorrow", "next days", "other days", "the date strip", "change the day", "pick a day"], at: [{ id: "plan:dates" }, HEAD], say: ["Look at the row of days under the title.", "Tap a day to open it; a greyed one has nothing to show."] },
+  { id: "dayrun:board", route: "/dayrun/", label: "What is due", names: ["the board", "board", "the deadlines board", "risk", "what is due", "deadlines in the plan", "due soon", "work left"], at: [{ id: "plan:due" }, section("^Due soon"), HEAD], say: ["Look at the part called Due soon.", "Each deadline, how much work is left, and a Why that says where the numbers come from."] },
+  { id: "dayrun:keep", route: "/dayrun/", label: "Keep this plan", names: ["keep this plan", "keep the plan", "save the plan", "save my plan", "send the plan"], at: [{ id: "plan:keep" }, HEAD], say: ["Look under your plan.", "Keep this plan asks before anything goes on your calendar."] },
+  { id: "dayrun:details", route: "/dayrun/", label: "Details", names: ["plan details", "the details", "the chart", "the score", "points", "why this score"], at: [{ id: "plan:details" }, HEAD], say: ["Look at the bottom of Today's Plan.", "Details opens sleep, meals, walking and the score, each with a Why."] },
   // Circle
   { id: "circle:people", route: "/circle/", label: "People in your Circle", names: ["people", "my friends", "friends", "who is in my circle", "circle", "my circle"], at: [tab("^People"), HEAD], reveal: [{ op: "press", at: tab("^People"), key: "circle:people" }], say: ["Look at the row of buttons under the heading.", "People: who is in your Circle and where they are, if they shared."] },
   { id: "circle:plans", route: "/circle/", label: "Plans with your Circle", names: ["plans", "circle plans", "plans with friends", "find a time", "conversations"], at: [tab("^Plans"), HEAD], reveal: [{ op: "press", at: tab("^Plans"), key: "circle:plans" }], say: ["Look at the row of buttons under the heading.", "Plans: what is coming up and what the Atlases agreed."] },
@@ -197,9 +206,17 @@ const ROWS: Row[] = [
   { id: "impact:practice", route: "/impact/", label: "Practise in Sort It", names: ["practice set", "practise", "practice", "practise in sort it", "what i got wrong"], at: [section("^Practise in Sort It"), HEAD], say: ["Look at the part called Practise in Sort It.", "The things that went in the wrong bin, ready to practise."] },
   { id: "impact:where", route: "/impact/", label: "What went where", names: ["what went where", "disposals", "which bin things went"], at: [section("^What went where"), HEAD], say: ["Look at the part called What went where.", "Every disposal the camera saw."] },
   // Room map and Sort It
-  { id: "map:room", route: "/map/", label: "The room map", names: ["room map", "the room", "map of the room", "zones map", "the map", "room twin", "3d room"], at: [{ id: "map:room" }, { sel: "main svg[role=img]" }, HEAD], say: ["Look at the drawing at the top of the Room map.", "Each panel is one camera's view. A numbered pin is one of your things."] },
+  { id: "map:room", route: "/map/", label: "The room", names: ["room map", "the room", "map of the room", "zones map", "the map", "room twin", "3d room", "walk the room"], at: [{ id: "map:room" }, HEAD], say: ["Look at the room on the Room screen.", "The room, drawn from its floor plan. A pin is one of your things; drag to look around."] },
+  { id: "map:now", route: "/map/", label: "Right now in the room", names: ["right now", "who is in view", "who is in the room", "who the cameras see", "in view"], at: [section("^Right now"), HEAD], say: ["Look at the part called Right now.", "Who and what the cameras see at this moment."] },
+  { id: "map:cameras", route: "/map/", label: "Camera views", names: ["camera views", "camera panels", "the zones", "cameras and zones"], reveal: [{ op: "press", at: { sel: "main [role=group][aria-label='View'] button", text: "^Camera views" }, key: "cameras" }], at: [{ id: "map:room" }, HEAD], say: ["Look at the room card, switched to Camera views.", "Each panel is one camera, with its zones where they sit in the picture."] },
   { id: "map:things", route: "/map/", label: "Where are my things?", names: ["my things", "where are my things", "things list", "last seen", "lost things"], at: [section("^Where are my things"), HEAD], say: ["Look at the part called Where are my things.", "Tap a name to see where the cameras last saw it."] },
-  { id: "map:sort", route: "/map/", label: "Which bin?", names: ["which bin", "the bin", "bin route", "way to the bin", "where does this go"], at: [section("^Sort It: which bin"), HEAD], say: ["Look at the part called Sort It: which bin.", "Pick what you are holding and the map draws the way to its bin."] },
+  { id: "map:sort", route: "/map/", label: "Which bin?", names: ["which bin", "the bin", "bin route", "way to the bin", "where does this go"], reveal: [{ op: "open", at: { id: "map:bins" }, key: "bins" }], at: [{ id: "map:bins" }, HEAD], say: ["Look under the room, at Which bin does it go in.", "Pick what you are holding and the way to its bin is drawn in the room."] },
+  // Home
+  { id: "home:top", route: "/home/", label: "Home", names: ["home", "home screen", "landing", "start screen", "the box", "the device", "atlas box", "exploded view", "what is inside the box"], at: [HEAD], say: ["Look at the top of Home.", "The Atlas box. Scroll and it pulls apart to show what is inside."] },
+  { id: "home:what", route: "/home/", label: "What Atlas does", names: ["what atlas does", "what it does", "features", "what can atlas do"], at: [{ sel: "main section[aria-labelledby='what']" }, HEAD], say: ["Look further down Home.", "What Atlas does, in four parts: it sees, remembers, plans the day and asks first."] },
+  { id: "home:numbers", route: "/home/", label: "The numbers", names: ["the numbers", "by the numbers", "stats", "figures"], at: [{ sel: "main section[aria-label='By the numbers']" }, HEAD], say: ["Look at the row of numbers on Home.", "The few numbers that matter about the box."] },
+  { id: "home:flow", route: "/home/", label: "How a question travels", names: ["how a question travels", "how it works", "the flow", "how atlas works", "see detect remember"], at: [{ sel: "main section[aria-labelledby='flow']" }, HEAD], say: ["Look at the drawing near the foot of Home.", "How a question travels through the box: see, detect, remember, ask, answer, act."] },
+  { id: "home:start", route: "/home/", label: "A way in", names: ["a way in", "try it", "get started", "where do i start on home"], at: [{ sel: "main section[aria-labelledby='go']" }, HEAD], say: ["Look at the foot of Home.", "Two ways in: Ask Atlas, or See today."] },
   { id: "play:game", route: "/play/", label: "Sort It", names: ["sort it", "sorting game", "sort game", "sorting"], at: [{ sel: "main [role=group][aria-label='Item']" }, HEAD], say: ["Look at the row of things to sort.", "Pick one and the board shows the way to its bin."] },
   { id: "play:practice", route: "/play/", label: "Practise what you got wrong", names: ["practise what i got wrong", "my mistakes", "wrong bin"], at: [{ sel: "main section[aria-label='Practise what you got wrong']" }, HEAD], say: ["Look at the card at the top of Sort It.", "These are the ones that went in the wrong bin."] },
   { id: "play:better", route: "/play/", label: "Are you getting better?", names: ["am i getting better", "getting better", "my score", "sorting score"], at: [section("^Are you getting better"), HEAD], say: ["Look at the part called Are you getting better.", "Your sorting, week by week."] },
@@ -220,11 +237,6 @@ const ROWS: Row[] = [
   { id: "settings", route: null, label: "Settings", names: ["settings", "voice settings", "the token", "use my eyes", "eye tracking", "gaze", "camera switch"], at: [{ sel: "button[aria-label='Settings']" }, { sel: "aside button", text: "^Settings" }], say: ["Look for the Settings button: top right on a phone, at the foot of the list of screens on a computer.", "Settings: the voice switches, and Use my eyes to guide me."] },
 ];
 
-/** The things the cameras can be asked about. A question that names one goes to the box, never to the app guide. */
-export const ROOM_THINGS = "key keys wallet charger laptop phone package parcel bag backpack bottle mug cup glasses headphones earbuds umbrella notebook remote badge jacket shoes pen pencil mouse keyboard tablet ipad purse lunch snack".split(" ");
-/** The few the room map keeps a pin for (lib/room.ts WATCH_ITEMS). */
-export const PINNED = ["keys", "wallet", "charger", "laptop", "phone"];
-
 function build(row: Row): GuideTarget {
   const { names: _names, say, at, ...rest } = row;
   return { ...rest, at: Array.isArray(at) ? at : [at], steps: [{ say: say[0] }, { say: say[1] }] };
@@ -240,10 +252,11 @@ export function pinTarget(thing: string): GuideTarget {
   return {
     id: `pin:${thing}`,
     route: "/map/",
-    label: `${label} on the room map`,
+    label: `${label} in the room`,
+    // picking the thing in the Room screen's own finder focuses its pin in the room and opens its card: the guide drives that, and adds the dot and the words
     reveal: [{ op: "press", at: chip, key: "pick" }],
-    at: [{ id: `pin:${thing}` }, section("^Where are my things"), HEAD],
-    steps: [{ say: "Look at the drawing of the room." }, { say: `The ringed pin is where the cameras last saw your ${thing}. It sits inside its zone, not at the exact spot.` }],
+    at: [{ id: `pin:${thing}` }, { id: `thing:${thing}` }, section("^Where are my things"), HEAD],
+    steps: [{ say: "Look at the room." }, { say: `This is where the cameras last saw your ${thing}.` }],
   };
 }
 
@@ -271,31 +284,190 @@ export function resolveApp(question: string, route: string | null = null): Resol
 }
 
 export type Asked =
-  | { kind: "room"; thing: string } // a thing or a person in the room: the box answers; the guide follows the evidence
+  | { kind: "thing"; thing: string } // anything that is not a part of the app: the box answers; the guide then looks for it (answer, cameras, room)
   | { kind: "app"; target: GuideTarget } // something in the app: resolved here
-  | { kind: "unsure"; thing: string } // ask the box as today; guide only if its answer shows a picture
   | null; // not a where-question
 
-/** Conservative: a known thing in the room goes to the box; a known app feature to the guide; anything else is the box's. */
+/**
+ * No list of nouns: a where-question that names a part of the app goes to the app guide, and every other one is about
+ * a thing (or a person, or a place) the box is asked for. What can be pointed at is decided after the answer, from what
+ * the box really has (`resolveThing`).
+ */
 export function classify(question: string, route: string | null = null): Asked {
   const thing = whereIntent(question);
   if (thing === null) return null;
-  const said = thing.split(" ");
-  if (said.some((w) => ROOM_THINGS.includes(w))) return { kind: "room", thing };
   const app = resolveApp(question, route);
   if (app.target && app.confidence >= 0.8) return { kind: "app", target: app.target };
-  return { kind: "unsure", thing };
-}
-
-/** The thing a room question names, as the room map knows it: "my keys" -> "keys"; null when the map keeps no pin for it. */
-export function pinnedThing(thing: string): string | null {
-  const said = thing.split(" ");
-  return PINNED.find((p) => said.includes(p) || said.includes(p.replace(/s$/, ""))) ?? null;
+  return { kind: "thing", thing };
 }
 
 /** The thing itself, for a sentence: "my keys" -> "keys". */
 export function thingName(thing: string): string {
   return thing.split(" ").filter((w) => !FILLER.has(w)).join(" ") || thing;
+}
+
+/** The labels the box may know a thing by, most likely first: "my key" -> ["key", "keys"]; "the coffee mugs" -> ["coffee mugs", "coffee mug", "mugs", "mug"]. */
+export function labelsFor(thing: string): string[] {
+  const name = thingName(thing);
+  const forms = (w: string) => (w.length > 3 && w.endsWith("s") ? [w, w.slice(0, -1)] : [w, `${w}s`]);
+  const last = name.split(" ").pop() ?? name;
+  return [...new Set([...forms(name), ...(last !== name ? forms(last) : [])])].filter(Boolean);
+}
+
+/** Was it asked as the person's own thing ("my keys", "our charger")? A name ("Dominick") or a place is not. */
+export const ownThing = (thing: string): boolean => /^(?:my|our) /.test(thing);
+
+// ---------- any object: where it is in a picture, exactly or about ----------
+
+export interface BoxN {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+/** GET /memory/last-seen/<label> */
+export interface WhereSeen {
+  label: string;
+  camera_id: string;
+  zone: string | null;
+  position: string | null;
+  frame_ref: string | null;
+  box: BoxN | null;
+  seen_at: string;
+  anchors: { label: string; box: BoxN }[];
+}
+
+export type Relation = "left of" | "right of" | "in front of" | "behind" | "next to" | "on" | "under" | "between";
+const RELATIONS: [RegExp, Relation][] = [
+  [/\b(?:to the left of|left of|on the left of)\b/, "left of"],
+  [/\b(?:to the right of|right of|on the right of)\b/, "right of"],
+  [/\bin front of\b/, "in front of"],
+  [/\bbehind\b/, "behind"],
+  [/\b(?:next to|beside|by|near)\b/, "next to"],
+  [/\b(?:under|underneath|below|beneath)\b/, "under"],
+  [/\bbetween\b/, "between"],
+  [/\b(?:on top of|on|atop)\b/, "on"],
+];
+
+/** "left of the closed laptop" -> left of, ["closed laptop"]. The first relation in the sentence wins; null when there is none. */
+export function parseRelation(position: string | null): { relation: Relation; things: string[] } | null {
+  const low = plainText(position ?? "");
+  let best: { at: number; end: number; relation: Relation } | null = null;
+  for (const [re, relation] of RELATIONS) {
+    const m = re.exec(low);
+    if (m && (!best || m.index < best.at)) best = { at: m.index, end: m.index + m[0].length, relation };
+  }
+  if (!best) return null;
+  const rest = low.slice(best.end).split(/\b(?:left of|right of|in front of|behind|next to|beside|under|at|in the)\b/)[0]!.trim();
+  const things = (best.relation === "between" ? rest.split(/\band\b/) : [rest]).map((t) => thingName(t.trim())).filter(Boolean);
+  return things.length > 0 ? { relation: best.relation, things } : null;
+}
+
+const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+
+/** A soft region for "<relation> the anchor": as big as the anchor is small, never a tight box. In a picture, "behind" is above and "in front of" is below. */
+export function aboutRegion(relation: Relation, anchors: BoxN[]): BoxN | null {
+  const a = anchors[0];
+  if (!a) return null;
+  const w = a.x2 - a.x1;
+  const h = a.y2 - a.y1;
+  const side = Math.max(0.12, Math.min(0.3, w * 0.8));
+  const tall = Math.max(0.12, Math.min(0.3, h * 0.8));
+  let r: BoxN;
+  if (relation === "between" && anchors[1]) {
+    const b = anchors[1];
+    r = { x1: Math.min(a.x2, b.x2), x2: Math.max(a.x1, b.x1), y1: Math.min(a.y1, b.y1), y2: Math.max(a.y2, b.y2) };
+    if (r.x2 - r.x1 < 0.1) r = { ...r, x1: (r.x1 + r.x2) / 2 - 0.08, x2: (r.x1 + r.x2) / 2 + 0.08 };
+  } else if (relation === "left of") r = { x1: a.x1 - side, x2: a.x1, y1: a.y1 - 0.04, y2: a.y2 + 0.04 };
+  else if (relation === "right of") r = { x1: a.x2, x2: a.x2 + side, y1: a.y1 - 0.04, y2: a.y2 + 0.04 };
+  else if (relation === "behind") r = { x1: a.x1 - 0.04, x2: a.x2 + 0.04, y1: a.y1 - tall, y2: a.y1 + h * 0.15 };
+  else if (relation === "in front of" || relation === "under") r = { x1: a.x1 - 0.04, x2: a.x2 + 0.04, y1: a.y2 - h * 0.15, y2: a.y2 + tall };
+  else if (relation === "on") r = { x1: a.x1, x2: a.x2, y1: a.y1 - h * 0.1, y2: a.y2 };
+  else r = { x1: a.x1 - side * 0.7, x2: a.x2 + side * 0.7, y1: a.y1 - 0.06, y2: a.y2 + 0.06 }; // next to: either side
+  const out = { x1: clamp01(r.x1), y1: clamp01(r.y1), x2: clamp01(r.x2), y2: clamp01(r.y2) };
+  return out.x2 - out.x1 > 0.03 && out.y2 - out.y1 > 0.03 ? out : null;
+}
+
+export interface Spotlight {
+  /** "box": a tight outline on the thing. "about": a soft region placed from the words. "picture": the whole picture. */
+  kind: "box" | "about" | "picture";
+  rect: BoxN | null; // null: the whole picture
+  precision: Precision;
+  label: string; // "Here it is" | "About here"
+  words: string | null; // the model's own words for the place, shown underneath
+  anchor: string | null; // what the region was placed against
+}
+
+/**
+ * What to draw on the picture a thing was seen in. A tight outline needs a box for the thing itself: with no box the
+ * most this ever returns is a soft region beside something that does have one, and with no such anchor, the picture.
+ */
+export function spotlightFor(where: Pick<WhereSeen, "box" | "position" | "anchors"> | null, plural = false): Spotlight {
+  const words = where?.position?.trim() || null;
+  const b = where?.box;
+  if (b && [b.x1, b.y1, b.x2, b.y2].every((v) => Number.isFinite(v)) && b.x2 > b.x1 && b.y2 > b.y1) {
+    const p = precisionOf("box");
+    return { kind: "box", rect: { x1: clamp01(b.x1), y1: clamp01(b.y1), x2: clamp01(b.x2), y2: clamp01(b.y2) }, precision: p, label: spotWords(p, plural), words, anchor: null };
+  }
+  const p = precisionOf(words ? "words" : "picture");
+  const rel = parseRelation(words);
+  if (rel && where) {
+    const found = rel.things.map((t) => where.anchors.find((a) => labelsFor(t).some((l) => l === a.label || a.label.split(" ").includes(l))));
+    const boxes = found.filter((a): a is { label: string; box: BoxN } => Boolean(a)).map((a) => a.box);
+    const rect = boxes.length > 0 && (rel.relation !== "between" || boxes.length > 1 || rel.things.length === 1) ? aboutRegion(rel.relation, boxes) : null;
+    if (rect) return { kind: "about", rect, precision: p, label: spotWords(p), words, anchor: found.find(Boolean)!.label };
+  }
+  return { kind: "picture", rect: null, precision: p, label: spotWords(p), words, anchor: null };
+}
+
+/** A box in the picture -> where it falls in a frame that shows the picture with object-fit: cover (percent of the frame). */
+export function coverRect(box: BoxN, natural: { w: number; h: number }, frame: { w: number; h: number }): { left: number; top: number; width: number; height: number } {
+  const scale = Math.max(frame.w / Math.max(natural.w, 1), frame.h / Math.max(natural.h, 1));
+  const w = natural.w * scale;
+  const h = natural.h * scale;
+  const ox = (frame.w - w) / 2;
+  const oy = (frame.h - h) / 2;
+  const x1 = Math.max(0, ox + box.x1 * w);
+  const y1 = Math.max(0, oy + box.y1 * h);
+  const x2 = Math.min(frame.w, ox + box.x2 * w);
+  const y2 = Math.min(frame.h, oy + box.y2 * h);
+  return { left: (100 * x1) / frame.w, top: (100 * y1) / frame.h, width: (100 * Math.max(0, x2 - x1)) / frame.w, height: (100 * Math.max(0, y2 - y1)) / frame.h };
+}
+
+export type ThingSource = "answer-box" | "answer-words" | "answer-picture" | "live-track" | "room-pin" | "none";
+
+export interface ThingFound {
+  source: ThingSource;
+  precision: Precision | null; // null: nothing to point at
+  spotlight: Spotlight | null; // for the answer's picture
+  say: string; // the sentence for it: "Your keys are here." / "about here: left of the laptop" / "I haven't seen that."
+}
+
+/**
+ * Where to point for a thing the box was asked about, in this order: the answer's own picture (with the sighting's box
+ * or words when the sighting is of that same frame), a live detector track, the room's pin. `citationFrame` is the frame
+ * under the answer; `where` is Memory's last sighting; `live` is true when a camera tracks it right now.
+ */
+export function resolveThing(input: { thing: string; citationFrame: string | null; where: WhereSeen | null; live: boolean }): ThingFound {
+  const name = thingName(input.thing);
+  const plural = /s$/.test(name);
+  const { where, citationFrame } = input;
+  if (citationFrame) {
+    const same = where && where.frame_ref === citationFrame ? where : null;
+    const spot = spotlightFor(same, plural);
+    const source: ThingSource = spot.kind === "box" ? "answer-box" : same?.position ? "answer-words" : "answer-picture";
+    return { source, precision: spot.precision, spotlight: spot, say: hereSentence(spot.precision, name, plural, source === "answer-picture" ? "somewhere in this picture" : spot.words) };
+  }
+  if (input.live) {
+    const p = precisionOf("box");
+    return { source: "live-track", precision: p, spotlight: null, say: `${hereSentence(p, name, plural)} This is the camera's picture, refreshed, not video.` };
+  }
+  if (where) {
+    const p = precisionOf("zone-pin");
+    return { source: "room-pin", precision: p, spotlight: null, say: hereSentence(p, name, plural, where.position ?? (where.zone ? `in the ${where.zone} zone` : null)) };
+  }
+  return { source: "none", precision: null, spotlight: null, say: "I haven't seen that." };
 }
 
 // ---------- exact, or about: one rule for the drawing and the words ----------
@@ -313,6 +485,7 @@ export type PlaceSource =
   | "picture" // "it is somewhere in this picture": a frame with no box for the thing
   | "words" // a position given in words ("left of the laptop")
   | "zone-pin" // a pin placed inside a zone, not at the spot
+  | "floor-default" // a floor position from a camera still on the room file's placeholder calibration
   | "route-traced" // a route over a map traced from a picture, or over legs with no geometry
   | "unscaled"; // a length with no defensible scale
 
@@ -332,6 +505,7 @@ const ABOUT: Partial<Record<PlaceSource, string>> = {
   picture: "the box keeps the zone and a description, not where it is in the picture",
   words: "its place is known only in words",
   "zone-pin": "the pin sits inside its zone, not at the exact spot",
+  "floor-default": "this camera is not calibrated for the room yet",
   "route-traced": "the route follows what the data shows, not a surveyed path",
   unscaled: "the plan has no scale",
 };
@@ -340,6 +514,15 @@ const ABOUT: Partial<Record<PlaceSource, string>> = {
 export function precisionOf(source: PlaceSource): Precision {
   const why = EXACT[source];
   return why ? { precision: "exact", reason: why } : { precision: "about", reason: ABOUT[source] ?? "its place is not measured" };
+}
+
+/**
+ * A pin in the room twin: exact only when the box projected the spot from a camera track AND that camera's calibration
+ * was really set (GET /api/room, `calibration[camera].source`). A placeholder calibration makes every position about.
+ */
+export function roomPrecision(projected: boolean, calibration: "set" | "default" | undefined): Precision {
+  if (!projected) return precisionOf("zone-pin");
+  return precisionOf(calibration === "default" ? "floor-default" : "floor");
 }
 
 /** The two or three words on the spotlight: "Here it is" only when exact, "About here" otherwise. */

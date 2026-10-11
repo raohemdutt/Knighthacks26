@@ -40,7 +40,7 @@ export function OperatorAsk({ chips, onWhy, guideChips = [], jobs = [] }: { chip
   /** True when the pointer took the question. */
   const guide = async (question: string): Promise<boolean> => {
     try {
-      const { run, found } = await spotRun(question);
+      const { run, found } = await spotRun(question, null, Boolean(voice.canSpeak && voice.getSettings().speak));
       if (run) return pointAt(run), true;
       setMeant(found?.alternatives ?? []);
     } catch {

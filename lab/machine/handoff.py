@@ -51,6 +51,7 @@ __all__ = ["VERB", "OUTCOME", "NOTES_DIR", "NOTES_LOCK", "ENV_ACTOR", "ENV_TIER"
 log = logging.getLogger("lab.handoff")
 
 VERB = "handoff"
+CLI_VERB = "handoff"   # registers python -m lab handoff
 OUTCOME = "handoff"
 NOTES_DIR = "notes"            # under the state dir; allowed.py keeps every sitting out of it
 NOTES_LOCK = "notes.lock"      # in the state dir, beside ledger.lock

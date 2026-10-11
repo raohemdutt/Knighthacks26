@@ -46,8 +46,9 @@ try {
 
   // ---- room thing, app thing, or unsure
   const kind = (q, route = "/") => G.classify(q, route)?.kind ?? null;
-  for (const q of ["Where did I leave my keys?", "where is my wallet", "have you seen my charger", "where's the package", "Where are my keys?", "where is my laptop", "find my phone"]) eq(`room: ${q}`, kind(q), "room");
-  for (const q of ["Where should I go tonight?", "where is Dominick", "where is the nearest pizza", "where was I at noon"]) eq(`unsure: ${q}`, kind(q), "unsure");
+  for (const q of ["Where did I leave my keys?", "where is my wallet", "have you seen my charger", "where's the package", "Where are my keys?", "where is my laptop", "find my phone", "where is my stapler", "where did I leave the blue folder"]) eq(`thing: ${q}`, kind(q), "thing");
+  for (const q of ["Where should I go tonight?", "where is Dominick", "where is the nearest pizza", "where was I at noon"]) eq(`a name or a place is a thing to ask the box about too: ${q}`, kind(q), "thing");
+  yes("no list of nouns decides what a thing is", !("ROOM_THINGS" in G) && !("PINNED" in G));
   eq("not a where-question", kind("What should I eat?"), null);
 
   const APP = [
@@ -92,10 +93,22 @@ try {
     eq(`app: ${q}`, r.target?.id ?? null, id);
     if (q.startsWith("where") || q.startsWith("show")) eq(`app kind: ${q}`, kind(q), "app");
   }
+  // Today's Plan: asked from that screen, its own parts win; from elsewhere the old names still find it
+  for (const [q, id] of [
+    ["where's my plan", "dayrun:plan"],
+    ["where do I change my plan", "dayrun:plan"], // the agenda: tap a block to change it
+    ["where do I tell atlas what to change", "dayrun:tell"],
+    ["where's the map", "dayrun:map"],
+    ["show me yesterday", "dayrun:dates"],
+    ["where do I keep this plan", "dayrun:keep"],
+    ["where is what is due", "dayrun:board"],
+  ]) eq(`today's plan: ${q}`, G.resolveApp(q, "/dayrun/").target?.id ?? null, id);
+  eq("today's plan, from Ask", G.resolveApp("where do I find today's plan", "/").target?.id ?? null, "dayrun:plan");
   eq("app: nothing close", G.resolveApp("where is the coffee machine").target, null);
-  eq("pin: keys", G.pinnedThing("my keys"), "keys");
-  eq("pin: a key", G.pinnedThing("my key"), "keys");
-  eq("pin: none for a package", G.pinnedThing("the package"), null);
+  eq("labels: keys", G.labelsFor("my keys"), ["keys", "key"]);
+  eq("labels: a key", G.labelsFor("my key"), ["key", "keys"]);
+  eq("labels: two words", G.labelsFor("the coffee mugs"), ["coffee mugs", "coffee mug", "mugs", "mug"]);
+  eq("own thing or not", [G.ownThing("my keys"), G.ownThing("our charger"), G.ownThing("dominick"), G.ownThing("the nearest pizza")], [true, true, false, false]);
   eq("pin target", [G.pinTarget("keys").id, G.pinTarget("keys").route, G.pinTarget("keys").at[0].id], ["pin:keys", "/map/", "pin:keys"]);
   const ids = G.APP_TARGETS.map((t) => t.id);
   yes("registry ids are unique", new Set(ids).size === ids.length);
@@ -341,6 +354,157 @@ try {
   eq("attention: the sim script", A.simScript(" do-first:1, trust ,,asset:HX-202"), ["do-first:1", "trust", "asset:HX-202"]);
   A.attention.reset();
   eq("attention: reset forgets everything", [Object.keys(A.attention.get().seen).length, A.attention.get().scan.length], [0, 0]);
+
+  // ---- the walk on the plant floor (lib/guideWalk.ts): the dot and the voice in step, a tap snapped to the floor
+  {
+  const WK = await load("guideWalk");
+  const size = { w: 1000, h: 500 };
+  const oneFloor = [{ floor: 1, points: [[0.1, 0.2], [0.3, 0.2], [0.3, 0.6]] }]; // 200 px right, then 200 px down
+  const twoSteps = [
+    { say: "From the yard, go along the corridor.", floor: 1, length_px: 200, upto: 0.5 },
+    { say: "Turn right and go into the hall.", floor: 1, length_px: 200, upto: 1 },
+    { say: "Pump 5 is on your left.", floor: 1, length_px: 0, upto: 1, arrive: true },
+  ];
+  const quiet = WK.planWalk(oneFloor, twoSteps, size, false);
+  eq("walk: each point's share of the way", quiet.at, [0, 0.5, 1]);
+  eq("walk: the arrival sentence is kept for the end", [quiet.arrive, quiet.steps.length], ["Pump 5 is on your left.", 2]);
+  eq("walk: silent, the pace is by length", [quiet.ms, quiet.steps.map((s) => [s.t0, s.t1])], [WK.paceMs(400), [[0, 0.5], [0.5, 1]]]);
+  eq("walk: pace is clamped", [WK.paceMs(10), WK.paceMs(400), WK.paceMs(5000)], [2500, 3600, 12000]);
+  const spoken = WK.planWalk(oneFloor, twoSteps, size, true);
+  eq("walk: spoken, a stretch lasts as long as its sentence", spoken.ms, WK.sayMs(twoSteps[0].say) + WK.sayMs(twoSteps[1].say));
+  yes("walk: spoken is slower than silent", spoken.ms > quiet.ms);
+  eq("walk: which stretch at which time", [WK.stepAt(quiet, 0), WK.stepAt(quiet, 0.49), WK.stepAt(quiet, 0.5), WK.stepAt(quiet, 1)], [0, 0, 1, 1]);
+  eq("walk: share of the way at a share of the time", [WK.walkFraction(quiet, 0), WK.walkFraction(quiet, 0.25), WK.walkFraction(quiet, 0.75), WK.walkFraction(quiet, 1)], [0, 0.25, 0.75, 1]);
+  const screen = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }];
+  eq("walk: the dot along the stops", [WK.alongStops(screen, quiet.at, 0.25), WK.alongStops(screen, quiet.at, 0.75), WK.alongStops(screen, quiet.at, 2)], [{ x: 50, y: 0 }, { x: 100, y: 50 }, { x: 100, y: 100 }]);
+  eq("walk: no stops, no crash", WK.alongStops([], [], 0.5), { x: 0, y: 0 });
+  const stairs = WK.planWalk(
+    [{ floor: 1, points: [[0.1, 0.2], [0.3, 0.2]] }, { floor: 2, points: [[0.7, 0.2], [0.9, 0.2]] }],
+    [{ say: "Go along the corridor.", floor: 1, length_px: 200, upto: 0.5 }, { say: "Take the stairs up to floor 2.", floor: 1, length_px: 0, upto: 0.5, stairs: true },
+     { say: "On floor 2, go along the landing.", floor: 2, length_px: 200, upto: 1 }, { say: "It is here.", floor: 2, length_px: 0, upto: 1, arrive: true }],
+    size, false);
+  yes("walk: stairs get a stretch of their own", stairs.steps[1].stairs && stairs.steps[1].upto > stairs.steps[1].from && stairs.steps[1].t1 > stairs.steps[1].t0);
+  eq("walk: the jump between floors sits where the stairs stretch is", [stairs.at[1], stairs.at[2]].map((v) => Number(v.toFixed(3))), [stairs.steps[1].from, stairs.steps[1].upto].map((v) => Number(v.toFixed(3))));
+  yes("walk: the stretches cover the whole way and the whole time", stairs.steps[0].from === 0 && stairs.steps[2].upto === 1 && stairs.steps[2].t1 === 1 && stairs.at[3] === 1);
+  eq("walk: an empty route does not divide by zero", WK.walkFraction(WK.planWalk([], [], size, true), 0.4), 0.4);
+  // a 10 x 4 grid of 10 px cells from (0.1, 0.1): row 1 is free in columns 2..5, row 2 in columns 2..3
+  const grid = { x0: 0.1, y0: 0.1, cell_x: 0.01, cell_y: 0.02, cols: 10, rows: 4, free: 6, runs: [[1, 2, 5], [2, 2, 3]] };
+  eq("floor: free and not", [WK.isFree(grid, 0.125, 0.13), WK.isFree(grid, 0.165, 0.13), WK.isFree(grid, 0.145, 0.15), WK.isFree(grid, 0.125, 0.11)], [true, false, false, false]);
+  eq("floor: a tap on the floor stays put", WK.snapToFloor(grid, 0.125, 0.13, size), { x: 0.125, y: 0.13, moved: 0 });
+  eq("floor: a tap just off it snaps to the nearest cell", WK.snapToFloor(grid, 0.17, 0.13, size), { x: 0.155, y: 0.13, moved: 15 });
+  eq("floor: a tap far from any floor is refused", WK.snapToFloor(grid, 0.6, 0.6, size), null);
+  eq("floor: which floor a point is on", [WK.floorAt({ 1: grid, 2: { ...grid, x0: 0.5 } }, 0.15, 0.12), WK.floorAt({ 1: grid, 2: { ...grid, x0: 0.5 } }, 0.55, 0.12), WK.floorAt({ 1: grid }, 0.9, 0.9)], [1, 2, null]);
+  const legs = { "WP01>WP02": { floors: [{ floor: 1, points: [[0, 0], [1, 0], [1, 1]] }, { floor: 2, points: [[5, 5], [6, 6]] }], connector: "s", walked: true, times_walked: 2 } };
+  eq("legs: forwards as stored", WK.legBetween(legs, "WP01", "WP02").floors[0].points, [[0, 0], [1, 0], [1, 1]]);
+  eq("legs: backwards is the same line walked the other way", WK.legBetween(legs, "WP02", "WP01").floors.map((f) => [f.floor, f.points]), [[2, [[6, 6], [5, 5]]], [1, [[1, 1], [1, 0], [0, 0]]]]);
+  eq("legs: none, and none to itself", [WK.legBetween(legs, "WP01", "WP09"), WK.legBetween(legs, "WP01", "WP01")], [null, null]);
+  }
+
+  // ---- any object: a tight outline only with a box, a soft region from the words, else the whole picture
+  {
+    const laptop = { label: "laptop", box: { x1: 0.5, y1: 0.3, x2: 0.9, y2: 0.7 } };
+    const mug = { label: "coffee mug", box: { x1: 0.1, y1: 0.4, x2: 0.2, y2: 0.55 } };
+    const REL = [
+      ["left of the closed laptop", "left of", ["closed laptop"]],
+      ["to the right of the mug", "right of", ["mug"]],
+      ["in front of the monitor", "in front of", ["monitor"]],
+      ["behind the monitor stand", "behind", ["monitor stand"]],
+      ["next to the coffee mug, left of the closed laptop", "next to", ["coffee mug"]],
+      ["on the desk", "on", ["desk"]],
+      ["under the lamp", "under", ["lamp"]],
+      ["between the mug and the laptop", "between", ["mug", "laptop"]],
+    ];
+    for (const [text, relation, things] of REL) eq(`relation: ${text}`, G.parseRelation(text), { relation, things });
+    eq("relation: none in the words", [G.parseRelation("plugged into the power strip"), G.parseRelation(""), G.parseRelation(null)], [null, null, null]);
+    const region = (rel, anchors) => G.aboutRegion(rel, anchors);
+    yes("region: left of is left of the anchor", region("left of", [laptop.box]).x2 <= 0.5 + 1e-9 && region("left of", [laptop.box]).x1 < 0.5);
+    yes("region: right of is right of the anchor", region("right of", [mug.box]).x1 >= 0.2 - 1e-9);
+    yes("region: behind is above it in the picture, in front of is below", region("behind", [laptop.box]).y1 < 0.3 && region("in front of", [laptop.box]).y2 > 0.7);
+    yes("region: between lies between the two", region("between", [mug.box, laptop.box]).x1 >= 0.2 - 1e-9 && region("between", [mug.box, laptop.box]).x2 <= 0.5 + 1e-9);
+    yes("region: stays inside the picture", Object.values(region("right of", [{ x1: 0.8, y1: 0.0, x2: 0.9, y2: 0.2 }])).every((v) => v >= 0 && v <= 1));
+    eq("region: no anchor, no region", region("left of", []), null);
+
+    const boxed = G.spotlightFor({ box: { x1: 0.4, y1: 0.55, x2: 0.48, y2: 0.62 }, position: "left of the laptop", anchors: [laptop] });
+    eq("spotlight: a box gives a tight outline and 'Here it is'", [boxed.kind, boxed.precision.precision, boxed.label, boxed.rect], ["box", "exact", "Here it is", { x1: 0.4, y1: 0.55, x2: 0.48, y2: 0.62 }]);
+    const worded = G.spotlightFor({ box: null, position: "left of the closed laptop", anchors: [laptop, mug] });
+    eq("spotlight: words beside a boxed anchor give a soft region and 'About here'", [worded.kind, worded.precision.precision, worded.label, worded.anchor, worded.words], ["about", "about", "About here", "laptop", "left of the closed laptop"]);
+    const alone = G.spotlightFor({ box: null, position: "behind the monitor stand", anchors: [laptop] });
+    eq("spotlight: words with no boxed anchor ring the whole picture", [alone.kind, alone.rect, alone.precision.precision, alone.words], ["picture", null, "about", "behind the monitor stand"]);
+    eq("spotlight: nothing known rings the whole picture", [G.spotlightFor(null).kind, G.spotlightFor(null).precision.precision], ["picture", "about"]);
+    // the rule a test must prove: without box data there is never a tight outline, whatever else is known
+    const junk = [null, undefined, {}, { x1: 0.5, y1: 0.5, x2: 0.5, y2: 0.9 }, { x1: 0.6, y1: 0.2, x2: 0.4, y2: 0.9 }, { x1: NaN, y1: 0, x2: 1, y2: 1 }];
+    const wordsList = [null, "", "left of the laptop", "on the desk", "between the mug and the laptop", "plugged into the power strip"];
+    const anchorSets = [[], [laptop], [laptop, mug]];
+    let tight = 0;
+    let tried = 0;
+    for (const box of junk) for (const position of wordsList) for (const anchors of anchorSets) {
+      const sp = G.spotlightFor({ box, position, anchors });
+      tried++;
+      if (sp.kind === "box" || sp.precision.precision === "exact" || sp.label !== "About here") tight++;
+    }
+    eq(`spotlight: never tight, exact or 'Here it is' without a box (${tried} cases)`, tight, 0);
+    const keyframe = readFileSync(join(web, "components", "Keyframe.tsx"), "utf8");
+    yes("the picture draws a solid outline only for kind box with exact precision", keyframe.includes('const exact = spot?.kind === "box" && spot.precision.precision === "exact"') && keyframe.includes('exact ? "3px solid var(--danger)" : "3px dashed var(--danger)"'));
+
+    eq("cover: a 4:3 picture in a 4:3 frame maps straight", G.coverRect({ x1: 0.25, y1: 0.5, x2: 0.5, y2: 1 }, { w: 640, h: 480 }, { w: 4, h: 3 }), { left: 25, top: 50, width: 25, height: 50 });
+    const wide = G.coverRect({ x1: 0.5, y1: 0, x2: 1, y2: 1 }, { w: 1600, h: 900 }, { w: 4, h: 3 });
+    yes("cover: a 16:9 picture is cropped at the sides, and the box follows", Math.abs(wide.left - 50) < 1e-6 && wide.top === 0 && wide.height === 100 && Math.abs(wide.width - 50) < 1e-6);
+
+    const where = { label: "keys", camera_id: "cam-desk", zone: "desk", position: "left of the closed laptop", frame_ref: "f1", box: null, seen_at: "2026-10-10T12:00:00Z", anchors: [] };
+    const found = (o) => G.resolveThing({ thing: "my keys", citationFrame: null, where: null, live: false, ...o });
+    const SOURCES = [
+      ["the answer's picture, with the thing's box", found({ citationFrame: "f1", where: { ...where, box: { x1: 0.4, y1: 0.5, x2: 0.5, y2: 0.6 } } }), "answer-box", "exact", "Your keys are here."],
+      ["the answer's picture, words beside a boxed anchor", found({ citationFrame: "f1", where: { ...where, anchors: [laptop] } }), "answer-words", "about", "Your keys are about here: left of the closed laptop."],
+      ["the answer's picture, words only", found({ citationFrame: "f1", where }), "answer-words", "about", "Your keys are about here: left of the closed laptop."],
+      ["the answer's picture, and the sighting is of another frame", found({ citationFrame: "f9", where: { ...where, box: { x1: 0.4, y1: 0.5, x2: 0.5, y2: 0.6 } } }), "answer-picture", "about", "Your keys are about here: somewhere in this picture."],
+      ["a live detector track", found({ live: true, where }), "live-track", "exact", "Your keys are here. This is the camera's picture, refreshed, not video."],
+      ["the room's pin", found({ where }), "room-pin", "about", "Your keys are about here: left of the closed laptop."],
+    ];
+    for (const [name, got, source, precision, say] of SOURCES) eq(`thing: ${name}`, [got.source, got.precision.precision, got.say], [source, precision, say]);
+    eq("thing: never seen", [found({}).source, found({}).precision, found({}).spotlight, found({}).say], ["none", null, null, "I haven't seen that."]);
+    yes("thing: a box for another frame is never drawn on this one", found({ citationFrame: "f9", where: { ...where, box: { x1: 0.4, y1: 0.5, x2: 0.5, y2: 0.6 } } }).spotlight.kind === "picture");
+
+    // ---- precision is one contract: every source, the outline and the sentence
+    const ROWS = [
+      ["element", "exact"], ["box", "exact"], ["zone", "exact"], ["floor", "exact"], ["route-real", "exact"],
+      ["picture", "about"], ["words", "about"], ["zone-pin", "about"], ["floor-default", "about"], ["route-traced", "about"], ["unscaled", "about"], ["something-new", "about"],
+    ];
+    for (const [source, want] of ROWS) {
+      const pr = G.precisionOf(source);
+      eq(`precision: ${source}`, [pr.precision, pr.reason.length > 8, G.spotWords(pr), G.hereSentence(pr, "keys", true, "left of the laptop")],
+        [want, true, want === "exact" ? "Here it is" : "About here", want === "exact" ? "Your keys are here." : "Your keys are about here: left of the laptop."]);
+    }
+    eq("precision: a room pin", [G.roomPrecision(true, "set").precision, G.roomPrecision(true, undefined).precision, G.roomPrecision(true, "default").precision, G.roomPrecision(false, "set").precision], ["exact", "exact", "about", "about"]);
+    eq("precision: an uncalibrated camera says why", G.roomPrecision(true, "default").reason, "this camera is not calibrated for the room yet");
+
+    // ---- the rebuilt Room screen and Home
+    const at = (q, route) => G.resolveApp(q, route).target?.id ?? null;
+    eq("room: the room", [at("where is the room map", "/"), at("show me the room", "/")], ["map:room", "map:room"]);
+    eq("room: which bin opens the fold", [at("show me which bin", "/map/"), G.resolveApp("show me which bin").target.reveal[0].op], ["map:sort", "open"]);
+    eq("room: who is in view", at("where do I see who is in view", "/map/"), "map:now");
+    eq("home: targets", [at("where is the home screen", "/"), at("show me what atlas does", "/home/"), at("where are the numbers", "/home/"), at("show me how a question travels", "/home/")], ["home:top", "home:what", "home:numbers", "home:flow"]);
+    const pin = G.pinTarget("keys");
+    eq("room: a thing's pin, then its card", [pin.route, pin.at.slice(0, 2).map((a) => a.id), pin.reveal[0].op], ["/map/", ["pin:keys", "thing:keys"], "press"]);
+  }
+
+  // ---- the hooks each screen must keep (lib/guide-hooks.json; tests/test_guide_hooks.py checks the same in pytest)
+  {
+    const repo = join(web, "..");
+    const manifest = JSON.parse(readFileSync(join(web, "lib", "guide-hooks.json"), "utf8"));
+    for (const [kind, key, what] of [["attributes", "need", "the hook"], ["headings", "text", "the heading or label"]]) {
+      for (const row of manifest[kind]) {
+        const sources = row.files.map((f) => {
+          try {
+            return readFileSync(join(repo, f), "utf8");
+          } catch {
+            yes(`hooks: ${row.screen}: ${f} exists`, false, "(the file is gone; see web/lib/guide.ts and web/lib/guide-hooks.json)");
+            return "";
+          }
+        });
+        for (const needle of row[key]) yes(`hooks: ${row.screen} lost ${what} ${needle}`, sources.some((s) => s.includes(needle)), `(expected in ${row.files.join(" or ")}; the look guide points there: put it back, or change web/lib/guide.ts and web/lib/guide-hooks.json)`);
+      }
+    }
+  }
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }
