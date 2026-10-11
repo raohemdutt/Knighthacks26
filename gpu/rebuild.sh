@@ -28,6 +28,7 @@
 #   GFX               the gfx target (default: the first one rocminfo lists)
 # Exit codes: 0 built or already up to date, 2 usage, 3 rejected hunk, 4 build failed, 5 build tools missing.
 set -u
+export PATH="$HOME/.local/bin:$PATH"   # cmake, ninja and pip --user tools on the pod, as lab/pod_a_teacher.sh
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 KERNEL_FILE="vllm/v1/attention/ops/triton_unified_attention.py"
