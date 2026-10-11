@@ -365,10 +365,12 @@ def test_a_cell_the_deadline_cannot_hold_is_a_skipped_row_with_the_reason(tmp_pa
 
 def test_stuck_streams_end_the_measuring_and_the_rest_are_not_measured(tmp_path):
     data = tiny_data()
-    data["server"] = {**data["server"], "request_timeout_s": 1, "stream_grace_s": 0}
+    data["server"] = {**data["server"], "request_timeout_s": 2, "stream_grace_s": 0}
     root = tmp_path / "pod"
+    # stall_tok_s=0: the measured streams of that cell send one token and then only keep-alives, so the harness's
+    # bound (2 x 2 s) is what ends them whatever the test box is doing; the other cells' eight tokens take milliseconds
     raw, _, _ = sweep(tmp_path, grid=sr.parse_grid(data),
-                      launches=[fake_launch(root, stall_match="r1-b2-measure-", stall_tok_s=4.0)])
+                      launches=[fake_launch(root, stall_match="r1-b2-measure-", stall_tok_s=0.0)])
     rows = raw["rows"]
     assert [r["outcome"] for r in rows[:4]] == ["ok"] * 4
     stuck = rows[4]

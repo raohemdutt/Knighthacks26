@@ -651,6 +651,10 @@ if (labBench) {
   expect("  every row is served once, as a point", points.length === labBench.rows, `${points.length} points for ${labBench.rows} rows`);
   const badPoint = points.map((p) => labNum(p) || (!/metrics\.jsonl:\d+$/.test(p.source.ref) && "no file line") || (p.low_confidence && !p.reason && "low confidence without a reason")).filter(Boolean);
   expect("  every point names its line in the metrics file, and a low-confidence one says why", badPoint.length === 0, badPoint.slice(0, 3).join("; "));
+  const badChip = points.filter((p) => !p.chip?.key || !p.chip.name || typeof p.chip.current !== "boolean" || p.other_chip !== !p.chip.current);
+  expect("  every point names the chip it was measured on, and other_chip means not the current lab", badChip.length === 0, badChip.slice(0, 3).map((p) => p.source.ref).join("; "));
+  const mixed = labBench.sweeps.filter((s) => Object.values(s.metrics).some((pts) => pts.some((p) => p.chip?.key !== s.chip?.key)));
+  expect("  no sweep mixes rows from two chips", mixed.length === 0, mixed.map((s) => s.id).join("; "));
   const listed = labBench.not_charted.reduce((n, x) => n + x.lines.length, 0);
   expect("  every row is charted or listed as not charted", labBench.charted_rows + listed === labBench.rows, `${labBench.charted_rows} + ${listed} of ${labBench.rows}`);
   for (const s of labBench.sweeps) expect(`  sweep ${s.id} has a point per batch size`, Object.values(s.metrics).every((pts) => pts.length <= s.batches.length && pts.every((p) => s.batches.includes(p.x))), "a point off the batch list");
