@@ -89,7 +89,7 @@ export function ReplayBar({
               </g>
             );
           })}
-          <rect x="0" y="9" width={x(at)} height="16" fill="#1b2433" opacity="0.12" />
+          <rect className={s.played} x="0" y="9" width={x(at)} height="16" fill="#1b2433" opacity="0.12" />
           <rect x={Math.max(0, x(at) - 0.2)} y="1" width="0.45" height="32" fill="var(--text)" />
         </svg>
         <input

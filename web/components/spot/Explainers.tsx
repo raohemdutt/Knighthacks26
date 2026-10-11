@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import ui from "@/components/ui.module.css";
 import x from "./explain.module.css";
 import { geometry } from "./FloorMap";
@@ -624,7 +625,9 @@ export function ExplainerGrid(props: Omit<Parameters<typeof Explainer>[0], "id">
   return (
     <div className={x.grid}>
       {EXPLAIN_ORDER.map((id) => (
-        <Explainer key={id} id={id} {...props} />
+        <div key={id} data-guide={`explainer:${id}`} style={{ display: "contents" }}>
+          <Explainer id={id} {...props} />
+        </div>
       ))}
     </div>
   );
@@ -637,7 +640,7 @@ export function ExplainSheet({ onClose, ...props }: Parameters<typeof Explainer>
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
-  return (
+  return createPortal(  // over the viewport: a transformed page section would otherwise trap position: fixed
     <div className={ui.overlay} onClick={onClose}>
       <div className={`${ui.sheet} ${x.sheet}`} role="dialog" aria-modal="true" aria-label="Why" onClick={(e) => e.stopPropagation()}>
         <div className={`${ui.row} ${ui.between}`}>
@@ -649,5 +652,5 @@ export function ExplainSheet({ onClose, ...props }: Parameters<typeof Explainer>
         <Explainer {...props} />
       </div>
     </div>
-  );
+    , document.body);
 }

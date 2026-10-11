@@ -1,7 +1,7 @@
 # Working on Atlas (for AI coding agents and the people driving them)
 
 Atlas is our Knight Hacks project: a screenless, always-on AI box (NVIDIA Jetson)
-with cameras, memory, an agent, and a learning lab on two AMD R9700 GPUs. Four
+with cameras, memory, an agent, and a learning lab on two AMD Strix Halo pods. Four
 people build it in parallel, and each of them works with a coding agent (Claude
 Code, Codex, Cursor, and so on). This file tells every agent how to coordinate
 with the team.

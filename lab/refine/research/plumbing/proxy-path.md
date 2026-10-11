@@ -162,6 +162,38 @@ think the call worked.
 
   Experiment (PRX-12): once a headers parameter and an `Accept: text/event-stream` streaming path land, measure box-side TTFT on 20 caption calls. Expected: pod TTFT plus about 140 ms. Minimum sample: 20 calls.
 
+## 5. The failure map measured on SJC (plumbing pass 3, 2026-10-10)
+
+### Takeaway
+R18's run from a laptop against pod D confirms the one-burst mechanism of section 2 on SJC and corrects two of
+section 4's predictions: with nothing listening, while vLLM starts and after it stops, the proxy answers Jupyter
+Server's 500, never 599 or 503. The stopped pod's 424 and Cloudflare's 524 after 125 s are still unmeasured.
+
+### Cited findings
+- **[measured]** A 31 s streamed chat completion (90 tokens, thinking off) sent through `/proxy/8000/` on SJC account D with `Accept: text/event-stream` got its headers and first bytes at 0.92 s and 91 reads spread over 30.9 s; the same request with `Accept: application/json` got nothing until 31.48 s and then all 19,994 bytes in 2 reads within 0.008 s. Source: `lab/refine/metrics.jsonl:55` and `lab/refine/metrics.jsonl:56` [S65]; `lab/README.md`, section "Failure-mode map of the proxy path on SJC (R18)" [S66]
+
+  Implies: PRX-3 holds on SJC: only the exact event-stream header streams, so E8's arm B is a streamed call whose first byte arrives near the teacher's TTFT, and its arm A is a call that sends nothing until the answer is complete; whether Cloudflare then cuts arm A at 125 s with 524 is still E8's open half (Cloudflare's "Connection limits" page, re-opened, still lists a 125 s proxy read timeout answered with 524, configurable on Enterprise zones only, and a 30 s proxy write timeout [S15]) (FCR).
+
+  Experiment: PRX-5 (E8 on T0), as in section 3.
+
+- **[measured]** On SJC account D a pod port with nothing listening (8000 and 8123), the R30 teacher while it started (56 polls of `GET /v1/models` 5 s apart, then 200 at 294.1 s) and the teacher after it was stopped with the pod up all answered 500 with Jupyter Server's HTML page in 0.13 to 0.47 s, with no 502, no 503 and no hung call. Source: `lab/refine/metrics.jsonl:51`, `lab/refine/metrics.jsonl:52`, `lab/refine/metrics.jsonl:53` and `lab/refine/metrics.jsonl:54` [S65]; R18 task page, line of Sat 7:06 PM (Hemdutt's agent) [S67]
+
+  Implies: the plumbing rubric's T5 and scenario P9 predict a 599 from the proxy with nothing listening and a 503 from vLLM's `/health` while it loads; on SJC both are the same 500, because vLLM opens its port only when the engine is ready, so the box cannot tell a starting model server from a missing one by status and has to poll for up to about five minutes (294.1 s warm) before it gives up (FCR, TTS). The rubric text is the merge pass's to correct, through a ruling.
+
+  Experiment (PRX-13): during the next planned teacher start on pod D, poll `/v1/models` and `/health` through the proxy once a second from the box. Expected: 500 on both until the engine is ready, never 503 or 599. Minimum sample: 1 start.
+
+- **[measured]** One 5,242,964-byte POST through the proxy reached vLLM, which refused it with 400 for its 16,384-token context in 1.0 s, with no 413 from Cloudflare or the proxy; 20 concurrent short streamed chats all answered 200 in 3.0 s in all. Source: `lab/refine/metrics.jsonl:57` and `lab/refine/metrics.jsonl:58` [S65]
+
+  Implies: a request body of 5 MB crosses Cloudflare and the proxy untouched on SJC, so the 100 MB upload cap of `transfers.md` section 2 is not yet probed by any run; 20 parallel calls are no rate limit (FCR).
+
+  Experiment: E10 on T0 (the push chunk sizes up to 64 MiB, about 85 MB on the wire), as in `transfers.md` section 2.
+
+- **[measured]** R18 did not stop pod D, so the stopped-pod answer (424 predicted, section 4) has no observation on either hub; its task page leaves that clause open for whoever has the owner's word to stop pod D in a slot. Source: R18 task page, line of Sat 7:06 PM (Hemdutt's agent) [S67]; `lab/README.md`, section "Failure-mode map of the proxy path on SJC (R18)", row "Pod stopped" [S66]
+
+  Implies: P7 still rests on JupyterHub's source alone; R15's drill (stop pod B mid-job) is the next planned stop and can read it at no extra cost (FCR, RT).
+
+  Experiment: PRX-9, as in section 4, run inside R15's stop.
+
 ## Gaps
 No official Cloudflare page on how it treats `text/event-stream` was found (only second-hand search snippets,
 not cited), so whether Cloudflare adds its own buffering on our zone is untested; PRX-3 answers it. AMD's

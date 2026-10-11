@@ -18,4 +18,5 @@ if __name__ == "__main__":
     # Bring a paired speaker back after a restart without making startup wait for it
     if cfg.speaker_mac:
         threading.Thread(target=session.speaker.ensure_connected, name="voice-speaker", daemon=True).start()
+    session.start_wake()  # "Hey Atlas", when wake_word is on in config/voice.yaml
     uvicorn.run(create_app(session), host="127.0.0.1", port=cfg.port, log_level="warning")

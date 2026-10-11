@@ -62,8 +62,8 @@ def test_frames_and_joules_are_integrated_and_marked_estimated():
     assert rows["Frames seen by the cameras"].source.startswith("estimated")
     # 30-minute power gaps are longer than one sample covers, so they add nothing
     assert rows["Energy used by the Jetson"].value == "none in the log"
-    assert rows["Energy used by the R9700s"].value == "200.0 Wh"
-    assert "(gpu-a)" in rows["Energy used by the R9700s"].source
+    assert rows["Energy used by the lab GPUs"].value == "200.0 Wh"
+    assert "(gpu-a)" in rows["Energy used by the lab GPUs"].source
 
 
 def test_since_drops_earlier_events_and_bad_lines_are_skipped(tmp_path):

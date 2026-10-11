@@ -592,6 +592,102 @@ Added by kernels refinement pass 1 on 2026-10-10. The experiment ids continue th
 
   Experiment: none beyond KE13 and KE14.
 
+## 9. Pass 3 additions: the gfx1151 ceiling, the hybrid kernel on this chip and llama.cpp beside it
+
+Added by kernels refinement pass 3 on 2026-10-10, after the lab moved to the SJC Strix Halo pods
+(Radeon 8060S, gfx1151, RDNA 3.5) and kernels ruling 8 had every gfx1201 clause read as gfx1151.
+The experiment ids are T0's: E27 supersedes E19, E29 supersedes E20, and E11 is amended for the
+chip; `KE` ids stay as section 7 gives them.
+
+- **[measured]** On pod D (gfx1151, ROCm 7.13, torch 2.9.1+rocm7.13.0), large device-to-device
+  copies ran at 207.8 to 212.1 GB/s from 256 MiB to 4 GiB (209.5 GB/s at 1 GiB, 15 runs, spread
+  205.1 to 210.6), counting both the bytes read and the bytes written (value = 2 x bytes / time);
+  the largest LDS allocation that launches is 65,536 bytes. Source: [L10]
+  `lab/refine/research/kernels/data/chipsheet-gfx1151-2026-10-11.md`, sections "Device-to-device
+  copy bandwidth" (`copy.d2d.size_256mib` to `copy.d2d.size_4gib`) and "LDS"
+  (`lds.max_launch_bytes`), merged in PR #250.
+
+  Implication: at about 15.5 GB read per decode step (section 1.2) the batch-1 decode ceiling on
+  this chip is about 13.5 tok/s (209.5 / 15.5, derived), against 2.88 tok/s measured on Conch
+  ([L8]), so the Conch path moves about 44.6 GB/s, about 21% of what the chip copies. E19's
+  expectation of 20 to 30 tok/s was the R9700's (640 GB/s) and sits above this chip's ceiling,
+  which kernels rubric K8 (c) forbids for a lever that does not change the bytes moved.
+
+  Candidate experiment: E27 on T0 (the hybrid kernel against Conch on one build, in R53's slot).
+  Expected movement: teacher.decode_tok_s 2.88 to 8 to 12 at batch 1, bounded by about 13.5;
+  teacher.joules_per_token about 41.8 to 10 to 15 at a socket power near 120 W. Minimum sample
+  size: 5 cold spawns per arm. Confidence: 0.7.
+
+- **[measured]** vLLM PR #40977 (merged 2026-07-14 as 382bbd5) benchmarked its hybrid W4A16
+  kernel on a Strix Halo (gfx1151, LPDDR5X-8000) at `--max-num-seqs 1`, 128 tokens in and 128 out:
+  time per output token fell from 116.99 to 24.55 ms for `RedHatAI/Qwen3-8B-quantized.w4a16`
+  (4.77x), from 54.81 to 13.69 ms for `RedHatAI/Qwen3-4B-quantized.w4a16` (4.00x), from 82.04 to
+  21.03 ms for `Qwen/Qwen2.5-7B-Instruct-AWQ` (3.90x) and from 53.39 to 15.59 ms for
+  `RedHatAI/gemma-3-4b-it-quantized.w4a16` (3.43x); its Triton path carries tile heuristics tuned
+  for gfx1151, and its HIP decode kernel avoids an fp32 round trip on gfx1151. Source: [S13] vLLM
+  PR #40977, description and benchmark tables, re-opened 2026-10-10 by this pass.
+
+  Implication: the decode speedups were measured on our chip, at 4B to 8B shapes; 4x on our 2.88
+  tok/s would be about 11.5 tok/s, inside the 13.5 tok/s ceiling above, so the estimate for the
+  27B teacher is capped by the ceiling rather than by the ratio. The 27B shapes, the Gated
+  DeltaNet layers and the bf16 `lm_head` (about 16% of a step's bytes, section 1.2) are not in the
+  PR's tables, which is why the confidence stays at 0.7.
+
+  Candidate experiment: E27, as specified in the previous finding. Expected movement: as there.
+  Minimum sample size: 5 cold spawns per arm. Confidence: 0.7.
+
+- **[practitioner]** At the merge commit of PR #40977 the ROCm W4A16 kernel list reads
+  `RDNA3W4A16LinearKernel`, `RDNAHybridW4A16LinearKernel`, `TritonW4A16LinearKernel`,
+  `ConchLinearKernel`, `ExllamaLinearKernel`, in that order, and
+  `RDNA3W4A16LinearKernel.can_implement` refuses any GPU but gfx1100. Source: [S170] vLLM at
+  382bbd5, `vllm/model_executor/kernels/linear/__init__.py` (`_filter_kernels_by_backend`, the ROCm
+  list) and `vllm/model_executor/kernels/linear/mixed_precision/rdna3_w4a16.py` (`can_implement`).
+
+  Implication: on gfx1151 a build at or after that commit picks the hybrid kernel by default, so a
+  Conch control on the same build needs
+  `VLLM_DISABLED_KERNELS=RDNAHybridW4A16LinearKernel,TritonW4A16LinearKernel`; the serve log has
+  to name the class per spawn, because a build-to-build comparison (R53's new build against the
+  April one) moves the engine commit and the kernel at once (kernels rubric K2).
+
+  Candidate experiment: E27's arm definitions. Expected movement: none by itself; it makes the
+  kernel the only lever between the arms. Minimum sample size: 1 serve log per spawn. Confidence:
+  0.9.
+
+- **[measured]** llama.cpp decodes a 4-bit 27B Qwen on a Strix Halo at the chip's bandwidth:
+  `Qwen3.5-27B` dense Q4_K_M (15.58 GiB) ran `tg128` at 12.67 tok/s on the Vulkan backend and 12.05
+  tok/s on HIP (llama.cpp b8966, ROCm 7.2.2, Ubuntu 26.04), with HIP ahead at long prompts
+  (pp16384 293.26 against 247.11 tok/s); `Qwen3.8-27B` Q4_K_M ran `tg128` at 12.4 tok/s on Vulkan
+  (Mesa 26.2.1 RADV, `-fa 1`, 3 reps). Source: [S140] nabe2030 `hip-vs-vulkan-evo-x2` README, raw
+  throughput table; [S138] ggml-org/llama.cpp#27952, comment of 2026-09-18 by huppiflupp; both
+  re-opened 2026-10-10 by this pass.
+
+  Implication: 15.58 GiB at 12.67 tok/s is about 212 GB/s (derived), the chip sheet's copy rate,
+  so llama.cpp reaches this chip's ceiling and runs about 4.3x the stock vLLM build; the gap to
+  vLLM is in the 4-bit kernels, as `graphics_pipeline_for_ml.md` section 2 argues. It is a
+  reference, not a lever (kernels ruling 2).
+
+  Candidate experiment: E29 on T0 (vLLM stock, llama.cpp HIP and llama.cpp Vulkan on pod B, the
+  same Q4_K_M GGUF for both llama.cpp builds). Expected movement: teacher.decode_tok_s 11 to 13
+  for both llama.cpp arms against 2.88 for vLLM, Vulkan about 5% ahead of HIP at batch 1. Minimum
+  sample size: 5 cold spawns per arm. Confidence: 0.6.
+
+- **[opinion]** The public Strix Halo prior gives vLLM a batch contention of k = 0.104 (9 pairs):
+  for 15.5 GB read per token it predicts 7.49 tok/s at batch 1 and an aggregate of 22.86, 34.73
+  and 46.91 tok/s at batch 4, 8 and 16, that is 3.05x, 4.64x and 6.26x the single stream. Source:
+  [L11] `python lab/public_prior.py --gb 15.5 --backend vllm --batch <B>` on main at 4e084dc, which
+  fits `lab/refine/research/kernels/data/public-strix-halo-benchmarks.csv`
+  (`public_strix_halo_benchmarks.md`, "Batching and concurrency", PB2).
+
+  Implication: the prior's absolute batch-1 rate is 2.6x our measured 2.88 (its own calibration
+  note), but its ratio says batching on vLLM scales nearly linearly on this chip; at a socket power
+  near 120 W, 6.26x at batch 16 turns about 41.8 J/token into about 6.7 (derived), inside E11's
+  expected -85%.
+
+  Candidate experiment: E11 as amended by kernels pass 3 (R20's cold spawns are its arms).
+  Expected movement: teacher.joules_per_token about 41.8 to about 6 to 7 at batch 16 on the text
+  set, less on captions. Minimum sample size: 5 cold spawns per batch size. Confidence: 0.75 for
+  the direction (KE1), 0.4 for the prior's size (PB2).
+
 ## Open questions
 
 - Which W4A16 kernel class served the 2026-09-13 report on issue #6347; the comment does not say,
@@ -609,6 +705,13 @@ Added by kernels refinement pass 1 on 2026-10-10. The experiment ids continue th
 - Which attention backend the stock build at b1388b1 selects on gfx1201; the serve log answers it,
   and an engine change pins the same backend (`correctness_and_tuners.md` section 4).
 - vLLM PR #60400 (KE11) is still open with no comments on 2026-10-10.
+
+- Which vLLM main commit R53 pins, and whether it holds PR #56301 (gfx1151 stride padding, merged
+  2026-10-06); the serve log and the commit date answer it.
+- Whether `lab/pod_a_teacher.sh build` rebuilds a new `VLLM_COMMIT` on pod D, where the April build
+  already imports (the step returns early when `import vllm` succeeds, line 172 at 4e084dc).
+- Whether a llama.cpp build is possible on pod B as the pod user (cmake from pip, as the vLLM build
+  does; a Vulkan loader and RADV for arm C of E29).
 
 ## Search log
 
@@ -636,3 +739,17 @@ Added by kernels refinement pass 1 on 2026-10-10. The experiment ids continue th
   cited: DFlash drafters on an NVFP4 target and a CMP 170HX cluster); the AMD SMI CLI tool usage
   page. Stopped when the last three sources opened (#61003, #57032 and the issue search) added
   nothing on a W4A16 kernel, the spawn bands or image correctness on gfx1201.
+- 2026-10-10, kernels refinement pass 3. Budget about 3 h; used about 1 h 30 min. Starting points:
+  pass 2's "Left for the next pass" (the rest of kernels ruling 1, recheck #6347, #6685 and vLLM
+  PR #60400), kernels ruling 8 (every gfx1201 clause read as gfx1151; E19 and R24 dropped unless the
+  loop revives them), merge 2's "Left for the next pass", and the gfx1151 files merged since pass 2
+  (R32's hardware note, the R35 settings note, the R33 chip sheet, R48's graphics note, R51's public
+  dataset and prior). Opened: vLLM PR #40977 (description, tables, file list) and the files at its
+  merge commit 382bbd5 (`kernels/linear/__init__.py`, `rdna3_w4a16.py`); vLLM PR #56301; vLLM
+  `vllm/platforms/rocm.py` at b1388b1 (`supports_fp8`); ggml-org/llama.cpp#27952 (description and
+  huppiflupp's comments); nabe2030 `hip-vs-vulkan-evo-x2` README; ROCm/legacy-rocm-build#6347 (no
+  comment after 2026-09-25) and #6685 (body with the reproducer, and lobo235's comment of
+  2026-10-10); the chip sheet `data/chipsheet-gfx1151-2026-10-11.md`; `lab/public_prior.py` run at
+  batch 1, 4, 8 and 16. Stopped when the last three sources opened (#6347, PR #56301 and the
+  `rdna3_w4a16.py` gate) added nothing that changes a queued line beyond what the earlier ones had
+  set; nothing on gfx1151 spawn bands turned up in either ROCm issue.

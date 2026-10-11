@@ -90,3 +90,11 @@ def test_the_server_keeps_no_request_and_listens_only_on_the_pod_itself(tmp_path
 
     assert not {"--enable-log-requests", "--enable-log-outputs"} & set(argv)
     assert values(argv, "--host") == ["127.0.0.1"]
+
+
+@pytest.mark.parametrize("gfx", ["gfx1151", "gfx1201"])
+def test_the_server_turns_on_tool_calling_with_the_qwen3_parser(tmp_path, gfx):
+    argv = serve_arguments(tmp_path, gfx)
+
+    assert "--enable-auto-tool-choice" in argv
+    assert values(argv, "--tool-call-parser") == ["qwen3_coder"]

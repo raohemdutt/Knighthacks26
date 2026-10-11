@@ -25,6 +25,12 @@ class VoiceConfig:
     end_silence_s: float = 1.0
     speech_level: float = 0.03
     whisper_threads: int = 4
+    wake_word: bool = False  # always listening for "Hey Atlas" (config/voice.yaml turns it on)
+    wake_reply: str = "What's up?"
+    wake_span_s: float = 3.0  # how much of the most recent sound is checked for the wake words...
+    wake_step_s: float = 1.5  # ...this often (the span must be longer than the step plus "Hey Atlas", about a second)
+    debug_wake: bool = False  # log what the wake listener heard, to tune it; off because it writes what the room said
+    chime: bool = True  # a short blip once the question has been heard, so you know it is working on it
     sample_rate: int = 16000  # what whisper wants; not a config key
 
     def __post_init__(self) -> None:
@@ -32,7 +38,7 @@ class VoiceConfig:
         self.whisper_bin = self.whisper_bin or str(home / "src/whisper.cpp-1.7.6/build/bin/whisper-cli")
         self.whisper_model = self.whisper_model or str(home / "models/ggml-tiny.en-q5_1.bin")
         self.piper_bin = self.piper_bin or str(home / "piper/piper")
-        self.piper_model = self.piper_model or str(home / "models/en_US-lessac-low.onnx")
+        self.piper_model = self.piper_model or str(home / "models/en_US-ryan-low.onnx")
 
 
 def load_config(path: str | Path = "config/voice.yaml") -> VoiceConfig:

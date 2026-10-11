@@ -28,6 +28,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from lab.machine import refine_formats as rf
+
 __all__ = ["LABELS", "check", "check_reference", "label_of", "main", "slugify"]
 
 LABELS = ("measured", "practitioner", "anecdote", "opinion")
@@ -45,23 +47,26 @@ INDEX_NAME = "SOURCES.md"
 NOT_NOTES = frozenset({"sources.md", "readme.md"})
 RECORD_PATTERN = "measurements*.md"  # a raw measurement record that notes cite, not a note
 
-# Headings whose bullets are framing, method, questions, or the ranked experiment list rather than findings. A heading
-# matches when it is one of the single words, or starts with one of the phrases, after numbering and a trailing
-# parenthesis are dropped. "Sources of error" is therefore a topic, while "Sources" and "Sources opened" are not.
+# The framing headings RESEARCH_FORMAT.md section 2 names, whose bullets are not findings, each in the singular and the
+# plural: Scope, Summary, Overview, Background, Method, Search log, Queries, Sources, References, Open questions, Gaps,
+# Limitations, Caveats, Next steps, Takeaways, Inferences, Conclusions, and Candidate experiments (ranked). A heading
+# matches when, after numbering and a trailing parenthesis are dropped, it is one of these names, or it starts with one
+# of the prefixes: a multi-word framing name followed by what it is about ("Open questions for R33"), the forms of the
+# ranked experiment list section 6 asks the kernels note to end with ("candidate experiment", "ranked", "ranking"),
+# and "search notes", the search log's own record of refused pages in the committed kernels hardware note. Any other
+# heading is a topic: a one-word name followed by more words ("Sources of error", "Sources opened") is a topic, and so
+# is a heading the format does not name ("Decisions").
 _EXEMPT_WORDS = frozenset(
-    "scope summary tldr tl;dr overview background purpose contents method methods methodology approach search queries "
-    "sources references bibliography glossary questions gaps limitations limits caveats todo takeaway takeaways "
-    "inferences conclusion conclusions decisions".split()
+    {
+        "scope", "summary", "overview", "background", "method", "methods", "query", "queries",
+        "source", "sources", "reference", "references", "gap", "gaps",
+        "limitation", "limitations", "caveat", "caveats", "takeaway", "takeaways",
+        "inference", "inferences", "conclusion", "conclusions",
+    }
 )
-_EXEMPT_PREFIXES = (
-    "table of contents", "how to read", "search log", "search bound", "search budget", "search method",
-    "search notes", "search queries", "sources opened", "source list", "source index", "open question", "next step",
-    "candidate experiment", "proposed experiment", "queued experiment", "experiment queue", "experiment ranking",
-    "experiments ranked", "ranked", "ranking",
-)
+_EXEMPT_PREFIXES = ("search log", "open question", "next step", "candidate experiment", "ranked", "ranking", "search notes")
 
 _CODE_SPAN = re.compile(r"`[^`\n]*`")
-_FENCE = re.compile(r"^\s*(`{3,}|~{3,})")
 _HEADING = re.compile(r"^ {0,3}(#{1,6})[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$")
 _ITEM = re.compile(r"^(?P<indent>[ \t]*)(?:[-*+]|\d{1,3}[.)])[ \t]+(?P<text>\S.*)$")
 _RULE = re.compile(r"^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$")
@@ -90,7 +95,7 @@ _DOI = re.compile(r"(?<![\w/.-])(?:doi:\s*)?(?P<doi>10\.\d{4,9}/[^\s<>\"'`)\]]+)
 _ARXIV = re.compile(r"\barxiv[:\s]\s*(?P<id>\d{4}\.\d{4,5})(?:v\d+)?\b", re.I)
 _TRACKER = re.compile(r"(?<![\w/.-])[\w.-]+/[\w.-]+#\d+\b|\bPR\s*#\d+\b")
 _LEDGER = re.compile(r"\bledger(?:\s+(?:seq|line|row|entry))?\s*[:#]?\s*\d+\b", re.I)
-_EXT = r"(?:py|pyi|sh|ps1|ya?ml|jsonl?|toml|cfg|ini|md|txt|csv|log|diff|patch|c|cc|cpp|cu|h|hpp|hip|js|ts|tsx|go|rs|ipynb|sql)"
+_EXT = "(?:" + "|".join(rf.FILE_EXTENSIONS) + ")"
 _WHERE = r"(?:::[A-Za-z_][\w.]*(?:\(\))?|:\d+(?:-\d+)?|#L\d+(?:-L?\d+)?)"
 _CODE = re.compile(
     r"(?<![\w/.@:-])(?:[\w.-]+/)+[\w.-]+\." + _EXT + r"\b(?:" + _WHERE + r")?"
@@ -180,30 +185,25 @@ def _read(path: Path) -> str:
 
 
 def _clean(text: str) -> list[str]:
-    """The file's lines with front matter and HTML comments blanked out, so line numbers still match the file."""
+    """The file's lines with front matter and HTML comments blanked out, so line numbers still match the file, and
+    file names Notion turned into links read back as names (refine_formats.unlink_file_names)."""
     lines = re.split(r"\r\n|\r|\n", text)
     if lines and lines[0].strip() == "---":
         for end in range(1, len(lines)):
             if lines[end].strip() in ("---", "..."):
                 lines[: end + 1] = [""] * (end + 1)
                 break
-    return _COMMENT.sub(lambda m: re.sub(r"[^\n]", " ", m.group(0)), "\n".join(lines)).split("\n")
+    joined = rf.unlink_file_names("\n".join(lines))
+    return _COMMENT.sub(lambda m: re.sub(r"[^\n]", " ", m.group(0)), joined).split("\n")
 
 
 def _visible(lines: list[str]):
-    """(line number, line) for every line outside a code fence."""
-    fence = ""
-    for number, raw in enumerate(lines, 1):
-        line = raw.expandtabs(4)
-        if fence:
-            if re.match(r"^\s*" + re.escape(fence[0]) + "{" + str(len(fence)) + r",}\s*$", line):
-                fence = ""
-            continue
-        opening = _FENCE.match(line)
-        if opening:
-            fence = opening.group(1)
-            continue
-        yield number, line
+    """(line number, line) for every line outside a fenced code block (refine_formats.code_blocks)."""
+    expanded = [raw.expandtabs(4) for raw in lines]
+    fenced = {index for block in rf.code_blocks(expanded) for index in block.indexes}
+    for index, line in enumerate(expanded):
+        if index not in fenced:
+            yield index + 1, line
 
 
 def _normalized_heading(text: str) -> str:

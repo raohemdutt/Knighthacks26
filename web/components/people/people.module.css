@@ -7,7 +7,8 @@
   margin: 4px auto 0;
   border-radius: var(--radius);
   overflow: hidden;
-  background: #000;
+  background: var(--media-bg);
+  box-shadow: var(--sh-inset);
 }
 
 .video {
@@ -25,15 +26,18 @@
   pointer-events: none;
 }
 
+/* everything over the camera is drawn with the on-media colours: the picture is dark in both themes */
 .outline ellipse {
   fill: none;
-  stroke: rgba(255, 255, 255, 0.55);
+  stroke: var(--on-media);
+  stroke-opacity: 0.55;
   stroke-width: 1.2;
   stroke-dasharray: 3 3;
 }
 
 .outlineGood ellipse {
-  stroke: var(--accent);
+  stroke: var(--accent-bright);
+  stroke-opacity: 1;
   stroke-dasharray: none;
 }
 
@@ -46,20 +50,22 @@
 }
 
 .ring circle {
-  fill: rgba(0, 0, 0, 0.55);
-  stroke: rgba(255, 255, 255, 0.25);
+  fill: var(--on-media-scrim);
+  stroke: var(--on-media);
+  stroke-opacity: 0.25;
   stroke-width: 4;
 }
 
 .ring .ringDone {
   fill: none;
-  stroke: var(--accent);
+  stroke: var(--accent-bright);
+  stroke-opacity: 1;
   stroke-linecap: round;
-  transition: stroke-dashoffset 0.25s ease;
+  transition: stroke-dashoffset var(--t) var(--ease-out);
 }
 
 .ring text {
-  fill: #fff;
+  fill: var(--on-media);
   font-size: 15px;
   font-weight: 700;
   text-anchor: middle;
@@ -164,11 +170,11 @@
 }
 
 .neutral {
-  background: #6f7b88;
+  background: var(--unknown);
 }
 
 .tired {
-  background: #8fa8ff;
+  background: var(--accent-2);
 }
 
 .tense {
@@ -197,4 +203,63 @@
 .stack {
   display: grid;
   gap: 12px;
+}
+
+/* Face share: one friend per row, and the key fingerprints behind a tap. */
+.friend {
+  display: grid;
+  gap: 8px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.friend:first-child {
+  padding-top: 0;
+}
+
+.friend:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.friends {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.keys summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap);
+  color: var(--accent-text);
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.keys dl {
+  display: grid;
+  gap: 4px;
+  margin: 4px 0 0;
+}
+
+.keys dt {
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.keys dd {
+  margin: 0 0 6px;
+}
+
+.fingerprint {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 17px;
+  letter-spacing: 0.04em;
+  overflow-wrap: anywhere;
 }

@@ -308,7 +308,7 @@ def test_a_score_question_searches_the_web_then_reads_the_page():
     q, rt, web = web_qa(calls(("web_search", {"query": "UCF vs UF most recent game score"})),
                         calls(("read_page", {"url": "https://espn.test/ucf-uf", "goal": "final score"})),
                         "UCF beat UF 31-24 on Sep 5.")
-    a = asyncio.run(q.ask("What was the score in the most recent game against UF?"))
+    a = asyncio.run(q.ask("Tell me about the Knights."))
     assert a.text == "UCF beat UF 31-24 on Sep 5."
     assert {c.url for c in a.citations} == {"https://espn.test/ucf-uf"}
     assert ("browse", "https://espn.test/ucf-uf", "final score") in web.calls
@@ -317,7 +317,7 @@ def test_a_score_question_searches_the_web_then_reads_the_page():
 
 def test_web_questions_get_four_tool_calls():
     q, rt, _ = web_qa(*[calls(("web_search", {"query": f"try {n}"})) for n in range(5)], "done")
-    asyncio.run(q.ask("Who won the game?"))
+    asyncio.run(q.ask("Tell me about the Knights."))
     assert sum(1 for name, _ in rt.calls if name == "chat") == 5  # 4 tool rounds, then one answer from the evidence
 
 
@@ -406,8 +406,8 @@ def test_a_model_that_refuses_without_trying_gets_a_web_search_of_the_question()
     q, rt, web = web_qa("I don't know the score. I can't browse the web or check sports news from here.",
                         "UCF beat UF 31-24 on Sep 5.")
     pieces = []
-    a = asyncio.run(q.ask("What was the score in the most recent game against UF?", stream=pieces.append))
-    assert web.calls[0] == ("search", "What was the score in the most recent game against UF?")
+    a = asyncio.run(q.ask("Tell me about the Knights.", stream=pieces.append))
+    assert web.calls[0] == ("search", "Tell me about the Knights.")
     assert a.text == "UCF beat UF 31-24 on Sep 5." and "".join(pieces) == a.text
     assert a.citations[0].url == "https://espn.test/ucf-uf"
 
@@ -421,7 +421,7 @@ def test_no_second_search_when_the_model_already_searched():
     from contexts.agent.application.web_port import FakeWeb
 
     q, rt, web = web_qa(calls(("web_search", {"query": "x"})), "I don't know.", web=FakeWeb())
-    assert asyncio.run(q.ask("Who won the game?")).text == NO_EVIDENCE  # nothing found anywhere
+    assert asyncio.run(q.ask("Tell me about the Knights.")).text == NO_EVIDENCE  # nothing found anywhere
     assert [c[0] for c in web.calls] == ["search"]
 
 
@@ -447,7 +447,7 @@ class RefusingTalk:
 
 
 def test_a_score_question_skips_small_talk_when_the_box_has_web():
-    q, rt, web = web_qa(calls(("web_search", {"query": "UCF UF score"})), "UCF beat UF 31-24 on Sep 5.")
+    q, rt, web = web_qa("UCF beat UF 31-24 on Sep 5.")
     q.talk = RefusingTalk()
     a = asyncio.run(q.ask("What was the score in the most recent game against UF?"))
     assert a.text == "UCF beat UF 31-24 on Sep 5." and q.talk.asked == []
@@ -482,7 +482,7 @@ def test_outside_spots_games_and_scores_not_room_questions():
 # --- web answers are grounded and time-boxed ---
 
 def test_a_score_not_in_what_was_found_is_not_said_and_the_links_are_offered():
-    q, rt, web = web_qa(calls(("web_search", {"query": "UF score"})), "The most recent game ended 52-28 for Florida.")
+    q, rt, web = web_qa("The most recent game ended 52-28 for Florida.")
     pieces = []
     a = asyncio.run(q.ask("What was the score in the most recent game against UF?", stream=pieces.append))
     assert a.text == "I couldn't confirm that from what I found. These may have it: Knights 31, Gators 24."
@@ -491,7 +491,7 @@ def test_a_score_not_in_what_was_found_is_not_said_and_the_links_are_offered():
 
 
 def test_a_score_that_is_in_what_was_found_is_said():
-    q, rt, web = web_qa(calls(("web_search", {"query": "UF score"})), "UCF beat UF 31-24.")
+    q, rt, web = web_qa("UCF beat UF 31-24.")
     assert asyncio.run(q.ask("What was the score in the most recent game against UF?")).text == "UCF beat UF 31-24."
 
 
@@ -506,7 +506,7 @@ def test_grounded_checks_every_number():
 def test_only_one_page_is_read_per_question():
     q, rt, web = web_qa(calls(("read_page", {"url": "https://espn.test/ucf-uf"}),
                               ("read_page", {"url": "https://other.test/"})), "UCF beat UF 31-24 on Sep 5.")
-    asyncio.run(q.ask("Who won the game?"))
+    asyncio.run(q.ask("Tell me about the Knights."))
     assert [c for c in web.calls if c[0] == "browse"] == [("browse", "https://espn.test/ucf-uf", None)]
     assert "one page per question" in [m.content for m in rt.calls[-1][1] if m.role == "tool"][1]
 
@@ -518,7 +518,7 @@ def test_out_of_time_answers_from_what_was_found():
                         calls(("web_search", {"query": "never asked"})))
     ticks = iter([0, 0, qa_module.WEB_BUDGET_S + 1] + [qa_module.WEB_BUDGET_S + 2] * 20)
     q.monotonic = lambda: next(ticks)
-    a = asyncio.run(q.ask("Who won the game?"))
+    a = asyncio.run(q.ask("Tell me about the Knights."))
     assert sum(1 for name, _ in rt.calls if name == "chat") == 2  # one tool round, then the answer
     assert a.text == "UCF beat UF 31-24."
 
@@ -548,6 +548,92 @@ def test_the_budget_counts_model_time_so_a_slow_first_round_stops_the_loop():
     q, rt, web = web_qa(calls(("web_search", {"query": "x"})), calls(("web_search", {"query": "never"})))
     ticks = iter([0, qa_module.WEB_BUDGET_S + 1] + [qa_module.WEB_BUDGET_S + 2] * 20)
     q.monotonic = lambda: next(ticks)
-    assert asyncio.run(q.ask("Who won the game?")).text == NO_EVIDENCE
+    assert asyncio.run(q.ask("Tell me about the Knights.")).text == NO_EVIDENCE
     assert not any(name == "chat" for name, _ in rt.calls)  # out of time before the first model round
 
+
+
+# --- Tavily search and the direct web route ---
+
+def tavily(answer="South Carolina beat Florida 38-19.", results=None):
+    from contexts.agent.application.web_port import TavilyWebTools
+
+    sent = []
+
+    async def post(url, body, headers):
+        sent.append((url, body, headers))
+        return {"answer": answer, "results": results if results is not None else [
+            {"title": "FINAL: South Carolina 38, Florida 19", "url": "https://floridagators.test/final", "content": "Final score 38-19."}]}
+
+    return TavilyWebTools("tvly-test", post=post), sent
+
+
+def test_tavily_searches_recent_news_for_recent_questions_and_cites_the_top_result():
+    web, sent = tavily()
+    out = asyncio.run(web.search("What was the score in the most recent game against UF?"))
+    url, body, headers = sent[0]
+    assert url == "https://api.tavily.com/search" and headers == {"Authorization": "Bearer tvly-test"}
+    assert (body["topic"], body["time_range"], body["include_answer"]) == ("news", "week", True)
+    assert out[0] == {"title": "Search summary", "url": "https://floridagators.test/final",
+                      "summary": "South Carolina beat Florida 38-19."}
+    assert out[1]["title"] == "FINAL: South Carolina 38, Florida 19"
+
+
+def test_tavily_searches_everything_for_timeless_questions_and_has_no_reddit_without_a_browser():
+    web, sent = tavily(answer=None)
+    asyncio.run(web.search("Who founded UCF?"))
+    assert "topic" not in sent[0][1]
+    assert asyncio.run(web.reddit("ucf", "x")) == []
+
+
+def test_a_score_question_searches_at_once_and_answers_in_one_model_call():
+    web, sent = tavily()
+    rt = FakeRuntime(chat_replies=[ChatResult(content="South Carolina beat Florida 38-19.", model_version="v1")])
+    q = QA(rt, MEMORY, clock=lambda: NOW, web=web)
+    a = asyncio.run(q.ask("What was the score in the most recent game against UF?"))
+    assert a.text == "South Carolina beat Florida 38-19."
+    assert sum(1 for name, _ in rt.calls if name == "chat") == 0  # the search's summary answered: no model call
+    assert a.citations[0].url == "https://floridagators.test/final"
+
+
+def test_tavily_falls_back_to_all_results_when_this_weeks_news_has_nothing():
+    from contexts.agent.application.web_port import TavilyWebTools
+
+    sent = []
+
+    async def post(url, body, headers):
+        sent.append(body)
+        if body.get("topic") == "news":
+            return {"answer": "The sources don't provide the score of the last UCF vs UF game.", "results": [
+                {"title": "Week 6 picks", "url": "https://picks.test/", "content": "Predictions."}]}
+        return {"answer": "UF won 24-13 on October 5, 2024.", "results": [
+            {"title": "UCF vs Florida", "url": "https://espn.test/401628380", "content": "Florida 24, UCF 13"}]}
+
+    out = asyncio.run(TavilyWebTools("k", post=post).search("What was the score of the last UCF vs UF game?"))
+    assert [b.get("topic") for b in sent] == ["news", None]
+    assert out[0]["summary"] == "UF won 24-13 on October 5, 2024." and out[1]["url"] == "https://espn.test/401628380"
+
+
+def test_a_summary_with_a_number_no_page_has_goes_to_the_model_instead():
+    web, sent = tavily(answer="Florida won 52-28.")
+    rt = FakeRuntime(chat_replies=[ChatResult(content="South Carolina beat Florida 38-19.", model_version="v1")])
+    q = QA(rt, MEMORY, clock=lambda: NOW, web=web)
+    a = asyncio.run(q.ask("What was the score in the most recent game against UF?"))
+    assert a.text == "South Carolina beat Florida 38-19."
+    assert sum(1 for name, _ in rt.calls if name == "chat") == 1
+
+
+def test_a_summary_that_does_not_answer_goes_to_the_tools():
+    web, sent = tavily(answer="The sources don't provide the score.")
+    rt = FakeRuntime(chat_replies=[ChatResult(content="South Carolina beat Florida 38-19.", model_version="v1")])
+    q = QA(rt, MEMORY, clock=lambda: NOW, web=web)
+    assert asyncio.run(q.ask("What was the score in the most recent game against UF?")).text == "South Carolina beat Florida 38-19."
+
+
+def test_a_long_summary_is_cut_to_two_sentences_and_links_are_not_repeated():
+    web, sent = tavily(answer="South Carolina beat Florida 38-19. It rained. There was a delay. Fans left.")
+    rt = FakeRuntime(chat_replies=[])
+    q = QA(rt, MEMORY, clock=lambda: NOW, web=web)
+    a = asyncio.run(q.ask("What was the score in the most recent game against UF?"))
+    assert a.text == "South Carolina beat Florida 38-19. It rained."
+    assert [c.url for c in a.citations] == ["https://floridagators.test/final"]

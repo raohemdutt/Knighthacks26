@@ -7,7 +7,8 @@
 - POST /vault/wipe/request    {scope: all|keyframes|memory} -> {token, scope, expires_at}
 - POST /vault/wipe            {token} -> publishes vault.wipe.requested; the Wiper does the deleting
 - GET  /vault/egress          allowed bytes per group (hub, each connector, LAN, NTP, DNS), blocked count and recent blocks
-                               from the firewall's snapshot; `enforced` is false where no firewall runs
+                               from the firewall's snapshot; `enforced` is false where no firewall runs; `pictures`
+                               says how many camera pictures were cleared to leave, and by which approvals (V7)
 
 `guard` is the gateway's token check; it goes on the PUT and both POSTs. The
 endpoints only publish events: the policy changes because `policy.subscribe(bus)`
@@ -23,6 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from bus import EventBus
+from contexts.vault.application.pictures import PictureLedger
 from contexts.vault.application.policy import Policy
 from contexts.vault.application.wipe import WipeTokens, Wiper
 from contracts.types import CameraId
@@ -53,6 +55,7 @@ def vault_router(
     guard: Callable | None = None,
     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     tokens: WipeTokens | None = None,
+    pictures: PictureLedger | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/vault", tags=["vault"])
     writes = [Depends(guard)] if guard else []
@@ -99,12 +102,13 @@ def vault_router(
         """What the egress firewall (V6, jetson/egress.py) let out per group and blocked, from its snapshot file
         next to policy.json. Without one (a laptop, or the service is not running) `enforced: false` says so."""
         snap = policy.path.parent / "egress.json"
+        extra = {"pictures": pictures.snapshot()} if pictures else {}
         try:
             data = json.loads(snap.read_text())
             updated = datetime.strptime(data["updated"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
         except (OSError, ValueError, KeyError, TypeError):  # no file, or a half-written or foreign one: as good as none
-            return {"allowed": [], "blocked": 0, "enforced": False}
+            return {"allowed": [], "blocked": 0, "enforced": False, **extra}
         data["stale"] = (clock() - updated).total_seconds() > 120  # the service stopped writing: the rules still hold
-        return data
+        return data | extra
 
     return router

@@ -89,11 +89,19 @@
   color: var(--text);
   font-size: 15px;
   font-weight: 650;
-  transition: box-shadow var(--ease-press);
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .linkBtn:hover,
+  .hint:hover {
+    transform: translateY(-2px);
+  }
 }
 
 .linkBtn:active {
   box-shadow: var(--sh-inset-sm);
+  transform: scale(0.97);
 }
 
 /* ---------- the dock: sample banner and player, always in view ---------- */
@@ -104,7 +112,9 @@
   display: flex;
   flex-direction: column;
   border-radius: var(--radius);
-  background: var(--surface);
+  background: var(--bg-glass); /* glass: the sections scroll under it, blurred */
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
   box-shadow: var(--sh-float);
   overflow: hidden;
 }
@@ -121,7 +131,7 @@
   align-items: baseline;
   flex-wrap: wrap;
   padding: 9px 18px;
-  background: color-mix(in srgb, var(--watch) 13%, var(--surface));
+  background: color-mix(in srgb, var(--watch) 13%, transparent);
   box-shadow: inset 5px 0 0 var(--watch);
   color: var(--watch);
   font-size: 15px;
@@ -486,7 +496,7 @@
 }
 
 .splitHeld {
-  background: repeating-linear-gradient(135deg, var(--surface-2) 0 6px, var(--sh-dark) 6px 12px);
+  background: repeating-linear-gradient(135deg, var(--surface-2) 0 6px, color-mix(in srgb, var(--muted) 35%, transparent) 6px 12px);
   color: var(--text);
 }
 
@@ -521,14 +531,16 @@
 
 .lossGhost {
   fill: none;
-  stroke: var(--sh-dark);
+  stroke: var(--muted);
+  stroke-opacity: 0.6;
   stroke-width: 1.5;
   stroke-dasharray: 2 5;
 }
 
+/* the dot and the label sit on the chart, so their halo is the solid surface colour, not the glass */
 .headDot {
   fill: var(--accent-text);
-  stroke: var(--surface);
+  stroke: var(--surface-solid);
   stroke-width: 2.5;
 }
 
@@ -537,7 +549,7 @@
   font-size: 13px;
   font-weight: 700;
   paint-order: stroke;
-  stroke: var(--surface);
+  stroke: var(--surface-solid);
   stroke-width: 4px;
 }
 
@@ -595,6 +607,12 @@
   font-size: 14px;
   font-weight: 700;
   padding: 0;
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
+}
+
+.hint:active {
+  box-shadow: var(--sh-inset-sm);
+  transform: scale(0.94);
 }
 
 .measured {
@@ -664,7 +682,7 @@
   height: 100%;
   border-radius: 8px;
   background: var(--muted);
-  transition: width 0.25s ease-out;
+  transition: width 900ms var(--ease-out);
 }
 
 .barAfter {
@@ -678,7 +696,7 @@
 }
 
 .qa {
-  --bar: var(--sh-dark);
+  --bar: var(--line);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -720,13 +738,13 @@
 .changeFixed {
   background: var(--ok);
   box-shadow: none;
-  color: var(--surface);
+  color: var(--surface-solid);
 }
 
 .changeBroke {
   background: var(--danger);
   box-shadow: none;
-  color: var(--surface);
+  color: var(--surface-solid);
 }
 
 /* Only while the run is being played or scrubbed: a page opened on the finished run shows it still. */
@@ -816,7 +834,7 @@
 }
 
 .scoreAxis {
-  stroke: var(--sh-dark);
+  stroke: var(--muted);
   stroke-width: 2;
 }
 
@@ -831,14 +849,14 @@
 }
 
 .dotBefore {
-  fill: var(--surface);
+  fill: var(--surface-solid);
   stroke: var(--text);
   stroke-width: 2.5;
 }
 
 .dotAfter {
   fill: var(--ok);
-  stroke: var(--surface);
+  stroke: var(--surface-solid);
   stroke-width: 2;
 }
 
@@ -922,6 +940,7 @@
   height: 100%;
   border-radius: 4px;
   background: linear-gradient(90deg, var(--accent-bright), var(--accent));
+  transition: width 900ms var(--ease-out);
 }
 
 /* drawers */
@@ -994,4 +1013,9 @@
     font-size: 11px;
     padding-left: 5px;
   }
+}
+
+/* a missing number says why in full; a long event name must wrap inside its tile, not widen the page */
+.stat .note {
+  overflow-wrap: anywhere;
 }

@@ -65,6 +65,7 @@ class DayRunConfig(BaseModel):
     sleep: SleepCfg = SleepCfg()
     default_event_minutes: int = 60
     optional_event_prefixes: list[str] = ["campus:"]
+    ignored_event_prefixes: list[str] = ["nearby:"]  # offered on the Calendar screen, not by the board: never a block or a move
     meal_words: list[str] = ["breakfast", "brunch", "lunch", "dinner", "pizza", "meal"]
     study_words: list[str] = ["study", "review", "office hours", "lab", "tutoring", "workshop"]
     start: StartCfg = StartCfg()

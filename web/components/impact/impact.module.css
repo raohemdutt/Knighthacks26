@@ -306,7 +306,7 @@
 
 .ringTrack {
   fill: none;
-  stroke: var(--surface);
+  stroke: var(--surface-solid);
   stroke-width: 12;
   filter: drop-shadow(1px 1px 1px var(--sh-dark));
 }
@@ -356,7 +356,7 @@
 }
 
 .betTrack {
-  fill: var(--surface);
+  fill: var(--surface-solid);
 }
 
 .betFill {
@@ -400,11 +400,18 @@
   color: var(--text);
   font-size: 15px;
   font-weight: 650;
-  transition: box-shadow var(--ease-press);
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .linkBtn:hover {
+    transform: translateY(-2px);
+  }
 }
 
 .linkBtn:active {
   box-shadow: var(--sh-inset-sm);
+  transform: scale(0.97);
 }
 
 /* --- the loop in one row: mistake seen, taught, practised, fewer next week --- */

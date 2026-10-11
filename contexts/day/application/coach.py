@@ -184,6 +184,24 @@ class DayCoach:
         return [m for m in sorted(plan.moves, key=lambda m: m.start)
                 if m.kind == MAIN_KIND and m.minutes > 0 and (nxt is None or m.end <= nxt.ts)]
 
+    def owned(self, day: date) -> list[tuple[str, PlanMove]]:
+        """Every block of the main activity the day has had, with the id of the plan it belongs to. A re-plan
+        (or a remade plan) only covers the day from the moment it was made, so the blocks of the plans before
+        it that had already begun are still the day's: whole when they had ended, cut at the new plan when it
+        interrupted them. What the box saw in the morning does not go away because the afternoon was re-planned."""
+        plan = self.planner.current.get(day)
+        if plan is None:
+            return []
+        chain = [*getattr(self.planner, "earlier", {}).get(day, []), plan]
+        out: list[tuple[str, PlanMove]] = []
+        for old, new in zip(chain, chain[1:]):
+            for m in self.blocks(day, old):
+                end = min(m.end, new.ts)
+                minutes = int((end - m.start).total_seconds() // 60)
+                if minutes > 0:
+                    out.append((old.plan_id, m if end == m.end else m.model_copy(update={"end": end, "minutes": minutes})))
+        return out + [(plan.plan_id, m) for m in self.blocks(day, plan)]
+
     def session(self, block: PlanMove) -> SessionReview:
         spans = self.presence.intervals(block.start, block.end)
         desk = self.dayrun.walks.ref(self.dayrun.cfg.desk)
@@ -191,18 +209,16 @@ class DayCoach:
                               looks=self.looks_in(block) if spans and self.looks else None)
 
     def sessions(self, day: date, now: datetime) -> list[SessionReview]:
-        """Every block of the main activity in the day's plan that has ended by `now`, measured or said not to be."""
-        plan = self.planner.current.get(day)
-        if plan is None:
-            return []
-        noted = {k[1]: n.session for k, n in self.notes.get(day, {}).items() if k[0] == plan.plan_id}
+        """Every block of the main activity the day has had that ended by `now` (the blocks before a re-plan
+        included), measured or said not to be."""
+        noted = self.notes.get(day, {})
         out = []
-        for block in self.blocks(day, plan):
+        for plan_id, block in self.owned(day):
             if block.end > now:
                 continue
             # past what the box still holds in memory, the note written at the time is the record
             old = now - block.start > KEEP - timedelta(hours=1)
-            out.append(noted[block.id] if old and block.id in noted else self.session(block))
+            out.append(noted[plan_id, block.id].session if old and (plan_id, block.id) in noted else self.session(block))
         return out
 
     def signals(self, block: PlanMove) -> list[Signal]:

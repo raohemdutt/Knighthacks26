@@ -59,6 +59,8 @@ SAMPLES: dict[str, dict] = {
     "circle.brain.consent.changed": {"consent_id": "c1", "circle_id": "team", "member_id": "ilan", "on": True,
                                      "source": "phone"},
     "circle.event.agreed": {"circle_id": "team", "thread_id": "t1", "event": PROPOSAL, "attendees": ["dom", "hemdutt"]},
+    "circle.face_share.changed": {"circle_id": "team", "member_id": "hemdutt", "peer": "dom", "direction": "out",
+                                  "state": "shared", "share_id": "f1", "expires_at": "2026-11-10T02:12:00-04:00"},
     "circle.message.received": {"message_id": "m1", "circle_id": "team", "thread_id": "t1", "from_member": "hemdutt",
                                 "kind": "reply", "reply": {"answer": "free"}},
     "circle.place.shared": {"circle_id": "team", "member_id": "dom", "place": "Library", "source": "phone",

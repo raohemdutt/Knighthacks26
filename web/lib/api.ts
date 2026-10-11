@@ -132,16 +132,54 @@ export interface IdentitySettings {
   photos_available?: boolean; // false when the box cannot decode pictures (no OpenCV)
 }
 
-/** One row of GET /identity/members. The face template itself never leaves the box. */
+/**
+ * One row of GET /identity/members. The template is never in an answer. It leaves the box only through face share
+ * (off by default), and then only the box owner's own, sealed to a friend's box.
+ */
 export interface Member {
   member_id: string;
   name: string;
   enrolled_at: string;
   updated_at?: string | null;
   photos?: number; // how many looks the template is made of (up to 12)
-  source?: "live" | "scan" | "photos";
+  source?: "live" | "scan" | "photos" | "circle"; // circle: a friend's box shared it with this one (face share)
   expressions?: boolean; // this person switched "read my expressions" on
   circle_member_id?: string | null; // which Circle member this is, when someone said so
+  shared_by?: string | null; // source "circle" only: the friend's Circle member id
+  received_at?: string | null;
+  expires_at?: string | null; // when this box deletes it unless the friend renews
+}
+
+/** A box key as two friends compare it: "ab12 cd34 ef56 0a1b 2c3d". */
+export interface FaceShareKey {
+  known: boolean; // false until the friend's box has face sharing on and was heard from
+  fingerprint: string | null;
+  changed: boolean; // another key appeared under their name: sharing stops until it is compared and trusted
+  new_fingerprint: string | null;
+}
+
+export interface FaceShareFriend {
+  member_id: string;
+  display_name: string;
+  key: FaceShareKey;
+  /** My own template, to this friend's box. */
+  outgoing: { state: "none" | "waiting_approval" | "shared"; share_id: string | null; shared_at: string | null; expires_at: string | null; action_id: string | null };
+  /** This friend's template, on this box. `usable` is false while recognition is off here or the face models differ. */
+  incoming: { state: "none" | "offered" | "accepted"; received_at: string | null; expires_at: string | null; offered_at: string | null; usable: boolean | null };
+  renewal_offered: boolean;
+}
+
+/** GET /api/circle/face-share (contexts/circle/face_share_api.py). 409 while it is switched off, which is the default. */
+export interface FaceShareStatus {
+  enabled: true;
+  circle_id: string;
+  member_id: string;
+  expiry_days: number;
+  recognition_enabled: boolean;
+  recognition_available: boolean;
+  explanation: string;
+  me: { fingerprint: string; member: { member_id: string; name: string } | null; can_share: boolean; why_not: string | null };
+  friends: FaceShareFriend[];
 }
 
 /** Why the box did not take a photo or a still; `message` is the sentence to show. */
@@ -620,7 +658,8 @@ export interface RoomPlan {
   windows: RoomOpening[];
   posters: RoomOpening[];
   furniture: RoomFurniture[];
-  calibration: Record<string, { image: [number, number][]; floor: [number, number][]; homography: number[][] }>;
+  /** `source`: "default" = the placeholder points the room file shipped with (positions are approximate); "set" = given for the real camera. */
+  calibration: Record<string, { image: [number, number][]; floor: [number, number][]; homography: number[][]; source?: "default" | "set" }>;
   zones: Record<string, Record<string, [number, number][]>>; // camera -> zone -> floor polygon (m)
   play: { walk_speed: number; body_radius: number; start: [number, number] };
   rooms: string[];
@@ -771,6 +810,8 @@ export interface Profile {
   meters: { habits: string[]; dayrun: string[] };
   shift: { start: string; end: string; sleep_after_minutes: number; sleep_hours: number } | null;
   scenario: string | null;
+  /** The Ask screen's suggested questions, in this profile's words (profile.yaml `suggestions:`). */
+  suggestions: string[];
   overrides: Record<string, string>;
 }
 
@@ -1531,6 +1572,8 @@ export interface VoiceStatus {
   heard: string;
   answer: string;
   seconds_in_state: number;
+  /** True when the box is always listening for "Hey Atlas" (wake_word in config/voice.yaml). */
+  wake?: boolean;
   mic?: { ok: boolean; detail: string };
   speaker?: { ok: boolean; detail: string };
   speech_to_text?: { ok: boolean; detail: string };
@@ -1545,7 +1588,19 @@ export interface EgressGroup {
   name: string;
   hosts: string[];
   packets: number;
+  /** Every byte sent to the group (V7: counted ahead of the conntrack accept). */
   bytes: number;
+  /** Connections opened to it. Absent from older firewall snapshots. */
+  connections?: number;
+}
+
+/** V7: camera pictures cleared to leave the box, each batch by an approved training export. */
+export interface EgressPictures {
+  video_bytes: number;
+  pictures: number;
+  picture_bytes: number;
+  approved_exports: number;
+  batches: { dataset_id: string; task: string; pictures: number; bytes: number; approval: string; ts: string }[];
 }
 
 export interface EgressBlock {
@@ -1566,6 +1621,8 @@ export interface Egress {
   recent_blocks?: EgressBlock[];
   updated?: string;
   stale?: boolean;
+  /** Present on boxes with V7, firewall or not. */
+  pictures?: EgressPictures;
 }
 
 export type WipeScope = "all" | "keyframes" | "memory";
@@ -1743,6 +1800,8 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   voiceTalk: () => post<VoiceStatus>("/api/voice/talk", {}),
   voiceStop: () => post<VoiceStatus>("/api/voice/stop", {}),
   voiceEnabled: (enabled: boolean) => post<VoiceStatus>("/api/voice/enabled", { enabled }),
+  voiceListen: () => post<VoiceStatus>("/api/voice/listen", {}),
+  voiceSay: (text: string) => post<VoiceStatus>("/api/voice/say", { text }),
   setVaultPolicy: (body: Partial<VaultPolicy>) => put<VaultPolicy>("/vault/policy", body),
   egress: (signal?: AbortSignal) => get<Egress>("/vault/egress", undefined, signal),
   wipeRequest: (scope: WipeScope) => post<WipeToken>("/vault/wipe/request", { scope }),
@@ -1753,6 +1812,11 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   lab: (sample: boolean, signal?: AbortSignal) => get<import("./lab").LabList>("/api/learning/lab", sample ? { sample: 1 } : undefined, signal),
   labRun: (runId: string, sample: boolean, signal?: AbortSignal) =>
     get<import("./lab").LabStory>(`/api/learning/lab/${encodeURIComponent(runId)}`, sample ? { sample: 1 } : undefined, signal),
+  /** The lab's benchmark and energy rows, the routing what-if and the experiment timeline (types in lib/labBench.ts). */
+  labBench: (signal?: AbortSignal) => get<import("./labBench").LabBench>("/api/learning/lab/bench", undefined, signal),
+  labRoutingSim: (params: Partial<import("./labBench").SimParams>, signal?: AbortSignal) =>
+    post<import("./labBench").LabSim>("/api/learning/lab/routing/simulate", params, signal),
+  labExperiments: (signal?: AbortSignal) => get<import("./labBench").LabTimeline>("/api/learning/lab/experiments", undefined, signal),
   teach: (body: TeachBody) => post<{ task: string; action_id: string }>("/api/teach", body),
 
   episodes: (opts: { from?: string; to?: string; camera?: string; label?: string } = {}, signal?: AbortSignal) =>
@@ -1806,6 +1870,20 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   circleThreads: (signal?: AbortSignal) => get<CircleThreads>("/api/circle/threads", undefined, signal),
   circleThread: (id: string, signal?: AbortSignal) => get<CircleThreadDetail>(`/api/circle/threads/${encodeURIComponent(id)}`, undefined, signal),
   circleMembers: (signal?: AbortSignal) => get<CircleMembers>("/api/circle/members", undefined, signal),
+  /** Face share, or null while it is switched off on this box (409), there is no Circle, or the box is older than it (404). */
+  faceShare: (signal?: AbortSignal) =>
+    get<FaceShareStatus>("/api/circle/face-share", undefined, signal).catch((err: unknown) => {
+      if (err instanceof ApiError && (err.status === 409 || err.status === 404)) return null;
+      throw err;
+    }),
+  /** Raises an approval card on this box; the template is sealed and sent only when it is approved. */
+  faceShareAsk: (friend: string) => post<{ action_id: string }>(`/api/circle/face-share/${encodeURIComponent(friend)}/share`, undefined),
+  faceShareRevoke: (friend: string) => post<{ revoked: string }>(`/api/circle/face-share/${encodeURIComponent(friend)}/revoke`, undefined),
+  /** Raises the Accept card again for a friend's offer that is still waiting. */
+  faceShareReview: (friend: string) => post<{ action_id: string }>(`/api/circle/face-share/${encodeURIComponent(friend)}/review`, undefined),
+  faceShareForget: (friend: string) => post<{ forgotten: string }>(`/api/circle/face-share/${encodeURIComponent(friend)}/forget`, undefined),
+  faceShareTrust: (friend: string, fingerprint: string) =>
+    post<{ trusted: string }>(`/api/circle/face-share/${encodeURIComponent(friend)}/trust-key`, { fingerprint }),
   /** Walking route to where a friend is sharing (404 when they are not, or the place is on no map). */
   routeToFriend: (from: string, member: string, signal?: AbortSignal) =>
     get<CampusRoute>("/api/play/campus-route", { from, to: `friend:${member}` }, signal),
@@ -1888,6 +1966,9 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   spotReplaySpeed: (speed: number) => post<Spot.Replay>("/api/spot/replay/speed", { speed }),
   spotAsk: (text: string, rephrase = false) => post<Spot.Answer>("/api/spot/ask", { text, rephrase }),
   /** The operator's first screen in plain words (no statistics): status, do-this-first, watch-out, every asset, the rounds. */
+  // the look guide: "where do I look for X?" -> a place on the Inspection screen and the words to walk there (no model call)
+  spotGuide: (q: string, signal?: AbortSignal) => get<import("./guide").SpotGuide>("/api/spot/guide", { q }, signal),
+  spotRoute: (to: string, from?: string | null, signal?: AbortSignal) => get<import("./guideSpot").SpotRoute>("/api/spot/route", from ? { to, from } : { to }, signal),
   spotShift: (signal?: AbortSignal) => get<Spot.Shift>("/api/spot/shift", undefined, signal),
   spotRound: (id: string, signal?: AbortSignal) => get<Spot.RoundView>(`/api/spot/shift/rounds/${encodeURIComponent(id)}`, undefined, signal),
   /** The same cited answer, worded for an operator; `draft` keeps the exact wording. */

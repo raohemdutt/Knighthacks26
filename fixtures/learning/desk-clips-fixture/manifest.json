@@ -1,0 +1,14 @@
+{
+  "dataset_id": "desk-clips-fixture",
+  "spec": {
+    "task": "desk-objects",
+    "instruction": "Name the small things on the desk.",
+    "output_schema": {},
+    "camera": "cam-desk",
+    "label": null,
+    "examples": []
+  },
+  "created": "2026-10-10T23:53:22.125057+00:00",
+  "examples": 12,
+  "action_id": "fixture:desk-clips"
+}

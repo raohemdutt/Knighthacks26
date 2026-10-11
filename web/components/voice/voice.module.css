@@ -8,9 +8,20 @@
   gap: 10px;
   margin: 0 calc(-1 * var(--gutter)) -28px;
   padding: 14px var(--gutter);
-  background: var(--bg);
+  background: var(--bg-glass);
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
   border-radius: var(--radius) var(--radius) 0 0;
-  box-shadow: 0 -8px 18px -6px var(--sh-dark);
+  box-shadow: 0 -1px 0 var(--line);
+}
+
+/* desktop has no tab bar, so the dock sits flush at the bottom and swallows the main area's 48px bottom padding */
+@media (min-width: 1024px) {
+  .dock {
+    bottom: 0;
+    margin-bottom: -48px;
+    padding-bottom: 20px;
+  }
 }
 
 .typeRow {
@@ -64,11 +75,18 @@
   box-shadow: var(--sh-raised);
   color: var(--accent-text);
   touch-action: manipulation;
-  transition: box-shadow var(--ease-press);
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .mic:hover {
+    transform: translateY(-2px);
+  }
 }
 
 .mic:active {
   box-shadow: var(--sh-inset);
+  transform: scale(0.96);
 }
 
 .mic svg {
@@ -77,9 +95,9 @@
 }
 
 .micListening {
-  background: var(--accent);
+  background: var(--accent-grad);
   color: var(--accent-ink);
-  box-shadow: 0 0 0 6px var(--accent-soft), 5px 5px 14px rgba(170, 200, 245, 0.32);
+  box-shadow: 0 0 0 6px var(--accent-soft), var(--glow);
 }
 
 .micListening::after {
@@ -148,11 +166,20 @@
   font-weight: 650;
   line-height: 1.15;
   text-align: left;
-  transition: box-shadow var(--ease-press);
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .toggle:hover:not(:disabled),
+  .whyClose:hover,
+  .switchRow:hover:not(:disabled) {
+    transform: translateY(-2px);
+  }
 }
 
 .toggle:active:not(:disabled) {
   box-shadow: var(--sh-inset-sm);
+  transform: scale(0.97);
 }
 
 .toggle svg {
@@ -219,11 +246,12 @@
   box-shadow: var(--sh-raised-sm);
   font-size: 15px;
   font-weight: 650;
-  transition: box-shadow var(--ease-press);
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
 }
 
 .whyClose:active {
   box-shadow: var(--sh-inset-sm);
+  transform: scale(0.97);
 }
 
 /* ---------- Settings sheet rows ---------- */
@@ -240,11 +268,12 @@
   background: var(--surface);
   box-shadow: var(--sh-raised-sm);
   text-align: left;
-  transition: box-shadow var(--ease-press);
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
 }
 
 .switchRow:active:not(:disabled) {
   box-shadow: var(--sh-inset-sm);
+  transform: scale(0.98);
 }
 
 .switchRow:disabled {
@@ -278,7 +307,7 @@
   border-radius: 16px;
   background: var(--surface-2);
   box-shadow: var(--sh-inset-sm);
-  transition: background 120ms;
+  transition: background var(--t-fast), box-shadow var(--t-fast);
 }
 
 .knob::after {
@@ -289,14 +318,14 @@
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: var(--surface);
+  background: var(--surface-solid);
   box-shadow: 2px 2px 4px var(--sh-dark), -1px -1px 3px var(--sh-light);
-  transition: transform 120ms;
+  transition: transform var(--t) var(--ease-spring);
 }
 
 .knobOn {
-  background: var(--accent);
-  box-shadow: inset 2px 2px 5px rgba(10, 30, 90, 0.45);
+  background: var(--accent-grad);
+  box-shadow: var(--sh-inset-sm), var(--glow);
 }
 
 .knobOn::after {

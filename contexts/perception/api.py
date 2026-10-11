@@ -23,7 +23,9 @@
                                         photos: [{index, accepted, reason, message}]}
                                     409 while switched off (or without OpenCV), 413 when too large, 422 for a bad body
 - GET    /identity/members          [{member_id, name, enrolled_at, updated_at, photos, source, expressions,
-                                    circle_member_id}]: the only place a name is returned, never the template
+                                    circle_member_id}]: the only place a name is returned, never the template. A row a
+                                    friend's box shared (source "circle", face share) also has {shared_by, received_at,
+                                    expires_at}; it can be deleted here and not changed (409)
 - PUT    /identity/members/{id}     {expressions?: bool, name?: str, circle_member_id?: str}: "read my expressions" for this
                                     member (409 when the expression model is not on this box); which Circle member they
                                     are ("" unlinks; 422 when the Circle has no such member)
@@ -35,7 +37,8 @@
 `guard` is the gateway's token check; it goes on every PUT, POST and DELETE.
 
 `circle_members` gives the configured Circle's member ids (None or empty: no Circle here, any well-formed id is
-taken). The link is an id next to the template; no face data goes to the Circle and none is fetched from it.
+taken). The link is an id next to the template; nothing in this router sends face data anywhere or fetches any.
+(Face share, off by default, is the one way a template crosses boxes: contexts/circle/face_share_api.py.)
 
 The photos of an upload and the stills of a scan exist only in this process's memory while the request is answered: the body is read
 and split here (not by a form parser that may spool large parts to a temporary file), handed to the service,

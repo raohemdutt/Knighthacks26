@@ -43,8 +43,14 @@ anonymously per camera: no track, no vector, no identity. Looks are added up ove
 or every few minutes, never per frame, and never with a picture, a vector or a landmark in it.
 
 A member can be linked to a Circle member (`circle_member_id`): only that id is kept, with the template in
-the vault and on the identity events that already name the member. No face data goes to the Circle, and
-nothing is fetched from a friend's box.
+the vault and on the identity events that already name the member. Nothing here sends face data anywhere.
+
+Face share (contexts/circle/application/face_share.py, off by default) is the one way a template crosses boxes,
+and it uses four small methods at the end of this class: `own_template` hands out the template of the one
+person enrolled here, with consent, as this box's own Circle member (never anyone else who enrolled here, never
+a template that was itself received); `receive_shared` stores a friend's template as a member with
+`source: "circle"`; `forget_shared` and `expire_shared` delete it. A received template cannot be edited, added
+to or shared on; it can only be forgotten.
 
 Forgetting a member removes their template, exemplars and settings at once, and their expression history
 from what this service answers. The expression events already in the event log stay there, as every event
@@ -52,7 +58,9 @@ does, until a wipe of everything.
 """
 
 import asyncio
+import hashlib
 import logging
+import math
 import threading
 import time
 from collections.abc import Callable
@@ -126,6 +134,23 @@ def scan_pose(pose: HeadPose) -> str:
 
 
 # --- apparent expression ---
+SHARED = "circle"  # Member.source of a template a friend's box shared with this one
+MIN_VECTOR, MAX_VECTOR = 16, 1024  # numbers in a face vector that this box will take from another (SFace has 128)
+
+
+def shared_member_id(shared_by: str) -> str:
+    """The member id a friend's template is stored under: one per friend, and never an id a person typed."""
+    return "c-" + hashlib.sha256(shared_by.encode()).hexdigest()[:16]
+
+
+def _alive(member: Member, now: datetime) -> bool:
+    """A received template still has time left. One whose expiry cannot be read has none."""
+    try:
+        return datetime.fromisoformat(member.expires_at) > now
+    except (TypeError, ValueError):
+        return False
+
+
 EXPRESSION_EVERY_S = 2.0
 KEEP_EXPRESSIONS = timedelta(hours=48)  # what GET /identity/expressions can answer about
 
@@ -217,7 +242,9 @@ class IdentityService:
     def _row(m: Member) -> dict:
         return {"member_id": m.member_id, "name": m.name, "enrolled_at": m.enrolled_at, "updated_at": m.updated_at,
                 "photos": len(m.exemplars), "source": m.source, "expressions": m.expressions,
-                "circle_member_id": m.circle_member_id}
+                "circle_member_id": m.circle_member_id,
+                **({"shared_by": m.shared_by, "received_at": m.received_at, "expires_at": m.expires_at}
+                   if m.source == SHARED else {})}
 
     def present(self) -> list[dict]:
         """The enrolled members a camera is looking at right now (ids only), for "here now" on the phone."""
@@ -235,6 +262,7 @@ class IdentityService:
         member = self.store.get(member_id)
         if member is None:
             raise KeyError(member_id)
+        self._local(member)
         if expressions and self.expression_reader is None:
             raise IdentityError("the expression model is not installed on this box")
         if name is not None:
@@ -266,8 +294,9 @@ class IdentityService:
 
     def _changed(self, **enrolment: Any) -> list[Event]:
         enabled, members, everyone, expressions = self._state()
+        received = sorted({m.shared_by for m in self.store.members() if m.source == SHARED and m.shared_by})
         return [IdentityChanged(ts=self._now(), enabled=enabled, members=list(members), everyone=everyone,
-                                expressions=list(expressions), **enrolment)]
+                                expressions=list(expressions), received_from=received, **enrolment)]
 
     def on_changed(self, e: Event) -> None:
         """replay=True: remember what the log last said, so `announce` only speaks when it is out of date,
@@ -278,7 +307,9 @@ class IdentityService:
 
     def announce(self) -> list[Event]:
         """At start-up, after replay: say the current state if the log does not have it (the switch and the
-        templates live in the vault folder, which survives a wipe of the log)."""
+        templates live in the vault folder, which survives a wipe of the log). A friend's template that ran out
+        while the box was off is deleted first."""
+        self.expire_shared(self._now())
         state = self._state()
         if state == (self._logged or (False, (), False, ())):
             return []
@@ -308,6 +339,7 @@ class IdentityService:
         name = self._name(name)
         self._consent(consent_ack)
         self._circle(circle_member_id)
+        self._local(self.store.get(member_id))
         with self._lock:
             self._enroll = {"state": "collecting", "member_id": member_id, "name": name, "camera_id": camera_id,
                             "circle_member_id": circle_member_id, "vectors": [], "hint": "look_at_camera", "error": None,
@@ -373,6 +405,7 @@ class IdentityService:
         if member_id is not None and not MEMBER_ID.match(member_id):
             raise ValueError("member_id must be 1 to 32 of a-z, 0-9, - and _")
         existing = self.store.get(member_id) if member_id else None
+        self._local(existing)
         if existing is None or name is not None:
             name = self._name(name or "")
         self._consent(consent_ack)
@@ -637,7 +670,11 @@ class IdentityService:
         return waiting and now - self._enroll_looked.get(camera_id, float("-inf")) >= ENROLL_EVERY_S
 
     def _templates(self) -> dict[str, Vector]:
-        return {m.member_id: m.vector for m in self.store.members() if m.model == self.recognizer.name}
+        members = self.store.members()
+        if any(m.source == SHARED for m in members):  # a friend's template is never matched past its expiry,
+            at = self._now()  # also if nothing came round to delete it yet
+            members = [m for m in members if m.source != SHARED or _alive(m, at)]
+        return {m.member_id: m.vector for m in members if m.model == self.recognizer.name}
 
     def tagged(self) -> dict[CameraId, dict[int, str]]:
         return {camera: tags.members for camera, tags in self._tags.items()}
@@ -747,6 +784,67 @@ class IdentityService:
             "note": "Apparent expression: how a face looked to a small model, added up over many looks. "
                     "It is a noisy signal, not an emotion and nothing about health.",
         }
+
+    # --- face share: the only way a template leaves or enters this box (contexts/circle, off by default) ---
+
+    @staticmethod
+    def _local(member: Member | None) -> None:
+        if member is not None and member.source == SHARED:
+            raise IdentityError("this template was shared by a friend's box: it can only be forgotten here")
+
+    def own_template(self, circle_member_id: str) -> dict:
+        """The template that may be shared: the one person enrolled on this box, with consent, who is linked to
+        this box's own Circle member. {member_id, name, model, vector, vectors}; only vectors and the name, never
+        a picture or an expression. Anyone else who enrolled here is not this box's to share."""
+        mine = [m for m in self.store.members() if m.circle_member_id == circle_member_id and m.source != SHARED and m.consent_at]
+        if not mine:
+            raise IdentityError("nobody enrolled on this box is linked to you as this box's Circle member: enrol yourself "
+                                "here and choose yourself under \"Which Circle member is this?\" first")
+        if len(mine) > 1:
+            raise IdentityError("more than one person enrolled on this box is linked to you: keep one")
+        m = mine[0]
+        return {"member_id": m.member_id, "name": m.name, "model": m.model, "vector": list(m.vector),
+                "vectors": [list(v) for v in m.exemplars]}
+
+    def shared_members(self) -> list[Member]:
+        """The templates friends' boxes shared with this one."""
+        return [m for m in self.store.members() if m.source == SHARED and m.shared_by]
+
+    def receive_shared(self, shared_by: str, name: str, model: str, vector: Vector, vectors: list[Vector], *,
+                       expires_at: datetime, share_id: str) -> list[Event]:
+        """Store a friend's own template, after this box's person accepted it. One per friend: a newer share
+        replaces the older. It is used only while recognition is on, like every template."""
+        self._circle(shared_by)
+        name = self._name(name)
+        if not isinstance(model, str) or not 1 <= len(model) <= 64:
+            raise ValueError("the shared template is not well formed")
+        looks = [vector, *vectors] if isinstance(vectors, list) else [None]
+        if not 1 <= len(looks) - 1 <= MAX_EXEMPLARS or not isinstance(vector, list) or not MIN_VECTOR <= len(vector) <= MAX_VECTOR or any(
+                not isinstance(v, list) or len(v) != len(vector) or not all(type(x) is float and math.isfinite(x) for x in v)
+                or not any(v) for v in looks):
+            raise ValueError("the shared template is not well formed")
+        member_id = shared_member_id(shared_by)
+        if self.recognizer is not None and model == self.recognizer.name:
+            other = self.recognizer.match(vector, {m.member_id: m.vector for m in self.store.members()
+                                                   if m.member_id != member_id and m.model == model})
+            if other is not None:  # the same face under two ids would make every tag a coin toss
+                raise IdentityError("this face is already enrolled on this box under another entry: forget that one first")
+        at = self._now().isoformat()
+        self.store.save(Member(member_id=member_id, name=name, enrolled_at=at, model=model, frames=len(vectors), vector=vector,
+                               vectors=vectors, updated_at=at, source=SHARED, circle_member_id=shared_by, shared_by=shared_by,
+                               received_at=at, expires_at=expires_at.isoformat(), share_id=share_id))
+        return self._changed()
+
+    def forget_shared(self, shared_by: str) -> list[Event]:
+        """Delete what `shared_by`'s box shared with this one. Nothing to delete: no events."""
+        gone = [m.member_id for m in self.shared_members() if m.shared_by == shared_by]
+        return [e for member_id in gone for e in self.remove(member_id)][-1:]
+
+    def expire_shared(self, now: datetime) -> tuple[list[str], list[Event]]:
+        """Delete every received template whose time is up (or whose expiry cannot be read): (whose, events)."""
+        late = [m for m in self.shared_members() if not _alive(m, now)]
+        events = [e for m in late for e in self.remove(m.member_id)]
+        return [m.shared_by for m in late], events[-1:]
 
     # --- the hook into a camera's pipeline ---
 

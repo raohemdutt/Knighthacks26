@@ -75,16 +75,20 @@ class Calibration:
     floor: list[Point]
     h: Matrix  # picture -> floor
     h_inv: Matrix  # floor -> picture
+    # "default": the points the room file shipped with (a guess at where a camera would stand: positions are
+    # approximate). "set": someone gave four points for the real camera (PUT /api/room/calibration/<camera>).
+    source: str = "default"
 
     @classmethod
-    def of(cls, image: list, floor: list) -> "Calibration":
+    def of(cls, image: list, floor: list, source: str = "default") -> "Calibration":
         img = [(float(p[0]), float(p[1])) for p in image]
         flo = [(float(p[0]), float(p[1])) for p in floor]
         h = homography(img, flo)
-        return cls(img, flo, h, invert(h))
+        return cls(img, flo, h, invert(h), "set" if source == "set" else "default")
 
     def as_json(self) -> dict:
-        return {"image": [list(p) for p in self.image], "floor": [list(p) for p in self.floor], "homography": self.h}
+        return {"image": [list(p) for p in self.image], "floor": [list(p) for p in self.floor], "homography": self.h,
+                "source": self.source}
 
 
 @dataclass
@@ -197,7 +201,7 @@ def parse_room(raw: dict, path: Path | None = None) -> RoomPlan:
     calibration = {}
     for camera, c in (raw.get("calibration") or {}).items():
         try:
-            calibration[camera] = Calibration.of(c["image"], c["floor"])
+            calibration[camera] = Calibration.of(c["image"], c["floor"], str(c.get("source") or "default"))
         except (Degenerate, KeyError, TypeError, IndexError) as err:
             raise RoomError(f"calibration for {camera}: {err}") from None
     play = raw.get("play") or {}
@@ -236,6 +240,8 @@ def render_calibration(calibration: dict[str, Calibration]) -> str:
         lines.append(f"  {camera}:")
         for key, points in (("image", c.image), ("floor", c.floor)):
             lines.append(f"    {key}: [" + ", ".join(f"[{x:g}, {y:g}]" for x, y in points) + "]")
+        if c.source == "set":  # the shipped points carry no such line: they are a placeholder, not a calibration
+            lines.append("    source: set")
     return "\n".join(lines) + "\n"
 
 

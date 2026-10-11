@@ -2,21 +2,36 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type FormEvent, type MouseEvent, type ReactNode } from "react";
 import { api, getToken, setToken } from "@/lib/api";
 import { useAtlas, type LinkState } from "@/lib/atlas";
 import { useProfileState } from "@/lib/profile";
+import { useTheme } from "@/lib/theme";
 import { useFetch } from "@/lib/useFetch";
+import { CommandPalette, type Command } from "./Command";
 import { Logo } from "./Logo";
 import ui from "./ui.module.css";
 import { VoiceSettings } from "./voice/VoiceSettings";
 
-type Tab = { href: string; label: string; icon: ReactNode };
+type Tab = { href: string; label: string; icon: ReactNode; keywords?: string };
 
 const TABS: Tab[] = [
   {
+    href: "/home",
+    label: "Home",
+    keywords: "start landing device about",
+    icon: (
+      <>
+        <path d="M3.5 11l8.5-7 8.5 7" />
+        <path d="M5.5 9.5V20h13V9.5" />
+        <path d="M10 20v-6h4v6" />
+      </>
+    ),
+  },
+  {
     href: "/now",
-    label: "Now",
+    label: "Calendar",
+    keywords: "now day plan brief status",
     icon: (
       <>
         <circle cx="12" cy="12" r="8.5" />
@@ -25,10 +40,11 @@ const TABS: Tab[] = [
       </>
     ),
   },
-  { href: "/", label: "Ask", icon: <path d="M4 5.5h16v10.5H10l-4.5 3.5V16H4z" /> },
+  { href: "/", label: "Ask Atlas", keywords: "question chat voice talk", icon: <path d="M4 5.5h16v10.5H10l-4.5 3.5V16H4z" /> },
   {
     href: "/today",
-    label: "Today",
+    label: "Dailies",
+    keywords: "today habits due coursework",
     icon: (
       <>
         <circle cx="12" cy="12" r="4" />
@@ -38,7 +54,8 @@ const TABS: Tab[] = [
   },
   {
     href: "/dayrun",
-    label: "Day Run",
+    label: "Today's Plan",
+    keywords: "day run campus map route planner",
     icon: (
       <>
         <path d="M5 21V4M5 5h11l-2 3.5 2 3.5H5" />
@@ -48,6 +65,7 @@ const TABS: Tab[] = [
   {
     href: "/timeline",
     label: "Timeline",
+    keywords: "episodes history memory cameras",
     icon: (
       <>
         <circle cx="12" cy="12" r="8.5" />
@@ -58,6 +76,7 @@ const TABS: Tab[] = [
   {
     href: "/approvals",
     label: "Approvals",
+    keywords: "approve deny actions pending",
     icon: (
       <>
         <path d="M12 3l7.5 3v5.5c0 4.5-3.2 8-7.5 9.5-4.3-1.5-7.5-5-7.5-9.5V6z" />
@@ -78,6 +97,7 @@ const MORE: MoreTab[] = [
     href: "/impact",
     group: "Your day",
     label: "Impact",
+    keywords: "waste recycling week story",
     icon: (
       <>
         <path d="M12 21c-4.5 0-7.5-3-7.5-7.2C4.500 8.500 9 5.500 19.500 4c.5 9.500-2 17-7.500 17z" />
@@ -89,6 +109,7 @@ const MORE: MoreTab[] = [
     href: "/play",
     group: "Your day",
     label: "Sort It",
+    keywords: "bins game recycling",
     icon: (
       <>
         <path d="M5 8h14l-1.3 12H6.3z" />
@@ -100,6 +121,7 @@ const MORE: MoreTab[] = [
     href: "/map",
     group: "Home",
     label: "Room map",
+    keywords: "3d twin zones where things keys wallet",
     icon: (
       <>
         <path d="M3.5 6.5l5.5-2 6 2 5.5-2v13l-5.5 2-6-2-5.5 2z" />
@@ -111,6 +133,7 @@ const MORE: MoreTab[] = [
     href: "/live",
     group: "Home",
     label: "Live",
+    keywords: "camera snapshot now",
     icon: (
       <>
         <rect x="3" y="6" width="18" height="13" rx="2.5" />
@@ -123,6 +146,7 @@ const MORE: MoreTab[] = [
     href: "/zones",
     group: "Home",
     label: "Zones",
+    keywords: "polygons camera areas",
     icon: (
       <>
         <rect x="3.5" y="5" width="17" height="14" rx="2" />
@@ -134,6 +158,7 @@ const MORE: MoreTab[] = [
     href: "/teach",
     group: "Home",
     label: "Teach",
+    keywords: "train model learn labels",
     icon: (
       <>
         <path d="M3 9l9-4.5L21 9l-9 4.5z" />
@@ -145,6 +170,7 @@ const MORE: MoreTab[] = [
     href: "/lab",
     group: "Home",
     label: "Learning lab",
+    keywords: "gpu training runs charts",
     icon: (
       <>
         <path d="M4 18.500l4.500-6 3.500 3 4-7 4 4.500" />
@@ -156,6 +182,7 @@ const MORE: MoreTab[] = [
     href: "/circle",
     group: "Friends",
     label: "Circle",
+    keywords: "friends plans league leaderboard calendar",
     icon: (
       <>
         <circle cx="8.5" cy="9" r="3" />
@@ -168,6 +195,7 @@ const MORE: MoreTab[] = [
     href: "/privacy",
     group: "Privacy",
     label: "Privacy",
+    keywords: "firewall egress blur wipe",
     icon: (
       <>
         <path d="M12 3.5l7 2.8v5.4c0 4.2-2.9 7.4-7 8.8-4.1-1.4-7-4.6-7-8.8V6.3z" />
@@ -179,6 +207,7 @@ const MORE: MoreTab[] = [
     href: "/people",
     group: "Privacy",
     label: "People",
+    keywords: "faces enroll identity",
     icon: (
       <>
         <circle cx="12" cy="8.5" r="3.5" />
@@ -190,6 +219,7 @@ const MORE: MoreTab[] = [
     href: "/spot",
     group: "Inspection",
     label: "Inspection",
+    keywords: "shift triage facility",
     icon: (
       <>
         <rect x="5" y="9" width="12" height="5" rx="1.5" />
@@ -204,16 +234,16 @@ const INSPECTION = "/spot";
 
 const ALL = [...TABS, ...MORE];
 
-/** How the screens are grouped, in the sidebar and in the phone's More sheet. URLs are unchanged. */
-const SECTIONS: { title: string; hrefs: string[] }[] = [
-  { title: "Everyday", hrefs: ["/", "/now", "/today", "/dayrun"] },
-  { title: "The room", hrefs: ["/live", "/map", "/people"] },
-  { title: "Plan", hrefs: ["/approvals", "/impact", "/spot"] },
-  { title: "Other", hrefs: ["/timeline", "/play", "/circle", "/teach", "/lab", "/zones", "/privacy"] },
+/** How the screens are grouped, in the sidebar, the phone's More sheet and the palette. URLs are unchanged. */
+const SECTIONS: { title: string; hrefs: string[]; collapsible?: boolean }[] = [
+  { title: "Everyday", hrefs: ["/home", "/", "/now", "/dayrun"] },
+  { title: "The room", hrefs: ["/live", "/map", "/people", "/approvals"] },
+  { title: "Plan", hrefs: ["/today", "/impact", "/spot"] },
+  { title: "Other", hrefs: ["/timeline", "/play", "/circle", "/teach", "/lab", "/zones", "/privacy"], collapsible: true },
 ];
 
 /** The phone tab bar: the Everyday group. Everything else is one tap further, under More. */
-const BAR = ["/", "/now", "/today", "/dayrun"].map((href) => ALL.find((t) => t.href === href)!);
+const BAR = ["/home", "/", "/now", "/dayrun"].map((href) => ALL.find((t) => t.href === href)!);
 
 /** Inspection shows on the inspection profile, on a box with a kit, or when that screen is the one open. */
 function useShowInspection(path: string): boolean {
@@ -228,17 +258,91 @@ function normalize(path: string): string {
   return path.length > 1 ? path.replace(/\/+$/, "") : path;
 }
 
+/** The sun or the moon: tapping it flips the theme, and the new one spreads out from the button. */
+function ThemeButton({ className }: { className?: string }) {
+  const [theme, setTheme] = useTheme();
+  const dark = theme === "dark";
+  const flip = (e: MouseEvent<HTMLButtonElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    setTheme(dark ? "light" : "dark", { x: r.left + r.width / 2, y: r.top + r.height / 2 });
+  };
+  return (
+    <button type="button" className={`${ui.iconBtn} ${ui.themeBtn} ${className ?? ""}`} aria-label={dark ? "Switch to the day theme" : "Switch to the night theme"} title={dark ? "Day theme" : "Night theme"} onClick={flip}>
+      {dark ? (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8" />
+        </svg>
+      ) : (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z" />
+          <path d="M17 3.5v3M15.5 5h3" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
+/** Where the pointer is over a card, as a share of the card, so the card can light up under it (ui.module.css, .card). */
+function useSpotlight() {
+  useEffect(() => {
+    if (!window.matchMedia?.("(hover: hover) and (pointer: fine)").matches) return;
+    const cardClass = ui.card;
+    const onMove = (e: PointerEvent) => {
+      const card = (e.target as Element | null)?.closest?.(`.${cardClass}`) as HTMLElement | null;
+      if (!card) return;
+      const r = card.getBoundingClientRect();
+      card.style.setProperty("--mx", `${((e.clientX - r.left) / r.width) * 100}%`);
+      card.style.setProperty("--my", `${((e.clientY - r.top) / r.height) * 100}%`);
+    };
+    document.addEventListener("pointermove", onMove, { passive: true });
+    return () => document.removeEventListener("pointermove", onMove);
+  }, []);
+}
+
 export function Shell({ children }: { children: ReactNode }) {
   const path = normalize(usePathname() || "/");
   const { link, model, toasts, dismissToast, approvals } = useAtlas();
   const [settings, setSettings] = useState(false);
   const [more, setMore] = useState(false);
+  const [palette, setPalette] = useState(false);
+  const [otherOpen, setOtherOpen] = useState(false); // the sidebar's collapsed group; a screen inside it keeps it open
   const inMore = !BAR.some((t) => t.href === path);
   useEffect(() => setMore(false), [path]); // the sheet closes once its link has been followed
   const pending = approvals.items.length;
   const inspection = useShowInspection(path);
+  useSpotlight();
+
+  // Ctrl or Cmd + K opens the palette from anywhere; typing "/" outside a field does too.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const typing = (e.target as HTMLElement | null)?.closest?.("input, textarea, select, [contenteditable]");
+      if ((e.key === "k" || e.key === "K") && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setPalette((p) => !p);
+      } else if (e.key === "/" && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        setPalette(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   if (path === "/operator") return <>{children}</>; // X15: the big-display page has its own header and no tab bar
+
+  const commands: Command[] = SECTIONS.flatMap((g) =>
+    g.hrefs
+      .filter((href) => href !== INSPECTION || inspection)
+      .map((href) => {
+        const t = ALL.find((x) => x.href === href)!;
+        return { href: t.href, label: t.label, group: g.title, icon: t.icon, keywords: t.keywords };
+      }),
+  );
+
+  // The pill under the current tab: the index of the tab that is on, or of More when the screen is behind it.
+  const barIndex = BAR.findIndex((t) => t.href === path);
+  const indicator = barIndex >= 0 ? barIndex : BAR.length;
 
   return (
     <div className={ui.shell}>
@@ -254,11 +358,28 @@ export function Shell({ children }: { children: ReactNode }) {
             {model ? ` · ${model}` : ""}
           </span>
         </div>
+        <button type="button" className={ui.sideSearch} onClick={() => setPalette(true)}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="7" />
+            <path d="M20 20l-3.5-3.5" />
+          </svg>
+          <span>Jump or ask…</span>
+          <span className={ui.kbd}>Ctrl K</span>
+        </button>
         <nav className={ui.sideNav}>
           {SECTIONS.map((g) => (
             <div key={g.title} className={ui.sideGroup}>
-              <span className={ui.sideGroupTitle}>{g.title}</span>
-              {g.hrefs.filter((href) => href !== INSPECTION || inspection).map((href) => {
+              {g.collapsible ? (
+                <button type="button" className={ui.sideGroupToggle} aria-expanded={otherOpen || g.hrefs.includes(path)} onClick={() => setOtherOpen((o) => !o)}>
+                  {g.title}
+                  <svg className={ui.sideChevron} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M7 10l5 5 5-5" />
+                  </svg>
+                </button>
+              ) : (
+                <span className={ui.sideGroupTitle}>{g.title}</span>
+              )}
+              {(g.collapsible && !otherOpen && !g.hrefs.includes(path) ? [] : g.hrefs).filter((href) => href !== INSPECTION || inspection).map((href) => {
                 const t = ALL.find((x) => x.href === href)!;
                 const on = path === t.href;
                 return (
@@ -278,14 +399,17 @@ export function Shell({ children }: { children: ReactNode }) {
             </div>
           ))}
         </nav>
-        <button type="button" className={`${ui.sideLink} ${ui.sideSettings}`} onClick={() => setSettings(true)}>
-          <svg className={ui.sideIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
-            <path d="M4 7h10M18 7h2M4 17h2M10 17h10" />
-            <circle cx="16" cy="7" r="2" />
-            <circle cx="8" cy="17" r="2" />
-          </svg>
-          <span>Settings</span>
-        </button>
+        <div className={ui.sideFoot}>
+          <button type="button" className={ui.sideLink} onClick={() => setSettings(true)}>
+            <svg className={ui.sideIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+              <path d="M4 7h10M18 7h2M4 17h2M10 17h10" />
+              <circle cx="16" cy="7" r="2" />
+              <circle cx="8" cy="17" r="2" />
+            </svg>
+            <span>Settings</span>
+          </button>
+          <ThemeButton />
+        </div>
       </aside>
 
       <header className={ui.header}>
@@ -300,6 +424,7 @@ export function Shell({ children }: { children: ReactNode }) {
             {model ? ` · ${model}` : ""}
           </span>
         </div>
+        <ThemeButton />
         <button type="button" className={ui.iconBtn} aria-label="Settings" onClick={() => setSettings(true)}>
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
             <path d="M4 7h10M18 7h2M4 17h2M10 17h10" />
@@ -337,7 +462,8 @@ export function Shell({ children }: { children: ReactNode }) {
       <main className={ui.main}>{children}</main>
 
       <nav className={ui.tabbar} aria-label="Screens">
-        <div className={ui.tabs}>
+        <div className={ui.tabs} style={{ "--n": BAR.length + 1, "--i": indicator } as CSSProperties}>
+          <span className={ui.tabIndicator} aria-hidden="true" />
           {BAR.map((t) => {
             const on = path === t.href;
             return (
@@ -378,6 +504,7 @@ export function Shell({ children }: { children: ReactNode }) {
 
       {more ? <MoreSheet path={path} onClose={() => setMore(false)} /> : null}
       {settings ? <Settings onClose={() => setSettings(false)} /> : null}
+      {palette ? <CommandPalette commands={commands} path={path} onClose={() => setPalette(false)} /> : null}
     </div>
   );
 }
@@ -399,9 +526,12 @@ function MoreSheet({ path, onClose }: { path: string; onClose: () => void }) {
       <div className={ui.sheet} role="dialog" aria-modal="true" aria-label="More screens" onClick={(e) => e.stopPropagation()}>
         <div className={`${ui.row} ${ui.between}`}>
           <h2>More</h2>
-          <button type="button" className={ui.btn} onClick={onClose}>
-            Close
-          </button>
+          <div className={ui.row}>
+            <ThemeButton />
+            <button type="button" className={ui.btn} onClick={onClose}>
+              Close
+            </button>
+          </div>
         </div>
         {SECTIONS.map((g) => (
           <div key={g.title} className={ui.moreGroup}>

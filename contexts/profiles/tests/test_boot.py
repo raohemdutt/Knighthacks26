@@ -24,6 +24,9 @@ def test_the_default_box_reports_the_student_profile_with_no_overrides(tmp_path,
         got = c.get("/api/profile").json()
         assert got["name"] == "student" and got["overrides"] == {} and got["vocabulary"]["event"] == "class"
         assert got["words"]["Activity"] == "Study" and got["words"]["event_plural"] == "classes"
+        assert got["suggestions"] == ["Where did I leave my keys?", "What is due this week?", "What happened at our table overnight?",
+                                      "What should I eat?", "Where should I go tonight?", "How's your day?", "Tell me a joke",
+                                      "I'm stressed about my exam"]  # the Ask screen's chips, as they have always been
         board = c.get("/api/dayrun/board", params={"scenario": "demo"}).json()
         titles = {o["title"] for s in board["slots"] for o in s["moves"]}
         assert any(t.startswith("Study at ") for t in titles)
@@ -81,3 +84,12 @@ def test_shift_worker_night_follows_the_shift(tmp_path):
         assert (sched.bedtime.strftime("%H:%M"), sched.wake.strftime("%H:%M")) == ("07:30", "14:30")
         assert (atlas.dayrun.cfg.sleep.bedtime.strftime("%H:%M"), atlas.dayrun.cfg.sleep.wake.strftime("%H:%M")) == ("07:30", "14:30")
         assert atlas.habits.cfg.by_id("leave_ready").watch_items == ["keys", "badge", "phone", "charger"]
+
+
+@pytest.mark.parametrize(("name", "theirs"), [("shift-worker", "handover"), ("family-home", "chores"), ("inspection", "work orders")])
+def test_the_suggested_questions_follow_the_profile(tmp_path, name, theirs):
+    with client(tmp_path, name) as c:
+        chips = c.get("/api/profile").json()["suggestions"]
+        assert 4 <= len(chips) <= 8 and len(set(chips)) == len(chips)
+        assert any(theirs in q for q in chips)  # the profile's own word for something due
+        assert not any(word in q.lower() for q in chips for word in ("exam", "assignment", "class"))  # none of the student's

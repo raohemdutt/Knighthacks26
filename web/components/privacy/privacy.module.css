@@ -52,7 +52,11 @@
   background: var(--surface-2);
   box-shadow: var(--sh-inset-sm);
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background var(--t-fast), box-shadow var(--t-fast), transform var(--t-fast);
+}
+
+.switch:active:not(:disabled) {
+  transform: scale(0.96);
 }
 
 /* a 44px tap area around the visible switch */
@@ -70,14 +74,14 @@
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: var(--surface);
+  background: var(--surface-solid);
   box-shadow: 2px 2px 4px var(--sh-dark), -1px -1px 3px var(--sh-light);
-  transition: transform 0.15s;
+  transition: transform var(--t) var(--ease-spring);
 }
 
 .switchOn {
-  background: var(--accent);
-  box-shadow: inset 2px 2px 5px rgba(10, 30, 90, 0.45);
+  background: var(--accent-grad);
+  box-shadow: var(--sh-inset-sm), var(--glow);
 }
 
 .switchOn::after {

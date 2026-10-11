@@ -24,7 +24,7 @@ import pytest
 
 from lab import __main__ as lab_cli
 from lab.machine import experiments as ex
-from lab.machine import ledger
+from lab.machine import ledger, record
 from lab.machine import verdict as v
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -130,12 +130,17 @@ def test_list_shows_an_added_experiment_queued_with_its_gain_and_score(capsys):
     assert (shown["added"]["seq"], shown["added"]["actor"], shown["seqs"]) == (1, "opus-3", [1])
 
 
-def test_add_with_no_actor_or_tier_in_the_environment_writes_cli_and_none(capsys, monkeypatch):
+def test_with_no_actor_or_tier_set_an_experiment_row_names_its_writer_as_every_other_ledger_row_does(
+        capsys, monkeypatch):
+    """record.py stamps the writer of every ledger row; an experiment row written outside a sitting carries the same
+    actor and tier as any other row written there, so the digest counts one unattributed writer, not two."""
     monkeypatch.delenv("LAB_ACTOR")
     monkeypatch.delenv("LAB_TIER")
     cli(capsys, *ADD_E9)
-    row = ledger.read()[0]
-    assert (row["actor"], row["tier"]) == ("cli", None)
+    record.record("bench.run", "ok")
+    experiment_row, other_row = ledger.read()
+    assert (experiment_row["actor"], experiment_row["tier"]) == (other_row["actor"], other_row["tier"])
+    assert (experiment_row["actor"], experiment_row["tier"]) == (record.UNKNOWN_ACTOR, None)
 
 
 def test_add_refuses_a_definition_with_problems_listing_every_one_and_writes_nothing():
@@ -177,14 +182,39 @@ def test_text_fields_are_kept_on_one_line():
     assert (added["hypothesis"], added["arms"]) == ("Batching cuts joules per token", {"A": "batch 1", "B": "b 16"})
 
 
-def test_add_without_an_id_takes_the_next_e_number_past_t0s_five(capsys):
-    """T0 already holds E1 to E5, seeded or not, so a new experiment never reuses one of those ids."""
+NO_ID_HERE = ("no id was given, and this ledger holds no E-numbered experiment beyond T0's seeded E1 to E5, so it "
+              "cannot know which E numbers T0 has handed out since; give the id, one above the highest E number on T0")
+
+
+def test_two_ledgers_that_cannot_see_t0s_numbers_never_hand_out_an_id(tmp_path):
+    """Two clones with their own state dirs used to hand out the same next E number, E6, each from a ledger that
+    holds none of the numbers T0 gave out after the seeds. A ledger with no E number of its own, empty or holding
+    only the seeds, now refuses an add without an id and writes nothing."""
+    empty, seeded = tmp_path / "clone-a" / "state", tmp_path / "clone-b" / "state"
+    ex.seed(state_dir=seeded)
+    for state_dir, rows in ((empty, 0), (seeded, len(ex.SEEDS))):
+        with pytest.raises(ex.ExperimentError) as err:
+            ex.add(definition(id=None), state_dir=state_dir)
+        assert err.value.problems == [NO_ID_HERE]
+        assert len(ledger.read(state_dir=state_dir)) == rows
+
+
+def test_the_add_verb_without_an_id_on_a_fresh_ledger_is_refused_with_exit_code_1(capsys):
     no_id = [arg for arg in ADD_E9 if arg != "E9"]
-    assert cli(capsys, *no_id)[1]["id"] == "E6"
-    assert cli(capsys, *no_id)[1]["id"] == "E7"
+    code, answer = cli(capsys, *no_id)
+    assert (code, answer["ok"], answer["outcome"], answer["problems"]) == (1, False, "refused", [NO_ID_HERE])
+    assert ledger.read() == []
+
+
+def test_add_without_an_id_takes_the_next_e_number_past_the_ledgers_own_and_the_seeds(capsys):
+    """Once the ledger holds an E number beyond the seeds, an add without an id takes the next one, never one of
+    T0's E1 to E5."""
+    ex.seed()
     ex.add(definition(id="E12"))
+    no_id = [arg for arg in ADD_E9 if arg != "E9"]
     assert cli(capsys, *no_id)[1]["id"] == "E13"
-    assert [row["experiment"]["id"] for row in ledger.read()] == ["E6", "E7", "E12", "E13"]
+    assert cli(capsys, *no_id)[1]["id"] == "E14"
+    assert [row["experiment"]["id"] for row in ledger.read()] == ["E1", "E2", "E3", "E4", "E5", "E12", "E13", "E14"]
 
 
 def test_add_refuses_an_id_that_is_taken(capsys):
@@ -664,6 +694,8 @@ def _add_many(state: str, start, out: str) -> None:
 
 
 def test_two_processes_adding_at_once_never_get_the_same_id(tmp_path, state):
+    # Only a ledger that already holds an E number beyond the seeds hands out the next one.
+    ex.add(definition(id="E6"), state_dir=state)
     start = SPAWN.Barrier(2)
     children = {name: SPAWN.Process(target=_add_many, args=(str(state), start, str(tmp_path / f"{name}.json")),
                                     daemon=True) for name in ("a", "b")}
@@ -673,7 +705,7 @@ def test_two_processes_adding_at_once_never_get_the_same_id(tmp_path, state):
         child.join(JOIN_TIMEOUT)
     assert {name: child.exitcode for name, child in children.items()} == {"a": 0, "b": 0}
     got = [eid for name in ("a", "b") for eid in json.loads((tmp_path / f"{name}.json").read_text(encoding="utf-8"))]
-    expected = [f"E{n}" for n in range(6, 6 + 2 * ADDS_PER_CHILD)]
+    expected = [f"E{n}" for n in range(7, 7 + 2 * ADDS_PER_CHILD)]
     assert sorted(got, key=lambda eid: int(eid[1:])) == expected
-    assert [row["experiment"]["id"] for row in ledger.read(state_dir=state)] == expected
+    assert [row["experiment"]["id"] for row in ledger.read(state_dir=state)] == ["E6", *expected]
     assert ex.fold(ledger.read(state_dir=state))[1] == []

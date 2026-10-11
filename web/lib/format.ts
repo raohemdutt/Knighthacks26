@@ -19,6 +19,12 @@ export function time(iso: string | null | undefined): string {
   return d ? TIME.format(d) : "";
 }
 
+/** "Good morning" for the moment `iso` (the box's own `now`, which on a replayed log is not the wall clock), in the phone's time zone. */
+export function greeting(iso: string | null | undefined): string {
+  const h = (parse(iso) ?? new Date()).getHours();
+  return h < 5 ? "Still up" : h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
+}
+
 /** "Today", "Tomorrow", "Yesterday" or "Sat, Oct 10" */
 export function dayLabel(iso: string | null | undefined, now: Date = new Date()): string {
   const d = parse(iso);

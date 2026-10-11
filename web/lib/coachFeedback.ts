@@ -84,6 +84,8 @@ export interface CoachCorrectionBody {
   day: string;
   block_id: string;
   break_index: number;
+  /** The break's own start: tells two blocks with the same id apart (a re-plan numbers its blocks again). */
+  break_start?: string;
   right: boolean;
   answer?: CoachAnswer;
   note?: string;

@@ -16,6 +16,8 @@ venv="${ATLAS_VENV:-$(getent passwd "$user" | cut -d: -f6)/atlas/venv-yolo}"
 # `sudo ./jetson/jetson_setup.sh voice` installs only the voice unit (X16) and touches no other service.
 if [ "${1:-}" = "voice" ]; then
     sed -e "s|@USER@|$user|g" -e "s|@REPO@|$repo|g" -e "s|@VENV@|$venv|g" -e "s|@UID@|$(id -u "$user")|g" "$repo/jetson/atlas-voice.service" > /etc/systemd/system/atlas-voice.service
+    # Without linger, PulseAudio (and the Bluetooth speaker with it) dies when the last SSH session closes.
+    loginctl enable-linger "$user"
     systemctl daemon-reload
     systemctl enable atlas-voice
     systemctl restart atlas-voice

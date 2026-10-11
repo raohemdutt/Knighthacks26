@@ -490,6 +490,17 @@ def by_id(sheet: Mapping[str, Any]) -> dict[str, Mapping[str, Any]]:
     return {m["id"]: m for m in sheet.get("measurements", []) if isinstance(m, Mapping) and "id" in m}
 
 
+def copy_largest(sheet: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    """The device-to-device copy entry over the largest buffer measured (status ok, GB/s, its value counting the
+    bytes read and written), or None when the sheet has none: the memory-bound figure a decode's weight stream is
+    held to. Buffers that fit the last-level cache (32 MiB on gfx1151) copy several times faster than memory, so the
+    best value over all sizes is the cache's, not the memory's."""
+    found = [m for m in by_id(sheet).values() if str(m.get("id", "")).startswith("copy.d2d")
+             and m.get("status") == "ok" and m.get("unit") == "GB/s" and _finite(m.get("value"))
+             and isinstance(m.get("params"), Mapping) and _finite(m["params"].get("bytes"))]
+    return max(found, key=lambda m: (m["params"]["bytes"], str(m["id"]))) if found else None
+
+
 def sections_of(items: Iterable[Mapping[str, Any]]) -> list[str]:
     """The sections that hold at least one entry, in SECTIONS order."""
     present = {m.get("section") for m in items}

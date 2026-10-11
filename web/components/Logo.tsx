@@ -21,8 +21,8 @@ export function Logo({ size = 40, draw = false, className }: { size?: number; dr
     >
       <defs>
         <linearGradient id={gradient} x1="12" y1="10" x2="88" y2="92" gradientUnits="userSpaceOnUse">
-          <stop offset="0" style={{ stopColor: "var(--accent)" }} />
-          <stop offset="1" style={{ stopColor: "var(--accent-text)" }} />
+          <stop offset="0" style={{ stopColor: "var(--logo-a)" }} />
+          <stop offset="1" style={{ stopColor: "var(--logo-b)" }} />
         </linearGradient>
       </defs>
       <circle data-logo={d && "ring"} cx="50" cy="50" r="44" pathLength="1" stroke={`url(#${gradient})`} strokeWidth="6" />

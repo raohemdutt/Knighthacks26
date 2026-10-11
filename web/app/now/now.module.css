@@ -77,11 +77,18 @@
   color: var(--accent-text);
   font-size: 16px;
   font-weight: 650;
-  transition: box-shadow var(--ease-press);
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .speak:hover:not(:disabled) {
+    transform: translateY(-2px);
+  }
 }
 
 .speak:active:not(:disabled) {
   box-shadow: var(--sh-inset-sm);
+  transform: scale(0.97);
 }
 
 .speak svg {
@@ -91,9 +98,9 @@
 
 .speakOn,
 .speakOn:active:not(:disabled) {
-  background: var(--accent);
+  background: var(--accent-grad);
   color: var(--accent-ink);
-  box-shadow: 5px 5px 14px rgba(170, 200, 245, 0.32), -5px -5px 12px var(--sh-light);
+  box-shadow: var(--glow);
 }
 
 .speak:disabled {
@@ -273,7 +280,7 @@
   height: 12px;
   border-radius: 50%;
   border: 2px solid var(--muted);
-  background: var(--bg);
+  background: var(--surface-solid);
   box-shadow: var(--sh-raised-sm);
 }
 
@@ -317,7 +324,17 @@
 
 button.body {
   cursor: pointer;
-  transition: box-shadow var(--ease-press);
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
+}
+
+@media (hover: hover) {
+  button.body:hover {
+    transform: translateY(-2px);
+  }
+}
+
+button.body:active {
+  transform: scale(0.98);
 }
 
 /* a fixed item (from the calendar) is raised; a suggestion from Atlas is sunk into the page */
@@ -396,7 +413,7 @@ button.body:active {
 }
 
 .pillHere {
-  background: var(--accent);
+  background: var(--accent-grad);
   color: var(--accent-ink);
 }
 
@@ -423,7 +440,7 @@ button.body:active {
   height: 100%;
   border-radius: 5px;
   background: linear-gradient(90deg, var(--accent-bright), var(--accent));
-  transition: width 0.6s ease;
+  transition: width 900ms var(--ease-out);
 }
 
 .leave {

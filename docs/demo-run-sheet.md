@@ -26,6 +26,43 @@ written in a real-hardware column.
 
 ---
 
+## Results: run C, Sat 2026-10-10, 10:34 PM EDT (the newest; it adds the look guide, the bin rule and the check-in)
+
+Seeded laptop: `python -m contexts.demo seed --data-dir <tmp> --now` (the demo night ending now, **without** the Circle of
+three, so the Circle steps that need members skip), web built from branch `ctx/experience/look-guide-2`, gateway on
+port 8947 with the fake model (`fake-0`), no cameras, no Neon, no ntfy, no token. Run with `--scene --approve-local`.
+**100 PASS, 1 FAIL, 17 SKIP (118 steps).**
+
+| Use case | PASS | FAIL | SKIP |
+| --- | --- | --- | --- |
+| 0 Fake camera scene | 1 | 0 | 0 |
+| 1 Ask what the cameras saw | 6 | 1 | 1 |
+| 2 Conversation | 2 | 0 | 3 |
+| 3 The day (now with `GET /api/day/checkin`) | 15 | 0 | 0 |
+| 4 Study coach | 5 | 0 | 1 |
+| 5 Day Run | 9 | 0 | 0 |
+| 6 Circle | 2 | 0 | 1 |
+| 7 Sort It | 10 | 0 | 1 |
+| 8 Waste Watch / Impact (now with the bin rule the look guide speaks) | 8 | 0 | 0 |
+| 9 Identity | 6 | 0 | 2 |
+| 10 Privacy | 3 | 0 | 2 |
+| 11 Teach / learning | 8 | 0 | 0 |
+| 12 Voice | 1 | 0 | 3 |
+| 13 Inspection (now with `/api/spot/guide` twice and `/api/spot/route`) | 15 | 0 | 0 |
+| 14 Profiles | 1 | 0 | 1 |
+| 15 Operator, zones, Live | 8 | 0 | 2 |
+
+- **The one FAIL** is the same one as in run A: "What happened while I was out?" answers "I didn't see that." on the
+  seeded night with the fake model. Product code was not changed for it.
+- **New steps, all PASS:** "where is HX-202?" resolves to `asset:HX-202`; "where is the coffee machine" is offered
+  three alternatives and not guessed; the walk to HX-202 is "Main Entrance to Pipe Gallery: 1 leg, all walked by SPOT
+  before"; cup → trash with its rule sentence; the check-in endpoint answers (none raised: "held: outside waking hours").
+- **Not walked, on purpose:** `GET /api/learning/lab/bench` (TODO: it merged as #295 after this branch was cut; add a
+  step once this branch is rebased), the "Near you" events (`/memory/items` answered 29 items, none with a `nearby:` id
+  on this seed), profile suggestions and the calibration `source` field (neither was found on this build's API; TODO).
+- The look guide's browser side (pointer, captions, gaze, attention check) is not something this script can see. It was
+  checked in headless Chromium with screenshots; see section 16 for what that covered and what still needs a person.
+
 ## Results (Sat 2026-10-10, evening)
 
 Both runs were made by Hemdutt's agent with `scripts/demo_walkthrough.py`. Run A's JSON
@@ -770,6 +807,45 @@ steps are listed so the sheet is complete; changes go through them.
 
 ---
 
+## 16. The look guide ("where is…?", "where do I find…?", "which bin?")
+
+**Shows:** ask where something is and Atlas shows you: a red dot travels there, the thing is marked, and the same
+sentences are captions and (with Speak answers on) speech. One layer for every screen.
+
+**Setup:** none for the pointer. For eyes: Settings → **Use my eyes to guide me** on `https://` or `localhost`.
+
+**Steps and what you should see**
+1. **Ask → "Where did I leave my keys?"** The answer arrives as before; then the dot travels to the picture under it
+   and the picture is outlined with a dashed "About here" (the box keeps a zone and words, not a box in the picture).
+   The caption carries the answer's first sentence and **Show me in the room**, which opens the room map on that
+   thing's pin. On the seeded laptop the picture is the "Frame not stored on this box" placeholder and the caption says so.
+2. **Ask → "Where's my League?"** No question goes to the box. Circle opens, the League tab is pressed, the tab is ringed.
+3. **Ask → "Which bin for the cup?"** Sort It opens, the room lights the trash bin ("Cup goes here"), the route is
+   drawn, the dot fades, and the caption reads "Throw it here: Cup → Trash" with the rule sentence from the rules file.
+4. **Inspection → "Where is Heat exchanger 2?"** (or the Guide me chip). The plan switches floor if needed, green
+   dashes draw the walk from "You are here", the dot follows it, the mark is ringed "Here it is". Then type **next**:
+   the dot steps to the next do-first item. **"Where do I look for the battery?"** opens the Analysis tab first.
+5. **Attention (simulated):** open `/spot/?gazeSim=do-first:1,trust,card:watch`. A banner says the gaze is simulated;
+   "✓ seen" appears on those three; "You've looked at 1 of 3 things that need you". Tap **Send a technician** on item
+   2: "You haven't looked at Heat exchanger 4's alarm yet", the dot goes there, **Continue anyway** carries on.
+   `/spot/?tab=run&route=last&show=result&gazeSim=shiftrun:turn-back,shiftrun:run` shows "Where you looked" and the scan path.
+
+**Links that hold the pointer for a screenshot:** `/?guide=keys&t=1`, `/?guide=where's my League?&t=1`,
+`/?guide=which bin for the cup?&t=1`, `/spot/?guide=where is HX-202&t=0.5`, `/spot/?guide=explainer:battery&t=1`.
+
+**What can go wrong**
+- Nothing moves: Escape or a tap anywhere ends a run by design. Ask again.
+- "I am not sure what to point at. Did you mean…": the name matched nothing well; tap one of the offers.
+- The eyes switch is greyed out: the page is on plain http. Use `ATLAS_HTTPS=1` or `localhost`. The pointer still works.
+
+**Verification**
+
+| tests | seeded app | Jetson | real hardware |
+| --- | --- | --- | --- |
+| ✅ `contexts/spot/tests/test_guide.py`, `test_route.py` (76 tests); `node web/scripts/check-guide.mjs` (223 checks: intent, resolver, A*, calibration maths, snap, attention rules, exact-or-about) | ✅ run C: the three API steps. Headless Chromium at 1440×900 and 500×1600: the links above, the cross-screen League run, the bin run, the attention run by `?gazeSim`, the camera opt-in with Chromium's fake camera (model and runtime loaded from `/gaze/` only, zero cross-origin requests, no-face fallback). Simulated: `?gazeSim` is a script, and the fake camera has no face in it. | ⬜ not tried | ⬜ real gaze accuracy, dwell arrival and snap on a face; spoken output. See table-day rows 13 and 14. |
+
+---
+
 ## The 5-minute judge path
 
 Order chosen so that everything that needs the model is asked early (it warms up), the coach comes
@@ -777,7 +853,7 @@ before the re-plan (defect 2), and nothing needs a restart.
 
 | Time | Beat | Do | Fallback |
 | --- | --- | --- | --- |
-| 0:00 | It sees and remembers | Ask → **Where did I leave my keys?** Point at the frame. | Laptop with the seeded night: same answer, "Frame not stored on this box" |
+| 0:00 | It sees and remembers, and shows you | Ask → **Where did I leave my keys?** Let the red dot travel to the picture ("About here"), then **Show me in the room**. | Laptop with the seeded night: same answer and pointer, "Frame not stored on this box" |
 | 0:30 | It can talk and look things up | **How's your day?**, then **What is 17 times 23?** | Skip the web question unless there is time to wait 25 s |
 | 1:00 | It runs the day | Now → **Brief me** → **Route** on the next block | The template brief appears if the model is slow |
 | 1:40 | It coaches | The coach note → **Was that right?** → **No: phone** | Laptop, seeded night |
@@ -786,7 +862,7 @@ before the re-plan (defect 2), and nothing needs a restart.
 | 3:20 | The room | Sort It: hold up a can, walk it to the bin | Tap **Can**; or the scripted scene on a throwaway box |
 | 3:50 | Friends | Circle → Plans → "COP4533 exam review" → **Read the conversation ›** → League | Laptop with the seeded Circle of three |
 | 4:20 | Private by construction | Privacy → "What left the box" on the Jetson; unplug the network and ask again | Laptop: "No firewall on this box", so use the box |
-| 4:40 | Another world, same box | Inspection on the big display → **Play** → **What should I check first this shift?** → **Re-inspect** → **Approve** | Laptop build answers at once |
+| 4:40 | Another world, same box | Inspection on the big display → type **Where is Heat exchanger 2?** (the dot walks the route to its mark) → **next** → **Send SPOT back** → **Approve** | Laptop build answers at once; `/spot/?guide=where is HX-202&t=1` holds the pointer |
 
 **The three questions most likely to impress, with what was measured on the box**
 1. "Where did I leave my keys?" 3.1 and 6.4 s, with the real frame. Fallback: the seeded night.
@@ -798,6 +874,20 @@ before the re-plan (defect 2), and nothing needs a restart.
 
 Avoid live: "What happened while I was out?" and "overnight" on the box (17 to 37 s, and not
 repeatable today).
+
+**What is simulated and what is real, per track**
+
+- **Main (Atlas for a student).** Real on the Jetson: the cameras, the on-device model's answers and frames, the
+  firewall. Simulated on the laptop: the seeded night, the fake model (`fake-0`, which echoes its evidence), the fake
+  camera scene. The look guide's pointer is real UI on both; its "About here" on a picture is honest about having no
+  box for the thing. Gaze is real only on a person's own webcam after its own check; everywhere else say "gaze off".
+- **NextEra (Inspection).** Everything runs on the sponsor's synthetic kit: 27 recorded rounds of one robot, replayed.
+  No robot is connected. The resolver and the route are real code over that data; the walk is drawn only over legs
+  SPOT walked (mostly one straight leg in this kit: not a corridor map, and no metres). The attention check shown
+  with `?gazeSim` is a scripted stand-in and says so on screen; with a webcam it means "looked at", not "understood".
+- **OneEthos (Waste Watch / Sort It).** The rules file and the bin answer are real. The room, its bins and the route
+  are the box's room plan; on the laptop the round is the scripted scene and the feed is the seeded week. A real
+  throw needs the bin camera (table-day row 5).
 
 ---
 
@@ -819,11 +909,19 @@ stage that it is the stand-in.
 | 9 | **Prove the firewall.** Privacy → "What left the box"; then `make offline`, ask the keys question, `make online`. | The list of allowed and blocked destinations; the answer still comes. | The API read from run B: enforced, 13 allowed, 13 blocked |
 | 10 | **Two boxes agree on a plan.** Circle → **Find a time for all of us** → **Approve** on each owner's phone. | "Free." in about 28 s, "Agreed" in about 57 s. | The seeded Circle of three |
 | 11 | **Show Inspection on the real display,** full screen at 1920 × 1080. | Three cards fully visible. | Zoom out once (defect 5) |
+| 13 | **Eyes: the two-minute test.** On the demo laptop (https or localhost): Settings → **Use my eyes to guide me** → allow the camera → **Start**; look at each of the 9 dots, then the 4 check dots, until the ring fills. Open `/spot/?gazeDebug=1` and look at the four corners. Then look at the far left and type **Where is Heat exchanger 2?** | The result line with a measured number ("Accurate to about 1/8 of the screen width (… px …)"); expect roughly 1/8 to 1/15 of the width on a laptop camera at arm's length, worse with glasses glare or low light. The debug dot and dashed cell follow your eyes; the caption starts "From where you are, look …"; the ring turns green with "That's it." after about 0.7 s on the mark. | Gaze off: the pointer starts from the middle and everything else is the same. If the check says "not good enough to use", that is the feature working: say so. |
+| 14 | **Attention, with real eyes.** With row 13 done, open Inspection, read item 1 of "Do this first", then tap **Send a technician** on item 2 without looking at it. | "✓ seen" on item 1; "You haven't looked at Heat exchanger 4's alarm yet" with the dot on it and **Continue anyway**. | `/spot/?gazeSim=do-first:1,trust,card:watch`, and say it is the simulated path (the banner says it too). |
 | 12 | **Run the pre-flight at T-15.** `python -m contexts.demo preflight --gateway http://<jetson>:8000 --reset` | "N/N ready - go." | Fix what it names; each line says how |
 
 ---
 
 ## Known gaps
+
+**Look guide, not built (as of run C):** outlining an object inside a camera picture (a tracked object's box on the
+refreshed snapshot, a bin's zone polygon over a snapshot, a boxed or "about here" position for keys-like things: Memory
+does not keep a box today); routing on the plant floor around equipment from a traced walkable map (the route is the
+leg graph only); the pointer following the campus route on Day Run. There is therefore no live-camera spotlight step in
+the table-day checklist yet: add it when that work lands.
 
 - **Identity is unverified everywhere outside tests:** the recognition model is on neither box, so
   enrol, recognise, expressions, room mood and forget have not been seen working.

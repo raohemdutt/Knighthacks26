@@ -449,6 +449,9 @@ def uc_day(run: Run) -> None:
                     note=lambda d: f"{len(d['plan']['moves'])} blocks; next: {((d.get('status') or {}).get('next_block') or {}).get('title')}")
     if now is None:
         return
+    run.fetch("the check-in card (raise one with: python -m contexts.demo checkin)", "/api/day/checkin", ("enabled", "latest", "watching", "rule"),
+              missing="this build has no check-in",
+              note=lambda d: (d["latest"] or {}).get("text") or f"none raised; held: {(d['watching'] or {}).get('held') or 'nothing agrees yet'}")
     run.fetch("today's plan", "/api/day/plan", ("moves", "blocks", "outcome"),
               note=lambda d: f"{d['outcome'].get('summary', '')} committed={d['committed']}")
     brief = run.fetch("the day in words", "/api/day/brief", ("mode", "engine", "latest"),
@@ -671,7 +674,8 @@ def uc_sortit(run: Run, scene_pushed: bool) -> None:
     run.screen("/play/")
     run.screen("/map/")
     room = run.fetch("the room twin", "/api/room", ("title", "furniture", "calibration", "uncalibrated"), missing="the room twin is not set up (no floor plan)",
-                     note=lambda d: f"{d['title']}: {len(d['furniture'])} pieces of furniture; calibrated: {', '.join(d['calibration']) or 'no camera'}; "
+                     note=lambda d: f"{d['title']}: {len(d['furniture'])} pieces of furniture; calibrated: {', '.join(c for c, v in d['calibration'].items() if v.get('source') == 'set') or 'no camera'}; "
+                                    f"placeholder points only: {', '.join(c for c, v in d['calibration'].items() if v.get('source') != 'set') or 'none'}; "
                                     f"not calibrated: {', '.join(d['uncalibrated']) or 'none'}")
     live = run.fetch("the room, live", "/api/room/live", ("tracks", "seen"), missing="the room twin is not set up",
                      note=lambda d: f"{len(d['tracks'])} people now, {len(d['seen'])} things placed, round: {(d.get('round') or {}).get('item') or 'none'}, "
@@ -720,6 +724,11 @@ def uc_impact(run: Run) -> None:
     ruled = [f for f in story["feed"] if f.get("rule")]
     run.add("the feed shows the rule", PASS if ruled else SKIP, None,
             f"{ruled[0]['item']} -> {ruled[0]['bin']} ({'right' if ruled[0]['correct'] else 'wrong'}): {ruled[0]['rule']}" if ruled else "nothing in the feed yet")
+    # "which bin for the cup?": the look guide answers from the same rules file, with the bin's rule sentence
+    rules = (story.get("rules") or {}).get("items") or []
+    cup = next((i for i in rules if i.get("label") == "cup"), rules[0] if rules else None)
+    run.add("look guide: the bin and the rule for an item", PASS if cup and cup.get("rule") else SKIP, None,
+            f"{cup['label']} -> {cup['bin']}: {cup['rule']}" if cup else "the story carries no rules on this box")
     reached = (story["milestones"] or {}).get("reached") or []
     run.add("milestone", PASS if reached else SKIP, None, reached[-1]["text"] if reached else "no milestone reached this week yet")
     if not run.writes:
@@ -808,6 +817,20 @@ def uc_spot(run: Run) -> None:
               note=lambda d: f"{d.get('agree')} of {d.get('compared')} numbers agree with the kit; {len(d['issues'])} thing(s) to know about the files")
     run.fetch("shift handoff", "/api/spot/handoff", ("lines", "text"), check=lambda d: None if d["lines"] else "an empty handoff",
               note=lambda d: f"{len(d['lines'])} lines; first: {d['lines'][0] if isinstance(d['lines'][0], str) else d['lines'][0].get('text')}")
+    # The look guide (read-only, resolved by code, no model): where a thing is on the screen, and the walk to it.
+    first = triage["items"][0]["id"] if triage and triage["items"] else "HX-202"
+    run.fetch(f"look guide: \"where is {first}?\" resolves to its mark", f"/api/spot/guide?q=where%20is%20{first}",
+              ("target", "label", "steps", "confidence", "alternatives"), missing="this build has no look guide",
+              check=lambda d: None if d["target"] == f"asset:{first}" and d["steps"] else f"resolved to {d['target']}",
+              note=lambda d: f"{d['target']} ({d['confidence']}): {d['steps'][-1]['say']}")
+    run.fetch("look guide: an unknown thing is offered alternatives, not guessed", "/api/spot/guide?q=where%20is%20the%20coffee%20machine",
+              ("target", "alternatives"), missing="this build has no look guide",
+              check=lambda d: None if d["target"] is None and len(d["alternatives"]) >= 2 else f"pointed at {d['target']}",
+              note=lambda d: "did you mean: " + ", ".join(a["label"] for a in d["alternatives"]))
+    run.fetch(f"look guide: the walk to {first}, over legs SPOT has walked", f"/api/spot/route?to={first}",
+              ("found", "path", "legs", "say", "summary", "note"), missing="this build has no look guide",
+              check=lambda d: None if d["found"] and d["path"] and "SPOT has walked" in d["note"] else "no route, or the route does not say where it comes from",
+              note=lambda d: f"{d['summary']} {' '.join(d['say'])}")
     state = run.fetch("replay state", "/api/spot/replay/state", ("index", "total", "playing"), note=lambda d: f"event {d['index']} of {d['total']}, playing={d['playing']}")
     if run.ask:
         r = run.api.post("/api/spot/ask", {"text": "What should I check first this shift?"}, timeout=100)
