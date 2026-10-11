@@ -159,6 +159,11 @@ def shared_member_id(shared_by: str) -> str:
 
 
 SCAN_FIRST = "Finish the face scan first."
+OWNER_SCAN_FIRST = "Do the face scan first."
+OWNER_WHICH = ("More than one person has scanned on this box. Link yourself to your own Circle member on the People screen, "
+               "so Atlas knows which one is you.")
+OWNER_OFF = "Recognition is switched off. Switch it on under Privacy, Faces."
+OWNER_NO_MODEL = "The face recognition model is not installed on this box."
 NO_ROOM_MODE = ("Atlas reads expressions only for someone who has done the face scan and switched it on for themselves. "
                 "It no longer reads everyone in the room.")
 PHOTOS_ONLY = "Photos saved. Finish the face scan and Atlas will start to recognise this person."
@@ -209,6 +214,7 @@ class IdentityService:
         self._observed: list[ExpressionObserved] = []  # rebuilt from the log: what GET /identity/expressions answers from
         self._logged: tuple | None = None  # the last state the event log holds
         self.errors = 0
+        self.owner_circle_id: str | None = None  # this box's own Circle member, when it has a Circle (set in bootstrap)
 
     # --- the switches and the members ---
 
@@ -254,6 +260,56 @@ class IdentityService:
             for key in [k for k in self._runs if k[1] is None]:
                 del self._runs[key]
         return self._changed()
+
+    # --- the owner: the one scanned person this box calls "you" ---
+
+    def owner(self) -> Member | None:
+        """The person who did the face scan on this box and whom it calls "you": the only one who scanned here, or,
+        with several, the one linked to this box's own Circle member. Never a friend's shared template, never someone
+        saved from photos alone, and nobody when the box cannot say which of several people it is."""
+        local = [m for m in self.store.members() if m.source != SHARED and scanned(m)]
+        if self.owner_circle_id:
+            mine = [m for m in local if m.circle_member_id == self.owner_circle_id]
+            if len(mine) == 1:
+                return mine[0]
+            local = [m for m in local if not m.circle_member_id]  # linked to somebody else: that is not the owner
+        return local[0] if len(local) == 1 else None
+
+    def owner_status(self) -> dict:
+        """{scanned, ready, reason, demo} for the Privacy screen and the Vault: whether "only me" can be honoured
+        now, and the one line to show when it cannot. No name, no id, nothing from a face."""
+        owner = self.owner()
+        if owner is None:
+            several = sum(1 for m in self.store.members() if m.source != SHARED and scanned(m)) > 1
+            return {"scanned": False, "ready": False, "reason": OWNER_WHICH if several else OWNER_SCAN_FIRST, "demo": False}
+        if owner.demo:  # the demo seed's owner: made-up numbers, shown working by the demo camera alone
+            return {"scanned": True, "ready": True, "reason": None, "demo": True}
+        reason = None if self.enabled else OWNER_OFF if self.available else OWNER_NO_MODEL
+        return {"scanned": True, "ready": reason is None, "reason": reason, "demo": False}
+
+    def owner_faces(self, camera_id: CameraId, rows: list[Any], tracks: list[Track], width: int, height: int) -> list[bool]:
+        """For each face YuNet found in a live frame (`rows`), whether it is the owner's: it sits in a person track
+        that recognition has already tagged as the owner. Nothing is recognised here: the tags are the ones `look`
+        keeps. "Cannot tell" is always False: no owner, recognition off, no tag yet (the first second or two), a
+        face in nobody's box, or two faces in the owner's box (someone standing close behind them)."""
+        nobody = [False] * len(rows)
+        owner = self.owner()
+        tags = self._tags.get(camera_id)
+        if owner is None or owner.demo or not self.enabled or tags is None or not rows:
+            return nobody
+        try:
+            mine = {tid for tid, member in tags.members.items() if member == owner.member_id}
+        except RuntimeError:  # the camera's thread changed the tags under us: cannot tell
+            return nobody
+        if not mine:
+            return nobody
+        owned: dict[int, list[int]] = {}
+        for i, row in enumerate(rows):
+            track = track_for_face(face_box(row, width, height), tracks)
+            if track is not None and track.track_id in mine:
+                owned.setdefault(track.track_id, []).append(i)
+        keep = {faces[0] for faces in owned.values() if len(faces) == 1}
+        return [i in keep for i in range(len(rows))]
 
     def members(self) -> list[dict]:
         """Who is enrolled. Never the template."""

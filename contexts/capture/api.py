@@ -13,8 +13,9 @@ and GET /capture/live/<camera>[?fps=5] as a motion-JPEG stream (C5).
 `status` is the reader's: ok, degraded (under 70% of the target rate) or down (no frame for 3 s).
 
 Both pictures take `?ticket=`: with a view ticket the Vault gave the owner's signed-in screen (POST /vault/view-ticket)
-the faces are not blurred, unless the owner switched that off (`live_faces` "blurred"). Without one, or with one
-that is wrong or expired, the answer is the blurred picture exactly as before. `clear` is the Vault's check of a ticket.
+the faces are not blurred, unless the owner chose otherwise (`live_faces` "owner": only the scanned owner's own face is
+left clear, every other face is blurred; "blurred": everyone). Without one, or with one that is wrong or expired, the
+answer is the blurred picture exactly as before. `clear` is the Vault's check of a ticket.
 
 Both also take `?blur=1`, for a picture that will be kept or shared (jetson/record_clip.py): the faces are blurred
 with the strict blur whatever the policy says, and a ticket on the same request is ignored.

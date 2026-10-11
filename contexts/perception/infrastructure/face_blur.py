@@ -48,14 +48,18 @@ class FaceBlur:
     def __call__(self, frame: Any) -> Any:
         return self.scrambled(frame)[0]
 
-    def scrambled(self, frame: Any) -> tuple[Any, int]:
-        """The frame with every face scrambled, and how many faces the detector reported (the outbound gate's port)."""
+    def scrambled(self, frame: Any, keep: Any = None) -> tuple[Any, int]:
+        """The frame with every face scrambled, and how many faces the detector reported (the outbound gate's port).
+        `keep(rows) -> [bool per face]` names the faces to leave as they are (the owner's own face on the owner's own
+        screen); a face it does not answer True for is scrambled, and so is every face if it fails."""
         import cv2
 
         h, w = frame.shape[:2]
         out = frame.copy()
         rows = self.faces(frame)
-        for row in rows:
+        for row, spare in zip(rows, _kept(keep, rows), strict=True):
+            if spare:
+                continue
             x, y, fw, fh = (float(v) for v in row[:4])
             mx, my = fw * self.margin, fh * self.margin
             x1, y1 = max(int(x - mx), 0), max(int(y - my), 0)
@@ -77,6 +81,17 @@ class FaceBlur:
                 break
             out, found = self.scrambled(out)
         return out, first
+
+
+def _kept(keep: Any, rows: list[Any]) -> list[bool]:
+    """Which faces to leave clear. Anything but a clean answer of the right length keeps none: cannot tell means blur."""
+    if keep is None or not rows:
+        return [False] * len(rows)
+    try:
+        answer = [bool(k) for k in keep(rows)]
+    except Exception:
+        return [False] * len(rows)
+    return answer if len(answer) == len(rows) else [False] * len(rows)
 
 
 def _scramble(patch: Any, cv2: Any) -> Any:

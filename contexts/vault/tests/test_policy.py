@@ -5,7 +5,8 @@ from contexts.vault import Policy
 from contexts.vault.tests.helpers import Box
 from contracts.vault import PolicyChanged, RetentionChanged
 
-DEFAULTS = {"blur_faces": True, "paused_cameras": [], "offline": False, "keep_days": None, "live_faces": "clear"}
+DEFAULTS = {"blur_faces": True, "paused_cameras": [], "offline": False, "keep_days": None, "live_faces": "clear",
+            "train_faces": "blurred"}
 
 
 def test_defaults_are_private_and_nothing_is_written_until_something_changes(tmp_path):
@@ -19,7 +20,8 @@ def test_put_changes_the_policy_and_publishes_the_contract_events(tmp_path):
     box = Box(tmp_path)
     r = box.http.put("/vault/policy", json={"blur_faces": False, "paused_cameras": ["cam-door", "cam-door"], "keep_days": 7})
     assert r.status_code == 200
-    assert r.json() == {"blur_faces": False, "paused_cameras": ["cam-door"], "offline": False, "keep_days": 7, "live_faces": "clear"}
+    assert r.json() == {"blur_faces": False, "paused_cameras": ["cam-door"], "offline": False, "keep_days": 7, "live_faces": "clear",
+                        "train_faces": "blurred"}
     assert box.http.get("/vault/policy").json() == r.json()
     assert not box.policy.blur_faces and box.policy.keep_days == 7
     assert box.policy.is_paused("cam-door") and not box.policy.is_paused("cam-desk")
@@ -36,7 +38,8 @@ def test_put_keeps_what_it_does_not_mention_and_retention_event_only_on_change(t
     box.http.put("/vault/policy", json={"paused_cameras": ["cam-desk"], "keep_days": 30})
     box.seen.clear()
     r = box.http.put("/vault/policy", json={"offline": True, "keep_days": 30})  # same retention
-    assert r.json() == {"blur_faces": True, "paused_cameras": ["cam-desk"], "offline": True, "keep_days": 30, "live_faces": "clear"}
+    assert r.json() == {"blur_faces": True, "paused_cameras": ["cam-desk"], "offline": True, "keep_days": 30, "live_faces": "clear",
+                        "train_faces": "blurred"}
     assert [e.type for e in box.seen] == ["vault.policy.changed"]
 
     box.seen.clear()
