@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import dynamic from "next/dynamic";
+import { useMemo, useState } from "react";
 import { Empty } from "@/components/States";
 import ui from "@/components/ui.module.css";
 import { ApiError, api } from "@/lib/api";
@@ -10,13 +11,20 @@ import {
   type CompareRun,
   type CompareTrace,
   HIGHER_IS_BETTER,
+  type HeroTile,
   type LabCompare,
   LOWER_IS_BETTER,
+  type RunMotion,
   defaultPair,
   fmtValue,
+  heroLine,
+  heroTiles,
+  isFreshRun,
+  podWords,
   recordedOnly,
   runName,
   timesX,
+  trainingPods,
 } from "@/lib/labCompare";
 import { useFetch } from "@/lib/useFetch";
 import { usePoll } from "@/lib/usePoll";
@@ -24,11 +32,20 @@ import b from "./bench.module.css";
 import c from "./compare.module.css";
 import { type BuddiesState, LearningBuddies } from "./LearningBuddies";
 
+/** The power chart draws with ECharts in the browser only; the page is a static export. */
+const TogetherTraces = dynamic(() => import("./TogetherTraces"), { ssr: false, loading: () => <div className={c.chart} style={{ minHeight: 480 }} /> });
+
 /**
- * Alone vs with a friend (L31): act 1 trained on one person's examples, act 2 on those pooled with a friend's, side by
- * side. Per act: examples, members, seconds per stage, the joules of labeling (pod C), training and packaging (pod D)
- * and the box, each with its idle floor beside (T4: gross joules, the idle shown, never subtracted); then act 2 over
- * act 1, and the three power traces stacked on one time axis. The learning buddies sit above in the matching state.
+ * Alone vs with a friend (L31): act 1 trained on one person's examples, act 2 on those pooled with a friend's. Read top
+ * down, it says the result at a glance: the learning buddies in the matching state, three hero numbers (act 2 over act
+ * 1: the examples, the time, the energy per example), which two acts are compared, the three power traces of the loop on
+ * one clock (TogetherTraces.tsx, ECharts) and each act in brief. Every other number (seconds per stage, the joules of
+ * labeling, training, packaging and the box with each idle floor beside, T4: gross, never subtracted; act 2 over act 1
+ * line by line; where the numbers come from) sits under "Every number", closed until asked for.
+ *
+ * The buddies follow a run as "training now" only while its run_status is "running" and its newest event is less than
+ * two minutes old (lib/labCompare.ts, isFreshRun); a loop that died mid-run is never shown as training. Otherwise they
+ * show the comparison's finished pair, together, with that pair's own numbers.
  *
  * Data, all from the gateway and all live: GET /api/learning/lab/compare?a=&b= (the two acts), GET /api/learning/lab
  * (a run still going on the box) and GET /api/learning/lab/{run_id} (its loss, step by step). A run whose record is the
@@ -79,7 +96,13 @@ const ACT_GROUPS: { title: string; rows: [string, string][] }[] = [
   { title: "Totals", rows: [["pods_joules", "Both pods"], ["j_per_example", "Per example, all stages"], ["box_j", "The box, during the act"]] },
 ];
 
-function Act({ n, run, title }: { n: 1 | 2; run: CompareRun | null; title: string }) {
+/** Where an act ran, in words: "pod D" alone, "pods C and D" with a friend. */
+function whereOf(run: CompareRun): string {
+  const pods = trainingPods(run);
+  return pods.length ? `trained on ${podWords(pods)}` : "";
+}
+
+function Act({ n, run, title, detail = false }: { n: 1 | 2; run: CompareRun | null; title: string; detail?: boolean }) {
   if (!run)
     return (
       <article className={`${c.act} ${c.actWaiting} ${n === 1 ? c.actA : c.actB}`}>
@@ -92,8 +115,12 @@ function Act({ n, run, title }: { n: 1 | 2; run: CompareRun | null; title: strin
   const parts = (["labeling", "training", "packaging"] as const).map((k) => ({ k, s: run.seconds[k] ?? 0 }));
   return (
     <article className={`${c.act} ${n === 1 ? c.actA : c.actB}`}>
-      <span className={c.eyebrow}>Act {n}</span>
+      <span className={c.eyebrow}>
+        Act {n}
+        {whereOf(run) ? <span className={c.where}>, {whereOf(run)}</span> : null}
+      </span>
       <h2>{title}</h2>
+      {detail ? null : (
       <div className={c.big}>
         <div>
           <span className={c.bigNum}>{run.examples ?? "?"}</span>
@@ -108,11 +135,13 @@ function Act({ n, run, title }: { n: 1 | 2; run: CompareRun | null; title: strin
           <span className={c.bigLabel}>J per example</span>
         </div>
       </div>
+      )}
       {total > 0 ? (
         <div className={c.split} role="img" aria-label={parts.map((p) => `${p.k} ${p.s} s`).join(", ")}>
           {parts.map((p) => (p.s > 0 ? <span key={p.k} className={c[`split_${p.k}`]} style={{ flexGrow: p.s }} title={`${p.k}: ${p.s} s`} /> : null))}
         </div>
       ) : null}
+      {detail ? (
       <dl className={c.rows}>
         {ACT_GROUPS.map((g) => (
           <div key={g.title} className={c.group}>
@@ -134,8 +163,9 @@ function Act({ n, run, title }: { n: 1 | 2; run: CompareRun | null; title: strin
           </div>
         ))}
       </dl>
+      ) : null}
       {run.reason ? <p className={b.note}>{run.reason}.</p> : null}
-      <p className={`${b.note} ${b.code}`}>{run.run_id}</p>
+      {detail ? <p className={`${b.note} ${b.code}`}>{run.run_id}</p> : null}
     </article>
   );
 }
@@ -236,6 +266,7 @@ function Panel({ node, ra, rb, maxT, idle, note, last }: { node: (typeof NODES)[
   );
 }
 
+/** The fallback when the gateway sends no loop clock (an older gateway, or two acts from different loops). */
 function Traces({ ra, rb }: { ra: CompareRun; rb: CompareRun | null }) {
   const maxT = Math.max(ra.seconds.total ?? 0, rb?.seconds.total ?? 0, 30);
   const idleOf = (n: string) => {
@@ -259,6 +290,65 @@ function Traces({ ra, rb }: { ra: CompareRun; rb: CompareRun | null }) {
           <Panel key={n} node={n} ra={ra.traces[n]} rb={rb?.traces[n]} maxT={maxT} idle={idleOf(n)} note={noteOf(n)} last={i === NODES.length - 1} />
         ))}
       </div>
+    </div>
+  );
+}
+
+/* ---------- the hero ---------- */
+
+function fmtPlain(v: number | null, unit: string): string {
+  if (v === null) return "?";
+  const n = Math.abs(v) >= 100 ? Math.round(v).toLocaleString("en-US") : Number(v.toPrecision(3)).toLocaleString("en-US");
+  return unit ? `${n} ${unit}` : n;
+}
+
+function Hero({ tiles, line }: { tiles: HeroTile[]; line: string | null }) {
+  if (!tiles.length) return null;
+  return (
+    <section className={c.hero} aria-label="Act 2 over act 1">
+      <ul className={c.heroTiles}>
+        {tiles.map((t, i) => (
+          <li key={t.key} className={`${c.heroTile} ${t.good ? c.heroGood : ""}`} style={{ "--i": i } as React.CSSProperties}>
+            <span className={c.heroNum}>{t.times}</span>
+            <span className={c.heroNoun}>{t.noun}</span>
+            <span className={c.heroWords}>{t.words}</span>
+            {t.from !== null && t.to !== null ? (
+              <span className={c.heroFrom}>
+                {fmtPlain(t.from, t.unit)} alone, {fmtPlain(t.to, t.unit)} with a friend
+              </span>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+      {line ? <p className={c.heroLine}>{line}</p> : null}
+    </section>
+  );
+}
+
+function PowerChart({ data, ra, rb, forceReduced }: { data: LabCompare; ra: CompareRun | null; rb: CompareRun | null; forceReduced?: boolean }) {
+  const series = data.series ?? null;
+  const ids = new Set([ra?.run_id, rb?.run_id].filter(Boolean));
+  const usable = !!series && series.runs.some((r) => ids.has(r.run_id)) && Object.values(series.nodes).some((nd) => nd && nd.points.length > 0);
+  if (!usable) return ra ? <Traces ra={ra} rb={rb} /> : rb ? <Traces ra={rb} rb={null} /> : null;
+  const runs = series!.runs.filter((r) => ids.has(r.run_id));
+  const together = runs.length === 2 && runs[0]!.start_s < runs[1]!.end_s && runs[1]!.start_s < runs[0]!.end_s;
+  return (
+    <div className={b.card}>
+      <div className={b.cardHead}>
+        <h3>Power, on one clock</h3>
+        <span className={c.legend}>
+          <span className={c.keyPodC}>Pod C</span>
+          <span className={c.keyPodD}>Pod D</span>
+          <span className={c.keyBox}>The box</span>
+          <span className={c.keyStage}>act 2&apos;s stages</span>
+          <span className={c.keyIdle}>idle floor</span>
+        </span>
+      </div>
+      <span className={b.note}>
+        Seconds after the loop started, every meter moved onto one clock. Watts as each meter read them.
+        {together ? " Both acts ran in the same loop at the same time, so each meter reads both." : ""}
+      </span>
+      <TogetherTraces series={series!} actB={rb?.run_id ?? null} forceReduced={forceReduced} />
     </div>
   );
 }
@@ -290,8 +380,12 @@ export function Compare({ a, b: bId, onPick, forceReduced }: { a: string | null;
   const complete = !!ra && !!rb;
 
   // A run training now on the box (the loop posts each act there as it trains): the buddies follow it live. Only the
-  // gateway's run_status "running" counts (lib/lab.ts, isLiveRun); a gated or finished run is not training now.
-  const live = list.data && !list.data.sample ? (list.data.runs.find((r) => isLiveRun({ ...r, sample: false })) ?? null) : null;
+  // gateway's run_status "running" counts (lib/lab.ts, isLiveRun), and only while its newest event is under two minutes
+  // old (lib/labCompare.ts, isFreshRun): a loop that died mid-run keeps saying "running" but its events stop.
+  const now = Date.now();
+  const live =
+    list.data && !list.data.sample ? (list.data.runs.find((r) => isLiveRun({ ...r, sample: false }) && isFreshRun(r as RunMotion, now)) ?? null) : null;
+  const [picking, setPicking] = useState(false);
   const focusId = live?.run_id ?? rb?.run_id ?? ra?.run_id ?? null;
   const story = useFetch((signal) => (focusId ? api.labRun(focusId, false, signal).catch(() => null) : Promise.resolve(null)), `story-${focusId ?? ""}`);
   const focus = story.data && !story.data.sample ? story.data : null;
@@ -320,7 +414,7 @@ export function Compare({ a, b: bId, onPick, forceReduced }: { a: string | null;
       examplesRatio: state === "with-friend" ? (data?.ratios?.examples ?? null) : null,
       friends: state === "with-friend" ? Math.max(1, (rb?.members ?? 2) - 1) : 0,
       lossReason: loss.length ? null : run ? "The per-step loss of this run is not in the box's log." : null,
-      caption: live ? `Training now on the box: ${live.run_id}` : run ? `${runName(run)}: ${run.run_id}` : null,
+      caption: live ? `Training now on the box: ${live.run_id}` : run ? `Finished: ${runName(run).toLowerCase()}${whereOf(run) ? `, ${whereOf(run)}` : ""}. ${run.run_id}` : null,
     };
   }, [focus, live, complete, ra, rb, data]);
 
@@ -362,18 +456,34 @@ export function Compare({ a, b: bId, onPick, forceReduced }: { a: string | null;
         </>
       ) : (
         <>
-          {choices.length > 1 ? (
+          {complete && data ? <Hero tiles={heroTiles(data)} line={heroLine(data)} /> : null}
+          <p className={c.comparing}>
+            Comparing <b>{ra ? runName(ra).toLowerCase() : "act 1, not recorded yet"}</b> with <b>{rb ? runName(rb).toLowerCase() : "act 2, not recorded yet"}</b>
+            {choices.length > 1 ? (
+              <button type="button" className={c.change} aria-expanded={picking} onClick={() => setPicking((v) => !v)}>
+                {picking ? "done" : "change"}
+              </button>
+            ) : null}
+          </p>
+          {picking && choices.length > 1 ? (
             <div className={c.pickers}>
               <Picker label="Act 1" value={ra?.run_id ?? null} runs={choices} onPick={(id) => onPick("a", id)} />
               <Picker label="Act 2" value={rb?.run_id ?? null} runs={choices} onPick={(id) => onPick("b", id)} />
             </div>
           ) : null}
+          {data ? <PowerChart data={data} ra={ra} rb={rb} forceReduced={forceReduced} /> : null}
           <div className={c.acts}>
             <Act n={1} run={ra} title={ra ? runName(ra).replace(/ \(.*\)$/, "") : "Alone"} />
             <Act n={2} run={rb} title={rb ? runName(rb).replace(/ \(.*\)$/, "") : "With a friend"} />
           </div>
+          <details className={c.every}>
+            <summary className={c.everySummary}>Every number</summary>
+            <div className={c.everyBody}>
+          <div className={c.acts}>
+            <Act n={1} run={ra} title={ra ? runName(ra).replace(/ \(.*\)$/, "") : "Alone"} detail />
+            <Act n={2} run={rb} title={rb ? runName(rb).replace(/ \(.*\)$/, "") : "With a friend"} detail />
+          </div>
           {complete && data?.ratios ? <Ratios ratios={data.ratios} /> : null}
-          {ra ? <Traces ra={ra} rb={rb} /> : rb ? <Traces ra={rb} rb={null} /> : null}
           <div className={b.card}>
             <h3>Where these numbers come from</h3>
             {[ra, rb].map((r) =>
@@ -387,6 +497,8 @@ export function Compare({ a, b: bId, onPick, forceReduced }: { a: string | null;
             {(ra ?? rb)?.source.split ? <span className={b.note}>{(ra ?? rb)!.source.split}.</span> : null}
             {!complete ? <span className={b.note}>Waiting for the other act; looking again every 3 seconds.</span> : null}
           </div>
+            </div>
+          </details>
         </>
       )}
     </div>
