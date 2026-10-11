@@ -53,6 +53,23 @@ export interface Episode {
   keyframe_refs: string[];
 }
 
+/** GET /api/digest -> contexts.agent.application.digest.DailyDigest (A6) */
+export interface DailyDigest {
+  day: string;
+  start: string;
+  end: string;
+  text: string;
+  episodes: number;
+  cameras: Record<string, number>;
+  seen_most: [string, number][];
+  people_episodes: number;
+  first: string | null;
+  last: string | null;
+  busiest_hour: string | null;
+  moments: { hour: string; episodes: number; text: string; citation: Citation }[];
+  citations: Citation[];
+}
+
 /** contracts.memory.MemoryStats */
 export interface MemoryStats {
   hours_recorded: number;
@@ -1912,6 +1929,7 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   episodes: (opts: { from?: string; to?: string; camera?: string; label?: string } = {}, signal?: AbortSignal) =>
     get<Episode[]>("/memory/episodes", opts, signal),
   stats: (signal?: AbortSignal) => get<MemoryStats>("/memory/stats", undefined, signal),
+  digest: (day?: string, signal?: AbortSignal) => get<DailyDigest>("/api/digest", day ? { day } : undefined, signal),
   search: (q: string, limit = 20, signal?: AbortSignal) => get<SearchHit[]>("/memory/search", { q, limit }, signal),
   items: (opts: { from?: string; to?: string; kind?: string } = {}, signal?: AbortSignal) =>
     get<Item[]>("/memory/items", opts, signal),

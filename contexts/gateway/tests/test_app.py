@@ -333,3 +333,12 @@ def test_ask_stream_sends_the_pieces_then_the_same_final_answer(tmp_path):
         final = lines[-1]["final"]
         assert final["type"] == "agent.answer.generated" and final["citations"][0]["frame_ref"] == "frames:cam-desk:k1941"
 
+
+
+def test_daily_digest_is_served(tmp_path):
+    with client(tmp_path) as c:
+        r = c.get("/api/digest", params={"day": "2026-10-11"})
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["day"] == "2026-10-11" and isinstance(body["text"], str) and body["text"]
+        assert c.get("/api/digest", params={"day": "soon"}).status_code == 422
