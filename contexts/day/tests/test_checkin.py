@@ -453,6 +453,7 @@ async def lived(places, tmp_path, events=None, name: str = "a") -> tuple[DayLoop
         await bus.publish(e)
     loop.checkin.enabled = True
     await bus.publish_all(loop.tick(NOW))
+    await bus.publish_all(loop.tick(NOW + timedelta(seconds=90)))  # the coach spoke at 3:39:30: the check-in's words wait for the arbiter's gap
     return loop, bus, out, ntfy
 
 

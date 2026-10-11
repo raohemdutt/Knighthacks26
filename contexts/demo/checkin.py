@@ -191,6 +191,9 @@ async def show(data_dir: str | Path, end: datetime, config_dir: Path | None = No
                 lambda: app.day.tick(end)):
         await app.bus.publish_all(job())
         await settle()
+    # the habit nudge at `end` took the slot: the check-in's words follow on the tick after the arbiter's gap
+    await app.bus.publish_all(app.day.tick(end + timedelta(seconds=app.day.arbiter.rules.gap_s)))
+    await settle()
     return Shown(app=app, end=end, seconds=clocktime.perf_counter() - started, checkins=raised, told=told, published=len(events))
 
 

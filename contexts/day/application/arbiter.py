@@ -47,7 +47,6 @@ class Arbiter:
         # --- live only ---
         self.held: list = []  # Jobs waiting for a slot, oldest first
         self.answered_at: datetime | None = None
-        self.questions: set[str] = set()
         self.log: list[tuple[str, str, str]] = []  # (event id or moment, verdict, reason): what was decided, for tests
 
     def subscribe(self, bus) -> None:
@@ -60,7 +59,6 @@ class Arbiter:
         bus.subscribe("workspace.approval.requested", self.on_card, replay=True)
         bus.subscribe("experience.approval.decided", self.on_card_closed, replay=True)
         bus.subscribe("workspace.action.completed", self.on_card_closed, replay=True)
-        bus.subscribe("experience.question.asked", self.on_question)
         bus.subscribe("agent.answer.generated", self.on_answer)
 
     # --- state (replay=True) ---
@@ -93,11 +91,7 @@ class Arbiter:
 
     # --- live ---
 
-    def on_question(self, e) -> None:
-        self.questions.add(e.question_id)
-
     def on_answer(self, e) -> None:
-        self.questions.discard(e.question_id)
         if self.answered_at is None or e.ts >= self.answered_at:
             self.answered_at = e.ts
 
@@ -106,7 +100,9 @@ class Arbiter:
         awake = self.clock.wake_at(day) <= now < self.clock.bed_at(day)
         plan = self.planner.current.get(day)
         fixed = bool(plan) and any(m.fixed and m.start <= now < m.end for m in plan.moves)
-        answering = bool(self.questions) or (self.answered_at is not None and timedelta(0) <= now - self.answered_at < ANSWER_SPEAK)
+        # an answer is being said from when it is written until ANSWER_SPEAK later; a question still being thought
+        # about does not hold a line back (the line goes out before the answer, which then waits its turn in the voice)
+        answering = self.answered_at is not None and timedelta(0) <= now - self.answered_at < ANSWER_SPEAK
         return Scene(awake=awake, fixed_running=fixed, answering=answering)
 
     @staticmethod
