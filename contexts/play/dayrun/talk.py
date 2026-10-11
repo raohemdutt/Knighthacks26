@@ -16,7 +16,9 @@ Times: "one", "1", "1pm", "13:30", "half past two", "noon"; an hour with no AM o
 the block it moves (else the next one in waking hours). Lengths: "two hours", "90 minutes", "an hour and a half".
 
 Whatever it changes is run through the engine before it answers. When it cannot tell what was meant it changes
-nothing, says what it did understand and offers the two nearest edits: never a silent no-op.
+nothing, says what it did understand and offers the two nearest edits: never a silent no-op. When it could read
+nothing at all ("banana") it offers no edit: it says so and gives two or three things that can be said, each about
+a block of this very plan (`examples`).
 """
 
 import re
@@ -264,6 +266,47 @@ class Editor:
                 out.append(o)
         return EditResult(ok=False, understood=understood, moves=self.moves, options=out[:2])
 
+    def lost(self, understood: str) -> EditResult:
+        """Nothing in the words could be read: no edit is guessed at; what can be said here is shown instead."""
+        return EditResult(ok=False, understood=understood, moves=self.moves, examples=self.examples())
+
+    def examples(self) -> list[str]:
+        """Up to three things to say about this plan, one each to move, drop and add. Each is checked against the
+        same matching and placing `edit` uses, so none of them is a phrase it would not read."""
+        mine = [t for t in self.things if t.move is not None and t.block is not None]
+        awake = [t for t in mine if t.kind != "sleep"]
+        out: list[str] = [] if mine else ["add lunch", "add study for 2 hours"]  # an empty day: what to start with
+        used: Thing | None = None
+        for t in sorted(awake, key=lambda t: (t.kind != "eat", t.start)):  # a meal first: "move lunch to 1 PM"
+            if best(self.things, tokens_of(t.name) - FILLER)[0] is not t:
+                continue  # two blocks answer to this name: not one to give as an example
+            hour = (t.start + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+            at = next((x for x in (hour, hour + timedelta(hours=1)) if not isinstance(self.move_to(t, x), str)), None)
+            if at is not None:
+                out.append(f"move {t.name} to {words.clock12(at)}")
+                used = t
+                break
+        work = self.cfg.vocabulary.activity
+        twins = [t for t in awake if t.kind == "study"]
+        second = f"drop the second {work} block"
+        if len(twins) > 1 and best(self.things, tokens_of(second) - FILLER - set(VERBS["drop"]))[0] is twins[1]:
+            out.append(second)
+        else:
+            for t in reversed(awake):
+                if t is not used and best(self.things, tokens_of(t.name) - FILLER)[0] is t:
+                    out.append(f"drop {t.name}")
+                    break
+        offered = next((e for e in [*self.board.suggestions, *self.board.events] if not any(m.event == e.id for m in self.moves)), None)
+        after = used or next(iter(awake), None)
+        if offered is not None and self.add_option("event", None, None, None, None, offered) is not None:
+            out.append(f"add {words.short(offered.title)}")
+        elif after is not None and self.add_option("rest", None, None, None, ("after", after)) is not None:
+            out.append(f"add a break after {after.name}")
+        elif not mine:
+            out.append("add sleep at 11")
+        self.note = None  # trying an example must not leave its "only room for" note behind
+        return out[:3]
+
     def named(self, t: Thing) -> str:
         """A thing's name, with its time when another thing in the plan goes by the same name."""
         twin = any(x is not t and x.name == t.name for x in self.things)
@@ -272,7 +315,7 @@ class Editor:
     def fallback(self) -> list[EditOption]:
         """Edits that are always worth offering: what would mend the plan, else a meal and a block of work in a gap."""
         out = [EditOption(label=f.label, moves=f.moves, changed=f.changed)
-               for f in fixes.suggest(self.cfg, self.w, self.board, self.moves, self.result) if f.label and f.moves is not None]
+               for f in fixes.suggest(self.cfg, self.w, self.board, self.moves, self.result, waits=False) if f.label and f.moves is not None]
         return out
 
     # --- edits ---
@@ -405,7 +448,7 @@ def edit(cfg: DayRunConfig, w: Walks, board: Board, moves: list[Move], text: str
     ed = Editor(cfg, w, board, moves)
     t = normalise(text)
     if not t:
-        return ed.unsure("I didn't catch anything to change.", [])
+        return ed.lost("I didn't catch anything to change.")
     all_words = t.split()
     verb = next((v for v, forms in VERBS.items() if any(f in all_words for f in forms)), None)
     later = any(x in all_words for x in ("later", "back")) or (verb == "move" and any(x in all_words for x in ("push", "delay")))
@@ -491,7 +534,9 @@ def edit(cfg: DayRunConfig, w: Walks, board: Board, moves: list[Move], text: str
 
     # --- everything else names a block already in the plan ---
     if target is None:
-        heard = f"I heard “{verb}”" if verb else "I couldn't tell what to change"
+        if verb is None:  # no verb and no block of the plan: nothing was read, so no edit is offered
+            return ed.lost("I couldn't tell what to change.")
+        heard = f"I heard “{verb}”"
         options: list[EditOption] = []
         for x in (movable or [x for x in ed.things if x.move is not None])[:2]:
             if verb == "drop":

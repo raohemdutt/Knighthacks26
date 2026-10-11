@@ -276,6 +276,20 @@
   color: var(--accent-text);
 }
 
+/* a phone: Pause, the speed and "Back to the calm day" stay on one line (they wrapped at 500 px) */
+@media (max-width: 560px) {
+  .heroRow {
+    gap: 8px;
+  }
+
+  .pill {
+    gap: 6px;
+    padding: 8px 13px 8px 11px;
+    font-size: 15px;
+    white-space: nowrap;
+  }
+}
+
 /* ---------- what needs fixing: rows inside the hero, parted by hairlines (never cards in a card) ---------- */
 .fixes {
   display: flex;
@@ -331,6 +345,16 @@
 
 .fixBtn:active {
   box-shadow: var(--sh-inset-sm);
+}
+
+/* a problem with no edit until another is mended: one quiet line where the button would be */
+.fixWait {
+  flex: none;
+  max-width: 45%;
+  font-size: 14px;
+  color: var(--muted);
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 
 /* ---------- the map: a well inside the hero, driven by the plan ---------- */
@@ -705,6 +729,14 @@
   color: var(--danger);
 }
 
+/* what can be said, when nothing was read: quieter than the answer, and never a button */
+.heardTry {
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
 /* ---------- your plan: the agenda (from Calendar: .rows, .row, .rowTime, .rowRail, .rowDot*, .rowCard, .rowFixed,
    .rowWarn, .rowTop, .rowTitle, .rowTags, .rowMeta, .rowReason, .tagPill, .tagNext, .tagWarn) ---------- */
 .paneTitle {
@@ -1065,6 +1097,12 @@ button.rowBlock:active {
   color: var(--muted);
   text-align: center;
   overflow-wrap: anywhere;
+}
+
+/* why the button is off: it sits on the page's own backdrop at the foot of the screen, where --muted is hard to
+   read in Night, so this one line takes the text colour */
+.hintWhy {
+  color: var(--text);
 }
 
 /* ---------- folded detail (from Calendar: now.module.css .why > summary, .whyBody) ---------- */

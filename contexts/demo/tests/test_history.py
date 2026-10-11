@@ -98,7 +98,7 @@ def test_the_date_strip_reads_them_back(seeded):
     changed = by[ago(history.CHANGED)]
     assert changed["label"] == "re-planned, still made it" and changed["summary"].startswith("Two things changed: ")
     ahead = by[TODAY + timedelta(days=2)]  # Tuesday: the milestone is due
-    assert ahead["when"] == "future" and ahead["has_data"] and [d["title"] for d in ahead["due"]] == ["Project Milestone1"]
+    assert ahead["when"] == "future" and ahead["has_data"] and [d["title"] for d in ahead["due"]] == ["Project Milestone 1"]
     assert 0 < ahead["free_minutes"] <= 16 * 60 and 0 <= ahead["pressure"] <= 1
     assert not by[TODAY + timedelta(days=5)]["has_data"]  # nothing on it yet: not selectable
 

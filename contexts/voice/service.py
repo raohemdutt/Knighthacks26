@@ -32,6 +32,12 @@ class SayBody(BaseModel):
     text: str
 
 
+def evidence_count(citations: list) -> int:
+    """How many citations are things the cameras saw (a frame or an episode). Only those are announced as "Based on N
+    pieces of evidence."; a calendar entry or a link behind "You've got your lecture at 10:40" is not evidence to read out."""
+    return sum(1 for c in citations or [] if isinstance(c, dict) and (c.get("frame_ref") or c.get("episode_id")))
+
+
 def gateway_ask(cfg: VoiceConfig) -> Ask:
     """The same door the phone's Ask screen uses, so the question lands in the event log as experience.question.asked
     and the answer comes back as agent.answer.generated."""
@@ -40,7 +46,7 @@ def gateway_ask(cfg: VoiceConfig) -> Ask:
         r = httpx.post(cfg.ask_url.rstrip("/") + "/api/ask", json={"text": text}, headers=headers, timeout=ASK_TIMEOUT_S)
         r.raise_for_status()
         body = r.json()
-        return body["answer"], len(body.get("citations", []))
+        return body["answer"], evidence_count(body.get("citations", []))
     return ask
 
 
@@ -59,7 +65,7 @@ def gateway_ask_stream(cfg: VoiceConfig) -> AskStream:
                 if "delta" in msg:
                     on_piece(msg["delta"])
                 elif "final" in msg:
-                    return msg["final"]["answer"], len(msg["final"].get("citations", []))
+                    return msg["final"]["answer"], evidence_count(msg["final"].get("citations", []))
                 elif "error" in msg:
                     raise RuntimeError(msg["error"])
         raise RuntimeError("the answer ended early")

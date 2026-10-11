@@ -1,0 +1,13 @@
+diff --git a/vllm/v1/attention/ops/triton_unified_attention.py b/vllm/v1/attention/ops/triton_unified_attention.py
+--- a/vllm/v1/attention/ops/triton_unified_attention.py
++++ b/vllm/v1/attention/ops/triton_unified_attention.py
+@@ -1086,6 +1086,9 @@
+         grid = (total_num_q_blocks, num_kv_heads, num_par_softmax_segments)
+         tile_size = TILE_SIZE_DECODE
+ 
++    # atlas: RDNA has 64 KB of LDS; Triton's default num_stages can ask for more.
++    if launch_num_stages is None and current_platform.is_rocm():
++        launch_num_stages = 1
+     launch_kwargs: dict[str, int] = {}
+     if launch_num_warps is not None:
+         launch_kwargs["num_warps"] = launch_num_warps

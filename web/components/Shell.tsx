@@ -94,6 +94,18 @@ type MoreTab = Tab & { group: string };
  */
 const MORE: MoreTab[] = [
   {
+    href: "/files",
+    group: "Your day",
+    label: "Files",
+    keywords: "inbox share upload documents pdf syllabus notes",
+    icon: (
+      <>
+        <path d="M7 3.5h6.5L18 8v12.5H7z" />
+        <path d="M13.5 3.5V8H18M9.5 13h6M9.5 16.5h6" />
+      </>
+    ),
+  },
+  {
     href: "/impact",
     group: "Your day",
     label: "Impact",

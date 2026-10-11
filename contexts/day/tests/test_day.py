@@ -225,7 +225,7 @@ def test_drift_is_seen_and_an_infeasible_next_event_triggers_one_replan(items, p
     assert len(replans) == 1 and replans[0].replaces == plan.plan_id and replans[0].for_event == MENTOR
     assert "At Desk at 09:12" in replans[0].why and "10 minute walk" in replans[0].why
     card = next(e for e in out if e.type == "agent.action.proposed")
-    assert card.action_id == replans[0].action_id and "Replace today's Day Run blocks" in card.reason
+    assert card.action_id == replans[0].action_id and "Replace today's plan with" in card.reason
     # while it is pending, no second one; after it expired, drift still there, once more; then no more for that event
     assert feed(loop, [zone(at(9, 14), "desk")]) == [] or not any(isinstance(e, DayReplanProposed) for e in feed(loop, [zone(at(9, 15), "desk")]))
     loop.planner.on_action_completed(ActionCompleted(ts=at(9, 17), action_id=card.action_id, status="expired"))
@@ -316,7 +316,7 @@ def test_the_evening_review_scores_the_day_and_the_real_days_stars(items, places
     (review,) = p.tick(at(20, 0))
     assert isinstance(review, DayReviewed) and review.day == SUNDAY and review.plan_id == plan.plan_id
     assert review.score is not None and 0 <= review.score <= 100
-    assert "You followed" in review.text and "by Day Run's rules" in review.text
+    assert "You followed" in review.text and "by Today's Plan's rules" in review.text
     assert review.plan_stars == plan.outcome.stars and review.points > 0 and review.streak == (1 if review.stars else 0)
     assert review.change_tomorrow
     p.on_reviewed(review)

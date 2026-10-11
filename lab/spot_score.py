@@ -75,8 +75,7 @@ from contracts.learning import DatasetExample, DatasetManifest
 from lab import dataset
 from lab.dataset import MIN_HELD_OUT, DatasetError, Split
 from lab.desk_score import repo_commit
-from lab.eval_gate import DECODE as GATE_DECODE
-from lab.eval_gate import GateError, RealClient
+from lab.eval_gate import GateError, RealClient, decode_for
 from lab.machine.record import record
 
 __all__ = ["TASK", "DATASET_TASK", "DATASET_ID", "DECODE", "SpotError", "SpotExample", "numbers", "parse_reply",
@@ -88,8 +87,8 @@ DATASET_ID = "spot-qa"
 TRAIN_DIR, HELD_OUT_DIR = "spot-qa-train", "spot-qa-heldout"
 PREFIX = "spot"
 TIMEOUT_S = 300.0
-DECODE: dict[str, Any] = {  # the gate's setting (thinking off, greedy, its max tokens), as a chat request sends it
-    "temperature": 0, "top_k": 1, "seed": 0, "max_tokens": GATE_DECODE["max_tokens"],
+DECODE: dict[str, Any] = {  # the gate's setting for spot-qa (thinking off, greedy, SPOT_MAX_TOKENS), as a chat sends it
+    "temperature": 0, "top_k": 1, "seed": 0, "max_tokens": decode_for(DATASET_TASK)["max_tokens"],
     "chat_template_kwargs": {"enable_thinking": False},
 }
 SPLIT_RULE = ("By anchor mission, as contexts.spot.dataset writes it: train is every example of spot-qa-train (anchors "

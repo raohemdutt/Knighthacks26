@@ -277,6 +277,10 @@ class Fix(BaseModel):
     moves: list[Move] | None = None  # the whole plan with the edit applied
     changed: int | None = None  # index in `moves` of the move that was added or changed (None: one was removed)
     mends: bool = False  # True when the edit makes this problem go away
+    # No edit of its own yet (`label` is None), but there is one once another problem of the list is mended: that
+    # problem's id, and the line to show in place of a button ("Fix the one above first"). Both None otherwise.
+    after: str | None = None
+    hint: str | None = None
 
 
 class Carry(BaseModel):
@@ -474,6 +478,9 @@ class EditResult(BaseModel):
     changed: int | None = None
     options: list[EditOption] = []
     warning: str | None = None  # the edit was made but does not fit: "you'd miss judging by 11 minutes"
+    # nothing in the words could be read ("banana"): two or three things that can be said about this very plan, and
+    # no `options` ("move breakfast to 10 AM", "drop the second study block", "add a break after lunch")
+    examples: list[str] = []
 
 
 class CommitResult(BaseModel):

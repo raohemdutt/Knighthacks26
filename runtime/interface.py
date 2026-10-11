@@ -4,8 +4,10 @@ Contexts depend on `Runtime`, never on llama.cpp or ultralytics directly, so a
 new model version is a registry change, not a code change. Everything here
 runs on the Jetson; the lab GPUs are never in the request path.
 
-Priority on the device (enforced by the scheduler, R4):
+Priority on the device (enforced by the scheduler, R4, runtime/scheduler.py):
 detection > alerts > chat > captions > summaries > backfill.
+Each model call takes an optional `priority`; the defaults are caption for image calls, summary for
+summarize, chat for chat.
 """
 
 from collections.abc import Callable
@@ -13,7 +15,7 @@ from typing import Any, Literal, Protocol
 
 from contracts.types import ChatMessage, ChatResult, Detection, ModelVersion, ObjectHit, Track
 
-Priority = Literal["chat", "caption", "summary", "backfill"]
+Priority = Literal["detection", "alert", "chat", "caption", "summary", "backfill"]
 
 
 class Runtime(Protocol):
@@ -21,19 +23,20 @@ class Runtime(Protocol):
         """Detect + track on one BGR frame (numpy array). Real-time path."""
         ...
 
-    def detect_open(self, jpeg: bytes, labels: list[str]) -> list[Detection]:
+    def detect_open(self, jpeg: bytes, labels: list[str], priority: Priority = "caption") -> list[Detection]:
         """Open-vocabulary detection: find things the detector has no class for ("keys", "charger").
 
         Boxes are normalized [0, 1]. Slower than detect_track; use on keyframes and crops."""
         ...
 
-    def caption(self, jpeg: bytes, prompt: str = "Describe the scene in one sentence.") -> str: ...
+    def caption(self, jpeg: bytes, prompt: str = "Describe the scene in one sentence.",
+                priority: Priority = "caption") -> str: ...
 
-    def find_objects(self, jpeg: bytes, items: list[str] | None = None) -> list[ObjectHit]:
+    def find_objects(self, jpeg: bytes, items: list[str] | None = None, priority: Priority = "caption") -> list[ObjectHit]:
         """Small objects in a full-resolution crop; `items` narrows to watch items."""
         ...
 
-    def summarize(self, captions: list[str]) -> str: ...
+    def summarize(self, captions: list[str], priority: Priority = "summary") -> str: ...
 
     def chat(
         self,
