@@ -39,6 +39,7 @@ adding one touches no shared file but this list.
 - [`link-speed`](docs/link-speed.md): Measure push and pull speed of a synthetic package on a pod through the hub, and write the table.
 - [`metrics`](docs/metrics.md): Report each metric's latest reading against its previous one, or compare a metric across a time window.
 - [`mirror`](docs/mirror.md): Mirror the lab digest to Overnight Status and the refinement plan changes to Ilan's Team Comms page.
+- [`optimize`](docs/optimize.md): Optimize engine or trainer settings to the night configuration (R45).
 - [`package`](docs/package.md): Package a LoRA adapter for the Jetson: merge, GGUF, Q4_K_M, manifest, scores, dry-run install.
 - [`placement`](docs/placement.md): Which pod serves the teacher and where the sampler, benchmarks, Ax trials and LoRA jobs go (--check a request).
 - [`pool`](docs/pool.md): Keep sittings running under the 16-unit budget (Sonnet 1, Opus 2, Fable 8); pool status shows the units.

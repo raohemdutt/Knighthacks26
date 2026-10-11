@@ -36,6 +36,7 @@ REGISTRY_BEFORE_DISCOVERY = {
     "link-speed": "lab.link_speed:main",
     "metrics": "lab.machine.metrics_report:main",
     "mirror": "lab.machine.mirror:main",
+    "optimize": "lab.optimize_settings:main",
     "package": "lab.package:main",
     "placement": "lab.placement:main",
     "pool": "lab.machine.pool:main",
