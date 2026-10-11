@@ -61,7 +61,7 @@ function Section({ n, title, now, children, className }: { n: number; title: str
   );
 }
 
-function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
@@ -225,7 +225,7 @@ function Training({ story, frac, measured }: { story: LabStory; frac: number; me
         <div className={lab.measured}>
           <span className={lab.measuredTag}>Measured on our hardware</span>
           <span>
-            A 20-step smoke run on one Radeon R9700{speed?.node ? ` (${speed.node})` : ""}
+            A 20-step smoke run on the lab&apos;s trainer{speed?.node ? ` (${speed.node})` : ""}
             {speed ? (
               <>
                 : <b>{speed.value} samples/s</b>
@@ -243,7 +243,7 @@ function Training({ story, frac, measured }: { story: LabStory; frac: number; me
               .filter((m): m is LabMeasured => !!m)
               .map((m) => m.source?.ref)
               .join(", ")}
-            . Not this run: a real measurement, shown so the run above can be judged against it.
+            . Not this run: a real measurement, shown so the run above can be judged against it. The lab is two Strix Halo pods (Radeon 8060S, gfx1151).
           </span>
         </div>
       ) : null}
