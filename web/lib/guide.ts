@@ -38,6 +38,20 @@ export function whereIntent(text: string): string | null {
   return thing;
 }
 
+/** Screens where "what is this switch?" is answered by the guide (it points and says the one line), not by the box. */
+const WHAT_ROUTES = new Set(["/privacy/", "/people/", "/teach/"]);
+const WHAT = /^(?:(?:hey |ok |okay )?atlas )?(?:so |and |ok |okay )*(?:what is|what s|whats|what does|what are|what do|tell me about|explain)\b ?/;
+const WHAT_TRAIL = /\b(?:do|does|for|mean|means|about|here|please)$/;
+
+/** "What does the live view switch do?" -> "the live view switch". null when the sentence does not ask what something is. */
+export function whatIntent(text: string): string | null {
+  const low = plainText(text);
+  if (!WHAT.test(low)) return null;
+  let thing = low.replace(WHAT, "").trim();
+  for (let i = 0; i < 2; i++) thing = thing.replace(WHAT_TRAIL, "").trim();
+  return thing;
+}
+
 const FILLER = new Set("the a an my our your that this those these to of for is are it i me on in at some any do can where look find show please s about be with and or does which what".split(" "));
 const SAME: Record<string, string> = { screen: "tab", page: "tab", view: "tab", section: "card", box: "card", button: "card", list: "card", panel: "card", lesson: "class", lecture: "class", meeting: "event", friends: "people", friend: "people", leaderboard: "league", standings: "league", trash: "bin", recycling: "bin", bins: "bin", enroll: "enrol", face: "face", calendar: "schedule" };
 const LIGHT = new Set(["tab", "card", "thing", "part", "one", "atlas"]);
@@ -223,11 +237,32 @@ const ROWS: Row[] = [
   // Approvals
   { id: "approvals:pending", route: "/approvals/", label: "What is waiting for you", names: ["approvals", "pending", "pending card", "approve", "what needs my approval", "waiting for me", "approval"], at: [{ id: "approvals:pending" }, { sel: "main article, main h2" }, HEAD], say: ["Look at the first card on the Approvals screen.", "Nothing is sent or written until you tap Approve here."] },
   // Teach, Learning lab, Privacy, People, and the screens with only a heading to point at
-  { id: "teach:home", route: "/teach/", label: "Teach", names: ["teach", "teach atlas", "teach it something", "teaching"], at: HEAD, say: ["Look at the top of the Teach screen.", "This is where you teach Atlas something new."] },
+  { id: "teach:home", route: "/teach/", label: "Teach", names: ["teach", "teach atlas", "teach it something", "teach screen"], at: HEAD, say: ["Look at the top of the Teach screen.", "This is where you teach Atlas something new."] },
+  // Teach's own parts (data-guide hooks teach:form, teach:examples, teach:start, teach:progress, teach:mic, in lib/guide-hooks.json)
+  { id: "teach:mic", route: "/teach/", label: "The microphone on Teach", names: ["teach mic", "teach microphone", "microphone on teach", "mic", "microphone", "talk to atlas", "speak to atlas"], at: [{ id: "teach:mic" }, HEAD], say: ["Look at the bottom of the Teach screen, in the middle.", "Tap this and talk to me. I can start the teaching, or tell you how it is going."] },
+  { id: "teach:form", route: "/teach/", label: "Teach it something new", names: ["teach something new", "new task", "describe a task", "what to teach", "teach form"], at: [{ id: "teach:form" }, section("^Teach it something new"), HEAD], say: ["Look at the card called Teach it something new.", "Give it a name and tell me what to do with each picture."] },
+  { id: "teach:examples", route: "/teach/", label: "Examples to show it", names: ["examples", "show examples", "thumbs up", "thumbs down", "example pictures"], at: [{ id: "teach:examples" }, { id: "teach:form" }, HEAD], say: ["Look at the pictures in the card.", "Thumbs up means like this. Thumbs down means not this."] },
+  { id: "teach:start", route: "/teach/", label: "Start teaching", names: ["start teaching", "start a run", "start the run", "begin teaching", "teach it this", "start training", "teaching"], at: [{ id: "teach:start" }, { id: "teach:form" }, HEAD], say: ["Look at the end of the card.", "Start teaching asks you first. Nothing leaves until you approve it."] },
+  { id: "teach:progress", route: "/teach/", label: "How the teaching is going", names: ["teaching progress", "progress", "how is the run going", "the run", "how the teaching is going"], at: [{ id: "teach:progress" }, section("^Progress"), HEAD], say: ["Look at the part called Progress.", "Each card is one thing I am learning, and how far along it is."] },
   { id: "lab:home", route: "/lab/", label: "Learning lab", names: ["learning lab", "lab", "what atlas learned", "training runs", "training"], at: [{ sel: "main [role=group][aria-label='Which run']" }, HEAD], say: ["Look at the top of the Learning lab.", "Each run is one night of practice on the lab machine."] },
-  { id: "privacy:home", route: "/privacy/", label: "Privacy", names: ["privacy", "what left the box", "delete my data", "my data", "pictures setting"], at: HEAD, say: ["Look at the top of the Privacy screen.", "What is kept, what left the box, and how to delete it."] },
+  { id: "privacy:home", route: "/privacy/", label: "Privacy", names: ["privacy", "privacy screen", "my data", "pictures setting"], at: HEAD, say: ["Look at the top of the Privacy screen.", "What is kept, what left the box, and how to delete it."] },
+  // Privacy's rows and sections (data-guide hooks privacy:*, in lib/guide-hooks.json)
+  { id: "privacy:live-view", route: "/privacy/", label: "Your live view", names: ["live view switch", "my live view", "your live view", "show faces", "faces on my screen", "see faces live", "unblur the live view"], at: [{ id: "privacy:live-view" }, section("^Faces"), HEAD], say: ["Look at the first row under Faces.", "Switch this on to see faces on your own signed-in screen. Everyone else sees them blurred."] },
+  { id: "privacy:saved-pictures", route: "/privacy/", label: "Saved pictures", names: ["saved pictures", "stored pictures", "blur saved pictures", "pictures i keep"], at: [{ id: "privacy:saved-pictures" }, section("^Faces"), HEAD], say: ["Look at the second row under Faces.", "I blur every face before I save a picture."] },
+  { id: "privacy:leaves", route: "/privacy/", label: "Anything that leaves this box", names: ["anything that leaves", "anything that leaves this box", "pictures that leave", "what is sent blurred"], at: [{ id: "privacy:leaves" }, section("^Faces"), HEAD], say: ["Look at the third row under Faces.", "Anything with a face that leaves this box is blurred, always."] },
+  { id: "privacy:cameras", route: "/privacy/", label: "Pause a camera", names: ["pause a camera", "pause camera", "pause the camera", "turn a camera off", "stop a camera"], at: [{ id: "privacy:cameras" }, section("^Cameras"), HEAD], say: ["Look at the part called Cameras.", "Pause a camera and I stop looking at it and saving from it."] },
+  { id: "privacy:kept", route: "/privacy/", label: "What is kept", names: ["what is kept", "how long pictures are kept", "keep pictures", "days to keep", "retention"], at: [{ id: "privacy:kept" }, section("^What is kept"), HEAD], say: ["Look at the part called What is kept.", "Slide this to choose how long I keep saved pictures."] },
+  { id: "privacy:offline", route: "/privacy/", label: "Offline mode", names: ["offline mode", "go offline", "offline", "stop the internet"], at: [{ id: "privacy:offline" }, section("^What has left this box"), HEAD], say: ["Look at the first row under What has left this box.", "Offline keeps everything on your own network. I still see, answer and alert."] },
+  { id: "privacy:left", route: "/privacy/", label: "What has left this box", names: ["what has left this box", "what left the box", "what was sent", "the proof", "leaving the box", "the firewall numbers"], at: [{ id: "privacy:proof" }, { id: "privacy:left" }, section("^What has left this box"), HEAD], say: ["Look at the part called What has left this box.", "This is what the firewall let out, and what it blocked."] },
+  { id: "privacy:erase", route: "/privacy/", label: "Erase", names: ["erase", "delete my data", "delete everything", "wipe", "delete what atlas stored", "erase my data"], at: [{ id: "privacy:erase" }, section("^Erase"), HEAD], say: ["Look at the last part, called Erase.", "Pick what to delete. I ask you a second time before anything goes."] },
   { id: "people:enrol", route: "/people/", label: "Teach Atlas your face", names: ["enrol", "enrol my face", "add my face", "teach my face", "teach atlas my face", "face enrol"], at: [section("^Teach Atlas your face"), HEAD], say: ["Look at the part called Teach Atlas your face.", "A few looks at the camera and Atlas knows you."] },
   { id: "people:forget", route: "/people/", label: "Forget me", names: ["forget me", "delete my face", "remove my face", "forget my face"], at: [{ sel: "main button", text: "^Forget me" }, section("^Enrolled"), HEAD], say: ["Look at the part called Enrolled.", "Forget me removes your face from this box for good."] },
+  // People's own parts (data-guide hooks people:*, in lib/guide-hooks.json)
+  { id: "people:state", route: "/people/", label: "Whether recognition is on", names: ["is recognition on", "recognition state", "why is nobody recognised", "no face model", "recognition status"], at: [{ id: "people:state" }, HEAD], say: ["Look at the line under the title.", "This says whether I am recognising anyone right now, and why not if I am not."] },
+  { id: "people:scan", route: "/people/", label: "The face scan", names: ["scan button", "scan my face", "face scan", "start the scan", "the scan"], at: [{ id: "people:scan" }, section("^Teach Atlas your face"), HEAD], say: ["Look at the part called Teach Atlas your face.", "Scan my face starts the scan. I need your name and your yes first."] },
+  { id: "people:expressions", route: "/people/", label: "Read my expressions", names: ["expressions switch", "read my expressions", "expressions", "my expressions"], at: [{ id: "people:expressions" }, section("^Enrolled"), HEAD], say: ["Look under your name, in the part called Enrolled.", "This lets me note how your face looked. It is off for everyone else."] },
+  { id: "people:scan-to-finish", route: "/people/", label: "Scan to finish", names: ["scan to finish", "finish the scan", "finish the face scan", "not scanned yet"], at: [{ id: "people:scan-to-finish" }, { sel: "main button", text: "^Finish the face scan" }, section("^Enrolled"), HEAD], say: ["Look at the name marked Scan to finish.", "I have photos but no scan yet. Finish the scan and I will know this person."] },
+  { id: "people:demo", route: "/people/", label: "Demo data", names: ["demo data", "demo tag", "demo people", "is this real"], at: [{ id: "people:demo" }, { id: "people:state" }, HEAD], say: ["Look for the tag that says Demo data.", "These people are made up for the demo. Nobody was enrolled."] },
   { id: "people:enrolled", route: "/people/", label: "Who is enrolled", names: ["enrolled", "who is enrolled", "enrolled people", "who atlas knows"], at: [section("^Enrolled"), HEAD], say: ["Look at the part called Enrolled.", "Everyone this box can recognise."] },
   { id: "timeline:home", route: "/timeline/", label: "Timeline", names: ["timeline", "what happened", "history", "events"], at: HEAD, say: ["Look at the top of the Timeline.", "Everything the box saw, newest first."] },
   { id: "live:home", route: "/live/", label: "Live", names: ["live", "live view", "the cameras", "camera view"], at: HEAD, say: ["Look at the top of the Live screen.", "What the cameras see right now."] },
@@ -295,7 +330,14 @@ export type Asked =
  */
 export function classify(question: string, route: string | null = null): Asked {
   const thing = whereIntent(question);
-  if (thing === null) return null;
+  if (thing === null) {
+    // "What is this switch?", asked on Privacy, People or Teach about something on that same screen: the guide points
+    // at it and says its one line. Anywhere else, and for anything it cannot name, it stays a question for the box.
+    const what = route && WHAT_ROUTES.has(route) ? whatIntent(question) : null;
+    if (!what) return null;
+    const here = resolveApp(what, route);
+    return here.target && here.target.route === route && here.confidence >= 0.8 ? { kind: "app", target: here.target } : null;
+  }
   const app = resolveApp(question, route);
   if (app.target && app.confidence >= 0.8) return { kind: "app", target: app.target };
   return { kind: "thing", thing };
