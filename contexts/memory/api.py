@@ -5,6 +5,8 @@
 - GET /memory/episodes?from&to&camera&label   list[Episode]
 - GET /memory/window?from&to                  EpisodeWindow (hour buckets)
 - GET /memory/objects/{label}/last-seen       Sighting, 404 if never seen
+- GET /memory/last-seen/{label}               the same, for marking it in the picture: zone, position, frame_ref, box or null,
+                                              seen_at, and the other boxed things in that frame (anchors); 404 if never seen
 - GET /memory/search?q=&limit=                list[SearchHit], best first (keywords, plus meaning when vectors exist: M5)
 - GET /memory/items?from&to&kind              list[Item]
 - GET /memory/keyframes/{ref}                 the JPEG behind frames:<camera>:<ts_ms>
@@ -64,6 +66,14 @@ def build_router(memory: SqliteMemory, frames_dir: str | Path = "data/frames") -
         if sighting is None:
             raise HTTPException(404, f"{label} has not been seen")
         return sighting
+
+    @router.get("/last-seen/{label}")
+    async def where(label: str) -> dict:
+        """Zone, position in words, frame, box (or null) and seen_at; `anchors` are the other boxed things in that frame."""
+        found = memory.where(label)
+        if found is None:
+            raise HTTPException(404, f"{label} has not been seen")
+        return found
 
     @router.get("/search")
     async def search(q: str, limit: int = Query(5, ge=1, le=50)) -> list[SearchHit]:
