@@ -5,6 +5,7 @@ inside the two boxes' own vault blobs: not in a Circle row, an event, a log line
 import asyncio
 import base64
 import json
+import os
 import logging
 
 import pytest
@@ -172,7 +173,9 @@ def test_while_it_sits_on_the_friends_box_it_is_a_vault_blob_only_that_box_can_o
     mine = ana.identity.store.get("m-ana")
     hay = needles(TEMPLATE_NAME["ana"], [mine.vector, *mine.vectors])
     blob = path.read_bytes()
-    assert not found_in(hay, blob) and path.stat().st_mode & 0o777 == 0o600
+    assert not found_in(hay, blob)
+    if os.name == "posix":  # Windows has no owner-only mode
+        assert path.stat().st_mode & 0o777 == 0o600
     kept = json.loads(Vault(KeyRing(bob.dir)).decrypt("identity", blob))
     assert (kept["source"], kept["shared_by"], kept["circle_member_id"], kept["vector"]) == ("circle", "ana", "ana", mine.vector)
     assert set(kept) == {f.name for f in Member.__dataclass_fields__.values()} and kept["expressions"] is False

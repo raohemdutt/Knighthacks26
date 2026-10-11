@@ -4,6 +4,7 @@ its own data folder, vault, identity service and approvals; they never touch eac
 import asyncio
 import copy
 import json
+import os
 from datetime import timedelta
 from types import SimpleNamespace
 
@@ -544,7 +545,8 @@ def test_the_box_key_survives_a_restart_and_is_kept_in_the_vault(pair, world):
     blob = (ana.dir / "vault" / "circle" / "face_share.bin").read_bytes()
     state = json.loads(ana.share.vault.decrypt("circle.face_share", blob))
     assert set(state) == {"keys", "seq", "pins", "out", "in", "ignored"} and state["keys"].encode() not in blob
-    assert (ana.dir / "vault" / "circle" / "face_share.bin").stat().st_mode & 0o777 == 0o600
+    if os.name == "posix":  # Windows has no owner-only mode
+        assert (ana.dir / "vault" / "circle" / "face_share.bin").stat().st_mode & 0o777 == 0o600
     again = Box(world.root, "ana", world.store, world.wall)  # the same data folder, a new process
     assert again.share.status()["me"]["fingerprint"] == before
 
