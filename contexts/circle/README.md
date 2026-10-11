@@ -157,7 +157,13 @@ except (BrainRefused, BrainUnavailable):
     ...                                              # not opted in, busy or unreachable: the box's own model answers
 ```
 
-Wiring (not in `bootstrap.py` yet; one block when the Circle is configured):
+Wiring: `bootstrap.py` builds it with `contexts/circle/brain_power.py`'s `build_shared_brain(circle_cfg, bus)` when the
+Circle is configured and the teacher pod's account (the pod-a role of `LAB_POD_ROLES`) is in `.env`; `app.py` serves
+`group_brain_router` and `brain_power_router`. The Circle screen's "Shared brain" card (People tab) reads
+`GET /api/circle/brain/power`: the teacher pod's power sampler (`lab/pod_power.py`, port 8790) relayed by the box with
+the hub token kept server side, its 10.27 W idle floor, and the joules of the last group-brain answer (the pod's power
+integrated over `circle.brain.asked` to `circle.brain.answered`, moved onto the pod's clock by the offset measured from
+the sampler's own timestamps; gross, with the idle figure beside it). What `build_shared_brain` does:
 
 ```python
 from contexts.circle.application.group_brain import GroupBrain
