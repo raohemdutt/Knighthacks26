@@ -43,7 +43,12 @@ def test_every_row_of_the_committed_file_is_served_once_with_its_own_line_value_
 
 
 def test_the_batching_sweep_is_the_recorded_one_point_per_batch_size_all_flagged_low_confidence():
-    (sweep,) = [s for s in bench(ROWS)["sweeps"] if not s["other_chip"]]  # R57's A100 reference is a sweep of its own
+    # newest first: R60's sweep of the upgraded teacher (vLLM v0.31.0, hybrid W4A16 kernel, no 64 arm), then R26's of the
+    # stock build; R57's A100 reference is a sweep of its own
+    upgraded, sweep = [s for s in bench(ROWS)["sweeps"] if not s["other_chip"]]
+    assert (upgraded["family"], upgraded["node"], upgraded["batches"]) == ("teacher_batching", "pod-a", [1, 4, 8, 16])
+    assert upgraded["points"] == 24 == upgraded["low_confidence"] and upgraded["session"] == "bench-20261011T044643Z-6240"
+    assert all(p["value"] == RAW[p["line"]]["value"] and p["runs"] == 3 for pts in upgraded["metrics"].values() for p in pts)
     assert (sweep["family"], sweep["node"], sweep["batches"]) == ("teacher_batching", "pod-a", [1, 4, 8, 16, 64])
     assert set(sweep["metrics"]) == {"decode_tok_s", "decode_tok_s_total", "joules_per_token", "ttft_s", "watts_avg", "watts_peak"}
     assert sweep["points"] == 30 == sweep["low_confidence"] and sweep["other_metrics"] == []
@@ -95,7 +100,7 @@ def test_rows_from_the_r9700s_are_marked_and_never_put_on_the_strix_halo_curve_o
     # an R9700 sweep stays a sweep of its own, after the current lab's, even on the same node and metric family
     tagged = [row("teacher_batching.decode_tok_s", v, node="pod-a", batch_size=b, gpu="Radeon R9700 (gfx1201)", ts="2026-10-11T05:00:00Z") for b, v in ((1, 7.7), (4, 7.0))]
     both = bench(*read_rows(write(tmp_path, [*({k: v for k, v in r.items() if k != "_line"} for r in ROWS), *tagged])))
-    assert [(s["node"], s["other_chip"], s["batches"]) for s in both["sweeps"] if s["node"] == "pod-a"] == [("pod-a", False, [1, 4, 8, 16, 64]), ("pod-a", True, [1, 4])]
+    assert [(s["node"], s["other_chip"], s["batches"]) for s in both["sweeps"] if s["node"] == "pod-a"] == [("pod-a", False, [1, 4, 8, 16]), ("pod-a", False, [1, 4, 8, 16, 64]), ("pod-a", True, [1, 4])]
 
 
 def test_nothing_is_dropped_silently_every_row_is_charted_or_listed_as_not_charted():
@@ -116,8 +121,9 @@ def test_a_new_node_and_a_new_metric_family_show_up_without_a_code_change(tmp_pa
     payload = bench(rows, skipped)
     assert [s["problem"] for s in payload["skipped"]] == ["not JSON", "no metric name or no numeric value"]
     ids = {s["id"] for s in payload["sweeps"]}
-    assert {"teacher_batching:pod-b:bench-r20", "kernel_hybrid:pod-b:bench-k"} <= ids and len(ids) == 4  # with R57's A100 reference
-    assert payload["sweeps"][0]["ts"] == "2026-10-11T03:00:00Z"  # newest first
+    assert {"teacher_batching:pod-b:bench-r20", "kernel_hybrid:pod-b:bench-k"} <= ids and len(ids) == 5  # with R26's and R60's sweeps on pod-a and R57's A100 reference
+    current = [s["ts"] for s in payload["sweeps"] if not s["other_chip"]]
+    assert current == sorted(current, reverse=True) and current[1] == "2026-10-11T03:00:00Z"  # newest first, after R60's
     assert next(n for n in payload["power"]["nodes"] if n["node"] == "pod-b")["idle"]["value"] == 11.0 and payload["power"]["absent"] == []
     assert ("quant.perplexity", "pod-b") in {(x["metric"], x["node"]) for x in payload["not_charted"]}
     assert {"kernel_hybrid", "quant"} <= {f["family"] for f in payload["families"]}
