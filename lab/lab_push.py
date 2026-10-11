@@ -94,7 +94,9 @@ FINAL_ANSWERS = {400: "box_refused_file", 401: "box_wants_token", 403: "box_want
 # Pod answers that waiting will not change (lab/proxy.py's kinds): the hub refuses the account, or the pod is gone.
 FINAL_POD_KINDS = frozenset({"bad_token", "unauthorized", "blocked", "pod_stopped"})
 CONTENT_TYPES = {"telemetry": "application/x-ndjson", "eval": "application/json", "manifest": "application/json",
-                 "ledger": "application/x-ndjson"}
+                 "ledger": "application/x-ndjson",
+                 # the live loop's (tooling/demo/live_loop.py): stage lines, its comparison and its power windows
+                 "stage": "application/x-ndjson", "compare": "application/json", "power": "application/json"}
 LINE_KINDS = ("ledger",)              # JSON-lines files that may be read while a line is being appended
 
 
@@ -219,6 +221,8 @@ class BoxAnswer:
     def brief(self) -> str:
         if self.ok and isinstance(self.answer, Mapping) and "published" in self.answer:
             return f"box 200, {self.answer.get('published')} new, {self.answer.get('already_there')} already there"
+        if self.ok and isinstance(self.answer, Mapping) and "stored" in self.answer and "rows" not in self.answer:
+            return f"box 200, {'kept' if self.answer.get('changed') else 'the same copy was already there'}: {self.answer['stored']}"
         if self.ok and isinstance(self.answer, Mapping) and "rows" in self.answer:
             return (f"box 200, {self.answer.get('rows')} rows, {self.answer.get('experiments')} experiments, "
                     f"{'replaced the copy there' if self.answer.get('changed') else 'the same copy was already there'}")
@@ -252,16 +256,17 @@ class Box:
         return text
 
     @staticmethod
-    def query(kind: str, run_id: str | None) -> dict[str, str]:
-        return {"kind": kind, **({"run_id": run_id} if run_id else {})}
+    def query(kind: str, run_id: str | None, extra: Mapping[str, str] | None = None) -> dict[str, str]:
+        return {"kind": kind, **({"run_id": run_id} if run_id else {}), **(extra or {})}
 
     def address(self, kind: str, run_id: str | None) -> str:
         return f"{self.url}{IMPORT_PATH}?{httpx.QueryParams(self.query(kind, run_id))}"
 
-    def post(self, kind: str, body: bytes, run_id: str | None) -> BoxAnswer:
-        """One post of one file. Never raises for what the box or the network does: that is the answer."""
+    def post(self, kind: str, body: bytes, run_id: str | None, extra: Mapping[str, str] | None = None) -> BoxAnswer:
+        """One post of one file. Never raises for what the box or the network does: that is the answer. `extra`: more
+        query fields (task, stage)."""
         try:
-            response = self._client.post(IMPORT_PATH, params=self.query(kind, run_id), content=body,
+            response = self._client.post(IMPORT_PATH, params=self.query(kind, run_id, extra), content=body,
                                          headers={"Content-Type": CONTENT_TYPES[kind]})
         except httpx.HTTPError as exc:
             return BoxAnswer(0, self._scrub(_clip(f"{type(exc).__name__}: {exc}", ANSWER_CHARS)))

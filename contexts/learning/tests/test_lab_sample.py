@@ -152,14 +152,15 @@ def client(view: LabView, **kw) -> TestClient:
     return TestClient(app)
 
 
-def test_with_no_real_run_the_api_serves_the_sample_and_says_why():
+def test_with_no_real_run_the_api_answers_no_runs_and_never_the_committed_sample():
+    """Nothing from fixtures/ reaches a screen: the sample run is a fixture, so a box with no run shows no run."""
     c = client(LabView(), current_model=lambda: {"version": "atlas-base", "source": "the runtime"})
     body = c.get("/api/learning/lab").json()
-    assert body["sample"] is True and body["real_runs"] == 0 and "no training run" in body["sample_reason"]
-    assert [r["run_id"] for r in body["runs"]] == [DEPLOYED, NOT_PROVEN] and all(r["sample"] for r in body["runs"])
-    assert body["current_model"] == {"version": "atlas-base", "source": "the runtime"}  # the box's own model, not the sample's
-    story = c.get(f"/api/learning/lab/{DEPLOYED}").json()
-    assert story["sample"] is True and story["status"] == "deployed" and len(story["sources"]) > 30
+    assert body["runs"] == [] and body["sample"] is False and body["sample_reason"] is None and body["real_runs"] == 0
+    assert body["current_model"] == {"version": "atlas-base", "source": "the runtime"}
+    assert c.get("/api/learning/lab?sample=1").json()["runs"] == []   # asking for it changes nothing
+    assert c.get(f"/api/learning/lab/{DEPLOYED}").status_code == 404
+    assert c.get(f"/api/learning/lab/{DEPLOYED}?sample=1").status_code == 404
     assert c.get("/api/learning/lab/nope").status_code == 404
 
 
@@ -170,13 +171,12 @@ def test_a_real_run_is_never_mixed_with_the_sample():
     assert not any(d.get("sample") for d in every_dict(body["runs"]))
     story = c.get("/api/learning/lab/r1").json()
     assert story["sample"] is False and not any(d.get("sample") for d in every_dict({k: v for k, v in story.items() if k != "measured"}))
-    assert c.get(f"/api/learning/lab/{DEPLOYED}").status_code == 404  # the sample is not reachable unless asked for
+    assert c.get(f"/api/learning/lab/{DEPLOYED}").status_code == 404  # the sample is not reachable at all
     asked = c.get("/api/learning/lab?sample=1").json()
-    assert asked["sample"] is True and asked["real_runs"] == 1 and "r1" not in [r["run_id"] for r in asked["runs"]]
-    assert c.get(f"/api/learning/lab/{DEPLOYED}?sample=1").json()["sample"] is True
-    assert c.get("/api/learning/lab/r1?sample=1").status_code == 404
-    # the model the box serves comes from the real log, whichever view is shown
-    assert asked["current_model"]["version"] == "atlas-v2"
+    assert asked["sample"] is False and [r["run_id"] for r in asked["runs"]] == ["r1"]
+    assert c.get(f"/api/learning/lab/{DEPLOYED}?sample=1").status_code == 404
+    assert c.get("/api/learning/lab/r1?sample=1").json()["sample"] is False
+    assert asked["current_model"]["version"] == "atlas-v2"   # the model the box serves comes from the real log
 
 
 def test_measured_numbers_come_from_the_labs_metrics_file_with_their_line_and_are_not_sample(tmp_path):
