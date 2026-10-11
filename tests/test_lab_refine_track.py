@@ -108,8 +108,7 @@ def test_a_pass_that_did_not_write_the_counter_is_reported(tmp_path):
     problems = rt.check_track(make_track(tmp_path, entries=[entry_text()], counter=0))
 
     assert problems == [
-        "refine_pass.txt reads 0 but the log's pass entries are numbered [1]; "
-        "they must run from 1 to the counter, which a pass writes last"
+        "refine_pass.txt reads 0 but the log's last pass entry is pass 1; a pass writes the counter last, after its entry"
     ]
 
 
@@ -117,8 +116,7 @@ def test_a_counter_ahead_of_the_log_is_reported(tmp_path):
     problems = rt.check_track(make_track(tmp_path, counter=1))
 
     assert problems == [
-        "refine_pass.txt reads 1 but the log's pass entries are numbered []; "
-        "they must run from 1 to the counter, which a pass writes last"
+        "refine_pass.txt reads 1 but the log's last pass entry is none; a pass writes the counter last, after its entry"
     ]
 
 
@@ -157,6 +155,14 @@ def test_a_report_written_for_another_pass_is_reported(tmp_path):
     assert rt.check_track(folder) == [
         "pass_reports/pass_01.md: the first line must read 'Verbatim report returned by telemetry refinement pass 1 (...'"
     ]
+
+
+def test_a_report_with_no_pass_in_the_log_is_reported(tmp_path):
+    """A report left behind for a pass the log does not hold, as after a revert that removed the entry but kept the report."""
+    folder = make_track(tmp_path, entries=[entry_text()])
+    (folder / "pass_reports" / "pass_03.md").write_text(report_text(entry_text(), number=3), encoding="utf-8")
+
+    assert rt.check_track(folder) == ["pass_reports/pass_03.md has no pass 3 in REFINE_LOG.md"]
 
 
 def test_a_report_that_does_not_quote_its_entry_is_reported(tmp_path):
@@ -321,6 +327,35 @@ def test_a_dry_run_without_its_entry_block_is_reported(tmp_path):
     ]
 
 
+def refence(text, opener, closer):
+    """The record with its entry block fenced by opener and closer instead of ```text dry-run:pass-entry and ```."""
+    head, found, rest = text.partition("```text dry-run:pass-entry\n")
+    assert found, "the recorded dry run has no entry block"
+    body, found, tail = rest.partition("\n```\n")
+    assert found, "the recorded dry run's entry block has no closing fence"
+    return f"{head}{opener}\n{body}\n{closer}\n{tail}"
+
+
+@pytest.mark.parametrize(
+    "opener,closer,inner",
+    [
+        pytest.param("~~~text dry-run:pass-entry", "~~~", "", id="tilde-fence"),
+        pytest.param(
+            "````text dry-run:pass-entry", "````", "```\n## Pass 2, 2026-10-10\n```\n", id="longer-fence-around-a-quoted-block"
+        ),
+    ],
+)
+def test_a_dry_run_entry_block_may_use_any_fence_markdown_allows(tmp_path, opener, closer, inner):
+    """The entry block is found by the fence reading refine_formats uses for the log, so a tilde fence, or a longer
+    fence around output that holds a fenced block of its own, is one block and its quoted heading is not an entry."""
+    text = refence(recorded_text(), opener, closer)
+    text = edit(text, "Checks run (commands and their actual output):\n", "Checks run (commands and their actual output):\n" + inner)
+    path = put_dry_run(tmp_path, text)
+
+    assert rt.check_dry_run(path) == []
+    assert rt.parse_dry_run(text).entry.number == 1
+
+
 def test_a_dry_run_block_holding_two_entries_is_reported(tmp_path):
     text = recorded_text()
     path = put_dry_run(tmp_path, edit(text, "Checks run (commands and their actual output):", "## Pass 2, 2026-10-10\n\nChecks run (commands and their actual output):"))
@@ -347,3 +382,11 @@ def test_a_dry_run_with_crlf_line_endings_parses_like_lf(tmp_path):
 
     assert rt.check_dry_run(path) == []
     assert rt.parse_dry_run(path.read_text(encoding="utf-8")).entry.number == 1
+
+
+def test_the_metrics_file_the_checks_read_by_default_is_the_one_metrics_py_owns():
+    """metrics.py owns lab/refine/metrics.jsonl; the citation checks read the file it names instead of a path of
+    their own, so the two can never point at different files."""
+    from lab.machine import metrics
+
+    assert rt.METRICS_PATH is metrics.DEFAULT_PATH

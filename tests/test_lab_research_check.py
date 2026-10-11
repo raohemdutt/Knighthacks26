@@ -436,21 +436,54 @@ def test_a_measurements_record_is_not_a_note_and_a_notes_table_in_the_index_is_n
         "Summary",
         "Method",
         "Search log",
-        "Search bound (two hours)",
         "Sources",
-        "Sources opened",
         "Open questions",
         "Gaps",
         "Inferences",
         "Takeaway",
         "Candidate experiments, ranked by expected gain times confidence",
         "Ranked experiments",
+        "Open questions for R33 (the measured chip sheet)",
+        "Next steps after the shootout",
+        "Search log and gaps",
+        "Search notes: pages refused by the network policy",
     ],
 )
 def test_bullets_under_non_finding_headings_are_not_checked(tmp_path, heading):
     text = note(bullet(), "", f"## {heading}", "", "- Some plain list item with no label or link.")
     path = put(tmp_path, "research/telemetry/a.md", text)
     assert rc.check(path) == []
+
+
+def framing_headings_the_format_names():
+    """The framing headings RESEARCH_FORMAT.md section 2 lists ("Neither are bullets under a framing heading: ...")."""
+    text = FORMAT_DOC.read_text(encoding="utf-8")
+    found = re.search(r"Neither are bullets under a framing heading: (?P<names>[^.]+)\.", text)
+    assert found, "RESEARCH_FORMAT.md no longer lists the framing headings in section 2"
+    return [name.strip() for name in re.split(r",\s*(?:and\s+)?", found["names"])]
+
+
+def test_every_framing_heading_the_format_names_is_not_checked(tmp_path):
+    names = framing_headings_the_format_names()
+    assert "Candidate experiments (ranked)" in names and len(names) == 18
+    for index, name in enumerate(names):
+        text = note(bullet(), "", f"## {name}", "", "- Some plain list item with no label or link.")
+        path = put(tmp_path / f"n{index}", "research/telemetry/a.md", text)
+        assert rc.check(path) == [], name
+
+
+@pytest.mark.parametrize(
+    "heading",
+    ["Decisions", "Purpose", "Approach", "Methodology", "Questions", "Glossary", "Bibliography", "TODO", "Limits",
+     "TL;DR", "Contents", "Table of contents", "How to read this note", "Sources opened", "Search bound (two hours)"],
+)
+def test_a_heading_the_format_does_not_name_as_framing_is_a_topic(tmp_path, heading):
+    """RESEARCH_FORMAT.md section 2 names the framing headings; any other heading is a topic, so an uncited,
+    unlabeled claim under "## Decisions" is reported like one under "## Kernel speed"."""
+    text = note(bullet(), "", f"## {heading}", "", "- Zeus polls power on a thread.")
+    path = put(tmp_path, "research/telemetry/a.md", text)
+    at = line_of(text, "Zeus polls power")
+    assert parse(rc.check(path)) == [(at, "no-label"), (at, "no-citation"), (at, "no-implication"), (at, "no-experiment")]
 
 
 def test_non_finding_status_is_inherited_by_subsections(tmp_path):
@@ -792,6 +825,23 @@ def test_a_cited_source_matches_its_index_entry_despite_url_spelling(tmp_path, c
 
 def test_a_cited_source_missing_from_the_index_is_reported_on_the_finding_line(tmp_path):
     body = note(bullet(cite="[Other](https://example.org/other)"))
+    put(tmp_path, "research/telemetry/a.md", body)
+    put(tmp_path, "research/telemetry/SOURCES.md", SOURCES_OK)
+    assert parse(rc.check(tmp_path / "research" / "telemetry")) == [(line_of(body, "- **[measured]**"), "source-not-indexed")]
+
+
+def test_a_file_name_notion_turned_into_a_link_is_cited_as_the_file(tmp_path):
+    """Notion renders a file name such as experiments.py as [experiments.py](http://experiments.py), because .py is
+    also a web domain ending. A finding that cites a file in that form cites the file, the way the plain path does,
+    and is not reported as a web page missing from the index."""
+    cite = "lab/machine/[experiments.py](http://experiments.py) and refine_[merge.py:71](http://merge.py:71)"
+    put(tmp_path, "research/plumbing/a.md", note(bullet(cite=cite)))
+    put(tmp_path, "research/plumbing/SOURCES.md", "# Sources\n\n- lab/machine/experiments.py, read 2026-10-10\n")
+    assert rc.check(tmp_path / "research" / "plumbing") == []
+
+
+def test_a_link_to_a_web_page_named_after_its_address_is_still_a_web_page(tmp_path):
+    body = note(bullet(cite="[ml.energy](https://ml.energy)"))
     put(tmp_path, "research/telemetry/a.md", body)
     put(tmp_path, "research/telemetry/SOURCES.md", SOURCES_OK)
     assert parse(rc.check(tmp_path / "research" / "telemetry")) == [(line_of(body, "- **[measured]**"), "source-not-indexed")]
