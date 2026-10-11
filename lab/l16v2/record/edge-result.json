@@ -1,0 +1,9 @@
+{
+  "fourth": null,
+  "floor": 0.006060833111405373,
+  "differences": {
+    "trial 9's configuration, seed 43 against seed 42": 0.002977856434881687,
+    "the seed configuration, a 24-step trial against step 24 of its 62-step run": 0.006060833111405373
+  },
+  "best24": 0.014204905368387699
+}
