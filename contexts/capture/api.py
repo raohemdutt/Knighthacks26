@@ -2,7 +2,11 @@
 
     app.include_router(capture_router(atlas.capture))
 
-{"cameras": {"cam-desk": {"status": "ok", "fps_actual": 15.0, "dropped": 0, "detected": 912, "errors": 0}}}
+{"cameras": {"cam-desk": {"status": "ok", "fps_actual": 15.0, "dropped": 0, "detected": 912, "errors": 0,
+                          "detector_fps": 41.2, "detector_ms": 24.3}}}
+
+`detector_fps` is what the detector itself can do (1000 / its mean milliseconds over the newest 100 calls), not the
+rate the pipeline paces it at; null until it has run.
 
 Also for the Live screen (X3): GET /capture/<camera>/snapshot.jpg (a blurred JPEG) and GET /capture/<camera>/tracks,
 and GET /capture/live/<camera>[?fps=5] as a motion-JPEG stream (C5).

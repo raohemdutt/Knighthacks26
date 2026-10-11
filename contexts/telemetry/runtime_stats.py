@@ -9,10 +9,13 @@ whatever the sampler setting: training steps arrive from the lab through context
 is the gateway's TelemetryService, or None when ATLAS_TELEMETRY_SOURCE is not set; only its projection is read, for the
 request-window figures. `lab` defaults to the committed lab/refine/metrics.jsonl and the ledger in LAB_STATE_DIR (else
 lab/state); `imported_dir` (the gateway passes `<data_dir>/lab_state`) adds the ledger copy the lab pushed to the box,
-and is ignored when `lab` is given.
+and is ignored when `lab` is given. `detector` (the gateway passes the capture service's `detector_speed`, when the
+box runs cameras) gives detector_fps from the detector's own timing.
 """
 
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from bus import EventBus
 from contexts.telemetry.application.evals import EvalScores
@@ -22,11 +25,12 @@ from contexts.telemetry.infrastructure.lab_records import LabRecords
 
 
 def build_runtime_stats(bus: EventBus, telemetry: object | None = None, *,
-                        lab: LabRecords | None = None, imported_dir: str | Path | None = None) -> RuntimeStats:
+                        lab: LabRecords | None = None, imported_dir: str | Path | None = None,
+                        detector: Callable[[], dict[str, Any] | None] | None = None) -> RuntimeStats:
     evals = EvalScores()
     evals.subscribe(bus)
     runs = TrainRuns()
     runs.subscribe(bus)
     if lab is None:
         lab = LabRecords(imported_dir=imported_dir)
-    return RuntimeStats(evals, projection=getattr(telemetry, "projection", None), lab=lab, runs=runs)
+    return RuntimeStats(evals, projection=getattr(telemetry, "projection", None), lab=lab, runs=runs, detector=detector)

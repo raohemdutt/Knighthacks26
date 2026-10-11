@@ -60,7 +60,7 @@ def evaluated(run_id: str, version: str, s: float, scores: dict, decision: str =
 
 
 def snapshot(events: list[Event] = (), *, telemetry: bool = True, metrics: Path | None = None,
-             state_dir: Path | None = None, imported_dir: Path | None = None) -> dict:
+             state_dir: Path | None = None, imported_dir: Path | None = None, detector=None) -> dict:
     """The stats as the endpoint serves them, after `events` went through the real bus."""
 
     class Telemetry:  # the gateway's TelemetryService: only its projection is read
@@ -72,7 +72,7 @@ def snapshot(events: list[Event] = (), *, telemetry: bool = True, metrics: Path 
         if service is not None:
             service.projection.subscribe(bus)
         stats = build_runtime_stats(bus, service, lab=LabRecords(metrics_path=metrics, state_dir=state_dir,
-                                                                 imported_dir=imported_dir))
+                                                                 imported_dir=imported_dir), detector=detector)
         await bus.publish_all(list(events))
         return await stats.snapshot()
 
@@ -202,8 +202,8 @@ def test_with_nothing_recorded_every_figure_is_present_null_with_its_reason(tmp_
         "detector_fps": "frames/s", "student_tok_s": "tok/s", "caption_latency_s": "s",
         "trainer_samples_per_s": "samples/s", "train_minutes": "min", "train_loss": "loss", "teacher_tok_s": "tok/s"}
     assert stats["detector_fps"]["reason"] == (
-        "not recorded yet: no detector.fps row for node jetson in the lab metrics file or the lab ledger; the gateway "
-        "keeps no detector timing (GET /capture/status counts detections without timing them)")
+        "not recorded yet: no detector.fps row for node jetson in the lab metrics file or the lab ledger; this box "
+        "runs no cameras, so no detector is timed (ATLAS_CAPTURE is off or no camera is set)")
     assert stats["student_tok_s"]["reason"] == (
         "not recorded yet: no student.decode_tok_s row for node jetson in the lab metrics file or the lab ledger; "
         f"{off}")
@@ -406,3 +406,27 @@ def test_a_torn_line_in_the_pushed_ledger_is_skipped_and_the_rows_after_it_still
                                  imported_dir=pushed).find([("teacher.decode_tok_s", None)])
     assert [(f.value, f.source) for f in found[("teacher.decode_tok_s", None)]] == [(12.5, "pushed ledger seq 1")]
     assert problems == []
+
+
+def test_detector_fps_comes_from_the_capture_services_own_timing(tmp_path):
+    speed = {"camera_id": "cam-desk", "fps": 41.2, "ms": 24.3, "samples": 100, "ts": "2026-10-11T08:40:00+00:00"}
+    fig = snapshot(detector=lambda: speed, **nothing(tmp_path))["detector_fps"]
+    assert (fig["value"], fig["unit"], fig["node"], fig["ts"]) == (41.2, "frames/s", "jetson", "2026-10-11T08:40:00Z")
+    assert fig["source"] == "GET /capture/status: cam-desk's detector, 1000 / the mean of its newest 100 calls (24.3 ms each)"
+
+
+def test_a_detector_that_has_not_run_or_cannot_be_read_is_null_with_why(tmp_path):
+    assert "has not run on a frame yet" in snapshot(detector=lambda: None, **nothing(tmp_path))["detector_fps"]["reason"]
+
+    def broken():
+        raise RuntimeError("camera went away")
+
+    assert "could not be read (RuntimeError)" in snapshot(detector=broken, **nothing(tmp_path))["detector_fps"]["reason"]
+
+
+def test_a_newer_lab_row_still_wins_over_the_timing(tmp_path):
+    metrics = write_metrics(tmp_path / "metrics.jsonl", [
+        metrics_row("detector.fps", 39.0, "frames/s", "jetson", "2026-10-12T00:00:00Z")])
+    speed = {"camera_id": "cam-desk", "fps": 41.2, "ms": 24.3, "samples": 100, "ts": "2026-10-11T08:40:00+00:00"}
+    fig = snapshot(detector=lambda: speed, metrics=metrics, state_dir=tmp_path / "state")["detector_fps"]
+    assert (fig["value"], fig["source"]) == (39.0, "metrics.jsonl:1")

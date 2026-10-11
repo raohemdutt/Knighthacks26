@@ -15,12 +15,16 @@ Each camera needs its own `YoloDetector(track=True)`: ByteTrack's state lives in
 import asyncio
 import threading
 import time
+from collections import deque
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Any
 
 from contracts.perception import ObservationRecorded
 from contracts.play import FacesCounted
 from contracts.types import CameraId, FrameRef, Track
+
+DETECT_TIMES = 100  # detector calls the speed is averaged over: 10 s at the default detect_fps
 
 
 class TrackingPipeline:
@@ -41,6 +45,19 @@ class TrackingPipeline:
         self.detected = 0
         self.errors = 0
         self.latest: tuple[int, list[Track]] | None = None  # (frame ts_ms, tracks) of the newest detection, for the Live screen
+        # How long the detector itself takes, newest DETECT_TIMES calls: its speed, not the detect_fps it is paced at.
+        self._detect_s: deque[float] = deque(maxlen=DETECT_TIMES)
+        self._detect_at: datetime | None = None
+
+    def detector_speed(self) -> dict[str, Any] | None:
+        """{fps, ms, samples, ts} from the newest detector calls, or None before the first one. fps is 1000 / the mean
+        milliseconds per call: what the detector can do, which is more than the detect_fps the pipeline asks of it."""
+        times = list(self._detect_s)
+        if not times or self._detect_at is None:
+            return None
+        ms = 1000 * sum(times) / len(times)
+        return {"fps": round(1000 / ms, 1) if ms > 0 else None, "ms": round(ms, 1), "samples": len(times),
+                "ts": self._detect_at.isoformat()}
 
     def start(self) -> None:
         self._thread = threading.Thread(target=self._run, name=f"tracking-{self.camera_id}", daemon=True)
@@ -66,11 +83,14 @@ class TrackingPipeline:
                 continue
             seq, ts_ms, frame = item
             last_seq, next_detect = seq, now + self.detect_period
+            started = time.perf_counter()
             try:
                 tracks = self.detector(frame)
             except Exception:  # one bad frame must not stop the camera
                 self.errors += 1
                 continue
+            self._detect_s.append(time.perf_counter() - started)
+            self._detect_at = datetime.now(UTC)
             self.detected += 1
             self.latest = (ts_ms, tracks)
             if now < next_observe:
