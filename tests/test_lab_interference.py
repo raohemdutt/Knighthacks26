@@ -252,3 +252,15 @@ def test_the_fake_trainer_takes_the_real_trainer_s_arguments(tmp_path):
     assert not data.exists() and not rows.exists()
     assert json.loads((tmp_path / "out" / "run.json").read_text())["outcome"] == "trained"
     assert sys.executable
+
+
+def test_the_research_note_states_the_plan_s_rules_with_the_data_file_s_format_and_is_clean():
+    from lab.machine import research_check
+
+    note = REPO_ROOT / "lab" / "refine" / "research" / "plumbing" / "placement.md"
+    text = note.read_text(encoding="utf-8")
+    assert "## The interference run and how the plan reads it" in text
+    assert f"{itf.RESULT_PREFIX}-<date>.json" in text and f"schema `{itf.SCHEMA}`" in text
+    for field in ("decode_tok_s_change_pct", "samples_per_s_change_pct", "time_change_pct", "energy_change_pct"):
+        assert field in text
+    assert research_check.main([str(note)])["ok"] is True
