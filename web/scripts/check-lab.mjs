@@ -253,6 +253,22 @@ try {
     "training burst: pod C did not train (x), pod D 2 steps in 130 s, about 15,116 joules on the pods (171 W average)");
   is("burst problem: 503 reason", TB.burstProblem({ ...bv, state: "idle", available: false, reason: "missing keys" }, null), "Training is not available from this box: missing keys");
   is("burst problem: none when done", TB.burstProblem(bv, null), null);
+  // ---- the "16 people asking" and ramp buttons (lib/loadRun.ts)
+  const LR = await load("loadRun");
+  is("load: button text", LR.loadButtonText(16), "16 people asking for 30 s");
+  is("load: one person", LR.askingText(1), "1 person asking");
+  const lv = { available: true, reason: null, state: "done", streams: 16, seconds: 30, started: null, ended: null,
+    started_ms: 1000, ended_ms: 31000, requests: 48, errors: 0, tokens: 4512, tok_s_total: 150.4, tok_s_per_stream: 9.4,
+    ttft_s: 0.4, energy: { joules: 3000, watts_avg: 100.6, seconds: 30, pods: {} }, j_per_token: 0.665, message: null,
+    ramp: null, seconds_per_stage: null, stage: null, stages: [] };
+  is("load line", LR.loadLine(lv), "48 requests, 4,512 tokens, 150 tok/s total, watts stayed at 101 W, 0.67 J per token");
+  is("load line, meters offline", LR.loadLine({ ...lv, energy: null, j_per_token: null }).includes("meters offline, no watts"), true);
+  is("load problem: 503 reason", LR.loadProblem({ ...lv, state: "idle", available: false, reason: "missing keys" }, null), "The pair is not reachable from this box: missing keys");
+  const st = (streams, a, b, tok) => ({ streams, requests: 1, tokens: 1, tok_s_total: tok, watts_avg: 100, j_per_token: 0.5, started_ms: a, ended_ms: b });
+  const rv = { ...lv, state: "running", ramp: [1, 4, 16, 32], seconds_per_stage: 20, stage: 3, stages: [st(1, 1000, 21000, 10), st(4, 21000, 41000, 38)] };
+  is("ramp title", LR.rampTitle(rv), "ramp: 16 of 32 streams");
+  is("ramp windows, running", LR.stageWindows(rv, 5000, 60000).map((w) => `${w.label}:${w.start}-${w.end}`).join(","), "1:5000-25000,4:25000-45000,16:45000-60000");
+  is("ramp rows", LR.rampRows({ ...rv, state: "done" }).map((r) => `${r.streams}|${r.tokS}|${r.watts}|${r.jpt}`).join(","), "1|10|100 W|0.50,4|38|100 W|0.50");
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }

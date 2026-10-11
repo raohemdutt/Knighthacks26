@@ -19,6 +19,8 @@ import { LabEChart, chartAxis, chartBase, useChartTokens } from "./Charts";
 import { LiveChat } from "./LiveChat";
 import { TrainBurstControl, useTrainBurst } from "./TrainBurst";
 import { burstLine, burstNode, podsText } from "@/lib/trainBurst";
+import { LoadControl, useLoadRun } from "./LoadButton";
+import { askingText, loadLine, rampTitle, stageWindows } from "@/lib/loadRun";
 import { useReduced } from "./Labels";
 import p from "./livePower.module.css";
 
@@ -87,6 +89,9 @@ export function useSharedBrain(): { brain: SharedBrainPair | null; fresh: boolea
   return { brain, fresh: at > 0 && now - at < LIVE_MS * 3, poll };
 }
 
+/** The third shade on the graph: people asking the pair at once (load_run.py). */
+const LOAD_COLOR = "#ff7a90";
+
 const clock = (t: number) => new Date(t).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit" });
 
 /** The graph, fed by polls someone else makes (the Speed and energy tab already polls the route for its live strip). */
@@ -98,6 +103,9 @@ export function LivePower({ poll, reduced, compact = false, chat = false }: { po
   // the "Train for a minute" button's burst (TrainBurst.tsx): its window shades the pods that trained, kept after it ends
   const burst = useTrainBurst(chat && !compact);
   const bw = burst.window;
+  // the "16 people asking" and ramp buttons (LoadButton.tsx): their window, or each ramp stage, shaded in a third colour
+  const load = useLoadRun(chat && !compact);
+  const lv = load.view;
   const t = useChartTokens();
   const [buf, setBuf] = useState<PowerReading[]>([]);
   const [joules, setJoules] = useState(0);
@@ -142,6 +150,11 @@ export function LivePower({ poll, reduced, compact = false, chat = false }: { po
     const top = Math.max(20, Math.ceil((Math.max(0, ...ws, ...idles) * 1.25) / 10) * 10);
     const sameIdle = idles.length === 2 && Math.abs(idles[0]! - idles[1]!) < 0.05;
     const base = chartBase(t, reduced);
+    const loadWins = lv && load.pressed !== null
+      ? lv.ramp
+        ? stageWindows(lv, load.pressed, load.ended ?? now)
+        : [{ start: load.pressed, end: load.ended ?? now, label: askingText(lv.streams ?? 16) }]
+      : [];
     const shadeBoth = !!bw && bw.pods.length > 1; // two pods' identical stretches: one "training" label, not two
     return {
       ...base,
@@ -168,6 +181,10 @@ export function LivePower({ poll, reduced, compact = false, chat = false }: { po
           ...shade.map((w) => [
             { xAxis: Math.max(w.start, now - POWER_SPAN_MS), itemStyle: { color: `${t.accent2}26`, borderColor: `${t.accent2}88`, borderWidth: 1 }, label: label("answering", t.text) },
             { xAxis: Math.min(w.end ?? now, now) },
+          ]),
+          ...(i === 0 ? loadWins.filter((w) => w.end >= now - POWER_SPAN_MS) : []).map((w, k) => [
+            { xAxis: Math.max(w.start, now - POWER_SPAN_MS), itemStyle: { color: `${LOAD_COLOR}${k % 2 ? "2e" : "1f"}`, borderColor: `${LOAD_COLOR}99`, borderWidth: 1 }, label: label(w.label, LOAD_COLOR) },
+            { xAxis: Math.min(w.end, now) },
           ]),
           ...train.map((w) => [
             { xAxis: Math.max(w.start, now - POWER_SPAN_MS), itemStyle: { color: `${t.watch}22`, borderColor: `${t.watch}99`, borderWidth: 1 }, label: label(i === 0 || !shadeBoth ? "training" : "", t.watch) },
@@ -221,7 +238,7 @@ export function LivePower({ poll, reduced, compact = false, chat = false }: { po
         };
       }),
     };
-  }, [t, reduced, compact, buf, idle, newest, windows, bw]);
+  }, [t, reduced, compact, buf, idle, newest, windows, bw, lv, load.pressed, load.ended]);
 
   const label = newest
     ? `Watts over the last two minutes. ${POWER_PODS.map((pod) => {
@@ -238,6 +255,10 @@ export function LivePower({ poll, reduced, compact = false, chat = false }: { po
           {offline ? (
             <>
               Power, <span className={p.off}>meters offline</span>
+            </>
+          ) : load.running && lv ? (
+            <>
+              Power, right now, <span style={{ color: LOAD_COLOR }}>{rampTitle(lv) ?? askingText(lv.streams ?? 16)}</span>
             </>
           ) : burst.running && burst.view ? (
             <>
@@ -262,10 +283,12 @@ export function LivePower({ poll, reduced, compact = false, chat = false }: { po
           {option ? <LabEChart option={option} height={compact ? 150 : 260} label={label} /> : <p className={p.empty}>Waiting for the first reading from the pods&apos; meters.</p>}
           {windows.some((w) => w.end === null) ? <p className={p.note}>The shaded stretch is the answer streaming in beside the graph.</p> : null}
           {burst.view?.state === "done" && bw ? <p className={p.energy}>{burstLine(burst.view)}</p> : null}
+          {lv?.state === "done" && !lv.ramp && load.pressed !== null ? <p className={p.energy}>{loadLine(lv)}</p> : null}
         </div>
         {chat && !compact ? (
           <div className={p.side}>
             <TrainBurstControl burst={burst} />
+            <LoadControl load={load} />
             <LiveChat reduced={reduced} onWindow={onWindow} />
           </div>
         ) : null}

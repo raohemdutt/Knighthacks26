@@ -2459,6 +2459,12 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   trainBurst: (signal?: AbortSignal) => get<import("./trainBurst").BurstView>("/api/learning/lab/train-burst", undefined, signal),
   trainBurstStart: (pods: import("./trainBurst").BurstPod[], seconds = 60) =>
     post<import("./trainBurst").BurstView>("/api/learning/lab/train-burst", { pods, seconds }),
+  /** The "16 people asking" button: many streams on the 122B pair at once and its joules (lib/loadRun.ts). */
+  loadRun: (signal?: AbortSignal) => get<import("./loadRun").RampView>("/api/learning/lab/load", undefined, signal),
+  loadRunStart: (streams: number, seconds = 30) =>
+    post<import("./loadRun").RampView>("/api/learning/lab/load", { streams, seconds }),
+  loadRampStart: (ramp: number[], seconds_per_stage = 20) =>
+    post<import("./loadRun").RampView>("/api/learning/lab/load", { ramp, seconds_per_stage }),
   teach: (body: TeachBody) => post<{ task: string; action_id: string }>("/api/teach", body),
 
   episodes: (opts: { from?: string; to?: string; camera?: string; label?: string } = {}, signal?: AbortSignal) =>

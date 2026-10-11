@@ -57,6 +57,9 @@ POST /api/learning/lab/live-chat          {question, target: "pair" | "box"}
 GET  /api/learning/lab/train-burst / POST {pods: ["C", "D"], seconds: 60}
     the "Train for a minute" button on the live power graph: a real LoRA burst on the pods through lab.controller,
     then its joules from both pods' samplers (contexts/learning/train_burst.py has the shapes).
+GET  /api/learning/lab/load / POST {streams: 16, seconds: 30} or {ramp: [1, 4, 16, 32], seconds_per_stage: 20}
+    the "16 people asking" button on the live power graph: that many streams on the 122B pair at once, then tokens a
+    second and joules per token from both pods' samplers (contexts/learning/load_run.py has the shapes).
 
 The stages come from the `STAGE <name> <start|done|failed> <unix seconds>` lines atlas_swap.py prints. The status is
 kept in <state_dir>/status.json and the swap's output in <state_dir>/swap.log, so a gateway restart does not lose
@@ -660,12 +663,13 @@ def default_pair() -> Any | None:
 def lab_deploy_router(runner: DeployRunner, *, guard: Callable | None = None, questions: str | Path = QUESTIONS,
                       ask_transport: httpx.AsyncBaseTransport | None = None, meter: Any | None = None,
                       qa: Any | None = None, pair: Any | None = None, compare: bool | None = None,
-                      burst: Any | None = None) -> APIRouter:
+                      burst: Any | None = None, load: Any | None = None) -> APIRouter:
     """`meter` (contexts/learning/answer_energy.AnswerMeter) measures each answer; without one `energy` is null.
     `qa` is the agent's QA (its tool executor and the box's memory; default the app's, app.state.atlas.qa), `pair`
     the 122B pair (default contexts/circle/brain_pair.py from .env), `compare` False leaves the brain out (default:
     on unless ATLAS_ASK_COMPARE=off). `burst` runs the "Train for a minute" button (contexts/learning/train_burst.py
-    BurstRunner; default one on the pods through lab.controller)."""
+    BurstRunner; default one on the pods through lab.controller). `load` runs the "16 people asking" button
+    (contexts/learning/load_run.py LoadRunner; default one against the pair from the box's .env)."""
     router = APIRouter()
     guarded = [Depends(guard)] if guard else []
 
@@ -763,6 +767,23 @@ def lab_deploy_router(runner: DeployRunner, *, guard: Callable | None = None, qu
         try:
             return bursts.start((body or {}).get("pods"), (body or {}).get("seconds"))
         except tb.Refused as err:
+            raise HTTPException(err.status, err.message) from None
+
+    # the "16 people asking" button on the live power graph: many streams on the 122B pair at once (load_run.py)
+    from contexts.learning import load_run as lr
+
+    loads = load if load is not None else lr.LoadRunner()
+
+    @router.get("/api/learning/lab/load")
+    def load_view() -> dict:
+        return loads.view()
+
+    @router.post("/api/learning/lab/load", status_code=202, dependencies=guarded)
+    def load_start(body: dict[str, Any] | None = Body(default=None)) -> dict:
+        try:
+            b = body or {}
+            return loads.start(b.get("streams"), b.get("seconds"), b.get("ramp"), b.get("seconds_per_stage"))
+        except lr.Refused as err:
             raise HTTPException(err.status, err.message) from None
 
     return router
