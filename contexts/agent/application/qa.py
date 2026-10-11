@@ -8,6 +8,11 @@ has web tools, an unsure fixed path for a question that may not be about the roo
 (calendar, a time window, "when was the last ...": nothing found, or the model says it
 has no evidence) falls back to the tool loop instead (A13). Questions about objects in
 the room ("where is my wallet?") never do: if Atlas didn't see it, it says so at once.
+
+OWNER'S RULE (Hemdutt): Atlas talks like a person and never reads a record out. Answers written here from the data
+(`Evidence.direct`: the calendar, what is due, the last visit) are worded by
+contexts/day/domain/ear.py: one or two short sentences, no lists, no time ranges, no ids, tags, brackets, camera or
+zone names. Do not go back to joining titles and timestamps; contexts/agent/tests/test_natural_speech.py holds it.
 """
 
 import asyncio
@@ -22,9 +27,11 @@ from zoneinfo import ZoneInfo
 
 import yaml
 
+from contexts.agent.application import schedule
 from contexts.agent.application.digest import Digester
 from contexts.agent.application.memory_port import MemoryReader
 from contexts.agent.application.web_port import NOT_FOUND, SUMMARY_TITLE, WebTools
+from contexts.day.domain import ear
 from contracts.agent import AnswerGenerated
 from contracts.experience import QuestionAsked
 from contracts.types import ChatMessage, Citation, ToolCall
@@ -311,16 +318,6 @@ class SleepSchedule:
         return start, min(wake, local)
 
 
-# Item questions: either clearly about the calendar/deadlines, or a thing + a future time phrase.
-ITEMS_Q = re.compile(r"\b(due|deadlines?|calendar|schedule|coming up|upcoming|happening|going on|on campus)\b")
-ITEM_THING = re.compile(r"\b(assignments?|homework|exams?|quiz(zes)?|classes|events?|meetings?)\b")
-FUTURE = re.compile(r"\b(tonight|today|tomorrow|this week|next week|this weekend|weekend|upcoming|soon)\b")
-ITEM_KINDS = {
-    "assignment": re.compile(r"\b(due|deadlines?|assignments?|homework|exams?|quiz)\b"),
-    "calendar_event": re.compile(r"\b(calendar|schedule|classes|meetings?|events?|happening|going on|on campus|tonight)\b"),
-}
-
-
 def item_name(text: str) -> str:
     """The thing asked about, without "my/the/a" in front or "now / right now / at the moment" after it."""
     text = text.strip()
@@ -329,25 +326,7 @@ def item_name(text: str) -> str:
     return text
 
 
-def upcoming_window(q: str, now: datetime, tz) -> tuple[datetime, datetime]:
-    """Future windows for item questions: tonight, today, tomorrow, this weekend, this week (default 7 days)."""
-    local = now.astimezone(tz)
-    midnight = local.replace(hour=0, minute=0, second=0, microsecond=0)
-    if "tonight" in q:
-        return now, midnight + timedelta(days=1, hours=3)
-    if "tomorrow" in q:
-        return midnight + timedelta(days=1), midnight + timedelta(days=2)
-    if "today" in q:
-        return now, midnight + timedelta(days=1)
-    if "weekend" in q:
-        saturday = midnight + timedelta(days=(5 - local.weekday()) % 7)
-        return max(now, saturday), saturday + timedelta(days=2)
-    return now, now + timedelta(days=7)  # "this week" and the default: the next seven days
-
-
 MAX_EPISODE_LINES = 12
-MAX_LISTED = 6  # items read out in a direct list answer
-DUE_WORDS = re.compile(r"\b(due|deadlines?|homework|assignments?)\b")
 SYSTEM_RECAP = (
     "You are Atlas, a home camera assistant. Using only the evidence, recap what happened in time order, "
     "one short clause per hour that had something, with its time, in under 40 words. "
@@ -363,11 +342,6 @@ def tidy(text: str) -> str:
     return text
 
 
-def window_words(q: str) -> str:
-    for words in ("today", "tonight", "tomorrow", "this weekend", "next week", "this week"):
-        if words in q:
-            return words
-    return "soon"
 TRACE_BACK = timedelta(hours=48)  # how far back "what happened to the package?" looks for tagged episodes
 
 
@@ -418,6 +392,7 @@ class QA:
         self.tools = MEMORY_TOOLS + AGENT_TOOLS + ([KEYFRAME_TOOL] if load_keyframe else []) + (WEB_TOOLS if web else [])
         self.planner = None  # set by the composition root; answers "help me prep for ..." (A8)
         self.talk = None  # set by the composition root; small talk and simple questions (talk.py)
+        self.names: dict[str, str] = {}  # how a course code is said: {"COP4533": "algorithms"} (agent.yaml `talk.names`)
         self.monotonic: Callable[[], float] = monotonic  # the web time budget (A13); tests replace it
         self.on_delta: Callable[[str, str], None] | None = None  # (question_id, text): streamed answer pieces (A11)
 
@@ -448,7 +423,9 @@ class QA:
         if not evidence:
             if unsure_ok:  # the room has nothing; a connector or the web may
                 return await self.tool_loop(question, stream)
-            return Answer(NO_EVIDENCE, [], self.runtime.model_info().version)
+            if evidence.direct and stream:  # an empty calendar, said as that ("Nothing due tomorrow.")
+                stream(evidence.direct)
+            return Answer(evidence.direct or NO_EVIDENCE, [], self.runtime.model_info().version)
         if evidence.direct:
             if stream:
                 stream(evidence.direct)
@@ -516,12 +493,12 @@ class QA:
             text = e.summary or " ".join(e.captions) or ", ".join(e.labels)
             ref = e.keyframe_refs[0] if e.keyframe_refs else None
             ev.add(f"{self._t(e.start)} on {e.camera_id}: {text}", Citation(episode_id=e.id, frame_ref=ref, ts=e.start))
-            said = text.strip().rstrip(".") + "."
-            spoken.append(said if not spoken else f"{self._t(e.start)}: {said}")
+            spoken.append(text)
         # Written from the data, no model call: on the Jetson the 4B read "while the judges were here" literally and
         # refused when the evidence said "a courier". Captions describe people, never name them.
-        more = f" And {len(spoken) - VISIT_SPOKEN} more moments." if len(spoken) > VISIT_SPOKEN else ""
-        ev.direct = f"The latest visit started {self._t(start)}: " + " ".join(spoken[:VISIT_SPOKEN]) + more
+        # Said like a person (the owner's rule): when it started, then what happened, no timestamps read out.
+        tz = self.sleep.tz
+        ev.direct = ear.said_visit(start.astimezone(tz), now.astimezone(tz), spoken[:VISIT_SPOKEN], len(spoken) - VISIT_SPOKEN)
 
     def digest(self, q: str, ev: Evidence) -> None:
         """The day's digest (A6) as the answer. "yesterday" asks for yesterday's; anything else is today's."""
@@ -641,19 +618,19 @@ class QA:
     # --- pre-fetch (common shapes, no tool loop) ---
 
     def upcoming_items(self, q: str, ev: Evidence) -> None:
-        """Canvas, calendar, campus and chat items in the asked window, soonest first, each cited by link."""
-        start, end = upcoming_window(q, self.clock(), self.sleep.tz)
-        kinds = [k for k, rx in ITEM_KINDS.items() if rx.search(q)] or [None]
-        items = sorted({i.external_id: i for k in kinds for i in self.memory.items(start, end, kind=k)}.values(),
-                       key=lambda i: i.when)
-        for i in items[:10]:
+        """A calendar question, answered from the items and said like a person (schedule.py and the Day context's
+        ear.py): never a list of titles and timestamps. The items it names are cited by link."""
+        now, tz = self.clock(), self.sleep.tz
+        ask = schedule.parse(q, now, tz)
+        if ask is None:
+            return
+        text, named = schedule.said(ask, self.memory, now, tz, names=self.names)
+        if self.talk is not None and named:  # "Want the rest?": a "yes" goes to the conversation, which then says all of it
+            self.talk.rest = (schedule.replace(ask, everything=True), now) if text.endswith(ear.MORE) else None
+        for i in named:
             extra = f" ({i.summary})" if i.summary else ""
             ev.add(f"{i.title}: {self._t(i.when)}{extra} [{i.connector}]", Citation(url=i.url, title=i.title, ts=i.when))
-        if items:  # on the Jetson the 4B model garbled these lists; the list itself is the answer
-            lead = "Due" if DUE_WORDS.search(q) else "Coming up"
-            shown = [f"{i.title}, {self._t(i.when)}" for i in items[:MAX_LISTED]]
-            more = f", and {len(items) - MAX_LISTED} more" if len(items) > MAX_LISTED else ""
-            ev.direct = f"{lead} {window_words(q)}: " + "; ".join(shown) + more + "."
+        ev.direct = text
 
     def prefetch(self, question: str) -> Evidence | None:
         q = question.lower().strip()
@@ -666,7 +643,7 @@ class QA:
             ev.room_only = True
             self.digest(q, ev)
             return ev
-        if ITEMS_Q.search(q) or (ITEM_THING.search(q) and FUTURE.search(q)):  # A9: "what is due this week?"
+        if schedule.ITEMS_Q.search(q) or (schedule.ITEM_THING.search(q) and schedule.FUTURE.search(q)):  # A9: "what is due this week?"
             self.upcoming_items(q, ev)
             return ev
         if m := WHAT_HAPPENED.search(q) or ARRIVED.search(q):  # "what happened to the package?" / "did a package arrive?"
@@ -683,6 +660,12 @@ class QA:
         if LAST_WHEN.search(q):
             self.last_time(question, ev)
             return ev
+        # The calendar, for the ways people ask by voice ("what does my day look like?", "what's next?", "do I have
+        # anything this afternoon?"): the same answer in code as "what's on my calendar today?", when the calendar has
+        # something to say. With nothing found the question goes on exactly as it always did.
+        if schedule.parse(question, self.clock(), self.sleep.tz):
+            self.upcoming_items(q, ev)
+            return ev if ev else None
         return None
 
     async def _chat(self, messages: list[ChatMessage], tools: list[dict] | None = None,
