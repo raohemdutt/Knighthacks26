@@ -267,7 +267,8 @@ class IdentityService:
                 # scanned: they did the face scan. recognised: the box matches faces to them (false for photos alone).
                 "scanned": m.source == SHARED or scanned(m), "recognised": m.scanned is not False,
                 **({"shared_by": m.shared_by, "received_at": m.received_at, "expires_at": m.expires_at}
-                   if m.source == SHARED else {})}
+                   if m.source == SHARED else {}),
+                **({"demo": True} if m.demo else {})}  # written by the demo seed: made-up numbers, never a face
 
     def present(self) -> list[dict]:
         """The enrolled members a camera is looking at right now (ids only), for "here now" on the phone."""
@@ -708,7 +709,8 @@ class IdentityService:
             at = self._now()  # also if nothing came round to delete it yet
             members = [m for m in members if m.source != SHARED or _alive(m, at)]
         # photos alone (scanned False) are kept but not matched: the box does not know that person until they scan
-        return {m.member_id: m.vector for m in members if m.model == self.recognizer.name and m.scanned is not False}
+        return {m.member_id: m.vector for m in members
+                if m.model == self.recognizer.name and m.scanned is not False and not m.demo}  # demo data is never matched
 
     def tagged(self) -> dict[CameraId, dict[int, str]]:
         return {camera: tags.members for camera, tags in self._tags.items()}
@@ -824,13 +826,16 @@ class IdentityService:
     def _local(member: Member | None) -> None:
         if member is not None and member.source == SHARED:
             raise IdentityError("this template was shared by a friend's box: it can only be forgotten here")
+        if member is not None and member.demo:
+            raise IdentityError("this is demo data, not a real enrolment: forget it, then enrol the person")
 
     def own_template(self, circle_member_id: str) -> dict:
         """The template that may be shared: the one person enrolled on this box, with consent, who is linked to
         this box's own Circle member. {member_id, name, model, vector, vectors}; only vectors and the name, never
         a picture or an expression. Anyone else who enrolled here is not this box's to share."""
         mine = [m for m in self.store.members() if m.circle_member_id == circle_member_id and m.source != SHARED and m.consent_at
-                and m.scanned is not False]  # photos alone are not a template yet: nothing to share until the scan
+                and m.scanned is not False  # photos alone are not a template yet: nothing to share until the scan
+                and not m.demo]  # demo data is made-up numbers: it never leaves the box
         if not mine:
             raise IdentityError("nobody enrolled on this box is linked to you as this box's Circle member: enrol yourself "
                                 "here and choose yourself under \"Which Circle member is this?\" first")
