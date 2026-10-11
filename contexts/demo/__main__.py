@@ -15,6 +15,12 @@
         not picked up, three earlier days like it) published through the real app, so the Day loop's own rule
         raises it and the narrator says it. Prints the sentence and the command to run the app on it.
 
+    python -m contexts.demo optional --data-dir <empty dir> [--day YYYY-MM-DD]
+        An optional event ("Near you"), suggested and said yes to: one invented afternoon published through the
+        real app. Atlas suggests the friends' dinner, the yes raises a re-plan and its card, the card is approved
+        locally, the dinner is a block of the day and Atlas says when to leave. Prints each line and the command
+        to run the app on it.
+
     python -m contexts.demo fake <context> [--data-dir data] [--now]
         A few realistic events of every type one context publishes, appended to the log.
 
@@ -40,7 +46,7 @@ import argparse
 import os
 import asyncio
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 from contexts.demo import fakes
@@ -66,6 +72,9 @@ def main(argv: list[str] | None = None) -> int:
     k.add_argument("--data-dir", type=Path, required=True)
     k.add_argument("--end", type=datetime.fromisoformat, help="when the check-in is raised (with a UTC offset); default: now in "
                                                              "the afternoon, else today 15:40 local")
+    o = sub.add_parser("optional", help="an invented afternoon: an optional event suggested, said yes to and approved")
+    o.add_argument("--data-dir", type=Path, required=True)
+    o.add_argument("--day", type=date.fromisoformat, help="the invented day (default: today, local)")
     f = sub.add_parser("fake", help="publish a small sample of one context's events")
     f.add_argument("context", choices=fakes.CONTEXTS)
     f.add_argument("--data-dir", type=Path, default=Path("data"))
@@ -114,6 +123,17 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(checkin.summary(shown))
         return 0 if shown.checkins else 1
+
+    if args.command == "optional":
+        from contexts.demo import optional
+
+        try:
+            shown = asyncio.run(optional.show(args.data_dir, args.day or optional.default_day(datetime.now(UTC))))
+        except SeedRefused as refused:
+            print(refused, file=sys.stderr)
+            return 1
+        print(optional.summary(shown))
+        return 0 if shown.ok else 1
 
     if args.command == "circle":
         from contexts.demo import circle
