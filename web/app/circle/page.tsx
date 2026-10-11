@@ -6,6 +6,7 @@ import { League } from "@/components/circle/League";
 import { People } from "@/components/circle/People";
 import { Plans } from "@/components/circle/Plans";
 import { SharedBrain } from "@/components/circle/SharedBrain";
+import { WhereToGo } from "@/components/circle/WhereToGo";
 import { useRefresh } from "@/components/circle/SharedCalendar";
 import { TABS, type CircleTab } from "@/components/circle/shared";
 import { YouAreSharing } from "@/components/circle/YouAreSharing";
@@ -108,6 +109,7 @@ export default function CirclePage() {
       {tab === "people" ? (
         <>
           <SharedBrain members={members.data} />
+          <WhereToGo friendsSharing={(members.data?.members ?? []).filter((m) => !m.mine && m.place).length} />
           <People members={members} standings={league.data?.standings ?? []} packs={packs.data} faceShare={faceShare.data} onChanged={members.reload} />
         </>
       ) : tab === "plans" ? (

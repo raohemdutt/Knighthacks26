@@ -429,3 +429,23 @@
   min-width: 0;
   max-width: 520px; /* the map is drawn at the route sheet's size: on a wide screen it stays that size, not the card's width */
 }
+
+/* "Where should I go?" (X12): the answer's sources under it */
+.whereSources {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.whereSources a {
+  color: var(--accent-text);
+}
+
+.whereAnswer {
+  margin: 0;
+  white-space: pre-line; /* the planner answers in lines */
+}
