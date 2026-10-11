@@ -488,7 +488,7 @@ export interface SpeedStory {
   before: StoryLine | null; // the newest older vLLM Strix Halo session of the same model that was slower at one stream
   llama: StoryLine | null; // llama.cpp on a Strix Halo pod, newest session with two or more batch sizes
   a100: StoryLine | null; // the NVIDIA A100 reference, newest
-  pair: StoryLine | null; // the 122B pair across two pods, newest
+  pair: StoryLine | null; // the 122B pair across two pods: every pair session, newest row per batch size
   base: StoryLine | null; // the 27B on one pod at the pair's batch sizes (from `after`)
 }
 
@@ -516,7 +516,11 @@ export function speedStory(sum: BenchSummary): SpeedStory {
   const llamas = single.filter((s) => engineOf(s.engine) === "llamacpp" && isStrixHalo(s.chip));
   const llama = line(llamas.find((s) => (byS.get(s.id)?.length ?? 0) >= 2) ?? llamas[0]);
   const a100 = line(single.find((s) => isA100(s.chip)));
-  const pair = line(sorted.find(isPair));
+  // the pair's batch sizes may sit in several sessions (1 and 4 in one, 16 in the next): one line, newest row per batch
+  const pairs = sorted.filter(isPair);
+  const pairPoints = new Map<number, BenchHeadline>();
+  for (const x of pairs) for (const p of byS.get(x.id) ?? []) if (!pairPoints.has(p.batch)) pairPoints.set(p.batch, p);
+  const pair: StoryLine | null = pairs.length ? { session: pairs[0]!, points: [...pairPoints.values()].sort((a, b) => a.batch - b.batch) } : null;
   const base = pair && after ? { session: after.session, points: after.points.filter((p) => pair.points.some((q) => q.batch === p.batch)) } : null;
   return { after, before, llama, a100, pair, base };
 }
@@ -527,12 +531,20 @@ export function modelBillions(model: string | null | undefined): number | null {
   return m ? Number(m[1]) : null;
 }
 
-/** "pod-a" -> "Pod A", "pod-a+pod-b" -> "Pods A and B together", "jetson" -> "The box (Jetson)". */
+/** The lab name of a row's node: "pod-a" -> "Pod C (the teacher's head)", "jetson" -> "The box (Jetson)". */
 export function machineName(node: string | null | undefined): string {
   if (!node) return "unknown machine";
-  if (node === "jetson") return "The box (Jetson)";
-  const pair = /^pod-([a-z])\+pod-([a-z])$/i.exec(node);
-  if (pair) return `Pods ${pair[1]!.toUpperCase()} and ${pair[2]!.toUpperCase()} together`;
-  const pod = /^pod-([a-z])$/i.exec(node);
-  return pod ? `Pod ${pod[1]!.toUpperCase()}` : node;
+  const m = MACHINES.find((x) => x.nodes.includes(node));
+  return m ? m.name : node;
 }
+
+/**
+ * The lab's machines under their lab names. The rows' node names are older: pod-a is pod C (the teacher's head),
+ * pod-b is pod D (the trainer). R29's rows of 2026-10-10 used node "pod-c" for pod C itself, so they count as pod C.
+ */
+export const MACHINES: { key: string; name: string; nodes: string[] }[] = [
+  { key: "box", name: "The box (Jetson)", nodes: ["jetson"] },
+  { key: "pod-c", name: "Pod C (the teacher's head)", nodes: ["pod-a", "pod-c"] },
+  { key: "pod-d", name: "Pod D (the trainer)", nodes: ["pod-b"] },
+  { key: "pair", name: "Pods C and D together", nodes: ["pod-a+pod-b"] },
+];

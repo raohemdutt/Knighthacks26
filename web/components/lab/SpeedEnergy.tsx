@@ -18,6 +18,8 @@ import {
   engineOf,
   fmt,
   isLowConfidence,
+  isPair,
+  MACHINES,
   machineName,
   modelBillions,
   speedStory,
@@ -236,13 +238,65 @@ function ChipFix({ story, reduced, a100, setA100, onPick }: { story: ReturnType<
 
 /* ---------- 2. the bigger brain ---------- */
 
-function BiggerBrain({ story, reduced }: { story: ReturnType<typeof speedStory>; reduced: boolean }) {
+/** Both pods' watts and joules per token for the pair, by batch size: the `_both` rows, from a session's rows or the full payload. */
+type Both = Map<number, { watts: number | null; j: number | null }>;
+const PAIR_NODES = MACHINES.find((m) => m.key === "pair")?.nodes ?? [];
+
+function bothFrom(payload: Partial<LabBench> | null | undefined, into: Both) {
+  const batchOf = (p: BenchPoint) => p.x ?? (Number(/batch (\d+)/.exec(p.state ?? "")?.[1]) || null);
+  const put = (metric: string, p: BenchPoint) => {
+    const batch = batchOf(p);
+    if (!batch) return;
+    const cur = into.get(batch) ?? { watts: null, j: null };
+    if (/joules_per_token_both$/.test(metric) && cur.j === null) cur.j = p.value;
+    if (/watts_avg_both$/.test(metric) && cur.watts === null) cur.watts = p.value;
+    into.set(batch, cur);
+  };
+  for (const w of payload?.sweeps ?? []) if (/pair_pp122b/.test(w.family)) for (const [m, pts] of Object.entries(w.metrics)) for (const p of pts) put(m, p);
+  for (const sr of payload?.series ?? []) if (/^pair_pp122b\./.test(sr.metric)) for (const p of sr.points) put(sr.metric, p);
+}
+
+/** The pair's `_both` rows: read from the full payload when the route sent it, else from each pair session's rows. */
+function usePairBoth(pairSessions: BenchSession[], payload: BenchPayload | undefined): Both {
+  const [fetched, setFetched] = useState<Record<string, Partial<LabBench>>>({});
+  const ids = pairSessions.map((x) => x.source ?? x.id);
+  const full = (payload?.sweeps?.length ?? 0) > 0;
+  const key = ids.join("|");
+  useEffect(() => {
+    if (full) return;
+    for (const x of pairSessions) {
+      const id = x.source ?? x.id;
+      if (fetched[id]) continue;
+      fetch(spotUrl(x.rows_url ?? `/api/learning/lab/bench/rows?session=${encodeURIComponent(id)}`))
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+        .then((d: Partial<LabBench>) => setFetched((m) => ({ ...m, [id]: d })))
+        .catch(() => undefined);
+    }
+  }, [key, full]);
+  return useMemo(() => {
+    const out: Both = new Map();
+    if (full) bothFrom(payload as Partial<LabBench>, out);
+    else for (const id of ids) bothFrom(fetched[id], out);
+    for (const [b, v] of [...out]) if (v.j === null && v.watts === null) out.delete(b);
+    return out;
+  }, [fetched, full, payload, key]);
+}
+
+function BiggerBrain({ story, reduced, both }: { story: ReturnType<typeof speedStory>; reduced: boolean; both: Both }) {
   const t = useChartTokens();
   const { pair, base } = story;
+  const hasBoth = !!pair && pair.points.some((p) => both.get(p.batch)?.j);
+  // with both pods' rows the pair is the whole machine; without them it is pod C's meter only and is not set against the 27B
+  const pj = (p: BenchHeadline) => (hasBoth ? (both.get(p.batch)?.j ?? null) : p.j_per_token);
+  const pw = (p: BenchHeadline) => (hasBoth ? (both.get(p.batch)?.watts ?? null) : p.watts);
+  const pb = modelBillions(pair?.session.model);
+  const bb = modelBillions(base?.session.model);
+  const pairName = `${pb ?? "Big"}B across two pods, ${hasBoth ? "both pods" : "pod C's meter only (the head)"}`;
   const option = useMemo<EChartsOption | null>(() => {
     if (!pair) return null;
     const axis = chartAxis(t);
     const maxB = Math.max(2, ...pair.points.map((p) => p.batch));
+    const pairData = lineData(pair, pj);
     return {
       ...chartBase(t, reduced),
       grid: { left: 56, right: 24, top: 84, bottom: 52 },
@@ -256,9 +310,9 @@ function BiggerBrain({ story, reduced }: { story: ReturnType<typeof speedStory>;
           if (!ps.length) return "";
           const batch = ps[0]!.value[0];
           const rows = ps.map((p) => {
-            const l = p.seriesId === "pair" ? pair : base;
-            const q = at(l, batch);
-            return `<span style="color:${p.color}">&#9679;</span> ${p.seriesName}: <b>${fmt(p.value[1])}</b> J per token${q?.tok_s_total ? `, ${fmt(q.tok_s_total)} tok/s in total` : ""}${q?.watts ? `, ${fmt(q.watts, 0)} W` : ""}`;
+            const q = at(p.seriesId === "pair" ? pair : base, batch);
+            const w = q ? (p.seriesId === "pair" ? pw(q) : q.watts) : null;
+            return `<span style="color:${p.color}">&#9679;</span> ${p.seriesName}: <b>${fmt(p.value[1])}</b> J per token${q?.tok_s_total ? `, ${fmt(q.tok_s_total)} tok/s in total` : ""}${w ? `, ${fmt(w, 0)} W` : ""}`;
           });
           return [`<b>${streams(batch)}</b>`, ...rows].join("<br/>");
         },
@@ -266,20 +320,19 @@ function BiggerBrain({ story, reduced }: { story: ReturnType<typeof speedStory>;
       xAxis: { ...axis, type: "log", logBase: 2, min: 1, max: maxB, name: "streams answered at once", nameLocation: "middle", nameGap: 32, splitLine: { show: false }, axisLabel: { ...axis.axisLabel, formatter: (v: number) => String(Math.round(v)) } },
       yAxis: { ...axis, type: "log", logBase: 10, name: "joules per token (log)", nameLocation: "end", nameGap: 14, axisLabel: { ...axis.axisLabel, formatter: (v: number) => String(Number(v.toPrecision(2))) } },
       series: [
-        series(t, "pair", `${modelBillions(pair.session.model) ?? "Big"}B across two pods`, t.accent, lineData(pair, (p) => p.j_per_token)),
-        ...(base ? [series(t, "base", `${modelBillions(base.session.model) ?? "Small"}B on one pod`, t.accent3, lineData(base, (p) => p.j_per_token))] : []),
+        series(t, "pair", pairName, t.accent, pairData, { connectNulls: true }),
+        ...(base && hasBoth ? [series(t, "base", `${bb ?? "Small"}B on one pod`, t.accent3, lineData(base, (p) => p.j_per_token))] : []),
       ],
     };
-  }, [t, reduced, pair, base]);
+  }, [t, reduced, pair, base, hasBoth, both]);
 
-  const shared = pair && base ? pair.points.filter((p) => at(base, p.batch)?.j_per_token && p.j_per_token).map((p) => p.batch) : [];
+  const shared = pair && base && hasBoth ? pair.points.filter((p) => at(base, p.batch)?.j_per_token && pj(p)).map((p) => p.batch) : [];
   const top = shared.length ? shared[shared.length - 1]! : null;
-  const pj = top !== null ? at(pair, top)?.j_per_token : null;
-  const bj = top !== null ? at(base, top)?.j_per_token : null;
-  const more = pj && bj ? (pj / bj - 1) * 100 : null;
-  const pb = modelBillions(pair?.session.model);
-  const bb = modelBillions(base?.session.model);
+  const pairJ = top !== null ? pj(at(pair, top)!) : null;
+  const baseJ = top !== null ? at(base, top)?.j_per_token : null;
+  const change = pairJ && baseJ ? (pairJ / baseJ - 1) * 100 : null;
   const times = pb && bb ? pb / bb : null;
+  const missing = pair ? [1, 4, 16].filter((b) => !pair.points.some((p) => p.batch === b)) : [];
 
   return (
     <section className={s.section} aria-labelledby="speed-brain">
@@ -292,15 +345,15 @@ function BiggerBrain({ story, reduced }: { story: ReturnType<typeof speedStory>;
       {pair && option ? (
         <div className={s.brain}>
           <div className={s.chartCard}>
-            <LabEChart option={option} height={330} label="Energy per token against streams answered at once, the big model across two pods and the 27B on one pod" />
+            <LabEChart option={option} height={330} label={`Energy per token against streams answered at once: ${pairName}${base && hasBoth ? ", and the 27B on one pod" : ""}`} />
           </div>
           <table className={s.table}>
             <thead>
               <tr>
                 <th scope="col">Streams</th>
                 <th scope="col">Tokens a second</th>
-                <th scope="col">Watts</th>
-                <th scope="col">J per token</th>
+                <th scope="col">{hasBoth ? "Watts, both pods" : "Watts, pod C only"}</th>
+                <th scope="col">{hasBoth ? "J per token, both pods" : "J per token, pod C only"}</th>
               </tr>
             </thead>
             <tbody>
@@ -308,23 +361,30 @@ function BiggerBrain({ story, reduced }: { story: ReturnType<typeof speedStory>;
                 <tr key={p.batch}>
                   <th scope="row">{p.batch}</th>
                   <td>{p.tok_s_total !== null ? fmt(p.tok_s_total) : "no row"}</td>
-                  <td>{p.watts !== null ? fmt(p.watts, 0) : "no row"}</td>
+                  <td>{pw(p) !== null ? fmt(pw(p)!, 0) : "no row"}</td>
                   <td>
-                    {p.j_per_token !== null ? fmt(p.j_per_token) : "no row"}
+                    {pj(p) !== null ? fmt(pj(p)!) : "no row"}
                     {isLowConfidence(p.confidence) ? <span className={s.lowDot} title="low confidence" aria-label="low confidence" /> : null}
                   </td>
                 </tr>
               ))}
             </tbody>
-            <caption className={s.caption}>{pb ? `${pb}B` : "The big model"} across two pods, every number from its own row.</caption>
+            <caption className={s.caption}>
+              {pb ? `${pb}B` : "The big model"} split across pod C and pod D, every number from its own row.
+              {missing.length ? ` No row yet at ${missing.map(streams).join(", ")}.` : ""}
+            </caption>
           </table>
         </div>
       ) : (
         <p className={s.empty}>The pair rows are not on this box yet. This section draws the big model across two pods as soon as its bench rows arrive; nothing is drawn in their place.</p>
       )}
-      {more !== null && top !== null ? (
+      {pair && !hasBoth ? (
+        <p className={s.foot}>These watts and joules are pod C&apos;s meter only (the head); pod D&apos;s share is not in these rows yet, so they are not set against the 27B on one pod.</p>
+      ) : null}
+      {change !== null && top !== null ? (
         <p className={s.story}>
-          A bigger brain costs more joules per token; under load ({streams(top)}), {fmt(more, 0)} percent more for {times ? `${fmt(times, 1)} times` : "a much bigger"} the model.
+          A bigger brain costs {change >= 0 ? "more" : "fewer"} joules per token; under load ({streams(top)}), {fmt(Math.abs(change), 0)} percent {change >= 0 ? "more" : "fewer"} for {times ? `${fmt(times, 1)} times` : "a much bigger"} the model
+          {pairJ && baseJ ? ` (${fmt(pairJ)} against ${fmt(baseJ)} J per token)` : ""}.
         </p>
       ) : null}
     </section>
@@ -333,9 +393,26 @@ function BiggerBrain({ story, reduced }: { story: ReturnType<typeof speedStory>;
 
 /* ---------- 3. what it costs to be on ---------- */
 
-function PowerBars({ nodes, reduced, onPick }: { nodes: BenchPowerNode[]; reduced: boolean; onPick: (p: BenchPoint) => void }) {
+function PowerBars({ nodes, reduced, onPick, both }: { nodes: BenchPowerNode[]; reduced: boolean; onPick: (p: BenchPoint) => void; both: Both }) {
   const t = useChartTokens();
-  const shown = nodes.filter((n) => n.idle || n.serving);
+  // one row per real machine: rows under an older node name of the same machine merge, the newest row winning
+  const shown = useMemo(() => {
+    const newest = (list: (BenchPoint | null)[]) => list.filter((x): x is BenchPoint => !!x).sort((a, c) => (c.ts ?? "").localeCompare(a.ts ?? ""))[0] ?? null;
+    const known = MACHINES.map((m) => {
+      const ns = nodes.filter((n) => m.nodes.includes(n.node));
+      return { ...(ns[0] ?? { idle_rows: 0, serving_rows: 0, peak: null }), node: m.nodes[0]!, idle: newest(ns.map((n) => n.idle)), serving: newest(ns.map((n) => n.serving)) } as BenchPowerNode;
+    });
+    const rest = nodes.filter((n) => !MACHINES.some((m) => m.nodes.includes(n.node)));
+    return [...known, ...rest]
+      .map((n) => {
+        if (!PAIR_NODES.includes(n.node) || !n.serving) return n;
+        // the pair's power rows are pod C's meter only; draw the pair with both pods' watts at the same batch, or not at all
+        const batch = Number(/batch (\d+)/.exec(n.serving.state ?? "")?.[1]) || [...both.keys()].sort((a, c) => c - a)[0];
+        const w = batch ? both.get(batch)?.watts : null;
+        return w ? { ...n, serving: { ...n.serving, value: w, label: "both pods' watts", state: `batch ${batch}, both pods summed`, formula: "pair_pp122b.watts_avg_both" } } : { ...n, serving: null };
+      })
+      .filter((n) => n.idle || n.serving);
+  }, [nodes, both]);
   const option = useMemo<EChartsOption>(() => {
     const axis = chartAxis(t);
     const label = (p: BenchPoint | null) => ({
@@ -596,6 +673,8 @@ export function SpeedEnergy({
   const payload = bench.data as BenchPayload | undefined;
   const summary = useMemo(() => benchSummary(payload), [payload]);
   const story = useMemo(() => speedStory(summary), [summary]);
+  const pairSessions = useMemo(() => summary.sessions.filter(isPair), [summary]);
+  const both = usePairBoth(pairSessions, payload);
   // the drawer lists the sessions that have headline numbers, newest first; the rest are counted in "All rows"
   const sessions = useMemo(() => {
     const withNumbers = new Set(summary.points.map((p) => p.session));
@@ -678,7 +757,7 @@ export function SpeedEnergy({
       {sessions.length === 0 ? <p className={b.banner}>{data.empty_reason ?? "No bench session in these rows yet."}</p> : null}
 
       <ChipFix story={story} reduced={reduced} a100={a100} setA100={setA100} onPick={pickFromChart} />
-      <BiggerBrain story={story} reduced={reduced} />
+      <BiggerBrain story={story} reduced={reduced} both={both} />
 
       <section className={s.section} aria-labelledby="speed-power">
         <div className={s.kicker}>
@@ -688,13 +767,19 @@ export function SpeedEnergy({
           Idle and answering watts, one row per machine
         </h2>
         <div className={s.chartCard}>
-          <PowerBars nodes={nodes} reduced={reduced} onPick={pickPower} />
+          <PowerBars nodes={nodes} reduced={reduced} onPick={pickPower} both={both} />
           <div className={s.chartFoot}>
             <span className={s.foot}>
               <span className={s.lowDot} aria-hidden="true" /> marks a low-confidence row. Tap a bar for its row.
             </span>
           </div>
         </div>
+        {nodes.some((n) => PAIR_NODES.includes(n.node) && n.serving) && ![...both.values()].some((v) => v.watts) ? (
+          <p className={s.foot}>Pods C and D together: their power rows are pod C&apos;s meter only, so the pair is not drawn here until both pods&apos; rows arrive.</p>
+        ) : null}
+        {nodes.some((n) => n.node === "pod-c") ? (
+          <p className={s.foot}>Rows recorded under node pod-c (R29, 2026-10-10) are pod C under its lab name; they count as pod C here, and the newest row of each kind wins.</p>
+        ) : null}
         {data.power?.absent?.length ? <p className={s.foot}>No power row yet for {data.power.absent.join(", ")}; nothing is drawn for a machine the rows do not cover.</p> : null}
       </section>
 
