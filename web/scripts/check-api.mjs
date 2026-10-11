@@ -234,6 +234,20 @@ const mapOf = (spec) => (v) => {
   return bad.length ? bad.slice(0, 3).join("; ") : undefined;
 };
 const BRIEF = { mode: oneOf("model", "template", "off"), engine: oneOf("model", "template", "off"), timeout_s: "number", gap_s: "number", latest: mapOf(NARRATION), asks: mapOf(NARRATION), model: "object" };
+// Optional events ("Near you", contexts/day/application/optional.py): what lib/api.ts OptionalView reads.
+const TOUCHED = { id: "string", title: "string", kind: "string", start: isoDate, end: isoDate, overlap_minutes: "number" };
+const OPTIONAL_FIT = {
+  fits: oneOf("yes", "nearly", "no"), reason: "string", walk_minutes: "number", leave_by: isoDateOrNull, from_place: "string?",
+  displaces: listOf(TOUCHED), conflicts: listOf(TOUCHED), leave_early_minutes: "number",
+};
+const OPTIONAL_EVENT = {
+  id: "string", slug: "string", title: "string", start: isoDate, end: isoDate, place: "string?", place_name: "string?", tags: stringList,
+  going: stringList, host: "string?", source: "string?", state: oneOf("suggested", "accepted", "declined", "passed"),
+  answer: (v) => (v === null || v === "yes" || v === "no" ? undefined : `expected yes, no or null, got ${JSON.stringify(v)}`),
+  awaiting_approval: "boolean", action_id: "string?", plan_id: "string?", suggested_at: isoDateOrNull, suggest_held: "string?",
+  fit: (v) => problems(v, OPTIONAL_FIT, "").join("; ") || undefined,
+};
+const OPTIONAL_VIEW = { now: isoDate, plan_id: "string?", events: listOf(OPTIONAL_EVENT) };
 const FEEDBACK_SESSION = { day: "string", block_id: "string", title: "string", start: isoDate, end: isoDate, planned_minutes: "number", measured: "boolean", breaks: "array", text: "string" };
 const COACH_FEEDBACK = {
   now: isoDate, words: inner({ activity: "string", workplace: "string" }), options: listOf({ id: "string", label: "string" }),
@@ -434,6 +448,8 @@ console.log("\nNow (the day in words, the coach's questions)");
 const NO_DAY = { 404: "the Day loop is not on this box (it needs the place packs)" };
 const brief = await check("GET /api/day/brief", "GET", "/api/day/brief", BRIEF, { optional: NO_DAY });
 if (brief) console.log(`        ${brief.engine} engine; said so far: ${Object.keys(brief.latest).join(", ") || "nothing"}`);
+const optional = await check("GET /api/day/optional", "GET", "/api/day/optional", OPTIONAL_VIEW, { optional: NO_DAY });
+if (optional) console.log(`        ${optional.events.length} optional events: ${optional.events.map((e) => `${e.slug} ${e.state}/${e.fit.fits}`).join(", ") || "none"}`);
 const coachAsks = await check("GET /api/day/coach/feedback", "GET", "/api/day/coach/feedback", COACH_FEEDBACK, { optional: NO_DAY });
 if (coachAsks) console.log(`        ${coachAsks.sessions.length} sessions, ${coachAsks.sessions.reduce((n, x) => n + x.breaks.length, 0)} breaks to ask about, ${coachAsks.answers} answered`);
 {

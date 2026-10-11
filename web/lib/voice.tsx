@@ -20,9 +20,20 @@
 
 import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { ApiError, api } from "./api";
 import { useAtlasEvents } from "./atlas";
 import { briefStore } from "./brief";
-import { SPEAK_COOLDOWN_MS, chunkForSpeech, cleanForSpeech, narratedAsk, saidElsewhere, sentenceForEvent, type SpokenKind } from "./speechText";
+import {
+  SPEAK_COOLDOWN_MS,
+  chunkForSpeech,
+  cleanForSpeech,
+  narratedAsk,
+  saidElsewhere,
+  sentenceForEvent,
+  suggestionAnswer,
+  suggestionReply,
+  type SpokenKind,
+} from "./speechText";
 
 // ---------- the knobs, in one place ----------
 
@@ -37,6 +48,10 @@ const SETTINGS_KEY = "atlas.voice";
 const SPOKEN_EVENTS = ["agent.alert.raised", "habits.nudge.raised", "workspace.approval.requested", "agent.plan.created", "day.coach.noted", "day.narrated", "impact.milestone.reached"];
 /** How long a spoken approval waits for the narrator's plain ask ("I'd like to add eight blocks...") before the raw reason is used. */
 const ASK_WAIT_MS = 900;
+/** After Atlas has said a suggestion ("Want me to add it?"), a spoken "yes" or "not today" answers it for this long. */
+const SUGGESTION_ANSWER_MS = 30_000;
+/** About how long a line takes to say, for a line the box's own speaker says (the phone cannot hear it end). */
+const SPOKEN_MS_PER_CHAR = 65;
 
 export interface VoiceSettings {
   /** Read answers aloud. */
@@ -286,6 +301,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const silence = useRef<number | undefined>(undefined);
   const lastSpoken = useRef<Partial<Record<SpokenKind, number>>>({});
   const spokenIds = useRef(new Set<string>());
+  // The optional event Atlas just offered aloud, and until when a spoken yes or no answers it.
+  const offered = useRef<{ id: string; until: number } | null>(null);
+  const offerIn = useRef(new Map<string, string>()); // a spoken line's event id -> the optional event it offers
+  const lineEnded = useRef(new Map<string, number>()); // ... -> when that line finished (or will, on the box's speaker)
+  const answerOffer = useRef<(id: string, answer: "yes" | "no") => void>(() => undefined);
 
   // --- speaking ---
 
@@ -417,6 +437,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         return;
       }
       if (options.replace && options.tag) cancelWhere((j) => j.options.tag === options.tag);
+      offered.current = null; // something else is being said: a later "yes" is no longer an answer to the suggestion
       queue.current.push({ chunks, next: 0, options, queuedAt: Date.now() });
       pump();
     },
@@ -499,7 +520,14 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         }
         const heard = finalText || interim; // Safari can end without marking the last words final
         try {
-          if (active.discard) handlers.onEnd?.("stopped");
+          const offer = offered.current;
+          const answer = heard && !active.discard && offer && Date.now() <= offer.until ? suggestionAnswer(heard) : null;
+          if (offer && answer) {
+            // "yes" / "not today" within half a minute of the suggestion: it answers that, and nothing else hears it
+            offered.current = null;
+            handlers.onEnd?.("stopped");
+            answerOffer.current(offer.id, answer);
+          } else if (active.discard) handlers.onEnd?.("stopped");
           else if (heard) handlers.onFinal(heard);
           else if (error && error !== "no-speech" && error !== "aborted") handlers.onEnd?.("error", listenError(error));
           else handlers.onEnd?.(error === "aborted" ? "stopped" : "silence");
@@ -611,9 +639,44 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   // --- speaking up on its own ---
 
+  /** The line `eventId` has been said: if it offered an optional event, a spoken yes or no now answers it. */
+  const lineSaid = (eventId: string, endedAt: number) => {
+    lineEnded.current.set(eventId, endedAt);
+    if (lineEnded.current.size > 20) lineEnded.current.delete(lineEnded.current.keys().next().value as string);
+    const id = offerIn.current.get(eventId);
+    if (id && endedAt + SUGGESTION_ANSWER_MS > Date.now()) offered.current = { id, until: endedAt + SUGGESTION_ANSWER_MS };
+  };
+
+  // A spoken yes or no to a suggestion goes to the box as the tap would. A yes only ever raises the approval card:
+  // nothing is approved by voice.
+  answerOffer.current = (id, answer) => {
+    const reply = (text: string) => say(text, { tag: "answer", replace: true, raw: true, keepOnNavigate: true });
+    api
+      .dayOptionalAnswer(id, answer)
+      .then((r) => reply(suggestionReply(answer, r.proposed)))
+      .catch((err: unknown) => {
+        const e = err instanceof ApiError ? err : new ApiError(0, String(err));
+        if (e.needsToken) reply("This box asks for a token before it takes that. Use the card on the screen.");
+        else if (e.status === 409) reply(`I could not ${answer === "yes" ? "add it" : "take it out"}. ${e.message}.`);
+        else reply("I could not reach the box for that. The card on the screen still works.");
+      });
+  };
+
   const speakEvent = useRef<(e: Parameters<Parameters<typeof useAtlasEvents>[1]>[0], waited?: boolean) => void>(() => undefined);
   speakEvent.current = (e, waited = false) => {
     const s = settingsRef.current;
+    if (e.type === "day.narrated" && !waited) {
+      // A suggestion offers an optional event (`ref`): in its own line, or as the last clause of the line it was merged into.
+      const carrier = typeof e.merged_into === "string" && e.merged_into ? e.merged_into : e.event_id;
+      if (e.moment === "suggest" && typeof e.ref === "string" && e.ref) {
+        offerIn.current.set(carrier, e.ref);
+        if (offerIn.current.size > 20) offerIn.current.delete(offerIn.current.keys().next().value as string);
+        const ended = lineEnded.current.get(carrier);
+        if (ended !== undefined) lineSaid(carrier, ended); // the line it is part of was already said (or is being said by the box)
+      }
+      // The box's own speaker says this line: the phone stays silent and reckons when it will have ended.
+      if (e.spoken_by === "box" && typeof e.spoken === "string") lineSaid(e.event_id, Date.now() + e.spoken.length * SPOKEN_MS_PER_CHAR);
+    }
     if (!s.proactive || !synth()) return;
     // The day in words: with the narrator on, a moment is said once, as `day.narrated`, never as its raw source too.
     if (e.type === "day.coach.noted" && briefStore.on()) return;
@@ -640,9 +703,14 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     spokenIds.current.add(e.event_id);
     const waiting = queue.current.filter((j) => j.options.tag === "event");
     if (waiting.length >= MAX_QUEUED_EVENTS) cancelWhere((j) => j === waiting[0]);
-    say(sentence.text, { tag: "event", keepOnNavigate: true, raw: true });
+    const id = e.event_id;
+    say(sentence.text, { tag: "event", keepOnNavigate: true, raw: true, onDone: (finished) => (finished ? lineSaid(id, Date.now()) : undefined) });
   };
   useAtlasEvents(SPOKEN_EVENTS, (e) => speakEvent.current(e));
+  // Answered some other way (the card, another phone): the spoken window for it is over.
+  useAtlasEvents(["day.optional.answered"], (e) => {
+    if (offered.current && offered.current.id === e.id) offered.current = null;
+  });
 
   const getSettings = useCallback(() => settingsRef.current, []);
 

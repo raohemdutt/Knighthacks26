@@ -7,6 +7,7 @@
  */
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { OptionalSuggestion } from "@/components/day/OptionalSuggestion";
 import { ApiError, api, wsUrl, type Answer, type AnswerDelta, type ApprovalRequest, type AtlasEvent } from "./api";
 import { briefStore } from "./brief";
 
@@ -367,7 +368,13 @@ export function AtlasProvider({ children }: { children: ReactNode }) {
     [link, model, toasts, dismissToast, subscribe, approvals, reloadApprovals, chat, setChat, answerStream],
   );
 
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  return (
+    <Ctx.Provider value={value}>
+      {children}
+      {/* Atlas suggesting an optional event: one card over whatever screen is open (a `day.narrated` "suggest" is not toasted as well) */}
+      <OptionalSuggestion />
+    </Ctx.Provider>
+  );
 }
 
 export function useAtlas(): AtlasState {

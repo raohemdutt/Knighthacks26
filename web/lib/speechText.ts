@@ -417,6 +417,34 @@ const BRIEF =
 const STATUS =
   /^(?:how am i doing|how m i doing|how are we doing|how s it going|how is it going|am i on track|am i on time|am i behind|am i late|where should i be|where am i supposed to be|status|status report)$/;
 
+// Right after Atlas offered an optional event ("Want me to add it?"). A yes only ever raises an approval card, so
+// it may be loose ("yeah add it", "sure go ahead"). A no is recorded, so it has to be the whole utterance.
+const ADD_IT = /^(?:(?:yes|yeah|yep|yup|sure|ok|okay|please|add|add it|add that|go ahead|do it|let s do it|sounds good|i m in|count me in|it|that)(?:\s+|$))+$/;
+const AFFIRM = /\b(?:yes|yeah|yep|yup|sure|ok|okay|add|go ahead|do it|let s do it|sounds good|i m in|count me in)\b/;
+const NOT_TODAY = /^(?:no\s+)*(?:no|nope|nah|not today|not now|not this time|no thanks|no thank you|skip it|skip that|pass|i ll pass|maybe later)$/;
+
+/**
+ * What a heard phrase means in the half minute after Atlas suggested an optional event: "yes" (add it: that raises
+ * the approval card, it never approves), "no" (not today), or null for anything else, which is then heard as usual.
+ */
+export function suggestionAnswer(transcript: string): "yes" | "no" | null {
+  const said = transcript
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\b(?:atlas|hey)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!said) return null;
+  if (NOT_TODAY.test(said)) return "no";
+  return ADD_IT.test(said) && AFFIRM.test(said) ? "yes" : null;
+}
+
+/** What Atlas says back to a spoken yes or no to a suggestion. A yes is only ever a card to approve by a tap. */
+export function suggestionReply(answer: "yes" | "no", proposed: boolean): string {
+  if (answer === "no") return "Okay, not today.";
+  return proposed ? "Okay, there's a card to approve." : "Okay, noted. It is too far ahead to plan yet; I'll bring it up before it starts.";
+}
+
 /**
  * A whole utterance that is a command, never a word inside a longer sentence: "stop" stops,
  * "where does the bus stop" is a question. `expecting` says whether Atlas just asked a yes/no question.
