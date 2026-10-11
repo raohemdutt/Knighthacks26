@@ -341,12 +341,17 @@ def make_callback(cfg: argparse.Namespace, link: "Control", box: Mailbox, proxy:
     return LocalSGD()
 
 
-def time_relay(link: "Control", relay: Fetcher, record: dict[str, Any]) -> None:
+def time_relay(link: "Control", relay: Fetcher, record: dict[str, Any], timed: bool = True) -> None:
     """The final code once more over the Tailscale relay, to time that path against the proxy; outside
     trainer.train(), so trainer.train_s does not carry it. Then both ranks agree they are done, so neither closes
-    its mailbox before the peer has read it."""
+    its mailbox before the peer has read it. timed=False (--no-relay-timing, the live loop's 4-minute budget) skips
+    the fetch, about 15 s, and keeps the agreement."""
     peer = record.pop("final_peer", None)
     if peer is None or link.sock is None:
+        return
+    if not timed:
+        record["relay_exchange"] = {"skipped": "--no-relay-timing"}
+        swap_json(link.sock, {"done": True})
         return
     t0 = time.monotonic()
     try:
@@ -438,6 +443,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--path", choices=("proxy", "relay"), default="proxy", help="the data path for the rounds")
     parser.add_argument("--wait-s", type=float, default=900.0)
     parser.add_argument("--min-free-gib", type=float, default=3.0)
+    parser.add_argument("--no-relay-timing", action="store_true",
+                        help="skip timing the final code over the Tailscale relay (about 15 s; both ranks must agree)")
     cfg = parser.parse_args(argv[:cut])
     token_file = Path(cfg.token_file).expanduser()
     token = token_file.read_text().strip() if token_file.exists() else ""
@@ -461,7 +468,7 @@ def main(argv: list[str] | None = None) -> int:
         train.apply_env(train.run_env())   # before transformers imports torch, as train.main would
         callback = make_callback(cfg, link, box, proxy, relay, record)
         answer = train.main(train_argv, callbacks=[callback])
-        time_relay(link, relay, record)
+        time_relay(link, relay, record, timed=not cfg.no_relay_timing)
     finally:
         stop.set()
         token = ""
