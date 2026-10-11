@@ -236,7 +236,21 @@ def test_a_wrong_or_expired_ticket_gets_the_blurred_picture_and_no_explanation(t
     assert http.get("/capture/cam-desk/snapshot.jpg").content == today_live(FRAMES[0])  # the clear one did not take its place
 
 
-def test_the_ticket_shows_faces_only_while_the_policy_says_clear(tmp_path, monkeypatch):
+def test_an_older_box_shows_its_owner_the_clear_view_without_a_switch_and_nobody_else(tmp_path, monkeypatch):
+    """A box whose policy was written before `live_faces` existed: clear for the ticket, today's bytes without one."""
+    (tmp_path / "vault").mkdir(parents=True)
+    (tmp_path / "vault" / "policy.json").write_text('{"blur_faces": true, "paused_cameras": [], "offline": false, "keep_days": 30}')
+    policy, tickets, bus, service, http = frozen(tmp_path, monkeypatch)
+    assert http.get("/vault/policy").json()["live_faces"] == "clear"
+    ticket = {"ticket": http.post("/vault/view-ticket").json()["ticket"]}
+    assert http.get("/capture/cam-desk/snapshot.jpg", params=ticket).content == b"JPEG70:" + FRAMES[0]
+    assert http.get("/capture/live/cam-desk", params=ticket | {"max": 1}).content == mjpeg(b"JPEG70:" + FRAMES[0])
+    assert http.get("/capture/cam-desk/snapshot.jpg").content == today_live(FRAMES[0])  # no ticket: as before
+    assert http.get("/capture/live/cam-desk", params={"max": 1}).content == mjpeg(today_live(FRAMES[0]))
+    assert http.get("/capture/cam-desk/snapshot.jpg", params=ticket | {"blur": 1}).content == b"JPEG70:" + blurred_until_clear(FRAMES[0])
+
+
+def test_the_ticket_shows_faces_unless_the_owner_switched_the_clear_view_off(tmp_path, monkeypatch):
     policy, tickets, bus, service, http = frozen(tmp_path, monkeypatch)
     ticket = {"ticket": http.post("/vault/view-ticket").json()["ticket"]}
     assert http.get("/capture/cam-desk/snapshot.jpg", params=ticket).content == b"JPEG70:" + FRAMES[0]
@@ -244,6 +258,12 @@ def test_the_ticket_shows_faces_only_while_the_policy_says_clear(tmp_path, monke
     assert http.put("/vault/policy", json={"live_faces": "blurred"}).json()["live_faces"] == "blurred"
     assert http.get("/capture/cam-desk/snapshot.jpg", params=ticket).content == today_live(FRAMES[0])  # at once, same frame
     assert http.get("/capture/live/cam-desk", params=ticket | {"max": 1}).content == mjpeg(today_live(FRAMES[0]))
+
+    http.put("/vault/policy", json={"paused_cameras": ["cam-desk"]})  # a pause, then the camera back: still off
+    assert http.get("/capture/cam-desk/snapshot.jpg", params=ticket).status_code == 404
+    assert http.put("/vault/policy", json={"paused_cameras": []}).json()["live_faces"] == "blurred"
+    assert http.get("/capture/cam-desk/snapshot.jpg", params=ticket).content == today_live(FRAMES[0])
+    assert not Policy(tmp_path).live_clear  # and after a restart, from the file
 
     http.put("/vault/policy", json={"live_faces": "clear", "paused_cameras": ["cam-desk"]})
     assert http.get("/capture/cam-desk/snapshot.jpg", params=ticket).status_code == 404  # a paused camera shows nobody anything
@@ -302,7 +322,7 @@ def test_a_camera_set_to_fast_saves_one_pass_keyframes_and_they_are_still_blurre
 
 
 def test_a_policy_that_knows_nothing_of_the_clear_view_is_served_as_before(tmp_path, monkeypatch):
-    class OldPolicy:  # what contexts/capture's own tests pass in: blur and pauses, no `live_faces`
+    class OldPolicy:  # what contexts/capture's own tests pass in: blur and pauses, not the Vault's policy
         blur_faces = True
 
         def is_paused(self, camera_id):

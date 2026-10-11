@@ -138,7 +138,7 @@ class CaptureService:
     def snapshot(self, camera_id: str, clear: bool = False, blur: bool = False) -> bytes | None:
         """The newest frame as a JPEG for the phone's Live screen, faces blurred unless the policy says otherwise.
         None when the camera is unknown, paused, or has not delivered a frame yet. `clear` (the caller holds the
-        owner's view ticket) leaves the faces as they are, and only while the policy's `live_faces` is "clear";
+        owner's view ticket) leaves the faces as they are, unless the owner switched that off (`policy.live_clear`);
         this is the live picture only, a saved keyframe is blurred as before. `blur` is for a picture that will be
         kept or shared (a recorded clip): the strict blur, whatever the policy says, and `clear` is ignored."""
         import cv2
@@ -147,7 +147,7 @@ class CaptureService:
         if reader is None or (self.policy and self.policy.is_paused(camera_id)) or reader.latest() is None:
             return None
         seq, _, frame = reader.latest()
-        clear = clear and not blur and self._blur_on() and getattr(self.policy, "live_faces", None) == "clear"
+        clear = clear and not blur and self._blur_on() and getattr(self.policy, "live_clear", False)
         # the pictures of one frame are never mixed up
         key = f"{camera_id} shared" if blur else f"{camera_id} clear" if clear else camera_id
         with self._shared_lock if blur else self._snapshot_lock:

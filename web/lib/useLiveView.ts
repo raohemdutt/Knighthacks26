@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api, viewTicketReady, viewTicketState } from "./api";
+import { api, liveClear, viewTicketReady, viewTicketState } from "./api";
 
 /**
  * What the live picture on this screen shows, for the line under it.
@@ -24,7 +24,7 @@ export function useLiveView(): LiveView {
       .then(([policy]) => {
         if (!alive) return;
         if (!policy.blur_faces) setView("unblurred");
-        else setView(policy.live_faces === "clear" && viewTicketState().held ? "clear" : "blurred");
+        else setView(liveClear(policy) && viewTicketState().held ? "clear" : "blurred");
       })
       .catch(() => undefined); // no answer: say the careful thing
     return () => {

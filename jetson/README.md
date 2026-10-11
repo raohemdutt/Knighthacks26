@@ -121,7 +121,8 @@ Cameras are listed in `config/cameras.yaml` (id, `/dev/video0` or a video file, 
 `yolo11n.engine` exists (section 6), so laptops and CI skip it; `ATLAS_CAPTURE=0` turns it off. A camera that is not
 plugged in is retried every 2 s and shows as `down`. Saved pictures are always blurred: every keyframe is blurred
 before it is stored, again until the face detector finds no face (`keyframe_blur: fast` in `config/cameras.yaml` sets
-one camera back to a single pass). The live view is blurred for everyone except the owner's own signed-in screen, and
+one camera back to a single pass). The live view is blurred for everyone except the owner's own signed-in screen (clear there on
+every box, also one upgraded from before the clear view, until the owner switches "Your live view" off in Privacy), and
 every picture that leaves the box (a lab dataset export, an alert photo, a recorded clip) has its faces blurred
 whatever is on disk. The Vault policy is honoured live: a paused camera is not looked at, and a box whose policy has
 `blur_faces` off saves unblurred pictures (the app has no switch for that; see section 13 to put it right).

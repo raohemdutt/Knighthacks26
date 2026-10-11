@@ -14,8 +14,8 @@ ticket that is wrong in any way (expired, cut short, signed by another process, 
 ticket: `valid` answers False and the caller serves the blurred picture, the same as with no ticket at all.
 Nothing tells the asker which of those it was.
 
-A ticket only ever unblurs the live picture, and only while the policy's `live_faces` is "clear". It changes
-nothing that is saved, exported or sent.
+A ticket only ever unblurs the live picture, and not once the owner has set the policy's `live_faces` to
+"blurred". It changes nothing that is saved, exported or sent.
 """
 
 import hashlib
