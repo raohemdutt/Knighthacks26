@@ -99,7 +99,8 @@ async def collect(sampler: JetsonPowerSampler, limit: int | None = None) -> list
 
 def test_each_line_becomes_one_sample_with_every_field_the_done_when_names(tmp_path):
     tegrastats = ScriptedTegrastats(every(LINES[:2]))
-    sampler = JetsonPowerSampler(tegrastats, box(tmp_path), nvpmodel("MAXN_SUPER"), nvpmodel_every_s=0)
+    sampler = JetsonPowerSampler(tegrastats, box(tmp_path), nvpmodel("MAXN_SUPER"), interval_ms=100,
+                                 nvpmodel_every_s=0)
     events = asyncio.run(collect(sampler))
     common = dict(node="jetson", source="tegrastats", period_ms=100.0, nvpmodel="MAXN_SUPER",
                   oc_events={"oc1": 0, "oc2": 0, "oc3": 194}, sensor_avg_samples=4, sensor_update_ms=26.0)
@@ -115,11 +116,12 @@ def test_each_line_becomes_one_sample_with_every_field_the_done_when_names(tmp_p
     assert tegrastats.intervals == [100] and tegrastats.closed == 1
 
 
-def test_the_default_interval_is_100_ms_and_tegrastats_is_started_at_it(tmp_path):
+def test_the_default_interval_is_350_ms_and_tegrastats_is_started_at_it(tmp_path):
+    # raised from 100 ms under telemetry owner ruling 8: 100 ms cost 3.51 percent of a core (T13), budget 1 percent
     tegrastats = ScriptedTegrastats(every(LINES[:1]))
     sampler = JetsonPowerSampler(tegrastats, box(tmp_path, update="26"), nvpmodel("15W"), nvpmodel_every_s=0)
     asyncio.run(collect(sampler))
-    assert (DEFAULT_INTERVAL_MS, sampler.interval_ms, tegrastats.intervals) == (100, 100, [100])
+    assert (DEFAULT_INTERVAL_MS, sampler.interval_ms, tegrastats.intervals) == (350, 350, [350])
 
 
 def test_the_sampler_never_polls_faster_than_the_ina3221_updates(tmp_path):
@@ -146,7 +148,7 @@ def test_an_interval_under_1_ms_is_refused_before_anything_starts(tmp_path, inte
 
 def test_without_a_power_monitor_the_sample_says_so_with_nulls_and_keeps_the_requested_period(tmp_path):
     sampler = JetsonPowerSampler(ScriptedTegrastats(every(LINES[:1])), JetsonSysfs(tmp_path), nvpmodel("MAXN_SUPER"),
-                                 nvpmodel_every_s=0)
+                                 interval_ms=100, nvpmodel_every_s=0)
     [event] = asyncio.run(collect(sampler))
     assert (event.period_ms, event.sensor_avg_samples, event.sensor_update_ms, event.oc_events) == (100.0, None, None, {})
 
@@ -209,7 +211,8 @@ def test_a_sensor_update_interval_that_grows_past_the_period_restarts_tegrastats
     first = [(T0, LINES[0]), slower] + every(LINES[1:4], start=T0 + timedelta(milliseconds=100))
     second = every(LINES[4:6], start=T0 + timedelta(seconds=10), step_ms=250)
     tegrastats = ScriptedTegrastats(first, second)
-    sampler = JetsonPowerSampler(tegrastats, sysfs, nvpmodel("MAXN_SUPER"), nvpmodel_every_s=0, settings_every_s=0.2)
+    sampler = JetsonPowerSampler(tegrastats, sysfs, nvpmodel("MAXN_SUPER"), interval_ms=100, nvpmodel_every_s=0,
+                                 settings_every_s=0.2)
     waits = []
 
     async def no_wait(s):
@@ -230,7 +233,7 @@ def test_a_sensor_update_interval_that_grows_past_the_period_restarts_tegrastats
 
 def test_the_runner_reports_what_the_sampler_knows(tmp_path):
     sampler = JetsonPowerSampler(ScriptedTegrastats(every(LINES[:3])), box(tmp_path), nvpmodel("MAXN_SUPER"),
-                                 nvpmodel_every_s=0)
+                                 interval_ms=100, nvpmodel_every_s=0)
 
     async def run():
         runner = SamplerRunner(sampler, EventBus(persist=False).publish, nodes=["jetson"])
