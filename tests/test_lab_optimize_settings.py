@@ -54,7 +54,8 @@ def test_trials_run_asynchronously_from_the_initial_arms_and_resume_without_re_r
     assert t2["observation"]["joules_per_token.b1"][1] is not None and t2["git_sha"]
     assert t2["conditions"]["versions"]["python"] and t2["started"] and t2["ended"]
     rows = [r for r in ledger.read() if r["verb"] == "optimize.trial"]
-    assert len(rows) == 6 and rows[0]["refs"]["run_id"].endswith("trial-0000")
+    # two workers finish in either order, so the rows are checked as a set: one per trial, none twice
+    assert sorted(r["refs"]["run_id"] for r in rows) == [f"run/trial-{i:04d}" for i in range(6)]
     assert (tmp_path / "run" / "summary.md").read_text(encoding="utf-8").count("| completed |") == 6
 
     before = files(tmp_path)
@@ -159,3 +160,4 @@ def test_ax_takes_the_initial_arms_and_suggests_with_fixed_parameters():
                        "ttft_s.b1": (0.5, None), "watts_avg.b1": (120.0, None)})
     index, params = s.next({"linear_kernel": "exllama_fp16"})
     assert index == 5 and params["linear_kernel"] == "exllama_fp16"
+
