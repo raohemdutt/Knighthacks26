@@ -50,18 +50,21 @@ RECORD_PATTERN = "measurements*.md"  # a raw measurement record that notes cite,
 # The framing headings RESEARCH_FORMAT.md section 2 names, whose bullets are not findings, each in the singular and the
 # plural: Scope, Summary, Overview, Background, Method, Search log, Queries, Sources, References, Open questions, Gaps,
 # Limitations, Caveats, Next steps, Takeaways, Inferences, Conclusions, and Candidate experiments (ranked). A heading
-# matches when, after numbering and a trailing parenthesis are dropped, it is one of these names, or it starts with
-# "candidate experiment", "ranked" or "ranking", the forms of the ranked experiment list section 6 asks the kernels
-# note to end with. Any other heading is a topic, so "Sources of error", "Sources opened" and "Decisions" are topics.
+# matches when, after numbering and a trailing parenthesis are dropped, it is one of these names, or it starts with one
+# of the prefixes: a multi-word framing name followed by what it is about ("Open questions for R33"), the forms of the
+# ranked experiment list section 6 asks the kernels note to end with ("candidate experiment", "ranked", "ranking"),
+# and "search notes", the search log's own record of refused pages in the committed kernels hardware note. Any other
+# heading is a topic: a one-word name followed by more words ("Sources of error", "Sources opened") is a topic, and so
+# is a heading the format does not name ("Decisions").
 _EXEMPT_WORDS = frozenset(
     {
-        "scope", "summary", "overview", "background", "method", "methods", "search log", "query", "queries",
-        "source", "sources", "reference", "references", "open question", "open questions", "gap", "gaps",
-        "limitation", "limitations", "caveat", "caveats", "next step", "next steps", "takeaway", "takeaways",
+        "scope", "summary", "overview", "background", "method", "methods", "query", "queries",
+        "source", "sources", "reference", "references", "gap", "gaps",
+        "limitation", "limitations", "caveat", "caveats", "takeaway", "takeaways",
         "inference", "inferences", "conclusion", "conclusions",
     }
 )
-_EXEMPT_PREFIXES = ("candidate experiment", "ranked", "ranking")
+_EXEMPT_PREFIXES = ("search log", "open question", "next step", "candidate experiment", "ranked", "ranking", "search notes")
 
 _CODE_SPAN = re.compile(r"`[^`\n]*`")
 _HEADING = re.compile(r"^ {0,3}(#{1,6})[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$")

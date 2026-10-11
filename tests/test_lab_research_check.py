@@ -443,6 +443,10 @@ def test_a_measurements_record_is_not_a_note_and_a_notes_table_in_the_index_is_n
         "Takeaway",
         "Candidate experiments, ranked by expected gain times confidence",
         "Ranked experiments",
+        "Open questions for R33 (the measured chip sheet)",
+        "Next steps after the shootout",
+        "Search log and gaps",
+        "Search notes: pages refused by the network policy",
     ],
 )
 def test_bullets_under_non_finding_headings_are_not_checked(tmp_path, heading):
