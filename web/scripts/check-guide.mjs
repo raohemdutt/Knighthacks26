@@ -386,6 +386,25 @@ try {
   eq("legs: backwards is the same line walked the other way", WK.legBetween(legs, "WP02", "WP01").floors.map((f) => [f.floor, f.points]), [[2, [[6, 6], [5, 5]]], [1, [[1, 1], [1, 0], [0, 0]]]]);
   eq("legs: none, and none to itself", [WK.legBetween(legs, "WP01", "WP09"), WK.legBetween(legs, "WP01", "WP01")], [null, null]);
   }
+
+  // ---- the hooks each screen must keep (lib/guide-hooks.json; tests/test_guide_hooks.py checks the same in pytest)
+  {
+    const repo = join(web, "..");
+    const manifest = JSON.parse(readFileSync(join(web, "lib", "guide-hooks.json"), "utf8"));
+    for (const [kind, key, what] of [["attributes", "need", "the hook"], ["headings", "text", "the heading or label"]]) {
+      for (const row of manifest[kind]) {
+        const sources = row.files.map((f) => {
+          try {
+            return readFileSync(join(repo, f), "utf8");
+          } catch {
+            yes(`hooks: ${row.screen}: ${f} exists`, false, "(the file is gone; see web/lib/guide.ts and web/lib/guide-hooks.json)");
+            return "";
+          }
+        });
+        for (const needle of row[key]) yes(`hooks: ${row.screen} lost ${what} ${needle}`, sources.some((s) => s.includes(needle)), `(expected in ${row.files.join(" or ")}; the look guide points there: put it back, or change web/lib/guide.ts and web/lib/guide-hooks.json)`);
+      }
+    }
+  }
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }
