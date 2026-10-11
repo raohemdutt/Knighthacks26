@@ -193,12 +193,12 @@ def sources(s: Scene):
     names = ["Camera", "Apple Watch", "Outlook", "Canvas", "GroupMe", "UCF Events", "OpenStreetMap"]
     chips = "".join(f'<span class="site-chip">{n}</span>' for n in names)
     s.card(f'<div class="pk">what fed the brief</div><div class="chips">{chips}</div><div class="chips"><span class="site-tag">written on the Jetson · under 3 s</span><span class="site-tag">Approve? sent to the phone</span></div>',
-           220, 520, "0:0", out="1:0", w=1480)
+           1040, 80, "0:0", out="1:0", w=820)
     steps = [("≈10,700", "frames"), ("9,738", "things seen"), ("19", "episodes"), ("55", "answers")]
     cells = "".join(f'<div class="site-card mini" style="text-align:center"><div class="big" style="font-size:72px">{v}</div><div class="pk">{k}</div></div>' + ('<div class="ph" style="align-self:center">→</div>' if i < 3 else "")
                     for i, (v, k) in enumerate(steps))
     s.card(f'<div class="pk">what the camera captured at our table, Saturday (the box\'s own log)</div><div style="display:flex;gap:22px;margin-top:16px">{cells}</div>'
-           '<div class="chips"><span class="site-tag">with your OK: the examples it learns from</span></div>', 200, 500, "1:0", w=1520)
+           '<div class="chips"><span class="site-tag">with your OK: the examples it learns from</span></div>', 200, 560, "1:0", w=1520)
 
 
 def model(s: Scene):

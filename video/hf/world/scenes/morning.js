@@ -6,17 +6,22 @@ export default function choreograph(tl, world, scene) {
   const { state, SHOTS, HOME, P } = world, t0 = scene.start, tEnd = t0 + scene.duration, L = scene.lines;
   const { person, SPOTS } = world.room, F = world.room.F;
   const D = (c) => person.duration(c);
-  cut(tl, world, t0, SHOTS.roomWide, { room: 1, person: 1, personSleepy: 1 });
+  cut(tl, world, t0, SHOTS.roomWide, { room: 1, person: 1, personSleepy: 1, light: 0.22 });
+  // Dark while he sleeps and gets up; the lights come up as he says good morning.
+  tl.to(state, { light: 1, duration: 1.6, ease: "power2.inOut" }, at(L, 0, 0.2));
 
   // The person: on the bed's edge for "Good morning", up as Atlas answers, round the chair, seated for the brief.
   const exitAt = at(L, 1, 0.1);
   const W1 = [SPOTS.bedFront[0], F, SPOTS.bedFront[2]], W2 = [2.8, F, 13.6], W3 = SPOTS.standDesk;
   const w1 = exitAt + D("Sitting_Exit"), w2 = w1 + 1.35, w3 = w2 + 0.75, sit = w3 + D("Sitting_Enter");
-  // Lying on his back in bed, then he sits up onto the mattress's edge before he says good morning.
-  const upAt = Math.max(t0 + 0.3, at(L, 0, 0) - 1.7);
+  // Getting up the way a person does: lying on his back, he sits up in place (legs along the bed), swings round to the
+  // mattress's edge, says good morning, and then stands.
+  const upAt = Math.max(t0 + 0.3, at(L, 0, 0) - 2.3), swing = upAt + 1.1, edge = swing + 1.2;
   person.act([
     { t0, t1: upAt, clip: "Idle_Loop", loop: true, speed: 0.3, from: SPOTS.bedLie, yaw: [0], tip: [Math.PI / 2], fade: 0 },
-    { t0: upAt, t1: exitAt, clip: "Sitting_Idle_Loop", loop: true, speed: 0.5, from: SPOTS.bedEdge, yaw: [SPOTS.faceDesk], tip: [0], fade: 1.4 },
+    { t0: upAt, t1: swing, clip: "Sitting_Idle_Loop", loop: true, speed: 0.5, from: SPOTS.bedSitUp, yaw: [0], tip: [0], fade: 1.1 },
+    { t0: swing, t1: edge, clip: "Sitting_Idle_Loop", loop: true, speed: 0.5, offset: 0.55, from: SPOTS.bedSitUp, to: SPOTS.bedEdge, yaw: [0, SPOTS.faceDesk], fade: 0 },
+    { t0: edge, t1: exitAt, clip: "Sitting_Idle_Loop", loop: true, speed: 0.5, offset: 1.15, from: SPOTS.bedEdge, yaw: [SPOTS.faceDesk], fade: 0 },
     { t0: exitAt, t1: w1, clip: "Sitting_Exit", from: SPOTS.bedEdge, to: SPOTS.bedFront, yaw: [SPOTS.faceDesk], fade: 0.15 },
     { t0: w1, t1: w2, clip: "Walk_Loop", loop: true, speed: 0.95, from: W1, to: W2, yaw: [SPOTS.faceDesk, yawTo(W1, W2)], ease: "none", fade: 0.3 },
     { t0: w2, t1: w3, clip: "Walk_Loop", loop: true, speed: 0.95, offset: (w2 - w1) * 0.95, from: W2, to: W3, yaw: [yawTo(W1, W2), yawTo(W2, W3)], ease: "none", fade: 0 },

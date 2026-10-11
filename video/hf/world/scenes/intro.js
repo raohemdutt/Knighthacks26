@@ -1,7 +1,7 @@
 // Scene "intro" (beat 1): what's inside. One narrator line: "Inside: a camera, a speaker, and a Jetson that runs
 // the vision, the memory, and an agent that acts for you." Camera + world choreography on the ROOT timeline.
 //
-// Beats: the parts fall into place (the lead) -> on "Inside" the box goes see-through and opens into its exploded
+// Beats: the box settles from a glassy outline to solid (the lead) -> on "Inside" the box goes see-through and opens into its exploded
 // diagram, already open before the first part is named -> each part lights with its label as it is said (camera,
 // speaker, Jetson), the Jetson's pulse carries "the vision, the memory, and an agent" -> it closes and lands on HOME.
 // Word times are character fractions of the spoken line, so they follow the words.
@@ -13,9 +13,13 @@ export default function choreograph(tl, world, scene) {
   // ---- Opening: the hero three-quarter while the parts fall in (the lead, before the first word). ----
   const OPEN = { x: -4.3, y: 0.35, z: 6.2, tx: 0, ty: 0.15, tz: 0, fov: 30 };
   tl.set(cam, OPEN, t0);
-  tl.set(state, { drop: 1, explode: 0, xray: 0, eyes: 0, pulse: 0, membrane: 0, room: 0, person: 0 }, t0);
+  // One calm reveal instead of parts flying in: the box appears as a glassy outline, turns a little and settles solid
+  // while the camera glides in (no part moves on its own).
+  tl.set(state, { drop: 0, explode: 0, xray: 1, spin: -0.08, eyes: 0, pulse: 0, membrane: 0, room: 0, person: 0 }, t0);
   tl.set(hl, { webcam: 0, jetson: 0, speaker: 0, lid: 0, front: 0 }, t0);
-  tl.fromTo(state, { drop: 1 }, { drop: 0, duration: Math.max(1.2, l0.start - t0 - 0.3), ease: "power3.out" }, t0 + 0.1);
+  const settle = Math.max(1.2, l0.start - t0 - 0.4);
+  tl.to(state, { xray: 0, duration: settle, ease: "power2.inOut" }, t0 + 0.2);
+  tl.to(state, { spin: 0, duration: settle + 0.2, ease: "power3.out" }, t0);
   world.leg(tl, t0 + 0.1, { ...SHOTS.hero, x: -3.7, y: 0.0, z: 5.3, ty: 0.0 }, Math.max(0.5, l0.start - t0 - 0.1), "power2.out");
   tl.to(state, { eyes: 1, duration: 0.6, ease: "power2.out" }, l0.start - 0.5);
 

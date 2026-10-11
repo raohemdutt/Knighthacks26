@@ -6,7 +6,7 @@ export default function choreograph(tl, world, scene) {
   const { SHOTS, HOME } = world, t0 = scene.start, tEnd = t0 + scene.duration, L = scene.lines;
   const { person, SPOTS } = world.room;
   const WIDE = { ...SHOTS.roomWide, x: 27, z: 38, fov: 38 };
-  cut(tl, world, t0, SHOTS.roomWide, { room: 1, person: 1, personSleepy: 1 });
+  cut(tl, world, t0, SHOTS.roomWide, { room: 1, person: 1, personSleepy: 1, light: 0.22 }); // the room is dark: he's asleep
   person.act([{ t0, t1: 1e9, clip: "Idle_Loop", loop: true, speed: 0.3, from: SPOTS.bedLie, yaw: [0], tip: [Math.PI / 2], fade: 0 }]); // asleep
   world.leg(tl, t0, WIDE, Math.max(0.5, at(L, 1, 0) - t0), "none");
   camPath(tl, world, at(L, 1, 0), Math.max(1, tEnd - at(L, 1, 0) - 0.2),

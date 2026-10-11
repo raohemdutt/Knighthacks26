@@ -7,8 +7,10 @@ export default function choreograph(tl, world, scene) {
   const SHOT = { ...HOME, x: 3.6, y: 1.4, z: 5.6, fov: 32 };
   cut(tl, world, t0, SHOT, { pulse: 0.4 });
   drift(tl, world, t0, scene.duration, SHOT, { x: -0.8, z: -1.0, fov: -2 });
-  const f1 = world.flow("src-a", { from: [-6, 2.5, 5], to: P.box, count: 28, lift: 2.6 });
-  const f2 = world.flow("src-b", { from: [6, 3.0, 4], to: P.box, count: 28, lift: 2.2 });
+  // The data comes in from outside the frame (left and right of the camera), so no particle is seen appearing.
+  // Start points just past the frame's left and right edges (from this shot), so the particles enter at once.
+  const f1 = world.flow("src-in-left", { from: [-3.4, -0.1, 3.2], to: P.box, count: 30, lift: 0.7 });
+  const f2 = world.flow("src-in-right", { from: [4.2, -0.1, -1.8], to: P.box, count: 30, lift: 0.7 });
   tl.set([f1, f2], { progress: 0, density: 1 }, t0);
   tl.to([f1, f2], { progress: 1, duration: Math.max(1, L[0].duration), ease: "power1.inOut" }, at(L, 0, 0));
   tl.to([f1, f2], { density: 0, duration: 0.5 }, at(L, 1, 0));

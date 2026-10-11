@@ -22,7 +22,7 @@ FILM = ROOT / "hf" / "film.yaml"
 BEATS = {
     0: ("problem", "A dozen apps", 1.0, {}),
     1: ("intro", "Atlas", 2.4, {0: 1.0}),  # lead: the parts fall in; hold: the diagram reads before it closes
-    2: ("morning", "Good morning", 2.2, {1: 0.5, 9: 1.5}),  # lead: he sits up in bed
+    2: ("morning", "Good morning", 2.6, {1: 0.5, 9: 1.5}),  # lead: he sits up in bed and swings to its edge
     3: ("sources", "What fed the brief", 1.0, {}),
     4: ("model", "The model on the box", 1.0, {}),
     5: ("desk", "At the desk", 1.0, {2: 1.0}),

@@ -63,7 +63,7 @@ scenes:
   - who: A
     text: Behind the mug on your desk. You left them there last night.
     hold: 1.5
-  lead_s: 2.2
+  lead_s: 2.6
 - id: sources
   title: What fed the brief
   beat: 3

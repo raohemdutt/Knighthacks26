@@ -267,6 +267,7 @@ scene.add(route);
     // Sets.
     room: 0, person: 0, personLook: 0, personSmile: 0, personSleepy: 0, personStrain: 0, personTalk: 0, kitchen: 0, canThrow: 0, binCount: 0,
     control: 0, spotWalk: 0, trainee: 0, xTalk: 0, consoleCount: 0,
+    light: 1, // the room's light level: 1 = normal; the morning starts dark (about 0.22) and the lights come up
   };
   const P = {
     ...atlas.P, lab: [14, 0.8, -2], friend: friendBoxes.map((g) => [g.position.x, -0.4, g.position.z]),
@@ -304,6 +305,7 @@ scene.add(route);
   const m4 = new THREE.Matrix4(), v3 = new THREE.Vector3(), q = new THREE.Quaternion(), s3 = new THREE.Vector3(), yAxis = new THREE.Vector3(0, 1, 0);
 
   function draw(t) {
+    renderer.toneMappingExposure = EXPOSURE * Math.max(0.05, state.light ?? 1);
     camera.position.set(cam.x, cam.y, cam.z); camera.lookAt(cam.tx, cam.ty, cam.tz); camera.fov = cam.fov; camera.updateProjectionMatrix();
     // Shadows follow the action: tight in the studio, wide for the sets / lab / friends / campus, slid to the kitchen.
     const wide = clamp01(Math.max(state.lab, state.friends, state.campus, state.room, state.kitchen, state.control, state.ring * 0.6, state.explode * 0.25));

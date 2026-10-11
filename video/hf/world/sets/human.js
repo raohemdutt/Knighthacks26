@@ -28,8 +28,8 @@ export async function loadHuman() {
 export const LOOKS = {
   hemdutt: { shirt: 0x5b7fb8, pants: 0x3d4656, shoes: 0xf1f3f6, skin: 0xb98a6a, hair: "Hair_SimpleParted", hairColor: 0x2a211c },
   ilan: { shirt: 0x6f9a7a, pants: 0x55606f, shoes: 0x2f343b, skin: 0xe2bc9c, hair: "Hair_Long", hairColor: 0x4a3426 },
-  dominick: { shirt: 0xc98b5e, pants: 0x2f3a4a, shoes: 0xe9edf2, skin: 0xd8ad8a, hair: "Hair_Buzzed", hairColor: 0x3a2a20 },
-  xander: { shirt: 0xe5d54a, pants: 0x3a4250, shoes: 0x4a3a2a, skin: 0xe7c3a5, hair: "Hair_Buzzed", hairColor: 0x7a5a3a }, // hi-vis
+  dominick: { shirt: 0xc98b5e, pants: 0x2f3a4a, shoes: 0xe9edf2, skin: 0xd8ad8a, hair: "Hair_SimpleParted", hairColor: 0x3a2a20 },
+  xander: { shirt: 0xe5d54a, pants: 0x3a4250, shoes: 0x4a3a2a, skin: 0xe7c3a5, hair: "Hair_SimpleParted", hairColor: 0x7a5a3a }, // hi-vis
   trainee: { shirt: 0xd9e05a, pants: 0x4a4f5a, shoes: 0x3a3a3a, skin: 0x9a6a4a, hair: "Hair_SimpleParted", hairColor: 0x1e1a18 },
 };
 const REGION = (name) => /Head|neck/.test(name) ? "skin" : /hand|index|middle|pinky|ring|thumb|lowerarm/.test(name) ? "skin"
@@ -117,9 +117,9 @@ uniform vec3 uSkin; uniform vec3 uShirt; uniform vec3 uPants; uniform vec3 uShoe
   // Styles: "short" (a close cap), "long" (down to the neck at the back), "buzzed" (thin). Rest pose, mesh space.
   const style = outfit.hair === "Hair_Long" ? "long" : outfit.hair === "Hair_Buzzed" ? "buzzed" : "short";
   const cap = new THREE.Group(); cap.position.set(0, hcy, 0);
-  const r = Math.max(hs.x, hs.z) / 2, grow = style === "buzzed" ? 1.03 : 1.08;
+  const r = Math.max(hs.x, hs.z) / 2, grow = style === "buzzed" ? 1.1 : 1.12; // loose enough that the head never pokes through
   const dome = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 20, 0, Math.PI * 2, 0, style === "long" ? Math.PI * 0.62 : Math.PI * 0.5), hairMat);
-  dome.scale.set(hs.x / 2 * grow, hs.y / 2 * (style === "buzzed" ? 1.02 : 1.1), hs.z / 2 * grow); dome.position.y = hs.y * 0.06;
+  dome.scale.set(hs.x / 2 * grow, hs.y / 2 * (style === "buzzed" ? 1.1 : 1.14), hs.z / 2 * grow); dome.position.y = hs.y * 0.06;
   dome.rotation.x = -0.28; // tilt back (toward -z): more hair over the back of the head, the forehead stays clear
   cap.add(dome);
   if (style !== "buzzed") {
@@ -129,7 +129,22 @@ uniform vec3 uSkin; uniform vec3 uShirt; uniform vec3 uPants; uniform vec3 uShoe
   }
   if (style === "long") { const back = new THREE.Mesh(new THREE.CapsuleGeometry(r * 0.75, hs.y * 0.45, 6, 16), hairMat); back.position.set(0, -hs.y * 0.18, -r * 0.55); cap.add(back); }
   cap.traverse((o) => { if (o.isMesh) { o.castShadow = true; } });
-  headFrame.add(cap);
+  // A natural haircut: Quaternius' Universal Base Characters hair, modelled for this same mannequin in its bind space
+  // (side part by default), so it fits the head exactly; it rides in the head frame (origin at the head's centre, hence
+  // the -hc offset). The soft cap above is kept only as a fallback if the hair model did not load.
+  const hairSrc = gltf.hair && gltf.hair[outfit.hair];
+  if (hairSrc) {
+    const hair = hairSrc.clone(true);
+    hairMat.side = THREE.DoubleSide;
+    hair.traverse((o) => { if (o.isMesh) { o.material = hairMat; o.castShadow = true; o.receiveShadow = true; } });
+    hair.position.set(-hc.x, -hc.y, -hc.z);
+    // The mannequin's head is a little larger than the base character's, so the hair is scaled up about the head's
+    // centre (and lifted a touch) to sit on the scalp instead of inside it.
+    const fit = new THREE.Group(); fit.scale.set(1.16, 1.12, 1.18); fit.position.set(0, 0.012, -0.004); fit.add(hair);
+    headFrame.add(fit);
+  } else {
+    headFrame.add(cap);
+  }
   // Bone-local transform = inverse bind of the head bone x (head centre in bind space).
   if (hi >= 0) {
     const local = skinned.skeleton.boneInverses[hi].clone().multiply(new THREE.Matrix4().makeTranslation(hc.x, hc.y, hc.z));

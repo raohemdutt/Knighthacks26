@@ -8,6 +8,7 @@ const BASE = {
   membrane: 0, ring: 0, beads: 0, bars: 0, lab: 0, labGlow: 0, labCurve: 0, friends: 0, friendsLink: 0, campus: 0, route: 0, blur: 0,
   room: 0, person: 0, personLook: 0, personSmile: 0, personSleepy: 0, personStrain: 0, personTalk: 0, kitchen: 0, canThrow: 0, binCount: 0,
   control: 0, spotWalk: 0, trainee: 0, xTalk: 0, consoleCount: 0,
+  light: 1, // not 0: a cut brings the lights back to normal
 };
 const HL = { webcam: 0, jetson: 0, speaker: 0, lid: 0, front: 0 };
 

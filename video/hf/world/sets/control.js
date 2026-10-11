@@ -134,15 +134,24 @@ export function buildControl(scene, humanGltf) {
   const atlasHolder = new THREE.Group(); atlasHolder.position.set(7.6, TOP - DESK_Y, -1.9); atlasHolder.rotation.y = -0.5; atlasHolder.add(atlas.group);
   atlas.group.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   set.add(atlasHolder);
-  const chair = new THREE.Group(); chair.position.set(0.2, F, 2.0);
-  chair.add(at(rbox(3.4, 0.5, 3.2, ink, 0.2, 2), 0, 3.9, 0));
-  chair.add(at(rbox(3.2, 4.2, 0.4, ink, 0.2, 2), 0, 6.3, 1.6));
-  chair.add(at(rbox(0.4, 3.6, 0.4, steel, 0.15, 2), 0, 1.9, 0));
+  // The same office chair as the dorm's, placed the same way relative to the seated person: its centre 1.7 behind the
+  // seated root (he faces -z, so behind is +z), the backrest behind his back.
+  const seatFabric = matte({ color: 0xc9d2de, roughness: 1 });
+  const chair = new THREE.Group(); chair.position.set(0.2, F, 2.0 + 1.7);
+  chair.add(at(rbox(4.4, 0.6, 4.2, seatFabric, 0.28, 3), 0, 4.3, 0));
+  const cback = at(rbox(4.2, 4.6, 0.55, seatFabric, 0.28, 3), 0, 7.6, 2.25); cback.rotation.x = 0.1; chair.add(cback);
+  for (const sd of [-1, 1]) chair.add(at(rbox(0.25, 3.0, 0.3, ink, 0.1, 2), sd * 1.4, 5.9, 2.1));
+  const cpost = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 3.4, 12), ink); cpost.position.y = 2.3; cpost.castShadow = true; chair.add(cpost);
+  for (let k = 0; k < 5; k++) {
+    const a5 = (k / 5) * Math.PI * 2 + 0.3, leg = rbox(2.3, 0.22, 0.32, ink, 0.1, 2);
+    leg.position.set(Math.cos(a5) * 1.1, 0.62, Math.sin(a5) * 1.1); leg.rotation.y = -a5; chair.add(leg);
+    const wheel = new THREE.Mesh(new THREE.SphereGeometry(0.26, 12, 8), ink); wheel.position.set(Math.cos(a5) * 2.15, 0.26, Math.sin(a5) * 2.15); chair.add(wheel);
+  }
   set.add(chair);
 
   // Xander, seated at the console facing the window (-z), and the trainee standing to the right.
   const xander = makeHuman(humanGltf, LOOKS.xander);
-  const xHolder = new THREE.Group(); xHolder.position.set(0.6, F, 2.0); xHolder.rotation.y = Math.PI; xHolder.add(xander.root); root.add(xHolder);
+  const xHolder = new THREE.Group(); xHolder.position.set(0.2, F, 2.0); xHolder.rotation.y = Math.PI; xHolder.add(xander.root); root.add(xHolder);
   const trainee = makeHuman(humanGltf, LOOKS.trainee);
   const tHolder = new THREE.Group(); tHolder.position.set(6.4, F, -0.3); tHolder.rotation.y = Math.PI - 0.9; tHolder.add(trainee.root); root.add(tHolder);
   const people = [...xander.mats, ...trainee.mats];
