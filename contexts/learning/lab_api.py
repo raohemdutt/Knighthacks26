@@ -13,7 +13,9 @@ GET /api/learning/lab[?sample=1]
 
 GET /api/learning/lab/{run_id}[?sample=1]
     the run's story (contexts/learning/application/lab_view.py), plus "sources": every number with where it came
-    from, and "measured". 404 when no run has that id.
+    from, and "measured". 404 when no run has that id. While the run is going (L30): run_status "running" (then
+    "finished" or "failed"), steps_so_far, and stage_strip, the four stages {labeling, training, packaging, offered}
+    with their state, start, end and seconds, lit from the stage lines the relay posts (lab_import kind=stage).
 
 GET /api/learning/lab/compare[?a=<run_id>&b=<run_id>]
     two runs side by side (contexts/learning/application/lab_compare.py): the comparison document's shape (stamp, t0,
