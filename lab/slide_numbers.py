@@ -2,7 +2,7 @@
 
     python lab/slide_numbers.py --gateway http://<jetson-lan-ip>:8000 \
         --eval-before out/base.json --eval-after out/candidate.json \
-        --stats http://<jetson-lan-ip>:8000/api/stats --telemetry data/telemetry/*.jsonl
+        --stats http://<jetson-lan-ip>:8000/runtime/stats --telemetry data/telemetry/*.jsonl
 
 Prints a markdown table that pastes into the Architecture Slide (D3) and the
 Devpost (D4). Every number carries the row it came from (`metrics.jsonl:<line>`,
@@ -37,21 +37,21 @@ import httpx
 KEYS = {
     "Detector FPS (Jetson)": ["detector_fps", "fps"],
     "Student tok/s (Jetson)": ["student_tok_s", "atlas_tok_s", "tok_s"],
-    "Teacher tok/s (R9700)": ["teacher_tok_s"],
+    "Teacher tok/s (Strix Halo)": ["teacher_tok_s"],
     "Watts, Jetson": ["jetson_watts", "watts_jetson"],
-    "Watts, R9700": ["gpu_watts", "watts_gpu"],
+    "Watts, Strix Halo pod": ["gpu_watts", "watts_gpu"],
     "Joules per answer": ["joules_per_answer"],
     "Frames filtered at the edge": ["frames_filtered_pct", "motion_filtered_pct"],
     "Training minutes per run": ["train_minutes", "training_minutes"],
     "Teacher joules per token": ["teacher_joules_per_token"],
-    "Trainer samples/s (R9700)": ["trainer_samples_per_s"],
+    "Trainer samples/s (Strix Halo)": ["trainer_samples_per_s"],
 }
 # the same numbers as the lab's metrics file and ledger name them
 LAB_METRICS = {
-    "Teacher tok/s (R9700)": "teacher.decode_tok_s",
-    "Watts, R9700": "teacher.watts_avg",
+    "Teacher tok/s (Strix Halo)": "teacher.decode_tok_s",
+    "Watts, Strix Halo pod": "teacher.watts_avg",
     "Teacher joules per token": "teacher.joules_per_token",
-    "Trainer samples/s (R9700)": "trainer.samples_per_s",
+    "Trainer samples/s (Strix Halo)": "trainer.samples_per_s",
 }
 METRICS_FILE = Path(__file__).resolve().parent / "refine" / "metrics.jsonl"
 UNKNOWN = "unknown"
@@ -135,8 +135,27 @@ def _ts(text: str | None) -> datetime | None:
     return moment if moment.tzinfo else None
 
 
+# The lab moved from the R9700s (gfx1201, DUB) to the Strix Halo pods (gfx1151, SJC) on Sat 2026-10-10 at 4:25 PM ET.
+# A row tagged with the old chip, or an untagged row measured before the move, describes hardware we no longer use.
+LAB_MOVED_AT = "2026-10-10T20:25:00Z"
+
+
+def _old_chip(rec: dict) -> bool:
+    gpu = str((rec.get("conditions") or {}).get("gpu", ""))
+    if "gfx1151" in gpu or "Strix" in gpu:
+        return False
+    if "gfx1201" in gpu or "R9700" in gpu:
+        return True
+    moment = _ts(rec.get("ts"))
+    return moment is not None and moment < _ts(LAB_MOVED_AT)
+
+
 def lab_metrics(path: str | Path | None = METRICS_FILE) -> dict[str, tuple]:
-    """Newest row per metric in the lab's metrics file: metric -> (value, unit, "metrics.jsonl:<line>", ts, low)."""
+    """Newest row per metric in the lab's metrics file: metric -> (value, unit, "metrics.jsonl:<line>", ts, low).
+
+    A row from the old chip (R9700) only fills a gap: any current-chip row beats it, and it prints as low confidence
+    with "(R9700, not the current lab)" after its source, so an old number never reaches the slide as a Strix Halo one."""
+    old_rows: set[str] = set()
     out: dict[str, tuple] = {}
     if not path or not Path(path).exists():
         return out
@@ -148,8 +167,13 @@ def lab_metrics(path: str | Path | None = METRICS_FILE) -> dict[str, tuple]:
         name, moment = rec.get("metric"), _ts(rec.get("ts"))
         if name is None or rec.get("value") is None or moment is None:
             continue
-        if name not in out or moment >= _ts(out[name][3]):  # newest by measurement time; a later line wins a tie
-            out[name] = (rec["value"], rec.get("unit"), f"{Path(path).name}:{number}", rec["ts"], bool(rec.get("low_confidence")))
+        old = _old_chip(rec)
+        if name in out and old and name not in old_rows:
+            continue  # a current-chip row is already here
+        if name not in out or (name in old_rows and not old) or moment >= _ts(out[name][3]):  # newest; a later line wins a tie
+            source = f"{Path(path).name}:{number}" + (" (R9700, not the current lab)" if old else "")
+            out[name] = (rec["value"], rec.get("unit"), source, rec["ts"], old or bool(rec.get("low_confidence")))
+            (old_rows.add if old else old_rows.discard)(name)
     return out
 
 
