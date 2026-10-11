@@ -77,14 +77,15 @@ def post_loop(client, doc=None, power=True):
                 assert r.status_code == 200, r.text
 
 
-def test_a_box_that_holds_no_loop_answers_404_in_plain_words_even_with_the_rehearsal_in_the_checkout(tmp_path):
+def test_a_box_that_holds_no_loop_answers_404_in_plain_words_even_with_the_rehearsal_in_the_checkout(tmp_path, monkeypatch):
+    monkeypatch.setenv("ATLAS_DATA_DIR", str(tmp_path / "empty"))
     assert (REHEARSAL / "comparison.json").is_file()   # the fixture is right there, and is not served
     client, _ = box(tmp_path)
     r = client.get("/api/learning/lab/compare")
     assert r.status_code == 404 and "no live-loop comparison yet" in r.json()["detail"]
     assert default_dirs(None) == []
     bare = FastAPI()
-    bare.include_router(lab_router(LabView(), sample_dir=None, metrics_file=None))   # no loop folders given
+    bare.include_router(lab_router(LabView(), sample_dir=None, metrics_file=None))   # no loop folders: the data dir
     assert TestClient(bare).get("/api/learning/lab/compare").status_code == 404
 
 

@@ -117,8 +117,11 @@ def window(stages: Sequence[Mapping[str, Any]], act: str, first: str, last: str)
     return (at[first], at[last]) if first in at and last in at else None
 
 
-STAGE_WINDOWS = {"labeling": ("start", "labeled", "pod-c"), "training": ("train", "trained", "pod-d"),
-                 "packaging": ("trained", "done", "pod-d"), "act": ("start", "done", "box")}
+# The power windows the relay posts for each act: (stage, first stage line, last stage line, node). The stage windows
+# are the ones the joules are worked out over; "act" is the whole act on every node, so the box can draw all three.
+POWER_WINDOWS = (("labeling", "start", "labeled", "pod-c"), ("training", "train", "trained", "pod-d"),
+                 ("packaging", "trained", "done", "pod-d"), ("act", "start", "done", "pod-c"),
+                 ("act", "start", "done", "pod-d"), ("act", "start", "done", "box"))
 
 
 # --- energy -----------------------------------------------------------------------------------------------

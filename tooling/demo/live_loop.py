@@ -14,18 +14,23 @@ While it runs, this relay
     (lab/lab_push.py's PodSource, never written) and posts new step rows to the box's import route (lab_push's Box
     and Relay: the box keeps a step by run and number, so a grown file adds only its new steps); when an act is done it
     posts the package manifest and the stand-in gate's scores, then checks GET /api/learning/lab for the run;
+  - posts each act's stage lines as they appear (kind=stage: the Training run tab's stage strip and "running");
   - prints a stopwatch line per stage change;
   - records three power traces: pod C's and pod D's samplers (lab/pod_power.py serve, :8790 through the hub proxy,
     every second) and the box's own VDD_IN (telemetry.jetson.power on the gateway's /ws);
-  - serves the comparison card at http://127.0.0.1:8788/ (tooling/demo/live_loop_card.html): the three traces with the
-    stages drawn on them, the stopwatch, and once both acts are done the energy table, act 2 against act 1.
+  - when an act finishes, posts its power windows (kind=power: labeling on pod C, training and packaging on pod D,
+    and the whole act on all three nodes) and the comparison so far (kind=compare, the finished acts only); at the
+    end it posts both again with the last seconds of samples and the comparison of both acts. The box's Compare tab
+    (/lab/?tab=compare, GET /api/learning/lab/compare) draws them: that is where the audience looks;
+  - with --card only (off by default), also serves the old local card at http://127.0.0.1:8788/
+    (tooling/demo/live_loop_card.html).
 
 Energy is T4's rule (contexts/telemetry/application/joules.py): gross joules, the trace integrated over the window by
 contexts/telemetry/domain/energy.py's integrate (bracketing samples, interpolated edges), nothing subtracted, the
 idle beside it (the calibrated figure of config/telemetry_idle.yaml and the quiet reading measured just before the
 start). The arithmetic lives in contexts/learning/application/loop_energy.py, which the box's compare route uses
-too, so the relay and the box compute the same numbers. Windows: labeling on pod C from the act's start to the trainer's start (the pool merge, under a second, is in
-it); training on pod D from the trainer's start to its end (the model load is in it); packaging on pod D from the
+too, so the relay and the box compute the same numbers. Windows: labeling on pod C from the act's start to the
+trainer's start (the pool merge, under a second, is in it); training on pod D from the trainer's start to its end (the model load is in it); packaging on pod D from the
 trainer's end to the act's end (merge, GGUF, Q4_K_M, the stand-in gate and the offer, which take under a second). Each
 pod's clock is mapped onto this machine's from its own samples (the newest sample against the time it arrived).
 
@@ -46,7 +51,7 @@ import sys
 import tempfile
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -281,6 +286,74 @@ def card_state(state: State, traces: dict[str, Trace], pod_d: Trace) -> dict[str
     return out
 
 
+# --- what the box keeps: stage lines, power windows, the comparison ------------------------------------
+
+SAMPLERS = {"pod-c": "lab/pod_power.py serve :8790 (socket_w), polled through the hub proxy",
+            "pod-d": "lab/pod_power.py serve :8790 (socket_w), polled through the hub proxy",
+            "box": "telemetry.jetson.power VDD_IN on the gateway's /ws"}
+EDGE_S = 5.0   # samples kept either side of a window, so the box can bracket its edges
+
+
+def iso_z(t: float) -> str:
+    return datetime.fromtimestamp(t, UTC).isoformat().replace("+00:00", "Z")
+
+
+def act_lines(rows: list[dict[str, Any]], act: str) -> list[dict[str, Any]]:
+    """One act's stage lines with the task on each, as kind=stage takes them."""
+    return [{**r, "task": TASK} for r in rows if r.get("act") == act]
+
+
+def power_windows(stages: list[dict[str, Any]], act: str, run_id: str, traces: dict[str, Trace],
+                  where: dict[str, dict[str, Any]]) -> list[tuple[str, dict[str, Any]]]:
+    """(stage, window) for each of the act's windows the traces cover, in the box's kind=power shape: the samples on
+    the node's own clock a few seconds either side, the node's clock offset, the sampler and its measured period, the
+    idle floor, and the hub and account of a pod."""
+    pod_d_off = traces["pod-d"].offset
+    out = []
+    for stage, first, last, node in le.POWER_WINDOWS:
+        span = le.window(stages, act, first, last)
+        tr = traces.get(node)
+        if span is None or tr is None:
+            continue
+        points, off = tr.snapshot()
+        a, b = le.moved(span, pod_d_off, off)
+        inside = [(t, w) for t, w in points if a - EDGE_S <= t <= b + EDGE_S]
+        if not inside:
+            continue
+        gaps = sorted(y - x for (x, _), (y, _) in zip(inside, inside[1:]))
+        body = {"run_id": run_id, "stage": stage, "node": node, "sampler": SAMPLERS.get(node),
+                "period_ms": round(gaps[len(gaps) // 2] * 1000, 1) if gaps else None,
+                "idle_w": IDLE_W.get(node), "quiet_w": le.quiet_floor(points, a), "clock_offset_s": off,
+                "start": iso_z(a), "end": iso_z(b), "error": tr.error,
+                **{k: v for k, v in (where.get(node) or {}).items() if v is not None},
+                "samples": [{"ts": iso_z(t), "w": w} for t, w in inside]}
+        out.append((stage, {k: v for k, v in body.items() if v is not None}))
+    return out
+
+
+def post_windows(box: Box, stages: list[dict[str, Any]], act: str, run_id: str, traces: dict[str, Trace],
+                 where: dict[str, dict[str, Any]]) -> str:
+    """Post the act's power windows; one line of what the box said."""
+    said = []
+    for stage, body in power_windows(stages, act, run_id, traces, where):
+        answer = box.post("power", json.dumps(body).encode(), run_id, {"stage": stage})
+        said.append(f"{stage}.{body['node']} {answer.status or 'no answer'}")
+    return ", ".join(said) or "no samples to post yet"
+
+
+def post_comparison(box: Box, comparison: dict[str, Any]) -> str:
+    return box.post("compare", json.dumps(comparison).encode(), None).brief()
+
+
+def pod_where(link: PodLink) -> dict[str, Any]:
+    """The measured-row fields of a pod's samples: its hub's host and its account letter (never a token)."""
+    try:
+        host = httpx.URL(link.base_url).host
+    except Exception:
+        host = None
+    return {"hub": host, "account": link.letter}
+
+
 # --- the run -------------------------------------------------------------------------------------------
 
 def start_pod(stamp: str, slot: str, steps: int, log: Log) -> dict[str, Any]:
@@ -322,8 +395,11 @@ def run_loop(args: argparse.Namespace) -> int:
     feed.start()
     state = State()
     state.stamp = stamp
-    serve_card(args.port, state, traces, pod_d)
-    log(f"live loop {stamp}: card at http://127.0.0.1:{args.port}/   out {out}")
+    if args.card:
+        serve_card(args.port, state, traces, pod_d)
+    where = {"pod-c": pod_where(link_c), "pod-d": pod_where(link_d)}
+    log(f"live loop {stamp}: the box's Compare tab is http://{box_host}:8000/lab/?tab=compare"
+        + (f"   local card http://127.0.0.1:{args.port}/" if args.card else "") + f"   out {out}")
 
     def say(line: str) -> None:
         with state.lock:
@@ -379,6 +455,7 @@ def run_loop(args: argparse.Namespace) -> int:
     box = Box(box_url, env_value("ATLAS_TOKEN"))
     stages_path = f"l29/{stamp}/stages.jsonl"
     seen_stages = 0
+    stage_posted: dict[str, int] = {a: 0 for a in ACTS}
     relays: dict[str, Relay] = {}
     lines_posted: dict[str, int] = {}
     finished: dict[str, bool] = {a: False for a in ACTS}
@@ -406,6 +483,14 @@ def run_loop(args: argparse.Namespace) -> int:
         seen_stages = len(rows)
         with state.lock:
             acts = {a: dict(v) for a, v in state.acts.items()}
+        for act in ACTS:   # the stage strip on the box: each act's lines as they appear (the same lines again add nothing)
+            run_id, lines = acts[act].get("run_id"), act_lines(rows, act)
+            if run_id and len(lines) > stage_posted[act]:
+                answer = box.post("stage", "".join(json.dumps(x) + "\n" for x in lines).encode(), run_id, {"task": TASK})
+                if answer.ok:
+                    stage_posted[act] = len(lines)
+                else:
+                    say(f"{clock()} {act}: stage lines {answer.brief()}, next round")
         for act in ACTS:
             run_id = acts[act].get("run_id")
             if not run_id or finished[act]:
@@ -441,6 +526,11 @@ def run_loop(args: argparse.Namespace) -> int:
                 if not args.no_scores:
                     say(f"{clock()} {act}: stand-in scores {post_scores(source, box, run_id, out / act)}")
                 finished[act] = True
+                say(f"{clock()} {act}: power windows {post_windows(box, rows, act, run_id, traces, where)}")
+                done_ids = {a: acts[a].get("run_id") if finished[a] else None for a in ACTS}
+                part = compare(rows, {a: {"run_id": r} for a, r in done_ids.items()}, traces, source, out, t0,
+                               now_s() - t0 if all(finished.values()) else None, stamp)
+                say(f"{clock()} {act}: comparison so far {post_comparison(box, part)}")
                 if all(finished.values()):
                     listed(act, run_id)
                 else:   # GET /api/learning/lab can take 20 s on the box: never hold up the next read of the pod
@@ -465,11 +555,15 @@ def run_loop(args: argparse.Namespace) -> int:
     with state.lock:
         state.comparison = comparison
     (out / "comparison.json").write_text(json.dumps(comparison, indent=2) + "\n", encoding="utf-8")
+    for act in ACTS:   # the windows again with the last seconds of samples, then the whole comparison
+        if finished.get(act) and acts[act].get("run_id"):
+            log(f"{act}: final power windows {post_windows(box, stages, act, acts[act]['run_id'], traces, where)}")
+    log(f"comparison on the box: {post_comparison(box, comparison)}")
     for name, tr in traces.items():
         (out / f"power-{name}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in tr.raw), encoding="utf-8")
     write_rows(comparison, stamp)
     log(summary_text(comparison))
-    if args.hold_minutes > 0:
+    if args.card and args.hold_minutes > 0:
         log(f"card stays up at http://127.0.0.1:{args.port}/ for {args.hold_minutes} min (Ctrl-C ends it)")
         try:
             time.sleep(args.hold_minutes * 60)
@@ -589,8 +683,12 @@ def summary_text(c: dict[str, Any]) -> str:
 
 
 def fallback(args: argparse.Namespace) -> int:
-    """Push a recorded live loop (a relay --out folder or its fixture copy) to the box as finished runs, and serve the
-    card with its recorded traces and comparison. No pod is touched; no slot is needed."""
+    """Push a recorded live loop (a relay --out folder or its fixture copy) to the box as finished runs, and with
+    --card serve the card with its recorded traces and comparison. No pod is touched; no slot is needed.
+
+    Kept for tests and for repairing a box after a failed post. The demo never uses it: the screens show only what
+    the box records live, and this would put recorded runs on the box's Learning lab. It posts no comparison and no
+    power windows, so the Compare tab never shows a recorded loop."""
     from lab.lab_push import LocalSource
     folder = Path(args.fallback).expanduser()
     box_host = args.box or env_value("jetson")
@@ -633,6 +731,8 @@ def fallback(args: argparse.Namespace) -> int:
         state.acts[act]["steps"] = answers[0].get("lines")
         state.lines.append(f"{act}: {run_id}: " + "; ".join(briefs))
         print(state.lines[-1], flush=True)
+    if not args.card:
+        return 0
     serve_card(args.port, state, traces, pod_d)
     print(f"recorded card at http://127.0.0.1:{args.port}/ (Ctrl-C ends it)", flush=True)
     try:
@@ -674,17 +774,19 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--steps", type=int, default=8, help="optimizer steps per act (one loss row each)")
     p.add_argument("--every", type=float, default=5.0, help="seconds between reads of the pod's run folder")
     p.add_argument("--box", help="the box's address (default: the `jetson` key of .env)")
-    p.add_argument("--port", type=int, default=8788, help="the comparison card's port on 127.0.0.1")
+    p.add_argument("--card", action="store_true",
+                   help="also serve the old local comparison card (off: the box's Compare tab is the screen)")
+    p.add_argument("--port", type=int, default=8788, help="the local card's port on 127.0.0.1 (with --card)")
     p.add_argument("--stamp", help="the run stamp (default: local MMDD-HHMMSS); run ids are live-<stamp>-solo|duo")
     p.add_argument("--out", help="where the relay keeps its copies (default ../L29-data/<stamp>)")
     p.add_argument("--on-approval", action="store_true",
                    help="start when the box publishes learning.dataset.exported (the phone approved an export)")
     p.add_argument("--no-scores", action="store_true", help="do not post the stand-in gate's scores to the box")
     p.add_argument("--max-seconds", type=float, default=600.0, help="give up after this long")
-    p.add_argument("--hold-minutes", type=float, default=30.0, help="keep the card up this long after the end")
+    p.add_argument("--hold-minutes", type=float, default=30.0, help="with --card: keep it up this long after the end")
     p.add_argument("--check", action="store_true", help="check the pod and the box; start nothing")
     p.add_argument("--fallback", metavar="DIR",
-                   help="no pod: push a recorded loop (fixtures/learning/live-loop-2026-10-11) to the box, serve its card")
+                   help="tests and repairs only, never the demo: push a recorded loop's runs to the box")
     args = p.parse_args(argv)
     if args.check:
         return check(args)

@@ -36,7 +36,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 
 from contexts.learning.application.lab_bench import chip_of
-from contexts.learning.application.lab_compare import CompareMissing, compare_runs, default_dirs, load_loops
+from contexts.learning.application.lab_compare import CompareMissing, compare_runs, env_dirs, load_loops
 from contexts.learning.application.lab_runs import sync as sync_trainer_runs
 from contexts.learning.application.lab_sample import SAMPLE_DIR, cached_sample
 from contexts.learning.application.lab_view import SUGGESTED_EVENTS, LabView, by_file, collect_numbers, num
@@ -76,7 +76,7 @@ def lab_router(view: LabView, current_model: Callable[[], dict | None] | None = 
                sample_dir: str | Path | None = SAMPLE_DIR, metrics_file: str | Path | None = METRICS_FILE,
                loop_dirs: list[Path] | None = None) -> APIRouter:
     router = APIRouter()
-    loops_from = loop_dirs if loop_dirs is not None else default_dirs(None)
+    loops_from = loop_dirs if loop_dirs is not None else None   # None: the gateway's data dir, read per request
 
     def pick(sample: bool) -> tuple[LabView | None, str | None]:
         """The view to answer from and, when it is the sample, why."""
@@ -104,7 +104,7 @@ def lab_router(view: LabView, current_model: Callable[[], dict | None] | None = 
     def compare(a: str | None = None, b: str | None = None) -> dict:
         sync_trainer_runs(view)
         try:
-            return compare_runs(load_loops(loops_from), view, a, b)
+            return compare_runs(load_loops(loops_from if loops_from is not None else env_dirs()), view, a, b)
         except CompareMissing as err:
             raise HTTPException(404, str(err)) from None
 

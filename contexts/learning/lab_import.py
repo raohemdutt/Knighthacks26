@@ -107,7 +107,8 @@ from contracts.learning import ModelManifest, RunEvaluated, RunProgress
 from contracts.telemetry import TrainStep
 
 MAX_BYTES = 8 * 1024 * 1024  # a 10,000-step telemetry file is about 3 MB
-KINDS = ("telemetry", "eval", "manifest", "run", "stage")  # the files that become events; "ledger" is kept as a file instead
+KINDS = ("telemetry", "eval", "manifest", "run")  # the files that become events; "ledger" is kept as a file instead
+STAGE = "stage"  # the live loop's stage lines, events too (L30)
 FILE_KINDS = ("compare", "power")  # kept as files under <data-dir>/lab_loops (application/lab_loops.py)
 # the live loop's stage names -> (event id suffix, stage, progress, message); "done" is handled on its own (rc)
 STAGE_LINES: dict[str, list[tuple[str, str, float, str]]] = {
@@ -392,10 +393,10 @@ def events_of(kind: str, text: str, run_id: str | None, task: str | None = None,
         own = manifest_events(text, run_id)
     elif kind == "run":
         own = run_events(text, run_id, facts)
-    elif kind == "stage":
+    elif kind == STAGE:
         return stage_events(text, run_id, task, facts)
     else:
-        raise ImportRefused([f"kind must be one of {[*KINDS, LEDGER, *FILE_KINDS]}"])
+        raise ImportRefused([f"kind must be one of {[*KINDS, STAGE, LEDGER, *FILE_KINDS]}"])
     known = _merge(facts or {}, facts_in(own))
     if kind == "telemetry":
         return own + _training_progress([e for e in own if isinstance(e, TrainStep)], task, known)
@@ -617,11 +618,10 @@ def lab_import_router(view: LabView, publish: Callable[[Event], Awaitable[None]]
             except ImportRefused as err:
                 raise HTTPException(400, {"refused": err.problems[:PROBLEMS_SHOWN], "problems": len(err.problems)}) from None
         if kind in FILE_KINDS:
-            if data_dir is None:
-                raise HTTPException(400, {"refused": [f"this box has no data dir to keep a {kind} document in"]})
+            keep_in = data_dir if data_dir is not None else lab_loops.env_data_dir()   # an older app.py passes none
             try:
-                answer = (lab_loops.store_compare(raw, data_dir) if kind == "compare"
-                          else lab_loops.store_power(raw, data_dir, run_id, stage))
+                answer = (lab_loops.store_compare(raw, keep_in) if kind == "compare"
+                          else lab_loops.store_power(raw, keep_in, run_id, stage))
             except lab_loops.Refused as err:
                 raise HTTPException(400, {"refused": err.problems[:PROBLEMS_SHOWN], "problems": len(err.problems)}) from None
             log.info("lab %s import: %s", kind, {k: v for k, v in answer.items() if k in ("changed", "stamp", "run_id", "stage", "node")})

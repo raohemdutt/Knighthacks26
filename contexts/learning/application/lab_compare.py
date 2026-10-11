@@ -139,6 +139,12 @@ def default_dirs(data_dir: str | Path | None) -> list[Path]:
     return [lab_loops.loops_dir(data_dir)] if data_dir else []
 
 
+def env_dirs() -> list[Path]:
+    """The loops folder of a gateway whose app.py does not pass one: the data dir by the gateway's own rule
+    (ATLAS_DATA_DIR, else ./data, as contexts/gateway/bootstrap.py Settings reads it)."""
+    return default_dirs(lab_loops.env_data_dir())
+
+
 # --- one run --------------------------------------------------------------------------------------------------
 
 def _windows(loops: list[Loop], run_id: str) -> list[dict[str, Any]]:

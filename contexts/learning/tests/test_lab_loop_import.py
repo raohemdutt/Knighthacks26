@@ -74,10 +74,16 @@ def test_a_comparison_without_a_plain_stamp_or_run_ids_is_refused_and_nothing_is
     assert not (tmp_path / "data" / "lab_loops").exists()
 
 
-def test_a_box_without_a_data_dir_refuses_the_file_kinds(tmp_path):
+def test_a_gateway_that_passes_no_data_dir_keeps_them_in_its_own_data_dir(tmp_path, monkeypatch):
+    """An older app.py on the box mounts the import route without a data dir: the files go where the gateway keeps
+    its data anyway (ATLAS_DATA_DIR, else ./data), and the compare route reads them from there."""
+    monkeypatch.setenv("ATLAS_DATA_DIR", str(tmp_path / "gateway-data"))
     client, _, _ = client_for(tmp_path, data_dir=False)
-    assert client.post("/api/learning/lab/import?kind=compare", content=(REHEARSAL / "comparison.json").read_bytes()).status_code == 400
-    assert client.post(f"/api/learning/lab/import?kind=power&run_id={SOLO}&stage=labeling", json=window()).status_code == 400
+    assert client.post("/api/learning/lab/import?kind=compare", content=(REHEARSAL / "comparison.json").read_bytes()).status_code == 200
+    assert client.post(f"/api/learning/lab/import?kind=power&run_id={SOLO}&stage=labeling", json=window()).status_code == 200
+    assert (tmp_path / "gateway-data" / "lab_loops" / "1011-040342" / "comparison.json").is_file()
+    assert (tmp_path / "gateway-data" / "lab_loops" / "_power" / SOLO / "labeling.pod-c.json").is_file()
+    assert client.get("/api/learning/lab/compare").json()["asked"]["a"] == SOLO
 
 
 def test_a_power_window_is_kept_by_run_stage_and_node_with_its_sampler_fields(tmp_path):

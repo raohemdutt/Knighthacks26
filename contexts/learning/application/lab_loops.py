@@ -42,6 +42,11 @@ class Refused(ValueError):
         super().__init__("; ".join(problems))
 
 
+def env_data_dir() -> Path:
+    """The gateway's data dir by its own rule (contexts/gateway/bootstrap.py Settings): ATLAS_DATA_DIR, else ./data."""
+    return Path(os.environ.get("ATLAS_DATA_DIR", "data"))
+
+
 def loops_dir(data_dir: str | Path) -> Path:
     return Path(data_dir) / LOOPS_DIR
 
