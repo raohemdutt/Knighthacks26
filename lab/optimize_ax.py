@@ -196,7 +196,7 @@ class AxStrategy:
             try:
                 trials = self.client.get_next_trials(max_trials=1, fixed_parameters=dict(fixed) if fixed else None)
             except Exception as exc:
-                if type(exc).__name__ in ("GenerationStrategyCompleted", "OptimizationComplete"):
+                if type(exc).__name__ in ("GenerationStrategyCompleted", "OptimizationComplete", "SearchSpaceExhausted"):
                     return None
                 raise
         if not trials:

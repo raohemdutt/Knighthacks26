@@ -518,6 +518,7 @@ class Driver:
 
     def search(self, state: RunState) -> str:
         self.state = state
+        self.search_error: str | None = None
         started = time.monotonic()
         rerun = [t for t in state.trials if t["status"] == "running"]
         pending: dict[cf.Future, tuple[dict[str, Any], WorkerSlot]] = {}
@@ -540,9 +541,13 @@ class Driver:
                         if rerun:
                             submit(rerun.pop(0), w)
                             continue
-                        got = self.next_trial(w, started)
+                        try:
+                            got = self.next_trial(w, started)
+                        except Exception as exc:   # a strategy failure: the trials in flight still finish
+                            self.search_error = f"{type(exc).__name__}: {exc}"[:500]
+                            got = "error"
                         if isinstance(got, str):
-                            if got in ("stopped", "minutes", "run_minutes", "exhausted", "budget"):
+                            if got in ("stopped", "minutes", "run_minutes", "exhausted", "budget", "error"):
                                 reason = reason or got
                             w.done = got
                             continue
@@ -615,6 +620,7 @@ class Driver:
         try:
             self.replay(state)
             reason = self.search(state) if search else "confirm_only"
+            error = getattr(self, "search_error", None)
             if self.o.confirm and reason in ("budget", "exhausted", "confirm_only"):
                 confirmation = self.confirm(state, started)
                 if confirmation.get("complete"):
