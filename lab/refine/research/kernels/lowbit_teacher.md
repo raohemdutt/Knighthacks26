@@ -3,8 +3,9 @@
 Decode of the 27B teacher on the Strix Halo is weight-read bound, so fewer bits per weight is the third way past the
 bandwidth ceiling (after faster kernels and batching). This note decides how to make 3-bit and 2-bit variants of
 `Qwen/Qwen3.8-27B` that vLLM on ROCm can actually serve: the checkpoint format, the method per width, the group size
-and calibration set, the vLLM change the serving path needs, and the ceiling each width predicts. The quality cost
-and the measured speed are not here yet: they need the Colab A100 run and the pod D serve test (Open questions).
+and calibration set, the vLLM change the serving path needs, and the ceiling each width predicts. The perplexity
+cost of 3 bits is measured on the Colab A100 (Perplexity against the INT4 baseline); the measured speed and the L4 score
+are not here yet: they need the pod D serve test (Next steps).
 
 ## The checkpoint format: compressed-tensors W3A16 and W2A16
 
@@ -103,11 +104,39 @@ and the measured speed are not here yet: they need the Colab A100 run and the po
   - Implication: the gain is capped at about a third at 3 bits and about double at 2 bits, and the ExLlama-family kernel's speed on gfx1151 decides how much of it is real.
   - Candidate experiment: KL1 reports the fraction of the ceiling reached per width. Expected movement: 3-bit decode at 14 to 16 tok/s if the kernel is as efficient as the 4-bit one. Minimum sample size: 3 spawns per width. Confidence: low.
 
+## Perplexity against the INT4 baseline (R55, all five runs)
+
+All five runs scored the same 296,815 tokens of the wikitext-2-raw-v1 test split, in 145 non-overlapping windows of 2048 tokens, with `lab/lowbit_ppl.py` on one Colab A100-SXM4-40GB. Each row's JSON is in `fixtures/lab/quant/a100-2026-10-11/` under the label in the first column.
+
+| Run (`ppl-<label>.json`) | Checkpoint and form | vLLM | dtype | Perplexity | What it means against the INT4 baseline |
+| --- | --- | --- | --- | --- | --- |
+| `int4-v031` | INT4 teacher (`RedHatAI/Qwen3.8-27B-INT4`), compressed-tensors W4A16, Marlin | 0.31.0 | bf16 | 7.198 | This is the baseline every other row is read against. |
+| `int4-v019` | the same INT4 teacher, compressed-tensors W4A16, Marlin | 0.19.1 (CUDA wheel) | bf16 | 204,708 | Not a quality number: the old CUDA wheel computes garbage for this checkpoint, so the row only marks a broken loader path on CUDA (the pods' ROCm build of the same tag serves it coherently). |
+| `int4-fp16-v019` | the same INT4 teacher, compressed-tensors W4A16, Marlin | 0.19.1 (CUDA wheel) | fp16 | 202,095 | The same defect at fp16, so the activation dtype is not its cause. |
+| `w3-ct-v031` | R55's W3A16 G128, compressed-tensors, HummingLinearKernel | 0.31.0 | bf16 | 8.126 | 12.9 percent above the baseline, the quality price of going from 4 to 3 bits on general English text. |
+| `w3-gptq-v019` | R55's W3A16 G128 repacked by `lab/ct_to_gptq.py`, native `gptq` | 0.19.1 (CUDA wheel) | fp16 | 8.1225 | 12.8 percent above the baseline and within 0.04 percent of the compressed-tensors row, so the repack and the 0.19 GPTQ loader build the same model the pods' build can serve. |
+
+## Where the 3-bit checkpoint sits
+
+- **[measured]** Both forms of the 3-bit checkpoint are on Ilan's workstation, under `work/R55-data/` in the workspace folder beside the clones, and not in this repo or on any pod: `Qwen3.8-27B-W3A16-G128-GPTQ-atlas-gptq/` is the GPTQ form that serves on b1388b1 (its `model.safetensors` is 15,645,426,816 bytes, sha256 a96d73dd7d0fd3e0649f739f4c6730929d94a44490ad5417c31c55d9664dc3bd), and `Qwen3.8-27B-W3A16-G128-compressed-tensors/` is llm-compressor's own output (its `model.safetensors` is 15,562,513,160 bytes, sha256 4713c5e621383cf9d48f16a02741c0508afcd19490d7eb667a08ba7ca2aef665). All 23 files of the two folders were hashed again on the workstation on 2026-10-11 and match the lists the VM wrote. Source: `fixtures/lab/quant/a100-2026-10-11/verify-w3-local.txt` (the re-hash) beside `SHA256SUMS-w3-gptq` and `SHA256SUMS-w3-ct` in this repo.
+  - Implication: the Colab VM that made the checkpoint is gone, so this copy is the only one; KL1 and KL2 copy the GPTQ folder to pod D and run `sha256sum -c SHA256SUMS-w3-gptq` there before serving it.
+  - Candidate experiment: KL1 starts from this folder. Expected movement: none; it is the input. Minimum sample size: 1 verified copy. Confidence: high.
+- **[measured]** The 2-bit run (AutoRound W2A16 through `lab/quantize_teacher.py --width 2`, the same 512-row calibration set) started at 05:59 UTC and was applying AutoRound to decoder layer 16 of 0 to 63 at 06:44 UTC, about 2.8 minutes a layer, so a full run needs about 3 hours of A100 time (about 16 Colab units). It was stopped with the session at 06:46 UTC, so no 2-bit checkpoint or perplexity exists. Source: `fixtures/lab/quant/a100-2026-10-11/times.txt` and `w2-progress.txt` in this repo.
+  - Implication: the 2-bit variant costs three times the 3-bit run, so it is worth making only after the 3-bit one shows a speed gain on gfx1151 (Next steps).
+  - Candidate experiment: rerun `r55_w2.sh` on a fresh A100 session only after KL1 at 3 bits. Expected movement: a 2-bit checkpoint of about 10 GB and its perplexity. Minimum sample size: 1 run. Confidence: medium.
+
+## Next steps
+
+- A 3-bit teacher only pays on gfx1151 with a HIP skinny kernel like the one vLLM's `RDNAHybridW4A16LinearKernel` uses at batch 1. R63 measured tonight that the Triton lookup-table GEMV reads below the ceiling: summed over layer 3's four shapes its 3-bit mode took 863 us against 607 us for the hybrid int4 kernel, about 10 tok/s instead of the 12.7 predicted, while the hybrid kernel's HIP path already reads at 209.5 GB/s. [PR 372](https://github.com/raohemdutt/Knighthacks26/pull/372)
+- So the kernel work for 3 bits is a 3-bit unpack inside that HIP skinny path, with the same tiling. KL1 first measures the ExLlama-derived `gemm_half_q_half_gptq_3bit_kernel` that the 0.19 GPTQ path serves with no patch; if it stays below the int4 hybrid kernel's 12 tok/s, 3 bits buy nothing until that skinny kernel exists.
+- KL2 (the L4 eval on the GPTQ form) decides whether the 12.9 percent perplexity cost shows on Atlas's own traffic.
+- The 2-bit run waits on both.
+
 ## Open questions
 
 - The agreed margin for the L4 eval drop is not set; `lab/lowbit_report.py --margin` takes it once Ilan decides it.
 - Whether the ExLlama 2-bit and 3-bit HIP kernels run correctly on gfx1151, and how close to 210 GB/s they stream, is unmeasured until KL1.
-- The 3-bit quantization took 36.5 minutes at a 39.3 GB peak (measured above); the 2-bit time is still an estimate until its `atlas_quant.json` is in.
+- The 3-bit quantization took 36.5 minutes at a 39.3 GB peak (measured above); the 2-bit run's pace (about 2.8 minutes a layer, about 3 hours in all) is measured but the run was stopped unfinished (Where the 3-bit checkpoint sits).
 - Whether the 2-bit variant needs a smaller group size (AutoRound offers W2A16G64 and G32) is a follow-up if KL2 shows a large drop; it adds about 0.125 or 0.375 bits per weight.
 
 ## Search log
