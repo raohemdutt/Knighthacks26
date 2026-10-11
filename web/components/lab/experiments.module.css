@@ -1,0 +1,285 @@
+/*
+ * Experiments (Experiments.tsx): the lab's records as one compact timeline. One line per record, grouped by day; a
+ * tap opens the full card under its line. The status colour is a small dot on the line, never a curved bar, and the
+ * record it came from is a small monospace chip on the open card only.
+ */
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.summary {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.muted {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.line {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 10px 12px 12px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
+  min-width: 0;
+}
+
+.day {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.dayHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  padding: 4px 6px;
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.dayHead span {
+  font-weight: 600;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  --dot: var(--muted);
+  min-width: 0;
+}
+
+.item + .item {
+  border-top: 1px solid var(--line);
+}
+
+.itemOpen {
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.won {
+  --dot: var(--ok);
+}
+
+.lost {
+  --dot: var(--danger);
+}
+
+.running {
+  --dot: var(--accent-text);
+}
+
+.measured {
+  --dot: var(--watch);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 4.6em 22px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  padding: 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row:hover {
+  background: color-mix(in srgb, var(--surface-2) 70%, transparent);
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: -2px;
+}
+
+.timeInline {
+  display: none;
+}
+
+.time {
+  font-size: 12.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.kind {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  color: var(--muted);
+}
+
+.kind svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* the status as a dot on the icon's corner; the word itself is on the open card */
+.kind::after {
+  content: "";
+  position: absolute;
+  right: -2px;
+  bottom: -1px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dot);
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+.text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 10px;
+  min-width: 0;
+}
+
+.title {
+  font-size: 14.5px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.id {
+  margin-right: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.phrase {
+  font-size: 13.5px;
+  line-height: 1.35;
+  color: var(--muted);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.chev {
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+
+.itemOpen .chev {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chev {
+    transition: none;
+  }
+}
+
+.full {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px 12px 12px calc(4.6em + 44px);
+  min-width: 0;
+}
+
+@media (max-width: 560px) {
+  .row {
+    grid-template-columns: 20px minmax(0, 1fr) 14px;
+    gap: 10px;
+  }
+
+  .time {
+    display: none;
+  }
+
+  .timeInline {
+    display: inline;
+    font-size: 12.5px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .full {
+    padding-left: 12px;
+  }
+}
+
+.fullHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.verdict {
+  font-size: 14.5px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.recordRow {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.record {
+  display: inline-block;
+  max-width: 100%;
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent-text) 10%, var(--surface));
+  color: var(--accent-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 20px;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
