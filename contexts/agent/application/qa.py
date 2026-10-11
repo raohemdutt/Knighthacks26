@@ -393,8 +393,8 @@ class QA:
             return Answer(plan.text or NO_EVIDENCE, plan.citations, plan.model_version)
         evidence = self.prefetch(question)
         if evidence is None:
-            if self.web and OUTSIDE.search(question):  # a score or a game: straight to the tools, which can search
-                return await self.tool_loop(question, stream)
+            if self.web and OUTSIDE.search(question):  # a score or a game: search at once, no tool-choice round
+                return await self.web_first(question, stream)
             if self.talk and self.talk.wants(question):
                 a = await self.talk.reply(question, stream)
                 if self.web and unsure(a.text):  # small talk gave up ("I can't browse the web"): let the tools try
@@ -691,6 +691,16 @@ class QA:
                 msgs.append(ChatMessage(role="tool", content=result, tool_call_id=call.id))
         if not ev:
             return Answer(NO_EVIDENCE, [], self.runtime.model_info().version)
+        return await self._finish(question, ev, stream)
+
+    async def web_first(self, question: str, stream: Callable[[str], None] | None = None) -> Answer:
+        """Search with the question itself and answer from the results in one model call (checked). Saves the
+        small model's tool-choice round, the slowest part of a web question on the Jetson."""
+        ev = Evidence()
+        await self._web_call(ToolCall(id="web-first", name="web_search", arguments={"query": question}), ev,
+                             WEB_BUDGET_S)
+        if not ev:
+            return await self.tool_loop(question, stream)
         return await self._finish(question, ev, stream)
 
     async def _web_call(self, call: ToolCall, ev: Evidence, left: float) -> bool:
