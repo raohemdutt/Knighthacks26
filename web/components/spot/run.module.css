@@ -204,7 +204,12 @@
 @media (min-width: 1024px) {
   .result {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    align-items: start;
+    align-items: stretch;
+  }
+
+  /* the plan and the panel beside it end on the same line */
+  .wrap .even {
+    align-items: stretch;
   }
 }
 

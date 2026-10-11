@@ -233,7 +233,7 @@ export function ShiftRun({ shift, orders, link }: { shift: Shift; orders: WorkOr
         </span>
       </div>
 
-      <div className={o.roundGrid}>
+      <div className={`${o.roundGrid} ${r.even}`}>
         <FloorMap
           map={shift.map}
           assets={shift.assets}
