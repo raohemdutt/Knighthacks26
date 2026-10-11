@@ -1,0 +1,52 @@
+
+Displaying notes found in: .note
+  Owner                Data size 	Description
+  AMDGPU               0x00000c1c	NT_AMDGPU_METADATA (AMDGPU Metadata)
+    AMDGPU Metadata:
+---
+amdhsa.kernels:
+  - .agpr_count:     0
+    .args:
+      - .address_space:  global
+        .name:           out
+        .offset:         0
+        .size:           8
+        .value_kind:     global_buffer
+      - .name:           num_seqs
+        .offset:         8
+        .size:           4
+        .value_kind:     by_value
+    .group_segment_fixed_size: 33792
+    .kernarg_segment_align: 8
+    .kernarg_segment_size: 216
+    .max_flat_workgroup_size: 128
+    .name:           kernel_unified_attention_3d
+    .private_segment_fixed_size: 0
+    .sgpr_count:     42
+    .sgpr_spill_count: 0
+    .symbol:         kernel_unified_attention_3d.kd
+    .uses_dynamic_stack: false
+    .vgpr_count:     96
+    .vgpr_spill_count: 0
+    .wavefront_size: 32
+  - .agpr_count:     0
+    .args:
+      - .address_space:  global
+        .offset:         0
+        .size:           8
+        .value_kind:     global_buffer
+    .group_segment_fixed_size: 69632
+    .kernarg_segment_align: 8
+    .kernarg_segment_size: 64
+    .max_flat_workgroup_size: 256
+    .name:           wvSplitK_hf_sml_
+    .private_segment_fixed_size: 0
+    .sgpr_count:     30
+    .symbol:         wvSplitK_hf_sml_.kd
+    .vgpr_count:     128
+    .wavefront_size: 32
+amdhsa.target:   amdgcn-amd-amdhsa--gfx1151
+amdhsa.version:
+  - 1
+  - 2
+...
