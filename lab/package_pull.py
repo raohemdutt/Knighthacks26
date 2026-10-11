@@ -93,7 +93,7 @@ from lab.hub import Account, Hub, MissingCredentials, PodRoleError, load_account
 from lab.machine import record
 from lab.machine import stop as kill_switch
 from lab.machine.record import recorded
-from runtime.modelstore import VERIFIED_BY, VERIFIED_RECORD
+from runtime.modelstore import VERIFIED_RECORD, write_verified_record
 
 __all__ = ["PackageClient", "PullError", "Transient", "pull_package", "probe_whole_file", "fetch_manifest", "package_files",
            "serve_start", "serve_stop", "curl_lines", "run", "main", "build_parser", "write_verified"]
@@ -512,16 +512,9 @@ def pull_file(client: PackageClient, version: str, name: str, checksum: str, fol
 
 def write_verified(folder: Path, version: str, files: Sequence[FileResult]) -> Path:
     """Write <folder>/.verified.json: the files this pull hashed and found matching, with the size and mtime each had
-    then. Written to a scratch name and renamed, so a reader sees the old record, none, or the whole new one."""
-    record = {"written_by": VERIFIED_BY, "version": version,
-              "written_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-              "files": [{"name": item.name, "size": item.size, "sha256": item.sha256, "mtime_ns": item.mtime_ns}
-                        for item in files]}
-    target = folder / VERIFIED_RECORD
-    scratch = folder / f"{VERIFIED_RECORD}.tmp"
-    scratch.write_text(json.dumps(record, indent=1), encoding="utf-8")
-    os.replace(scratch, target)
-    return target
+    then (runtime/modelstore.py's write_verified_record, the writer the swap uses too)."""
+    return write_verified_record(folder, version, [{"name": item.name, "size": item.size, "sha256": item.sha256,
+                                                    "mtime_ns": item.mtime_ns} for item in files])
 
 
 def _row(client: PackageClient, verb: str, outcome: str, *, metrics: Mapping[str, Any] | None = None,
