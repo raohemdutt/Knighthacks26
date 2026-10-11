@@ -1,6 +1,6 @@
 # Two Strix Halo pods as a pair: the link between them, the role switch, and what a second pod adds
 
-R65 (2026-10-11, 3:15 to about 5 AM ET) made the two SJC pods symmetric, so either can be the teacher or the trainer,
+R65 (2026-10-11, 3:15 to about 5:10 AM ET) made the two SJC pods symmetric, so either can be the teacher or the trainer,
 and measured what a second pod can add: a model split across the two (a bigger brain) and a training job split
 across the two (a bigger lesson). Everything here was measured on the live pods through `lab/controller.py`; the raw
 outputs are in `fixtures/lab/r65-2026-10-11/`. The teacher on pod C was never stopped or restarted. Kernel speed and
@@ -131,12 +131,39 @@ the teacher's quality are out of scope.
   steps where L16 took 18, so the pair made half as many updates, each from twice the examples once averaged.
   Source: `fixtures/lab/r65-2026-10-11/lsgd1/rank0-run.json`, `fixtures/lab/r65-2026-10-11/lsgd1/rank1-run.json`,
   `fixtures/demo/l16-run.json`
-  - Implication: the speed-up is in examples per second, not in loss per second. Whether the averaged adapter scores
-    as well on held-out examples is not measured (L17's scorer), and a last-step loss is one batch's, so it is a weak
-    comparison either way.
-  - Candidate experiment: score `~/adapters/r65-lsgd1-rank1/adapter` on pod D and L16's adapter on the 58 held-out
-    examples with L17's scorer. Expected movement: within L16's run-to-run noise if half the updates at twice the
-    batch cost nothing at this data size; lower otherwise.
+  - Implication: the speed-up is in examples per second, not in loss per second; the next two findings match the
+    step count and score the held-out side.
+  - Candidate experiment: the matched-steps runs below. Expected movement: the gap closes when each rank takes L16's
+    18 steps.
+- **[measured]** With the step budget matched to L16 (18 optimizer steps a rank, 6 epochs over its 42 rows, rounds
+  every 4 steps, 5 rounds), the pair saw twice L16's examples in the same time: 766 to 771 s a rank against 785 s,
+  0.747 samples/s for the pair against 0.367 (run lsgd2). Steps after the first are no cheaper than L16's, so
+  matched steps cost L16's wall-clock, not half of it. The last step's loss was 0.0155 and 0.0117 against L16's 0.0095
+  and the mean over the run 0.0386 and 0.0423 against 0.054. With the learning rate scaled by the square root of two
+  for the doubled batch (2.83e-4, run lsgd3) the last step read 0.0132 and 0.0108 and the mean 0.040 and 0.0465, in
+  772 and 767 s. Both runs ended with identical weights on the two ranks; exchanges took 0.47 to 0.88 s a round over
+  the proxy and 14.5 to 15.4 s over the relay.
+  Source: `fixtures/lab/r65-2026-10-11/lsgd2/rank0-run.json`, `fixtures/lab/r65-2026-10-11/lsgd2/rank1-run.json`,
+  `fixtures/lab/r65-2026-10-11/lsgd3/rank0-run.json`, `fixtures/lab/r65-2026-10-11/lsgd3/rank1-run.json`,
+  `lab/refine/metrics.jsonl:1240`, `lab/refine/metrics.jsonl:1256`
+  - Implication: at matched steps the pair's mean loss is below one pod's and its last step is a little above it,
+    within the spread of single batches (0.011 to 0.016 against 0.0095); the scaled learning rate moved the last step
+    toward L16's by about 0.002. One run per setting, so none of these differences is beyond noise.
+  - Candidate experiment: three seeds each of L16 alone and of lsgd2. Expected movement: the last-step losses of the
+    two overlap. Minimum sample size: 3 runs per arm.
+- **[measured]** The two matched-steps adapters pass every held-out item the gate scores, as L16's package does: each
+  was packaged the way L5 packaged L16's (`lab/package.py` merge, GGUF, Q4_K_M, the base projector; 60 s on pod D's
+  CPU), served by llama-server on pod D with the Jetson's flags plus `--top-k 1`, and asked Dominick's golden
+  questions by `python -m contexts.agent.eval` from the workstation over the tailnet; matched to the frozen split with
+  the gate's own `lab/eval_gate.py::_match`, lsgd2 passed 24 of the 24 scorable held-out items (47 of 48 golden
+  questions overall; the miss is outside the split) and lsgd3 24 of 24 (48 of 48), against L16's package's 24 of 24.
+  Source: `fixtures/lab/r65-2026-10-11/lsgd2/candidate-heldout.json`,
+  `fixtures/lab/r65-2026-10-11/lsgd3/candidate-heldout.json`, `lab/L5_RESULT.md`, `lab/refine/metrics.jsonl:1254`
+  - Implication: the loss gap does not show on held-out answers: on this fixture the two-pod adapter is as good as the
+    one-pod adapter. This is the gate's candidate arm only (no current or teacher arm, no decision row), and 24 items
+    in 4 groups cannot separate small differences (the gate's own floor, `lab/docs/eval-gate.md`).
+  - Candidate experiment: run the full gate (`python -m lab eval-gate`) with lsgd2's package as the candidate and
+    L16's as the current. Expected movement: report-only reject on this fixture, both 24 of 24.
 - **[measured]** One round's int8 code is 32,496,600 bytes (32,464,896 values and one float32 scale per 4,096). Fetched
   through the hub proxy in 4 chunks on 4 connections during training, it took 0.62 s a round (52 MB/s, 6 rounds over
   both ranks) and no rank ever waited for it; the same code over the Tailscale relay took 13.2 to 14.9 s (2.2 to 2.5
@@ -166,16 +193,18 @@ the teacher's quality are out of scope.
 ## Which mode pays on this hardware
 
 - **[measured]** On these two pods the training split pays and the model split cannot be tried. The pair trained the
-  same examples in 1.82 times less wall-clock with an exchange that takes under a second through the hub proxy,
-  while the model split needs a network on which every rank reaches every other rank's address, which neither the
+  same examples in 1.82 times less wall-clock, or twice the examples in L16's time at L16's step count, with an
+  exchange that takes under a second through the hub proxy and an adapter that passes the same 24 of 24 held-out
+  items; the model split needs a network on which every rank reaches every other rank's address, which neither the
   cluster (its policy) nor Tailscale in userspace mode (no interface, DERP only) gives.
-  Source: `lab/refine/metrics.jsonl:1225`, `fixtures/lab/r65-2026-10-11/reach-from-pod-C.txt`,
-  `fixtures/lab/r65-2026-10-11/tun-userns-pod-C.txt`
+  Source: `lab/refine/metrics.jsonl:1225`, `lab/refine/metrics.jsonl:1240`, `lab/refine/metrics.jsonl:1254`,
+  `fixtures/lab/r65-2026-10-11/reach-from-pod-C.txt`, `fixtures/lab/r65-2026-10-11/tun-userns-pod-C.txt`
   - Implication: data-parallel training with compressed, infrequent exchanges tolerates a slow or roundabout link,
     because a LoRA delta is 32 MB against a 45 s step; a split model sends activations at every stage for every token
     and needs a real network both ways. So "a box that finds a friend gets a bigger brain and a bigger lesson" holds
-    tonight for the lesson only: a pod that finds its friend trains on twice the data per hour, with identical
-    weights at the end. The bigger brain waits for a tun device, UDP egress or a pod-to-pod rule.
+    tonight for the lesson only: a pod that finds its friend (over Tailscale) trains on twice the data in the same
+    time, ends with the same weights on both pods, and its adapter answers the held-out questions as well as one
+    pod's. The bigger brain waits for a tun device, UDP egress or a pod-to-pod rule.
   - Candidate experiment: if AMD allows pod-to-pod traffic, serve a 70B-class W4A16 checkpoint pipeline-parallel 2
     and rerun this run with k 1 over the direct link. Expected movement: the split model serves where one pod cannot
     hold it with KV room; the training exchange falls from 0.62 s to under 0.1 s a round.

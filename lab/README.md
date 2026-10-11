@@ -2062,3 +2062,10 @@ python -m lab.controller run-script --account C lab/pod_role.sh auto C   # the f
   (32.5 MB) through the hub proxy and merges it one step late; a last synchronous round leaves both ranks on the same
   weights. `lab/r65_rank.sh <rank> <run id> <peer tailnet IP> <peer hub user>` runs one rank inside its slot, with the
   peer account's token uploaded as `tokpeer.txt` (read and deleted at start).
+- **What the pair measured (2026-10-11).** Same examples as L16 split in two: 431 s against 785 s. L16's 18 steps on
+  each pod (twice L16's examples): 766 to 771 s, 0.75 samples/s for the pair against 0.367, last-step loss 0.012 to
+  0.016 against 0.0095 and run mean 0.039 to 0.047 against 0.054; packaged like L5 and asked the golden questions, the
+  adapter passed the same 24 of 24 held-out items as L16's package. A round's 32.5 MB code took 0.5 to 0.9 s over
+  the proxy and about 15 s over the Tailscale relay. `python lab/r65_rows.py --write` rebuilds the rows from
+  `fixtures/lab/r65-2026-10-11/`; they are named `trainer.split.*` so the box's single-pod figures stay single-pod.
+  `lab/r65_score.sh` packages and serves an adapter for that check.

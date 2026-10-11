@@ -33,7 +33,7 @@ RUNS = {
               "slots": "GPU Queue rows of R65 on GPU A and GPU B, 08:33 to 08:50 UTC"},
     "lsgd3": {"epochs": 6, "lr": 2.83e-4, "relay_in_train_s": False,
               "what": "matched steps with the learning rate scaled by sqrt(2) for the doubled effective batch",
-              "slots": "GPU Queue rows of R65 on GPU A and GPU B (sqrt-scaled lr)"},
+              "slots": "GPU Queue rows of R65 on GPU A and GPU B, 08:49 to 09:06 UTC"},
 }
 SHARED = {
     "model": "Qwen/Qwen3.5-4B@851bf6e", "chip": "Strix Halo gfx1151 x2", "torch": "2.9.1+rocm7.13.0",
