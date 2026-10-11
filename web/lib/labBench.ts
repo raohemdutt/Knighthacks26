@@ -220,7 +220,15 @@ export interface LabCard {
 export interface LabTimeline {
   cards: LabCard[];
   counts: Partial<Record<CardStatus, number>>;
-  experiments: { total: number; queued: number; running: number; run: number; dropped: number; source: { kind: string; ref: string | null; note: string | null } };
+  experiments: {
+    total: number;
+    queued: number;
+    running: number;
+    run: number;
+    dropped: number;
+    /** `from`: which ledger was read (LAB_STATE_DIR, the copy the lab pushed, the checkout); `received_at` and `rows` describe a pushed copy. */
+    source: { kind: string; ref: string | null; note: string | null; from?: "LAB_STATE_DIR" | "imported" | "checkout"; received_at?: string | null; rows?: number };
+  };
   passes: number;
   sessions: number;
   summary: string;
