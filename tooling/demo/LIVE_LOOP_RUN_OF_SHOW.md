@@ -1,33 +1,78 @@
 # The live learning loop: run of show (L29)
 
-One command starts two group fine-tunes on pod D, one after the other: act 1 "alone" is one member's 100 examples,
-act 2 "with a friend" is two members' 200 pooled. Each act labels at the pod C teacher (16 streams), trains a LoRA
-(8 short steps, a loss point per step), packages a Q4_K_M model and offers it. The box's Learning lab shows both runs
+One command starts two group fine-tunes, one after the other: act 1 "alone" is one member's 50 examples, act 2 "with
+a friend" is two members' 100 pooled (`--solo-examples`, `--duo-examples` per member; the budget below sets them).
+Each act labels at the teacher (16 streams), trains a LoRA (8 short steps, a loss point per step), packages a Q4_K_M
+model and offers it. The teacher is the 122B pair, served pipeline-parallel across pods C and D, its API on pod C's
+port 8000 as "teacher" and "group-brain" (the same URL and token as the 27B before it). Act 1 trains on pod D alone;
+act 2 trains on both pods at once (R65's two-pod LoRA: rank 0 on pod D, rank 1 on pod C, each on half the rows,
+int8 deltas swapped through the hub proxy every 4 steps), beside the pair. On the box, act 2 reads "2 members" and
+its training stage names both pods. The box's Learning lab shows both runs
 as they happen (Training run tab: "Running", the loss points, the stage strip labeling, training, packaging, offered),
 and its Compare tab ("Alone vs together", `/lab/?tab=compare`) shows the three power traces (teacher, trainer, box) on
 one time axis and what act 2 cost against act 1. **The Compare tab on the box's /lab is where the audience looks.**
-Everything on it is what this run posted to the box; no recording and no fixture is ever shown. Rehearsed in a pod D
-slot: **232.2 s** from the command to both runs on the box.
+Everything on it is what this run posted to the box; no recording and no fixture is ever shown. The 27B rehearsal
+(pod D alone, 100 and 200 examples) took **232.2 s**; the pair-and-two-pods version is not rehearsed yet, and its
+budget is below.
+
+## The 4-minute budget (pair teacher, act 2 on two pods)
+
+Until the R66 seat's labeling numbers arrive, the pair is assumed to label 2x slower than the 27B. The 27B labeled
+100 examples in 32.1 s and 200 in 61.8 s at 16 streams, about 0.32 s an example, so the pair is budgeted at
+r = 0.63 s an example. The other stage times are the rehearsal's: act 1's training 54 s (model load and a 30 s first
+step), packaging 71 s and 59 s, 3 s to start the pods, about 10 s for the relay's last read and posts.
+
+| From the command | What runs | Budget |
+| --- | --- | --- |
+| 0 to 3 s | pod C's rank 1 waiter and pod D's run start (two run-scripts at once) | 3 s |
+| 3 to 35 s | act 1 labels 50 examples at the pair | 50 x 0.63 = 32 s |
+| 35 to 102 s | act 1 trains on pod D, which also runs half the pair: the rehearsal's 54 s plus 25 percent | 67 s |
+| 35 to 98 s | act 2 labels 100 examples at the pair | 100 x 0.63 = 63 s |
+| 98 to 143 s | act 2 trains on both pods: handoff about 3 s, both ranks load in parallel (30 s first step), 8 steps on half the rows, 2 rounds of 0.5 to 0.9 s, a final sync; the 15 s relay timing is skipped (`--no-relay-timing`) | 45 s |
+| 102 to 173 s | act 1 packages on pod D's CPU (nice 15) | 71 s |
+| 143 to 213 s | act 2 packages, slowed while act 1 packages: the rehearsal's 59 s plus 11 | 70 s |
+| 213 to 223 s | the relay's last read, the manifest, scores, power windows and comparison posted | 10 s |
+
+So about **223 s**, 17 s under 4 minutes. In one line: the run ends at about 3 + r x (n1 + 2 x n2) + 125 s (45 s
+two-pod training, 70 s packaging, 10 s relay), where n1 is act 1's examples and n2 act 2's per member. At r = 0.63
+and 50 and 50 that is 3 + 94.5 + 125 = 222.5 s. The old sizes (100 and 100) give 3 + 189 + 125 = 317 s: too long, so
+the defaults are 50 and 50. To fit 230 s (10 s spare) r x (n1 + 2 x n2) must stay under 102 s: at r = 0.63 that is
+n1 + 2 x n2 up to 162 (50 and 50 is 150); if the pair is 3x slower (r = 0.95), 107, so `--solo-examples 35
+--duo-examples 35`. When the R66 numbers come, put their seconds per example at 16 streams in for r and pick the sizes
+from the same line. `--serial` (act 2 trains only after act 1 has packaged, for memory) adds about 75 s: it needs
+`--solo-examples 30 --duo-examples 30` or smaller.
+
+Memory: the pair runs at gpu-memory-utilization 0.65, which leaves about 22 GB a pod; a rank of the two-pod LoRA
+peaked at about 11 GB in R65, and its memory guard stops the rank (never the teacher) under 3 GiB free.
 
 ## Before the segment (10 minutes ahead)
 
-1. A GPU Queue slot for pod D, Running (`LAB_ACTOR=ilan2-agent LAB_TASK=L29 python -m lab slot request --task L29
-   --minutes 15 --kind lora --what "live loop demo"`, then `python -m lab slot start --row <row>`). Queue behind
-   anyone holding pod D (R65 may); never pre-empt.
-2. `bash tooling/demo/live_loop.sh --check` from the repo root (Git Bash). It wants: box address set, the box's
-   Learning lab answering 200, the pod C teacher queue at 0 running and 0 waiting, pod D's `check ok`, `jobs:` empty.
-3. Open the box's Compare tab on the screen now: `http://<box>:8000/lab/?tab=compare`. Until this run's act 2 has
+1. A GPU Queue slot for each pod, Running: pod D for both acts and pod C for act 2's rank 1 (`LAB_ACTOR=ilan2-agent
+   LAB_TASK=L29 python -m lab slot request --task L29 --minutes 15 --kind lora --what "live loop demo"`, then
+   `python -m lab slot start --row <row>`, once per pod). Queue behind anyone holding a pod; never pre-empt.
+2. Once per pod, before the night: both pods hold the L10 bundle from current main (`lab/pod_b_group_finetune.sh
+   bundle` and `prep`, on account D and on account C), so `lab/r65_local_sgd.py --no-relay-timing` is there, and both
+   are on the tailnet as pod-c and pod-d (`lab/pod_tailscale.sh up pod-c|pod-d`). The pair is up (the R66 seat's
+   launch), answering on pod C's port 8000 with a Qwen3.5-122B checkpoint.
+3. `bash tooling/demo/live_loop.sh --check` from the repo root (Git Bash). It wants: box address set, the box's
+   Learning lab answering 200, the teacher queue at 0 running and 0 waiting, `check ok` on both pods with
+   `two-pod LoRA ... yes` and both tailnet peers listed, `jobs:` with nothing but the pair's vLLM.
+4. Open the box's Compare tab on the screen now: `http://<box>:8000/lab/?tab=compare`. Until this run's act 2 has
    finished it says the comparison is not there yet and keeps looking (the route answers 404 until then, by design).
    Keep a second tab on the Training run tab (`http://<box>:8000/lab/`) for the live loss and the stage strip. The
    page takes up to two minutes to load the first time, and `GET /api/learning/lab` itself took 20 s once.
-4. Optional second screen: the Circle shared-brain card.
+5. Optional second screen: the Circle shared-brain card.
 
 ## The command
 
 ```bash
-bash tooling/demo/live_loop.sh --slot <GPU Queue row>                # starts now; the stopwatch starts at the command
-bash tooling/demo/live_loop.sh --slot <GPU Queue row> --on-approval   # starts when the phone approves an export
+bash tooling/demo/live_loop.sh --slot <pod D row> --slot-c <pod C row>                # starts now
+bash tooling/demo/live_loop.sh --slot <pod D row> --slot-c <pod C row> --on-approval  # when the phone approves
 ```
+
+Fallbacks, each one flag: `--teacher-expect Qwen3.8-27B` when the 27B serves on pod C instead of the pair (its
+energy is then pod C's alone; `--teacher-expect "Qwen3.5-122B|Qwen3.8-27B"` accepts either), and `--duo-pods 1`
+(no `--slot-c` needed) when pod C cannot train: act 2 then trains on pod D alone, as rehearsed.
 
 The relay prints one stopwatch line per stage and posts to the box as it goes: each act's stage lines as they appear
 (`kind=stage`), its steps (as before), and when an act finishes its power windows (`kind=power`) and the comparison so
@@ -35,8 +80,9 @@ far (`kind=compare`); at the end both again with the last seconds of samples. It
 `../L29-data/<stamp>/` and writes `live-loop.energy` rows to the lab's ledger. Run ids are `live-<MMDD-HHMMSS>-solo`
 and `live-<MMDD-HHMMSS>-duo`; the first line printed names the stamp and the Compare tab's address.
 
-Options that matter: `--steps 8` (loss points per act), `--no-scores` (see "the stand-in gate" below), `--every 5`
-(seconds between reads of pod D's run folder). `--card` also serves the old local card at http://127.0.0.1:8788/
+Options that matter: `--steps 8` (loss points per act), `--solo-examples 50` and `--duo-examples 50` (per member;
+see the budget), `--no-scores` (see "the stand-in gate" below), `--every 5` (seconds between reads of the pods'
+run folders), `--serial` (act 2 trains after act 1 has packaged). `--card` also serves the old local card at http://127.0.0.1:8788/
 (off by default; not part of the show).
 
 ## The approval path (`--on-approval`)
@@ -134,16 +180,36 @@ post, and the demo never uses it; the box would not show those runs anyway (the 
 committed rehearsal names, nor anything under fixtures/). The rehearsal's files under
 `fixtures/learning/live-loop-2026-10-11/` are test data only.
 
-## Three failure modes
+## Act 2 across two pods, step by step
 
-1. **Pod C busy.** `--check` shows the teacher queue above 0, or act 1's labeling line runs past 40 s (or act 2's past
-   70 s). The group brain shares that teacher and keeps priority. Do not restart the teacher. If the queue is busy
+1. Pod D's act 2 start line names `"members": 2`, `"pods": ["pod-d", "pod-c"]` and the part run
+   `live-<stamp>-duo.pod-c`; the box turns it into a `learning.loop.act` and shows "2 members" and both pods.
+2. When act 2's labels are in, pod D's trainer wrapper splits the training rows (even lines rank 0, odd lines rank 1)
+   and publishes rank 1's half with the trainer's dataset copy on a handoff server on 127.0.0.1:29610, which only
+   pod D's account token opens through the hub proxy.
+3. Pod C's waiter (started with pod D's token in `l29_td`, deleted on every way out) fetches the handoff, checks its
+   sha256, and trains rank 1; pod D trains rank 0. Both write telemetry; the relay posts pod C's steps and its two
+   stage lines (`rank1_train`, `rank1_trained`) under the part run id.
+4. The ranks agree over Tailscale and swap their int8 deltas through the hub proxy every 4 steps; a last round leaves
+   both on the same weights, and pod D packages rank 0's adapter as before. lab/train.py deletes each pod's data copy
+   when it ends, the waiter deletes what is left, and pod D deletes the handoff.
+5. The comparison's act 2 row sums both pods' training joules and keeps each in `training_pods`; labeling's joules are
+   both pods' (the pair), with `labeling.by_node` beside. Each pod's overlapping windows are split evenly.
+
+## Four failure modes
+
+1. **The teacher busy.** `--check` shows the teacher queue above 0, or act 1's labeling line runs past 45 s (or act 2's
+   past 75 s). The group brain shares that teacher and keeps priority. Do not restart the teacher. If the queue is busy
    before the segment, wait for it or skip the segment; never replay a recording. If it slows mid-run, let it finish;
    narrate the Training run tab while the box shows act 1, and say the total.
-2. **Pod D slot not free.** `python -m lab slot status` shows another Running row on GPU B. Queue behind it, never
-   pre-empt; if it will not free up before the segment, skip the segment. The pod script refuses to start without
-   a slot row (`--slot`), and a stamp is used once (`~/l29/<stamp>`).
-3. **The box refuses a row.** The relay's step line reads `box 400` (or 401, 404, 413) instead of `box 200`. The run
+2. **A slot not free.** `python -m lab slot status` shows another Running row on a pod. Queue behind it, never
+   pre-empt; if pod C's will not free up, run with `--duo-pods 1` (act 2 on pod D alone); if pod D's will not, skip
+   the segment. The pod script refuses to start without a slot row (`--slot`, `--slot-c`), and a stamp is used once
+   (`~/l29/<stamp>`).
+3. **Pod C's rank 1 does not start or stalls.** The relay says `pod C did not start rank 1` (then nothing ran), or act
+   2 waits in training with no `pod C rank1_train` line. Rank 0 gives up after 180 s without its peer and act 2 fails;
+   the next run uses `--duo-pods 1`. Pod C's waiter gives up after 600 s and deletes its copies and the token.
+4. **The box refuses a row.** The relay's step line reads `box 400` (or 401, 404, 413) instead of `box 200`. The run
    keeps going on pod D and the relay keeps its copies. Afterwards they post once with `python -m lab lab-push --box
    http://<box>:8000 --run-dir ../L29-data/<stamp>/<act>` (and `--manifest`, `--eval` from the same folder), and the
    comparison with `curl -X POST --data-binary @../L29-data/<stamp>/comparison.json -H "Authorization: Bearer
@@ -158,9 +224,10 @@ committed rehearsal names, nor anything under fixtures/). The rehearsal's files 
   (tests and repairs only).
 - `contexts/learning/application/loop_energy.py`: the energy arithmetic, shared by the relay and the box's compare
   route; `contexts/learning/application/lab_compare.py` and `lab_loops.py`: the box's side.
-- `tooling/demo/live_loop_pod.sh`: pod D's side (`check`, `start`), run through `python -m lab.controller run-script`;
-  it calls `lab/pod_b_group_finetune.sh run` once per act with `GATE=fake MIN_HELD_OUT=1 LABEL_WORKERS=16`,
-  `--grad-accum 1`, `--max-steps 8` and a trainer wrapper that marks the stages.
+- `tooling/demo/live_loop_pod.sh`: the pods' side (`check` on either pod, `start` on pod D, `rank1` on pod C), run
+  through `python -m lab.controller run-script`; it calls `lab/pod_b_group_finetune.sh run` once per act with
+  `GATE=fake MIN_HELD_OUT=1 LABEL_WORKERS=16`, `--grad-accum 1`, `--max-steps 8` and a trainer wrapper that marks the
+  stages and, for act 2, trains rank 0 of the two-pod LoRA.
 - `tooling/demo/live_loop_card.html`: the old local card (with `--card` only).
 - `fixtures/learning/live-loop-2026-10-11/`: the rehearsal, test data only (stages, three power traces, both runs'
   steps, manifests, scores, comparison, relay log, screenshots); never served.
