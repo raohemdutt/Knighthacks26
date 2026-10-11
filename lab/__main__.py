@@ -46,6 +46,7 @@ VERBS: dict[str, str] = {
     "chipsheet": "lab.kernels.chipsheet.ingest:main",
     "correctness": "lab.correctness:main",
     "credits": "lab.credits:main",
+    "desk-score": "lab.desk_score:main",
     "digest": "lab.machine.digest:main",
     "draft": "lab.machine.draft:main",
     "eval-gate": "lab.eval_gate:main",
