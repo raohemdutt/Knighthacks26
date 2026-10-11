@@ -44,6 +44,25 @@ def git(cwd, *args):
     return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, check=True).stdout
 
 
+def mark_sparse(fh) -> None:
+    """Flag the open file as sparse before its last byte is written at the far offset. POSIX filesystems leave the gap
+    unallocated by themselves; on Windows (NTFS) a plain file gets real zeros, 19.5 GB for the weights, which fills
+    the disk (OSError 28) and takes minutes."""
+    if os.name != "nt":
+        return
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.DeviceIoControl.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.LPVOID, wintypes.DWORD,
+                                         wintypes.LPVOID, wintypes.DWORD, ctypes.POINTER(wintypes.DWORD),
+                                         wintypes.LPVOID]
+    kernel32.DeviceIoControl.restype = wintypes.BOOL
+    fsctl_set_sparse = 0x000900C4
+    kernel32.DeviceIoControl(msvcrt.get_osfhandle(fh.fileno()), fsctl_set_sparse, None, 0, None, 0,
+                             ctypes.byref(wintypes.DWORD(0)), None)
+
+
 def make_checkpoint(folder: Path, *, skip=(), wrong=()) -> Path:
     """The checkpoint as copied from pod A: the real config.json and every other file sparse, at its size."""
     folder.mkdir(parents=True, exist_ok=True)
@@ -54,7 +73,9 @@ def make_checkpoint(folder: Path, *, skip=(), wrong=()) -> Path:
             shutil.copyfile(FIXTURE, folder / name)
             continue
         with open(folder / name, "wb") as fh:
-            fh.truncate(size + (1 if name in wrong else 0))
+            mark_sparse(fh)
+            fh.seek(size + (1 if name in wrong else 0) - 1)     # truncate would still write the zeros on Windows
+            fh.write(b"\0")
     return folder
 
 
