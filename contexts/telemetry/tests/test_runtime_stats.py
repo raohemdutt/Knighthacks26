@@ -43,10 +43,10 @@ def ledger_row(metric: str, value: float, unit: str, node: str, ts: str, low: bo
 
 
 def window(node: str, request_id: str, start_s: float, first_s: float | None, end_s: float, tokens_out: int,
-           target: str = "student") -> RequestWindow:
+           target: str = "student", kind: str | None = None) -> RequestWindow:
     return RequestWindow(ts=at(end_s), node=node, request_id=request_id, started=at(start_s),
                          first_token=None if first_s is None else at(first_s), ended=at(end_s), tokens_in=100,
-                         tokens_out=tokens_out, target=target)
+                         tokens_out=tokens_out, target=target, kind=kind)
 
 
 def step(run_id: str, n: int, s: float, step_ms: float = 2000.0) -> TrainStep:
@@ -60,7 +60,7 @@ def evaluated(run_id: str, version: str, s: float, scores: dict, decision: str =
 
 
 def snapshot(events: list[Event] = (), *, telemetry: bool = True, metrics: Path | None = None,
-             state_dir: Path | None = None) -> dict:
+             state_dir: Path | None = None, imported_dir: Path | None = None) -> dict:
     """The stats as the endpoint serves them, after `events` went through the real bus."""
 
     class Telemetry:  # the gateway's TelemetryService: only its projection is read
@@ -71,7 +71,8 @@ def snapshot(events: list[Event] = (), *, telemetry: bool = True, metrics: Path 
         service = Telemetry() if telemetry else None
         if service is not None:
             service.projection.subscribe(bus)
-        stats = build_runtime_stats(bus, service, lab=LabRecords(metrics_path=metrics, state_dir=state_dir))
+        stats = build_runtime_stats(bus, service, lab=LabRecords(metrics_path=metrics, state_dir=state_dir,
+                                                                 imported_dir=imported_dir))
         await bus.publish_all(list(events))
         return await stats.snapshot()
 
@@ -208,12 +209,12 @@ def test_with_nothing_recorded_every_figure_is_present_null_with_its_reason(tmp_
         f"{off}")
     assert stats["caption_latency_s"]["reason"] == (
         "not recorded yet: no student.caption_s row for node jetson in the lab metrics file or the lab ledger; "
-        "telemetry.request windows do not say which requests were captions")
+        f"{off}")
     assert stats["trainer_samples_per_s"]["reason"] == (
         "not recorded yet: no trainer.samples_per_s row in the lab metrics file or the lab ledger; "
         "telemetry.train.step carries no sample count")
     assert stats["train_minutes"]["reason"] == (  # training steps come from the lab, not a sampler: never "off"
-        "not recorded yet: no trainer.run_minutes row in the lab metrics file or the lab ledger; "
+        "not recorded yet: no trainer.run_minutes or trainer.train_s row in the lab metrics file or the lab ledger; "
         "no telemetry.train.step from node pod-b")
     assert stats["train_loss"]["reason"] == (
         "not recorded yet: no trainer.loss row in the lab metrics file or the lab ledger; "
@@ -229,8 +230,11 @@ def test_with_telemetry_on_but_empty_the_reason_names_the_events_it_looked_for(t
         "not recorded yet: no student.decode_tok_s row for node jetson in the lab metrics file or the lab ledger; "
         "no telemetry.request window from node jetson with a first-token time and two or more output tokens")
     assert stats["train_minutes"]["reason"] == (
-        "not recorded yet: no trainer.run_minutes row in the lab metrics file or the lab ledger; "
+        "not recorded yet: no trainer.run_minutes or trainer.train_s row in the lab metrics file or the lab ledger; "
         "no telemetry.train.step from node pod-b")
+    assert stats["caption_latency_s"]["reason"] == (
+        "not recorded yet: no student.caption_s row for node jetson in the lab metrics file or the lab ledger; "
+        "no telemetry.request window from node jetson with kind caption")
 
 
 def test_an_unreadable_metrics_file_is_named_in_the_reason_instead_of_failing_the_endpoint(tmp_path):
@@ -337,3 +341,68 @@ def test_the_pod_figures_read_the_telemetry_of_the_nodes_main_names_pod_a_and_po
     ], **nothing(tmp_path))
     assert (stats["teacher_tok_s"]["value"], stats["teacher_tok_s"]["node"]) == (9.0, "pod-a")
     assert (stats["train_minutes"]["value"], stats["train_minutes"]["node"]) == (62 / 60, "pod-b")
+
+
+def test_caption_latency_is_the_mean_start_to_end_of_the_jetsons_caption_windows(tmp_path):
+    stats = snapshot([
+        window("jetson", "c1", 0, 0.4, 2.0, tokens_out=30, kind="caption"),  # 2.0 s
+        window("jetson", "c2", 10, None, 13.0, tokens_out=25, kind="caption"),  # 3.0 s; no first-token time needed
+        window("jetson", "q1", 20, 20.5, 40.0, tokens_out=200, kind="chat"),  # an answer, not a caption
+        window("jetson", "q2", 50, 50.5, 60.0, tokens_out=100),  # no kind: never counted as a caption
+        window("pod-a", "t1", 0, 0.5, 9.0, tokens_out=80, target="teacher", kind="caption"),  # the teacher's caption
+    ], **nothing(tmp_path))
+    assert stats["caption_latency_s"] == {"value": 2.5, "unit": "s", "node": "jetson", "ts": "2026-10-10T14:00:13Z",
+                                          "source": "telemetry.request: 2 caption windows from node jetson",
+                                          "low_confidence": False, "reason": None}
+
+
+def train_row(seconds: float, ts: str) -> dict:
+    """The `train` row lab/train.py writes through @recorded: no node and no units, trainer.train_s in seconds."""
+    return {"ts": ts, "actor": "lab", "tier": None, "task": "L16", "verb": "train", "outcome": "ok",
+            "metrics": {"trainer.train_s": seconds, "trainer.samples_per_s": 0.2, "trainer.steps": 18},
+            "refs": {"run_id": "train-20261011T032149Z-7dd098"}}
+
+
+def test_train_minutes_comes_from_the_trainers_own_train_s_row_in_minutes(tmp_path):
+    state = tmp_path / "state"
+    ledger.append(train_row(1260.0, "2026-10-11T03:45:00+00:00"), state_dir=state)
+    stats = snapshot(telemetry=False, metrics=tmp_path / "metrics.jsonl", state_dir=state)
+    assert stats["train_minutes"] == {"value": 21.0, "unit": "min", "node": None, "ts": "2026-10-11T03:45:00Z",
+                                      "source": "ledger seq 1 (trainer.train_s x 0.0166667)",
+                                      "low_confidence": False, "reason": None}
+    assert (stats["trainer_samples_per_s"]["value"], stats["trainer_samples_per_s"]["source"]) == (0.2, "ledger seq 1")
+
+
+def test_a_newer_train_minutes_from_telemetry_still_wins_over_an_older_train_s_row(tmp_path):
+    state = tmp_path / "state"
+    ledger.append(train_row(1260.0, "2026-10-10T09:00:00+00:00"), state_dir=state)  # before T0
+    stats = snapshot([step("r1", 1, 0), step("r1", 2, 60), evaluated("r1", "atlas-v2", 120, {"candidate": 0.8})],
+                     metrics=tmp_path / "metrics.jsonl", state_dir=state)
+    assert (stats["train_minutes"]["value"], stats["train_minutes"]["source"]) == (
+        62 / 60, "telemetry.train.step: run r1, 2 steps")
+
+
+def test_the_ledger_the_lab_pushed_to_the_box_is_read_and_cited_as_pushed(tmp_path):
+    pushed = tmp_path / "data" / "lab_state"  # where POST /api/learning/lab/import?kind=ledger keeps it
+    ledger.append(train_row(600.0, "2026-10-11T03:45:00+00:00"), state_dir=pushed)
+    ledger.append(ledger_row("teacher.decode_tok_s", 12.5, "tok/s", "pod-a", "2026-10-11T04:00:00+00:00"),
+                  state_dir=pushed)
+    stats = snapshot(telemetry=False, metrics=tmp_path / "metrics.jsonl", state_dir=tmp_path / "state",
+                     imported_dir=pushed)
+    assert (stats["train_minutes"]["value"], stats["train_minutes"]["source"]) == (
+        10.0, "pushed ledger seq 1 (trainer.train_s x 0.0166667)")
+    assert (stats["teacher_tok_s"]["value"], stats["teacher_tok_s"]["source"]) == (12.5, "pushed ledger seq 2")
+    without = snapshot(telemetry=False, metrics=tmp_path / "metrics.jsonl", state_dir=tmp_path / "state")
+    assert without["teacher_tok_s"]["value"] is None  # not named, not read
+
+
+def test_a_torn_line_in_the_pushed_ledger_is_skipped_and_the_rows_after_it_still_answer(tmp_path):
+    pushed = tmp_path / "lab_state"  # a push cut mid-line leaves a line that is not a row (the ledger skips it)
+    ledger.append(ledger_row("teacher.decode_tok_s", 12.5, "tok/s", "pod-a", "2026-10-11T04:00:00+00:00"),
+                  state_dir=pushed)
+    with (pushed / "ledger.jsonl").open("a", encoding="utf-8") as fh:
+        fh.write('{"ts": "2026-10-11T05:00:00Z", "metr\n')
+    found, problems = LabRecords(metrics_path=tmp_path / "m.jsonl", state_dir=tmp_path / "state",
+                                 imported_dir=pushed).find([("teacher.decode_tok_s", None)])
+    assert [(f.value, f.source) for f in found[("teacher.decode_tok_s", None)]] == [(12.5, "pushed ledger seq 1")]
+    assert problems == []
