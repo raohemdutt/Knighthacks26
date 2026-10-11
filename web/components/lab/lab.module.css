@@ -1019,3 +1019,81 @@
 .stat .note {
   overflow-wrap: anywhere;
 }
+
+/* A run that is still going (L30): four stages, each lit as it reports. */
+.stages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 650;
+  transition: color 0.3s ease, background-color 0.3s ease;
+}
+
+.stageDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.35;
+}
+
+.stage_done {
+  color: var(--ok);
+}
+
+.stage_done .stageDot {
+  opacity: 1;
+}
+
+.stage_now {
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
+  color: var(--accent-text);
+}
+
+.stage_now .stageDot {
+  opacity: 1;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.stage_failed {
+  color: var(--danger);
+}
+
+.stage_failed .stageDot {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage {
+    transition: none;
+  }
+
+  .stage_now .stageDot {
+    animation: none;
+  }
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
