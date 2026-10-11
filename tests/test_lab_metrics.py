@@ -399,12 +399,27 @@ def _r62_rows() -> list[dict]:
 def test_r62_rows_match_their_result_file():
     expected = _r62_rows()
     found = [row for row in metrics.load() if row["metric"].startswith("lut_gemv.")]
+# R63: the dispatch head-to-head on pod-b, every row recomputed from its result file (lab/kernels/dispatch_bench.py)
+R63_RESULT = Path(__file__).resolve().parents[1] / "fixtures" / "lab" / "dispatch" / "dispatch-gfx1151-2026-10-11.json"
+
+
+def _r63_rows() -> list[dict]:
+    from lab.kernels import dispatch_bench
+
+    result = json.loads(R63_RESULT.read_text(encoding="utf-8"))
+    return dispatch_bench.metric_rows(result, "fixtures/lab/dispatch/dispatch-gfx1151-2026-10-11.json", "D")
+
+
+def test_r63_rows_match_their_result_file():
+    expected = _r63_rows()
+    found = [row for row in metrics.load()
+             if row["metric"].startswith(("dispatch.", "lut_gemv.mode4.")) and "R63" in row["source"]]
     assert found == [dict(metrics.check_row(row)) for row in expected]
 
 
 def test_seed_file_has_exactly_the_expected_rows_in_schema_order():
     rows = metrics.load()
-    assert len(rows) == len(EXPECTED_SEED) + len(_r62_rows())
+    assert len(rows) == len(EXPECTED_SEED) + len(_r62_rows()) + len(_r63_rows())
     for row in rows:
         assert list(row) == list(metrics.FIELDS)
 
