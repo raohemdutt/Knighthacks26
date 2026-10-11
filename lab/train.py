@@ -83,6 +83,21 @@ its search space that a trainer flag can move are --no-gradient-checkpointing, -
 torch.compile stay off. refs.settings names the run's value of every search-space setting under the search space's
 own parameter names (gdn_kernel and causal_conv1d_kernel as installed), refs.env the environment it trained under.
 
+Off the pod on an NVIDIA GPU. --cuda trains the real student on a CUDA GPU that is not the trainer pod (the Colab
+A100 of the L16 retrain): torch must be a CUDA build with a GPU visible, the pod's pinned ROCm environment is not
+exported, the data is kept as with --cpu, and the row says so: mode cuda, node cuda, refs.device the GPU's own name
+and refs.cuda the CUDA version. Nothing a --cuda run records can be read as a pod run.
+
+Warmup, validation, keeping the best. --warmup-ratio is the share of the planned optimizer steps the learning rate
+climbs over (recorded as trainer.warmup_steps). --val-rows names a second rows file, made the same way, whose
+examples must be on the split's train side and must not be among the rows trained on; with it the run measures the
+loss on those rows every --eval-steps optimizer steps and once more after the last step, appending one line per
+evaluation to <out>/validation.jsonl (step, eval_loss, examples_seen). --keep-best saves the adapter at each
+evaluation that beats every earlier one, and <out>/adapter is then that checkpoint, not the last step's
+(trainer.best_step, trainer.best_eval_loss). --early-stop N stops the run when N evaluations in a row did not
+improve. --stop-step S stops after optimizer step S while the schedule stays the one --max-steps or --epochs plans:
+it repeats the first S steps of a longer run, for retraining a kept-best checkpoint without the validation passes.
+
 The data is deleted when the run ends. On the pod, once the node check has passed, the dataset folder and the rows
 file are deleted on every way out (trained, refused, failed or interrupted), and the row of every run that was not
 interrupted records whether that worked (refs.data_deleted). A folder that does not look like a dataset export is
@@ -130,8 +145,8 @@ if TYPE_CHECKING:
     from lab.dataset import Split
 
 __all__ = ["VERB", "INSTALL_VERB", "REQUIREMENTS", "DEFAULT_BASE_REPO", "POD_GFX", "POD_NODE", "POWER_NODE",
-           "CPU_NODE", "VISION_MODULES", "CPU_PARAM_CAP", "IGNORE", "SAMPLES_MEASURE", "BASELINE", "PINNED_ENV",
-           "TrainError", "Row", "Base", "Encoded", "PowerWindow", "PowerFeed", "StepLog", "run_env", "apply_env",
+           "CPU_NODE", "CUDA_NODE", "VALIDATION_LOG", "VISION_MODULES", "CPU_PARAM_CAP", "IGNORE", "SAMPLES_MEASURE", "BASELINE", "PINNED_ENV",
+           "TrainError", "Row", "Base", "Encoded", "PowerWindow", "PowerFeed", "StepLog", "ValidationLog", "planned_steps", "cuda_gate", "run_env", "apply_env",
            "read_rows", "train_rows", "resolve_base", "span_labels",
            "expand_image_labels", "ImageSpanCollator", "pod_gate", "delete_data", "file_sha256", "read_pins",
            "pins_to_install", "protected_constraints", "install_command", "install", "torch_loss_head", "main"]
@@ -149,6 +164,9 @@ POWER_NODE = "gpu-b"                      # the name the trainer pod's sampler i
 POD_NODE = pod_power.LEDGER_NODE[POWER_NODE]   # pod-b, the trainer's role: telemetry's name (ruling 3) and the ledger's
 LEDGER_NODE = POD_NODE
 CPU_NODE = "cpu"                          # what a --cpu rehearsal puts in node, so it is never read as pod B
+CUDA_NODE = "cuda"                        # what a --cuda run puts in node: an NVIDIA GPU off the pod, named in refs.device
+VALIDATION_LOG = "validation.jsonl"       # one line per evaluation of --val-rows, under --out
+BEST_ADAPTER = "adapter-best"             # where --keep-best saves each new best, under --out
 CPU_PARAM_CAP = 50_000_000                # parameters a --cpu run accepts: a tiny model, never the real student
 DEFAULT_RUNS = "~/runs"
 DEFAULT_POWER_DIR = pod_power.DEFAULT_DIR    # where lab/pod_power.py writes its samples on the pod
@@ -740,6 +758,73 @@ def _callback(steps: StepLog) -> Any:
     return Steps()
 
 
+@dataclass
+class ValidationLog:
+    """What the evaluations of --val-rows found, and what follows from each: one line per evaluation appended to
+    `path`, the best one remembered (with keep_best, `save` is called with the best folder for each new best),
+    `stop` set once `patience` evaluations in a row did not improve. examples_seen is steps x `per_step`."""
+
+    path: Path
+    per_step: int
+    keep_best: bool = False
+    patience: int | None = None
+    best_dir: Path | None = None
+    events: list[dict[str, Any]] = field(default_factory=list)
+    best_step: int | None = None
+    best_loss: float | None = None
+    stale: int = 0
+    stop: bool = False
+
+    def evaluated(self, step: int, metrics: Mapping[str, Any], save: Callable[[Path], None] | None = None) -> bool:
+        """Record one evaluation; True when it is the best so far. A step already recorded is not recorded twice."""
+        loss = metrics.get("eval_loss")
+        if not isinstance(loss, (int, float)) or not math.isfinite(loss) or any(e["step"] == step for e in self.events):
+            return False
+        best = self.best_loss is None or loss < self.best_loss
+        event = {"step": step, "eval_loss": float(loss), "examples_seen": step * self.per_step, "best": best}
+        self.events.append(event)
+        with self.path.open("a", encoding="utf-8", newline="\n") as out:
+            out.write(json.dumps(event) + "\n")
+        if best:
+            self.best_step, self.best_loss, self.stale = step, float(loss), 0
+            if self.keep_best and save is not None and self.best_dir is not None:
+                save(self.best_dir)
+        else:
+            self.stale += 1
+            if self.patience is not None and self.stale >= self.patience:
+                self.stop = True
+        return best
+
+
+def _validation_callback(log: ValidationLog | None, stop_step: int | None) -> Any:
+    from transformers import TrainerCallback
+
+    class Validation(TrainerCallback):
+        def on_evaluate(self, args: Any, state: Any, control: Any, metrics: Mapping[str, Any] | None = None,
+                        model: Any = None, **kwargs: Any) -> None:
+            if log is None:
+                return
+            log.evaluated(state.global_step, metrics or {},
+                          (lambda folder: model.save_pretrained(str(folder))) if model is not None else None)
+            if log.stop:
+                control.should_training_stop = True
+
+        def on_step_end(self, args: Any, state: Any, control: Any, **kwargs: Any) -> None:
+            if stop_step is not None and state.global_step >= stop_step:
+                control.should_training_stop = True
+
+    return Validation()
+
+
+def planned_steps(rows: int, batch: int, grad_accum: int, epochs: float, max_steps: int | None) -> int:
+    """The optimizer steps a run plans: --max-steps, else the epochs times the steps of one epoch (the micro-batches
+    of an epoch over the accumulation, a short last step counted, as the trainer counts them)."""
+    if max_steps:
+        return max_steps
+    per_epoch = max(math.ceil(math.ceil(rows / batch) / grad_accum), 1)
+    return max(math.ceil(epochs * per_epoch), 1)
+
+
 # --- the pinned environment and the search space's settings -----------------------------------------
 
 def run_env(aotriton: bool = False, blas: str = "default", tunableop: str | None = None) -> dict[str, str | None]:
@@ -787,6 +872,18 @@ def pod_gate(torch: Any, gfx: str = POD_GFX, rocminfo: Callable[[], str] | None 
             arch = ""
     if arch.split(":")[0] != gfx:
         return f"the GPU is {arch or 'of an unknown kind'}, not {gfx}: this is not the trainer pod"
+    return None
+
+
+def cuda_gate(torch: Any) -> str | None:
+    """Why a --cuda run may not train here, or None when it may: torch is a CUDA build (never the pod's ROCm one) and
+    a GPU is visible."""
+    if getattr(getattr(torch, "version", None), "hip", None):
+        return "this torch is a ROCm build: on the trainer pod, run without --cuda"
+    if not getattr(getattr(torch, "version", None), "cuda", None):
+        return "this torch is not a CUDA build, so --cuda cannot train here (use --cpu for a rehearsal)"
+    if not torch.cuda.is_available():
+        return "no GPU is visible to torch, so --cuda cannot train here (use --cpu for a rehearsal)"
     return None
 
 
@@ -985,6 +1082,13 @@ class Plan:
     group_by_length: bool = False
     env: Mapping[str, str | None] = field(default_factory=run_env)   # what the run trains under (run_env)
     env_applied: bool = False    # exported before torch was imported (on the pod; never in a --cpu rehearsal)
+    cuda: bool = False           # an NVIDIA GPU off the pod (--cuda): trains on the GPU, keeps its data
+    warmup_ratio: float = 0.0    # share of the planned optimizer steps the learning rate climbs over
+    val_rows: tuple[Row, ...] = ()   # --val-rows: evaluated, never trained on
+    eval_steps: int | None = None
+    keep_best: bool = False
+    early_stop: int | None = None
+    stop_step: int | None = None
 
 
 @dataclass
@@ -1002,7 +1106,7 @@ def _weights_bytes(folder: Path) -> int:
 
 def _versions(torch: Any) -> dict[str, Any]:
     out = {"torch": torch.__version__, "rocm": getattr(torch.version, "hip", None) or None,
-           "python": platform.python_version()}
+           "cuda": getattr(torch.version, "cuda", None) or None, "python": platform.python_version()}
     for name in ("peft", "trl", "transformers", "accelerate", "datasets", "tokenizers"):
         out[name] = _installed(name)
     return out
@@ -1124,6 +1228,23 @@ def train(plan: Plan, callbacks: Sequence[Any] = ()) -> Trained:
     else:
         data = Dataset.from_list([{"input_ids": list(item.ids), "labels": list(item.labels)} for item in encoded])
 
+    validation = None
+    if plan.val_rows:
+        if image:
+            raise TrainError(["--val-rows takes text rows only"], outcome="usage")
+        val_problems, val_encoded = [], []
+        for row in plan.val_rows:
+            try:
+                val_encoded.append(span_labels(encode, row.text, row.spans, decode))
+            except ValueError as why:
+                val_problems.append(f"validation row {row.id!r}: {why}")
+        if val_problems:
+            raise TrainError(val_problems)
+        validation = Dataset.from_list([{"input_ids": list(item.ids), "labels": list(item.labels)}
+                                        for item in val_encoded])
+    total_steps = planned_steps(len(plan.rows), plan.batch, plan.grad_accum, plan.epochs, plan.max_steps)
+    warmup_steps = round(plan.warmup_ratio * total_steps)
+
     vision = any(re.fullmatch(VISION_MODULES, name) for name, _ in model.named_modules())
     lora = LoraConfig(r=plan.rank, lora_alpha=plan.alpha, lora_dropout=plan.dropout, target_modules="all-linear",
                       exclude_modules=VISION_MODULES if vision else None, bias="none", task_type="CAUSAL_LM")
@@ -1131,13 +1252,16 @@ def train(plan: Plan, callbacks: Sequence[Any] = ()) -> Trained:
         output_dir=str(plan.out / "trainer"), num_train_epochs=plan.epochs, max_steps=plan.max_steps or -1,
         per_device_train_batch_size=plan.batch, gradient_accumulation_steps=plan.grad_accum,
         learning_rate=plan.lr, bf16=True, logging_strategy="steps", logging_steps=1, logging_nan_inf_filter=False,
-        save_strategy="no", eval_strategy="no", report_to=[], disable_tqdm=True,
+        save_strategy="no", eval_strategy="steps" if validation is not None else "no", report_to=[],
+        disable_tqdm=True, warmup_steps=warmup_steps,
         dataloader_num_workers=plan.workers, dataloader_persistent_workers=PINNED["dataloader_persistent_workers"],
         dataloader_pin_memory=PINNED["dataloader_pin_memory"] and not plan.cpu, optim=PINNED["optim"],
         torch_compile=False, max_length=plan.max_length, packing=False, seed=plan.seed, data_seed=plan.data_seed,
         use_cpu=plan.cpu, gradient_checkpointing=plan.gradient_checkpointing,
         train_sampling_strategy="group_by_length" if plan.group_by_length else "random",
         dataset_kwargs={"skip_prepare_dataset": True}, remove_unused_columns=not image)
+    if validation is not None:
+        settings.update(eval_steps=plan.eval_steps or total_steps, per_device_eval_batch_size=plan.batch)
     if plan.gradient_checkpointing:
         settings["gradient_checkpointing_kwargs"] = {"use_reentrant": False}
     if plan.workers:
@@ -1147,8 +1271,14 @@ def train(plan: Plan, callbacks: Sequence[Any] = ()) -> Trained:
         settings["dataloader_multiprocessing_context"] = "forkserver"
     config = SFTConfig(**settings)
     steps = StepLog(plan.out / "telemetry.jsonl", plan.run_id, plan.node, plan.power)
-    trainer = SFTTrainer(model=model, args=config, train_dataset=data, processing_class=processing,
-                         peft_config=lora, data_collator=collator, callbacks=[_callback(steps), *callbacks])
+    checks = None
+    if validation is not None:
+        (plan.out / VALIDATION_LOG).unlink(missing_ok=True)
+        checks = ValidationLog(plan.out / VALIDATION_LOG, plan.batch * plan.grad_accum, plan.keep_best,
+                               plan.early_stop, plan.out / BEST_ADAPTER)
+    trainer = SFTTrainer(model=model, args=config, train_dataset=data, eval_dataset=validation,
+                         processing_class=processing, peft_config=lora, data_collator=collator,
+                         callbacks=[_callback(steps), _validation_callback(checks, plan.stop_step), *callbacks])
     trainable, total = _check_frozen(trainer.model)
     if config.torch_compile or config.packing:
         raise TrainError(["torch.compile or packing is on; both stay off (R36: packing needs fla and a varlen "
@@ -1162,7 +1292,16 @@ def train(plan: Plan, callbacks: Sequence[Any] = ()) -> Trained:
         result = trainer.train()
         seconds = time.perf_counter() - clock
         ended = dt.datetime.now(dt.timezone.utc)
+        eval_seconds = 0.0
+        if checks is not None and not any(e["step"] == trainer.state.global_step for e in checks.events):
+            mark = time.perf_counter()
+            trainer.evaluate()    # the last step is a candidate too; on_evaluate records it (and saves it when best)
+            eval_seconds = time.perf_counter() - mark
     trainer.save_model(str(plan.out / "adapter"))
+    if checks is not None and plan.keep_best and checks.best_step is not None \
+            and checks.best_step != trainer.state.global_step:   # the best checkpoint's weights over the last step's
+        shutil.copytree(plan.out / BEST_ADAPTER, plan.out / "adapter", dirs_exist_ok=True)
+    shutil.rmtree(plan.out / BEST_ADAPTER, ignore_errors=True)
     # The whole run's power, summarized exactly as `python -m lab gpu-power record` summarizes a window.
     run_power = plan.power.summary(began, ended) if plan.power is not None else None
 
@@ -1182,8 +1321,18 @@ def train(plan: Plan, callbacks: Sequence[Any] = ()) -> Trained:
         "trainer.peak_socket_w": run_power["max_w"] if run_power else None,
         "trainer.energy_j": run_power["energy_j"] if run_power else None,
         "trainer.batch": config.per_device_train_batch_size, "trainer.grad_accum": config.gradient_accumulation_steps,
-        "trainer.lora_rank": plan.rank,
+        "trainer.lora_rank": plan.rank, "trainer.lora_dropout": plan.dropout, "trainer.learning_rate": plan.lr,
+        "trainer.planned_steps": total_steps, "trainer.warmup_steps": warmup_steps,
     }
+    if checks is not None:
+        last = checks.events[-1] if checks.events else None
+        metrics.update({
+            "trainer.val_examples": len(plan.val_rows), "trainer.evaluations": len(checks.events),
+            "trainer.best_step": checks.best_step, "trainer.best_eval_loss": checks.best_loss,
+            "trainer.best_examples_seen": (checks.best_step or 0) * config.per_device_train_batch_size
+            * config.gradient_accumulation_steps,
+            "trainer.final_eval_loss": last["eval_loss"] if last else None,
+            "trainer.final_eval_s": eval_seconds})
     if config.max_length is not None:
         metrics["trainer.max_length"] = config.max_length
     if torch.cuda.is_available() and not plan.cpu:
@@ -1201,7 +1350,11 @@ def train(plan: Plan, callbacks: Sequence[Any] = ()) -> Trained:
         "settings": _config_text(_settings(config, plan)),
         "effective_batch": config.per_device_train_batch_size * config.gradient_accumulation_steps,
         "attn_implementation": getattr(model.config, "_attn_implementation", None),
-        "env": _config_text(plan.env), "env_applied": "yes" if plan.env_applied else "no: a --cpu rehearsal",
+        "env": _config_text(plan.env),
+        "env_applied": "yes" if plan.env_applied else "no: a --cuda run off the pod" if plan.cuda
+        else "no: a --cpu rehearsal",
+        "adapter_is": ("the best evaluation's checkpoint" if checks is not None and plan.keep_best
+                       and checks.best_step is not None else "the last step's weights"),
         "lora_config": _config_text(effective_lora), "sft_config": _config_text(config.to_dict()),
         "samples_measure": SAMPLES_MEASURE, "adapter": str(plan.out / "adapter"),
         "telemetry": str(plan.out / "telemetry.jsonl"),
@@ -1272,6 +1425,20 @@ def _parser() -> argparse.ArgumentParser:
                         help="the pod whose sampler samples are read (gpu-b or pod-b, the same pod)")
     parser.add_argument("--gfx", default=POD_GFX, help="the GPU the trainer pod must have")
     parser.add_argument("--cpu", action="store_true", help="a rehearsal on the CPU with a tiny model")
+    parser.add_argument("--cuda", action="store_true",
+                        help="train on an NVIDIA GPU off the pod (the Colab A100): no pod check, the data is kept, "
+                             "and the row says mode cuda with the GPU's own name")
+    parser.add_argument("--warmup-ratio", type=float, default=0.0,
+                        help="share of the planned optimizer steps the learning rate climbs over (default 0)")
+    parser.add_argument("--val-rows", help="a rows JSONL of train-side examples that are evaluated, never trained on")
+    parser.add_argument("--eval-steps", type=_positive(int),
+                        help="evaluate --val-rows every this many optimizer steps (default: only after the last)")
+    parser.add_argument("--keep-best", action="store_true",
+                        help="<out>/adapter is the checkpoint of the best evaluation, not the last step")
+    parser.add_argument("--early-stop", type=_positive(int), metavar="EVALUATIONS",
+                        help="stop when this many evaluations in a row did not improve")
+    parser.add_argument("--stop-step", type=_positive(int),
+                        help="stop after this optimizer step; the schedule stays the planned one")
     parser.add_argument("--torch-loss-head", action="store_true",
                         help="compute the loss in plain torch instead of TRL's Triton kernel (always on with --cpu), "
                              "for a GPU whose Triton cannot build that kernel; it holds the batch's full logits")
@@ -1312,6 +1479,12 @@ def _prepare(args: argparse.Namespace, run_id: str, refs: dict[str, Any], node: 
         raise TrainError(["--dropout must be at least 0 and below 1"], outcome="usage")
     if args.workers < 0:
         raise TrainError(["--workers must be 0 or more"], outcome="usage")
+    if not 0 <= args.warmup_ratio < 1:
+        raise TrainError(["--warmup-ratio must be at least 0 and below 1"], outcome="usage")
+    if (args.eval_steps or args.keep_best or args.early_stop) and not args.val_rows:
+        raise TrainError(["--eval-steps, --keep-best and --early-stop need --val-rows"], outcome="usage")
+    if args.cpu and args.cuda:
+        raise TrainError(["--cpu and --cuda are two different places to run"], outcome="usage")
     if args.tunableop and not Path(args.tunableop).expanduser().is_file():
         raise TrainError(["--tunableop names no results file; tune once at this sequence length first"],
                          outcome="usage")
@@ -1328,6 +1501,15 @@ def _prepare(args: argparse.Namespace, run_id: str, refs: dict[str, Any], node: 
         raise TrainError([f"the dataset folder is not named for its dataset_id ({split.dataset_id!r})"])
     chosen, without_row = train_rows(rows, split)
     refs["train_without_row"] = len(without_row)
+    held_for_validation: list[Row] = []
+    if args.val_rows:
+        held_for_validation, _ = train_rows(read_rows(Path(args.val_rows).expanduser()), split)
+        trained_on = {row.id for row in chosen}
+        both = [row.id for row in held_for_validation if row.id in trained_on]
+        if both:
+            raise TrainError([f"{len(both)} validation rows are also training rows, for example {both[0]!r}"])
+        refs.update(val_rows_sha256=file_sha256(Path(args.val_rows).expanduser()),
+                    val_examples=len(held_for_validation))
     refs["held_out_examples"] = len(split.held_out)
     base = resolve_base(args.model, args.base_repo, args.base_revision)
     refs.update(base_model=base.repo, base_revision=base.revision)
@@ -1341,7 +1523,9 @@ def _prepare(args: argparse.Namespace, run_id: str, refs: dict[str, Any], node: 
     return Plan(run_id, tuple(chosen), dataset, base, out, args.cpu, node, args.epochs, args.max_steps, args.lr,
                 args.batch, args.grad_accum, args.rank, args.alpha, args.dropout, args.max_length, seed, data_seed,
                 args.workers, args.checkpointing, PowerFeed(args.power_dir, args.power_node),
-                args.cpu or args.torch_loss_head, args.group_by_length, _env_of(args), not args.cpu)
+                args.cpu or args.torch_loss_head, args.group_by_length, _env_of(args),
+                not (args.cpu or args.cuda), args.cuda, args.warmup_ratio, tuple(held_for_validation),
+                args.eval_steps, args.keep_best, args.early_stop, args.stop_step)
 
 
 def _env_of(args: argparse.Namespace) -> dict[str, str | None]:
@@ -1356,9 +1540,19 @@ def main(argv: Sequence[str] | None = None, callbacks: Sequence[Any] = ()) -> di
     to train() unchanged."""
     args = _parser().parse_args(argv)
     run_id = args.run_id or _run_id()
-    mode = "cpu" if args.cpu else "pod"
-    refs: dict[str, Any] = {"run_id": run_id, "mode": mode, "node": CPU_NODE if args.cpu else LEDGER_NODE}
-    if not args.cpu:   # the pinned environment goes in before torch is imported, so the HIP runtime reads it
+    mode = "cpu" if args.cpu else "cuda" if args.cuda else "pod"
+    off_pod = args.cpu or args.cuda
+    refs: dict[str, Any] = {"run_id": run_id, "mode": mode,
+                            "node": CPU_NODE if args.cpu else CUDA_NODE if args.cuda else LEDGER_NODE}
+    if args.cuda and not args.cpu:
+        try:
+            import torch
+        except ImportError:
+            return _answer("refused", refs, error="torch is not installed, so --cuda cannot train here")
+        why = cuda_gate(torch)
+        if why is not None:
+            return _answer("refused", refs, error=why)
+    if not off_pod:   # the pinned environment goes in before torch is imported, so the HIP runtime reads it
         apply_env(_env_of(args))
         try:
             import torch
@@ -1370,7 +1564,7 @@ def main(argv: Sequence[str] | None = None, callbacks: Sequence[Any] = ()) -> di
     answer: dict[str, Any]
     try:
         with contextlib.redirect_stdout(sys.stderr):   # the one JSON line is the only thing on stdout
-            plan = _prepare(args, run_id, refs, CPU_NODE if args.cpu else POD_NODE)
+            plan = _prepare(args, run_id, refs, CPU_NODE if args.cpu else CUDA_NODE if args.cuda else POD_NODE)
             trained = train(plan, callbacks)
         refs.update(trained.refs)
         answer = _answer("trained", refs, trained.metrics)
@@ -1380,13 +1574,16 @@ def main(argv: Sequence[str] | None = None, callbacks: Sequence[Any] = ()) -> di
         traceback.print_exc(file=sys.stderr)
         answer = _answer("failed", refs, error=f"{type(exc).__name__}: {exc}"[:400])
     finally:
-        if not args.cpu:   # past the node check, on the trainer pod: the copy goes however the run ended
+        if not off_pod:   # past the node check, on the trainer pod: the copy goes however the run ended
             deleted, how = delete_data(args.dataset, args.rows)
+            if args.val_rows:
+                Path(args.val_rows).expanduser().unlink(missing_ok=True)
             refs["data_deleted"] = "yes" if deleted else f"no: {how}"
         else:
-            refs["data_deleted"] = "no: a --cpu rehearsal keeps its data"
+            refs["data_deleted"] = ("no: a --cpu rehearsal keeps its data" if args.cpu
+                                    else "no: a --cuda run keeps its data")
     answer["refs"] = _refs(refs)
-    if not args.cpu and refs["data_deleted"] != "yes" and answer.get("ok"):
+    if not off_pod and refs["data_deleted"] != "yes" and answer.get("ok"):
         answer.update(ok=False, outcome="data-left", error=f"the dataset copy was not deleted: {refs['data_deleted']}")
     out = refs.get("out")
     if out and Path(out).is_dir():

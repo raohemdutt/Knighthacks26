@@ -752,3 +752,100 @@ def test_a_tunableop_flag_without_its_results_file_is_refused(tmp_path):
                                             "--tunableop", str(tmp_path / "missing.csv"))])
     assert (answer["outcome"], answer["problems"]) == \
         ("usage", ["--tunableop names no results file; tune once at this sequence length first"])
+
+
+# --- warmup, validation, keeping the best, and an NVIDIA GPU off the pod (the L16 retrain) --------------------
+
+def test_the_planned_steps_are_max_steps_or_the_epochs_of_short_last_steps():
+    assert train.planned_steps(84, 4, 4, 3.0, None) == 18      # L16's own run: 21 micro-batches, 6 steps an epoch
+    assert train.planned_steps(840, 4, 4, 1.0, None) == 53
+    assert train.planned_steps(840, 4, 4, 3.0, 62) == 62
+    assert train.planned_steps(1, 4, 4, 0.1, None) == 1
+
+
+def test_the_validation_log_keeps_the_best_evaluation_saves_it_and_stops_after_the_patience(tmp_path):
+    saved: list[Path] = []
+    log = train.ValidationLog(tmp_path / train.VALIDATION_LOG, per_step=16, keep_best=True, patience=2,
+                              best_dir=tmp_path / "best")
+    assert log.evaluated(8, {"eval_loss": 0.50}, saved.append) is True
+    assert log.evaluated(16, {"eval_loss": 0.30}, saved.append) is True
+    assert log.evaluated(16, {"eval_loss": 0.10}, saved.append) is False      # a step is recorded once
+    assert log.evaluated(24, {"eval_loss": 0.31}, saved.append) is False
+    assert log.stop is False
+    assert log.evaluated(32, {"eval_loss": float("nan")}, saved.append) is False   # not a loss: not an evaluation
+    assert log.evaluated(32, {"eval_loss": 0.40}, saved.append) is False
+    assert (log.best_step, log.best_loss, log.stop) == (16, 0.30, True)
+    assert saved == [tmp_path / "best", tmp_path / "best"]
+    lines = [json.loads(line) for line in (tmp_path / train.VALIDATION_LOG).read_text(encoding="utf-8").splitlines()]
+    assert [(line["step"], line["examples_seen"], line["best"]) for line in lines] == \
+        [(8, 128, True), (16, 256, True), (24, 384, False), (32, 512, False)]
+
+
+def test_without_keep_best_nothing_is_saved_and_without_patience_nothing_stops(tmp_path):
+    saved: list[Path] = []
+    log = train.ValidationLog(tmp_path / train.VALIDATION_LOG, per_step=16)
+    for step, loss in ((1, 0.2), (2, 0.3), (3, 0.4), (4, 0.5)):
+        log.evaluated(step, {"eval_loss": loss}, saved.append)
+    assert (saved, log.stop, log.best_step) == ([], False, 1)
+
+
+def fake_cuda_torch(cuda: str | None = "13.0", hip: str | None = None, gpu: bool = True) -> ModuleType:
+    module = ModuleType("torch")
+    module.version = SimpleNamespace(hip=hip, cuda=cuda)
+    module.cuda = SimpleNamespace(is_available=lambda: gpu)
+    return module
+
+
+def test_the_cuda_check_admits_a_cuda_torch_with_a_gpu_and_never_the_pods_rocm_torch():
+    assert train.cuda_gate(fake_cuda_torch()) is None
+    assert "ROCm build" in train.cuda_gate(fake_cuda_torch(hip="7.13.0"))
+    assert "not a CUDA build" in train.cuda_gate(fake_cuda_torch(cuda=None))
+    assert "no GPU is visible" in train.cuda_gate(fake_cuda_torch(gpu=False))
+
+
+def test_a_cuda_run_is_refused_on_a_rocm_torch_says_its_mode_and_node_and_deletes_nothing(tmp_path, monkeypatch):
+    monkeypatch.setitem(sys.modules, "torch", fake_cuda_torch(hip="7.13.0"))
+    folder, rows = copy_fixture(tmp_path)
+    answer = train.main(["--cuda", *run_args(folder, rows, model_folder(tmp_path, [COMMIT]), tmp_path / "out")])
+    assert (answer["outcome"], answer["refs"]["mode"], answer["refs"]["node"]) == ("refused", "cuda", train.CUDA_NODE)
+    assert "ROCm build" in answer["error"]
+    assert folder.is_dir() and rows.is_file()
+
+
+def test_a_cuda_run_never_exports_the_pods_environment_and_keeps_its_data_when_it_is_refused_later(tmp_path, monkeypatch):
+    monkeypatch.setitem(sys.modules, "torch", fake_cuda_torch())
+    folder, rows = copy_fixture(tmp_path)
+    answer = train.main(["--cuda", *run_args(folder, rows, model_folder(tmp_path), tmp_path / "out")])
+    assert answer["outcome"] == "refused" and "Hub commit is unknown" in answer["error"]
+    assert answer["refs"]["data_deleted"] == "no: a --cuda run keeps its data"
+    assert folder.is_dir() and rows.is_file()
+    assert "MIOPEN_FIND_MODE" not in os.environ
+
+
+def test_validation_rows_must_be_train_side_examples_that_are_not_trained_on(tmp_path):
+    folder, rows = copy_fixture(tmp_path)
+    model = model_folder(tmp_path, [COMMIT])
+    every = fixture_rows()
+    val = write_rows(tmp_path / "val.jsonl", every[:2])
+    both = train.main(["--cpu", *run_args(folder, rows, model, tmp_path / "out"), "--val-rows", str(val)])
+    assert both["outcome"] == "invalid"
+    assert both["problems"] == [f"2 validation rows are also training rows, for example {every[0]['id']!r}"]
+    split = dataset.load_split(folder, require_images=False)
+    leaked = write_rows(tmp_path / "leak.jsonl", [{**every[0], "id": split.held_out[0].id,
+                                                   "frame_ref": split.held_out[0].frame_ref}])
+    write_rows(rows, every[2:])
+    held = train.main(["--cpu", *run_args(folder, rows, model, tmp_path / "out2"), "--val-rows", str(leaked)])
+    assert held["problems"] == [f"row {split.held_out[0].id!r}: held out for the eval gate; no training run may see it"]
+
+
+def test_the_validation_flags_need_validation_rows_and_a_ratio_below_one(tmp_path):
+    folder, rows = copy_fixture(tmp_path)
+    model = model_folder(tmp_path, [COMMIT])
+    for flags in (["--keep-best"], ["--eval-steps", "4"], ["--early-stop", "2"]):
+        answer = train.main(["--cpu", *run_args(folder, rows, model, tmp_path / "out"), *flags])
+        assert (answer["outcome"], answer["problems"]) == \
+            ("usage", ["--eval-steps, --keep-best and --early-stop need --val-rows"])
+    answer = train.main(["--cpu", *run_args(folder, rows, model, tmp_path / "out"), "--warmup-ratio", "1"])
+    assert answer["problems"] == ["--warmup-ratio must be at least 0 and below 1"]
+    answer = train.main(["--cpu", "--cuda", *run_args(folder, rows, model, tmp_path / "out")])
+    assert answer["problems"] == ["--cpu and --cuda are two different places to run"]
