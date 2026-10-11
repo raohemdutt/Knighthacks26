@@ -124,10 +124,15 @@ def other_chip(row: dict[str, Any]) -> bool:
 
 
 def read_metrics(path: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """The metrics file's rows, each with `_line` (from 1, blank lines counted), and the lines that are not rows."""
+    """The metrics file's rows, each with `_line` (from 1, blank lines counted), and the lines left out: those that
+    are not rows, and those that repeat an earlier row. A line repeats an earlier one when the metric, node, value,
+    unit and time are the same and no condition both rows record differs (a copy that only gained or lost fields,
+    as a merge that keeps both sides of a rewritten row leaves behind); the first one is kept, so a measurement is
+    never counted twice. A row measured again has another time or value and stays."""
     if not path.is_file():
         return [], []
     rows, skipped = [], []
+    seen: dict[tuple, list[dict[str, Any]]] = {}
     for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         if not line.strip():
             continue
@@ -142,6 +147,13 @@ def read_metrics(path: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]]
         if not isinstance(row.get("conditions"), dict):
             row["conditions"] = {}
         row["_line"] = n
+        key = (row["metric"], row.get("node"), row["value"], row.get("unit"), _ts(row.get("ts")))
+        earlier = next((r for r in seen.get(key, []) if key[-1] is not None and all(
+            r["conditions"][k] == v for k, v in row["conditions"].items() if k in r["conditions"])), None)
+        if earlier is not None:
+            skipped.append({"line": n, "problem": f"repeats line {earlier['_line']}", "repeats": earlier["_line"]})
+            continue
+        seen.setdefault(key, []).append(row)
         rows.append(row)
     return rows, skipped
 
@@ -579,6 +591,7 @@ def section_frontier(root: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
     pending = sorted(p.name for p in (root / DATA_DIR).glob("sweep-request-gfx1151-*.json"))
     changes = [from_row(r, f"{r['metric']}: {r['conditions'].get('from')} against {r['conditions'].get('against')}")
                for r in rows if r["metric"].endswith("_change_pct") and chip_of(r) == CHIP]
+    notes = []
     if ratios:
         r, s = ratios[0], here[0]
         reading = (f"Serving {s['points'][-1]['batch']:g} conversations at once instead of one cuts the energy for each "
@@ -590,13 +603,16 @@ def section_frontier(root: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
             reading += (f": the chip draws about the same {(lo + hi) / 2:.0f} watts either way and turns out "
                         f"{more_work[0]['value']:.0f} times as many words")
         reading += "."
-        if len(here) > 1 and len(ratios) > 1:
-            reading += (f" A second sweep, on {here[1]['node']}, gives {ratios[1]['value']:g} times at "
-                        f"{here[1]['points'][-1]['batch']:g} streams.")
+        by_first = {x["inputs"][0]: x for x in ratios}
+        for again in here[1:]:  # a sweep that repeats the headline one, on another pod or build
+            x = by_first.get(again["points"][0]["number"]["id"])
+            if x:
+                notes.append(f"Measured again on {again['label']}: {x['value']:g} times less energy for each token at "
+                             f"{again['points'][-1]['batch']:g} streams than at {again['points'][0]['batch']:g}.")
     else:
         reading = "Not measured yet: no joules-per-token sweep across stream counts from the Strix Halo is on main."
     return {"id": "frontier", "title": "The batching frontier: joules per token against concurrent streams",
-            "reading": reading, "state": "measured" if here else "empty", "energy": here,
+            "reading": reading, "notes": notes, "state": "measured" if here else "empty", "energy": here,
             "throughput": [s for s in total if not s["other_chip"]],
             "power": [s for s in power if not s["other_chip"]], "ratios": ratios, "more_work": more_work,
             "changes": changes, "other_chip": [s for s in energy + total if s["other_chip"]],
@@ -1059,7 +1075,7 @@ def svg_xy(series: list[dict[str, Any]], *, xlog: bool, xname: str, yname: str, 
                f"{esc(xname)}</text>")
     if ref is not None:
         out.append(f'<line x1="{left}" y1="{py(ref):.1f}" x2="{W - right}" y2="{py(ref):.1f}" class="ref"/>')
-    for s in series:
+    for s in reversed(series):  # the first series is drawn last, on top of the ones that repeat it
         path = " ".join(f"{'M' if i == 0 else 'L'}{px(x):.1f},{py(y):.1f}" for i, (x, y) in enumerate(s["points"]))
         out.append(f'<path d="{path}" class="ln {s["line"]}"/>')
         for x, y in s["points"]:
@@ -1442,6 +1458,7 @@ def render_html(pack: dict[str, Any], root: Path = REPO, page_dir: Path | None =
         shown += s["changes"]
     else:
         key = empty("no stream-count sweep with joules per token from the Strix Halo is on main.")
+    more += notes(s["notes"])
     if s["pending_files"]:
         more += (f'<p class="note">Committed and not charted here: {esc(", ".join(s["pending_files"]))}; its headline '
                  "rows are in the list below when the metrics file carries them.</p>")
@@ -1576,6 +1593,15 @@ def render_html(pack: dict[str, Any], root: Path = REPO, page_dir: Path | None =
                   f'{esc(STATE_WORDS[s["state"]])}</span></a></li>'
                   for i, (s, short) in enumerate(zip(pack["sections"], ("Ceiling", "Batching", "Decode step", "Engines",
                                                                         "Fine-tune", "Dropped")), 1))
+    left_out = ""
+    for word, lines in (("repeat an earlier row and are counted once", [x["line"] for x in pack["skipped"] if x.get("repeats")]),
+                        ("are not rows", [x["line"] for x in pack["skipped"] if not x.get("repeats")])):
+        if lines:
+            where = (f"lines {lines[0]} to {lines[-1]}" if len(lines) > 2 and lines[-1] - lines[0] == len(lines) - 1
+                     else "line" + ("s " if len(lines) > 1 else " ") + ", ".join(str(n) for n in lines[:12])
+                     + (" and more" if len(lines) > 12 else ""))
+            left_out += (f"<p>Left out of every number above: {len(lines)} {'line' if len(lines) == 1 else 'lines'} of "
+                         f"{page.link(METRICS)} that {word} ({where}).</p>")
     as_of = (pack["data_as_of"] or "unknown").replace("T", " ").replace("Z", " UTC")
     sheet = next((x["file"] for x in pack["sources"] if x.get("role") == "demo numbers sheet"), None)
     srcs = "".join(f"<tr><td>{page.link(x['file'])}</td><td>{esc(x['role'])}</td><td class=\"num\">{x['lines']}</td>"
@@ -1595,7 +1621,7 @@ def render_html(pack: dict[str, Any], root: Path = REPO, page_dir: Path | None =
         f'<ul class="toc">{toc}</ul>'
         + "".join(body)
         + f'<footer><h2>Sources</h2><div class="wrap"><table><tr><th>File</th><th>Used for</th><th>Lines</th>'
-          f"<th>sha256</th></tr>{srcs}</table></div>"
+          f"<th>sha256</th></tr>{srcs}</table></div>{left_out}"
         + (f"<p>The slide sentences that use these numbers are in {page.link(sheet)}.</p>" if sheet else "")
         + "<p>Built by <code>python -m lab report</code>; the data pack beside this page is "
           f"<code>{PACK_NAME}</code> ({FORMAT}).</p></footer></main></body></html>\n")

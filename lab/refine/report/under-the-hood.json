@@ -64,7 +64,323 @@
    "lines": 171
   }
  ],
- "skipped": [],
+ "skipped": [
+  {
+   "line": 130,
+   "problem": "repeats line 67",
+   "repeats": 67
+  },
+  {
+   "line": 131,
+   "problem": "repeats line 68",
+   "repeats": 68
+  },
+  {
+   "line": 132,
+   "problem": "repeats line 69",
+   "repeats": 69
+  },
+  {
+   "line": 133,
+   "problem": "repeats line 70",
+   "repeats": 70
+  },
+  {
+   "line": 134,
+   "problem": "repeats line 71",
+   "repeats": 71
+  },
+  {
+   "line": 135,
+   "problem": "repeats line 72",
+   "repeats": 72
+  },
+  {
+   "line": 136,
+   "problem": "repeats line 73",
+   "repeats": 73
+  },
+  {
+   "line": 137,
+   "problem": "repeats line 74",
+   "repeats": 74
+  },
+  {
+   "line": 138,
+   "problem": "repeats line 75",
+   "repeats": 75
+  },
+  {
+   "line": 139,
+   "problem": "repeats line 76",
+   "repeats": 76
+  },
+  {
+   "line": 140,
+   "problem": "repeats line 77",
+   "repeats": 77
+  },
+  {
+   "line": 141,
+   "problem": "repeats line 78",
+   "repeats": 78
+  },
+  {
+   "line": 142,
+   "problem": "repeats line 79",
+   "repeats": 79
+  },
+  {
+   "line": 143,
+   "problem": "repeats line 80",
+   "repeats": 80
+  },
+  {
+   "line": 144,
+   "problem": "repeats line 81",
+   "repeats": 81
+  },
+  {
+   "line": 145,
+   "problem": "repeats line 82",
+   "repeats": 82
+  },
+  {
+   "line": 146,
+   "problem": "repeats line 83",
+   "repeats": 83
+  },
+  {
+   "line": 147,
+   "problem": "repeats line 84",
+   "repeats": 84
+  },
+  {
+   "line": 148,
+   "problem": "repeats line 85",
+   "repeats": 85
+  },
+  {
+   "line": 149,
+   "problem": "repeats line 86",
+   "repeats": 86
+  },
+  {
+   "line": 150,
+   "problem": "repeats line 87",
+   "repeats": 87
+  },
+  {
+   "line": 151,
+   "problem": "repeats line 88",
+   "repeats": 88
+  },
+  {
+   "line": 152,
+   "problem": "repeats line 89",
+   "repeats": 89
+  },
+  {
+   "line": 153,
+   "problem": "repeats line 90",
+   "repeats": 90
+  },
+  {
+   "line": 154,
+   "problem": "repeats line 91",
+   "repeats": 91
+  },
+  {
+   "line": 155,
+   "problem": "repeats line 92",
+   "repeats": 92
+  },
+  {
+   "line": 156,
+   "problem": "repeats line 93",
+   "repeats": 93
+  },
+  {
+   "line": 157,
+   "problem": "repeats line 94",
+   "repeats": 94
+  },
+  {
+   "line": 158,
+   "problem": "repeats line 95",
+   "repeats": 95
+  },
+  {
+   "line": 159,
+   "problem": "repeats line 96",
+   "repeats": 96
+  },
+  {
+   "line": 160,
+   "problem": "repeats line 97",
+   "repeats": 97
+  },
+  {
+   "line": 161,
+   "problem": "repeats line 98",
+   "repeats": 98
+  },
+  {
+   "line": 162,
+   "problem": "repeats line 99",
+   "repeats": 99
+  },
+  {
+   "line": 163,
+   "problem": "repeats line 100",
+   "repeats": 100
+  },
+  {
+   "line": 164,
+   "problem": "repeats line 101",
+   "repeats": 101
+  },
+  {
+   "line": 165,
+   "problem": "repeats line 102",
+   "repeats": 102
+  },
+  {
+   "line": 166,
+   "problem": "repeats line 103",
+   "repeats": 103
+  },
+  {
+   "line": 167,
+   "problem": "repeats line 104",
+   "repeats": 104
+  },
+  {
+   "line": 168,
+   "problem": "repeats line 105",
+   "repeats": 105
+  },
+  {
+   "line": 169,
+   "problem": "repeats line 106",
+   "repeats": 106
+  },
+  {
+   "line": 170,
+   "problem": "repeats line 107",
+   "repeats": 107
+  },
+  {
+   "line": 171,
+   "problem": "repeats line 108",
+   "repeats": 108
+  },
+  {
+   "line": 172,
+   "problem": "repeats line 109",
+   "repeats": 109
+  },
+  {
+   "line": 173,
+   "problem": "repeats line 110",
+   "repeats": 110
+  },
+  {
+   "line": 174,
+   "problem": "repeats line 111",
+   "repeats": 111
+  },
+  {
+   "line": 175,
+   "problem": "repeats line 112",
+   "repeats": 112
+  },
+  {
+   "line": 176,
+   "problem": "repeats line 113",
+   "repeats": 113
+  },
+  {
+   "line": 177,
+   "problem": "repeats line 114",
+   "repeats": 114
+  },
+  {
+   "line": 178,
+   "problem": "repeats line 115",
+   "repeats": 115
+  },
+  {
+   "line": 179,
+   "problem": "repeats line 116",
+   "repeats": 116
+  },
+  {
+   "line": 180,
+   "problem": "repeats line 117",
+   "repeats": 117
+  },
+  {
+   "line": 181,
+   "problem": "repeats line 118",
+   "repeats": 118
+  },
+  {
+   "line": 182,
+   "problem": "repeats line 119",
+   "repeats": 119
+  },
+  {
+   "line": 183,
+   "problem": "repeats line 120",
+   "repeats": 120
+  },
+  {
+   "line": 184,
+   "problem": "repeats line 121",
+   "repeats": 121
+  },
+  {
+   "line": 185,
+   "problem": "repeats line 122",
+   "repeats": 122
+  },
+  {
+   "line": 186,
+   "problem": "repeats line 123",
+   "repeats": 123
+  },
+  {
+   "line": 187,
+   "problem": "repeats line 124",
+   "repeats": 124
+  },
+  {
+   "line": 188,
+   "problem": "repeats line 125",
+   "repeats": 125
+  },
+  {
+   "line": 189,
+   "problem": "repeats line 126",
+   "repeats": 126
+  },
+  {
+   "line": 190,
+   "problem": "repeats line 127",
+   "repeats": 127
+  },
+  {
+   "line": 191,
+   "problem": "repeats line 128",
+   "repeats": 128
+  },
+  {
+   "line": 192,
+   "problem": "repeats line 129",
+   "repeats": 129
+  }
+ ],
  "sections": [
   {
    "id": "ceiling",
@@ -343,86 +659,6 @@
      "chip_label": "gfx1151"
     },
     {
-     "id": "metrics:130",
-     "label": "vLLM, build not recorded, bench-v1 prompt set, pod-a",
-     "value": 2.7021,
-     "unit": "tok/s",
-     "kind": "measured",
-     "source": {
-      "file": "lab/refine/metrics.jsonl",
-      "line": 130,
-      "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
-     },
-     "gpu": null,
-     "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
-     "node": "pod-a",
-     "metric": "teacher_batching.decode_tok_s",
-     "conditions": {
-      "engine": "vllm",
-      "engine_commit": "unavailable: attached through the hub proxy",
-      "patch_hash": "unavailable: attached through the hub proxy",
-      "checkpoint": "/home/jovyan/models/Qwen3.8-27B-INT4",
-      "quantization": "compressed-tensors-W4A16-INT4",
-      "max_model_len": 16384,
-      "rocm": "unavailable: attached through the hub proxy",
-      "torch": "unavailable: attached through the hub proxy",
-      "triton": "unavailable: attached through the hub proxy",
-      "prompt_set": {
-       "id": "bench-v1",
-       "sha256": "b25ab2bda117925f5eb8a2d5ffe6455de8169b7f2a33a3777eda10c97c37b760",
-       "prompts": 4,
-       "images": 2
-      },
-      "max_tokens": 128,
-      "ignore_eos": true,
-      "nonce": true,
-      "thinking": false,
-      "linear_kernels": "unavailable: attached through the hub proxy",
-      "attention_backends": "unavailable: attached through the hub proxy",
-      "kv_cache_tokens": "unavailable: attached through the hub proxy",
-      "batch_size": 1,
-      "session": "bench-20261010T215122Z-2c65",
-      "statistic": "median of 3 repeats",
-      "stats": {
-       "n": 3,
-       "median": 2.7021,
-       "min": 2.6859,
-       "max": 2.7044,
-       "mean": 2.697466666666667,
-       "sd": 0.010082823678579975
-      },
-      "bands": {
-       "b1": {
-        "share": 1.0,
-        "stats": {
-         "n": 3,
-         "median": 2.7021,
-         "min": 2.6859,
-         "max": 2.7044,
-         "mean": 2.697466666666667,
-         "sd": 0.010082823678579975
-        }
-       }
-      },
-      "low_confidence_reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
-      "mode": "attach: the running pod C teacher measured through the hub proxy, no cold spawn (the one departure from R20's method)",
-      "hub": "sjc",
-      "account": "C",
-      "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
-      "sampler": "T6 lab/pod_power.py 1 on port 8790, 1 s period",
-      "idle_w_loaded": 10.44,
-      "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
-      "requests_per_stream": 4,
-      "repeats": 3,
-      "env": "unavailable: server process not readable from the box"
-     },
-     "ts": "2026-10-11T00:23:20Z",
-     "low_confidence": true,
-     "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
-     "other_chip": false,
-     "chip_label": "gfx1151"
-    },
-    {
      "id": "metrics:193",
      "label": "vLLM b1388b1 + gfx1201 patch, bench-v1 prompt set, pod-b",
      "value": 2.7327,
@@ -574,31 +810,6 @@
      "source": {
       "file": "lab/refine/metrics.jsonl",
       "line": 67,
-      "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
-     },
-     "gpu": null,
-     "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
-     "conditions": {},
-     "ts": null,
-     "low_confidence": true,
-     "reason": null,
-     "other_chip": false,
-     "chip_label": "gfx1151"
-    },
-    {
-     "id": "derived:share:metrics:130",
-     "label": "share of the ceiling, vLLM, build not recorded, bench-v1 prompt set, pod-a",
-     "value": 20.1,
-     "unit": "%",
-     "kind": "derived",
-     "formula": "100 x achieved tok/s / ceiling tok/s",
-     "inputs": [
-      "metrics:130",
-      "derived:ceiling"
-     ],
-     "source": {
-      "file": "lab/refine/metrics.jsonl",
-      "line": 130,
       "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
      },
      "gpu": null,
@@ -1082,86 +1293,6 @@
        "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
        "other_chip": false,
        "chip_label": "gfx1151"
-      },
-      {
-       "id": "metrics:130",
-       "label": "vLLM, build not recorded, bench-v1 prompt set, pod-a",
-       "value": 2.7021,
-       "unit": "tok/s",
-       "kind": "measured",
-       "source": {
-        "file": "lab/refine/metrics.jsonl",
-        "line": 130,
-        "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
-       },
-       "gpu": null,
-       "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
-       "node": "pod-a",
-       "metric": "teacher_batching.decode_tok_s",
-       "conditions": {
-        "engine": "vllm",
-        "engine_commit": "unavailable: attached through the hub proxy",
-        "patch_hash": "unavailable: attached through the hub proxy",
-        "checkpoint": "/home/jovyan/models/Qwen3.8-27B-INT4",
-        "quantization": "compressed-tensors-W4A16-INT4",
-        "max_model_len": 16384,
-        "rocm": "unavailable: attached through the hub proxy",
-        "torch": "unavailable: attached through the hub proxy",
-        "triton": "unavailable: attached through the hub proxy",
-        "prompt_set": {
-         "id": "bench-v1",
-         "sha256": "b25ab2bda117925f5eb8a2d5ffe6455de8169b7f2a33a3777eda10c97c37b760",
-         "prompts": 4,
-         "images": 2
-        },
-        "max_tokens": 128,
-        "ignore_eos": true,
-        "nonce": true,
-        "thinking": false,
-        "linear_kernels": "unavailable: attached through the hub proxy",
-        "attention_backends": "unavailable: attached through the hub proxy",
-        "kv_cache_tokens": "unavailable: attached through the hub proxy",
-        "batch_size": 1,
-        "session": "bench-20261010T215122Z-2c65",
-        "statistic": "median of 3 repeats",
-        "stats": {
-         "n": 3,
-         "median": 2.7021,
-         "min": 2.6859,
-         "max": 2.7044,
-         "mean": 2.697466666666667,
-         "sd": 0.010082823678579975
-        },
-        "bands": {
-         "b1": {
-          "share": 1.0,
-          "stats": {
-           "n": 3,
-           "median": 2.7021,
-           "min": 2.6859,
-           "max": 2.7044,
-           "mean": 2.697466666666667,
-           "sd": 0.010082823678579975
-          }
-         }
-        },
-        "low_confidence_reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
-        "mode": "attach: the running pod C teacher measured through the hub proxy, no cold spawn (the one departure from R20's method)",
-        "hub": "sjc",
-        "account": "C",
-        "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
-        "sampler": "T6 lab/pod_power.py 1 on port 8790, 1 s period",
-        "idle_w_loaded": 10.44,
-        "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
-        "requests_per_stream": 4,
-        "repeats": 3,
-        "env": "unavailable: server process not readable from the box"
-       },
-       "ts": "2026-10-11T00:23:20Z",
-       "low_confidence": true,
-       "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
-       "other_chip": false,
-       "chip_label": "gfx1151"
       }
      ],
      "share": {
@@ -1436,60 +1567,6 @@
      "reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
      "other_chip": true,
      "chip_label": "NVIDIA A100-SXM4-40GB"
-    },
-    {
-     "id": "metrics:162",
-     "label": "vLLM 0.31.0, bench-v1 prompt set, a100",
-     "value": 64.956,
-     "unit": "tok/s",
-     "kind": "measured",
-     "source": {
-      "file": "lab/refine/metrics.jsonl",
-      "line": 162,
-      "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
-     },
-     "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
-     "chip": null,
-     "node": "a100",
-     "metric": "teacher.decode_tok_s",
-     "conditions": {
-      "hub": "colab",
-      "runtime": "Colab GPU runtime, A100 (colab CLI new --gpu A100), Python 3.13, 83 GB RAM, 12 vCPU",
-      "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
-      "engine": "vllm",
-      "vllm": "0.31.0",
-      "vllm_source": "stock wheel from PyPI, no build, no patch",
-      "torch": "2.13.0+cu130",
-      "cuda": "13.0",
-      "driver": "580.82.07",
-      "checkpoint": "RedHatAI/Qwen3.8-27B-INT4",
-      "served_model_name": "teacher",
-      "max_model_len": 16384,
-      "gpu_memory_utilization": 0.9,
-      "kv_cache_dtype": "auto (vLLM resolved it to fp8_e4m3)",
-      "kv_cache_tokens": 288165,
-      "thinking": "off",
-      "max_tokens": 128,
-      "ignore_eos": true,
-      "prompt_set": "bench-v1",
-      "harness": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
-      "session": "bench-20261011T005700Z-d9c3",
-      "other_chip": true,
-      "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
-      "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
-      "batch_size": 1,
-      "statistic": "median of 3 spawns",
-      "per_spawn": [
-       64.741,
-       64.956,
-       64.9722
-      ]
-     },
-     "ts": "2026-10-11T01:52:01Z",
-     "low_confidence": true,
-     "reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
-     "other_chip": true,
-     "chip_label": "NVIDIA A100-SXM4-40GB"
     }
    ],
    "awaiting": [
@@ -1501,7 +1578,10 @@
   {
    "id": "frontier",
    "title": "The batching frontier: joules per token against concurrent streams",
-   "reading": "Serving 64 conversations at once instead of one cuts the energy for each word by 18.9 times: the chip draws about the same 96 watts either way and turns out 19 times as many words. A second sweep, on pod-b, gives 18.6 times at 64 streams.",
+   "reading": "Serving 64 conversations at once instead of one cuts the energy for each word by 18.9 times: the chip draws about the same 96 watts either way and turns out 19 times as many words.",
+   "notes": [
+    "Measured again on pod-b, vLLM b1388b1 + gfx1201 patch: 18.6 times less energy for each token at 64 streams than at 1."
+   ],
    "state": "measured",
    "energy": [
     {
@@ -1518,14 +1598,14 @@
       {
        "batch": 1.0,
        "number": {
-        "id": "metrics:133",
+        "id": "metrics:70",
         "label": "teacher_batching.joules_per_token at 1 stream",
         "value": 36.6587,
         "unit": "J/token",
         "kind": "measured",
         "source": {
          "file": "lab/refine/metrics.jsonl",
-         "line": 133,
+         "line": 70,
          "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
         },
         "gpu": null,
@@ -1589,7 +1669,15 @@
          "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
          "requests_per_stream": 4,
          "repeats": 3,
-         "env": "unavailable: server process not readable from the box"
+         "env": "unavailable: server process not readable from the box",
+         "period_ms": 1000,
+         "samples": null,
+         "error": "unknown",
+         "backfilled": [
+          "error",
+          "period_ms",
+          "samples"
+         ]
         },
         "ts": "2026-10-11T00:23:20Z",
         "low_confidence": true,
@@ -1601,14 +1689,14 @@
       {
        "batch": 4.0,
        "number": {
-        "id": "metrics:139",
+        "id": "metrics:76",
         "label": "teacher_batching.joules_per_token at 4 streams",
         "value": 10.3071,
         "unit": "J/token",
         "kind": "measured",
         "source": {
          "file": "lab/refine/metrics.jsonl",
-         "line": 139,
+         "line": 76,
          "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
         },
         "gpu": null,
@@ -1672,7 +1760,15 @@
          "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
          "requests_per_stream": 4,
          "repeats": 3,
-         "env": "unavailable: server process not readable from the box"
+         "env": "unavailable: server process not readable from the box",
+         "period_ms": 1000,
+         "samples": null,
+         "error": "unknown",
+         "backfilled": [
+          "error",
+          "period_ms",
+          "samples"
+         ]
         },
         "ts": "2026-10-11T00:23:20Z",
         "low_confidence": true,
@@ -1684,14 +1780,14 @@
       {
        "batch": 8.0,
        "number": {
-        "id": "metrics:145",
+        "id": "metrics:82",
         "label": "teacher_batching.joules_per_token at 8 streams",
         "value": 5.8676,
         "unit": "J/token",
         "kind": "measured",
         "source": {
          "file": "lab/refine/metrics.jsonl",
-         "line": 145,
+         "line": 82,
          "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
         },
         "gpu": null,
@@ -1755,7 +1851,15 @@
          "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
          "requests_per_stream": 4,
          "repeats": 3,
-         "env": "unavailable: server process not readable from the box"
+         "env": "unavailable: server process not readable from the box",
+         "period_ms": 1000,
+         "samples": null,
+         "error": "unknown",
+         "backfilled": [
+          "error",
+          "period_ms",
+          "samples"
+         ]
         },
         "ts": "2026-10-11T00:23:20Z",
         "low_confidence": true,
@@ -1767,14 +1871,14 @@
       {
        "batch": 16.0,
        "number": {
-        "id": "metrics:151",
+        "id": "metrics:88",
         "label": "teacher_batching.joules_per_token at 16 streams",
         "value": 3.5628,
         "unit": "J/token",
         "kind": "measured",
         "source": {
          "file": "lab/refine/metrics.jsonl",
-         "line": 151,
+         "line": 88,
          "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
         },
         "gpu": null,
@@ -1838,7 +1942,15 @@
          "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
          "requests_per_stream": 4,
          "repeats": 3,
-         "env": "unavailable: server process not readable from the box"
+         "env": "unavailable: server process not readable from the box",
+         "period_ms": 1000,
+         "samples": null,
+         "error": "unknown",
+         "backfilled": [
+          "error",
+          "period_ms",
+          "samples"
+         ]
         },
         "ts": "2026-10-11T00:23:20Z",
         "low_confidence": true,
@@ -1850,14 +1962,14 @@
       {
        "batch": 64.0,
        "number": {
-        "id": "metrics:157",
+        "id": "metrics:94",
         "label": "teacher_batching.joules_per_token at 64 streams",
         "value": 1.9384,
         "unit": "J/token",
         "kind": "measured",
         "source": {
          "file": "lab/refine/metrics.jsonl",
-         "line": 157,
+         "line": 94,
          "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
         },
         "gpu": null,
@@ -1921,7 +2033,15 @@
          "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
          "requests_per_stream": 4,
          "repeats": 3,
-         "env": "unavailable: server process not readable from the box"
+         "env": "unavailable: server process not readable from the box",
+         "period_ms": 1000,
+         "samples": null,
+         "error": "unknown",
+         "backfilled": [
+          "error",
+          "period_ms",
+          "samples"
+         ]
         },
         "ts": "2026-10-11T00:23:20Z",
         "low_confidence": true,
@@ -2406,14 +2526,14 @@
       {
        "batch": 1.0,
        "number": {
-        "id": "metrics:131",
+        "id": "metrics:68",
         "label": "teacher_batching.decode_tok_s_total at 1 stream",
         "value": 2.6172,
         "unit": "tok/s",
         "kind": "measured",
         "source": {
          "file": "lab/refine/metrics.jsonl",
-         "line": 131,
+         "line": 68,
          "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
         },
         "gpu": null,
@@ -2477,7 +2597,15 @@
          "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
          "requests_per_stream": 4,
          "repeats": 3,
-         "env": "unavailable: server process not readable from the box"
+         "env": "unavailable: server process not readable from the box",
+         "period_ms": 1000,
+         "samples": 3,
+         "error": "unknown",
+         "backfilled": [
+          "error",
+          "period_ms",
+          "samples"
+         ]
         },
         "ts": "2026-10-11T00:23:20Z",
         "low_confidence": true,
@@ -2489,14 +2617,14 @@
       {
        "batch": 4.0,
        "number": {
-        "id": "metrics:137",
+        "id": "metrics:74",
         "label": "teacher_batching.decode_tok_s_total at 4 streams",
         "value": 9.3153,
         "unit": "tok/s",
         "kind": "measured",
         "source": {
          "file": "lab/refine/metrics.jsonl",
-         "line": 137,
+         "line": 74,
          "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
         },
         "gpu": null,
@@ -2560,7 +2688,15 @@
          "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
          "requests_per_stream": 4,
          "repeats": 3,
-         "env": "unavailable: server process not readable from the box"
+         "env": "unavailable: server process not readable from the box",
+         "period_ms": 1000,
+         "samples": 3,
+         "error": "unknown",
+         "backfilled": [
+          "error",
+          "period_ms",
+          "samples"
+         ]
         },
         "ts": "2026-10-11T00:23:20Z",
         "low_confidence": true,
@@ -2572,14 +2708,14 @@
       {
        "batch": 8.0,
        "number": {
-        "id": "metrics:143",
+        "id": "metrics:80",
         "label": "teacher_batching.decode_tok_s_total at 8 streams",
         "value": 16.3616,
         "unit": "tok/s",
         "kind": "measured",
         "source": {
          "file": "lab/refine/metrics.jsonl",
-         "line": 143,
+         "line": 80,
          "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
         },
         "gpu": null,
@@ -2643,7 +2779,15 @@
          "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
          "requests_per_stream": 4,
          "repeats": 3,
-         "env": "unavailable: server process not readable from the box"
+         "env": "unavailable: server process not readable from the box",
+         "period_ms": 1000,
+         "samples": 3,
+         "error": "unknown",
+         "backfilled": [
+          "error",
+          "period_ms",
+          "samples"
+         ]
         },
         "ts": "2026-10-11T00:23:20Z",
         "low_confidence": true,
@@ -2655,14 +2799,14 @@
       {
        "batch": 16.0,
        "number": {
-        "id": "metrics:149",
+        "id": "metrics:86",
         "label": "teacher_batching.decode_tok_s_total at 16 streams",
         "value": 26.946,
         "unit": "tok/s",
         "kind": "measured",
         "source": {
          "file": "lab/refine/metrics.jsonl",
-         "line": 149,
+         "line": 86,
          "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
         },
         "gpu": null,
@@ -2726,7 +2870,15 @@
          "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
          "requests_per_stream": 4,
          "repeats": 3,
-         "env": "unavailable: server process not readable from the box"
+         "env": "unavailable: server process not readable from the box",
+         "period_ms": 1000,
+         "samples": 3,
+         "error": "unknown",
+         "backfilled": [
+          "error",
+          "period_ms",
+          "samples"
+         ]
         },
         "ts": "2026-10-11T00:23:20Z",
         "low_confidence": true,
@@ -2738,14 +2890,14 @@
       {
        "batch": 64.0,
        "number": {
-        "id": "metrics:155",
+        "id": "metrics:92",
         "label": "teacher_batching.decode_tok_s_total at 64 streams",
         "value": 49.5288,
         "unit": "tok/s",
         "kind": "measured",
         "source": {
          "file": "lab/refine/metrics.jsonl",
-         "line": 155,
+         "line": 92,
          "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
         },
         "gpu": null,
@@ -2809,7 +2961,15 @@
          "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
          "requests_per_stream": 4,
          "repeats": 3,
-         "env": "unavailable: server process not readable from the box"
+         "env": "unavailable: server process not readable from the box",
+         "period_ms": 1000,
+         "samples": 3,
+         "error": "unknown",
+         "backfilled": [
+          "error",
+          "period_ms",
+          "samples"
+         ]
         },
         "ts": "2026-10-11T00:23:20Z",
         "low_confidence": true,
@@ -3294,14 +3454,14 @@
       {
        "batch": 1.0,
        "number": {
-        "id": "metrics:134",
+        "id": "metrics:71",
         "label": "teacher_batching.watts_avg at 1 stream",
         "value": 96.0046,
         "unit": "W",
         "kind": "measured",
         "source": {
          "file": "lab/refine/metrics.jsonl",
-         "line": 134,
+         "line": 71,
          "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
         },
         "gpu": null,
@@ -3365,7 +3525,15 @@
          "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
          "requests_per_stream": 4,
          "repeats": 3,
-         "env": "unavailable: server process not readable from the box"
+         "env": "unavailable: server process not readable from the box",
+         "period_ms": 1000,
+         "samples": null,
+         "error": "unknown",
+         "backfilled": [
+          "error",
+          "period_ms",
+          "samples"
+         ]
         },
         "ts": "2026-10-11T00:23:20Z",
         "low_confidence": true,
@@ -3377,14 +3545,14 @@
       {
        "batch": 4.0,
        "number": {
-        "id": "metrics:140",
+        "id": "metrics:77",
         "label": "teacher_batching.watts_avg at 4 streams",
         "value": 96.0126,
         "unit": "W",
         "kind": "measured",
         "source": {
          "file": "lab/refine/metrics.jsonl",
-         "line": 140,
+         "line": 77,
          "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
         },
         "gpu": null,
@@ -3448,7 +3616,15 @@
          "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
          "requests_per_stream": 4,
          "repeats": 3,
-         "env": "unavailable: server process not readable from the box"
+         "env": "unavailable: server process not readable from the box",
+         "period_ms": 1000,
+         "samples": null,
+         "error": "unknown",
+         "backfilled": [
+          "error",
+          "period_ms",
+          "samples"
+         ]
         },
         "ts": "2026-10-11T00:23:20Z",
         "low_confidence": true,
@@ -3460,14 +3636,14 @@
       {
        "batch": 8.0,
        "number": {
-        "id": "metrics:146",
+        "id": "metrics:83",
         "label": "teacher_batching.watts_avg at 8 streams",
         "value": 96.004,
         "unit": "W",
         "kind": "measured",
         "source": {
          "file": "lab/refine/metrics.jsonl",
-         "line": 146,
+         "line": 83,
          "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
         },
         "gpu": null,
@@ -3531,7 +3707,15 @@
          "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
          "requests_per_stream": 4,
          "repeats": 3,
-         "env": "unavailable: server process not readable from the box"
+         "env": "unavailable: server process not readable from the box",
+         "period_ms": 1000,
+         "samples": null,
+         "error": "unknown",
+         "backfilled": [
+          "error",
+          "period_ms",
+          "samples"
+         ]
         },
         "ts": "2026-10-11T00:23:20Z",
         "low_confidence": true,
@@ -3543,14 +3727,14 @@
       {
        "batch": 16.0,
        "number": {
-        "id": "metrics:152",
+        "id": "metrics:89",
         "label": "teacher_batching.watts_avg at 16 streams",
         "value": 96.0052,
         "unit": "W",
         "kind": "measured",
         "source": {
          "file": "lab/refine/metrics.jsonl",
-         "line": 152,
+         "line": 89,
          "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
         },
         "gpu": null,
@@ -3614,7 +3798,15 @@
          "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
          "requests_per_stream": 4,
          "repeats": 3,
-         "env": "unavailable: server process not readable from the box"
+         "env": "unavailable: server process not readable from the box",
+         "period_ms": 1000,
+         "samples": null,
+         "error": "unknown",
+         "backfilled": [
+          "error",
+          "period_ms",
+          "samples"
+         ]
         },
         "ts": "2026-10-11T00:23:20Z",
         "low_confidence": true,
@@ -3626,14 +3818,14 @@
       {
        "batch": 64.0,
        "number": {
-        "id": "metrics:158",
+        "id": "metrics:95",
         "label": "teacher_batching.watts_avg at 64 streams",
         "value": 96.0499,
         "unit": "W",
         "kind": "measured",
         "source": {
          "file": "lab/refine/metrics.jsonl",
-         "line": 158,
+         "line": 95,
          "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
         },
         "gpu": null,
@@ -3697,7 +3889,15 @@
          "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
          "requests_per_stream": 4,
          "repeats": 3,
-         "env": "unavailable: server process not readable from the box"
+         "env": "unavailable: server process not readable from the box",
+         "period_ms": 1000,
+         "samples": null,
+         "error": "unknown",
+         "backfilled": [
+          "error",
+          "period_ms",
+          "samples"
+         ]
         },
         "ts": "2026-10-11T00:23:20Z",
         "low_confidence": true,
@@ -4176,12 +4376,12 @@
      "kind": "derived",
      "formula": "J/token at the fewest streams / J/token at the most streams",
      "inputs": [
-      "metrics:133",
-      "metrics:157"
+      "metrics:70",
+      "metrics:94"
      ],
      "source": {
       "file": "lab/refine/metrics.jsonl",
-      "line": 133,
+      "line": 70,
       "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
      },
      "gpu": null,
@@ -4228,12 +4428,12 @@
      "kind": "derived",
      "formula": "tok/s over all streams at the most streams / at the fewest",
      "inputs": [
-      "metrics:131",
-      "metrics:155"
+      "metrics:68",
+      "metrics:92"
      ],
      "source": {
       "file": "lab/refine/metrics.jsonl",
-      "line": 131,
+      "line": 68,
       "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
      },
      "gpu": null,
@@ -4287,14 +4487,14 @@
       {
        "batch": 1.0,
        "number": {
-        "id": "metrics:167",
+        "id": "metrics:104",
         "label": "teacher.joules_per_token at 1 stream",
         "value": 5.0174,
         "unit": "J/token",
         "kind": "measured",
         "source": {
          "file": "lab/refine/metrics.jsonl",
-         "line": 167,
+         "line": 104,
          "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
         },
         "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
@@ -4336,7 +4536,19 @@
           4.9831,
           5.0677
          ],
-         "joules_per_token_above_idle": 4.2609
+         "joules_per_token_above_idle": 4.2609,
+         "account": "colab",
+         "sampler": "nvidia-smi power.draw (board power), sampled once a second beside the harness",
+         "period_ms": 1000,
+         "samples": null,
+         "error": "unknown",
+         "backfilled": [
+          "account",
+          "error",
+          "period_ms",
+          "sampler",
+          "samples"
+         ]
         },
         "ts": "2026-10-11T01:52:01Z",
         "low_confidence": true,
@@ -4348,14 +4560,14 @@
       {
        "batch": 4.0,
        "number": {
-        "id": "metrics:173",
+        "id": "metrics:110",
         "label": "teacher.joules_per_token at 4 streams",
         "value": 1.5234,
         "unit": "J/token",
         "kind": "measured",
         "source": {
          "file": "lab/refine/metrics.jsonl",
-         "line": 173,
+         "line": 110,
          "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
         },
         "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
@@ -4397,7 +4609,19 @@
           1.4874,
           1.5254
          ],
-         "joules_per_token_above_idle": 1.2912
+         "joules_per_token_above_idle": 1.2912,
+         "account": "colab",
+         "sampler": "nvidia-smi power.draw (board power), sampled once a second beside the harness",
+         "period_ms": 1000,
+         "samples": null,
+         "error": "unknown",
+         "backfilled": [
+          "account",
+          "error",
+          "period_ms",
+          "sampler",
+          "samples"
+         ]
         },
         "ts": "2026-10-11T01:52:01Z",
         "low_confidence": true,
@@ -4409,14 +4633,14 @@
       {
        "batch": 8.0,
        "number": {
-        "id": "metrics:179",
+        "id": "metrics:116",
         "label": "teacher.joules_per_token at 8 streams",
         "value": 0.999,
         "unit": "J/token",
         "kind": "measured",
         "source": {
          "file": "lab/refine/metrics.jsonl",
-         "line": 179,
+         "line": 116,
          "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
         },
         "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
@@ -4458,7 +4682,19 @@
           0.9759,
           1.0048
          ],
-         "joules_per_token_above_idle": 0.8554
+         "joules_per_token_above_idle": 0.8554,
+         "account": "colab",
+         "sampler": "nvidia-smi power.draw (board power), sampled once a second beside the harness",
+         "period_ms": 1000,
+         "samples": null,
+         "error": "unknown",
+         "backfilled": [
+          "account",
+          "error",
+          "period_ms",
+          "sampler",
+          "samples"
+         ]
         },
         "ts": "2026-10-11T01:52:01Z",
         "low_confidence": true,
@@ -4470,14 +4706,14 @@
       {
        "batch": 16.0,
        "number": {
-        "id": "metrics:185",
+        "id": "metrics:122",
         "label": "teacher.joules_per_token at 16 streams",
         "value": 0.7743,
         "unit": "J/token",
         "kind": "measured",
         "source": {
          "file": "lab/refine/metrics.jsonl",
-         "line": 185,
+         "line": 122,
          "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
         },
         "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
@@ -4519,7 +4755,19 @@
           0.7636,
           0.778
          ],
-         "joules_per_token_above_idle": 0.6739
+         "joules_per_token_above_idle": 0.6739,
+         "account": "colab",
+         "sampler": "nvidia-smi power.draw (board power), sampled once a second beside the harness",
+         "period_ms": 1000,
+         "samples": null,
+         "error": "unknown",
+         "backfilled": [
+          "account",
+          "error",
+          "period_ms",
+          "sampler",
+          "samples"
+         ]
         },
         "ts": "2026-10-11T01:52:01Z",
         "low_confidence": true,
@@ -4531,14 +4779,14 @@
       {
        "batch": 64.0,
        "number": {
-        "id": "metrics:191",
+        "id": "metrics:128",
         "label": "teacher.joules_per_token at 64 streams",
         "value": 0.6003,
         "unit": "J/token",
         "kind": "measured",
         "source": {
          "file": "lab/refine/metrics.jsonl",
-         "line": 191,
+         "line": 128,
          "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
         },
         "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
@@ -4580,7 +4828,19 @@
           0.6003,
           0.6035
          ],
-         "joules_per_token_above_idle": 0.5278
+         "joules_per_token_above_idle": 0.5278,
+         "account": "colab",
+         "sampler": "nvidia-smi power.draw (board power), sampled once a second beside the harness",
+         "period_ms": 1000,
+         "samples": null,
+         "error": "unknown",
+         "backfilled": [
+          "account",
+          "error",
+          "period_ms",
+          "sampler",
+          "samples"
+         ]
         },
         "ts": "2026-10-11T01:52:01Z",
         "low_confidence": true,
@@ -4605,14 +4865,14 @@
       {
        "batch": 1.0,
        "number": {
-        "id": "metrics:163",
+        "id": "metrics:100",
         "label": "teacher.decode_tok_s_total at 1 stream",
         "value": 61.2077,
         "unit": "tok/s",
         "kind": "measured",
         "source": {
          "file": "lab/refine/metrics.jsonl",
-         "line": 163,
+         "line": 100,
          "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
         },
         "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
@@ -4645,7 +4905,19 @@
          "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
          "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
          "batch_size": 1,
-         "statistic": "median of 3 spawns"
+         "statistic": "median of 3 spawns",
+         "account": "colab",
+         "sampler": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
+         "period_ms": null,
+         "samples": null,
+         "error": "unknown",
+         "backfilled": [
+          "account",
+          "error",
+          "period_ms",
+          "sampler",
+          "samples"
+         ]
         },
         "ts": "2026-10-11T01:52:01Z",
         "low_confidence": true,
@@ -4657,14 +4929,14 @@
       {
        "batch": 4.0,
        "number": {
-        "id": "metrics:169",
+        "id": "metrics:106",
         "label": "teacher.decode_tok_s_total at 4 streams",
         "value": 198.933,
         "unit": "tok/s",
         "kind": "measured",
         "source": {
          "file": "lab/refine/metrics.jsonl",
-         "line": 169,
+         "line": 106,
          "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
         },
         "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
@@ -4697,7 +4969,19 @@
          "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
          "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
          "batch_size": 4,
-         "statistic": "median of 3 spawns"
+         "statistic": "median of 3 spawns",
+         "account": "colab",
+         "sampler": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
+         "period_ms": null,
+         "samples": null,
+         "error": "unknown",
+         "backfilled": [
+          "account",
+          "error",
+          "period_ms",
+          "sampler",
+          "samples"
+         ]
         },
         "ts": "2026-10-11T01:52:01Z",
         "low_confidence": true,
@@ -4709,14 +4993,14 @@
       {
        "batch": 8.0,
        "number": {
-        "id": "metrics:175",
+        "id": "metrics:112",
         "label": "teacher.decode_tok_s_total at 8 streams",
         "value": 321.3743,
         "unit": "tok/s",
         "kind": "measured",
         "source": {
          "file": "lab/refine/metrics.jsonl",
-         "line": 175,
+         "line": 112,
          "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
         },
         "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
@@ -4749,7 +5033,19 @@
          "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
          "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
          "batch_size": 8,
-         "statistic": "median of 3 spawns"
+         "statistic": "median of 3 spawns",
+         "account": "colab",
+         "sampler": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
+         "period_ms": null,
+         "samples": null,
+         "error": "unknown",
+         "backfilled": [
+          "account",
+          "error",
+          "period_ms",
+          "sampler",
+          "samples"
+         ]
         },
         "ts": "2026-10-11T01:52:01Z",
         "low_confidence": true,
@@ -4761,14 +5057,14 @@
       {
        "batch": 16.0,
        "number": {
-        "id": "metrics:181",
+        "id": "metrics:118",
         "label": "teacher.decode_tok_s_total at 16 streams",
         "value": 462.3296,
         "unit": "tok/s",
         "kind": "measured",
         "source": {
          "file": "lab/refine/metrics.jsonl",
-         "line": 181,
+         "line": 118,
          "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
         },
         "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
@@ -4801,7 +5097,19 @@
          "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
          "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
          "batch_size": 16,
-         "statistic": "median of 3 spawns"
+         "statistic": "median of 3 spawns",
+         "account": "colab",
+         "sampler": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
+         "period_ms": null,
+         "samples": null,
+         "error": "unknown",
+         "backfilled": [
+          "account",
+          "error",
+          "period_ms",
+          "sampler",
+          "samples"
+         ]
         },
         "ts": "2026-10-11T01:52:01Z",
         "low_confidence": true,
@@ -4813,14 +5121,14 @@
       {
        "batch": 64.0,
        "number": {
-        "id": "metrics:187",
+        "id": "metrics:124",
         "label": "teacher.decode_tok_s_total at 64 streams",
         "value": 636.3307,
         "unit": "tok/s",
         "kind": "measured",
         "source": {
          "file": "lab/refine/metrics.jsonl",
-         "line": 187,
+         "line": 124,
          "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
         },
         "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
@@ -4853,7 +5161,19 @@
          "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
          "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
          "batch_size": 64,
-         "statistic": "median of 3 spawns"
+         "statistic": "median of 3 spawns",
+         "account": "colab",
+         "sampler": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
+         "period_ms": null,
+         "samples": null,
+         "error": "unknown",
+         "backfilled": [
+          "account",
+          "error",
+          "period_ms",
+          "sampler",
+          "samples"
+         ]
         },
         "ts": "2026-10-11T01:52:01Z",
         "low_confidence": true,
@@ -4874,12 +5194,12 @@
      "kind": "derived",
      "formula": "J/token at the fewest streams / J/token at the most streams",
      "inputs": [
-      "metrics:167",
-      "metrics:191"
+      "metrics:104",
+      "metrics:128"
      ],
      "source": {
       "file": "lab/refine/metrics.jsonl",
-      "line": 167,
+      "line": 104,
       "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
      },
      "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
@@ -5149,86 +5469,6 @@
          "period_ms",
          "samples"
         ]
-       },
-       "ts": "2026-10-11T00:23:20Z",
-       "low_confidence": true,
-       "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
-       "other_chip": false,
-       "chip_label": "gfx1151"
-      },
-      {
-       "id": "metrics:130",
-       "label": "vLLM, build not recorded, bench-v1 prompt set, pod-a",
-       "value": 2.7021,
-       "unit": "tok/s",
-       "kind": "measured",
-       "source": {
-        "file": "lab/refine/metrics.jsonl",
-        "line": 130,
-        "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
-       },
-       "gpu": null,
-       "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
-       "node": "pod-a",
-       "metric": "teacher_batching.decode_tok_s",
-       "conditions": {
-        "engine": "vllm",
-        "engine_commit": "unavailable: attached through the hub proxy",
-        "patch_hash": "unavailable: attached through the hub proxy",
-        "checkpoint": "/home/jovyan/models/Qwen3.8-27B-INT4",
-        "quantization": "compressed-tensors-W4A16-INT4",
-        "max_model_len": 16384,
-        "rocm": "unavailable: attached through the hub proxy",
-        "torch": "unavailable: attached through the hub proxy",
-        "triton": "unavailable: attached through the hub proxy",
-        "prompt_set": {
-         "id": "bench-v1",
-         "sha256": "b25ab2bda117925f5eb8a2d5ffe6455de8169b7f2a33a3777eda10c97c37b760",
-         "prompts": 4,
-         "images": 2
-        },
-        "max_tokens": 128,
-        "ignore_eos": true,
-        "nonce": true,
-        "thinking": false,
-        "linear_kernels": "unavailable: attached through the hub proxy",
-        "attention_backends": "unavailable: attached through the hub proxy",
-        "kv_cache_tokens": "unavailable: attached through the hub proxy",
-        "batch_size": 1,
-        "session": "bench-20261010T215122Z-2c65",
-        "statistic": "median of 3 repeats",
-        "stats": {
-         "n": 3,
-         "median": 2.7021,
-         "min": 2.6859,
-         "max": 2.7044,
-         "mean": 2.697466666666667,
-         "sd": 0.010082823678579975
-        },
-        "bands": {
-         "b1": {
-          "share": 1.0,
-          "stats": {
-           "n": 3,
-           "median": 2.7021,
-           "min": 2.6859,
-           "max": 2.7044,
-           "mean": 2.697466666666667,
-           "sd": 0.010082823678579975
-          }
-         }
-        },
-        "low_confidence_reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
-        "mode": "attach: the running pod C teacher measured through the hub proxy, no cold spawn (the one departure from R20's method)",
-        "hub": "sjc",
-        "account": "C",
-        "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
-        "sampler": "T6 lab/pod_power.py 1 on port 8790, 1 s period",
-        "idle_w_loaded": 10.44,
-        "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
-        "requests_per_stream": 4,
-        "repeats": 3,
-        "env": "unavailable: server process not readable from the box"
        },
        "ts": "2026-10-11T00:23:20Z",
        "low_confidence": true,
@@ -5569,60 +5809,6 @@
        "period_ms",
        "sampler",
        "samples"
-      ]
-     },
-     "ts": "2026-10-11T01:52:01Z",
-     "low_confidence": true,
-     "reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
-     "other_chip": true,
-     "chip_label": "NVIDIA A100-SXM4-40GB"
-    },
-    {
-     "id": "metrics:162",
-     "label": "vLLM 0.31.0, bench-v1 prompt set, a100",
-     "value": 64.956,
-     "unit": "tok/s",
-     "kind": "measured",
-     "source": {
-      "file": "lab/refine/metrics.jsonl",
-      "line": 162,
-      "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
-     },
-     "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
-     "chip": null,
-     "node": "a100",
-     "metric": "teacher.decode_tok_s",
-     "conditions": {
-      "hub": "colab",
-      "runtime": "Colab GPU runtime, A100 (colab CLI new --gpu A100), Python 3.13, 83 GB RAM, 12 vCPU",
-      "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
-      "engine": "vllm",
-      "vllm": "0.31.0",
-      "vllm_source": "stock wheel from PyPI, no build, no patch",
-      "torch": "2.13.0+cu130",
-      "cuda": "13.0",
-      "driver": "580.82.07",
-      "checkpoint": "RedHatAI/Qwen3.8-27B-INT4",
-      "served_model_name": "teacher",
-      "max_model_len": 16384,
-      "gpu_memory_utilization": 0.9,
-      "kv_cache_dtype": "auto (vLLM resolved it to fp8_e4m3)",
-      "kv_cache_tokens": 288165,
-      "thinking": "off",
-      "max_tokens": 128,
-      "ignore_eos": true,
-      "prompt_set": "bench-v1",
-      "harness": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
-      "session": "bench-20261011T005700Z-d9c3",
-      "other_chip": true,
-      "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
-      "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
-      "batch_size": 1,
-      "statistic": "median of 3 spawns",
-      "per_spawn": [
-       64.741,
-       64.956,
-       64.9722
       ]
      },
      "ts": "2026-10-11T01:52:01Z",
@@ -7300,86 +7486,6 @@
    "chip_label": "gfx1151"
   },
   {
-   "id": "metrics:130",
-   "label": "vLLM, build not recorded, bench-v1 prompt set, pod-a",
-   "value": 2.7021,
-   "unit": "tok/s",
-   "kind": "measured",
-   "source": {
-    "file": "lab/refine/metrics.jsonl",
-    "line": 130,
-    "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
-   },
-   "gpu": null,
-   "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
-   "node": "pod-a",
-   "metric": "teacher_batching.decode_tok_s",
-   "conditions": {
-    "engine": "vllm",
-    "engine_commit": "unavailable: attached through the hub proxy",
-    "patch_hash": "unavailable: attached through the hub proxy",
-    "checkpoint": "/home/jovyan/models/Qwen3.8-27B-INT4",
-    "quantization": "compressed-tensors-W4A16-INT4",
-    "max_model_len": 16384,
-    "rocm": "unavailable: attached through the hub proxy",
-    "torch": "unavailable: attached through the hub proxy",
-    "triton": "unavailable: attached through the hub proxy",
-    "prompt_set": {
-     "id": "bench-v1",
-     "sha256": "b25ab2bda117925f5eb8a2d5ffe6455de8169b7f2a33a3777eda10c97c37b760",
-     "prompts": 4,
-     "images": 2
-    },
-    "max_tokens": 128,
-    "ignore_eos": true,
-    "nonce": true,
-    "thinking": false,
-    "linear_kernels": "unavailable: attached through the hub proxy",
-    "attention_backends": "unavailable: attached through the hub proxy",
-    "kv_cache_tokens": "unavailable: attached through the hub proxy",
-    "batch_size": 1,
-    "session": "bench-20261010T215122Z-2c65",
-    "statistic": "median of 3 repeats",
-    "stats": {
-     "n": 3,
-     "median": 2.7021,
-     "min": 2.6859,
-     "max": 2.7044,
-     "mean": 2.697466666666667,
-     "sd": 0.010082823678579975
-    },
-    "bands": {
-     "b1": {
-      "share": 1.0,
-      "stats": {
-       "n": 3,
-       "median": 2.7021,
-       "min": 2.6859,
-       "max": 2.7044,
-       "mean": 2.697466666666667,
-       "sd": 0.010082823678579975
-      }
-     }
-    },
-    "low_confidence_reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
-    "mode": "attach: the running pod C teacher measured through the hub proxy, no cold spawn (the one departure from R20's method)",
-    "hub": "sjc",
-    "account": "C",
-    "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
-    "sampler": "T6 lab/pod_power.py 1 on port 8790, 1 s period",
-    "idle_w_loaded": 10.44,
-    "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
-    "requests_per_stream": 4,
-    "repeats": 3,
-    "env": "unavailable: server process not readable from the box"
-   },
-   "ts": "2026-10-11T00:23:20Z",
-   "low_confidence": true,
-   "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
-   "other_chip": false,
-   "chip_label": "gfx1151"
-  },
-  {
    "id": "metrics:193",
    "label": "vLLM b1388b1 + gfx1201 patch, bench-v1 prompt set, pod-b",
    "value": 2.7327,
@@ -7529,31 +7635,6 @@
    "source": {
     "file": "lab/refine/metrics.jsonl",
     "line": 67,
-    "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
-   },
-   "gpu": null,
-   "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
-   "conditions": {},
-   "ts": null,
-   "low_confidence": true,
-   "reason": null,
-   "other_chip": false,
-   "chip_label": "gfx1151"
-  },
-  {
-   "id": "derived:share:metrics:130",
-   "label": "share of the ceiling, vLLM, build not recorded, bench-v1 prompt set, pod-a",
-   "value": 20.1,
-   "unit": "%",
-   "kind": "derived",
-   "formula": "100 x achieved tok/s / ceiling tok/s",
-   "inputs": [
-    "metrics:130",
-    "derived:ceiling"
-   ],
-   "source": {
-    "file": "lab/refine/metrics.jsonl",
-    "line": 130,
     "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
    },
    "gpu": null,
@@ -7829,68 +7910,14 @@
    "chip_label": "NVIDIA A100-SXM4-40GB"
   },
   {
-   "id": "metrics:162",
-   "label": "vLLM 0.31.0, bench-v1 prompt set, a100",
-   "value": 64.956,
-   "unit": "tok/s",
-   "kind": "measured",
-   "source": {
-    "file": "lab/refine/metrics.jsonl",
-    "line": 162,
-    "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
-   },
-   "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
-   "chip": null,
-   "node": "a100",
-   "metric": "teacher.decode_tok_s",
-   "conditions": {
-    "hub": "colab",
-    "runtime": "Colab GPU runtime, A100 (colab CLI new --gpu A100), Python 3.13, 83 GB RAM, 12 vCPU",
-    "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
-    "engine": "vllm",
-    "vllm": "0.31.0",
-    "vllm_source": "stock wheel from PyPI, no build, no patch",
-    "torch": "2.13.0+cu130",
-    "cuda": "13.0",
-    "driver": "580.82.07",
-    "checkpoint": "RedHatAI/Qwen3.8-27B-INT4",
-    "served_model_name": "teacher",
-    "max_model_len": 16384,
-    "gpu_memory_utilization": 0.9,
-    "kv_cache_dtype": "auto (vLLM resolved it to fp8_e4m3)",
-    "kv_cache_tokens": 288165,
-    "thinking": "off",
-    "max_tokens": 128,
-    "ignore_eos": true,
-    "prompt_set": "bench-v1",
-    "harness": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
-    "session": "bench-20261011T005700Z-d9c3",
-    "other_chip": true,
-    "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
-    "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
-    "batch_size": 1,
-    "statistic": "median of 3 spawns",
-    "per_spawn": [
-     64.741,
-     64.956,
-     64.9722
-    ]
-   },
-   "ts": "2026-10-11T01:52:01Z",
-   "low_confidence": true,
-   "reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
-   "other_chip": true,
-   "chip_label": "NVIDIA A100-SXM4-40GB"
-  },
-  {
-   "id": "metrics:133",
+   "id": "metrics:70",
    "label": "teacher_batching.joules_per_token at 1 stream",
    "value": 36.6587,
    "unit": "J/token",
    "kind": "measured",
    "source": {
     "file": "lab/refine/metrics.jsonl",
-    "line": 133,
+    "line": 70,
     "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
    },
    "gpu": null,
@@ -7954,7 +7981,15 @@
     "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
     "requests_per_stream": 4,
     "repeats": 3,
-    "env": "unavailable: server process not readable from the box"
+    "env": "unavailable: server process not readable from the box",
+    "period_ms": 1000,
+    "samples": null,
+    "error": "unknown",
+    "backfilled": [
+     "error",
+     "period_ms",
+     "samples"
+    ]
    },
    "ts": "2026-10-11T00:23:20Z",
    "low_confidence": true,
@@ -7963,14 +7998,14 @@
    "chip_label": "gfx1151"
   },
   {
-   "id": "metrics:139",
+   "id": "metrics:76",
    "label": "teacher_batching.joules_per_token at 4 streams",
    "value": 10.3071,
    "unit": "J/token",
    "kind": "measured",
    "source": {
     "file": "lab/refine/metrics.jsonl",
-    "line": 139,
+    "line": 76,
     "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
    },
    "gpu": null,
@@ -8034,7 +8069,15 @@
     "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
     "requests_per_stream": 4,
     "repeats": 3,
-    "env": "unavailable: server process not readable from the box"
+    "env": "unavailable: server process not readable from the box",
+    "period_ms": 1000,
+    "samples": null,
+    "error": "unknown",
+    "backfilled": [
+     "error",
+     "period_ms",
+     "samples"
+    ]
    },
    "ts": "2026-10-11T00:23:20Z",
    "low_confidence": true,
@@ -8043,14 +8086,14 @@
    "chip_label": "gfx1151"
   },
   {
-   "id": "metrics:145",
+   "id": "metrics:82",
    "label": "teacher_batching.joules_per_token at 8 streams",
    "value": 5.8676,
    "unit": "J/token",
    "kind": "measured",
    "source": {
     "file": "lab/refine/metrics.jsonl",
-    "line": 145,
+    "line": 82,
     "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
    },
    "gpu": null,
@@ -8114,7 +8157,15 @@
     "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
     "requests_per_stream": 4,
     "repeats": 3,
-    "env": "unavailable: server process not readable from the box"
+    "env": "unavailable: server process not readable from the box",
+    "period_ms": 1000,
+    "samples": null,
+    "error": "unknown",
+    "backfilled": [
+     "error",
+     "period_ms",
+     "samples"
+    ]
    },
    "ts": "2026-10-11T00:23:20Z",
    "low_confidence": true,
@@ -8123,14 +8174,14 @@
    "chip_label": "gfx1151"
   },
   {
-   "id": "metrics:151",
+   "id": "metrics:88",
    "label": "teacher_batching.joules_per_token at 16 streams",
    "value": 3.5628,
    "unit": "J/token",
    "kind": "measured",
    "source": {
     "file": "lab/refine/metrics.jsonl",
-    "line": 151,
+    "line": 88,
     "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
    },
    "gpu": null,
@@ -8194,7 +8245,15 @@
     "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
     "requests_per_stream": 4,
     "repeats": 3,
-    "env": "unavailable: server process not readable from the box"
+    "env": "unavailable: server process not readable from the box",
+    "period_ms": 1000,
+    "samples": null,
+    "error": "unknown",
+    "backfilled": [
+     "error",
+     "period_ms",
+     "samples"
+    ]
    },
    "ts": "2026-10-11T00:23:20Z",
    "low_confidence": true,
@@ -8203,14 +8262,14 @@
    "chip_label": "gfx1151"
   },
   {
-   "id": "metrics:157",
+   "id": "metrics:94",
    "label": "teacher_batching.joules_per_token at 64 streams",
    "value": 1.9384,
    "unit": "J/token",
    "kind": "measured",
    "source": {
     "file": "lab/refine/metrics.jsonl",
-    "line": 157,
+    "line": 94,
     "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
    },
    "gpu": null,
@@ -8274,7 +8333,15 @@
     "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
     "requests_per_stream": 4,
     "repeats": 3,
-    "env": "unavailable: server process not readable from the box"
+    "env": "unavailable: server process not readable from the box",
+    "period_ms": 1000,
+    "samples": null,
+    "error": "unknown",
+    "backfilled": [
+     "error",
+     "period_ms",
+     "samples"
+    ]
    },
    "ts": "2026-10-11T00:23:20Z",
    "low_confidence": true,
@@ -8713,14 +8780,14 @@
    "chip_label": "gfx1151"
   },
   {
-   "id": "metrics:131",
+   "id": "metrics:68",
    "label": "teacher_batching.decode_tok_s_total at 1 stream",
    "value": 2.6172,
    "unit": "tok/s",
    "kind": "measured",
    "source": {
     "file": "lab/refine/metrics.jsonl",
-    "line": 131,
+    "line": 68,
     "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
    },
    "gpu": null,
@@ -8784,7 +8851,15 @@
     "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
     "requests_per_stream": 4,
     "repeats": 3,
-    "env": "unavailable: server process not readable from the box"
+    "env": "unavailable: server process not readable from the box",
+    "period_ms": 1000,
+    "samples": 3,
+    "error": "unknown",
+    "backfilled": [
+     "error",
+     "period_ms",
+     "samples"
+    ]
    },
    "ts": "2026-10-11T00:23:20Z",
    "low_confidence": true,
@@ -8793,14 +8868,14 @@
    "chip_label": "gfx1151"
   },
   {
-   "id": "metrics:137",
+   "id": "metrics:74",
    "label": "teacher_batching.decode_tok_s_total at 4 streams",
    "value": 9.3153,
    "unit": "tok/s",
    "kind": "measured",
    "source": {
     "file": "lab/refine/metrics.jsonl",
-    "line": 137,
+    "line": 74,
     "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
    },
    "gpu": null,
@@ -8864,7 +8939,15 @@
     "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
     "requests_per_stream": 4,
     "repeats": 3,
-    "env": "unavailable: server process not readable from the box"
+    "env": "unavailable: server process not readable from the box",
+    "period_ms": 1000,
+    "samples": 3,
+    "error": "unknown",
+    "backfilled": [
+     "error",
+     "period_ms",
+     "samples"
+    ]
    },
    "ts": "2026-10-11T00:23:20Z",
    "low_confidence": true,
@@ -8873,14 +8956,14 @@
    "chip_label": "gfx1151"
   },
   {
-   "id": "metrics:143",
+   "id": "metrics:80",
    "label": "teacher_batching.decode_tok_s_total at 8 streams",
    "value": 16.3616,
    "unit": "tok/s",
    "kind": "measured",
    "source": {
     "file": "lab/refine/metrics.jsonl",
-    "line": 143,
+    "line": 80,
     "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
    },
    "gpu": null,
@@ -8944,7 +9027,15 @@
     "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
     "requests_per_stream": 4,
     "repeats": 3,
-    "env": "unavailable: server process not readable from the box"
+    "env": "unavailable: server process not readable from the box",
+    "period_ms": 1000,
+    "samples": 3,
+    "error": "unknown",
+    "backfilled": [
+     "error",
+     "period_ms",
+     "samples"
+    ]
    },
    "ts": "2026-10-11T00:23:20Z",
    "low_confidence": true,
@@ -8953,14 +9044,14 @@
    "chip_label": "gfx1151"
   },
   {
-   "id": "metrics:149",
+   "id": "metrics:86",
    "label": "teacher_batching.decode_tok_s_total at 16 streams",
    "value": 26.946,
    "unit": "tok/s",
    "kind": "measured",
    "source": {
     "file": "lab/refine/metrics.jsonl",
-    "line": 149,
+    "line": 86,
     "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
    },
    "gpu": null,
@@ -9024,7 +9115,15 @@
     "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
     "requests_per_stream": 4,
     "repeats": 3,
-    "env": "unavailable: server process not readable from the box"
+    "env": "unavailable: server process not readable from the box",
+    "period_ms": 1000,
+    "samples": 3,
+    "error": "unknown",
+    "backfilled": [
+     "error",
+     "period_ms",
+     "samples"
+    ]
    },
    "ts": "2026-10-11T00:23:20Z",
    "low_confidence": true,
@@ -9033,14 +9132,14 @@
    "chip_label": "gfx1151"
   },
   {
-   "id": "metrics:155",
+   "id": "metrics:92",
    "label": "teacher_batching.decode_tok_s_total at 64 streams",
    "value": 49.5288,
    "unit": "tok/s",
    "kind": "measured",
    "source": {
     "file": "lab/refine/metrics.jsonl",
-    "line": 155,
+    "line": 92,
     "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
    },
    "gpu": null,
@@ -9104,7 +9203,15 @@
     "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
     "requests_per_stream": 4,
     "repeats": 3,
-    "env": "unavailable: server process not readable from the box"
+    "env": "unavailable: server process not readable from the box",
+    "period_ms": 1000,
+    "samples": 3,
+    "error": "unknown",
+    "backfilled": [
+     "error",
+     "period_ms",
+     "samples"
+    ]
    },
    "ts": "2026-10-11T00:23:20Z",
    "low_confidence": true,
@@ -9543,14 +9650,14 @@
    "chip_label": "gfx1151"
   },
   {
-   "id": "metrics:134",
+   "id": "metrics:71",
    "label": "teacher_batching.watts_avg at 1 stream",
    "value": 96.0046,
    "unit": "W",
    "kind": "measured",
    "source": {
     "file": "lab/refine/metrics.jsonl",
-    "line": 134,
+    "line": 71,
     "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
    },
    "gpu": null,
@@ -9614,7 +9721,15 @@
     "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
     "requests_per_stream": 4,
     "repeats": 3,
-    "env": "unavailable: server process not readable from the box"
+    "env": "unavailable: server process not readable from the box",
+    "period_ms": 1000,
+    "samples": null,
+    "error": "unknown",
+    "backfilled": [
+     "error",
+     "period_ms",
+     "samples"
+    ]
    },
    "ts": "2026-10-11T00:23:20Z",
    "low_confidence": true,
@@ -9623,14 +9738,14 @@
    "chip_label": "gfx1151"
   },
   {
-   "id": "metrics:140",
+   "id": "metrics:77",
    "label": "teacher_batching.watts_avg at 4 streams",
    "value": 96.0126,
    "unit": "W",
    "kind": "measured",
    "source": {
     "file": "lab/refine/metrics.jsonl",
-    "line": 140,
+    "line": 77,
     "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
    },
    "gpu": null,
@@ -9694,7 +9809,15 @@
     "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
     "requests_per_stream": 4,
     "repeats": 3,
-    "env": "unavailable: server process not readable from the box"
+    "env": "unavailable: server process not readable from the box",
+    "period_ms": 1000,
+    "samples": null,
+    "error": "unknown",
+    "backfilled": [
+     "error",
+     "period_ms",
+     "samples"
+    ]
    },
    "ts": "2026-10-11T00:23:20Z",
    "low_confidence": true,
@@ -9703,14 +9826,14 @@
    "chip_label": "gfx1151"
   },
   {
-   "id": "metrics:146",
+   "id": "metrics:83",
    "label": "teacher_batching.watts_avg at 8 streams",
    "value": 96.004,
    "unit": "W",
    "kind": "measured",
    "source": {
     "file": "lab/refine/metrics.jsonl",
-    "line": 146,
+    "line": 83,
     "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
    },
    "gpu": null,
@@ -9774,7 +9897,15 @@
     "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
     "requests_per_stream": 4,
     "repeats": 3,
-    "env": "unavailable: server process not readable from the box"
+    "env": "unavailable: server process not readable from the box",
+    "period_ms": 1000,
+    "samples": null,
+    "error": "unknown",
+    "backfilled": [
+     "error",
+     "period_ms",
+     "samples"
+    ]
    },
    "ts": "2026-10-11T00:23:20Z",
    "low_confidence": true,
@@ -9783,14 +9914,14 @@
    "chip_label": "gfx1151"
   },
   {
-   "id": "metrics:152",
+   "id": "metrics:89",
    "label": "teacher_batching.watts_avg at 16 streams",
    "value": 96.0052,
    "unit": "W",
    "kind": "measured",
    "source": {
     "file": "lab/refine/metrics.jsonl",
-    "line": 152,
+    "line": 89,
     "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
    },
    "gpu": null,
@@ -9854,7 +9985,15 @@
     "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
     "requests_per_stream": 4,
     "repeats": 3,
-    "env": "unavailable: server process not readable from the box"
+    "env": "unavailable: server process not readable from the box",
+    "period_ms": 1000,
+    "samples": null,
+    "error": "unknown",
+    "backfilled": [
+     "error",
+     "period_ms",
+     "samples"
+    ]
    },
    "ts": "2026-10-11T00:23:20Z",
    "low_confidence": true,
@@ -9863,14 +10002,14 @@
    "chip_label": "gfx1151"
   },
   {
-   "id": "metrics:158",
+   "id": "metrics:95",
    "label": "teacher_batching.watts_avg at 64 streams",
    "value": 96.0499,
    "unit": "W",
    "kind": "measured",
    "source": {
     "file": "lab/refine/metrics.jsonl",
-    "line": 158,
+    "line": 95,
     "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
    },
    "gpu": null,
@@ -9934,7 +10073,15 @@
     "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
     "requests_per_stream": 4,
     "repeats": 3,
-    "env": "unavailable: server process not readable from the box"
+    "env": "unavailable: server process not readable from the box",
+    "period_ms": 1000,
+    "samples": null,
+    "error": "unknown",
+    "backfilled": [
+     "error",
+     "period_ms",
+     "samples"
+    ]
    },
    "ts": "2026-10-11T00:23:20Z",
    "low_confidence": true,
@@ -10380,12 +10527,12 @@
    "kind": "derived",
    "formula": "J/token at the fewest streams / J/token at the most streams",
    "inputs": [
-    "metrics:133",
-    "metrics:157"
+    "metrics:70",
+    "metrics:94"
    ],
    "source": {
     "file": "lab/refine/metrics.jsonl",
-    "line": 133,
+    "line": 70,
     "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
    },
    "gpu": null,
@@ -10430,12 +10577,12 @@
    "kind": "derived",
    "formula": "tok/s over all streams at the most streams / at the fewest",
    "inputs": [
-    "metrics:131",
-    "metrics:155"
+    "metrics:68",
+    "metrics:92"
    ],
    "source": {
     "file": "lab/refine/metrics.jsonl",
-    "line": 131,
+    "line": 68,
     "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
    },
    "gpu": null,
@@ -10473,14 +10620,14 @@
    "chip_label": "gfx1151"
   },
   {
-   "id": "metrics:167",
+   "id": "metrics:104",
    "label": "teacher.joules_per_token at 1 stream",
    "value": 5.0174,
    "unit": "J/token",
    "kind": "measured",
    "source": {
     "file": "lab/refine/metrics.jsonl",
-    "line": 167,
+    "line": 104,
     "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
    },
    "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
@@ -10522,7 +10669,19 @@
      4.9831,
      5.0677
     ],
-    "joules_per_token_above_idle": 4.2609
+    "joules_per_token_above_idle": 4.2609,
+    "account": "colab",
+    "sampler": "nvidia-smi power.draw (board power), sampled once a second beside the harness",
+    "period_ms": 1000,
+    "samples": null,
+    "error": "unknown",
+    "backfilled": [
+     "account",
+     "error",
+     "period_ms",
+     "sampler",
+     "samples"
+    ]
    },
    "ts": "2026-10-11T01:52:01Z",
    "low_confidence": true,
@@ -10531,14 +10690,14 @@
    "chip_label": "NVIDIA A100-SXM4-40GB"
   },
   {
-   "id": "metrics:173",
+   "id": "metrics:110",
    "label": "teacher.joules_per_token at 4 streams",
    "value": 1.5234,
    "unit": "J/token",
    "kind": "measured",
    "source": {
     "file": "lab/refine/metrics.jsonl",
-    "line": 173,
+    "line": 110,
     "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
    },
    "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
@@ -10580,7 +10739,19 @@
      1.4874,
      1.5254
     ],
-    "joules_per_token_above_idle": 1.2912
+    "joules_per_token_above_idle": 1.2912,
+    "account": "colab",
+    "sampler": "nvidia-smi power.draw (board power), sampled once a second beside the harness",
+    "period_ms": 1000,
+    "samples": null,
+    "error": "unknown",
+    "backfilled": [
+     "account",
+     "error",
+     "period_ms",
+     "sampler",
+     "samples"
+    ]
    },
    "ts": "2026-10-11T01:52:01Z",
    "low_confidence": true,
@@ -10589,14 +10760,14 @@
    "chip_label": "NVIDIA A100-SXM4-40GB"
   },
   {
-   "id": "metrics:179",
+   "id": "metrics:116",
    "label": "teacher.joules_per_token at 8 streams",
    "value": 0.999,
    "unit": "J/token",
    "kind": "measured",
    "source": {
     "file": "lab/refine/metrics.jsonl",
-    "line": 179,
+    "line": 116,
     "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
    },
    "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
@@ -10638,7 +10809,19 @@
      0.9759,
      1.0048
     ],
-    "joules_per_token_above_idle": 0.8554
+    "joules_per_token_above_idle": 0.8554,
+    "account": "colab",
+    "sampler": "nvidia-smi power.draw (board power), sampled once a second beside the harness",
+    "period_ms": 1000,
+    "samples": null,
+    "error": "unknown",
+    "backfilled": [
+     "account",
+     "error",
+     "period_ms",
+     "sampler",
+     "samples"
+    ]
    },
    "ts": "2026-10-11T01:52:01Z",
    "low_confidence": true,
@@ -10647,14 +10830,14 @@
    "chip_label": "NVIDIA A100-SXM4-40GB"
   },
   {
-   "id": "metrics:185",
+   "id": "metrics:122",
    "label": "teacher.joules_per_token at 16 streams",
    "value": 0.7743,
    "unit": "J/token",
    "kind": "measured",
    "source": {
     "file": "lab/refine/metrics.jsonl",
-    "line": 185,
+    "line": 122,
     "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
    },
    "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
@@ -10696,7 +10879,19 @@
      0.7636,
      0.778
     ],
-    "joules_per_token_above_idle": 0.6739
+    "joules_per_token_above_idle": 0.6739,
+    "account": "colab",
+    "sampler": "nvidia-smi power.draw (board power), sampled once a second beside the harness",
+    "period_ms": 1000,
+    "samples": null,
+    "error": "unknown",
+    "backfilled": [
+     "account",
+     "error",
+     "period_ms",
+     "sampler",
+     "samples"
+    ]
    },
    "ts": "2026-10-11T01:52:01Z",
    "low_confidence": true,
@@ -10705,14 +10900,14 @@
    "chip_label": "NVIDIA A100-SXM4-40GB"
   },
   {
-   "id": "metrics:191",
+   "id": "metrics:128",
    "label": "teacher.joules_per_token at 64 streams",
    "value": 0.6003,
    "unit": "J/token",
    "kind": "measured",
    "source": {
     "file": "lab/refine/metrics.jsonl",
-    "line": 191,
+    "line": 128,
     "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
    },
    "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
@@ -10754,7 +10949,19 @@
      0.6003,
      0.6035
     ],
-    "joules_per_token_above_idle": 0.5278
+    "joules_per_token_above_idle": 0.5278,
+    "account": "colab",
+    "sampler": "nvidia-smi power.draw (board power), sampled once a second beside the harness",
+    "period_ms": 1000,
+    "samples": null,
+    "error": "unknown",
+    "backfilled": [
+     "account",
+     "error",
+     "period_ms",
+     "sampler",
+     "samples"
+    ]
    },
    "ts": "2026-10-11T01:52:01Z",
    "low_confidence": true,
@@ -10763,14 +10970,14 @@
    "chip_label": "NVIDIA A100-SXM4-40GB"
   },
   {
-   "id": "metrics:163",
+   "id": "metrics:100",
    "label": "teacher.decode_tok_s_total at 1 stream",
    "value": 61.2077,
    "unit": "tok/s",
    "kind": "measured",
    "source": {
     "file": "lab/refine/metrics.jsonl",
-    "line": 163,
+    "line": 100,
     "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
    },
    "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
@@ -10803,7 +11010,19 @@
     "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
     "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
     "batch_size": 1,
-    "statistic": "median of 3 spawns"
+    "statistic": "median of 3 spawns",
+    "account": "colab",
+    "sampler": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
+    "period_ms": null,
+    "samples": null,
+    "error": "unknown",
+    "backfilled": [
+     "account",
+     "error",
+     "period_ms",
+     "sampler",
+     "samples"
+    ]
    },
    "ts": "2026-10-11T01:52:01Z",
    "low_confidence": true,
@@ -10812,14 +11031,14 @@
    "chip_label": "NVIDIA A100-SXM4-40GB"
   },
   {
-   "id": "metrics:169",
+   "id": "metrics:106",
    "label": "teacher.decode_tok_s_total at 4 streams",
    "value": 198.933,
    "unit": "tok/s",
    "kind": "measured",
    "source": {
     "file": "lab/refine/metrics.jsonl",
-    "line": 169,
+    "line": 106,
     "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
    },
    "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
@@ -10852,7 +11071,19 @@
     "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
     "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
     "batch_size": 4,
-    "statistic": "median of 3 spawns"
+    "statistic": "median of 3 spawns",
+    "account": "colab",
+    "sampler": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
+    "period_ms": null,
+    "samples": null,
+    "error": "unknown",
+    "backfilled": [
+     "account",
+     "error",
+     "period_ms",
+     "sampler",
+     "samples"
+    ]
    },
    "ts": "2026-10-11T01:52:01Z",
    "low_confidence": true,
@@ -10861,14 +11092,14 @@
    "chip_label": "NVIDIA A100-SXM4-40GB"
   },
   {
-   "id": "metrics:175",
+   "id": "metrics:112",
    "label": "teacher.decode_tok_s_total at 8 streams",
    "value": 321.3743,
    "unit": "tok/s",
    "kind": "measured",
    "source": {
     "file": "lab/refine/metrics.jsonl",
-    "line": 175,
+    "line": 112,
     "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
    },
    "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
@@ -10901,7 +11132,19 @@
     "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
     "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
     "batch_size": 8,
-    "statistic": "median of 3 spawns"
+    "statistic": "median of 3 spawns",
+    "account": "colab",
+    "sampler": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
+    "period_ms": null,
+    "samples": null,
+    "error": "unknown",
+    "backfilled": [
+     "account",
+     "error",
+     "period_ms",
+     "sampler",
+     "samples"
+    ]
    },
    "ts": "2026-10-11T01:52:01Z",
    "low_confidence": true,
@@ -10910,14 +11153,14 @@
    "chip_label": "NVIDIA A100-SXM4-40GB"
   },
   {
-   "id": "metrics:181",
+   "id": "metrics:118",
    "label": "teacher.decode_tok_s_total at 16 streams",
    "value": 462.3296,
    "unit": "tok/s",
    "kind": "measured",
    "source": {
     "file": "lab/refine/metrics.jsonl",
-    "line": 181,
+    "line": 118,
     "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
    },
    "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
@@ -10950,7 +11193,19 @@
     "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
     "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
     "batch_size": 16,
-    "statistic": "median of 3 spawns"
+    "statistic": "median of 3 spawns",
+    "account": "colab",
+    "sampler": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
+    "period_ms": null,
+    "samples": null,
+    "error": "unknown",
+    "backfilled": [
+     "account",
+     "error",
+     "period_ms",
+     "sampler",
+     "samples"
+    ]
    },
    "ts": "2026-10-11T01:52:01Z",
    "low_confidence": true,
@@ -10959,14 +11214,14 @@
    "chip_label": "NVIDIA A100-SXM4-40GB"
   },
   {
-   "id": "metrics:187",
+   "id": "metrics:124",
    "label": "teacher.decode_tok_s_total at 64 streams",
    "value": 636.3307,
    "unit": "tok/s",
    "kind": "measured",
    "source": {
     "file": "lab/refine/metrics.jsonl",
-    "line": 187,
+    "line": 124,
     "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
    },
    "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
@@ -10999,7 +11254,19 @@
     "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
     "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
     "batch_size": 64,
-    "statistic": "median of 3 spawns"
+    "statistic": "median of 3 spawns",
+    "account": "colab",
+    "sampler": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
+    "period_ms": null,
+    "samples": null,
+    "error": "unknown",
+    "backfilled": [
+     "account",
+     "error",
+     "period_ms",
+     "sampler",
+     "samples"
+    ]
    },
    "ts": "2026-10-11T01:52:01Z",
    "low_confidence": true,
@@ -11015,12 +11282,12 @@
    "kind": "derived",
    "formula": "J/token at the fewest streams / J/token at the most streams",
    "inputs": [
-    "metrics:167",
-    "metrics:191"
+    "metrics:104",
+    "metrics:128"
    ],
    "source": {
     "file": "lab/refine/metrics.jsonl",
-    "line": 167,
+    "line": 104,
     "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
    },
    "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",

@@ -166,6 +166,35 @@ def test_check_says_when_the_files_on_disk_are_stale(tmp_path):
     assert (out / report.HTML_NAME).read_text(encoding="utf-8") == "an older page"  # a check writes nothing
 
 
+def test_a_line_that_repeats_an_earlier_row_is_counted_once(tmp_path):
+    """A merge that keeps both copies of a rewritten row leaves the same measurement on two lines."""
+    row = {"metric": "teacher.joules_per_token", "value": 30.0, "unit": "J/token", "node": "pod-a",
+           "conditions": {"chip": "gfx1151", "batch_size": 1, "session": "s1"}, "ts": "2026-10-11T00:00:00Z"}
+    lines = [
+        {**row, "conditions": {**row["conditions"], "sampler": "T6"}, "backfilled": True},  # 1: the rewritten copy
+        {**row, "value": 3.0, "conditions": {**row["conditions"], "batch_size": 8}},        # 2: another stream count
+        row,                                                                               # 3: line 1 as first written
+        {**row, "conditions": {**row["conditions"], "session": "s2"}},                     # 4: another session
+        {**row, "ts": "2026-10-11T04:00:00Z"},                                             # 5: measured again later
+        {**row, "ts": None},                                                               # 6 and 7: no time recorded,
+        {**row, "ts": None},                                                               # so never called a repeat
+    ]
+    root = tmp_path / "tree"
+    (root / "lab" / "refine").mkdir(parents=True)
+    (root / report.METRICS).write_text("".join(json.dumps(x) + "\n" for x in lines), encoding="utf-8")
+    rows, skipped = report.read_metrics(root / report.METRICS)
+    assert [r["_line"] for r in rows] == [1, 2, 4, 5, 6, 7]
+    assert skipped == [{"line": 3, "problem": "repeats line 1", "repeats": 1}]
+    pack = report.build_pack(root)
+    assert pack["skipped"] == skipped
+    frontier = section(pack, "frontier")
+    assert sorted(len(s["points"]) for s in frontier["energy"]) == [2]  # one sweep, its first point taken once
+    # among the rows kept, the last line written at a stream count is still the one a sweep shows
+    assert [p["number"]["source"]["line"] for p in frontier["energy"][0]["points"]] == [7, 2]
+    page = report.render_html(pack, root, root / report.OUT_DIR)
+    assert "Left out of every number above: 1 line of" in page and "repeat an earlier row" in page and "(line 3)" in page
+
+
 def test_names_tell_builds_and_engines_apart():
     first = {"engine": "vllm@b1388b1+lab/vllm-gfx1201.diff, 0.19.2+gfx1151"}
     assert report.build_label(first) == "vLLM b1388b1 + gfx1201 patch"
@@ -231,7 +260,9 @@ def test_a_tree_where_every_run_has_landed_fills_every_section():
     assert [r["value"] for r in frontier["ratios"]] == [20.0, 3.2]
     assert [r["value"] for r in frontier["more_work"]] == [20.0]
     assert "by 20 times" in frontier["reading"] and "100 watts" in frontier["reading"]
-    assert "on pod-b, gives 3.2 times at 4 streams" in frontier["reading"]
+    assert frontier["reading"].count(".") == 1  # one sentence; the second pod's sweep is a note beside the chart
+    assert frontier["notes"] == ["Measured again on pod-b, vLLM b1388b1 + gfx1201 patch: 3.2 times less energy for "
+                                 "each token at 4 streams than at 1."]
     # the settings sweep's two cells are two slices, never one sweep; its change row and its file are listed
     assert [c["value"] for c in frontier["changes"]] == [12.5]
     assert frontier["pending_files"] == ["sweep-request-gfx1151-2026-10-11.json"]
