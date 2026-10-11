@@ -36,7 +36,9 @@ REPLACED = ("sorting.yaml", "rules.yaml", "league.yaml")  # the profile's file i
 OVERRIDABLE = LAYERED + REPLACED
 # The Ask screen's suggested questions for a profile that lists none in profile.yaml (`suggestions:`): the student's.
 DEFAULT_SUGGESTIONS = (
-    "Where did I leave my keys?",
+    "Where is my phone?",
+    "Where is my water bottle?",
+    "Where did I leave my laptop?",
     "What is due this week?",
     "What happened at our table overnight?",
     "What should I eat?",

@@ -15,7 +15,7 @@ import { ZONES, type ZonePolygon } from "./zones.generated";
 export const SORT_ITEMS = ["can", "bottle", "paper", "cardboard", "cup", "napkin", "chip bag", "food container", "banana", "wine glass"];
 
 /** A short list of things worth finding. Each is asked for by name; most boxes have seen only some. */
-export const WATCH_ITEMS = ["keys", "wallet", "charger", "laptop", "phone"];
+export const WATCH_ITEMS = ["phone", "laptop", "water bottle"];
 
 export type Point = [number, number];
 

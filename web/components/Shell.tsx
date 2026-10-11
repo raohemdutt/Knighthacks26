@@ -133,7 +133,7 @@ const MORE: MoreTab[] = [
     href: "/map",
     group: "Home",
     label: "Room map",
-    keywords: "3d twin zones where things keys wallet",
+    keywords: "3d twin zones where things phone laptop water bottle",
     icon: (
       <>
         <path d="M3.5 6.5l5.5-2 6 2 5.5-2v13l-5.5 2-6-2-5.5 2z" />

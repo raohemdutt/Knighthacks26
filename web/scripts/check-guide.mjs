@@ -138,6 +138,7 @@ try {
   eq("app: nothing close", G.resolveApp("where is the coffee machine").target, null);
   eq("labels: keys", G.labelsFor("my keys"), ["keys", "key"]);
   eq("labels: a key", G.labelsFor("my key"), ["key", "keys"]);
+  eq("labels: a phone, by the detector's name too", G.labelsFor("my phone"), ["phone", "phones", "cell phone"]);
   eq("labels: two words", G.labelsFor("the coffee mugs"), ["coffee mugs", "coffee mug", "mugs", "mug"]);
   eq("own thing or not", [G.ownThing("my keys"), G.ownThing("our charger"), G.ownThing("dominick"), G.ownThing("the nearest pizza")], [true, true, false, false]);
   eq("pin target", [G.pinTarget("keys").id, G.pinTarget("keys").route, G.pinTarget("keys").at[0].id], ["pin:keys", "/map/", "pin:keys"]);

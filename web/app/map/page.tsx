@@ -404,13 +404,13 @@ export default function RoomMapPage() {
 /** The thing in focus: where it is in one sentence, when, the frame that proves it, and what to do about it. */
 function ThingCard({ seen, placed, now, onPoint }: { seen: Seen; placed: boolean; now: number; onPoint: () => void }) {
   const s = seen.sighting;
-  if (seen.error) return <ErrorBox what={`where the ${seen.label} are`} error={seen.error} />;
+  if (seen.error) return <ErrorBox what={`where the ${seen.label} is`} error={seen.error} />;
   if (!s)
     return (
       <div className={`${ui.card} ${css.detail}`}>
         <p className={css.detailTitle}>{humanize(seen.label)}</p>
         <p className={css.where}>Not seen yet.</p>
-        <p className={css.whereNote}>No camera has caught {seen.label} so far. Leave {seen.label === "keys" ? "them" : "it"} in view of a camera once and Atlas will remember the spot.</p>
+        <p className={css.whereNote}>No camera has caught {seen.label} so far. Leave it in view of a camera once and Atlas will remember the spot.</p>
         <div className={css.actions}>
           <Link href={`/?q=${encodeURIComponent(`Where did I leave my ${seen.label}?`)}`} className={css.action}>
             {ICON_ASK} Ask Atlas
