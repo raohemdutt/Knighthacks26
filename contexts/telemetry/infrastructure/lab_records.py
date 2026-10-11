@@ -8,7 +8,8 @@ A metrics-file row is cited as `metrics.jsonl:<line>`, with the line number `lab
 and a ledger row as `ledger seq <n>`, each with its own measured time and low-confidence flag. The newest row of a
 metric is the one `lab.machine.metrics.latest` and `lab.machine.ledger.latest_metric` would give: latest ts, the later
 line winning a tie. A node narrows the rows to that node; None takes any node (the teacher and the trainer have run on
-several pods).
+several pods), except a row marked `other_chip: true` (a reference on another chip, such as R57's A100 on Colab),
+which answers only when its node is named.
 
 Nothing here creates or writes a file: a missing metrics file or ledger is no rows. A file that cannot be read (corrupt,
 or locked by a writer for longer than `lock_timeout`), and a checkout where `lab` cannot be imported (the gateway run
@@ -69,6 +70,8 @@ def _newest(rows: list[tuple[int, dict]], metric: str, node: str | None) -> tupl
     best = None
     for line, r in rows:
         if r["metric"] == metric and node in (None, r["node"]):
+            if node is None and (r.get("conditions") or {}).get("other_chip") is True:
+                continue  # a reference on another chip (R57's A100) answers only when its node is asked for by name
             if best is None or _time(r["ts"]) >= _time(best[1]["ts"]):  # a later line wins a tie
                 best = (line, r)
     return best
