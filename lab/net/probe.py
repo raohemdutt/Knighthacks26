@@ -1,7 +1,7 @@
 """R66 probe: an echo/sink server and a client that measures round trip and throughput over a TCP port.
 
-  python3 r66_probe.py serve PORT SECONDS
-  python3 r66_probe.py client HOST PORT [MB]
+  python3 probe.py serve PORT SECONDS
+  python3 probe.py client HOST PORT [MB]
 """
 import socket, statistics, sys, threading, time
 

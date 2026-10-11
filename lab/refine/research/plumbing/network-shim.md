@@ -117,11 +117,64 @@ Kernel speed and model quality are out of scope.
 
 ## A model one pod cannot hold, split across both
 
-- **[measured]** PENDING: the Qwen3.5-122B-A10B GPTQ int4 pair.
-  Source: PENDING
-  - Implication: PENDING
-  - Candidate experiment: PENDING
-
+- **[measured]** Qwen/Qwen3.5-122B-A10B-GPTQ-Int4 (Qwen's own int4 build of the student's generation: a hybrid MoE,
+  48 layers with full attention every fourth, 256 experts with 8 active, about 10B active parameters; GPTQ 4-bit,
+  group 128, on the routed experts only, the rest bf16) is 78.9 GB on disk, 39 shards. It downloaded to both pods at
+  50 to 55 MB/s each over plain HTTP (`HF_HUB_DISABLE_XET=1`; hf's default xet transfer ran at 15 MB/s on pod C and
+  stalled at 1 MB/s on pod D), about 25 minutes. Served text-only (`--language-model-only`) as pipeline parallel 2
+  with the default even split (24 and 24 layers, so each stage holds 6 full-attention and 18 linear-attention
+  layers), head on pod C, the stages loaded 33.72 GiB (pod C) and 35.14 GiB (pod D) in 35 to 90 s, and at
+  `--gpu-memory-utilization 0.65` (about 22 GB left free on each pod) pod C's KV cache came out at 3.71 GiB (97,133
+  tokens) and pod D's at 1.99 GiB (83 linear-attention state blocks). Two things stopped the first two starts:
+  vLLM's fused-MoE config lookup asks amdsmi for the device name and the venv cannot import amdsmi (fixed by putting
+  the venv ROCm SDK's own `share/amd_smi` on `PYTHONPATH`), and pod D's 83 state blocks are fewer than the default
+  256 sequences (fixed with `--max-num-seqs 32`). The experts run on vLLM's MoE WNA16 Triton kernels; GPTQ MoE Marlin
+  is not available on this platform.
+  Source: `fixtures/lab/r66-2026-10-11/pair-122b.txt`; the checkpoint's `config.json` at
+  [Qwen/Qwen3.5-122B-A10B-GPTQ-Int4](https://huggingface.co/Qwen/Qwen3.5-122B-A10B-GPTQ-Int4)
+  - Implication: at 69 GiB of weights the model cannot be served from one 64 GB pod at all; split, each pod holds a
+    little over half and keeps about 22 GB free. KV room is small on pod D (the stage with the output layer), so the
+    pair serves a few long requests or a few dozen short ones, not R60's hundreds.
+  - Candidate experiment: the same pair at utilization 0.75 (about 16 GB free per pod). Expected movement: pod D's
+    KV from 1.99 GiB to about 8 GiB and its state blocks from 83 to over 300. Minimum sample size: one start.
+- **[measured]** The pair served text: the first request's first token came 0.29 s after it was sent and 128 tokens
+  decoded at 10.02 tok/s; a tools request came back as structured `tool_calls`. Benched with R26's harness in attach
+  mode through the hub proxy (bench-v1's two text prompts, 4 requests a stream, 128 tokens, thinking off, one repeat;
+  pod C's T6 sampler in the harness and pod D's over the same window): 1 stream 10.30 tok/s (10.00 total), TTFT 0.96
+  s, 108.4 W on pod C plus 95.7 W on pod D, 20.4 J per token for the pair; 4 streams 5.99 tok/s each, 21.57 total, TTFT
+  1.67 s, 109.7 plus 106.2 W, 10.0 J per token; 16 streams 5.60 tok/s each, 82.50 total, TTFT 3.57 s, 110.1 plus 109.6
+  W, 2.66 J per token. R60's 27B on one pod with the same harness: 12.33 and 10.96 tok/s at 1 stream (8.82 J), 29.54
+  total at 4 (3.27 J), 51.09 total at 16 with a 10.45 s TTFT (1.88 J).
+  Source: `fixtures/lab/r66-2026-10-11/bench-pp122b-1_4-rows.jsonl`, `fixtures/lab/r66-2026-10-11/bench-pp122b-16-rows.jsonl`,
+  `fixtures/lab/r66-2026-10-11/pair-122b.txt`, `lab/refine/metrics.jsonl` (prefix `pair_pp122b`), R60's rows
+  `lab/refine/metrics.jsonl:187-210`
+  - Implication: one stream of a 122B MoE (10B active) across two pods decodes about as fast as the 27B on one, and
+    the tunnel does not show in the first token. Per-stream speed holds near 6 tok/s from 4 to 16 streams because the
+    two-stage pipeline fills, so at 16 streams the pair delivers 1.6 times the 27B's tokens with a third of its first-
+    token wait; it costs 1.4 times the energy per token, since two pods draw.
+  - Candidate experiment: the same bench at 32 streams (the pair's sequence cap). Expected movement: total tok/s rises
+    above 82 while TTFT grows; per-stream near 5. Minimum sample size: 3 repeats per setting.
+- **[measured]** The live loop's labeler (`lab/label.py` through the hub proxy to pod C's port 8000, model "teacher",
+  `--expect-model Qwen3.5-122B`, the text tool-calling fixture) labeled 8 examples with 4 workers in 66.3 s (8.3 s of
+  wall time an example, all 8 accepted) and 32 with 16 workers in 75.0 s (2.34 s an example, all 32 accepted, about
+  1,170 tokens an example, 1.9 requests an example); during the 16-worker run pod C drew 108.2 W and pod D 107.4 W,
+  about 505 J per labeled example for the pair.
+  Source: `fixtures/lab/r66-2026-10-11/labeling-8-4.json`, `fixtures/lab/r66-2026-10-11/labeling-32-16.json`,
+  `fixtures/lab/r66-2026-10-11/pair-122b.txt`
+  - Implication: 16 workers fit well inside the pair's 32-sequence cap and its KV (about 1.2k tokens a request), and
+    label 3.5 times faster than 4; the live loop's act sizes follow from 2.34 s a label.
+  - Candidate experiment: 32 workers on 64 examples. Expected movement: seconds per example below 2.34 if the pipeline
+    still has room, flat if pod D's 83 state blocks bind. Minimum sample size: 2 runs.
+- **[measured]** The L16 LoRA (4B, r 16, batch 4 by accumulation 4, 2 optimizer steps) ran beside the serving pair on
+  each pod: pod C 129.1 s of trainer runtime with GPU memory peaking at 54.9 GB (41.9 GB before it), pod D 127.9 s
+  peaking at 56.9 GB (43.4 GB before), against 126.5 s and 13.8 GB on pod D alone; the two runs were one after the
+  other, not at once. The pair still answered after pod C's run (first token 0.28 s, 9.0 tok/s, a structured tool
+  call).
+  Source: `fixtures/lab/r66-2026-10-11/pair-122b.txt`
+  - Implication: at utilization 0.65 each pod serves its half of the 122B and trains a 4B LoRA at the same time with
+    7 to 9 GB to spare, and the step is not slower beside the pair.
+  - Candidate experiment: both pods' LoRA at once while the pair labels at 16 workers. Expected movement: step time and
+    labeling time each up by the share of the GPU the other takes; memory as above. Minimum sample size: 1 run.
 ## Open questions
 
 - Would a second tunnel in the other direction (server and relay on pod C) remove the D to C stall?

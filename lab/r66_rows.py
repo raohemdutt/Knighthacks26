@@ -37,9 +37,9 @@ def rows() -> list[dict]:
     lat = f"{FIX}/latency-two-writes.txt"
     g0, g1 = f"{FIX}/gloo-gate-before-relay.txt", f"{FIX}/gloo-gate-after-relay.txt"
     return [
-        row("link.pair.tunnel_send_MBps", 105.2, "MB/s", {"direction": "C to D", "measure": "256 MB send, mean of 101.5 and 108.9",
+        row("link.pair.tunnel_send_mb_s", 105.2, "MB/s", {"direction": "C to D", "measure": "256 MB send, mean of 101.5 and 108.9",
             "relay": "none"}, f"R66 {t}", "2026-10-11T09:46:00Z"),
-        row("link.pair.tunnel_send_MBps", 106.0, "MB/s", {"direction": "D to C", "measure": "256 MB send", "relay": "none"},
+        row("link.pair.tunnel_send_mb_s", 106.0, "MB/s", {"direction": "D to C", "measure": "256 MB send", "relay": "none"},
             f"R66 {t}", "2026-10-11T09:46:30Z"),
         row("link.pair.tunnel_rtt_ms", 0.34, "ms", {"direction": "C to D", "measure": "median of 200 one-byte request and answer, "
             "one write each", "relay": "none"}, f"R66 {t}", "2026-10-11T09:46:00Z"),
@@ -51,11 +51,11 @@ def rows() -> list[dict]:
             "measure": "median of 100 all-reduces of 4 floats; min 1.54, p95 92.5"}, f"R66 {g0}", "2026-10-11T10:00:00Z"),
         row("dist.pair.gloo_small_allreduce_ms", 1.38, "ms", {"shim": SHIM, "torch": TORCH, "relay": RELAY,
             "measure": "median of 100 all-reduces of 4 floats; min 1.07, p95 45.8 (rank 0)"}, f"R66 {g1}", "2026-10-11T10:21:30Z"),
-        row("dist.pair.gloo_allreduce_MBps", 47.7, "MB/s", {"shim": SHIM, "torch": TORCH, "relay": RELAY,
+        row("dist.pair.gloo_allreduce_mb_s", 47.7, "MB/s", {"shim": SHIM, "torch": TORCH, "relay": RELAY,
             "measure": "one 64 MB float32 all-reduce, 1.406 s"}, f"R66 {g1}", "2026-10-11T10:21:30Z"),
         row("dist.pair.gloo_init_s", 0.024, "s", {"shim": SHIM, "torch": TORCH, "relay": RELAY,
             "measure": "init_process_group on rank 0 (tcp:// rendezvous)"}, f"R66 {g1}", "2026-10-11T10:21:30Z"),
-        row("dist.pair.p2p_roundtrip_16KB_ms", 1.1, "ms", {"shim": SHIM, "torch": TORCH, "relay": RELAY,
+        row("dist.pair.p2p_roundtrip_16kb_ms", 1.1, "ms", {"shim": SHIM, "torch": TORCH, "relay": RELAY,
             "measure": "mean of 20 send and return of 16 KB (a pipeline stage's handoff size)"}, f"R66 {g1}", "2026-10-11T10:21:30Z"),
     ]
 
@@ -69,7 +69,7 @@ def main() -> int:
     have = {(d.get("metric"), d.get("source"), d.get("value")) for d in
             (json.loads(l) for l in METRICS.read_text(encoding="utf-8").splitlines() if l.strip())}
     add = [r for r in new if (r["metric"], r["source"], r["value"]) not in have]
-    with METRICS.open("a", encoding="utf-8") as f:
+    with METRICS.open("a", encoding="utf-8", newline="\n") as f:
         for r in add:
             f.write(json.dumps(r) + "\n")
     print(json.dumps({"ok": True, "written": len(add), "skipped": len(new) - len(add)}))

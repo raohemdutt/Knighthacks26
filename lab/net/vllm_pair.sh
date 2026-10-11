@@ -1,7 +1,7 @@
 #!/bin/bash
-# R66 vLLM across the two pods, inside a GPU slot. One instance per pod.
-#   vllm_pair.sh RANK MODE          RANK is the node rank (0 = head with the API, 1 = --headless); MODE pp|tp; then KEY=VALUE overrides (MASTER, MODEL, GPU_UTIL, PP_PARTITION, TEXT_ONLY, TOOL_PARSER, MPORT)
-# Uses the same build, model and tool flags as the teacher, a SECOND port 8010, through the shim + chisel tunnel.
+# R66 vLLM across the two pods, inside a GPU slot. One instance per pod (through the shim and the chisel tunnel).
+#   vllm_pair.sh RANK MODE [KEY=VALUE...]  RANK is the node rank (0 = head with the API, 1 = --headless); MODE pp|tp; overrides: MASTER, MODEL, GPU_UTIL, PP_PARTITION, TEXT_ONLY, TOOL_PARSER, SERVED, PORT, MPORT, MAX_SEQS
+# The same build and tool flags as the teacher; PORT (default 8010) and SERVED (comma-separated names) on the head.
 # The node-0 process is the head (serves the OpenAI API on 8010); node-1 runs --headless.
 # Never stops the teacher on 8000. The shim .so and shim.env sit next to this script.
 H="$(cd "$(dirname "$0")" && pwd)"; W=~/r66; mkdir -p $W
@@ -12,7 +12,7 @@ RANK="$1"; MODE="${2:-pp}"
 for kv in "${@:3}"; do export "$kv"; done   # KEY=VALUE overrides: MASTER, GPU_UTIL, PP_PARTITION, MPORT
 VENV=~/venv-vllm-new
 MODEL=${MODEL:-~/models/Qwen3.8-27B-INT4}
-PORT=8010
+PORT=${PORT:-8010}; SERVED=${SERVED:-group-brain}   # SERVED: comma-separated names
 MASTER=${MASTER:-10.99.0.1}; MPORT=${MPORT:-29727}   # top of the pinned range: port-0 binds fill it from 29600 up
 
 set -a; [ -f $W/shim.env ] && . $W/shim.env; set +a
@@ -31,6 +31,12 @@ unset LD_LIBRARY_PATH
 # the serve env from vllm_upgrade.sh (ROCm 7.14 paths), without re-exporting LD_LIBRARY_PATH
 ROCM="$($VENV/bin/rocm-sdk path --root 2>/dev/null)"
 [ -n "$ROCM" ] && export ROCM_PATH="$ROCM" HIP_PATH="$ROCM" PATH="$VENV/bin:$ROCM/bin:$HOME/.local/bin:$PATH"
+# vLLM's ROCm platform looks the device name up through amdsmi (the fused-MoE config lookup does); the venv's ROCm SDK
+# ships the matching Python package under share/amd_smi but not on the path, so without this a MoE model dies with
+# "name 'amdsmi_init' is not defined"
+AMDSMI_PY="$VENV/lib/python3.12/site-packages/_rocm_sdk_devel/share/amd_smi"
+[ -d "$AMDSMI_PY/amdsmi" ] && export PYTHONPATH="$AMDSMI_PY${PYTHONPATH:+:$PYTHONPATH}"
+echo "amdsmi: $("$VENV/bin/python" -c 'import amdsmi; amdsmi.amdsmi_init(); print("ok", len(amdsmi.amdsmi_get_processor_handles()), "device(s)"); amdsmi.amdsmi_shut_down()' 2>&1 | tail -1)"
 
 # TEXT_ONLY=1: no rank loads the vision tower (pod C's stage cannot fit it beside the teacher)
 MODEL=$(eval echo $MODEL)
@@ -44,7 +50,7 @@ if [ "$MODE" = tp ]; then PP=1; TP=2; else PP=2; TP=1; fi
 
 # multi-node PP/TP across the two pods: --nnodes 2, --node-rank 0|1, --master-addr/--master-port on the fake iface,
 # node 1 --headless (no API server). Same model, tool flags and context as the teacher; a second port on node 0.
-common=("$MODEL" --served-model-name group-brain --dtype bfloat16
+common=("$MODEL" --served-model-name ${SERVED//,/ } --scheduling-policy priority ${MAX_SEQS:+--max-num-seqs $MAX_SEQS} --dtype bfloat16
         --enable-auto-tool-choice --tool-call-parser ${TOOL_PARSER:-qwen3_coder}
         --max-model-len 16384 $MMFLAG
         --gpu-memory-utilization ${GPU_UTIL:-0.33} ${MMFLAG:+--mm-encoder-attn-backend TRITON_ATTN}
@@ -69,7 +75,7 @@ fi
 echo $! > $W/vllm-r66.pid
 echo "started pid $(cat $W/vllm-r66.pid), log $LOG"
 # tail until it serves or dies (rank 0 only answers the API)
-[ "$RANK" = 1 ] && N_WAIT=9 || N_WAIT=120
+[ "$RANK" = 1 ] && N_WAIT=9 || N_WAIT=${N_WAIT:-75}
 for i in $(seq 1 $N_WAIT); do
   ps -o stat= -p "$(cat $W/vllm-r66.pid)" 2>/dev/null | grep -qv Z || { echo "process ended early"; tail -40 "$LOG"; exit 1; }
   if [ "$RANK" = 0 ] && curl -s -m 3 http://127.0.0.1:$PORT/v1/models >/dev/null 2>&1; then

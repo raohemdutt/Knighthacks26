@@ -50,6 +50,7 @@ end of `hub-api-lifecycle.md`.
 | S72 | chisel README (jpillora/chisel) | Features; reverse port forwarding (`R:` remotes, server `--reverse`); client `--header` and `--hostname` | project doc | https://github.com/jpillora/chisel | 2026-10-11 | network-shim |
 | S73 | Linux man page tcp(7) | Socket options: TCP_NODELAY (disables Nagle), TCP_QUICKACK (not permanent, a switch to or from quickack mode) | reference | https://linux.die.net/man/7/tcp | 2026-10-11 | network-shim |
 | S74 | vLLM docs, "Parallelism and Scaling" | Running vLLM with MultiProcessing (multi-node `--nnodes`, `--node-rank`, `--master-addr`, `--headless`); uneven pipeline splits | project doc (stable) | https://docs.vllm.ai/en/stable/serving/parallelism_scaling/ | 2026-10-11 | network-shim |
+| S76 | Hugging Face model repo Qwen/Qwen3.5-122B-A10B-GPTQ-Int4 | config.json (Qwen3_5MoeForConditionalGeneration, 48 layers, full attention every 4th, 256 experts, 8 active; GPTQ 4-bit group 128 with attention, shared experts, MTP, vision and embeddings left unquantized); file list (78.9 GB, 39 shards) | model card and config | https://huggingface.co/Qwen/Qwen3.5-122B-A10B-GPTQ-Int4 | 2026-10-11 | network-shim |
 
 ## Source code at pinned versions
 
