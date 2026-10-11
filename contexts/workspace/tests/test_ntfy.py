@@ -66,6 +66,6 @@ def test_an_alert_carries_its_blurred_keyframe_as_a_photo():
     asyncio.run(notifier.on_alert(alert))
     asyncio.run(notifier.on_alert(AlertRaised(alert_id="y", rule_id="r", message="no photo")))
     with_photo, without = sent
-    assert with_photo["attach"] == "http://100.124.34.36:8000/memory/keyframes/frames:cam-door:1791657381000"
+    assert with_photo["attach"] == "http://100.124.34.36:8000/memory/keyframes/frames:cam-door:1791657381000?view=out"  # the gated copy
     assert with_photo["filename"] == "frames-cam-door-1791657381000.jpg" and with_photo["click"] == "http://100.124.34.36:8000/"
     assert "attach" not in without

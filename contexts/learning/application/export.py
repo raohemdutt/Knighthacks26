@@ -7,6 +7,7 @@ only) under data/exports/, where the lab picks it up.
 """
 
 import json
+import logging
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -16,6 +17,8 @@ from contexts.agent.application.memory_port import MemoryReader
 from contexts.workspace.domain.approvals import ActionRequest
 from contracts.agent import ActionProposed
 from contracts.learning import DatasetExample, DatasetExported, DatasetManifest, TaskCreated, TaskSpec
+
+log = logging.getLogger("atlas.learning")
 
 DEFAULT_LOOKBACK = timedelta(hours=24)
 MAX_EXAMPLES = 300
@@ -80,12 +83,14 @@ class DatasetExporter:
         publish: Callable[[DatasetExported], None],
         out_dir: Path = Path("data/exports"),
         clock: Callable[[], datetime] | None = None,
+        refused: type[Exception] | tuple[type[Exception], ...] = (),
     ) -> None:
         self.memory = memory
         self.load_keyframe = load_keyframe  # frame_ref -> blurred JPEG bytes
         self.publish = publish
         self.out_dir = out_dir
         self.clock = clock
+        self.refused = refused  # what load_keyframe raises for a picture that may not leave: skipped, counted, never written
 
     def __call__(self, req: ActionRequest) -> str:
         spec = TaskSpec.model_validate(req.params["spec"])
@@ -96,11 +101,18 @@ class DatasetExporter:
         (root / "images").mkdir(parents=True)
 
         examples: list[DatasetExample] = []
+        held_back = 0
         for ep, i, ref, verdict in select_keyframes(spec, self.memory.episodes(start, end, camera=spec.camera, label=spec.label)):
             if len(examples) >= MAX_EXAMPLES:
                 break
             image = f"images/{len(examples):04d}.jpg"
-            (root / image).write_bytes(self.load_keyframe(ref))
+            try:
+                jpeg = self.load_keyframe(ref)
+            except self.refused as exc:
+                held_back += 1
+                log.warning("export %s: %s left out: %s", dataset_id, ref, exc)
+                continue
+            (root / image).write_bytes(jpeg)
             context = ep.captions[i] if i < len(ep.captions) else ep.summary
             examples.append(DatasetExample(id=f"{ep.id}-{i}", image=image, frame_ref=ref, ts=ep.start, context=context,
                                            verdict=verdict))
@@ -113,4 +125,7 @@ class DatasetExporter:
         (root / "manifest.json").write_text(json.dumps(manifest.model_dump(mode="json"), indent=2))
 
         self.publish(DatasetExported(ts=now, task=spec.task, dataset_id=dataset_id, examples=len(examples), action_id=req.id))
-        return f"exported {len(examples)} examples as {dataset_id}"
+        result = f"exported {len(examples)} examples as {dataset_id}"
+        if held_back:
+            result += f"; {held_back} picture{'s' if held_back != 1 else ''} held back (faces could not be checked)"
+        return result

@@ -198,7 +198,7 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
     if atlas.profile:  # GET /api/profile: the words the screens use
         app.include_router(profile_router(atlas.profile), prefix="/api")
     if atlas.memory:  # GET /memory/... (M4)
-        app.include_router(memory_router(atlas.memory, atlas.settings.data_dir / "frames"))
+        app.include_router(memory_router(atlas.memory, atlas.settings.data_dir / "frames", outbound=atlas.phone_photo))
     # GET /api/digest: the day's episodes in one paragraph, from the data (A6)
     app.include_router(digest_router(Digester(atlas.qa.memory, atlas.qa.clock, atlas.qa.sleep.tz)))
 

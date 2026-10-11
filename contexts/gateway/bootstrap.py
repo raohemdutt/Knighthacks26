@@ -63,6 +63,7 @@ from contexts.play.domain.game import SortIt
 from contexts.perception.application.identity import IdentityService
 from contexts.perception.application.service import PerceptionService
 from contexts.perception.infrastructure.expression import build_expression_reader
+from contexts.perception.infrastructure.face_blur import FaceBlur
 from contexts.perception.infrastructure.identity_store import IdentityStore
 from contexts.perception.infrastructure.photo import build_photo_reader
 from contexts.perception.infrastructure.recognizer import build_recognizer
@@ -77,7 +78,7 @@ from contexts.play.domain.places import PlaceSet
 from contexts.play.room.live import RoomLive
 from contexts.play.room.plan import RoomError, load_room, room_path
 from contexts.profiles import Profile, load_profile
-from contexts.vault import KeyRing, PictureLedger, Policy, Vault, Wiper
+from contexts.vault import KeyRing, OutboundGate, PictureLedger, Policy, Refused, Vault, Wiper, jpeg_scrambler
 from contexts.workspace.application.inbox import FileInbox
 from contexts.workspace.domain.approvals import Approvals
 from contexts.workspace.infrastructure.file_store import EncryptedFileStore
@@ -146,6 +147,8 @@ class Atlas:
     policy: Policy | None = None
     wiper: Wiper | None = None
     pictures: PictureLedger | None = None  # V7: camera pictures cleared to leave, per approval
+    outbound: OutboundGate | None = None  # every picture that leaves passes it: faces scrambled, or nothing is sent
+    phone_photo: object | None = None  # jpeg -> jpeg through the gate, for GET /memory/keyframes/<ref>?view=out
     learning: LearningBoard | None = None  # where each taught task is (X10)
     lab_view: LabView | None = None  # the Learning lab screen: one story per training run, rebuilt from the log
     capture: CaptureService | None = None  # cameras -> detector -> observations, only where there is a detector (C6)
@@ -341,14 +344,27 @@ def build(settings: Settings | None = None) -> Atlas:
     rules = RuleEvaluator(load_rules(profile.path("rules.yaml")), builtin={ODD_HOURS_RULE: ODD_HOURS_DESCRIPTION})
     alerts = AlertHistory()
 
+    # The outbound gate: a picture that leaves the box (training export, phone alert photo) has its faces scrambled
+    # whatever "Blur faces before saving" is set to. Its own YuNet detector, loaded on first use; if it cannot run,
+    # the gate refuses and nothing is sent.
+    outbound = OutboundGate(jpeg_scrambler(FaceBlur().scrambled), on_release=lambda destination, purpose, pictures, size, faces: log.info(
+        "outbound: %d picture to %s (%s), %d bytes, %d faces blurred", pictures, destination, purpose, size, faces))
+
+    def keyframe_for_export(ref: str) -> bytes:
+        return outbound.release(load_keyframe(ref), destination="lab", purpose="training export")
+
+    def phone_photo(jpeg: bytes) -> bytes:
+        return outbound.release(jpeg, destination="phone", purpose="alert photo")
+
     ntfy = Ntfy(s.ntfy_url, s.ntfy_token) if s.ntfy_url else None
     executors = {
         "connector_write": hub.execute_write,
         "export_training_data": DatasetExporter(
             memory,
-            load_keyframe=load_keyframe,
+            load_keyframe=keyframe_for_export,
             publish=lambda e: asyncio.get_running_loop().create_task(bus.publish(e)),
             out_dir=s.data_dir / "exports",
+            refused=Refused,  # a picture the gate holds back is left out and counted in the result
         ),
     }
     if ntfy:
@@ -643,6 +659,7 @@ def build(settings: Settings | None = None) -> Atlas:
                  waste=waste, circle=circle, presence=presence, zone_engine=zone_engine, sharing=sharing,
                  memory=memory, projection=projection, habits=habits, nudger=nudger,
                  presence_sync=presence_sync, circle_cleanup=circle_cleanup, board=board, vault=vault, policy=policy, wiper=wiper, pictures=pictures,
+                 outbound=outbound, phone_photo=phone_photo,
                  places=places, dayrun=dayrun, day=day, capture=capture, identity=identity, learning=learning,
                  lab_view=lab_view,
                  telemetry=telemetry, profile=profile, league=league, league_sync=league_sync,

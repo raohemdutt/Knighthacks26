@@ -9,18 +9,24 @@
                                               seen_at, and the other boxed things in that frame (anchors); 404 if never seen
 - GET /memory/search?q=&limit=                list[SearchHit], best first (keywords, plus meaning when vectors exist: M5)
 - GET /memory/items?from&to&kind              list[Item]
-- GET /memory/keyframes/{ref}                 the JPEG behind frames:<camera>:<ts_ms>
+- GET /memory/keyframes/{ref}                 the JPEG behind frames:<camera>:<ts_ms>, as stored
+- GET /memory/keyframes/{ref}?view=out        the copy that may leave the box (a phone alert's photo): through the vault's
+                                              outbound gate, faces scrambled whatever "Blur faces before saving" says;
+                                              503 and no picture when the gate cannot check it
 - GET /memory/stats                           MemoryStats
 
 `from` and `to` are ISO datetimes (no offset means UTC); leave them out for everything.
 """
 
 import re
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import FileResponse, Response
 
 from contexts.memory.application.reader import SqliteMemory
 from contracts.memory import Episode, EpisodeWindow, Item, MemoryStats, SearchHit, Sighting
@@ -48,7 +54,9 @@ def _inside(path: Path, root: Path) -> bool:
     return root.resolve() in path.resolve().parents
 
 
-def build_router(memory: SqliteMemory, frames_dir: str | Path = "data/frames") -> APIRouter:
+def build_router(memory: SqliteMemory, frames_dir: str | Path = "data/frames",
+                 outbound: Callable[[bytes], bytes] | None = None) -> APIRouter:
+    """`outbound(jpeg) -> jpeg` is the vault's gate for the phone's copy; it raises when the picture may not leave."""
     router = APIRouter(prefix="/memory", tags=["memory"])
     frames = Path(frames_dir)
 
@@ -84,12 +92,20 @@ def build_router(memory: SqliteMemory, frames_dir: str | Path = "data/frames") -
         return memory.items(*_span(start, end), kind=kind)
 
     @router.get("/keyframes/{ref}")
-    async def keyframe(ref: str) -> FileResponse:
+    async def keyframe(ref: str, view: Literal["out"] | None = None) -> Response:
         m = FRAME_REF.fullmatch(ref)
         path = frames / m[1] / f"{m[2]}.jpg" if m and ".." not in m[1] else None
         if path is None or not path.is_file() or not _inside(path, frames):
             raise HTTPException(404, "no such keyframe")
-        return FileResponse(path, media_type="image/jpeg")
+        if view is None:
+            return FileResponse(path, media_type="image/jpeg")
+        if outbound is None:
+            raise HTTPException(503, "no outbound gate on this box: the picture stays here")
+        try:
+            jpeg = await run_in_threadpool(outbound, path.read_bytes())  # decode, find faces, scramble: off the event loop
+        except Exception:  # never the stored file instead
+            raise HTTPException(503, "this picture could not be checked for faces, so it stays on the box") from None
+        return Response(jpeg, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
     @router.get("/stats")
     async def stats() -> MemoryStats:
