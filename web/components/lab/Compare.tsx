@@ -237,7 +237,7 @@ function Panel({ node, ra, rb, maxT, idle, note, last, width }: { node: (typeof 
         {last
           ? ticks.map((t) => (
               <text key={t} x={x(t)} y={H - 10} className={c.axis} textAnchor={t === 0 ? "start" : "middle"}>
-                {t === 0 ? "0 s from the start" : `${t} s`}
+                {t === 0 ? (W < 620 ? "0 s" : "0 s from the start") : `${t} s`}
               </text>
             ))
           : null}
