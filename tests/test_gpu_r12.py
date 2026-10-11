@@ -144,3 +144,120 @@ def test_each_patch_differs_from_the_stock_kernel_by_one_lever(lever: str, expec
                if ln[:1] in "+-" and not ln.startswith(("+++", "---"))]
     assert changed == expected
 
+
+# --- part 2: the rebuild recipe ---------------------------------------------------------------------------------
+
+def _commit_all(repo: Path, message: str) -> str:
+    git("add", "-A", cwd=repo)
+    git("-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", message, cwd=repo)
+    return git("rev-parse", "HEAD", cwd=repo).stdout.strip()
+
+
+@pytest.fixture
+def fake_pod(tmp_path: Path) -> dict:
+    """A throwaway upstream with the kernel file and a build file, a base diff touching both (like the real one),
+    a lever patch on the kernel file alone, and a fake build that counts its runs."""
+    up = tmp_path / "upstream"
+    (up / KERNEL_FILE).parent.mkdir(parents=True)
+    (up / KERNEL_FILE).write_text("def launch():\n    stages = 2\n    tile = 16\n    return stages, tile\n")
+    (up / "build.txt").write_text("torch==2.10.0\nninja\n")
+    git("init", "-q", cwd=up)
+    commit = _commit_all(up, "upstream")
+    # the base diff: a build-enabling hunk plus the known-fix hunk on the kernel file
+    (up / "build.txt").write_text("ninja\n")
+    (up / KERNEL_FILE).write_text("def launch():\n    stages = 1\n    tile = 16\n    return stages, tile\n")
+    base = tmp_path / "base.diff"
+    base.write_text("text before the first header is ignored\n\n" + git("diff", cwd=up).stdout)
+    git("checkout", "-q", "--", ".", cwd=up)
+    patches = tmp_path / "patches"
+    patches.mkdir()
+    (up / KERNEL_FILE).write_text("def launch():\n    stages = 1\n    tile = 32\n    return stages, tile\n")
+    (patches / "unified-attention-block.patch").write_text(git("diff", cwd=up).stdout)
+    git("checkout", "-q", "--", ".", cwd=up)
+    counter = tmp_path / "builds.txt"
+    env = {**os.environ, "HOME": str(tmp_path / "home"), "VLLM_DIR": str(tmp_path / "home" / "vllm"),
+           "VLLM_REPO": str(up), "VLLM_COMMIT": commit, "R12_BASE_DIFF": str(base), "R12_PATCH_DIR": str(patches),
+           "R12_STATE_DIR": str(tmp_path / "state"), "R12_REBUILD_JSON": str(tmp_path / "rebuild_times.json"),
+           "R12_BUILD_CMD": f"cat {KERNEL_FILE} > /dev/null && echo built >> {counter}", "GFX": "gfx1151"}
+    return {"env": env, "tmp": tmp_path, "patches": patches, "counter": counter, "tree": tmp_path / "home" / "vllm"}
+
+
+def rebuild(fake: dict, *args: str, **env: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["bash", str(GPU / "rebuild.sh"), *args], env={**fake["env"], **env},
+                          capture_output=True, text=True, timeout=120)
+
+
+def builds(fake: dict) -> int:
+    return len(fake["counter"].read_text().splitlines()) if fake["counter"].exists() else 0
+
+
+def records(fake: dict) -> list[dict]:
+    path = fake["tmp"] / "rebuild_times.json"
+    return json.loads(path.read_text())["rebuilds"] if path.exists() else []
+
+
+def test_rebuild_on_a_fresh_pod_clones_applies_builds_and_records_the_time(fake_pod: dict) -> None:
+    run = rebuild(fake_pod, "block")
+    assert run.returncode == 0, run.stdout + run.stderr
+    tree = fake_pod["tree"]
+    assert (tree / "build.txt").read_text() == "ninja\n"           # build-enabling hunk applied
+    assert "tile = 32" in (tree / KERNEL_FILE).read_text()         # the lever
+    assert "stages = 1" in (tree / KERNEL_FILE).read_text()        # the lever patch carries the known fix itself
+    assert builds(fake_pod) == 1
+    [rec] = records(fake_pod)
+    assert rec["arm"] == "block" and rec["patch"] == "unified-attention-block.patch"
+    assert rec["patch_sha256"] == __import__("hashlib").sha256(
+        (fake_pod["patches"] / "unified-attention-block.patch").read_bytes()).hexdigest()
+    assert isinstance(rec["wall_s"], float) and rec["wall_s"] >= 0 and rec["gfx"] == "gfx1151"
+    assert "### rebuild block wall_s=" in run.stdout
+
+
+def test_rebuild_skips_when_the_patch_is_unchanged_and_rebuilds_when_it_changes(fake_pod: dict) -> None:
+    assert rebuild(fake_pod, "block").returncode == 0
+    again = rebuild(fake_pod, "block")
+    assert again.returncode == 0 and "up to date" in again.stdout
+    assert builds(fake_pod) == 1 and len(records(fake_pod)) == 1
+    patch = fake_pod["patches"] / "unified-attention-block.patch"
+    patch.write_text(patch.read_text().replace("tile = 32", "tile = 64"))
+    changed = rebuild(fake_pod, "block")
+    assert changed.returncode == 0, changed.stdout
+    assert builds(fake_pod) == 2 and len(records(fake_pod)) == 2
+    assert "tile = 64" in (fake_pod["tree"] / KERNEL_FILE).read_text()
+    assert rebuild(fake_pod, "block", "--force").returncode == 0 and builds(fake_pod) == 3
+
+
+def test_rebuild_stock_applies_the_whole_base_diff(fake_pod: dict) -> None:
+    run = rebuild(fake_pod, "stock")
+    assert run.returncode == 0, run.stdout + run.stderr
+    text = (fake_pod["tree"] / KERNEL_FILE).read_text()
+    assert "stages = 1" in text and "tile = 16" in text
+    assert records(fake_pod)[0]["patch_sha256"] == "none"
+    # switching arms is a patch change, so it rebuilds
+    assert rebuild(fake_pod, "block").returncode == 0 and builds(fake_pod) == 2
+
+
+def test_rebuild_stops_on_a_rejected_hunk_and_prints_it(fake_pod: dict) -> None:
+    assert rebuild(fake_pod, "block").returncode == 0
+    bad = fake_pod["patches"] / "unified-attention-bad.patch"
+    bad.write_text((fake_pod["patches"] / "unified-attention-block.patch").read_text()
+                   .replace("-    tile = 16", "-    tile = 99").replace(" def launch():", " def nowhere():"))
+    run = rebuild(fake_pod, "bad")
+    assert run.returncode == 3, run.stdout + run.stderr
+    assert "REJECTED" in run.stdout and "--- rejected hunk in" in run.stdout and "-    tile = 99" in run.stdout
+    assert builds(fake_pod) == 1 and len(records(fake_pod)) == 1      # nothing built, nothing recorded
+    tree = fake_pod["tree"]
+    assert git("status", "--porcelain", cwd=tree).stdout.strip() == ""  # tree restored, no .rej left
+    # the stamp still says block is built, so block is not rebuilt
+    assert "up to date" in rebuild(fake_pod, "block").stdout
+
+
+def test_rebuild_failed_build_exits_nonzero_and_keeps_the_old_stamp(fake_pod: dict) -> None:
+    run = rebuild(fake_pod, "block", R12_BUILD_CMD="echo compiler error; exit 1")
+    assert run.returncode == 4 and "BUILD FAILED" in run.stdout
+    assert records(fake_pod) == []
+    assert rebuild(fake_pod, "block").returncode == 0 and builds(fake_pod) == 1
+
+
+def test_rebuild_refuses_an_unknown_patch(fake_pod: dict) -> None:
+    run = rebuild(fake_pod, "nosuch")
+    assert run.returncode == 2 and "no patch file" in run.stdout
