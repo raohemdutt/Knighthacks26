@@ -8,12 +8,14 @@
 set -u -o pipefail
 RANK="${1:?rank}"; RUN="${2:?run id}"; PEER="${3:-}"
 PORT="${PORT:-29600}"
-TIMEOUT_S="${TIMEOUT_S:-780}"
+TIMEOUT_S="${TIMEOUT_S:-1500}"   # a 15-minute slot plus its one extension
 VENV="$HOME/venvs/atlas-train"
 SRC="$HOME/r65/src"
 OUT="$HOME/adapters/r65-$RUN-rank$RANK"
 rm -rf "$SRC"; mkdir -p "$SRC" "$HOME/r65/state"
-tar -xzf "$HOME/r65/bundle.tar.gz" -C "$SRC" || { echo "no bundle"; echo "### END"; exit 1; }
+BUNDLE="${BUNDLE:-$(ls -t "$HOME"/r65/bundle*.tar.gz 2>/dev/null | head -1)}"
+echo "bundle: $BUNDLE"
+tar -xzf "$BUNDLE" -C "$SRC" || { echo "no bundle"; echo "### END"; exit 1; }
 [ -e "$OUT" ] && { echo "$OUT exists"; echo "### END"; exit 1; }
 mkdir -p "$OUT"
 extra=(--port "$PORT")
