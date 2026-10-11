@@ -142,7 +142,7 @@ export const SCREENS: Record<string, string> = {
   "/": "Ask",
   "/now/": "Now",
   "/today/": "Today",
-  "/dayrun/": "Day Run",
+  "/dayrun/": "Today's Plan",
   "/circle/": "Circle",
   "/impact/": "Impact",
   "/home/": "Home",
@@ -182,11 +182,12 @@ const ROWS: Row[] = [
   { id: "today:due", route: "/today/", label: "Due next", names: ["due next", "what is due", "deadlines", "assignments", "homework", "due this week"], at: [section("^Due next"), HEAD], say: ["Look at the part called Due next.", "Your next deadlines, soonest first."] },
   { id: "today:coming", route: "/today/", label: "Coming up", names: ["coming up", "upcoming", "events today", "what is coming"], at: [section("^Coming up"), HEAD], say: ["Look at the part called Coming up.", "The events on your calendar."] },
   { id: "today:waste", route: "/today/", label: "Waste Watch", names: ["waste watch", "waste", "what i threw away"], at: [section("^Waste Watch"), HEAD], say: ["Look at the part called Waste Watch.", "What went into which bin."] },
-  // Day Run
-  { id: "dayrun:plan", route: "/dayrun/", label: "Your plan in Day Run", names: ["day run plan", "day run", "plan my day", "the game", "day game"], at: [section("^Your plan"), HEAD], say: ["Look at the part called Your plan.", "Move the blocks here; every change is run on the box."] },
-  { id: "dayrun:play", route: "/dayrun/", label: "Play the day", names: ["play", "play the day", "watch the day", "play mode", "watch my day"], at: [{ sel: "main button", text: "^(Watch|Play)" }, HEAD], say: ["Look near the top of Day Run.", "This plays your day, with a figure walking the campus."] },
-  { id: "dayrun:map", route: "/dayrun/", label: "Where the day takes you", names: ["day map", "campus map", "where the day takes me", "the route", "campus"], at: [section("^Where the day takes you"), HEAD], say: ["Look at the part called Where the day takes you.", "The map of today's walks."] },
-  { id: "dayrun:board", route: "/dayrun/", label: "The board", names: ["the board", "board", "the deadlines board", "risk"], at: [section("^The board"), HEAD], say: ["Look at the part called The board.", "Everything that has to fit into the day."] },
+  // Today's Plan (the route and the ids keep their old name)
+  { id: "dayrun:plan", route: "/dayrun/", label: "Your plan in Today's Plan", names: ["today's plan", "todays plan", "day run plan", "day run", "plan my day", "the game", "day game", "my plan today"], at: [section("^Your plan"), HEAD], say: ["Look at the part called Your plan.", "Tap a block to move it, or tap Add in a gap; every change is tried at once."] },
+  { id: "dayrun:play", route: "/dayrun/", label: "Watch the day", names: ["play", "play the day", "watch the day", "play mode", "watch my day"], at: [{ sel: "main button", text: "^(Watch|Pause|Play)" }, HEAD], say: ["Look at the card at the top of Today's Plan.", "This plays your day, with a figure walking the campus."] },
+  { id: "dayrun:map", route: "/dayrun/", label: "The map of your plan", names: ["day map", "campus map", "where the day takes me", "the route", "campus", "plan map"], at: [{ sel: "main [role=group][aria-label^='Map of']" }, HEAD], say: ["Look at the map in the card at the top.", "Tap a block of your plan and its walk lights up here."] },
+  { id: "dayrun:board", route: "/dayrun/", label: "What is due", names: ["the board", "board", "the deadlines board", "risk", "what is due", "deadlines in the plan"], at: [section("^Due soon"), HEAD], say: ["Look at the part called Due soon.", "Each deadline, how much work is left, and a Why that says where the numbers come from."] },
+  { id: "dayrun:tell", route: "/dayrun/", label: "Tell Atlas what to change", names: ["tell atlas", "change the plan", "edit the plan", "say a change", "tell atlas what to change"], at: [{ sel: "main input[aria-label='Tell Atlas what to change']" }, HEAD], say: ["Look at the bottom of the card at the top.", "Type or say a change, like move lunch to one."] },
   // Circle
   { id: "circle:people", route: "/circle/", label: "People in your Circle", names: ["people", "my friends", "friends", "who is in my circle", "circle", "my circle"], at: [tab("^People"), HEAD], reveal: [{ op: "press", at: tab("^People"), key: "circle:people" }], say: ["Look at the row of buttons under the heading.", "People: who is in your Circle and where they are, if they shared."] },
   { id: "circle:plans", route: "/circle/", label: "Plans with your Circle", names: ["plans", "circle plans", "plans with friends", "find a time", "conversations"], at: [tab("^Plans"), HEAD], reveal: [{ op: "press", at: tab("^Plans"), key: "circle:plans" }], say: ["Look at the row of buttons under the heading.", "Plans: what is coming up and what the Atlases agreed."] },

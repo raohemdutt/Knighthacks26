@@ -186,13 +186,13 @@ gave a cited answer that still began "I didn't see that."; "while I was out" gav
 
 | Where | Command |
 | --- | --- |
-| Laptop, seeded | `python -m contexts.demo circle --data-dir /tmp/atlas-demo`, then the command it prints, with `ATLAS_WEB_DIR=web/out` after `cd web && npm run build` |
-| Laptop, with an evening review | `python -m contexts.demo seed --data-dir /tmp/atlas-night` (the scripted time, Sun 9:30 AM), then `ATLAS_DATA_DIR=/tmp/atlas-night ATLAS_MEMORY_FIXTURE= ATLAS_CONNECTORS=0 python -m contexts.gateway` |
+| Laptop, seeded | `python -m contexts.demo circle --data-dir /tmp/atlas-demo` (includes the twelve earlier days for Today's Plan), then the command it prints, with `ATLAS_WEB_DIR=web/out` after `cd web && npm run build` |
+| Laptop, with an evening review | `python -m contexts.demo seed --history --data-dir /tmp/atlas-night` (the scripted time, Sun 9:30 AM; `--history` adds the earlier days on Today's Plan's date strip), then `ATLAS_DATA_DIR=/tmp/atlas-night ATLAS_MEMORY_FIXTURE= ATLAS_CONNECTORS=0 python -m contexts.gateway` |
 | The box, T-15 | `python -m contexts.demo preflight --gateway http://<jetson>:8000 --reset` |
 | Live features without a camera | `python -m contexts.demo fake perception --gateway http://<box>:8000 --realtime` (a throwaway box only) |
 
-The phone app's tab bar is **Ask, Now, Today, Day Run, More**. **More** lists: Everyday (Now, Today,
-Day Run), The room (Live, Room map, People), Plan (Approvals, Impact, Inspection), Other (Timeline,
+The phone app's tab bar is **Ask Atlas, Calendar, Today's Plan, More**. **More** lists: Everyday (Ask Atlas, Calendar,
+Today's Plan), The room (Live, Room map, People), Plan (Approvals, Impact, Inspection), Other (Timeline,
 Sort It, Circle, Teach, Learning lab, Zones, Privacy). The Operator screen has no link: open
 `/operator/`.
 
@@ -290,7 +290,7 @@ evening review: a closed day in the log (the scripted-time seed, or the box afte
 3. Scroll "YOUR DAY" to the next block with "Leave by 8:41 PM · 10 min walk" and tap **Route**.
 4. If the card is red ("Late: the mentor check-in started at 7:39 PM at Engineering II; last seen at
    the desk. It is a 10 min walk."), tap **Re-plan from here**. (Under **More**: **Plan again** and
-   **Change it in Day Run**.)
+   **Change it in Today's Plan**.)
 5. Tap **Review the new plan** → **Approvals**. Read the card "Change something in a connected app":
    "I'd like to make these nine blocks today's plan. Okay?" → **Approve** (or **Deny**).
 6. Evening: on Now scroll to **Yesterday** → "Yesterday's review" → **The whole review**.
@@ -368,43 +368,84 @@ before any re-plan** (defect 2).
 
 ---
 
-## 5. Day Run
+## 5. Today's Plan
 
-**Shows:** try the next 24 hours as a game before living them: a bad plan fails with reasons, a good
-plan earns three stars, hard mode throws problems at it and the box re-routes, and Play mode walks
-the day on the real campus map.
+**Shows:** try your day before you live it. One day is on screen, yours: the plan Atlas made this
+morning as an agenda, a map that the agenda drives, and one line saying whether it works. A plan that
+does not work is shown as a plan that needs fixing, each thing with a one-tap fix. Change it by
+tapping a block, by tapping **+ Add** in a gap, or by typing or saying it. The date strip opens
+earlier days (what happened against the plan) and the next few (a draft). The route is still
+`/dayrun/` and the API still `/api/dayrun/*`; only the name a person reads changed.
 
-**Setup:** none (the scripted day ships in `fixtures/play/demo.yaml`).
+**Setup:** seed with the earlier days: `python -m contexts.demo seed --history --data-dir <tmp> --now`
+(`python -m contexts.demo circle` always includes them). Without `--history` the strip has only the
+story's own three days behind today. No model and no camera are needed.
 
-**Steps**
-1. Open **Day Run** (`/dayrun/`). **Demo day** is selected ("A scripted Sunday at Knight Hacks.").
-2. Tap **Bad plan**. (Link: `/dayrun/?plan=bad`.)
-3. Tap **Good plan**. (`/dayrun/?plan=good`.)
-4. Tap **Hard mode: throw problems at this plan**. (`/dayrun/?hard=1`.)
-5. Tap **▶ Watch the day** (after hard mode: **▶ Watch the day go wrong**). (`/dayrun/?play=1`.)
-   Speeds: **1 min/s**, **12 min/s**, **36 min/s**, **72 min/s**; **Close** ends it.
+**Steps (the screen itself; there are no preset buttons any more)**
+1. Open **Today's Plan** (`/dayrun/`). Read the card: "This plan works ★★☆ · 8 h sleep · 3 meals ·
+   Project Milestone1 done".
+2. Tap a block in **Your plan** (say **Dinner**). The map lights its walk; under it: "1 min walk ·
+   leave by 6:28 PM". The block opens **− 30 min +**, **Earlier**, **Later**, **Remove**, **Route**,
+   **Why 1 min?**.
+3. In **Tell Atlas what to change…** type `move dinner to 6:30` (or tap the microphone and say it).
+   It answers in one line and the block that moved pulses. Try `drop the gym`: it changes nothing,
+   says "I heard “drop”, but not which block" and offers two edits as buttons.
+4. Tap **+ Add** in a gap → **A meal at Student Union**. Tap **Watch the day**: the figure walks the
+   same map; the line under it is the narration; **2× speed** cycles 1×, 2×, 4×.
+5. Tap **Throw problems at it**: pills on the map say what went wrong, changed blocks are tagged
+   **Moved**. **Back to the calm day** undoes it.
+6. On the date strip tap the three seeded days (their one line shows under the strip):
+   - six days back, red bar: "the plan missed COP4533 lecture by 11 min" (your own plan, which did not
+     work; the lunch row says **Doesn't fit**). **Watch this day** plays it.
+   - five days back: "on plan" (Atlas's plan, approved; rows tagged **Happened**).
+   - four days back: "re-planned, still made it" ("Two things changed: PHY2049 lecture moved to
+     Engineering II and now starts at 1:30 PM, and a COP4533 review session was added at 12:15 PM.";
+     the changed rows are tagged **Moved**).
+   The day three days back is greyed out: nothing was recorded, so it cannot be opened.
+7. Tap **Mon** (tomorrow): "Nothing planned yet", with fixes to start from and the "Near you" events
+   offered in the gap ("+ Add Friends' dinner · 5:15 PM · '63 South · 16 min walk"). Open **The next
+   few days**.
+8. Under **Due soon** tap **Why?** on the deadline: "About 5 h: Atlas's starting guess for a project,
+   not measured. Change it if you know better." and the − / + that changes it.
+
+**Presenter links (the fallback; the scripted day is reached only this way, never from a button)**
+
+| Link | What it opens |
+| --- | --- |
+| `/dayrun/?plan=bad` | the scripted Sunday with the plan that needs fixing: "Four things to fix" |
+| `/dayrun/?plan=good` | the scripted Sunday with the plan that works: "This plan works ★★★" |
+| `/dayrun/?hard=1` | that plan with its two scripted disruptions (`&seed=7&count=2` for seeded ones) |
+| `/dayrun/?play=1` | start watching the day (`?play=0` paused; `&t=11:15` on that minute; `&motion=reduce` steps) |
+| `/dayrun/?day=2026-10-05` | open that day of the strip (any date the strip can open) |
+| `/dayrun/?t=14:05`, `?more=1` | put the marker at that time; open **Details** |
+
+`?plan=day` and `?day=mine` (the old links from Calendar) still work: they mean your own day, which
+is now what the screen shows anyway.
 
 **Expected**
-- Bad: "✗ Fail ☆☆☆ · The plan fails. COP4533 Project Milestone 1: at risk, 270 focused minutes left
-  with 38 h to go (risk 0.94, needs 0.50 or less). Sleep: 5.3 h (6 h needed). Meals: 0 (2 needed)."
-  and "1 move was rejected: you miss the 12:00 Knight Hacks: judging and demos by 11 minutes".
-- Good: "✓ Win ★★★ · Win, 3 stars: every deadline on track, 8.5 h of sleep, 3 meals."
-- Hard: "Hard mode: what went wrong · Knight Hacks: judging and demos moves from Engineering II to
-  Classroom Building I and now starts at 11:45 instead of 12:00 · Student Union is closed today ·
-  Before Win ★★★, 40 min walking… After Win ★★★, 47 min walking… The box made 4 changes to keep the
-  plan standing."
-- Play: a figure walks the campus map ("Campus map with 9 places and 8 walks", "© OpenStreetMap
-  contributors"), with a list of walks ("1 09:30 to '63 South (eat) · 7 min · 570 m").
+- Needs fixing (`?plan=bad`): "Four things to fix" with a thin red ring (no cross, no "Fail"): "You'd
+  miss judging and demos by 11 minutes · Shorten the meal at '63 South to 25 min · **Fix it**",
+  "Project Milestone 1 is at risk: 4 h 30 min left", "5.3 hours of sleep; you need 6 · **Fix it**",
+  "And 1 more after these." Tap **Fix it**: the row it changed pulses and the count drops.
+- Works (`?plan=good`): "This plan works ★★★ · 8.5 h sleep · 3 meals · Project Milestone 1 on track".
+- Thrown problems (`?hard=1`): "It still works ★★★ · Atlas made 4 changes to keep the day standing."
+  with the pills "Judging and demos → CB1, 11:45 AM" and "Student Union closed".
+- Watching: a figure on the campus map ("Map of today's plan: 5 places and 9 walks", "© OpenStreetMap
+  contributors"); the line under the map reads e.g. "Lunch at Student Union · 11:45 AM".
 
 **What can go wrong**
-- Nothing here needs a model or a camera. If the map is blank the place pack is missing
-  (`config/places/ucf.map.json`).
+- Nothing here needs a model or a camera. If the map well says the places are not on a drawn map, the
+  place pack is missing (`config/places/ucf.map.json`).
+- **Keep this plan** on a box with no calendar connector answers "This box has no calendar it can
+  write to yet, so the plan stays here." That is expected on a seeded laptop.
+- A box seeded without `--history` shows fewer days on the strip; the presenter links above still
+  tell the same three stories.
 
 **Verification**
 
 | tests | seeded app | Jetson | real hardware |
 | --- | --- | --- | --- |
-| ✅ `contexts/play/tests/test_dayrun.py`, `test_dayrun_api.py`, `test_walknet.py`, `test_places.py` | ✅ run A: 9/9 (bad fails with reasons, good 3 stars, hard re-routes, map 254 buildings, a 290 m walk). Simulated with: the scripted demo day. `final/05-dayrun-bad-500.png`, `-good-`, `-hard-`, `-play-` | ✅ run B: 9/9, 0.35 to 1.25 s each | n/a (no hardware in this use case); "My day" from live sources not tried at the table |
+| ✅ `contexts/play/tests/test_dayrun.py`, `test_dayrun_api.py`, `test_dayrun_words.py` (each sentence against its fields), `test_dayrun_talk.py` (the grammar), `test_walknet.py`, `test_places.py`; `contexts/demo/tests/test_history.py` | ✅ run A: 9/9 (bad fails with reasons, good 3 stars, hard re-routes, map 254 buildings, a 290 m walk). Simulated with: the scripted demo day. `final/05-dayrun-bad-500.png`, `-good-`, `-hard-`, `-play-` | ✅ run B: 9/9, 0.35 to 1.25 s each | n/a (no hardware in this use case); "My day" from live sources not tried at the table |
 
 ---
 
@@ -750,7 +791,7 @@ operator.
 
 **Expected**
 
-| Profile | Ask screen says | Words (workplace, activity, event, deadline) | Day Run's demo day |
+| Profile | Ask screen says | Words (workplace, activity, event, deadline) | Today's Plan's scripted day (presenter link) |
 | --- | --- | --- | --- |
 | student | "Ask about your desk, your classes or your evening." | desk, study, class, assignment | "A scripted Sunday at Knight Hacks." |
 | shift-worker | "Ask about your station, your shifts or your evening." | station, work, shift, handover | "A scripted day for the shift-worker profile (night-shift)."; with nothing planned: "Meals: 0 (3 needed)" |
@@ -874,7 +915,7 @@ before the re-plan (defect 2), and nothing needs a restart.
 | 1:00 | It runs the day | Now → **Brief me** → **Route** on the next block | The template brief appears if the model is slow |
 | 1:40 | It coaches | The coach note → **Was that right?** → **No: phone** | Laptop, seeded night |
 | 2:10 | It asks before acting | **Re-plan from here** → **Review the new plan** → **Approve** | If no card: **More** → **Re-plan from here** |
-| 2:40 | A game with real stakes | Day Run → **Bad plan** → **Good plan** → **Hard mode…** → **▶ Watch the day go wrong** | None needed: no model, no camera |
+| 2:40 | Try the day before living it | Today's Plan → tap a block → **Tell Atlas what to change** → the three seeded days on the date strip → **Throw problems at it** → **Watch the day** | The presenter links: `/dayrun/?plan=bad`, `?plan=good`, `?hard=1`, `?play=1` |
 | 3:20 | The room | Sort It: hold up a can, walk it to the bin | Tap **Can**; or the scripted scene on a throwaway box |
 | 3:50 | Friends | Circle → Plans → "COP4533 exam review" → **Read the conversation ›** → League | Laptop with the seeded Circle of three |
 | 4:20 | Private by construction | Privacy → "What left the box" on the Jetson; unplug the network and ask again | Laptop: "No firewall on this box", so use the box |

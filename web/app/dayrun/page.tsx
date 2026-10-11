@@ -1,213 +1,323 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCampusMap } from "@/components/dayrun/CampusLayers";
-import { CampusMap } from "@/components/dayrun/CampusMap";
-import { DayPlayer } from "@/components/dayrun/DayPlayer";
-import dr from "@/components/dayrun/dayrun.module.css";
-import { Meters } from "@/components/dayrun/Meters";
-import { More } from "@/components/dayrun/More";
-import { Planner } from "@/components/dayrun/Planner";
-import { RouteSheet } from "@/components/dayrun/RouteSheet";
+import { DateStrip } from "@/components/dayrun/DateStrip";
+import { DayStrip } from "@/components/dayrun/DayStrip";
+import { PlanAgenda, rowKey } from "@/components/dayrun/PlanAgenda";
+import { DueSoon, NextDays, PlanDetails } from "@/components/dayrun/PlanDetails";
+import { PlanMap } from "@/components/dayrun/PlanMap";
+import pl from "@/components/dayrun/plan.module.css";
+import { TellAtlas } from "@/components/dayrun/TellAtlas";
 import { Empty, ErrorBox, Loading, WriteError } from "@/components/States";
 import ui from "@/components/ui.module.css";
-import { ApiError, api, type Board, type CommitResult, type HardResult, type Move, type SimResult } from "@/lib/api";
+import { ApiError, api, type CommitResult, type Explained, type HardResult, type Move, type SimResult } from "@/lib/api";
 import { useAtlas } from "@/lib/atlas";
-import { clock, clockSpan, dateLabel, dateOf, indexPlaces, minutes, ms, placeName, riskPercent, stars } from "@/lib/dayrun";
-import { DEMO_BAD_PLAN, DEMO_CAMPAIGN, DEMO_DISRUPTIONS, DEMO_GOOD_PLAN, DEMO_SCENARIO } from "@/lib/demoDay";
-import { amount, safeUrl } from "@/lib/format";
-import { useProfileState, useWords } from "@/lib/profile";
+import { buildShow, buildWorld, paceAt, showMoment, type Moment } from "@/lib/dayplay";
+import { indexPlaces, ms, placeName } from "@/lib/dayrun";
+import { DEMO_BAD_PLAN, DEMO_DISRUPTIONS, DEMO_GOOD_PLAN, DEMO_SCENARIO } from "@/lib/demoDay";
+import { blockTitle, clockAt, dateWords, hoursShort, placeShort, stars, weekdayLong } from "@/lib/plan";
+import { useProfileState } from "@/lib/profile";
 import { useFetch } from "@/lib/useFetch";
+import { setScreenIntent } from "@/lib/voice";
 
 /**
- * Day Run: play the next 24 hours before living them.
+ * Today's Plan: try your day before you live it.
  *
- * Presenter links (all optional, combine freely):
- *   /dayrun/?plan=good        load the scripted good plan     (?plan=bad for the bad one)
- *   /dayrun/?hard=1           run hard mode on the plan (the good plan if none is named);
- *                             on the demo day this uses the scripted disruptions
- *   /dayrun/?hard=1&seed=7    seeded disruptions instead (&count=2 for two of them)
- *   /dayrun/?t=14:05          put the scrubber at that time of day
- *   /dayrun/?play=1           open Play mode and start it: the day is watched, with a figure walking the
- *                             routes (with ?plan=good|bad and ?hard=1; the good plan if none is named).
- *                             ?play=0 opens it paused; with ?t=11:15 it opens on exactly that minute.
- *                             &motion=reduce steps block by block, as with the system's reduced motion.
- *   /dayrun/?day=mine         start on "My day" (live sources) instead of the demo day
- *   /dayrun/?plan=day         My day with the Day loop's plan for today preloaded (GET /api/day/plan)
- *   /dayrun/?more=1           open the review, replay, campaign and forecast forms
+ * One day is on screen: yours. The date strip opens the days around it: a past day against what happened, today's
+ * plan (the one Atlas made this morning, yours to change), or a draft for a day ahead. Change the plan three ways:
+ * tap a block (length, earlier, later, remove) or "+ Add" in a gap; type or say a change ("move lunch to one"); or
+ * tap "Fix it" on something that needs fixing. Every change is run on the box at once.
+ *
+ * Presenter links (all optional; none of these is a control on the screen):
+ *   /dayrun/?day=2026-10-05   open that day (a day of the strip)
+ *   /dayrun/?plan=good        the scripted day with its plan that works   (?plan=bad for the one that needs fixing)
+ *   /dayrun/?hard=1           throw problems at the plan: with no ?day= this is the scripted day, its plan that
+ *                             works and its two scripted disruptions; &seed=7 picks seeded ones (&count=2 for two)
+ *   /dayrun/?play=1           start watching the day (?play=0 opens it paused); &t=11:15 opens on that minute;
+ *                             &motion=reduce steps block by block, as with the system's reduced motion
+ *   /dayrun/?t=14:05          put the marker at that time of day
+ *   /dayrun/?more=1           open Details
+ *   /dayrun/?plan=day and ?day=mine are accepted and mean what the screen now does by default: your own day.
  */
 
-type Mode = "demo" | "mine";
-const SIM_DELAY_MS = 250;
+const SIM_DELAY_MS = 220;
+const SPEEDS = [18, 36, 72]; // simulated minutes per second: 1×, 2×, 4×
+const MIN = 60_000;
+const ICON = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" } as const;
 
-interface Sim {
-  busy: boolean;
-  result?: SimResult;
-  error?: ApiError;
-}
-
-interface HardRun {
-  busy: boolean;
-  result?: HardResult;
-  error?: ApiError;
-  scripted?: boolean;
+interface Query {
+  plan: "good" | "bad" | null;
+  hard: boolean;
+  seed: number | null;
+  count: number;
+  t: string | null;
+  play: "auto" | "paused" | null;
+  calm: boolean;
+  day: string | null;
+  more: boolean;
 }
 
 const asApiError = (err: unknown) => (err instanceof ApiError ? err : new ApiError(0, err instanceof Error ? err.message : String(err)));
+const Agenda = memo(PlanAgenda);
 
-function line(r: SimResult): string {
-  return `${r.outcome.won ? "Win" : "Fail"} ${stars(r.stars)}, ${minutes(r.totals.walk_minutes)} walking, ${r.totals.meals} ${r.totals.meals === 1 ? "meal" : "meals"}, ${amount(r.totals.sleep_hours)} h sleep, ${r.totals.points} points`;
-}
-
-export default function DayRunPage() {
+export default function TodaysPlanPage() {
   const { approvals } = useAtlas();
-  const { profile, ready: profileReady } = useProfileState(); // the box's words, and which scripted day its demo mode plays
-  const w = profile.words;
-  const scenarioName = profile.scenario ?? DEMO_SCENARIO;
-  const [mode, setMode] = useState<Mode>("demo");
-  const scenario = mode === "demo" ? scenarioName : undefined;
-  const board = useFetch((s) => api.dayrunBoard(scenario, s), `${mode}:${scenario ?? ""}`);
-  // The scripted day's own one-tap plans; the student's are embedded (web/lib/demoDay.ts) so the demo works before the box answers.
-  const script = useFetch((s) => (scenario ? api.dayrunScenario(scenario, s) : Promise.resolve(null)), scenario ?? "");
-  const student = scenarioName === DEMO_SCENARIO;
-  const presets = useMemo(
-    () => ({
-      bad: script.data?.plans.bad ?? (student ? DEMO_BAD_PLAN : []),
-      good: script.data?.plans.good ?? (student ? DEMO_GOOD_PLAN : []),
-      disruptions: script.data?.disruptions ?? (student ? DEMO_DISRUPTIONS : []),
-      campaign: script.data?.campaign ?? (student ? DEMO_CAMPAIGN : []),
-    }),
-    [script.data, student],
-  );
-  const [urlPlan, setUrlPlan] = useState<"good" | "bad" | null>(null); // ?plan= from the presenter link, applied once a preset exists
-  const packs = useFetch((s) => api.places(s));
-  const places = useMemo(() => indexPlaces(packs.data ?? []), [packs.data]);
-  // The drawn campus of the board's own pack, if it has one: fetched once, shared by Play mode, the map and the Route sheets.
-  const boardPack = board.data?.pack;
-  const campus = useCampusMap(boardPack ? packs.data : undefined, useMemo(() => new Set(boardPack ? [boardPack] : []), [boardPack]));
+  const { profile, ready: profileReady } = useProfileState();
+  const activity = profile.words.Activity;
 
-  const [moves, setMovesState] = useState<Move[]>([]);
-  const [preset, setPreset] = useState<"good" | "bad" | null>(null);
-  const [sim, setSim] = useState<Sim>({ busy: false });
-  const [hard, setHard] = useState<HardRun | null>(null);
-  const [view, setView] = useState<"after" | "before">("after");
-  const [seed, setSeed] = useState(7);
-  const [scrub, setScrub] = useState(0);
-  const [commit, setCommit] = useState<{ busy: boolean; done?: CommitResult; error?: ApiError }>({ busy: false });
-  const [openMore, setOpenMore] = useState(false);
-  const auto = useRef<{ hard: boolean; seed: number | null; count: number; t: string | null }>({ hard: false, seed: null, count: 1, t: null });
-  // Play mode. `auto` starts the clock as soon as the linked day is in; `at` is the ?t= minute to open on.
-  const [play, setPlay] = useState<{ open: boolean; auto: boolean; at: string | null }>({ open: false, auto: false, at: null });
-  const [linkHard, setLinkHard] = useState(false); // ?hard=1 was asked for and has not been run yet
-  const [seek, setSeek] = useState<{ index: number; n: number } | null>(null);
-  const stage = useRef<HTMLDivElement>(null);
-
-  const setMoves = useCallback((next: Move[], from: "good" | "bad" | null = null) => {
-    setMovesState(next);
-    setPreset(from);
-    setHard(null);
-    setView("after");
-    setCommit({ busy: false });
-  }, []);
-
-  // Presenter links: read once, after the first render (the page is a static export).
+  // ---------- presenter links: read once, after the first render (the page is a static export) ----------
+  const [link, setLink] = useState<Query | null>(null);
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
-    const mine = q.get("day") === "mine";
-    if (mine) setMode("mine");
     const plan = q.get("plan");
-    const wantHard = q.has("hard") && q.get("hard") !== "0";
-    const wantPlay = q.has("play");
-    if (plan === "day") {
-      // the Day loop's plan for today (Now screen "Change it in Day Run"): live sources, moves preloaded
-      setMode("mine");
-      api.dayPlan().then((p) => setMoves(p.moves)).catch(() => undefined);
-    } else if (!mine) {
-      if (plan === "bad") setUrlPlan("bad");
-      else if (plan === "good" || wantHard || wantPlay) setUrlPlan("good");
-    }
-    if (wantPlay) setPlay({ open: true, auto: q.get("play") !== "0", at: q.get("t") });
-    setLinkHard(wantHard);
-    const s = Number(q.get("seed"));
-    const c = Number(q.get("count"));
-    auto.current = { hard: wantHard, seed: q.has("seed") && Number.isInteger(s) ? s : null, count: Number.isInteger(c) && c > 0 ? c : 1, t: q.get("t") };
-    if (auto.current.seed !== null) setSeed(auto.current.seed);
-    if (q.has("more")) setOpenMore(true);
-  }, [setMoves]);
+    const seed = Number(q.get("seed"));
+    const count = Number(q.get("count"));
+    const day = q.get("day");
+    setLink({
+      plan: plan === "good" || plan === "bad" ? plan : null,
+      hard: q.has("hard") && q.get("hard") !== "0",
+      seed: q.has("seed") && Number.isInteger(seed) ? seed : null,
+      count: Number.isInteger(count) && count > 0 ? count : 1,
+      t: q.get("t"),
+      play: q.has("play") ? (q.get("play") === "0" ? "paused" : "auto") : null,
+      calm: q.get("motion") === "reduce",
+      day: day && /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : day === "mine" || plan === "day" ? "mine" : null,
+      more: q.has("more"),
+    });
+  }, []);
+  // The scripted day is reached only by a presenter link, never from a control on this screen.
+  const scripted = Boolean(link && (link.plan || (link.hard && link.day === null)));
+  const scenario = scripted ? (profile.scenario ?? DEMO_SCENARIO) : undefined;
 
+  // ---------- which day ----------
+  const strip = useFetch((s) => api.planDays(s));
+  const [picked, setPicked] = useState<string | null>(null);
+  const today = strip.data?.today;
+  const day = picked ?? (link?.day && link.day !== "mine" ? link.day : null) ?? today ?? null;
+  const info = useFetch((s) => (day && !scripted ? api.planDay(day, s) : Promise.resolve(null)), `${day ?? ""}|${scripted}`);
+  const when = scripted ? "today" : (info.data?.when ?? "today");
+  const past = when === "past";
+  const start = scripted ? undefined : (info.data?.start ?? undefined);
+  const ready = link !== null && (scripted ? profileReady : Boolean(day) && (info.data !== undefined || info.error !== undefined));
+
+  const board = useFetch((s) => (ready ? api.planBoard({ start, scenario }, s) : Promise.resolve(null)), `${ready}|${start ?? ""}|${scenario ?? ""}`);
+  const script = useFetch((s) => (scenario ? api.dayrunScenario(scenario, s) : Promise.resolve(null)), scenario ?? "");
+  const packs = useFetch((s) => api.places(s));
+  const places = useMemo(() => indexPlaces(packs.data ?? []), [packs.data]);
+  const boardPack = board.data?.pack;
+  const campus = useCampusMap(boardPack ? packs.data : undefined, useMemo(() => new Set(boardPack ? [boardPack] : []), [boardPack]));
+  const world = useMemo(() => buildWorld(places, campus.map), [places, campus.map]);
+
+  // ---------- the plan: the moves, and the box's run of them ----------
+  const [moves, setMovesState] = useState<Move[]>([]);
+  const drafts = useRef(new Map<string, Move[]>());
+  const [workLeft, setWorkLeft] = useState<Record<string, number>>({});
+  const [sim, setSim] = useState<{ busy: boolean; result?: SimResult; explained?: Explained; error?: ApiError; key?: string }>({ busy: false });
+  const [hard, setHard] = useState<{ busy: boolean; result?: HardResult; error?: ApiError } | null>(null);
+  const [commit, setCommit] = useState<{ busy: boolean; done?: CommitResult; error?: ApiError }>({ busy: false });
+  const [flash, setFlash] = useState<{ index: number; n: number } | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [hover, setHover] = useState<string | null>(null);
+  const [t, setT] = useState<number | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [speed, setSpeed] = useState(1);
+  const [phase, setPhase] = useState(0);
+  const pending = useRef<{ hard: boolean; play: Query["play"]; t: string | null }>({ hard: false, play: null, t: null });
+  const linkUsed = useRef(false);
+  const dayKey = scripted ? `scripted:${link?.plan ?? "good"}` : (day ?? "");
+
+  // a day's moves: the draft kept for it this visit, else what the box has (the Day loop's plan, a past day's, none)
   useEffect(() => {
-    if (urlPlan && profileReady && !script.loading && presets[urlPlan].length > 0) {
-      setMoves(presets[urlPlan], urlPlan);
-      setUrlPlan(null);
-    }
-  }, [urlPlan, profileReady, script.loading, presets, setMoves]);
+    if (!ready) return;
+    const kept = drafts.current.get(dayKey);
+    if (kept) setMovesState(kept);
+    else if (scripted) {
+      if (script.loading) return;
+      const name = link?.plan ?? "good";
+      const student = (profile.scenario ?? DEMO_SCENARIO) === DEMO_SCENARIO;
+      setMovesState(script.data?.plans[name] ?? (student ? (name === "bad" ? DEMO_BAD_PLAN : DEMO_GOOD_PLAN) : []));
+    } else setMovesState(info.data?.moves ?? []);
+    setHard(null);
+    setCommit({ busy: false });
+    setSelected(null);
+    setT(null);
+    setPlaying(false);
+    setWorkLeft({});
+    // the link's ?hard=, ?play= and ?t= are for the day the link opened, once
+    pending.current = linkUsed.current ? { hard: false, play: null, t: null } : { hard: Boolean(link?.hard), play: link?.play ?? null, t: link?.t ?? null };
+    linkUsed.current = true;
+    // a new day, or its plan arriving: not when the link object itself is rebuilt
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dayKey, ready, info.data, script.data, script.loading]);
 
-  const start = board.data?.start;
+  const applyMoves = useCallback(
+    (next: Move[], changed: number | null) => {
+      drafts.current.set(dayKey, next);
+      setMovesState(next);
+      setHard(null);
+      setCommit({ busy: false });
+      setPlaying(false);
+      if (changed !== null) setFlash((f) => ({ index: changed, n: (f?.n ?? 0) + 1 }));
+    },
+    [dayKey],
+  );
 
-  // Run it: every change to the plan is simulated on the box, a moment after the last tap.
+  const boardStart = board.data?.start;
+  const initial = useMemo(() => (Object.keys(workLeft).length > 0 ? { work_left: workLeft } : undefined), [workLeft]);
+  const simKey = `${dayKey}|${boardStart ?? ""}`;
   useEffect(() => {
-    if (!start) return;
+    if (!boardStart) return;
     const ctl = new AbortController();
-    setSim((s) => ({ ...s, busy: true }));
+    setSim((s) => (s.key === simKey ? { ...s, busy: true } : { busy: true, key: simKey }));
+    const body = { moves, start: boardStart, scenario, initial };
     const timer = window.setTimeout(() => {
-      api
-        .dayrunSimulate({ moves, start, scenario }, ctl.signal)
-        .then((result) => setSim({ busy: false, result }))
+      Promise.all([api.dayrunSimulate(body, ctl.signal), api.planExplain(body, ctl.signal).catch(() => undefined)])
+        .then(([result, explained]) => setSim({ busy: false, result, explained, key: simKey }))
         .catch((err: unknown) => {
-          if (!ctl.signal.aborted) setSim({ busy: false, error: asApiError(err) });
+          if (!ctl.signal.aborted) setSim((s) => ({ ...s, busy: false, error: asApiError(err) }));
         });
     }, SIM_DELAY_MS);
     return () => {
       window.clearTimeout(timer);
       ctl.abort();
     };
-  }, [moves, start, scenario]);
+  }, [moves, boardStart, scenario, initial, simKey]);
 
   const runHard = useCallback(
-    (scripted: boolean, withSeed: number, count = 1) => {
-      if (!start) return;
-      setHard({ busy: true, scripted });
-      setView("after");
+    (seed: number | null, count: number) => {
+      if (!boardStart) return;
+      setHard({ busy: true });
+      const base = { moves, start: boardStart, scenario, initial };
+      const disruptions = script.data?.disruptions ?? ((profile.scenario ?? DEMO_SCENARIO) === DEMO_SCENARIO ? DEMO_DISRUPTIONS : []);
       api
-        .dayrunHard(scripted ? { moves, start, scenario, disruptions: presets.disruptions } : { moves, start, scenario, seed: withSeed, count })
-        .then((result) => setHard({ busy: false, result, scripted }))
-        .catch((err: unknown) => setHard({ busy: false, error: asApiError(err), scripted }));
+        .dayrunHard(scripted && seed === null && disruptions.length > 0 ? { ...base, disruptions } : { ...base, seed: seed ?? 7, count: seed === null ? 2 : count })
+        .then((result) => setHard({ busy: false, result }))
+        .catch((err: unknown) => setHard({ busy: false, error: asApiError(err) }));
     },
-    [moves, start, scenario],
+    [moves, boardStart, scenario, initial, scripted, script.data, profile.scenario],
   );
 
-  // ?hard=1 and ?t=: applied once, when the first simulation of the linked plan is in.
-  useEffect(() => {
-    if (!sim.result || sim.busy) return;
-    const a = auto.current;
-    if (a.hard) {
-      a.hard = false;
-      setLinkHard(false);
-      runHard(mode === "demo" && a.seed === null, a.seed ?? 0, a.count);
-    }
-    if (a.t) {
-      const want = a.t;
-      a.t = null;
-      // The first tick in that hour at or after the minute asked for (ticks are a quarter of an hour apart).
-      const i = sim.result.timeline.findIndex((tick) => clock(tick.t).slice(0, 2) === want.slice(0, 2) && clock(tick.t) >= want);
-      if (i >= 0) setScrub(i);
-    }
-  }, [sim.result, sim.busy, runHard, mode]);
+  const b = board.data ?? undefined;
+  const result = sim.key === simKey ? sim.result : undefined;
+  const explained = sim.key === simKey ? sim.explained : undefined;
+  const shown = hard?.result ? hard.result.after : result;
+  const show = useMemo(() => (result && b ? buildShow({ result, hard: hard?.result ?? null, world, places, board: b }) : null), [result, hard?.result, world, places, b]);
 
-  const switchMode = (next: Mode) => {
-    if (next === mode) return;
-    setMode(next);
-    setMoves([]);
-    setSim({ busy: false });
-    setScrub(0);
-  };
+  // presenter links that wait for the first run of the linked plan: ?hard=1, ?play=, ?t=
+  useEffect(() => {
+    if (!result || sim.busy || !show) return;
+    const p = pending.current;
+    if (p.hard) {
+      p.hard = false;
+      runHard(link?.seed ?? null, link?.count ?? 1);
+      return;
+    }
+    if (hard?.busy) return;
+    if (p.t) {
+      const m = /^(\d{1,2}):(\d{2})$/.exec(p.t);
+      p.t = null;
+      const from = /T(\d{2}):(\d{2})/.exec(show.main.result.start);
+      if (m && from) {
+        const add = (((Number(m[1]) * 60 + Number(m[2]) - (Number(from[1]) * 60 + Number(from[2]))) % 1440) + 1440) % 1440;
+        setT(Math.min(show.t1, show.t0 + add * MIN));
+      }
+    }
+    if (p.play) {
+      const auto = p.play === "auto";
+      p.play = null;
+      setT((x) => x ?? show.t0);
+      setPlaying(auto);
+    }
+  }, [result, sim.busy, show, hard?.busy, runHard, link?.seed, link?.count]);
+
+  // ---------- watching the day ----------
+  const calm = useRef(false);
+  useEffect(() => {
+    calm.current = Boolean(link?.calm) || window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  }, [link?.calm]);
+  useEffect(() => {
+    if (!playing || !show) return;
+    if (calm.current) {
+      // reduced motion: no walking, one stop of the day at a time
+      const id = window.setInterval(() => {
+        setT((x) => {
+          const next = show.stops.find((s) => s > (x ?? show.t0) + 1);
+          if (next === undefined) {
+            setPlaying(false);
+            return show.t1;
+          }
+          return next;
+        });
+      }, 1200);
+      return () => window.clearInterval(id);
+    }
+    let frame = 0;
+    let last = performance.now();
+    const tick = (now: number) => {
+      const dt = Math.min(0.1, (now - last) / 1000);
+      last = now;
+      setPhase((p) => p + dt);
+      setT((x) => {
+        const at = x ?? show.t0;
+        const next = at + paceAt(show, at, SPEEDS[speed] ?? 36) * dt * MIN;
+        if (next >= show.t1) {
+          setPlaying(false);
+          return show.t1;
+        }
+        return next;
+      });
+      frame = window.requestAnimationFrame(tick);
+    };
+    frame = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frame);
+  }, [playing, show, speed]);
+
+  const moment: Moment | null = useMemo(() => (show && t !== null ? showMoment(show, world, t) : null), [show, world, t]);
+  const after = Boolean(show && show.splitAt !== null && t !== null && t >= show.splitAt) || (Boolean(hard?.result) && t === null);
+  const onScreen = show && show.before && !after ? show.before.result : shown;
+
+  // ---------- what the selected (or hovered) row lights on the map ----------
+  const focusKey = hover ?? selected;
+  const focus = useMemo(() => {
+    if (!onScreen || !focusKey) return { route: null as number | null, place: null as string | null };
+    const block = onScreen.blocks.find((x) => rowKey(x) === focusKey);
+    if (!block) return { route: null, place: null };
+    const walk = onScreen.routes.find((r) => (block.move !== null ? r.move === block.move : r.move === null && r.end === block.place && Math.abs(ms(r.arrive) - ms(block.start)) <= 30 * MIN));
+    return { route: walk ? walk.index : null, place: block.place };
+  }, [onScreen, focusKey]);
+  const pickPlace = useCallback(
+    (ref: string) => {
+      if (!onScreen) return;
+      const near = (x: { place: string }) => x.place === ref || placeName(places, x.place) === placeName(places, ref) || world.resolve(x.place) === world.at.get(ref);
+      const order = [...onScreen.blocks].sort((x, y) => ms(x.start) - ms(y.start));
+      const at = order.findIndex((x) => rowKey(x) === selected);
+      const hit = order.slice(at + 1).find(near) ?? order.find(near);
+      if (hit) {
+        setSelected(rowKey(hit));
+        document.querySelector(`[data-row="${CSS.escape(rowKey(hit))}"]`)?.scrollIntoView({ block: "nearest", behavior: calm.current ? "auto" : "smooth" });
+      }
+    },
+    [onScreen, places, world, selected],
+  );
+
+  // ---------- say a change ----------
+  const ask = useCallback((text: string) => api.planEdit({ text, moves, start: boardStart, scenario, initial }), [moves, boardStart, scenario, initial]);
+  useEffect(() => {
+    if (past || !boardStart) return;
+    return setScreenIntent("/dayrun/", async (text) => {
+      const out = await ask(text);
+      if (out.ok) applyMoves(out.moves, out.changed);
+      return out.warning ? `${out.understood} ${out.warning}.` : out.understood;
+    });
+  }, [ask, applyMoves, past, boardStart]);
 
   const doCommit = () => {
-    if (!start) return;
+    if (!boardStart) return;
     setCommit({ busy: true });
     api
-      .dayrunCommit({ moves, start, scenario })
+      .dayrunCommit({ moves, start: boardStart, scenario, initial })
       .then((done) => {
         setCommit({ busy: false, done });
         approvals.reload();
@@ -215,562 +325,297 @@ export default function DayRunPage() {
       .catch((err: unknown) => setCommit({ busy: false, error: asApiError(err) }));
   };
 
-  // A scrub made by hand also moves the playback, when it is open.
-  const userScrub = useCallback((index: number) => {
-    setScrub(index);
-    setSeek((s) => ({ index, n: (s?.n ?? 0) + 1 }));
+  // ---------- words ----------
+  const fixes = explained?.fixes ?? [];
+  const works = Boolean(result?.outcome.won) && fixes.length === 0;
+  const stripDay = strip.data?.days.find((d) => d.day === day);
+  const label = scripted ? "A scripted day" : !day ? "" : day === today ? "Today" : dateWords(day);
+  let title = explained?.headline ?? (result ? (result.outcome.won ? "This plan works" : "This plan needs fixing") : "");
+  let lead = "";
+  if (past && info.data) {
+    title = `${info.data.label.charAt(0).toUpperCase()}${info.data.label.slice(1)}`;
+    lead = info.data.summary;
+  } else if (hard?.result) {
+    const n = hard.result.changes.length;
+    title = hard.result.after.outcome.won ? "It still works" : "It needs fixing after that";
+    lead = n === 0 ? "Nothing in your plan had to change." : `Atlas made ${n} ${n === 1 ? "change" : "changes"} to keep the day standing.`;
+  } else if (result && moves.length === 0 && !works) {
+    title = "Nothing planned yet";
+    lead = when === "future" && stripDay?.summary ? stripDay.summary : "Add what you want to do, or start with one of these.";
+  } else if (result && works) {
+    const due = explained ? Object.values(explained.deadlines) : [];
+    const safe = due.length === 0 ? null : due.length === 1 ? `${due[0]!.title} ${due[0]!.status === "done" ? "done" : "on track"}` : "every deadline on track";
+    lead = [`${hoursShort(result.totals.sleep_hours)} sleep`, `${result.totals.meals} meals`, safe].filter(Boolean).join(" · ");
+  }
+  const starCount = past ? (info.data?.review?.stars ?? 0) : hard?.result ? hard.result.after.stars : works ? (result?.stars ?? 0) : 0;
+  // the danger ring is for a plan that needs fixing; an empty draft is only empty
+  const needsFixing = !past && !hard?.result && Boolean(result) && !works;
+  const alarm = needsFixing && moves.length > 0;
+
+  const caption = (() => {
+    if (!onScreen || !b) return null;
+    if (moment && t !== null) {
+      const clock = clockAt(t, onScreen.start);
+      if (show && show.splitAt !== null && t >= show.splitAt && t < show.splitAt + 45 * MIN && show.disruptions[0]) return { main: show.disruptions.map((d) => d.text).filter(Boolean).join("; "), side: clock };
+      if (moment.walk) {
+        const to = placeShort(placeName(places, moment.walk.route.end));
+        return { main: `Walking to ${to}`, side: clock };
+      }
+      if (moment.span) return { main: `${blockTitle(moment.span.block, activity)}${moment.span.block.place_name ? ` at ${placeShort(moment.span.block.place_name)}` : ""}`, side: clock };
+      return { main: `Free time at ${placeShort(placeName(places, moment.place))}`, side: clock };
+    }
+    if (focusKey) {
+      const block = onScreen.blocks.find((x) => rowKey(x) === focusKey);
+      const walk = focus.route !== null ? onScreen.routes.find((r) => r.index === focus.route) : undefined;
+      if (block) return { main: walk ? `${Math.max(1, Math.round(walk.minutes))} min walk · leave by ${clockAt(ms(walk.depart), onScreen.start)}` : `${blockTitle(block, activity)}: no walk, you are already there`, side: "" };
+    }
+    return { main: "", side: "Tap a block or a building to see its walk." };
+  })();
+
+  // what went wrong, in a few words each: "Judging and demos → CB1, 11:45 AM", "Student Union closed"
+  const pills =
+    hard?.result && after && b
+      ? hard.result.disruptions.map((d) => {
+          if (d.kind === "place_closed") return `${placeShort(placeName(places, d.place))} closed`;
+          if (d.kind === "friend_cancelled") return `${d.friend ?? "A friend"} can't come`;
+          const block = b.blocks.find((x) => x.id === d.block);
+          const name = (block?.title ?? "A block").replace(/^[^:]{1,14}: /, "");
+          const to = d.to_place ? ` → ${places.get(d.to_place)?.aliases[0] ?? placeShort(placeName(places, d.to_place))}` : "";
+          const at = block && d.shift_minutes ? `, ${clockAt(ms(block.start) + d.shift_minutes * MIN, block.start)}` : "";
+          return `${name.charAt(0).toUpperCase()}${name.slice(1)}${to}${at}`;
+        })
+      : [];
+  const closed = hard?.result && after ? hard.result.disruptions.filter((d) => d.kind === "place_closed" && d.place).map((d) => d.place as string) : [];
+  const movedMoves = useMemo(() => new Set(hard?.result ? hard.result.changes.filter((c) => c.move !== null && c.kind !== "rejected").map((c) => c.move as number) : []), [hard?.result]);
+  const noHover = useCallback((key: string | null) => setHover(key), []);
+  const select = useCallback((key: string | null) => {
+    setSelected(key);
+    setPlaying(false);
+    setT(null);
   }, []);
+  const setWork = (id: string, minutes: number) => setWorkLeft((w) => ({ ...w, [id]: minutes }));
 
-  const scrubTo = (iso: string) => {
-    const shown = hard?.result ? (view === "before" ? hard.result.before : hard.result.after) : sim.result;
-    if (!shown) return;
-    const t = ms(iso);
-    const i = shown.timeline.findIndex((tick) => ms(tick.t) >= t);
-    userScrub(i < 0 ? shown.timeline.length - 1 : i);
-  };
+  const header = (
+    <div className={ui.pageHead}>
+      <h1>Today&apos;s Plan</h1>
+      <p className={ui.muted}>Try your day before you live it.</p>
+    </div>
+  );
 
-  const watch = () => {
-    setPlay({ open: true, auto: true, at: null });
-    window.requestAnimationFrame(() => stage.current?.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }));
-  };
-
-  const b = board.data;
-  const shown = hard?.result ? (view === "before" ? hard.result.before : hard.result.after) : sim.result;
-  const disruptions = hard?.result && view === "after" ? hard.result.disruptions : [];
-  const changes = hard?.result && view === "after" ? hard.result.changes : [];
+  if (board.error || (info.error && !scripted)) {
+    const error = (board.error ?? info.error) as ApiError;
+    return (
+      <>
+        {header}
+        {strip.data && today && day ? <DateStrip days={strip.data.days} today={today} selected={day} onSelect={setPicked} /> : null}
+        {error.notConfigured ? <Empty title="Today's Plan is not set up on this box">It needs the map of your places before it can plan a day.</Empty> : <ErrorBox what="this day" error={error} onRetry={() => (info.reload(), board.reload())} />}
+      </>
+    );
+  }
 
   return (
     <>
-      <div className={ui.pageHead}>
-        <h1>Today&apos;s Plan</h1>
-        <p className={ui.muted}>Try out your next 24 hours, then keep the plan that works best.</p>
-      </div>
+      {header}
+      {scripted ? (
+        <p className={pl.dateNote}>
+          A scripted day, for presenting. <Link href="/dayrun/">Back to my day</Link>
+        </p>
+      ) : strip.data && today && day ? (
+        <DateStrip days={strip.data.days} today={today} selected={day} onSelect={setPicked} />
+      ) : null}
 
-      <div className={ui.segmented} role="group" aria-label="Which day">
-        <button type="button" className={`${ui.seg} ${mode === "demo" ? ui.segOn : ""}`} aria-pressed={mode === "demo"} onClick={() => switchMode("demo")}>
-          Demo day
-        </button>
-        <button type="button" className={`${ui.seg} ${mode === "mine" ? ui.segOn : ""}`} aria-pressed={mode === "mine"} onClick={() => switchMode("mine")}>
-          My day
-        </button>
-      </div>
-
-      {board.error ? (
-        board.error.notConfigured ? (
-          <Empty title="Day Run is not set up on this box">{board.error.message}. It needs the place packs in config/places.</Empty>
+      {!b || !shown || !onScreen ? (
+        sim.error ? (
+          <ErrorBox what="the plan" error={sim.error} />
         ) : (
-          <ErrorBox what="the board" error={board.error} onRetry={board.reload} />
+          <Loading what="the plan" />
         )
-      ) : !b ? (
-        <Loading what="the board" />
       ) : (
-        <>
-          {mode === "demo" ? (
-            <div className={ui.section}>
-              <p className={`${ui.muted} ${ui.small}`}>{student ? "A scripted Sunday at Knight Hacks." : `A scripted day for the ${profile.name} profile (${scenarioName}).`} Load a plan in one tap, then change it.</p>
-              <div className={dr.presets}>
-                <button type="button" className={`${ui.btn} ${preset === "bad" ? dr.presetOn : ""}`} aria-pressed={preset === "bad"} disabled={presets.bad.length === 0} onClick={() => setMoves(presets.bad, "bad")}>
-                  Bad plan
-                </button>
-                <button type="button" className={`${ui.btn} ${preset === "good" ? dr.presetOn : ""}`} aria-pressed={preset === "good"} disabled={presets.good.length === 0} onClick={() => setMoves(presets.good, "good")}>
-                  Good plan
-                </button>
-                <button type="button" className={ui.btn} disabled={moves.length === 0} onClick={() => setMoves([])}>
-                  Clear
-                </button>
+        <div className={pl.split}>
+          <div className={`${pl.pane} ${pl.left}`}>
+            <section className={`${pl.hero} ${alarm ? pl.heroFix : ""}`} aria-live="polite" aria-label="How this plan does">
+              <div className={pl.heroTop}>
+                <span className={pl.heroLabel}>{label}</span>
+                {starCount > 0 ? (
+                  <span className={pl.stars} aria-label={`${starCount} of 3 stars`}>
+                    {stars(starCount)}
+                  </span>
+                ) : null}
               </div>
-            </div>
-          ) : (
-            <p className={`${ui.muted} ${ui.small}`}>{`Your next 24 hours, from your calendar, your ${w.deadline_plural}, Habits and the friends who shared a place.`}</p>
-          )}
+              <h2 className={pl.heroTitle}>{title}</h2>
+              {lead ? <p className={pl.lead}>{lead}</p> : null}
 
-          <div ref={stage} className={dr.anchor}>
-            {!play.open ? (
-              <button type="button" className={`${ui.btn} ${ui.btnPrimary} ${dr.plWatch}`} disabled={!sim.result || !packs.data || Boolean(hard?.busy)} onClick={watch}>
-                <span aria-hidden="true">▶</span> Watch the day{hard?.result ? " go wrong" : ""}
-              </button>
-            ) : !sim.result || !packs.data || linkHard || hard?.busy || (campus.pack && !campus.map && !campus.failed) ? (
-              <Loading what="the day to play" />
-            ) : (
-              <DayPlayer
-                packs={packs.data}
-                places={places}
-                map={campus.map}
-                board={b}
-                result={sim.result}
-                hard={hard?.result ?? null}
-                autoPlay={play.auto}
-                startClock={play.at}
-                seek={seek}
-                onTick={setScrub}
-                onClose={() => setPlay({ open: false, auto: false, at: null })}
+              {needsFixing && fixes.length > 0 ? (
+                <div className={pl.fixes}>
+                  {fixes.slice(0, 3).map((f) => (
+                    <div key={f.id} className={pl.fix}>
+                      <p className={pl.fixText}>
+                        <b>{f.problem}</b>
+                        {f.label ? <span>{f.label}</span> : null}
+                      </p>
+                      {f.moves && f.label ? (
+                        <button type="button" className={pl.fixBtn} onClick={() => applyMoves(f.moves as Move[], f.changed)}>
+                          Fix it
+                        </button>
+                      ) : null}
+                    </div>
+                  ))}
+                  {fixes.length > 3 ? <p className={pl.legendLine}>And {fixes.length - 3} more after these.</p> : null}
+                </div>
+              ) : null}
+
+              {campus.map ? (
+                <PlanMap
+                  map={campus.map}
+                  places={places}
+                  world={world}
+                  result={onScreen}
+                  focusRoute={focus.route}
+                  focusPlace={focus.place}
+                  moment={moment}
+                  playing={playing}
+                  phase={phase}
+                  still={!playing || calm.current}
+                  closed={closed}
+                  pills={pills}
+                  onPlace={pickPlace}
+                />
+              ) : (
+                <div className={pl.mapWell}>
+                  <p className={pl.mapEmpty}>{campus.pack && !campus.failed ? "Loading the map…" : "These places are not on a drawn map, so the plan is listed below."}</p>
+                </div>
+              )}
+              {caption ? (
+                <p className={pl.caption}>
+                  {caption.main ? (
+                    <span>
+                      <b>{caption.main}</b>
+                    </span>
+                  ) : null}
+                  {caption.side ? <span>{caption.side}</span> : null}
+                </p>
+              ) : null}
+
+              <DayStrip
+                result={onScreen}
+                t={t}
+                selected={selected}
+                onSeek={(x) => {
+                  setPlaying(false);
+                  setT(x);
+                }}
               />
-            )}
+
+              <div className={pl.heroRow}>
+                <button
+                  type="button"
+                  className={`${pl.pill} ${pl.pillMain}`}
+                  disabled={!show || Boolean(hard?.busy)}
+                  onClick={() => {
+                    if (!show) return;
+                    if (!playing && (t === null || t >= show.t1 - 1)) setT(show.t0);
+                    setPlaying(!playing);
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" {...ICON} aria-hidden="true">
+                    {playing ? <path d="M8.5 6v12M15.5 6v12" /> : <path d="M8 5.5v13l10.5-6.5z" />}
+                  </svg>
+                  {playing ? "Pause" : past ? "Watch this day" : "Watch the day"}
+                </button>
+                {playing || t !== null ? (
+                  <button type="button" className={`${pl.pill} ${pl.pillQuiet}`} onClick={() => setSpeed((s) => (s + 1) % SPEEDS.length)} aria-label={`Speed ${[1, 2, 4][speed]} times; tap to change`}>
+                    {[1, 2, 4][speed]}× speed
+                  </button>
+                ) : null}
+                {!past ? (
+                  <button
+                    type="button"
+                    className={`${pl.pill} ${pl.pillQuiet} ${hard?.result ? pl.pillOn : ""}`}
+                    disabled={Boolean(hard?.busy) || moves.length === 0 || !result}
+                    aria-pressed={Boolean(hard?.result)}
+                    onClick={() => (hard?.result ? setHard(null) : runHard(null, 2))}
+                  >
+                    {hard?.busy ? "Shaking the day…" : hard?.result ? "Back to the calm day" : "Throw problems at it"}
+                  </button>
+                ) : null}
+              </div>
+              {hard?.error ? <WriteError error={hard.error} /> : null}
+
+              {past ? null : <TellAtlas ask={ask} onApply={applyMoves} />}
+            </section>
           </div>
 
-          <Verdict sim={sim} shown={shown} moves={moves.length} hard={Boolean(hard?.result)} view={view} />
-
-          {hard?.result ? (
-            <div className={ui.card}>
-              <h3>Hard mode: what went wrong</h3>
-              <ul className={dr.bullets}>
-                {hard.result.disruptions.map((d, i) => (
-                  <li key={i} className={ui.breakWords}>
-                    {d.text || d.kind.replace("_", " ")}
-                  </li>
-                ))}
-              </ul>
-              {hard.result.note ? <p className={ui.nudge}>{hard.result.note}</p> : null}
-              <dl className={ui.kv}>
-                <dt>Before</dt>
-                <dd>{line(hard.result.before)}</dd>
-                <dt>After</dt>
-                <dd>{line(hard.result.after)}</dd>
-              </dl>
-              <p className={`${ui.muted} ${ui.small}`}>
-                {hard.result.changes.length === 0 ? "The box changed nothing." : `The box made ${hard.result.changes.length} ${hard.result.changes.length === 1 ? "change" : "changes"} to keep the plan standing.`}{" "}
-                <a href="#hard">See each change</a>
-              </p>
-            </div>
-          ) : (
-            <button type="button" className={ui.btn} disabled={hard?.busy || moves.length === 0 || !sim.result} onClick={() => runHard(mode === "demo", seed)}>
-              {hard?.busy ? "Disrupting the day…" : "Hard mode: throw problems at this plan"}
-            </button>
-          )}
-
-          <StartTiles board={b} places={places} />
-
-          <section className={ui.section}>
-            <div className={`${ui.row} ${ui.between}`}>
-              <h2 className={ui.sectionTitle}>The day, hour by hour</h2>
-              {sim.busy ? <span className={`${ui.muted} ${ui.small}`}>Running…</span> : null}
-            </div>
-            {sim.error && !shown ? (
-              <ErrorBox what="the simulation" error={sim.error} />
-            ) : !shown ? (
-              <Loading what="the simulation" />
-            ) : (
-              <>
-                {sim.error ? <WriteError error={sim.error} /> : null}
-                <div className={ui.card}>
-                  <Meters result={shown} places={places} scrub={scrub} onScrub={userScrub} />
-                </div>
-              </>
-            )}
-          </section>
-
-          {shown ? (
-            <section className={ui.section}>
-              <h2 className={ui.sectionTitle}>Where the day takes you</h2>
-              <div className={ui.card}>
-                {packs.error ? (
-                  <ErrorBox what="the places" error={packs.error} onRetry={packs.reload} />
-                ) : !packs.data ? (
-                  <Loading what="the places" />
-                ) : (
-                  <CampusMap packs={packs.data} places={places} result={shown} friends={b.friends} disruptions={disruptions} scrub={scrub} onScrubTo={scrubTo} />
-                )}
-              </div>
+          <div className={pl.pane}>
+            <section className={pl.pane} aria-label="Your plan">
+              <h2 className={pl.paneTitle}>{past ? `${weekdayLong(day ?? "")}'s plan` : "Your plan"}</h2>
+              {b.slots.length === 0 && shown.blocks.length === 0 ? (
+                <Empty title="Nothing to plan here">Your calendar fills this day, or the box has nothing for it yet.</Empty>
+              ) : (
+                <Agenda
+                  board={b}
+                  result={onScreen}
+                  moves={moves}
+                  activity={activity}
+                  past={past ? info.data?.blocks : undefined}
+                  readOnly={past}
+                  selected={selected}
+                  onSelect={select}
+                  onHover={noHover}
+                  flash={flash}
+                  moved={movedMoves}
+                  fixes={fixes}
+                  explained={explained}
+                  onChange={applyMoves}
+                />
+              )}
             </section>
-          ) : null}
 
-          <BoardCard board={b} places={places} result={shown} />
+            <DueSoon board={b} explained={explained} workLeft={workLeft} onWorkLeft={setWork} readOnly={past} />
 
-          <section className={ui.section}>
-            <h2 className={ui.sectionTitle}>Your plan</h2>
-            {b.slots.length === 0 ? (
-              <Empty title="No open slots in the next 24 hours">
-                {b.blocks.length > 0 ? "Fixed blocks fill the whole day, so there is nothing to plan." : "The box has nothing on record for this day yet. Once your calendar syncs, the slots appear here."}
-              </Empty>
-            ) : (
-              <Planner board={b} moves={moves} onChange={(next) => setMoves(next)} result={shown} changes={changes} places={places} />
-            )}
-          </section>
-
-          {shown ? <OutcomeCard result={shown} /> : null}
-
-          {shown ? (
-            <section className={`${ui.section} ${dr.anchor}`} id="hard">
-              <h2 className={ui.sectionTitle}>Hard mode</h2>
-              <div className={ui.card}>
-                <p className={ui.muted}>Things go wrong: a block moves, a place closes, a friend cancels. The box re-checks every move and re-routes.</p>
-                <div className={`${ui.row} ${ui.wrap}`}>
-                  {mode === "demo" ? (
-                    <button type="button" className={`${ui.btn} ${ui.btnPrimary}`} disabled={hard?.busy || moves.length === 0} onClick={() => runHard(true, 0)}>
-                      Hard mode
-                    </button>
-                  ) : null}
-                  <button type="button" className={`${ui.btn} ${mode === "demo" ? "" : ui.btnPrimary}`} disabled={hard?.busy || moves.length === 0} onClick={() => runHard(false, seed)}>
-                    {mode === "demo" ? "Random" : "Hard mode"}
-                  </button>
-                  <label className={dr.seed}>
-                    <span>Seed</span>
-                    <input className={`${ui.input} ${dr.numInput}`} type="number" inputMode="numeric" value={seed} onChange={(e) => setSeed(Number.isFinite(e.target.valueAsNumber) ? Math.trunc(e.target.valueAsNumber) : 0)} />
-                  </label>
-                  {hard ? (
-                    <button type="button" className={dr.pill} onClick={() => setHard(null)}>
-                      Back to the calm day
-                    </button>
-                  ) : null}
-                </div>
-                {moves.length === 0 ? <p className={`${ui.muted} ${ui.small}`}>Plan at least one move first.</p> : null}
-                {hard?.busy ? <Loading what="the disrupted day" /> : null}
-                {hard?.error ? <WriteError error={hard.error} /> : null}
-                {hard?.result ? <HardCard run={hard.result} scripted={Boolean(hard.scripted)} view={view} onView={setView} /> : null}
-              </div>
-            </section>
-          ) : null}
-
-          {sim.result ? (
-            <section className={ui.section}>
-              <h2 className={ui.sectionTitle}>Keep this plan</h2>
-              <div className={ui.card}>
+            {past ? null : (
+              <section className={pl.action} aria-label="Keep this plan">
                 {commit.done ? (
                   <>
-                    <p className={dr.big}>An approval card is waiting</p>
-                    <p className={ui.breakWords}>{commit.done.reason}.</p>
-                    <p className={ui.muted}>Nothing is on your calendar yet: {commit.done.events.length === 1 ? "the block is" : `the ${commit.done.events.length} blocks are`} added only after you approve.</p>
-                    <Link href="/approvals/" className={`${ui.btn} ${ui.btnPrimary} ${dr.linkBtn}`}>
-                      Open Approvals
+                    <Link href="/approvals/" className={`${ui.btn} ${ui.btnPrimary} ${pl.primary}`}>
+                      Sent for approval: open it
                     </Link>
-                  </>
-                ) : sim.result.outcome.won ? (
-                  <>
-                    <p>
-                      This plan wins. Commit it and Atlas asks to add its {sim.result.blocks.filter((x) => !x.fixed).length} blocks to your calendar.
-                      {hard?.result ? " The calm plan is committed, not the disrupted one." : ""}
+                    <p className={pl.hint}>
+                      Nothing is on your calendar until you approve. <Link href="/now/">Back to Calendar</Link>
                     </p>
-                    <button type="button" className={`${ui.btn} ${ui.btnPrimary}`} disabled={commit.busy || sim.busy} onClick={doCommit}>
-                      {commit.busy ? "Committing…" : "Commit to my calendar"}
-                    </button>
                   </>
                 ) : (
-                  <p className={ui.muted}>Only a winning plan can be committed. Fix what fails above and the button appears here.</p>
+                  <>
+                    <button type="button" className={`${ui.btn} ${ui.btnPrimary} ${pl.primary}`} disabled={!works || commit.busy || sim.busy} onClick={doCommit}>
+                      {commit.busy ? "Sending…" : "Keep this plan"}
+                    </button>
+                    <p className={pl.hint}>{works ? "Atlas asks before anything goes on your calendar." : "Fix what is left and you can keep it."}</p>
+                  </>
                 )}
                 {commit.error ? <CommitError error={commit.error} /> : null}
-              </div>
-            </section>
-          ) : null}
+              </section>
+            )}
 
-          <section className={ui.section}>
-            <h2 className={ui.sectionTitle}>More</h2>
-            <More scenario={scenario} day={dateOf(b.start)} moves={moves} result={sim.result} campaignPreset={mode === "demo" && presets.campaign.length > 0 ? presets.campaign : null} openAll={openMore} />
-          </section>
-        </>
+            <PlanDetails result={onScreen} explained={hard?.result ? undefined : explained} t={t} tomorrow={past ? info.data?.review?.change_tomorrow : null} open={link?.more} />
+            {!scripted && !past && strip.data && day ? <NextDays days={strip.data.days} selected={day} onSelect={setPicked} /> : null}
+          </div>
+        </div>
       )}
     </>
   );
 }
 
-/** The one-line answer, right under the presets: did this plan win? */
-function Verdict({ sim, shown, moves, hard, view }: { sim: Sim; shown: SimResult | undefined; moves: number; hard: boolean; view: "after" | "before" }) {
-  if (!shown) return sim.error ? null : <Loading what="the simulation" />;
-  const o = shown.outcome;
-  return (
-    <div className={`${dr.verdict} ${o.won ? dr.verdictWin : dr.verdictFail}`} role="status" aria-live="polite">
-      <div className={`${ui.row} ${ui.between}`}>
-        <p className={dr.verdictWord}>
-          <span aria-hidden="true">{o.won ? "✓ " : "✗ "}</span>
-          {o.won ? "Win" : "Fail"}
-          {hard ? <span className={dr.verdictNote}> · hard mode, {view === "after" ? "after" : "before"}</span> : null}
-        </p>
-        <p className={dr.stars} aria-label={`${shown.stars} of 3 stars`}>
-          {stars(shown.stars)}
-        </p>
-      </div>
-      <p className={ui.breakWords}>{moves === 0 ? `With nothing planned: ${o.summary}` : o.summary}</p>
-      {shown.rejected.length > 0 ? (
-        <p className={ui.breakWords}>
-          <strong>
-            {shown.rejected.length} {shown.rejected.length === 1 ? "move was" : "moves were"} rejected:
-          </strong>{" "}
-          {shown.rejected.map((r) => r.reason).join("; ")}
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-/** Where the meters start: energy, focus, last night and meals so far. */
-function StartTiles({ board, places }: { board: Board; places: ReturnType<typeof indexPlaces> }) {
-  const i = board.initial;
-  return (
-    <section className={ui.section}>
-      <h2 className={ui.sectionTitle}>You start with</h2>
-      <p className={ui.muted}>
-        {dateLabel(board.start)} {clock(board.start)} to {dateLabel(board.end)} {clock(board.end)}, starting at {placeName(places, board.start_place)}.
-      </p>
-      <div className={dr.tiles4}>
-        <div className={ui.stat}>
-          <p className={ui.statNum}>{Math.round(i.energy)}</p>
-          <p className={ui.statLabel}>energy, of 100</p>
-        </div>
-        <div className={ui.stat}>
-          <p className={ui.statNum}>{Math.round(i.focus)}</p>
-          <p className={ui.statLabel}>focus, of 100</p>
-        </div>
-        <div className={ui.stat}>
-          <p className={ui.statNum}>{amount(i.sleep_hours)} h</p>
-          <p className={ui.statLabel}>sleep last night</p>
-        </div>
-        <div className={ui.stat}>
-          <p className={ui.statNum}>{i.meals}</p>
-          <p className={ui.statLabel}>{i.meals === 1 ? "meal" : "meals"} so far</p>
-        </div>
-      </div>
-      <p className={`${ui.muted} ${ui.small}`}>
-        {i.source === "defaults" ? "Habits has no numbers for today, so these are the box's default starting values." : `Starting values from: ${i.source}.`}
-        {i.sleep_debt > 0 ? ` Sleep debt ${amount(i.sleep_debt)} h.` : ""}
-      </p>
-
-    </section>
-  );
-}
-
-function BoardCard({ board, places, result }: { board: Board; places: ReturnType<typeof indexPlaces>; result?: SimResult }) {
-  // Where the plan has you just before a fixed block: the walk the simulation takes to it, else where the day starts.
-  const cameFrom = (place: string, start: string): string => {
-    const walk = [...(result?.routes ?? [])].reverse().find((r) => r.end === place && ms(r.arrive) <= ms(start) && ms(start) - ms(r.arrive) <= 30 * 60000);
-    return walk?.start ?? board.start_place;
-  };
-  return (
-    <section className={ui.section}>
-      <h2 className={ui.sectionTitle}>The board</h2>
-      <div className={ui.card}>
-        <h3>Deadlines</h3>
-        {board.deadlines.length === 0 ? (
-          <p className={ui.muted}>No deadline in reach of this day.</p>
-        ) : (
-          <ul className={ui.list}>
-            {board.deadlines.map((d) => {
-              const url = safeUrl(d.url);
-              return (
-                <li key={d.id}>
-                  <p className={ui.breakWords}>
-                    {url ? (
-                      <a href={url} target="_blank" rel="noreferrer noopener">
-                        {d.title}
-                      </a>
-                    ) : (
-                      d.title
-                    )}
-                  </p>
-                  <p className={`${ui.muted} ${ui.small}`}>
-                    Due {dateLabel(d.due)} {clock(d.due)} · {minutes(d.work_left)} of focused work left{d.in_window ? " · due inside this day" : ""}
-                  </p>
-                  <div className={`${ui.row}`}>
-                    <div className={`${ui.meter} ${ui.grow}`} role="img" aria-label={`Risk ${riskPercent(d.risk)}`}>
-                      <div className={`${ui.meterFill} ${dr.riskFill}`} style={{ width: `${Math.round(Math.max(0, Math.min(1, d.risk)) * 100)}%` }} />
-                    </div>
-                    <span className={dr.riskText}>risk {riskPercent(d.risk)}</span>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
-
-      <div className={ui.card}>
-        <h3>Fixed blocks</h3>
-        {board.blocks.length === 0 ? (
-          <p className={ui.muted}>Nothing fixed on the calendar: the whole day is open.</p>
-        ) : (
-          <ul className={dr.rows}>
-            {board.blocks.map((f) => (
-              <li key={f.id}>
-                <span className={dr.when}>{clockSpan(f.start, f.end)}</span>
-                <span className={`${ui.row} ${ui.between}`}>
-                  <span className={ui.breakWords}>
-                    {f.title}
-                    <span className={ui.muted}> · {f.place_name ?? "anywhere"}</span>
-                  </span>
-                  {f.place ? <RouteSheet from={cameFrom(f.place, f.start)} to={f.place} arriveBy={f.start} now={board.start} what={f.title} /> : null}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-        {board.events.length > 0 ? (
-          <>
-            <h3>Optional</h3>
-            <ul className={dr.rows}>
-              {board.events.map((e) => (
-                <li key={e.id}>
-                  <span className={dr.when}>{clockSpan(e.start, e.end)}</span>
-                  <span className={ui.breakWords}>
-                    {e.title}
-                    <span className={ui.muted}> · {e.place_name ?? "anywhere"}</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </>
-        ) : null}
-        <h3>Friends</h3>
-        {board.friends.length === 0 ? (
-          <p className={ui.muted}>No friend has shared a place for this day.</p>
-        ) : (
-          <ul className={dr.rows}>
-            {board.friends.map((f) => (
-              <li key={`${f.member}-${f.start}`}>
-                <span className={dr.when}>{clockSpan(f.start, f.end)}</span>
-                <span className={`${ui.row} ${ui.between}`}>
-                  <span className={ui.breakWords}>
-                    {f.member}
-                    <span className={ui.muted}> · {f.place_name || placeName(places, f.place)}</span>
-                  </span>
-                  <RouteSheet from={board.start_place} to={f.place} now={board.start} what={`${f.member} is here ${clockSpan(f.start, f.end)}`} />
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function OutcomeCard({ result }: { result: SimResult }) {
-  const w = useWords();
-  const o = result.outcome;
-  const t = result.totals;
-  return (
-    <section className={ui.section}>
-      <h2 className={ui.sectionTitle}>Outcome</h2>
-      <div className={ui.card}>
-        <div className={`${ui.row} ${ui.between}`}>
-          <p className={dr.big}>{o.won ? "Win" : "Fail"}</p>
-          <p className={`${dr.stars} ${result.stars === 0 ? dr.starsNone : ""}`} aria-label={`${result.stars} of 3 stars`}>
-            {stars(result.stars)}
-          </p>
-        </div>
-        <ul className={dr.checks}>
-          {o.checks.map((c) => (
-            <li key={c.id} className={c.ok ? dr.checkOk : dr.checkFail}>
-              <span className={dr.checkMark} aria-hidden="true">
-                {c.ok ? "✓" : "✗"}
-              </span>
-              <span className={ui.breakWords}>
-                <span className={dr.srOnly}>{c.ok ? "Passed: " : "Failed: "}</span>
-                {c.text}
-              </span>
-            </li>
-          ))}
-        </ul>
-        {result.notes.map((n, i) => (
-          <p key={i} className={`${ui.muted} ${ui.small}`}>
-            {n}
-          </p>
-        ))}
-        <div className={dr.tiles}>
-          <div className={ui.stat}>
-            <p className={ui.statNum}>{t.points}</p>
-            <p className={ui.statLabel}>points, of 100</p>
-          </div>
-          <div className={ui.stat}>
-            <p className={ui.statNum}>{minutes(t.focused_minutes)}</p>
-            <p className={ui.statLabel}>of real work, from {minutes(t.study_minutes)} of {w.activity}</p>
-          </div>
-          <div className={ui.stat}>
-            <p className={ui.statNum}>{amount(t.sleep_hours)} h</p>
-            <p className={ui.statLabel}>sleep</p>
-          </div>
-          <div className={ui.stat}>
-            <p className={ui.statNum}>{t.meals}</p>
-            <p className={ui.statLabel}>
-              {t.meals === 1 ? "meal" : "meals"}
-              {t.meals_before ? `, ${t.meals_before} of them before this board starts` : ""}
-            </p>
-          </div>
-          <div className={ui.stat}>
-            <p className={ui.statNum}>{minutes(t.walk_minutes)}</p>
-            <p className={ui.statLabel}>walking</p>
-          </div>
-          <div className={ui.stat}>
-            <p className={ui.statNum}>
-              {Math.round(t.energy_min)} → {Math.round(t.energy_end)}
-            </p>
-            <p className={ui.statLabel}>energy: lowest, then at the end</p>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function HardCard({ run, scripted, view, onView }: { run: HardResult; scripted: boolean; view: "after" | "before"; onView: (v: "after" | "before") => void }) {
-  return (
-    <>
-      <p className={`${ui.muted} ${ui.small}`}>{scripted ? "The demo's scripted disruptions." : `Seed ${run.seed}: the same disruptions every time for this seed.`}</p>
-      <h3>What went wrong</h3>
-      {run.disruptions.length === 0 ? (
-        <p className={ui.muted}>The box found nothing to disrupt in this plan.</p>
-      ) : (
-        <ul className={dr.bullets}>
-          {run.disruptions.map((d, i) => (
-            <li key={i} className={ui.breakWords}>
-              {d.text || d.kind.replace("_", " ")}
-            </li>
-          ))}
-        </ul>
-      )}
-      {run.note ? <p className={ui.nudge}>{run.note}</p> : null}
-      <h3>What the box changed</h3>
-      {run.changes.length === 0 ? (
-        <p className={ui.muted}>Nothing: the plan stands as it was.</p>
-      ) : (
-        <ul className={dr.changes}>
-          {run.changes.map((c, i) => (
-            <li key={i}>
-              <span className={`${ui.tag} ${c.kind === "rejected" ? dr.tagDanger : ui.tagAccent}`}>{c.kind.replace("_", " ")}</span>
-              <span className={ui.breakWords}>
-                {c.move !== null ? `Move ${c.move + 1}: ` : ""}
-                {c.text}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-      <dl className={ui.kv}>
-        <dt>Before</dt>
-        <dd>{line(run.before)}</dd>
-        <dt>After</dt>
-        <dd>{line(run.after)}</dd>
-      </dl>
-      <div className={ui.segmented} role="group" aria-label="Which day the meters and map show">
-        <button type="button" className={`${ui.seg} ${view === "after" ? ui.segOn : ""}`} aria-pressed={view === "after"} onClick={() => onView("after")}>
-          Show after
-        </button>
-        <button type="button" className={`${ui.seg} ${view === "before" ? ui.segOn : ""}`} aria-pressed={view === "before"} onClick={() => onView("before")}>
-          Show before
-        </button>
-      </div>
-      <p className={`${ui.muted} ${ui.small}`}>The meters, the map and the outcome above now show the {view === "after" ? "disrupted" : "calm"} day.</p>
-    </>
-  );
-}
-
-/** 422: the plan does not win (with the box's reasons). 409: this box cannot write to the calendar. */
+/** 409: this box cannot write to a calendar. 422: the plan stopped working between the last run and the tap. */
 function CommitError({ error }: { error: ApiError }) {
   if (error.needsToken) return <WriteError error={error} />;
+  const text =
+    error.status === 409
+      ? "This box has no calendar it can write to yet, so the plan stays here."
+      : error.status === 422
+        ? "The plan no longer works as it is. Fix what is left and try again."
+        : `Couldn't send it: ${error.message}`;
   return (
-    <div className={`${ui.state} ${ui.stateError}`} role="alert">
-      <p className={ui.stateTitle}>{error.status === 409 ? "The calendar can't be written from this box" : error.status === 422 ? "Not committed" : "Couldn't commit"}</p>
-      <p className={ui.breakWords}>
-        {error.message}
-        {error.status ? ` (HTTP ${error.status})` : ""}
-      </p>
-      {error.reasons.length > 0 ? (
-        <ul className={dr.bullets}>
-          {error.reasons.map((r, i) => (
-            <li key={i} className={ui.breakWords}>
-              {r}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      {error.status === 409 ? <p>Connect a calendar that can create events and try again. The plan above is unchanged.</p> : null}
-    </div>
+    <p className={`${ui.state} ${ui.stateError}`} role="alert">
+      {text}
+    </p>
   );
 }
