@@ -645,7 +645,7 @@ def svg_bars(items: list[tuple[str, float | None, str]], line: tuple[str, float]
            f'<title>{esc(title)}</title>']
     y = 20
     for label, value, cls in items:
-        short = label if len(label) <= 27 else label[:26] + "\u2026"
+        short = label if len(label) <= 24 else label[:23] + "\u2026"
         out.append(f'<text x="{left - 8}" y="{y + bar_h * 0.7:.1f}" text-anchor="end" class="lbl">{esc(short)}'
                    f'<title>{esc(label)}</title></text>')
         if value is None:
@@ -765,9 +765,9 @@ section{background:var(--card);border:1px solid var(--line);border-radius:12px;p
 .state{display:inline-block;font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;padding:2px 8px;
 border-radius:99px;border:1px solid var(--line);color:var(--mute);vertical-align:middle;margin-left:.5em}
 .chart{width:100%;height:auto;display:block;margin:8px 0 12px}
-.chart text{font-size:14px;fill:var(--ink)}.chart .lbl{fill:var(--mute)}.chart .val{font-weight:600}
+.chart text{font-size:16px;fill:var(--ink)}.chart .lbl{fill:var(--mute)}.chart .val{font-weight:600}
 .chart .nm{fill:var(--flag);font-style:italic}.chart .reft{fill:var(--b);font-weight:600}
-.chart .lbl2,.chart .val2{fill:var(--mute);font-size:11px}
+.chart .lbl2,.chart .val2{fill:var(--mute);font-size:13px}
 .chart .cur{fill:var(--a)}.chart .old{fill:var(--old)}.chart .prior{fill:var(--prior);opacity:.75}
 .chart .ceil{fill:var(--c)}.chart .ref{stroke:var(--b);stroke-width:2;stroke-dasharray:6 4}
 .chart .axis{stroke:var(--line)}.chart .ln{fill:none;stroke:var(--a);stroke-width:3}.chart .dot{fill:var(--a)}

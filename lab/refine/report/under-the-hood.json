@@ -1,0 +1,3399 @@
+{
+ "format": "atlas.lab_report/1",
+ "title": "Under the hood: the Atlas lab on the Strix Halo",
+ "chip": {
+  "current": "gfx1151",
+  "name": "Radeon 8060S (Strix Halo)",
+  "other": "R9700 (gfx1201), the lab until 2026-10-10, shown apart",
+  "rule": "lab/slide_numbers.py _old_chip"
+ },
+ "data_as_of": "2026-10-11T01:04:21Z",
+ "sources": [
+  {
+   "file": "lab/refine/metrics.jsonl",
+   "sha256": "d65ef80b26d7559e1ac627621abc4bd463e10bfcc0b1c516a0ba88095d56082e",
+   "lines": 98
+  },
+  {
+   "file": "lab/refine/research/kernels/data/chipsheet-gfx1151-2026-10-11.json",
+   "sha256": "3bf0b19a12203c22e27424b2a28ce858b555cc49bca29171e5d7de84a6b1c40c",
+   "lines": 7193
+  },
+  {
+   "file": "lab/refine/research/kernels/data/public-strix-halo-benchmarks.csv",
+   "sha256": "d9c90b10dbecbf75f71fedd8f7202857e61b139cb8e2ea926804b4a9bffb1844",
+   "lines": 13292
+  },
+  {
+   "file": "lab/public_prior.py",
+   "sha256": "9e7bf9e93a3f04ac1781756bd6d749896012deafc453c5eb698f029d994ff27d",
+   "lines": 501
+  },
+  {
+   "file": "lab/slide_numbers.py",
+   "sha256": "a2e54960e8a74368263053d0b70d078b7f8bcf42476b24ed650b7aa1ef966f1f",
+   "lines": 259
+  }
+ ],
+ "skipped": [],
+ "sections": [
+  {
+   "id": "ceiling",
+   "title": "The ceiling the chip allows, against what each build achieves",
+   "reading": "The memory on this chip could feed the 27B teacher about 13 tokens a second; our best build so far reaches 2.88, about 21% of what the memory allows, so the gap is in the software, not the silicon.",
+   "state": "measured",
+   "inputs": [
+    {
+     "id": "chipsheet:copy.d2d.size_4gib",
+     "label": "memory bandwidth (copy, largest buffer)",
+     "value": 207.8,
+     "unit": "GB/s",
+     "kind": "measured",
+     "source": {
+      "file": "lab/refine/research/kernels/data/chipsheet-gfx1151-2026-10-11.json",
+      "line": 768,
+      "ref": "copy.d2d.size_4gib: device-to-device copy of 4gib; torch: dst.copy_(src), uint8[4294967296] on cuda:0, value = 2 x bytes / time"
+     },
+     "gpu": "Radeon 8060S Graphics, gfx1151",
+     "chip": "gfx1151",
+     "node": "pod-b",
+     "conditions": {
+      "node": "pod-b",
+      "mode": "full",
+      "bytes": 4294967296,
+      "repeats": 15,
+      "rocm": "7.13.0",
+      "hip": "7.13.99004-3309c6114a",
+      "hipcc": "23.0.0git",
+      "torch": "2.9.1+rocm7.13.0",
+      "torch_hip": "7.13.99004-3309c6114a",
+      "triton": "3.5.1",
+      "python": "3.12.3",
+      "amd_smi": "AMDSMI Tool: 26.4.0+3309c6114a | AMDSMI Library version: 26.4.0 | ROCm version: 7.13.0 | amdgpu version: N/A | AINIC version: N/A"
+     },
+     "ts": "2026-10-11T00:04:24Z",
+     "low_confidence": false,
+     "reason": null,
+     "other_chip": false
+    },
+    {
+     "id": "public_prior:teacher_gb",
+     "label": "weights read per decoded token (teacher, 27B INT4)",
+     "value": 15.5,
+     "unit": "GB",
+     "kind": "derived",
+     "formula": "the byte budget of the teacher's weights, as lab/public_prior.py TARGETS states it",
+     "inputs": [],
+     "source": {
+      "file": "lab/public_prior.py",
+      "line": 82,
+      "ref": "TARGETS; the note public_strix_halo_benchmarks.md gives the same figure"
+     },
+     "gpu": null,
+     "chip": null,
+     "conditions": {},
+     "ts": null,
+     "low_confidence": true,
+     "reason": "an estimate of the weight bytes (KV-cache reads not counted), not a measurement",
+     "other_chip": false
+    }
+   ],
+   "ceiling": {
+    "id": "derived:ceiling",
+    "label": "ceiling at batch 1 (bandwidth / bytes per token)",
+    "value": 13.41,
+    "unit": "tok/s",
+    "kind": "derived",
+    "formula": "copy bandwidth (GB/s, bytes read and written) / weights read per token (GB)",
+    "inputs": [
+     "chipsheet:copy.d2d.size_4gib",
+     "public_prior:teacher_gb"
+    ],
+    "source": {
+     "file": "lab/refine/research/kernels/data/chipsheet-gfx1151-2026-10-11.json",
+     "line": 768,
+     "ref": "copy.d2d.size_4gib: device-to-device copy of 4gib; torch: dst.copy_(src), uint8[4294967296] on cuda:0, value = 2 x bytes / time"
+    },
+    "gpu": "Radeon 8060S Graphics, gfx1151",
+    "chip": "gfx1151",
+    "conditions": {},
+    "ts": null,
+    "low_confidence": true,
+    "reason": null,
+    "other_chip": false
+   },
+   "achieved": [
+    {
+     "id": "metrics:24",
+     "label": "vllm b1388b1 + gfx1201 patch, text (line 24)",
+     "value": 2.88,
+     "unit": "tok/s",
+     "kind": "measured",
+     "source": {
+      "file": "lab/refine/metrics.jsonl",
+      "line": 24,
+      "ref": "R29 measurement on pod C (~/serve/r29_measure.py, ~/serve/r29_measure.json), amd-smi metric --power SOCKET_POWER"
+     },
+     "gpu": "Radeon 8060S (Strix Halo), gfx1151",
+     "chip": null,
+     "node": "pod-c",
+     "metric": "teacher.decode_tok_s",
+     "conditions": {
+      "gpu": "Radeon 8060S (Strix Halo), gfx1151",
+      "model": "RedHatAI/Qwen3.8-27B-INT4",
+      "engine": "vllm@b1388b1+lab/vllm-gfx1201.diff, 0.19.2+gfx1151",
+      "encoder_attn": "TRITON_ATTN",
+      "batch": 1,
+      "ctx": 16384,
+      "temperature": 0,
+      "prompt": "text",
+      "thinking": "off",
+      "output_tokens": 77,
+      "prompt_tokens": 31,
+      "route": "pod, 127.0.0.1:8000, streaming"
+     },
+     "ts": "2026-10-10T19:58:39Z",
+     "low_confidence": false,
+     "reason": null,
+     "other_chip": false
+    },
+    {
+     "id": "metrics:26",
+     "label": "vllm b1388b1 + gfx1201 patch, image (line 26)",
+     "value": 2.82,
+     "unit": "tok/s",
+     "kind": "measured",
+     "source": {
+      "file": "lab/refine/metrics.jsonl",
+      "line": 26,
+      "ref": "R29 measurement on pod C (~/serve/r29_measure.py, ~/serve/r29_measure.json), amd-smi metric --power SOCKET_POWER"
+     },
+     "gpu": "Radeon 8060S (Strix Halo), gfx1151",
+     "chip": null,
+     "node": "pod-c",
+     "metric": "teacher.decode_tok_s",
+     "conditions": {
+      "gpu": "Radeon 8060S (Strix Halo), gfx1151",
+      "model": "RedHatAI/Qwen3.8-27B-INT4",
+      "engine": "vllm@b1388b1+lab/vllm-gfx1201.diff, 0.19.2+gfx1151",
+      "encoder_attn": "TRITON_ATTN",
+      "batch": 1,
+      "ctx": 16384,
+      "temperature": 0,
+      "prompt": "image",
+      "thinking": "off",
+      "image": "1280x720 JPEG, synthetic shapes",
+      "task": "caption",
+      "output_tokens": 27,
+      "prompt_tokens": 902,
+      "route": "pod, 127.0.0.1:8000, streaming"
+     },
+     "ts": "2026-10-10T19:59:08Z",
+     "low_confidence": false,
+     "reason": null,
+     "other_chip": false
+    },
+    {
+     "id": "metrics:67",
+     "label": "vllm, bench-v1 (line 67)",
+     "value": 2.7021,
+     "unit": "tok/s",
+     "kind": "measured",
+     "source": {
+      "file": "lab/refine/metrics.jsonl",
+      "line": 67,
+      "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
+     },
+     "gpu": null,
+     "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+     "node": "pod-a",
+     "metric": "teacher_batching.decode_tok_s",
+     "conditions": {
+      "engine": "vllm",
+      "engine_commit": "unavailable: attached through the hub proxy",
+      "patch_hash": "unavailable: attached through the hub proxy",
+      "checkpoint": "/home/jovyan/models/Qwen3.8-27B-INT4",
+      "quantization": "compressed-tensors-W4A16-INT4",
+      "max_model_len": 16384,
+      "rocm": "unavailable: attached through the hub proxy",
+      "torch": "unavailable: attached through the hub proxy",
+      "triton": "unavailable: attached through the hub proxy",
+      "prompt_set": {
+       "id": "bench-v1",
+       "sha256": "b25ab2bda117925f5eb8a2d5ffe6455de8169b7f2a33a3777eda10c97c37b760",
+       "prompts": 4,
+       "images": 2
+      },
+      "max_tokens": 128,
+      "ignore_eos": true,
+      "nonce": true,
+      "thinking": false,
+      "linear_kernels": "unavailable: attached through the hub proxy",
+      "attention_backends": "unavailable: attached through the hub proxy",
+      "kv_cache_tokens": "unavailable: attached through the hub proxy",
+      "batch_size": 1,
+      "session": "bench-20261010T215122Z-2c65",
+      "statistic": "median of 3 repeats",
+      "stats": {
+       "n": 3,
+       "median": 2.7021,
+       "min": 2.6859,
+       "max": 2.7044,
+       "mean": 2.697466666666667,
+       "sd": 0.010082823678579975
+      },
+      "bands": {
+       "b1": {
+        "share": 1.0,
+        "stats": {
+         "n": 3,
+         "median": 2.7021,
+         "min": 2.6859,
+         "max": 2.7044,
+         "mean": 2.697466666666667,
+         "sd": 0.010082823678579975
+        }
+       }
+      },
+      "low_confidence_reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+      "mode": "attach: the running pod C teacher measured through the hub proxy, no cold spawn (the one departure from R20's method)",
+      "hub": "sjc",
+      "account": "C",
+      "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+      "sampler": "T6 lab/pod_power.py 1 on port 8790, 1 s period",
+      "idle_w_loaded": 10.44,
+      "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
+      "requests_per_stream": 4,
+      "repeats": 3,
+      "env": "unavailable: server process not readable from the box"
+     },
+     "ts": "2026-10-11T00:23:20Z",
+     "low_confidence": true,
+     "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+     "other_chip": false
+    }
+   ],
+   "shares": [
+    {
+     "id": "derived:share:metrics:24",
+     "label": "share of the ceiling, vllm b1388b1 + gfx1201 patch, text (line 24)",
+     "value": 21.5,
+     "unit": "%",
+     "kind": "derived",
+     "formula": "100 x achieved tok/s / ceiling tok/s",
+     "inputs": [
+      "metrics:24",
+      "derived:ceiling"
+     ],
+     "source": {
+      "file": "lab/refine/metrics.jsonl",
+      "line": 24,
+      "ref": "R29 measurement on pod C (~/serve/r29_measure.py, ~/serve/r29_measure.json), amd-smi metric --power SOCKET_POWER"
+     },
+     "gpu": "Radeon 8060S (Strix Halo), gfx1151",
+     "chip": null,
+     "conditions": {},
+     "ts": null,
+     "low_confidence": true,
+     "reason": null,
+     "other_chip": false
+    },
+    {
+     "id": "derived:share:metrics:26",
+     "label": "share of the ceiling, vllm b1388b1 + gfx1201 patch, image (line 26)",
+     "value": 21.0,
+     "unit": "%",
+     "kind": "derived",
+     "formula": "100 x achieved tok/s / ceiling tok/s",
+     "inputs": [
+      "metrics:26",
+      "derived:ceiling"
+     ],
+     "source": {
+      "file": "lab/refine/metrics.jsonl",
+      "line": 26,
+      "ref": "R29 measurement on pod C (~/serve/r29_measure.py, ~/serve/r29_measure.json), amd-smi metric --power SOCKET_POWER"
+     },
+     "gpu": "Radeon 8060S (Strix Halo), gfx1151",
+     "chip": null,
+     "conditions": {},
+     "ts": null,
+     "low_confidence": true,
+     "reason": null,
+     "other_chip": false
+    },
+    {
+     "id": "derived:share:metrics:67",
+     "label": "share of the ceiling, vllm, bench-v1 (line 67)",
+     "value": 20.1,
+     "unit": "%",
+     "kind": "derived",
+     "formula": "100 x achieved tok/s / ceiling tok/s",
+     "inputs": [
+      "metrics:67",
+      "derived:ceiling"
+     ],
+     "source": {
+      "file": "lab/refine/metrics.jsonl",
+      "line": 67,
+      "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
+     },
+     "gpu": null,
+     "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+     "conditions": {},
+     "ts": null,
+     "low_confidence": true,
+     "reason": null,
+     "other_chip": false
+    }
+   ],
+   "priors": [
+    {
+     "id": "prior:vllm",
+     "label": "public prior, vllm",
+     "value": 7.49,
+     "unit": "tok/s",
+     "kind": "prior",
+     "backend": "vllm",
+     "formula": "lab/public_prior.py fit on the public CSV, predict(gb, backend, batch 1)",
+     "source": {
+      "file": "lab/refine/research/kernels/data/public-strix-halo-benchmarks.csv",
+      "line": null,
+      "ref": "fit over 7821 rows from 40 sources, R2 0.88"
+     },
+     "gpu": "Radeon 8060S (other people's machines, published)",
+     "chip": "gfx1151",
+     "conditions": {
+      "gb_per_token": 15.5
+     },
+     "ts": null,
+     "low_confidence": true,
+     "reason": "a prior fitted to published benchmarks, not ours",
+     "other_chip": false
+    },
+    {
+     "id": "prior:llama.cpp-rocm",
+     "label": "public prior, llama.cpp-rocm",
+     "value": 12.34,
+     "unit": "tok/s",
+     "kind": "prior",
+     "backend": "llama.cpp-rocm",
+     "formula": "lab/public_prior.py fit on the public CSV, predict(gb, backend, batch 1)",
+     "source": {
+      "file": "lab/refine/research/kernels/data/public-strix-halo-benchmarks.csv",
+      "line": null,
+      "ref": "fit over 7821 rows from 40 sources, R2 0.88"
+     },
+     "gpu": "Radeon 8060S (other people's machines, published)",
+     "chip": "gfx1151",
+     "conditions": {
+      "gb_per_token": 15.5
+     },
+     "ts": null,
+     "low_confidence": true,
+     "reason": "a prior fitted to published benchmarks, not ours",
+     "other_chip": false
+    },
+    {
+     "id": "prior:llama.cpp-vulkan",
+     "label": "public prior, llama.cpp-vulkan",
+     "value": 14.26,
+     "unit": "tok/s",
+     "kind": "prior",
+     "backend": "llama.cpp-vulkan",
+     "formula": "lab/public_prior.py fit on the public CSV, predict(gb, backend, batch 1)",
+     "source": {
+      "file": "lab/refine/research/kernels/data/public-strix-halo-benchmarks.csv",
+      "line": null,
+      "ref": "fit over 7821 rows from 40 sources, R2 0.88"
+     },
+     "gpu": "Radeon 8060S (other people's machines, published)",
+     "chip": "gfx1151",
+     "conditions": {
+      "gb_per_token": 15.5
+     },
+     "ts": null,
+     "low_confidence": true,
+     "reason": "a prior fitted to published benchmarks, not ours",
+     "other_chip": false
+    }
+   ],
+   "prior_gap": null,
+   "other_chip": [
+    {
+     "id": "metrics:1",
+     "label": "vllm b1388b1, image (line 1)",
+     "value": 6.6,
+     "unit": "tok/s",
+     "kind": "measured",
+     "source": {
+      "file": "lab/refine/metrics.jsonl",
+      "line": 1,
+      "ref": "PR #37, lab/README.md (measured table)"
+     },
+     "gpu": null,
+     "chip": null,
+     "node": "pod-a",
+     "metric": "teacher.decode_tok_s",
+     "conditions": {
+      "model": "RedHatAI/Qwen3.8-27B-INT4",
+      "engine": "vllm@b1388b1",
+      "batch": 1,
+      "ctx": 16384,
+      "prompt": "image",
+      "image": "1280x720 JPEG",
+      "task": "caption",
+      "output_tokens": 28
+     },
+     "ts": "2026-10-10T10:22:13Z",
+     "low_confidence": false,
+     "reason": null,
+     "other_chip": true
+    },
+    {
+     "id": "metrics:2",
+     "label": "vllm b1388b1, text (line 2)",
+     "value": 7.8,
+     "unit": "tok/s",
+     "kind": "measured",
+     "source": {
+      "file": "lab/refine/metrics.jsonl",
+      "line": 2,
+      "ref": "PR #37, lab/README.md (measured table)"
+     },
+     "gpu": null,
+     "chip": null,
+     "node": "pod-a",
+     "metric": "teacher.decode_tok_s",
+     "conditions": {
+      "model": "RedHatAI/Qwen3.8-27B-INT4",
+      "engine": "vllm@b1388b1",
+      "batch": 1,
+      "ctx": 16384,
+      "prompt": "text",
+      "thinking": "off",
+      "output_tokens": 76
+     },
+     "ts": "2026-10-10T10:22:13Z",
+     "low_confidence": false,
+     "reason": null,
+     "other_chip": true
+    },
+    {
+     "id": "metrics:3",
+     "label": "vllm b1388b1, text (line 3)",
+     "value": 7.7,
+     "unit": "tok/s",
+     "kind": "measured",
+     "source": {
+      "file": "lab/refine/metrics.jsonl",
+      "line": 3,
+      "ref": "PR #37, lab/README.md (measured table); also in the PR #37 body and R2 task page"
+     },
+     "gpu": null,
+     "chip": null,
+     "node": "pod-a",
+     "metric": "teacher.decode_tok_s",
+     "conditions": {
+      "model": "RedHatAI/Qwen3.8-27B-INT4",
+      "engine": "vllm@b1388b1",
+      "batch": 1,
+      "ctx": 16384,
+      "prompt": "text",
+      "thinking": "on",
+      "output_tokens": 160
+     },
+     "ts": "2026-10-10T10:22:13Z",
+     "low_confidence": false,
+     "reason": null,
+     "other_chip": true
+    }
+   ],
+   "awaiting": [
+    "R58",
+    "R60",
+    "R53"
+   ]
+  },
+  {
+   "id": "frontier",
+   "title": "The batching frontier: joules per token against concurrent streams",
+   "reading": "Serving 64 conversations at once instead of one cuts the energy for each word by 18.9 times: the chip reads its weights once and shares them across every stream.",
+   "state": "measured",
+   "energy": [
+    {
+     "metric": "teacher_batching.joules_per_token",
+     "node": "pod-a",
+     "build": "vllm compressed-tensors-W4A16-INT4",
+     "session": "bench-20261010T215122Z-2c65",
+     "other_chip": false,
+     "points": [
+      {
+       "batch": 1.0,
+       "number": {
+        "id": "metrics:70",
+        "label": "teacher_batching.joules_per_token at 1 streams",
+        "value": 36.6587,
+        "unit": "J/token",
+        "kind": "measured",
+        "source": {
+         "file": "lab/refine/metrics.jsonl",
+         "line": 70,
+         "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
+        },
+        "gpu": null,
+        "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+        "node": "pod-a",
+        "metric": "teacher_batching.joules_per_token",
+        "conditions": {
+         "engine": "vllm",
+         "engine_commit": "unavailable: attached through the hub proxy",
+         "patch_hash": "unavailable: attached through the hub proxy",
+         "checkpoint": "/home/jovyan/models/Qwen3.8-27B-INT4",
+         "quantization": "compressed-tensors-W4A16-INT4",
+         "max_model_len": 16384,
+         "rocm": "unavailable: attached through the hub proxy",
+         "torch": "unavailable: attached through the hub proxy",
+         "triton": "unavailable: attached through the hub proxy",
+         "prompt_set": {
+          "id": "bench-v1",
+          "sha256": "b25ab2bda117925f5eb8a2d5ffe6455de8169b7f2a33a3777eda10c97c37b760",
+          "prompts": 4,
+          "images": 2
+         },
+         "max_tokens": 128,
+         "ignore_eos": true,
+         "nonce": true,
+         "thinking": false,
+         "linear_kernels": "unavailable: attached through the hub proxy",
+         "attention_backends": "unavailable: attached through the hub proxy",
+         "kv_cache_tokens": "unavailable: attached through the hub proxy",
+         "batch_size": 1,
+         "session": "bench-20261010T215122Z-2c65",
+         "statistic": "median of 3 repeats",
+         "stats": {
+          "n": 3,
+          "median": 36.658679,
+          "min": 36.510335,
+          "max": 36.715012,
+          "mean": 36.628008666666666,
+          "sd": 0.10572923243991564
+         },
+         "bands": {
+          "b1": {
+           "share": 1.0,
+           "stats": {
+            "n": 3,
+            "median": 36.658679,
+            "min": 36.510335,
+            "max": 36.715012,
+            "mean": 36.628008666666666,
+            "sd": 0.10572923243991564
+           }
+          }
+         },
+         "low_confidence_reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+         "mode": "attach: the running pod C teacher measured through the hub proxy, no cold spawn (the one departure from R20's method)",
+         "hub": "sjc",
+         "account": "C",
+         "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+         "sampler": "T6 lab/pod_power.py 1 on port 8790, 1 s period",
+         "idle_w_loaded": 10.44,
+         "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
+         "requests_per_stream": 4,
+         "repeats": 3,
+         "env": "unavailable: server process not readable from the box"
+        },
+        "ts": "2026-10-11T00:23:20Z",
+        "low_confidence": true,
+        "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+        "other_chip": false
+       }
+      },
+      {
+       "batch": 4.0,
+       "number": {
+        "id": "metrics:76",
+        "label": "teacher_batching.joules_per_token at 4 streams",
+        "value": 10.3071,
+        "unit": "J/token",
+        "kind": "measured",
+        "source": {
+         "file": "lab/refine/metrics.jsonl",
+         "line": 76,
+         "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
+        },
+        "gpu": null,
+        "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+        "node": "pod-a",
+        "metric": "teacher_batching.joules_per_token",
+        "conditions": {
+         "engine": "vllm",
+         "engine_commit": "unavailable: attached through the hub proxy",
+         "patch_hash": "unavailable: attached through the hub proxy",
+         "checkpoint": "/home/jovyan/models/Qwen3.8-27B-INT4",
+         "quantization": "compressed-tensors-W4A16-INT4",
+         "max_model_len": 16384,
+         "rocm": "unavailable: attached through the hub proxy",
+         "torch": "unavailable: attached through the hub proxy",
+         "triton": "unavailable: attached through the hub proxy",
+         "prompt_set": {
+          "id": "bench-v1",
+          "sha256": "b25ab2bda117925f5eb8a2d5ffe6455de8169b7f2a33a3777eda10c97c37b760",
+          "prompts": 4,
+          "images": 2
+         },
+         "max_tokens": 128,
+         "ignore_eos": true,
+         "nonce": true,
+         "thinking": false,
+         "linear_kernels": "unavailable: attached through the hub proxy",
+         "attention_backends": "unavailable: attached through the hub proxy",
+         "kv_cache_tokens": "unavailable: attached through the hub proxy",
+         "batch_size": 4,
+         "session": "bench-20261010T215122Z-2c65",
+         "statistic": "median of 3 repeats",
+         "stats": {
+          "n": 3,
+          "median": 10.307138,
+          "min": 10.286176,
+          "max": 10.375907,
+          "mean": 10.323073666666666,
+          "sd": 0.04694009154585602
+         },
+         "bands": {
+          "b1": {
+           "share": 1.0,
+           "stats": {
+            "n": 3,
+            "median": 10.307138,
+            "min": 10.286176,
+            "max": 10.375907,
+            "mean": 10.323073666666666,
+            "sd": 0.04694009154585602
+           }
+          }
+         },
+         "low_confidence_reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+         "mode": "attach: the running pod C teacher measured through the hub proxy, no cold spawn (the one departure from R20's method)",
+         "hub": "sjc",
+         "account": "C",
+         "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+         "sampler": "T6 lab/pod_power.py 1 on port 8790, 1 s period",
+         "idle_w_loaded": 10.44,
+         "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
+         "requests_per_stream": 4,
+         "repeats": 3,
+         "env": "unavailable: server process not readable from the box"
+        },
+        "ts": "2026-10-11T00:23:20Z",
+        "low_confidence": true,
+        "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+        "other_chip": false
+       }
+      },
+      {
+       "batch": 8.0,
+       "number": {
+        "id": "metrics:82",
+        "label": "teacher_batching.joules_per_token at 8 streams",
+        "value": 5.8676,
+        "unit": "J/token",
+        "kind": "measured",
+        "source": {
+         "file": "lab/refine/metrics.jsonl",
+         "line": 82,
+         "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
+        },
+        "gpu": null,
+        "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+        "node": "pod-a",
+        "metric": "teacher_batching.joules_per_token",
+        "conditions": {
+         "engine": "vllm",
+         "engine_commit": "unavailable: attached through the hub proxy",
+         "patch_hash": "unavailable: attached through the hub proxy",
+         "checkpoint": "/home/jovyan/models/Qwen3.8-27B-INT4",
+         "quantization": "compressed-tensors-W4A16-INT4",
+         "max_model_len": 16384,
+         "rocm": "unavailable: attached through the hub proxy",
+         "torch": "unavailable: attached through the hub proxy",
+         "triton": "unavailable: attached through the hub proxy",
+         "prompt_set": {
+          "id": "bench-v1",
+          "sha256": "b25ab2bda117925f5eb8a2d5ffe6455de8169b7f2a33a3777eda10c97c37b760",
+          "prompts": 4,
+          "images": 2
+         },
+         "max_tokens": 128,
+         "ignore_eos": true,
+         "nonce": true,
+         "thinking": false,
+         "linear_kernels": "unavailable: attached through the hub proxy",
+         "attention_backends": "unavailable: attached through the hub proxy",
+         "kv_cache_tokens": "unavailable: attached through the hub proxy",
+         "batch_size": 8,
+         "session": "bench-20261010T215122Z-2c65",
+         "statistic": "median of 3 repeats",
+         "stats": {
+          "n": 3,
+          "median": 5.867646,
+          "min": 5.860932,
+          "max": 5.879679,
+          "mean": 5.869419000000001,
+          "sd": 0.009498428764801238
+         },
+         "bands": {
+          "b1": {
+           "share": 1.0,
+           "stats": {
+            "n": 3,
+            "median": 5.867646,
+            "min": 5.860932,
+            "max": 5.879679,
+            "mean": 5.869419000000001,
+            "sd": 0.009498428764801238
+           }
+          }
+         },
+         "low_confidence_reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+         "mode": "attach: the running pod C teacher measured through the hub proxy, no cold spawn (the one departure from R20's method)",
+         "hub": "sjc",
+         "account": "C",
+         "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+         "sampler": "T6 lab/pod_power.py 1 on port 8790, 1 s period",
+         "idle_w_loaded": 10.44,
+         "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
+         "requests_per_stream": 4,
+         "repeats": 3,
+         "env": "unavailable: server process not readable from the box"
+        },
+        "ts": "2026-10-11T00:23:20Z",
+        "low_confidence": true,
+        "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+        "other_chip": false
+       }
+      },
+      {
+       "batch": 16.0,
+       "number": {
+        "id": "metrics:88",
+        "label": "teacher_batching.joules_per_token at 16 streams",
+        "value": 3.5628,
+        "unit": "J/token",
+        "kind": "measured",
+        "source": {
+         "file": "lab/refine/metrics.jsonl",
+         "line": 88,
+         "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
+        },
+        "gpu": null,
+        "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+        "node": "pod-a",
+        "metric": "teacher_batching.joules_per_token",
+        "conditions": {
+         "engine": "vllm",
+         "engine_commit": "unavailable: attached through the hub proxy",
+         "patch_hash": "unavailable: attached through the hub proxy",
+         "checkpoint": "/home/jovyan/models/Qwen3.8-27B-INT4",
+         "quantization": "compressed-tensors-W4A16-INT4",
+         "max_model_len": 16384,
+         "rocm": "unavailable: attached through the hub proxy",
+         "torch": "unavailable: attached through the hub proxy",
+         "triton": "unavailable: attached through the hub proxy",
+         "prompt_set": {
+          "id": "bench-v1",
+          "sha256": "b25ab2bda117925f5eb8a2d5ffe6455de8169b7f2a33a3777eda10c97c37b760",
+          "prompts": 4,
+          "images": 2
+         },
+         "max_tokens": 128,
+         "ignore_eos": true,
+         "nonce": true,
+         "thinking": false,
+         "linear_kernels": "unavailable: attached through the hub proxy",
+         "attention_backends": "unavailable: attached through the hub proxy",
+         "kv_cache_tokens": "unavailable: attached through the hub proxy",
+         "batch_size": 16,
+         "session": "bench-20261010T215122Z-2c65",
+         "statistic": "median of 3 repeats",
+         "stats": {
+          "n": 3,
+          "median": 3.56281,
+          "min": 3.555384,
+          "max": 3.563938,
+          "mean": 3.5607106666666666,
+          "sd": 0.00464737875940103
+         },
+         "bands": {
+          "b1": {
+           "share": 1.0,
+           "stats": {
+            "n": 3,
+            "median": 3.56281,
+            "min": 3.555384,
+            "max": 3.563938,
+            "mean": 3.5607106666666666,
+            "sd": 0.00464737875940103
+           }
+          }
+         },
+         "low_confidence_reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+         "mode": "attach: the running pod C teacher measured through the hub proxy, no cold spawn (the one departure from R20's method)",
+         "hub": "sjc",
+         "account": "C",
+         "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+         "sampler": "T6 lab/pod_power.py 1 on port 8790, 1 s period",
+         "idle_w_loaded": 10.44,
+         "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
+         "requests_per_stream": 4,
+         "repeats": 3,
+         "env": "unavailable: server process not readable from the box"
+        },
+        "ts": "2026-10-11T00:23:20Z",
+        "low_confidence": true,
+        "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+        "other_chip": false
+       }
+      },
+      {
+       "batch": 64.0,
+       "number": {
+        "id": "metrics:94",
+        "label": "teacher_batching.joules_per_token at 64 streams",
+        "value": 1.9384,
+        "unit": "J/token",
+        "kind": "measured",
+        "source": {
+         "file": "lab/refine/metrics.jsonl",
+         "line": 94,
+         "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
+        },
+        "gpu": null,
+        "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+        "node": "pod-a",
+        "metric": "teacher_batching.joules_per_token",
+        "conditions": {
+         "engine": "vllm",
+         "engine_commit": "unavailable: attached through the hub proxy",
+         "patch_hash": "unavailable: attached through the hub proxy",
+         "checkpoint": "/home/jovyan/models/Qwen3.8-27B-INT4",
+         "quantization": "compressed-tensors-W4A16-INT4",
+         "max_model_len": 16384,
+         "rocm": "unavailable: attached through the hub proxy",
+         "torch": "unavailable: attached through the hub proxy",
+         "triton": "unavailable: attached through the hub proxy",
+         "prompt_set": {
+          "id": "bench-v1",
+          "sha256": "b25ab2bda117925f5eb8a2d5ffe6455de8169b7f2a33a3777eda10c97c37b760",
+          "prompts": 4,
+          "images": 2
+         },
+         "max_tokens": 128,
+         "ignore_eos": true,
+         "nonce": true,
+         "thinking": false,
+         "linear_kernels": "unavailable: attached through the hub proxy",
+         "attention_backends": "unavailable: attached through the hub proxy",
+         "kv_cache_tokens": "unavailable: attached through the hub proxy",
+         "batch_size": 64,
+         "session": "bench-20261010T215122Z-2c65",
+         "statistic": "median of 3 repeats",
+         "stats": {
+          "n": 3,
+          "median": 1.938359,
+          "min": 1.935353,
+          "max": 1.940663,
+          "mean": 1.938125,
+          "sd": 0.0026627226667454078
+         },
+         "bands": {
+          "b1": {
+           "share": 1.0,
+           "stats": {
+            "n": 3,
+            "median": 1.938359,
+            "min": 1.935353,
+            "max": 1.940663,
+            "mean": 1.938125,
+            "sd": 0.0026627226667454078
+           }
+          }
+         },
+         "low_confidence_reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+         "mode": "attach: the running pod C teacher measured through the hub proxy, no cold spawn (the one departure from R20's method)",
+         "hub": "sjc",
+         "account": "C",
+         "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+         "sampler": "T6 lab/pod_power.py 1 on port 8790, 1 s period",
+         "idle_w_loaded": 10.44,
+         "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
+         "requests_per_stream": 4,
+         "repeats": 3,
+         "env": "unavailable: server process not readable from the box"
+        },
+        "ts": "2026-10-11T00:23:20Z",
+        "low_confidence": true,
+        "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+        "other_chip": false
+       }
+      }
+     ]
+    }
+   ],
+   "throughput": [
+    {
+     "metric": "teacher_batching.decode_tok_s_total",
+     "node": "pod-a",
+     "build": "vllm compressed-tensors-W4A16-INT4",
+     "session": "bench-20261010T215122Z-2c65",
+     "other_chip": false,
+     "points": [
+      {
+       "batch": 1.0,
+       "number": {
+        "id": "metrics:68",
+        "label": "teacher_batching.decode_tok_s_total at 1 streams",
+        "value": 2.6172,
+        "unit": "tok/s",
+        "kind": "measured",
+        "source": {
+         "file": "lab/refine/metrics.jsonl",
+         "line": 68,
+         "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
+        },
+        "gpu": null,
+        "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+        "node": "pod-a",
+        "metric": "teacher_batching.decode_tok_s_total",
+        "conditions": {
+         "engine": "vllm",
+         "engine_commit": "unavailable: attached through the hub proxy",
+         "patch_hash": "unavailable: attached through the hub proxy",
+         "checkpoint": "/home/jovyan/models/Qwen3.8-27B-INT4",
+         "quantization": "compressed-tensors-W4A16-INT4",
+         "max_model_len": 16384,
+         "rocm": "unavailable: attached through the hub proxy",
+         "torch": "unavailable: attached through the hub proxy",
+         "triton": "unavailable: attached through the hub proxy",
+         "prompt_set": {
+          "id": "bench-v1",
+          "sha256": "b25ab2bda117925f5eb8a2d5ffe6455de8169b7f2a33a3777eda10c97c37b760",
+          "prompts": 4,
+          "images": 2
+         },
+         "max_tokens": 128,
+         "ignore_eos": true,
+         "nonce": true,
+         "thinking": false,
+         "linear_kernels": "unavailable: attached through the hub proxy",
+         "attention_backends": "unavailable: attached through the hub proxy",
+         "kv_cache_tokens": "unavailable: attached through the hub proxy",
+         "batch_size": 1,
+         "session": "bench-20261010T215122Z-2c65",
+         "statistic": "median of 3 repeats",
+         "stats": {
+          "n": 3,
+          "median": 2.6172,
+          "min": 2.6172,
+          "max": 2.6295,
+          "mean": 2.6213,
+          "sd": 0.007101408311032512
+         },
+         "bands": {
+          "b1": {
+           "share": 1.0,
+           "stats": {
+            "n": 3,
+            "median": 2.6172,
+            "min": 2.6172,
+            "max": 2.6295,
+            "mean": 2.6213,
+            "sd": 0.007101408311032512
+           }
+          }
+         },
+         "low_confidence_reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+         "mode": "attach: the running pod C teacher measured through the hub proxy, no cold spawn (the one departure from R20's method)",
+         "hub": "sjc",
+         "account": "C",
+         "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+         "sampler": "T6 lab/pod_power.py 1 on port 8790, 1 s period",
+         "idle_w_loaded": 10.44,
+         "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
+         "requests_per_stream": 4,
+         "repeats": 3,
+         "env": "unavailable: server process not readable from the box"
+        },
+        "ts": "2026-10-11T00:23:20Z",
+        "low_confidence": true,
+        "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+        "other_chip": false
+       }
+      },
+      {
+       "batch": 4.0,
+       "number": {
+        "id": "metrics:74",
+        "label": "teacher_batching.decode_tok_s_total at 4 streams",
+        "value": 9.3153,
+        "unit": "tok/s",
+        "kind": "measured",
+        "source": {
+         "file": "lab/refine/metrics.jsonl",
+         "line": 74,
+         "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
+        },
+        "gpu": null,
+        "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+        "node": "pod-a",
+        "metric": "teacher_batching.decode_tok_s_total",
+        "conditions": {
+         "engine": "vllm",
+         "engine_commit": "unavailable: attached through the hub proxy",
+         "patch_hash": "unavailable: attached through the hub proxy",
+         "checkpoint": "/home/jovyan/models/Qwen3.8-27B-INT4",
+         "quantization": "compressed-tensors-W4A16-INT4",
+         "max_model_len": 16384,
+         "rocm": "unavailable: attached through the hub proxy",
+         "torch": "unavailable: attached through the hub proxy",
+         "triton": "unavailable: attached through the hub proxy",
+         "prompt_set": {
+          "id": "bench-v1",
+          "sha256": "b25ab2bda117925f5eb8a2d5ffe6455de8169b7f2a33a3777eda10c97c37b760",
+          "prompts": 4,
+          "images": 2
+         },
+         "max_tokens": 128,
+         "ignore_eos": true,
+         "nonce": true,
+         "thinking": false,
+         "linear_kernels": "unavailable: attached through the hub proxy",
+         "attention_backends": "unavailable: attached through the hub proxy",
+         "kv_cache_tokens": "unavailable: attached through the hub proxy",
+         "batch_size": 4,
+         "session": "bench-20261010T215122Z-2c65",
+         "statistic": "median of 3 repeats",
+         "stats": {
+          "n": 3,
+          "median": 9.3153,
+          "min": 9.2534,
+          "max": 9.3338,
+          "mean": 9.300833333333333,
+          "sd": 0.04210704612453103
+         },
+         "bands": {
+          "b1": {
+           "share": 1.0,
+           "stats": {
+            "n": 3,
+            "median": 9.3153,
+            "min": 9.2534,
+            "max": 9.3338,
+            "mean": 9.300833333333333,
+            "sd": 0.04210704612453103
+           }
+          }
+         },
+         "low_confidence_reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+         "mode": "attach: the running pod C teacher measured through the hub proxy, no cold spawn (the one departure from R20's method)",
+         "hub": "sjc",
+         "account": "C",
+         "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+         "sampler": "T6 lab/pod_power.py 1 on port 8790, 1 s period",
+         "idle_w_loaded": 10.44,
+         "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
+         "requests_per_stream": 4,
+         "repeats": 3,
+         "env": "unavailable: server process not readable from the box"
+        },
+        "ts": "2026-10-11T00:23:20Z",
+        "low_confidence": true,
+        "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+        "other_chip": false
+       }
+      },
+      {
+       "batch": 8.0,
+       "number": {
+        "id": "metrics:80",
+        "label": "teacher_batching.decode_tok_s_total at 8 streams",
+        "value": 16.3616,
+        "unit": "tok/s",
+        "kind": "measured",
+        "source": {
+         "file": "lab/refine/metrics.jsonl",
+         "line": 80,
+         "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
+        },
+        "gpu": null,
+        "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+        "node": "pod-a",
+        "metric": "teacher_batching.decode_tok_s_total",
+        "conditions": {
+         "engine": "vllm",
+         "engine_commit": "unavailable: attached through the hub proxy",
+         "patch_hash": "unavailable: attached through the hub proxy",
+         "checkpoint": "/home/jovyan/models/Qwen3.8-27B-INT4",
+         "quantization": "compressed-tensors-W4A16-INT4",
+         "max_model_len": 16384,
+         "rocm": "unavailable: attached through the hub proxy",
+         "torch": "unavailable: attached through the hub proxy",
+         "triton": "unavailable: attached through the hub proxy",
+         "prompt_set": {
+          "id": "bench-v1",
+          "sha256": "b25ab2bda117925f5eb8a2d5ffe6455de8169b7f2a33a3777eda10c97c37b760",
+          "prompts": 4,
+          "images": 2
+         },
+         "max_tokens": 128,
+         "ignore_eos": true,
+         "nonce": true,
+         "thinking": false,
+         "linear_kernels": "unavailable: attached through the hub proxy",
+         "attention_backends": "unavailable: attached through the hub proxy",
+         "kv_cache_tokens": "unavailable: attached through the hub proxy",
+         "batch_size": 8,
+         "session": "bench-20261010T215122Z-2c65",
+         "statistic": "median of 3 repeats",
+         "stats": {
+          "n": 3,
+          "median": 16.3616,
+          "min": 16.3295,
+          "max": 16.3802,
+          "mean": 16.3571,
+          "sd": 0.025647806923789367
+         },
+         "bands": {
+          "b1": {
+           "share": 1.0,
+           "stats": {
+            "n": 3,
+            "median": 16.3616,
+            "min": 16.3295,
+            "max": 16.3802,
+            "mean": 16.3571,
+            "sd": 0.025647806923789367
+           }
+          }
+         },
+         "low_confidence_reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+         "mode": "attach: the running pod C teacher measured through the hub proxy, no cold spawn (the one departure from R20's method)",
+         "hub": "sjc",
+         "account": "C",
+         "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+         "sampler": "T6 lab/pod_power.py 1 on port 8790, 1 s period",
+         "idle_w_loaded": 10.44,
+         "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
+         "requests_per_stream": 4,
+         "repeats": 3,
+         "env": "unavailable: server process not readable from the box"
+        },
+        "ts": "2026-10-11T00:23:20Z",
+        "low_confidence": true,
+        "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+        "other_chip": false
+       }
+      },
+      {
+       "batch": 16.0,
+       "number": {
+        "id": "metrics:86",
+        "label": "teacher_batching.decode_tok_s_total at 16 streams",
+        "value": 26.946,
+        "unit": "tok/s",
+        "kind": "measured",
+        "source": {
+         "file": "lab/refine/metrics.jsonl",
+         "line": 86,
+         "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
+        },
+        "gpu": null,
+        "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+        "node": "pod-a",
+        "metric": "teacher_batching.decode_tok_s_total",
+        "conditions": {
+         "engine": "vllm",
+         "engine_commit": "unavailable: attached through the hub proxy",
+         "patch_hash": "unavailable: attached through the hub proxy",
+         "checkpoint": "/home/jovyan/models/Qwen3.8-27B-INT4",
+         "quantization": "compressed-tensors-W4A16-INT4",
+         "max_model_len": 16384,
+         "rocm": "unavailable: attached through the hub proxy",
+         "torch": "unavailable: attached through the hub proxy",
+         "triton": "unavailable: attached through the hub proxy",
+         "prompt_set": {
+          "id": "bench-v1",
+          "sha256": "b25ab2bda117925f5eb8a2d5ffe6455de8169b7f2a33a3777eda10c97c37b760",
+          "prompts": 4,
+          "images": 2
+         },
+         "max_tokens": 128,
+         "ignore_eos": true,
+         "nonce": true,
+         "thinking": false,
+         "linear_kernels": "unavailable: attached through the hub proxy",
+         "attention_backends": "unavailable: attached through the hub proxy",
+         "kv_cache_tokens": "unavailable: attached through the hub proxy",
+         "batch_size": 16,
+         "session": "bench-20261010T215122Z-2c65",
+         "statistic": "median of 3 repeats",
+         "stats": {
+          "n": 3,
+          "median": 26.946,
+          "min": 26.938,
+          "max": 27.0049,
+          "mean": 26.96296666666667,
+          "sd": 0.03653496042605363
+         },
+         "bands": {
+          "b1": {
+           "share": 1.0,
+           "stats": {
+            "n": 3,
+            "median": 26.946,
+            "min": 26.938,
+            "max": 27.0049,
+            "mean": 26.96296666666667,
+            "sd": 0.03653496042605363
+           }
+          }
+         },
+         "low_confidence_reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+         "mode": "attach: the running pod C teacher measured through the hub proxy, no cold spawn (the one departure from R20's method)",
+         "hub": "sjc",
+         "account": "C",
+         "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+         "sampler": "T6 lab/pod_power.py 1 on port 8790, 1 s period",
+         "idle_w_loaded": 10.44,
+         "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
+         "requests_per_stream": 4,
+         "repeats": 3,
+         "env": "unavailable: server process not readable from the box"
+        },
+        "ts": "2026-10-11T00:23:20Z",
+        "low_confidence": true,
+        "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+        "other_chip": false
+       }
+      },
+      {
+       "batch": 64.0,
+       "number": {
+        "id": "metrics:92",
+        "label": "teacher_batching.decode_tok_s_total at 64 streams",
+        "value": 49.5288,
+        "unit": "tok/s",
+        "kind": "measured",
+        "source": {
+         "file": "lab/refine/metrics.jsonl",
+         "line": 92,
+         "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
+        },
+        "gpu": null,
+        "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+        "node": "pod-a",
+        "metric": "teacher_batching.decode_tok_s_total",
+        "conditions": {
+         "engine": "vllm",
+         "engine_commit": "unavailable: attached through the hub proxy",
+         "patch_hash": "unavailable: attached through the hub proxy",
+         "checkpoint": "/home/jovyan/models/Qwen3.8-27B-INT4",
+         "quantization": "compressed-tensors-W4A16-INT4",
+         "max_model_len": 16384,
+         "rocm": "unavailable: attached through the hub proxy",
+         "torch": "unavailable: attached through the hub proxy",
+         "triton": "unavailable: attached through the hub proxy",
+         "prompt_set": {
+          "id": "bench-v1",
+          "sha256": "b25ab2bda117925f5eb8a2d5ffe6455de8169b7f2a33a3777eda10c97c37b760",
+          "prompts": 4,
+          "images": 2
+         },
+         "max_tokens": 128,
+         "ignore_eos": true,
+         "nonce": true,
+         "thinking": false,
+         "linear_kernels": "unavailable: attached through the hub proxy",
+         "attention_backends": "unavailable: attached through the hub proxy",
+         "kv_cache_tokens": "unavailable: attached through the hub proxy",
+         "batch_size": 64,
+         "session": "bench-20261010T215122Z-2c65",
+         "statistic": "median of 3 repeats",
+         "stats": {
+          "n": 3,
+          "median": 49.5288,
+          "min": 49.4933,
+          "max": 49.6318,
+          "mean": 49.5513,
+          "sd": 0.07193921044882313
+         },
+         "bands": {
+          "b1": {
+           "share": 1.0,
+           "stats": {
+            "n": 3,
+            "median": 49.5288,
+            "min": 49.4933,
+            "max": 49.6318,
+            "mean": 49.5513,
+            "sd": 0.07193921044882313
+           }
+          }
+         },
+         "low_confidence_reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+         "mode": "attach: the running pod C teacher measured through the hub proxy, no cold spawn (the one departure from R20's method)",
+         "hub": "sjc",
+         "account": "C",
+         "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+         "sampler": "T6 lab/pod_power.py 1 on port 8790, 1 s period",
+         "idle_w_loaded": 10.44,
+         "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
+         "requests_per_stream": 4,
+         "repeats": 3,
+         "env": "unavailable: server process not readable from the box"
+        },
+        "ts": "2026-10-11T00:23:20Z",
+        "low_confidence": true,
+        "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+        "other_chip": false
+       }
+      }
+     ]
+    }
+   ],
+   "ratios": [
+    {
+     "id": "derived:ratio:teacher_batching.joules_per_token:bench-20261010T215122Z-2c65",
+     "label": "joules per token, 1 stream over 64 streams",
+     "value": 18.9,
+     "unit": "x",
+     "kind": "derived",
+     "formula": "J/token at the fewest streams / J/token at the most streams",
+     "inputs": [
+      "metrics:70",
+      "metrics:94"
+     ],
+     "source": {
+      "file": "lab/refine/metrics.jsonl",
+      "line": 70,
+      "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
+     },
+     "gpu": null,
+     "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+     "conditions": {},
+     "ts": null,
+     "low_confidence": true,
+     "reason": null,
+     "other_chip": false
+    }
+   ],
+   "other_chip": [],
+   "pending_files": [],
+   "awaiting": [
+    "R52"
+   ]
+  },
+  {
+   "id": "step",
+   "title": "Where a decode step's time goes",
+   "awaiting": [
+    "R47"
+   ],
+   "other_chip": [],
+   "state": "empty",
+   "batches": [],
+   "reading": "Not measured yet: the decode profile (python -m lab profile-decode) has not committed a result under lab/refine/research/kernels/data.",
+   "why": "no lab/refine/research/kernels/data/decode-profile-gfx1151-<date>.json on main"
+  },
+  {
+   "id": "engines",
+   "title": "Engines side by side",
+   "reading": "Only vllm has been measured on this chip so far; the other engines are not measured, and the public prior beside it is other people's numbers, not ours.",
+   "state": "partial",
+   "engines": [
+    {
+     "engine": "vllm",
+     "best": {
+      "id": "metrics:24",
+      "label": "vllm b1388b1 + gfx1201 patch, text (line 24)",
+      "value": 2.88,
+      "unit": "tok/s",
+      "kind": "measured",
+      "source": {
+       "file": "lab/refine/metrics.jsonl",
+       "line": 24,
+       "ref": "R29 measurement on pod C (~/serve/r29_measure.py, ~/serve/r29_measure.json), amd-smi metric --power SOCKET_POWER"
+      },
+      "gpu": "Radeon 8060S (Strix Halo), gfx1151",
+      "chip": null,
+      "node": "pod-c",
+      "metric": "teacher.decode_tok_s",
+      "conditions": {
+       "gpu": "Radeon 8060S (Strix Halo), gfx1151",
+       "model": "RedHatAI/Qwen3.8-27B-INT4",
+       "engine": "vllm@b1388b1+lab/vllm-gfx1201.diff, 0.19.2+gfx1151",
+       "encoder_attn": "TRITON_ATTN",
+       "batch": 1,
+       "ctx": 16384,
+       "temperature": 0,
+       "prompt": "text",
+       "thinking": "off",
+       "output_tokens": 77,
+       "prompt_tokens": 31,
+       "route": "pod, 127.0.0.1:8000, streaming"
+      },
+      "ts": "2026-10-10T19:58:39Z",
+      "low_confidence": false,
+      "reason": null,
+      "other_chip": false
+     },
+     "rows": [
+      {
+       "id": "metrics:24",
+       "label": "vllm b1388b1 + gfx1201 patch, text (line 24)",
+       "value": 2.88,
+       "unit": "tok/s",
+       "kind": "measured",
+       "source": {
+        "file": "lab/refine/metrics.jsonl",
+        "line": 24,
+        "ref": "R29 measurement on pod C (~/serve/r29_measure.py, ~/serve/r29_measure.json), amd-smi metric --power SOCKET_POWER"
+       },
+       "gpu": "Radeon 8060S (Strix Halo), gfx1151",
+       "chip": null,
+       "node": "pod-c",
+       "metric": "teacher.decode_tok_s",
+       "conditions": {
+        "gpu": "Radeon 8060S (Strix Halo), gfx1151",
+        "model": "RedHatAI/Qwen3.8-27B-INT4",
+        "engine": "vllm@b1388b1+lab/vllm-gfx1201.diff, 0.19.2+gfx1151",
+        "encoder_attn": "TRITON_ATTN",
+        "batch": 1,
+        "ctx": 16384,
+        "temperature": 0,
+        "prompt": "text",
+        "thinking": "off",
+        "output_tokens": 77,
+        "prompt_tokens": 31,
+        "route": "pod, 127.0.0.1:8000, streaming"
+       },
+       "ts": "2026-10-10T19:58:39Z",
+       "low_confidence": false,
+       "reason": null,
+       "other_chip": false
+      },
+      {
+       "id": "metrics:26",
+       "label": "vllm b1388b1 + gfx1201 patch, image (line 26)",
+       "value": 2.82,
+       "unit": "tok/s",
+       "kind": "measured",
+       "source": {
+        "file": "lab/refine/metrics.jsonl",
+        "line": 26,
+        "ref": "R29 measurement on pod C (~/serve/r29_measure.py, ~/serve/r29_measure.json), amd-smi metric --power SOCKET_POWER"
+       },
+       "gpu": "Radeon 8060S (Strix Halo), gfx1151",
+       "chip": null,
+       "node": "pod-c",
+       "metric": "teacher.decode_tok_s",
+       "conditions": {
+        "gpu": "Radeon 8060S (Strix Halo), gfx1151",
+        "model": "RedHatAI/Qwen3.8-27B-INT4",
+        "engine": "vllm@b1388b1+lab/vllm-gfx1201.diff, 0.19.2+gfx1151",
+        "encoder_attn": "TRITON_ATTN",
+        "batch": 1,
+        "ctx": 16384,
+        "temperature": 0,
+        "prompt": "image",
+        "thinking": "off",
+        "image": "1280x720 JPEG, synthetic shapes",
+        "task": "caption",
+        "output_tokens": 27,
+        "prompt_tokens": 902,
+        "route": "pod, 127.0.0.1:8000, streaming"
+       },
+       "ts": "2026-10-10T19:59:08Z",
+       "low_confidence": false,
+       "reason": null,
+       "other_chip": false
+      },
+      {
+       "id": "metrics:67",
+       "label": "vllm, bench-v1 (line 67)",
+       "value": 2.7021,
+       "unit": "tok/s",
+       "kind": "measured",
+       "source": {
+        "file": "lab/refine/metrics.jsonl",
+        "line": 67,
+        "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
+       },
+       "gpu": null,
+       "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+       "node": "pod-a",
+       "metric": "teacher_batching.decode_tok_s",
+       "conditions": {
+        "engine": "vllm",
+        "engine_commit": "unavailable: attached through the hub proxy",
+        "patch_hash": "unavailable: attached through the hub proxy",
+        "checkpoint": "/home/jovyan/models/Qwen3.8-27B-INT4",
+        "quantization": "compressed-tensors-W4A16-INT4",
+        "max_model_len": 16384,
+        "rocm": "unavailable: attached through the hub proxy",
+        "torch": "unavailable: attached through the hub proxy",
+        "triton": "unavailable: attached through the hub proxy",
+        "prompt_set": {
+         "id": "bench-v1",
+         "sha256": "b25ab2bda117925f5eb8a2d5ffe6455de8169b7f2a33a3777eda10c97c37b760",
+         "prompts": 4,
+         "images": 2
+        },
+        "max_tokens": 128,
+        "ignore_eos": true,
+        "nonce": true,
+        "thinking": false,
+        "linear_kernels": "unavailable: attached through the hub proxy",
+        "attention_backends": "unavailable: attached through the hub proxy",
+        "kv_cache_tokens": "unavailable: attached through the hub proxy",
+        "batch_size": 1,
+        "session": "bench-20261010T215122Z-2c65",
+        "statistic": "median of 3 repeats",
+        "stats": {
+         "n": 3,
+         "median": 2.7021,
+         "min": 2.6859,
+         "max": 2.7044,
+         "mean": 2.697466666666667,
+         "sd": 0.010082823678579975
+        },
+        "bands": {
+         "b1": {
+          "share": 1.0,
+          "stats": {
+           "n": 3,
+           "median": 2.7021,
+           "min": 2.6859,
+           "max": 2.7044,
+           "mean": 2.697466666666667,
+           "sd": 0.010082823678579975
+          }
+         }
+        },
+        "low_confidence_reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+        "mode": "attach: the running pod C teacher measured through the hub proxy, no cold spawn (the one departure from R20's method)",
+        "hub": "sjc",
+        "account": "C",
+        "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+        "sampler": "T6 lab/pod_power.py 1 on port 8790, 1 s period",
+        "idle_w_loaded": 10.44,
+        "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
+        "requests_per_stream": 4,
+        "repeats": 3,
+        "env": "unavailable: server process not readable from the box"
+       },
+       "ts": "2026-10-11T00:23:20Z",
+       "low_confidence": true,
+       "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+       "other_chip": false
+      }
+     ]
+    }
+   ],
+   "not_measured": [
+    "llama.cpp"
+   ],
+   "priors": [
+    {
+     "id": "prior:vllm",
+     "label": "public prior, vllm",
+     "value": 7.49,
+     "unit": "tok/s",
+     "kind": "prior",
+     "backend": "vllm",
+     "formula": "lab/public_prior.py fit on the public CSV, predict(gb, backend, batch 1)",
+     "source": {
+      "file": "lab/refine/research/kernels/data/public-strix-halo-benchmarks.csv",
+      "line": null,
+      "ref": "fit over 7821 rows from 40 sources, R2 0.88"
+     },
+     "gpu": "Radeon 8060S (other people's machines, published)",
+     "chip": "gfx1151",
+     "conditions": {
+      "gb_per_token": 15.5
+     },
+     "ts": null,
+     "low_confidence": true,
+     "reason": "a prior fitted to published benchmarks, not ours",
+     "other_chip": false
+    },
+    {
+     "id": "prior:llama.cpp-rocm",
+     "label": "public prior, llama.cpp-rocm",
+     "value": 12.34,
+     "unit": "tok/s",
+     "kind": "prior",
+     "backend": "llama.cpp-rocm",
+     "formula": "lab/public_prior.py fit on the public CSV, predict(gb, backend, batch 1)",
+     "source": {
+      "file": "lab/refine/research/kernels/data/public-strix-halo-benchmarks.csv",
+      "line": null,
+      "ref": "fit over 7821 rows from 40 sources, R2 0.88"
+     },
+     "gpu": "Radeon 8060S (other people's machines, published)",
+     "chip": "gfx1151",
+     "conditions": {
+      "gb_per_token": 15.5
+     },
+     "ts": null,
+     "low_confidence": true,
+     "reason": "a prior fitted to published benchmarks, not ours",
+     "other_chip": false
+    },
+    {
+     "id": "prior:llama.cpp-vulkan",
+     "label": "public prior, llama.cpp-vulkan",
+     "value": 14.26,
+     "unit": "tok/s",
+     "kind": "prior",
+     "backend": "llama.cpp-vulkan",
+     "formula": "lab/public_prior.py fit on the public CSV, predict(gb, backend, batch 1)",
+     "source": {
+      "file": "lab/refine/research/kernels/data/public-strix-halo-benchmarks.csv",
+      "line": null,
+      "ref": "fit over 7821 rows from 40 sources, R2 0.88"
+     },
+     "gpu": "Radeon 8060S (other people's machines, published)",
+     "chip": "gfx1151",
+     "conditions": {
+      "gb_per_token": 15.5
+     },
+     "ts": null,
+     "low_confidence": true,
+     "reason": "a prior fitted to published benchmarks, not ours",
+     "other_chip": false
+    }
+   ],
+   "other_chip": [
+    {
+     "id": "metrics:1",
+     "label": "vllm b1388b1, image (line 1)",
+     "value": 6.6,
+     "unit": "tok/s",
+     "kind": "measured",
+     "source": {
+      "file": "lab/refine/metrics.jsonl",
+      "line": 1,
+      "ref": "PR #37, lab/README.md (measured table)"
+     },
+     "gpu": null,
+     "chip": null,
+     "node": "pod-a",
+     "metric": "teacher.decode_tok_s",
+     "conditions": {
+      "model": "RedHatAI/Qwen3.8-27B-INT4",
+      "engine": "vllm@b1388b1",
+      "batch": 1,
+      "ctx": 16384,
+      "prompt": "image",
+      "image": "1280x720 JPEG",
+      "task": "caption",
+      "output_tokens": 28
+     },
+     "ts": "2026-10-10T10:22:13Z",
+     "low_confidence": false,
+     "reason": null,
+     "other_chip": true
+    },
+    {
+     "id": "metrics:2",
+     "label": "vllm b1388b1, text (line 2)",
+     "value": 7.8,
+     "unit": "tok/s",
+     "kind": "measured",
+     "source": {
+      "file": "lab/refine/metrics.jsonl",
+      "line": 2,
+      "ref": "PR #37, lab/README.md (measured table)"
+     },
+     "gpu": null,
+     "chip": null,
+     "node": "pod-a",
+     "metric": "teacher.decode_tok_s",
+     "conditions": {
+      "model": "RedHatAI/Qwen3.8-27B-INT4",
+      "engine": "vllm@b1388b1",
+      "batch": 1,
+      "ctx": 16384,
+      "prompt": "text",
+      "thinking": "off",
+      "output_tokens": 76
+     },
+     "ts": "2026-10-10T10:22:13Z",
+     "low_confidence": false,
+     "reason": null,
+     "other_chip": true
+    },
+    {
+     "id": "metrics:3",
+     "label": "vllm b1388b1, text (line 3)",
+     "value": 7.7,
+     "unit": "tok/s",
+     "kind": "measured",
+     "source": {
+      "file": "lab/refine/metrics.jsonl",
+      "line": 3,
+      "ref": "PR #37, lab/README.md (measured table); also in the PR #37 body and R2 task page"
+     },
+     "gpu": null,
+     "chip": null,
+     "node": "pod-a",
+     "metric": "teacher.decode_tok_s",
+     "conditions": {
+      "model": "RedHatAI/Qwen3.8-27B-INT4",
+      "engine": "vllm@b1388b1",
+      "batch": 1,
+      "ctx": 16384,
+      "prompt": "text",
+      "thinking": "on",
+      "output_tokens": 160
+     },
+     "ts": "2026-10-10T10:22:13Z",
+     "low_confidence": false,
+     "reason": null,
+     "other_chip": true
+    }
+   ],
+   "awaiting": [
+    "R58",
+    "R60",
+    "R53"
+   ]
+  },
+  {
+   "id": "finetune",
+   "title": "The fine-tune run",
+   "reading": "Not measured yet: the first real fine-tune on the Strix Halo (L16) has not committed per-step loss or step time; the trainer rows on main are from the old chip and are shown apart.",
+   "state": "empty",
+   "loss": [],
+   "step_time": [],
+   "numbers": [],
+   "other_chip": [
+    {
+     "id": "metrics:13",
+     "label": "trainer.samples_per_s",
+     "value": 0.51,
+     "unit": "samples/s",
+     "kind": "measured",
+     "source": {
+      "file": "lab/refine/metrics.jsonl",
+      "line": 13,
+      "ref": "PR #37 body (lab/smoke_lora.py --steps 20 on one R9700); R2 task page progress line; run settings are the script defaults"
+     },
+     "gpu": null,
+     "chip": null,
+     "node": "pod-b",
+     "metric": "trainer.samples_per_s",
+     "conditions": {
+      "model": "Qwen/Qwen3.5-4B",
+      "script": "lab/smoke_lora.py",
+      "steps": 20,
+      "per_device_batch": 4,
+      "grad_accum": 1,
+      "max_length": 256,
+      "lora_rank": 16,
+      "dtype": "bfloat16",
+      "examples": 48,
+      "measure": "examples seen (steps x batch) over trainer.train() wall time"
+     },
+     "ts": "2026-10-10T10:23:23Z",
+     "low_confidence": false,
+     "reason": null,
+     "other_chip": true
+    },
+    {
+     "id": "metrics:14",
+     "label": "trainer.peak_mem_gb",
+     "value": 8.7,
+     "unit": "GiB",
+     "kind": "measured",
+     "source": {
+      "file": "lab/refine/metrics.jsonl",
+      "line": 14,
+      "ref": "PR #37 body (lab/smoke_lora.py --steps 20 on one R9700); R2 task page progress line; run settings are the script defaults"
+     },
+     "gpu": null,
+     "chip": null,
+     "node": "pod-b",
+     "metric": "trainer.peak_mem_gb",
+     "conditions": {
+      "model": "Qwen/Qwen3.5-4B",
+      "script": "lab/smoke_lora.py",
+      "steps": 20,
+      "per_device_batch": 4,
+      "grad_accum": 1,
+      "max_length": 256,
+      "lora_rank": 16,
+      "dtype": "bfloat16",
+      "examples": 48,
+      "measure": "torch.cuda.max_memory_allocated / 2**30"
+     },
+     "ts": "2026-10-10T10:23:23Z",
+     "low_confidence": false,
+     "reason": null,
+     "other_chip": true
+    },
+    {
+     "id": "metrics:15",
+     "label": "trainer.smoke_loss_first",
+     "value": 2.23,
+     "unit": "loss",
+     "kind": "measured",
+     "source": {
+      "file": "lab/refine/metrics.jsonl",
+      "line": 15,
+      "ref": "PR #37 body (lab/smoke_lora.py --steps 20 on one R9700); R2 task page progress line; run settings are the script defaults"
+     },
+     "gpu": null,
+     "chip": null,
+     "node": "pod-b",
+     "metric": "trainer.smoke_loss_first",
+     "conditions": {
+      "model": "Qwen/Qwen3.5-4B",
+      "script": "lab/smoke_lora.py",
+      "steps": 20,
+      "per_device_batch": 4,
+      "grad_accum": 1,
+      "max_length": 256,
+      "lora_rank": 16,
+      "dtype": "bfloat16",
+      "examples": 48,
+      "measure": "first logged training loss (logging_steps=1)"
+     },
+     "ts": "2026-10-10T10:23:23Z",
+     "low_confidence": false,
+     "reason": null,
+     "other_chip": true
+    },
+    {
+     "id": "metrics:16",
+     "label": "trainer.smoke_loss_last",
+     "value": 0.16,
+     "unit": "loss",
+     "kind": "measured",
+     "source": {
+      "file": "lab/refine/metrics.jsonl",
+      "line": 16,
+      "ref": "PR #37 body (lab/smoke_lora.py --steps 20 on one R9700); R2 task page progress line; run settings are the script defaults"
+     },
+     "gpu": null,
+     "chip": null,
+     "node": "pod-b",
+     "metric": "trainer.smoke_loss_last",
+     "conditions": {
+      "model": "Qwen/Qwen3.5-4B",
+      "script": "lab/smoke_lora.py",
+      "steps": 20,
+      "per_device_batch": 4,
+      "grad_accum": 1,
+      "max_length": 256,
+      "lora_rank": 16,
+      "dtype": "bfloat16",
+      "examples": 48,
+      "measure": "last logged training loss"
+     },
+     "ts": "2026-10-10T10:23:23Z",
+     "low_confidence": false,
+     "reason": null,
+     "other_chip": true
+    }
+   ],
+   "awaiting": [
+    "L16"
+   ]
+  },
+  {
+   "id": "dropped",
+   "title": "What was tried and dropped",
+   "reading": "The experiments' verdicts are not on main yet (the lab's ledger lives on the lab machine); what is on record is the move off the old chip.",
+   "state": "partial",
+   "items": [
+    {
+     "what": "the R9700 cards (gfx1201, DUB hub) as the lab",
+     "verdict": "left for the Strix Halo pods (gfx1151, SJC) on 2026-10-10",
+     "note": "22 rows on main describe it; every section shows them apart",
+     "kind": "record",
+     "source": {
+      "file": "lab/slide_numbers.py",
+      "line": 140,
+      "ref": "LAB_MOVED_AT, the rule every reader uses"
+     },
+     "gpu": "R9700 (gfx1201)",
+     "task": null
+    }
+   ],
+   "other_chip": [],
+   "awaiting": []
+  }
+ ],
+ "numbers": [
+  {
+   "id": "chipsheet:copy.d2d.size_4gib",
+   "label": "memory bandwidth (copy, largest buffer)",
+   "value": 207.8,
+   "unit": "GB/s",
+   "kind": "measured",
+   "source": {
+    "file": "lab/refine/research/kernels/data/chipsheet-gfx1151-2026-10-11.json",
+    "line": 768,
+    "ref": "copy.d2d.size_4gib: device-to-device copy of 4gib; torch: dst.copy_(src), uint8[4294967296] on cuda:0, value = 2 x bytes / time"
+   },
+   "gpu": "Radeon 8060S Graphics, gfx1151",
+   "chip": "gfx1151",
+   "node": "pod-b",
+   "conditions": {
+    "node": "pod-b",
+    "mode": "full",
+    "bytes": 4294967296,
+    "repeats": 15,
+    "rocm": "7.13.0",
+    "hip": "7.13.99004-3309c6114a",
+    "hipcc": "23.0.0git",
+    "torch": "2.9.1+rocm7.13.0",
+    "torch_hip": "7.13.99004-3309c6114a",
+    "triton": "3.5.1",
+    "python": "3.12.3",
+    "amd_smi": "AMDSMI Tool: 26.4.0+3309c6114a | AMDSMI Library version: 26.4.0 | ROCm version: 7.13.0 | amdgpu version: N/A | AINIC version: N/A"
+   },
+   "ts": "2026-10-11T00:04:24Z",
+   "low_confidence": false,
+   "reason": null,
+   "other_chip": false
+  },
+  {
+   "id": "public_prior:teacher_gb",
+   "label": "weights read per decoded token (teacher, 27B INT4)",
+   "value": 15.5,
+   "unit": "GB",
+   "kind": "derived",
+   "formula": "the byte budget of the teacher's weights, as lab/public_prior.py TARGETS states it",
+   "inputs": [],
+   "source": {
+    "file": "lab/public_prior.py",
+    "line": 82,
+    "ref": "TARGETS; the note public_strix_halo_benchmarks.md gives the same figure"
+   },
+   "gpu": null,
+   "chip": null,
+   "conditions": {},
+   "ts": null,
+   "low_confidence": true,
+   "reason": "an estimate of the weight bytes (KV-cache reads not counted), not a measurement",
+   "other_chip": false
+  },
+  {
+   "id": "derived:ceiling",
+   "label": "ceiling at batch 1 (bandwidth / bytes per token)",
+   "value": 13.41,
+   "unit": "tok/s",
+   "kind": "derived",
+   "formula": "copy bandwidth (GB/s, bytes read and written) / weights read per token (GB)",
+   "inputs": [
+    "chipsheet:copy.d2d.size_4gib",
+    "public_prior:teacher_gb"
+   ],
+   "source": {
+    "file": "lab/refine/research/kernels/data/chipsheet-gfx1151-2026-10-11.json",
+    "line": 768,
+    "ref": "copy.d2d.size_4gib: device-to-device copy of 4gib; torch: dst.copy_(src), uint8[4294967296] on cuda:0, value = 2 x bytes / time"
+   },
+   "gpu": "Radeon 8060S Graphics, gfx1151",
+   "chip": "gfx1151",
+   "conditions": {},
+   "ts": null,
+   "low_confidence": true,
+   "reason": null,
+   "other_chip": false
+  },
+  {
+   "id": "metrics:24",
+   "label": "vllm b1388b1 + gfx1201 patch, text (line 24)",
+   "value": 2.88,
+   "unit": "tok/s",
+   "kind": "measured",
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 24,
+    "ref": "R29 measurement on pod C (~/serve/r29_measure.py, ~/serve/r29_measure.json), amd-smi metric --power SOCKET_POWER"
+   },
+   "gpu": "Radeon 8060S (Strix Halo), gfx1151",
+   "chip": null,
+   "node": "pod-c",
+   "metric": "teacher.decode_tok_s",
+   "conditions": {
+    "gpu": "Radeon 8060S (Strix Halo), gfx1151",
+    "model": "RedHatAI/Qwen3.8-27B-INT4",
+    "engine": "vllm@b1388b1+lab/vllm-gfx1201.diff, 0.19.2+gfx1151",
+    "encoder_attn": "TRITON_ATTN",
+    "batch": 1,
+    "ctx": 16384,
+    "temperature": 0,
+    "prompt": "text",
+    "thinking": "off",
+    "output_tokens": 77,
+    "prompt_tokens": 31,
+    "route": "pod, 127.0.0.1:8000, streaming"
+   },
+   "ts": "2026-10-10T19:58:39Z",
+   "low_confidence": false,
+   "reason": null,
+   "other_chip": false
+  },
+  {
+   "id": "metrics:26",
+   "label": "vllm b1388b1 + gfx1201 patch, image (line 26)",
+   "value": 2.82,
+   "unit": "tok/s",
+   "kind": "measured",
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 26,
+    "ref": "R29 measurement on pod C (~/serve/r29_measure.py, ~/serve/r29_measure.json), amd-smi metric --power SOCKET_POWER"
+   },
+   "gpu": "Radeon 8060S (Strix Halo), gfx1151",
+   "chip": null,
+   "node": "pod-c",
+   "metric": "teacher.decode_tok_s",
+   "conditions": {
+    "gpu": "Radeon 8060S (Strix Halo), gfx1151",
+    "model": "RedHatAI/Qwen3.8-27B-INT4",
+    "engine": "vllm@b1388b1+lab/vllm-gfx1201.diff, 0.19.2+gfx1151",
+    "encoder_attn": "TRITON_ATTN",
+    "batch": 1,
+    "ctx": 16384,
+    "temperature": 0,
+    "prompt": "image",
+    "thinking": "off",
+    "image": "1280x720 JPEG, synthetic shapes",
+    "task": "caption",
+    "output_tokens": 27,
+    "prompt_tokens": 902,
+    "route": "pod, 127.0.0.1:8000, streaming"
+   },
+   "ts": "2026-10-10T19:59:08Z",
+   "low_confidence": false,
+   "reason": null,
+   "other_chip": false
+  },
+  {
+   "id": "metrics:67",
+   "label": "vllm, bench-v1 (line 67)",
+   "value": 2.7021,
+   "unit": "tok/s",
+   "kind": "measured",
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 67,
+    "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
+   },
+   "gpu": null,
+   "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+   "node": "pod-a",
+   "metric": "teacher_batching.decode_tok_s",
+   "conditions": {
+    "engine": "vllm",
+    "engine_commit": "unavailable: attached through the hub proxy",
+    "patch_hash": "unavailable: attached through the hub proxy",
+    "checkpoint": "/home/jovyan/models/Qwen3.8-27B-INT4",
+    "quantization": "compressed-tensors-W4A16-INT4",
+    "max_model_len": 16384,
+    "rocm": "unavailable: attached through the hub proxy",
+    "torch": "unavailable: attached through the hub proxy",
+    "triton": "unavailable: attached through the hub proxy",
+    "prompt_set": {
+     "id": "bench-v1",
+     "sha256": "b25ab2bda117925f5eb8a2d5ffe6455de8169b7f2a33a3777eda10c97c37b760",
+     "prompts": 4,
+     "images": 2
+    },
+    "max_tokens": 128,
+    "ignore_eos": true,
+    "nonce": true,
+    "thinking": false,
+    "linear_kernels": "unavailable: attached through the hub proxy",
+    "attention_backends": "unavailable: attached through the hub proxy",
+    "kv_cache_tokens": "unavailable: attached through the hub proxy",
+    "batch_size": 1,
+    "session": "bench-20261010T215122Z-2c65",
+    "statistic": "median of 3 repeats",
+    "stats": {
+     "n": 3,
+     "median": 2.7021,
+     "min": 2.6859,
+     "max": 2.7044,
+     "mean": 2.697466666666667,
+     "sd": 0.010082823678579975
+    },
+    "bands": {
+     "b1": {
+      "share": 1.0,
+      "stats": {
+       "n": 3,
+       "median": 2.7021,
+       "min": 2.6859,
+       "max": 2.7044,
+       "mean": 2.697466666666667,
+       "sd": 0.010082823678579975
+      }
+     }
+    },
+    "low_confidence_reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+    "mode": "attach: the running pod C teacher measured through the hub proxy, no cold spawn (the one departure from R20's method)",
+    "hub": "sjc",
+    "account": "C",
+    "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+    "sampler": "T6 lab/pod_power.py 1 on port 8790, 1 s period",
+    "idle_w_loaded": 10.44,
+    "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
+    "requests_per_stream": 4,
+    "repeats": 3,
+    "env": "unavailable: server process not readable from the box"
+   },
+   "ts": "2026-10-11T00:23:20Z",
+   "low_confidence": true,
+   "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+   "other_chip": false
+  },
+  {
+   "id": "derived:share:metrics:24",
+   "label": "share of the ceiling, vllm b1388b1 + gfx1201 patch, text (line 24)",
+   "value": 21.5,
+   "unit": "%",
+   "kind": "derived",
+   "formula": "100 x achieved tok/s / ceiling tok/s",
+   "inputs": [
+    "metrics:24",
+    "derived:ceiling"
+   ],
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 24,
+    "ref": "R29 measurement on pod C (~/serve/r29_measure.py, ~/serve/r29_measure.json), amd-smi metric --power SOCKET_POWER"
+   },
+   "gpu": "Radeon 8060S (Strix Halo), gfx1151",
+   "chip": null,
+   "conditions": {},
+   "ts": null,
+   "low_confidence": true,
+   "reason": null,
+   "other_chip": false
+  },
+  {
+   "id": "derived:share:metrics:26",
+   "label": "share of the ceiling, vllm b1388b1 + gfx1201 patch, image (line 26)",
+   "value": 21.0,
+   "unit": "%",
+   "kind": "derived",
+   "formula": "100 x achieved tok/s / ceiling tok/s",
+   "inputs": [
+    "metrics:26",
+    "derived:ceiling"
+   ],
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 26,
+    "ref": "R29 measurement on pod C (~/serve/r29_measure.py, ~/serve/r29_measure.json), amd-smi metric --power SOCKET_POWER"
+   },
+   "gpu": "Radeon 8060S (Strix Halo), gfx1151",
+   "chip": null,
+   "conditions": {},
+   "ts": null,
+   "low_confidence": true,
+   "reason": null,
+   "other_chip": false
+  },
+  {
+   "id": "derived:share:metrics:67",
+   "label": "share of the ceiling, vllm, bench-v1 (line 67)",
+   "value": 20.1,
+   "unit": "%",
+   "kind": "derived",
+   "formula": "100 x achieved tok/s / ceiling tok/s",
+   "inputs": [
+    "metrics:67",
+    "derived:ceiling"
+   ],
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 67,
+    "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
+   },
+   "gpu": null,
+   "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+   "conditions": {},
+   "ts": null,
+   "low_confidence": true,
+   "reason": null,
+   "other_chip": false
+  },
+  {
+   "id": "prior:vllm",
+   "label": "public prior, vllm",
+   "value": 7.49,
+   "unit": "tok/s",
+   "kind": "prior",
+   "backend": "vllm",
+   "formula": "lab/public_prior.py fit on the public CSV, predict(gb, backend, batch 1)",
+   "source": {
+    "file": "lab/refine/research/kernels/data/public-strix-halo-benchmarks.csv",
+    "line": null,
+    "ref": "fit over 7821 rows from 40 sources, R2 0.88"
+   },
+   "gpu": "Radeon 8060S (other people's machines, published)",
+   "chip": "gfx1151",
+   "conditions": {
+    "gb_per_token": 15.5
+   },
+   "ts": null,
+   "low_confidence": true,
+   "reason": "a prior fitted to published benchmarks, not ours",
+   "other_chip": false
+  },
+  {
+   "id": "prior:llama.cpp-rocm",
+   "label": "public prior, llama.cpp-rocm",
+   "value": 12.34,
+   "unit": "tok/s",
+   "kind": "prior",
+   "backend": "llama.cpp-rocm",
+   "formula": "lab/public_prior.py fit on the public CSV, predict(gb, backend, batch 1)",
+   "source": {
+    "file": "lab/refine/research/kernels/data/public-strix-halo-benchmarks.csv",
+    "line": null,
+    "ref": "fit over 7821 rows from 40 sources, R2 0.88"
+   },
+   "gpu": "Radeon 8060S (other people's machines, published)",
+   "chip": "gfx1151",
+   "conditions": {
+    "gb_per_token": 15.5
+   },
+   "ts": null,
+   "low_confidence": true,
+   "reason": "a prior fitted to published benchmarks, not ours",
+   "other_chip": false
+  },
+  {
+   "id": "prior:llama.cpp-vulkan",
+   "label": "public prior, llama.cpp-vulkan",
+   "value": 14.26,
+   "unit": "tok/s",
+   "kind": "prior",
+   "backend": "llama.cpp-vulkan",
+   "formula": "lab/public_prior.py fit on the public CSV, predict(gb, backend, batch 1)",
+   "source": {
+    "file": "lab/refine/research/kernels/data/public-strix-halo-benchmarks.csv",
+    "line": null,
+    "ref": "fit over 7821 rows from 40 sources, R2 0.88"
+   },
+   "gpu": "Radeon 8060S (other people's machines, published)",
+   "chip": "gfx1151",
+   "conditions": {
+    "gb_per_token": 15.5
+   },
+   "ts": null,
+   "low_confidence": true,
+   "reason": "a prior fitted to published benchmarks, not ours",
+   "other_chip": false
+  },
+  {
+   "id": "metrics:1",
+   "label": "vllm b1388b1, image (line 1)",
+   "value": 6.6,
+   "unit": "tok/s",
+   "kind": "measured",
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 1,
+    "ref": "PR #37, lab/README.md (measured table)"
+   },
+   "gpu": null,
+   "chip": null,
+   "node": "pod-a",
+   "metric": "teacher.decode_tok_s",
+   "conditions": {
+    "model": "RedHatAI/Qwen3.8-27B-INT4",
+    "engine": "vllm@b1388b1",
+    "batch": 1,
+    "ctx": 16384,
+    "prompt": "image",
+    "image": "1280x720 JPEG",
+    "task": "caption",
+    "output_tokens": 28
+   },
+   "ts": "2026-10-10T10:22:13Z",
+   "low_confidence": false,
+   "reason": null,
+   "other_chip": true
+  },
+  {
+   "id": "metrics:2",
+   "label": "vllm b1388b1, text (line 2)",
+   "value": 7.8,
+   "unit": "tok/s",
+   "kind": "measured",
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 2,
+    "ref": "PR #37, lab/README.md (measured table)"
+   },
+   "gpu": null,
+   "chip": null,
+   "node": "pod-a",
+   "metric": "teacher.decode_tok_s",
+   "conditions": {
+    "model": "RedHatAI/Qwen3.8-27B-INT4",
+    "engine": "vllm@b1388b1",
+    "batch": 1,
+    "ctx": 16384,
+    "prompt": "text",
+    "thinking": "off",
+    "output_tokens": 76
+   },
+   "ts": "2026-10-10T10:22:13Z",
+   "low_confidence": false,
+   "reason": null,
+   "other_chip": true
+  },
+  {
+   "id": "metrics:3",
+   "label": "vllm b1388b1, text (line 3)",
+   "value": 7.7,
+   "unit": "tok/s",
+   "kind": "measured",
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 3,
+    "ref": "PR #37, lab/README.md (measured table); also in the PR #37 body and R2 task page"
+   },
+   "gpu": null,
+   "chip": null,
+   "node": "pod-a",
+   "metric": "teacher.decode_tok_s",
+   "conditions": {
+    "model": "RedHatAI/Qwen3.8-27B-INT4",
+    "engine": "vllm@b1388b1",
+    "batch": 1,
+    "ctx": 16384,
+    "prompt": "text",
+    "thinking": "on",
+    "output_tokens": 160
+   },
+   "ts": "2026-10-10T10:22:13Z",
+   "low_confidence": false,
+   "reason": null,
+   "other_chip": true
+  },
+  {
+   "id": "metrics:70",
+   "label": "teacher_batching.joules_per_token at 1 streams",
+   "value": 36.6587,
+   "unit": "J/token",
+   "kind": "measured",
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 70,
+    "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
+   },
+   "gpu": null,
+   "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+   "node": "pod-a",
+   "metric": "teacher_batching.joules_per_token",
+   "conditions": {
+    "engine": "vllm",
+    "engine_commit": "unavailable: attached through the hub proxy",
+    "patch_hash": "unavailable: attached through the hub proxy",
+    "checkpoint": "/home/jovyan/models/Qwen3.8-27B-INT4",
+    "quantization": "compressed-tensors-W4A16-INT4",
+    "max_model_len": 16384,
+    "rocm": "unavailable: attached through the hub proxy",
+    "torch": "unavailable: attached through the hub proxy",
+    "triton": "unavailable: attached through the hub proxy",
+    "prompt_set": {
+     "id": "bench-v1",
+     "sha256": "b25ab2bda117925f5eb8a2d5ffe6455de8169b7f2a33a3777eda10c97c37b760",
+     "prompts": 4,
+     "images": 2
+    },
+    "max_tokens": 128,
+    "ignore_eos": true,
+    "nonce": true,
+    "thinking": false,
+    "linear_kernels": "unavailable: attached through the hub proxy",
+    "attention_backends": "unavailable: attached through the hub proxy",
+    "kv_cache_tokens": "unavailable: attached through the hub proxy",
+    "batch_size": 1,
+    "session": "bench-20261010T215122Z-2c65",
+    "statistic": "median of 3 repeats",
+    "stats": {
+     "n": 3,
+     "median": 36.658679,
+     "min": 36.510335,
+     "max": 36.715012,
+     "mean": 36.628008666666666,
+     "sd": 0.10572923243991564
+    },
+    "bands": {
+     "b1": {
+      "share": 1.0,
+      "stats": {
+       "n": 3,
+       "median": 36.658679,
+       "min": 36.510335,
+       "max": 36.715012,
+       "mean": 36.628008666666666,
+       "sd": 0.10572923243991564
+      }
+     }
+    },
+    "low_confidence_reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+    "mode": "attach: the running pod C teacher measured through the hub proxy, no cold spawn (the one departure from R20's method)",
+    "hub": "sjc",
+    "account": "C",
+    "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+    "sampler": "T6 lab/pod_power.py 1 on port 8790, 1 s period",
+    "idle_w_loaded": 10.44,
+    "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
+    "requests_per_stream": 4,
+    "repeats": 3,
+    "env": "unavailable: server process not readable from the box"
+   },
+   "ts": "2026-10-11T00:23:20Z",
+   "low_confidence": true,
+   "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+   "other_chip": false
+  },
+  {
+   "id": "metrics:76",
+   "label": "teacher_batching.joules_per_token at 4 streams",
+   "value": 10.3071,
+   "unit": "J/token",
+   "kind": "measured",
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 76,
+    "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
+   },
+   "gpu": null,
+   "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+   "node": "pod-a",
+   "metric": "teacher_batching.joules_per_token",
+   "conditions": {
+    "engine": "vllm",
+    "engine_commit": "unavailable: attached through the hub proxy",
+    "patch_hash": "unavailable: attached through the hub proxy",
+    "checkpoint": "/home/jovyan/models/Qwen3.8-27B-INT4",
+    "quantization": "compressed-tensors-W4A16-INT4",
+    "max_model_len": 16384,
+    "rocm": "unavailable: attached through the hub proxy",
+    "torch": "unavailable: attached through the hub proxy",
+    "triton": "unavailable: attached through the hub proxy",
+    "prompt_set": {
+     "id": "bench-v1",
+     "sha256": "b25ab2bda117925f5eb8a2d5ffe6455de8169b7f2a33a3777eda10c97c37b760",
+     "prompts": 4,
+     "images": 2
+    },
+    "max_tokens": 128,
+    "ignore_eos": true,
+    "nonce": true,
+    "thinking": false,
+    "linear_kernels": "unavailable: attached through the hub proxy",
+    "attention_backends": "unavailable: attached through the hub proxy",
+    "kv_cache_tokens": "unavailable: attached through the hub proxy",
+    "batch_size": 4,
+    "session": "bench-20261010T215122Z-2c65",
+    "statistic": "median of 3 repeats",
+    "stats": {
+     "n": 3,
+     "median": 10.307138,
+     "min": 10.286176,
+     "max": 10.375907,
+     "mean": 10.323073666666666,
+     "sd": 0.04694009154585602
+    },
+    "bands": {
+     "b1": {
+      "share": 1.0,
+      "stats": {
+       "n": 3,
+       "median": 10.307138,
+       "min": 10.286176,
+       "max": 10.375907,
+       "mean": 10.323073666666666,
+       "sd": 0.04694009154585602
+      }
+     }
+    },
+    "low_confidence_reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+    "mode": "attach: the running pod C teacher measured through the hub proxy, no cold spawn (the one departure from R20's method)",
+    "hub": "sjc",
+    "account": "C",
+    "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+    "sampler": "T6 lab/pod_power.py 1 on port 8790, 1 s period",
+    "idle_w_loaded": 10.44,
+    "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
+    "requests_per_stream": 4,
+    "repeats": 3,
+    "env": "unavailable: server process not readable from the box"
+   },
+   "ts": "2026-10-11T00:23:20Z",
+   "low_confidence": true,
+   "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+   "other_chip": false
+  },
+  {
+   "id": "metrics:82",
+   "label": "teacher_batching.joules_per_token at 8 streams",
+   "value": 5.8676,
+   "unit": "J/token",
+   "kind": "measured",
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 82,
+    "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
+   },
+   "gpu": null,
+   "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+   "node": "pod-a",
+   "metric": "teacher_batching.joules_per_token",
+   "conditions": {
+    "engine": "vllm",
+    "engine_commit": "unavailable: attached through the hub proxy",
+    "patch_hash": "unavailable: attached through the hub proxy",
+    "checkpoint": "/home/jovyan/models/Qwen3.8-27B-INT4",
+    "quantization": "compressed-tensors-W4A16-INT4",
+    "max_model_len": 16384,
+    "rocm": "unavailable: attached through the hub proxy",
+    "torch": "unavailable: attached through the hub proxy",
+    "triton": "unavailable: attached through the hub proxy",
+    "prompt_set": {
+     "id": "bench-v1",
+     "sha256": "b25ab2bda117925f5eb8a2d5ffe6455de8169b7f2a33a3777eda10c97c37b760",
+     "prompts": 4,
+     "images": 2
+    },
+    "max_tokens": 128,
+    "ignore_eos": true,
+    "nonce": true,
+    "thinking": false,
+    "linear_kernels": "unavailable: attached through the hub proxy",
+    "attention_backends": "unavailable: attached through the hub proxy",
+    "kv_cache_tokens": "unavailable: attached through the hub proxy",
+    "batch_size": 8,
+    "session": "bench-20261010T215122Z-2c65",
+    "statistic": "median of 3 repeats",
+    "stats": {
+     "n": 3,
+     "median": 5.867646,
+     "min": 5.860932,
+     "max": 5.879679,
+     "mean": 5.869419000000001,
+     "sd": 0.009498428764801238
+    },
+    "bands": {
+     "b1": {
+      "share": 1.0,
+      "stats": {
+       "n": 3,
+       "median": 5.867646,
+       "min": 5.860932,
+       "max": 5.879679,
+       "mean": 5.869419000000001,
+       "sd": 0.009498428764801238
+      }
+     }
+    },
+    "low_confidence_reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+    "mode": "attach: the running pod C teacher measured through the hub proxy, no cold spawn (the one departure from R20's method)",
+    "hub": "sjc",
+    "account": "C",
+    "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+    "sampler": "T6 lab/pod_power.py 1 on port 8790, 1 s period",
+    "idle_w_loaded": 10.44,
+    "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
+    "requests_per_stream": 4,
+    "repeats": 3,
+    "env": "unavailable: server process not readable from the box"
+   },
+   "ts": "2026-10-11T00:23:20Z",
+   "low_confidence": true,
+   "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+   "other_chip": false
+  },
+  {
+   "id": "metrics:88",
+   "label": "teacher_batching.joules_per_token at 16 streams",
+   "value": 3.5628,
+   "unit": "J/token",
+   "kind": "measured",
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 88,
+    "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
+   },
+   "gpu": null,
+   "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+   "node": "pod-a",
+   "metric": "teacher_batching.joules_per_token",
+   "conditions": {
+    "engine": "vllm",
+    "engine_commit": "unavailable: attached through the hub proxy",
+    "patch_hash": "unavailable: attached through the hub proxy",
+    "checkpoint": "/home/jovyan/models/Qwen3.8-27B-INT4",
+    "quantization": "compressed-tensors-W4A16-INT4",
+    "max_model_len": 16384,
+    "rocm": "unavailable: attached through the hub proxy",
+    "torch": "unavailable: attached through the hub proxy",
+    "triton": "unavailable: attached through the hub proxy",
+    "prompt_set": {
+     "id": "bench-v1",
+     "sha256": "b25ab2bda117925f5eb8a2d5ffe6455de8169b7f2a33a3777eda10c97c37b760",
+     "prompts": 4,
+     "images": 2
+    },
+    "max_tokens": 128,
+    "ignore_eos": true,
+    "nonce": true,
+    "thinking": false,
+    "linear_kernels": "unavailable: attached through the hub proxy",
+    "attention_backends": "unavailable: attached through the hub proxy",
+    "kv_cache_tokens": "unavailable: attached through the hub proxy",
+    "batch_size": 16,
+    "session": "bench-20261010T215122Z-2c65",
+    "statistic": "median of 3 repeats",
+    "stats": {
+     "n": 3,
+     "median": 3.56281,
+     "min": 3.555384,
+     "max": 3.563938,
+     "mean": 3.5607106666666666,
+     "sd": 0.00464737875940103
+    },
+    "bands": {
+     "b1": {
+      "share": 1.0,
+      "stats": {
+       "n": 3,
+       "median": 3.56281,
+       "min": 3.555384,
+       "max": 3.563938,
+       "mean": 3.5607106666666666,
+       "sd": 0.00464737875940103
+      }
+     }
+    },
+    "low_confidence_reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+    "mode": "attach: the running pod C teacher measured through the hub proxy, no cold spawn (the one departure from R20's method)",
+    "hub": "sjc",
+    "account": "C",
+    "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+    "sampler": "T6 lab/pod_power.py 1 on port 8790, 1 s period",
+    "idle_w_loaded": 10.44,
+    "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
+    "requests_per_stream": 4,
+    "repeats": 3,
+    "env": "unavailable: server process not readable from the box"
+   },
+   "ts": "2026-10-11T00:23:20Z",
+   "low_confidence": true,
+   "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+   "other_chip": false
+  },
+  {
+   "id": "metrics:94",
+   "label": "teacher_batching.joules_per_token at 64 streams",
+   "value": 1.9384,
+   "unit": "J/token",
+   "kind": "measured",
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 94,
+    "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
+   },
+   "gpu": null,
+   "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+   "node": "pod-a",
+   "metric": "teacher_batching.joules_per_token",
+   "conditions": {
+    "engine": "vllm",
+    "engine_commit": "unavailable: attached through the hub proxy",
+    "patch_hash": "unavailable: attached through the hub proxy",
+    "checkpoint": "/home/jovyan/models/Qwen3.8-27B-INT4",
+    "quantization": "compressed-tensors-W4A16-INT4",
+    "max_model_len": 16384,
+    "rocm": "unavailable: attached through the hub proxy",
+    "torch": "unavailable: attached through the hub proxy",
+    "triton": "unavailable: attached through the hub proxy",
+    "prompt_set": {
+     "id": "bench-v1",
+     "sha256": "b25ab2bda117925f5eb8a2d5ffe6455de8169b7f2a33a3777eda10c97c37b760",
+     "prompts": 4,
+     "images": 2
+    },
+    "max_tokens": 128,
+    "ignore_eos": true,
+    "nonce": true,
+    "thinking": false,
+    "linear_kernels": "unavailable: attached through the hub proxy",
+    "attention_backends": "unavailable: attached through the hub proxy",
+    "kv_cache_tokens": "unavailable: attached through the hub proxy",
+    "batch_size": 64,
+    "session": "bench-20261010T215122Z-2c65",
+    "statistic": "median of 3 repeats",
+    "stats": {
+     "n": 3,
+     "median": 1.938359,
+     "min": 1.935353,
+     "max": 1.940663,
+     "mean": 1.938125,
+     "sd": 0.0026627226667454078
+    },
+    "bands": {
+     "b1": {
+      "share": 1.0,
+      "stats": {
+       "n": 3,
+       "median": 1.938359,
+       "min": 1.935353,
+       "max": 1.940663,
+       "mean": 1.938125,
+       "sd": 0.0026627226667454078
+      }
+     }
+    },
+    "low_confidence_reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+    "mode": "attach: the running pod C teacher measured through the hub proxy, no cold spawn (the one departure from R20's method)",
+    "hub": "sjc",
+    "account": "C",
+    "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+    "sampler": "T6 lab/pod_power.py 1 on port 8790, 1 s period",
+    "idle_w_loaded": 10.44,
+    "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
+    "requests_per_stream": 4,
+    "repeats": 3,
+    "env": "unavailable: server process not readable from the box"
+   },
+   "ts": "2026-10-11T00:23:20Z",
+   "low_confidence": true,
+   "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+   "other_chip": false
+  },
+  {
+   "id": "metrics:68",
+   "label": "teacher_batching.decode_tok_s_total at 1 streams",
+   "value": 2.6172,
+   "unit": "tok/s",
+   "kind": "measured",
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 68,
+    "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
+   },
+   "gpu": null,
+   "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+   "node": "pod-a",
+   "metric": "teacher_batching.decode_tok_s_total",
+   "conditions": {
+    "engine": "vllm",
+    "engine_commit": "unavailable: attached through the hub proxy",
+    "patch_hash": "unavailable: attached through the hub proxy",
+    "checkpoint": "/home/jovyan/models/Qwen3.8-27B-INT4",
+    "quantization": "compressed-tensors-W4A16-INT4",
+    "max_model_len": 16384,
+    "rocm": "unavailable: attached through the hub proxy",
+    "torch": "unavailable: attached through the hub proxy",
+    "triton": "unavailable: attached through the hub proxy",
+    "prompt_set": {
+     "id": "bench-v1",
+     "sha256": "b25ab2bda117925f5eb8a2d5ffe6455de8169b7f2a33a3777eda10c97c37b760",
+     "prompts": 4,
+     "images": 2
+    },
+    "max_tokens": 128,
+    "ignore_eos": true,
+    "nonce": true,
+    "thinking": false,
+    "linear_kernels": "unavailable: attached through the hub proxy",
+    "attention_backends": "unavailable: attached through the hub proxy",
+    "kv_cache_tokens": "unavailable: attached through the hub proxy",
+    "batch_size": 1,
+    "session": "bench-20261010T215122Z-2c65",
+    "statistic": "median of 3 repeats",
+    "stats": {
+     "n": 3,
+     "median": 2.6172,
+     "min": 2.6172,
+     "max": 2.6295,
+     "mean": 2.6213,
+     "sd": 0.007101408311032512
+    },
+    "bands": {
+     "b1": {
+      "share": 1.0,
+      "stats": {
+       "n": 3,
+       "median": 2.6172,
+       "min": 2.6172,
+       "max": 2.6295,
+       "mean": 2.6213,
+       "sd": 0.007101408311032512
+      }
+     }
+    },
+    "low_confidence_reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+    "mode": "attach: the running pod C teacher measured through the hub proxy, no cold spawn (the one departure from R20's method)",
+    "hub": "sjc",
+    "account": "C",
+    "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+    "sampler": "T6 lab/pod_power.py 1 on port 8790, 1 s period",
+    "idle_w_loaded": 10.44,
+    "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
+    "requests_per_stream": 4,
+    "repeats": 3,
+    "env": "unavailable: server process not readable from the box"
+   },
+   "ts": "2026-10-11T00:23:20Z",
+   "low_confidence": true,
+   "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+   "other_chip": false
+  },
+  {
+   "id": "metrics:74",
+   "label": "teacher_batching.decode_tok_s_total at 4 streams",
+   "value": 9.3153,
+   "unit": "tok/s",
+   "kind": "measured",
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 74,
+    "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
+   },
+   "gpu": null,
+   "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+   "node": "pod-a",
+   "metric": "teacher_batching.decode_tok_s_total",
+   "conditions": {
+    "engine": "vllm",
+    "engine_commit": "unavailable: attached through the hub proxy",
+    "patch_hash": "unavailable: attached through the hub proxy",
+    "checkpoint": "/home/jovyan/models/Qwen3.8-27B-INT4",
+    "quantization": "compressed-tensors-W4A16-INT4",
+    "max_model_len": 16384,
+    "rocm": "unavailable: attached through the hub proxy",
+    "torch": "unavailable: attached through the hub proxy",
+    "triton": "unavailable: attached through the hub proxy",
+    "prompt_set": {
+     "id": "bench-v1",
+     "sha256": "b25ab2bda117925f5eb8a2d5ffe6455de8169b7f2a33a3777eda10c97c37b760",
+     "prompts": 4,
+     "images": 2
+    },
+    "max_tokens": 128,
+    "ignore_eos": true,
+    "nonce": true,
+    "thinking": false,
+    "linear_kernels": "unavailable: attached through the hub proxy",
+    "attention_backends": "unavailable: attached through the hub proxy",
+    "kv_cache_tokens": "unavailable: attached through the hub proxy",
+    "batch_size": 4,
+    "session": "bench-20261010T215122Z-2c65",
+    "statistic": "median of 3 repeats",
+    "stats": {
+     "n": 3,
+     "median": 9.3153,
+     "min": 9.2534,
+     "max": 9.3338,
+     "mean": 9.300833333333333,
+     "sd": 0.04210704612453103
+    },
+    "bands": {
+     "b1": {
+      "share": 1.0,
+      "stats": {
+       "n": 3,
+       "median": 9.3153,
+       "min": 9.2534,
+       "max": 9.3338,
+       "mean": 9.300833333333333,
+       "sd": 0.04210704612453103
+      }
+     }
+    },
+    "low_confidence_reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+    "mode": "attach: the running pod C teacher measured through the hub proxy, no cold spawn (the one departure from R20's method)",
+    "hub": "sjc",
+    "account": "C",
+    "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+    "sampler": "T6 lab/pod_power.py 1 on port 8790, 1 s period",
+    "idle_w_loaded": 10.44,
+    "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
+    "requests_per_stream": 4,
+    "repeats": 3,
+    "env": "unavailable: server process not readable from the box"
+   },
+   "ts": "2026-10-11T00:23:20Z",
+   "low_confidence": true,
+   "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+   "other_chip": false
+  },
+  {
+   "id": "metrics:80",
+   "label": "teacher_batching.decode_tok_s_total at 8 streams",
+   "value": 16.3616,
+   "unit": "tok/s",
+   "kind": "measured",
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 80,
+    "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
+   },
+   "gpu": null,
+   "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+   "node": "pod-a",
+   "metric": "teacher_batching.decode_tok_s_total",
+   "conditions": {
+    "engine": "vllm",
+    "engine_commit": "unavailable: attached through the hub proxy",
+    "patch_hash": "unavailable: attached through the hub proxy",
+    "checkpoint": "/home/jovyan/models/Qwen3.8-27B-INT4",
+    "quantization": "compressed-tensors-W4A16-INT4",
+    "max_model_len": 16384,
+    "rocm": "unavailable: attached through the hub proxy",
+    "torch": "unavailable: attached through the hub proxy",
+    "triton": "unavailable: attached through the hub proxy",
+    "prompt_set": {
+     "id": "bench-v1",
+     "sha256": "b25ab2bda117925f5eb8a2d5ffe6455de8169b7f2a33a3777eda10c97c37b760",
+     "prompts": 4,
+     "images": 2
+    },
+    "max_tokens": 128,
+    "ignore_eos": true,
+    "nonce": true,
+    "thinking": false,
+    "linear_kernels": "unavailable: attached through the hub proxy",
+    "attention_backends": "unavailable: attached through the hub proxy",
+    "kv_cache_tokens": "unavailable: attached through the hub proxy",
+    "batch_size": 8,
+    "session": "bench-20261010T215122Z-2c65",
+    "statistic": "median of 3 repeats",
+    "stats": {
+     "n": 3,
+     "median": 16.3616,
+     "min": 16.3295,
+     "max": 16.3802,
+     "mean": 16.3571,
+     "sd": 0.025647806923789367
+    },
+    "bands": {
+     "b1": {
+      "share": 1.0,
+      "stats": {
+       "n": 3,
+       "median": 16.3616,
+       "min": 16.3295,
+       "max": 16.3802,
+       "mean": 16.3571,
+       "sd": 0.025647806923789367
+      }
+     }
+    },
+    "low_confidence_reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+    "mode": "attach: the running pod C teacher measured through the hub proxy, no cold spawn (the one departure from R20's method)",
+    "hub": "sjc",
+    "account": "C",
+    "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+    "sampler": "T6 lab/pod_power.py 1 on port 8790, 1 s period",
+    "idle_w_loaded": 10.44,
+    "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
+    "requests_per_stream": 4,
+    "repeats": 3,
+    "env": "unavailable: server process not readable from the box"
+   },
+   "ts": "2026-10-11T00:23:20Z",
+   "low_confidence": true,
+   "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+   "other_chip": false
+  },
+  {
+   "id": "metrics:86",
+   "label": "teacher_batching.decode_tok_s_total at 16 streams",
+   "value": 26.946,
+   "unit": "tok/s",
+   "kind": "measured",
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 86,
+    "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
+   },
+   "gpu": null,
+   "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+   "node": "pod-a",
+   "metric": "teacher_batching.decode_tok_s_total",
+   "conditions": {
+    "engine": "vllm",
+    "engine_commit": "unavailable: attached through the hub proxy",
+    "patch_hash": "unavailable: attached through the hub proxy",
+    "checkpoint": "/home/jovyan/models/Qwen3.8-27B-INT4",
+    "quantization": "compressed-tensors-W4A16-INT4",
+    "max_model_len": 16384,
+    "rocm": "unavailable: attached through the hub proxy",
+    "torch": "unavailable: attached through the hub proxy",
+    "triton": "unavailable: attached through the hub proxy",
+    "prompt_set": {
+     "id": "bench-v1",
+     "sha256": "b25ab2bda117925f5eb8a2d5ffe6455de8169b7f2a33a3777eda10c97c37b760",
+     "prompts": 4,
+     "images": 2
+    },
+    "max_tokens": 128,
+    "ignore_eos": true,
+    "nonce": true,
+    "thinking": false,
+    "linear_kernels": "unavailable: attached through the hub proxy",
+    "attention_backends": "unavailable: attached through the hub proxy",
+    "kv_cache_tokens": "unavailable: attached through the hub proxy",
+    "batch_size": 16,
+    "session": "bench-20261010T215122Z-2c65",
+    "statistic": "median of 3 repeats",
+    "stats": {
+     "n": 3,
+     "median": 26.946,
+     "min": 26.938,
+     "max": 27.0049,
+     "mean": 26.96296666666667,
+     "sd": 0.03653496042605363
+    },
+    "bands": {
+     "b1": {
+      "share": 1.0,
+      "stats": {
+       "n": 3,
+       "median": 26.946,
+       "min": 26.938,
+       "max": 27.0049,
+       "mean": 26.96296666666667,
+       "sd": 0.03653496042605363
+      }
+     }
+    },
+    "low_confidence_reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+    "mode": "attach: the running pod C teacher measured through the hub proxy, no cold spawn (the one departure from R20's method)",
+    "hub": "sjc",
+    "account": "C",
+    "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+    "sampler": "T6 lab/pod_power.py 1 on port 8790, 1 s period",
+    "idle_w_loaded": 10.44,
+    "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
+    "requests_per_stream": 4,
+    "repeats": 3,
+    "env": "unavailable: server process not readable from the box"
+   },
+   "ts": "2026-10-11T00:23:20Z",
+   "low_confidence": true,
+   "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+   "other_chip": false
+  },
+  {
+   "id": "metrics:92",
+   "label": "teacher_batching.decode_tok_s_total at 64 streams",
+   "value": 49.5288,
+   "unit": "tok/s",
+   "kind": "measured",
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 92,
+    "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
+   },
+   "gpu": null,
+   "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+   "node": "pod-a",
+   "metric": "teacher_batching.decode_tok_s_total",
+   "conditions": {
+    "engine": "vllm",
+    "engine_commit": "unavailable: attached through the hub proxy",
+    "patch_hash": "unavailable: attached through the hub proxy",
+    "checkpoint": "/home/jovyan/models/Qwen3.8-27B-INT4",
+    "quantization": "compressed-tensors-W4A16-INT4",
+    "max_model_len": 16384,
+    "rocm": "unavailable: attached through the hub proxy",
+    "torch": "unavailable: attached through the hub proxy",
+    "triton": "unavailable: attached through the hub proxy",
+    "prompt_set": {
+     "id": "bench-v1",
+     "sha256": "b25ab2bda117925f5eb8a2d5ffe6455de8169b7f2a33a3777eda10c97c37b760",
+     "prompts": 4,
+     "images": 2
+    },
+    "max_tokens": 128,
+    "ignore_eos": true,
+    "nonce": true,
+    "thinking": false,
+    "linear_kernels": "unavailable: attached through the hub proxy",
+    "attention_backends": "unavailable: attached through the hub proxy",
+    "kv_cache_tokens": "unavailable: attached through the hub proxy",
+    "batch_size": 64,
+    "session": "bench-20261010T215122Z-2c65",
+    "statistic": "median of 3 repeats",
+    "stats": {
+     "n": 3,
+     "median": 49.5288,
+     "min": 49.4933,
+     "max": 49.6318,
+     "mean": 49.5513,
+     "sd": 0.07193921044882313
+    },
+    "bands": {
+     "b1": {
+      "share": 1.0,
+      "stats": {
+       "n": 3,
+       "median": 49.5288,
+       "min": 49.4933,
+       "max": 49.6318,
+       "mean": 49.5513,
+       "sd": 0.07193921044882313
+      }
+     }
+    },
+    "low_confidence_reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+    "mode": "attach: the running pod C teacher measured through the hub proxy, no cold spawn (the one departure from R20's method)",
+    "hub": "sjc",
+    "account": "C",
+    "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+    "sampler": "T6 lab/pod_power.py 1 on port 8790, 1 s period",
+    "idle_w_loaded": 10.44,
+    "idle_w_loaded_note": "60 s sampler read after the sweep; the in-session read of 82.4 W caught requests from an earlier aborted attempt and is not used",
+    "requests_per_stream": 4,
+    "repeats": 3,
+    "env": "unavailable: server process not readable from the box"
+   },
+   "ts": "2026-10-11T00:23:20Z",
+   "low_confidence": true,
+   "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
+   "other_chip": false
+  },
+  {
+   "id": "derived:ratio:teacher_batching.joules_per_token:bench-20261010T215122Z-2c65",
+   "label": "joules per token, 1 stream over 64 streams",
+   "value": 18.9,
+   "unit": "x",
+   "kind": "derived",
+   "formula": "J/token at the fewest streams / J/token at the most streams",
+   "inputs": [
+    "metrics:70",
+    "metrics:94"
+   ],
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 70,
+    "ref": "lab/bench.py 1 bench-20261010T215122Z-2c65"
+   },
+   "gpu": null,
+   "chip": "gfx1151 (Strix Halo, Radeon 8060S)",
+   "conditions": {},
+   "ts": null,
+   "low_confidence": true,
+   "reason": null,
+   "other_chip": false
+  },
+  {
+   "id": "metrics:13",
+   "label": "trainer.samples_per_s",
+   "value": 0.51,
+   "unit": "samples/s",
+   "kind": "measured",
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 13,
+    "ref": "PR #37 body (lab/smoke_lora.py --steps 20 on one R9700); R2 task page progress line; run settings are the script defaults"
+   },
+   "gpu": null,
+   "chip": null,
+   "node": "pod-b",
+   "metric": "trainer.samples_per_s",
+   "conditions": {
+    "model": "Qwen/Qwen3.5-4B",
+    "script": "lab/smoke_lora.py",
+    "steps": 20,
+    "per_device_batch": 4,
+    "grad_accum": 1,
+    "max_length": 256,
+    "lora_rank": 16,
+    "dtype": "bfloat16",
+    "examples": 48,
+    "measure": "examples seen (steps x batch) over trainer.train() wall time"
+   },
+   "ts": "2026-10-10T10:23:23Z",
+   "low_confidence": false,
+   "reason": null,
+   "other_chip": true
+  },
+  {
+   "id": "metrics:14",
+   "label": "trainer.peak_mem_gb",
+   "value": 8.7,
+   "unit": "GiB",
+   "kind": "measured",
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 14,
+    "ref": "PR #37 body (lab/smoke_lora.py --steps 20 on one R9700); R2 task page progress line; run settings are the script defaults"
+   },
+   "gpu": null,
+   "chip": null,
+   "node": "pod-b",
+   "metric": "trainer.peak_mem_gb",
+   "conditions": {
+    "model": "Qwen/Qwen3.5-4B",
+    "script": "lab/smoke_lora.py",
+    "steps": 20,
+    "per_device_batch": 4,
+    "grad_accum": 1,
+    "max_length": 256,
+    "lora_rank": 16,
+    "dtype": "bfloat16",
+    "examples": 48,
+    "measure": "torch.cuda.max_memory_allocated / 2**30"
+   },
+   "ts": "2026-10-10T10:23:23Z",
+   "low_confidence": false,
+   "reason": null,
+   "other_chip": true
+  },
+  {
+   "id": "metrics:15",
+   "label": "trainer.smoke_loss_first",
+   "value": 2.23,
+   "unit": "loss",
+   "kind": "measured",
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 15,
+    "ref": "PR #37 body (lab/smoke_lora.py --steps 20 on one R9700); R2 task page progress line; run settings are the script defaults"
+   },
+   "gpu": null,
+   "chip": null,
+   "node": "pod-b",
+   "metric": "trainer.smoke_loss_first",
+   "conditions": {
+    "model": "Qwen/Qwen3.5-4B",
+    "script": "lab/smoke_lora.py",
+    "steps": 20,
+    "per_device_batch": 4,
+    "grad_accum": 1,
+    "max_length": 256,
+    "lora_rank": 16,
+    "dtype": "bfloat16",
+    "examples": 48,
+    "measure": "first logged training loss (logging_steps=1)"
+   },
+   "ts": "2026-10-10T10:23:23Z",
+   "low_confidence": false,
+   "reason": null,
+   "other_chip": true
+  },
+  {
+   "id": "metrics:16",
+   "label": "trainer.smoke_loss_last",
+   "value": 0.16,
+   "unit": "loss",
+   "kind": "measured",
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 16,
+    "ref": "PR #37 body (lab/smoke_lora.py --steps 20 on one R9700); R2 task page progress line; run settings are the script defaults"
+   },
+   "gpu": null,
+   "chip": null,
+   "node": "pod-b",
+   "metric": "trainer.smoke_loss_last",
+   "conditions": {
+    "model": "Qwen/Qwen3.5-4B",
+    "script": "lab/smoke_lora.py",
+    "steps": 20,
+    "per_device_batch": 4,
+    "grad_accum": 1,
+    "max_length": 256,
+    "lora_rank": 16,
+    "dtype": "bfloat16",
+    "examples": 48,
+    "measure": "last logged training loss"
+   },
+   "ts": "2026-10-10T10:23:23Z",
+   "low_confidence": false,
+   "reason": null,
+   "other_chip": true
+  }
+ ],
+ "awaited": [
+  {
+   "task": "R52",
+   "what": "request-side settings sweep of the teacher (batch 1, 4, 8, 16)",
+   "where": "lab/refine/research/kernels/data/sweep-request-gfx1151-<date>.json, rows in lab/refine/metrics.jsonl",
+   "sections": [
+    "frontier"
+   ],
+   "file_present": false
+  },
+  {
+   "task": "R58",
+   "what": "llama.cpp Vulkan decode on the Strix Halo pod",
+   "where": "rows in lab/refine/metrics.jsonl whose conditions.engine names llama.cpp",
+   "sections": [
+    "ceiling",
+    "engines"
+   ],
+   "file_present": false
+  },
+  {
+   "task": "R60",
+   "what": "vLLM main with the RDNA hybrid W4A16 decode kernel on the Strix Halo pod",
+   "where": "rows in lab/refine/metrics.jsonl with a new conditions.engine build",
+   "sections": [
+    "ceiling",
+    "engines"
+   ],
+   "file_present": false
+  },
+  {
+   "task": "R53",
+   "what": "vLLM b1388b1 with the hybrid W4A16 kernel backported (lab/vllm-gfx1151.diff)",
+   "where": "rows in lab/refine/metrics.jsonl whose conditions.engine names the gfx1151 diff",
+   "sections": [
+    "ceiling",
+    "engines"
+   ],
+   "file_present": false
+  },
+  {
+   "task": "R47",
+   "what": "decode profile: where one decode step's time goes",
+   "where": "lab/refine/research/kernels/data/decode-profile-gfx1151-<date>.json",
+   "sections": [
+    "step"
+   ],
+   "file_present": false
+  },
+  {
+   "task": "L16",
+   "what": "the first real fine-tune's step telemetry (loss and step time per step)",
+   "where": "rows in lab/refine/metrics.jsonl named telemetry.train.* or trainer.* with conditions.step",
+   "sections": [
+    "finetune"
+   ],
+   "file_present": false
+  }
+ ]
+}
