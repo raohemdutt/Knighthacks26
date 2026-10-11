@@ -284,6 +284,18 @@ def decode_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(found, key=lambda r: (str(r.get("ts")), r["_line"]))
 
 
+def run_label(row: dict[str, Any]) -> str:
+    """A short name for one batch-1 decode row: engine family and build, what was asked, and its line."""
+    c = row["conditions"]
+    engine = str(c.get("engine") or "engine not recorded")
+    build = engine_family(c) + (" " + engine.split("@")[1][:7] if "@" in engine else "")
+    if "gfx1201.diff" in engine or "gfx1151.diff" in engine:
+        build += " + " + ("gfx1151" if "gfx1151.diff" in engine else "gfx1201") + " patch"
+    asked = c.get("prompt") or (c.get("prompt_set") or {}).get("id") if isinstance(c.get("prompt_set"), dict) \
+        else c.get("prompt")
+    return f"{build}, {asked or 'prompt not recorded'} (line {row['_line']})"
+
+
 def section_ceiling(root: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
     bw, gb = chip_bandwidth(root), bytes_per_token(root)
     ceiling = None
@@ -294,15 +306,15 @@ def section_ceiling(root: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
                           gpu=bw["gpu"], chip=bw["chip"])
     else:
         ceiling = missing("derived:ceiling", "ceiling at batch 1", "the chip sheet or the byte budget is missing", "R33")
-    achieved = [from_row(r, f"{build_of(r['conditions'])} ({r['metric']})") for r in decode_rows(rows)]
+    achieved = [from_row(r, run_label(r)) for r in decode_rows(rows)]
     here = [a for a in achieved if not a["other_chip"]]
     apart = [a for a in achieved if a["other_chip"]]
     fractions = []
     for a in here:
         if ceiling["value"]:
             fractions.append(derived(f"derived:share:{a['id']}", f"share of the ceiling, {a['label']}",
-                                     round(a["value"] / ceiling["value"], 3), "fraction",
-                                     "achieved tok/s / ceiling tok/s", [a, ceiling], gpu=a["gpu"], chip=a["chip"]))
+                                     round(100 * a["value"] / ceiling["value"], 1), "%",
+                                     "100 x achieved tok/s / ceiling tok/s", [a, ceiling], gpu=a["gpu"], chip=a["chip"]))
     priors, prior_gap = prior_numbers(root, gb["value"])
     if here and ceiling["value"]:
         best = max(here, key=lambda a: a["value"])
@@ -463,7 +475,8 @@ def section_finetune(rows: list[dict[str, Any]]) -> dict[str, Any]:
         state = "measured"
     else:
         reading = ("Not measured yet: the first real fine-tune on the Strix Halo (L16) has not committed per-step loss "
-                   "or step time; the only trainer rows on main are a 20-step smoke run on the old chip, shown apart.")
+                   "or step time" + ("; the trainer rows on main are from the old chip and are shown apart."
+                                     if apart and not here else "."))
         state = "partial" if here else "empty"
     return {"id": "finetune", "title": "The fine-tune run", "reading": reading, "state": state, "loss": loss,
             "step_time": step_time, "numbers": here, "other_chip": apart,
@@ -624,7 +637,7 @@ class Page:
 def svg_bars(items: list[tuple[str, float | None, str]], line: tuple[str, float] | None, unit: str,
              title: str) -> str:
     """Horizontal bars (label, value, class) with an optional vertical reference line; a None value says so."""
-    width, left, right, bar_h, gap = 640, 210, 70, 22, 10
+    width, left, right, bar_h, gap = 520, 210, 56, 24, 10
     height = 30 + len(items) * (bar_h + gap) + 24
     peak = max([v for _, v, _ in items if v] + ([line[1]] if line else []) + [1e-9])
     scale = (width - left - right) / (peak * 1.05)
@@ -632,7 +645,9 @@ def svg_bars(items: list[tuple[str, float | None, str]], line: tuple[str, float]
            f'<title>{esc(title)}</title>']
     y = 20
     for label, value, cls in items:
-        out.append(f'<text x="{left - 8}" y="{y + bar_h * 0.7:.1f}" text-anchor="end" class="lbl">{esc(label)}</text>')
+        short = label if len(label) <= 27 else label[:26] + "\u2026"
+        out.append(f'<text x="{left - 8}" y="{y + bar_h * 0.7:.1f}" text-anchor="end" class="lbl">{esc(short)}'
+                   f'<title>{esc(label)}</title></text>')
         if value is None:
             out.append(f'<text x="{left + 4}" y="{y + bar_h * 0.7:.1f}" class="nm">{NOT_MEASURED}</text>')
         else:
@@ -652,7 +667,7 @@ def svg_bars(items: list[tuple[str, float | None, str]], line: tuple[str, float]
 def svg_frontier(points: list[tuple[float, float]], second: list[tuple[float, float]], ratio: float | None,
                  title: str) -> str:
     """Joules per token (left axis, line) against streams on a log2 axis, aggregate tok/s as bars behind it."""
-    width, height, left, right, top, bottom = 640, 300, 56, 56, 24, 44
+    width, height, left, right, top, bottom = 520, 300, 48, 44, 24, 44
     xs = [x for x, _ in points]
     lo, hi = math.log2(min(xs)), math.log2(max(xs))
     span = (hi - lo) or 1.0
@@ -682,8 +697,10 @@ def svg_frontier(points: list[tuple[float, float]], second: list[tuple[float, fl
     if ratio:
         y_last = py(points[-1][1])
         out.append(f'<line x1="{left}" y1="{y_last:.1f}" x2="{width - right}" y2="{y_last:.1f}" class="ref"/>')
-        out.append(f'<text x="{(left + width - right) / 2:.1f}" y="{y_last - 8:.1f}" text-anchor="middle" class="reft">'
-                   f'{ratio:g} times less energy per token than 1 stream</text>')
+        out.append(f'<text x="{width - right:.1f}" y="{top + 14}" text-anchor="end" class="reft">'
+                   f'{ratio:g} times less energy</text>')
+        out.append(f'<text x="{width - right:.1f}" y="{top + 32}" text-anchor="end" class="reft">'
+                   f'per token than 1 stream (dashed)</text>')
     out.append(f'<text x="{(left + width - right) / 2:.1f}" y="{height - 8}" text-anchor="middle" class="lbl">'
                'concurrent streams</text>')
     out.append(f'<text x="14" y="{top + (height - top - bottom) / 2:.1f}" class="lbl" transform="rotate(-90 14 '
@@ -694,7 +711,7 @@ def svg_frontier(points: list[tuple[float, float]], second: list[tuple[float, fl
 
 def svg_stack(batches: list[dict[str, Any]], title: str) -> str:
     """One stacked bar per batch size: ms per decode step by bucket."""
-    width, left, right, bar_h, gap = 640, 80, 20, 28, 34
+    width, left, right, bar_h, gap = 520, 70, 16, 28, 34
     height = 20 + len(batches) * (bar_h + gap) + 40
     peak = max([sum(p["value"] or 0 for p in b["parts"]) for b in batches] + [1e-9])
     scale = (width - left - right) / peak
@@ -748,7 +765,7 @@ section{background:var(--card);border:1px solid var(--line);border-radius:12px;p
 .state{display:inline-block;font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;padding:2px 8px;
 border-radius:99px;border:1px solid var(--line);color:var(--mute);vertical-align:middle;margin-left:.5em}
 .chart{width:100%;height:auto;display:block;margin:8px 0 12px}
-.chart text{font-size:12px;fill:var(--ink)}.chart .lbl{fill:var(--mute)}.chart .val{font-weight:600}
+.chart text{font-size:14px;fill:var(--ink)}.chart .lbl{fill:var(--mute)}.chart .val{font-weight:600}
 .chart .nm{fill:var(--flag);font-style:italic}.chart .reft{fill:var(--b);font-weight:600}
 .chart .lbl2,.chart .val2{fill:var(--mute);font-size:11px}
 .chart .cur{fill:var(--a)}.chart .old{fill:var(--old)}.chart .prior{fill:var(--prior);opacity:.75}
@@ -760,6 +777,7 @@ border-radius:99px;border:1px solid var(--line);color:var(--mute);vertical-align
 .stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
 .stat{border-top:2px solid var(--line);padding-top:6px}.stat .k{font-size:.85rem;color:var(--mute)}
 .stat .v{font-size:1.4rem;font-weight:650}
+a{color:var(--a)}
 .cite{display:block;font-size:.75rem;color:var(--mute);overflow-wrap:anywhere}.cite a{color:var(--a)}
 .flag{color:var(--flag)}
 .apart{border:1px dashed var(--old);border-radius:10px;padding:12px;margin-top:14px}
@@ -768,7 +786,7 @@ border-radius:99px;border:1px solid var(--line);color:var(--mute);vertical-align
 table{border-collapse:collapse;width:100%;font-size:.85rem}td,th{border-bottom:1px solid var(--line);padding:6px 4px;
 text-align:left;vertical-align:top}.wrap{overflow-x:auto}
 footer{color:var(--mute);font-size:.8rem}
-@media (min-width:1600px){body{font-size:19px}main{max-width:1400px}.chart text{font-size:13px}}
+@media (min-width:1600px){body{font-size:19px}main{max-width:1400px}.chart text{font-size:14px}}
 """
 
 
@@ -821,7 +839,10 @@ def render_html(pack: dict[str, Any], root: Path = REPO, page_dir: Path | None =
         thr = next((t for t in s["throughput"] if t["node"] == sweep["node"] and t["session"] == sweep["session"]), None)
         second = [(p["batch"], p["number"]["value"]) for p in thr["points"]] if thr else []
         ratio = s["ratios"][0]["value"] if s["ratios"] else None
-        body.append(svg_frontier(pts, second, ratio, "Joules per token against concurrent streams"))
+        body.append(svg_frontier(pts, [], ratio, "Joules per token against concurrent streams"))
+        if second:
+            body.append(svg_bars([(f"{x:g} streams", y, "ceil") for x, y in second], None, "tok/s",
+                                 "Tokens per second across all streams together"))
         nums = [p["number"] for p in sweep["points"]] + ([p["number"] for p in thr["points"]] if thr else [])
         body.append('<div class="stats">' + "".join(page.stat(n) for n in [*s["ratios"], *nums]) + "</div>")
         for extra in s["energy"][1:]:
