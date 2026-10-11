@@ -7,6 +7,11 @@
 NEON_DATABASE_URL comes from the environment, else from `.env` (ATLAS_ENV_FILE). The connection string is never
 printed, and a failed connection says only what kind of failure it was (the driver's own message names the host).
 
+ATLAS_NEON_TRANSPORT picks the way there, as for the app: `tcp` (psycopg, port 5432), `https` (port 443, no
+driver needed) or `auto` (the default: tcp, then https when 5432 cannot be reached). The first line printed says
+which one was used. Over https, --check and --counts are still read-only (the server enforces it per request),
+and --apply looks at what exists in one request and creates what is missing in a second, as one transaction.
+
 --check and --counts open the connection read-only. They print shapes and counts: never row contents; member and
 circle ids are shortened to two letters unless they are `test-…` rows. Exit status 0: the database matches.
 
@@ -22,7 +27,9 @@ import sys
 import time
 from pathlib import Path
 
-from contexts.circle.infrastructure.neon import CONNECT_TIMEOUT_S, ENV_URL
+from contexts.circle.application.sharing import CircleOffline
+from contexts.circle.infrastructure.neon import ENV_URL, NeonTransport
+from contexts.circle.infrastructure.neon_https import NeonHttpsDropped
 
 SCHEMA = Path(__file__).parent / "infrastructure" / "schema.sql"
 TIME_COLUMNS = ("created_at", "joined_at", "shared_at", "updated_at", "played_at", "set_at", "closed_at", "day", "starts_at")
@@ -165,22 +172,26 @@ def main(argv: list[str] | None = None) -> int:
     if not url:
         print(f"{ENV_URL} is not set (environment or .env): nothing to check")
         return 2
+    transport = NeonTransport()  # this run's own: the tool decides afresh every time
     try:
-        import psycopg
-    except ImportError:
-        print('the Postgres driver is not installed: pip install -e ".[neon]"')
+        conn = transport.connect(url)
+    except CircleOffline as e:  # the driver is missing and tcp was asked for, or the setting is not one of the three
+        print(e)
         return 2
-    try:
-        conn = psycopg.connect(url, connect_timeout=CONNECT_TIMEOUT_S)
-    except psycopg.Error as e:  # the driver's message names the host: say only what kind of failure it was
-        print(f"could not connect ({type(e).__name__}); is port 5432 reachable from this network?")
+    except Exception as e:  # the driver's message names the host: say only what kind of failure it was
+        print(f"could not connect ({type(e).__name__}); is port 5432 reachable from this network?"
+              " ATLAS_NEON_TRANSPORT=https goes over port 443")
         return 1
+    print("transport: " + {"tcp": "tcp (psycopg, port 5432)", "https": "https (port 443)"}[transport.chosen])
     try:
         if args.apply:
             apply(conn)
             conn.rollback()
         conn.read_only = True
         return 1 if audit(conn, counts=args.counts) else 0
+    except NeonHttpsDropped as e:  # over https the first statement is the first contact; its message is ours, no host
+        print(f"could not connect over https, port 443 ({e})")
+        return 1
     finally:
         conn.close()
 
