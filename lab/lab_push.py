@@ -32,8 +32,9 @@ run.json is read only to learn that the run has ended (and kept by --save); the 
 --follow keeps doing that for a run that is still training: every --every seconds (60) it looks for run.json, then
 reads and posts the steps, and it stops after the first post that follows run.json, which holds the whole file. It
 also stops at --max-minutes (120), and at once when the answer will not change by waiting: the box asks for a token
-(401), has no such route (404, 405: it runs code older than the import), refuses the file (400, 413), or the hub
-refuses the account. A box or a pod that is briefly unreachable is tried again on the next round.
+(401), has no such route (404, 405: it runs code older than the import), refuses the file (400, 413), the hub refuses
+the account, or the pod has stopped. A box that does not answer or answers 5xx, and a pod read that times out or meets
+a gateway error, are tried again on the next round.
 
 --save DIR keeps a copy of every file read, under its own name; a steps file never replaces a longer copy.
 
@@ -90,6 +91,8 @@ MIN_HIDDEN_CHARS = 4
 # Box answers that waiting will not change, and what each is called.
 FINAL_ANSWERS = {400: "box_refused_file", 401: "box_wants_token", 403: "box_wants_token", 404: "route_missing",
                  405: "route_missing", 413: "too_large"}
+# Pod answers that waiting will not change (lab/proxy.py's kinds): the hub refuses the account, or the pod is gone.
+FINAL_POD_KINDS = frozenset({"bad_token", "unauthorized", "blocked", "pod_stopped"})
 CONTENT_TYPES = {"telemetry": "application/x-ndjson", "eval": "application/json", "manifest": "application/json",
                  "ledger": "application/x-ndjson"}
 LINE_KINDS = ("ledger",)              # JSON-lines files that may be read while a line is being appended
@@ -390,7 +393,7 @@ def follow_steps(relay: Relay, run_dir: str, *, follow: bool, every_s: float, ma
             part = relay.steps(steps_path)
             out["telemetry"] = part
         except ProxyError as exc:
-            if not (follow and exc.retryable):
+            if not follow or exc.kind in FINAL_POD_KINDS:
                 return {**out, "outcome": "pod_error", "kind": exc.kind, "error": str(exc)}
             part, problem = {}, f"{exc.kind}: {exc}"
         except OSError as exc:
@@ -549,7 +552,10 @@ def main(argv: Sequence[str] | None = None, *, environ: Mapping[str, str] | None
             source = PodSource(PodLink.for_account(account, transport=transport, environ=environ, sleep=sleep, clock=clock))
         relay = Relay(source, box, run_id=args.run_id, save_dir=Path(args.save).expanduser() if args.save else None)
         if args.dry_run:
-            return _plan(args, source, box, args.run_id)
+            try:
+                return _plan(args, source, box, args.run_id)
+            except OSError as exc:
+                return {"ok": False, "outcome": "read_error", "error": f"{type(exc).__name__}: {exc}"}
         return _push(args, relay, sleep=sleep, clock=clock, say=say)
     finally:
         source.close()

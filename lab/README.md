@@ -1328,8 +1328,9 @@ python -m lab lab-push --box http://<box>:8000 --account D --run-dir adapters/l1
   new steps and the screen plays the run live.
 - **`--follow` ends** after the first post that follows `run.json` (that post holds the whole file), at
   `--max-minutes` (120), or at once when waiting cannot help: the box wants a token (401), has no import route (404 or
-  405, a build older than the import), or refuses the file (400, 413). A box or pod that is briefly unreachable is
-  tried again on the next round. `--every` is 5 to 3600 seconds.
+  405, a build older than the import), refuses the file (400, 413), the hub refuses the account, or the pod has
+  stopped. A box that does not answer or answers 5xx, and a pod read that times out, are tried again on the next
+  round. `--every` is 5 to 3600 seconds.
 - **Run ids.** The steps name their run; `--run-id` overrides and makes the box refuse steps or scores of another run.
   A manifest does not name its run, so it needs `--run-id` (or steps posted in the same call). The gate's event must
   carry the trainer's run id for its scores to land on the same run: run `eval-gate --run-id <the trainer's run id>`.
@@ -1341,8 +1342,8 @@ python -m lab lab-push --box http://<box>:8000 --account D --run-dir adapters/l1
   whether one was sent.
 - **Answer.** One JSON object: `outcome` is `pushed`, or names what stopped it (`no_telemetry`, `bound_reached`,
   `box_wants_token`, `route_missing`, `box_refused_file`, `too_large`, `box_unreachable`, `box_error`, `pod_error`,
-  `missing_file`, `empty_file`, `no_run_id`, `no_box`, `no_credentials`, `unsafe_path`), with the box's own answer to
-  each post. A run brought in this way reads "Training" on the screen until its eval is imported.
+  `read_error`, `missing_file`, `empty_file`, `no_run_id`, `no_box`, `no_credentials`, `unsafe_path`), with the box's
+  own answer to each post. A run brought in this way reads "Training" on the screen until its eval is imported.
 
 First run, 2026-10-10 on the Strix Halo trainer (pod D, gfx1151): L16's run `train-20261011T032149Z-7dd098`, 18 steps.
 Its steps were posted by hand with these same reads and posts while it trained (five posts about a minute apart, 11 to

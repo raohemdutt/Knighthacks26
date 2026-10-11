@@ -372,6 +372,29 @@ def test_a_wrong_hub_token_stops_the_relay_and_no_key_is_shown(tmp_path, box):
     assert box.posts == [] and wrong not in json.dumps(result) + said and USER not in json.dumps(result) + said
 
 
+def test_follow_rides_out_a_pod_read_that_times_out_at_the_edge(tmp_path, box):
+    pod, lines = Pod(), step_lines(tmp_path, 3)
+    pod.put("telemetry.jsonl", b"".join(lines))
+    pod.put("run.json", RUN_JSON)
+    pod.fake.queue("GET", "telemetry.jsonl", 524, text="error code: 524")     # Cloudflare gave up on the origin, once
+    result, said = push(["--account", "D", "--run-dir", RUN_DIR, "--follow", "--every", "60"], pod=pod, box=box)
+    assert result["ok"] is True and result["outcome"] == "pushed" and result["rounds"] == 2 and box.steps() == [1, 2, 3]
+    assert "round 1: the pod could not be read" in said and len(box.posts) == 1
+    # without --follow the same answer ends the call and is named
+    pod.fake.queue("GET", "telemetry.jsonl", 524, text="error code: 524")
+    once, _ = push(["--account", "D", "--run-dir", RUN_DIR], pod=pod, box=box)
+    assert once["ok"] is False and once["outcome"] == "pod_error" and once["rounds"] == 1 and len(box.posts) == 1
+
+
+def test_a_pod_that_has_stopped_ends_the_follow(tmp_path, box):
+    pod = Pod()
+    pod.put("telemetry.jsonl", b"".join(step_lines(tmp_path, 3)))
+    pod.fake.stop_pod("D")
+    result, _ = push(["--account", "D", "--run-dir", RUN_DIR, "--follow", "--every", "60"], pod=pod, box=box)
+    assert result["ok"] is False and result["outcome"] == "pod_error" and result["kind"] == "pod_stopped"
+    assert result["rounds"] == 1 and box.posts == []
+
+
 def test_missing_hub_keys_are_named_and_nothing_is_called(box):
     pod = Pod()
     err = io.StringIO()
@@ -518,6 +541,13 @@ def test_the_run_is_read_through_the_fake_hub_with_gets_only(tmp_path, box):
     pod_calls = hub.calls_matching(contains=f"/user/{USER}/")
     assert len(pod_calls) == 6 and all(c.method == "GET" and "/files/" in c.path for c in pod_calls)
     assert hub.running("D") is True
+
+
+def test_a_path_that_is_a_folder_is_an_answer_and_not_a_traceback(tmp_path, box):
+    for extra in ([], ["--dry-run"]):
+        result, _ = push(["--eval", str(tmp_path), "--run-id", RUN, *extra], box=box)
+        assert result["ok"] is False and result["outcome"] == "read_error", extra
+    assert box.posts == []
 
 
 # --- the dry run and the command line ---------------------------------------------------------------------
