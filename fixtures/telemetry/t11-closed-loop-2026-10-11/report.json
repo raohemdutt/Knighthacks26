@@ -1,0 +1,132 @@
+{
+  "run_id": "t11-20261011T053204Z-3bd0",
+  "source": "real",
+  "requests": 100,
+  "dataset_id": "tool-calling-fixture",
+  "experiments": [
+    "T11-energy",
+    "T11-quality"
+  ],
+  "ledger_seqs": {
+    "A": 1,
+    "B": 2
+  },
+  "citation": "T11 run t11-20261011T053204Z-3bd0, python -m lab routing-closed-loop (real) in lab/routing_closed_loop.py; 100 labeling requests from tool-calling-fixture, no golden question; per-request records requests.jsonl and report.json of the run; ledger rows seq 1 (arm A) and 2 (arm B), verb routing-closed-loop, task T11; contexts/telemetry/application/routing.py (T5), contexts/telemetry/application/joules.py (T4), lab/machine/verdict.py, telemetry rubric TT6",
+  "arms": {
+    "A": {
+      "policy": "capability",
+      "requests": 100,
+      "targets": {
+        "student": 100
+      },
+      "decided_by": {
+        "capability": 100
+      },
+      "unmeasured": 0,
+      "low_confidence": 100,
+      "telemetry.joules_per_answer": {
+        "n": 100,
+        "mean": 235.29026548453345,
+        "sd": 81.11513497360873
+      },
+      "label.seconds": {
+        "n": 100,
+        "mean": 12.780912022590638,
+        "sd": 4.113917668925711
+      },
+      "learning.label_agreement": {
+        "n": 100,
+        "mean": 0.73,
+        "sd": 0.4461960433384737
+      },
+      "agreed": 73
+    },
+    "B": {
+      "policy": "energy",
+      "requests": 100,
+      "targets": {
+        "student": 100
+      },
+      "decided_by": {
+        "energy": 100
+      },
+      "unmeasured": 0,
+      "low_confidence": 100,
+      "telemetry.joules_per_answer": {
+        "n": 100,
+        "mean": 247.47410818319156,
+        "sd": 83.61716011400809
+      },
+      "label.seconds": {
+        "n": 100,
+        "mean": 13.37096310377121,
+        "sd": 4.235132240710004
+      },
+      "learning.label_agreement": {
+        "n": 100,
+        "mean": 0.72,
+        "sd": 0.451260859854213
+      },
+      "agreed": 72
+    }
+  },
+  "verdicts": {
+    "telemetry.joules_per_answer": {
+      "label": "no_difference",
+      "test": "welch",
+      "statistic": 1.0458525133680352,
+      "p": 0.29690539419309425,
+      "df": 197.8175473003042,
+      "diff": 12.183842698658111,
+      "n_a": 100,
+      "n_b": 100,
+      "min_per_arm": 5,
+      "needed_per_arm": 719,
+      "more_a": 619,
+      "more_b": 619,
+      "note": "no difference shown: B mean 247.5 against A mean 235.3 (t = 1.046, df = 197.8, p = 0.2969); a difference this size needs 719 runs per arm at 80% power, 619 more each"
+    },
+    "label.seconds": {
+      "label": "no_difference",
+      "test": "welch",
+      "statistic": 0.9993595913672525,
+      "p": 0.3188413028693685,
+      "df": 197.83327074609542,
+      "diff": 0.5900510811805724,
+      "n_a": 100,
+      "n_b": 100,
+      "min_per_arm": 5,
+      "needed_per_arm": 787,
+      "more_a": 687,
+      "more_b": 687,
+      "note": "no difference shown: B mean 13.37 against A mean 12.78 (t = 0.999, df = 197.8, p = 0.3188); a difference this size needs 787 runs per arm at 80% power, 687 more each"
+    },
+    "learning.label_agreement": {
+      "label": "no_difference",
+      "test": "two_proportion",
+      "statistic": -0.1583615164929793,
+      "p": 0.8741719364654532,
+      "df": null,
+      "diff": -0.010000000000000009,
+      "n_a": 100,
+      "n_b": 100,
+      "min_per_arm": 50,
+      "needed_per_arm": 31297,
+      "more_a": 31197,
+      "more_b": 31197,
+      "note": "no difference shown: B 72.0% against A 73.0% (z = -0.158, p = 0.8742); a difference this size needs 31297 trials per arm at 80% power, 31197 more each"
+    }
+  },
+  "changed": {
+    "energy": false,
+    "quality": false
+  },
+  "keep_policy_two": false,
+  "probes": 2,
+  "rubric_tt6": {
+    "met": true,
+    "read_snapshot": 100,
+    "reasons": [],
+    "text": "TT6 finding for the merge pass (not an edit to the rubric): met. Policy two read the snapshot on 100 of 100 requests; the control sent every request to the student, the rubric's fixed all-student baseline; joules per answer no_difference, label agreement no_difference, latency no_difference; by the TT6 keep rule policy two is not kept (revert or rule on it)."
+  }
+}

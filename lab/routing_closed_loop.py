@@ -110,6 +110,10 @@ DEFAULT_OUT = Path(__file__).resolve().parent / "state" / VERB
 # so the test names its own: ids no E number can collide with. --experiment-ids replaces them with the two E numbers
 # T0 gave, when it has.
 EXPERIMENT_IDS = ("T11-energy", "T11-quality")
+# What read each metric of a metrics-file row (the measured-row fields: sampler, period_ms, samples, error).
+ROW_SAMPLERS = {JOULES: "T4's joules projection over the power samples of --power-log",
+                LATENCY: "the client clock of lab/routing_closed_loop.py",
+                QUALITY: "label agreement against expected.jsonl in lab/routing_closed_loop.py"}
 REQUESTS_FILE = "requests.jsonl"
 REPORT_FILE = "report.json"
 T0_FILE = "t0_result.txt"
@@ -450,7 +454,9 @@ def metrics_rows(summary: Mapping[str, Any], *, run_id: str, source: str, node: 
     what the Learning lab's Routing tab reads as the measured closed loop (closed_loop in
     contexts/learning/application/lab_routing.py: the same metric and node once per policy, at least 100 requests
     each). The loop spans both nodes, so the rows carry one name for it, the teacher's by default, and `targets` says
-    which node answered how many. `conditions` are the told ones (the card, the hub, the teacher's build)."""
+    which node answered how many. `conditions` are the told ones (the card, the hub, the teacher's build). Every row
+    names its sampler, its samples (the arm's requests) and an unknown error; the period is not known here, so it is
+    null unless the told `power_period_ms` gives the power samples' period, which the joules rows then carry."""
     rows = []
     for arm, policy, _ in ARMS:
         a = summary["arms"][arm]
@@ -459,10 +465,14 @@ def metrics_rows(summary: Mapping[str, Any], *, run_id: str, source: str, node: 
             if stats["mean"] is None:
                 continue
             c: dict[str, Any] = {
-                "policy": policy, "requests": a["requests"], "arm": arm, "session": run_id,
+                "policy": policy, "requests": a["requests"], "arm": arm, "run_id": run_id,
                 "statistic": "mean over the arm's requests", "stats": dict(stats), "targets": dict(a["targets"]),
                 "decided_by": dict(a["decided_by"]), "unmeasured": a["unmeasured"],
-                "verdict_b_against_a": summary["verdicts"][metric]["label"], **dict(conditions or {})}
+                "verdict_b_against_a": summary["verdicts"][metric]["label"],
+                "sampler": ROW_SAMPLERS[metric], "period_ms": None, "samples": stats["n"], "error": "unknown",
+                **dict(conditions or {})}
+            if metric == JOULES and isinstance(c.get("power_period_ms"), (int, float)):
+                c["period_ms"] = c["power_period_ms"]
             low = source == "fake" or (metric == JOULES and (a["low_confidence"] > 0 or a["unmeasured"] > 0))
             if low:
                 c["low_confidence_reason"] = (
@@ -705,7 +715,8 @@ def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
                    help="also append the run to the metrics file as one row per arm and metric, with "
                         "conditions.policy and conditions.requests (the real run; default path: %(const)s)")
     p.add_argument("--row-condition", action="append", default=[], metavar="NAME=VALUE",
-                   help="a told condition for those rows, such as gpu, hub, account or the teacher's build (repeatable)")
+                   help="a told condition for those rows, such as gpu, hub, account or the teacher's build "
+                        "(repeatable); power_period_ms=<ms> becomes the joules rows' period_ms")
     p.add_argument("--settle-s", type=float, default=SETTLE_S)
     p.add_argument("--wait-s", type=float, default=WAIT_S)
     args = p.parse_args(list(argv) if argv is not None else None)
