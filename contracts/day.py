@@ -416,3 +416,4 @@ class DayOptionalAnswered(TypedEvent):
     at: datetime
     plan_id: str | None = None  # the re-plan the answer raised, when it raised one
     action_id: str | None = None  # ... and its approval card
+    until: datetime | None = None  # a yes that means leaving early for the next fixed event: when its block ends in the plan

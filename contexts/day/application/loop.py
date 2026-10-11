@@ -12,6 +12,7 @@ from contexts.day.application.arbiter import Arbiter
 from contexts.day.application.checkin import CheckIn
 from contexts.day.application.coach import DayCoach
 from contexts.day.application.narrator import NarrationConfig, Narrator
+from contexts.day.application.optional import OptionalEvents
 from contexts.day.application.planner import DayPlanner
 from contexts.day.application.reminders import Reminders
 from contexts.day.application.tracker import DayTracker
@@ -50,6 +51,8 @@ class DayLoop:
         # Block-start reminders: said once when a planned block starts. agent.yaml `day: {block_reminders: false}` turns them off.
         self.reminders = Reminders(self.planner, self.tracker, self.narrator, self.clock,
                                    enabled=bool((narration or {}).get("block_reminders", True)))
+        # Optional events ("Near you"): a yes raises a re-plan behind the usual card; approved, the event is a block of the day.
+        self.optional = OptionalEvents(self.planner, self.tracker, self.clock, memory=memory)
 
     def subscribe(self, bus) -> None:
         p, t, c = self.planner, self.tracker, self.coach
@@ -78,6 +81,10 @@ class DayLoop:
             bus.subscribe(prefix, c.on_event)  # a block of the main activity ended: one sentence for the phone
         for prefix in ("connector.item.synced", "circle.place.shared", "day.plan.proposed", "day.plan.committed"):
             bus.subscribe(prefix, t.on_change)
+
+        # Optional events: answers, which plan carries which, and which are accepted, all from the log (replay=True inside).
+        # After the planner: an approval counts only for the plan the day is now measured against.
+        self.optional.subscribe(bus)
 
         # The check-in: its signals rebuild from the log (replay=True inside); looking at the rule and raising one is
         # live only, so a restart never raises an old check-in again. After the coach: it reads the coach's desk presence.

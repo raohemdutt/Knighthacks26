@@ -505,6 +505,7 @@ def build(settings: Settings | None = None) -> Atlas:
         day = DayLoop(dayrun, places, config_dir=s.config_dir, habits=habits, memory=memory, waste=waste, presence=presence, hub=hub,
                       runtime=runtime, narration=agent_cfg.get("day"), description=profile.description)
         day.subscribe(bus)
+        planner.accepted_optional = lambda: day.optional.accepted  # the leaving checklist counts an optional event once it is accepted
         talk.day_facts = lambda: day.in_words(datetime.now(UTC))  # the person's day, in the narrator's words
         if ntfy:  # the plan, a re-plan and the review on the phone, in the narrator's words when it is on
             bus.subscribe("day.", day_phone(ntfy, s.ntfy_topic, narrated=day.narrator.mode != "off"))

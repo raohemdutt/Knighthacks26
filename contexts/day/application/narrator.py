@@ -46,6 +46,7 @@ from contexts.day.domain import checkin as checkin_rule
 from contexts.day.domain import narration as words
 from contexts.day.domain.clock import DayClock
 from contexts.day.domain.narration import Narration, hhmm, short_place, short_title
+from contexts.day.domain.optional import block_id as optional_block
 from contracts.day import (
     DayCheckinRaised,
     DayCoachNoted,
@@ -575,6 +576,14 @@ class Narrator:
             if any(m.id == e.for_event for m in e.moves):
                 ev["kept"] = True
             f["for"] = ev
+        if e.for_optional:  # a yes to an optional event (the re-plan carries its block), or a no to one that was in the plan
+            mine = optional_block(e.for_optional)
+            block = next((m for m in e.moves if m.id == mine), None)
+            was = next((m for m in current.moves if m.id == mine), None) if current else None
+            if block is not None:
+                f["added"] = short_title(block.title)
+            elif was is not None:
+                f["removed"] = short_title(was.title)
         return f
 
     def coach_facts(self, e: DayCoachNoted) -> dict:
