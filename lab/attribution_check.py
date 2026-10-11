@@ -341,7 +341,8 @@ def _busy(load: Mapping[str, int] | None) -> bool:
 
 
 def _jsonl(path: Path, rows: Iterable[Mapping[str, Any]]) -> None:
-    path.write_text("".join(json.dumps(r, sort_keys=False) + "\n" for r in rows), encoding="utf-8")
+    path.write_text("".join(json.dumps(r, sort_keys=False) + "\n" for r in rows), encoding="utf-8",
+                    newline="\n")
 
 
 def _files(out_dir: Path, tag: str) -> dict[str, Path]:

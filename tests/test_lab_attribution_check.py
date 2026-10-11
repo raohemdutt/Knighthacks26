@@ -213,6 +213,7 @@ def test_the_run_writes_its_raw_rows_and_a_replay_gives_the_same_numbers(tmp_pat
                      "attribution_check_test_run.jsonl"}
     samples = (tmp_path / "attribution_check_test_samples.jsonl").read_text().splitlines()
     assert all("t_local" not in json.loads(line) for line in samples)
+    assert all(b"\r\n" not in (tmp_path / name).read_bytes() for name in files)   # LF on every platform
     again = ac.replay(tmp_path, "test")
     for key in ("answers_energy_j", "gap_energy_j", "missed_j", "missed_share", "trustworthy"):
         assert again[key] == out["result"][key]
