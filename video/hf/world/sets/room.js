@@ -7,7 +7,9 @@ import * as THREE from "three";
 import { SHADE, INK, ACCENT, MUTED, FLOOR_Y, hash, clamp01, lerp, softTexture, FONT, flat, matte, tint, between, fadingSet, RoundedBoxGeometry } from "./common.js";
 import { makeHuman, LOOKS } from "./human.js";
 
-const WOOD = 0xe0d6c8, WALL = 0xe1e6ed, FABRIC = 0xa9b4c5, BOOKS = [0x8f9cb0, 0xc9b7a2, 0x9fb09c, 0xd2c2b0, 0x566176, 0xb4a6b8, 0xa7b8c4, 0xd9cbb9];
+// Colours from the website's room (web/components/map/roomModels.ts, PALETTE): warm walls, oak, a blue duvet, sage and
+// plant greens, bright book spines. The film keeps its own layout; only the palette follows the site.
+const WOOD = 0xc9a373, WALL = 0xe9e4da, FABRIC = 0x5f7fa3, CHAIR_FABRIC = 0x8795a8, PILLOW = 0xe6dfd2, BOOKS = [0xb8473d, 0x2f5d8a, 0xe0b23f, 0x3f7f5f, 0x7a4f8f, 0xe8e2d2, 0x2c2f36, 0xd77a3a, 0x4aa3a8];
 
 function rbox(w, h, d, mat, r = 0.12, seg = 3) {
   const m = new THREE.Mesh(new RoundedBoxGeometry(w, h, d, seg, Math.min(r, Math.min(w, h, d) / 2 - 1e-3)), mat);
@@ -42,7 +44,7 @@ export function buildRoom(scene, humanGltf) {
   // eye height; the desk top is a normal 75 cm.
   const F = -12.0, SHELF = -1.002, TOP = F + 7.5;
   const wood = matte({ color: WOOD, roughness: 0.75 }), white = matte({ roughness: 0.8 }), wall = matte({ color: WALL, roughness: 0.95 });
-  const ink = matte({ color: 0x3a404a, roughness: 0.5 }), fabric = tint(FABRIC, { roughness: 1 }), soft = matte({ color: 0xd3dae3, roughness: 0.9 });
+  const ink = matte({ color: 0x3a404a, roughness: 0.5 }), fabric = tint(FABRIC, { roughness: 1 }), chairFabric = tint(CHAIR_FABRIC, { roughness: 1 }), soft = matte({ color: PILLOW, roughness: 0.9 });
   const at = (m, x, y, z) => { m.position.set(x, y, z); return m; };
 
   // Floor shadows (the floor itself is the page colour, so only the shadow shows), and a rug under the chair.
@@ -54,7 +56,7 @@ export function buildRoom(scene, humanGltf) {
   // The back wall behind the device, with a window over the desk.
   const backWall = at(rbox(46, 28, 0.4, wall, 0.1, 2), 4, F + 14, -1.45); backWall.castShadow = false; set.add(backWall);
   const win = new THREE.Group(); win.position.set(-8.5, F + 15.5, -1.2);
-  const glass = new THREE.Mesh(new THREE.PlaneGeometry(7.6, 7.6), flat({ color: 0xf6f8fb })); glass.position.z = -0.02; win.add(glass);
+  const glass = new THREE.Mesh(new THREE.PlaneGeometry(7.6, 7.6), flat({ color: 0xd6ebff })); glass.position.z = -0.02; win.add(glass);
   for (const [w, h, x, y] of [[8.4, 0.4, 0, 4.0], [8.4, 0.4, 0, -4.0], [0.4, 8.4, 4.0, 0], [0.4, 8.4, -4.0, 0], [7.6, 0.18, 0, 0], [0.18, 7.6, 0, 0]]) win.add(at(rbox(w, h, 0.4, white, 0.08, 2), x, y, 0.1));
   win.add(at(rbox(9.2, 0.25, 0.9, white, 0.08, 2), 0, -4.3, 0.4));
   set.add(win);
@@ -71,7 +73,7 @@ export function buildRoom(scene, humanGltf) {
     shelf.add(b); bx += w + 0.03;
   }
   const pot = at(new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.3, 0.62, 20), white), -2.3, 0.31, -0.2); pot.castShadow = true; shelf.add(pot);
-  for (let k = 0; k < 5; k++) { const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.36, 14, 10), tint(0x9fb09c, { roughness: 0.9 })); leaf.scale.set(0.6, 1.2, 0.6); leaf.position.set(-2.3 + (hash(k, 64) - 0.5) * 0.5, 0.95 + hash(k, 65) * 0.3, -0.2 + (hash(k, 66) - 0.5) * 0.4); leaf.rotation.z = (hash(k, 67) - 0.5) * 1.2; leaf.castShadow = true; shelf.add(leaf); }
+  for (let k = 0; k < 5; k++) { const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.36, 14, 10), tint(k % 2 ? 0x4f8a57 : 0x376a40, { roughness: 0.9 })); leaf.scale.set(0.6, 1.2, 0.6); leaf.position.set(-2.3 + (hash(k, 64) - 0.5) * 0.5, 0.95 + hash(k, 65) * 0.3, -0.2 + (hash(k, 66) - 0.5) * 0.4); leaf.rotation.z = (hash(k, 67) - 0.5) * 1.2; leaf.castShadow = true; shelf.add(leaf); }
   set.add(shelf);
 
   // The bed, behind the person: headboard on the back wall, long side facing the desk.
@@ -106,7 +108,7 @@ export function buildRoom(scene, humanGltf) {
   set.add(kb);
   const mouse = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 12), white); mouse.scale.set(1.1, 0.35, 0.75); mouse.position.set(-5.2, TOP + 0.12, 11.4); mouse.castShadow = true; set.add(mouse);
   const mug = new THREE.Group(); mug.position.set(-6.0, TOP, 13.4);
-  const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.38, 0.95, 24), tint(0xc9b7a2, { roughness: 0.6 })); cup.position.y = 0.48; cup.castShadow = true; mug.add(cup);
+  const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.38, 0.95, 24), tint(0xd2a23c, { roughness: 0.6 })); cup.position.y = 0.48; cup.castShadow = true; mug.add(cup);
   const handle = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.06, 8, 16), cup.material); handle.position.set(0.44, 0.5, 0); mug.add(handle);
   set.add(mug);
   // His keys, behind the mug ("where are my keys?"): a ring and two keys lying on the desk.
@@ -134,8 +136,8 @@ export function buildRoom(scene, humanGltf) {
   // The chair, pulled out from the desk, facing it; the person sits down into it.
   const CHAIR = [0.6, F, 8.5];
   const chair = new THREE.Group(); chair.position.set(...CHAIR); chair.rotation.y = Math.PI / 2; // backrest toward the bed (+x), seat facing the desk
-  chair.add(at(rbox(4.4, 0.6, 4.2, fabric, 0.28, 3), 0, 4.3, 0));
-  const back = at(rbox(4.2, 4.6, 0.55, fabric, 0.28, 3), 0, 7.6, 2.25); back.rotation.x = 0.1; chair.add(back);
+  chair.add(at(rbox(4.4, 0.6, 4.2, chairFabric, 0.28, 3), 0, 4.3, 0));
+  const back = at(rbox(4.2, 4.6, 0.55, chairFabric, 0.28, 3), 0, 7.6, 2.25); back.rotation.x = 0.1; chair.add(back);
   for (const sd of [-1, 1]) chair.add(at(rbox(0.25, 3.0, 0.3, ink, 0.1, 2), sd * 1.4, 5.9, 2.1));
   const post = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 3.4, 12), ink); post.position.y = 2.3; post.castShadow = true; chair.add(post);
   for (let k = 0; k < 5; k++) {

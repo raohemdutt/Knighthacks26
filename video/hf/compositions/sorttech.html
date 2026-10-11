@@ -34,24 +34,60 @@
 .btnrow { display: flex; gap: 18px; margin-top: 26px; }
 .ok { color: var(--ok); }
 .svgbox { margin-top: 14px; border-radius: 22px; overflow: hidden; }
+
+.sec { position: absolute; inset: 0; opacity: 0; pointer-events: none; backdrop-filter: grayscale(1) contrast(1.12) brightness(0.98); }
+.sec-noise { position: absolute; inset: -20px; opacity: 0.16; mix-blend-mode: overlay; background-size: 220px 220px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='2' stitchTiles='stitch'/></filter><rect width='220' height='220' filter='url(%23n)'/></svg>"); }
+.sec-lines { position: absolute; inset: 0; opacity: 0.18; background: repeating-linear-gradient(0deg, rgba(0,0,0,0.5) 0 1px, transparent 1px 4px); }
+.sec-vig { position: absolute; inset: 0; background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.38) 100%); }
+.sec-hud { position: absolute; left: 96px; bottom: 208px; padding: 6px 16px; border-radius: 10px; background: rgba(12,16,22,0.55); font-family: var(--font); font-size: 26px; font-weight: 700; letter-spacing: 0.12em; color: #f4f6f8; text-shadow: 0 1px 3px rgba(0,0,0,0.6); display: flex; align-items: center; gap: 12px; }
+.sec-rec { width: 16px; height: 16px; border-radius: 50%; background: #e0453a; box-shadow: 0 0 8px rgba(224,69,58,0.8); }
+.sec-time { position: absolute; left: 96px; bottom: 166px; padding: 4px 16px; border-radius: 10px; background: rgba(12,16,22,0.45); font-family: var(--font-body); font-size: 24px; font-weight: 600; color: #e9edf2; letter-spacing: 0.08em; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
+.sec-corner { position: absolute; width: 46px; height: 46px; border-color: rgba(244,246,248,0.75); border-style: solid; border-width: 0; }
+.sec-corner.tl { left: 60px; top: 150px; border-left-width: 3px; border-top-width: 3px; }
+.sec-corner.tr { right: 60px; top: 150px; border-right-width: 3px; border-top-width: 3px; }
+.sec-corner.bl { left: 60px; bottom: 150px; border-left-width: 3px; border-bottom-width: 3px; }
+.sec-corner.br { right: 60px; bottom: 150px; border-right-width: 3px; border-bottom-width: 3px; }
 </style>
       <div id="root" data-composition-id="sorttech" data-width="1920" data-height="1080">
         <div id="sorttech-chapter" class="chip-ch soft-raised soft-muted">What the kitchen camera runs on</div>
-        <div class="card soft-raised" id="sorttech-card1" style="left:110px;top:600px;width:860px"><div class="pk">on the Jetson</div><div class="ph">YOLO11 · 41 frames a second</div><div class="chips"><span class="site-tag">tracks every item</span><span class="site-tag">bin zones</span></div></div>
-        <div class="card soft-raised" id="sorttech-card2" style="left:1000px;top:600px;width:820px"><div class="ph">UCF's own bin rules</div><div class="chips"><span class="site-tag">config/sorting.yaml</span><span class="site-tag">impact numbers cite their sources</span><span class="site-tag">only counts leave</span></div></div>
-        <div class="card soft-raised" id="sorttech-card3" style="left:1000px;top:360px;width:820px"><div class="ph">Look guide</div><div class="pk">follows your eyes to point the way · the frames never leave the browser</div></div>
+        <div class="sec" id="sorttech-sec1">
+          <div class="sec-noise" id="sorttech-sec1-noise"></div><div class="sec-lines"></div><div class="sec-vig"></div>
+          <div class="sec-hud"><span class="sec-rec"></span>REC · CAM 02 · KITCHEN</div>
+          <div class="sec-time" id="sorttech-sec1-time">14:07:41</div>
+          <div class="sec-corner tl"></div><div class="sec-corner tr"></div><div class="sec-corner bl"></div><div class="sec-corner br"></div>
+        </div>
+        <div class="card soft-raised" id="sorttech-card2" style="left:110px;top:600px;width:860px"><div class="pk">on the Jetson</div><div class="ph">YOLO11 · 41 frames a second</div><div class="chips"><span class="site-tag">tracks every item</span><span class="site-tag">bin zones</span></div></div>
+        <div class="card soft-raised" id="sorttech-card3" style="left:1000px;top:600px;width:820px"><div class="ph">UCF's own bin rules</div><div class="chips"><span class="site-tag">config/sorting.yaml</span><span class="site-tag">impact numbers cite their sources</span><span class="site-tag">only counts leave</span></div></div>
+        <div class="card soft-raised" id="sorttech-card4" style="left:1000px;top:360px;width:820px"><div class="ph">Look guide</div><div class="pk">follows your eyes to point the way · the frames never leave the browser</div></div>
       </div>
       <script>
         (function () {
           const tl = gsap.timeline({ paused: true });
           tl.fromTo("#sorttech-chapter", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 0.15);
           tl.to("#sorttech-chapter", { opacity: 0, duration: 0.4 }, 3.200);
-          tl.fromTo("#sorttech-card1", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 1.000);
-          tl.to("#sorttech-card1", { opacity: 0, duration: 0.35, ease: "power2.in" }, 17.730);
-          tl.fromTo("#sorttech-card2", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 7.428);
+          tl.set("#sorttech-sec1", { opacity: 1 }, 0.000);
+          tl.set("#sorttech-sec1", { opacity: 0 }, 12.988);
+          tl.fromTo("#sorttech-sec1-noise", { x: 0, y: 0 }, { x: 137, y: -91, duration: 12.988, ease: "steps(155)" }, 0.000);
+          tl.fromTo("#sorttech-sec1-noise", { opacity: 0.12 }, { opacity: 0.2, duration: 0.09, ease: "steps(1)", repeat: 72, yoyo: true }, 0.000);
+          tl.set("#sorttech-sec1-time", { textContent: "14:07:42" }, 1.000);
+          tl.set("#sorttech-sec1-time", { textContent: "14:07:43" }, 2.000);
+          tl.set("#sorttech-sec1-time", { textContent: "14:07:44" }, 3.000);
+          tl.set("#sorttech-sec1-time", { textContent: "14:07:45" }, 4.000);
+          tl.set("#sorttech-sec1-time", { textContent: "14:07:46" }, 5.000);
+          tl.set("#sorttech-sec1-time", { textContent: "14:07:47" }, 6.000);
+          tl.set("#sorttech-sec1-time", { textContent: "14:07:48" }, 7.000);
+          tl.set("#sorttech-sec1-time", { textContent: "14:07:49" }, 8.000);
+          tl.set("#sorttech-sec1-time", { textContent: "14:07:50" }, 9.000);
+          tl.set("#sorttech-sec1-time", { textContent: "14:07:51" }, 10.000);
+          tl.set("#sorttech-sec1-time", { textContent: "14:07:52" }, 11.000);
+          tl.set("#sorttech-sec1-time", { textContent: "14:07:53" }, 12.000);
+          tl.fromTo("#sorttech-card2", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 1.000);
           tl.to("#sorttech-card2", { opacity: 0, duration: 0.35, ease: "power2.in" }, 17.730);
-          tl.fromTo("#sorttech-card3", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 12.988);
+          tl.fromTo("#sorttech-card3", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 7.428);
           tl.to("#sorttech-card3", { opacity: 0, duration: 0.35, ease: "power2.in" }, 17.730);
+          tl.fromTo("#sorttech-card4", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 12.988);
+          tl.to("#sorttech-card4", { opacity: 0, duration: 0.35, ease: "power2.in" }, 17.730);
           window.__timelines["sorttech"] = tl;
         })();
       </script>

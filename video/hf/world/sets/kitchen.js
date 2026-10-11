@@ -8,11 +8,11 @@ import { makeHuman, LOOKS } from "./human.js";
 import { buildAtlasLite as buildEnclosureLite } from "./device.js";
 
 export const KX = -42;
-const WOOD = 0xe0d6c8, WALL = 0xe1e6ed;
+const WOOD = 0xc9a373, WALL = 0xe9e4da; // the website room's oak and warm wall
 const BINS = [
-  { name: "recycle", text: "RECYCLE", color: 0x7f9dc4, ink: "#4f6f99", x: -12.4 },
-  { name: "compost", text: "COMPOST", color: 0x8fb38d, ink: "#557a54", x: -8.6 },
-  { name: "trash", text: "TRASH", color: 0x9ea6b1, ink: "#5b636e", x: -4.8 },
+  { name: "recycle", text: "RECYCLE", color: 0x2f7ed8, ink: "#4f6f99", x: -12.4 },
+  { name: "compost", text: "COMPOST", color: 0x3f9b5a, ink: "#557a54", x: -8.6 },
+  { name: "trash", text: "TRASH", color: 0x6c747e, ink: "#5b636e", x: -4.8 },
 ];
 
 function rbox(w, h, d, mat, r = 0.12, seg = 3) {

@@ -134,6 +134,45 @@ class Scene:
     def tween(self, line: str):
         self.tweens.append("          " + line)
 
+    def seccam(self, start, end, cam="CAM 02 · KITCHEN", clock=(14, 7, 32)):
+        """A security-camera look over the world while the shot is a camera's own view: black and white with a little
+        contrast, faint scanlines, a flicker of static, a vignette, a REC dot and a running timestamp. It sits under
+        every other overlay element, so Atlas's window and the chapter chip stay in colour. Hard on and off (cuts)."""
+        sid = self.uid("sec")
+        a, b = self.t(start), self.t(end)
+        hh, mm, ss = clock
+        self.body.insert(0, f'''        <div class="sec" id="{sid}">
+          <div class="sec-noise" id="{sid}-noise"></div><div class="sec-lines"></div><div class="sec-vig"></div>
+          <div class="sec-hud"><span class="sec-rec"></span>REC · {cam}</div>
+          <div class="sec-time" id="{sid}-time">{hh:02d}:{mm:02d}:{ss:02d}</div>
+          <div class="sec-corner tl"></div><div class="sec-corner tr"></div><div class="sec-corner bl"></div><div class="sec-corner br"></div>
+        </div>''')
+        self.extra += """
+.sec { position: absolute; inset: 0; opacity: 0; pointer-events: none; backdrop-filter: grayscale(1) contrast(1.12) brightness(0.98); }
+.sec-noise { position: absolute; inset: -20px; opacity: 0.16; mix-blend-mode: overlay; background-size: 220px 220px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='2' stitchTiles='stitch'/></filter><rect width='220' height='220' filter='url(%23n)'/></svg>"); }
+.sec-lines { position: absolute; inset: 0; opacity: 0.18; background: repeating-linear-gradient(0deg, rgba(0,0,0,0.5) 0 1px, transparent 1px 4px); }
+.sec-vig { position: absolute; inset: 0; background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.38) 100%); }
+.sec-hud { position: absolute; left: 96px; bottom: 208px; padding: 6px 16px; border-radius: 10px; background: rgba(12,16,22,0.55); font-family: var(--font); font-size: 26px; font-weight: 700; letter-spacing: 0.12em; color: #f4f6f8; text-shadow: 0 1px 3px rgba(0,0,0,0.6); display: flex; align-items: center; gap: 12px; }
+.sec-rec { width: 16px; height: 16px; border-radius: 50%; background: #e0453a; box-shadow: 0 0 8px rgba(224,69,58,0.8); }
+.sec-time { position: absolute; left: 96px; bottom: 166px; padding: 4px 16px; border-radius: 10px; background: rgba(12,16,22,0.45); font-family: var(--font-body); font-size: 24px; font-weight: 600; color: #e9edf2; letter-spacing: 0.08em; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
+.sec-corner { position: absolute; width: 46px; height: 46px; border-color: rgba(244,246,248,0.75); border-style: solid; border-width: 0; }
+.sec-corner.tl { left: 60px; top: 150px; border-left-width: 3px; border-top-width: 3px; }
+.sec-corner.tr { right: 60px; top: 150px; border-right-width: 3px; border-top-width: 3px; }
+.sec-corner.bl { left: 60px; bottom: 150px; border-left-width: 3px; border-bottom-width: 3px; }
+.sec-corner.br { right: 60px; bottom: 150px; border-right-width: 3px; border-bottom-width: 3px; }
+"""
+        self.tween(f'tl.set("#{sid}", {{ opacity: 1 }}, {a:.3f});')
+        self.tween(f'tl.set("#{sid}", {{ opacity: 0 }}, {b:.3f});')
+        # Static that shifts every frame-ish (deterministic: stepped jumps of the noise tile) and a light flicker.
+        n = max(1, int((b - a) * 12))
+        self.tween(f'tl.fromTo("#{sid}-noise", {{ x: 0, y: 0 }}, {{ x: 137, y: -91, duration: {b - a:.3f}, ease: "steps({n})" }}, {a:.3f});')
+        self.tween(f'tl.fromTo("#{sid}-noise", {{ opacity: 0.12 }}, {{ opacity: 0.2, duration: 0.09, ease: "steps(1)", repeat: {max(1, int((b - a) / 0.18))}, yoyo: true }}, {a:.3f});')
+        # The timestamp ticks once a second.
+        for k in range(1, int(b - a) + 1):
+            s2 = ss + k
+            self.tween(f'tl.set("#{sid}-time", {{ textContent: "{hh:02d}:{mm + s2 // 60:02d}:{s2 % 60:02d}" }}, {a + k:.3f});')
+
     def write(self):
         out = self.t("end-0.3")
         chapter_out = min(3.2, max(1.0, out - 0.5))
@@ -232,6 +271,7 @@ def faces(s: Scene):
 
 
 def kitchen(s: Scene):
+    s.seccam("0:0.2", "1:0")  # the wall camera's own view, until the cut to the counter Atlas
     bins = ('<svg viewBox="0 0 600 220" width="600" height="220"><rect width="600" height="220" fill="#e6ebf3"/>'
             '<rect id="BLUE" x="60" y="70" width="130" height="130" rx="16" fill="#456cb3"/><rect x="235" y="70" width="130" height="130" rx="16" fill="#0f7b5f" opacity="0.5"/>'
             '<rect x="410" y="70" width="130" height="130" rx="16" fill="#8a93a3" opacity="0.5"/><text x="70" y="55" font-size="22" font-family="Segoe UI" font-weight="700" fill="#456cb3">Recycling</text>'
@@ -254,6 +294,7 @@ def sortit(s: Scene):
 
 
 def sorttech(s: Scene):
+    s.seccam(0.0, "1:0", clock=(14, 7, 41))  # the bin camera's view, until the cut to the counter Atlas
     s.card('<div class="pk">on the Jetson</div><div class="ph">YOLO11 · 41 frames a second</div><div class="chips"><span class="site-tag">tracks every item</span><span class="site-tag">bin zones</span></div>', 110, 600, "0:0", w=860)
     s.card('<div class="ph">UCF\'s own bin rules</div><div class="chips"><span class="site-tag">config/sorting.yaml</span><span class="site-tag">impact numbers cite their sources</span><span class="site-tag">only counts leave</span></div>', 1000, 600, "0:0.55", w=820)
     s.card('<div class="ph">Look guide</div><div class="pk">follows your eyes to point the way · the frames never leave the browser</div>', 1000, 360, "1:0", w=820)

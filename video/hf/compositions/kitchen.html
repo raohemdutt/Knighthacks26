@@ -34,13 +34,33 @@
 .btnrow { display: flex; gap: 18px; margin-top: 26px; }
 .ok { color: var(--ok); }
 .svgbox { margin-top: 14px; border-radius: 22px; overflow: hidden; }
+
+.sec { position: absolute; inset: 0; opacity: 0; pointer-events: none; backdrop-filter: grayscale(1) contrast(1.12) brightness(0.98); }
+.sec-noise { position: absolute; inset: -20px; opacity: 0.16; mix-blend-mode: overlay; background-size: 220px 220px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='2' stitchTiles='stitch'/></filter><rect width='220' height='220' filter='url(%23n)'/></svg>"); }
+.sec-lines { position: absolute; inset: 0; opacity: 0.18; background: repeating-linear-gradient(0deg, rgba(0,0,0,0.5) 0 1px, transparent 1px 4px); }
+.sec-vig { position: absolute; inset: 0; background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.38) 100%); }
+.sec-hud { position: absolute; left: 96px; bottom: 208px; padding: 6px 16px; border-radius: 10px; background: rgba(12,16,22,0.55); font-family: var(--font); font-size: 26px; font-weight: 700; letter-spacing: 0.12em; color: #f4f6f8; text-shadow: 0 1px 3px rgba(0,0,0,0.6); display: flex; align-items: center; gap: 12px; }
+.sec-rec { width: 16px; height: 16px; border-radius: 50%; background: #e0453a; box-shadow: 0 0 8px rgba(224,69,58,0.8); }
+.sec-time { position: absolute; left: 96px; bottom: 166px; padding: 4px 16px; border-radius: 10px; background: rgba(12,16,22,0.45); font-family: var(--font-body); font-size: 24px; font-weight: 600; color: #e9edf2; letter-spacing: 0.08em; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
+.sec-corner { position: absolute; width: 46px; height: 46px; border-color: rgba(244,246,248,0.75); border-style: solid; border-width: 0; }
+.sec-corner.tl { left: 60px; top: 150px; border-left-width: 3px; border-top-width: 3px; }
+.sec-corner.tr { right: 60px; top: 150px; border-right-width: 3px; border-top-width: 3px; }
+.sec-corner.bl { left: 60px; bottom: 150px; border-left-width: 3px; border-bottom-width: 3px; }
+.sec-corner.br { right: 60px; bottom: 150px; border-right-width: 3px; border-bottom-width: 3px; }
 </style>
       <div id="root" data-composition-id="kitchen" data-width="1920" data-height="1080">
         <div id="kitchen-chapter" class="chip-ch soft-raised soft-muted">The kitchen</div>
-        <div class="win soft-raised" id="kitchen-win1" style="top:60px;height:640px">
-          <div class="win-bar"><div class="win-dot"></div><div class="win-app">Atlas</div><div class="win-tabs"><div class="win-tab" id="kitchen-win1-tab0">Recycling</div><div class="win-tab" id="kitchen-win1-tab1">Impact</div></div></div>
-          <div class="pane" id="kitchen-win1-p0"><div class="ph">Can goes in recycling</div><div class="pk">UCF's rule · the blue bin</div><div class="svgbox"><svg viewBox="0 0 600 220" width="600" height="220"><rect width="600" height="220" fill="#e6ebf3"/><rect id="BLUE" x="60" y="70" width="130" height="130" rx="16" fill="#456cb3"/><rect x="235" y="70" width="130" height="130" rx="16" fill="#0f7b5f" opacity="0.5"/><rect x="410" y="70" width="130" height="130" rx="16" fill="#8a93a3" opacity="0.5"/><text x="70" y="55" font-size="22" font-family="Segoe UI" font-weight="700" fill="#456cb3">Recycling</text><text x="245" y="55" font-size="22" font-family="Segoe UI" fill="#566176">Compost</text><text x="420" y="55" font-size="22" font-family="Segoe UI" fill="#566176">Trash</text></svg></div><div class="chips"><span class="site-tag">the kitchen camera saw the can</span></div></div>
-          <div class="pane" id="kitchen-win1-p1"><div class="ph">This week</div><div style="display:flex;align-items:center;gap:30px;margin-top:10px"><svg viewBox="0 0 200 200" width="220" height="220"><circle cx="100" cy="100" r="80" fill="none" stroke="#e6ebf3" stroke-width="22"/><circle id="KRING" cx="100" cy="100" r="80" fill="none" stroke="#456cb3" stroke-width="22" stroke-linecap="round" transform="rotate(-90 100 100)" stroke-dasharray="502.6" stroke-dashoffset="166"/><line x1="100" y1="8" x2="100" y2="34" stroke="#1b2433" stroke-width="5" transform="rotate(288 100 100)"/></svg><div><div class="big" id="KPCT">71%</div><div class="pk">5 of 7 right bin · goal 80%</div></div></div><div class="chips"><span class="site-tag">sources: config/impact.yaml</span></div></div>
+        <div class="sec" id="kitchen-sec1">
+          <div class="sec-noise" id="kitchen-sec1-noise"></div><div class="sec-lines"></div><div class="sec-vig"></div>
+          <div class="sec-hud"><span class="sec-rec"></span>REC · CAM 02 · KITCHEN</div>
+          <div class="sec-time" id="kitchen-sec1-time">14:07:32</div>
+          <div class="sec-corner tl"></div><div class="sec-corner tr"></div><div class="sec-corner bl"></div><div class="sec-corner br"></div>
+        </div>
+        <div class="win soft-raised" id="kitchen-win2" style="top:60px;height:640px">
+          <div class="win-bar"><div class="win-dot"></div><div class="win-app">Atlas</div><div class="win-tabs"><div class="win-tab" id="kitchen-win2-tab0">Recycling</div><div class="win-tab" id="kitchen-win2-tab1">Impact</div></div></div>
+          <div class="pane" id="kitchen-win2-p0"><div class="ph">Can goes in recycling</div><div class="pk">UCF's rule · the blue bin</div><div class="svgbox"><svg viewBox="0 0 600 220" width="600" height="220"><rect width="600" height="220" fill="#e6ebf3"/><rect id="BLUE" x="60" y="70" width="130" height="130" rx="16" fill="#456cb3"/><rect x="235" y="70" width="130" height="130" rx="16" fill="#0f7b5f" opacity="0.5"/><rect x="410" y="70" width="130" height="130" rx="16" fill="#8a93a3" opacity="0.5"/><text x="70" y="55" font-size="22" font-family="Segoe UI" font-weight="700" fill="#456cb3">Recycling</text><text x="245" y="55" font-size="22" font-family="Segoe UI" fill="#566176">Compost</text><text x="420" y="55" font-size="22" font-family="Segoe UI" fill="#566176">Trash</text></svg></div><div class="chips"><span class="site-tag">the kitchen camera saw the can</span></div></div>
+          <div class="pane" id="kitchen-win2-p1"><div class="ph">This week</div><div style="display:flex;align-items:center;gap:30px;margin-top:10px"><svg viewBox="0 0 200 200" width="220" height="220"><circle cx="100" cy="100" r="80" fill="none" stroke="#e6ebf3" stroke-width="22"/><circle id="KRING" cx="100" cy="100" r="80" fill="none" stroke="#456cb3" stroke-width="22" stroke-linecap="round" transform="rotate(-90 100 100)" stroke-dasharray="502.6" stroke-dashoffset="166"/><line x1="100" y1="8" x2="100" y2="34" stroke="#1b2433" stroke-width="5" transform="rotate(288 100 100)"/></svg><div><div class="big" id="KPCT">71%</div><div class="pk">5 of 7 right bin · goal 80%</div></div></div><div class="chips"><span class="site-tag">sources: config/impact.yaml</span></div></div>
         </div>
       </div>
       <script>
@@ -48,14 +68,23 @@
           const tl = gsap.timeline({ paused: true });
           tl.fromTo("#kitchen-chapter", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 0.15);
           tl.to("#kitchen-chapter", { opacity: 0, duration: 0.4 }, 3.200);
-          tl.fromTo("#kitchen-win1", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 1.500);
-          tl.to("#kitchen-win1", { opacity: 0, duration: 0.35, ease: "power2.in" }, 13.754);
-          tl.fromTo("#kitchen-win1-p0", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 1.500);
-          tl.to("#kitchen-win1-p0", { opacity: 0, duration: 0.25, ease: "power2.in" }, 7.730);
-          tl.fromTo("#kitchen-win1-tab0", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 1.500);
-          tl.to("#kitchen-win1-tab0", { opacity: 0, duration: 0.25, ease: "power2.in" }, 7.730);
-          tl.fromTo("#kitchen-win1-p1", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 7.980);
-          tl.fromTo("#kitchen-win1-tab1", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 7.980);
+          tl.set("#kitchen-sec1", { opacity: 1 }, 2.436);
+          tl.set("#kitchen-sec1", { opacity: 0 }, 7.980);
+          tl.fromTo("#kitchen-sec1-noise", { x: 0, y: 0 }, { x: 137, y: -91, duration: 5.544, ease: "steps(66)" }, 2.436);
+          tl.fromTo("#kitchen-sec1-noise", { opacity: 0.12 }, { opacity: 0.2, duration: 0.09, ease: "steps(1)", repeat: 30, yoyo: true }, 2.436);
+          tl.set("#kitchen-sec1-time", { textContent: "14:07:33" }, 3.436);
+          tl.set("#kitchen-sec1-time", { textContent: "14:07:34" }, 4.436);
+          tl.set("#kitchen-sec1-time", { textContent: "14:07:35" }, 5.436);
+          tl.set("#kitchen-sec1-time", { textContent: "14:07:36" }, 6.436);
+          tl.set("#kitchen-sec1-time", { textContent: "14:07:37" }, 7.436);
+          tl.fromTo("#kitchen-win2", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 1.500);
+          tl.to("#kitchen-win2", { opacity: 0, duration: 0.35, ease: "power2.in" }, 13.754);
+          tl.fromTo("#kitchen-win2-p0", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 1.500);
+          tl.to("#kitchen-win2-p0", { opacity: 0, duration: 0.25, ease: "power2.in" }, 7.730);
+          tl.fromTo("#kitchen-win2-tab0", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 1.500);
+          tl.to("#kitchen-win2-tab0", { opacity: 0, duration: 0.25, ease: "power2.in" }, 7.730);
+          tl.fromTo("#kitchen-win2-p1", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 7.980);
+          tl.fromTo("#kitchen-win2-tab1", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 7.980);
           tl.fromTo("#KRING", { strokeDashoffset: 166 }, { strokeDashoffset: 146, duration: 1.0, ease: "power2.out" }, 8.582);
           window.__timelines["kitchen"] = tl;
         })();
