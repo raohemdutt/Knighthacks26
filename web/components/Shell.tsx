@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState, type CSSProperties, type FormEvent, type MouseEvent, type ReactNode } from "react";
 import { api, getToken, setToken } from "@/lib/api";
 import { useAtlas, type LinkState } from "@/lib/atlas";
+import { modelShort } from "@/lib/lab";
 import { useProfileState } from "@/lib/profile";
 import { useTheme } from "@/lib/theme";
 import { useFetch } from "@/lib/useFetch";
@@ -363,11 +364,11 @@ export function Shell({ children }: { children: ReactNode }) {
           <Logo size={34} />
           Atlas
         </span>
-        <div className={ui.status} title="Connection to the Atlas box, and the model that answers">
+        <div className={ui.status} title={`Connection to the Atlas box, and the model that answers${model ? `: ${model}` : ""}`}>
           <span className={`${ui.dot} ${link === "live" ? ui.dotLive : link === "offline" ? ui.dotOffline : ""}`} aria-hidden="true" />
           <span className={ui.statusText}>
             {LINK_TEXT[link]}
-            {model ? ` · ${model}` : ""}
+            {model ? ` · ${modelShort(model)}` : ""}
           </span>
         </div>
         <button type="button" className={ui.sideSearch} onClick={() => setPalette(true)}>
@@ -424,11 +425,11 @@ export function Shell({ children }: { children: ReactNode }) {
           <Logo size={26} />
           Atlas
         </span>
-        <div className={ui.status} title="Connection to the Atlas box, and the model that answers">
+        <div className={ui.status} title={`Connection to the Atlas box, and the model that answers${model ? `: ${model}` : ""}`}>
           <span className={`${ui.dot} ${link === "live" ? ui.dotLive : link === "offline" ? ui.dotOffline : ""}`} aria-hidden="true" />
           <span className={ui.statusText}>
             {LINK_TEXT[link]}
-            {model ? ` · ${model}` : ""}
+            {model ? ` · ${modelShort(model)}` : ""}
           </span>
         </div>
         <ThemeButton />
