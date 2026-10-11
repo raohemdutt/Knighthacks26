@@ -41,7 +41,10 @@ deploy, reject or refused), each with the decode setting, the scorer commit and 
 the decision row's metrics hold the three scores, n as items and as groups, the noise and the p-value. A
 learning.run.evaluated event (contracts/learning.py) with the scores and the decision, its model_version the
 candidate's (runtime.registry.model_version of its manifest), written to <out>/learning.run.evaluated.jsonl and,
-with events_dir, published to that event log. <out>/scores.json for the demo slide, and <out>/<role>.json per score
+with events_dir, published to that event log. <out>/scores.json for the demo slide and the Learning lab import; beside
+the result it holds correct (right answers per role), noise_runs (right answers in each current run), alpha, test
+and items (one per decided held-out item: id, group, question and expected from the split, before as the first
+current run's answer and pass, after as the candidate's; an answer is cut at MAX_ANSWER_CHARS). And <out>/<role>.json per score
 in the shape lab/slide_numbers.py reads (score is the held-out score; scorer_score is the scorer's own top line).
 """
 from __future__ import annotations
@@ -80,6 +83,8 @@ PREVIEW_KEY = "preview.candidate_bf16"
 SCORES_FILE = "scores.json"
 EVENT_FILE = "learning.run.evaluated.jsonl"
 SCORER_TIMEOUT_S = 3600
+MAX_ANSWER_CHARS = 2000        # one model answer in scores.json; longer ones are cut (the lab import takes 8 MB)
+TEST = "exact two-sided sign-flip test over question groups"
 SCORER_PATHS = ("contexts", "runtime", "fixtures/golden", "config")   # what a scorer commit must hold unchanged
 
 
@@ -232,6 +237,30 @@ def _write_json(path: Path, body: Any) -> None:
     path.write_text(json.dumps(body, indent=2) + "\n", encoding="utf-8", newline="\n")
 
 
+def _answer(row: Mapping[str, Any]) -> dict[str, Any]:
+    text = str(row.get("answer") or "")
+    if len(text) > MAX_ANSWER_CHARS:
+        text = text[:MAX_ANSWER_CHARS] + "..."
+    return {"answer": text, "correct": _passed(row)}
+
+
+def _per_question(split: Split, common: Sequence[str], groups: Mapping[str, str],
+                  scored: Mapping[str, Mapping[str, Mapping[str, Any]]], current_names: Sequence[str]) -> dict[str, Any]:
+    """scores.json's per-question part, for the Learning lab's before and after list (learning.eval.reported).
+
+    Only the decided held-out items. before is the first current run, after the candidate; correct counts the
+    right answers per role (current as that same first run, so it matches the list), noise_runs each current run's."""
+    examples = {e.id: e for e in split.held_out}
+    before = current_names[0]
+    items = [{"id": i, "group": groups[i], "question": examples[i].context or "", "expected": examples[i].target,
+              "before": _answer(scored[before][i]), "after": _answer(scored["candidate"][i])} for i in common]
+    return {"correct": {"current": sum(_passed(scored[before][i]) for i in common),
+                        "candidate": sum(_passed(scored["candidate"][i]) for i in common),
+                        "teacher": sum(_passed(scored["teacher"][i]) for i in common)},
+            "noise_runs": [sum(_passed(scored[name][i]) for i in common) for name in current_names],
+            "alpha": ALPHA, "test": TEST, "items": items}
+
+
 def run_gate(*, client: Client, dataset: str | os.PathLike[str], current_url: str, candidate_url: str,
              teacher_url: str, candidate_manifest: str | os.PathLike[str], run_id: str,
              out_dir: str | os.PathLike[str], current_version: str | None = None,
@@ -368,7 +397,8 @@ def run_gate(*, client: Client, dataset: str | os.PathLike[str], current_url: st
         "decode_source": decode_source, "current_runs": [float(s) for s in run_scores],
         "event": json.loads(event.model_dump_json()), "out": str(out),
     }
-    _write_json(out / SCORES_FILE, {k: v for k, v in result.items() if k not in ("ok", "outcome", "out")})
+    _write_json(out / SCORES_FILE, {**{k: v for k, v in result.items() if k not in ("ok", "outcome", "out")},
+                                    **_per_question(split, common, groups, scored, current_names)})
     record("eval-gate", decision,
            {"eval.current": float(current), "eval.candidate": float(candidate), "eval.teacher": float(teacher),
             "eval.noise": float(noise), "eval.delta": float(delta), "eval.p_value": float(p_value),

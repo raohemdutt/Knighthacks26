@@ -23,9 +23,10 @@ What is read, and what it becomes:
     answer names each line. Importing again adds nothing: a step is known by (run_id, step), so a file that has grown
     since the last import adds only its new steps.
 --eval / kind=eval             lab/eval_gate.py's `<out>/scores.json`. Its `event` is the gate's own
-    `learning.run.evaluated` and is published as it is. The file's n_items, n_groups, noise, p_value and split_sha256
+    `learning.run.evaluated` and is published as it is. The file's n_items, n_groups, noise, p_value and split_sha256,
+    and when it holds them correct, noise_runs, alpha, test and items (the per-question before and after answers),
     become one `learning.eval.reported` event (an optional input of the lab view), id `import:<run_id>:eval.reported`.
-    The gate does not write per-question answers or right-answer counts into scores.json, so none are published.
+    A key the file does not hold is left out of the event.
 --manifest / kind=manifest     a package's `manifest.json` (contracts/learning.py ModelManifest) becomes one
     `learning.package.built` event {run_id, model_version, base, gguf, sha256}, id `import:<run_id>:package.built`.
     The manifest does not name its run, so a run id must be given.
@@ -106,7 +107,7 @@ def eval_events(text: str, run_id: str | None = None) -> list[Event]:
     if isinstance(scores.get("n_items"), int):
         body: dict[str, Any] = {"type": "learning.eval.reported", "event_id": f"import:{evaluated.run_id}:eval.reported",
                                 "ts": evaluated.ts, "run_id": evaluated.run_id, "task": evaluated.task, "n_items": scores["n_items"]}
-        for key in ("n_groups", "noise", "p_value", "split_sha256"):  # only what the file holds
+        for key in ("n_groups", "noise", "p_value", "split_sha256", "correct", "noise_runs", "alpha", "test", "items"):  # only what the file holds
             if scores.get(key) is not None:
                 body[key] = scores[key]
         if isinstance(scores.get("decode"), dict):
