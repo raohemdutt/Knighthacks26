@@ -29,6 +29,8 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -64,8 +66,15 @@ def parse_choice(response: dict[str, Any]) -> dict[str, Any]:
 
 
 def server_argv(pid: int) -> list[str]:
-    raw = Path(f"/proc/{pid}/cmdline").read_bytes()
-    return [a.decode(errors="replace") for a in raw.split(b"\0") if a]
+    proc = Path(f"/proc/{pid}/cmdline")
+    if proc.exists():
+        return [a.decode(errors="replace") for a in proc.read_bytes().split(b"\0") if a]
+    if os.name == "nt":  # no /proc on Windows: ask the process table for the command line
+        out = subprocess.run(["powershell", "-NoProfile", "-Command",
+                              f"(Get-CimInstance Win32_Process -Filter 'ProcessId={int(pid)}').CommandLine"],
+                             capture_output=True, text=True, check=True).stdout
+        return out.split()
+    raise FileNotFoundError(proc)
 
 
 def collect(args: argparse.Namespace) -> int:

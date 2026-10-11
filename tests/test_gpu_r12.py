@@ -175,15 +175,29 @@ def fake_pod(tmp_path: Path) -> dict:
     (patches / "unified-attention-block.patch").write_text(git("diff", cwd=up).stdout)
     git("checkout", "-q", "--", ".", cwd=up)
     counter = tmp_path / "builds.txt"
-    env = {**os.environ, "HOME": str(tmp_path / "home"), "VLLM_DIR": str(tmp_path / "home" / "vllm"),
-           "VLLM_REPO": str(up), "VLLM_COMMIT": commit, "R12_BASE_DIFF": str(base), "R12_PATCH_DIR": str(patches),
-           "R12_STATE_DIR": str(tmp_path / "state"), "R12_REBUILD_JSON": str(tmp_path / "rebuild_times.json"),
-           "R12_BUILD_CMD": f"cat {KERNEL_FILE} > /dev/null && echo built >> {counter}", "GFX": "gfx1151"}
+    px = lambda path: Path(path).as_posix()  # forward slashes: bash eats the backslashes of a Windows path
+    env = {**os.environ, "HOME": px(tmp_path / "home"), "VLLM_DIR": px(tmp_path / "home" / "vllm"),
+           "VLLM_REPO": px(up), "VLLM_COMMIT": commit, "R12_BASE_DIFF": px(base), "R12_PATCH_DIR": px(patches),
+           "R12_STATE_DIR": px(tmp_path / "state"), "R12_REBUILD_JSON": px(tmp_path / "rebuild_times.json"),
+           "R12_BUILD_CMD": f"cat {KERNEL_FILE} > /dev/null && echo built >> {px(counter)}", "GFX": "gfx1151"}
     return {"env": env, "tmp": tmp_path, "patches": patches, "counter": counter, "tree": tmp_path / "home" / "vllm"}
 
 
+def _bash() -> str:
+    """The bash that runs rebuild.sh. On Windows a bare `bash` resolves to system32's WSL launcher, which mangles
+    backslash paths and is the wrong environment; use the bash that ships with Git instead."""
+    found = shutil.which("bash")
+    if os.name == "nt":
+        git_exe = shutil.which("git")
+        for root in ([Path(git_exe).resolve().parents[1], Path(git_exe).resolve().parents[2]] if git_exe else []):
+            for sub in ("bin", "usr/bin"):
+                if (root / sub / "bash.exe").exists():
+                    return str(root / sub / "bash.exe")
+    return found or "bash"
+
+
 def rebuild(fake: dict, *args: str, **env: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["bash", str(GPU / "rebuild.sh"), *args], env={**fake["env"], **env},
+    return subprocess.run([_bash(), (GPU / "rebuild.sh").as_posix(), *args], env={**fake["env"], **env},
                           capture_output=True, text=True, timeout=120)
 
 
