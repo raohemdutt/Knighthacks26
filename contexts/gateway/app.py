@@ -244,7 +244,8 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
     app.include_router(room_router(lambda: atlas.room, atlas.settings.config_dir, guard=authorized))
     app.include_router(voice_router(guard=authorized), prefix="/api")  # GET /api/voice/status, POST /api/voice/talk|stop|enabled (X16)
     app.include_router(runtime_router(ModelStore(atlas.settings.data_dir / "models"), llm_url=atlas.settings.llm_url))  # GET /runtime/models (R7)
-    app.include_router(stats_router(build_runtime_stats(atlas.bus, atlas.telemetry).snapshot))  # GET /runtime/stats (R5)
+    app.include_router(stats_router(build_runtime_stats(  # GET /runtime/stats (R5), + the ledger the lab pushed
+        atlas.bus, atlas.telemetry, imported_dir=imported_state_dir(atlas.settings.data_dir)).snapshot))
 
     @app.get("/health")
     async def health():
