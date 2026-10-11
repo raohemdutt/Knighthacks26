@@ -77,8 +77,13 @@ def test_metric_rows_carry_conditions_and_names():
     row = names[f"{stem}.watts"]
     assert row["node"] == "pod-b" and row["conditions"]["hub"] == "sjc" and row["conditions"]["account"] == "D"
     assert row["conditions"]["sampler"]["tool"] == "amd-smi"
-    assert names["lut_gemv.b3.arith.k5120_n6144.m1.x.sweep.weight_gbs"]["low_confidence"] is True
+    assert not any(r["metric"].endswith(".sweep.weight_gbs") for r in rows)  # the sweep stays in the file
     assert not any(r["metric"].startswith("lut_gemv.b2.") for r in rows)
+    assert names[f"{stem}.watts"]["low_confidence"] is False
+    from lab.machine import metrics as ledger_metrics
+
+    for row in rows:
+        ledger_metrics.check_row(row)
     json.dumps(rows)
 
 

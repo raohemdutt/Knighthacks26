@@ -627,7 +627,8 @@ def _bytes_of(bits: int, mode: int, k: int, n: int) -> int:
 
 def metric_rows(result: Mapping[str, Any], source: str, account: str = "D") -> list[dict[str, Any]]:
     """lut_gemv.* rows for lab/refine/metrics.jsonl: per measured entry its weight GB/s, TFLOP/s, watts, J per GEMV
-    and max abs error, with the node, hub, account and sampler conditions."""
+    and max abs error, with the node, hub, account and sampler conditions. The tile sweep's entries (5 repeats at
+    0.3 s of load, a choice of tile rather than a result) stay in the result file only."""
     rows = []
     reader = (result.get("power") or {}).get("reader") or {}
     base = {"hub": "sjc", "account": account, "gfx": result.get("gfx"), "host": result.get("host"),
@@ -640,7 +641,7 @@ def metric_rows(result: Mapping[str, Any], source: str, account: str = "D") -> l
                        "repeat, then load held for min_load_s)", "file": source}
     ts = result.get("ended") or result.get("started")
     for e in result.get("measurements", []):
-        if e.get("status") != "ok":
+        if e.get("status") != "ok" or e.get("section") == "sweep":  # the sweep (5 repeats, 0.3 s) stays in the file
             continue
         d = e.get("derived") or {}
         p = e.get("params") or {}
@@ -652,7 +653,6 @@ def metric_rows(result: Mapping[str, Any], source: str, account: str = "D") -> l
                 "section": e.get("section"), "repeats": e.get("repeats"),
                 "rel_spread": (e.get("spread") or {}).get("rel_spread"),
                 "idle_w": watts.get("idle_w"), "watt_samples": watts.get("samples")}
-        quick = e.get("section") == "sweep"
         values = []
         if "weight_gbs" in d:
             values.append(("weight_gbs", d["weight_gbs"], "GB/s"))
@@ -667,9 +667,9 @@ def metric_rows(result: Mapping[str, Any], source: str, account: str = "D") -> l
         if d.get("max_abs_error") is not None:
             values.append(("max_abs_error", d["max_abs_error"], "abs"))
         for key, value, unit in values:
-            rows.append({"metric": f"{stem}.{key}", "value": round(float(value), 6), "unit": unit, "node": result.get("node"),
-                         "conditions": cond, "source": f"R62 lut_gemv bench, {source}", "ts": ts,
-                         **({"low_confidence": True} if quick else {})})
+            rows.append({"metric": f"{stem}.{key}", "value": round(float(value), 6), "unit": unit,
+                         "node": result.get("node"), "conditions": cond, "source": f"R62 lut_gemv bench, {source}",
+                         "ts": ts, "low_confidence": False})
     return rows
 
 
@@ -681,10 +681,13 @@ def ingest_main(args: argparse.Namespace) -> int:
         return 1
     source = path.as_posix()
     rows = metric_rows(result, source, args.account)
+    from lab.machine import metrics as ledger_metrics
+
+    for row in rows:
+        ledger_metrics.check_row(row)
     if not args.dry_run:
-        with open(args.metrics, "a", encoding="utf-8") as handle:
-            for row in rows:
-                handle.write(json.dumps(row) + "\n")
+        for row in rows:
+            ledger_metrics.add(row, path=args.metrics)
     print(json.dumps({"ok": True, "outcome": "dry_run" if args.dry_run else "written", "rows": len(rows),
                       "metrics": args.metrics}))
     return 0
