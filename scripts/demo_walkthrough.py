@@ -25,6 +25,10 @@ card's kind, target and parameters, and anything it does not recognise counts as
 raised itself and may not approve are denied again, so the box is left without stale cards. With --read-only
 nothing is raised, approved, denied, pushed or changed.
 
+Optional events ("Near you", use case 3) are read in every mode. A yes to one is said only with --approve-local:
+the box records it and raises a re-plan with its approval card, which goes through the same guard (approved only
+when it stays on the box, else denied). A no is never said: it would stop Atlas from suggesting that event.
+
 It does not repeat the pre-flight (`python -m contexts.demo preflight --gateway ...`, contexts/gateway/preflight.py):
 it reads GET /api/preflight and reports the count, and the run sheet says when to run the real one. The shapes
 of the answers are checked in depth by `node web/scripts/check-api.mjs`; here only what a presenter would see.
