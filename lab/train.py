@@ -1415,7 +1415,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-length", type=_positive(int), help="refuse examples longer than this (default: none)")
     parser.add_argument("--seed", type=int, default=DEFAULTS["seed"])
     parser.add_argument("--data-seed", type=int, help="the data order's seed (default: --seed)")
-    parser.add_argument("--workers", type=int, default=DEFAULTS["workers"], help="DataLoader workers (forkserver)")
+    # ATLAS_TRAIN_WORKERS overrides the pinned default (0 loads in-process: no /dev/shm, which the pods' 64 MB cannot
+    # spare beside the 122B pair's RCCL buffers, R66); unset, the baseline's two workers stay
+    parser.add_argument("--workers", type=int, default=int(os.environ.get("ATLAS_TRAIN_WORKERS", DEFAULTS["workers"])),
+                        help="DataLoader workers (forkserver); default $ATLAS_TRAIN_WORKERS or the pinned 2")
     checkpointing = parser.add_mutually_exclusive_group()
     checkpointing.add_argument("--gradient-checkpointing", dest="checkpointing", action="store_true",
                                default=BASELINE["gradient_checkpointing"], help="on by default (R36's baseline)")

@@ -37,6 +37,7 @@ TASK="desk-objects"
 SOLO="l29-solo"
 DUO="l29-duo"
 HANDOFF_PORT="${HANDOFF_PORT:-29610}"
+export ATLAS_TRAIN_WORKERS="${ATLAS_TRAIN_WORKERS:-0}"   # lab/train.py loads rows in-process: the 122B pair leaves /dev/shm full
 PROXY_HOST="${PROXY_HOST:-proxy-public.jupyterhub.svc.cluster.local}"   # the hub proxy inside the cluster (R65)
 TS_BIN="${TS_BIN:-$HOME/ts/bin/tailscale}"
 TS_SOCK="${TS_SOCK:-$HOME/ts/tailscaled.sock}"
