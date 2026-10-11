@@ -180,7 +180,7 @@ def eval_events(text: str, run_id: str | None = None) -> list[Event]:
     if isinstance(scores.get("n_items"), int):
         body: dict[str, Any] = {"type": "learning.eval.reported", "event_id": f"import:{evaluated.run_id}:eval.reported",
                                 "ts": evaluated.ts, "run_id": evaluated.run_id, "task": evaluated.task, "n_items": scores["n_items"]}
-        for key in ("n_groups", "noise", "p_value", "split_sha256", "correct", "noise_runs", "alpha", "test", "items"):  # only what the file holds
+        for key in ("n_groups", "noise", "p_value", "split_sha256", "correct", "noise_runs", "alpha", "test", "items", "gate"):  # only what the file holds
             if scores.get(key) is not None:
                 body[key] = scores[key]
         if isinstance(scores.get("decode"), dict):
