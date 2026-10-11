@@ -927,7 +927,7 @@ discarded. 2026-10-10 evening ET, run with `python3 -m lab bench run ... --node 
 | 16 | 2 | 2.06 (2.01, 2.12) | 27.4 | 11.9 | 3.50 (3.49, 3.50) | 96 |
 | 64 | 2 | 0.88 (0.86, 0.90) | 49.0 | 24.2 | 1.96 (1.93, 2.00) | 96 |
 
-Partial: 3 spawns per batch size were asked for (15 spawns); this table holds 11 that measured. Median of two is the
+Partial: 3 spawns per batch size were asked for (15 spawns); this table holds 11 that measured: three at batch 1 (J/token on two of them) and two each at batch 4, 8, 16 and 64. The third spawn of batch 4, 8, 16 and 64 was cut by order (pod D went to other jobs); a medians-of-three matrix needs those four. Median of two is the
 mean of the two, so min and max bracket it. The batch-1 spawn at 03:58 UTC decoded 2.73 tok/s but its power samples
 did not cover the decode window (J/token null). Idle (no server) read 15 W, server loaded 16 W; the sampler reads a
 flat 96 to 97 W under load on this chip, so J/token is nearly watts / total tok/s. All spawns fall into one band (no
