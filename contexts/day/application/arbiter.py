@@ -21,6 +21,9 @@ State that rebuilds from the log (replay=True): the newest speak-up (`day.narrat
 `habits.nudge.raised`, `agent.alert.raised`), leave-now / late lines by the event they are about, check-ins and
 their answers, open approval cards. Live only: the held lines, the answer being said. Nothing here is emitted on
 replay, and all times are event times.
+
+A held approval ask is cancelled when its card closes (`experience.approval.decided`, `workspace.action.completed`):
+an ask for a card that was already approved, declined or has run out is never said.
 """
 
 import logging
@@ -88,6 +91,12 @@ class Arbiter:
 
     def on_card_closed(self, e) -> None:
         self.ledger.note_card_closed(e.action_id)
+        # An ask still waiting for its slot has nothing left to ask once its card is approved, declined or has run
+        # out: it is dropped by the card's action id, never said. (On replay nothing is held, so this does nothing.)
+        gone = [job for job in self.held if job.moment == "approval" and job.ref == e.action_id]
+        if gone:
+            self.held = [job for job in self.held if not (job.moment == "approval" and job.ref == e.action_id)]
+            self.log += [(job.event_id, "drop", "its card is closed") for job in gone]
 
     # --- live ---
 

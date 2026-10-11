@@ -29,6 +29,7 @@ from contexts.day.tests.test_optional_events import (  # noqa: F401
     said_yes,
 )
 from contracts.day import DayNarrated, DayOptionalAnswered, DayPlanCommitted, DayReplanProposed
+from contracts.experience import ApprovalDecided
 from runtime.fake import FakeRuntime
 
 SAID = ("Riley, Sam and Alex are having dinner at '63 South at quarter past five. It's a sixteen-minute walk and it fits before your study "
@@ -262,6 +263,31 @@ def test_suggested_then_yes_then_approved_and_nothing_more_is_said_about_it(plac
     for minute in range(4, 45):
         b.tick(at(16, minute))
     assert [e.ref for e in suggestions(b)] == [DINNER] and b.row(DINNER, at(16, 30))["suggest_held"] == "accepted"
+
+
+def test_an_approval_ask_the_arbiter_is_holding_is_dropped_once_its_card_is_approved_or_declined(places, tmp_path):  # noqa: F811
+    """A yes inside the ninety seconds after the suggestion: the re-plan's line waits for the gap, and the card's own
+    ask waits behind it. Once the card is answered there is nothing left to ask: the held ask is dropped, never said.
+    Left unanswered, it is still said when its turn comes."""
+    for name, decision in (("approved", "approve"), ("declined", "deny"), ("unanswered", None)):
+        b = day_box(places, tmp_path / name)
+        b.tick(at(16))  # the suggestion takes the slot
+        yes = said_yes(b, DINNER, at(16, 1))
+        ask = f"day-narrated-ask-{yes['action_id']}"
+        assert ask in [j.event_id for j in b.loop.arbiter.held], name  # held: inside the gap
+        if decision:
+            b.clock["now"] = at(16, 1) + timedelta(seconds=30)
+            b.publish(ApprovalDecided(ts=at(16, 1) + timedelta(seconds=30), action_id=yes["action_id"], decision=decision))
+            assert ask not in [j.event_id for j in b.loop.arbiter.held], name  # cancelled by its action id, at once
+            assert (ask, "drop", "its card is closed") in b.loop.arbiter.log
+        for minute in range(2, 9):
+            b.tick(at(16, minute))
+        asked = [n for n in b.of(DayNarrated) if n.moment == "approval" and n.ref == yes["action_id"]]
+        if decision:
+            assert asked == [], name  # never said, on the screen or aloud
+        else:
+            assert [(n.ts, n.merged_into) for n in asked] == [(at(16, 4), None)], name  # nobody answered: asked when the slot was free
+        assert ask not in [j.event_id for j in b.loop.arbiter.held]
 
 
 def test_a_yes_given_too_far_ahead_is_still_brought_up_before_it_starts(places, tmp_path):  # noqa: F811
