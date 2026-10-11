@@ -89,6 +89,8 @@ from contexts.agent.application.digest import Digester
 from contexts.agent.application.rule_compiler import RuleCompileError, compile_rule
 from contexts.circle.api import circle_router
 from contexts.circle.face_share_api import face_share_router
+from contexts.circle.brain_api import group_brain_router
+from contexts.circle.brain_power import brain_power_router
 from contexts.circle.application.sharing import CircleOffline
 from contexts.day.api import day_router
 from contexts.day.application.coach_feedback import coach_feedback_router
@@ -243,6 +245,10 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
                                      presence_sync=atlas.presence_sync, board=atlas.board, config_dir=atlas.settings.config_dir, guard=authorized))
     # /api/circle/face-share: every endpoint answers 409 while face sharing is off (the default) or there is no Circle
     app.include_router(face_share_router(atlas.face_share, atlas.bus, guard=authorized))
+    # GET /api/circle/brain, POST /api/circle/brain/consent|ask (G4); GET /api/circle/brain/power: the brain's watts
+    shared = atlas.shared_brain
+    app.include_router(group_brain_router(getattr(shared, "brain", None), guard=authorized))
+    app.include_router(brain_power_router(getattr(shared, "power", None), getattr(shared, "reason", None)))
     # GET /api/league, /api/league/me (200 in every state); POST /api/league/stake, /api/league/challenges -> approval cards
     app.include_router(league_router(atlas.bus, league=atlas.league, guard=authorized))
     if atlas.spot:  # /api/spot/*: the inspection (SPOT) dashboard; 200 in every state, also without a kit

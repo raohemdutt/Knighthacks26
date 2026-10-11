@@ -161,6 +161,7 @@ class Atlas:
     coach_feedback: CoachFeedback | None = None  # "Was that right?" about a break; GET /api/day/coach/feedback
     spot: object | None = None  # SpotContext: the inspection (SPOT) dashboard, contexts/spot; GET /api/spot/*
     face_share: object | None = None  # FaceShare (contexts/circle): a friend's box recognises you; off by default
+    shared_brain: object | None = None  # SharedBrain (contexts/circle/brain_power.py): the group brain and its watts
     files: FileInbox | None = None  # W1: files shared from the phone, encrypted under data/files; /api/files
     tasks: list[asyncio.Task] = field(default_factory=list)
     _last_retention: datetime | None = None
@@ -550,6 +551,12 @@ def build(settings: Settings | None = None) -> Atlas:
         cleanup = NeonCleanup(neon)
         circle_cleanup = lambda: cleanup.sweep(circle_cfg["circle_id"], circle_cfg["member_id"], keep)  # noqa: E731
 
+    # The Circle's shared brain (G4): the group brain (opt-in questions to the teacher pod) and that pod's live watts
+    # for the Circle screen. None without a Circle; each part is None when the teacher pod's account is not in .env.
+    from contexts.circle.brain_power import build_shared_brain
+
+    shared_brain = build_shared_brain(circle_cfg, bus) if circle else None
+
     # Place packs (S5): shipped packs in config/places, uploads in data/places (later wins).
     try:
         places = PlaceSet.load(*profile.places_dirs(), s.data_dir / "places")
@@ -663,5 +670,5 @@ def build(settings: Settings | None = None) -> Atlas:
                  places=places, dayrun=dayrun, day=day, capture=capture, identity=identity, learning=learning,
                  lab_view=lab_view,
                  telemetry=telemetry, profile=profile, league=league, league_sync=league_sync,
-                 face_share=face_share,
+                 face_share=face_share, shared_brain=shared_brain,
                  impact=impact, coach_feedback=coach_feedback, spot=spot, files=files)

@@ -591,6 +591,61 @@ export interface CircleMembers {
   members: CircleMember[];
 }
 
+/** GET /api/circle/brain: whether this member asks the group brain (G4) and where the text would go. */
+export interface BrainStatus {
+  configured: boolean;
+  circle_id: string | null;
+  member_id: string | null;
+  opted_in: boolean;
+  opt_in_ref: string | null;
+  changed_at: string | null;
+  node: string | null;
+  host: string | null;
+  badge: string;
+}
+
+/** POST /api/circle/brain/ask */
+export interface BrainAnswerReply {
+  answer: string;
+  badge: string;
+  ask_id: string;
+  opt_in_ref: string;
+  model: string;
+  latency_ms: number;
+}
+
+/** The energy of the last group-brain answer, from the pod's own power samples (contexts/circle/brain_power.py). */
+export interface BrainLastAnswer {
+  ask_id: string;
+  pending: boolean;
+  asked?: string;
+  answered?: string;
+  seconds?: number;
+  joules?: number | null;
+  above_idle_j?: number;
+  mean_w?: number | null;
+  samples?: number;
+  before_w?: number | null;
+  idle_w?: number;
+  low_confidence?: boolean;
+  reasons?: string[];
+  reason?: string;
+}
+
+/** GET /api/circle/brain/power: the teacher pod's watts, relayed by the box (the hub token never leaves it). */
+export interface BrainPower {
+  configured: boolean;
+  node: string | null;
+  host: string | null;
+  where: string;
+  idle_w: number;
+  samples: { seq: number; ts: string; w: number }[];
+  last_seq: number | null;
+  offset_s: number | null;
+  last_answer: BrainLastAnswer | null;
+  error: string | null;
+}
+
 /** GET /api/play/campus-route */
 export interface CampusRoute {
   path: string[];
@@ -2019,6 +2074,11 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   circleThreads: (signal?: AbortSignal) => get<CircleThreads>("/api/circle/threads", undefined, signal),
   circleThread: (id: string, signal?: AbortSignal) => get<CircleThreadDetail>(`/api/circle/threads/${encodeURIComponent(id)}`, undefined, signal),
   circleMembers: (signal?: AbortSignal) => get<CircleMembers>("/api/circle/members", undefined, signal),
+  circleBrain: (signal?: AbortSignal) => get<BrainStatus>("/api/circle/brain", undefined, signal),
+  circleBrainConsent: (on: boolean) => post<BrainStatus>("/api/circle/brain/consent", { on }),
+  circleBrainAsk: (question: string, facts: string[] = []) => post<BrainAnswerReply>("/api/circle/brain/ask", { question, facts }),
+  circleBrainPower: (after?: number, signal?: AbortSignal) =>
+    get<BrainPower>("/api/circle/brain/power", after === undefined ? undefined : { after: String(after) }, signal),
   /** Face share, or null while it is switched off on this box (409), there is no Circle, or the box is older than it (404). */
   faceShare: (signal?: AbortSignal) =>
     get<FaceShareStatus>("/api/circle/face-share", undefined, signal).catch((err: unknown) => {
