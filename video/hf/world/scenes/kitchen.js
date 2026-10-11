@@ -14,9 +14,10 @@ export default function choreograph(tl, world, scene) {
   // ---- Line 0: "Point it at the kitchen": travel to the kitchen; it rises during the travel. ----
   tl.to(state, { kitchen: 1, duration: 1.0, ease: "power2.out" }, t0);
   world.leg(tl, t0, SHOTS.kitchenWide, 1.55, "power2.inOut");
-  // "The bin camera sees": a planned hard cut to the wall camera's view (announced in WORLD.md's hand-over table).
-  const cut = at(0, 0.2);
-  tl.set(cam, { ...SHOTS.binCam }, cut);
+  // Into the wall camera's view: the camera glides up into the wall camera's place (no hard cut; Dom), arriving just
+  // as the overlay turns the picture into its black-and-white feed (from at(0, 0.2)).
+  const into = at(0, 0.2), from = Math.max(t0 + 1.55, into - 1.3);
+  world.leg(tl, from, { ...SHOTS.binCam }, into + 0.4 - from, "power2.inOut");
   // "a can go in the trash": the throw lands on "the trash".
   // He drops it in the blue bin after Atlas tells him cans go in recycling (in the hold before the count), seen from the wall camera.
   tl.fromTo(state, { canThrow: 0 }, { canThrow: 1, duration: 1.15, ease: "none", immediateRender: false }, at(0, 1) + 0.05);

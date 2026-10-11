@@ -162,8 +162,9 @@ class Scene:
 .sec-corner.bl { left: 60px; bottom: 150px; border-left-width: 3px; border-bottom-width: 3px; }
 .sec-corner.br { right: 60px; bottom: 150px; border-right-width: 3px; border-bottom-width: 3px; }
 """
-        self.tween(f'tl.set("#{sid}", {{ opacity: 1 }}, {a:.3f});')
-        self.tween(f'tl.set("#{sid}", {{ opacity: 0 }}, {b:.3f});')
+        # It fades in as the camera arrives at the wall camera, and out before the cut away (Dom: no hard switches).
+        self.tween(f'tl.fromTo("#{sid}", {{ opacity: 0 }}, {{ opacity: 1, duration: 0.5, ease: "sine.inOut" }}, {a:.3f});')
+        self.tween(f'tl.to("#{sid}", {{ opacity: 0, duration: 0.4, ease: "sine.inOut" }}, {b - 0.4:.3f});')
         # Static that shifts every frame-ish (deterministic: stepped jumps of the noise tile) and a light flicker.
         n = max(1, int((b - a) * 12))
         self.tween(f'tl.fromTo("#{sid}-noise", {{ x: 0, y: 0 }}, {{ x: 137, y: -91, duration: {b - a:.3f}, ease: "steps({n})" }}, {a:.3f});')

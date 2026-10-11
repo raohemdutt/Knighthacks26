@@ -114,13 +114,17 @@ export function buildKitchen(scene, humanGltf) {
     kitchen: [KX, 0, 0], counterAtlas: [KX + 3.4, TOP + 0.45, -1.9], binCam: [KX - 8.4, 13.0, -2.0],
     bins: BINS.map((b) => [KX + b.x, F + BH, BIN_Z]), person: [KX - 1.6, F + 16.6, 6.2],
   };
+  const smooth01 = (x) => x * x * (3 - 2 * x);
   function update(state, t) {
     const v = state.kitchen || 0; set.update(v);
     if (!root.visible) return;
     const c = clamp01(state.canThrow || 0), swing = clamp01(c / 0.18), sw = swing * swing * (3 - 2 * swing);
-    const w = clamp01(c / 0.05), it = Math.min(swing, 1) * REACH + clamp01((c - 0.18) / 0.82) * (person.duration("Interact") - REACH);
-    person.sample(w < 1 ? [["Idle_Loop", (t * 0.8) % person.duration("Idle_Loop"), 1 - w], ["Interact", it, w]] : [["Interact", it, 1]]);
-    person.look(0, lerp(0.35, 0.5, c));
+    // Reach and let go, then ease back into the idle stance. (Racing through the rest of the Interact clip in about a
+    // second shook the head; Dom.) The head's downward look eases with it.
+    const reach = Math.min(swing, 1) * REACH, back = smooth01(clamp01((c - 0.18) / 0.82));
+    const wi = clamp01(c / 0.05) * (1 - back), idle = (t * 0.8) % person.duration("Idle_Loop");
+    person.sample(wi < 1 ? [["Idle_Loop", idle, 1 - wi], ["Interact", reach, wi]] : [["Interact", reach, 1]]);
+    person.look(0, lerp(0.35, 0.45, smooth01(c)));
     person.express({ strain: 0.2 }, t);
     if (c < 0.18) { root.worldToLocal(person.handPos("R", hv)); can.position.copy(hv); can.position.y -= 0.35; can.rotation.set(0, 0, 0); }
     else {
