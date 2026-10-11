@@ -2,10 +2,10 @@
 # `python video/scripts/film_build.py` speaks every line (edge-tts, male voice, cached by text), lays the scenes
 # out back to back (a scene starts when the previous one ends plus `pad_s`, and lasts its speech plus `tail_s`,
 # never less than `min_s`), writes video/hf/film.json (the resolved starts) and video/hf/index.html.
-# Plain words, bird's-eye view. Change the words here, run the script, done.
+# Plain words, the person is the focus. Change the words here, run the script, done.
 
 voice: en-US-AndrewMultilingualNeural
-rate: "+0%"
+rate: "+20%"       # Dom: 1.2x
 gap_s: 0.4         # silence between lines inside a scene
 pad_s: 0.5         # silence between scenes
 tail_s: 1.2        # air after a scene's last word before the next scene starts
@@ -13,73 +13,76 @@ tail_s: 1.2        # air after a scene's last word before the next scene starts
 scenes:
   - id: intro
     title: Atlas
-    lead_s: 3.0      # the title and the box assemble before the first word
-    min_s: 24
+    lead_s: 2.5      # the wordmark and the enclosure assemble before the first word
+    min_s: 20
     lines:
-      - This is Atlas. A small box that sits on your desk, with two camera eyes.
-      - It watches your space, remembers what it saw, answers your questions, and learns new skills. All of it on the box. Your video never leaves.
-      - Inside are four layers. Cameras that blur every face. A vision model that understands the scene. A memory. And an agent that never acts without asking you.
+      - This is Atlas. The personal AI computer.
+      - It sits on your desk, learns how you live, and works for you. It remembers what matters, answers in plain words, and adapts as your life changes.
+      - Everything it knows about you stays on the device in front of you.
+      - Inside, a camera on top, a speaker in front, and a Jetson that runs the vision, the memory, and an agent that acts on your behalf, like a squire.
 
   - id: day
-    title: It runs your day
-    min_s: 16
+    title: Your day
+    min_s: 24
     lines:
-      - Point it at your week. Atlas reads your classes and deadlines, and watches how your day really goes at the desk.
-      - Each morning it writes one plan, with its reasons. When something slips, it re-plans.
-      - Nothing is written to your calendar until you tap approve.
+      - Point it at your week. Atlas reads your classes and your calendar, and sees how the day really goes at the desk.
+      - Each morning it briefs you. What is first, when to leave, the walk drawn on the map. Fall behind, and it re-plans. One tap puts the new plan on your calendar.
+      - It notices your breaks, asks whether it guessed right, and learns what pulls you away.
+
+  - id: remember
+    title: It remembers
+    min_s: 13
+    lines:
+      - Ask where you left your keys. It answers in seconds, with the frame it saw them in.
+      - It can just talk, do your arithmetic, or look something up and cite its sources.
 
   - id: learn
     title: It learns
-    min_s: 24
+    min_s: 20
     lines:
-      - The model on the box is small. That is what makes it private and fast. But small models have gaps.
-      - Tap teach. A handful of blurred pictures go to the lab, a big open model labels them, and the small one is fine-tuned on the answers.
-      - A test decides if the new model is really better. Only then does it ship back to the box. Our adapter is public on Hugging Face.
+      - You would expect the model on the box to be small. It is not. A highly capable Qwen runs right here. Fast, accurate, and private. Forty-two demo questions, forty-two right.
+      - And when your life needs something new, Atlas learns the tool. You describe the task, and the lab teaches it from your own examples.
 
   - id: lab
     title: The learning lab
     min_s: 22
     lines:
-      - The lab is two AMD Strix Halo pods. One serves the teacher, a twenty-seven billion parameter Qwen. The other trains.
-      - Labeling, training, testing and packaging run on ROCm, and every run is recorded with its loss curve and its watts.
-      - The box and the lab share two files, a dataset out and a model package back. Nothing else crosses.
+      - The lab is two AMD Strix Halo pods. One is your trainer. It fine-tunes your own model on your own examples.
+      - The other is the network's trainer. With everyone's consent, it learns from everyone's examples, so every Atlas gets better together.
+      - A test decides whether the new model is really better. Only then does it ship back. Our adapter is public on Hugging Face.
 
-  - id: swap
-    title: Box and lab
-    min_s: 15
+  - id: device
+    title: On the device
+    min_s: 18
     lines:
-      - The new model arrives as one small package. The box checks it, swaps it in, and rolls back by itself if it does not answer.
-      - We measure watts on the Jetson, watts on the GPUs, and joules per answer, so you can see what a question costs.
-
-  - id: jetson
-    title: On the Jetson
-    min_s: 15
-    lines:
-      - Everything live runs on this Jetson. Cameras in, faces blurred, the on-device vision model understanding the scene, answers in seconds.
+      - Everything live runs on the Jetson. A face is blurred the moment a picture would leave the device, so what travels is never a face.
       - Pull the network cable. It keeps seeing, remembering, alerting and answering. Only learning pauses.
+      - And it keeps a ledger of what left. Tonight, thirteen destinations allowed, thirteen blocked.
 
-  - id: counts
-    title: Data into counts
-    min_s: 16
+  - id: kitchen
+    title: The kitchen
+    min_s: 20
     lines:
-      - The same cameras turn a room into data. Frames become events. Events become episodes you can ask about.
-      - Point it at the bins, and a campus gets a number it can act on. How much was sorted right, before and after a nudge. Tables share counts, never pictures.
+      - Point it at the kitchen. The bin camera sees a can go in the trash, and Atlas knows the rule. At UCF, cans go in recycling.
+      - It keeps the count. Four of six recyclables made it this week, sixty-seven percent against a goal of eighty. A nudge, a game called Sort It, and the number moves.
+      - Only counts leave the box. Never pictures.
 
   - id: friends
-    title: Friends' Atlases
-    min_s: 14
+    title: Friends
+    min_s: 15
     lines:
-      - Point it at your friends. Each person's Atlas keeps their own calendar private.
-      - Ask for a time that works for everyone, and the boxes negotiate. Only free or busy leaves each box. The event lands after a tap.
+      - Point it at your friends. Each Atlas keeps its owner's calendar private.
+      - Ask for a time for everyone, and the boxes talk. Free. Busy then, how about three. Agreed, three of three in. Only free or busy leaves each box.
 
-  - id: dayrun
-    title: Day Run
+  - id: lives
+    title: Same box, other lives
     min_s: 13
     lines:
-      - Point it at your habits. Day Run lets you play tomorrow before you live it, on a map of your own campus.
-      - It is the same box, the same cameras, the same memory. Pointed at one more part of your life.
+      - Same box, other lives. A night-shift worker. A family home. A plant operator whose robot inspections it reads offline, cited to the row.
+      - And Day Run. Play tomorrow before you live it, on a map of your own campus.
 
   - id: end
     title: Atlas
-    min_s: 5
-    lines: []
+    min_s: 6
+    lines:
+      - Atlas. The personal AI computer. It learns you, and keeps you to itself.
