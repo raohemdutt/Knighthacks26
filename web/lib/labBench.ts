@@ -528,7 +528,7 @@ export function speedStory(sum: BenchSummary): SpeedStory {
   const pairs = sorted.filter(isPair);
   const pairPoints = new Map<number, BenchHeadline>();
   for (const x of pairs) for (const p of byS.get(x.id) ?? []) if (!pairPoints.has(p.batch)) pairPoints.set(p.batch, p);
-  const pair: StoryLine | null = pairs.length ? { session: pairs[0]!, points: [...pairPoints.values()].sort((a, b) => a.batch - b.batch) } : null;
+  const pair: StoryLine | null = pairs.length ? { session: pairs.find((x) => x.model) ?? pairs[0]!, points: [...pairPoints.values()].sort((a, b) => a.batch - b.batch) } : null;
   const base = pair && after ? { session: after.session, points: after.points.filter((p) => pair.points.some((q) => q.batch === p.batch)) } : null;
   return { after, before, llama, llamaSessions, a100, pair, base };
 }
