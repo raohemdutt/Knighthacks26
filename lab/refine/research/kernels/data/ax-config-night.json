@@ -137,6 +137,8 @@
         "amdgcn_use_buffer_ops"
       ],
       "objective": {"metric": "joules_per_token.b1", "goal": "minimize"},
+      "outcome_constraints": ["decode_tok_s.b1 >= 2.88", "ttft_s.b1 <= 2.0"],
+      "_comment_objective": "joules_per_token is lab/bench.py's gross row field (socket energy over the decode window over the tokens in it); the constraints keep a lower J/token from coming from a slower answer: never slower per token than the April build's 2.88 tok/s, first token within 2 s. Derivation and the labeling lane at batch 8: lab/refine/research/kernels/energy_model_gfx1151.md, section 'Objective and constraints for the optimizer'; the same definition is lab/energy_model.py OBJECTIVE.",
       "tracking": ["decode_tok_s.b1", "ttft_s.b1", "watts_avg.b1"],
       "finalist_tracking": ["joules_per_token.b8", "decode_tok_s.b8", "decode_tok_s_total.b8"],
       "correctness_gate": "R21 on the best arm before it is declared, and on any arm with num_speculative_tokens > 0 before its speed counts",

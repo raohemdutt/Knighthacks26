@@ -96,7 +96,7 @@ export default function LabPage() {
     return (
       <>
         {tabs}
-        <SpeedEnergy initialBatch={number("batch")} initialTtft={q.get("ttft") === "1"} initialPoint={q.get("point")} initialDrawer={q.get("drawer")} forceReduced={params.reduce} />
+        <SpeedEnergy initialBatch={number("batch")} initialTtft={q.get("ttft") === "1"} initialPoint={q.get("point")} initialDrawer={q.get("drawer")} initialCompare={q.get("compare")} initialSweep={q.get("sweep")} forceReduced={params.reduce} />
       </>
     );
   if (tab === "routing")

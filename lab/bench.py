@@ -113,6 +113,7 @@ from lab.machine import metrics as metrics_file  # noqa: E402
 from lab.machine.record import record, recorded  # noqa: E402
 from lab.machine.verdict import MIN_RUNS_PER_ARM  # noqa: E402
 
+CLI_VERB = "bench"   # registers python -m lab bench
 HARNESS = "lab/bench.py 1"
 ROW_SCHEMA = "lab.bench.row/1"
 REPO = Path(__file__).resolve().parents[1]
@@ -1188,6 +1189,7 @@ class Config:
     serve_log: str | None = None        # attach: its log, when it is on this host
     band_gap: float = DEFAULT_BAND_GAP
     record: bool = True
+    labels: dict[str, str] = field(default_factory=dict)   # --condition NAME=VALUE: told, not measured
     stop_measuring: Callable[[RequestResult], bool] | None = None   # see run_batch's stop_after; measured requests only
 
     def settings(self) -> Settings:
@@ -1265,7 +1267,7 @@ class Session:
                 "top_p": 1.0, "seed": 0, "ignore_eos": True, "nonce": self.settings.nonce_on,
                 "thinking": c.thinking, "prefix_caching_setting": c.prefix_caching,
                 "requests_per_stream": self.per_stream, "warmup_rounds": c.warmup_rounds, "harness": HARNESS,
-                "unavailable": unavailable}
+                "unavailable": unavailable, **c.labels}
 
     def server_conditions(self, base: dict[str, Any], *, pid: int | None, log_text: str | None,
                           attached: bool) -> dict[str, Any]:
@@ -1605,7 +1607,8 @@ class Session:
             base = {k: v for k, v in (sample or {}).get("conditions", {}).items()
                     if k in ("engine", "engine_commit", "patch_hash", "checkpoint", "quantization", "max_model_len",
                              "batch_size", "rocm", "torch", "triton", "prompt_set", "max_tokens", "ignore_eos",
-                             "nonce", "thinking", "linear_kernels", "attention_backends", "kv_cache_tokens")}
+                             "nonce", "thinking", "linear_kernels", "attention_backends", "kv_cache_tokens")
+                    or k in self.config.labels}
             n = sum(1 for s in entry["spawns"] if s["outcome"] == "ok")
             low = n < MIN_RUNS_PER_ARM
             for name, unit in METRIC_UNITS.items():
@@ -1704,6 +1707,17 @@ def attach_session(config: Config, *, endpoint: Any, power: Any = None, host: Ho
 
 # --- the command line -------------------------------------------------------------------------------------------
 
+# Condition names the harness fills itself; --condition may add others but never overwrite these.
+RESERVED_CONDITIONS = frozenset({
+    "engine", "engine_commit", "engine_build", "patch_hash", "checkpoint", "served_model", "quantization",
+    "max_model_len", "node", "rocm", "torch", "triton", "hip", "python", "host", "prompt_set", "max_tokens",
+    "temperature", "top_p", "seed", "ignore_eos", "nonce", "thinking", "prefix_caching_setting",
+    "requests_per_stream", "warmup_rounds", "harness", "unavailable", "linear_kernels", "attention_backends",
+    "kv_cache_tokens", "max_concurrency", "concurrency_tokens", "prefix_caching_log", "env", "env_meant",
+    "env_unset", "env_source", "kfd_queues", "batch_size", "share_spawn", "time_since_spawn_s", "session", "statistic", "stats",
+    "bands", "low_confidence_reason", "run_id", "spawn"})
+
+
 def _batches(text: str) -> list[int]:
     try:
         return [int(x) for x in text.split(",") if x.strip()]
@@ -1749,6 +1763,9 @@ def build_parser() -> argparse.ArgumentParser:
         s.add_argument("--metric-prefix", default="teacher")
         s.add_argument("--hub", default=None)
         s.add_argument("--python", default="python3", help="the interpreter whose torch and Triton the server uses")
+        s.add_argument("--condition", action="append", type=_env_pair, default=[], metavar="NAME=VALUE",
+                       help="a condition the harness cannot read, recorded on every row and metrics row "
+                            "(e.g. backend=vulkan); repeatable; a name the harness itself records is refused")
     run.add_argument("--serve-cmd", default=None,
                      help="the launch command (JSON list or shell words) with {port} {log} {batch} {max_len} {model} "
                           "{checkpoint}; default: pod_a_teacher.sh's vLLM line or llama-server")
@@ -1774,8 +1791,11 @@ def _config(args: argparse.Namespace) -> Config:
     if not attach and args.serve_cmd:
         text = args.serve_cmd.strip()
         command = json.loads(text) if text.startswith("[") else shlex.split(text)
+    labels = dict(args.condition)
+    if taken := sorted(set(labels) & RESERVED_CONDITIONS):
+        raise BenchError(f"--condition cannot set {', '.join(taken)}: the harness records those itself")
     return Config(
-        engine=args.engine, command=command, checkpoint=args.checkpoint, model=args.model, max_len=args.max_len,
+        labels=labels, engine=args.engine, command=command, checkpoint=args.checkpoint, model=args.model, max_len=args.max_len,
         quantization=args.quantization, engine_dir=None if attach else args.engine_dir,
         patches=[] if attach else list(args.patch), launch_env={} if attach else dict(args.env),
         node=args.node or ("pod-c" if attach else "pod-b"), port=args.port, batches=args.batches,

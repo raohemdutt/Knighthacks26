@@ -637,3 +637,18 @@ def test_a_long_summary_is_cut_to_two_sentences_and_links_are_not_repeated():
     a = asyncio.run(q.ask("What was the score in the most recent game against UF?"))
     assert a.text == "South Carolina beat Florida 38-19. It rained."
     assert [c.url for c in a.citations] == ["https://floridagators.test/final"]
+
+
+def test_where_was_the_last_place_you_saw_it_is_a_question_about_the_room():
+    from contexts.agent.application.qa import WHERE_IS, item_name
+
+    for question, item in (("where was the last place you saw my water bottle?", "water bottle"),
+                           ("where did you last see my phone", "phone"), ("where are my keys?", "keys")):
+        assert item_name(WHERE_IS.search(question)["item"]) == item
+    assert WHERE_IS.search("where was the game last night") is None  # not the room: left to the tools and the web
+
+
+def test_a_thing_named_in_more_words_than_the_detector_uses_is_still_found():
+    rt = FakeRuntime(chat_replies=[ChatResult(content="On the desk, next to the mug.", model_version="v1")])
+    a = asyncio.run(QA(rt, MEMORY, clock=lambda: NOW).ask("Where are my car keys?"))  # the label is "keys"
+    assert a.citations[0].frame_ref == "frames:cam-desk:k1"

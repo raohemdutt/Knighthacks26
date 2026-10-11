@@ -1,0 +1,26 @@
+{
+  "fla_present": false,
+  "flops_per_step": 610304,
+  "ms_per_step": {
+    "attention": 0.74,
+    "copies": 0.02,
+    "data_loading": 0.2,
+    "gdn": 2.6,
+    "lora": 0.045,
+    "mlp": 0.5,
+    "optimizer": 0.3
+  },
+  "peak_allocated_gib": 3.0,
+  "peak_reserved_gib": 4.0,
+  "shares": {
+    "attention": 0.074,
+    "copies": 0.002,
+    "data_loading": 0.02,
+    "gdn": 0.26,
+    "lora": 0.0045,
+    "mlp": 0.05,
+    "optimizer": 0.03
+  },
+  "step_ms_mean": 10.0,
+  "steps": 3
+}

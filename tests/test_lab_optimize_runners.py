@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from lab import optimize_fake, optimize_runners as runners, optimize_space as osp
+from lab import bench, optimize_fake, optimize_runners as runners, optimize_space as osp
 
 SCREEN = ["--batches", "1", "--no-64", "--repeats", "1", "--max-tokens", "8", "--requests-per-stream", "3",
           "--warmup", "1", "--no-probe"]
@@ -54,3 +54,12 @@ def test_the_training_runner_drives_the_fake_trainer_through_a_settings_file(tmp
     early = slow.run(trial=3, launch=space.launch(space.baseline), fidelity="screen", workdir=tmp_path / "t3",
                      stop_below=1e9)
     assert early.outcome == "early_stopped" and len(early.samples["samples_per_s"]) == 4
+
+
+def test_the_condition_the_harness_writes_for_unset_variables_cannot_be_told(tmp_path):
+    """lab/bench.py records a spawn's unset variables as env_unset itself, so --condition refuses that name like
+    every other condition the harness fills."""
+    answer = bench.main(["run", "--engine", "llamacpp", "--checkpoint", "q4.gguf", "--out", str(tmp_path / "out"),
+                         "--condition", "env_unset=HSA_ENABLE_SDMA"])
+    assert answer["ok"] is False and "env_unset" in answer["error"]
+    assert not (tmp_path / "out").exists()

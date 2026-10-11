@@ -23,6 +23,22 @@ from lab.machine import ledger
 from lab.package_toolchain_fake import COMMIT, FakeToolchain
 from runtime.registry import model_version
 
+
+def _symlinks_work() -> bool:
+    """runtime/modelstore.py switches data/models/current with a symlink. The Jetson and the pods can make one;
+    Windows without Developer Mode or admin rights cannot (WinError 1314)."""
+    import os
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            os.symlink("target", os.path.join(tmp, "link"))
+            return True
+        except OSError:
+            return False
+
+
+NEEDS_SYMLINKS = pytest.mark.skipif(not _symlinks_work(), reason="this machine cannot create symlinks")
+
 BASE = "Qwen/Qwen3.5-4B"
 RUN = "run-0007"
 TASK = "desk-objects"
@@ -344,6 +360,7 @@ def test_the_ledger_row_carries_commit_commands_package_mb_and_wall_clock(pod):
 
 # --- the dry run: installed off the box, read back through runtime/registry.py -----------------------------------
 
+@NEEDS_SYMLINKS
 def test_dry_run_installs_under_scratch_data_models_and_model_version_reads_it_back(pod):
     build(pod)
     gate_row(pod)
@@ -384,6 +401,7 @@ def test_package_is_one_line_of_the_sorted_verb_registry():
     assert list(lab_cli.VERBS) == sorted(lab_cli.VERBS)
 
 
+@NEEDS_SYMLINKS
 def test_python_m_lab_package_runs_build_scores_and_dry_run_on_the_fake(pod, monkeypatch, capsys):
     monkeypatch.setenv("LAB_STATE_DIR", str(pod.state))
     common = ["--run-id", RUN]

@@ -102,7 +102,7 @@ def recorded_inputs(rows: list[dict[str, Any]]) -> dict[str, Any]:
         missing.append("the student's watts and decode rate on the Jetson")
     teacher = None
     if sweep is not None:
-        teacher = {"node": sweep["node"], "model": sweep["model"], "session": sweep["session"], "chip": sweep["chip"],
+        teacher = {"node": sweep["node"], "model": sweep["model"], "session": sweep["session"], "chip": sweep["gpu"],
                    "max_tokens": sweep["max_tokens"], "confidence_note": sweep["confidence_note"],
                    "batches": sweep["batches"],
                    "j_per_token": sweep["metrics"]["joules_per_token"], "tok_s": sweep["metrics"]["decode_tok_s"],

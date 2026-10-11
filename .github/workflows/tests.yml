@@ -13,8 +13,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
+        id: python
         with:
           python-version: "3.12"
-          cache: pip
-      - run: pip install -e ".[dev]"
-      - run: python -m pytest -q
+      # The whole dev venv is cached, keyed by pyproject.toml and the exact interpreter (the venv links to
+      # it): a run whose dependencies did not change skips pip and only relinks the editable install. setup-python's own pip cache would
+      # still resolve and install every wheel on each run.
+      - name: Restore the dev venv
+        id: venv
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-py${{ steps.python.outputs.python-version }}-${{ hashFiles('pyproject.toml') }}
+      - name: Install the dev extra and pytest-xdist (cache miss)
+        if: steps.venv.outputs.cache-hit != 'true'
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -e ".[dev]" "pytest-xdist>=3.2"
+      - name: Relink the editable install (cache hit)
+        if: steps.venv.outputs.cache-hit == 'true'
+        run: .venv/bin/pip install --no-deps -e .
+      # One worker per core; worksteal hands the slow demo and clip tests to whichever worker is free.
+      - run: .venv/bin/python -m pytest -q -n auto --dist worksteal

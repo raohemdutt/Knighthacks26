@@ -105,6 +105,21 @@ python -m contexts.demo seed --now      # the demo night, published through the 
 python -m contexts.gateway              # then open http://127.0.0.1:8000
 ```
 
+Faster local gates: `pip install pytest-xdist` once, then `pytest -q -n auto` runs the suite on every core
+(this is what CI does), and `python tooling/affected_tests.py` prints the pytest command for just the test
+files your branch's changes need (`--xdist` adds the workers). To make a fresh venv install in seconds
+instead of minutes, build a wheelhouse once from a working venv and install from it with no index:
+
+```
+pip wheel --wheel-dir ~/wheelhouse ".[dev]" pytest-xdist "setuptools>=68"      # once, or after pyproject.toml changes
+python -m venv .venv && . .venv/bin/activate
+pip install --no-index --find-links ~/wheelhouse -e ".[dev]" pytest-xdist
+```
+
+`setuptools` goes into the wheelhouse because the editable install builds in an isolated environment that
+would otherwise fetch it. CI keeps the whole `.venv` in `actions/cache`, keyed by `pyproject.toml`, so a run
+whose dependencies did not change skips pip.
+
 On the box: `jetson/README.md` (connecting and setup), `jetson/jetson_setup.sh` (the always-on
 services), then before a demo:
 

@@ -1155,13 +1155,16 @@ def test_the_pool_verb_is_registered_and_owner_only():
 
 
 class InterruptOnce(pool.Pool):
-    """A pool whose main loop gets one Ctrl+C once a seat runs, the way a console delivers it."""
+    """A pool whose main loop gets one Ctrl+C once a seat runs, the way a console delivers it. `interrupted` is set
+    the moment it is raised, so a test can hold the seat open until the pool has taken the interrupt."""
 
-    raised = False
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.interrupted = threading.Event()
 
     def tick(self, timeout):
-        if self.seats and not self.raised:
-            self.raised = True
+        if self.seats and not self.interrupted.is_set():
+            self.interrupted.set()
             raise KeyboardInterrupt
         return super().tick(timeout)
 
@@ -1171,7 +1174,15 @@ def test_ctrl_c_drains_the_pool_starting_nothing_new_until_its_seats_end(lab, re
     fake = FakeLauncher()
     conf = pool.Settings(state_dir=lab, budget=2, refine=pool.TreeFiles(refine_root), verbs=lambda: ["digest", "sit"])
     p = InterruptOnce(conf, launcher=fake, tick_seconds=0.01, clock=clock)
-    ender = threading.Thread(target=lambda: (fake.wait_calls(1), time.sleep(0.2), fake.finish("task O1")))
+
+    def end_the_seat() -> None:
+        # O1 ends only after the pool has taken the Ctrl+C: were it a sleep, a loaded box could end O1 and start O2
+        # before the interrupt, and the drain row would count two seats
+        fake.wait_calls(1)
+        assert p.interrupted.wait(10), "the pool never took the interrupt"
+        fake.finish("task O1")
+
+    ender = threading.Thread(target=end_the_seat)
     ender.start()
     try:
         answer = p.run()
@@ -1385,3 +1396,59 @@ def test_a_sitting_with_a_cap_over_a_day_still_holds_its_units_and_its_item_is_n
     assert dry["units_in_use"] == 1
     assert [f["sitting"] for f in dry["foreign"]] == ["sit-long-1"]
     assert [entry["item"] for entry in dry["schedule"]] == []
+
+
+# --- the pass counter against the log -------------------------------------------------------------
+
+
+def _open_run(refine_root: Path, *, counter: int = 3) -> Path:
+    write_track(refine_root, "telemetry", counter=counter, ending="", closed=False)
+    write_merge_log(refine_root, {"telemetry": counter, "learning": 1, "plumbing": 1, "kernels": 1})
+    for track in ("learning", "plumbing", "kernels"):
+        write_track(refine_root, track)
+    return refine_root / "telemetry"
+
+
+def _pass_view(p: pool.Pool, lab) -> tuple[list[str], list[str]]:
+    save_board(lab, [])
+    p.begin()
+    p.fill(NOW)
+    return ([c.label for c in p.view.candidates],
+            [s.reason for s in p.view.skips if s.item == "pass telemetry"])
+
+
+def test_a_pass_the_log_already_records_as_finished_is_refused_with_the_reason(make_pool, lab, refine_root):
+    folder = _open_run(refine_root)
+    (folder / "refine_pass.txt").write_text("2\n", encoding="utf-8")  # the log holds passes 1 to 3
+    p, _ = make_pool()
+    offered_labels, reasons = _pass_view(p, lab)
+    assert "pass telemetry" not in offered_labels
+    assert len(reasons) == 1 and "pass 3" in reasons[0] and "already" in reasons[0]
+
+
+def test_a_pass_that_would_skip_a_number_is_refused_with_the_reason(make_pool, lab, refine_root):
+    folder = _open_run(refine_root)
+    (folder / "refine_pass.txt").write_text("4\n", encoding="utf-8")  # the next pass would be 5, the log ends at 3
+    p, _ = make_pool()
+    offered_labels, reasons = _pass_view(p, lab)
+    assert "pass telemetry" not in offered_labels
+    assert len(reasons) == 1 and "pass 5" in reasons[0] and "pass 4" in reasons[0] and "skip" in reasons[0]
+
+
+def test_the_next_pass_in_order_is_offered_when_counter_and_log_agree(make_pool, lab, refine_root):
+    _open_run(refine_root)
+    p, _ = make_pool()
+    offered_labels, reasons = _pass_view(p, lab)
+    assert "pass telemetry" in offered_labels and reasons == []
+
+
+def test_a_log_whose_pass_numbers_break_the_track_rules_is_refused_with_the_rule(make_pool, lab, refine_root):
+    folder = _open_run(refine_root)
+    log = folder / "REFINE_LOG.md"  # passes 1 to 3: drop pass 2's entry, so the log reads 1, 3 and the counter 3
+    text = log.read_text(encoding="utf-8")
+    assert PASS_ENTRY.format(n=2, ending="") in text
+    log.write_text(text.replace(PASS_ENTRY.format(n=2, ending=""), ""), encoding="utf-8")
+    p, _ = make_pool()
+    offered_labels, reasons = _pass_view(p, lab)
+    assert "pass telemetry" not in offered_labels
+    assert len(reasons) == 1 and "track rules" in reasons[0] and "found [1, 3]" in reasons[0]

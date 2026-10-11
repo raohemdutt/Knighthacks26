@@ -17,7 +17,7 @@ from lab.machine import ledger
 
 T0 = datetime(2026, 10, 10, 14, 0, tzinfo=UTC)
 FIGURES = ["detector_fps", "student_tok_s", "caption_latency_s", "trainer_samples_per_s", "train_minutes",
-           "teacher_tok_s"]
+           "train_loss", "teacher_tok_s"]
 
 
 def at(s: float) -> datetime:
@@ -199,7 +199,7 @@ def test_with_nothing_recorded_every_figure_is_present_null_with_its_reason(tmp_
         k: (None, None, None) for k in FIGURES}
     assert {k: stats[k]["unit"] for k in FIGURES} == {
         "detector_fps": "frames/s", "student_tok_s": "tok/s", "caption_latency_s": "s",
-        "trainer_samples_per_s": "samples/s", "train_minutes": "min", "teacher_tok_s": "tok/s"}
+        "trainer_samples_per_s": "samples/s", "train_minutes": "min", "train_loss": "loss", "teacher_tok_s": "tok/s"}
     assert stats["detector_fps"]["reason"] == (
         "not recorded yet: no detector.fps row for node jetson in the lab metrics file or the lab ledger; the gateway "
         "keeps no detector timing (GET /capture/status counts detections without timing them)")
@@ -212,8 +212,12 @@ def test_with_nothing_recorded_every_figure_is_present_null_with_its_reason(tmp_
     assert stats["trainer_samples_per_s"]["reason"] == (
         "not recorded yet: no trainer.samples_per_s row in the lab metrics file or the lab ledger; "
         "telemetry.train.step carries no sample count")
-    assert stats["train_minutes"]["reason"] == (
-        f"not recorded yet: no trainer.run_minutes row in the lab metrics file or the lab ledger; {off}")
+    assert stats["train_minutes"]["reason"] == (  # training steps come from the lab, not a sampler: never "off"
+        "not recorded yet: no trainer.run_minutes row in the lab metrics file or the lab ledger; "
+        "no telemetry.train.step from node pod-b")
+    assert stats["train_loss"]["reason"] == (
+        "not recorded yet: no trainer.loss row in the lab metrics file or the lab ledger; "
+        "no telemetry.train.step with a finite loss from node pod-b")
     assert stats["teacher_tok_s"]["reason"] == (
         f"not recorded yet: no teacher.decode_tok_s row in the lab metrics file or the lab ledger; {off}")
     assert stats["eval_scores"] == {"models": [], "reason": "no learning.model.deployed event in the event log yet"}
@@ -274,6 +278,54 @@ def test_an_evaluation_without_a_before_or_after_score_says_which_is_missing(tmp
     assert (model["before"], model["after"], model["teacher"], model["reason"]) == (
         None, 0.8, None, "the evaluation carries no 'current' score")
     assert model["low_confidence"] is True and model["ts"] and model["source"]
+
+
+def lossy(run_id: str, n: int, s: float, loss: float | None) -> TrainStep:
+    return TrainStep(ts=at(s), node="pod-b", run_id=run_id, step=n, loss=loss, step_ms=2000.0, socket_w=250.0)
+
+
+def test_train_loss_is_served_with_telemetry_off_because_steps_come_from_the_lab_not_a_sampler(tmp_path):
+    stats = snapshot([lossy("r1", 1, 0, 2.31), lossy("r1", 2, 10, 1.7), lossy("r1", 3, 20, 1.42)],
+                     telemetry=False, **nothing(tmp_path))
+    assert stats["train_loss"] == {"value": 1.42, "unit": "loss", "node": "pod-b", "ts": "2026-10-10T14:00:20Z",
+                                   "source": "telemetry.train.step: run r1, step 3 of 3 (first loss 2.31), no "
+                                             "learning.run.evaluated for it yet, so it may still be training",
+                                   "low_confidence": True, "reason": None}
+    assert (stats["train_minutes"]["value"], stats["train_minutes"]["node"]) == (22 / 60, "pod-b")
+
+
+def test_train_loss_follows_the_newest_run_even_while_it_trains_and_is_confident_once_evaluated(tmp_path):
+    older = [lossy("r1", 1, 0, 2.0), lossy("r1", 2, 10, 0.9), evaluated("r1", "atlas-v2", 30, {"candidate": 0.8})]
+    stats = snapshot([*older, lossy("r2", 1, 100, 2.4), lossy("r2", 2, 110, 2.1)], **nothing(tmp_path))
+    assert (stats["train_loss"]["value"], stats["train_loss"]["low_confidence"]) == (2.1, True)  # the live run
+    assert stats["train_loss"]["source"].startswith("telemetry.train.step: run r2, step 2 of 2 (first loss 2.4)")
+    stats = snapshot(older, **nothing(tmp_path))
+    assert (stats["train_loss"]["value"], stats["train_loss"]["low_confidence"]) == (0.9, False)
+    assert stats["train_loss"]["source"] == "telemetry.train.step: run r1, step 2 of 2 (first loss 2)"
+
+
+def test_a_step_without_a_finite_loss_is_counted_but_never_served_as_the_loss(tmp_path):
+    stats = snapshot([lossy("r1", 1, 0, 2.0), lossy("r1", 2, 10, 1.5), lossy("r1", 3, 20, None),
+                      lossy("r1", 4, 30, float("nan"))], **nothing(tmp_path))
+    assert (stats["train_loss"]["value"], stats["train_loss"]["ts"]) == (1.5, "2026-10-10T14:00:10Z")
+    assert "step 2 of 4" in stats["train_loss"]["source"]
+    only_nan = snapshot([lossy("r9", 1, 0, None)], **nothing(tmp_path))
+    assert only_nan["train_loss"]["value"] is None
+    assert only_nan["train_loss"]["reason"].endswith("no telemetry.train.step with a finite loss from node pod-b")
+
+
+def test_a_step_imported_twice_counts_once(tmp_path):
+    first = [lossy("r1", 1, 0, 2.0), lossy("r1", 2, 10, 1.5)]
+    stats = snapshot([*first, *first, lossy("r1", 3, 20, 1.2)], **nothing(tmp_path))
+    assert "step 3 of 3" in stats["train_loss"]["source"]
+    assert stats["train_minutes"]["source"].startswith("telemetry.train.step: run r1, 3 steps")
+
+
+def test_a_newer_lab_loss_row_wins_over_older_steps(tmp_path):
+    metrics = write_metrics(tmp_path / "metrics.jsonl", [
+        metrics_row("trainer.loss", 0.61, "loss", "pod-b", "2026-10-10T15:00:00Z")])
+    stats = snapshot([lossy("r1", 1, 0, 2.0)], metrics=metrics, state_dir=tmp_path / "state")
+    assert (stats["train_loss"]["value"], stats["train_loss"]["source"]) == (0.61, "metrics.jsonl:1")
 
 
 def test_the_pod_figures_read_the_telemetry_of_the_nodes_main_names_pod_a_and_pod_b(tmp_path):

@@ -86,6 +86,8 @@ from lab.optimize_store import (CONFIRM_SCHEMA, DRIVER, FINISHED, RUN_SCHEMA, TR
 from lab.optimize_space import (NIGHT_CONFIG, REPO, Lane, Night, SearchSpace, SpaceError, check_lane,  # noqa: E402
                                 initial_arms, lane_of, load_night, load_space, shown)
 
+CLI_VERB = "optimize"   # registers python -m lab optimize
+
 STATE_DIR = REPO / "lab" / "state" / "optimize"
 DATA_DIR = REPO / "lab" / "refine" / "research" / "kernels" / "data"
 FAKE_NODE = runners.FAKE_NODE

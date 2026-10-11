@@ -22,15 +22,17 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel
 
-from contexts.play.dayrun import modes
+from contexts.play.dayrun import fixes, modes, talk, words
 from contexts.play.dayrun.board import build_board, initial_state, local
 from contexts.play.dayrun.config import DayRunConfig
 from contexts.play.dayrun.engine import simulate
+from contexts.play.dayrun.history import DayBook, DayRecord
 from contexts.play.dayrun.models import (
     Board,
     CampaignResult,
     CommitResult,
     Disruption,
+    EditResult,
     Estimate,
     ForecastResult,
     FriendAt,
@@ -122,6 +124,8 @@ class DayRun:
         self.fixtures_dir = Path(fixtures_dir)
         self.scenarios_dir = profile.scenarios_dir() if profile is not None else None
         self.clock = clock
+        self.book = DayBook(Path(data_dir) / "events")  # the days the log has a plan for (read-only)
+        self._labels: dict[str, list[str]] = {}  # plan id -> what needed fixing in it, for a past day's one line
 
     # --- sources ---
 
@@ -173,17 +177,43 @@ class DayRun:
 
     def board(self, start: datetime | None = None, initial: InitialOverride | None = None, scenario: str | None = None) -> Board:
         sc = self.scenario(scenario)
+        asked = start
         start = local(self.cfg, start or (sc.now if sc else self.clock()))
         lo = start - timedelta(days=1)  # an event that began earlier may still be running
         hi = start + timedelta(hours=self.cfg.window_hours + self.cfg.deadline_horizon_hours)
         items = list(sc.items_between(lo, hi) if sc else self.memory.items(lo, hi) if self.memory else [])
         if self.agreed is not None and not sc:
             items += self.agreed.items(lo, hi, self.cfg.tz, items)
+        if asked is not None and not sc:
+            items = self._logged_items(start, items)
         over = initial or InitialOverride()
         if sc and sc.start_place and not over.start_place:
             over = over.model_copy(update={"start_place": sc.start_place})
         state = initial_state(self.cfg, start, self._habit_rows(sc, start.date(), start), over, origin="scenario" if sc else "habits")
         return build_board(self.cfg, self.walks, start, list(items), state, self._friends(sc, start), over)
+
+    def _logged_items(self, start: datetime, items: list[Item]) -> list[Item]:
+        """A board asked for at the very start of a plan the log holds for an earlier day is that plan's own day: the
+        fixed blocks the plan was made around are added back from the plan event (they may no longer be in Memory,
+        or never were: a day lived before the connectors synced). Any other start is untouched."""
+        try:
+            rec = self.book.days().get(start.date())
+            if rec is None or start.date() >= self.today():
+                return items
+            plan = next((p for p in [rec.lived, rec.plan, *rec.replans] if p and local(self.cfg, datetime.fromisoformat(p["start"])) == start), None)
+        except Exception:
+            return items
+        if plan is None:
+            return items
+        have = {i.external_id for i in items}
+        out = list(items)
+        for m in plan.get("moves", []):
+            if not m.get("fixed") or m.get("kind") == "sleep" or m["id"] in have:
+                continue
+            a, b = local(self.cfg, datetime.fromisoformat(m["start"])), local(self.cfg, datetime.fromisoformat(m["end"]))
+            out.append(Item(connector="calendar", kind="calendar_event", external_id=m["id"], title=m["title"], when=a,
+                            summary=f"until {b.hour % 12 or 12}:{b:%M %p}" + (f" · {m['place_name']}" if m.get("place_name") else "")))
+        return out
 
     # --- play ---
 
@@ -304,3 +334,134 @@ class DayRun:
         elif any(not (0 <= m < float("inf")) for m in measured.values()):  # a negative or infinite length scores as nonsense
             raise ValueError("measured minutes must be 0 or more")
         return forecast(estimates, measured)
+
+    # --- today's plan: fixes, sources in words, edits by saying them, and the days around today (all additive) ---
+
+    def explain(self, moves: list[Move], start: datetime | None = None, initial: InitialOverride | None = None,
+                scenario: str | None = None) -> dict:
+        """What needs fixing (each with a suggested edit) and one true sentence per number a person might question."""
+        board = self.board(start, initial, scenario)
+        return fixes.explain(self.cfg, self.walks, board, moves, simulate(self.cfg, self.walks, board, moves))
+
+    def edit(self, text: str, moves: list[Move], start: datetime | None = None, initial: InitialOverride | None = None,
+             scenario: str | None = None) -> EditResult:
+        """A change asked for in plain words, as the new list of moves (contexts/play/dayrun/talk.py). Nothing is stored."""
+        return talk.edit(self.cfg, self.walks, self.board(start, initial, scenario), moves, text)
+
+    def today(self) -> date:
+        """The local day the strip calls today: the clock's when the log has a plan for it (or has no plans at all),
+        else the newest planned day, which is what the Calendar screen shows on a log that ends on another day
+        (contexts/day/api.py `plan_for`)."""
+        now = local(self.cfg, self.clock()).date()
+        planned = [d for d, r in self.book.days().items() if r.plan]
+        return now if now in planned or not planned else max(planned)
+
+    def _wake(self, day: date) -> datetime:
+        return datetime.combine(day, self.cfg.sleep.wake, self.cfg.tz)
+
+    def _problems(self, plan: dict) -> list[str]:
+        """What needed fixing in a logged plan, by running it again on that day's board (the same engine, the same items)."""
+        key = plan.get("plan_id", "")
+        if key not in self._labels:
+            try:
+                moves = [Move(**m) for m in plan.get("dayrun_moves", [])]
+                found = self.explain(moves, datetime.fromisoformat(plan["start"]))["fixes"]
+                self._labels[key] = [f.problem for f in found]
+            except Exception:
+                self._labels[key] = []
+        return self._labels[key]
+
+    def _past(self, rec: DayRecord) -> dict:
+        plan, lived, review = rec.plan or {}, rec.lived or {}, rec.review
+        outcome = lived.get("outcome") or {}
+        score = review.get("score") if review else None
+        problems = [] if outcome.get("won", True) else self._problems(lived)
+        replanned = lived is not plan and bool(rec.replans)
+        if replanned:
+            label = "re-planned, still made it" if outcome.get("won") else "re-planned"
+            summary = lived.get("why") or "The day changed and Atlas re-planned it."
+        elif problems:  # the plan itself did not work; the line under it says whose it was and how much of it happened
+            label = words.past(problems[0])
+            whose = "Your own plan" if lived.get("by") == "person" else "Atlas's plan"
+            summary = f"{whose}. Nothing in it could be measured." if score is None else f"{whose}; {score}% of it happened."
+        elif score is None:
+            label = "planned, not measured"
+            summary = "Atlas planned this day, but nothing in it could be measured."
+        else:
+            label = "on plan" if score >= 80 else f"{score}% of the plan happened"
+            slipped = review.get("slipped") or []
+            summary = f"You followed {score}% of this plan." + (f" {slipped[0]} slipped." if slipped else "")
+        return {"has_data": True, "label": label, "summary": summary, "won": bool(outcome.get("won")),
+                "stars": review.get("stars") if review else None, "score": score}
+
+    def _ahead(self, day: date) -> dict:
+        """A day not lived yet, from what the box already has for it: fixed things, what is due, free time, and how
+        hard the open deadlines press if no work is done before it. Nothing is predicted."""
+        start = self._wake(day)
+        board = self.board(start)
+        bed = datetime.combine(day, self.cfg.sleep.bedtime, self.cfg.tz)
+        if bed <= start:
+            bed += timedelta(days=1)
+        fixed = [b for b in board.blocks if b.activity != "sleep" and b.start < bed]
+        free = sum(max(0.0, (min(s.end, bed) - max(s.start, start)).total_seconds() / 60) for s in board.slots)
+        due = [d for d in board.deadlines if local(self.cfg, d.due).date() == day]
+        open_ones = [d for d in board.deadlines if d.work_left > 0]
+        optional = [e for e in [*board.events, *board.suggestions] if e.start < bed]
+        parts = [words.count(len(fixed), "fixed thing") if fixed else "Nothing fixed", f"{words.dur(free)} free"]
+        summary = ", ".join(parts) + "." + "".join(f" {words.assignment(d.title)} is due {words.clock12(local(self.cfg, d.due))}." for d in due[:1])
+        return {"has_data": bool(fixed or due or optional), "label": summary.split(".")[0].lower(), "summary": summary,
+                "fixed": len(fixed), "agreed": sum(1 for b in fixed if b.id.startswith("circle:")), "optional": len(optional),
+                "free_minutes": round(free), "busy_minutes": round(sum((b.end - b.start).total_seconds() / 60 for b in fixed)),
+                "due": [{"id": d.id, "title": words.assignment(d.title), "due": d.due, "work_left": d.work_left} for d in due],
+                "pressure": round(max((d.risk for d in open_ones), default=0.0), 3)}
+
+    def days(self, back: int = 14, ahead: int = 5) -> dict:
+        """The date strip: `back` days behind today, today, `ahead` in front; a day the box has nothing for is not selectable."""
+        today, book = self.today(), self.book.days()
+        out = []
+        for n in range(-back, ahead + 1):
+            day = today + timedelta(days=n)
+            row: dict = {"day": day, "when": "past" if n < 0 else "today" if n == 0 else "future"}
+            if n < 0:
+                row |= self._past(book[day]) if day in book and book[day].plan else {"has_data": False, "label": "nothing recorded", "summary": ""}
+            elif n == 0:
+                row |= {"has_data": True, "label": "today", "summary": ""}
+            else:
+                try:
+                    row |= self._ahead(day)
+                except Exception:
+                    row |= {"has_data": False, "label": "nothing yet", "summary": ""}
+            out.append(row)
+        return {"today": today, "days": out}
+
+    def day(self, day: date) -> dict:
+        """One day of the strip. Past: the plan that was lived, block by block, with what the review measured. Today:
+        the Day loop's plan, to edit. Future: an empty draft that starts at wake time."""
+        today, rec = self.today(), self.book.days().get(day)
+        when = "past" if day < today else "today" if day == today else "future"
+        lived = (rec.lived if rec else None) or {}
+        out: dict = {"day": day, "when": when, "start": lived.get("start") or (self._wake(day) if when != "today" else None),
+                     "moves": lived.get("dayrun_moves", []), "blocks": [], "review": None, "changes": [], "first": None,
+                     "outcome": lived.get("outcome")}
+        if when == "future":
+            return out | self._ahead(day)
+        if rec is None or rec.plan is None:
+            if when == "past":
+                raise LookupError(f"nothing was recorded for {day}")
+            return out | {"has_data": True, "label": "today", "summary": ""}
+        review = rec.review or {}
+        followed, slipped = set(review.get("followed") or []), set(review.get("slipped") or [])
+        morning = {(m["title"], m["start"], m.get("place")) for m in rec.plan.get("moves", [])}
+        replanned = lived is not rec.plan
+        # a re-planned day is told whole: the morning as first planned, then the new plan from where it took over
+        before = [m for m in rec.plan.get("moves", []) if replanned and m["end"] <= lived.get("start", "")]
+        for m in [*before, *lived.get("moves", [])]:
+            mark = "done" if m["title"] in followed else "missed" if m["title"] in slipped else None
+            out["blocks"].append({**m, "mark": mark if when == "past" else None,
+                                  "moved": replanned and (m["title"], m["start"], m.get("place")) not in morning})
+        if replanned:
+            out["changes"] = [{"at": lived.get("ts"), "why": lived.get("why", "")}]
+            out["first"] = {"start": rec.plan.get("start"), "moves": rec.plan.get("dayrun_moves", [])}
+        if rec.review:
+            out["review"] = {k: review.get(k) for k in ("score", "stars", "points", "plan_stars", "followed", "slipped", "change_tomorrow")}
+        return out | (self._past(rec) if when == "past" else {"has_data": True, "label": "today", "summary": ""})
