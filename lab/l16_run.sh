@@ -70,12 +70,14 @@ dataset() {
     mkdir -p "$data/$id"
     # The dataset itself only; the labeler's own records (traces, its ledger and manifest, rejects) stay here.
     cp -r "$folder/manifest.json" "$folder/examples.jsonl" "$folder/split.json" "$folder/images" "$data/$id/"
+    rm -f "$data/$id/images/.gitkeep"   # the contents API refuses a hidden file, and a text dataset has no images
   else
     id=tool-calling-fixture
     echo "labels: L13's labels are not in the repo; the reference traces of fixtures/learning/$id/expected.jsonl (learning ruling 12)"
     rm -rf "${data:?}/$id"
     cp -r "fixtures/learning/$id" "$data/$id"
     rm -f "$data/$id/expected.jsonl"   # the gold stays on the workstation; the dataset is manifest, examples, images
+    rm -f "$data/$id/images/.gitkeep"
     "$py" - "$data/$id" "fixtures/learning/$id/expected.jsonl" <<'PY'
 import json
 import sys
@@ -162,7 +164,8 @@ prep() {
   rm -rf "$SRC"
   mkdir -p "$SRC" "$L16/state"
   tar -xzf "$L16/l16-bundle.tar.gz" -C "$SRC" || die "could not unpack the bundle"
-  (zcat "$L16/l16-bundle.tar.gz" | git get-tar-commit-id) > "$SRC/SOURCE_COMMIT" 2>/dev/null || echo unknown > "$SRC/SOURCE_COMMIT"
+  # git archive writes the commit into the tar's pax header (no git needed on the pod to read it).
+  python3 -c 'import sys, tarfile; print(tarfile.open(sys.argv[1]).pax_headers.get("comment", "unknown"))'     "$L16/l16-bundle.tar.gz" > "$SRC/SOURCE_COMMIT" 2>/dev/null || echo unknown > "$SRC/SOURCE_COMMIT"
   echo "source: $(cat "$SRC/SOURCE_COMMIT")"
   before="$(PYTHONNOUSERSITE=1 python3 -c 'import torch; print(torch.__version__, torch.__file__)')" \
     || die "the image's torch does not import"
