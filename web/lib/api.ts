@@ -658,7 +658,8 @@ export interface RoomPlan {
   windows: RoomOpening[];
   posters: RoomOpening[];
   furniture: RoomFurniture[];
-  calibration: Record<string, { image: [number, number][]; floor: [number, number][]; homography: number[][] }>;
+  /** `source`: "default" = the placeholder points the room file shipped with (positions are approximate); "set" = given for the real camera. */
+  calibration: Record<string, { image: [number, number][]; floor: [number, number][]; homography: number[][]; source?: "default" | "set" }>;
   zones: Record<string, Record<string, [number, number][]>>; // camera -> zone -> floor polygon (m)
   play: { walk_speed: number; body_radius: number; start: [number, number] };
   rooms: string[];
