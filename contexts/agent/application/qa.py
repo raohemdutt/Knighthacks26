@@ -155,6 +155,40 @@ def unsure(text: str) -> bool:
     return text.strip() == NO_EVIDENCE or bool(REFUSAL.search(text))
 
 
+# Small talk saying it cannot look something up ("I can't check the weather from here"): the web tools may. Narrower
+# than REFUSAL on purpose: the persona says "I'm just an AI" and "I don't know anything about that" all the time, and
+# sending those to the web turned a misheard "what caused sure to my wife?" into a search result read aloud.
+CANT_LOOK = re.compile(
+    r"\b(?:can(?:no|['’]?)t|unable to|not able to) (?:browse|access|check|search|look up)"
+    r"|\bdon['’]?t have (?:access|real[- ]time|internet)|\bno (?:internet|web) access\b",
+    re.IGNORECASE)
+SENTENCE_DONE = re.compile(r"[.!?]\s")
+
+
+class HeldStream:
+    """Passes a small-talk reply on once its first sentence shows it is not a "can't look that up" (CANT_LOOK), which the
+    tool loop replaces. Until then the reply is held, so the person never hears one answer and then another. The voice
+    speaks whole sentences anyway, so holding the first one costs it nothing."""
+
+    def __init__(self, stream: Callable[[str], None] | None):
+        self.stream, self.held, self.sent, self.refused = stream, "", False, False
+
+    def feed(self, piece: str) -> None:
+        if self.sent:
+            self.stream(piece)
+            return
+        self.held += piece
+        if self.refused or CANT_LOOK.search(self.held):
+            self.refused = True
+        elif SENTENCE_DONE.search(self.held):
+            self.flush()
+
+    def flush(self) -> None:
+        if self.stream and not self.sent and self.held:
+            self.stream(self.held)
+        self.sent = True
+
+
 # About the world outside the room, so only the web can answer: with web tools these skip small talk (A13)
 OUTSIDE = re.compile(
     r"\b(?:scores?|standings|playoffs?|box score|final score|kickoff|tip-?off)\b"
@@ -195,8 +229,10 @@ KEYFRAME_TOOL = {
 }
 PAGE_EXCERPT = 600
 
+# "where was the last place you saw my water bottle?" is listed first: plain "where was" would take "the last place ..." as the item
 WHERE_IS = re.compile(
-    r"(?:where(?: did i (?:leave|put)|['\u2019]?d i (?:leave|put)| are| is|'s|\u2019s)|have you seen|(?:i )?can(?:no|['\u2019]?)t find)"
+    r"(?:where(?: was| is|['\u2019]s)? the last place (?:you|i) (?:saw|seen|left|put)|where did (?:you|i) last (?:see|leave|put)"
+    r"|where(?: did i (?:leave|put)|['\u2019]?d i (?:leave|put)| are| is|'s|\u2019s)|have you seen|(?:i )?can(?:no|['\u2019]?)t find)"
     r" (?P<item>[a-z ]+?)[?.!, ]*$"
 )
 # "where is the package now?" asks about "package": words around the item that are not part of its name
@@ -397,9 +433,13 @@ class QA:
             if self.web and OUTSIDE.search(question):  # a score or a game: search at once, no tool-choice round
                 return await self.web_first(question, stream)
             if self.talk and self.talk.wants(question):
-                a = await self.talk.reply(question, stream)
-                if self.web and unsure(a.text):  # small talk gave up ("I can't browse the web"): let the tools try
+                if not self.web:
+                    return await self.talk.reply(question, stream)
+                held = HeldStream(stream)
+                a = await self.talk.reply(question, held.feed if stream else None)
+                if not held.sent and CANT_LOOK.search(a.text):  # "I can't browse the web": let the tools try instead
                     return await self.tool_loop(question, stream)
+                held.flush()  # once part of the reply was heard, it is the answer: never a second one after it
                 return a
             return await self.tool_loop(question, stream)
         unsure_ok = self.web is not None and not evidence.room_only  # A13: may fall back to the tool loop
@@ -424,7 +464,12 @@ class QA:
 
     def last_seen(self, label: str, ev: Evidence) -> None:
         label = label.strip().lower()
-        s = self.memory.last_seen(label) or (self.memory.last_seen(label[:-1]) if label.endswith("s") else None)
+        head = label.split()[-1] if label.split() else label  # "water bottle": the detector's label is "bottle"
+        s = None
+        for name in dict.fromkeys((label, head)):
+            s = self.memory.last_seen(name) or (self.memory.last_seen(name[:-1]) if name.endswith("s") else None)
+            if s:
+                break
         if s:
             where = f"{s.zone_id} zone on {s.camera_id}" if s.zone_id else s.camera_id
             pos = f", {s.position}" if s.position else ""

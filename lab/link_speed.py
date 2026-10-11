@@ -68,6 +68,7 @@ __all__ = ["FreshLink", "Summary", "Run", "SizeResult", "ProbeStep", "Probe", "R
            "size_label", "summarize", "manifest_bytes", "probe_part_limit", "measure", "serve_script", "stop_script",
            "build_parser", "main"]
 
+CLI_VERB = "link-speed"   # registers python -m lab link-speed
 KIB = 1 << 10
 MIB = 1 << 20
 MB = 1_000_000

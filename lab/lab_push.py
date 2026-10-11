@@ -605,3 +605,5 @@ if __name__ == "__main__":
     answer = main()
     print(json.dumps(answer))
     sys.exit(0 if answer.get("ok") else 1)
+
+CLI_VERB = "lab-push"

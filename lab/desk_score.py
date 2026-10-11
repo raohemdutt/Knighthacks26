@@ -370,3 +370,5 @@ if __name__ == "__main__":
     answer = main()
     print(json.dumps(answer))
     sys.exit(0 if answer.get("ok", True) else 1)
+
+CLI_VERB = "desk-score"

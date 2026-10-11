@@ -1,0 +1,137 @@
+{
+ "schema": "lab.interference/1",
+ "task": "R43",
+ "run_id": "r43-synthetic",
+ "date": "2026-10-11",
+ "chip": "gfx1151",
+ "node": "pod-b",
+ "hub": "sjc",
+ "account": "D",
+ "started": "2026-10-11T06:00:00Z",
+ "ended": "2026-10-11T07:00:00Z",
+ "serve": {
+  "share": 0.63,
+  "port": 8100,
+  "ready_s": 523.0,
+  "checkpoint": "~/models/Qwen3.8-27B-INT4",
+  "argv": [
+   "python3",
+   "-m",
+   "vllm.entrypoints.openai.api_server"
+  ]
+ },
+ "workload": {
+  "batch": 4,
+  "max_tokens": 100,
+  "decode_s": 20,
+  "steps": 4,
+  "train_batch": 4,
+  "grad_accum": 1,
+  "train_model": "~/models/Qwen3.5-4B"
+ },
+ "power_reader": "synthetic (hand-made numbers, not a pod)",
+ "facts": null,
+ "arms": {
+  "decode": {
+   "rounds": 2,
+   "answers": 8,
+   "tokens": 800,
+   "errors": 0,
+   "window": [
+    1791699400.0,
+    1791699420.0
+   ],
+   "busy_s": 20.0,
+   "decode_tok_s": 40.0,
+   "answers_per_s": 0.4,
+   "decode_tok_s_per_stream_median": 10.0,
+   "watts": {
+    "available": true,
+    "avg_w": 100.0,
+    "peak_w": 120.0,
+    "energy_j": 2000.0,
+    "reason": null
+   },
+   "joules_per_answer": 250.0,
+   "error": null
+  },
+  "train": {
+   "steps": 4,
+   "window": [
+    1791700400.0,
+    1791700440.0
+   ],
+   "seconds": 40.0,
+   "samples": 16,
+   "samples_per_s": 0.4,
+   "steps_per_s": 0.1,
+   "outcome": "trained",
+   "exit_code": 0,
+   "trainer_samples_per_s": 0.38,
+   "trainer_peak_mem_gb": null,
+   "watts": {
+    "available": true,
+    "avg_w": 100.0,
+    "peak_w": 120.0,
+    "energy_j": 4000.0,
+    "reason": null
+   },
+   "joules_per_step": 1000.0,
+   "error": null
+  },
+  "both": {
+   "train": {
+    "steps": 4,
+    "window": [
+     1791701400.0,
+     1791701450.0
+    ],
+    "seconds": 50.0,
+    "samples": 16,
+    "samples_per_s": 0.32,
+    "steps_per_s": 0.08,
+    "outcome": "trained",
+    "exit_code": 0,
+    "trainer_samples_per_s": 0.3,
+    "trainer_peak_mem_gb": null
+   },
+   "decode": {
+    "rounds": 2,
+    "answers": 8,
+    "tokens": 800,
+    "errors": 0,
+    "window": [
+     1791701405.0,
+     1791701435.0
+    ],
+    "busy_s": 30.0,
+    "decode_tok_s": 26.6667,
+    "answers_per_s": 0.2667,
+    "decode_tok_s_per_stream_median": 10.0
+   },
+   "watts": {
+    "available": true,
+    "avg_w": 110.0,
+    "peak_w": 130.0,
+    "energy_j": 5500.0,
+    "reason": null
+   },
+   "joules_per_answer_all": 687.5,
+   "joules_per_step_all": 1375.0,
+   "error": null
+  }
+ },
+ "compare": {
+  "decode_tok_s_change_pct": -33.33,
+  "answers_per_s_change_pct": -33.33,
+  "samples_per_s_change_pct": -20.0,
+  "serial_energy_j": 6000.0,
+  "shared_energy_j": 5500.0,
+  "energy_change_pct": -8.33,
+  "serial_seconds": 60.0,
+  "shared_seconds": 50.0,
+  "time_change_pct": -16.67,
+  "verdict": "share"
+ },
+ "open": []
+}

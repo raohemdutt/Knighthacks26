@@ -1,0 +1,42 @@
+{
+ "format": "atlas.chipsheet/1",
+ "gfx": "gfx1151",
+ "node": "pod-b",
+ "mode": "full",
+ "date": "2026-10-11",
+ "ended": "2026-10-11T00:04:24Z",
+ "versions": {
+  "rocm": "7.13.0"
+ },
+ "device": {
+  "rocminfo": {
+   "marketing_name": "Radeon 8060S Graphics"
+  }
+ },
+ "measurements": [
+  {
+   "id": "copy.d2d.size_16mib",
+   "section": "copy",
+   "what": "copy of 16mib",
+   "unit": "GB/s",
+   "value": 900.0,
+   "status": "ok",
+   "params": {
+    "bytes": 16777216
+   },
+   "repeats": 3
+  },
+  {
+   "id": "copy.d2d.size_4gib",
+   "section": "copy",
+   "what": "copy of 4gib",
+   "unit": "GB/s",
+   "value": 200.0,
+   "status": "ok",
+   "params": {
+    "bytes": 4294967296
+   },
+   "repeats": 3
+  }
+ ]
+}

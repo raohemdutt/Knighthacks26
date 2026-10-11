@@ -71,6 +71,7 @@ __all__ = [
     "track_order",
 ]
 
+CLI_VERB = "rulings"   # registers python -m lab rulings
 REPO_ROOT = Path(__file__).resolve().parents[2]
 # The refine folder and the four tracks are lab/machine/refine_track.py's (REFINE_DIR, TRACKS), read when a call
 # needs them.

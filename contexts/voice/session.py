@@ -29,6 +29,7 @@ PROBE_EVERY_S = 10.0
 MIN_WAKE_LEVEL = 0.003  # a window quieter than this is silence and is not transcribed
 WAKE_RETRY_S = 5.0  # after the wake listener hits a missing microphone or speech tool
 AFTER_SPEECH_QUIET_S = 0.5  # the speaker's tail must not be heard as the next question
+SAY_AGAIN = "Sorry, I didn't catch that. Say it again?"  # someone spoke, but not clearly enough to answer
 
 # ask(text) -> (answer, citation count): POST /api/ask on the gateway
 Ask = Callable[[str], tuple[str, int]]
@@ -225,7 +226,7 @@ class VoiceSession:
         def transcribe_windows() -> None:
             try:
                 while (pcm := waiting.get()) is not None:
-                    heard = self.stt.transcribe(pcm)
+                    heard = self.stt.transcribe(pcm, quick=True)
                     del pcm
                     if c.debug_wake:
                         log.info("wake listener heard %r", heard)
@@ -285,6 +286,14 @@ class VoiceSession:
             if greet and not self._greet():
                 return
             text = self._listen_and_transcribe()
+            if text == "" and self._ask_after and not self._cancel.is_set():
+                # heard someone but not the words: ask once more rather than answer a guess
+                if not self._greet(SAY_AGAIN):
+                    return
+                self._finish.clear()  # a tap that ended the first try must not end this one at once
+                text = self._listen_and_transcribe()
+                if text:
+                    self.problem = ""
             if text and not self._cancel.is_set() and self._ask_after:
                 self._ask_and_speak(text)
         except Exception as e:  # nothing may take the service down; say what happened instead
@@ -310,11 +319,14 @@ class VoiceSession:
         t.start()
         return t
 
-    def _greet(self) -> bool:
-        """Say the wake reply, then get ready to listen. False when the turn should end instead."""
+    def _greet(self, line: str | None = None) -> bool:
+        """Say the wake reply (or `line`), then get ready to listen. False when the turn should end instead."""
         try:
-            pcm, rate = self._greeting or self.tts.synthesize(self.cfg.wake_reply)
-            self._greeting = pcm, rate
+            if line is None:
+                pcm, rate = self._greeting or self.tts.synthesize(self.cfg.wake_reply)
+                self._greeting = pcm, rate
+            else:
+                pcm, rate = self.tts.synthesize(line)
             self._set("speaking")
             self.speaker.play(pcm, rate, self._stop_speech)
         except (SpeechEngineError, AudioUnavailable) as e:
@@ -327,7 +339,9 @@ class VoiceSession:
         self._set("listening")
         return True
 
-    def _listen_and_transcribe(self) -> str:
+    def _listen_and_transcribe(self) -> str | None:
+        """The question in words. None when nobody spoke (or it was stopped); "" when someone spoke but whisper could not
+        make out the words, or was not sure of them."""
         c = self.cfg
         try:
             with self._mic_lock, self.mic.open() as frames:
@@ -336,19 +350,19 @@ class VoiceSession:
                                        should_stop=lambda: self._cancel.is_set() or self._finish.is_set())
         except AudioUnavailable as e:
             self.problem = f"No microphone: {e}"
-            return ""
+            return None
         if self._cancel.is_set():
-            return ""
+            return None
         if pcm is None:
             self.problem = "Didn't hear anything. Say Hey Atlas or tap, then speak." if c.wake_word else "Didn't hear anything. Tap and speak."
-            return ""
+            return None
         self._set("thinking")
         blip = self._start_chime()
         try:
             text = self.stt.transcribe(pcm)
         except SpeechEngineError as e:
             self.problem = str(e)
-            return ""
+            return None
         finally:
             del pcm  # the recording is gone as soon as it has been turned into words
             if blip:
@@ -394,6 +408,8 @@ class VoiceSession:
             nonlocal queued
             said = clean_for_speech(raw)
             if said and (queued == 0 or queued + len(said) < MAX_SPOKEN_CHARS):
+                if self.cfg.debug_speech:
+                    log.info("saying %r", said)
                 queued += len(said) + 1
                 to_synth.put(said)
 
