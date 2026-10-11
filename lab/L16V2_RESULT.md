@@ -23,9 +23,21 @@ Before = the base rebuilt through the package's path (`~/l4/Qwen3.5-4B-base-same
 | the same | tool-calling-fixture held out, 58 examples in 4 groups | 42 = 0.724 | 43 = 0.741 | 1 | 0 | p = 1 | p = 1 |
 | grid run 1 (the fallback, `atlas-tool-calling-v2-a100-r01`) | tool-calling-v2 held out | 95 = 0.417 | 176 = 0.772 | 86 | 5 | p = 4.0e-20 | p = 1.5e-05 (17 groups up, 1 flat, 0 down) |
 | the same | tool-calling-fixture held out | 42 = 0.724 | 43 = 0.741 | 1 | 0 | p = 1 | p = 1 |
-| trial 9's configuration at step 32 (`atlas-tool-calling-v2-a100-f3r16`) | tool-calling-v2 held out | 95 = 0.417 | 177 = 0.776 | 90 | 8 | p = 1.1e-18 | p = 3.1e-05 |
+| trial 9's configuration at step 32 (`atlas-tool-calling-v2-a100-f3r16`) | tool-calling-v2 held out | 95 = 0.417 | 177 = 0.776 | 90 | 8 | p = 1.1e-18 | p = 3.1e-05 (16 groups up, 2 flat, 0 down) |
+| the same | tool-calling-fixture held out | 42 = 0.724 | 42 = 0.724 | 0 | 0 | p = 1 | p = 1 |
 
-The eval gate, and the old fixture's 58 for the third adapter: pending from the pod D seat.
+Sources: the `podD RESULT agreement` lines of `work/L16v2-out/progress.log` (4:29 and 4:32 AM for grid run 1, 5:14
+and 5:15 AM for f2r4, 5:23 and 5:25 AM for f3r16), the files under `work/L16v2pod-out/pod/<tag>/agreement-v2/` and
+`agreement-old58/`, and the channel lines of 4:33, 5:16 and 5:26 AM ET. The before arm was asked once, at 4:29 AM,
+and reused for the later two adapters (same prompts, checked by sha256 per example).
+
+The eval gate (scoring rule 2) was not run for any of the three: each 15-minute pod D row was spent on packaging and
+the two agreement runs. It stays open, and its verdict could only have been "reject: scored and reported" (24 scored
+items, under the gate's 50).
+
+The A100-trained f2r4 package is the one on the box (`atlas-tool-calling-v2-a100-f2r4`, Q4_K_M sha256
+`db7879b12398052a77c5c707af4248991253467e6065e533835f76def0edbcde`). The extended search later changed the validation
+choice (section 5); that did not change the box.
 
 How to read them:
 
@@ -268,11 +280,44 @@ Pending (sessions line).
 
 ## 7. Pod D
 
-Pending (pod rows).
+Every pod D step ran inside a GPU Queue row (GPU B, exclusive). Files: `work/L16v2pod-out/pod/<tag>/` (`slot-start.json`,
+`package.json`, `agreement-*`, `stop.txt`, `slot-done.json`); lines: `podD` in `work/L16v2-out/progress.log`.
 
-The pod D retrain with the chosen recipe (second pass): the run script is `lab/l16v2/pod_run.sh train <run id>
-<recipe flags>` (a copy of `lab/l16_run.sh`'s train step with the new dataset, validation rows and flags); who runs
-it and when is the coordinator's call. Pending (pod retrain).
+| row (GPU Queue) | what | Running (ET) | minutes | outcome |
+| --- | --- | --- | --- | --- |
+| `3f696ef5fec581629e23dda202751b4a` | grid run 1 (r01), first try | 4:16 | 0 | the push of the inputs failed its size read-back; released with nothing done |
+| `3f696ef5fec581389732c09ac003aa4d` | grid run 1 (r01) | 4:19 to 4:32 | 13.5 | packaged `atlas-tool-calling-v2-a100-r01` (Q4_K_M sha256 `d7e038cbdd6cdacfc14bb16700cf9966694947b19a2479702b971e742cda00fa`); scored, section 2 |
+| `3f696ef5fec58148be53df21bb4e11f7` | finalist 2 (f2r4, the choice at 5:13 AM) | 5:06 to 5:16 | 10 | packaged `atlas-tool-calling-v2-a100-f2r4` (sha256 `db7879b1...0edbcde`); scored, section 2 |
+| `3f696ef5fec5816e9ef4d44ecaa4cff4` | finalist 3 (f3r16) | 5:16 to 5:25 | 9.8 | packaged `atlas-tool-calling-v2-a100-f3r16` (sha256 `151fd328528b28074aa013cca2b66793fa2beaad5e5ae8b8a8449a83a2fad07c`); scored, section 2 |
+| `3f696ef5fec58196beb4cb7484637ed3` | the retrain of f2r4's recipe on pod D's own card (podf2r4) | 5:38 to 6:03 | 25.2 | cancelled by Ilan; nothing packaged or scored (below) |
+
+Each package was built by `python -m lab package` (merge, bf16 GGUF, Q4_K_M) at llama.cpp `23b0202`, 3,381 MB, in
+about 60 s.
+
+### The cancelled pod D retrain (it decided nothing)
+
+What it was: the second pass of the rules ("The pod D retrain"), the 5:13 AM choice (trial 12's configuration)
+trained again on pod D's AMD card (Radeon 8060S, gfx1151, ROCm torch 2.9.1) instead of the A100, with the same rows,
+validation rows, seed and batch, and `--stop-step 32` so it would end at the checkpoint the A100 run kept. Flags:
+`--max-steps 62 --stop-step 32 --lr 0.000427627 --rank 4 --alpha 8 --dropout 0.1360 --warmup-ratio 0.0093 --batch 4
+--grad-accum 4 --seed 42 --eval-steps 8 --keep-best`, code at `5753fdc`, the power sampler on. It was to be packaged as
+`atlas-tool-calling-v2-pod-f2r4` and reported beside the A100-trained f2r4; by the rules it could replace nothing.
+
+When it stopped: the trainer started at 5:38:21 AM ET (`train.txt`). Ilan cancelled the run at 5:59 AM ET, and the
+stop was carried out by the coordinator's own stop script. The trainer had logged step 24 at 6:01:02 AM; the job
+ended with exit 143 (killed by a signal) 1,464.5 s after it started, about 6:02:40 AM (`train.json`). The row closed at
+6:03 AM after 25.2 minutes with the servers stopped and the card's memory at 0 percent (`stop.txt`, `slot-done.json`).
+The trainer deletes its outputs on every way out, so `run.json`, `ledger.jsonl` and the adapter were never written
+(the pulls of the first two answered 404); nothing was packaged and nothing was scored. Pod D has since gone to
+another task, and the retrain is not to be restarted.
+
+What it left, for the record only: validation loss 0.0316, 0.0189 and 0.0134 at steps 8, 16 and 24
+(`run/validation.jsonl`), against 0.0320, 0.0188 and 0.0114 for the A100 run of the same recipe
+(`work/L16v2-out/colab/runs/final2-t12-lr0.000428-rank4-a8-drop0.136-warm0.009/validation.jsonl`); 46.3 s an
+optimizer step at a mean 95.8 W socket power over its 24 steps (the 6:01 AM watch line; the A100 does a step in
+about 6.3 s); `run/telemetry.jsonl`, `run/train.log`, and the power samples
+(`run/power-samples-2026-10-11.jsonl`, 11,640,264 bytes). A partial run that ended at step 24 is not the recipe's
+step-32 checkpoint, so these numbers compare nothing and decide nothing.
 
 ## 8. What makes a number weaker than it looks, and what is open
 
