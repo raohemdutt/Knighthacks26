@@ -22,6 +22,7 @@ from zoneinfo import ZoneInfo
 
 import yaml
 
+from contexts.agent.application.digest import Digester
 from contexts.agent.application.memory_port import MemoryReader
 from contexts.agent.application.web_port import NOT_FOUND, SUMMARY_TITLE, WebTools
 from contracts.agent import AnswerGenerated
@@ -253,6 +254,7 @@ VISIT = re.compile(
     r"\bwhile (?:they|the judges?|our guests?|the visitors?|he|she|someone) (?:was|were) (?:here|at (?:the|our) table|visiting)\b"
     r"|\b(?:their|the last|the latest|that|the) visit\b"
 )
+DIGEST = re.compile(r"\b(?:(?:daily |day'?s? )?digest|(?:recap|summary|sum up|summari[sz]e)(?: of)? (?:my |the |our )?(?:whole )?(?:day|today))\b")
 VISIT_LOOKBACK = timedelta(hours=3)
 VISIT_GAP = timedelta(minutes=3)  # people out of view for longer than this end one visit
 VISIT_SPOKEN = 4  # moments read out in a visit recap
@@ -521,6 +523,16 @@ class QA:
         more = f" And {len(spoken) - VISIT_SPOKEN} more moments." if len(spoken) > VISIT_SPOKEN else ""
         ev.direct = f"The latest visit started {self._t(start)}: " + " ".join(spoken[:VISIT_SPOKEN]) + more
 
+    def digest(self, q: str, ev: Evidence) -> None:
+        """The day's digest (A6) as the answer. "yesterday" asks for yesterday's; anything else is today's."""
+        today = self.clock().astimezone(self.sleep.tz).date()
+        d = Digester(self.memory, self.clock, self.sleep.tz).build(today - timedelta(days=1) if "yesterday" in q else today)
+        for m in d.moments:
+            ev.lines.append(f"{self._t(m.hour)} hour: {m.text}")
+        ev.citations = d.citations
+        ev.lines = ev.lines or [d.text]  # an empty day still answers, with "Nothing on the cameras today so far."
+        ev.direct = d.text
+
     def trace(self, item: str, ev: Evidence) -> None:
         """Where `item` was last seen, the latest episodes the detector tagged with it, then caption matches."""
         self.last_seen(item, ev)
@@ -649,6 +661,10 @@ class QA:
         if m := WHERE_IS.search(q):
             ev.room_only = True
             self.last_seen(item_name(m["item"]), ev)
+            return ev
+        if DIGEST.search(q):  # A6: "daily digest", "recap my day": written from the data, no model call
+            ev.room_only = True
+            self.digest(q, ev)
             return ev
         if ITEMS_Q.search(q) or (ITEM_THING.search(q) and FUTURE.search(q)):  # A9: "what is due this week?"
             self.upcoming_items(q, ev)
