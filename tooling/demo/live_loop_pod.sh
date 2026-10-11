@@ -174,7 +174,8 @@ if __name__ == "__main__":
 PY
   # one rank of the two-pod LoRA with the act's held-out floor (the stand-in gate never deploys)
   cat > "$1/l29_rank.py" <<'PY'
-import runpy, sys
+import os, runpy, sys
+sys.path.insert(0, os.getcwd())   # run as a file from $L29_RUN, so the source tree (the cwd) is not on the path by itself
 import lab.dataset as d
 d.load_split.__kwdefaults__["min_held_out"] = int(sys.argv[1])
 sys.argv = ["lab/r65_local_sgd.py"] + sys.argv[2:]
