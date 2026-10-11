@@ -22,3 +22,6 @@ contexts/perception/models/facial_expression_recognition_mobilefacenet_2022july.
 .neon
 node_modules/
 .env.local
+# R66 network shim build outputs
+lab/net/podshim.so
+lab/net/podshim_test

@@ -4,6 +4,7 @@
 # Local helpers (no gateway needed):
 #   make rebuild-memory   data/memory.sqlite rebuilt from data/events/*.jsonl (M2, H1)
 #   make fake-<context>   fake events for one context, e.g. make fake-perception (F4)
+#   make podshim          lab/net/podshim.so, the LD_PRELOAD network shim for the pods (R66; Linux, gcc)
 ATLAS_URL ?= http://127.0.0.1:8000
 AUTH = $(if $(ATLAS_TOKEN),-H "Authorization: Bearer $(ATLAS_TOKEN)",)
 
@@ -19,4 +20,9 @@ rebuild-memory:
 fake-%:
 	python -m contexts.demo fake $*
 
-.PHONY: offline online rebuild-memory
+podshim: lab/net/podshim.so
+
+lab/net/podshim.so: lab/net/podshim.c
+	gcc -O2 -Wall -Wextra -shared -fPIC -o $@ $< -ldl -lpthread
+
+.PHONY: offline online rebuild-memory podshim
