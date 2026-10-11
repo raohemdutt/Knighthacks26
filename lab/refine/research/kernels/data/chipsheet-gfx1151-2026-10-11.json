@@ -1,0 +1,7193 @@
+{
+ "format": "atlas.chipsheet/1",
+ "gfx": "gfx1151",
+ "node": "pod-b",
+ "mode": "full",
+ "date": "2026-10-11",
+ "started": "2026-10-11T00:01:01Z",
+ "ended": "2026-10-11T00:04:24Z",
+ "gpu_seconds": 203.3,
+ "budget_s": 840.0,
+ "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet",
+ "host": "jupyter-roscon02",
+ "versions": {
+  "rocm": "7.13.0",
+  "hip": "7.13.99004-3309c6114a",
+  "hipcc": "23.0.0git",
+  "torch": "2.9.1+rocm7.13.0",
+  "torch_hip": "7.13.99004-3309c6114a",
+  "triton": "3.5.1",
+  "python": "3.12.3",
+  "amd_smi": "AMDSMI Tool: 26.4.0+3309c6114a | AMDSMI Library version: 26.4.0 | ROCm version: 7.13.0 | amdgpu version: N/A | AINIC version: N/A"
+ },
+ "device": {
+  "rocminfo": {
+   "gfx": "gfx1151",
+   "marketing_name": "Radeon 8060S Graphics",
+   "compute_units": 40,
+   "simds_per_cu": 2,
+   "wavefront_size": 32,
+   "workgroup_max_size": 1024,
+   "max_waves_per_cu": 32,
+   "cacheline_bytes": 128,
+   "max_clock_mhz": 2900,
+   "cache_bytes": {
+    "l1": 32768,
+    "l2": 2097152,
+    "l3": 33554432
+   },
+   "lds_bytes": 65536
+  },
+  "hip": {
+   "probe": "props",
+   "name": "Radeon 8060S Graphics",
+   "gcnArchName": "gfx1151",
+   "totalGlobalMem": 68719476736,
+   "sharedMemPerBlock": 65536,
+   "maxSharedMemoryPerMultiProcessor": 65536,
+   "regsPerBlock": 196608,
+   "warpSize": 32,
+   "maxThreadsPerBlock": 1024,
+   "maxThreadsPerMultiProcessor": 2048,
+   "multiProcessorCount": 20,
+   "l2CacheSize": 2097152,
+   "clockRate_khz": 2900000,
+   "memoryClockRate_khz": 1000000,
+   "memoryBusWidth": 256
+  }
+ },
+ "power": {
+  "reader": {
+   "tool": "amd-smi",
+   "options": [
+    "metric",
+    "--power",
+    "--clock",
+    "--temperature",
+    "--usage",
+    "--energy"
+   ],
+   "gpu": 0,
+   "fill": {
+    "tool": "rocm-smi",
+    "options": [
+     "--showtemp",
+     "--showclocks"
+    ],
+    "gpu": 0,
+    "fields": [
+     "gfx_mhz",
+     "mem_mhz",
+     "temps_c"
+    ]
+   },
+   "period_s": 0.25,
+   "read_errors": 0
+  },
+  "idle": {
+   "copy": {
+    "idle_w": 24.166666666666668,
+    "samples": 12,
+    "seconds": 3.0
+   },
+   "matmul": {
+    "idle_w": 43.81818181818182,
+    "samples": 11,
+    "seconds": 3.0
+   },
+   "lora": {
+    "idle_w": 54.81818181818182,
+    "samples": 11,
+    "seconds": 3.0
+   },
+   "dequant": {
+    "idle_w": 51.25,
+    "samples": 12,
+    "seconds": 3.0
+   },
+   "wave": {
+    "idle_w": 54.09090909090909,
+    "samples": 11,
+    "seconds": 3.0
+   },
+   "cache": {
+    "idle_w": 31.833333333333332,
+    "samples": 12,
+    "seconds": 3.0
+   },
+   "lds": {
+    "idle_w": 26.333333333333332,
+    "samples": 12,
+    "seconds": 3.0
+   },
+   "occupancy": {
+    "idle_w": 26.0,
+    "samples": 11,
+    "seconds": 3.0
+   }
+  }
+ },
+ "measurements": [
+  {
+   "id": "copy.d2d.size_1mib",
+   "section": "copy",
+   "what": "device-to-device copy of 1mib",
+   "unit": "GB/s",
+   "value": 576.7982448009126,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only copy",
+   "op": "torch: dst.copy_(src), uint8[1048576] on cuda:0, value = 2 x bytes / time",
+   "params": {
+    "bytes": 1048576
+   },
+   "samples": [
+    305.8672473669509,
+    563.7486725405676,
+    576.4019648364691,
+    572.304324841275,
+    586.6590148497453,
+    572.538717351776,
+    594.7426974806467,
+    584.3663368644225,
+    587.4827636449127,
+    575.529944501214,
+    586.3309556745551,
+    576.7982448009126,
+    575.9250848427512,
+    583.9575337180521,
+    584.8552384949495
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 305.8672473669509,
+    "max": 594.7426974806467,
+    "median": 576.7982448009126,
+    "mean": 561.8339161206134,
+    "stdev": 71.24079534856791,
+    "p10": 563.7486725405676,
+    "p90": 587.4827636449127,
+    "rel_spread": 0.5008258133888808
+   },
+   "derived": {
+    "copy_gbs": 288.3991224004563
+   },
+   "watts": {
+    "idle_w": 24.166666666666668,
+    "loaded_mean_w": 56.833333333333336,
+    "loaded_max_w": 72.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "copy.d2d.size_2mib",
+   "section": "copy",
+   "what": "device-to-device copy of 2mib",
+   "unit": "GB/s",
+   "value": 663.474903629153,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only copy",
+   "op": "torch: dst.copy_(src), uint8[2097152] on cuda:0, value = 2 x bytes / time",
+   "params": {
+    "bytes": 2097152
+   },
+   "samples": [
+    663.6109909082942,
+    663.474903629153,
+    665.7801398790593,
+    661.8429138053095,
+    668.319303537831,
+    659.7377300649963,
+    662.7551324976419,
+    660.065084893081,
+    666.113987111949,
+    666.015566299194,
+    661.9981684167235,
+    659.8919984672535,
+    663.2218220370414,
+    664.1957754588595,
+    664.1572917406036
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 659.7377300649963,
+    "max": 668.319303537831,
+    "median": 663.474903629153,
+    "mean": 663.4120539164661,
+    "stdev": 2.4928960376569367,
+    "p10": 659.8919984672535,
+    "p90": 666.113987111949,
+    "rel_spread": 0.01293428496826971
+   },
+   "derived": {
+    "copy_gbs": 331.7374518145765
+   },
+   "watts": {
+    "idle_w": 24.166666666666668,
+    "loaded_mean_w": 86.0,
+    "loaded_max_w": 94.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "copy.d2d.size_4mib",
+   "section": "copy",
+   "what": "device-to-device copy of 4mib",
+   "unit": "GB/s",
+   "value": 796.1806640513265,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only copy",
+   "op": "torch: dst.copy_(src), uint8[4194304] on cuda:0, value = 2 x bytes / time",
+   "params": {
+    "bytes": 4194304
+   },
+   "samples": [
+    797.4714899592796,
+    799.1582933189915,
+    799.7152496687379,
+    796.1188888626303,
+    796.6103123065204,
+    796.9790037603238,
+    792.4737963736372,
+    795.6077097344177,
+    795.8122242133703,
+    796.1806640513265,
+    800.9354553667117,
+    801.225431765404,
+    795.6694056151782,
+    791.6834293992296,
+    792.838667922847
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 791.6834293992296,
+    "max": 801.225431765404,
+    "median": 796.1806640513265,
+    "mean": 796.5653348212404,
+    "stdev": 2.872903536858927,
+    "p10": 792.4737963736372,
+    "p90": 800.9354553667117,
+    "rel_spread": 0.011984720047859993
+   },
+   "derived": {
+    "copy_gbs": 398.09033202566326
+   },
+   "watts": {
+    "idle_w": 24.166666666666668,
+    "loaded_mean_w": 102.16666666666667,
+    "loaded_max_w": 107.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "copy.d2d.size_8mib",
+   "section": "copy",
+   "what": "device-to-device copy of 8mib",
+   "unit": "GB/s",
+   "value": 893.2024848185661,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only copy",
+   "op": "torch: dst.copy_(src), uint8[8388608] on cuda:0, value = 2 x bytes / time",
+   "params": {
+    "bytes": 8388608
+   },
+   "samples": [
+    894.9046946959259,
+    895.0920227062204,
+    895.1128142680888,
+    892.788608847714,
+    893.016439521651,
+    894.987708200616,
+    892.6848305023634,
+    891.0121390252646,
+    894.9254775559413,
+    895.2789339259551,
+    891.239002464921,
+    894.7381574128814,
+    892.1477355933602,
+    892.8924113252033,
+    893.2024848185661
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 891.0121390252646,
+    "max": 895.2789339259551,
+    "median": 893.2024848185661,
+    "mean": 893.6015640576447,
+    "stdev": 1.485388740222053,
+    "p10": 891.239002464921,
+    "p90": 895.1128142680888,
+    "rel_spread": 0.004776962640847639
+   },
+   "derived": {
+    "copy_gbs": 446.60124240928303
+   },
+   "watts": {
+    "idle_w": 24.166666666666668,
+    "loaded_mean_w": 112.5,
+    "loaded_max_w": 116.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "copy.d2d.size_16mib",
+   "section": "copy",
+   "what": "device-to-device copy of 16mib",
+   "unit": "GB/s",
+   "value": 943.2373422179049,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only copy",
+   "op": "torch: dst.copy_(src), uint8[16777216] on cuda:0, value = 2 x bytes / time",
+   "params": {
+    "bytes": 16777216
+   },
+   "samples": [
+    943.7808978886577,
+    941.5169863113538,
+    940.131229417944,
+    943.497304935458,
+    943.2373422179049,
+    942.812155470205,
+    943.8517172683116,
+    940.623778081389,
+    944.2779127779797,
+    940.9760344936743,
+    943.2609437290282,
+    943.9703125391134,
+    941.3286247963075,
+    944.7984252317374,
+    940.3653962268838
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 940.131229417944,
+    "max": 944.7984252317374,
+    "median": 943.2373422179049,
+    "mean": 942.5619374257299,
+    "stdev": 1.5716082846759152,
+    "p10": 940.3653962268838,
+    "p90": 944.2779127779797,
+    "rel_spread": 0.0049480609014259476
+   },
+   "derived": {
+    "copy_gbs": 471.61867110895247
+   },
+   "watts": {
+    "idle_w": 24.166666666666668,
+    "loaded_mean_w": 118.83333333333333,
+    "loaded_max_w": 120.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "copy.d2d.size_32mib",
+   "section": "copy",
+   "what": "device-to-device copy of 32mib",
+   "unit": "GB/s",
+   "value": 216.3235509758719,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only copy",
+   "op": "torch: dst.copy_(src), uint8[33554432] on cuda:0, value = 2 x bytes / time",
+   "params": {
+    "bytes": 33554432
+   },
+   "samples": [
+    217.37202181918406,
+    216.57545305693625,
+    215.90979362148275,
+    216.72489311348832,
+    215.58091075955895,
+    216.3235509758719,
+    215.7013590283784,
+    214.92156037048136,
+    215.3176026076956,
+    215.2346208919937,
+    216.38876926549352,
+    217.28732354307556,
+    216.90269960806168,
+    216.23037896736858,
+    217.14178340218604
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 214.92156037048136,
+    "max": 217.37202181918406,
+    "median": 216.3235509758719,
+    "mean": 216.24084806875044,
+    "stdev": 0.7764868286617271,
+    "p10": 215.2346208919937,
+    "p90": 217.28732354307556,
+    "rel_spread": 0.011327760836248542
+   },
+   "derived": {
+    "copy_gbs": 108.16177548793596
+   },
+   "watts": {
+    "idle_w": 24.166666666666668,
+    "loaded_mean_w": 98.6,
+    "loaded_max_w": 114.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "copy.d2d.size_64mib",
+   "section": "copy",
+   "what": "device-to-device copy of 64mib",
+   "unit": "GB/s",
+   "value": 214.1701642889449,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only copy",
+   "op": "torch: dst.copy_(src), uint8[67108864] on cuda:0, value = 2 x bytes / time",
+   "params": {
+    "bytes": 67108864
+   },
+   "samples": [
+    213.80556791648158,
+    214.5222854057939,
+    215.031977265437,
+    214.48103804639248,
+    210.94616394696197,
+    213.8601904023748,
+    214.00602758210627,
+    213.73282189789802,
+    213.20216976339347,
+    214.49028599201665,
+    214.1701642889449,
+    213.82385352737995,
+    215.52078518610622,
+    214.8479437534227,
+    214.48560062976438
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 210.94616394696197,
+    "max": 215.52078518610622,
+    "median": 214.1701642889449,
+    "mean": 214.06179170696495,
+    "stdev": 1.0409840891355102,
+    "p10": 213.20216976339347,
+    "p90": 215.031977265437,
+    "rel_spread": 0.021359750338391947
+   },
+   "derived": {
+    "copy_gbs": 107.08508214447245
+   },
+   "watts": {
+    "idle_w": 24.166666666666668,
+    "loaded_mean_w": 80.0,
+    "loaded_max_w": 85.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "copy.d2d.size_128mib",
+   "section": "copy",
+   "what": "device-to-device copy of 128mib",
+   "unit": "GB/s",
+   "value": 212.93331348350327,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only copy",
+   "op": "torch: dst.copy_(src), uint8[134217728] on cuda:0, value = 2 x bytes / time",
+   "params": {
+    "bytes": 134217728
+   },
+   "samples": [
+    212.41334460066025,
+    211.93623443410186,
+    209.18292626531138,
+    213.89893038987003,
+    213.94002189234686,
+    211.8424047497227,
+    211.9964719676818,
+    213.03488393866965,
+    213.91256484067208,
+    212.93331348350327,
+    213.36067476529405,
+    211.87583176516048,
+    214.06302489057984,
+    213.33352789766204,
+    212.93331348350327
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 209.18292626531138,
+    "max": 214.06302489057984,
+    "median": 212.93331348350327,
+    "mean": 212.7104979576493,
+    "stdev": 1.262238469873458,
+    "p10": 211.8424047497227,
+    "p90": 213.94002189234686,
+    "rel_spread": 0.02291843650686692
+   },
+   "derived": {
+    "copy_gbs": 106.46665674175163
+   },
+   "watts": {
+    "idle_w": 24.166666666666668,
+    "loaded_mean_w": 74.6,
+    "loaded_max_w": 76.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "copy.d2d.size_256mib",
+   "section": "copy",
+   "what": "device-to-device copy of 256mib",
+   "unit": "GB/s",
+   "value": 212.13419506712575,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only copy",
+   "op": "torch: dst.copy_(src), uint8[268435456] on cuda:0, value = 2 x bytes / time",
+   "params": {
+    "bytes": 268435456
+   },
+   "samples": [
+    210.91851505459343,
+    211.51455477114786,
+    210.3455703641626,
+    211.2810676164446,
+    212.10737936358814,
+    212.7845373235475,
+    212.13419506712575,
+    212.52121873116837,
+    212.88594573395628,
+    212.91634080434008,
+    208.99685341607028,
+    212.29885451995386,
+    212.8318599514874,
+    212.67985074868147,
+    211.74523332790582
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 208.99685341607028,
+    "max": 212.91634080434008,
+    "median": 212.13419506712575,
+    "mean": 211.86413178627825,
+    "stdev": 1.1100498578540487,
+    "p10": 210.3455703641626,
+    "p90": 212.88594573395628,
+    "rel_spread": 0.018476452544718473
+   },
+   "derived": {
+    "copy_gbs": 106.06709753356287
+   },
+   "watts": {
+    "idle_w": 24.166666666666668,
+    "loaded_mean_w": 74.6,
+    "loaded_max_w": 75.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "copy.d2d.size_512mib",
+   "section": "copy",
+   "what": "device-to-device copy of 512mib",
+   "unit": "GB/s",
+   "value": 210.51082896711216,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only copy",
+   "op": "torch: dst.copy_(src), uint8[536870912] on cuda:0, value = 2 x bytes / time",
+   "params": {
+    "bytes": 536870912
+   },
+   "samples": [
+    210.51082896711216,
+    208.66797979347706,
+    209.15180046159114,
+    210.73433253420438,
+    211.76197997422972,
+    210.21681177166147,
+    210.1525406019397,
+    211.40611210301014,
+    211.89092421969997,
+    211.31770873000355,
+    209.74126261356076,
+    210.60679168942502,
+    210.39177493901394,
+    210.04545049662144,
+    210.70617393892925
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 208.66797979347706,
+    "max": 211.89092421969997,
+    "median": 210.51082896711216,
+    "mean": 210.48683152229867,
+    "stdev": 0.8980997540277901,
+    "p10": 209.15180046159114,
+    "p90": 211.76197997422972,
+    "rel_spread": 0.015310112273257096
+   },
+   "derived": {
+    "copy_gbs": 105.25541448355608
+   },
+   "watts": {
+    "idle_w": 24.166666666666668,
+    "loaded_mean_w": 74.8,
+    "loaded_max_w": 76.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "copy.d2d.size_1gib",
+   "section": "copy",
+   "what": "device-to-device copy of 1gib",
+   "unit": "GB/s",
+   "value": 209.46004675181075,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only copy",
+   "op": "torch: dst.copy_(src), uint8[1073741824] on cuda:0, value = 2 x bytes / time",
+   "params": {
+    "bytes": 1073741824
+   },
+   "samples": [
+    210.3488517719821,
+    210.39262021384295,
+    210.6092539275756,
+    210.28858451576684,
+    210.14920647952155,
+    209.90308771263764,
+    205.05087513925466,
+    209.122431794232,
+    209.46004675181075,
+    209.80119696868533,
+    209.41830139081628,
+    209.09388682940988,
+    208.26090694083294,
+    209.226949533936,
+    209.08979019848562
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 205.05087513925466,
+    "max": 210.6092539275756,
+    "median": 209.46004675181075,
+    "mean": 209.34773267791934,
+    "stdev": 1.351854999566788,
+    "p10": 208.26090694083294,
+    "p90": 210.39262021384295,
+    "rel_spread": 0.026536701745832517
+   },
+   "derived": {
+    "copy_gbs": 104.73002337590538
+   },
+   "watts": {
+    "idle_w": 24.166666666666668,
+    "loaded_mean_w": 75.0,
+    "loaded_max_w": 75.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "copy.d2d.size_2gib",
+   "section": "copy",
+   "what": "device-to-device copy of 2gib",
+   "unit": "GB/s",
+   "value": 208.793647146797,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only copy",
+   "op": "torch: dst.copy_(src), uint8[2147483648] on cuda:0, value = 2 x bytes / time",
+   "params": {
+    "bytes": 2147483648
+   },
+   "samples": [
+    209.26045072735138,
+    209.29925396449127,
+    209.0771518416904,
+    208.62577636490153,
+    209.21427515305245,
+    208.793647146797,
+    208.71395320139757,
+    207.99455597760846,
+    208.14076647582456,
+    209.0669413206154,
+    208.35239979877662,
+    208.4881877224583,
+    208.6745157950393,
+    209.36426946993478,
+    209.0677565727339
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 207.99455597760846,
+    "max": 209.36426946993478,
+    "median": 208.793647146797,
+    "mean": 208.80892676884486,
+    "stdev": 0.4313027389624549,
+    "p10": 208.14076647582456,
+    "p90": 209.29925396449127,
+    "rel_spread": 0.006560130114319613
+   },
+   "derived": {
+    "copy_gbs": 104.3968235733985
+   },
+   "watts": {
+    "idle_w": 24.166666666666668,
+    "loaded_mean_w": 75.66666666666667,
+    "loaded_max_w": 76.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "copy.d2d.size_4gib",
+   "section": "copy",
+   "what": "device-to-device copy of 4gib",
+   "unit": "GB/s",
+   "value": 207.7612951585606,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only copy",
+   "op": "torch: dst.copy_(src), uint8[4294967296] on cuda:0, value = 2 x bytes / time",
+   "params": {
+    "bytes": 4294967296
+   },
+   "samples": [
+    206.94909093163017,
+    207.3924303585084,
+    208.03554339799803,
+    207.81164515768725,
+    208.48961618160726,
+    208.5500733866308,
+    206.66311126349365,
+    207.7612951585606,
+    207.50484331763468,
+    207.3757565292792,
+    208.31454422750414,
+    208.2864120331845,
+    207.48656457443948,
+    207.99960887472903,
+    207.55749873977322
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 206.66311126349365,
+    "max": 208.5500733866308,
+    "median": 207.7612951585606,
+    "mean": 207.74520227551068,
+    "stdev": 0.5476099415491765,
+    "p10": 206.94909093163017,
+    "p90": 208.48961618160726,
+    "rel_spread": 0.009082356372956997
+   },
+   "derived": {
+    "copy_gbs": 103.8806475792803
+   },
+   "watts": {
+    "idle_w": 24.166666666666668,
+    "loaded_mean_w": 75.66666666666667,
+    "loaded_max_w": 77.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "matmul.fp16.decode27b.k5120_n6144.m1",
+   "section": "matmul",
+   "what": "fp16 decode GEMM, batch 1, K 5120 to N 6144",
+   "unit": "TFLOP/s",
+   "value": 0.15556285676377207,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[1,5120], w[6144,5120]) float16, value = 2MNK / time",
+   "params": {
+    "m": 1,
+    "k": 5120,
+    "n": 6144,
+    "dtype": "float16"
+   },
+   "samples": [
+    0.153855237160731,
+    0.15549346580871967,
+    0.15556285676377207,
+    0.15759281766220087,
+    0.15439628995644267,
+    0.15537413593296692,
+    0.15662982959533198,
+    0.15532416729500245,
+    0.1552665792068164,
+    0.1561779252260459,
+    0.15682543618098324,
+    0.15684107225679395,
+    0.15604980239178035,
+    0.15391564310778807,
+    0.15610807694059092
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 0.153855237160731,
+    "max": 0.15759281766220087,
+    "median": 0.15556285676377207,
+    "mean": 0.1556942223657311,
+    "stdev": 0.0010795597563443605,
+    "p10": 0.15391564310778807,
+    "p90": 0.15684107225679395,
+    "rel_spread": 0.024026175523026924
+   },
+   "derived": {
+    "weight_gbs": 155.56285676377206,
+    "seconds_median": 0.0004044317603111267
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 58.4,
+    "loaded_max_w": 71.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "matmul.fp16.decode27b.k5120_n6144.m4",
+   "section": "matmul",
+   "what": "fp16 decode GEMM, batch 4, K 5120 to N 6144",
+   "unit": "TFLOP/s",
+   "value": 0.6197333978382834,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[4,5120], w[6144,5120]) float16, value = 2MNK / time",
+   "params": {
+    "m": 4,
+    "k": 5120,
+    "n": 6144,
+    "dtype": "float16"
+   },
+   "samples": [
+    0.6222202942107059,
+    0.6214969096691274,
+    0.6140671996366086,
+    0.6127641225529565,
+    0.6197333978382834,
+    0.6174635910019463,
+    0.6257388414302527,
+    0.6234407465504441,
+    0.6167810851388911,
+    0.6275367465885147,
+    0.6225905135991298,
+    0.6199780562822488,
+    0.6169326276944657,
+    0.6183108706532199,
+    0.6150445552770402
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 0.6127641225529565,
+    "max": 0.6275367465885147,
+    "median": 0.6197333978382834,
+    "mean": 0.6196066372082556,
+    "stdev": 0.004262599188665784,
+    "p10": 0.6140671996366086,
+    "p90": 0.6257388414302527,
+    "rel_spread": 0.0238370629807706
+   },
+   "derived": {
+    "weight_gbs": 154.93334945957085,
+    "seconds_median": 0.00040607500076293945
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 78.8,
+    "loaded_max_w": 81.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "matmul.fp16.decode27b.k5120_n6144.m8",
+   "section": "matmul",
+   "what": "fp16 decode GEMM, batch 8, K 5120 to N 6144",
+   "unit": "TFLOP/s",
+   "value": 1.2324422377360627,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[8,5120], w[6144,5120]) float16, value = 2MNK / time",
+   "params": {
+    "m": 8,
+    "k": 5120,
+    "n": 6144,
+    "dtype": "float16"
+   },
+   "samples": [
+    1.2437624886357104,
+    1.2324422377360627,
+    1.2265451305344044,
+    1.243055208381466,
+    1.2041143591559584,
+    1.2463858683321178,
+    1.2205251024594619,
+    1.231144454705738,
+    1.2408747263910391,
+    1.2238556839808745,
+    1.2381229591525589,
+    1.2290355741470422,
+    1.2500145146795658,
+    1.237482916428358,
+    1.2324422377360627
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 1.2041143591559584,
+    "max": 1.2500145146795658,
+    "median": 1.2324422377360627,
+    "mean": 1.233320230830428,
+    "stdev": 0.011733642097531437,
+    "p10": 1.2205251024594619,
+    "p90": 1.2463858683321178,
+    "rel_spread": 0.03724325093557631
+   },
+   "derived": {
+    "weight_gbs": 154.05527971700783,
+    "seconds_median": 0.00040838950872421265
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 83.4,
+    "loaded_max_w": 84.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "matmul.fp16.decode27b.k5120_n6144.m16",
+   "section": "matmul",
+   "what": "fp16 decode GEMM, batch 16, K 5120 to N 6144",
+   "unit": "TFLOP/s",
+   "value": 2.457229615441294,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[16,5120], w[6144,5120]) float16, value = 2MNK / time",
+   "params": {
+    "m": 16,
+    "k": 5120,
+    "n": 6144,
+    "dtype": "float16"
+   },
+   "samples": [
+    2.462106733525979,
+    2.4627106198692594,
+    2.4484869321797054,
+    2.4291892536345583,
+    2.4719816952641183,
+    2.457229615441294,
+    2.4678516723832726,
+    2.348283911301139,
+    2.3739159492472877,
+    2.4322458642584417,
+    2.4621670370411017,
+    2.40753455705685,
+    2.4524314305705053,
+    2.4841441329771228,
+    2.4633735483294585
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 2.348283911301139,
+    "max": 2.4841441329771228,
+    "median": 2.457229615441294,
+    "mean": 2.441576863538673,
+    "stdev": 0.0380652694760954,
+    "p10": 2.3739159492472877,
+    "p90": 2.4719816952641183,
+    "rel_spread": 0.05528999846910308
+   },
+   "derived": {
+    "weight_gbs": 153.57685096508087,
+    "seconds_median": 0.000409661740064621
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 86.4,
+    "loaded_max_w": 87.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "matmul.fp16.decode27b.k6144_n5120.m1",
+   "section": "matmul",
+   "what": "fp16 decode GEMM, batch 1, K 6144 to N 5120",
+   "unit": "TFLOP/s",
+   "value": 0.1300367150584797,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[1,6144], w[5120,6144]) float16, value = 2MNK / time",
+   "params": {
+    "m": 1,
+    "k": 6144,
+    "n": 5120,
+    "dtype": "float16"
+   },
+   "samples": [
+    0.12989684337407026,
+    0.1300367150584797,
+    0.1308496269364705,
+    0.1299613688972854,
+    0.12975726429175802,
+    0.13152651958830114,
+    0.13022822673193307,
+    0.12762907221784062,
+    0.12860131378597792,
+    0.13032548154213647,
+    0.13013644352901121,
+    0.1316975655216545,
+    0.12964809873267474,
+    0.12978141884526226,
+    0.1328707347742356
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 0.12762907221784062,
+    "max": 0.1328707347742356,
+    "median": 0.1300367150584797,
+    "mean": 0.13019644625513943,
+    "stdev": 0.0012419565940609662,
+    "p10": 0.12860131378597792,
+    "p90": 0.1316975655216545,
+    "rel_spread": 0.04030909696571257
+   },
+   "derived": {
+    "weight_gbs": 130.0367150584797,
+    "seconds_median": 0.0004838215112686157
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 83.6,
+    "loaded_max_w": 85.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "matmul.fp16.decode27b.k6144_n5120.m4",
+   "section": "matmul",
+   "what": "fp16 decode GEMM, batch 4, K 6144 to N 5120",
+   "unit": "TFLOP/s",
+   "value": 0.5219952285777694,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[4,6144], w[5120,6144]) float16, value = 2MNK / time",
+   "params": {
+    "m": 4,
+    "k": 6144,
+    "n": 5120,
+    "dtype": "float16"
+   },
+   "samples": [
+    0.5303569051711462,
+    0.5219952285777694,
+    0.5162591121966555,
+    0.5163579434664475,
+    0.5255924754433864,
+    0.526473615081071,
+    0.5115628924695335,
+    0.5283045840843921,
+    0.5173791940126756,
+    0.5236639831841898,
+    0.5123001781705058,
+    0.516726199740703,
+    0.527727409049892,
+    0.5208985325694064,
+    0.5252556907853697
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 0.5115628924695335,
+    "max": 0.5303569051711462,
+    "median": 0.5219952285777694,
+    "mean": 0.521390262933543,
+    "stdev": 0.005983835762522865,
+    "p10": 0.5123001781705058,
+    "p90": 0.5283045840843921,
+    "rel_spread": 0.03600418485207038
+   },
+   "derived": {
+    "weight_gbs": 130.49880714444234,
+    "seconds_median": 0.0004821083148320516
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 82.0,
+    "loaded_max_w": 82.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "matmul.fp16.decode27b.k6144_n5120.m8",
+   "section": "matmul",
+   "what": "fp16 decode GEMM, batch 8, K 6144 to N 5120",
+   "unit": "TFLOP/s",
+   "value": 1.0207002760934105,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[8,6144], w[5120,6144]) float16, value = 2MNK / time",
+   "params": {
+    "m": 8,
+    "k": 6144,
+    "n": 5120,
+    "dtype": "float16"
+   },
+   "samples": [
+    1.0055409459236044,
+    1.0265401295950027,
+    1.0167342363971779,
+    1.0340624745985816,
+    1.0408971890836332,
+    1.0167342363971779,
+    1.0290423895696008,
+    1.0004546343614127,
+    1.0387238320200023,
+    1.0445549789461934,
+    1.0023509327523192,
+    1.0182383117759548,
+    1.009176591226611,
+    1.0207002760934105,
+    1.0483920062494039
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 1.0004546343614127,
+    "max": 1.0483920062494039,
+    "median": 1.0207002760934105,
+    "mean": 1.023476210999339,
+    "stdev": 0.015542576845953773,
+    "p10": 1.0023509327523192,
+    "p90": 1.0445549789461934,
+    "rel_spread": 0.04696517970139566
+   },
+   "derived": {
+    "weight_gbs": 127.58753451167631,
+    "seconds_median": 0.0004931089878082275
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 83.83333333333333,
+    "loaded_max_w": 84.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "matmul.fp16.decode27b.k6144_n5120.m16",
+   "section": "matmul",
+   "what": "fp16 decode GEMM, batch 16, K 6144 to N 5120",
+   "unit": "TFLOP/s",
+   "value": 2.0003904723958126,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[16,6144], w[5120,6144]) float16, value = 2MNK / time",
+   "params": {
+    "m": 16,
+    "k": 6144,
+    "n": 5120,
+    "dtype": "float16"
+   },
+   "samples": [
+    1.9793469312108596,
+    2.0178272308712906,
+    1.9373276270547202,
+    2.0443087452553184,
+    1.9407695051045237,
+    1.9412194542699144,
+    2.00510219838093,
+    2.019692569560092,
+    2.0003904723958126,
+    1.9371029721562698,
+    2.00027224628861,
+    2.0238425536571905,
+    1.9943563321883788,
+    2.015034111587376,
+    2.0269040042581197
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 1.9371029721562698,
+    "max": 2.0443087452553184,
+    "median": 2.0003904723958126,
+    "mean": 1.992233130282627,
+    "stdev": 0.036463535093827194,
+    "p10": 1.9373276270547202,
+    "p90": 2.0269040042581197,
+    "rel_spread": 0.05359242336854922
+   },
+   "derived": {
+    "weight_gbs": 125.02440452473829,
+    "seconds_median": 0.0005032182335853577
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 84.33333333333333,
+    "loaded_max_w": 85.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "matmul.fp16.decode27b.k5120_n17408.m1",
+   "section": "matmul",
+   "what": "fp16 decode GEMM, batch 1, K 5120 to N 17408",
+   "unit": "TFLOP/s",
+   "value": 0.19705194964817457,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[1,5120], w[17408,5120]) float16, value = 2MNK / time",
+   "params": {
+    "m": 1,
+    "k": 5120,
+    "n": 17408,
+    "dtype": "float16"
+   },
+   "samples": [
+    0.19497892891619778,
+    0.19681208565146327,
+    0.19578981632890383,
+    0.19717847742584144,
+    0.19839666664637062,
+    0.1995672050824371,
+    0.19705194964817457,
+    0.19668168132508693,
+    0.19524416475420756,
+    0.19746745292239481,
+    0.19558327148125437,
+    0.19869343741052298,
+    0.19737978294622496,
+    0.19626925582951013,
+    0.197568238554844
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 0.19497892891619778,
+    "max": 0.1995672050824371,
+    "median": 0.19705194964817457,
+    "mean": 0.19697749432822895,
+    "stdev": 0.0012937079392210235,
+    "p10": 0.19524416475420756,
+    "p90": 0.19869343741052298,
+    "rel_spread": 0.02328460172270026
+   },
+   "derived": {
+    "weight_gbs": 197.05194964817457,
+    "seconds_median": 0.0009046239852905274
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 91.2,
+    "loaded_max_w": 95.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "matmul.fp16.decode27b.k5120_n17408.m4",
+   "section": "matmul",
+   "what": "fp16 decode GEMM, batch 4, K 5120 to N 17408",
+   "unit": "TFLOP/s",
+   "value": 0.7847482422702523,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[4,5120], w[17408,5120]) float16, value = 2MNK / time",
+   "params": {
+    "m": 4,
+    "k": 5120,
+    "n": 17408,
+    "dtype": "float16"
+   },
+   "samples": [
+    0.7937103497819764,
+    0.7902028991557548,
+    0.7832457689806958,
+    0.7847482422702523,
+    0.7917322606889885,
+    0.781577169730753,
+    0.7895016241999762,
+    0.7837114837739942,
+    0.799254916298378,
+    0.7955026231528837,
+    0.7833317788215194,
+    0.7881729523423133,
+    0.7817489868594949,
+    0.7824193559912918,
+    0.7811824400502274
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 0.7811824400502274,
+    "max": 0.799254916298378,
+    "median": 0.7847482422702523,
+    "mean": 0.7873361901399,
+    "stdev": 0.005740452853634357,
+    "p10": 0.781577169730753,
+    "p90": 0.7955026231528837,
+    "rel_spread": 0.023029648586236327
+   },
+   "derived": {
+    "weight_gbs": 196.18706056756307,
+    "seconds_median": 0.0009086120128631592
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 99.16666666666667,
+    "loaded_max_w": 101.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "matmul.fp16.decode27b.k5120_n17408.m8",
+   "section": "matmul",
+   "what": "fp16 decode GEMM, batch 8, K 5120 to N 17408",
+   "unit": "TFLOP/s",
+   "value": 1.5665947247213998,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[8,5120], w[17408,5120]) float16, value = 2MNK / time",
+   "params": {
+    "m": 8,
+    "k": 5120,
+    "n": 17408,
+    "dtype": "float16"
+   },
+   "samples": [
+    1.5667668696679684,
+    1.5417184122065954,
+    1.5665947247213998,
+    1.5746452838812977,
+    1.560549112986349,
+    1.5769393708993713,
+    1.5509918978487454,
+    1.5745323297552856,
+    1.5839939342688028,
+    1.53196176413713,
+    1.5596258325554289,
+    1.5642877606741614,
+    1.5634628270146849,
+    1.5718890711299272,
+    1.567767556767258
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 1.53196176413713,
+    "max": 1.5839939342688028,
+    "median": 1.5665947247213998,
+    "mean": 1.563715116567627,
+    "stdev": 0.013639703691518568,
+    "p10": 1.5417184122065954,
+    "p90": 1.5769393708993713,
+    "rel_spread": 0.03321354866742969
+   },
+   "derived": {
+    "weight_gbs": 195.82434059017498,
+    "seconds_median": 0.0009102950096130371
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 102.6,
+    "loaded_max_w": 103.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "matmul.fp16.decode27b.k5120_n17408.m16",
+   "section": "matmul",
+   "what": "fp16 decode GEMM, batch 16, K 5120 to N 17408",
+   "unit": "TFLOP/s",
+   "value": 3.1098475958498266,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[16,5120], w[17408,5120]) float16, value = 2MNK / time",
+   "params": {
+    "m": 16,
+    "k": 5120,
+    "n": 17408,
+    "dtype": "float16"
+   },
+   "samples": [
+    3.1098475958498266,
+    3.093758563277789,
+    3.1041494364718,
+    3.111613429371867,
+    3.056753479506146,
+    3.114336681739443,
+    3.1148147092218705,
+    3.0751122890632154,
+    3.0747129487484197,
+    3.1503882383660162,
+    3.053276583099961,
+    3.100430952587959,
+    3.1389239884384126,
+    3.110254498102873,
+    3.1175433672716686
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 3.053276583099961,
+    "max": 3.1503882383660162,
+    "median": 3.1098475958498266,
+    "mean": 3.1017277840744844,
+    "stdev": 0.027317696636448768,
+    "p10": 3.056753479506146,
+    "p90": 3.1389239884384126,
+    "rel_spread": 0.031227142897823416
+   },
+   "derived": {
+    "weight_gbs": 194.36547474061416,
+    "seconds_median": 0.0009171274900436401
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 104.6,
+    "loaded_max_w": 105.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "matmul.fp16.decode27b.k17408_n5120.m1",
+   "section": "matmul",
+   "what": "fp16 decode GEMM, batch 1, K 17408 to N 5120",
+   "unit": "TFLOP/s",
+   "value": 0.21049887641019963,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[1,17408], w[5120,17408]) float16, value = 2MNK / time",
+   "params": {
+    "m": 1,
+    "k": 17408,
+    "n": 5120,
+    "dtype": "float16"
+   },
+   "samples": [
+    0.21191803317556096,
+    0.21249501495271697,
+    0.21036944942294128,
+    0.21104827619342836,
+    0.2127286917406838,
+    0.20848623265008334,
+    0.2115098031908827,
+    0.20949756726028632,
+    0.20941868747433848,
+    0.21049887641019963,
+    0.21106826507683876,
+    0.21112339562315383,
+    0.2073454830987403,
+    0.20898571107182098,
+    0.20778984307821752
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 0.2073454830987403,
+    "max": 0.2127286917406838,
+    "median": 0.21049887641019963,
+    "mean": 0.2102855553613262,
+    "stdev": 0.0016504423402069566,
+    "p10": 0.20778984307821752,
+    "p90": 0.21249501495271697,
+    "rel_spread": 0.025573574233494854
+   },
+   "derived": {
+    "weight_gbs": 210.4988764101996,
+    "seconds_median": 0.0008468354940414428
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 106.6,
+    "loaded_max_w": 107.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "matmul.fp16.decode27b.k17408_n5120.m4",
+   "section": "matmul",
+   "what": "fp16 decode GEMM, batch 4, K 17408 to N 5120",
+   "unit": "TFLOP/s",
+   "value": 0.8356093108863042,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[4,17408], w[5120,17408]) float16, value = 2MNK / time",
+   "params": {
+    "m": 4,
+    "k": 17408,
+    "n": 5120,
+    "dtype": "float16"
+   },
+   "samples": [
+    0.8361001855154466,
+    0.8348642610530383,
+    0.825778045794909,
+    0.8212611718236177,
+    0.8472077784396846,
+    0.8287779725232346,
+    0.8299186550319294,
+    0.8372409692207289,
+    0.8356093108863042,
+    0.8310232816410441,
+    0.8432127671385306,
+    0.8375758653504891,
+    0.8287972654033081,
+    0.8388396005357606,
+    0.8385628823123211
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 0.8212611718236177,
+    "max": 0.8472077784396846,
+    "median": 0.8356093108863042,
+    "mean": 0.8343180008446898,
+    "stdev": 0.006776103356550264,
+    "p10": 0.825778045794909,
+    "p90": 0.8432127671385306,
+    "rel_spread": 0.03105112195141318
+   },
+   "derived": {
+    "weight_gbs": 208.90232772157606,
+    "seconds_median": 0.0008533074855804443
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 107.8,
+    "loaded_max_w": 109.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "matmul.fp16.decode27b.k17408_n5120.m8",
+   "section": "matmul",
+   "what": "fp16 decode GEMM, batch 8, K 17408 to N 5120",
+   "unit": "TFLOP/s",
+   "value": 1.6556661805788961,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[8,17408], w[5120,17408]) float16, value = 2MNK / time",
+   "params": {
+    "m": 8,
+    "k": 17408,
+    "n": 5120,
+    "dtype": "float16"
+   },
+   "samples": [
+    1.6667183117487046,
+    1.6510580353485675,
+    1.6319762928465205,
+    1.6128188837287116,
+    1.6800558549581948,
+    1.6332492148856732,
+    1.6556661805788961,
+    1.6800558549581948,
+    1.656707742019468,
+    1.64594140707846,
+    1.6633289154990472,
+    1.680135019683134,
+    1.660572767586858,
+    1.6353141015468606,
+    1.5291970144151823
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 1.5291970144151823,
+    "max": 1.680135019683134,
+    "median": 1.6556661805788961,
+    "mean": 1.6455197064588316,
+    "stdev": 0.03767746989920988,
+    "p10": 1.6128188837287116,
+    "p90": 1.6800558549581948,
+    "rel_spread": 0.09116451555178645
+   },
+   "derived": {
+    "weight_gbs": 206.95827257236203,
+    "seconds_median": 0.0008613229990005494
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 110.8,
+    "loaded_max_w": 112.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "matmul.fp16.decode27b.k17408_n5120.m16",
+   "section": "matmul",
+   "what": "fp16 decode GEMM, batch 16, K 17408 to N 5120",
+   "unit": "TFLOP/s",
+   "value": 3.237743642555124,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[16,17408], w[5120,17408]) float16, value = 2MNK / time",
+   "params": {
+    "m": 16,
+    "k": 17408,
+    "n": 5120,
+    "dtype": "float16"
+   },
+   "samples": [
+    3.191069389092896,
+    3.161442266510087,
+    3.237743642555124,
+    3.3114879602342184,
+    3.2821659104412415,
+    3.1547177386394036,
+    3.2790661064367246,
+    3.2224961908676297,
+    3.136090374149182,
+    3.2629781682418177,
+    3.2382583355470578,
+    3.2971420075052063,
+    3.169822254959272,
+    3.2242484798806004,
+    3.282847744088378
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 3.136090374149182,
+    "max": 3.3114879602342184,
+    "median": 3.237743642555124,
+    "mean": 3.230105104609923,
+    "stdev": 0.056504414497827636,
+    "p10": 3.1547177386394036,
+    "p90": 3.2971420075052063,
+    "rel_spread": 0.05417278371879317
+   },
+   "derived": {
+    "weight_gbs": 202.35897765969526,
+    "seconds_median": 0.0008808994889259338
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 112.8,
+    "loaded_max_w": 113.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "matmul.fp16.decode27b.k5120_n248320.m1",
+   "section": "matmul",
+   "what": "fp16 decode GEMM, batch 1, K 5120 to N 248320",
+   "unit": "TFLOP/s",
+   "value": 0.21954844062953702,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[1,5120], w[248320,5120]) float16, value = 2MNK / time",
+   "params": {
+    "m": 1,
+    "k": 5120,
+    "n": 248320,
+    "dtype": "float16"
+   },
+   "samples": [
+    0.21954844062953702,
+    0.2188547827780202,
+    0.21973092637156103,
+    0.2187204952896826,
+    0.2193624677376913,
+    0.21982987687990005,
+    0.22006547347611355,
+    0.22021440341861792,
+    0.21799832370118308,
+    0.2188049622763526,
+    0.2194170925720884,
+    0.21845916181071534,
+    0.2196875481370049,
+    0.22025569743827353,
+    0.2197377533046631
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 0.21799832370118308,
+    "max": 0.22025569743827353,
+    "median": 0.21954844062953702,
+    "mean": 0.21937916038809363,
+    "stdev": 0.0006713284280708891,
+    "p10": 0.21845916181071534,
+    "p90": 0.22021440341861792,
+    "rel_spread": 0.010281893738883403
+   },
+   "derived": {
+    "weight_gbs": 219.54844062953703,
+    "seconds_median": 0.011581939697265625
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 113.33333333333333,
+    "loaded_max_w": 114.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "matmul.fp16.decode27b.k5120_n248320.m4",
+   "section": "matmul",
+   "what": "fp16 decode GEMM, batch 4, K 5120 to N 248320",
+   "unit": "TFLOP/s",
+   "value": 0.8760052900238885,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[4,5120], w[248320,5120]) float16, value = 2MNK / time",
+   "params": {
+    "m": 4,
+    "k": 5120,
+    "n": 248320,
+    "dtype": "float16"
+   },
+   "samples": [
+    0.8738179610783459,
+    0.8734368232404961,
+    0.8724639484059867,
+    0.8779355407395846,
+    0.877280042311346,
+    0.8730882510780471,
+    0.8694780365743426,
+    0.8761474899364392,
+    0.8767012570367373,
+    0.8762320689606977,
+    0.8703815351313484,
+    0.8772466328564651,
+    0.8749513139883918,
+    0.8767164632713107,
+    0.8760052900238885
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 0.8694780365743426,
+    "max": 0.8779355407395846,
+    "median": 0.8760052900238885,
+    "mean": 0.8747921769755619,
+    "stdev": 0.002586408148774434,
+    "p10": 0.8703815351313484,
+    "p90": 0.877280042311346,
+    "rel_spread": 0.009654626817392051
+   },
+   "derived": {
+    "weight_gbs": 219.00132250597213,
+    "seconds_median": 0.01161087417602539
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 114.16666666666667,
+    "loaded_max_w": 115.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "matmul.fp16.decode27b.k5120_n248320.m8",
+   "section": "matmul",
+   "what": "fp16 decode GEMM, batch 8, K 5120 to N 248320",
+   "unit": "TFLOP/s",
+   "value": 1.7447599050192144,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[8,5120], w[248320,5120]) float16, value = 2MNK / time",
+   "params": {
+    "m": 8,
+    "k": 5120,
+    "n": 248320,
+    "dtype": "float16"
+   },
+   "samples": [
+    1.747538131633192,
+    1.7329065796958887,
+    1.7387892292001466,
+    1.7484921638130715,
+    1.7391406735970545,
+    1.7399037357622325,
+    1.7461223269641468,
+    1.744604074098486,
+    1.7486367919900143,
+    1.7398918144189186,
+    1.7525974718730153,
+    1.7480164500319644,
+    1.754360220319712,
+    1.7412108226079186,
+    1.7447599050192144
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 1.7329065796958887,
+    "max": 1.754360220319712,
+    "median": 1.7447599050192144,
+    "mean": 1.7444646927349983,
+    "stdev": 0.005788246045496209,
+    "p10": 1.7387892292001466,
+    "p90": 1.7525974718730153,
+    "rel_spread": 0.012296041743111358
+   },
+   "derived": {
+    "weight_gbs": 218.0949881274018,
+    "seconds_median": 0.011659125328063964
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 115.5,
+    "loaded_max_w": 116.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "matmul.fp16.decode27b.k5120_n248320.m16",
+   "section": "matmul",
+   "what": "fp16 decode GEMM, batch 16, K 5120 to N 248320",
+   "unit": "TFLOP/s",
+   "value": 3.463732236038913,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[16,5120], w[248320,5120]) float16, value = 2MNK / time",
+   "params": {
+    "m": 16,
+    "k": 5120,
+    "n": 248320,
+    "dtype": "float16"
+   },
+   "samples": [
+    3.444642873193256,
+    3.4549149292872467,
+    3.478889480191108,
+    3.4514612126489297,
+    3.4629640941608204,
+    3.4122502330134195,
+    3.470671043138646,
+    3.463732236038913,
+    3.46924799337564,
+    3.46956823301495,
+    3.4682997536892093,
+    3.471288098316304,
+    3.4650798376398138,
+    3.40200502486798,
+    3.459612385180865
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 3.40200502486798,
+    "max": 3.478889480191108,
+    "median": 3.463732236038913,
+    "mean": 3.456308495183807,
+    "stdev": 0.021821347749977547,
+    "p10": 3.4122502330134195,
+    "p90": 3.471288098316304,
+    "rel_spread": 0.02219699736693621
+   },
+   "derived": {
+    "weight_gbs": 216.48326475243206,
+    "seconds_median": 0.011745927810668945
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 116.83333333333333,
+    "loaded_max_w": 118.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "matmul.bf16.decode27b.k5120_n6144.m1",
+   "section": "matmul",
+   "what": "bf16 decode GEMM, batch 1, K 5120 to N 6144",
+   "unit": "TFLOP/s",
+   "value": 0.11680803795567732,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[1,5120], w[6144,5120]) bfloat16, value = 2MNK / time",
+   "params": {
+    "m": 1,
+    "k": 5120,
+    "n": 6144,
+    "dtype": "bfloat16"
+   },
+   "samples": [
+    0.11928732618693619,
+    0.1167877988694611,
+    0.11853376463632154,
+    0.1158284851162278,
+    0.11275866562043957,
+    0.1143631501567081,
+    0.11781915017172401,
+    0.11902501853431059,
+    0.1132820726546073,
+    0.1169241021219586,
+    0.11444650216763841,
+    0.11763373195230419,
+    0.11764547067331123,
+    0.11395363380967581,
+    0.11680803795567732
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 0.11275866562043957,
+    "max": 0.11928732618693619,
+    "median": 0.11680803795567732,
+    "mean": 0.11633979404182011,
+    "stdev": 0.0021156193747906156,
+    "p10": 0.1132820726546073,
+    "p90": 0.11902501853431059,
+    "rel_spread": 0.055892220096821696
+   },
+   "derived": {
+    "weight_gbs": 116.80803795567732,
+    "seconds_median": 0.0005386149883270264
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 102.16666666666667,
+    "loaded_max_w": 116.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "matmul.bf16.decode27b.k5120_n6144.m4",
+   "section": "matmul",
+   "what": "bf16 decode GEMM, batch 4, K 5120 to N 6144",
+   "unit": "TFLOP/s",
+   "value": 0.616750857635235,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[4,5120], w[6144,5120]) bfloat16, value = 2MNK / time",
+   "params": {
+    "m": 4,
+    "k": 5120,
+    "n": 6144,
+    "dtype": "bfloat16"
+   },
+   "samples": [
+    0.6114513330041808,
+    0.6219892107739198,
+    0.6133323431973747,
+    0.616750857635235,
+    0.6199013209454376,
+    0.6097738358508759,
+    0.615405878681289,
+    0.6202538868159453,
+    0.6222202942107059,
+    0.5995277829557438,
+    0.6177367814756771,
+    0.6139918757777597,
+    0.6145027613107619,
+    0.617858503115848,
+    0.6225905135991298
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 0.5995277829557438,
+    "max": 0.6225905135991298,
+    "median": 0.616750857635235,
+    "mean": 0.6158191452899923,
+    "stdev": 0.005990409736124517,
+    "p10": 0.6097738358508759,
+    "p90": 0.6222202942107059,
+    "rel_spread": 0.03739391742690681
+   },
+   "derived": {
+    "weight_gbs": 154.18771440880874,
+    "seconds_median": 0.00040803873538970947
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 88.66666666666667,
+    "loaded_max_w": 90.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "matmul.bf16.decode27b.k5120_n6144.m8",
+   "section": "matmul",
+   "what": "bf16 decode GEMM, batch 8, K 5120 to N 6144",
+   "unit": "TFLOP/s",
+   "value": 1.229246423342019,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[8,5120], w[6144,5120]) bfloat16, value = 2MNK / time",
+   "params": {
+    "m": 8,
+    "k": 5120,
+    "n": 6144,
+    "dtype": "bfloat16"
+   },
+   "samples": [
+    1.2454274849087714,
+    1.229246423342019,
+    1.2189850158077478,
+    1.2293665064179045,
+    1.2371164261282703,
+    1.2094766806373543,
+    1.2254379862834057,
+    1.2277741385853025,
+    1.21186900538037,
+    1.230239468763152,
+    1.2324731771049442,
+    1.2368116513064067,
+    1.2370244523859526,
+    1.2207922513091873,
+    1.21406585484803
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 1.2094766806373543,
+    "max": 1.2454274849087714,
+    "median": 1.229246423342019,
+    "mean": 1.2270737682139212,
+    "stdev": 0.010346871568815877,
+    "p10": 1.21186900538037,
+    "p90": 1.2371164261282703,
+    "rel_spread": 0.029246214256760467
+   },
+   "derived": {
+    "weight_gbs": 153.65580291775237,
+    "seconds_median": 0.0004094512462615967
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 87.0,
+    "loaded_max_w": 87.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "matmul.bf16.decode27b.k5120_n6144.m16",
+   "section": "matmul",
+   "what": "bf16 decode GEMM, batch 16, K 5120 to N 6144",
+   "unit": "TFLOP/s",
+   "value": 2.4305397634581496,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[16,5120], w[6144,5120]) bfloat16, value = 2MNK / time",
+   "params": {
+    "m": 16,
+    "k": 5120,
+    "n": 6144,
+    "dtype": "bfloat16"
+   },
+   "samples": [
+    2.4144771427604472,
+    2.4601782211081606,
+    2.4265483394287677,
+    2.4415845026183747,
+    2.4464591891561898,
+    2.403157908218579,
+    2.439865456349124,
+    2.3814430321495696,
+    2.3791451435928157,
+    2.419071166353696,
+    2.4305397634581496,
+    2.437853369879753,
+    2.404538503997685,
+    2.464763784897238,
+    2.458793151199428
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 2.3791451435928157,
+    "max": 2.464763784897238,
+    "median": 2.4305397634581496,
+    "mean": 2.4272279116778654,
+    "stdev": 0.026836166296117143,
+    "p10": 2.3814430321495696,
+    "p90": 2.4601782211081606,
+    "rel_spread": 0.0352261841553272
+   },
+   "derived": {
+    "weight_gbs": 151.90873521613435,
+    "seconds_median": 0.00041416025161743165
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 87.66666666666667,
+    "loaded_max_w": 88.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "matmul.bf16.decode27b.k6144_n5120.m1",
+   "section": "matmul",
+   "what": "bf16 decode GEMM, batch 1, K 6144 to N 5120",
+   "unit": "TFLOP/s",
+   "value": 0.12962606320197995,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[1,6144], w[5120,6144]) bfloat16, value = 2MNK / time",
+   "params": {
+    "m": 1,
+    "k": 6144,
+    "n": 5120,
+    "dtype": "bfloat16"
+   },
+   "samples": [
+    0.13130931333289586,
+    0.13017151025817533,
+    0.13045269365303166,
+    0.12888907644697192,
+    0.12962606320197995,
+    0.1298162944789807,
+    0.12575046419850713,
+    0.12833321866136782,
+    0.12885462638418774,
+    0.1300663587060141,
+    0.1277822043764821,
+    0.13111734738928102,
+    0.12950838603880202,
+    0.12847762256895806,
+    0.13014721029460058
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 0.12575046419850713,
+    "max": 0.13130931333289586,
+    "median": 0.12962606320197995,
+    "mean": 0.12935349266601573,
+    "stdev": 0.0014139071974840494,
+    "p10": 0.1277822043764821,
+    "p90": 0.13111734738928102,
+    "rel_spread": 0.04288373030142151
+   },
+   "derived": {
+    "weight_gbs": 129.62606320197995,
+    "seconds_median": 0.0004853542447090149
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 86.2,
+    "loaded_max_w": 88.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "matmul.bf16.decode27b.k6144_n5120.m4",
+   "section": "matmul",
+   "what": "bf16 decode GEMM, batch 4, K 6144 to N 5120",
+   "unit": "TFLOP/s",
+   "value": 0.5119382012713573,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[4,6144], w[5120,6144]) bfloat16, value = 2MNK / time",
+   "params": {
+    "m": 4,
+    "k": 6144,
+    "n": 5120,
+    "dtype": "bfloat16"
+   },
+   "samples": [
+    0.5134310568698103,
+    0.5212153807730746,
+    0.5090607384040192,
+    0.5014054436463806,
+    0.5175068701433385,
+    0.5119382012713573,
+    0.5096252989415556,
+    0.503321520050469,
+    0.5028273957167929,
+    0.4928014038620359,
+    0.5202725296483955,
+    0.5156515513211428,
+    0.5220533174375218,
+    0.5182333270726376,
+    0.5069237493280245
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 0.4928014038620359,
+    "max": 0.5220533174375218,
+    "median": 0.5119382012713573,
+    "mean": 0.5110845189657705,
+    "stdev": 0.008480024172744398,
+    "p10": 0.5014054436463806,
+    "p90": 0.5212153807730746,
+    "rel_spread": 0.057139540481333746
+   },
+   "derived": {
+    "weight_gbs": 127.98455031783932,
+    "seconds_median": 0.0004915793339411418
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 84.83333333333333,
+    "loaded_max_w": 85.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "matmul.bf16.decode27b.k6144_n5120.m8",
+   "section": "matmul",
+   "what": "bf16 decode GEMM, batch 8, K 6144 to N 5120",
+   "unit": "TFLOP/s",
+   "value": 1.0212812203393542,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[8,6144], w[5120,6144]) bfloat16, value = 2MNK / time",
+   "params": {
+    "m": 8,
+    "k": 6144,
+    "n": 5120,
+    "dtype": "bfloat16"
+   },
+   "samples": [
+    1.0212812203393542,
+    1.035084872409046,
+    1.0203888433513346,
+    1.024029146050474,
+    1.044164389124946,
+    1.0088321942873733,
+    1.0055208300421892,
+    1.036152965151143,
+    1.0117580210002701,
+    1.0214470081727476,
+    0.9870489651744339,
+    1.0199333839524163,
+    1.029148177279273,
+    1.005782519091578,
+    1.0420846880233436
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 0.9870489651744339,
+    "max": 1.044164389124946,
+    "median": 1.0212812203393542,
+    "mean": 1.0208438148966616,
+    "stdev": 0.015453757141004122,
+    "p10": 1.0055208300421892,
+    "p90": 1.0420846880233436,
+    "rel_spread": 0.055925266041349106
+   },
+   "derived": {
+    "weight_gbs": 127.66015254241928,
+    "seconds_median": 0.0004928284883499146
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 86.0,
+    "loaded_max_w": 87.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "matmul.bf16.decode27b.k6144_n5120.m16",
+   "section": "matmul",
+   "what": "bf16 decode GEMM, batch 16, K 6144 to N 5120",
+   "unit": "TFLOP/s",
+   "value": 1.9870056166594068,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[16,6144], w[5120,6144]) bfloat16, value = 2MNK / time",
+   "params": {
+    "m": 16,
+    "k": 6144,
+    "n": 5120,
+    "dtype": "bfloat16"
+   },
+   "samples": [
+    2.0063173453304675,
+    2.026277310400173,
+    2.072304531748756,
+    1.9849643238003252,
+    1.974977642915144,
+    1.9616101875553587,
+    1.985332227996985,
+    2.0340444198964525,
+    1.971979283771915,
+    2.0137156204265305,
+    2.0152502739312688,
+    1.9347783791736741,
+    1.8846815965634993,
+    1.9870056166594068,
+    2.0349242768937557
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 1.8846815965634993,
+    "max": 2.072304531748756,
+    "median": 1.9870056166594068,
+    "mean": 1.9925442024709141,
+    "stdev": 0.04549038664008578,
+    "p10": 1.9347783791736741,
+    "p90": 2.0349242768937557,
+    "rel_spread": 0.09442496468665858
+   },
+   "derived": {
+    "weight_gbs": 124.18785104121292,
+    "seconds_median": 0.0005066080093383789
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 86.8,
+    "loaded_max_w": 87.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "matmul.bf16.decode27b.k5120_n17408.m1",
+   "section": "matmul",
+   "what": "bf16 decode GEMM, batch 1, K 5120 to N 17408",
+   "unit": "TFLOP/s",
+   "value": 0.1958804027386131,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[1,5120], w[17408,5120]) bfloat16, value = 2MNK / time",
+   "params": {
+    "m": 1,
+    "k": 5120,
+    "n": 17408,
+    "dtype": "bfloat16"
+   },
+   "samples": [
+    0.19654690278132375,
+    0.19872013289535595,
+    0.19381485969177917,
+    0.19502158629434735,
+    0.19458644328241106,
+    0.1958804027386131,
+    0.19604013315613186,
+    0.195746822253544,
+    0.19813150470209667,
+    0.19648180944668958,
+    0.19666855339826586,
+    0.19394591612774262,
+    0.19638201287009582,
+    0.19459929470348883,
+    0.19492327988534044
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 0.19381485969177917,
+    "max": 0.19872013289535595,
+    "median": 0.1958804027386131,
+    "mean": 0.1958326436151484,
+    "stdev": 0.0014090853851791946,
+    "p10": 0.19394591612774262,
+    "p90": 0.19813150470209667,
+    "rel_spread": 0.025042184593231008
+   },
+   "derived": {
+    "weight_gbs": 195.8804027386131,
+    "seconds_median": 0.0009100344777107238
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 94.4,
+    "loaded_max_w": 98.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "matmul.bf16.decode27b.k5120_n17408.m4",
+   "section": "matmul",
+   "what": "bf16 decode GEMM, batch 4, K 5120 to N 17408",
+   "unit": "TFLOP/s",
+   "value": 0.7853718934932752,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[4,5120], w[17408,5120]) bfloat16, value = 2MNK / time",
+   "params": {
+    "m": 4,
+    "k": 5120,
+    "n": 17408,
+    "dtype": "bfloat16"
+   },
+   "samples": [
+    0.7683961617469662,
+    0.7839876539321671,
+    0.7700592072284648,
+    0.7981253943163603,
+    0.7783288082117682,
+    0.7918206162716007,
+    0.78874921984789,
+    0.7860484931761134,
+    0.7890639265519338,
+    0.7791980589430534,
+    0.7836770339403926,
+    0.7902203856573969,
+    0.7832285385109925,
+    0.7867436443582781,
+    0.7853718934932752
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 0.7683961617469662,
+    "max": 0.7981253943163603,
+    "median": 0.7853718934932752,
+    "mean": 0.7842012690791103,
+    "stdev": 0.0078117354122966215,
+    "p10": 0.7700592072284648,
+    "p90": 0.7918206162716007,
+    "rel_spread": 0.037853700668049994
+   },
+   "derived": {
+    "weight_gbs": 196.34297337331878,
+    "seconds_median": 0.0009078904986381531
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 101.2,
+    "loaded_max_w": 102.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "matmul.bf16.decode27b.k5120_n17408.m8",
+   "section": "matmul",
+   "what": "bf16 decode GEMM, batch 8, K 5120 to N 17408",
+   "unit": "TFLOP/s",
+   "value": 1.566077799202158,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[8,5120], w[17408,5120]) bfloat16, value = 2MNK / time",
+   "params": {
+    "m": 8,
+    "k": 5120,
+    "n": 17408,
+    "dtype": "bfloat16"
+   },
+   "samples": [
+    1.5681141475186535,
+    1.5694274024643635,
+    1.583958698972549,
+    1.566077799202158,
+    1.5712639010624048,
+    1.5623306004829836,
+    1.5633257291048528,
+    1.565457959188003,
+    1.5668357177181542,
+    1.5586004787454675,
+    1.4951435009425513,
+    1.5665956479247407,
+    1.5467450765564335,
+    1.5485624205847928,
+    1.5733475994710584
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 1.4951435009425513,
+    "max": 1.583958698972549,
+    "median": 1.566077799202158,
+    "mean": 1.560385778662611,
+    "stdev": 0.020212835659331966,
+    "p10": 1.5467450765564335,
+    "p90": 1.5733475994710584,
+    "rel_spread": 0.056711868385622165
+   },
+   "derived": {
+    "weight_gbs": 195.75972490026973,
+    "seconds_median": 0.0009105954766273498
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 104.0,
+    "loaded_max_w": 105.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "matmul.bf16.decode27b.k5120_n17408.m16",
+   "section": "matmul",
+   "what": "bf16 decode GEMM, batch 16, K 5120 to N 17408",
+   "unit": "TFLOP/s",
+   "value": 3.0875843388298696,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[16,5120], w[17408,5120]) bfloat16, value = 2MNK / time",
+   "params": {
+    "m": 16,
+    "k": 5120,
+    "n": 17408,
+    "dtype": "bfloat16"
+   },
+   "samples": [
+    3.08083555340901,
+    3.1304331412259656,
+    3.055046029971259,
+    3.0772389757983927,
+    3.0614191097910473,
+    3.1447487911183636,
+    3.128301036115821,
+    3.0592502671806843,
+    3.092482130986939,
+    3.048831130190229,
+    3.0875843388298696,
+    3.074180985475927,
+    3.0926834030137016,
+    3.120413750683514,
+    3.124592848771379
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 3.048831130190229,
+    "max": 3.1447487911183636,
+    "median": 3.0875843388298696,
+    "mean": 3.091869432837474,
+    "stdev": 0.030895927189705515,
+    "p10": 3.055046029971259,
+    "p90": 3.1304331412259656,
+    "rel_spread": 0.03106560028882815
+   },
+   "derived": {
+    "weight_gbs": 192.97402117686684,
+    "seconds_median": 0.0009237405061721802
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 106.2,
+    "loaded_max_w": 107.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "matmul.bf16.decode27b.k17408_n5120.m1",
+   "section": "matmul",
+   "what": "bf16 decode GEMM, batch 1, K 17408 to N 5120",
+   "unit": "TFLOP/s",
+   "value": 0.20970495932361988,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[1,17408], w[5120,17408]) bfloat16, value = 2MNK / time",
+   "params": {
+    "m": 1,
+    "k": 17408,
+    "n": 5120,
+    "dtype": "bfloat16"
+   },
+   "samples": [
+    0.21133902371078014,
+    0.20924624512182466,
+    0.2091134404889275,
+    0.21138426999362528,
+    0.20970495932361988,
+    0.205671222869322,
+    0.20834941194224152,
+    0.21086316436157465,
+    0.211073151162171,
+    0.20942348281906695,
+    0.2086866167822782,
+    0.206996848301766,
+    0.21105827016185733,
+    0.2116407574096884,
+    0.20994255798278016
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 0.205671222869322,
+    "max": 0.2116407574096884,
+    "median": 0.20970495932361988,
+    "mean": 0.20963289482876826,
+    "stdev": 0.0017192175206991696,
+    "p10": 0.206996848301766,
+    "p90": 0.21138426999362528,
+    "rel_spread": 0.028466348910490668
+   },
+   "derived": {
+    "weight_gbs": 209.70495932361987,
+    "seconds_median": 0.0008500415086746216
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 108.33333333333333,
+    "loaded_max_w": 110.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "matmul.bf16.decode27b.k17408_n5120.m4",
+   "section": "matmul",
+   "what": "bf16 decode GEMM, batch 4, K 17408 to N 5120",
+   "unit": "TFLOP/s",
+   "value": 0.8326375835297618,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[4,17408], w[5120,17408]) bfloat16, value = 2MNK / time",
+   "params": {
+    "m": 4,
+    "k": 17408,
+    "n": 5120,
+    "dtype": "bfloat16"
+   },
+   "samples": [
+    0.8348642610530383,
+    0.8300732756934034,
+    0.8369260139696693,
+    0.8466032302834493,
+    0.8197283286363407,
+    0.8233132603022244,
+    0.8394731054345558,
+    0.8366309548978763,
+    0.8326375835297618,
+    0.8338469246255175,
+    0.8364341694586676,
+    0.8326176478365106,
+    0.8301896967034075,
+    0.8230652066780236,
+    0.8286816938081786
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 0.8197283286363407,
+    "max": 0.8466032302834493,
+    "median": 0.8326375835297618,
+    "mean": 0.832339023527375,
+    "stdev": 0.006912919795633605,
+    "p10": 0.8230652066780236,
+    "p90": 0.8394731054345558,
+    "rel_spread": 0.03227682989420088
+   },
+   "derived": {
+    "weight_gbs": 208.15939588244046,
+    "seconds_median": 0.0008563529849052429
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 111.16666666666667,
+    "loaded_max_w": 112.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "matmul.bf16.decode27b.k17408_n5120.m8",
+   "section": "matmul",
+   "what": "bf16 decode GEMM, batch 8, K 17408 to N 5120",
+   "unit": "TFLOP/s",
+   "value": 1.647808116745902,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[8,17408], w[5120,17408]) bfloat16, value = 2MNK / time",
+   "params": {
+    "m": 8,
+    "k": 17408,
+    "n": 5120,
+    "dtype": "bfloat16"
+   },
+   "samples": [
+    1.65382004495457,
+    1.6396460873381316,
+    1.6361029408572718,
+    1.647808116745902,
+    1.6585989664095278,
+    1.628577805114707,
+    1.6568617084215227,
+    1.603623819672901,
+    1.6431288903366958,
+    1.6447994603358418,
+    1.610519352614686,
+    1.6659764736737528,
+    1.6708260114052793,
+    1.6734975091265052,
+    1.661387207900272
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 1.603623819672901,
+    "max": 1.6734975091265052,
+    "median": 1.647808116745902,
+    "mean": 1.6463449596605044,
+    "stdev": 0.020448150525208313,
+    "p10": 1.610519352614686,
+    "p90": 1.6708260114052793,
+    "rel_spread": 0.04240402067662533
+   },
+   "derived": {
+    "weight_gbs": 205.97601459323775,
+    "seconds_median": 0.000865430474281311
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 112.0,
+    "loaded_max_w": 112.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "matmul.bf16.decode27b.k17408_n5120.m16",
+   "section": "matmul",
+   "what": "bf16 decode GEMM, batch 16, K 17408 to N 5120",
+   "unit": "TFLOP/s",
+   "value": 3.222423491418286,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[16,17408], w[5120,17408]) bfloat16, value = 2MNK / time",
+   "params": {
+    "m": 16,
+    "k": 17408,
+    "n": 5120,
+    "dtype": "bfloat16"
+   },
+   "samples": [
+    3.246827220107265,
+    3.173142387243564,
+    3.2408395249207542,
+    3.222423491418286,
+    3.0845739632116635,
+    3.1071981613992863,
+    3.2253442481153276,
+    3.2387749459323563,
+    3.274010871791632,
+    3.204505259278708,
+    3.1004982517487263,
+    3.277178328444,
+    3.221984760203333,
+    3.2157982034964028,
+    3.2746913380058054
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 3.0845739632116635,
+    "max": 3.277178328444,
+    "median": 3.222423491418286,
+    "mean": 3.2071860636878076,
+    "stdev": 0.063278349512936,
+    "p10": 3.1004982517487263,
+    "p90": 3.2746913380058054,
+    "rel_spread": 0.059770035113406395
+   },
+   "derived": {
+    "weight_gbs": 201.4014682136429,
+    "seconds_median": 0.0008850874900817871
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 111.8,
+    "loaded_max_w": 112.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "matmul.bf16.decode27b.k5120_n248320.m1",
+   "section": "matmul",
+   "what": "bf16 decode GEMM, batch 1, K 5120 to N 248320",
+   "unit": "TFLOP/s",
+   "value": 0.21865868512275174,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[1,5120], w[248320,5120]) bfloat16, value = 2MNK / time",
+   "params": {
+    "m": 1,
+    "k": 5120,
+    "n": 248320,
+    "dtype": "bfloat16"
+   },
+   "samples": [
+    0.21917493591222204,
+    0.21883439565620016,
+    0.2166813945995672,
+    0.21948083185048756,
+    0.21926013296945612,
+    0.21954616283166195,
+    0.21865868512275174,
+    0.21840655140082693,
+    0.21731814840426594,
+    0.21857734125972866,
+    0.21822400745874346,
+    0.21887515573157623,
+    0.21809348962962277,
+    0.21884874707567004,
+    0.21832237380166591
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 0.2166813945995672,
+    "max": 0.21954616283166195,
+    "median": 0.21865868512275174,
+    "mean": 0.2185534902469631,
+    "stdev": 0.0007763497378062617,
+    "p10": 0.21731814840426594,
+    "p90": 0.21948083185048756,
+    "rel_spread": 0.013101552451422232
+   },
+   "derived": {
+    "weight_gbs": 218.65868512275173,
+    "seconds_median": 0.011629068374633789
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 113.83333333333333,
+    "loaded_max_w": 114.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "matmul.bf16.decode27b.k5120_n248320.m4",
+   "section": "matmul",
+   "what": "bf16 decode GEMM, batch 4, K 5120 to N 248320",
+   "unit": "TFLOP/s",
+   "value": 0.8711044490514221,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[4,5120], w[248320,5120]) bfloat16, value = 2MNK / time",
+   "params": {
+    "m": 4,
+    "k": 5120,
+    "n": 248320,
+    "dtype": "bfloat16"
+   },
+   "samples": [
+    0.8729072463697858,
+    0.8695256729528494,
+    0.8690017472841575,
+    0.8699727308751791,
+    0.8708205147542837,
+    0.8659536593802393,
+    0.8711044490514221,
+    0.872833022557918,
+    0.8782119854683336,
+    0.875564015938501,
+    0.8758027924181079,
+    0.8698594157027246,
+    0.8708921921173665,
+    0.8747824510601175,
+    0.8753043927894423
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 0.8659536593802393,
+    "max": 0.8782119854683336,
+    "median": 0.8711044490514221,
+    "mean": 0.8721690859146952,
+    "stdev": 0.003265444902699149,
+    "p10": 0.8690017472841575,
+    "p90": 0.8758027924181079,
+    "rel_spread": 0.014072165630014679
+   },
+   "derived": {
+    "weight_gbs": 217.77611226285552,
+    "seconds_median": 0.011676197052001952
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 115.66666666666667,
+    "loaded_max_w": 116.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "matmul.bf16.decode27b.k5120_n248320.m8",
+   "section": "matmul",
+   "what": "bf16 decode GEMM, batch 8, K 5120 to N 248320",
+   "unit": "TFLOP/s",
+   "value": 1.740291410356347,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[8,5120], w[248320,5120]) bfloat16, value = 2MNK / time",
+   "params": {
+    "m": 8,
+    "k": 5120,
+    "n": 248320,
+    "dtype": "bfloat16"
+   },
+   "samples": [
+    1.7434415013247866,
+    1.7299536386163503,
+    1.7244115179487496,
+    1.7437349570886147,
+    1.740291410356347,
+    1.732794101760875,
+    1.7422804769544282,
+    1.7327942425251348,
+    1.7421073032316152,
+    1.7395400664070713,
+    1.7339069943868806,
+    1.7422804769544282,
+    1.7427711567331485,
+    1.7377474979744618,
+    1.7458522158889427
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 1.7244115179487496,
+    "max": 1.7458522158889427,
+    "median": 1.740291410356347,
+    "mean": 1.7382605038767889,
+    "stdev": 0.0061379891637280476,
+    "p10": 1.7299536386163503,
+    "p90": 1.7437349570886147,
+    "rel_spread": 0.012320176846590791
+   },
+   "derived": {
+    "weight_gbs": 217.53642629454336,
+    "seconds_median": 0.011689062118530274
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 117.83333333333333,
+    "loaded_max_w": 119.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "matmul.bf16.decode27b.k5120_n248320.m16",
+   "section": "matmul",
+   "what": "bf16 decode GEMM, batch 16, K 5120 to N 248320",
+   "unit": "TFLOP/s",
+   "value": 3.4464113334947544,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only matmul",
+   "op": "torch.nn.functional.linear(x[16,5120], w[248320,5120]) bfloat16, value = 2MNK / time",
+   "params": {
+    "m": 16,
+    "k": 5120,
+    "n": 248320,
+    "dtype": "bfloat16"
+   },
+   "samples": [
+    3.456997034130789,
+    3.4383690086392167,
+    3.441038115915022,
+    3.460001563508183,
+    3.4438979085987147,
+    3.421796366561195,
+    3.4370650828177562,
+    3.447429821578391,
+    3.4575977466767274,
+    3.4464113334947544,
+    3.443103523622837,
+    3.454080216543373,
+    3.460980367712299,
+    3.4561380753664848,
+    3.444376995915922
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 3.421796366561195,
+    "max": 3.460980367712299,
+    "median": 3.4464113334947544,
+    "mean": 3.447285544072111,
+    "stdev": 0.010641347369205271,
+    "p10": 3.4370650828177562,
+    "p90": 3.460001563508183,
+    "rel_spread": 0.01136950797784505
+   },
+   "derived": {
+    "weight_gbs": 215.40070834342214,
+    "seconds_median": 0.011804960250854491
+   },
+   "watts": {
+    "idle_w": 43.81818181818182,
+    "loaded_mean_w": 116.4,
+    "loaded_max_w": 118.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "lora.fp16.lora4b.k2560_n2560.fwd",
+   "section": "lora",
+   "what": "fp16 4B LoRA fwd GEMM of the k2560_n2560 projection: [1024,2560] x [2560,2560]",
+   "unit": "TFLOP/s",
+   "value": 38.313621130670725,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only lora",
+   "op": "torch.nn.functional.linear(x[1024,2560], w[2560,2560]) float16, value = 2MNK / time",
+   "params": {
+    "m": 1024,
+    "k": 2560,
+    "n": 2560,
+    "dtype": "float16",
+    "rank": 16,
+    "tokens": 1024,
+    "step": "fwd"
+   },
+   "samples": [
+    46.38995196781849,
+    44.98486048329824,
+    43.02663793970795,
+    40.671832703829665,
+    39.89821295547862,
+    38.66453020454613,
+    38.11451689084582,
+    38.15576414532551,
+    38.11449968723553,
+    37.981239338926805,
+    37.77133473966574,
+    37.961850910714425,
+    38.313621130670725,
+    38.436749715799614,
+    38.186935227457695
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 37.77133473966574,
+    "max": 46.38995196781849,
+    "median": 38.313621130670725,
+    "mean": 39.77816920275473,
+    "stdev": 2.785556000793363,
+    "p10": 37.961850910714425,
+    "p90": 44.98486048329824,
+    "rel_spread": 0.22494916882845606
+   },
+   "derived": {
+    "weight_gbs": 37.41564563542063,
+    "seconds_median": 0.00035031334559122723
+   },
+   "watts": {
+    "idle_w": 54.81818181818182,
+    "loaded_mean_w": 79.2,
+    "loaded_max_w": 101.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "lora.fp16.lora4b.k2560_n2560.dgrad",
+   "section": "lora",
+   "what": "fp16 4B LoRA dgrad GEMM of the k2560_n2560 projection: [1024,2560] x [2560,2560]",
+   "unit": "TFLOP/s",
+   "value": 38.706994894736056,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only lora",
+   "op": "torch.nn.functional.linear(x[1024,2560], w[2560,2560]) float16, value = 2MNK / time",
+   "params": {
+    "m": 1024,
+    "k": 2560,
+    "n": 2560,
+    "dtype": "float16",
+    "rank": 16,
+    "tokens": 1024,
+    "step": "dgrad"
+   },
+   "samples": [
+    41.8048001514893,
+    41.25297725105037,
+    41.054069059713484,
+    39.62285403202923,
+    38.706994894736056,
+    38.5443866490353,
+    38.46028276090439,
+    38.247260520379655,
+    38.03155278718342,
+    38.0740625573444,
+    38.46101411658222,
+    38.75025979813509,
+    38.68983208320395,
+    38.720412968798776,
+    39.147365970101546
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 38.03155278718342,
+    "max": 41.8048001514893,
+    "median": 38.706994894736056,
+    "mean": 39.171208373379145,
+    "stdev": 1.2131963520326248,
+    "p10": 38.0740625573444,
+    "p90": 41.25297725105037,
+    "rel_spread": 0.09748231229438642
+   },
+   "derived": {
+    "weight_gbs": 37.79979970189068,
+    "seconds_median": 0.0003467531601587931
+   },
+   "watts": {
+    "idle_w": 54.81818181818182,
+    "loaded_mean_w": 119.2,
+    "loaded_max_w": 124.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "lora.fp16.lora4b.k2560_n2560.a_fwd",
+   "section": "lora",
+   "what": "fp16 4B LoRA a_fwd GEMM of the k2560_n2560 projection: [1024,2560] x [2560,16]",
+   "unit": "TFLOP/s",
+   "value": 1.677664951912781,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only lora",
+   "op": "torch.nn.functional.linear(x[1024,2560], w[16,2560]) float16, value = 2MNK / time",
+   "params": {
+    "m": 1024,
+    "k": 2560,
+    "n": 16,
+    "dtype": "float16",
+    "rank": 16,
+    "tokens": 1024,
+    "step": "a_fwd"
+   },
+   "samples": [
+    1.517019047008561,
+    1.634634667821888,
+    1.6936567545232049,
+    1.6927158964176618,
+    1.7050817267783478,
+    1.7037809016005903,
+    1.642964730528552,
+    1.7044743505165334,
+    1.6746862017129487,
+    1.6744773605966607,
+    1.677664951912781,
+    1.671760704403349,
+    1.6756082404729804,
+    1.678757213863121,
+    1.677664951912781
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 1.517019047008561,
+    "max": 1.7050817267783478,
+    "median": 1.677664951912781,
+    "mean": 1.6683298466713308,
+    "stdev": 0.04648325847801697,
+    "p10": 1.634634667821888,
+    "p90": 1.7044743505165334,
+    "rel_spread": 0.11209787720448482
+   },
+   "derived": {
+    "weight_gbs": 1.638344679602325,
+    "seconds_median": 5.0001688301563265e-05
+   },
+   "watts": {
+    "idle_w": 54.81818181818182,
+    "loaded_mean_w": 113.2,
+    "loaded_max_w": 120.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "lora.fp16.lora4b.k2560_n2560.b_fwd",
+   "section": "lora",
+   "what": "fp16 4B LoRA b_fwd GEMM of the k2560_n2560 projection: [1024,16] x [16,2560]",
+   "unit": "TFLOP/s",
+   "value": 5.143001396082808,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only lora",
+   "op": "torch.nn.functional.linear(x[1024,16], w[2560,16]) float16, value = 2MNK / time",
+   "params": {
+    "m": 1024,
+    "k": 16,
+    "n": 2560,
+    "dtype": "float16",
+    "rank": 16,
+    "tokens": 1024,
+    "step": "b_fwd"
+   },
+   "samples": [
+    5.100790731661178,
+    5.139662089268397,
+    5.12044191411736,
+    5.138793647971397,
+    5.10880666998134,
+    5.143001396082808,
+    5.132274407119271,
+    5.151292824043152,
+    5.097509391972043,
+    5.199239184741486,
+    5.35581797445213,
+    5.276365378102587,
+    5.300477108904726,
+    5.326990634954438,
+    5.305571351416382
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 5.097509391972043,
+    "max": 5.35581797445213,
+    "median": 5.143001396082808,
+    "mean": 5.193135646985913,
+    "stdev": 0.09233466488700023,
+    "p10": 5.100790731661178,
+    "p90": 5.326990634954438,
+    "rel_spread": 0.05022526003528383
+   },
+   "derived": {
+    "weight_gbs": 5.022462300862117,
+    "seconds_median": 1.6310724718817348e-05
+   },
+   "watts": {
+    "idle_w": 54.81818181818182,
+    "loaded_mean_w": 112.4,
+    "loaded_max_w": 115.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "lora.fp16.lora4b.k2560_n2560.a_wgrad",
+   "section": "lora",
+   "what": "fp16 4B LoRA a_wgrad GEMM of the k2560_n2560 projection: [2560,1024] x [1024,16]",
+   "unit": "TFLOP/s",
+   "value": 2.489244924568306,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only lora",
+   "op": "torch.nn.functional.linear(x[2560,1024], w[16,1024]) float16, value = 2MNK / time",
+   "params": {
+    "m": 2560,
+    "k": 1024,
+    "n": 16,
+    "dtype": "float16",
+    "rank": 16,
+    "tokens": 1024,
+    "step": "a_wgrad"
+   },
+   "samples": [
+    2.4813558128855484,
+    2.489668560576691,
+    2.504072824592191,
+    2.4852040066239574,
+    2.4951788679230185,
+    2.489244924568306,
+    2.494147740819748,
+    2.493421608471981,
+    2.493419985698941,
+    2.4963942839682876,
+    2.48713177562646,
+    2.4022584576075894,
+    2.419143736033396,
+    2.3317009032899834,
+    2.279009964790085
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 2.279009964790085,
+    "max": 2.504072824592191,
+    "median": 2.489244924568306,
+    "mean": 2.4560902302317453,
+    "stdev": 0.06837892830930074,
+    "p10": 2.3317009032899834,
+    "p90": 2.4963942839682876,
+    "rel_spread": 0.0904141081421054
+   },
+   "derived": {
+    "weight_gbs": 0.9723612986594946,
+    "seconds_median": 3.369940786945576e-05
+   },
+   "watts": {
+    "idle_w": 54.81818181818182,
+    "loaded_mean_w": 111.2,
+    "loaded_max_w": 113.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "lora.fp16.lora4b.k2560_n2560.b_wgrad",
+   "section": "lora",
+   "what": "fp16 4B LoRA b_wgrad GEMM of the k2560_n2560 projection: [16,1024] x [1024,2560]",
+   "unit": "TFLOP/s",
+   "value": 2.996412987314733,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only lora",
+   "op": "torch.nn.functional.linear(x[16,1024], w[2560,1024]) float16, value = 2MNK / time",
+   "params": {
+    "m": 16,
+    "k": 1024,
+    "n": 2560,
+    "dtype": "float16",
+    "rank": 16,
+    "tokens": 1024,
+    "step": "b_wgrad"
+   },
+   "samples": [
+    2.991687008700513,
+    2.983378771004391,
+    3.0081437432783003,
+    2.9863160983932655,
+    2.989181932658246,
+    2.996412987314733,
+    2.99663629000408,
+    2.9994481291344686,
+    2.9884473982871125,
+    2.9890367919146734,
+    2.99922617039523,
+    2.9783292641907737,
+    3.0209435391800246,
+    3.005761339784376,
+    3.020416599085252
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 2.9783292641907737,
+    "max": 3.0209435391800246,
+    "median": 2.996412987314733,
+    "mean": 2.9968910708883625,
+    "stdev": 0.012558469162438874,
+    "p10": 2.983378771004391,
+    "p90": 3.020416599085252,
+    "rel_spread": 0.014221762877700009
+   },
+   "derived": {
+    "weight_gbs": 187.27581170717082,
+    "seconds_median": 2.7995500071295376e-05
+   },
+   "watts": {
+    "idle_w": 54.81818181818182,
+    "loaded_mean_w": 112.4,
+    "loaded_max_w": 114.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "lora.bf16.lora4b.k2560_n2560.fwd",
+   "section": "lora",
+   "what": "bf16 4B LoRA fwd GEMM of the k2560_n2560 projection: [1024,2560] x [2560,2560]",
+   "unit": "TFLOP/s",
+   "value": 42.26999437761438,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only lora",
+   "op": "torch.nn.functional.linear(x[1024,2560], w[2560,2560]) bfloat16, value = 2MNK / time",
+   "params": {
+    "m": 1024,
+    "k": 2560,
+    "n": 2560,
+    "dtype": "bfloat16",
+    "rank": 16,
+    "tokens": 1024,
+    "step": "fwd"
+   },
+   "samples": [
+    46.14706059277292,
+    46.163991871898595,
+    45.087823223573025,
+    44.1118990414783,
+    43.39176095421893,
+    43.705105871741054,
+    42.919113982396794,
+    42.16621432612602,
+    41.98649215648422,
+    41.76830836022089,
+    41.54464522144135,
+    41.4478249127484,
+    42.21849438849545,
+    42.26999437761438,
+    41.639354741306335
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 41.4478249127484,
+    "max": 46.163991871898595,
+    "median": 42.26999437761438,
+    "mean": 43.104538934834444,
+    "stdev": 1.6205203894822422,
+    "p10": 41.54464522144135,
+    "p90": 46.14706059277292,
+    "rel_spread": 0.1115724529560811
+   },
+   "derived": {
+    "weight_gbs": 41.27929138438905,
+    "seconds_median": 0.0003175248305002848
+   },
+   "watts": {
+    "idle_w": 54.81818181818182,
+    "loaded_mean_w": 122.4,
+    "loaded_max_w": 126.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "lora.bf16.lora4b.k2560_n2560.dgrad",
+   "section": "lora",
+   "what": "bf16 4B LoRA dgrad GEMM of the k2560_n2560 projection: [1024,2560] x [2560,2560]",
+   "unit": "TFLOP/s",
+   "value": 42.74223156717064,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only lora",
+   "op": "torch.nn.functional.linear(x[1024,2560], w[2560,2560]) bfloat16, value = 2MNK / time",
+   "params": {
+    "m": 1024,
+    "k": 2560,
+    "n": 2560,
+    "dtype": "bfloat16",
+    "rank": 16,
+    "tokens": 1024,
+    "step": "dgrad"
+   },
+   "samples": [
+    43.712224023812624,
+    44.662894364290835,
+    43.7502918632879,
+    43.64813683586547,
+    43.321615541348656,
+    42.59185688731229,
+    42.48559453112069,
+    42.45215705512028,
+    42.74223156717064,
+    42.654256523478566,
+    42.31917307308953,
+    42.58147514092181,
+    42.7549620421407,
+    42.621206572903944,
+    43.09052788456162
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 42.31917307308953,
+    "max": 44.662894364290835,
+    "median": 42.74223156717064,
+    "mean": 43.02590692709504,
+    "stdev": 0.6609835477287643,
+    "p10": 42.45215705512028,
+    "p90": 43.7502918632879,
+    "rel_spread": 0.05483385413599849
+   },
+   "derived": {
+    "weight_gbs": 41.74046051481508,
+    "seconds_median": 0.00031401666005452473
+   },
+   "watts": {
+    "idle_w": 54.81818181818182,
+    "loaded_mean_w": 126.5,
+    "loaded_max_w": 127.0,
+    "samples": 2
+   }
+  },
+  {
+   "id": "lora.bf16.lora4b.k2560_n2560.a_fwd",
+   "section": "lora",
+   "what": "bf16 4B LoRA a_fwd GEMM of the k2560_n2560 projection: [1024,2560] x [2560,16]",
+   "unit": "TFLOP/s",
+   "value": 1.5794769831563897,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only lora",
+   "op": "torch.nn.functional.linear(x[1024,2560], w[16,2560]) bfloat16, value = 2MNK / time",
+   "params": {
+    "m": 1024,
+    "k": 2560,
+    "n": 16,
+    "dtype": "bfloat16",
+    "rank": 16,
+    "tokens": 1024,
+    "step": "a_fwd"
+   },
+   "samples": [
+    1.4761282547708714,
+    1.484749263536188,
+    1.5026939750465684,
+    1.5221370919372026,
+    1.530687030750544,
+    1.5561438449328369,
+    1.565837654153627,
+    1.5794769831563897,
+    1.586597358896228,
+    1.6033082143286221,
+    1.6214559341940094,
+    1.627857519264216,
+    1.6270616444801764,
+    1.6321147162251333,
+    1.6267678659860605
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 1.4761282547708714,
+    "max": 1.6321147162251333,
+    "median": 1.5794769831563897,
+    "mean": 1.569534490110578,
+    "stdev": 0.05507067992455156,
+    "p10": 1.484749263536188,
+    "p90": 1.627857519264216,
+    "rel_spread": 0.09875829981551373
+   },
+   "derived": {
+    "weight_gbs": 1.5424579913636618,
+    "seconds_median": 5.311003635669576e-05
+   },
+   "watts": {
+    "idle_w": 54.81818181818182,
+    "loaded_mean_w": 106.6,
+    "loaded_max_w": 112.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "lora.bf16.lora4b.k2560_n2560.b_fwd",
+   "section": "lora",
+   "what": "bf16 4B LoRA b_fwd GEMM of the k2560_n2560 projection: [1024,16] x [16,2560]",
+   "unit": "TFLOP/s",
+   "value": 4.504333533447546,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only lora",
+   "op": "torch.nn.functional.linear(x[1024,16], w[2560,16]) bfloat16, value = 2MNK / time",
+   "params": {
+    "m": 1024,
+    "k": 16,
+    "n": 2560,
+    "dtype": "bfloat16",
+    "rank": 16,
+    "tokens": 1024,
+    "step": "b_fwd"
+   },
+   "samples": [
+    4.486766476023516,
+    4.528833887227112,
+    4.4915813534237605,
+    4.498385498756825,
+    4.475174116966037,
+    4.5068946681389805,
+    4.475840662507873,
+    4.494930604319658,
+    4.5064877853200205,
+    4.5383793462108715,
+    4.528423033597958,
+    4.571555701279895,
+    4.504333533447546,
+    4.46245421287738,
+    4.626141383679644
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 4.46245421287738,
+    "max": 4.626141383679644,
+    "median": 4.504333533447546,
+    "mean": 4.513078817585138,
+    "stdev": 0.041893289428721704,
+    "p10": 4.475174116966037,
+    "p90": 4.571555701279895,
+    "rel_spread": 0.03633993122107471
+   },
+   "derived": {
+    "weight_gbs": 4.398763216257369,
+    "seconds_median": 1.8623416622479755e-05
+   },
+   "watts": {
+    "idle_w": 54.81818181818182,
+    "loaded_mean_w": 109.6,
+    "loaded_max_w": 114.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "lora.bf16.lora4b.k2560_n2560.a_wgrad",
+   "section": "lora",
+   "what": "bf16 4B LoRA a_wgrad GEMM of the k2560_n2560 projection: [2560,1024] x [1024,16]",
+   "unit": "TFLOP/s",
+   "value": 2.466293185061984,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only lora",
+   "op": "torch.nn.functional.linear(x[2560,1024], w[16,1024]) bfloat16, value = 2MNK / time",
+   "params": {
+    "m": 2560,
+    "k": 1024,
+    "n": 16,
+    "dtype": "bfloat16",
+    "rank": 16,
+    "tokens": 1024,
+    "step": "a_wgrad"
+   },
+   "samples": [
+    2.4720564684300257,
+    2.4657378937266774,
+    2.469699717219087,
+    2.4582199989670177,
+    2.477660010778809,
+    2.4694505894244827,
+    2.466293185061984,
+    2.4710013093802496,
+    2.4489182679611203,
+    2.4387810532608394,
+    2.3895562035725657,
+    2.2670271359024614,
+    2.3839990752928144,
+    2.469388637984512,
+    2.47348633137332
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 2.2670271359024614,
+    "max": 2.477660010778809,
+    "median": 2.466293185061984,
+    "mean": 2.4414183918890644,
+    "stdev": 0.056365064162860384,
+    "p10": 2.3839990752928144,
+    "p90": 2.47348633137332,
+    "rel_spread": 0.08540463727188786
+   },
+   "derived": {
+    "weight_gbs": 0.9633957754148373,
+    "seconds_median": 3.40130202313687e-05
+   },
+   "watts": {
+    "idle_w": 54.81818181818182,
+    "loaded_mean_w": 110.0,
+    "loaded_max_w": 113.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "lora.bf16.lora4b.k2560_n2560.b_wgrad",
+   "section": "lora",
+   "what": "bf16 4B LoRA b_wgrad GEMM of the k2560_n2560 projection: [16,1024] x [1024,2560]",
+   "unit": "TFLOP/s",
+   "value": 2.0255578770972513,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only lora",
+   "op": "torch.nn.functional.linear(x[16,1024], w[2560,1024]) bfloat16, value = 2MNK / time",
+   "params": {
+    "m": 16,
+    "k": 1024,
+    "n": 2560,
+    "dtype": "bfloat16",
+    "rank": 16,
+    "tokens": 1024,
+    "step": "b_wgrad"
+   },
+   "samples": [
+    2.026539112064091,
+    2.016008936405789,
+    2.038588207721908,
+    2.0403144746151267,
+    2.025662065175894,
+    2.0182094479326103,
+    2.019951254548066,
+    2.044509922556883,
+    2.0380134861540955,
+    2.0177470974277103,
+    2.004072038902526,
+    2.0255578770972513,
+    2.011777253156653,
+    2.0218000143137584,
+    2.0309368429780355
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 2.004072038902526,
+    "max": 2.044509922556883,
+    "median": 2.0255578770972513,
+    "mean": 2.02531253540336,
+    "stdev": 0.011446039615542782,
+    "p10": 2.011777253156653,
+    "p90": 2.0403144746151267,
+    "rel_spread": 0.019963825330089825
+   },
+   "derived": {
+    "weight_gbs": 126.59736731857821,
+    "seconds_median": 4.141381539796528e-05
+   },
+   "watts": {
+    "idle_w": 54.81818181818182,
+    "loaded_mean_w": 102.4,
+    "loaded_max_w": 106.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "dequant.w4a16.decode27b.k5120_n6144.m1.bn64_bk64",
+   "section": "dequant",
+   "what": "int4-to-fp16 dequantize plus matmul (Triton), batch 1, K 5120 to N 6144, bn64_bk64",
+   "unit": "TFLOP/s",
+   "value": 0.5944273379310935,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only dequant",
+   "op": "triton w4a16[1,5120]x[5120/2 packed,6144] group 128, BLOCK_M 16 BLOCK_N 64 BLOCK_K 64, value = 2MNK / time",
+   "params": {
+    "m": 1,
+    "k": 5120,
+    "n": 6144,
+    "group": 128,
+    "BLOCK_M": 16,
+    "BLOCK_N": 64,
+    "BLOCK_K": 64
+   },
+   "samples": [
+    0.6499194437179897,
+    0.6402369217098188,
+    0.635005128343703,
+    0.6213967961567906,
+    0.6099219982575179,
+    0.6027937352220084,
+    0.5967290336087373,
+    0.58936078167701,
+    0.5820847878465387,
+    0.5897171355761626,
+    0.594244492673794,
+    0.5944273379310935,
+    0.5939212437063671,
+    0.5926669457715003,
+    0.5917176066472003
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 0.5820847878465387,
+    "max": 0.6499194437179897,
+    "median": 0.5944273379310935,
+    "mean": 0.6056095592564155,
+    "stdev": 0.021048369550286748,
+    "p10": 0.58936078167701,
+    "p90": 0.6402369217098188,
+    "rel_spread": 0.11411765836266843
+   },
+   "derived": {
+    "weight_gbs": 153.25079806036004,
+    "rel_l2_error": 0.0002711311390157789,
+    "seconds_median": 0.00010584062337875366
+   },
+   "watts": {
+    "idle_w": 51.25,
+    "loaded_mean_w": 57.0,
+    "loaded_max_w": 102.0,
+    "samples": 7
+   }
+  },
+  {
+   "id": "dequant.w4a16.decode27b.k5120_n6144.m4.bn64_bk64",
+   "section": "dequant",
+   "what": "int4-to-fp16 dequantize plus matmul (Triton), batch 4, K 5120 to N 6144, bn64_bk64",
+   "unit": "TFLOP/s",
+   "value": 2.354089372768767,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only dequant",
+   "op": "triton w4a16[4,5120]x[5120/2 packed,6144] group 128, BLOCK_M 16 BLOCK_N 64 BLOCK_K 64, value = 2MNK / time",
+   "params": {
+    "m": 4,
+    "k": 5120,
+    "n": 6144,
+    "group": 128,
+    "BLOCK_M": 16,
+    "BLOCK_N": 64,
+    "BLOCK_K": 64
+   },
+   "samples": [
+    2.589118917585068,
+    2.529277817295546,
+    2.4765870530228518,
+    2.4138939877074184,
+    2.3515608833362647,
+    2.358002624404251,
+    2.350863082013113,
+    2.354089372768767,
+    2.356297292593994,
+    2.363929500017267,
+    2.347837758099228,
+    2.352079342082701,
+    2.345478405145865,
+    2.347166725710376,
+    2.351069914577234
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 2.345478405145865,
+    "max": 2.589118917585068,
+    "median": 2.354089372768767,
+    "mean": 2.3924835117573293,
+    "stdev": 0.07686195122425844,
+    "p10": 2.347166725710376,
+    "p90": 2.529277817295546,
+    "rel_spread": 0.10349671310594502
+   },
+   "derived": {
+    "weight_gbs": 151.72841660423697,
+    "rel_l2_error": 0.0002759596100077033,
+    "seconds_median": 0.0001069025853100945
+   },
+   "watts": {
+    "idle_w": 51.25,
+    "loaded_mean_w": 104.8,
+    "loaded_max_w": 117.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "dequant.w4a16.decode27b.k5120_n6144.m8.bn64_bk64",
+   "section": "dequant",
+   "what": "int4-to-fp16 dequantize plus matmul (Triton), batch 8, K 5120 to N 6144, bn64_bk64",
+   "unit": "TFLOP/s",
+   "value": 4.785262824418913,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only dequant",
+   "op": "triton w4a16[8,5120]x[5120/2 packed,6144] group 128, BLOCK_M 16 BLOCK_N 64 BLOCK_K 64, value = 2MNK / time",
+   "params": {
+    "m": 8,
+    "k": 5120,
+    "n": 6144,
+    "group": 128,
+    "BLOCK_M": 16,
+    "BLOCK_N": 64,
+    "BLOCK_K": 64
+   },
+   "samples": [
+    5.0540348391822585,
+    5.0246879009514025,
+    4.930753045372957,
+    4.863085630113767,
+    4.812419090179492,
+    4.785262824418913,
+    4.796308838396366,
+    4.763322732047831,
+    4.711787771206984,
+    4.746909452086377,
+    4.763563937195423,
+    4.745063908864017,
+    4.74077083640935,
+    4.779692033559094,
+    4.8511524753581705
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 4.711787771206984,
+    "max": 5.0540348391822585,
+    "median": 4.785262824418913,
+    "mean": 4.824587687689493,
+    "stdev": 0.10359229990427815,
+    "p10": 4.74077083640935,
+    "p90": 5.0246879009514025,
+    "rel_spread": 0.07152105966443643
+   },
+   "derived": {
+    "weight_gbs": 154.21257149006263,
+    "rel_l2_error": 0.00027665082598105073,
+    "seconds_median": 0.0001051805299871108
+   },
+   "watts": {
+    "idle_w": 51.25,
+    "loaded_mean_w": 125.25,
+    "loaded_max_w": 127.0,
+    "samples": 4
+   }
+  },
+  {
+   "id": "dequant.w4a16.decode27b.k5120_n6144.m16.bn64_bk64",
+   "section": "dequant",
+   "what": "int4-to-fp16 dequantize plus matmul (Triton), batch 16, K 5120 to N 6144, bn64_bk64",
+   "unit": "TFLOP/s",
+   "value": 9.075296292104454,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only dequant",
+   "op": "triton w4a16[16,5120]x[5120/2 packed,6144] group 128, BLOCK_M 16 BLOCK_N 64 BLOCK_K 64, value = 2MNK / time",
+   "params": {
+    "m": 16,
+    "k": 5120,
+    "n": 6144,
+    "group": 128,
+    "BLOCK_M": 16,
+    "BLOCK_N": 64,
+    "BLOCK_K": 64
+   },
+   "samples": [
+    10.215621916898622,
+    9.883359458302207,
+    8.983599796064173,
+    9.448497907898528,
+    9.216076163626846,
+    9.134210487388563,
+    9.067972736902357,
+    9.106746349027793,
+    9.07461818751659,
+    9.09810898689237,
+    9.059696322352954,
+    9.075296292104454,
+    9.026089053913022,
+    8.973880889009518,
+    8.905150559674842
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 8.905150559674842,
+    "max": 10.215621916898622,
+    "median": 9.075296292104454,
+    "mean": 9.217928340504857,
+    "stdev": 0.36474948601938983,
+    "p10": 8.973880889009518,
+    "p90": 9.883359458302207,
+    "rel_spread": 0.14439984272071588
+   },
+   "derived": {
+    "weight_gbs": 146.23280158176124,
+    "rel_l2_error": 0.00027642512577585876,
+    "seconds_median": 0.00011092012068804573
+   },
+   "watts": {
+    "idle_w": 51.25,
+    "loaded_mean_w": 120.5,
+    "loaded_max_w": 125.0,
+    "samples": 4
+   }
+  },
+  {
+   "id": "dequant.w4a16.decode27b.k6144_n5120.m1.bn64_bk64",
+   "section": "dequant",
+   "what": "int4-to-fp16 dequantize plus matmul (Triton), batch 1, K 6144 to N 5120, bn64_bk64",
+   "unit": "TFLOP/s",
+   "value": 0.6000980463504849,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only dequant",
+   "op": "triton w4a16[1,6144]x[6144/2 packed,5120] group 128, BLOCK_M 16 BLOCK_N 64 BLOCK_K 64, value = 2MNK / time",
+   "params": {
+    "m": 1,
+    "k": 6144,
+    "n": 5120,
+    "group": 128,
+    "BLOCK_M": 16,
+    "BLOCK_N": 64,
+    "BLOCK_K": 64
+   },
+   "samples": [
+    0.6314668060404331,
+    0.6225516737260218,
+    0.6151756760168936,
+    0.6072564920499521,
+    0.6000980463504849,
+    0.5957542871330475,
+    0.5959537703945218,
+    0.5958707713486628,
+    0.5909235999788554,
+    0.5930340351300142,
+    0.5925041144133426,
+    0.5950072450999464,
+    0.6053315154516927,
+    0.6164897742472172,
+    0.6055580636653048
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 0.5909235999788554,
+    "max": 0.6314668060404331,
+    "median": 0.6000980463504849,
+    "mean": 0.6041983914030927,
+    "stdev": 0.012282414600199123,
+    "p10": 0.5925041144133426,
+    "p90": 0.6225516737260218,
+    "rel_spread": 0.06756096992506903
+   },
+   "derived": {
+    "weight_gbs": 154.7127775747344,
+    "rel_l2_error": 0.00027290030266158283,
+    "seconds_median": 0.00010484046795788934
+   },
+   "watts": {
+    "idle_w": 51.25,
+    "loaded_mean_w": 127.75,
+    "loaded_max_w": 129.0,
+    "samples": 4
+   }
+  },
+  {
+   "id": "dequant.w4a16.decode27b.k6144_n5120.m4.bn64_bk64",
+   "section": "dequant",
+   "what": "int4-to-fp16 dequantize plus matmul (Triton), batch 4, K 6144 to N 5120, bn64_bk64",
+   "unit": "TFLOP/s",
+   "value": 2.4217380135737447,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only dequant",
+   "op": "triton w4a16[4,6144]x[6144/2 packed,5120] group 128, BLOCK_M 16 BLOCK_N 64 BLOCK_K 64, value = 2MNK / time",
+   "params": {
+    "m": 4,
+    "k": 6144,
+    "n": 5120,
+    "group": 128,
+    "BLOCK_M": 16,
+    "BLOCK_N": 64,
+    "BLOCK_K": 64
+   },
+   "samples": [
+    2.502830918243349,
+    2.508595727349386,
+    2.4648860943530133,
+    2.4393023152307043,
+    2.4217380135737447,
+    2.41231888986319,
+    2.3672753473086057,
+    2.3899394279243413,
+    2.3905779644194545,
+    2.4111171092803367,
+    2.3936120737552264,
+    2.4267676586772393,
+    2.418415934587755,
+    2.4262983847503663,
+    2.4316127103934204
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 2.3672753473086057,
+    "max": 2.508595727349386,
+    "median": 2.4217380135737447,
+    "mean": 2.427019237980675,
+    "stdev": 0.03961216093020203,
+    "p10": 2.3899394279243413,
+    "p90": 2.502830918243349,
+    "rel_spread": 0.05835494147124315
+   },
+   "derived": {
+    "weight_gbs": 156.08858290612028,
+    "rel_l2_error": 0.00027487846091389656,
+    "seconds_median": 0.00010391637682914734
+   },
+   "watts": {
+    "idle_w": 51.25,
+    "loaded_mean_w": 128.66666666666666,
+    "loaded_max_w": 129.0,
+    "samples": 3
+   }
+  },
+  {
+   "id": "dequant.w4a16.decode27b.k6144_n5120.m8.bn64_bk64",
+   "section": "dequant",
+   "what": "int4-to-fp16 dequantize plus matmul (Triton), batch 8, K 6144 to N 5120, bn64_bk64",
+   "unit": "TFLOP/s",
+   "value": 4.888466085455598,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only dequant",
+   "op": "triton w4a16[8,6144]x[6144/2 packed,5120] group 128, BLOCK_M 16 BLOCK_N 64 BLOCK_K 64, value = 2MNK / time",
+   "params": {
+    "m": 8,
+    "k": 6144,
+    "n": 5120,
+    "group": 128,
+    "BLOCK_M": 16,
+    "BLOCK_N": 64,
+    "BLOCK_K": 64
+   },
+   "samples": [
+    4.795422166031013,
+    4.899625797381087,
+    4.917851075116082,
+    4.871777663639462,
+    4.949537369849696,
+    4.920788541427679,
+    4.86724990937273,
+    4.872112159426497,
+    4.840847394624205,
+    4.833855326202719,
+    4.880252011755535,
+    4.914005293817114,
+    4.888466085455598,
+    4.891564051309439,
+    4.935583478347186
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 4.795422166031013,
+    "max": 4.949537369849696,
+    "median": 4.888466085455598,
+    "mean": 4.885262554917069,
+    "stdev": 0.04093637486024786,
+    "p10": 4.833855326202719,
+    "p90": 4.935583478347186,
+    "rel_spread": 0.03152629089055437
+   },
+   "derived": {
+    "weight_gbs": 157.53845783206518,
+    "rel_l2_error": 0.00027647061506286263,
+    "seconds_median": 0.00010296000242233276
+   },
+   "watts": {
+    "idle_w": 51.25,
+    "loaded_mean_w": 124.0,
+    "loaded_max_w": 127.0,
+    "samples": 2
+   }
+  },
+  {
+   "id": "dequant.w4a16.decode27b.k6144_n5120.m16.bn64_bk64",
+   "section": "dequant",
+   "what": "int4-to-fp16 dequantize plus matmul (Triton), batch 16, K 6144 to N 5120, bn64_bk64",
+   "unit": "TFLOP/s",
+   "value": 9.364767556585004,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only dequant",
+   "op": "triton w4a16[16,6144]x[6144/2 packed,5120] group 128, BLOCK_M 16 BLOCK_N 64 BLOCK_K 64, value = 2MNK / time",
+   "params": {
+    "m": 16,
+    "k": 6144,
+    "n": 5120,
+    "group": 128,
+    "BLOCK_M": 16,
+    "BLOCK_N": 64,
+    "BLOCK_K": 64
+   },
+   "samples": [
+    9.201726200411342,
+    9.43733116635742,
+    9.13039975602493,
+    9.479366766145828,
+    9.431045003899158,
+    9.435031381748468,
+    9.166299820684591,
+    9.414172684676533,
+    9.316655315025477,
+    9.425031248033827,
+    9.377967581353943,
+    8.834166439109218,
+    9.364767556585004,
+    9.294084596918053,
+    9.238877788835163
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 8.834166439109218,
+    "max": 9.479366766145828,
+    "median": 9.364767556585004,
+    "mean": 9.303128220387263,
+    "stdev": 0.16957524768942842,
+    "p10": 9.13039975602493,
+    "p90": 9.43733116635742,
+    "rel_spread": 0.0688965661067504
+   },
+   "derived": {
+    "weight_gbs": 150.89713348012947,
+    "rel_l2_error": 0.00027605166542343795,
+    "seconds_median": 0.0001074915051460266
+   },
+   "watts": {
+    "idle_w": 51.25,
+    "loaded_mean_w": 115.5,
+    "loaded_max_w": 117.0,
+    "samples": 2
+   }
+  },
+  {
+   "id": "dequant.w4a16.decode27b.k5120_n17408.m1.bn64_bk64",
+   "section": "dequant",
+   "what": "int4-to-fp16 dequantize plus matmul (Triton), batch 1, K 5120 to N 17408, bn64_bk64",
+   "unit": "TFLOP/s",
+   "value": 0.579618752241055,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only dequant",
+   "op": "triton w4a16[1,5120]x[5120/2 packed,17408] group 128, BLOCK_M 16 BLOCK_N 64 BLOCK_K 64, value = 2MNK / time",
+   "params": {
+    "m": 1,
+    "k": 5120,
+    "n": 17408,
+    "group": 128,
+    "BLOCK_M": 16,
+    "BLOCK_N": 64,
+    "BLOCK_K": 64
+   },
+   "samples": [
+    0.5796112034093795,
+    0.5730918177323309,
+    0.5857827907599199,
+    0.5740681487282543,
+    0.5915908573551106,
+    0.5809588126949262,
+    0.5837031295135531,
+    0.5887522058584658,
+    0.5781798137431593,
+    0.579618752241055,
+    0.5743348540412302,
+    0.5719422091637995,
+    0.5734576184109503,
+    0.5866132414481032,
+    0.5809058206804045
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 0.5719422091637995,
+    "max": 0.5915908573551106,
+    "median": 0.579618752241055,
+    "mean": 0.5801740850520428,
+    "stdev": 0.006149722358418575,
+    "p10": 0.5730918177323309,
+    "p90": 0.5887522058584658,
+    "rel_spread": 0.03389926242955575
+   },
+   "derived": {
+    "weight_gbs": 149.43295956214698,
+    "rel_l2_error": 0.0002740873023867607,
+    "seconds_median": 0.00030754339694976805
+   },
+   "watts": {
+    "idle_w": 51.25,
+    "loaded_mean_w": 111.0,
+    "loaded_max_w": 111.0,
+    "samples": 2
+   }
+  },
+  {
+   "id": "dequant.w4a16.decode27b.k5120_n17408.m4.bn64_bk64",
+   "section": "dequant",
+   "what": "int4-to-fp16 dequantize plus matmul (Triton), batch 4, K 5120 to N 17408, bn64_bk64",
+   "unit": "TFLOP/s",
+   "value": 2.3299069793328506,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only dequant",
+   "op": "triton w4a16[4,5120]x[5120/2 packed,17408] group 128, BLOCK_M 16 BLOCK_N 64 BLOCK_K 64, value = 2MNK / time",
+   "params": {
+    "m": 4,
+    "k": 5120,
+    "n": 17408,
+    "group": 128,
+    "BLOCK_M": 16,
+    "BLOCK_N": 64,
+    "BLOCK_K": 64
+   },
+   "samples": [
+    2.3242291373845005,
+    2.3618703988822256,
+    2.2789054258235573,
+    2.2800597649768917,
+    2.3357793585271556,
+    2.3645381438090527,
+    2.2926769160429497,
+    2.3418812857272777,
+    2.354245221011399,
+    2.299105339607472,
+    2.3299069793328506,
+    2.4408343849150156,
+    2.2837608588301523,
+    2.346344903773778,
+    2.323682319342976
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 2.2789054258235573,
+    "max": 2.4408343849150156,
+    "median": 2.3299069793328506,
+    "mean": 2.3305213625324837,
+    "stdev": 0.04241108333077368,
+    "p10": 2.2800597649768917,
+    "p90": 2.3645381438090527,
+    "rel_spread": 0.06950018199345681
+   },
+   "derived": {
+    "weight_gbs": 150.16978577731263,
+    "rel_l2_error": 0.00027661400963552296,
+    "seconds_median": 0.00030603439807891847
+   },
+   "watts": {
+    "idle_w": 51.25,
+    "loaded_mean_w": 110.5,
+    "loaded_max_w": 111.0,
+    "samples": 2
+   }
+  },
+  {
+   "id": "dequant.w4a16.decode27b.k5120_n17408.m8.bn64_bk64",
+   "section": "dequant",
+   "what": "int4-to-fp16 dequantize plus matmul (Triton), batch 8, K 5120 to N 17408, bn64_bk64",
+   "unit": "TFLOP/s",
+   "value": 4.65213410342937,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only dequant",
+   "op": "triton w4a16[8,5120]x[5120/2 packed,17408] group 128, BLOCK_M 16 BLOCK_N 64 BLOCK_K 64, value = 2MNK / time",
+   "params": {
+    "m": 8,
+    "k": 5120,
+    "n": 17408,
+    "group": 128,
+    "BLOCK_M": 16,
+    "BLOCK_N": 64,
+    "BLOCK_K": 64
+   },
+   "samples": [
+    4.671249702041541,
+    4.707526947767347,
+    4.575038607638446,
+    4.756258904632613,
+    4.65213410342937,
+    4.762495043580134,
+    4.936794951124276,
+    4.6550591737626945,
+    4.57771439602162,
+    4.532382324027295,
+    4.71991969976487,
+    4.467989269300042,
+    4.595659180012297,
+    4.643001002058638,
+    4.593998095148937
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 4.467989269300042,
+    "max": 4.936794951124276,
+    "median": 4.65213410342937,
+    "mean": 4.656481426687341,
+    "stdev": 0.1128182737788852,
+    "p10": 4.532382324027295,
+    "p90": 4.762495043580134,
+    "rel_spread": 0.10077217711300476
+   },
+   "derived": {
+    "weight_gbs": 149.92229044254805,
+    "rel_l2_error": 0.00027528454666025937,
+    "seconds_median": 0.00030653960704803466
+   },
+   "watts": {
+    "idle_w": 51.25,
+    "loaded_mean_w": 110.0,
+    "loaded_max_w": 110.0,
+    "samples": 2
+   }
+  },
+  {
+   "id": "dequant.w4a16.decode27b.k5120_n17408.m16.bn64_bk64",
+   "section": "dequant",
+   "what": "int4-to-fp16 dequantize plus matmul (Triton), batch 16, K 5120 to N 17408, bn64_bk64",
+   "unit": "TFLOP/s",
+   "value": 9.103494606974404,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only dequant",
+   "op": "triton w4a16[16,5120]x[5120/2 packed,17408] group 128, BLOCK_M 16 BLOCK_N 64 BLOCK_K 64, value = 2MNK / time",
+   "params": {
+    "m": 16,
+    "k": 5120,
+    "n": 17408,
+    "group": 128,
+    "BLOCK_M": 16,
+    "BLOCK_N": 64,
+    "BLOCK_K": 64
+   },
+   "samples": [
+    9.02894622590866,
+    9.420408424901463,
+    9.28134205857918,
+    9.310300218706248,
+    9.219299544689596,
+    9.15072324598029,
+    9.122572449980776,
+    8.678595684879339,
+    9.103494606974404,
+    8.855974386073363,
+    8.93620282642021,
+    9.022587840888518,
+    9.107686394568043,
+    9.091806018505332,
+    8.989877769780716
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 8.678595684879339,
+    "max": 9.420408424901463,
+    "median": 9.103494606974404,
+    "mean": 9.087987846455743,
+    "stdev": 0.1855858065264006,
+    "p10": 8.855974386073363,
+    "p90": 9.310300218706248,
+    "rel_spread": 0.0814865908146751
+   },
+   "derived": {
+    "weight_gbs": 146.6871689600368,
+    "rel_l2_error": 0.0002759455528575927,
+    "seconds_median": 0.0003133002042770386
+   },
+   "watts": {
+    "idle_w": 51.25,
+    "loaded_mean_w": 110.0,
+    "loaded_max_w": 110.0,
+    "samples": 2
+   }
+  },
+  {
+   "id": "dequant.w4a16.decode27b.k17408_n5120.m1.bn64_bk64",
+   "section": "dequant",
+   "what": "int4-to-fp16 dequantize plus matmul (Triton), batch 1, K 17408 to N 5120, bn64_bk64",
+   "unit": "TFLOP/s",
+   "value": 0.5403693987662108,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only dequant",
+   "op": "triton w4a16[1,17408]x[17408/2 packed,5120] group 128, BLOCK_M 16 BLOCK_N 64 BLOCK_K 64, value = 2MNK / time",
+   "params": {
+    "m": 1,
+    "k": 17408,
+    "n": 5120,
+    "group": 128,
+    "BLOCK_M": 16,
+    "BLOCK_N": 64,
+    "BLOCK_K": 64
+   },
+   "samples": [
+    0.5439013952449324,
+    0.538534458492265,
+    0.5302400933237659,
+    0.537016557072385,
+    0.5372301738773927,
+    0.5369676914193375,
+    0.5433102369126737,
+    0.5403693987662108,
+    0.5405270302499052,
+    0.5415405246712682,
+    0.5405666967612253,
+    0.5391185296060523,
+    0.5378377253628744,
+    0.5419593697052077,
+    0.553888104235059
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 0.5302400933237659,
+    "max": 0.553888104235059,
+    "median": 0.5403693987662108,
+    "mean": 0.5402005323800371,
+    "stdev": 0.005028676885946237,
+    "p10": 0.5369676914193375,
+    "p90": 0.5439013952449324,
+    "rel_spread": 0.043762675986625095
+   },
+   "derived": {
+    "weight_gbs": 139.31398561941373,
+    "rel_l2_error": 0.00028459547320380807,
+    "seconds_median": 0.00032988159656524655
+   },
+   "watts": {
+    "idle_w": 51.25,
+    "loaded_mean_w": 110.0,
+    "loaded_max_w": 110.0,
+    "samples": 2
+   }
+  },
+  {
+   "id": "dequant.w4a16.decode27b.k17408_n5120.m4.bn64_bk64",
+   "section": "dequant",
+   "what": "int4-to-fp16 dequantize plus matmul (Triton), batch 4, K 17408 to N 5120, bn64_bk64",
+   "unit": "TFLOP/s",
+   "value": 2.1577961796181384,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only dequant",
+   "op": "triton w4a16[4,17408]x[17408/2 packed,5120] group 128, BLOCK_M 16 BLOCK_N 64 BLOCK_K 64, value = 2MNK / time",
+   "params": {
+    "m": 4,
+    "k": 17408,
+    "n": 5120,
+    "group": 128,
+    "BLOCK_M": 16,
+    "BLOCK_N": 64,
+    "BLOCK_K": 64
+   },
+   "samples": [
+    2.1487264667966777,
+    2.1347666232247993,
+    2.2220259624065033,
+    2.1577961796181384,
+    2.158489987830525,
+    2.1559381008062695,
+    2.1623191597673954,
+    2.1571552513388634,
+    2.15708865897424,
+    2.1524302623832994,
+    2.163883693675846,
+    2.163555266821279,
+    2.1781630203380318,
+    2.15987738374577,
+    2.1548552198007904
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 2.1347666232247993,
+    "max": 2.2220259624065033,
+    "median": 2.1577961796181384,
+    "mean": 2.161804749168562,
+    "stdev": 0.018990909658481492,
+    "p10": 2.1487264667966777,
+    "p90": 2.1781630203380318,
+    "rel_spread": 0.04043910171216735
+   },
+   "derived": {
+    "weight_gbs": 139.07670688945032,
+    "rel_l2_error": 0.0002793025050777942,
+    "seconds_median": 0.00033044440746307375
+   },
+   "watts": {
+    "idle_w": 51.25,
+    "loaded_mean_w": 110.0,
+    "loaded_max_w": 110.0,
+    "samples": 2
+   }
+  },
+  {
+   "id": "dequant.w4a16.decode27b.k17408_n5120.m8.bn64_bk64",
+   "section": "dequant",
+   "what": "int4-to-fp16 dequantize plus matmul (Triton), batch 8, K 17408 to N 5120, bn64_bk64",
+   "unit": "TFLOP/s",
+   "value": 4.302128035880494,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only dequant",
+   "op": "triton w4a16[8,17408]x[17408/2 packed,5120] group 128, BLOCK_M 16 BLOCK_N 64 BLOCK_K 64, value = 2MNK / time",
+   "params": {
+    "m": 8,
+    "k": 17408,
+    "n": 5120,
+    "group": 128,
+    "BLOCK_M": 16,
+    "BLOCK_N": 64,
+    "BLOCK_K": 64
+   },
+   "samples": [
+    4.21968656540572,
+    4.304106847333391,
+    4.30264980476359,
+    4.302128035880494,
+    4.321013952585889,
+    4.306058959818835,
+    4.284132069398126,
+    4.306477500037396,
+    4.305512809696198,
+    4.286761858065541,
+    4.271735379217018,
+    4.297452933593355,
+    4.294029025497603,
+    4.443162910017365,
+    4.289400106566536
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 4.21968656540572,
+    "max": 4.443162910017365,
+    "median": 4.302128035880494,
+    "mean": 4.302287250525137,
+    "stdev": 0.04537689985351179,
+    "p10": 4.271735379217018,
+    "p90": 4.321013952585889,
+    "rel_spread": 0.05194553549959771
+   },
+   "derived": {
+    "weight_gbs": 138.642798031305,
+    "rel_l2_error": 0.0002808571152854711,
+    "seconds_median": 0.00033147859573364255
+   },
+   "watts": {
+    "idle_w": 51.25,
+    "loaded_mean_w": 110.0,
+    "loaded_max_w": 110.0,
+    "samples": 2
+   }
+  },
+  {
+   "id": "dequant.w4a16.decode27b.k17408_n5120.m16.bn64_bk64",
+   "section": "dequant",
+   "what": "int4-to-fp16 dequantize plus matmul (Triton), batch 16, K 17408 to N 5120, bn64_bk64",
+   "unit": "TFLOP/s",
+   "value": 8.3190946394505,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only dequant",
+   "op": "triton w4a16[16,17408]x[17408/2 packed,5120] group 128, BLOCK_M 16 BLOCK_N 64 BLOCK_K 64, value = 2MNK / time",
+   "params": {
+    "m": 16,
+    "k": 17408,
+    "n": 5120,
+    "group": 128,
+    "BLOCK_M": 16,
+    "BLOCK_N": 64,
+    "BLOCK_K": 64
+   },
+   "samples": [
+    8.287428485813697,
+    8.468385195407203,
+    8.213249015530268,
+    8.293169462307096,
+    8.26139474872009,
+    8.3190946394505,
+    8.106484517416984,
+    8.28574303702146,
+    8.178921247157765,
+    8.371575653075332,
+    8.338473314828924,
+    8.667240315064491,
+    8.377114123193568,
+    8.438513345968541,
+    8.368560349506822
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 8.106484517416984,
+    "max": 8.667240315064491,
+    "median": 8.3190946394505,
+    "mean": 8.33168983003085,
+    "stdev": 0.13268885202241582,
+    "p10": 8.178921247157765,
+    "p90": 8.468385195407203,
+    "rel_spread": 0.06740586830065766
+   },
+   "derived": {
+    "weight_gbs": 134.04791167083326,
+    "rel_l2_error": 0.00028028717497363687,
+    "seconds_median": 0.0003428409993648529
+   },
+   "watts": {
+    "idle_w": 51.25,
+    "loaded_mean_w": 110.0,
+    "loaded_max_w": 110.0,
+    "samples": 2
+   }
+  },
+  {
+   "id": "dequant.w4a16.decode27b.k5120_n6144.m1.bn32_bk128",
+   "section": "dequant",
+   "what": "int4-to-fp16 dequantize plus matmul (Triton), batch 1, K 5120 to N 6144, bn32_bk128",
+   "unit": "TFLOP/s",
+   "value": 0.17787427968772435,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only dequant",
+   "op": "triton w4a16[1,5120]x[5120/2 packed,6144] group 128, BLOCK_M 16 BLOCK_N 32 BLOCK_K 128, value = 2MNK / time",
+   "params": {
+    "m": 1,
+    "k": 5120,
+    "n": 6144,
+    "group": 128,
+    "BLOCK_M": 16,
+    "BLOCK_N": 32,
+    "BLOCK_K": 128
+   },
+   "samples": [
+    0.18050233585271472,
+    0.1813739492675458,
+    0.18037069152593438,
+    0.18088596213940836,
+    0.17880220907036914,
+    0.1778602046693404,
+    0.1772696534372201,
+    0.17734181269281635,
+    0.17954648503522275,
+    0.17787427968772435,
+    0.1741587239650641,
+    0.17426011597819197,
+    0.17492514860906216,
+    0.17691911812923083,
+    0.17792065668549623
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 0.1741587239650641,
+    "max": 0.1813739492675458,
+    "median": 0.17787427968772435,
+    "mean": 0.17800075644968943,
+    "stdev": 0.002314592405164112,
+    "p10": 0.17426011597819197,
+    "p90": 0.18088596213940836,
+    "rel_spread": 0.04056362344881301
+   },
+   "derived": {
+    "weight_gbs": 45.85821273199143,
+    "rel_l2_error": 0.0002711934212129563,
+    "seconds_median": 0.00035370240211486816
+   },
+   "watts": {
+    "idle_w": 51.25,
+    "loaded_mean_w": 96.33333333333333,
+    "loaded_max_w": 111.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "dequant.w4a16.decode27b.k5120_n6144.m4.bn32_bk128",
+   "section": "dequant",
+   "what": "int4-to-fp16 dequantize plus matmul (Triton), batch 4, K 5120 to N 6144, bn32_bk128",
+   "unit": "TFLOP/s",
+   "value": 0.6690643008953281,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only dequant",
+   "op": "triton w4a16[4,5120]x[5120/2 packed,6144] group 128, BLOCK_M 16 BLOCK_N 32 BLOCK_K 128, value = 2MNK / time",
+   "params": {
+    "m": 4,
+    "k": 5120,
+    "n": 6144,
+    "group": 128,
+    "BLOCK_M": 16,
+    "BLOCK_N": 32,
+    "BLOCK_K": 128
+   },
+   "samples": [
+    0.7141226301215543,
+    0.699673369013717,
+    0.6895055986887303,
+    0.6751246290377786,
+    0.6681459523577323,
+    0.6679505298769849,
+    0.666599827191203,
+    0.6677835685078644,
+    0.6690643008953281,
+    0.6739974497180884,
+    0.6741386417730211,
+    0.6761967096265531,
+    0.6618015371681409,
+    0.6650042760402347,
+    0.6604929219619271
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 0.6604929219619271,
+    "max": 0.7141226301215543,
+    "median": 0.6690643008953281,
+    "mean": 0.6753067961319239,
+    "stdev": 0.014858054797913382,
+    "p10": 0.6618015371681409,
+    "p90": 0.699673369013717,
+    "rel_spread": 0.08015628406396967
+   },
+   "derived": {
+    "weight_gbs": 43.1232850186442,
+    "rel_l2_error": 0.0002760255301836878,
+    "seconds_median": 0.0003761346101760864
+   },
+   "watts": {
+    "idle_w": 51.25,
+    "loaded_mean_w": 100.83333333333333,
+    "loaded_max_w": 114.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "dequant.w4a16.decode27b.k5120_n6144.m8.bn32_bk128",
+   "section": "dequant",
+   "what": "int4-to-fp16 dequantize plus matmul (Triton), batch 8, K 5120 to N 6144, bn32_bk128",
+   "unit": "TFLOP/s",
+   "value": 1.3859110481651713,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only dequant",
+   "op": "triton w4a16[8,5120]x[5120/2 packed,6144] group 128, BLOCK_M 16 BLOCK_N 32 BLOCK_K 128, value = 2MNK / time",
+   "params": {
+    "m": 8,
+    "k": 5120,
+    "n": 6144,
+    "group": 128,
+    "BLOCK_M": 16,
+    "BLOCK_N": 32,
+    "BLOCK_K": 128
+   },
+   "samples": [
+    1.3752492893619988,
+    1.386302394013084,
+    1.395040977510862,
+    1.396795669551734,
+    1.3787594211470828,
+    1.4007199463614544,
+    1.3906296170199346,
+    1.386273718152423,
+    1.3984382802598032,
+    1.3859110481651713,
+    1.3714578872327001,
+    1.3635376040941865,
+    1.3715317304860024,
+    1.374571311932068,
+    1.3748257689056251
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 1.3635376040941865,
+    "max": 1.4007199463614544,
+    "median": 1.3859110481651713,
+    "mean": 1.3833363109462755,
+    "stdev": 0.011444579629669825,
+    "p10": 1.3714578872327001,
+    "p90": 1.3984382802598032,
+    "rel_spread": 0.026828808614011827
+   },
+   "derived": {
+    "weight_gbs": 44.66314901313541,
+    "rel_l2_error": 0.00027672864962369204,
+    "seconds_median": 0.00036316651105880736
+   },
+   "watts": {
+    "idle_w": 51.25,
+    "loaded_mean_w": 118.0,
+    "loaded_max_w": 118.0,
+    "samples": 1
+   }
+  },
+  {
+   "id": "dequant.w4a16.decode27b.k5120_n6144.m16.bn32_bk128",
+   "section": "dequant",
+   "what": "int4-to-fp16 dequantize plus matmul (Triton), batch 16, K 5120 to N 6144, bn32_bk128",
+   "unit": "TFLOP/s",
+   "value": 2.6743901076710097,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only dequant",
+   "op": "triton w4a16[16,5120]x[5120/2 packed,6144] group 128, BLOCK_M 16 BLOCK_N 32 BLOCK_K 128, value = 2MNK / time",
+   "params": {
+    "m": 16,
+    "k": 5120,
+    "n": 6144,
+    "group": 128,
+    "BLOCK_M": 16,
+    "BLOCK_N": 32,
+    "BLOCK_K": 128
+   },
+   "samples": [
+    2.9192523855367,
+    2.8515786659989133,
+    2.782401933217893,
+    2.7736773379973183,
+    2.7586285947912725,
+    2.7211664930657355,
+    2.700599909914331,
+    2.6743901076710097,
+    2.646286133343462,
+    2.6522517817585616,
+    2.6214986536560723,
+    2.6454640532399525,
+    2.6345868804316255,
+    2.633577704909057,
+    2.6353054914598775
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 2.6214986536560723,
+    "max": 2.9192523855367,
+    "median": 2.6743901076710097,
+    "mean": 2.7100444084661186,
+    "stdev": 0.09002865250601033,
+    "p10": 2.633577704909057,
+    "p90": 2.8515786659989133,
+    "rel_spread": 0.11133519041465734
+   },
+   "derived": {
+    "weight_gbs": 43.09319997712077,
+    "rel_l2_error": 0.0002763734373729676,
+    "seconds_median": 0.0003763972043991089
+   },
+   "watts": {
+    "idle_w": 51.25,
+    "loaded_mean_w": 99.33333333333333,
+    "loaded_max_w": 112.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "dequant.w4a16.decode27b.k6144_n5120.m1.bn32_bk128",
+   "section": "dequant",
+   "what": "int4-to-fp16 dequantize plus matmul (Triton), batch 1, K 6144 to N 5120, bn32_bk128",
+   "unit": "TFLOP/s",
+   "value": 0.15001891883327242,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only dequant",
+   "op": "triton w4a16[1,6144]x[6144/2 packed,5120] group 128, BLOCK_M 16 BLOCK_N 32 BLOCK_K 128, value = 2MNK / time",
+   "params": {
+    "m": 1,
+    "k": 6144,
+    "n": 5120,
+    "group": 128,
+    "BLOCK_M": 16,
+    "BLOCK_N": 32,
+    "BLOCK_K": 128
+   },
+   "samples": [
+    0.15175823185600376,
+    0.14853736356073866,
+    0.1507752608834898,
+    0.14405487034249723,
+    0.14979879765213247,
+    0.14870183994110145,
+    0.1515303267998429,
+    0.15115180759121394,
+    0.14855752685760706,
+    0.14997672447928814,
+    0.14830234135366463,
+    0.15274843374744376,
+    0.15001891883327242,
+    0.1517058953879622,
+    0.1526825462914186
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 0.14405487034249723,
+    "max": 0.15274843374744376,
+    "median": 0.15001891883327242,
+    "mean": 0.15002005903851182,
+    "stdev": 0.0022230642148492004,
+    "p10": 0.14830234135366463,
+    "p90": 0.1526825462914186,
+    "rel_spread": 0.05794978041808422
+   },
+   "derived": {
+    "weight_gbs": 38.67675251170305,
+    "rel_l2_error": 0.0002728508843574673,
+    "seconds_median": 0.00041937750577926636
+   },
+   "watts": {
+    "idle_w": 51.25,
+    "loaded_mean_w": 116.0,
+    "loaded_max_w": 116.0,
+    "samples": 1
+   }
+  },
+  {
+   "id": "dequant.w4a16.decode27b.k6144_n5120.m4.bn32_bk128",
+   "section": "dequant",
+   "what": "int4-to-fp16 dequantize plus matmul (Triton), batch 4, K 6144 to N 5120, bn32_bk128",
+   "unit": "TFLOP/s",
+   "value": 0.6016494498867437,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only dequant",
+   "op": "triton w4a16[4,6144]x[6144/2 packed,5120] group 128, BLOCK_M 16 BLOCK_N 32 BLOCK_K 128, value = 2MNK / time",
+   "params": {
+    "m": 4,
+    "k": 6144,
+    "n": 5120,
+    "group": 128,
+    "BLOCK_M": 16,
+    "BLOCK_N": 32,
+    "BLOCK_K": 128
+   },
+   "samples": [
+    0.5955157311809418,
+    0.6201923421815129,
+    0.6020207810325763,
+    0.6029674133240068,
+    0.5973675221574206,
+    0.5983247897418585,
+    0.6100998088703957,
+    0.5996813985742206,
+    0.598688461572034,
+    0.6016494498867437,
+    0.6044870817479269,
+    0.5977339234792695,
+    0.6126328433275979,
+    0.6129954762298262,
+    0.5789522317023813
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 0.5789522317023813,
+    "max": 0.6201923421815129,
+    "median": 0.6016494498867437,
+    "mean": 0.6022206170005809,
+    "stdev": 0.009561062296216288,
+    "p10": 0.5955157311809418,
+    "p90": 0.6129954762298262,
+    "rel_spread": 0.06854508133747106
+   },
+   "derived": {
+    "weight_gbs": 38.778187199731526,
+    "rel_l2_error": 0.0002749295672401786,
+    "seconds_median": 0.0004182805120944977
+   },
+   "watts": {
+    "idle_w": 51.25,
+    "loaded_mean_w": 112.5,
+    "loaded_max_w": 113.0,
+    "samples": 2
+   }
+  },
+  {
+   "id": "dequant.w4a16.decode27b.k6144_n5120.m8.bn32_bk128",
+   "section": "dequant",
+   "what": "int4-to-fp16 dequantize plus matmul (Triton), batch 8, K 6144 to N 5120, bn32_bk128",
+   "unit": "TFLOP/s",
+   "value": 1.2034499830610834,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only dequant",
+   "op": "triton w4a16[8,6144]x[6144/2 packed,5120] group 128, BLOCK_M 16 BLOCK_N 32 BLOCK_K 128, value = 2MNK / time",
+   "params": {
+    "m": 8,
+    "k": 6144,
+    "n": 5120,
+    "group": 128,
+    "BLOCK_M": 16,
+    "BLOCK_N": 32,
+    "BLOCK_K": 128
+   },
+   "samples": [
+    1.2211335920071733,
+    1.2001012894980068,
+    1.2034499830610834,
+    1.1943941091856267,
+    1.2035945852271224,
+    1.154100427734341,
+    1.197854890394645,
+    1.204308842661806,
+    1.201723106965879,
+    1.2195920584023034,
+    1.200760521018509,
+    1.2044528782164468,
+    1.2000011796896388,
+    1.205450304811135,
+    1.2073399787477377
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 1.154100427734341,
+    "max": 1.2211335920071733,
+    "median": 1.2034499830610834,
+    "mean": 1.2012171831747636,
+    "stdev": 0.01488385803113968,
+    "p10": 1.1943941091856267,
+    "p90": 1.2195920584023034,
+    "rel_spread": 0.05570083112413817
+   },
+   "derived": {
+    "weight_gbs": 38.78305609474195,
+    "rel_l2_error": 0.0002764047821983695,
+    "seconds_median": 0.00041822800040245057
+   },
+   "watts": {
+    "idle_w": 51.25,
+    "loaded_mean_w": 111.0,
+    "loaded_max_w": 111.0,
+    "samples": 2
+   }
+  },
+  {
+   "id": "dequant.w4a16.decode27b.k6144_n5120.m16.bn32_bk128",
+   "section": "dequant",
+   "what": "int4-to-fp16 dequantize plus matmul (Triton), batch 16, K 6144 to N 5120, bn32_bk128",
+   "unit": "TFLOP/s",
+   "value": 2.3780744576166097,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only dequant",
+   "op": "triton w4a16[16,6144]x[6144/2 packed,5120] group 128, BLOCK_M 16 BLOCK_N 32 BLOCK_K 128, value = 2MNK / time",
+   "params": {
+    "m": 16,
+    "k": 6144,
+    "n": 5120,
+    "group": 128,
+    "BLOCK_M": 16,
+    "BLOCK_N": 32,
+    "BLOCK_K": 128
+   },
+   "samples": [
+    2.348256483917791,
+    2.3780744576166097,
+    2.4286002961803104,
+    2.447324568017777,
+    2.4991104510635944,
+    2.390138141127965,
+    2.4034031175776835,
+    2.3995145705168155,
+    2.3192169773864286,
+    2.3758672866097017,
+    2.3743232844378457,
+    2.3757130466782406,
+    2.3639745013291167,
+    2.3502891505989263,
+    2.3943678161891175
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 2.3192169773864286,
+    "max": 2.4991104510635944,
+    "median": 2.3780744576166097,
+    "mean": 2.3898782766165283,
+    "stdev": 0.043727311604127996,
+    "p10": 2.348256483917791,
+    "p90": 2.447324568017777,
+    "rel_spread": 0.07564669520796308
+   },
+   "derived": {
+    "weight_gbs": 38.318582569017636,
+    "rel_l2_error": 0.00027605664217844605,
+    "seconds_median": 0.0004232974946498871
+   },
+   "watts": {
+    "idle_w": 51.25,
+    "loaded_mean_w": 110.0,
+    "loaded_max_w": 110.0,
+    "samples": 2
+   }
+  },
+  {
+   "id": "dequant.w4a16.decode27b.k5120_n17408.m1.bn32_bk128",
+   "section": "dequant",
+   "what": "int4-to-fp16 dequantize plus matmul (Triton), batch 1, K 5120 to N 17408, bn32_bk128",
+   "unit": "TFLOP/s",
+   "value": 0.16809679636463662,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only dequant",
+   "op": "triton w4a16[1,5120]x[5120/2 packed,17408] group 128, BLOCK_M 16 BLOCK_N 32 BLOCK_K 128, value = 2MNK / time",
+   "params": {
+    "m": 1,
+    "k": 5120,
+    "n": 17408,
+    "group": 128,
+    "BLOCK_M": 16,
+    "BLOCK_N": 32,
+    "BLOCK_K": 128
+   },
+   "samples": [
+    0.16198006476180737,
+    0.16784641402590855,
+    0.17051810168001408,
+    0.16750981322933553,
+    0.16607437303515218,
+    0.16601854191352744,
+    0.16809679636463662,
+    0.16871362062462597,
+    0.16642711520317632,
+    0.16916929871658865,
+    0.17094899441978134,
+    0.16985712189837396,
+    0.1652183910718752,
+    0.16862423978545438,
+    0.16978109785158313
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 0.16198006476180737,
+    "max": 0.17094899441978134,
+    "median": 0.16809679636463662,
+    "mean": 0.16778559897212272,
+    "stdev": 0.0023542314387861247,
+    "p10": 0.1652183910718752,
+    "p90": 0.17051810168001408,
+    "rel_spread": 0.05335574414231256
+   },
+   "derived": {
+    "weight_gbs": 43.33745531275788,
+    "rel_l2_error": 0.00027402237174101174,
+    "seconds_median": 0.0010604480504989625
+   },
+   "watts": {
+    "idle_w": 51.25,
+    "loaded_mean_w": 110.0,
+    "loaded_max_w": 110.0,
+    "samples": 2
+   }
+  },
+  {
+   "id": "dequant.w4a16.decode27b.k5120_n17408.m4.bn32_bk128",
+   "section": "dequant",
+   "what": "int4-to-fp16 dequantize plus matmul (Triton), batch 4, K 5120 to N 17408, bn32_bk128",
+   "unit": "TFLOP/s",
+   "value": 0.667625158313453,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only dequant",
+   "op": "triton w4a16[4,5120]x[5120/2 packed,17408] group 128, BLOCK_M 16 BLOCK_N 32 BLOCK_K 128, value = 2MNK / time",
+   "params": {
+    "m": 4,
+    "k": 5120,
+    "n": 17408,
+    "group": 128,
+    "BLOCK_M": 16,
+    "BLOCK_N": 32,
+    "BLOCK_K": 128
+   },
+   "samples": [
+    0.6598015563078075,
+    0.6676626434442317,
+    0.6537712385692445,
+    0.6663567268311938,
+    0.6604077372579801,
+    0.6830551580325395,
+    0.6679572307554753,
+    0.6771727046907839,
+    0.667625158313453,
+    0.6639189320699773,
+    0.6779730409932455,
+    0.6603894357335792,
+    0.6784316656964823,
+    0.662652197700032,
+    0.6713849778572902
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 0.6537712385692445,
+    "max": 0.6830551580325395,
+    "median": 0.667625158313453,
+    "mean": 0.6679040269502211,
+    "stdev": 0.008297345843487538,
+    "p10": 0.6598015563078075,
+    "p90": 0.6784316656964823,
+    "rel_spread": 0.043862815980859234
+   },
+   "derived": {
+    "weight_gbs": 43.030527781921776,
+    "rel_l2_error": 0.0002766318211797625,
+    "seconds_median": 0.001068011999130249
+   },
+   "watts": {
+    "idle_w": 51.25,
+    "loaded_mean_w": 110.0,
+    "loaded_max_w": 110.0,
+    "samples": 2
+   }
+  },
+  {
+   "id": "dequant.w4a16.decode27b.k5120_n17408.m8.bn32_bk128",
+   "section": "dequant",
+   "what": "int4-to-fp16 dequantize plus matmul (Triton), batch 8, K 5120 to N 17408, bn32_bk128",
+   "unit": "TFLOP/s",
+   "value": 1.3522225003154154,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only dequant",
+   "op": "triton w4a16[8,5120]x[5120/2 packed,17408] group 128, BLOCK_M 16 BLOCK_N 32 BLOCK_K 128, value = 2MNK / time",
+   "params": {
+    "m": 8,
+    "k": 5120,
+    "n": 17408,
+    "group": 128,
+    "BLOCK_M": 16,
+    "BLOCK_N": 32,
+    "BLOCK_K": 128
+   },
+   "samples": [
+    1.3189671532080507,
+    1.3036374006080256,
+    1.3494790567728838,
+    1.3713611646664554,
+    1.3558544867178066,
+    1.3543067710550103,
+    1.3606631572856454,
+    1.3628789695990025,
+    1.3539209687146854,
+    1.3262918002909958,
+    1.3522225003154154,
+    1.3786661876458315,
+    1.3301973053767244,
+    1.286469872039284,
+    1.3508877506517338
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 1.286469872039284,
+    "max": 1.3786661876458315,
+    "median": 1.3522225003154154,
+    "mean": 1.3437203029965032,
+    "stdev": 0.025555441999922095,
+    "p10": 1.3036374006080256,
+    "p90": 1.3713611646664554,
+    "rel_spread": 0.06818132044470646
+   },
+   "derived": {
+    "weight_gbs": 43.577482920321,
+    "rel_l2_error": 0.0002753057633526623,
+    "seconds_median": 0.0010546070337295532
+   },
+   "watts": {
+    "idle_w": 51.25,
+    "loaded_mean_w": 110.0,
+    "loaded_max_w": 110.0,
+    "samples": 2
+   }
+  },
+  {
+   "id": "dequant.w4a16.decode27b.k5120_n17408.m16.bn32_bk128",
+   "section": "dequant",
+   "what": "int4-to-fp16 dequantize plus matmul (Triton), batch 16, K 5120 to N 17408, bn32_bk128",
+   "unit": "TFLOP/s",
+   "value": 2.5844804632964946,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only dequant",
+   "op": "triton w4a16[16,5120]x[5120/2 packed,17408] group 128, BLOCK_M 16 BLOCK_N 32 BLOCK_K 128, value = 2MNK / time",
+   "params": {
+    "m": 16,
+    "k": 5120,
+    "n": 17408,
+    "group": 128,
+    "BLOCK_M": 16,
+    "BLOCK_N": 32,
+    "BLOCK_K": 128
+   },
+   "samples": [
+    2.695150406807124,
+    2.641997915632053,
+    2.584267464801936,
+    2.5709659374520615,
+    2.6274168036532397,
+    2.687111345914145,
+    2.550510842610164,
+    2.5741286960797853,
+    2.5844804632964946,
+    2.547977158170179,
+    2.721196318248161,
+    2.5422447570704665,
+    2.576342045494935,
+    2.6491293187227423,
+    2.696401531645541
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 2.5422447570704665,
+    "max": 2.721196318248161,
+    "median": 2.5844804632964946,
+    "mean": 2.6166214003732686,
+    "stdev": 0.061214208558331575,
+    "p10": 2.547977158170179,
+    "p90": 2.696401531645541,
+    "rel_spread": 0.06924082565880285
+   },
+   "derived": {
+    "weight_gbs": 41.64446059022672,
+    "rel_l2_error": 0.0002759282651823014,
+    "seconds_median": 0.0011035590171813965
+   },
+   "watts": {
+    "idle_w": 51.25,
+    "loaded_mean_w": 110.0,
+    "loaded_max_w": 110.0,
+    "samples": 2
+   }
+  },
+  {
+   "id": "dequant.w4a16.decode27b.k17408_n5120.m1.bn32_bk128",
+   "section": "dequant",
+   "what": "int4-to-fp16 dequantize plus matmul (Triton), batch 1, K 17408 to N 5120, bn32_bk128",
+   "unit": "TFLOP/s",
+   "value": 0.14949306875590318,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only dequant",
+   "op": "triton w4a16[1,17408]x[17408/2 packed,5120] group 128, BLOCK_M 16 BLOCK_N 32 BLOCK_K 128, value = 2MNK / time",
+   "params": {
+    "m": 1,
+    "k": 17408,
+    "n": 5120,
+    "group": 128,
+    "BLOCK_M": 16,
+    "BLOCK_N": 32,
+    "BLOCK_K": 128
+   },
+   "samples": [
+    0.15457247400022184,
+    0.14604839921733295,
+    0.14837590803031112,
+    0.14949306875590318,
+    0.15634903925229457,
+    0.15204285097720854,
+    0.14553128193369294,
+    0.14985059030131845,
+    0.14784096495387558,
+    0.1481461776096043,
+    0.14870949285194765,
+    0.14827963977580788,
+    0.14987831649330224,
+    0.15758148861519825,
+    0.15823319496685523
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 0.14553128193369294,
+    "max": 0.15823319496685523,
+    "median": 0.14949306875590318,
+    "mean": 0.15072885918232498,
+    "stdev": 0.004087668766530898,
+    "p10": 0.14604839921733295,
+    "p90": 0.15758148861519825,
+    "rel_spread": 0.08496656827549882
+   },
+   "derived": {
+    "weight_gbs": 38.541181788631285,
+    "rel_l2_error": 0.00028437396395020187,
+    "seconds_median": 0.001192415952682495
+   },
+   "watts": {
+    "idle_w": 51.25,
+    "loaded_mean_w": 110.0,
+    "loaded_max_w": 110.0,
+    "samples": 2
+   }
+  },
+  {
+   "id": "dequant.w4a16.decode27b.k17408_n5120.m4.bn32_bk128",
+   "section": "dequant",
+   "what": "int4-to-fp16 dequantize plus matmul (Triton), batch 4, K 17408 to N 5120, bn32_bk128",
+   "unit": "TFLOP/s",
+   "value": 0.5992054051718888,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only dequant",
+   "op": "triton w4a16[4,17408]x[17408/2 packed,5120] group 128, BLOCK_M 16 BLOCK_N 32 BLOCK_K 128, value = 2MNK / time",
+   "params": {
+    "m": 4,
+    "k": 17408,
+    "n": 5120,
+    "group": 128,
+    "BLOCK_M": 16,
+    "BLOCK_N": 32,
+    "BLOCK_K": 128
+   },
+   "samples": [
+    0.6179142551488633,
+    0.5818296549077001,
+    0.5966537887986192,
+    0.6011437714588211,
+    0.597359550173569,
+    0.5992054051718888,
+    0.5969534918079985,
+    0.5949923494106113,
+    0.6242113801263003,
+    0.6278068635474794,
+    0.5997759723239919,
+    0.6296007643511937,
+    0.5770788533434008,
+    0.6297403646727022,
+    0.598772197532175
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 0.5770788533434008,
+    "max": 0.6297403646727022,
+    "median": 0.5992054051718888,
+    "mean": 0.604869244185021,
+    "stdev": 0.016896637767918072,
+    "p10": 0.5818296549077001,
+    "p90": 0.6296007643511937,
+    "rel_spread": 0.08788557458722333
+   },
+   "derived": {
+    "weight_gbs": 38.62066088021939,
+    "rel_l2_error": 0.00027941391454078257,
+    "seconds_median": 0.0011899620294570923
+   },
+   "watts": {
+    "idle_w": 51.25,
+    "loaded_mean_w": 110.0,
+    "loaded_max_w": 110.0,
+    "samples": 2
+   }
+  },
+  {
+   "id": "dequant.w4a16.decode27b.k17408_n5120.m8.bn32_bk128",
+   "section": "dequant",
+   "what": "int4-to-fp16 dequantize plus matmul (Triton), batch 8, K 17408 to N 5120, bn32_bk128",
+   "unit": "TFLOP/s",
+   "value": 1.1907606684722032,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only dequant",
+   "op": "triton w4a16[8,17408]x[17408/2 packed,5120] group 128, BLOCK_M 16 BLOCK_N 32 BLOCK_K 128, value = 2MNK / time",
+   "params": {
+    "m": 8,
+    "k": 17408,
+    "n": 5120,
+    "group": 128,
+    "BLOCK_M": 16,
+    "BLOCK_N": 32,
+    "BLOCK_K": 128
+   },
+   "samples": [
+    1.1516745457662196,
+    1.187720979447498,
+    1.1909704996555202,
+    1.1704345847781477,
+    1.1819807495219912,
+    1.2532160411460034,
+    1.1252351443954363,
+    1.248663312824387,
+    1.1936271541282024,
+    1.1907606684722032,
+    1.194850244295285,
+    1.1823443004285707,
+    1.1948803195769715,
+    1.1563138449475097,
+    1.1986425626155481
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 1.1252351443954363,
+    "max": 1.2532160411460034,
+    "median": 1.1907606684722032,
+    "mean": 1.1880876634666329,
+    "stdev": 0.03254503605187988,
+    "p10": 1.1516745457662196,
+    "p90": 1.248663312824387,
+    "rel_spread": 0.10747827010004628
+   },
+   "derived": {
+    "weight_gbs": 38.37412310506124,
+    "rel_l2_error": 0.00028075178852304816,
+    "seconds_median": 0.0011976070404052734
+   },
+   "watts": {
+    "idle_w": 51.25,
+    "loaded_mean_w": 110.0,
+    "loaded_max_w": 110.0,
+    "samples": 2
+   }
+  },
+  {
+   "id": "dequant.w4a16.decode27b.k17408_n5120.m16.bn32_bk128",
+   "section": "dequant",
+   "what": "int4-to-fp16 dequantize plus matmul (Triton), batch 16, K 17408 to N 5120, bn32_bk128",
+   "unit": "TFLOP/s",
+   "value": 2.3774655966372538,
+   "status": "ok",
+   "error": null,
+   "source": "timing",
+   "command": "python3 chipsheet.py run --node pod-b --out /home/jovyan/chipsheet --only dequant",
+   "op": "triton w4a16[16,17408]x[17408/2 packed,5120] group 128, BLOCK_M 16 BLOCK_N 32 BLOCK_K 128, value = 2MNK / time",
+   "params": {
+    "m": 16,
+    "k": 17408,
+    "n": 5120,
+    "group": 128,
+    "BLOCK_M": 16,
+    "BLOCK_N": 32,
+    "BLOCK_K": 128
+   },
+   "samples": [
+    2.454120007870064,
+    2.3331750297121197,
+    2.3627062455258163,
+    2.3863354548270266,
+    2.3567809288227557,
+    2.2822400631486945,
+    2.3693128238783556,
+    2.389398349428931,
+    2.3774655966372538,
+    2.489900892604444,
+    2.360275871293797,
+    2.3789768958366175,
+    2.390181300332838,
+    2.4089092126131804,
+    2.366142275118942
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 2.2822400631486945,
+    "max": 2.489900892604444,
+    "median": 2.3774655966372538,
+    "mean": 2.380394729843389,
+    "stdev": 0.047755372750295025,
+    "p10": 2.3331750297121197,
+    "p90": 2.454120007870064,
+    "rel_spread": 0.08734546138100598
+   },
+   "derived": {
+    "weight_gbs": 38.308771820815124,
+    "rel_l2_error": 0.000280304899206385,
+    "seconds_median": 0.0011996500492095948
+   },
+   "watts": {
+    "idle_w": 51.25,
+    "loaded_mean_w": 110.0,
+    "loaded_max_w": 110.0,
+    "samples": 2
+   }
+  },
+  {
+   "id": "wave.w32.compiled",
+   "section": "wave",
+   "what": "__builtin_amdgcn_wavefrontsize() of a kernel built for wave32",
+   "unit": "lanes",
+   "value": 32.0,
+   "status": "ok",
+   "error": null,
+   "source": "probe",
+   "command": "/opt/rocm/bin/hipcc -O3 --offload-arch=gfx1151 -mno-wavefrontsize64 -Rpass-analysis=kernel-resource-usage -o /home/jovyan/chipsheet/build/probe_w32 /home/jovyan/chipsheet/probe.hip && /home/jovyan/chipsheet/build/probe_w32 wave",
+   "op": "wave_probe<<<1,256>>>: __builtin_amdgcn_wavefrontsize()",
+   "params": {},
+   "samples": [
+    32.0
+   ],
+   "repeats": 1,
+   "spread": {
+    "n": 1,
+    "min": 32.0,
+    "max": 32.0,
+    "median": 32.0,
+    "mean": 32.0,
+    "stdev": 0.0,
+    "p10": 32.0,
+    "p90": 32.0,
+    "rel_spread": 0.0
+   },
+   "derived": {},
+   "watts": null
+  },
+  {
+   "id": "wave.w32.lanes",
+   "section": "wave",
+   "what": "lanes counted in one wave of a wave32 build (max __lane_id() + 1)",
+   "unit": "lanes",
+   "value": 32.0,
+   "status": "ok",
+   "error": null,
+   "source": "probe",
+   "command": "/opt/rocm/bin/hipcc -O3 --offload-arch=gfx1151 -mno-wavefrontsize64 -Rpass-analysis=kernel-resource-usage -o /home/jovyan/chipsheet/build/probe_w32 /home/jovyan/chipsheet/probe.hip && /home/jovyan/chipsheet/build/probe_w32 wave",
+   "op": "wave_probe<<<1,256>>>: atomicMax(lanes, __lane_id() + 1)",
+   "params": {},
+   "samples": [
+    32.0
+   ],
+   "repeats": 1,
+   "spread": {
+    "n": 1,
+    "min": 32.0,
+    "max": 32.0,
+    "median": 32.0,
+    "mean": 32.0,
+    "stdev": 0.0,
+    "p10": 32.0,
+    "p90": 32.0,
+    "rel_spread": 0.0
+   },
+   "derived": {},
+   "watts": null
+  },
+  {
+   "id": "wave.w64.compiled",
+   "section": "wave",
+   "what": "__builtin_amdgcn_wavefrontsize() of a kernel built for wave64",
+   "unit": "lanes",
+   "value": 64.0,
+   "status": "ok",
+   "error": null,
+   "source": "probe",
+   "command": "/opt/rocm/bin/hipcc -O3 --offload-arch=gfx1151 -mwavefrontsize64 -Rpass-analysis=kernel-resource-usage -o /home/jovyan/chipsheet/build/probe_w64 /home/jovyan/chipsheet/probe.hip && /home/jovyan/chipsheet/build/probe_w64 wave",
+   "op": "wave_probe<<<1,256>>>: __builtin_amdgcn_wavefrontsize()",
+   "params": {},
+   "samples": [
+    64.0
+   ],
+   "repeats": 1,
+   "spread": {
+    "n": 1,
+    "min": 64.0,
+    "max": 64.0,
+    "median": 64.0,
+    "mean": 64.0,
+    "stdev": 0.0,
+    "p10": 64.0,
+    "p90": 64.0,
+    "rel_spread": 0.0
+   },
+   "derived": {},
+   "watts": null
+  },
+  {
+   "id": "wave.w64.lanes",
+   "section": "wave",
+   "what": "lanes counted in one wave of a wave64 build (max __lane_id() + 1)",
+   "unit": "lanes",
+   "value": 64.0,
+   "status": "ok",
+   "error": null,
+   "source": "probe",
+   "command": "/opt/rocm/bin/hipcc -O3 --offload-arch=gfx1151 -mwavefrontsize64 -Rpass-analysis=kernel-resource-usage -o /home/jovyan/chipsheet/build/probe_w64 /home/jovyan/chipsheet/probe.hip && /home/jovyan/chipsheet/build/probe_w64 wave",
+   "op": "wave_probe<<<1,256>>>: atomicMax(lanes, __lane_id() + 1)",
+   "params": {},
+   "samples": [
+    64.0
+   ],
+   "repeats": 1,
+   "spread": {
+    "n": 1,
+    "min": 64.0,
+    "max": 64.0,
+    "median": 64.0,
+    "mean": 64.0,
+    "stdev": 0.0,
+    "p10": 64.0,
+    "p90": 64.0,
+    "rel_spread": 0.0
+   },
+   "derived": {},
+   "watts": null
+  },
+  {
+   "id": "cache.rocminfo.l1_bytes",
+   "section": "cache",
+   "what": "L1 cache size rocminfo reports",
+   "unit": "bytes",
+   "value": 32768.0,
+   "status": "ok",
+   "error": null,
+   "source": "tool",
+   "command": "/opt/rocm/bin/rocminfo",
+   "op": "rocminfo GPU agent, Cache Info L1",
+   "params": {},
+   "samples": [
+    32768.0
+   ],
+   "repeats": 1,
+   "spread": {
+    "n": 1,
+    "min": 32768.0,
+    "max": 32768.0,
+    "median": 32768.0,
+    "mean": 32768.0,
+    "stdev": 0.0,
+    "p10": 32768.0,
+    "p90": 32768.0,
+    "rel_spread": 0.0
+   },
+   "derived": {},
+   "watts": null
+  },
+  {
+   "id": "cache.rocminfo.l2_bytes",
+   "section": "cache",
+   "what": "L2 cache size rocminfo reports",
+   "unit": "bytes",
+   "value": 2097152.0,
+   "status": "ok",
+   "error": null,
+   "source": "tool",
+   "command": "/opt/rocm/bin/rocminfo",
+   "op": "rocminfo GPU agent, Cache Info L2",
+   "params": {},
+   "samples": [
+    2097152.0
+   ],
+   "repeats": 1,
+   "spread": {
+    "n": 1,
+    "min": 2097152.0,
+    "max": 2097152.0,
+    "median": 2097152.0,
+    "mean": 2097152.0,
+    "stdev": 0.0,
+    "p10": 2097152.0,
+    "p90": 2097152.0,
+    "rel_spread": 0.0
+   },
+   "derived": {},
+   "watts": null
+  },
+  {
+   "id": "cache.rocminfo.l3_bytes",
+   "section": "cache",
+   "what": "L3 cache size rocminfo reports",
+   "unit": "bytes",
+   "value": 33554432.0,
+   "status": "ok",
+   "error": null,
+   "source": "tool",
+   "command": "/opt/rocm/bin/rocminfo",
+   "op": "rocminfo GPU agent, Cache Info L3",
+   "params": {},
+   "samples": [
+    33554432.0
+   ],
+   "repeats": 1,
+   "spread": {
+    "n": 1,
+    "min": 33554432.0,
+    "max": 33554432.0,
+    "median": 33554432.0,
+    "mean": 33554432.0,
+    "stdev": 0.0,
+    "p10": 33554432.0,
+    "p90": 33554432.0,
+    "rel_spread": 0.0
+   },
+   "derived": {},
+   "watts": null
+  },
+  {
+   "id": "cache.rocminfo.cacheline_bytes",
+   "section": "cache",
+   "what": "cacheline size rocminfo reports",
+   "unit": "bytes",
+   "value": 128.0,
+   "status": "ok",
+   "error": null,
+   "source": "tool",
+   "command": "/opt/rocm/bin/rocminfo",
+   "op": "rocminfo Cacheline Size",
+   "params": {},
+   "samples": [
+    128.0
+   ],
+   "repeats": 1,
+   "spread": {
+    "n": 1,
+    "min": 128.0,
+    "max": 128.0,
+    "median": 128.0,
+    "mean": 128.0,
+    "stdev": 0.0,
+    "p10": 128.0,
+    "p90": 128.0,
+    "rel_spread": 0.0
+   },
+   "derived": {},
+   "watts": null
+  },
+  {
+   "id": "cache.hip.l2_bytes",
+   "section": "cache",
+   "what": "L2 size the HIP runtime reports",
+   "unit": "bytes",
+   "value": 2097152.0,
+   "status": "ok",
+   "error": null,
+   "source": "probe",
+   "command": "/home/jovyan/chipsheet/build/probe_w32 props",
+   "op": "hipGetDeviceProperties: l2CacheSize",
+   "params": {},
+   "samples": [
+    2097152.0
+   ],
+   "repeats": 1,
+   "spread": {
+    "n": 1,
+    "min": 2097152.0,
+    "max": 2097152.0,
+    "median": 2097152.0,
+    "mean": 2097152.0,
+    "stdev": 0.0,
+    "p10": 2097152.0,
+    "p90": 2097152.0,
+    "rel_spread": 0.0
+   },
+   "derived": {},
+   "watts": null
+  },
+  {
+   "id": "cache.hip.compute_units",
+   "section": "cache",
+   "what": "compute units the HIP runtime reports",
+   "unit": "CUs",
+   "value": 20.0,
+   "status": "ok",
+   "error": null,
+   "source": "probe",
+   "command": "/home/jovyan/chipsheet/build/probe_w32 props",
+   "op": "hipGetDeviceProperties: multiProcessorCount",
+   "params": {},
+   "samples": [
+    20.0
+   ],
+   "repeats": 1,
+   "spread": {
+    "n": 1,
+    "min": 20.0,
+    "max": 20.0,
+    "median": 20.0,
+    "mean": 20.0,
+    "stdev": 0.0,
+    "p10": 20.0,
+    "p90": 20.0,
+    "rel_spread": 0.0
+   },
+   "derived": {},
+   "watts": null
+  },
+  {
+   "id": "cache.rocminfo.compute_units",
+   "section": "cache",
+   "what": "compute units rocminfo reports",
+   "unit": "CUs",
+   "value": 40.0,
+   "status": "ok",
+   "error": null,
+   "source": "tool",
+   "command": "/opt/rocm/bin/rocminfo",
+   "op": "rocminfo Compute Unit",
+   "params": {},
+   "samples": [
+    40.0
+   ],
+   "repeats": 1,
+   "spread": {
+    "n": 1,
+    "min": 40.0,
+    "max": 40.0,
+    "median": 40.0,
+    "mean": 40.0,
+    "stdev": 0.0,
+    "p10": 40.0,
+    "p90": 40.0,
+    "rel_spread": 0.0
+   },
+   "derived": {},
+   "watts": null
+  },
+  {
+   "id": "lds.rocminfo.group_segment_bytes",
+   "section": "lds",
+   "what": "LDS size rocminfo reports (GROUP segment pool)",
+   "unit": "bytes",
+   "value": 65536.0,
+   "status": "ok",
+   "error": null,
+   "source": "tool",
+   "command": "/opt/rocm/bin/rocminfo",
+   "op": "rocminfo Pool Info: Segment GROUP, Size",
+   "params": {},
+   "samples": [
+    65536.0
+   ],
+   "repeats": 1,
+   "spread": {
+    "n": 1,
+    "min": 65536.0,
+    "max": 65536.0,
+    "median": 65536.0,
+    "mean": 65536.0,
+    "stdev": 0.0,
+    "p10": 65536.0,
+    "p90": 65536.0,
+    "rel_spread": 0.0
+   },
+   "derived": {},
+   "watts": null
+  },
+  {
+   "id": "lds.hip.shared_per_block_bytes",
+   "section": "lds",
+   "what": "LDS per workgroup the HIP runtime reports",
+   "unit": "bytes",
+   "value": 65536.0,
+   "status": "ok",
+   "error": null,
+   "source": "probe",
+   "command": "/home/jovyan/chipsheet/build/probe_w32 props",
+   "op": "hipGetDeviceProperties: sharedMemPerBlock",
+   "params": {},
+   "samples": [
+    65536.0
+   ],
+   "repeats": 1,
+   "spread": {
+    "n": 1,
+    "min": 65536.0,
+    "max": 65536.0,
+    "median": 65536.0,
+    "mean": 65536.0,
+    "stdev": 0.0,
+    "p10": 65536.0,
+    "p90": 65536.0,
+    "rel_spread": 0.0
+   },
+   "derived": {},
+   "watts": null
+  },
+  {
+   "id": "lds.hip.shared_per_cu_bytes",
+   "section": "lds",
+   "what": "LDS per CU the HIP runtime reports",
+   "unit": "bytes",
+   "value": 65536.0,
+   "status": "ok",
+   "error": null,
+   "source": "probe",
+   "command": "/home/jovyan/chipsheet/build/probe_w32 props",
+   "op": "hipGetDeviceProperties: maxSharedMemoryPerMultiProcessor",
+   "params": {},
+   "samples": [
+    65536.0
+   ],
+   "repeats": 1,
+   "spread": {
+    "n": 1,
+    "min": 65536.0,
+    "max": 65536.0,
+    "median": 65536.0,
+    "mean": 65536.0,
+    "stdev": 0.0,
+    "p10": 65536.0,
+    "p90": 65536.0,
+    "rel_spread": 0.0
+   },
+   "derived": {},
+   "watts": null
+  },
+  {
+   "id": "lds.max_launch_bytes",
+   "section": "lds",
+   "what": "largest dynamic LDS a 256-thread workgroup launched and ran with",
+   "unit": "bytes",
+   "value": 65536.0,
+   "status": "ok",
+   "error": null,
+   "source": "probe",
+   "command": "/home/jovyan/chipsheet/build/probe_w32 lds",
+   "op": "lds_probe<<<1,256,bytes>>> doubling from 1 KiB then bisecting to 128 B; launch error, sync and read-back checked",
+   "params": {
+    "max_ok_bytes": 65536,
+    "first_fail_bytes": 65664,
+    "fail_error": "invalid argument",
+    "attribute_max_shared_per_block": 65536,
+    "tries": 17,
+    "threads": 256
+   },
+   "samples": [
+    65536.0
+   ],
+   "repeats": 1,
+   "spread": {
+    "n": 1,
+    "min": 65536.0,
+    "max": 65536.0,
+    "median": 65536.0,
+    "mean": 65536.0,
+    "stdev": 0.0,
+    "p10": 65536.0,
+    "p90": 65536.0,
+    "rel_spread": 0.0
+   },
+   "derived": {},
+   "watts": null
+  },
+  {
+   "id": "occupancy.lds.p_0",
+   "section": "occupancy",
+   "what": "achieved chase loads per second with 0 B of LDS per workgroup",
+   "unit": "Gload/s",
+   "value": 1.9834807981148743,
+   "status": "ok",
+   "error": null,
+   "source": "probe",
+   "command": "/home/jovyan/chipsheet/build/probe_w32 occ_lds 0 15 1500",
+   "op": "occ_lds<<<CUs x 32, 256, 0 B LDS>>>: 512-step pointer chase over 256 MiB",
+   "params": {
+    "kernel": "occ_lds",
+    "param": 0,
+    "blocks": 640,
+    "threads": 256,
+    "iters": 512,
+    "blocks_per_cu": 8
+   },
+   "samples": [
+    1.9821945760094666,
+    1.9876086746622548,
+    1.9904654881551092,
+    1.9771392053772778,
+    1.9889370196151217,
+    2.0044634071439176,
+    1.9831316007248736,
+    1.9810670664221257,
+    1.9893094461493266,
+    1.979092829123076,
+    1.9834807981148743,
+    1.9880358210126745,
+    1.996623884222107,
+    1.9706128868976733,
+    1.9777418319677382
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 1.9706128868976733,
+    "max": 2.0044634071439176,
+    "median": 1.9834807981148743,
+    "mean": 1.9853269690398412,
+    "stdev": 0.008357177072957488,
+    "p10": 1.9771392053772778,
+    "p90": 1.996623884222107,
+    "rel_spread": 0.017066220292334674
+   },
+   "derived": {
+    "relative_throughput": 0.9928814799118079,
+    "hip_blocks_per_cu": 8,
+    "hip_waves_per_cu": 64
+   },
+   "watts": {
+    "idle_w": 26.0,
+    "loaded_mean_w": 51.0,
+    "loaded_max_w": 63.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "occupancy.lds.p_4096",
+   "section": "occupancy",
+   "what": "achieved chase loads per second with 4096 B of LDS per workgroup",
+   "unit": "Gload/s",
+   "value": 1.9847654502838568,
+   "status": "ok",
+   "error": null,
+   "source": "probe",
+   "command": "/home/jovyan/chipsheet/build/probe_w32 occ_lds 4096 15 1500",
+   "op": "occ_lds<<<CUs x 32, 256, 4096 B LDS>>>: 512-step pointer chase over 256 MiB",
+   "params": {
+    "kernel": "occ_lds",
+    "param": 4096,
+    "blocks": 640,
+    "threads": 256,
+    "iters": 512,
+    "blocks_per_cu": 8
+   },
+   "samples": [
+    1.9705914998912943,
+    1.9852689426735977,
+    1.9841168154224618,
+    1.9925993175105619,
+    1.9873045837383128,
+    1.999713414255784,
+    1.9807724570742722,
+    1.9847654502838568,
+    1.9830542003093226,
+    1.9897744203387455,
+    1.987576697887777,
+    1.9979102059232174,
+    1.9840627542797882,
+    1.9839630398487036,
+    1.979413655128498
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 1.9705914998912943,
+    "max": 1.999713414255784,
+    "median": 1.9847654502838568,
+    "mean": 1.9860591636377463,
+    "stdev": 0.0071821067886695955,
+    "p10": 1.979413655128498,
+    "p90": 1.9979102059232174,
+    "rel_spread": 0.014672723348909908
+   },
+   "derived": {
+    "relative_throughput": 0.9935245450465566,
+    "hip_blocks_per_cu": 8,
+    "hip_waves_per_cu": 64
+   },
+   "watts": {
+    "idle_w": 26.0,
+    "loaded_mean_w": 71.5,
+    "loaded_max_w": 75.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "occupancy.lds.p_8192",
+   "section": "occupancy",
+   "what": "achieved chase loads per second with 8192 B of LDS per workgroup",
+   "unit": "Gload/s",
+   "value": 1.9860272229841984,
+   "status": "ok",
+   "error": null,
+   "source": "probe",
+   "command": "/home/jovyan/chipsheet/build/probe_w32 occ_lds 8192 15 1500",
+   "op": "occ_lds<<<CUs x 32, 256, 8192 B LDS>>>: 512-step pointer chase over 256 MiB",
+   "params": {
+    "kernel": "occ_lds",
+    "param": 8192,
+    "blocks": 640,
+    "threads": 256,
+    "iters": 512,
+    "blocks_per_cu": 8
+   },
+   "samples": [
+    1.978005316789089,
+    1.9886215378227108,
+    1.9879984124656005,
+    1.9971923719923546,
+    1.9856524051152171,
+    1.985814293280435,
+    1.9765664261028857,
+    1.983178672133047,
+    1.988848320029824,
+    1.9935912635127733,
+    1.9860272229841984,
+    1.983330684907132,
+    1.9797721973184765,
+    1.986600088968983,
+    1.9873489343447925
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 1.9765664261028857,
+    "max": 1.9971923719923546,
+    "median": 1.9860272229841984,
+    "mean": 1.9859032098511677,
+    "stdev": 0.005417225863217261,
+    "p10": 1.978005316789089,
+    "p90": 1.9935912635127733,
+    "rel_spread": 0.0103855302942305
+   },
+   "derived": {
+    "relative_throughput": 0.9941561572846072,
+    "hip_blocks_per_cu": 8,
+    "hip_waves_per_cu": 64
+   },
+   "watts": {
+    "idle_w": 26.0,
+    "loaded_mean_w": 75.5,
+    "loaded_max_w": 77.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "occupancy.lds.p_16384",
+   "section": "occupancy",
+   "what": "achieved chase loads per second with 16384 B of LDS per workgroup",
+   "unit": "Gload/s",
+   "value": 1.9878147352556803,
+   "status": "ok",
+   "error": null,
+   "source": "probe",
+   "command": "/home/jovyan/chipsheet/build/probe_w32 occ_lds 16384 15 1500",
+   "op": "occ_lds<<<CUs x 32, 256, 16384 B LDS>>>: 512-step pointer chase over 256 MiB",
+   "params": {
+    "kernel": "occ_lds",
+    "param": 16384,
+    "blocks": 640,
+    "threads": 256,
+    "iters": 512,
+    "blocks_per_cu": 4
+   },
+   "samples": [
+    1.9873047720594208,
+    1.9997996054234124,
+    1.9878147352556803,
+    1.9848310086687388,
+    1.9801968698963552,
+    1.9815502881980562,
+    1.9890510533524035,
+    1.9923054323913316,
+    1.9931680728357466,
+    1.9841315044189847,
+    1.9829491966848476,
+    1.9839318840769598,
+    1.9909266085333552,
+    1.992090113648958,
+    1.9904478242325625
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 1.9801968698963552,
+    "max": 1.9997996054234124,
+    "median": 1.9878147352556803,
+    "mean": 1.9880332646451209,
+    "stdev": 0.0052571289752236655,
+    "p10": 1.9815502881980562,
+    "p90": 1.9931680728357466,
+    "rel_spread": 0.00986144995274712
+   },
+   "derived": {
+    "relative_throughput": 0.9950509417620551,
+    "hip_blocks_per_cu": 4,
+    "hip_waves_per_cu": 32
+   },
+   "watts": {
+    "idle_w": 26.0,
+    "loaded_mean_w": 76.33333333333333,
+    "loaded_max_w": 77.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "occupancy.lds.p_24576",
+   "section": "occupancy",
+   "what": "achieved chase loads per second with 24576 B of LDS per workgroup",
+   "unit": "Gload/s",
+   "value": 1.9879924762260988,
+   "status": "ok",
+   "error": null,
+   "source": "probe",
+   "command": "/home/jovyan/chipsheet/build/probe_w32 occ_lds 24576 15 1500",
+   "op": "occ_lds<<<CUs x 32, 256, 24576 B LDS>>>: 512-step pointer chase over 256 MiB",
+   "params": {
+    "kernel": "occ_lds",
+    "param": 24576,
+    "blocks": 640,
+    "threads": 256,
+    "iters": 512,
+    "blocks_per_cu": 2
+   },
+   "samples": [
+    1.9899708279749597,
+    1.9783590564260314,
+    1.9885924040659644,
+    1.9894003571317196,
+    1.9912861197405924,
+    2.006729952383568,
+    1.9772271898248721,
+    1.9913972083479836,
+    1.9861479300679414,
+    1.9855976962676567,
+    1.9879924762260988,
+    2.0013336963211503,
+    1.9785587701634209,
+    1.986060372474867,
+    1.9824865631751973
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 1.9772271898248721,
+    "max": 2.006729952383568,
+    "median": 1.9879924762260988,
+    "mean": 1.9880760413728018,
+    "stdev": 0.008011362595546643,
+    "p10": 1.9783590564260314,
+    "p90": 2.0013336963211503,
+    "rel_spread": 0.014840479987480832
+   },
+   "derived": {
+    "relative_throughput": 0.9951399145002424,
+    "hip_blocks_per_cu": 2,
+    "hip_waves_per_cu": 16
+   },
+   "watts": {
+    "idle_w": 26.0,
+    "loaded_mean_w": 77.83333333333333,
+    "loaded_max_w": 79.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "occupancy.lds.p_32768",
+   "section": "occupancy",
+   "what": "achieved chase loads per second with 32768 B of LDS per workgroup",
+   "unit": "Gload/s",
+   "value": 1.9939674259064102,
+   "status": "ok",
+   "error": null,
+   "source": "probe",
+   "command": "/home/jovyan/chipsheet/build/probe_w32 occ_lds 32768 15 1500",
+   "op": "occ_lds<<<CUs x 32, 256, 32768 B LDS>>>: 512-step pointer chase over 256 MiB",
+   "params": {
+    "kernel": "occ_lds",
+    "param": 32768,
+    "blocks": 640,
+    "threads": 256,
+    "iters": 512,
+    "blocks_per_cu": 2
+   },
+   "samples": [
+    1.989200052614654,
+    1.9990569748567457,
+    1.996360499725068,
+    2.0047236162554576,
+    1.9788048281225437,
+    1.9880665404188973,
+    1.9910740930879303,
+    1.9985833196478737,
+    1.9978292686162318,
+    2.005493333771953,
+    1.979348781045008,
+    1.9869319661794118,
+    1.9924166347605425,
+    1.9939674259064102,
+    1.9974561663012707
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 1.9788048281225437,
+    "max": 2.005493333771953,
+    "median": 1.9939674259064102,
+    "mean": 1.9932875667539998,
+    "stdev": 0.007942033064555138,
+    "p10": 1.979348781045008,
+    "p90": 2.0047236162554576,
+    "rel_spread": 0.01338462469479788
+   },
+   "derived": {
+    "relative_throughput": 0.9981308266818094,
+    "hip_blocks_per_cu": 2,
+    "hip_waves_per_cu": 16
+   },
+   "watts": {
+    "idle_w": 26.0,
+    "loaded_mean_w": 77.0,
+    "loaded_max_w": 78.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "occupancy.lds.p_49152",
+   "section": "occupancy",
+   "what": "achieved chase loads per second with 49152 B of LDS per workgroup",
+   "unit": "Gload/s",
+   "value": 1.9967785356057317,
+   "status": "ok",
+   "error": null,
+   "source": "probe",
+   "command": "/home/jovyan/chipsheet/build/probe_w32 occ_lds 49152 15 1500",
+   "op": "occ_lds<<<CUs x 32, 256, 49152 B LDS>>>: 512-step pointer chase over 256 MiB",
+   "params": {
+    "kernel": "occ_lds",
+    "param": 49152,
+    "blocks": 640,
+    "threads": 256,
+    "iters": 512,
+    "blocks_per_cu": 1
+   },
+   "samples": [
+    2.013968746757368,
+    1.9824513308969633,
+    1.9969564095631187,
+    1.992055106870356,
+    1.9994786668133673,
+    1.9922223936118608,
+    2.0073338950493635,
+    1.982174014136026,
+    1.9999225646437409,
+    1.9929099550801006,
+    2.0009511223441643,
+    1.9967785356057317,
+    2.0088472916388675,
+    1.989520908377676,
+    1.994453168686055
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 1.982174014136026,
+    "max": 2.013968746757368,
+    "median": 1.9967785356057317,
+    "mean": 1.9966682740049841,
+    "stdev": 0.008951000252380409,
+    "p10": 1.9824513308969633,
+    "p90": 2.0088472916388675,
+    "rel_spread": 0.015923014022031775
+   },
+   "derived": {
+    "relative_throughput": 0.9995379987407018,
+    "hip_blocks_per_cu": 1,
+    "hip_waves_per_cu": 8
+   },
+   "watts": {
+    "idle_w": 26.0,
+    "loaded_mean_w": 76.2,
+    "loaded_max_w": 77.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "occupancy.lds.p_65536",
+   "section": "occupancy",
+   "what": "achieved chase loads per second with 65536 B of LDS per workgroup",
+   "unit": "Gload/s",
+   "value": 1.9977014762034395,
+   "status": "ok",
+   "error": null,
+   "source": "probe",
+   "command": "/home/jovyan/chipsheet/build/probe_w32 occ_lds 65536 15 1500",
+   "op": "occ_lds<<<CUs x 32, 256, 65536 B LDS>>>: 512-step pointer chase over 256 MiB",
+   "params": {
+    "kernel": "occ_lds",
+    "param": 65536,
+    "blocks": 640,
+    "threads": 256,
+    "iters": 512,
+    "blocks_per_cu": 1
+   },
+   "samples": [
+    1.9977468629991013,
+    1.9897443560691639,
+    1.9948038033404885,
+    1.9977014762034395,
+    2.003001514701892,
+    2.0015803416870908,
+    1.9989519369114728,
+    1.9876068850659583,
+    1.9996081166572828,
+    2.0134024609012884,
+    1.9909044475712976,
+    2.008388796847068,
+    1.9875790525488901,
+    1.9888235176271842,
+    1.996694600751196
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 1.9875790525488901,
+    "max": 2.0134024609012884,
+    "median": 1.9977014762034395,
+    "mean": 1.9971025446588544,
+    "stdev": 0.007586661217443765,
+    "p10": 1.9876068850659583,
+    "p90": 2.008388796847068,
+    "rel_spread": 0.012926560179289018
+   },
+   "derived": {
+    "relative_throughput": 1.0,
+    "hip_blocks_per_cu": 1,
+    "hip_waves_per_cu": 8
+   },
+   "watts": {
+    "idle_w": 26.0,
+    "loaded_mean_w": 76.0,
+    "loaded_max_w": 77.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "occupancy.vgpr.p_4",
+   "section": "occupancy",
+   "what": "achieved chase loads per second with 4 floats kept live per thread",
+   "unit": "Gload/s",
+   "value": 1.9876417356787797,
+   "status": "ok",
+   "error": null,
+   "source": "probe",
+   "command": "/home/jovyan/chipsheet/build/probe_w32 occ_vgpr 4 15 1500",
+   "op": "occ_vgpr_4<<<CUs x 32, 256>>>: 512-step pointer chase with 4 floats kept live",
+   "params": {
+    "kernel": "occ_vgpr_4",
+    "param": 4,
+    "blocks": 640,
+    "threads": 256,
+    "iters": 512,
+    "blocks_per_cu": 8
+   },
+   "samples": [
+    1.982101137673836,
+    1.9896802660437594,
+    1.9876417356787797,
+    1.9976764524999808,
+    1.9795928866309762,
+    1.9854607493652752,
+    1.9826901571792042,
+    1.9922196967419215,
+    1.9924124703629937,
+    1.9984692853865067,
+    1.981972118262991,
+    1.9833655732978144,
+    1.9838712175883875,
+    1.9885752919174824,
+    1.9892194868958755
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 1.9795928866309762,
+    "max": 1.9984692853865067,
+    "median": 1.9876417356787797,
+    "mean": 1.9876632350350525,
+    "stdev": 0.005723151425503816,
+    "p10": 1.981972118262991,
+    "p90": 1.9976764524999808,
+    "rel_spread": 0.009496881865928519
+   },
+   "derived": {
+    "relative_throughput": 0.9949643424483131,
+    "hip_blocks_per_cu": 8,
+    "hip_waves_per_cu": 64
+   },
+   "watts": {
+    "idle_w": 26.0,
+    "loaded_mean_w": 76.16666666666667,
+    "loaded_max_w": 77.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "occupancy.vgpr.p_16",
+   "section": "occupancy",
+   "what": "achieved chase loads per second with 16 floats kept live per thread",
+   "unit": "Gload/s",
+   "value": 1.98625985702949,
+   "status": "ok",
+   "error": null,
+   "source": "probe",
+   "command": "/home/jovyan/chipsheet/build/probe_w32 occ_vgpr 16 15 1500",
+   "op": "occ_vgpr_16<<<CUs x 32, 256>>>: 512-step pointer chase with 16 floats kept live",
+   "params": {
+    "kernel": "occ_vgpr_16",
+    "param": 16,
+    "blocks": 640,
+    "threads": 256,
+    "iters": 512,
+    "blocks_per_cu": 8
+   },
+   "samples": [
+    1.995367125697876,
+    1.995547074381528,
+    1.9781618553473763,
+    1.9803534282773312,
+    1.982630644365217,
+    1.98625985702949,
+    1.9908913118821088,
+    1.9928739725908937,
+    1.9861287438553858,
+    1.9791635233286193,
+    1.9836382514687447,
+    1.9892957654026684,
+    1.9941467903730963,
+    1.9927986976384244,
+    1.977418517780956
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 1.977418517780956,
+    "max": 1.995547074381528,
+    "median": 1.98625985702949,
+    "mean": 1.986978370627981,
+    "stdev": 0.006491073919533831,
+    "p10": 1.9781618553473763,
+    "p90": 1.995367125697876,
+    "rel_spread": 0.00912698131436024
+   },
+   "derived": {
+    "relative_throughput": 0.9942726081397838,
+    "hip_blocks_per_cu": 8,
+    "hip_waves_per_cu": 64
+   },
+   "watts": {
+    "idle_w": 26.0,
+    "loaded_mean_w": 76.16666666666667,
+    "loaded_max_w": 77.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "occupancy.vgpr.p_32",
+   "section": "occupancy",
+   "what": "achieved chase loads per second with 32 floats kept live per thread",
+   "unit": "Gload/s",
+   "value": 1.9860026319493365,
+   "status": "ok",
+   "error": null,
+   "source": "probe",
+   "command": "/home/jovyan/chipsheet/build/probe_w32 occ_vgpr 32 15 1500",
+   "op": "occ_vgpr_32<<<CUs x 32, 256>>>: 512-step pointer chase with 32 floats kept live",
+   "params": {
+    "kernel": "occ_vgpr_32",
+    "param": 32,
+    "blocks": 640,
+    "threads": 256,
+    "iters": 512,
+    "blocks_per_cu": 8
+   },
+   "samples": [
+    1.9898300203926191,
+    1.9762838158162535,
+    1.9860026319493365,
+    1.9847446472030201,
+    1.9989457921761768,
+    1.9806834085563052,
+    1.987913235535312,
+    1.9760751579679612,
+    1.9837097867936124,
+    1.990991156918416,
+    2.0005950313333485,
+    1.980933223018684,
+    1.9877804438097233,
+    1.9779734617077427,
+    1.98636789261926
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 1.9760751579679612,
+    "max": 2.0005950313333485,
+    "median": 1.9860026319493365,
+    "mean": 1.985921980386518,
+    "stdev": 0.007295571439501928,
+    "p10": 1.9762838158162535,
+    "p90": 1.9989457921761768,
+    "rel_spread": 0.01234634484916071
+   },
+   "derived": {
+    "relative_throughput": 0.9941438476201477,
+    "hip_blocks_per_cu": 8,
+    "hip_waves_per_cu": 64
+   },
+   "watts": {
+    "idle_w": 26.0,
+    "loaded_mean_w": 77.0,
+    "loaded_max_w": 78.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "occupancy.vgpr.p_64",
+   "section": "occupancy",
+   "what": "achieved chase loads per second with 64 floats kept live per thread",
+   "unit": "Gload/s",
+   "value": 1.9885159909378791,
+   "status": "ok",
+   "error": null,
+   "source": "probe",
+   "command": "/home/jovyan/chipsheet/build/probe_w32 occ_vgpr 64 15 1500",
+   "op": "occ_vgpr_64<<<CUs x 32, 256>>>: 512-step pointer chase with 64 floats kept live",
+   "params": {
+    "kernel": "occ_vgpr_64",
+    "param": 64,
+    "blocks": 640,
+    "threads": 256,
+    "iters": 512,
+    "blocks_per_cu": 8
+   },
+   "samples": [
+    1.9826901571792042,
+    1.998149106762506,
+    1.9810491946383584,
+    1.9849567839405253,
+    1.9736728582595975,
+    1.982437744315734,
+    1.986897140451627,
+    1.9995586892417356,
+    1.9885159909378791,
+    1.9897353416849988,
+    1.9770885526290731,
+    1.9887479825616416,
+    1.993203639704324,
+    1.9928696642483692,
+    1.995717701972489
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 1.9736728582595975,
+    "max": 1.9995586892417356,
+    "median": 1.9885159909378791,
+    "mean": 1.9876860365685374,
+    "stdev": 0.007519363462061702,
+    "p10": 1.9770885526290731,
+    "p90": 1.998149106762506,
+    "rel_spread": 0.013017662970831406
+   },
+   "derived": {
+    "relative_throughput": 0.995401973030016,
+    "hip_blocks_per_cu": 8,
+    "hip_waves_per_cu": 64
+   },
+   "watts": {
+    "idle_w": 26.0,
+    "loaded_mean_w": 75.83333333333333,
+    "loaded_max_w": 76.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "occupancy.vgpr.p_96",
+   "section": "occupancy",
+   "what": "achieved chase loads per second with 96 floats kept live per thread",
+   "unit": "Gload/s",
+   "value": 1.9892033073585795,
+   "status": "ok",
+   "error": null,
+   "source": "probe",
+   "command": "/home/jovyan/chipsheet/build/probe_w32 occ_vgpr 96 15 1500",
+   "op": "occ_vgpr_96<<<CUs x 32, 256>>>: 512-step pointer chase with 96 floats kept live",
+   "params": {
+    "kernel": "occ_vgpr_96",
+    "param": 96,
+    "blocks": 640,
+    "threads": 256,
+    "iters": 512,
+    "blocks_per_cu": 7
+   },
+   "samples": [
+    1.9976608486828478,
+    1.9770101321967244,
+    1.977591187504114,
+    1.9825117700150523,
+    1.9908747271408231,
+    2.0014989157305245,
+    1.9927887560886948,
+    1.9877493564334079,
+    1.9777907462322848,
+    1.9897497364211494,
+    1.9892033073585795,
+    2.0013202316639402,
+    1.9891289697770105,
+    1.991689927086354,
+    1.9817129594303209
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 1.9770101321967244,
+    "max": 2.0014989157305245,
+    "median": 1.9892033073585795,
+    "mean": 1.988552104784122,
+    "stdev": 0.008027028916948674,
+    "p10": 1.977591187504114,
+    "p90": 2.0013202316639402,
+    "rel_spread": 0.012310849998695337
+   },
+   "derived": {
+    "relative_throughput": 0.9957460266480803,
+    "hip_blocks_per_cu": 7,
+    "hip_waves_per_cu": 56
+   },
+   "watts": {
+    "idle_w": 26.0,
+    "loaded_mean_w": 76.16666666666667,
+    "loaded_max_w": 77.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "occupancy.vgpr.p_128",
+   "section": "occupancy",
+   "what": "achieved chase loads per second with 128 floats kept live per thread",
+   "unit": "Gload/s",
+   "value": 1.990566707531865,
+   "status": "ok",
+   "error": null,
+   "source": "probe",
+   "command": "/home/jovyan/chipsheet/build/probe_w32 occ_vgpr 128 15 1500",
+   "op": "occ_vgpr_128<<<CUs x 32, 256>>>: 512-step pointer chase with 128 floats kept live",
+   "params": {
+    "kernel": "occ_vgpr_128",
+    "param": 128,
+    "blocks": 640,
+    "threads": 256,
+    "iters": 512,
+    "blocks_per_cu": 5
+   },
+   "samples": [
+    1.9897126409013761,
+    2.00309655135377,
+    1.9824184423205544,
+    2.006722271586585,
+    1.982604684776531,
+    1.990566707531865,
+    1.9862186118872485,
+    1.9910625619476898,
+    1.990734500260286,
+    1.9923716791165034,
+    1.993642244204092,
+    1.9826972802120848,
+    1.9870560309897636,
+    1.9903399110865618,
+    1.9953124497521217
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 1.9824184423205544,
+    "max": 2.006722271586585,
+    "median": 1.990566707531865,
+    "mean": 1.990970437861802,
+    "stdev": 0.0069425951174637785,
+    "p10": 1.982604684776531,
+    "p90": 2.00309655135377,
+    "rel_spread": 0.012209502537177163
+   },
+   "derived": {
+    "relative_throughput": 0.9964285110880862,
+    "hip_blocks_per_cu": 5,
+    "hip_waves_per_cu": 40
+   },
+   "watts": {
+    "idle_w": 26.0,
+    "loaded_mean_w": 76.0,
+    "loaded_max_w": 77.0,
+    "samples": 6
+   }
+  },
+  {
+   "id": "occupancy.vgpr.p_192",
+   "section": "occupancy",
+   "what": "achieved chase loads per second with 192 floats kept live per thread",
+   "unit": "Gload/s",
+   "value": 1.9532880841972866,
+   "status": "ok",
+   "error": null,
+   "source": "probe",
+   "command": "/home/jovyan/chipsheet/build/probe_w32 occ_vgpr 192 15 1500",
+   "op": "occ_vgpr_192<<<CUs x 32, 256>>>: 512-step pointer chase with 192 floats kept live",
+   "params": {
+    "kernel": "occ_vgpr_192",
+    "param": 192,
+    "blocks": 640,
+    "threads": 256,
+    "iters": 512,
+    "blocks_per_cu": 4
+   },
+   "samples": [
+    1.9662388813183556,
+    1.963706094112572,
+    1.9489408014268519,
+    1.94939298285193,
+    1.9502643314044752,
+    1.9621951142777687,
+    1.9477916365084245,
+    1.9532880841972866,
+    1.9561221918779943,
+    1.9496995837153872,
+    1.9510803684976668,
+    1.956522312078842,
+    1.9647605404995208,
+    1.950106056646661,
+    1.953726268272497
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 1.9477916365084245,
+    "max": 1.9662388813183556,
+    "median": 1.9532880841972866,
+    "mean": 1.9549223498457489,
+    "stdev": 0.006364712412859294,
+    "p10": 1.9489408014268519,
+    "p90": 1.9647605404995208,
+    "rel_spread": 0.009444200760335914
+   },
+   "derived": {
+    "relative_throughput": 0.9777677533229044,
+    "hip_blocks_per_cu": 4,
+    "hip_waves_per_cu": 32
+   },
+   "watts": {
+    "idle_w": 26.0,
+    "loaded_mean_w": 79.0,
+    "loaded_max_w": 81.0,
+    "samples": 5
+   }
+  },
+  {
+   "id": "occupancy.vgpr.p_240",
+   "section": "occupancy",
+   "what": "achieved chase loads per second with 240 floats kept live per thread",
+   "unit": "Gload/s",
+   "value": 1.118503824491149,
+   "status": "ok",
+   "error": null,
+   "source": "probe",
+   "command": "/home/jovyan/chipsheet/build/probe_w32 occ_vgpr 240 15 1500",
+   "op": "occ_vgpr_240<<<CUs x 32, 256>>>: 512-step pointer chase with 240 floats kept live",
+   "params": {
+    "kernel": "occ_vgpr_240",
+    "param": 240,
+    "blocks": 640,
+    "threads": 256,
+    "iters": 512,
+    "blocks_per_cu": 4
+   },
+   "samples": [
+    1.1144089420983097,
+    1.121781227380957,
+    1.1124781198986518,
+    1.1236932804917852,
+    1.1050187120986654,
+    1.1222654505105636,
+    1.1181002715301906,
+    1.1248795766779376,
+    1.128850567569634,
+    1.118503824491149,
+    1.1168720709779605,
+    1.114289214641512,
+    1.1204752736189834,
+    1.1290634015751633,
+    1.1036166453638134
+   ],
+   "repeats": 15,
+   "spread": {
+    "n": 15,
+    "min": 1.1036166453638134,
+    "max": 1.1290634015751633,
+    "median": 1.118503824491149,
+    "mean": 1.1182864385950184,
+    "stdev": 0.007518317342486779,
+    "p10": 1.1050187120986654,
+    "p90": 1.128850567569634,
+    "rel_spread": 0.02275071005941939
+   },
+   "derived": {
+    "relative_throughput": 0.5598953786713046,
+    "hip_blocks_per_cu": 4,
+    "hip_waves_per_cu": 32
+   },
+   "watts": {
+    "idle_w": 26.0,
+    "loaded_mean_w": 82.83333333333333,
+    "loaded_max_w": 85.0,
+    "samples": 6
+   }
+  }
+ ],
+ "notes": [
+  "lora: MLP width unknown: /home/jovyan/models/Qwen3.5-4B/config.json could not be read (FileNotFoundError)"
+ ]
+}
