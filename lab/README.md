@@ -452,7 +452,7 @@ the bench harness over `teacher_fake.py`, a fake pod and a fake `/proc`) on a fa
 
 ```
 bash lab/pod_a_teacher.sh proxy      # once per account, then relaunch the pod
-bash lab/pod_a_teacher.sh build      # vLLM from source at commit b1388b1 + lab/vllm-gfx1201.diff, for the pod's gfx target, ~1 h
+bash lab/pod_a_teacher.sh build      # vLLM from source at b1388b1 + lab/vllm-gfx1151.diff (PATCH=vllm-gfx1201.diff for the April one), for the pod's gfx target
 bash lab/pod_a_teacher.sh download   # RedHatAI/Qwen3.8-27B-INT4 (19 GB) into ~/models
 bash lab/pod_a_teacher.sh serve      # OpenAI-compatible server on 127.0.0.1:8000, model names "teacher" and "group-brain", log ~/serve/vllm.log
 ```
@@ -601,6 +601,71 @@ tokens in, 47 out, 24.7 s). Idle with no server: 9 W (`amd-smi` SOCKET_POWER). T
 ledger rows on node `pod-b` with hub sjc and account D; no metric row was written, because this is a build and not a
 measurement (kernels pass 2, ruling b). The build's dependencies put numpy 2.2.6 in the user site, over the image's
 2.4.6.
+
+### The hybrid W4A16 build beside the serving teacher (R53)
+
+`lab/vllm-gfx1151.diff` is the April patch plus vLLM PR 40977's RDNA hybrid W4A16 kernel (HIP skinny GEMM for
+decode, Triton for prefill, with its three later gfx1151 tunings from vLLM main 276fbcff2), backported onto the same
+b1388b1 so the pod's torch 2.9.1 and C++17 stay. Every vLLM that carries the kernel upstream wants torch 2.11 or newer.
+The diff's header has a note per hunk; `git apply --check` passes on a fresh b1388b1 checkout (22 files, 35 hunks).
+It is now the build's default patch; `PATCH=vllm-gfx1201.diff` (or `--patch`) selects the April patch alone.
+
+What the build step does since R53:
+
+- `--vllm-dir DIR --venv DIR` (or `VLLM_DIR`, `VLLM_VENV`) builds into its own clone and a venv made with
+  `--system-site-packages`: it sees the image's ROCm torch and not the user site, so the serving teacher's vLLM
+  (`~/vllm`, user site) is neither used nor replaced. A `--vllm-dir` without `--venv` is refused for that reason.
+- A stamp (`<dir>/.atlas-build-stamp`: commit, patch hash, gfx) decides whether a folder is already built. A pod that
+  holds the April build has no stamp (or another patch hash) and is rebuilt, not skipped because `import vllm` works.
+- Compile jobs follow available memory, not total, and `--jobs N` (`BUILD_JOBS`) sets them: beside the teacher most of
+  the 64 GB is the model's.
+- `serve --venv DIR` serves from that venv, and the `### serve` line carries `kernel=<name>`, the kernel vLLM logged
+  for the 4-bit layers (`Using <name> for CompressedTensorsWNA16`); run-script copies every `### <step> key=value`
+  line into its `pod run-script` ledger row under `conditions.steps`. `verify` prints the build stamp and whether
+  the hybrid op (`torch.ops._rocm_C.wvSplitK_int4_g`) is registered.
+
+Build on pod C's CPU beside the serving teacher, from the repo root (no GPU slot, the teacher keeps serving):
+
+```
+python -m lab.controller run-script --account C --timeout 3600 --with lab/vllm-gfx1151.diff lab/pod_a_teacher.sh build --vllm-dir /home/jovyan/vllm-hybrid --venv /home/jovyan/venv-hybrid --jobs 8
+python -m lab.controller run-script --account C lab/pod_a_teacher.sh verify --vllm-dir /home/jovyan/vllm-hybrid --venv /home/jovyan/venv-hybrid
+```
+
+Expected time: the stock build took 292 s at 20 jobs on an idle pod (R30); a new clone has no build cache and the
+venv installs vLLM's Python dependencies once, so about 6 minutes idle and 15 to 30 minutes at 8 jobs beside the
+teacher. The log is `~/vllm_build-vllm-hybrid.log`. `verify` should show `rejected_hunks:` empty, the three
+extensions importing, `vllm_from:` under `/home/jovyan/vllm-hybrid` and `hybrid_w4a16_op: present`.
+
+Swap, in the teacher's quiet window:
+
+```
+python -m lab.controller run-script --account C lab/pod_a_teacher.sh stop
+python -m lab.controller run-script --account C --timeout 1200 lab/pod_a_teacher.sh serve --venv /home/jovyan/venv-hybrid
+```
+
+The serve line should end `kernel=RDNAHybridW4A16LinearKernel` (the April build says `kernel=ConchLinearKernel`).
+The first start compiles torch.compile's cache anew (about 9 minutes cold on pod D). Roll back with `stop` and a
+plain `serve` (no `--venv`): the April build in the user site was never touched.
+
+What could still fail at compile time on ROCm 7.13 (hipcc), and the fix for each:
+
+- A C++20 construct the grep missed in `skinny_gemms_int4.cu` (only `std::in_range` was found and replaced):
+  compile that one file as C++20, which hipcc and torch 2.9.1's headers accept, by adding
+  `set_source_files_properties(csrc/rocm/skinny_gemms_int4.cu PROPERTIES COMPILE_OPTIONS "-std=c++20")` after
+  `VLLM_ROCM_EXT_SRC` in `CMakeLists.txt`, or replace the construct with its C++17 form.
+- `__builtin_amdgcn_fdot2_f32_bf16` (the bf16 dot product, new to b1388b1's `csrc/rocm`) needs the gfx11 dot
+  instructions; gfx1151 has them and upstream tuned this file on gfx1151. If hipcc says the target lacks the feature,
+  the build was not given `PYTORCH_ROCM_ARCH=gfx1151` (the script sets it from `rocminfo`; set `GFX=gfx1151`).
+- A missing declaration between the files (`wvSplitK_int4_g` in `ops.h`, the schema in `torch_bindings.cpp`): an
+  undefined-symbol error at import of `vllm._rocm_C`, shown by `verify`. The three are in the patch; a rejected hunk
+  in `verify` names the file to fix by hand.
+- Out of memory while compiling beside the teacher (a compiler killed, error 137): rerun with `--jobs 4`; the build
+  resumes from `build/` in the same folder.
+- `AT_DISPATCH_REDUCED_FLOATING_TYPES`: present in torch 2.9.1 and already used by b1388b1's `skinny_gemms.cu`.
+
+At load, not compile: the hybrid kernel takes only group sizes 32, 64 and 128 and no act-order (`g_idx`) layers; any
+other checkpoint falls back to the next kernel and the serve line says which. The teacher checkpoint's
+`quantization_config` (`group_size`, `actorder`) decides it.
 
 ### Idle baseline on the Strix Halo
 
