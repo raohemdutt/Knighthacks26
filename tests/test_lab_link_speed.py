@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import threading
@@ -408,12 +409,28 @@ def test_the_start_script_has_its_own_file_name_and_never_touches_the_standing_p
     assert TOKEN not in script
 
 
-@pytest.mark.skipif(shutil.which("bash") is None, reason="no bash here")
+def _working_bash() -> str | None:
+    """A bash that runs. On Windows a bare "bash" can be system32's WSL launcher with no distribution installed,
+    which is found on PATH but fails every call; Git's bash comes first there."""
+    git = shutil.which("git")
+    candidates = [str(Path(git).resolve().parents[1] / "bin" / "bash.exe")] if os.name == "nt" and git else []
+    for bash in [*candidates, "bash"]:
+        try:
+            if subprocess.run([bash, "-c", "true"], capture_output=True, timeout=30).returncode == 0:
+                return bash
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+    return None
+
+
 def test_both_scripts_are_valid_shell(tmp_path):
+    bash = _working_bash()
+    if bash is None:
+        pytest.skip("no working bash here")
     for name, text in (("start.sh", link_speed.serve_script(8301, "r14-link-speed", "r14-1gb")), ("stop.sh", link_speed.stop_script())):
         path = tmp_path / name
         path.write_text(text, encoding="utf-8", newline="\n")
-        done = subprocess.run(["bash", "-n", path.name], cwd=tmp_path, capture_output=True, text=True)
+        done = subprocess.run([bash, "-n", path.name], cwd=tmp_path, capture_output=True, text=True)
         assert done.returncode == 0, done.stderr
 
 

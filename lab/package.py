@@ -77,6 +77,7 @@ from lab.machine.record import record
 __all__ = ["PackageError", "Toolchain", "ToolResult", "build", "copy_scores", "dry_run", "folder_manifest",
            "gate_scores", "merge_adapter", "main"]
 
+CLI_VERB = "package"   # registers python -m lab package
 REPO = Path(__file__).resolve().parents[1]
 DEFAULT_BASE = "Qwen/Qwen3.5-4B"
 QUANT = "Q4_K_M"

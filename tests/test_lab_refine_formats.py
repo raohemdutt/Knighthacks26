@@ -1049,3 +1049,10 @@ def test_a_metric_name_is_read_by_metrics_py_rule_in_pass_entries_and_experiment
         in_experiment = False
 
     assert (in_entry, in_experiment) == (stored, stored)
+
+
+def test_metric_name_is_the_one_metrics_pattern():
+    from lab.machine import metrics
+
+    assert rf.METRIC_NAME is metrics.METRIC_NAME_RE
+    assert metrics._METRIC_RE is metrics.METRIC_NAME_RE

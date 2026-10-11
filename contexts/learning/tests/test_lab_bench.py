@@ -43,7 +43,13 @@ def test_every_row_of_the_committed_file_is_served_once_with_its_own_line_value_
 
 
 def test_the_batching_sweep_is_the_recorded_one_point_per_batch_size_all_flagged_low_confidence():
-    (sweep,) = [s for s in bench(ROWS)["sweeps"] if not s["other_chip"]]  # R57's A100 reference is a sweep of its own
+    # newest first: R60's sweep of the upgraded teacher (vLLM v0.31.0, hybrid W4A16 kernel, no 64 arm), R20's cold-spawn
+    # matrix of the stock build on pod-b, then R26's of the stock teacher; R57's A100 reference is a sweep of its own
+    upgraded, llama, pod_b, sweep = [s for s in bench(ROWS)["sweeps"] if not s["other_chip"]]  # E29 llama.cpp sweep on pod-b between
+    assert (pod_b["family"], pod_b["node"], pod_b["batches"], pod_b["points"]) == ("teacher", "pod-b", [1, 4, 8, 16, 64], 30)
+    assert (upgraded["family"], upgraded["node"], upgraded["batches"]) == ("teacher_batching", "pod-a", [1, 4, 8, 16])
+    assert upgraded["points"] == 24 == upgraded["low_confidence"] and upgraded["session"] == "bench-20261011T044643Z-6240"
+    assert all(p["value"] == RAW[p["line"]]["value"] and p["runs"] == 3 for pts in upgraded["metrics"].values() for p in pts)
     assert (sweep["family"], sweep["node"], sweep["batches"]) == ("teacher_batching", "pod-a", [1, 4, 8, 16, 64])
     assert set(sweep["metrics"]) == {"decode_tok_s", "decode_tok_s_total", "joules_per_token", "ttft_s", "watts_avg", "watts_peak"}
     assert sweep["points"] == 30 == sweep["low_confidence"] and sweep["other_metrics"] == []
@@ -76,7 +82,9 @@ def test_the_student_reference_is_the_jetson_rows_and_its_joules_per_token_is_ma
 def test_power_is_the_newest_idle_and_serving_row_per_node_and_a_node_without_a_row_is_absent_not_zero():
     power = bench(ROWS)["power"]
     by_node = {n["node"]: n for n in power["nodes"]}
-    assert {"jetson", "pod-a"} <= set(by_node) and "pod-b" in power["absent"] and "pod-b" not in by_node
+    assert {"jetson", "pod-a", "pod-b"} <= set(by_node) and power["absent"] == []  # pod-b has R20's serving rows
+    without = bench([r for r in ROWS if r["node"] != "pod-b"])["power"]
+    assert "pod-b" in without["absent"] and "pod-b" not in {n["node"] for n in without["nodes"]}
     for node in by_node.values():
         for key, suffix in (("idle", ".idle_watts"), ("serving", ".watts_avg")):
             if node[key]:
@@ -95,7 +103,7 @@ def test_rows_from_the_r9700s_are_marked_and_never_put_on_the_strix_halo_curve_o
     # an R9700 sweep stays a sweep of its own, after the current lab's, even on the same node and metric family
     tagged = [row("teacher_batching.decode_tok_s", v, node="pod-a", batch_size=b, gpu="Radeon R9700 (gfx1201)", ts="2026-10-11T05:00:00Z") for b, v in ((1, 7.7), (4, 7.0))]
     both = bench(*read_rows(write(tmp_path, [*({k: v for k, v in r.items() if k != "_line"} for r in ROWS), *tagged])))
-    assert [(s["node"], s["other_chip"], s["batches"]) for s in both["sweeps"] if s["node"] == "pod-a"] == [("pod-a", False, [1, 4, 8, 16, 64]), ("pod-a", True, [1, 4])]
+    assert [(s["node"], s["other_chip"], s["batches"]) for s in both["sweeps"] if s["node"] == "pod-a"] == [("pod-a", False, [1, 4, 8, 16]), ("pod-a", False, [1, 4, 8, 16, 64]), ("pod-a", True, [1, 4])]
 
 
 def test_nothing_is_dropped_silently_every_row_is_charted_or_listed_as_not_charted():
@@ -116,8 +124,9 @@ def test_a_new_node_and_a_new_metric_family_show_up_without_a_code_change(tmp_pa
     payload = bench(rows, skipped)
     assert [s["problem"] for s in payload["skipped"]] == ["not JSON", "no metric name or no numeric value"]
     ids = {s["id"] for s in payload["sweeps"]}
-    assert {"teacher_batching:pod-b:bench-r20", "kernel_hybrid:pod-b:bench-k"} <= ids and len(ids) == 4  # with R57's A100 reference
-    assert payload["sweeps"][0]["ts"] == "2026-10-11T03:00:00Z"  # newest first
+    assert {"teacher_batching:pod-b:bench-r20", "kernel_hybrid:pod-b:bench-k"} <= ids and len(ids) == 7  # with R26's and R60's sweeps on pod-a, R20's and E29's on pod-b and R57's A100 reference
+    current = [s["ts"] for s in payload["sweeps"] if not s["other_chip"]]
+    assert current == sorted(current, reverse=True) and current.count("2026-10-11T03:00:00Z") == 2  # newest first
     assert next(n for n in payload["power"]["nodes"] if n["node"] == "pod-b")["idle"]["value"] == 11.0 and payload["power"]["absent"] == []
     assert ("quant.perplexity", "pod-b") in {(x["metric"], x["node"]) for x in payload["not_charted"]}
     assert {"kernel_hybrid", "quant"} <= {f["family"] for f in payload["families"]}
@@ -144,3 +153,83 @@ def test_the_endpoint_serves_the_file_and_rereads_it_when_it_changes(tmp_path):
         with TestClient(real) as committed:
             body = committed.get("/api/learning/lab/bench").json()
             assert body["rows"] == len(RAW) and body["sweeps"][0]["node"] == "pod-a"
+
+
+def test_each_row_is_named_for_the_chip_it_was_measured_on_and_only_the_current_lab_is_on_its_curve(tmp_path):
+    def run(node, session, ts, tok, **conditions):  # a batching run: tokens a second and joules per token at batch 1 and 4
+        return [row(f"teacher_batching.{name}", v, node=node, unit=unit, ts=ts, batch_size=b, session=session, model="Qwen3.8-27B-INT4", **conditions)
+                for b, scale in ((1, 1.0), (4, 0.9)) for name, unit, v in (("decode_tok_s", "tok/s", tok * scale), ("joules_per_token", "J/token", 90 / tok / b))]
+
+    after, before = "2026-10-11T03:00:00Z", "2026-10-10T12:00:00Z"
+    rows = [*run("pod-a", "s-strix", after, 2.7, gpu="Radeon 8060S (gfx1151)", hub="sjc"),
+            *run("pod-a", "s-untagged", after, 2.6),                                          # no chip named, after the move
+            *run("pod-a", "s-r9700-tag", after, 7.7, gpu="Radeon R9700 (gfx1201)"),           # tagged, even after the move
+            *run("pod-b", "s-r9700-date", before, 7.5),                                       # no chip named, before the move
+            *run("a100", "s-a100", after, 65.0, gpu="NVIDIA A100-SXM4-40GB, 400 W power limit", hub="colab", other_chip=True),
+            *run("rig-7", "s-future", after, 120.0, gpu="NVIDIA H200-NVL 141GB"),             # a chip nobody has written a rule for
+            *run("pod-a", "s-unnamed", after, 5.0, other_chip=True),                          # says only that it is another chip
+            row("pod.idle_watts", 46.0, node="a100", unit="W", ts=after, gpu="NVIDIA A100-SXM4-40GB", hub="colab"),
+            row("student.watts_avg", 14.0, node="jetson", unit="W", ts=before)]
+    payload = bench(*read_rows(write(tmp_path, rows)))
+
+    by_session = {s["session"]: s for s in payload["sweeps"]}
+    assert len(by_session) == 7 == len({s["id"] for s in payload["sweeps"]})  # one sweep per run: no two chips share a curve
+    chip = {name: s["chip"] for name, s in by_session.items()}
+    assert {name: (c["key"], c["name"], c["where"], c["role"], c["current"]) for name, c in chip.items()} == {
+        "s-strix": ("strix-halo", "Radeon 8060S (Strix Halo)", "SJC", "current", True),
+        "s-untagged": ("strix-halo", "Radeon 8060S (Strix Halo)", "pod-a", "current", True),
+        "s-r9700-tag": ("r9700", "Radeon R9700", "pod-a", "earlier", False),
+        "s-r9700-date": ("r9700", "Radeon R9700", "pod-b", "earlier", False),
+        "s-a100": ("nvidia-a100", "NVIDIA A100", "Colab", "reference", False),
+        "s-future": ("nvidia-h200", "NVIDIA H200", "rig-7", "reference", False),
+        "s-unnamed": ("unnamed", "Another chip, not named", "pod-a", "unnamed", False),
+    }
+    # each says how it was decided: by the row's own words, or by the date when the row says nothing
+    assert "conditions.gpu" in chip["s-strix"]["reason"] and "gfx1201" in chip["s-r9700-tag"]["reason"] and "A100-SXM4" in chip["s-a100"]["reason"]
+    assert "names no chip and was measured before" in chip["s-r9700-date"]["reason"]
+    assert "names no chip and was measured after" in chip["s-untagged"]["reason"]
+    assert "marks itself other_chip" in chip["s-unnamed"]["reason"]
+
+    # the old boolean is kept, on sweeps and on every point, and means "not the current lab"
+    points = list(every_point(payload))
+    assert all(p["other_chip"] is (not p["chip"]["current"]) for p in points) and len(points) == len(rows)
+    assert all(s["other_chip"] is (not s["chip"]["current"]) for s in payload["sweeps"])
+    assert payload["other_chip_rows"] == 4 * 5 + 1 and [s["other_chip"] for s in payload["sweeps"]] == [False, False, True, True, True, True, True]
+    assert next(p for p in points if p["node"] == "jetson")["chip"]["key"] == "jetson"
+
+    # no point from another chip is in a current sweep, and no current point in another chip's
+    for s in payload["sweeps"]:
+        assert {p["chip"]["key"] for pts in s["metrics"].values() for p in pts} == {s["chip"]["key"]}, s["id"]
+
+    # a current sweep names the other chips' sweeps that recorded the same metrics at the same batch sizes
+    offered = {(c["chip"]["name"], c["chip"]["where"]): c for c in by_session["s-strix"]["comparisons"]}
+    assert set(offered) == {("NVIDIA A100", "Colab"), ("NVIDIA H200", "rig-7"), ("Radeon R9700", "pod-a"), ("Radeon R9700", "pod-b"), ("Another chip, not named", "pod-a")}
+    a100 = offered[("NVIDIA A100", "Colab")]
+    assert (a100["id"], a100["metrics"], a100["batches"], a100["same_model"]) == (by_session["s-a100"]["id"], ["decode_tok_s", "joules_per_token"], [1, 4], True)
+    assert all(s["comparisons"] == [] for s in payload["sweeps"] if s["other_chip"])
+
+    # the power bars are the current lab's; the A100's idle row is listed under its own name, not as an R9700
+    assert [n["node"] for n in payload["power"]["nodes"]] == ["jetson"]
+    assert [(g["name"], g["where"], g["rows"]) for g in payload["power"]["other_chips"]] == [("NVIDIA A100", "Colab", 1)]
+    assert {(g["key"], g["where"]): g["rows"] for g in payload["chips"]} == {
+        ("strix-halo", None): 8, ("r9700", None): 8, ("nvidia-a100", "Colab"): 5, ("nvidia-h200", "rig-7"): 4, ("unnamed", None): 4}
+
+
+def test_the_committed_a100_reference_is_a_reference_on_colab_not_an_r9700_and_the_smoke_run_is_an_r9700():
+    app = FastAPI()
+    app.include_router(lab_bench_router())
+    with TestClient(app) as client:
+        payload = client.get("/api/learning/lab/bench").json()
+    *others, current, reference = payload["sweeps"]  # the current lab's sweeps, R26's of the stock teacher last, then the reference
+    assert [s["session"] for s in (*others, current)] == ["bench-20261011T044643Z-6240", None, "pod-b-2026-10-10", "bench-20261010T215122Z-2c65"]  # E29 rows carry no session
+    assert all((s["chip"]["key"], s["other_chip"]) == ("strix-halo", False) for s in others)
+    assert all([c["id"] for c in s["comparisons"]] == [reference["id"]] for s in others)
+    assert (current["chip"]["key"], current["other_chip"]) == ("strix-halo", False)
+    assert (reference["node"], reference["chip"]["name"], reference["chip"]["where"], reference["chip"]["role"], reference["other_chip"]) == ("a100", "NVIDIA A100", "Colab", "reference", True)
+    assert [c["id"] for c in current["comparisons"]] == [reference["id"]] and current["comparisons"][0]["batches"] == [1, 4, 8, 16, 64]
+    assert "median of 3 spawns" in reference["confidence_note"] and all(p["runs"] == 3 for p in reference["metrics"]["decode_tok_s"])
+    assert reference["chip_note"] == RAW[99]["conditions"]["other_chip_note"] and "nvidia-smi" in reference["power_source"]
+    names = {p["line"]: p["chip"]["name"] for p in every_point(payload)}
+    assert {names[n] for n in range(99, 130)} == {"NVIDIA A100"} and {names[n] for n in (1, 7, 13, 17)} == {"Radeon R9700"}
+    assert all(p["other_chip"] is True for p in every_point(payload) if p["line"] in (1, 7, 13, 17, 99, 129))
+    assert [(g["name"], g["lines"]) for g in payload["power"]["other_chips"] if g["role"] == "earlier"] == [("Radeon R9700", [7, 8, 17])]

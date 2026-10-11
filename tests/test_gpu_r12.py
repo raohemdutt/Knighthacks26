@@ -180,6 +180,13 @@ def fake_pod(tmp_path: Path) -> dict:
            "VLLM_REPO": px(up), "VLLM_COMMIT": commit, "R12_BASE_DIFF": px(base), "R12_PATCH_DIR": px(patches),
            "R12_STATE_DIR": px(tmp_path / "state"), "R12_REBUILD_JSON": px(tmp_path / "rebuild_times.json"),
            "R12_BUILD_CMD": f"cat {KERNEL_FILE} > /dev/null && echo built >> {px(counter)}", "GFX": "gfx1151"}
+    if os.name == "nt":
+        # rebuild.sh calls python3, which in Git Bash on Windows is often the Microsoft Store stub; point it at
+        # the interpreter running the tests (on the pods python3 is the real one)
+        shim = tmp_path / "shim"
+        shim.mkdir()
+        (shim / "python3").write_text(f'#!/bin/bash\nexec "{px(sys.executable)}" "$@"\n', newline="\n")
+        env["PATH"] = f"{shim}{os.pathsep}{env.get('PATH', '')}"
     return {"env": env, "tmp": tmp_path, "patches": patches, "counter": counter, "tree": tmp_path / "home" / "vllm"}
 
 

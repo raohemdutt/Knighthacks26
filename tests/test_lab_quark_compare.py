@@ -84,16 +84,17 @@ def make_vllm(folder: Path) -> tuple[Path, Path]:
     (the build part kept as it is)."""
     target = folder / LOADER_FILE
     target.parent.mkdir(parents=True)
-    target.write_text("class QuarkConfig:\n    pass\n", encoding="utf-8")
+    target.write_text("class QuarkConfig:\n    pass\n", encoding="utf-8", newline="\n")
     git(folder, "init", "-q")
+    git(folder, "config", "core.autocrlf", "false")   # a Windows machine's global autocrlf would put CRLF back
     git(folder, "-c", "user.name=t", "-c", "user.email=t@t", "add", ".")
     git(folder, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "b1388b1 stand-in")
-    target.write_text("class QuarkConfig:\n    pass\n\n\nclass QuarkW4A16Int4:\n    pass\n", encoding="utf-8")
+    target.write_text("class QuarkConfig:\n    pass\n\n\nclass QuarkW4A16Int4:\n    pass\n", encoding="utf-8", newline="\n")
     loader = git(folder, "diff")
     git(folder, "checkout", "--", ".")
     build = quark_keys.split_patch((REPO / "lab" / "vllm-gfx1201.diff").read_text(encoding="utf-8"))[0]
     patch = folder.parent / "vllm-gfx1201.diff"
-    patch.write_text(build + loader, encoding="utf-8")
+    patch.write_text(build + loader, encoding="utf-8", newline="\n")
     return folder, patch
 
 
@@ -435,7 +436,7 @@ def test_record_reads_a_reference_file_and_two_results(pod, tmp_path, queue):
 
 def test_hunks_already_in_the_tree_are_left_there(pod, tmp_path):
     loader = tmp_path / "loader.diff"
-    loader.write_text(quark_keys.split_patch(pod.patch.read_text())[1])
+    loader.write_text(quark_keys.split_patch(pod.patch.read_text(encoding="utf-8"))[1], encoding="utf-8", newline="\n")
     qc.apply_patch(pod.vllm, loader)
     before = git(pod.vllm, "diff")
     answer = pod.run("run", reference=None)
@@ -445,7 +446,7 @@ def test_hunks_already_in_the_tree_are_left_there(pod, tmp_path):
 
 
 def test_a_tree_the_hunks_do_not_fit_is_refused_before_any_spawn(pod):
-    (pod.vllm / LOADER_FILE).write_text("something else entirely\n", encoding="utf-8")
+    (pod.vllm / LOADER_FILE).write_text("something else entirely\n", encoding="utf-8", newline="\n")
     answer = pod.run("run")
     assert answer["outcome"] == "patch_conflict"
     assert not list(pod.out.glob("*/bench"))

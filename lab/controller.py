@@ -53,7 +53,7 @@ that did not start is reported as launch_unconfirmed.
 
 The idle culler. The hub stops a server whose last activity is an hour old and checks every ten minutes. Any request
 through the pod's address counts as activity and any read of the hub API does not, so `status` is free to run as
-often as wanted and `keep-alive` pings `GET /user/<account>/api/me` every 10 minutes (--interval, 30 to 1800
+often as wanted and `keep-alive` pings `GET /user/<account>/api/me` every 10 minutes (--interval, 30 to 1200
 seconds) for --minutes, or until the pod is gone. That call passes the proxy, which records route activity, and is
 one the Jupyter server records as well (its `/api/status` is the one it deliberately does not). A keep-alive on an
 idle pod still bills 240 credits an hour: bound it with --minutes. It re-reads the hub each cycle, so a pod that
@@ -110,7 +110,7 @@ if __package__ in (None, ""):          # started as `python lab/controller.py`: 
 from lab import hub as hubs
 from lab.hub import (Account, Hub, HubUnreachable, MissingCredentials, PodRoleError, Reply, hub_of, load_accounts,
                      one_line)
-from lab.machine import record
+from lab.machine import alerts, record
 from lab.machine import stop as kill_switch
 from lab.machine.record import recorded
 
@@ -132,7 +132,8 @@ CONFIRM_READS = 3                   # reads that settle whether a POST the hub a
 CONFIRM_PAUSE_S = 3.0               # seconds between those reads
 KEEP_ALIVE_INTERVAL_S = 600
 KEEP_ALIVE_MIN_S = 30
-KEEP_ALIVE_MAX_S = 1800             # the culler waits an hour and checks every ten minutes: stay well inside
+KEEP_ALIVE_MAX_S = 1200             # the culler waits an hour and checks every ten minutes: one failed ping at the
+                                    # longest interval still leaves two of its checks in hand
 PING_PATH = "/api/me"                # a tracked API call; /api/status is the one the Jupyter server does not count
 SCRIPT_TIMEOUT_S = 900.0
 SCRIPT_POLL_S = 5.0
@@ -149,9 +150,9 @@ IMAGE_SCRIPT = ('echo "image=${JUPYTER_IMAGE_SPEC:-${JUPYTER_IMAGE:-}}"\n'
                 'if [ -e /dev/kfd ]; then echo "gpu_device=yes"; else echo "gpu_device=no"; fi\n')
 
 QUOTA_DISABLED = "quota disabled on this hub"
-POD_LAUNCH, POD_STOP, POD_STATUS = "pod launch", "pod stop", "pod status"
+POD_LAUNCH, POD_STOP, POD_STATUS = alerts.POD_LAUNCH, alerts.POD_STOP, "pod status"
 POD_WAIT, POD_KEEP_ALIVE, POD_QUOTA, POD_RUN_SCRIPT = "pod wait", "pod keep-alive", "pod quota", "pod run-script"
-BALANCE = "pod.balance_credits"
+BALANCE = alerts.BALANCE_METRIC
 START = "pod.start_s"
 
 
@@ -320,6 +321,20 @@ class Watch:
 
 # --- which image a pod runs ---------------------------------------------------------------------
 
+STEP_LINE = re.compile(r"^### (\w+)((?: +[\w.]+=\S+)+)[ \t]*$", re.MULTILINE)
+
+
+def step_marks(output: str) -> dict[str, dict[str, str]]:
+    """The `### <step> key=value ...` lines a pod script prints (wall_s, rc, kernel, ...), by step, the last line of a
+    step winning. The `### END rc=<code>` line run-script appends is not a step."""
+    marks: dict[str, dict[str, str]] = {}
+    for found in STEP_LINE.finditer(output):
+        if found.group(1) == END_MARKER.split()[1]:
+            continue
+        marks[found.group(1)] = dict(field.split("=", 1) for field in found.group(2).split())
+    return marks
+
+
 def parse_image_answer(output: str) -> dict[str, Any]:
     """The image and the GPU device a pod reported when it ran IMAGE_SCRIPT: {image: text or None, gpu_device:
     True, False or None}. A line that is not one of the two is ignored."""
@@ -431,7 +446,9 @@ class Controller:
             if account.password and len(account.password) >= hubs.MIN_HIDDEN_CHARS:
                 text = text.replace(account.password, "***")
             if len(account.user) >= MIN_NAME_CHARS:
-                text = text.replace(account.user, f"<account {account.letter}>")
+                quoted = urllib.parse.quote(account.user, safe="")
+                for name in dict.fromkeys((quoted, account.user)):     # the quoted form first: it may contain the raw
+                    text = text.replace(name, f"<account {account.letter}>")
         return text
 
     @staticmethod
@@ -1067,7 +1084,13 @@ class Controller:
         seen = self._look(watch.letter)
         if seen.ok:
             server = seen.server
-            if server is None or server.pending == "stop":
+            if server is not None and server.pending == "stop":
+                watch.active = False
+                watch.state = "stopping"
+                self._row_for(problems, POD_KEEP_ALIVE, "stopping", watch.account,
+                              note="the hub is stopping the pod (an intended stop)")
+                return
+            if server is None:
                 self._gone(watch, seen, problems)
                 return
             watch.scheduled_end = server.scheduled_end or watch.scheduled_end
@@ -1138,6 +1161,8 @@ class Controller:
             conditions = {"script": path.name, "exit_code": answer["exit_code"], "seconds": answer["seconds"]}
             if extra:
                 conditions["with"] = [name for name, _ in extra]
+            if answer.get("steps"):
+                conditions["steps"] = answer["steps"]
             return self._row(answer, POD_RUN_SCRIPT, account, conditions=conditions, note=answer.get("error"),
                              refs={"run_id": run_id})
 
@@ -1177,6 +1202,9 @@ class Controller:
         printed = output[:done.start()] if done else output
         tail = self.scrub(printed.rstrip())[-TAIL_CHARS:]
         base["output_tail"] = tail
+        steps = step_marks(printed)
+        if steps:
+            base["steps"] = steps
         if done is None:
             return finish({"ok": False, "outcome": "timeout", "error": f"no exit code after {timeout_s:g} s; the script may still run"})
         code = int(done.group(1))

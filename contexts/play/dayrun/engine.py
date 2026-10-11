@@ -176,7 +176,7 @@ class _Schedule:
             if self.repair:
                 self.changes.append(Change(move=i, kind="rejected", text=reason))
 
-        event = next((e for e in board.events if e.id == m.event), None) if m.kind == "event" else None
+        event = next((e for e in [*board.events, *board.suggestions] if e.id == m.event), None) if m.kind == "event" else None
         if m.kind == "event" and event is None:
             return reject(f"there is no event {m.event!r} on this board")
         try:
@@ -343,7 +343,9 @@ def simulate(cfg: DayRunConfig, w: Walks, board: Board, moves: list[Move], repai
                 "missed": f"{d.title}: due at {hm(d.due)} with {left:.0f} focused minutes still to do",
                 "on_track": f"{d.title}: on track, {left:.0f} focused minutes left with {hours} h to go (risk {risk:.2f})",
                 "at_risk": f"{d.title}: at risk, {left:.0f} focused minutes left with {hours} h to go (risk {risk:.2f}, needs {cfg.on_track_risk:.2f} or less)"}[status]
-        checks.append(Check(id=d.id, ok=status in ("done", "on_track"), value=risk, target=cfg.on_track_risk, text=text, status=status))
+        checks.append(Check(id=d.id, ok=status in ("done", "on_track"), value=risk, target=cfg.on_track_risk, text=text, status=status,
+                            left_minutes=left, done_minutes=round(d.work_left - work[d.id], 1), due=d.due,
+                            hours_left=round(max(0.0, (d.due - board.end).total_seconds() / 3600), 2)))
     checks.append(Check(id="sleep", ok=sleep_h >= cfg.win.sleep_hours, value=sleep_h, target=cfg.win.sleep_hours,
                         text=f"Sleep: {sleep_h:.1f} h ({cfg.win.sleep_hours:g} h needed)"))
     meals = before + eaten
@@ -356,8 +358,9 @@ def simulate(cfg: DayRunConfig, w: Walks, board: Board, moves: list[Move], repai
     if won:
         stars = 1 + (energy_min >= cfg.stars.energy_floor and plan.lates == 0) + (sleep_h >= cfg.stars.sleep_hours and worst <= cfg.stars.risk)
     reasons = [c.text for c in checks if not c.ok]
-    points = round(40 * (1 - worst) + 25 * min(1.0, sleep_h / cfg.sleep.need_hours) + 15 * min(1.0, meals / max(cfg.win.meals, 1))
-                   + 20 * energy / 100)
+    parts = {"deadlines": 40 * (1 - worst), "sleep": 25 * min(1.0, sleep_h / cfg.sleep.need_hours),
+             "meals": 15 * min(1.0, meals / max(cfg.win.meals, 1)), "energy": 20 * energy / 100}
+    points = round(sum(parts.values()))
     summary = (f"Win, {stars} star{'s' if stars != 1 else ''}: every deadline on track, {sleep_h:.1f} h of sleep, {meals} meals."
                if won else "The plan fails. " + " ".join(f"{r}." for r in reasons))
     debt_end = max(0.0, min(cfg.max_sleep_debt_hours, debt + cfg.sleep.need_hours - sleep_h))
@@ -367,7 +370,8 @@ def simulate(cfg: DayRunConfig, w: Walks, board: Board, moves: list[Move], repai
         timeline=timeline, legs=plan.legs, routes=plan.routes, rejected=sorted(plan.rejected, key=lambda r: r.index),
         blocks=sorted(plan.blocks, key=lambda b: b.start), changes=plan.changes, notes=plan.notes,
         totals=Totals(study_minutes=study_min, focused_minutes=round(focused, 1), walk_minutes=round(walked, 1), sleep_hours=sleep_h,
-                      meals=meals, meals_before=before, energy_end=round(energy, 1), energy_min=round(energy_min, 1), points=points),
+                      meals=meals, meals_before=before, energy_end=round(energy, 1), energy_min=round(energy_min, 1), points=points,
+                      points_parts={k: round(v) for k, v in parts.items()}),
         carry=Carry(energy=round(energy, 1), focus=round(fresh, 1), sleep_debt=round(debt_end, 2), hungry_minutes=round(hungry, 1),
                     place=plan.place, work_left={d: round(v, 1) for d, v in work.items()}),
     )

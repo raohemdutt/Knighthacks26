@@ -63,6 +63,7 @@ from typing import Any, Protocol
 from lab.machine import verdict as verdict_module
 from lab.machine.record import record, recorded
 
+CLI_VERB = "sampler-overhead"   # registers python -m lab sampler-overhead
 TASK = "T9"
 NODE = "pod-b"
 ROW_SCHEMA = "lab.sampler_overhead.row/1"

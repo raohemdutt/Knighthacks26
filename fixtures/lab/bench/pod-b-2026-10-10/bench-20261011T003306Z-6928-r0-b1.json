@@ -1,0 +1,139 @@
+{
+ "schema": "lab.bench.row/1",
+ "harness": "lab/bench.py 1",
+ "run_id": "bench-20261011T003306Z-6928-r0-b1",
+ "session": "bench-20261011T003306Z-6928",
+ "repeat": 0,
+ "batch_size": 1,
+ "engine": "vllm",
+ "node": "pod-b",
+ "outcome": "fail",
+ "reason": "the server exited with code -2 before it was ready; see /home/jovyan/r20_bench/bench-20261011T003306Z-6928/serve-00.log",
+ "spawn": {
+  "index": 0,
+  "pid": 16114,
+  "cold": true,
+  "attached": false,
+  "spawned": "2026-10-11T00:33:18.362Z",
+  "ready_s": null,
+  "stopped": true,
+  "log": "/home/jovyan/r20_bench/bench-20261011T003306Z-6928/serve-00.log",
+  "shared": false,
+  "command": [
+   "python3",
+   "-m",
+   "vllm.entrypoints.openai.api_server",
+   "--model",
+   "/home/jovyan/models/Qwen3.8-27B-INT4",
+   "--served-model-name",
+   "teacher",
+   "--port",
+   "8100",
+   "--host",
+   "127.0.0.1",
+   "--max-model-len",
+   "16384",
+   "--limit-mm-per-prompt",
+   "{\"image\":1}",
+   "--gpu-memory-utilization",
+   "0.90",
+   "--dtype",
+   "bfloat16",
+   "--mm-encoder-attn-backend",
+   "TRITON_ATTN"
+  ]
+ },
+ "time_since_spawn_s": null,
+ "decode_tok_s": null,
+ "decode_tok_s_total": null,
+ "ttft_s": null,
+ "tokens_generated": 0,
+ "window_s": null,
+ "in_flight_mean": null,
+ "buffered_requests": 0,
+ "watts": null,
+ "joules_per_token": null,
+ "joules_per_token_above_idle": null,
+ "idle_w": {
+  "no_server": null,
+  "loaded": null
+ },
+ "throttled": null,
+ "probe": {
+  "in_flight": 1,
+  "decode_tok_s": null,
+  "ttft_s": null,
+  "mem_busy_pct": null,
+  "reason": "no probe in this run"
+ },
+ "warmup": {
+  "requests": 0,
+  "discarded": true,
+  "items": []
+ },
+ "fits": null,
+ "requests": [],
+ "conditions": {
+  "engine": "vllm",
+  "engine_commit": "b1388b1fbf5aaef47937fabe98931211684666a6",
+  "engine_build": null,
+  "patch_hash": {
+   "vllm-gfx1201.diff": "0b5ac1137403d7abe24900d5f38286f55d7fb555aadc78f4a96c81344b65ed9d"
+  },
+  "checkpoint": "/home/jovyan/models/Qwen3.8-27B-INT4",
+  "served_model": "teacher",
+  "quantization": null,
+  "max_model_len": 16384,
+  "node": "pod-b",
+  "rocm": null,
+  "torch": "2.9.1+rocm7.13.0",
+  "triton": "3.5.1",
+  "hip": "7.13.99004-3309c6114a",
+  "python": "3.12.3",
+  "host": {
+   "hub": "sjc",
+   "account": "D",
+   "hostname": "jupyter-roscon02",
+   "kernel_release": "6.18.6-061806-generic",
+   "amdgpu_driver": null,
+   "firmware": {
+    "CP_PFP": "50",
+    "CP_ME": "32",
+    "CP_MEC1": "35",
+    "RLC": "290653446",
+    "SDMA0": "18",
+    "VCN": "09.11.80.22",
+    "ASD": "553648399",
+    "PM": "10.100.05.00"
+   },
+   "asic_serial": null,
+   "chip": "gfx1151",
+   "market_name": "Radeon 8060S Graphics",
+   "unavailable": {
+    "amdgpu_driver": "amd-smi printed N/A or nothing",
+    "asic_serial": "amd-smi printed N/A or nothing"
+   }
+  },
+  "prompt_set": {
+   "id": "bench-v1",
+   "sha256": "b25ab2bda117925f5eb8a2d5ffe6455de8169b7f2a33a3777eda10c97c37b760",
+   "prompts": 4,
+   "images": 2
+  },
+  "max_tokens": 128,
+  "temperature": 0,
+  "top_p": 1.0,
+  "seed": 0,
+  "ignore_eos": true,
+  "nonce": true,
+  "thinking": false,
+  "prefix_caching_setting": null,
+  "requests_per_stream": 4,
+  "warmup_rounds": 1,
+  "harness": "lab/bench.py 1",
+  "unavailable": {
+   "rocm": "/opt/rocm/.info/version is not readable"
+  },
+  "batch_size": 1
+ }
+}

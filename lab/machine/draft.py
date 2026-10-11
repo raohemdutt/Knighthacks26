@@ -70,6 +70,7 @@ __all__ = ["VERB", "OUTCOME", "DRAFTS_DIR", "REJECTED_DIR", "REQUEST_FILE", "CLA
 log = logging.getLogger("lab.draft")
 
 VERB = "draft"
+CLI_VERB = "draft"   # registers python -m lab draft
 OUTCOME = "drafted"
 DRAFTS_DIR = "drafts"             # under the state dir
 REJECTED_DIR = "rejected"         # under the drafts dir: where the owner moves a draft he turns down

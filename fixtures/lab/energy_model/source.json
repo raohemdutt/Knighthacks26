@@ -1,0 +1,13 @@
+{
+  "file": "attach-sweep-pod-c-2026-10-10.jsonl",
+  "what": "lab/bench.py rows of one attach-mode batching sweep against the running teacher on pod C (Strix Halo, gfx1151, SJC hub, account C), trimmed to the fields lab/energy_model.py check reads. Every kept value is as the harness wrote it; the request list is kept for the batch-1 rows only (their prompt tokens and time to first token set the workload's prefill time).",
+  "session": "bench-20261010T215122Z-2c65",
+  "measured": "2026-10-10T21:51Z to 2026-10-11T00:23Z",
+  "conditions": "read from the rows: lab/bench.py attach through the hub proxy, batch sizes 1, 4, 8, 16 and 64, three repeats, 4 requests per stream, 128 tokens with ignore_eos, prompt set bench-v1 (two text and two image prompts), one warm-up round, no probe",
+  "engine": "vLLM 0.19.2 for gfx1151 at b1388b1 plus lab/vllm-gfx1201.diff (the April build), RedHatAI/Qwen3.8-27B-INT4, max model length 16384, thinking off, greedy",
+  "power": "the T6 pod sampler (lab/pod_power.py serve, amd-smi SOCKET_POWER, 1 s period) read through the hub proxy",
+  "caveats": [
+    "attached to the live teacher, which other clients may also have used: the loaded idle read before the first batch was 82.4 W against 10.2 W measured with the teacher loaded and nothing running, so joules_per_token_above_idle in these rows is not usable",
+    "watts read a flat 96 W at every batch size, below the 120 W measured for batch-1 decode on the same pod earlier the same day"
+  ]
+}

@@ -13,6 +13,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -548,10 +549,27 @@ def test_the_cpu_script_runs_against_a_fake_proc_and_prints_the_marked_line(tmp_
     assert len(data["stat0"]) == 8 and data["t1"] > data["t0"]
 
 
+def _working_bash() -> str | None:
+    """A bash that runs. On Windows a bare "bash" can be system32's WSL launcher with no distribution installed,
+    which is found on PATH but fails every call; Git's bash comes first there."""
+    git = shutil.which("git")
+    candidates = [str(Path(git).resolve().parents[1] / "bin" / "bash.exe")] if os.name == "nt" and git else []
+    for bash in [*candidates, "bash"]:
+        try:
+            if subprocess.run([bash, "-c", "true"], capture_output=True, timeout=30).returncode == 0:
+                return bash
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+    return None
+
+
 def test_the_cpu_script_text_carries_the_python_and_runs_under_bash_syntax_check(tmp_path):
     text = so.cpu_script_text()
     assert text.startswith("#!/bin/bash") and so.CPU_PY.strip().splitlines()[0] in text
-    checked = subprocess.run(["bash", "-n"], input=text.encode(), capture_output=True, timeout=30)
+    bash = _working_bash()
+    if bash is None:
+        pytest.skip("no working bash here")
+    checked = subprocess.run([bash, "-n"], input=text.encode(), capture_output=True, timeout=30)
     assert checked.returncode == 0, checked.stderr
 
 

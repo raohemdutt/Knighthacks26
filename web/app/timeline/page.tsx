@@ -5,7 +5,7 @@ import { ItemRow } from "@/components/ItemRow";
 import { Keyframe } from "@/components/Keyframe";
 import { Empty, ErrorBox, Loading } from "@/components/States";
 import ui from "@/components/ui.module.css";
-import { api, type Episode, type SearchHit } from "@/lib/api";
+import { api, ApiError, type DailyDigest, type Episode, type SearchHit } from "@/lib/api";
 import { useAtlasEvents } from "@/lib/atlas";
 import { amount, cameraName, dayLabel, dayTime, humanize, safeUrl, span } from "@/lib/format";
 import { useFetch } from "@/lib/useFetch";
@@ -99,6 +99,8 @@ function CameraView() {
         <Loading what="recording totals" />
       )}
 
+      <DigestCard />
+
       <form role="search" onSubmit={(e) => (e.preventDefault(), setQuery(typed.trim()))}>
         <input
           className={ui.input}
@@ -143,6 +145,51 @@ function CameraView() {
         </>
       )}
     </>
+  );
+}
+
+/** The daily digest (A6): one tap, the day's episodes in a paragraph written from the data, with its moments. */
+function DigestCard() {
+  const [digest, setDigest] = useState<DailyDigest | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<ApiError | null>(null);
+  const load = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      setDigest(await api.digest());
+    } catch (e) {
+      setError(e instanceof ApiError ? e : new ApiError(0, e instanceof Error ? e.message : String(e)));
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (error) return <ErrorBox what="today's digest" error={error} onRetry={load} />;
+  if (!digest)
+    return (
+      <div className={ui.row}>
+        <button type="button" className={`${ui.btn} ${ui.btnPrimary}`} onClick={load} disabled={busy}>
+          {busy ? "Summing up today..." : "Today's digest"}
+        </button>
+      </div>
+    );
+  return (
+    <section className={`${ui.card} ${ui.section}`} aria-label="Today's digest">
+      <div className={`${ui.row} ${ui.between}`}>
+        <h2 className={ui.sectionTitle}>Today's digest</h2>
+        <button type="button" className={ui.btn} onClick={() => setDigest(null)}>
+          Close
+        </button>
+      </div>
+      <p className={ui.answerText}>{digest.text}</p>
+      {digest.moments.length > 0 ? (
+        <div className={ui.frames}>
+          {digest.moments.map((m) =>
+            m.citation.frame_ref ? <Keyframe key={m.hour} frameRef={m.citation.frame_ref} compact /> : null,
+          )}
+        </div>
+      ) : null}
+    </section>
   );
 }
 
