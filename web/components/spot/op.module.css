@@ -220,6 +220,60 @@
   }
 }
 
+/* wide, rows of even boxes: the plan with "looks fine" beside it; Ask across the page as one bar; what to do and what to watch side by side */
+@media (min-width: 1024px) {
+  .layout {
+    grid-template-areas: "map fine" "ask ask" "dofirst watch";
+    grid-template-rows: auto;
+    align-items: stretch;
+  }
+
+  .layout .sideCol,
+  .layout .second,
+  .layout .onlyWide {
+    display: contents;
+  }
+
+  .layout .mapCol > * {
+    flex: 1;
+  }
+
+  .layout [data-guide="card:fine"] {
+    grid-area: fine;
+  }
+
+  .layout [data-guide="all-equipment"] {
+    margin-top: auto;
+  }
+
+  .layout [data-guide="ask"] {
+    grid-area: ask;
+  }
+
+  .layout [data-guide="card:do-first"] {
+    grid-area: dofirst;
+  }
+
+  .layout [data-guide="card:watch"] {
+    grid-area: watch;
+  }
+
+  /* the question, Speak and Ask on one line, the question taking what is left */
+  .layout .askRow {
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-flow: column;
+    grid-auto-columns: auto;
+  }
+
+  .layout [data-guide="handoff"] {
+    align-self: flex-end;
+  }
+
+  [data-guide="round"] .roundGrid {
+    align-items: stretch;
+  }
+}
+
 /* ---------- cards ---------- */
 .card {
   display: flex;
