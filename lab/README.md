@@ -1360,7 +1360,7 @@ The same sweep as R26's above, run the same way against the new server (`python 
 --node pod-a --batches 1,4,8,16 --no-64 --repeats 3 --no-probe --idle-s 30 --max-len 16384 --quantization
 compressed-tensors-W4A16-INT4 --metric-prefix teacher_batching --metrics-file lab/refine/metrics.jsonl`, session
 `bench-20261011T044643Z-6240`, 04:46 to 05:21 UTC, one warm-up round, medians of 3 repeats, low confidence like R26's).
-The stock lines are R26's rows (`lab/refine/metrics.jsonl:67-90`), the new ones `lab/refine/metrics.jsonl:161-184`:
+The stock lines are R26's rows (`lab/refine/metrics.jsonl:67-90`), the new ones `lab/refine/metrics.jsonl:187-210`:
 
 | Concurrent | Build | tok/s per stream (min to max) | tok/s total | TTFT s | avg / peak W | J/token gross |
 |---|---|---|---|---|---|---|
@@ -1383,7 +1383,7 @@ The stock lines are R26's rows (`lab/refine/metrics.jsonl:67-90`), the new ones 
   before the sweep).
 - **Outputs.** `python -m lab correctness compare` against the April build's baseline
   (`fixtures/lab/correctness/vllm-gfx1151-2026-10-11.json`) matches 1 prompt of 4 token for token
-  (`lab/refine/metrics.jsonl:160`): the kitchen text matches; the schedule text diverges at token 106 by a logprob gap
+  (`lab/refine/metrics.jsonl:186`): the kitchen text matches; the schedule text diverges at token 106 by a logprob gap
   of 0.06, the token where the April build diverged from itself; the two image prompts diverge at tokens 0 and 3, the
   places where stock v0.31.0 on the A100 does (R57). Against the A100's v0.31.0 record
   (`fixtures/lab/bench/a100-2026-10-10/vllm-a100-2026-10-10.json`) it matches 2 of 4 (the kitchen text and the bars
@@ -1485,7 +1485,7 @@ sizes are in the R60 table above.
 | | Build | Configuration | Batch | tok/s per stream | tok/s total | Avg W | J/token gross | J/token above idle | Conditions |
 |---|---|---|---|---|---|---|---|---|---|
 | Before | April build: vLLM 0.19.2 at b1388b1 plus `lab/vllm-gfx1201.diff`, Conch W4A16, `RedHatAI/Qwen3.8-27B-INT4` | stock serve line, thinking off, greedy | 1 | 2.70 | 2.62 | 96.0 | 36.66 | 32.67 | R26 attach sweep, pod C (SJC, account C), bench-v1, 4 x 128 tokens a stream, 3 repeats, idle 10.44 W, PR #269 (081c496) |
-| After | v0.31.0 build: vLLM 0.31.2.dev0 at db9527a46 plus `lab/patches/vllm-main-gfx1151-platform.diff`, torch 2.12.0+rocm7.14.0, `RDNAHybridW4A16LinearKernel`, the same checkpoint | stock serve line, thinking off, greedy | 1 | 12.33 | 10.96 | 96.7 | 8.82 | 7.91 | R60 attach sweep, pod C (SJC, account C), bench-v1, 4 x 128 tokens a stream, 3 repeats, idle 9.93 W, session `bench-20261011T044643Z-6240` (`lab/refine/metrics.jsonl:161-166`) |
+| After | v0.31.0 build: vLLM 0.31.2.dev0 at db9527a46 plus `lab/patches/vllm-main-gfx1151-platform.diff`, torch 2.12.0+rocm7.14.0, `RDNAHybridW4A16LinearKernel`, the same checkpoint | stock serve line, thinking off, greedy | 1 | 12.33 | 10.96 | 96.7 | 8.82 | 7.91 | R60 attach sweep, pod C (SJC, account C), bench-v1, 4 x 128 tokens a stream, 3 repeats, idle 9.93 W, session `bench-20261011T044643Z-6240` (`lab/refine/metrics.jsonl:187-192`) |
 
 For reference, the April build's own batch-1 smoke on pod C read 2.88 tok/s at 120 W, about 41.7 J/token
 (teacher section above); the R26 row is the before number because it ran through the same harness the after row will.
