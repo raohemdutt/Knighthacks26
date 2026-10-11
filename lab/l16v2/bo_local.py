@@ -44,6 +44,7 @@ import os
 import re
 import shutil
 import sqlite3
+import statistics
 import subprocess
 import sys
 import tarfile
@@ -424,9 +425,12 @@ class Search:
         self.study = optuna.create_study(direction="minimize", study_name=STUDY_NAME, sampler=sampler, pruner=pruner,
                                          storage=storage, load_if_exists=True)
         self.engine = (f"optuna {optuna.__version__} TPESampler(multivariate, group, constant_liar, seed {SEED}+{existing}, "
-                       f"startup {self.startup} = {RANDOM_STARTUP} random after {self.seeded} seeded) "
-                       f"MedianPruner(startup {PRUNER_STARTUP}, warmup 1), sqlite on the workstation, asynchronous workers")
+                       f"startup {self.startup} = {RANDOM_STARTUP} random after {self.seeded} seeded); step-12 rule: the median "
+                       f"of all earlier step-12 losses, computed here (amendment 4; before it, the library's "
+                       f"MedianPruner(startup {PRUNER_STARTUP}, warmup 1)); sqlite on the workstation, asynchronous workers")
         self.numbers = max((t["number"] for t in self.trials), default=0)
+        # Every trial's step-12 validation loss, pruned ones included: what the step-12 rule takes its median over.
+        self.mid: dict[int, float] = {t["number"]: float(t["val_at_12"]) for t in self.trials if t.get("val_at_12") is not None}
         # Trials an earlier driver left running: each is followed to its end by the worker that holds it.
         self.orphans: dict[str, Any] = {}
         for frozen in self.study.get_trials(deepcopy=False, states=(TrialState.RUNNING,)):
@@ -499,7 +503,8 @@ class Search:
             "eval_at": EVAL_AT, "workers": self.workers, "began_utc": self.began,
             "space": {"lr": RANGES["lr"], "rank": RANKS, "alpha_mult": ALPHA_MULTS, "dropout": RANGES["dropout"],
                       "warmup": RANGES["warmup"]},
-            "warm_start_configs": WARM_START_CONFIGS, "trials": sorted(self.trials, key=lambda t: t["number"])},
+            "warm_start_configs": WARM_START_CONFIGS, "extra": getattr(self, "extra", None),
+            "trials": sorted(self.trials, key=lambda t: t["number"])},
             indent=2) + "\n", encoding="utf-8")
 
     def real_finished(self) -> int:   # his count: completed, or pruned as a real dud; never a duplicate skip
@@ -622,10 +627,22 @@ class Search:
                         f"drop={fact['dropout']:.3f} warm={fact['warmup_ratio']:.3f} step={status['step']}/{FIDELITY_STEPS} "
                         f"loss={fmt(status['loss'])} val={fmt(latest)} best={self.best} step_s={fmt(status['step_s'], 2)}")
 
-            def at_mid(loss: float, trial: Any = trial) -> bool:
+            def at_mid(loss: float, trial: Any = trial, fact: dict[str, Any] = fact) -> bool:
+                """The step-12 rule (rules amendment 4): worse than the median step-12 loss of all earlier trials that
+                reached step 12, pruned ones included. The library's pruner is not consulted: it takes its median
+                over completed trials only, and a pruned trial never completes."""
                 with self.lock:
                     trial.report(float(loss), EVAL_AT)
-                    return bool(trial.should_prune())
+                    trial.set_user_attr("val12", float(loss))
+                    earlier = [value for number, value in self.mid.items() if number != fact["number"]]
+                    self.mid[fact["number"]] = float(loss)
+                    if len(earlier) < PRUNER_STARTUP:
+                        return False
+                    fact["median_at_12"] = statistics.median(earlier)
+                    fact["pruning_rule"] = "median of all earlier step-12 losses (amendment 4)"
+                    plog(f"decision trial {fact['number']} step-12 loss {loss:.4f} against the median {fact['median_at_12']:.4f} of "
+                         f"{len(earlier)} earlier step-12 losses: {'prune' if loss > fact['median_at_12'] else 'keep'}")
+                    return loss > fact["median_at_12"]
 
             done = run_on(session, fact["name"], flags, False, line, at_mid)
             fact.update(done)
@@ -717,7 +734,7 @@ def final_adapter_line(fact: dict[str, Any], chosen: bool = False) -> str:
             f"drop={fact['dropout']:.3f} warm={fact['warmup_ratio']:.3f} steps={fact.get('best_step')} "
             f"passes={fact.get('best_passes')} val={fmt(fact.get('best_val'))} worker={fact.get('worker')}"
             + (f" val_agreement={fact['val_agreement']['correct']}/{fact['val_agreement']['n']}" if fact.get("val_agreement") else "")
-            + (" chosen=yes" if chosen else ""))
+            + (" reused=run1" if fact.get("reused") else "") + (" chosen=yes" if chosen else ""))
 
 
 def score_on(session: str, label: str, arms: list[str]) -> dict[str, dict[str, Any]] | None:
@@ -832,22 +849,30 @@ def main() -> int:
     search.save()
 
     # --- the finalists: the three best configurations at full length, at the same time, one per session ----------
-    completed = [t for t in search.trials if t.get("ok") and t.get("outcome") != "pruned" and t.get("value") is not None
-                 and t.get("max_steps") == FIDELITY_STEPS]
-    top = sorted(completed, key=lambda t: (t["value"], t["number"]))[:FINALISTS]
+    # The three best configurations by value. One that was already trained at full length (the seeded grid run 1)
+    # is not trained again: its adapter, already on this machine, is that finalist.
+    completed = [t for t in search.trials if t.get("value") is not None and t.get("outcome") != "pruned"
+                 and (t.get("full_length") or (t.get("ok") and t.get("max_steps") == FIDELITY_STEPS))]
+    best_three = sorted(completed, key=lambda t: (t["value"], t["number"]))[:FINALISTS]
+    top = [t for t in best_three if not t.get("full_length")]
+    for place, t in enumerate(best_three, 1):
+        if t.get("full_length"):
+            plog(f"decision finalist {place} is trial {t['number']} (value {fmt(t['value'])}): the grid's run 1, already trained "
+                 "at full length; it is not retrained, its adapter on this machine is that finalist (reused=run1)")
     # one finalist per free trainer place, a place on each session first, then the second places
     workers = [worker for slot in range(max(slots.values())) for session in sessions
                if ready.get(session) and slot < slots.get(session, 1) for worker in [worker_ids(session)[slot]]]
     refreshed: dict[str, bool] = {}
     refresh_lock = threading.Lock()
     if not top or not workers:
-        plog("PROBLEM no completed trial or no worker: no finalist can train; the fallback adapter (grid run 1) stands")
-    plog("decision finalists: " + " | ".join(
+        plog("PROBLEM no new configuration to train at full length (or no worker); the full-length runs that exist stand")
+    plog("decision finalists (the three lowest values): " + " | ".join(
         f"{place}: trial {t['number']} ({t['kind']}, seen {t['seen']}) value={fmt(t['value'])} lr={t['lr']:.3g} rank={t['rank']} "
-        f"alpha={t['alpha']} drop={t['dropout']:.3f} warm={t['warmup_ratio']:.3f}" for place, t in enumerate(top, 1))
-        + f"; on {len(workers)} session(s)")
+        f"alpha={t['alpha']} drop={t['dropout']:.3f} warm={t['warmup_ratio']:.3f}"
+        + (" reused=run1" if t.get("full_length") else "") for place, t in enumerate(best_three, 1))
+        + f"; {len(top)} to train now on {len(workers)} card(s)")
     finals: list[dict[str, Any]] = []
-    queue = list(enumerate(top, 1))
+    queue = [(place, t) for place, t in enumerate(best_three, 1) if not t.get("full_length")]
     final_lock = threading.Lock()
 
     def finalist_worker(worker: str) -> None:
@@ -892,7 +917,27 @@ def main() -> int:
             with final_lock:
                 finals.append(fact)
 
-    threads = [threading.Thread(target=finalist_worker, args=(worker,), daemon=True) for worker in workers[:max(1, len(top))]]
+    def seed_at_trial_fidelity(worker: str) -> None:
+        """Grid run 1's configuration as a proper 24-step trial, for a like-for-like line beside trial 1."""
+        base = next((t for t in search.trials if t.get("full_length")), None)
+        if base is None:
+            return
+        name = f"seed24-lr{base['lr']:.3g}-rank{base['rank']}-a{base['alpha']}-drop{base['dropout']:.3f}-warm{base['warmup_ratio']:.3f}"
+        flags = ["--max-steps", str(FIDELITY_STEPS), "--eval-steps", str(EVAL_AT), "--lr", f"{base['lr']:.6g}",
+                 "--rank", str(base["rank"]), "--alpha", str(base["alpha"]), "--dropout", f"{base['dropout']:.4f}",
+                 "--warmup-ratio", f"{base['warmup_ratio']:.4f}"]
+        done = run_on(worker.split("#")[0], name, flags, False,
+                      lambda status: f"stage=seed_at_trial_fidelity worker={worker} step={status['step']}/{FIDELITY_STEPS} "
+                                     f"val={fmt(status['val'][max(status['val'])] if status['val'] else None)}")
+        plog(f"RESULT seed configuration as a 24-step trial (not a search trial; for comparison with trial 1's 0.0133 at step "
+             f"24 of a 62-step schedule): val12={fmt(done.get('val_at_12'))} val24={fmt(done.get('val_at_24'))} worker={worker}")
+        with final_lock:
+            search.extra = {"seed_at_trial_fidelity": {**done, "lr": base["lr"], "rank": base["rank"], "alpha": base["alpha"],
+                                                       "dropout": base["dropout"], "warmup_ratio": base["warmup_ratio"]}}
+
+    threads = [threading.Thread(target=finalist_worker, args=(worker,), daemon=True) for worker in workers[:len(top)]]
+    if len(top) < len(workers):      # a card is free while the finalists train
+        threads.append(threading.Thread(target=seed_at_trial_fidelity, args=(workers[len(top)],), daemon=True))
     for thread in threads:
         thread.start()
         time.sleep(3)
@@ -906,7 +951,8 @@ def main() -> int:
         fallback = COLAB / "x-fallback-r01"
         if (COLAB / "fallback-adapter-r01.tar.gz").exists():
             extract(COLAB / "fallback-adapter-r01.tar.gz", fallback)
-            seed = {**seed, "place": 9, "adapter_path": str(fallback / "adapter").replace("\\", "/"),
+            seed = {**seed, "place": next((p for p, t in enumerate(best_three, 1) if t.get("full_length")), 9),
+                    "reused": "run1", "adapter_path": str(fallback / "adapter").replace("\\", "/"),
                     "adapter_sha256": sha256_of(fallback / "adapter" / "adapter_model.safetensors"),
                     "product_sha256": sha256_of(COLAB / "fallback-adapter-r01.tar.gz"), "worker": sessions[0]}
             plog(final_adapter_line(seed))
@@ -914,6 +960,9 @@ def main() -> int:
     if not candidates:
         plog("PROBLEM no full-length adapter exists; nothing to choose")
         return 2
+    plog("RESULT every full-length adapter is on this machine and verified (the last one just now): "
+         + "; ".join(f"{f['name']} sha256={str(f.get('adapter_sha256'))[:16]} val={fmt(f.get('best_val'))}" for f in candidates)
+         + "; the choice by the frozen validation rule comes next")
     ranked = sorted(candidates, key=lambda f: (f["best_val"], f.get("best_passes") or 0, f.get("place", 9)))
     scored = ranked[:TOP]
     plog("decision choice rule, step 1: the full-length runs by validation loss: " + " | ".join(

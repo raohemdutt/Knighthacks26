@@ -196,6 +196,40 @@ Two changes of mechanics, neither of which changes a rule:
   still asking the one study only when it is free. A trial's validation loss does not depend on what shares its
   card; each run records how many trainers shared it. The 40-minute budget and the fidelity do not change.
 
+### Amendment 4, made while the search was running, before its finalists were known (4:42 AM ET)
+
+Two things, both on the coordinator's instruction, with the search at trial 9 of its budget.
+
+A correction to the pruning rule, made after seeing seven trials, on validation numbers only. Amendment 2 handed
+the step-12 decision to Optuna's median pruner with 2 startup trials. That pruner takes its median over COMPLETED
+trials only, and a pruned trial never completes, so after trial 2 completed (step-12 loss 0.0237) the reference
+set could not grow: trials 3 to 7 were all pruned at step 12, among them trial 5 at 0.0260 and trial 7 at 0.0258,
+close to trial 2's own 0.0237, which went on to 0.0159. The search was turning into "confirm the seed". (Ilan's
+earlier search, whose design this copies, used 5 startup trials before any pruning; 2 was this page's choice and was
+too few.) From the next pruning decision on, the rule is: stop a trial whose step-12 validation loss is worse than
+the median step-12 validation loss of ALL earlier trials that reached step 12, pruned ones included, once at least
+2 have. The driver computes that median itself (each trial's step-12 loss is kept with the trial) and the library's
+pruner is no longer consulted. Trials 3 to 7 stay as they were recorded. The step-12 losses when this was written:
+0.0237, 0.0293, 0.0644, 0.0260, 0.0302, 0.0258 (trials 2 to 7), median 0.0277. This is a change of a rule after
+results were seen; it uses validation numbers only, and the result table marks which trials were pruned under
+which rule.
+
+Also for the table: trial 1's value (0.0133) is grid run 1's loss at step 24 of a 62-step schedule, where its
+learning rate had barely decayed, so it is not at the same fidelity as a 24-step trial. If a card is free when the
+search budget ends, the seed configuration is run once as a proper 24-step trial and shown beside it.
+
+To finish sooner:
+
+- A finalist is not retrained when its configuration has already been trained at full length. That is the case
+  for the seeded trial 1, which is grid run 1 itself: if it is among the three lowest values when the search
+  ends, its existing adapter is that finalist, and only the other finalists train. (Amendment 2 ranked the three
+  best 24-step trials and added grid run 1 as a fourth full-length run; now grid run 1 takes one of the three
+  places when its value earns it. Its value is its step-24 loss on a 62-step schedule, which is not the same thing
+  as a 24-step trial's; the result page says so beside the table.)
+- Whether or not it is a finalist, grid run 1 stays among the full-length runs the choice rule ranks.
+- TEST A measured three trainers on one card at 0.95 times one trainer's throughput, so every card stays one
+  worker; the fast kernels with one batch shape and a run without gradient checkpointing were not tested.
+
 ## The pod D retrain (second pass)
 
 The chosen recipe is repeated on pod D with the same flags and `--stop-step <the chosen run's best step>`, so the
