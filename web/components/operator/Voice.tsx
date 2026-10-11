@@ -73,7 +73,7 @@ export function VoicePanel() {
       <h2>Voice on the box</h2>
       <p className={op.big} role="status" aria-live="polite">
         <span className={op.voiceDot} aria-hidden="true" />
-        {state === "idle" && status.wake ? "Say “Hey Atlas”" : WORDS[state]}
+        {state === "idle" && status.wake ? "Say “Hey Atlas”" : state === "listening" && status.follow_up ? "Listening for your reply…" : WORDS[state]}
       </p>
       <div className={op.voiceButtons}>
         {state === "idle" ? (
