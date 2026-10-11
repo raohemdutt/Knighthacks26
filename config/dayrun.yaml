@@ -28,6 +28,7 @@ sleep:
 # --- calendar ---
 default_event_minutes: 60               # a calendar item with no end time
 optional_event_prefixes: ["campus:"]    # external_id prefixes of events you may skip (the campus feed)
+ignored_event_prefixes: ["nearby:"]     # "Near you" on the Calendar screen: not on the board until the person says yes
 meal_words: [breakfast, brunch, lunch, dinner, pizza, meal]            # a fixed block with one of these is a meal
 study_words: [study, review, office hours, lab, tutoring, workshop]    # ... is study for the matching course
 
