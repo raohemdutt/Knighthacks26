@@ -31,12 +31,13 @@ function Switch({ on, label, onChange, disabled }: { on: boolean; label: string;
   );
 }
 
-function Row({ title, help, children }: { title: string; help?: string; children: React.ReactNode }) {
+function Row({ title, help, note, children }: { title: string; help?: string; note?: string; children: React.ReactNode }) {
   return (
     <div className={priv.row}>
       <div className={priv.rowText}>
         <div className={priv.rowTitle}>{title}</div>
         {help ? <p className={priv.rowHelp}>{help}</p> : null}
+        {note ? <p className={priv.rowHelp}>{note}</p> : null}
       </div>
       {children}
     </div>
@@ -70,7 +71,7 @@ function Controls({ policy, cameras, onPolicy }: { policy: VaultPolicy; cameras:
       <section className={priv.section}>
         <h2>Pictures</h2>
         <div className={priv.card}>
-          <Row title="Blur faces before saving" help="Faces are blurred on the box before a picture is written to disk. Nothing else is changed.">
+          <Row title="Blur faces before saving" help="Faces are blurred on the box before a picture is written to disk. Nothing else is changed." note="Anything that leaves this box is blurred, whatever this is set to.">
             <Switch on={policy.blur_faces} label="Blur faces" disabled={busy} onChange={(v) => change({ blur_faces: v })} />
           </Row>
           {cameras.map((camera) => (

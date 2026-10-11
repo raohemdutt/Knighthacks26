@@ -74,6 +74,8 @@ The verb, `python -m lab experiment <sub-verb>`:
         ledger rows whose refs.run_id is one of those ids, one value per row in ledger order
     rank [--track T] [--all] [--print]
     seed                                  add the experiments of T0's queue (SEEDS) that the ledger lacks
+    run ID [...]                          run a kernels experiment on pod B and record its verdict
+                                          (lab/machine/experiment_run.py; python -m lab experiment run -h)
 
 Each call answers with one JSON line, except --print on list and rank: that prints the queue as checklist lines, one
 per experiment, in the form the standing ticket T0 keeps them (`- [ ] E3 (kernels) ...`, checked once done or
@@ -107,6 +109,7 @@ __all__ = [
     "add", "amend", "record_result", "runs_from_ledger", "rank", "checklist", "checklist_line", "seed", "main",
 ]
 
+CLI_VERB = "experiment"   # registers python -m lab experiment
 VERB_ADD = "experiment add"
 VERB_AMEND = "experiment amend"
 VERB_RESULT = "experiment result"
@@ -963,9 +966,14 @@ def _run_seed(args: argparse.Namespace) -> dict[str, Any]:
     return {"ok": True, "outcome": "seeded", **outcome}
 
 
+def _run_run(args: argparse.Namespace) -> dict[str, Any]:
+    from lab.machine import experiment_run   # imported here: only a run needs the pod and queue helpers
+    return experiment_run.main(args.rest)
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m lab experiment", description=main.__doc__)
-    subs = parser.add_subparsers(dest="sub", required=True, metavar="{add,list,result,rank,seed}")
+    subs = parser.add_subparsers(dest="sub", required=True, metavar="{add,list,result,rank,seed,run}")
 
     p = subs.add_parser("add", help="add an experiment, or change one with --amend")
     p.add_argument("id", nargs="?", help="when left out, the next E number of a ledger that already holds one "
@@ -1002,11 +1010,17 @@ def _parser() -> argparse.ArgumentParser:
 
     p = subs.add_parser("seed", help="add the experiments of T0's queue that the ledger lacks")
     p.set_defaults(run=_run_seed)
+
+    p = subs.add_parser("run", add_help=False, help="run a kernels experiment on pod B and record its verdict")
+    p.add_argument("rest", nargs=argparse.REMAINDER, help="the arguments of lab/machine/experiment_run.py")
+    p.set_defaults(run=_run_run)
     return parser
 
 
 def main(argv: Sequence[str]) -> dict[str, Any] | int:
     """Experiments as ledger rows: add, list, result (read by the verdict math), rank, and T0's checklist (--print)."""
+    if list(argv[:1]) == ["run"]:   # every argument after run is the runner's own, -h included
+        return _run_run(argparse.Namespace(rest=list(argv[1:])))
     args = _parser().parse_args(list(argv))
     return args.run(args)
 

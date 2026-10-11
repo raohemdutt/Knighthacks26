@@ -17,7 +17,7 @@ from lab.machine import ledger
 
 T0 = datetime(2026, 10, 10, 14, 0, tzinfo=UTC)
 FIGURES = ["detector_fps", "student_tok_s", "caption_latency_s", "trainer_samples_per_s", "train_minutes",
-           "teacher_tok_s"]
+           "train_loss", "teacher_tok_s"]
 
 
 def at(s: float) -> datetime:
@@ -43,10 +43,10 @@ def ledger_row(metric: str, value: float, unit: str, node: str, ts: str, low: bo
 
 
 def window(node: str, request_id: str, start_s: float, first_s: float | None, end_s: float, tokens_out: int,
-           target: str = "student") -> RequestWindow:
+           target: str = "student", kind: str | None = None) -> RequestWindow:
     return RequestWindow(ts=at(end_s), node=node, request_id=request_id, started=at(start_s),
                          first_token=None if first_s is None else at(first_s), ended=at(end_s), tokens_in=100,
-                         tokens_out=tokens_out, target=target)
+                         tokens_out=tokens_out, target=target, kind=kind)
 
 
 def step(run_id: str, n: int, s: float, step_ms: float = 2000.0) -> TrainStep:
@@ -60,7 +60,7 @@ def evaluated(run_id: str, version: str, s: float, scores: dict, decision: str =
 
 
 def snapshot(events: list[Event] = (), *, telemetry: bool = True, metrics: Path | None = None,
-             state_dir: Path | None = None) -> dict:
+             state_dir: Path | None = None, imported_dir: Path | None = None) -> dict:
     """The stats as the endpoint serves them, after `events` went through the real bus."""
 
     class Telemetry:  # the gateway's TelemetryService: only its projection is read
@@ -71,7 +71,8 @@ def snapshot(events: list[Event] = (), *, telemetry: bool = True, metrics: Path 
         service = Telemetry() if telemetry else None
         if service is not None:
             service.projection.subscribe(bus)
-        stats = build_runtime_stats(bus, service, lab=LabRecords(metrics_path=metrics, state_dir=state_dir))
+        stats = build_runtime_stats(bus, service, lab=LabRecords(metrics_path=metrics, state_dir=state_dir,
+                                                                 imported_dir=imported_dir))
         await bus.publish_all(list(events))
         return await stats.snapshot()
 
@@ -96,6 +97,17 @@ def test_a_lab_number_comes_with_its_metrics_line_measurement_time_and_low_confi
     assert stats["trainer_samples_per_s"] == {"value": 0.51, "unit": "samples/s", "node": "pod-b",
                                               "ts": "2026-10-10T10:23:23Z", "source": "metrics.jsonl:5",
                                               "low_confidence": True, "reason": None}
+
+
+def test_a_reference_row_on_another_chip_is_never_the_teachers_figure(tmp_path):
+    a100 = json.loads(metrics_row("teacher.decode_tok_s", 64.956, "tok/s", "a100", "2026-10-11T01:52:01Z", low=True))
+    a100["conditions"] = {"hub": "colab", "other_chip": True}  # R57's A100 reference: newer, but not the lab's teacher
+    metrics = write_metrics(tmp_path / "metrics.jsonl", [
+        metrics_row("teacher.decode_tok_s", 2.82, "tok/s", "pod-c", "2026-10-10T19:59:08Z"), json.dumps(a100)])
+    stats = snapshot(metrics=metrics, state_dir=tmp_path / "state")
+    assert (stats["teacher_tok_s"]["value"], stats["teacher_tok_s"]["source"]) == (2.82, "metrics.jsonl:1")
+    found, _ = LabRecords(metrics_path=metrics, state_dir=tmp_path / "state").find([("teacher.decode_tok_s", "a100")])
+    assert [f.value for f in found[("teacher.decode_tok_s", "a100")]] == [64.956]  # named, it still answers
 
 
 def test_a_jetson_figure_reads_only_jetson_rows(tmp_path):
@@ -188,7 +200,7 @@ def test_with_nothing_recorded_every_figure_is_present_null_with_its_reason(tmp_
         k: (None, None, None) for k in FIGURES}
     assert {k: stats[k]["unit"] for k in FIGURES} == {
         "detector_fps": "frames/s", "student_tok_s": "tok/s", "caption_latency_s": "s",
-        "trainer_samples_per_s": "samples/s", "train_minutes": "min", "teacher_tok_s": "tok/s"}
+        "trainer_samples_per_s": "samples/s", "train_minutes": "min", "train_loss": "loss", "teacher_tok_s": "tok/s"}
     assert stats["detector_fps"]["reason"] == (
         "not recorded yet: no detector.fps row for node jetson in the lab metrics file or the lab ledger; the gateway "
         "keeps no detector timing (GET /capture/status counts detections without timing them)")
@@ -197,12 +209,16 @@ def test_with_nothing_recorded_every_figure_is_present_null_with_its_reason(tmp_
         f"{off}")
     assert stats["caption_latency_s"]["reason"] == (
         "not recorded yet: no student.caption_s row for node jetson in the lab metrics file or the lab ledger; "
-        "telemetry.request windows do not say which requests were captions")
+        f"{off}")
     assert stats["trainer_samples_per_s"]["reason"] == (
         "not recorded yet: no trainer.samples_per_s row in the lab metrics file or the lab ledger; "
         "telemetry.train.step carries no sample count")
-    assert stats["train_minutes"]["reason"] == (
-        f"not recorded yet: no trainer.run_minutes row in the lab metrics file or the lab ledger; {off}")
+    assert stats["train_minutes"]["reason"] == (  # training steps come from the lab, not a sampler: never "off"
+        "not recorded yet: no trainer.run_minutes or trainer.train_s row in the lab metrics file or the lab ledger; "
+        "no telemetry.train.step from node pod-b")
+    assert stats["train_loss"]["reason"] == (
+        "not recorded yet: no trainer.loss row in the lab metrics file or the lab ledger; "
+        "no telemetry.train.step with a finite loss from node pod-b")
     assert stats["teacher_tok_s"]["reason"] == (
         f"not recorded yet: no teacher.decode_tok_s row in the lab metrics file or the lab ledger; {off}")
     assert stats["eval_scores"] == {"models": [], "reason": "no learning.model.deployed event in the event log yet"}
@@ -214,8 +230,11 @@ def test_with_telemetry_on_but_empty_the_reason_names_the_events_it_looked_for(t
         "not recorded yet: no student.decode_tok_s row for node jetson in the lab metrics file or the lab ledger; "
         "no telemetry.request window from node jetson with a first-token time and two or more output tokens")
     assert stats["train_minutes"]["reason"] == (
-        "not recorded yet: no trainer.run_minutes row in the lab metrics file or the lab ledger; "
+        "not recorded yet: no trainer.run_minutes or trainer.train_s row in the lab metrics file or the lab ledger; "
         "no telemetry.train.step from node pod-b")
+    assert stats["caption_latency_s"]["reason"] == (
+        "not recorded yet: no student.caption_s row for node jetson in the lab metrics file or the lab ledger; "
+        "no telemetry.request window from node jetson with kind caption")
 
 
 def test_an_unreadable_metrics_file_is_named_in_the_reason_instead_of_failing_the_endpoint(tmp_path):
@@ -265,6 +284,54 @@ def test_an_evaluation_without_a_before_or_after_score_says_which_is_missing(tmp
     assert model["low_confidence"] is True and model["ts"] and model["source"]
 
 
+def lossy(run_id: str, n: int, s: float, loss: float | None) -> TrainStep:
+    return TrainStep(ts=at(s), node="pod-b", run_id=run_id, step=n, loss=loss, step_ms=2000.0, socket_w=250.0)
+
+
+def test_train_loss_is_served_with_telemetry_off_because_steps_come_from_the_lab_not_a_sampler(tmp_path):
+    stats = snapshot([lossy("r1", 1, 0, 2.31), lossy("r1", 2, 10, 1.7), lossy("r1", 3, 20, 1.42)],
+                     telemetry=False, **nothing(tmp_path))
+    assert stats["train_loss"] == {"value": 1.42, "unit": "loss", "node": "pod-b", "ts": "2026-10-10T14:00:20Z",
+                                   "source": "telemetry.train.step: run r1, step 3 of 3 (first loss 2.31), no "
+                                             "learning.run.evaluated for it yet, so it may still be training",
+                                   "low_confidence": True, "reason": None}
+    assert (stats["train_minutes"]["value"], stats["train_minutes"]["node"]) == (22 / 60, "pod-b")
+
+
+def test_train_loss_follows_the_newest_run_even_while_it_trains_and_is_confident_once_evaluated(tmp_path):
+    older = [lossy("r1", 1, 0, 2.0), lossy("r1", 2, 10, 0.9), evaluated("r1", "atlas-v2", 30, {"candidate": 0.8})]
+    stats = snapshot([*older, lossy("r2", 1, 100, 2.4), lossy("r2", 2, 110, 2.1)], **nothing(tmp_path))
+    assert (stats["train_loss"]["value"], stats["train_loss"]["low_confidence"]) == (2.1, True)  # the live run
+    assert stats["train_loss"]["source"].startswith("telemetry.train.step: run r2, step 2 of 2 (first loss 2.4)")
+    stats = snapshot(older, **nothing(tmp_path))
+    assert (stats["train_loss"]["value"], stats["train_loss"]["low_confidence"]) == (0.9, False)
+    assert stats["train_loss"]["source"] == "telemetry.train.step: run r1, step 2 of 2 (first loss 2)"
+
+
+def test_a_step_without_a_finite_loss_is_counted_but_never_served_as_the_loss(tmp_path):
+    stats = snapshot([lossy("r1", 1, 0, 2.0), lossy("r1", 2, 10, 1.5), lossy("r1", 3, 20, None),
+                      lossy("r1", 4, 30, float("nan"))], **nothing(tmp_path))
+    assert (stats["train_loss"]["value"], stats["train_loss"]["ts"]) == (1.5, "2026-10-10T14:00:10Z")
+    assert "step 2 of 4" in stats["train_loss"]["source"]
+    only_nan = snapshot([lossy("r9", 1, 0, None)], **nothing(tmp_path))
+    assert only_nan["train_loss"]["value"] is None
+    assert only_nan["train_loss"]["reason"].endswith("no telemetry.train.step with a finite loss from node pod-b")
+
+
+def test_a_step_imported_twice_counts_once(tmp_path):
+    first = [lossy("r1", 1, 0, 2.0), lossy("r1", 2, 10, 1.5)]
+    stats = snapshot([*first, *first, lossy("r1", 3, 20, 1.2)], **nothing(tmp_path))
+    assert "step 3 of 3" in stats["train_loss"]["source"]
+    assert stats["train_minutes"]["source"].startswith("telemetry.train.step: run r1, 3 steps")
+
+
+def test_a_newer_lab_loss_row_wins_over_older_steps(tmp_path):
+    metrics = write_metrics(tmp_path / "metrics.jsonl", [
+        metrics_row("trainer.loss", 0.61, "loss", "pod-b", "2026-10-10T15:00:00Z")])
+    stats = snapshot([lossy("r1", 1, 0, 2.0)], metrics=metrics, state_dir=tmp_path / "state")
+    assert (stats["train_loss"]["value"], stats["train_loss"]["source"]) == (0.61, "metrics.jsonl:1")
+
+
 def test_the_pod_figures_read_the_telemetry_of_the_nodes_main_names_pod_a_and_pod_b(tmp_path):
     stats = snapshot([
         window("pod-a", "t1", 0, 0.5, 10.5, tokens_out=91, target="teacher"),
@@ -274,3 +341,68 @@ def test_the_pod_figures_read_the_telemetry_of_the_nodes_main_names_pod_a_and_po
     ], **nothing(tmp_path))
     assert (stats["teacher_tok_s"]["value"], stats["teacher_tok_s"]["node"]) == (9.0, "pod-a")
     assert (stats["train_minutes"]["value"], stats["train_minutes"]["node"]) == (62 / 60, "pod-b")
+
+
+def test_caption_latency_is_the_mean_start_to_end_of_the_jetsons_caption_windows(tmp_path):
+    stats = snapshot([
+        window("jetson", "c1", 0, 0.4, 2.0, tokens_out=30, kind="caption"),  # 2.0 s
+        window("jetson", "c2", 10, None, 13.0, tokens_out=25, kind="caption"),  # 3.0 s; no first-token time needed
+        window("jetson", "q1", 20, 20.5, 40.0, tokens_out=200, kind="chat"),  # an answer, not a caption
+        window("jetson", "q2", 50, 50.5, 60.0, tokens_out=100),  # no kind: never counted as a caption
+        window("pod-a", "t1", 0, 0.5, 9.0, tokens_out=80, target="teacher", kind="caption"),  # the teacher's caption
+    ], **nothing(tmp_path))
+    assert stats["caption_latency_s"] == {"value": 2.5, "unit": "s", "node": "jetson", "ts": "2026-10-10T14:00:13Z",
+                                          "source": "telemetry.request: 2 caption windows from node jetson",
+                                          "low_confidence": False, "reason": None}
+
+
+def train_row(seconds: float, ts: str) -> dict:
+    """The `train` row lab/train.py writes through @recorded: no node and no units, trainer.train_s in seconds."""
+    return {"ts": ts, "actor": "lab", "tier": None, "task": "L16", "verb": "train", "outcome": "ok",
+            "metrics": {"trainer.train_s": seconds, "trainer.samples_per_s": 0.2, "trainer.steps": 18},
+            "refs": {"run_id": "train-20261011T032149Z-7dd098"}}
+
+
+def test_train_minutes_comes_from_the_trainers_own_train_s_row_in_minutes(tmp_path):
+    state = tmp_path / "state"
+    ledger.append(train_row(1260.0, "2026-10-11T03:45:00+00:00"), state_dir=state)
+    stats = snapshot(telemetry=False, metrics=tmp_path / "metrics.jsonl", state_dir=state)
+    assert stats["train_minutes"] == {"value": 21.0, "unit": "min", "node": None, "ts": "2026-10-11T03:45:00Z",
+                                      "source": "ledger seq 1 (trainer.train_s x 0.0166667)",
+                                      "low_confidence": False, "reason": None}
+    assert (stats["trainer_samples_per_s"]["value"], stats["trainer_samples_per_s"]["source"]) == (0.2, "ledger seq 1")
+
+
+def test_a_newer_train_minutes_from_telemetry_still_wins_over_an_older_train_s_row(tmp_path):
+    state = tmp_path / "state"
+    ledger.append(train_row(1260.0, "2026-10-10T09:00:00+00:00"), state_dir=state)  # before T0
+    stats = snapshot([step("r1", 1, 0), step("r1", 2, 60), evaluated("r1", "atlas-v2", 120, {"candidate": 0.8})],
+                     metrics=tmp_path / "metrics.jsonl", state_dir=state)
+    assert (stats["train_minutes"]["value"], stats["train_minutes"]["source"]) == (
+        62 / 60, "telemetry.train.step: run r1, 2 steps")
+
+
+def test_the_ledger_the_lab_pushed_to_the_box_is_read_and_cited_as_pushed(tmp_path):
+    pushed = tmp_path / "data" / "lab_state"  # where POST /api/learning/lab/import?kind=ledger keeps it
+    ledger.append(train_row(600.0, "2026-10-11T03:45:00+00:00"), state_dir=pushed)
+    ledger.append(ledger_row("teacher.decode_tok_s", 12.5, "tok/s", "pod-a", "2026-10-11T04:00:00+00:00"),
+                  state_dir=pushed)
+    stats = snapshot(telemetry=False, metrics=tmp_path / "metrics.jsonl", state_dir=tmp_path / "state",
+                     imported_dir=pushed)
+    assert (stats["train_minutes"]["value"], stats["train_minutes"]["source"]) == (
+        10.0, "pushed ledger seq 1 (trainer.train_s x 0.0166667)")
+    assert (stats["teacher_tok_s"]["value"], stats["teacher_tok_s"]["source"]) == (12.5, "pushed ledger seq 2")
+    without = snapshot(telemetry=False, metrics=tmp_path / "metrics.jsonl", state_dir=tmp_path / "state")
+    assert without["teacher_tok_s"]["value"] is None  # not named, not read
+
+
+def test_a_torn_line_in_the_pushed_ledger_is_skipped_and_the_rows_after_it_still_answer(tmp_path):
+    pushed = tmp_path / "lab_state"  # a push cut mid-line leaves a line that is not a row (the ledger skips it)
+    ledger.append(ledger_row("teacher.decode_tok_s", 12.5, "tok/s", "pod-a", "2026-10-11T04:00:00+00:00"),
+                  state_dir=pushed)
+    with (pushed / "ledger.jsonl").open("a", encoding="utf-8") as fh:
+        fh.write('{"ts": "2026-10-11T05:00:00Z", "metr\n')
+    found, problems = LabRecords(metrics_path=tmp_path / "m.jsonl", state_dir=tmp_path / "state",
+                                 imported_dir=pushed).find([("teacher.decode_tok_s", None)])
+    assert [(f.value, f.source) for f in found[("teacher.decode_tok_s", None)]] == [(12.5, "pushed ledger seq 1")]
+    assert problems == []

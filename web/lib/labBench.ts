@@ -6,7 +6,7 @@
  * A number is a LabNum with a `kind`: "measured" is a row's own value, "derived" is worked out from rows with the
  * formula shown. The screen adds two more labels of its own: "modelled" (the what-if) and "sample" (the sample run).
  */
-import type { LabNum, LabSource } from "./lab";
+import type { LabChip, LabNum, LabSource } from "./lab";
 
 export type LabTab = "run" | "speed" | "routing" | "experiments";
 export const LAB_TABS: { key: LabTab; title: string }[] = [
@@ -36,19 +36,38 @@ export interface BenchPoint extends Omit<LabNum, "value" | "source"> {
   session?: string | null;
   state?: string | null;
   inputs?: string[];
-  other_chip?: boolean; // measured on the R9700s, before the lab moved to the Strix Halo pods
-  chip?: string | null;
+  other_chip?: boolean; // not measured on the current lab's chip (kept for older screens; `chip` says which chip)
+  chip?: LabChip | null;
+}
+
+/** Rows of one chip: how many, and their lines in the metrics file. */
+export interface BenchChipRows extends LabChip {
+  rows: number;
+  lines: number[];
+}
+
+/** Another chip's sweep that recorded the same metrics at the same batch sizes as this one. */
+export interface BenchComparison {
+  id: string;
+  chip: LabChip;
+  metrics: string[];
+  batches: number[];
+  same_model: boolean;
 }
 
 export interface BenchSweep {
   id: string;
   other_chip: boolean;
+  chip: LabChip;
+  chip_note: string | null; // the rows' own words about a chip that is not the lab's
+  power_source: string | null;
+  gpu: string | null; // the chip as the rows spell it
+  comparisons: BenchComparison[];
   family: string;
   node: string | null;
   session: string | null;
   model: string | null;
   build: string | null;
-  chip: string | null;
   mode: string | null;
   max_tokens: number | null;
   ts: string | null;
@@ -92,12 +111,13 @@ export interface LabBench {
   families: { family: string; metrics: string[]; nodes: string[]; rows: number; charted: number; low_confidence: number }[];
   sweeps: BenchSweep[];
   student: BenchStudent | null;
-  power: { nodes: BenchPowerNode[]; absent: string[]; other_chip: BenchPoint[] };
+  power: { nodes: BenchPowerNode[]; absent: string[]; other_chip: BenchPoint[]; other_chips: BenchChipRows[] };
   other_chip_rows: number;
   other_chip_label: string;
+  chips: BenchChipRows[];
   series: { metric: string; family: string; node: string | null; points: BenchPoint[] }[];
   charted_rows: number;
-  not_charted: { metric: string; node: string | null; rows: number; of: number; other_chip: number; unit: string | null; latest: BenchPoint; lines: number[] }[];
+  not_charted: { metric: string; node: string | null; rows: number; of: number; other_chip: number; other_chips: BenchChipRows[]; unit: string | null; latest: BenchPoint; lines: number[] }[];
   empty_reason: string | null;
 }
 
@@ -220,7 +240,15 @@ export interface LabCard {
 export interface LabTimeline {
   cards: LabCard[];
   counts: Partial<Record<CardStatus, number>>;
-  experiments: { total: number; queued: number; running: number; run: number; dropped: number; source: { kind: string; ref: string | null; note: string | null } };
+  experiments: {
+    total: number;
+    queued: number;
+    running: number;
+    run: number;
+    dropped: number;
+    /** `from`: which ledger was read (LAB_STATE_DIR, the copy the lab pushed, the checkout); `received_at` and `rows` describe a pushed copy. */
+    source: { kind: string; ref: string | null; note: string | null; from?: "LAB_STATE_DIR" | "imported" | "checkout"; received_at?: string | null; rows?: number };
+  };
   passes: number;
   sessions: number;
   summary: string;

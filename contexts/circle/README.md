@@ -26,6 +26,106 @@ template, as ciphertext only one named friend's box can read, after a card on bo
 The phone's Circle screen (`/circle/`) has four parts: **People**, **Plans**, **League**, **Sharing**.
 Links open a part or a conversation directly: `/circle/?tab=plans&thread=<thread id>`.
 
+## What is in the database
+
+One shared Postgres database (Neon) is the only place two boxes meet. Only Circle data is in it. Cameras,
+pictures, Memory, the day plan, health, approvals and the event log stay on each box and never go there.
+
+| Table | What a row is | Who writes it | How long it stays |
+| --- | --- | --- | --- |
+| `circles` | a circle id | the first box that writes anything for that circle | kept |
+| `members` | a member id, the display name from that box's `circle.names`, "has a box" | a member's own box, on its first write (never overwritten after) | kept |
+| `agent_messages` | one plan message: a proposal (title, start, end, place, invitees) or a reply (free / busy / another time) | the proposer's box after its approval card; each invitee's box for its reply | the writer's box removes its own after `circle.keep_days` (30) |
+| `events`, `rsvps` | a plan everyone agreed, and who is in | the proposer's box, once, when the last "free" arrives | kept |
+| `shares` | the receipt of one opt-in summary a box sent (kind and the same few fields) | that box's outbox worker | the writer's box removes its own after `circle.keep_days` |
+| `habit_summaries` | member, habit, day: met or not, the day's value, the streak | the member's box when a habit day closes (`share_summaries`) | kept (the League reads 21 days back) |
+| `impact_counters` | a member's latest Waste Watch totals | the member's box (`share_summaries`) | one row per member, overwritten |
+| `game_scores` | one scored Sort It round | the member's box (`share_summaries`) | kept |
+| `presence` | the named place a member shares now, and when it ends | the member's box (`share_presence`); "stop sharing" ends the row | one row per member, overwritten; removed by its own box once expired for `circle.keep_days` |
+| `league_stakes`, `league_weeks`, `league_challenges` | the week's stake, a declared week's standings, a dare | the box whose person set, closed or started it | kept |
+| `sealed_messages` | face share only (off by default): a box's public keys, a face template as ciphertext for one friend's box, a revoke | the sharing box | the boxes delete a share when it is used, taken back or revoked |
+
+Two views, `habit_leaderboard` and `impact_leaderboard`, are read by the Circle screen.
+
+**Set up.** `pip install -e ".[neon]"`, then `NEON_DATABASE_URL=` in `.env` (the pooled connection string, the
+same on every box in the circle). `schema.sql` is the intended state. Check the database against it, and create
+what is missing, once for a new database and again whenever `schema.sql` gains a table or an index:
+
+```bash
+python -m contexts.circle.schema --check    # read-only: what differs between the database and schema.sql
+python -m contexts.circle.schema --apply    # creates the missing tables, indexes and views; nothing else
+python -m contexts.circle.schema --counts   # read-only: --check plus columns, indexes, sizes, rows per circle
+```
+
+None of the three prints the connection string or a row's contents (ids are shortened to two letters).
+`--apply` runs `schema.sql`'s own `CREATE ... IF NOT EXISTS` statements in one transaction and only for objects
+that do not exist; it cannot alter, replace or drop anything, and it leaves an existing view as it is. A column
+that `schema.sql` gained on an existing table is reported by `--check` and needs a written migration.
+(`psql "$NEON_DATABASE_URL" -1 -f contexts/circle/infrastructure/schema.sql` does the same and also re-creates
+the two views.) A table that is missing (for example `sealed_messages` on a database set up before face share)
+makes that feature's timer job fail on every tick with an error in the log; the rest of the Circle keeps working.
+
+**Which box is in which circle.** `circle.member_id` and `circle.circle_id` in `config/agent.yaml`, or without
+editing the committed file: `ATLAS_CIRCLE_MEMBER`, `ATLAS_CIRCLE_ID`, `ATLAS_CIRCLE_SHARE=1` (opt in to places
+and summaries) and `ATLAS_CIRCLE_FACE_SHARE=1` in `.env`. Without `NEON_DATABASE_URL` a box keeps its Circle in
+memory: nothing is shared with another box.
+
+The repository's `neon.ts`, `package.json` and the `.neon` / `.env.local` files (PR #287) are the Neon command
+line's project link (`neon link`, `neon deploy`) and the S3 client for Neon Object Storage. The Python app reads
+none of them: it uses `NEON_DATABASE_URL` only, and stores no objects. `neon.ts` declares nothing, so `neon
+deploy` does not create or change tables; `schema.sql` is still how they get there.
+
+**When the database cannot be reached** the box keeps working and says so on the Sharing part of the screen:
+
+| What | While offline | When it is back |
+| --- | --- | --- |
+| Summaries, counts, scores | wait in `data/circle.sqlite` (`circle_outbox`), across restarts | sent oldest first on the next tick |
+| A place you share, or "stop sharing" | the latest one waits in `data/circle.sqlite` (`presence_outbox`), across restarts | sent on the next tick; a place that ran out meanwhile is never sent, a stop always is |
+| Friends' places | the ones already shown stay until they run out | a friend's stop takes effect on the next tick |
+| A plan you approve | the card ends as failed with "Neon is unreachable"; nothing is queued | propose it again |
+| Replies and agreements | not read, not answered | read and answered on the next tick (a poll that failed half-way starts over) |
+| League declarations | kept in the log | pushed on the next tick |
+
+The box talks to the database only from its 30 s timer and from a few screen reads, always off the event loop.
+A connect attempt gives up after 10 s; after a failure every call fails at once for 15 s, so a tick pays for one
+attempt instead of one per job; a job that gets no answer in 20 s is dropped and tried again on the next tick.
+
+**When the network blocks port 5432.** Some networks refuse Postgres's port and leave 443 open. The box can
+reach the same database over Neon's HTTPS SQL endpoint instead (`infrastructure/neon_https.py`; standard library
+only, so it also works without the `neon` extra). `ATLAS_NEON_TRANSPORT` in `.env` chooses:
+
+| Value | What it does |
+| --- | --- |
+| `auto` (default) | psycopg on 5432. If that cannot connect (refused, timed out, driver not installed), HTTPS on 443 for the rest of the process; 5432 is tried again only after a restart. One log line says which is in use. |
+| `tcp` | psycopg on 5432 only, as before. |
+| `https` | HTTPS on 443 only. Set this before a demo on a network known to block 5432: `auto` spends up to 10 s finding out. |
+
+The schema tool follows the same setting and prints the transport on its first line:
+`ATLAS_NEON_TRANSPORT=https python -m contexts.circle.schema --check`.
+
+What is different over HTTPS:
+
+- **Transactions.** There is no open transaction over HTTP. Statements wait until the code needs an answer or
+  finishes, and go as one request that commits as a whole. A write that only inserts (a share, a place, a plan
+  message, a sealed message, a League row) is as atomic as over TCP. Two calls read an answer in between and so
+  commit in two steps: recording an agreed event (the event first, its RSVP rows second: if the second request is
+  lost the calendar shows that event with nobody listed, and a repeat does not add them) and the daily cleanup
+  (three independent deletes; a half-finished sweep is finished by the next one).
+- **Offline is the same.** A refused connection, a timeout, an HTTP error or a sign-in page instead of an answer
+  all count as "the database cannot be reached": the outbox and the place queue wait and the tick carries on. A
+  request gives up after 10 s.
+- **Egress.** The request goes to the host named in `NEON_DATABASE_URL`, on 443 instead of 5432. The Jetson's
+  egress allowlist (`jetson/egress.py`, group `neon`) allows that host by address on any port, so it needs no change.
+- **Secrets.** The connection string travels in a request header over TLS. It is never logged, and errors say
+  only what kind of failure it was. A redirect is never followed.
+
+The request and reply shapes are written down in `infrastructure/neon_wire.py`, the one file to correct if the
+service differs from what it assumes.
+
+**Clocks.** A place's expiry is stored and read against the database's clock, so a box whose own clock is wrong
+neither hides a friend's place early nor shows it late. Plan messages carry the writer's own time; each poll
+re-reads the last 10 minutes to allow for a slow clock.
+
 ## The group brain (G4)
 
 Hard planning across members ("where should we meet tonight?") can be asked of the big model, the Qwen3.8-27B

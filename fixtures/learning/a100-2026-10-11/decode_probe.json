@@ -1,0 +1,82 @@
+{
+ "models": {
+  "object": "list",
+  "data": [
+   {
+    "id": "teacher",
+    "object": "model",
+    "created": 1791698642,
+    "owned_by": "vllm",
+    "root": "/content/models/Qwen3.8-27B-INT4",
+    "parent": null,
+    "max_model_len": 16384,
+    "permission": [
+     {
+      "id": "modelperm-b5f4ea9220d3bdaa",
+      "object": "model_permission",
+      "created": 1791698642,
+      "allow_create_engine": false,
+      "allow_sampling": true,
+      "allow_logprobs": true,
+      "allow_search_indices": false,
+      "allow_view": true,
+      "allow_fine_tuning": false,
+      "organization": "*",
+      "group": null,
+      "is_blocking": false
+     }
+    ]
+   },
+   {
+    "id": "group-brain",
+    "object": "model",
+    "created": 1791698642,
+    "owned_by": "vllm",
+    "root": "/content/models/Qwen3.8-27B-INT4",
+    "parent": null,
+    "max_model_len": 16384,
+    "permission": [
+     {
+      "id": "modelperm-8964c80c82bc5008",
+      "object": "model_permission",
+      "created": 1791698642,
+      "allow_create_engine": false,
+      "allow_sampling": true,
+      "allow_logprobs": true,
+      "allow_search_indices": false,
+      "allow_view": true,
+      "allow_fine_tuning": false,
+      "organization": "*",
+      "group": null,
+      "is_blocking": false
+     }
+    ]
+   }
+  ]
+ },
+ "checks": [
+  {
+   "prompt": "What is 17 times 23? Answer in one short sentence.",
+   "first": {
+    "content": "17 times 23 is 391.",
+    "reasoning": null,
+    "finish": "stop"
+   },
+   "repeats_identical": true,
+   "matches_explicit_greedy_thinking_off": true,
+   "thinking_text": false
+  },
+  {
+   "prompt": "Write a 120-word story about a lighthouse keeper who finds a key.",
+   "first": {
+    "content": "Elias had spent forty years listening to the sea, but today, the tide whispered something different. A rusted iron key, green with verdigris, lay half-buried in the wet sand below the lighthouse\u2019s foundation. It was small, intricate, and cold to the touch. He wiped the salt from its teeth, feeling a sudden, inexplicable pull in his chest. The key didn\u2019t fit the door to the lantern room, nor the supply closet. It fit nothing he knew. Yet, as he held it up to the fading twilight, the metal seemed to hum with a low, resonant frequency. For the first time in decades, the rhythmic crash of the waves felt less like a threat and more like a heartbeat. Elias realized the key wasn\u2019t meant to open a door, but to unlock a memory he had long buried, one that the ocean had finally decided to return.",
+    "reasoning": null,
+    "finish": "stop"
+   },
+   "repeats_identical": false,
+   "matches_explicit_greedy_thinking_off": false,
+   "thinking_text": false
+  }
+ ],
+ "ok": false
+}

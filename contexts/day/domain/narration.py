@@ -674,7 +674,7 @@ def _approval(f: dict, w: Words) -> Narration:
                              f"Keep {n} block{'' if n == 1 else 's'} as {day}'s plan. No calendar connector on this box, so nothing is written.")
         if f.get("replace"):
             return Narration(f"I'd like to swap {day}'s calendar blocks for {say_number(n)} new ones. Okay?",
-                             f"Replace {day}'s Day Run blocks on your calendar with {n} new one{'' if n == 1 else 's'}.")
+                             f"Replace {day}'s plan on your calendar with {n} new block{'' if n == 1 else 's'}.")
         return Narration(f"I'd like to add {blocks} to your calendar for {day}. Okay?",
                          f"Add {n} block{'' if n == 1 else 's'} to your calendar for {day}.")
     if kind == "league_stake":

@@ -1,0 +1,631 @@
+{
+  "score": 0.9166666666666666,
+  "model": "teacher",
+  "role": "teacher",
+  "attempt": 1,
+  "held_out_items": 24,
+  "scorer_score": 0.9583333333333334,
+  "split_sha256": "59227ead6c24d0b7b525ba99c6e2c06f1f7178d2c6f20bd8d556bc16d2c3de39",
+  "seconds": 16.0,
+  "started": "2026-10-11T06:04:20Z",
+  "results": [
+    {
+      "q": "What happened at our table overnight?",
+      "answer": "Sat 9 PM: person packs laptop and leaves. Sat 11 PM: table empty, charger plugged in. Sun 2 AM: hooded person walks past door. Sun 6 AM: person returns, drinks coffee. Sun 7 AM: person stands and leaves.",
+      "cited": [
+        "e03",
+        "e04",
+        "e05",
+        "e06",
+        "e07",
+        "frames:cam-desk:e03",
+        "frames:cam-desk:e04",
+        "frames:cam-desk:e06",
+        "frames:cam-desk:e07",
+        "frames:cam-door:e05"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 1013,
+      "shape": "prefetch"
+    },
+    {
+      "q": "What happened overnight?",
+      "answer": "Sat 9 PM: Person packs laptop and leaves. Sat 11 PM: Table empty, charger plugged in. Sun 2 AM: Hooded person walks past door. Sun 6 AM: Person returns, drinks coffee. Sun 7 AM: Person leaves table.",
+      "cited": [
+        "e03",
+        "e04",
+        "e05",
+        "e06",
+        "e07",
+        "frames:cam-desk:e03",
+        "frames:cam-desk:e04",
+        "frames:cam-desk:e06",
+        "frames:cam-desk:e07",
+        "frames:cam-door:e05"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 990,
+      "shape": "prefetch"
+    },
+    {
+      "q": "What happened last night?",
+      "answer": "Sat 9 PM: person packs laptop and leaves. Sat 11 PM: table empty, charger plugged in. Sun 2 AM: hooded person walks past door. Sun 6 AM: person returns, drinks coffee. Sun 7 AM: person leaves table.",
+      "cited": [
+        "e03",
+        "e04",
+        "e05",
+        "e06",
+        "e07",
+        "frames:cam-desk:e03",
+        "frames:cam-desk:e04",
+        "frames:cam-desk:e06",
+        "frames:cam-desk:e07",
+        "frames:cam-door:e05"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 988,
+      "shape": "prefetch"
+    },
+    {
+      "q": "Anything happen at the table last night?",
+      "answer": "Sat 9 PM: person packs laptop and leaves. Sat 11 PM: table empty, charger plugged in. Sun 2 AM: person in hoodie walks past door.",
+      "cited": [
+        "e03",
+        "e04",
+        "e05",
+        "e06",
+        "e07",
+        "frames:cam-desk:e03",
+        "frames:cam-desk:e04",
+        "frames:cam-desk:e06",
+        "frames:cam-desk:e07",
+        "frames:cam-door:e05"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 673,
+      "shape": "prefetch"
+    },
+    {
+      "q": "What went on while we were asleep?",
+      "answer": "Sat 9 PM: Person packs laptop and leaves. Sat 11 PM: Table empty, charger plugged in. Sun 2 AM: Hooded person walks past door. Sun 6 AM: Person returns, sits, drinks coffee. Sun 7 AM: Person stands and leaves.",
+      "cited": [
+        "e03",
+        "e04",
+        "e05",
+        "e06",
+        "e07",
+        "frames:cam-desk:e03",
+        "frames:cam-desk:e04",
+        "frames:cam-desk:e06",
+        "frames:cam-desk:e07",
+        "frames:cam-door:e05"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 1033,
+      "shape": "prefetch"
+    },
+    {
+      "q": "Give me a recap of last night",
+      "answer": "Sat 9 PM: Person packs laptop, leaves. Sat 11 PM: Table empty, charger plugged in. Sun 2 AM: Hoodied person walks past door. Sun 6 AM: Person returns, drinks coffee. Sun 7 AM: Person stands, leaves.",
+      "cited": [
+        "e03",
+        "e04",
+        "e05",
+        "e06",
+        "e07",
+        "frames:cam-desk:e03",
+        "frames:cam-desk:e04",
+        "frames:cam-desk:e06",
+        "frames:cam-desk:e07",
+        "frames:cam-door:e05"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 1003,
+      "shape": "prefetch"
+    },
+    {
+      "q": "Where did I leave my keys?",
+      "answer": "I didn't see that.",
+      "cited": [
+        "frames:cam-desk:k1941"
+      ],
+      "citations_ok": true,
+      "answer_ok": false,
+      "latency_ms": 204,
+      "shape": "prefetch"
+    },
+    {
+      "q": "Where are my keys?",
+      "answer": "Your keys were last seen in the desk zone on cam-desk next to the coffee mug at 7:41 PM on Saturday.",
+      "cited": [
+        "frames:cam-desk:k1941"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 547,
+      "shape": "prefetch"
+    },
+    {
+      "q": "Where'd I put my keys?",
+      "answer": "Your keys were last seen in the desk zone next to the coffee mug at 7:41 PM on Saturday.",
+      "cited": [
+        "frames:cam-desk:k1941"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 485,
+      "shape": "prefetch"
+    },
+    {
+      "q": "Have you seen my keys?",
+      "answer": "Yes, I saw your keys last at 7:41 PM on Saturday in the desk zone next to the coffee mug.",
+      "cited": [
+        "frames:cam-desk:k1941"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 517,
+      "shape": "prefetch"
+    },
+    {
+      "q": "Where are the keys right now?",
+      "answer": "I didn't see that.",
+      "cited": [
+        "frames:cam-desk:k1941"
+      ],
+      "citations_ok": true,
+      "answer_ok": false,
+      "latency_ms": 204,
+      "shape": "prefetch"
+    },
+    {
+      "q": "I can't find my keys",
+      "answer": "I last saw your keys on Saturday at 7:41 PM in the desk zone on cam-desk, next to the coffee mug.",
+      "cited": [
+        "frames:cam-desk:k1941"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 563,
+      "shape": "prefetch"
+    },
+    {
+      "q": "Did anyone come to the door in the last hour?",
+      "answer": "Yes, a courier came to the door at 9:05 AM on Sunday.",
+      "cited": [
+        "e08",
+        "frames:cam-door:e08"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 391,
+      "shape": "prefetch"
+    },
+    {
+      "q": "Was anyone at the door in the last hour?",
+      "answer": "Yes, a courier was at the door at 9:05 AM on Sunday.",
+      "cited": [
+        "e08",
+        "frames:cam-door:e08"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 392,
+      "shape": "prefetch"
+    },
+    {
+      "q": "Who came to the door in the past hour?",
+      "answer": "A courier came to the door at 9:05 AM.",
+      "cited": [
+        "e08",
+        "frames:cam-door:e08"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 327,
+      "shape": "prefetch"
+    },
+    {
+      "q": "Any visitors at the door in the last hour?",
+      "answer": "Yes, a courier visited the door at 9:05 AM on Sunday.",
+      "cited": [
+        "e08",
+        "frames:cam-door:e08"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 375,
+      "shape": "prefetch"
+    },
+    {
+      "q": "Did someone come by the door in the last 60 minutes?",
+      "answer": "Yes, a courier dropped a cardboard box at the door at 9:05 AM.",
+      "cited": [
+        "e08",
+        "frames:cam-door:e08"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 408,
+      "shape": "prefetch"
+    },
+    {
+      "q": "Was anyone at the door recently?",
+      "answer": "Yes, a courier was at the door at 9:05 AM on Sunday.",
+      "cited": [
+        "e08",
+        "frames:cam-door:e08"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 389,
+      "shape": "prefetch"
+    },
+    {
+      "q": "When did someone last leave the table?",
+      "answer": "Someone last left the table at 7:30 AM on Sunday.",
+      "cited": [
+        "e03",
+        "e07",
+        "frames:cam-desk:e03",
+        "frames:cam-desk:e07"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 344,
+      "shape": "prefetch"
+    },
+    {
+      "q": "When was the last time someone left the table?",
+      "answer": "The last time someone left the table was at 7:30 AM on Sunday.",
+      "cited": [
+        "e06",
+        "e07",
+        "e08",
+        "frames:cam-desk:e06",
+        "frames:cam-desk:e07",
+        "frames:cam-door:e08"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 391,
+      "shape": "prefetch"
+    },
+    {
+      "q": "When did the last person leave the table?",
+      "answer": "The last person left the table at 7:30 AM on Sunday.",
+      "cited": [
+        "e03",
+        "e07",
+        "frames:cam-desk:e03",
+        "frames:cam-desk:e07"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 358,
+      "shape": "prefetch"
+    },
+    {
+      "q": "What time did someone last leave the table?",
+      "answer": "Someone last left the table at 7:30 AM on Sunday.",
+      "cited": [
+        "e03",
+        "e07",
+        "frames:cam-desk:e03",
+        "frames:cam-desk:e07"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 344,
+      "shape": "prefetch"
+    },
+    {
+      "q": "When did somebody last leave our table?",
+      "answer": "The last time somebody left the table was at 7:30 AM on Sunday.",
+      "cited": [
+        "e03",
+        "e07",
+        "e08",
+        "frames:cam-desk:e03",
+        "frames:cam-desk:e07",
+        "frames:cam-door:e08"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 390,
+      "shape": "prefetch"
+    },
+    {
+      "q": "Last time someone left the table?",
+      "answer": "The last time someone left the table was at 7:30 AM on Sunday.",
+      "cited": [
+        "e06",
+        "e07",
+        "e08",
+        "frames:cam-desk:e06",
+        "frames:cam-desk:e07",
+        "frames:cam-door:e08"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 389,
+      "shape": "prefetch"
+    },
+    {
+      "q": "Did a package arrive?",
+      "answer": "Yes, a courier dropped a cardboard box at the door on Sunday at 9:05 AM.",
+      "cited": [
+        "e08",
+        "frames:cam-door:e08"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 437,
+      "shape": "prefetch"
+    },
+    {
+      "q": "What happened to the package?",
+      "answer": "At 9:05 AM on Sunday, a courier dropped a cardboard box at the door.",
+      "cited": [
+        "e08",
+        "frames:cam-door:e08"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 420,
+      "shape": "prefetch"
+    },
+    {
+      "q": "Has a package been delivered?",
+      "answer": "Yes, a courier dropped a cardboard box at the door on Sunday at 9:05 AM.",
+      "cited": [
+        "e08",
+        "frames:cam-door:e08"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 437,
+      "shape": "prefetch"
+    },
+    {
+      "q": "Did the package come?",
+      "answer": "Yes, a courier dropped a cardboard box at the door on Sunday at 9:05 AM.",
+      "cited": [
+        "e08",
+        "frames:cam-door:e08"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 437,
+      "shape": "prefetch"
+    },
+    {
+      "q": "Did any package show up?",
+      "answer": "Yes, a courier dropped a cardboard box at the door on Sunday at 9:05 AM.",
+      "cited": [
+        "e08",
+        "frames:cam-door:e08"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 436,
+      "shape": "prefetch"
+    },
+    {
+      "q": "What happened to my package?",
+      "answer": "At 9:05 AM on Sunday, a courier dropped a cardboard box at your door.",
+      "cited": [
+        "e08",
+        "frames:cam-door:e08"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 421,
+      "shape": "prefetch"
+    },
+    {
+      "q": "Where is my wallet?",
+      "answer": "I didn't see that.",
+      "cited": [],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 0,
+      "shape": "prefetch"
+    },
+    {
+      "q": "Have you seen my wallet?",
+      "answer": "I didn't see that.",
+      "cited": [],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 0,
+      "shape": "prefetch"
+    },
+    {
+      "q": "Where did I leave my wallet?",
+      "answer": "I didn't see that.",
+      "cited": [],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 0,
+      "shape": "prefetch"
+    },
+    {
+      "q": "I can't find my wallet",
+      "answer": "I didn't see that.",
+      "cited": [],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 0,
+      "shape": "prefetch"
+    },
+    {
+      "q": "Where's my wallet?",
+      "answer": "I didn't see that.",
+      "cited": [],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 0,
+      "shape": "prefetch"
+    },
+    {
+      "q": "Where is the wallet now?",
+      "answer": "I didn't see that.",
+      "cited": [],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 0,
+      "shape": "prefetch"
+    },
+    {
+      "q": "What is due this week?",
+      "answer": "Due this week: COP 3502 HW 4: linked lists, Tue 11:59 PM; COP 3502 Exam 1, Thu 10:00 AM.",
+      "cited": [
+        "https://webcourses.ucf.edu/courses/1/assignments/4",
+        "https://webcourses.ucf.edu/courses/1/assignments/9"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 0,
+      "shape": "prefetch"
+    },
+    {
+      "q": "What do I have due this week?",
+      "answer": "Due this week: COP 3502 HW 4: linked lists, Tue 11:59 PM; COP 3502 Exam 1, Thu 10:00 AM.",
+      "cited": [
+        "https://webcourses.ucf.edu/courses/1/assignments/4",
+        "https://webcourses.ucf.edu/courses/1/assignments/9"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 0,
+      "shape": "prefetch"
+    },
+    {
+      "q": "Any assignments due this week?",
+      "answer": "Due this week: COP 3502 HW 4: linked lists, Tue 11:59 PM; COP 3502 Exam 1, Thu 10:00 AM.",
+      "cited": [
+        "https://webcourses.ucf.edu/courses/1/assignments/4",
+        "https://webcourses.ucf.edu/courses/1/assignments/9"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 0,
+      "shape": "prefetch"
+    },
+    {
+      "q": "What homework is due this week?",
+      "answer": "Due this week: COP 3502 HW 4: linked lists, Tue 11:59 PM; COP 3502 Exam 1, Thu 10:00 AM.",
+      "cited": [
+        "https://webcourses.ucf.edu/courses/1/assignments/4",
+        "https://webcourses.ucf.edu/courses/1/assignments/9"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 0,
+      "shape": "prefetch"
+    },
+    {
+      "q": "Do I have any deadlines this week?",
+      "answer": "Due this week: COP 3502 HW 4: linked lists, Tue 11:59 PM; COP 3502 Exam 1, Thu 10:00 AM.",
+      "cited": [
+        "https://webcourses.ucf.edu/courses/1/assignments/4",
+        "https://webcourses.ucf.edu/courses/1/assignments/9"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 0,
+      "shape": "prefetch"
+    },
+    {
+      "q": "What's due soon?",
+      "answer": "Due soon: COP 3502 HW 4: linked lists, Tue 11:59 PM; COP 3502 Exam 1, Thu 10:00 AM.",
+      "cited": [
+        "https://webcourses.ucf.edu/courses/1/assignments/4",
+        "https://webcourses.ucf.edu/courses/1/assignments/9"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 0,
+      "shape": "prefetch"
+    },
+    {
+      "q": "What happened while they were here?",
+      "answer": "The latest visit started Sun 9:05 AM: A courier drops a cardboard box at the door.",
+      "cited": [
+        "e08",
+        "frames:cam-door:e08"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 0,
+      "shape": "prefetch"
+    },
+    {
+      "q": "What happened while the judges were here?",
+      "answer": "The latest visit started Sun 9:05 AM: A courier drops a cardboard box at the door.",
+      "cited": [
+        "e08",
+        "frames:cam-door:e08"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 0,
+      "shape": "prefetch"
+    },
+    {
+      "q": "What did you see while they were at our table?",
+      "answer": "The latest visit started Sun 9:05 AM: A courier drops a cardboard box at the door.",
+      "cited": [
+        "e08",
+        "frames:cam-door:e08"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 0,
+      "shape": "prefetch"
+    },
+    {
+      "q": "Recap their visit",
+      "answer": "The latest visit started Sun 9:05 AM: A courier drops a cardboard box at the door.",
+      "cited": [
+        "e08",
+        "frames:cam-door:e08"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 0,
+      "shape": "prefetch"
+    },
+    {
+      "q": "What happened during the last visit?",
+      "answer": "The latest visit started Sun 9:05 AM: A courier drops a cardboard box at the door.",
+      "cited": [
+        "e08",
+        "frames:cam-door:e08"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 0,
+      "shape": "prefetch"
+    },
+    {
+      "q": "Tell me about the latest visit",
+      "answer": "The latest visit started Sun 9:05 AM: A courier drops a cardboard box at the door.",
+      "cited": [
+        "e08",
+        "frames:cam-door:e08"
+      ],
+      "citations_ok": true,
+      "answer_ok": true,
+      "latency_ms": 0,
+      "shape": "prefetch"
+    }
+  ]
+}

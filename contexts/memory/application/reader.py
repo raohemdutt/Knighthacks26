@@ -79,11 +79,21 @@ class SqliteMemory:
         track = self.db.execute("SELECT * FROM memory_tracks WHERE label = ?", (label,)).fetchone()
         if track and (row is None or track["ts"] > row["ts"]):
             return Sighting(label=label, camera_id=track["camera_id"], zone_id=track["zone_id"], ts=parse(track["ts"]),
-                            frame_ref=track["frame_ref"] or "")
+                            frame_ref=track["frame_ref"] or "", box=self.store.box_of(track["frame_ref"], label) if track["frame_ref"] else None)
         if row is None:
             return None
         return Sighting(label=row["label"], camera_id=row["camera_id"], zone_id=row["zone_id"], ts=parse(row["ts"]),
-                        frame_ref=row["frame_ref"], position=row["position"])
+                        frame_ref=row["frame_ref"], position=row["position"], box=self.store.box_of(row["frame_ref"], row["label"]))
+
+    def where(self, label: str) -> dict | None:
+        """Where a thing was last seen, for a screen that wants to mark it in the picture: the sighting, its box when one
+        is known, and the other boxed things in that same frame (anchors for "left of the laptop")."""
+        s = self.last_seen(label)
+        if s is None:
+            return None
+        anchors = [{"label": name, "box": box} for name, box in self.store.boxes_in(s.frame_ref) if name != s.label] if s.frame_ref else []
+        return {"label": s.label, "camera_id": s.camera_id, "zone": s.zone_id, "position": s.position, "frame_ref": s.frame_ref or None,
+                "box": s.box, "seen_at": s.ts, "anchors": anchors}
 
     def items(self, start: datetime, end: datetime, kind: str | None = None) -> list[Item]:
         """Connector items with `when` in [start, end), soonest first."""

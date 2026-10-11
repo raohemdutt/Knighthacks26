@@ -44,6 +44,7 @@ from lab.machine import ledger, metrics
 from lab.machine.record import record
 
 VERB = "gpu-power record"
+CLI_VERB = "gpu-power"   # registers python -m lab gpu-power
 VALUE_STATISTIC = {"mean": "mean_w", "peak": "max_w", "min": "min_w"}  # --value choice -> summary key it stores
 DEFAULT_VALUE = "mean"
 TELEMETRY_NODE = {ledger: node for node, ledger in pod_power.LEDGER_NODE.items()}

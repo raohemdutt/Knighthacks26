@@ -159,7 +159,7 @@ def test_a_circle_without_neon_reports_the_setting_but_shares_nothing(tmp_path):
 
 def test_queued_and_sent_counts_follow_the_outbox(tmp_path):
     neon = FakeNeon()
-    db = NeonDb(neon.connect)
+    db = NeonDb(neon.connect, retry_s=0)  # no wait between attempts: the test brings Neon back at once
     sharing = CircleSharing(CircleOutbox(tmp_path / "circle.sqlite"), NeonShares(db), "team", "hemdutt", opted_in=True)
     presence = PresenceBoard("team", "hemdutt", ["Library"], opted_in=False)
     _, c = app(tmp_path, circle=ME, sharing=sharing, presence=presence, board=CircleBoard(db))
@@ -228,7 +228,7 @@ def test_outbox_stats_are_per_kind(tmp_path):
 
 def test_neon_db_remembers_whether_it_last_got_through():
     neon = FakeNeon()
-    db = NeonDb(neon.connect)
+    db = NeonDb(neon.connect, retry_s=0)  # no wait between attempts: the test brings Neon back at once
     assert (db.last_ok, db.offline) == (None, None)
     CircleBoard(db).top_scores("team")
     assert db.last_ok is not None and db.offline is None

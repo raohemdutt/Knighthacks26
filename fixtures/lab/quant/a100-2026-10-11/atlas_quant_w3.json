@@ -1,0 +1,59 @@
+{
+  "plan": {
+    "width": 3,
+    "name": "Qwen3.8-27B-W3A16-G128-GPTQ-atlas",
+    "method": "gptq",
+    "scheme": "W3A16",
+    "symmetric": true,
+    "max_seq_length": 4096,
+    "pad_to_max": false,
+    "estimate_minutes": 75,
+    "hub_repo": "<$QUANT_HUB_NAMESPACE>/Qwen3.8-27B-W3A16-G128-GPTQ-atlas",
+    "recipe": {
+      "quant_stage": {
+        "quant_modifiers": {
+          "GPTQModifier": {
+            "targets": [
+              "Linear"
+            ],
+            "scheme": "W3A16",
+            "ignore": [
+              "re:visual.*",
+              "re:model.visual.*",
+              "re:.*lm_head",
+              "re:.*embed_tokens$",
+              "re:.*linear_attn\\.in_proj_a$",
+              "re:.*linear_attn\\.in_proj_b$"
+            ],
+            "block_size": 128,
+            "dampening_frac": 0.01,
+            "actorder": "static"
+          }
+        }
+      }
+    }
+  },
+  "base_model": "Qwen/Qwen3.8-27B",
+  "calibration_sha256": "641f0847ef4974b80d5ee89d5c9ede7f414a909b9835f03517389259b294899d",
+  "calibration_rows": 512,
+  "versions": {
+    "torch": "2.11.0+cu130",
+    "transformers": "5.18.0",
+    "datasets": "4.8.5",
+    "llmcompressor": "0.14.1.dev30+g22975856",
+    "compressed-tensors": "0.19.1.dev21+g41103c0",
+    "auto-round": "0.16.0",
+    "accelerate": "1.15.0"
+  },
+  "gpu": "NVIDIA A100-SXM4-40GB",
+  "minutes": {
+    "load": 0.1,
+    "quantize": 36.5
+  },
+  "peak_gpu_gb": 39.3,
+  "sample": {
+    "question": "Where did I leave my keys?",
+    "answer": "As an AI, I don\u2019t have access to your physical surroundings or personal history, so I can\u2019t tell you exactly where your keys are. However, I can help you find them!\n\nHere are some common places to check, starting"
+  },
+  "hub_repo": null
+}

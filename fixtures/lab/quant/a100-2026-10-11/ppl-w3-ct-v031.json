@@ -1,0 +1,14 @@
+{
+  "label": "w3-ct-v031",
+  "model": "/content/quant/Qwen3.8-27B-W3A16-G128-GPTQ-atlas",
+  "text": "wikitext-2-raw-v1 test",
+  "window": 2048,
+  "ppl": 8.126,
+  "tokens": 296815,
+  "windows": 145,
+  "quantization": "compressed-tensors",
+  "dtype": "torch.bfloat16",
+  "vllm": "0.31.0",
+  "load_s": 298.6,
+  "score_s": 80.3
+}

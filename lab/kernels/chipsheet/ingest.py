@@ -27,6 +27,7 @@ from lab.machine import ledger
 from lab.machine.record import record
 
 VERB = "chipsheet"
+CLI_VERB = "chipsheet"   # registers python -m lab chipsheet
 REPO = Path(__file__).resolve().parents[3]
 DATA_DIR = REPO / "lab" / "refine" / "research" / "kernels" / "data"
 

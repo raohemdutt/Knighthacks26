@@ -37,6 +37,11 @@ class Deadline(BaseModel):
     in_window: bool  # due before this board ends
     risk: float = 0.0  # at the start of the board
     url: str | None = None
+    # Where `work_left` came from (additive): "kind" (config's estimate for this kind of work, `estimate_word` is the
+    # word in the title that matched), "default" (no kind matched: the box's one-size guess) or "yours" (the request set it).
+    estimate_from: Literal["kind", "default", "yours"] | None = None
+    estimate_word: str | None = None
+    estimate_minutes: float | None = None  # the box's own guess, also when the request overrode it
 
 
 class FriendAt(BaseModel):
@@ -57,6 +62,11 @@ class OptionalEvent(BaseModel):
     place: str | None = None
     place_name: str | None = None
     url: str | None = None
+    # A "Near you" suggestion (Board.suggestions) also says which open slot it falls in and the walk to it.
+    slot: str | None = None
+    walk_minutes: float | None = None
+    leave_by: datetime | None = None
+    note: str | None = None  # the rest of the item's line: "with Riley, Sam · optional · via GroupMe"
 
 
 class MoveOption(BaseModel):
@@ -98,6 +108,18 @@ class Initial(BaseModel):
     sleep_debt: float
     hungry_minutes: float
     source: str = "defaults"
+    sleep_from: str | None = None  # additive: "watch" or "camera" when Habits measured last night, else None
+
+
+class Rules(BaseModel):
+    """The settings behind the numbers a person might question (config/dayrun.yaml), for one plain sentence each."""
+
+    capacity_minutes_per_day: float  # focused minutes a day the box counts on for one deadline
+    on_track_risk: float  # a deadline is on track when the work left takes at most this share of that capacity
+    win_sleep_hours: float
+    win_meals: int
+    need_sleep_hours: float
+    walk_meters_per_minute: float | None = None  # the pace walks are timed at, when the pack has a path network
 
 
 class Board(BaseModel):
@@ -115,6 +137,10 @@ class Board(BaseModel):
     events: list[OptionalEvent] = []
     closed: list[str] = []  # places shut for this board (hard mode)
     sleep_window: tuple[datetime, datetime] | None = None  # the usual night, as a hint
+    # Additive. "Near you" events (the `nearby:` items the board otherwise ignores) that fall in an open slot: offered,
+    # never placed. A move of kind "event" may name one by id.
+    suggestions: list[OptionalEvent] = []
+    rules: Rules | None = None  # the numbers the outcome is judged by, so a screen can say where a figure comes from
 
 
 # --- a plan and its simulation ---
@@ -190,6 +216,11 @@ class Check(BaseModel):
     target: float
     text: str
     status: str | None = None  # deadlines: done, on_track, at_risk, missed
+    # Additive, deadlines only: what the risk was worked out from.
+    left_minutes: float | None = None  # focused minutes still to do when the plan ends
+    done_minutes: float | None = None  # focused minutes this plan puts into it
+    hours_left: float | None = None  # from the end of the plan to the due time
+    due: datetime | None = None
 
 
 class Outcome(BaseModel):
@@ -234,6 +265,22 @@ class Totals(BaseModel):
     energy_end: float = 0
     energy_min: float = 0
     points: int = 0  # 0 to 100, for comparing plans
+    points_parts: dict[str, int] = {}  # additive: how `points` adds up (deadlines of 40, sleep of 25, meals of 15, energy of 20)
+
+
+class Fix(BaseModel):
+    """One thing wrong with a plan, in plain words, and the edit that would mend it (POST /api/dayrun/fixes)."""
+
+    id: str  # a check id ("sleep", "meals", a deadline id) or "move:<index>" for a move that did not fit
+    problem: str  # "You'd miss judging by 11 minutes"
+    label: str | None = None  # the edit: "Shorten lunch to 25 minutes"; None when the box found none
+    moves: list[Move] | None = None  # the whole plan with the edit applied
+    changed: int | None = None  # index in `moves` of the move that was added or changed (None: one was removed)
+    mends: bool = False  # True when the edit makes this problem go away
+    # No edit of its own yet (`label` is None), but there is one once another problem of the list is mended: that
+    # problem's id, and the line to show in place of a button ("Fix the one above first"). Both None otherwise.
+    after: str | None = None
+    hint: str | None = None
 
 
 class Carry(BaseModel):
@@ -406,6 +453,34 @@ class ForecastResult(BaseModel):
     rows: list[ForecastRow]
     unmeasured: list[str]
     text: str
+
+
+class FixesResult(BaseModel):
+    fixes: list[Fix]  # what needs fixing, worst first; empty for a plan that works
+
+
+class EditBody(PlanBody):
+    """A change asked for in plain words: "move lunch to one", "drop the gym", "study two hours before judging"."""
+
+    text: str = Field(max_length=300)
+
+
+class EditOption(BaseModel):
+    label: str
+    moves: list[Move]
+    changed: int | None = None
+
+
+class EditResult(BaseModel):
+    ok: bool  # False: nothing was changed; `understood` says what was heard and `options` offers the nearest edits
+    understood: str
+    moves: list[Move]
+    changed: int | None = None
+    options: list[EditOption] = []
+    warning: str | None = None  # the edit was made but does not fit: "you'd miss judging by 11 minutes"
+    # nothing in the words could be read ("banana"): two or three things that can be said about this very plan, and
+    # no `options` ("move breakfast to 10 AM", "drop the second study block", "add a break after lunch")
+    examples: list[str] = []
 
 
 class CommitResult(BaseModel):

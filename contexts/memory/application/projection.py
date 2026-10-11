@@ -23,6 +23,7 @@ from contracts.agent import NoteWritten
 from contracts.connectors import ItemSynced
 from contracts.memory import Episode, EpisodeClosed, EpisodeOpened, Item, Sighting
 from contracts.perception import ObservationRecorded, SceneDescribed, ZoneEvent
+from contracts.workspace import FileAdded
 
 QUIET_S = 30
 MAX_EPISODE_S = 600
@@ -49,6 +50,7 @@ class MemoryProjection:
         bus.subscribe("connector.item.synced", self.on_item, replay=True)
         bus.subscribe("memory.episode.closed", self.on_episode_closed, replay=True)
         bus.subscribe("agent.note.written", self.on_note, replay=True)
+        bus.subscribe("workspace.file.added", self.on_file, replay=True)
 
     # --- handlers ---
 
@@ -60,7 +62,7 @@ class MemoryProjection:
                 return []
             for t in e.tracks:
                 if t.label not in NOT_OBJECTS:
-                    self.store.put_track(t.label, e.camera_id, t.track_id, e.ts, e.frame_ref)
+                    self.store.put_track(t.label, e.camera_id, t.track_id, e.ts, e.frame_ref, t.box)
             return self._activity(e.camera_id, e.ts, labels=[t.label for t in e.tracks], first_frame=e.frame_ref)
 
     def on_zone_event(self, e: ZoneEvent) -> list:
@@ -76,7 +78,7 @@ class MemoryProjection:
                 return []
             for o in e.objects:
                 self.store.add_sighting(Sighting(label=o.label, camera_id=e.camera_id, zone_id=e.zone_id, ts=e.ts,
-                                                 frame_ref=e.frame_ref, position=o.position))
+                                                 frame_ref=e.frame_ref, position=o.position, box=o.box))
             return self._activity(e.camera_id, e.ts, caption=e.caption, keyframe=e.frame_ref)
 
     def on_item(self, e: ItemSynced) -> list:
@@ -85,6 +87,14 @@ class MemoryProjection:
                 item = Item(connector=e.connector, kind=e.kind, external_id=e.external_id, title=e.title,
                             when=e.when, url=e.url, summary=e.summary)
                 self.store.put_item(item, synced_at=e.ts)
+        return []
+
+    def on_file(self, e: FileAdded) -> list:
+        """A file shared into the Workspace inbox (W1): searchable like a connector item, its link the download."""
+        with self.store.db:
+            if self.store.first_time(e.event_id):
+                self.store.put_item(Item(connector="files", kind="file", external_id=e.file_id, title=e.name,
+                                         url=f"/api/files/{e.file_id}", summary=e.text or None), synced_at=e.ts)
         return []
 
     def on_note(self, e: NoteWritten) -> list:

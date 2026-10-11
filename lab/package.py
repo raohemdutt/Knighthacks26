@@ -77,11 +77,14 @@ from lab.machine.record import record
 __all__ = ["PackageError", "Toolchain", "ToolResult", "build", "copy_scores", "dry_run", "folder_manifest",
            "gate_scores", "merge_adapter", "main"]
 
+CLI_VERB = "package"   # registers python -m lab package
 REPO = Path(__file__).resolve().parents[1]
 DEFAULT_BASE = "Qwen/Qwen3.5-4B"
 QUANT = "Q4_K_M"
 MANIFEST = package_server.MANIFEST
 SCORE_PREFIX = "learning.heldout."
+GATE_VERB, GATE_PREFIX = "eval-gate", "eval."   # the decision row lab/eval_gate.py writes, and its metric names
+GATE_SCORE_NAMES = ("current", "candidate", "teacher")   # contracts/learning.py: the scores of a run's evaluation
 BUILD_ROW, SCORES_ROW = "package build", "package scores"
 PACKAGE_MB = "learning.package_mb"
 ADAPTER_CONFIG = "adapter_config.json"
@@ -230,16 +233,22 @@ def _read_manifest(folder: Path) -> dict[str, Any]:
 def gate_scores(run_id: str, *, state_dir: str | os.PathLike[str] | None = None
                 ) -> tuple[dict[str, float] | None, dict[str, Any] | None]:
     """The scores of the newest gate row of the run, as {current: .., candidate: .., ...}, and the row; (None, None)
-    when the gate has not scored the run."""
-    rows = [row for row in ledger.read(state_dir=state_dir, refs={"run_id": run_id})
-            if not str(row.get("verb", "")).startswith("package")
-            and any(name.startswith(SCORE_PREFIX) for name in row.get("metrics") or {})]
+    when the gate has not scored the run. A gate row is the decision row of `python -m lab eval-gate` (verb eval-gate,
+    metrics eval.current, eval.candidate and eval.teacher; its per-score rows, verb eval-gate.score, and a refused
+    run carry no decision and are not one), or any other row whose metrics are named learning.heldout.<name>."""
+    rows = [(row, scores) for row in ledger.read(state_dir=state_dir, refs={"run_id": run_id})
+            if not str(row.get("verb", "")).startswith("package") and (scores := _row_scores(row))]
     if not rows:
         return None, None
-    row = rows[-1]
-    scores = {name[len(SCORE_PREFIX):]: float(value) for name, value in row["metrics"].items()
-              if name.startswith(SCORE_PREFIX)}
+    row, scores = rows[-1]
     return scores, row
+
+
+def _row_scores(row: Mapping[str, Any]) -> dict[str, float]:
+    metrics = row.get("metrics") or {}
+    if row.get("verb") == GATE_VERB and all(GATE_PREFIX + name in metrics for name in ("current", "candidate")):
+        return {name: float(metrics[GATE_PREFIX + name]) for name in GATE_SCORE_NAMES if GATE_PREFIX + name in metrics}
+    return {name[len(SCORE_PREFIX):]: float(value) for name, value in metrics.items() if name.startswith(SCORE_PREFIX)}
 
 
 def _check_gate_version(row: Mapping[str, Any], version: str) -> None:
@@ -339,8 +348,9 @@ def copy_scores(package_dir: str | Path, run_id: str, *, state_dir: str | os.Pat
     manifest = _read_manifest(package_dir)
     scores, gate = gate_scores(run_id, state_dir=state_dir)
     if gate is None:
-        raise PackageError("no_gate_row", f"no gate row with refs.run_id {run_id!r} and {SCORE_PREFIX}* metrics in "
-                                          "the ledger: the gate (L4) has not scored this package yet")
+        raise PackageError("no_gate_row", f"no gate row with refs.run_id {run_id!r} in the ledger (an {GATE_VERB} "
+                                          f"decision row, or {SCORE_PREFIX}* metrics): the gate (L4) has not scored "
+                                          "this package yet")
     _check_gate_version(gate, manifest["version"])
     manifest["scores"] = scores
     _write_manifest(package_dir, manifest)

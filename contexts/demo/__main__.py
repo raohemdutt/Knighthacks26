@@ -1,7 +1,9 @@
 """The demo event feed.
 
-    python -m contexts.demo seed [--data-dir data] [--now | --end ISO] [--force]
+    python -m contexts.demo seed [--data-dir data] [--now | --end ISO] [--force] [--history]
         The whole demo night, published through the real app: every projection fills from the log.
+        --history first lives the twelve days before it through the Day loop (plans, re-plans, reviews), so
+        Today's Plan has earlier days on its date strip, three of them the old presenter presets.
         Then run the app on it:
             ATLAS_DATA_DIR=data ATLAS_MEMORY_FIXTURE= ATLAS_CONNECTORS=0 python -m contexts.gateway
 
@@ -28,6 +30,11 @@
     python -m contexts.demo preflight --gateway http://<box>:8000 [--token $ATLAS_TOKEN] [--reset]
         The T-15 checklist (D9): PASS/FAIL with the fix for each, plus a warm-up question and its time.
         --reset first clears alert cooldowns and leftover approval cards (memory is untouched).
+
+    python -m contexts.demo kit --gateway http://<box>:8000 [--ntfy URL] [--topic atlas] [--devpost URL] [--out data/kit]
+        The demo staging kit (D6): the physical checklist with the beat each item serves, then the software half
+        checked against the box (app served and installable, ntfy and its topic, preflight); --devpost writes a
+        printable QR card to --out.
 
     python -m contexts.demo fake perception --gateway http://<box>:8000 [--token $ATLAS_TOKEN] [--realtime]
         The camera scene pushed into a running box (POST /api/events), timed from now: its own zone
@@ -64,6 +71,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--now", action="store_true", help="move the story so it ends at the current time")
     s.add_argument("--end", type=datetime.fromisoformat, help="move the story so it ends at this time (with a UTC offset)")
     s.add_argument("--force", action="store_true", help="add to a data directory that already has an event log")
+    s.add_argument("--history", action="store_true", help="also the twelve days before the story, lived through the Day loop")
     c = sub.add_parser("circle", help="the demo night plus a Circle of three, on one box")
     c.add_argument("--data-dir", type=Path, required=True)
     c.add_argument("--config-dir", type=Path, help="where to write the demo's config (default: <data-dir>/config)")
@@ -88,6 +96,13 @@ def main(argv: list[str] | None = None) -> int:
     pf.add_argument("--token", default=os.environ.get("ATLAS_TOKEN"))
     pf.add_argument("--reset", action="store_true", help="clear cooldowns and leftover approval cards first")
     pf.add_argument("--question", default="Where are my keys?", help="the warm-up question")
+    kt = sub.add_parser("kit", help="the demo staging kit: physical checklist and software checks (D6)")
+    kt.add_argument("--gateway", default="http://127.0.0.1:8000")
+    kt.add_argument("--ntfy", default=os.environ.get("NTFY_URL"), help="default: NTFY_URL, else the gateway's host on :8090")
+    kt.add_argument("--topic", default=os.environ.get("NTFY_TOPIC", "atlas"))
+    kt.add_argument("--devpost", default=os.environ.get("DEVPOST_URL"), help="the project page; writes the printable QR card")
+    kt.add_argument("--out", type=Path, default=Path("data/kit"), help="where the QR card goes (gitignored)")
+    kt.add_argument("--list", action="store_true", help="only print the physical checklist")
     v = sub.add_parser("video", help="the submission video's number-key layout (D10)")
     v.add_argument("action", choices=["check", "chapters", "cards", "json"])
     v.add_argument("file", nargs="?", type=Path, help="check: the exported video; cards: where to write the HTML")
@@ -108,6 +123,17 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "video":
         return video_command(args.action, args.file)
+
+    if args.command == "kit":
+        from contexts.demo import kit
+
+        print(kit.checklist())
+        if args.list:
+            return 0
+        checks = kit.software_checks(args.gateway, args.ntfy, args.topic, args.devpost, args.out)
+        print()
+        print(kit.report(checks))
+        return 0 if all(c.ok for c in checks) else 1
 
     if args.command == "preflight":
         return preflight(args.gateway, args.token, args.reset, args.question)
@@ -146,7 +172,8 @@ def main(argv: list[str] | None = None) -> int:
         end = args.end or datetime.now(UTC).replace(microsecond=0)
         cfg = circle.config_dir(args.config_dir or args.data_dir / "config")
         try:
-            seeded = asyncio.run(seed(args.data_dir, now=end, force=args.force, config_dir=cfg, extra=circle.circle_events))
+            seeded = asyncio.run(seed(args.data_dir, now=end, force=args.force, config_dir=cfg, extra=circle.circle_events,
+                                     history=True))
         except SeedRefused as refused:
             print(refused, file=sys.stderr)
             return 1
@@ -162,7 +189,7 @@ def main(argv: list[str] | None = None) -> int:
             p.error("--end needs a UTC offset, e.g. 2026-10-11T09:30:00-04:00")
         end = datetime.now(UTC).replace(microsecond=0) if args.now else args.end
         try:
-            seeded = asyncio.run(seed(args.data_dir, now=end, force=args.force))
+            seeded = asyncio.run(seed(args.data_dir, now=end, force=args.force, history=args.history))
         except SeedRefused as refused:
             print(refused, file=sys.stderr)
             return 1

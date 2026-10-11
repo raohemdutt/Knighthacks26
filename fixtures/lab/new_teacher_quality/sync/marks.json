@@ -1,0 +1,171 @@
+[
+ {
+  "what": "idle-start",
+  "local_before": 1791699528.482,
+  "local_after": 1791699528.654,
+  "last_seq": 35068,
+  "pod_sent": "2026-10-11T06:19:52.656Z"
+ },
+ {
+  "what": "idle-end",
+  "local_before": 1791699618.654,
+  "local_after": 1791699618.813,
+  "last_seq": 35158,
+  "pod_sent": "2026-10-11T06:21:22.810Z"
+ },
+ {
+  "what": "push-start-payload",
+  "local_before": 1791699621.839,
+  "local_after": 1791699621.944,
+  "last_seq": 35161,
+  "pod_sent": "2026-10-11T06:21:25.939Z",
+  "remote": "r14-link-speed/r14-1gb/model.gguf"
+ },
+ {
+  "what": "push-end-payload",
+  "local_before": 1791699728.926,
+  "local_after": 1791699729.251,
+  "last_seq": 35268,
+  "pod_sent": "2026-10-11T06:23:13.248Z",
+  "seconds": 106.982
+ },
+ {
+  "what": "push-start-manifest",
+  "local_before": 1791699729.251,
+  "local_after": 1791699729.361,
+  "last_seq": 35269,
+  "pod_sent": "2026-10-11T06:23:13.354Z",
+  "remote": "r14-link-speed/r14-1gb/manifest.json"
+ },
+ {
+  "what": "push-end-manifest",
+  "local_before": 1791699729.564,
+  "local_after": 1791699729.685,
+  "last_seq": 35269,
+  "pod_sent": "2026-10-11T06:23:13.681Z",
+  "seconds": 0.203
+ },
+ {
+  "what": "pull-start",
+  "local_before": 1791699741.054,
+  "local_after": 1791699741.224,
+  "last_seq": 35280,
+  "pod_sent": "2026-10-11T06:23:25.221Z"
+ },
+ {
+  "what": "pull-end",
+  "local_before": 1791699773.976,
+  "local_after": 1791699774.268,
+  "last_seq": 35313,
+  "pod_sent": "2026-10-11T06:23:58.271Z",
+  "seconds": 32.753
+ },
+ {
+  "what": "push-start-payload",
+  "local_before": 1791699775.091,
+  "local_after": 1791699775.194,
+  "last_seq": 35314,
+  "pod_sent": "2026-10-11T06:23:59.197Z",
+  "remote": "r14-link-speed/r14-1gb/model.gguf"
+ },
+ {
+  "what": "push-end-payload",
+  "local_before": 1791699882.78,
+  "local_after": 1791699883.006,
+  "last_seq": 35422,
+  "pod_sent": "2026-10-11T06:25:46.996Z",
+  "seconds": 107.586
+ },
+ {
+  "what": "push-start-manifest",
+  "local_before": 1791699883.006,
+  "local_after": 1791699883.125,
+  "last_seq": 35422,
+  "pod_sent": "2026-10-11T06:25:47.122Z",
+  "remote": "r14-link-speed/r14-1gb/manifest.json"
+ },
+ {
+  "what": "push-end-manifest",
+  "local_before": 1791699883.343,
+  "local_after": 1791699883.457,
+  "last_seq": 35423,
+  "pod_sent": "2026-10-11T06:25:47.446Z",
+  "seconds": 0.218
+ },
+ {
+  "what": "pull-start",
+  "local_before": 1791699883.47,
+  "local_after": 1791699883.584,
+  "last_seq": 35423,
+  "pod_sent": "2026-10-11T06:25:47.573Z"
+ },
+ {
+  "what": "pull-end",
+  "local_before": 1791699904.787,
+  "local_after": 1791699904.948,
+  "last_seq": 35444,
+  "pod_sent": "2026-10-11T06:26:08.944Z",
+  "seconds": 21.203
+ },
+ {
+  "what": "push-start-payload",
+  "local_before": 1791699905.871,
+  "local_after": 1791699905.986,
+  "last_seq": 35445,
+  "pod_sent": "2026-10-11T06:26:09.974Z",
+  "remote": "r14-link-speed/r14-1gb/model.gguf"
+ },
+ {
+  "what": "push-end-payload",
+  "local_before": 1791700016.074,
+  "local_after": 1791700016.352,
+  "last_seq": 35556,
+  "pod_sent": "2026-10-11T06:28:00.356Z",
+  "seconds": 110.088
+ },
+ {
+  "what": "push-start-manifest",
+  "local_before": 1791700016.352,
+  "local_after": 1791700016.456,
+  "last_seq": 35556,
+  "pod_sent": "2026-10-11T06:28:00.455Z",
+  "remote": "r14-link-speed/r14-1gb/manifest.json"
+ },
+ {
+  "what": "push-end-manifest",
+  "local_before": 1791700016.746,
+  "local_after": 1791700016.844,
+  "last_seq": 35556,
+  "pod_sent": "2026-10-11T06:28:00.844Z",
+  "seconds": 0.29
+ },
+ {
+  "what": "pull-start",
+  "local_before": 1791700016.853,
+  "local_after": 1791700016.961,
+  "last_seq": 35556,
+  "pod_sent": "2026-10-11T06:28:00.959Z"
+ },
+ {
+  "what": "pull-end",
+  "local_before": 1791700040.141,
+  "local_after": 1791700040.297,
+  "last_seq": 35580,
+  "pod_sent": "2026-10-11T06:28:24.302Z",
+  "seconds": 23.18
+ },
+ {
+  "what": "after-end",
+  "local_before": 1791700043.778,
+  "local_after": 1791700043.89,
+  "last_seq": 35583,
+  "pod_sent": "2026-10-11T06:28:27.893Z"
+ },
+ {
+  "what": "idle2-end",
+  "local_before": 1791700103.89,
+  "local_after": 1791700104.241,
+  "last_seq": 35643,
+  "pod_sent": "2026-10-11T06:29:28.235Z"
+ }
+]

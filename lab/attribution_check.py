@@ -71,6 +71,7 @@ NODE = "pod-a"
 CLOCK = "local:client"            # the clock the request windows are stamped on: the machine that sends them
 TASK = "T8"
 VERB = "attribution-check"
+CLI_VERB = "attribution-check"   # registers python -m lab attribution-check
 DEFAULT_REQUESTS = 100
 DEFAULT_IDLE_S = 60.0
 DEFAULT_GAP_S = 10.0              # a request's tail settles in 3 to 5 s on this pod (lab/README.md, T10)

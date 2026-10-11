@@ -39,11 +39,16 @@ class FaceBlur:
         return [] if rows is None else list(rows)
 
     def __call__(self, frame: Any) -> Any:
+        return self.scrambled(frame)[0]
+
+    def scrambled(self, frame: Any) -> tuple[Any, int]:
+        """The frame with every face scrambled, and how many faces the detector reported (the outbound gate's port)."""
         import cv2
 
         h, w = frame.shape[:2]
         out = frame.copy()
-        for row in self.faces(frame):
+        rows = self.faces(frame)
+        for row in rows:
             x, y, fw, fh = (float(v) for v in row[:4])
             mx, my = fw * self.margin, fh * self.margin
             x1, y1 = max(int(x - mx), 0), max(int(y - my), 0)
@@ -51,7 +56,7 @@ class FaceBlur:
             if x2 - x1 < 2 or y2 - y1 < 2:
                 continue
             out[y1:y2, x1:x2] = _scramble(out[y1:y2, x1:x2], cv2)
-        return out
+        return out, len(rows)
 
 
 def _scramble(patch: Any, cv2: Any) -> Any:

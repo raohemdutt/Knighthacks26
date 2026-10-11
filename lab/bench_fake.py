@@ -16,7 +16,10 @@ its checkpoint as root and max_model_len, as vLLM answers), GET /health, and POS
 server-sent events (one token per chunk, a finish chunk, a usage chunk when stream_options.include_usage is set, then
 [DONE]). It honours max_tokens and ignore_eos (without it, an answer ends after a third of max_tokens with finish
 reason stop). Tokens come --stream-tok-s apart after --ttft-s, or --stall-tok-s apart for a request whose messages
-contain the text --stall-match (the harness's nonce names the run and the role, so a test can slow one run only). With --prefix-caching on, a request whose whole prompt
+contain the text --stall-match (the harness's nonce names the run and the role, so a test can slow one run only); with
+--stall-tok-s 0 such a request sends its first token and then no other, only a comment line every STALL_PING_S to keep
+the connection alive, until the client leaves or --stall-max-s is up, so the harness's own bound is what ends a stuck
+stream and a slow test box cannot make it finish in time. With --prefix-caching on, a request whose whole prompt
 was seen before is a prefix-cache hit and its usage says so in prompt_tokens_details.cached_tokens, as vLLM's does;
 the harness's per-request nonce is what keeps measured requests from hitting. With --port 0 it binds a free port
 itself and writes it to --port-file, so no test ever races another process for a port. With --profiler-config (vLLM's
@@ -91,6 +94,7 @@ IDLE_LOADED_W = 9.2
 WATTS_PER_STREAM = 15.0
 MEM_BUSY_ONE = 55.0
 MEM_BUSY_STEP = 4.0
+STALL_PING_S = 0.1   # a --stall-tok-s 0 stream sends a comment line this often, never a token
 
 
 # --- the server -------------------------------------------------------------------------------------------------
@@ -260,10 +264,15 @@ class FakeEngine:
             self.active += 1
             self.busy = min(100.0, MEM_BUSY_ONE + MEM_BUSY_STEP * (self.active - 1))
         self.publish_load()   # before the first token goes out, so a read at any token sees this stream decoding
-        rate = a.stall_tok_s if a.stall_match and a.stall_match in prompt_text else a.stream_tok_s
+        stalled = bool(a.stall_match) and a.stall_match in prompt_text
+        rate = a.stall_tok_s if stalled else a.stream_tok_s
         start = time.time()
         try:
             for i in range(n):
+                if i and stalled and rate <= 0:
+                    if not self._stall(handler):
+                        return   # the client gave up on the stuck stream: nothing more to write
+                    break
                 if i:
                     time.sleep(1.0 / rate)
                 text, token_id, logprob = self.token(prompt_text, i)
@@ -290,6 +299,19 @@ class FakeEngine:
                                             "prompt_tokens_details": {"cached_tokens": prompt_tokens if hit else 0}}})
         handler.wfile.write(b"data: [DONE]\n\n")
         handler.wfile.flush()
+
+    def _stall(self, handler: BaseHTTPRequestHandler) -> bool:
+        """A stuck stream: no token, only a comment line every STALL_PING_S so the connection stays open, until the
+        client leaves (False) or --stall-max-s is up (True, and the answer then ends normally)."""
+        deadline = time.monotonic() + self.args.stall_max_s
+        while time.monotonic() < deadline:
+            time.sleep(STALL_PING_S)
+            try:
+                handler.wfile.write(b": stalled\n\n")
+                handler.wfile.flush()
+            except OSError:
+                return False
+        return True
 
     def token(self, prompt_text: str, i: int) -> tuple[str, int, float]:
         """Token i of the answer: its text, a token id fixed by the prompt and the position, and a logprob. From
@@ -389,7 +411,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--stream-tok-s", type=float, default=400.0)
     s.add_argument("--ttft-s", type=float, default=0.01)
     s.add_argument("--stall-match", default=None, help="requests whose messages contain this text stream slowly")
-    s.add_argument("--stall-tok-s", type=float, default=4.0)
+    s.add_argument("--stall-tok-s", type=float, default=4.0, help="0: the first token only, then a stall")
+    s.add_argument("--stall-max-s", type=float, default=120.0, help="how long a --stall-tok-s 0 stream stays stuck")
     s.add_argument("--startup-s", type=float, default=0.05)
     s.add_argument("--queues", type=int, default=3)
     s.add_argument("--prefix-caching", choices=("on", "off"), default="on")

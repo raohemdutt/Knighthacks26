@@ -23,6 +23,22 @@ from lab.machine import ledger
 from lab.package_toolchain_fake import COMMIT, FakeToolchain
 from runtime.registry import model_version
 
+
+def _symlinks_work() -> bool:
+    """runtime/modelstore.py switches data/models/current with a symlink. The Jetson and the pods can make one;
+    Windows without Developer Mode or admin rights cannot (WinError 1314)."""
+    import os
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            os.symlink("target", os.path.join(tmp, "link"))
+            return True
+        except OSError:
+            return False
+
+
+NEEDS_SYMLINKS = pytest.mark.skipif(not _symlinks_work(), reason="this machine cannot create symlinks")
+
 BASE = "Qwen/Qwen3.5-4B"
 RUN = "run-0007"
 TASK = "desk-objects"
@@ -318,6 +334,45 @@ def test_copy_scores_without_a_gate_row_is_an_error(pod):
     assert caught.value.kind == "no_gate_row"
 
 
+def eval_gate_rows(pod, run_id=RUN, current=1.0, candidate=1.0, teacher=0.9167, outcome="reject"):
+    """The rows `python -m lab eval-gate` writes for a run: one per score, then the decision row."""
+    refs = {"run_id": run_id, "commit": "abc1234", "split_sha256": "0" * 64}
+    for role, value in (("current", current), ("candidate", candidate), ("teacher", teacher)):
+        ledger.append({"actor": "gate", "tier": None, "task": "L4", "verb": "eval-gate.score", "outcome": role,
+                       "metrics": {"eval.score": value, "eval.n_items": 24, "eval.n_groups": 4}, "refs": refs,
+                       "conditions": {"dataset_id": "tool-calling-fixture"}}, state_dir=pod.state)
+    return ledger.append({"actor": "gate", "tier": None, "task": "L4", "verb": "eval-gate", "outcome": outcome,
+                          "metrics": {"eval.current": current, "eval.candidate": candidate, "eval.teacher": teacher,
+                                      "eval.noise": 0.0, "eval.delta": candidate - current, "eval.p_value": 1.0,
+                                      "eval.n_items": 24, "eval.n_groups": 4, "eval.unscored": 34},
+                          "refs": refs, "conditions": {"dataset_id": "tool-calling-fixture"}}, state_dir=pod.state)
+
+
+def test_scores_are_copied_from_the_decision_row_the_eval_gate_writes(pod):
+    build(pod)
+    eval_gate_rows(pod, run_id="run-0006", candidate=0.25)   # another run's gate
+    seq = eval_gate_rows(pod)
+
+    result = package.copy_scores(pod.out / VERSION, RUN, state_dir=pod.state)
+
+    assert result["scores"] == {"current": 1.0, "candidate": 1.0, "teacher": 0.9167} and result["gate_seq"] == seq
+    manifest = ModelManifest.model_validate(json.loads((pod.out / VERSION / "manifest.json").read_text()))
+    assert manifest.scores == {"current": 1.0, "candidate": 1.0, "teacher": 0.9167}
+
+
+def test_the_gates_per_score_rows_and_a_refused_run_are_not_a_gate_row(pod):
+    build(pod)
+    refs = {"run_id": RUN}
+    ledger.append({"actor": "gate", "tier": None, "task": "L4", "verb": "eval-gate.score", "outcome": "candidate",
+                   "metrics": {"eval.score": 1.0, "eval.n_items": 24}, "refs": refs, "conditions": {}},
+                  state_dir=pod.state)
+    ledger.append({"actor": "gate", "tier": None, "task": "L4", "verb": "eval-gate", "outcome": "refused",
+                   "metrics": {}, "refs": refs, "conditions": {}}, state_dir=pod.state)
+    with pytest.raises(package.PackageError) as caught:
+        package.copy_scores(pod.out / VERSION, RUN, state_dir=pod.state)
+    assert caught.value.kind == "no_gate_row" and "eval-gate" in str(caught.value)
+
+
 def test_the_newest_gate_row_of_the_run_wins(pod):
     build(pod)
     gate_row(pod, metrics={"learning.heldout.candidate": 0.5})
@@ -344,6 +399,7 @@ def test_the_ledger_row_carries_commit_commands_package_mb_and_wall_clock(pod):
 
 # --- the dry run: installed off the box, read back through runtime/registry.py -----------------------------------
 
+@NEEDS_SYMLINKS
 def test_dry_run_installs_under_scratch_data_models_and_model_version_reads_it_back(pod):
     build(pod)
     gate_row(pod)
@@ -384,6 +440,7 @@ def test_package_is_one_line_of_the_sorted_verb_registry():
     assert list(lab_cli.VERBS) == sorted(lab_cli.VERBS)
 
 
+@NEEDS_SYMLINKS
 def test_python_m_lab_package_runs_build_scores_and_dry_run_on_the_fake(pod, monkeypatch, capsys):
     monkeypatch.setenv("LAB_STATE_DIR", str(pod.state))
     common = ["--run-id", RUN]

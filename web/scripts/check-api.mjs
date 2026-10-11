@@ -83,6 +83,8 @@ const CITATION = { episode_id: "string?", frame_ref: "string?", ts: isoDateOrNul
 const ANSWER = { ...ENVELOPE, question_id: "string", answer: "string", model_version: "string", citations: listOf(CITATION) };
 const EPISODE = { id: "string", camera_id: "string", start: isoDate, end: isoDateOrNull, labels: stringList, captions: stringList, summary: "string?", keyframe_refs: stringList };
 const STATS = { hours_recorded: "number", episodes: "number", captions: "number", first_event: isoDateOrNull };
+const DIGEST = { day: "string", text: "string", episodes: "number", people_episodes: "number", first: isoDateOrNull, last: isoDateOrNull };
+const INBOX_FILE = { file_id: "string", name: "string", content_type: "string", size: "number", added_at: isoDate, text_chars: "number", excerpt: "string" };
 const HIT = { episode_id: "string", camera_id: "string", ts: isoDate, text: "string", score: "number", frame_ref: "string?", kind: "string", url: "string?", title: "string?" };
 const ITEM = { connector: "string", kind: "string", external_id: "string", title: "string", when: isoDateOrNull, url: "string?", summary: "string?" };
 const NUDGE = { message: "string", tone: oneOf("warn", "celebrate"), ts: isoDate };
@@ -436,6 +438,8 @@ console.log("\nTimeline");
 await check("GET /memory/stats", "GET", "/memory/stats", STATS);
 const episodes = await check("GET /memory/episodes", "GET", "/memory/episodes", EPISODE, { list: true });
 if (episodes?.[0]) await check(`GET /memory/episodes?camera=${episodes[0].camera_id}`, "GET", `/memory/episodes?camera=${encodeURIComponent(episodes[0].camera_id)}`, EPISODE, { list: true });
+await check("GET /api/digest", "GET", "/api/digest", DIGEST);
+await check("GET /api/files", "GET", "/api/files", INBOX_FILE, { list: true });
 await check("GET /memory/search?q=keys", "GET", "/memory/search?q=keys&limit=20", HIT, { list: true });
 await check("GET /memory/items", "GET", "/memory/items", ITEM, { list: true });
 
@@ -667,6 +671,10 @@ if (labBench) {
   expect("  every row is served once, as a point", points.length === labBench.rows, `${points.length} points for ${labBench.rows} rows`);
   const badPoint = points.map((p) => labNum(p) || (!/metrics\.jsonl:\d+$/.test(p.source.ref) && "no file line") || (p.low_confidence && !p.reason && "low confidence without a reason")).filter(Boolean);
   expect("  every point names its line in the metrics file, and a low-confidence one says why", badPoint.length === 0, badPoint.slice(0, 3).join("; "));
+  const badChip = points.filter((p) => !p.chip?.key || !p.chip.name || typeof p.chip.current !== "boolean" || p.other_chip !== !p.chip.current);
+  expect("  every point names the chip it was measured on, and other_chip means not the current lab", badChip.length === 0, badChip.slice(0, 3).map((p) => p.source.ref).join("; "));
+  const mixed = labBench.sweeps.filter((s) => Object.values(s.metrics).some((pts) => pts.some((p) => p.chip?.key !== s.chip?.key)));
+  expect("  no sweep mixes rows from two chips", mixed.length === 0, mixed.map((s) => s.id).join("; "));
   const listed = labBench.not_charted.reduce((n, x) => n + x.lines.length, 0);
   expect("  every row is charted or listed as not charted", labBench.charted_rows + listed === labBench.rows, `${labBench.charted_rows} + ${listed} of ${labBench.rows}`);
   for (const s of labBench.sweeps) expect(`  sweep ${s.id} has a point per batch size`, Object.values(s.metrics).every((pts) => pts.length <= s.batches.length && pts.every((p) => s.batches.includes(p.x))), "a point off the batch list");

@@ -32,6 +32,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
+CLI_VERBS = {"resume": "resume_main", "stop": "stop_main"}   # registers python -m lab stop and resume
 STATE_DIR_ENV = "LAB_STATE_DIR"
 DEFAULT_STATE_DIR = Path(__file__).resolve().parents[1] / "state"
 STOP_NAME = "STOP"

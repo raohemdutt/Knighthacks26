@@ -23,6 +23,7 @@ from bus import EventBus
 from contexts.agent.application.loop import ODD_HOURS_DESCRIPTION, ODD_HOURS_RULE, AgentLoop
 from contexts.agent.application.planner import Planner
 from contexts.agent.application.qa import QA, SleepSchedule
+from contexts.agent.application.done import DoneToday
 from contexts.agent.application.talk import Talk, TalkConfig
 from contexts.agent.application.web_port import HubWebTools, TavilyWebTools
 from contexts.agent.domain.rules import AlertHistory, RuleEvaluator, load_rules
@@ -33,8 +34,8 @@ from contexts.circle.application.presence import PresenceBoard
 from contexts.circle.application.protocol import CircleAgent, InMemoryCircleStore
 from contexts.circle.application.sharing import CircleOffline, CircleSharing
 from contexts.circle.application.presence_sync import PresenceSync
-from contexts.circle.infrastructure.neon import CircleBoard, NeonCircleStore, NeonDb, NeonPresence, NeonShares
-from contexts.circle.infrastructure.outbox import CircleOutbox
+from contexts.circle.infrastructure.neon import CircleBoard, NeonCircleStore, NeonCleanup, NeonDb, NeonPresence, NeonShares
+from contexts.circle.infrastructure.outbox import CircleOutbox, PresenceQueue
 from contexts.connectors.application.hub import ConnectorHub
 from contexts.connectors.domain.spec import load_specs
 from contexts.day.application.loop import DayLoop, box_voice, day_phone
@@ -62,6 +63,7 @@ from contexts.play.domain.game import SortIt
 from contexts.perception.application.identity import IdentityService
 from contexts.perception.application.service import PerceptionService
 from contexts.perception.infrastructure.expression import build_expression_reader
+from contexts.perception.infrastructure.face_blur import FaceBlur
 from contexts.perception.infrastructure.identity_store import IdentityStore
 from contexts.perception.infrastructure.photo import build_photo_reader
 from contexts.perception.infrastructure.recognizer import build_recognizer
@@ -76,8 +78,10 @@ from contexts.play.domain.places import PlaceSet
 from contexts.play.room.live import RoomLive
 from contexts.play.room.plan import RoomError, load_room, room_path
 from contexts.profiles import Profile, load_profile
-from contexts.vault import KeyRing, PictureLedger, Policy, Vault, Wiper
+from contexts.vault import KeyRing, OutboundGate, PictureLedger, Policy, Refused, Vault, Wiper, jpeg_scrambler
+from contexts.workspace.application.inbox import FileInbox
 from contexts.workspace.domain.approvals import Approvals
+from contexts.workspace.infrastructure.file_store import EncryptedFileStore
 from contexts.workspace.infrastructure.ntfy import Ntfy, PhoneNotifier, send_message_executor
 from contracts.types import ModelVersion
 from runtime import FakeRuntime
@@ -85,6 +89,8 @@ from runtime.registry import build_runtime
 
 log = logging.getLogger("atlas")
 TICK_S = 30
+NEON_JOB_TIMEOUT_S = 20  # a tick job that talks to Neon gets this long; then the tick moves on and tries next time
+CIRCLE_KEEP_DAYS = 30  # this box removes its own old rows from the shared tables after this long (circle.keep_days)
 
 
 @dataclass
@@ -132,6 +138,7 @@ class Atlas:
     memory: SqliteMemory | None = None
     projection: MemoryProjection | None = None
     presence_sync: PresenceSync | None = None
+    circle_cleanup: object | None = None  # removes this box's own old rows from Neon; only with Neon
     board: CircleBoard | None = None
     places: PlaceSet | None = None
     dayrun: DayRun | None = None
@@ -140,6 +147,8 @@ class Atlas:
     policy: Policy | None = None
     wiper: Wiper | None = None
     pictures: PictureLedger | None = None  # V7: camera pictures cleared to leave, per approval
+    outbound: OutboundGate | None = None  # every picture that leaves passes it: faces scrambled, or nothing is sent
+    phone_photo: object | None = None  # jpeg -> jpeg through the gate, for GET /memory/keyframes/<ref>?view=out
     learning: LearningBoard | None = None  # where each taught task is (X10)
     lab_view: LabView | None = None  # the Learning lab screen: one story per training run, rebuilt from the log
     capture: CaptureService | None = None  # cameras -> detector -> observations, only where there is a detector (C6)
@@ -152,8 +161,10 @@ class Atlas:
     coach_feedback: CoachFeedback | None = None  # "Was that right?" about a break; GET /api/day/coach/feedback
     spot: object | None = None  # SpotContext: the inspection (SPOT) dashboard, contexts/spot; GET /api/spot/*
     face_share: object | None = None  # FaceShare (contexts/circle): a friend's box recognises you; off by default
+    files: FileInbox | None = None  # W1: files shared from the phone, encrypted under data/files; /api/files
     tasks: list[asyncio.Task] = field(default_factory=list)
     _last_retention: datetime | None = None
+    _last_cleanup: datetime | None = None
     _offline: set[str] = field(default_factory=set)  # tick jobs whose Neon is down (logged once)
 
     async def start(self) -> None:
@@ -179,12 +190,14 @@ class Atlas:
                 ("habits", (lambda: self.habits.flush(now) + self.nudger.check(now)) if self.habits else None),
                 ("zones", (lambda: self.zone_engine.flush(now)) if self.zone_engine else None),
                 ("episodes", (lambda: self.projection.flush(now)) if self.projection else None),  # close quiet episodes
-                ("circle", (lambda: asyncio.to_thread(self.circle.poll)) if self.circle else None),  # network I/O with Neon
-                ("shares", (lambda: asyncio.to_thread(self.sharing.sync, now)) if self.sharing else None),
-                ("presence", (lambda: asyncio.to_thread(self.presence_sync.sync, now)) if self.presence_sync else None),
-                ("face share", (lambda: asyncio.to_thread(self.face_share.poll)) if self.face_share else None),  # expiry, then the Circle
+                # Neon is network I/O: off the event loop, and bounded so a database that stops answering cannot stop the ticks
+                ("circle", (lambda: off_loop(self.circle.poll)) if self.circle else None),
+                ("shares", (lambda: off_loop(self.sharing.sync, now)) if self.sharing else None),
+                ("presence", (lambda: off_loop(self.presence_sync.sync, now)) if self.presence_sync else None),
+                ("face share", (lambda: off_loop(self.face_share.poll)) if self.face_share else None),  # expiry, then the Circle
                 ("league", (lambda: self.league.flush(now)) if self.league else None),  # close a week the clock passed
-                ("league sync", (lambda: asyncio.to_thread(self.league_sync.sync, now)) if self.league_sync else None),
+                ("league sync", (lambda: off_loop(self.league_sync.sync, now)) if self.league_sync else None),
+                ("circle cleanup", self._cleanup(now)),
                 ("agent loop", (lambda: self.loop.tick(now)) if self.loop.due(now) else None),
                 ("day", (lambda: self.day.tick(now)) if self.day else None),  # the morning plan, status, evening review
                 ("connectors", (lambda: self.hub.sync_due(now)) if self.settings.connectors else None),
@@ -208,6 +221,24 @@ class Atlas:
                     log.exception("tick job %s failed", name)
             await asyncio.sleep(TICK_S)
 
+    def _cleanup(self, now: datetime):
+        """Once a day (and once soon after start), remove this box's own old rows from the Circle's shared tables."""
+        if not self.circle_cleanup or (self._last_cleanup and now - self._last_cleanup < timedelta(days=1)):
+            return None
+        self._last_cleanup = now
+
+        async def sweep() -> list:
+            try:
+                removed = await off_loop(self.circle_cleanup)
+            except CircleOffline:
+                self._last_cleanup = None  # not done: try again on the next tick, not tomorrow
+                raise
+            if any(removed.values()):
+                log.info("circle cleanup: removed this box's old rows from Neon: %s", removed)
+            return []
+
+        return sweep
+
     def _retention(self, now: datetime):
         """Once an hour, remove saved pictures older than the policy's keep_days (nothing when it is forever)."""
         if not self.policy or not self.policy.keep_days:
@@ -229,6 +260,15 @@ class Atlas:
             with contextlib.suppress(asyncio.CancelledError):
                 await t
         await self.hub.close()
+
+
+async def off_loop(fn, *args):
+    """Run a blocking Neon call in a thread, for at most NEON_JOB_TIMEOUT_S. No answer in time counts as offline:
+    the caller retries on the next tick (the thread ends on its own when the driver gives up on the connection)."""
+    try:
+        return await asyncio.wait_for(asyncio.to_thread(fn, *args), NEON_JOB_TIMEOUT_S)
+    except TimeoutError:
+        raise CircleOffline(f"no answer from Neon within {NEON_JOB_TIMEOUT_S}s") from None
 
 
 def circle_from_env(cfg: dict, env) -> dict:
@@ -293,19 +333,38 @@ def build(settings: Settings | None = None) -> Atlas:
     # Conversation: small talk and simple questions, after the planner and the pre-fetch passed (agent.yaml `talk:`).
     talk = Talk(runtime, qa.clock, memory=memory, config=TalkConfig.of(agent_cfg.get("talk")), tz=qa.sleep.tz, web=bool(web))
     talk.about = profile.description
+    qa.names = dict(talk.config.names)  # how a course code is said aloud (agent.yaml `talk.names`)
+    # "How's it going?" is answered with what Atlas did for the person today, counted from the log (a projection).
+    done = DoneToday(qa.sleep.tz)
+    for prefix in DoneToday.PREFIXES:
+        bus.subscribe(prefix, done.on_event, replay=True)
+    talk.done_for_you = lambda: done.clauses(qa.clock())
     if talk.config.enabled:  # ATLAS_TALK=0 or `talk.enabled: false`: every open-ended question goes to the tool loop
         qa.talk = talk
     rules = RuleEvaluator(load_rules(profile.path("rules.yaml")), builtin={ODD_HOURS_RULE: ODD_HOURS_DESCRIPTION})
     alerts = AlertHistory()
+
+    # The outbound gate: a picture that leaves the box (training export, phone alert photo) has its faces scrambled
+    # whatever "Blur faces before saving" is set to. Its own YuNet detector, loaded on first use; if it cannot run,
+    # the gate refuses and nothing is sent.
+    outbound = OutboundGate(jpeg_scrambler(FaceBlur().scrambled), on_release=lambda destination, purpose, pictures, size, faces: log.info(
+        "outbound: %d picture to %s (%s), %d bytes, %d faces blurred", pictures, destination, purpose, size, faces))
+
+    def keyframe_for_export(ref: str) -> bytes:
+        return outbound.release(load_keyframe(ref), destination="lab", purpose="training export")
+
+    def phone_photo(jpeg: bytes) -> bytes:
+        return outbound.release(jpeg, destination="phone", purpose="alert photo")
 
     ntfy = Ntfy(s.ntfy_url, s.ntfy_token) if s.ntfy_url else None
     executors = {
         "connector_write": hub.execute_write,
         "export_training_data": DatasetExporter(
             memory,
-            load_keyframe=load_keyframe,
+            load_keyframe=keyframe_for_export,
             publish=lambda e: asyncio.get_running_loop().create_task(bus.publish(e)),
             out_dir=s.data_dir / "exports",
+            refused=Refused,  # a picture the gate holds back is left out and counted in the result
         ),
     }
     if ntfy:
@@ -323,6 +382,9 @@ def build(settings: Settings | None = None) -> Atlas:
     policy.subscribe(bus)
     # Owner recognition (P9): opt-in, templates encrypted under data/vault/identity/. Unavailable without the SFace model.
     # Face profile: photos need OpenCV; apparent expression needs its model file too (each reports itself unavailable without).
+    # File inbox (W1): files shared from the phone, sealed with the vault; the list rebuilds from the log, Memory indexes it.
+    files = FileInbox(EncryptedFileStore(s.data_dir / "files", vault))
+    bus.subscribe("workspace.file.added", files.handle, replay=True)
     identity = IdentityService(IdentityStore(s.data_dir, vault), build_recognizer(),
                                expression_reader=build_expression_reader(), photo_reader=build_photo_reader())
     bus.subscribe("perception.expression", identity.on_expression, replay=True)  # the series GET /identity/expressions answers from
@@ -449,7 +511,9 @@ def build(settings: Settings | None = None) -> Atlas:
                              clock=lambda: datetime.now(UTC), members=list(names))
         bus.subscribe("circle.message.received", circle.on_message, replay=True)  # state only: never answer twice
         bus.subscribe("circle.event.agreed", circle.on_agreed, replay=True)  # state only: never agree twice
-        approvals.executors["circle_share"] = circle.share_executor
+        # the approved proposal is written to the store: in a thread, so a slow Neon never freezes the event loop
+        approvals.executors["circle_share"] = (lambda req: asyncio.to_thread(circle.share_executor, req)) if neon \
+            else circle.share_executor
         # G1 step 4: once everyone says yes, propose the calendar invite and the group chat message.
         delivery = AgreedEventDelivery(hub, circle_cfg["member_id"], qa.sleep.tz, emails=circle_cfg.get("emails") or {},
                                        chat_group=circle_cfg.get("chat_group", "friends"), public_url=s.public_url)
@@ -474,10 +538,17 @@ def build(settings: Settings | None = None) -> Atlas:
         planner.presence = presence
 
     # Presence delivery (G5): my places to Neon, friends' places back as events.
-    presence_sync = None
+    # A place (or "stop sharing") that could not be sent waits in data/circle.sqlite, across restarts too.
+    presence_sync = circle_cleanup = None
     if presence and neon:
-        presence_sync = PresenceSync(NeonPresence(neon), circle_cfg["circle_id"], circle_cfg["member_id"])
+        presence_sync = PresenceSync(NeonPresence(neon), circle_cfg["circle_id"], circle_cfg["member_id"],
+                                     queue=PresenceQueue(s.data_dir / "circle.sqlite"))
         bus.subscribe("circle.place.shared", presence_sync.on_shared)  # live only: it writes
+        bus.subscribe("circle.place.shared", presence_sync.on_friend, replay=True)  # state only: what friends' places show
+        keep_days = circle_cfg.get("keep_days")
+        keep = timedelta(days=CIRCLE_KEEP_DAYS if keep_days is None else float(keep_days))  # 0: never remove anything
+        cleanup = NeonCleanup(neon)
+        circle_cleanup = lambda: cleanup.sweep(circle_cfg["circle_id"], circle_cfg["member_id"], keep)  # noqa: E731
 
     # Place packs (S5): shipped packs in config/places, uploads in data/places (later wins).
     try:
@@ -591,12 +662,13 @@ def build(settings: Settings | None = None) -> Atlas:
     return Atlas(settings=s, bus=bus, qa=qa, approvals=approvals, hub=hub, loop=loop, zones=zones, rules=rules, alerts=alerts, game=game, room=room,
                  waste=waste, circle=circle, presence=presence, zone_engine=zone_engine, sharing=sharing,
                  memory=memory, projection=projection, habits=habits, nudger=nudger,
-                 presence_sync=presence_sync, board=board, vault=vault, policy=policy, wiper=wiper, pictures=pictures,
+                 presence_sync=presence_sync, circle_cleanup=circle_cleanup, board=board, vault=vault, policy=policy, wiper=wiper, pictures=pictures,
+                 outbound=outbound, phone_photo=phone_photo,
                  places=places, dayrun=dayrun, day=day, capture=capture, identity=identity, learning=learning,
                  lab_view=lab_view,
                  telemetry=telemetry, profile=profile, league=league, league_sync=league_sync,
                  face_share=face_share,
-                 impact=impact, coach_feedback=coach_feedback, spot=spot)
+                 impact=impact, coach_feedback=coach_feedback, spot=spot, files=files)
 
 
 async def _box_say(text: str) -> None:

@@ -284,8 +284,8 @@ def test_commit_proposes_one_calendar_write_and_creates_nothing(dayrun, plans, t
     assert (proposal.type, proposal.kind, proposal.target) == ("agent.action.proposed", "connector_write", "calendar.create_event")
     events = proposal.params["events"]
     assert list(proposal.params) == ["events"] and len(events) == 8 == len(result.events)
-    assert all(e["title"].startswith("Day Run: ") and e["start"] < e["end"] and e["location"] for e in events)
-    assert events[3] == {"title": "Day Run: Study at John C. Hitt Library with Maya", "start": "2026-10-11T14:04:00-04:00",
+    assert all(e["title"].startswith("Today's Plan: ") and e["start"] < e["end"] and e["location"] for e in events)
+    assert events[3] == {"title": "Today's Plan: Study at John C. Hitt Library with Maya", "start": "2026-10-11T14:04:00-04:00",
                          "end": "2026-10-11T16:54:00-04:00", "location": "John C. Hitt Library"}
     assert proposal.ts == at(9, 31) and result.action_id == proposal.action_id and result.stars == 3
     # nothing was created: no connector was started (the factory would raise) and no invite was written

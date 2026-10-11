@@ -12,6 +12,13 @@
 - POST /api/dayrun/campaign          {start, days: [moves, ...]} -> consecutive days with carry-over (at most 31)
 - POST /api/dayrun/forecast          {estimates, measured | day} -> how well you estimate your own time
 
+Today's Plan (additive; nothing above changes):
+- POST /api/dayrun/explain           {start, moves} -> what needs fixing, each with a suggested edit, and one plain sentence
+                                     per number a person might question (work left, at risk, sleep, meals, walks, points)
+- POST /api/dayrun/edit              {text, start, moves} -> the plan after a change said in plain words ("move lunch to one")
+- GET  /api/dayrun/days              the date strip: two weeks back, today, five days ahead; days with nothing are flagged
+- GET  /api/dayrun/day?day=          one of those days: a past day against its review, today's plan, or a future draft
+
 Every route takes an optional `scenario` (a file in fixtures/play/, e.g. "demo") to run on a
 scripted day instead of live sources. Place packs and routes are served by the gateway
 (GET/POST /api/places, GET /api/play/campus-route).
@@ -27,6 +34,8 @@ from contexts.play.dayrun.models import (
     CampaignBody,
     CampaignResult,
     CommitResult,
+    EditBody,
+    EditResult,
     ForecastBody,
     ForecastResult,
     HardBody,
@@ -97,5 +106,21 @@ def dayrun_router(service: DayRun, publish: Callable[[object], Awaitable] | None
     @router.post("/forecast")
     async def forecast(body: ForecastBody) -> ForecastResult:
         return run(service.forecast, body.estimates, body.measured, body.day, body.scenario)
+
+    @router.post("/explain")
+    async def explain(body: PlanBody) -> dict:
+        return run(service.explain, body.moves, body.start, body.initial, body.scenario)
+
+    @router.post("/edit")
+    async def edit(body: EditBody) -> EditResult:
+        return run(service.edit, body.text, body.moves, body.start, body.initial, body.scenario)
+
+    @router.get("/days")
+    async def days() -> dict:
+        return run(service.days)
+
+    @router.get("/day")
+    async def day(day: date) -> dict:
+        return run(service.day, day)
 
     return router

@@ -41,6 +41,7 @@ from typing import Any, Protocol
 from contracts.learning import TaskSpec
 from lab.machine import ledger
 
+CLI_VERB = "publish-adapter"   # registers python -m lab publish-adapter
 BASE_MODEL = "Qwen/Qwen3.5-4B"
 LICENSE_ID = "apache-2.0"
 TOKEN_ENV = "HF_TOKEN"          # the name the credential check lists in the workspace .env; only the name is used here

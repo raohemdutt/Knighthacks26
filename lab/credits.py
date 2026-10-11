@@ -76,6 +76,7 @@ __all__ = ["VERB", "DEFAULT_ACCOUNTS", "JUDGING", "DEFAULT_WINDOW_HOURS", "Charg
            "build_parser"]
 
 VERB = "credits"
+CLI_VERB = "credits"   # registers python -m lab credits
 DEFAULT_ACCOUNTS = ("C", "D")
 # Sunday 2026-10-11 12:00 Eastern (UTC-4): judging and demos start.
 JUDGING = dt.datetime(2026, 10, 11, 16, 0, tzinfo=dt.timezone.utc)

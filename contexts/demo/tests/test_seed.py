@@ -152,7 +152,7 @@ def test_a_fresh_seed_leaves_one_card_the_replan_for_the_mentor_check_in_fresh_a
     data_dir, _ = seeded_dir
     app = replayed(data_dir / "events", tmp_path)
     (card,) = app.approvals.pending()
-    assert "mentor check-in started" in card.reason and "Replace today's Day Run blocks" in card.reason
+    assert "mentor check-in started" in card.reason and "Replace today's plan with" in card.reason
     assert card.expires_at == NOW + timedelta(minutes=5)
     log = list(app.bus.read_log())
     (asked,) = [e for e in log if e.type == "workspace.approval.requested" and e.action_id == card.id]

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { chipShort } from "@/lib/lab";
 import { type BenchPoint, fmt, shortRef, when } from "@/lib/labBench";
 import b from "./bench.module.css";
 
@@ -99,6 +100,16 @@ export function PointDetail({ p, onClose }: { p: BenchPoint; onClose?: () => voi
           <>
             <dt>While</dt>
             <dd>{p.state}</dd>
+          </>
+        ) : null}
+        {p.chip && p.chip.key !== "jetson" ? (
+          <>
+            <dt>Chip</dt>
+            <dd>
+              {chipShort(p.chip)}
+              {p.chip.current ? "" : ", not the current lab"}
+              {p.chip.reason ? `: ${p.chip.reason}` : ""}
+            </dd>
           </>
         ) : null}
         {p.ts ? (

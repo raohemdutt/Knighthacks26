@@ -87,9 +87,11 @@ function tickFor(e: AtlasEvent): Tick | null {
   return { id: e.event_id, ts: e.ts, text, tone };
 }
 
-function useClock(ms: number): Date {
-  const [now, setNow] = useState(() => new Date());
+// Starts as null: the static export is rendered at build time, so a Date here would never match the browser's first render (React #418).
+function useClock(ms: number): Date | null {
+  const [now, setNow] = useState<Date | null>(null);
   useEffect(() => {
+    setNow(new Date());
     const id = window.setInterval(() => setNow(new Date()), ms);
     return () => window.clearInterval(id);
   }, [ms]);
@@ -227,7 +229,7 @@ export default function OperatorPage() {
           Set zones
         </a>
         <span className={`${op.badge} ${link === "live" ? "" : op.badgeBad}`}>{link === "live" ? "Live" : link === "connecting" ? "Connecting…" : "Box unreachable, retrying"}</span>
-        <span className={op.clock}>{time(now.toISOString())}</span>
+        <span className={op.clock}>{now ? time(now.toISOString()) : ""}</span>
       </header>
 
       <section className={op.cameras}>
