@@ -1,25 +1,21 @@
-.section {
-  margin-top: 22px;
-}
-
-.section h2 {
-  font-size: 1.1rem;
-  margin: 0 0 8px;
-}
+/* The Privacy screen. Sections and their headings are the design system's (ui.section, ui.sectionTitle); this file
+   is the card of rows inside each: one idea per row, its help on its own line, one control beside it. */
 
 .card {
   background: var(--surface);
   box-shadow: var(--sh-raised);
   border-radius: var(--radius);
-  padding: 6px 20px;
+  padding: 4px 20px;
+  min-width: 0;
 }
 
 .row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
-  padding: 14px 0;
+  gap: 20px;
+  min-height: 64px;
+  padding: 16px 0;
   border-bottom: 1px solid var(--line);
 }
 
@@ -27,18 +23,40 @@
   border-bottom: 0;
 }
 
+/* a row whose control is wide (a button, the slider, the table): the control goes under the words */
+.rowStack {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 12px;
+}
+
+.rowStack .rowControl {
+  align-self: flex-start;
+}
+
 .rowText {
   min-width: 0;
+  flex: 1;
+}
+
+.rowControl {
+  flex: none;
+  display: flex;
+  align-items: center;
 }
 
 .rowTitle {
   font-weight: 600;
+  line-height: 1.3;
 }
 
 .rowHelp {
-  margin: 2px 0 0;
+  margin: 4px 0 0;
   color: var(--muted);
   font-size: 0.88rem;
+  line-height: 1.45;
+  max-width: 62ch;
 }
 
 /* A switch: a button with role="switch", so it is reachable and announced as one. */
@@ -96,8 +114,13 @@
 
 .slider {
   width: 100%;
-  margin: 10px 0 4px;
+  margin: 0;
+  min-height: var(--tap);
   accent-color: var(--accent-text);
+}
+
+.rowStack > .rowHelp {
+  margin: 0;
 }
 
 .sliderValue {
@@ -149,6 +172,19 @@
 
 .danger {
   box-shadow: var(--sh-raised), 0 0 0 2px var(--danger);
+}
+
+/* the erase card is one thought in steps, not a list of rows: the words, what to delete, then the button */
+.erase {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
+}
+
+.erase .dangerBox,
+.erase .actions {
+  margin-top: 0;
 }
 
 .dangerBox {
