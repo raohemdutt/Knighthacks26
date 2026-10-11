@@ -299,6 +299,14 @@ EXPECTED_SEED = [
     ("sync.push_gb_s", "pod-a", {"task": "R64", "sampler": SAMPLER}, 0.00929, "GB/s", True),
     ("sync.pull_joules_per_gb", "pod-a", {"task": "R64", "sampler": SAMPLER}, 63.9, "J/GB", True),
     ("sync.pull_gb_s", "pod-a", {"task": "R64", "sampler": SAMPLER}, 0.04577, "GB/s", True),
+    # T11: the routing hook's closed loop on the real teacher (pod-a, vLLM v0.31.0) and the Jetson student, 100
+    # requests per policy; the shape the Learning lab's Routing tab reads (conditions.policy, conditions.requests)
+    ("telemetry.joules_per_answer", "pod-a", {"policy": "capability", "requests": 100}, 235.2903, "J", True),
+    ("label.seconds", "pod-a", {"policy": "capability", "requests": 100}, 12.7809, "s", False),
+    ("learning.label_agreement", "pod-a", {"policy": "capability", "requests": 100}, 0.73, "fraction", False),
+    ("telemetry.joules_per_answer", "pod-a", {"policy": "energy", "requests": 100}, 247.4741, "J", True),
+    ("label.seconds", "pod-a", {"policy": "energy", "requests": 100}, 13.371, "s", False),
+    ("learning.label_agreement", "pod-a", {"policy": "energy", "requests": 100}, 0.72, "fraction", False),
 ]
 
 # The numbers the lab setup measured, by metric name.
@@ -356,7 +364,8 @@ def test_every_low_confidence_seed_row_says_why():
     assert {row["metric"] for row in flagged} == {
         "teacher.joules_per_token", "pod.idle_watts", "pod.balance_credits", "teacher.watts_avg", "teacher.watts_peak",
         "pod.settle_s", "pod.idle_state_share",
-        "telemetry.sampler_cpu_pct", "jetson.idle_watts", "student.watts_avg", "student.watts_peak"} | {
+        "telemetry.sampler_cpu_pct", "jetson.idle_watts", "student.watts_avg", "student.watts_peak",
+        "telemetry.joules_per_answer"} | {  # T11's closed loop: every joules value is low confidence (telemetry ruling 7)
         # R26: the sweep's medians are of 3 repeats, under the 5 verdict() asks for
         "teacher_batching." + name
         for name in ("decode_tok_s", "decode_tok_s_total", "ttft_s", "joules_per_token", "watts_avg", "watts_peak")} | {

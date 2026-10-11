@@ -1,0 +1,482 @@
+{
+ "ok": true,
+ "node": "pod-a",
+ "sampler": "lab/pod_power.py 1",
+ "sampler_started": "2026-10-10T20:35:24.003000Z",
+ "first_seq": 1,
+ "last_seq": 15,
+ "samples": [
+  {
+   "seq": 1,
+   "event": {
+    "event_id": "9a45ac15946242c796bd0b197f0ff3f5",
+    "type": "telemetry.gpu.power",
+    "version": 1,
+    "ts": "2026-10-11T02:30:33.147000Z",
+    "node": "pod-a",
+    "source": "amd-smi",
+    "period_ms": 1000.0,
+    "socket_w": 11.0,
+    "gfx_mhz": 626.0,
+    "mem_mhz": null,
+    "throttled": null,
+    "power_field": "socket_power",
+    "temps_c": {
+     "edge": 24.0
+    },
+    "energy_counter_j": null,
+    "energy_counter_ns": null,
+    "sampler": "lab/pod_power.py 1",
+    "sampler_started": "2026-10-10T20:35:24.003000Z",
+    "polls": 21309,
+    "updates": 19977,
+    "gfx_activity_pct": 0.0,
+    "under_load": false,
+    "stale": false,
+    "counter_ok": false,
+    "energy_check": null
+   }
+  },
+  {
+   "seq": 2,
+   "event": {
+    "event_id": "d12cc399354046afbdd94867ad8f0f73",
+    "type": "telemetry.gpu.power",
+    "version": 1,
+    "ts": "2026-10-11T02:30:34.145000Z",
+    "node": "pod-a",
+    "source": "amd-smi",
+    "period_ms": 1000.0,
+    "socket_w": 11.0,
+    "gfx_mhz": 628.0,
+    "mem_mhz": null,
+    "throttled": null,
+    "power_field": "socket_power",
+    "temps_c": {
+     "edge": 25.0
+    },
+    "energy_counter_j": null,
+    "energy_counter_ns": null,
+    "sampler": "lab/pod_power.py 1",
+    "sampler_started": "2026-10-10T20:35:24.003000Z",
+    "polls": 21310,
+    "updates": 19978,
+    "gfx_activity_pct": 0.0,
+    "under_load": false,
+    "stale": false,
+    "counter_ok": false,
+    "energy_check": null
+   }
+  },
+  {
+   "seq": 3,
+   "event": {
+    "event_id": "63237e568c3342c1add3342274344e3b",
+    "type": "telemetry.gpu.power",
+    "version": 1,
+    "ts": "2026-10-11T02:30:35.151000Z",
+    "node": "pod-a",
+    "source": "amd-smi",
+    "period_ms": 1000.0,
+    "socket_w": 10.0,
+    "gfx_mhz": 626.0,
+    "mem_mhz": null,
+    "throttled": null,
+    "power_field": "socket_power",
+    "temps_c": {
+     "edge": 24.0
+    },
+    "energy_counter_j": null,
+    "energy_counter_ns": null,
+    "sampler": "lab/pod_power.py 1",
+    "sampler_started": "2026-10-10T20:35:24.003000Z",
+    "polls": 21311,
+    "updates": 19979,
+    "gfx_activity_pct": 0.0,
+    "under_load": false,
+    "stale": false,
+    "counter_ok": false,
+    "energy_check": null
+   }
+  },
+  {
+   "seq": 4,
+   "event": {
+    "event_id": "d3776ea777654120b8fb20e2653d6ba5",
+    "type": "telemetry.gpu.power",
+    "version": 1,
+    "ts": "2026-10-11T02:30:36.149000Z",
+    "node": "pod-a",
+    "source": "amd-smi",
+    "period_ms": 1000.0,
+    "socket_w": 10.0,
+    "gfx_mhz": 626.0,
+    "mem_mhz": null,
+    "throttled": null,
+    "power_field": "socket_power",
+    "temps_c": {
+     "edge": 24.0
+    },
+    "energy_counter_j": null,
+    "energy_counter_ns": null,
+    "sampler": "lab/pod_power.py 1",
+    "sampler_started": "2026-10-10T20:35:24.003000Z",
+    "polls": 21312,
+    "updates": 19979,
+    "gfx_activity_pct": 0.0,
+    "under_load": false,
+    "stale": false,
+    "counter_ok": false,
+    "energy_check": null
+   }
+  },
+  {
+   "seq": 5,
+   "event": {
+    "event_id": "6d923f3c63044da08c99e70520abf9a0",
+    "type": "telemetry.gpu.power",
+    "version": 1,
+    "ts": "2026-10-11T02:30:37.146000Z",
+    "node": "pod-a",
+    "source": "amd-smi",
+    "period_ms": 1000.0,
+    "socket_w": 9.0,
+    "gfx_mhz": 627.0,
+    "mem_mhz": null,
+    "throttled": null,
+    "power_field": "socket_power",
+    "temps_c": {
+     "edge": 24.0
+    },
+    "energy_counter_j": null,
+    "energy_counter_ns": null,
+    "sampler": "lab/pod_power.py 1",
+    "sampler_started": "2026-10-10T20:35:24.003000Z",
+    "polls": 21313,
+    "updates": 19980,
+    "gfx_activity_pct": 0.0,
+    "under_load": false,
+    "stale": false,
+    "counter_ok": false,
+    "energy_check": null
+   }
+  },
+  {
+   "seq": 6,
+   "event": {
+    "event_id": "5f0bbf53076343ebb9976c13e17bcc0e",
+    "type": "telemetry.gpu.power",
+    "version": 1,
+    "ts": "2026-10-11T02:30:38.150000Z",
+    "node": "pod-a",
+    "source": "amd-smi",
+    "period_ms": 1000.0,
+    "socket_w": 10.0,
+    "gfx_mhz": 626.0,
+    "mem_mhz": null,
+    "throttled": null,
+    "power_field": "socket_power",
+    "temps_c": {
+     "edge": 24.0
+    },
+    "energy_counter_j": null,
+    "energy_counter_ns": null,
+    "sampler": "lab/pod_power.py 1",
+    "sampler_started": "2026-10-10T20:35:24.003000Z",
+    "polls": 21314,
+    "updates": 19981,
+    "gfx_activity_pct": 0.0,
+    "under_load": false,
+    "stale": false,
+    "counter_ok": false,
+    "energy_check": null
+   }
+  },
+  {
+   "seq": 7,
+   "event": {
+    "event_id": "0c2b13511ce145c69545700f644bf961",
+    "type": "telemetry.gpu.power",
+    "version": 1,
+    "ts": "2026-10-11T02:30:39.145000Z",
+    "node": "pod-a",
+    "source": "amd-smi",
+    "period_ms": 1000.0,
+    "socket_w": 9.0,
+    "gfx_mhz": 626.0,
+    "mem_mhz": null,
+    "throttled": null,
+    "power_field": "socket_power",
+    "temps_c": {
+     "edge": 24.0
+    },
+    "energy_counter_j": null,
+    "energy_counter_ns": null,
+    "sampler": "lab/pod_power.py 1",
+    "sampler_started": "2026-10-10T20:35:24.003000Z",
+    "polls": 21315,
+    "updates": 19982,
+    "gfx_activity_pct": 0.0,
+    "under_load": false,
+    "stale": false,
+    "counter_ok": false,
+    "energy_check": null
+   }
+  },
+  {
+   "seq": 8,
+   "event": {
+    "event_id": "60b85ea9a6364edba2d4f79f01e4c1b5",
+    "type": "telemetry.gpu.power",
+    "version": 1,
+    "ts": "2026-10-11T02:30:40.146000Z",
+    "node": "pod-a",
+    "source": "amd-smi",
+    "period_ms": 1000.0,
+    "socket_w": 9.0,
+    "gfx_mhz": 623.0,
+    "mem_mhz": null,
+    "throttled": null,
+    "power_field": "socket_power",
+    "temps_c": {
+     "edge": 24.0
+    },
+    "energy_counter_j": null,
+    "energy_counter_ns": null,
+    "sampler": "lab/pod_power.py 1",
+    "sampler_started": "2026-10-10T20:35:24.003000Z",
+    "polls": 21316,
+    "updates": 19983,
+    "gfx_activity_pct": 0.0,
+    "under_load": false,
+    "stale": false,
+    "counter_ok": false,
+    "energy_check": null
+   }
+  },
+  {
+   "seq": 9,
+   "event": {
+    "event_id": "dc4230fcc6ce4386ba38e192f2f22032",
+    "type": "telemetry.gpu.power",
+    "version": 1,
+    "ts": "2026-10-11T02:30:41.157000Z",
+    "node": "pod-a",
+    "source": "amd-smi",
+    "period_ms": 1000.0,
+    "socket_w": 10.0,
+    "gfx_mhz": 625.0,
+    "mem_mhz": null,
+    "throttled": null,
+    "power_field": "socket_power",
+    "temps_c": {
+     "edge": 24.0
+    },
+    "energy_counter_j": null,
+    "energy_counter_ns": null,
+    "sampler": "lab/pod_power.py 1",
+    "sampler_started": "2026-10-10T20:35:24.003000Z",
+    "polls": 21317,
+    "updates": 19984,
+    "gfx_activity_pct": 0.0,
+    "under_load": false,
+    "stale": false,
+    "counter_ok": false,
+    "energy_check": null
+   }
+  },
+  {
+   "seq": 10,
+   "event": {
+    "event_id": "900647edbe854b67805bc4bb2628bf21",
+    "type": "telemetry.gpu.power",
+    "version": 1,
+    "ts": "2026-10-11T02:30:42.152000Z",
+    "node": "pod-a",
+    "source": "amd-smi",
+    "period_ms": 1000.0,
+    "socket_w": 10.0,
+    "gfx_mhz": 624.0,
+    "mem_mhz": null,
+    "throttled": null,
+    "power_field": "socket_power",
+    "temps_c": {
+     "edge": 24.0
+    },
+    "energy_counter_j": null,
+    "energy_counter_ns": null,
+    "sampler": "lab/pod_power.py 1",
+    "sampler_started": "2026-10-10T20:35:24.003000Z",
+    "polls": 21318,
+    "updates": 19985,
+    "gfx_activity_pct": 0.0,
+    "under_load": false,
+    "stale": false,
+    "counter_ok": false,
+    "energy_check": null
+   }
+  },
+  {
+   "seq": 11,
+   "event": {
+    "event_id": "2f93140cce874eecb922abe3d6be1257",
+    "type": "telemetry.gpu.power",
+    "version": 1,
+    "ts": "2026-10-11T02:30:43.147000Z",
+    "node": "pod-a",
+    "source": "amd-smi",
+    "period_ms": 1000.0,
+    "socket_w": 10.0,
+    "gfx_mhz": 625.0,
+    "mem_mhz": null,
+    "throttled": null,
+    "power_field": "socket_power",
+    "temps_c": {
+     "edge": 24.0
+    },
+    "energy_counter_j": null,
+    "energy_counter_ns": null,
+    "sampler": "lab/pod_power.py 1",
+    "sampler_started": "2026-10-10T20:35:24.003000Z",
+    "polls": 21319,
+    "updates": 19986,
+    "gfx_activity_pct": 0.0,
+    "under_load": false,
+    "stale": false,
+    "counter_ok": false,
+    "energy_check": null
+   }
+  },
+  {
+   "seq": 12,
+   "event": {
+    "event_id": "ccb43cd6281f497e9a49c81299c62b3d",
+    "type": "telemetry.gpu.power",
+    "version": 1,
+    "ts": "2026-10-11T02:30:44.150000Z",
+    "node": "pod-a",
+    "source": "amd-smi",
+    "period_ms": 1000.0,
+    "socket_w": 10.0,
+    "gfx_mhz": 627.0,
+    "mem_mhz": null,
+    "throttled": null,
+    "power_field": "socket_power",
+    "temps_c": {
+     "edge": 24.0
+    },
+    "energy_counter_j": null,
+    "energy_counter_ns": null,
+    "sampler": "lab/pod_power.py 1",
+    "sampler_started": "2026-10-10T20:35:24.003000Z",
+    "polls": 21320,
+    "updates": 19987,
+    "gfx_activity_pct": 0.0,
+    "under_load": false,
+    "stale": false,
+    "counter_ok": false,
+    "energy_check": null
+   }
+  },
+  {
+   "seq": 13,
+   "event": {
+    "event_id": "7bf91bac9b8747c89a3620b8558114ea",
+    "type": "telemetry.gpu.power",
+    "version": 1,
+    "ts": "2026-10-11T02:30:45.149000Z",
+    "node": "pod-a",
+    "source": "amd-smi",
+    "period_ms": 1000.0,
+    "socket_w": 10.0,
+    "gfx_mhz": 628.0,
+    "mem_mhz": null,
+    "throttled": null,
+    "power_field": "socket_power",
+    "temps_c": {
+     "edge": 24.0
+    },
+    "energy_counter_j": null,
+    "energy_counter_ns": null,
+    "sampler": "lab/pod_power.py 1",
+    "sampler_started": "2026-10-10T20:35:24.003000Z",
+    "polls": 21321,
+    "updates": 19988,
+    "gfx_activity_pct": 0.0,
+    "under_load": false,
+    "stale": false,
+    "counter_ok": false,
+    "energy_check": null
+   }
+  },
+  {
+   "seq": 14,
+   "event": {
+    "event_id": "72852b331a2a483faeda984c0361d528",
+    "type": "telemetry.gpu.power",
+    "version": 1,
+    "ts": "2026-10-11T02:30:46.148000Z",
+    "node": "pod-a",
+    "source": "amd-smi",
+    "period_ms": 1000.0,
+    "socket_w": 10.0,
+    "gfx_mhz": 624.0,
+    "mem_mhz": null,
+    "throttled": null,
+    "power_field": "socket_power",
+    "temps_c": {
+     "edge": 24.0
+    },
+    "energy_counter_j": null,
+    "energy_counter_ns": null,
+    "sampler": "lab/pod_power.py 1",
+    "sampler_started": "2026-10-10T20:35:24.003000Z",
+    "polls": 21322,
+    "updates": 19989,
+    "gfx_activity_pct": 0.0,
+    "under_load": false,
+    "stale": false,
+    "counter_ok": false,
+    "energy_check": null
+   }
+  },
+  {
+   "seq": 15,
+   "event": {
+    "event_id": "313b1659bb8e4d368c1059ef64d42fd0",
+    "type": "telemetry.gpu.power",
+    "version": 1,
+    "ts": "2026-10-11T02:30:47.148000Z",
+    "node": "pod-a",
+    "source": "amd-smi",
+    "period_ms": 1000.0,
+    "socket_w": 10.0,
+    "gfx_mhz": 625.0,
+    "mem_mhz": null,
+    "throttled": null,
+    "power_field": "socket_power",
+    "temps_c": {
+     "edge": 23.0
+    },
+    "energy_counter_j": null,
+    "energy_counter_ns": null,
+    "sampler": "lab/pod_power.py 1",
+    "sampler_started": "2026-10-10T20:35:24.003000Z",
+    "polls": 21323,
+    "updates": 19990,
+    "gfx_activity_pct": 0.0,
+    "under_load": false,
+    "stale": false,
+    "counter_ok": false,
+    "energy_check": null
+   }
+  }
+ ],
+ "pod_received": "2026-10-11T02:29:50.121000Z",
+ "pod_sent": "2026-10-11T02:29:50.124000Z",
+ "_recorded": {
+  "t1": "2026-10-11T02:28:45.821429Z",
+  "t4": "2026-10-11T02:28:46.365504Z",
+  "note": "one /samples answer of pod C's sampler through the hub proxy, 2026-10-11; seq renumbered from 1, received_ts (added by the reader) removed; t1 and t4 are the workstation's clock around the request"
+ }
+}
