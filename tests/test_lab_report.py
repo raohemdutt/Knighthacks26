@@ -1,7 +1,8 @@
 """Tests for the under-the-hood report (lab/report.py, python -m lab report).
 
-The builder reads a small committed tree (fixtures/lab/report/) or an empty folder; no pod, hub, network or
-Notion is reached. The real repository is read only to check that the page built from it stays self-contained.
+The builder reads a small committed tree (fixtures/lab/report/, the first rows; fixtures/lab/report_landed/, the
+same lab once every awaited run has landed) or an empty folder; no pod, hub, network or Notion is reached. The real
+repository is read only to check that the page built from it stays self-contained.
 """
 
 from __future__ import annotations

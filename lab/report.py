@@ -1278,8 +1278,8 @@ class Page:
         A low-confidence reason every row shares is said once above the list instead of on each row."""
         if not numbers:
             return ""
-        reasons = {n.get("reason") for n in numbers if n.get("low_confidence")}
-        shared = reasons.pop() if len(reasons) == 1 and sum(bool(n.get("low_confidence")) for n in numbers) > 2 else None
+        reasons = [n["reason"] for n in numbers if n.get("low_confidence") and n.get("reason")]
+        shared = reasons[0] if len(reasons) > 2 and len(set(reasons)) == 1 else None
         rows = "".join(f'<li><span class="k">{esc(n["label"])}</span>'
                        f'<span class="v">{esc(fmt(n["value"], n.get("unit")))}</span>{self.cite(n, not shared)}</li>'
                        for n in numbers)
@@ -1300,7 +1300,14 @@ class Page:
         parts = []
         for rel, lines in files.items():  # the file's name is enough under a chart; the list below has the path
             lines, name = sorted(set(lines)), rel.rsplit("/", 1)[-1]
-            text = name if not lines else (f"{name}:{lines[0]}" + (f" to :{lines[-1]}" if len(lines) > 1 else ""))
+            if len(lines) <= 1:
+                text = f"{name}:{lines[0]}" if lines else name
+            elif lines[-1] - lines[0] == len(lines) - 1:  # a run of neighbouring lines
+                text = f"{name}:{lines[0]} to :{lines[-1]}"
+            elif len(lines) <= 3:
+                text = f"{name}:" + ", :".join(str(n) for n in lines[:-1]) + f" and :{lines[-1]}"
+            else:  # scattered rows: say how many, and between which lines
+                text = f"{name}, {len(lines)} rows between :{lines[0]} and :{lines[-1]}"
             parts.append(self.link(rel, lines[0] if lines else None, text))
         return ", ".join(parts)
 
