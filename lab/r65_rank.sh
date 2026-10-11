@@ -1,6 +1,7 @@
 #!/bin/bash
 # R65: one rank of the two-pod local-SGD LoRA (lab/r65_local_sgd.py) on this pod, inside its GPU Queue slot.
-#   bash r65_rank.sh <rank 0|1> <run id> <peer tailnet IP> <peer account's hub user>   (K, CHUNK_MB, PARALLEL, PATH_ in env)
+#   bash r65_rank.sh <rank 0|1> <run id> <peer tailnet IP> <peer account's hub user> [epochs] [lr]
+#   (epochs 3 and lr 2e-4 are L16's; 42 rows a rank make 3 optimizer steps an epoch, so 6 epochs match L16's 18 steps)
 # Needs ~/r65/bundle.tar.gz (lab/ and contracts/ at the branch), ~/r65/data/<dataset id>/ and ~/r65/data/rows.jsonl
 # (this rank's half of the L16 rows), the L16 venv and base (bash lab/l16_run.sh prep), Tailscale up on both pods
 # (lab/pod_tailscale.sh) for the control channel, and the peer account's hub token in ./tokpeer.txt next to this script
@@ -8,6 +9,7 @@
 # The adapter, run.json, telemetry, local_sgd.json and the log go to ~/adapters/r65-<run id>-rank<rank>/.
 set -u -o pipefail
 RANK="${1:?rank}"; RUN="${2:?run id}"; PEER="${3:?peer tailnet IP}"; PEER_USER="${4:?peer hub user}"
+EPOCHS="${5:-3}"; LR="${6:-2e-4}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 TOKEN_FILE="$HERE/tokpeer.txt"
 trap 'rm -f "$TOKEN_FILE"' EXIT
@@ -28,7 +30,7 @@ echo "### R65 rank $RANK run $RUN start $(date -u +%FT%TZ) host $(hostname) mem_
 (cd "$SRC" && timeout -s INT -k 60 "$TIMEOUT_S" "$VENV/bin/python" -u lab/r65_local_sgd.py --rank "$RANK" "${extra[@]}" --wait-s 600 -- \
   --dataset "$HOME/r65/data/tool-calling-fixture" --rows "$HOME/r65/data/rows.jsonl" --model "$HOME/models/Qwen3.5-4B" \
   --base-repo Qwen/Qwen3.5-4B --base-revision 851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a --out "$OUT" --run-id "r65-$RUN-rank$RANK" \
-  --epochs 3 --lr 2e-4 --batch 4 --grad-accum 4 --rank 16 --alpha 32 --dropout 0 --seed 42) > "$OUT/train.log" 2>&1
+  --epochs "$EPOCHS" --lr "$LR" --batch 4 --grad-accum 4 --rank 16 --alpha 32 --dropout 0 --seed 42) > "$OUT/train.log" 2>&1
 rc=$?
 cp "$HOME/r65/state/ledger.jsonl" "$OUT/ledger.jsonl" 2>/dev/null
 rm -rf "$OUT/trainer"

@@ -22,7 +22,8 @@ The algorithm, every --k optimizer steps:
 3. One step later, merge: the new shared base = base + (my dequantized delta + the peer's) / 2, the same on both ranks;
    my weights move by (new base - my weights at publish time), so the step taken meanwhile is kept (applied a step late).
 At the end of training (before the adapter is saved) a last synchronous round leaves both ranks on the same base, which
-both check with a sha256, and the final code is also fetched once over the Tailscale relay to time that path.
+both check with a sha256; after the adapter is saved the final code is fetched once more over the Tailscale relay to
+time that path.
 
     python lab/r65_local_sgd.py --rank 0 --peer-tailnet <rank 1 IP> --peer-user <rank 1's account> \
         --token-file <file with rank 1's hub token> -- <lab/train.py arguments>
@@ -334,21 +335,30 @@ def make_callback(cfg: argparse.Namespace, link: "Control", box: Mailbox, proxy:
             mine = record["rounds"][-1]["base_sha"]
             theirs = swap_json(link.sock, {"base_sha": mine})["base_sha"]
             record["final_identical"] = theirs == mine
-            # the same final code once more over the Tailscale relay, to time that path against the proxy
-            t0 = time.monotonic()
-            try:
-                blob = b"".join(relay.fetch(final["peer"]["keys"], timeout=600))
-                seconds = time.monotonic() - t0
-                record["relay_exchange"] = {"bytes": len(blob), "seconds": round(seconds, 3),
-                                            "mb_s": round(len(blob) / max(seconds, 1e-9) / 1e6, 3),
-                                            "same_bytes": hashlib.sha256(blob).hexdigest() == final["peer"]["sha"]}
-            except BaseException as exc:
-                record["relay_exchange"] = {"error": f"{type(exc).__name__}: {exc}"[:300]}
-            swap_json(link.sock, {"done": True})   # neither rank closes its mailbox before the peer has read it
-            print(f"### local-sgd final identical {record['final_identical']} relay {json.dumps(record['relay_exchange'])}",
-                  file=sys.stderr, flush=True)
+            record["final_peer"] = final["peer"]    # main() times the relay with it, after the adapter is saved
+            print(f"### local-sgd final identical {record['final_identical']}", file=sys.stderr, flush=True)
 
     return LocalSGD()
+
+
+def time_relay(link: "Control", relay: Fetcher, record: dict[str, Any]) -> None:
+    """The final code once more over the Tailscale relay, to time that path against the proxy; outside
+    trainer.train(), so trainer.train_s does not carry it. Then both ranks agree they are done, so neither closes
+    its mailbox before the peer has read it."""
+    peer = record.pop("final_peer", None)
+    if peer is None or link.sock is None:
+        return
+    t0 = time.monotonic()
+    try:
+        blob = b"".join(relay.fetch(peer["keys"], timeout=600))
+        seconds = time.monotonic() - t0
+        record["relay_exchange"] = {"bytes": len(blob), "seconds": round(seconds, 3),
+                                    "mb_s": round(len(blob) / max(seconds, 1e-9) / 1e6, 3),
+                                    "same_bytes": hashlib.sha256(blob).hexdigest() == peer["sha"]}
+    except BaseException as exc:
+        record["relay_exchange"] = {"error": f"{type(exc).__name__}: {exc}"[:300]}
+    swap_json(link.sock, {"done": True})
+    print(f"### local-sgd relay {json.dumps(record['relay_exchange'])}", file=sys.stderr, flush=True)
 
 
 class Control:
@@ -451,6 +461,7 @@ def main(argv: list[str] | None = None) -> int:
         train.apply_env(train.run_env())   # before transformers imports torch, as train.main would
         callback = make_callback(cfg, link, box, proxy, relay, record)
         answer = train.main(train_argv, callbacks=[callback])
+        time_relay(link, relay, record)
     finally:
         stop.set()
         token = ""
