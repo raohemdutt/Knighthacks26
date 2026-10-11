@@ -1,0 +1,134 @@
+/* Alone vs together (L31): the comparison table and the three stacked power traces. */
+
+.pickers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.pick {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.pick select {
+  width: 100%;
+  min-width: 0;
+  font-size: 16px;
+}
+
+.table th[scope="row"] {
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  font-size: 15px;
+  font-weight: 650;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text);
+}
+
+.group th {
+  padding-top: 18px;
+  color: var(--accent-text);
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.none {
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.idle {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.ratio {
+  font-variant-numeric: tabular-nums;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.legend {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.keyA,
+.keyB {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.keyA::before,
+.keyB::before {
+  content: "";
+  width: 22px;
+  border-top: 3px solid var(--accent-text);
+}
+
+.keyA::before {
+  border-top-style: dashed;
+}
+
+.keyB::before {
+  border-top-color: var(--ok);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.panelTitle {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.svg {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.grid {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.axis {
+  fill: var(--muted);
+  font-size: 12px;
+}
+
+.line {
+  fill: none;
+  stroke-width: 2.2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.lineA {
+  stroke: var(--accent-text);
+  stroke-dasharray: 6 4;
+}
+
+.lineB {
+  stroke: var(--ok);
+}

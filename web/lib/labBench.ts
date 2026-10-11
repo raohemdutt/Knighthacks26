@@ -8,9 +8,10 @@
  */
 import type { LabChip, LabNum, LabSource } from "./lab";
 
-export type LabTab = "run" | "speed" | "routing" | "experiments";
+export type LabTab = "run" | "compare" | "speed" | "routing" | "experiments";
 export const LAB_TABS: { key: LabTab; title: string }[] = [
   { key: "run", title: "Training run" },
+  { key: "compare", title: "Alone vs together" },
   { key: "speed", title: "Speed and energy" },
   { key: "routing", title: "Routing" },
   { key: "experiments", title: "Experiments" },

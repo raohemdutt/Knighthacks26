@@ -118,6 +118,7 @@ from contexts.learning.api import learning_router
 from contexts.learning.application.lab_runs import attach as attach_trainer_runs
 from contexts.learning.application.lab_runs import default_runs_dir
 from contexts.learning.lab_api import lab_router
+from contexts.learning.application.lab_compare import default_dirs as default_loop_dirs
 from contexts.learning.application.lab_experiments import imported_state_dir
 from contexts.learning.lab_bench_api import lab_bench_router
 from contexts.learning.lab_import import lab_import_router
@@ -243,7 +244,8 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         app.include_router(lab_import_router(atlas.lab_view, atlas.bus.publish, guard=authorized, data_dir=atlas.settings.data_dir))
     if atlas.lab_view:  # GET /api/learning/lab, /api/learning/lab/{run_id}: the Learning lab screen
         app.include_router(lab_router(atlas.lab_view, current_model=lambda: {
-            "version": atlas.qa.runtime.model_info().version, "source": "the runtime on this box (the model that answers)"}))
+            "version": atlas.qa.runtime.model_info().version, "source": "the runtime on this box (the model that answers)"},
+            loop_dirs=default_loop_dirs(atlas.settings.data_dir)))  # + /compare: the live-loop records (L31)
     # GET /api/circle/events, /api/circle/sharing: read-only, and they answer in every state (no Circle, no Neon)
     # POST /api/circle/proposals: an approval card for a plan with friends (G1)
     app.include_router(circle_router(atlas.bus, circle=atlas.circle, sharing=atlas.sharing, presence=atlas.presence,
