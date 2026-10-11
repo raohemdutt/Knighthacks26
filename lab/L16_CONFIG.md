@@ -62,10 +62,11 @@ another chip, which section 1 uses only to bound memory. So the prediction is de
   first kernels. The low half fits the slot; the high half does not.
 
 What the run does about it: every optimizer step's `step_ms` is in the log within two minutes of the start. If the
-first steps put 18 steps past about 40 minutes, the run is stopped and started again with `--max-steps` set to what
+first steps put 18 steps past about 35 minutes, the run is stopped and started again with `--max-steps` set to what
 fits (the dataset is pushed again, since the trainer deletes its copy whenever it ends), and the row records
-`max_steps`. `l16_run.sh` also stops the trainer with SIGINT after 45 minutes (`TRAIN_TIMEOUT_S`), so the slot is
-never overrun; an interrupted run saves no adapter and its row says `interrupted`.
+`max_steps`. `l16_run.sh` also stops the trainer with SIGINT after 40 minutes (`TRAIN_TIMEOUT_S`), so the slot is
+never overrun (prep, about 5 minutes for the venv and the 9 GB download, also runs inside the slot: nothing is
+installed on pod D before the slot starts); an interrupted run saves no adapter and its row says `interrupted`.
 
 Peak memory, from the same R9700 smoke run (8.7 GB at batch 4 and 256 tokens, sheet section 1) with the activations
 of 2.7 times the tokens under gradient checkpointing: roughly 10 to 16 GB allocated, well inside the pod's share.
@@ -79,9 +80,9 @@ TOKENIZER=<folder with the student's tokenizer.json and chat_template.jinja at 8
 bash lab/l16_run.sh bundle
 bash lab/l16_run.sh dry-run            # optional: the same command line on the CPU, tiny fixture, tiny model
 python -m lab.transfer push-file --account D ../L16-data/l16-bundle.tar.gz l16/l16-bundle.tar.gz
-python -m lab.controller run-script --account D --timeout 1800 lab/l16_run.sh prep
 python -m lab slot request --task L16 --minutes 60 --kind lora --what "..." --why "..." --measured "..."
 python -m lab slot start --row <row> --reply "..."
+python -m lab.controller run-script --account D --timeout 1200 lab/l16_run.sh prep
 python -m lab.transfer push-dataset --account D ../L16-data/tool-calling-fixture --to l16/datasets
 python -m lab.transfer push-file --account D ../L16-data/rows.jsonl l16/datasets/rows.jsonl
 python -m lab.controller run-script --account D --timeout 3300 lab/l16_run.sh train <run id> tool-calling-fixture

@@ -32,7 +32,7 @@ DROPOUT=0
 BATCH=4
 GRAD_ACCUM=4
 SEED=42
-TRAIN_TIMEOUT_S="${TRAIN_TIMEOUT_S:-2700}"   # 45 minutes: the run is interrupted (SIGINT) before the 60-minute slot ends
+TRAIN_TIMEOUT_S="${TRAIN_TIMEOUT_S:-2400}"   # 40 minutes: with prep inside the slot, the run is interrupted (SIGINT) before the 60-minute slot ends
 
 # Pod paths. On SJC the Jupyter root is /home/jovyan, so what the transfer pushes to l16/... lands in ~/l16/...
 L16="$HOME/l16"
