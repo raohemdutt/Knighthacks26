@@ -3,7 +3,7 @@
 One thing at a time. A tap starts listening, and so does saying "Hey Atlas" when `wake_word` is on (see _wake_loop); a tap
 while the box is speaking just stops the speech, so the microphone is never open while the speaker is playing. Every
 failure (no mic, no speaker, no answer) is written to `problem` and the loop returns to idle; nothing here raises to the
-caller.
+caller. With `follow_up` on, a spoken answer is followed by listening for a reply, with no "Hey Atlas" (see _converse).
 
 Audio goes mic -> memory -> whisper -> text. Only the text goes on (to the gateway's ask path); the audio is dropped. While
 it waits for "Hey Atlas" the box transcribes what it hears on the box itself and throws away everything that is not the
@@ -20,8 +20,8 @@ from collections.abc import Callable
 from contexts.voice.audio import CHIME_RATE, CHUNK_MS, AudioUnavailable, chime, record_utterance, rms
 from contexts.voice.config import VoiceConfig
 from contexts.voice.engines import SpeechEngineError
-from contexts.voice.text import (MAX_SPOKEN_CHARS, SentenceStream, clean_for_speech, evidence_line, find_wake, speech_for_answer,
-                                 without_wake)
+from contexts.voice.text import (MAX_SPOKEN_CHARS, SentenceStream, clean_for_speech, closing_reply, evidence_line, find_wake, is_echo,
+                                 speech_for_answer, without_wake)
 
 log = logging.getLogger("atlas.voice")
 
@@ -30,6 +30,9 @@ MIN_WAKE_LEVEL = 0.003  # a window quieter than this is silence and is not trans
 WAKE_RETRY_S = 5.0  # after the wake listener hits a missing microphone or speech tool
 AFTER_SPEECH_QUIET_S = 0.5  # the speaker's tail must not be heard as the next question
 SAY_AGAIN = "Sorry, I didn't catch that. Say it again?"  # someone spoke, but not clearly enough to answer
+REPLY_GUARD_S = 0.3  # after the speaker is done and before the microphone opens for a reply (see _converse)
+REPLY_UNCLEAR_TRIES = 2  # this many sounds in a row that were not a reply end the conversation
+MIN_REPLY_LETTERS = 3  # "Oh." or "I" is a noise, not a reply ("why?" and "yes" are)
 
 # ask(text) -> (answer, citation count): POST /api/ask on the gateway
 Ask = Callable[[str], tuple[str, int]]
@@ -56,6 +59,9 @@ class VoiceSession:
         self._greeting: tuple[bytes, int] | None = None  # the wake reply, spoken once and kept: it never changes
         self._quiet_until = 0.0
         self._ask_after = True  # False: only listen and write down what was said (the Ask screen asks and speaks itself)
+        self._spoken: list[str] = []  # the sentences of the last answer, to tell the speaker's own voice from a reply
+        self._conversing = False  # an answer was spoken and the box is taking replies without "Hey Atlas" (see _converse)
+        self._held = ""  # a line for say() that arrived during a conversation: spoken once it ends
         self._probe: tuple[float, dict] | None = None
         self.problem = ""
         self.heard = ""
@@ -92,7 +98,7 @@ class VoiceSession:
     def status(self) -> dict:
         return {"state": self.state, "running": True, "problem": self.problem, "heard": self.heard, "answer": self.answer,
                 "seconds_in_state": round(self.clock() - self.since, 1), "wake": self.cfg.wake_word and self._enabled,
-                **self._devices()}
+                "follow_up": self._conversing and self.state == "listening", **self._devices()}
 
     # -- the controls -----------------------------------------------------------------------------------------------
 
@@ -124,9 +130,12 @@ class VoiceSession:
     def say(self, text: str) -> dict:
         """Speak this text on the box's speaker: the phone's Ask screen sends the answer here, so it comes out of the
         speaker on the box and not the phone. Only while idle (never over a question being heard or an answer being
-        spoken); a failure goes to `problem` like any other turn."""
+        spoken); a failure goes to `problem` like any other turn. During a conversation the line is held (the newest
+        one) and spoken when the conversation ends, which it then does after the turn in progress."""
         said = speech_for_answer(text)
         with self._lock:
+            if self._enabled and self._conversing:
+                self._held = said
             if not self._enabled or self._state != "idle":
                 return self.status()
             self.problem = ""
@@ -296,6 +305,8 @@ class VoiceSession:
                     self.problem = ""
             if text and not self._cancel.is_set() and self._ask_after:
                 self._ask_and_speak(text)
+                if self.cfg.follow_up:
+                    self._converse()
         except Exception as e:  # nothing may take the service down; say what happened instead
             log.exception("voice turn failed")
             self.problem = f"voice error: {e}"
@@ -339,14 +350,16 @@ class VoiceSession:
         self._set("listening")
         return True
 
-    def _listen_and_transcribe(self) -> str | None:
+    def _listen_and_transcribe(self, reply_wait_s: float | None = None) -> str | None:
         """The question in words. None when nobody spoke (or it was stopped); "" when someone spoke but whisper could not
-        make out the words, or was not sure of them."""
+        make out the words, or was not sure of them. With `reply_wait_s` it is a reply in a conversation: it waits that
+        long for the first word, and silence or a noise is nothing to report (no blip, no `problem`, `heard` is kept)."""
         c = self.cfg
+        reply = reply_wait_s is not None
         try:
             with self._mic_lock, self.mic.open() as frames:
                 pcm = record_utterance(frames, rate=c.sample_rate, speech_level=c.speech_level, end_silence_s=c.end_silence_s,
-                                       wait_for_speech_s=c.wait_for_speech_s, max_seconds=c.max_seconds,
+                                       wait_for_speech_s=reply_wait_s if reply else c.wait_for_speech_s, max_seconds=c.max_seconds,
                                        should_stop=lambda: self._cancel.is_set() or self._finish.is_set())
         except AudioUnavailable as e:
             self.problem = f"No microphone: {e}"
@@ -354,10 +367,12 @@ class VoiceSession:
         if self._cancel.is_set():
             return None
         if pcm is None:
+            if reply:
+                return None
             self.problem = "Didn't hear anything. Say Hey Atlas or tap, then speak." if c.wake_word else "Didn't hear anything. Tap and speak."
             return None
         self._set("thinking")
-        blip = self._start_chime()
+        blip = None if reply else self._start_chime()
         try:
             text = self.stt.transcribe(pcm)
         except SpeechEngineError as e:
@@ -369,12 +384,79 @@ class VoiceSession:
                 blip.join(3.0)  # done before anything else is said
         if c.wake_word:
             text = without_wake(text)  # "Hey Atlas" said again while it listens is not part of the question
+        if reply:
+            return text
         if not text:
             self.problem = "Didn't catch that. Tap and try again."
         self.heard = text
         return text
 
+    # -- a conversation: after an answer, listen for a reply without "Hey Atlas" ----------------------------------------
+
+    def _converse(self) -> None:
+        """The answer has been spoken: keep taking replies and answering them until nobody speaks, a goodbye ("thanks",
+        "that's all"), a tap, `follow_up_max_turns` answers, or a line waiting in say(). The state never passes through
+        idle, so the wake listener stays out until the turn is over."""
+        self._conversing = True
+        try:
+            for _ in range(self.cfg.follow_up_max_turns - 1):
+                if self._held or not (text := self._listen_for_reply()):
+                    break
+                self.heard = text
+                if line := closing_reply(text):
+                    self.answer = line
+                    self._say_line(line)
+                    break
+                self._ask_and_speak(text)
+        finally:
+            with self._lock:  # say() holds a line only while this is set, so none is left behind
+                self._conversing, held = False, self._held
+                self._held = ""
+        if held and self._enabled and not self._cancel.is_set():
+            self._stop_speech.clear()
+            self._say_line(held)
+
+    def _answer_was_spoken(self) -> bool:
+        """Only an answer that was said aloud to the end opens the microphone again: not one cut short by a tap, one that
+        failed, or one the speaker could not play."""
+        return bool(self._spoken and self._enabled and not self.problem
+                    and not (self._cancel.is_set() or self._stop_speech.is_set() or self._closing.is_set()))
+
+    def _listen_for_reply(self) -> str | None:
+        """The reply in words, or None when the conversation is over. The microphone opens only after the speaker has
+        finished, a blip and a short guard, and stays open `follow_up_wait_s` in all: a noise, a mumble or the box's own
+        voice is dropped without a word and does not win more time, and two of them in a row end it."""
+        if not self._answer_was_spoken():
+            return None
+        if blip := self._start_chime():  # "your turn"
+            blip.join(3.0)
+        if self._stop_speech.wait(REPLY_GUARD_S):  # the speaker's tail must not be heard as the reply; a tap or stop ends it
+            return None
+        deadline = self.clock() + self.cfg.follow_up_wait_s
+        for _ in range(REPLY_UNCLEAR_TRIES):
+            left = deadline - self.clock()
+            if left <= 0 or self._cancel.is_set():
+                return None
+            self._finish.clear()
+            self._set("listening")
+            text = self._listen_and_transcribe(reply_wait_s=left)
+            if text is None:
+                return None
+            if closing_reply(text) or (sum(ch.isalnum() for ch in text) >= MIN_REPLY_LETTERS and not is_echo(text, self._spoken)):
+                return text
+        return None
+
+    def _say_line(self, line: str) -> None:
+        """One line made here, not by the gateway: the goodbye, or a line say() was holding."""
+        try:
+            pcm, rate = self.tts.synthesize(line)
+            self._set("speaking")
+            self.speaker.play(pcm, rate, self._stop_speech)
+        except (SpeechEngineError, AudioUnavailable) as e:
+            self.problem = f"Couldn't speak ({e})."
+
     def _ask_and_speak(self, text: str) -> None:
+        self._spoken = []
         if self.ask_stream is not None:
             return self._ask_and_speak_streaming(text)
         try:
@@ -390,6 +472,7 @@ class VoiceSession:
             pcm, rate = self.tts.synthesize(said)
             self._set("speaking")  # from here the microphone stays shut until the speaker is done
             self.speaker.play(pcm, rate, self._stop_speech)
+            self._spoken = [said]
         except (SpeechEngineError, AudioUnavailable) as e:
             self.problem = f"Couldn't speak the answer ({e}). It is on screen."
 
@@ -438,6 +521,7 @@ class VoiceSession:
                     if self._cancel.is_set() or self._stop_speech.is_set():
                         continue
                     to_play.put(self.tts.synthesize(said))
+                    self._spoken.append(said)
             except SpeechEngineError as e:
                 failed["speech"] = e
             finally:

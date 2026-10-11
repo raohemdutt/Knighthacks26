@@ -183,6 +183,15 @@ HOW_ARE_YOU = re.compile(
     r"|how(?:'s| is| was) your (?:day|night|morning|afternoon|evening)(?: going| been| so far)?|are you having a good day"
     r"|what(?:'s| is) new(?: with you)?|what have you been up to|what(?:'ve| have) you been doing|what are you up to)"
     r"(?: today| tonight| this (?:morning|afternoon|evening)| so far| then| atlas| buddy| man)*[?!. ]*$")
+# A spoken reply often starts by answering Atlas ("Nothing, how are you?", "yeah, hi"). These words are dropped ONLY to
+# recognise a greeting or a how-are-you (both must still be the whole of what is left); nothing else is routed without them.
+CHAT_LEAD = re.compile(r"^(?:(?:nothing(?: much)?|not much|no|nah|nope|yeah|yep|sure|alright|right|anyway|and|but)\b[ ,!.]*)+")
+
+
+def how_are_you(q: str) -> bool:
+    return bool(HOW_ARE_YOU.search(LEAD.sub("", CHAT_LEAD.sub("", q, count=1), count=1)))
+
+
 # "what did you do for me today?": everything Atlas did for the person today (ear.said_done, full), never the camera log
 DONE_FOR_ME = re.compile(
     r"\bwhat(?:'ve| have| did| all did| else did| else have) you (?:done|do|did|been doing|gotten done|got done|get done)\b.*\bfor me\b"
@@ -333,7 +342,7 @@ class Talk:
         q = LEAD.sub("", q, count=1) or q
         if FOLLOW_UP.search(q) and self.fresh():
             return True
-        if HOW_ARE_YOU.search(q) or DONE_FOR_ME.search(q):  # answered in code from its own work, whatever else the words look like
+        if how_are_you(q) or DONE_FOR_ME.search(q):  # answered in code from its own work, whatever else the words look like
             return True
         ask = schedule.parse(question, self.clock(), self.tz)
         if ask is not None and ask.rundown:  # "what do I have today?": the day's rundown, even when the day is empty
@@ -352,7 +361,7 @@ class Talk:
             return False
         q = normal(question)
         q = LEAD.sub("", q, count=1) or q
-        if HOW_ARE_YOU.search(q) or DONE_FOR_ME.search(q):
+        if how_are_you(q) or DONE_FOR_ME.search(q):
             return True
         if schedule.parse(question, self.clock(), self.tz) is not None:
             return False  # a calendar question the fast lane answers (QA says it, with its citations)
@@ -497,9 +506,9 @@ class Talk:
         None for anything else."""
         q = normal(question)
         bare = LEAD.sub("", q, count=1)
-        if GREETING.search(q) or JUST_THE_NAME.search(q):
+        if GREETING.search(q) or JUST_THE_NAME.search(q) or GREETING.search(CHAT_LEAD.sub("", q, count=1)):
             return ear.said_done([], greeting=True)
-        if HOW_ARE_YOU.search(bare):
+        if how_are_you(bare):
             return ear.said_done(self.done())
         if DONE_FOR_ME.search(bare) and not SECOND_ASK.search(bare):  # "what did you do for me today?": all of it, from real events
             return ear.said_done(self.done(), full=True)

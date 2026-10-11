@@ -120,6 +120,23 @@ def test_hows_it_going_is_its_work_for_you_and_an_offer_with_or_without_a_model(
     assert ask(quiet, hello) == "Good, all quiet so far. What can I do for you?"
 
 
+@pytest.mark.parametrize("reply", ["Nothing, how are you?", "nothing much, what's up?", "No, how are you?", "yeah, how's it going",
+                                   "Nah. How are you doing?", "Alright, so how are you?", "Sure, hey Atlas, how are you?"])
+def test_a_reply_that_starts_by_answering_atlas_is_still_hows_it_going(reply):
+    qa, rt = box(Recorder("I'm an AI and I've been running for a minute."))  # heard on the box: "Nothing, how are you?"
+    assert ask(qa, reply) == "Good. I've planned your day and reminded you twice so far. What else can I do for you?"
+    assert rt.seen == [] and qa.talk.wants(reply) and qa.talk.owns(reply)
+
+
+def test_the_extra_leading_words_only_count_for_small_talk():
+    qa, _ = box(None)
+    assert ask(qa, "Yeah, hi.") == "Hey. What can I do for you?"
+    for other in ("nothing", "no", "right", "nothing, where are my keys?", "no, what did the cameras see today?", "anyway"):
+        assert qa.talk.hello(other) is None, other
+    for q in ("where are my keys?", "what did the cameras see today?"):  # routed exactly as without the leading word
+        assert qa.talk.wants("no, " + q) == qa.talk.wants(q) and qa.talk.owns("nothing, " + q) == qa.talk.owns(q)
+
+
 @pytest.mark.parametrize("chat", ["hi", "hey atlas", "how's it going?", "how are you?", "what's up", "tell me a joke", "do you like music?",
                                   "what's the capital of France?", "I'm tired"])
 def test_the_facts_a_model_would_get_for_small_talk_hold_no_schedule_no_cameras_no_uptime(chat):

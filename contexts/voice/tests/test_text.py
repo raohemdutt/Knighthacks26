@@ -1,4 +1,5 @@
-from contexts.voice.text import MAX_SPOKEN_CHARS, SentenceStream, clean_transcript, find_wake, speech_for_answer, without_wake
+from contexts.voice.text import (MAX_SPOKEN_CHARS, SentenceStream, clean_transcript, closing_reply, find_wake, is_echo, speech_for_answer,
+                                 without_wake)
 
 
 def test_times_links_and_frame_refs_are_made_sayable():
@@ -83,3 +84,35 @@ def test_hey_atlas_said_again_is_not_part_of_the_question():
     assert without_wake("hey Atlas hey Atlas what time is it") == "what time is it"
     assert without_wake("Hey Atlas.") == ""
     assert find_wake("Hey Atlas, hey Atlas, where are my keys") == "where are my keys"
+
+
+SPOKEN = ["You left them on the desk at 3:40 PM.", "They were next to the laptop."]
+
+
+def test_the_speakers_own_voice_is_an_echo():
+    assert is_echo("You left them on the desk at 3:40 PM. They were next to the laptop.", SPOKEN)  # all of it
+    assert is_echo("you left them on the desk", SPOKEN)  # the start of it
+    assert is_echo("They were next to the laptop", SPOKEN)  # one sentence of it
+    assert is_echo("you left them on a desk at 3:40 PM", SPOKEN)  # most of the words, misheard a little
+    assert is_echo("Okay.", ["Okay."])
+
+
+def test_a_reply_that_shares_a_word_with_the_answer_is_not_an_echo():
+    assert not is_echo("which desk was it", SPOKEN)
+    assert not is_echo("the desk?", SPOKEN)
+    assert not is_echo("why were they next to my bag", SPOKEN)
+    assert not is_echo("why?", SPOKEN) and not is_echo("", SPOKEN) and not is_echo("why?", [])
+
+
+def test_a_goodbye_said_alone_ends_the_conversation():
+    for said in ("Thanks.", "thank you", "Thank you so much!", "No thanks.", "Okay, thanks Atlas.", "Thanks, bye."):
+        assert closing_reply(said) == "Any time.", said
+    for said in ("That's all.", "that\u2019s it", "Never mind.", "Stop.", "Goodbye.", "Bye!", "No.", "Nope", "I'm good.",
+                 "No, that's all for now."):
+        assert closing_reply(said) == "Okay.", said
+
+
+def test_a_question_that_only_contains_a_goodbye_word_is_not_one():
+    for said in ("thanks, and what about tomorrow?", "no, I meant the other one", "stop the timer", "that's it on the desk?",
+                 "why?", "what about bye week", ""):
+        assert closing_reply(said) is None, said

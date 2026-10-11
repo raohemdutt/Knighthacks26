@@ -25,7 +25,7 @@ def question() -> list[bytes]:
 
 
 def make_config(**over) -> VoiceConfig:
-    return VoiceConfig(**{"wait_for_speech_s": 1.0, "end_silence_s": 0.6, "max_seconds": 3.0, "chime": False, **over})
+    return VoiceConfig(**{"wait_for_speech_s": 1.0, "end_silence_s": 0.6, "max_seconds": 3.0, "chime": False, "follow_up": False, **over})
 
 
 class FakeMic:
