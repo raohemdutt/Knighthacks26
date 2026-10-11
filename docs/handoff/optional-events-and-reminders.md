@@ -592,3 +592,118 @@ block reminder at the next block's start, and the tracker's "Time to go" at the 
 3. Refetch on the `/ws` events `day.optional.answered`, `day.replan.proposed` and `day.plan.committed`: the event
    turns `accepted` only after the card is approved. (The endpoint does not exist yet: shapes are in section c,
    item 2, and may still change; whoever builds it must confirm them with you.)
+
+---
+
+## (h) Items 2 and 3 as built (added after sections a to g; where it differs from them, this section is what the code does)
+
+Items 2 and 3 of section (c) are on this branch. Items 5 and 6 are not started. Everything below is in
+`contexts/day/application/optional.py` unless another file is named; the tests are
+`contexts/day/tests/test_optional_events.py` (the answers) and `contexts/day/tests/test_optional_suggest.py` (the
+suggestion).
+
+### The API (settled; section g's "may still change" no longer applies)
+
+```
+GET /api/day/optional
+{"now": "...", "plan_id": "plan-2026-10-12-0810" | null,
+ "events": [{"id": "nearby:friends-dinner:2026-10-12T17:15:00-04:00", "slug": "friends-dinner", "title": "Friends' dinner",
+             "start": "...", "end": "...", "place": "ucf.dining_63", "place_name": "'63 South",
+             "tags": ["with Riley, Sam, Alex", "optional", "via GroupMe"], "going": ["Riley", "Sam", "Alex"], "host": null,
+             "source": "GroupMe", "state": "suggested" | "accepted" | "declined" | "passed", "answer": "yes" | "no" | null,
+             "awaiting_approval": false, "action_id": null, "plan_id": null,
+             "suggested_at": "..." | null, "suggest_held": "already suggested" | ... | null,
+             "fit": {"fits": "yes" | "nearly" | "no", "reason": "", "walk_minutes": 16, "leave_by": "..." | null,
+                     "from_place": "apartment.desk", "leave_early_minutes": 0,
+                     "displaces": [{"id", "title", "kind", "start", "end", "overlap_minutes"}], "conflicts": [...]}}]}
+
+POST /api/day/optional/{id}   {"answer": "yes" | "no"}     (id: the full id, URL-encoded, or the slug)
+yes -> {"id", "answer": "yes", "state": "suggested", "proposed": true, "plan_id", "action_id",
+        "moves": [{"id", "title", "kind", "fixed": false, "change": "moved" | "shortened" | "lengthened" | "dropped",
+                   "start": "18:30", "end": "19:00", "new_start"?, "new_end"?}],
+        "adds": [{"id", "title", "kind", "start": "18:20", "end": "19:40"}],
+        "block": {...PlanMove, "fixed": true, "origin": "optional"}, "fit": {...}}
+yes, more than a day ahead -> {"id", "answer": "yes", "state": "suggested", "proposed": false, "reason": "..."}
+no  -> {"id", "answer": "no", "state": "declined", "proposed": false}
+no to an accepted event -> {"id", "answer": "no", "state": "accepted", "proposed": true, "plan_id", "action_id", "moves", "adds"}
+404 unknown event; 409 with the reason in `detail` (no plan for today yet; it does not fit; it has already started;
+it is already in your plan); 422 for another answer.
+```
+
+- `awaiting_approval` with `action_id` and `plan_id` is true while the card about the event is open: the re-plan a
+  yes raised, or the re-plan a no to an accepted event raised. A card that expires leaves the event `suggested`
+  with `answer: "yes"`: the person can say yes again.
+- `moves` is what happens to the blocks Atlas had chosen, as far ahead as the current plan reaches; `adds` is what
+  the re-plan puts there instead. A re-plan chooses every suggested block again, so both can be longer than what
+  the event itself overlaps. Times in them are local `HH:MM`.
+- `suggest_held` says why Atlas is not bringing the event up right now (null when the next tick may).
+
+### What differs from the design in section (c)
+
+- A yes to an event that starts after the board's window (24 h) is not a 409: the answer is recorded and the
+  response says `proposed: false` with a reason. It stays `suggested` and is still brought up before it starts.
+- `OptionalEvents` takes the place in front of `dayrun.agreed` from the first yes on (the first time a re-plan is
+  built with an event, or an accepted one is replayed), not in `DayLoop.__init__`:
+  `contexts/play/tests/test_dayrun_agreed.py` asserts the port is `None` on a box without a Circle, and a box nobody
+  said yes on builds its boards exactly as before.
+- `day.optional.answered` gained `until: datetime | None`. When the fit is "nearly" because of leaving early for
+  the next fixed event, the block ends that much earlier (the yes carries the time), so the next fixed event is
+  reached on time and is never moved or cut.
+- The "a fixed event never moves" check compares the day re-planned at the same moment with and without the
+  event, and refuses when any fixed block differs. `changes()` against the current plan is only used for `moves`.
+- Two yeses in a row: the second re-plan also carries the first event while its card is still open, so approving
+  the newer card accepts both.
+- A plan's card counts for acceptance only when that plan is what the day is now measured against: a card approved
+  after a newer plan replaced it accepts nothing.
+- The suggestion's screen line (`display`) no longer names who is going: "Friends' dinner: 5:15 PM to 6:15 PM at
+  '63 South. 16 min walk, leave by 4:59 PM. Fits before your study block at 7:01 PM. Add it?". The push carries
+  that line, and a block start it is merged into shows it, so no friend's name goes through the notification
+  service. The names are in `spoken` and in `going` / `host` of the list.
+- The push is `"Atlas has a suggestion near you: <display without 'Add it?'> Open Atlas to add it."`, title
+  "Near you" (`suggest_push` in `contexts/day/application/loop.py`).
+- "It fits before ..." names the plan's next block that is not a rest, and not a meal when the event is itself a
+  meal ("dinner ... fits before dinner" says nothing); the night's sleep is "bed".
+
+### The suggestion's rules (defaults; config keys under `day:` in `config/agent.yaml`)
+
+Said once per event, on the Day loop's tick (looked at once a minute of event time), when all of these hold:
+`suggest_optional` is true; the narration is not off; there is a plan for today; the event starts in
+`suggest_until_min` (30) to `suggest_from_min` (90) minutes; it fits or nearly fits; it names somebody (`going` or
+`host`); it is between wake and bedtime; no fixed block is running; it is not within 30 minutes before a time to
+leave for a fixed event (until that event starts); the last suggestion was at least `suggest_cooldown_min` (45)
+minutes ago; the event is still `suggested`. The arbiter adds: no approval card or check-in card open, not within
+15 minutes after a check-in, the global gap, merging with a block start due in the same tick. "Said once" is read
+from `day.narrated` moment `suggest` (`ref` is the event's id; a suggestion said inside another line, with
+`merged_into`, counts), so a restart on the same log says nothing again.
+
+### Web
+
+- `web/components/day/OptionalSuggestion.tsx` (+ `optional.module.css`), mounted by `AtlasProvider`: the card, in
+  the toasts' place and below any toast. "Add it" / "Not today"; after a yes, what would move and one link,
+  "Review and approve", to `/approvals/`; "In your plan" once the card is approved. Hidden on `/approvals` and
+  `/operator`. A `suggest` narration is not toasted as well.
+- `web/lib/voice.tsx`: for 30 seconds after Atlas has said a suggestion (its own line, the line it was merged
+  into, or a line the box's speaker says), a heard "yes / add it / sure" or "no / not today" answers it
+  (`suggestionAnswer` in `web/lib/speechText.ts`) and Atlas says "Okay, there's a card to approve." or "Okay, not
+  today.". A yes only ever raises the card. Anything else is heard as usual.
+- `web/lib/api.ts`: `api.dayOptional()`, `api.dayOptionalAnswer(id, answer)` and their types;
+  `web/scripts/check-api.mjs` checks `GET /api/day/optional`.
+
+### Who sees an accepted optional event
+
+- Through the plan: `GET /api/day/plan`, `/api/day/now`, every later plan and re-plan, the tracker (next event,
+  walk, leave-by, leave now, late, drift re-plans), the narrator, block-start reminders, the evening review, the
+  Day Run board.
+- The agent's leaving checklist: yes, through `Planner.accepted_optional` (set in `bootstrap.py`).
+- Only after a calendar connector wrote the card's event and synced it back: the Circle's free/busy (`busy()` in
+  `contexts/circle/application/protocol.py`) and Habits' "leave ready" (`contexts/habits/domain/tracker.py`). On a
+  box without a calendar write they do not see it. Not changed: each needs more than one line.
+
+### Still open
+
+- Items 5 and 6: the demo scene, the run sheet, `scripts/demo_walkthrough.py`, the final walk and screenshots.
+- A no to an accepted event on a box whose calendar connector wrote it: the calendar item stays (there is no
+  delete tool), so it comes back as an ordinary calendar block.
+- A no said while the yes card is still open is recorded, and the card stays open: approving it afterwards still
+  adds the event (the approval is the later decision).
+- The spoken yes and no were checked as code and by phrase list, not by ear.
