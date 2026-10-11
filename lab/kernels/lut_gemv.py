@@ -12,8 +12,12 @@ weight (MODE):
   1 group_lut     a per-group, per-column fp16 table of the 2^BITS values, loaded into registers once per K block
                   and read with tl.gather (the compiler lowers it to lane shuffles or LDS: the on-chip lookup)
   2 group_lut_ld  the same table, read with one pointer gather per weight through the vector cache
-  3 shared_lut    one table of 2^BITS values for the whole matrix (FLUTE's layout), gathered on chip, then
+  3 shared_lut    one table of 2^BITS values for the whole matrix, gathered on chip, then
                   w = (T[c] - z) * s with the per-group scale and zero
+  4 channel_lut   FLUTE's layout: one table of 2^BITS fp16 values per output channel (a non-uniform grid fitted to
+                  the channel, quantize_channel_lut) held in registers for the whole K loop, and one fp16 scale per
+                  group: w = T[n, c] * s. 48 + 2 bytes per 128 weights at 3 bits, 3.125 bits a weight. Added after
+                  the 2026-10-11 pod run, so it has no measured row yet.
 
 The table is filled from a uniform asymmetric grid, so the reference is ordinary min-max quantization; the
 mechanism is what is measured, and a non-uniform grid (NF3, a learned codebook) only changes the table's values.
@@ -47,7 +51,7 @@ from pathlib import Path
 from typing import Any
 
 GROUP = 128
-MODES = {0: "arith", 1: "group_lut", 2: "group_lut_ld", 3: "shared_lut"}
+MODES = {0: "arith", 1: "group_lut", 2: "group_lut_ld", 3: "shared_lut", 4: "channel_lut"}
 MODE_IDS = {name: mode for mode, name in MODES.items()}
 FORMAT = "lut_gemv/1"
 DEFAULT_OUT = "~/r62_lut"
@@ -94,6 +98,7 @@ class Packed:
     scale: Any      # fp16 [K // GROUP, N]
     zero: Any       # fp16 [K // GROUP, N]
     shared: Any     # fp16 [2^BITS]
+    ctable: Any = None  # fp16 [N, 2^BITS], mode 4 only (quantize_channel_lut): one table per output channel
 
     @property
     def main_bits(self) -> int:
@@ -105,6 +110,8 @@ class Packed:
         codes = self.main.numel() * 4 + (self.hi.numel() * 4 if self.hi is not None else 0)
         if mode in (1, 2):
             return codes + self.table.numel() * 2
+        if mode == 4:
+            return codes + self.scale.numel() * 2 + self.ctable.numel() * 2
         return codes + self.scale.numel() * 2 + self.zero.numel() * 2 + (self.shared.numel() * 2 if mode == 3 else 0)
 
 
@@ -164,6 +171,34 @@ def pack(codes: Any, scale: Any, zero: Any, bits: int) -> Packed:
     return Packed(bits, n, k, codes, main, hi, table, scale, zero, shared)
 
 
+def quantize_channel_lut(w: Any, bits: int, group: int = GROUP) -> Packed:
+    """FLUTE-style quantization for mode 4: per group of `group` along K one fp16 scale s = absmax of the group, and
+    per output channel one table of 2^BITS fp16 values, the mid-quantiles of that channel's w / s (a non-uniform
+    grid fitted to the channel); each code is the nearest table entry. Weight = T[n, c] * s[g, n]. The bytes per
+    128 weights at 3 bits are 48 of codes and 2 of scale (3.125 bits a weight); the tables add 16 bytes a column."""
+    import torch
+
+    n, k = w.shape
+    if k % group or k % 32:
+        raise ValueError(f"K {k} must be a multiple of {group} and of 32")
+    nv = 1 << bits
+    wg = w.float().reshape(n, k // group, group)
+    scale = wg.abs().amax(dim=2).clamp_min(1e-8).half()
+    x = (wg / scale.float()[:, :, None]).reshape(n, k)
+    picks = ((torch.arange(nv, device=w.device, dtype=torch.float64) + 0.5) / nv * k).long().clamp_max(k - 1)
+    table = x.sort(dim=1).values[:, picks].half()
+    t = table.float()
+    mids = (t[:, 1:] + t[:, :-1]) / 2
+    codes = torch.zeros(n, k, dtype=torch.int64, device=w.device)
+    for j in range(nv - 1):
+        codes += (x > mids[:, j:j + 1]).to(torch.int64)
+    codes = codes.to(torch.uint8)
+    zero = torch.zeros_like(scale)
+    p = pack(codes, scale.t().contiguous(), zero.t().contiguous(), bits)
+    p.ctable = table.contiguous()
+    return p
+
+
 def unpack_codes(p: Packed) -> Any:
     """The codes back from main and hi, [N, K] int64 (the packing's own check)."""
     import torch
@@ -186,9 +221,11 @@ def dequant(p: Packed, mode: int) -> Any:
 
     codes = p.codes.to(torch.int64)
     g = torch.arange(p.k, device=codes.device) // GROUP
+    cols = torch.arange(p.n, device=codes.device)
     if mode in (1, 2):
-        cols = torch.arange(p.n, device=codes.device)
         return p.table[g[None, :], cols[:, None], codes]
+    if mode == 4:
+        return (p.ctable[cols[:, None], codes].float() * p.scale.float().t()[:, g]).half()
     s = p.scale.float().t()[:, g]
     z = p.zero.float().t()[:, g]
     c = p.shared.float()[codes] if mode == 3 else codes.float()
@@ -213,7 +250,7 @@ def kernel() -> Any:
     import triton.language as tl
 
     @triton.jit
-    def lut_gemv_kernel(a_ptr, main_ptr, hi_ptr, tab_ptr, sh_ptr, s_ptr, z_ptr, c_ptr, M, N, K,
+    def lut_gemv_kernel(a_ptr, main_ptr, hi_ptr, tab_ptr, sh_ptr, s_ptr, z_ptr, ct_ptr, c_ptr, M, N, K,
                         stride_am, stride_cm,
                         BITS: tl.constexpr, MB: tl.constexpr, PW: tl.constexpr, NV: tl.constexpr,
                         MODE: tl.constexpr, GROUP: tl.constexpr, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr,
@@ -231,6 +268,8 @@ def kernel() -> Any:
         k_len = K // SPLIT_K
         k_start = pid_k * k_len
         shifts = tl.arange(0, PW) * MB
+        if MODE == 4:  # this program's columns' tables, loaded once and kept in registers for the whole K loop
+            ctab = tl.load(ct_ptr + rn[:, None] * NV + tl.arange(0, NV)[None, :], mask=nmask[:, None], other=0.0)
         if MODE == 3:
             shared = tl.broadcast_to(tl.load(sh_ptr + tl.arange(0, NV))[None, :], (BLOCK_N, NV))
         for kk in range(0, k_len, BLOCK_K):
@@ -255,6 +294,10 @@ def kernel() -> Any:
                 w = tl.gather(tab, codes, axis=1)
             elif MODE == 2:
                 w = tl.load(tab_ptr + (g * N + rn[:, None]) * NV + codes, mask=nmask[:, None], other=0.0)
+            elif MODE == 4:
+                s = tl.load(s_ptr + g * N + rn, mask=nmask, other=0.0).to(tl.float32)
+                t = tl.gather(ctab, codes, axis=1).to(tl.float32)
+                w = (t * s[:, None]).to(tl.float16)
             else:
                 s = tl.load(s_ptr + g * N + rn, mask=nmask, other=0.0).to(tl.float32)
                 z = tl.load(z_ptr + g * N + rn, mask=nmask, other=0.0).to(tl.float32)
@@ -309,12 +352,15 @@ def launcher(a: Any, p: Packed, mode: int, cfg: Mapping[str, Any]) -> tuple[Call
     grid = (triton.cdiv(m, cfg["BLOCK_M"]), triton.cdiv(p.n, cfg["BLOCK_N"]), split)
     mb = p.main_bits
     hi = p.hi if p.hi is not None else p.main
+    if mode == 4 and p.ctable is None:
+        raise ValueError("mode 4 (channel_lut) needs a layer from quantize_channel_lut")
+    ctable = p.ctable if p.ctable is not None else p.shared
     target = ws if ws is not None else out16
 
     def call() -> Any:
         if ws is not None:
             ws.zero_()
-        kern[grid](a, p.main, hi, p.table, p.shared, p.scale, p.zero, target, m, p.n, p.k,
+        kern[grid](a, p.main, hi, p.table, p.shared, p.scale, p.zero, ctable, target, m, p.n, p.k,
                    a.stride(0), target.stride(0),
                    BITS=p.bits, MB=mb, PW=32 // mb, NV=1 << p.bits, MODE=mode, GROUP=GROUP,
                    BLOCK_M=cfg["BLOCK_M"], BLOCK_N=cfg["BLOCK_N"], BLOCK_K=cfg["BLOCK_K"], SPLIT_K=split,
@@ -349,12 +395,12 @@ def _chipsheet() -> Any:
     return cs
 
 
-def _make_layer(bits: int, k: int, n: int, seed: int, device: str = "cuda") -> tuple[Any, Packed]:
+def _make_layer(bits: int, k: int, n: int, seed: int, device: str = "cuda", mode: int = 1) -> tuple[Any, Packed]:
     import torch
 
     gen = torch.Generator(device=device).manual_seed(seed)
     w = (torch.randn(n, k, device=device, generator=gen) * 0.02).half()
-    return w, quantize(w, bits)
+    return w, (quantize_channel_lut(w, bits) if mode == 4 else quantize(w, bits))
 
 
 def _rotating(calls: Sequence[Callable[[], Any]]) -> Callable[[], Any]:
@@ -409,7 +455,7 @@ def bench_main(args: argparse.Namespace, command: str) -> int:
                 gen = torch.Generator(device="cuda").manual_seed(m * 7 + bits)
                 a = torch.randn(m, k, device="cuda", generator=gen).half()
                 for i in range(copies):
-                    w, p = _make_layer(bits, k, n, seed=1000 * bits + i + k + n)
+                    w, p = _make_layer(bits, k, n, seed=1000 * bits + i + k + n, mode=mode)
                     del w
                     call, _ = launcher(a, p, mode, cfg)
                     if i == 0:
@@ -540,8 +586,8 @@ def bench_main(args: argparse.Namespace, command: str) -> int:
         for cfg in M1_CONFIGS + DOT_CONFIGS[:1]:
             for mode in MODES:
                 sweep_ids[mode].append(lut_point("sweep", 3, mode, name, k, n, 1, cfg, quick=True))
-        best_lut = best([i for mode in (1, 2, 3) for i in sweep_ids[mode]])
-        lut_mode = next((mode for mode in (1, 2, 3) if best_lut in sweep_ids[mode]), 1)
+        best_lut = best([i for mode in (1, 2, 3, 4) for i in sweep_ids[mode]])
+        lut_mode = next((mode for mode in (1, 2, 3, 4) if best_lut in sweep_ids[mode]), 1)
         m1_cfg = cfg_of(best_lut, M1_CONFIGS[0])
         # 2. Sweep the dot configurations at M 16, BITS 3, for the batched rows.
         dot_ids = {mode: [lut_point("sweep", 3, mode, name, k, n, 16, cfg, quick=True) for cfg in DOT_CONFIGS]
@@ -620,6 +666,8 @@ def _bytes_of(bits: int, mode: int, k: int, n: int) -> int:
     codes = k * n * bits // 8
     if mode in (1, 2):
         return codes + groups * n * (1 << bits) * 2
+    if mode == 4:
+        return codes + groups * n * 2 + n * (1 << bits) * 2
     return codes + groups * n * 4 + ((1 << bits) * 2 if mode == 3 else 0)
 
 
@@ -627,7 +675,8 @@ def _bytes_of(bits: int, mode: int, k: int, n: int) -> int:
 
 def metric_rows(result: Mapping[str, Any], source: str, account: str = "D") -> list[dict[str, Any]]:
     """lut_gemv.* rows for lab/refine/metrics.jsonl: per measured entry its weight GB/s, TFLOP/s, watts, J per GEMV
-    and max abs error, with the node, hub, account and sampler conditions."""
+    and max abs error, with the node, hub, account and sampler conditions. The tile sweep's entries (5 repeats at
+    0.3 s of load, a choice of tile rather than a result) stay in the result file only."""
     rows = []
     reader = (result.get("power") or {}).get("reader") or {}
     base = {"hub": "sjc", "account": account, "gfx": result.get("gfx"), "host": result.get("host"),
@@ -640,7 +689,7 @@ def metric_rows(result: Mapping[str, Any], source: str, account: str = "D") -> l
                        "repeat, then load held for min_load_s)", "file": source}
     ts = result.get("ended") or result.get("started")
     for e in result.get("measurements", []):
-        if e.get("status") != "ok":
+        if e.get("status") != "ok" or e.get("section") == "sweep":  # the sweep (5 repeats, 0.3 s) stays in the file
             continue
         d = e.get("derived") or {}
         p = e.get("params") or {}
@@ -652,7 +701,6 @@ def metric_rows(result: Mapping[str, Any], source: str, account: str = "D") -> l
                 "section": e.get("section"), "repeats": e.get("repeats"),
                 "rel_spread": (e.get("spread") or {}).get("rel_spread"),
                 "idle_w": watts.get("idle_w"), "watt_samples": watts.get("samples")}
-        quick = e.get("section") == "sweep"
         values = []
         if "weight_gbs" in d:
             values.append(("weight_gbs", d["weight_gbs"], "GB/s"))
@@ -667,9 +715,9 @@ def metric_rows(result: Mapping[str, Any], source: str, account: str = "D") -> l
         if d.get("max_abs_error") is not None:
             values.append(("max_abs_error", d["max_abs_error"], "abs"))
         for key, value, unit in values:
-            rows.append({"metric": f"{stem}.{key}", "value": round(float(value), 6), "unit": unit, "node": result.get("node"),
-                         "conditions": cond, "source": f"R62 lut_gemv bench, {source}", "ts": ts,
-                         **({"low_confidence": True} if quick else {})})
+            rows.append({"metric": f"{stem}.{key}", "value": round(float(value), 6), "unit": unit,
+                         "node": result.get("node"), "conditions": cond, "source": f"R62 lut_gemv bench, {source}",
+                         "ts": ts, "low_confidence": False})
     return rows
 
 
@@ -681,10 +729,13 @@ def ingest_main(args: argparse.Namespace) -> int:
         return 1
     source = path.as_posix()
     rows = metric_rows(result, source, args.account)
+    from lab.machine import metrics as ledger_metrics
+
+    for row in rows:
+        ledger_metrics.check_row(row)
     if not args.dry_run:
-        with open(args.metrics, "a", encoding="utf-8") as handle:
-            for row in rows:
-                handle.write(json.dumps(row) + "\n")
+        for row in rows:
+            ledger_metrics.add(row, path=args.metrics)
     print(json.dumps({"ok": True, "outcome": "dry_run" if args.dry_run else "written", "rows": len(rows),
                       "metrics": args.metrics}))
     return 0
