@@ -37,6 +37,7 @@
 - GET  /api/circle/sharing     what leaves this box for the Circle: settings, outbox counts, Neon up or down
 - GET  /api/circle/face-share  friends whose boxes can recognise you and the other way round; POST .../{friend}/share,
                                /revoke, /review, /forget, /trust-key. 409 while it is switched off (the default)
+- GET  /api/circle/shared-brain the two-pod 122B brain live: members, watts, link, serving (G6); 200 in every state
 - GET  /api/invites[/{name}]   calendar invites (.ics) created after approval, to open or share (K2)
 - GET  /api/places             place packs; POST one as YAML/JSON (validated) (S5)
 - GET  /api/play/campus-route  ?from=ucf.union&to=ucf.hec[&depart=&due=] or to=friend:<member> (S5)
@@ -92,6 +93,7 @@ from contexts.circle.api import circle_router
 from contexts.circle.face_share_api import face_share_router
 from contexts.circle.brain_api import group_brain_router
 from contexts.circle.brain_power import brain_power_router
+from contexts.circle.brain_pair import build_brain_pair, shared_brain_router
 from contexts.circle.application.sharing import CircleOffline
 from contexts.day.api import day_router
 from contexts.day.application.coach_feedback import coach_feedback_router
@@ -261,6 +263,8 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
     shared = atlas.shared_brain
     app.include_router(group_brain_router(getattr(shared, "brain", None), guard=authorized))
     app.include_router(brain_power_router(getattr(shared, "power", None), getattr(shared, "reason", None)))
+    # GET /api/circle/shared-brain: the two-pod brain live (G6): members, watts, link, serving; 200 in every state
+    app.include_router(shared_brain_router(build_brain_pair()))
     # GET /api/league, /api/league/me (200 in every state); POST /api/league/stake, /api/league/challenges -> approval cards
     app.include_router(league_router(atlas.bus, league=atlas.league, guard=authorized))
     if atlas.spot:  # /api/spot/*: the inspection (SPOT) dashboard; 200 in every state, also without a kit
