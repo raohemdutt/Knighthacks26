@@ -188,8 +188,8 @@ gave a cited answer that still began "I didn't see that."; "while I was out" gav
 | --- | --- |
 | Laptop, seeded | `python -m contexts.demo circle --data-dir /tmp/atlas-demo`, then the command it prints, with `ATLAS_WEB_DIR=web/out` after `cd web && npm run build` |
 | Laptop, with an evening review | `python -m contexts.demo seed --data-dir /tmp/atlas-night` (the scripted time, Sun 9:30 AM), then `ATLAS_DATA_DIR=/tmp/atlas-night ATLAS_MEMORY_FIXTURE= ATLAS_CONNECTORS=0 python -m contexts.gateway` |
-| Laptop, an optional event suggested and said yes to | `python -m contexts.demo optional --data-dir /tmp/atlas-optional` (an invented day; it prints each line Atlas says), then the command it prints (use case 3a) |
 | The box, T-15 | `python -m contexts.demo preflight --gateway http://<jetson>:8000 --reset` |
+| Laptop, an optional event suggested and said yes to | `python -m contexts.demo optional --data-dir /tmp/atlas-optional` (an invented day; it prints each line Atlas says), then the command it prints (use case 3a) |
 | Live features without a camera | `python -m contexts.demo fake perception --gateway http://<box>:8000 --realtime` (a throwaway box only) |
 
 The phone app's tab bar is **Ask, Now, Today, Day Run, More**. **More** lists: Everyday (Now, Today,
