@@ -48,7 +48,8 @@ import { usePoll } from "@/lib/usePoll";
  * at the top holds three tabs, and a tab that holds two views shows one after the other:
  *
  *   The model          the loop in 3D (components/lab/LoopView.tsx, lit from the shown run's own events), then the
- *                      Training run view (#run), then the Experiments view (#experiments)
+ *                      Training run view (#run), one stage card at a time (?stage=1..5). The Experiments view
+ *                      (#experiments) is not on the tab's bar; /lab/?tab=experiments opens it alone.
  *   Speed and energy   the Speed and energy view (#speed), then the Routing view (#routing)
  *   Together           the Alone vs with a friend view (#compare), with its own empty state when the box has no pair
  *
@@ -148,7 +149,9 @@ export default function LabPage() {
     url.hash = "";
     window.history.replaceState(null, "", url);
   };
-  const views = LAB_GROUPS.find((g) => g.key === group)?.views ?? [];
+  // Experiments is not on the model tab's bar: it opens only from its own link (/lab/?tab=experiments), so with one view
+  // left the model tab has no sub-tab bar and the Training run view sits right under the loop.
+  const views = (LAB_GROUPS.find((g) => g.key === group)?.views ?? []).filter((v) => !(group === "model" && v === "experiments"));
   // The lab's own name for a view, kept in sight above it, so "the Training run tab" in a run sheet is still on screen.
   // Speed and energy and Alone vs with a friend open on those very words as their own heading, so they need no label.
   const named = (v: LabTab) => <p className={loop.viewName}>{LAB_TABS.find((x) => x.key === v)?.title ?? v}</p>;
@@ -218,6 +221,9 @@ export default function LabPage() {
       <>
         {tabs}
         <section id="experiments" className={loop.view} aria-label="Experiments" data-guide="lab:experiments">
+          <button type="button" className={ui.btn} onClick={() => pickTab("run")}>
+            Back to the model
+          </button>
           <Experiments />
         </section>
       </>
