@@ -1,4 +1,5 @@
-"""The look memory (stage one): Atlas remembers a sustained look with what was going on around it, and calls back to it.
+"""The look memory: Atlas remembers a sustained look with what was going on around it, calls back to it (stage one),
+and learns from all of them, per person, what tends to ease a look and what the looks share (stage two).
 
     looks = LookMemory(planner, coach, checkin, clock, habits=habits)
     looks.subscribe_looks(bus); ...; looks.subscribe(bus)   # DayLoop does both, around the check-in
@@ -33,6 +34,16 @@ reads:
 - what Atlas suggested and how it was answered: `day.checkin.raised` / `day.checkin.answered`;
 - what was forgotten: `day.look.forgotten` (box-only), which is what keeps a forgotten moment gone on replay.
 
+Stage two, what it has learned (the rule and the words are contexts/day/domain/look_model.py; nothing here calls a
+model and nothing reads a picture). `model(member)` fits a small table of counts from `examples(member)` and from
+nothing else, every time it is asked: it is never stored, so it is exactly as old as the remembered looks, and
+forgetting them (one, all, a member, expressions off, a full wipe) forgets it. It is a pure function of the moments,
+so a replay of the log gives the same model and the same sentences. With enough known outcomes a check-in's advice
+order and its "what followed" sentence come from it ("Getting up has eased this four of the last five times; water
+alone hasn't either time."), the card may carry one quiet line when the person has been at the desk about as long as
+it usually takes (`ahead`; agent.yaml `day: {look_ahead: false}` turns it off; never said, never pushed), and three
+more questions are answered from it (`said`: "helps", "causes", "how"). With too few, everything is stage one's.
+
 Box-only, all of it: the moments live in this object and are served to the owner's own screen by GET /api/day/looks.
 They are in no event, so no Circle handler, shared table, export, push or Learning lab reader can carry them; the one
 place their words go is the box-only `day.checkin.raised` (its `callback`). Nothing is logged at info level.
@@ -40,9 +51,11 @@ place their words go is the box-only `day.checkin.raised` (its `callback`). Noth
 
 import logging
 from bisect import bisect_left
+from dataclasses import asdict
 from datetime import UTC, date, datetime, timedelta
 
 from contexts.day.domain import checkin as rule
+from contexts.day.domain import look_model
 from contexts.day.domain import looks as memory
 from contexts.day.domain.checkin import Look
 from contexts.day.domain.clock import DayClock
@@ -64,8 +77,9 @@ SHOWN = 5  # "Looks Atlas remembers": the most recent five
 
 
 class LookMemory:
-    def __init__(self, planner, coach, checkin, clock: DayClock, habits=None, words: Words = Words()) -> None:
+    def __init__(self, planner, coach, checkin, clock: DayClock, habits=None, words: Words = Words(), look_ahead: bool = True) -> None:
         self.planner, self.coach, self.checkin, self.clock, self.habits, self.words = planner, coach, checkin, clock, habits, words
+        self.look_ahead = look_ahead  # the card's quiet "you usually start to look strained around now" (never said or pushed)
         # --- state, rebuilt from the log ---
         self.allowed: set[str] | None = None  # who scanned and switched expressions on; None: the log has not said yet
         self.looks: dict[str, list[Look]] = {}
@@ -348,24 +362,76 @@ class LookMemory:
         member = self.strained_member(now)
         if member is None or (self.allowed is not None and member not in self.allowed):
             return None
-        today = self.clock.day_of(now)
-        then = memory.similar(self.context(now, member), today, member, self.remembered(now), self.look(member, now))
+        today, tz = self.clock.day_of(now), self.clock.tz
+        context, rows, look = self.context(now, member), self.remembered(now), self.look(member, now)
+        then = memory.similar(context, today, member, rows, look)
+        shown = memory.view(then, today, tz, self.words) if then is not None else None
+        lines = [f"{shown['when']}, around {shown['time']}. {shown['going_on']}", shown["helped"]] if shown else []
+        # Stage two: with enough known outcomes, what followed and the advice to lead with are what the counts over
+        # every remembered look of this person say, in a context like this one.
+        model, features = self.model(member, now), asdict(context)
+        counted = look_model.learned_line(model, features, self.words)
+        rests_on = then or next((m for m in rows if m.member_id == member and m.outcome.known and m.outcome.eased is not None), None)
+        if counted and rests_on is not None:
+            evidence = look_model.evidence_line(model)
+            return CheckinCallback(moment_id=rests_on.id, day=rests_on.day, look=then.look if then else look,
+                                   said=memory.callback(then, today, tz) if then else "", learned=counted,
+                                   lead=look_model.lead(model, features), chip=memory.chip(then, today, tz) if then else "What has eased it",
+                                   lines=[*(lines or [counted]), evidence], pattern=look_model.pattern_line(model, self.words), evidence=evidence)
         if then is None:
             return None
         helped, lead = memory.learned(then, self.words)
-        shown = memory.view(then, today, self.clock.tz, self.words)
-        return CheckinCallback(moment_id=then.id, day=then.day, look=then.look, said=memory.callback(then, today, self.clock.tz),
-                               learned=helped, lead=lead, chip=memory.chip(then, today, self.clock.tz),
-                               lines=[f"{shown['when']}, around {shown['time']}. {shown['going_on']}", shown["helped"]])
+        return CheckinCallback(moment_id=then.id, day=then.day, look=then.look, said=memory.callback(then, today, tz),
+                               learned=helped, lead=lead, chip=memory.chip(then, today, tz), lines=lines)
+
+    # --- stage two: what it has learned (contexts/day/domain/look_model.py) ---
+
+    def model(self, member_id: str, now: datetime | None = None) -> look_model.Model:
+        """What Atlas has learned about one member's looks: fitted here and now from `examples` and nothing else.
+        Never kept: it is a function of the remembered moments, so it is gone when they are."""
+        return look_model.fit(self.examples(member_id, now))
+
+    def learner(self, member_id: str | None = None) -> str | None:
+        """Whose looks a question or a screen is about: `member_id`, else the member of the newest remembered look,
+        else the one member being remembered. None when that is nobody."""
+        if member_id is not None:
+            return member_id
+        newest = max(self.moments.values(), key=lambda m: m.at, default=None)
+        if newest is not None:
+            return newest.member_id
+        return next(iter(self.allowed)) if self.allowed and len(self.allowed) == 1 else None
+
+    def ahead(self, now: datetime) -> str:
+        """For the check-in card only: "You usually start to look strained around now. A short break tends to help.",
+        when the member at the desk has been there about as long as it usually takes for a look to start. "" when that
+        is not a finding, when nobody is there, or when the setting is off. Nothing is said and nothing is pushed."""
+        if not self.look_ahead:
+            return ""
+        members = sorted({m.member_id for m in self.moments.values() if self.allowed is None or m.member_id in self.allowed})
+        if len(members) > 1:  # the desk zone cannot tell two people apart: only the one the desk camera has in front of it
+            members = [m for m in members if rule.sitting(sorted(self.faces.get(m, ())), now) is not None]
+        for member in members:
+            run = rule.sitting(self.desk(member, now, now), now)
+            line = look_model.ahead_line(self.model(member, now), int((now - run[0]).total_seconds() // 60), self.words) if run else ""
+            if line:
+                return line
+        return ""
+
+    def ahead_holds(self, e) -> bool:
+        """Whether a check-in's quiet line may still be shown: the setting is on and some remembered looks still say so."""
+        return self.look_ahead and any(self.model(m).onset_min is not None for m in {x.member_id for x in self.moments.values()})
 
     def view(self, now: datetime, limit: int = SHOWN, member_id: str | None = None) -> dict:
         """For the owner's own screen (GET /api/day/looks): the most recent moments in plain lines, one member's when
         `member_id` is given. Box-only."""
         now = self.clock_now(now)
         today, rows = self.clock.day_of(now), [m for m in self.remembered(now) if member_id in (None, m.member_id)]
+        who = self.learner(member_id)
         return {"on": bool(self.allowed) or (self.allowed is None and bool(self.looks)), "members": sorted(self.allowed or ()),
                 "count": len(rows), "kept_days": memory.KEEP_DAYS, "callback_days": memory.CALLBACK_DAYS,
                 "moments": [memory.view(m, today, self.clock.tz, self.words) for m in rows[:limit]],
+                # what Atlas has learned from them (stage two): sentences with their counts, or "not enough yet"
+                "learned": look_model.view(self.model(who, now), self.words) if who is not None and rows else None,
                 "note": "Labels and numbers only, kept on this box. No picture is stored. Switching expressions off clears them."}
 
     def forget(self, now: datetime, moment_id: str | None = None, member_id: str | None = None) -> DayLookForgotten | None:
@@ -377,8 +443,9 @@ class LookMemory:
 
     def said(self, kind: str, now: datetime) -> str | None:
         """An answer for the ear to "when did I last look this tired?" (`last`), "why do you think I'm tired?" (`why`)
-        or "what helped last time?" (`helped`). None when nobody's looks are remembered on this box, so the question
-        goes wherever it went before."""
+        or "what helped last time?" (`helped`); and, from what it has learned (stage two), to "what usually helps when
+        I look tired?" (`helps`), "what makes me look tired?" (`causes`) and "how do you know?" (`how`). None when
+        nobody's looks are remembered on this box, so the question goes wherever it went before."""
         if not (self.allowed or (self.allowed is None and self.moments)):
             return None
         now = self.clock_now(now)
@@ -393,11 +460,18 @@ class LookMemory:
         if kind == "why":
             then = memory.similar(current.context, today, current.member_id, earlier, current.look) if current else None
             return memory.said_why(current, then, today, tz, self.words)
+        if kind in ("helps", "causes", "how"):
+            who = self.learner()
+            if not rows or who is None:
+                return look_model.said_how(look_model.Model(), self.words) if kind == "how" else memory.NOTHING
+            model = self.model(who, now)
+            return {"helps": look_model.said_helps, "causes": look_model.said_causes, "how": look_model.said_how}[kind](model, self.words)
         return None
 
-    def examples(self) -> list[dict]:
-        """READ-ONLY, the seam for stage two: the remembered moments as labelled examples (look, context features,
-        advice, outcome), no pictures and no ids, for a future training step that runs on this box."""
-        now = self.seen or datetime(1970, 1, 1, tzinfo=UTC)
-        return memory.labelled_examples([m for m in self.remembered(now)])
+    def examples(self, member_id: str | None = None, now: datetime | None = None) -> list[dict]:
+        """READ-ONLY, the only thing stage two's learning reads: the remembered moments as labelled examples (look,
+        context features, advice, outcome), no pictures and no ids. `member_id`: one person's (the rows still carry
+        no id). `now`: outcomes as far as that time knows them; the last event time by default."""
+        now = now or self.seen or datetime(1970, 1, 1, tzinfo=UTC)
+        return memory.labelled_examples([m for m in self.remembered(now) if member_id in (None, m.member_id)])
 

@@ -716,18 +716,22 @@ def _checkin(f: dict, w: Words) -> Narration:
     # 2. the past. An earlier look like this one (the look memory, contexts/day/domain/looks.py) and what followed it;
     # and the earlier days that looked like this one. Aloud it is one look back, not two: with a callback the days are
     # left to the screen (their chip and the paragraph), so the spoken line stays short.
-    back = f.get("callback")
-    if back and back.get("said"):
-        for line in (back["said"], back.get("learned")):
-            if line:
-                spoken.append(line)
-                display.append(line)
+    # With enough remembered looks (stage two, contexts/day/domain/look_model.py) `learned` is what the counts say, and
+    # `pattern` is one clause about when the look shows up: on the screen always, aloud only while the whole check-in
+    # stays inside its bound (BOUNDS["checkin"]), which is looked at once the rest is in.
+    back = f.get("callback") or {}
+    recalled = [line for line in (back.get("said"), back.get("learned")) if line]
+    spoken += recalled
+    display += recalled
+    usual, usual_at = (back.get("pattern") if recalled else None), len(spoken)
+    if usual:
+        display.append(usual)
     past = f.get("history")
     if past and past.get("matches"):
         outcome = (past.get("outcome") or "").strip().rstrip(".")
         by = past.get("by")
         heard = outcome.replace(clock(by), say_time(by)) if by else outcome
-        if not (back and back.get("said")):
+        if not recalled:
             spoken.append(f"The last {say_number(past['matches'])} times a day looked like this, {heard}.")
         display.append(f"The last {past['matches']} times a day looked like this, {outcome}.")
     # 3. at the desk: the sitting, and the drink nobody saw
@@ -757,7 +761,13 @@ def _checkin(f: dict, w: Words) -> Narration:
         line = cap(", and ".join(todo) if len(todo) == 2 and todo[1].startswith("I can ") else _series(todo)) + "."
         spoken.append(line)
         display.append(line)
-    return Narration(_tidy(" ".join(spoken)), _tidy(" ".join(display)))
+    said_ = _tidy(" ".join(spoken))
+    if usual:
+        longer = _tidy(" ".join(spoken[:usual_at] + [usual] + spoken[usual_at:]))
+        sentences, chars = BOUNDS["checkin"]
+        if len(longer) <= chars and len([s for s in re.split(r"(?<=[.!?])\s+", longer) if s]) <= sentences:
+            said_ = longer
+    return Narration(said_, _tidy(" ".join(display)))
 
 
 def _people(names: list[str]) -> str:

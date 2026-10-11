@@ -176,7 +176,15 @@ class CheckIn:
         return DayCheckinRaised(event_id=f"day-checkin-{r.day}-{now.astimezone(self.clock.tz):%H%M}", ts=now, day=r.day, at=now,
                                 signals=signals, suggestions=suggestions, history=past[0] if past else None,
                                 proposes_replan=move is not None, plan_id=plan.plan_id if plan else None, text=said.display,
-                                callback=back)
+                                callback=back, ahead=self.look_ahead(now))
+
+    def look_ahead(self, now: datetime) -> str:
+        """The card's quiet line from what Atlas learned about this person's looks, or "". Never said, never pushed."""
+        try:
+            return self.look_memory.ahead(now) if self.look_memory is not None else ""
+        except Exception:
+            log.exception("the look memory's look ahead failed")
+            return ""
 
     def look_back(self, now: datetime, found: list) -> CheckinCallback | None:
         """The look memory's callback, only when a look is one of the signals. Never a reason for a check-in to fail."""
@@ -295,6 +303,8 @@ class CheckIn:
         body = e.model_dump(mode="json")
         if e.callback is not None and (self.look_memory is None or e.callback.moment_id not in self.look_memory.moments):
             body["callback"] = None  # the remembered moment was forgotten since: its chip goes with it
+        if e.ahead and (self.look_memory is None or self.look_memory.ahead_holds(e) is False):
+            body["ahead"] = ""  # the looks it was learned from were forgotten since, or the card's line was switched off
         return {**body, "answered": answer.answer if answer else None,
                 "spoken": told.spoken if told else None, "display": told.display if told else e.text,
                 "evidence": self.evidence(e, numbers)}

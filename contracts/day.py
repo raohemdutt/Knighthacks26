@@ -386,6 +386,11 @@ class CheckinCallback(BaseModel):
     lead: CheckinSuggestionKind | None = None  # the advice that was followed by the look easing: it is said first
     chip: str = ""  # "Looked tired · like Tue"
     lines: list[str] = []  # the remembered moment in one or two plain lines, for the chip
+    # Stage two (contexts/day/domain/look_model.py): what the counts over every remembered look say. Set only when the
+    # person's model had enough known outcomes; `learned` and `lead` then come from it, and `said` may be "" when no
+    # single earlier look is similar enough to call back to (`moment_id` is then the newest look the counts rest on).
+    pattern: str = ""  # one clause about when it shows up: "It usually shows up after about ninety minutes at the desk."
+    evidence: str = ""  # the model's own evidence: "From 9 remembered looks, 8 with a known outcome."
 
 
 @register
@@ -403,6 +408,9 @@ class DayCheckinRaised(TypedEvent):
     plan_id: str | None = None
     text: str = ""  # the whole check-in as one paragraph for the screen (the template's words, before any rewrite)
     callback: CheckinCallback | None = None  # an earlier look like this one, when the look memory has one similar enough
+    # For the card only, never said aloud or pushed: "You usually start to look strained around now. A short break tends
+    # to help.", when the person has been at the desk about as long as it usually takes (contexts/day/domain/look_model.py).
+    ahead: str = ""
 
 
 @register

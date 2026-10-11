@@ -485,8 +485,8 @@ def facts(signals_: list[CheckinSignal], suggestions_: list[CheckinSuggestion], 
             f["drink"] = {"since": hhmm(s.since, tz)} if s.since else {"this_sitting": True}
     if past:
         f["history"] = {"matches": past.matches, "outcome": past.outcome} | ({"by": past.by} if past.by else {})
-    if callback is not None and callback.said:
-        f["callback"] = {"said": callback.said} | ({"learned": callback.learned} if callback.learned else {})
+    if callback is not None and (callback.said or callback.learned):
+        f["callback"] = {k: v for k in ("said", "learned", "pattern") if (v := getattr(callback, k, ""))}
     if suggestions_:
         f["suggest"] = [{"kind": s.kind, "text": s.text} for s in suggestions_]
     return f
