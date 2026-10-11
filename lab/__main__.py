@@ -62,6 +62,7 @@ VERBS: dict[str, str] = {
     "sit": "lab.machine.sit:main",
     "slot": "lab.machine.slots:main",
     "stop": "lab.machine.stop:stop_main",
+    "sweep-request": "lab.sweep_request:main",
 }
 
 HELP_WORDS = ("-h", "--help", "help")
