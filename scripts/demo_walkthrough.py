@@ -716,11 +716,23 @@ def uc_sortit(run: Run, scene_pushed: bool) -> None:
                 f"simulated: last result {_result((live or {}).get('result'))}" if played else "the scene was pushed but no round shows in /api/room/live or /api/play/accuracy")
     else:
         run.add("a round started from the fake scene", SKIP, None, "run with --scene (python -m contexts.demo fake perception --gateway ... --realtime)")
+    run.fetch("the face loop's state (counts only)", "/api/play/state", ("phase", "faces", "held_s", "idle_s", "rounds"), missing="Sort It is not configured",
+              check=lambda d: None if d["phase"] in ("looking", "holding", "round", "ending") else f"unknown phase {d['phase']!r}",
+              note=lambda d: f"{d['phase']}; {d['faces']} facing the camera; {d['rounds']['played']} round(s) this sitting"
+                             + (f"; round {d['rounds']['latest']['round']} took {d['rounds']['latest']['seconds']} s against round 1's {d['rounds']['first']['seconds']} s" if d["rounds"].get("latest") else ""))
     run.manual("a face-started round", "hold an item up to the bin camera for two seconds with recognition on (table-day checklist)")
     if room:
         clear = run.fetch("route to the bin, against par", "/api/play/room-route?item=can", ("reachable", "points", "distance_m", "par_s"),
                           check=lambda d: None if d["reachable"] else "the bin is not reachable",
                           note=lambda d: f"can -> {d['bin']}: {d['distance_m']} m, par {d['par_s']} s, {len(d['points'])} points")
+        run.fetch("how the route was found (A* on the floor grid)", "/api/play/room-route?item=can&search=1", ("search", "around", "obstacles"),
+                  check=lambda d: None if d["search"] and d["search"]["explored"] and set(d["search"]["path"]) <= set(d["search"]["explored"])
+                  else "no search record, or a path cell the search never looked at",
+                  note=lambda d: f"{d['search']['algorithm']} on a {d['search']['cols']} by {d['search']['rows']} grid of {round(d['search']['cell_m'] * 100)} cm cells: "
+                                 f"looked at {d['search']['explored_total']} cells, kept {len(d['search']['path'])}; around: {', '.join(a['label'] for a in d['around']) or 'nothing'}")
+        run.fetch("the last round's plans, each with its search", "/api/play/route-search", ("live", "plans"),
+                  note=lambda d: "; ".join(f"{p['reason']}{' (' + str((p.get('rerouted') or {}).get('label') or (p.get('rerouted') or {}).get('why')) + ')' if p.get('rerouted') else ''}: "
+                                           f"{p['distance_m']} m" for p in d["plans"]) or "no round has been planned since this box started")
         tracks = (live or {}).get("tracks") or []
         if clear and tracks:
             run.add("route around a person", PASS, None, f"{len(tracks)} person(s) in the room; the route above was planned with them as obstacles")

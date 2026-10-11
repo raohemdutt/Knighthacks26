@@ -286,6 +286,9 @@ const PLACE_MAP = { attribution: "string", pack: "string", bbox: "array", origin
 const ROOM = { name: "string", title: "string", size: "array", outline: "array", doors: "array", windows: "array", furniture: listOf({ id: "string", type: "string", at: "array", size: "array" }), calibration: "object", play: "object", zones: "object", rooms: "array", uncalibrated: stringList };
 const ROOM_LIVE = { room: "string", ts: isoDateOrNull, tracks: "array", seen: "object", round: "object?", result: "object?" };
 const ROOM_ROUTE = { item: "string", bin: "string", bin_id: "string", zone: "string", room: "string", from: inner({ x: "number", y: "number", track: "string?" }), reachable: "boolean", points: "array", distance_m: "number", par_s: "number" };
+const ROUTE_FOUND = { ...ROOM_ROUTE, search: inner({ algorithm: "string", cell_m: "number", cols: "number", rows: "number", blocked: "array", explored: "array", explored_total: "number", path: "array" }), obstacles: "array", around: "array" };
+const ROUND_PLANS = { room: "string", live: "boolean", plans: "array" };
+const PLAY_STATE = { phase: "string", faces: "number", count: "number", held_s: "number", hold_to_start_s: "number", idle_s: "number", idle_to_end_s: "number", rounds: inner({ session_id: "string", played: "number" }) };
 const NO_ROOM = { 404: "the room twin is not set up (no floor plan)" };
 
 // ---------- transport ----------
@@ -541,6 +544,12 @@ await check("GET /api/play/accuracy", "GET", "/api/play/accuracy", ACCURACY, { o
 
 const roomRoute = await check("GET /api/play/room-route?item=can", "GET", "/api/play/room-route?item=can", ROOM_ROUTE, { optional: NO_ROOM });
 if (roomRoute) console.log(`        can -> ${roomRoute.bin} in the ${roomRoute.room} room; ${roomRoute.distance_m} m, par ${roomRoute.par_s} s${roomRoute.reachable ? "" : " (not reachable)"}`);
+
+const found = await check("GET /api/play/room-route?item=can&search=1", "GET", "/api/play/room-route?item=can&search=1", ROUTE_FOUND, { optional: NO_ROOM });
+if (found) console.log(`        A* on a ${found.search.cols}x${found.search.rows} grid of ${found.search.cell_m} m cells: looked at ${found.search.explored_total}, kept ${found.search.path.length}; around: ${found.around.map((a) => a.label).join(", ") || "nothing"}`);
+await check("GET /api/play/route-search", "GET", "/api/play/route-search", ROUND_PLANS, { optional: NO_ROOM });
+const loop = await check("GET /api/play/state", "GET", "/api/play/state", PLAY_STATE, { optional: { 404: "Sort It is not configured" } });
+if (loop) console.log(`        face loop: ${loop.phase}; ${loop.faces} facing the camera; ${loop.rounds.played} round(s) this sitting`);
 
 console.log("\nRoom twin");
 const room = await check("GET /api/room", "GET", "/api/room", ROOM, { optional: NO_ROOM });

@@ -1,0 +1,598 @@
+/*
+ * Sort It's own pieces: the face-loop chip, the "how the route was found" map, the round comparison.
+ * Page-local on purpose: the shared sheet (components/ui.module.css) and the tokens (app/globals.css) are used as
+ * they are and not edited. Colours are the tokens, so Night and Day both come from one set of rules.
+ */
+
+/* ---------- the loop strip: the face chip and "How this round works" ---------- */
+
+.loop {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.loopRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+}
+
+.face {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--tap);
+  max-width: 100%;
+  padding: 8px 16px 8px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.faceText {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.faceSub {
+  display: block;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.ring {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  transform: rotate(-90deg);
+}
+
+.ringTrack {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 3.5;
+}
+
+.ringFill {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 120ms linear;
+}
+
+.ringDot {
+  fill: var(--muted);
+}
+
+.face[data-phase="holding"] .ringFill,
+.face[data-phase="holding"] .ringDot {
+  stroke: var(--accent-text);
+  fill: var(--accent-text);
+}
+
+.face[data-phase="holding"] .ringFill {
+  fill: none;
+}
+
+.face[data-phase="round"] .ringFill {
+  stroke: var(--ok);
+}
+
+.face[data-phase="round"] .ringDot {
+  fill: var(--ok);
+}
+
+.face[data-phase="ending"] .ringFill {
+  stroke: var(--watch);
+}
+
+.face[data-phase="ending"] .ringDot {
+  fill: var(--watch);
+}
+
+.roundNow {
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.roundNow strong {
+  color: var(--text);
+}
+
+.how {
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+}
+
+.how > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: var(--tap);
+  padding: 8px 16px;
+  cursor: pointer;
+  list-style: none;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.how > summary::-webkit-details-marker {
+  display: none;
+}
+
+.how > summary svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+  transition: transform var(--t-fast) ease;
+}
+
+.how[open] > summary svg {
+  transform: rotate(180deg);
+}
+
+.how > summary:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.howList {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 2px 16px 14px;
+  list-style: none;
+  counter-reset: how;
+}
+
+.howList li {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--muted);
+  counter-increment: how;
+}
+
+.howList li::before {
+  content: counter(how);
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.howList strong {
+  color: var(--text);
+}
+
+/* ---------- how the route was found ---------- */
+
+.finder {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+}
+
+@media (min-width: 760px) {
+  .finder {
+    grid-template-columns: minmax(0, 440px) minmax(0, 1fr);
+    gap: 22px;
+    align-items: start;
+  }
+}
+
+.mapWrap {
+  width: 100%;
+  max-width: 440px;
+  margin: 0 auto;
+}
+
+.map {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset);
+}
+
+.gridLine {
+  stroke: var(--line);
+  stroke-width: 0.6;
+}
+
+.hatchLine {
+  stroke: var(--muted);
+  stroke-width: 1.6;
+  opacity: 0.42;
+}
+
+.hatchLineWay {
+  stroke: var(--watch);
+  stroke-width: 2;
+  opacity: 0.8;
+}
+
+.furniture {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.4;
+  opacity: 0.85;
+}
+
+.furnitureRug {
+  stroke-dasharray: 5 5;
+  opacity: 0.45;
+}
+
+.furnitureAround {
+  stroke: var(--watch);
+  stroke-width: 3;
+  opacity: 1;
+}
+
+.binTarget {
+  fill: var(--accent);
+  stroke: var(--accent-text);
+  stroke-width: 2;
+}
+
+.binOther {
+  fill: var(--surface-solid);
+  stroke: var(--muted);
+  stroke-width: 1.6;
+}
+
+.label {
+  fill: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: var(--surface-solid);
+  stroke-width: 3.5px;
+  stroke-linejoin: round;
+}
+
+.labelStrong {
+  fill: var(--text);
+  font-weight: 750;
+}
+
+.labelAround {
+  fill: var(--watch);
+  font-weight: 750;
+}
+
+/* a cell the search looked at: it flashes as the frontier reaches it, then settles to a faint wash */
+.seen {
+  fill: var(--accent-text);
+  opacity: 0.22;
+  animation: seen 520ms ease-out both;
+}
+
+@keyframes seen {
+  0% {
+    opacity: 0;
+    fill: var(--accent-3);
+  }
+  8% {
+    opacity: 0.95;
+    fill: var(--accent-3);
+  }
+  100% {
+    opacity: 0.22;
+    fill: var(--accent-text);
+  }
+}
+
+/* the cells of the path A* settled on, lit one after another once the search has reached the bin */
+.pathCell {
+  fill: var(--accent-bright);
+  stroke: var(--accent-text);
+  stroke-width: 0.5;
+  opacity: 0.55;
+  animation: lit 260ms ease-out both;
+}
+
+@keyframes lit {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 0.55;
+  }
+}
+
+/* the walk itself: the path pulled straight where nothing is in the way */
+.routeLine {
+  fill: none;
+  stroke: var(--accent-text);
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+  filter: drop-shadow(0 0 4px var(--accent));
+  animation: draw 520ms var(--ease-out) both;
+}
+
+@keyframes draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.oldLine {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 3 8;
+  opacity: 0.8;
+}
+
+.keepOut {
+  fill: none;
+  stroke: var(--watch);
+  stroke-width: 1.6;
+  stroke-dasharray: 4 4;
+}
+
+.body {
+  fill: var(--watch);
+}
+
+.you {
+  fill: var(--text);
+  stroke: var(--surface-solid);
+  stroke-width: 2;
+}
+
+.map[data-calm="true"] .seen,
+.map[data-calm="true"] .pathCell,
+.map[data-calm="true"] .routeLine {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .seen,
+  .pathCell,
+  .routeLine {
+    animation: none;
+  }
+
+  .ringFill {
+    transition: none;
+  }
+}
+
+.words {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.line {
+  font-size: 19px;
+  font-weight: 650;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.line[data-kind="rerouted"] {
+  padding: 12px 14px 12px 18px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(var(--watch), var(--watch)) left / 4px 100% no-repeat, var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+}
+
+.evidence {
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 6px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.legend li {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.key {
+  width: 22px;
+  height: 14px;
+  border-radius: 4px;
+}
+
+.keySeen {
+  background: var(--accent-text);
+  opacity: 0.3;
+}
+
+.keyRoute {
+  height: 5px;
+  border-radius: 3px;
+  background: var(--accent-text);
+}
+
+.keyBlocked {
+  background: repeating-linear-gradient(45deg, var(--muted) 0 2px, transparent 2px 6px);
+  opacity: 0.6;
+}
+
+.keyWay {
+  background: repeating-linear-gradient(45deg, var(--watch) 0 2px, transparent 2px 6px);
+}
+
+.keyAround {
+  background: transparent;
+  box-shadow: inset 0 0 0 2.5px var(--watch);
+}
+
+.keyOld {
+  height: 0;
+  border-radius: 0;
+  border-top: 3px dashed var(--muted);
+}
+
+.keyYou {
+  width: 14px;
+  height: 14px;
+  margin: 0 4px;
+  border-radius: 50%;
+  background: var(--text);
+}
+
+.replay {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.replayNote {
+  flex: 1 1 220px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.replayBtn {
+  min-height: var(--tap);
+  padding: 8px 16px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.replayBtn:active:not(:disabled) {
+  box-shadow: var(--sh-inset-sm);
+}
+
+.replayBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+  box-shadow: none;
+}
+
+.replayBtn:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}
+
+.replayBtn[aria-pressed="true"] {
+  box-shadow: var(--sh-selected);
+  color: var(--accent-text);
+}
+
+/* ---------- round 1 against the latest round ---------- */
+
+.proof {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--sh-raised);
+}
+
+.proofLine {
+  font-size: 18px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.proofRows {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.proofRow {
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+}
+
+.proofRow dt {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.proofRow dd {
+  margin: 2px 0 0;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.proofBar {
+  position: relative;
+  height: 6px;
+  margin-top: 8px;
+  border-radius: 3px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.proofBarFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 3px;
+  background: var(--accent-text);
+}
+
+.proofBarOver {
+  background: var(--watch);
+}
