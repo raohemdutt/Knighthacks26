@@ -221,8 +221,12 @@ try {
   is("sse: CRLF blocks", LC.parseSse(["event: error", 'data: {"error": "x"}', "", ""].join(CR + NL)).events[0].data.error, "x");
   is("sse: not JSON is skipped", LC.parseSse(lines("event: token", "data: nope", "", "")).events.length, 0);
   const done = { answer: "a", target: "pair", serving: null, tokens: 42, seconds: 3.04, tok_s: 18.2, ttft_s: 0.4, calls: [], energy: { joules: 512.6 } };
-  is("footer", LC.footerText(done), "42 tokens in 3.0 s, 18.2 tok/s, about 513 joules");
-  is("footer, meters offline", LC.footerText({ ...done, energy: null, tok_s: null, tokens: 1 }), "1 token in 3.0 s, meters offline");
+  is("footer", LC.footerText(done), "42 tokens in 3.0 s, 15.9 tok/s, about 513 joules");
+  is("footer, meters offline", LC.footerText({ ...done, energy: null, tok_s: null, tokens: 1 }), "1 token in 3.0 s, 0.4 tok/s, meters offline");
+  // the box's live reading: tokens 51, seconds 12.11, tok_s 28453.0 from the route; the footer ignores that tok_s
+  is("footer ignores the event's tok_s", LC.footerText({ ...done, tokens: 51, seconds: 12.11, ttft_s: null, tok_s: 28453.0 }), "51 tokens in 12.1 s, 4.2 tok/s, about 513 joules");
+  is("rate: ttft not smaller than seconds uses seconds", LC.rateOf({ tokens: 10, seconds: 2, ttft_s: 2 }), 5);
+  is("rate: no tokens", LC.rateOf({ tokens: 0, seconds: 2, ttft_s: null }), null);
   is("keep the last three", LC.keepLast([1, 2, 3, 4]).join(","), "2,3,4");
   const call = (name) => ({ name, arguments: {} });
   const boxD = { ...done, target: "box", calls: [call("last_seen")], energy: { joules: 40 } };
