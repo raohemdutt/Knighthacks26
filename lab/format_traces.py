@@ -92,7 +92,7 @@ from lab.machine.record import recorded
 __all__ = ["TEMPLATE_REPO", "TEMPLATE_REVISION", "EMPTY_THINK", "GENERATION_PROMPT", "FormatError", "Call", "Round",
            "Trace", "Turn", "Rejected", "Checked", "Loaded", "Formatted", "Tokenizer", "Reference", "ToolResults",
            "as_call", "call_problems", "messages_of", "render", "render_with_spans", "parse_tool_calls",
-           "parse_assistant_turns", "check_trace", "read_traces", "fixture_tool_results", "load_tokenizer", "build_row",
+           "parse_assistant_turns", "check_trace", "read_traces", "tool_loop_results", "fixture_tool_results", "load_tokenizer", "build_row",
            "format_dataset", "main"]
 
 TEMPLATE_REPO = "Qwen/Qwen3.5-4B"
@@ -601,19 +601,12 @@ def read_traces(data: Dataset, results: ToolResults, tools: Sequence[Mapping[str
     return Loaded(data.dataset_id, tuple(traces), tuple(rejected), len(data.pending()))
 
 
-def fixture_tool_results(golden_dir: str | Path = GOLDEN_DIR) -> ToolResults:
-    """Tool results for the no-camera fixture: the calls are run through the agent's own tool loop against the
-    fixture night, and what the loop shows the model for each call is the result."""
-    from contexts.agent.application.qa import QA, SleepSchedule
-    from contexts.agent.eval import load_fixture
+def tool_loop_results(memory: Any, now: Any, sleep: Any) -> ToolResults:
+    """Tool results against one memory at one time: the calls are run through the agent's own tool loop, and what
+    the loop shows the model for each call is the result."""
+    from contexts.agent.application.qa import QA
     from contracts.types import ChatResult, ToolCall
     from runtime import FakeRuntime
-
-    try:
-        memory, now, _ = load_fixture(Path(golden_dir))
-    except (OSError, ValueError, KeyError, TypeError) as exc:
-        raise FormatError(f"cannot read the golden fixtures in {Path(golden_dir).name} ({type(exc).__name__})") from None
-    sleep = SleepSchedule.load(AGENT_CONFIG)
 
     def results(question: str, calls: Sequence[Call]) -> list[str]:
         runtime = FakeRuntime(chat_replies=[
@@ -625,6 +618,18 @@ def fixture_tool_results(golden_dir: str | Path = GOLDEN_DIR) -> ToolResults:
         return [message.content for message in runtime.calls[-1][1] if message.role == "tool"]
 
     return results
+
+
+def fixture_tool_results(golden_dir: str | Path = GOLDEN_DIR) -> ToolResults:
+    """Tool results for the no-camera fixture: tool_loop_results() against the fixture night at the fixture's now."""
+    from contexts.agent.application.qa import SleepSchedule
+    from contexts.agent.eval import load_fixture
+
+    try:
+        memory, now, _ = load_fixture(Path(golden_dir))
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise FormatError(f"cannot read the golden fixtures in {Path(golden_dir).name} ({type(exc).__name__})") from None
+    return tool_loop_results(memory, now, SleepSchedule.load(AGENT_CONFIG))
 
 
 # --- the student's tokenizer ---------------------------------------------------------------------------

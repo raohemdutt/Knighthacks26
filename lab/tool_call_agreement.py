@@ -48,6 +48,7 @@ from lab import format_traces as ft
 from lab.dataset import load_split
 from lab.eval_gate import ALPHA, sign_flip_p
 from lab.fixture_dataset import Expected, load_expected
+from lab.fixture_dataset_v2 import system_for
 from lab.machine.record import record
 from lab.routing_closed_loop import agreement
 
@@ -156,13 +157,16 @@ def mcnemar_exact(gained: int, lost: int) -> Fraction:
 
 # --- an arm, and the summary ----------------------------------------------------------------------------------------
 
-def run_arm(name: str, completer: Completer, examples: Sequence[Any], expected: Mapping[str, Expected], system: str,
+def run_arm(name: str, completer: Completer, examples: Sequence[Any], expected: Mapping[str, Expected],
+            system: str | Callable[[Any], str],
             write: Callable[[dict[str, Any]], None] | None = None,
             clock: Callable[[], float] = time.monotonic) -> dict[str, dict[str, Any]]:
-    """Ask every example once, in order; {example id: its row}. A server that fails stops the arm (never a 0)."""
+    """Ask every example once, in order; {example id: its row}. A server that fails stops the arm (never a 0).
+    system is the dataset's one instruction, or a function giving each example's own (a dataset whose examples each
+    have their own time now, lab/fixture_dataset_v2.py)."""
     rows: dict[str, dict[str, Any]] = {}
     for example in examples:
-        prompt = prompt_for(system, example.context or "")
+        prompt = prompt_for(system(example) if callable(system) else system, example.context or "")
         started = clock()
         reply = completer.complete(prompt)
         marks = score_output(str(reply.get("text") or ""), expected[example.id])
@@ -293,7 +297,10 @@ def run(*, dataset: str | Path, completers: Mapping[str, Completer], out: str | 
     missing = [example.id for example in examples if example.id not in expected]
     if missing:
         raise ValueError(f"{len(missing)} examples have no reference in expected.jsonl, e.g. {missing[0]}")
-    system = split.data.manifest.spec.instruction
+    manifest = split.data.manifest
+
+    def system(example: Any) -> str:   # one instruction for a dataset, or each example's own (its ts as the time now)
+        return system_for(manifest, example)
     header = {"header": True, "rule": RULE, "run_id": run_id, "side": side, "dataset_id": split.dataset_id,
               "split_sha256": split.sha256, "n_examples": len(examples), "max_tokens": MAX_TOKENS,
               "temperature": TEMPERATURE, "servers": dict(servers or {}), "started": now().isoformat()}
