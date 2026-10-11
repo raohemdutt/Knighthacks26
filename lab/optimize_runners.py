@@ -280,7 +280,10 @@ class TrainingRunner:
                 "early_after": self.early_after}
 
     def run(self, *, trial: int, launch: Launch, fidelity: str, workdir: Path, restart: str | None = None,
-            stop_below: float | None = None) -> Measurement:
+            stop_below: float | None = None,
+            progress: Callable[[list[dict[str, Any]]], bool] | None = None) -> Measurement:
+        """progress, when given, is called with the steps so far whenever new ones appear; True stops the run
+        (the training lane's Ax percentile early stopping)."""
         workdir.mkdir(parents=True, exist_ok=True)
         out = workdir / "out"
         out.mkdir(parents=True, exist_ok=True)
@@ -298,6 +301,8 @@ class TrainingRunner:
                                       "unset_env": list(launch.unset_env), "settings_file": shown(settings_path),
                                       "log": shown(log_path), "fidelity": fidelity, "restart": restart}
         stopped_early = False
+        stopped_by_progress = False
+        reported = 0
         code: int | None = None
         with open(log_path, "wb") as fh:
             try:
@@ -313,8 +318,14 @@ class TrainingRunner:
                     _kill(proc)
                     code = None
                     break
+                seen = read_steps(steps_path) if (stop_below is not None or progress is not None) else []
+                if progress is not None and len(seen) > reported:
+                    reported = len(seen)
+                    if progress(seen):
+                        _kill(proc)
+                        stopped_by_progress = True
+                        break
                 if stop_below is not None:
-                    seen = read_steps(steps_path)
                     if len(seen) >= self.early_after:
                         window = [s["samples_per_s"] for s in seen[1:self.early_after]]
                         if window and sum(window) / len(window) < stop_below:
@@ -325,6 +336,12 @@ class TrainingRunner:
         seconds = round(time.monotonic() - started, 3)
         conditions["exit_code"] = code
         steps = read_steps(steps_path)
+        if stopped_by_progress:
+            window = [float(s["samples_per_s"]) for s in steps[self.exclude:]] or \
+                [float(s["samples_per_s"]) for s in steps]
+            metrics = {"samples_per_s": sorted(window)[len(window) // 2]} if window else {}
+            return Measurement("early_stopped", metrics, {"samples_per_s": window}, conditions,
+                               f"stopped by the strategy after {len(steps)} steps", seconds)
         if stopped_early:
             window = [float(s["samples_per_s"]) for s in steps[1:self.early_after]]
             metrics = {"samples_per_s": sorted(window)[len(window) // 2]}
