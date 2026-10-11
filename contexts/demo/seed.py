@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from contexts.demo.nearby import nearby_events
 from contexts.demo.story import ROOT, load, story
 from contexts.gateway.bootstrap import Atlas, Settings, build
 from contexts.play.league.demo import friend_summaries
@@ -118,6 +119,8 @@ async def seed(data_dir: str | Path, now: datetime | None = None, force: bool = 
 
     if app.league:  # the League's second member: a friend's shared summaries, demo fixture only (fixtures/demo/league.yaml)
         events = sorted(events + friend_summaries(now, circle_id=app.league.circle_id), key=lambda e: (e.ts, e.event_id))
+
+    events = sorted(events + nearby_events(now), key=lambda e: e.ts)  # "Near you": optional events (fixtures/demo/nearby.yaml)
 
     if extra:
         events = sorted(events + extra(now), key=lambda e: e.ts)  # stable: the story keeps its own order
