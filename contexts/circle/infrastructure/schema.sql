@@ -47,6 +47,8 @@ CREATE TABLE IF NOT EXISTS agent_messages (
     CHECK ((kind = 'proposal' AND proposal IS NOT NULL) OR (kind = 'reply' AND reply IS NOT NULL))
 );
 CREATE INDEX IF NOT EXISTS agent_messages_thread ON agent_messages (circle_id, thread_id, created_at);
+-- Every box reads "this circle's messages since <time>" on each tick; the thread index cannot serve that.
+CREATE INDEX IF NOT EXISTS agent_messages_circle_time ON agent_messages (circle_id, created_at);
 
 -- Shared calendar: an event exists once a proposal is agreed (contracts.circle.EventAgreed).
 CREATE TABLE IF NOT EXISTS events (
@@ -123,6 +125,8 @@ CREATE TABLE IF NOT EXISTS presence (
     shared_at   timestamptz NOT NULL DEFAULT now(),
     expires_at  timestamptz NOT NULL
 );
+-- Every box reads "this circle's unexpired places" on each tick.
+CREATE INDEX IF NOT EXISTS presence_circle_expiry ON presence (circle_id, expires_at);
 
 -- The League (contexts/play/league): the stake per week, each declared week's standings, and the
 -- dares. Standings are the week's summary lines only (contracts.play.Standing): never raw signals.
