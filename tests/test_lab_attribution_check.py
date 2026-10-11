@@ -293,3 +293,32 @@ def test_vllm_metrics_text_gives_running_waiting_and_finished():
     ])
     assert ac.parse_load(text) == {"running": 0, "waiting": 2, "finished": 1267}
     assert ac.parse_load("nothing here") is None
+
+
+# --- the live run on pod A (2026-10-11, 40 requests), recomputed from its raw rows -------------------------------
+
+LIVE = REPO / "fixtures" / "telemetry"
+LIVE_TAG = "2026-10-11-r40"
+
+
+def test_the_live_run_recomputes_to_its_ledger_row():
+    row = json.loads((LIVE / f"attribution_check_{LIVE_TAG}_ledger.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    result = ac.replay(LIVE, LIVE_TAG)
+    assert row["verb"] == "attribution-check" and row["task"] == "T8" and row["node"] == "pod-a"
+    assert result["answers"] == 40 and result["failed"] == 0
+    assert result["conservation"]["ok"] is True
+    expected = {
+        "telemetry.attribution_error_pct": result["attribution_error_pct"],
+        "telemetry.samples_per_window": result["samples_per_window"]["median"],
+        "pod.idle_watts": result["idle"]["watts"],
+        "telemetry.joules_per_answer": result["joules_per_answer"]["mean"],
+        "telemetry.answers_energy_j": result["answers_energy_j"],
+        "telemetry.gap_energy_j": result["gap_energy_j"],
+        "telemetry.run_energy_j": result["run"]["energy_j"],
+        "telemetry.missed_energy_j": result["missed_j"],
+    }
+    for name, value in expected.items():
+        assert row["metrics"][name] == pytest.approx(value, abs=1e-3), name
+    assert row["conditions"]["verdict"]["label"] == result["verdict"]["label"]
+    assert row["conditions"]["trustworthy"] == result["trustworthy"]
+    assert row["conditions"]["other_requests"] == result["other_requests"] == 0
