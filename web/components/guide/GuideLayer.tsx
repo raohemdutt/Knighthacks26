@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { useAtlas } from "@/lib/atlas";
+import { boxLines } from "@/lib/boxSpeech";
 import { Dwell, landed as eyesLanded, snap, type Thing } from "@/lib/gaze";
 import { gaze, type GazeEstimate } from "@/lib/gazeTracker";
 import { FIXATION_MS, attention, simScript } from "@/lib/guideAttention";
@@ -126,13 +127,18 @@ export function GuideLayer() {
 
   const say = useCallback((text: string) => {
     const v = voiceRef.current;
-    if (text && v.canSpeak && v.getSettings().speak) v.say(text, { tag: "guide", raw: true, keepOnNavigate: true });
+    if (!text || !v.getSettings().speak) return;
+    const here = (line: string) => (voiceRef.current.canSpeak ? voiceRef.current.say(line, { tag: "guide", raw: true, keepOnNavigate: true }) : undefined);
+    // on the Inspection screen the lines come out of the box's own speaker when it has one working, in order; else, and on every other screen, out of this browser
+    if (samePath(pathRef.current, "/spot/")) boxLines.say(text, here);
+    else here(text);
   }, []);
 
   const cancel = useCallback(() => {
     turn.current++;
     el.current = null;
     voiceRef.current.cancel("guide");
+    boxLines.cancel();
     setView(null);
     setOffered(null);
     setOk(false);
@@ -626,6 +632,7 @@ export function GuideLayer() {
             : trail(view.start, centre!, view.t)
           : [];
   const landed = view?.phase === "arrived";
+  const pointer = samePath(path, "/spot/"); // the red pointer and its trail are drawn on the Inspection screen only; everywhere else the ring and the words do the work
   const small = rect ? Math.max(rect.width, rect.height) < 64 : false;
   const pad = small ? 8 : 6;
 
@@ -665,7 +672,7 @@ export function GuideLayer() {
       {debugBox}
       {simBanner}
       {panel}
-      {tail.length > 1 ? (
+      {pointer && tail.length > 1 ? (
         <svg className={g.trail} aria-hidden="true">
           {tail.map((p, i) => (
             <circle key={i} cx={p.x} cy={p.y} r={2 + (5 * i) / tail.length} opacity={(0.55 * (i + 1)) / tail.length} />
@@ -681,7 +688,7 @@ export function GuideLayer() {
           {view?.run.spot?.label ? <span className={g.spotLabel}>{view.run.spot.label}</span> : null}
         </div>
       ) : null}
-      {at && !landed ? <div className={g.dot} style={{ transform: `translate(${at.x}px, ${at.y}px)` }} /> : null}
+      {pointer && at && !landed ? <div className={g.dot} style={{ transform: `translate(${at.x}px, ${at.y}px)` }} /> : null}
       <div className={`${g.caption} ${ok ? g.captionOk : ""}`} style={{ transform: `translate(${capX}px, ${capY}px)` }} data-guide-caption role="status">
         <p className={g.label}>
           <span>{view ? (landed && view.run.spot?.ring === false && view.run.spot.label ? `${view.run.spot.label}: ${view.run.target.label}` : view.run.target.label) : "Where is it?"}</span>

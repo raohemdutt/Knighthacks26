@@ -14,6 +14,7 @@ import { useAnswerStream, useAtlas } from "@/lib/atlas";
 import { time } from "@/lib/format";
 import { useProfile } from "@/lib/profile";
 import { useBrief } from "@/lib/brief";
+import { speakOnBox } from "@/lib/boxSpeech";
 import { askGuide } from "@/lib/guideBus";
 import { approvalSentence, narratedAsk, speechForAnswer, voiceCommand } from "@/lib/speechText";
 import { useVoice } from "@/lib/voice";
@@ -78,18 +79,6 @@ export default function AskPage() {
       if (wanted() && !busy.current) startListeningRef.current();
     }, RELISTEN_MS);
   }, [voice]);
-
-  /** Say it on the box's own speaker, if the box has one working. False means nothing was said there. */
-  const speakOnBox = async (text: string): Promise<boolean> => {
-    try {
-      const box = await api.voiceStatus();
-      if (!box.running || box.state === "off" || !box.speaker?.ok || !box.text_to_speech?.ok) return false;
-      await api.voiceSay(text);
-      return true;
-    } catch {
-      return false;
-    }
-  };
 
   /** Say `reply` if the speaker is on, then carry the conversation on. It comes out of the box's speaker when that works, and out of this browser when it does not. */
   const respond = (reply: string | null) => {
