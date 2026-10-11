@@ -600,6 +600,10 @@ def build(settings: Settings | None = None) -> Atlas:
         # today's agreed plan from now (blocks and the leave-by time), for a day rundown and the model's FACTS: a port,
         # so the agent never reads the Day loop's state
         qa.day_plan = talk.day_plan = lambda: day.blocks(datetime.now(UTC))
+        # "when did I last look this tired?", "why do you think I'm tired?", "what helped last time?": the look memory's
+        # own sentence, through a port, so the agent never imports Day. None when nobody's looks are remembered here.
+        talk.look_memory = lambda kind: day.looks.said(kind, qa.clock())
+        bus.subscribe("vault.wipe.requested", day.looks.on_wipe)  # live only: a wipe of everything empties it at once
 
         async def plan_day() -> None:
             # "yes" to "Want me to plan your day?": the same proposal POST /api/day/plan makes (the plan event and its

@@ -1,4 +1,5 @@
-"""The committed sample run, for the Learning lab when the box has no real run (or `?sample=1`).
+"""The committed sample run, for tests and offline previews. The Learning lab API never serves it: nothing from
+fixtures/ reaches a screen (lab_api.py), so a box with no run shows no run.
 
     view = load_sample()          # a LabView(sample=True) folded from fixtures/learning/sample_run/events.jsonl
 

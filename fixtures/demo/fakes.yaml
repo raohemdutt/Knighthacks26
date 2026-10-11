@@ -153,3 +153,5 @@ day:
   - {type: day.checkin.answered, at: 43320}
   # A yes to an optional event ("Near you"), last so the earlier steps keep their ids (the sample payload; box-only).
   - {type: day.optional.answered, at: 43380}
+  # A remembered look forgotten on the People screen (the look memory; the sample payload; box-only). Last: earlier ids stay.
+  - {type: day.look.forgotten, at: 43440}

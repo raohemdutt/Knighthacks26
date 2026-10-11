@@ -4,7 +4,7 @@ import { useEffect, useMemo } from "react";
 import { Empty } from "@/components/States";
 import ui from "@/components/ui.module.css";
 import { ApiError, api } from "@/lib/api";
-import { isLive, isNum, type LabStory } from "@/lib/lab";
+import { isLiveRun, isNum, type LabStory } from "@/lib/lab";
 import {
   COMPARE_ROWS,
   type CompareRun,
@@ -288,8 +288,9 @@ export function Compare({ a, b: bId, onPick, forceReduced }: { a: string | null;
   const rb = data?.b ?? null;
   const complete = !!ra && !!rb;
 
-  // A run still going on the box (the loop posts each act there as it trains): the buddies follow it live.
-  const live = list.data && !list.data.sample ? (list.data.runs.find((r) => isLive({ sample: false, status: r.status })) ?? null) : null;
+  // A run training now on the box (the loop posts each act there as it trains): the buddies follow it live. Only the
+  // gateway's run_status "running" counts (lib/lab.ts, isLiveRun); a gated or finished run is not training now.
+  const live = list.data && !list.data.sample ? (list.data.runs.find((r) => isLiveRun({ ...r, sample: false })) ?? null) : null;
   const focusId = live?.run_id ?? rb?.run_id ?? ra?.run_id ?? null;
   const story = useFetch((signal) => (focusId ? api.labRun(focusId, false, signal).catch(() => null) : Promise.resolve(null)), `story-${focusId ?? ""}`);
   const focus = story.data && !story.data.sample ? story.data : null;
@@ -315,8 +316,8 @@ export function Compare({ a, b: bId, onPick, forceReduced }: { a: string | null;
     const storySteps = focus ? (isNum(focus.training.steps) ? focus.training.steps.value : focus.training.points.length) : 0;
     let state: BuddiesState = "idle";
     if (live) state = live.run_id.endsWith("-duo") && ra ? "with-friend" : "alone"; // the loop names act 2's run <stamp>-duo
-    else if (complete) state = "with-friend";
-    else if (ra) state = "alone";
+    else if (complete) state = "with-friend"; // both acts recorded: the comparison's result, the two boxes together
+    // only act 1 recorded and nothing training now: the box rests
     const run = live ? null : state === "with-friend" ? rb : ra;
     const liveJpe = focus && isNum(focus.power.j_per_sample) ? focus.power.j_per_sample.value : null;
     return {

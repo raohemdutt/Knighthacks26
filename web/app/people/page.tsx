@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ExpressionStrip } from "@/components/people/ExpressionStrip";
+import { LooksRemembered } from "@/components/people/LooksRemembered";
 import { FaceShare } from "@/components/people/FaceShare";
 import { FaceScan, canScan } from "@/components/people/FaceScan";
 import { PhotoEnroll } from "@/components/people/PhotoEnroll";
@@ -586,7 +587,10 @@ function Person({ member, settings, friends, on, onChanged }: {
           ) : settings.expressions_available === false ? (
             <p className={`${ui.muted} ${ui.small}`}>The expression model is not installed on this box yet.</p>
           ) : reads ? (
-            <ExpressionStrip memberId={member.member_id} />
+            <>
+              <ExpressionStrip memberId={member.member_id} />
+              <LooksRemembered memberId={member.member_id} />
+            </>
           ) : null}
 
           {adding === "scan" ? (
@@ -640,6 +644,7 @@ function Person({ member, settings, friends, on, onChanged }: {
             <span className={reads && scanned ? `${ui.tag} ${ui.tagAccent}` : ui.tag}>{reads && scanned ? "On" : "Off"}</span>
           </div>
           {reads && scanned ? <ExpressionStrip memberId={member.member_id} hours={48} /> : null}
+          {reads && scanned ? <LooksRemembered memberId={member.member_id} /> : null}
         </>
       ) : null}
       {error ? <WriteError error={error} /> : null}

@@ -3,7 +3,7 @@
     python -m lab deploy [VERSION] [--from-pod C|D] [--port 8300] [--dry-run]
                          [--models-dir data/models] [--events-dir data/events] [--part-mib 64]
                          [--llm-url http://127.0.0.1:8080] [--app-url http://127.0.0.1:8000] [--no-app]
-                         [--service atlas-llm] [--quiet]
+                         [--service atlas-llm] [--no-trust] [--quiet]
 
 Run it ON THE BOX from the repo root. One call does the whole chain:
 
@@ -12,7 +12,10 @@ Run it ON THE BOX from the repo root. One call does the whole chain:
 2. pull: every file the manifest names, in Range parts through https://<hub>/user/<account>/proxy/<port>/
    (lab/package_pull.py, R10: resumable, a sha256 check per file, manifest.json written last), into
    <models-dir>/<version>/; the hub token and the account's hub address come from the .env search lab/hub.py does;
-3. swap: jetson/atlas_swap.py's swap (R7): every sha256 checked again against manifest.json, `current` switched,
+   this is the one full sha256 pass: a file already on the box is hashed here too, and the pull then writes
+   <version>/.verified.json (name, size, sha256, mtime_ns per file);
+3. swap: jetson/atlas_swap.py's swap (R7) with trust_verified: every file checked again against manifest.json, by
+   the record when the file's size and mtime still match it and by sha256 otherwise, `current` switched,
    the model server restarted, its health and test question waited for; a swap that fails is put back by the swap;
    `previous` keeps the version that was serving, so `python jetson/atlas_swap.py rollback` goes back to it;
 4. check: one request through the box's llama-server the way the gateway sends it (runtime/llama.py: POST
@@ -23,6 +26,13 @@ Run it ON THE BOX from the repo root. One call does the whole chain:
    data/events) or, when the app cannot be reached or --no-app is given, straight into the box's event log
    (<events-dir>/YYYY-MM-DD.jsonl). Any failure after the version is known is published as learning.run.progress
    with stage "failed" into the event log, with the reason.
+
+Hashing once. The 3.4 GB package takes about 40 s to sha256 on the box. Before the record, the verb hashed it four
+times (the pull's check of a file already present, the verify after the pull, the swap's check, and the switch's
+own check in runtime/modelstore.py's activate). Now the pull hashes and records, and the verify, the swap's check,
+the switch and a switch back trust the record for a file whose size and mtime have not moved; a file that changed
+since (a size or an mtime that differs), a record the pull did not write, or none at all is hashed as before.
+--no-trust hashes at every step, as the verb did before the record.
 
 --dry-run resolves the version, reads its manifest and file sizes from the pod and prints the plan; nothing is
 written and nothing is switched. --from-pod picks the account (D, the trainer's on the SJC hub, by default) and
@@ -125,11 +135,13 @@ def file_sizes(client: PackageClient, version: str, *, sleep: Callable[[float], 
 # --- the box side: the model store, the swap, the check ------------------------------------------------------------
 
 class Box(Protocol):
+    """trust_verified: a file the pull's .verified.json vouches for (same size and mtime) is not hashed again."""
     def current(self) -> str | None: ...
     def previous(self) -> str | None: ...
-    def verify(self, version: str) -> list[str]: ...
-    def swap(self, version: str) -> None: ...                          # raises DeployError("swap", ...) when it failed
-    def swap_back(self, version: str, previous: str | None) -> str | None: ...   # None when back and healthy
+    def verify(self, version: str, *, trust_verified: bool = False) -> list[str]: ...
+    def swap(self, version: str, *, trust_verified: bool = False) -> None: ...   # raises DeployError("swap", ...)
+    def swap_back(self, version: str, previous: str | None, *,
+                  trust_verified: bool = False) -> str | None: ...           # None when back and healthy
 
 
 def _atlas_swap() -> Any:
@@ -165,19 +177,20 @@ class JetsonBox:
     def previous(self) -> str | None:
         return self.store.previous()
 
-    def verify(self, version: str) -> list[str]:
-        return self.store.verify(version)
+    def verify(self, version: str, *, trust_verified: bool = False) -> list[str]:
+        return self.store.verify(version, trust_verified=trust_verified)
 
-    def swap(self, version: str) -> None:
+    def swap(self, version: str, *, trust_verified: bool = False) -> None:
         from runtime.modelstore import ModelStoreError
         try:
-            self.swapper.swap(self.store, version, restart=self._restart, check=self._wait, log=self.log, announce=None)
+            self.swapper.swap(self.store, version, restart=self._restart, check=self._wait, log=self.log, announce=None,
+                              trust_verified=trust_verified)
         except (ModelStoreError, subprocess.CalledProcessError, OSError) as exc:
             raise DeployError("swap", str(exc)) from None
 
-    def swap_back(self, version: str, previous: str | None) -> str | None:
+    def swap_back(self, version: str, previous: str | None, *, trust_verified: bool = False) -> str | None:
         try:
-            self.store.activate(version)
+            self.store.activate(version, trust_verified=trust_verified)
             self.store.set_previous(previous)
             self._restart()
         except Exception as exc:      # noqa: BLE001 - whatever went wrong is the answer's text
@@ -269,8 +282,10 @@ def plan_view(plan: Plan, client: PackageClient, box: Box, models_dir: Path) -> 
         "package_mb": _mb(total), "disk_free_mb": None if free is None else _mb(free),
         "from": client.scrub(client.proxy_path(plan.version)), "hub": client.host, "account": client.account.letter,
         "into": str(models_dir / plan.version), "current": box.current(), "previous": box.previous(),
-        "steps": ["pull every file in Range parts through the hub proxy, sha256 per file, manifest.json last",
-                  f"jetson/atlas_swap.py swap {plan.version}: verify the sha256s, switch current, restart, wait",
+        "steps": ["pull every file in Range parts through the hub proxy, sha256 per file (a file already there is "
+                  "hashed), .verified.json, manifest.json last",
+                  f"jetson/atlas_swap.py swap {plan.version}: verify the files (by the pull's record, else sha256), "
+                  "switch current, restart, wait",
                   "one chat request through llama-server as the gateway sends it",
                   "publish learning.model.deployed (to the app, else the event log)",
                   f"on a failed check: back to {box.current()} and learning.run.progress failed"],
@@ -281,13 +296,14 @@ def deploy(client: PackageClient, box: Box, publisher: Publisher, *, version: st
            models_dir: str | Path = "data/models", check: Callable[[], str | None],
            part_bytes: int = package_pull.DEFAULT_PART_BYTES, dry_run: bool = False,
            sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.perf_counter,
-           progress: Callable[[str], None] | None = None) -> dict[str, Any]:
-    """See the module docstring. A failure is an answer (ok false, kind), never an exception."""
+           progress: Callable[[str], None] | None = None, trust_verified: bool = True) -> dict[str, Any]:
+    """See the module docstring. A failure is an answer (ok false, kind), never an exception. trust_verified=False
+    is --no-trust: every step hashes the package."""
     say = progress or (lambda line: None)
     models_dir = Path(models_dir)
     run_id = time.strftime("deploy-%Y%m%d-%H%M%S", time.gmtime())
     answer: dict[str, Any] = {"command": "deploy", "account": client.account.letter, "hub": client.host,
-                              "port": client.port, "run_id": run_id}
+                              "port": client.port, "run_id": run_id, "trust_verified": trust_verified}
     manifest: ModelManifest | None = None
     try:
         name, manifest = resolve_version(client, version, sleep=sleep)
@@ -307,19 +323,19 @@ def deploy(client: PackageClient, box: Box, publisher: Publisher, *, version: st
                                                            "wall_seconds", "mb_s", "parts", "retries")}
         if not pulled["ok"]:
             raise DeployError("pull", f"{pulled.get('kind')}: {pulled.get('error')}")
-        problems = box.verify(name)
+        problems = box.verify(name, trust_verified=trust_verified)
         if problems:
             raise DeployError("pull", "the installed copy does not match its manifest: " + "; ".join(problems))
         answer["checksums_ok"] = True
 
         say(f"swapping {old} -> {name}")
-        box.swap(name)
+        box.swap(name, trust_verified=trust_verified)
         say("asking the model one question the way the gateway does")
         failure = check()
         if failure is not None:
             answer["check"] = failure
             if old:
-                again = box.swap_back(old, old_previous)
+                again = box.swap_back(old, old_previous, trust_verified=trust_verified)
                 answer["rolled_back_to"] = old
                 if again is not None:
                     answer["rollback_problem"] = again
@@ -369,6 +385,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-app", action="store_true", help="write learning.model.deployed straight into the event log")
     p.add_argument("--service", default="atlas-llm", help="the systemd unit the swap restarts")
     p.add_argument("--dry-run", action="store_true", help="print the plan; write and switch nothing")
+    p.add_argument("--no-trust", dest="trust_verified", action="store_false",
+                   help="hash the package at every step (verify, swap, switch) instead of trusting the pull's "
+                        ".verified.json record")
     p.add_argument("--quiet", action="store_true")
     return p
 
@@ -399,7 +418,8 @@ def run(argv: Sequence[str], *, environ: Mapping[str, str] | None = None, env_fi
         return deploy(client, box, publisher, version=args.version, models_dir=args.models_dir,
                       check=lambda: gateway_check(args.llm_url, transport=local_transport),
                       part_bytes=package_pull.check_part_bytes(int(args.part_mib * package_pull.MIB)),
-                      dry_run=args.dry_run, sleep=sleep, clock=clock, progress=progress)
+                      dry_run=args.dry_run, sleep=sleep, clock=clock, progress=progress,
+                      trust_verified=args.trust_verified)
     finally:
         client.close()
 

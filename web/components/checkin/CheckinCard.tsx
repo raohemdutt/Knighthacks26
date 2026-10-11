@@ -15,7 +15,8 @@ import c from "./checkin.module.css";
  * The sentence, then one chip per signal. A chip opens what is behind it, looked up on the box: the night against
  * your usual one, the resting heart rate as a line against your own baseline (its shape only; the values are
  * fetched and shown only after "Show numbers", on this device), how the looks read, the drink's last frame, the
- * earlier days. "Done" puts it away; "Move the block" asks the box for a re-plan, which changes nothing until its
+ * earlier days. When the look memory has an earlier look like this one, one more chip ("Looked tired · like Tue") opens
+ * that remembered moment in one or two plain lines: what was going on, and what helped. "Done" puts it away; "Move the block" asks the box for a re-plan, which changes nothing until its
  * card is approved.
  */
 
@@ -23,7 +24,7 @@ const asApiError = (err: unknown) => (err instanceof ApiError ? err : new ApiErr
 const hm = (minutes: number) => `${Math.floor(minutes / 60)} h ${Math.round(minutes % 60)} min`;
 
 export function CheckinCard({ card, said, onChanged }: { card: Card; said?: string; onChanged: () => void }) {
-  const [open, setOpen] = useState<CheckinKind | null>(null);
+  const [open, setOpen] = useState<CheckinKind | "callback" | null>(null);
   const [busy, setBusy] = useState<"done" | "move" | null>(null);
   const [gone, setGone] = useState(false);
   const [error, setError] = useState<ApiError | undefined>();
@@ -71,9 +72,34 @@ export function CheckinCard({ card, said, onChanged }: { card: Card; said?: stri
             {s.summary}
           </button>
         ))}
+        {card.callback ? (
+          <button
+            type="button"
+            className={`${ui.chip} ${c.chip} ${open === "callback" ? ui.chipOn : ""}`}
+            aria-expanded={open === "callback"}
+            data-guide="checkin:look-back"
+            onClick={() => setOpen(open === "callback" ? null : "callback")}
+          >
+            {card.callback.chip}
+          </button>
+        ) : null}
       </div>
 
-      {shown ? (
+      {open === "callback" && card.callback ? (
+        <div className={c.evidence} data-look-back={card.callback.day}>
+          {card.callback.lines.map((line) => (
+            <p key={line} className={c.detail}>
+              {line}
+            </p>
+          ))}
+          <p className={c.fine}>
+            A look Atlas remembers, kept on this box as words and numbers, never a picture.{" "}
+            <Link href="/people/" className={c.link}>
+              See or forget them on People
+            </Link>
+          </p>
+        </div>
+      ) : shown ? (
         <div className={c.evidence}>
           <p className={c.detail}>{shown.detail}</p>
           <Behind signal={shown} evidence={card.evidence} numbers={numbers} onNumbers={showNumbers} />

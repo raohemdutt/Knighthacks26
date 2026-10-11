@@ -134,7 +134,7 @@ def test_the_api_serves_the_real_run_instead_of_the_sample_as_soon_as_its_files_
     app.include_router(lab_router(view))
     with TestClient(app) as client:
         before = client.get("/api/learning/lab").json()
-        assert before["sample"] is True and before["real_runs"] == 0 and "trainer_runs" not in before
+        assert before["sample"] is False and before["runs"] == [] and before["real_runs"] == 0 and "trainer_runs" not in before
         write_steps(tmp_path / "lab_runs" / "run-l16")
         after = client.get("/api/learning/lab").json()
         assert after["sample"] is False and after["real_runs"] == 1 and [r["run_id"] for r in after["runs"]] == ["run-l16"]

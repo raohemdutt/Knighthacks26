@@ -427,3 +427,40 @@ def test_no_yes_is_said_when_nothing_fits_or_the_box_refuses_and_a_no_is_never_s
     missing.api.get = lambda path, timeout=30: dw.Resp(404, {"detail": "Not Found"}, content_type="application/json")
     dw.uc_day_optional(missing)
     assert [r.status for r in missing.rows] == [dw.SKIP]
+
+
+# ---------- the look memory's callback on the check-in card ----------
+
+SAME_LOOK = "That's the same look you had Thursday afternoon, when you'd gone two hours without moving."
+
+
+def look_card(**callback):
+    back = {"moment_id": "look-m-demo-20261008-1444", "day": "2026-10-08", "said": SAME_LOOK, "learned": "Ten minutes away from the desk helped then."}
+    return {"day": "2026-10-11", "display": f"You've looked strained for the last 20 minutes. {SAME_LOOK}", "spoken": "", "text": "",
+            "signals": [{"kind": "expression"}, {"kind": "sitting"}], "callback": {**back, **callback} if callback != {"none": True} else None}
+
+
+REMEMBERED = [{"id": "look-m-demo-20261008-1444", "day": "2026-10-08", "at": "2026-10-08T14:44:00-04:00", "when": "Thursday afternoon"}]
+
+
+def test_the_callback_passes_only_when_it_names_a_day_the_box_really_remembers_by_its_own_weekday():
+    status, note = dw.look_back(look_card(), REMEMBERED)
+    assert status == dw.PASS and SAME_LOOK in note and "a Thursday" in note
+    # a fixed weekday that is not the day it was
+    wrong = SAME_LOOK.replace("Thursday", "Tuesday")
+    card_ = look_card(said=wrong) | {"display": wrong}
+    assert dw.look_back(card_, REMEMBERED)[0] == dw.FAIL and "does not say the day it was (Thursday" in dw.look_back(card_, REMEMBERED)[1]
+    assert dw.look_back(look_card(), [])[0] == dw.FAIL  # a moment the box does not remember
+    assert dw.look_back(look_card(day="2026-10-11"), REMEMBERED)[0] == dw.FAIL  # not an earlier day
+    assert dw.look_back(look_card() | {"display": "You've looked strained."}, REMEMBERED)[0] == dw.FAIL  # the card does not say it
+    yesterday = [{**REMEMBERED[0], "day": "2026-10-10", "at": "2026-10-10T14:44:00-04:00"}]
+    said = "That's the same look you had yesterday afternoon."
+    assert dw.look_back(look_card(day="2026-10-10", said=said) | {"display": said}, yesterday)[0] == dw.PASS
+
+
+def test_no_check_in_no_look_or_nothing_similar_is_a_skip_never_a_forced_callback():
+    assert dw.look_back(None, REMEMBERED)[0] == dw.SKIP
+    assert dw.look_back(look_card() | {"signals": [{"kind": "sleep"}]}, REMEMBERED)[0] == dw.SKIP
+    assert dw.look_back(look_card(none=True), REMEMBERED) == (dw.SKIP, "no earlier look was similar enough (or it was forgotten): nothing is said about the past")
+    assert dw.look_fields([{"id": "x", "going_on": "At the desk for two hours."}]) is None
+    assert "frame_ref" in dw.look_fields([{"id": "x", "frame_ref": "frames:cam-desk:1"}])
