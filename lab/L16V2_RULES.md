@@ -230,6 +230,62 @@ To finish sooner:
 - TEST A measured three trainers on one card at 0.95 times one trainer's throughput, so every card stays one
   worker; the fast kernels with one batch shape and a run without gradient checkpointing were not tested.
 
+### Amendment 5: the edge round, fixed before its first result (Sun 2026-10-11, 5:00 AM ET)
+
+Ilan asked whether parameters on the edges were explored properly and whether the granularity was too small. The
+table of the first search (12 trials, in `lab/L16V2_RESULT.md`) answers yes to both, and the coordinator ordered an
+edge round. It was written while the two new finalists were training; none of its trials had started.
+
+The evidence, all validation numbers:
+
+- Rank 32 was never tried; rank 16 took 8 of the 12 trials (rank 8 two, rank 4 two).
+- The best 24-step trial (12: learning rate 4.28e-4, rank 4, dropout 0.136, warmup 0.009, value 0.0142) sits near
+  the top of the learning-rate range, at the bottom of the ranks, near the top of dropout and the bottom of warmup
+  at once. Nothing was tried above 4.3e-4, or between 2.5e-4 and 4.3e-4.
+- Five trials used a learning rate below 1e-4 (2.55e-5 to 8.03e-5); all five were pruned.
+- The five best values (0.0133, 0.0142, 0.0150, 0.0157, 0.0159) are closer together than any measured noise,
+  because none was measured: no configuration ran twice.
+- A 24-step trial cannot see what the continuous ranges were asking of it: a warmup difference of 0.04 is under
+  one optimizer step.
+
+The edge round (`lab/l16v2/bo_edge.py`), same fidelity (24 optimizer steps, validation at steps 12 and 24) and
+the step-12 rule of amendment 4 (the median over all earlier step-12 losses, the first search's included):
+
+- Space: learning rate 8e-5 to 1e-3 on the log scale; rank in {2, 4, 8, 16, 32, 64}; alpha = rank times 1 or 2;
+  dropout in {0, 0.05, 0.10, 0.15}; warmup in {0, 0.05, 0.10}.
+- The study. Optuna does not let a categorical's choices or a parameter's type change inside a study, so the
+  round continues in study `l16v2-edge` in the same database file. The first search's trials are added to it first
+  as finished trials (completed or pruned, as they were), with their dropout and warmup rounded to the nearest of
+  the new values. The four trials whose learning rate is below the new floor (3, 4, 8 and 10) cannot be stored in
+  the new space and are left out; they all lost, and the sampler can no longer propose their region.
+- Forced first, in this order, because the sampler skipped them: rank 32 at 2e-4; rank 16 at 4e-4; rank 32 at
+  4e-4; rank 4 at 8e-4; rank 2 at 4e-4 (each with alpha twice the rank, dropout 0.05, warmup 0.05). Then the
+  sampler chooses.
+- The noise floor of a trial, measured by two repeats that are not study trials and are never pruned: trial 9's
+  configuration with seed 43 (it had 42), and the seed configuration (1e-4, rank 16, alpha 32, dropout 0.05, warmup
+  0.10) as a proper 24-step trial. The two differences are reported, and the floor used is the larger. (The second
+  difference mixes noise with a difference of schedule: trial 1's 0.0133 is step 24 of a 62-step run. It is used
+  as instructed and labeled.)
+- Order of work: two forced corners, the two noise repeats, the other three corners, then the sampler's points.
+- Budget: 20 minutes from the first edge trial's start; no trial starts that would pass it. A card starts taking
+  edge trials the moment its finalist's adapter is on the workstation and verified. While the validation agreement
+  of the finalists is still being generated on a card, an edge trial there shares it (slower steps, same losses).
+- Every line carries `seen`, the finished trials the sampler had, and `kind`: edge, noise or model.
+
+What the edge round can change:
+
+- If an edge-round trial (edge or model) completes with a value lower than the best 24-step value of the first
+  search (0.0142) by more than the noise floor, the best such configuration trains once at full length as a fourth
+  finalist (the same full-length rule: at most 62 steps, validation every 8, best checkpoint kept, stop after 2
+  evaluations without a 3 percent gain), and the frozen choice rule is applied again to all full-length runs: the
+  3 lowest validation losses, then validation tool-call agreement.
+- If none does, one RESULT line says so and the choice among the three finalists stands.
+- Until that is settled the held-out side is not read on the A100: the scoring script on the VMs refuses it until
+  the driver leaves a FINAL_CHOICE file. (The pod D seat scores each finalist as it arrives, on the coordinator's
+  instruction; amendment 3 covers what those readings may not touch.)
+
+Reported at the end: best value per rank and per learning-rate band, the noise floor, the edges now covered.
+
 ## The pod D retrain (second pass)
 
 The chosen recipe is repeated on pod D with the same flags and `--stop-step <the chosen run's best step>`, so the

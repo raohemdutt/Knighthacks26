@@ -76,6 +76,10 @@ def validation(label: str, arms: list[str]) -> None:
 
 
 def held_out(name: str) -> None:
+    # The held-out side is read only after the final choice is written: the workstation's driver leaves this file
+    # on the VM when it is, and until then this refuses (an edge round may still add a finalist to the choice).
+    if not (OUT / "FINAL_CHOICE").exists():
+        raise RuntimeError("held: the final choice is not written yet, so the held-out side is not read")
     job = sweep.Job(OUT, 0.0)
     args = argparse.Namespace(dataset=str(OUT / "data" / "tool-calling-v2"), model=MODEL)
     sweep.held_out(job, args, {"chosen": {"name": name}})
