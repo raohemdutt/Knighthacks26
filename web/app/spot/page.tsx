@@ -199,6 +199,9 @@ export default function SpotPage() {
         <StatusLine shift={d} />
       </div>
 
+      {/* Ask SPOT's data, at the top of every view: one instance, so the guide's "ask" hook stays unique. */}
+      <OperatorAsk chips={d.ask ?? []} onWhy={why} jobs={d.do_first} guideChips={[d.do_first[0] ? `Where is ${d.do_first[0].name}?` : "Where is the plan?", "Where do I look for the battery?", "Show me what to do first"]} />
+
       {view === "shift" ? (
         <>
           {d.trust ? <TrustLine trust={d.trust} onWhy={why} /> : null}
@@ -301,7 +304,6 @@ export default function SpotPage() {
               <WatchOut items={d.watch} onWhy={why} />
             </div>
             <LooksFine shift={d} onAll={() => goSpotView("equipment")} />
-            <OperatorAsk chips={d.ask ?? []} onWhy={why} jobs={d.do_first} guideChips={[d.do_first[0] ? `Where is ${d.do_first[0].name}?` : "Where is the plan?", "Where do I look for the battery?", "Show me what to do first"]} />
           </div>
 
           </div>
@@ -325,8 +327,6 @@ export default function SpotPage() {
           <Round shift={d} live={live} onLive={setLive} onWhy={why} startRound={link.round} startStep={link.step} />
         </div>
       ) : null}
-
-      {view === "handoff" ? <OperatorAsk chips={d.ask ?? []} onWhy={why} jobs={d.do_first} guideChips={[d.do_first[0] ? `Where is ${d.do_first[0].name}?` : "Where is the plan?", "Where do I look for the battery?", "Show me what to do first"]} /> : null}
 
       {tab === "run" ? <ShiftRun shift={d} orders={written} link={link.run} /> : null}
 
