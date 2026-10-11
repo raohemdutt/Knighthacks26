@@ -7,9 +7,10 @@ import { useAtlas } from "@/lib/atlas";
 import { Dwell, landed as eyesLanded, snap, type Thing } from "@/lib/gaze";
 import { gaze, type GazeEstimate } from "@/lib/gazeTracker";
 import { FIXATION_MS, attention, simScript } from "@/lib/guideAttention";
-import { SCREENS, classify, ease, fromGaze, narration, pathPoint, pinTarget, pinnedThing, resolveApp, thingName, trail, travelMs, type GuideTarget, type Locator, type Pt, type Reveal } from "@/lib/guide";
+import { SCREENS, classify, ease, fromGaze, narration, pathPoint, pinTarget, pinnedThing, precisionOf, resolveApp, spotWords, thingName, trail, travelMs, type GuideTarget, type Locator, type Pt, type Reveal } from "@/lib/guide";
 import { offer, onGuide, pointAt, type GuideMessage, type GuideRun } from "@/lib/guideBus";
 import { along, length as routeLength, pointerRoute, type Box } from "@/lib/guidePath";
+import { binRun } from "@/lib/guideBin";
 import { spotRun } from "@/lib/guideSpot";
 import { oneSentence } from "@/lib/speechText";
 import { useVoice } from "@/lib/voice";
@@ -308,6 +309,8 @@ export function GuideLayer() {
   const ask = useCallback(
     async (query: string, t: number | null = null) => {
       const here = pathRef.current;
+      const bin = await binRun(query, t).catch(() => null);
+      if (bin) return void start(bin);
       if (samePath(here, "/spot/")) {
         try {
           const { run, found } = await spotRun(query, t);
@@ -543,6 +546,11 @@ export function GuideLayer() {
     const below = rect.bottom + pad + 14;
     capY = below + 150 < vh ? below : Math.max(12, rect.top - pad - 14 - 150);
     if (rect.height > vh * 0.6) capY = Math.max(12, Math.min(vh - 170, rect.top + 24)); // a tall target: inside its top
+    // the thing lights up by itself (a bin in the room): keep the caption off it, at the foot of the screen
+    if (view?.run.spot?.ring === false) {
+      capX = Math.max(12, Math.min(vw - capW - 12, rect.right - capW - 16));
+      capY = Math.max(12, Math.min(vh - 210, rect.bottom - 200));
+    }
   }
   const lines = view?.lines ?? [];
 
@@ -557,16 +565,19 @@ export function GuideLayer() {
           ))}
         </svg>
       ) : null}
-      {rect && landed ? (
+      {rect && landed && view?.run.spot?.ring !== false ? (
         <div
-          className={`${g.ring} ${small ? g.ringRound : ""} ${ok ? g.ringOk : ""} ${view?.run.t != null ? g.ringStill : ""}`}
+          data-precision={view?.run.precision?.precision ?? "exact"}
+          className={`${g.ring} ${view?.run.precision?.precision === "about" ? g.ringAbout : ""} ${small ? g.ringRound : ""} ${ok ? g.ringOk : ""} ${view?.run.t != null ? g.ringStill : ""}`}
           style={{ transform: `translate(${rect.left - pad}px, ${rect.top - pad}px)`, width: rect.width + 2 * pad, height: rect.height + 2 * pad }}
-        />
+        >
+          {view?.run.spot?.label ? <span className={g.spotLabel}>{view.run.spot.label}</span> : null}
+        </div>
       ) : null}
       {at && !landed ? <div className={g.dot} style={{ transform: `translate(${at.x}px, ${at.y}px)` }} /> : null}
       <div className={`${g.caption} ${ok ? g.captionOk : ""}`} style={{ transform: `translate(${capX}px, ${capY}px)` }} data-guide-caption role="status">
         <p className={g.label}>
-          <span>{view ? view.run.target.label : "Where is it?"}</span>
+          <span>{view ? (landed && view.run.spot?.ring === false && view.run.spot.label ? `${view.run.spot.label}: ${view.run.target.label}` : view.run.target.label) : "Where is it?"}</span>
           <button type="button" className={g.close} onClick={cancel} aria-label="Stop pointing">
             Close
           </button>
@@ -649,7 +660,7 @@ function obstacles(target: Element): Box[] {
 /** The pointer's run for an answer about a thing in the room: to the picture under the answer, or to the answer when it has none. */
 function evidenceRun(thing: string, answer: string, framed: boolean, t: number | null): GuideRun {
   const name = thingName(thing);
-  const pinned = pinnedThing(thing);
+  const pinned = pinnedThing(thing) ?? name; // any thing: the room map shows its pin if it has one, else what it knows
   const newest = "main article[data-guide='answer']:last-of-type";
   const target: GuideTarget = {
     id: "evidence",
@@ -668,6 +679,8 @@ function evidenceRun(thing: string, answer: string, framed: boolean, t: number |
         : found.querySelector("[role=img]")
           ? "The picture for that moment is not stored on this box, so this is where it would be."
           : "The box keeps the zone and a description, not the spot inside the picture, so the whole picture is ringed.",
-    action: pinned ? { label: "Show me in the room", run: { target: pinTarget(pinned) } } : undefined,
+    action: pinned ? { label: "Show me in the room", run: { target: pinTarget(pinned), precision: precisionOf("zone-pin"), spot: { label: spotWords(precisionOf("zone-pin")) } } } : undefined,
+    precision: precisionOf(framed ? "picture" : "words"),
+    spot: { label: framed ? spotWords(precisionOf("picture")) : undefined },
   };
 }

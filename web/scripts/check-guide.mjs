@@ -102,6 +102,22 @@ try {
   yes("every row has a screen that exists", G.APP_TARGETS.every((t) => t.route === null || G.SCREENS[t.route]));
   yes("every row has two sentences that end in a full stop", G.APP_TARGETS.every((t) => t.steps.length === 2 && t.steps.every((s) => /[.?]$/.test(s.say) && s.say.length < 140)));
 
+  // ---- exact or about: the drawing and the words follow one flag, and exact is never claimed from about data
+  const TABLE = [
+    ["element", "exact", "Here it is"], ["box", "exact", "Here it is"], ["zone", "exact", "Here it is"], ["floor", "exact", "Here it is"], ["route-real", "exact", "Here it is"],
+    ["picture", "about", "About here"], ["words", "about", "About here"], ["zone-pin", "about", "About here"], ["route-traced", "about", "About here"], ["unscaled", "about", "About here"],
+  ];
+  for (const [source, want, label] of TABLE) {
+    const p = G.precisionOf(source);
+    eq(`precision: ${source}`, [p.precision, G.spotWords(p), p.reason.length > 10], [want, label, true]);
+    const said = G.hereSentence(p, "keys", true, "left of the laptop");
+    eq(`precision words: ${source}`, [/about/.test(said), said], want === "exact" ? [false, "Your keys are here."] : [true, "Your keys are about here: left of the laptop."]);
+  }
+  eq("precision: an unknown source is never exact", G.precisionOf("something-new").precision, "about");
+  eq("precision: singular", [G.spotWords(G.precisionOf("box")), G.spotWords(G.precisionOf("box"), true), G.hereSentence(G.precisionOf("words"), "wallet", false)], ["Here it is", "Here they are", "Your wallet is about here."]);
+
+  // ---- "where does this go?" (lib/guideBin.ts is not loaded here: it imports the api; its two pure helpers are small and repeated in the page test)
+
   // ---- the Inspection screen's answer, mapped onto the page
   const spot = G.spotTarget({ configured: true, query: "", target: "round:17", label: "Round 17", confidence: 1, alternatives: [], steps: [{ reveal: "tab:shift", say: "A." }, { reveal: "round:pick:M017", say: "B." }, { say: "C." }, { say: "D." }] });
   eq("spot: a round points at the picker", spot.at, [{ id: "round:pick" }]);

@@ -298,6 +298,62 @@ export function thingName(thing: string): string {
   return thing.split(" ").filter((w) => !FILLER.has(w)).join(" ") || thing;
 }
 
+// ---------- exact, or about: one rule for the drawing and the words ----------
+
+/**
+ * What a target's place is known from. "Exact" is only ever claimed from something measured or drawn by the app itself;
+ * anything inferred, worded or unscaled is "about", and both the outline and the sentence must say so.
+ */
+export type PlaceSource =
+  | "element" // a thing on this screen: its own rectangle
+  | "box" // an object the box put a box round in a picture
+  | "zone" // a zone polygon the box has for that camera
+  | "floor" // a calibrated position on the room's floor plan
+  | "route-real" // a route the box planned over a measured plan
+  | "picture" // "it is somewhere in this picture": a frame with no box for the thing
+  | "words" // a position given in words ("left of the laptop")
+  | "zone-pin" // a pin placed inside a zone, not at the spot
+  | "route-traced" // a route over a map traced from a picture, or over legs with no geometry
+  | "unscaled"; // a length with no defensible scale
+
+export interface Precision {
+  precision: "exact" | "about";
+  reason: string;
+}
+
+const EXACT: Partial<Record<PlaceSource, string>> = {
+  element: "it is a thing on this screen",
+  box: "the box put a box round it in the picture",
+  zone: "the box has that zone's outline for this camera",
+  floor: "its place on the floor plan is calibrated",
+  "route-real": "the route was planned over a measured plan",
+};
+const ABOUT: Partial<Record<PlaceSource, string>> = {
+  picture: "the box keeps the zone and a description, not where it is in the picture",
+  words: "its place is known only in words",
+  "zone-pin": "the pin sits inside its zone, not at the exact spot",
+  "route-traced": "the route follows what the data shows, not a surveyed path",
+  unscaled: "the plan has no scale",
+};
+
+/** The precision a source earns. Anything not listed as exact is about: exact is never the default. */
+export function precisionOf(source: PlaceSource): Precision {
+  const why = EXACT[source];
+  return why ? { precision: "exact", reason: why } : { precision: "about", reason: ABOUT[source] ?? "its place is not measured" };
+}
+
+/** The two or three words on the spotlight: "Here it is" only when exact, "About here" otherwise. */
+export function spotWords(p: Precision, plural = false): string {
+  return p.precision === "exact" ? (plural ? "Here they are" : "Here it is") : "About here";
+}
+
+/** "Your keys are here." / "Your keys are about here: left of the laptop." */
+export function hereSentence(p: Precision, name: string, plural: boolean, detail?: string | null): string {
+  const be = plural ? "are" : "is";
+  if (p.precision === "exact") return `Your ${name} ${be} here.`;
+  return `Your ${name} ${be} about here${detail ? `: ${detail}` : ""}.`;
+}
+
 // ---------- the Inspection screen: the box resolves, this maps its answer onto the page ----------
 
 export interface SpotGuide {
