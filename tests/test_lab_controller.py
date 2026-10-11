@@ -1353,3 +1353,10 @@ def test_the_readme_smoke_command_uploads_smoke_lora_py_beside_the_script():
     commands = [line for line in lines if "run-script" in line and "lab/pod_b_trainer.sh smoke" in line]
     assert commands
     assert all("--with lab/smoke_lora.py" in line for line in commands), commands
+
+
+def test_the_ledger_verb_names_are_the_ones_alerts_reads():
+    # modul-dup-ledger-verb-names: one definition, in alerts, restated nowhere.
+    assert ctl_module.BALANCE is alerts.BALANCE_METRIC
+    assert ctl_module.POD_LAUNCH is alerts.POD_LAUNCH
+    assert ctl_module.POD_STOP is alerts.POD_STOP

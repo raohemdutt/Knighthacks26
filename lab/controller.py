@@ -110,7 +110,7 @@ if __package__ in (None, ""):          # started as `python lab/controller.py`: 
 from lab import hub as hubs
 from lab.hub import (Account, Hub, HubUnreachable, MissingCredentials, PodRoleError, Reply, hub_of, load_accounts,
                      one_line)
-from lab.machine import record
+from lab.machine import alerts, record
 from lab.machine import stop as kill_switch
 from lab.machine.record import recorded
 
@@ -149,9 +149,9 @@ IMAGE_SCRIPT = ('echo "image=${JUPYTER_IMAGE_SPEC:-${JUPYTER_IMAGE:-}}"\n'
                 'if [ -e /dev/kfd ]; then echo "gpu_device=yes"; else echo "gpu_device=no"; fi\n')
 
 QUOTA_DISABLED = "quota disabled on this hub"
-POD_LAUNCH, POD_STOP, POD_STATUS = "pod launch", "pod stop", "pod status"
+POD_LAUNCH, POD_STOP, POD_STATUS = alerts.POD_LAUNCH, alerts.POD_STOP, "pod status"
 POD_WAIT, POD_KEEP_ALIVE, POD_QUOTA, POD_RUN_SCRIPT = "pod wait", "pod keep-alive", "pod quota", "pod run-script"
-BALANCE = "pod.balance_credits"
+BALANCE = alerts.BALANCE_METRIC
 START = "pod.start_s"
 
 
