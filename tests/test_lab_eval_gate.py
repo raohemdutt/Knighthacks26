@@ -342,6 +342,38 @@ def test_the_scores_are_saved_for_the_demo_slide(tmp_path):
     assert "0.33" in row.value and "0.67" in row.value
 
 
+def test_the_scores_carry_each_held_out_question_before_and_after(tmp_path):
+    root = make(tmp_path / "d", held_out_sizes=(2,) * 30)
+    qs = held_out_questions(root)
+    client = FakeClient(root, {CUR: [first_n(qs, 20), first_n(qs, 22)], CAND: [set(qs[10:50])], TEACH: [set(qs)]},
+                        extra_questions=["A question the split does not hold?"])
+    result = run(tmp_path, root, client)
+    saved = json.loads((tmp_path / "out" / gate.SCORES_FILE).read_text())
+    assert saved["correct"] == {"current": 20, "candidate": 40, "teacher": 60} and saved["noise_runs"] == [20, 22]
+    assert (saved["alpha"], saved["test"]) == (gate.ALPHA, gate.TEST)
+    assert {k: saved[k] for k in result if k in saved} == {k: v for k, v in result.items() if k in saved}
+    assert "items" not in result  # the verb's one JSON line stays as it was
+    split = load_split(root, require_images=False, min_held_out=1)
+    assert [i["id"] for i in saved["items"]] == [e.id for e in split.held_out]  # held-out only, the outside one dropped
+    first, eleventh = saved["items"][0], saved["items"][10]
+    assert first == {"id": "h0-0", "group": "frame:h0", "question": "Question h0 wording 0?", "expected": None,
+                     "before": {"answer": "fake answer", "correct": True}, "after": {"answer": "fake miss", "correct": False}}
+    assert (eleventh["group"], eleventh["before"]["correct"], eleventh["after"]["correct"]) == ("frame:h5", True, True)
+    assert sum(i["before"]["correct"] for i in saved["items"]) == saved["correct"]["current"]
+    assert sum(i["after"]["correct"] for i in saved["items"]) == saved["correct"]["candidate"]
+
+
+def test_a_long_answer_is_cut_in_the_scores(tmp_path, monkeypatch):
+    root = make(tmp_path / "d", held_out_sizes=(1,) * 3)
+    qs = held_out_questions(root)
+    client = FakeClient(root, {CUR: [set()] * 2, CAND: [set(qs)], TEACH: [set(qs)]})
+    monkeypatch.setattr(gate, "MAX_ANSWER_CHARS", 4)
+    run(tmp_path, root, client, min_held_out=1)
+    saved = json.loads((tmp_path / "out" / gate.SCORES_FILE).read_text())
+    assert {i["after"]["answer"] for i in saved["items"]} == {"fake..."}
+    assert {i["before"]["answer"] for i in saved["items"]} == {"fake..."}
+
+
 # --- the committed fixture ------------------------------------------------------------------------------------------
 
 def test_the_committed_fixture_scores_58_items_in_4_groups_and_cannot_deploy(tmp_path):
