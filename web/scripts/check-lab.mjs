@@ -162,6 +162,14 @@ try {
   is("a stand-in gate's caption shows no count", `${standInStages[3].value},${standInStages[3].note}`, "stand-in gate,no held-out score");
   const onBoxStages = P.loopStages({ ...loopStory, package: { bytes: num(null), model_version: "v2" } }, when, { onBox: "v2" });
   is("the box caption says when the run's model is on the box now", `${onBoxStages[4].state},${onBoxStages[4].value}`, "done,on the box now");
+  // ---- answers in plain words (lib/labWords.ts)
+  const W = await load("labWords");
+  is("JSON tool call: last_seen", W.answerWords('{"tool_calls": [{"name": "last_seen", "arguments": {"label": "backpack"}}]}'), "checked where backpack was last seen");
+  is("markup tool call: last_seen", W.answerWords("<tool_call>\n<function=last_seen>\n<parameter=label>\nkeys\n</parameter>\n</function>\n</tool_call>"), "checked where keys was last seen");
+  is("search_memory", W.answerWords('{"tool_calls": [{"name": "search_memory", "arguments": {"q": "mug"}}]}'), 'searched memory for "mug"');
+  is("another tool, its name in words", W.answerWords('{"tool_calls": [{"name": "set_reminder", "arguments": {}}]}'), "set reminder");
+  is("episodes_between says looked back", W.answerWords('{"tool_calls": [{"name": "episodes_between", "arguments": {"start": "2026-10-11T00:44:00-04:00", "end": "2026-10-11T01:09:00-04:00"}}]}').startsWith("looked back from "), true);
+  is("a plain sentence stays a sentence", W.answerWords("  The keys are on the desk. "), "The keys are on the desk.");
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }
