@@ -122,6 +122,38 @@ def test_packed_bytes_are_bits_per_weight():
         assert p.nbytes(0) == L._bytes_of(bits, 0, 256, 32)
 
 
+@needs_torch
+@pytest.mark.parametrize("bits", [2, 3, 4])
+def test_channel_table_mode_reference(bits):
+    import torch
+
+    gen = torch.Generator().manual_seed(10 + bits)
+    w = (torch.randn(48, 1024, generator=gen) * 0.02).half()
+    p = L.quantize_channel_lut(w, bits)
+    nv = 1 << bits
+    assert p.ctable.shape == (48, nv) and p.ctable.dtype == torch.float16
+    assert torch.all(p.ctable[:, 1:] >= p.ctable[:, :-1])  # sorted, so nearest-entry codes are well defined
+    assert torch.equal(L.unpack_codes(p), p.codes.long())
+    # weight = T[n, c] * s[g, n], formed in fp32 and rounded once
+    g = torch.arange(1024) // L.GROUP
+    expect = (p.ctable[torch.arange(48)[:, None], p.codes.long()].float() * p.scale.float().t()[:, g]).half()
+    assert torch.equal(L.dequant(p, 4), expect)
+    # 3 bits: 48 bytes of codes and 2 of scale per 128 weights, plus 16 bytes of table per column
+    assert p.nbytes(4) == L._bytes_of(bits, 4, 1024, 48) == 1024 * 48 * bits // 8 + 8 * 48 * 2 + 48 * nv * 2
+    if bits == 3:
+        assert 8 * L._bytes_of(3, 4, 5120, 6144) / (5120 * 6144) == pytest.approx(3.15, abs=0.001)  # 3 + 16/128 + 128/5120
+    # it is a quantization of w: the relative error falls as BITS grows and stays well under the weights' size
+    rel = float((L.dequant(p, 4).float() - w.float()).norm() / w.float().norm())
+    assert rel < {2: 0.5, 3: 0.3, 4: 0.2}[bits]
+
+
+def test_channel_table_mode_refuses_a_plain_layer():
+    torch = pytest.importorskip("torch")
+    p = L.quantize(torch.zeros(32, 256).half(), 3)
+    with pytest.raises(ValueError, match="channel_lut"):
+        L.launcher(torch.zeros(1, 256).half(), p, 4, L.M1_CONFIGS[0])
+
+
 # --- the kernel on a GPU ------------------------------------------------------------------------------------------
 
 @needs_gpu
@@ -133,10 +165,11 @@ def test_kernel_matches_reference_at_decode_shapes(shape, bits):
     name, k, n = shape
     gen = torch.Generator(device="cuda").manual_seed(k + n + bits)
     w = (torch.randn(n, k, device="cuda", generator=gen) * 0.02).half()
-    p = L.quantize(w, bits)
+    plain, channel = L.quantize(w, bits), L.quantize_channel_lut(w, bits)
     for m in (1, 4, 16):
         a = torch.randn(m, k, device="cuda", generator=gen).half()
         for mode in L.MODES:
+            p = channel if mode == 4 else plain
             out = L.lut_gemv(a, p, mode).float()
             ref = L.reference(a, p, mode)
             err = float((out - ref).abs().max())
