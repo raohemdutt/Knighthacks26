@@ -11,6 +11,13 @@ error: its reader keeps retrying, and `stats()` reports it as down.
 
 The Vault policy is read live: faces are blurred before a keyframe is stored unless `policy.blur_faces` is off, and a
 paused camera is not looked at.
+
+Two blurs (contexts/perception/infrastructure/face_blur.py). A picture that is kept or shared gets the strict one,
+repeated until no face is found: every stored keyframe. The live
+picture for a screen without the owner's ticket gets one pass: it runs on every frame shown and nothing of it is kept.
+A camera can be set back to one pass for its keyframes with `keyframe_blur: fast` in config/cameras.yaml, if the box
+cannot afford the second detector pass (about twice the time of one pass on a keyframe with a face in it, the same
+on one without; keyframes are stored at most once per `observe_every_s`, usually every `keyframe_every_s`).
 """
 
 import asyncio
@@ -27,7 +34,7 @@ from contexts.capture.infrastructure.camera import CameraReader
 from contracts.capture import CameraHealth
 from contexts.perception.application.tracking import TrackingPipeline
 from contexts.perception.infrastructure.detector import build_detector, detector_available
-from contexts.perception.infrastructure.face_blur import FaceBlur
+from contexts.perception.infrastructure.face_blur import STRICT, FaceBlur
 from contexts.perception.infrastructure.face_counter import FaceCounter
 from contexts.perception.infrastructure.keyframe_store import KeyframeStore
 
@@ -82,8 +89,9 @@ class CaptureService:
                                   width=cfg.get("width", 1280), height=cfg.get("height", 720),
                                   motion_threshold=cfg.get("motion_threshold"), keepalive_s=float(cfg.get("keepalive_event_s", 5)))
             detector = LazyDetector(self.detector_factory)  # ByteTrack keeps its state in the model: one per camera
-            blur = FaceBlur()
-            store = KeyframeStore(self.data_dir, blur=lambda frame, blur=blur: blur(frame) if self._blur_on() else frame)
+            blur = FaceBlur()  # one pass: the face counter's finder, and the keyframe blur only with `keyframe_blur: fast`
+            strict = None if cfg.get("keyframe_blur", "strict") == "fast" else FaceBlur(**STRICT)  # anything else: strict
+            store = KeyframeStore(self.data_dir, blur=lambda frame, blur=blur, strict=strict: self._saved(frame, blur, strict))
             pipeline = TrackingPipeline(
                 camera_id, reader, detector, self.bus, loop, store=store,
                 detect_fps=float(cfg.get("detect_fps", 10)),
@@ -118,6 +126,12 @@ class CaptureService:
         GET /runtime/stats; None before any camera has run its detector."""
         timed = [{"camera_id": cid, **s} for cid, p in self.pipelines.items() if (s := p.detector_speed())]
         return max(timed, key=lambda s: s["ts"]) if timed else None
+
+    def _saved(self, frame: Any, fast: Any, strict: Any) -> Any:
+        """The copy of a frame that goes to disk: blurred until no face is found (or once, for a `fast` camera)."""
+        if not self._blur_on():
+            return frame
+        return strict.scrambled_until_clear(frame)[0] if strict is not None else fast(frame)
 
     def snapshot(self, camera_id: str, clear: bool = False) -> bytes | None:
         """The newest frame as a JPEG for the phone's Live screen, faces blurred unless the policy says otherwise.
