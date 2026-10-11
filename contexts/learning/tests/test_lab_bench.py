@@ -84,6 +84,20 @@ def test_power_is_the_newest_idle_and_serving_row_per_node_and_a_node_without_a_
                 assert node[key]["ts"] == max(r["ts"] for r in mine) and node[key]["value"] == RAW[node[key]["line"]]["value"]
 
 
+def test_rows_from_the_r9700s_are_marked_and_never_put_on_the_strix_halo_curve_or_bars(tmp_path):
+    payload = bench(ROWS)
+    old = [p for p in every_point(payload) if p["other_chip"]]
+    assert payload["other_chip_rows"] == len(old) > 0 and all(p["node"] != "jetson" and p["chip"] for p in old)
+    assert {p["line"] for p in old} >= {1, 7, 12, 13, 17}  # the batch-1 teacher rows, 200 W, the smoke run, the 39 W idle
+    assert not any(p["other_chip"] for s in payload["sweeps"] for pts in s["metrics"].values() for p in pts)
+    assert not any(n[k]["other_chip"] for n in payload["power"]["nodes"] for k in ("idle", "serving", "peak") if n[k])
+    assert {p["line"] for p in payload["power"]["other_chip"]} >= {7, 8, 17}
+    # an R9700 sweep stays a sweep of its own, after the current lab's, even on the same node and metric family
+    tagged = [row("teacher_batching.decode_tok_s", v, node="pod-a", batch_size=b, gpu="Radeon R9700 (gfx1201)", ts="2026-10-11T05:00:00Z") for b, v in ((1, 7.7), (4, 7.0))]
+    both = bench(*read_rows(write(tmp_path, [*({k: v for k, v in r.items() if k != "_line"} for r in ROWS), *tagged])))
+    assert [(s["node"], s["other_chip"], s["batches"]) for s in both["sweeps"]] == [("pod-a", False, [1, 4, 8, 16, 64]), ("pod-a", True, [1, 4])]
+
+
 def test_nothing_is_dropped_silently_every_row_is_charted_or_listed_as_not_charted():
     payload = bench(ROWS)
     listed = {line for x in payload["not_charted"] for line in x["lines"]}

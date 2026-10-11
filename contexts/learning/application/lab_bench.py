@@ -21,6 +21,11 @@ New rows show up without a code change:
 - `power` takes, per node, the newest `*.idle_watts`, `*.watts_avg` and `*.watts_peak` rows;
 - `not_charted` lists every metric and node the screen draws nothing for, so no row is dropped silently.
 
+The lab moved from the R9700s (gfx1201) to the Strix Halo pods (gfx1151) on Sat 2026-10-10 at 4:25 PM ET. A pod row
+tagged with the old chip, or untagged and measured before the move, is `other_chip: true` (the rule is
+lab/slide_numbers.py's own `_old_chip`, imported). Such a row is never put on a Strix Halo curve: it forms sweeps of
+its own, is left out of `power`'s bars (listed under `power.other_chip` instead) and says so in `not_charted`.
+
 A number is a small dict in the lab view's shape, `{label, value, unit, source, low_confidence, reason}`, plus
 `kind`: "measured" (a row's own value) or "derived" (worked out here from rows, with the formula in `formula`).
 On a present value `reason` is why it is low confidence, in the row's own words.
@@ -40,6 +45,24 @@ STUDENT_NODE = "jetson"
 TRAINER_STRIP = ("trainer.samples_per_s", "trainer.smoke_loss_first", "trainer.smoke_loss_last", "trainer.peak_mem_gb")
 SWEEP_METRICS = ("decode_tok_s", "decode_tok_s_total", "joules_per_token", "ttft_s", "watts_avg", "watts_peak")
 NO_REASON = "the row is flagged low confidence and gives no reason"
+OTHER_CHIP = "other chip (R9700), not the current lab"
+LAB_MOVED_AT = "2026-10-10T20:25:00Z"
+
+try:  # the lab's own rule for which rows describe the hardware it no longer uses
+    from lab.slide_numbers import _old_chip as _lab_old_chip
+except ImportError:  # the gateway run where lab/ or its imports are missing: the same rule, restated
+    def _lab_old_chip(rec: dict) -> bool:
+        gpu = str((rec.get("conditions") or {}).get("gpu", ""))
+        if "gfx1151" in gpu or "Strix" in gpu:
+            return False
+        if "gfx1201" in gpu or "R9700" in gpu:
+            return True
+        return bool(rec.get("ts")) and str(rec["ts"]) < LAB_MOVED_AT
+
+
+def other_chip(row: dict[str, Any]) -> bool:
+    """True for a pod row from the R9700s. The Jetson is not one of the lab's cards, so its rows never are."""
+    return row.get("node") != STUDENT_NODE and bool(_lab_old_chip(row))
 
 
 def read_rows(path: str | Path | None = METRICS_FILE) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -131,6 +154,7 @@ def point(row: dict[str, Any], label: str | None = None) -> dict[str, Any]:
         "runs": _number(stats.get("n")), "statistic": _text(c.get("statistic")),
         "spread": {k: stats[k] for k in ("min", "max", "sd") if _number(stats.get(k)) is not None} or None,
         "model": model_of(c), "build": build_of(c), "session": _text(c.get("session")), "state": state_of(row),
+        "other_chip": other_chip(row), "chip": OTHER_CHIP if other_chip(row) else None,
     }
 
 
@@ -180,9 +204,9 @@ def sweeps(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             continue
         c = r["conditions"]
         family = r["metric"].split(".")[0]
-        groups.setdefault((family, r.get("node"), _text(c.get("session")) or _text(r.get("source")) or ""), []).append(r)
+        groups.setdefault((family, r.get("node"), _text(c.get("session")) or _text(r.get("source")) or "", other_chip(r)), []).append(r)
     out = []
-    for (family, node, run), members in groups.items():
+    for (family, node, run, old), members in groups.items():
         batches = sorted({batch_of(r) for r in members})
         if len(batches) < 2:
             continue
@@ -200,7 +224,7 @@ def sweeps(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         c = newest["conditions"]
         every = [p for pts in metrics.values() for p in pts]
         out.append({
-            "id": f"{family}:{node}:{run}", "family": family, "node": node, "run": run, "session": _text(c.get("session")),
+            "id": f"{family}:{node}:{run}" + (":other-chip" if old else ""), "other_chip": old, "family": family, "node": node, "run": run, "session": _text(c.get("session")),
             "model": model_of(c), "build": build_of(c), "chip": _text(c.get("chip")) or _text(c.get("gpu")),
             "mode": _text(c.get("mode")), "prompt_set": (c.get("prompt_set") or {}).get("id") if isinstance(c.get("prompt_set"), dict) else None,
             "max_tokens": _number(c.get("max_tokens")), "ts": newest.get("ts"), "recorded_by": _text(newest.get("source")),
@@ -210,6 +234,7 @@ def sweeps(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "confidence_note": _confidence_note(every),
         })
     out.sort(key=lambda s: str(s["ts"] or ""), reverse=True)
+    out.sort(key=lambda s: s["other_chip"])  # the current lab's sweeps first
     return out
 
 
@@ -285,8 +310,10 @@ def power(rows: list[dict[str, Any]]) -> dict[str, Any]:
     """Per node, the newest idle, serving and peak watts the file holds: what it costs to be on."""
     nodes = []
     names = list(dict.fromkeys([*NODES, *sorted({str(r.get("node")) for r in rows if r.get("node")})]))
+    watts = (".idle_watts", ".watts_avg", ".watts_peak")
+    old = [point(r) for r in rows if other_chip(r) and r["metric"].endswith(watts)]
     for node in names:
-        mine = [r for r in rows if r.get("node") == node]
+        mine = [r for r in rows if r.get("node") == node and not other_chip(r)]
         idle = [r for r in mine if r["metric"].endswith(".idle_watts")]
         serving = [r for r in mine if r["metric"].endswith(".watts_avg")]
         peak = [r for r in mine if r["metric"].endswith(".watts_peak")]
@@ -295,7 +322,7 @@ def power(rows: list[dict[str, Any]]) -> dict[str, Any]:
         pick = lambda found, label: point(_newest(found), label) if found else None  # noqa: E731
         nodes.append({"node": node, "idle": pick(idle, f"{node} idle power"), "serving": pick(serving, f"{node} power while serving"),
                       "peak": pick(peak, f"{node} peak power"), "idle_rows": len(idle), "serving_rows": len(serving)})
-    return {"nodes": nodes, "absent": [n for n in NODES if n not in {x["node"] for x in nodes}]}
+    return {"nodes": nodes, "absent": [n for n in NODES if n not in {x["node"] for x in nodes}], "other_chip": old}
 
 
 def bench(rows: list[dict[str, Any]], skipped: list[dict[str, Any]] | None = None) -> dict[str, Any]:
@@ -323,6 +350,7 @@ def bench(rows: list[dict[str, Any]], skipped: list[dict[str, Any]] | None = Non
         if left:
             newest = _newest(left)
             not_charted.append({"metric": metric, "node": node, "rows": len(left), "of": len(members), "unit": newest.get("unit"),
+                                "other_chip": sum(other_chip(r) for r in left),
                                 "latest": point(newest), "lines": [r["_line"] for r in left]})
     families: dict[str, dict[str, Any]] = {}
     for r in rows:
@@ -336,6 +364,7 @@ def bench(rows: list[dict[str, Any]], skipped: list[dict[str, Any]] | None = Non
     return {
         "file": REL, "rows": len(rows), "skipped": skipped or [],
         "low_confidence_rows": sum(bool(r.get("low_confidence")) for r in rows),
+        "other_chip_rows": sum(other_chip(r) for r in rows), "other_chip_label": OTHER_CHIP, "lab_moved_at": LAB_MOVED_AT,
         "newest": max((str(r.get("ts")) for r in rows if r.get("ts")), default=None),
         "families": [{**f, "metrics": sorted(f["metrics"]), "nodes": sorted(f["nodes"])} for f in sorted(families.values(), key=lambda f: f["family"])],
         "sweeps": all_sweeps, "student": ref, "power": watts, "series": all_series,
