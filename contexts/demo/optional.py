@@ -266,6 +266,7 @@ def lines(s: Shown) -> list[str]:
     return out
 
 
-def summary(s: Shown) -> str:
-    return "\n".join([*lines(s), "", "Run the app on it, then open /now/:",
-                      f"  ATLAS_DATA_DIR={s.app.settings.data_dir} ATLAS_MEMORY_FIXTURE= ATLAS_CONNECTORS=0 ATLAS_CAPTURE=0 python -m contexts.gateway"])
+def run_it(s: Shown) -> str:
+    """How to run the app on the scene's directory: the one thing printed that depends on the directory."""
+    return ("Run the app on it, then open /now/:\n"
+            f"  ATLAS_DATA_DIR={s.app.settings.data_dir} ATLAS_MEMORY_FIXTURE= ATLAS_CONNECTORS=0 ATLAS_CAPTURE=0 python -m contexts.gateway")

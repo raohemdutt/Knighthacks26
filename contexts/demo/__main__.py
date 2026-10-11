@@ -16,10 +16,11 @@
         raises it and the narrator says it. Prints the sentence and the command to run the app on it.
 
     python -m contexts.demo optional --data-dir <empty dir> [--day YYYY-MM-DD]
-        An optional event ("Near you"), suggested and said yes to: one invented afternoon published through the
-        real app. Atlas suggests the friends' dinner, the yes raises a re-plan and its card, the card is approved
-        locally, the dinner is a block of the day and Atlas says when to leave. Prints each line and the command
-        to run the app on it.
+        An optional event ("Near you"), suggested and said yes to: one invented day published through the real
+        app. The morning plan is approved locally, Atlas says when the afternoon's study block starts, suggests
+        the friends' dinner, the yes raises a re-plan and its card, that card is approved locally, the dinner is
+        a block of the day and Atlas says when to leave. Prints each line (the same for the same day, whatever
+        the directory) and, on stderr, the command to run the app on it.
 
     python -m contexts.demo fake <context> [--data-dir data] [--now]
         A few realistic events of every type one context publishes, appended to the log.
@@ -132,7 +133,8 @@ def main(argv: list[str] | None = None) -> int:
         except SeedRefused as refused:
             print(refused, file=sys.stderr)
             return 1
-        print(optional.summary(shown))
+        print("\n".join(optional.lines(shown)))  # the same lines for the same day, whatever the directory
+        print("\n" + optional.run_it(shown), file=sys.stderr)  # the one part that names the directory
         return 0 if shown.ok else 1
 
     if args.command == "circle":
