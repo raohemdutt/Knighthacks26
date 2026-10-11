@@ -75,11 +75,9 @@ def hm(t: datetime) -> str:
     return f"{t.hour % 12 or 12}:{t:%M} {t:%p}".replace(":00 ", " ")
 
 
-def card_events(moves: list[PlanMove], introduce: str | None = None) -> list[dict]:
-    """The calendar blocks a plan's card would write: the chosen ones, and the fixed block `introduce` (an optional
-    event this plan adds, under its own title): written once, by the card of the re-plan that brings it in."""
-    return [{"title": m.title if m.fixed else f"Day Run: {m.title}", "start": m.start.isoformat(), "end": m.end.isoformat(),
-             "location": m.place_name} for m in moves if not m.fixed or (introduce is not None and m.id == introduce)]
+def card_events(moves: list[PlanMove]) -> list[dict]:
+    return [{"title": f"Day Run: {m.title}", "start": m.start.isoformat(), "end": m.end.isoformat(), "location": m.place_name}
+            for m in moves if not m.fixed]
 
 
 class DayPlanner:
@@ -262,7 +260,11 @@ class DayPlanner:
     def card(self, blocks: list[PlanMove], day: date, result: SimResult, now: datetime, replace: bool = False,
              why: str | None = None, introduce: str | None = None) -> ActionProposed | None:
         """One approval card for the plan's calendar blocks. Nothing is written until the phone says yes."""
-        events = card_events(blocks, introduce)
+        events = card_events(blocks)
+        # `introduce`: the fixed block of an optional event this plan brings in. It is written too, under its own title,
+        # once: by the card of the re-plan that adds it, and by no later plan's card.
+        events = [{"title": m.title, "start": m.start.isoformat(), "end": m.end.isoformat(), "location": m.place_name}
+                  for m in blocks if introduce is not None and m.id == introduce] + events
         if not events:
             return None
         verb = "Replace today's Day Run blocks with" if replace else "Add"

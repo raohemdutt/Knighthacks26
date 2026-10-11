@@ -266,7 +266,7 @@ def test_the_json_output_is_written(tmp_path, monkeypatch, capsys):
 # ---------- optional events (use case 3): a yes only with --approve-local, a card approved only when it stays on the box ----------
 
 DINNER = "nearby:friends-dinner:2026-10-12T17:15:00-04:00"
-LOCAL_PLAN = ("You said yes to Friends' dinner at 5:15 PM. Replace today's Day Run blocks with 9 block(s) for Mon Oct 12 (Win, 3 stars). "
+LOCAL_PLAN = ("You said yes to Friends' dinner at 5:15 PM. Replace today's plan with 9 block(s) for Mon Oct 12 (Win, 3 stars). "
               "No calendar connector on this box: approving keeps this as today's plan, nothing is written")
 
 
@@ -341,7 +341,7 @@ def test_with_the_flag_a_yes_is_said_and_its_card_is_approved_only_because_it_st
 
 def test_a_yes_whose_card_would_write_to_a_real_calendar_is_denied_and_the_plan_stays(monkeypatch, capsys):
     monkeypatch.setattr(dw.time, "sleep", lambda s: None)
-    run = dw.Run(OptionalBox(reason="You said yes to Friends' dinner at 5:15 PM. Replace today's Day Run blocks with 9 block(s)"), approve_local=True)
+    run = dw.Run(OptionalBox(reason="You said yes to Friends' dinner at 5:15 PM. Replace today's plan with 9 block(s)"), approve_local=True)
     dw.uc_day_optional(run)
     rows = optional_rows(run)
     assert [body for _, body in posts(run.api)] == [{"answer": "yes"}, {"decision": "deny"}]  # never approved by the script

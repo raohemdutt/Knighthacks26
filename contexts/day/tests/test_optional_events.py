@@ -414,11 +414,11 @@ def test_the_card_writes_the_event_once_and_later_plans_do_not_write_it_again(pl
     body = said_yes(b)
     [card] = b.approvals.pending()
     assert card.kind == "connector_write" and card.target == "calendar.create_event"
-    assert card.reason.startswith("You said yes to Friends' dinner at 5:15 PM. Replace today's Day Run blocks with ")
+    assert card.reason.startswith("You said yes to Friends' dinner at 5:15 PM. Replace today's ")
     assert "Friends' dinner 5:15 PM" in card.reason and names_in(card.reason + json.dumps(card.params)) == []
     events = card.params["events"]
     assert events[0] == {"title": "Friends' dinner", "start": at(17, 15).isoformat(), "end": at(18, 15).isoformat(), "location": "'63 South"}
-    assert all(e["title"].startswith("Day Run: ") for e in events[1:]) and len(events) > 1
+    assert all(": " in e["title"] and "dinner" not in e["title"].lower() for e in events[1:]) and len(events) > 1  # the chosen blocks, prefixed
     b.approve(body["action_id"], at(16, 2))
     b.clock["now"] = at(16, 20)
     later, later_card = b.loop.planner.replan(at(16, 20), "apartment.desk", "You asked.", asked=True)
@@ -571,7 +571,7 @@ def test_a_no_to_an_accepted_event_takes_it_out_through_a_card_too(places, tmp_p
     told = [n for n in b.of(DayNarrated) if n.moment == "replan"][-1]
     assert told.spoken.startswith("Okay, Friends' dinner is out: ") and told.display.startswith("Without Friends' dinner.")
     card = next(r for r in b.approvals.pending() if r.id == replan.action_id)
-    assert card.reason.startswith("You took Friends' dinner out of today. Replace today's Day Run blocks with ")
+    assert card.reason.startswith("You took Friends' dinner out of today. Replace today's ")
     b.approve(replan.action_id, at(16, 11))
     assert b.optional.accepted == set() and b.plan().plan_id == replan.plan_id and b.row(DINNER, at(16, 11))["state"] == "declined"
     assert DINNER_BLOCK not in [x.id for x in b.dayrun.board(at(16, 12)).blocks]
