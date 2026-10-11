@@ -28,6 +28,9 @@ TRACED_NOTE = "Paths traced from the kit's floor-plan picture; the kit has no wa
 TRACED_REASON = "traced from the picture"
 TAP_SNAP_PX = 60.0  # a tap this close to walkable floor is taken to mean that floor
 
+# "Walk me through my shift": the stops, in order. Guide ids on the My shift page only (status, cards, plan).
+TOUR = ("status", "card:do-first", "do-first:1", "card:watch", "map")
+
 CONFIDENT = 0.75  # at or above: point there. Below: offer the closest instead of guessing
 OFFER = 0.34  # the least an alternative may score
 
@@ -321,6 +324,12 @@ class Guide:
         names = [t.label for _, t in offers]
         sentence = "I am not sure what to point at. Did you mean " + (", ".join(names[:-1]) + " or " + names[-1] if len(names) > 1 else names[0]) + "?"
         return {**base, "confidence": best, "steps": [{"say": sentence}], "alternatives": [self._brief(t, s) for s, t in offers]}
+
+    def tour(self) -> dict:
+        """The shift, walked through: the guide's own answer for each stop of TOUR, in order. A stop that does not
+        resolve to itself (nothing to do first, no kit) is left out; no sentence is written here."""
+        stops = [out for out in map(self.resolve, TOUR if self.spot.configured else ()) if out["target"] == out["query"]]
+        return {"configured": self.spot.configured, "stops": stops}
 
     def _by_id(self, thing: str, by_id: dict[str, Target]) -> Target | None:
         """An id said or typed outright: HX-202, hx 202, WP05, waypoint 5, M027, round 27, floor 2."""
