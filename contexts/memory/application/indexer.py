@@ -22,7 +22,8 @@ from contexts.memory.infrastructure.store import MemoryStore
 
 BATCH = 32
 # Everything that adds text to memory_fts. Listed after the projection subscribes, so the text is there first.
-NUDGES = ("perception.scene", "connector.item.synced", "agent.note.written", "memory.episode.closed")
+NUDGES = ("perception.scene", "connector.item.synced", "agent.note.written", "memory.episode.closed",
+          "workspace.file.added")
 
 
 class VectorIndexer:

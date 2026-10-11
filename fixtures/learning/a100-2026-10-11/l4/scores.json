@@ -1,0 +1,64 @@
+{
+  "run_id": "a100-teacher-20261011",
+  "task": "L4",
+  "arm": "teacher",
+  "node": "a100",
+  "hub": "colab",
+  "scores": {
+    "teacher": 0.9166666666666666,
+    "teacher.run_1": 0.9166666666666666,
+    "teacher.run_2": 0.9166666666666666,
+    "teacher.run_1.citations_ok": 1.0,
+    "teacher.run_1.answer_ok": 0.9166666666666666,
+    "teacher.run_1.scorer_score": 0.9583333333333334,
+    "teacher.run_2.citations_ok": 1.0,
+    "teacher.run_2.answer_ok": 0.9166666666666666,
+    "teacher.run_2.scorer_score": 0.9583333333333334
+  },
+  "noise": 0.0,
+  "noise_definition": "max minus min of the teacher's two scores over the items both runs scored, the gate's run-to-run noise rule applied to the teacher",
+  "flips": [],
+  "answers_differ": [
+    "golden-01",
+    "golden-01-4",
+    "golden-02-5"
+  ],
+  "n_items": 24,
+  "n_groups": 4,
+  "held_out": 58,
+  "unscored": 34,
+  "outside_split": 24,
+  "split_sha256": "59227ead6c24d0b7b525ba99c6e2c06f1f7178d2c6f20bd8d556bc16d2c3de39",
+  "dataset_id": "tool-calling-fixture",
+  "scorer_commit": "2a7d3ea1461e7286840c81642833ae080dcf262e",
+  "decode": {
+    "thinking": "off",
+    "sampling": "greedy",
+    "max_tokens": 512
+  },
+  "decode_source": "attested",
+  "seconds": [
+    16.0,
+    15.9
+  ],
+  "started": [
+    "2026-10-11T06:04:20Z",
+    "2026-10-11T06:04:36Z"
+  ],
+  "conditions": {
+    "hub": "colab",
+    "other_chip": true,
+    "other_chip_note": "the teacher arm scored on a Colab NVIDIA A100, not the lab's Strix Halo pods; the score depends on the teacher's outputs, not on the chip, and the cross-chip record below is the equivalence evidence",
+    "engine": "vllm",
+    "vllm_source": "stock wheel from PyPI, no build, no patch",
+    "checkpoint": "RedHatAI/Qwen3.8-27B-INT4",
+    "served_model_name": "teacher",
+    "serve": "python3 -m vllm.entrypoints.openai.api_server --model /content/models/Qwen3.8-27B-INT4 --served-model-name teacher group-brain --port 8000 --host 127.0.0.1 --scheduling-policy priority --enable-auto-tool-choice --tool-call-parser qwen3_coder --max-model-len 16384 --limit-mm-per-prompt {\"image\":1} --gpu-memory-utilization 0.90 --dtype bfloat16 --override-generation-config {\"top_k\":1} --default-chat-template-kwargs {\"enable_thinking\":false}",
+    "decode_attestation": "greedy from the server default top_k 1 and thinking off from the server default chat-template kwarg, both checked before scoring by decode_probe (repeats identical, equal to an explicit temperature 0 top_k 1 thinking-off request, no thinking text)",
+    "equivalence": "R57 cross-chip correctness record fixtures/lab/bench/a100-2026-10-10/vllm-a100-2026-10-10.json (PR #306, branch ctx/runtime/a100-reference, commit d1fb76f), same checkpoint and greedy settings as the Strix Halo baseline fixtures/lab/correctness/vllm-gfx1151-2026-10-11.json: text-kitchen matches all 128 tokens, text-schedule diverges at token 76, image-shapes at token 3, image-bars at token 0",
+    "vllm": "0.31.0",
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0",
+    "gpu": "NVIDIA A100-SXM4-40GB"
+  }
+}

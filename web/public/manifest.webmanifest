@@ -14,8 +14,15 @@
     { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
     { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
+  "share_target": {
+    "action": "/api/files/share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": { "title": "title", "text": "text", "url": "url", "files": [{ "name": "file", "accept": ["*/*"] }] }
+  },
   "shortcuts": [
     { "name": "Approvals", "url": "/approvals/" },
-    { "name": "Today", "url": "/today/" }
+    { "name": "Today", "url": "/today/" },
+    { "name": "Files", "url": "/files/" }
   ]
 }

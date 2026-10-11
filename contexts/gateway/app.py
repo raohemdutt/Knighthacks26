@@ -45,6 +45,8 @@
 - GET  /api/learning/lab    training runs as stories for the Learning lab screen; /api/learning/lab/{run_id} is one
 - GET  /api/learning/lab/bench    the lab's benchmark and energy rows; /experiments is its timeline; POST /routing/simulate
 - GET  /api/digest          [?day=YYYY-MM-DD] the day's episodes in one paragraph, cited, no model call (A6)
+- GET  /api/files           the file inbox (W1); POST /api/files (raw body, ?name=) or /api/files/share (the share sheet's
+                               multipart form) adds one; GET /api/files/{id} downloads it, decrypted
 - GET  /api/profile         who this box serves: name, description, vocabulary, overridden config files
 - GET  /api/league          the League: this week's standings, worst and best with reasons, stake, dares, team waste line
 - GET  /api/league/me       this member's breakdown by target
@@ -94,6 +96,7 @@ from contexts.impact.api import impact_router
 from contexts.habits.api import habits_router
 from contexts.learning.application.export import teach
 from contexts.vault.api import vault_router
+from contexts.workspace.api import files_router
 from contexts.memory.api import build_router as memory_router
 from contexts.perception.api import identity_router
 from contexts.perception.zones_api import zones_router
@@ -213,6 +216,8 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         app.include_router(coach_feedback_router(atlas.day, atlas.coach_feedback, publish=atlas.bus.publish, guard=authorized))
     # GET /api/impact/story, GET/POST /api/impact/practice: the Impact screen (404 when Waste Watch is not set up)
     app.include_router(impact_router(atlas.impact, publish=atlas.bus.publish, guard=authorized))
+    if atlas.files:  # /api/files: the file inbox, shared from the phone, encrypted on the box (W1)
+        app.include_router(files_router(atlas.files, atlas.bus, guard=authorized))
     if atlas.policy:  # GET/PUT /vault/policy, POST /vault/wipe/request, POST /vault/wipe, GET /vault/egress
         app.include_router(vault_router(atlas.policy, atlas.bus, wiper=atlas.wiper, guard=authorized, pictures=atlas.pictures))
     if atlas.identity:  # /identity/settings, /identity/enroll/start, status, photos, scan/*; /identity/members, present, expressions (P9)
