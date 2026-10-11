@@ -594,9 +594,15 @@ rows are a reference, not the lab's numbers. They sit in `lab/refine/metrics.jso
 and `other_chip: true`, and they are `low_confidence` (3 spawns, under the 5 that verdict() needs). Board power is
 nvidia-smi's reading at 1 Hz, so a batch-1 decode window of 8.4 s holds only about 9 samples. A cold spawn took 3 to
 9 minutes: torch.compile, the profiling pass and CUDA graph capture, with the first spawn's compile cached for the rest.
-The fixture folder also holds the per-run rows and the harness summary, the first spawn's serve log, the raw nvidia-smi
-samples, and `greedy_outputs.json`. That file has the four prompts of `prompts.json` at temperature 0, seed 0, thinking
-off, no nonce and 256 tokens, with each token's logprob, for R21's cross-chip correctness comparison.
+The fixture folder also holds the per-run rows and the harness summary, the first spawn's serve log and the raw
+nvidia-smi samples. It also holds the greedy outputs. `vllm-a100-2026-10-10.json` is an R21 baseline: `python -m lab
+correctness record --chip a100 --node a100` was run against the same serve line on a second Colab session, and it
+gives 128 token ids per prompt with their logprobs, so `correctness compare --baseline` takes it directly.
+`greedy_outputs.json` is the same four prompts run to 256 tokens without ignore_eos. Set against the Strix Halo's R21
+baseline (`fixtures/lab/correctness/vllm-gfx1151-2026-10-11.json`), the text-kitchen prompt matches token for token.
+text-schedule first diverges at token 76, image-shapes at token 3 and image-bars at token 0. The image prompts go
+through each engine's own image preprocessing and vision attention, and pod C matched itself on only 2 of 4 prompts,
+so a cross-chip mismatch here is not yet a bug.
 
 ### The same build on pod D, from scripts alone (R30)
 

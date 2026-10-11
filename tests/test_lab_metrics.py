@@ -286,6 +286,19 @@ def test_a100_reference_rows_match_the_fixture(tmp_path):
     assert [r["value"] for r in idle] == [round(summary["idle_no_server"]["avg_w"], 2)]
 
 
+def test_a100_greedy_record_is_an_r21_baseline_beside_the_strix_halo_one():
+    from lab import correctness
+
+    a100 = correctness.load_baseline(A100_FIXTURE / "vllm-a100-2026-10-10.json")
+    strix = correctness.load_baseline(ROOT / "fixtures" / "lab" / "correctness" / "vllm-gfx1151-2026-10-11.json")
+    assert a100["conditions"]["chip"] == "a100" and a100["conditions"]["other_chip"] is True
+    assert a100["conditions"]["prompt_set"] == strix["conditions"]["prompt_set"]
+    assert [len(o["tokens"]) for o in a100["outputs"]] == [128] * 4
+    rows = {r["prompt"]: r["first_divergence"] for r in correctness.compare_outputs(strix["outputs"], a100["outputs"])}
+    # the cross-chip picture on 2026-10-10: the kitchen text matches token for token, the rest diverge
+    assert rows == {"text-kitchen": None, "image-bars": 0, "text-schedule": 76, "image-shapes": 3}
+
+
 def test_seed_file_is_plain_ascii_with_unix_line_endings():
     data = metrics.DEFAULT_PATH.read_bytes()
     data.decode("ascii")
