@@ -53,7 +53,7 @@ that did not start is reported as launch_unconfirmed.
 
 The idle culler. The hub stops a server whose last activity is an hour old and checks every ten minutes. Any request
 through the pod's address counts as activity and any read of the hub API does not, so `status` is free to run as
-often as wanted and `keep-alive` pings `GET /user/<account>/api/me` every 10 minutes (--interval, 30 to 1800
+often as wanted and `keep-alive` pings `GET /user/<account>/api/me` every 10 minutes (--interval, 30 to 1200
 seconds) for --minutes, or until the pod is gone. That call passes the proxy, which records route activity, and is
 one the Jupyter server records as well (its `/api/status` is the one it deliberately does not). A keep-alive on an
 idle pod still bills 240 credits an hour: bound it with --minutes. It re-reads the hub each cycle, so a pod that
@@ -132,7 +132,8 @@ CONFIRM_READS = 3                   # reads that settle whether a POST the hub a
 CONFIRM_PAUSE_S = 3.0               # seconds between those reads
 KEEP_ALIVE_INTERVAL_S = 600
 KEEP_ALIVE_MIN_S = 30
-KEEP_ALIVE_MAX_S = 1800             # the culler waits an hour and checks every ten minutes: stay well inside
+KEEP_ALIVE_MAX_S = 1200             # the culler waits an hour and checks every ten minutes: one failed ping at the
+                                    # longest interval still leaves two of its checks in hand
 PING_PATH = "/api/me"                # a tracked API call; /api/status is the one the Jupyter server does not count
 SCRIPT_TIMEOUT_S = 900.0
 SCRIPT_POLL_S = 5.0

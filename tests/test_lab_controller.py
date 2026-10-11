@@ -665,7 +665,7 @@ def test_keep_alive_calls_a_pod_lost_when_pings_worked_though_the_hub_could_not_
     assert [row["outcome"] for row in world.rows("pod keep-alive")] == ["alive", "lost"]
 
 
-@pytest.mark.parametrize("interval", [0, 29, 1801, -600])
+@pytest.mark.parametrize("interval", [0, 29, 1201, 1800, -600])
 def test_keep_alive_refuses_an_interval_the_culler_would_make_useless_or_wasteful(world, interval):
     world.hub.start_server("A")
     with pytest.raises(ValueError):
@@ -1360,3 +1360,18 @@ def test_the_ledger_verb_names_are_the_ones_alerts_reads():
     assert ctl_module.BALANCE is alerts.BALANCE_METRIC
     assert ctl_module.POD_LAUNCH is alerts.POD_LAUNCH
     assert ctl_module.POD_STOP is alerts.POD_STOP
+
+
+def test_keep_alive_interval_leaves_room_for_one_failed_ping_inside_the_culler_hour(world, capsys):
+    # pods-keep-alive-max-interval-no-margin: _cycle does not retry a ping, so at 1800 s one failure is a gap of
+    # 3600 s, the culler's idle threshold. The longest interval is 1200 s.
+    world.hub.start_server("A")
+    with pytest.raises(ValueError):
+        world.controller.keep_alive(["A"], interval_s=1201, minutes=10)
+    assert world.hub.calls == []
+    with pytest.raises(SystemExit) as caught:
+        ctl_module.run(["keep-alive", "--interval", "1500"], environ=ENV, env_files=[], transport=world.hub.transport,
+                       sleep=world.clock.sleep, clock=world.clock.time)
+    assert caught.value.code == 2
+    assert "1200" in capsys.readouterr().err
+    world.controller.keep_alive(["A"], interval_s=1200, minutes=10)
