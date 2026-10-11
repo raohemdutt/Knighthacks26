@@ -196,3 +196,41 @@ def clean_transcript(raw: str) -> str:
     if m := _REPEATED.match(t):
         t = m[1].rstrip(" .,!?") + (m[2] or ("?" if m[1].rstrip().endswith("?") else ""))
     return t
+
+
+# -- a conversation: after an answer the box keeps listening for a reply (session.py, `follow_up`) --------------------------
+
+_THANKS = r"thanks(?: a lot| so much)?|thank you(?: so much| very much)?|cheers"
+_CLOSING = re.compile(r"^\W*(?:(?:no|nope|nah|ok|okay|alright|all right)\W+)?(?:(" + _THANKS + r")|that's all|that is all|that's it"
+                      r"|that is it|that'll be all|never ?mind|stop|goodbye|good bye|bye(?: bye)?|no|nope|nah|i'm good|im good|i am good"
+                      r"|i'm done|we're done|all good)(?:\W+(?:for now|atlas|" + _THANKS + r"|bye))*\W*$", re.I)
+ECHO_MIN_WORDS = 3  # two words shared with the answer can be a real reply ("the desk?"); three in the same order are the answer
+ECHO_SHARE = 0.8  # this much of what was heard being words of the answer is the speaker's tail, misheard a little
+
+
+def closing_reply(text: str) -> str | None:
+    """The short line that ends a conversation when `text` is a goodbye said alone ("thanks", "that's all", "never mind",
+    "no"); None for anything else. "Thanks, and what about tomorrow?" is a question, not a goodbye."""
+    m = _CLOSING.match(text.replace("\u2019", "'"))
+    if not m:
+        return None
+    return "Any time." if m[1] or re.search(_THANKS, text, re.I) else "Okay."
+
+
+def _words(text: str) -> list[str]:
+    return re.findall(r"[a-z0-9']+", text.lower().replace("\u2019", "'"))
+
+
+def is_echo(heard: str, spoken: list[str]) -> bool:
+    """True when what the microphone heard is (nearly) what Atlas just said: the whole answer, a run of its words, or
+    mostly its words. A reply that only shares a word or two with the answer ("which desk?") is not an echo."""
+    h, s = _words(heard), _words(" ".join(spoken))
+    if not h or not s:
+        return False
+    if h == s:
+        return True
+    if len(h) < ECHO_MIN_WORDS:
+        return False
+    if any(s[i:i + len(h)] == h for i in range(len(s) - len(h) + 1)):
+        return True
+    return len(h) > ECHO_MIN_WORDS and sum(w in s for w in h) / len(h) >= ECHO_SHARE
