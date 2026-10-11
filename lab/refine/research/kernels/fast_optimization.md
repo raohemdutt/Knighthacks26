@@ -827,44 +827,49 @@ model (pending; not in the repository yet).
 
 ## Decisions (and why the alternatives lost)
 
-- Tool: Ax 1.x through its stable `Client`, method "fast" (dimension-scaled GP, qLogNEI), because it
-  scored highest on mixed and noisy problems at 50 trials in the broadest published comparison [B1],
-  has asynchronous asks, `fixed_parameters`, baseline and trial attachment in its stable API [B2],
-  and is what the lab's driver (R45) is written against. Vizier reports itself ahead on categorical
-  spaces [B13] but needs a service; SMAC3's strength is at larger budgets [B7]; HEBO's interface is a
-  synchronous batch [B12]; Optuna recommends TPE above 100 trials [B14]; Nevergrad and CMA-ES are
-  sized for thousands of evaluations [B18]; OpenTuner belongs to the kernel lane [B19].
-- Strategy: no Sobol points; the baseline and four prior arms first, ordered to reuse the compile
-  cache (baseline cold, `gpu_max_hw_queues=1` warm, then `exllama_fp16`, `exllama_fp16` with MTP 1,
-  MTP 1); then one Ax trial per free worker, every second one held to the worker's warm compile
-  class; trials grouped by card state (section 3), so each spawn runs every restart-free
-  measurement of its configuration back to back; repeats are three requests inside one spawn; a
-  trial stops after its first request if its decode is under half the baseline's and is completed
-  with what it measured; a launch that is not ready within 1.5 times the expected restart is marked
-  failed.
-- Expected evaluations to beat the baseline: R35's own odds for its three big switches (0.3 for the
-  linear kernel, 0.4 for MTP, 0.25 for hardware queues) give about 0.69 that one of the first five
-  trials beats the baseline by about the margin R35 predicts (derived: 1 - 0.7 x 0.6 x 0.75);
-  otherwise about 12 more Ax trials. A win counts after 3 interleaved spawns of the best arm and 3 of the baseline on the same
-  pod (one-sided 95 percent, power 0.8 for a gain of about two spawn standard deviations); the lab's
-  `verdict()` wants 5 per arm [B55], so tonight's verdict is low-confidence and the 5-spawn verdict
-  is queued on T0.
-- How the trial count falls with each technique: Ax's default (center plus 4 Sobol points, then the
-  GP) is level with random search until about 20 trials on mixed spaces [B1]; replacing the Sobol
-  points with the prior arms puts the likely win at trial 2 to 5 when a prior holds (about 0.69);
-  the public data adds no further cut for the seven flags it does not vary (section 9), so about 17
-  own trials per lane remain; early stopping, the 64-token screen, the warm compile cache and
-  grouping by card state do not lower the count but make each trial cheaper (sections 2 and 3);
-  parallel workers keep the count and divide the wall clock, up to four [B8].
-- Expected wall clock to a confirmed inference win (612 s screen trials, 676 s confirmation
-  spawns): one inference pod 2.0 hours if a prior hits and 4.0 if not (expected 2.6); two pods 1.1
-  and 2.1 (expected 1.4); four pods 0.7 and 1.2 (expected 0.9).
-- Pods: by default (plan B) pod D runs R38, then the kernel lane, then R39, as the placement plan
-  gives Ax trials the exclusive card [B60]; pod C keeps serving the teacher and takes the
-  restart-free attach measurements of the baseline (FO7). Plan A runs R39 on pod C at the same time
-  as R38 only with Ilan's go to serve the teacher at a share of at most 0.63 and to override the
-  placement check. An extra pod AMD grants joins the inference lane, with the driver moved to this
-  machine (hub runner) so one Ax experiment serves all inference workers.
+Tool: Ax 1.x through its stable `Client`, method "fast" (dimension-scaled GP, qLogNEI), because it
+scored highest on mixed and noisy problems at 50 trials in the broadest published comparison [B1],
+has asynchronous asks, `fixed_parameters`, baseline and trial attachment in its stable API [B2],
+and is what the lab's driver (R45) is written against. Vizier reports itself ahead on categorical
+spaces [B13] but needs a service; SMAC3's strength is at larger budgets [B7]; HEBO's interface is a
+synchronous batch [B12]; Optuna recommends TPE above 100 trials [B14]; Nevergrad and CMA-ES are
+sized for thousands of evaluations [B18]; OpenTuner belongs to the kernel lane [B19].
+
+Strategy: no Sobol points; the baseline and four prior arms first, ordered to reuse the compile
+cache (baseline cold, `gpu_max_hw_queues=1` warm, then `exllama_fp16`, `exllama_fp16` with MTP 1,
+MTP 1); then one Ax trial per free worker, every second one held to the worker's warm compile
+class; trials grouped by card state (section 3), so each spawn runs every restart-free
+measurement of its configuration back to back; repeats are three requests inside one spawn; a
+trial stops after its first request if its decode is under half the baseline's and is completed
+with what it measured; a launch that is not ready within 1.5 times the expected restart is marked
+failed.
+
+Expected evaluations to beat the baseline: R35's own odds for its three big switches (0.3 for the
+linear kernel, 0.4 for MTP, 0.25 for hardware queues) give about 0.69 that one of the first five
+trials beats the baseline by about the margin R35 predicts (derived: 1 - 0.7 x 0.6 x 0.75);
+otherwise about 12 more Ax trials. A win counts after 3 interleaved spawns of the best arm and 3 of the baseline on the same
+pod (one-sided 95 percent, power 0.8 for a gain of about two spawn standard deviations); the lab's
+`verdict()` wants 5 per arm [B55], so tonight's verdict is low-confidence and the 5-spawn verdict
+is queued on T0.
+
+How the trial count falls with each technique: Ax's default (center plus 4 Sobol points, then the
+GP) is level with random search until about 20 trials on mixed spaces [B1]; replacing the Sobol
+points with the prior arms puts the likely win at trial 2 to 5 when a prior holds (about 0.69);
+the public data adds no further cut for the seven flags it does not vary (section 9), so about 17
+own trials per lane remain; early stopping, the 64-token screen, the warm compile cache and
+grouping by card state do not lower the count but make each trial cheaper (sections 2 and 3);
+parallel workers keep the count and divide the wall clock, up to four [B8].
+
+Expected wall clock to a confirmed inference win (612 s screen trials, 676 s confirmation
+spawns): one inference pod 2.0 hours if a prior hits and 4.0 if not (expected 2.6); two pods 1.1
+and 2.1 (expected 1.4); four pods 0.7 and 1.2 (expected 0.9).
+
+Pods: by default (plan B) pod D runs R38, then the kernel lane, then R39, as the placement plan
+gives Ax trials the exclusive card [B60]; pod C keeps serving the teacher and takes the
+restart-free attach measurements of the baseline (FO7). Plan A runs R39 on pod C at the same time
+as R38 only with Ilan's go to serve the teacher at a share of at most 0.63 and to override the
+placement check. An extra pod AMD grants joins the inference lane, with the driver moved to this
+machine (hub runner) so one Ax experiment serves all inference workers.
 
 ## Approach (the night configuration file)
 

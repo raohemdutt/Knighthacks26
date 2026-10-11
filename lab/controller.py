@@ -320,6 +320,20 @@ class Watch:
 
 # --- which image a pod runs ---------------------------------------------------------------------
 
+STEP_LINE = re.compile(r"^### (\w+)((?: +[\w.]+=\S+)+)[ \t]*$", re.MULTILINE)
+
+
+def step_marks(output: str) -> dict[str, dict[str, str]]:
+    """The `### <step> key=value ...` lines a pod script prints (wall_s, rc, kernel, ...), by step, the last line of a
+    step winning. The `### END rc=<code>` line run-script appends is not a step."""
+    marks: dict[str, dict[str, str]] = {}
+    for found in STEP_LINE.finditer(output):
+        if found.group(1) == END_MARKER.split()[1]:
+            continue
+        marks[found.group(1)] = dict(field.split("=", 1) for field in found.group(2).split())
+    return marks
+
+
 def parse_image_answer(output: str) -> dict[str, Any]:
     """The image and the GPU device a pod reported when it ran IMAGE_SCRIPT: {image: text or None, gpu_device:
     True, False or None}. A line that is not one of the two is ignored."""
@@ -1138,6 +1152,8 @@ class Controller:
             conditions = {"script": path.name, "exit_code": answer["exit_code"], "seconds": answer["seconds"]}
             if extra:
                 conditions["with"] = [name for name, _ in extra]
+            if answer.get("steps"):
+                conditions["steps"] = answer["steps"]
             return self._row(answer, POD_RUN_SCRIPT, account, conditions=conditions, note=answer.get("error"),
                              refs={"run_id": run_id})
 
@@ -1177,6 +1193,9 @@ class Controller:
         printed = output[:done.start()] if done else output
         tail = self.scrub(printed.rstrip())[-TAIL_CHARS:]
         base["output_tail"] = tail
+        steps = step_marks(printed)
+        if steps:
+            base["steps"] = steps
         if done is None:
             return finish({"ok": False, "outcome": "timeout", "error": f"no exit code after {timeout_s:g} s; the script may still run"})
         code = int(done.group(1))

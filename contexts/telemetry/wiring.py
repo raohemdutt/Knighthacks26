@@ -31,6 +31,9 @@ and one joules-per-answer computation; "fake" runs alone):
   (telemetry.clock.offset) on the first poll and about once a minute after, the best of its last ten exchanges.
   The old node names in ATLAS_POD_ACCOUNTS (gpu-a, gpu-b) still read as pod-a and pod-b.
 
+ATLAS_TELEMETRY_IDLE_W (pod-a=10.27,pod-b=10.27,jetson=15.76) sets the calibrated idle per node over
+config/telemetry_idle.yaml, the figure stored beside each joules-per-answer value (application/idle.py).
+
 Every source also gets joules per answer (application/joules.py): the service publishes each answered request's
 telemetry.joules_per_answer once its window has settled, and `service.stats()` gives the stats page watts now,
 joules per answer and energy per day per node. Nothing is measured about the sensors yet (Calibration), so every
@@ -45,6 +48,7 @@ from pathlib import Path
 import httpx
 
 from bus import EventBus
+from contexts.telemetry.application.idle import idle_figures
 from contexts.telemetry.application.jetson_sampler import DEFAULT_INTERVAL_MS, JetsonPowerSampler
 from contexts.telemetry.application.joules import Calibration, JoulesPerAnswerProjection
 from contexts.telemetry.application.projection import TelemetryProjection
@@ -80,6 +84,7 @@ def build_telemetry(source: str, bus: EventBus, *, fixture: str | Path | None = 
     projection = TelemetryProjection()
     runners = [_runner(name, bus, projection, fixture=fixture, speed=speed, loop=loop, on_jetson=on_jetson, env=env,
                        transport=transport) for name in names]
+    calibration = calibration or Calibration(idle=idle_figures(env))  # the nodes' calibrated idle, stored beside values
     service = TelemetryService(projection, runners, source=",".join(names),
                                joules=JoulesPerAnswerProjection(calibration))
     service.subscribe(bus)

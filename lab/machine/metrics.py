@@ -51,7 +51,7 @@ else:
 
 __all__ = [
     "DEFAULT_PATH", "FIELDS", "LOCK_TIMEOUT", "FileLock", "MetricsFormatError", "MetricsLocked",
-    "FIRST_LINE_NUMBER", "add", "check_metric_name", "check_row", "history", "latest", "load", "load_numbered",
+    "FIRST_LINE_NUMBER", "METRIC_NAME_RE", "add", "check_metric_name", "check_row", "history", "latest", "load", "load_numbered",
 ]
 
 log = logging.getLogger("lab.metrics")
@@ -72,7 +72,10 @@ _LOCK_HELD_ERRNOS = tuple(sorted({
 }))
 _BINARY = getattr(os, "O_BINARY", 0)
 
-_METRIC_RE = re.compile(r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+")
+#: A metric name: dotted lowercase words, each starting with a letter (teacher.decode_tok_s). The one definition;
+#: lab.machine.refine_formats and lab.machine.ledger use this object. Non-capturing, as no caller reads a group.
+METRIC_NAME_RE = re.compile(r"[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+")
+_METRIC_RE = METRIC_NAME_RE
 _NODE_RE = re.compile(r"[a-z0-9][a-z0-9._-]*")
 _TS_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?Z")
 
