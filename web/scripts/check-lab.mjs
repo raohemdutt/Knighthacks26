@@ -236,6 +236,23 @@ try {
   is("compare: meters offline", LC.compareText(boxD, { ...pairD, energy: null }), "same tool (last_seen), joules not compared, meters offline on the pods");
   is("compare: a fractional ratio", LC.compareText({ ...boxD, energy: { joules: 100 } }, pairD), "same tool (last_seen), the brain used 2.8x the joules");
   is("both asks two", LC.targetsOf("both").join(","), "box,pair");
+  // ---- the "Train for a minute" button (lib/trainBurst.ts): real steps and joules, or said missing
+  const TB = await load("trainBurst");
+  is("burst: the default choice is both pods", TB.BURST_CHOICES[0].pods.join(","), "C,D");
+  is("burst: button text, both pods", TB.buttonText(["C", "D"]), "Train for a minute on both pods");
+  is("burst: button text, one pod", TB.buttonText(["D"]), "Train for a minute on pod D");
+  is("burst: pods in words", TB.podsText(["C", "D"]), "pod C and pod D");
+  is("burst: pod C shades the head's line", `${TB.burstNode("C")},${TB.burstNode("D")}`, "pod-a,pod-b");
+  const pr = (steps, seconds) => ({ ok: true, steps, seconds, train_s: 62, loss: 0.13, peak_gb: 12.1, error: null });
+  const bv = { available: true, reason: null, state: "done", pods: ["C", "D"], seconds_asked: 60, started: null, ended: null,
+    started_ms: 0, ended_ms: 88_000, per_pod: { C: pr(1, 73.8), D: pr(1, 71.7) },
+    energy: { joules: 15116, watts_avg: 170.8, seconds: 88.5, pods: {} }, message: null };
+  is("burst line", TB.burstLine(bv), "training burst: pod C 1 step in 74 s, pod D 1 step in 72 s, about 15,116 joules on the pods (171 W average)");
+  is("burst line, meters offline", TB.burstLine({ ...bv, energy: null }).endsWith("meters offline, no joules"), true);
+  is("burst line, a pod that failed", TB.burstLine({ ...bv, per_pod: { C: { ...pr(null, null), ok: false, error: "x" }, D: pr(2, 130) } }),
+    "training burst: pod C did not train (x), pod D 2 steps in 130 s, about 15,116 joules on the pods (171 W average)");
+  is("burst problem: 503 reason", TB.burstProblem({ ...bv, state: "idle", available: false, reason: "missing keys" }, null), "Training is not available from this box: missing keys");
+  is("burst problem: none when done", TB.burstProblem(bv, null), null);
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }

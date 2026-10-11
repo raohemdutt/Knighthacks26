@@ -1,0 +1,66 @@
+.burst {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.go {
+  padding: 8px 14px;
+  border: none;
+  border-radius: 8px;
+  background: var(--watch, #ffc062);
+  color: var(--bg);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.go:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.opt {
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.opt.on {
+  border-color: var(--watch, #ffc062);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.opt:disabled {
+  cursor: default;
+}
+
+.note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}

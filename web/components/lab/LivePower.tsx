@@ -17,6 +17,8 @@ import {
 import type { SharedBrainPair } from "@/lib/sharedBrain";
 import { LabEChart, chartAxis, chartBase, useChartTokens } from "./Charts";
 import { LiveChat } from "./LiveChat";
+import { TrainBurstControl, useTrainBurst } from "./TrainBurst";
+import { burstLine, burstNode, podsText } from "@/lib/trainBurst";
 import { useReduced } from "./Labels";
 import p from "./livePower.module.css";
 
@@ -93,6 +95,9 @@ export function LivePower({ poll, reduced, compact = false, chat = false }: { po
   const [windows, setWindows] = useState<{ start: number; end: number | null }[]>([]);
   const onWindow = (start: number, end: number | null) =>
     setWindows((w) => [...w.filter((x) => x.start !== start && x.start > Date.now() - POWER_SPAN_MS - 10_000), { start, end }]);
+  // the "Train for a minute" button's burst (TrainBurst.tsx): its window shades the pods that trained, kept after it ends
+  const burst = useTrainBurst(chat && !compact);
+  const bw = burst.window;
   const t = useChartTokens();
   const [buf, setBuf] = useState<PowerReading[]>([]);
   const [joules, setJoules] = useState(0);
@@ -137,6 +142,7 @@ export function LivePower({ poll, reduced, compact = false, chat = false }: { po
     const top = Math.max(20, Math.ceil((Math.max(0, ...ws, ...idles) * 1.25) / 10) * 10);
     const sameIdle = idles.length === 2 && Math.abs(idles[0]! - idles[1]!) < 0.05;
     const base = chartBase(t, reduced);
+    const shadeBoth = !!bw && bw.pods.length > 1; // two pods' identical stretches: one "training" label, not two
     return {
       ...base,
       // one poll's move eased over one poll, so the lines glide left like a monitor's trace
@@ -156,6 +162,18 @@ export function LivePower({ poll, reduced, compact = false, chat = false }: { po
       yAxis: { ...axis, type: "value", min: 0, max: top, splitNumber: compact ? 2 : 4, axisLabel: { ...axis.axisLabel, fontSize: compact ? 11 : 12, formatter: "{value} W" } },
       series: POWER_PODS.map((pod, i) => {
         const shade = i === 0 ? windows.filter((w) => (w.end ?? now) >= now - POWER_SPAN_MS) : [];
+        const train = bw && bw.pods.some((x) => burstNode(x) === pod.node) && (bw.end ?? now) >= now - POWER_SPAN_MS ? [bw] : [];
+        const label = (text: string, color: string) => ({ show: true, position: "insideTop" as const, color, fontSize: 12, fontWeight: 600, formatter: text });
+        const areas = [
+          ...shade.map((w) => [
+            { xAxis: Math.max(w.start, now - POWER_SPAN_MS), itemStyle: { color: `${t.accent2}26`, borderColor: `${t.accent2}88`, borderWidth: 1 }, label: label("answering", t.text) },
+            { xAxis: Math.min(w.end ?? now, now) },
+          ]),
+          ...train.map((w) => [
+            { xAxis: Math.max(w.start, now - POWER_SPAN_MS), itemStyle: { color: `${t.watch}22`, borderColor: `${t.watch}99`, borderWidth: 1 }, label: label(i === 0 || !shadeBoth ? "training" : "", t.watch) },
+            { xAxis: Math.min(w.end ?? now, now) },
+          ]),
+        ];
         const data = podLine(shown, pod.node);
         const tail = data.length ? data[data.length - 1]![1] : "-";
         const floor = idle[pod.node];
@@ -171,15 +189,7 @@ export function LivePower({ poll, reduced, compact = false, chat = false }: { po
           lineStyle: { width: compact ? 2 : 2.5, color },
           areaStyle: { color: { type: "linear" as const, x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: `${color}2e` }, { offset: 1, color: `${color}00` }] } },
           data,
-          markArea: shade.length
-            ? {
-                silent: true,
-                animation: false,
-                itemStyle: { color: `${t.accent2}26`, borderColor: `${t.accent2}88`, borderWidth: 1 },
-                label: { show: true, position: "insideTop" as const, color: t.text, fontSize: 12, fontWeight: 600, formatter: "answering" },
-                data: shade.map((w) => [{ xAxis: Math.max(w.start, now - POWER_SPAN_MS) }, { xAxis: Math.min(w.end ?? now, now) }]),
-              }
-            : { data: [] },
+          markArea: areas.length ? { silent: true, animation: false, data: areas as never } : { data: [] },
           endLabel: {
             show: typeof tail === "number",
             color,
@@ -211,7 +221,7 @@ export function LivePower({ poll, reduced, compact = false, chat = false }: { po
         };
       }),
     };
-  }, [t, reduced, compact, buf, idle, newest, windows]);
+  }, [t, reduced, compact, buf, idle, newest, windows, bw]);
 
   const label = newest
     ? `Watts over the last two minutes. ${POWER_PODS.map((pod) => {
@@ -228,6 +238,10 @@ export function LivePower({ poll, reduced, compact = false, chat = false }: { po
           {offline ? (
             <>
               Power, <span className={p.off}>meters offline</span>
+            </>
+          ) : burst.running && burst.view ? (
+            <>
+              Power, right now, <span style={{ color: t.watch }}>training on {podsText(burst.view.pods)}</span>
             </>
           ) : (
             "Power, right now"
@@ -247,8 +261,14 @@ export function LivePower({ poll, reduced, compact = false, chat = false }: { po
         <div className={p.graph}>
           {option ? <LabEChart option={option} height={compact ? 150 : 260} label={label} /> : <p className={p.empty}>Waiting for the first reading from the pods&apos; meters.</p>}
           {windows.some((w) => w.end === null) ? <p className={p.note}>The shaded stretch is the answer streaming in beside the graph.</p> : null}
+          {burst.view?.state === "done" && bw ? <p className={p.energy}>{burstLine(burst.view)}</p> : null}
         </div>
-        {chat && !compact ? <LiveChat reduced={reduced} onWindow={onWindow} /> : null}
+        {chat && !compact ? (
+          <div className={p.side}>
+            <TrainBurstControl burst={burst} />
+            <LiveChat reduced={reduced} onWindow={onWindow} />
+          </div>
+        ) : null}
       </div>
       {offline && reason ? <p className={p.note}>{reason}</p> : null}
       <p className={p.energy}>
