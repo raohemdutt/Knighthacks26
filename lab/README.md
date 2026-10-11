@@ -59,6 +59,7 @@ adding one touches no shared file but this list.
 - [`spot-score`](docs/spot-score.md): Score a model on the held-out SPOT questions (L26): split joins the set's two folders, score scores.
 - [`stop`](docs/stop.md): Create the STOP file: every verb but ready, resume and stop is refused.
 - [`sweep-request`](docs/sweep-request.md): Request-side settings sweep of the teacher on one spawn: the dry run, the pod script, the pod run, collect.
+- [`tool-call-agreement`](docs/tool-call-agreement.md): Tool-call agreement of two served models (before, after) on one side of a dataset's frozen split (L4).
 
 ## Which hub is live today (2026-10-10)
 
