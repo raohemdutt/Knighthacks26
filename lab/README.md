@@ -567,6 +567,43 @@ conditions; the per-second samples are `fixtures/telemetry/pod_power/strixhalo_2
 sampler stays up under nohup (`bash ~/lab/pod_power.sh stop`).
 The 39 W `pod.idle_watts` row is the R9700, the other chip.
 
+### A100 reference (Colab)
+
+The same checkpoint, `RedHatAI/Qwen3.8-27B-INT4`, measured on another chip as a reference (R57, 2026-10-10 evening ET,
+UTC 2026-10-11): a Google Colab A100 runtime (NVIDIA A100-SXM4-40GB, 400 W limit, driver 580.82.07, CUDA 13.0) with
+stock vLLM 0.31.0 from PyPI (torch 2.13.0+cu130; no build, no patch), served as `teacher` with `--max-model-len 16384
+--gpu-memory-utilization 0.90`, thinking off. The run used `python -m lab bench run --node a100 --repeats 3`: one cold
+spawn per run, batch sizes 1, 4, 8 and 16, plus 64 because the KV cache (288,165 tokens, fp8 as vLLM picked it under
+`auto`) holds it. Warm-ups were discarded, each request was greedy with 128 tokens, and all 15 runs came back ok. The
+harness reads amd-smi only, so it ran without watts. `nvidia-smi --query-gpu=timestamp,power.draw -l 1` sampled the
+board power beside it, and `fixtures/lab/bench/a100-2026-10-10/analyze.py` integrates those samples over each run's
+decode window. Medians of 3 spawns (peak is the max):
+
+| batch | tok/s per stream | tok/s total | TTFT | avg W | peak W | J/token gross | idle W (no server) |
+|---|---|---|---|---|---|---|---|
+| 1 | 65.0 | 61.2 | 0.118 s | 306 | 408 | 5.02 | 46.1 |
+| 4 | 59.2 | 198.9 | 0.495 s | 303 | 412 | 1.52 | 46.1 |
+| 8 | 52.6 | 321.4 | 0.824 s | 321 | 419 | 1.00 | 46.1 |
+| 16 | 36.0 | 462.3 | 1.056 s | 356 | 413 | 0.77 | 46.1 |
+| 64 | 11.3 | 636.3 | 1.938 s | 382 | 425 | 0.60 | 46.1 |
+
+Next to the Strix Halo at batch 1 (2.9 tok/s, 42 J per generated token, and a chip-sheet ceiling of about 12 tok/s for
+4-bit decode), the A100 decodes about 22 times faster at about an eighth of the energy per token. The A100 runs
+Marlin W4A16 kernels and FlashInfer attention, and its HBM2 has several times the Strix Halo's memory bandwidth. These
+rows are a reference, not the lab's numbers. They sit in `lab/refine/metrics.jsonl` on node `a100` with `hub: colab`
+and `other_chip: true`, and they are `low_confidence` (3 spawns, under the 5 that verdict() needs). Board power is
+nvidia-smi's reading at 1 Hz, so a batch-1 decode window of 8.4 s holds only about 9 samples. A cold spawn took 3 to
+9 minutes: torch.compile, the profiling pass and CUDA graph capture, with the first spawn's compile cached for the rest.
+The fixture folder also holds the per-run rows and the harness summary, the first spawn's serve log and the raw
+nvidia-smi samples. It also holds the greedy outputs. `vllm-a100-2026-10-10.json` is an R21 baseline: `python -m lab
+correctness record --chip a100 --node a100` was run against the same serve line on a second Colab session, and it
+gives 128 token ids per prompt with their logprobs, so `correctness compare --baseline` takes it directly.
+`greedy_outputs.json` is the same four prompts run to 256 tokens without ignore_eos. Set against the Strix Halo's R21
+baseline (`fixtures/lab/correctness/vllm-gfx1151-2026-10-11.json`), the text-kitchen prompt matches token for token.
+text-schedule first diverges at token 76, image-shapes at token 3 and image-bars at token 0. The image prompts go
+through each engine's own image preprocessing and vision attention, and pod C matched itself on only 2 of 4 prompts,
+so a cross-chip mismatch here is not yet a bug.
+
 ### The same build on pod D, from scripts alone (R30)
 
 Account D's pod on SJC (pod B's role, the trainer; the kernels experiments run there) holds the same stock build and
@@ -1057,6 +1094,25 @@ steps. The row in `lab/refine/metrics.jsonl` records it as low confidence.
 Tested against `lab/bench_fake.py` (spawned as a real process; `--diverge-at`, `--retoken-at` and `--diverge-match`
 make a second server answer differently from a chosen position): record, compare equal, compare divergent, a
 same-text-different-token divergence, conditions that differ (refused, nothing sent, and `--allow-condition-drift`).
+## Quark INT4 checkpoint against the teacher's: `python -m lab quark-compare` (R23)
+
+`amd/Qwen3.8-27B-Quark-AWQ-INT4-W4A16` loads at b1388b1 only with the loader hunks at the end of
+`lab/vllm-gfx1201.diff` (Python only: the mapper takes the export's `algo_config`, a list of dicts, and the
+`QuarkW4A16Int4` scheme of vLLM PR #48606 is backported). Its key names are the ones b1388b1 reads;
+`lab/quark_keys.py` gives every key's disposition and is the pre-flight. The runner compares it with RedHat INT4 on
+pod B, same build and settings sheet (the pinned baseline of `data/searchspace-inference-gfx1151.json`):
+
+```
+python -m lab quark-compare preflight                    # checkpoint sizes, config keys, time plan; changes nothing
+python -m lab quark-compare slot [--row ID --reply TEXT] # the 60-minute pod B row (critique, then reply)
+python -m lab quark-compare run --batches 1,4            # on pod B in the slot: hunks on, bench, correctness, hunks off
+python -m lab quark-compare record --result F --control-rows R20_ROWS [--reference F] --row ID
+```
+
+`record` reads tok/s and J/token B against A per batch size with `lab/machine/verdict.py`, the exact-match rate
+against A's greedy outputs, writes a `quark-compare` ledger row, T0's E5 result (arms A and B) and
+`R23_T0_result.txt`, and releases the slot; `all` does the four in one process. Steps for the real run:
+`lab/R23_REAL_RUN.md`.
 
 ## Placement plan: `python -m lab placement` (R46)
 
@@ -1512,3 +1568,65 @@ python -m lab.ladder --capacity <record>.json [--capacity <record>.json] --sampl
 ```
 
 Tests: `tests/test_lab_capacity.py`, `tests/test_lab_ladder.py` (the fake client only; no pod, hub or GPU).
+## Desk-object scorer: `python -m lab desk-score` (L24)
+
+Scores a model on the held-out desk-object examples of an export, served as the box serves it, in the scores shape
+the eval gate (L4) reads. The module docstring of `lab/desk_score.py` holds every rule; the short version:
+
+```
+python -m lab desk-score split data/exports/<dataset_id> --held-out 50     # once: split.json by frame_ref group
+python -m lab desk-score score data/exports/<dataset_id> --base-url http://127.0.0.1:8080 --runs 2 \
+    --json desk-current.json --node jetson
+```
+
+- **The split.** `split` writes `split.json` once, in the format `lab/dataset.py load_split` reads: whole frame_ref
+  groups in the order of the sha256 of their frame_ref, held out until the side holds at least `--held-out`
+  examples. It refuses a folder that has one already and records the file's sha256 (ledger verb `desk-split`).
+  `score` reads the held-out side only from that file, through `load_split`, so a leaky or short split never scores.
+- **The request.** One chat request per held-out example: the picture as a data URL and the export's instruction as
+  the one user message, with one decode setting (`DECODE`: temperature 0, top_k 1, seed 0, max_tokens 24,
+  `enable_thinking` false). The caption is not sent.
+- **The score.** Answer and label (the example's `target`) normalised the same way (lowercase, punctuation and the
+  articles a, an, the dropped, the last word made singular), then exact match. The answer is
+  `{"score", "model", "results", "desk.<object>", ..., "desk.n_items", "desk.n_groups"}`: the shape
+  `contexts/agent/eval.py --json` writes, with per-object detail as dotted keys; every result keeps its frame_ref so
+  the gate pairs by group. `score(base_url, examples, prompt=...)` is the call the gate makes.
+- **The row.** One `desk-score` ledger row per run (task L24): metrics `desk.score`, `desk.<object>`,
+  `desk.n_items`, `desk.n_groups`; refs `split_sha256`, `commit` (git HEAD, or `--commit` where lab/ is a copy),
+  `model`, `run_id`; conditions with the decode setting, the prompt's sha256 and `meets_deploy_floor`.
+
+Tests: `tests/test_lab_desk_score.py`, on `lab/desk_fake.py` (a fake llama-server over an httpx transport) and
+`fixtures/learning/desk-fixture/` (12 synthetic examples on 8 frame_refs; `python -m lab.desk_fake build-fixture`
+rebuilds it). The real runs on the Jetson and on a pod are in `lab/L24_REAL_RUN.md`.
+>>>>>>> 2fbf5f3 (L24: README section and the real-run steps for the desk scorer)
+## Experiment runner: `python -m lab experiment run` (O29)
+
+One kernels-track experiment from its ledger definition to its verdict on pod B, in one call
+(`lab/machine/experiment_run.py`):
+
+```
+python -m lab experiment run E3 --dry-run                  # check and prepare only: the plan and the pod script, nothing sent
+python -m lab experiment run E3 [--task O29] [--row <row>] [--reply "..."] [--repeats N] [--config FILE]
+```
+
+- **Check.** The experiment is on the kernels track, its metric is one `lab/bench.py` measures, it has a run config
+  (`RUN_CONFIGS`, today E3, or `--config FILE` in the same shape), the account (`--account`, default D) fills the node
+  the experiment names, and the placement plan puts benchmarks there. Anything else is refused before the queue or the
+  pod is asked.
+- **Prepare and upload.** One `lab/bench.py run` per distinct argument set the arms need (E3's four batch sizes share
+  one spawn per repeat and are split by `batch_size`), `--repeats` from the experiment's `min_n`. The harness travels
+  inside the script as a base64 tarball, so the pod needs only python3 and httpx. The script and its plan go into
+  the Jupyter root before the slot is asked for.
+- **Slot.** `slot request` (kind bench; a 60-minute slot carries the config's justification) and `slot start`. A start
+  the queue refuses ends the call with outcome `waiting`: the uploads are removed and the row stays Queued; run the
+  same command again (`--row`, and `--reply` once the referee has written its critique).
+- **Run, pull, record.** `run-script` runs the script; each harness call is interrupted (SIGINT, so it stops the
+  server it spawned) 4 minutes before the slot's cap. The rows are pulled with `lab/transfer.py`, each measured run
+  becomes a `bench.run` ledger row (refs run_id, slot, experiment, arm) and the arms go to `experiment result`.
+- **Release and clean.** `slot done` with one result line, then `lab_exp/<run id>/` and every file the call put in the
+  Jupyter root are removed. Whatever fails after the slot starts, the slot is still released, the pod still cleaned,
+  and the `experiment run` ledger row names the failed step. The runner never launches or stops a pod and never
+  touches a server the pod was running.
+
+Tested against `lab/hub_fake.py` (its file store on disk, the pod script run by bash), `lab/machine/slots_fake.py` and
+`lab/bench_fake.py`. The commands of the first real run are in `lab/O29_REAL_RUN.md`.

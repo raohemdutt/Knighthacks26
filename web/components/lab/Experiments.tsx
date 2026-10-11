@@ -110,6 +110,9 @@ export function Experiments() {
     if (last && last[0] === day) last[1].push(c);
     else days.push([day, [c]]);
   }
+  const src = t.experiments.source;
+  const received = src.from === "imported" && src.received_at ? new Date(src.received_at) : null;
+  const sameDay = received ? received.toDateString() === new Date().toDateString() : false;
   const filters: ["all" | "experiment" | "bench" | "pass", string][] = [
     ["all", `All (${t.cards.length})`],
     ["experiment", `Experiments (${t.experiments.total})`],
@@ -127,6 +130,12 @@ export function Experiments() {
           <b>{t.summary}</b> {t.experiments.source.note ?? ""}
         </span>
       </p>
+      {received && !Number.isNaN(received.getTime()) ? (
+        <p className={b.note}>
+          Ledger received from the lab {sameDay ? "at" : "on"} {sameDay ? received.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : when(src.received_at)}
+          {typeof src.rows === "number" ? `, ${fmt(src.rows, 0)} row${src.rows === 1 ? "" : "s"}` : ""}
+        </p>
+      ) : null}
       <div className={ui.chips} role="group" aria-label="Which records to show">
         {filters.map(([key, label]) => (
           <button key={key} type="button" className={`${ui.chip} ${filter === key ? ui.chipOn : ""}`} aria-pressed={filter === key} onClick={() => setFilter(key)}>

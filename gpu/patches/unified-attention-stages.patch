@@ -1,0 +1,33 @@
+R12 lever 1 of 2: the stage count of the unified attention decode launch (git apply ignores this text).
+Base: vLLM b1388b1 (tag v0.19.1, built as 0.19.2+gfx1151 on the pods) with only the build-enabling hunks of
+lab/vllm-gfx1201.diff, i.e. that diff applied with --exclude=vllm/v1/attention/ops/triton_unified_attention.py.
+Stock arm (the teacher today): the whole diff, num_stages=1 on both launches.
+This arm: the 2D launch (prefill, and decode above seq_threshold_3D) keeps num_stages=1; the 3D launch (decode at
+batch 1 to 31 with 4 KV heads) goes back to 2 stages. One lever: kernel_unified_attention_3d's num_stages, 1 -> 2.
+Apply and rebuild with gpu/rebuild.sh stages.
+
+diff --git a/vllm/v1/attention/ops/triton_unified_attention.py b/vllm/v1/attention/ops/triton_unified_attention.py
+index ca5d0e3..ba92fca 100644
+--- a/vllm/v1/attention/ops/triton_unified_attention.py
++++ b/vllm/v1/attention/ops/triton_unified_attention.py
+@@ -1040,6 +1040,9 @@ def unified_attention(
+             num_seqs=num_seqs,
+             BLOCK_M=BLOCK_M,
+             USE_FP8=output_scale is not None,
++            # R12 stages lever, prefill and batched launch: the known gfx1201/gfx1151 fix, kept.
++            # Default pipelining asked for 66560 bytes of LDS on gfx1201 (limit 65536, same on gfx1151).
++            num_stages=1,
+         )
+     else:
+         kernel_unified_attention_3d[
+@@ -1092,6 +1095,10 @@ def unified_attention(
+             num_seqs=num_seqs,
+             BLOCK_M=BLOCK_M,
+             NUM_SEGMENTS_PER_SEQ=num_par_softmax_segments,
++            # R12 stages lever, decode launch: two stages (double-buffered K and V tiles) instead of
++            # the known fix's one. At TILE_SIZE 16 the two buffers are expected to fit in 64 KB;
++            # gpu/lds_check.py records the compiled size.
++            num_stages=2,
+         )
+         reduce_segments[(q.shape[0], num_query_heads)](
+             output_ptr=out,

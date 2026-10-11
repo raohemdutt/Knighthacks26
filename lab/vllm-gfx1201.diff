@@ -144,3 +144,386 @@ index 1b3fb3d391..395d0ffcb0 100644
      #endif
  
    #endif
+diff --git a/vllm/model_executor/layers/quantization/awq_marlin.py b/vllm/model_executor/layers/quantization/awq_marlin.py
+index 426b9aa7..5355a96c 100644
+--- a/vllm/model_executor/layers/quantization/awq_marlin.py
++++ b/vllm/model_executor/layers/quantization/awq_marlin.py
+@@ -72,7 +72,7 @@ _REVERSE_AWQ_PACK_ORDER = [0, 4, 1, 5, 2, 6, 3, 7]
+ def _convert_awq_to_standard_format(
+     layer: torch.nn.Module,
+     w_q_name: str,
+-    w_zp_name: str,
++    w_zp_name: str | None,
+     size_bits: int,
+ ) -> None:
+     """Convert AWQ weight and zero-point tensors to standard GPTQ-like format.
+@@ -80,6 +80,7 @@ def _convert_awq_to_standard_format(
+     AWQ packs qweight along the output dim with a non-standard bit order.
+     This converts to standard bit order and repacks qweight along the input
+     dim, matching the format expected by the MPLinearKernel framework.
++    If w_zp_name is None (symmetric quantization), only the weight is converted.
+     """
+     pack_factor = 32 // size_bits
+     mask = (1 << size_bits) - 1
+@@ -118,6 +119,9 @@ def _convert_awq_to_standard_format(
+     )
+     setattr(layer, w_q_name, new_param)
+ 
++    if w_zp_name is None:
++        return
++
+     # --- Convert qzeros: fix AWQ bit ordering and repack
+     # AWQ qzeros: (G, N // pack) packed along dim 1, AWQ bit order
+     # Target: (N // pack, G) packed along dim 0, standard bit order
+diff --git a/vllm/model_executor/layers/quantization/quark/quark.py b/vllm/model_executor/layers/quantization/quark/quark.py
+index 78c64bac..676d4cf3 100644
+--- a/vllm/model_executor/layers/quantization/quark/quark.py
++++ b/vllm/model_executor/layers/quantization/quark/quark.py
+@@ -27,11 +27,13 @@ from vllm.model_executor.layers.quantization.quark.schemes import (
+     QuarkOCP_MX,
+     QuarkScheme,
+     QuarkW4A8_MXFP4_FP8,
++    QuarkW4A16Int4,
+     QuarkW8A8Fp8,
+     QuarkW8A8Int8,
+ )
+ from vllm.model_executor.layers.quantization.quark.utils import (
+     deep_compare,
++    parse_w4a16_int4_weight_config,
+     should_ignore_layer,
+ )
+ from vllm.model_executor.models.utils import WeightsMapper
+@@ -104,8 +106,13 @@ class QuarkConfig(QuantizationConfig):
+         quant_config_with_hf_to_vllm_mapper = {}
+ 
+         for k, v in self.quant_config.items():
+-            if isinstance(v, list):
++            # Only lists of module names are mapped. Newer Quark exports also
++            # carry lists of dicts (algo_config: the AWQ scaling layers), which
++            # the name mapper cannot take; those pass through unchanged.
++            if isinstance(v, list) and all(isinstance(item, str) for item in v):
+                 quant_config_with_hf_to_vllm_mapper[k] = hf_to_vllm_mapper.apply_list(v)
++            elif isinstance(v, list):
++                quant_config_with_hf_to_vllm_mapper[k] = v
+             elif isinstance(v, dict):
+                 quant_config_with_hf_to_vllm_mapper[k] = hf_to_vllm_mapper.apply_dict(v)
+             else:
+@@ -351,6 +358,22 @@ class QuarkConfig(QuantizationConfig):
+         # Only symmetric weight quantization supported.
+         return is_int8_dtype and is_tensor and is_weight_symmetric and is_static
+ 
++    def _is_w4a16_int4(
++        self,
++        weight_quant: dict[str, Any] | None,
++        input_quant: dict[str, Any] | None,
++    ) -> bool:
++        """INT4/UINT4 weight-only (W4A16) with packed int32 weights."""
++        if weight_quant is None or input_quant is not None:
++            return False
++        is_int4 = weight_quant.get("dtype") in ("int4", "uint4")
++        is_packed = self.pack_method in ("order", "reorder")
++        if not (is_int4 and is_packed):
++            return False
++        # Raises on a config that lacks group_size or symmetric.
++        parse_w4a16_int4_weight_config(weight_quant)
++        return True
++
+     def _is_w4a8_mxfp4_fp8(
+         self,
+         weight_quant: dict[str, Any] | None,
+@@ -537,6 +560,10 @@ class QuarkConfig(QuantizationConfig):
+                 is_static_input_scheme=True,
+                 input_symmetric=input_config.get("symmetric"),
+             )
++        elif self._is_w4a16_int4(weight_config, input_config):
++            return QuarkW4A16Int4(
++                weight_config=weight_config, pack_method=self.pack_method
++            )
+         elif self._is_w4a8_mxfp4_fp8(weight_config, input_config):
+             is_w4a8_supported = self._check_scheme_supported(
+                 QuarkW4A8_MXFP4_FP8.get_min_capability(), error=False
+diff --git a/vllm/model_executor/layers/quantization/quark/schemes/__init__.py b/vllm/model_executor/layers/quantization/quark/schemes/__init__.py
+index a5e33a04..b38672cb 100644
+--- a/vllm/model_executor/layers/quantization/quark/schemes/__init__.py
++++ b/vllm/model_executor/layers/quantization/quark/schemes/__init__.py
+@@ -4,6 +4,7 @@
+ from .quark_ocp_mx import QuarkOCP_MX
+ from .quark_scheme import QuarkScheme
+ from .quark_w4a8_mxfp4_fp8 import QuarkW4A8_MXFP4_FP8
++from .quark_w4a16_int4 import QuarkW4A16Int4
+ from .quark_w8a8_fp8 import QuarkW8A8Fp8
+ from .quark_w8a8_int8 import QuarkW8A8Int8
+ 
+@@ -12,5 +13,6 @@ __all__ = [
+     "QuarkW8A8Fp8",
+     "QuarkW8A8Int8",
+     "QuarkOCP_MX",
++    "QuarkW4A16Int4",
+     "QuarkW4A8_MXFP4_FP8",
+ ]
+diff --git a/vllm/model_executor/layers/quantization/quark/schemes/quark_w4a16_int4.py b/vllm/model_executor/layers/quantization/quark/schemes/quark_w4a16_int4.py
+new file mode 100644
+index 00000000..27c63edf
+--- /dev/null
++++ b/vllm/model_executor/layers/quantization/quark/schemes/quark_w4a16_int4.py
+@@ -0,0 +1,192 @@
++# SPDX-License-Identifier: Apache-2.0
++# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
++
++# Backported from vLLM PR #48606 (Quark W4A16 INT4/UINT4) to b1388b1, which has
++# no int4 QuantKey: the scheme takes the Quark weight config directly.
++
++import math
++from collections.abc import Callable
++from typing import Any
++
++import torch
++
++from vllm.model_executor.kernels.linear import (
++    MPLinearKernel,
++    MPLinearLayerConfig,
++    choose_mp_linear_kernel,
++)
++from vllm.model_executor.layers.quantization.awq_marlin import (
++    _convert_awq_to_standard_format,
++)
++from vllm.model_executor.layers.quantization.quark.schemes.quark_scheme import (
++    QuarkScheme,
++)
++from vllm.model_executor.layers.quantization.quark.utils import (
++    canonicalize_quark_packed_int4,
++    parse_w4a16_int4_weight_config,
++)
++from vllm.model_executor.parameter import (
++    GroupQuantScaleParameter,
++    PackedvLLMParameter,
++)
++from vllm.scalar_type import scalar_types
++
++__all__ = ["QuarkW4A16Int4"]
++
++
++class QuarkW4A16Int4(QuarkScheme):
++    """Quark packed INT4 weight-only linear scheme via MPLinearKernel."""
++
++    def __init__(self, weight_config: dict[str, Any], pack_method: str):
++        self.group_size, self.is_symmetric = parse_w4a16_int4_weight_config(
++            weight_config
++        )
++        self.pack_factor = 8
++        self.pack_reorder = pack_method == "reorder"
++        self.quant_type = (
++            scalar_types.uint4b8 if self.is_symmetric else scalar_types.uint4
++        )
++        self.kernel: MPLinearKernel | None = None
++
++    @classmethod
++    def get_min_capability(cls) -> int:
++        return 70
++
++    def create_weights(
++        self,
++        layer: torch.nn.Module,
++        output_partition_sizes: list[int],
++        input_size_per_partition: int,
++        params_dtype: torch.dtype,
++        weight_loader: Callable,
++        **kwargs,
++    ):
++        input_size = kwargs["input_size"]
++        output_size = kwargs["output_size"]
++        group_size = (
++            self.group_size if self.group_size != -1 else input_size_per_partition
++        )
++        if input_size_per_partition % group_size != 0:
++            raise ValueError(
++                "The input size is not aligned with the quantized weight shape. "
++                "This can be caused by too large tensor parallel size. "
++                f"input_size_per_partition={input_size_per_partition}, "
++                f"group_size={group_size}."
++            )
++
++        output_size_per_partition = sum(output_partition_sizes)
++        packed_output_size_per_partition = math.ceil(
++            output_size_per_partition / self.pack_factor
++        )
++        layer.output_size_per_partition = output_size_per_partition
++        layer.packed_output_size_per_partition = packed_output_size_per_partition
++
++        mp_linear_kernel_config = MPLinearLayerConfig(
++            full_weight_shape=(input_size, output_size),
++            partition_weight_shape=(
++                input_size_per_partition,
++                output_size_per_partition,
++            ),
++            weight_type=self.quant_type,
++            act_type=params_dtype,
++            group_size=group_size,
++            zero_points=not self.is_symmetric,
++            has_g_idx=False,
++        )
++        kernel_type = choose_mp_linear_kernel(mp_linear_kernel_config)
++
++        def weight_scale_loader(
++            param: torch.nn.Parameter,
++            loaded_weight: torch.Tensor,
++            *args,
++            **loader_kwargs,
++        ) -> None:
++            if loaded_weight.shape[1] < param.data.shape[1]:
++                padded_weight = loaded_weight.new_zeros(param.data.shape)
++                padded_weight[:, : loaded_weight.shape[1]] = loaded_weight
++                loaded_weight = padded_weight
++            weight_loader(param, loaded_weight, *args, **loader_kwargs)
++
++        weight = PackedvLLMParameter(
++            data=torch.empty(
++                input_size_per_partition,
++                packed_output_size_per_partition,
++                dtype=torch.int32,
++            ),
++            input_dim=0,
++            output_dim=1,
++            packed_dim=1,
++            packed_factor=self.pack_factor,
++            weight_loader=weight_loader,
++        )
++        num_groups = input_size_per_partition // group_size
++        weight_zero_point = PackedvLLMParameter(
++            data=torch.zeros(
++                num_groups,
++                packed_output_size_per_partition,
++                dtype=torch.int32,
++            ),
++            input_dim=0,
++            output_dim=1,
++            packed_dim=1,
++            packed_factor=self.pack_factor,
++            weight_loader=weight_loader,
++        )
++        weight_scale = GroupQuantScaleParameter(
++            data=torch.empty(
++                num_groups,
++                packed_output_size_per_partition * self.pack_factor,
++                dtype=params_dtype,
++            ),
++            input_dim=0,
++            output_dim=1,
++            weight_loader=weight_scale_loader,
++        )
++
++        layer.register_parameter("weight", weight)
++        layer.register_parameter("weight_zero_point", weight_zero_point)
++        layer.register_parameter("weight_scale", weight_scale)
++
++        self.kernel = kernel_type(
++            mp_linear_kernel_config,
++            w_q_param_name="weight",
++            w_s_param_name="weight_scale",
++            w_zp_param_name="weight_zero_point" if not self.is_symmetric else None,
++        )
++
++    def process_weights_after_loading(self, layer: torch.nn.Module) -> None:
++        layer.weight.data = canonicalize_quark_packed_int4(
++            layer.weight.data,
++            pack_reorder=self.pack_reorder,
++            is_symmetric=self.is_symmetric,
++            pack_factor=self.pack_factor,
++        )
++        if not self.is_symmetric:
++            layer.weight_zero_point.data = canonicalize_quark_packed_int4(
++                layer.weight_zero_point.data,
++                pack_reorder=self.pack_reorder,
++                is_symmetric=self.is_symmetric,
++                pack_factor=self.pack_factor,
++            )
++        output_size = layer.output_size_per_partition
++        packed_output_size = layer.packed_output_size_per_partition * self.pack_factor
++        if output_size < packed_output_size:
++            layer.weight_scale.data[:, output_size:].zero_()
++
++        _convert_awq_to_standard_format(
++            layer,
++            "weight",
++            "weight_zero_point" if not self.is_symmetric else None,
++            self.quant_type.size_bits,
++        )
++        assert self.kernel is not None
++        self.kernel.process_weights_after_loading(layer)
++
++    def apply_weights(
++        self,
++        layer: torch.nn.Module,
++        x: torch.Tensor,
++        bias: torch.Tensor | None = None,
++    ):
++        assert self.kernel is not None
++        return self.kernel.apply_weights(layer, x, bias)
+diff --git a/vllm/model_executor/layers/quantization/quark/utils.py b/vllm/model_executor/layers/quantization/quark/utils.py
+index 98ac1a4f..1e2b5a59 100644
+--- a/vllm/model_executor/layers/quantization/quark/utils.py
++++ b/vllm/model_executor/layers/quantization/quark/utils.py
+@@ -106,6 +106,63 @@ def _is_equal_or_regex_match(
+     return False
+ 
+ 
++def parse_w4a16_int4_weight_config(
++    weight_config: Mapping[str, Any],
++) -> tuple[int, bool]:
++    """Parse required W4A16 INT4/UINT4 weight fields from Quark config."""
++    if "group_size" not in weight_config:
++        raise ValueError(
++            "Quark W4A16 INT4/UINT4 configs must specify weight.group_size"
++        )
++    if "symmetric" not in weight_config:
++        raise ValueError("Quark W4A16 INT4/UINT4 configs must specify weight.symmetric")
++
++    group_size = weight_config["group_size"]
++    is_symmetric = weight_config["symmetric"]
++    if not isinstance(group_size, int) or group_size <= 0:
++        raise ValueError(
++            f"Quark W4A16 weight.group_size must be a positive int, got {group_size!r}"
++        )
++    if not isinstance(is_symmetric, bool):
++        raise ValueError(
++            f"Quark W4A16 weight.symmetric must be a bool, got {is_symmetric!r}"
++        )
++    return group_size, is_symmetric
++
++
++def canonicalize_quark_packed_int4(
++    packed_weight: torch.Tensor,
++    *,
++    pack_reorder: bool,
++    is_symmetric: bool,
++    pack_factor: int = 8,
++) -> torch.Tensor:
++    """Convert Quark export nibble layout to AWQ checkpoint layout."""
++    from vllm.model_executor.layers.quantization.awq_marlin import (
++        _REVERSE_AWQ_PACK_ORDER,
++    )
++
++    if pack_reorder:
++        source_order = torch.tensor(
++            _REVERSE_AWQ_PACK_ORDER, device=packed_weight.device, dtype=torch.int32
++        )
++    else:
++        source_order = torch.arange(
++            pack_factor, device=packed_weight.device, dtype=torch.int32
++        )
++    target_order = torch.tensor(
++        _REVERSE_AWQ_PACK_ORDER, device=packed_weight.device, dtype=torch.int32
++    )
++    source_shifts = source_order * 4
++    target_shifts = target_order * 4
++
++    values = (packed_weight.to(torch.int32)[..., None] >> source_shifts) & 0xF
++    if is_symmetric:
++        values = values ^ 0x8
++    packed = (values.to(torch.int64) << target_shifts.to(torch.int64)).sum(dim=-1)
++    return packed.to(torch.int32)
++
++
+ # utility for tensor dims > 2 cases
+ def quark_quantize_weight_to_mxfp4(w: torch.Tensor):
+     assert w.dtype == torch.bfloat16, (

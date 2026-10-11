@@ -12,7 +12,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from contexts.circle.application.sharing import OutboxRow
-from contracts.circle import ShareQueued
+from contracts.circle import PlaceShared, ShareQueued
 
 TABLE = """
 CREATE TABLE IF NOT EXISTS circle_outbox (
@@ -73,3 +73,46 @@ class CircleOutbox:
         )
         return [{"kind": k, "queued": q, "sent": s, "last_synced_at": last, "oldest_queued_at": oldest}
                 for k, q, s, last, oldest in rows]
+
+
+PLACE_TABLE = """
+CREATE TABLE IF NOT EXISTS presence_outbox (
+    circle_id   TEXT NOT NULL,
+    member_id   TEXT NOT NULL,
+    event_id    TEXT NOT NULL,
+    event       TEXT NOT NULL,  -- the PlaceShared, JSON
+    PRIMARY KEY (circle_id, member_id)
+)
+"""
+
+
+class PresenceQueue:
+    """The one place share (or "stop sharing") this box has not delivered yet, in the same SQLite file.
+
+    Presence is a single overwritten row in Neon, so only the latest unsent one is worth keeping: one row per
+    member here, replaced by a newer share. It survives a restart, which the in-memory `pending` did not."""
+
+    def __init__(self, path: str | Path = "data/circle.sqlite") -> None:
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._run(PLACE_TABLE)
+
+    def _run(self, sql: str, params: tuple = ()) -> list[tuple]:
+        with closing(sqlite3.connect(self.path)) as db, db:
+            return db.execute(sql, params).fetchall()
+
+    def save(self, e: PlaceShared) -> None:
+        self._run("INSERT OR REPLACE INTO presence_outbox (circle_id, member_id, event_id, event) VALUES (?, ?, ?, ?)",
+                  (e.circle_id, e.member_id, e.event_id, e.model_dump_json()))
+
+    def load(self, circle_id: str, member_id: str) -> PlaceShared | None:
+        rows = self._run("SELECT event FROM presence_outbox WHERE circle_id = ? AND member_id = ?", (circle_id, member_id))
+        try:
+            return PlaceShared.model_validate_json(rows[0][0]) if rows else None
+        except ValueError:  # a row written in a shape this build cannot read: nothing worth sending
+            return None
+
+    def clear(self, e: PlaceShared) -> None:
+        """Delivered, or expired unsent. Only this share: a newer one saved meanwhile stays queued."""
+        self._run("DELETE FROM presence_outbox WHERE circle_id = ? AND member_id = ? AND event_id = ?",
+                  (e.circle_id, e.member_id, e.event_id))

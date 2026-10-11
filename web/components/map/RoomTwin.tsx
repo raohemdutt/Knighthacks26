@@ -32,8 +32,8 @@ export interface RoomTwinProps {
   pins?: TwinPin[];
   /** A route to show while no round is on: the Sort It screen's "what if I held this?". */
   preview?: RoomRouteAnswer | null;
-  /** The render-mode bar, its caption and the hint line (the Room map shows them; the other screens do not). */
-  controls?: boolean;
+  /** The render-mode bar, its caption and the hint line (the Room map shows them; the other screens do not). "tucked" folds the render controls away under a disclosure. */
+  controls?: boolean | "tucked";
   /** "phone": a wide stage for the angled view. "tall": squarer, for the view from above. "fill": the parent's whole box (the operator screen). */
   shape?: "phone" | "tall" | "fill";
   /** A line for the result card, e.g. "3 of 4 right this sitting". */
@@ -327,6 +327,7 @@ export default function RoomTwin({ plan, live, pins = [], preview = null, contro
   const unavailable = info !== null && !info.supported;
   const shown: Mode = unavailable ? "native" : mode;
   const pin = pins.find((p) => p.label === picked) ?? null;
+  const renderBar = controls ? <RenderControls shown={shown} unavailable={unavailable} choose={choose} compare={compare} fsrOn={fsrOn} splitOn={splitOn} info={info} bench={bench} /> : null;
   const par = round?.routes.find((r) => r.reachable)?.par_s ?? null;
   const people = (tracks ?? []).filter((t) => t.kind === "person").length;
   const things = (tracks ?? []).filter((t) => t.kind === "object").length;
@@ -442,6 +443,35 @@ export default function RoomTwin({ plan, live, pins = [], preview = null, contro
 
       {controls ? (
         <>
+          <div className={`${ui.row} ${ui.between} ${ui.wrap}`}>
+            <p className={`${ui.muted} ${ui.small}`}>Drag to rotate and tilt. Pinch or scroll to zoom. Tap a pin to see where that thing was last seen.</p>
+            <button type="button" className={css.pill} onClick={() => scene.current?.home(true)}>
+              Reset the view
+            </button>
+          </div>
+          {controls === "tucked" ? (
+            <details className={css.tuck}>
+              <summary>
+                <span>Rendering: AMD FidelityFX Super Resolution</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </summary>
+              <div className={css.tuckBody}>{renderBar}</div>
+            </details>
+          ) : (
+            renderBar
+          )}
+        </>
+      ) : null}
+    </>
+  );
+}
+
+/** The render-mode bar, its caption and the benchmark rows, as one block so the Room map can fold it away. */
+function RenderControls({ shown, unavailable, choose, compare, fsrOn, splitOn, info, bench }: { shown: Mode; unavailable: boolean; choose: (next: { mode?: Mode; compare?: boolean }) => void; compare: boolean; fsrOn: boolean; splitOn: boolean; info: FsrInfo | null; bench: BenchRow[] | "running" | null }) {
+  return (
+    <>
           <div className={css.bar}>
             <span className={css.barName} id="render-mode">
               Render
@@ -488,14 +518,6 @@ export default function RoomTwin({ plan, live, pins = [], preview = null, contro
               ))}
             </ul>
           ) : null}
-          <div className={`${ui.row} ${ui.between} ${ui.wrap}`}>
-            <p className={`${ui.muted} ${ui.small}`}>Drag to rotate and tilt. Pinch or scroll to zoom. Tap a pin to see where that thing was last seen.</p>
-            <button type="button" className={css.pill} onClick={() => scene.current?.home(true)}>
-              Reset the view
-            </button>
-          </div>
-        </>
-      ) : null}
     </>
   );
 }

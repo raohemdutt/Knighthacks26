@@ -11,7 +11,9 @@ POST /api/learning/lab/routing/simulate   {preset?, mix?, rpm?, minutes?, tokens
     the routing what-if: the real routing hook and its two policies run on a snapshot built from the recorded rows.
     400 with the reason when an input is out of range. contexts/learning/application/lab_routing.py
 GET  /api/learning/lab/experiments
-    experiments, refinement passes and benchmark sessions as cards, newest first.
+    experiments, refinement passes and benchmark sessions as cards, newest first. `experiments.source` says where
+    the ledger was read from (`from`: LAB_STATE_DIR, imported, checkout) and, for the copy the lab pushed
+    (`imported_dir`, POST /api/learning/lab/import?kind=ledger), when it arrived and its row count.
     contexts/learning/application/lab_experiments.py
 
 All three read files only: no model call, no pod, no hub. The metrics file is re-read when it changes on disk.
@@ -28,7 +30,7 @@ from contexts.learning.application.lab_routing import SimError, simulate
 
 
 def lab_bench_router(metrics_file: str | Path | None = METRICS_FILE, state_dir: str | Path | None = None,
-                     refine_dir: str | Path = REFINE_DIR) -> APIRouter:
+                     refine_dir: str | Path = REFINE_DIR, imported_dir: str | Path | None = None) -> APIRouter:
     router = APIRouter()
     cache: dict[str, Any] = {"stamp": None, "rows": [], "skipped": []}
 
@@ -57,6 +59,6 @@ def lab_bench_router(metrics_file: str | Path | None = METRICS_FILE, state_dir: 
 
     @router.get("/api/learning/lab/experiments")
     def lab_experiments() -> dict:
-        return timeline(rows()[0], state_dir=state_dir, refine_dir=refine_dir)
+        return timeline(rows()[0], state_dir=state_dir, refine_dir=refine_dir, imported_dir=imported_dir)
 
     return router
