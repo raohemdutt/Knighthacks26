@@ -279,18 +279,6 @@ def test_the_run_list_carries_the_test_in_counts_and_none_before_a_test():
     assert (counts["decision"], counts["n_items"], counts["right_before"], counts["right_after"]) == ("deploy", None, None, None)
 
 
-def test_a_model_the_test_refused_but_that_was_installed_never_reads_not_deployed():
-    """The gate card and the On the box card must not say two things: the verdict follows what the log holds."""
-    events = todays_events()
-    events[-2] = events[-2].model_copy(update={"decision": "reject"})
-    story = fold(LabView(), events).story("r1")
-    assert story["status"] == "deployed" and story["deploy"]["deployed"] is not None
-    assert "not deployed" not in story["eval"]["verdict"] and "installed on the box anyway" in story["eval"]["verdict"]
-    back = ModelDeployed(ts=at(30), model_version="atlas-base", previous_version="atlas-v2")
-    undone = fold(LabView(), [*events, back]).story("r1")
-    assert undone["status"] == "rolled back" and "went back to the old model" in undone["eval"]["verdict"]
-    assert "not deployed" not in undone["eval"]["verdict"]
-
 
 def test_what_the_box_runs_now_is_the_newest_install_in_the_log_or_said_to_be_unknown():
     events = todays_events()
@@ -303,11 +291,3 @@ def test_what_the_box_runs_now_is_the_newest_install_in_the_log_or_said_to_be_un
     back = ModelDeployed(ts=at(30), model_version="atlas-base", previous_version="atlas-v2")
     after = fold(LabView(), [*events, back]).story("r1")["box_now"]
     assert (after["model_version"], after["this_run"]) == ("atlas-base", False)
-
-
-def test_a_vanishing_p_value_is_said_in_words_not_as_a_fifteen_digit_number():
-    real = [answered(i, expected, "a", f"b{i}") for i, expected in enumerate(("mug", "keys"))]
-    tiny = " ".join(fold(LabView(), reported(real, p_value=1.78e-15)).story("r1")["eval"]["verdict_detail"])
-    assert "less than 1 time in a million" in tiny and "p is below 0.000001" in tiny and "562" not in tiny
-    usual = " ".join(fold(LabView(), reported(real, p_value=0.004)).story("r1")["eval"]["verdict_detail"])
-    assert "p = 0.004" in usual and "about 1 time in 250" in usual

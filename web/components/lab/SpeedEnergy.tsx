@@ -6,12 +6,9 @@ import ui from "@/components/ui.module.css";
 import { api } from "@/lib/api";
 import { type LabChip, chipLabel, chipRole, chipShort } from "@/lib/lab";
 import { type BenchChipRows, type BenchPoint, type BenchPowerNode, type BenchSweep, type LabBench, batchReadout, fmt, shortRef, when } from "@/lib/labBench";
-import { batchTakeaway, engineName, headlineSweep, plainConfidence, routingLine, said, speedHero, sweepName } from "@/lib/labWords";
 import { useFetch } from "@/lib/useFetch";
 import { LabelKey, PointDetail, Tag, useReduced, useWidth } from "./Labels";
 import { Sheet } from "./LabRun";
-import { Routing } from "./Routing";
-import { ChartWords, Fold, Hero, SourceChip, Takeaway, Term, Words } from "./Story";
 import b from "./bench.module.css";
 
 /**
@@ -82,7 +79,7 @@ function Panel({
   cursor,
   selected,
   log,
-  height = 144,
+  height = 132,
   refBand,
   edgeNote,
   picked,
@@ -110,7 +107,7 @@ function Panel({
   const x0 = lx(batches[0]!);
   const x1 = lx(batches[batches.length - 1]!);
   const x = (batch: number) => PAD.left + ((lx(batch) - x0) / (x1 - x0 || 1)) * inner;
-  const top = 26; // room above the plot for the unit, so the axis says what it counts
+  const top = 14;
   const bot = height - 22;
   const values = series.flatMap((s) => s.points.map((p) => p.value)).concat(refBand ? [refBand.lo, refBand.hi] : []);
   const vMax = Math.max(...values, 0.001);
@@ -145,7 +142,7 @@ function Panel({
         </span>
         {now ? (
           <span className={b.panelNow}>
-            {fmt(now.value)} {unit} at {selected === 1 ? "1 request" : `${selected} at once`}
+            {fmt(now.value)} {unit}
             {beside && besideNow ? (
               <span className={b.note}>
                 {" "}
@@ -155,10 +152,7 @@ function Panel({
           </span>
         ) : null}
       </div>
-      <svg width={w} height={height} role="group" aria-label={`${title} ${hint}`}>
-        <text className={b.axis} x={4} y={10}>
-          {unit}
-        </text>
+      <svg width={w} height={height} role="group" aria-label={`${title} by batch size`}>
         {ticks.map((v) => (
           <g key={v}>
             <line className={b.gridline} x1={PAD.left} x2={w - PAD.right} y1={y(v)} y2={y(v)} />
@@ -168,8 +162,8 @@ function Panel({
           </g>
         ))}
         {batches.map((batch) => (
-          <text key={batch} className={b.axis} x={x(batch)} y={height - 5} textAnchor={batch === batches[0] ? "start" : batch === batches[batches.length - 1] ? "end" : "middle"} dx={batch === batches[0] ? -6 : batch === batches[batches.length - 1] ? 8 : 0}>
-            {batch === batches[0] ? `${batch} at once` : batch === batches[batches.length - 1] ? `${batch} at once` : batch}
+          <text key={batch} className={b.axis} x={x(batch)} y={height - 5} textAnchor="middle">
+            {batch === batches[0] ? `batch ${batch}` : batch}
           </text>
         ))}
         <rect className={b.cursorBand} x={cx - 13} y={top - 8} width={26} height={bot - top + 12} rx={8} />
@@ -235,22 +229,6 @@ function Panel({
       </svg>
     </>
   );
-}
-
-/**
- * A chart's title, as the finding it shows: "Each token gets cheaper: 8.8 J down to 1.9 J". From the curve's own first
- * and last point; a change of under 8% either way is "barely moves".
- */
-function finding(points: BenchPoint[] | undefined, words: { down: string; up: string; flat: string }, unit: string): string {
-  const pts = points ?? [];
-  const a = pts[0];
-  const z = pts[pts.length - 1];
-  if (!a || !z) return words.flat;
-  const u = unit === "tokens a second" ? "" : ` ${unit}`;
-  const tail = unit === "tokens a second" ? " tokens a second" : "";
-  const change = (z.value - a.value) / (a.value || 1);
-  if (Math.abs(change) < 0.08) return `${words.flat}: about ${said((a.value + z.value) / 2)}${u}${tail}.`;
-  return change < 0 ? `${words.down}: ${said(a.value)}${u} down to ${said(z.value)}${u}${tail}.` : `${words.up}: ${said(a.value)}${u} up to ${said(z.value)}${u}${tail}.`;
 }
 
 function LegendMark({ shape, tone, hollow }: { shape: Shape; tone: Tone; hollow?: boolean }) {
@@ -326,7 +304,7 @@ function Batching({
   const student = bench.student;
   const jLo = student?.j_per_token?.value;
   const jHi = student?.j_per_token_request?.value;
-  const band: Ref | null = jLo !== undefined ? { lo: Math.min(jLo, jHi ?? jLo), hi: Math.max(jLo, jHi ?? jLo), label: `the box's model: ${fmt(jLo)}${jHi !== undefined ? ` to ${fmt(jHi)}` : ""} J` } : null;
+  const band: Ref | null = jLo !== undefined ? { lo: Math.min(jLo, jHi ?? jLo), hi: Math.max(jLo, jHi ?? jLo), label: `Jetson student ${fmt(jLo)}${jHi !== undefined ? ` to ${fmt(jHi)}` : ""} J/token (derived)` } : null;
   const pick = useCallback((key: string) => setPicked((p) => (p === key ? null : key)), []);
   const pickedPoint = useMemo(() => {
     if (!picked) return null;
@@ -369,8 +347,8 @@ function Batching({
         </p>
       ) : null}
       <p className={b.note}>
-        <Term k="teacher">The teacher</Term>
-        {engineName(sweep) ? ` (running on ${engineName(sweep)})` : ""} on {sweep.node}, measured {when(sweep.ts)}. Pick how many requests it answers <Term k="batch">at once</Term>:
+        {sweep.model ?? "The teacher"} on {sweep.node}
+        {sweep.gpu ? ` (${sweep.gpu})` : ""}, measured {when(sweep.ts)}. Batch size is how many requests it answers at the same time.
       </p>
 
       <div className={b.stepper} role="group" aria-label="Batch size">
@@ -387,7 +365,7 @@ function Batching({
         </button>
         {reduced ? null : (
           <button type="button" className={b.stepBtn} onClick={() => (playing ? setPlaying(false) : (sel >= batches.length - 1 && setSel(0), setPlaying(true)))}>
-            {playing ? "Pause" : `Play ${batches[0]} to ${batches[batches.length - 1]}`}
+            {playing ? "Pause" : "Play 1 to " + batches[batches.length - 1]}
           </button>
         )}
       </div>
@@ -405,37 +383,25 @@ function Batching({
       />
 
       {readout ? (
-        <p className={b.readout} role="status" data-guide="lab:speed-readout">
+        <p className={b.readout} role="status">
           {readout}
+          <span className={b.readoutSub}>
+            Computed from {["decode_tok_s", "joules_per_token"].map((n) => shortRef(m[n]?.find((p) => p.x === batch)?.source.ref)).join(" and ")}.
+          </span>
           {cmp && (theirsAt("decode_tok_s") || theirsAt("joules_per_token")) ? (
             <span className={b.readoutSub}>
-              For comparison, {cmpShort} with {batch === 1 ? "1 request" : `${batch} at once`}:{" "}
+              For comparison, {cmpShort} at batch {batch}:{" "}
               {[
                 [theirsAt("decode_tok_s"), "tokens a second for each request"],
                 [theirsAt("joules_per_token"), "J for each token"],
               ]
                 .filter((x): x is [BenchPoint, string] => !!x[0])
-                .map(([p, words]) => `${fmt(p.value)} ${words}`)
+                .map(([p, words]) => `${fmt(p.value)} ${words} (${shortRef(p.source.ref)})`)
                 .join(", ")}
               . A different chip, not the lab&apos;s.
             </span>
           ) : null}
         </p>
-      ) : null}
-      {readout ? (
-        <SourceChip
-          about="The numbers in this sentence"
-          sources={[
-            ...(["decode_tok_s", "joules_per_token", "watts_avg"] as const).flatMap((n) => {
-              const p = mineAt(n);
-              return p ? [{ label: `${p.label}, ${batch === 1 ? "1 request" : `${batch} at once`}`, value: `${fmt(p.value)} ${p.unit ?? ""}`, from: shortRef(p.source.ref) }] : [];
-            }),
-            ...(["decode_tok_s", "joules_per_token"] as const).flatMap((n) => {
-              const p = theirsAt(n);
-              return p ? [{ label: `${cmpShort}: ${p.label}`, value: `${fmt(p.value)} ${p.unit ?? ""}`, from: shortRef(p.source.ref) }] : [];
-            }),
-          ]}
-        />
       ) : null}
 
       {offers.length ? (
@@ -457,10 +423,10 @@ function Batching({
             {cmp.chip.where ? `, measured on ${cmp.chip.where}` : ", measured elsewhere"} {when(cmp.other.ts)}
             {cmp.other.chip_note ? `. The rows say: ${cmp.other.chip_note}` : ""}.{" "}
             {wMine && wTheirs
-              ? `With ${batch === 1 ? "1 request" : `${batch} at once`} it drew ${fmt(wTheirs.value)} W against ${fmt(wMine.value)} W on ${sweep.node}${cmp.other.power_source ? `, and its power is read another way (${cmp.other.power_source})` : ""}. `
+              ? `At batch ${batch} it drew ${fmt(wTheirs.value)} W against ${fmt(wMine.value)} W on ${sweep.node}${cmp.other.power_source ? `, and its power is read another way (${cmp.other.power_source})` : ""}. `
               : ""}
-            {cmp.same_model ? "The same model" : `A different model (${cmp.other.model ?? "not named"})`};{" "}
-            {cmp.batches.length === batches.length ? "the same loads" : `only the loads ${cmp.batches.join(", ")}`}. {plainConfidence(cmp.other.confidence_note)} Tap a grey point to see its row.
+            {cmp.same_model ? `The same model (${cmp.other.model})` : `A different model (${cmp.other.model ?? "not named"})`}
+            {cmp.other.build ? `, ${cmp.other.build}` : ""}; {cmp.batches.length === batches.length ? "the same batch sizes" : `batch sizes ${cmp.batches.join(", ")} only`}. {cmp.other.confidence_note} Tap a grey point to see its row.
           </span>
         </p>
       ) : null}
@@ -471,19 +437,19 @@ function Batching({
             {m.decode_tok_s ? (
               <Panel
                 {...shared}
-                title={finding(m.decode_tok_s, { down: "Each person gets slower", up: "Each person gets faster", flat: "Each person's speed barely moves" }, "tokens a second")}
-                hint={`Tokens a second for one request, by how many share the teacher${scale}.`}
+                title="Speed for each person"
+                hint={`tokens a second per request: falls as more share the card${scale}`}
                 unit="tok/s"
                 log={!!cmp}
                 series={[{ name: "decode_tok_s", label: "Tokens a second per request", points: m.decode_tok_s, tone: "speed", shape: "circle" }, ...beside("decode_tok_s", "tokens a second per request")]}
-                edgeNote={student?.tok_s && !cmp && student.tok_s.value > niceMax(Math.max(...m.decode_tok_s.map((p) => p.value))) ? `the box's own model: ${fmt(student.tok_s.value)} tok/s, above this scale` : null}
+                edgeNote={student?.tok_s && !cmp && student.tok_s.value > niceMax(Math.max(...m.decode_tok_s.map((p) => p.value))) ? `Jetson student: ${fmt(student.tok_s.value)} tok/s, above this scale` : null}
               />
             ) : null}
             {m.decode_tok_s_total ? (
               <Panel
                 {...shared}
-                title={finding(m.decode_tok_s_total, { down: "Together they get less", up: "Together they get more", flat: "The total barely moves" }, "tokens a second")}
-                hint={`Tokens a second across all requests together${scale}.`}
+                title="Speed in total"
+                hint={`tokens a second across all requests: rises${scale}`}
                 unit="tok/s"
                 log={!!cmp}
                 series={[{ name: "decode_tok_s_total", label: "Tokens a second in total", points: m.decode_tok_s_total, tone: "speed", shape: "square" }, ...beside("decode_tok_s_total", "tokens a second in total")]}
@@ -492,11 +458,11 @@ function Batching({
             {m.joules_per_token ? (
               <Panel
                 {...shared}
-                title={finding(m.joules_per_token, { down: "Each token gets cheaper", up: "Each token gets dearer", flat: "A token costs about the same" }, "J")}
-                hint="Energy for one token, in joules. Log scale: each step up the side is ten times more."
+                title="Energy for each token"
+                hint="joules per token, log scale: falls steeply"
                 unit="J/token"
                 log
-                height={182}
+                height={170}
                 refBand={band}
                 series={[{ name: "joules_per_token", label: "Joules per token", points: m.joules_per_token, tone: "energy", shape: "diamond" }, ...beside("joules_per_token", "joules per token")]}
               />
@@ -504,8 +470,8 @@ function Batching({
             {ttft && m.ttft_s ? (
               <Panel
                 {...shared}
-                title={finding(m.ttft_s, { down: "The first word comes sooner", up: "The first word takes longer", flat: "The wait for the first word barely moves" }, "s")}
-                hint={`Seconds before the first token arrives: the price of sharing${scale}.`}
+                title="Wait before the first word"
+                hint={`seconds to the first token: the price of sharing${scale}`}
                 unit="s"
                 log={!!cmp}
                 series={[{ name: "ttft_s", label: "Time to first token", points: m.ttft_s, tone: cmp ? "speed" : "neutral", shape: cmp ? "circle" : "triangle" }, ...beside("ttft_s", "time to first token")]}
@@ -514,10 +480,10 @@ function Batching({
             {m.watts_avg ? (
               <Panel
                 {...shared}
-                title={finding(m.watts_avg, { down: "Power drawn falls", up: "Power drawn rises", flat: "Power drawn barely moves" }, "W")}
-                hint={cmp ? "Watts: the average (line) and the lab's peak (squares)." : "Watts: the average (line) and the peak (squares)."}
+                title="Power drawn"
+                hint={cmp ? "watts, average (line) and the lab's peak (squares)" : `watts, average (line) and peak (squares)${sweep.other_chip ? "" : ": flat, so more answers per watt"}`}
                 unit="W"
-                height={cmp ? 144 : 108}
+                height={cmp ? 132 : 96}
                 series={[
                   { name: "watts_avg", label: "Average watts", points: m.watts_avg, tone: "energy", shape: "circle" },
                   ...(m.watts_peak ? [{ name: "watts_peak", label: "Peak watts", points: m.watts_peak, tone: (cmp ? "energy" : "neutral") as Tone, shape: "square" as Shape, lineless: true }] : []),
@@ -529,34 +495,18 @@ function Batching({
         ) : null}
       </div>
 
-      <Fold summary="The charts in words" guide="lab:speed-words">
-      <ChartWords>
-        {(
-          [
-            ["joules_per_token", "Energy for a token", "J"],
-            ["decode_tok_s_total", "Tokens a second in total", ""],
-            ["decode_tok_s", "Tokens a second for each person", ""],
-            ["watts_avg", "Power", "W"],
-          ] as const
-        )
-          .filter(([n]) => m[n]?.length)
-          .map(([n, words, unit]) => `${words}: ${m[n]!.map((p) => `${said(p.value)}${unit ? ` ${unit}` : ""} with ${p.x}`).join(", ")}.`)
-          .join(" ")}{" "}
-        Each number is for that many requests at once.
-      </ChartWords>
-      </Fold>
       <div className={b.legend}>
         <span>
-          <LegendMark shape="circle" tone="speed" hollow /> hollow and dashed: <Term k="low">low confidence</Term>
+          <LegendMark shape="circle" tone="speed" hollow /> hollow and dashed: low confidence
         </span>
         <span>
-          <LegendMark shape="circle" tone="speed" /> solid: measured often enough
+          <LegendMark shape="circle" tone="speed" /> solid: confident
         </span>
         <span>
           <svg width={30} height={14} aria-hidden="true">
             <line className={b.refLine} x1={1} x2={29} y1={7} y2={7} />
           </svg>
-          the box&apos;s own model, for reference
+          Jetson student, for reference
         </span>
         {cmp ? (
           <span>
@@ -566,12 +516,9 @@ function Batching({
       </div>
       <p className={`${b.banner} ${allLow ? b.bannerWatch : ""}`}>
         <span>
-          <b>{allLow ? "A first look, not a result." : `${sweep.low_confidence} of ${sweep.points} points are low confidence.`}</b> Tap a point for its row.
+          <b>{allLow ? "Read these as a first look, not a result." : `${sweep.low_confidence} of ${sweep.points} points are low confidence.`}</b> {sweep.confidence_note} Tap a point to see its row.
         </span>
       </p>
-      <Fold summary="How sure these numbers are">
-        <span className={b.note}>{plainConfidence(sweep.confidence_note)}</span>
-      </Fold>
       {pickedPoint ? <PointDetail p={pickedPoint} onClose={() => setPicked(null)} /> : null}
       {m.ttft_s ? (
         <button type="button" className={`${ui.chip} ${ttft ? ui.chipOn : ""}`} aria-pressed={ttft} onClick={() => setTtft((v) => !v)} style={{ alignSelf: "flex-start" }}>
@@ -589,14 +536,14 @@ function StudentCard({ bench }: { bench: LabBench }) {
     return (
       <div className={b.card}>
         <h2>The box&apos;s own model</h2>
-        <p className={b.note}>The lab has not measured the box&apos;s own model yet, so there is nothing to compare the teacher with.</p>
+        <p className={b.note}>The metrics file has no row for the student on the Jetson yet.</p>
       </div>
     );
   const cells: [string, string, BenchPoint | null][] = [
     ["watts", "power while answering", s.watts],
-    ["tok", "speed while writing", s.tok_s],
-    ["jpt", "energy per token, writing only", s.j_per_token],
-    ["jptr", "energy per token, whole request", s.j_per_token_request],
+    ["tok", "decode speed", s.tok_s],
+    ["jpt", "per token while decoding", s.j_per_token],
+    ["jptr", "per token, whole request", s.j_per_token_request],
   ];
   const shown = cells.find(([k]) => k === open)?.[2] ?? null;
   return (
@@ -604,10 +551,7 @@ function StudentCard({ bench }: { bench: LabBench }) {
       <div className={b.cardHead}>
         <h2>The box&apos;s own model, for comparison</h2>
       </div>
-      <p className={b.note}>
-        <Term k="student">The small model on the box</Term> answers one request at a time. Its <Term k="joules">energy per token</Term> is not measured directly: it is{" "}
-        <Term k="derived">worked out</Term> from its watts and its speed.
-      </p>
+      <p className={b.note}>The small student model on the Jetson answers one request at a time. Its joules per token is not measured directly: it is worked out from its watts and its speed.</p>
       <div className={b.stats}>
         {cells.map(([key, label, p]) =>
           p ? (
@@ -652,7 +596,7 @@ function PowerCard({ bench }: { bench: LabBench }) {
             {p.low_confidence ? <span className={b.low}>low confidence</span> : null}
           </button>
         ) : (
-          <span className={b.note}>not measured yet</span>
+          <span className={b.note}>no row yet</span>
         )}
       </div>
     );
@@ -665,25 +609,26 @@ function PowerCard({ bench }: { bench: LabBench }) {
         <h2>What it costs to be on</h2>
         <Tag kind="measured" />
       </div>
-      <p className={b.note}>The newest measurement of each machine, in watts: switched on and idle, and while answering. A striped bar was measured too few times to be sure of. Tap a bar for its row.</p>
+      <p className={b.note}>The newest idle and answering power row for each machine. A striped bar is a low-confidence row.</p>
       <div className={b.bars}>
         {nodes.map((n) => (
           <div key={n.node} style={{ display: "contents" }}>
             <span className={b.barNode}>
-              {n.node === "jetson" ? "The box (Jetson)" : n.node}
-              {n.serving?.state && n.node !== "jetson" ? <span className={b.note}> · answering {n.serving.state.replace(/^batch (\d+)$/, (_m, k: string) => (k === "1" ? "1 request" : `${k} at once`))}</span> : null}
+              {n.node === "jetson" ? "Jetson (the box)" : n.node}
+              {n.serving?.state && n.node !== "jetson" ? <span className={b.note}> · answering at {n.serving.state}</span> : null}
             </span>
             {row(n, "idle")}
             {row(n, "serving")}
           </div>
         ))}
       </div>
-      {bench.power.absent.length ? <p className={b.note}>Not measured yet: {bench.power.absent.join(", ")}. Nothing is drawn for a machine with no measurement.</p> : null}
       {bench.power.other_chip.length ? (
-        <Fold summary={`Not drawn: ${bench.power.other_chip.length} measurement${bench.power.other_chip.length === 1 ? "" : "s"} from other hardware`}>
-          <span className={b.note}>These were not measured on the lab&apos;s Strix Halo pods, so they are kept off this chart: {chipCounts(bench.power.other_chips, true)}. They are listed under Every row.</span>
-        </Fold>
+        <p className={b.note}>
+          Not drawn: {bench.power.other_chip.length} power row{bench.power.other_chip.length === 1 ? "" : "s"} that {bench.power.other_chip.length === 1 ? "is" : "are"} not from the current lab:{" "}
+          {chipCounts(bench.power.other_chips, true)}. They are in &ldquo;All rows&rdquo;.
+        </p>
       ) : null}
+      {bench.power.absent.length ? <p className={b.note}>No power row yet for {bench.power.absent.join(", ")}. Nothing is drawn for a machine the file does not cover.</p> : null}
       {shown ? <PointDetail p={shown} onClose={() => setOpen(null)} /> : null}
     </div>
   );
@@ -768,60 +713,6 @@ function AllRows({ bench }: { bench: LabBench }) {
   );
 }
 
-/**
- * Routing, as one card: which preset of requests, and one sentence of result worked out by the box's own routing code
- * (POST /api/learning/lab/routing/simulate). Everything else the old Routing tab showed is behind "How this is worked
- * out", and is only loaded when that is opened.
- */
-function RoutingCard({ forceReduced, initialPreset, initialOpen }: { forceReduced: boolean; initialPreset: string | null; initialOpen: boolean }) {
-  const [preset, setPreset] = useState<string | null>(initialPreset);
-  const [open, setOpen] = useState(initialOpen);
-  const sim = useFetch((signal) => api.labRoutingSim(preset ? { preset } : {}, signal), `sim-${preset ?? ""}`);
-  const data = sim.data;
-  const result = data ? routingLine(data) : null;
-  return (
-    <div className={b.card} data-guide="lab:routing">
-      <div className={b.cardHead}>
-        <h2>Box, or teacher?</h2>
-        <Tag kind="modelled">What-if</Tag>
-      </div>
-      {data ? (
-        <div className={ui.segmented} role="group" aria-label="What is being asked">
-          {data.presets.map((x) => (
-            <button key={x.id} type="button" className={`${ui.seg} ${data.params.preset === x.id ? ui.segOn : ""}`} aria-pressed={data.params.preset === x.id} onClick={() => setPreset(x.id)}>
-              {x.title}
-            </button>
-          ))}
-        </div>
-      ) : null}
-      {result ? (
-        <>
-          <p className={b.readout} role="status">
-            {result.line}
-          </p>
-          <SourceChip sources={result.sources} about="The routing result" />
-        </>
-      ) : data ? (
-        <p className={b.note}>Nothing to work this out from yet: {data.reason}</p>
-      ) : sim.error ? (
-        <p className={b.note}>The box could not work this out ({sim.error.message}).</p>
-      ) : (
-        <p className={b.note}>Working it out…</p>
-      )}
-      <details open={open} onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)} data-guide="lab:routing-how">
-        <summary className={ui.chip} style={{ display: "inline-flex", cursor: "pointer", listStyle: "none" }}>
-          How this is worked out
-        </summary>
-        {open ? (
-          <div style={{ marginTop: 14 }}>
-            <Routing key={data?.params.preset ?? "custom"} initialPreset={data?.params.preset ?? preset} initialT={1} initialPolicy={null} initialBasis={null} initialDrawer={null} forceReduced={forceReduced} />
-          </div>
-        ) : null}
-      </details>
-    </div>
-  );
-}
-
 export function SpeedEnergy({
   initialBatch,
   initialTtft,
@@ -829,13 +720,8 @@ export function SpeedEnergy({
   initialDrawer,
   initialCompare = null,
   initialSweep = null,
-  initialPreset = null,
-  initialRouting = false,
   forceReduced,
 }: {
-  /** The routing card's preset, and whether its "How this is worked out" starts open (the old Routing tab's links). */
-  initialPreset?: string | null;
-  initialRouting?: boolean;
   initialBatch: number | null;
   initialTtft: boolean;
   initialPoint: string | null;
@@ -852,12 +738,7 @@ export function SpeedEnergy({
   if (bench.loading && !bench.data) return <Loading what="the lab's measurements" />;
   if (bench.error && !bench.data) return <ErrorBox what="the lab's measurements" error={bench.error} onRetry={bench.reload} />;
   const data = bench.data!;
-  // The tab opens on the lab's newest full curve (three load levels or more), not on whatever was measured last: a
-  // two-point run is not a curve. Every other run stays one tap away under "Other measurements".
-  const lead = headlineSweep(data);
-  const sweep = data.sweeps.find((s) => s.id === sweepId) ?? (initialSweep ? data.sweeps.find((s) => s.chip.key === initialSweep || s.id === initialSweep) : undefined) ?? lead;
-  const take = batchTakeaway(lead, when);
-  const hero = speedHero(data, when);
+  const sweep = data.sweeps.find((s) => s.id === sweepId) ?? (initialSweep ? data.sweeps.find((s) => s.chip.key === initialSweep || s.id === initialSweep) : undefined) ?? data.sweeps[0];
   // the runs, one group per chip: the current lab first, then each other chip under its own name
   const groups: { chip: LabChip; sweeps: BenchSweep[] }[] = [];
   for (const s of data.sweeps) {
@@ -869,50 +750,24 @@ export function SpeedEnergy({
     <div className={b.page}>
       <div className={ui.pageHead}>
         <h1>Speed and energy</h1>
-      </div>
-      {hero ? (
-        <Hero label="What does an answer cost?" hero={hero} guide="lab:cost" />
-      ) : take ? (
-        <Takeaway label="What does an answer cost?" take={take} guide="lab:cost" />
-      ) : data.rows === 0 ? (
-        <p className={b.banner}>{data.empty_reason}</p>
-      ) : null}
-      <div className={b.two}>
-        {sweep ? (
-          <Batching key={sweep.id} sweep={sweep} bench={data} initialBatch={initialBatch} initialTtft={initialTtft} initialPoint={initialPoint} initialCompare={initialCompare} reduced={reduced} />
-        ) : (
-          <div className={b.card}>
-            <h2>No batching measurement yet</h2>
-            <p className={b.note}>The lab has not yet measured the teacher at two or more loads. The chart appears as soon as it does.</p>
-          </div>
-        )}
-        <div className={b.col}>
-          <RoutingCard forceReduced={forceReduced} initialPreset={initialPreset} initialOpen={initialRouting} />
-          <StudentCard bench={data} />
-          <PowerCard bench={data} />
+        <p className={b.sub}>What the lab measured on its own hardware: how fast the big teacher model answers, and what each token costs in energy.</p>
+        <div className={b.cardHead} style={{ justifyContent: "flex-start", marginTop: 8 }}>
+          <button type="button" className={`${ui.btn}`} onClick={() => setDrawer("what")}>
+            What am I looking at?
+          </button>
+          <button type="button" className={`${ui.btn}`} onClick={() => setDrawer("rows")}>
+            All {data.rows} rows
+          </button>
         </div>
       </div>
-      <div className={b.cardHead} style={{ justifyContent: "flex-start" }}>
-        <button type="button" className={`${ui.btn}`} onClick={() => setDrawer("what")}>
-          What am I looking at?
-        </button>
-        <button type="button" className={`${ui.btn}`} onClick={() => setDrawer("rows")}>
-          Every row ({data.rows.toLocaleString()})
-        </button>
-      </div>
+      <LabelKey kinds={["measured", "derived"]} />
+      {data.rows === 0 ? <p className={b.banner}>{data.empty_reason}</p> : null}
       {data.sweeps.length > 1 ? (
-        <details className={b.col} style={{ gap: 12 }} open={!!initialSweep || (!!sweep && sweep.id !== lead?.id)} data-guide="lab:sweeps">
-          <summary className={`${ui.chip}`} style={{ alignSelf: "flex-start", cursor: "pointer", listStyle: "none" }}>
-            Other measurements ({data.sweeps.length - 1}){sweep && sweep.id !== lead?.id ? ": showing an older one" : ""}
-          </summary>
-          <p className={b.note} style={{ marginTop: 10 }}>
-            Each is <Term k="sweep">a run of the same test at different loads</Term>. The one the sentence above is read from is the newest with three load levels or more on the lab&apos;s own
-            chip.
-          </p>
+        <div className={b.col} style={{ gap: 12 }}>
           {groups.map((g) => {
-            const title = g.chip.current ? `The lab's own chip: ${g.chip.name}` : chipLabel(g.chip);
+            const title = g.chip.current ? `The lab now: ${g.chip.name}` : chipLabel(g.chip);
             return (
-              <div key={`${g.chip.key}|${g.chip.where ?? ""}`} className={b.col} style={{ gap: 6, marginTop: 10 }}>
+              <div key={`${g.chip.key}|${g.chip.where ?? ""}`} className={b.col} style={{ gap: 6 }}>
                 <span className={b.note}>
                   {title}
                   {g.chip.current ? "" : ` · ${chipRole(g.chip)}`}
@@ -920,17 +775,29 @@ export function SpeedEnergy({
                 <div className={ui.chips} role="group" aria-label={`Measurement runs, ${title}`}>
                   {g.sweeps.map((s) => (
                     <button key={s.id} type="button" className={`${ui.chip} ${s.id === sweep?.id ? ui.chipOn : ""}`} aria-pressed={s.id === sweep?.id} onClick={() => setSweepId(s.id)}>
-                      {sweepName(s, when)}
-                      {s.id === lead?.id ? " · the one above" : ""}
+                      {s.family.replace(/_/g, " ")} · {s.node} · {when(s.ts)}
                     </button>
                   ))}
                 </div>
               </div>
             );
           })}
-        </details>
+        </div>
       ) : null}
-      <Words keys={["teacher", "student", "batch", "tokens", "joules", "low", "sweep", "measured", "derived"]} />
+      <div className={b.two}>
+        {sweep ? (
+          <Batching key={sweep.id} sweep={sweep} bench={data} initialBatch={initialBatch} initialTtft={initialTtft} initialPoint={initialPoint} initialCompare={initialCompare} reduced={reduced} />
+        ) : (
+          <div className={b.card}>
+            <h2>No batching measurement yet</h2>
+            <p className={b.note}>The metrics file has no metric measured at two or more batch sizes. The chart appears as soon as the lab records one.</p>
+          </div>
+        )}
+        <div className={b.col}>
+          <StudentCard bench={data} />
+          <PowerCard bench={data} />
+        </div>
+      </div>
       {drawer === "what" ? (
         <Sheet title="What am I looking at?" onClose={close}>
           <What bench={data} sweep={sweep} />

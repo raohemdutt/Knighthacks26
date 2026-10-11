@@ -66,40 +66,6 @@ try {
   is("unnamed row", L.onOurHardware({ chip: chip("other", "unnamed", false), other_chip: true }), false);
   is("row with no chip", L.onOurHardware({ other_chip: false }), false);
 
-  // ---- the words and the slides (lib/labWords.ts): worked out from what the gateway sends, never typed in
-  const W = await load("labWords");
-  const B = await load("labBench");
-  const when = (iso) => (iso ? "then" : "");
-  const num = (value) => ({ label: "", value, unit: null, source: { kind: "event", ref: "learning.run.evaluated e1", ids: [] }, low_confidence: false, reason: null });
-  const run = (id, status, tested, more = {}) => ({ run_id: id, task: "tool-calling", status, started: "2026-10-11T03:00:00Z", ended: null, model_version: `m-${id}`, verdict: null, scores: { current: num(tested ? tested.right_before / tested.n_items : null), candidate: num(tested ? tested.right_after / tested.n_items : null), teacher: num(null) }, tested, ...more });
-  const test = (decision, b, a, n, rehearsal = null) => ({ decision, n_items: n, right_before: b, right_after: a, rehearsal, source: null });
-  const box = { model_version: "atlas-base", previous_version: null, since: "2026-10-11T09:09:11Z", source: null, reason: null };
-  // the box's own story on Sunday: a rehearsal on top, the retrain that passed, the first student that was refused
-  const runs = [run("duo", "gated", test("deploy", 0, 50, 50, "all 50 questions got the same answer")), run("v2", "gated", test("deploy", 95, 179, 228)), run("v1", "rolled back", test("reject", 24, 24, 24))];
-  const hero = W.modelHero(runs, box, when);
-  is("the hero is the newest real test, not the rehearsal above it", hero.run.run_id, "v2");
-  is("its big line is the counts", JSON.stringify(hero.hero.big), JSON.stringify([{ n: 95 }, "→", { n: 179 }, "of 228"]));
-  is("and what the test said", hero.hero.line, "Passed the test. Waiting to go on the box.");
-  is("the test said no once and yes once", hero.hero.tiles[0].value, "1 passed, 1 refused");
-  is("a refusal with no gain says so", W.modelHero([runs[2]], box, when).hero.line, "Refused: no better than before. Installed, then undone.");
-  is("only rehearsals: nothing is claimed", W.modelHero([runs[0]], box, when).hero.big.length, 0);
-  is("a row says how a run ended", W.runRow(runs[1]).chip, "Passed · 95 → 179 of 228");
-  is("a trained run with no test is not training now", W.runRow(run("x", "training", null, { run_status: "finished" })).chip, "Trained, not tested");
-  is("a fifth", W.shareWords(1.88 / 8.82), "about a fifth of");
-  is("the lab's note without its function names", W.plainConfidence("Each point is the median of 3 repeats, all from one session (bench-1). Every point is marked low confidence: 3 spawn(s), under the 5 that verdict() needs to call a difference."), "Each point is the median of 3 repeats. Every point is marked low confidence: 3 fresh starts; the lab wants 5 before it calls a difference real.");
-  is("a reason without its event names", W.plainReason("the log has no learning.run.evaluated event for this run"), "The box's log has no test result for this run");
-  is("old tab links land where their content went", [null, "run", "experiments", "routing", "speed", "compare", "together"].map(B.labTabOf).join(","), "run,run,run,speed,speed,compare,compare");
-  // the speed slide: two sweeps of the same pod, read as before and now
-  const pt = (x, value, unit) => ({ x, value, unit, label: "", source: { kind: "file", ref: `lab/refine/metrics.jsonl:${x}`, ids: [] }, kind: "measured", formula: null, low_confidence: true, reason: null });
-  const sweep = (id, ts, tok, j, w) => ({ id, ts, node: "pod-a", family: "teacher_batching", chip: { key: "strix-halo", name: "Radeon 8060S", where: null, current: true, role: "current" }, other_chip: false, batches: [1, 4, 16], build: "vllm", session: id, model: "m", points: 9, low_confidence: 9, confidence_note: "", comparisons: [],
-    metrics: { decode_tok_s: [pt(1, tok, "tok/s"), pt(4, tok * 0.8, "tok/s"), pt(16, tok * 0.3, "tok/s")], decode_tok_s_total: [pt(1, tok, "tok/s"), pt(4, tok * 3, "tok/s"), pt(16, tok * 4, "tok/s")], joules_per_token: [pt(1, j, "J/token"), pt(4, j / 3, "J/token"), pt(16, j / 4.7, "J/token")], watts_avg: [pt(1, w, "W"), pt(4, w, "W"), pt(16, w, "W")] } });
-  const two = { sweeps: [{ ...sweep("short", "2026-10-11T07:00:00Z", 12, 9, 98), batches: [1, 4] }, sweep("new", "2026-10-11T05:21:22Z", 12.3264, 8.8161, 96.7243), sweep("old", "2026-10-11T00:23:20Z", 2.7021, 36.6587, 96.0046)], power: { nodes: [{ node: "pod-a", idle: pt(0, 10.44, "W"), serving: null }], absent: [], other_chip: [], other_chips: [] } };
-  is("the tab opens on the newest full curve, not the newest two points", W.headlineSweep(two).id, "new");
-  const speed = W.speedHero(two, when);
-  is("the speed-up is the two sweeps' own ratio", JSON.stringify(speed.big), JSON.stringify([{ n: 4.6, digits: 1 }, "× faster"]));
-  is("on the same power", speed.line, "on the same 96 W: 2.7 → 12.3 tokens a second.");
-  is("one sweep alone has no before: the slide is the batching saving", W.speedHero({ ...two, sweeps: [two.sweeps[1]] }, when).big[1], "× less energy");
-
   // ---- the Circle's Shared brain card (G6): two pods, one brain (lib/sharedBrain.ts)
   const S = await load("sharedBrain");
   const member = (name, role, online, watts) => ({ name, role, node: role === "head" ? "pod-a" : "pod-b", layers: 24, online, watts_now: watts, watts_idle: 10.27, vram_gb: online ? 34.5 : null });

@@ -719,8 +719,7 @@ class LabView:
             r = report[1]
             if r.p_value is not None:
                 alpha = ev["alpha"]
-                shown = f"p = {r.p_value:.3g}" if r.p_value >= 1e-6 else "p is below 0.000001"
-                detail.append(f"{shown}: a difference this large would show up by chance "
+                detail.append(f"p = {r.p_value:.3g}: a difference this large would show up by chance "
                               f"{_one_in(r.p_value)}; the gate needs p below {alpha:g}.")
             if r.noise is not None and cur is not None and cand is not None:
                 side = "larger than" if abs(cand - cur) > r.noise else "inside"
@@ -734,11 +733,7 @@ class LabView:
                     "rolled back": "Better by more than chance on the test, but the box went back to the old model."}.get(
                 status, "Better by more than chance: cleared to deploy, not on the box yet.")
         else:
-            # The test's answer and what happened on the box are two facts: a model the test refused can still have been
-            # installed by hand, and the screen must not say "not deployed" above a swap the log holds.
-            head = {"deployed": "Not proven by the test, but installed on the box anyway.",
-                    "rolled back": "Not proven by the test: it was installed, then the box went back to the old model."}.get(
-                status, "Not proven: not deployed.")
+            head = "Not proven: not deployed."
         return head, detail
 
     def _package(self, package: tuple[Event, PackageBuilt] | None, version: str | None) -> dict[str, Any]:
@@ -885,8 +880,6 @@ def _one_in(p: float) -> str:
         return "never"
     if p >= 0.5:
         return "more than half the time"
-    if p < 1e-6:
-        return "less than 1 time in a million"  # a longer number reads as precision the test does not have
     return f"about 1 time in {round(1 / p):,}"
 
 

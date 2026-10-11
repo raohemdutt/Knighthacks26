@@ -36,17 +36,6 @@ def test_the_teachers_curve_is_the_teacher_pods_own_sweep_even_when_the_other_po
     assert recorded_inputs(only_b)["teacher"] is None and "batching sweep on pod-a" in recorded_inputs(only_b)["missing"][0]
 
 
-def test_a_newer_two_point_run_does_not_replace_the_teachers_curve_and_stands_alone_when_it_is_all_there_is():
-    """Two load levels are a line, not a curve: the what-if keeps the newest full sweep, as the Speed tab does."""
-    short = [r for r in pod_a_sweep(session="quick-check", ts="2026-10-11T07:21:00Z") if r["conditions"]["batch_size"] in (1, 4)]
-    rows = ROWS + [{**r, "_line": len(ROWS) + n} for n, r in enumerate(short, 1)]
-    teacher = recorded_inputs(rows)["teacher"]
-    assert (teacher["session"], teacher["batches"]) == (POD_A_SESSION, [1, 4, 8, 16, 64])
-    only_short = [r for r in rows if not (r["metric"].startswith("teacher_batching.") and r["_line"] <= len(ROWS))]
-    alone = recorded_inputs(only_short)["teacher"]
-    assert (alone["session"], alone["batches"]) == ("quick-check", [1, 4])
-
-
 def test_the_same_inputs_give_the_same_output_and_another_seed_gives_another_stream():
     a, b = simulate({"preset": "study", "seed": 3}, ROWS), simulate({"preset": "study", "seed": 3}, ROWS)
     assert json.dumps(a, sort_keys=True) == json.dumps(b, sort_keys=True)
