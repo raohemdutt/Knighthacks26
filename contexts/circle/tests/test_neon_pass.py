@@ -26,7 +26,13 @@ from contexts.circle.infrastructure.neon import (
 )
 from contexts.circle.infrastructure.neon_sealed import NeonSealedStore
 from contexts.circle.infrastructure.outbox import PresenceQueue
+from bus import EventBus
+from contexts.circle import schema
+from contexts.circle.application.sharing import CircleSharing
+from contexts.circle.infrastructure.outbox import CircleOutbox
+from contexts.circle.tests import face_share_helpers as faces
 from contexts.circle.tests.neon_helpers import FakeNeon, drop_test_circle, needs_neon, open_test_circle
+from contexts.demo.nearby import nearby_events
 from contexts.gateway import bootstrap
 from contexts.play.league.infrastructure.neon import NeonLeague
 from contracts.circle import PlaceShared, Proposal, SealedMessage
@@ -388,3 +394,104 @@ def test_real_sealed_messages_and_league_tables_take_our_rows():
         assert db.run(count) == 1
     finally:
         assert drop_test_circle(db, c) == 0
+
+
+@needs_neon
+def test_real_face_share_key_exchange_share_accept_revoke_and_expiry(tmp_path):
+    """The whole face share flow of test_face_share.py, with the two boxes meeting only in the real table.
+    The "faces" are the fake recogniser's synthetic vectors; the days are shortened to one."""
+    db, c = open_test_circle()
+    try:
+        store, wall = NeonSealedStore(db), faces.Wall()
+        a, b = f"{c}-a", f"{c}-b"
+        names = {a: "Test A", b: "Test B"}
+        faces.TEMPLATE_NAME.update({a: "Zebulon Quartermaine", b: "Ottoline Pemberwick"})
+
+        def box(member):
+            made = faces.Box(tmp_path, member, store, wall, names=names, days=1)
+            made.share.circle_id = c  # the helper's boxes live in "team"; these rows must stay under the test circle
+            return made
+
+        def kinds():
+            def work(cur):
+                cur.execute("SELECT kind, count(*) FROM sealed_messages WHERE circle_id = %s GROUP BY 1 ORDER BY 1", (c,))
+                return dict(cur.fetchall())
+            return db.run(work)
+
+        ana, bob = box(a), box(b)
+        ana.enrol_self()
+        bob.identity.set_enabled(True)
+        faces.share_and_accept(ana, bob)  # keys published and read, the share sealed, the accept card approved
+        assert kinds() == {"box_key": 2}  # the ciphertext row is deleted once it is used
+        assert len(bob.identity.members()) == 1 and bob.sees(a.encode()) != {}
+
+        ana.publish(ana.share.revoke(b))
+        assert kinds() == {"box_key": 2, "face_revoke": 1}
+        bob.poll()
+        assert bob.identity.members() == [] and kinds() == {"box_key": 2}
+
+        faces.share_and_accept(ana, bob)  # again, and this time it runs out by itself
+        assert len(bob.identity.members()) == 1
+        wall.pass_(days=1, hours=1)
+        bob.poll()
+        assert bob.identity.members() == [] and bob.states()[-1] == ("in", a, "expired")
+    finally:
+        faces.TEMPLATE_NAME.pop(f"{c}-a", None), faces.TEMPLATE_NAME.pop(f"{c}-b", None)
+        assert drop_test_circle(db, c) == 0
+
+
+# --- what must never reach the database ---
+
+
+def test_near_you_demo_events_never_reach_the_database(tmp_path):
+    neon, bus = FakeNeon(), EventBus(tmp_path / "events")
+    db = NeonDb(neon.connect)
+    sharing = CircleSharing(CircleOutbox(tmp_path / "circle.sqlite"), NeonShares(db), "team", "dom", opted_in=True)
+    presence = PresenceSync(NeonPresence(db), "team", "dom", queue=PresenceQueue(tmp_path / "circle.sqlite"))
+    bus.subscribe("habits.day.closed", sharing.on_day_closed)  # the subscriptions bootstrap.py makes for Neon
+    bus.subscribe("impact.count.updated", sharing.on_count_updated)
+    bus.subscribe("play.round.scored", sharing.on_round_scored)
+    bus.subscribe("circle.place.shared", presence.on_shared)
+    events = nearby_events(NOW)
+    assert events and {e.type for e in events} == {"connector.item.synced"}
+    asyncio.run(bus.publish_all(events))
+    assert sharing.outbox.pending() == [] and presence.pending is None
+    sharing.sync(NOW)
+    assert [sql for sql, _ in neon.statements if not sql.startswith("SELECT")] == []  # nothing written
+
+
+# --- python -m contexts.circle.schema ---
+
+
+def test_the_schema_tool_reads_schema_sql_and_runs_only_its_creates():
+    want = schema.expected(schema.SCHEMA.read_text())
+    assert {"presence", "agent_messages", "sealed_messages", "league_weeks"} <= set(want["tables"])
+    assert want["tables"]["presence"] == ["member_id", "circle_id", "place", "source", "shared_at", "expires_at"]
+    assert want["indexes"]["presence_circle_expiry"] == "presence" and "habit_leaderboard" in want["views"]
+    kinds = {kind for kind, _, _ in schema.statements(schema.SCHEMA.read_text())}
+    assert kinds == {"table", "index", "view"}
+    for bad in ("ALTER TABLE presence ADD COLUMN x text;", "DROP TABLE presence;", "DELETE FROM presence;",
+                "CREATE TABLE presence (x text);"):
+        with pytest.raises(ValueError):
+            schema.statements(bad)
+
+
+def test_the_schema_tool_never_prints_the_connection_string(monkeypatch, capsys):
+    monkeypatch.setenv("NEON_DATABASE_URL", "postgresql://someone:s3cret@127.0.0.1:1/nothing?connect_timeout=1")
+    assert schema.main(["--check"]) == 1
+    said = capsys.readouterr()
+    assert "could not connect" in said.out and "s3cret" not in said.out + said.err and "127.0.0.1" not in said.out + said.err
+
+
+@needs_neon
+def test_real_schema_check_reads_the_database_without_writing():
+    db = NeonDb()
+    try:
+        conn = db._connect()
+        try:
+            conn.read_only = True  # the check can only read; --apply is for a person to run
+            assert isinstance(schema.audit(conn, out=lambda *a: None), list)
+        finally:
+            conn.close()
+    finally:
+        db.close()

@@ -221,7 +221,11 @@ class Atlas:
         self._last_cleanup = now
 
         async def sweep() -> list:
-            removed = await off_loop(self.circle_cleanup)
+            try:
+                removed = await off_loop(self.circle_cleanup)
+            except CircleOffline:
+                self._last_cleanup = None  # not done: try again on the next tick, not tomorrow
+                raise
             if any(removed.values()):
                 log.info("circle cleanup: removed this box's old rows from Neon: %s", removed)
             return []
