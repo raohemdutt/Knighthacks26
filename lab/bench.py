@@ -1030,9 +1030,10 @@ class Spawned:
 
 
 def spawn_server(argv: list[str], *, port: int, log_path: Path, env: Mapping[str, str], cwd: Path,
-                 own_log: bool) -> Spawned:
+                 own_log: bool, unset_env: Sequence[str] = ()) -> Spawned:
     """Start the server; its stdout and stderr go to the log (or beside it when the command writes its own).
-    Port 0: the server picks a free port itself and writes it to its {port_file} (see wait_port)."""
+    Port 0: the server picks a free port itself and writes it to its {port_file} (see wait_port).
+    unset_env names are removed from the inherited environment before env is laid over it."""
     if port and port_open(port):
         raise BenchError(f"something already listens on 127.0.0.1:{port}; a server spawned there would collide "
                          "with it (on pod C that is the running teacher)")
@@ -1040,7 +1041,8 @@ def spawn_server(argv: list[str], *, port: int, log_path: Path, env: Mapping[str
     handle = open(out_path, "wb")
     try:
         proc = subprocess.Popen(argv, stdout=handle, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                                env={**os.environ, **env}, cwd=str(cwd), start_new_session=os.name == "posix")
+                                env={**{k: v for k, v in os.environ.items() if k not in unset_env}, **env},
+                                cwd=str(cwd), start_new_session=os.name == "posix")
     except OSError as exc:
         handle.close()
         raise BenchError(f"could not start {argv[0]}: {exc}") from exc
@@ -1158,6 +1160,7 @@ class Config:
     engine_dir: str | None = None
     patches: list[str] = field(default_factory=list)
     launch_env: dict[str, str] = field(default_factory=dict)
+    unset_env: list[str] = field(default_factory=list)   # removed from the inherited environment of a spawn
     node: str = "pod-b"
     port: int = DEFAULT_PORT
     batches: list[int] | None = None
@@ -1295,6 +1298,7 @@ class Session:
             env, queues = None, None
             why = qwhy = "attached: the server's process is not readable from here"
         cond.update({"env": env, "env_meant": dict(sorted(c.launch_env.items())) if not attached else None,
+                     **({"env_unset": sorted(c.unset_env)} if c.unset_env and not attached else {}),
                      "env_source": f"/proc/{pid}/environ" if env is not None else None, "kfd_queues": queues})
         if why:
             unavailable["env"] = why
@@ -1504,7 +1508,8 @@ class Session:
                   "max_len": c.max_len, "model": c.model, "checkpoint": c.checkpoint}
         argv = fill_command(template, values)
         own_log = any("{log}" in str(a) for a in template)
-        spawned = spawn_server(argv, port=c.port, log_path=log_path, env=c.launch_env, cwd=self.dir, own_log=own_log)
+        spawned = spawn_server(argv, port=c.port, log_path=log_path, env=c.launch_env, cwd=self.dir, own_log=own_log,
+                               unset_env=c.unset_env)
         spawn = {"index": index, "pid": spawned.pid, "cold": True, "attached": False, "spawned": utc(spawned.spawned),
                  "spawned_t": spawned.spawned, "ready_s": None, "stopped": False, "log": str(log_path),
                  "shared": c.share_spawn, "command": argv}
