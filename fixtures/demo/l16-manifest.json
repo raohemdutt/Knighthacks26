@@ -1,0 +1,13 @@
+{
+  "version": "atlas-tool-calling-train-20261011T032149Z-7dd098",
+  "base": "Qwen/Qwen3.5-4B",
+  "task": "tool-calling",
+  "gguf": "atlas-tool-calling-train-20261011T032149Z-7dd098-Q4_K_M.gguf",
+  "mmproj": "mmproj-F16.gguf",
+  "sha256": {
+    "atlas-tool-calling-train-20261011T032149Z-7dd098-Q4_K_M.gguf": "b48886c0655005f59fbbee9097215a64549b230cb00dcf5b744cd5d19b18ea6d",
+    "mmproj-F16.gguf": "cd88edcf8d031894960bb0c9c5b9b7e1fea6ebee02b9f7ce925a00d12891f864"
+  },
+  "scores": {},
+  "created": "2026-10-11T04:54:20.755235Z"
+}
