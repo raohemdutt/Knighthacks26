@@ -15,11 +15,17 @@ const asApiError = (err: unknown) => (err instanceof ApiError ? err : new ApiErr
  * each with when it was, what was going on and what helped. Words and numbers only, read from this box. One can be
  * forgotten, or all of them in one tap; a forgotten look stays forgotten after a restart. Shown under the expressions
  * switch of the one person whose looks are read, and nothing is shown while there is nothing to show.
+ *
+ * Under it, "What Atlas has learned about your looks" (contexts/day/domain/look_model.py): two or three findings as
+ * sentences with their counts, how wide the guess still is, the evidence line, and "not enough yet" when that is the
+ * truth. It is a count worked out on the box from the looks above, stored nowhere: so "Forget what it learned" forgets
+ * all of the looks, and says so before it does.
  */
 export function LooksRemembered({ memberId }: { memberId: string }) {
   const looks = useFetch((s) => api.dayLooks(memberId, s), `looks:${memberId}`);
   const [busy, setBusy] = useState<string | null>(null);
   const [asking, setAsking] = useState(false);
+  const [unlearning, setUnlearning] = useState(false);
   const [error, setError] = useState<ApiError | undefined>(undefined);
   useAtlasEvents(["day.checkin", "day.look", "perception.identity"], looks.reload);
 
@@ -31,6 +37,7 @@ export function LooksRemembered({ memberId }: { memberId: string }) {
     (id ? api.dayForgetLook(id) : api.dayForgetLooks(memberId))
       .then(() => {
         setAsking(false);
+        setUnlearning(false);
         looks.reload();
       })
       .catch((err: unknown) => setError(asApiError(err)))
@@ -90,6 +97,56 @@ export function LooksRemembered({ memberId }: { memberId: string }) {
           The most recent {data.moments.length} of {data.count}. A look is kept for {data.kept_days} days.
         </p>
       ) : null}
+      {data.learned && data.moments.length > 0 ? (
+        <div className={l.learned} data-guide="people:looks-learned">
+          <h3>What Atlas has learned about your looks</h3>
+          {data.learned.enough ? (
+            <ul className={l.list}>
+              {data.learned.findings.map((f) => (
+                <li key={f.kind} className={l.finding} data-finding={f.kind}>
+                  <p>{f.text}</p>
+                  <p className={`${ui.muted} ${ui.small}`}>{f.band}</p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>{data.learned.not_enough}</p>
+          )}
+          <p className={ui.small} data-evidence>
+            {data.learned.evidence}
+          </p>
+          <p className={`${ui.muted} ${ui.small}`}>
+            {data.learned.shared_note ? `${data.learned.shared_note} ` : ""}
+            {data.learned.note}
+          </p>
+          {unlearning ? (
+            <div className={l.confirm}>
+              <p className={ui.small}>
+                What Atlas learned is only a count of the looks above, kept nowhere else. Forgetting it forgets all {data.count} of them.
+              </p>
+              <div className={ui.row}>
+                <button type="button" className={ui.btn} disabled={busy !== null} onClick={() => setUnlearning(false)}>
+                  Keep
+                </button>
+                <button type="button" className={`${ui.btn} ${ui.btnDeny}`} disabled={busy !== null} onClick={() => forget(null)}>
+                  {busy === "all" ? "Forgetting…" : `Forget all ${data.count} looks`}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <button type="button" className={ui.btn} disabled={busy !== null} onClick={() => setUnlearning(true)}>
+                Forget what it learned
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className={l.learned} data-guide="people:looks-learned">
+          <h3>What Atlas has learned about your looks</h3>
+          <p className={`${ui.muted} ${ui.small}`}>Nothing yet. Atlas learns only from the looks it remembers, and it remembers none.</p>
+        </div>
+      )}
       {error ? <WriteError error={error} /> : null}
     </div>
   );

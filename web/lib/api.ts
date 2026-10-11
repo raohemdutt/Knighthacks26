@@ -1665,6 +1665,11 @@ export interface DayNow {
   coach_earlier?: DayCoachNote[];
   /** The check-in to show at the top of the day, when Atlas raised one today; absent on a box without it. */
   checkin?: CheckinCard | null;
+  /**
+   * With no check-in on screen: "You usually start to look strained around now.", when the person has been at the
+   * desk about as long as it usually takes (the look memory's own counts). For the screen only; "" most of the time.
+   */
+  ahead?: string;
 }
 
 export type CheckinKind = "sleep" | "resting_hr" | "expression" | "sitting" | "drink" | "history";
@@ -1712,6 +1717,8 @@ export interface CheckinCard extends EventEnvelope {
   evidence: CheckinEvidence;
   /** An earlier look this one is like, from the look memory; null when none was similar enough, or it was forgotten since. */
   callback?: CheckinCallback | null;
+  /** For the card only, never said aloud or pushed: "You usually start to look strained around now. A short break tends to help." */
+  ahead?: string;
 }
 
 /** contracts.day.CheckinCallback: words, a day and a label. No picture, no health value. Box-only. */
@@ -1726,6 +1733,10 @@ export interface CheckinCallback {
   chip: string;
   /** The remembered moment in one or two plain lines: what was going on, what helped. */
   lines: string[];
+  /** What the counts over every remembered look say, once there are enough (stage two): `learned` is then that sentence. */
+  pattern?: string;
+  /** "From 9 remembered looks, 8 with a known outcome."; "" while the check-in is stage one's single look back. */
+  evidence?: string;
 }
 
 /** One remembered look (GET /api/day/looks): when, what was going on, what helped. Labels and numbers only. */
@@ -1749,6 +1760,38 @@ export interface LooksView {
   kept_days: number;
   moments: LookMoment[];
   note: string;
+  /** What Atlas has learned from them for this person; null while nothing is remembered. */
+  learned?: LooksLearned | null;
+}
+
+/** One thing Atlas learned from the remembered looks, as a sentence with its counts. `finding` false: counts only, too few to call. */
+export interface LookFinding {
+  kind: string;
+  text: string;
+  eased: number;
+  n: number;
+  finding: boolean;
+  /** "Likely between 57% and 95% of the time, on this little." */
+  band: string;
+}
+
+/**
+ * What Atlas has learned about one person's looks (contexts/day/domain/look_model.py): a table of counts worked out on
+ * the box from the remembered looks, when asked. Stored nowhere, so forgetting the looks forgets it.
+ */
+export interface LooksLearned {
+  enough: boolean;
+  looks: number;
+  known: number;
+  left_out: number;
+  min_known: number;
+  /** "From 13 remembered looks, 10 with a known outcome. 3 are left out: I couldn't see how they went." */
+  evidence: string;
+  findings: LookFinding[];
+  /** "Not enough yet. I need to see how 1 more look went before I say what helps (3 of 4 so far)."; "" with enough. */
+  not_enough: string;
+  note: string;
+  shared_note: string;
 }
 
 /** GET /api/day/checkin */

@@ -1,5 +1,6 @@
 """The look memory, stage one: remember a sustained look with what was going on around it, and call back to it.
 Pure: no clock, no model, no I/O. contexts/day/application/looks.py keeps the moments (a projection of the log).
+Stage two, what Atlas learns from all of them, is contexts/day/domain/look_model.py; it reads `labelled_examples`.
 
     then = similar(context_now, today, member, moments)        # an earlier moment like this one, or None
     said = callback(then, today, tz)                           # "That's the same look you had Tuesday afternoon, when ..."
@@ -348,13 +349,13 @@ def said_helped(m: Moment | None, today: date, tz: tzinfo, w: Words = Words()) -
     return f"Nothing I saw. Last time, {when}, " + went(m, w)[0].lower() + went(m, w)[1:]
 
 
-# ---------- the seam for stage two (not built): labelled examples for an on-box training step ----------
+# ---------- the seam for stage two (contexts/day/domain/look_model.py): labelled examples, and nothing else ----------
 
 
 def labelled_examples(moments: list[Moment]) -> list[dict]:
     """READ-ONLY. The remembered moments as labelled examples: the look (the label), the context (the features), the
     advice given and the outcome (the target). No picture, no frame ref, no member id, no heart value: only what a
-    moment already holds. A future training step on the box would read this and nothing else from the look memory."""
+    moment already holds. The learning step on the box (look_model.fit) reads this and nothing else from the look memory."""
     return [{"look": m.look, "features": asdict(m.context), "advice": list(m.suggested), "outcome": asdict(m.outcome)}
             for m in sorted(moments, key=lambda m: m.at)]
 

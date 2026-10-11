@@ -458,6 +458,83 @@ def test_the_callback_passes_only_when_it_names_a_day_the_box_really_remembers_b
     assert dw.look_back(look_card(day="2026-10-10", said=said) | {"display": said}, yesterday)[0] == dw.PASS
 
 
+# ---------- what Atlas learned from its looks: the counts it says are the looks' own ----------
+
+
+def remembered(up=(5, 6), drink=(0, 0), stay=(0, 4), unknown: int = 1) -> list[dict]:
+    """Remembered looks as GET /api/day/looks lists them: `(eased, seen)` for each thing the person did, and some unknown."""
+    rows = []
+    for arm, (k, n) in (("up", up), ("drink", drink), ("stay", stay)):
+        rows += [{"member_id": "m-demo", "outcome": {"known": True, "got_up": arm == "up", "drink": True if arm == "drink" else None, "eased": i < k}}
+                 for i in range(n)]
+    rows += [{"member_id": "m-demo", "outcome": {"known": False, "got_up": None, "drink": None, "eased": None}} for _ in range(unknown)]
+    return [{"id": f"look-{i}", **r} for i, r in enumerate(rows)]
+
+
+LEARNED_SAID = "Getting up has eased this five of the last six times; staying at the desk hasn't any of the four times."
+EVIDENCE = "From 11 remembered looks, 10 with a known outcome."
+
+
+def learned_view(moments=None, **more) -> dict:
+    moments = remembered() if moments is None else moments
+    known = sum(1 for m in moments if m["outcome"]["known"])
+    view = {"enough": known >= 4, "looks": len(moments), "known": known, "min_known": 4, "evidence": EVIDENCE, "not_enough": "Not enough yet.",
+            "findings": [{"kind": "up", "text": "Getting up helps: the look eased 5 of the 6 times you got up, against 0 of the 4 times you didn't.", "eased": 5, "n": 6},
+                         {"kind": "stay", "text": "Staying at the desk: the look eased 0 of the 4 times you stayed at the desk.", "eased": 0, "n": 4},
+                         {"kind": "sitting", "text": "It usually starts after about 90 minutes at the desk: 11 of 11 looks did.", "eased": 11, "n": 11}]}
+    return {"on": True, "count": len(moments), "moments": moments, "learned": view | more}
+
+
+def learned_card(said: str = LEARNED_SAID, evidence: str = EVIDENCE, **more) -> dict:
+    return look_card(learned=said, evidence=evidence) | {"display": f"You've looked strained for the last 20 minutes. {SAME_LOOK} {said}"} | more
+
+
+def test_what_it_learned_passes_only_when_its_counts_are_the_remembered_looks_own():
+    status, note = dw.look_learned(learned_card(), learned_view())
+    assert status == dw.PASS and LEARNED_SAID in note and "getting up 5 of 6, staying put 0 of 4, recounted from the 11 looks listed" in note
+    assert dw.recount(remembered()) == {"known": 10, "arms": {"up": (5, 6), "drink": (0, 0), "stay": (0, 4)}}
+    # a sentence whose counts are not the looks' own, a finding that is not, and an evidence line that is not
+    wrong = LEARNED_SAID.replace("five of the last six", "six of the last six")
+    assert dw.look_learned(learned_card(wrong), learned_view())[0] == dw.FAIL
+    assert "does not carry the looks' own counts" in dw.look_learned(learned_card(wrong), learned_view())[1]
+    off = learned_view()
+    off["learned"]["findings"][0] |= {"eased": 6}
+    assert dw.look_learned(learned_card(), off)[0] == dw.FAIL and "do not match the looks" in dw.look_learned(learned_card(), off)[1]
+    assert dw.look_learned(learned_card(), learned_view(known=12))[0] == dw.FAIL
+    assert dw.look_learned(learned_card(evidence="From 14 remembered looks, 13 with a known outcome."), learned_view())[0] == dw.FAIL
+    assert dw.look_learned(learned_card() | {"display": "You've looked strained."}, learned_view())[0] == dw.FAIL  # the card does not say it
+    # the card's quiet line must not be in what is said
+    quiet = "You usually start to look strained around now. A short break tends to help."
+    assert dw.look_learned(learned_card(ahead=quiet), learned_view())[0] == dw.PASS and "Card only" in dw.look_learned(learned_card(ahead=quiet), learned_view())[1]
+    spoken = learned_card(ahead=quiet)
+    assert dw.look_learned(spoken | {"spoken": f"{spoken['display']} {quiet}"}, learned_view())[0] == dw.FAIL
+    # water alone, both times, each of the last four times, the one time
+    water = "Getting up has eased this each of the last four times; water alone hasn't either time."
+    assert dw.look_learned(learned_card(water, "From 6 remembered looks, 6 with a known outcome."),
+                           learned_view(remembered(up=(4, 4), drink=(0, 2), stay=(0, 0), unknown=0), findings=[]))[0] == dw.PASS
+    assert dw.counts_said("Getting up has eased this both times; water alone has one of two.", "up", 2, 2)
+    assert dw.counts_said("Getting up has eased this both times; water alone has one of two.", "drink", 1, 2)
+    assert dw.counts_said("Water alone has eased this three of the last four times; getting up hasn't the one time.", "up", 0, 1)
+    assert not dw.counts_said("Getting up has eased this both times.", "up", 2, 3) and not dw.counts_said("Getting up has eased this both times.", "drink", 0, 2)
+    # more looks remembered since the check-in was raised: its counts are older, and that is said, not failed
+    more = remembered(up=(6, 7))
+    assert dw.look_learned(learned_card(), learned_view(more, findings=[]))[0] == dw.PASS
+    assert "More looks have been remembered since" in dw.look_learned(learned_card(), learned_view(more, findings=[]))[1]
+
+
+def test_under_the_minimum_not_enough_yet_is_the_pass_and_a_learned_sentence_is_the_failure():
+    few = remembered(up=(2, 2), stay=(0, 1), unknown=2)
+    status, note = dw.look_learned(look_card(), learned_view(few))
+    assert status == dw.PASS and note == "not enough yet, and it says so: Not enough yet."
+    assert dw.look_learned(learned_card(), learned_view(few))[0] == dw.FAIL
+    assert dw.look_learned(None, {"on": True, "count": 0, "moments": [], "learned": None})[0] == dw.SKIP
+    assert dw.look_learned(None, learned_view())[0] == dw.PASS  # no check-in on screen: the People block alone is checked
+    assert dw.look_learned(learned_card(), learned_view() | {"count": 80})[0] == dw.SKIP  # more looks than were listed
+    # a check-in that says the counts with no single look to call back to is not a failed callback
+    alone = learned_card() | {"callback": {"moment_id": "look-3", "day": "2026-10-08", "said": "", "learned": LEARNED_SAID, "evidence": EVIDENCE}}
+    assert dw.look_back(alone, REMEMBERED)[0] == dw.SKIP
+
+
 def test_no_check_in_no_look_or_nothing_similar_is_a_skip_never_a_forced_callback():
     assert dw.look_back(None, REMEMBERED)[0] == dw.SKIP
     assert dw.look_back(look_card() | {"signals": [{"kind": "sleep"}]}, REMEMBERED)[0] == dw.SKIP

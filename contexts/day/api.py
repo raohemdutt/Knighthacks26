@@ -37,8 +37,12 @@
 - GET  /api/day/looks?limit=&member=  the look memory (contexts/day/application/looks.py): the most recent remembered looks, each
                                with when it was, what was going on and what helped, in plain lines. Labels and numbers
                                only: no picture, and a heart rate only as "above your usual". Box-only.
+                               `learned`: what Atlas has learned from them for that person (stage two,
+                               contexts/day/domain/look_model.py): two or three findings as sentences with their counts,
+                               the evidence line, or "not enough yet". Worked out when asked, stored nowhere.
 - DELETE /api/day/looks/{id}   forget one remembered look; DELETE /api/day/looks[?member=] forgets all of them. Each publishes the
-                               box-only `day.look.forgotten`, so a replay of the log forgets them again.
+                               box-only `day.look.forgotten`, so a replay of the log forgets them again. What was learned
+                               is only a function of the looks, so forgetting all of them is forgetting it.
 
 - GET  /api/day/optional       optional events ("Near you") for today and the next days, from Memory's `nearby:` calendar
                                items: each with who is going, whether it fits today's plan (`fit`: yes / nearly / no, what
@@ -185,8 +189,17 @@ def day_router(day: DayLoop, publish: Callable[[object], Awaitable] | None = Non
             "yesterday": p.reviews[which - timedelta(days=1)].model_dump(mode="json") if which - timedelta(days=1) in p.reviews else None,
             "friends": friends, "last_seen": last_seen(),
             "coach": coach[0] if coach else None, "coach_earlier": coach[1:],
-            "checkin": checkin_latest(),  # the check-in to show at the top, while it is fresh and unanswered or just answered
+            "checkin": (card := checkin_latest()),  # the check-in to show at the top, while it is fresh and unanswered or just answered
+            # With no check-in on screen: the quiet line "You usually start to look strained around now." when the person
+            # has been at the desk about as long as it usually takes (the look memory's own counts). For the screen only.
+            "ahead": "" if card else look_ahead(),
         }
+
+    def look_ahead() -> str:
+        try:
+            return day.looks.ahead(day.looks.clock_now(clock()))
+        except Exception:
+            return ""
 
     # --- the check-in (D4) ---
 

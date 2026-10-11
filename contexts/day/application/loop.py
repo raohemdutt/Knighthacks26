@@ -48,7 +48,9 @@ class DayLoop:
         self.checkin.narrator = self.narrator
         # The look memory: a sustained look is remembered with what was going on around it, and a later check-in calls
         # back to the most similar one. A projection of the log; box-only (contexts/day/application/looks.py).
-        self.looks = LookMemory(self.planner, self.coach, self.checkin, self.clock, habits=habits, words=self.checkin.words)
+        # agent.yaml `day: {look_ahead: false}` turns off the card's quiet "you usually start to look strained around now".
+        self.looks = LookMemory(self.planner, self.coach, self.checkin, self.clock, habits=habits, words=self.checkin.words,
+                                look_ahead=bool((narration or {}).get("look_ahead", True)))
         self.checkin.look_memory = self.looks
         # The arbiter: one gate for everything said unasked (order, a global gap, merging, suppression, one speaker).
         # agent.yaml `day: {speak_gap_s: 90}`.
@@ -178,7 +180,10 @@ MOMENT_PUSH = {"morning": ("Your day", "sunrise"), "replan": ("Re-plan", "arrows
 
 def checkin_push(e: DayCheckinRaised) -> str:
     """What a check-in's push may say: the plain nudges, and where to read the rest. Nothing about the person."""
-    nudges = [s.text.rstrip(".") for s in e.suggestions if s.kind != "move_block"]
+    advice = [s for s in e.suggestions if s.kind != "move_block"]
+    if e.callback is not None and e.callback.evidence:  # ordered by what Atlas learned on the box: the push keeps the rule's own order
+        advice = sorted(advice, key=lambda s: s.kind != "drink")
+    nudges = [s.text.rstrip(".") for s in advice]
     todo = f" {nudges[0]}{''.join(', ' + n[:1].lower() + n[1:] for n in nudges[1:])}." if nudges else ""
     return f"Atlas has a check-in for you.{todo} Open Now to see why."
 

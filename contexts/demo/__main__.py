@@ -26,8 +26,10 @@
         The check-in (D4): one invented afternoon (a short night, resting heart rate up, strained looks, a bottle
         not picked up, three earlier days like it) published through the real app, so the Day loop's own rule
         raises it and the narrator says it. An earlier strained afternoon is in its log too, so the look memory
-        calls back to it ("That's the same look you had <that weekday> afternoon, when ..."). Prints the sentence
-        and the command to run the app on it. --onto adds the afternoon to a directory already seeded with
+        calls back to it ("That's the same look you had <that weekday> afternoon, when ..."), and nine more over the
+        two weeks before, so what Atlas has learned from them is said with its counts ("Getting up has eased this
+        five of the last six times; staying at the desk hasn't any of the four times."). Prints the sentence, what
+        was learned and the command to run the app on it. --onto adds the afternoon to a directory already seeded with
         `python -m contexts.demo circle`, so one box shows the night, the Circle, the people and the check-in.
 
     python -m contexts.demo optional --data-dir <empty dir> [--day YYYY-MM-DD]
