@@ -333,15 +333,18 @@ def main() -> None:
     (OUT / "rocprof" / "4243" / "run_memory_copy_trace.csv").write_text(csv_text(COPY_COLUMNS, copies),
                                                                         encoding="utf-8", newline="")
     (OUT / "raw.json").write_text(json.dumps(raw_record(), indent=1) + "\n", encoding="utf-8", newline="\n")
-    def copy(label: str, value: float | None, status: str = "ok") -> dict:
+    def copy(label: str, nbytes: int, value: float | None, status: str = "ok") -> dict:
         return {"id": f"copy.d2d.size_{label}", "section": "copy", "what": f"device-to-device copy of {label}",
-                "unit": "GB/s", "value": value, "status": status, "error": None if status == "ok" else "synthetic"}
+                "unit": "GB/s", "value": value, "status": status, "error": None if status == "ok" else "synthetic",
+                "params": {"bytes": nbytes}}
 
     # R33's sheet format (lab/kernels/chipsheet/chipsheet_format.py), the copy entries only, made-up numbers; not
     # in the data folder, so no plan ever reads it
     sheet = {"format": "atlas.chipsheet/1", "gfx": "gfx1151", "node": "pod-b", "mode": "full", "date": "2026-10-10",
-             "measurements": [copy("1mib", 40.0), copy("64mib", 180.0), copy("4gib", 212.5),
-                              copy("8gib", None, "failed")],
+             # the 16 MiB copy rides in the last-level cache and reads far faster than memory; the 4 GiB one is
+             # the reference, and the failed 8 GiB one is left out
+             "measurements": [copy("1mib", 2**20, 600.0), copy("16mib", 2**24, 940.0), copy("64mib", 2**26, 214.0),
+                              copy("4gib", 2**32, 212.5), copy("8gib", 2**33, None, "failed")],
              "notes": ["synthetic, for the R47 self-check and its tests only"]}
     (OUT / "chipsheet.json").write_text(json.dumps(sheet, indent=1) + "\n", encoding="utf-8", newline="\n")
 

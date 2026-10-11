@@ -10,18 +10,36 @@
    "section": "copy",
    "what": "device-to-device copy of 1mib",
    "unit": "GB/s",
-   "value": 40.0,
+   "value": 600.0,
    "status": "ok",
-   "error": null
+   "error": null,
+   "params": {
+    "bytes": 1048576
+   }
+  },
+  {
+   "id": "copy.d2d.size_16mib",
+   "section": "copy",
+   "what": "device-to-device copy of 16mib",
+   "unit": "GB/s",
+   "value": 940.0,
+   "status": "ok",
+   "error": null,
+   "params": {
+    "bytes": 16777216
+   }
   },
   {
    "id": "copy.d2d.size_64mib",
    "section": "copy",
    "what": "device-to-device copy of 64mib",
    "unit": "GB/s",
-   "value": 180.0,
+   "value": 214.0,
    "status": "ok",
-   "error": null
+   "error": null,
+   "params": {
+    "bytes": 67108864
+   }
   },
   {
    "id": "copy.d2d.size_4gib",
@@ -30,7 +48,10 @@
    "unit": "GB/s",
    "value": 212.5,
    "status": "ok",
-   "error": null
+   "error": null,
+   "params": {
+    "bytes": 4294967296
+   }
   },
   {
    "id": "copy.d2d.size_8gib",
@@ -39,7 +60,10 @@
    "unit": "GB/s",
    "value": null,
    "status": "failed",
-   "error": "synthetic"
+   "error": "synthetic",
+   "params": {
+    "bytes": 8589934592
+   }
   }
  ],
  "notes": [

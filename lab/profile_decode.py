@@ -35,9 +35,10 @@ What the result holds (lab/refine/research/kernels/data/decode-profile-gfx1151-<
   scheduling (the part of the step in which the GPU ran nothing), host-device copies, and other GPU work;
 - achieved memory bandwidth: the bytes a decode step reads (the checkpoint's safetensors headers: every weight but
   the vision tower, the MTP head and the gathered embedding rows; KV-cache reads are not counted) over the step
-  time, and over the W4A16 kernel's own time for the quantized weights, against the chip sheet's best measured
-  device-to-device copy (R33's lab/refine/research/kernels/data/chipsheet-gfx1151-<date>.json, its copy.d2d.*
-  entries) when one is on main at collect time, never a sample or self-check sheet's numbers;
+  time, and over the W4A16 kernel's own time for the quantized weights, against the chip sheet's measured
+  device-to-device copy over its largest buffer (R33's lab/refine/research/kernels/data/chipsheet-gfx1151-<date>.json;
+  smaller buffers fit the 32 MiB last-level cache) when one is on main at collect time, never a sample or
+  self-check sheet's numbers;
 - peak and reserved memory (the torch profiler's allocator samples, the serve log's weights, KV-cache and graph pool
   lines, and amd-smi's memory use), watts during every run from amd-smi, and the exact kernel vLLM selected for the
   quantized matmul (the serve log's "Using <Kernel> for <Scheme>" line, the class's source file, and the Triton
@@ -622,8 +623,9 @@ def build_result(raw: Mapping[str, Any], base: str | Path) -> dict[str, Any]:
 def chip_reference(path: str | Path | None = None) -> dict[str, Any]:
     """The copy bandwidth to compare against. Without a path: the newest chipsheet-gfx1151-<date>.json in the data
     folder, else the sample sheet (lab/placement.py's default_chipsheet). R33's measured sheet (atlas.chipsheet/1)
-    gives its best device-to-device copy (chipsheet_format.copy_peak; a self-check sheet holds invented timings and
-    is never used); any other sheet is read the way the placement plan reads it (bandwidth.copy_d2d_peak_gb_s, else
+    gives its device-to-device copy over the largest buffer (chipsheet_format.copy_largest: smaller buffers stay in
+    the 32 MiB last-level cache and overstate memory several times; a self-check sheet holds invented timings and is
+    never used); any other sheet is read the way the placement plan reads it (bandwidth.copy_d2d_peak_gb_s, else
     the best bandwidth.copy_d2d row), and the sample sheet's numbers are never taken as a measurement."""
     from lab import placement   # the box only: collect and --quick run this, the pod never does
     from lab.kernels.chipsheet import chipsheet_format as sheet_format
@@ -637,14 +639,15 @@ def chip_reference(path: str | Path | None = None) -> dict[str, Any]:
         name = placement.relative(target)
         out = {"chip_sheet": name, "sample": False, "source": None, "kind": "measured", "gb_s": None, "note": None,
                "mode": data.get("mode")}
-        best = sheet_format.copy_peak(data)
+        best = sheet_format.copy_largest(data)
         if data.get("mode") == "self-check":
             out.update({"kind": "self-check", "note": f"{name} is a self-check sheet: its timings are invented"})
         elif best is None:
             out["note"] = f"{name} carries no measured device-to-device copy"
         else:
-            out.update({"gb_s": float(best["value"]), "source": f"{name}: {best['id']} ({best.get('what')}; "
-                                                                 "bytes read and written over the time)"})
+            out.update({"gb_s": float(best["value"]), "source": f"{name}: {best['id']} ({best.get('what')}, the "
+                                                                 "largest buffer measured; bytes read and written "
+                                                                 "over the time)"})
         return out
     sheet = placement.read_chipsheet(target)
     found = sheet.get("bandwidth_gb_s")

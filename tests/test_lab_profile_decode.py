@@ -242,15 +242,15 @@ def test_a_failed_tool_and_a_trace_that_misses_graph_kernels_are_open_items():
     assert pd._primary({"available": True, "kernel_coverage": 0.8}, {"available": True}) == "torch"
 
 
-def test_r33s_sheet_gives_its_best_measured_device_to_device_copy(tmp_path):
+def test_r33s_sheet_gives_its_copy_over_the_largest_buffer_not_the_cached_best(tmp_path):
     found = pd.chip_reference(FIX / "chipsheet.json")
     assert (found["gb_s"], found["kind"], found["sample"], found["note"], found["mode"]) == (
         212.5, "measured", False, None, "full")
-    assert found["source"].endswith("chipsheet.json: copy.d2d.size_4gib (device-to-device copy of 4gib; bytes read "
-                                    "and written over the time)")
+    assert found["source"].endswith("chipsheet.json: copy.d2d.size_4gib (device-to-device copy of 4gib, the largest "
+                                    "buffer measured; bytes read and written over the time)")
     sheet = json.loads((FIX / "chipsheet.json").read_text(encoding="utf-8"))
-    assert chipsheet_format.copy_peak(sheet)["id"] == "copy.d2d.size_4gib"
-    assert chipsheet_format.copy_peak({"measurements": []}) is None
+    assert chipsheet_format.copy_largest(sheet)["id"] == "copy.d2d.size_4gib"      # not the cached 16 MiB at 940
+    assert chipsheet_format.copy_largest({"measurements": []}) is None
     invented = tmp_path / "chipsheet-gfx1151-2026-10-11.json"
     invented.write_text(json.dumps(dict(sheet, mode="self-check")), encoding="utf-8")
     refused = pd.chip_reference(invented)
