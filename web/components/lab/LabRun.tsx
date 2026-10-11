@@ -27,6 +27,7 @@ import {
   energyUpTo,
   fileSize,
   isLive,
+  onOurHardware,
   isNum,
   stageStates,
   pct,
@@ -40,11 +41,10 @@ import { LearningBuddies } from "./LearningBuddies";
 
 /* ---------- small pieces ---------- */
 
-/** Where a measured trainer row ran, by the chip the row itself gives: never an R9700 unless it was one. */
+/** Where a measured trainer row ran: only rows from our hardware get here (onOurHardware). */
 function smokeChip(m: LabMeasured | undefined): string {
-  if (!m?.other_chip) return "the lab's trainer";
-  if (m.chip?.role === "earlier") return `one ${m.chip.name}, the lab's earlier card`;
-  return m.chip ? `${chipShort(m.chip)}, not the lab's own hardware` : "another chip, not the lab's own hardware";
+  if (m?.chip?.key === "jetson") return "the box (Jetson)";
+  return m?.chip ? `the lab's trainer, ${chipShort(m.chip)}` : "the lab's trainer";
 }
 
 /** One number as a tile. A number the log does not hold says so, with the reason, instead of showing a dash. */
@@ -195,9 +195,11 @@ function Training({ story, frac, measured }: { story: LabStory; frac: number; me
   const head = seen[seen.length - 1];
   const joules = p.points.length ? energyUpTo(p.points, tNow) : null;
   const wh = joules !== null ? joules / 3600 : null;
-  const speed = measured.find((m) => m.metric === "trainer.samples_per_s");
-  const first = measured.find((m) => m.metric === "trainer.smoke_loss_first");
-  const last = measured.find((m) => m.metric === "trainer.smoke_loss_last");
+  // Only rows measured on our hardware (the Strix Halo pods or the box); an R9700 row is never shown as ours.
+  const ours = measured.filter(onOurHardware);
+  const speed = ours.find((m) => m.metric === "trainer.samples_per_s");
+  const first = ours.find((m) => m.metric === "trainer.smoke_loss_first");
+  const last = ours.find((m) => m.metric === "trainer.smoke_loss_last");
   return (
     <>
       <p className={lab.lead}>
@@ -259,10 +261,16 @@ function Training({ story, frac, measured }: { story: LabStory; frac: number; me
               .filter((m): m is LabMeasured => !!m)
               .map((m) => m.source?.ref)
               .join(", ")}
-            . Not this run: a real measurement, shown so the run above can be judged against it. {(speed ?? first)?.chip?.role === "earlier" ? "The lab has since moved to" : "The lab is"} two Strix Halo pods (Radeon 8060S, gfx1151).
+            . Not this run: a real measurement, shown so the run above can be judged against it.
           </span>
         </div>
-      ) : null}
+      ) : (
+        <div className={lab.measured}>
+          <span className={lab.note}>
+            No smoke run measured on our hardware yet: none on the lab&apos;s Strix Halo pods (gfx1151) or on the box. Rows from other chips are left out.
+          </span>
+        </div>
+      )}
     </>
   );
 }
@@ -577,7 +585,7 @@ function Sources({ story }: { story: LabStory }) {
             </span>
           </div>
         ))}
-        {story.measured.map((m) => (
+        {story.measured.filter(onOurHardware).map((m) => (
           <div key={m.metric} className={lab.sourceRow}>
             <div className={lab.sourceTop}>
               <span>{m.label} (measured, not this run)</span>
@@ -724,7 +732,7 @@ export function LabRun({ story, initial, forceReduced, picker }: { story: LabSto
   const trainFrac = within(u, "training");
   const good = story.status === "deployed";
   const bad = story.status === "not deployed" || story.status === "rolled back" || story.status === "failed";
-  const running = story.status === "training";
+  const running = isLive(story);
   const when: Record<ChapterKey, string | null> = {
     taught: story.marks.exported ?? story.marks.taught,
     training: story.marks.training_start,
