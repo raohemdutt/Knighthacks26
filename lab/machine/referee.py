@@ -109,6 +109,7 @@ __all__ = [
 log = logging.getLogger("lab.referee")
 
 VERB = alerts.SLOT_REFEREE        # the ledger verb of a slot ended: lab/machine/alerts.py reads it as the end
+CLI_VERB = "referee"   # registers python -m lab referee
 SCAN_VERB = "referee scan"        # the ledger verb of the call itself
 CRITIQUE_VERB = "referee critique"  # the ledger verb of a critique written
 ENDED_BY_REFEREE = slots.ENDED_BY_REFEREE

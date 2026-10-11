@@ -70,6 +70,7 @@ from typing import Any
 if not __package__:  # run by path: the repo root, one folder up, holds lab/
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+CLI_VERB = "interference"   # registers python -m lab interference
 SCHEMA = "lab.interference/1"
 RAW_SCHEMA = "lab.interference.raw/1"
 TASK = "R43"

@@ -48,6 +48,7 @@ from lab.machine import ledger, record
 
 __all__ = ["SUBVERBS", "DEFAULT_TAIL", "DEFAULT_LIMIT", "main", "add_main", "tail_main", "grep_main"]
 
+CLI_VERB = "ledger"   # registers python -m lab ledger
 DEFAULT_TAIL = 10      # rows `tail` prints without a number
 DEFAULT_LIMIT = 50     # rows `grep` prints without --limit
 

@@ -73,6 +73,7 @@ from lab.transfer import PodFiles, UnsafePath, clean_remote
 __all__ = ["BOX_ENV", "TOKEN_ENV", "IMPORT_PATH", "BOX_MAX_BYTES", "Box", "BoxAnswer", "LocalSource", "PodSource", "Relay",
            "complete_lines", "run_ids_in", "build_parser", "main"]
 
+CLI_VERB = "lab-push"   # registers python -m lab lab-push
 BOX_ENV = "ATLAS_URL"                 # the app's address, as jetson/atlas_swap.py reads it
 TOKEN_ENV = "ATLAS_TOKEN"             # the gateway's write token (contexts/gateway/bootstrap.py)
 IMPORT_PATH = "/api/learning/lab/import"

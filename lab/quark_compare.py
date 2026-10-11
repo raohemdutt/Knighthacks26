@@ -72,6 +72,7 @@ from lab import bench, quark_keys
 from lab.machine import experiments, ledger, record, slots
 from lab.machine import verdict as vmath
 
+CLI_VERB = "quark-compare"   # registers python -m lab quark-compare
 REPO = Path(__file__).resolve().parents[1]
 TASK = "R23"
 EXPERIMENT = "E5"

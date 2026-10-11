@@ -2,7 +2,6 @@
 ledger once, whatever happens to a run. Every test works in a temporary state dir; nothing here touches lab/state."""
 from __future__ import annotations
 
-import ast
 import json
 import os
 import re
@@ -506,11 +505,9 @@ def test_the_verb_works_as_a_real_process():
 
 
 def test_the_verb_registry_names_every_verb_once():
-    tree = ast.parse((REPO_ROOT / "lab" / "__main__.py").read_text(encoding="utf-8"))
-    registries = [node.value for node in ast.walk(tree)
-                  if isinstance(node, ast.AnnAssign) and getattr(node.target, "id", None) == "VERBS"]
-    assert len(registries) == 1
-    names = [key.value for key in registries[0].keys]
-    repeated = sorted({name for name in names if names.count(name) > 1})
-    assert repeated == [], f"VERBS repeats {repeated}: a repeated name silently replaces the verb before it"
+    """The registry is discovered from CLI_VERB declarations (lab/__main__.py, O70): a name declared
+    twice raises instead of silently replacing the verb before it, and ledger is found."""
+    names = list(lab_cli.VERBS)
+    assert names == sorted(set(names))
     assert "ledger" in names
+    assert lab_cli.VERBS == lab_cli.discover()

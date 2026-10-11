@@ -82,6 +82,7 @@ from lab.machine.record import record
 __all__ = ["TASK", "DATASET_TASK", "DATASET_ID", "DECODE", "SpotError", "SpotExample", "numbers", "parse_reply",
            "judge", "group_of", "join", "held_out_examples", "SpotClient", "score", "GateClient", "main"]
 
+CLI_VERB = "spot-score"   # registers python -m lab spot-score
 TASK = "L26"
 DATASET_TASK = "spot-qa"          # the task contexts/spot/dataset.py names in its manifests; the gate's registry key
 DATASET_ID = "spot-qa"

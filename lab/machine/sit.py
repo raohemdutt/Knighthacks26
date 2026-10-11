@@ -123,6 +123,7 @@ from lab.machine.lock import LockTimeout
 log = logging.getLogger("lab.sit")
 
 VERB = "sit"
+CLI_VERB = "sit"   # registers python -m lab sit
 #: The actor of the launcher's own ledger rows; the sitting id is in refs.run_id.
 ACTOR = "lab sit"
 REPO_ROOT = Path(__file__).resolve().parents[2]

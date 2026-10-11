@@ -130,6 +130,7 @@ __all__ = [
 
 log = logging.getLogger("lab.slots")
 
+CLI_VERB = "slot"   # registers python -m lab slot
 UTC = dt.timezone.utc
 
 ENV_TOKEN = "NOTION_TOKEN"

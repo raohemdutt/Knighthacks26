@@ -90,6 +90,7 @@ __all__ = ["VERB", "TASK", "JOULES", "LATENCY", "QUALITY", "MIN_REQUESTS", "KIND
            "T0_FILE", "LoopError", "Request", "Record", "Meter", "JsonlFeed", "RealClock", "Target", "FakeSetup",
            "Result", "draw_requests", "agreement", "run_arms", "summarize", "run", "run_fake", "main"]
 
+CLI_VERB = "routing-closed-loop"   # registers python -m lab routing-closed-loop
 VERB = "routing-closed-loop"
 TASK = "T11"
 KIND = "label"                              # the kind of work, as telemetry and the hook name it

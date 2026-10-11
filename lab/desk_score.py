@@ -63,6 +63,7 @@ __all__ = ["TASK", "SEED", "MAX_TOKENS", "DECODE", "RESERVED", "DeskError", "Des
            "slug", "write_split", "load_desk_split", "held_out_examples", "DeskClient", "score", "repo_commit",
            "main"]
 
+CLI_VERB = "desk-score"   # registers python -m lab desk-score
 TASK = "L24"
 SEED = 0
 MAX_TOKENS = 24            # an object's name is a few tokens; a longer answer is cut, and then it does not match

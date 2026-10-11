@@ -71,6 +71,7 @@ if not __package__:  # run by path: the repo root, one folder up, holds lab/
 
 from lab import trace_profile as tp  # noqa: E402
 
+CLI_VERB = "profile-train"   # registers python -m lab profile-train
 SCHEMA = "lab.profile_train/1"
 TASK = "R34"
 NODE = "pod-b"

@@ -46,6 +46,7 @@ import httpx
 
 from lab.machine import stop
 
+CLI_VERB = "ready"   # registers python -m lab ready
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ACCOUNTS = ("A", "B")
 REQUIRED_ENV = ("AUP_HUB_TOKEN_A", "AUP_HUB_TOKEN_B", "AUP_HUB_USER_A", "AUP_HUB_USER_B")   # the DUB default pair
