@@ -16,5 +16,6 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -e ".[dev]"
-      - run: python -m pytest -q
+      - run: pip install -e ".[dev]" "pytest-xdist>=3.2"
+      # One worker per core; worksteal hands the slow demo and clip tests to whichever worker is free.
+      - run: python -m pytest -q -n auto --dist worksteal
