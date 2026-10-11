@@ -14,22 +14,25 @@
 #                            refused while a teacher serves here (stopping a teacher is the owner's call, not this script's)
 #   both    <C|D> [--apply]  the teacher at a 0.60 memory share (placement plan, PL1) so a LoRA job fits beside it
 #   beacon  <C|D> [seconds]  answer friend checks on port $FRIEND_PORT: GET /status says what this pod holds (CPU only)
-#   auto    <C|D> [addr] [--apply]  the friend check (addr: the friend's IP), then a plain decision (below); --apply runs the one-pod branch only
+#   auto    <C|D> [addr] [--apply]  the friend check, then a plain decision (below); --apply starts the teacher alone
 #
 # Without --apply nothing is started or stopped: the script prints its inputs and what it would run.
 # A role switch also needs the workstation's LAB_POD_ROLES line, which the script prints at the end (the box and the
 # lab verbs find the teacher through it: the account in the pod-a role).
 #
 # auto's decision, written out:
-#   friend   = the other pod answers GET http://<addr>:$FRIEND_PORT/status within 3 s (<addr>: the argument, else
-#              $FRIEND_ADDR, else the first word of ~/.atlas_friend; the friend runs 'pod_role.sh beacon'; R65's step 1)
+#   addr     = the argument, else $FRIEND_ADDR, else the first word of ~/.atlas_friend, else the tailnet address of the
+#              peer named pod-c or pod-d in `tailscale status` (lab/pod_tailscale.sh)
+#   friend   = the other pod's beacon (pod_role.sh beacon) answers GET http://<addr>:$FRIEND_PORT/status within 5 s,
+#              through tailscaled's SOCKS5 proxy for a tailnet address; this pod's own address is never a friend
 #   big_here = $BIG_MODEL_DIR holds a config.json and safetensors here; big_there = the friend's /status says so
-#   serve:  friend and big_here and big_there -> the big model, tensor-parallel 2 across the two pods
-#           otherwise                          -> the 27B teacher alone on this pod
-#   train:  friend                             -> two ranks, one per pod
-#           otherwise                          -> one rank on this pod
-# R65 measured that the SJC hub's network policy refuses every pod-to-pod connection, so on this cluster friend is
-# always no and auto always picks the one-pod branches. The two-pod branches have no measured recipe; --apply refuses them.
+#   serve:  friend and big_here and big_there and POD_TO_POD=yes -> the big model, pipeline-parallel 2 across the pods
+#           otherwise                                            -> the 27B teacher alone on this pod
+#   train:  friend   -> two ranks, one per pod (lab/r65_rank.sh)
+#           otherwise -> one rank on this pod
+# R65 measured that the SJC hub refuses every pod-to-pod connection and that Tailscale joins the pods only through a
+# DERP relay with no interface, so POD_TO_POD stays no there: a friend found over Tailscale gets the two-rank LoRA
+# (control over the tailnet, data over the hub proxy), never a split model.
 set -u -o pipefail
 ROLE="${1:-help}"
 LETTER="${2:-}"
@@ -43,6 +46,8 @@ BIG_MODEL_DIR="${BIG_MODEL_DIR:-$HOME/models/big-w4a16}"
 VLLM_VENV="${VLLM_VENV:-$HOME/venv-vllm-new}"
 TRAIN_VENV="${TRAIN_VENV:-$HOME/venvs/atlas-train}"
 STUDENT_DIR="${STUDENT_DIR:-$HOME/models/Qwen3.5-4B}"
+TS_BIN="${TS_BIN:-$HOME/ts/bin/tailscale}"
+TS_SOCK="${TS_SOCK:-$HOME/ts/tailscaled.sock}"
 
 die() { echo "pod_role: $*"; echo "### END"; exit 1; }
 case "$LETTER" in C) OTHER=D ;; D) OTHER=C ;; *) [ "$ROLE" = help ] || die "usage: pod_role.sh <role> <C|D> [--apply]" ;; esac
@@ -125,32 +130,38 @@ PY
 }
 
 auto() {
-  local addr="${FRIEND_ADDR:-}" answer friend=no big_here big_there=no serve train
-  [ -z "$addr" ] && [ -f "$HOME/.atlas_friend" ] && addr="$(awk '{print $1; exit}' "$HOME/.atlas_friend")"
+  local addr="${FRIEND_ADDR:-}" via="the argument" answer friend=no big_here big_there=no serve train curl_via=()
+  if [ -z "$addr" ] && [ -f "$HOME/.atlas_friend" ]; then addr="$(awk '{print $1; exit}' "$HOME/.atlas_friend")"; via="~/.atlas_friend"; fi
+  if [ -z "$addr" ] && [ -S "$TS_SOCK" ]; then
+    # the friend on the tailnet: the peer named pod-<other letter, lowercase> in `tailscale status` (lab/pod_tailscale.sh)
+    addr="$("$TS_BIN" --socket="$TS_SOCK" status 2>/dev/null | awk -v n="pod-$(echo "$OTHER" | tr CD cd)" '$2 == n {print $1; exit}')"
+    via="tailscale status"
+  fi
   big_here="$(yn has_model "$BIG_MODEL_DIR")"
+  case "$addr" in 100.*) curl_via=(--socks5-hostname 127.0.0.1:1055) ;; esac   # userspace tailnet: through tailscaled
   if [ -n "$addr" ] && hostname -I 2>/dev/null | tr ' ' '
 ' | grep -qx "$addr"; then
     answer="$addr is this pod's own address, not a friend"
   elif [ -n "$addr" ]; then
-    answer="$(python3 -c "import sys, urllib.request; print(urllib.request.urlopen(sys.argv[1], timeout=3).read().decode())" \
-      "http://$addr:$FRIEND_PORT/status" 2>&1 | tail -1)"
+    answer="$(curl -s -m 5 ${curl_via[@]+"${curl_via[@]}"} "http://$addr:$FRIEND_PORT/status" 2>&1 | tail -1)"
+    [ -n "$answer" ] || answer="no answer in 5 s"
     case "$answer" in \{*) friend=yes; echo "$answer" | grep -q '"big_model": true' && big_there=yes ;; esac
   else
-    answer="no friend address (FRIEND_ADDR or ~/.atlas_friend)"
+    answer="no friend address (argument, FRIEND_ADDR, ~/.atlas_friend or a tailnet peer named pod-c or pod-d)"
   fi
-  echo "input pod: $LETTER ($(hostname -I 2>/dev/null | awk '{print $1}')), friend pod: $OTHER at ${addr:-unknown}:$FRIEND_PORT"
-  echo "input friend answers: $friend   ($answer)"
+  echo "input pod: $LETTER ($(hostname -I 2>/dev/null | awk '{print $1}')), friend pod: $OTHER at ${addr:-unknown}:$FRIEND_PORT (from $via${curl_via[0]:+, through the tailscaled SOCKS5 proxy})"
+  echo "input friend answers its beacon: $friend   ($answer)"
   echo "input big checkpoint here ($BIG_MODEL_DIR): $big_here   on the friend: $big_there"
-  if [ "$friend" = yes ] && [ "$big_here" = yes ] && [ "$big_there" = yes ]; then
-    serve="big model, tensor-parallel 2 across pods $LETTER and $OTHER"
+  if [ "$friend" = yes ] && [ "$big_here" = yes ] && [ "$big_there" = yes ] && [ "${POD_TO_POD:-no}" = yes ]; then
+    serve="big model, pipeline-parallel 2 across pods $LETTER and $OTHER"
   else
     serve="the 27B teacher alone on pod $LETTER"
+    [ "$friend" = yes ] && serve="$serve (a split model needs a pod-to-pod network, POD_TO_POD=yes; R65 found none)"
   fi
-  if [ "$friend" = yes ]; then train="two ranks, one on each pod"; else train="one rank on pod $LETTER"; fi
+  if [ "$friend" = yes ]; then train="two ranks, one on each pod (lab/r65_rank.sh: local SGD, control over the tailnet, data over the hub proxy)"; else train="one rank on pod $LETTER"; fi
   echo "decision serve: $serve"
   echo "decision train: $train"
   if [ "$APPLY" = 1 ]; then
-    [ "$friend" = yes ] && { echo "the two-pod branches have no measured recipe on this cluster (R65); refused"; return 1; }
     start_teacher 0.90
   fi
 }
@@ -163,7 +174,7 @@ case "$ROLE" in
   both) start_teacher 0.60; rc=$?; [ "$rc" = 0 ] && roles_line both ;;
   beacon) shift 2; beacon "${1:-900}" ;;
   auto) [ "${3:-}" != "--apply" ] && [ -n "${3:-}" ] && FRIEND_ADDR="$3"; auto; rc=$? ;;
-  *) sed -n '2,32p' "$0"; [ "$ROLE" = help ] || exit 2 ;;
+  *) sed -n '2,35p' "$0"; [ "$ROLE" = help ] || exit 2 ;;
 esac
 echo "### pod_role $ROLE $LETTER apply=$APPLY wall_s=$(( $(date +%s) - t_start )) rc=${rc:-0}"
 echo "### END"

@@ -24,3 +24,8 @@ receive 128 MB: 134217728 bytes in 50.303 s (2.7 MB/s)
 
 3. tailscale ping pod-d from pod C, about 07:38 UTC: 10 pongs via DERP(sfo) in 10 to 12 ms; "direct connection not
    established". tailscale netcheck on pod C: UDP false, IPv4 (no addr found), nearest DERP San Francisco 4.6 ms.
+
+4. The exchange paths with one round's real payload size (32,472,000 random bytes in four 8 MB chunks, a mailbox on one
+   pod, lab/r65_local_sgd.py's Fetcher on the other), about 08:05 to 08:07 UTC, before the GPU slots, CPU only:
+pod C fetching from pod D: proxy x4 0.33 s (99.8 MB/s), proxy x1 0.36 s (89.8 MB/s), proxy x4 0.34 s (96.9 MB/s), relay x4 11.56 s (2.8 MB/s)
+pod D fetching from pod C: proxy x4 0.33 s (97.5 MB/s), proxy x1 0.37 s (86.6 MB/s), proxy x4 0.33 s (98.6 MB/s), relay x4 11.60 s (2.8 MB/s)

@@ -2027,3 +2027,38 @@ their example counts, a third member with none), the teacher labeling, one LoRA 
 candidate and teacher scores for each member, and `ls ~/pool/circle-knights/desk-objects` holding only `pool.json`
 afterwards; then the third box, which uploaded nothing, takes the group model and switches back with one command.
 `~/group-runs/<run id>/` keeps the log, the gate's scores, `metrics.jsonl` and a copy of the ledger rows.
+
+## Symmetric pods, the role switch and the two-pod LoRA (R65)
+
+Since 2026-10-11 both SJC pods hold the same things, so either can be the teacher or the trainer: the teacher's
+checkpoint `~/models/Qwen3.8-27B-INT4` (identical files), a vLLM v0.31 build with the RDNA hybrid W4A16 kernel in
+`~/venv-vllm-new` (pod C serves the v0.31.0 tag, db9527a46; pod D holds main at 5281e4990 from R60's first build), the
+training venv `~/venvs/atlas-train` (the same 34 packages at the same versions over the image's torch) and the student
+base `~/models/Qwen3.5-4B` at 851bf6e. `lab/refine/research/plumbing/symmetric-pods.md` has every number below.
+
+```
+python -m lab.controller run-script --account D --with lab/vllm_upgrade.sh --with lab/pod_a_teacher.sh lab/pod_role.sh status D
+python -m lab.controller run-script --account D --timeout 900 --with lab/vllm_upgrade.sh --with lab/pod_a_teacher.sh \
+    lab/pod_role.sh teacher D --apply          # inside a GPU Queue slot; then LAB_POD_ROLES=D:pod-a,C:pod-b on the workstation
+python -m lab.controller run-script --account C lab/pod_role.sh auto C   # the friend check and the plain decision, printed
+```
+
+- **Role switch.** `pod_role.sh teacher D --apply` brought the teacher up on pod D in 451 s (same model, names, flags and
+  port as pod C; a tools request returned structured `tool_calls`); stopping one takes about 60 s. So a switch is about
+  8 minutes without a teacher plus the `LAB_POD_ROLES` line, which the box's teacher link and the lab verbs follow.
+  The script never stops a teacher it did not start and refuses `trainer` while one serves.
+- **Friend detection.** `pod_role.sh beacon <letter>` answers `GET /status` on port 29555 (what the pod holds);
+  `pod_role.sh auto <letter> [addr]` looks for the other pod at the address given, `~/.atlas_friend`, or the tailnet peer
+  named `pod-c` or `pod-d` in `tailscale status`, asks its beacon (through tailscaled's SOCKS5 for a tailnet address),
+  and prints its inputs and the decision: two training ranks when the friend answers, one otherwise; the teacher alone
+  unless a pod-to-pod network exists (`POD_TO_POD=yes`), which R65 found nowhere on this cluster.
+- **No pod-to-pod network.** The hub's network policy refuses every connection between the pods, and their outbound UDP
+  is blocked. Tailscale in userspace mode (`lab/pod_tailscale.sh up pod-c|pod-d`, the auth key read from a file next to
+  the script and deleted at once) still joins them, through the DERP relay only: 10 ms and 2.7 MB/s. The hub's in-cluster
+  proxy reaches the other pod at about 90 MB/s with the other account's hub token. Neither carries torch.distributed or
+  vLLM's multi-node executor, so the model split was dropped. `lab/pod_tailscale.sh stop` takes a pod off the tailnet.
+- **The two-pod LoRA.** `lab/r65_local_sgd.py` wraps `lab/train.py` unchanged: each pod trains on half the rows, the ranks
+  agree over a Tailscale control channel, and every 4 optimizer steps each fetches the other's int8-coded LoRA delta
+  (32.5 MB) through the hub proxy and merges it one step late; a last synchronous round leaves both ranks on the same
+  weights. `lab/r65_rank.sh <rank> <run id> <peer tailnet IP> <peer hub user>` runs one rank inside its slot, with the
+  peer account's token uploaded as `tokpeer.txt` (read and deleted at start).
