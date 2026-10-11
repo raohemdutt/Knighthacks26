@@ -61,6 +61,21 @@ known task publishes no progress and its answer says so. The loss curve still co
     written to a temporary file beside the copy and renamed over it, so a refused or interrupted push leaves the
     previous copy whole. The same bytes again write nothing and say `changed: false`.
 
+kind=stage (L30)               the live loop's stage lines (tooling/demo/live_loop_pod.sh writes ~/l29/<stamp>/stages.jsonl:
+    one {act, stage, ts, run_id?, rc?} per line, on pod D's clock), for one run (`&run_id=`, required) and its task
+    (`&task=`, or a line's `task`, or what the log knows). Each line becomes a learning.run.progress the stage strip of
+    GET /api/learning/lab/{run_id} is drawn from: start -> labeling 0, labeled -> labeling 1, train -> training 0,
+    trained -> training 1 and packaging 0, done (rc 0) -> packaging 1 with the message "offered", done with another rc
+    or failed -> failed. Ids are `import:<run_id>:stage.<stage>`, so posting the same lines again adds nothing. A line
+    of another run refuses the body; a stage name not in that list is skipped and counted. "offered" rides on the
+    packaging stage, not on "done": the Teach screen reads "done" as deployed.
+kind=compare / kind=power (L31) the relay's comparison document and its power windows, kept as files under
+    `<data-dir>/lab_loops` (application/lab_loops.py says the shapes), read by GET /api/learning/lab/compare.
+
+Every answer that names a run also says where it is: `status` ("running", "finished" or "failed", lab_view.run_status)
+and `steps_so_far` (the steps the box holds for it), so a relay posting a growing telemetry file reads the box's view
+of the run in the same answer. A partial run is imported the same way as a finished one.
+
 Once a run's steps are in the log the lab view serves that run instead of the sample, and shows it as "Training"
 (live) until an eval arrives.
 """
@@ -83,15 +98,24 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import ValidationError
 
 from bus import EventBus
+from contexts.learning.application import lab_loops
 from contexts.learning.application.lab_experiments import imported_state_dir, received_at
-from contexts.learning.application.lab_view import LabView
+from contexts.learning.application.lab_view import LabView, run_status
 from contracts import parse_event
 from contracts.events import Event
 from contracts.learning import ModelManifest, RunEvaluated, RunProgress
 from contracts.telemetry import TrainStep
 
 MAX_BYTES = 8 * 1024 * 1024  # a 10,000-step telemetry file is about 3 MB
-KINDS = ("telemetry", "eval", "manifest", "run")  # the files that become events; "ledger" is kept as a file instead
+KINDS = ("telemetry", "eval", "manifest", "run", "stage")  # the files that become events; "ledger" is kept as a file instead
+FILE_KINDS = ("compare", "power")  # kept as files under <data-dir>/lab_loops (application/lab_loops.py)
+# the live loop's stage names -> (event id suffix, stage, progress, message); "done" is handled on its own (rc)
+STAGE_LINES: dict[str, list[tuple[str, str, float, str]]] = {
+    "start": [("start", "labeling", 0.0, "labeling at the teacher")],
+    "labeled": [("labeled", "labeling", 1.0, "labeled")],
+    "train": [("train", "training", 0.0, "training started")],
+    "trained": [("trained", "training", 1.0, "trained"), ("trained.packaging", "packaging", 0.0, "packaging")],
+}
 STARTED = "learning.training.started"
 LEDGER = "ledger"
 PROBLEMS_SHOWN = 50
@@ -246,6 +270,77 @@ def run_events(text: str, run_id: str | None, facts: Mapping[str, RunFacts] | No
     return [parse_event(body)]
 
 
+def stage_events(text: str, run_id: str | None, task: str | None = None,
+                 facts: Mapping[str, RunFacts] | None = None) -> list[Event]:
+    """The live loop's stage lines for one run as learning.run.progress (see the module docstring, kind=stage)."""
+    if not run_id:
+        raise ImportRefused(["stage lines do not all name their run: give the run id"])
+    rows, problems = [], []
+    for n, line in enumerate(text.splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except ValueError:
+            problems.append(f"line {n}: not JSON")
+            continue
+        if not isinstance(row, dict) or not isinstance(row.get("stage"), str) or not row.get("ts"):
+            problems.append(f"line {n}: a stage line needs stage and ts")
+            continue
+        try:
+            ts = datetime.fromisoformat(str(row["ts"]).replace("Z", "+00:00"))
+        except ValueError:
+            problems.append(f"line {n}: ts is not an ISO time")
+            continue
+        if row.get("run_id") not in (None, run_id):
+            problems.append(f"line {n}: run {row.get('run_id')!r}, not {run_id!r}")
+            continue
+        rows.append((row, ts))
+    if not rows and not problems:
+        problems.append("the body has no stage lines")
+    run_task = task or next((r.get("task") for r, _ in rows if isinstance(r.get("task"), str) and r.get("task")), None) \
+        or (facts or {}).get(run_id, RunFacts()).task
+    if not run_task and not problems:
+        problems.append("the run's task is not known yet: give &task= or a task on the lines")
+    if problems:
+        raise ImportRefused(problems)
+    out: list[Event] = []
+    for row, ts in rows:
+        name = row["stage"]
+        if name == "done":
+            ok = row.get("rc") in (0, None)
+            marks = [("done", "packaging", 1.0, "offered")] if ok else [("done", "failed", 0.0, f"the act ended with rc {row.get('rc')}")]
+        elif name == "failed":
+            marks = [("failed", "failed", 0.0, str(row.get("error") or row.get("message") or "the act failed")[:200])]
+        else:
+            marks = STAGE_LINES.get(name, [])
+        for suffix, stage, progress, message in marks:
+            out.append(RunProgress(event_id=f"import:{run_id}:stage.{suffix}", ts=ts, task=run_task, run_id=run_id,
+                                   stage=stage, progress=progress, message=message))
+    return out
+
+
+def skipped_stages(text: str) -> list[str]:
+    """The stage names of a stage body that say nothing to the strip (the pod's "go" and "end", or a new name)."""
+    out = []
+    for line in text.splitlines():
+        try:
+            name = json.loads(line).get("stage") if line.strip() else None
+        except (ValueError, AttributeError):
+            continue
+        if isinstance(name, str) and name not in STAGE_LINES and name not in ("done", "failed"):
+            out.append(name)
+    return out
+
+
+def where_runs_are(view: LabView, runs: list[str]) -> dict[str, Any]:
+    """`status` and `steps_so_far` of the one run an answer names (None when it names none or several), and
+    `run_status` for each."""
+    each = {r: {"status": run_status(view, r), "steps_so_far": len(view.steps.get(r) or {})} for r in runs}
+    one = each[runs[0]] if len(runs) == 1 else {"status": None, "steps_so_far": None}
+    return {**one, "run_status": each}
+
+
 def _run_end(text: str, task: str | None, facts: Mapping[str, RunFacts]) -> list[Event]:
     """The progress a run.json closes the training stage with: trained (1.0, final loss) or failed (the error)."""
     answer = json.loads(text)
@@ -297,8 +392,10 @@ def events_of(kind: str, text: str, run_id: str | None, task: str | None = None,
         own = manifest_events(text, run_id)
     elif kind == "run":
         own = run_events(text, run_id, facts)
+    elif kind == "stage":
+        return stage_events(text, run_id, task, facts)
     else:
-        raise ImportRefused([f"kind must be one of {[*KINDS, LEDGER]}"])
+        raise ImportRefused([f"kind must be one of {[*KINDS, LEDGER, *FILE_KINDS]}"])
     known = _merge(facts or {}, facts_in(own))
     if kind == "telemetry":
         return own + _training_progress([e for e in own if isinstance(e, TrainStep)], task, known)
@@ -504,7 +601,8 @@ def lab_import_router(view: LabView, publish: Callable[[Event], Awaitable[None]]
     router = APIRouter()
 
     @router.post("/api/learning/lab/import", dependencies=[Depends(guard)] if guard else [])
-    async def lab_import(request: Request, kind: str = "telemetry", run_id: str | None = None, task: str | None = None) -> dict:
+    async def lab_import(request: Request, kind: str = "telemetry", run_id: str | None = None, task: str | None = None,
+                         stage: str | None = None) -> dict:
         """Body: the file's text. 400 with every problem when the file is refused; 413 over MAX_BYTES."""
         if int(request.headers.get("content-length") or 0) > MAX_BYTES:
             raise HTTPException(413, f"the file is over {MAX_BYTES} bytes")
@@ -518,6 +616,16 @@ def lab_import_router(view: LabView, publish: Callable[[Event], Awaitable[None]]
                 return store_ledger(raw, data_dir)
             except ImportRefused as err:
                 raise HTTPException(400, {"refused": err.problems[:PROBLEMS_SHOWN], "problems": len(err.problems)}) from None
+        if kind in FILE_KINDS:
+            if data_dir is None:
+                raise HTTPException(400, {"refused": [f"this box has no data dir to keep a {kind} document in"]})
+            try:
+                answer = (lab_loops.store_compare(raw, data_dir) if kind == "compare"
+                          else lab_loops.store_power(raw, data_dir, run_id, stage))
+            except lab_loops.Refused as err:
+                raise HTTPException(400, {"refused": err.problems[:PROBLEMS_SHOWN], "problems": len(err.problems)}) from None
+            log.info("lab %s import: %s", kind, {k: v for k, v in answer.items() if k in ("changed", "stamp", "run_id", "stage", "node")})
+            return answer
         facts = _facts_of(view)
         try:
             events = events_of(kind, raw.decode("utf-8"), run_id, task, facts)
@@ -528,6 +636,9 @@ def lab_import_router(view: LabView, publish: Callable[[Event], Awaitable[None]]
         answer = {"kind": kind, **await publish_new(events, seen_in_view(view), publish)}
         if note := progress_note(kind, events, facts):
             answer["note"] = note
+        if kind == "stage":
+            answer["skipped"] = skipped_stages(raw.decode("utf-8"))
+        answer.update(where_runs_are(view, answer["runs"]))
         return answer
 
     return router

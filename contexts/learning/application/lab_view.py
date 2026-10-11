@@ -7,7 +7,10 @@
 
 A story says what was taught, what the model trained on, how training went (loss and power on one
 timeline), what changed on the held-out questions, why the gate deployed it or did not, and what
-runs on the box now. It never invents a number:
+runs on the box now. While the run is still going it also says so (L30): `run_status` is running, finished or
+failed, `steps_so_far` the steps the log holds, and `stage_strip` the four stages of the live loop (labeling,
+training, packaging, offered), each {stage, state (done, now, waiting, failed, not reported), started, ended,
+seconds, message}, lit from the run's own progress events, steps and package. It never invents a number:
 
 - every number is a small dict `{label, value, unit, source, low_confidence, reason}`. `source` names
   the event (type and id), the file and line, or how it was derived and from which events;
@@ -291,7 +294,7 @@ class LabView:
             s = self.story(run_id)
             out.append({"run_id": run_id, "task": s["task"]["slug"], "status": s["status"], "started": s["marks"]["run_start"],
                         "ended": s["marks"]["end"], "scores": s["eval"]["scores"], "model_version": s["eval"]["model_version"],
-                        "verdict": s["eval"]["verdict"]})
+                        "verdict": s["eval"]["verdict"], "run_status": s["run_status"]})
         out.sort(key=lambda r: (r["started"] is not None, r["started"]), reverse=True)
         return mark_sample(out) if self.sample else out
 
@@ -350,6 +353,9 @@ class LabView:
             "box": self._box(deployed, swap),
             "ignored_events": [r for r in self.rejected],
         }
+        story["stage_strip"] = self._strip(progress, steps, evaluated, package, deployed)
+        story["run_status"] = _run_state(status, progress, story["stage_strip"])
+        story["steps_so_far"] = len(steps)
         story["gaps"] = [{"label": n["label"], "reason": n["reason"]} for n in collect_numbers(story) if n["value"] is None]
         return mark_sample(story) if self.sample else story
 
@@ -711,6 +717,42 @@ class LabView:
                 "bytes": num("Model file size", gguf.stat().st_size, "bytes", by_file(f"models/{version}/{manifest.gguf}"))
                 if gguf.is_file() else missing("Model file size", "bytes", "the model file is not on this box")}
 
+    def _strip(self, progress: list[RunProgress], steps: list[TrainStep], evaluated: RunEvaluated | None,
+               package: tuple[Event, PackageBuilt] | None, deployed: ModelDeployed | None) -> list[dict[str, Any]]:
+        """The live run's stage strip (L30): labeling, training, packaging, offered, each with when it began and ended
+        from the run's own events. The live loop's stage lines (lab_import kind=stage) report every edge; a run without
+        them still lights training from its steps and packaging from its package event."""
+        by = {name: [p for p in progress if p.stage == name] for name in ("labeling", "training", "packaging")}
+        offered = [p for p in by["packaging"] if p.progress >= 1 and (p.message or "").startswith("offered")]
+        done = lambda ps: next((p.ts for p in ps if p.progress >= 1), None)  # noqa: E731
+        started = {"labeling": by["labeling"][0].ts if by["labeling"] else None,
+                   "training": min([p.ts for p in by["training"]] + ([steps[0].ts] if steps else []), default=None),
+                   "packaging": by["packaging"][0].ts if by["packaging"] else (package[0].ts if package else None),
+                   "offered": offered[0].ts if offered else (deployed.ts if deployed else None)}
+        ended = {"labeling": done(by["labeling"]),
+                 "training": done(by["training"]) or (evaluated.ts if evaluated else None),
+                 "packaging": done(by["packaging"]) or (package[0].ts if package else None),
+                 "offered": started["offered"]}
+        failed = next((p for p in progress if p.stage == "failed"), None)
+        out, blocked = [], False
+        for i, name in enumerate(STRIP):
+            later = any(started[n] or ended[n] for n in STRIP[i + 1:])
+            if ended[name] or (started[name] and later):
+                state = "done"
+            elif later:
+                state = "not reported"   # a later stage began; this one sent nothing (a run from files, say)
+            elif failed is not None and not blocked:
+                state, blocked = "failed", True
+            elif started[name]:
+                state = "now"
+            else:
+                state = "waiting"
+            a, b = started[name], ended[name]
+            out.append({"stage": name, "state": state, "started": a, "ended": b,
+                        "seconds": _secs(a, b) if a and b else None,
+                        "message": failed.message if state == "failed" and failed else None})
+        return out
+
     def _box(self, deployed: ModelDeployed | None, swap: tuple[Event, SwapCompleted] | None) -> dict[str, Any]:
         """Energy and speed per answer on the box, for the model before the swap and the one after it."""
         if deployed is None:
@@ -742,6 +784,24 @@ class LabView:
                          derived(f"mean over {len(rates)} telemetry.request of tokens_out / time after the first token", *reqs))
             if rates else missing(f"Tokens per second {when}", "tok/s", no_t),
         }
+
+
+STRIP = ("labeling", "training", "packaging", "offered")
+
+
+def _run_state(status: str, progress: list[RunProgress], strip: list[dict[str, Any]]) -> str:
+    """running, finished or failed: whether the run is still moving, for a screen that redraws while it does."""
+    if status == "failed" or any(s["state"] == "failed" for s in strip):
+        return "failed"
+    if status in ("deployed", "not deployed", "rolled back") or strip[-1]["state"] == "done":
+        return "finished"
+    return "running"
+
+
+def run_status(view: "LabView", run_id: str) -> str | None:
+    """The run's `run_status` as its story says it; None when the view does not know the run."""
+    story = view.story(run_id)
+    return story["run_status"] if story else None
 
 
 def _one_in(p: float) -> str:

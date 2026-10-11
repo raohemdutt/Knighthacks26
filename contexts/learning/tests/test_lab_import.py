@@ -80,14 +80,16 @@ def test_posting_the_file_shows_the_real_run_live_and_posting_it_again_adds_noth
         body = first.json()
         assert "task is not known" in body.pop("note")   # no task yet, so no learning.run.progress (L29)
         assert first.status_code == 200 and body == {"kind": "telemetry", "published": 3, "already_there": 0, "events": 3,
-                                                     "runs": ["run-l16"], "last_step": 3}
+                                                     "runs": ["run-l16"], "last_step": 3, "status": "running", "steps_so_far": 3,
+                                                     "run_status": {"run-l16": {"status": "running", "steps_so_far": 3}}}
         lab = client.get("/api/learning/lab").json()
         assert lab["sample"] is False and lab["real_runs"] == 1 and lab["runs"][0]["status"] == "training"  # live: no eval yet
         grown = telemetry(tmp_path / "later")  # the same run, two steps further on
         assert client.post("/api/learning/lab/import", content=grown).json()["published"] == 2
         again = client.post("/api/learning/lab/import", content=grown).json()
         again.pop("note")
-        assert again == {"kind": "telemetry", "published": 0, "already_there": 5, "events": 5, "runs": ["run-l16"], "last_step": 5}
+        assert again == {"kind": "telemetry", "published": 0, "already_there": 5, "events": 5, "runs": ["run-l16"], "last_step": 5,
+                         "status": "running", "steps_so_far": 5, "run_status": {"run-l16": {"status": "running", "steps_so_far": 5}}}
         story = client.get("/api/learning/lab/run-l16").json()
         assert [p["loss"] for p in story["training"]["points"]] == LOSSES and story["sample"] is False
     assert sum(isinstance(e, TrainStep) for e in bus.read_log()) == 5  # the log holds each step once
