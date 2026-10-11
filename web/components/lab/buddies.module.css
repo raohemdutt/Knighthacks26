@@ -1,0 +1,579 @@
+/*
+ * Learning buddies (LearningBuddies.tsx): the box learning, as a cartoon. The root's data-state picks the motion:
+ * idle breathes, alone hops, with-friend slides a second box in, bumps the two together and hops them in sync.
+ * .calm (reduced motion, from the system or ?motion=reduce) stops every movement and crossfades instead.
+ */
+
+.root {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  padding: 20px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--sh-raised);
+  overflow: hidden;
+  min-width: 0;
+}
+
+@media (min-width: 760px) {
+  .root {
+    grid-template-columns: minmax(300px, 1.1fr) minmax(0, 1fr);
+    align-items: center;
+  }
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------- the stage ---------- */
+
+.stage {
+  position: relative;
+  height: 220px;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background:
+    radial-gradient(120% 90% at 50% 100%, var(--accent-soft), transparent 70%),
+    var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+}
+
+.floor {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: 30px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--line) 20%, var(--line) 80%, transparent);
+}
+
+.glow {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  width: 200px;
+  height: 160px;
+  margin-left: -100px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--accent) 55%, transparent), transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--t-slow) ease;
+}
+
+.slot {
+  position: absolute;
+  bottom: 28px;
+  left: calc(50% - 60px);
+  width: 120px;
+  transition: left 700ms var(--ease-out), opacity var(--t-slow) ease;
+}
+
+.slotFriend {
+  opacity: 0;
+  left: calc(50% + 2px);
+}
+
+.shadow {
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  bottom: -5px;
+  height: 10px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(0, 0, 0, 0.55), transparent);
+  opacity: 0.6;
+}
+
+.bump,
+.mover {
+  transform-origin: 50% 100%;
+}
+
+.boxSvg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.35));
+}
+
+.bar {
+  fill: #9bbcf2;
+}
+
+.bar[data-bar="b"] {
+  fill: #43e0c0;
+}
+
+/* idle: a slow breath, the light line dimming and brightening with it */
+.root[data-state="idle"] .mover {
+  animation: breathe 4.2s ease-in-out infinite;
+}
+
+.root[data-state="idle"] .bar {
+  animation: dim 4.2s ease-in-out infinite;
+}
+
+/* alone: hopping in place while it trains */
+.root[data-state="alone"] .glow {
+  opacity: 0.35;
+}
+
+.root[data-state="alone"] .slotMe .mover {
+  animation: hop 0.9s infinite;
+}
+
+.root[data-state="alone"] .slotMe .shadow {
+  animation: shadow-hop 0.9s infinite;
+}
+
+/* with a friend: the friend slides in, the two bump, share a glow, then hop in sync */
+.root[data-state="with-friend"] .slotMe {
+  left: calc(50% - 120px);
+}
+
+.root[data-state="with-friend"] .slotFriend {
+  opacity: 1;
+  animation: slide-in 1s var(--ease-out) both;
+}
+
+.root[data-state="with-friend"] .slotMe .bump {
+  transform-origin: 100% 100%;
+  animation: bump-left 0.5s 0.85s ease-out both;
+}
+
+.root[data-state="with-friend"] .slotFriend .bump {
+  transform-origin: 0% 100%;
+  animation: bump-right 0.5s 0.85s ease-out both;
+}
+
+.root[data-state="with-friend"] .glow {
+  width: 320px;
+  margin-left: -160px;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--accent-3) 40%, transparent), color-mix(in srgb, var(--accent) 30%, transparent) 55%, transparent);
+  animation: glow-on 1.4s 1s ease-out both, glow-pulse 1.8s 2.4s ease-in-out infinite;
+}
+
+.root[data-state="with-friend"] .mover {
+  animation: hop 0.9s 1.45s infinite;
+}
+
+.root[data-state="with-friend"] .shadow {
+  animation: shadow-hop 0.9s 1.45s infinite;
+}
+
+.contact {
+  position: absolute;
+  left: 50%;
+  bottom: 70px;
+  width: 54px;
+  height: 54px;
+  margin-left: -27px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, #ffffff, color-mix(in srgb, var(--accent-3) 70%, transparent) 45%, transparent);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.root[data-state="with-friend"] .contact {
+  animation: contact 0.7s 0.95s ease-out both;
+}
+
+/* one burst of sparks per training step */
+.sparks {
+  position: absolute;
+  left: 50%;
+  top: 22px;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.spark {
+  position: absolute;
+  left: -5px;
+  top: -5px;
+  width: 10px;
+  height: 10px;
+  background: var(--accent-bright);
+  clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
+  opacity: 0;
+  animation: fly 0.85s var(--d, 0ms) ease-out both;
+}
+
+.spark:nth-child(3n) {
+  background: var(--watch);
+}
+
+.spark:nth-child(3n + 1) {
+  background: var(--accent-3);
+}
+
+/* ---------- the side: counters and the loss curve ---------- */
+
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.resting {
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-size: 24px;
+  font-weight: 650;
+}
+
+.counters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 10px;
+}
+
+.counter {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  min-width: 0;
+}
+
+.counterFriend {
+  display: none;
+}
+
+.root[data-state="with-friend"] .counterFriend {
+  display: flex;
+  animation: rise 0.6s 1.1s var(--ease-out) both;
+}
+
+.counterNum {
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-size: clamp(26px, 3vw, 34px);
+  line-height: 1.05;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  animation: pop 0.35s var(--ease-spring) both;
+}
+
+.counterNum small {
+  font-size: 0.55em;
+  font-weight: 650;
+  color: var(--muted);
+}
+
+.counterLabel {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.was {
+  white-space: nowrap;
+}
+
+.good {
+  color: var(--ok);
+}
+
+.curve {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.curveHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.curveHead b {
+  color: var(--text);
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.curveSvg {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.baseline {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.lossLine {
+  fill: none;
+  stroke: var(--accent-text);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: draw 1.4s var(--ease-out) forwards;
+}
+
+.root[data-state="with-friend"] .lossLine {
+  stroke: var(--ok);
+}
+
+.area {
+  fill: var(--accent-soft);
+  animation: fade 1.4s ease-out both;
+}
+
+.head {
+  fill: var(--accent-text);
+  stroke: var(--surface-solid);
+  stroke-width: 2;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: pop 0.45s var(--ease-spring) both;
+}
+
+.root[data-state="with-friend"] .head {
+  fill: var(--ok);
+}
+
+.axis {
+  fill: var(--muted);
+  font-size: 11px;
+}
+
+.caption {
+  font-size: 14px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- reduced motion: nothing moves, the states crossfade ---------- */
+
+.calm .mover,
+.calm .bump,
+.calm .shadow,
+.calm .bar,
+.calm .slot,
+.calm .slotFriend,
+.calm .glow,
+.calm .contact,
+.calm .counterNum,
+.calm .counterFriend,
+.calm .lossLine,
+.calm .area,
+.calm .head {
+  animation: none !important;
+}
+
+.calm .lossLine {
+  stroke-dashoffset: 0;
+}
+
+.calm .slot,
+.calm .glow,
+.calm .side {
+  transition: opacity 450ms ease !important;
+}
+
+.calm[data-state="with-friend"] .glow {
+  opacity: 0.8;
+}
+
+/* ---------- keyframes ---------- */
+
+@keyframes breathe {
+  0%,
+  100% {
+    transform: scale(1, 1);
+  }
+  50% {
+    transform: scale(1.012, 1.035);
+  }
+}
+
+@keyframes dim {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes hop {
+  0% {
+    transform: translateY(0) scale(1.08, 0.88);
+    animation-timing-function: cubic-bezier(0.2, 0.7, 0.4, 1);
+  }
+  18% {
+    transform: translateY(-6px) scale(0.93, 1.09);
+    animation-timing-function: cubic-bezier(0.2, 0.7, 0.4, 1);
+  }
+  50% {
+    transform: translateY(-36px) scale(1, 1);
+    animation-timing-function: cubic-bezier(0.6, 0, 0.8, 0.4);
+  }
+  82% {
+    transform: translateY(-5px) scale(0.95, 1.06);
+    animation-timing-function: ease-out;
+  }
+  100% {
+    transform: translateY(0) scale(1.08, 0.88);
+  }
+}
+
+@keyframes shadow-hop {
+  0%,
+  100% {
+    transform: scale(1.1, 1);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(0.6, 0.8);
+    opacity: 0.22;
+  }
+}
+
+@keyframes slide-in {
+  from {
+    transform: translateX(300px);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes bump-left {
+  0% {
+    transform: none;
+  }
+  35% {
+    transform: translateX(8px) scale(0.84, 1.12);
+  }
+  70% {
+    transform: translateX(-2px) scale(1.06, 0.95);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+@keyframes bump-right {
+  0% {
+    transform: none;
+  }
+  35% {
+    transform: translateX(-8px) scale(0.84, 1.12);
+  }
+  70% {
+    transform: translateX(2px) scale(1.06, 0.95);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+@keyframes contact {
+  0% {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.8);
+  }
+}
+
+@keyframes glow-on {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 0.9;
+    transform: none;
+  }
+}
+
+@keyframes glow-pulse {
+  0%,
+  100% {
+    opacity: 0.9;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+@keyframes fly {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) scale(0.3) rotate(0deg);
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--dx), var(--dy)) scale(1) rotate(120deg);
+  }
+}
+
+@keyframes pop {
+  from {
+    transform: scale(0.7);
+    opacity: 0.4;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
