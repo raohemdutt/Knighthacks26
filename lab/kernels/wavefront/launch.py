@@ -21,7 +21,7 @@ ELEMENTS = 1024
 
 
 def cases(quick: bool) -> list[dict[str, Any]]:
-    chain = 500 if quick else 2000
+    chain = 2000
     return [{"id": wf.row_id(CLASS, LEVER, mode, f"chain{chain}"), "setting": mode,
              "params": {"chain": chain, "elements": ELEMENTS, "op": "x.add_(1.0)", "dtype": "float32"}}
             for mode in ("eager", "graph")]
