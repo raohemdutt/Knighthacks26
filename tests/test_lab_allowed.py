@@ -234,7 +234,8 @@ def test_the_argument_vector_stays_well_under_the_command_line_limit_of_cmd_exe(
     # a launcher that goes through an npm .cmd shim is held to 8191 characters by cmd.exe,
     # and still has to add its own flags and the program path
     for tier in TIERS:
-        assert sum(len(token) + 3 for token in allowed.cli_flags(tier)) <= 6500, tier
+        # 6600 since O50 added the 16 state-dir deny rules; cmd.exe allows 8191 for the whole line
+        assert sum(len(token) + 3 for token in allowed.cli_flags(tier)) <= 6600, tier
 
 
 def test_tier_names_are_case_insensitive_and_unknown_tiers_are_refused():
