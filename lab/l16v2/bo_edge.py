@@ -47,6 +47,7 @@ sys.path.insert(0, str(HERE))
 
 import bo_local as bl  # noqa: E402  (the same worker calls, downloads, progress lines and choice helpers)
 
+bl.LAUNCH = bl.COLAB / "launch-edge"      # its own folder for the small files it runs on the VMs (the first driver may still be polling)
 STUDY_NAME = "l16v2-edge"
 LR = (8e-5, 1e-3)
 RANKS = (2, 4, 8, 16, 32, 64)
