@@ -424,7 +424,7 @@ def test_every_plan_of_a_round_is_kept_with_what_moved_into_the_way(tmp_path):
     me, can = track(5, "person", 0.6, 0.99), track(6, "can", 0.65, 0.53, 0.04, 0.07)
     room.on_observation(obs(0, "cam-door", me, can))
     [first] = room.on_round_started(started(0))
-    found = c.get("/api/play/route-search").json()
+    found = room.plans()
     assert (found["round_id"], found["item"], found["bin"], found["live"], len(found["plans"])) == ("r1", "can", "recycling", True, 1)
     one = found["plans"][0]
     assert (one["seq"], one["reason"], one["rerouted"], one["from"]["track"], one["bin_id"]) == (0, "round_started", None, "cam-door:5", "recycling-bin")
@@ -432,7 +432,7 @@ def test_every_plan_of_a_round_is_kept_with_what_moved_into_the_way(tmp_path):
     assert one["search"]["path"][0] == one["search"]["explored"][0] and room.state(at(0))["round"]["replans"] == 0
     friend = track(8, "person", 0.448, 0.875)
     [again] = room.on_observation(obs(2, "cam-door", me, can, friend))
-    found = c.get("/api/play/route-search").json()
+    found = room.plans()
     two = found["plans"][1]
     assert [p["seq"] for p in found["plans"]] == [0, 1] and room.state(at(2))["round"]["replans"] == 1
     assert (two["reason"], two["rerouted"]) == ("replan", {"why": "blocked", "kind": "person", "label": "person", "key": "cam-door:8"})
@@ -440,7 +440,7 @@ def test_every_plan_of_a_round_is_kept_with_what_moved_into_the_way(tmp_path):
     assert [o["key"] for o in two["obstacles"]] == ["cam-door:8"] and "o" in "".join(two["search"]["blocked"])
     assert "o" not in "".join(one["search"]["blocked"]) and two["search"]["explored_total"] != one["search"]["explored_total"]
     assert room.on_observation(obs(3, "cam-door", me, can, friend)) == []
-    assert len(c.get("/api/play/route-search").json()["plans"]) == 2  # nothing changed: nothing added
+    assert len(room.plans()["plans"]) == 2  # nothing changed: nothing added
     room.on_round_scored(RoundScored(ts=at(6), round_id="r1", session_id="s1", players=1, item="can", correct=True, seconds=6.0, path_len=20, score=150))
     after = c.get("/api/play/route-search").json()
     assert not after["live"] and after["plans"] == found["plans"]  # the last round's plans stay to be looked at
@@ -456,3 +456,6 @@ def test_only_the_first_plan_and_the_newest_replans_are_kept():
     assert [p["seq"] for p in room.plans()["plans"]] == [0, 5, 6, 7, 8, 9]
     room.on_round_started(started(20, round_id="r2"))
     assert [(p["seq"], p["reason"]) for p in room.plans()["plans"]] == [(0, "round_started")] and room.plans()["round_id"] == "r2"
+    assert room.plans(at(30))["live"] and not room.plans(at(20 + 91))["live"]  # left running past the timeout: the last round, not a live one
+    room.active_round = lambda: None  # the game abandoned it (no face for ten seconds) and no observation has said so yet
+    assert not room.plans(at(30))["live"] and len(room.plans(at(30))["plans"]) == 1

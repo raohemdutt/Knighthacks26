@@ -109,6 +109,6 @@ def room_router(live: Callable[[], RoomLive | None], config_dir: Path, guard: Ca
 
     @router.get("/api/play/route-search")
     def route_search() -> dict:
-        return room().plans()
+        return room().plans(datetime.now(UTC))
 
     return router

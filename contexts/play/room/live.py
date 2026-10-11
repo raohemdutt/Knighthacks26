@@ -337,12 +337,19 @@ class RoomLive:
         if len(plans) > PLANS_KEPT:
             del plans[1:len(plans) - PLANS_KEPT + 1]
 
-    def plans(self) -> dict:
-        """GET /api/play/route-search: every plan of the round that is on, else of the last one, with its search."""
+    def plans(self, now: datetime | None = None) -> dict:
+        """GET /api/play/route-search: every plan of the round that is on, else of the last one, with its search.
+
+        `live` follows the same rule as `state`: a round the game has dropped, or one left running past
+        ROUND_TIMEOUT by the wall clock `now`, is not on any more; its plans are the last round's."""
         s = self.searched
         if s is None:
             return {"room": self.plan.name, "round_id": None, "live": False, "plans": []}
-        return {"room": self.plan.name, **s, "live": self.round is not None and self.round.round_id == s["round_id"]}
+        r = self.round
+        on = r is not None and r.round_id == s["round_id"]
+        if on and ((self.active_round is not None and self.active_round() != r.round_id) or (now is not None and now - r.started > ROUND_TIMEOUT)):
+            on = False
+        return {"room": self.plan.name, **s, "live": on}
 
     def on_round_started(self, e: RoundStarted) -> list:
         self.result = None
