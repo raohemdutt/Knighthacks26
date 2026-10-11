@@ -261,14 +261,13 @@ def evaluate() -> dict:
     return table
 
 
-def test_on_invented_people_it_recovers_the_ranking_with_enough_looks_and_claims_nothing_without(capsys):
+def test_on_invented_people_it_recovers_the_ranking_with_enough_looks_and_claims_nothing_without():
     """THE NUMBERS (python -m pytest contexts/day/tests/test_look_model.py -k invented -s prints the table). This is a
     per-person table of counts over a handful of observations, not a trained expression recogniser."""
     table = evaluate()
-    with capsys.disabled():
-        print("\n  person  looks  up ranked first  'getting up helps'  any finding  'the looks share ...'")
-        for (name, n), (ranked, found, any_, shared) in table.items():
-            print(f"  {name:6}  {n:5}  {ranked:15.3f}  {found:18.3f}  {any_:11.3f}  {shared:20.3f}")
+    print("\n  person  looks  up ranked first  'getting up helps'  any finding  'the looks share ...'")  # shown with -s
+    for (name, n), (ranked, found, any_, shared) in table.items():
+        print(f"  {name:6}  {n:5}  {ranked:15.3f}  {found:18.3f}  {any_:11.3f}  {shared:20.3f}")
     # under the minimum nothing is ranked and nothing is claimed, whoever the person is
     assert table["breaks", 3] == table["null", 3] == (0.0, 0.0, 0.0, 0.0)
     assert table["breaks", 4][1:3] == (0.0, 0.0)  # four looks: ranked, never called a finding
@@ -376,6 +375,25 @@ def test_the_clause_about_when_it_shows_up_is_said_aloud_only_while_the_check_in
     assert alone.spoken == f"You've looked strained for the last twenty minutes. {LEARNED} Take ten minutes outside."
 
 
+def test_with_no_single_look_like_this_one_the_counts_are_still_said_and_no_callback_is_forced(places, tmp_path):  # noqa: F811
+    """Seven earlier looks, all in the morning soon after sitting down: none is "the same kind of moment" as this
+    afternoon, so nothing is called back to. What the counts say about easing a look still holds, and is said."""
+    mornings = sorted([e for day, did, eased in WEEK for e in earlier_look(day, did, eased, sit=30, hour=9)], key=lambda e: e.ts)
+    loop, bus, out, ntfy = asyncio.run(tuesday(places, tmp_path, [scanned(MEMBER), *mornings]))
+    [e] = of(out, DayCheckinRaised)
+    back = e.callback
+    counted = "Getting up has eased this three of the last four times; water alone hasn't either time."
+    assert (back.said, back.learned, back.lead, back.chip) == ("", counted, "walk", "What has eased it")
+    assert back.lines == [counted, "From 8 remembered looks, 7 with a known outcome."] and back.moment_id in loop.looks.moments
+    assert "same look" not in e.text and e.ahead == ""  # no usual time at the desk in these looks: no quiet line
+    [told] = [n for n in of(out, DayNarrated) if n.moment == "checkin"]
+    assert counted in told.spoken and "same look" not in told.spoken and [s.kind for s in e.suggestions][:2] == ["walk", "drink"]
+    sentences, chars = BOUNDS["checkin"]
+    assert len(re.split(r"(?<=[.!?])\s+", told.spoken)) <= sentences and len(told.spoken) <= chars and rule.diagnosis_in(told.spoken) == []
+    assert back.pattern == "It usually shows up in the morning." and back.pattern in told.spoken  # room for the clause this time
+    assert loop.checkin.card(e)["callback"]["chip"] == "What has eased it"
+
+
 def test_below_the_minimum_the_check_in_is_stage_ones_unchanged(places, tmp_path):  # noqa: F811
     loop, bus, out, ntfy = asyncio.run(tuesday(places, tmp_path, [scanned(MEMBER), *week(WEEK[:2]), *friday()]))
     assert loop.looks.model(MEMBER, NOW).known == 3 and not loop.looks.model(MEMBER, NOW).enough
@@ -479,7 +497,7 @@ def test_forget_what_it_learned_is_forgetting_the_looks_and_one_forgotten_look_c
     assert shown["enough"] and (shown["looks"], shown["known"], shown["left_out"]) == (9, 8, 1)
     assert [f["text"] for f in shown["findings"]] == [
         "Getting up: the look eased 4 of the 5 times you got up. Too few to call it either way.",
-        "Water alone: the look eased 0 of the 2 times you only had a drink. Too few to call it either way.",
+        "Water alone: the look eased 0 of the 2 times you only had a drink.",
         "It usually starts after about 105 minutes at the desk: 8 of 9 looks did."]
     assert shown["evidence"] == "From 9 remembered looks, 8 with a known outcome. 1 is left out: I couldn't see how it went."
     assert shown["findings"][0]["band"] == "Likely between 51% and 94% of the time, on this little."

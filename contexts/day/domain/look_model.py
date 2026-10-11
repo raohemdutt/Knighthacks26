@@ -383,15 +383,16 @@ def _percent(x: float) -> int:
     return int(round(x * 100))
 
 
-def arm_finding(a: Arm, w: Words = Words()) -> dict:
-    """One arm as a sentence with its counts, its band and whether it is a finding."""
+def arm_finding(a: Arm, w: Words = Words(), first: bool = True) -> dict:
+    """One arm as a sentence with its counts, its band and whether it is a finding. `first`: the arm the counts
+    favour, which is told plainly when it is not a finding yet; the one beside it for contrast is only counted."""
     name, did_ = cap(_arm(a.name, w)), _arm(a.name, w, ARM_DID)
     counts = f"the look {'eased' if a.eased else 'did not ease'} the one time {did_}" if a.n == 1 else f"the look eased {a.eased} of the {a.n} times {did_}"
     rest = f"{a.rest_eased} of the {a.rest_n} times you didn't" if a.rest_n > 1 else ""
     if a.helps:
         text = f"{name} helps: {counts}" + (f", against {rest}." if rest else ".")
     else:
-        text = f"{name}: {counts}. Too few to call it either way."
+        text = f"{name}: {counts}." + (" Too few to call it either way." if first else "")
     return {"kind": a.name, "text": text, "eased": a.eased, "n": a.n, "finding": a.helps,
             "band": f"Likely between {_percent(a.low)}% and {_percent(a.high)}% of the time, on this little."}
 
@@ -427,7 +428,7 @@ def view(model: Model, w: Words = Words()) -> dict:
         need = MIN_KNOWN - model.known
         return base | {"findings": [], "not_enough": f"Not enough yet. I need to see how {need} more look{'' if need == 1 else 's'} "
                                                      f"went before I say what helps ({model.known} of {MIN_KNOWN} so far)."}
-    arms = [arm_finding(a, w) for a in pair(model) if a is not None]
+    arms = [arm_finding(a, w, first=i == 0) for i, a in enumerate(pair(model)) if a is not None]
     shared = [common_finding(c, w) for c in model.commons[:1]]
     return base | {"findings": arms + shared, "not_enough": ""}
 

@@ -87,6 +87,7 @@ coach_feedback:
 #   speak_gap_s: 90         # the least time between two unasked lines (leave now / late and room alerts break it)
 #   speak_stale_s: 120      # a line held that long behind another is dropped (a plan, a card, a check-in, a review wait)
 #   block_reminders: true   # say once when a planned block starts
+#   look_ahead: true        # the check-in card's quiet line "You usually start to look strained around now" (on the card only: never said, never pushed)
 #   speaker: box            # the box's own speaker says the unasked lines and the phone stays silent (default: the phone)
 #   suggest_optional: true    # bring up an optional "Near you" event that fits or nearly fits and names somebody, once
 #   suggest_from_min: 90      # ... not earlier than this many minutes before it starts
