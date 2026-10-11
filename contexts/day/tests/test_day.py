@@ -411,6 +411,8 @@ def test_the_plans_blocks_are_a_port_for_whoever_answers_a_question_about_the_da
                     ("rest", "a break", "20:22"), ("study", "a study block", "21:17"), ("leave", "Knight Hacks: mentor check-in", "09:10")]
     assert all(b["start"] >= at(13) for b in loop.blocks(at(13))) and [b["title"] for b in loop.blocks(at(13))][:1] == ["dinner"]
     assert not any("Knight Hacks" in b["title"] or b["kind"] == "sleep" for b in loop.blocks(at(8, 30)) if b["kind"] != "leave")
+    # after midnight the plan still running is yesterday's: a plan with nothing left to say, not "no plan"; once it is over, none
+    assert loop.blocks(at(0, 30, day=12)) == [] and loop.blocks(at(12, day=13)) is None
 
 
 def test_patterns_are_counted_statements_or_nothing():

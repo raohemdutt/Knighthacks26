@@ -133,6 +133,9 @@ class DayLoop:
         a walk. Fixed events are the calendar's own and are left out; short breaks inside the main activity and the
         night's sleep are not said. None when there is no plan for today. Reads state, publishes nothing, no model."""
         plan = self.planner.current.get(self.clock.day_of(now))
+        if plan is None and self.planner.current:  # after midnight the plan still running is yesterday's (as the narrator takes it)
+            latest = self.planner.current[max(self.planner.current)]
+            plan = latest if any(m.end > now for m in latest.moves) else None
         if plan is None:
             return None
         w, tz = self.narrator.words, self.clock.tz

@@ -349,6 +349,8 @@ class Talk:
         q = LEAD.sub("", q, count=1) or q
         if HOW_ARE_YOU.search(q) or DONE_FOR_ME.search(q):
             return True
+        if schedule.parse(question, self.clock(), self.tz) is not None:
+            return False  # a calendar question the fast lane answers (QA says it, with its citations)
         return bool(TODAY.search(q) and DAY_AHEAD.search(q)) and not LOOKS_BACK.search(q) and self.wants(question)
 
     def fresh(self) -> bool:
