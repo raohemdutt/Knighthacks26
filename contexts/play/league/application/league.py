@@ -32,7 +32,8 @@ from contracts.play import (ChallengeResult, LeagueChallengeClosed, LeagueChalle
                             LeagueSummaryReceived, LeagueWeekClosed, Stake)
 
 CHAT_WRITE = "groupme.post"
-DAYRUN_STARS = re.compile(r"Day Run block\(s\) .*\((\d+)-star plan\)")
+# the card's reason as it is written now, and as older logs have it ("Day Run" was the screen's first name)
+DAYRUN_STARS = re.compile(r"(?:Today's Plan|Day Run) block\(s\) .*\((\d+)-star plan\)")
 LOCAL_CIRCLE = "league"  # the circle id when this box plays alone
 MAX_INVITEES = 20
 Publish = Callable[[Event], Awaitable[None]]
