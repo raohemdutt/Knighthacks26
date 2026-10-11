@@ -5,16 +5,87 @@
     <template>
       <link rel="stylesheet" href="world/soft.css" />
       <style>
-        #root { position: absolute; inset: 0; font-family: var(--font); }
+        #root { position: absolute; inset: 0; font-family: var(--font); overflow: hidden; }
+        .lab-row { position: absolute; left: 0; right: 0; top: 150px; display: flex; justify-content: center; pointer-events: none; }
         #lab-chapter { position: absolute; left: 96px; top: 72px; padding: 14px 28px; font-size: 28px; opacity: 0; }
+
+        /* Line 0: the hardware card, top right over the pods. */
+        #lab-hw { position: absolute; right: 96px; top: 150px; padding: 28px 44px 32px; opacity: 0; }
+        #lab-hw .k { font-size: 28px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+        #lab-hw .v { font-size: 64px; font-weight: 700; color: var(--ink); line-height: 1.1; letter-spacing: -0.01em; white-space: nowrap; }
+        #lab-hw .s { margin-top: 8px; font-size: 40px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+
+        /* Line 1: the consent chip, top centre on the wide shot. */
+        #lab-consent { position: relative; height: 96px; padding: 0 44px 0 30px; border-radius: 48px; display: flex; align-items: center; gap: 20px; font-size: 40px; font-weight: 600; color: var(--ink); opacity: 0; white-space: nowrap; }
+        #lab-consent svg { width: 40px; height: 40px; display: block; }
+
+        /* Line 2: the gate, then the public adapter. Top centre. */
+        #lab-gate { position: relative; padding: 28px 52px 32px 40px; display: flex; align-items: center; gap: 34px; opacity: 0; }
+        #lab-gate .chk { width: 112px; height: 112px; border-radius: 50%; display: grid; place-items: center; flex: none; }
+        #lab-gate .chk svg { width: 60px; height: 60px; display: block; }
+        #lab-gate .chk path { fill: none; stroke: var(--accent); stroke-width: 3.2; stroke-linecap: round; stroke-linejoin: round; }
+        #lab-gate .k { font-size: 28px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+        #lab-gate .v { font-size: 64px; font-weight: 700; color: var(--ink); line-height: 1.1; letter-spacing: -0.01em; white-space: nowrap; }
+        #lab-gate .v b { color: var(--accent); }
+
+        #lab-hf { position: relative; padding: 28px 52px 32px; opacity: 0; text-align: center; }
+        #lab-hf .k { font-size: 28px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+        #lab-hf .v { font-size: 64px; font-weight: 700; color: var(--ink); line-height: 1.1; letter-spacing: -0.01em; white-space: nowrap; }
       </style>
       <div id="root" data-composition-id="lab" data-width="1920" data-height="1080">
         <div id="lab-chapter" class="soft-raised soft-muted">The learning lab</div>
+
+        <div id="lab-hw" class="soft-raised"><div class="k">The lab</div><div class="v">2 &times; AMD Strix Halo</div><div class="s">Radeon 8060S</div></div>
+
+        <div class="lab-row" id="lab-consent-row"><div id="lab-consent" class="soft-raised">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5" fill="none" stroke="#d9774a" stroke-width="2.2"/><path d="M7.6 12.4 L10.6 15.3 L16.6 9" fill="none" stroke="#d9774a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          with consent
+        </div></div>
+
+        <div class="lab-row" id="lab-gate-row"><div id="lab-gate" class="soft-raised">
+          <div class="chk soft-pressed"><svg viewBox="0 0 24 24"><path id="lab-gate-tick" d="M5 12.5 L10 17.5 L19 7" /></svg></div>
+          <div><div class="k">The test</div><div class="v">Better? <b>Yes</b></div></div>
+        </div></div>
+
+        <div class="lab-row" id="lab-hf-row"><div id="lab-hf" class="soft-raised"><div class="k">Public</div><div class="v">Adapter on Hugging Face</div></div></div>
       </div>
       <script>
         (function () {
+          // Timing comes from film.json through the host: <audio id="voice-lab-i" data-start> and #host-lab data-start.
+          // The fallback (film.json, local seconds) is only for previewing this file alone.
+          const FALLBACK = [{ start: 0, duration: 6.504 }, { start: 6.904, duration: 7.104 }, { start: 14.408, duration: 6.6 }];
+          function lines() {
+            const host = document.getElementById("host-lab"); if (!host) return FALLBACK;
+            const s0 = parseFloat(host.dataset.start), out = [];
+            for (let i = 0; ; i++) { const a = document.getElementById("voice-lab-" + i); if (!a) break; out.push({ start: parseFloat(a.dataset.start) - s0, duration: parseFloat(a.dataset.duration) }); }
+            return out.length === FALLBACK.length ? out : FALLBACK;
+          }
+          const LN = lines();
+          const W = (i, s) => LN[i].start + s; // measured word moments, see world/scenes/lab.js
           const tl = gsap.timeline({ paused: true });
+
           tl.fromTo("#lab-chapter", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 0.2);
+
+          // "two AMD Strix Halo pods": the hardware card lands with the camera.
+          tl.fromTo("#lab-hw", { opacity: 0, x: 40 }, { opacity: 1, x: 0, duration: 0.8, ease: "power4.out" }, W(0, 1.2));
+          tl.to("#lab-hw", { opacity: 0, x: 24, duration: 0.45, ease: "power2.in" }, W(1, 1.2));
+
+          // "With everyone's consent".
+          tl.fromTo("#lab-consent", { opacity: 0, y: 24, scale: 0.94 }, { opacity: 1, y: 0, scale: 1, duration: 0.6, ease: "power4.out" }, W(1, 2.0));
+          tl.to("#lab-consent", { opacity: 0, y: -12, duration: 0.45, ease: "power2.in" }, W(2, 0.0));
+
+          // "A test decides whether the new model is really better": the gate, the check draws on "better".
+          tl.fromTo("#lab-gate", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.6, ease: "power4.out" }, W(2, 0.35));
+          const tick = document.getElementById("lab-gate-tick"), len = tick.getTotalLength() * 1.05;
+          tl.fromTo(tick, { strokeDasharray: len, strokeDashoffset: len }, { strokeDashoffset: 0, duration: 0.5, ease: "power2.out" }, W(2, 1.95));
+          tl.fromTo("#lab-gate .chk", { scale: 1 }, { scale: 1.08, duration: 0.16, ease: "power2.out", yoyo: true, repeat: 1 }, W(2, 2.35));
+          tl.to("#lab-gate", { opacity: 0, y: -12, duration: 0.45, ease: "power2.in" }, W(2, 3.7));
+
+          // "Our adapter is public on Hugging Face".
+          tl.fromTo("#lab-hf", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.6, ease: "power4.out" }, W(2, 4.2));
+          tl.to("#lab-hf", { opacity: 0, y: -12, duration: 0.45, ease: "power2.in" }, W(2, 7.1));
+          tl.to("#lab-chapter", { opacity: 0, duration: 0.45, ease: "power2.in" }, W(2, 7.2));
+
           window.__timelines["lab"] = tl;
         })();
       </script>

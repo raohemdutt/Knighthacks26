@@ -191,7 +191,7 @@ file indexed a line that no longer exists and crashed the timeline).
 | learn | | | |
 | lab | | | |
 | device | | | |
-| kitchen | | (kitchen set at x = -42; travel there, and back or onward) | |
+| kitchen | `HOME` | `HOME` (two planned hard cuts: into `binCam` on "bin camera", out to `counterAtlas` on line 1) | kitchen 0, binCount 0, canThrow 0 |
 | friends | | | |
 | lives | | | |
 | end | the dayrun hero `{ x: 0, y: 6, z: 16, tx: 0, ty: 0, tz: 0, fov: 38 }` with campus 1, ring 1, membrane 1 | a slow push to `{ x: 0, y: 5.3, z: 13.6, fov: 37 }`, held; nothing is reset | `pulse` 0.7; the film ends here |

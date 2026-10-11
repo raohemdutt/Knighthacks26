@@ -5,16 +5,98 @@
     <template>
       <link rel="stylesheet" href="world/soft.css" />
       <style>
-        #root { position: absolute; inset: 0; font-family: var(--font); }
+        #root { position: absolute; inset: 0; font-family: var(--font); overflow: hidden; }
         #remember-chapter { position: absolute; left: 96px; top: 72px; padding: 14px 28px; font-size: 28px; opacity: 0; }
+
+        /* Line 0: the question (a pressed well, the person's words) and the answer card with the frame it saw. */
+        #remember-qa { position: absolute; right: 96px; top: 150px; width: 640px; display: flex; flex-direction: column; align-items: flex-end; gap: 30px; }
+        #remember-q { padding: 26px 40px; border-radius: 40px 40px 12px 40px; font-size: 40px; font-weight: 500; color: var(--ink); opacity: 0; }
+        #remember-a { width: 640px; padding: 30px 32px 32px; border-radius: 36px; opacity: 0; }
+        #remember-a .ans { font-size: 40px; font-weight: 600; color: var(--ink); line-height: 1.2; letter-spacing: -0.005em; padding: 0 8px; }
+        #remember-thumb { margin-top: 24px; border-radius: 24px; overflow: hidden; height: 276px; }
+        #remember-thumb svg { display: block; width: 100%; height: 100%; }
+        #remember-a .src { margin-top: 18px; padding: 0 8px; font-size: 28px; font-weight: 500; color: var(--muted); display: flex; align-items: center; gap: 12px; }
+        #remember-a .src i { width: 12px; height: 12px; border-radius: 50%; background: var(--accent); }
+
+        /* Line 1: three quick answers fall in, one under the other. */
+        #remember-cards { position: absolute; right: 96px; top: 170px; width: 640px; display: flex; flex-direction: column; gap: 30px; }
+        .remember-card { padding: 26px 38px 30px; border-radius: 32px; opacity: 0; }
+        .remember-card .k { font-size: 28px; font-weight: 500; color: var(--muted); }
+        .remember-card .v { margin-top: 8px; font-size: 40px; font-weight: 600; color: var(--ink); line-height: 1.2; }
+        .remember-card .v.big { font-size: 64px; letter-spacing: -0.01em; }
+        .remember-card .cite { margin-top: 10px; font-size: 28px; font-weight: 600; color: var(--accent); }
       </style>
       <div id="root" data-composition-id="remember" data-width="1920" data-height="1080">
         <div id="remember-chapter" class="soft-raised soft-muted">It remembers</div>
+
+        <div id="remember-qa">
+          <div id="remember-q" class="soft-well">Where did I leave my keys?</div>
+          <div id="remember-a" class="soft-raised">
+            <div class="ans">Left of the laptop, behind the mug</div>
+            <div id="remember-thumb" class="soft-well">
+              <svg viewBox="0 0 636 300" xmlns="http://www.w3.org/2000/svg">
+                <!-- The owner's own desk, from the box's camera: wall, desk edge, laptop, mug, keys. -->
+                <rect x="0" y="0" width="636" height="300" fill="#dde2e9" />
+                <path d="M0 150 L636 132 L636 300 L0 300 Z" fill="#e9ecf1" />
+                <path d="M0 150 L636 132" stroke="#c7ced8" stroke-width="3" />
+                <!-- laptop -->
+                <path d="M300 70 L470 66 L476 176 L296 180 Z" fill="#59616e" />
+                <path d="M310 80 L462 77 L466 168 L306 171 Z" fill="#8f9cb0" opacity="0.55" />
+                <path d="M282 182 L492 176 L520 214 L262 222 Z" fill="#c9d0da" />
+                <path d="M330 194 L452 191 L460 204 L324 207 Z" fill="#b7c0cd" />
+                <!-- keys (behind the mug, left of the laptop) -->
+                <g transform="translate(168 176) rotate(-14)">
+                  <circle cx="0" cy="0" r="13" fill="none" stroke="#6f7886" stroke-width="5" />
+                  <rect x="10" y="-5" width="40" height="10" rx="4" fill="#8a929e" />
+                  <rect x="40" y="3" width="6" height="8" fill="#8a929e" />
+                  <rect x="30" y="3" width="5" height="6" fill="#8a929e" />
+                  <rect x="-8" y="8" width="26" height="9" rx="4" fill="#6f7886" transform="rotate(48)" />
+                </g>
+                <!-- mug, in front -->
+                <rect x="132" y="190" width="62" height="70" rx="12" fill="#f4f6f9" stroke="#c7ced8" stroke-width="3" />
+                <path d="M194 206 q26 4 22 24 q-4 16 -22 16" fill="none" stroke="#c7ced8" stroke-width="7" />
+                <ellipse cx="163" cy="192" rx="31" ry="7" fill="#d6dbe3" />
+                <!-- notebook -->
+                <path d="M520 236 L600 228 L612 268 L528 278 Z" fill="#c4ccd7" />
+                <!-- the ring around the keys, drawn on "frame" -->
+                <ellipse id="remember-ring" cx="186" cy="174" rx="58" ry="34" fill="none" stroke="#d9774a" stroke-width="6" stroke-linecap="round" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1" />
+              </svg>
+            </div>
+            <div class="src"><i></i>From the frame it saw them in</div>
+          </div>
+        </div>
+
+        <div id="remember-cards">
+          <div id="remember-card-0" class="remember-card soft-raised"><div class="k">Tell me a joke</div><div class="v">I'd tell you a UDP joke, but you might not get it.</div></div>
+          <div id="remember-card-1" class="remember-card soft-raised"><div class="k">What's 17 times 23?</div><div class="v big">17 × 23 = 391</div></div>
+          <div id="remember-card-2" class="remember-card soft-raised"><div class="k">Who won the last UCF vs UF game?</div><div class="v big">Florida, 24–13</div><div class="cite">Oct 5, 2024 · floridagators.com</div></div>
+        </div>
       </div>
       <script>
         (function () {
+          // LOCAL time (0 = scene start, absolute 51.836). From film.json: line 0 at 0 (4.368 long), line 1 at 4.768
+          // (3.768 long). Word times by character fraction: keys 1.26, answers 1.74, frame 3.26; talk 5.33,
+          // arithmetic 5.99, look 6.70, cite 7.74. Re-derive these if the words in film.yaml change. Scene lasts 13.0.
+          const DUR = 13.0;
           const tl = gsap.timeline({ paused: true });
-          tl.fromTo("#remember-chapter", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 0.2);
+          tl.fromTo("#remember-chapter", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.6, ease: "power4.out" }, 0.2);
+
+          // The question as it is asked, the answer as it answers, the keys ringed on "frame".
+          tl.fromTo("#remember-q", { opacity: 0, y: 24, scale: 0.95 }, { opacity: 1, y: 0, scale: 1, duration: 0.6, ease: "power4.out", transformOrigin: "100% 100%" }, 0.7);
+          tl.fromTo("#remember-a", { opacity: 0, y: 30, scale: 0.96 }, { opacity: 1, y: 0, scale: 1, duration: 0.7, ease: "power4.out" }, 1.9);
+          tl.fromTo("#remember-ring", { strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: 0.8, ease: "power2.inOut" }, 3.15);
+
+          // Line 1: the keys exchange steps aside; three quick answers waterfall in on their words.
+          tl.to("#remember-q", { opacity: 0, y: -14, duration: 0.4, ease: "power2.in" }, 4.75);
+          tl.to("#remember-a", { opacity: 0, y: -14, duration: 0.45, ease: "power2.in" }, 4.8);
+          [5.3, 5.95, 6.65].forEach((w, i) => {
+            tl.fromTo("#remember-card-" + i, { opacity: 0, y: -40, scale: 0.96 }, { opacity: 1, y: 0, scale: 1, duration: 0.65, ease: "power4.out" }, w);
+          });
+          tl.fromTo("#remember-card-2 .cite", { opacity: 0, x: -10 }, { opacity: 1, x: 0, duration: 0.5, ease: "power4.out" }, 7.7);
+
+          // Clear as the room sinks away.
+          tl.to(".remember-card", { opacity: 0, y: 16, duration: 0.45, ease: "power2.in", stagger: 0.06 }, 9.3);
+          tl.to("#remember-chapter", { opacity: 0, duration: 0.4, ease: "power2.in" }, DUR - 0.6);
           window.__timelines["remember"] = tl;
         })();
       </script>

@@ -5,16 +5,152 @@
     <template>
       <link rel="stylesheet" href="world/soft.css" />
       <style>
-        #root { position: absolute; inset: 0; font-family: var(--font); }
+        #root { position: absolute; inset: 0; font-family: var(--font); overflow: hidden; }
         #kitchen-chapter { position: absolute; left: 96px; top: 72px; padding: 14px 28px; font-size: 28px; opacity: 0; }
+
+        /* Line 0: the wall camera's own view. Viewfinder corners, a "bin camera" tag, what it saw, the rule. */
+        #kitchen-vf { position: absolute; inset: 48px; opacity: 0; pointer-events: none; }
+        #kitchen-vf i { position: absolute; width: 72px; height: 72px; border: 0 solid rgba(43,49,59,0.55); }
+        #kitchen-vf i:nth-child(1) { left: 0; top: 0; border-left-width: 5px; border-top-width: 5px; border-top-left-radius: 18px; }
+        #kitchen-vf i:nth-child(2) { right: 0; top: 0; border-right-width: 5px; border-top-width: 5px; border-top-right-radius: 18px; }
+        #kitchen-vf i:nth-child(3) { left: 0; bottom: 0; border-left-width: 5px; border-bottom-width: 5px; border-bottom-left-radius: 18px; }
+        #kitchen-vf i:nth-child(4) { right: 0; bottom: 0; border-right-width: 5px; border-bottom-width: 5px; border-bottom-right-radius: 18px; }
+        #kitchen-tag { position: absolute; right: 96px; top: 72px; height: 60px; padding: 0 28px 0 22px; border-radius: 30px; display: flex; align-items: center; gap: 14px; font-size: 28px; font-weight: 600; color: var(--ink); opacity: 0; }
+        #kitchen-tag .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 6px rgba(217,119,74,0.16); }
+
+        #kitchen-stack { position: absolute; right: 96px; top: 170px; width: 600px; display: flex; flex-direction: column; align-items: flex-end; gap: 28px; }
+        #kitchen-seen { height: 84px; padding: 0 38px 0 30px; border-radius: 42px; display: flex; align-items: center; gap: 18px; font-size: 40px; font-weight: 600; color: var(--ink); opacity: 0; }
+        #kitchen-seen .dot { width: 16px; height: 16px; border-radius: 50%; background: var(--shade); }
+        #kitchen-seen .arrow { color: var(--muted); font-weight: 500; }
+        #kitchen-rule { width: 600px; padding: 30px 40px 34px; border-radius: 36px; opacity: 0; }
+        #kitchen-rule .k { font-size: 28px; font-weight: 600; color: var(--muted); }
+        #kitchen-rule .v { margin-top: 6px; font-size: 64px; font-weight: 700; color: var(--ink); line-height: 1.1; letter-spacing: -0.01em; }
+        #kitchen-rule .v b { color: #c66d44; font-weight: 700; }
+        #kitchen-rule .bins { margin-top: 22px; display: flex; gap: 16px; }
+        .kitchen-bin { flex: 1; height: 64px; border-radius: 22px; display: flex; align-items: center; justify-content: center; gap: 12px; font-size: 28px; font-weight: 600; color: var(--muted); }
+        .kitchen-bin i { width: 14px; height: 14px; border-radius: 4px; }
+        #kitchen-bin-rec { color: var(--ink); }
+
+        /* Line 1: the count card, on the counter device. */
+        #kitchen-count { position: absolute; right: 96px; top: 150px; width: 640px; padding: 36px 44px 40px; border-radius: 40px; opacity: 0; }
+        #kitchen-count .head { display: flex; justify-content: space-between; align-items: baseline; }
+        #kitchen-count .title { font-size: 40px; font-weight: 600; color: var(--ink); }
+        #kitchen-count .when { font-size: 28px; font-weight: 500; color: var(--muted); }
+        #kitchen-count .nums { margin-top: 18px; display: flex; align-items: baseline; justify-content: space-between; }
+        #kitchen-of { font-size: 64px; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; position: relative; height: 80px; width: 300px; }
+        #kitchen-of span { position: absolute; left: 0; top: 0; white-space: nowrap; }
+        #kitchen-of small { font-size: 28px; font-weight: 600; color: var(--muted); margin-left: 12px; letter-spacing: 0; }
+        #kitchen-pct { font-size: 112px; font-weight: 700; color: var(--accent); letter-spacing: -0.03em; line-height: 1; }
+        #kitchen-bar { position: relative; margin-top: 26px; height: 36px; border-radius: 18px; }
+        #kitchen-fill { position: absolute; left: 6px; top: 6px; bottom: 6px; width: 0; border-radius: 12px; background: var(--accent); }
+        #kitchen-goal { position: absolute; top: -12px; bottom: -12px; left: 80%; width: 4px; border-radius: 2px; background: var(--ink); opacity: 0; }
+        #kitchen-goal-l { position: absolute; top: 52px; left: 80%; transform: translateX(-50%); font-size: 28px; font-weight: 600; color: var(--muted); white-space: nowrap; opacity: 0; }
+        #kitchen-steps { margin-top: 64px; display: flex; gap: 18px; }
+        .kitchen-step { flex: 1; padding: 20px 24px 22px; border-radius: 26px; opacity: 0; }
+        .kitchen-step .k { font-size: 28px; font-weight: 600; color: var(--muted); }
+        .kitchen-step .v { margin-top: 4px; font-size: 32px; font-weight: 600; color: var(--ink); line-height: 1.2; }
+        .kitchen-step .v b { color: var(--accent); font-weight: 600; }
+
+        /* Line 2: what leaves the box. */
+        #kitchen-leaves { position: absolute; right: 96px; top: 170px; display: flex; flex-direction: column; align-items: flex-end; gap: 24px; }
+        .kitchen-pill { height: 84px; padding: 0 38px 0 30px; border-radius: 42px; display: flex; align-items: center; gap: 18px; font-size: 40px; font-weight: 600; color: var(--ink); opacity: 0; }
+        .kitchen-pill svg { width: 36px; height: 36px; display: block; }
+        #kitchen-pill-no { color: var(--muted); }
       </style>
       <div id="root" data-composition-id="kitchen" data-width="1920" data-height="1080">
         <div id="kitchen-chapter" class="soft-raised soft-muted">The kitchen</div>
+
+        <div id="kitchen-vf"><i></i><i></i><i></i><i></i></div>
+        <div id="kitchen-tag" class="soft-raised"><div class="dot"></div>bin camera</div>
+
+        <div id="kitchen-stack">
+          <div id="kitchen-seen" class="soft-raised"><div class="dot"></div>Can <span class="arrow">&rarr;</span> trash</div>
+          <div id="kitchen-rule" class="soft-raised">
+            <div class="k">The rule at UCF</div>
+            <div class="v">Cans go in <b>recycling</b></div>
+            <div class="bins">
+              <div class="kitchen-bin soft-pressed" id="kitchen-bin-rec"><i style="background:#7fa3c9"></i>Recycling</div>
+              <div class="kitchen-bin soft-well"><i style="background:#9cbf8e"></i>Compost</div>
+              <div class="kitchen-bin soft-well"><i style="background:#a9b0ba"></i>Trash</div>
+            </div>
+          </div>
+        </div>
+
+        <div id="kitchen-count" class="soft-raised">
+          <div class="head"><div class="title">In the right bin</div><div class="when">this week</div></div>
+          <div class="nums">
+            <div id="kitchen-of"><span id="kitchen-of-a">4 of 6</span><span id="kitchen-of-b">5 of 7</span></div>
+            <div id="kitchen-pct">67%</div>
+          </div>
+          <div id="kitchen-bar" class="soft-well"><div id="kitchen-fill"></div><div id="kitchen-goal"></div><div id="kitchen-goal-l">goal 80%</div></div>
+          <div id="kitchen-steps">
+            <div id="kitchen-step-0" class="kitchen-step soft-well"><div class="k">Nudge</div><div class="v">Cans go in recycling</div></div>
+            <div id="kitchen-step-1" class="kitchen-step soft-well"><div class="k">Sort It</div><div class="v">Can &rarr; recycling &middot; <b>right bin</b></div></div>
+          </div>
+        </div>
+
+        <div id="kitchen-leaves">
+          <div id="kitchen-pill-ok" class="kitchen-pill soft-raised">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5" fill="none" stroke="#d9774a" stroke-width="2.2"/><path d="M7.6 12.4 L10.6 15.3 L16.6 9" fill="none" stroke="#d9774a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Counts leave the box
+          </div>
+          <div id="kitchen-pill-no" class="kitchen-pill soft-pressed">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5" fill="none" stroke="#6f7886" stroke-width="2.2"/><path d="M8.5 8.5 L15.5 15.5 M15.5 8.5 L8.5 15.5" fill="none" stroke="#6f7886" stroke-width="2.4" stroke-linecap="round"/></svg>
+            Pictures never do
+          </div>
+        </div>
       </div>
       <script>
         (function () {
+          // Timing comes from film.json through the host (<audio id="voice-kitchen-i" data-start>, #host-kitchen data-start);
+          // the fallback (film.json, local seconds) is only for previewing this file alone. Word moments by character
+          // fraction of each line: "bin camera" 0.25 (the hard cut in world/scenes/kitchen.js), "trash" 0.51, "rule" 0.72;
+          // "Four of six" 0.12, "sixty-seven" 0.33, "eighty" 0.54, "nudge" 0.63, "Sort It" 0.75, "moves" 0.92.
+          // The number moving (4 of 6 -> 5 of 7) is the Sort It throw going to the right bin: one more recyclable, one more right.
+          const FALLBACK = [{ start: 0, duration: 7.128 }, { start: 7.528, duration: 9.024 }, { start: 16.952, duration: 2.712 }];
+          function lines() {
+            const host = document.getElementById("host-kitchen"); if (!host) return FALLBACK;
+            const s0 = parseFloat(host.dataset.start), out = [];
+            for (let i = 0; ; i++) { const a = document.getElementById("voice-kitchen-" + i); if (!a) break; out.push({ start: parseFloat(a.dataset.start) - s0, duration: parseFloat(a.dataset.duration) }); }
+            return out.length === FALLBACK.length ? out : FALLBACK;
+          }
+          const LN = lines();
+          const F = (i, f) => LN[i].start + f * LN[i].duration;
+          const DUR = LN[2].start + LN[2].duration + 1.2;
           const tl = gsap.timeline({ paused: true });
-          tl.fromTo("#kitchen-chapter", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 0.2);
+          tl.fromTo("#kitchen-chapter", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.6, ease: "power4.out" }, 0.2);
+
+          // Line 0: the cut to the wall camera brings the viewfinder; the can is seen going in the trash; the rule.
+          const cut = F(0, 0.25);
+          tl.set("#kitchen-vf", { opacity: 1 }, cut);
+          tl.fromTo("#kitchen-tag", { opacity: 0, x: 16 }, { opacity: 1, x: 0, duration: 0.5, ease: "power4.out" }, cut + 0.1);
+          tl.fromTo("#kitchen-seen", { opacity: 0, y: 24, scale: 0.94 }, { opacity: 1, y: 0, scale: 1, duration: 0.6, ease: "power4.out" }, F(0, 0.52));
+          tl.fromTo("#kitchen-rule", { opacity: 0, y: 30, scale: 0.96 }, { opacity: 1, y: 0, scale: 1, duration: 0.7, ease: "power4.out" }, F(0, 0.72));
+          tl.fromTo("#kitchen-bin-rec", { scale: 1 }, { scale: 1.06, duration: 0.18, ease: "power2.out", yoyo: true, repeat: 1 }, F(0, 0.9));
+          tl.to(["#kitchen-seen", "#kitchen-rule"], { opacity: 0, y: -14, duration: 0.45, ease: "power2.in", stagger: 0.05 }, LN[1].start - 0.1);
+          tl.set(["#kitchen-vf", "#kitchen-tag"], { opacity: 0 }, LN[1].start);
+
+          // Line 1: the count on the counter device.
+          tl.fromTo("#kitchen-count", { opacity: 0, y: 30, scale: 0.96 }, { opacity: 1, y: 0, scale: 1, duration: 0.7, ease: "power4.out" }, F(1, 0.1));
+          tl.set("#kitchen-of-b", { opacity: 0 }, 0);
+          tl.fromTo("#kitchen-fill", { width: "0%" }, { width: "66%", duration: 0.9, ease: "power2.out" }, F(1, 0.33));
+          tl.to(["#kitchen-goal", "#kitchen-goal-l"], { opacity: 1, duration: 0.4, ease: "power2.out" }, F(1, 0.54));
+          tl.fromTo("#kitchen-step-0", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.6, ease: "power4.out" }, F(1, 0.63));
+          tl.fromTo("#kitchen-step-1", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.6, ease: "power4.out" }, F(1, 0.75));
+          // "and the number moves"
+          const mv = F(1, 0.9);
+          tl.to("#kitchen-of-a", { opacity: 0, y: -24, duration: 0.35, ease: "power2.in" }, mv);
+          tl.fromTo("#kitchen-of-b", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.45, ease: "power4.out" }, mv + 0.2);
+          const pct = { v: 67 };
+          tl.to(pct, { v: 71, duration: 0.6, ease: "power2.out", onUpdate: () => { document.getElementById("kitchen-pct").textContent = Math.round(pct.v) + "%"; } }, mv + 0.1);
+          tl.to("#kitchen-fill", { width: "70%", duration: 0.6, ease: "power2.out" }, mv + 0.1);
+          tl.to("#kitchen-count", { opacity: 0, y: -14, duration: 0.45, ease: "power2.in" }, LN[2].start - 0.2);
+
+          // Line 2: only counts leave.
+          tl.fromTo("#kitchen-pill-ok", { opacity: 0, y: 24, scale: 0.94 }, { opacity: 1, y: 0, scale: 1, duration: 0.6, ease: "power4.out" }, F(2, 0.05));
+          tl.fromTo("#kitchen-pill-no", { opacity: 0, y: 24, scale: 0.94 }, { opacity: 1, y: 0, scale: 1, duration: 0.6, ease: "power4.out" }, F(2, 0.55));
+          tl.to(".kitchen-pill", { opacity: 0, x: 20, duration: 0.4, ease: "power2.in", stagger: 0.05 }, DUR - 0.9);
+          tl.to("#kitchen-chapter", { opacity: 0, duration: 0.4, ease: "power2.in" }, DUR - 0.5);
           window.__timelines["kitchen"] = tl;
         })();
       </script>

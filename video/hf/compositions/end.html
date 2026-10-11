@@ -5,16 +5,25 @@
     <template>
       <link rel="stylesheet" href="world/soft.css" />
       <style>
-        #root { position: absolute; inset: 0; font-family: var(--font); }
-        #end-chapter { position: absolute; left: 96px; top: 72px; padding: 14px 28px; font-size: 28px; opacity: 0; }
+        #root { position: absolute; inset: 0; font-family: var(--font); overflow: hidden; }
+        /* The closing wordmark, the same card the film opened on, and the line under it. Held to the last frame. */
+        #end-mark { position: absolute; left: 50%; top: 150px; padding: 18px 92px 28px; font-size: 144px; opacity: 0; will-change: transform, opacity; }
+        #end-tag { position: absolute; left: 0; right: 0; top: 372px; text-align: center; font-size: 40px; font-weight: 500; opacity: 0; }
+        #end-rule { position: absolute; left: 50%; top: 440px; width: 72px; height: 6px; margin-left: -36px; border-radius: 3px; background: var(--accent); opacity: 0; transform-origin: 50% 50%; }
       </style>
       <div id="root" data-composition-id="end" data-width="1920" data-height="1080">
-        <div id="end-chapter" class="soft-raised soft-muted">Atlas</div>
+        <div id="end-mark" class="soft-raised soft-title">Atlas</div>
+        <div id="end-tag" class="soft-muted">The personal AI computer</div>
+        <div id="end-rule"></div>
       </div>
       <script>
         (function () {
+          // LOCAL time (0 = scene start, absolute 180.584). Line 0 "Atlas. The personal AI computer. It learns you..."
+          // starts at 0; "personal" lands at about 0.76, "learns" at 2.48 (film.json, character fractions). Lasts 6.168.
           const tl = gsap.timeline({ paused: true });
-          tl.fromTo("#end-chapter", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 0.2);
+          tl.fromTo("#end-mark", { opacity: 0, scale: 0.94, y: 20, xPercent: -50 }, { opacity: 1, scale: 1, y: 0, xPercent: -50, duration: 1.1, ease: "power4.out" }, 0.05);
+          tl.fromTo("#end-tag", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.8, ease: "power4.out" }, 0.7);
+          tl.fromTo("#end-rule", { opacity: 0, scaleX: 0 }, { opacity: 1, scaleX: 1, duration: 0.7, ease: "power4.out" }, 2.45);
           window.__timelines["end"] = tl;
         })();
       </script>

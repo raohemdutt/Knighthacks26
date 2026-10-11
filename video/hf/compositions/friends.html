@@ -5,16 +5,130 @@
     <template>
       <link rel="stylesheet" href="world/soft.css" />
       <style>
-        #root { position: absolute; inset: 0; font-family: var(--font); }
+        #root { position: absolute; inset: 0; font-family: var(--font); overflow: hidden; }
         #friends-chapter { position: absolute; left: 96px; top: 72px; padding: 14px 28px; font-size: 28px; opacity: 0; }
+
+        /* Screen anchors on the FRIENDS shot (world/scenes/friends.js): box (957,558) · friend 0 (1395,743)
+           · friend 1 (482,667) · friend 2 (1005,348). Shell tops sit about 110 px above each centre. */
+
+        /* "Private calendar" chips, centred above each shell. */
+        .friends-priv { position: absolute; height: 76px; padding: 0 30px 0 24px; border-radius: 38px; display: flex; align-items: center; gap: 14px;
+          font-size: 28px; font-weight: 600; color: var(--ink); opacity: 0; white-space: nowrap; transform: translateX(-50%); }
+        .friends-priv svg { width: 28px; height: 28px; display: block; }
+        #friends-priv-0 { left: 1395px; top: 548px; }
+        #friends-priv-1 { left: 482px; top: 470px; }
+        #friends-priv-2 { left: 1005px; top: 164px; }
+
+        /* Chat bubbles, each beside the Atlas that says it. */
+        .friends-bub { position: absolute; padding: 22px 36px 26px; border-radius: 36px; font-size: 40px; font-weight: 600; color: var(--ink); opacity: 0; white-space: nowrap; display: flex; align-items: center; gap: 18px; }
+        .friends-bub i { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); flex: none; }
+        .friends-bub.busy i { background: var(--shade); }
+        #friends-bub-0 { left: 1540px; top: 610px; border-top-left-radius: 10px; transform-origin: 0% 0%; }
+        #friends-bub-1 { left: 120px; top: 452px; border-bottom-right-radius: 10px; transform-origin: 100% 100%; }
+        #friends-bub-2 { left: 1150px; top: 236px; border-top-left-radius: 10px; transform-origin: 0% 0%; }
+
+        /* The Approve tap, just under your box. */
+        #friends-approve { position: absolute; left: 797px; top: 664px; width: 320px; height: 100px; border-radius: 50px; display: flex; align-items: center; justify-content: center; gap: 16px;
+          font-size: 40px; font-weight: 600; color: var(--ink); opacity: 0; }
+        #friends-approve svg { width: 36px; height: 36px; display: block; }
+        #friends-approve path { fill: none; stroke: var(--accent); stroke-width: 3.4; stroke-linecap: round; stroke-linejoin: round; }
+
+        /* The three mini calendars the event lands in (where the chips were). */
+        .friends-cal { position: absolute; width: 220px; padding: 0 0 16px; border-radius: 26px; opacity: 0; overflow: hidden; transform: translateX(-50%); }
+        .friends-cal .hd { height: 40px; display: flex; align-items: center; justify-content: space-between; padding: 0 18px; font-size: 22px; font-weight: 700; color: var(--muted); letter-spacing: 0.04em; }
+        .friends-cal .row { display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 18px; margin-top: 6px; }
+        .friends-cal .row s { width: 34px; font-size: 18px; font-weight: 600; color: var(--muted); text-decoration: none; }
+        .friends-cal .row u { flex: 1; height: 20px; border-radius: 6px; background: var(--shade); opacity: 0.45; }
+        .friends-cal .row u.ev { background: var(--accent); opacity: 1; transform-origin: 0% 50%; }
+        #friends-cal-0 { left: 1395px; top: 486px; }
+        #friends-cal-1 { left: 482px; top: 408px; }
+        #friends-cal-2 { left: 1005px; top: 102px; }
+
+        /* free / busy tokens: the only thing that leaves each box. */
+        .friends-token { position: absolute; left: 0; top: 0; height: 56px; padding: 0 24px 0 18px; border-radius: 28px; display: flex; align-items: center; gap: 12px;
+          font-size: 28px; font-weight: 600; color: var(--ink); opacity: 0; white-space: nowrap; }
+        .friends-token i { width: 14px; height: 14px; border-radius: 50%; background: var(--accent); }
+        .friends-token.busy { color: var(--muted); }
+        .friends-token.busy i { background: var(--shade); }
       </style>
       <div id="root" data-composition-id="friends" data-width="1920" data-height="1080">
         <div id="friends-chapter" class="soft-raised soft-muted">Friends</div>
+
+        <div class="friends-priv soft-raised" id="friends-priv-0"><svg viewBox="0 0 24 24"><path d="M7 11V8a5 5 0 0 1 10 0v3" fill="none" stroke="#6f7886" stroke-width="2.2" stroke-linecap="round"/><rect x="5" y="11" width="14" height="10" rx="3" fill="#6f7886"/></svg>Private calendar</div>
+        <div class="friends-priv soft-raised" id="friends-priv-1"><svg viewBox="0 0 24 24"><path d="M7 11V8a5 5 0 0 1 10 0v3" fill="none" stroke="#6f7886" stroke-width="2.2" stroke-linecap="round"/><rect x="5" y="11" width="14" height="10" rx="3" fill="#6f7886"/></svg>Private calendar</div>
+        <div class="friends-priv soft-raised" id="friends-priv-2"><svg viewBox="0 0 24 24"><path d="M7 11V8a5 5 0 0 1 10 0v3" fill="none" stroke="#6f7886" stroke-width="2.2" stroke-linecap="round"/><rect x="5" y="11" width="14" height="10" rx="3" fill="#6f7886"/></svg>Private calendar</div>
+
+        <div class="friends-bub soft-raised" id="friends-bub-0"><i></i>Free.</div>
+        <div class="friends-bub soft-raised busy" id="friends-bub-1"><i></i>Busy then. How about 3:00?</div>
+        <div class="friends-bub soft-raised" id="friends-bub-2"><i></i>Agreed: 3 of 3 in.</div>
+
+        <div id="friends-approve" class="soft-raised"><svg viewBox="0 0 24 24"><path id="friends-approve-tick" d="M5 12.5 L10 17.5 L19 7" /></svg><span>Approve</span></div>
+
+        <div class="friends-cal soft-raised" id="friends-cal-0"><div class="hd"><span>THU</span></div><div class="row"><s>2:00</s><u></u></div><div class="row"><s>3:00</s><u class="ev"></u></div><div class="row"><s>4:00</s><u></u></div></div>
+        <div class="friends-cal soft-raised" id="friends-cal-1"><div class="hd"><span>THU</span></div><div class="row"><s>2:00</s><u></u></div><div class="row"><s>3:00</s><u class="ev"></u></div><div class="row"><s>4:00</s><u></u></div></div>
+        <div class="friends-cal soft-raised" id="friends-cal-2"><div class="hd"><span>THU</span></div><div class="row"><s>2:00</s><u></u></div><div class="row"><s>3:00</s><u class="ev"></u></div><div class="row"><s>4:00</s><u></u></div></div>
+
+        <div class="friends-token soft-raised" id="friends-token-0"><i></i>free</div>
+        <div class="friends-token soft-raised busy" id="friends-token-1"><i></i>busy</div>
+        <div class="friends-token soft-raised" id="friends-token-2"><i></i>free</div>
       </div>
       <script>
         (function () {
+          // Timing comes from film.json through the host: <audio id="voice-friends-i" data-start> and #host-friends data-start.
+          // The fallback (film.json, local seconds) is only for previewing this file alone.
+          const FALLBACK = [{ start: 0, duration: 3.648 }, { start: 4.048, duration: 9.552 }];
+          function lines() {
+            const host = document.getElementById("host-friends"); if (!host) return FALLBACK;
+            const s0 = parseFloat(host.dataset.start), out = [];
+            for (let i = 0; ; i++) { const a = document.getElementById("voice-friends-" + i); if (!a) break; out.push({ start: parseFloat(a.dataset.start) - s0, duration: parseFloat(a.dataset.duration) }); }
+            return out.length === FALLBACK.length ? out : FALLBACK;
+          }
+          const LN = lines();
+          const W = (i, s) => LN[i].start + s; // measured word moments, see world/scenes/friends.js
+          const PRESSED = "inset 10px 10px 20px #b7c0cd, inset -10px -10px 20px #ffffff";
+          const RAISED = "18px 18px 36px #b7c0cd, -18px -18px 36px #ffffff";
           const tl = gsap.timeline({ paused: true });
+
           tl.fromTo("#friends-chapter", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 0.2);
+
+          // "Each Atlas keeps its owner's calendar private": a chip settles over each shell.
+          [0, 1, 2].forEach((i) => {
+            tl.fromTo("#friends-priv-" + i, { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.6, ease: "power4.out" }, W(0, 1.4) + i * 0.2);
+            tl.to("#friends-priv-" + i, { opacity: 0, y: -10, duration: 0.4, ease: "power2.in" }, W(1, 1.5) + i * 0.06);
+          });
+
+          // The bubbles land exactly with the spoken phrases.
+          const bub = (id, at) => tl.fromTo(id, { opacity: 0, scale: 0.86, y: 12 }, { opacity: 1, scale: 1, y: 0, duration: 0.45, ease: "power4.out" }, at);
+          bub("#friends-bub-0", W(1, 2.82));
+          bub("#friends-bub-1", W(1, 3.46));
+          bub("#friends-bub-2", W(1, 5.0));
+          tl.to(".friends-bub", { opacity: 0, y: -10, duration: 0.4, ease: "power2.in", stagger: 0.06 }, W(1, 6.25));
+
+          // One soft Approve tap, then the event lands in three calendars.
+          tl.fromTo("#friends-approve", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.45, ease: "power4.out" }, W(1, 5.75));
+          tl.to("#friends-approve", { boxShadow: PRESSED, scale: 0.97, duration: 0.14, ease: "power2.in" }, W(1, 6.2));
+          tl.to("#friends-approve", { boxShadow: RAISED, scale: 1, duration: 0.3, ease: "power2.out" }, W(1, 6.36));
+          const tick = document.getElementById("friends-approve-tick"), len = tick.getTotalLength() * 1.05;
+          tl.fromTo(tick, { strokeDasharray: len, strokeDashoffset: len }, { strokeDashoffset: 0, duration: 0.35, ease: "power2.out" }, W(1, 6.25));
+          tl.to("#friends-approve", { opacity: 0, y: 10, duration: 0.4, ease: "power2.in" }, W(1, 7.1));
+          [0, 1, 2].forEach((i) => {
+            const at = W(1, 6.6) + i * 0.12;
+            tl.fromTo("#friends-cal-" + i, { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.45, ease: "power4.out" }, at);
+            tl.fromTo("#friends-cal-" + i + " u.ev", { scaleX: 0 }, { scaleX: 1, duration: 0.45, ease: "power4.out" }, at + 0.3);
+            tl.to("#friends-cal-" + i, { opacity: 0, y: -10, duration: 0.4, ease: "power2.in" }, W(1, 9.0) + i * 0.05);
+          });
+
+          // "Only free or busy leaves each box": a token travels from each shell top to your box.
+          const FROM = [[1395, 640], [482, 562], [1005, 246]], TO = [957, 470];
+          [0, 1, 2].forEach((i) => {
+            const id = "#friends-token-" + i, at = W(1, 6.9) + i * 0.22, w = i === 1 ? 118 : 104;
+            tl.fromTo(id, { x: FROM[i][0] - w / 2, y: FROM[i][1] - 28, opacity: 0 }, { opacity: 1, duration: 0.25, ease: "power2.out" }, at);
+            tl.to(id, { x: TO[0] - w / 2 + (i - 1) * 40, y: TO[1] - 28 + (i - 1) * 6, duration: 1.4, ease: "power2.inOut" }, at + 0.1);
+            tl.to(id, { opacity: 0, scale: 0.8, duration: 0.3, ease: "power2.in" }, at + 1.45);
+          });
+
+          tl.to("#friends-chapter", { opacity: 0, duration: 0.45, ease: "power2.in" }, W(1, 9.4));
+
           window.__timelines["friends"] = tl;
         })();
       </script>
