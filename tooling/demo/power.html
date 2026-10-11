@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live Power</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #0b0d10; --panel: #13161b; --line: #262b33; --text: #f2f4f7; --muted: #9aa3ae;
+    --box: #4cc9f0; --pod: #ff6b3d; --idle: #6b7380; --win: rgba(255, 214, 102, 0.18); --accent: #ffd666;
+    --ok: #3ddc84; --bad: #ff5c5c;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; }
+  body { display: grid; grid-template-rows: auto 1fr 1fr auto; height: 100vh; gap: 10px; padding: 12px 16px; }
+  header { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; }
+  header h1 { font-size: 22px; margin: 0; font-weight: 600; letter-spacing: 0.02em; color: var(--muted); }
+  .dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; background: var(--bad); margin-right: 6px; }
+  .dot.ok { background: var(--ok); }
+  .status { font-size: 16px; color: var(--muted); }
+  .lane { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; display: grid;
+    grid-template-columns: minmax(230px, 22%) 1fr; min-height: 0; overflow: hidden; }
+  .lane .num { padding: 14px 18px; display: flex; flex-direction: column; justify-content: center; gap: 4px;
+    border-right: 1px solid var(--line); }
+  .lane .who { font-size: 20px; font-weight: 600; }
+  .lane .what { font-size: 14px; color: var(--muted); }
+  .lane .w { font-size: 84px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+  .lane .w small { font-size: 36px; font-weight: 600; color: var(--muted); margin-left: 4px; }
+  .lane .idle { font-size: 16px; color: var(--muted); }
+  #boxLane .w { color: var(--box); } #podLane .w { color: var(--pod); }
+  .plot { position: relative; min-height: 0; min-width: 0; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .bottom { display: grid; grid-template-columns: 1fr minmax(320px, 34%); gap: 12px; }
+  .qa { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; min-height: 120px; }
+  .q { font-size: 22px; color: var(--muted); }
+  .a { font-size: 22px; margin-top: 6px; max-height: 5.2em; overflow: hidden; white-space: pre-wrap; }
+  .cost { background: var(--panel); border: 2px solid var(--accent); border-radius: 10px; padding: 12px 16px;
+    display: flex; flex-direction: column; justify-content: center; }
+  .cost .big { font-size: 46px; font-weight: 700; color: var(--accent); line-height: 1.1; }
+  .cost .sub { font-size: 16px; color: var(--muted); margin-top: 6px; }
+  form { display: flex; gap: 8px; margin-top: 10px; }
+  input[type=text] { flex: 1; font-size: 18px; padding: 8px 10px; background: #0d1014; color: var(--text);
+    border: 1px solid var(--line); border-radius: 6px; }
+  button { font-size: 16px; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--line);
+    background: #1d232b; color: var(--text); cursor: pointer; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  @media (max-width: 700px) {
+    .lane { grid-template-columns: 1fr; } .lane .num { border-right: 0; border-bottom: 1px solid var(--line); }
+    .lane .w { font-size: 56px; } .bottom { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Live power, one sample a second or faster</h1>
+  <span class="status"><span id="boxDot" class="dot"></span>box <span id="boxState">connecting</span></span>
+  <span class="status"><span id="podDot" class="dot"></span><span id="podName">pod</span> <span id="podState">connecting</span></span>
+</header>
+
+<section class="lane" id="boxLane">
+  <div class="num">
+    <div class="who">The box</div>
+    <div class="what">Jetson Orin Nano, whole board (VDD_IN)</div>
+    <div class="w"><span id="boxW">--</span><small>W</small></div>
+    <div class="idle">idle line <span id="boxIdle">15.76</span> W (T13)</div>
+  </div>
+  <div class="plot"><canvas id="boxCanvas"></canvas></div>
+</section>
+
+<section class="lane" id="podLane">
+  <div class="num">
+    <div class="who">The lab teacher</div>
+    <div class="what">AMD Strix Halo, Radeon 8060S, APU socket power</div>
+    <div class="w"><span id="podW">--</span><small>W</small></div>
+    <div class="idle">idle floor <span id="podIdle">10.27</span> W (T10)</div>
+  </div>
+  <div class="plot"><canvas id="podCanvas"></canvas></div>
+</section>
+
+<section class="bottom">
+  <div class="qa">
+    <div class="q" id="q">Ask the box a question: by voice, on the phone, or here.</div>
+    <div class="a" id="a"></div>
+    <form id="ask">
+      <input type="text" id="text" placeholder="What happened at our table overnight?" autocomplete="off">
+      <button type="submit" id="askBox">Ask the box</button>
+      <button type="button" id="askTeacher" title="Sends the question to the AMD teacher on the pod, without tools">Ask the teacher</button>
+    </form>
+  </div>
+  <div class="cost">
+    <div class="big" id="cost">waiting for an answer</div>
+    <div class="sub" id="costSub">Energy is the power integrated over the answer's window, gross, as the telemetry context defines it.</div>
+  </div>
+</section>
+
+<script>
+"use strict";
+const SPAN_S = 120;                 // seconds of trace on screen
+const $ = (id) => document.getElementById(id);
+const cfg = { idle: { pod_w: 10.27, jetson_w: 15.76 } };
+const box = { samples: [], offset: null, ws: null, lastMsg: 0 };   // samples: {t (box ms), w}
+const pod = { samples: [], offset: null, lastSeq: null, ok: false, lastOk: 0 };  // t in pod ms
+let current = null;   // {lane: "box"|"pod", qid, text, start, end (lane clock ms), answer, done}
+
+const ms = (iso) => Date.parse(iso);
+const fmt = (n, d = 0) => n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+
+// --- the box: telemetry.jetson.power and the question/answer events over the gateway's /ws
+function connectBox() {
+  if (!cfg.box_ws) return;
+  let ws;
+  try { ws = new WebSocket(cfg.box_ws); } catch (e) { setTimeout(connectBox, 2000); return; }
+  box.ws = ws;
+  ws.onopen = () => { $("boxState").textContent = "connected"; };
+  ws.onclose = () => { $("boxDot").className = "dot"; $("boxState").textContent = "reconnecting"; setTimeout(connectBox, 1500); };
+  ws.onerror = () => { try { ws.close(); } catch (e) {} };
+  ws.onmessage = (m) => {
+    let e; try { e = JSON.parse(m.data); } catch (err) { return; }
+    const now = Date.now();
+    if (e.type === "telemetry.jetson.power" && e.rails && e.rails.VDD_IN != null) {
+      const t = ms(e.ts);
+      const off = t - now;                      // box clock minus ours, plus the delivery delay (always <= true)
+      box.offset = box.offset === null ? off : Math.max(off, box.offset - 5);  // track the least-delayed
+      box.samples.push({ t, w: e.rails.VDD_IN / 1000 });
+      box.lastMsg = now;
+      $("boxDot").className = "dot ok";
+      trim(box.samples, t);
+      maybeFinish();
+    } else if (e.type === "experience.question.asked") {
+      current = { lane: "box", qid: e.question_id, text: e.text, start: ms(e.ts), end: null, answer: "", done: false };
+      $("q").textContent = "Q: " + e.text; $("a").textContent = "";
+      $("cost").textContent = "measuring..."; $("costSub").textContent = "The box is answering. The shaded band is this answer's window.";
+    } else if (e.type === "agent.answer.delta" && current && current.qid === e.question_id && current.end === null) {
+      current.answer += e.text || ""; $("a").textContent = current.answer;
+    } else if (e.type === "agent.answer.generated" && current && current.qid === e.question_id) {
+      current.end = ms(e.ts); current.answer = e.answer; $("a").textContent = e.answer;
+      current.model = e.model_version;
+      maybeFinish();
+    }
+  };
+}
+
+// --- the pod: lab/pod_power.py samples through the local helper (which adds the hub token)
+async function pollPod() {
+  try {
+    if (pod.lastSeq === null) {
+      const s = await (await fetch("/pod/status", { cache: "no-store" })).json();
+      pod.lastSeq = Math.max(0, (s.last_seq || 0) - SPAN_S - 10);
+    }
+    const r = await fetch("/pod/samples?after=" + pod.lastSeq, { cache: "no-store" });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || r.status);
+    const mid = (d.local_sent_ms + d.local_recv_ms) / 2, rtt = d.local_recv_ms - d.local_sent_ms;
+    if (d.pod_sent) {
+      const off = ms(d.pod_sent) - mid;
+      if (pod.offset === null || rtt < pod.bestRtt * 1.5) { pod.offset = off; pod.bestRtt = Math.min(rtt, pod.bestRtt || rtt); }
+    }
+    for (const s of d.samples) if (s.w != null) pod.samples.push({ t: ms(s.ts), w: s.w, busy: s.busy });
+    if (d.samples.length) { pod.lastSeq = d.samples[d.samples.length - 1].seq; trim(pod.samples, pod.samples[pod.samples.length - 1].t); }
+    pod.lastOk = Date.now();
+    $("podDot").className = "dot ok"; $("podState").textContent = "sampler live";
+    maybeFinish();
+  } catch (err) {
+    $("podDot").className = "dot"; $("podState").textContent = "no answer (" + String(err.message || err).slice(0, 40) + ")";
+  }
+  setTimeout(pollPod, 1000);
+}
+
+function trim(arr, latest) { while (arr.length && arr[0].t < latest - (SPAN_S + 60) * 1000) arr.shift(); }
+
+// --- energy: trapezoids over the samples, with linear interpolation at both edges of the window
+function valueAt(s, t) {
+  if (!s.length) return null;
+  if (t <= s[0].t) return s[0].w;
+  for (let i = 1; i < s.length; i++) if (s[i].t >= t) {
+    const a = s[i - 1], b = s[i]; return a.w + (b.w - a.w) * (t - a.t) / Math.max(1, b.t - a.t);
+  }
+  return s[s.length - 1].w;
+}
+function energy(s, t0, t1) {
+  const pts = [{ t: t0, w: valueAt(s, t0) }, ...s.filter(p => p.t > t0 && p.t < t1), { t: t1, w: valueAt(s, t1) }];
+  let j = 0; for (let i = 1; i < pts.length; i++) j += (pts[i].w + pts[i - 1].w) / 2 * (pts[i].t - pts[i - 1].t) / 1000;
+  return { j, n: pts.length - 2, secs: (t1 - t0) / 1000 };
+}
+
+function maybeFinish() {
+  if (!current || current.done || current.end === null) return;
+  const s = current.lane === "box" ? box.samples : pod.samples;
+  if (!s.length || s[s.length - 1].t < current.end) return;     // wait for a sample past the end
+  const e = energy(s, current.start, current.end);
+  const idle = current.lane === "box" ? cfg.idle.jetson_w : cfg.idle.pod_w;
+  const avg = e.j / Math.max(0.001, e.secs), above = e.j - idle * e.secs;
+  current.done = true; current.joules = e.j;
+  if (current.lane === "box") {
+    $("cost").textContent = "That answer cost " + fmt(e.j) + " J";
+    $("costSub").textContent = "On the box, whole board: " + fmt(e.secs, 1) + " s at " + fmt(avg, 1) + " W average, "
+      + e.n + " samples, gross. " + (above > 0 ? fmt(above) + " J above its " + idle + " W idle." : "The box was near its idle level.");
+  } else {
+    $("cost").textContent = "That answer cost " + fmt(e.j) + " J";
+    const before = s.filter(p => p.t >= current.start - 10000 && p.t < current.start).map(p => p.w);
+    const pre = before.length ? before.reduce((a, b) => a + b, 0) / before.length : null;
+    const busy = pre !== null && pre > idle + 15;
+    $("costSub").textContent = "On the AMD teacher, APU socket: " + fmt(e.secs, 1) + " s at " + fmt(avg, 1) + " W average, "
+      + e.n + " samples, gross; " + fmt(Math.max(0, above)) + " J above its " + idle + " W idle floor."
+      + (busy ? " The pod was already at " + fmt(pre) + " W before the question (other work on the teacher), so this figure includes that work." : "");
+  }
+}
+
+// --- drawing
+function draw(canvas, s, color, idleW, nowT, minMax, windowLane) {
+  const dpr = window.devicePixelRatio || 1, W = canvas.clientWidth, H = canvas.clientHeight;
+  if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) { canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr); }
+  const g = canvas.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+  const padL = 8, padR = 56, padT = 12, padB = 26;
+  const vis = s.filter(p => p.t >= nowT - SPAN_S * 1000);
+  const maxW = Math.max(minMax, ...vis.map(p => p.w)) * 1.12;
+  const x = (t) => padL + (W - padL - padR) * (1 - (nowT - t) / (SPAN_S * 1000));
+  const y = (w) => padT + (H - padT - padB) * (1 - w / maxW);
+  g.font = "13px Segoe UI, system-ui, sans-serif"; g.fillStyle = "#9aa3ae"; g.strokeStyle = "#262b33"; g.lineWidth = 1;
+  const step = maxW > 80 ? 25 : maxW > 30 ? 10 : 5;
+  for (let w = 0; w <= maxW; w += step) { g.beginPath(); g.moveTo(padL, y(w)); g.lineTo(W - padR, y(w)); g.stroke(); g.fillText(w + " W", W - padR + 6, y(w) + 4); }
+  for (let k = 0; k <= SPAN_S; k += 30) g.fillText(k === 0 ? "now" : "-" + k + " s", x(nowT - k * 1000) - (k === 0 ? 24 : k === SPAN_S ? 0 : 14), H - 6);
+  if (current && current.lane === windowLane) {
+    const t0 = current.start, t1 = current.end === null ? nowT : current.end;
+    g.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--win");
+    g.fillRect(Math.max(padL, x(t0)), padT, Math.max(2, x(t1) - Math.max(padL, x(t0))), H - padT - padB);
+  }
+  g.setLineDash([6, 6]); g.strokeStyle = "#6b7380"; g.beginPath(); g.moveTo(padL, y(idleW)); g.lineTo(W - padR, y(idleW)); g.stroke(); g.setLineDash([]);
+  if (vis.length > 1) {
+    g.beginPath(); vis.forEach((p, i) => i ? g.lineTo(x(p.t), y(p.w)) : g.moveTo(x(p.t), y(p.w)));
+    g.strokeStyle = color; g.lineWidth = 3; g.stroke();
+    g.lineTo(x(vis[vis.length - 1].t), y(0)); g.lineTo(x(vis[0].t), y(0)); g.closePath();
+    g.globalAlpha = 0.15; g.fillStyle = color; g.fill(); g.globalAlpha = 1;
+  }
+}
+
+function frame() {
+  const now = Date.now();
+  const boxNow = box.offset === null ? now : now + box.offset;
+  const podNow = pod.offset === null ? (pod.samples.length ? pod.samples[pod.samples.length - 1].t : now) : now + pod.offset;
+  const lastBox = box.samples[box.samples.length - 1], lastPod = pod.samples[pod.samples.length - 1];
+  $("boxW").textContent = lastBox && now - box.lastMsg < 5000 ? fmt(lastBox.w, 1) : "--";
+  $("podW").textContent = lastPod && now - pod.lastOk < 6000 ? fmt(lastPod.w, 0) : "--";
+  if (box.lastMsg && now - box.lastMsg > 5000) { $("boxDot").className = "dot"; $("boxState").textContent = "no samples for " + Math.round((now - box.lastMsg) / 1000) + " s"; }
+  else if (box.lastMsg) $("boxState").textContent = "live";
+  if (current && !current.done && current.end === null) {
+    const s = current.lane === "box" ? box.samples : pod.samples;
+    const t1 = current.lane === "box" ? boxNow : podNow;
+    if (s.length) { const e = energy(s, current.start, Math.min(t1, s[s.length - 1].t)); $("cost").textContent = "so far " + fmt(e.j) + " J"; }
+  }
+  draw($("boxCanvas"), box.samples, getComputedStyle(document.documentElement).getPropertyValue("--box"), cfg.idle.jetson_w, boxNow, 25, "box");
+  draw($("podCanvas"), pod.samples, getComputedStyle(document.documentElement).getPropertyValue("--pod"), cfg.idle.pod_w, podNow, 40, "pod");
+  requestAnimationFrame(frame);
+}
+
+// --- asking
+$("ask").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const text = $("text").value.trim() || $("text").placeholder;
+  $("askBox").disabled = true;
+  try {
+    const r = await fetch("/box/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+    const d = await r.json();
+    if (!r.ok) $("costSub").textContent = "The box answered " + r.status + ": " + (d.detail || d.error || "");
+    else if (current && current.qid === d.question_id && !current.answer) $("a").textContent = d.answer;
+  } catch (e) { $("costSub").textContent = "The helper did not answer: " + e; }
+  $("askBox").disabled = false;
+});
+$("askTeacher").addEventListener("click", async () => {
+  const text = $("text").value.trim() || $("text").placeholder;
+  $("askTeacher").disabled = true;
+  const startLocal = Date.now();
+  current = { lane: "pod", qid: "teacher-" + startLocal, text, start: startLocal + (pod.offset || 0), end: null, answer: "", done: false };
+  $("q").textContent = "Q (to the teacher): " + text; $("a").textContent = ""; $("cost").textContent = "measuring...";
+  $("costSub").textContent = "The AMD teacher is answering. The shaded band is this answer's window.";
+  try {
+    const r = await fetch("/teacher/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+    const d = await r.json();
+    if (!r.ok) { $("costSub").textContent = "The teacher did not answer: " + (d.error || r.status); current = null; }
+    else {
+      current.start = d.start_ms + (pod.offset || 0); current.end = d.end_ms + (pod.offset || 0);
+      current.answer = d.answer; $("a").textContent = d.answer; maybeFinish();
+    }
+  } catch (e) { $("costSub").textContent = "The helper did not answer: " + e; current = null; }
+  $("askTeacher").disabled = false;
+});
+
+(async function start() {
+  try { Object.assign(cfg, await (await fetch("/config", { cache: "no-store" })).json()); } catch (e) {}
+  $("boxIdle").textContent = cfg.idle.jetson_w; $("podIdle").textContent = cfg.idle.pod_w;
+  if (cfg.pod_label) $("podName").textContent = cfg.pod_label;
+  connectBox(); pollPod(); requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
