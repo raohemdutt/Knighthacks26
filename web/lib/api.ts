@@ -789,7 +789,8 @@ export interface RoomLive {
   ts: string | null;
   tracks: FloorTrack[];
   seen: Record<string, SeenOnFloor>;
-  round: { round_id: string; item: string; target_bin: string; bin: string; players: number; started: string; routes: RoomRouteLeg[] } | null;
+  /** `replans`: how many times this round's route has been planned again (GET /api/play/route-search has each plan). */
+  round: { round_id: string; item: string; target_bin: string; bin: string; players: number; started: string; routes: RoomRouteLeg[]; replans?: number } | null;
   result: { round_id: string; item: string; correct: boolean; seconds: number; score: number; players: number; par_s: number | null; bin: string; ts: string; right: number; rounds: number } | null;
   assist: { item: string; label: string; bin: string; bin_id: string; color: string | null; side: string; track: string; person: string; text: string } | null;
 }
@@ -806,6 +807,105 @@ export interface RoomRouteAnswer {
   points: [number, number][];
   distance_m: number;
   par_s: number;
+}
+
+/**
+ * How a route was found (contexts/play/room/grid.py: search_json). Cells are numbers, `row * cols + col`.
+ * `blocked` is one string a row: "." free, "#" furniture or a wall (grown by the body radius), "o" something in the
+ * way for this plan only. `explored` is the cells the A* search expanded, in the order it expanded them (thinned
+ * evenly when there are more than the box sends; `explored_total` is the real count). `path` is the cells it settled on.
+ */
+export interface RouteSearch {
+  algorithm: string;
+  cell_m: number;
+  cols: number;
+  rows: number;
+  blocked: string[];
+  explored: number[];
+  explored_total: number;
+  path: number[];
+}
+
+/** Something the walk bends around: a piece of furniture, a person, a thing on the floor, or the wall. */
+export interface RouteAround {
+  id: string;
+  kind: "furniture" | "person" | "thing" | "player" | "wall";
+  label: string;
+  x: number;
+  y: number;
+}
+
+/** A person or a thing that was in the way when the route was planned (a disc on the floor, metres). */
+export interface RouteObstacle {
+  kind: "person" | "thing";
+  label: string;
+  key: string | null;
+  x: number;
+  y: number;
+  r: number;
+}
+
+/** The three fields GET /api/play/room-route adds with `search=1`, and every plan of a round carries. */
+export interface RouteFound {
+  search: RouteSearch | null; // null when no way exists
+  obstacles: RouteObstacle[];
+  around: RouteAround[];
+}
+
+/** One plan of a round: the first, or a re-plan with what caused it. */
+export interface RoundPlan extends RouteFound {
+  seq: number;
+  reason: "round_started" | "replan";
+  ts: string;
+  rerouted: { why: "blocked" | "off_route" | "opened"; kind: string | null; label: string | null; key: string | null } | null;
+  from: { x: number; y: number; track: string | null };
+  bin_id: string | null;
+  reachable: boolean;
+  points: [number, number][];
+  distance_m: number;
+  par_s: number;
+}
+
+/** GET /api/play/route-search: the plans of the round that is on (`live`), else of the last one. */
+export interface RoundPlans {
+  room: string;
+  round_id: string | null;
+  live: boolean;
+  item?: string;
+  bin?: string;
+  players?: number;
+  started?: string;
+  plans: RoundPlan[];
+}
+
+/** One scored round of this sitting. `estimate_s` is the route's time estimate the score is measured against. */
+export interface PlayedRound {
+  round: number;
+  item: string;
+  correct: boolean;
+  seconds: number;
+  estimate_s: number;
+  score: number;
+  players: number;
+  ts: string;
+}
+
+/**
+ * GET /api/play/state: where Sort It's loop is, as of the newest face count. Counts and seconds only.
+ * looking: nobody is facing the camera. holding: a face has been held for `held_s` of `hold_to_start_s`.
+ * round: a round is on. ending: a round is on and nobody has faced the camera for `idle_s` of `idle_to_end_s`.
+ */
+export interface PlayState {
+  phase: "looking" | "holding" | "round" | "ending";
+  faces: number; // facing the camera in the newest count
+  count: number; // faces in view in the newest count
+  heard: string | null; // when that count was taken; null when no face count has arrived
+  held_s: number;
+  hold_to_start_s: number;
+  idle_s: number;
+  idle_to_end_s: number;
+  round: { round_id: string; item: string; players: number; started: string } | null;
+  rounds: { session_id: string; played: number; first: PlayedRound | null; latest: PlayedRound | null };
 }
 
 /** contracts.memory.Sighting: where a watch item was last seen. A zone and a text position; never coordinates. */
@@ -1248,7 +1348,24 @@ export interface Fix {
 }
 
 /** POST /api/dayrun/explain: what needs fixing, and one true sentence per number a person might question. */
+/** Where a number comes from: `id` to key on ("canvas", "guess", "yours", "watch", "camera", "map", "set", "plan" ...), `label` the words on the chip. */
+export interface NumberSource {
+  id: string;
+  label: string;
+}
+
 export interface Explained {
+  /**
+   * The source of each number that has a sentence below (contexts/play/dayrun/words.py: source_of_*), read on the
+   * box from the same field the sentence is written from. `due` is null when the deadline's item names no connector.
+   */
+  sources?: {
+    deadlines: Record<string, { due: NumberSource | null; work: NumberSource }>;
+    sleep: NumberSource;
+    meals: NumberSource;
+    points: NumberSource;
+    walks: Record<string, NumberSource>;
+  };
   headline: string;
   fixes: Fix[];
   deadlines: Record<string, { title: string; due: string; work: string; status: string | null; risk: string | null }>;
@@ -2276,6 +2393,10 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   room: (signal?: AbortSignal) => get<RoomPlan>("/api/room", undefined, signal),
   roomLive: (signal?: AbortSignal) => get<RoomLive>("/api/room/live", undefined, signal),
   roomRoute: (item: string, fromTrack?: string | null, signal?: AbortSignal) => get<RoomRouteAnswer>("/api/play/room-route", { item, from_track: fromTrack ?? undefined }, signal),
+  /** The same walk with how it was found: the grid, the cells A* looked at, what it went around. */
+  roomRouteFound: (item: string, signal?: AbortSignal) => get<RoomRouteAnswer & RouteFound>("/api/play/room-route", { item, search: "1" }, signal),
+  roundPlans: (signal?: AbortSignal) => get<RoundPlans>("/api/play/route-search", undefined, signal),
+  playState: (signal?: AbortSignal) => get<PlayState>("/api/play/state", undefined, signal),
   setRoomCalibration: (camera: string, taps: { image: [number, number][]; floor: [number, number][] }) =>
     put<RoomPlan>(`/api/room/calibration/${encodeURIComponent(camera)}`, taps),
 
