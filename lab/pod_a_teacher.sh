@@ -27,6 +27,10 @@ TEACHER="${TEACHER:-RedHatAI/Qwen3.8-27B-INT4}"
 PORT="${PORT:-8000}"
 MAX_LEN="${MAX_LEN:-16384}"
 GPU_UTIL="${GPU_UTIL:-0.90}"
+# Tool calling: without both flags vLLM returns a tool call as plain text in content and the labeler rejects it. The checkpoint's
+# chat template asks for <tool_call><function=...><parameter=...> blocks (the Qwen3-Coder XML format), which is parser
+# qwen3_coder at b1388b1; hermes expects JSON inside <tool_call> and would not parse them.
+TOOL_PARSER="${TOOL_PARSER:-qwen3_coder}"
 SERVE_DIR="$HOME/serve"
 SERVE_LOG="$SERVE_DIR/vllm.log"
 
@@ -224,6 +228,7 @@ serve() {
   nohup python3 -m vllm.entrypoints.openai.api_server \
     --model "$dir" --served-model-name teacher group-brain --port "$PORT" --host 127.0.0.1 \
     --scheduling-policy priority \
+    --enable-auto-tool-choice --tool-call-parser "$TOOL_PARSER" \
     --max-model-len "$MAX_LEN" --limit-mm-per-prompt '{"image":1}' --gpu-memory-utilization "$GPU_UTIL" \
     --dtype bfloat16 ${vit_attn[@]+"${vit_attn[@]}"} > "$SERVE_LOG" 2>&1 &
   local pid=$!
