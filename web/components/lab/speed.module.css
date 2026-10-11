@@ -341,3 +341,147 @@
     transform: none;
   }
 }
+
+/* "why it matters": one muted line under a heading or a number */
+.why {
+  margin: 0;
+  color: var(--accent-text);
+  font-size: 13px;
+  font-style: italic;
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+/* the live strip */
+.liveRow {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.live {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
+  transition: opacity var(--t);
+}
+
+.liveOff {
+  opacity: 0.5;
+}
+
+.liveTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.liveValue {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.liveOff .liveValue {
+  color: var(--muted);
+  font-size: 20px;
+}
+
+.liveSub {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.pulse {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+
+.pulseOff {
+  background: var(--unknown);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .pulseOn {
+    animation: pulse 1.6s ease-out infinite;
+  }
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 70%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 9px color-mix(in srgb, var(--ok) 0%, transparent);
+  }
+}
+
+/* how the two pods talk */
+.talk {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+@media (min-width: 900px) {
+  .talk {
+    grid-template-columns: 3fr 2fr;
+  }
+}
+
+.talkCol {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.talkHead {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.talkTiles {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.talkTiles .tileValue {
+  font-size: clamp(26px, 3vw, 34px);
+}
+
+.stall {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 6px 10px;
+  align-items: center;
+  max-width: 560px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.stallBar {
+  height: 10px;
+  border-radius: 0 6px 6px 0;
+  background: var(--unknown);
+}
+
+.stallAfter {
+  background: var(--accent-3);
+  min-width: 3px;
+}
