@@ -23,6 +23,7 @@ adding one touches no shared file but this list.
 - [`chipsheet`](docs/chipsheet.md): File a chip sheet measured on a pod and write its ledger rows: ingest | self-check.
 - [`correctness`](docs/correctness.md): Record greedy outputs from a running server as a baseline, or compare a later run with it.
 - [`credits`](docs/credits.md): Credits left on the pod accounts, credits per hour, and whether they last until judging.
+- [`deploy`](docs/deploy.md): Pull a packaged model from pod B through the hub proxy, verify, hot-swap, publish learning.model.deployed.
 - [`desk-score`](docs/desk-score.md): Score a model on the held-out desk-object examples (L24): split writes the frozen split, score scores.
 - [`digest`](docs/digest.md): What a sitting starts from: what ran, metrics that moved, GPU queue, rulings, Ilan's lane, next tasks.
 - [`draft`](docs/draft.md): Ask for a verb the lab lacks: leaves the owner a request and a stub (once per sitting; nothing runs).
@@ -924,6 +925,38 @@ Content-Range through, the status it answers to a whole file over 100 MiB (599 i
 the real MB/s of a single stream of 64 MiB parts, and that the SJC pod image has `python3` and the proxy extension.
 The `/files/` route of the Jupyter server (Range without a pod-side server, but only under the Jupyter root) is
 the other path; experiment E9 on the queue compares them.
+## Deploy to the box (L6)
+
+The box pulls the packaged model (L5's `lab/package.py` leaves it on pod D) through the hub proxy, checks it, hot-swaps
+and publishes `learning.model.deployed`, in one command (`lab/deploy.py`; details in [docs/deploy.md](docs/deploy.md)).
+
+On pod D (account D, pod-b), start the package server over the package root. From the workspace:
+
+```
+python -m lab.package_pull serve-start --account D --root '$HOME/packages'
+```
+
+or by hand in a terminal on pod D (from a copy of the repo there):
+
+```
+nohup python3 lab/package_server.py --root ~/packages --port 8300 --log ~/package_server.log &
+```
+
+L5's first real package sits in `/home/jovyan/packages/<version>/` on pod D (not `~/data/packages`, R10's default root).
+
+On the box, from the repo root (the box's .env holds `AUP_HUB_USER_D`, `AUP_HUB_TOKEN_D`, `AUP_HUB_URL_D=https://sjc.aupcloud.io`
+and `LAB_POD_ROLES=C:pod-a,D:pod-b`; the egress allowlist lets the SJC hub through from `AUP_HUB_URL_D`):
+
+```
+python -m lab deploy --from-pod D --dry-run          # the newest package on pod D: files, MB, free disk, current and previous
+python -m lab deploy --from-pod D [VERSION]          # pull, sha256, swap, gateway check, learning.model.deployed
+python jetson/atlas_swap.py status                   # what serves now and what rollback goes back to
+python jetson/atlas_swap.py rollback                 # back to the version that served before the deploy
+```
+
+A deploy whose gateway check fails goes back by itself and writes `learning.run.progress` (stage `failed`) into
+`data/events/`. A pull that stopped continues from its `.part` files on the next run.
+
 ## Labeling with the teacher: `lab/label.py`
 
 `lab/label.py` asks the teacher about every example of a dataset that has no `target` yet, checks each answer and
