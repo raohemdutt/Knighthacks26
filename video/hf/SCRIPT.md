@@ -189,8 +189,8 @@ captioned "left · entrance steps · west passage".]
 
 ---
 
-**Timing (v4.7, measured):** every line synthesised with its speaker's voice at 1.3x (Dom). Speech 4:00; the film
-**4:54** with gaps 0.3 s, tail 0.7 s, pad 0.3 s and the action mostly under speech. `FILM_PLAN.md` section 10a.
+**Timing (v4.9, measured):** every line synthesised with its speaker's voice at 1.2x (Dom). The film is **4:58** with
+gaps 0.3 s, a 0.5 s tail after each scene, 0.3 s between scenes, and the action mostly under speech.
 
 **Open:** the trainee's name; which lab numbers Ilan clears for beat 10 (Hemdutt's notes list candidates); Hemdutt's
 stage 1 (beat 5's Tuesday line) and stage 2 (beat 6's "train your own model"); #311 for beat 12's dinner.
