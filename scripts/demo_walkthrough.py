@@ -133,7 +133,7 @@ def night_window(now: datetime) -> tuple[datetime, datetime]:
 # contracts.agent.ActionKind is a closed list, so the kind alone says nothing and the target is checked too.
 NO_CALENDAR = "No calendar connector on this box"  # contexts/day/application/planner.py: DayPlanner.card
 NOTHING_WRITTEN = "nothing is written"
-OUTSIDE_KINDS = ("send_message", "circle_share", "export_training_data", "browse")
+OUTSIDE_KINDS = ("send_message", "circle_share", "export_training_data", "browse", "device_control")  # device_control: pauses the cameras
 
 
 def local_only_card(card: object) -> tuple[bool, str]:
