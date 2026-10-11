@@ -35,6 +35,8 @@ export interface GuideRun {
   spot?: { label?: string; ring?: boolean };
   /** Exact or about, and why (lib/guide.ts `precisionOf`). "About" draws a dashed, soft outline and is said as "about". */
   precision?: import("./guide").Precision;
+  /** A camera zone to outline on that camera's refreshed picture where one runs (the right bin); its other zones are dimmed. */
+  zone?: string;
   /** One button in the caption ("Show me in the room"). */
   action?: { label: string; run: GuideRun };
 }
@@ -71,7 +73,7 @@ export function askGuide(question: string, route: string | null): boolean {
     return true;
   }
   const asked = classify(question, route);
-  if (asked?.kind !== "app") return false;
+  if (asked?.kind !== "app") return false; // a thing: the box answers, and the guide follows its answer
   pointAt({ target: asked.target });
   return true;
 }

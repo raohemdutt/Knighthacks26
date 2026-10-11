@@ -1911,6 +1911,11 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   /** When to leave: `from` and `to` are pack ids ("ucf.eng2"), names, "friend:<member>" or "here". */
   placeRoute: (q: { from?: string; to: string; arrive_by?: string; depart?: string }, signal?: AbortSignal) => get<PlaceRoute>("/api/places/route", q, signal),
   lastSeen: (label: string, signal?: AbortSignal) => get<Sighting>(`/memory/objects/${encodeURIComponent(label)}/last-seen`, undefined, signal),
+  /** The same sighting for marking it in the picture: its box when one is known (else null), and the other boxed things in that frame. */
+  whereSeen: (label: string, signal?: AbortSignal) => get<import("./guide").WhereSeen>(`/memory/last-seen/${encodeURIComponent(label)}`, undefined, signal),
+  /** The detector's newest tracks for a camera: normalised boxes with labels, for drawing over its snapshot. */
+  captureTracks: (camera: string, signal?: AbortSignal) =>
+    get<{ camera_id: string; ts_ms: number | null; tracks: { label: string; track_id: number; confidence: number; box: import("./guide").BoxN }[] }>(`/capture/${encodeURIComponent(camera)}/tracks`, undefined, signal),
 
   // Day Run. `scenario` runs a scripted day from fixtures/play/ ("demo") instead of live sources.
   dayrunBoard: (scenario?: string, signal?: AbortSignal) => get<Board>("/api/dayrun/board", { scenario }, signal),

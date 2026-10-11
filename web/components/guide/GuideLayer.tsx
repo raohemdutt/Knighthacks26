@@ -7,15 +7,18 @@ import { useAtlas } from "@/lib/atlas";
 import { Dwell, landed as eyesLanded, snap, type Thing } from "@/lib/gaze";
 import { gaze, type GazeEstimate } from "@/lib/gazeTracker";
 import { FIXATION_MS, attention, simScript } from "@/lib/guideAttention";
-import { SCREENS, classify, ease, fromGaze, narration, pathPoint, pinTarget, pinnedThing, precisionOf, resolveApp, spotWords, thingName, trail, travelMs, type GuideTarget, type Locator, type Pt, type Reveal } from "@/lib/guide";
+import { SCREENS, classify, ease, fromGaze, labelsFor, narration, ownThing, pathPoint, pinTarget, precisionOf, resolveApp, resolveThing, spotWords, thingName, trail, travelMs, type GuideTarget, type ThingFound, type Locator, type Pt, type Reveal } from "@/lib/guide";
 import { offer, onGuide, pointAt, type GuideMessage, type GuideRun } from "@/lib/guideBus";
 import { along, length as routeLength, pointerRoute, type Box } from "@/lib/guidePath";
 import { alongStops, stepAt, walkFraction } from "@/lib/guideWalk";
 import { binRun } from "@/lib/guideBin";
 import { spotRun } from "@/lib/guideSpot";
+import { findLive, frameSpots, whereSeen } from "@/lib/guideSpotlight";
+import { cameraOfZone } from "@/lib/room";
 import { oneSentence } from "@/lib/speechText";
 import { useVoice } from "@/lib/voice";
 import { Calibrate } from "./Calibrate";
+import { Spotting, type SpottingAsk } from "./Spotting";
 import g from "./guide.module.css";
 
 /**
@@ -110,6 +113,7 @@ export function GuideLayer() {
   const [offered, setOffered] = useState<Offer | null>(null);
   const [ok, setOk] = useState(false); // the eyes arrived
   const [calibrating, setCalibrating] = useState(false);
+  const [spotting, setSpotting] = useState<SpottingAsk | null>(null); // a camera's refreshed picture with the thing (or the bin) outlined
   const [sim, setSim] = useState(false); // ?gazeSim: the camera is replaced by a script, and the screen says so
   const [debug, setDebug] = useState<{ on: boolean; e: GazeEstimate | null; snapped: Thing[]; several: boolean; why: string }>({ on: false, e: null, snapped: [], several: false, why: "" });
   const turn = useRef(0); // bumped by every new run and every cancel
@@ -345,12 +349,48 @@ export function GuideLayer() {
     [cancel, router, say],
   );
 
+  /**
+   * A thing the box was asked about, after its answer: resolved against the answer's own picture, then a live camera
+   * track, then the room's pin (lib/guide.ts `resolveThing`). Nothing found: "I haven't seen that" for the person's
+   * own thing, and nothing at all for a name or a place (the answer stands as it is).
+   */
+  const followThing = useCallback(
+    async (thing: string, answer: string, frame: string | null, citations: number, t: number | null) => {
+      const where = await whereSeen(thing);
+      const live = frame ? null : await findLive(thing);
+      const found = resolveThing({ thing, citationFrame: frame, where, live: live !== null && live !== "off" });
+      if (found.source === "none") {
+        if (ownThing(thing) && citations === 0) offer(found.say, []);
+        return;
+      }
+      if (frame && found.spotlight) frameSpots.set(frame, found.spotlight);
+      if (found.source === "live-track" && live && live !== "off") {
+        setSpotting({ camera: live.camera, labels: labelsFor(thing), name: thingName(thing) });
+        await sleep(350);
+        const name = thingName(thing);
+        return void start({
+          target: { id: "spotting", route: null, label: `Your ${name}, on camera`, at: [{ id: "spotting:box" }, { id: "spotting" }], steps: [{ say: "Look at the camera picture, bottom right." }, { say: found.say }] },
+          t,
+          precision: found.precision ?? undefined,
+          spot: { label: spotWords(found.precision ?? precisionOf("picture"), /s$/.test(name)) },
+        });
+      }
+      await sleep(frame ? 250 : 0); // the picture draws its spotlight first, so the pointer can land on it
+      void start(evidenceRun(thing, answer, found, t, live === "off"));
+    },
+    [start],
+  );
+
   /** A question or a guide id from a link or a "Did you mean" button, on whatever screen this is. */
   const ask = useCallback(
     async (query: string, t: number | null = null) => {
       const here = pathRef.current;
       const bin = await binRun(query, t).catch(() => null);
-      if (bin) return void start(bin);
+      if (bin) {
+        // where a camera runs, its picture with the right bin's zone outlined and the others dimmed
+        if (bin.zone) void findLive("").then((live) => (live === "off" ? undefined : setSpotting({ camera: cameraOfZone(bin.zone!) ?? null, zone: bin.zone, name: bin.zone! })));
+        return void start(bin);
+      }
       if (samePath(here, "/spot/")) {
         try {
           const { run, found } = await spotRun(query, t, Boolean(voiceRef.current.canSpeak && voiceRef.current.getSettings().speak));
@@ -361,27 +401,28 @@ export function GuideLayer() {
         }
       }
       const asked = classify(query, here);
-      const room = asked?.kind === "room" ? asked.thing : pinnedThing(query.toLowerCase()) ? query.toLowerCase() : null;
-      if (room !== null && samePath(here, "/")) {
-        // a thing in the room, from a link: ask the box as the person would, then follow its answer
-        const q = asked ? query : `Where are my ${thingName(room)}?`;
+      // a bare word that is no part of the app ("keys") is a thing to look for, like the question would be
+      const thing = asked?.kind === "thing" ? asked.thing : asked === null && resolveApp(query, here).target === null && /^[a-z ]{2,30}$/i.test(query.trim()) ? `my ${query.trim().toLowerCase()}` : null;
+      if (thing !== null && samePath(here, "/")) {
+        // from a link: ask the box as the person would, then follow its answer
+        const q = asked ? query : `Where are my ${thingName(thing)}?`;
         try {
           const answer = await api.ask(q);
           const id = `g${Date.now()}`;
           handled.current = `${id}-a`;
           setChat((turns) => [...turns, { id, role: "you", text: q }, { id: `${id}-a`, role: "atlas", answer }]);
           await sleep(150);
-          return void start(evidenceRun(room, answer.answer, answer.citations.some((c) => c.frame_ref), t));
+          return void followThing(thing, answer.answer, answer.citations.find((c) => c.frame_ref)?.frame_ref ?? null, answer.citations.length, t);
         } catch {
           return;
         }
       }
       const app = resolveApp(query, here);
-      if (app.target) return void start({ target: app.target, t });
+      if (app.target) return void start(app.target.id.startsWith("pin:") ? { target: app.target, t, precision: precisionOf("zone-pin"), spot: { label: spotWords(precisionOf("zone-pin")) } } : { target: app.target, t }); // a pin from a link: its calibration is not known here, so about
       if (app.alternatives.length > 0) offer("I am not sure what to point at. Did you mean one of these?", app.alternatives.map((a) => ({ label: a.label, run: { target: a } })));
       else offer("I do not know where that is in the app. Try asking the question on the Ask screen.", []);
     },
-    [setChat, start],
+    [setChat, start, followThing],
   );
 
   // requests from the screens
@@ -478,12 +519,11 @@ export function GuideLayer() {
     const before = chat[chat.length - 2];
     if (!before || before.role !== "you" || !samePath(pathRef.current, "/")) return;
     const asked = classify(before.text, "/");
-    const framed = lastTurn.answer.citations.some((c) => c.frame_ref);
-    if (!asked || asked.kind === "app" || (asked.kind === "unsure" && !framed)) return;
-    const run = evidenceRun(asked.thing, lastTurn.answer.answer, framed, null);
-    const timer = window.setTimeout(() => void start(run), 250);
+    if (!asked || asked.kind === "app") return;
+    const a = lastTurn.answer;
+    const timer = window.setTimeout(() => void followThing(asked.thing, a.answer, a.citations.find((c) => c.frame_ref)?.frame_ref ?? null, a.citations.length, null), 250);
     return () => window.clearTimeout(timer);
-  }, [chat, start]);
+  }, [chat, followThing]);
 
   // Escape, or a tap anywhere but the caption, ends it
   const active = view !== null || offered !== null;
@@ -552,7 +592,8 @@ export function GuideLayer() {
       SIMULATED GAZE (?gazeSim): a script stands in for the camera. No camera is in use.
     </div>
   ) : null;
-  if (!view && !offered) return debugBox || simBanner ? <div className={g.layer}>{debugBox}{simBanner}</div> : null;
+  const panel = spotting ? <Spotting ask={spotting} onClose={() => setSpotting(null)} /> : null;
+  if (!view && !offered) return debugBox || simBanner || panel ? <div className={g.layer}>{debugBox}{simBanner}{panel}</div> : null;
 
   const vw = typeof window === "undefined" ? 1024 : window.innerWidth;
   const vh = typeof window === "undefined" ? 768 : window.innerHeight;
@@ -623,6 +664,7 @@ export function GuideLayer() {
     <div className={g.layer} aria-live="polite" data-guide-layer={view?.phase ?? "offer"} data-guide-target={view?.run.target.id} data-guide-walked={walk ? walked.toFixed(3) : undefined}>
       {debugBox}
       {simBanner}
+      {panel}
       {tail.length > 1 ? (
         <svg className={g.trail} aria-hidden="true">
           {tail.map((p, i) => (
@@ -722,30 +764,40 @@ function obstacles(target: Element): Box[] {
   return out;
 }
 
-/** The pointer's run for an answer about a thing in the room: to the picture under the answer, or to the answer when it has none. */
-function evidenceRun(thing: string, answer: string, framed: boolean, t: number | null): GuideRun {
+/**
+ * The pointer's run for an answer about a thing: to the spotlight on the picture under the answer (a tight outline when
+ * the box has a box for it, a soft region from the words, or the whole picture), or to the answer when it has no picture.
+ * The drawing and the sentence both follow `found.precision`.
+ */
+function evidenceRun(thing: string, answer: string, found: ThingFound, t: number | null, off = false): GuideRun {
   const name = thingName(thing);
-  const pinned = pinnedThing(thing) ?? name; // any thing: the room map shows its pin if it has one, else what it knows
+  const framed = found.spotlight !== null;
   const newest = "main article[data-guide='answer']:last-of-type";
+  const about = precisionOf("zone-pin");
   const target: GuideTarget = {
     id: "evidence",
     route: "/",
     label: `Where your ${name} ${/s$/.test(name) ? "are" : "is"}`,
-    at: framed ? [{ sel: `${newest} [data-guide='frame']` }, { sel: newest }] : [{ sel: newest }],
+    at: framed ? [...(found.spotlight?.rect ? [{ sel: `${newest} [data-guide='spot']` }] : []), { sel: `${newest} [data-guide='frame']` }, { sel: newest }] : [{ sel: newest }],
     steps: [{ say: framed ? "Under my answer: the picture it comes from." : "This is my answer. I have no picture to show for it." }, { say: "" }],
   };
+  const spot = found.spotlight;
   return {
     target,
     t,
-    arrive: oneSentence(answer, 170) || "That is all I know about it.",
-    note: (found) =>
+    arrive: framed ? found.say : oneSentence(answer, 170) || found.say,
+    note: (el) =>
       !framed
-        ? "No camera frame is attached to this answer."
-        : found.querySelector("[role=img]")
+        ? `No camera frame is attached to this answer.${off ? " The camera is not running on this box right now, so there is no live picture either." : ""}`
+        : el.closest("[data-guide='frame']")?.querySelector("[role=img]") ?? el.querySelector("[role=img]")
           ? "The picture for that moment is not stored on this box, so this is where it would be."
-          : "The box keeps the zone and a description, not the spot inside the picture, so the whole picture is ringed.",
-    action: pinned ? { label: "Show me in the room", run: { target: pinTarget(pinned), precision: precisionOf("zone-pin"), spot: { label: spotWords(precisionOf("zone-pin")) } } } : undefined,
-    precision: precisionOf(framed ? "picture" : "words"),
-    spot: { label: framed ? spotWords(precisionOf("picture")) : undefined },
+          : spot?.kind === "box"
+            ? "Exact: the box put a box round it in this picture."
+            : spot?.kind === "about"
+              ? `About: placed from the box's words beside the ${spot.anchor}. There is no box for it.`
+              : "About: the box keeps the zone and a description, not the spot inside the picture, so the whole picture is ringed.",
+    action: found.source !== "none" ? { label: "Show me in the room", run: { target: pinTarget(labelsFor(thing)[0] ?? name), precision: about, spot: { label: spotWords(about) } } } : undefined,
+    precision: found.precision ?? precisionOf("words"),
+    spot: { label: spot ? spot.label : undefined },
   };
 }

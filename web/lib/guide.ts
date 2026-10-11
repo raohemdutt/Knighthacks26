@@ -229,11 +229,6 @@ const ROWS: Row[] = [
   { id: "settings", route: null, label: "Settings", names: ["settings", "voice settings", "the token", "use my eyes", "eye tracking", "gaze", "camera switch"], at: [{ sel: "button[aria-label='Settings']" }, { sel: "aside button", text: "^Settings" }], say: ["Look for the Settings button: top right on a phone, at the foot of the list of screens on a computer.", "Settings: the voice switches, and Use my eyes to guide me."] },
 ];
 
-/** The things the cameras can be asked about. A question that names one goes to the box, never to the app guide. */
-export const ROOM_THINGS = "key keys wallet charger laptop phone package parcel bag backpack bottle mug cup glasses headphones earbuds umbrella notebook remote badge jacket shoes pen pencil mouse keyboard tablet ipad purse lunch snack".split(" ");
-/** The few the room map keeps a pin for (lib/room.ts WATCH_ITEMS). */
-export const PINNED = ["keys", "wallet", "charger", "laptop", "phone"];
-
 function build(row: Row): GuideTarget {
   const { names: _names, say, at, ...rest } = row;
   return { ...rest, at: Array.isArray(at) ? at : [at], steps: [{ say: say[0] }, { say: say[1] }] };
@@ -281,31 +276,190 @@ export function resolveApp(question: string, route: string | null = null): Resol
 }
 
 export type Asked =
-  | { kind: "room"; thing: string } // a thing or a person in the room: the box answers; the guide follows the evidence
+  | { kind: "thing"; thing: string } // anything that is not a part of the app: the box answers; the guide then looks for it (answer, cameras, room)
   | { kind: "app"; target: GuideTarget } // something in the app: resolved here
-  | { kind: "unsure"; thing: string } // ask the box as today; guide only if its answer shows a picture
   | null; // not a where-question
 
-/** Conservative: a known thing in the room goes to the box; a known app feature to the guide; anything else is the box's. */
+/**
+ * No list of nouns: a where-question that names a part of the app goes to the app guide, and every other one is about
+ * a thing (or a person, or a place) the box is asked for. What can be pointed at is decided after the answer, from what
+ * the box really has (`resolveThing`).
+ */
 export function classify(question: string, route: string | null = null): Asked {
   const thing = whereIntent(question);
   if (thing === null) return null;
-  const said = thing.split(" ");
-  if (said.some((w) => ROOM_THINGS.includes(w))) return { kind: "room", thing };
   const app = resolveApp(question, route);
   if (app.target && app.confidence >= 0.8) return { kind: "app", target: app.target };
-  return { kind: "unsure", thing };
-}
-
-/** The thing a room question names, as the room map knows it: "my keys" -> "keys"; null when the map keeps no pin for it. */
-export function pinnedThing(thing: string): string | null {
-  const said = thing.split(" ");
-  return PINNED.find((p) => said.includes(p) || said.includes(p.replace(/s$/, ""))) ?? null;
+  return { kind: "thing", thing };
 }
 
 /** The thing itself, for a sentence: "my keys" -> "keys". */
 export function thingName(thing: string): string {
   return thing.split(" ").filter((w) => !FILLER.has(w)).join(" ") || thing;
+}
+
+/** The labels the box may know a thing by, most likely first: "my key" -> ["key", "keys"]; "the coffee mugs" -> ["coffee mugs", "coffee mug", "mugs", "mug"]. */
+export function labelsFor(thing: string): string[] {
+  const name = thingName(thing);
+  const forms = (w: string) => (w.length > 3 && w.endsWith("s") ? [w, w.slice(0, -1)] : [w, `${w}s`]);
+  const last = name.split(" ").pop() ?? name;
+  return [...new Set([...forms(name), ...(last !== name ? forms(last) : [])])].filter(Boolean);
+}
+
+/** Was it asked as the person's own thing ("my keys", "our charger")? A name ("Dominick") or a place is not. */
+export const ownThing = (thing: string): boolean => /^(?:my|our) /.test(thing);
+
+// ---------- any object: where it is in a picture, exactly or about ----------
+
+export interface BoxN {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+/** GET /memory/last-seen/<label> */
+export interface WhereSeen {
+  label: string;
+  camera_id: string;
+  zone: string | null;
+  position: string | null;
+  frame_ref: string | null;
+  box: BoxN | null;
+  seen_at: string;
+  anchors: { label: string; box: BoxN }[];
+}
+
+export type Relation = "left of" | "right of" | "in front of" | "behind" | "next to" | "on" | "under" | "between";
+const RELATIONS: [RegExp, Relation][] = [
+  [/\b(?:to the left of|left of|on the left of)\b/, "left of"],
+  [/\b(?:to the right of|right of|on the right of)\b/, "right of"],
+  [/\bin front of\b/, "in front of"],
+  [/\bbehind\b/, "behind"],
+  [/\b(?:next to|beside|by|near)\b/, "next to"],
+  [/\b(?:under|underneath|below|beneath)\b/, "under"],
+  [/\bbetween\b/, "between"],
+  [/\b(?:on top of|on|atop)\b/, "on"],
+];
+
+/** "left of the closed laptop" -> left of, ["closed laptop"]. The first relation in the sentence wins; null when there is none. */
+export function parseRelation(position: string | null): { relation: Relation; things: string[] } | null {
+  const low = plainText(position ?? "");
+  let best: { at: number; end: number; relation: Relation } | null = null;
+  for (const [re, relation] of RELATIONS) {
+    const m = re.exec(low);
+    if (m && (!best || m.index < best.at)) best = { at: m.index, end: m.index + m[0].length, relation };
+  }
+  if (!best) return null;
+  const rest = low.slice(best.end).split(/\b(?:left of|right of|in front of|behind|next to|beside|under|at|in the)\b/)[0]!.trim();
+  const things = (best.relation === "between" ? rest.split(/\band\b/) : [rest]).map((t) => thingName(t.trim())).filter(Boolean);
+  return things.length > 0 ? { relation: best.relation, things } : null;
+}
+
+const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+
+/** A soft region for "<relation> the anchor": as big as the anchor is small, never a tight box. In a picture, "behind" is above and "in front of" is below. */
+export function aboutRegion(relation: Relation, anchors: BoxN[]): BoxN | null {
+  const a = anchors[0];
+  if (!a) return null;
+  const w = a.x2 - a.x1;
+  const h = a.y2 - a.y1;
+  const side = Math.max(0.12, Math.min(0.3, w * 0.8));
+  const tall = Math.max(0.12, Math.min(0.3, h * 0.8));
+  let r: BoxN;
+  if (relation === "between" && anchors[1]) {
+    const b = anchors[1];
+    r = { x1: Math.min(a.x2, b.x2), x2: Math.max(a.x1, b.x1), y1: Math.min(a.y1, b.y1), y2: Math.max(a.y2, b.y2) };
+    if (r.x2 - r.x1 < 0.1) r = { ...r, x1: (r.x1 + r.x2) / 2 - 0.08, x2: (r.x1 + r.x2) / 2 + 0.08 };
+  } else if (relation === "left of") r = { x1: a.x1 - side, x2: a.x1, y1: a.y1 - 0.04, y2: a.y2 + 0.04 };
+  else if (relation === "right of") r = { x1: a.x2, x2: a.x2 + side, y1: a.y1 - 0.04, y2: a.y2 + 0.04 };
+  else if (relation === "behind") r = { x1: a.x1 - 0.04, x2: a.x2 + 0.04, y1: a.y1 - tall, y2: a.y1 + h * 0.15 };
+  else if (relation === "in front of" || relation === "under") r = { x1: a.x1 - 0.04, x2: a.x2 + 0.04, y1: a.y2 - h * 0.15, y2: a.y2 + tall };
+  else if (relation === "on") r = { x1: a.x1, x2: a.x2, y1: a.y1 - h * 0.1, y2: a.y2 };
+  else r = { x1: a.x1 - side * 0.7, x2: a.x2 + side * 0.7, y1: a.y1 - 0.06, y2: a.y2 + 0.06 }; // next to: either side
+  const out = { x1: clamp01(r.x1), y1: clamp01(r.y1), x2: clamp01(r.x2), y2: clamp01(r.y2) };
+  return out.x2 - out.x1 > 0.03 && out.y2 - out.y1 > 0.03 ? out : null;
+}
+
+export interface Spotlight {
+  /** "box": a tight outline on the thing. "about": a soft region placed from the words. "picture": the whole picture. */
+  kind: "box" | "about" | "picture";
+  rect: BoxN | null; // null: the whole picture
+  precision: Precision;
+  label: string; // "Here it is" | "About here"
+  words: string | null; // the model's own words for the place, shown underneath
+  anchor: string | null; // what the region was placed against
+}
+
+/**
+ * What to draw on the picture a thing was seen in. A tight outline needs a box for the thing itself: with no box the
+ * most this ever returns is a soft region beside something that does have one, and with no such anchor, the picture.
+ */
+export function spotlightFor(where: Pick<WhereSeen, "box" | "position" | "anchors"> | null, plural = false): Spotlight {
+  const words = where?.position?.trim() || null;
+  const b = where?.box;
+  if (b && [b.x1, b.y1, b.x2, b.y2].every((v) => Number.isFinite(v)) && b.x2 > b.x1 && b.y2 > b.y1) {
+    const p = precisionOf("box");
+    return { kind: "box", rect: { x1: clamp01(b.x1), y1: clamp01(b.y1), x2: clamp01(b.x2), y2: clamp01(b.y2) }, precision: p, label: spotWords(p, plural), words, anchor: null };
+  }
+  const p = precisionOf(words ? "words" : "picture");
+  const rel = parseRelation(words);
+  if (rel && where) {
+    const found = rel.things.map((t) => where.anchors.find((a) => labelsFor(t).some((l) => l === a.label || a.label.split(" ").includes(l))));
+    const boxes = found.filter((a): a is { label: string; box: BoxN } => Boolean(a)).map((a) => a.box);
+    const rect = boxes.length > 0 && (rel.relation !== "between" || boxes.length > 1 || rel.things.length === 1) ? aboutRegion(rel.relation, boxes) : null;
+    if (rect) return { kind: "about", rect, precision: p, label: spotWords(p), words, anchor: found.find(Boolean)!.label };
+  }
+  return { kind: "picture", rect: null, precision: p, label: spotWords(p), words, anchor: null };
+}
+
+/** A box in the picture -> where it falls in a frame that shows the picture with object-fit: cover (percent of the frame). */
+export function coverRect(box: BoxN, natural: { w: number; h: number }, frame: { w: number; h: number }): { left: number; top: number; width: number; height: number } {
+  const scale = Math.max(frame.w / Math.max(natural.w, 1), frame.h / Math.max(natural.h, 1));
+  const w = natural.w * scale;
+  const h = natural.h * scale;
+  const ox = (frame.w - w) / 2;
+  const oy = (frame.h - h) / 2;
+  const x1 = Math.max(0, ox + box.x1 * w);
+  const y1 = Math.max(0, oy + box.y1 * h);
+  const x2 = Math.min(frame.w, ox + box.x2 * w);
+  const y2 = Math.min(frame.h, oy + box.y2 * h);
+  return { left: (100 * x1) / frame.w, top: (100 * y1) / frame.h, width: (100 * Math.max(0, x2 - x1)) / frame.w, height: (100 * Math.max(0, y2 - y1)) / frame.h };
+}
+
+export type ThingSource = "answer-box" | "answer-words" | "answer-picture" | "live-track" | "room-pin" | "none";
+
+export interface ThingFound {
+  source: ThingSource;
+  precision: Precision | null; // null: nothing to point at
+  spotlight: Spotlight | null; // for the answer's picture
+  say: string; // the sentence for it: "Your keys are here." / "about here: left of the laptop" / "I haven't seen that."
+}
+
+/**
+ * Where to point for a thing the box was asked about, in this order: the answer's own picture (with the sighting's box
+ * or words when the sighting is of that same frame), a live detector track, the room's pin. `citationFrame` is the frame
+ * under the answer; `where` is Memory's last sighting; `live` is true when a camera tracks it right now.
+ */
+export function resolveThing(input: { thing: string; citationFrame: string | null; where: WhereSeen | null; live: boolean }): ThingFound {
+  const name = thingName(input.thing);
+  const plural = /s$/.test(name);
+  const { where, citationFrame } = input;
+  if (citationFrame) {
+    const same = where && where.frame_ref === citationFrame ? where : null;
+    const spot = spotlightFor(same, plural);
+    const source: ThingSource = spot.kind === "box" ? "answer-box" : same?.position ? "answer-words" : "answer-picture";
+    return { source, precision: spot.precision, spotlight: spot, say: hereSentence(spot.precision, name, plural, source === "answer-picture" ? "somewhere in this picture" : spot.words) };
+  }
+  if (input.live) {
+    const p = precisionOf("box");
+    return { source: "live-track", precision: p, spotlight: null, say: `${hereSentence(p, name, plural)} This is the camera's picture, refreshed, not video.` };
+  }
+  if (where) {
+    const p = precisionOf("zone-pin");
+    return { source: "room-pin", precision: p, spotlight: null, say: hereSentence(p, name, plural, where.position ?? (where.zone ? `in the ${where.zone} zone` : null)) };
+  }
+  return { source: "none", precision: null, spotlight: null, say: "I haven't seen that." };
 }
 
 // ---------- exact, or about: one rule for the drawing and the words ----------
