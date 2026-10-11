@@ -41,11 +41,12 @@ deploy, reject or refused), each with the decode setting, the scorer commit and 
 the decision row's metrics hold the three scores, n as items and as groups, the noise and the p-value. A
 learning.run.evaluated event (contracts/learning.py) with the scores and the decision, its model_version the
 candidate's (runtime.registry.model_version of its manifest), written to <out>/learning.run.evaluated.jsonl and,
-with events_dir, published to that event log. <out>/scores.json for the demo slide and the Learning lab import; beside
-the result it holds correct (right answers per role), noise_runs (right answers in each current run), alpha, test
-and items (one per decided held-out item: id, group, question and expected from the split, before as the first
-current run's answer and pass, after as the candidate's; an answer is cut at MAX_ANSWER_CHARS). And <out>/<role>.json per score
-in the shape lab/slide_numbers.py reads (score is the held-out score; scorer_score is the scorer's own top line).
+with events_dir, published to that event log. <out>/scores.json for the demo slide and the Learning lab import:
+beside the result it holds correct (right answers per role), noise_runs (right answers in each current run), alpha,
+test and items (one per decided held-out item: id, group, question and expected from the split, before as the first
+current run's answer and pass, after as the candidate's; an answer is cut at MAX_ANSWER_CHARS). And
+<out>/<role>.json per score in the shape lab/slide_numbers.py reads (score is the held-out score; scorer_score is the
+scorer's own top line).
 """
 from __future__ import annotations
 
@@ -245,7 +246,8 @@ def _answer(row: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _per_question(split: Split, common: Sequence[str], groups: Mapping[str, str],
-                  scored: Mapping[str, Mapping[str, Mapping[str, Any]]], current_names: Sequence[str]) -> dict[str, Any]:
+                  scored: Mapping[str, Mapping[str, Mapping[str, Any]]],
+                  current_names: Sequence[str]) -> dict[str, Any]:
     """scores.json's per-question part, for the Learning lab's before and after list (learning.eval.reported).
 
     Only the decided held-out items. before is the first current run, after the candidate; correct counts the
