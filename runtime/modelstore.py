@@ -8,10 +8,13 @@
 file named in its manifest exists and matches its sha256. The `current` link is replaced atomically, so
 a reader (the launcher, `config/models.yaml`'s manifest path) sees the old version or the new one, never neither.
 
-    data/models/<version>/.verified.json                                  the pull's record of the files it hashed
+    data/models/<version>/.verified.json                                  the record of the files last hashed
 
-`.verified.json` is written by lab/package_pull.py after every file of the version matched its sha256: per file the
-name, size, sha256 and mtime (st_mtime_ns) the file had when it was hashed. `verify(version, trust_verified=True)`
+`.verified.json` is written by lab/package_pull.py after every file of the version matched its sha256, and by
+`verify(version, record=True)` (jetson/atlas_swap.py's swap, so a version that was never pulled, such as atlas-base,
+gets one on its first full check): per file the name, size, sha256 and mtime (st_mtime_ns) the file had when it was
+hashed, always with written_by lab/package_pull.py so each trusts the other's record (`hashed_by` names the swap when
+the swap wrote it). `verify(version, trust_verified=True)`
 takes a file as checked without hashing it again only when that record names it with the manifest's sha256 and the
 file still has the recorded size and mtime; anything else (no record, a record someone else wrote, a size or mtime
 that moved, a manifest whose sha256 changed) hashes the file as before. The default, trust_verified=False, always
@@ -21,6 +24,7 @@ hashes.
 import hashlib
 import json
 import os
+import time
 from pathlib import Path
 
 from contracts.learning import ModelManifest
@@ -44,6 +48,25 @@ def read_verified(folder: Path) -> dict[str, dict]:
         return {str(item["name"]): item for item in record["files"] if isinstance(item, dict)}
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return {}
+
+
+RECORDED_BY_SWAP = "jetson/atlas_swap.py"
+
+
+def write_verified_record(folder: Path, version: str, files: list[dict], *, hashed_by: str | None = None) -> Path:
+    """Write <folder>/.verified.json: per file the name, size, sha256 and mtime_ns it had when it was checked, with
+    written_by VERIFIED_BY whoever checked it, so the pull and the swap trust each other's record; `hashed_by` says
+    which one did when it was not the pull. Written to a scratch name and renamed, so a reader sees the old record,
+    none, or the whole new one."""
+    record = {"written_by": VERIFIED_BY, "version": version,
+              "written_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+              **({"hashed_by": hashed_by} if hashed_by else {}),
+              "files": [{k: item.get(k) for k in ("name", "size", "sha256", "mtime_ns")} for item in files]}
+    target = Path(folder) / VERIFIED_RECORD
+    scratch = Path(folder) / f"{VERIFIED_RECORD}.tmp"
+    scratch.write_text(json.dumps(record, indent=1), encoding="utf-8")
+    os.replace(scratch, target)
+    return target
 
 
 def record_vouches(entry: dict | None, path: Path, sha256: str) -> bool:
@@ -95,27 +118,38 @@ class ModelStore:
         f = self.root / "previous"
         return f.read_text().strip() or None if f.is_file() else None
 
-    def verify(self, version: str, *, trust_verified: bool = False) -> list[str]:
+    def verify(self, version: str, *, trust_verified: bool = False, record: bool = False) -> list[str]:
         """What is wrong with the package, as plain sentences; empty means every file is there and matches.
-        trust_verified: a file the pull's record vouches for (see the module docstring) is not hashed again."""
+        trust_verified: a file the pull's record vouches for (see the module docstring) is not hashed again.
+        record (the swap's, jetson/atlas_swap.py): when every file matched and at least one was hashed, write the record
+        (write_verified_record) with the size and mtime each file had before it was checked, so a later trusting
+        check of an unchanged file hashes nothing."""
         m = self.manifest(version)
-        record = read_verified(self.root / version) if trust_verified else {}
-        problems = []
+        vouched = read_verified(self.root / version) if trust_verified else {}
+        problems, checked, hashed = [], [], False
         for name in [m.gguf, *([m.mmproj] if m.mmproj else [])]:
             path = self.root / version / name
+            st = path.stat() if record and path.is_file() else None  # before the hash: a file changed meanwhile goes stale
             if not path.is_file():
                 problems.append(f"{name} is missing")
+                continue
             elif name not in m.sha256:
                 problems.append(f"the manifest has no checksum for {name}")
-            elif record_vouches(record.get(name), path, m.sha256[name]):
                 continue
-            elif sha256_file(path) != m.sha256[name]:
-                problems.append(f"{name} does not match its sha256 (a damaged or partial copy)")
+            elif not record_vouches(vouched.get(name), path, m.sha256[name]):
+                hashed = True
+                if sha256_file(path) != m.sha256[name]:
+                    problems.append(f"{name} does not match its sha256 (a damaged or partial copy)")
+                    continue
+            if st is not None:
+                checked.append({"name": name, "size": st.st_size, "sha256": m.sha256[name], "mtime_ns": st.st_mtime_ns})
+        if record and hashed and not problems:  # a record that vouched for every file stays as it is
+            write_verified_record(self.root / version, version, checked, hashed_by=RECORDED_BY_SWAP)
         return problems
 
-    def activate(self, version: str, *, trust_verified: bool = False) -> None:
+    def activate(self, version: str, *, trust_verified: bool = False, record: bool = False) -> None:
         """Point `current` at `version` (after verifying it) and remember what it replaced."""
-        problems = self.verify(version, trust_verified=trust_verified)
+        problems = self.verify(version, trust_verified=trust_verified, record=record)
         if problems:
             raise ModelStoreError(f"{version} is not safe to switch to: " + "; ".join(problems))
         before = self.current()

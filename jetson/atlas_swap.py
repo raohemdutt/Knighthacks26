@@ -10,6 +10,8 @@ Run from the repo root so `runtime` imports (PYTHONPATH=.). A swap:
   3. waits for llama-server to load it and answer a test question;
   4. if that fails, puts the old version back and restarts again, and exits with an error;
      if it works, tells the app (POST /api/learning/deployed) so the phone's Teach screen shows the new version.
+Each step also prints `STAGE <name> <start|done|failed> <unix seconds>` (verify, switch, restart, check, publish,
+rollback), which the Learning lab's deploy button (contexts/learning/lab_deploy.py) reads from the log.
 The model is about 3.6 GB and the box has 8 GB shared with the OS and the detector, so the new model cannot be
 loaded beside the old one: the phone gets no answers from the model for the ~40 s the reload takes.
 
@@ -17,6 +19,9 @@ loaded beside the old one: the phone gets no answers from the model for the ~40 
 recorded in <version>/.verified.json, and whose size and mtime have not moved since, is not hashed again by the
 check in step 1 or by the switch in step 2 (runtime/modelstore.py). A file the record does not vouch for is hashed
 as before. Without the flag every file is hashed at both points, about 40 s each for the 3.4 GB package on the box.
+A check that hashed and passed writes the record itself (same fields and writer marker as the pull's), so a version
+never pulled, such as atlas-base, or pulled before the record existed, is hashed once on its first trusting swap and
+not at all on the next ones while its files keep their size and mtime.
 """
 
 import argparse
@@ -69,30 +74,63 @@ def announce_to_app(base_url: str, token: str | None = None) -> Callable[[str, s
 
 def swap(store: ModelStore, version: str, *, restart: Callable[[], None], check: Callable[[], str | None],
          log: Callable[[str], None] = print, announce: Callable[[str, str | None], str | None] | None = None,
-         trust_verified: bool = False) -> None:
+         trust_verified: bool = False, stage: Callable[[str, str], None] | None = None) -> None:
+    """stage(name, state) is told as each step starts and ends: verify, switch, restart, check, publish, and
+    rollback after a failed check; state is start, done or failed (the Learning lab's deploy button reads them)."""
+    mark = stage or (lambda name, state: None)
+
+    def step(name: str, action: Callable[[], object]) -> object:
+        mark(name, "start")
+        try:
+            out = action()
+        except BaseException:
+            mark(name, "failed")
+            raise
+        mark(name, "done")
+        return out
+
     log(f"checking {version} ..." + (" (trusting the pull's .verified.json where it still holds)" if trust_verified else ""))
-    problems = store.verify(version, trust_verified=trust_verified)
+    mark("verify", "start")
+    try:  # record=True: a full hash that passes writes .verified.json, so the switch and every later trusting swap skip it
+        problems = store.verify(version, trust_verified=trust_verified, record=True)
+    except BaseException:
+        mark("verify", "failed")
+        raise
     if problems:
+        mark("verify", "failed")
         raise ModelStoreError(f"{version} is not safe to switch to: " + "; ".join(problems))
+    mark("verify", "done")
     old, old_previous = store.current(), store.previous()
-    store.activate(version, trust_verified=trust_verified)
+    step("switch", lambda: store.activate(version, trust_verified=trust_verified, record=True))
     log(f"switched the link {old} -> {version}; restarting the model server (about 40 s of no answers)")
-    restart()
+    step("restart", restart)
+    mark("check", "start")
     failure = check()
     if failure is None:
+        mark("check", "done")
         log(f"{version} is serving")
         if announce:
+            mark("publish", "start")
             problem = announce(version, old)
+            mark("publish", "done" if problem is None else "failed")
             log("told the app" if problem is None else f"could not tell the app ({problem}); the model is serving anyway")
         return
+    mark("check", "failed")
     log(f"{version} failed: {failure}")
     if old:
-        store.activate(old, trust_verified=trust_verified)
+        mark("rollback", "start")
+        store.activate(old, trust_verified=trust_verified, record=True)
         store.set_previous(old_previous)  # a failed attempt must not become the version `rollback` goes to
         restart()
         again = check()
+        mark("rollback", "done" if again is None else "failed")
         log(f"went back to {old}" + ("" if again is None else f", but it is not healthy either: {again}"))
     raise ModelStoreError(f"{version} failed: {failure}")
+
+
+def print_stage(name: str, state: str) -> None:
+    """One machine-readable line per step: `STAGE <name> <start|done|failed> <unix seconds>`."""
+    print(f"STAGE {name} {state} {time.time():.3f}", flush=True)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -127,7 +165,8 @@ def main(argv: list[str] | None = None) -> int:
                 p.error("swap needs a version")
             target = args.version
         swap(store, target, restart=restart, check=lambda: wait_until_serving(args.url),
-             announce=announce_to_app(args.app_url, os.environ.get("ATLAS_TOKEN")), trust_verified=args.trust_verified)
+             announce=announce_to_app(args.app_url, os.environ.get("ATLAS_TOKEN")), trust_verified=args.trust_verified,
+             stage=print_stage)
     except ModelStoreError as e:
         print(f"not switched: {e}", file=sys.stderr)
         return 1

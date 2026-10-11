@@ -114,9 +114,82 @@ def test_without_the_flag_the_record_is_ignored_and_both_checks_hash(store, tmp_
     assert store.current() == "v2" and hashes == ["m.gguf", "mm.gguf"] * 2   # the swap's check, then the switch's
 
 
-def test_with_no_record_a_trusting_swap_hashes_as_before(store, hashes):
+def test_with_no_record_a_trusting_swap_hashes_once_and_writes_the_record_itself(store, tmp_path, hashes):
     quiet_swap(store, "v2", trust_verified=True)
-    assert store.current() == "v2" and hashes == ["m.gguf", "mm.gguf"] * 2
+    assert store.current() == "v2" and hashes == ["m.gguf", "mm.gguf"]      # the check hashed, the switch trusted it
+    written = json.loads((tmp_path / "v2" / modelstore.VERIFIED_RECORD).read_text(encoding="utf-8"))
+    m = store.manifest("v2")
+    assert written["written_by"] == modelstore.VERIFIED_BY == "lab/package_pull.py"   # the pull trusts it too
+    assert written["hashed_by"] == "jetson/atlas_swap.py" and written["version"] == "v2"
+    assert [(f["name"], f["size"], f["sha256"], f["mtime_ns"]) for f in written["files"]] == [
+        (n, (tmp_path / "v2" / n).stat().st_size, m.sha256[n], (tmp_path / "v2" / n).stat().st_mtime_ns)
+        for n in ("m.gguf", "mm.gguf")]
+
+
+def test_every_later_press_hashes_nothing_and_a_never_pulled_base_gets_its_record_on_the_way_back(store, tmp_path, hashes):
+    quiet_swap(store, "v2", trust_verified=True)                     # first press: one pass over v2
+    quiet_swap(store, "v1", trust_verified=True)                     # back to base: one pass over v1, never pulled
+    assert hashes == ["m.gguf", "mm.gguf"] * 2 and (tmp_path / "v1" / modelstore.VERIFIED_RECORD).is_file()
+    hashes.clear()
+    for _ in range(3):                                               # every later press: nothing hashed
+        quiet_swap(store, "v2", trust_verified=True)
+        quiet_swap(store, "v1", trust_verified=True)
+    assert hashes == [] and store.current() == "v1"
+
+
+def test_the_record_the_swap_wrote_goes_stale_like_the_pulls(store, tmp_path, hashes):
+    quiet_swap(store, "v2", trust_verified=True)
+    quiet_swap(store, "v1", trust_verified=True)
+    hashes.clear()
+    path = tmp_path / "v2" / "m.gguf"
+    st = path.stat()
+    os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns + 5_000_000_000))   # mtime moved: m.gguf is hashed again
+    quiet_swap(store, "v2", trust_verified=True)
+    assert hashes == ["m.gguf"]
+    quiet_swap(store, "v1", trust_verified=True)
+    hashes.clear()
+    path.write_bytes(b"weights, but longer")                                # size moved and content wrong: refused
+    with pytest.raises(ModelStoreError, match="not safe"):
+        quiet_swap(store, "v2", trust_verified=True)
+    assert hashes == ["m.gguf"] and store.current() == "v1"
+
+
+def test_a_trusting_swap_over_the_pulls_record_leaves_that_record_alone(store, tmp_path, hashes):
+    path = record(tmp_path, "v2")
+    before = path.read_bytes()
+    quiet_swap(store, "v2", trust_verified=True)
+    assert hashes == [] and path.read_bytes() == before                   # nothing hashed, so nothing rewritten
+
+
+def test_the_swap_names_each_stage_as_it_starts_and_ends(store):
+    marks = []
+    atlas_swap.swap(store, "v2", restart=lambda: None, check=lambda: None, log=lambda m: None,
+                    announce=lambda *a: None, stage=lambda name, state: marks.append(f"{name} {state}"))
+    assert marks == ["verify start", "verify done", "switch start", "switch done", "restart start", "restart done",
+                     "check start", "check done", "publish start", "publish done"]
+
+
+def test_a_failed_check_marks_check_failed_and_the_rollback(store):
+    marks, answers = [], iter(["did not load", None])
+    with pytest.raises(ModelStoreError):
+        atlas_swap.swap(store, "v2", restart=lambda: None, check=lambda: next(answers), log=lambda m: None,
+                        stage=lambda name, state: marks.append(f"{name} {state}"))
+    assert marks[-3:] == ["check failed", "rollback start", "rollback done"] and store.current() == "v1"
+
+
+def test_a_damaged_package_marks_verify_failed_and_nothing_after(store, tmp_path):
+    (tmp_path / "v2" / "m.gguf").write_bytes(b"truncated")
+    marks = []
+    with pytest.raises(ModelStoreError):
+        atlas_swap.swap(store, "v2", restart=lambda: None, check=lambda: None, log=lambda m: None,
+                        stage=lambda name, state: marks.append(f"{name} {state}"))
+    assert marks == ["verify start", "verify failed"]
+
+
+def test_the_command_line_prints_machine_readable_stage_lines(capsys):
+    atlas_swap.print_stage("verify", "start")
+    name_state_time = capsys.readouterr().out.split()
+    assert name_state_time[:3] == ["STAGE", "verify", "start"] and float(name_state_time[3]) > 0
 
 
 def test_a_file_whose_mtime_moved_is_hashed_again_and_the_other_trusted(store, tmp_path, hashes):
@@ -125,7 +198,7 @@ def test_a_file_whose_mtime_moved_is_hashed_again_and_the_other_trusted(store, t
     st = path.stat()
     os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns + 5_000_000_000))
     quiet_swap(store, "v2", trust_verified=True)
-    assert store.current() == "v2" and hashes == ["m.gguf", "m.gguf"]
+    assert store.current() == "v2" and hashes == ["m.gguf"]   # the check hashes it and records it; the switch trusts that
 
 
 def test_a_file_whose_size_changed_is_hashed_and_refused_before_anything_is_touched(store, tmp_path, hashes):
