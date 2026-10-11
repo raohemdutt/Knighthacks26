@@ -1,4 +1,6 @@
+import shutil
 from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -18,6 +20,15 @@ def test_shipped_packs_load_and_route_by_minutes():
     assert {"ucf", "apartment"} <= set(p.packs)
     path, minutes = p.route("ucf.union", "ucf.eng2")
     assert path == ["ucf.union", "ucf.eng2"] and minutes == 2.6  # 185 m on the real footpaths (config/places/ucf.map.json)
+
+
+def test_macos_metadata_files_beside_the_packs_are_skipped(tmp_path):
+    # A tree copied from a Mac carries `._ucf.yaml` AppleDouble files (binary); reading one as a pack used to fail the
+    # whole load, and with no packs the gateway left out Day Run and the Day loop.
+    for f in Path("config/places").iterdir():
+        shutil.copy(f, tmp_path / f.name)
+        (tmp_path / f"._{f.name}").write_bytes(b"\x00\x05\x16\x07\x00\x02\x00\x00Mac OS X        \xa3\xff")
+    assert {"ucf", "apartment"} <= set(PlaceSet.load(tmp_path).packs)
 
 
 def test_routes_cross_into_and_out_of_nested_packs():

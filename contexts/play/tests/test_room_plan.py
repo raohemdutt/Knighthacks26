@@ -122,6 +122,13 @@ def test_the_table_room_is_a_second_layout_for_the_same_cameras():
     assert available("config") == ["dorm", "table"]
 
 
+def test_macos_metadata_files_are_not_rooms(tmp_path):
+    (tmp_path / "rooms").mkdir()
+    shutil.copy("config/rooms/dorm.yaml", tmp_path / "rooms" / "dorm.yaml")
+    (tmp_path / "rooms" / "._dorm.yaml").write_bytes(b"\x00\x05\x16\x07")
+    assert available(tmp_path) == ["dorm"]
+
+
 def test_room_path_picks_the_room(monkeypatch):
     monkeypatch.delenv("ATLAS_ROOM", raising=False)
     assert room_path("config").name == "dorm.yaml"
