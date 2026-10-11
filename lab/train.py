@@ -95,7 +95,8 @@ loss on those rows every --eval-steps optimizer steps and once more after the la
 evaluation to <out>/validation.jsonl (step, eval_loss, examples_seen). --keep-best saves the adapter at each
 evaluation that beats every earlier one, and <out>/adapter is then that checkpoint, not the last step's
 (trainer.best_step, trainer.best_eval_loss). --early-stop N stops the run when N evaluations in a row did not
-improve. --stop-step S stops after optimizer step S while the schedule stays the one --max-steps or --epochs plans:
+improve; with --early-stop-min-rel S an evaluation counts as an improvement only when it beats the best so far by at
+least that share of it. --stop-step S stops after optimizer step S while the schedule stays the one --max-steps or --epochs plans:
 it repeats the first S steps of a longer run, for retraining a kept-best checkpoint without the validation passes.
 
 The data is deleted when the run ends. On the pod, once the node check has passed, the dataset folder and the rows
@@ -762,13 +763,15 @@ def _callback(steps: StepLog) -> Any:
 class ValidationLog:
     """What the evaluations of --val-rows found, and what follows from each: one line per evaluation appended to
     `path`, the best one remembered (with keep_best, `save` is called with the best folder for each new best),
-    `stop` set once `patience` evaluations in a row did not improve. examples_seen is steps x `per_step`."""
+    `stop` set once `patience` evaluations in a row did not improve (with min_rel, did not beat the best so far by
+    at least that share of it; the best is still kept on any improvement). examples_seen is steps x `per_step`."""
 
     path: Path
     per_step: int
     keep_best: bool = False
     patience: int | None = None
     best_dir: Path | None = None
+    min_rel: float = 0.0     # an evaluation resets the patience only when it beats the best by this share of it
     events: list[dict[str, Any]] = field(default_factory=list)
     best_step: int | None = None
     best_loss: float | None = None
@@ -781,14 +784,17 @@ class ValidationLog:
         if not isinstance(loss, (int, float)) or not math.isfinite(loss) or any(e["step"] == step for e in self.events):
             return False
         best = self.best_loss is None or loss < self.best_loss
+        enough = self.best_loss is None or loss < self.best_loss * (1.0 - self.min_rel)
         event = {"step": step, "eval_loss": float(loss), "examples_seen": step * self.per_step, "best": best}
         self.events.append(event)
         with self.path.open("a", encoding="utf-8", newline="\n") as out:
             out.write(json.dumps(event) + "\n")
         if best:
-            self.best_step, self.best_loss, self.stale = step, float(loss), 0
+            self.best_step, self.best_loss = step, float(loss)
             if self.keep_best and save is not None and self.best_dir is not None:
                 save(self.best_dir)
+        if enough:
+            self.stale = 0
         else:
             self.stale += 1
             if self.patience is not None and self.stale >= self.patience:
@@ -1089,6 +1095,7 @@ class Plan:
     keep_best: bool = False
     early_stop: int | None = None
     stop_step: int | None = None
+    early_stop_min_rel: float = 0.0
 
 
 @dataclass
@@ -1275,7 +1282,7 @@ def train(plan: Plan, callbacks: Sequence[Any] = ()) -> Trained:
     if validation is not None:
         (plan.out / VALIDATION_LOG).unlink(missing_ok=True)
         checks = ValidationLog(plan.out / VALIDATION_LOG, plan.batch * plan.grad_accum, plan.keep_best,
-                               plan.early_stop, plan.out / BEST_ADAPTER)
+                               plan.early_stop, plan.out / BEST_ADAPTER, plan.early_stop_min_rel)
     trainer = SFTTrainer(model=model, args=config, train_dataset=data, eval_dataset=validation,
                          processing_class=processing, peft_config=lora, data_collator=collator,
                          callbacks=[_callback(steps), _validation_callback(checks, plan.stop_step), *callbacks])
@@ -1437,6 +1444,9 @@ def _parser() -> argparse.ArgumentParser:
                         help="<out>/adapter is the checkpoint of the best evaluation, not the last step")
     parser.add_argument("--early-stop", type=_positive(int), metavar="EVALUATIONS",
                         help="stop when this many evaluations in a row did not improve")
+    parser.add_argument("--early-stop-min-rel", type=float, default=0.0, metavar="SHARE",
+                        help="with --early-stop: an evaluation counts as an improvement only when it beats the best "
+                             "by this share of it (0.03 is 3 percent); the best checkpoint is kept on any improvement")
     parser.add_argument("--stop-step", type=_positive(int),
                         help="stop after this optimizer step; the schedule stays the planned one")
     parser.add_argument("--torch-loss-head", action="store_true",
@@ -1525,7 +1535,7 @@ def _prepare(args: argparse.Namespace, run_id: str, refs: dict[str, Any], node: 
                 args.workers, args.checkpointing, PowerFeed(args.power_dir, args.power_node),
                 args.cpu or args.torch_loss_head, args.group_by_length, _env_of(args),
                 not (args.cpu or args.cuda), args.cuda, args.warmup_ratio, tuple(held_for_validation),
-                args.eval_steps, args.keep_best, args.early_stop, args.stop_step)
+                args.eval_steps, args.keep_best, args.early_stop, args.stop_step, args.early_stop_min_rel)
 
 
 def _env_of(args: argparse.Namespace) -> dict[str, str | None]:

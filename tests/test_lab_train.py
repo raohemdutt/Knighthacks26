@@ -849,3 +849,17 @@ def test_the_validation_flags_need_validation_rows_and_a_ratio_below_one(tmp_pat
     assert answer["problems"] == ["--warmup-ratio must be at least 0 and below 1"]
     answer = train.main(["--cpu", "--cuda", *run_args(folder, rows, model, tmp_path / "out")])
     assert answer["problems"] == ["--cpu and --cuda are two different places to run"]
+
+
+def test_with_a_minimum_relative_improvement_small_gains_keep_the_best_but_do_not_reset_the_patience(tmp_path):
+    saved: list[Path] = []
+    log = train.ValidationLog(tmp_path / train.VALIDATION_LOG, per_step=16, keep_best=True, patience=2,
+                              best_dir=tmp_path / "best", min_rel=0.03)
+    assert log.evaluated(8, {"eval_loss": 0.0200}, saved.append) is True
+    assert log.evaluated(16, {"eval_loss": 0.0198}, saved.append) is True      # 1 percent better: kept, not enough
+    assert (log.stale, log.stop, log.best_step) == (1, False, 16)
+    assert log.evaluated(24, {"eval_loss": 0.0150}, saved.append) is True      # 24 percent better: patience reset
+    assert log.stale == 0
+    assert log.evaluated(32, {"eval_loss": 0.0149}, saved.append) is True
+    assert log.evaluated(40, {"eval_loss": 0.0148}, saved.append) is True
+    assert (log.stop, log.best_step, log.best_loss, len(saved)) == (True, 40, 0.0148, 5)

@@ -105,6 +105,64 @@ Nothing else changes: the split, the validation cadence, keep-best, early stoppi
 improvement, the choice rule (its "3 eligible runs with the lowest score" are now all the runs that train), the
 scoring rules, and what is never done.
 
+### Amendment 2, made before any search trial had a result (Sun 2026-10-11, 4:16 AM ET)
+
+Ilan rejected the fixed three-point grid of amendment 1 and asked for a Bayesian search, with runs in parallel as
+long as the search still learns from them, and with compute cost no constraint. This amendment replaces the grid.
+
+What had run when this was written: grid run 1 to its end (learning rate 1e-4, rank 16, alpha 32, dropout 0.05,
+warmup 0.10; validation loss 0.0355, 0.0188, 0.0133, 0.0101, 0.0103, 0.0099, 0.0087, 0.0081 at steps 8, 16, 24, 32,
+40, 48, 56, 62); grid run 2 was stopped at step 9 and run 3 never started. The first search trial had been launched
+two minutes earlier and had no validation number yet. No validation tool-call agreement had been measured for any
+adapter, and no held-out example had been read.
+
+The search (`lab/l16v2/bo_local.py`; the design is copied from Ilan's earlier Optuna search,
+`MCA_full_pipeline/PIPELINE/training/hp_search_modernbert_rocm.py`, its values are not):
+
+- Space: learning rate 2e-5 to 5e-4 (log scale), rank in {4, 8, 16, 32}, alpha = rank times 1 or 2, dropout 0 to
+  0.15, warmup ratio 0 to 0.15. Fixed: batch 4 by accumulation 4, gradient checkpointing, seed 42, the torch
+  fallback kernels.
+- Objective: validation loss on the 126 validation rows, minimized. Fidelity, fixed: a trial is 24 optimizer steps
+  (384 example passes) with validation at steps 12 and 24; its value is the lower of the two, and it keeps that
+  checkpoint.
+- Sampler and pruner: Optuna TPE (multivariate, grouped, constant liar, seed 42 plus the trials already in the
+  study) with 3 random startup trials in total across all workers after the seeded points; a median pruner (2
+  startup trials, 1 warmup step) on the step-12 validation loss, and a trial it prunes is stopped there.
+- Warm start: grid run 1 is added as a finished observation with its own step-24 validation loss (0.0133, from a
+  62-step schedule, noted as such); the two cancelled grid points (learning rate 2e-4 and 5e-5 at rank 16, alpha 32,
+  dropout 0.05, warmup 0.10) are the first two trials. A configuration handed in by hand is enqueued the same way.
+- Duplicates: a draw of parameters already evaluated is skipped without training and not counted.
+- Boundary check, once, after 5 finished trials: if the best trial's learning rate, dropout or warmup is within 5
+  percent of an edge of its range, that range is widened once (learning rate to 1e-5 or 1e-3, dropout or warmup to
+  0.25).
+- Where it runs: the study is a SQLite file on the workstation and never leaves it. Each Colab A100 session is one
+  worker running one trial at a time. Workers are asynchronous: a worker gets its next point only when its last
+  trial has finished, so each point is proposed with every finished result in the model. Every trial records how
+  many finished trials the sampler had (`seen`), its kind (seed, init for a random startup draw, model for a draw of
+  the fitted sampler) and its worker. At most one worker per five trials expected in the budget.
+- Budget: 40 minutes from the first trial's start (4:13 AM ET); no trial starts that would pass it.
+
+Finalists and the choice:
+
+- The 3 completed (not pruned) trials with the lowest value (ties: the earlier proposal) name 3 configurations.
+  Each trains once at full length, at the same time on separate sessions: at most 62 optimizer steps (992 example
+  passes, the pod D budget), validation every 8 steps and after the last, the best checkpoint kept, and it stops
+  after 2 evaluations that did not beat the best so far by at least 3 percent of it. (Ilan's earlier search used a
+  patience of 2 with an absolute minimum improvement of 0.003 on a metric near 0.7; this loss is near 0.01, so the
+  minimum is relative.) This replaces "stop after 3 evaluations without improvement" for these runs.
+- The choice rule is the frozen one, applied to the full-length runs (the finalists that trained and grid run 1):
+  take the 3 with the lowest validation loss (ties: fewer example passes at the best evaluation); for those 3,
+  generate on every validation example with the kept adapter and score exact tool-call agreement by
+  `lab/tool_call_agreement.py`'s rule; choose the highest validation agreement (ties: lower validation loss, then
+  fewer example passes at the best evaluation). The base model's validation agreement is measured for reference.
+- The held-out side is not read until the choice is written, and nothing is chosen again after it is read.
+
+What the result page must show about the search: the trials in order of proposal with `seen`, kind, parameters and
+losses; the best-so-far curve; the mean loss of model-chosen against random startup trials. If the model-chosen
+points are not better than the random ones, the page says so.
+
+Everything else stands: the dataset and its split, the scoring rules, and what is never done.
+
 ## The pod D retrain (second pass)
 
 The chosen recipe is repeated on pod D with the same flags and `--stop-step <the chosen run's best step>`, so the
