@@ -825,7 +825,7 @@ model (pending; not in the repository yet).
 
   Experiment: FO8, as specified in the first finding of this section.
 
-## Decisions (and why the alternatives lost)
+## Conclusions (the decisions, and why the alternatives lost)
 
 Tool: Ax 1.x through its stable `Client`, method "fast" (dimension-scaled GP, qLogNEI), because it
 scored highest on mixed and noisy problems at 50 trials in the broadest published comparison [B1],

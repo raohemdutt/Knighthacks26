@@ -11,7 +11,7 @@ mode, and the kill criterion. The pod measurement itself is not here: it waits o
   1 to 16 rows: bf16 `x[m,5120] @ w[248320,5120]` (the lm_head shape) ran at 0.219 TFLOP/s at 1 row and 3.45 at 16,
   and the int4 dequant matmul `w4a16 [m,5120] x [5120,6144]` at 0.594 and 9.08, so 16 rows take 1.02 and 1.05 times
   the time of one (derived: 16 x rate(1) / rate(16)). Copy bandwidth above 32 MiB is about 210 GB/s; loaded watts
-  run 75 to 128 W against 24 W idle. Source: [S185] chip sheet, sections "fp16 and bf16 matmul, 27B decode shapes",
+  run 75 to 128 W against 24 W idle. Source: [S186] chip sheet, sections "fp16 and bf16 matmul, 27B decode shapes",
   "int4-to-fp16 dequantize plus matmul" and "Device-to-device copy bandwidth".
   - Implication: a target pass that checks k drafted tokens for b requests costs about one pass as long as
     b x (k + 1) is at most 16 rows, so decode tokens per second scale with tokens emitted per pass, and joules per
@@ -35,7 +35,7 @@ mode, and the kill criterion. The pod measurement itself is not here: it waits o
   n-gram of `prompt_lookup_min` to `prompt_lookup_max` tokens that ends the tokens so far (prompt plus output) and
   occurs earlier in them, and proposes the `num_speculative_tokens` tokens that followed its earliest earlier
   occurrence (a KMP search over the reversed tokens, compiled with numba, on the CPU). With neither bound set, both
-  default to 5. Source: [S183] `vllm/v1/spec_decode/ngram_proposer.py::_find_longest_matched_ngram_and_propose_tokens`
+  default to 5. Source: [S184] `vllm/v1/spec_decode/ngram_proposer.py::_find_longest_matched_ngram_and_propose_tokens`
   and `vllm/config/speculative.py` at b1388b1
   ([permalink](https://github.com/vllm-project/vllm/blob/b1388b1fbf5aaef47937fabe98931211684666a6/vllm/v1/spec_decode/ngram_proposer.py)).
   - Implication: the rule is deterministic and model-free, so its acceptance on our traffic can be measured offline
@@ -51,7 +51,7 @@ mode, and the kill criterion. The pod measurement itself is not here: it waits o
   (2.74 tokens per pass at 1 to 3, k 4: argument values and times repeat from the question and the tool list), the
   teacher's prose answers least (1.80). These counts use a proxy tokenizer; the teacher's own ledger counts 14,343
   completion tokens for the label set where the proxy counts 16,960, so the proxy is about 1.18 times finer.
-  Source: [S184] `lab/refine/research/kernels/data/speculative-acceptance-2026-10-11.json`
+  Source: [S185] `lab/refine/research/kernels/data/speculative-acceptance-2026-10-11.json`
   (`python -m lab speculative-estimate`), `fixtures/learning/tool-calling-labels/label_ledger.jsonl`.
   - Implication: prompt lookup roughly doubles tokens per pass on the labeling and agent traffic, which is mostly
     tool calls; the default 5 to 5 setting leaves most of it unused, so serve with 1 to 3.
@@ -75,9 +75,9 @@ mode, and the kill criterion. The pod measurement itself is not here: it waits o
 
 - **[practitioner]** Speculation with a separate draft model (`method: draft_model`) is in the pinned commit: it
   landed on 2026-01-19 and b1388b1 is from 2026-04-15. vLLM refuses a draft whose vocabulary size differs from the
-  target's, and the draft runs k sequential forward passes per step before the target checks them. Source: [S181]
+  target's, and the draft runs k sequential forward passes per step before the target checks them. Source: [S182]
   ([commit 4a5299c](https://github.com/vllm-project/vllm/commit/4a5299c93ff97c26def537b92562df5ada530fea)),
-  [S183] `vllm/config/speculative.py::verify_equal_vocab_size_if_draft_model` and
+  [S184] `vllm/config/speculative.py::verify_equal_vocab_size_if_draft_model` and
   `docs/features/speculative_decoding/draft_model.md` at b1388b1.
   - Implication: the draft must be a Qwen3.5 model with the teacher's 248,320-token vocabulary (the lm_head width
     on the chip sheet); `Qwen/Qwen3.5-0.8B` is the default the serve script expects, and its vocabulary size is
@@ -103,7 +103,7 @@ mode, and the kill criterion. The pod measurement itself is not here: it waits o
 - **[practitioner]** At b1388b1 vLLM also has `eagle`, `eagle3`, `mtp`, `suffix` and `ngram_gpu`; MTP model types
   include `qwen3_5_mtp` (`vllm/model_executor/models/qwen3_5_mtp.py`), and the Gated DeltaNet attention backend keeps
   per-draft-token state indices, so the teacher's hybrid layers can be verified several tokens at a time. EAGLE-3 is
-  allowed for Qwen-family targets but needs a trained EAGLE head for this exact target. Source: [S183]
+  allowed for Qwen-family targets but needs a trained EAGLE head for this exact target. Source: [S184]
   `vllm/config/speculative.py`, `vllm/v1/attention/backends/gdn_attn.py` at b1388b1.
   - Implication: MTP is the best candidate if the served checkpoint still carries its MTP weights (an INT4 export can
     drop them); EAGLE needs a head nobody has trained for Qwen3.8-27B, so it is out of scope for the weekend.
@@ -116,8 +116,8 @@ mode, and the kill criterion. The pod measurement itself is not here: it waits o
   model runner, so neither needs a ROCm-specific kernel. For unquantized bf16 layers (the lm_head), the gfx11 and
   gfx12 skinny GEMM path (`wvSplitK`) is taken only for 1 to 4 rows; 5 rows or more go to `torch.nn.functional.linear`.
   A main-branch commit of 2026-05-28 raises that bound to 5 rows "for speculative decoding" and is not in the pin;
-  the later ROCm speculative commits on main are for DeepSeek V4 and Kimi drafters. Source: [S183]
-  `vllm/model_executor/layers/utils.py::rocm_unquantized_gemm_impl` at b1388b1, [S182]
+  the later ROCm speculative commits on main are for DeepSeek V4 and Kimi drafters. Source: [S184]
+  `vllm/model_executor/layers/utils.py::rocm_unquantized_gemm_impl` at b1388b1, [S183]
   ([commit a9ec46d](https://github.com/vllm-project/vllm/commit/a9ec46d4b7db6ae1d0cb0f27ce1a7ddb0f749ef8)).
   - Implication: at batch 1 with k 4 or more the lm_head runs through torch's linear, which is what the chip sheet
     measured flat to 16 rows, so the prediction below holds on the pinned build; nothing in the pin blocks ngram or
@@ -132,7 +132,7 @@ mode, and the kill criterion. The pod measurement itself is not here: it waits o
   off, nothing; ngram, `--speculative-config '{"method": "ngram", "num_speculative_tokens": 4, "prompt_lookup_min": 1, "prompt_lookup_max": 3}'`;
   draft, `--speculative-config '{"method": "draft_model", "model": "~/models/Qwen3.5-0.8B", "num_speculative_tokens": 4}'`,
   with `SPEC_K`, `SPEC_MIN`, `SPEC_MAX` and `DRAFT` as overrides. The JSON keys are the ones `SpeculativeConfig`
-  defines at b1388b1. Source: `lab/pod_a_teacher.sh::serve`, [S183] `vllm/config/speculative.py`.
+  defines at b1388b1. Source: `lab/pod_a_teacher.sh::serve`, [S184] `vllm/config/speculative.py`.
   - Implication: one restart of the teacher switches modes; batch-4 arms use `SPEC_K=3` to stay inside 16 rows.
   - Candidate experiment: none beyond SP1. Expected movement: see SP1. Minimum sample size: see SP1.
     Confidence: high.
@@ -154,7 +154,7 @@ mode, and the kill criterion. The pod measurement itself is not here: it waits o
 
   The batch-4 rows assume the pass stays at 347 ms for 4 to 16 rows, which the chip sheet shows for the GEMMs only.
   At the 210 GB/s ceiling (15.5 GB per token, 73.8 ms per pass) the same factors give 32 tok/s at batch 1, k 4.
-  Source: [S185], [L8], [S184].
+  Source: [S186], [L8], [S185].
   - Implication: speculative decoding is the largest single lever left on the teacher at the same watts, about
     2.4 times at batch 1, independent of the kernel work.
   - Candidate experiment: SP1: after the R53 rebuild, on pod A, one slot: for each of off, ngram (k 4 at batch 1,
@@ -172,7 +172,7 @@ mode, and the kill criterion. The pod measurement itself is not here: it waits o
   is lossless at temperature 0); batch-1 decode is at least 1.3 times the off arm (3.7 tok/s or more); batch-4
   aggregate decode is not below the off arm; joules per token is at least 20 percent lower. A draft model must
   also beat ngram by 10 percent at batch 1, or it is not worth its memory and second model. Otherwise serve
-  `--speculative off` and record the numbers. Source: [S184], [L8], `lab/correctness.py`.
+  `--speculative off` and record the numbers. Source: [S185], [L8], `lab/correctness.py`.
   - Implication: the decision is mechanical from one slot's ledger rows; no judgment call is left for the pod.
   - Candidate experiment: none beyond SP1. Expected movement: see SP1. Minimum sample size: see SP1.
     Confidence: high.

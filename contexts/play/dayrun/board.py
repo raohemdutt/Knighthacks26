@@ -22,6 +22,7 @@ from contexts.play.dayrun.models import (
     MoveOption,
     OpenSlot,
     OptionalEvent,
+    Rules,
 )
 from contexts.play.dayrun.routes import Walks
 from contracts.memory import Item
@@ -62,6 +63,26 @@ def work_estimate(cfg: DayRunConfig, title: str) -> float:
     return next((w.minutes for w in cfg.work_estimates if re.search(w.match, title, re.I)), cfg.default_work_minutes)
 
 
+def estimate_of(cfg: DayRunConfig, title: str) -> tuple[float, str, str | None]:
+    """(minutes, "kind" | "default", the word in the title that matched): where a deadline's work estimate comes from."""
+    for w in cfg.work_estimates:
+        if m := re.search(w.match, title, re.I):
+            return w.minutes, "kind", m[0].lower()
+    return cfg.default_work_minutes, "default", None
+
+
+def rules_of(cfg: DayRunConfig, w: Walks) -> Rules:
+    pack = w.places.packs.get(cfg.pack)
+    speed = None
+    if pack is not None and getattr(pack, "_net", None) is not None:  # walks are timed along its footpaths
+        from contexts.play.domain.walknet import DEFAULT_SPEED_MPS
+
+        speed = pack.walk_speed_mps or DEFAULT_SPEED_MPS
+    return Rules(capacity_minutes_per_day=cfg.capacity_minutes_per_day, on_track_risk=cfg.on_track_risk,
+                 win_sleep_hours=cfg.win.sleep_hours, win_meals=cfg.win.meals, need_sleep_hours=cfg.sleep.need_hours,
+                 walk_meters_per_minute=round(speed * 60, 1) if speed else None)
+
+
 def course_of(text: str) -> str | None:
     m = COURSE.search(text)
     return f"{m[1]}{m[2]}".upper() if m else None
@@ -76,6 +97,7 @@ def initial_state(cfg: DayRunConfig, start: datetime, habits: list[dict] | None,
     start = local(cfg, start)
     rows = {r["id"]: r for r in habits or [] if r.get("applies", True)}
     sleep = rows["sleep"]["value"] if "sleep" in rows else None
+    sleep_from = rows["sleep"].get("source") if "sleep" in rows and not (over and over.sleep_hours is not None) else None
     meals = rows["meals"]["value"] if "meals" in rows else None
     asked = {"sleep": over.sleep_hours, "meals": over.meals, "energy": over.energy} if over else {}
     came_from: dict[str, list[str]] = {}
@@ -97,7 +119,8 @@ def initial_state(cfg: DayRunConfig, start: datetime, habits: list[dict] | None,
         energy -= s.no_meal_penalty
     hungry = s.hungry_minutes_no_meal if meals == 0 else s.hungry_minutes_default
     out = Initial(energy=round(max(5.0, min(100.0, energy)), 1), focus=s.focus, sleep_hours=sleep, meals=meals,
-                  sleep_debt=round(debt, 2), hungry_minutes=hungry, source=source)
+                  sleep_debt=round(debt, 2), hungry_minutes=hungry, source=source,
+                  sleep_from=sleep_from)
     if over:
         patch = {k: v for k, v in over.model_dump(include={"energy", "focus", "sleep_debt", "hungry_minutes"}).items() if v is not None}
         out = out.model_copy(update=patch)
@@ -133,22 +156,32 @@ def build_board(
     blocks: list[FixedBlock] = []
     events: list[OptionalEvent] = []
     deadlines: list[Deadline] = []
+    nearby: list[OptionalEvent] = []
     work_left = over.work_left if over else {}
 
     for item in sorted((i for i in items if i.when), key=lambda i: (i.when, i.external_id)):
         when = local(cfg, item.when)
         if item.kind == "assignment":
             if start < when <= start + timedelta(hours=cfg.deadline_horizon_hours):
-                left = float(work_left.get(item.external_id, work_estimate(cfg, item.title)))
+                guess, how, word = estimate_of(cfg, item.title)
+                mine = item.external_id in work_left
+                left = float(work_left[item.external_id]) if mine else guess
                 deadlines.append(Deadline(id=item.external_id, title=item.title, due=when, work_left=left,
-                                          in_window=when <= end, risk=risk_of(cfg, left, start, when), url=item.url))
+                                          in_window=when <= end, risk=risk_of(cfg, left, start, when), url=item.url,
+                                          estimate_from="yours" if mine else how, estimate_word=word, estimate_minutes=guess))
             continue
-        if item.kind != "calendar_event" or item.external_id.startswith(tuple(cfg.ignored_event_prefixes)):
+        if item.kind != "calendar_event":
             continue
+        ignored = item.external_id.startswith(tuple(cfg.ignored_event_prefixes))
         until, place = _end_and_place(cfg, w, item, when)
         if until is None or until <= start or when >= end:
             continue
         name = w.name(place) if place else None
+        if ignored:  # "Near you": never a block or a listed move; kept aside as a suggestion for the gap it falls in
+            note = " · ".join(p.strip() for p in (item.summary or "").split("·")[2:] if p.strip()) or None
+            nearby.append(OptionalEvent(id=item.external_id, title=item.title, start=when, end=until, place=place,
+                                        place_name=name, url=item.url, note=note))
+            continue
         if any(item.external_id.startswith(p) for p in cfg.optional_event_prefixes):
             events.append(OptionalEvent(id=item.external_id, title=item.title, start=when, end=until, place=place,
                                         place_name=name, url=item.url))
@@ -179,6 +212,7 @@ def build_board(
         home=w.ref(cfg.home), initial=initial, blocks=blocks, deadlines=deadlines, events=events,
         friends=[f for f in friends or [] if f.start < end and f.end > start],
         sleep_window=max(nights, key=lambda n: n[1] - n[0]) if nights else None,
+        suggestions=nearby, rules=rules_of(cfg, w),
     )
     return lay_out(cfg, w, board)
 
@@ -207,7 +241,27 @@ def lay_out(cfg: DayRunConfig, w: Walks, board: Board) -> Board:
     board = board.model_copy(update={"blocks": blocks, "slots": slots})
     for slot in slots:
         slot.moves = options(cfg, w, board, slot)
+    board.suggestions = suggest(cfg, w, board)
     return board
+
+
+def suggest(cfg: DayRunConfig, w: Walks, board: Board) -> list[OptionalEvent]:
+    """Each "Near you" event with the open slot it falls in, the walk there and when to leave; one that fits no slot
+    (it overlaps something fixed, or the walks leave no time) is left out."""
+    out: list[OptionalEvent] = []
+    for e in sorted(board.suggestions, key=lambda e: (e.start, e.id)):
+        for slot in board.slots:
+            if not (e.start < slot.end and e.end > slot.start):
+                continue
+            place = e.place or slot.from_place
+            there, back = w.walk(slot.from_place, place)[0], w.walk(place, slot.to_place)[0]
+            arrive = max(slot.start + timedelta(minutes=there), e.start)
+            if minutes_between(arrive, min(e.end, slot.end - timedelta(minutes=back))) < cfg.min_move_minutes:
+                continue
+            out.append(e.model_copy(update={"slot": slot.id, "walk_minutes": there,
+                                            "leave_by": max(slot.start, e.start - timedelta(minutes=there))}))
+            break
+    return out
 
 
 def study_packs(cfg: DayRunConfig, w: Walks, board: Board) -> list[str]:

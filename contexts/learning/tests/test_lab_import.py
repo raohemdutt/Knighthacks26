@@ -146,3 +146,57 @@ def test_the_command_imports_into_the_log_on_disk_once(tmp_path, capsys):
     (tmp_path / "bad.jsonl").write_text("{nope\n")
     assert lab_import.main(["--telemetry", str(tmp_path / "bad.jsonl"), "--data-dir", str(tmp_path / "data")]) == 1
     assert "line 1: not JSON" in capsys.readouterr().err and len(list(EventBus(log_dir=tmp_path / "data" / "events").read_log())) == 7
+
+
+def gate_scores(tmp_path, monkeypatch, run_id="run-l16") -> str:
+    """scores.json written by lab/eval_gate.py itself, on the committed tool-calling fixture's 58 held-out questions.
+
+    Before (the current model) gets questions 1 to 20 right, after (the candidate) 11 to 50: 30 fixed, 10 broke."""
+    from contracts.learning import ModelManifest
+    from lab import eval_gate
+    from lab.dataset import load_split
+    from lab.eval_gate_fake import FakeClient
+    from tests.test_lab_eval_gate import COMMITTED
+
+    monkeypatch.setenv("LAB_STATE_DIR", str(tmp_path / "lab-state"))
+    qs = [e.context for e in load_split(COMMITTED, require_images=False, min_held_out=1).held_out]
+    manifest = tmp_path / "pkg" / "manifest.json"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(ModelManifest(version="atlas-v3-tool-calling", base="Qwen/Qwen3.5-4B", task="tool-calling",
+                                      gguf="atlas-v3-tool-calling-Q4_K_M.gguf", created=datetime(2026, 10, 11, tzinfo=UTC)).model_dump_json())
+    client = FakeClient(COMMITTED, {"http://cur": [set(qs[:20]), set(qs[:21])], "http://cand": [set(qs[10:50])], "http://teach": [set(qs)]})
+    eval_gate.run_gate(client=client, dataset=COMMITTED, current_url="http://cur", candidate_url="http://cand", teacher_url="http://teach",
+                       candidate_manifest=manifest, run_id=run_id, out_dir=tmp_path / "gate", current_version="atlas-v2-tool-calling")
+    return (tmp_path / "gate" / eval_gate.SCORES_FILE).read_text(encoding="utf-8")
+
+
+def test_the_gates_own_scores_fill_the_before_and_after_list(tmp_path, monkeypatch):
+    text = gate_scores(tmp_path, monkeypatch)
+    scores = json.loads(text)
+    view, bus = LabView(), EventBus(log_dir=tmp_path / "events")
+    view.subscribe(bus)
+    with TestClient(app_with(view, bus)) as client:
+        client.post("/api/learning/lab/import", content=telemetry(tmp_path))
+        assert client.post("/api/learning/lab/import?kind=eval", content=text).json()["published"] == 2
+        ev = client.get("/api/learning/lab/run-l16").json()["eval"]
+    assert ev["items_reason"] is None and len(ev["items"]) == scores["n_items"] == 58
+    by_id = {i["id"]: i for i in ev["items"]}
+    for item in scores["items"]:  # every held-out question, with its text, as the gate scored it
+        shown = by_id[item["id"]]
+        assert (shown["question"], shown["group"], shown["before"], shown["after"]) == (
+            item["question"], item["group"], item["before"], item["after"])
+    changes = [i["change"] for i in ev["items"]]
+    assert (changes.count("fixed"), changes.count("broke"), changes.count("still_right"), changes.count("still_wrong")) == (30, 10, 10, 8)
+    assert by_id[scores["items"][0]["id"]]["change"] == "broke" and by_id[scores["items"][20]["id"]]["change"] == "fixed"
+    counts = ev["counts"]  # the summary bar: n right before -> n right after, the gate's own counts
+    assert (counts["before_right"]["value"], counts["after_right"]["value"]) == (scores["correct"]["current"], scores["correct"]["candidate"]) == (20, 40)
+    assert {k: v["value"] for k, v in ev["correct"].items()} == {"current": 20, "candidate": 40, "teacher": 58}
+    assert ev["noise_runs"] == [20, 21] and ev["alpha"] == 0.05 and ev["test"] == scores["test"]
+    assert len({g["group"] for g in ev["groups"]}) == scores["n_groups"] == 4
+
+
+def test_a_scores_file_without_the_new_keys_imports_as_before():
+    _, reported = eval_events(scores_json())
+    body = reported.model_dump()
+    assert not {"correct", "noise_runs", "items", "alpha", "test"} & set(body)
+    assert (body["n_items"], body["n_groups"], body["noise"], body["p_value"]) == (60, 20, 0.02, 0.001)

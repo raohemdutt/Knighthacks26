@@ -1804,7 +1804,7 @@ python -m lab desk-score score data/exports/<dataset_id> --base-url http://127.0
 Tests: `tests/test_lab_desk_score.py`, on `lab/desk_fake.py` (a fake llama-server over an httpx transport) and
 `fixtures/learning/desk-fixture/` (12 synthetic examples on 8 frame_refs; `python -m lab.desk_fake build-fixture`
 rebuilds it). The real runs on the Jetson and on a pod are in `lab/L24_REAL_RUN.md`.
->>>>>>> 2fbf5f3 (L24: README section and the real-run steps for the desk scorer)
+
 ## Experiment runner: `python -m lab experiment run` (O29)
 
 One kernels-track experiment from its ledger definition to its verdict on pod B, in one call
@@ -1836,3 +1836,16 @@ python -m lab experiment run E3 [--task O29] [--row <row>] [--reply "..."] [--re
 
 Tested against `lab/hub_fake.py` (its file store on disk, the pod script run by bash), `lab/machine/slots_fake.py` and
 `lab/bench_fake.py`. The commands of the first real run are in `lab/O29_REAL_RUN.md`.
+
+## The first real fine-tune on pod B (L16)
+
+`lab/l16_run.sh` is the whole run, step by step, and `lab/L16_CONFIG.md` is its config with the source of every
+number (R36's pinned baseline: LoRA r 16, alpha 32, lr 2e-4, batch 4 by accumulation 4, 3 epochs, seed 42). On the
+workstation `dataset` writes the labeled train rows (L13's labels when they are in the repo, else the reference traces
+of `expected.jsonl`, learning ruling 12), `bundle` packs `lab/` and `contracts/` for the pod and `dry-run` runs the
+same command line on the CPU. On pod D, inside the GPU Queue slot, `prep` makes `~/venvs/atlas-train` over the image's
+torch (pip runs only in the venv, with `PYTHONNOUSERSITE=1`, so the user site where pod D keeps vLLM is never touched)
+and downloads the base at its pinned commit to `~/models/Qwen3.5-4B`; `train <run id> <dataset id>` runs the trainer
+and leaves the adapter, telemetry, `run.json`, the log and the ledger rows in `~/adapters/l16-<run id>/`.
+`fixtures/demo/` holds what came back: the trainer log, the loss curve, the ledger rows and the screen recording the
+"It learns" fallback uses (owner ruling 7).
