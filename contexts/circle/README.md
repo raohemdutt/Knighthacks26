@@ -328,7 +328,10 @@ States: `proposed` (your card is waiting; nothing sent), `waiting`, `countered`,
 
 ## One box, no network: the seeded demo
 
-A believable Circle of three on one machine, from the log alone. Nothing here touches Neon or a second box.
+A believable Circle of three on one machine, from the log alone. Nothing here touches Neon or a second box,
+**as long as `NEON_DATABASE_URL` is not exported in the shell you run it from** (the command does not read
+`.env`, so normally it is not). With it exported, the seed builds the app on the real database and the three
+plans this box "approves" in the story are posted there, under `demo-circle`, with new ids on every run.
 
 ```bash
 python -m contexts.demo circle --data-dir /tmp/atlas-circle
@@ -351,6 +354,51 @@ directory again needs `--force` and adds nothing (every event has a fixed id).
 On one box nobody answers a **new** proposal: the friends here are events in the log, not running boxes. A plan
 you start shows its card, then "…'s Atlas is checking the calendar", then "no answer yet". For real answers,
 use two boxes (below). To throw the demo away: `rm -rf /tmp/atlas-circle`.
+
+## Demo members in the shared database (`python -m contexts.demo neon`)
+
+The one-box demo above fills one box's own log. The leaderboards on the Circle screen, the shared calendar and the
+friends in the League come from the shared database, and stay empty until boxes have shared for a while. This
+command puts a few demo members' rows there (`contexts/demo/neon_seed.py`), through the classes a box itself
+writes with:
+
+```bash
+python -m contexts.demo neon --circle kh-judges                    # dry run: every row it would write, by table
+python -m contexts.demo neon --circle kh-judges --apply            # writes them; again: adds nothing
+python -m contexts.demo neon --circle kh-judges --remove           # dry run of the removal
+python -m contexts.demo neon --circle kh-judges --remove --apply   # deletes exactly those rows
+```
+
+| What | Rows | Written by |
+| --- | --- | --- |
+| Per member and day: six habit summaries and a Waste Watch count; two Sort It rounds each | `shares`, `habit_summaries`, `impact_counters`, `game_scores` | `CircleSharing` shapes the share, `NeonShares.push` lands it |
+| "Dinner" (6:30 PM) and "Board game night" (8:30 PM) on the evening of `--end`: a proposal, each invitee's "free", the agreed event | `agent_messages`, `events`, `rsvps` | `NeonCircleStore.post`, `record_event` |
+| The last complete week: its stake, its standings, a five-day dare and who kept it | `league_stakes`, `league_weeks`, `league_challenges` | the real League projection declares them from the summaries above; `NeonLeague` pushes them |
+| The circle, with a name that is not its id | `circles` | the seed's one statement of its own: a box names a circle after its id, and the name is how the seed knows a circle is its own |
+
+`--members a,b` (or `a=Display Name`) gives explicit ids, used as they are; the default is `demo-hemdutt`,
+`demo-ilan`, `demo-dominick`. `--days` (7) is how far back the summaries go; the whole last week is always
+covered so its League result is a real one. `--end YYYY-MM-DD` (today) is the story's last day. No place is
+written: a `presence` row expires within hours and is rewritten on every push.
+
+Everything is a function of the circle, the members, the days and the **date** of `--end`, so a second `--apply`
+the same day adds nothing and `--remove` with the same values works from any machine. `--apply` also writes a
+manifest (`<data-dir>/neon-seed/<circle>.json`) so on the same machine `--remove` needs only `--circle`.
+
+What it will not do:
+
+- **Use a member id that is someone's.** Member ids are global in the database (one `members` row per id, one
+  habit row per member, habit and day). A seed id that belongs to another circle, or has any row this run would
+  not write, is refused. On another day, remove yesterday's seed first.
+- **Touch a circle that has other members' rows**, unless `--into-existing`. With it only the demo members'
+  rows are added, a League week or stake someone already declared is left alone, and nothing is updated.
+- **Delete anything it did not write.** `--remove` deletes by exact key and owner, a demo member only when
+  nothing refers to it any more, and the circle only when it carries the seed's name and is empty.
+
+For a box to show it: `ATLAS_CIRCLE_ID=<the circle>` and `ATLAS_CIRCLE_MEMBER=<its own id, not a seeded one>` in
+`.env`, with `NEON_DATABASE_URL`. The leaderboards and the calendar show the names stored with the members
+("Hemdutt"); the League shows a member under its id unless that box's `circle.names` has it. The seeded plans
+name their invitees, so no real box is asked to answer them.
 
 ## Two boxes, live: the real demo
 
