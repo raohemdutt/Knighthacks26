@@ -98,6 +98,17 @@ def test_a_lab_number_comes_with_its_metrics_line_measurement_time_and_low_confi
                                               "low_confidence": True, "reason": None}
 
 
+def test_a_reference_row_on_another_chip_is_never_the_teachers_figure(tmp_path):
+    a100 = json.loads(metrics_row("teacher.decode_tok_s", 64.956, "tok/s", "a100", "2026-10-11T01:52:01Z", low=True))
+    a100["conditions"] = {"hub": "colab", "other_chip": True}  # R57's A100 reference: newer, but not the lab's teacher
+    metrics = write_metrics(tmp_path / "metrics.jsonl", [
+        metrics_row("teacher.decode_tok_s", 2.82, "tok/s", "pod-c", "2026-10-10T19:59:08Z"), json.dumps(a100)])
+    stats = snapshot(metrics=metrics, state_dir=tmp_path / "state")
+    assert (stats["teacher_tok_s"]["value"], stats["teacher_tok_s"]["source"]) == (2.82, "metrics.jsonl:1")
+    found, _ = LabRecords(metrics_path=metrics, state_dir=tmp_path / "state").find([("teacher.decode_tok_s", "a100")])
+    assert [f.value for f in found[("teacher.decode_tok_s", "a100")]] == [64.956]  # named, it still answers
+
+
 def test_a_jetson_figure_reads_only_jetson_rows(tmp_path):
     metrics = write_metrics(tmp_path / "metrics.jsonl", [
         metrics_row("student.decode_tok_s", 15.7, "tok/s", "jetson", "2026-10-10T10:00:00Z"),
