@@ -228,7 +228,7 @@ def test_the_dry_run_prints_the_plan_and_touches_nothing(world):
     plan = answer["plan"]
     assert [f["name"] for f in plan["files"]] == [f"{VERSION}-Q4_K_M.gguf", "mmproj-F16.gguf"]
     assert (plan["current"], plan["previous"], plan["account"]) == ("atlas-base", "atlas-v1", "D")
-    assert plan["from"].endswith(f"/user/{USER}/proxy/8300/{VERSION}")
+    assert plan["from"].endswith(f"/proxy/8300/{VERSION}") and plan["disk_free_mb"] > 0
     assert not world.models.exists() and not world.events.exists()
     assert world.box.calls == [] and world.local.chat == []
 
@@ -247,6 +247,14 @@ def test_a_pod_with_no_complete_package_is_an_answer_not_a_crash(world):
     answer = world.run()
 
     assert (answer["ok"], answer["kind"]) == (False, "no_package") and world.logged() == []
+
+
+def test_a_pod_with_no_package_server_running_says_so(world):
+    world.proxy.listening = False
+    answer = world.run()
+
+    assert (answer["ok"], answer["kind"]) == (False, "no_package") and "server_down" in answer["error"]
+    assert world.box.calls == [] and world.logged() == []
 
 
 def test_missing_hub_keys_are_named_and_never_printed(world):

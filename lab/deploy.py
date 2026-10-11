@@ -74,7 +74,11 @@ class DeployError(Exception):
 # --- the pod side: which version, and what is in it ---------------------------------------------------------------
 
 def list_versions(client: PackageClient, *, sleep: Callable[[float], None] = time.sleep) -> list[str]:
-    raw = package_pull.fetch_small(client, client.proxy_path(), sleep=sleep)
+    try:
+        raw = package_pull.fetch_small(client, client.proxy_path(), sleep=sleep)
+    except PullError as err:
+        raise DeployError("no_package", f"the pod's package server did not list its packages ({err.kind}): "
+                                        f"{client.scrub(err.message)}") from None
     try:
         return [str(name) for name in json.loads(raw)["versions"]]
     except (ValueError, KeyError, TypeError):
@@ -111,10 +115,10 @@ def check_version(version: str) -> str:
 
 
 def file_sizes(client: PackageClient, version: str, *, sleep: Callable[[float], None] = time.sleep) -> dict[str, int]:
-    raw = package_pull.fetch_small(client, client.proxy_path(version), sleep=sleep)
     try:
+        raw = package_pull.fetch_small(client, client.proxy_path(version), sleep=sleep)
         return {item["name"]: int(item["size"]) for item in json.loads(raw)["files"]}
-    except (ValueError, KeyError, TypeError):
+    except (PullError, ValueError, KeyError, TypeError):
         return {}
 
 
@@ -252,15 +256,18 @@ def plan_view(plan: Plan, client: PackageClient, box: Box, models_dir: Path) -> 
     m = plan.manifest
     names = [name for name, _ in package_pull.package_files(m)]
     total = sum(plan.sizes.get(name, 0) for name in names)
+    here = models_dir.resolve()
+    while not here.exists() and here != here.parent:
+        here = here.parent
     try:
-        free = shutil.disk_usage(models_dir if models_dir.exists() else models_dir.parent).free
+        free = shutil.disk_usage(here).free
     except OSError:
         free = None
     return {
         "version": plan.version, "base": m.base, "task": m.task, "scores": m.scores,
         "files": [{"name": name, "mb": _mb(plan.sizes.get(name, 0)), "sha256": m.sha256.get(name)} for name in names],
         "package_mb": _mb(total), "disk_free_mb": None if free is None else _mb(free),
-        "from": client.proxy_path(plan.version), "hub": client.host, "account": client.account.letter,
+        "from": client.scrub(client.proxy_path(plan.version)), "hub": client.host, "account": client.account.letter,
         "into": str(models_dir / plan.version), "current": box.current(), "previous": box.previous(),
         "steps": ["pull every file in Range parts through the hub proxy, sha256 per file, manifest.json last",
                   f"jetson/atlas_swap.py swap {plan.version}: verify the sha256s, switch current, restart, wait",
