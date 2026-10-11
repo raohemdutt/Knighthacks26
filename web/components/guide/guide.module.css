@@ -154,11 +154,60 @@
   cursor: pointer;
 }
 
-.gazeDot {
+/* ?gazeDebug=1 */
+.gazeCell {
   position: absolute;
   border: 2px dashed var(--accent-text);
   background: var(--accent-soft);
   border-radius: var(--radius-sm);
+}
+
+.gazeRadius,
+.gazeRaw,
+.gazeFiltered,
+.gazeSnap {
+  position: absolute;
+  border-radius: var(--radius-pill);
+}
+
+.gazeRadius {
+  border: 2px solid var(--accent-text);
+  opacity: 0.6;
+}
+
+.gazeRaw {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--muted);
+}
+
+.gazeFiltered {
+  width: 10px;
+  height: 10px;
+  background: var(--accent-text);
+}
+
+.gazeSnap {
+  border: 3px solid var(--ok);
+  border-radius: var(--radius-sm);
+}
+
+.gazeSnapSeveral {
+  border-style: dashed;
+  border-color: var(--watch);
+}
+
+.gazeReadout {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  max-width: calc(100vw - 24px);
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--sh-raised-sm);
+  font-size: 12.5px;
 }
 
 /* ---- calibration: five dots, one at a time ---- */

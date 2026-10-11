@@ -177,45 +177,115 @@ try {
     return lm;
   };
   const f0 = Z.features(face(0, 0));
-  yes("features: centred eyes read zero", f0 && Math.abs(f0[0]) < 1e-9 && Math.abs(f0[1]) < 1e-9, JSON.stringify(f0));
+  yes("features: centred eyes read zero", f0 && f0.length === 6 && Math.abs(f0[0]) < 1e-9 && Math.abs(f0[1]) < 1e-9, JSON.stringify(f0));
   const fr = Z.features(face(0.01, 0));
   const fd = Z.features(face(0, 0.004));
-  yes("features: irises to the right read positive x on both eyes", fr[0] > 0.1 && Math.abs(fr[1]) < 1e-9, JSON.stringify(fr));
-  yes("features: irises down read positive y", fd[1] > 0.03 && Math.abs(fd[0]) < 1e-9, JSON.stringify(fd));
+  yes("features: irises to the right read positive x on both eyes", fr[0] > 0.03 && Math.abs(fr[1]) < 1e-9, JSON.stringify(fr));
+  yes("features: irises down read positive y", fd[1] > 0.01 && Math.abs(fd[0]) < 1e-9, JSON.stringify(fd));
+  yes("features: in units of the distance between the eyes", Math.abs(fr[0] - 0.01 / 0.24) < 1e-9);
   eq("features: no iris points", Z.features(face(0, 0).slice(0, 468)), null);
   const blink = face(0, 0);
   blink[159] = { x: 0.42, y: 0.399 };
   blink[145] = { x: 0.42, y: 0.401 };
   eq("features: a blink is skipped", Z.features(blink), null);
+  const m = new Array(16).fill(0);
+  (m[8] = 0.2), (m[9] = -0.1), (m[12] = 3), (m[13] = -6), (m[14] = -60);
+  eq("features: head terms come from the face transform when it is given", Z.features(face(0, 0), m).slice(2), [0.2, -0.1, 0.05, -0.1]);
 
-  // ---- gaze: the fit, on a made-up person whose irises move 0.02 of the picture across the screen
-  let seed = 7;
+  // ---- gaze: calibration on a made-up person. Their irises move 0.02 of the picture across the screen, a little less
+  //      towards the edges (so the truth is slightly curved), and their head sways on its own (it carries no hint of where they look). `noise` is the camera's jitter.
+  let seed = 11;
   const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff - 0.5) * 2;
-  const look = (x, y, noise) => Z.features(face((0.5 - x) * 0.02 + rnd() * noise, (y - 0.5) * 0.008 + rnd() * noise * 0.4, (0.5 - x) * 0.05 + rnd() * noise, (y - 0.5) * 0.04 + rnd() * noise));
-  const calibrate = (noise) => Z.fitCalibration(Z.DOTS.flatMap((d) => Array.from({ length: 11 }, () => ({ f: look(d.x, d.y, noise), x: d.x, y: d.y }))), 1.6);
-  const clean = calibrate(0.0002);
-  yes("fit: a steady person is 'good'", clean.quality === "good", `residual ${clean.residual.toFixed(3)} scatter ${clean.scatter.toFixed(3)}`);
-  const probe = Z.predict(clean, look(0.75, 0.25, 0));
-  yes("fit: a new point lands in the right third", Math.abs(probe.x - 0.75) < 0.15 && Math.abs(probe.y - 0.25) < 0.15, JSON.stringify(probe));
-  const shaky = calibrate(0.015);
-  yes("fit: a shaky reading is not 'good'", shaky.quality !== "good", `quality ${shaky.quality} residual ${shaky.residual.toFixed(3)} scatter ${shaky.scatter.toFixed(3)}`);
-  yes("fit: a rough fit only earns a 2x2 grid", shaky.quality === "poor" || (shaky.cols === 2 && shaky.rows === 2));
-  const noisy = calibrate(0.08);
-  eq("fit: noise is 'poor'", noisy.quality, "poor");
-  eq("fit: too few dots", Z.fitCalibration([{ f: [0, 0, 0, 0], x: 0.5, y: 0.5 }]), null);
-  yes("words: good says it is a grid, not a spot", /grid/.test(Z.qualityWords(clean)) && /not the exact spot/.test(Z.qualityWords(clean)));
-  yes("words: rough says what it is used for", /only use it to start the pointer/.test(Z.qualityWords({ ...clean, quality: "rough" })));
+  const look = (x, y, noise) => {
+    const gx = 0.5 - x;
+    const gy = y - 0.5;
+    const sway = [rnd() * 0.01, rnd() * 0.01];
+    const mm = new Array(16).fill(0);
+    (mm[8] = sway[0]), (mm[9] = sway[1]), (mm[12] = sway[0] * 40), (mm[13] = sway[1] * 40), (mm[14] = -55);
+    return Z.features(face(gx * 0.02 * (1 - 0.25 * gx * gx) + rnd() * noise, gy * 0.008 * (1 - 0.25 * gy * gy) + rnd() * noise * 0.4), mm);
+  };
+  const W = 1440;
+  const H = 900;
+  const looks = (dots, noise, n = 28) => dots.flatMap((d) => Array.from({ length: n }, () => ({ f: look(d.x, d.y, noise), x: d.x, y: d.y })));
+  const calibrate = (noise, dots = Z.DOTS_9) => Z.validate(Z.fitCalibration(looks(dots, noise), W / H, 1000), looks(Z.DOTS_CHECK, noise), W, H);
+  const truth = (c, noise) => {
+    // 300 fresh looks anywhere on the screen: the real mean miss in px, which the validation number should be close to
+    let sum = 0;
+    for (let i = 0; i < 300; i++) {
+      const x = 0.05 + 0.9 * Math.abs(rnd());
+      const y = 0.05 + 0.9 * Math.abs(rnd());
+      const ps = Array.from({ length: 9 }, () => Z.predict(c, look(x, y, noise)));
+      sum += Math.hypot((Z.median(ps.map((q) => q.x)) - x) * W, (Z.median(ps.map((q) => q.y)) - y) * H);
+    }
+    return sum / 300;
+  };
+  const rows = [0.0003, 0.001, 0.003, 0.008, 0.02].map((noise) => {
+    const c = calibrate(noise);
+    return { noise, c, real: truth(c, noise) };
+  });
+  for (const r of rows) console.log(`        camera jitter ${r.noise}: ${r.c.model} model, left-out ${(r.c.leftOut * 100).toFixed(1)}% of diagonal, miss on fresh dots ${Math.round(r.c.validation.freshPx)} px, counted as ${Math.round(r.c.validation.meanPx)} px (true ${Math.round(r.real)} px) -> ${r.c.quality}, ${r.c.cols}x${r.c.rows}`);
+  const steady = rows[0].c;
+  yes("fit: a steady person is 'good' with a grid finer than 3x3", steady.quality === "good" && steady.cols >= 4, `${steady.cols}x${steady.rows}`);
+  yes("fit: the miss it counts is close to the true miss (within a factor of two, both ways)", rows.every((r) => r.c.validation.meanPx < 2 * r.real + 15 && r.real < 2 * r.c.validation.meanPx + 15));
+  yes("fit: the miss it counts is never less than the miss on the fresh dots", rows.every((r) => r.c.validation.meanPx >= r.c.validation.freshPx));
+  yes("fit: a cell is always at least twice the measured miss", rows.every((r) => r.c.quality === "poor" || (W / r.c.cols >= 2 * r.c.validation.meanPx && H / r.c.rows >= 2 * r.c.validation.meanPx)));
+  yes("fit: more jitter never earns a finer grid", rows.every((r, i) => i === 0 || r.c.cols <= rows[i - 1].c.cols));
+  yes("fit: a very noisy camera is not used", rows[4].c.quality === "poor" && rows[4].c.cols === 1, `${rows[4].c.quality} ${rows[4].c.cols}`);
+  yes("fit: an unchecked fit is not trusted", Z.fitCalibration(looks(Z.DOTS_9, 0.0003), W / H).quality === "poor" && Z.fitCalibration(looks(Z.DOTS_9, 0.0003), W / H).validation === null);
+  eq("fit: five dots only ever use the straight model", calibrate(0.0003, Z.DOTS_5).model, "linear");
+  eq("fit: too few dots", Z.fitCalibration([{ f: [0, 0, 0, 0, 0, 0], x: 0.5, y: 0.5 }]), null);
+  eq("dots: nine, five and four, none shared between fit and check", [Z.DOTS_9.length, Z.DOTS_5.length, Z.DOTS_CHECK.length, Z.DOTS_CHECK.some((d) => Z.DOTS_9.some((e) => e.x === d.x && e.y === d.y))], [9, 5, 4, false]);
+  eq("grid: a 90 px miss on 1440 x 900 earns 6 x 4 at most", Z.gridFor(90, 1440, 900), { cols: 6, rows: 4 });
+  eq("grid: a 200 px miss earns 3 x 2", Z.gridFor(200, 1440, 900), { cols: 3, rows: 2 });
+  eq("grid: a 500 px miss earns nothing", Z.gridFor(500, 1440, 900), { cols: 1, rows: 1 });
+  eq("words: a share of the width", Z.shareWords(180, 1440), "1/8 of the screen width");
+  yes("words: good states the measured number and that it is not a spot", /Accurate to about 1\/\d+ of the screen width \(\d+ px on average: \d+ px on 4 fresh dots, \d+ px on calibration dots left out of the fit; the worse one counts\)/.test(Z.qualityWords(steady)) && /Not the exact spot/.test(Z.qualityWords(steady)));
+  yes("words: rough says what it is used for", /only use it to start the pointer/.test(Z.qualityWords({ ...steady, quality: "rough" })));
+  yes("words: poor says it is not used and what to change", /not good enough to use/.test(Z.qualityWords(rows[4].c)));
 
-  // ---- gaze: smoothing, rounding, dwell
-  const sm = new Z.MedianSmoother(5);
-  let out;
-  for (const x of [0.2, 0.21, 0.9, 0.2, 0.19]) out = sm.push({ x, y: 0.5 });
-  eq("median: one wild frame does not move it", out, { x: 0.2, y: 0.5 });
+  // ---- gaze: outliers, drift
+  const dot = Array.from({ length: 20 }, (_, i) => ({ f: [0.01 + i * 1e-5, 0.02, 0, 0, 0, 0], x: 0.5, y: 0.5 }));
+  eq("clean: a glance away during a dot is dropped", Z.clean([...dot, { f: [0.2, 0.02, 0, 0, 0, 0], x: 0.5, y: 0.5 }]).length, 20);
+  eq("clean: steady looks are all kept", Z.clean(dot).length, 20);
+  eq("drift: same pose, fresh", Z.drifted(steady, [0, 0, steady.pose[0], steady.pose[1], steady.pose[2], steady.pose[3]], 2000), null);
+  eq("drift: head turned", Z.drifted(steady, [0, 0, steady.pose[0] + 0.3, steady.pose[1], steady.pose[2], steady.pose[3]], 2000), "moved");
+  eq("drift: moved sideways", Z.drifted(steady, [0, 0, steady.pose[0], steady.pose[1], steady.pose[2] + 0.2, steady.pose[3]], 2000), "moved");
+  eq("drift: twenty minutes on", Z.drifted(steady, [0, 0, steady.pose[0], steady.pose[1], steady.pose[2], steady.pose[3]], 1000 + 21 * 60 * 1000), "old");
+
+  // ---- gaze: the One-Euro filter, fixations, rounding
+  const oe = new Z.OneEuro();
+  let rest;
+  let spread = 0;
+  for (let i = 0; i < 60; i++) {
+    rest = oe.push({ x: 0.3 + rnd() * 0.02, y: 0.5 + rnd() * 0.02 }, i * 40);
+    if (i > 30) spread = Math.max(spread, Math.abs(rest.x - 0.3));
+  }
+  yes("one-euro: jitter at rest is cut to under a third", spread < 0.02 / 3, String(spread));
+  let jump;
+  for (let i = 60; i < 68; i++) jump = oe.push({ x: 0.8, y: 0.5 }, i * 40);
+  yes("one-euro: a jump is followed within a third of a second", Math.abs(jump.x - 0.8) < 0.05, String(jump.x));
+  const fx = new Z.Fixation(0.1);
+  let fixed;
+  for (let i = 0; i <= 10; i++) fixed = fx.push({ x: 0.4 + (i % 2) * 0.01, y: 0.4 }, i * 50);
+  yes("fixation: resting eyes count up", fixed.ms === 500 && Math.abs(fixed.x - 0.4) < 0.02, JSON.stringify(fixed));
+  eq("fixation: a jump starts again", fx.push({ x: 0.9, y: 0.4 }, 550).ms, 0);
   eq("quantise", Z.quantise({ x: 0.1, y: 0.95 }, 3, 3), { col: 0, row: 2, x: 1 / 6, y: 5 / 6 });
   eq("quantise: outside the screen is clamped", Z.quantise({ x: 1.3, y: -0.2 }, 3, 3), { col: 2, row: 0, x: 5 / 6, y: 1 / 6 });
-  const box = { x0: 0.05, y0: 0.05, x1: 0.2, y1: 0.2 };
-  eq("on target: same cell", Z.onTarget({ col: 0, row: 0 }, 3, 3, box), true);
-  eq("on target: far cell", Z.onTarget({ col: 2, row: 2 }, 3, 3, box), false);
+
+  // ---- gaze: snap to the one marked thing within the measured miss; never pick between two
+  const thing = (id, left, top) => ({ id, left, top, right: left + 100, bottom: top + 40 });
+  const marked = [thing("a", 100, 100), thing("b", 100, 160), thing("c", 600, 100)];
+  eq("snap: inside one thing", Z.snap({ x: 650, y: 120 }, 50, marked), { kind: "one", id: "c" });
+  eq("snap: near one thing, within the miss", Z.snap({ x: 730, y: 120 }, 50, marked), { kind: "one", id: "c" });
+  eq("snap: nothing that close", Z.snap({ x: 400, y: 400 }, 50, marked), { kind: "none" });
+  eq("snap: two within the miss is 'one of these', nearest first", Z.snap({ x: 150, y: 145 }, 50, marked), { kind: "several", ids: ["a", "b"] });
+  eq("snap: a smaller measured miss separates them", Z.snap({ x: 150, y: 120 }, 15, marked), { kind: "one", id: "a" });
+  eq("landed: on it", Z.landed({ kind: "one", id: "a" }, "a"), "on");
+  eq("landed: one of a few", Z.landed({ kind: "several", ids: ["b", "a"] }, "a"), "near");
+  eq("landed: on something else", [Z.landed({ kind: "one", id: "b" }, "a"), Z.landed({ kind: "none" }, "a")], [null, null]);
+  eq("distance to a box", [Z.distanceTo({ x: 150, y: 120 }, marked[0]), Z.distanceTo({ x: 230, y: 180 }, marked[0])], [0, Math.hypot(30, 40)]);
+
+  // ---- gaze: dwell
   const d = new Z.Dwell();
   eq("dwell: not yet", [d.update(true, 0), d.update(true, 400), d.update(false, 500), d.update(true, 600), d.update(true, 1200)], [null, null, null, null, null]);
   eq("dwell: arrived after 700 ms on the target", d.update(true, 1300), "arrived");

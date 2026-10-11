@@ -4,8 +4,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { useAtlas } from "@/lib/atlas";
-import { Dwell, onTarget } from "@/lib/gaze";
-import { gaze } from "@/lib/gazeTracker";
+import { Dwell, landed as eyesLanded, snap, type Thing } from "@/lib/gaze";
+import { gaze, type GazeEstimate } from "@/lib/gazeTracker";
 import { SCREENS, classify, ease, fromGaze, narration, pathPoint, pinTarget, pinnedThing, resolveApp, thingName, trail, travelMs, type GuideTarget, type Locator, type Pt, type Reveal } from "@/lib/guide";
 import { offer, onGuide, pointAt, type GuideMessage, type GuideRun } from "@/lib/guideBus";
 import { along, length as routeLength, pointerRoute, type Box } from "@/lib/guidePath";
@@ -68,6 +68,12 @@ const visible = (el: Element): DOMRect | null => {
 
 /** The element a locator names, if it is on the page and has a size. */
 function locate(at: Locator): Element | null {
+  const found = locateAll(at);
+  return found === "hidden" ? null : found;
+}
+
+/** The same, telling "it is on the page but not shown at this width" ("hidden") from "not there (yet)" (null). */
+function locateAll(at: Locator): Element | "hidden" | null {
   let found: Element[] = [];
   if (at.id) found = [...document.querySelectorAll(`[data-guide="${at.id.replace(/["\\]/g, "")}"]`)];
   else if (at.sel) {
@@ -82,8 +88,9 @@ function locate(at: Locator): Element | null {
     }
   }
   if (at.up) found = found.map((el) => el.closest(at.up!) ?? el);
+  const there = found.length > 0;
   found = found.filter((el) => visible(el));
-  return (at.last ? found[found.length - 1] : found[0]) ?? null;
+  return (at.last ? found[found.length - 1] : found[0]) ?? (there ? "hidden" : null);
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => window.setTimeout(r, ms));
@@ -98,7 +105,7 @@ export function GuideLayer() {
   const [offered, setOffered] = useState<Offer | null>(null);
   const [ok, setOk] = useState(false); // the eyes arrived
   const [calibrating, setCalibrating] = useState(false);
-  const [debug, setDebug] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [debug, setDebug] = useState<{ on: boolean; e: GazeEstimate | null; snapped: Thing[]; several: boolean; why: string }>({ on: false, e: null, snapped: [], several: false, why: "" });
   const turn = useRef(0); // bumped by every new run and every cancel
   const el = useRef<Element | null>(null);
   const voiceRef = useRef(voice);
@@ -194,8 +201,17 @@ export function GuideLayer() {
       // 3. the target itself: the first locator gets time to load; the fallbacks only after that
       let found: Element | null = null;
       for (let waited = 0; waited <= 6000 && alive() && !found; waited += 100) {
-        found = locate(target.at[0]!);
-        if (!found && waited >= 2500) for (const at of target.at.slice(1)) if ((found = locate(at))) break;
+        // a locator whose element exists but is not shown at this width (the phone's Settings button on a desktop) is passed over at once
+        for (const at of target.at) {
+          const got = locateAll(at);
+          if (got && got !== "hidden") {
+            found = got;
+            break;
+          }
+          if (got !== "hidden" && waited < 2500) {
+            break;
+          }
+        }
         if (!found) await sleep(100);
       }
       if (!alive()) return;
@@ -258,23 +274,24 @@ export function GuideLayer() {
         show({ phase: "arrived", t: 1 });
       }
 
-      // 5. did the eyes get there?
+      // 5. did the eyes get there? They have when they rest on the target: it is the one marked thing within the measured
+      //    miss of the estimate ("That's it."), or one of a few that close (region-level: "or right next to it").
       if (eyes && !held) {
         const dwell = new Dwell();
         const began = performance.now();
         while (alive() && performance.now() - began < 20_000) {
-          await sleep(100);
+          await sleep(80);
           const e = gaze.estimate();
           const r = el.current ? visible(el.current) : null;
-          const on = e && r ? onTarget(e, e.cols, e.rows, { x0: r.left / window.innerWidth, y0: r.top / window.innerHeight, x1: r.right / window.innerWidth, y1: r.bottom / window.innerHeight }) : null;
-          const what = dwell.update(on, performance.now());
+          const hit = e && r && el.current ? eyesLanded(snap(restPoint(e), e.radius, things(el.current)), TARGET) : null;
+          const what = dwell.update(e && r ? hit !== null && e.rest.ms >= 200 : null, performance.now());
           if (what === "arrived") {
             if (!alive()) return;
             setOk(true);
-            tell("That's it.");
+            tell(hit === "near" ? "That's it, or right next to it." : "That's it.");
             break;
           }
-          if (what === "repeat" && e && r) tell(fromGaze({ x: ((e.col + 0.5) / e.cols) * window.innerWidth, y: ((e.row + 0.5) / e.rows) * window.innerHeight }, { x: r.left + r.width / 2, y: r.top + r.height / 2 }, window.innerWidth, window.innerHeight));
+          if (what === "repeat" && e && r) tell(fromGaze({ x: e.x * window.innerWidth, y: e.y * window.innerHeight }, { x: r.left + r.width / 2, y: r.top + r.height / 2 }, window.innerWidth, window.innerHeight));
         }
       }
       if (!held) {
@@ -345,8 +362,13 @@ export function GuideLayer() {
     if (q.get("gazeDebug")) {
       tick = window.setInterval(() => {
         const e = gaze.estimate();
-        setDebug(e ? { x: (e.col / e.cols) * 100, y: (e.row / e.rows) * 100, w: 100 / e.cols, h: 100 / e.rows } : null);
-      }, 150);
+        const all = e ? things(null) : [];
+        const s = e ? snap(restPoint(e), e.radius, all) : { kind: "none" as const };
+        const ids = s.kind === "one" ? [s.id] : s.kind === "several" ? s.ids : [];
+        const st = gaze.get();
+        const why = e ? "" : st.status !== "on" ? `camera ${st.status}` : st.face !== "ok" ? (st.face === "many" ? "more than one face" : "no face") : !st.calibration?.validation ? "not calibrated and checked" : st.calibration.quality === "poor" ? "calibration too poor to use" : "no estimate";
+        setDebug({ on: true, e, snapped: all.filter((t) => ids.includes(t.id)), several: s.kind === "several", why });
+      }, 100);
     }
     return () => (window.clearTimeout(timer), window.clearInterval(tick));
     // once per page load
@@ -412,7 +434,30 @@ export function GuideLayer() {
     return () => window.cancelAnimationFrame(raf);
   }, [watching]);
 
-  const debugBox = debug ? <div className={g.gazeDot} style={{ left: `${debug.x}%`, top: `${debug.y}%`, width: `${debug.w}%`, height: `${debug.h}%` }} data-gaze-debug /> : null;
+  // ?gazeDebug=1: the raw estimate (small ring), the filtered one (dot), the measured-miss radius, the grid cell, and what it snapped to
+  const dw = typeof window === "undefined" ? 1 : window.innerWidth;
+  const dh = typeof window === "undefined" ? 1 : window.innerHeight;
+  const de = debug.e;
+  const debugBox = debug.on ? (
+    <>
+      {de ? (
+        <>
+          <div className={g.gazeCell} style={{ left: `${(de.col / de.cols) * 100}%`, top: `${(de.row / de.rows) * 100}%`, width: `${100 / de.cols}%`, height: `${100 / de.rows}%` }} />
+          <div className={g.gazeRadius} style={{ left: de.x * dw - de.radius, top: de.y * dh - de.radius, width: 2 * de.radius, height: 2 * de.radius }} />
+          <div className={g.gazeRaw} style={{ left: de.raw.x * dw - 6, top: de.raw.y * dh - 6 }} />
+          <div className={g.gazeFiltered} style={{ left: de.x * dw - 5, top: de.y * dh - 5 }} />
+          {debug.snapped.map((t) => (
+            <div key={t.id} className={`${g.gazeSnap} ${debug.several ? g.gazeSnapSeveral : ""}`} style={{ left: t.left - 3, top: t.top - 3, width: t.right - t.left + 6, height: t.bottom - t.top + 6 }} />
+          ))}
+        </>
+      ) : null}
+      <div className={g.gazeReadout} data-gaze-debug>
+        {de
+          ? `gaze: ${de.cols}x${de.rows} grid, cell ${de.col + 1},${de.row + 1} · miss radius ${Math.round(de.radius)} px · resting ${Math.round(de.rest.ms)} ms · ${debug.snapped.length === 0 ? "on nothing marked" : debug.several ? `one of ${debug.snapped.length}: ${debug.snapped.map((t) => t.id).join(", ")}` : `on ${debug.snapped[0]!.id}`}`
+          : `gaze: not in use (${debug.why})`}
+      </div>
+    </>
+  ) : null;
   if (calibrating) return <Calibrate onDone={() => setCalibrating(false)} />;
   if (!view && !offered) return debugBox ? <div className={g.layer}>{debugBox}</div> : null;
 
@@ -501,6 +546,38 @@ export function GuideLayer() {
       </div>
     </div>
   );
+}
+
+const TARGET = "\u0000target";
+
+/** Where the eyes are resting when they rest, else the filtered estimate; in pixels. */
+function restPoint(e: GazeEstimate): { x: number; y: number } {
+  const p = e.rest.ms >= 150 ? e.rest : e;
+  return { x: p.x * window.innerWidth, y: p.y * window.innerHeight };
+}
+
+/**
+ * The marked things on screen that gaze may snap to: every `data-guide` element in view that holds no other one (a card
+ * and the items in it would always tie). With a target, the target is one thing whatever it holds, and its own parts and
+ * the cards around it are left out.
+ */
+function things(target: Element | null): Thing[] {
+  const out: Thing[] = [];
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const box = (id: string, r: DOMRect) => out.push({ id, left: r.left, top: r.top, right: r.right, bottom: r.bottom });
+  if (target) {
+    const r = visible(target);
+    if (r) box(TARGET, r);
+  }
+  for (const el of document.querySelectorAll("[data-guide]")) {
+    if (target && (el === target || el.contains(target) || target.contains(el))) continue;
+    if (el.querySelector("[data-guide]") || el.closest("[data-guide-caption]")) continue;
+    const r = visible(el);
+    if (!r || r.bottom < 0 || r.top > vh || r.right < 0 || r.left > vw || r.width < 6 || r.height < 6) continue;
+    box(el.getAttribute("data-guide") ?? "", r);
+  }
+  return out;
 }
 
 /** What the pointer should go round: the cards and panels on the page, except any that hold the target. */

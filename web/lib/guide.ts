@@ -217,7 +217,7 @@ const ROWS: Row[] = [
   { id: "zones:home", route: "/zones/", label: "Zones", names: ["zones", "camera zones", "draw zones"], at: HEAD, say: ["Look at the top of the Zones screen.", "The areas each camera watches."] },
   { id: "spot:home", route: "/spot/", label: "Inspection", names: ["inspection", "spot", "the robot", "plant floor", "nextera"], at: [{ id: "status" }, HEAD], say: ["Look at the top of the Inspection screen.", "Your shift in one line. Ask me where anything is from here."] },
   // anywhere
-  { id: "settings", route: null, label: "Settings", names: ["settings", "voice settings", "the token", "use my eyes", "eye tracking", "gaze", "camera switch"], at: { sel: "button[aria-label='Settings']" }, say: ["Look at the top right corner.", "Settings: the voice switches, and Use my eyes to guide me."] },
+  { id: "settings", route: null, label: "Settings", names: ["settings", "voice settings", "the token", "use my eyes", "eye tracking", "gaze", "camera switch"], at: [{ sel: "button[aria-label='Settings']" }, { sel: "aside button", text: "^Settings" }], say: ["Look for the Settings button: top right on a phone, at the foot of the list of screens on a computer.", "Settings: the voice switches, and Use my eyes to guide me."] },
 ];
 
 /** The things the cameras can be asked about. A question that names one goes to the box, never to the app guide. */

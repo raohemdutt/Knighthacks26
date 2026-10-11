@@ -7,15 +7,11 @@ import { qualityWords } from "@/lib/gaze";
 import { gaze, type GazeState } from "@/lib/gazeTracker";
 import { calibrateGaze } from "@/lib/guideBus";
 
-const SERVER: GazeState = { status: "off", wanted: false, calibration: null, face: "none", detail: null };
+const SERVER: GazeState = { status: "off", wanted: false, calibration: null, face: "none", drift: null, detail: null };
 
 /** The one place eye tracking is switched on (Settings, under Voice): opt-in, with what it does and does not do. */
 export function GazeSwitch() {
-  const state = useSyncExternalStore(
-    (fn) => gaze.subscribe(fn),
-    () => gaze.get(),
-    () => SERVER,
-  );
+  const state = useSyncExternalStore(gaze.subscribe, gaze.get, () => SERVER);
   const [blocked, setBlocked] = useState<string | null>(null);
   useEffect(() => {
     gaze.boot();
@@ -39,7 +35,9 @@ export function GazeSwitch() {
           ? "I see more than one face, so I am not following anyone's eyes right now."
           : state.face === "none"
             ? "The camera is on, but I do not see your face. The pointer starts from the middle until I do."
-            : qualityWords(state.calibration)
+            : state.calibration && state.drift
+              ? `${state.drift === "moved" ? "You have moved since this was calibrated" : "This calibration is more than 20 minutes old"}, so it may be off. Recalibrate to be sure. ${qualityWords(state.calibration)}`
+              : qualityWords(state.calibration)
         : state.detail);
 
   return (
@@ -63,8 +61,9 @@ export function GazeSwitch() {
         </button>
       ) : null}
       <p className={`${ui.muted} ${ui.small}`}>
-        Ask “where is…?” or “where do I find…?” anywhere and a red pointer shows you. With this on, it starts from where you are looking and notices when your eyes get there. It
-        tells which part of the screen you are looking at, not the exact spot.
+        Ask “where is…?” or “where do I find…?” anywhere and a red pointer shows you. With this on, it starts from where you are looking and notices when your eyes get there. How
+        accurate it is on your screen is measured when you calibrate and shown here; on a laptop camera expect a few centimetres, so it tells which part of the screen and which
+        marked thing you are looking at, not the exact spot.
       </p>
     </section>
   );
