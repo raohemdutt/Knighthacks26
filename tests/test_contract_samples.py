@@ -131,6 +131,9 @@ SAMPLES: dict[str, dict] = {
                 "straight, and I haven't seen you pick up a drink since 2:05 PM. Drink some water, take ten minutes outside, and "
                 "I can move the study block to after dinner if you say yes."},
     "day.checkin.answered": {"day": "2026-10-11", "checkin_id": "day-checkin-2026-10-11-1545", "answer": "done", "action_id": None},
+    # A yes to an optional event ("Near you"): box-only. The re-plan it raised carries the block; this is only the answer.
+    "day.optional.answered": {"day": "2026-10-11", "id": "nearby:friends-dinner:2026-10-11T17:15:00-04:00", "answer": "yes", "at": TS,
+                              "plan_id": "plan-2026-10-11-1601r", "action_id": "a-optional-1"},
     "day.status.changed": {"day": "2026-10-11", "plan_id": "plan-2026-10-11-0815", "now": TS, "block_id": "m0",
                            "block_title": "Study at Desk", "block_end": TS, "should_be": "apartment.desk", "should_be_name": "Desk",
                            "seen_at": "apartment.door", "seen_at_name": "Front door", "seen_how": "door camera", "seen_ts": TS,

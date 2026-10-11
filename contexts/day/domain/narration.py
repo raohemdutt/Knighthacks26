@@ -34,13 +34,13 @@ from datetime import date, datetime, timedelta, tzinfo
 
 from contracts.day import PlanMove
 
-MOMENTS = ("morning", "now", "replan", "coach", "evening", "approval", "checkin")
+MOMENTS = ("morning", "now", "replan", "coach", "evening", "approval", "checkin", "suggest", "start")
 RISKY = ("leave_now", "late", "infeasible")
 # Worth saying aloud unasked. "infeasible" is not: the re-plan that follows it says the same thing and what to do.
 URGENT_RISKS = ("leave_now", "late")
 # Bounds for a spoken narration: (sentences, characters). "Morning." counts as a sentence.
 BOUNDS = {"morning": (6, 520), "now": (4, 340), "replan": (5, 420), "coach": (4, 360), "evening": (5, 420), "approval": (3, 240),
-          "checkin": (5, 540)}
+          "checkin": (5, 540), "suggest": (4, 340), "start": (3, 260)}
 # A check-in says what was measured ("looked strained", "resting heart rate is up") and never what it might mean.
 # None of these words may appear in one: not in the template, and a model's rewrite that uses one is rejected.
 DIAGNOSIS = frozenset("""
@@ -389,7 +389,7 @@ def _sequence(beats: list[dict], w: Words, exact: bool = False, anchored: bool =
 def render(facts: dict, words: Words = Words()) -> Narration:
     """The template narration of `facts`: deterministic, always available, and the model's draft."""
     return {"morning": _morning, "now": _now, "replan": _replan, "coach": _coach, "evening": _evening,
-            "approval": _approval, "checkin": _checkin}[facts["moment"]](facts, words)
+            "approval": _approval, "checkin": _checkin, "suggest": _suggest, "start": _start}[facts["moment"]](facts, words)
 
 
 def _sleep_clause(hours: float | None, gentle: bool) -> tuple[str, str]:
@@ -563,7 +563,12 @@ def _now(f: dict, w: Words) -> Narration:
 def _replan(f: dict, w: Words) -> Narration:
     ev, seen = f.get("for"), f.get("seen_at")
     body, leave, shown = _plan_body({k: v for k, v in f.items() if k not in ("bed", "tomorrow")}, w)  # the change, not the whole night
-    if f.get("asked") or not ev:
+    if f.get("added") or f.get("removed"):  # a yes (or a later no) to an optional event: the day with it worked in, or without it
+        name = f.get("added") or f["removed"]
+        lead = f"Okay, I've worked {name} in" if f.get("added") else f"Okay, {name} is out"
+        lead_x = f"With {name} added" if f.get("added") else f"Without {name}"
+        spoken, display = f"{lead}: {body}.{leave}", f"{lead_x}. {shown}"
+    elif f.get("asked") or not ev:
         lead = f"Here's a fresh plan from {seen}" if seen else "Here's a fresh plan from here"
         lead_x = f"A new plan from {seen or 'here'}, as you asked"
         spoken, display = f"{lead}: {body}.{leave}", f"{lead_x}. {shown}"
@@ -741,6 +746,77 @@ def _checkin(f: dict, w: Words) -> Narration:
         spoken.append(line)
         display.append(line)
     return Narration(_tidy(" ".join(spoken)), _tidy(" ".join(display)))
+
+
+def _people(names: list[str]) -> str:
+    """"Riley", "Riley and Sam", "Riley, Sam and Alex"."""
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + f" and {names[-1]}"
+
+
+MEALS = ("breakfast", "brunch", "lunch", "dinner")
+
+
+def _suggest(f: dict, w: Words) -> Narration:
+    """An optional event coming up (contexts/day/domain/optional.py): who is going, where and when, the walk, whether
+    it fits and what would move, and the offer. A yes only ever raises an approval card."""
+    title, who, host = f["title"], list(f.get("who") or []), f.get("host")
+    where = f" {at_place(f['place'])}" if f.get("place") else ""
+    meal = next((m for m in MEALS if m in title.lower()), None)
+    if host:
+        opening = f"{host} is hosting {title}{where} at {say_time(f['at'])}" + (f", with {_people(who)}" if who else "")
+    elif who:
+        verb = "is" if len(who) == 1 else "are"
+        opening = f"{_people(who)} {verb} {'having ' + meal if meal else 'going to ' + title}{where} at {say_time(f['at'])}"
+    else:
+        opening = f"{cap(the(title))} is{where} at {say_time(f['at'])}"
+    people = ([host] if host else []) + who
+    shown = title + (f" with {_people(people)}" if people else "") + f": {clock(f['at'])}" + (f" to {clock(f['until'])}" if f.get("until") else "")
+    shown += f"{where}."
+    walk = f.get("walk_min", 0)
+    walk_s = f"it's {_walk_words(walk)}" if walk >= 3 else ""
+    if walk >= 3:
+        shown += f" {walk} min walk" + (f", leave by {clock(f['leave_by'])}." if f.get("leave_by") else ".")
+    before, moves, early = f.get("before"), f.get("moves") or [], f.get("early_min", 0)
+    if f.get("fits") == "nearly":
+        if moves:
+            fit_s, fit_x = f"{moves[0]} would have to move to make room", f"Nearly fits: {moves[0]} would move."
+        else:
+            fit_s = f"you'd leave {say_minutes(early)} early for {f.get('next') or 'what comes after'}"
+            fit_x = f"Nearly fits: leave {early} min early" + (f" for {f['next']}." if f.get("next") else ".")
+        second = f"{cap(walk_s)}, and {fit_s}." if walk_s else f"{cap(fit_s)}."
+    else:
+        fit_s = f"it fits before {before['title']}" if before else "it fits the rest of your day"
+        fit_x = f"Fits before {before['title']} at {clock(before['at'])}." if before else "Fits your plan."
+        second = f"{cap(walk_s)} and {fit_s}." if walk_s else f"{cap(fit_s)}."
+    return Narration(_tidy(f"{opening}. {second} Want me to add it?"), _tidy(f"{shown} {fit_x} Add it?"))
+
+
+def _start(f: dict, w: Words) -> Narration:
+    """A planned block is starting (contexts/day/domain/reminders.py): what it is and for how long; the walk when
+    there is one (said at the time to leave), or that you are there already; several short blocks said as one."""
+    block, at, count, walk = f["block"], f["at"], f.get("count", 1), f.get("walk_min", 0)
+    place = f.get("place")
+    where = f" {at_place(place)}" if place else ""
+    on = f" on {f['deadline']}" if f.get("deadline") else ""
+    mins = f.get("min", 0)
+    if count > 1:
+        what = f"{say_number(count)} short {w.activity} blocks{on}"
+        what_x = f"{count} short {w.activity} blocks{on}, {clock(at)} to {clock(f['until'])}"
+        span = f"from {say_time(at)}, through to {say_time(f['until'])}"
+    else:
+        what, what_x, span = f"{block}{on}", f"{block}{on}, {clock(at)}" + (f", {mins} min" if mins else ""), ""
+    length = f", {say_minutes(mins)}" if mins and count == 1 else ""
+    if walk >= 3:  # said when it is time to leave
+        spoken = f"Time for {what}{where}{', ' + span if span else ''}; it's {_walk_words(walk)}."
+        shown = f"{cap(what_x)}{where}. {walk} min walk: leave now."
+    elif f.get("there"):
+        here = at_place(place) if place else "there"
+        spoken = f"It's {say_time(at)}: {what}{' from here, through to ' + say_time(f['until']) if span else length}. You're {here} already."
+        shown = f"{cap(what_x)}. You're {here} already."
+    else:
+        spoken = f"It's {say_time(at)}: time for {what}{' ' + span if span else length}{',' if length and where else ''}{where}."
+        shown = f"{cap(what_x)}{where}."
+    return Narration(_tidy(spoken), _tidy(shown))
 
 
 def _tidy(text: str) -> str:

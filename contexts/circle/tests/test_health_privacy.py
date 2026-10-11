@@ -93,7 +93,7 @@ def test_a_check_in_queues_nothing_for_the_circle_and_nothing_of_it_is_synced(tm
     from contracts.day import BOX_ONLY_EVENTS
 
     raised, answered = checkin_events()
-    assert {raised.type, answered.type} == BOX_ONLY_EVENTS
+    assert {raised.type, answered.type} <= BOX_ONLY_EVENTS  # the set also holds `day.optional.answered` (tested below)
     said = [s.summary for s in raised.signals] + [s.detail for s in raised.signals] + [s.text for s in raised.suggestions] + [raised.text]
     assert any("Heart rate" in line for line in said) and any("slept" in line for line in said)  # it really is about a body
 

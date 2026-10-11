@@ -124,7 +124,7 @@ def test_a_check_in_in_the_log_is_never_part_of_the_export(tmp_path):
     raised = next(e for e in events if e.type == "day.checkin.raised")
     bus = EventBus(tmp_path / "events")
     asyncio.run(bus.publish_all(events))
-    assert len(list(bus.read_log())) == 2  # it is in the log, on the box
+    assert len(list(bus.read_log())) == len(BOX_ONLY_EVENTS) == 3  # the check-in, its answer, a yes to an optional event: in the log, on the box
 
     out = tmp_path / "datasets"
     out.mkdir()
@@ -140,6 +140,7 @@ def test_a_check_in_in_the_log_is_never_part_of_the_export(tmp_path):
     said = [s.summary for s in raised.signals] + [s.detail for s in raised.signals] + [s.text for s in raised.suggestions] + [raised.text]
     assert not [line for line in said if line in written]
     assert not [word for word in ("strained", "Heart rate", "heart rate", "slept", "drink", "checkin", "check-in") if word in written]
+    assert "friends-dinner" not in written and "nearby:" not in written  # nor which optional event was said yes to
 
     # structural: nothing in the learning context imports the Day loop or names one of its events
     root = Path(__file__).resolve().parents[3]
