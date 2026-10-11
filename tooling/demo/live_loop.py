@@ -5,8 +5,9 @@
     bash tooling/demo/live_loop.sh --check                             # what the run needs, nothing started
 
 Two acts of the L10 group fine-tune (tooling/demo/live_loop_pod.sh), one after the other: act 1 "solo" is one
-member's examples, act 2 "duo" is two members' pooled (--solo-examples and --duo-examples per member, 50 each by
-default, to keep the run under 4 minutes; the budget is in LIVE_LOOP_RUN_OF_SHOW.md). Each act labels at the teacher
+member's examples, act 2 "duo" is two members' pooled (--solo-examples and --duo-examples per member, 12 each by
+default, set from the pair's measured 2.34 s a label to keep the run under 4 minutes; 15 and 15 is the stretch; the
+budget is in LIVE_LOOP_RUN_OF_SHOW.md). Each act labels at the teacher
 (16 streams), trains a LoRA (8 short steps, a loss row per step), packages and offers.
 
 The teacher is the 122B pair served across pods C and D (vLLM pipeline-parallel, its API on pod C's port 8000 as
@@ -905,8 +906,9 @@ def main(argv: list[str] | None = None) -> int:
                         f"D; fallback {TEACHER_SINGLE}, the 27B on pod C; 'a|b' takes either)")
     p.add_argument("--teacher-nodes", help="the pods the teacher's energy is counted on, comma-separated (default: "
                                            "pod-c,pod-d for the pair, pod-c otherwise)")
-    p.add_argument("--solo-examples", type=int, default=50, help="act 1's examples (one member)")
-    p.add_argument("--duo-examples", type=int, default=50, help="act 2's examples per member (two members)")
+    p.add_argument("--solo-examples", type=int, default=12,
+                   help="act 1's examples (one member); 12 ends near 212 s at the pair's 2.34 s a label, 15 near 233 s")
+    p.add_argument("--duo-examples", type=int, default=12, help="act 2's examples per member (two members); 12 or 15")
     p.add_argument("--duo-pods", type=int, choices=(1, 2), default=2,
                    help="act 2 trains on both pods (2, R65's two-pod LoRA) or on pod D alone (1)")
     p.add_argument("--serial", action="store_true", help="act 2 trains only after act 1 has packaged (slower, less "

@@ -4,7 +4,8 @@
 #   bash tooling/demo/live_loop.sh --slot <D row> --slot-c <C row> --on-approval  start when the phone approves an export
 #   bash tooling/demo/live_loop.sh --check                                      the pods and the box are ready; starts nothing
 # The teacher is the 122B pair (--teacher-expect Qwen3.5-122B, the default); --teacher-expect Qwen3.8-27B is the
-# fallback, --duo-pods 1 keeps act 2 on pod D. Act sizes: --solo-examples 50 --duo-examples 50 (per member).
+# fallback, --duo-pods 1 keeps act 2 on pod D. Act sizes: --solo-examples 12 --duo-examples 12 (per member, about
+# 212 s at the pair's 2.34 s a label); 15 and 15 is the stretch (about 233 s).
 # The screen: the box's Compare tab, http://<box>:8000/lab/?tab=compare (--card: the old local card at :8788)
 # The run of show: tooling/demo/LIVE_LOOP_RUN_OF_SHOW.md
 # Everything else is in tooling/demo/live_loop.py (the relay) and tooling/demo/live_loop_pod.sh (the pods' side).

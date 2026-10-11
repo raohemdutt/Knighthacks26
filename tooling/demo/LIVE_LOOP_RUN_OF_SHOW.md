@@ -1,7 +1,8 @@
 # The live learning loop: run of show (L29)
 
-One command starts two group fine-tunes, one after the other: act 1 "alone" is one member's 50 examples, act 2 "with
-a friend" is two members' 100 pooled (`--solo-examples`, `--duo-examples` per member; the budget below sets them).
+One command starts two group fine-tunes, one after the other: act 1 "alone" is one member's 12 examples, act 2 "with
+a friend" is two members' 24 pooled (`--solo-examples`, `--duo-examples` per member; the budget below sets them, and
+15 and 15 is the stretch).
 Each act labels at the teacher (16 streams), trains a LoRA (8 short steps, a loss point per step), packages a Q4_K_M
 model and offers it. The teacher is the 122B pair, served pipeline-parallel across pods C and D, its API on pod C's
 port 8000 as "teacher" and "group-brain" (the same URL and token as the 27B before it). Act 1 trains on pod D alone;
@@ -17,30 +18,41 @@ budget is below.
 
 ## The 4-minute budget (pair teacher, act 2 on two pods)
 
-Until the R66 seat's labeling numbers arrive, the pair is assumed to label 2x slower than the 27B. The 27B labeled
-100 examples in 32.1 s and 200 in 61.8 s at 16 streams, about 0.32 s an example, so the pair is budgeted at
-r = 0.63 s an example. The other stage times are the rehearsal's: act 1's training 54 s (model load and a 30 s first
-step), packaging 71 s and 59 s, 3 s to start the pods, about 10 s for the relay's last read and posts.
+The pair's labeling was measured exactly as the loop calls lab/label.py (16 workers, 32 fixture examples, all
+accepted): **2.34 s a labeled example** of wall time (34.2 s an example within one stream, so 16 workers is the right
+setting; max-num-seqs 32 was never reached), 1,170 tokens an example, both pods about 108 W on average and 127 W at
+peak while labeling, about **505 J a labeled example** across the two pods. The 27B labeled at about 0.32 s and 37 J an
+example (the rehearsal: 3,723 J for 100). So a label from the pair costs about 7x the time and 14x the energy: the
+honest price of a brain four and a half times bigger (122B against 27B). The loop still finishes under four minutes,
+because the acts are sized to it. The other stage times are the rehearsal's: act 1's training 54 s (model load and a
+30 s first step), packaging 71 s and 59 s, 3 s to start the pods, about 10 s for the relay's last read and posts.
 
 | From the command | What runs | Budget |
 | --- | --- | --- |
 | 0 to 3 s | pod C's rank 1 waiter and pod D's run start (two run-scripts at once) | 3 s |
-| 3 to 35 s | act 1 labels 50 examples at the pair | 50 x 0.63 = 32 s |
-| 35 to 102 s | act 1 trains on pod D, which also runs half the pair: the rehearsal's 54 s plus 25 percent | 67 s |
-| 35 to 98 s | act 2 labels 100 examples at the pair | 100 x 0.63 = 63 s |
-| 98 to 143 s | act 2 trains on both pods: handoff about 3 s, both ranks load in parallel (30 s first step), 8 steps on half the rows, 2 rounds of 0.5 to 0.9 s, a final sync; the 15 s relay timing is skipped (`--no-relay-timing`) | 45 s |
-| 102 to 173 s | act 1 packages on pod D's CPU (nice 15) | 71 s |
-| 143 to 213 s | act 2 packages, slowed while act 1 packages: the rehearsal's 59 s plus 11 | 70 s |
-| 213 to 223 s | the relay's last read, the manifest, scores, power windows and comparison posted | 10 s |
+| 3 to 31 s | act 1 labels 12 examples at the pair | 12 x 2.34 = 28 s |
+| 31 to 98 s | act 1 trains on pod D, which also runs half the pair: the rehearsal's 54 s plus 25 percent | 67 s |
+| 31 to 87 s | act 2 labels 24 examples at the pair | 24 x 2.34 = 56 s |
+| 87 to 132 s | act 2 trains on both pods: handoff about 3 s, both ranks load in parallel (30 s first step), 8 steps on half the rows, 2 rounds of 0.5 to 0.9 s, a final sync; the 15 s relay timing is skipped (`--no-relay-timing`) | 45 s |
+| 98 to 169 s | act 1 packages on pod D's CPU (nice 15) | 71 s |
+| 132 to 202 s | act 2 packages, slowed while act 1 packages: the rehearsal's 59 s plus 11 | 70 s |
+| 202 to 212 s | the relay's last read, the manifest, scores, power windows and comparison posted | 10 s |
 
-So about **223 s**, 17 s under 4 minutes. In one line: the run ends at about 3 + r x (n1 + 2 x n2) + 125 s (45 s
-two-pod training, 70 s packaging, 10 s relay), where n1 is act 1's examples and n2 act 2's per member. At r = 0.63
-and 50 and 50 that is 3 + 94.5 + 125 = 222.5 s. The old sizes (100 and 100) give 3 + 189 + 125 = 317 s: too long, so
-the defaults are 50 and 50. To fit 230 s (10 s spare) r x (n1 + 2 x n2) must stay under 102 s: at r = 0.63 that is
-n1 + 2 x n2 up to 162 (50 and 50 is 150); if the pair is 3x slower (r = 0.95), 107, so `--solo-examples 35
---duo-examples 35`. When the R66 numbers come, put their seconds per example at 16 streams in for r and pick the sizes
-from the same line. `--serial` (act 2 trains only after act 1 has packaged, for memory) adds about 75 s: it needs
-`--solo-examples 30 --duo-examples 30` or smaller.
+So about **212 s**, 28 s under 4 minutes. In one line: the run ends at about 3 + r x (n1 + 2 x n2) + 125 s (45 s
+two-pod training, 70 s packaging, 10 s relay), where r is the seconds a label, n1 act 1's examples and n2 act 2's per
+member. At r = 2.34:
+
+| Sizes | n1 + 2 x n2 | End | |
+| --- | --- | --- | --- |
+| 12 and 12 (the default) | 36 | 3 + 84 + 125 = about 212 s | 28 s spare |
+| 15 and 15 (the stretch: `--solo-examples 15 --duo-examples 15`) | 45 | 3 + 105 + 125 = about 233 s | 7 s spare |
+| 50 and 50 (the first budget, at the guessed 0.63 s) | 150 | 3 + 351 + 125 = about 479 s | far over |
+
+With 12 and 12, act 2's labels are in at about 87 s while act 1 still trains on pod D until about 98 s, so rank 0 shares
+pod D's GPU for about 11 s; if that slows act 2's training by as much, the run ends near 223 s, still under. Each act
+stays trainable: 12 examples hold out 3 and train on 9 rows, act 2's 24 hold out 6 and give each rank 9 rows, which is 3
+steps an epoch at batch 4, 9 over the 3 epochs, so the 8 steps are reached. `--serial` (act 2 trains only after act 1
+has packaged, for memory) adds about 75 s: at 12 and 12 that is about 287 s, over, so use it only off stage.
 
 Memory: the pair runs at gpu-memory-utilization 0.65, which leaves about 22 GB a pod; a rank of the two-pod LoRA
 peaked at about 11 GB in R65, and its memory guard stops the rank (never the teacher) under 3 GiB free.
@@ -80,7 +92,7 @@ far (`kind=compare`); at the end both again with the last seconds of samples. It
 `../L29-data/<stamp>/` and writes `live-loop.energy` rows to the lab's ledger. Run ids are `live-<MMDD-HHMMSS>-solo`
 and `live-<MMDD-HHMMSS>-duo`; the first line printed names the stamp and the Compare tab's address.
 
-Options that matter: `--steps 8` (loss points per act), `--solo-examples 50` and `--duo-examples 50` (per member;
+Options that matter: `--steps 8` (loss points per act), `--solo-examples 12` and `--duo-examples 12` (per member;
 see the budget), `--no-scores` (see "the stand-in gate" below), `--every 5` (seconds between reads of the pods'
 run folders), `--serial` (act 2 trains after act 1 has packaged). `--card` also serves the old local card at http://127.0.0.1:8788/
 (off by default; not part of the show).
@@ -198,7 +210,7 @@ committed rehearsal names, nor anything under fixtures/). The rehearsal's files 
 
 ## Four failure modes
 
-1. **The teacher busy.** `--check` shows the teacher queue above 0, or act 1's labeling line runs past 45 s (or act 2's
+1. **The teacher busy.** `--check` shows the teacher queue above 0, or act 1's labeling line runs past 40 s (or act 2's
    past 75 s). The group brain shares that teacher and keeps priority. Do not restart the teacher. If the queue is busy
    before the segment, wait for it or skip the segment; never replay a recording. If it slows mid-run, let it finish;
    narrate the Training run tab while the box shows act 1, and say the total.
