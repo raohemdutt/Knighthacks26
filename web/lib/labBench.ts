@@ -527,10 +527,12 @@ export function modelBillions(model: string | null | undefined): number | null {
   return m ? Number(m[1]) : null;
 }
 
-/** "pod-a" -> "Pod A", "jetson" -> "The box (Jetson)". */
+/** "pod-a" -> "Pod A", "pod-a+pod-b" -> "Pods A and B together", "jetson" -> "The box (Jetson)". */
 export function machineName(node: string | null | undefined): string {
   if (!node) return "unknown machine";
   if (node === "jetson") return "The box (Jetson)";
+  const pair = /^pod-([a-z])\+pod-([a-z])$/i.exec(node);
+  if (pair) return `Pods ${pair[1]!.toUpperCase()} and ${pair[2]!.toUpperCase()} together`;
   const pod = /^pod-([a-z])$/i.exec(node);
   return pod ? `Pod ${pod[1]!.toUpperCase()}` : node;
 }

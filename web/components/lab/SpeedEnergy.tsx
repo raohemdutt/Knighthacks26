@@ -125,7 +125,7 @@ function ChipFix({ story, reduced, a100, setA100, onPick }: { story: ReturnType<
     const axis = chartAxis(t);
     const lines = [after, llama, ref].filter(Boolean) as StoryLine[];
     const maxB = Math.max(2, ...lines.flatMap((l) => l.points.map((p) => p.batch)));
-    const wTop = Math.max(10, ...lines.flatMap((l) => l.points.map((p) => p.watts ?? 0)));
+    const wTop = Math.max(10, ...(after?.points ?? []).map((p) => p.watts ?? 0)); // the watts axis is the vLLM pod's own
     return {
       ...chartBase(t, reduced),
       grid: { left: 56, right: 60, top: 84, bottom: 52 },
