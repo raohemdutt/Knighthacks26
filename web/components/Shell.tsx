@@ -17,6 +17,18 @@ type Tab = { href: string; label: string; icon: ReactNode; keywords?: string };
 
 const TABS: Tab[] = [
   {
+    href: "/home",
+    label: "Home",
+    keywords: "start landing device about",
+    icon: (
+      <>
+        <path d="M3.5 11l8.5-7 8.5 7" />
+        <path d="M5.5 9.5V20h13V9.5" />
+        <path d="M10 20v-6h4v6" />
+      </>
+    ),
+  },
+  {
     href: "/now",
     label: "Calendar",
     keywords: "now day plan brief status",
@@ -224,14 +236,14 @@ const ALL = [...TABS, ...MORE];
 
 /** How the screens are grouped, in the sidebar, the phone's More sheet and the palette. URLs are unchanged. */
 const SECTIONS: { title: string; hrefs: string[]; collapsible?: boolean }[] = [
-  { title: "Everyday", hrefs: ["/", "/now", "/dayrun"] },
+  { title: "Everyday", hrefs: ["/home", "/", "/now", "/dayrun"] },
   { title: "The room", hrefs: ["/live", "/map", "/people", "/approvals"] },
   { title: "Plan", hrefs: ["/today", "/impact", "/spot"] },
   { title: "Other", hrefs: ["/timeline", "/play", "/circle", "/teach", "/lab", "/zones", "/privacy"], collapsible: true },
 ];
 
 /** The phone tab bar: the Everyday group. Everything else is one tap further, under More. */
-const BAR = ["/", "/now", "/dayrun"].map((href) => ALL.find((t) => t.href === href)!);
+const BAR = ["/home", "/", "/now", "/dayrun"].map((href) => ALL.find((t) => t.href === href)!);
 
 /** Inspection shows on the inspection profile, on a box with a kit, or when that screen is the one open. */
 function useShowInspection(path: string): boolean {
