@@ -29,7 +29,10 @@ POST /api/learning/lab/deploy/ask         {question}
     asks the box's model server (llama-server, not the gateway's /api/ask, which answers "have you seen my X" in code
     before the model picks a tool) the way tooling/demo/live_deploy_question.py does: the eval's exact prompt when the
     question is one of tooling/demo/live_deploy_question.json, else that prompt with the question and the time put in.
-    {question, serving, text, calls: [{name, arguments}], expected | null, seconds, prompt: "eval" | "eval template"}.
+    {question, serving, text, calls: [{name, arguments}], expected | null, seconds, prompt: "eval" | "eval template",
+     energy: {joules, idle_w, seconds, sampler, samples, above_idle_j, low_confidence} | null}.
+    `energy` is what the answer cost on the box (G6, contexts/learning/answer_energy.py): the Jetson's power sampler
+    integrated over the answer's window, gross, the box's idle beside it; null when the sampler is not running.
     503 when the model server does not answer (it does not for about a minute of every swap).
 
 The stages come from the `STAGE <name> <start|done|failed> <unix seconds>` lines atlas_swap.py prints. The status is
@@ -40,6 +43,7 @@ the last deploy; a swap the restarted gateway finds no longer running is closed 
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import subprocess
@@ -55,6 +59,8 @@ import httpx
 from fastapi import APIRouter, Body, Depends, HTTPException
 
 from runtime.modelstore import VERIFIED_RECORD, ModelStore, read_verified, record_vouches
+
+log = logging.getLogger("atlas.learning.lab_deploy")
 
 REPO = Path(__file__).resolve().parents[2]
 SWAP_SCRIPT = REPO / "jetson" / "atlas_swap.py"
@@ -419,7 +425,8 @@ async def ask_model(question: str, llm_url: str, *, items: list[dict[str, Any]],
 # --- the routes -------------------------------------------------------------------------------------------------
 
 def lab_deploy_router(runner: DeployRunner, *, guard: Callable | None = None, questions: str | Path = QUESTIONS,
-                      ask_transport: httpx.AsyncBaseTransport | None = None) -> APIRouter:
+                      ask_transport: httpx.AsyncBaseTransport | None = None, meter: Any | None = None) -> APIRouter:
+    """`meter` (contexts/learning/answer_energy.AnswerMeter) measures each answer; without one `energy` is null."""
     router = APIRouter()
     guarded = [Depends(guard)] if guard else []
 
@@ -458,10 +465,19 @@ def lab_deploy_router(runner: DeployRunner, *, guard: Callable | None = None, qu
         question = " ".join(SPECIAL_RE.sub("", question).replace("<|", "").replace("|>", "").split())[:300]
         if not question:
             raise HTTPException(400, "give the question: {\"question\": \"...\"}")
+        started = datetime.now(UTC)
         try:
-            return await ask_model(question, runner.llm_url or DEFAULT_LLM_URL, items=load_questions(questions),
-                                   transport=ask_transport)
+            answer = await ask_model(question, runner.llm_url or DEFAULT_LLM_URL, items=load_questions(questions),
+                                     transport=ask_transport)
         except Refused as err:
             raise refused(err) from None
+        ended = datetime.now(UTC)
+        answer["energy"] = None
+        if meter is not None:
+            try:
+                answer["energy"] = await meter.measure(started, ended)
+            except Exception:  # what it cost is an extra: a failure here never costs the answer
+                log.exception("measuring the answer's energy failed")
+        return answer
 
     return router

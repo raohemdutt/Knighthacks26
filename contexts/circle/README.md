@@ -21,6 +21,7 @@ template, as ciphertext only one named friend's box can read, after a card on bo
 | The phone screen | `web/app/circle/page.tsx`, `web/components/circle/` |
 | An agreed plan as a fixed block of the day | `contexts/play/dayrun/agreed.py` |
 | The group brain: opt-in planning questions to the teacher, text only | `application/group_brain.py`, `infrastructure/teacher.py`, `brain_api.py`, `brain.py` |
+| The shared brain as two pods, live on the Circle screen (G6) | `brain_pair.py` (`GET /api/circle/shared-brain`), `web/components/circle/BrainPair.tsx` |
 | **Face share** (off by default): a friend's box recognises you | `application/sealed.py` (the envelope), `application/face_share.py`, `face_share_api.py`, `infrastructure/neon_sealed.py` |
 
 The phone's Circle screen (`/circle/`) has four parts: **People**, **Plans**, **League**, **Sharing**.
@@ -201,6 +202,64 @@ python -m contexts.circle.brain status       # which name answers, "group-brain"
 python -m contexts.circle.brain ask --log-dir /tmp/brain-log --circle team --member ilan --opt-in \
   --fact "Maya is at the Library until 9:00 PM" "Where should we meet tonight?"
 ```
+
+## The shared brain as two pods (G6)
+
+Since 2026-10-11 the group brain is one Qwen3.5-122B-A10B (int4) served as ONE vLLM server split across both Strix
+Halo pods with pipeline parallelism 2: 24 layers on pod C (the head: the OpenAI API on port 8000, served names
+"teacher" and "group-brain") and 24 on pod D (headless), joined by a tunnel (`lab/net/`, PR 418, 0.36 ms per
+message). Each pod holds about 34 to 35 GiB of it and runs its power sampler (`lab/pod_power.py serve`, port 8790).
+The Circle screen's Shared brain card draws the pair as the Learning lab's two cartoon boxes
+(`web/components/circle/BrainPair.tsx`, reusing `LearningBuddies`' stage), polled every 2 s from one route
+(`brain_pair.py`, wired in `app.py`; bootstrap is unchanged):
+
+```
+GET /api/circle/shared-brain
+{"configured": true,
+ "model": {"name": "Qwen3.5-122B-A10B", "params_b": 122, "active_b": 10, "quant": "int4",
+           "served": ["teacher", "group-brain"]},
+ "members": [{"name": "pod C", "role": "head", "node": "pod-a", "layers": 24, "online": true,
+              "watts_now": 61.0, "watts_idle": 10.27, "vram_gb": 34.5},
+             {"name": "pod D", "role": "half", "node": "pod-b", "layers": 24, "online": true,
+              "watts_now": 48.0, "watts_idle": 10.27, "vram_gb": 34.5}],
+ "link": {"kind": "tunnel", "rtt_ms": 0.36, "mbps": 100},
+ "serving": {"tok_s": 10.0, "ttft_s": 0.29, "requests_running": 0},
+ "updated": "2026-10-11T14:00:00Z", "reason": null}
+```
+
+| Field | Where it comes from |
+| --- | --- |
+| `model.served`, the head's `online` | the head's `/v1/models` through the hub proxy |
+| `watts_now` | the newest sample of that pod's sampler (`/samples`; `socket_w`, the whole APU socket); null when the sampler does not answer or its newest sample is more than 15 s old by the pod's own clock |
+| `watts_idle` | the pod's calibrated idle (`config/telemetry_idle.yaml`, `ATLAS_TELEMETRY_IDLE_W`) |
+| `online` | the pod answered this refresh: its sampler, or for either half the head's `/v1/models` (the server only comes up with both halves) |
+| `serving` | the head's `/metrics`: `vllm:num_requests_running`; the mean first-token time and one over the mean inter-token gap, over the requests finished since the previous read (else the last such figure, else the whole histogram) |
+| `vram_gb`, `link` | measured on 2026-10-11, not read live; `vram_gb` is shown only while the pod is online |
+
+Every fetch has a 3 s timeout and the answer is cached for 2 s, so any number of phones costs the pods one round of
+reads every 2 s. The route answers 200 in every state: a source that does not answer gives null fields and online
+false; without the head's keys it answers `configured: false`, fetches nothing, and `reason` names the missing key
+NAMES (never a value). The card then says "No friends online", as it does when neither pod answers. The hub tokens
+stay on the box: the phone only ever reads this route.
+
+**What the box needs in its `.env`** (read the way `lab/hub.py` reads them; `tooling/demo/deploy_shared_brain.sh`
+appends whichever are missing from the workspace `.env`, values never printed):
+
+| Key | What | Length in the workspace `.env` |
+| --- | --- | --- |
+| `LAB_POD_ROLES` | `C:pod-a,D:pod-b`: which account is the head and which the other half (unset it means `A:pod-a,B:pod-b`, the old DUB pair, and the card is not set up) | 15 |
+| `AUP_HUB_USER_C`, `AUP_HUB_TOKEN_C`, `AUP_HUB_URL_C` | the head's hub account (required) | 8, 32, 23 |
+| `AUP_HUB_USER_D`, `AUP_HUB_TOKEN_D`, `AUP_HUB_URL_D` | the other half's (optional: without them pod D shows only what the head proves) | 8, 32, 23 |
+
+The box's firewall must admit the hub host (`jetson/egress.py` adds the host of every `AUP_HUB_URL_<X>`).
+
+**What an answer cost on the box** (the AMD script's beat 6). `POST /api/learning/lab/deploy/ask` (the Learning lab's
+Ask panel) carries `energy: {joules, idle_w, seconds, sampler, samples, above_idle_j, low_confidence}`: the Jetson's
+own power sampler (the telemetry context's `telemetry.jetson.power` samples, `ATLAS_TELEMETRY_SOURCE=tegrastats`)
+integrated over the answer's window, gross, with the box's calibrated idle (15.76 W) beside it, as Context: Telemetry
+defines joules per answer (`contexts/learning/answer_energy.py`). The panel says "this answer cost about X J on the
+box", or "sampler off" when `energy` is null (no sample in the 5 s before the answer). The Ask Atlas screen does not
+show it: its answer is the `agent.answer.generated` contract, and adding a field there is a contracts change.
 
 ## Face share: a friend's box recognises you (off by default)
 

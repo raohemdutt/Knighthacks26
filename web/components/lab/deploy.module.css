@@ -117,6 +117,24 @@
   color: var(--ok);
 }
 
+/* what the answer cost on the box (G6, beat 6): the Jetson's power sampler over the answer */
+.cost {
+  display: block;
+  margin-top: 2px;
+}
+
+.costOn {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--accent-text, var(--accent));
+}
+
+.costOff {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
 .bad {
   color: var(--danger);
 }

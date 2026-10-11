@@ -376,6 +376,68 @@
   gap: 12px;
 }
 
+/* the brain as two friends (G6, BrainPair.tsx): the two boxes, each pod's watts, the tunnel and the serving speed */
+.pair {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pairWho {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 15px;
+}
+
+.pairDot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--muted);
+  opacity: 0.6;
+}
+
+.pairDotOn {
+  background: var(--ok);
+  opacity: 1;
+  box-shadow: 0 0 0 3px rgba(78, 224, 160, 0.16), 0 0 10px rgba(78, 224, 160, 0.6);
+}
+
+.pairEmpty {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.pairLines {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.pairLines > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: baseline;
+}
+
+.pairLines dt {
+  font-size: 14px;
+  color: var(--muted);
+  min-width: 104px;
+}
+
+.pairLines dd {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 .brainWhere {
   font-size: 17px;
   line-height: 1.35;

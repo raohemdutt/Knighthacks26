@@ -2491,6 +2491,8 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   circleBrainAsk: (question: string, facts: string[] = []) => post<BrainAnswerReply>("/api/circle/brain/ask", { question, facts }),
   circleBrainPower: (after?: number, signal?: AbortSignal) =>
     get<BrainPower>("/api/circle/brain/power", after === undefined ? undefined : { after: String(after) }, signal),
+  /** The two-pod brain live (G6): members, watts, link, serving (types in lib/sharedBrain.ts); 200 in every state. */
+  circleSharedBrain: (signal?: AbortSignal) => get<import("./sharedBrain").SharedBrainPair>("/api/circle/shared-brain", undefined, signal),
   /** Face share, or null while it is switched off on this box (409), there is no Circle, or the box is older than it (404). */
   faceShare: (signal?: AbortSignal) =>
     get<FaceShareStatus>("/api/circle/face-share", undefined, signal).catch((err: unknown) => {
