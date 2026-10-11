@@ -1,0 +1,445 @@
+{
+  "decision": "reject",
+  "reasons": [
+    "the held-out set has 24 scored items (58 in split.json), under the 50 a deploy needs: scored and reported only",
+    "the candidate beats current by 0.0000, not more than the run-to-run noise 0.0000",
+    "the paired p-value 1.0000 over 4 groups is not below 0.05"
+  ],
+  "run_id": "train-20261011T032149Z-7dd098",
+  "task": "tool-calling",
+  "model_version": "atlas-tool-calling-train-20261011T032149Z-7dd098",
+  "current_version": "atlas-base",
+  "candidate_gguf": "atlas-tool-calling-train-20261011T032149Z-7dd098-Q4_K_M.gguf",
+  "scores": {
+    "current": 1.0,
+    "candidate": 1.0,
+    "teacher": 0.9166666666666666,
+    "current.run_1.citations_ok": 1.0,
+    "current.run_1.answer_ok": 1.0,
+    "current.run_1.scorer_score": 1.0,
+    "current.run_1": 1.0,
+    "current.run_2.citations_ok": 1.0,
+    "current.run_2.answer_ok": 1.0,
+    "current.run_2.scorer_score": 1.0,
+    "current.run_2": 1.0,
+    "candidate.citations_ok": 1.0,
+    "candidate.answer_ok": 1.0,
+    "candidate.scorer_score": 1.0,
+    "teacher.citations_ok": 1.0,
+    "teacher.answer_ok": 0.9166666666666666,
+    "teacher.scorer_score": 0.9375,
+    "gate.noise": 0.0,
+    "gate.p_value": 1.0,
+    "gate.delta": 0.0,
+    "gate.n_items": 24.0,
+    "gate.n_groups": 4.0
+  },
+  "noise": 0.0,
+  "delta": 0.0,
+  "p_value": 1.0,
+  "n_items": 24,
+  "n_groups": 4,
+  "held_out": 58,
+  "unscored": 34,
+  "outside_split": 24,
+  "split_sha256": "59227ead6c24d0b7b525ba99c6e2c06f1f7178d2c6f20bd8d556bc16d2c3de39",
+  "dataset_id": "tool-calling-fixture",
+  "scorer_commit": "1070630932d9906474f2037f4c78bc37ab06a238",
+  "decode": {
+    "thinking": "off",
+    "sampling": "greedy",
+    "max_tokens": 512
+  },
+  "decode_source": {
+    "current": "attested",
+    "candidate": "attested",
+    "teacher": "attested"
+  },
+  "current_runs": [
+    1.0,
+    1.0
+  ],
+  "event": {
+    "event_id": "61cb0685af284265aac55549d116cbee",
+    "type": "learning.run.evaluated",
+    "version": 1,
+    "ts": "2026-10-11T06:20:14.812114Z",
+    "task": "tool-calling",
+    "run_id": "train-20261011T032149Z-7dd098",
+    "scores": {
+      "current": 1.0,
+      "candidate": 1.0,
+      "teacher": 0.9166666666666666,
+      "current.run_1.citations_ok": 1.0,
+      "current.run_1.answer_ok": 1.0,
+      "current.run_1.scorer_score": 1.0,
+      "current.run_1": 1.0,
+      "current.run_2.citations_ok": 1.0,
+      "current.run_2.answer_ok": 1.0,
+      "current.run_2.scorer_score": 1.0,
+      "current.run_2": 1.0,
+      "candidate.citations_ok": 1.0,
+      "candidate.answer_ok": 1.0,
+      "candidate.scorer_score": 1.0,
+      "teacher.citations_ok": 1.0,
+      "teacher.answer_ok": 0.9166666666666666,
+      "teacher.scorer_score": 0.9375,
+      "gate.noise": 0.0,
+      "gate.p_value": 1.0,
+      "gate.delta": 0.0,
+      "gate.n_items": 24.0,
+      "gate.n_groups": 4.0
+    },
+    "decision": "reject",
+    "model_version": "atlas-tool-calling-train-20261011T032149Z-7dd098"
+  },
+  "correct": {
+    "current": 24,
+    "candidate": 24,
+    "teacher": 22
+  },
+  "noise_runs": [
+    24,
+    24
+  ],
+  "alpha": 0.05,
+  "test": "exact two-sided sign-flip test over question groups",
+  "items": [
+    {
+      "id": "golden-01",
+      "group": "fixture:group:episodes_between-3fa0ffba",
+      "question": "What happened at our table overnight?",
+      "expected": null,
+      "before": {
+        "answer": "Sat 9:00 PM: A person packed a laptop and left the table.\nSat 11:00 PM: The table was empty with a charger plugged in.\nSun 2:00 AM: A person in a hoodie walked past the door.\nSun 6:00 AM: A person returned, sat at the table, and drank coffee.\nSun 7:00 AM: The person stood up and left the table.",
+        "correct": true
+      },
+      "after": {
+        "answer": "Sat 9:00 PM: A person packed a laptop and left the table.\nSat 11:00 PM: The table was empty with a charger plugged in.\nSun 2:00 AM: A person in a hoodie walked past the door.\nSun 6:00 AM: A person returned, sat at the table, and drank coffee.\nSun 7:00 AM: The person stood up and left the table.",
+        "correct": true
+      }
+    },
+    {
+      "id": "golden-01-1",
+      "group": "fixture:group:episodes_between-3fa0ffba",
+      "question": "What happened overnight?",
+      "expected": null,
+      "before": {
+        "answer": "Sat 9:00 PM: A person packed a laptop and left the table.\nSat 11:00 PM: The table was empty with a charger plugged in.\nSun 2:00 AM: A person in a hoodie walked past the door.\nSun 6:00 AM: A person returned, sat at the table, and drank coffee.\nSun 7:00 AM: The person stood up and left the table.",
+        "correct": true
+      },
+      "after": {
+        "answer": "Sat 9:00 PM: A person packed a laptop and left the table.\nSat 11:00 PM: The table was empty with a phone charger plugged in.\nSun 2:00 AM: A person in a hoodie walked past the door.\nSun 6:00 AM: A person returned, sat at the table, and drank coffee.\nSun 7:00 AM: The person stood up and left the table.",
+        "correct": true
+      }
+    },
+    {
+      "id": "golden-01-2",
+      "group": "fixture:group:episodes_between-3fa0ffba",
+      "question": "What happened last night?",
+      "expected": null,
+      "before": {
+        "answer": "Sat 9:00 PM: A person packed a laptop and left the table.\nSat 11:00 PM: The table was empty with a phone charger plugged in.\nSun 2:00 AM: A person in a hoodie walked past the door.\nSun 6:00 AM: A person returned, sat at the table, and drank coffee.\nSun 7:00 AM: The person stood up and left the table.",
+        "correct": true
+      },
+      "after": {
+        "answer": "Sat 9:00 PM: A person packed a laptop and left the table.\nSat 11:00 PM: The table was empty with a phone charger still plugged in.\nSun 2:00 AM: A person in a hoodie walked past the door.\nSun 6:00 AM: A person returned, sat at the table, and drank coffee.\nSun 7:00 AM: The person stood up and left the table.",
+        "correct": true
+      }
+    },
+    {
+      "id": "golden-01-3",
+      "group": "fixture:group:episodes_between-3fa0ffba",
+      "question": "Anything happen at the table last night?",
+      "expected": null,
+      "before": {
+        "answer": "Sat 9:00 PM: A person packed a laptop and left the table.\nSat 11:00 PM: The table was empty with a charger plugged in.\nSun 2:00 AM: A person in a hoodie walked past the door.\nSun 6:00 AM: A person returned, sat at the table, and drank coffee.\nSun 7:00 AM: The person stood up and left the table.",
+        "correct": true
+      },
+      "after": {
+        "answer": "Yes. At 9:00 PM, a person packed a laptop and left the table. At 11:00 PM, the table was empty with a charger plugged in.",
+        "correct": true
+      }
+    },
+    {
+      "id": "golden-01-4",
+      "group": "fixture:group:episodes_between-3fa0ffba",
+      "question": "What went on while we were asleep?",
+      "expected": null,
+      "before": {
+        "answer": "Sat 9:00 PM: A person packed a laptop and left the table.\nSat 11:00 PM: The table was empty, though a phone charger remained plugged in.\nSun 2:00 AM: A person in a hoodie walked past the door.\nSun 6:00 AM: A person returned, sat at the table, and drank coffee.\nSun 7:00 AM: The person stood up and left the table.",
+        "correct": true
+      },
+      "after": {
+        "answer": "Sat 9:00 PM: A person packed a laptop and left the table.\nSat 11:00 PM: The table was empty with a phone charger still plugged in.\nSun 2:00 AM: A person in a hoodie walked past the door.\nSun 6:00 AM: A person returned, sat at the table, and drank coffee.\nSun 7:00 AM: The person stood up and left the table.",
+        "correct": true
+      }
+    },
+    {
+      "id": "golden-01-5",
+      "group": "fixture:group:episodes_between-3fa0ffba",
+      "question": "Give me a recap of last night",
+      "expected": null,
+      "before": {
+        "answer": "Sat 9:00 PM: A person packed a laptop and left the table.\nSat 11:00 PM: The table was empty, though a phone charger remained plugged in.\nSun 2:00 AM: A person in a hoodie walked past the door.\nSun 6:00 AM: A person returned, sat at the table, and drank coffee.\nSun 7:00 AM: The person stood up and left the table.",
+        "correct": true
+      },
+      "after": {
+        "answer": "Sat 9:00 PM: A person packed a laptop and left the table.\nSat 11:00 PM: The table was empty with a phone charger still plugged in.\nSun 2:00 AM: A person in a hoodie walked past the door.\nSun 6:00 AM: A person returned, sat at the table, and drank coffee.\nSun 7:00 AM: The person stood up and left the table.",
+        "correct": true
+      }
+    },
+    {
+      "id": "golden-02",
+      "group": "fixture:group:last_seen-23377f1f",
+      "question": "Where did I leave my keys?",
+      "expected": null,
+      "before": {
+        "answer": "You left your keys in the desk zone on cam-desk next to the coffee mug. They were last seen at 7:41 PM on Saturday.",
+        "correct": true
+      },
+      "after": {
+        "answer": "You left your keys in the desk zone on cam-desk, next to the coffee mug.",
+        "correct": true
+      }
+    },
+    {
+      "id": "golden-02-1",
+      "group": "fixture:group:last_seen-23377f1f",
+      "question": "Where are my keys?",
+      "expected": null,
+      "before": {
+        "answer": "Your keys are in the desk zone on cam-desk, next to the coffee mug.",
+        "correct": true
+      },
+      "after": {
+        "answer": "Your keys were last seen at 7:41 PM in the desk zone on cam-desk, next to the coffee mug.",
+        "correct": true
+      }
+    },
+    {
+      "id": "golden-02-2",
+      "group": "fixture:group:last_seen-23377f1f",
+      "question": "Where'd I put my keys?",
+      "expected": null,
+      "before": {
+        "answer": "You put your keys in the desk zone on cam-desk next to the coffee mug. They were last seen at 7:41 PM on Saturday.",
+        "correct": true
+      },
+      "after": {
+        "answer": "You put your keys in the desk zone on cam-desk next to the coffee mug. They were last seen at 7:41 PM on Saturday.",
+        "correct": true
+      }
+    },
+    {
+      "id": "golden-02-3",
+      "group": "fixture:group:last_seen-23377f1f",
+      "question": "Have you seen my keys?",
+      "expected": null,
+      "before": {
+        "answer": "Yes, your keys were last seen at 7:41 PM in the desk zone on cam-desk, next to the coffee mug.",
+        "correct": true
+      },
+      "after": {
+        "answer": "Yes, I saw your keys last at 7:41 PM in the desk zone on cam-desk, next to the coffee mug.",
+        "correct": true
+      }
+    },
+    {
+      "id": "golden-02-4",
+      "group": "fixture:group:last_seen-23377f1f",
+      "question": "Where are the keys right now?",
+      "expected": null,
+      "before": {
+        "answer": "The keys are in the desk zone on cam-desk, next to the coffee mug.",
+        "correct": true
+      },
+      "after": {
+        "answer": "The keys were last seen at 7:41 PM in the desk zone on cam-desk, next to the coffee mug.",
+        "correct": true
+      }
+    },
+    {
+      "id": "golden-02-5",
+      "group": "fixture:group:last_seen-23377f1f",
+      "question": "I can't find my keys",
+      "expected": null,
+      "before": {
+        "answer": "Your keys were last seen at 7:41 PM in the desk zone on cam-desk, next to the coffee mug.",
+        "correct": true
+      },
+      "after": {
+        "answer": "Your keys were last seen at 7:41 PM in the desk zone on cam-desk, next to the coffee mug.",
+        "correct": true
+      }
+    },
+    {
+      "id": "golden-03",
+      "group": "fixture:group:episodes_between-dbc6dbec",
+      "question": "Did anyone come to the door in the last hour?",
+      "expected": null,
+      "before": {
+        "answer": "Yes, a courier dropped a box at the door at 9:05 AM.",
+        "correct": true
+      },
+      "after": {
+        "answer": "Yes, a courier dropped a cardboard box at the door at 9:05 AM.",
+        "correct": true
+      }
+    },
+    {
+      "id": "golden-03-1",
+      "group": "fixture:group:episodes_between-dbc6dbec",
+      "question": "Was anyone at the door in the last hour?",
+      "expected": null,
+      "before": {
+        "answer": "Yes, a courier was at the door at 9:05 AM.",
+        "correct": true
+      },
+      "after": {
+        "answer": "Yes, a courier was at the door at 9:05 AM.",
+        "correct": true
+      }
+    },
+    {
+      "id": "golden-03-2",
+      "group": "fixture:group:episodes_between-dbc6dbec",
+      "question": "Who came to the door in the past hour?",
+      "expected": null,
+      "before": {
+        "answer": "A courier came to the door at 9:05 AM.",
+        "correct": true
+      },
+      "after": {
+        "answer": "A courier came to the door at 9:05 AM.",
+        "correct": true
+      }
+    },
+    {
+      "id": "golden-03-3",
+      "group": "fixture:group:episodes_between-dbc6dbec",
+      "question": "Any visitors at the door in the last hour?",
+      "expected": null,
+      "before": {
+        "answer": "Yes, a courier dropped a box at the door at 9:05 AM.",
+        "correct": true
+      },
+      "after": {
+        "answer": "Yes, a courier dropped a cardboard box at the door at 9:05 AM.",
+        "correct": true
+      }
+    },
+    {
+      "id": "golden-03-4",
+      "group": "fixture:group:episodes_between-dbc6dbec",
+      "question": "Did someone come by the door in the last 60 minutes?",
+      "expected": null,
+      "before": {
+        "answer": "Yes, a courier dropped a box at the door at 9:05 AM.",
+        "correct": true
+      },
+      "after": {
+        "answer": "Yes, a courier dropped a cardboard box at the door at 9:05 AM.",
+        "correct": true
+      }
+    },
+    {
+      "id": "golden-03-5",
+      "group": "fixture:group:episodes_between-dbc6dbec",
+      "question": "Was anyone at the door recently?",
+      "expected": null,
+      "before": {
+        "answer": "Yes, a courier was at the door at 9:05 AM.",
+        "correct": true
+      },
+      "after": {
+        "answer": "Yes, a courier was at the door at 9:05 AM.",
+        "correct": true
+      }
+    },
+    {
+      "id": "golden-06",
+      "group": "fixture:group:last_seen-13a6314c",
+      "question": "Where is my wallet?",
+      "expected": null,
+      "before": {
+        "answer": "I didn't see that.",
+        "correct": true
+      },
+      "after": {
+        "answer": "I didn't see that.",
+        "correct": true
+      }
+    },
+    {
+      "id": "golden-06-1",
+      "group": "fixture:group:last_seen-13a6314c",
+      "question": "Have you seen my wallet?",
+      "expected": null,
+      "before": {
+        "answer": "I didn't see that.",
+        "correct": true
+      },
+      "after": {
+        "answer": "I didn't see that.",
+        "correct": true
+      }
+    },
+    {
+      "id": "golden-06-2",
+      "group": "fixture:group:last_seen-13a6314c",
+      "question": "Where did I leave my wallet?",
+      "expected": null,
+      "before": {
+        "answer": "I didn't see that.",
+        "correct": true
+      },
+      "after": {
+        "answer": "I didn't see that.",
+        "correct": true
+      }
+    },
+    {
+      "id": "golden-06-3",
+      "group": "fixture:group:last_seen-13a6314c",
+      "question": "I can't find my wallet",
+      "expected": null,
+      "before": {
+        "answer": "I didn't see that.",
+        "correct": true
+      },
+      "after": {
+        "answer": "I didn't see that.",
+        "correct": true
+      }
+    },
+    {
+      "id": "golden-06-4",
+      "group": "fixture:group:last_seen-13a6314c",
+      "question": "Where's my wallet?",
+      "expected": null,
+      "before": {
+        "answer": "I didn't see that.",
+        "correct": true
+      },
+      "after": {
+        "answer": "I didn't see that.",
+        "correct": true
+      }
+    },
+    {
+      "id": "golden-06-5",
+      "group": "fixture:group:last_seen-13a6314c",
+      "question": "Where is the wallet now?",
+      "expected": null,
+      "before": {
+        "answer": "I didn't see that.",
+        "correct": true
+      },
+      "after": {
+        "answer": "I didn't see that.",
+        "correct": true
+      }
+    }
+  ]
+}
