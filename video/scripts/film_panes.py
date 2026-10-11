@@ -239,13 +239,13 @@ def kitchen(s: Scene):
             '<rect id="BLUE" x="60" y="70" width="130" height="130" rx="16" fill="#456cb3"/><rect x="235" y="70" width="130" height="130" rx="16" fill="#0f7b5f" opacity="0.5"/>'
             '<rect x="410" y="70" width="130" height="130" rx="16" fill="#8a93a3" opacity="0.5"/><text x="70" y="55" font-size="22" font-family="Segoe UI" font-weight="700" fill="#456cb3">Recycling</text>'
             '<text x="245" y="55" font-size="22" font-family="Segoe UI" fill="#566176">Compost</text><text x="420" y="55" font-size="22" font-family="Segoe UI" fill="#566176">Trash</text></svg>')
-    sort = '<div class="ph">Can goes in recycling</div><div class="pk">UCF\'s rule · the blue bin</div><div class="svgbox">' + bins + '</div><div class="chips"><span class="site-tag">route from You</span></div>'
+    sort = '<div class="ph">Can goes in recycling</div><div class="pk">UCF\'s rule · the blue bin</div><div class="svgbox">' + bins + '</div><div class="chips"><span class="site-tag">the kitchen camera saw the can</span></div>'
     ring = ('<div class="ph">This week</div><div style="display:flex;align-items:center;gap:30px;margin-top:10px"><svg viewBox="0 0 200 200" width="220" height="220">'
             '<circle cx="100" cy="100" r="80" fill="none" stroke="#e6ebf3" stroke-width="22"/><circle id="KRING" cx="100" cy="100" r="80" fill="none" stroke="#456cb3" stroke-width="22" stroke-linecap="round" transform="rotate(-90 100 100)" stroke-dasharray="502.6" stroke-dashoffset="166"/>'
             '<line x1="100" y1="8" x2="100" y2="34" stroke="#1b2433" stroke-width="5" transform="rotate(288 100 100)"/></svg>'
             '<div><div class="big" id="KPCT">71%</div><div class="pk">5 of 7 right bin · goal 80%</div></div></div>'
             '<div class="chips"><span class="site-tag">sources: config/impact.yaml</span></div>')
-    s.window([("Sort It", sort, "0:0"), ("Impact", ring, "1:0")], at="0:0")
+    s.window([("Recycling", sort, "0:0"), ("Impact", ring, "1:0")], at="0:0")
     s.tween(f'tl.fromTo("#KRING", {{ strokeDashoffset: 166 }}, {{ strokeDashoffset: 146, duration: 1.0, ease: "power2.out" }}, {s.t("1:0.1"):.3f});')
 
 
@@ -257,9 +257,9 @@ def sortit(s: Scene):
 
 
 def sorttech(s: Scene):
-    s.card('<div class="pk">on the Jetson</div><div class="ph">YOLO11 · 41 frames a second</div><div class="chips"><span class="site-tag">tracks every item</span><span class="site-tag">camera mapped to the floor</span><span class="site-tag">10 cm grid route</span></div>', 110, 600, "0:0", w=860)
+    s.card('<div class="pk">on the Jetson</div><div class="ph">YOLO11 · 41 frames a second</div><div class="chips"><span class="site-tag">tracks every item</span><span class="site-tag">bin zones</span></div>', 110, 600, "0:0", w=860)
     s.card('<div class="ph">UCF\'s own bin rules</div><div class="chips"><span class="site-tag">config/sorting.yaml</span><span class="site-tag">impact numbers cite their sources</span><span class="site-tag">only counts leave</span></div>', 1000, 600, "0:0.55", w=820)
-    s.card('<div class="ph">Look guide</div><div class="pk">follows your eyes to point the way · the frames never leave the browser</div>', 560, 820, "1:0", w=800)
+    s.card('<div class="ph">Look guide</div><div class="pk">follows your eyes to point the way · the frames never leave the browser</div>', 1000, 360, "1:0", w=820)
 
 
 def lab(s: Scene):

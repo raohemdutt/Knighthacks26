@@ -1,4 +1,4 @@
-# Atlas film v4.7: plan and tracking document
+# Atlas film v4.8: plan and tracking document
 
 Status: **PLAN, waiting for Dom's approval. Nothing is rendered until it is approved.**
 Branch `ctx/demo/video-hyperframes`. Owner: Dom (Notion task D12).
@@ -20,6 +20,9 @@ e, g taken, plus wording trims in beats 0 to 3, 5, 11, 12, 14 and 16 (`SCRIPT.md
 the real voices** (edge-tts, every line synthesised, 1.2x; gaps 0.3 s, tail 0.7 s, pad 0.3 s; action mostly under
 speech): 5:28 at 1.2x. **Dom (Sun 4:20 AM): all voices 1.3x, plus demo-only trims** (beat 12's bubbles and beat 16's
 directions become text, "Yeah, okay" a nod). **Measured: 4:54.** Section 10a.
+v4.8 (Dom, Sun 5:05 AM): **Sort It is out of the film** (the Sort It track is dropped). Beat 8 is cut; beat 9 becomes
+"What the kitchen camera runs on" and keeps its sponsor clauses (YOLO11 at 41 fps, UCF's bin rules, the impact
+sources, the look guide). The kitchen window says "Recycling", not Sort It. The film is now about 4:45.
 
 Every fact on screen or in a line comes from the repo, with the source next to it, or Dom has said so explicitly
 (section 6 lists those). Tick a box only when it has been built *and* checked in a frame.
@@ -81,7 +84,7 @@ speech plus action. **D** = demo, **S** = spec.
 | 5 | **At the desk: you look tired, the check-in** | **D** | 45 | new | [ ] |
 | 6 | Faces: expressions on the device; clear on your own screen, blurred when saved or sent | S | 14 | new, short | [ ] |
 | 7 | **Kitchen: the can, the phone, the count, the nudge** | **D** | 30 | rebuild | [ ] |
-| 8 | **Sort It round** | **D** | 15 | new | [ ] |
+| 8 | ~~Sort It round~~ (cut, v4.8) | | 0 | | |
 | 9 | What Sort It runs on, the bin rules and sources, the look guide | S | 18 | new, short | [ ] |
 | 10 | The learning lab, then Hugging Face and the live swap | S | 21 | as now plus one line | [ ] |
 | 11 | On the device: cable pull, voice offline, your question first, ledger | S | 14 | as now plus one clause | [ ] |

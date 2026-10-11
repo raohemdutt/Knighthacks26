@@ -36,10 +36,10 @@
 .svgbox { margin-top: 14px; border-radius: 22px; overflow: hidden; }
 </style>
       <div id="root" data-composition-id="sorttech" data-width="1920" data-height="1080">
-        <div id="sorttech-chapter" class="chip-ch soft-raised soft-muted">What Sort It runs on</div>
-        <div class="card soft-raised" id="sorttech-card1" style="left:110px;top:600px;width:860px"><div class="pk">on the Jetson</div><div class="ph">YOLO11 · 41 frames a second</div><div class="chips"><span class="site-tag">tracks every item</span><span class="site-tag">camera mapped to the floor</span><span class="site-tag">10 cm grid route</span></div></div>
+        <div id="sorttech-chapter" class="chip-ch soft-raised soft-muted">What the kitchen camera runs on</div>
+        <div class="card soft-raised" id="sorttech-card1" style="left:110px;top:600px;width:860px"><div class="pk">on the Jetson</div><div class="ph">YOLO11 · 41 frames a second</div><div class="chips"><span class="site-tag">tracks every item</span><span class="site-tag">bin zones</span></div></div>
         <div class="card soft-raised" id="sorttech-card2" style="left:1000px;top:600px;width:820px"><div class="ph">UCF's own bin rules</div><div class="chips"><span class="site-tag">config/sorting.yaml</span><span class="site-tag">impact numbers cite their sources</span><span class="site-tag">only counts leave</span></div></div>
-        <div class="card soft-raised" id="sorttech-card3" style="left:560px;top:820px;width:800px"><div class="ph">Look guide</div><div class="pk">follows your eyes to point the way · the frames never leave the browser</div></div>
+        <div class="card soft-raised" id="sorttech-card3" style="left:1000px;top:360px;width:820px"><div class="ph">Look guide</div><div class="pk">follows your eyes to point the way · the frames never leave the browser</div></div>
       </div>
       <script>
         (function () {
@@ -47,11 +47,11 @@
           tl.fromTo("#sorttech-chapter", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 0.15);
           tl.to("#sorttech-chapter", { opacity: 0, duration: 0.4 }, 3.200);
           tl.fromTo("#sorttech-card1", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 1.000);
-          tl.to("#sorttech-card1", { opacity: 0, duration: 0.35, ease: "power2.in" }, 17.834);
-          tl.fromTo("#sorttech-card2", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 7.613);
-          tl.to("#sorttech-card2", { opacity: 0, duration: 0.35, ease: "power2.in" }, 17.834);
-          tl.fromTo("#sorttech-card3", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 13.324);
-          tl.to("#sorttech-card3", { opacity: 0, duration: 0.35, ease: "power2.in" }, 17.834);
+          tl.to("#sorttech-card1", { opacity: 0, duration: 0.35, ease: "power2.in" }, 16.850);
+          tl.fromTo("#sorttech-card2", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 7.072);
+          tl.to("#sorttech-card2", { opacity: 0, duration: 0.35, ease: "power2.in" }, 16.850);
+          tl.fromTo("#sorttech-card3", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 12.340);
+          tl.to("#sorttech-card3", { opacity: 0, duration: 0.35, ease: "power2.in" }, 16.850);
           window.__timelines["sorttech"] = tl;
         })();
       </script>

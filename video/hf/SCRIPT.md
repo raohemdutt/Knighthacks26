@@ -1,4 +1,4 @@
-# Atlas film: the whole script (v4.7)
+# Atlas film: the whole script (v4.8)
 
 This is the read-through. `FILM_PLAN.md` has the sources, the build list and the decisions behind every line.
 **N** = narrator · **A** = Atlas · **H** = Hemdutt (the person) · **I** = Ilan · **D** = Dominick · **X** = Xander
@@ -10,6 +10,9 @@ Demo beats: the product talks, no narrator. Spec beats: the narrator, short.
 v4.6 folds in Hemdutt's notes from Notion (Sun 3:21 AM, agreed by him): 48 of 48, Today's Plan, the face wording,
 beat 13's "recognise each other", a new beat 15, one clause per sponsor track, and a new last line. It also names the
 Encompass data-capture story in beat 3.
+
+v4.8 (Dom, Sun 5:05 AM): Sort It is out of the film. Beat 8 (the round) is gone; beat 9 keeps its sponsor clauses
+(the detector, UCF's bin rules, the impact sources, the look guide) as "What the kitchen camera runs on".
 
 v4.7 (Dom, Sun 4:20 AM): all voices at 1.3x; the beat 12 bubbles and the beat 16 directions become text; "Yeah,
 okay" is a nod. v4.7 applies Hemdutt's cut rule (Q20, Sun 4:04 AM): cut from the demo action and the narrator's lines, never from a
@@ -91,21 +94,16 @@ You see yourself clear on your own screen. Saved pictures are blurred, and so is
 [Hemdutt walks into the kitchen with his phone, the can and the bottle. He fills the bottle and steps toward the grey
 trash bin. The wall camera watches.]
 **A:** Hold on: cans go in recycling at UCF. The blue one.
-[His phone and the window show Sort It: "Can goes in recycling", the blue bin lit, the route from "You". He turns and
-drops it in the blue bin.]
+[His phone and the window show the recycling card: "Can goes in recycling", the blue bin lit. He turns and drops it in
+the blue bin.]
 **A:** Right bin. Five of seven this week, seventy-one percent. Your goal's eighty.
 [Window: the ring moves from 67 to 71, the goal tick at 80, a small "sources" chip under the weekly numbers.]
 
-### 8 · Sort It (demo)
-**A:** Want a quick round of Sort It? Hold up the next thing.
-[He holds up a cup. The phone shows "Cup goes in trash" and the route. He walks it there. "Right bin · 6.0 s · 150
-points".]
-
-### 9 · What Sort It runs on (spec)
-[The bin camera's view: boxes on the can and the cup, track numbers, the bin zones, a grid route bending round him.
-Then the look guide: a dot follows his eyes across the room view, with a "frames stay in the browser" tag.]
-**N:** Sort It runs a YOLO detector at forty-one frames a second, tracks every item, and plans the walk around you.
-The bin rules are UCF's own, and every impact number cites its source. Only counts leave the box.
+### 9 · What the kitchen camera runs on (spec)
+[The bin camera's view: boxes on the can, track numbers, the bin zones. Then the look guide: a dot follows his eyes
+across the room view, with a "frames stay in the browser" tag.]
+**N:** The kitchen camera runs a YOLO detector at forty-one frames a second and tracks every item. The bin rules are
+UCF's own, and every impact number cites its source. Only counts leave the box.
 **N:** The look guide follows your eyes to point the way, and those frames never leave the browser.
 
 ### 10 · The learning lab (spec, as now)

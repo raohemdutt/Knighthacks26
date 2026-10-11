@@ -110,20 +110,12 @@ scenes:
   - who: A
     text: Right bin. Five of seven this week, seventy-one percent. Your goal's eighty.
   lead_s: 1.5
-- id: sortit
-  title: Sort It
-  beat: 8
-  lines:
-  - who: A
-    text: Want a quick round of Sort It? Hold up the next thing.
-    hold: 5.0
 - id: sorttech
-  title: What Sort It runs on
+  title: What the kitchen camera runs on
   beat: 9
   lines:
   - who: N
-    text: Sort It runs a YOLO detector at forty-one frames a second, tracks every item, and plans the walk around you. The bin rules are UCF's own, and every impact number cites its source. Only counts
-      leave the box.
+    text: The kitchen camera runs a YOLO detector at forty-one frames a second and tracks every item. The bin rules are UCF's own, and every impact number cites its source. Only counts leave the box.
   - who: N
     text: The look guide follows your eyes to point the way, and those frames never leave the browser.
   lead_s: 1.0

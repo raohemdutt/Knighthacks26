@@ -28,8 +28,8 @@ BEATS = {
     5: ("desk", "At the desk", 1.0, {2: 1.0}),
     6: ("faces", "Faces", 1.0, {}),
     7: ("kitchen", "The kitchen", 1.5, {0: 1.5}),
-    8: ("sortit", "Sort It", 0.0, {0: 5.0}),
-    9: ("sorttech", "What Sort It runs on", 1.0, {}),
+    # 8 (the Sort It round) was cut by Dom, Sun 5:05 AM.
+    9: ("sorttech", "What the kitchen camera runs on", 1.0, {}),
     10: ("lab", "The learning lab", 1.0, {}),
     11: ("device", "On the device", 1.0, {}),
     12: ("league", "Friends", 1.0, {0: 1.5, 2: 0.5}),
