@@ -111,6 +111,7 @@ export function FloorMap({
   route,
   done,
   robotAt,
+  robotMs,
   quiet,
   title,
   note,
@@ -134,6 +135,8 @@ export function FloorMap({
   /** How many points of `route` SPOT has already passed (drawn stronger). */
   done?: number;
   robotAt?: string | null;
+  /** How long SPOT takes to move to the next point (Shift Run plays slower); the plan's own 700 ms when not given. */
+  robotMs?: number;
   /** Round view: the equipment marks step back so the route reads first. */
   quiet?: boolean;
   title: string;
@@ -438,7 +441,7 @@ export function FloorMap({
             : null}
 
           {robot ? (
-            <g className={o.robot} style={{ transform: `translate(${robot.x}px, ${robot.y - 26 * u}px)` }} aria-label="SPOT is here">
+            <g className={o.robot} style={{ transform: `translate(${robot.x}px, ${robot.y - 26 * u}px)`, transitionDuration: robotMs ? `${robotMs}ms` : undefined }} aria-label="SPOT is here">
               <path d={`M ${-5 * u} ${11 * u} L 0 ${19 * u} L ${5 * u} ${11 * u} Z`} fill="var(--accent-text)" />
               <rect x={-22 * u} y={-11 * u} width={44 * u} height={22 * u} rx={11 * u} fill="var(--accent-text)" stroke="var(--surface)" strokeWidth={2 * u} />
               <text x="0" y={4.2 * u} textAnchor="middle" fontSize={12 * u} fontWeight="800" fill="var(--on-media)">

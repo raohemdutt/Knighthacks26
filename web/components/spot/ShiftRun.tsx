@@ -189,10 +189,10 @@ export function ShiftRun({ shift, orders, link }: { shift: Shift; orders: WorkOr
   useEffect(() => {
     if (phase !== "play" || !result || link.show === "mid") return;
     if (at >= result.steps.length) {
-      const t = window.setTimeout(() => setPhase("result"), still ? 0 : 700);
+      const t = window.setTimeout(() => setPhase("result"), still ? 0 : 1400);
       return () => window.clearTimeout(t);
     }
-    const t = window.setTimeout(() => setAt((v) => v + 1), still ? 0 : 850);
+    const t = window.setTimeout(() => setAt((v) => v + 1), still ? 0 : 1700);
     return () => window.clearTimeout(t);
   }, [phase, at, result, still, link.show]);
 
@@ -242,6 +242,7 @@ export function ShiftRun({ shift, orders, link }: { shift: Shift; orders: WorkOr
           route={steps.length ? steps.map((s) => s.location_id) : route.map((id) => b.candidates.find((c) => c.asset_id === id)?.location_id ?? "")}
           done={planning ? undefined : at}
           robotAt={current?.location_id ?? null}
+          robotMs={1400}
           route2={atlas && result ? result.recommended.route_places : undefined}
           routeLabel="Your route"
           guide="shiftrun:map"
