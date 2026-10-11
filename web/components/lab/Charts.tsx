@@ -165,7 +165,8 @@ export function TrainingChart({ training, power, frac }: { training: LabStory["t
  * The gate, drawn: the score before and after on one 0 to 100% line with the run-to-run noise as a band around
  * "before", the teacher as a dashed tick, and under it one dot per question group at how much it changed.
  */
-export function GateChart({ ev }: { ev: LabStory["eval"] }) {
+/** `notes` false leaves out the sentences under the two charts (the caller puts them in its own expander). */
+export function GateChart({ ev, notes = true }: { ev: LabStory["eval"]; notes?: boolean }) {
   const [ref, width] = useWidth();
   const { current, candidate, teacher } = ev.scores;
   if (!isNum(current) || !isNum(candidate)) return null;
@@ -218,18 +219,18 @@ export function GateChart({ ev }: { ev: LabStory["eval"] }) {
               after {pct(candidate.value)}
             </text>
           </svg>
-          <p className={lab.note}>
+          {notes ? <p className={lab.note}>
             {noise !== null
               ? `The grey band is run-to-run noise: scoring the same model again moves it by about ${pct(noise, 1)}.`
               : "Run-to-run noise was not measured for this run, so no noise band is drawn."}
-          </p>
+          </p> : null}
           {groups.length ? (
             <>
-              <div className={lab.chartTitle}>
+              {notes ? <div className={lab.chartTitle}>
                 <span>
                   <b>Each dot is one group of questions</b> (different wordings of one case): how much its score moved.
                 </span>
-              </div>
+              </div> : null}
               <svg width={w} height={gHeight} role="img" aria-label={`${better} of ${groups.length} question groups got better, ${worse} got worse`}>
                 <line className={lab.gridline} x1={gx(0)} x2={gx(0)} y1={4} y2={gHeight - 18} />
                 <line className={lab.scoreAxis} x1={gx(-span)} x2={gx(span)} y1={gHeight - 18} y2={gHeight - 18} />
@@ -253,10 +254,10 @@ export function GateChart({ ev }: { ev: LabStory["eval"] }) {
                   );
                 })}
               </svg>
-              <p className={lab.note}>
+              {notes ? <p className={lab.note}>
                 {better} of {groups.length} groups got better, {worse} got worse, {groups.length - better - worse} did not move. The test asks how often a pattern this lopsided would
                 appear if the change were only chance.
-              </p>
+              </p> : null}
             </>
           ) : null}
         </>

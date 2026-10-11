@@ -1108,3 +1108,223 @@
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+
+/* ---------- one stage at a time: the card, its headline, its expanders ---------- */
+.stageWrap {
+  position: relative;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  align-items: start;
+  gap: 10px;
+  max-width: 980px;
+  width: 100%;
+  margin: 0 auto;
+  touch-action: pan-y;
+}
+
+.stageCard {
+  min-width: 0;
+}
+
+.arrow {
+  position: sticky;
+  top: 50vh;
+  margin-top: 120px;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.arrow svg {
+  width: 22px;
+  height: 22px;
+}
+
+.arrow:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.arrowPrev,
+.arrowNext {
+  justify-self: center;
+}
+
+.segBtn {
+  border: 0;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.segOn {
+  box-shadow: var(--sh-inset-sm), 0 0 0 2px var(--accent);
+}
+
+.headline {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+  padding: 6px 0 2px;
+}
+
+.headBig {
+  font-size: clamp(30px, 5vw, 46px);
+  font-weight: 800;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.headBig small {
+  font-size: 0.45em;
+  font-weight: 650;
+  color: var(--muted);
+}
+
+.headLine {
+  margin: 0;
+  max-width: 60ch;
+  font-size: 16px;
+  color: var(--muted);
+}
+
+.more {
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  padding: 10px 14px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.more summary {
+  cursor: pointer;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.moreBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.moreBody p {
+  margin: 0;
+}
+
+/* a held-back question in plain words */
+.qaTitle {
+  font-weight: 650;
+}
+
+.qaRight {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.pills {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pill {
+  display: block;
+  max-width: 100%;
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pillRight {
+  background: color-mix(in srgb, var(--ok) 16%, var(--surface));
+  color: var(--ok);
+}
+
+.pillWrong {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.raw summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+  width: max-content;
+}
+
+.rawText {
+  margin: 6px 0 0;
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* the gate, centred in its card */
+.gateBox {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+  max-width: 760px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.gateTiles {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  text-align: center;
+}
+
+.gateSentence {
+  margin: 0;
+  text-align: center;
+  font-size: 15px;
+}
+
+@media (max-width: 640px) {
+  .stageWrap {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .arrow {
+    display: none;
+  }
+  .gateTiles {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* the "why" under a headline number: short, muted, set apart in italics with a thin accent rule */
+.whyLine {
+  margin: 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--accent);
+  font-size: 14px;
+  font-style: italic;
+  color: var(--muted);
+  line-height: 1.35;
+}

@@ -98,6 +98,24 @@ try {
   is("sampler off", D.energyLine(null), "sampler off");
   is("older gateway", D.energyLine(undefined), null);
 
+  // ---- the Ask panel's comparison (ask-compare): the box and the network brain side by side
+  const look = (min) => ({ name: "episodes_between", arguments: { start: "2026-10-11T14:00:00-04:00", end: new Date(Date.parse("2026-10-11T14:00:00-04:00") + min * 60000).toISOString() } });
+  const seen = { name: "last_seen", arguments: { label: "keys" } };
+  const search = { name: "search_memory", arguments: { q: "keys" } };
+  is("both looked back", D.verdictLine({ answer: "a", calls: [look(25)] }, { answer: "b", calls: [look(25)] }), "both looked back over the last 25 minutes");
+  is("tools differ", D.verdictLine({ answer: "a", calls: [search] }, { answer: "b", calls: [seen] }), "the box searched memory, the brain checked last seen");
+  is("no tool on either", D.verdictLine({ answer: "a", calls: [] }, { answer: "b", calls: [] }), "both answered without a tool");
+  is("a side that failed has no verdict", D.verdictLine({ answer: "a", calls: [] }, { error: "no answer in 60 s" }), null);
+  is("no brain, no verdict", D.verdictLine({ answer: "a", calls: [] }, null), null);
+  is("hours", D.toolWords([look(180)]), "looked back over the last 3 hours");
+  is("tool line", D.toolLine([seen]), 'last_seen(label="keys")');
+  is("no tool line", D.toolLine([]), "no tool");
+  is("cost short", D.costShort({ seconds: 2.43, energy: { joules: 41.3 } }, "sampler off"), "about 41 J in 2.4 s");
+  is("cost short brain", D.costShort({ seconds: 9.5, energy: { joules: 1234.5, watts_avg: 130, pods: {} } }, "watts not read"), "about 1,235 J in 9.5 s");
+  is("cost short off", D.costShort({ seconds: 2.4, energy: null }, "sampler off"), "sampler off · 2.4 s");
+  const oldAnswer = { question: "q", serving: "atlas-base", text: "t", calls: [seen], expected: null, seconds: 1, prompt: "eval", energy: null };
+  is("an older gateway's answer is the box side", D.boxSide(oldAnswer).answer, "t");
+
   // ---- three tabs, as a grouping of the five views (lib/labTabs.ts): nothing is dropped, old links land
   const B = await load("labBench");
   const T = await load("labTabs");
@@ -162,6 +180,14 @@ try {
   is("a stand-in gate's caption shows no count", `${standInStages[3].value},${standInStages[3].note}`, "stand-in gate,no held-out score");
   const onBoxStages = P.loopStages({ ...loopStory, package: { bytes: num(null), model_version: "v2" } }, when, { onBox: "v2" });
   is("the box caption says when the run's model is on the box now", `${onBoxStages[4].state},${onBoxStages[4].value}`, "done,on the box now");
+  // ---- answers in plain words (lib/labWords.ts)
+  const W = await load("labWords");
+  is("JSON tool call: last_seen", W.answerWords('{"tool_calls": [{"name": "last_seen", "arguments": {"label": "backpack"}}]}'), "checked where backpack was last seen");
+  is("markup tool call: last_seen", W.answerWords("<tool_call>\n<function=last_seen>\n<parameter=label>\nkeys\n</parameter>\n</function>\n</tool_call>"), "checked where keys was last seen");
+  is("search_memory", W.answerWords('{"tool_calls": [{"name": "search_memory", "arguments": {"q": "mug"}}]}'), 'searched memory for "mug"');
+  is("another tool, its name in words", W.answerWords('{"tool_calls": [{"name": "set_reminder", "arguments": {}}]}'), "set reminder");
+  is("episodes_between says looked back", W.answerWords('{"tool_calls": [{"name": "episodes_between", "arguments": {"start": "2026-10-11T00:44:00-04:00", "end": "2026-10-11T01:09:00-04:00"}}]}').startsWith("looked back from "), true);
+  is("a plain sentence stays a sentence", W.answerWords("  The keys are on the desk. "), "The keys are on the desk.");
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }

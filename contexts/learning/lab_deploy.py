@@ -37,6 +37,19 @@ POST /api/learning/lab/deploy/ask         {question}
      energy: {joules, idle_w, seconds, sampler, samples, above_idle_j, low_confidence} | null}.
     `energy` is what the answer cost on the box (G6, contexts/learning/answer_energy.py): the Jetson's power sampler
     integrated over the answer's window, gross, the box's idle beside it; null when the sampler is not running.
+    Since the comparison (ask-compare) the same response also carries both answers, side by side:
+    {..., "box": {answer, calls, serving, seconds, energy, prompt, expected} | {error, seconds},
+          "brain": {answer, calls, serving, seconds, energy: {joules, watts_avg, seconds, pods: {C, D}} | null}
+                   | {error, seconds} | null}
+    The box: the eval's exact prompt for a held-out question (the tool it picks is what the eval scores), any other
+    question in the normal chat prompt with the tools offered and not forced, so "how are you" gets a plain answer.
+    Either way the tools it calls run against the box's own memory with the agent's tool executor (QA._run_tool,
+    the one the Ask tab's tool loop uses) and the model answers from the results, at most ROUNDS rounds. The brain:
+    the same question in the same chat prompt to the 122B pair (the head on pod C, served name "teacher", through the
+    hub proxy with contexts/circle/brain_pair.py's keys), its tool calls run against the same memory, so both answer
+    from the same facts; its joules are both pods' samplers over the request window (gross, idle beside). The two
+    run in parallel, each with a SIDE_TIMEOUT_S timeout and an honest {error} when one fails.
+    ATLAS_ASK_COMPARE=off leaves the brain out ("brain": null).
     503 when the model server does not answer (it does not for about a minute of every swap).
 
 The stages come from the `STAGE <name> <start|done|failed> <unix seconds>` lines atlas_swap.py prints. The status is
@@ -46,6 +59,7 @@ the last deploy; a swap the restarted gateway finds no longer running is closed 
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -60,7 +74,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 
 from runtime.modelstore import VERIFIED_RECORD, ModelStore, read_verified, record_vouches
 
@@ -437,11 +451,212 @@ async def ask_model(question: str, llm_url: str, *, items: list[dict[str, Any]],
             "expected": expected, "seconds": round(time.perf_counter() - began, 1), "prompt": source}
 
 
+# --- the box and the network brain, side by side (ask-compare) --------------------------------------------------
+
+COMPARE_ENV = "ATLAS_ASK_COMPARE"
+ROUNDS = 3  # model turns that may call tools, as the agent's tool loop (qa.MAX_TOOL_CALLS)
+SIDE_TIMEOUT_S = 60.0
+ANSWER_TOKENS = 256
+BRAIN_MODEL = "teacher"
+BRAIN_SERVING = "Qwen3.5-122B across pods C and D"
+THINK_RE = re.compile(r"<think>.*?</think>", re.S)
+CALL_MARKUP_RE = re.compile(r"<tool_call>.*?</tool_call>", re.S)
+
+
+def chat_system(now: datetime) -> str:
+    return ("You are Atlas, a small home box with cameras and a memory of what they saw. "
+            f"The time now is {now.isoformat(timespec='seconds')}. When the question is about what the cameras saw "
+            "(where something is, what happened, when something was last seen), call a tool and answer from what it "
+            "returns, in one or two short sentences with the times. When the question needs no tool, answer it "
+            "directly in one or two short sentences.")
+
+
+def _memory_tools() -> list[dict[str, Any]]:
+    from contexts.agent.application.qa import MEMORY_TOOLS
+
+    return MEMORY_TOOLS
+
+
+def _plain(text: str) -> str:
+    """The words of a model turn: no thinking block, no tool-call markup, no chat-template tokens."""
+    text = CALL_MARKUP_RE.sub("", THINK_RE.sub("", str(text or "")))
+    return " ".join(SPECIAL_RE.sub("", text.split(IM_END)[0]).split())
+
+
+def _calls_of(message: dict[str, Any]) -> list[dict[str, Any]]:
+    """OpenAI tool_calls, or the same calls written as text (a server without a tool parser), as {id, name, arguments}."""
+    out = []
+    for i, call in enumerate(message.get("tool_calls") or []):
+        fn = (call or {}).get("function") or {}
+        args = fn.get("arguments")
+        if isinstance(args, str):
+            try:
+                args = json.loads(args) if args.strip() else {}
+            except ValueError:
+                args = {}
+        if fn.get("name"):
+            out.append({"id": call.get("id") or f"call-{i}", "name": fn["name"], "arguments": args or {}})
+    if not out:
+        out = [{"id": f"call-{i}", **c} for i, c in enumerate(parse_calls(str(message.get("content") or "")))]
+    return out
+
+
+async def run_tool(qa: Any, name: str, arguments: dict[str, Any]) -> str:
+    """One tool call against the box's memory with the agent's own executor (QA._run_tool): what it found, as text."""
+    if qa is None:
+        return "the box's memory is not available here"
+    from contexts.agent.application.qa import Evidence
+    from contracts.types import ToolCall
+
+    ev = Evidence()
+    await qa._run_tool(ToolCall(id="ask", name=name, arguments=dict(arguments or {})), ev)
+    return "\n".join(ev.lines) or "nothing found"
+
+
+async def chat_loop(post: Callable[[dict[str, Any]], Any], messages: list[dict[str, Any]], qa: Any,
+                    rounds: int = ROUNDS, calls: list[dict[str, Any]] | None = None) -> tuple[str, list[dict[str, Any]]]:
+    """The agent's tool loop over an OpenAI chat endpoint: tools offered, not forced; each call run against the box's
+    memory; at most `rounds` turns that call tools, then one turn without tools for the answer."""
+    calls = [] if calls is None else calls
+    tools = _memory_tools()
+    for _ in range(rounds):
+        message = await post({"messages": messages, "tools": tools, "tool_choice": "auto"})
+        found = _calls_of(message)
+        if not found:
+            return _plain(message.get("content")), calls
+        messages.append({"role": "assistant", "content": _plain(message.get("content")),
+                         "tool_calls": [{"id": c["id"], "type": "function", "function": {
+                             "name": c["name"], "arguments": json.dumps(c["arguments"])}} for c in found]})
+        for c in found:
+            calls.append({"name": c["name"], "arguments": c["arguments"]})
+            messages.append({"role": "tool", "tool_call_id": c["id"], "content": await run_tool(qa, c["name"], c["arguments"])})
+    message = await post({"messages": messages})
+    return _plain(message.get("content")), calls
+
+
+def _message(reply: dict[str, Any]) -> dict[str, Any]:
+    choices = reply.get("choices") or []
+    if not choices or not isinstance(choices[0], dict):
+        raise ValueError("the model server sent no answer")
+    return choices[0].get("message") or {}
+
+
+async def ask_box(question: str, llm_url: str, *, items: list[dict[str, Any]], qa: Any, meter: Any | None = None,
+                  transport: httpx.AsyncBaseTransport | None = None) -> dict[str, Any]:
+    """The box's answer: the eval's prompt for a held-out question, the chat prompt otherwise; tools run on memory."""
+    began = time.perf_counter()
+    started = datetime.now(UTC)
+    _, source, expected = prompt_for(question, items)
+    held_out = source == "eval"
+    async with httpx.AsyncClient(base_url=llm_url.rstrip("/"), transport=transport, timeout=SIDE_TIMEOUT_S) as http:
+        async def post(body: dict[str, Any]) -> dict[str, Any]:
+            r = await http.post("/v1/chat/completions", json={**body, "temperature": 0.2, "max_tokens": ANSWER_TOKENS})
+            r.raise_for_status()
+            return _message(r.json())
+
+        messages = [{"role": "system", "content": chat_system(datetime.now().astimezone())},
+                    {"role": "user", "content": question}]
+        first = None
+        if held_out:  # the eval's exact prompt picks the tool, as the eval scores it; the answer continues in chat
+            first = await ask_model(question, llm_url, items=items, transport=transport)
+            calls: list[dict[str, Any]] = []
+            if first["calls"]:
+                found = [{"id": f"call-{i}", **c} for i, c in enumerate(first["calls"])]
+                messages.append({"role": "assistant", "content": "", "tool_calls": [
+                    {"id": c["id"], "type": "function", "function": {"name": c["name"], "arguments": json.dumps(c["arguments"])}}
+                    for c in found]})
+                for c in found:
+                    calls.append({"name": c["name"], "arguments": c["arguments"]})
+                    messages.append({"role": "tool", "tool_call_id": c["id"],
+                                     "content": await run_tool(qa, c["name"], c["arguments"])})
+                try:
+                    answer, calls = await chat_loop(post, messages, qa, rounds=ROUNDS - 1, calls=calls)
+                except (httpx.HTTPError, ValueError) as exc:  # the tool it picked still shows; say why no words came
+                    answer = f"(picked the tool, but no answer came back: {type(exc).__name__})"
+            else:
+                answer = _plain(first["text"])
+            serving = first["serving"]
+        else:
+            answer, calls = await chat_loop(post, messages, qa)
+            serving = None
+            try:
+                props = (await http.get("/props", timeout=5)).json()
+                serving = Path(str(props.get("model_path") or "")).parent.name or None
+            except (httpx.HTTPError, ValueError, AttributeError):
+                pass
+    ended = datetime.now(UTC)
+    energy = None
+    if meter is not None:
+        try:
+            energy = await meter.measure(started, ended)
+        except Exception:
+            log.exception("measuring the box's answer failed")
+    return {"answer": answer or "(no answer)", "calls": calls, "serving": serving,
+            "seconds": round(time.perf_counter() - began, 1), "energy": energy,
+            "prompt": source if held_out else "chat", "expected": expected if held_out else None,
+            "text": first["text"] if first else answer}
+
+
+async def ask_brain(question: str, pair: Any, qa: Any) -> dict[str, Any]:
+    """The 122B pair's answer to the same question, in the same chat prompt, its tools run on the box's memory."""
+    began = time.perf_counter()
+    start = time.time()
+
+    async def post(body: dict[str, Any]) -> dict[str, Any]:
+        return _message(await pair.chat({**body, "model": BRAIN_MODEL, "temperature": 0.2, "max_tokens": ANSWER_TOKENS,
+                                         "chat_template_kwargs": {"enable_thinking": False}}, timeout_s=SIDE_TIMEOUT_S))
+
+    messages = [{"role": "system", "content": chat_system(datetime.now().astimezone())},
+                {"role": "user", "content": question}]
+    answer, calls = await chat_loop(post, messages, qa)
+    end = time.time()
+    try:
+        energy = await pair.window_energy(start, end)
+    except Exception:
+        log.exception("measuring the brain's answer failed")
+        energy = None
+    return {"answer": answer or "(no answer)", "calls": calls, "serving": BRAIN_SERVING,
+            "seconds": round(time.perf_counter() - began, 1), "energy": energy}
+
+
+async def _side(coro, began: float) -> dict[str, Any]:
+    """One side of the comparison with its timeout; a failure is said, never raised."""
+    try:
+        return await asyncio.wait_for(coro, SIDE_TIMEOUT_S + 5)
+    except (asyncio.TimeoutError, TimeoutError):
+        return {"error": f"no answer in {SIDE_TIMEOUT_S:.0f} s", "seconds": round(time.perf_counter() - began, 1)}
+    except Refused as err:
+        return {"error": err.message, "seconds": round(time.perf_counter() - began, 1)}
+    except Exception as exc:  # the other side still answers
+        return {"error": f"{type(exc).__name__}: {str(exc)[:160]}", "seconds": round(time.perf_counter() - began, 1)}
+
+
+_PAIR: list[Any] = []
+
+
+def default_pair() -> Any | None:
+    """The 122B pair from the box's .env (contexts/circle/brain_pair.py), built once; None when not configured."""
+    if not _PAIR:
+        try:
+            from contexts.circle.brain_pair import build_brain_pair
+
+            _PAIR.append(build_brain_pair())
+        except Exception:
+            log.exception("the network brain could not be set up")
+            _PAIR.append(None)
+    pair = _PAIR[0]
+    return pair if pair is not None and pair.configured else None
+
+
 # --- the routes -------------------------------------------------------------------------------------------------
 
 def lab_deploy_router(runner: DeployRunner, *, guard: Callable | None = None, questions: str | Path = QUESTIONS,
-                      ask_transport: httpx.AsyncBaseTransport | None = None, meter: Any | None = None) -> APIRouter:
-    """`meter` (contexts/learning/answer_energy.AnswerMeter) measures each answer; without one `energy` is null."""
+                      ask_transport: httpx.AsyncBaseTransport | None = None, meter: Any | None = None,
+                      qa: Any | None = None, pair: Any | None = None, compare: bool | None = None) -> APIRouter:
+    """`meter` (contexts/learning/answer_energy.AnswerMeter) measures each answer; without one `energy` is null.
+    `qa` is the agent's QA (its tool executor and the box's memory; default the app's, app.state.atlas.qa), `pair`
+    the 122B pair (default contexts/circle/brain_pair.py from .env), `compare` False leaves the brain out (default:
+    on unless ATLAS_ASK_COMPARE=off)."""
     router = APIRouter()
     guarded = [Depends(guard)] if guard else []
 
@@ -473,26 +688,34 @@ def lab_deploy_router(runner: DeployRunner, *, guard: Callable | None = None, qu
             raise refused(err) from None
 
     @router.post("/api/learning/lab/deploy/ask", dependencies=guarded)
-    async def ask(body: dict[str, Any] | None = Body(default=None)) -> dict:
+    async def ask(request: Request, body: dict[str, Any] | None = Body(default=None)) -> dict:
         question = (body or {}).get("question")
         if not isinstance(question, str) or not question.strip():
             raise HTTPException(400, "give the question: {\"question\": \"...\"}")
         question = " ".join(SPECIAL_RE.sub("", question).replace("<|", "").replace("|>", "").split())[:300]
         if not question:
             raise HTTPException(400, "give the question: {\"question\": \"...\"}")
-        started = datetime.now(UTC)
-        try:
-            answer = await ask_model(question, runner.llm_url or DEFAULT_LLM_URL, items=load_questions(questions),
-                                     transport=ask_transport)
-        except Refused as err:
-            raise refused(err) from None
-        ended = datetime.now(UTC)
-        answer["energy"] = None
-        if meter is not None:
-            try:
-                answer["energy"] = await meter.measure(started, ended)
-            except Exception:  # what it cost is an extra: a failure here never costs the answer
-                log.exception("measuring the answer's energy failed")
-        return answer
+        tools = qa if qa is not None else getattr(getattr(request.app.state, "atlas", None), "qa", None)
+        on = compare if compare is not None else os.environ.get(COMPARE_ENV, "").strip().lower() not in ("off", "0", "false", "no")
+        in_app = getattr(request.app.state, "atlas", None) is not None  # the box's .env is read only in the gateway
+        brain_pair = (pair if pair is not None else default_pair() if in_app else None) if on else None
+        items = load_questions(questions)
+        began = time.perf_counter()
+        box_task = _side(ask_box(question, runner.llm_url or DEFAULT_LLM_URL, items=items, qa=tools, meter=meter,
+                                 transport=ask_transport), began)
+        if on:
+            brain_task = (_side(ask_brain(question, brain_pair, tools), began) if brain_pair is not None else
+                          asyncio.sleep(0, {"error": "this box has no keys for the pods (see contexts/circle/README.md)",
+                                            "seconds": 0.0}))
+            box, brain = await asyncio.gather(box_task, brain_task)
+        else:
+            box, brain = await box_task, None
+        if "error" in box and (brain is None or "error" in brain):
+            raise HTTPException(503, box["error"])  # nothing answered: as before, the model server is down
+        # the fields the card read before the comparison, from the box's side
+        old = {"question": question, "serving": box.get("serving"), "text": box.get("text", box.get("answer", "")),
+               "calls": box.get("calls", []), "expected": box.get("expected"), "seconds": box.get("seconds", 0.0),
+               "prompt": box.get("prompt", "chat"), "energy": box.get("energy")}
+        return {**old, "box": box, "brain": brain}
 
     return router
