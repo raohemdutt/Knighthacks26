@@ -179,15 +179,26 @@ def test_a_real_run_is_never_mixed_with_the_sample():
     assert asked["current_model"]["version"] == "atlas-v2"
 
 
-def test_measured_numbers_come_from_the_labs_metrics_file_with_their_line_and_are_not_sample():
-    body = client(LabView()).get("/api/learning/lab").json()
-    speed = next(m for m in body["measured"] if m["metric"] == "trainer.samples_per_s")
-    assert speed["value"] == 0.51 and speed["sample"] is False and speed["source"]["ref"].startswith("lab/refine/metrics.jsonl:")
-    line = int(speed["source"]["ref"].rsplit(":", 1)[1])
-    assert json.loads(Path("lab/refine/metrics.jsonl").read_text().splitlines()[line - 1])["metric"] == "trainer.samples_per_s"
+def test_measured_numbers_come_from_the_labs_metrics_file_with_their_line_and_are_not_sample(tmp_path):
+    rows = [{"metric": "teacher.decode_tok_s", "value": 7.7, "unit": "tok/s", "node": "pod-a", "conditions": {}, "ts": "2026-10-10T10:22:13Z"},
+            {"metric": "trainer.samples_per_s", "value": 0.51, "unit": "samples/s", "node": "pod-b", "conditions": {}, "ts": "2026-10-10T10:23:23Z"}]
+    path = tmp_path / "metrics.jsonl"  # our own small file: the lab keeps appending to the committed one
+    path.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+    body = client(LabView(), metrics_file=path).get("/api/learning/lab").json()
+    (speed,) = body["measured"]
+    assert (speed["metric"], speed["value"], speed["sample"], speed["source"]["ref"]) == ("trainer.samples_per_s", 0.51, False, "lab/refine/metrics.jsonl:2")
+    assert speed["chip"]["name"] == "Radeon R9700" and speed["other_chip"] is True  # before the move, no chip named
     assert client(LabView(), metrics_file=None, sample_dir=None).get("/api/learning/lab").json() == {
         "runs": [], "sample": False, "sample_reason": None, "real_runs": 0, "current_model": None, "measured": [],
         "suggested_events": body["suggested_events"]}
+
+
+def test_measured_numbers_from_the_committed_file_each_cite_a_line_that_holds_that_metric_and_value():
+    lines = Path("lab/refine/metrics.jsonl").read_text(encoding="utf-8").splitlines()
+    for m in client(LabView()).get("/api/learning/lab").json()["measured"]:  # whatever the lab has recorded by now
+        row = json.loads(lines[int(m["source"]["ref"].rsplit(":", 1)[1]) - 1])
+        assert (row["metric"], row["value"]) == (m["metric"], m["value"]) and m["sample"] is False
+        assert m["chip"]["name"] and m["other_chip"] is (not m["chip"]["current"])
 
 
 def test_the_gateway_serves_the_lab_from_the_log(tmp_path, monkeypatch):
