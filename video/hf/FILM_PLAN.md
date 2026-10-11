@@ -1,4 +1,4 @@
-# Atlas film v4.4: plan and tracking document
+# Atlas film v4.5: plan and tracking document
 
 Status: **PLAN, waiting for Dom's approval. Nothing is rendered until it is approved.**
 Branch `ctx/demo/video-hyperframes`. Owner: Dom (Notion task D12).
@@ -10,6 +10,8 @@ answers computed in code); the operator is Xander. The full script is in `video/
 beat notes are longer (the script was tightened to fit 5:00).
 v4.4: voice casting, time budget per beat, build order with milestones, the person-fix status, and the Notion
 handoff (sections 9 to 13).
+v4.5: two repo updates folded in (#381 outbound blur gate, #382 the real L16 run). **Hemdutt's Notion notes are not in
+yet**: this session cannot read Notion. They go in as v4.6.
 
 Every fact on screen or in a line comes from the repo, with the source next to it, or Dom has said so explicitly
 (section 6 lists those). Tick a box only when it has been built *and* checked in a frame.
@@ -429,9 +431,17 @@ needs attention, is it getting better), in plain words, offline, with every numb
 - **6.E Wording and numbers to confirm.**
   - "A four-billion-parameter Qwen" replaces "It is not small".
   - The fine-tune numbers and the public Hugging Face repo name need Ilan's confirmation before they are shown.
+    **Update (#382, Ilan, on main):** the real L16 run's gate scores and package manifest are now demo fixtures
+    (`fixtures/demo/l16-gate-scores.json`, `l16-manifest.json`, `lab/docs/lab-push.md`). Ilan still to say which
+    numbers the film may show.
 - **6.F Exam.** There's no exam in the demo day; the film uses the writeup and the greedy quiz.
 - **6.G Watch data.** Synthetic numbers only (`config/connectors.yaml:82-85`).
-- **6.H No blur by default; blur only on egress.**
+- **6.H No blur by default; blur only on egress.** **Update (#381, Hemdutt, on main):** an outbound gate now blurs
+  every face in any picture that leaves the box *whatever the local switch says*, and sends nothing if it fails. So
+  "blurred the moment a picture leaves" is true in the product. What remains is the default of the local
+  "Blur faces before saving" switch (still on). The film's "your face stays clear on the box" needs that default
+  off, or the line becomes "you choose whether faces are blurred on the box; anything that leaves is always
+  blurred".
   - The film says "blurred only when a picture leaves the box".
   - Today's code also blurs keyframes before storing them (`contexts/perception/infrastructure/face_blur.py`,
     `contexts/vault/application/policy.py`). Making the product match is a policy change for the perception owner.
