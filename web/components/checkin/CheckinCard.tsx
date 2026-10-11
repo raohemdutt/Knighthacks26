@@ -18,10 +18,29 @@ import c from "./checkin.module.css";
  * earlier days. When the look memory has an earlier look like this one, one more chip ("Looked tired · like Tue") opens
  * that remembered moment in one or two plain lines: what was going on, and what helped. "Done" puts it away; "Move the block" asks the box for a re-plan, which changes nothing until its
  * card is approved.
+ *
+ * `ahead` is one quiet line under the chips ("You usually start to look strained around now. A short break tends to
+ * help."), from what Atlas has learned about this person's looks. It is on this card only: never said aloud, never pushed.
  */
 
 const asApiError = (err: unknown) => (err instanceof ApiError ? err : new ApiError(0, err instanceof Error ? err.message : String(err)));
 const hm = (minutes: number) => `${Math.floor(minutes / 60)} h ${Math.round(minutes % 60)} min`;
+
+/**
+ * With no check-in on screen, the same quiet line on its own: the person has been at the desk about as long as it
+ * usually takes for a look to start. Shown, never said. Nothing renders when there is nothing to say.
+ */
+export function LookAhead({ line }: { line?: string }) {
+  if (!line) return null;
+  return (
+    <p className={`${ui.muted} ${ui.small}`} data-guide="checkin:look-ahead" aria-label="A pattern Atlas has noticed">
+      {line}{" "}
+      <Link href="/people/" className={c.link}>
+        How Atlas knows
+      </Link>
+    </p>
+  );
+}
 
 export function CheckinCard({ card, said, onChanged }: { card: Card; said?: string; onChanged: () => void }) {
   const [open, setOpen] = useState<CheckinKind | "callback" | null>(null);
@@ -107,6 +126,15 @@ export function CheckinCard({ card, said, onChanged }: { card: Card; said?: stri
       ) : (
         <p className={c.hint}>Tap one to see what is behind it.</p>
       )}
+
+      {card.ahead ? (
+        <p className={c.fine} data-guide="checkin:look-ahead">
+          {card.ahead}{" "}
+          <Link href="/people/" className={c.link}>
+            How Atlas knows
+          </Link>
+        </p>
+      ) : null}
 
       {moved ? (
         <p className={c.moved}>

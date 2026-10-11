@@ -48,3 +48,34 @@
   flex-wrap: wrap;
   gap: 2px 10px;
 }
+
+/* "What Atlas has learned about your looks": the findings as sentences, each with how wide the guess still is. */
+.learned {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+
+.finding {
+  display: grid;
+  gap: 2px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.finding:first-child {
+  padding-top: 0;
+}
+
+.finding:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.confirm {
+  display: grid;
+  gap: 8px;
+}

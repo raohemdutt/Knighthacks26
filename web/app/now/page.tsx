@@ -7,7 +7,7 @@ import { ConnectedApps } from "@/components/calendar/ConnectedApps";
 import { DayBar } from "@/components/calendar/DayBar";
 import { NearbyPanel } from "@/components/calendar/Nearby";
 import sc from "@/components/calendar/screen.module.css";
-import { CheckinCard } from "@/components/checkin/CheckinCard";
+import { CheckinCard, LookAhead } from "@/components/checkin/CheckinCard";
 import { CoachFeedback } from "@/components/coach/CoachFeedback";
 import { RouteSheet } from "@/components/dayrun/RouteSheet";
 import { Empty, ErrorBox, Loading, WriteError } from "@/components/States";
@@ -304,7 +304,9 @@ function Day({ d, brief, patterns, reload }: { d: DayNow; brief: BriefState; pat
               said={brief.latest.checkin && brief.latest.checkin.ref === d.checkin.event_id ? brief.latest.checkin.display : undefined}
               onChanged={reload}
             />
-          ) : null}
+          ) : (
+            <LookAhead line={d.ahead} />
+          )}
 
           <section className={ui.section} aria-label="Your schedule">
             <h2 className={sc.paneTitle}>{plan?.type === "day.replan.proposed" ? "Your schedule (re-planned)" : "Your schedule"}</h2>
