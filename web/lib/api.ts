@@ -1133,6 +1133,91 @@ export interface PlanBody {
   moves: Move[];
   start?: string;
   scenario?: string;
+  /** Numbers the person knows better than the box: `work_left` is focused minutes by deadline id. */
+  initial?: { work_left?: Record<string, number> };
+}
+
+// ---------- Today's Plan: additive to Day Run (contexts/play/dayrun: fixes.py, words.py, talk.py, history.py) ----------
+
+/** A "Near you" event that falls in an open slot: offered in the gap, never placed (Board.suggestions). */
+export interface Suggestion extends OptionalEvent {
+  slot: string | null;
+  walk_minutes: number | null;
+  leave_by: string | null;
+  note: string | null;
+}
+
+/** Board fields added for Today's Plan. Older boxes do not send them. */
+export interface PlanBoard extends Board {
+  suggestions?: Suggestion[];
+  deadlines: (Deadline & { estimate_from?: "kind" | "default" | "yours" | null; estimate_minutes?: number | null })[];
+}
+
+/** One thing to fix, in plain words, with the edit that would mend it (the whole plan with the edit applied). */
+export interface Fix {
+  id: string;
+  problem: string;
+  label: string | null;
+  moves: Move[] | null;
+  changed: number | null;
+  mends: boolean;
+}
+
+/** POST /api/dayrun/explain: what needs fixing, and one true sentence per number a person might question. */
+export interface Explained {
+  headline: string;
+  fixes: Fix[];
+  deadlines: Record<string, { title: string; due: string; work: string; status: string | null; risk: string | null }>;
+  sleep: string;
+  meals: string;
+  points: string;
+  stars: string;
+  walks: Record<string, string>;
+}
+
+/** POST /api/dayrun/edit: a change said in plain words, as the new plan. `ok` false: nothing changed, see `options`. */
+export interface EditResult {
+  ok: boolean;
+  understood: string;
+  moves: Move[];
+  changed: number | null;
+  options: { label: string; moves: Move[]; changed: number | null }[];
+  warning: string | null;
+}
+
+/** One day of the date strip (GET /api/dayrun/days). The last six fields are only on days still ahead. */
+export interface StripDay {
+  day: string;
+  when: "past" | "today" | "future";
+  has_data: boolean;
+  label: string;
+  summary: string;
+  won?: boolean;
+  stars?: number | null;
+  score?: number | null;
+  fixed?: number;
+  agreed?: number;
+  optional?: number;
+  free_minutes?: number;
+  busy_minutes?: number;
+  due?: { id: string; title: string; due: string; work_left: number }[];
+  pressure?: number;
+}
+
+export interface DayBlock extends PlanMove {
+  mark: "done" | "missed" | null;
+  moved: boolean;
+}
+
+/** GET /api/dayrun/day?day=: a past day against its review, today's plan, or a draft for a day ahead. */
+export interface PlanDay extends StripDay {
+  start: string | null;
+  moves: Move[];
+  blocks: DayBlock[];
+  review: { score: number | null; stars: number; points: number; plan_stars: number; followed: string[]; slipped: string[]; change_tomorrow: string } | null;
+  changes: { at: string; why: string }[];
+  first: { start: string; moves: Move[] } | null;
+  outcome: PlanOutcome | null;
 }
 
 // ---------- the Day loop (contracts/day.py, contexts/day) ----------
@@ -1919,6 +2004,11 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
 
   // Day Run. `scenario` runs a scripted day from fixtures/play/ ("demo") instead of live sources.
   dayrunBoard: (scenario?: string, signal?: AbortSignal) => get<Board>("/api/dayrun/board", { scenario }, signal),
+  planBoard: (q: { start?: string; scenario?: string }, signal?: AbortSignal) => get<PlanBoard>("/api/dayrun/board", q, signal),
+  planExplain: (body: PlanBody, signal?: AbortSignal) => post<Explained>("/api/dayrun/explain", body, signal),
+  planEdit: (body: PlanBody & { text: string }) => post<EditResult>("/api/dayrun/edit", body),
+  planDays: (signal?: AbortSignal) => get<{ today: string; days: StripDay[] }>("/api/dayrun/days", undefined, signal),
+  planDay: (day: string, signal?: AbortSignal) => get<PlanDay>("/api/dayrun/day", { day }, signal),
   dayrunScenario: (name: string, signal?: AbortSignal) => get<ScenarioScript>(`/api/dayrun/scenarios/${encodeURIComponent(name)}`, undefined, signal),
   dayrunSimulate: (body: PlanBody, signal?: AbortSignal) => post<SimResult>("/api/dayrun/simulate", body, signal),
   dayrunHard: (body: PlanBody & { seed?: number; count?: number; disruptions?: Disruption[] }) => post<HardResult>("/api/dayrun/hard", body),

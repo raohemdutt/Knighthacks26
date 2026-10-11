@@ -48,6 +48,7 @@ import statistics
 from pathlib import Path
 from typing import Any
 
+CLI_VERB = "report"
 FORMAT = "atlas.lab_report/1"
 REPO = Path(__file__).resolve().parents[1]
 METRICS = "lab/refine/metrics.jsonl"

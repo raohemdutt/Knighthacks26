@@ -1,0 +1,2887 @@
+{
+ "schemaVersion": 1,
+ "deviceProperties": [
+  {
+   "id": 0,
+   "name": "Radeon 8060S Graphics",
+   "totalGlobalMem": 68719476736,
+   "computeMajor": 11,
+   "computeMinor": 5,
+   "numSms": 20
+  }
+ ],
+ "baseTimeNanoseconds": 1760000000000000000,
+ "traceEvents": [
+  {
+   "ph": "X",
+   "cat": "user_annotation",
+   "name": "ProfilerStep#0",
+   "pid": 1,
+   "tid": 1,
+   "ts": 1000.0,
+   "dur": 10000.0
+  },
+  {
+   "ph": "X",
+   "cat": "user_annotation",
+   "name": "enumerate(DataLoader)#_SingleProcessDataLoaderIter.__next__",
+   "pid": 1,
+   "tid": 1,
+   "ts": 1010.0,
+   "dur": 200.0
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::to",
+   "pid": 1,
+   "tid": 1,
+   "ts": 1215.0,
+   "dur": 10.0
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipMemcpyAsync",
+   "pid": 1,
+   "tid": 1,
+   "ts": 1216.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1001
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "gpu_memcpy",
+   "name": "Memcpy HtoD (Host -> Device)",
+   "pid": 0,
+   "tid": 7,
+   "ts": 1221.0,
+   "dur": 20.0,
+   "args": {
+    "correlation": 1001,
+    "bytes": 65536
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "user_annotation",
+   "name": "atlas::gdn::model.layers.0.linear_attn",
+   "pid": 1,
+   "tid": 1,
+   "ts": 1300.0,
+   "dur": 150.0
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mm",
+   "pid": 1,
+   "tid": 1,
+   "ts": 1305.0,
+   "dur": 20.0,
+   "args": {
+    "Input Dims": [
+     [
+      8,
+      64
+     ],
+     [
+      64,
+      192
+     ]
+    ],
+    "Input type": [
+     "c10::BFloat16",
+     "c10::BFloat16"
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 1,
+   "ts": 1307.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1002
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "Cijk_Alik_Bljk_BBS_BH_MT64x64x32",
+   "pid": 0,
+   "tid": 7,
+   "ts": 1312.0,
+   "dur": 1000.0,
+   "args": {
+    "correlation": 1002,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "user_annotation",
+   "name": "atlas::attention::model.layers.1.self_attn",
+   "pid": 1,
+   "tid": 1,
+   "ts": 1500.0,
+   "dur": 150.0
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mm",
+   "pid": 1,
+   "tid": 1,
+   "ts": 1505.0,
+   "dur": 20.0,
+   "args": {
+    "Input Dims": [
+     [
+      8,
+      64
+     ],
+     [
+      64,
+      128
+     ]
+    ],
+    "Input type": [
+     "c10::BFloat16",
+     "c10::BFloat16"
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 1,
+   "ts": 1507.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1003
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "Cijk_Alik_Bljk_BBS_BH_MT64x64x32",
+   "pid": 0,
+   "tid": 7,
+   "ts": 2312.0,
+   "dur": 300.0,
+   "args": {
+    "correlation": 1003,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "user_annotation",
+   "name": "atlas::lora::model.layers.1.self_attn.q_proj.lora_A.default",
+   "pid": 1,
+   "tid": 1,
+   "ts": 1540.0,
+   "dur": 40.0
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mm",
+   "pid": 1,
+   "tid": 1,
+   "ts": 1545.0,
+   "dur": 20.0,
+   "args": {
+    "Input Dims": [
+     [
+      8,
+      64
+     ],
+     [
+      64,
+      16
+     ]
+    ],
+    "Input type": [
+     "c10::BFloat16",
+     "c10::BFloat16"
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 1,
+   "ts": 1547.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1004
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "Cijk_Alik_Bljk_BBS_BH_MT16x16x16",
+   "pid": 0,
+   "tid": 7,
+   "ts": 2612.0,
+   "dur": 15.0,
+   "args": {
+    "correlation": 1004,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "user_annotation",
+   "name": "atlas::mlp::model.layers.1.mlp",
+   "pid": 1,
+   "tid": 1,
+   "ts": 1700.0,
+   "dur": 150.0
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mm",
+   "pid": 1,
+   "tid": 1,
+   "ts": 1705.0,
+   "dur": 20.0,
+   "args": {
+    "Input Dims": [
+     [
+      8,
+      64
+     ],
+     [
+      64,
+      256
+     ]
+    ],
+    "Input type": [
+     "c10::BFloat16",
+     "c10::BFloat16"
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 1,
+   "ts": 1707.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1005
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "Cijk_Alik_Bljk_BBS_BH_MT64x64x32",
+   "pid": 0,
+   "tid": 7,
+   "ts": 2627.0,
+   "dur": 200.0,
+   "args": {
+    "correlation": 1005,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::cross_entropy_loss",
+   "pid": 1,
+   "tid": 1,
+   "ts": 1900.0,
+   "dur": 20.0
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "autograd::engine::evaluate_function: MmBackward0",
+   "pid": 1,
+   "tid": 2,
+   "ts": 2000.0,
+   "dur": 80.0
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "MmBackward0",
+   "pid": 1,
+   "tid": 2,
+   "ts": 2005.0,
+   "dur": 60.0
+  },
+  {
+   "ph": "s",
+   "cat": "fwdbwd",
+   "name": "fwdbwd",
+   "id": 1,
+   "pid": 1,
+   "tid": 1,
+   "ts": 1705.0
+  },
+  {
+   "ph": "f",
+   "cat": "fwdbwd",
+   "name": "fwdbwd",
+   "id": 1,
+   "pid": 1,
+   "tid": 2,
+   "ts": 2005.0,
+   "bp": "e"
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mm",
+   "pid": 1,
+   "tid": 2,
+   "ts": 2010.0,
+   "dur": 20.0,
+   "args": {
+    "Input Dims": [
+     [
+      8,
+      8
+     ],
+     [
+      8,
+      8
+     ]
+    ],
+    "Input type": [
+     "c10::BFloat16",
+     "c10::BFloat16"
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 2,
+   "ts": 2012.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1006
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "Cijk_Ailk_Bljk_BBS_BH_MT64x64x32",
+   "pid": 0,
+   "tid": 7,
+   "ts": 2827.0,
+   "dur": 225.0,
+   "args": {
+    "correlation": 1006,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mul",
+   "pid": 1,
+   "tid": 2,
+   "ts": 2035.0,
+   "dur": 20.0
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 2,
+   "ts": 2037.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1007
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "elementwise_kernel_mul",
+   "pid": 0,
+   "tid": 7,
+   "ts": 3052.0,
+   "dur": 75.0,
+   "args": {
+    "correlation": 1007,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "autograd::engine::evaluate_function: MmBackward0",
+   "pid": 1,
+   "tid": 2,
+   "ts": 2100.0,
+   "dur": 80.0
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "MmBackward0",
+   "pid": 1,
+   "tid": 2,
+   "ts": 2105.0,
+   "dur": 60.0
+  },
+  {
+   "ph": "s",
+   "cat": "fwdbwd",
+   "name": "fwdbwd",
+   "id": 2,
+   "pid": 1,
+   "tid": 1,
+   "ts": 1545.0
+  },
+  {
+   "ph": "f",
+   "cat": "fwdbwd",
+   "name": "fwdbwd",
+   "id": 2,
+   "pid": 1,
+   "tid": 2,
+   "ts": 2105.0,
+   "bp": "e"
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mm",
+   "pid": 1,
+   "tid": 2,
+   "ts": 2110.0,
+   "dur": 20.0,
+   "args": {
+    "Input Dims": [
+     [
+      8,
+      8
+     ],
+     [
+      8,
+      8
+     ]
+    ],
+    "Input type": [
+     "c10::BFloat16",
+     "c10::BFloat16"
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 2,
+   "ts": 2112.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1008
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "Cijk_Ailk_Bljk_BBS_BH_MT64x64x32",
+   "pid": 0,
+   "tid": 7,
+   "ts": 3127.0,
+   "dur": 22.5,
+   "args": {
+    "correlation": 1008,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mul",
+   "pid": 1,
+   "tid": 2,
+   "ts": 2135.0,
+   "dur": 20.0
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 2,
+   "ts": 2137.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1009
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "elementwise_kernel_mul",
+   "pid": 0,
+   "tid": 7,
+   "ts": 3149.5,
+   "dur": 7.5,
+   "args": {
+    "correlation": 1009,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "autograd::engine::evaluate_function: MmBackward0",
+   "pid": 1,
+   "tid": 2,
+   "ts": 2200.0,
+   "dur": 80.0
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "MmBackward0",
+   "pid": 1,
+   "tid": 2,
+   "ts": 2205.0,
+   "dur": 60.0
+  },
+  {
+   "ph": "s",
+   "cat": "fwdbwd",
+   "name": "fwdbwd",
+   "id": 3,
+   "pid": 1,
+   "tid": 1,
+   "ts": 1505.0
+  },
+  {
+   "ph": "f",
+   "cat": "fwdbwd",
+   "name": "fwdbwd",
+   "id": 3,
+   "pid": 1,
+   "tid": 2,
+   "ts": 2205.0,
+   "bp": "e"
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mm",
+   "pid": 1,
+   "tid": 2,
+   "ts": 2210.0,
+   "dur": 20.0,
+   "args": {
+    "Input Dims": [
+     [
+      8,
+      8
+     ],
+     [
+      8,
+      8
+     ]
+    ],
+    "Input type": [
+     "c10::BFloat16",
+     "c10::BFloat16"
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 2,
+   "ts": 2212.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1010
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "Cijk_Ailk_Bljk_BBS_BH_MT64x64x32",
+   "pid": 0,
+   "tid": 7,
+   "ts": 3157.0,
+   "dur": 330.0,
+   "args": {
+    "correlation": 1010,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mul",
+   "pid": 1,
+   "tid": 2,
+   "ts": 2235.0,
+   "dur": 20.0
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 2,
+   "ts": 2237.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1011
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "elementwise_kernel_mul",
+   "pid": 0,
+   "tid": 7,
+   "ts": 3487.0,
+   "dur": 110.0,
+   "args": {
+    "correlation": 1011,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "autograd::engine::evaluate_function: MmBackward0",
+   "pid": 1,
+   "tid": 2,
+   "ts": 2300.0,
+   "dur": 80.0
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "MmBackward0",
+   "pid": 1,
+   "tid": 2,
+   "ts": 2305.0,
+   "dur": 60.0
+  },
+  {
+   "ph": "s",
+   "cat": "fwdbwd",
+   "name": "fwdbwd",
+   "id": 4,
+   "pid": 1,
+   "tid": 1,
+   "ts": 1305.0
+  },
+  {
+   "ph": "f",
+   "cat": "fwdbwd",
+   "name": "fwdbwd",
+   "id": 4,
+   "pid": 1,
+   "tid": 2,
+   "ts": 2305.0,
+   "bp": "e"
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mm",
+   "pid": 1,
+   "tid": 2,
+   "ts": 2310.0,
+   "dur": 20.0,
+   "args": {
+    "Input Dims": [
+     [
+      8,
+      8
+     ],
+     [
+      8,
+      8
+     ]
+    ],
+    "Input type": [
+     "c10::BFloat16",
+     "c10::BFloat16"
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 2,
+   "ts": 2312.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1012
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "Cijk_Ailk_Bljk_BBS_BH_MT64x64x32",
+   "pid": 0,
+   "tid": 7,
+   "ts": 3597.0,
+   "dur": 1200.0,
+   "args": {
+    "correlation": 1012,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mul",
+   "pid": 1,
+   "tid": 2,
+   "ts": 2335.0,
+   "dur": 20.0
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 2,
+   "ts": 2337.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1013
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "elementwise_kernel_mul",
+   "pid": 0,
+   "tid": 7,
+   "ts": 4797.0,
+   "dur": 400.0,
+   "args": {
+    "correlation": 1013,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "user_annotation",
+   "name": "Optimizer.step#AdamW.step",
+   "pid": 1,
+   "tid": 1,
+   "ts": 2400.0,
+   "dur": 100.0
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::_fused_adamw_",
+   "pid": 1,
+   "tid": 1,
+   "ts": 2405.0,
+   "dur": 50.0
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 1,
+   "ts": 2407.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1014
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "fused_adamw_kernel_impl",
+   "pid": 0,
+   "tid": 7,
+   "ts": 5197.0,
+   "dur": 300.0,
+   "args": {
+    "correlation": 1014,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "i",
+   "s": "t",
+   "cat": "cpu_instant_event",
+   "name": "[memory]",
+   "pid": 1,
+   "tid": 1,
+   "ts": 1500.0,
+   "args": {
+    "Total Allocated": 1073741824,
+    "Total Reserved": 4294967296,
+    "Device Type": 1,
+    "Device Id": 0,
+    "Bytes": 1024
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "user_annotation",
+   "name": "ProfilerStep#1",
+   "pid": 1,
+   "tid": 1,
+   "ts": 11000.0,
+   "dur": 10500.0
+  },
+  {
+   "ph": "X",
+   "cat": "user_annotation",
+   "name": "enumerate(DataLoader)#_SingleProcessDataLoaderIter.__next__",
+   "pid": 1,
+   "tid": 1,
+   "ts": 11010.0,
+   "dur": 200.0
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::to",
+   "pid": 1,
+   "tid": 1,
+   "ts": 11215.0,
+   "dur": 10.0
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipMemcpyAsync",
+   "pid": 1,
+   "tid": 1,
+   "ts": 11216.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1015
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "gpu_memcpy",
+   "name": "Memcpy HtoD (Host -> Device)",
+   "pid": 0,
+   "tid": 7,
+   "ts": 11221.0,
+   "dur": 20.0,
+   "args": {
+    "correlation": 1015,
+    "bytes": 65536
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "user_annotation",
+   "name": "atlas::gdn::model.layers.0.linear_attn",
+   "pid": 1,
+   "tid": 1,
+   "ts": 11300.0,
+   "dur": 150.0
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mm",
+   "pid": 1,
+   "tid": 1,
+   "ts": 11305.0,
+   "dur": 20.0,
+   "args": {
+    "Input Dims": [
+     [
+      8,
+      64
+     ],
+     [
+      64,
+      192
+     ]
+    ],
+    "Input type": [
+     "c10::BFloat16",
+     "c10::BFloat16"
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 1,
+   "ts": 11307.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1016
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "Cijk_Alik_Bljk_BBS_BH_MT64x64x32",
+   "pid": 0,
+   "tid": 7,
+   "ts": 11312.0,
+   "dur": 1000.0,
+   "args": {
+    "correlation": 1016,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "user_annotation",
+   "name": "atlas::attention::model.layers.1.self_attn",
+   "pid": 1,
+   "tid": 1,
+   "ts": 11500.0,
+   "dur": 150.0
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mm",
+   "pid": 1,
+   "tid": 1,
+   "ts": 11505.0,
+   "dur": 20.0,
+   "args": {
+    "Input Dims": [
+     [
+      8,
+      64
+     ],
+     [
+      64,
+      128
+     ]
+    ],
+    "Input type": [
+     "c10::BFloat16",
+     "c10::BFloat16"
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 1,
+   "ts": 11507.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1017
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "Cijk_Alik_Bljk_BBS_BH_MT64x64x32",
+   "pid": 0,
+   "tid": 7,
+   "ts": 12312.0,
+   "dur": 300.0,
+   "args": {
+    "correlation": 1017,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "user_annotation",
+   "name": "atlas::lora::model.layers.1.self_attn.q_proj.lora_A.default",
+   "pid": 1,
+   "tid": 1,
+   "ts": 11540.0,
+   "dur": 40.0
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mm",
+   "pid": 1,
+   "tid": 1,
+   "ts": 11545.0,
+   "dur": 20.0,
+   "args": {
+    "Input Dims": [
+     [
+      8,
+      64
+     ],
+     [
+      64,
+      16
+     ]
+    ],
+    "Input type": [
+     "c10::BFloat16",
+     "c10::BFloat16"
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 1,
+   "ts": 11547.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1018
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "Cijk_Alik_Bljk_BBS_BH_MT16x16x16",
+   "pid": 0,
+   "tid": 7,
+   "ts": 12612.0,
+   "dur": 15.0,
+   "args": {
+    "correlation": 1018,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "user_annotation",
+   "name": "atlas::mlp::model.layers.1.mlp",
+   "pid": 1,
+   "tid": 1,
+   "ts": 11700.0,
+   "dur": 150.0
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mm",
+   "pid": 1,
+   "tid": 1,
+   "ts": 11705.0,
+   "dur": 20.0,
+   "args": {
+    "Input Dims": [
+     [
+      8,
+      64
+     ],
+     [
+      64,
+      256
+     ]
+    ],
+    "Input type": [
+     "c10::BFloat16",
+     "c10::BFloat16"
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 1,
+   "ts": 11707.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1019
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "Cijk_Alik_Bljk_BBS_BH_MT64x64x32",
+   "pid": 0,
+   "tid": 7,
+   "ts": 12627.0,
+   "dur": 200.0,
+   "args": {
+    "correlation": 1019,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::cross_entropy_loss",
+   "pid": 1,
+   "tid": 1,
+   "ts": 11900.0,
+   "dur": 20.0
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "autograd::engine::evaluate_function: MmBackward0",
+   "pid": 1,
+   "tid": 2,
+   "ts": 12000.0,
+   "dur": 80.0
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "MmBackward0",
+   "pid": 1,
+   "tid": 2,
+   "ts": 12005.0,
+   "dur": 60.0
+  },
+  {
+   "ph": "s",
+   "cat": "fwdbwd",
+   "name": "fwdbwd",
+   "id": 5,
+   "pid": 1,
+   "tid": 1,
+   "ts": 11705.0
+  },
+  {
+   "ph": "f",
+   "cat": "fwdbwd",
+   "name": "fwdbwd",
+   "id": 5,
+   "pid": 1,
+   "tid": 2,
+   "ts": 12005.0,
+   "bp": "e"
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mm",
+   "pid": 1,
+   "tid": 2,
+   "ts": 12010.0,
+   "dur": 20.0,
+   "args": {
+    "Input Dims": [
+     [
+      8,
+      8
+     ],
+     [
+      8,
+      8
+     ]
+    ],
+    "Input type": [
+     "c10::BFloat16",
+     "c10::BFloat16"
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 2,
+   "ts": 12012.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1020
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "Cijk_Ailk_Bljk_BBS_BH_MT64x64x32",
+   "pid": 0,
+   "tid": 7,
+   "ts": 12827.0,
+   "dur": 225.0,
+   "args": {
+    "correlation": 1020,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mul",
+   "pid": 1,
+   "tid": 2,
+   "ts": 12035.0,
+   "dur": 20.0
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 2,
+   "ts": 12037.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1021
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "elementwise_kernel_mul",
+   "pid": 0,
+   "tid": 7,
+   "ts": 13052.0,
+   "dur": 75.0,
+   "args": {
+    "correlation": 1021,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "autograd::engine::evaluate_function: MmBackward0",
+   "pid": 1,
+   "tid": 2,
+   "ts": 12100.0,
+   "dur": 80.0
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "MmBackward0",
+   "pid": 1,
+   "tid": 2,
+   "ts": 12105.0,
+   "dur": 60.0
+  },
+  {
+   "ph": "s",
+   "cat": "fwdbwd",
+   "name": "fwdbwd",
+   "id": 6,
+   "pid": 1,
+   "tid": 1,
+   "ts": 11545.0
+  },
+  {
+   "ph": "f",
+   "cat": "fwdbwd",
+   "name": "fwdbwd",
+   "id": 6,
+   "pid": 1,
+   "tid": 2,
+   "ts": 12105.0,
+   "bp": "e"
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mm",
+   "pid": 1,
+   "tid": 2,
+   "ts": 12110.0,
+   "dur": 20.0,
+   "args": {
+    "Input Dims": [
+     [
+      8,
+      8
+     ],
+     [
+      8,
+      8
+     ]
+    ],
+    "Input type": [
+     "c10::BFloat16",
+     "c10::BFloat16"
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 2,
+   "ts": 12112.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1022
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "Cijk_Ailk_Bljk_BBS_BH_MT64x64x32",
+   "pid": 0,
+   "tid": 7,
+   "ts": 13127.0,
+   "dur": 22.5,
+   "args": {
+    "correlation": 1022,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mul",
+   "pid": 1,
+   "tid": 2,
+   "ts": 12135.0,
+   "dur": 20.0
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 2,
+   "ts": 12137.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1023
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "elementwise_kernel_mul",
+   "pid": 0,
+   "tid": 7,
+   "ts": 13149.5,
+   "dur": 7.5,
+   "args": {
+    "correlation": 1023,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "autograd::engine::evaluate_function: MmBackward0",
+   "pid": 1,
+   "tid": 2,
+   "ts": 12200.0,
+   "dur": 80.0
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "MmBackward0",
+   "pid": 1,
+   "tid": 2,
+   "ts": 12205.0,
+   "dur": 60.0
+  },
+  {
+   "ph": "s",
+   "cat": "fwdbwd",
+   "name": "fwdbwd",
+   "id": 7,
+   "pid": 1,
+   "tid": 1,
+   "ts": 11505.0
+  },
+  {
+   "ph": "f",
+   "cat": "fwdbwd",
+   "name": "fwdbwd",
+   "id": 7,
+   "pid": 1,
+   "tid": 2,
+   "ts": 12205.0,
+   "bp": "e"
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mm",
+   "pid": 1,
+   "tid": 2,
+   "ts": 12210.0,
+   "dur": 20.0,
+   "args": {
+    "Input Dims": [
+     [
+      8,
+      8
+     ],
+     [
+      8,
+      8
+     ]
+    ],
+    "Input type": [
+     "c10::BFloat16",
+     "c10::BFloat16"
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 2,
+   "ts": 12212.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1024
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "Cijk_Ailk_Bljk_BBS_BH_MT64x64x32",
+   "pid": 0,
+   "tid": 7,
+   "ts": 13157.0,
+   "dur": 330.0,
+   "args": {
+    "correlation": 1024,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mul",
+   "pid": 1,
+   "tid": 2,
+   "ts": 12235.0,
+   "dur": 20.0
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 2,
+   "ts": 12237.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1025
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "elementwise_kernel_mul",
+   "pid": 0,
+   "tid": 7,
+   "ts": 13487.0,
+   "dur": 110.0,
+   "args": {
+    "correlation": 1025,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "autograd::engine::evaluate_function: MmBackward0",
+   "pid": 1,
+   "tid": 2,
+   "ts": 12300.0,
+   "dur": 80.0
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "MmBackward0",
+   "pid": 1,
+   "tid": 2,
+   "ts": 12305.0,
+   "dur": 60.0
+  },
+  {
+   "ph": "s",
+   "cat": "fwdbwd",
+   "name": "fwdbwd",
+   "id": 8,
+   "pid": 1,
+   "tid": 1,
+   "ts": 11305.0
+  },
+  {
+   "ph": "f",
+   "cat": "fwdbwd",
+   "name": "fwdbwd",
+   "id": 8,
+   "pid": 1,
+   "tid": 2,
+   "ts": 12305.0,
+   "bp": "e"
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mm",
+   "pid": 1,
+   "tid": 2,
+   "ts": 12310.0,
+   "dur": 20.0,
+   "args": {
+    "Input Dims": [
+     [
+      8,
+      8
+     ],
+     [
+      8,
+      8
+     ]
+    ],
+    "Input type": [
+     "c10::BFloat16",
+     "c10::BFloat16"
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 2,
+   "ts": 12312.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1026
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "Cijk_Ailk_Bljk_BBS_BH_MT64x64x32",
+   "pid": 0,
+   "tid": 7,
+   "ts": 13597.0,
+   "dur": 1200.0,
+   "args": {
+    "correlation": 1026,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mul",
+   "pid": 1,
+   "tid": 2,
+   "ts": 12335.0,
+   "dur": 20.0
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 2,
+   "ts": 12337.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1027
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "elementwise_kernel_mul",
+   "pid": 0,
+   "tid": 7,
+   "ts": 14797.0,
+   "dur": 400.0,
+   "args": {
+    "correlation": 1027,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "user_annotation",
+   "name": "Optimizer.step#AdamW.step",
+   "pid": 1,
+   "tid": 1,
+   "ts": 12400.0,
+   "dur": 100.0
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::_fused_adamw_",
+   "pid": 1,
+   "tid": 1,
+   "ts": 12405.0,
+   "dur": 50.0
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 1,
+   "ts": 12407.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1028
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "fused_adamw_kernel_impl",
+   "pid": 0,
+   "tid": 7,
+   "ts": 15197.0,
+   "dur": 300.0,
+   "args": {
+    "correlation": 1028,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "i",
+   "s": "t",
+   "cat": "cpu_instant_event",
+   "name": "[memory]",
+   "pid": 1,
+   "tid": 1,
+   "ts": 11500.0,
+   "args": {
+    "Total Allocated": 2147483648,
+    "Total Reserved": 4294967296,
+    "Device Type": 1,
+    "Device Id": 0,
+    "Bytes": 1024
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "user_annotation",
+   "name": "ProfilerStep#2",
+   "pid": 1,
+   "tid": 1,
+   "ts": 21500.0,
+   "dur": 9500.0
+  },
+  {
+   "ph": "X",
+   "cat": "user_annotation",
+   "name": "enumerate(DataLoader)#_SingleProcessDataLoaderIter.__next__",
+   "pid": 1,
+   "tid": 1,
+   "ts": 21510.0,
+   "dur": 200.0
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::to",
+   "pid": 1,
+   "tid": 1,
+   "ts": 21715.0,
+   "dur": 10.0
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipMemcpyAsync",
+   "pid": 1,
+   "tid": 1,
+   "ts": 21716.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1029
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "gpu_memcpy",
+   "name": "Memcpy HtoD (Host -> Device)",
+   "pid": 0,
+   "tid": 7,
+   "ts": 21721.0,
+   "dur": 20.0,
+   "args": {
+    "correlation": 1029,
+    "bytes": 65536
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "user_annotation",
+   "name": "atlas::gdn::model.layers.0.linear_attn",
+   "pid": 1,
+   "tid": 1,
+   "ts": 21800.0,
+   "dur": 150.0
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mm",
+   "pid": 1,
+   "tid": 1,
+   "ts": 21805.0,
+   "dur": 20.0,
+   "args": {
+    "Input Dims": [
+     [
+      8,
+      64
+     ],
+     [
+      64,
+      192
+     ]
+    ],
+    "Input type": [
+     "c10::BFloat16",
+     "c10::BFloat16"
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 1,
+   "ts": 21807.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1030
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "Cijk_Alik_Bljk_BBS_BH_MT64x64x32",
+   "pid": 0,
+   "tid": 7,
+   "ts": 21812.0,
+   "dur": 1000.0,
+   "args": {
+    "correlation": 1030,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "user_annotation",
+   "name": "atlas::attention::model.layers.1.self_attn",
+   "pid": 1,
+   "tid": 1,
+   "ts": 22000.0,
+   "dur": 150.0
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mm",
+   "pid": 1,
+   "tid": 1,
+   "ts": 22005.0,
+   "dur": 20.0,
+   "args": {
+    "Input Dims": [
+     [
+      8,
+      64
+     ],
+     [
+      64,
+      128
+     ]
+    ],
+    "Input type": [
+     "c10::BFloat16",
+     "c10::BFloat16"
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 1,
+   "ts": 22007.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1031
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "Cijk_Alik_Bljk_BBS_BH_MT64x64x32",
+   "pid": 0,
+   "tid": 7,
+   "ts": 22812.0,
+   "dur": 300.0,
+   "args": {
+    "correlation": 1031,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "user_annotation",
+   "name": "atlas::lora::model.layers.1.self_attn.q_proj.lora_A.default",
+   "pid": 1,
+   "tid": 1,
+   "ts": 22040.0,
+   "dur": 40.0
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mm",
+   "pid": 1,
+   "tid": 1,
+   "ts": 22045.0,
+   "dur": 20.0,
+   "args": {
+    "Input Dims": [
+     [
+      8,
+      64
+     ],
+     [
+      64,
+      16
+     ]
+    ],
+    "Input type": [
+     "c10::BFloat16",
+     "c10::BFloat16"
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 1,
+   "ts": 22047.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1032
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "Cijk_Alik_Bljk_BBS_BH_MT16x16x16",
+   "pid": 0,
+   "tid": 7,
+   "ts": 23112.0,
+   "dur": 15.0,
+   "args": {
+    "correlation": 1032,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "user_annotation",
+   "name": "atlas::mlp::model.layers.1.mlp",
+   "pid": 1,
+   "tid": 1,
+   "ts": 22200.0,
+   "dur": 150.0
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mm",
+   "pid": 1,
+   "tid": 1,
+   "ts": 22205.0,
+   "dur": 20.0,
+   "args": {
+    "Input Dims": [
+     [
+      8,
+      64
+     ],
+     [
+      64,
+      256
+     ]
+    ],
+    "Input type": [
+     "c10::BFloat16",
+     "c10::BFloat16"
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 1,
+   "ts": 22207.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1033
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "Cijk_Alik_Bljk_BBS_BH_MT64x64x32",
+   "pid": 0,
+   "tid": 7,
+   "ts": 23127.0,
+   "dur": 200.0,
+   "args": {
+    "correlation": 1033,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::cross_entropy_loss",
+   "pid": 1,
+   "tid": 1,
+   "ts": 22400.0,
+   "dur": 20.0
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "autograd::engine::evaluate_function: MmBackward0",
+   "pid": 1,
+   "tid": 2,
+   "ts": 22500.0,
+   "dur": 80.0
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "MmBackward0",
+   "pid": 1,
+   "tid": 2,
+   "ts": 22505.0,
+   "dur": 60.0
+  },
+  {
+   "ph": "s",
+   "cat": "fwdbwd",
+   "name": "fwdbwd",
+   "id": 9,
+   "pid": 1,
+   "tid": 1,
+   "ts": 22205.0
+  },
+  {
+   "ph": "f",
+   "cat": "fwdbwd",
+   "name": "fwdbwd",
+   "id": 9,
+   "pid": 1,
+   "tid": 2,
+   "ts": 22505.0,
+   "bp": "e"
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mm",
+   "pid": 1,
+   "tid": 2,
+   "ts": 22510.0,
+   "dur": 20.0,
+   "args": {
+    "Input Dims": [
+     [
+      8,
+      8
+     ],
+     [
+      8,
+      8
+     ]
+    ],
+    "Input type": [
+     "c10::BFloat16",
+     "c10::BFloat16"
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 2,
+   "ts": 22512.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1034
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "Cijk_Ailk_Bljk_BBS_BH_MT64x64x32",
+   "pid": 0,
+   "tid": 7,
+   "ts": 23327.0,
+   "dur": 225.0,
+   "args": {
+    "correlation": 1034,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mul",
+   "pid": 1,
+   "tid": 2,
+   "ts": 22535.0,
+   "dur": 20.0
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 2,
+   "ts": 22537.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1035
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "elementwise_kernel_mul",
+   "pid": 0,
+   "tid": 7,
+   "ts": 23552.0,
+   "dur": 75.0,
+   "args": {
+    "correlation": 1035,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "autograd::engine::evaluate_function: MmBackward0",
+   "pid": 1,
+   "tid": 2,
+   "ts": 22600.0,
+   "dur": 80.0
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "MmBackward0",
+   "pid": 1,
+   "tid": 2,
+   "ts": 22605.0,
+   "dur": 60.0
+  },
+  {
+   "ph": "s",
+   "cat": "fwdbwd",
+   "name": "fwdbwd",
+   "id": 10,
+   "pid": 1,
+   "tid": 1,
+   "ts": 22045.0
+  },
+  {
+   "ph": "f",
+   "cat": "fwdbwd",
+   "name": "fwdbwd",
+   "id": 10,
+   "pid": 1,
+   "tid": 2,
+   "ts": 22605.0,
+   "bp": "e"
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mm",
+   "pid": 1,
+   "tid": 2,
+   "ts": 22610.0,
+   "dur": 20.0,
+   "args": {
+    "Input Dims": [
+     [
+      8,
+      8
+     ],
+     [
+      8,
+      8
+     ]
+    ],
+    "Input type": [
+     "c10::BFloat16",
+     "c10::BFloat16"
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 2,
+   "ts": 22612.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1036
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "Cijk_Ailk_Bljk_BBS_BH_MT64x64x32",
+   "pid": 0,
+   "tid": 7,
+   "ts": 23627.0,
+   "dur": 22.5,
+   "args": {
+    "correlation": 1036,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mul",
+   "pid": 1,
+   "tid": 2,
+   "ts": 22635.0,
+   "dur": 20.0
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 2,
+   "ts": 22637.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1037
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "elementwise_kernel_mul",
+   "pid": 0,
+   "tid": 7,
+   "ts": 23649.5,
+   "dur": 7.5,
+   "args": {
+    "correlation": 1037,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "autograd::engine::evaluate_function: MmBackward0",
+   "pid": 1,
+   "tid": 2,
+   "ts": 22700.0,
+   "dur": 80.0
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "MmBackward0",
+   "pid": 1,
+   "tid": 2,
+   "ts": 22705.0,
+   "dur": 60.0
+  },
+  {
+   "ph": "s",
+   "cat": "fwdbwd",
+   "name": "fwdbwd",
+   "id": 11,
+   "pid": 1,
+   "tid": 1,
+   "ts": 22005.0
+  },
+  {
+   "ph": "f",
+   "cat": "fwdbwd",
+   "name": "fwdbwd",
+   "id": 11,
+   "pid": 1,
+   "tid": 2,
+   "ts": 22705.0,
+   "bp": "e"
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mm",
+   "pid": 1,
+   "tid": 2,
+   "ts": 22710.0,
+   "dur": 20.0,
+   "args": {
+    "Input Dims": [
+     [
+      8,
+      8
+     ],
+     [
+      8,
+      8
+     ]
+    ],
+    "Input type": [
+     "c10::BFloat16",
+     "c10::BFloat16"
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 2,
+   "ts": 22712.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1038
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "Cijk_Ailk_Bljk_BBS_BH_MT64x64x32",
+   "pid": 0,
+   "tid": 7,
+   "ts": 23657.0,
+   "dur": 330.0,
+   "args": {
+    "correlation": 1038,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mul",
+   "pid": 1,
+   "tid": 2,
+   "ts": 22735.0,
+   "dur": 20.0
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 2,
+   "ts": 22737.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1039
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "elementwise_kernel_mul",
+   "pid": 0,
+   "tid": 7,
+   "ts": 23987.0,
+   "dur": 110.0,
+   "args": {
+    "correlation": 1039,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "autograd::engine::evaluate_function: MmBackward0",
+   "pid": 1,
+   "tid": 2,
+   "ts": 22800.0,
+   "dur": 80.0
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "MmBackward0",
+   "pid": 1,
+   "tid": 2,
+   "ts": 22805.0,
+   "dur": 60.0
+  },
+  {
+   "ph": "s",
+   "cat": "fwdbwd",
+   "name": "fwdbwd",
+   "id": 12,
+   "pid": 1,
+   "tid": 1,
+   "ts": 21805.0
+  },
+  {
+   "ph": "f",
+   "cat": "fwdbwd",
+   "name": "fwdbwd",
+   "id": 12,
+   "pid": 1,
+   "tid": 2,
+   "ts": 22805.0,
+   "bp": "e"
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mm",
+   "pid": 1,
+   "tid": 2,
+   "ts": 22810.0,
+   "dur": 20.0,
+   "args": {
+    "Input Dims": [
+     [
+      8,
+      8
+     ],
+     [
+      8,
+      8
+     ]
+    ],
+    "Input type": [
+     "c10::BFloat16",
+     "c10::BFloat16"
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 2,
+   "ts": 22812.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1040
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "Cijk_Ailk_Bljk_BBS_BH_MT64x64x32",
+   "pid": 0,
+   "tid": 7,
+   "ts": 24097.0,
+   "dur": 1200.0,
+   "args": {
+    "correlation": 1040,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::mul",
+   "pid": 1,
+   "tid": 2,
+   "ts": 22835.0,
+   "dur": 20.0
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 2,
+   "ts": 22837.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1041
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "elementwise_kernel_mul",
+   "pid": 0,
+   "tid": 7,
+   "ts": 25297.0,
+   "dur": 400.0,
+   "args": {
+    "correlation": 1041,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "user_annotation",
+   "name": "Optimizer.step#AdamW.step",
+   "pid": 1,
+   "tid": 1,
+   "ts": 22900.0,
+   "dur": 100.0
+  },
+  {
+   "ph": "X",
+   "cat": "cpu_op",
+   "name": "aten::_fused_adamw_",
+   "pid": 1,
+   "tid": 1,
+   "ts": 22905.0,
+   "dur": 50.0
+  },
+  {
+   "ph": "X",
+   "cat": "cuda_runtime",
+   "name": "hipLaunchKernel",
+   "pid": 1,
+   "tid": 1,
+   "ts": 22907.0,
+   "dur": 4.0,
+   "args": {
+    "correlation": 1042
+   }
+  },
+  {
+   "ph": "X",
+   "cat": "kernel",
+   "name": "fused_adamw_kernel_impl",
+   "pid": 0,
+   "tid": 7,
+   "ts": 25697.0,
+   "dur": 300.0,
+   "args": {
+    "correlation": 1042,
+    "grid": [
+     64,
+     1,
+     1
+    ],
+    "block": [
+     256,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "ph": "i",
+   "s": "t",
+   "cat": "cpu_instant_event",
+   "name": "[memory]",
+   "pid": 1,
+   "tid": 1,
+   "ts": 22000.0,
+   "args": {
+    "Total Allocated": 3221225472,
+    "Total Reserved": 4294967296,
+    "Device Type": 1,
+    "Device Id": 0,
+    "Bytes": 1024
+   }
+  }
+ ]
+}

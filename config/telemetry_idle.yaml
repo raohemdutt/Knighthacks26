@@ -1,0 +1,20 @@
+# The calibrated idle of each telemetry node: the watts stored beside every joules-per-answer value
+# (contexts/telemetry/application/idle.py). `metric` and `measured` name the ledger row (lab/refine/metrics.jsonl)
+# the figure was measured as. ATLAS_TELEMETRY_IDLE_W="pod-a=10.27,pod-b=10.27,jetson=15.76" overrides a node's watts.
+# A node left out falls back to the latest quiet reading, and the stored value says "latest_quiet".
+nodes:
+  pod-a:
+    watts: 10.27
+    metric: pod.idle_watts
+    measured: "2026-10-10T22:32:58Z"
+    note: "T10, pod C (Strix Halo): deep idle (sclk 600 to 650 MHz), the sampler alone, teacher loaded, no request; 2558 samples"
+  pod-b:
+    watts: 10.27
+    metric: pod.idle_watts
+    measured: "2026-10-10T22:32:58Z"
+    note: "pod-a's figure until pod B is measured (same chip, same image); replace with pod B's own row when it exists"
+  jetson:
+    watts: 15.76
+    metric: jetson.idle_watts
+    measured: "2026-10-10T21:58:10Z"
+    note: "T13, VDD_IN with the model loaded and no request of ours; bimodal (about 5 W between captions, about 18 W while the GPU captions)"

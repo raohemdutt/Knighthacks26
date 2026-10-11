@@ -625,6 +625,14 @@ def configure(monkeypatch, tmp_path, hub_url, values=None):
     return env_file
 
 
+def core(accounts):
+    """Each account's verdict without the fields the live-hub report adds (reachable, running, ready, role, hub, url)."""
+    keep = ("ok", "status", "error", "skipped")
+    if "ok" in accounts:
+        return {k: v for k, v in accounts.items() if k in keep}
+    return {letter: {k: v for k, v in probe.items() if k in keep} for letter, probe in accounts.items()}
+
+
 def assert_no_secret_values(*outputs):
     for text in outputs:
         for name, value in SECRETS.items():
@@ -639,6 +647,11 @@ def test_ready_passes_when_every_precondition_holds(isolated_lab, hub, monkeypat
     assert code == 0
     verdict = one_json_line(out)
     assert verdict.pop("warnings", []) == []
+    accounts = verdict["checks"]["hub"]["accounts"]
+    assert core(accounts) == {"A": {"ok": True, "status": 200}, "B": {"ok": True, "status": 200}}
+    assert accounts["A"] == {"ok": True, "reachable": True, "running": False, "ready": False, "status": 200,
+                             "role": "pod-a", "hub": hub.url.split("//")[1], "url": hub.url}
+    verdict["checks"]["hub"]["accounts"] = "ACCOUNTS"
     assert verdict == {
         "ok": True,
         "ready": True,
@@ -648,11 +661,7 @@ def test_ready_passes_when_every_precondition_holds(isolated_lab, hub, monkeypat
             "stop": {"ok": True, "stopped": False, "reason": "", "file": str(isolated_lab / "STOP")},
             "state_dir": {"ok": True, "path": str(isolated_lab), "writable": True},
             "env": {"ok": True, "present": REQUIRED, "missing": [], "files": [str(env_file)]},
-            "hub": {
-                "ok": True,
-                "url": hub.url,
-                "accounts": {"A": {"ok": True, "status": 200}, "B": {"ok": True, "status": 200}},
-            },
+            "hub": {"ok": True, "url": hub.url, "hubs": [hub.url.split("//")[1]], "accounts": "ACCOUNTS"},
         },
     }
     assert [(r["method"], r["path"]) for r in hub.requests] == [
@@ -679,7 +688,7 @@ def test_ready_names_missing_keys_without_printing_values(isolated_lab, hub, mon
     assert result["reasons"] == ["env keys missing: AUP_HUB_TOKEN_B, AUP_HUB_USER_B"]
     assert result["checks"]["env"]["present"] == ["AUP_HUB_TOKEN_A", "AUP_HUB_USER_A"]
     assert result["checks"]["env"]["missing"] == ["AUP_HUB_TOKEN_B", "AUP_HUB_USER_B"]
-    assert result["checks"]["hub"]["accounts"] == {
+    assert core(result["checks"]["hub"]["accounts"]) == {
         "A": {"ok": True, "status": 200},
         "B": {"ok": False, "skipped": "credentials missing"},
     }
@@ -755,7 +764,7 @@ def test_ready_reports_an_account_the_hub_turns_away(
 
     assert code == 0
     result = one_json_line(out)
-    assert result["checks"]["hub"]["accounts"] == {
+    assert core(result["checks"]["hub"]["accounts"]) == {
         "A": {"ok": True, "status": 200},
         "B": {"ok": False, "status": status},
     }
@@ -773,7 +782,7 @@ def test_ready_does_not_follow_a_redirect_with_the_token(isolated_lab, hub, monk
 
     assert code == 0
     result = one_json_line(out)
-    assert result["checks"]["hub"]["accounts"] == {
+    assert core(result["checks"]["hub"]["accounts"]) == {
         "A": {"ok": False, "status": 302},
         "B": {"ok": False, "status": 302},
     }
@@ -793,7 +802,7 @@ def test_ready_rejects_a_200_that_is_not_a_json_object(isolated_lab, hub, monkey
 
     assert code == 0
     result = one_json_line(out)
-    assert result["checks"]["hub"]["accounts"]["A"] == {
+    assert core(result["checks"]["hub"]["accounts"]["A"]) == {
         "ok": False,
         "status": 200,
         "error": "response is not a JSON object",
@@ -829,7 +838,7 @@ def test_errors_from_the_transport_never_echo_a_credential():
 
     result = ready.check(environ=dict(SECRETS), env_files=[], fetch=leaky)
 
-    assert result["checks"]["hub"]["accounts"]["A"] == {"ok": False, "error": "OSError: reset while talking to *** with ***"}
+    assert core(result["checks"]["hub"]["accounts"]["A"]) == {"ok": False, "error": "OSError: reset while talking to *** with ***"}
     assert_no_secret_values(json.dumps(result))
 
 
@@ -879,8 +888,8 @@ def test_a_token_ending_in_a_line_break_is_hidden_from_the_error_http_client_rai
 
     escaped = repr(ending)[1:-1]  # the two characters backslash and r, not the CR itself
     accounts = result["checks"]["hub"]["accounts"]
-    assert accounts["A"] == {"ok": False, "error": f"ValueError: Invalid header value b'token ***{escaped}'"}
-    assert accounts["B"] == {"ok": True, "status": 200}
+    assert core(accounts["A"]) == {"ok": False, "error": f"ValueError: Invalid header value b'token ***{escaped}'"}
+    assert core(accounts["B"]) == {"ok": True, "status": 200}
     assert_no_secret_values(json.dumps(result))
 
 
@@ -890,7 +899,7 @@ def test_a_token_with_spaces_around_it_is_hidden_from_an_error_that_spells_it_ba
 
     result = ready.check(environ=dict(SECRETS, AUP_HUB_TOKEN_A=f"  {TOKEN}  "), env_files=[], fetch=echoes_the_token_bare)
 
-    assert result["checks"]["hub"]["accounts"]["A"] == {"ok": False, "error": "OSError: the hub said no to token ***"}
+    assert core(result["checks"]["hub"]["accounts"]["A"]) == {"ok": False, "error": "OSError: the hub said no to token ***"}
     assert_no_secret_values(json.dumps(result))
 
 
@@ -1091,3 +1100,165 @@ def test_the_ledger_resolves_the_state_dir_through_stop(monkeypatch, tmp_path):
     monkeypatch.setenv("LAB_STATE_DIR", str(moved_env))
     assert stop.state_dir() == moved_env
     assert ledger.resolve_state_dir() == moved_env, "the ledger must read LAB_STATE_DIR through stop"
+
+
+# --- ready: the accounts LAB_POD_ROLES names, each at its own hub ----------------------
+
+SJC_SECRETS = {
+    "AUP_HUB_USER_C": "fake-user-charlie",
+    "AUP_HUB_TOKEN_C": "fake-token-charlie-0123456789",
+    "AUP_HUB_USER_D": "fake-user-delta",
+    "AUP_HUB_TOKEN_D": "fake-token-delta-0123456789",
+}
+
+
+def two_hubs():
+    """A DUB fake with accounts A and B and an SJC fake with C and D, as one network."""
+    from lab import hub_fake
+
+    clock = hub_fake.FakeClock()
+    dub, sjc = hub_fake.FakeHub(clock), hub_fake.FakeHub(clock)
+    for letter in "AB":
+        dub.add_account(letter, user=SECRETS[f"AUP_HUB_USER_{letter}"], token=SECRETS[f"AUP_HUB_TOKEN_{letter}"])
+    for letter in "CD":
+        sjc.add_account(letter, user=SJC_SECRETS[f"AUP_HUB_USER_{letter}"],
+                        token=SJC_SECRETS[f"AUP_HUB_TOKEN_{letter}"], quota_enabled=False)
+    return dub, sjc, hub_fake.network({"dub.test": dub, "sjc.test": sjc})
+
+
+def sjc_environ(**extra):
+    return {**SJC_SECRETS, "LAB_POD_ROLES": "C:pod-a,D:pod-b", "AUP_HUB_URL_C": "https://sjc.test",
+            "AUP_HUB_URL_D": "https://sjc.test", **extra}
+
+
+def test_ready_probes_c_and_d_at_their_own_hub_when_lab_pod_roles_names_them(isolated_lab):
+    dub, sjc, net = two_hubs()
+    sjc.start_server("C")
+    sjc.start_server("D", ready=False)
+
+    result = ready.check(environ=sjc_environ(), env_files=[], transport=net)
+
+    assert (result["ready"], result["reasons"], result["warnings"]) == (True, [], [])
+    assert result["checks"]["env"]["missing"] == []
+    accounts = result["checks"]["hub"]["accounts"]
+    assert list(accounts) == ["C", "D"]
+    assert {k: accounts["C"][k] for k in ("ok", "reachable", "running", "ready", "status", "role", "hub")} == {
+        "ok": True, "reachable": True, "running": True, "ready": True, "status": 200, "role": "pod-a",
+        "hub": "sjc.test"}
+    assert {k: accounts["D"][k] for k in ("reachable", "running", "ready", "role")} == {
+        "reachable": True, "running": True, "ready": False, "role": "pod-b"}
+    assert result["checks"]["hub"]["ok"] is True
+    assert result["checks"]["hub"]["hubs"] == ["sjc.test"]
+    assert dub.calls == []
+    assert [c.path for c in sjc.calls] == ["/hub/api/users/fake-user-charlie", "/hub/api/users/fake-user-delta"]
+    assert all(c.method == "GET" for c in sjc.calls)
+
+
+def test_ready_reports_an_account_with_no_pod_running(isolated_lab):
+    _, _, net = two_hubs()
+
+    result = ready.check(environ=sjc_environ(), env_files=[], transport=net)
+
+    c = result["checks"]["hub"]["accounts"]["C"]
+    assert (c["reachable"], c["running"], c["ready"]) == (True, False, False)
+    assert result["ready"] is True
+
+
+def test_ready_defaults_to_a_and_b_on_the_dub_hub(isolated_lab):
+    dub, sjc, net = two_hubs()
+    environ = {**SECRETS, **SJC_SECRETS, "AUP_HUB_URL_A": "https://dub.test", "AUP_HUB_URL_B": "https://dub.test"}
+
+    result = ready.check(environ=environ, env_files=[], transport=net)
+
+    accounts = result["checks"]["hub"]["accounts"]
+    assert accounts["A"]["reachable"] and accounts["B"]["reachable"]
+    assert accounts["A"]["hub"] == "dub.test"
+    assert accounts["C"] == {"ok": False, "reachable": False, "running": False, "ready": False,
+                             "skipped": "fills no pod role in LAB_POD_ROLES"}
+    assert accounts["D"]["skipped"] == "fills no pod role in LAB_POD_ROLES"
+    assert result["checks"]["hub"]["ok"] is True      # the accounts without a role do not count
+    assert sjc.calls == []
+    assert result["ready"] is True
+
+
+def test_each_account_is_asked_at_its_own_hub_when_they_differ(isolated_lab):
+    dub, sjc, net = two_hubs()
+    environ = {**SECRETS, **SJC_SECRETS, "LAB_POD_ROLES": "A:pod-a,D:pod-b",
+               "AUP_HUB_URL_A": "https://dub.test", "AUP_HUB_URL_D": "https://sjc.test"}
+
+    result = ready.check(environ=environ, env_files=[], transport=net)
+
+    hub_check = result["checks"]["hub"]
+    assert hub_check["hubs"] == ["dub.test", "sjc.test"]
+    assert hub_check["accounts"]["A"]["hub"] == "dub.test"
+    assert hub_check["accounts"]["D"]["hub"] == "sjc.test"
+    assert len(dub.calls) == 1 and len(sjc.calls) == 1
+
+
+def test_an_account_without_keys_is_reported_and_not_probed_and_its_keys_are_named(isolated_lab):
+    _, sjc, net = two_hubs()
+    environ = sjc_environ()
+    del environ["AUP_HUB_TOKEN_D"]
+
+    result = ready.check(environ=environ, env_files=[], transport=net)
+
+    assert result["checks"]["hub"]["accounts"]["D"] == {
+        "ok": False, "reachable": False, "running": False, "ready": False, "skipped": "credentials missing",
+        "role": "pod-b"}
+    assert result["reasons"] == ["env keys missing: AUP_HUB_TOKEN_D"]
+    assert result["ready"] is False
+    assert len(sjc.calls) == 1
+
+
+def test_the_hub_being_down_is_still_not_a_hand_off_for_c_and_d(isolated_lab):
+    from lab import hub_fake
+
+    nothing = hub_fake.network({})
+    result = ready.check(environ=sjc_environ(), env_files=[], transport=nothing)
+
+    assert (result["ok"], result["ready"], result["reasons"]) == (True, True, [])
+    assert result["checks"]["hub"]["ok"] is False
+    assert result["warnings"] == ["hub account C unreachable", "hub account D unreachable"]
+    for letter in "CD":
+        probe = result["checks"]["hub"]["accounts"][letter]
+        assert (probe["reachable"], probe["running"], probe["ready"]) == (False, False, False)
+        assert probe["hub"] == "sjc.test"
+
+
+def test_lab_pod_roles_in_an_env_file_is_read(isolated_lab, tmp_path):
+    _, sjc, net = two_hubs()
+    env_file = tmp_path / "roles.env"
+    environ = sjc_environ()
+    roles = environ.pop("LAB_POD_ROLES")
+    env_file.write_text(f"LAB_POD_ROLES={roles}\n", encoding="utf-8")
+
+    result = ready.check(environ=environ, env_files=[env_file], transport=net)
+
+    assert list(result["checks"]["hub"]["accounts"]) == ["C", "D"]
+    assert result["ready"] is True
+
+
+def test_a_lab_pod_roles_that_cannot_be_read_is_a_reason_not_a_crash(isolated_lab):
+    result = ready.check(environ=sjc_environ(LAB_POD_ROLES="C:teacher"), env_files=[], transport=None,
+                         fetch=lambda url, headers, timeout: (200, {}))
+
+    assert result["ready"] is False
+    assert len(result["reasons"]) == 1 and result["reasons"][0].startswith("LAB_POD_ROLES unreadable: ")
+
+
+def test_the_cli_reports_c_and_d_and_exits_0(isolated_lab, monkeypatch, tmp_path):
+    env_file = tmp_path / "sjc.env"
+    environ = sjc_environ(AUP_HUB_URL_C=f"http://127.0.0.1:{closed_port()}",
+                          AUP_HUB_URL_D=f"http://127.0.0.1:{closed_port()}")
+    env_file.write_text("".join(f"{k}={v}\n" for k, v in environ.items()), encoding="utf-8")
+    monkeypatch.setenv("LAB_ENV_FILES", str(env_file))
+
+    result = run_module("ready")
+
+    verdict = one_json_line(result.stdout)
+    assert result.returncode == 0, result.stdout
+    assert list(verdict["checks"]["hub"]["accounts"]) == ["C", "D"]
+    assert verdict["checks"]["env"]["missing"] == []
+    assert verdict["warnings"] == ["hub account C unreachable", "hub account D unreachable"]
+    for value in SJC_SECRETS.values():
+        assert value not in result.stdout + result.stderr
