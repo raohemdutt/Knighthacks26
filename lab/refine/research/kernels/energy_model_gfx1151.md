@@ -127,8 +127,8 @@ above-idle metric subtracts.
   `lab/README.md`, section "Request-side settings sweep: `lab/sweep_request.py` (R52)"; [L14] `measured_points`.
   - Implication: the R52 reading is open, not skipped; when its result lands, one CPU command gives the table, and
     the note gains a finding with the ratios.
-  - Candidate experiment: EM4, `python -m lab.energy_model check lab/state/sweep_request/<run>/result.json` once R52's
-    pod run is collected. Expected movement: anchored J/token within 15 % at 4, 8 and 16 streams. Minimum sample size:
+  - Candidate experiment: EM4, `python -m lab.energy_model check lab/refine/research/kernels/data/sweep-request-gfx1151-<date>.json`
+    once R52's pod run is collected. Expected movement: anchored J/token within 15 % at 4, 8 and 16 streams. Minimum sample size:
     the grid's 3 repeats per cell. Confidence: medium.
 
 ## The measurement protocol
