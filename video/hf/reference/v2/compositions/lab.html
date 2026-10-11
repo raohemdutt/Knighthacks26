@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
-  <head><meta charset="UTF-8"></head>
+  <head><meta charset="UTF-8" /></head>
   <body>
     <template>
-      <link rel="stylesheet" href="world/soft.css">
+      <link rel="stylesheet" href="world/soft.css" />
       <style>
         #root { position: absolute; inset: 0; font-family: var(--font); overflow: hidden; }
         #lab-chapter { position: absolute; left: 96px; top: 72px; padding: 14px 28px; font-size: 28px; opacity: 0; }
@@ -38,31 +38,31 @@
         #lab-none { position: absolute; left: 50%; top: 272px; width: 520px; margin-left: -260px; height: 84px; border-radius: 42px; display: flex; align-items: center; justify-content: center; gap: 18px; font-size: 32px; font-weight: 600; color: var(--ink); opacity: 0; }
         #lab-none .x { width: 22px; height: 22px; border-radius: 50%; background: var(--ink); box-shadow: inset 2px 2px 4px rgba(0,0,0,0.35); }
       </style>
-      <div data-hf-id="hf-y086" id="root" data-composition-id="lab" data-width="1920" data-height="1080">
-        <div data-hf-id="hf-ox7k" id="lab-chapter" class="soft-raised soft-muted">The learning lab</div>
+      <div id="root" data-composition-id="lab" data-width="1920" data-height="1080">
+        <div id="lab-chapter" class="soft-raised soft-muted">The learning lab</div>
 
-        <div data-hf-id="hf-3tgu" id="lab-hw" class="soft-raised"><div data-hf-id="hf-hny9" class="k">The lab</div><div data-hf-id="hf-78y5" class="v">2 × <b data-hf-id="hf-f5xx">AMD</b> Strix Halo</div></div>
+        <div id="lab-hw" class="soft-raised"><div class="k">The lab</div><div class="v">2 &times; <b>AMD</b> Strix Halo</div></div>
 
-        <div data-hf-id="hf-xh1c" id="lab-steps">
-          <div data-hf-id="hf-zq6w" class="lab-step soft-raised" id="lab-step-label"><div data-hf-id="hf-gieq" class="n soft-pressed">1</div>Label</div>
-          <div data-hf-id="hf-lbx0" class="lab-step soft-raised" id="lab-step-train"><div data-hf-id="hf-gwpr" class="n soft-pressed">2</div>Train</div>
-          <div data-hf-id="hf-mr7s" class="lab-step soft-raised" id="lab-step-test"><div data-hf-id="hf-hb0s" class="n soft-pressed">3</div>Test</div>
-          <div data-hf-id="hf-jgrs" class="lab-step soft-raised" id="lab-step-package"><div data-hf-id="hf-hpbt" class="n soft-pressed">4</div>Package</div>
+        <div id="lab-steps">
+          <div class="lab-step soft-raised" id="lab-step-label"><div class="n soft-pressed">1</div>Label</div>
+          <div class="lab-step soft-raised" id="lab-step-train"><div class="n soft-pressed">2</div>Train</div>
+          <div class="lab-step soft-raised" id="lab-step-test"><div class="n soft-pressed">3</div>Test</div>
+          <div class="lab-step soft-raised" id="lab-step-package"><div class="n soft-pressed">4</div>Package</div>
         </div>
-        <div data-hf-id="hf-gtx8" id="lab-rocm" class="soft-pressed">all on <b data-hf-id="hf-kbgu">ROCm</b></div>
+        <div id="lab-rocm" class="soft-pressed">all on <b>ROCm</b></div>
 
-        <div data-hf-id="hf-ufgc" id="lab-watts" class="soft-raised">
-          <div data-hf-id="hf-o5j9" class="k">Pod B while training</div>
-          <div data-hf-id="hf-mxpy" class="v"><span data-hf-id="hf-1ol2" id="lab-watts-n">0</span><span data-hf-id="hf-qn7j" class="u">W</span></div>
-          <div data-hf-id="hf-35de" class="bar soft-well"><span data-hf-id="hf-zvvl" class="fill" id="lab-watts-fill"></span></div>
-          <div data-hf-id="hf-xm9y" class="ex soft-pressed">example</div>
+        <div id="lab-watts" class="soft-raised">
+          <div class="k">Pod B while training</div>
+          <div class="v"><span id="lab-watts-n">0</span><span class="u">W</span></div>
+          <div class="bar soft-well"><span class="fill" id="lab-watts-fill"></span></div>
+          <div class="ex soft-pressed">example</div>
         </div>
 
-        <div data-hf-id="hf-soi4" id="lab-files">
-          <div data-hf-id="hf-eg0k" class="lab-file soft-raised" id="lab-file-out"><div data-hf-id="hf-lu65" class="dot"></div>dataset<span data-hf-id="hf-8mm0" class="arr">→</span></div>
-          <div data-hf-id="hf-w1gq" class="lab-file soft-raised" id="lab-file-back"><span data-hf-id="hf-7tzy" class="arr">←</span>model package<div data-hf-id="hf-ww7l" class="dot"></div></div>
+        <div id="lab-files">
+          <div class="lab-file soft-raised" id="lab-file-out"><div class="dot"></div>dataset<span class="arr">&rarr;</span></div>
+          <div class="lab-file soft-raised" id="lab-file-back"><span class="arr">&larr;</span>model package<div class="dot"></div></div>
         </div>
-        <div data-hf-id="hf-h0yt" id="lab-none" class="soft-pressed"><div data-hf-id="hf-3ecg" class="x"></div>nothing else crosses</div>
+        <div id="lab-none" class="soft-pressed"><div class="x"></div>nothing else crosses</div>
       </div>
       <script>
         (function () {

@@ -22,3 +22,7 @@ contexts/perception/models/facial_expression_recognition_mobilefacenet_2022july.
 .neon
 node_modules/
 .env.local
+
+# HyperFrames Studio preview caches
+video/hf/.waveform-cache/
+video/hf/.thumbnails/
