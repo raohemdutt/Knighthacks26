@@ -1,0 +1,7 @@
+# R66b pod C, pytest, run 20261011-100139-7a9e, controller seconds 6.552, outcome ok
+### STEP pytest
+pytest 9.1.1
+....                                                                     [100%]
+4 passed in 3.28s
+pytest in 3.853 s
+### END

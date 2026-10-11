@@ -1,0 +1,38 @@
+# R66b pod C, build ctest, run 20261011-095816-c984, controller seconds 6.741, outcome ok
+### STEP build
+gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+/usr/include/ifaddrs.h
+build ok in 0.252 s
+bind connect freeifaddrs getifaddrs getpeername getsockname if_indextoname if_nametoindex 
+listeners in 40000-42127 before the tests:
+40697 
+### STEP ctest
+     iface lo       family 17 addr - flags 0x10049
+     iface eth0     family 17 addr - flags 0x11043
+     iface lo       family 2 addr 127.0.0.1 flags 0x10049
+     iface eth0     family 2 addr 10.42.6.28 flags 0x11043
+     iface lo       family 10 addr - flags 0x10049
+     iface eth0     family 10 addr - flags 0x11043
+     iface pods0    family 2 addr 10.99.0.1 flags 0x41
+ok   getifaddrs lists pods0 with the self address, /24, UP RUNNING
+ok   2000 getifaddrs/freeifaddrs rounds
+ok   if_nametoindex 7919 and back to pods0
+ok   if_nametoindex(lo) still the real one
+ok   bind SELF:0 and listen
+ok   getsockname reports SELF:40000 (range 40000-40127)
+ok   connect SELF:40000 reaches our own listener; getpeername says SELF
+ok   128 of 128 range ports pinned, all distinct, then refused
+ok   connect PEER:41005 -> 127.0.0.1:42005
+ok   getpeername reports PEER:41005
+ok   getsockname on the connected socket reports SELF
+ok   2000 one-byte round trips through the mapping, 6.2 us each
+ok   connect ::ffff:PEER:41005 through an IPv6 socket, getpeername says so
+ok   8 threads x 50 concurrent connects through the shim, 0 bad, 0.006 s
+ok   bind 127.0.0.1:0 left alone (port 56761)
+PASSED: 0 failure(s)
+ctest rc 0 in 0.048 s
+without the shim:
+FAIL getifaddrs lists pods0 with the self address, /24, UP RUNNING
+ok   2000 getifaddrs/freeifaddrs rounds
+FAIL if_nametoindex 0 and back to 
+### END

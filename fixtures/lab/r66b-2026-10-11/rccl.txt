@@ -1,0 +1,12 @@
+# R66b pod C, rccl, run 20261011-100031-9f6d, controller seconds 6.491, outcome ok
+### STEP rccl
+librccl: /opt/rocm/lib/librccl.so
+jupyter-<account C>:158830:158830 [0] NCCL INFO Kernel version: 6.18.6-061806-generic
+
+[2026-10-11 10:01:38] jupyter-<account C>:158830:158830 [0] /home/runner/_work/rockrel/rockrel/output/build/comm-libs/rccl/build/hipify/src/init.cc:270 NCCL WARN Missing "iommu=pt" from kernel command line which can lead to system instablity or hang!
+jupyter-<account C>:158830:158830 [0] [FATAL ERROR]: HIP failure: 'no ROCm-capable device is detected'
+jupyter-<account C>:158830:158830 [0] NCCL INFO /home/runner/_work/rockrel/rockrel/output/build/comm-libs/rccl/build/hipify/src/init.cc:224 -> 1
+jupyter-<account C>:158830:158830 [0] NCCL INFO /home/runner/_work/rockrel/rockrel/output/build/comm-libs/rccl/build/hipify/src/init.cc:292 -> 1
+ncclGetUniqueId rc 1 family 0 addr - port 0
+rccl probe in 0.075 s
+### END
