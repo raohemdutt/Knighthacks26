@@ -66,7 +66,8 @@ import httpx
 from lab.hub import Account
 from lab.hub_fake import FAKE_ROLES
 
-__all__ = ["Turn", "Policy", "Seen", "FakeTeacher", "reference_policy", "text_policy", "main"]
+__all__ = ["Turn", "Policy", "Seen", "FakeTeacher", "reference_policy", "text_policy", "second_pass", "swayed_policy",
+           "main"]
 
 ROOT = "RedHatAI/Qwen3.8-27B-INT4"     # the checkpoint the teacher serves (lab/pod_a_teacher.sh)
 TTFT_S = 0.55                          # time to first token, text, thinking off: the R9700 number in lab/README.md
@@ -146,6 +147,37 @@ def reference_policy(expected: Mapping[str, Any]) -> Policy:
         if label.tool_calls and not answered:
             return Turn(tool_calls=tuple((call.name, call.arguments) for call in label.tool_calls))
         return Turn(content=label.answer)
+
+    return answer
+
+
+def second_pass(body: Mapping[str, Any]) -> bool:
+    """True for a request sent with a seed other than 0 (the label run's default): the second teacher pass."""
+    seed = body.get("seed")
+    return isinstance(seed, int) and seed != 0
+
+
+def swayed_policy(base: Policy, questions: Sequence[str], *, when: Callable[[Mapping[str, Any]], bool] = second_pass,
+                  fields: Sequence[str] = ("answer",)) -> Policy:
+    """A teacher that gives base's answers, except that when `when` holds for a request (by default the request
+    carries another seed than 0) its answer to each of the questions differs in the fields named: "answer" appends
+    a hedge to the text, "tool_calls" changes the first call's first argument. It stands for a model whose label moves
+    with the seed or the wording of the prompt; a question not listed is always answered as base answers it."""
+    swayed = set(questions)
+
+    def answer(body: Mapping[str, Any]) -> Turn:
+        turn = base(body)
+        if _question(body) not in swayed or not when(body):
+            return turn
+        if turn.tool_calls and "tool_calls" in fields:
+            (name, arguments), *rest = turn.tool_calls
+            if isinstance(arguments, Mapping) and arguments:
+                key = next(iter(arguments))
+                arguments = {**arguments, key: f"{arguments[key]} "}   # the same call with a different argument
+            turn = Turn(turn.content, ((name, arguments), *rest))
+        if turn.content and "answer" in fields:
+            turn = Turn(turn.content + " (not sure)", turn.tool_calls)
+        return turn
 
     return answer
 
