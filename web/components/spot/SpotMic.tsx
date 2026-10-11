@@ -6,7 +6,7 @@ import ui from "@/components/ui.module.css";
 import { VoiceBar } from "@/components/voice/VoiceBar";
 import v from "@/components/voice/voice.module.css";
 import { ApiError, api, type Answer as AtlasAnswer } from "@/lib/api";
-import { speakOnBox, stopBoxSpeech } from "@/lib/boxSpeech";
+import { INSPECTION_SPEAKS, speakOnBox, stopBoxSpeech } from "@/lib/boxSpeech";
 import { time } from "@/lib/format";
 import { plainText, precisionOf, spotTarget, whereIntent } from "@/lib/guide";
 import { handoffLine, type Job } from "@/lib/guideAttention";
@@ -126,7 +126,7 @@ export function SpotMic({ chips, onWhy, guideChips = [], jobs = [] }: { chips: s
           if (alive.current && conversing.current && mine === seq.current) listenRef.current();
         }, RELISTEN_MS);
       };
-      if (!reply || !voice.getSettings().speak) return again();
+      if (!INSPECTION_SPEAKS || !reply || !voice.getSettings().speak) return again();
       void speakOnBox(reply).then((onBox) => {
         if (!alive.current || mine !== seq.current) return;
         if (onBox) conversing.current = false; // the box is talking and this screen cannot tell when it stops: the microphone is not reopened
@@ -141,7 +141,7 @@ export function SpotMic({ chips, onWhy, guideChips = [], jobs = [] }: { chips: s
   const guide = useCallback(
     async (question: string, mine: number): Promise<boolean> => {
       try {
-        const { run, found } = await spotRun(question, null, Boolean(voice.canSpeak && voice.getSettings().speak));
+        const { run, found } = await spotRun(question, null, INSPECTION_SPEAKS && Boolean(voice.canSpeak && voice.getSettings().speak));
         if (mine !== seq.current) return true;
         if (run) return pointAt(run), true;
         setMeant(found?.alternatives ?? []);

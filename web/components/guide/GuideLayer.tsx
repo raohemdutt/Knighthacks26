@@ -4,7 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { useAtlas } from "@/lib/atlas";
-import { boxLines } from "@/lib/boxSpeech";
+import { INSPECTION_SPEAKS, boxLines } from "@/lib/boxSpeech";
 import { Dwell, landed as eyesLanded, snap, type Thing } from "@/lib/gaze";
 import { gaze, type GazeEstimate } from "@/lib/gazeTracker";
 import { FIXATION_MS, attention, simScript } from "@/lib/guideAttention";
@@ -132,6 +132,7 @@ export function GuideLayer() {
   const say = useCallback((text: string) => {
     const v = voiceRef.current;
     if (!text || !v.getSettings().speak) return;
+    if (!INSPECTION_SPEAKS && samePath(pathRef.current, "/spot/")) return; // the Inspection screen is silent: the caption carries the words
     const here = (line: string) => {
       if (!voiceRef.current.canSpeak) return;
       unsaid.current++;
@@ -442,7 +443,7 @@ export function GuideLayer() {
       }
       if (samePath(here, "/spot/")) {
         try {
-          const { run, found } = await spotRun(query, t, Boolean(voiceRef.current.canSpeak && voiceRef.current.getSettings().speak));
+          const { run, found } = await spotRun(query, t, INSPECTION_SPEAKS && Boolean(voiceRef.current.canSpeak && voiceRef.current.getSettings().speak));
           if (run) return void start(run);
           if (found && found.alternatives.length > 0) return offer(found.steps[0]?.say ?? "Did you mean one of these?", found.alternatives.map((a) => ({ label: a.label, ask: a.target })));
         } catch {
