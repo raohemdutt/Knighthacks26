@@ -227,10 +227,12 @@ export function WatchOut({ items, onWhy }: { items: PlainFinding[]; onWhy: (t: T
   );
 }
 
-export function LooksFine({ shift, onAll }: { shift: Shift; onAll: () => void }) {
+export function LooksFine({ shift, onAll, onPick }: { shift: Shift; onAll: () => void; onPick?: (id: string) => void }) {
   const fine = shift.fine;
   const st = shift.status;
   if (!fine || !st) return null;
+  // every piece of equipment, as "See all" lists it; the ones that look fine come first here. Shown on a wide screen, where the card is as tall as the plan.
+  const groups = [...(shift.levels ?? [])].sort((a, b) => Number(b.level === "ok") - Number(a.level === "ok")).map((lv) => ({ lv, rows: shift.assets.filter((a) => a.level === lv.level) }));
   return (
     <section className={o.card} aria-label="Looks fine" data-guide="card:fine">
       <CardHead level="ok" title="Looks fine" />
@@ -246,6 +248,28 @@ export function LooksFine({ shift, onAll }: { shift: Shift; onAll: () => void })
         </div>
       </div>
       <p className={o.sentence}>{fine.sentence}</p>
+      <div className={o.fineList}>
+        {groups.map(({ lv, rows }) =>
+          rows.length === 0 ? null : (
+            <section key={lv.level}>
+              <h3 className={o.fineGroup}>
+                <LevelIcon level={lv.level} size={18} /> {lv.words} · {rows.length}
+              </h3>
+              <ul>
+                {rows.map((a) => (
+                  <li key={a.asset_id}>
+                    <button type="button" className={o.fineItem} onClick={() => (onPick ? onPick(a.asset_id) : onAll())}>
+                      <b>{a.label}</b>
+                      <span>{a.place}</span>
+                      <span className={o.rowSentence}>{a.sentence}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ),
+        )}
+      </div>
       <button type="button" className={`${ui.btn} ${o.act}`} data-guide="all-equipment" onClick={onAll}>
         See all {fine.total}
       </button>

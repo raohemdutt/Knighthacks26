@@ -208,7 +208,9 @@
   }
 
   /* the plan and the panel beside it end on the same line */
+  /* the plan gets the wider column, so its picture is larger */
   .wrap .even {
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
     align-items: stretch;
   }
 }
