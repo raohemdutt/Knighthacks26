@@ -482,7 +482,7 @@ def pass_refusal(track: str, log: rf.Log, counter: int) -> str | None:
     # the numbering rules of the combined track check; its entry-content and report rules are the suite's
     # business, not a reason to hold a pass
     problems = [p for p in refine_merge.check_track(track, log, counter, {})
-                if p.startswith((f"{track}: pass entries are numbered", f"{track}: refine_pass.txt reads"))]
+                if p.startswith(("REFINE_LOG.md: pass entries must be numbered", "refine_pass.txt reads"))]
     return f"the track's files break the track rules: {problems[0]}" if problems else None
 
 
