@@ -1,0 +1,74 @@
+<!doctype html>
+<html>
+  <head><meta charset="UTF-8" /></head>
+  <body>
+    <template>
+      <link rel="stylesheet" href="world/soft.css" />
+      <style>
+#root { position: absolute; inset: 0; font-family: var(--font); overflow: hidden; }
+.chip-ch { position: absolute; left: 96px; top: 72px; padding: 14px 28px; font-size: 28px; opacity: 0; }
+.win { position: absolute; left: 1196px; top: 60px; width: 664px; height: 640px; opacity: 0; padding: 0; overflow: hidden; }
+.win-bar { height: 76px; display: flex; align-items: center; gap: 14px; padding: 0 28px; border-bottom: 2px solid var(--surface-2); }
+.win-dot { width: 18px; height: 18px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 6px rgba(69,108,179,0.16); }
+.win-app { font-family: var(--font); font-size: 30px; font-weight: 700; color: var(--ink); letter-spacing: 0.02em; }
+.win-tabs { position: relative; flex: 1; height: 40px; }
+.win-tab { position: absolute; right: 0; top: 0; padding: 4px 18px; border-radius: 999px; font-size: 24px; font-weight: 700; color: var(--accent); background: var(--surface-2); box-shadow: inset 3px 3px 7px var(--shade), inset -3px -3px 7px var(--light); opacity: 0; white-space: nowrap; }
+.pane { position: absolute; left: 28px; right: 28px; top: 100px; bottom: 24px; opacity: 0; }
+.ph { font-family: var(--font); font-size: 38px; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; }
+.pk { font-family: var(--font-body); font-size: 24px; font-weight: 600; color: var(--muted); }
+.row { display: flex; align-items: center; gap: 18px; padding: 14px 20px; margin-top: 12px; border-radius: 20px; background: var(--surface); box-shadow: 6px 6px 14px var(--shade), -6px -6px 14px var(--light); }
+.row.dash { box-shadow: none; border: 3px dashed var(--shade); }
+.row .t { width: 96px; font-family: var(--font); font-size: 28px; font-weight: 700; color: var(--accent); }
+.row .w { font-family: var(--font-body); font-size: 28px; font-weight: 600; color: var(--ink); line-height: 1.2; }
+.row .w small { display: block; font-size: 22px; color: var(--muted); font-weight: 500; }
+.bub { max-width: 520px; margin-top: 16px; padding: 16px 22px; border-radius: 24px 24px 24px 8px; background: var(--surface); box-shadow: 6px 6px 14px var(--shade), -6px -6px 14px var(--light); font-family: var(--font-body); font-size: 26px; font-weight: 500; color: var(--ink); line-height: 1.3; }
+.bub b { display: block; font-size: 22px; color: var(--accent); }
+.bub.me { margin-left: auto; border-radius: 24px 24px 8px 24px; box-shadow: 6px 6px 14px var(--shade), -6px -6px 14px var(--light), inset 0 0 0 3px var(--accent-bright); }
+.chips { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 18px; }
+.chips .site-tag { font-size: 24px; }
+.big { font-family: var(--font); font-size: 92px; font-weight: 700; color: var(--accent); line-height: 1; }
+.card { position: absolute; padding: 26px 34px; opacity: 0; }
+.card .ph { font-size: 40px; }
+.cardrow { position: absolute; display: flex; gap: 26px; opacity: 0; }
+.mini { padding: 20px 28px; }
+.btnrow { display: flex; gap: 18px; margin-top: 26px; }
+.ok { color: var(--ok); }
+.svgbox { margin-top: 14px; border-radius: 22px; overflow: hidden; }
+</style>
+      <div id="root" data-composition-id="desk" data-width="1920" data-height="1080">
+        <div id="desk-chapter" class="chip-ch soft-raised soft-muted">At the desk</div>
+        <div class="win soft-raised" id="desk-win1" style="top:60px;height:640px">
+          <div class="win-bar"><div class="win-dot"></div><div class="win-app">Atlas</div><div class="win-tabs"><div class="win-tab" id="desk-win1-tab0">Check-in</div><div class="win-tab" id="desk-win1-tab1">GroupMe</div><div class="win-tab" id="desk-win1-tab2">Notes</div><div class="win-tab" id="desk-win1-tab3">Check-in</div></div></div>
+          <div class="pane" id="desk-win1-p0"><div class="ph">Check-in</div><div class="svgbox"><svg viewBox="0 0 600 120" width="600" height="120"><polyline fill="none" stroke="#c0332b" stroke-width="5" points="0,90 60,88 120,84 180,80 240,74 300,70 360,62 420,58 480,50 540,46 600,40"/><text x="8" y="24" font-size="22" font-family="Segoe UI" fill="#566176">resting heart rate · from your watch</text></svg></div><div class="chips"><span class="site-tag">Looked tired</span><span class="site-tag">Sat 1 h 45</span><span class="site-tag">No water 100 min</span><span class="site-tag">3rd can · limit 2</span></div></div>
+          <div class="pane" id="desk-win1-p1"><div class="ph">COP4533 · class chat</div><div class="pk">GroupMe</div><div class="bub"><b>Maya</b>prof said in class half the milestone grade is the runtime analysis, we should go over weeks 5 and 6 together</div><div class="bub"><b>Jordan</b>weeks 5 and 6. the knapsack and interval scheduling slides basically walk through it</div></div>
+          <div class="pane" id="desk-win1-p2"><div class="ph">Notes for the writeup</div><div class="row"><div class="t">1</div><div class="w">Runtime analysis: half the grade<small>GroupMe · class chat</small></div></div><div class="row"><div class="t">2</div><div class="w">Knapsack, weeks 5 and 6<small>r/ucf thread</small></div></div><div class="row"><div class="t">3</div><div class="w">Interval scheduling proof<small>two articles</small></div></div></div>
+          <div class="pane" id="desk-win1-p3"><div class="ph">But first</div><div class="row"><div class="t">💧</div><div class="w">Fill your bottle<small>no water in 90 min</small></div></div><div class="row"><div class="t">🚶</div><div class="w">Walk a few minutes<small>sat 1 h 45</small></div></div><div class="pk" style="margin-top:16px">I'll hold the notes.</div></div>
+        </div>
+      </div>
+      <script>
+        (function () {
+          const tl = gsap.timeline({ paused: true });
+          tl.fromTo("#desk-chapter", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 0.15);
+          tl.to("#desk-chapter", { opacity: 0, duration: 0.4 }, 3.200);
+          tl.fromTo("#desk-win1", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 1.000);
+          tl.to("#desk-win1", { opacity: 0, duration: 0.35, ease: "power2.in" }, 18.942);
+          tl.fromTo("#desk-win1-p0", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 1.000);
+          tl.to("#desk-win1-p0", { opacity: 0, duration: 0.25, ease: "power2.in" }, 6.906);
+          tl.fromTo("#desk-win1-tab0", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 1.000);
+          tl.to("#desk-win1-tab0", { opacity: 0, duration: 0.25, ease: "power2.in" }, 6.906);
+          tl.fromTo("#desk-win1-p1", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 7.156);
+          tl.to("#desk-win1-p1", { opacity: 0, duration: 0.25, ease: "power2.in" }, 9.712);
+          tl.fromTo("#desk-win1-tab1", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 7.156);
+          tl.to("#desk-win1-tab1", { opacity: 0, duration: 0.25, ease: "power2.in" }, 9.712);
+          tl.fromTo("#desk-win1-p2", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 9.962);
+          tl.to("#desk-win1-p2", { opacity: 0, duration: 0.25, ease: "power2.in" }, 11.214);
+          tl.fromTo("#desk-win1-tab2", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 9.962);
+          tl.to("#desk-win1-tab2", { opacity: 0, duration: 0.25, ease: "power2.in" }, 11.214);
+          tl.fromTo("#desk-win1-p3", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 11.464);
+          tl.fromTo("#desk-win1-tab3", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 11.464);
+          window.__timelines["desk"] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>

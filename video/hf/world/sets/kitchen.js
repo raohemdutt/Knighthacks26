@@ -105,7 +105,7 @@ export function buildKitchen(scene, humanGltf) {
   const band = new THREE.Mesh(new THREE.CylinderGeometry(0.335, 0.335, 0.6, 22), tint(0xb98478, { roughness: 0.5 })); can.add(band);
   const lidTop = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.31, 0.08, 22), steel); lidTop.position.y = 0.63; can.add(lidTop);
   set.add(can);
-  const binTarget = new THREE.Vector3(BINS[2].x + 0.1, F + 1.0, BIN_Z); // inside the grey bin, kitchen-local
+  const binTarget = new THREE.Vector3(BINS[0].x + 0.1, F + 1.0, BIN_Z); // inside the blue recycling bin (film v4.7: he turns to the blue one), kitchen-local
   // Release point = the hand at the reach (kitchen-local), computed once.
   person.sample([["Interact", REACH, 1]]); root.updateMatrixWorld(true); const rel = root.worldToLocal(person.handPos("R").clone()).clone(); person.sample([["Idle_Loop", 0, 1]]);
   const hv = new THREE.Vector3();

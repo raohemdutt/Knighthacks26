@@ -1,0 +1,77 @@
+<!doctype html>
+<html>
+  <head><meta charset="UTF-8" /></head>
+  <body>
+    <template>
+      <link rel="stylesheet" href="world/soft.css" />
+      <style>
+#root { position: absolute; inset: 0; font-family: var(--font); overflow: hidden; }
+.chip-ch { position: absolute; left: 96px; top: 72px; padding: 14px 28px; font-size: 28px; opacity: 0; }
+.win { position: absolute; left: 1196px; top: 60px; width: 664px; height: 640px; opacity: 0; padding: 0; overflow: hidden; }
+.win-bar { height: 76px; display: flex; align-items: center; gap: 14px; padding: 0 28px; border-bottom: 2px solid var(--surface-2); }
+.win-dot { width: 18px; height: 18px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 6px rgba(69,108,179,0.16); }
+.win-app { font-family: var(--font); font-size: 30px; font-weight: 700; color: var(--ink); letter-spacing: 0.02em; }
+.win-tabs { position: relative; flex: 1; height: 40px; }
+.win-tab { position: absolute; right: 0; top: 0; padding: 4px 18px; border-radius: 999px; font-size: 24px; font-weight: 700; color: var(--accent); background: var(--surface-2); box-shadow: inset 3px 3px 7px var(--shade), inset -3px -3px 7px var(--light); opacity: 0; white-space: nowrap; }
+.pane { position: absolute; left: 28px; right: 28px; top: 100px; bottom: 24px; opacity: 0; }
+.ph { font-family: var(--font); font-size: 38px; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; }
+.pk { font-family: var(--font-body); font-size: 24px; font-weight: 600; color: var(--muted); }
+.row { display: flex; align-items: center; gap: 18px; padding: 14px 20px; margin-top: 12px; border-radius: 20px; background: var(--surface); box-shadow: 6px 6px 14px var(--shade), -6px -6px 14px var(--light); }
+.row.dash { box-shadow: none; border: 3px dashed var(--shade); }
+.row .t { width: 96px; font-family: var(--font); font-size: 28px; font-weight: 700; color: var(--accent); }
+.row .w { font-family: var(--font-body); font-size: 28px; font-weight: 600; color: var(--ink); line-height: 1.2; }
+.row .w small { display: block; font-size: 22px; color: var(--muted); font-weight: 500; }
+.bub { max-width: 520px; margin-top: 16px; padding: 16px 22px; border-radius: 24px 24px 24px 8px; background: var(--surface); box-shadow: 6px 6px 14px var(--shade), -6px -6px 14px var(--light); font-family: var(--font-body); font-size: 26px; font-weight: 500; color: var(--ink); line-height: 1.3; }
+.bub b { display: block; font-size: 22px; color: var(--accent); }
+.bub.me { margin-left: auto; border-radius: 24px 24px 8px 24px; box-shadow: 6px 6px 14px var(--shade), -6px -6px 14px var(--light), inset 0 0 0 3px var(--accent-bright); }
+.chips { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 18px; }
+.chips .site-tag { font-size: 24px; }
+.big { font-family: var(--font); font-size: 92px; font-weight: 700; color: var(--accent); line-height: 1; }
+.card { position: absolute; padding: 26px 34px; opacity: 0; }
+.card .ph { font-size: 40px; }
+.cardrow { position: absolute; display: flex; gap: 26px; opacity: 0; }
+.mini { padding: 20px 28px; }
+.btnrow { display: flex; gap: 18px; margin-top: 26px; }
+.ok { color: var(--ok); }
+.svgbox { margin-top: 14px; border-radius: 22px; overflow: hidden; }
+</style>
+      <div id="root" data-composition-id="league" data-width="1920" data-height="1080">
+        <div id="league-chapter" class="chip-ch soft-raised soft-muted">Friends</div>
+        <div class="win soft-raised" id="league-win1" style="top:60px;height:640px">
+          <div class="win-bar"><div class="win-dot"></div><div class="win-app">Atlas</div><div class="win-tabs"><div class="win-tab" id="league-win1-tab0">League</div><div class="win-tab" id="league-win1-tab1">Calendars</div><div class="win-tab" id="league-win1-tab2">Places</div><div class="win-tab" id="league-win1-tab3">Meals</div></div></div>
+          <div class="pane" id="league-win1-p0"><div class="ph">This week's league</div><div class="row"><div class="t">1st</div><div class="w">Dominick<small>most goals · picks tonight</small></div></div><div class="row"><div class="t">2nd</div><div class="w">Ilan</div></div><div class="row"><div class="t">3rd</div><div class="w">Hemdutt<small>roughest week · driving</small></div></div></div>
+          <div class="pane" id="league-win1-p1"><div class="ph">Three calendars</div><div class="pk">each box reads only its own</div><div style="display:flex;gap:14px;margin-top:14px"><div class="site-card mini" style="flex:1;padding:14px"><div class="pk">Hemdutt</div><div class="row dash" style="padding:8px 10px"><div class="w" style="font-size:22px">busy</div></div><div class="row" id="league-c0" style="padding:8px 10px;opacity:0"><div class="w" style="font-size:22px">8:30 Board games</div></div></div><div class="site-card mini" style="flex:1;padding:14px"><div class="pk">Ilan</div><div class="row dash" style="padding:8px 10px"><div class="w" style="font-size:22px">busy at 8</div></div><div class="row" id="league-c1" style="padding:8px 10px;opacity:0"><div class="w" style="font-size:22px">8:30 Board games</div></div></div><div class="site-card mini" style="flex:1;padding:14px"><div class="pk">Dominick</div><div class="row dash" style="padding:8px 10px"><div class="w" style="font-size:22px">busy</div></div><div class="row" id="league-c2" style="padding:8px 10px;opacity:0"><div class="w" style="font-size:22px">8:30 Board games</div></div></div></div><div class="bub" style="font-size:22px"><b>Hemdutt's box</b>Free.</div><div class="bub me" style="font-size:22px">Busy at 8. How about 8:30? <b>Ilan's box</b></div><div class="bub" style="font-size:22px"><b>Dominick's box</b>8:30 works.</div></div>
+          <div class="pane" id="league-win1-p2"><div class="ph">Ilan is at '63 South</div><div class="pk">shared place · expires tonight</div><div class="row dash"><div class="t">now</div><div class="w">Dinner with Ilan<small>free till 8:30</small></div></div><div class="chips"><span class="site-tag">Agreed, three of three · 8:30</span></div></div>
+          <div class="pane" id="league-win1-p3"><div class="ph">Meals today</div><div class="big">2 of 2</div><div class="pk">goal met · the one you set this morning</div><div class="row"><div class="t">3rd</div><div class="w">Hemdutt<small>league row updated</small></div></div></div>
+        </div>
+      </div>
+      <script>
+        (function () {
+          const tl = gsap.timeline({ paused: true });
+          tl.fromTo("#league-chapter", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 0.15);
+          tl.to("#league-chapter", { opacity: 0, duration: 0.4 }, 3.200);
+          tl.fromTo("#league-win1", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 0.300);
+          tl.to("#league-win1", { opacity: 0, duration: 0.35, ease: "power2.in" }, 17.362);
+          tl.fromTo("#league-win1-p0", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 0.400);
+          tl.to("#league-win1-p0", { opacity: 0, duration: 0.25, ease: "power2.in" }, 0.750);
+          tl.fromTo("#league-win1-tab0", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 0.400);
+          tl.to("#league-win1-tab0", { opacity: 0, duration: 0.25, ease: "power2.in" }, 0.750);
+          tl.fromTo("#league-win1-p1", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 1.000);
+          tl.to("#league-win1-p1", { opacity: 0, duration: 0.25, ease: "power2.in" }, 5.886);
+          tl.fromTo("#league-win1-tab1", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 1.000);
+          tl.to("#league-win1-tab1", { opacity: 0, duration: 0.25, ease: "power2.in" }, 5.886);
+          tl.fromTo("#league-win1-p2", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 6.136);
+          tl.to("#league-win1-p2", { opacity: 0, duration: 0.25, ease: "power2.in" }, 15.266);
+          tl.fromTo("#league-win1-tab2", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 6.136);
+          tl.to("#league-win1-tab2", { opacity: 0, duration: 0.25, ease: "power2.in" }, 15.266);
+          tl.fromTo("#league-win1-p3", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 15.516);
+          tl.fromTo("#league-win1-tab3", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 15.516);
+          tl.to("#league-c0", { opacity: 1, duration: 0.3 }, 4.936);
+          tl.to("#league-c1", { opacity: 1, duration: 0.3 }, 4.936);
+          tl.to("#league-c2", { opacity: 1, duration: 0.3 }, 4.936);
+          window.__timelines["league"] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>

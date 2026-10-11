@@ -5,143 +5,50 @@
     <template>
       <link rel="stylesheet" href="world/soft.css" />
       <style>
-        #root { position: absolute; inset: 0; font-family: var(--font); overflow: hidden; }
-        #device-chapter { position: absolute; left: 96px; top: 72px; padding: 14px 28px; font-size: 28px; opacity: 0; }
-
-        /* Line 0: the device boundary (a dashed line) and one picture crossing it. The face blurs as it leaves. */
-        #device-edge { position: absolute; left: 1430px; top: 190px; width: 40px; height: 640px; opacity: 0; }
-        #device-edge svg { display: block; width: 100%; height: 100%; overflow: visible; }
-        #device-edge-label { position: absolute; left: 1360px; top: 120px; width: 180px; text-align: center; font-size: 28px; font-weight: 600; color: var(--muted); opacity: 0; white-space: nowrap; }
-        #device-edge-label b { color: var(--accent); font-weight: 600; }
-        #device-pic { position: absolute; left: 1140px; top: 330px; width: 250px; padding: 18px; border-radius: 30px; opacity: 0; }
-        #device-pic .well { border-radius: 20px; overflow: hidden; height: 250px; }
-        #device-face { display: block; width: 100%; height: 100%; }
-        #device-pic .cap { margin-top: 14px; text-align: center; font-size: 28px; font-weight: 600; color: var(--ink); }
-        #device-pic .cap span { color: var(--muted); }
-
-        /* Line 1: the offline pill, and what keeps running. */
-        #device-offline { position: absolute; right: 120px; top: 150px; height: 84px; padding: 0 38px 0 30px; border-radius: 42px; display: flex; align-items: center; gap: 18px; opacity: 0; }
-        #device-offline .dot { width: 18px; height: 18px; border-radius: 50%; background: var(--ink); }
-        #device-offline .txt { font-size: 40px; font-weight: 600; color: var(--ink); }
-        #device-chips { position: absolute; right: 120px; top: 280px; display: flex; flex-direction: column; align-items: flex-end; gap: 22px; }
-        .device-chip { height: 84px; padding: 0 38px 0 30px; border-radius: 42px; display: flex; align-items: center; gap: 18px; font-size: 40px; font-weight: 600; color: var(--ink); opacity: 0; }
-        .device-chip .dot { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 6px rgba(69,108,179,0.16); }
-        .device-chip .tag { font-size: 28px; font-weight: 600; color: var(--muted); opacity: 0; }
-
-        /* Line 2: the ledger. */
-        #device-ledger { position: absolute; right: 110px; top: 210px; width: 600px; padding: 36px 40px 40px; border-radius: 40px; opacity: 0; }
-        #device-ledger .head { display: flex; align-items: baseline; justify-content: space-between; }
-        #device-ledger .title { font-size: 40px; font-weight: 600; color: var(--ink); }
-        #device-ledger .when { font-size: 28px; font-weight: 500; color: var(--muted); }
-        #device-ledger .row { margin-top: 28px; display: flex; gap: 26px; }
-        .device-cell { flex: 1; padding: 24px 28px 26px; border-radius: 28px; opacity: 0; }
-        .device-cell .n { font-size: 112px; font-weight: 700; letter-spacing: -0.03em; line-height: 1; color: var(--ink); }
-        .device-cell .l { margin-top: 10px; font-size: 28px; font-weight: 600; color: var(--muted); display: flex; align-items: center; gap: 12px; }
-        .device-cell .l i { width: 14px; height: 14px; border-radius: 50%; }
-        #device-cell-ok .l i { background: var(--accent); }
-        #device-cell-no .l i { background: var(--shade); box-shadow: inset 2px 2px 3px rgba(27,36,51,0.25); }
-        /* Line 1: the same Ask card as "It remembers", seen from the other side: it still answers with the cable out. */
-        #device-ask-stage { position: absolute; left: 110px; top: 560px; width: 620px; }
-        #device-ask { width: 620px; display: flex; flex-direction: column; align-items: flex-start; gap: 22px; opacity: 0; transform-origin: 0% 50%; }
-        #device-ask .site-you { align-self: flex-end; font-size: 32px; }
-        #device-ask .site-card { width: 620px; padding: 28px 34px; }
-        #device-ask .site-answer { font-size: 34px; }
-        #device-ask .row { margin-top: 16px; display: flex; gap: 12px; }
-      </style>
+#root { position: absolute; inset: 0; font-family: var(--font); overflow: hidden; }
+.chip-ch { position: absolute; left: 96px; top: 72px; padding: 14px 28px; font-size: 28px; opacity: 0; }
+.win { position: absolute; left: 1196px; top: 60px; width: 664px; height: 640px; opacity: 0; padding: 0; overflow: hidden; }
+.win-bar { height: 76px; display: flex; align-items: center; gap: 14px; padding: 0 28px; border-bottom: 2px solid var(--surface-2); }
+.win-dot { width: 18px; height: 18px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 6px rgba(69,108,179,0.16); }
+.win-app { font-family: var(--font); font-size: 30px; font-weight: 700; color: var(--ink); letter-spacing: 0.02em; }
+.win-tabs { position: relative; flex: 1; height: 40px; }
+.win-tab { position: absolute; right: 0; top: 0; padding: 4px 18px; border-radius: 999px; font-size: 24px; font-weight: 700; color: var(--accent); background: var(--surface-2); box-shadow: inset 3px 3px 7px var(--shade), inset -3px -3px 7px var(--light); opacity: 0; white-space: nowrap; }
+.pane { position: absolute; left: 28px; right: 28px; top: 100px; bottom: 24px; opacity: 0; }
+.ph { font-family: var(--font); font-size: 38px; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; }
+.pk { font-family: var(--font-body); font-size: 24px; font-weight: 600; color: var(--muted); }
+.row { display: flex; align-items: center; gap: 18px; padding: 14px 20px; margin-top: 12px; border-radius: 20px; background: var(--surface); box-shadow: 6px 6px 14px var(--shade), -6px -6px 14px var(--light); }
+.row.dash { box-shadow: none; border: 3px dashed var(--shade); }
+.row .t { width: 96px; font-family: var(--font); font-size: 28px; font-weight: 700; color: var(--accent); }
+.row .w { font-family: var(--font-body); font-size: 28px; font-weight: 600; color: var(--ink); line-height: 1.2; }
+.row .w small { display: block; font-size: 22px; color: var(--muted); font-weight: 500; }
+.bub { max-width: 520px; margin-top: 16px; padding: 16px 22px; border-radius: 24px 24px 24px 8px; background: var(--surface); box-shadow: 6px 6px 14px var(--shade), -6px -6px 14px var(--light); font-family: var(--font-body); font-size: 26px; font-weight: 500; color: var(--ink); line-height: 1.3; }
+.bub b { display: block; font-size: 22px; color: var(--accent); }
+.bub.me { margin-left: auto; border-radius: 24px 24px 8px 24px; box-shadow: 6px 6px 14px var(--shade), -6px -6px 14px var(--light), inset 0 0 0 3px var(--accent-bright); }
+.chips { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 18px; }
+.chips .site-tag { font-size: 24px; }
+.big { font-family: var(--font); font-size: 92px; font-weight: 700; color: var(--accent); line-height: 1; }
+.card { position: absolute; padding: 26px 34px; opacity: 0; }
+.card .ph { font-size: 40px; }
+.cardrow { position: absolute; display: flex; gap: 26px; opacity: 0; }
+.mini { padding: 20px 28px; }
+.btnrow { display: flex; gap: 18px; margin-top: 26px; }
+.ok { color: var(--ok); }
+.svgbox { margin-top: 14px; border-radius: 22px; overflow: hidden; }
+</style>
       <div id="root" data-composition-id="device" data-width="1920" data-height="1080">
-        <div id="device-chapter" class="soft-raised soft-muted">On the device</div>
-
-        <div id="device-edge-label">leaves the device</div>
-        <div id="device-edge">
-          <svg viewBox="0 0 40 640" xmlns="http://www.w3.org/2000/svg">
-            <line id="device-edge-line" x1="20" y1="0" x2="20" y2="640" stroke="#c9d3e3" stroke-width="5" stroke-linecap="round" stroke-dasharray="2 18" />
-          </svg>
-        </div>
-        <div id="device-pic" class="soft-raised">
-          <div class="well soft-well">
-            <svg id="device-face" viewBox="0 0 214 250" xmlns="http://www.w3.org/2000/svg">
-              <rect width="214" height="250" fill="#dfe4eb" />
-              <rect x="0" y="176" width="214" height="74" fill="#e9ecf1" />
-              <g id="device-face-g">
-                <path d="M40 250 C44 196 78 178 107 178 C136 178 170 196 174 250 Z" fill="#8f9cb0" />
-                <rect x="94" y="150" width="26" height="34" rx="10" fill="#d9bfae" />
-                <ellipse cx="107" cy="112" rx="44" ry="52" fill="#d9bfae" />
-                <path d="M63 108 C60 66 86 52 108 52 C134 52 156 68 151 108 C146 86 128 78 107 80 C88 80 70 88 63 108 Z" fill="#4a3f38" />
-                <circle cx="91" cy="114" r="5" fill="#1b2433" />
-                <circle cx="123" cy="114" r="5" fill="#1b2433" />
-                <path d="M94 138 Q107 148 120 138" fill="none" stroke="#a8766a" stroke-width="4" stroke-linecap="round" />
-              </g>
-            </svg>
-          </div>
-          <div class="cap">Frame <span>· to the lab</span></div>
-        </div>
-
-        <div id="device-offline" class="soft-pressed"><div class="dot"></div><div class="txt">offline</div></div>
-        <div id="device-chips">
-          <div class="device-chip soft-raised" id="device-chip-seeing"><div class="dot"></div>seeing</div>
-          <div class="device-chip soft-raised" id="device-chip-remembering"><div class="dot"></div>remembering</div>
-          <div class="device-chip soft-raised" id="device-chip-alerting"><div class="dot"></div>alerting</div>
-          <div class="device-chip soft-raised" id="device-chip-answering"><div class="dot"></div>answering</div>
-          <div class="device-chip soft-raised" id="device-chip-learning"><div class="dot"></div>learning<span class="tag">paused</span></div>
-        </div>
-
-        <div id="device-ask-stage" class="site-stage"><div id="device-ask">
-          <div class="site-you">Where did I leave my keys?</div>
-          <div class="site-card"><div class="site-answer">Left of the laptop, behind the mug.</div>
-            <div class="row"><span class="site-tag">offline</span><span class="site-tag">on the Jetson</span></div></div>
-        </div></div>
-
-        <div id="device-ledger" class="site-card">
-          <div class="head"><div class="title">What left</div><span class="site-tag">tonight</span></div>
-          <div class="row">
-            <div id="device-cell-ok" class="device-cell soft-well"><div class="n">13</div><div class="l"><i></i>allowed</div></div>
-            <div id="device-cell-no" class="device-cell soft-well"><div class="n">13</div><div class="l"><i></i>blocked</div></div>
-          </div>
-        </div>
+        <div id="device-chapter" class="chip-ch soft-raised soft-muted">On the device</div>
+        <div class="card soft-raised" id="device-card1" style="left:110px;top:500px;width:1200px"><div class="pk">network cable pulled</div><div class="chips"><span class="site-chip on">seeing</span><span class="site-chip on">remembering</span><span class="site-chip on">answering</span><span class="site-chip on">speaking</span><span class="site-chip">learning (paused)</span></div><div class="chips"><span class="site-tag">your question goes ahead of the cameras</span></div></div>
+        <div class="card soft-raised" id="device-card2" style="left:1400px;top:480px;width:420px"><div class="pk">ledger of what left</div><div style="display:flex;gap:40px"><div><div class="big">13</div><div class="pk">allowed</div></div><div><div class="big" style="color:var(--danger)">13</div><div class="pk">blocked</div></div></div></div>
       </div>
       <script>
         (function () {
-          // LOCAL time (0 = scene start, absolute 108.544). From film.json: line 0 at 0 (7.296 long), line 1 at 7.696
-          // (5.760 long), line 2 at 13.856 (5.088 long). Word times by character fraction: Jetson 1.56, blurred 2.56,
-          // leave 4.51; Pull 7.70, seeing 9.62, remembering 10.08, alerting 10.84, answering 11.59, Only 12.23,
-          // pauses 13.05; ledger 14.68, thirteen 16.32, allowed 17.52, thirteen 18.01, blocked 18.51.
-          // Re-derive these if the words in film.yaml change. The scene lasts 20.144.
-          const DUR = 20.144;
-          const PRESSED = "inset 8px 8px 16px #c9d3e3, inset -8px -8px 16px #ffffff";
           const tl = gsap.timeline({ paused: true });
-          tl.fromTo("#device-chapter", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.6, ease: "power4.out" }, 0.2);
-
-          // Line 0: the boundary draws in, a frame arrives on "blurred", and blurs as it crosses on "leave".
-          tl.fromTo("#device-edge", { opacity: 0 }, { opacity: 1, duration: 0.6, ease: "power2.out" }, 2.2);
-          tl.fromTo("#device-edge-line", { strokeDashoffset: 640 }, { strokeDashoffset: 0, duration: 1.0, ease: "power2.inOut" }, 2.2);
-          tl.fromTo("#device-edge-label", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.6, ease: "power4.out" }, 2.5);
-          tl.fromTo("#device-pic", { opacity: 0, scale: 0.92, x: -20 }, { opacity: 1, scale: 1, x: 0, duration: 0.7, ease: "power4.out" }, 2.6);
-          tl.fromTo("#device-pic", { x: 0 }, { x: 420, duration: 1.6, ease: "power2.inOut", immediateRender: false }, 3.6);
-          tl.fromTo("#device-face-g", { filter: "blur(0px)" }, { filter: "blur(9px)", duration: 0.7, ease: "power2.inOut" }, 4.15);
-          tl.to("#device-edge-label", { color: "#456cb3", duration: 0.4 }, 4.2);
-          tl.to(["#device-pic", "#device-edge", "#device-edge-label"], { opacity: 0, duration: 0.5, ease: "power2.in" }, 7.0);
-
-          // Line 1: offline as the plug drops, then the chips, one per word; learning goes quiet on "pauses".
-          tl.fromTo("#device-offline", { opacity: 0, scale: 0.9, x: 16 }, { opacity: 1, scale: 1, x: 0, duration: 0.7, ease: "power4.out" }, 8.9);
-          [["seeing", 9.6], ["remembering", 10.05], ["alerting", 10.8], ["answering", 11.55], ["learning", 12.2]].forEach(([id, w]) => {
-            tl.fromTo("#device-chip-" + id, { opacity: 0, y: 24, scale: 0.94 }, { opacity: 1, y: 0, scale: 1, duration: 0.6, ease: "power4.out" }, w);
-          });
-          tl.to("#device-chip-learning", { boxShadow: PRESSED, color: "#566176", duration: 0.5, ease: "power2.inOut" }, 13.0);
-          tl.to("#device-chip-learning .dot", { backgroundColor: "#c9d3e3", boxShadow: "0 0 0 0px rgba(69,108,179,0)", duration: 0.5, ease: "power2.inOut" }, 13.0);
-          tl.fromTo("#device-chip-learning .tag", { opacity: 0, x: -8 }, { opacity: 1, x: 0, duration: 0.5, ease: "power4.out" }, 13.15);
-          tl.to(".device-chip", { opacity: 0, x: 20, duration: 0.4, ease: "power2.in", stagger: 0.04 }, 13.7);
-          tl.to("#device-offline", { opacity: 0, x: 20, duration: 0.4, ease: "power2.in" }, 13.8);
-
-          // "answering": the Ask card, turned the other way from the desk scene.
-          tl.fromTo("#device-ask", { opacity: 0, rotationY: 24, x: -30 }, { opacity: 1, rotationY: 14, x: 0, duration: 0.8, ease: "power4.out" }, 11.4);
-          tl.to("#device-ask", { opacity: 0, rotationY: 6, duration: 0.45, ease: "power2.in" }, 13.75);
-
-          // Line 2: the ledger card on "ledger", the numbers on their words.
-          tl.fromTo("#device-ledger", { opacity: 0, y: 30, scale: 0.96 }, { opacity: 1, y: 0, scale: 1, duration: 0.7, ease: "power4.out" }, 14.55);
-          tl.fromTo("#device-cell-ok", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.6, ease: "power4.out" }, 16.25);
-          tl.fromTo("#device-cell-no", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.6, ease: "power4.out" }, 17.95);
-          tl.to("#device-ledger", { opacity: 0, y: 14, duration: 0.45, ease: "power2.in" }, DUR - 0.6);
-          tl.to("#device-chapter", { opacity: 0, duration: 0.4, ease: "power2.in" }, DUR - 0.5);
+          tl.fromTo("#device-chapter", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 0.15);
+          tl.to("#device-chapter", { opacity: 0, duration: 0.4 }, 3.200);
+          tl.fromTo("#device-card1", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 1.890);
+          tl.to("#device-card1", { opacity: 0, duration: 0.35, ease: "power2.in" }, 13.442);
+          tl.fromTo("#device-card2", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 10.204);
+          tl.to("#device-card2", { opacity: 0, duration: 0.35, ease: "power2.in" }, 13.442);
           window.__timelines["device"] = tl;
         })();
       </script>
