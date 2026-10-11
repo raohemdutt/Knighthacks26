@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import bench from "@/components/lab/bench.module.css";
+import { Compare } from "@/components/lab/Compare";
 import { Experiments } from "@/components/lab/Experiments";
 import { LabRun } from "@/components/lab/LabRun";
 import lab from "@/components/lab/lab.module.css";
@@ -30,10 +31,12 @@ import { useFetch } from "@/lib/useFetch";
  *   /lab/?t=0.4           start at a position on the bar (0 to 1); without it the finished run is shown
  *   /lab/?motion=reduce   as if the system asked for reduced motion
  *
- * Three more tabs sit beside the run, each on the lab's own records: "Speed and energy" (the benchmark rows),
- * "Routing" (a what-if that runs the real routing hook) and "Experiments" (the optimisation loop's timeline).
+ * More tabs sit beside the run, each on the lab's own records: "Alone vs together" (two runs compared, L31),
+ * "Speed and energy" (the benchmark rows), "Routing" (a what-if that runs the real routing hook) and "Experiments"
+ * (the optimisation loop's timeline).
  *
- *   /lab/?tab=speed|routing|experiments     open a tab ("run" is the default)
+ *   /lab/?tab=compare|speed|routing|experiments     open a tab ("run" is the default)
+ *   /lab/?tab=compare&a=<run_id>&b=<run_id> see components/lab/Compare.tsx
  *   /lab/?tab=speed&batch=16&ttft=1         see components/lab/SpeedEnergy.tsx
  *   /lab/?tab=routing&preset=burst&t=0.5    see components/lab/Routing.tsx
  */
@@ -43,11 +46,13 @@ export default function LabPage() {
   const [params, setParams] = useState<{ sample: boolean; run: string | null; t: number | null; reduce: boolean; q: URLSearchParams } | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
   const [tab, setTab] = useState<LabTab>("run");
+  const [compareIds, setCompareIds] = useState<{ a: string | null; b: string | null }>({ a: null, b: null });
 
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
     const t = q.get("t");
     setParams({ sample: q.get("sample") === "1", run: q.get("run"), t: t !== null && !Number.isNaN(Number(t)) ? clamp01(Number(t)) : null, reduce: q.get("motion") === "reduce", q });
+    setCompareIds({ a: q.get("a"), b: q.get("b") });
     const asked = q.get("tab");
     if (LAB_TABS.some((x) => x.key === asked)) setTab(asked as LabTab);
   }, []);
@@ -107,6 +112,22 @@ export default function LabPage() {
       <>
         {tabs}
         <Routing initialPreset={q.get("preset")} initialT={params.t} initialPolicy={q.get("policy")} initialBasis={q.get("basis")} initialDrawer={q.get("drawer")} forceReduced={params.reduce} />
+      </>
+    );
+  if (tab === "compare")
+    return (
+      <>
+        {tabs}
+        <Compare
+          a={compareIds.a}
+          b={compareIds.b}
+          onPick={(which, id) => {
+            setCompareIds((ids) => ({ ...ids, [which]: id }));
+            const url = new URL(window.location.href);
+            url.searchParams.set(which, id);
+            window.history.replaceState(null, "", url);
+          }}
+        />
       </>
     );
   if (tab === "experiments")
