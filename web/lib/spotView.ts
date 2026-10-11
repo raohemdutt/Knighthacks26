@@ -28,6 +28,8 @@ export function viewOf(search: string): SpotView {
   if (v && VIEWS.has(v)) return v as SpotView;
   if (q.get("tab") === "run") return "training";
   if (q.get("tab") === "analysis") return "analysis";
+  if (q.get("round")) return "rounds"; // ?round=M017&step=6: that round, at that step
+  if (q.get("all")) return "equipment"; // ?all=1: all equipment
   return "shift";
 }
 
