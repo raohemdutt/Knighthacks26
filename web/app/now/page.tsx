@@ -28,7 +28,7 @@ import {
 } from "@/lib/api";
 import { useAtlas, useAtlasEvents } from "@/lib/atlas";
 import { briefMe, useBrief, type BriefState } from "@/lib/brief";
-import { cameraName, dayLabel, humanize, relative, time, timeOrDay } from "@/lib/format";
+import { cameraName, dayLabel, greeting, humanize, relative, time, timeOrDay } from "@/lib/format";
 import { useWords } from "@/lib/profile";
 import { useFetch } from "@/lib/useFetch";
 import { useVoice } from "@/lib/voice";
@@ -185,19 +185,17 @@ function fallbackLead(d: DayNow): string {
   return `${doing}${drift}.${next}`;
 }
 
-function useGreeting(): string {
+/** The greeting for the moment the screen says it is "as of" (the API's `now`), not for the wall clock. */
+function useGreeting(now: string): string {
   const [hello, setHello] = useState("Hello");
-  useEffect(() => {
-    const h = new Date().getHours();
-    setHello(h < 5 ? "Still up" : h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening");
-  }, []);
+  useEffect(() => setHello(greeting(now)), [now]);
   return hello;
 }
 
 function Day({ d, brief, patterns, reload }: { d: DayNow; brief: BriefState; patterns: DayPattern[]; reload: () => void }) {
   const s = d.status;
   const voice = useVoice();
-  const hello = useGreeting();
+  const hello = useGreeting(d.now);
   const { lead, sub, what } = story(d, brief);
   const warn = s?.risk === "late" || s?.risk === "infeasible" || s?.risk === "leave_now" || Boolean(d.replan);
   const [speaking, setSpeaking] = useState(false);
