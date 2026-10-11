@@ -122,3 +122,6 @@ export const boxLines = {
     }
   },
 };
+
+/** Does the Inspection screen say anything aloud? Off for the presentation: its captions and answers are shown, never spoken (not on the box, not in the browser). */
+export const INSPECTION_SPEAKS: boolean = false;
