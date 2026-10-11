@@ -467,7 +467,7 @@ story's own three days behind today. No model and no camera are needed.
    Project Milestone1 done".
 2. Tap a block in **Your plan** (say **Dinner**). The map lights its walk; under it: "1 min walk ·
    leave by 6:28 PM". The block opens **− 30 min +**, **Earlier**, **Later**, **Remove**, **Route**,
-   **Why 1 min?**.
+   and "1 min walk" with its source chip (**OpenStreetMap**, or **set time** for a walk inside a building).
 3. In **Tell Atlas what to change…** type `move dinner to 6:30` (or tap the microphone and say it).
    It answers in one line and the block that moved pulses. Try `drop the gym`: it changes nothing,
    says "I heard “drop”, but not which block" and offers two edits as buttons.
@@ -486,8 +486,12 @@ story's own three days behind today. No model and no camera are needed.
 7. Tap **Mon** (tomorrow): "Nothing planned yet", with fixes to start from and the "Near you" events
    offered in the gap ("+ Add Friends' dinner · 5:15 PM · '63 South · 16 min walk"). Open **The next
    few days**.
-8. Under **Due soon** tap **Why?** on the deadline: "About 5 h: Atlas's starting guess for a project,
-   not measured. Change it if you know better." and the − / + that changes it.
+8. Under **Due soon** each number has a small chip naming its source: "Due Tuesday 11:59 PM **Canvas** ·
+   about 5 h of work **Atlas's guess**". Tap a chip: "About 5 h: Atlas's starting guess for a project,
+   not measured. Change it if you know better." and the − / + that changes it (the chip then reads
+   **your estimate**). In **Details**, sleep, meals, walking and the score carry theirs (**your watch**,
+   **desk camera**, **OpenStreetMap**, **this plan**). The labels come from `sources` in
+   `POST /api/dayrun/explain`; there is no "Why?" button any more.
 
 **Presenter links (the fallback; the scripted day is reached only this way, never from a button)**
 
@@ -540,7 +544,10 @@ three (Hemdutt on this box, Maya, Dominick). The Jetson has no Circle configured
 
 **Steps**
 1. **More → Circle** (`/circle/`). Tabs: **People**, **Plans (1)**, **League**, **Sharing**.
-2. People: read the three cards; tap **Route to Maya** or **On the map**.
+2. People: read the three cards; tap **Route to Maya**. The walk opens inside her card on the same
+   campus map Today's Plan and the route sheets use (the same `GET /api/places/route`, the same line,
+   pins and minutes badge), with "there by", minutes on foot and metres under it. **Hide the route**
+   closes it. It is only offered while she is sharing a place that has not run out.
 3. **Plans** → under "Being worked out", "Gym" → **Read the conversation ›**. Then **‹ All plans** →
    "Settled conversations (2)" → "COP4533 exam review" → **Read the conversation ›**
    (`/circle/?tab=plans&thread=demo-circle-study`).
@@ -589,8 +596,31 @@ people), then scores the throw against par.
 plan (`config/rooms/dorm.yaml`) calibrated for each camera (four floor points); for a face-started
 round, recognition on and the player enrolled.
 
+**The two techniques, on screen (no camera needed for the first)**
+- **Pathfinding.** The card **How the route was found** (`/play/`) draws the planner's own 10 cm floor grid:
+  hatched cells are blocked (furniture and walls, grown by a body's width), shaded cells are the ones the
+  A* search looked at, played back in the order it looked at them, then the route. One line says it:
+  "Route found with A* on a 10 cm grid: 3.1 m, around the chair." with "The search looked at 203 of 869
+  open cells". `/play/?motion=reduce` shows it finished, nothing plays. The data is
+  `GET /api/play/room-route?item=can&search=1` (`search`, `around`, `obstacles`).
+- **Re-routing.** During a round, when something moves into the way: "Re-routed around a person: 2.7 m
+  now (it was 1.6 m)." with the old way dashed. After the round **Show the last round's plans** steps
+  through them (**First plan**, **Re-plan 1**); `/play/?replay=1` plays them, `/play/?plan=2` opens the
+  re-plan. The data is `GET /api/play/route-search`. It holds the last round planned since the box
+  started (routes are planned live, never on replay), so after a restart run the scene once.
+- **Face detection.** The chip under the title follows `GET /api/play/state`: "Looking for a player" →
+  "Face held 1.2 s" (the ring fills to 2 s) → "Round started · 1 player (1 face)" → "No face for 7 s:
+  ending soon". Counts only, never a picture. **How this round works** opens three lines for a judge.
+- **Round 1 against the latest.** Under "Are you getting better?", once two rounds were played in one
+  sitting: "Round 2 was 1.0 s faster than round 1, with the same score." With fewer it is not shown.
+- **Without a camera:** `python -m contexts.demo fake perception --gateway http://<box>:<port> --realtime`
+  with `/play/` open: 62 s; the face is held at 37 s, the round starts at 39 s, the friend steps in and
+  the route is planned again at 40 s, the can lands at 45 s. Run it twice within two minutes for the
+  round comparison.
+
 **Steps**
-1. **More → Sort It** (`/play/`): the room in 3D, **Room** / **Top** views.
+1. **More → Sort It** (`/play/`): the face chip, **How the route was found**, then the room in 3D
+   (**Room** / **Top** views).
 2. Tap an item chip: **Can**, **Bottle**, **Paper**, **Cardboard**, **Cup**, **Napkin**, **Chip bag**,
    **Food container**, **Banana**, **Wine glass**.
 3. Hold a can up to the bin camera for two seconds, walk to the bin, drop it in.

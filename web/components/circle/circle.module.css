@@ -420,3 +420,12 @@
   font-size: 16px;
   line-height: 1.4;
 }
+
+/* the walk to a friend, inside their card: the shared campus map (components/map/RouteMap.tsx) under one line */
+.walk {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  max-width: 520px; /* the map is drawn at the route sheet's size: on a wide screen it stays that size, not the card's width */
+}

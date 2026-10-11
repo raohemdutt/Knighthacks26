@@ -169,7 +169,8 @@ def build_board(
                 left = float(work_left[item.external_id]) if mine else guess
                 deadlines.append(Deadline(id=item.external_id, title=item.title, due=when, work_left=left,
                                           in_window=when <= end, risk=risk_of(cfg, left, start, when), url=item.url,
-                                          estimate_from="yours" if mine else how, estimate_word=word, estimate_minutes=guess))
+                                          estimate_from="yours" if mine else how, estimate_word=word, estimate_minutes=guess,
+                                          source=item.connector or None))
             continue
         if item.kind != "calendar_event":
             continue

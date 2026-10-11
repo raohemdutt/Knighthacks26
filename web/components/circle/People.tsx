@@ -1,10 +1,10 @@
 "use client";
 
-import { RouteSheet } from "@/components/dayrun/RouteSheet";
 import { useState, type FormEvent } from "react";
+import { RouteFacts, RouteMap, RoutePlaces } from "@/components/map/RouteMap";
 import { Empty, ErrorBox, Loading, WriteError } from "@/components/States";
 import ui from "@/components/ui.module.css";
-import { ApiError, api, type CampusRoute, type CircleMember, type CircleMembers, type FaceShareFriend, type FaceShareStatus, type LeagueStanding, type PlacePack, type PlaceShared } from "@/lib/api";
+import { ApiError, api, type CircleMember, type CircleMembers, type FaceShareFriend, type FaceShareStatus, type LeagueStanding, type PlacePack, type PlaceRoute, type PlaceShared } from "@/lib/api";
 import { useAtlasEvents } from "@/lib/atlas";
 import { relative, time } from "@/lib/format";
 import { useFetch, type Loadable } from "@/lib/useFetch";
@@ -15,6 +15,11 @@ import { colourOf } from "./shared";
  * People: every member of the Circle as one card. Where they are now (only if they shared a named place,
  * with when it expires), how their League week is going, whether a box of theirs has been heard from, and
  * the walk to where they are.
+ *
+ * The walk is the same one every other screen draws: GET /api/places/route (the mapped footpaths, the same
+ * minutes Today's Plan counts) on the shared campus map (components/map/RouteMap.tsx), inside the friend's card.
+ * It is only offered for a friend who shared a named place that has not run out, and the box checks that again
+ * before it answers: this screen never learns a place that was not shared.
  *
  * GET /api/circle/members answers in every state. "Has a box" is what this box's own log shows: a member
  * whose Atlas sent a message or a summary, or whose desk camera shared a place. Otherwise it says so
@@ -98,12 +103,6 @@ function placeId(packs: PlacePack[] | undefined, name: string | undefined): stri
   return null;
 }
 
-function placeName(packs: PlacePack[] | undefined, ref: string): string {
-  const dot = ref.indexOf(".");
-  const p = packs?.find((x) => x.name === ref.slice(0, dot))?.places[ref.slice(dot + 1)];
-  return p ? bare(p.name) : ref;
-}
-
 /** Where a walk starts: where I said I am, else the campus pack's entry. */
 function startOf(packs: PlacePack[] | undefined, mine: string | undefined): string | null {
   const here = placeId(packs, mine);
@@ -122,7 +121,7 @@ function Person({ member: m, here, all, standing, packs, from, face }: {
   from: string | undefined;
 }) {
   const start = startOf(packs, from);
-  const [route, setRoute] = useState<CampusRoute | null>(null);
+  const [route, setRoute] = useState<PlaceRoute | null>(null);
   const [routeError, setRouteError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -131,7 +130,7 @@ function Person({ member: m, here, all, standing, packs, from, face }: {
     setLoading(true);
     setRouteError(null);
     try {
-      setRoute(await api.routeToFriend(start, m.member_id));
+      setRoute(await api.placeRoute({ from: start, to: `friend:${m.member_id}` }));
     } catch (err) {
       setRouteError(err instanceof ApiError ? err.message : String(err));
     } finally {
@@ -183,16 +182,27 @@ function Person({ member: m, here, all, standing, packs, from, face }: {
         {!m.mine && m.place ? (
           <>
             {route ? (
-              <p className={ui.nudge} role="status">
-                <strong>{route.minutes} min walk</strong> to {m.display_name}: {route.path.map((p) => placeName(packs, p)).join(" → ")}
-              </p>
+              <div className={c.walk} data-guide={`circle:route:${m.member_id}`}>
+                <p className={ui.nudge} role="status">
+                  <strong>{route.walk_minutes === 0 ? "You are already there" : `${route.walk_minutes} min walk`}</strong> to {m.display_name} at {m.place.place}
+                  {route.walk_minutes === 0 ? "." : `, from ${route.from_name}.`}
+                </p>
+                <RouteFacts route={route} />
+                <RouteMap route={route} packs={packs} />
+                <RoutePlaces route={route} packs={packs} />
+              </div>
             ) : null}
             {routeError ? <p className={`${ui.muted} ${ui.small}`}>No route: {routeError}</p> : null}
             <div className={`${ui.row} ${ui.wrap}`}>
-              <button type="button" className={ui.btn} onClick={findRoute} disabled={!start || loading}>
-                {loading ? "Finding the way…" : `Route to ${m.display_name}`}
-              </button>
-              <RouteSheet to={`friend:${m.member_id}`} what={`${m.display_name} is at ${m.place.place}`} label="On the map" />
+              {route ? (
+                <button type="button" className={ui.btn} onClick={() => setRoute(null)}>
+                  Hide the route
+                </button>
+              ) : (
+                <button type="button" className={ui.btn} onClick={findRoute} disabled={!start || loading}>
+                  {loading ? "Finding the way…" : `Route to ${m.display_name}`}
+                </button>
+              )}
             </div>
           </>
         ) : null}

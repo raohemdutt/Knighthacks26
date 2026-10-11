@@ -2,6 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { TwinStage } from "@/components/map/TwinStage";
+import { FaceChip, HowItWorks, RoundProof, useFaceLoop } from "@/components/play/FaceLoop";
+import { PathfinderCard, useCalm, usePathfinding } from "@/components/play/Pathfinder";
+import play from "@/components/play/play.module.css";
 import { Empty, ErrorBox, Loading } from "@/components/States";
 import ui from "@/components/ui.module.css";
 import { api, type Cell, type PlayRoute } from "@/lib/api";
@@ -28,6 +31,23 @@ const NO_PINS: TwinPin[] = [];
 /** SVG units per grid cell. Kept large so label text is a normal font size (browsers clamp very small ones). */
 const S = 10;
 
+/*
+ * Sort It. Two things run the game and both are shown as they happen, never as a paragraph to read:
+ *
+ *   face detection   the chip under the title (components/play/FaceLoop.tsx): looking for a player, a face held
+ *                    towards 2 s, a round started with its players, no face and the round about to end
+ *   pathfinding      "How the route was found" (components/play/Pathfinder.tsx): the planner's 10 cm grid, the
+ *                    cells its A* search looked at, the route, what it went around, and "Re-routed around ..."
+ *
+ * Links for presenting and testing:
+ *   /play/                    the walk for the picked item, from the room's start point when no camera sees anyone
+ *   /play/?motion=reduce      as if the system asked for reduced motion: the finished picture, nothing plays
+ *   /play/?replay=1           plays the last round's plans through (the first, then each re-plan)
+ *   /play/?plan=2             opens the last round's second plan (its first re-plan) and stays on it
+ * A round without a camera: `python -m contexts.demo fake perception --gateway http://<box>:<port> --realtime`
+ * pushes a scripted minute through the real game: a face held, a round, a friend stepping into the way, a re-plan.
+ */
+
 interface BinMark {
   bin: string;
   at: Cell;
@@ -42,6 +62,10 @@ export default function PlayPage() {
   const accuracy = useFetch((s) => api.playAccuracy(s));
   // The room twin is the main picture when the box has a floor plan: the live round, or the way for the picked item.
   const twin = useRoomTwin();
+  // The two techniques, made visible: the face loop's own state, and how the planner found the walk.
+  const loop = useFaceLoop();
+  const calm = useCalm();
+  const path = usePathfinding(item, twin, calm);
 
   // This week's mistakes at the bins (the Impact screen's practice set), most first. Nothing when Waste Watch is off.
   const practice = useFetch((s) => api.impactPractice(undefined, s));
@@ -88,6 +112,23 @@ export default function PlayPage() {
             : "Pick what you are holding. Atlas shows the right bin and the way there."}
         </p>
       </div>
+
+      {loop.state ? (
+        <div className={play.loop} data-guide="play:loop">
+          <div className={play.loopRow}>
+            <FaceChip loop={loop} />
+            {/* the game's own round, not the room's copy of it: an abandoned round leaves this line at once */}
+            {twin.live?.round && loop.state.round?.round_id === twin.live.round.round_id ? (
+              <span className={play.roundNow}>
+                <strong>{humanize(twin.live.round.item)}</strong> goes in {twin.live.round.bin === "trash" ? "the trash" : twin.live.round.bin}
+              </span>
+            ) : null}
+          </div>
+          <HowItWorks />
+        </div>
+      ) : null}
+
+      {twin.plan ? <PathfinderCard plan={twin.plan} path={path} calm={calm} /> : null}
 
       {twin.plan ? (
         <div className={ui.card} data-guide="play:twin">
@@ -175,6 +216,7 @@ export default function PlayPage() {
           <Loading what="your accuracy" />
         ) : (
           <>
+            <RoundProof state={loop.state} />
             <div className={ui.stats}>
               <div className={ui.stat}>
                 <p className={ui.statNum}>{accuracy.data.first_round === null ? "–" : percent(accuracy.data.first_round)}</p>
@@ -220,7 +262,7 @@ function RouteCard({ route, bins }: { route: PlayRoute; bins: BinMark[] }) {
         <h2>
           {humanize(route.item)} goes in <span style={{ color: "var(--accent-text)" }}>{route.bin}</span>
         </h2>
-        {path.length > 1 ? <span className={ui.tag}>{path.length - 1} steps</span> : null}
+        {path.length > 1 ? <span className={ui.tag}>A* on the camera&apos;s grid · {path.length - 1} steps</span> : null}
       </div>
 
       {path.length === 0 ? (

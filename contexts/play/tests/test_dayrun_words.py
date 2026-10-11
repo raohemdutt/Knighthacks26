@@ -235,13 +235,65 @@ def test_explain_and_edit_over_http_and_the_old_answers_are_untouched(service, p
     moves = [m.model_dump(mode="json", exclude_none=True) for m in plans["bad"]]
     out = client.post("/api/dayrun/explain", json={"scenario": "demo", "moves": moves}).json()
     assert out["headline"] == "Four things to fix" and [f["id"] for f in out["fixes"]][0] == "move:1"
-    assert set(out) == {"headline", "fixes", "deadlines", "sleep", "meals", "points", "stars", "walks"}
+    assert set(out) == {"headline", "fixes", "deadlines", "sleep", "meals", "points", "stars", "walks", "sources"}
+    assert out["sources"]["deadlines"][MILESTONE] == {"due": {"id": "canvas", "label": "Canvas"}, "work": {"id": "guess", "label": "Atlas's guess"}}
+    assert set(out["sources"]["walks"]) == set(out["walks"]) and set(out["sources"]["deadlines"]) == set(out["deadlines"])
     assert out["deadlines"][MILESTONE]["title"] == "Project Milestone 1" and out["deadlines"][MILESTONE]["due"] == "Tuesday 11:59 PM"
     mine = client.post("/api/dayrun/explain", json={"scenario": "demo", "moves": moves, "initial": {"work_left": {MILESTONE: 60}}}).json()
     assert mine["deadlines"][MILESTONE]["work"].startswith("1 h of work: your own estimate.")
+    assert mine["sources"]["deadlines"][MILESTONE]["work"] == {"id": "yours", "label": "your estimate"}
 
     said = client.post("/api/dayrun/edit", json={"scenario": "demo", "moves": moves, "text": "drop the lunch at 63 south"})
     assert said.status_code == 200 and said.json()["ok"] and len(said.json()["moves"]) == len(moves) - 1
     assert client.post("/api/dayrun/edit", json={"scenario": "demo", "moves": moves, "text": "x" * 301}).status_code == 422
     sim = client.post("/api/dayrun/simulate", json={"scenario": "demo", "moves": moves}).json()
     assert "fixes" not in sim and len(sim["outcome"]["reasons"]) == 3  # the simulate answer keeps its shape
+
+
+# --- the source chip beside each number: read from the same field its sentence is written from ---
+
+
+def test_a_deadlines_chips_name_its_connector_and_whose_estimate_the_work_is(service):
+    board = service.board(scenario="demo")
+    d = next(d for d in board.deadlines if d.id == MILESTONE)
+    assert d.source == "canvas" and words.source_of_due(d) == {"id": "canvas", "label": "Canvas"}
+    assert d.estimate_from == "kind" and words.source_of_work(d) == {"id": "guess", "label": "Atlas's guess"}
+    assert words.source_of_work(d.model_copy(update={"estimate_from": "default"}))["id"] == "guess"
+    mine = service.board(scenario="demo", initial=InitialOverride(work_left={MILESTONE: 90}))
+    assert words.source_of_work(next(d for d in mine.deadlines if d.id == MILESTONE)) == {"id": "yours", "label": "your estimate"}
+    assert words.source_of_due(d.model_copy(update={"source": None})) is None  # no connector on the item: no chip, never a guess
+    assert words.source_of_due(d.model_copy(update={"source": "school_portal"})) == {"id": "school_portal", "label": "School Portal"}
+    due = Item(connector="canvas", kind="assignment", external_id="x:1", title="Essay", when=NOW + timedelta(days=1))
+    live = build_board(service.cfg, service.walks, NOW, [due], initial_state(service.cfg, NOW, None))
+    assert [(x.id, x.source) for x in live.deadlines] == [("x:1", "canvas")]
+
+
+def test_sleep_and_meal_chips_follow_what_measured_them(service, plans):
+    board, good = run(service, plans["good"])
+    assert words.source_of_sleep(board) == {"id": "scenario", "label": "scripted day"}
+    assert good.totals.meals_before == 0 and words.source_of_meals(good, board) == {"id": "plan", "label": "this plan"}
+    cfg, w = service.cfg, service.walks
+    for rows, over, expected in (
+            (None, None, {"id": "guess", "label": "Atlas's guess"}),  # config/dayrun.yaml: start.default_sleep_hours
+            ([{"id": "sleep", "value": 5.5, "source": "watch"}], None, {"id": "watch", "label": "your watch"}),
+            ([{"id": "sleep", "value": 6.5, "source": "camera"}], None, {"id": "camera", "label": "desk camera"}),
+            ([{"id": "sleep", "value": 6.5}], None, {"id": "habits", "label": "your habits"}),
+            ([{"id": "sleep", "value": 5.5, "source": "watch"}], InitialOverride(sleep_hours=8), {"id": "yours", "label": "your number"})):
+        live = build_board(cfg, w, NOW, [], initial_state(cfg, NOW, rows, over))
+        assert words.source_of_sleep(live) == expected
+    seen = build_board(cfg, w, NOW, [], initial_state(cfg, NOW, [{"id": "meals", "value": 1}]))
+    assert words.source_of_meals(simulate(cfg, w, seen, []), seen) == {"id": "camera", "label": "desk camera"}
+    said = build_board(cfg, w, NOW, [], initial_state(cfg, NOW, None, InitialOverride(meals=2)))
+    assert words.source_of_meals(simulate(cfg, w, said, []), said) == {"id": "yours", "label": "your number"}
+
+
+def test_a_walks_chip_is_the_map_it_was_measured_on_or_the_set_time(service, plans):
+    board, good = run(service, plans["good"])
+    told = fixes.explain(service.cfg, service.walks, board, plans["good"], good)
+    outdoor = next(r for r in good.routes if r.meters)
+    indoor = next(r for r in good.routes if not r.meters)
+    assert told["sources"]["walks"][str(outdoor.index)] == {"id": "map", "label": "OpenStreetMap"}  # the pack's own attribution
+    assert told["sources"]["walks"][str(indoor.index)] == {"id": "set", "label": "set time"}
+    assert words.source_of_walk(outdoor, board, None) == {"id": "map", "label": "the map"}
+    assert told["sources"]["points"] == {"id": "plan", "label": "this plan"}
+    assert told["sources"]["sleep"] == words.source_of_sleep(board) and told["sources"]["meals"] == words.source_of_meals(good, board)

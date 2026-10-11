@@ -21,6 +21,7 @@
 - GET  /api/play/room-route    ?item=can[&from_track=|&x=&y=] -> the same walk on the floor plan, in metres (X18)
 - GET  /api/room, /api/room/live    the room twin: floor plan + calibration + zones on the floor; live tracks on it
 - GET  /api/play/accuracy      Sort It round 1 vs round 5 accuracy (S1)
+- GET  /api/play/state         Sort It's loop right now: looking for a face, a face held, a round on, ending; counts only
 - GET  /api/impact             Waste Watch counts, diversion rate, before vs after nudges (E2)
 - GET  /api/impact/story       the Impact screen: the week in estimated real units, the disposal feed with each rule,
                                the weekly goal, milestones, which rules file is active (contexts/impact/api.py)
@@ -423,6 +424,13 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         acc = g.accuracy(g.session_id)
         return {"session_id": g.session_id, "rounds": len(g.results.get(g.session_id, [])),
                 "first_round": acc[0] if acc else None, "round_5_on": acc[1] if acc else None}
+
+    @app.get("/api/play/state")
+    async def play_state():
+        """Where Sort It's loop is (face counts and seconds, never a picture), and this sitting's first and latest rounds."""
+        if atlas.game is None:
+            raise HTTPException(404, "Sort It is not configured")
+        return atlas.game.state()
 
     @app.get("/api/impact")
     async def impact():

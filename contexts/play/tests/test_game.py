@@ -103,3 +103,58 @@ def test_scored_rounds_rebuild_from_the_log_after_a_restart():
     assert restarted.session_id == g.session_id
     restarted.on_faces(faces(t + 600))  # back much later: a new session, on event time
     assert restarted.session_id != g.session_id
+
+
+# --- where the loop is, for the screen's face chip ---
+
+
+def test_state_follows_the_loop_looking_holding_round_ending():
+    g = game()
+    s = g.state()
+    assert (s["phase"], s["faces"], s["heard"], s["round"]) == ("looking", 0, None, None)
+    assert (s["hold_to_start_s"], s["idle_to_end_s"]) == (2.0, 10.0)
+    g.on_faces(faces(0, facing=2))
+    g.on_faces(faces(1.2, facing=2))
+    s = g.state()
+    assert (s["phase"], s["faces"], s["count"], s["held_s"]) == ("holding", 2, 2, 1.2)
+    [start] = g.on_faces(faces(2, facing=2))
+    s = g.state()
+    assert s["phase"] == "round" and s["round"] == {"round_id": start.round_id, "item": "can", "players": 2, "started": start.ts.isoformat()}
+    g.on_faces(faces(3, facing=2))
+    g.on_faces(faces(10, facing=0))
+    s = g.state()
+    assert (s["phase"], s["faces"], s["idle_s"], s["round"]["players"]) == ("ending", 0, 7.0, 2)  # the players are the faces that started it
+    g.on_faces(faces(13, facing=0))  # ten seconds with nobody: abandoned
+    s = g.state()
+    assert (s["phase"], s["round"], s["held_s"], s["idle_s"]) == ("looking", None, 0.0, 0.0)
+    g.on_faces(faces(14))
+    g.on_faces(faces(14.5, facing=0))  # looked away: the hold starts over
+    assert g.state()["phase"] == "looking"
+    g.on_faces(faces(15))
+    assert (g.state()["phase"], g.state()["held_s"]) == ("holding", 0.0)
+
+
+def test_state_compares_the_first_and_the_latest_round_only_when_both_were_played():
+    g = game(items=("cup",))
+    assert g.state()["rounds"] == {"session_id": g.session_id, "played": 0, "first": None, "latest": None}
+    log, t = [], 0
+    for took in (9, 3):
+        [start] = g.on_faces(faces(t)) + g.on_faces(faces(t + 2))  # the second round starts at once: the gaze was held since the drop
+        log += g.on_zone_event(drop(t + 2 + took, "trash", "cup"))
+        if t == 0:
+            assert (g.state()["rounds"]["played"], g.state()["rounds"]["first"]) == (1, None)  # one round: nothing to compare
+        t += 20
+    rounds = g.state()["rounds"]
+    estimate = round(len(start.path) * 0.6, 1)
+    assert rounds["played"] == 2
+    assert rounds["first"] == {"round": 1, "item": "cup", "correct": True, "seconds": 9.0, "estimate_s": estimate, "score": log[0].score,
+                               "players": 1, "ts": log[0].ts.isoformat()}
+    assert (rounds["latest"]["round"], rounds["latest"]["seconds"], rounds["latest"]["score"]) == (2, 5.0, log[1].score)
+    for scored in log:  # the game hears its own events: not counted twice
+        g.on_scored(scored)
+    assert g.state()["rounds"] == rounds
+    restarted = game(items=("cup",))
+    for scored in log:
+        restarted.on_scored(scored)
+    assert restarted.state()["rounds"] == rounds  # the same numbers from the log after a restart
+    assert restarted.state()["phase"] == "looking"
