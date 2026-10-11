@@ -334,6 +334,45 @@ def test_copy_scores_without_a_gate_row_is_an_error(pod):
     assert caught.value.kind == "no_gate_row"
 
 
+def eval_gate_rows(pod, run_id=RUN, current=1.0, candidate=1.0, teacher=0.9167, outcome="reject"):
+    """The rows `python -m lab eval-gate` writes for a run: one per score, then the decision row."""
+    refs = {"run_id": run_id, "commit": "abc1234", "split_sha256": "0" * 64}
+    for role, value in (("current", current), ("candidate", candidate), ("teacher", teacher)):
+        ledger.append({"actor": "gate", "tier": None, "task": "L4", "verb": "eval-gate.score", "outcome": role,
+                       "metrics": {"eval.score": value, "eval.n_items": 24, "eval.n_groups": 4}, "refs": refs,
+                       "conditions": {"dataset_id": "tool-calling-fixture"}}, state_dir=pod.state)
+    return ledger.append({"actor": "gate", "tier": None, "task": "L4", "verb": "eval-gate", "outcome": outcome,
+                          "metrics": {"eval.current": current, "eval.candidate": candidate, "eval.teacher": teacher,
+                                      "eval.noise": 0.0, "eval.delta": candidate - current, "eval.p_value": 1.0,
+                                      "eval.n_items": 24, "eval.n_groups": 4, "eval.unscored": 34},
+                          "refs": refs, "conditions": {"dataset_id": "tool-calling-fixture"}}, state_dir=pod.state)
+
+
+def test_scores_are_copied_from_the_decision_row_the_eval_gate_writes(pod):
+    build(pod)
+    eval_gate_rows(pod, run_id="run-0006", candidate=0.25)   # another run's gate
+    seq = eval_gate_rows(pod)
+
+    result = package.copy_scores(pod.out / VERSION, RUN, state_dir=pod.state)
+
+    assert result["scores"] == {"current": 1.0, "candidate": 1.0, "teacher": 0.9167} and result["gate_seq"] == seq
+    manifest = ModelManifest.model_validate(json.loads((pod.out / VERSION / "manifest.json").read_text()))
+    assert manifest.scores == {"current": 1.0, "candidate": 1.0, "teacher": 0.9167}
+
+
+def test_the_gates_per_score_rows_and_a_refused_run_are_not_a_gate_row(pod):
+    build(pod)
+    refs = {"run_id": RUN}
+    ledger.append({"actor": "gate", "tier": None, "task": "L4", "verb": "eval-gate.score", "outcome": "candidate",
+                   "metrics": {"eval.score": 1.0, "eval.n_items": 24}, "refs": refs, "conditions": {}},
+                  state_dir=pod.state)
+    ledger.append({"actor": "gate", "tier": None, "task": "L4", "verb": "eval-gate", "outcome": "refused",
+                   "metrics": {}, "refs": refs, "conditions": {}}, state_dir=pod.state)
+    with pytest.raises(package.PackageError) as caught:
+        package.copy_scores(pod.out / VERSION, RUN, state_dir=pod.state)
+    assert caught.value.kind == "no_gate_row" and "eval-gate" in str(caught.value)
+
+
 def test_the_newest_gate_row_of_the_run_wins(pod):
     build(pod)
     gate_row(pod, metrics={"learning.heldout.candidate": 0.5})
