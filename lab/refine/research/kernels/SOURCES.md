@@ -17,6 +17,7 @@ Notes in this folder:
 | `strix_halo_hardware.md` (strix) | The gfx1151 chip in the SJC pods from AMD, LLVM, Linux and library sources: CUs, wavefronts, registers and occupancy, LDS, caches, memory split, WMMA, power files, ROCm settings, and the questions for R33 |
 | `settings_inference_gfx1151.md` (settings) | Every runtime setting that can change vLLM decode on the gfx1151 teacher, its mechanism, value today, pinned baseline, and the ten-setting Ax shortlist |
 | `graphics_pipeline_for_ml.md` (graphics) | Graphics-pipeline techniques (Brook, texture units, block-compressed weights, Vulkan engines) for inference and fine-tuning on the Strix Halo, with the G1 to G3 proposals |
+| `energy_model_gfx1151.md` (energy) | The joules-per-token model for the gfx1151 teacher and student from the chip sheet, its knees, its check against R26's measured frontier, the measurement protocol and the optimizer's objective and constraints |
 
 Short names in the "Cited in" column refer to the notes above. "Code" sources are files read at the
 commit named in the link; "b1388b1" is the vLLM commit our pod runs
@@ -549,3 +550,16 @@ and L11 (`lab/public_prior.py`).
 | S178 | project doc | vLLM v0.31.0 release notes (released 2026-10-05 per the page; tag commit db9527a46 dated 2026-10-02): Quantization, AMD ROCm and Dependencies lines; first 100,000 characters read | https://github.com/vllm-project/vllm/releases/tag/v0.31.0 | 2026-10-11 | upgrade |
 | S179 | project doc | ROCm/vllm releases page (v0.7.2+rocm to v0.9.2; "Navi" lines only, no RDNA or gfx1151 line) | https://github.com/ROCm/vllm/releases | 2026-10-11 | upgrade |
 | S180 | project doc | triton-lang/triton releases page (3.4.0 to 3.8.0; AMD lines for gfx11, gfx12, RDNA 3, 3.5 and 4) | https://github.com/triton-lang/triton/releases | 2026-10-11 | upgrade |
+
+## Added by R56, the gfx1151 energy model note (2026-10-11)
+
+Re-opened by R56 and cited under their existing ids: S62 (the ML.ENERGY Benchmark paper) and L10 (the gfx1151
+chip sheet). "energy" in the Cited in column means `energy_model_gfx1151.md`.
+
+| Id | Kind | Source | Link or location | Opened | Cited in |
+| --- | --- | --- | --- | --- | --- |
+| S181 | project doc | ml-energy/zeus `docs/measure/index.md` at 42d76ac (2026-10-10), the GPU paragraphs and section "ROCm and AMDSMI Versions": AMD GPUs through AMDSMI with ROCm 6.3 or later, older versions returned wrong power and energy values, `current_socket_power` can read N/A and the average socket power is used instead | https://github.com/ml-energy/zeus/blob/42d76ac/docs/measure/index.md | 2026-10-11 | energy |
+| L14 | our files | `lab/energy_model.py` (this task's branch `ctx/runtime/energy-model-gfx1151`): `chip_inputs`, `sheet_knees`, `knees`, `predict`, `check` and `OBJECTIVE`; every prediction in the note is its output on the committed chip sheet | this repo, `lab/energy_model.py` | 2026-10-11 | energy |
+| L15 | our measurement | `lab/README.md`, section "Batching sweep on the pod C teacher (R26, Strix Halo, gfx1151)" (PR #269, 081c496): 2.62 to 49.53 tok/s total at 1 to 64 streams, flat 96.0 W, 36.66 to 1.94 J/token gross, the 82.4 W idle read caught an earlier attempt's requests, the real loaded idle 10.44 W | this repo, `lab/README.md` (main at 9ed11fc) | 2026-10-11 | energy |
+| L16 | our measurement | `fixtures/lab/energy_model/attach-sweep-pod-c-2026-10-10.jsonl` with `source.json`: R26's `lab/bench.py` rows (session bench-20261010T215122Z-2c65) trimmed to the fields the checker reads, values as the harness wrote them | this repo, `fixtures/lab/energy_model/` | 2026-10-11 | energy |
+| L17 | our files | `lab/README.md`, section "Request-side settings sweep: `lab/sweep_request.py` (R52)": the grid, its slot minutes and the collect command; no result committed on main at 9ed11fc | this repo, `lab/README.md` (main at 9ed11fc) | 2026-10-11 | energy |
