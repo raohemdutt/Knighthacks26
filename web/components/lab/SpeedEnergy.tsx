@@ -140,7 +140,14 @@ function ChipFix({ story, reduced, a100, setA100, onPick }: { story: ReturnType<
           const ps = (Array.isArray(raw) ? raw : [raw]) as { seriesName: string; value: [number, number]; color: string; seriesId: string }[];
           if (!ps.length) return "";
           const head = `<b>${streams(ps[0]!.value[0])}</b>`;
-          const rows = ps.map((p) => `<span style="color:${p.color}">&#9679;</span> ${p.seriesName}: <b>${fmt(p.value[1])}</b> ${p.seriesId.endsWith(":w") ? "W" : "J per token"}`);
+          const sessionOf = (p: { seriesId: string; value: [number, number] }) => {
+            const l = [after, llama, ref].find((x) => x && p.seriesId.startsWith(`${x.session.id}:`));
+            return l?.points.find((q) => q.batch === p.value[0])?.session ?? null;
+          };
+          const rows = ps.map((p) => {
+            const sid = sessionOf(p);
+            return `<span style="color:${p.color}">&#9679;</span> ${p.seriesName}: <b>${fmt(p.value[1])}</b> ${p.seriesId.endsWith(":w") ? "W" : "J per token"}${sid && !p.seriesId.endsWith(":w") ? `<br/><span style="color:${t.muted};font-size:12px">session ${sid}</span>` : ""}`;
+          });
           return [head, ...rows].join("<br/>");
         },
       },
@@ -158,7 +165,7 @@ function ChipFix({ story, reduced, a100, setA100, onPick }: { story: ReturnType<
               series(t, `${after.session.id}:w`, "Pod watts (vLLM)", t.watch, lineData(after, (p) => p.watts), { yAxisIndex: 1, smooth: false, symbolSize: 6, lineStyle: { width: 2, type: "dashed", color: t.watch } }),
             ]
           : []),
-        ...(llama ? [series(t, `${llama.session.id}:j`, "llama.cpp Vulkan", t.accent2, lineData(llama, (p) => p.j_per_token))] : []),
+        ...(llama ? [series(t, `${llama.session.id}:j`, "llama.cpp Vulkan, measured", t.accent2, lineData(llama, (p) => p.j_per_token))] : []),
         ...(ref ? [series(t, `${ref.session.id}:j`, "NVIDIA A100 (reference)", t.unknown, lineData(ref, (p) => p.j_per_token), { symbol: "triangle", lineStyle: { width: 2, type: "dotted", color: t.unknown } })] : []),
       ],
     };
@@ -184,7 +191,7 @@ function ChipFix({ story, reduced, a100, setA100, onPick }: { story: ReturnType<
                 const session = id.replace(/:[jw]$/, "");
                 const l = [after, llama, ref].find((x) => x?.session.id === session);
                 const pt = l?.points.filter((q) => (id.endsWith(":w") ? q.watts : q.j_per_token) !== null)[p.dataIndex];
-                if (pt) onPick(session, id.endsWith(":w") ? "watts_avg" : "joules_per_token", pt.batch);
+                if (pt) onPick(pt.session, id.endsWith(":w") ? "watts_avg" : "joules_per_token", pt.batch);
               }}
             />
           ) : (
@@ -222,11 +229,10 @@ function ChipFix({ story, reduced, a100, setA100, onPick }: { story: ReturnType<
       <p className={s.story}>
         {l1?.tok_s_stream && a1?.tok_s_stream && l1.j_per_token && a1.j_per_token ? (
           <>
-            llama.cpp on Vulkan ties at one stream ({fmt(l1.tok_s_stream)} against {fmt(a1.tok_s_stream)} tokens a second) but each token costs {fmt((l1.j_per_token / a1.j_per_token - 1) * 100, 0)} percent more
-            energy there
-            {top && top > 1 && at(llama, top)?.tok_s_stream && at(after, top)?.tok_s_stream
-              ? `, and it cannot batch: at ${streams(top)} each person gets ${fmt(at(llama, top)!.tok_s_stream!)} tokens a second against vLLM's ${fmt(at(after, top)!.tok_s_stream!)}.`
-              : "."}
+            llama.cpp on Vulkan ties at one stream ({fmt(l1.tok_s_stream)} against {fmt(a1.tok_s_stream)} tokens a second)
+            {top && top > 1 && at(llama, top)?.j_per_token && at(after, top)?.j_per_token
+              ? `, but at ${streams(top)} it spends ${fmt(at(llama, top)!.j_per_token!, 1)} J a token against vLLM's ${fmt(at(after, top)!.j_per_token!, 1)}: it cannot batch, so the chip's flat watts never pay off for it.`
+              : `, and each token costs ${fmt((l1.j_per_token / a1.j_per_token - 1) * 100, 0)} percent more energy there.`}
           </>
         ) : (
           "No llama.cpp session on a Strix Halo pod in these rows, so there is no second engine to compare."
@@ -476,7 +482,7 @@ function What({ story }: { story: ReturnType<typeof speedStory> }) {
     ["Streams are how many people the teacher model answers at the same moment (the batch size of each row).", "conditions.batch_size of each row"],
     ["The chip fix: vLLM on one Strix Halo pod after the kernel fix, the newest vLLM session on that chip.", from(story.after)],
     ["The 'before' in the first tile: the newest older vLLM session of the same model that was slower at one stream.", from(story.before)],
-    ["llama.cpp Vulkan: the newest llama.cpp session on a Strix Halo pod with two or more batch sizes.", from(story.llama)],
+    ["llama.cpp Vulkan: its sessions on one Strix Halo pod and model joined, the newest row at each batch size, every point measured.", story.llamaSessions.map((x) => x.id).join(", ") || "no session in these rows"],
     ["The bigger brain: the newest session of the big model across two pods, against the vLLM session above at the same batch sizes.", from(story.pair)],
     ["What it costs to be on: the newest idle and answering power row of each machine. A small amber dot marks a low-confidence row.", "power rows (jetson.idle_watts, pod idle and serving watts)"],
     ["Hollow points are low confidence: fewer repeats than a verdict needs. Tap a point or a number for its row.", "each row's own confidence and reason"],
@@ -558,6 +564,7 @@ function Sessions({
   rows,
   openSheet,
   rowsState,
+  llamaNote,
 }: {
   sessions: BenchSession[];
   points: BenchHeadline[];
@@ -569,6 +576,7 @@ function Sessions({
   rows: number;
   openSheet: (which: "what" | "rows") => void;
   rowsState: "loading" | "error" | "ready" | null;
+  llamaNote: string | null;
 }) {
   const current = sessions.find((x) => x.id === selected) ?? sessions[0];
   const mine = points.filter((p) => p.session === current?.id).sort((x, y) => x.batch - y.batch);
@@ -595,6 +603,7 @@ function Sessions({
           All {rows} rows
         </button>
       </div>
+      {llamaNote ? <p className={s.foot}>{llamaNote}</p> : null}
       <div className={ui.chips} role="group" aria-label="Measurement sessions, newest first">
         {sessions.map((x) => (
           <button key={x.id} type="button" className={`${ui.chip} ${x.id === current?.id ? ui.chipOn : ""}`} aria-pressed={x.id === current?.id} onClick={() => setSelected(x.id)}>
@@ -674,6 +683,15 @@ export function SpeedEnergy({
   const summary = useMemo(() => benchSummary(payload), [payload]);
   const story = useMemo(() => speedStory(summary), [summary]);
   const pairSessions = useMemo(() => summary.sessions.filter(isPair), [summary]);
+  const llamaNote = useMemo(() => {
+    const l = story.llama;
+    if (!l || story.llamaSessions.length < 2) return null;
+    const parts = story.llamaSessions.map((x) => `${l.points.filter((p) => p.session === x.id).map((p) => p.batch).join(" and ")} from ${x.id}`);
+    const engines = [...new Set(story.llamaSessions.map((x) => x.engine))];
+    const models = [...new Set(story.llamaSessions.map((x) => x.model ?? "model not named"))];
+    const differs = [engines.length > 1 ? `engines differ (${engines.join(", ")})` : null, models.length > 1 ? `models differ (${models.join(", ")})` : null].filter(Boolean);
+    return `llama.cpp's line on the first chart joins ${story.llamaSessions.length} sessions on ${machineName(l.session.node)}, streams ${parts.join("; ")}. ${differs.length ? `Note: ${differs.join("; ")}.` : `Same engine (${engines[0]}) and model (${models[0]}) in each.`} The chip is the same.`;
+  }, [story]);
   const both = usePairBoth(pairSessions, payload);
   // the drawer lists the sessions that have headline numbers, newest first; the rest are counted in "All rows"
   const sessions = useMemo(() => {
@@ -791,7 +809,7 @@ export function SpeedEnergy({
           </span>
         </summary>
         {open ? (
-          <Sessions sessions={sessions} points={summary.points} selected={current?.id ?? null} setSelected={setSelected} findPoint={findPoint} picked={picked} setPicked={setPicked} rows={rows} openSheet={setSheet} rowsState={fullHere || !current ? null : rowsOf[current.source ?? current.id] === undefined ? "loading" : typeof rowsOf[current.source ?? current.id] === "string" ? (rowsOf[current.source ?? current.id] as "loading" | "error") : "ready"} />
+          <Sessions sessions={sessions} points={summary.points} selected={current?.id ?? null} setSelected={setSelected} findPoint={findPoint} picked={picked} setPicked={setPicked} rows={rows} openSheet={setSheet} llamaNote={llamaNote} rowsState={fullHere || !current ? null : rowsOf[current.source ?? current.id] === undefined ? "loading" : typeof rowsOf[current.source ?? current.id] === "string" ? (rowsOf[current.source ?? current.id] as "loading" | "error") : "ready"} />
         ) : null}
       </details>
 

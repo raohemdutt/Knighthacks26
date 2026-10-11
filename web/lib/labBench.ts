@@ -486,7 +486,8 @@ export interface StoryLine {
 export interface SpeedStory {
   after: StoryLine | null; // vLLM on a Strix Halo pod, newest session: after the kernel fix
   before: StoryLine | null; // the newest older vLLM Strix Halo session of the same model that was slower at one stream
-  llama: StoryLine | null; // llama.cpp on a Strix Halo pod, newest session with two or more batch sizes
+  llama: StoryLine | null; // llama.cpp on a Strix Halo pod: its sessions on one node and model joined, newest row per batch size
+  llamaSessions: BenchSession[]; // the sessions llama's points come from
   a100: StoryLine | null; // the NVIDIA A100 reference, newest
   pair: StoryLine | null; // the 122B pair across two pods: every pair session, newest row per batch size
   base: StoryLine | null; // the 27B on one pod at the pair's batch sizes (from `after`)
@@ -514,7 +515,14 @@ export function speedStory(sum: BenchSummary): SpeedStory {
     vllm.slice(1).find((s) => (after?.session.model ? s.model === after.session.model : true) && afterB1 !== null && (b1(line(s)) ?? Infinity) < afterB1),
   );
   const llamas = single.filter((s) => engineOf(s.engine) === "llamacpp" && isStrixHalo(s.chip));
-  const llama = line(llamas.find((s) => (byS.get(s.id)?.length ?? 0) >= 2) ?? llamas[0]);
+  // llama.cpp's line joins every llama.cpp session on the same node and model as its newest multi-batch session,
+  // newest row per batch size (as the pair's line does), so each point is measured and names its own session
+  const anchor = llamas.find((s) => (byS.get(s.id)?.length ?? 0) >= 2) ?? llamas[0];
+  const llamaSet = anchor ? llamas.filter((s) => (s.node ?? null) === (anchor.node ?? null) && s.model === anchor.model) : [];
+  const llamaPoints = new Map<number, BenchHeadline>();
+  for (const x of llamaSet) for (const p of byS.get(x.id) ?? []) if (!llamaPoints.has(p.batch)) llamaPoints.set(p.batch, p);
+  const llama: StoryLine | null = anchor ? { session: anchor, points: [...llamaPoints.values()].sort((a, b) => a.batch - b.batch) } : null;
+  const llamaSessions = llamaSet.filter((x) => llama!.points.some((p) => p.session === x.id));
   const a100 = line(single.find((s) => isA100(s.chip)));
   // the pair's batch sizes may sit in several sessions (1 and 4 in one, 16 in the next): one line, newest row per batch
   const pairs = sorted.filter(isPair);
@@ -522,7 +530,7 @@ export function speedStory(sum: BenchSummary): SpeedStory {
   for (const x of pairs) for (const p of byS.get(x.id) ?? []) if (!pairPoints.has(p.batch)) pairPoints.set(p.batch, p);
   const pair: StoryLine | null = pairs.length ? { session: pairs[0]!, points: [...pairPoints.values()].sort((a, b) => a.batch - b.batch) } : null;
   const base = pair && after ? { session: after.session, points: after.points.filter((p) => pair.points.some((q) => q.batch === p.batch)) } : null;
-  return { after, before, llama, a100, pair, base };
+  return { after, before, llama, llamaSessions, a100, pair, base };
 }
 
 /** The model size in billions from its name: "Qwen3.8-27B-INT4" -> 27. */
