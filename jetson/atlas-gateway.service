@@ -11,6 +11,11 @@ Environment=PYTHONPATH=@REPO@
 Environment=ATLAS_LLM_URL=http://127.0.0.1:8080
 # A real box holds only what its cameras saw; put ATLAS_MEMORY_FIXTURE=fixtures/memory/memory.yaml in .env for the canned demo night.
 Environment=ATLAS_MEMORY_FIXTURE=
+# Jetson power telemetry (T2, telemetry owner ruling 8): tegrastats sampled inside the gateway from boot, every
+# 350 ms to keep the sampler's own CPU near 1 percent of a core (100 ms cost 3.5 percent, T13). These win over
+# .env; override on a box with `systemctl edit atlas-gateway` ("tegrastats,pods" adds the pods, empty turns it off).
+Environment=ATLAS_TELEMETRY_SOURCE=tegrastats
+Environment=ATLAS_TELEMETRY_JETSON_INTERVAL_MS=350
 # Secrets and per-box settings: @REPO@/.env (also read by the gateway itself).
 ExecStart=@VENV@/bin/python -m contexts.gateway
 Restart=always

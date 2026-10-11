@@ -362,7 +362,9 @@ def run_pod(opts: RunOptions, *, host: Any = None, power: Any = None, runner: Ru
     out.mkdir(parents=True, exist_ok=True)
     vllm_dir = Path(opts.vllm_dir).expanduser()
     loader = out / "loader.diff"
-    loader.write_text(quark_keys.split_patch(Path(opts.patch).read_text(encoding="utf-8"))[1], encoding="utf-8")
+    # LF always: a patch written with CRLF on a Windows workstation no longer applies to the pod's tree
+    loader.write_text(quark_keys.split_patch(Path(opts.patch).read_text(encoding="utf-8"))[1], encoding="utf-8",
+                      newline="\n")
     state = patch_state(vllm_dir, loader, runner)
     if state == "conflict":
         raise Refused("patch_conflict", f"the loader hunks neither apply to nor are already in {vllm_dir}",
@@ -826,3 +828,5 @@ def run_all(args: argparse.Namespace, opts: RunOptions, **kw: Any) -> dict[str, 
 def main(argv: Sequence[str]) -> dict[str, Any]:
     """R23: the AMD Quark INT4 checkpoint against RedHat INT4 on pod B (preflight, slot, run, record, all)."""
     return run(argv)
+
+CLI_VERB = "quark-compare"

@@ -17,6 +17,7 @@ import {
   PLAY_SECONDS,
   STATUS_LABEL,
   chapterAt,
+  chipShort,
   clamp01,
   clock,
   duration,
@@ -32,6 +33,13 @@ import { GateChart, TrainingChart } from "./Charts";
 import lab from "./lab.module.css";
 
 /* ---------- small pieces ---------- */
+
+/** Where a measured trainer row ran, by the chip the row itself gives: never an R9700 unless it was one. */
+function smokeChip(m: LabMeasured | undefined): string {
+  if (!m?.other_chip) return "the lab's trainer";
+  if (m.chip?.role === "earlier") return `one ${m.chip.name}, the lab's earlier card`;
+  return m.chip ? `${chipShort(m.chip)}, not the lab's own hardware` : "another chip, not the lab's own hardware";
+}
 
 /** One number as a tile. A number the log does not hold says so, with the reason, instead of showing a dash. */
 function Stat({ n, label, value, tone }: { n: LabNum; label?: string; value?: string; tone?: "good" | "bad" }) {
@@ -226,7 +234,7 @@ function Training({ story, frac, measured }: { story: LabStory; frac: number; me
         <div className={lab.measured}>
           <span className={lab.measuredTag}>Measured on our hardware</span>
           <span>
-            A 20-step smoke run on {speed?.other_chip || first?.other_chip ? "one Radeon R9700, the lab's earlier card" : "the lab's trainer"}
+            A 20-step smoke run on {smokeChip(speed ?? first)}
             {speed?.node ? ` (${speed.node})` : ""}
             {speed ? (
               <>
@@ -245,7 +253,7 @@ function Training({ story, frac, measured }: { story: LabStory; frac: number; me
               .filter((m): m is LabMeasured => !!m)
               .map((m) => m.source?.ref)
               .join(", ")}
-            . Not this run: a real measurement, shown so the run above can be judged against it. {speed?.other_chip || first?.other_chip ? "The lab has since moved to" : "The lab is"} two Strix Halo pods (Radeon 8060S, gfx1151).
+            . Not this run: a real measurement, shown so the run above can be judged against it. {(speed ?? first)?.chip?.role === "earlier" ? "The lab has since moved to" : "The lab is"} two Strix Halo pods (Radeon 8060S, gfx1151).
           </span>
         </div>
       ) : null}

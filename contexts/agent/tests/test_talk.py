@@ -414,6 +414,30 @@ def test_qa_hands_conversation_to_talk_and_streams_it():
     assert "You are Atlas, a warm" in rt.calls[0][1][0].content
 
 
+def test_with_web_tools_a_small_talk_reply_is_the_only_answer_heard():
+    # a misheard "what caused sure to my wife?": the reply said "I'm just an AI", which used to send the question on to a
+    # web search whose answer (about someone else's marriage) was spoken right after the first one
+    from contexts.agent.application.web_port import FakeWeb
+
+    reply = "I don't know anything about your wife. I'm just an AI running on this box."
+    q, rt = qa_with_talk(reply, "The evidence says the husband caused it.",
+                         web=FakeWeb(results=[{"title": "Marriage advice", "url": "https://advice.test/", "summary": "husband"}]))
+    pieces = []
+    a = asyncio.run(q.ask("What caused sure to my wife?", stream=pieces.append))
+    assert a.text == reply and "".join(pieces) == reply and len(rt.calls) == 1
+
+
+def test_with_web_tools_a_cant_look_reply_is_never_heard_and_the_tools_answer():
+    from contexts.agent.application.web_port import FakeWeb
+
+    q, rt = qa_with_talk("I can't check that from here. Try a weather app.", ChatResult(content="", model_version="v1"),
+                         "It's sunny and 75.",
+                         web=FakeWeb(results=[{"title": "Orlando today", "url": "https://wx.test/", "summary": "Sunny, high of 75"}]))
+    pieces = []
+    a = asyncio.run(q.ask("Is it nice out?", stream=pieces.append))
+    assert a.text == "It's sunny and 75." and "".join(pieces) == a.text  # the refusal was held back, never streamed
+
+
 def test_qa_without_talk_is_exactly_as_before():
     rt = FakeRuntime(chat_replies=[ChatResult(content="Hello!", model_version="v1")])
     q = QA(rt, MEMORY, clock=lambda: NOW)

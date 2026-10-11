@@ -151,13 +151,18 @@ def test_the_day_board_the_leaving_checklist_and_free_busy_are_what_they_would_b
     def picture(memory) -> list:
         app.dayrun.memory = app.qa.memory = memory
         try:
-            return [(app.dayrun.board(t).model_dump(mode="json"), app.qa.planner.leaving(t).text) for t in moments]
+            # `suggestions` is where the board now offers them (Today's Plan shows them dashed, in their gap); every
+            # other part of the board (blocks, optional events, slots and their moves, deadlines) must not know them
+            return [(app.dayrun.board(t).model_dump(mode="json", exclude={"suggestions"}), app.qa.planner.leaving(t).text) for t in moments]
         finally:
             app.dayrun.memory = app.qa.memory = real
 
     assert picture(real) == picture(without)
     board = app.dayrun.board(NOW)
     assert not [x.id for x in [*board.blocks, *board.events] if x.id.startswith(PREFIX)]
+    assert not [o for slot in board.slots for o in slot.moves if o.event and o.event.startswith(PREFIX)]
+    offered = [x for t in moments for x in app.dayrun.board(t).suggestions]
+    assert offered and all(x.id.startswith(PREFIX) and x.slot for x in offered)  # offered beside the board, never placed on it
     assert "Board game" not in app.qa.planner.leaving(NOW + timedelta(hours=9)).text  # 6:30 PM: it would have been "next"
 
     for e in events():  # a friend's Atlas asking about that hour still hears "free"

@@ -41,13 +41,22 @@ deploy, reject or refused), each with the decode setting, the scorer commit and 
 the decision row's metrics hold the three scores, n as items and as groups, the noise and the p-value. A
 learning.run.evaluated event (contracts/learning.py) with the scores and the decision, its model_version the
 candidate's (runtime.registry.model_version of its manifest), written to <out>/learning.run.evaluated.jsonl and,
-with events_dir, published to that event log. <out>/scores.json for the demo slide, and <out>/<role>.json per score
-in the shape lab/slide_numbers.py reads (score is the held-out score; scorer_score is the scorer's own top line).
+with events_dir, published to that event log. <out>/scores.json for the demo slide and the Learning lab import:
+beside the result it holds correct (right answers per role), noise_runs (right answers in each current run), alpha,
+test and items (one per decided held-out item: id, group, question and expected from the split, before as the first
+current run's answer and pass, after as the candidate's; an answer is cut at MAX_ANSWER_CHARS). And
+<out>/<role>.json per score in the shape lab/slide_numbers.py reads (score is the held-out score; scorer_score is the
+scorer's own top line).
+
+Scorers by task. A task listed in SCORERS has its own scorer: the verb builds that scorer's client for the dataset
+folder instead of RealClient, and when the entry names a group rule, a text example's group is what that rule says
+of it instead of its frame_ref. spot-qa (lab/spot_score.py) pairs on the anchor mission.
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
+import importlib
 import json
 import math
 import os
@@ -55,7 +64,8 @@ import subprocess
 import sys
 import tempfile
 from collections import defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
 from typing import Any, Protocol
@@ -63,13 +73,15 @@ from typing import Any, Protocol
 from bus import EventBus
 from contexts.agent.eval import Result
 from contracts.learning import DatasetExample, ModelManifest, RunEvaluated
-from lab.dataset import MIN_HELD_OUT, DatasetError, Split, _question_key, load_split
+from lab.dataset import MIN_HELD_OUT, DatasetError, Split, _question_key, load, load_split
 from lab.machine.record import record
 from runtime.registry import load_models_config, model_version
 
 __all__ = ["DECODE", "MIN_ITEMS", "ALPHA", "MIN_CURRENT_RUNS", "PACKAGED_QUANT", "PREVIEW_KEY", "SCORES_FILE",
-           "EVENT_FILE", "GateError", "Client", "RealClient", "make_client", "sign_flip_p", "run_gate", "main"]
+           "EVENT_FILE", "SCORERS", "Scorer", "GateError", "Client", "RealClient", "make_client", "client_for",
+           "sign_flip_p", "run_gate", "main"]
 
+CLI_VERB = "eval-gate"   # registers python -m lab eval-gate
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DECODE: dict[str, Any] = {"thinking": "off", "sampling": "greedy", "max_tokens": 512}
 MIN_ITEMS = MIN_HELD_OUT       # held-out items a deploy needs (the owner's ruling, the same floor as the split's)
@@ -80,6 +92,8 @@ PREVIEW_KEY = "preview.candidate_bf16"
 SCORES_FILE = "scores.json"
 EVENT_FILE = "learning.run.evaluated.jsonl"
 SCORER_TIMEOUT_S = 3600
+MAX_ANSWER_CHARS = 2000        # one model answer in scores.json; longer ones are cut (the lab import takes 8 MB)
+TEST = "exact two-sided sign-flip test over question groups"
 SCORER_PATHS = ("contexts", "runtime", "fixtures/golden", "config")   # what a scorer commit must hold unchanged
 
 
@@ -126,8 +140,33 @@ class RealClient:
         return git("rev-parse", "HEAD")
 
 
+@dataclass(frozen=True)
+class Scorer:
+    """A task's own scorer, as "module:name" paths: client(dataset folder) is the gate's Client; group(example), when
+    set, is the paired test's unit for a text example."""
+
+    client: str
+    group: str | None = None
+
+
+SCORERS: dict[str, Scorer] = {   # by the dataset manifest's task; every other task is scored by RealClient
+    "spot-qa": Scorer("lab.spot_score:GateClient", "lab.spot_score:group_of"),
+}
+
+
+def _named(path: str) -> Any:
+    module, name = path.split(":")
+    return getattr(importlib.import_module(module), name)
+
+
 def make_client() -> Client:
     return RealClient()
+
+
+def client_for(task: str | None, dataset: str | os.PathLike[str]) -> Client:
+    """The registered scorer's client for the task, else make_client()."""
+    scorer = SCORERS.get(task or "")
+    return _named(scorer.client)(dataset) if scorer else make_client()
 
 
 # --- the paired test ------------------------------------------------------------------------------------------------
@@ -190,12 +229,14 @@ def _match(split: Split, output: Mapping[str, Any], role: str) -> tuple[dict[str
     return found, outside
 
 
-def _groups(split: Split, episodes: Mapping[str, str] | None) -> dict[str, str]:
-    """{held-out example id: its group}: the frame_ref, or for an image example its episode."""
+def _groups(split: Split, episodes: Mapping[str, str] | None,
+            group: Callable[[DatasetExample], str] | None = None) -> dict[str, str]:
+    """{held-out example id: its group}: the frame_ref (or the task's group rule), or for an image example its
+    episode."""
     groups = {}
     for example in split.held_out:
         if not example.image:
-            groups[example.id] = example.frame_ref
+            groups[example.id] = group(example) if group else example.frame_ref
         elif episodes is None or example.frame_ref not in episodes:
             raise GateError(f"image example {example.id!r} has no episode; pass an episode map (frame_ref -> "
                             "episode id) so the test unit is the episode, never the single item")
@@ -232,6 +273,31 @@ def _write_json(path: Path, body: Any) -> None:
     path.write_text(json.dumps(body, indent=2) + "\n", encoding="utf-8", newline="\n")
 
 
+def _answer(row: Mapping[str, Any]) -> dict[str, Any]:
+    text = str(row.get("answer") or "")
+    if len(text) > MAX_ANSWER_CHARS:
+        text = text[:MAX_ANSWER_CHARS] + "..."
+    return {"answer": text, "correct": _passed(row)}
+
+
+def _per_question(split: Split, common: Sequence[str], groups: Mapping[str, str],
+                  scored: Mapping[str, Mapping[str, Mapping[str, Any]]],
+                  current_names: Sequence[str]) -> dict[str, Any]:
+    """scores.json's per-question part, for the Learning lab's before and after list (learning.eval.reported).
+
+    Only the decided held-out items. before is the first current run, after the candidate; correct counts the
+    right answers per role (current as that same first run, so it matches the list), noise_runs each current run's."""
+    examples = {e.id: e for e in split.held_out}
+    before = current_names[0]
+    items = [{"id": i, "group": groups[i], "question": examples[i].context or "", "expected": examples[i].target,
+              "before": _answer(scored[before][i]), "after": _answer(scored["candidate"][i])} for i in common]
+    return {"correct": {"current": sum(_passed(scored[before][i]) for i in common),
+                        "candidate": sum(_passed(scored["candidate"][i]) for i in common),
+                        "teacher": sum(_passed(scored["teacher"][i]) for i in common)},
+            "noise_runs": [sum(_passed(scored[name][i]) for i in common) for name in current_names],
+            "alpha": ALPHA, "test": TEST, "items": items}
+
+
 def run_gate(*, client: Client, dataset: str | os.PathLike[str], current_url: str, candidate_url: str,
              teacher_url: str, candidate_manifest: str | os.PathLike[str], run_id: str,
              out_dir: str | os.PathLike[str], current_version: str | None = None,
@@ -249,8 +315,9 @@ def run_gate(*, client: Client, dataset: str | os.PathLike[str], current_url: st
     candidate_version, manifest = _candidate(candidate_manifest)
     current_version = current_version or _current_version()
     episode_map = json.loads(Path(episodes).read_text(encoding="utf-8")) if episodes else None
-    groups = _groups(split, episode_map)
     task = task or split.data.manifest.spec.task
+    scorer = SCORERS.get(task)
+    groups = _groups(split, episode_map, _named(scorer.group) if scorer and scorer.group else None)
     commit = client.scorer_commit()
 
     roles = [(f"current-{i}", "current", i, current_url, current_version) for i in range(1, current_runs + 1)]
@@ -368,7 +435,8 @@ def run_gate(*, client: Client, dataset: str | os.PathLike[str], current_url: st
         "decode_source": decode_source, "current_runs": [float(s) for s in run_scores],
         "event": json.loads(event.model_dump_json()), "out": str(out),
     }
-    _write_json(out / SCORES_FILE, {k: v for k, v in result.items() if k not in ("ok", "outcome", "out")})
+    _write_json(out / SCORES_FILE, {**{k: v for k, v in result.items() if k not in ("ok", "outcome", "out")},
+                                    **_per_question(split, common, groups, scored, current_names)})
     record("eval-gate", decision,
            {"eval.current": float(current), "eval.candidate": float(candidate), "eval.teacher": float(teacher),
             "eval.noise": float(noise), "eval.delta": float(delta), "eval.p_value": float(p_value),
@@ -403,7 +471,11 @@ def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
     args = parser.parse_args(argv)
     out = Path(args.out) if args.out else REPO_ROOT / "lab" / "state" / "eval-gate" / args.run_id
     try:
-        return run_gate(client=make_client(), dataset=args.dataset, current_url=args.current_url,
+        task = args.task or load(args.dataset, require_images=False).manifest.spec.task
+    except DatasetError:
+        task = args.task   # run_gate reports what is wrong with the dataset
+    try:
+        return run_gate(client=client_for(task, args.dataset), dataset=args.dataset, current_url=args.current_url,
                         candidate_url=args.candidate_url, teacher_url=args.teacher_url,
                         candidate_manifest=args.candidate_manifest, run_id=args.run_id, out_dir=out,
                         current_version=args.current_version, current_runs=args.current_runs,

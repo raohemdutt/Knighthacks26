@@ -229,7 +229,7 @@ def load_accounts(letters: Iterable[str], *, environ: Mapping[str, str] | None =
     letters = list(letters)
     wanted = [(letter, *key_names(letter)) for letter in letters]
     names = [name for _, user_key, token_key in wanted for name in (user_key, token_key)]
-    optional = [name for letter, _, _ in wanted for name in option_keys(letter)]
+    optional = [name for letter, _, _ in wanted for name in option_keys(letter)] + [ENV_URL]
     given = {name: environ[name].strip() for name in names + optional
              if isinstance(environ.get(name), str) and environ[name].strip()}
     found, _ = ready.collect_env(names + optional, given, files)
@@ -241,8 +241,8 @@ def load_accounts(letters: Iterable[str], *, environ: Mapping[str, str] | None =
     accounts = {}
     for letter, user_key, token_key in wanted:
         url, password, launch, gpu, resource = (found.get(name) for name in option_keys(letter))
-        accounts[letter] = Account(letter, found[user_key], found[token_key], url, password, launch, gpu, resource,
-                                   roles.get(letter.upper()))
+        accounts[letter] = Account(letter, found[user_key], found[token_key], url or found.get(ENV_URL), password,
+                                   launch, gpu, resource, roles.get(letter.upper()))
     return accounts
 
 

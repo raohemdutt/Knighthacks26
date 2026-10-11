@@ -1,16 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { api, type PlaceRoute } from "@/lib/api";
 import { distance, pinKind, toScreen, type Pt } from "@/lib/campusmap";
-import { clock, indexPlaces, minutes, ms } from "@/lib/dayrun";
+import { indexPlaces, minutes, ms } from "@/lib/dayrun";
+import { t12 as clock } from "@/lib/plan";
 import { useFetch } from "@/lib/useFetch";
+import { Sheet as BottomSheet } from "../Portal";
 import { ErrorBox, Loading } from "../States";
 import ui from "../ui.module.css";
 import cm from "./campusmap.module.css";
 import { CampusLayers, MapButtons, MapFurniture, PlacePin, useCampusMap, useMapView } from "./CampusLayers";
-import { linePath, midpoint, pinName } from "./CampusMap";
+import { linePath, midpoint, pinName } from "./geometry";
 
 /**
  * "Get me there": a Route button that opens the campus map with the walk from
@@ -35,6 +36,7 @@ export function RouteSheet({
   now,
   label = "Route",
   what,
+  walkMinutes,
 }: {
   from?: string;
   to: string;
@@ -43,8 +45,11 @@ export function RouteSheet({
   label?: string;
   /** What is at the other end, for the heading: "Knight Hacks: judging and demos". */
   what?: string;
+  /** The length of the walk, when the screen already knows it: with 0 there is nowhere to go, so no button is offered. */
+  walkMinutes?: number;
 }) {
   const [open, setOpen] = useState(false);
+  if (walkMinutes !== undefined && walkMinutes <= 0) return null;
   return (
     <>
       <button type="button" className={cm.routeBtn} aria-haspopup="dialog" onClick={() => setOpen(true)}>
@@ -81,11 +86,6 @@ function Sheet({ from, to, arriveBy, now, what, onClose }: { from: string; to: s
     const id = window.setInterval(() => setAt(opened.current.box + (Date.now() - opened.current.wall)), 5000);
     return () => window.clearInterval(id);
   }, []);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   const line: Pt[] = useMemo(() => (map && r ? r.polyline.map(([lat, lon]) => map.project(lat, lon)) : []), [map, r]);
   const controls = useMapView(line.length > 1 ? map : null, W, H, line, `${r?.from}|${r?.to}|${line.length}`);
@@ -102,11 +102,9 @@ function Sheet({ from, to, arriveBy, now, what, onClose }: { from: string; to: s
   const indoors = r ? r.path.filter((p) => typeof places.get(p)?.lat !== "number").length : 0;
   const badge = midpoint(line);
 
-  // Through a portal to <body>: the page's entrance animation leaves a transform on every section, and a
-  // transformed ancestor makes `position: fixed` resolve against that section instead of the viewport.
-  return createPortal(
-    <div className={ui.overlay} onClick={onClose}>
-      <div className={ui.sheet} role="dialog" aria-modal="true" aria-label={r ? `Route to ${r.to_name}` : "Route"} onClick={(e) => e.stopPropagation()}>
+  // The shared sheet: over the viewport (a portal), page scroll locked, focus kept inside and handed back on close.
+  return (
+    <BottomSheet label={r ? `Route to ${r.to_name}` : "Route"} onClose={onClose}>
         <div className={`${ui.row} ${ui.between}`}>
           <h2 className={ui.breakWords}>{r ? `To ${r.to_name}` : "Route"}</h2>
           <button type="button" className={ui.btn} onClick={onClose}>
@@ -207,8 +205,6 @@ function Sheet({ from, to, arriveBy, now, what, onClose }: { from: string; to: s
             </p>
           </>
         )}
-      </div>
-    </div>,
-    document.body,
+    </BottomSheet>
   );
 }

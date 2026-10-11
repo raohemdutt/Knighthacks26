@@ -89,12 +89,14 @@ class FakeStt:
         self.text, self.fail = text, fail
         self.script = list(script or [])  # what the first transcriptions say, in order; then `text`
         self.heard: list[int] = []  # byte length of each recording given to it
+        self.quick: list[bool] = []  # whether each one was the wake listener's quick check
 
     def ready(self):
         return True, "fake whisper"
 
-    def transcribe(self, pcm: bytes) -> str:
+    def transcribe(self, pcm: bytes, quick: bool = False) -> str:
         self.heard.append(len(pcm))
+        self.quick.append(quick)
         if self.fail:
             raise SpeechEngineError("speech-to-text failed (fake)")
         return self.script.pop(0) if self.script else self.text

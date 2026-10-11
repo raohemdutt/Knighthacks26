@@ -71,6 +71,7 @@ from lab import bench  # noqa: E402
 from lab.machine import metrics as metrics_file  # noqa: E402
 from lab.machine.record import recorded  # noqa: E402
 
+CLI_VERB = "correctness"   # registers python -m lab correctness
 HARNESS = "lab/correctness.py 1"
 BASELINE_SCHEMA = "lab.correctness.baseline/1"
 RESULT_SCHEMA = "lab.correctness.result/1"
@@ -101,10 +102,13 @@ def normalise(text: str) -> str:
 
 # --- one greedy output ------------------------------------------------------------------------------------------
 
-def generate(endpoint: Any, prompts: bench.PromptSet, settings: bench.Settings, index: int) -> dict[str, Any]:
-    """Send prompt `index` and read the stream: its text, the token ids (or chunk texts) and their logprobs."""
+def generate(endpoint: Any, prompts: bench.PromptSet, settings: bench.Settings, index: int, *,
+             top_logprobs: int = 0) -> dict[str, Any]:
+    """Send prompt `index` and read the stream: its text, the token ids (or chunk texts) and their logprobs.
+    A token id is vLLM's "token_id:<n>" token (return_tokens_as_token_ids) or, from a server that ignores that
+    field, an integer "id" beside the token text (llama-server, which sends logprobs only for top_logprobs >= 1)."""
     body = prompts.request_body(index, settings, None)
-    body.update({"logprobs": True, "top_logprobs": 0, "return_tokens_as_token_ids": True})
+    body.update({"logprobs": True, "top_logprobs": top_logprobs, "return_tokens_as_token_ids": True})
     text: list[str] = []
     ids: list[int | str] = []
     chunks: list[str] = []
@@ -137,7 +141,13 @@ def generate(endpoint: Any, prompts: bench.PromptSet, settings: bench.Settings, 
                 for entry in entries:
                     token = str(entry.get("token"))
                     found = _TOKEN_ID.match(token)
-                    ids.append(int(found.group(1)) if found else token)
+                    given = entry.get("id")
+                    if found:
+                        ids.append(int(found.group(1)))
+                    elif isinstance(given, int) and not isinstance(given, bool):
+                        ids.append(given)
+                    else:
+                        ids.append(token)
                     logprobs.append(entry.get("logprob"))
                 if choice.get("finish_reason"):
                     finish = choice["finish_reason"]
@@ -156,11 +166,12 @@ def generate(endpoint: Any, prompts: bench.PromptSet, settings: bench.Settings, 
             "seconds": round(time.perf_counter() - started, 3), "error": error}
 
 
-def run_prompts(endpoint: Any, prompts: bench.PromptSet, settings: bench.Settings) -> list[dict[str, Any]]:
+def run_prompts(endpoint: Any, prompts: bench.PromptSet, settings: bench.Settings, *,
+                top_logprobs: int = 0) -> list[dict[str, Any]]:
     """Every prompt of the set once, one request at a time, in the set's order."""
     outputs = []
     for index in range(len(prompts.prompts)):
-        out = generate(endpoint, prompts, settings, index)
+        out = generate(endpoint, prompts, settings, index, top_logprobs=top_logprobs)
         log(f"{out['prompt']}: {out['completion_tokens']} tokens in {out['seconds']} s"
             + (f" ERROR {out['error']}" if out["error"] else ""))
         outputs.append(out)
@@ -348,6 +359,8 @@ def build_parser() -> argparse.ArgumentParser:
         s.add_argument("--prompts", default=str(bench.DEFAULT_PROMPTS))
         s.add_argument("--request-timeout-s", type=float, default=DEFAULT_REQUEST_TIMEOUT_S)
         s.add_argument("--metric-prefix", default="teacher")
+        s.add_argument("--top-logprobs", type=int, default=0,
+                       help="top_logprobs to ask for; llama-server sends logprobs (and token ids) only at 1 or more")
     record.add_argument("--out-dir", default=str(DEFAULT_DIR), help="where the fixture goes")
     record.add_argument("--date", default=None, help="the date in the file name (default: today, UTC)")
     record.add_argument("--force", action="store_true", help="overwrite a fixture of the same name")
@@ -410,7 +423,7 @@ def do_record(args: argparse.Namespace) -> dict[str, Any]:
     if path.exists() and not args.force:
         raise CorrectnessError(f"{path} already exists: a baseline is not overwritten without --force")
     with open_endpoint(args) as (endpoint, hub):
-        outputs = run_prompts(endpoint, prompts, settings)
+        outputs = run_prompts(endpoint, prompts, settings, top_logprobs=args.top_logprobs)
         failure = _failed(outputs)
         if failure:
             raise CorrectnessError(f"no baseline written, a prompt failed: {failure}")
@@ -433,7 +446,7 @@ def do_compare(args: argparse.Namespace) -> dict[str, Any]:
             names = ", ".join(f"{k} (baseline {v['baseline']!r}, run {v['run']!r})" for k, v in pre["differ"].items())
             raise CorrectnessError(f"the baseline's conditions differ from this run's: {names}; nothing was sent. "
                                    "Pass --allow-condition-drift to compare anyway")
-        outputs = run_prompts(endpoint, prompts, settings)
+        outputs = run_prompts(endpoint, prompts, settings, top_logprobs=args.top_logprobs)
     failure = _failed(outputs)
     if failure:
         raise CorrectnessError(f"a prompt failed, nothing compared: {failure}")
