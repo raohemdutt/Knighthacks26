@@ -272,6 +272,15 @@
   [data-guide="round"] .roundGrid {
     align-items: stretch;
   }
+
+  /* the tables of the Analysis tab: the two columns end on the same line */
+  .evenRow {
+    align-items: stretch !important;
+  }
+
+  .evenCol > :last-child {
+    flex: 1;
+  }
 }
 
 /* ---------- cards ---------- */

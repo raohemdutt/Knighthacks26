@@ -8,7 +8,12 @@
 @media (min-width: 1024px) {
   .grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-items: start;
+    align-items: stretch;
+  }
+
+  /* the cards of a row end on the same line, with their buttons along the bottom */
+  .grid .foot {
+    margin-top: auto;
   }
 }
 

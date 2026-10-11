@@ -130,12 +130,12 @@ export function AnalysisLayer({
             })}
           </section>
 
-          <div className={s.grid}>
-            <div className={s.col}>
+          <div className={`${s.grid} ${o.evenRow}`}>
+            <div className={`${s.col} ${o.evenCol}`}>
               {triage.data ? <TriageQueue items={triage.data.items} scoreText={triage.data.score} orders={orders} limit={3} /> : <Loading what="the triage queue" />}
               {triage.data ? <UninspectedRisk rows={triage.data.uninspected} /> : null}
             </div>
-            <div className={s.col}>
+            <div className={`${s.col} ${o.evenCol}`}>
               {locations.data ? <FacilityMap data={locations.data} assets={assets.data?.assets ?? []} live={live} /> : <Loading what="the map" />}
               {live?.configured ? (
                 <ReplayBar
