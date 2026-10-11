@@ -564,6 +564,24 @@ def test_the_checkpoint_check_can_be_switched_off(tmp_path):
     assert (result.outcome, result.accepted, result.checkpoint) == ("ok", 1, "Qwen/Qwen3.5-4B")
 
 
+@pytest.mark.parametrize("root, expect, ok", [
+    ("Qwen/Qwen3.5-122B-A10B-W4A16", "Qwen3.5-122B", True),            # the two-pod pair (L29's default)
+    ("RedHatAI/Qwen3.8-27B-INT4", "Qwen3.5-122B", False),              # the 27B is not the pair
+    ("RedHatAI/Qwen3.8-27B-INT4", "Qwen3.5-122B|Qwen3.8-27B", True),   # either one, the documented fallback
+    ("Qwen/Qwen3.5-122B-A10B-W4A16", "Qwen3.5-122B|Qwen3.8-27B", True),
+    ("Qwen/Qwen3.5-4B", "Qwen3.5-122B|Qwen3.8-27B", False),
+])
+def test_the_checkpoint_check_takes_the_pairs_name_or_either_of_two(tmp_path, root, expect, ok):
+    folder = fixture_copy(tmp_path)
+    fake = proxied(root=root)
+
+    result = run(folder, fake, ids=["golden-01"], expect_model=expect)
+
+    assert (result.outcome == "ok") is ok, result.error
+    if not ok:
+        assert chat_requests(fake) == [] and f"not {expect}" in result.error
+
+
 def test_five_examples_in_a_row_without_an_answer_stop_the_run(tmp_path):
     folder = image_export(tmp_path, count=8)
     fake = proxied(text_policy(GOOD_OBJECTS))
