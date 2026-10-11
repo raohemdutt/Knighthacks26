@@ -303,7 +303,7 @@ def sorttech(s: Scene):
 
 
 def lab(s: Scene):
-    s.card('<div class="pk">measured on AMD Strix Halo · lab/refine/metrics.jsonl</div><div class="ph">Teacher: 11 to 51 tokens a second</div><div class="pk">batched, at about 96 W</div>'
+    s.card('<div class="pk">measured on AMD Strix Halo · lab/refine/metrics.jsonl</div><div class="ph">Teacher: 12.3 to 51 tokens a second</div><div class="pk">batched, at about 96 W</div>'
            '<div class="chips"><span class="site-tag">8.8 J to 1.9 J per token</span><span class="site-tag">pod idle ≈ 10 W</span><span class="site-tag">Jetson idle 12.6 W</span></div>', 110, 450, "0:0.2", w=900)
     steps = "".join(f'<span class="site-chip">{x}</span>' for x in ["Test gate", "Hugging Face", "Box checks it", "Swaps in live", "Rolls back on failure"])
     s.card(f'<div class="chips">{steps}</div>', 110, 740, "1:0.1", w=1700, cls="cardrow")

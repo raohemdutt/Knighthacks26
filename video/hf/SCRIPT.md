@@ -115,7 +115,7 @@ UCF's own, and every impact number cites its source. Only counts leave the box.
 ### 10 · The learning lab (spec, as now)
 [Two AMD Strix Halo pods. Streams from Atlas boxes; a consent check; the test gate; Hugging Face; a box swapping in a
 new model, with a rollback arrow. On screen, the measured numbers (Hemdutt, Q20; Ilan may still correct one): teacher
-about 11 to 51 tokens a second at about 96 W, 8.8 J to 1.9 J per token; pod idle about 10 W, Jetson 12.6 W.]
+about 12.3 to 51 tokens a second at about 96 W, 8.8 J to 1.9 J per token; pod idle about 10 W, Jetson 12.6 W.]
 **N:** The lab is two AMD Strix Halo pods. One fine-tunes your own model on your own examples. The other, with
 everyone's consent, learns from all of them, so every Atlas gets better.
 **N:** A test decides if the new model ships. When one passes, it goes up on Hugging Face, and the box checks it,
