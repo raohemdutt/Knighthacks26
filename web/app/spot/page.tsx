@@ -6,7 +6,7 @@ import { EquipmentList } from "@/components/spot/EquipmentList";
 import { EXPLAINS, type ExplainId, type Force } from "@/components/spot/Explainers";
 import { FloorMap } from "@/components/spot/FloorMap";
 import o from "@/components/spot/op.module.css";
-import { OperatorAsk } from "@/components/spot/OperatorAsk";
+import { SpotMic } from "@/components/spot/SpotMic";
 import { Round } from "@/components/spot/Round";
 import { SpotApprovals } from "@/components/spot/SpotApprovals";
 import { ShiftRun, type RunLink } from "@/components/spot/ShiftRun";
@@ -199,9 +199,6 @@ export default function SpotPage() {
         <StatusLine shift={d} />
       </div>
 
-      {/* Ask SPOT's data, at the top of every view: one instance, so the guide's "ask" hook stays unique. */}
-      <OperatorAsk chips={d.ask ?? []} onWhy={why} jobs={d.do_first} guideChips={[d.do_first[0] ? `Where is ${d.do_first[0].name}?` : "Where is the plan?", "Where do I look for the battery?", "Show me what to do first"]} />
-
       {view === "shift" ? (
         <>
           {d.trust ? <TrustLine trust={d.trust} onWhy={why} /> : null}
@@ -332,6 +329,8 @@ export default function SpotPage() {
 
       {evidence ? <AnalysisLayer shift={d} show={tab === "analysis"} target={target} setTarget={numbers} explain={explain} setExplain={setExplain} force={force} live={live} onLive={setLive} orders={written} /> : null}
 
+      {/* The Atlas mic, docked at the foot of every view: the one place to ask on Inspection, so the guide's "ask" hook stays unique. */}
+      <SpotMic chips={d.ask ?? []} onWhy={why} jobs={d.do_first} guideChips={[d.do_first[0] ? `Where is ${d.do_first[0].name}?` : "Where is the plan?", "Where do I look for the battery?", "Show me what to do first"]} />
       {open ? <AssetSheet asset={open} orders={written} onClose={() => setAsset(null)} onWhy={why} /> : null}
     </div>
   );
