@@ -91,7 +91,26 @@ function Scene({ stages, runKey, forceReduced }: { stages: LoopStage[]; runKey: 
  * `story` is the run the Training run view shows (null while it loads, or when the box has no run), `run` its row in
  * the run list, `empty` true when the box has recorded no run at all.
  */
-export function LoopView({ story, run, empty, forceReduced }: { story: LabStory | null; run: LabRunSummary | null; empty: boolean; forceReduced: boolean }) {
+export function LoopView({
+  story,
+  run,
+  empty,
+  forceReduced,
+  label = null,
+  standIn = false,
+  onBox = null,
+}: {
+  story: LabStory | null;
+  run: LabRunSummary | null;
+  empty: boolean;
+  forceReduced: boolean;
+  /** the run's status as the picker says it (lib/lab.ts runStatus) */
+  label?: string | null;
+  /** the run's gate was a stand-in: the captions never show its counts */
+  standIn?: boolean;
+  /** the version the box serves now */
+  onBox?: string | null;
+}) {
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => {
     setNow(Date.now());
@@ -99,7 +118,7 @@ export function LoopView({ story, run, empty, forceReduced }: { story: LabStory 
     return () => window.clearInterval(id);
   }, []);
   const loop = story as LoopStory | null;
-  const stages = useMemo(() => loopStages(loop, dayTime), [loop]);
+  const stages = useMemo(() => loopStages(loop, dayTime, { standIn, onBox }), [loop, standIn, onBox]);
   const live = !!story && isLive(story);
   return (
     <section className={s.loop} aria-label="The learning loop" data-guide="lab:loop">
@@ -111,7 +130,8 @@ export function LoopView({ story, run, empty, forceReduced }: { story: LabStory 
           <b>{runState(loop, now, dayTime).line}</b>
         ) : run ? (
           <>
-            The run shown below: <b>{dayTime(run.started) || "no time recorded"}</b>, {runRow(run as LoopRun).chip.toLowerCase()}.
+            The run shown below: <b>{dayTime(run.started) || "no time recorded"}</b>, {label ? label.charAt(0).toLowerCase() + label.slice(1) : runRow(run as LoopRun).chip.toLowerCase()}
+            {standIn ? "; its gate was a stand-in, so it has no held-out score" : ""}.
           </>
         ) : (
           "Reading the run shown below."

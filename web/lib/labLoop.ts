@@ -149,7 +149,7 @@ export interface LoopStage {
  * stage strip (labeling, training, packaging), the steps, the test's result and the install. A stage the run sent
  * nothing about is "none" and says so; nothing is lit because the stage after it is.
  */
-export function loopStages(story: LoopStory | null, when: When): LoopStage[] {
+export function loopStages(story: LoopStory | null, when: When, opts: { standIn?: boolean; onBox?: string | null } = {}): LoopStage[] {
   const titles: Record<LoopKey, string> = { out: "Examples go out", label: "The teacher labels", train: "The trainer trains", test: "The test decides", box: "Back on the box" };
   const blank = (key: LoopKey): LoopStage => ({ key, title: titles[key], state: "waiting", value: null, note: null });
   if (!story) return (["out", "label", "train", "test", "box"] as LoopKey[]).map(blank);
@@ -168,27 +168,33 @@ export function loopStages(story: LoopStory | null, when: When): LoopStage[] {
   const before = c.current?.value;
   const after = c.candidate?.value;
   const nItems = ev.n_items.value;
-  const score =
-    typeof before === "number" && typeof after === "number" && typeof nItems === "number"
+  // A stand-in gate never asked the model: its counts are not a result, so no count is shown for it.
+  const standIn = opts.standIn ?? !!ev.rehearsal;
+  const score = standIn
+    ? "stand-in gate"
+    : typeof before === "number" && typeof after === "number" && typeof nItems === "number"
       ? `${before} → ${after} of ${nItems}`
       : typeof ev.scores.current.value === "number" && typeof ev.scores.candidate.value === "number"
         ? `${percentWord(ev.scores.current.value)} → ${percentWord(ev.scores.candidate.value)}`
         : null;
-  const testState: LoopState = !ev.decision ? (running && trainState === "done" ? "now" : "waiting") : ev.decision === "reject" ? "refused" : "done";
+  const testState: LoopState = standIn ? "none" : !ev.decision ? (running && trainState === "done" ? "now" : "waiting") : ev.decision === "reject" ? "refused" : "done";
   const dep = story.deploy;
-  const boxState: LoopState = story.status === "rolled back" ? "failed" : dep.deployed ? "done" : strip.packaging?.state === "now" ? "now" : ev.decision === "reject" ? "none" : "waiting";
+  // what the box serves now (the deploy record's `current`), when the caller knows it
+  const version = dep.model_version ?? ev.model_version ?? story.package.model_version;
+  const onBoxNow = !!opts.onBox && !!version && opts.onBox === version;
+  const boxState: LoopState = onBoxNow ? "done" : story.status === "rolled back" ? "done" : dep.deployed ? "done" : strip.packaging?.state === "now" ? "now" : ev.decision === "reject" ? "none" : "waiting";
   const size = typeof story.package.bytes.value === "number" ? (story.package.bytes.value >= 1e9 ? `${(story.package.bytes.value / 1e9).toFixed(2)} GB` : `${Math.round(story.package.bytes.value / 1e6)} MB`) : null;
   const swap = typeof dep.swap_s.value === "number" ? `swapped in ${said(dep.swap_s.value)} s` : null;
   return [
     { key: "out", title: titles.out, state: n !== null || steps || strip.labeling ? "done" : "waiting", value: n !== null ? `${n.toLocaleString()} examples` : null, note: d.approval.approved ? `approved ${when(d.approval.approved)}` : null },
     { key: "label", title: titles.label, state: strip.labeling ? map(strip.labeling.state) : "none", value: secs(strip.labeling), note: !strip.labeling || strip.labeling.state === "not reported" ? "not reported for this run" : null },
     { key: "train", title: titles.train, state: trainState, value: steps ? `step ${steps}${typeof t.of.value === "number" ? ` of ${t.of.value}` : ""}` : null, note: [typeof loss === "number" ? `loss ${lossWords(loss)}` : null, secs(strip.training)].filter(Boolean).join(" · ") || null },
-    { key: "test", title: titles.test, state: testState, value: score, note: ev.rehearsal ? "a stand-in test: not proof" : ev.decision === "reject" ? "refused" : ev.decision === "deploy" ? "passed" : null },
+    { key: "test", title: titles.test, state: testState, value: score, note: standIn ? "no held-out score" : ev.decision === "reject" ? "refused" : ev.decision === "deploy" ? "passed" : null },
     {
       key: "box",
       title: titles.box,
       state: boxState,
-      value: story.status === "rolled back" ? "installed, then undone" : dep.deployed ? `installed ${when(dep.deployed)}` : ev.decision === "reject" ? "kept its model" : ev.decision === "deploy" ? "not installed yet" : null,
+      value: onBoxNow ? "on the box now" : story.status === "rolled back" ? "installed, later taken off" : dep.deployed ? `installed ${when(dep.deployed)}` : ev.decision === "reject" ? "kept its model" : ev.decision === "deploy" ? "not installed yet" : null,
       note: [size ? `${size} file` : null, swap, secs(strip.packaging) ? `packed in ${secs(strip.packaging)}` : null].filter(Boolean).join(" · ") || null,
     },
   ];
