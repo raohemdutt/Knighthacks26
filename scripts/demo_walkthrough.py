@@ -54,7 +54,7 @@ USE_CASES = [
     ("talk", "2 Conversation"),
     ("day", "3 The day"),
     ("coach", "4 Study coach"),
-    ("dayrun", "5 Day Run"),
+    ("dayrun", "5 Today's Plan"),
     ("circle", "6 Circle"),
     ("sortit", "7 Sort It"),
     ("impact", "8 Waste Watch / Impact"),
@@ -568,9 +568,11 @@ def uc_coach(run: Run) -> None:
 
 def uc_dayrun(run: Run) -> None:
     run.screen("/dayrun/")
-    script = run.fetch("the scripted day (Demo day)", "/api/dayrun/scenarios/demo", ("plans",), missing="Day Run is not configured",
+    # Today's Plan (the route and the API keep the name Day Run). The screen shows one day, yours; the scripted day
+    # below is reached by presenter links only (/dayrun/?plan=bad, ?plan=good, ?hard=1, ?play=1).
+    script = run.fetch("the scripted day (presenter links)", "/api/dayrun/scenarios/demo", ("plans",), missing="Today's Plan is not configured",
                        note=lambda d: f"plans: {', '.join(d['plans'])}; starts {d.get('now')}")
-    board = run.fetch("the board", "/api/dayrun/board?scenario=demo", ("slots", "blocks", "deadlines"), missing="Day Run is not configured",
+    board = run.fetch("the board", "/api/dayrun/board?scenario=demo", ("slots", "blocks", "deadlines"), missing="Today's Plan is not configured",
                       note=lambda d: f"{len(d['slots'])} open slots, {len(d['blocks'])} fixed blocks, {len(d['deadlines'])} deadline(s)")
     if not script or not board:
         return
@@ -585,10 +587,10 @@ def uc_dayrun(run: Run) -> None:
         run.add(step, FAIL if complaint else PASS, r.seconds, complaint or note(r.data))
         return r.data
 
-    sim("Bad plan fails with reasons", plans.get("bad", []),
+    sim("?plan=bad needs fixing, with reasons", plans.get("bad", []),
         lambda d: None if not d["outcome"]["won"] and d["stars"] == 0 and d["outcome"]["reasons"] else f"won={d['outcome']['won']} stars={d['stars']}",
         lambda d: f"{d['outcome']['summary']} Rejected: {'; '.join(x['reason'] for x in d['rejected']) or 'nothing'}")
-    sim("Good plan wins three stars", plans.get("good", []),
+    sim("?plan=good works, three stars", plans.get("good", []),
         lambda d: None if d["outcome"]["won"] and d["stars"] == 3 else f"won={d['outcome']['won']} stars={d['stars']}",
         lambda d: f"{d['outcome']['summary']} {len(d['routes'])} routes, {d['totals']['walk_minutes']} min walking")
     body = {"scenario": "demo", "start": board["start"], "moves": plans.get("good", []), **({"disruptions": script["disruptions"]} if script.get("disruptions") else {"seed": 7, "count": 2})}
@@ -596,10 +598,32 @@ def uc_dayrun(run: Run) -> None:
     if r.status == 200 and isinstance(r.data, dict):
         kinds = sorted({c["kind"] for c in r.data["changes"]})
         ok = len(r.data["disruptions"]) >= 1 and bool(kinds)
-        run.add("Hard mode re-routes the plan", PASS if ok else FAIL, r.seconds,
+        run.add("?hard=1 re-routes the plan", PASS if ok else FAIL, r.seconds,
                 f"{'; '.join(d['text'] for d in r.data['disruptions'])} -> {', '.join(kinds)}; after: {r.data['after']['outcome']['summary']}")
     else:
-        run.add("Hard mode re-routes the plan", FAIL, r.seconds, f"HTTP {r.status}: {r.detail}")
+        run.add("?hard=1 re-routes the plan", FAIL, r.seconds, f"HTTP {r.status}: {r.detail}")
+    plan = {"scenario": "demo", "start": board["start"], "moves": plans.get("bad", [])}
+    r = run.api.post("/api/dayrun/explain", plan, timeout=60)
+    if r.status == 200 and isinstance(r.data, dict):
+        fixes = r.data.get("fixes", [])
+        ok = bool(fixes) and any(f.get("label") and f.get("moves") for f in fixes) and "risk 0" not in str(r.data)
+        run.add("What needs fixing, each with a fix", PASS if ok else FAIL, r.seconds,
+                f"{r.data.get('headline')}: " + "; ".join(f"{f['problem']} -> {f.get('label') or 'no fix'}" for f in fixes[:3]))
+    else:
+        run.add("What needs fixing, each with a fix", SKIP if r.status == 404 else FAIL, r.seconds, f"HTTP {r.status}: {r.detail}")
+    r = run.api.post("/api/dayrun/edit", {**plan, "moves": plans.get("good", []), "text": "move sleep to 11"}, timeout=60)
+    if r.status == 200 and isinstance(r.data, dict):
+        run.add("Tell Atlas what to change", PASS if r.data.get("ok") and r.data.get("understood") else FAIL, r.seconds, str(r.data.get("understood")))
+    else:
+        run.add("Tell Atlas what to change", SKIP if r.status == 404 else FAIL, r.seconds, f"HTTP {r.status}: {r.detail}")
+    strip = run.fetch("the date strip", "/api/dayrun/days", ("today", "days"), missing="this build has no date strip",
+                      note=lambda d: f"today {d['today']}; {sum(1 for x in d['days'] if x['when'] == 'past' and x['has_data'])} earlier days to open, "
+                                     f"{sum(1 for x in d['days'] if not x['has_data'])} with nothing (not selectable)")
+    if strip:
+        opened = next((x for x in reversed(strip["days"]) if x["when"] == "past" and x["has_data"]), None)
+        if opened:
+            run.fetch("an earlier day", f"/api/dayrun/day?day={opened['day']}", ("blocks", "label"), missing="no such day",
+                      note=lambda d: f"{d['day']}: {d['label']}; {len(d['blocks'])} blocks")
     run.fetch("Play mode: the real campus map", "/api/places/map/ucf", ("buildings", "walk", "places", "attribution"), missing="no drawn campus map on this box",
               note=lambda d: f"{len(d['buildings'])} buildings, {len(d['places'])} places; {d['attribution']}")
     run.fetch("Play mode: a walk on the footpaths", "/api/play/campus-route?from=ucf.eng2&to=ucf.library", ("path", "minutes"), missing="no place packs",

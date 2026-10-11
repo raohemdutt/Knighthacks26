@@ -93,6 +93,17 @@ try {
     eq(`app: ${q}`, r.target?.id ?? null, id);
     if (q.startsWith("where") || q.startsWith("show")) eq(`app kind: ${q}`, kind(q), "app");
   }
+  // Today's Plan: asked from that screen, its own parts win; from elsewhere the old names still find it
+  for (const [q, id] of [
+    ["where's my plan", "dayrun:plan"],
+    ["where do I change my plan", "dayrun:plan"], // the agenda: tap a block to change it
+    ["where do I tell atlas what to change", "dayrun:tell"],
+    ["where's the map", "dayrun:map"],
+    ["show me yesterday", "dayrun:dates"],
+    ["where do I keep this plan", "dayrun:keep"],
+    ["where is what is due", "dayrun:board"],
+  ]) eq(`today's plan: ${q}`, G.resolveApp(q, "/dayrun/").target?.id ?? null, id);
+  eq("today's plan, from Ask", G.resolveApp("where do I find today's plan", "/").target?.id ?? null, "dayrun:plan");
   eq("app: nothing close", G.resolveApp("where is the coffee machine").target, null);
   eq("labels: keys", G.labelsFor("my keys"), ["keys", "key"]);
   eq("labels: a key", G.labelsFor("my key"), ["key", "keys"]);

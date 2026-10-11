@@ -192,6 +192,43 @@ function listenError(code: string): string {
 
 // ---------- choosing a voice ----------
 
+// ---------- a screen's own commands (additive) ----------
+
+/**
+ * A screen can take what was said (or typed) as a command of its own before it is treated as a question. Today's
+ * Plan registers one while it is open: "move lunch to one", "drop the gym", "add the friends' dinner" change the
+ * plan on screen (POST /api/dayrun/edit). The handler answers with the sentence to say back, or null when the
+ * words were not a command for it, in which case the caller carries on as it would have.
+ *
+ *   useEffect(() => setScreenIntent("/dayrun/", handler), [handler]);   // returns the function that clears it
+ *   const said = await screenIntent(pathname, text);                    // null: not for this screen
+ */
+export type ScreenIntent = (text: string) => Promise<string | null>;
+
+const screenIntents = new Map<string, ScreenIntent>();
+const routeKey = (route: string) => (route.endsWith("/") ? route : `${route}/`);
+
+/** Words that start a change to a plan rather than a question about it. */
+export const PLAN_EDIT = /\b(move|shift|push|pull|bring|delay|drop|remove|skip|cancel|delete|add|schedule|swap|switch|shorten|lengthen|extend|trim)\b/i;
+
+export function setScreenIntent(route: string, handler: ScreenIntent): () => void {
+  const key = routeKey(route);
+  screenIntents.set(key, handler);
+  return () => {
+    if (screenIntents.get(key) === handler) screenIntents.delete(key);
+  };
+}
+
+export async function screenIntent(route: string | null | undefined, text: string): Promise<string | null> {
+  const handler = route ? screenIntents.get(routeKey(route)) : undefined;
+  if (!handler) return null;
+  try {
+    return await handler(text);
+  } catch {
+    return null;
+  }
+}
+
 /** macOS and iOS list joke and legacy voices under the same language as the good ones. */
 const NOVELTY =
   /\b(Albert|Bad News|Bahh|Bells|Boing|Bubbles|Cellos|Deranged|Good News|Hysterical|Jester|Organ|Superstar|Trinoids|Whisper|Wobble|Zarvox|Fred|Junior|Kathy|Ralph|Princess|Eddy|Flo|Grandma|Grandpa|Reed|Rocko|Sandy|Shelley)\b/i;
