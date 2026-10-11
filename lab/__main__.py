@@ -41,6 +41,7 @@ from lab.machine import stop
 VERBS: dict[str, str] = {
     "alerts": "lab.machine.alerts:main",
     "bench": "lab.bench:main",
+    "chipsheet": "lab.kernels.chipsheet.ingest:main",
     "credits": "lab.credits:main",
     "digest": "lab.machine.digest:main",
     "draft": "lab.machine.draft:main",
