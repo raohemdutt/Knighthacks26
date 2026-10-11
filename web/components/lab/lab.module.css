@@ -1014,3 +1014,8 @@
     padding-left: 5px;
   }
 }
+
+/* a missing number says why in full; a long event name must wrap inside its tile, not widen the page */
+.stat .note {
+  overflow-wrap: anywhere;
+}

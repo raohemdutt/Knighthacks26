@@ -43,6 +43,7 @@
 - GET  /api/places/map/{pack} the pack's campus map (buildings, paths; © OpenStreetMap contributors) for the phone to draw
 - GET  /api/learning        taught tasks: stage, progress, scores, deployed models (X10)
 - GET  /api/learning/lab    training runs as stories for the Learning lab screen; /api/learning/lab/{run_id} is one
+- GET  /api/learning/lab/bench    the lab's benchmark and energy rows; /experiments is its timeline; POST /routing/simulate
 - GET  /api/profile         who this box serves: name, description, vocabulary, overridden config files
 - GET  /api/league          the League: this week's standings, worst and best with reasons, stake, dares, team waste line
 - GET  /api/league/me       this member's breakdown by target
@@ -104,7 +105,11 @@ from contracts.experience import ApprovalDecided, QuestionAsked
 from contracts.learning import TaskSpec
 from contexts.capture.api import capture_router
 from contexts.learning.api import learning_router
+from contexts.learning.application.lab_runs import attach as attach_trainer_runs
+from contexts.learning.application.lab_runs import default_runs_dir
 from contexts.learning.lab_api import lab_router
+from contexts.learning.lab_bench_api import lab_bench_router
+from contexts.learning.lab_import import lab_import_router
 from contexts.telemetry.runtime_stats import build_runtime_stats
 from runtime.api import runtime_router
 from runtime.stats_api import stats_router
@@ -212,6 +217,12 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         app.include_router(capture_router(atlas.capture))
     if atlas.learning:  # GET /api/learning (X10)
         app.include_router(learning_router(atlas.learning, publish=atlas.bus.publish, guard=authorized))
+    # GET /api/learning/lab/bench, /experiments, POST /routing/simulate: the lab's recorded numbers (before {run_id})
+    app.include_router(lab_bench_router())
+    if atlas.lab_view:  # the trainer's own step files, folded into the same stories as they are written
+        attach_trainer_runs(atlas.lab_view, default_runs_dir(atlas.settings.data_dir))
+        # POST /api/learning/lab/import: a run's telemetry.jsonl (or eval scores, or manifest) pushed from the lab's side
+        app.include_router(lab_import_router(atlas.lab_view, atlas.bus.publish, guard=authorized))
     if atlas.lab_view:  # GET /api/learning/lab, /api/learning/lab/{run_id}: the Learning lab screen
         app.include_router(lab_router(atlas.lab_view, current_model=lambda: {
             "version": atlas.qa.runtime.model_info().version, "source": "the runtime on this box (the model that answers)"}))
