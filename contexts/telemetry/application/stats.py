@@ -32,9 +32,11 @@ calls nothing: no model server, pod, hub or Jetson tool is asked. A figure takes
 On a tie the metrics file is cited first, then the ledger (a ledger backfill copies metrics rows with their times).
 When no candidate exists the figure is null and its reason names the metric, the node and the events looked for.
 
+detector_fps also comes from the capture service's own timing of its detector calls (`detector`, which the gateway
+passes in: 1000 / the mean milliseconds of the newest calls), so on a box with cameras it fills by itself.
+
 Some figures still have no producer on the box, so they stay null until one is built or a number is recorded by hand
-(`python -m lab ledger add ...`, or a row in lab/refine/metrics.jsonl): nothing writes a detector.fps row, and nothing
-publishes `telemetry.request` yet (the runtime client does not report the on-device model's answers and captions, and
+(`python -m lab ledger add ...`, or a row in lab/refine/metrics.jsonl): nothing publishes `telemetry.request` yet (the runtime client does not report the on-device model's answers and captions, and
 the Jetson's only telemetry source, tegrastats, publishes power readings). `telemetry.train.step` arrives only when
 the lab pushes a run's telemetry.jsonl to the box, and `learning.run.evaluated` only with a pushed scores.json, so until
 then a deployed model's before and after scores are null with their reason. This endpoint does not measure anything
@@ -45,6 +47,7 @@ worker thread, so a slow disk or a held lock never stalls the loop.
 """
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -73,8 +76,7 @@ class Spec:
 
 
 FIGURES = (
-    Spec("detector_fps", "frames/s", "detector.fps", JETSON, no_telemetry=(
-        "the gateway keeps no detector timing (GET /capture/status counts detections without timing them)")),
+    Spec("detector_fps", "frames/s", "detector.fps", JETSON, telemetry="detector", telemetry_node=JETSON),
     Spec("student_tok_s", "tok/s", "student.decode_tok_s", JETSON, telemetry="decode", telemetry_node=JETSON),
     Spec("caption_latency_s", "s", "student.caption_s", JETSON, telemetry="caption", telemetry_node=JETSON),
     Spec("trainer_samples_per_s", "samples/s", "trainer.samples_per_s", None,
@@ -90,11 +92,15 @@ CAPTION = "caption"  # RequestWindow.kind of an on-device caption (contracts/tel
 
 class RuntimeStats:
     def __init__(self, evals: EvalScores, projection: TelemetryProjection | None = None,
-                 lab: LabRecords | None = None, runs: TrainRuns | None = None) -> None:
+                 lab: LabRecords | None = None, runs: TrainRuns | None = None,
+                 detector: Callable[[], dict[str, Any] | None] | None = None) -> None:
         self.evals = evals
         self.projection = projection  # None when the gateway runs no telemetry
         self.lab = lab or LabRecords()
         self.runs = runs or TrainRuns()  # subscribed by build_runtime_stats; on with or without a sampler
+        # The capture service's detector timing ({camera_id, fps, ms, samples, ts}), passed in by the gateway so this
+        # context imports nothing of perception; None when the box runs no cameras.
+        self.detector = detector
 
     async def snapshot(self) -> dict[str, Any]:
         telemetry = {s.key: self._from_telemetry(s) for s in FIGURES}  # (figure or None, why not)
@@ -121,6 +127,8 @@ class RuntimeStats:
         """The figure computed from the projection, or None and why not."""
         if s.telemetry is None:
             return None, s.no_telemetry
+        if s.telemetry == "detector":
+            return self._detector_fps(s.telemetry_node, s.unit)
         if s.telemetry == "run":
             return self._run_minutes(s.telemetry_node)
         if s.telemetry == "loss":
@@ -137,6 +145,20 @@ class RuntimeStats:
         value, used, last = rate
         return Figure(value=value, unit=s.unit, node=node, ts=last,
                       source=f"telemetry.request: {used} window{'s' if used != 1 else ''} from node {node}"), ""
+
+    def _detector_fps(self, node: str, unit: str) -> tuple[Figure | None, str]:
+        if self.detector is None:
+            return None, "this box runs no cameras, so no detector is timed (ATLAS_CAPTURE is off or no camera is set)"
+        try:
+            speed = self.detector()
+        except Exception as exc:  # a camera going away must not break the endpoint
+            return None, f"the detector timing could not be read ({type(exc).__name__})"
+        if not speed or not speed.get("fps"):
+            return None, "the detector has not run on a frame yet"
+        n = speed["samples"]
+        return Figure(value=speed["fps"], unit=unit, node=node, ts=speed["ts"],
+                      source=(f"GET /capture/status: {speed['camera_id']}'s detector, 1000 / the mean of its newest "
+                              f"{n} call{'s' if n != 1 else ''} ({speed['ms']} ms each)")), ""
 
     def _loss(self, node: str) -> tuple[Figure | None, str]:
         runs = {k: r for k, r in self.runs.on_node(node).items() if r["loss"] is not None}

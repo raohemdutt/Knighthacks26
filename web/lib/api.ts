@@ -2281,6 +2281,8 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   demoZones: () => post<ZoneSet>("/api/zones/demo", {}),
   vaultPolicy: (signal?: AbortSignal) => get<VaultPolicy>("/vault/policy", undefined, signal),
   runtimeModels: (signal?: AbortSignal) => get<RuntimeModels>("/runtime/models", undefined, signal),
+  /** GET /runtime/stats (R5): the box's and the lab's numbers, each with its record (types in lib/stats.ts). */
+  runtimeStats: (signal?: AbortSignal) => get<import("./stats").RuntimeStats>("/runtime/stats", undefined, signal),
   voiceStatus: (signal?: AbortSignal) => get<VoiceStatus>("/api/voice/status", undefined, signal),
   voiceTalk: () => post<VoiceStatus>("/api/voice/talk", {}),
   voiceStop: () => post<VoiceStatus>("/api/voice/stop", {}),

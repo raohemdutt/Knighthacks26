@@ -191,6 +191,18 @@ const MORE: MoreTab[] = [
     ),
   },
   {
+    href: "/stats",
+    group: "Home",
+    label: "Box stats",
+    keywords: "fps tok/s speed numbers runtime benchmarks jetson pods",
+    icon: (
+      <>
+        <path d="M4.500 16.500a7.500 7.500 0 1 1 15 0" />
+        <path d="M12 16.500l3.500-4.500M3.500 19.500h17" />
+      </>
+    ),
+  },
+  {
     href: "/circle",
     group: "Friends",
     label: "Circle",

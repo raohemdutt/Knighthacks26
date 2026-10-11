@@ -113,7 +113,11 @@ def test_status_endpoint(clip, tmp_path):
     app = FastAPI()
     app.include_router(capture_router(service))
     body = TestClient(app).get("/capture/status").json()
-    assert set(body["cameras"]["cam-desk"]) == {"status", "fps_actual", "dropped", "detected", "errors"}
+    cam = body["cameras"]["cam-desk"]
+    assert set(cam) == {"status", "fps_actual", "dropped", "detected", "errors", "detector_fps", "detector_ms"}
+    assert cam["detector_ms"] >= 0 and (cam["detector_fps"] is None or cam["detector_fps"] > 0)
+    speed = service.detector_speed()
+    assert speed["camera_id"] == "cam-desk" and 1 <= speed["samples"] <= 100 and speed["ts"]
 
 
 def test_the_detector_is_only_built_when_a_frame_arrives(tmp_path):

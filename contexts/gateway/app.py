@@ -266,7 +266,8 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
     app.include_router(voice_router(guard=authorized), prefix="/api")  # GET /api/voice/status, POST /api/voice/talk|stop|enabled (X16)
     app.include_router(runtime_router(ModelStore(atlas.settings.data_dir / "models"), llm_url=atlas.settings.llm_url))  # GET /runtime/models (R7)
     app.include_router(stats_router(build_runtime_stats(  # GET /runtime/stats (R5), + the ledger the lab pushed
-        atlas.bus, atlas.telemetry, imported_dir=imported_state_dir(atlas.settings.data_dir)).snapshot))
+        atlas.bus, atlas.telemetry, imported_dir=imported_state_dir(atlas.settings.data_dir),
+        detector=atlas.capture.detector_speed if atlas.capture else None).snapshot))  # detector_fps from its own timing
 
     @app.get("/health")
     async def health():

@@ -105,8 +105,19 @@ class CaptureService:
             reader.stop()
 
     def stats(self) -> dict[str, dict]:
-        return {cid: {**r.stats(), "detected": self.pipelines[cid].detected, "errors": self.pipelines[cid].errors}
-                for cid, r in self.readers.items()}
+        out = {}
+        for cid, r in self.readers.items():
+            p = self.pipelines[cid]
+            speed = p.detector_speed() or {}
+            out[cid] = {**r.stats(), "detected": p.detected, "errors": p.errors,
+                        "detector_fps": speed.get("fps"), "detector_ms": speed.get("ms")}
+        return out
+
+    def detector_speed(self) -> dict | None:
+        """The detector's speed on the camera timed most recently ({camera_id, fps, ms, samples, ts}), for
+        GET /runtime/stats; None before any camera has run its detector."""
+        timed = [{"camera_id": cid, **s} for cid, p in self.pipelines.items() if (s := p.detector_speed())]
+        return max(timed, key=lambda s: s["ts"]) if timed else None
 
     def snapshot(self, camera_id: str, clear: bool = False) -> bytes | None:
         """The newest frame as a JPEG for the phone's Live screen, faces blurred unless the policy says otherwise.
