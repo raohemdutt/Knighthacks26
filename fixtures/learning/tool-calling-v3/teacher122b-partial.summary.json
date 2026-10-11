@@ -1,0 +1,13 @@
+{
+  "status": "partial: stopped at 8:52 AM ET by Ilan's call (demo prep); not scored",
+  "rows_total": 721,
+  "asked": 494,
+  "outcomes": {
+    "no_call": 6,
+    "kept": 488
+  },
+  "labeled_by": "Qwen3.5-122B pair",
+  "checkpoint": "/home/jovyan/models/Qwen3.5-122B-A10B-GPTQ-Int4",
+  "how": "lab/v3_teacher122b.py (ask_one of lab/fixture_dataset_v3_teacher.py, 16 workers, the box memory replayed to each row's clock)",
+  "resume": "rerun the same command with --out on this file: rows already answered are skipped"
+}
