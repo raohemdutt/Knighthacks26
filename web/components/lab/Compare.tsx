@@ -5,6 +5,7 @@ import { Empty } from "@/components/States";
 import ui from "@/components/ui.module.css";
 import { ApiError, api } from "@/lib/api";
 import { isLiveRun, isNum, type LabStory } from "@/lib/lab";
+import { dayTime } from "@/lib/format";
 import {
   COMPARE_ROWS,
   type CompareRun,
@@ -18,10 +19,15 @@ import {
   runName,
   timesX,
 } from "@/lib/labCompare";
+import { said, togetherHero } from "@/lib/labWords";
 import { useFetch } from "@/lib/useFetch";
+import { usePoll } from "@/lib/usePoll";
 import b from "./bench.module.css";
 import c from "./compare.module.css";
+import { useWidth } from "./Labels";
 import { type BuddiesState, LearningBuddies } from "./LearningBuddies";
+import { ChartWords, Fold, Hero, Words } from "./Story";
+import s from "./story.module.css";
 
 /**
  * Alone vs with a friend (L31): act 1 trained on one person's examples, act 2 on those pooled with a friend's, side by
@@ -43,15 +49,15 @@ const NODE_TITLE: Record<(typeof NODES)[number], string> = { "pod-c": "Pod C, th
 
 type Loaded = { data: LabCompare | null; why: string | null };
 
-/** The comparison, with committed fixtures taken out; act 1 and act 2 picked from what the box recorded. */
-async function loadCompare(a: string | null, bId: string | null, signal: AbortSignal): Promise<Loaded> {
+/** The box's own comparison, with committed fixtures taken out; act 1 and act 2 picked from what the box recorded. */
+async function loadOwn(a: string | null, bId: string | null, signal: AbortSignal): Promise<Loaded> {
   let raw: LabCompare;
   try {
     raw = await api.labCompare(a, bId, signal);
   } catch (err) {
     if (signal.aborted) throw err;
     const status = err instanceof ApiError ? err.status : 0;
-    return { data: null, why: status === 404 ? "The gateway does not serve the comparison yet." : status === 0 ? "The gateway could not be reached." : `The gateway answered ${status}.` };
+    return { data: null, why: status === 404 ? "This box has not recorded a run alone and a run with a friend yet." : status === 0 ? "The box could not be reached." : `The box answered ${status}.` };
   }
   let d = recordedOnly(raw);
   if (!a && !bId) {
@@ -60,6 +66,22 @@ async function loadCompare(a: string | null, bId: string | null, signal: AbortSi
     else if (!pick.a && !pick.b) d = { ...d, a: null, b: null, ratios: null };
   }
   return { data: d, why: null };
+}
+
+/**
+ * What the Together tab shows: the box's own comparison when it has one, else the lab's recorded rehearsal, which is a
+ * second source with a name of its own (GET /api/learning/lab/rehearsal) and always carries its label (`record`). The
+ * two are never mixed. With neither, `data` is null and the tab is not shown at all (app/lab/page.tsx).
+ */
+export async function loadTogether(a: string | null, bId: string | null, signal: AbortSignal): Promise<Loaded> {
+  const own = await loadOwn(a, bId, signal);
+  if (own.data?.a || own.data?.b) return own;
+  try {
+    return { data: await api.labRehearsal(signal), why: own.why };
+  } catch (err) {
+    if (signal.aborted) throw err;
+    return { data: null, why: own.why };
+  }
 }
 
 /** The loss at each reported step, from the run's story. */
@@ -134,7 +156,6 @@ function Act({ n, run, title }: { n: 1 | 2; run: CompareRun | null; title: strin
         ))}
       </dl>
       {run.reason ? <p className={b.note}>{run.reason}.</p> : null}
-      <p className={`${b.note} ${b.code}`}>{run.run_id}</p>
     </article>
   );
 }
@@ -146,8 +167,8 @@ function Ratios({ ratios }: { ratios: Record<string, number | null> }) {
   return (
     <div className={b.card}>
       <div className={b.cardHead}>
-        <h3>Act 2 over act 1</h3>
-        <span className={b.note}>1x means the same; below 1x on a per-example line means the friend made it cheaper.</span>
+        <h3>With a friend, against alone</h3>
+        <span className={b.note}>Each bar is the pooled run divided by the run alone: 1x is the same, 2x is double. Green is where pooling did better.</span>
       </div>
       <ul className={c.ratios}>
         {keys.map((r) => {
@@ -155,7 +176,7 @@ function Ratios({ ratios }: { ratios: Record<string, number | null> }) {
           const good = (LOWER_IS_BETTER.has(r.key) && x < 1) || (HIGHER_IS_BETTER.has(r.key) && x > 1);
           return (
             <li key={r.key} className={c.ratioRow}>
-              <span className={c.ratioLabel}>{r.group === "Seconds" ? `${r.label}, seconds` : r.label}</span>
+              <span className={c.ratioLabel}>{r.group === "Seconds" ? `${r.label}, seconds` : r.group === "Joules" ? `${r.label}, joules` : r.label}</span>
               <span className={c.ratioTrack} aria-hidden="true">
                 <span className={c.ratioOne} />
                 <span className={`${c.ratioBar} ${good ? c.ratioBarGood : ""}`} style={{ width: `${Math.min(100, (x / 2.5) * 100)}%` }} />
@@ -171,10 +192,11 @@ function Ratios({ ratios }: { ratios: Record<string, number | null> }) {
 
 /* ---------- the three power traces on one time axis ---------- */
 
-function Panel({ node, ra, rb, maxT, idle, note, last }: { node: (typeof NODES)[number]; ra: CompareTrace | undefined; rb: CompareTrace | undefined; maxT: number; idle: number | null; note: string | null; last: boolean }) {
-  const W = 640;
-  const H = last ? 128 : 108;
-  const pad = { l: 44, r: 10, t: 10, b: last ? 26 : 8 };
+function Panel({ node, ra, rb, maxT, idle, note, last, width }: { node: (typeof NODES)[number]; ra: CompareTrace | undefined; rb: CompareTrace | undefined; maxT: number; idle: number | null; note: string | null; last: boolean; width: number }) {
+  // drawn at the card's real width, so the axis labels stay 12 px on a phone instead of shrinking with the picture
+  const W = Math.max(width, 260);
+  const H = last ? 136 : 112;
+  const pad = { l: 46, r: 10, t: 10, b: last ? 30 : 8 };
   const all = [...(ra?.points ?? []), ...(rb?.points ?? [])];
   const maxW = Math.max(20, idle ?? 0, ...all.map((p) => p[1])) * 1.1;
   const x = (t: number) => pad.l + (Math.max(0, Math.min(t, maxT)) / maxT) * (W - pad.l - pad.r);
@@ -184,7 +206,7 @@ function Panel({ node, ra, rb, maxT, idle, note, last }: { node: (typeof NODES)[
       .filter((p) => p[0] >= 0 && p[0] <= maxT)
       .map((p) => `${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`)
       .join(" ");
-  const step = maxT > 240 ? 60 : 30;
+  const step = (maxT > 240 ? 60 : 30) * (W < 420 ? 2 : 1); // fewer ticks on a phone, so "150 s" and "180 s" do not touch
   const ticks: number[] = [];
   for (let t = 0; t <= maxT; t += step) ticks.push(t);
   const peak = (tr?: CompareTrace) => (tr?.points.length ? Math.max(...tr.points.map((p) => p[1])) : null);
@@ -200,7 +222,7 @@ function Panel({ node, ra, rb, maxT, idle, note, last }: { node: (typeof NODES)[
           {pb !== null ? `${Math.round(pb)} W` : "no samples"}
         </span>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className={c.svg} role="img" aria-label={`${NODE_TITLE[node]}: watts over each act, act 1 dashed, act 2 solid${idle !== null ? `, idle floor ${idle} W` : ""}`}>
+      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className={c.svg} role="img" aria-label={`${NODE_TITLE[node]}: power in watts over each run, second by second; alone dashed, with a friend solid${idle !== null ? `; idle it draws ${idle} W` : ""}`}>
         {[0, 0.5, 1].map((f) => (
           <g key={f}>
             <line x1={pad.l} x2={W - pad.r} y1={y(f * maxW)} y2={y(f * maxW)} className={c.grid} />
@@ -214,8 +236,8 @@ function Panel({ node, ra, rb, maxT, idle, note, last }: { node: (typeof NODES)[
         ))}
         {last
           ? ticks.map((t) => (
-              <text key={t} x={x(t)} y={H - 6} className={c.axis} textAnchor="middle">
-                {t} s
+              <text key={t} x={x(t)} y={H - 10} className={c.axis} textAnchor={t === 0 ? "start" : "middle"}>
+                {t === 0 ? (W < 620 ? "0 s" : "0 s from the start") : `${t} s`}
               </text>
             ))
           : null}
@@ -242,22 +264,31 @@ function Traces({ ra, rb }: { ra: CompareRun; rb: CompareRun | null }) {
     return row ? (row.calibrated_w ?? row.quiet_w ?? null) : null;
   };
   const noteOf = (n: string) => (rb?.idle ?? ra.idle)?.[n]?.note ?? null;
+  const [ref, width] = useWidth();
+  const peak = (tr?: CompareTrace) => (tr?.points.length ? Math.round(Math.max(...tr.points.map((p) => p[1]))) : null);
   return (
-    <div className={b.card}>
+    <div className={b.card} data-guide="lab:compare-power">
       <div className={b.cardHead}>
-        <h3>Power, on one clock</h3>
+        <h3>Power while each run worked, second by second</h3>
         <span className={c.legend}>
-          <span className={c.keyA}>Act 1, alone</span>
-          <span className={c.keyB}>Act 2, with a friend</span>
-          <span className={c.keyIdle}>idle floor</span>
+          <span className={c.keyA}>Alone</span>
+          <span className={c.keyB}>With a friend</span>
+          <span className={c.keyIdle}>idle</span>
         </span>
       </div>
-      <span className={b.note}>Seconds from each act&apos;s own start, so the two acts line up. Watts as each meter read them.</span>
-      <div className={c.stack}>
-        {NODES.map((n, i) => (
-          <Panel key={n} node={n} ra={ra.traces[n]} rb={rb?.traces[n]} maxT={maxT} idle={idleOf(n)} note={noteOf(n)} last={i === NODES.length - 1} />
-        ))}
+      <span className={b.note}>Watts over each run, counted from its own start. Dotted: what the machine draws doing nothing.</span>
+      <div className={c.stack} ref={ref}>
+        {width > 0 ? NODES.map((n, i) => <Panel key={n} node={n} ra={ra.traces[n]} rb={rb?.traces[n]} maxT={maxT} idle={idleOf(n)} note={noteOf(n)} last={i === NODES.length - 1} width={width} />) : null}
       </div>
+      <ChartWords>
+        <b>The chart in words.</b>{" "}
+        {NODES.map((n) => {
+          const a = peak(ra.traces[n]);
+          const z = peak(rb?.traces[n]);
+          const idle = idleOf(n);
+          return `${NODE_TITLE[n]}: ${a !== null ? `peaked at ${a} W alone` : "no samples alone"}${rb ? (z !== null ? `, ${z} W with a friend` : ", no samples with a friend") : ""}${idle !== null ? `; idle ${said(idle)} W` : ""}.`;
+        }).join(" ")}
+      </ChartWords>
     </div>
   );
 }
@@ -281,7 +312,7 @@ function Picker({ label, value, runs, onPick }: { label: string; value: string |
 }
 
 export function Compare({ a, b: bId, onPick, forceReduced }: { a: string | null; b: string | null; onPick: (which: "a" | "b", id: string) => void; forceReduced?: boolean }) {
-  const res = useFetch((signal) => loadCompare(a, bId, signal), `compare-${a ?? ""}-${bId ?? ""}`);
+  const res = useFetch((signal) => loadTogether(a, bId, signal), `compare-${a ?? ""}-${bId ?? ""}`);
   const list = useFetch((signal) => api.lab(false, signal).catch(() => null), "list");
   const data = res.data?.data ?? null;
   const ra = data?.a ?? null;
@@ -295,20 +326,11 @@ export function Compare({ a, b: bId, onPick, forceReduced }: { a: string | null;
   const story = useFetch((signal) => (focusId ? api.labRun(focusId, false, signal).catch(() => null) : Promise.resolve(null)), `story-${focusId ?? ""}`);
   const focus = story.data && !story.data.sample ? story.data : null;
 
-  // Look again every 3 s until both acts are recorded, and while a run is still going.
-  const reloadRes = res.reload;
-  const reloadList = list.reload;
-  const reloadStory = story.reload;
-  const watching = !complete || !!live;
-  useEffect(() => {
-    if (!watching) return;
-    const id = window.setInterval(() => {
-      reloadRes();
-      reloadList();
-      reloadStory();
-    }, POLL_MS);
-    return () => window.clearInterval(id);
-  }, [watching, reloadRes, reloadList, reloadStory]);
+  // Look again every 3 s until both acts are recorded, and while a run is still going; while the lab's rehearsal
+  // stands in for a box with no record of its own, every 15 s. Never while the last ask is still out (lib/usePoll.ts).
+  const rehearsal = data?.record ?? null;
+  usePoll([res, list, story], !rehearsal && (!complete || !!live), POLL_MS);
+  usePoll([res, list], !!rehearsal, 15_000);
 
   const buddies = useMemo(() => {
     const loss = lossOf(focus);
@@ -320,16 +342,21 @@ export function Compare({ a, b: bId, onPick, forceReduced }: { a: string | null;
     // only act 1 recorded and nothing training now: the box rests
     const run = live ? null : state === "with-friend" ? rb : ra;
     const liveJpe = focus && isNum(focus.power.j_per_sample) ? focus.power.j_per_sample.value : null;
+    // A run that has finished training but is not installed yet is still "live" for the page (it looks again every 3 s),
+    // but it is not training: once its record is in, the card shows the recorded joules for each example, and the
+    // caption never says "training now" about a run whose training is over.
+    const recorded = live ? ([ra, rb].find((r) => r?.run_id === live.run_id) ?? null) : null;
+    const trainingNow = live?.status === "training";
     return {
       state,
-      steps: Math.max(storySteps, stepsOf(run)),
+      steps: Math.max(storySteps, stepsOf(run ?? recorded)),
       loss,
-      joulesPerExample: live ? liveJpe : (run?.j_per_example ?? null),
+      joulesPerExample: live ? (liveJpe ?? recorded?.j_per_example ?? null) : (run?.j_per_example ?? null),
       joulesPerExampleAlone: state === "with-friend" ? (ra?.j_per_example ?? null) : null,
       examplesRatio: state === "with-friend" ? (data?.ratios?.examples ?? null) : null,
       friends: state === "with-friend" ? Math.max(1, (rb?.members ?? 2) - 1) : 0,
-      lossReason: loss.length ? null : run ? "The per-step loss of this run is not in the box's log." : null,
-      caption: live ? `Training now on the box: ${live.run_id}` : run ? `${runName(run)}: ${run.run_id}` : null,
+      lossReason: loss.length ? null : run ? "How the loss fell, step by step, has not reached the box for this run." : null,
+      caption: live ? (trainingNow ? "Training now on the box." : "The newest run has finished training. It is not installed on the box yet.") : run ? `The run shown: ${runName(run).toLowerCase()}.` : null,
     };
   }, [focus, live, complete, ra, rb, data]);
 
@@ -342,11 +369,31 @@ export function Compare({ a, b: bId, onPick, forceReduced }: { a: string | null;
     );
 
   const why = res.data?.why ?? null;
-  const choices = (data?.runs ?? []).map((r) => ({ run_id: r.run_id, label: `${runName(r)}${r.measured ? "" : ", no power trace"}, ${r.run_id}` }));
+  // A run in the picker by what it is and when it started, not by its id. The relay stamps a run "MMDD-HHMMSS" on its
+  // own clock; a run read from the box's log carries a full time.
+  const stampWords = (stamp: string | null): string => {
+    const m = /^(\d{2})(\d{2})-(\d{2})(\d{2})\d{2}$/.exec(stamp ?? "");
+    if (m) {
+      const d = new Date(new Date().getFullYear(), Number(m[1]) - 1, Number(m[2]), Number(m[3]), Number(m[4]));
+      return d.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    }
+    return stamp && !Number.isNaN(Date.parse(stamp)) ? dayTime(stamp) : "";
+  };
+  const choices = (data?.runs ?? []).map((r) => {
+    const name = runName(r);
+    return { run_id: r.run_id, label: `${name === r.run_id ? "A run with no alone or pooled label" : name}${r.measured ? "" : ", no power measured"}${stampWords(r.stamp) ? ` · ${stampWords(r.stamp)}` : ""}` };
+  });
+  const hero = togetherHero(ra, rb, data?.ratios ?? null);
 
   return (
     <div className={b.page}>
       <Head />
+      {rehearsal ? (
+        <span className={s.recordTag} data-guide="lab:rehearsal-tag" title={rehearsal.file}>
+          {rehearsal.label}
+        </span>
+      ) : null}
+      {hero ? <Hero label="Alone, or with a friend?" hero={hero} guide="lab:friend" /> : null}
       <LearningBuddies
         state={buddies.state}
         steps={buddies.steps}
@@ -362,29 +409,30 @@ export function Compare({ a, b: bId, onPick, forceReduced }: { a: string | null;
 
       {!ra && !rb ? (
         <>
-          <Empty title="No runs yet; start the loop">
-            This tab shows only what the box has recorded. Act 1 (alone) and act 2 (with a friend) appear here on their own as the live loop finishes them; the
-            page looks again every 3 seconds.
-          </Empty>
-          {why ? <p className={b.note}>{why} Looking again every 3 seconds.</p> : null}
-          {data?.missing.length ? <p className={b.note}>No recorded run with the id {data.missing.join(" or ")}.</p> : null}
+          <Empty title="Nothing to compare yet">{why ?? "No run alone and no run with a friend is recorded."} This page looks again every 3 seconds.</Empty>
         </>
       ) : (
         <>
-          {choices.length > 1 ? (
-            <div className={c.pickers}>
-              <Picker label="Act 1" value={ra?.run_id ?? null} runs={choices} onPick={(id) => onPick("a", id)} />
-              <Picker label="Act 2" value={rb?.run_id ?? null} runs={choices} onPick={(id) => onPick("b", id)} />
-            </div>
-          ) : null}
-          <div className={c.acts}>
-            <Act n={1} run={ra} title={ra ? runName(ra).replace(/ \(.*\)$/, "") : "Alone"} />
-            <Act n={2} run={rb} title={rb ? runName(rb).replace(/ \(.*\)$/, "") : "With a friend"} />
-          </div>
-          {complete && data?.ratios ? <Ratios ratios={data.ratios} /> : null}
           {ra ? <Traces ra={ra} rb={rb} /> : rb ? <Traces ra={rb} rb={null} /> : null}
-          <div className={b.card}>
-            <h3>Where these numbers come from</h3>
+          {!complete ? <p className={b.note}>Waiting for the other run; looking again every 3 seconds.</p> : null}
+          <Fold summary="Every number, stage by stage" guide="lab:compare-detail">
+            {choices.length > 1 ? (
+              <div className={c.pickers}>
+                <Picker label="Alone" value={ra?.run_id ?? null} runs={choices} onPick={(id) => onPick("a", id)} />
+                <Picker label="With a friend" value={rb?.run_id ?? null} runs={choices} onPick={(id) => onPick("b", id)} />
+              </div>
+            ) : null}
+            <div className={c.acts}>
+              <Act n={1} run={ra} title={ra ? runName(ra).replace(/ \(.*\)$/, "") : "Alone"} />
+              <Act n={2} run={rb} title={rb ? runName(rb).replace(/ \(.*\)$/, "") : "With a friend"} />
+            </div>
+            {complete && data?.ratios ? <Ratios ratios={data.ratios} /> : null}
+          </Fold>
+          <Fold summary="Where these numbers come from" guide="lab:compare-sources">
+            {rehearsal ? <span className={b.note}>This is the lab&apos;s own recording of the loop on its two pods, not a run of this box. This box has no comparison of its own yet; when it records one, that is shown instead.</span> : null}
+            <span className={b.note}>
+              Every joule here is everything the meter read while that stage ran. What a machine draws doing nothing (&ldquo;idle&rdquo;) is shown beside it and never taken off.
+            </span>
             {[ra, rb].map((r) =>
               r ? (
                 <span key={r.run_id} className={`${b.note} ${b.code}`}>
@@ -392,10 +440,10 @@ export function Compare({ a, b: bId, onPick, forceReduced }: { a: string | null;
                 </span>
               ) : null,
             )}
-            {(ra ?? rb)?.source.rule ? <span className={b.note}>Rule: {(ra ?? rb)!.source.rule}.</span> : null}
+            {(ra ?? rb)?.source.rule ? <span className={b.note}>The lab&apos;s rule, in its own words: {(ra ?? rb)!.source.rule}.</span> : null}
             {(ra ?? rb)?.source.split ? <span className={b.note}>{(ra ?? rb)!.source.split}.</span> : null}
-            {!complete ? <span className={b.note}>Waiting for the other act; looking again every 3 seconds.</span> : null}
-          </div>
+          </Fold>
+          <Words keys={["teacher", "student", "joules", "loss"]} />
         </>
       )}
     </div>
@@ -405,11 +453,8 @@ export function Compare({ a, b: bId, onPick, forceReduced }: { a: string | null;
 function Head() {
   return (
     <div className={ui.pageHead}>
-      <h1>Alone vs with a friend</h1>
-      <p className={b.sub}>
-        The same task trained twice: once on one person&apos;s examples, then pooled with a friend&apos;s. Joules are gross, as the meters read them, with the
-        idle floor beside each one, never subtracted.
-      </p>
+      <h1>Together</h1>
+      <p className={b.sub}>The same task trained twice: alone, then with a friend&apos;s examples pooled in.</p>
     </div>
   );
 }

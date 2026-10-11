@@ -35,10 +35,12 @@ import {
   show,
   within,
 } from "@/lib/lab";
+import { dayTime } from "@/lib/format";
+import { lossWords, plainReason, runState } from "@/lib/labWords";
 import { GateChart, TrainingChart } from "./Charts";
-import { DeployButton } from "./DeployButton";
 import lab from "./lab.module.css";
 import { LearningBuddies } from "./LearningBuddies";
+import { Fold, SourceChip, StateLine, Term } from "./Story";
 
 /* ---------- small pieces ---------- */
 
@@ -48,22 +50,25 @@ function smokeChip(m: LabMeasured | undefined): string {
   return m?.chip ? `the lab's trainer, ${chipShort(m.chip)}` : "the lab's trainer";
 }
 
-/** One number as a tile. A number the log does not hold says so, with the reason, instead of showing a dash. */
-function Stat({ n, label, value, tone }: { n: LabNum; label?: string; value?: string; tone?: "good" | "bad" }) {
+/**
+ * One number as a tile. A number the log does not hold says so in plain words instead of showing a dash; the reason as
+ * the gateway wrote it, with its event names, is in the Sources sheet under "Not recorded".
+ */
+function Stat({ n, label, value, tone }: { n: LabNum; label?: React.ReactNode; value?: string; tone?: "good" | "bad" }) {
   const has = isNum(n);
   return (
     <div className={lab.stat} title={has ? `Source: ${n.source?.ref ?? ""}` : (n.reason ?? "")}>
       <span className={`${has ? lab.statNum : lab.statNone} ${tone === "good" ? lab.good : tone === "bad" ? lab.bad : ""}`}>
-        {has ? (value ?? show(n)) : "Not in the log"}
+        {has ? (value ?? show(n)) : "Not recorded"}
         {has && n.low_confidence ? <span className={lab.low}>low confidence</span> : null}
       </span>
       <span className={lab.statLabel}>{label ?? n.label}</span>
-      {!has && n.reason ? <span className={lab.note}>{n.reason}</span> : null}
+      {!has && n.reason ? <span className={lab.note}>{plainReason(n.reason)}</span> : null}
     </div>
   );
 }
 
-function Section({ n, title, now, children, className }: { n: number; title: string; now: boolean; children: React.ReactNode; className?: string }) {
+function Section({ n, title, now, children, className }: { n: number; title: React.ReactNode; now: boolean; children: React.ReactNode; className?: string }) {
   return (
     <section className={`${lab.sec} ${now ? lab.secNow : ""} ${className ?? ""}`} aria-labelledby={`lab-sec-${n}`}>
       <div className={lab.secHead}>
@@ -131,15 +136,19 @@ function TaughtFrom({ story }: { story: LabStory }) {
           <>
             <b>{d.examples.value}</b> examples left the box for this task
           </>
+        ) : train !== null && held !== null ? (
+          <>
+            This run had <b>{train + held}</b> examples
+          </>
         ) : (
-          "The examples this run trained on"
+          "How many examples this run had is not recorded on the box"
         )}
         {d.approval.approved ? (
           <>
             . You approved this export at <b>{clock(d.approval.approved)}</b>.
           </>
         ) : (
-          <>. {d.approval.approved_reason ?? d.examples.reason}</>
+          <>. The box&apos;s log holds no export of yours for this run, and so no approval: its examples did not leave this box through an approval card.</>
         )}
       </p>
       {d.approval.reason ? <p className={lab.note}>The approval card said: “{d.approval.reason}”.</p> : null}
@@ -154,13 +163,13 @@ function TaughtFrom({ story }: { story: LabStory }) {
             </div>
           </div>
           <p className={lab.note}>
-            The held-back questions are the test. The model never trains on them
-            {isNum(d.held_out_groups) ? `, and they cover ${d.held_out_groups.value} different cases, each asked in several wordings` : ""}.
+            The <Term k="heldout">held-back questions</Term> are the test. The model never trains on them
+            {isNum(d.held_out_groups) ? `, and they cover ${d.held_out_groups.value} different cases${d.held_out_groups.value < held ? ", each asked in several wordings" : ""}` : ""}.
           </p>
         </>
       ) : (
         <p className={lab.gap}>
-          <b>No split to show.</b> {d.train.reason ?? d.held_out.reason}
+          <b>How the examples were split is not recorded here.</b> {plainReason(d.train.reason ?? d.held_out.reason)}.
         </p>
       )}
       {rows.length ? (
@@ -176,7 +185,7 @@ function TaughtFrom({ story }: { story: LabStory }) {
         </div>
       ) : (
         <p className={lab.gap}>
-          <b>No example rows.</b> {d.rows_reason}
+          <b>The examples themselves are not on this box.</b> {d.dataset_id ? `They belong to the set the lab calls ${d.dataset_id}; its file is not here, so no example can be shown.` : "No set of examples is named for this run."}
         </p>
       )}
       {rows.length ? <p className={lab.note}>{rows.length} of the examples it learned from. Pictures, when a task has them, are the box&apos;s blurred keyframes.</p> : null}
@@ -206,16 +215,16 @@ function Training({ story, frac, measured }: { story: LabStory; frac: number; me
       <p className={lab.lead}>
         {t.base ? (
           <>
-            A small add-on (LoRA{t.lora_rank ? `, rank ${t.lora_rank}` : ""}) is trained on top of <b>{t.base}</b>
-            {t.node ? ` on ${t.node}` : ""}. The base model is not changed.
+            <Term k="lora">A small add-on</Term> is trained on top of <b>{t.base}</b>
+            {t.node ? ` on ${t.node}` : ""}. The model itself is not changed.
           </>
         ) : (
-          (t.points_reason ?? "The model practises on the examples; the loss falls as it gets them right.")
+          "The model practises on the examples; the loss falls as it gets them right."
         )}
       </p>
       <div className={lab.stats}>
-        <Stat n={t.steps} label={isNum(t.of) ? `of ${t.of.value} steps` : "steps so far"} value={head?.step != null ? String(head.step) : frac > 0 && isNum(t.steps) ? String(Math.round(frac * t.steps.value)) : "0"} />
-        <Stat n={t.loss_last} label="loss now" value={head?.loss != null ? head.loss.toFixed(2) : "…"} />
+        <Stat n={t.steps} label={isNum(t.of) ? `of ${t.of.value} steps` : story.status === "training" ? "steps so far" : "steps"} value={head?.step != null ? String(head.step) : frac > 0 && isNum(t.steps) ? String(Math.round(frac * t.steps.value)) : "0"} />
+        <Stat n={t.loss_last} label={<Term k="loss">loss now</Term>} value={head?.loss != null ? lossWords(head.loss) : "…"} />
         <Stat n={t.samples_per_s} label="training speed" />
         <Stat n={t.wall_s} label="training time" value={duration(tNow)} />
       </div>
@@ -235,35 +244,35 @@ function Training({ story, frac, measured }: { story: LabStory; frac: number; me
       {p.points.length ? (
         <div className={lab.stats}>
           <Stat n={p.energy_j} label="training energy, whole run" />
-          <Stat n={p.j_per_sample} label="energy per training sample" />
-          <Stat n={p.mean_w} label="average power" />
+          <Stat n={p.j_per_sample} label="energy per training example" />
+          <Stat n={p.mean_w} label="average power" value={isNum(p.mean_w) ? `${Math.round(p.mean_w.value)} W` : undefined} />
         </div>
       ) : null}
       {speed || first ? (
         <div className={lab.measured}>
-          <span className={lab.measuredTag}>Measured on our hardware</span>
+          <span className={lab.measuredTag}>For comparison, not this run</span>
           <span>
-            A 20-step smoke run on {smokeChip(speed ?? first)}
+            An earlier 20-step trial run on {smokeChip(speed ?? first)}
             {speed?.node ? ` (${speed.node})` : ""}
             {speed ? (
               <>
-                : <b>{speed.value} samples/s</b>
+                : <b>{speed.value} examples a second</b>
               </>
             ) : null}
             {first && last ? (
               <>
-                , loss <b>{first.value}</b> to <b>{last.value}</b>
+                , loss <b>{first.value}</b> down to <b>{last.value}</b>
               </>
             ) : null}
             .
           </span>
           <span className={lab.note}>
-            {[speed, first, last]
-              .filter((m): m is LabMeasured => !!m)
-              .map((m) => m.source?.ref)
-              .join(", ")}
-            . Not this run: a real measurement, shown so the run above can be judged against it.
+            A real measurement, shown so the run above can be judged against it. {(speed ?? first)?.chip?.role === "earlier" ? "The lab has since moved to" : "The lab is"} two Strix Halo pods (Radeon 8060S).
           </span>
+          <SourceChip
+            about="The earlier trial run"
+            sources={[speed, first, last].filter((m): m is LabMeasured => !!m).map((m) => ({ label: m.label, value: `${m.value} ${m.unit === "samples/s" ? "examples a second" : (m.unit ?? "")}`, from: m.source?.ref ?? "" }))}
+          />
         </div>
       ) : (
         <div className={lab.measured}>
@@ -296,7 +305,8 @@ function BeforeAfter({ story, frac }: { story: LabStory; frac: number }) {
           <Stat n={ev.scores.teacher} label="teacher's score" />
         </div>
         <p className={lab.gap}>
-          <b>No per-question answers.</b> {ev.items_reason}
+          <b>{ev.decision ? "The answers to each question have not reached the box." : "This run has not been tested yet."}</b>{" "}
+          {ev.decision ? "Only the scores have, so the questions cannot be listed one by one." : "The scores and each question's answers appear here when the test result arrives."}
         </p>
       </>
     );
@@ -312,16 +322,22 @@ function BeforeAfter({ story, frac }: { story: LabStory; frac: number }) {
   const list = ordered.filter((i) => (filter === "all" ? true : filter === "changed" ? i.change === "fixed" || i.change === "broke" : i.change === filter));
   const visible = open ? list : list.slice(0, 6);
   const filters: [Filter, string][] = [
-    ["changed", `Flipped (${total("fixed") + total("broke")})`],
-    ["broke", `Regressions (${total("broke")})`],
+    ["changed", `Changed (${total("fixed") + total("broke")})`],
+    ["broke", `Got worse (${total("broke")})`],
     ["fixed", `Fixed (${total("fixed")})`],
     ["still_wrong", `Still wrong (${total("still_wrong")})`],
     ["all", `All (${n})`],
   ];
   return (
     <>
+      {ev.rehearsal ? (
+        <StateLine tone="watch" guide="lab:rehearsal">
+          <b>These are not the model&apos;s answers.</b> Every question got the same text back and was marked right, though the right answers differ. The test in this
+          run was a stand-in, so the counts below show the loop working, not the model.
+        </StateLine>
+      ) : null}
       <p className={lab.lead}>
-        The same {n} held-back questions, answered by the model before training and by the new one.
+        The same {n} <Term k="heldout">held-back questions</Term>, answered by the model before training and by the new one.
         {shown < n ? ` Scoring: ${shown} of ${n}.` : ""}
       </p>
       <div className={lab.bars}>
@@ -345,7 +361,7 @@ function BeforeAfter({ story, frac }: { story: LabStory; frac: number }) {
         </div>
         <div className={`${lab.tallyCard} ${lab.tallyBad}`}>
           <span className={`${lab.statNum} ${lab.bad}`}>−{count("broke")}</span>
-          <span className={lab.statLabel}>regressions: right before, wrong now</span>
+          <span className={lab.statLabel}>got worse: right before, wrong now</span>
         </div>
         <div className={lab.tallyCard}>
           <span className={lab.statNum}>{count("still_wrong")}</span>
@@ -420,37 +436,58 @@ function Question({ it, scored }: { it: LabItem; scored: boolean }) {
 
 function Gate({ story, on }: { story: LabStory; on: boolean }) {
   const ev = story.eval;
-  if (!ev.verdict) return <p className={lab.waiting}>{ev.verdict_detail[0] ?? "The model has not been tested yet."}</p>;
-  if (!on) return <p className={lab.waiting}>The gate decides once every held-back question has been scored.</p>;
-  const good = ev.decision === "deploy" && story.status !== "rolled back";
+  if (!ev.verdict || !ev.decision) return <p className={lab.waiting}>This model has not been tested yet. The result appears here when the test has run.</p>;
+  if (!on) return <p className={lab.waiting}>The test decides once every held-back question has been scored.</p>;
+  const passed = ev.decision === "deploy";
+  const good = passed && story.status !== "rolled back" && !ev.rehearsal;
   const alpha = ev.alpha ?? 0.05;
+  // What the test said, and in one clause what then happened on the box: both read from the same two facts the
+  // "On the box" section reads (the decision and whether the log holds an install), so the two cards cannot disagree.
+  const head = ev.rehearsal ? "A stand-in test passed it: not proof." : passed ? "Passed: better by more than chance." : "Refused: not shown to be better.";
+  const box =
+    story.status === "deployed"
+      ? passed
+        ? "It was installed on the box."
+        : "It was installed on the box all the same: see On the box."
+      : story.status === "rolled back"
+        ? "It was installed, then the box went back to its earlier model."
+        : story.status === "gated"
+          ? "It is not on the box yet."
+          : "The box kept the model it had.";
+  const chance = (p: number) => (p < 0.001 ? "below 0.1%" : `${Number((p * 100).toPrecision(2))}%`);
   return (
     <>
-      <p className={`${lab.verdict} ${good ? "" : lab.verdictBad} ${lab.flipIn}`} role="status">
-        {ev.verdict}
-        {ev.decision === "reject" ? <span className={lab.verdictSub}>The model on the box did NOT change.</span> : null}
+      <p className={`${lab.verdict} ${good ? "" : lab.verdictBad} ${lab.flipIn}`} role="status" data-guide="lab:verdict">
+        {head}
+        <span className={lab.verdictSub}>{box}</span>
       </p>
       <GateChart ev={ev} />
       <div className={lab.stats}>
         <Stat n={ev.n_items} label={isNum(ev.n_groups) ? `questions, in ${ev.n_groups.value} groups` : "questions scored"} value={isNum(ev.n_items) ? String(ev.n_items.value) : undefined} />
-        <Stat n={ev.noise} label="run-to-run noise" value={isNum(ev.noise) ? `±${pct(ev.noise.value, 1)}` : undefined} />
+        <Stat n={ev.noise} label={<Term k="noise">run-to-run wobble</Term>} value={isNum(ev.noise) ? `±${pct(ev.noise.value, 1)}` : undefined} />
         <Stat
           n={ev.p_value}
-          label={`p-value (needs to be below ${alpha})`}
-          value={isNum(ev.p_value) ? String(Number(ev.p_value.value.toPrecision(2))) : undefined}
+          label={
+            <>
+              <Term k="pvalue">chance it is luck</Term> (must be under {Number((alpha * 100).toPrecision(2))}%)
+            </>
+          }
+          value={isNum(ev.p_value) ? chance(ev.p_value.value) : undefined}
           tone={isNum(ev.p_value) ? (ev.p_value.value < alpha ? "good" : "bad") : undefined}
         />
       </div>
       <ul className={lab.why}>
         {ev.verdict_detail.map((line) => (
-          <li key={line}>{line}</li>
+          <li key={line}>{line.replace(/\bthe gate\b/g, "the test").replace(/held-out/g, "held-back")}</li>
         ))}
       </ul>
-      {ev.test || ev.decode ? (
-        <p className={lab.note}>
-          {ev.test ? `Test: ${ev.test}. ` : ""}
-          {ev.decode ? `All three models were scored the same way: ${ev.decode}.` : ""}
-        </p>
+      {ev.test || ev.decode || isNum(ev.p_value) ? (
+        <Fold summary="How the test was run">
+          {ev.test ? <span className={lab.note}>The statistics: {ev.test}.</span> : null}
+          {ev.decode ? <span className={lab.note}>All three models were asked the same way: {ev.decode}.</span> : null}
+          {isNum(ev.p_value) ? <span className={lab.note}>p-value as recorded: {ev.p_value.value.toPrecision(3)} (the test needs it below {alpha}).</span> : null}
+          {ev.source?.ref ? <span className={`${lab.note} ${lab.code}`}>{ev.source.ref}</span> : null}
+        </Fold>
       ) : null}
     </>
   );
@@ -460,32 +497,59 @@ function Gate({ story, on }: { story: LabStory; on: boolean }) {
 
 function OnTheBox({ story, frac, gated }: { story: LabStory; frac: number; gated: boolean }) {
   const { deploy, box, package: pkg } = story;
-  if (!gated && story.eval.verdict) return <p className={lab.waiting}>The swap happens only after the gate clears the model.</p>;
+  if (!gated && story.eval.verdict) return <p className={lab.waiting}>A model is installed only after it passes the test.</p>;
+  const now = story.box_now;
+  // one line on what the box runs now, from the newest install in its log; when the log holds none, that is what it says
+  const nowLine = now ? (
+    <p className={lab.note} data-guide="lab:box-now">
+      {now.model_version ? (
+        <>
+          By the box&apos;s log it is running <b>{now.this_run ? "this run's model" : now.model_version}</b> since {dayTime(now.since)}.
+        </>
+      ) : (
+        "Which model the box is running now is not known from its log: the log holds no install yet."
+      )}
+    </p>
+  ) : null;
   const packageLine = pkg.gguf ? (
-    <div className={lab.stats}>
-      <Stat n={pkg.bytes} label={`model file${pkg.quantization ? `, ${pkg.quantization}` : ""}`} value={isNum(pkg.bytes) ? fileSize(pkg.bytes.value) : undefined} />
-      <div className={lab.stat}>
+    <>
+      <p className={lab.note}>
+        The model was packed into one file{isNum(pkg.bytes) ? ` of ${fileSize(pkg.bytes.value)}` : ""}, ready to install.
+      </p>
+      <Fold summary="The model file">
         <span className={`${lab.code} ${ui.breakWords}`}>{pkg.gguf}</span>
-        <span className={lab.statLabel}>{pkg.sha256 ? `sha256 ${pkg.sha256.slice(0, 12)}…` : "no checksum in the log"}</span>
-      </div>
-    </div>
+        {pkg.quantization ? <span className={lab.note}>Packed as {pkg.quantization}.</span> : null}
+        <span className={`${lab.note} ${ui.breakWords}`}>{pkg.sha256 ? `sha256 ${pkg.sha256}` : "No checksum is recorded for it."}</span>
+        {!isNum(pkg.bytes) ? <span className={lab.note}>Its size is not recorded.</span> : null}
+      </Fold>
+    </>
   ) : (
     <p className={lab.gap}>
-      <b>No package.</b> {pkg.reason}
+      <b>No model file yet.</b> {story.status === "training" ? "A model is packed into a file after it is tested." : "No packed file for this model is recorded on the box."}
     </p>
   );
   if (!deploy.deployed) {
+    const refused = story.status === "not deployed";
     return (
       <>
-        <p className={`${lab.verdict} ${story.status === "not deployed" ? lab.verdictBad : ""}`}>
-          {story.status === "not deployed" ? "Nothing changed on the box." : "Not on the box yet."}
-          <span className={lab.verdictSub}>{deploy.deployed_reason}</span>
+        <p className={`${lab.verdict} ${refused ? lab.verdictBad : ""}`}>
+          {refused ? "Nothing changed on the box." : "Not on the box yet."}
+          <span className={lab.verdictSub}>
+            {refused
+              ? "The test refused this model, so it was not installed."
+              : story.status === "gated"
+                ? "It passed the test; the box's log holds no install of it."
+                : story.status === "training"
+                  ? "It has not been tested, and only a tested model is installed."
+                  : plainReason(deploy.deployed_reason)}
+          </span>
         </p>
+        {nowLine}
         {packageLine}
       </>
     );
   }
-  if (frac <= 0) return <p className={lab.waiting}>The swap happens only after the gate clears the model.</p>;
+  if (frac <= 0) return <p className={lab.waiting}>The install is the last step of the run.</p>;
   const done = frac >= 0.5;
   return (
     <>
@@ -510,8 +574,12 @@ function OnTheBox({ story, frac, gated }: { story: LabStory; frac: number; gated
           Rolled back to {deploy.rolled_back.to ?? "the old model"} at {clock(deploy.rolled_back.ts)}.{deploy.rolled_back.reason ? <span className={lab.verdictSub}>{deploy.rolled_back.reason}</span> : null}
         </p>
       ) : null}
+      {story.eval.decision === "reject" && !deploy.rolled_back ? (
+        <StateLine tone="watch">The test did not show this model is better. The box&apos;s log shows it installed all the same, so what the box ran next is not what the test chose.</StateLine>
+      ) : null}
+      {done ? nowLine : null}
       <div className={lab.stats}>
-        <Stat n={deploy.swap_s} label="hot-swap time (no answers meanwhile)" value={isNum(deploy.swap_s) ? `${deploy.swap_s.value.toFixed(1)} s` : undefined} />
+        <Stat n={deploy.swap_s} label="time to switch models (no answers meanwhile)" value={isNum(deploy.swap_s) ? `${deploy.swap_s.value.toFixed(1)} s` : undefined} />
       </div>
       {packageLine}
       {box.before && box.after ? (
@@ -551,7 +619,7 @@ function BoxCell({ n, show: visible = true }: { n: LabNum; show?: boolean }) {
   if (!visible) return <td className={ui.num}>…</td>;
   return (
     <td className={ui.num} title={isNum(n) ? `Source: ${n.source?.ref ?? ""}` : (n.reason ?? "")}>
-      {isNum(n) ? `${n.value} ${n.unit}` : <span className={lab.note}>not in the log</span>}
+      {isNum(n) ? `${n.value} ${n.unit === "tok/s" ? "tokens a second" : n.unit}` : <span className={lab.note}>not recorded</span>}
       {isNum(n) && n.low_confidence ? (
         <>
           <br />
@@ -600,7 +668,7 @@ function Sources({ story }: { story: LabStory }) {
       </div>
       {story.gaps.length ? (
         <>
-          <h3>Not in the log</h3>
+          <h3>Not recorded, and why</h3>
           <div className={lab.sourceList}>
             {story.gaps.map((g, i) => (
               <div key={`${g.label}-${i}`} className={lab.sourceRow}>
@@ -618,9 +686,9 @@ function Sources({ story }: { story: LabStory }) {
 const HOW_TO: string[] = [
   "Press Play, or drag the bar. Everything below follows it, from the examples to the swap.",
   "Loss falling means the model is getting its training examples right. It does not prove the model got better.",
-  "The proof is the held-back questions: ones it never trained on, answered before and after. Regressions are listed first.",
-  "The gate only lets a model through when the gain is larger than run-to-run noise and unlikely to be chance (p below 0.05).",
-  "A number marked “Not in the log” was not recorded. Open Sources to see where every other number came from.",
+  "The proof is the held-back questions: ones it never trained on, answered before and after. The ones that got worse are listed first.",
+  "The test only lets a model through when the gain is larger than the wobble between two runs of the same model, and unlikely to be luck (under 5%).",
+  "A number marked “Not recorded” was not sent to the box. Open Sources to see where every other number came from, and why a missing one is missing.",
 ];
 
 /* ---------- a run that is still going (L30) ---------- */
@@ -680,16 +748,20 @@ export function LabRun({
   initial,
   forceReduced,
   picker,
-  onBoxChanged,
 }: {
   story: LabStory;
   initial: number | null;
   forceReduced: boolean;
   picker?: React.ReactNode;
-  /** a swap started from the On the box card ended: the page reads the run again (L35) */
-  onBoxChanged?: () => void;
 }) {
   const [u, setU] = useState(initial ?? 1);
+  // the phone's clock, for "how long since the last word"; null until mounted so the static page and the client agree
+  const [clockNow, setClockNow] = useState<number | null>(null);
+  useEffect(() => {
+    setClockNow(Date.now());
+    const id = window.setInterval(() => setClockNow(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
   const [playing, setPlaying] = useState(false);
   const [reduced, setReduced] = useState(forceReduced);
   const [drawer, setDrawer] = useState<"how" | "sources" | null>(null);
@@ -744,9 +816,10 @@ export function LabRun({
   }, [chapterN, playing, reduced, live]);
   const is = (k: ChapterKey) => chapter.key === k;
   const trainFrac = within(u, "training");
-  const good = story.status === "deployed";
-  const bad = story.status === "not deployed" || story.status === "rolled back" || story.status === "failed";
-  const running = isLive(story);
+  const state = runState(story, clockNow, dayTime);
+  const good = state.tone === "good";
+  const bad = state.tone === "bad";
+  const running = state.running;
   const when: Record<ChapterKey, string | null> = {
     taught: story.marks.exported ?? story.marks.taught,
     training: story.marks.training_start,
@@ -761,25 +834,24 @@ export function LabRun({
 
   return (
     <div className={`${lab.page} ${live ? lab.live : ""}`}>
-      <div className={ui.pageHead}>
+      <section className={ui.pageHead} aria-label="This run" data-guide="lab:run">
         <div className={lab.headTop}>
-          <h1>What Atlas learned</h1>
-          <span className={`${lab.status} ${good ? lab.statusGood : bad ? lab.statusBad : ""} ${running ? lab.statusLive : ""}`}>
-            {running ? <Running story={story} /> : STATUS_LABEL[story.status]}
+          <span className={`${lab.status} ${good ? lab.statusGood : bad ? lab.statusBad : ""} ${running ? lab.statusLive : ""}`} title={STATUS_LABEL[story.status]}>
+            {running ? <Running story={story} /> : state.pill}
           </span>
         </div>
+        <StateLine tone={state.tone} guide="lab:state">
+          {state.line}
+        </StateLine>
         {isLive(story) ? <LiveStages story={story} /> : null}
         {isLive(story) ? <LiveBuddies story={story} forceReduced={forceReduced} /> : null}
-        <p className={lab.task}>
-          {story.task.instruction ? (
-            <>
-              <span className={ui.muted}>The task{story.task.slug ? ` (${story.task.slug})` : ""}: </span>
-              {story.task.instruction}
-            </>
-          ) : (
-            <span className={ui.muted}>{story.task.instruction_reason}</span>
-          )}
-        </p>
+        {story.task.instruction || story.task.slug ? (
+          <p className={lab.task}>
+            <span className={ui.muted}>The task: </span>
+            {story.task.instruction ?? story.task.slug!.replace(/[-_]/g, " ")}
+            {story.task.instruction ? null : <span className={`${ui.muted} ${ui.small}`}> (the box holds its name, not its wording)</span>}
+          </p>
+        ) : null}
         <div className={lab.meta}>
           {picker}
           <button type="button" className={lab.linkBtn} onClick={() => setDrawer("how")}>
@@ -790,9 +862,10 @@ export function LabRun({
           </button>
           {isNum(story.wall_s) ? <span className={`${ui.muted} ${ui.small}`}>Start to finish: {duration(story.wall_s.value)}</span> : null}
         </div>
-      </div>
+      </section>
 
-      <div className={lab.dock}>
+      {/* inside a row of the timeline the player stays with its run instead of sticking under the page header */}
+      <div className={lab.dock} style={{ position: "static" }}>
         <div className={lab.player}>
           <button type="button" className={`${ui.btn} ${ui.btnPrimary} ${lab.play}`} onClick={toggle}>
             <svg viewBox="0 0 24 24" aria-hidden="true">{playing ? <path d="M8 5v14M16 5v14" fill="none" /> : <path d="M8 5l11 7-11 7z" />}</svg>
@@ -850,12 +923,13 @@ export function LabRun({
           <Section n={2} title="Training" now={is("training")} className={lab.o2}>
             <Training story={story} frac={trainFrac} measured={story.measured} />
           </Section>
-          <Section n={4} title="The gate" now={is("gate")} className={lab.o4}>
+          <Section n={4} title={<Term k="gate">The test it must pass</Term>} now={is("gate")} className={lab.o4}>
             <Gate story={story} on={u >= CHAPTERS[3]!.from - 1e-6} />
           </Section>
           <Section n={5} title="On the box" now={is("box")} className={lab.o5}>
             <OnTheBox story={story} frac={within(u, "box")} gated={u >= CHAPTERS[3]!.from - 1e-6} />
-            <DeployButton onBoxChanged={onBoxChanged} />
+            {/* the buttons that swap models on the box (L35, DeployButton.tsx) are on the tab itself, beside the loop's
+                last stage (Model.tsx): one place, whichever run's row is open */}
           </Section>
         </div>
       </div>
