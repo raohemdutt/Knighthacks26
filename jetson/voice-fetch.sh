@@ -7,9 +7,10 @@
 #
 # What lands in ~/atlas/voice on the box (about 120 MB on disk, nothing loaded until someone speaks):
 #     src/whisper.cpp-1.7.6/build/bin/whisper-cli   speech to text (built on the box, one job at a time, low priority)
-#     models/ggml-tiny.en-q5_1.bin                   the whisper model, 31 MB
+#     models/ggml-base.en-q5_1.bin                   the whisper model for questions, 57 MB
+#     models/ggml-tiny.en-q5_1.bin                   the small whisper model for "Hey Atlas", 31 MB
 #     piper/piper + libraries                        text to speech (Piper's own aarch64 release)
-#     models/en_US-ryan-low.onnx                   the voice, 60 MB
+#     models/en_US-ryan-medium.onnx                  the voice, 63 MB
 #     debs/pulseaudio-module-bluetooth_arm64.deb     lets PulseAudio use a Bluetooth speaker; install it with sudo (jetson/README.md)
 set -euo pipefail
 
@@ -24,15 +25,16 @@ HF=https://huggingface.co
 
 curl -fsSL -o whisper.tar.gz "https://github.com/ggml-org/whisper.cpp/archive/refs/tags/$WHISPER_TAG.tar.gz"
 curl -fsSL -o ggml-tiny.en-q5_1.bin "$HF/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en-q5_1.bin"
+curl -fsSL -o ggml-base.en-q5_1.bin "$HF/ggerganov/whisper.cpp/resolve/main/ggml-base.en-q5_1.bin"
 curl -fsSL -o piper.tar.gz "https://github.com/rhasspy/piper/releases/download/$PIPER_TAG/piper_linux_aarch64.tar.gz"
-curl -fsSL -o en_US-ryan-low.onnx "$HF/rhasspy/piper-voices/resolve/main/en/en_US/ryan/low/en_US-ryan-low.onnx"
-curl -fsSL -o en_US-ryan-low.onnx.json "$HF/rhasspy/piper-voices/resolve/main/en/en_US/ryan/low/en_US-ryan-low.onnx.json"
+curl -fsSL -o en_US-ryan-medium.onnx "$HF/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx"
+curl -fsSL -o en_US-ryan-medium.onnx.json "$HF/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx.json"
 curl -fsSL -o pulseaudio-module-bluetooth_arm64.deb \
     "http://ports.ubuntu.com/ubuntu-ports/pool/main/p/pulseaudio/pulseaudio-module-bluetooth_15.99.1+dfsg1-1ubuntu2.2_arm64.deb"
 
 ssh "$target" 'mkdir -p ~/atlas/voice/src ~/atlas/voice/models ~/atlas/voice/piper ~/atlas/voice/debs'
 scp -q whisper.tar.gz "$target:atlas/voice/src/"
-scp -q ggml-tiny.en-q5_1.bin en_US-ryan-low.onnx en_US-ryan-low.onnx.json "$target:atlas/voice/models/"
+scp -q ggml-tiny.en-q5_1.bin ggml-base.en-q5_1.bin en_US-ryan-medium.onnx en_US-ryan-medium.onnx.json "$target:atlas/voice/models/"
 scp -q piper.tar.gz "$target:atlas/voice/"
 scp -q pulseaudio-module-bluetooth_arm64.deb "$target:atlas/voice/debs/"
 

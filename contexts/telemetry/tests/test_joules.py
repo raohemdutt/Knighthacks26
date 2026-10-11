@@ -49,7 +49,8 @@ def test_the_committed_fixtures_are_what_the_generator_writes():
     spec.loader.exec_module(maker)
     import json
 
-    for name, make in (("overlap_pod_a", maker.overlap_pod_a), ("conditions", maker.conditions)):
+    for name, make in (("overlap_pod_a", maker.overlap_pod_a), ("conditions", maker.conditions),
+                       ("idle_sources", maker.idle_sources)):
         lines = (FIXTURES / f"{name}.jsonl").read_text(encoding="utf-8").splitlines()
         assert [json.loads(line) for line in lines] == make(), "rerun fixtures/telemetry/joules/make_windows.py"
 

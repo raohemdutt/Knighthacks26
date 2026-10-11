@@ -10,6 +10,55 @@ R9700 (gfx1201, RDNA 4, 32 GB) on the DUB hub (accounts A and B) is **the other 
 and measured there, and every R9700 number below is labelled as that chip's, never as the lab's baseline. Logins and
 hub API tokens are on the Notion Credentials page and in your local `.env`; never put them in this repo.
 
+## Verbs: `python -m lab <verb>`
+
+Every verb has a page under `lab/docs/` (one line here per verb, alphabetical; `python -m lab` prints the same
+list). A verb registers itself with `CLI_VERB = "name"` in its module (see the top of `lab/__main__.py`), so
+adding one touches no shared file but this list.
+
+- [`alerts`](docs/alerts.md): Scan the ledger for trouble and append what is new to today's alerts file.
+- [`attribution-check`](docs/attribution-check.md): Validate joules per answer on pod A: answers, gaps and whole-run energy, idle watts, the missed share.
+- [`bench`](docs/bench.md): Benchmark a model server: decode tok/s, TTFT and joules per token, one cold spawn per run.
+- [`capacity`](docs/capacity.md): Probe one chip (free memory, bandwidth, bf16 matmul, name, ROCm) in under two minutes; write a capacity record.
+- [`chipsheet`](docs/chipsheet.md): File a chip sheet measured on a pod and write its ledger rows: ingest | self-check.
+- [`correctness`](docs/correctness.md): Record greedy outputs from a running server as a baseline, or compare a later run with it.
+- [`credits`](docs/credits.md): Credits left on the pod accounts, credits per hour, and whether they last until judging.
+- [`desk-score`](docs/desk-score.md): Score a model on the held-out desk-object examples (L24): split writes the frozen split, score scores.
+- [`digest`](docs/digest.md): What a sitting starts from: what ran, metrics that moved, GPU queue, rulings, Ilan's lane, next tasks.
+- [`draft`](docs/draft.md): Ask for a verb the lab lacks: leaves the owner a request and a stub (once per sitting; nothing runs).
+- [`eval-gate`](docs/eval-gate.md): Score current, candidate and teacher on the frozen held-out set and decide deploy or reject (L4).
+- [`experiment`](docs/experiment.md): Experiments as ledger rows: add, list, result (read by the verdict math), rank, and T0's checklist (--print).
+- [`gpu-power`](docs/gpu-power.md): Summarize pod GPU power samples, or store a window of them as a ledger row: summary | record.
+- [`handoff`](docs/handoff.md): End the session: leave the owner a note (no sitting reads it) and record the handoff in the ledger.
+- [`interference`](docs/interference.md): Teacher decode and a LoRA run on one chip: alone and together (plan, pod script, collect).
+- [`lab-push`](docs/lab-push.md): Post a training run's steps, a gate's scores, a package's manifest and the lab's ledger to the box's Learning lab.
+- [`label-agreement`](docs/label-agreement.md): Re-label 30 labeled examples with a second teacher pass and report how often the labels agree.
+- [`ledger`](docs/ledger.md): Add to, tail and search the lab ledger (ledger add, tail, grep).
+- [`link-speed`](docs/link-speed.md): Measure push and pull speed of a synthetic package on a pod through the hub, and write the table.
+- [`metrics`](docs/metrics.md): Report each metric's latest reading against its previous one, or compare a metric across a time window.
+- [`mirror`](docs/mirror.md): Mirror the lab digest to Overnight Status and the refinement plan changes to Ilan's Team Comms page.
+- [`package`](docs/package.md): Package a LoRA adapter for the Jetson: merge, GGUF, Q4_K_M, manifest, scores, dry-run install.
+- [`placement`](docs/placement.md): Which pod serves the teacher and where the sampler, benchmarks, Ax trials and LoRA jobs go (--check a request).
+- [`pool`](docs/pool.md): Keep sittings running under the 16-unit budget (Sonnet 1, Opus 2, Fable 8); pool status shows the units.
+- [`profile-decode`](docs/profile-decode.md): Decode profile of the stock teacher on gfx1151: --quick here, pod-script, pod-run on the pod, collect.
+- [`profile-train`](docs/profile-train.md): Training step profile: self-check --quick here, run on the pod (or --cpu here), ingest a run folder.
+- [`publish-adapter`](docs/publish-adapter.md): Publish the trained LoRA adapter and its model card to the team Hugging Face repo.
+- [`quark-compare`](docs/quark-compare.md): R23: the AMD Quark INT4 checkpoint against RedHat INT4 on pod B (preflight, slot, run, record, all).
+- [`ready`](docs/ready.md): Check what a sitting needs: no STOP, a writable state dir, .env key names; the hub only warns.
+- [`referee`](docs/referee.md): Referee of the GPU queue: end slots past their cap, list complaints and rows that could start.
+- [`report`](docs/report.md): Write the under-the-hood report (one HTML page and its JSON data pack) from committed files only.
+- [`research-check`](docs/research-check.md): Check research notes and SOURCES.md indexes against lab/refine/RESEARCH_FORMAT.md.
+- [`resume`](docs/resume.md): Remove the STOP file so verbs run again.
+- [`review`](docs/review.md): Write the owner's morning file: what happened, numbers moved, rulings, complaints and open PRs.
+- [`routing-closed-loop`](docs/routing-closed-loop.md): The routing hook's closed-loop test (T11): policy one against policy two on the same lab requests.
+- [`rulings`](docs/rulings.md): Owner rulings: list the open ones, record the answered ones as owner rules, mirror the waiting ones to Notion.
+- [`sampler-overhead`](docs/sampler-overhead.md): The pod sampler's own cost on pod B, measured with and without it (T9).
+- [`sit`](docs/sit.md): Start one headless agent sitting for a task, a pass, the merge or the referee, and record it.
+- [`slot`](docs/slot.md): The GPU queue for pod B: request, start, extend, done, complain, status.
+- [`spot-score`](docs/spot-score.md): Score a model on the held-out SPOT questions (L26): split joins the set's two folders, score scores.
+- [`stop`](docs/stop.md): Create the STOP file: every verb but ready, resume and stop is refused.
+- [`sweep-request`](docs/sweep-request.md): Request-side settings sweep of the teacher on one spawn: the dry run, the pod script, the pod run, collect.
+
 ## Which hub is live today (2026-10-10)
 
 | Hub | Accounts | State |
@@ -62,6 +111,7 @@ runtime still refuses the launch.
 
 **Accounts and addresses.** An account is any single letter whose `AUP_HUB_USER_<letter>` and
 `AUP_HUB_TOKEN_<letter>` keys exist in the environment or the workspace `.env` (the same search as `python -m lab ready`).
+`python -m lab ready` probes the accounts `LAB_POD_ROLES` names (C and D on SJC; unset, A and B on DUB), each at its own `AUP_HUB_URL_<letter>`, and reports per account whether the hub answered (`reachable`), lists a server (`running`) and calls it `ready`, with its `role` and `hub`. An account with no keys, or with keys but no role, is reported as `skipped` and not probed. The `env` gate wants the keys of those accounts only; the hub being down is a warning, not a hand-off (exit 0).
 The hub it lives on is its `AUP_HUB_URL_<letter>` when that key is set, else `LAB_HUB_URL`, else DUB, so C and D
 (`AUP_HUB_URL_C`, `AUP_HUB_URL_D` = `https://sjc.aupcloud.io`) work without renaming a key. `--account both` still means
 A and B, which is also the default of `status`, `quota` and `keep-alive`: ask for the SJC pair by letter. The ledger
@@ -96,36 +146,6 @@ Authorization: token <hub token>
 
 where `<hub>` is `sjc.aupcloud.io` for C and D or `dub.aupcloud.io` for A and B, `<account>` is the user name the hub
 knows the account by (not the letter), and `<port>` is the port the server listens on.
-
-## Credits: `python -m lab credits`
-
-```
-python -m lab credits                       # accounts C,D (the SJC hub)
-python -m lab credits --account A,B --window-hours 6 --until 2026-10-11T16:00:00Z --no-ledger
-```
-
-Read-only (GET requests only; it also runs while `lab/state/STOP` exists). It answers with one JSON object: per
-account the figures, `alerts`, and `lines`, one sentence per account. Exit 0 when every account was read (an alert is
-a result, outcome `alert`, still exit 0), 1 when one could not be (outcome `error`), 2 for bad arguments or missing
-keys. `--account all` takes every letter that has both keys; an account's hub is `AUP_HUB_URL_<letter>`, else
-`$LAB_HUB_URL`, else DUB.
-
-- **Metered hub** (DUB, the other hub: quota enabled, 4 credits a minute on the R9700, the other chip). The hub deducts a session only when it
-  stops, so the balance is flat while a pod runs. The tracker adds the running session (whole minutes x rate, from the
-  server's `started`) and the settled ones (the usage transactions, spread over the minutes they ran) to give
-  `credits_left`, `credits_per_hour` over `--window-hours` (default 3), `burn_per_hour` (the higher of that and what
-  the running servers burn now), `hours_left` and `runs_out_at`. It alerts when the credits are gone or would not last
-  until `--until` (default judging, Sunday 2026-10-11 12:00 ET); after that moment it never alerts.
-- **Unmetered hub** (SJC, the lab: quota disabled, balance 0, unlimited). Nothing is projected and nothing alerts; the line is
-  `unmetered: usage N minutes today, M sessions` from `/hub/api/stats/me`, today being the hub's UTC day.
-- Times come from the hub's clock (its `Date` header), not the workstation's.
-- **Ledger.** One row per account (verb `credits`, node the role the account fills (`pod-a` for C on SJC, `LAB_POD_ROLES`), `refs.account`, `hub` and `account` in conditions, outcome `ok`, `alert`,
-  `unmetered` or `error`) unless `--no-ledger`. Metered rows carry `pod.balance_credits`, `pod.credits_left`,
-  `pod.credits_per_hour`, `pod.credits_burn_per_hour`, `pod.credits_hours_left`; unmetered rows `pod.usage_min_today`,
-  `pod.sessions_today`, `pod.usage_min_window`. A partly read answer is marked `low_confidence`. Tokens and account
-  names are never printed or written.
-
-Tests: `tests/test_lab_credits.py` replays the recordings in `fixtures/lab/credits/` and drives `lab/hub_fake.py`.
 
 ## Secret scan: `tests/test_no_secrets.py`
 
@@ -214,7 +234,7 @@ python -m lab.controller quota --transactions         # balances, rates, recent 
 python -m lab.controller launch --account B --minutes 600 [--dry-run] [--no-wait]
 python -m lab.controller wait --account B
 python -m lab.controller keep-alive --minutes 90      # a ping every 10 minutes so the idle culler never fires
-python -m lab.controller run-script --account B lab/pod_b_trainer.sh smoke
+python -m lab.controller run-script --account B --with lab/smoke_lora.py lab/pod_b_trainer.sh smoke
 python -m lab.controller stop --account B
 ```
 
@@ -417,42 +437,11 @@ one run per cell and no external meter, error unmeasured); the raw output (top a
 timings, temperatures) is `fixtures/telemetry/jetson_sampler_cost/`. Consequence: a sampler that fits 1 percent needs
 about a 350 ms period, or tegrastats read in place of a Python loop per line.
 
-## Pod sampler overhead: `python -m lab sampler-overhead` (T9)
-
-Does the pod power sampler (`lab/pod_power.py`) slow the work it watches? Rubric test TT5 says decode tok/s and time to
-first token with the sampler on must stay within the run-to-run spread of the same runs with it off. This verb runs that
-experiment on pod B (account D) inside one GPU Queue slot: one discarded warm-up with the sampler off, then off, on, off,
-on, off, on (three repeats an arm, interleaved). A repeat is one pass of the bench harness's fixed prompt set
-(`fixtures/lab/bench/prompts.json`, batch 4, so every prompt once) against the server on the pod through the hub proxy,
-with the harness's own power reading and ledger rows left off. CPU percent is read on the pod in the middle of the repeat
-(two `/proc/stat` snapshots 12 s apart through run-script, plus the sampler's own `/proc/<pid>/stat`).
-
-```
-python -m lab sampler-overhead run --account D --dry-run             # the schedule and the steps; touches nothing
-python -m lab sampler-overhead run --account D                       # request the slot, wait (every 2 min, up to 90), run, release
-python -m lab sampler-overhead run --account D --row <id>            # use a slot that is already Running
-python -m lab sampler-overhead analyze --rows fixtures/telemetry/sampler_overhead_rows.jsonl
-```
-
-- The slot goes through `lab/machine/slots.py` (`slots.run`), so every request, start, extension and release is a ledger
-  row and a queue row as `python -m lab slot` makes them. A slot that never starts is cancelled and nothing runs on the pod.
-- A model server is served with `pod_a_teacher.sh serve` only when none answers on the proxy, and stopped at the end;
-  the sampler is put back as it was found; the slot is extended once, with a note, if the repeats will not fit.
-- Per metric: mean and sd of each arm, on minus off (and as a percent of off), the spread (the larger sd), whether the
-  difference is inside it, and Welch's test from `lab/machine/verdict.py` beside it. Verdicts: `no_interference`,
-  `interference`, `inconclusive`. Three repeats an arm is low confidence (the verdict module wants five).
-- Rows: `<out>/rows.jsonl`, `<out>/analysis.json` and ledger rows `sampler-overhead.repeat` and
-  `sampler-overhead.summary` on node pod-b. The state of the measurement (not yet taken: the card was busy with an
-  unqueued job), what the slot met and the proposed rubric line are in `lab/T9_REPORT.md`.
-
-Tests: `tests/test_lab_sampler_overhead.py` drives the experiment against fakes (the slot queue over `slots_fake.py`,
-the bench harness over `teacher_fake.py`, a fake pod and a fake `/proc`) on a fake clock.
-
 ## Teacher (pod A)
 
 ```
 bash lab/pod_a_teacher.sh proxy      # once per account, then relaunch the pod
-bash lab/pod_a_teacher.sh build      # vLLM from source at commit b1388b1 + lab/vllm-gfx1201.diff, for the pod's gfx target, ~1 h
+bash lab/pod_a_teacher.sh build      # vLLM from source at b1388b1 + lab/vllm-gfx1151.diff (PATCH=vllm-gfx1201.diff for the April one), for the pod's gfx target
 bash lab/pod_a_teacher.sh download   # RedHatAI/Qwen3.8-27B-INT4 (19 GB) into ~/models
 bash lab/pod_a_teacher.sh serve      # OpenAI-compatible server on 127.0.0.1:8000, model names "teacher" and "group-brain", log ~/serve/vllm.log
 ```
@@ -639,6 +628,71 @@ ledger rows on node `pod-b` with hub sjc and account D; no metric row was writte
 measurement (kernels pass 2, ruling b). The build's dependencies put numpy 2.2.6 in the user site, over the image's
 2.4.6.
 
+### The hybrid W4A16 build beside the serving teacher (R53)
+
+`lab/vllm-gfx1151.diff` is the April patch plus vLLM PR 40977's RDNA hybrid W4A16 kernel (HIP skinny GEMM for
+decode, Triton for prefill, with its three later gfx1151 tunings from vLLM main 276fbcff2), backported onto the same
+b1388b1 so the pod's torch 2.9.1 and C++17 stay. Every vLLM that carries the kernel upstream wants torch 2.11 or newer.
+The diff's header has a note per hunk; `git apply --check` passes on a fresh b1388b1 checkout (22 files, 35 hunks).
+It is now the build's default patch; `PATCH=vllm-gfx1201.diff` (or `--patch`) selects the April patch alone.
+
+What the build step does since R53:
+
+- `--vllm-dir DIR --venv DIR` (or `VLLM_DIR`, `VLLM_VENV`) builds into its own clone and a venv made with
+  `--system-site-packages`: it sees the image's ROCm torch and not the user site, so the serving teacher's vLLM
+  (`~/vllm`, user site) is neither used nor replaced. A `--vllm-dir` without `--venv` is refused for that reason.
+- A stamp (`<dir>/.atlas-build-stamp`: commit, patch hash, gfx) decides whether a folder is already built. A pod that
+  holds the April build has no stamp (or another patch hash) and is rebuilt, not skipped because `import vllm` works.
+- Compile jobs follow available memory, not total, and `--jobs N` (`BUILD_JOBS`) sets them: beside the teacher most of
+  the 64 GB is the model's.
+- `serve --venv DIR` serves from that venv, and the `### serve` line carries `kernel=<name>`, the kernel vLLM logged
+  for the 4-bit layers (`Using <name> for CompressedTensorsWNA16`); run-script copies every `### <step> key=value`
+  line into its `pod run-script` ledger row under `conditions.steps`. `verify` prints the build stamp and whether
+  the hybrid op (`torch.ops._rocm_C.wvSplitK_int4_g`) is registered.
+
+Build on pod C's CPU beside the serving teacher, from the repo root (no GPU slot, the teacher keeps serving):
+
+```
+python -m lab.controller run-script --account C --timeout 3600 --with lab/vllm-gfx1151.diff lab/pod_a_teacher.sh build --vllm-dir /home/jovyan/vllm-hybrid --venv /home/jovyan/venv-hybrid --jobs 8
+python -m lab.controller run-script --account C lab/pod_a_teacher.sh verify --vllm-dir /home/jovyan/vllm-hybrid --venv /home/jovyan/venv-hybrid
+```
+
+Expected time: the stock build took 292 s at 20 jobs on an idle pod (R30); a new clone has no build cache and the
+venv installs vLLM's Python dependencies once, so about 6 minutes idle and 15 to 30 minutes at 8 jobs beside the
+teacher. The log is `~/vllm_build-vllm-hybrid.log`. `verify` should show `rejected_hunks:` empty, the three
+extensions importing, `vllm_from:` under `/home/jovyan/vllm-hybrid` and `hybrid_w4a16_op: present`.
+
+Swap, in the teacher's quiet window:
+
+```
+python -m lab.controller run-script --account C lab/pod_a_teacher.sh stop
+python -m lab.controller run-script --account C --timeout 1200 lab/pod_a_teacher.sh serve --venv /home/jovyan/venv-hybrid
+```
+
+The serve line should end `kernel=RDNAHybridW4A16LinearKernel` (the April build says `kernel=ConchLinearKernel`).
+The first start compiles torch.compile's cache anew (about 9 minutes cold on pod D). Roll back with `stop` and a
+plain `serve` (no `--venv`): the April build in the user site was never touched.
+
+What could still fail at compile time on ROCm 7.13 (hipcc), and the fix for each:
+
+- A C++20 construct the grep missed in `skinny_gemms_int4.cu` (only `std::in_range` was found and replaced):
+  compile that one file as C++20, which hipcc and torch 2.9.1's headers accept, by adding
+  `set_source_files_properties(csrc/rocm/skinny_gemms_int4.cu PROPERTIES COMPILE_OPTIONS "-std=c++20")` after
+  `VLLM_ROCM_EXT_SRC` in `CMakeLists.txt`, or replace the construct with its C++17 form.
+- `__builtin_amdgcn_fdot2_f32_bf16` (the bf16 dot product, new to b1388b1's `csrc/rocm`) needs the gfx11 dot
+  instructions; gfx1151 has them and upstream tuned this file on gfx1151. If hipcc says the target lacks the feature,
+  the build was not given `PYTORCH_ROCM_ARCH=gfx1151` (the script sets it from `rocminfo`; set `GFX=gfx1151`).
+- A missing declaration between the files (`wvSplitK_int4_g` in `ops.h`, the schema in `torch_bindings.cpp`): an
+  undefined-symbol error at import of `vllm._rocm_C`, shown by `verify`. The three are in the patch; a rejected hunk
+  in `verify` names the file to fix by hand.
+- Out of memory while compiling beside the teacher (a compiler killed, error 137): rerun with `--jobs 4`; the build
+  resumes from `build/` in the same folder.
+- `AT_DISPATCH_REDUCED_FLOATING_TYPES`: present in torch 2.9.1 and already used by b1388b1's `skinny_gemms.cu`.
+
+At load, not compile: the hybrid kernel takes only group sizes 32, 64 and 128 and no act-order (`g_idx`) layers; any
+other checkpoint falls back to the next kernel and the serve line says which. The teacher checkpoint's
+`quantization_config` (`group_size`, `actorder`) decides it.
+
 ### Idle baseline on the Strix Halo
 
 T10, 2026-10-10, pod C, the T3 sampler beside the running teacher. The clock states cannot be set: `rocm-smi --setperflevel high`
@@ -662,31 +716,6 @@ costs; the 8 W of a pod with no server is a different state (no model loaded), t
 time-weighted average of the three states (about 45 W here) would describe the workload, not the machine. The 4 s settle tail
 is not part of the answer's window; its 46 J (2 to 5 percent of a 9 to 27 s answer at 110 W) is stored as `excess_j_median` on
 `pod.settle_s`, not folded into the idle.
-
-## Attribution check: `python -m lab attribution-check` (T8)
-
-Do the answers' windows hold the energy the teacher's pod spends on them? From the box, against the running teacher
-on pod A and the pod sampler already running there (nothing is started, stopped or changed on the pod):
-
-```
-python -m lab attribution-check run --account C [--requests 100] [--idle-s 60] [--gap-s 10] [--wait-min 30]
-python -m lab attribution-check replay --tag <date> [--record]      # the numbers again from the saved rows
-```
-
-It checks that vLLM's `/metrics` shows nothing in flight (and waits, two minutes at a time, up to `--wait-min`),
-reads the idle watts for 60 s, then sends bench's text prompts one at a time (greedy, thinking off, 128 tokens,
-ignore_eos), each followed by a 10 s gap with nothing in flight. Every number is gross (telemetry ruling 1): each
-answer's joules come from T4's attribution (`contexts/telemetry/application/joules.py`) fed the pod's samples, the
-windows and the pod's clock offset as the box feeds it; the gaps and the whole run are integrated the same way, and
-answers plus gaps must equal the whole run (conservation). The gap energy above the idle watts times the gap time is
-what the windows missed (the sensor's averaging lag and the tail after each answer); its share of the answers' energy
-is the relative error. The verdict (`lab/machine/verdict.py`) reads each answer's joules plus the gap after it above
-idle against its joules alone: no_difference, with at least 10 samples in every window, conservation, a quiet idle
-window and no other client's request during the run (vLLM's counters before and after), calls the attribution
-trustworthy at the sampler's rate. The raw rows go to `fixtures/telemetry/attribution_check_<tag>_{samples,requests,run}.jsonl`
-and one ledger row (verb `attribution-check`, task T8, node pod-a, `low_confidence` while the sensor's own error is
-unmeasured) holds the result. Tests: `tests/test_lab_attribution_check.py` (a synthetic trace through the real pod
-sampler and a fake teacher, worked out by hand).
 
 ## Trainer (pod B)
 
@@ -895,33 +924,6 @@ Content-Range through, the status it answers to a whole file over 100 MiB (599 i
 the real MB/s of a single stream of 64 MiB parts, and that the SJC pod image has `python3` and the proxy extension.
 The `/files/` route of the Jupyter server (Range without a pod-side server, but only under the Jupyter root) is
 the other path; experiment E9 on the queue compares them.
-## Link speed: `python -m lab link-speed` (R14)
-
-Measures how fast a few-GB package crosses the hub: a seeded random file (it does not compress) goes up to the pod
-through the contents API in base64 chunks (`lab/transfer.py`), comes back through the proxy from R10's file server in
-Range parts (`lab/package_pull.py`), and is checked by sha256, three repeats each way. A short probe first doubles one
-single PUT until the contents API refuses it and keeps the last size it accepted.
-
-```
-python -m lab link-speed --account D [--sizes-mb 1000,3000] [--repeats 3] [--chunk-mib 64] [--part-mib 64]
-                         [--port 8301] [--probe-ceiling-mib 256] [--no-probe] [--scratch r14-link-speed] [--report lab/R14_REPORT.md]
-```
-
-- It runs the file server on its own port (8301) from a copy named `r14_file_server.py` in `~/.r14_link_speed`, so a
-  standing package server on 8300 is left alone, and it serves the folder the push wrote to. At the end it stops that
-  server, deletes `~/.r14_link_speed`, the scratch folder and the controller's script files, so the pod is as found.
-  No GPU and no server restart; it needs a ready pod with `jupyter-server-proxy`.
-- One ledger row per run (`link push`, `link pull`) with `link.push_mb_s` or `link.pull_mb_s`, bytes, seconds,
-  `chunk_bytes` or `part_bytes`, the node, `hub` and `refs.account`; a failed run is an `error` row with no speed. The probe
-  is one row (`link part-probe`, metric `link.max_part_mb`). The Markdown table is written to `--report`.
-- On SJC the edge caches `GET /user/<account>/api/contents/<path>?content=0` for four hours (`cache-control: public,
-  max-age=14400`, `cf-cache-status: HIT`), so a size read back after a rewrite is the old size. This verb adds a
-  never-repeated query parameter to every contents read (`FreshLink`); `lab/transfer.py` does not, and a push of a
-  different size to a path it has read before can fail its size check. The proxy route answers `no-store`.
-- A push's seconds cover the whole call (folders, chunks, size read back); a pull's seconds are its requests only.
-  No MB/s bar applies; this measures.
-- Rehearsal: `tests/test_lab_link_speed.py` runs it at 1 MB and 3 MB against `lab/proxy_fake.py` and `lab/package_fake.py`.
-
 ## Labeling with the teacher: `lab/label.py`
 
 `lab/label.py` asks the teacher about every example of a dataset that has no `target` yet, checks each answer and
@@ -1094,26 +1096,6 @@ steps. The row in `lab/refine/metrics.jsonl` records it as low confidence.
 Tested against `lab/bench_fake.py` (spawned as a real process; `--diverge-at`, `--retoken-at` and `--diverge-match`
 make a second server answer differently from a chosen position): record, compare equal, compare divergent, a
 same-text-different-token divergence, conditions that differ (refused, nothing sent, and `--allow-condition-drift`).
-## Quark INT4 checkpoint against the teacher's: `python -m lab quark-compare` (R23)
-
-`amd/Qwen3.8-27B-Quark-AWQ-INT4-W4A16` loads at b1388b1 only with the loader hunks at the end of
-`lab/vllm-gfx1201.diff` (Python only: the mapper takes the export's `algo_config`, a list of dicts, and the
-`QuarkW4A16Int4` scheme of vLLM PR #48606 is backported). Its key names are the ones b1388b1 reads;
-`lab/quark_keys.py` gives every key's disposition and is the pre-flight. The runner compares it with RedHat INT4 on
-pod B, same build and settings sheet (the pinned baseline of `data/searchspace-inference-gfx1151.json`):
-
-```
-python -m lab quark-compare preflight                    # checkpoint sizes, config keys, time plan; changes nothing
-python -m lab quark-compare slot [--row ID --reply TEXT] # the 60-minute pod B row (critique, then reply)
-python -m lab quark-compare run --batches 1,4            # on pod B in the slot: hunks on, bench, correctness, hunks off
-python -m lab quark-compare record --result F --control-rows R20_ROWS [--reference F] --row ID
-```
-
-`record` reads tok/s and J/token B against A per batch size with `lab/machine/verdict.py`, the exact-match rate
-against A's greedy outputs, writes a `quark-compare` ledger row, T0's E5 result (arms A and B) and
-`R23_T0_result.txt`, and releases the slot; `all` does the four in one process. Steps for the real run:
-`lab/R23_REAL_RUN.md`.
-
 ## Placement plan: `python -m lab placement` (R46)
 
 Which pod serves the teacher, and where the power sampler, benchmark runs, Ax trials and LoRA jobs go, with a reason
@@ -1371,6 +1353,43 @@ python -m lab sweep-request collect lab/state/sweep_request/pod_run.out --metric
   bundle runs the dry run with the standard library alone). `fixtures/lab/sweep_request/recorded_full.out` is the
   committed grid run on the fake, as the pod prints it (`make_fixture.py` records it again; the test checks the grid's
   sha256). Not yet seen on a pod: the pinned launch's flags on vLLM b1388b1, the real rates and the warm start time.
+## Joules per token on the teacher: the energy model and the number of the night (R56)
+
+`lab/energy_model.py` predicts joules per generated token on the Strix Halo (gfx1151) from the committed chip sheet,
+and checks a measured batch curve against the prediction; `lab/refine/research/kernels/energy_model_gfx1151.md`
+derives it, gives the measurement protocol and the optimizer's objective. Standard library only, runs anywhere.
+
+```
+python -m lab.energy_model                       # predicted J/token at batch 1, 4, 8, 16 and the knees
+python -m lab.energy_model --batches 1,16,48,64 --json
+python -m lab.energy_model check fixtures/lab/energy_model/attach-sweep-pod-c-2026-10-10.jsonl
+python -m lab.energy_model check <lab/bench.py rows.jsonl | sweep-request-gfx1151-<date>.json>
+```
+
+- **Model.** J/token = P(B) / tok_s(B). Decode is weight-read bound, so the socket draws about the same watts at batch
+  1 as at 16 while tok/s grows almost with the batch. Predicted gross J/token decoding alone at a 512-token context:
+  April build 41.7, 10.6, 5.4, 2.8 at batch 1, 4, 8, 16; a build reading weights at the 210.5 GB/s ceiling 8.1, 2.2,
+  1.2, 0.7. The curve flattens near batch 45 to 52 for the teacher at the ceiling and 72 to 201 for the bf16 student.
+- **Checked against R26** (the attach sweep above, the fixture is its rows): stated as the April build (2.88 tok/s,
+  120 W at batch 1) the throughput holds within 7 % at every batch and the watts miss (96.0 W measured, flat, against
+  120 to 129 W predicted), so J/token holds at 1 and 4 and misses by 15 to 23 % at 8, 16 and 64; anchored on the
+  sweep's own batch-1 point every batch holds within 7 %. The real loaded idle is 10.44 W, read after the sweep; the
+  82.4 W read before it caught an earlier attempt's requests.
+- **Objective.** The night optimizer (`lab/refine/research/kernels/data/ax-config-night.json`) minimizes
+  `joules_per_token.b1`, gross, with `decode_tok_s.b1 >= 2.88` and `ttft_s.b1 <= 2.0` as outcome constraints.
+
+The before-and-after number of the night. Gross J/token from `lab/bench.py` (socket energy over the decode window
+over the tokens in it), medians of the runs named. The "after" row is filled from the best measured configuration on
+the rebuilt teacher (R53 / R60) once it is benchmarked; until then it is pending, not estimated.
+
+| | Build | Configuration | Batch | tok/s per stream | tok/s total | Avg W | J/token gross | J/token above idle | Conditions |
+|---|---|---|---|---|---|---|---|---|---|
+| Before | April build: vLLM 0.19.2 at b1388b1 plus `lab/vllm-gfx1201.diff`, Conch W4A16, `RedHatAI/Qwen3.8-27B-INT4` | stock serve line, thinking off, greedy | 1 | 2.70 | 2.62 | 96.0 | 36.66 | 32.67 | R26 attach sweep, pod C (SJC, account C), bench-v1, 4 x 128 tokens a stream, 3 repeats, idle 10.44 W, PR #269 (081c496) |
+| After | rebuilt teacher (R53 / R60) | best measured arm | pending | pending | pending | pending | pending | pending | pending: run, pod, prompt set, repeats, idle, commit |
+
+For reference, the April build's own batch-1 smoke on pod C read 2.88 tok/s at 120 W, about 41.7 J/token
+(teacher section above); the R26 row is the before number because it ran through the same harness the after row will.
+
 ## Eval gate: `python -m lab eval-gate` (L4)
 
 Scores the current Jetson model, the packaged Q4_K_M candidate (from L5) and the teacher on the held-out side of a
@@ -1446,40 +1465,6 @@ python lab/label_fallback.py convert fixtures/learning/tool-calling-fixture fixt
 `convert` is the route for a night when the teacher is not labeling: it turns the reference traces in `expected.jsonl`
 into the same folder, checks every row against the task's output schema, and writes `"source": "reference traces,
 teacher unavailable"` in the manifest. This run did not need it: the manifest says `"source": "teacher"`.
-## Publishing the adapter: `python -m lab publish-adapter` (L8)
-
-Puts the trained LoRA adapter and its model card on the team Hugging Face repo. The card is filled by code from the
-evaluation gate's ledger row (`lab/model_card_template.md`): the task and its instruction from a `TaskSpec` JSON file,
-the current, candidate and teacher scores, n as items and as groups, the run-to-run noise and the paired p-value, none
-typed by hand. The metadata sets `license: apache-2.0`, `base_model: Qwen/Qwen3.5-4B`, `base_model_relation: adapter`,
-`library_name: peft` and no `datasets` entry; the upload carries `LICENSE` (the Apache 2.0 text) and a line saying the
-adapter is a LoRA fine-tune of the base.
-
-```
-python -m lab publish-adapter --fake --repo <owner>/<name> --adapter-dir <dir> --task-spec <spec.json> [--run-id R]
-```
-
-`--fake` runs every step against `lab/hf_fake.py` and uploads nothing; without it the command needs `HF_TOKEN` in the
-environment (the name only; the value is never printed) and `huggingface_hub`, which is imported only then. Before any
-push it reads the base model's card again and stops unless the license is `apache-2.0`, and scans every file of the
-upload folder for an image, a caption, a label, a `frame_ref`, a `data/` path or a camera id, stopping on any hit. The
-exact command for the real publish is in `lab/L8_REAL_RUN.md`.
-
-## Label agreement spot-check: `python -m lab label-agreement`
-
-`lab/label_agreement.py` asks the teacher again about 30 labeled examples (the first 30, or `--sample seeded
---sample-seed N`) with another sampling seed (`--seed`, default 1; the labels were made with 0) and a reworded prompt
-(`REWORD_PREFIX` in front of the instruction), compares the two labels one top-level field at a time (`tool_calls`
-and `answer` for the fixture; free text and lists are one field, `label`), and writes `label_agreement.json` and
-`label_agreement.md` (`--out`) with the agreement rate per field and overall, every disagreement (example id, field,
-first value, second value), the examples the second pass could not label (counted as disagreeing) and a verdict:
-`consistent` at or above the threshold, `inconsistent` below it, `insufficient` when fewer than 30 are labeled. The
-threshold is the number LT2 in `lab/refine/learning/RUBRIC.md` names for the agreement check; it names none today,
-so the default is 0.9 and the report says so (`--threshold` overrides). The report holds the rubric line the merge
-pass should add, with its citation; nothing under `lab/refine/` is written. One ledger row (verb `label-agreement`,
-outcome the verdict, `label.agreement_rate`, `label.agreement_sample`, `label.agreement_disagreements`). The dataset
-is never written; the sample is relabeled in a temporary copy. Tests use the fake teacher (`swayed_policy` makes it
-answer differently on a second seed); the run against the real teacher is in `lab/L14_REAL_RUN.md`.
 ## Camera clips: `jetson/record_clip.py` (L22)
 
 The gateway (`atlas-gateway`) holds `/dev/video0` open, and `/dev/video1` is the same webcam's metadata channel (v4l2-ctl
@@ -1590,6 +1575,90 @@ kernel-name categories; a training-step profile can use it as it is. Tests: `tes
 (`make_fixture.py` writes it; made in the tools' documented formats, not recorded), and a whole run against
 `lab/bench_fake.py`, whose server now answers `/start_profile` and `/stop_profile` and has a rocprofv3 stand-in. Not
 yet run on a pod.
+## Training step profile: `lab/profile_train.py` (R34)
+
+Where each optimizer step of the student LoRA run goes on gfx1151: the run this explains is L16, the first real
+fine-tune (pod D, 18 steps in 785 s, about 44 s a step, peak 11.1 GiB, no power sampler). Built and tested on the box;
+the pod run is two GPU Queue slots on pod D, done by the dispatcher.
+
+```
+python -m lab profile-train self-check --quick               # the box: parser and writer on both recorded fixtures
+python -m lab profile-train run --cpu --dataset D --rows R --model TINY --steps 3 --results DIR   # the box: rehearsal
+python3 -m lab.profile_train run --dataset datasets/tool-calling-fixture --rows datasets/rows.jsonl \
+    --model ~/models/Qwen3.5-4B --out ~/runs/r34-profile --results ~/runs/r34-profile/result --no-ledger   # pod D
+python -m lab profile-train record <the pulled train-profile-gfx1151-<date>.json>   # the box: file it, ledger row
+```
+
+- **The run.** lab/train.py, unchanged but for an optional callbacks list, trains `--steps` optimizer steps (20) with
+  its pinned baseline (batch 4 by gradient accumulation 4, r 16, gradient checkpointing, SDPA, fused AdamW) in a
+  process of its own. A trainer callback puts forward hooks on every Gated DeltaNet layer (`*.linear_attn`), attention
+  layer (`*.self_attn`), MLP, LoRA matmul (`*.lora_A.*`, `*.lora_B.*`) and the embedding and LM head, each opening a
+  record_function range `atlas::<kind>::<module>`, and starts the torch profiler (record_shapes and profile_memory
+  on, with_stack off) when training begins, so model loading stays out of the first step. The profiler's schedule
+  is one active window of `--steps` steps, which is what makes it mark each step with a `ProfilerStep#<n>` range
+  (without a schedule torch records no step ranges); `--active N` profiles only the last N steps when the trace must
+  be smaller. With `rocprofv3` on PATH a second pass trains the same steps under `rocprofv3 --kernel-trace
+  --memory-copy-trace` without the torch profiler. `--passes torch` or `--passes rocprof` runs one pass, and a second
+  call with the same `--out` adds the other. Before training it installs `lab/requirements-train.txt`'s pins around
+  the pod's torch exactly as `lab/train.py` does (`--no-install` skips it).
+- **Its data.** On the pod lab/train.py deletes its dataset copy and rows however a run ends, so each pass trains on
+  a copy of its own under `<out>/data-<pass>/`, and `run` deletes the originals after the passes (`data_deleted` in
+  the answer). A `--cpu` rehearsal keeps its data.
+- **How the trace is read.** Forward ops belong to the innermost `atlas::` range around them (LoRA sits inside its
+  layer's range and is never counted there too). Backward ops run on the autograd thread outside every range: each
+  belongs to the layer of the forward op it differentiates, through the profiler's `fwdbwd` flow events, and the ops
+  a backward function calls inherit it. `Optimizer.step#...` and `Optimizer.zero_grad#...` are the optimizer's,
+  `enumerate(DataLoader)#...` data loading's. A kernel or copy belongs to the op whose runtime call launched it
+  (correlation id). On a GPU trace a share is kernel time over step wall time (data loading: its wall time; gpu_idle:
+  no kernel or copy running); on a CPU trace it is op self time. The first two steps of six or more are warm-up and
+  left out of the means.
+- **The result**, `lab/refine/research/kernels/data/train-profile-gfx1151-<date>.json` and `.md`
+  (`train-profile-cpu-<date>` for a rehearsal): time per step and its spread; the share and ms per step of the Gated
+  DeltaNet layers, attention, the LoRA matmuls, the MLPs, the embedding and head, the optimizer, data loading,
+  host-device copies, other work and GPU idle; the top 25 kernels by self time with launch counts and the bucket
+  each mostly ran in (CPU ops by self time on a CPU trace), and rocprofv3's own table when that pass ran; bytes and
+  FLOPs per step from the recorded shapes (leaf ops' inputs, outputs not counted, so a lower bound; 2MNK of every
+  mm, addmm, bmm and baddbmm) over the step time and over kernel time, against the chip sheet's device-to-device copy
+  over its largest buffer and its best bf16 matmul (R33's `chipsheet-gfx1151-2026-10-11.json`: about 208 GB/s);
+  peak allocated and reserved memory from the allocator samples and the trainer's own max_memory_allocated; whether
+  the flash-linear-attention kernels ran (kernel names, and lab/train.py's own `deltanet_kernel`), with the GDN share
+  named the fallback share when they did not; and `trainer.samples_per_s` measured as `metrics.jsonl:13` measures
+  it, under the profiler, so a lower bound. One `profile_train` ledger row on node pod-b (`record` on the box writes
+  it for a pod result; `ingest RUN_DIR` does the same from a whole run folder).
+
+**Pod runbook (the dispatcher's).** The rows first, on the box: `python lab/format_traces.py
+fixtures/learning/tool-calling-labels --out rows.jsonl --split` (84 rows today; the unlabeled
+`fixtures/learning/tool-calling-fixture` still answers "no example has a target yet": the teacher's labels are in
+`tool-calling-labels`, L13, PR 283). Its dataset_id is `tool-calling-fixture`, which is where `push-dataset` puts it:
+
+```
+python -m lab.transfer push-dataset --account D fixtures/learning/tool-calling-labels --to datasets
+python -m lab.transfer push-file --account D rows.jsonl datasets/rows.jsonl
+# lab/ and contracts/ to the same Jupyter root, as for lab/train.py
+# slot 1, 30 minutes, pod D (B exclusive): the torch pass
+python3 -m lab.profile_train run --passes torch --dataset datasets/tool-calling-fixture --rows datasets/rows.jsonl --model ~/models/Qwen3.5-4B --out ~/runs/r34-profile --results ~/runs/r34-profile/result --no-ledger
+# slot 2, 30 minutes, pod D (B exclusive): the rocprofv3 pass into the same folder (push the data again first)
+python3 -m lab.profile_train run --passes rocprof --dataset datasets/tool-calling-fixture --rows datasets/rows.jsonl --model ~/models/Qwen3.5-4B --out ~/runs/r34-profile --results ~/runs/r34-profile/result --no-ledger
+# back on the box
+python -m lab.transfer pull-file --account D runs/r34-profile/result/train-profile-gfx1151-<date>.json lab/state/r34/train-profile-gfx1151-<date>.json
+python -m lab profile-train record lab/state/r34/train-profile-gfx1151-<date>.json
+```
+
+Slot sizes from L16's 44 s a step: 20 steps are about 15 minutes, plus model load and the profiler's own cost
+(record_shapes and the allocator samples), plus writing and reading the trace: about 25 minutes for the torch pass and
+about 20 for the rocprofv3 pass, so 30 minutes each. The trace is large: the CPU rehearsal's two-layer model records
+about 20,000 ops a step, so a 32-layer step is several hundred thousand, and 20 steps a JSON trace of a gigabyte or
+more; if the first slot runs short, `--active 8` keeps the last 8 of the 20 steps. Each pass deletes its own data
+copy, and the run deletes the pushed originals once its passes are done.
+
+Tests: `tests/test_lab_profile_train.py` (the parser on `fixtures/lab/train_profile/rocm`, a synthetic GPU trace
+whose totals per step can be checked by hand, written by `make_rocm_synthetic.py`: GDN 2.6 ms, attention 0.74, MLP
+0.5, LoRA 0.045, optimizer 0.3, copies 0.02, data loading 0.2, steps 10.0, 10.5 and 9.5 ms; links broken one at a
+time; the recorded CPU trace under `fixtures/lab/train_profile/cpu`, two steps of the tiny Qwen3.5 cut by
+`trim_cpu_trace.py`; the result, its checks, the Markdown, the ledger row and the run's plumbing with the trainer
+replaced) runs everywhere; `tests/test_lab_profile_train_cpu.py` runs the whole verb on the CPU and is skipped where
+the training stack is not installed (CI). Not yet run on a pod.
+
 ## Chip capacity and the student ladder: `python -m lab capacity`, `lab/ladder.py` (R44)
 
 `python -m lab capacity` probes one chip in under two minutes through a chip client (R33's quick chip sheet and the
@@ -1607,37 +1676,6 @@ python -m lab.ladder --capacity <record>.json [--capacity <record>.json] --sampl
 ```
 
 Tests: `tests/test_lab_capacity.py`, `tests/test_lab_ladder.py` (the fake client only; no pod, hub or GPU).
-## Desk-object scorer: `python -m lab desk-score` (L24)
-
-Scores a model on the held-out desk-object examples of an export, served as the box serves it, in the scores shape
-the eval gate (L4) reads. The module docstring of `lab/desk_score.py` holds every rule; the short version:
-
-```
-python -m lab desk-score split data/exports/<dataset_id> --held-out 50     # once: split.json by frame_ref group
-python -m lab desk-score score data/exports/<dataset_id> --base-url http://127.0.0.1:8080 --runs 2 \
-    --json desk-current.json --node jetson
-```
-
-- **The split.** `split` writes `split.json` once, in the format `lab/dataset.py load_split` reads: whole frame_ref
-  groups in the order of the sha256 of their frame_ref, held out until the side holds at least `--held-out`
-  examples. It refuses a folder that has one already and records the file's sha256 (ledger verb `desk-split`).
-  `score` reads the held-out side only from that file, through `load_split`, so a leaky or short split never scores.
-- **The request.** One chat request per held-out example: the picture as a data URL and the export's instruction as
-  the one user message, with one decode setting (`DECODE`: temperature 0, top_k 1, seed 0, max_tokens 24,
-  `enable_thinking` false). The caption is not sent.
-- **The score.** Answer and label (the example's `target`) normalised the same way (lowercase, punctuation and the
-  articles a, an, the dropped, the last word made singular), then exact match. The answer is
-  `{"score", "model", "results", "desk.<object>", ..., "desk.n_items", "desk.n_groups"}`: the shape
-  `contexts/agent/eval.py --json` writes, with per-object detail as dotted keys; every result keeps its frame_ref so
-  the gate pairs by group. `score(base_url, examples, prompt=...)` is the call the gate makes.
-- **The row.** One `desk-score` ledger row per run (task L24): metrics `desk.score`, `desk.<object>`,
-  `desk.n_items`, `desk.n_groups`; refs `split_sha256`, `commit` (git HEAD, or `--commit` where lab/ is a copy),
-  `model`, `run_id`; conditions with the decode setting, the prompt's sha256 and `meets_deploy_floor`.
-
-Tests: `tests/test_lab_desk_score.py`, on `lab/desk_fake.py` (a fake llama-server over an httpx transport) and
-`fixtures/learning/desk-fixture/` (12 synthetic examples on 8 frame_refs; `python -m lab.desk_fake build-fixture`
-rebuilds it). The real runs on the Jetson and on a pod are in `lab/L24_REAL_RUN.md`.
->>>>>>> 2fbf5f3 (L24: README section and the real-run steps for the desk scorer)
 ## Experiment runner: `python -m lab experiment run` (O29)
 
 One kernels-track experiment from its ledger definition to its verdict on pod B, in one call
@@ -1669,3 +1707,16 @@ python -m lab experiment run E3 [--task O29] [--row <row>] [--reply "..."] [--re
 
 Tested against `lab/hub_fake.py` (its file store on disk, the pod script run by bash), `lab/machine/slots_fake.py` and
 `lab/bench_fake.py`. The commands of the first real run are in `lab/O29_REAL_RUN.md`.
+
+## The first real fine-tune on pod B (L16)
+
+`lab/l16_run.sh` is the whole run, step by step, and `lab/L16_CONFIG.md` is its config with the source of every
+number (R36's pinned baseline: LoRA r 16, alpha 32, lr 2e-4, batch 4 by accumulation 4, 3 epochs, seed 42). On the
+workstation `dataset` writes the labeled train rows (L13's labels when they are in the repo, else the reference traces
+of `expected.jsonl`, learning ruling 12), `bundle` packs `lab/` and `contracts/` for the pod and `dry-run` runs the
+same command line on the CPU. On pod D, inside the GPU Queue slot, `prep` makes `~/venvs/atlas-train` over the image's
+torch (pip runs only in the venv, with `PYTHONNOUSERSITE=1`, so the user site where pod D keeps vLLM is never touched)
+and downloads the base at its pinned commit to `~/models/Qwen3.5-4B`; `train <run id> <dataset id>` runs the trainer
+and leaves the adapter, telemetry, `run.json`, the log and the ledger rows in `~/adapters/l16-<run id>/`.
+`fixtures/demo/` holds what came back: the trainer log, the loss curve, the ledger rows and the screen recording the
+"It learns" fallback uses (owner ruling 7).

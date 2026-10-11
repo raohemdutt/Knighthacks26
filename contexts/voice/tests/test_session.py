@@ -3,7 +3,7 @@ import time
 
 import pytest
 
-from contexts.voice.session import VoiceSession
+from contexts.voice.session import SAY_AGAIN, VoiceSession
 from contexts.voice.tests.fakes import FakeMic, FakeSpeaker, FakeStt, FakeTts, make_config, question, silence, tone
 
 
@@ -183,6 +183,14 @@ def test_a_blank_transcript_is_not_asked():
     s.talk()
     s.wait()
     assert asked == [] and "Didn't catch" in s.problem
+    assert s.tts.said == [SAY_AGAIN]  # it asked again once, then gave up
+
+
+def test_a_question_that_was_not_understood_is_asked_again_and_then_answered():
+    s, _, _, asked = build(stt=FakeStt(script=[""], text="where are my keys"))
+    s.talk()
+    s.wait()
+    assert s.tts.said[0] == SAY_AGAIN and asked == ["where are my keys"] and s.problem == ""
 
 
 def _boom(_):
@@ -248,6 +256,7 @@ def test_hey_atlas_answers_whats_up_then_takes_the_question():
     assert s.tts.said[0] == "What's up?"
     assert s.heard == "what time is it" and s.problem == ""
     assert not speaker.mic_was_open_while_playing
+    assert s.stt.quick[:2] == [True, False]  # the wake check uses the quick model, the question the careful one
 
 
 def test_hey_atlas_followed_by_a_question_still_greets_first_and_asks_only_the_question():

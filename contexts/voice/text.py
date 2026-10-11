@@ -168,7 +168,20 @@ def find_wake(transcript: str) -> str | None:
     return rest if len(re.findall(r"\w+", rest)) >= MIN_WORDS_FOR_QUESTION else ""
 
 
+# What whisper writes for a cough, a fan or a door when there are no words (it learned them from video subtitles)
+_NOISE_ONLY = re.compile(r"^\W*(?:you|thank you|thanks|thank you(?: so much)? for watching|thanks for watching|bye|okay|so|um+|uh+|hmm+"
+                         r"|please subscribe|subtitles by[\w\s.]*)\W*$", re.I)
+# the same words twice or more in a row: whisper looping on a short clip ("Nothing much are you. Nothing much are you.")
+_REPEATED = re.compile(r"^\W*(.{4,}?)(?:[\s.,!?]+\1)+\W*?([.!?]?)$", re.I)
+
+
 def clean_transcript(raw: str) -> str:
-    """Whisper marks silence and noise as [BLANK_AUDIO], (music) and the like; those are not a question."""
+    """Whisper marks silence and noise as [BLANK_AUDIO], (music) and the like; those are not a question, and neither is a
+    lone "Thank you." it invented for a noise. A phrase it wrote twice in a row is kept once."""
     t = re.sub(r"\[[^\]]*\]|\([^)]*\)|\*[^*]*\*", " ", raw)
-    return re.sub(r"\s+", " ", t).strip()
+    t = re.sub(r"\s+", " ", t).strip()
+    if _NOISE_ONLY.match(t) or not re.search(r"[a-z]", t, re.I):  # "♪♪♪" for a hiss
+        return ""
+    if m := _REPEATED.match(t):
+        t = m[1].rstrip(" .,!?") + (m[2] or ("?" if m[1].rstrip().endswith("?") else ""))
+    return t
