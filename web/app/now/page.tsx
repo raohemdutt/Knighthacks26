@@ -402,7 +402,7 @@ function Action({ d, reload, onLeave }: { d: DayNow; reload: () => void; onLeave
   );
   const dayRun = (primary: boolean) => (
     <Link key="dayrun" href="/dayrun/?plan=day" className={`${ui.btn} ${primary ? `${ui.btnPrimary} ${n.primary}` : ""}`}>
-      Change it in Day Run
+      Change it in Today&apos;s Plan
     </Link>
   );
   const approve = (primary: boolean, label: string) => (
@@ -627,7 +627,7 @@ function Why({ d, patterns }: { d: DayNow; patterns: DayPattern[] }) {
             </details>
           </>
         ) : (
-          <p className={`${ui.muted} ${ui.small}`}>Atlas plans at wake time from what it already knows. It is a starting point: remake it, re-plan from where you are, or edit it in Day Run.</p>
+          <p className={`${ui.muted} ${ui.small}`}>Atlas plans at wake time from what it already knows. It is a starting point: remake it, re-plan from where you are, or edit it in Today&apos;s Plan.</p>
         )}
 
         {s ? (

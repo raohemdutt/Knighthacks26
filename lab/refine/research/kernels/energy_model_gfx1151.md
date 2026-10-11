@@ -60,7 +60,7 @@ above-idle metric subtracts.
   42.3 TFLOP/s in bf16 and 38.3 in fp16, and median loaded socket watts of 75.0 W for copies, 102.4 W for the fp16 and
   bf16 matmuls, 110.0 W for the W4A16 dequant kernel and 120.8 W for the compute-bound LoRA GEMMs, with loaded watts
   nearly flat from M 1 to 16 (0.12 % per added row). Source: [L10] `data/chipsheet-gfx1151-2026-10-11.md` and its
-  JSON, the copy, matmul, dequant and lora sections, read by [L14] `lab/energy_model.py` `chip_inputs`.
+  JSON, the copy, matmul, dequant and lora sections, read by [L20] `lab/energy_model.py` `chip_inputs`.
   - Implication: weights are the cost. The teacher reads 15.13 GB of weights a step and does 51.2 GFLOP a token, the
     student 8.41 GB and 8.4 GFLOP, so at batch 1 both sit far below the compute roof and the watts barely move with
     batch; every joule saved per token comes from reading the weights fewer times per token (batching) or faster
@@ -77,7 +77,7 @@ above-idle metric subtracts.
   teacher at the ceiling has its int4 GEMMs turn compute-bound at batch 52 and its per-sequence traffic (0.30 GB of
   recurrent state plus 64 KB of KV per context token) match the shared weight read at batch 45; the bf16 student's
   GEMMs turn at 201 and its state (0.10 GB) at 72; the April build is held by its kernel's 128-row tile before
-  either. Source: [L10] the chip sheet's matmul and dequant rows; [L14] `sheet_knees` and `knees`.
+  either. Source: [L10] the chip sheet's matmul and dequant rows; [L20] `sheet_knees` and `knees`.
   - Implication: for the teacher at the ceiling, batch 16 is still on the steep part (0.68 J/token decoding alone) and
     batching past about 48 buys almost nothing (0.35 J/token at 52 and at 64); for the student the curve keeps falling
     to about 72. The knee for an energy-optimal labeling job is therefore near 48 streams for the teacher, bounded in
@@ -89,7 +89,7 @@ above-idle metric subtracts.
 - **[practitioner]** The ML.ENERGY Benchmark measures inference energy automatically with the Zeus library, and Zeus
   reads AMD GPUs through AMDSMI, which it supports only on ROCm 6.3 or later because older versions returned wrong
   power and energy values; where `current_socket_power` reads N/A it falls back to the average socket power.
-  Source: [S62] the ML.ENERGY Benchmark paper (title and abstract: automated inference energy measurement); [S181] Zeus
+  Source: [S62] the ML.ENERGY Benchmark paper (title and abstract: automated inference energy measurement); [S182] Zeus
   `docs/measure/index.md` at 42d76ac, section "ROCm and AMDSMI Versions" and the AMD GPU paragraphs.
   - Implication: our pods run ROCm 7.13, so the AMDSMI power path is inside the supported range; the gfx1151 socket
     reports SOCKET_POWER while energy and clocks read N/A, so energy has to be integrated from power samples rather
@@ -102,8 +102,8 @@ above-idle metric subtracts.
   2.62, 9.32, 16.36, 26.95 and 49.53 tok/s total at 1, 4, 8, 16 and 64 concurrent streams with the socket at a flat
   96.0 W in every window, so 36.66, 10.31, 5.87, 3.56 and 1.94 J/token gross. The 82.4 W "loaded idle" in that
   session's rows was not the idle: it caught requests of an earlier attempt of the sweep that were still decoding; the
-  real loaded idle, read after the sweep with the teacher up and nothing running, was 10.44 W. Source: [L15]
-  `lab/README.md`, section "Batching sweep on the pod C teacher (R26, Strix Halo, gfx1151)"; [L16] the trimmed rows
+  real loaded idle, read after the sweep with the teacher up and nothing running, was 10.44 W. Source: [L21]
+  `lab/README.md`, section "Batching sweep on the pod C teacher (R26, Strix Halo, gfx1151)"; [L22] the trimmed rows
   `fixtures/lab/energy_model/attach-sweep-pod-c-2026-10-10.jsonl`.
   - Implication: `python lab/energy_model.py check` on those rows shows where the model holds and where it misses.
     Stated as the April build (2.88 tok/s and 120 W at batch 1), the predicted total tok/s is within 7 % at every
@@ -123,8 +123,8 @@ above-idle metric subtracts.
 
 - **[measured]** The R52 request-side sweep on pod D, which the Done when names as the second check, has no result on
   main yet: `lab/refine/metrics.jsonl` holds no `sweep_request` line and no result file is committed. The checker reads
-  its result format directly (schema `atlas.sweep_request/1`, the base slice at batch 1, 4, 8 and 16). Source: [L17]
-  `lab/README.md`, section "Request-side settings sweep: `lab/sweep_request.py` (R52)"; [L14] `measured_points`.
+  its result format directly (schema `atlas.sweep_request/1`, the base slice at batch 1, 4, 8 and 16). Source: [L23]
+  `lab/README.md`, section "Request-side settings sweep: `lab/sweep_request.py` (R52)"; [L20] `measured_points`.
   - Implication: the R52 reading is open, not skipped; when its result lands, one CPU command gives the table, and
     the note gains a finding with the ratios.
   - Candidate experiment: EM4, `python -m lab.energy_model check lab/refine/research/kernels/data/sweep-request-gfx1151-<date>.json`

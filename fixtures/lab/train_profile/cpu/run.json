@@ -1,0 +1,39 @@
+{
+  "metrics": {
+    "trainer.base_params": 46348,
+    "trainer.batch": 2,
+    "trainer.epochs": 1.0,
+    "trainer.examples": 6,
+    "trainer.examples_seen": 6,
+    "trainer.grad_accum": 1,
+    "trainer.longest_example_tokens": 1470,
+    "trainer.lora_rank": 16,
+    "trainer.loss_first": 6.051416397094727,
+    "trainer.loss_last": 6.04979133605957,
+    "trainer.samples_per_s": 1.9601779102685826,
+    "trainer.span_tokens": 957,
+    "trainer.steps": 3,
+    "trainer.steps_with_power": 0,
+    "trainer.tokens": 7546,
+    "trainer.train_loss": 6.05055586496989,
+    "trainer.train_s": 3.0609466460000476,
+    "trainer.trainable_params": 17216
+  },
+  "ok": true,
+  "outcome": "trained",
+  "refs": {
+    "deltanet_kernel": "torch fallback",
+    "device": "cpu",
+    "layer_ranges": "{\"attention\": 1, \"embed_head\": 2, \"gdn\": 1, \"lora\": 30, \"mlp\": 2}",
+    "loss_head": "torch",
+    "mode": "cpu",
+    "model_class": "Qwen3_5ForCausalLM",
+    "node": "cpu",
+    "peft": "0.21.2",
+    "rocm": null,
+    "run_id": "train-20261011T041314Z-669b94",
+    "torch": "2.9.1+cu128",
+    "transformers": "5.19.0",
+    "trl": "1.15.0"
+  }
+}

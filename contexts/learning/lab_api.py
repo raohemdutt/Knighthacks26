@@ -26,7 +26,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from contexts.learning.application.lab_bench import other_chip
+from contexts.learning.application.lab_bench import chip_of
 from contexts.learning.application.lab_runs import sync as sync_trainer_runs
 from contexts.learning.application.lab_sample import SAMPLE_DIR, cached_sample
 from contexts.learning.application.lab_view import SUGGESTED_EVENTS, LabView, by_file, collect_numbers, num
@@ -56,7 +56,8 @@ def measured(metrics_file: str | Path | None = METRICS_FILE) -> list[dict[str, A
             item = num(MEASURED[row["metric"]], row["value"], row.get("unit"), by_file("lab/refine/metrics.jsonl", n),
                        low_confidence=bool(row.get("low_confidence")))
             item.update(metric=row["metric"], node=row.get("node"), measured_at=row.get("ts"), sample=False)
-            item["other_chip"] = other_chip(row)  # measured on the R9700s, before the lab moved to the Strix Halo pods
+            item["chip"] = chip_of(row)  # the chip the row was measured on, by the row's own fields
+            item["other_chip"] = not item["chip"]["current"]  # not the current lab: the R9700s, or a reference machine
             out.append(item)
     return out
 
