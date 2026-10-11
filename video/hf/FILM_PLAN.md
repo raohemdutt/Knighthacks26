@@ -1,8 +1,10 @@
-# Atlas film v4.1: plan and tracking document
+# Atlas film v4.2: plan and tracking document
 
 Status: **PLAN, waiting for Dom's approval. Nothing is rendered until it is approved.**
 Branch `ctx/demo/video-hyperframes`. Owner: Dom (Notion task D12).
 v4.1 (Sun Oct 11): Dom's answers to v4 folded in; NextEra scene added; full order with every spec beat.
+v4.2: the friend is Ilan (not Maya); the meals goal set in the morning and called back at dinner; "where are my keys?" folded
+into the morning; the stake is driving; under 5:00; Atlas's voice as proposed; NextEra written as a story.
 
 Every fact on screen or in a line comes from the repo, with the source next to it, or Dom has said so explicitly
 (section 6 lists those). Tick a box only when it has been built *and* checked in a frame.
@@ -24,7 +26,7 @@ Every fact on screen or in a line comes from the repo, with the source next to i
    - **Atlas:** the box's own voice if I can run it here (Piper `en_US-ryan-medium`, pitched down as on the box,
      Xander's #348). Otherwise a distinct edge-tts voice.
    - **Hemdutt (the person):** a third voice.
-   - **Maya and Dominick:** two more.
+   - **Ilan and Dominick:** two more (and the operator and trainee in NextEra).
    - Captions name the speaker.
 6. **The person is the star.** Colour, hair, a face with expressions, real movement (section 4).
 7. **No plain mistakes.** Every set is checked from two angles before a scene is done.
@@ -51,25 +53,25 @@ If Hemdutt's Notion page adds anything beyond `ear.py`, the brief changes to mat
 
 ## 2. The full order (demo and spec)
 
-About 5:10 in total (the length question is still open; see Q1). **D** = demo, **S** = spec.
+About 4:50 in total (**hard cap 5:00**). **D** = demo, **S** = spec.
 
 | # | Beat | Type | ≈ s | Spec unchanged? | Status |
 | --- | --- | --- | --- | --- | --- |
 | 0 | The problem | narrator | 14 | new | [ ] |
-| 1 | This is Atlas, and what's inside | S | 20 | **as now** (intro: assemble, explode, x-ray) | [ ] |
-| 2 | **Wake up, good morning, the brief, lock the plan** | **D** | 55 | new | [ ] |
+| 1 | This is Atlas, and what's inside | S | 16 | **as now** (intro: assemble, explode, x-ray) | [ ] |
+| 2 | **Wake up, good morning, the brief, the meals goal, lock the plan, where are my keys** | **D** | 70 | new | [ ] |
 | 3 | What fed the brief | S | 10 | new, short | [ ] |
-| 4 | The model on the box (42 of 42) | S | 18 | **as now** ("It learns"), one wording fix (6.E) | [ ] |
+| 4 | The model on the box (42 of 42) | S | 14 | **as now** ("It learns"), one wording fix (6.E) | [ ] |
 | 5 | **At the desk: you look tired, the check-in** | **D** | 45 | new | [ ] |
 | 6 | Faces: expressions on the device, blur only on egress | S | 14 | new, short | [ ] |
 | 7 | **Kitchen: the can, the phone, the count, the nudge** | **D** | 30 | rebuild | [ ] |
 | 8 | **Sort It round** | **D** | 15 | new | [ ] |
 | 9 | What Sort It runs on | S | 10 | new, short | [ ] |
-| 10 | The learning lab | S | 22 | **as now** | [ ] |
-| 11 | On the device: cable pull, ledger | S | 16 | **as now**, blur wording changed (6.H) | [ ] |
-| 12 | **Friends: three people, three boxes, the league** | **D** | 55 | rebuild | [ ] |
+| 10 | The learning lab | S | 16 | **as now** | [ ] |
+| 11 | On the device: cable pull, ledger | S | 12 | **as now**, blur wording changed (6.H) | [ ] |
+| 12 | **Friends: the league, three calendars agree, dinner with Ilan (meals goal callback)** | **D** | 55 | rebuild | [ ] |
 | 13 | How the boxes talk, the trusted group, many groups | S | 18 | rebuild (6.C) | [ ] |
-| 14 | Same box, other lives (more) | S | 22 | rebuild; the Day Run line is gone | [ ] |
+| 14 | Same box, other lives (more) | S | 16 | rebuild; the Day Run line is gone | [ ] |
 | 15 | NextEra: why it works on a plant floor | S | 12 | new | [ ] |
 | 16 | **NextEra: an operator's shift with SPOT** | **D** | 45 | new | [ ] |
 | 17 | End | narrator | 6 | as now | [ ] |
@@ -110,8 +112,17 @@ About 5:10 in total (the length question is still open; see Q1). **D** = demo, *
    - "If you want a break, Sam and Riley are going to board game night at the Union at 8, and Andria's running a
      quiz review. Both optional."
    - "Does this look good? I can lock this plan, or would you like something changed?"
-5. **P:** "Looks good. Lock it."
-   **A:** "Locked. Tap to approve." The person taps Approve on the phone. **A:** "Done."
+5. **P:** "Looks good. Lock it. And today, help me actually eat two real meals."
+   **A:** "Done. Two meals is your goal today, and I'll keep track. Tap to approve the plan." The person taps
+   Approve on the phone. **A:** "Locked."
+   (Meals is a real habit, target 2, `config/habits.yaml:39-48`. It is called back at dinner in beat 12.)
+6. **P** (patting pockets, getting up): "Atlas, where are my keys?"
+   **A:** "On your desk, behind the mug. I saw you put them there last night." In the room a soft red ring lands on
+   the keys, and the person picks them up.
+   - App window: the Ask card with the blurred-free desk frame and the keys ringed, then the room view with the pin
+     "Keys here" (the room twin's look, `web/components/map/RoomTwin.tsx`).
+   - Source: the keys question and the red dot ("Show me in the room") are the first beat of the judges' demo
+     (`docs/demo-run-sheet.md:911-922`). Answered in 3.1 s on the box (`:109`), and the time isn't said.
 - Sources:
   - Calendar: `fixtures/demo/night.yaml:52-59`, milestone `:34-37`, quiz `:38-41`.
   - Optional: `fixtures/demo/nearby.yaml:31-48`, friends' chat `fixtures/groupme/friends_chat.yaml`.
@@ -124,7 +135,8 @@ About 5:10 in total (the length question is still open; see Q1). **D** = demo, *
 3. **Day Run:** the day on fast-forward on the campus map, the figure walking it.
 4. **This week:** writeup Tue 11:59 PM, Quiz 5 Thu 5 PM.
 5. **Optional:** board game night, quiz review, with friends' names.
-6. **Approve:** the approval card, then "Locked".
+6. **Approve:** the approval card, plus "Goal today: 2 meals", then "Locked".
+7. **Ask:** "Where are my keys?", the frame with the keys ringed, then the room view with the pin.
 
 ### 3. What fed the brief (spec, about 10 s)
 - **Visual:** labelled particles fly into the box: Apple Watch, Outlook and Canvas calendars, GroupMe, UCF Events,
@@ -222,36 +234,42 @@ goal tick.
   allowed, 13 blocked.
 - **Changed line:** "A face is blurred only when a picture leaves the box." (6.H)
 
-### 12. Friends: three people, three boxes, the league (demo, about 55 s)
-**Cast, cut in a split screen (three panes, then two)**
-- **Hemdutt:** in the dorm, talking to his Atlas.
-- **Maya:** at '63 South (a new small dining-hall set, Ferrell Commons), standing, on her phone with her Atlas app.
-- **Dominick:** at his own desk, on his computer.
+### 12. Friends: the league, three calendars agree, dinner with Ilan (demo, about 55 s)
+**Cast:** Hemdutt in the dorm with his Atlas; **Ilan** at '63 South on his phone; Dominick at his desk on his
+computer. Three panes side by side, then two. Maya stays only as the classmate in the class GroupMe.
 
-**Flow (the league comes first, as Dom asked)**
-1. **The league verdict.** All three Atlases speak at once, overlapping, each to its own person:
+**The story, simply**
+1. **Sunday evening, the league result lands.** All three Atlases say it at once, each to its own person, over each
+   other:
    - "This week's league is in."
    - "Dominick hit the most goals, so he picks what you do tonight."
    - "Hemdutt, you had the roughest week, so you're driving."
-   - The window shows the league table: each person's percent and which targets they hit.
-2. **Dominick picks**, on his computer: "Board game night at the Union."
-   The boxes negotiate: "Free." / "Busy at 8, how about 8:30?" / "Agreed, three of three in."
-3. **Maya first.** Her phone: "Maya shared she's at '63 South right now."
-   **A** (to Hemdutt): "Maya's at '63 South. You're free until two. Want to grab lunch with her? It's your second
-   real meal today, which keeps your meals goal on track."
-   **P:** "Yeah, tell her I'm coming."
-4. **A:** "I've opened the route, six minutes on foot. Then tonight, you three are at the Union at 8:30, and you're
-   driving."
-5. The window shows the shared plan on the calendar, the route, the league.
+   - Window: the league table, with each person's percent and which goals they hit.
+2. **Dominick picks.** He tells his Atlas, "Board game night at the Union, eight o'clock." His Atlas asks the other two
+   boxes.
+3. **The calendars sync, shown in the top-right window.**
+   - Three calendars side by side, one per person. Each box looks only at its own: the others see grey "busy" blocks,
+     never what they are.
+   - One-word answers travel between the boxes as small bubbles. Hemdutt's box: "Free." Ilan's box: "Busy at 8. How
+     about 8:30?" Dominick's box: "8:30 works."
+   - "Agreed, three of three." The same 8:30 block drops onto all three calendars at the same moment.
+4. **Before that, dinner.** Ilan's phone shares his place: "Ilan is at '63 South."
+   **A** (to Hemdutt): "Ilan's at '63 South right now, and you're free until 8:30. Dinner with him? That would be
+   your second real meal today, the goal you asked me for this morning."
+   **P:** "Yeah, tell him I'm coming."
+   **A:** "Told him. Route's open: a few minutes' walk, then you're driving everyone to the Union."
+5. **The callback.** A short beat at '63 South, Hemdutt and Ilan at a table. Hemdutt's phone buzzes; Atlas asks
+   "Did you eat with Ilan?" **P:** "Yep." **A:** "Logged. Two meals today: goal met."
+   - Window: the meals goal ticks from 1 of 2 to 2 of 2. The league row updates.
 
 - Sources:
-  - Negotiation format (`docs/demo-run-sheet.md:476-479`).
-  - Shared places (`contexts/demo/circle.py:141`).
-  - League scoring and stake (`contexts/play/league/domain/scoring.py:190, 210`; `config/league.yaml`).
-  - Meals habit (`config/habits.yaml`).
+  - Negotiation format and one-word replies (`docs/demo-run-sheet.md:476-479`, `contexts/circle/README.md:3-8`).
+  - Shared place with an expiry (`contexts/demo/circle.py:141`).
+  - League scoring (`contexts/play/league/domain/scoring.py`, `config/league.yaml`).
+  - Meals target 2 (`config/habits.yaml:39-48`).
   - Board game night (`fixtures/demo/nearby.yaml`).
-  - The walk time to '63 South gets computed on the real map.
-  - "Driving" is Dom's wording; the app's stake is "the worst week buys the next group meal" (Q4).
+  - Walk time to '63 South to be computed on the real map.
+  - Stake: driving (Dom); the app says the worst week buys the next group meal.
 
 ### 13. How the boxes talk, the trusted group, many groups (spec, about 18 s)
 - **Visual:**
@@ -287,39 +305,49 @@ goal tick.
 - Sources: `docs/spot.md:3-7, 14-20`; the track brief quoted there.
 
 ### 16. NextEra: an operator's shift with SPOT (demo, about 45 s)
-**Set:** a small control room. Atlas on the console, a big display showing `/spot/`, the operator (a mannequin in a
-hi-vis vest and hard hat colours) with a coffee. The app window mirrors the display.
+**Set:** a small control room at a plant. Atlas on the console. A big display shows Atlas's inspection screen; the
+top-right window mirrors it. Through the window, a glimpse of the plant floor with a SPOT robot standing by its dock.
+**Cast:** Rosa, the operator (hi-vis vest, coffee). A trainee, Sam, appears at the end.
 
-1. **Operator:** "Morning, Atlas. What should I check first this shift?"
-2. **A:** "Three things. First, heat exchanger 2 in the pipe gallery. It raised an alarm on a check that itself
-   failed, and it hasn't had a good check in 88 hours. Send SPOT back before you send anyone."
-   - Window: **Your shift**, three cards (Do this first / Keep an eye / Looks fine), HX-202 at the top.
-3. **Operator:** "Where is it?"
-   - Window: a red pointer lands on HX-202 on the floor plan, then walks the traced route.
-   - **A:** "Turn left, take the entrance steps, and go along the west passage." (the guide's turn-by-turn style).
-4. **Insight: why trust needs checking.**
-   - **A:** "Heads up: mission status says ninety-six percent, but most of those rounds still hide a failed check.
-     And checks under forty percent battery fail about three times as often."
-   - Window: the trust line, then the battery explainer animating (35% vs 12%).
-5. **Replay:** "Show me round 17." The window plays the round step by step: SPOT moves on the plan, each check arrives
-   (tick, cross, alarm), the battery drains, and the step where it failed is marked.
-6. **Act:** **Operator:** "Send SPOT back to it."
-   - Approval card "Send SPOT back to HX-202?" → Yes.
-   - **A:** "Done. A work order was written on this box. Nothing left the building."
-7. **"If you wanted to do this work":** a trainee version in **Shift Run**. Plan the next round by dragging stops; the
-   run plays out; stars against Atlas's plan; "battery and order matter". **A:** "Want to try planning the next
-   round?"
-8. **Handoff:** one tap, "Shift handed off."
+**The story, simply**
+1. **Start of shift.** Rosa sits down with her coffee. "Morning, Atlas. What should I check first?"
+2. **Atlas gives her a short list, not a dashboard.** "Three things. First, heat exchanger 2 in the pipe gallery. It
+   raised an alarm, but the check that raised it failed, and it hasn't had a good check in 88 hours. Send SPOT back
+   before you send anyone."
+   - Window: "Your shift", three cards: Do this first / Keep an eye / Looks fine. HX-202 is at the top, with a
+     "Why?" button.
+3. **"Where is it?"** A red pointer drops onto HX-202 on the floor plan and walks there from the control room while
+   Atlas says the way: "Turn left, take the entrance steps, and go along the west passage." Rosa now knows where
+   without reading a map.
+4. **Atlas tells her what the numbers hide.** "Heads up: mission status says ninety-six percent complete, but most of
+   those rounds still had a failed check inside. And checks below forty percent battery fail about three times as
+   often."
+   - Window: the trust line, then the short battery animation (35% of checks fail on low battery, 12% otherwise).
+5. **She checks it herself.** "Show me round 17." The round plays back like a replay: SPOT's dot moves along the
+   plan, each check pops in (tick, cross, alarm), the battery bar drains, and the failed check is marked where it
+   happened.
+6. **She acts, with one yes.** "Send SPOT back to it." An approval card: "Send SPOT back to heat exchanger 2?" Yes.
+   **A:** "Done. A work order was written on this box. Nothing left the building."
+7. **Anyone can learn this job.** Sam, the trainee, steps in. **A:** "Want to plan the next round?" In **Shift Run**
+   he drags the stops into an order and presses Run. The round plays out fast, the battery matters, and he gets two
+   stars out of three against Atlas's plan, with one line on why ("check the far exchangers before the battery
+   drops").
+8. **Handoff.** End of shift: Rosa taps one button. "Shift handed off." Atlas's note for the next operator is ready.
+
+**What the judges should take away:** it answers the track's questions (what happened, where, why it matters, what
+needs attention, is it getting better), in plain words, offline, with every number traceable to the rows.
 
 - Sources:
-  - `docs/spot.md`: "Mission status says 96%; 81% of those missions hide a failed action" (`:176, :267`).
-  - HX-202, 88 h, top of triage (`:189-192`); battery 35.2% vs 12.1% (`:180`).
-  - The guide's walking directions (`docs/spot.md`, look guide); work order on the box (`:270-272`).
-  - Shift Run (`contexts/spot/domain/shiftrun.py`); the three tabs (Your shift, Shift Run, Analysis).
-- Honest wording kept from `docs/spot.md`:
-  - It's a replay of recorded synthetic data, not a live robot.
-  - Routes are "about" (traced from the kit's picture).
-  - "We do not claim a cause."
+  - `docs/spot.md`: the brief table; "Mission status says 96%; 81% of those missions hide a failed action"
+    (`:176, :267`).
+  - HX-202, no good check for 88 h, top of triage (`:189-192`).
+  - Battery 35.2% vs 12.1% (`:180`).
+  - The look guide's walking directions; work order on the box (`:270-272`).
+  - Shift Run with stars against Atlas's plan (`contexts/spot/domain/shiftrun.py`); the shift handoff is one button.
+- Honest wording kept: the round is a replay of the kit's recorded synthetic data, not a live robot; the route is
+  "about" (traced from the kit's picture); "we do not claim a cause".
+- Names: "Rosa" and "Sam" are placeholders for the operator and the trainee. Change them if you like (Sam is also a
+  friend in the friends' chat; trainee name TBD).
 
 ### 17. End (as now)
 - The website's logo and splash, back on the shelf in the dorm.
@@ -332,7 +360,7 @@ hi-vis vest and hard hat colours) with a coffee. The app window mirrors the disp
 - [ ] **4.1 Chair backward.** Rotation `-π/2` → `+π/2`. Check from overhead and from the side: the backrest is
   behind the person.
 - [ ] **4.2 Colour.** Shirt, trousers, shoes and skin, coloured per bone (shader), a different palette per person
-  (Hemdutt, Maya, Dominick, the operator with hi-vis).
+  (Hemdutt, Ilan, Dominick, the operator with hi-vis, the trainee).
 - [ ] **4.3 Hair.** Quaternius hairstyles (CC0, already downloaded), rigged to the head bone. Fallback: a cap mesh.
 - [ ] **4.4 Face with expressions.** Eyes, brows and mouth on the head: sleepy, neutral, smile, tired or strained,
   talking (the mouth moves with the person's voice line).
@@ -398,13 +426,13 @@ hi-vis vest and hard hat colours) with a coffee. The app window mirrors the disp
 
 ## 7. Questions still open
 
-- **Q1 Length:** this plan runs about 5:10. Is there a hard limit (Devpost, judges)? If it's 3 minutes, I'd cut beats
-  3, 6, 9 and 11 into the neighbouring beats and shorten 14.
-- **Q2 Atlas's voice:** the box's real Piper voice (recommended, it's the product), or a polished edge-tts voice?
-- **Q3 "It remembers"** (keys, 17 × 23, the UCF score): it isn't in this plan. Cut, or fold "where are my keys?" into
-  the morning?
-- **Q4 League stake:** "you're driving" (your wording) or the app's "buys the next group meal"?
-- **Q5 Names:** Hemdutt, Maya and Dominick, as in the Circle demo?
+- ~~Q1 Length~~ Dom: under 5:00 (this plan: about 4:50).
+- ~~Q2 Atlas's voice~~ Dom: as proposed.
+- ~~Q3 "It remembers"~~ Dom: fold "where are my keys?" into the morning, after the meals goal (done in beat 2). The
+  17 × 23 and the UCF score are cut.
+- ~~Q4 Stake~~ Dom: driving.
+- ~~Q5 Names~~ Dom: Hemdutt, **Ilan** (instead of Maya) and Dominick. Maya stays only as a classmate in the GroupMe.
+- **Q6** NextEra names: operator "Rosa", trainee (not "Sam", which is taken by a friend). Your call.
 
 ## 8. QA before any render
 
