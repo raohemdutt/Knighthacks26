@@ -23,12 +23,15 @@ adding one touches no shared file but this list.
 - [`chipsheet`](docs/chipsheet.md): File a chip sheet measured on a pod and write its ledger rows: ingest | self-check.
 - [`correctness`](docs/correctness.md): Record greedy outputs from a running server as a baseline, or compare a later run with it.
 - [`credits`](docs/credits.md): Credits left on the pod accounts, credits per hour, and whether they last until judging.
+- [`desk-score`](docs/desk-score.md): Score a model on the held-out desk-object examples (L24): split writes the frozen split, score scores.
 - [`digest`](docs/digest.md): What a sitting starts from: what ran, metrics that moved, GPU queue, rulings, Ilan's lane, next tasks.
 - [`draft`](docs/draft.md): Ask for a verb the lab lacks: leaves the owner a request and a stub (once per sitting; nothing runs).
 - [`eval-gate`](docs/eval-gate.md): Score current, candidate and teacher on the frozen held-out set and decide deploy or reject (L4).
 - [`experiment`](docs/experiment.md): Experiments as ledger rows: add, list, result (read by the verdict math), rank, and T0's checklist (--print).
 - [`gpu-power`](docs/gpu-power.md): Summarize pod GPU power samples, or store a window of them as a ledger row: summary | record.
 - [`handoff`](docs/handoff.md): End the session: leave the owner a note (no sitting reads it) and record the handoff in the ledger.
+- [`interference`](docs/interference.md): Teacher decode and a LoRA run on one chip: alone and together (plan, pod script, collect).
+- [`lab-push`](docs/lab-push.md): Post a training run's steps, a gate's scores, a package's manifest and the lab's ledger to the box's Learning lab.
 - [`label-agreement`](docs/label-agreement.md): Re-label 30 labeled examples with a second teacher pass and report how often the labels agree.
 - [`ledger`](docs/ledger.md): Add to, tail and search the lab ledger (ledger add, tail, grep).
 - [`link-speed`](docs/link-speed.md): Measure push and pull speed of a synthetic package on a pod through the hub, and write the table.
@@ -38,16 +41,21 @@ adding one touches no shared file but this list.
 - [`placement`](docs/placement.md): Which pod serves the teacher and where the sampler, benchmarks, Ax trials and LoRA jobs go (--check a request).
 - [`pool`](docs/pool.md): Keep sittings running under the 16-unit budget (Sonnet 1, Opus 2, Fable 8); pool status shows the units.
 - [`profile-decode`](docs/profile-decode.md): Decode profile of the stock teacher on gfx1151: --quick here, pod-script, pod-run on the pod, collect.
+- [`profile-train`](docs/profile-train.md): Training step profile: self-check --quick here, run on the pod (or --cpu here), ingest a run folder.
 - [`publish-adapter`](docs/publish-adapter.md): Publish the trained LoRA adapter and its model card to the team Hugging Face repo.
+- [`quark-compare`](docs/quark-compare.md): R23: the AMD Quark INT4 checkpoint against RedHat INT4 on pod B (preflight, slot, run, record, all).
 - [`ready`](docs/ready.md): Check what a sitting needs: no STOP, a writable state dir, .env key names; the hub only warns.
 - [`referee`](docs/referee.md): Referee of the GPU queue: end slots past their cap, list complaints and rows that could start.
+- [`report`](docs/report.md): Write the under-the-hood report (one HTML page and its JSON data pack) from committed files only.
 - [`research-check`](docs/research-check.md): Check research notes and SOURCES.md indexes against lab/refine/RESEARCH_FORMAT.md.
 - [`resume`](docs/resume.md): Remove the STOP file so verbs run again.
 - [`review`](docs/review.md): Write the owner's morning file: what happened, numbers moved, rulings, complaints and open PRs.
+- [`routing-closed-loop`](docs/routing-closed-loop.md): The routing hook's closed-loop test (T11): policy one against policy two on the same lab requests.
 - [`rulings`](docs/rulings.md): Owner rulings: list the open ones, record the answered ones as owner rules, mirror the waiting ones to Notion.
 - [`sampler-overhead`](docs/sampler-overhead.md): The pod sampler's own cost on pod B, measured with and without it (T9).
 - [`sit`](docs/sit.md): Start one headless agent sitting for a task, a pass, the merge or the referee, and record it.
 - [`slot`](docs/slot.md): The GPU queue for pod B: request, start, extend, done, complain, status.
+- [`spot-score`](docs/spot-score.md): Score a model on the held-out SPOT questions (L26): split joins the set's two folders, score scores.
 - [`stop`](docs/stop.md): Create the STOP file: every verb but ready, resume and stop is refused.
 - [`sweep-request`](docs/sweep-request.md): Request-side settings sweep of the teacher on one spawn: the dry run, the pod script, the pod run, collect.
 
@@ -1088,56 +1096,6 @@ steps. The row in `lab/refine/metrics.jsonl` records it as low confidence.
 Tested against `lab/bench_fake.py` (spawned as a real process; `--diverge-at`, `--retoken-at` and `--diverge-match`
 make a second server answer differently from a chosen position): record, compare equal, compare divergent, a
 same-text-different-token divergence, conditions that differ (refused, nothing sent, and `--allow-condition-drift`).
-## Quark INT4 checkpoint against the teacher's: `python -m lab quark-compare` (R23)
-
-`amd/Qwen3.8-27B-Quark-AWQ-INT4-W4A16` loads at b1388b1 only with the loader hunks at the end of
-`lab/vllm-gfx1201.diff` (Python only: the mapper takes the export's `algo_config`, a list of dicts, and the
-`QuarkW4A16Int4` scheme of vLLM PR #48606 is backported). Its key names are the ones b1388b1 reads;
-`lab/quark_keys.py` gives every key's disposition and is the pre-flight. The runner compares it with RedHat INT4 on
-pod B, same build and settings sheet (the pinned baseline of `data/searchspace-inference-gfx1151.json`):
-
-```
-python -m lab quark-compare preflight                    # checkpoint sizes, config keys, time plan; changes nothing
-python -m lab quark-compare slot [--row ID --reply TEXT] # the 60-minute pod B row (critique, then reply)
-python -m lab quark-compare run --batches 1,4            # on pod B in the slot: hunks on, bench, correctness, hunks off
-python -m lab quark-compare record --result F --control-rows R20_ROWS [--reference F] --row ID
-```
-
-`record` reads tok/s and J/token B against A per batch size with `lab/machine/verdict.py`, the exact-match rate
-against A's greedy outputs, writes a `quark-compare` ledger row, T0's E5 result (arms A and B) and
-`R23_T0_result.txt`, and releases the slot; `all` does the four in one process. Steps for the real run:
-`lab/R23_REAL_RUN.md`.
-### Baseline matrix on pod D (R20, partial)
-
-The stock build on pod D (SJC account D, Strix Halo, gfx1151; node `pod-b` in the ledger): vLLM 0.19.2+gfx1151 at
-b1388b1 plus `lab/vllm-gfx1201.diff` (sha256 0b5ac113...), `Qwen3.8-27B-INT4` (compressed-tensors, W4A16 through
-`ConchLinearKernel`), max model length 16384, the `pod_a_teacher.sh` serve flags (`--mm-encoder-attn-backend
-TRITON_ATTN`, `--gpu-memory-utilization 0.90`, bfloat16), port 8100, `GPU_MAX_HW_QUEUES` unset, thinking off, greedy,
-128 tokens per request, the bench-v1 prompt set, 4 requests per stream. Every cell is a cold spawn with its warm-up
-discarded. 2026-10-10 evening ET, run with `python3 -m lab bench run ... --node pod-b --hub sjc --account D` from
-`~/Knighthacks26` on the pod. Raw per-spawn rows: `fixtures/lab/bench/pod-b-2026-10-10/`. Medians also went to
-`lab/refine/metrics.jsonl` as `teacher.*` on node `pod-b` (low_confidence: under the 5 spawns `verdict()` needs).
-
-| Batch | Spawns | tok/s per stream (median, min, max) | tok/s total (median) | TTFT s (median) | J/token gross (median, min, max) | Watts avg |
-| --- | --- | --- | --- | --- | --- | --- |
-| 1 | 3 (J: 2) | 2.73 (2.73, 2.73) | 2.67 | 0.96 | 36.4 (36.0, 36.8) | 97 |
-| 4 | 2 | 2.58 (2.58, 2.58) | 9.48 | 5.15 | 10.3 (10.1, 10.5) | 98 |
-| 8 | 2 | 2.37 (2.36, 2.38) | 16.5 | 8.49 | 5.81 (5.80, 5.81) | 96 |
-| 16 | 2 | 2.06 (2.01, 2.12) | 27.4 | 11.9 | 3.50 (3.49, 3.50) | 96 |
-| 64 | 2 | 0.88 (0.86, 0.90) | 49.0 | 24.2 | 1.96 (1.93, 2.00) | 96 |
-
-Partial: 3 spawns per batch size were asked for (15 spawns); this table holds 11 that measured: three at batch 1 (J/token on two of them) and two each at batch 4, 8, 16 and 64. The third spawn of batch 4, 8, 16 and 64 was cut by order (pod D went to other jobs); a medians-of-three matrix needs those four. Median of two is the
-mean of the two, so min and max bracket it. The batch-1 spawn at 03:58 UTC decoded 2.73 tok/s but its power samples
-did not cover the decode window (J/token null). Idle (no server) read 15 W, server loaded 16 W; the sampler reads a
-flat 96 to 97 W under load on this chip, so J/token is nearly watts / total tok/s. All spawns fall into one band (no
-decode-rate gap; `mem_busy_percent` is not exposed on the SJC image). The KV cache holds 304192 tokens (55.6 requests
-of 16384), and 64 streams of ~250 tokens fit. Three things went wrong: the first spawn died in the engine core during
-torch.compile (exit -2, no traceback), the third repeat was cut by SIGTERM, and a stray 64 arm was added to a batch-1
-run (stopped). The R30 teacher build serves on pod D from a cold start in about 5 minutes with a warm compile cache.
-
-What the harness could not read on pod D: ROCm version (`/opt/rocm/.info/version`), the amdgpu driver and ASIC serial
-(amd-smi prints N/A), the KFD queue count, `mem_busy_percent`. Attention backend per the serve log: `ROCM_ATTN`.
-
 ## Placement plan: `python -m lab placement` (R46)
 
 Which pod serves the teacher, and where the power sampler, benchmark runs, Ax trials and LoRA jobs go, with a reason
@@ -1356,63 +1314,6 @@ python -m lab sweep-request collect lab/state/sweep_request/pod_run.out --metric
   bundle runs the dry run with the standard library alone). `fixtures/lab/sweep_request/recorded_full.out` is the
   committed grid run on the fake, as the pod prints it (`make_fixture.py` records it again; the test checks the grid's
   sha256). Not yet seen on a pod: the pinned launch's flags on vLLM b1388b1, the real rates and the warm start time.
-## Showing a run on the box: `python -m lab lab-push` (L27)
-
-The box's Learning lab screen (`/lab/`) shows a real run only once its files reach `POST /api/learning/lab/import`
-(`contexts/learning/lab_import.py`; the handoff note is `docs/handoff/learning-lab-real-run.md`). The trainer writes
-`telemetry.jsonl` and `run.json` into its `--out` folder on the pod and sends them nowhere. `lab/lab_push.py` is the
-relay: it reads the files from a pod through the hub, or from a folder on this machine, and posts them. From the repo
-root, with `--box` the box's address (or `ATLAS_URL` set):
-
-```bash
-# a run that is training on pod D: post its steps every 60 s until run.json appears, and keep a copy here
-python -m lab lab-push --box http://<box>:8000 --account D --run-dir adapters/l16-<run_id> --follow --save ../L27-data
-# a finished run in a local folder, once
-python -m lab lab-push --box http://<box>:8000 --run-dir runs/<run_id>
-# after the gate (run it with the trainer's --run-id): its scores and verdict
-python -m lab lab-push --box http://<box>:8000 --eval lab/state/eval-gate/<run_id>/scores.json --run-id <run_id>
-# after packaging: the manifest, here read from the pod
-python -m lab lab-push --box http://<box>:8000 --account D --manifest data/packages/<version>/manifest.json --run-id <run_id>
-# the lab's ledger, whole, for the Experiments tab (again whenever it has grown)
-python -m lab lab-push --box http://<box>:8000 --ledger lab/state/ledger.jsonl
-# what any of these would read and post, sending nothing to the pod or the box
-python -m lab lab-push --box http://<box>:8000 --account D --run-dir adapters/l16-<run_id> --follow --dry-run
-```
-
-- **The pod is only read.** With `--account` every path is relative to the pod's Jupyter root (the home folder on SJC,
-  so `~/adapters/l16-<run_id>` is `adapters/l16-<run_id>`), and each file is one `GET /files/<path>` through
-  `lab.proxy.PodLink`: nothing is written, started or stopped there, so it is safe beside a run that is being measured.
-  Each read carries a query parameter that is never repeated, because the hub's front end caches some GETs for hours
-  (the R14 trap, `lab/link_speed.py` `FreshLink`). A round of `--follow` is two GETs: `run.json`, then the steps.
-- **The steps are posted as they stand**, cut back to the last whole line (the box refuses a whole file for one line it
-  cannot parse). Posting again adds nothing: the box knows a step by its run and number, so a grown file adds only its
-  new steps and the screen plays the run live.
-- **`--follow` ends** after the first post that follows `run.json` (that post holds the whole file), at
-  `--max-minutes` (120), or at once when waiting cannot help: the box wants a token (401), has no import route (404 or
-  405, a build older than the import), refuses the file (400, 413), the hub refuses the account, or the pod has
-  stopped. A box that does not answer or answers 5xx, and a pod read that times out, are tried again on the next
-  round. `--every` is 5 to 3600 seconds.
-- **Run ids.** The steps name their run; `--run-id` overrides and makes the box refuse steps or scores of another run.
-  A manifest does not name its run, so it needs `--run-id` (or steps posted in the same call). The gate's event must
-  carry the trainer's run id for its scores to land on the same run: run `eval-gate --run-id <the trainer's run id>`.
-- **The ledger** needs a box whose build has `kind=ledger`; an older one answers 400 and names the kinds it knows. The
-  box checks every row, replaces its copy and answers with the rows, experiments and verdicts it now holds. A run id
-  never rides with it.
-- **The token.** A box with `ATLAS_TOKEN` set wants it on writes. The verb reads `ATLAS_TOKEN` from the environment,
-  then from the `.env` files `lab/machine/ready.py` searches, sends it as `Authorization: Bearer`, and prints only
-  whether one was sent.
-- **Answer.** One JSON object: `outcome` is `pushed`, or names what stopped it (`no_telemetry`, `bound_reached`,
-  `box_wants_token`, `route_missing`, `box_refused_file`, `too_large`, `box_unreachable`, `box_error`, `pod_error`,
-  `read_error`, `missing_file`, `empty_file`, `no_run_id`, `no_box`, `no_credentials`, `unsafe_path`), with the box's
-  own answer to each post. A run brought in this way reads "Training" on the screen until its eval is imported.
-
-First run, 2026-10-10 on the Strix Halo trainer (pod D, gfx1151): L16's run `train-20261011T032149Z-7dd098`, 18 steps.
-Its steps were posted by hand with these same reads and posts while it trained (five posts about a minute apart, 11 to
-18 steps, the last after `run.json`), and the box listed the real run with no sample banner. This verb then read the
-finished run from the pod (`--save` kept `telemetry.jsonl`, 5462 bytes, and `run.json`) and posted that copy: 200, 0 new,
-18 already there. Tests: `tests/test_lab_lab_push.py`, against the lab's fake pod (`lab/proxy_fake.py`, and once
-`lab/hub_fake.py`) and a small HTTP server that answers the import route with the box's own parsing.
-
 ## Joules per token on the teacher: the energy model and the number of the night (R56)
 
 `lab/energy_model.py` predicts joules per generated token on the Strix Halo (gfx1151) from the committed chip sheet,
@@ -1736,37 +1637,6 @@ python -m lab.ladder --capacity <record>.json [--capacity <record>.json] --sampl
 ```
 
 Tests: `tests/test_lab_capacity.py`, `tests/test_lab_ladder.py` (the fake client only; no pod, hub or GPU).
-## Desk-object scorer: `python -m lab desk-score` (L24)
-
-Scores a model on the held-out desk-object examples of an export, served as the box serves it, in the scores shape
-the eval gate (L4) reads. The module docstring of `lab/desk_score.py` holds every rule; the short version:
-
-```
-python -m lab desk-score split data/exports/<dataset_id> --held-out 50     # once: split.json by frame_ref group
-python -m lab desk-score score data/exports/<dataset_id> --base-url http://127.0.0.1:8080 --runs 2 \
-    --json desk-current.json --node jetson
-```
-
-- **The split.** `split` writes `split.json` once, in the format `lab/dataset.py load_split` reads: whole frame_ref
-  groups in the order of the sha256 of their frame_ref, held out until the side holds at least `--held-out`
-  examples. It refuses a folder that has one already and records the file's sha256 (ledger verb `desk-split`).
-  `score` reads the held-out side only from that file, through `load_split`, so a leaky or short split never scores.
-- **The request.** One chat request per held-out example: the picture as a data URL and the export's instruction as
-  the one user message, with one decode setting (`DECODE`: temperature 0, top_k 1, seed 0, max_tokens 24,
-  `enable_thinking` false). The caption is not sent.
-- **The score.** Answer and label (the example's `target`) normalised the same way (lowercase, punctuation and the
-  articles a, an, the dropped, the last word made singular), then exact match. The answer is
-  `{"score", "model", "results", "desk.<object>", ..., "desk.n_items", "desk.n_groups"}`: the shape
-  `contexts/agent/eval.py --json` writes, with per-object detail as dotted keys; every result keeps its frame_ref so
-  the gate pairs by group. `score(base_url, examples, prompt=...)` is the call the gate makes.
-- **The row.** One `desk-score` ledger row per run (task L24): metrics `desk.score`, `desk.<object>`,
-  `desk.n_items`, `desk.n_groups`; refs `split_sha256`, `commit` (git HEAD, or `--commit` where lab/ is a copy),
-  `model`, `run_id`; conditions with the decode setting, the prompt's sha256 and `meets_deploy_floor`.
-
-Tests: `tests/test_lab_desk_score.py`, on `lab/desk_fake.py` (a fake llama-server over an httpx transport) and
-`fixtures/learning/desk-fixture/` (12 synthetic examples on 8 frame_refs; `python -m lab.desk_fake build-fixture`
-rebuilds it). The real runs on the Jetson and on a pod are in `lab/L24_REAL_RUN.md`.
-
 ## Experiment runner: `python -m lab experiment run` (O29)
 
 One kernels-track experiment from its ledger definition to its verdict on pod B, in one call
@@ -1811,70 +1681,3 @@ and downloads the base at its pinned commit to `~/models/Qwen3.5-4B`; `train <ru
 and leaves the adapter, telemetry, `run.json`, the log and the ledger rows in `~/adapters/l16-<run id>/`.
 `fixtures/demo/` holds what came back: the trainer log, the loss curve, the ledger rows and the screen recording the
 "It learns" fallback uses (owner ruling 7).
-## Routing hook closed loop: `python -m lab routing-closed-loop` (T11)
-
-The same labeling requests routed under T5's two policies, arms interleaved request by request (A, B, A, B): A is
-policy one, capability (the control), B is policy two, energy, which reads the telemetry snapshot. The requests are
-at least 100 examples of the L11 fixture (`fixtures/learning/tool-calling-fixture`) drawn with a fixed seed, never a
-golden question. The snapshot is T4's joules projection, fed the power samples and one window per answer of either
-arm, so policy two decides on what the run has just measured; one probe request per node fills it first. Per
-request: arm, target, joules per answer, latency (`label.seconds`) and label agreement (`learning.label_agreement`,
-the tool calls against `expected.jsonl`); per arm their mean and spread; `lab/machine/verdict.py` says whether B
-changed energy or quality beyond the spread.
-
-```
-python -m lab routing-closed-loop --fake                  # the teacher and student fakes, on a fake clock
-python -m lab routing-closed-loop --account C --power-log data/events/<UTC day>.jsonl --window-clock jetson
-```
-
-- Writes `<out>/<run id>/requests.jsonl`, `report.json` and `t0_result.txt` (the T0 experiment result text with its
-  citation, for the dispatcher to post), one ledger row per arm (verb `routing-closed-loop`, task T11) and two T0
-  experiments with their results. A `--fake` run keeps its ledger in `<out>/<run id>/state`.
-- Whether telemetry rubric test 6 is met is a finding in the report and the T0 text; nothing under `lab/refine/` is
-  written. The real run's commands and what stays deferred: `lab/T11_REAL_RUN.md`.
-## Under the hood report: `python -m lab report` (O71)
-
-One self-contained HTML page and a JSON data pack beside it, built only from committed files, for a judge or
-the big display: `lab/refine/report/under-the-hood.html` and `lab/refine/report/under-the-hood.json`. Both are
-committed, so the demo opens the page from disk without running anything. Rebuild after new rows land:
-
-```bash
-python -m lab report                    # rewrites both files under lab/refine/report/
-python -m lab report --out /tmp/report  # somewhere else
-```
-
-It reads `lab/refine/metrics.jsonl`, the newest `chipsheet-gfx1151-<date>.json`, a `decode-profile-gfx1151-<date>.json`
-when one is committed, the public prior (`lab/public_prior.py` on `public-strix-halo-benchmarks.csv`) and any
-`ledger*.jsonl` copy, all under `lab/refine/research/kernels/data/`. Charts are inline SVG written by
-`lab/report.py`: no script, no font, no network. The page follows the system's light or dark setting and has
-Night and Day switches. Rows from the R9700 (by `lab/slide_numbers.py`'s `_old_chip`, the rule the Learning lab's
-bench reader imports) are shown in their own panel, never on a Strix Halo chart; a missing measurement says
-"not measured".
-
-Sections: (1) `ceiling`, the copy bandwidth over the largest buffer divided by the teacher's weight bytes per token
-against each build's batch-1 decode rows, with the public prior beside as a prior; (2) `frontier`, joules per token
-against concurrent streams for every sweep of two or more batch sizes, with the ratio between the fewest and the
-most streams; (3) `step`, milliseconds per decode step by bucket from the decode profile; (4) `engines`, the best
-batch-1 row per engine; (5) `finetune`, per-step loss and step time (rows with `conditions.step`); (6) `dropped`,
-experiment verdicts from a committed ledger copy and the move off the old chip.
-
-The data pack (`format: atlas.lab_report/1`), for the Learning lab screen or any other reader:
-
-| Key | What it holds |
-|---|---|
-| `format`, `title`, `data_as_of` | the pack's format, the page title, the newest row time in the metrics file |
-| `chip` | the current chip (`gfx1151`), the other chip, and the rule that sets its rows apart |
-| `sources` | every file read: `{file, sha256, lines}` |
-| `skipped` | metrics lines that are not rows: `{line, problem}` |
-| `sections` | six objects in page order, each `{id, title, reading, state, other_chip, awaiting, ...}`; `state` is `measured`, `partial` or `empty`; `reading` is the sentence to say aloud |
-| `numbers` | every number on the page once, by `id` |
-| `awaited` | the runs that fill a section when their rows land: `{task, what, where, sections, file_present}` |
-
-A number is `{id, label, value, unit, kind, source: {file, line, ref}, gpu, chip, conditions, ts, low_confidence,
-reason, other_chip}`; `kind` is `measured`, `derived` (with `formula` and `inputs`, the ids it was worked out
-from), `stated` (an estimate a committed file states), `prior` (never a measurement) or `not measured` (value
-null, with `why`). `gpu` is the row's `conditions.gpu` and `chip` its `conditions.chip`; either may be null.
-Section extras: `ceiling` has `inputs`, `ceiling`, `achieved`, `shares`, `priors`; `frontier` has `energy` and
-`throughput` (sweeps of `{metric, node, build, session, points: [{batch, number}]}`) and `ratios`; `step` has
-`batches` (`{batch, step_ms, parts}`); `engines` has `engines` (`{engine, best, rows}`), `not_measured` and
-`priors`; `finetune` has `loss`, `step_time`, `numbers`; `dropped` has `items`.
