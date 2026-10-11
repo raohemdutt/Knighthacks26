@@ -2,7 +2,7 @@
 
     python -m lab interference --dry-run                     # the plan and the slot minutes, nothing written
     python -m lab interference pod-script [--out FILE]       # this machine: the one script the pod runs
-    python tooling/dispatcher/pod_exec.py D term <script> 2700 > <output file>      # the pod run, under a slot
+    python tooling/dispatcher/pod_exec.py D run <script> r43_pod_run.sh 2700 > <output file>   # the pod run, in a slot
     python -m lab interference collect <output file> [--out DIR] [--no-ledger]       # the data file and ledger rows
     python -m lab interference pod-run --expect-user-sha256 HEX [...]                # on the pod: what the script runs
 
@@ -32,6 +32,10 @@ The server. The run starts its own teacher (lab/bench.py's vLLM serve line, lab/
 57.6 of the 58 GiB the pod has free and no LoRA job fits beside it. It refuses to run where it is not pod D's Strix
 Halo, where the port is taken or where a vLLM server already runs (stop the pod's own teacher first: this run stops
 nothing it did not start), and it stops its server however it ends.
+
+The script is about 260 KB (the trainer, the bench and their imports, base64), so pod_exec.py's run mode, which
+uploads it through the Jupyter contents API and types only its bash line, is the way to send it; term mode types it
+all. 2700 s is the 30-minute slot plus its one 15-minute extension.
 
 What comes back. The pod prints one marked base64 block (gzip'd tar of raw.json, result.json and the pod's summary);
 `collect` reads it from the saved terminal output, checks its sha256, and writes
@@ -949,7 +953,9 @@ def pod_script_main(args: argparse.Namespace) -> dict[str, Any]:
                          grad_accum=args.grad_accum)
     wait = (slot["slot_minutes"] + slot["extension_minutes"]) * 60
     return {"ok": True, "outcome": "written", "script": str(out), **info, "slot_minutes": slot["slot_minutes"],
-            "next": f"python tooling/dispatcher/pod_exec.py {args.account} term <this script> {wait} > <output file>",
+            "next": f"python tooling/dispatcher/pod_exec.py {args.account} run <this script> r43_pod_run.sh {wait} "
+                    "> <output file>",
+            "or": f"python tooling/dispatcher/pod_exec.py {args.account} term <this script> {wait} > <output file>",
             "then": "python -m lab interference collect <output file>"}
 
 

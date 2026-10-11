@@ -154,7 +154,7 @@ def test_the_result_block_survives_the_terminal_and_a_damaged_one_is_refused():
 def test_the_pod_script_carries_the_trainer_the_bench_and_the_rows_and_types_safely(tmp_path):
     answer = itf.main(["pod-script", "--expect-user-sha256", "ab" * 32, "--out", str(tmp_path / "run.sh")])
     assert answer["ok"] is True and answer["slot_minutes"] == 30
-    assert answer["next"].endswith("term <this script> 2700 > <output file>")
+    assert answer["next"] == "python tooling/dispatcher/pod_exec.py D run <this script> r43_pod_run.sh 2700 > <output file>"
     script = (tmp_path / "run.sh").read_text(encoding="ascii")
     assert "\t" not in script and "!" not in script
     assert all(len(line) <= 76 for line in script.split("R43BUNDLE")[1].splitlines()[1:-1])
