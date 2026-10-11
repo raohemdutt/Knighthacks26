@@ -73,7 +73,7 @@ export async function spotRun(query: string, t: number | null = null): Promise<{
       target,
       t,
       via: shown ? shown.path.map((id) => ({ id: `at:${id}` })) : undefined,
-      extra: shown ? [...shown.say, "The green dashes on the plan are that route."] : walk && !walk.found && walk.say[0] ? [walk.say[0]] : undefined,
+      extra: shown ? [...shown.say, shown.floor_changes > 0 ? "It changes floor: choose Both on the plan to see the whole route." : "The green dashes on the plan are that route."] : walk && !walk.found && walk.say[0] ? [walk.say[0]] : undefined,
       note: () => (shown ? `${shown.summary} ${shown.note}` : null),
     },
   };
