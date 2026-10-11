@@ -257,3 +257,28 @@ of the Gated DeltaNet recurrent state, and what batching does to joules per toke
   (tasks R26 and T0 E3). Expected aggregate 60 to 110 tok/s and 2 to 4 J/token at concurrency 16,
   per-request TPOT 1.1x to 1.5x of single-stream; minimum 3 spawns with 10 requests per level;
   confidence 0.75.
+
+## 7. Pass 3 additions: FP8 on gfx1151
+
+Added by kernels refinement pass 3 on 2026-10-10. Section 1 was written for gfx1201; the lab now
+runs on gfx1151 (RDNA 3.5), and kernels ruling 8 reads every gfx1201 clause as gfx1151.
+
+- **[practitioner]** vLLM at b1388b1 marks fp8 as supported on ROCm only for gfx94, gfx95 and gfx12
+  (`RocmPlatform.supports_fp8`, `return any(gfx in _GCN_ARCH for gfx in ["gfx94", "gfx95", "gfx12"])`,
+  lines 748 to 749), and LLVM gives the fp8 WMMA instructions to gfx11.7 and gfx12 only, not to
+  gfx1151, whose matrix instructions take f16, bf16, iu8 and iu4. Source: [S58] vLLM
+  `vllm/platforms/rocm.py` at b1388b1, `supports_fp8`, re-opened 2026-10-10 by this pass;
+  `lab/refine/research/kernels/strix_halo_hardware.md`, section "6. Arithmetic paths: WMMA and dot
+  products" ([S80], [S82] there).
+
+  Implication: on the pods an FP8 weight checkpoint (`Qwen/Qwen3.8-27B-FP8`, 28.8 GB, [L1]) and an
+  FP8 KV cache have no fp8 matrix path: they load through a software conversion or fail, so T0's E5
+  FP8 arm and task R25 measure a fallback path, never a ranked speed lever on this chip, and R25's
+  check of "FP8 WMMA on RDNA4" has no RDNA 4 card to run on.
+
+  Candidate experiment: R25's load attempt on pod B records the exact error, or the linear kernel
+  and KV path the serve log names if it loads, then the stock matrix at batch 1. Expected movement:
+  teacher.decode_tok_s at or below the INT4 build's 2.88 tok/s if it loads (28.8 GB of weights read
+  per step against about 15.5 GB). Minimum sample size: 1 load attempt, then 5 cold spawns if it
+  loads. Confidence: 0.7.
+

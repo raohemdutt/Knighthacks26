@@ -513,3 +513,19 @@ Performance in Thin and Light" (the fetch timed out), the Framework Community th
 LLM performance and toolboxes, the hogeheer499 Strix Halo guide, FleetSieve (arXiv 2608.19659),
 Optuna's journal-storage recipe, and the OpenReview page of the Ax paper (a browser check blocked
 it; the PMLR copy was read instead).
+
+## Added by kernels refinement pass 3 (2026-10-10)
+
+Re-opened by this pass and cited under their existing ids: S13 (vLLM PR #40977), S18 (vLLM PR
+#56301), S58 (vLLM `vllm/platforms/rocm.py` at b1388b1, `supports_fp8`), S65 (#6347, no comment
+after 2026-09-25), S138 (ggml-org/llama.cpp#27952 and huppiflupp's comments) and S140 (nabe2030
+`hip-vs-vulkan-evo-x2`).
+
+| Id | Kind | Source | Link or location | Opened | Cited in |
+| --- | --- | --- | --- | --- | --- |
+| S170 | code | vLLM at 382bbd5 (the merge commit of PR #40977): `vllm/model_executor/kernels/linear/__init__.py` (the ROCm W4A16 list: RDNA3W4A16, RDNAHybridW4A16, TritonW4A16, Conch, Exllama) and `mixed_precision/rdna3_w4a16.py` (`can_implement` requires gfx1100) | https://github.com/vllm-project/vllm/blob/382bbd51448b2f58c73b3e51d051bc352166ba91/vllm/model_executor/kernels/linear/__init__.py and https://github.com/vllm-project/vllm/blob/382bbd51448b2f58c73b3e51d051bc352166ba91/vllm/model_executor/kernels/linear/mixed_precision/rdna3_w4a16.py | 2026-10-10 | main |
+| S171 | issue | The same issue as S66 and S71, read through the GitHub API to its comment of 2026-10-10: the reproducer in the body ("Reproducer 1: plain HIP, no framework") and lobo235's fourth gfx1201 host (in-tree amdgpu, MES 0x89, HIP 7.15.26333: +6.7 us in graph mode at two waits, none at `GPU_MAX_HW_QUEUES` 1 or 2) | https://github.com/ROCm/legacy-rocm-build/issues/6685 | 2026-10-10 | ports |
+| L10 | our measurement | `lab/refine/research/kernels/data/chipsheet-gfx1151-2026-10-11.md` (R33 on pod D, merged in PR #250 as fa0359e): device-to-device copy 207.8 to 212.1 GB/s from 256 MiB to 4 GiB, LDS launch limit 65,536 bytes, HIP probes built with `/opt/rocm/bin/hipcc` | this repo, `lab/refine/research/kernels/data/chipsheet-gfx1151-2026-10-11.md` (main at 4e084dc) | 2026-10-10 | main, ports |
+| L11 | our files | `lab/public_prior.py` (R51, merged in PR #251 as fe7d0a6) run with `--gb 15.5 --backend vllm --batch 1, 4, 8, 16`: 7.49 tok/s single stream, aggregate 22.86, 34.73 and 46.91 tok/s, k 0.104 | this repo, `lab/public_prior.py` (main at 4e084dc) | 2026-10-10 | main |
+| L12 | our files | `lab/README.md`, section "Benchmark harness: `lab/bench.py` (R11)": conditions on every row (environment read back from `/proc/<pid>/environ`, `GPU_MAX_HW_QUEUES` always present) and bands (largest-gap split, 10% of the median, at least 4 spawns) | this repo, `lab/README.md` (main at 4e084dc) | 2026-10-10 | ports |
+| L13 | our page | R20 task page, line of Sat 8:27 PM ET (Ilan3's clock): R20 started on pod D with `python -m lab bench run`, 3 spawns per batch size at 1, 4, 8 and 16, reusing R30's build | https://app.notion.com/p/3f596ef5fec581a38be4e70c385da9dd | 2026-10-10 | ports |
