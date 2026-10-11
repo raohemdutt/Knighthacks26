@@ -10,12 +10,12 @@ results (loss start and end, samples per second, peak memory, wall-clock) are in
 
 | Item | Value | Why |
 | --- | --- | --- |
-| Labels | the reference traces of `fixtures/learning/tool-calling-fixture/expected.jsonl`, written as targets on the train side only | L13's teacher labels (`fixtures/learning/tool-calling-labels/`, branch `ctx/learning/label-fixture`) were not on origin when the run was prepared; learning ruling 12 (`lab/refine/learning/OWNER_RULINGS.md`) allows the reference traces, and the slide and card then say the student learned from the agent's own traces, not from the 27B. `l16_run.sh dataset` takes L13's labels instead whenever they are in the repo. |
-| Dataset | `tool-calling-fixture` (action `fixture:golden-questions`), 142 examples, 84 labeled | the no-camera fixture (L11); the held-out examples go to the pod without a label, and `expected.jsonl` stays on the workstation |
+| Labels | L13's teacher labels: `fixtures/learning/tool-calling-labels/` from branch `ctx/learning/label-fixture` (PR 283, commit e892991), Qwen3.8-27B-INT4 on pod C, 142 labeled, 0 rejects | the plan's labels (Context: Learning). The workstation copies only `manifest.json`, `examples.jsonl`, `split.json` and `images/` (`L16_LABELS=<that folder> bash lab/l16_run.sh dataset`); the labeler's traces and ledger stay off the pod. Without L13's folder, `dataset` falls back to the reference traces of `expected.jsonl`, which learning ruling 12 allows; this run did not need it |
+| Dataset | `tool-calling-fixture` (action `fixture:golden-questions`), 142 examples; `examples.jsonl` sha256 `6ae7fb9e0b19521b860f3503fb05a7c77a8946890905840091bfb9e47f855f0f` | the no-camera fixture (L11) with the teacher's targets |
 | Split | the frozen `split.json`, sha256 `59227ead6c24d0b7b525ba99c6e2c06f1f7178d2c6f20bd8d556bc16d2c3de39`: 84 train in 12 groups, 58 held out in 4 groups | L15's split; the trainer reads membership only through `load_split()` and refuses any held-out row |
-| Rows | 84, from `lab/format_traces.py --split --tokenizer` at template revision 851bf6e; sha256 `e8362a104e2a7eebce81912c30c367dfbd3172afaf4c5e20c0ff70f58cc91ebf` | every trace checked against the real tokenizer and template; 0 rejected, 0 failed, 58 held out skipped |
-| Lengths | 577 to 844 tokens a row, 57,228 in all (mean 681); 8,414 tokens carry the loss (two assistant turns a row) | measured with the student's tokenizer at revision 851bf6e |
-| `max_length` | none | nothing is truncated (the trainer refuses a cut); the longest row is 844 tokens. TRL's own default of 1024 would also hold it, but the learning note's LR-9 asks for the measured maximum or none (`lora_recipe.md` section 2, TRL SFT Trainer docs [S17]) |
+| Rows | 84, from `lab/format_traces.py --split --tokenizer` at template revision 851bf6e; sha256 `628bd220e2b805bb82b24662473a4c6c518dcdc6144752db6bff3a592f730c58` | every trace checked against the real tokenizer and template; 0 rejected, 0 failed, 58 held out skipped |
+| Lengths | 577 to 911 tokens a row, 58,333 in all (mean 694); 8,775 tokens carry the loss (two assistant turns a row) | measured with the student's tokenizer at revision 851bf6e |
+| `max_length` | none | nothing is truncated (the trainer refuses a cut); the longest row is 911 tokens. TRL's own default of 1024 would also hold it, but the learning note's LR-9 asks for the measured maximum or none (`lora_recipe.md` section 2, TRL SFT Trainer docs [S17]) |
 
 ## The model
 
@@ -31,7 +31,7 @@ section 13), which `lab/train.py` uses by default; `l16_run.sh` writes each one 
 
 | Setting | Value | Source |
 | --- | --- | --- |
-| LoRA rank, alpha, dropout | r 16, alpha 32, dropout 0 | Settings sheet section 13 (pinned). `lora_recipe.md` section 2: with LoRA on all layers rank barely matters at a few hundred examples (Hu et al. Table 6 [S10]; QLoRA Appendix A.1, "LoRA r is unrelated to final performance if LoRA is used on all layers" [S14]); alpha = 2r is Biderman et al.'s measured-good convention [S13]; the Tinker primer's rule, LoRA parameters at least the completion tokens [S19], holds by orders of magnitude (r 16 on every linear layer of 32 layers is tens of millions of parameters, against 8,414 loss tokens an epoch) |
+| LoRA rank, alpha, dropout | r 16, alpha 32, dropout 0 | Settings sheet section 13 (pinned). `lora_recipe.md` section 2: with LoRA on all layers rank barely matters at a few hundred examples (Hu et al. Table 6 [S10]; QLoRA Appendix A.1, "LoRA r is unrelated to final performance if LoRA is used on all layers" [S14]); alpha = 2r is Biderman et al.'s measured-good convention [S13]; the Tinker primer's rule, LoRA parameters at least the completion tokens [S19], holds by orders of magnitude (r 16 on every linear layer of 32 layers is tens of millions of parameters, against 8,775 loss tokens an epoch) |
 | Target modules | `all-linear` on the language model (PEFT leaves out the LM head) | `lora_recipe.md` section 2: covering all linear layers, MLPs included, matters more than rank (QLoRA [S14], "LoRA Without Regret" [S12]) |
 | Learning rate | 2e-4, TRL's default linear decay, no warmup | `lora_recipe.md` section 2: adapters want about 10 times the full fine-tuning rate (Thinking Machines [S12]), 2e-4 is QLoRA's rate for 7B and 13B [S14], Biderman et al.'s best for math [S13] and Unsloth's starting point [S18]; settings sheet section 13 pins it. LR-7's sweep (1e-4, 2e-4, 5e-4) is still to run; this run is its 2e-4 arm |
 | Epochs and steps | 3 epochs = 18 optimizer steps (84 rows are 21 micro-batches of 4 an epoch; accumulation 4 gives 6 optimizer steps an epoch, the last holding one micro-batch); 252 examples trained, 288 by the trainer's examples-seen count | `lora_recipe.md` section 2: Unsloth's "1-3 epochs", "more than 3 epochs offers diminishing returns" [S18], TRL's default of 3 epochs [S17]; LR-10 expects the held-out score to peak at epoch 2 or 3. The trainer's `trainer.samples_per_s` counts steps x 4 x 4 (metrics.jsonl:13's measure), which is 288 here |
@@ -51,7 +51,7 @@ No training step has been measured on gfx1151 yet: the settings sheet ran nothin
 1; TS1, the pinned-baseline run, has not run), and the R9700's 0.51 samples/s at 256 tokens (metrics.jsonl:13) is
 another chip, which section 1 uses only to bound memory. So the prediction is derived, and the run measures it:
 
-- Scale the R9700's smoke step to these rows: 681 tokens a row on average against 256 is 2.7 times the tokens, and
+- Scale the R9700's smoke step to these rows: 694 tokens a row on average against 256 is 2.7 times the tokens, and
   the torch Gated DeltaNet fallback (sheet section 6) walks the sequence in chunks, so time grows with length:
   about 0.19 samples/s on the R9700 (derived: 0.51 / 2.7).
 - The sheet gives no gfx1151 to gfx1201 ratio, and the learning note reads the R9700's 0.51 as bound by the torch

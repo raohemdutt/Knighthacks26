@@ -58,7 +58,7 @@ dataset() {
   local py data labels folder id
   py="$(local_python)"
   data="${L16_DATA:-../L16-data}"
-  labels=fixtures/learning/tool-calling-labels
+  labels="${L16_LABELS:-fixtures/learning/tool-calling-labels}"   # L16_LABELS: the folder read from L13's branch
   mkdir -p "$data"
   folder=""
   if [ -f "$labels/manifest.json" ]; then folder="$labels"
@@ -67,7 +67,9 @@ dataset() {
     id="$("$py" -c "import json,sys; print(json.load(open(sys.argv[1], encoding='utf-8'))['dataset_id'])" "$folder/manifest.json")"
     echo "labels: L13's teacher labels in $folder (dataset $id)"
     rm -rf "${data:?}/$id"
-    cp -r "$folder" "$data/$id"
+    mkdir -p "$data/$id"
+    # The dataset itself only; the labeler's own records (traces, its ledger and manifest, rejects) stay here.
+    cp -r "$folder/manifest.json" "$folder/examples.jsonl" "$folder/split.json" "$folder/images" "$data/$id/"
   else
     id=tool-calling-fixture
     echo "labels: L13's labels are not in the repo; the reference traces of fixtures/learning/$id/expected.jsonl (learning ruling 12)"
