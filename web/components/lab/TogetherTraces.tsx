@@ -90,7 +90,7 @@ export default function TogetherTraces({ series, actB, forceReduced }: { series:
     // One panel per meter at a fixed height, so the chart's own height follows from how many meters reported.
     const panelH = 120;
     const H = panelH * n + top + bottom + (n - 1) * gap;
-    const grid = nodes.map((_, i) => ({ left: 52, right: 16, top: top + i * (panelH + gap), height: panelH }));
+    const grid = nodes.map((_, i) => ({ left: 52, right: 62, top: top + i * (panelH + gap), height: panelH }));
     const stageAreas = shaded
       ? STAGES.flatMap((s) => {
           const span = shaded.stages[s];
@@ -124,8 +124,8 @@ export default function TogetherTraces({ series, actB, forceReduced }: { series:
           type: "value",
           gridIndex: i,
           min: Math.floor(xMin),
-          max: Math.ceil(xMax),
-          axisLabel: { show: i === n - 1, formatter: "{value} s", color: t("--muted"), fontFamily: font },
+          max: Math.ceil(xMax / 10) * 10,
+          axisLabel: { show: i === n - 1, showMaxLabel: false, formatter: "{value} s", color: t("--muted"), fontFamily: font },
           axisLine: { lineStyle: { color: t("--line") } },
           axisTick: { show: i === n - 1 },
           splitLine: { show: false },
@@ -170,7 +170,8 @@ export default function TogetherTraces({ series, actB, forceReduced }: { series:
                   xAxis: e.xAxis,
                   name: e.name,
                   lineStyle: { type: "dotted", color: e.act === "duo" ? t("--ok") : t("--muted"), width: 1.4 },
-                  label: { show: i === 0, formatter: e.name, position: "end", color: e.act === "duo" ? t("--ok") : t("--muted"), fontSize: 11 },
+                  // act 2 finishes first: its label sits left of its line and act 1's right of its own, so they never collide
+                  label: { show: i === 0, formatter: e.name, position: "end", align: e.act === "duo" ? "right" : "left", padding: e.act === "duo" ? [0, 4, 0, 0] : [0, 0, 0, 4], color: e.act === "duo" ? t("--ok") : t("--muted"), fontSize: 11 },
                 })),
               ],
             },
