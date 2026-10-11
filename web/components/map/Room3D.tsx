@@ -37,7 +37,7 @@ const NAME_STEP = 0.15; // how much higher a zone's name stands when it would ru
 const PIN_STEP = 0.09; // how much taller a pin stands for each row of pins in front of it
 const HALO = 0.3; // how far a panel's soft shadow reaches past its edge
 
-const COLOR = { floor: 0xe6ebf3, edge: 0xc9d3e3, zone: 0x8e9bb0, zoneOn: 0x3b82f6, text: "#1b2433", muted: "#566176", pin: 0x566176, accent: 0x2563eb };
+const COLOR = { floor: 0xdbe6f8, edge: 0xc2d0e8, zone: 0x8e9bb0, zoneOn: 0x3b82f6, text: "#1b2433", muted: "#566176", pin: 0x566176, accent: 0x2563eb };
 
 export type Mode = "native" | "quality" | "performance";
 export const MODES: { id: Mode; name: string; sub: string; scale: number }[] = [
@@ -99,7 +99,7 @@ function label(text: string, color: string, size = 0.11, outline = true): THREE.
     ctx.textBaseline = "middle";
     ctx.lineJoin = "round";
     ctx.lineWidth = 8;
-    ctx.strokeStyle = "#eef2f8";
+    ctx.strokeStyle = "#eaf1fc";
     if (outline) ctx.strokeText(text, pad, 34);
     ctx.fillStyle = color;
     ctx.fillText(text, pad, 34);

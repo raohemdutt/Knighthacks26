@@ -1,7 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Agenda } from "@/components/calendar/Agenda";
+import { ConnectedApps } from "@/components/calendar/ConnectedApps";
+import { DayBar } from "@/components/calendar/DayBar";
+import { NearbyPanel } from "@/components/calendar/Nearby";
+import sc from "@/components/calendar/screen.module.css";
 import { CoachFeedback } from "@/components/coach/CoachFeedback";
 import { RouteSheet } from "@/components/dayrun/RouteSheet";
 import { Empty, ErrorBox, Loading, WriteError } from "@/components/States";
@@ -28,7 +33,7 @@ import {
 import { useAtlas, useAtlasEvents } from "@/lib/atlas";
 import { briefMe, useBrief, type BriefState } from "@/lib/brief";
 import { cameraName, dayLabel, humanize, relative, time, timeOrDay } from "@/lib/format";
-import { useWords } from "@/lib/profile";
+import { parseNearby, useGoing } from "@/lib/nearby";
 import { useFetch } from "@/lib/useFetch";
 import { useVoice } from "@/lib/voice";
 import n from "./now.module.css";
@@ -74,40 +79,6 @@ const EVIDENCE_TEXT: Record<CoachEvidence["kind"], string> = {
   food: "Drink or food",
 };
 
-const NIGHT_MIN = 180; // a sleep block shorter than this is a nap inside the day
-const BREAK_MAX = 30; // a rest this short between two blocks of the main activity belongs to them
-
-/**
- * The day's blocks as the ribbon shows them: a run of Atlas's own blocks of the main activity, with the short rests
- * between them, is one row ("3 study blocks"), the way the brief says it. The block you are in, anything from the
- * calendar, meals and long rests stay rows of their own, and a run never straddles now.
- */
-function grouped(today: PlanMove[], current: PlanMove | undefined, nowMs: number, keep: (m: PlanMove) => boolean): RibbonItem[] {
-  const out: RibbonItem[] = [];
-  let run: PlanMove[] = [];
-  const flush = () => {
-    const tail: PlanMove[] = []; // a rest after the last block is a row of its own
-    while (run.length > 0 && run[run.length - 1]?.kind === "rest") tail.unshift(run.pop() as PlanMove);
-    if (run.filter((m) => m.kind === "study").length >= 2) out.push({ kind: "group", at: ms(run[0]?.start), moves: run });
-    else for (const m of run) out.push({ kind: "block", at: ms(m.start), move: m });
-    for (const m of tail) out.push({ kind: "block", at: ms(m.start), move: m });
-    run = [];
-  };
-  for (const m of today) {
-    const first = run[0];
-    const sameSide = !first || ms(first.end) <= nowMs === ms(m.end) <= nowMs;
-    const joins = !m.fixed && m !== current && !keep(m) && sameSide && (m.kind === "study" || (m.kind === "rest" && m.minutes <= BREAK_MAX && run.length > 0));
-    if (joins) {
-      run.push(m);
-      continue;
-    }
-    flush();
-    if (!m.fixed && m !== current && !keep(m) && m.kind === "study") run.push(m);
-    else out.push({ kind: "block", at: ms(m.start), move: m });
-  }
-  flush();
-  return out;
-}
 const ICON = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" } as const;
 
 const asApiError = (err: unknown) => (err instanceof ApiError ? err : new ApiError(0, err instanceof Error ? err.message : String(err)));
@@ -125,7 +96,7 @@ export default function NowPage() {
     return (
       <>
         <div className={ui.pageHead}>
-          <h1>Now</h1>
+          <h1>Calendar</h1>
         </div>
         {now.error.notConfigured ? (
           <Empty title="The Day loop is not on this box">It needs the place packs (config/places) so it can plan where to be and how long the walks are.</Empty>
@@ -139,7 +110,7 @@ export default function NowPage() {
     return (
       <>
         <div className={ui.pageHead}>
-          <h1>Now</h1>
+          <h1>Calendar</h1>
         </div>
         <Loading what="the day" />
       </>
@@ -193,14 +164,38 @@ function useGreeting(): string {
   return hello;
 }
 
+const NIGHT_MIN = 180; // a sleep block shorter than this is a nap inside the day
+
+/**
+ * The Calendar screen, in two halves that sit side by side on a wide screen and behind a switch on a phone:
+ *
+ *  - Your schedule: the one thing coming up, the single action worth taking, then the day laid out hour by hour
+ *    (and the days after it), with the deadlines and anything you said yes to.
+ *  - Near you: optional events from friends and campus that you can opt into.
+ *
+ * Everything the old screen explained (the coach, the evening review, why the plan is what it is) is still here,
+ * folded below the schedule.
+ */
 function Day({ d, brief, patterns, reload }: { d: DayNow; brief: BriefState; patterns: DayPattern[]; reload: () => void }) {
   const s = d.status;
-  const voice = useVoice();
+  const plan = d.plan;
   const hello = useGreeting();
   const { lead, sub, what } = story(d, brief);
   const warn = s?.risk === "late" || s?.risk === "infeasible" || s?.risk === "leave_now" || Boolean(d.replan);
+  const voice = useVoice();
   const [speaking, setSpeaking] = useState(false);
-  const nextRef = useRef<HTMLDivElement>(null);
+  const [pane, setPane] = useState<"schedule" | "nearby">("schedule");
+  const nextRef = useRef<HTMLLIElement>(null);
+
+  const items = useFetch((sig) => api.items({}, sig));
+  const packs = useFetch((sig) => api.places(sig));
+  useAtlasEvents(["connector.item.synced"], () => items.reload());
+  const { answers } = useGoing();
+  const nowMs = ms(d.now);
+  const waiting = useMemo(
+    () => parseNearby(items.data ?? [], packs.data).filter((e) => e.end > nowMs && !answers[e.id]).length,
+    [items.data, packs.data, answers, nowMs],
+  );
 
   /** Say where things stand: asked of the box so it is current; the words on screen follow it. */
   const speak = async (kind: "brief" | "status" = what) => {
@@ -209,70 +204,162 @@ function Day({ d, brief, patterns, reload }: { d: DayNow; brief: BriefState; pat
       return;
     }
     setSpeaking(true);
-    const fresh = d.plan ? await briefMe(kind) : null;
+    const fresh = plan ? await briefMe(kind) : null;
     const text = fresh?.spoken ?? lead.narration?.spoken ?? lead.text;
     voice.say(text, { tag: "answer", replace: true, raw: Boolean(fresh ?? lead.narration), onDone: () => setSpeaking(false) });
   };
 
+  // the coach's notes, by the block they are about; the ones about blocks no longer in the plan go in the fold below
+  const notes = new Map<string, DayCoachNote>();
+  const allNotes = [d.coach, ...(d.coach_earlier ?? [])].filter((x): x is DayCoachNote => Boolean(x));
+  for (const note of allNotes) if (plan && note.plan_id === plan.plan_id && !notes.has(note.block_id)) notes.set(note.block_id, note);
+  const planIds = new Set((plan?.moves ?? []).map((m) => m.id));
+  const strays = allNotes.filter((x) => !(plan && x.plan_id === plan.plan_id && planIds.has(x.block_id)));
+  const said = (note: DayCoachNote) => (brief.latest.coach && brief.latest.coach.ref === note.event_id ? brief.latest.coach.display : note.text);
+
+  const nextRisk = s?.next_event ? { id: s.next_event.id, text: RISK_TEXT[s.risk], bad: s.risk !== "ok" } : null;
+  const kinds = plan ? plan.moves.length : 0;
+
   return (
     <>
-      <section className={`${n.hero} ${warn ? n.heroWarn : ""}`} aria-live="polite">
-        <h1 className={n.greeting}>
-          <strong>{hello}</strong>
-          <span>
-            {dayLabel(`${d.day}T12:00:00`)}, as of {timeOrDay(d.now)}
-          </span>
-        </h1>
-        <p className={n.lead}>{lead.text}</p>
-        {sub ? (
-          <p className={n.sub}>
-            <span className={n.subLabel}>{sub.label}</span>
-            {sub.text}
-          </p>
-        ) : null}
-        <div className={n.heroRow}>
-          <button
-            type="button"
-            className={`${n.speak} ${speaking ? n.speakOn : ""}`}
-            disabled={voice.ready && !voice.canSpeak}
-            onClick={() => void speak()}
-            aria-pressed={speaking}
-            title={voice.ready && !voice.canSpeak ? "This browser cannot speak" : undefined}
-          >
-            <svg viewBox="0 0 24 24" {...ICON} aria-hidden="true">
-              <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" />
-              <path d="M15.5 9a4.2 4.2 0 010 6M18 6.5a7.8 7.8 0 010 11" />
-            </svg>
-            {speaking ? "Stop" : "Brief me"}
-          </button>
-          <span className={n.engine}>
-            {lead.narration ? (lead.narration.engine === "model" ? "In Atlas's own words" : "Atlas, from the plan and the cameras") : "From the plan and the cameras"}
-          </span>
+      <div className={ui.pageHead}>
+        <h1>Calendar</h1>
+        <p className={ui.muted}>
+          {dayLabel(`${d.day}T12:00:00`)}, as of {timeOrDay(d.now)}
+        </p>
+      </div>
+      <ConnectedApps />
+
+      <div className={sc.switch} role="group" aria-label="Show">
+        <button type="button" className={`${sc.switchBtn} ${pane === "schedule" ? sc.switchOn : ""}`} aria-pressed={pane === "schedule"} onClick={() => setPane("schedule")}>
+          My schedule
+        </button>
+        <button type="button" className={`${sc.switchBtn} ${pane === "nearby" ? sc.switchOn : ""}`} aria-pressed={pane === "nearby"} onClick={() => setPane("nearby")}>
+          Near you
+          {waiting > 0 ? <span className={sc.switchCount}>{waiting}</span> : null}
+        </button>
+      </div>
+
+      <div className={sc.split}>
+        <div className={`${sc.pane} ${pane === "schedule" ? "" : sc.paneOff}`}>
+          <section className={`${sc.next} ${warn ? sc.nextWarn : ""}`} aria-live="polite" aria-label="Up next">
+            <div className={sc.nextTop}>
+              <p className={sc.nextHello}>
+                <strong>{hello}</strong>
+              </p>
+              <span className={sc.nextLabel}>{s?.next_event ? "Up next" : s?.block_title ? "Right now" : "Today"}</span>
+            </div>
+            {s?.next_event ? (
+              <>
+                <h2 className={sc.nextTitle}>{s.next_event.title}</h2>
+                <p className={sc.nextFacts}>
+                  <span>
+                    <b>{time(s.next_event.start)}</b>, {relative(s.next_event.start, new Date(d.now))}
+                  </span>
+                  {s.next_event.place_name ? <span>{s.next_event.place_name}</span> : null}
+                  <span>{leaveLine(s.next_event)}</span>
+                </p>
+              </>
+            ) : s?.block_title ? (
+              <h2 className={sc.nextTitle}>
+                {s.block_title}
+                {s.block_end ? <span className={ui.muted}> until {time(s.block_end)}</span> : null}
+              </h2>
+            ) : null}
+            {/* the evening review is told in the schedule below, so it is not said twice up here */}
+            {!s?.next_event || (lead.narration && !d.review) ? <p className={sc.lead}>{lead.text}</p> : null}
+            {sub ? (
+              <p className={sc.lead}>
+                <b>{sub.label}: </b>
+                {sub.text}
+              </p>
+            ) : null}
+            <div className={sc.nextRow}>
+              <button
+                type="button"
+                className={`${n.speak} ${speaking ? n.speakOn : ""}`}
+                disabled={voice.ready && !voice.canSpeak}
+                onClick={() => void speak()}
+                aria-pressed={speaking}
+                title={voice.ready && !voice.canSpeak ? "This browser cannot speak" : undefined}
+              >
+                <svg viewBox="0 0 24 24" {...ICON} aria-hidden="true">
+                  <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" />
+                  <path d="M15.5 9a4.2 4.2 0 010 6M18 6.5a7.8 7.8 0 010 11" />
+                </svg>
+                {speaking ? "Stop" : "Brief me"}
+              </button>
+              {s?.next_event?.place ? <RouteSheet from={s.seen_at ?? "here"} to={s.next_event.place} arriveBy={s.next_event.start} now={d.now} what={s.next_event.title} label="Directions" /> : null}
+            </div>
+          </section>
+
+          <Action d={d} reload={reload} onLeave={() => (void speak("status"), nextRef.current?.scrollIntoView({ block: "center", behavior: "smooth" }))} />
+
+          {d.replan ? <ReplanFold r={d.replan} /> : null}
+
+          <section className={ui.section} aria-label="Your schedule">
+            <h2 className={sc.paneTitle}>{plan?.type === "day.replan.proposed" ? "Your schedule (re-planned)" : "Your schedule"}</h2>
+            {kinds > 0 ? <DayBar d={d} /> : null}
+            {items.error && !plan ? (
+              <ErrorBox what="your schedule" error={items.error} onRetry={items.reload} />
+            ) : !items.data && !plan ? (
+              <Loading what="your schedule" />
+            ) : (
+              <Agenda
+                d={d}
+                items={items.data ?? []}
+                packs={packs.data}
+                nextRef={nextRef}
+                nextRisk={nextRisk}
+                reason={(m) => (plan ? reasonFor(m, plan) : "")}
+                coachNote={(id) => {
+                  const note = notes.get(id);
+                  return note ? <CoachNote note={note} said={said(note)} /> : null;
+                }}
+                closing={
+                  d.review ? (
+                    <ReviewNote r={d.review} said={brief.latest.evening && brief.latest.evening.ref === d.review.event_id ? brief.latest.evening.display : null} label="Evening review" />
+                  ) : null
+                }
+              />
+            )}
+            <p className={n.legend}>
+              <span>
+                <i className={n.sq} /> on your calendar
+              </span>
+              <span>
+                <i /> suggested by Atlas (tap for why)
+              </span>
+            </p>
+          </section>
+
+          {s ? (
+            <details className={n.why}>
+              <summary>Today so far</summary>
+              <div className={n.whyBody}>
+                <Strip s={s} />
+              </div>
+            </details>
+          ) : null}
+
+          {strays.length > 0 ? (
+            <details className={n.why}>
+              <summary>Earlier coach notes ({strays.length})</summary>
+              <div className={n.whyBody}>
+                {strays.map((note) => (
+                  <CoachNote key={note.event_id} note={note} said={said(note)} about={`${note.session.title}, ${timeOrDay(note.session.start)} to ${time(note.session.end)}`} />
+                ))}
+              </div>
+            </details>
+          ) : null}
+
+          <Why d={d} patterns={patterns} />
         </div>
-      </section>
 
-      <Action d={d} reload={reload} onLeave={() => (void speak("status"), nextRef.current?.scrollIntoView({ block: "center", behavior: "smooth" }))} />
-
-      {d.replan ? <ReplanFold r={d.replan} /> : null}
-
-      {s ? <Strip s={s} /> : null}
-
-      {d.plan ? (
-        <section className={ui.section} aria-label="Your day">
-          <h2 className={ui.sectionTitle}>{d.plan.type === "day.replan.proposed" ? "Your day (re-planned)" : "Your day"}</h2>
-          <Ribbon d={d} brief={brief} nextRef={nextRef} />
-          <p className={n.legend}>
-            <span>
-              <i className={n.sq} /> on your calendar
-            </span>
-            <span>
-              <i /> suggested by Atlas (tap for why)
-            </span>
-          </p>
-        </section>
-      ) : null}
-
-      <Why d={d} patterns={patterns} />
+        <div className={`${sc.pane} ${sc.right} ${pane === "nearby" ? "" : sc.paneOff}`}>
+          {items.error ? <ErrorBox what="what is near you" error={items.error} onRetry={items.reload} /> : !items.data ? <Loading what="what is near you" /> : <NearbyPanel d={d} items={items.data} packs={packs.data} />}
+        </div>
+      </div>
     </>
   );
 }
@@ -404,14 +491,6 @@ function Strip({ s }: { s: DayStatus }) {
   );
 }
 
-// ---------- the ribbon ----------
-
-type RibbonItem =
-  | { kind: "block"; at: number; move: PlanMove }
-  | { kind: "group"; at: number; moves: PlanMove[] }
-  | { kind: "here"; at: number }
-  | { kind: "review"; at: number; review: DayReview };
-
 /** Why a block is in the plan, from the inputs the plan names. */
 function reasonFor(m: PlanMove, plan: DayPlan | DayReplan): string {
   const sources: PlanSource[] = plan.type === "day.plan.proposed" ? plan.sources : [];
@@ -439,219 +518,6 @@ function reasonFor(m: PlanMove, plan: DayPlan | DayReplan): string {
 }
 
 const leaveLine = (e: NextEvent) => (e.walk_minutes > 0 && e.leave_by ? `Leave by ${time(e.leave_by)} · ${e.walk_minutes} min walk` : "You are already there");
-
-function Ribbon({ d, brief, nextRef }: { d: DayNow; brief: BriefState; nextRef: RefObject<HTMLDivElement | null> }) {
-  const plan = d.plan as DayPlan | DayReplan;
-  const s = d.status;
-  const nowMs = ms(d.now);
-  const [open, setOpen] = useState<string | null>(null);
-  const w = useWords();
-  const moves = [...plan.moves].sort((a, b) => ms(a.start) - ms(b.start));
-  const nights = moves.filter((m) => m.kind === "sleep" && m.minutes >= NIGHT_MIN);
-  const night = nights.length > 0 ? nights.reduce((a, b) => (b.minutes > a.minutes ? b : a)) : undefined;
-  const today = moves.filter((m) => !night || ms(m.start) <= ms(night.start));
-  const tomorrow = moves.filter((m) => night && ms(m.start) >= ms(night.end));
-  const current = today.find((m) => ms(m.start) <= nowMs && nowMs < ms(m.end));
-
-  const notes = new Map<string, DayCoachNote>();
-  for (const note of [d.coach, ...(d.coach_earlier ?? [])]) if (note && note.plan_id === plan.plan_id && !notes.has(note.block_id)) notes.set(note.block_id, note);
-  const sessions = new Map<string, CoachSession>();
-  for (const x of d.review?.sessions ?? []) sessions.set(x.block_id, x);
-
-  // a block the coach spoke about that is not in today's ribbon (yesterday's plan, or one a re-plan replaced) leads it
-  const shown = new Set([...today, ...tomorrow].map((m) => m.id));
-  const earlier = [d.coach, ...(d.coach_earlier ?? [])].filter((x): x is DayCoachNote => Boolean(x) && !(x!.plan_id === plan.plan_id && shown.has(x!.block_id)));
-
-  const items: RibbonItem[] = grouped(today, current, nowMs, (m) => s?.next_event?.id === m.id);
-  if (!current) items.push({ kind: "here", at: nowMs });
-  if (d.review) items.push({ kind: "review", at: ms(d.review.ts), review: d.review });
-  items.sort((a, b) => a.at - b.at);
-
-  const hereLine = s?.seen_at_name ? `Seen at ${s.seen_at_name} (${s.seen_how}, ${time(s.seen_ts)})` : "Not seen yet today";
-  const lastSeen = d.last_seen
-    ? `Last on camera: ${d.last_seen.caption ?? `${d.last_seen.labels.join(", ") || "activity"} on the ${cameraName(d.last_seen.camera_id).toLowerCase()}`} (${cameraName(d.last_seen.camera_id)}, ${timeOrDay(d.last_seen.start)}${d.last_seen.end ? ` to ${time(d.last_seen.end)}` : ", still going"})`
-    : null;
-  const drift = s && s.drift_minutes > 0 ? <span className={`${n.pill} ${n.pillWarn}`}>{s.drift_minutes} min behind</span> : s && s.drift_minutes < 0 ? <span className={`${n.pill} ${n.pillGood}`}>{-s.drift_minutes} min ahead</span> : s ? <span className={`${n.pill} ${n.pillGood}`}>on plan</span> : null;
-
-  const block = (m: PlanMove, tomorrowBlock = false) => {
-    const past = !tomorrowBlock && ms(m.end) <= nowMs;
-    const isNow = !tomorrowBlock && m === current;
-    const isNext = !tomorrowBlock && s?.next_event?.id === m.id && !isNow;
-    const e = isNext || (isNow && s?.next_event?.id === m.id) ? s?.next_event : undefined;
-    const risky = Boolean(e) && s !== null && s.risk !== "ok";
-    const note = notes.get(m.id);
-    const session = note?.session ?? sessions.get(m.id);
-    const followed = d.review ? (d.review.followed.includes(m.title) ? "happened" : d.review.slipped.includes(m.title) ? "slipped" : null) : null;
-    const pct = isNow ? Math.min(100, Math.max(0, ((nowMs - ms(m.start)) / Math.max(1, ms(m.end) - ms(m.start))) * 100)) : 0;
-    const said = note && brief.latest.coach && brief.latest.coach.ref === note.event_id ? brief.latest.coach.display : note?.text;
-    const key = `${tomorrowBlock ? "t" : ""}${m.id}:${m.start}`;
-    return (
-      <div key={key} className={`${n.item} ${past ? n.past : ""}`} ref={isNext || (e && isNow) ? nextRef : undefined}>
-        <span className={n.when}>{time(m.start)}</span>
-        <span className={n.rail}>
-          <span className={`${n.dot} ${m.fixed ? n.dotFixed : ""} ${isNow ? n.dotNow : ""}`} />
-        </span>
-        <div>
-          <button
-            type="button"
-            className={`${n.body} ${m.fixed ? n.bodyFixed : ""} ${isNow ? n.bodyNow : ""} ${isNext ? n.bodyNext : ""} ${risky ? n.bodyWarn : ""}`}
-            aria-expanded={open === key}
-            onClick={() => setOpen(open === key ? null : key)}
-          >
-            <span className={n.titleRow}>
-              <span className={n.title}>
-                {m.title}
-                {m.with_friend ? ` with ${humanize(m.with_friend)}` : ""}
-              </span>
-              <span className={n.tags}>
-                {isNow ? <span className={`${n.pill} ${n.pillHere}`}>you are here</span> : null}
-                {isNow ? drift : null}
-                {e && risky ? <span className={`${n.pill} ${n.pillWarn}`}>{RISK_TEXT[s!.risk]}</span> : null}
-                {followed === "happened" ? <span className={`${n.pill} ${n.pillGood}`}>happened</span> : followed === "slipped" ? <span className={n.pill}>slipped</span> : null}
-              </span>
-            </span>
-            <span className={n.meta}>
-              {time(m.start)} to {time(m.end)}
-              {m.place_name && !m.title.includes(m.place_name) ? ` · ${m.place_name}` : ""}
-              {isNow && s?.should_be_name ? ` · the plan has you at ${s.should_be_name}` : ""}
-            </span>
-            {isNow ? (
-              <>
-                <span className={n.progress} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)} aria-label="How far through this block">
-                  <span className={n.progressFill} style={{ width: `${pct}%`, display: "block" }} />
-                </span>
-                <span className={n.meta}>{hereLine}</span>
-              </>
-            ) : null}
-            {e && !e.place ? <span className={n.leave}>{leaveLine(e)}</span> : null}
-            {past && session ? (
-              <span className={n.meta}>
-                {session.measured ? `${session.desk_minutes ?? 0} of ${session.planned_minutes} min at the desk, ${session.breaks.length} ${session.breaks.length === 1 ? "break" : "breaks"}` : `Not measured (${session.not_measured ?? "the box could not see it"})`}
-              </span>
-            ) : null}
-            {open === key ? <span className={n.reason}>{reasonFor(m, plan)}</span> : null}
-          </button>
-          {e && e.place ? (
-            // when to leave, and the walk itself on the campus map: the one thing to tap about the next fixed block
-            <div className={`${n.leaveRow} ${risky ? n.leaveRowWarn : ""}`}>
-              <span className={n.leave}>{leaveLine(e)}</span>
-              <RouteSheet from={s?.seen_at ?? "here"} to={e.place} arriveBy={e.start} now={d.now} what={e.title} />
-            </div>
-          ) : null}
-          {note ? <CoachNote note={note} said={said ?? note.text} /> : null}
-        </div>
-      </div>
-    );
-  };
-
-  const group = (run: PlanMove[]) => {
-    const first = run[0] as PlanMove;
-    const last = run[run.length - 1] as PlanMove;
-    const blocks = run.filter((m) => m.kind === "study");
-    const past = ms(last.end) <= nowMs;
-    const key = `g:${first.id}:${first.start}`;
-    const measured = blocks.map((m) => notes.get(m.id)?.session ?? sessions.get(m.id)).filter((x): x is CoachSession => Boolean(x?.measured));
-    const each = Math.round(blocks.reduce((sum, m) => sum + m.minutes, 0) / blocks.length);
-    return (
-      <div key={key} className={`${n.item} ${past ? n.past : ""}`}>
-        <span className={n.when}>{time(first.start)}</span>
-        <span className={n.rail}>
-          <span className={n.dot} />
-        </span>
-        <div>
-          <button type="button" className={n.body} aria-expanded={open === key} onClick={() => setOpen(open === key ? null : key)}>
-            <span className={n.titleRow}>
-              <span className={n.title}>
-                {blocks.length} {w.activity} blocks{first.place_name ? ` at ${first.place_name}` : ""}
-              </span>
-              <span className={n.tags}>
-                <span className={n.pill}>{each} min each</span>
-              </span>
-            </span>
-            <span className={n.meta}>
-              {time(first.start)} to {time(last.end)}, short breaks between
-            </span>
-            {past && measured.length > 0 ? (
-              <span className={n.meta}>
-                {measured.reduce((sum, x) => sum + (x.desk_minutes ?? 0), 0)} of {measured.reduce((sum, x) => sum + x.planned_minutes, 0)} min at the {w.workplace}
-              </span>
-            ) : null}
-            {open === key ? <span className={n.reason}>{reasonFor(first, plan)}</span> : null}
-          </button>
-          {open === key ? <div className={n.ribbon}>{run.map((m) => block(m))}</div> : blocks.map((m) => notes.get(m.id)).map((note) => (note ? <CoachNote key={note.event_id} note={note} said={note.text} about={note.session.title} /> : null))}
-        </div>
-      </div>
-    );
-  };
-
-  return (
-    <div className={n.ribbon}>
-      {[...earlier].reverse().map((note) => (
-        <div key={note.event_id} className={n.item}>
-          <span className={n.when}>{time(note.session.end)}</span>
-          <span className={n.rail}>
-            <span className={`${n.dot} ${n.dotNote}`} />
-          </span>
-          <CoachNote
-            note={note}
-            said={brief.latest.coach && brief.latest.coach.ref === note.event_id ? brief.latest.coach.display : note.text}
-            about={`${note.session.title}, ${timeOrDay(note.session.start)} to ${time(note.session.end)}`}
-          />
-        </div>
-      ))}
-      {items.map((it) => {
-        if (it.kind === "block") return block(it.move);
-        if (it.kind === "group") return group(it.moves);
-        if (it.kind === "here")
-          return (
-            <div key="here" className={n.item}>
-              <span className={n.when}>{time(d.now)}</span>
-              <span className={n.rail}>
-                <span className={`${n.dot} ${n.dotNow}`} />
-              </span>
-              <div className={n.here}>
-                <span className={n.titleRow}>
-                  <span className={n.title}>{s?.next_block ? `Free until ${time(s.next_block.start)}` : "Nothing planned right now"}</span>
-                  <span className={n.tags}>
-                    <span className={`${n.pill} ${n.pillHere}`}>you are here</span>
-                    {drift}
-                  </span>
-                </span>
-                <span className={n.meta}>
-                  {hereLine}
-                  {s?.next_block?.place_name ? ` · next at ${s.next_block.place_name}` : ""}
-                </span>
-                {lastSeen ? <span className={n.meta}>{lastSeen}</span> : null}
-              </div>
-            </div>
-          );
-        return (
-          <div key="review" className={n.item}>
-            <span className={n.when}>{time(it.review.ts)}</span>
-            <span className={n.rail}>
-              <span className={`${n.dot} ${n.dotNote}`} />
-            </span>
-            <ReviewNote r={it.review} said={brief.latest.evening && brief.latest.evening.ref === it.review.event_id ? brief.latest.evening.display : null} label="Evening review" />
-          </div>
-        );
-      })}
-      {tomorrow.length > 0 ? (
-        <div className={n.item}>
-          <span className={n.when}>{dayLabel(tomorrow[0]?.start)}</span>
-          <span className={n.rail}>
-            <span className={`${n.dot} ${n.dotNote}`} />
-          </span>
-          <details className={n.fold}>
-            <summary>
-              The morning after: {tomorrow.length} {tomorrow.length === 1 ? "block" : "blocks"} from {time(tomorrow[0]?.start)}
-            </summary>
-            <div className={n.ribbon}>{tomorrow.map((m) => block(m, true))}</div>
-          </details>
-        </div>
-      ) : null}
-    </div>
-  );
-}
 
 /** The coach, where the block ended: what it said, and behind a fold the numbers and the evidence. */
 function CoachNote({ note, said, about }: { note: DayCoachNote; said: string; about?: string }) {

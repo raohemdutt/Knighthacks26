@@ -36,6 +36,10 @@ def voice_router(guard: Callable | None = None, transport: httpx.AsyncBaseTransp
     async def talk():
         return await _write("/talk")
 
+    @router.post("/listen", dependencies=deps)
+    async def listen():
+        return await _write("/listen")
+
     @router.post("/stop", dependencies=deps)
     async def stop():
         return await _write("/stop")
@@ -43,6 +47,10 @@ def voice_router(guard: Callable | None = None, transport: httpx.AsyncBaseTransp
     @router.post("/enabled", dependencies=deps)
     async def enabled(body: dict):
         return await _write("/enabled", json={"enabled": bool(body.get("enabled"))})
+
+    @router.post("/say", dependencies=deps)
+    async def say(body: dict):
+        return await _write("/say", json={"text": str(body.get("text", ""))})
 
     async def _write(path: str, **kwargs) -> dict:
         try:

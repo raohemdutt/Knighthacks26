@@ -15,7 +15,7 @@
   align-items: center;
   gap: 12px;
   padding: calc(10px + var(--safe-top)) var(--gutter) 10px;
-  background: rgba(238, 242, 248, 0.92);
+  background: rgba(234, 241, 252, 0.92);
   backdrop-filter: blur(10px);
   border-radius: 0 0 var(--radius) var(--radius);
   box-shadow: 0 8px 18px -6px var(--sh-dark);
@@ -876,7 +876,7 @@
   padding: 24px var(--gutter) calc(24px + var(--safe-bottom));
   border-radius: 28px 28px 0 0;
   background: var(--surface);
-  box-shadow: 0 -12px 32px rgba(86, 100, 130, 0.3), 0 -2px 8px var(--sh-light);
+  box-shadow: 0 -12px 32px rgba(70, 100, 150, 0.3), 0 -2px 8px var(--sh-light);
 }
 
 @media (max-width: 380px) {
@@ -939,6 +939,31 @@
 .moreLinkOn {
   box-shadow: var(--sh-selected);
   color: var(--accent-text);
+}
+
+/* the logo, faded, behind the Ask screen */
+.watermark {
+  position: fixed;
+  inset: 0;
+  z-index: -1; /* behind everything: the page colour is on html only */
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+/* flat very light grey, a shade darker than the surface, in place of the logo's blue gradient */
+.watermark svg * {
+  stroke: #d3e0f3;
+}
+
+.watermark svg circle:last-of-type {
+  fill: #d3e0f3;
+  stroke: none;
+}
+
+.watermark svg {
+  width: min(420px, 70vw);
+  height: auto;
 }
 
 /* ---------- desktop: a sidebar and a wide content area instead of the phone's tab bar ---------- */
@@ -1007,6 +1032,37 @@
     color: var(--muted);
   }
 
+  .sideGroupToggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 4px 14px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--muted);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .sideGroupToggle:hover {
+    color: var(--text);
+  }
+
+  .sideChevron {
+    width: 18px;
+    height: 18px;
+    transition: transform 150ms ease;
+  }
+
+  .sideGroupToggle[aria-expanded="true"] .sideChevron {
+    transform: rotate(180deg);
+  }
+
   .sideLink {
     position: relative;
     display: flex;
@@ -1070,6 +1126,10 @@
   .header,
   .tabbar {
     display: none;
+  }
+
+  .watermark {
+    left: var(--side-w);
   }
 
   .main {

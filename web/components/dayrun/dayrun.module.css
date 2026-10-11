@@ -1275,7 +1275,7 @@
   gap: 8px;
   padding: 16px 18px 16px 22px;
   overflow-y: auto;
-  background: rgba(238, 242, 248, 0.96);
+  background: rgba(234, 241, 252, 0.96);
   box-shadow: var(--sh-raised), inset 6px 0 0 var(--line);
   border-radius: var(--radius-sm);
   font-size: 15px;

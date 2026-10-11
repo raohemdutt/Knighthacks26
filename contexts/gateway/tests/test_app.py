@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -320,3 +321,14 @@ def test_small_talk_gets_a_reply_and_camera_questions_keep_their_path(tmp_path, 
     with client(tmp_path / "off") as c:
         assert c.app.state.atlas.qa.talk is None
         assert c.post("/api/ask", json={"text": "how's your day?"}).json()["answer"] == "I didn't see that."
+
+
+def test_ask_stream_sends_the_pieces_then_the_same_final_answer(tmp_path):
+    with client(tmp_path) as c:
+        r = c.post("/api/ask/stream", json={"text": "Where did I leave my keys?"})
+        assert r.status_code == 200
+        lines = [json.loads(ln) for ln in r.text.splitlines() if ln]
+        assert "final" in lines[-1] and all("delta" in ln for ln in lines[:-1])
+        final = lines[-1]["final"]
+        assert final["type"] == "agent.answer.generated" and final["citations"][0]["frame_ref"] == "frames:cam-desk:k1941"
+

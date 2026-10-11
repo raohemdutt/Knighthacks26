@@ -2,7 +2,7 @@
 # Copy this working tree to the Jetson and restart the app (the box has no GitHub login, so code reaches it this way).
 #
 #     ./jetson/push.sh                          # alexander@ubuntu.local, ~/Knighthacks26
-#     ./jetson/push.sh alexander@192.168.1.126  # a specific address
+#     ./jetson/push.sh alexander@172.20.10.6  # a specific address
 #     ./jetson/push.sh --web                    # also build the phone app first (needs node)
 #     ./jetson/push.sh --zones                  # also overwrite the box's config/zones.yaml with this tree's
 #

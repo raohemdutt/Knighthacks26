@@ -5,6 +5,7 @@
 - WS  /ws                      every bus event as JSON, live (the PWA's feed); while an answer is being written,
                                also {"type": "agent.answer.delta", "question_id", "text"} pieces (not logged; A11)
 - POST /api/ask                {text} -> the answer with citations (also on /ws)
+- POST /api/ask/stream         the same as lines of JSON as the answer is written: {"delta"}..., then {"final"} (the box's voice)
 - GET  /api/approvals          pending approval cards
 - POST /api/approvals/{id}     {decision: approve|deny} (ntfy buttons call this)
 - POST /api/teach              {task, instruction, ...} -> approval card for the export
@@ -69,7 +70,7 @@ from uuid import uuid4
 
 import yaml
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -127,6 +128,7 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
     atlas = atlas or build(settings)
     sockets: set[WebSocket] = set()
     waiting: dict[str, asyncio.Future] = {}
+    streams: dict[str, asyncio.Queue] = {}  # question_id -> pieces for a /api/ask/stream caller
 
     async def fan_out(e: Event) -> None:
         if e.type == "agent.answer.generated" and (f := waiting.pop(e.question_id, None)) and not f.done():
@@ -151,9 +153,13 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         """Called from the model's worker thread with each new piece of an answer (A11): straight to the phones,
         never to the log. The final agent.answer.generated is unchanged."""
         loop = app.state.loop
-        if loop is not None and sockets:
+        if loop is None:
+            return
+        if sockets:
             data = json.dumps({"type": "agent.answer.delta", "question_id": question_id, "text": text})
             loop.call_soon_threadsafe(lambda: loop.create_task(send_all(data)))
+        if (pieces := streams.get(question_id)) is not None:
+            loop.call_soon_threadsafe(pieces.put_nowait, text)
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -228,6 +234,41 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
             raise HTTPException(504, "the model took too long") from None
         finally:
             waiting.pop(qid, None)
+
+    @app.post("/api/ask/stream", dependencies=[Depends(authorized)])
+    async def ask_stream(body: AskBody):
+        """/api/ask for a caller that wants to start using the answer before it is finished (the box's voice speaks the
+        first sentence while the rest is still being written). Lines of JSON: {"delta": text} for each piece as it comes,
+        then one {"final": <the agent.answer.generated event>}, or {"error": why}."""
+        loop = asyncio.get_running_loop()
+        qid = uuid4().hex
+        answer = waiting[qid] = loop.create_future()
+        pieces = streams[qid] = asyncio.Queue()
+
+        async def lines():
+            try:
+                await atlas.bus.publish(QuestionAsked(question_id=qid, text=body.text))  # may answer before returning
+                deadline = loop.time() + ASK_TIMEOUT_S
+                while True:
+                    next_piece = asyncio.ensure_future(pieces.get())
+                    done, _ = await asyncio.wait({next_piece, answer}, timeout=max(0.0, deadline - loop.time()),
+                                                 return_when=asyncio.FIRST_COMPLETED)
+                    if next_piece in done:
+                        yield json.dumps({"delta": next_piece.result()}) + "\n"
+                        continue
+                    next_piece.cancel()
+                    if answer in done:
+                        while not pieces.empty():
+                            yield json.dumps({"delta": pieces.get_nowait()}) + "\n"
+                        yield json.dumps({"final": answer.result().model_dump(mode="json")}) + "\n"
+                    else:
+                        yield json.dumps({"error": "the model took too long"}) + "\n"
+                    return
+            finally:
+                waiting.pop(qid, None)
+                streams.pop(qid, None)
+
+        return StreamingResponse(lines(), media_type="application/x-ndjson")
 
     @app.get("/api/approvals")
     async def approvals():

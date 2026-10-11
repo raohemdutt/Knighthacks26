@@ -18,6 +18,21 @@ NOISE_CALIBRATION_MS = 300
 WARMUP_CHUNKS = 5
 
 
+CHIME_RATE = 24000
+
+
+def chime(rate: int = CHIME_RATE) -> bytes:
+    """A short rising two-note blip, raw 16-bit mono: "I got your question, working on it". It starts with a little
+    silence because a Bluetooth speaker that has gone idle swallows the first moments of a sound."""
+    out = array.array("h", [0] * (rate * 120 // 1000))
+    for freq, ms in ((660, 90), (880, 130)):
+        n = rate * ms // 1000
+        for i in range(n):
+            envelope = min(1.0, i / (rate * 0.005)) * math.exp(-3.5 * i / n)  # a click-free start, then a soft fade
+            out.append(int(9000 * envelope * math.sin(2 * math.pi * freq * i / rate)))
+    return out.tobytes()
+
+
 class AudioUnavailable(RuntimeError):
     """No microphone or no speaker right now; the message says why, in words for the operator screen."""
 

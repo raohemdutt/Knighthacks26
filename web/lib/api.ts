@@ -1473,6 +1473,8 @@ export interface VoiceStatus {
   heard: string;
   answer: string;
   seconds_in_state: number;
+  /** True when the box is always listening for "Hey Atlas" (wake_word in config/voice.yaml). */
+  wake?: boolean;
   mic?: { ok: boolean; detail: string };
   speaker?: { ok: boolean; detail: string };
   speech_to_text?: { ok: boolean; detail: string };
@@ -1685,6 +1687,8 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   voiceTalk: () => post<VoiceStatus>("/api/voice/talk", {}),
   voiceStop: () => post<VoiceStatus>("/api/voice/stop", {}),
   voiceEnabled: (enabled: boolean) => post<VoiceStatus>("/api/voice/enabled", { enabled }),
+  voiceListen: () => post<VoiceStatus>("/api/voice/listen", {}),
+  voiceSay: (text: string) => post<VoiceStatus>("/api/voice/say", { text }),
   setVaultPolicy: (body: Partial<VaultPolicy>) => put<VaultPolicy>("/vault/policy", body),
   egress: (signal?: AbortSignal) => get<Egress>("/vault/egress", undefined, signal),
   wipeRequest: (scope: WipeScope) => post<WipeToken>("/vault/wipe/request", { scope }),

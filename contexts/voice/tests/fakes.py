@@ -25,12 +25,15 @@ def question() -> list[bytes]:
 
 
 def make_config(**over) -> VoiceConfig:
-    return VoiceConfig(**{"wait_for_speech_s": 1.0, "end_silence_s": 0.6, "max_seconds": 3.0, **over})
+    return VoiceConfig(**{"wait_for_speech_s": 1.0, "end_silence_s": 0.6, "max_seconds": 3.0, "chime": False, **over})
 
 
 class FakeMic:
-    def __init__(self, chunks: list[bytes] | None = None, missing: bool = False, endless: bool = False):
+    def __init__(self, chunks: list[bytes] | None = None, missing: bool = False, endless: bool = False,
+                 opens: list[list[bytes]] | None = None):
         self.chunks, self.missing, self.endless = chunks if chunks is not None else question(), missing, endless
+        self.opens = opens  # what each successive open hears (the last one repeats); overrides `chunks`
+        self._now = self.chunks
         self.is_open = False
         self.opened = 0
 
@@ -43,16 +46,18 @@ class FakeMic:
             raise AudioUnavailable("no such device (fake)")
         self.is_open = True
         self.opened += 1
+        self._now = self.opens[min(self.opened, len(self.opens)) - 1] if self.opens else self.chunks
         try:
             yield self._frames()
         finally:
             self.is_open = False
 
     def _frames(self):
-        yield from self.chunks
+        now = self._now
+        yield from now
         while self.endless:  # someone who keeps talking until the button is tapped again
             time.sleep(0.005)
-            yield self.chunks[-1] if self.chunks else b""
+            yield now[-1] if now else b""
 
 
 class FakeSpeaker:
@@ -80,8 +85,9 @@ class FakeSpeaker:
 
 
 class FakeStt:
-    def __init__(self, text: str = "where did I leave my keys", fail: bool = False):
+    def __init__(self, text: str = "where did I leave my keys", fail: bool = False, script: list[str] | None = None):
         self.text, self.fail = text, fail
+        self.script = list(script or [])  # what the first transcriptions say, in order; then `text`
         self.heard: list[int] = []  # byte length of each recording given to it
 
     def ready(self):
@@ -91,7 +97,7 @@ class FakeStt:
         self.heard.append(len(pcm))
         if self.fail:
             raise SpeechEngineError("speech-to-text failed (fake)")
-        return self.text
+        return self.script.pop(0) if self.script else self.text
 
 
 class FakeTts:

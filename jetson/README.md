@@ -164,7 +164,7 @@ temp file in RAM for the 2 seconds whisper reads it). It needs nothing from the 
 **One-time setup** (the tools come from a laptop with internet, because the box's firewall blocks GitHub and Hugging Face):
 
 ```bash
-./jetson/voice-fetch.sh alexander@192.168.1.126      # on the laptop: downloads, copies, builds whisper.cpp on the box
+./jetson/voice-fetch.sh alexander@172.20.10.6      # on the laptop: downloads, copies, builds whisper.cpp on the box
 sudo dpkg -i ~/atlas/voice/debs/pulseaudio-module-bluetooth_arm64.deb && pulseaudio -k   # on the box: lets PulseAudio use a Bluetooth speaker
 ```
 
@@ -192,6 +192,12 @@ journalctl -u atlas-voice -f
 when done (it also ends by itself after 1 s of quiet), tap while it speaks to stop it. `GET /api/voice/status` says what
 it heard, what it answered, and whether the mic and speaker are fine. The box never speaks while the microphone is open.
 `python -m contexts.demo preflight` has a "voice on the box" line.
+
+**Hands-free:** with `wake_word: true` in `config/voice.yaml` (the default) the box is always listening: say "Hey Atlas", it
+answers "What's up?", then ask your question. The microphone stays open and, every 1.5 s, the last 3 s of sound are
+transcribed on the box by whisper, so music or a crowd in the room does not hide the wake phrase. Everything that is not
+the wake phrase is dropped unread; nothing is kept or sent anywhere. Tapping still works, and `wake_word: false` goes back to
+push to talk only.
 
 ## 10. Zones in a room you could not preset
 
