@@ -161,3 +161,26 @@ def test_ax_takes_the_initial_arms_and_suggests_with_fixed_parameters():
     index, params = s.next({"linear_kernel": "exllama_fp16"})
     assert index == 5 and params["linear_kernel"] == "exllama_fp16"
 
+
+@pytest.mark.skipif(not optimize_ax.ax_installed(), reason="Ax is not installed (lab/requirements-optimize.txt)")
+def test_the_summary_of_recorded_trial_files_carries_the_posterior_though_ax_was_never_asked(config, tmp_path):
+    """Ax fits its model when it is asked for a trial. A run of the initial arms alone never asks, and `summary`
+    replays the trial files into a fresh client, so the summary has to fit the model itself."""
+    out = opt.main(["run", "--fake", "--strategy", "ax", "--config", str(config), "--run-dir", str(tmp_path / "run"),
+                    "--work-dir", str(tmp_path / "work"), "--workers", "1", "--budget", "5", "--no-confirm"])
+    assert out["ok"] and out["trials"]["completed"] == 5, out
+
+    def posterior():
+        summary = json.loads((tmp_path / "run" / "summary.json").read_text(encoding="utf-8"))
+        post = summary["posterior"]
+        assert post["available"] and [a["trial"] for a in post["arms"]] == [0, 1, 2, 3, 4], post
+        assert all(a["predicted"]["joules_per_token.b1"]["mean"] > 0 for a in post["arms"])
+        assert summary["best"]["predicted"]["joules_per_token.b1"]["sem"] >= 0
+        return post
+
+    live = posterior()                                   # written at the end of the run, by the run's own client
+    (tmp_path / "run" / "summary.json").unlink()
+    assert opt.main(["summary", "--run-dir", str(tmp_path / "run"), "--config", str(config)])["ok"]
+    replayed = posterior()                               # written from the trial files alone
+    assert [a["trial"] for a in replayed["arms"]] == [a["trial"] for a in live["arms"]]
+    assert "the model does not predict yet" not in (tmp_path / "run" / "summary.md").read_text(encoding="utf-8")

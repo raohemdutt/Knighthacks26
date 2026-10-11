@@ -213,7 +213,7 @@ def summarize(run_dir: Path, *, strategy: Any = None, config: str | Path | None 
                 for t in state.trials:
                     strategy.attach(t["parameters"], baseline=t["source"] == "baseline")
                     tell(strategy, t)
-            predicted = strategy.predict([t["parameters"] for t in done])
+            predicted = strategy.predict([t["parameters"] for t in done], refit=True)
             posterior = ({"available": True, "arms": [{"trial": t["trial"], "predicted": p}
                                                       for t, p in zip(done, predicted)]}
                          if predicted else {"available": False, "reason": "the model does not predict yet"})

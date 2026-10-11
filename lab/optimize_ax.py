@@ -112,7 +112,7 @@ class StubStrategy:
     def should_stop(self, index: int) -> bool:
         return False
 
-    def predict(self, params: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]] | None:
+    def predict(self, params: Sequence[Mapping[str, Any]], *, refit: bool = False) -> list[dict[str, Any]] | None:
         return None
 
     def describe(self) -> dict[str, Any]:
@@ -236,12 +236,19 @@ class AxStrategy:
             except Exception:
                 return False
 
-    def predict(self, params: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]] | None:
-        """The model's mean and SEM per metric at these points, or None while the current node cannot predict."""
+    def predict(self, params: Sequence[Mapping[str, Any]], *, refit: bool = False) -> list[dict[str, Any]] | None:
+        """The model's mean and SEM per metric at these points, or None while the current node cannot predict.
+        Ax fits its model when it is asked for a trial: a client the run's files were just replayed into has no
+        model yet, and a live one's is as old as its last ask. So the current node is fitted here first, on every
+        observation so far and without asking for a trial, when there is no model or when refit says so (the
+        summary does, so its posterior holds the last trials too)."""
         names = {ax_metric(m): m for m in self.lane.metrics}
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             try:
+                generation = self.client._generation_strategy_or_choose()
+                if refit or generation.adapter is None:
+                    generation.fit(experiment=self.client._experiment)
                 predicted = self.client.predict([dict(p) for p in params])
             except Exception:
                 return None
