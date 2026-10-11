@@ -1,17 +1,14 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { BarChart, LineChart } from "echarts/charts";
-import { GridComponent, LegendComponent, MarkLineComponent, TooltipComponent } from "echarts/components";
-import * as echarts from "echarts/core";
-import { SVGRenderer } from "echarts/renderers";
+import dynamic from "next/dynamic";
 import type { EChartsOption } from "echarts";
-import EChartsCore from "echarts-for-react/lib/core";
 import { type LabStory, isNum, pct } from "@/lib/lab";
+import type { EChartClick } from "./EChartView";
 import lab from "./lab.module.css";
 
-// only the pieces the lab draws, so the bundle carries line and bar charts and nothing else
-echarts.use([LineChart, BarChart, GridComponent, LegendComponent, MarkLineComponent, TooltipComponent, SVGRenderer]);
+// ECharts loads in its own chunk when a chart first draws, so the rest of the lab does not wait for it
+const EChartView = dynamic(() => import("./EChartView"), { ssr: false });
 
 /** The rendered width of an element, so the SVGs draw at real pixels and their labels stay readable on a phone. */
 function useWidth(): [React.RefObject<HTMLDivElement | null>, number] {
@@ -366,29 +363,11 @@ export function chartAxis(t: ChartTokens) {
   };
 }
 
-/** One ECharts chart, SVG-rendered so its numbers take the page's tabular figures. */
-export function LabEChart({
-  option,
-  height,
-  label,
-  className,
-  onClick,
-}: {
-  option: EChartsOption;
-  height: number;
-  label: string;
-  className?: string;
-  onClick?: (params: { seriesId?: string; seriesName?: string; dataIndex: number; name?: string }) => void;
-}) {
+/** One ECharts chart, SVG-rendered so its numbers take the page's tabular figures; its space is held while it loads. */
+export function LabEChart({ option, height, label, className, onClick }: { option: EChartsOption; height: number; label: string; className?: string; onClick?: EChartClick }) {
   return (
-    <div role="img" aria-label={label} className={className} style={{ fontVariantNumeric: "tabular-nums" }}>
-      <EChartsCore
-        echarts={echarts}
-        option={option}
-        style={{ height, width: "100%" }}
-        opts={{ renderer: "svg" }}
-        onEvents={onClick ? { click: onClick } : undefined}
-      />
+    <div role="img" aria-label={label} className={className} style={{ minHeight: height, fontVariantNumeric: "tabular-nums" }}>
+      <EChartView option={option} height={height} onClick={onClick} />
     </div>
   );
 }

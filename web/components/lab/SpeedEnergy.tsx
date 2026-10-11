@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { EChartsOption } from "echarts";
 import { ErrorBox, Loading } from "@/components/States";
 import ui from "@/components/ui.module.css";
-import { api } from "@/lib/api";
+import { api, spotUrl } from "@/lib/api";
 import { chipShort } from "@/lib/lab";
 import {
   type BenchHeadline,
@@ -480,6 +480,7 @@ function Sessions({
   setPicked,
   rows,
   openSheet,
+  rowsState,
 }: {
   sessions: BenchSession[];
   points: BenchHeadline[];
@@ -490,6 +491,7 @@ function Sessions({
   setPicked: (p: BenchPoint | null) => void;
   rows: number;
   openSheet: (which: "what" | "rows") => void;
+  rowsState: "loading" | "error" | "ready" | null;
 }) {
   const current = sessions.find((x) => x.id === selected) ?? sessions[0];
   const mine = points.filter((p) => p.session === current?.id).sort((x, y) => x.batch - y.batch);
@@ -554,7 +556,13 @@ function Sessions({
           </table>
         </div>
       ) : null}
-      {picked ? <PointDetail p={picked} onClose={() => setPicked(null)} /> : <p className={s.foot}>Tap a number to see the row it came from.</p>}
+      {picked ? (
+        <PointDetail p={picked} onClose={() => setPicked(null)} />
+      ) : (
+        <p className={s.foot}>
+          {rowsState === "loading" ? "Fetching this session's rows..." : rowsState === "error" ? "This session's rows did not load; the numbers above are its headline." : "Tap a number to see the row it came from."}
+        </p>
+      )}
     </div>
   );
 }
@@ -579,25 +587,68 @@ export function SpeedEnergy({
   const [sheet, setSheet] = useState<"what" | "rows" | null>(initialDrawer === "what" || initialDrawer === "rows" ? initialDrawer : null);
   const [open, setOpen] = useState(initialSweep !== null || initialDrawer !== null);
   const [selected, setSelected] = useState<string | null>(initialSweep);
-  const [picked, setPicked] = useState<BenchPoint | null>(null);
+  const [pickedPoint, setPickedPoint] = useState<BenchPoint | null>(null);
+  const [pickedKey, setPickedKey] = useState<{ session: string; metric: string; batch: number } | null>(null);
+  // a session's rows (GET .../bench/rows?session=) and the whole payload (?all=1), fetched only when the drawer needs them
+  const [rowsOf, setRowsOf] = useState<Record<string, Partial<LabBench> | "loading" | "error">>({});
+  const [all, setAll] = useState<Partial<LabBench> | "loading" | "error" | null>(null);
   const close = useCallback(() => setSheet(null), []);
   const payload = bench.data as BenchPayload | undefined;
   const summary = useMemo(() => benchSummary(payload), [payload]);
   const story = useMemo(() => speedStory(summary), [summary]);
   const sessions = useMemo(() => summary.sessions.slice().sort((x, y) => (y.date ?? "").localeCompare(x.date ?? "")), [summary]);
+  const current = sessions.find((x) => x.id === selected) ?? sessions[0];
+  const fullHere = (payload?.sweeps?.length ?? 0) > 0;
+
+  useEffect(() => {
+    if (!open || !current || fullHere) return;
+    const key = current.source ?? current.id;
+    if (rowsOf[key]) return;
+    setRowsOf((m) => ({ ...m, [key]: "loading" }));
+    fetch(spotUrl(current.rows_url ?? `/api/learning/lab/bench/rows?session=${encodeURIComponent(key)}`))
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((d: Partial<LabBench>) => setRowsOf((m) => ({ ...m, [key]: d })))
+      .catch(() => setRowsOf((m) => ({ ...m, [key]: "error" })));
+  }, [open, current, fullHere, rowsOf]);
+
+  useEffect(() => {
+    if (sheet !== "rows" || all !== null || fullHere) return;
+    setAll("loading");
+    fetch(spotUrl("/api/learning/lab/bench?all=1"))
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((d: Partial<LabBench>) => setAll(d))
+      .catch(() => setAll("error"));
+  }, [sheet, all, fullHere]);
+
   const findPoint = useCallback(
-    (session: string, metric: string, batch: number): BenchPoint | null => (payload as Partial<LabBench> | undefined)?.sweeps?.find((w) => w.id === session)?.metrics[metric]?.find((p) => p.x === batch) ?? null,
-    [payload],
+    (session: string, metric: string, batch: number): BenchPoint | null => {
+      const x = sessions.find((q) => q.id === session);
+      const from = fullHere ? payload : rowsOf[x?.source ?? session];
+      if (!from || typeof from === "string") return null;
+      const sweeps = (from.sweeps ?? []).filter((w) => w.id === session || !fullHere);
+      for (const w of sweeps) {
+        if (x?.node && w.node && w.node !== x.node) continue;
+        const p = w.metrics[metric]?.find((q) => q.x === batch);
+        if (p) return p;
+      }
+      return null;
+    },
+    [sessions, fullHere, payload, rowsOf],
   );
+  const picked = pickedPoint ?? (pickedKey ? findPoint(pickedKey.session, pickedKey.metric, pickedKey.batch) : null);
+  const setPicked = useCallback((p: BenchPoint | null) => {
+    setPickedPoint(p);
+    setPickedKey(null);
+  }, []);
   const pickFromChart = useCallback(
     (session: string, metric: string, batch: number) => {
-      const p = findPoint(session, metric, batch);
       setSelected(session);
       setOpen(true);
-      setPicked(p);
+      setPickedPoint(null);
+      setPickedKey({ session, metric, batch });
       if (typeof document !== "undefined") document.getElementById("speed-drawer")?.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
     },
-    [findPoint, reduced],
+    [reduced],
   );
   const pickPower = useCallback(
     (p: BenchPoint) => {
@@ -605,7 +656,7 @@ export function SpeedEnergy({
       setOpen(true);
       if (typeof document !== "undefined") document.getElementById("speed-drawer")?.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
     },
-    [reduced],
+    [reduced, setPicked],
   );
 
   if (bench.loading && !bench.data) return <Loading what="the lab's measurements" />;
@@ -651,7 +702,7 @@ export function SpeedEnergy({
           </span>
         </summary>
         {open ? (
-          <Sessions sessions={sessions} points={summary.points} selected={selected} setSelected={setSelected} findPoint={findPoint} picked={picked} setPicked={setPicked} rows={rows} openSheet={setSheet} />
+          <Sessions sessions={sessions} points={summary.points} selected={selected} setSelected={setSelected} findPoint={findPoint} picked={picked} setPicked={setPicked} rows={rows} openSheet={setSheet} rowsState={fullHere || !current ? null : rowsOf[current.source ?? current.id] === undefined ? "loading" : typeof rowsOf[current.source ?? current.id] === "string" ? (rowsOf[current.source ?? current.id] as "loading" | "error") : "ready"} />
         ) : null}
       </details>
 
@@ -662,7 +713,8 @@ export function SpeedEnergy({
       ) : null}
       {sheet === "rows" ? (
         <Sheet title="Every row" onClose={close}>
-          <AllRows bench={data} sessions={sessions} />
+          <AllRows bench={fullHere ? data : all && typeof all !== "string" ? { ...data, ...all } : data} sessions={sessions} />
+          {all === "loading" ? <p className={s.foot}>Fetching every row (a few megabytes on the box)...</p> : all === "error" ? <p className={s.foot}>The whole payload did not load; the sessions above are from the summary.</p> : null}
         </Sheet>
       ) : null}
       {picked && !open ? <PointDetail p={picked} onClose={() => setPicked(null)} /> : null}

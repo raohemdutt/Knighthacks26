@@ -314,6 +314,9 @@ export interface BenchSession {
   rows: number;
   node?: string | null;
   build?: string | null;
+  families?: string[];
+  source?: string; // the session id the route knows, when one route session was split by node here
+  rows_url?: string | null;
 }
 
 /** One headline point of a session at one batch size (streams answered at once). */
@@ -333,8 +336,83 @@ export interface BenchSummary {
   points: BenchHeadline[];
 }
 
-/** What GET /api/learning/lab/bench returns: the summary shape, the full payload of today, or both. */
-export type BenchPayload = Partial<LabBench> & Partial<BenchSummary>;
+/** One number of a session's headline as the route sends it: the row's value with its line and confidence. */
+export interface BenchCell {
+  value: number;
+  unit?: string | null;
+  line?: number | null;
+  low_confidence?: boolean;
+  reason?: string | null;
+  runs?: number | null;
+  statistic?: string | null;
+}
+
+/** A session as GET /api/learning/lab/bench returns it (summary: true): chip, engine, date and headline per node and batch. */
+export interface BenchApiSession {
+  id: string;
+  chip: { key?: string; name?: string; current?: boolean; role?: string; where?: string | null } | string | null;
+  engine: string | null;
+  model: string | null;
+  date: string | null;
+  ts?: string | null;
+  first_ts?: string | null;
+  lever: string | null;
+  nodes?: string[];
+  families?: string[];
+  rows: number;
+  batches?: number[];
+  rows_url?: string | null;
+  headline?: {
+    node: string | null;
+    batch: number | null;
+    chip?: string | null;
+    tok_s_stream: BenchCell | number | null;
+    tok_s_total: BenchCell | number | null;
+    ttft_s: BenchCell | number | null;
+    watts: BenchCell | number | null;
+    j_per_token: BenchCell | number | null;
+    confidence: { level?: string; low_confidence?: number; of?: number } | string | null;
+  }[];
+}
+
+/** What GET /api/learning/lab/bench returns: the summary (sessions with their headline), or today's full payload. */
+export type BenchPayload = Omit<Partial<LabBench>, never> & { summary?: boolean; sessions?: (BenchApiSession | BenchSession)[]; points?: BenchHeadline[] };
+
+const cellValue = (c: BenchCell | number | null | undefined): number | null => (c === null || c === undefined ? null : typeof c === "number" ? c : typeof c.value === "number" ? c.value : null);
+
+/** The summary route's sessions as the screen's sessions and points: one screen session per route session and node. */
+export function summaryFromSessions(list: BenchApiSession[]): BenchSummary {
+  const sessions: BenchSession[] = [];
+  const points: BenchHeadline[] = [];
+  for (const x of list) {
+    const chip = typeof x.chip === "string" ? x.chip : (x.chip?.key ?? x.chip?.name ?? "");
+    const byNode = new Map<string, NonNullable<BenchApiSession["headline"]>>();
+    for (const h of x.headline ?? []) {
+      const key = h.node ?? "";
+      byNode.set(key, [...(byNode.get(key) ?? []), h]);
+    }
+    if (byNode.size === 0) byNode.set(x.nodes?.join("+") ?? "", []);
+    for (const [node, cells] of byNode) {
+      const id = byNode.size > 1 ? `${x.id} @ ${node}` : x.id;
+      sessions.push({ id, chip, engine: x.engine ?? "", model: x.model, date: x.ts ?? x.date, lever: x.lever, rows: x.rows, node: node || null, build: x.engine, families: x.families, source: x.id, rows_url: x.rows_url ?? null });
+      for (const h of cells) {
+        if (h.batch === null || h.batch === undefined) continue;
+        const conf = h.confidence;
+        points.push({
+          session: id,
+          batch: h.batch,
+          tok_s_stream: cellValue(h.tok_s_stream),
+          tok_s_total: cellValue(h.tok_s_total),
+          ttft_s: cellValue(h.ttft_s),
+          watts: cellValue(h.watts),
+          j_per_token: cellValue(h.j_per_token),
+          confidence: conf === null || typeof conf === "string" ? conf : conf.level ?? ((conf.low_confidence ?? 0) > 0 ? "low" : null),
+        });
+      }
+    }
+  }
+  return { sessions, points };
+}
 
 /** True when a point's confidence says it is low: the word "low", false, or a number under one half. */
 export function isLowConfidence(c: BenchHeadline["confidence"]): boolean {
@@ -354,7 +432,7 @@ export function engineOf(s: string | null | undefined): Engine {
 export const isStrixHalo = (chip: string | null | undefined) => /strix|8060s|gfx1151/i.test(chip ?? "");
 export const isA100 = (chip: string | null | undefined) => /a100/i.test(chip ?? "");
 /** A session of the 122B pair across two pods: its id, lever or model names the pair. */
-export const isPair = (s: BenchSession) => /pair_pp122b|pod-a\+pod-b/i.test(`${s.id} ${s.lever ?? ""} ${s.node ?? ""}`) || /122b/i.test(s.model ?? "");
+export const isPair = (s: BenchSession) => /pair_pp122b|pod-a\+pod-b/i.test(`${s.id} ${s.lever ?? ""} ${s.node ?? ""} ${(s.families ?? []).join(" ")}`) || /122b/i.test(s.model ?? "");
 
 /** The summary shape, worked out from today's full payload: one session per sweep, one point per batch size. */
 export function summaryFromFull(full: Partial<LabBench>): BenchSummary {
@@ -371,6 +449,8 @@ export function summaryFromFull(full: Partial<LabBench>): BenchSummary {
       rows: sw.points,
       node: sw.node,
       build: sw.build,
+      families: [sw.family],
+      source: sw.session ?? sw.id,
     });
     const at = (name: string, b: number) => sw.metrics[name]?.find((p) => p.x === b) ?? null;
     for (const batch of sw.batches) {
@@ -391,9 +471,10 @@ export function summaryFromFull(full: Partial<LabBench>): BenchSummary {
   return { sessions, points };
 }
 
-/** The summary from whatever the route returned: its own sessions and points when present, else derived. */
+/** The summary from whatever the route returned: its sessions and headlines when present, else derived from the full payload. */
 export function benchSummary(p: BenchPayload | null | undefined): BenchSummary {
-  if (p && Array.isArray(p.sessions) && Array.isArray(p.points)) return { sessions: p.sessions, points: p.points };
+  if (p && Array.isArray(p.sessions) && Array.isArray(p.points)) return { sessions: p.sessions as BenchSession[], points: p.points };
+  if (p && Array.isArray(p.sessions) && p.sessions.length) return summaryFromSessions(p.sessions as BenchApiSession[]);
   return summaryFromFull(p ?? {});
 }
 
