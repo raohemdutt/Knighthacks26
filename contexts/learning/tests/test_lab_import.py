@@ -77,14 +77,17 @@ def test_posting_the_file_shows_the_real_run_live_and_posting_it_again_adds_noth
     with TestClient(app_with(view, bus)) as client:
         assert client.get("/api/learning/lab").json()["sample"] is True
         first = client.post("/api/learning/lab/import?run_id=run-l16", content=telemetry(tmp_path, LOSSES[:3]))
-        assert first.status_code == 200 and first.json() == {"kind": "telemetry", "published": 3, "already_there": 0, "events": 3,
-                                                             "runs": ["run-l16"], "last_step": 3}
+        body = first.json()
+        assert "task is not known" in body.pop("note")   # no task yet, so no learning.run.progress (L29)
+        assert first.status_code == 200 and body == {"kind": "telemetry", "published": 3, "already_there": 0, "events": 3,
+                                                     "runs": ["run-l16"], "last_step": 3}
         lab = client.get("/api/learning/lab").json()
         assert lab["sample"] is False and lab["real_runs"] == 1 and lab["runs"][0]["status"] == "training"  # live: no eval yet
         grown = telemetry(tmp_path / "later")  # the same run, two steps further on
         assert client.post("/api/learning/lab/import", content=grown).json()["published"] == 2
-        assert client.post("/api/learning/lab/import", content=grown).json() == {"kind": "telemetry", "published": 0, "already_there": 5,
-                                                                              "events": 5, "runs": ["run-l16"], "last_step": 5}
+        again = client.post("/api/learning/lab/import", content=grown).json()
+        again.pop("note")
+        assert again == {"kind": "telemetry", "published": 0, "already_there": 5, "events": 5, "runs": ["run-l16"], "last_step": 5}
         story = client.get("/api/learning/lab/run-l16").json()
         assert [p["loss"] for p in story["training"]["points"]] == LOSSES and story["sample"] is False
     assert sum(isinstance(e, TrainStep) for e in bus.read_log()) == 5  # the log holds each step once
@@ -95,10 +98,12 @@ def test_the_eval_and_the_manifest_map_onto_the_events_the_view_already_reads(tm
     view.subscribe(bus)
     with TestClient(app_with(view, bus)) as client:
         client.post("/api/learning/lab/import", content=telemetry(tmp_path))
-        assert client.post("/api/learning/lab/import?kind=eval", content=scores_json()).json()["published"] == 2
+        # the gate's event, learning.eval.reported, and the progress that moves the stage to eval (L29)
+        assert client.post("/api/learning/lab/import?kind=eval", content=scores_json()).json()["published"] == 3
         assert client.post("/api/learning/lab/import?kind=eval", content=scores_json()).json()["published"] == 0
         assert client.post("/api/learning/lab/import?kind=manifest", content=MANIFEST).status_code == 400  # no run id
-        assert client.post("/api/learning/lab/import?kind=manifest&run_id=run-l16", content=MANIFEST).json()["published"] == 1
+        # learning.package.built and the progress that moves the stage to packaging
+        assert client.post("/api/learning/lab/import?kind=manifest&run_id=run-l16", content=MANIFEST).json()["published"] == 2
         story = client.get("/api/learning/lab/run-l16").json()
     ev = story["eval"]
     assert (ev["decision"], ev["scores"]["candidate"]["value"], ev["n_items"]["value"], ev["n_groups"]["value"]) == ("deploy", 0.8, 60, 20)
@@ -133,19 +138,20 @@ def test_the_command_imports_into_the_log_on_disk_once(tmp_path, capsys):
     args = ["--telemetry", str(tmp_path / "run" / "telemetry.jsonl"), "--eval", str(tmp_path / "scores.json"), "--data-dir", str(tmp_path / "data")]
     assert lab_import.main(args) == 0
     out = json.loads(capsys.readouterr().out)
-    assert (out["telemetry"]["published"], out["eval"]["published"]) == (5, 2)
+    assert (out["telemetry"]["published"], out["eval"]["published"]) == (5, 3)
     assert lab_import.main(args) == 0
     again = json.loads(capsys.readouterr().out)
+    # the second time the log knows the task (from the eval) but the run is past training: no progress goes back
     assert (again["telemetry"]["published"], again["telemetry"]["already_there"], again["eval"]["published"]) == (0, 5, 0)
     log = list(EventBus(log_dir=tmp_path / "data" / "events").read_log())
-    assert len(log) == 7 and LabView().story("x") is None
+    assert len(log) == 8 and LabView().story("x") is None
     view = LabView()
     for e in log:
         view.on_event(e)
     assert view.story("run-l16")["training"]["steps"]["value"] == 5
     (tmp_path / "bad.jsonl").write_text("{nope\n")
     assert lab_import.main(["--telemetry", str(tmp_path / "bad.jsonl"), "--data-dir", str(tmp_path / "data")]) == 1
-    assert "line 1: not JSON" in capsys.readouterr().err and len(list(EventBus(log_dir=tmp_path / "data" / "events").read_log())) == 7
+    assert "line 1: not JSON" in capsys.readouterr().err and len(list(EventBus(log_dir=tmp_path / "data" / "events").read_log())) == 8
 
 
 def gate_scores(tmp_path, monkeypatch, run_id="run-l16") -> str:
@@ -177,7 +183,7 @@ def test_the_gates_own_scores_fill_the_before_and_after_list(tmp_path, monkeypat
     view.subscribe(bus)
     with TestClient(app_with(view, bus)) as client:
         client.post("/api/learning/lab/import", content=telemetry(tmp_path))
-        assert client.post("/api/learning/lab/import?kind=eval", content=text).json()["published"] == 2
+        assert client.post("/api/learning/lab/import?kind=eval", content=text).json()["published"] == 3
         ev = client.get("/api/learning/lab/run-l16").json()["eval"]
     assert ev["items_reason"] is None and len(ev["items"]) == scores["n_items"] == 58
     by_id = {i["id"]: i for i in ev["items"]}

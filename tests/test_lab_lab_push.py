@@ -425,10 +425,12 @@ def test_scores_and_manifest_from_the_pod_follow_the_steps(tmp_path, box):
     assert result["ok"] is True and result["outcome"] == "pushed" and result["finished"] is True
     assert [p["query"] for p in box.posts] == [{"kind": "telemetry", "run_id": RUN}, {"kind": "eval", "run_id": RUN},
                                                {"kind": "manifest", "run_id": RUN}]
-    assert result["eval"]["box"] == {"status": 200, "answer": {"kind": "eval", "published": 2, "already_there": 0, "events": 2,
+    # since L29 the box adds the learning.run.progress that moves the Teach screen's stage (eval, then packaging)
+    assert result["eval"]["box"] == {"status": 200, "answer": {"kind": "eval", "published": 3, "already_there": 0, "events": 3,
                                                               "runs": [RUN], "last_step": None}}
-    assert result["manifest"]["box"]["answer"]["published"] == 1
-    assert box.types() == ["learning.run.evaluated", "learning.eval.reported", "learning.package.built"]
+    assert result["manifest"]["box"]["answer"]["published"] == 2
+    assert box.types() == ["learning.run.evaluated", "learning.eval.reported", "learning.run.progress",
+                           "learning.package.built", "learning.run.progress"]
     assert box.posts[1]["body"] == scores_json() and box.posts[2]["body"] == manifest_json()
 
 
@@ -443,7 +445,8 @@ def test_local_files_are_posted_without_any_hub_key(tmp_path):
         result = lab_push.main(["--box", local_box.url, "--run-dir", str(run), "--eval", str(tmp_path / "scores.json")],
                                environ={}, env_files=[], transport=pod.fake.transport, stderr=io.StringIO())
         assert result["ok"] is True and result["source"] == "local" and result["run_id"] == RUN
-        assert local_box.steps() == [1, 2, 3, 4] and local_box.types() == ["learning.run.evaluated", "learning.eval.reported"]
+        assert local_box.steps() == [1, 2, 3, 4] and local_box.types() == ["learning.run.evaluated", "learning.eval.reported",
+                                                                           "learning.run.progress"]
         assert pod.fake.calls == []
     finally:
         local_box.close()
@@ -462,7 +465,7 @@ def test_a_manifest_needs_a_run_id_and_a_missing_file_is_named(tmp_path, box):
     nameless, _ = push(["--manifest", str(tmp_path / "manifest.json")], box=box)
     assert nameless["ok"] is False and nameless["outcome"] == "no_run_id" and box.posts == []
     named, _ = push(["--manifest", str(tmp_path / "manifest.json"), "--run-id", RUN], box=box)
-    assert named["ok"] is True and box.types() == ["learning.package.built"] and box.events[0].run_id == RUN
+    assert named["ok"] is True and box.types() == ["learning.package.built", "learning.run.progress"] and box.events[0].run_id == RUN
     absent, _ = push(["--eval", str(tmp_path / "no-such-scores.json"), "--run-id", RUN], box=box)
     assert absent["ok"] is False and absent["outcome"] == "missing_file" and absent["eval"] == {"state": "absent"}
 
@@ -506,7 +509,7 @@ def test_a_box_older_than_the_ledger_import_says_which_kinds_it_knows(tmp_path):
         result, _ = push(["--ledger", str(ledger)], box=old)
         assert result["ok"] is False and result["outcome"] == "box_refused_file"
         assert result["ledger"]["box"] == {"status": 400, "answer": {"detail": {"problems": 1, "refused": [
-            "kind must be one of ['telemetry', 'eval', 'manifest']"]}}}
+            "kind must be one of ['telemetry', 'eval', 'manifest', 'run']"]}}}   # the box's own kinds, run since L29
         assert old.kept_ledger() is None
     finally:
         old.close()
