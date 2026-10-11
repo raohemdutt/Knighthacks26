@@ -36,6 +36,7 @@ import {
 } from "@/lib/lab";
 import { GateChart, TrainingChart } from "./Charts";
 import lab from "./lab.module.css";
+import { LearningBuddies } from "./LearningBuddies";
 
 /* ---------- small pieces ---------- */
 
@@ -637,6 +638,24 @@ function LiveStages({ story }: { story: LabStory }) {
   );
 }
 
+/** The box hopping while the run trains: its steps and loss as they arrive, a burst of sparks per new step. */
+function LiveBuddies({ story, forceReduced }: { story: LabStory; forceReduced: boolean }) {
+  const loss = story.training.points.map((p) => p.loss).filter((v): v is number => typeof v === "number");
+  const steps = isNum(story.training.steps) ? story.training.steps.value : story.training.points.length;
+  const training = story.status === "training";
+  return (
+    <LearningBuddies
+      state={training ? "alone" : "idle"}
+      steps={steps}
+      loss={loss}
+      joulesPerExample={isNum(story.power.j_per_sample) ? story.power.j_per_sample.value : null}
+      friends={0}
+      forceReduced={forceReduced}
+      caption={training ? "Each spark is a training step the trainer just reported." : "Training is over; packaging and the swap are still to report."}
+    />
+  );
+}
+
 /** "Running · 1 min 12 s", counting up once a second on its own so the rest of the page does not redraw with it. */
 function Running({ story }: { story: LabStory }) {
   const [now, setNow] = useState<number | null>(null); // null until mounted, so the static page and the client agree
@@ -732,6 +751,7 @@ export function LabRun({ story, initial, forceReduced, picker }: { story: LabSto
           </span>
         </div>
         {isLive(story) ? <LiveStages story={story} /> : null}
+        {isLive(story) ? <LiveBuddies story={story} forceReduced={forceReduced} /> : null}
         <p className={lab.task}>
           {story.task.instruction ? (
             <>
