@@ -1040,3 +1040,40 @@ the node check, deletion, the install, the entry point's refusals) runs everywhe
 trains tiny Qwen3.5 models, text and image-text, on the CPU and is skipped where the training stack is not
 installed (CI). `fixtures/learning/train-tiny/` is six labeled train examples of the no-camera fixture with that
 split's held-out side, and the rows `format_traces.py --split` writes for them.
+
+### Batching sweep on the pod C teacher (R26, Strix Halo, gfx1151)
+
+`python -m lab bench attach --account C --node pod-a --batches 1,4,8,16,64 --repeats 3 --no-probe --idle-s 30 --max-len 16384
+--quantization compressed-tensors-W4A16-INT4 --metric-prefix teacher_batching --metrics-file lab/refine/metrics.jsonl`,
+2026-10-10 about 5:51 PM to 8:23 PM ET. **Every row is the running teacher (vLLM 0.19.2 for gfx1151, model `teacher`,
+Qwen3.8-27B-INT4, 16k context) measured in attach mode through the hub proxy: no cold spawn, the one departure from
+R20's method, because the teacher on pod C must not be restarted.** Rows carry node `pod-a` (the teacher's role), hub
+sjc, account C (`roscon01`), prompt set bench-v1 (2 text, 2 drawn images, 4 requests per stream, 128 tokens with
+`ignore_eos`, temperature 0, thinking off, per-request nonce), watts from the T6 sampler (port 8790, 1 s). Engine commit,
+patch hash, ROCm, torch, Triton, serve-log kernels, KV capacity and the process environment cannot be read from the box in
+attach mode and are recorded as unavailable, not guessed. Medians of 3 repeats (low confidence: verdict() wants 5);
+per-run rows are in `lab/state/bench/<session>/rows.jsonl` and the ledger (`bench.run`), the medians in `metrics.jsonl`
+as `teacher_batching.*`.
+
+| Concurrent | tok/s per stream (min to max) | tok/s total | TTFT s | avg / peak W | J/token gross | J/token above idle |
+|---|---|---|---|---|---|---|
+| 1 | 2.70 (2.69 to 2.70, sd 0.01) | 2.62 | 1.18 | 96.0 / 97 | 36.66 | 32.67 |
+| 4 | 2.52 (2.52 to 2.55, sd 0.02) | 9.32 | 4.87 | 96.0 / 97 | 10.31 | 9.19 |
+| 8 | 2.32 (2.32 to 2.32, sd 0.003) | 16.36 | 7.78 | 96.0 / 97 | 5.87 | 5.23 |
+| 16 | 2.07 (2.02 to 2.13, sd 0.06) | 26.95 | 14.95 | 96.0 / 97 | 3.56 | 3.18 |
+| 64 | 0.89 (0.85 to 0.92, sd 0.03) | 49.53 | 24.39 | 96.0 / 98 | 1.94 | 1.73 |
+
+- **Frontier.** Power is flat at about 96 W whatever the batch (decode is weight-bound), so J/token falls as 1 over the
+  total rate: 36.7 J at one stream to 1.94 J at 64, 19 times lower for 19 times the throughput. Per-stream speed
+  holds within 23 % up to 16 streams (2.70 to 2.07 tok/s) and then falls to 0.89 at 64, where TTFT is 24 s; going from 16
+  to 64 buys 1.8 times the throughput and 1.8 times fewer joules for 4 times the streams. The knee for a throughput job is
+  16 to 64; 16 keeps each answer under a minute for 128 tokens (about 62 s) and TTFT near 15 s.
+- **Idle.** The "above idle" column subtracts 10.44 W, the loaded-idle read of the sampler (60 s, teacher up, no request,
+  taken after the sweep). The session's own loaded-idle read (82.4 W, in the ledger rows and the per-run `idle_w`) is wrong: it
+  caught requests of an earlier attempt of this sweep that was stopped after one run; that reading is not used. No server
+  idle: 8 W (R29).
+- **Watts.** 96 W average is below the 110 to 125 W of the single-stream smoke; the sampler's 1 s reads sit at 96 to 97 W through
+  every window, which looks like the package at a steady power limit. Treat the energy as the sampler's, not a second meter's.
+- **64 fits.** Attach cannot read the serve log, so the harness could not say whether 64 requests fit (`fits` is null in the
+  rows); vLLM's `/metrics` reports 778 GPU blocks of 784 tokens and 64 requests of about 1,100 tokens ran with no error or
+  rejection (about 52 in flight on average). The model is hybrid, so that block count is not a plain token count.
