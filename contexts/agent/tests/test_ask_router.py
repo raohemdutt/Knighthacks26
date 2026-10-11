@@ -162,7 +162,7 @@ def test_a_failing_model_does_not_fail_the_answer():
     ("Turn the cameras back on", "camera.pause"), ("Who is here?", "people.who_is_here"),
     ("Open the approvals screen", "navigate.screen"), ("How is the learning lab doing?", "learning.status"),
     ("What needs me on the plant floor?", "inspection.status"), ("How is SPOT doing?", "inspection.status"),
-    ("Take me to inspection", "navigate.screen"),
+    ("Plant floor status", "inspection.status"), ("Take me to inspection", "navigate.screen"),
     ("Open the plant floor", "navigate.screen"),
 ])
 def test_the_rules_name_the_tool_for_each_question(question, tool):
@@ -224,3 +224,12 @@ def test_qa_without_a_tool_answers_as_before_and_marks_the_box():
 def test_qa_with_no_router_leaves_the_new_fields_empty():
     e = asyncio.run(qa_with(None).on_question(QuestionAsked(question_id="q3", text="Where did I leave my keys?")))
     assert e.answered_by is None and e.tool is None and e.answer == "I didn't see that."
+
+
+@pytest.mark.parametrize("question", [
+    "When is my car inspection due?", "Did the home inspection email arrive?", "What happened on the plant floor in that movie?",
+    "Is there a spot robot video?", "What should I check first?", "Find a parking spot",
+])
+def test_everyday_questions_that_only_sound_like_the_plant_are_not_sent_to_inspection(question):
+    call = rules(question)
+    assert call is None or call.name != "inspection.status"
