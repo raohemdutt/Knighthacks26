@@ -357,7 +357,8 @@ def test_asked_how_they_are_doing_it_says_the_narrators_spoken_words_and_facts_a
     t.day_facts = lambda: {"now": "On plan.", "now_spoken": "You're on plan.", "plan": "Morning. " + "A study block, then a long walk across campus, " * 8}
     facts = t.facts("what did you see today, and what's my plan?")
     assert "Your cameras logged 1 moment today and kept 1 keyframe. The last one was at 2:49 PM: Two people rehearse a presentation." in facts
-    assert "Their day right now: On plan." in facts and not any("spoken" in f or "You're on plan" in f for f in facts)
+    assert "Their day right now: You're on plan." in facts  # the wording for the ear, not the screen's, and once
+    assert not any("spoken" in f or f == "Their day right now: On plan." for f in facts)
     plan = next(f for f in facts if f.startswith("Their plan for today"))
     assert len(plan) <= 240 and plan.endswith("across campus, A study block.") and "…" not in "".join(facts)
     long_caption = Episode(id="ep-long", camera_id="cam-desk", start=NOW - timedelta(minutes=5), end=NOW, labels=["person"],

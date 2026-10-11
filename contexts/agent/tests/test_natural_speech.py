@@ -133,6 +133,9 @@ def test_facts_follow_the_topic_of_the_question():
     qa, _ = box()
     facts = lambda q: "\n".join(qa.talk.facts(q))  # noqa: E731
     assert "Their plan for today" in facts("what should I do with my afternoon?") and "cameras" not in facts("what should I do with my afternoon?")
+    # their day reaches the model in the narrator's words for the ear, never the screen's "(10 min walk, leave by 10:30 AM)"
+    assert "Their day right now: You're on plan: your study block runs until twenty past ten." in facts("what should I do with my afternoon?")
+    assert "10 min walk" not in facts("what should I do with my afternoon?")
     assert "Your last coaching note" in facts("how am I doing with my habits?") and "Their plan for today" not in facts("how am I doing with my habits?")
     assert "It is Sunday 9:00 AM." in facts("what time is it?") and "Their day" not in facts("what time is it?")
     assert "You have been running for" in facts("how long have you been running?")

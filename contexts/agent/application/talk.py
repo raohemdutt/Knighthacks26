@@ -204,7 +204,7 @@ SECOND_ASK = re.compile(r"[,;]? (?:and|then|also|but|plus) (?:what|how|why|when|
 YES_THE_REST = re.compile(r"^(?:yes|yeah|yep|yup|sure|ok|okay|please|go ahead|go on|and the rest|the rest|what's the rest|everything|all of it|all of them"
                           r"|tell me(?: the rest| everything)?)(?: please| thanks)?[!.? ]*$")
 REST_TTL = timedelta(minutes=3)
-SPOKEN = "_spoken"  # a day fact's wording for the ear ("now_spoken"): what the template says; not a FACTS line of its own
+SPOKEN = "_spoken"  # a day fact's wording for the ear ("now_spoken"): what is said and what the model is given; never a line of its own
 # where a sentence ends; an initial is not an end ("John C. Hitt Library")
 SENTENCE_END = re.compile(r"(?<!\b[A-Z]\.)(?<=[.!?])\s+")
 CLAUSE_END = re.compile(r"(?<!\b[A-Z]\.)(?<=[.!?])\s+|\s*[;:]\s+|\s+\(|\s+[-–—]\s+")
@@ -397,7 +397,8 @@ class Talk:
             done = self.done()
             lines.append(f"What you have done for them today: I've {' and '.join(done[:3])}." if done else "You have done nothing for them yet today; it has been quiet.")
         wanted = (("now", "plan") if "day" in about else ()) + (("now", "coach", "review") if "coach" in about else ())
-        lines += [f"{DAY_LABELS.get(k, k)}: {v}" for k, v in self.their_day().items() if v and k in wanted]
+        day = self.their_day()  # the wording for the ear when the Day loop gives one: the screen's has brackets and exact times
+        lines += [f"{DAY_LABELS.get(k, k)}: {day.get(k + SPOKEN) or v}" for k, v in day.items() if v and k in wanted]
         if self.about and about:  # who they are helps with a real question; a chat needs no file on them
             lines.append(f"Who you are talking to: {self.about.rstrip('.')}.")
         return [whole(line, MAX_FACT_CHARS) for line in lines]  # whole sentences: a cut-off word is not a fact
