@@ -289,7 +289,7 @@ export function chunkForSpeech(text: string, max = CHUNK_CHARS): string[] {
 
 // ---------- things Atlas says without being asked ----------
 
-export type SpokenKind = "alert" | "nudge" | "approval" | "leaving" | "plan" | "coach" | "brief" | "replan" | "review" | "move" | "milestone" | "checkin";
+export type SpokenKind = "alert" | "nudge" | "approval" | "leaving" | "plan" | "coach" | "brief" | "replan" | "review" | "move" | "milestone" | "checkin" | "suggest" | "start";
 
 /** The shortest gap between two spoken events of one kind. Anything sooner is shown as usual but not said. */
 export const SPEAK_COOLDOWN_MS: Record<SpokenKind, number> = {
@@ -308,11 +308,23 @@ export const SPEAK_COOLDOWN_MS: Record<SpokenKind, number> = {
   milestone: 60_000,
   // the check-in (day.narrated, moment "checkin"): the box raises one every ninety minutes at most; said once
   checkin: 300_000,
+  // an optional event nearby (moment "suggest") and a planned block starting (moment "start"); the box's arbiter
+  // already keeps every unasked line apart, these are the per-kind floor underneath it
+  suggest: 300_000,
+  start: 60_000,
 };
 
 /** Longest narration said unasked, in characters: the narrator keeps the morning brief under this. */
 const MAX_NARRATION_CHARS = 560;
-const NARRATED_KIND: Record<string, SpokenKind> = { morning: "brief", replan: "replan", coach: "coach", evening: "review", checkin: "checkin" };
+const NARRATED_KIND: Record<string, SpokenKind> = { morning: "brief", replan: "replan", coach: "coach", evening: "review", checkin: "checkin", suggest: "suggest", start: "start" };
+
+/**
+ * One speaker: a narration the box's own speaker says (`spoken_by: "box"`), or one said inside another narration
+ * (`merged_into`), is not said by the phone as well.
+ */
+export function saidElsewhere(e: { spoken_by?: unknown; merged_into?: unknown } | null | undefined): boolean {
+  return !!e && (e.spoken_by === "box" || (typeof e.merged_into === "string" && e.merged_into !== ""));
+}
 
 /**
  * What to say for a `day.narrated` event, or null when it is not one Atlas says unasked: the morning brief, a
@@ -320,6 +332,7 @@ const NARRATED_KIND: Record<string, SpokenKind> = { morning: "brief", replan: "r
  * `spoken` text was written for the ear, so it is said as it is. Approval asks are said by the approval itself.
  */
 export function sentenceForNarration(e: Record<string, unknown>): { kind: SpokenKind; text: string } | null {
+  if (saidElsewhere(e)) return null;
   const moment = str(e.moment);
   const kind = moment === "now" ? (e.urgent === true ? "move" : null) : (NARRATED_KIND[moment] ?? null);
   const text = capAtSentence(str(e.spoken).replace(/\s+/g, " ").trim(), MAX_NARRATION_CHARS);

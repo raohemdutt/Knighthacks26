@@ -165,6 +165,7 @@ const NARRATED_TOAST: Record<string, { title: string; tone: Toast["tone"] }> = {
   coach: { title: "Coach", tone: "info" },
   evening: { title: "Your day, reviewed", tone: "info" },
   checkin: { title: "Check-in", tone: "info" },
+  start: { title: "Next up", tone: "info" },
 };
 const RAW_DAY_TOASTS = new Set(["day.plan.proposed", "day.replan.proposed", "day.coach.noted", "day.reviewed"]);
 
@@ -172,6 +173,7 @@ function toastFor(e: AtlasEvent): Toast | null {
   // With the narrator on, the day's moments are toasted once, in its words (`day.narrated`), not as the raw event too.
   if (RAW_DAY_TOASTS.has(e.type) && briefStore.on()) return null;
   if (e.type === "day.narrated") {
+    if (typeof e.merged_into === "string" && e.merged_into) return null; // the line it was said in is toasted
     const moment = str(e.moment);
     if (moment === "now" && e.urgent === true) return { id: e.event_id, title: "Time to move", message: str(e.display), tone: "warn", href: "/now/" };
     const kind = NARRATED_TOAST[moment];

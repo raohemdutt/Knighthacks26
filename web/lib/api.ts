@@ -1443,7 +1443,7 @@ export interface DayPlanOut {
   plan: DayPlan | DayReplan;
 }
 
-export type DayMoment = "morning" | "now" | "replan" | "coach" | "evening" | "approval" | "checkin";
+export type DayMoment = "morning" | "now" | "replan" | "coach" | "evening" | "approval" | "checkin" | "suggest" | "start";
 
 /** contracts.day.DayNarrated: one moment of the day in words, for the ear (`spoken`) and for the screen (`display`). */
 export interface DayNarration extends EventEnvelope {
@@ -1459,6 +1459,10 @@ export interface DayNarration extends EventEnvelope {
   facts_hash: string;
   /** A "now" worth saying aloud unasked: leave now, late. */
   urgent: boolean;
+  /** "box" when the box's own speaker says it: the phone stays silent for this line. */
+  spoken_by?: "box" | null;
+  /** Said inside that narration (its event id): shown, never said or pushed again. */
+  merged_into?: string | null;
 }
 
 /** GET /api/day/brief */

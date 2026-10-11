@@ -22,7 +22,7 @@ import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAtlasEvents } from "./atlas";
 import { briefStore } from "./brief";
-import { SPEAK_COOLDOWN_MS, chunkForSpeech, cleanForSpeech, narratedAsk, sentenceForEvent, type SpokenKind } from "./speechText";
+import { SPEAK_COOLDOWN_MS, chunkForSpeech, cleanForSpeech, narratedAsk, saidElsewhere, sentenceForEvent, type SpokenKind } from "./speechText";
 
 // ---------- the knobs, in one place ----------
 
@@ -248,7 +248,11 @@ interface Job {
   chunks: string[];
   next: number;
   options: SayOptions;
+  queuedAt: number;
 }
+
+/** An unprompted line still waiting behind an answer or the guide after this long is dropped, not said late. */
+const EVENT_STALE_MS = 120_000;
 
 const Ctx = createContext<Voice | null>(null);
 
@@ -294,7 +298,15 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       retry.current = window.setTimeout(() => pumpRef.current(), 130 - sinceCancel);
       return;
     }
-    const job = queue.current.shift();
+    let job = queue.current.shift();
+    while (job && job.options.tag === "event" && Date.now() - job.queuedAt > EVENT_STALE_MS) {
+      try {
+        job.options.onDone?.(false);
+      } catch {
+        /* a caller's callback must not break the queue */
+      }
+      job = queue.current.shift();
+    }
     if (!job) {
       setStatus((s) => (s === "speaking" ? "idle" : s));
       return;
@@ -405,7 +417,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         return;
       }
       if (options.replace && options.tag) cancelWhere((j) => j.options.tag === options.tag);
-      queue.current.push({ chunks, next: 0, options });
+      queue.current.push({ chunks, next: 0, options, queuedAt: Date.now() });
       pump();
     },
     [cancelWhere, pump],
@@ -607,7 +619,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     if (e.type === "day.coach.noted" && briefStore.on()) return;
     let sentence = sentenceForEvent(e);
     if (e.type === "workspace.approval.requested" && briefStore.on()) {
-      const ask = narratedAsk(briefStore.askFor(typeof e.action_id === "string" ? e.action_id : ""));
+      const narrated = briefStore.askFor(typeof e.action_id === "string" ? e.action_id : "");
+      if (saidElsewhere(narrated)) return; // asked inside the plan's own narration, or by the box's speaker
+      const ask = narratedAsk(narrated);
       if (ask) sentence = { kind: "approval", text: ask };
       else if (!waited) {
         // the narrated ask follows the request on /ws within a moment; an ask Atlas cannot put in its own words never comes
