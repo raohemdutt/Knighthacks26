@@ -4,7 +4,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from contracts.events import TypedEvent, register
-from contracts.types import CameraId, FrameRef, ZoneId
+from contracts.types import Box, CameraId, FrameRef, ZoneId
 
 # --- events ---
 
@@ -54,6 +54,7 @@ class Sighting(BaseModel):
     ts: datetime
     frame_ref: FrameRef
     position: str | None = None  # "left of the laptop"
+    box: Box | None = None  # where it is in that frame, when the model or the detector gave a box; None: only the words are known
 
 
 class SearchHit(BaseModel):

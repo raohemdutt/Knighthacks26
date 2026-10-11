@@ -59,5 +59,5 @@ export async function binRun(question: string, t: number | null = null): Promise
     at: [{ id: "play:twin" }, { sel: "main svg[role=img]" }, { sel: "main h1" }],
     steps: [{ say: "Look at the room: the bin that lights up." }, { say: `${cap(bin)}. ${rule}` }],
   };
-  return { target, t, precision: precisionOf("floor"), spot: { ring: false, label: "Throw it here" }, note: () => "The lit bin and the line on the floor are the room map's own: the way there is the one the box worked out." };
+  return { target, t, zone: bin, precision: precisionOf("floor"), spot: { ring: false, label: "Throw it here" }, note: () => "The lit bin and the line on the floor are the room map's own: the way there is the one the box worked out." };
 }
