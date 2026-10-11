@@ -810,6 +810,8 @@ export interface Profile {
   meters: { habits: string[]; dayrun: string[] };
   shift: { start: string; end: string; sleep_after_minutes: number; sleep_hours: number } | null;
   scenario: string | null;
+  /** The Ask screen's suggested questions, in this profile's words (profile.yaml `suggestions:`). */
+  suggestions: string[];
   overrides: Record<string, string>;
 }
 

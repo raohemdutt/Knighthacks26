@@ -9,20 +9,11 @@ import v from "@/components/voice/voice.module.css";
 import { ApiError, api, type ApprovalRequest } from "@/lib/api";
 import { useAnswerStream, useAtlas } from "@/lib/atlas";
 import { time } from "@/lib/format";
-import { useWords } from "@/lib/profile";
+import { useProfile } from "@/lib/profile";
 import { briefMe, useBrief } from "@/lib/brief";
 import { approvalSentence, narratedAsk, speechForAnswer, voiceCommand } from "@/lib/speechText";
 import { useVoice } from "@/lib/voice";
 
-const DEMO_QUESTIONS = [
-  "Where did I leave my keys?",
-  "What is due this week?",
-  "What happened at our table overnight?",
-  "What should I eat?",
-  "Where should I go tonight?",
-];
-/** Atlas can also just be talked with (contexts/agent/application/talk.py): a few ways in. */
-const CHAT_STARTERS = ["How's your day?", "Tell me a joke", "I'm stressed about my exam"];
 /** What the box says when it looked and found nothing on record: the one answer with no sources that is not talk. */
 const NO_EVIDENCE = "I didn't see that.";
 
@@ -48,7 +39,9 @@ function AnswerText({ text, writing = false }: { text: string; writing?: boolean
 
 export default function AskPage() {
   const { chat, setChat, approvals } = useAtlas();
-  const w = useWords();
+  // The profile's words, and its suggested questions: things to ask the box, and a few ways in to just talking with it
+  // (contexts/agent/application/talk.py). The student's until the box answers.
+  const { words: w, suggestions } = useProfile();
   const voice = useVoice();
   const stream = useAnswerStream();
   const streamed = stream.text; // the answer so far, while it is being written
@@ -357,7 +350,7 @@ export default function AskPage() {
       <section className={ui.section} aria-label="Suggested questions">
         {chat.length === 0 ? <p className={ui.sectionTitle}>Try one</p> : null}
         <div className={ui.chips}>
-          {[...DEMO_QUESTIONS, ...CHAT_STARTERS].map((q) => (
+          {suggestions.map((q) => (
             <button key={q} type="button" className={ui.chip} disabled={waiting !== null} onClick={() => void ask(q)}>
               {q}
             </button>

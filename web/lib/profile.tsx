@@ -41,6 +41,17 @@ export const STUDENT_PROFILE: Profile = {
   meters: { habits: [], dayrun: ["energy", "focus", "hunger"] },
   shift: null,
   scenario: "demo",
+  // The Ask screen's chips. A box that sends no list (an older build) keeps these.
+  suggestions: [
+    "Where did I leave my keys?",
+    "What is due this week?",
+    "What happened at our table overnight?",
+    "What should I eat?",
+    "Where should I go tonight?",
+    "How's your day?",
+    "Tell me a joke",
+    "I'm stressed about my exam",
+  ],
   overrides: {},
 };
 
