@@ -1,0 +1,26 @@
+R65, 2026-10-11 (UTC). Lines copied from the run-script answers of three runs whose output was printed, not saved.
+
+1. Hub proxy relay, pod C to an HTTP test server on pod D port 29556 (python ThreadingHTTPServer), with account D's hub
+   token (deleted from pod C by the script right after reading it). About 07:20 UTC.
+in-cluster proxy: 50 HTTP pings min 1.82 ms median 3.93 ms p95 7.25 ms
+in-cluster proxy: GET 16 MB status 200 got 16777216 in 0.17 s = 99 MB/s (0.79 Gbit/s)
+in-cluster proxy: POST 16 MB status 200 in 0.16 s = 104 MB/s (0.83 Gbit/s)
+in-cluster proxy: GET 64 MB status 200 got 67108864 in 0.80 s = 84 MB/s (0.67 Gbit/s)
+in-cluster proxy: POST 64 MB status 200 in 0.67 s = 101 MB/s (0.80 Gbit/s)
+in-cluster proxy: GET 64 MB (3 more) 0.75 to 0.76 s = 88 to 89 MB/s; POST 64 MB (3 more) 0.63 to 0.66 s = 102 to 106 MB/s
+in-cluster proxy: GET 256 MB and GET 1 GB: status 599 (jupyter-server-proxy answered 599 after 3199 bytes)
+in-cluster proxy: POST 256 MB status 200 in 2.60 s = 103 MB/s; POST 1 GB: connection reset by peer
+public hub URL: 50 HTTP pings min 17.39 ms median 22.78 ms p95 26.91 ms
+public hub URL: GET 16 MB 73 MB/s, POST 16 MB 80 MB/s, GET 64 MB 73 MB/s, POST 64 MB 88 MB/s
+
+2. Tailscale 1.104.1 userspace, pod D to a TCP listener on pod C port 29555 through tailscaled's SOCKS5 127.0.0.1:1055,
+   about 07:50 UTC (the pod C to pod D run is in tailscale-probe-C-to-D.txt).
+connect 100.114.98.66:29555 ok in 12.89 ms, peer ('127.0.0.1', 1055)
+tcp ping 200: min 9159 us, median 10310 us, p95 11929 us, max 14414 us
+warm-up 64 MB: 67108864 bytes in 24.029 s (3 MB/s)
+send 128 MB: 134217728 bytes in 48.472 s (2.8 MB/s)
+send 128 MB again: 134217728 bytes in 69.730 s (1.9 MB/s)
+receive 128 MB: 134217728 bytes in 50.303 s (2.7 MB/s)
+
+3. tailscale ping pod-d from pod C, about 07:38 UTC: 10 pongs via DERP(sfo) in 10 to 12 ms; "direct connection not
+   established". tailscale netcheck on pod C: UDP false, IPv4 (no addr found), nearest DERP San Francisco 4.6 ms.

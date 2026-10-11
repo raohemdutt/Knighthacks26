@@ -1,0 +1,21 @@
+would run: GPU_UTIL=0.90 PORT=8000 bash vllm_upgrade.sh serve   (venv /home/jovyan/venv-vllm-new)
+no teacher server running
+new vllm serve pid 204081 (log: /home/jovyan/serve/vllm-new.log)
+teacher up on 8000 (new build) after 451 s
+### role teacher start wall_s=451 rc=0 util=0.90
+LAB_POD_ROLES=D:pod-a,C:pod-b
+### pod_role teacher D apply=1 wall_s=451 rc=0
+### switch: teacher answering on pod D after 451 s
+Using RDNAHybridW4A16LinearKernel for CompressedTensorsWNA16
+(EngineCore pid=204286) INFO 10-11 07:26:14 [core.py:129] Initializing a V1 LLM engine (v0.31.2.dev0+g5281e4990.gfx1151) with config: model='/home/jovyan/models/Qwen3.8-27B-INT4', speculative_config=N
+(EngineCore pid=204286) WARNING 10-11 07:26:16 [compilation.py:1373] Op 'sparse_attn_indexer' doesn't exist (or wasn't imported/registered), enabling with '+sparse_attn_indexer' has no effect
+(EngineCore pid=204286) INFO 10-11 07:26:43 [default_loader.py:484] Loading weights took 26.71 seconds
+(EngineCore pid=204286) INFO 10-11 07:27:00 [utils.py:347] Using LBHNC KV cache layout.
+(EngineCore pid=204286) INFO 10-11 07:31:14 [gpu_worker.py:726] Available KV cache memory: 29.49 GiB
+(EngineCore pid=204286) INFO 10-11 07:31:14 [gpu_worker.py:741] CUDA graph memory profiling is enabled (default since v0.21.0). The current --gpu-memory-utilization=0.9000 is equivalent to --gpu-memor
+(EngineCore pid=204286) INFO 10-11 07:31:14 [kv_cache_utils.py:2481] GPU KV cache size: 593,679 tokens, Maximum concurrency for 16,384 tokens per request: 36.24x
+(EngineCore pid=204286) INFO 10-11 07:33:15 [gpu_worker.py:996] Free memory on device (63.85/64.0 GiB) on startup. Desired GPU memory utilization is (0.9, 57.6 GiB). Actual usage is 19.3 GiB for consu
+chat: 35 tokens in 2.81 s (12.47 tok/s end to end): 'The scarred wooden surface of the kitchen table, worn smooth by decades of famil'
+tools: structured tool_calls True [{"id": "chatcmpl-tool-bce7b554c25f618c", "type": "function", "function": {"name": "get_weather", "arguments": "{\"city\": \"Orlando\"}"}}] in 3.01 s
+teacher on pod D stopped after 60 s
+### END

@@ -1,0 +1,85 @@
+hostname: jupyter-<account C>
+hostname -f: jupyter-<account C>
+hostname -I: 10.42.6.28 
+--- /etc/hosts
+# Kubernetes-managed hosts file.
+127.0.0.1	localhost
+::1	localhost ip6-localhost ip6-loopback
+fe00::0	ip6-localnet
+fe00::0	ip6-mcastprefix
+fe00::1	ip6-allnodes
+fe00::2	ip6-allrouters
+10.42.6.28	jupyter-<account C>
+--- /etc/resolv.conf
+search jupyterhub.svc.cluster.local svc.cluster.local cluster.local
+nameserver 10.43.0.10
+options ndots:5
+--- ip
+Main:
+  +-- 0.0.0.0/1 2 0 2
+     +-- 0.0.0.0/4 2 0 2
+        |-- 0.0.0.0
+           /0 universe UNICAST
+        +-- 10.42.0.0/21 2 0 2
+           |-- 10.42.0.0
+              /16 universe UNICAST
+           +-- 10.42.6.0/24 2 0 2
+              +-- 10.42.6.0/27 2 0 2
+                 |-- 10.42.6.0
+                    /24 link UNICAST
+                 |-- 10.42.6.28
+                    /32 host LOCAL
+              |-- 10.42.6.255
+                 /32 link BROADCAST
+     +-- 127.0.0.0/8 2 0 2
+        +-- 127.0.0.0/31 1 0 0
+           |-- 127.0.0.0
+              /8 host LOCAL
+           |-- 127.0.0.1
+              /32 host LOCAL
+        |-- 127.255.255.255
+           /32 link BROADCAST
+Local:
+  +-- 0.0.0.0/1 2 0 2
+     +-- 0.0.0.0/4 2 0 2
+        |-- 0.0.0.0
+           /0 universe UNICAST
+        +-- 10.42.0.0/21 2 0 2
+           |-- 10.42.0.0
+              /16 universe UNICAST
+           +-- 10.42.6.0/24 2 0 2
+              +-- 10.42.6.0/27 2 0 2
+                 |-- 10.42.6.0
+                    /24 link UNICAST
+                 |-- 10.42.6.28
+                    /32 host LOCAL
+              |-- 10.42.6.255
+                 /32 link BROADCAST
+--- route
+Iface	Destination	Gateway 	Flags	RefCnt	Use	Metric	Mask		MTU	Window	IRTT                                                       
+eth0	00000000	01062A0A	0003	0	0	0	00000000	0	0	0                                                                               
+eth0	00002A0A	01062A0A	0003	0	0	0	0000FFFF	0	0	0                                                                               
+eth0	00062A0A	00000000	0001	0	0	0	00FFFFFF	0	0	0                                                                               
+--- tools
+iperf3: none
+iperf: none
+nc: none
+ncat: none
+socat: none
+ping: none
+curl: /usr/bin/curl
+ray: none
+--- env
+HOSTNAME=<set>
+JUPYTERHUB_SERVICE_PREFIX=<set>
+KUBERNETES_SERVICE_HOST=<set>
+JUPYTERHUB_USER=<set>
+JUPYTERHUB_USER=<account C>
+--- interfaces
+lo: 3247267602 3247267602
+eth0: 47946204945 4488979525
+--- mtu
+eth0 mtu 1450 speed 10000
+lo mtu 65536 speed 
+--- nproc 32  mem 62 GB total, 26 GB avail
+### END
