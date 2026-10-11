@@ -430,9 +430,32 @@ def test_r65_rows_match_their_files():
     assert {row["node"] for row in found} == {"pod-a+pod-b", "pod-b"}
 
 
+def _r66_rows() -> list[dict]:
+    from lab import r66_rows
+
+    return r66_rows.all_rows()
+
+
+R66_BENCH_ROWS = 18   # lab/bench.py's own pair_pp122b rows: 6 metrics x 3 sessions (1, 4 and 16 streams), pod C's meter
+
+
+def test_r66_rows_match_their_files():
+    # R66: the link, the cross-pod process group and the pair's both-pod watts, rebuilt from fixtures/lab/r66-2026-10-11/
+    from lab import r66_rows
+
+    computed = _r66_rows()
+    keys = {(row["metric"], row["source"]) for row in computed}
+    found = [row for row in metrics.load() if (row["metric"], row["source"]) in keys]
+    assert found == [dict(metrics.check_row(row)) for row in computed]
+    both = {row["metric"]: row for row in r66_rows.pair_rows_both() if row["conditions"]["batch_size"] == 16}
+    assert both["pair_pp122b.joules_per_token_both"]["value"] == 2.6639
+    assert both["pair_pp122b.watts_avg_both"]["value"] == 219.7619
+
+
 def test_seed_file_has_exactly_the_expected_rows_in_schema_order():
     rows = metrics.load()
-    assert len(rows) == len(EXPECTED_SEED) + len(_r62_rows()) + len(_r63_rows()) + len(_r65_rows())
+    assert len(rows) == (len(EXPECTED_SEED) + len(_r62_rows()) + len(_r63_rows()) + len(_r65_rows())
+                         + len(_r66_rows()) + R66_BENCH_ROWS)
     for row in rows:
         assert list(row) == list(metrics.FIELDS)
 
@@ -477,7 +500,11 @@ def test_every_low_confidence_seed_row_says_why():
         "teacher.joules_per_token", "pod.idle_watts", "pod.balance_credits", "teacher.watts_avg", "teacher.watts_peak",
         "pod.settle_s", "pod.idle_state_share",
         "telemetry.sampler_cpu_pct", "jetson.idle_watts", "student.watts_avg", "student.watts_peak",
-        "telemetry.joules_per_answer"} | {  # T11's closed loop: every joules value is low confidence (telemetry ruling 7)
+        "telemetry.joules_per_answer"} | {
+        # R66: the pair across pods C and D, one run or one repeat per setting
+        row["metric"] for row in _r66_rows()} | {
+        "pair_pp122b." + name
+        for name in ("decode_tok_s", "decode_tok_s_total", "ttft_s", "joules_per_token", "watts_avg", "watts_peak")} | {  # T11's closed loop: every joules value is low confidence (telemetry ruling 7)
         # R26: the sweep's medians are of 3 repeats, under the 5 verdict() asks for
         "teacher_batching." + name
         for name in ("decode_tok_s", "decode_tok_s_total", "ttft_s", "joules_per_token", "watts_avg", "watts_peak")} | {
