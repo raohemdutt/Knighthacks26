@@ -475,6 +475,7 @@ export function GuideLayer() {
       onGuide((m: GuideMessage) => {
         if (m.kind === "run") void start(m.run);
         else if (m.kind === "calibrate") (cancel(), setCalibrating(true));
+        else if (m.kind === "cancel") cancel();
         else (cancel(), setOffered({ say: m.say, options: m.options }), say(m.say));
       }),
     [start, cancel, say],

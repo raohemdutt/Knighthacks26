@@ -20,9 +20,30 @@ export async function speakOnBox(text: string): Promise<boolean> {
     const box = await api.voiceStatus();
     if (!canSay(box)) return false;
     await api.voiceSay(text);
+    saidAt = Date.now();
     return true;
   } catch {
     return false;
+  }
+}
+
+let saidAt = 0; // when the box last took an answer of ours (speakOnBox): it may still be saying it
+
+/**
+ * Stop what the box is saying for us: the guide's waiting lines, the line on its speaker, and an answer sent with speakOnBox
+ * in the last minute and a half that it is still speaking. The box's own conversations are left alone when nothing of ours is out.
+ */
+export async function stopBoxSpeech(): Promise<void> {
+  const line = onSpeaker;
+  const answer = Date.now() - saidAt < 90_000;
+  saidAt = 0;
+  boxLines.cancel(); // stops the box itself when one of the guide's lines is on its speaker
+  if (line || !answer) return;
+  try {
+    const box = await api.voiceStatus();
+    if (box.running && (box.state === "speaking" || box.state === "thinking")) await api.voiceStop();
+  } catch {
+    /* the box is not answering: nothing of ours is being said there */
   }
 }
 
