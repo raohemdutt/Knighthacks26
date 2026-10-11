@@ -1081,3 +1081,30 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+/* the figures a card's log lacks: one small muted line, never a tile */
+.missing {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+/* a stand-in gate: one honest line in place of its items, p-value and chart */
+.standIn {
+  margin: 0;
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--sh-inset-sm);
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.standIn a {
+  color: var(--accent);
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}

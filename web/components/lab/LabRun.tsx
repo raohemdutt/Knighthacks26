@@ -29,7 +29,11 @@ import {
   isLive,
   onOurHardware,
   isNum,
+  lowConfidence,
+  missingLine,
+  type RunTone,
   stageStates,
+  storyIsStandIn,
   pct,
   phoneCharges,
   show,
@@ -48,18 +52,58 @@ function smokeChip(m: LabMeasured | undefined): string {
   return m?.chip ? `the lab's trainer, ${chipShort(m.chip)}` : "the lab's trainer";
 }
 
-/** One number as a tile. A number the log does not hold says so, with the reason, instead of showing a dash. */
+/**
+ * One number as a tile. A number the log does not hold is no tile at all: the card names it once, in its one muted
+ * line (Missing). The "low confidence" badge is for power and energy figures only.
+ */
 function Stat({ n, label, value, tone }: { n: LabNum; label?: string; value?: string; tone?: "good" | "bad" }) {
-  const has = isNum(n);
+  if (!isNum(n)) return null;
   return (
-    <div className={lab.stat} title={has ? `Source: ${n.source?.ref ?? ""}` : (n.reason ?? "")}>
-      <span className={`${has ? lab.statNum : lab.statNone} ${tone === "good" ? lab.good : tone === "bad" ? lab.bad : ""}`}>
-        {has ? (value ?? show(n)) : "Not in the log"}
-        {has && n.low_confidence ? <span className={lab.low}>low confidence</span> : null}
+    <div className={lab.stat} title={`Source: ${n.source?.ref ?? ""}`}>
+      <span className={`${lab.statNum} ${tone === "good" ? lab.good : tone === "bad" ? lab.bad : ""}`}>
+        {value ?? show(n)}
+        {lowConfidence(n) ? <span className={lab.low}>low confidence</span> : null}
       </span>
       <span className={lab.statLabel}>{label ?? n.label}</span>
-      {!has && n.reason ? <span className={lab.note}>{n.reason}</span> : null}
     </div>
+  );
+}
+
+/** The figures a card's log lacks, in one small muted line; nothing when it lacks none. Reasons are in Sources. */
+function Missing({ nums = [], more = [], tail }: { nums?: (LabNum | null | undefined)[]; more?: string[]; tail?: string }) {
+  const labels = [...nums.filter((n): n is LabNum => !!n && !isNum(n)).map((n) => n.label), ...more];
+  const line = missingLine(labels);
+  if (!line && !tail) return null;
+  return (
+    <p className={lab.missing} title={nums.filter((n): n is LabNum => !!n && !isNum(n) && !!n.reason).map((n) => `${n.label}: ${n.reason}`).join("\n")}>
+      {[line, tail].filter(Boolean).join("; ")}.
+    </p>
+  );
+}
+
+/** The one honest line a stand-in gate gets, in place of its fake items, p-value and chart. */
+function StandIn({ realRun, onPickRun }: { realRun?: { id: string; label: string } | null; onPickRun?: (id: string) => void }) {
+  return (
+    <p className={lab.standIn} role="note">
+      This loop run used a stand-in gate; no held-out score.
+      {realRun ? (
+        <>
+          {" "}
+          The real gate ran on{" "}
+          <a
+            href={`?run=${encodeURIComponent(realRun.id)}`}
+            onClick={(e) => {
+              if (!onPickRun) return;
+              e.preventDefault();
+              onPickRun(realRun.id);
+            }}
+          >
+            {realRun.label}
+          </a>
+          .
+        </>
+      ) : null}
+    </p>
   );
 }
 
@@ -158,11 +202,7 @@ function TaughtFrom({ story }: { story: LabStory }) {
             {isNum(d.held_out_groups) ? `, and they cover ${d.held_out_groups.value} different cases, each asked in several wordings` : ""}.
           </p>
         </>
-      ) : (
-        <p className={lab.gap}>
-          <b>No split to show.</b> {d.train.reason ?? d.held_out.reason}
-        </p>
-      )}
+      ) : null}
       {rows.length ? (
         <div className={lab.cards} aria-label="Examples the model learned from">
           {rows.map((r) => (
@@ -174,11 +214,8 @@ function TaughtFrom({ story }: { story: LabStory }) {
             </div>
           ))}
         </div>
-      ) : (
-        <p className={lab.gap}>
-          <b>No example rows.</b> {d.rows_reason}
-        </p>
-      )}
+      ) : null}
+      <Missing more={[...(train === null || held === null ? ["the train and held-out split"] : []), ...(rows.length ? [] : ["the example rows"])]} />
       {rows.length ? <p className={lab.note}>{rows.length} of the examples it learned from. Pictures, when a task has them, are the box&apos;s blurred keyframes.</p> : null}
     </>
   );
@@ -224,7 +261,7 @@ function Training({ story, frac, measured }: { story: LabStory; frac: number; me
         <div className={lab.energy}>
           <span>
             <b>{wh.toFixed(1)} Wh</b> so far, about the energy of <b>{phoneCharges(wh)}</b>
-            {p.energy_j.low_confidence ? <span className={lab.low}>low confidence</span> : null}
+            {lowConfidence(p.energy_j) ? <span className={lab.low}>low confidence</span> : null}
           </span>
           <button type="button" className={lab.hint} aria-expanded={hint} aria-label="How the phone comparison is worked out" title={PHONE_ASSUMPTION} onClick={() => setHint((h) => !h)}>
             ?
@@ -239,6 +276,11 @@ function Training({ story, frac, measured }: { story: LabStory; frac: number; me
           <Stat n={p.mean_w} label="average power" />
         </div>
       ) : null}
+      <Missing
+        nums={[t.steps, t.loss_last, t.samples_per_s, t.wall_s, ...(p.points.length ? [p.energy_j, p.j_per_sample, p.mean_w] : [])]}
+        more={p.points.length ? [] : ["power readings"]}
+        tail={speed || first ? undefined : "no smoke run on our own hardware yet"}
+      />
       {speed || first ? (
         <div className={lab.measured}>
           <span className={lab.measuredTag}>Measured on our hardware</span>
@@ -265,13 +307,7 @@ function Training({ story, frac, measured }: { story: LabStory; frac: number; me
             . Not this run: a real measurement, shown so the run above can be judged against it.
           </span>
         </div>
-      ) : (
-        <div className={lab.measured}>
-          <span className={lab.note}>
-            No smoke run measured on our hardware yet: none on the lab&apos;s Strix Halo pods (gfx1151) or on the box. Rows from other chips are left out.
-          </span>
-        </div>
-      )}
+      ) : null}
     </>
   );
 }
@@ -281,12 +317,13 @@ function Training({ story, frac, measured }: { story: LabStory; frac: number; me
 const ORDER: LabChange[] = ["broke", "fixed", "still_wrong", "still_right"];
 type Filter = "changed" | "broke" | "fixed" | "still_wrong" | "all";
 
-function BeforeAfter({ story, frac }: { story: LabStory; frac: number }) {
+function BeforeAfter({ story, frac, realRun, onPickRun }: { story: LabStory; frac: number; realRun?: { id: string; label: string } | null; onPickRun?: (id: string) => void }) {
   const ev = story.eval;
   const [filter, setFilter] = useState<Filter>("changed");
   const [open, setOpen] = useState(false);
   // regressions first, so they are never under the fold; the playhead reveals answers in this same order
   const ordered = useMemo(() => [...(ev.items ?? [])].sort((a, b) => ORDER.indexOf(a.change) - ORDER.indexOf(b.change)), [ev.items]);
+  if (storyIsStandIn(story)) return <StandIn realRun={realRun} onPickRun={onPickRun} />;
   if (!ev.items || !ev.counts) {
     return (
       <>
@@ -295,9 +332,7 @@ function BeforeAfter({ story, frac }: { story: LabStory; frac: number }) {
           <Stat n={ev.scores.candidate} label="score after" />
           <Stat n={ev.scores.teacher} label="teacher's score" />
         </div>
-        <p className={lab.gap}>
-          <b>No per-question answers.</b> {ev.items_reason}
-        </p>
+        <Missing nums={[ev.scores.current, ev.scores.candidate, ev.scores.teacher]} more={["the per-question answers"]} />
       </>
     );
   }
@@ -418,16 +453,20 @@ function Question({ it, scored }: { it: LabItem; scored: boolean }) {
 
 /* ---------- 4. the gate ---------- */
 
-function Gate({ story, on }: { story: LabStory; on: boolean }) {
+function Gate({ story, on, onBox, realRun, onPickRun }: { story: LabStory; on: boolean; onBox: boolean; realRun?: { id: string; label: string } | null; onPickRun?: (id: string) => void }) {
   const ev = story.eval;
+  if (storyIsStandIn(story)) return <StandIn realRun={realRun} onPickRun={onPickRun} />;
   if (!ev.verdict) return <p className={lab.waiting}>{ev.verdict_detail[0] ?? "The model has not been tested yet."}</p>;
   if (!on) return <p className={lab.waiting}>The gate decides once every held-back question has been scored.</p>;
-  const good = ev.decision === "deploy" && story.status !== "rolled back";
+  // The gate's own call: a model it cleared is good news whatever the box did with it afterwards.
+  const good = ev.decision === "deploy";
   const alpha = ev.alpha ?? 0.05;
+  // "..., but the box went back to the old model" is stale once the box serves this model again
+  const verdict = onBox ? ev.verdict.replace(/,\s*but the box went back[^.]*\./i, ".") : ev.verdict;
   return (
     <>
       <p className={`${lab.verdict} ${good ? "" : lab.verdictBad} ${lab.flipIn}`} role="status">
-        {ev.verdict}
+        {verdict}
         {ev.decision === "reject" ? <span className={lab.verdictSub}>The model on the box did NOT change.</span> : null}
       </p>
       <GateChart ev={ev} />
@@ -441,6 +480,7 @@ function Gate({ story, on }: { story: LabStory; on: boolean }) {
           tone={isNum(ev.p_value) ? (ev.p_value.value < alpha ? "good" : "bad") : undefined}
         />
       </div>
+      <Missing nums={[ev.n_items, ev.noise, ev.p_value]} />
       <ul className={lab.why}>
         {ev.verdict_detail.map((line) => (
           <li key={line}>{line}</li>
@@ -458,8 +498,9 @@ function Gate({ story, on }: { story: LabStory; on: boolean }) {
 
 /* ---------- 5. on the box ---------- */
 
-function OnTheBox({ story, frac, gated }: { story: LabStory; frac: number; gated: boolean }) {
+function OnTheBox({ story, frac, gated, boxNow }: { story: LabStory; frac: number; gated: boolean; boxNow: string | null }) {
   const { deploy, box, package: pkg } = story;
+  const onBox = !!boxNow && !!deploy.model_version && boxNow === deploy.model_version;
   if (!gated && story.eval.verdict) return <p className={lab.waiting}>The swap happens only after the gate clears the model.</p>;
   const packageLine = pkg.gguf ? (
     <div className={lab.stats}>
@@ -469,10 +510,19 @@ function OnTheBox({ story, frac, gated }: { story: LabStory; frac: number; gated
         <span className={lab.statLabel}>{pkg.sha256 ? `sha256 ${pkg.sha256.slice(0, 12)}…` : "no checksum in the log"}</span>
       </div>
     </div>
-  ) : (
-    <p className={lab.gap}>
-      <b>No package.</b> {pkg.reason}
-    </p>
+  ) : null;
+  const boxRows = box.before && box.after
+    ? ([
+        ["Energy per answer", box.before.j_per_answer, box.after.j_per_answer],
+        ["Tokens per second", box.before.tok_s, box.after.tok_s],
+      ] as [string, LabNum, LabNum][])
+    : [];
+  const shownRows = boxRows.filter(([, a, b]) => isNum(a) || isNum(b));
+  const missing = (
+    <Missing
+      nums={[pkg.gguf ? pkg.bytes : null, deploy.deployed ? deploy.swap_s : null]}
+      more={[...(pkg.gguf ? [] : ["the model package"]), ...boxRows.filter(([, a, b]) => !isNum(a) && !isNum(b)).map(([name]) => `${name.toLowerCase()} on the box`)]}
+    />
   );
   if (!deploy.deployed) {
     return (
@@ -482,6 +532,7 @@ function OnTheBox({ story, frac, gated }: { story: LabStory; frac: number; gated
           <span className={lab.verdictSub}>{deploy.deployed_reason}</span>
         </p>
         {packageLine}
+        {missing}
       </>
     );
   }
@@ -506,15 +557,20 @@ function OnTheBox({ story, frac, gated }: { story: LabStory; frac: number; gated
         <div className={lab.swapFill} style={{ width: `${Math.min(1, frac * 2) * 100}%` }} />
       </div>
       {deploy.rolled_back ? (
-        <p className={`${lab.verdict} ${lab.verdictBad}`}>
-          Rolled back to {deploy.rolled_back.to ?? "the old model"} at {clock(deploy.rolled_back.ts)}.{deploy.rolled_back.reason ? <span className={lab.verdictSub}>{deploy.rolled_back.reason}</span> : null}
+        <p className={lab.verdict}>
+          The box went back to {deploy.rolled_back.to ?? "the old model"} at {clock(deploy.rolled_back.ts)}.
+          {onBox ? <span className={lab.verdictSub}>{deploy.model_version} is on the box again now.</span> : null}
+          {deploy.rolled_back.reason ? <span className={lab.verdictSub}>{deploy.rolled_back.reason}</span> : null}
         </p>
       ) : null}
-      <div className={lab.stats}>
-        <Stat n={deploy.swap_s} label="hot-swap time (no answers meanwhile)" value={isNum(deploy.swap_s) ? `${deploy.swap_s.value.toFixed(1)} s` : undefined} />
-      </div>
+      {isNum(deploy.swap_s) ? (
+        <div className={lab.stats}>
+          <Stat n={deploy.swap_s} label="hot-swap time (no answers meanwhile)" value={`${deploy.swap_s.value.toFixed(1)} s`} />
+        </div>
+      ) : null}
       {packageLine}
-      {box.before && box.after ? (
+      {missing}
+      {box.before && box.after && shownRows.length ? (
         <table className={ui.table}>
           <thead>
             <tr>
@@ -524,16 +580,13 @@ function OnTheBox({ story, frac, gated }: { story: LabStory; frac: number; gated
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td>Energy per answer</td>
-              <BoxCell n={box.before.j_per_answer} />
-              <BoxCell n={box.after.j_per_answer} show={done} />
-            </tr>
-            <tr>
-              <td>Tokens per second</td>
-              <BoxCell n={box.before.tok_s} />
-              <BoxCell n={box.after.tok_s} show={done} />
-            </tr>
+            {shownRows.map(([name, a, b]) => (
+              <tr key={name}>
+                <td>{name}</td>
+                <BoxCell n={a} />
+                <BoxCell n={b} show={done} />
+              </tr>
+            ))}
             <tr>
               <td>Answers measured</td>
               <td className={ui.num}>{box.before.answers}</td>
@@ -551,8 +604,8 @@ function BoxCell({ n, show: visible = true }: { n: LabNum; show?: boolean }) {
   if (!visible) return <td className={ui.num}>…</td>;
   return (
     <td className={ui.num} title={isNum(n) ? `Source: ${n.source?.ref ?? ""}` : (n.reason ?? "")}>
-      {isNum(n) ? `${n.value} ${n.unit}` : <span className={lab.note}>not in the log</span>}
-      {isNum(n) && n.low_confidence ? (
+      {isNum(n) ? `${n.value} ${n.unit}` : <span className={lab.note}>none posted</span>}
+      {isNum(n) && lowConfidence(n) ? (
         <>
           <br />
           <span className={lab.low}>low confidence</span>
@@ -564,11 +617,15 @@ function BoxCell({ n, show: visible = true }: { n: LabNum; show?: boolean }) {
 
 /* ---------- drawers ---------- */
 
+const GATE_REFS = /learning\.run\.evaluated|learning\.eval\.reported|eval report/;
+
 function Sources({ story }: { story: LabStory }) {
-  const known = story.sources.filter((n) => n.value !== null);
+  const standIn = storyIsStandIn(story);
+  const known = story.sources.filter((n) => n.value !== null && !(standIn && GATE_REFS.test(`${n.source?.ref ?? ""} ${(n.source?.ids ?? []).join(" ")}`)));
   return (
     <>
       <p className={ui.muted}>Every number on this screen, and the event or file it was read from. Nothing is filled in.</p>
+      {standIn ? <p className={lab.note}>This run&apos;s gate was a stand-in, so its scores and p-value are left out.</p> : null}
       <div className={lab.sourceList}>
         {known.map((n, i) => (
           <div key={`${n.label}-${i}`} className={lab.sourceRow}>
@@ -576,7 +633,7 @@ function Sources({ story }: { story: LabStory }) {
               <span>{n.label}</span>
               <b>
                 {show(n)}
-                {n.low_confidence ? <span className={lab.low}>low confidence</span> : null}
+                {lowConfidence(n) ? <span className={lab.low}>low confidence</span> : null}
               </b>
             </div>
             <span className={`${lab.note} ${ui.breakWords}`}>
@@ -620,7 +677,7 @@ const HOW_TO: string[] = [
   "Loss falling means the model is getting its training examples right. It does not prove the model got better.",
   "The proof is the held-back questions: ones it never trained on, answered before and after. Regressions are listed first.",
   "The gate only lets a model through when the gain is larger than run-to-run noise and unlikely to be chance (p below 0.05).",
-  "A number marked “Not in the log” was not recorded. Open Sources to see where every other number came from.",
+  "A figure the relay did not post is named in one muted line under its card. Open Sources to see where every other number came from.",
 ];
 
 /* ---------- a run that is still going (L30) ---------- */
@@ -681,6 +738,10 @@ export function LabRun({
   forceReduced,
   picker,
   onBoxChanged,
+  status,
+  boxNow = null,
+  realRun = null,
+  onPickRun,
 }: {
   story: LabStory;
   initial: number | null;
@@ -688,6 +749,13 @@ export function LabRun({
   picker?: React.ReactNode;
   /** a swap started from the On the box card ended: the page reads the run again (L35) */
   onBoxChanged?: () => void;
+  /** the run's status as the picker says it (lib/lab.ts runStatus); the run's own word when absent */
+  status?: { label: string; tone: RunTone } | null;
+  /** the version the box serves now (GET /api/learning/lab/deploy current) */
+  boxNow?: string | null;
+  /** the newest run with a real gate result, for a stand-in gate's one line */
+  realRun?: { id: string; label: string } | null;
+  onPickRun?: (id: string) => void;
 }) {
   const [u, setU] = useState(initial ?? 1);
   const [playing, setPlaying] = useState(false);
@@ -744,8 +812,8 @@ export function LabRun({
   }, [chapterN, playing, reduced, live]);
   const is = (k: ChapterKey) => chapter.key === k;
   const trainFrac = within(u, "training");
-  const good = story.status === "deployed";
-  const bad = story.status === "not deployed" || story.status === "rolled back" || story.status === "failed";
+  const good = status ? status.tone === "good" : story.status === "deployed";
+  const bad = status ? status.tone === "bad" : story.status === "not deployed" || story.status === "rolled back" || story.status === "failed";
   const running = isLive(story);
   const when: Record<ChapterKey, string | null> = {
     taught: story.marks.exported ?? story.marks.taught,
@@ -765,7 +833,7 @@ export function LabRun({
         <div className={lab.headTop}>
           <h1>What Atlas learned</h1>
           <span className={`${lab.status} ${good ? lab.statusGood : bad ? lab.statusBad : ""} ${running ? lab.statusLive : ""}`}>
-            {running ? <Running story={story} /> : STATUS_LABEL[story.status]}
+            {running ? <Running story={story} /> : (status?.label ?? STATUS_LABEL[story.status])}
           </span>
         </div>
         {isLive(story) ? <LiveStages story={story} /> : null}
@@ -843,7 +911,7 @@ export function LabRun({
             <TaughtFrom story={story} />
           </Section>
           <Section n={3} title="Before / after" now={is("answers")} className={lab.o3}>
-            <BeforeAfter story={story} frac={within(u, "answers")} />
+            <BeforeAfter story={story} frac={within(u, "answers")} realRun={realRun} onPickRun={onPickRun} />
           </Section>
         </div>
         <div className={lab.col}>
@@ -851,10 +919,10 @@ export function LabRun({
             <Training story={story} frac={trainFrac} measured={story.measured} />
           </Section>
           <Section n={4} title="The gate" now={is("gate")} className={lab.o4}>
-            <Gate story={story} on={u >= CHAPTERS[3]!.from - 1e-6} />
+            <Gate story={story} on={u >= CHAPTERS[3]!.from - 1e-6} onBox={!!boxNow && boxNow === story.eval.model_version} realRun={realRun} onPickRun={onPickRun} />
           </Section>
           <Section n={5} title="On the box" now={is("box")} className={lab.o5}>
-            <OnTheBox story={story} frac={within(u, "box")} gated={u >= CHAPTERS[3]!.from - 1e-6} />
+            <OnTheBox story={story} frac={within(u, "box")} gated={u >= CHAPTERS[3]!.from - 1e-6} boxNow={boxNow} />
             <DeployButton onBoxChanged={onBoxChanged} />
           </Section>
         </div>
