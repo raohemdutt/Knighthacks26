@@ -201,12 +201,29 @@ DONE_FOR_ME = re.compile(
 # The look memory (the Day loop's, through a port): "when did I last look this tired?", "why do you think I'm tired?",
 # "what helped last time?". Answered in code from what the box remembered; never a guess about how the person feels.
 _LOOKED = r"(?:tired|strained|worn out|wiped|drained|stressed|exhausted|rough|beat|like this|like that)"
+_USUALLY = r"(?:usually|normally|generally|typically|mostly|tends to|seems to|actually)"
 LOOK_ASKED = {
     "last": re.compile(rf"\bwhen (?:did|have) i (?:last |ever )?look(?:ed)? (?:this |so |that |as )?{_LOOKED}\b"
                        rf"|\bwhen was the last time i looked (?:this |so |that |as )?{_LOOKED}\b|\bhave i looked (?:this |so |that )?{_LOOKED} before\b"),
     "why": re.compile(rf"\bwhy do you (?:think|say)(?: that)? i(?:'m| am| look| seem)(?: so| this| that)? {_LOOKED}\b"
                       rf"|\bwhy do i (?:look|seem) (?:so |this |that )?{_LOOKED}\b|\bwhat makes you (?:think|say) i(?:'m| am| look)(?: so)? {_LOOKED}\b"),
     "helped": re.compile(r"\bwhat (?:helped|worked)(?: for me| me)? (?:the )?last time\b|\bwhat (?:helped|worked)(?: for me| me)? (?:before|then)\b"),
+    # What the box has learned from every look it remembers (the Day loop counts; nothing here does): "what usually
+    # helps when I look tired?", "what makes me look tired?", "how do you know what helps?".
+    "helps": re.compile(rf"\bwhat (?:{_USUALLY} )?(?:helps?|works?)(?: for me| me)?(?: the most| most| best)? when i(?:'m| am| look| seem| get)"
+                        rf"(?: so| this| that)? {_LOOKED}\b"),
+    "causes": re.compile(rf"\bwhat (?:{_USUALLY} )?(?:makes|causes|gets) me (?:to )?(?:look|seem)(?: so| this| that)? {_LOOKED}\b"
+                         rf"|\bwhen do i (?:{_USUALLY} )?(?:look|seem)(?: so| this| that)? {_LOOKED}\b|\bwhat brings (?:that|this|the) look on\b"),
+    "how": re.compile(rf"\bhow (?:do|did|would|can) you know (?:what (?:{_USUALLY} )?(?:helps?|works?|makes me (?:look|seem))"
+                      rf"|(?:that )?i (?:look|looked|seem) (?:so |this |that )?{_LOOKED})"),
+}
+# The same three as a follow-up, said right after an answer from the look memory ("... how do you know?"): only then,
+# because on their own these words could be about anything.
+LOOK_FOLLOW_UP = {
+    "how": re.compile(r"^how (?:do|did|would|can|could) you (?:know|tell)(?: that| this| all that)?[ ?.!]*$|^how did you (?:learn|work|figure) that(?: out)?[ ?.!]*$"
+                      r"|^(?:says who|what makes you say that|what is that based on|what's that based on)[ ?.!]*$"),
+    "helps": re.compile(rf"^(?:and |so )?what (?:{_USUALLY} )?(?:helps?|works?)(?: for me| me)?(?: the most| most| best)?[ ?.!]*$"),
+    "causes": re.compile(r"^(?:and |so )?what (?:brings it on|causes it|sets it off|makes it happen)[ ?.!]*$"),
 }
 # The person's day ahead, asked in a way no pattern answers ("is today going to be rough?", "what should I skip?"):
 # the model's question, with the whole day in its FACTS. Never anything in the past tense: that is the cameras'.
@@ -337,10 +354,12 @@ class Talk:
         # composition root; without it the line is "I can plan it with you on Today's Plan." instead.
         self.plan_day: Callable[[], object] | None = None  # may be async
         self.plan_offered: datetime | None = None  # when the offer was last made
-        # The look memory (contexts/day/application/looks.py `said`), through a port: ("last" | "why" | "helped") -> a
+        # The look memory (contexts/day/application/looks.py `said`), through a port: ("last" | "why" | "helped", and from
+        # what it has learned "helps" | "causes" | "how") -> a
         # sentence for the ear, or None when nobody's looks are remembered on this box. Box-only: the answer is said to
         # the person who asked and goes nowhere else.
         self.look_memory: Callable[[str], str | None] | None = None
+        self.look_answered: datetime | None = None  # when the look memory last answered: "how do you know?" right after is about that
 
     # --- routing ---
 
@@ -516,17 +535,23 @@ class Talk:
     # --- answered in code: the look memory, hello, and the calendar ---
 
     def look(self, question: str) -> str | None:
-        """ "When did I last look this tired?", "why do you think I'm tired?", "what helped last time?": the Day loop's look
+        """ "When did I last look this tired?", "why do you think I'm tired?", "what helped last time?", and from what it has
+        learned "what usually helps when I look tired?", "what makes me look tired?", "how do you know?": the Day loop's look
         memory, in its own words. None for anything else, for two questions in one, and when nothing is remembered here."""
         if not self.config.enabled or self.look_memory is None:
             return None
         q = normal(question)
         q = LEAD.sub("", q, count=1) or q
-        kind = next((k for k, rx in LOOK_ASKED.items() if rx.search(q)), None)
+        # "how do you know what makes me look tired?" is asking how, not what
+        kind = "how" if LOOK_ASKED["how"].search(q) else next((k for k, rx in LOOK_ASKED.items() if rx.search(q)), None)
+        if kind is None and self.look_answered is not None and abs(self.clock() - self.look_answered) <= REST_TTL:
+            kind = next((k for k, rx in LOOK_FOLLOW_UP.items() if rx.search(q)), None)
         if kind is None or SECOND_ASK.search(q):
             return None
         try:
-            return self.look_memory(kind) or None
+            said = self.look_memory(kind) or None
+            self.look_answered = self.clock() if said else self.look_answered
+            return said
         except Exception:  # a nicety; a conversation must not fail on it
             log.debug("no look memory", exc_info=True)
             return None
@@ -719,3 +744,4 @@ class Talk:
         self.last = None
         self.rest = None
         self.plan_offered = None
+        self.look_answered = None

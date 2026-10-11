@@ -404,8 +404,9 @@ class QA:
         return AnswerGenerated(question_id=e.question_id, answer=a.text, citations=a.citations, model_version=a.model_version)
 
     async def ask(self, question: str, stream: Callable[[str], None] | None = None) -> Answer:
-        # Three narrow questions about how the person looked ("when did I last look this tired?", "why do you think I'm
-        # tired?", "what helped last time?") are the Day loop's look memory's, when this box keeps one: said from what
+        # A few narrow questions about how the person looked ("when did I last look this tired?", "why do you think I'm
+        # tired?", "what helped last time?", "what usually helps when I look tired?", "what makes me look tired?", and
+        # "how do you know?" right after one of them) are the Day loop's look memory's, when this box keeps one: said from what
         # it remembered, ahead of the camera recap that "last" and "when did" would otherwise pull them into.
         look = getattr(self.talk, "answer_look", None)  # a stand-in conversation (tests) may not have it
         remembered = look(question, stream) if look else None
