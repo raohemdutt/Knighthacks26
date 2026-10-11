@@ -1985,13 +1985,39 @@ export interface VaultPolicy {
   offline: boolean;
   /** Days of pictures and memory to keep; null = forever. */
   keep_days: number | null;
-  /** The live picture on the owner's own signed-in screen: "clear" shows faces there. Everyone else: blurred. */
-  live_faces: "blurred" | "clear";
+  /**
+   * The live picture on the owner's own signed-in screen: "clear" shows every face there, "owner" only the face of
+   * the person who did the face scan (everyone else blurred), "blurred" nobody's. Everyone else: always blurred.
+   */
+  live_faces: LiveFaces;
+  /** A training export you approve: "owner_clear" lets your own scanned face stay unblurred in it. Off ("blurred") by default. */
+  train_faces?: "blurred" | "owner_clear";
+  /** Read-only, from the box: has the owner done the face scan, and can the box tell them right now. */
+  owner?: FaceOwner;
+  /** Read-only: what a signed-in screen gets right now ("owner" falls back to "blurred" until the scan is done). */
+  live_faces_now?: LiveFaces;
+  /** Read-only: one line saying why an owner-only choice is not in effect, or null. */
+  faces_note?: string | null;
 }
 
-/** "Your live view" is on: the owner's signed-in screen shows faces. On unless the owner switched it off. */
+export type LiveFaces = "blurred" | "clear" | "owner";
+
+export interface FaceOwner {
+  scanned: boolean;
+  /** Scanned, and recognition is on: "only me" can be honoured now. */
+  ready: boolean;
+  /** Why not, in one line ("Do the face scan first."). */
+  reason: string | null;
+  /** The demo seed's owner: made-up numbers, nobody's face. */
+  demo: boolean;
+}
+
+/** What the owner may change with PUT /vault/policy (the read-only fields are the box's to say). */
+export type VaultPolicyChange = Partial<Pick<VaultPolicy, "blur_faces" | "paused_cameras" | "offline" | "keep_days" | "live_faces" | "train_faces">>;
+
+/** "Everyone clear" is chosen: the owner's signed-in screen shows every face. The default. */
 export function liveClear(policy: Pick<VaultPolicy, "live_faces">): boolean {
-  return policy.live_faces !== "blurred";
+  return policy.live_faces === "clear";
 }
 
 /** GET /api/voice/status: the box's own microphone and speaker (X16). "off" also means the voice service is not running. */
@@ -2335,7 +2361,7 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   voiceEnabled: (enabled: boolean) => post<VoiceStatus>("/api/voice/enabled", { enabled }),
   voiceListen: () => post<VoiceStatus>("/api/voice/listen", {}),
   voiceSay: (text: string) => post<VoiceStatus>("/api/voice/say", { text }),
-  setVaultPolicy: (body: Partial<VaultPolicy>) => put<VaultPolicy>("/vault/policy", body),
+  setVaultPolicy: (body: VaultPolicyChange) => put<VaultPolicy>("/vault/policy", body),
   egress: (signal?: AbortSignal) => get<Egress>("/vault/egress", undefined, signal),
   wipeRequest: (scope: WipeScope) => post<WipeToken>("/vault/wipe/request", { scope }),
   wipe: (token: string) => post<WipeResult>("/vault/wipe", { token }),

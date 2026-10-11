@@ -6,15 +6,17 @@ import { api, liveClear, viewTicketReady, viewTicketState } from "./api";
 /**
  * What the live picture on this screen shows, for the line under it.
  *
- *  - "clear": this is the owner's signed-in screen and "Your live view" is on (Privacy), so faces show here.
- *  - "blurred": everyone else, and the owner's screen while that switch is off. Also the answer until the box
- *    has been asked, so the line never promises faces it may not show.
+ *  - "clear": this is the owner's signed-in screen and "On my screen" is "Everyone clear" (Privacy), so faces show here.
+ *  - "owner": the owner's signed-in screen with "Only me clear": the scanned owner's own face shows, every other
+ *    face is blurred, and so is the owner's for the first second or two until the box has recognised them.
+ *  - "blurred": everyone else, and the owner's screen with "Everyone blurred" (or "Only me clear" before the face
+ *    scan). Also the answer until the box has been asked, so the line never promises faces it may not show.
  *  - "unblurred": an older choice some box still holds: saved pictures are not blurred, and neither is the live
  *    picture, for anyone. The Privacy screen offers the one button that ends it.
  *
  * The box decides what is in the picture; this only reads the same two facts it decides on.
  */
-export type LiveView = "clear" | "blurred" | "unblurred";
+export type LiveView = "clear" | "owner" | "blurred" | "unblurred";
 
 export function useLiveView(): LiveView {
   const [view, setView] = useState<LiveView>("blurred");
@@ -24,7 +26,11 @@ export function useLiveView(): LiveView {
       .then(([policy]) => {
         if (!alive) return;
         if (!policy.blur_faces) setView("unblurred");
-        else setView(liveClear(policy) && viewTicketState().held ? "clear" : "blurred");
+        else if (!viewTicketState().held) setView("blurred");
+        else {
+          const now = policy.live_faces_now ?? policy.live_faces;
+          setView(liveClear(policy) ? "clear" : now === "owner" ? "owner" : "blurred");
+        }
       })
       .catch(() => undefined); // no answer: say the careful thing
     return () => {
@@ -37,6 +43,7 @@ export function useLiveView(): LiveView {
 /** One sentence that is true in each state, in plain words. */
 export function liveViewLine(view: LiveView): string {
   if (view === "clear") return "Faces show on this signed-in screen only. Saved pictures and anything sent off this box are blurred.";
+  if (view === "owner") return "Only your own face shows on this signed-in screen, once Atlas has recognised you. Every other face is blurred, here and everywhere else.";
   if (view === "unblurred") return "Faces are not blurred on this box right now. You can change that on the Privacy screen.";
   return "Faces are blurred here. Saved pictures and anything sent off this box are blurred too.";
 }
