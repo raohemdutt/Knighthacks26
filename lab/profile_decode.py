@@ -11,14 +11,15 @@
 pod_exec.py is the workspace's own pod tool (not in this repo). Its run mode uploads the script through the Jupyter
 contents API and types only `bash ./r47_pod_run.sh > ./r47_pod_run.out 2>&1` into a terminal, then reads the .out
 file back until the script's last line, `### END rc=<code>`. The script also works typed whole into a terminal
-(term mode: no tab and no exclamation mark in it), but it carries about 190 KB of base64, and a paste that large
+(term mode: no tab and no exclamation mark in it), but it carries about 200 KB of base64, and a paste that large
 can stall a terminal whose shell echoes faster than the terminal server drains it.
 
 The run (lab/profile_decode_pod.py): the stock vLLM 0.19.2 teacher build R30 left on pod D (account D, node pod-b)
 is started, warmed up, and the fixed prompt set of lab/bench.py (fixtures/lab/bench/prompts.json) runs at batch 1
 (one request per prompt, one at a time) and batch 4 (four streams at once): unprofiled, then under the torch
 profiler through vLLM's own /start_profile and /stop_profile, then on a second server started under rocprofv3.
-Each tool that fails is recorded with its error and the run goes on with the other.
+Each tool that fails is recorded with its error and the run goes on with the other. With --attach-port the run
+profiles a server already running there instead and starts or stops nothing (lab/profile_decode_pod.py says how).
 
 What the result holds (lab/refine/research/kernels/data/decode-profile-gfx1151-<date>.json and its .md):
 
@@ -35,7 +36,8 @@ What the result holds (lab/refine/research/kernels/data/decode-profile-gfx1151-<
 - achieved memory bandwidth: the bytes a decode step reads (the checkpoint's safetensors headers: every weight but
   the vision tower, the MTP head and the gathered embedding rows; KV-cache reads are not counted) over the step
   time, and over the W4A16 kernel's own time for the quantized weights, against the chip sheet's measured copy
-  bandwidth (lab/refine/research/kernels/data/chipsheet-gfx1151-*.json, R33) when one is on main at collect time;
+  bandwidth (bandwidth.copy_d2d_peak_gb_s of lab/refine/research/kernels/data/chipsheet-gfx1151-<date>.json, R33,
+  read with lab/placement.py's reader) when one is on main at collect time, never the sample sheet's numbers;
 - peak and reserved memory (the torch profiler's allocator samples, the serve log's weights, KV-cache and graph pool
   lines, and amd-smi's memory use), watts during every run from amd-smi, and the exact kernel vLLM selected for the
   quantized matmul (the serve log's "Using <Kernel> for <Scheme>" line, the class's source file, and the Triton
@@ -99,7 +101,6 @@ MAX_SHARE = 1.5                  # kernel and copy time may overlap a little; an
 MARK_BEGIN = "=== R47-RESULT BEGIN"
 MARK_END = "=== R47-RESULT END ==="
 B64_LINE = 76
-CHIP_SHEET_GLOB = f"chipsheet-{CHIP}-*.json"
 METRIC_PREFIX = "teacher"
 MD_SECTIONS = ("## Tools", "## Time per decode step", "## Where a decode step goes", "## Top kernels, batch 1",
                "## Top kernels, batch 4", "## The quantized matmul kernel", "## Memory bandwidth", "## Memory",
@@ -618,58 +619,26 @@ def build_result(raw: Mapping[str, Any], base: str | Path) -> dict[str, Any]:
 
 # --- the chip sheet -------------------------------------------------------------------------------------------------
 
-def _leaves(tree: Any, path: tuple[str, ...] = ()) -> Iterable[tuple[str, float]]:
-    if isinstance(tree, Mapping):
-        for k, v in tree.items():
-            yield from _leaves(v, (*path, str(k)))
-    elif isinstance(tree, list):
-        for i, v in enumerate(tree):
-            yield from _leaves(v, (*path, str(i)))
-    elif isinstance(tree, (int, float)) and not isinstance(tree, bool) and math.isfinite(float(tree)):
-        yield ".".join(path), float(tree)
+def chip_reference(path: str | Path | None = None) -> dict[str, Any]:
+    """The copy bandwidth to compare against, read the way the placement plan reads chip sheets (lab/placement.py:
+    bandwidth.copy_d2d_peak_gb_s, else the best bandwidth.copy_d2d row). Without a path: the newest
+    chipsheet-gfx1151-*.json R33 commits, else the sample sheet, whose numbers are never taken as a measurement."""
+    from lab import placement   # the box only: collect and --quick run this, the pod never does
 
-
-def _follow(tree: Any, key: str) -> Any:
-    for part in key.split("."):
-        if isinstance(tree, Mapping) and part in tree:
-            tree = tree[part]
-        elif isinstance(tree, list) and part.isdigit() and int(part) < len(tree):
-            tree = tree[int(part)]
-        else:
-            return None
-    return tree
-
-
-def chip_reference(path: str | Path | None, key: str | None = None) -> dict[str, Any]:
-    """The bandwidth to compare against: `key` (a dotted path) in the chip sheet's JSON, else the largest number
-    whose path names a bandwidth or copy in GB/s; the key used is kept so a reader can check it."""
-    if path is None:
-        return {"chip_sheet": None, "key": None, "gb_s": None,
-                "note": f"no chip sheet ({CHIP_SHEET_GLOB}) on main when the result was collected (R33)"}
-    path = Path(path)
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        return {"chip_sheet": str(path), "key": key, "gb_s": None, "note": f"unreadable: {type(exc).__name__}"}
-    if key:
-        value = _follow(data, key)
-        ok = isinstance(value, (int, float)) and not isinstance(value, bool)
-        return {"chip_sheet": path.name, "key": key, "gb_s": float(value) if ok else None,
-                "note": None if ok else f"{key} is not a number in the chip sheet"}
-    found = [(p, v) for p, v in _leaves(data)
-             if re.search(r"bandwidth|copy", p, re.IGNORECASE) and re.search(r"gb_?s|gbps|gb/s", p, re.IGNORECASE)]
-    if not found:
-        return {"chip_sheet": path.name, "key": None, "gb_s": None,
-                "note": "no number whose path names a bandwidth or copy in GB/s; pass --chip-sheet-key"}
-    best_path, best = max(found, key=lambda pv: (pv[1], pv[0]))
-    return {"chip_sheet": path.name, "key": best_path, "gb_s": best,
-            "note": "the largest bandwidth-in-GB/s number of the chip sheet, found by name; pass --chip-sheet-key "
-                    "to pick another"}
-
-
-def newest_chip_sheet(folder: Path = DATA_DIR) -> Path | None:
-    found = sorted(folder.glob(CHIP_SHEET_GLOB))
-    return found[-1] if found else None
+    sheet = placement.read_chipsheet(Path(path) if path is not None else placement.default_chipsheet(CHIP))
+    found = sheet.get("bandwidth_gb_s")
+    out = {"chip_sheet": sheet.path, "sample": sheet.sample, "source": found.source, "kind": found.kind,
+           "gb_s": None, "note": None}
+    if sheet.problem:
+        out["note"] = sheet.problem
+    elif sheet.sample:
+        out["note"] = (f"only the sample chip sheet ({Path(sheet.path).name}) was on main when the result was "
+                       f"collected: R33 has not committed a measured chipsheet-{CHIP}-<date>.json")
+    elif not found.known:
+        out["note"] = f"{sheet.path} carries no copy bandwidth"
+    else:
+        out["gb_s"] = found.value
+    return out
 
 
 def apply_reference(result: dict[str, Any], reference: Mapping[str, Any]) -> None:
@@ -886,10 +855,10 @@ def render_markdown(result: Mapping[str, Any]) -> str:
     add("")
     add("## Memory bandwidth")
     add("")
-    add(f"Bytes a decode step reads: weights only (every tensor but the vision tower, the MTP head and the gathered "
-        f"embedding rows; KV-cache reads not counted). Reference: "
-        f"{_fmt(ref.get('gb_s'), 1, ' GB/s') if ref.get('gb_s') else 'none'}"
-        f"{' from ' + str(ref.get('chip_sheet')) + ' (' + str(ref.get('key')) + ')' if ref.get('gb_s') else ''}.")
+    said = (f"{_fmt(ref.get('gb_s'), 1, ' GB/s')}, the chip sheet's copy bandwidth ({ref.get('source')})"
+            if ref.get("gb_s") else f"none ({ref.get('note') or 'no chip sheet read'})")
+    add("Bytes a decode step reads: weights only (every tensor but the vision tower, the MTP head and the gathered "
+        f"embedding rows; KV-cache reads not counted). Reference: {said}.")
     add("")
     add("| Batch | GB per step | GB/s over the step | over GPU busy | W4A16 kernel GB/s | fraction of reference |")
     add("|---|---|---|---|---|---|")
@@ -1097,14 +1066,18 @@ def _module_file(name: str, root: Path) -> Path | None:
     return None
 
 
+BOX_ONLY = frozenset({"lab.placement"})   # imported only by collect and --quick on the box, never on the pod
+
+
 def module_closure(start: str = "lab.profile_decode", root: Path = REPO) -> list[Path]:
     """Every lab module the start module imports, directly or not (function-level imports too), with the package
-    __init__ files: what must be on the pod for `python3 -m lab.profile_decode` to run there."""
+    __init__ files: what must be on the pod for `python3 -m lab.profile_decode` to run there. BOX_ONLY modules and
+    what only they import stay behind."""
     seen: dict[str, Path] = {}
     todo = [start, "lab.profile_decode_pod"]
     while todo:
         name = todo.pop()
-        if name in seen or not (name == "lab" or name.startswith("lab.")):
+        if name in seen or name in BOX_ONLY or not (name == "lab" or name.startswith("lab.")):
             continue
         path = _module_file(name, root)
         if path is None:
@@ -1189,8 +1162,11 @@ def analyze_dir(run_dir: Path) -> tuple[dict[str, Any], dict[str, Any] | None, s
 def pod_run_main(args: argparse.Namespace) -> dict[str, Any]:
     from lab import profile_decode_pod as pod
 
+    from lab import bench
+
     problems = pod.gate(expect_user_sha256=args.expect_user_sha256, environ=os.environ, rocminfo=pod.read_rocminfo,
-                        port=args.port)
+                        port=args.port, attach_port=args.attach_port,
+                        servers=lambda: pod.vllm_pids(pod.proc_table(bench.Host())))
     if problems:
         return {"ok": False, "outcome": "refused", "problems": problems}
 
@@ -1243,6 +1219,8 @@ def pod_script_main(args: argparse.Namespace) -> dict[str, Any]:
     run_args = ["--phases", ",".join(args.phases), "--max-tokens", str(args.max_tokens), "--port", str(args.port),
                 "--checkpoint", args.checkpoint, "--deadline-min", f"{args.deadline_min:g}", "--hub", args.hub,
                 "--account", args.account]
+    if args.attach_port is not None:
+        run_args += ["--attach-port", str(args.attach_port), "--serve-log", args.serve_log]
     script, info = pod_script(expect_user_sha256=expect, args=run_args)
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -1309,8 +1287,7 @@ def collect_main(args: argparse.Namespace) -> dict[str, Any]:
         error = files.get("analysis_error.txt", b"no result.json in the bundle").decode("utf-8", "replace")
         return {"ok": False, "outcome": "no_result", "error": error, "files": sorted(files)}
     result = json.loads(files["result.json"].decode("utf-8"))
-    sheet = Path(args.chip_sheet) if args.chip_sheet else newest_chip_sheet()
-    apply_reference(result, chip_reference(sheet, args.chip_sheet_key))
+    apply_reference(result, chip_reference(args.chip_sheet))
     problems = check_result(result)
     if problems:
         return {"ok": False, "outcome": "invalid", "problems": problems}
@@ -1345,8 +1322,7 @@ def quick_main(args: argparse.Namespace) -> dict[str, Any]:
     fixture = Path(args.fixture) if args.fixture else QUICK_FIXTURE
     raw = json.loads((fixture / "raw.json").read_text(encoding="utf-8"))
     result = build_result(raw, fixture)
-    sheet = fixture / "chipsheet.json"
-    apply_reference(result, chip_reference(sheet if sheet.exists() else None))
+    apply_reference(result, chip_reference(fixture / "chipsheet.json"))
     problems = check_result(result)
     out = Path(args.out) if args.out else Path(tempfile.mkdtemp(prefix="r47-quick-"))
     json_path, md_path = write_outputs(result, out, force=True) if not problems else (None, None)
@@ -1389,6 +1365,9 @@ def build_parser() -> argparse.ArgumentParser:
     script.add_argument("--port", type=int, default=pod.DEFAULT_PORT)
     script.add_argument("--checkpoint", default=pod.DEFAULT_CHECKPOINT)
     script.add_argument("--deadline-min", type=float, default=pod.DEFAULT_DEADLINE_MIN)
+    script.add_argument("--attach-port", type=int, default=None,
+                        help="profile the server already running on this port instead of starting one")
+    script.add_argument("--serve-log", default=pod.ATTACH_LOG, help="attached: that server's log")
 
     run = sub.add_parser("pod-run", help="on the pod: run the profile (what the script runs)")
     run.add_argument("--expect-user-sha256", required=True)
@@ -1407,6 +1386,11 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--serve-cmd", type=json.loads, default=None, help=argparse.SUPPRESS)  # tests: another server
     run.add_argument("--idle-s", type=float, default=None, help=argparse.SUPPRESS)        # tests: shorter idle reads
     run.add_argument("--rocprof-cmd", type=json.loads, default=None, help=argparse.SUPPRESS)  # tests: a stand-in
+    run.add_argument("--attach-port", type=int, default=None,
+                     help="profile the server already running on this port: nothing is started or stopped")
+    run.add_argument("--serve-log", default=pod.ATTACH_LOG, help="attached: that server's log, for the log facts")
+    run.add_argument("--attach-duration-s", type=float, default=pod.ATTACH_DURATION_S,
+                     help="attached: how long rocprofv3 --attach traces")
 
     analyze = sub.add_parser("analyze", help="build the result from a run folder (raw.json and the traces)")
     analyze.add_argument("run_dir")
@@ -1414,8 +1398,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     collect = sub.add_parser("collect", help="read the pod's result block, write the JSON, Markdown and ledger rows")
     collect.add_argument("input", help="the saved output of the pod run, its result_bundle.b64, or the .tar.gz")
-    collect.add_argument("--chip-sheet", default=None, help=f"default: the newest {CHIP_SHEET_GLOB} on main")
-    collect.add_argument("--chip-sheet-key", default=None, help="dotted path of the bandwidth in the chip sheet")
+    collect.add_argument("--chip-sheet", default=None,
+                         help=f"default: the newest chipsheet-{CHIP}-<date>.json on main, else the sample")
     collect.add_argument("--out", default=None, help="default: lab/refine/research/kernels/data")
     collect.add_argument("--no-ledger", action="store_true")
     collect.add_argument("--save-fixtures", action="store_true", help="keep the trace excerpts as recorded fixtures")

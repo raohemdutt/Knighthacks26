@@ -333,10 +333,14 @@ def main() -> None:
     (OUT / "rocprof" / "4243" / "run_memory_copy_trace.csv").write_text(csv_text(COPY_COLUMNS, copies),
                                                                         encoding="utf-8", newline="")
     (OUT / "raw.json").write_text(json.dumps(raw_record(), indent=1) + "\n", encoding="utf-8", newline="\n")
-    sheet = {"schema": "synthetic chip sheet for the R47 self-check, not a measurement",
-             "bandwidth": {"d2d_copy": {"max_gb_s": 212.5, "sizes_mb": [1, 64, 4096],
-                                        "gb_s": [40.0, 180.0, 212.5]}},
-             "peak_theoretical_gb_s": 256.0}
+    sheet = {"format": "chipsheet/1", "sample": False,
+             "about": "Synthetic, for the R47 self-check and its tests only: the chipsheet/1 fields lab/placement.py "
+                      "reads (see lab/refine/research/kernels/data/chipsheet-sample.json), with made-up numbers. Not a "
+                      "measurement, and not in the data folder, so no plan ever reads it.",
+             "chip": {"gfx": "gfx1151", "node": "pod-b"},
+             "bandwidth": {"copy_d2d_peak_gb_s": {"value": 212.5, "command": "synthetic"},
+                           "copy_d2d": [{"bytes": 2**20, "gb_s": 40.0}, {"bytes": 2**26, "gb_s": 180.0},
+                                        {"bytes": 2**32, "gb_s": 212.5}]}}
     (OUT / "chipsheet.json").write_text(json.dumps(sheet, indent=1) + "\n", encoding="utf-8", newline="\n")
 
 

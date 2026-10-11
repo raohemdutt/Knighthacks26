@@ -16,6 +16,7 @@ import struct
 import subprocess
 import sys
 import tarfile
+import time
 from pathlib import Path
 
 import pytest
@@ -213,12 +214,15 @@ def test_the_result_of_the_synthetic_run():
     assert (result["date"], result["node"], result["chip"]) == ("2026-10-10", "pod-b", "gfx1151")
 
 
-def test_without_a_chip_sheet_the_comparison_stays_open():
+def test_with_only_the_sample_chip_sheet_the_comparison_stays_open(tmp_path):
     result = synthetic_result(reference=False)
-    pd.apply_reference(result, pd.chip_reference(None))
+    sample = tmp_path / "chipsheet-sample.json"
+    sample.write_text(json.dumps({"format": "chipsheet/1", "sample": True,
+                                  "bandwidth": {"copy_d2d_peak_gb_s": {"value": 999.0}}}), encoding="utf-8")
+    pd.apply_reference(result, pd.chip_reference(sample))       # a sample's number is never a measurement
     assert result["batches"]["1"]["bandwidth"]["fraction_of_reference_step"] is None
-    assert result["open"] == ["chip sheet: no chip sheet (chipsheet-gfx1151-*.json) on main when the result was "
-                              "collected (R33)"]
+    assert result["open"] == ["chip sheet: only the sample chip sheet (chipsheet-sample.json) was on main when the "
+                              "result was collected: R33 has not committed a measured chipsheet-gfx1151-<date>.json"]
     pd.apply_reference(result, pd.chip_reference(FIX / "chipsheet.json"))
     assert result["open"] == []
 
@@ -235,12 +239,21 @@ def test_a_failed_tool_and_a_trace_that_misses_graph_kernels_are_open_items():
     assert pd._primary({"available": True, "kernel_coverage": 0.8}, {"available": True}) == "torch"
 
 
-def test_chip_sheet_reference_by_name_or_by_key():
+def test_the_chip_sheet_is_read_the_way_the_placement_plan_reads_it(tmp_path):
     found = pd.chip_reference(FIX / "chipsheet.json")
-    assert (found["key"], found["gb_s"]) == ("bandwidth.d2d_copy.max_gb_s", 212.5)
-    assert pd.chip_reference(FIX / "chipsheet.json", "peak_theoretical_gb_s")["gb_s"] == 256.0
-    bad = pd.chip_reference(FIX / "chipsheet.json", "bandwidth.nope")
-    assert bad["gb_s"] is None and "not a number" in bad["note"]
+    assert (found["gb_s"], found["kind"], found["sample"], found["note"]) == (212.5, "measured", False, None)
+    assert found["source"].endswith("chipsheet.json: bandwidth.copy_d2d_peak_gb_s")
+    rows_only = tmp_path / "chipsheet-gfx1151-2026-10-11.json"
+    rows_only.write_text(json.dumps({"format": "chipsheet/1", "bandwidth": {
+        "copy_d2d": [{"bytes": 1, "gb_s": 50.0}, {"bytes": 2, "gb_s": 190.5}]}}), encoding="utf-8")
+    assert pd.chip_reference(rows_only)["gb_s"] == 190.5
+    empty = tmp_path / "chipsheet-gfx1151-2026-10-12.json"
+    empty.write_text(json.dumps({"format": "chipsheet/1", "bandwidth": {}}), encoding="utf-8")
+    assert pd.chip_reference(empty)["note"].endswith("carries no copy bandwidth")
+    missing = pd.chip_reference(tmp_path / "nope.json")
+    assert missing["gb_s"] is None and missing["note"].startswith("cannot read")
+    default = pd.chip_reference()           # on main today: the newest gfx1151 sheet, else the sample
+    assert default["chip_sheet"].startswith("lab/refine/research/kernels/data/chipsheet-")
 
 
 def test_the_checks_catch_a_broken_result():
@@ -634,3 +647,112 @@ def test_recorded_trace_excerpts_from_the_pod_parse_like_the_synthetic_ones():
             kernels = tp.read_rocprof_kernels(rocprof_excerpt)
             assert kernels, f"{rocprof_excerpt}: no kernel rows"
             assert all(k.grid and k.block for k in kernels), f"{rocprof_excerpt}: a row without grid or block"
+
+
+# --- attached to a running server -----------------------------------------------------------------------------------
+
+def test_attached_the_gate_wants_a_server_on_the_port_and_skips_the_busy_gpu_check():
+    want = pod.user_sha256("account-d")
+    base = dict(expect_user_sha256=want, environ={"JUPYTERHUB_USER": "account-d"}, rocminfo=lambda: ROCMINFO_GFX1151,
+                port=8100, servers=lambda: [4242])
+    assert pod.gate(port_busy=lambda p: p == 8000, attach_port=8000, **base) == []
+    assert pod.gate(port_busy=lambda p: False, attach_port=8000, **base) == [
+        "nothing listens on 127.0.0.1:8000 to attach to"]
+    assert pod.gate(port_busy=lambda p: False, **base) == [
+        "a vLLM server already runs on this pod (pids 4242): the profile needs the whole GPU and stops nothing it "
+        "did not start; attach to it with --attach-port, or stop it first"]
+
+
+def test_the_server_on_a_port_and_its_profiler_config_come_from_its_command_line(tmp_path):
+    config = {"profiler": "torch", "torch_profiler_dir": "/home/jovyan/traces"}
+    fake_proc(tmp_path, 300, 1, "S", "python3 -m vllm.entrypoints.openai.api_server --port 8000")
+    folder = tmp_path / "proc" / "300"
+    (folder / "cmdline").write_bytes(b"\0".join(a.encode() for a in [
+        "python3", "-m", "vllm.entrypoints.openai.api_server", "--port", "8000", "--profiler-config",
+        json.dumps(config)]) + b"\0")
+    fake_proc(tmp_path, 301, 300, "S", "VLLM::EngineCore_DP0")
+    fake_proc(tmp_path, 400, 1, "S", "python3 -m http.server --port 8000")
+    table = pod.proc_table(bench.Host(root=tmp_path))
+    assert pod.server_pid(table, 8000) == 300
+    assert pod.server_pid(table, 8100) is None
+    assert pod.profiler_config_of(table[300]["argv"]) == config
+    assert pod.vllm_pids(table) == [300, 301]
+    assert pod.profiler_config_of(["vllm", "serve", "--profiler-config.profiler", "torch",
+                                   "--profiler-config.torch_profiler_dir=/x"]) == {"profiler": "torch",
+                                                                                    "torch_profiler_dir": "/x"}
+    assert pod.profiler_config_of(["vllm", "serve", "--port", "8000"]) is None
+
+
+def test_rocprof_attaches_for_a_fixed_time_with_the_launch_csv_options(tmp_path):
+    assert pod.rocprof_attach_argv(["/opt/rocm/bin/rocprofv3"], 301, 300.0, tmp_path / "rocprof") == [
+        "/opt/rocm/bin/rocprofv3", "--attach", "301", "--attach-duration-msec", "300000", "--kernel-trace",
+        "--memory-copy-trace", "--output-format", "csv", "-d", str(tmp_path / "rocprof" / "%pid%"), "-o", "run"]
+
+
+def test_attached_to_a_running_fake_server_the_profile_uses_its_routes_and_leaves_it_running(tmp_path, monkeypatch):
+    monkeypatch.setattr(pod, "TRACE_POLL_S", 0.05)
+    root, ckpt, server_traces = tmp_path / "root", tmp_path / "ckpt", tmp_path / "server-traces"
+    root.mkdir()
+    ckpt.mkdir()
+    write_safetensors(ckpt / "model.safetensors", {"model.layers.0.mlp.weight_packed": 64})
+    port, log = free_port(), tmp_path / "server.log"
+    config = json.dumps({"profiler": "torch", "torch_profiler_dir": str(server_traces)})
+    argv = bench.fill_command(bench_fake.serve_command(root=str(root), stream_tok_s=200.0, profiler_config=config),
+                              {"port": port, "port_file": tmp_path / "server.port", "log": log})
+    server = subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        deadline = time.monotonic() + 60
+        while not bench.port_open(port):
+            assert time.monotonic() < deadline, "the fake server did not start"
+            time.sleep(0.05)
+        fake_proc(root, server.pid, 1, "S", "x")
+        (root / "proc" / str(server.pid) / "cmdline").write_bytes(b"\0".join(
+            a.encode() for a in ["python3", "-m", "vllm.entrypoints.openai.api_server", "--port", str(port),
+                                 "--profiler-config", config]) + b"\0")
+        args = pd.build_parser().parse_args([
+            "pod-run", "--expect-user-sha256", "unused-here", "--attach-port", str(port), "--serve-log", str(log),
+            "--checkpoint", str(ckpt), "--engine-dir", str(tmp_path), "--out", str(tmp_path / "out"),
+            "--max-tokens", "6", "--idle-s", "0.02", "--prompts", str(bench.DEFAULT_PROMPTS)])
+        run = pod.PodRun(args, host=bench_fake.FakeHost(root), power=bench_fake.FakePower(root))
+        answer = pd.run_and_report(run)
+        assert answer["phases"]["torch"] == {"ok": True, "error": None}
+        assert answer["phases"]["rocprof"]["ok"] is False
+        result = json.loads((run.dir / "result.json").read_text(encoding="utf-8"))
+        assert pd.check_result(result) == []
+        traces = result["tools"]["torch_profiler"]["traces"]
+        assert len(traces) == 2 and all((run.dir / t).exists() for t in traces)          # copied into the run
+        assert result["quant_kernel"]["vllm_class"] == "ConchLinearKernel"                 # from the server's log
+        raw_record = json.loads((run.dir / "raw.json").read_text(encoding="utf-8"))
+        assert raw_record["phases"]["torch"]["server"]["attached_port"] == port
+        assert raw_record["phases"]["torch"]["server"]["pid"] == server.pid
+        assert server.poll() is None and bench.port_open(port)                             # still serving
+    finally:
+        server.kill()
+        server.wait(30)
+
+
+def test_attached_to_a_server_without_profiler_config_the_unprofiled_runs_stay_and_the_reason_is_given(tmp_path):
+    root = tmp_path / "root"
+    root.mkdir()
+    port, log = free_port(), tmp_path / "server.log"
+    argv = bench.fill_command(bench_fake.serve_command(root=str(root), stream_tok_s=200.0),
+                              {"port": port, "port_file": tmp_path / "server.port", "log": log})
+    server = subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        deadline = time.monotonic() + 60
+        while not bench.port_open(port):
+            assert time.monotonic() < deadline, "the fake server did not start"
+            time.sleep(0.05)
+        args = pd.build_parser().parse_args([
+            "pod-run", "--expect-user-sha256", "unused-here", "--attach-port", str(port), "--serve-log", str(log),
+            "--checkpoint", str(tmp_path), "--engine-dir", str(tmp_path), "--out", str(tmp_path / "out"),
+            "--phases", "torch", "--max-tokens", "6", "--idle-s", "0.02", "--prompts", str(bench.DEFAULT_PROMPTS)])
+        run = pod.PodRun(args, host=bench_fake.FakeHost(root), power=bench_fake.FakePower(root))
+        raw_record = run.run()
+        phase = raw_record["phases"]["torch"]
+        assert phase["ok"] is False and "runs without --profiler-config" in phase["error"]
+        assert sorted(phase["runs"]) == ["b1_baseline", "b4_baseline"]
+        assert server.poll() is None
+    finally:
+        server.kill()
+        server.wait(30)

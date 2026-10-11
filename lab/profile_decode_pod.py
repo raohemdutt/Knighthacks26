@@ -3,8 +3,9 @@
 What one run does, on pod D (account D, node pod-b) inside one GPU Queue slot:
 
 1. The node gate, fail closed: rocminfo must name gfx1151 (lab/pod_power.py's gate), the Jupyter user must hash to
-   the one the script was made for (pod D's account; the hash, never the name, travels in the script), and the
-   server port must be free. Pod C, which serves the live teacher, never passes.
+   the one the script was made for (pod D's account; the hash, never the name, travels in the script), the server
+   port must be free and no other vLLM server may hold the GPU (the run stops nothing it did not start). Pod C,
+   which serves the live teacher, never passes.
 2. Facts: host, ROCm, torch and Triton versions, the vLLM build and commit in ~/vllm, the conch package, rocprofv3
    and amd-smi, the checkpoint's weight bytes from its safetensors headers, and which quantized-matmul kernel class
    and which Triton kernels the build ships (asked of the pod's own Python).
@@ -22,6 +23,13 @@ What one run does, on pod D (account D, node pod-b) inside one GPU Queue slot:
    the engine core gets SIGTERM and is waited for, then the API server is resumed and stopped.
 6. Every server is stopped on the way out, whatever happened, so the pod is left as found.
 
+Attached instead (--attach-port N): no server is started or stopped. The torch phase uses the running server's own
+profiler routes, its trace folder read from the --profiler-config on its command line (a server started without
+one has no /start_profile, and the phase says so after the unprofiled runs), and copies each trace into the run
+folder; the rocprof phase runs `rocprofv3 --attach <engine core> --attach-duration-msec` while both batches run,
+which needs ptrace rights over that process. The log facts come from the server's own log (--serve-log, by
+default lab/pod_a_teacher.sh's ~/serve/vllm.log).
+
 Each request is timed from its own token stream (lab/bench.py's run_request), with the arrival time of every
 content chunk kept, so the client-side time per decode step and its spread come from the unprofiled runs. The
 clocks (realtime, monotonic, boottime) are read together at the start and the end, so a rocprof timestamp can be
@@ -37,8 +45,10 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import signal
 import struct
+import subprocess
 import threading
 import time
 import urllib.error
@@ -82,6 +92,9 @@ PROFILER_CONFIG = {"profiler": "torch", "torch_profiler_with_stack": False, "tor
 ROCPROF_ARGS = ("--kernel-trace", "--memory-copy-trace", "--output-format", "csv")
 ROCPROF_ENV = {"VLLM_WORKER_MULTIPROC_METHOD": "spawn"}
 TRACE_GLOB = "*.pt.trace.json*"
+ATTACH_DURATION_S = 300.0           # rocprofv3 --attach: long enough for both measured batches
+ATTACH_SETTLE_S = 5.0               # given to rocprofv3 to attach before the first request
+ATTACH_LOG = "~/serve/vllm.log"     # lab/pod_a_teacher.sh's serve log, read for the log facts when attached
 SIGSTOP = getattr(signal, "SIGSTOP", 19)   # Linux numbers where the platform has no such signal (tests on Windows)
 SIGCONT = getattr(signal, "SIGCONT", 18)
 QUANT_SUFFIXES = ("weight_packed", "weight_scale", "weight_zero_point", "weight_g_idx", "weight_shape")
@@ -186,9 +199,11 @@ def user_sha256(user: str) -> str:
 
 
 def gate(*, expect_user_sha256: str | None, environ: Mapping[str, str], rocminfo: Callable[[], str],
-         port: int | None, port_busy: Callable[[int], bool] = bench.port_open) -> list[str]:
+         port: int | None, port_busy: Callable[[int], bool] = bench.port_open,
+         servers: Callable[[], list[int]] = lambda: [], attach_port: int | None = None) -> list[str]:
     """Why this process must not run here (empty when it may): not the Strix Halo, not the account the script was
-    made for, or the server port already taken (port None: attaching, the port is meant to be taken)."""
+    made for, the server port already taken or another vLLM server already holding the GPU (the run starts its own
+    and stops nothing it did not start); attaching, a server must answer on attach_port instead."""
     problems = []
     why = pod_power.gate(SAMPLER_NODE, rocminfo)
     if why:
@@ -202,8 +217,17 @@ def gate(*, expect_user_sha256: str | None, environ: Mapping[str, str], rocminfo
     elif user_sha256(user) != expect_user_sha256.strip().lower():
         problems.append("this pod's account is not the one the script was made for (pod D); pod C serves the "
                         "live teacher and is never profiled")
+    if attach_port is not None:
+        if not port_busy(attach_port):
+            problems.append(f"nothing listens on 127.0.0.1:{attach_port} to attach to")
+        return problems
     if port is not None and port_busy(port):
         problems.append(f"something already listens on 127.0.0.1:{port}")
+    running = servers()
+    if running:
+        problems.append(f"a vLLM server already runs on this pod (pids {', '.join(map(str, running))}): the profile "
+                        "needs the whole GPU and stops nothing it did not start; attach to it with --attach-port, or "
+                        "stop it first")
     return problems
 
 
@@ -398,9 +422,11 @@ def run_record(name: str, kind: str, batch: int, requests: list[dict[str, Any]],
 # --- the server -------------------------------------------------------------------------------------------------
 
 def post(url: str, timeout_s: float) -> tuple[int, str]:
+    """POST with an empty body to the local server, never through a proxy the environment may name."""
     request = urllib.request.Request(url, data=b"", method="POST")
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     try:
-        with urllib.request.urlopen(request, timeout=timeout_s) as reply:
+        with opener.open(request, timeout=timeout_s) as reply:
             return reply.status, reply.read(2000).decode("utf-8", "replace")
     except urllib.error.HTTPError as exc:
         return exc.code, exc.read(2000).decode("utf-8", "replace")
@@ -441,7 +467,7 @@ def new_files(folder: Path, before: set[Path], *, timeout_s: float = 120.0) -> l
 
 
 def proc_table(host: bench.Host) -> dict[int, dict[str, Any]]:
-    """pid -> {ppid, state, cmdline} for every process /proc shows."""
+    """pid -> {ppid, state, cmdline, argv} for every process /proc shows."""
     out: dict[int, dict[str, Any]] = {}
     for name in host.listdir("/proc") or []:
         if not name.isdigit():
@@ -454,8 +480,69 @@ def proc_table(host: bench.Host) -> dict[int, dict[str, Any]]:
             continue
         raw = host.read_bytes(f"/proc/{name}/cmdline") or b""
         out[int(name)] = {"ppid": int(fields[1]), "state": fields[0],
-                          "cmdline": raw.replace(b"\0", b" ").decode("utf-8", "replace").strip()}
+                          "cmdline": raw.replace(b"\0", b" ").decode("utf-8", "replace").strip(),
+                          "argv": [a.decode("utf-8", "replace") for a in raw.split(b"\0") if a]}
     return out
+
+
+def vllm_pids(table: Mapping[int, Mapping[str, Any]]) -> list[int]:
+    """Processes running a vLLM server or engine core, by their command line or the title vLLM sets."""
+    return sorted(pid for pid, info in table.items()
+                  if "vllm.entrypoints" in info["cmdline"] or "EngineCore" in info["cmdline"]
+                  or "vllm serve" in info["cmdline"])
+
+
+def server_pid(table: Mapping[int, Mapping[str, Any]], port: int) -> int | None:
+    """The vLLM API server listening on `port`, found by the --port its command line names."""
+    for pid in sorted(table):
+        argv = list(table[pid].get("argv") or [])
+        if not any("vllm" in a for a in argv):
+            continue
+        for i, arg in enumerate(argv):
+            if (arg == "--port" and i + 1 < len(argv) and argv[i + 1] == str(port)) or arg == f"--port={port}":
+                return pid
+    return None
+
+
+def profiler_config_of(argv: Sequence[str]) -> dict[str, Any] | None:
+    """The --profiler-config a vLLM server was started with: the JSON form, or the dotted
+    --profiler-config.<field> flags; None when it was started without one."""
+    config: dict[str, Any] = {}
+    for i, arg in enumerate(argv):
+        name, sep, value = arg.partition("=")
+        if name == "--profiler-config":
+            text = value if sep else (argv[i + 1] if i + 1 < len(argv) else "")
+            try:
+                found = json.loads(text)
+            except ValueError:
+                continue
+            if isinstance(found, dict):
+                config.update(found)
+        elif name.startswith("--profiler-config."):
+            config[name.split(".", 1)[1].replace("-", "_")] = value if sep else (argv[i + 1] if i + 1 < len(argv)
+                                                                                 else "")
+    return config or None
+
+
+def rocprof_attach_argv(tool: Sequence[str], pid: int, duration_s: float, out_dir: Path) -> list[str]:
+    """rocprofv3 attached to a running process for a fixed time, writing the same CSVs as a launch."""
+    return [*tool, "--attach", str(pid), "--attach-duration-msec", str(int(duration_s * 1000)), *ROCPROF_ARGS,
+            "-d", str(out_dir / "%pid%"), "-o", "run"]
+
+
+def wait_csvs(folder: Path, *, timeout_s: float, poll_s: float | None = None) -> dict[str, list[Path]]:
+    """rocprofv3's CSVs under folder once a kernel trace exists and no file is still growing (bounded)."""
+    deadline = time.time() + timeout_s
+    last: dict[Path, int] = {}
+    while True:
+        found = find_rocprof_csvs(folder)
+        sizes = {path: path.stat().st_size for paths in found.values() for path in paths if path.exists()}
+        if found["kernel"] and sizes == last:
+            return found
+        if time.time() >= deadline:
+            return found
+        last = sizes
+        time.sleep(TRACE_POLL_S if poll_s is None else poll_s)
 
 
 def descendants(table: Mapping[int, Mapping[str, Any]], root: int) -> list[int]:
@@ -556,6 +643,8 @@ class PodRun:
         self.power = power if power is not None else bench.LocalPower.for_host(self.host, node=NODE,
                                                                                 period_s=POWER_PERIOD_S)
         self.checkpoint = str(Path(args.checkpoint).expanduser())
+        self.attach_port: int | None = getattr(args, "attach_port", None)
+        self.port = self.attach_port or args.port
         self.raw: dict[str, Any] = {"schema": RAW_SCHEMA, "run_id": self.run_id, "task": "R47", "node": NODE,
                                     "hub": args.hub, "account": args.account, "started": now_iso(), "ended": None,
                                     "args": {k: v for k, v in vars(args).items()
@@ -669,55 +758,106 @@ class PodRun:
             if env is not None:
                 phase["server"]["environ"] = env
 
+    def attach(self, phase: dict[str, Any]) -> tuple[Any, Path | None]:
+        """The server already on attach_port: its models, its pid and the --profiler-config it was started with,
+        read from its command line; the trace folder is that config's torch_profiler_dir (None without one)."""
+        endpoint = bench.DirectEndpoint(f"http://127.0.0.1:{self.port}", timeout_s=REQUEST_TIMEOUT_S)
+        models = endpoint.models()
+        table = proc_table(self.host)
+        pid = server_pid(table, self.port)
+        config = profiler_config_of(table[pid]["argv"]) if pid is not None else None
+        phase["server"].update({"attached_port": self.port, "pid": pid, "models": [m.get("id") for m in models],
+                                "profiler_config": config})
+        say(f"attached to the server on port {self.port} (pid {pid}); profiler config: {config}")
+        if config and config.get("profiler") == "torch" and config.get("torch_profiler_dir"):
+            return endpoint, Path(str(config["torch_profiler_dir"])).expanduser()
+        return endpoint, None
+
+    def torch_runs(self, phase: dict[str, Any], endpoint: Any, trace_dir: Path | None) -> None:
+        """Warm-up, both batches unprofiled, then both again between /start_profile and /stop_profile; each trace
+        is kept under the run folder's torch/."""
+        base = f"http://127.0.0.1:{self.port}"
+        phase["server"]["loaded_idle_w"] = self.idle(LOADED_IDLE_S)
+        phase["warmup"] = self.warmup(endpoint, self.run_id + "-t")
+        for batch in BATCHES:
+            phase["runs"][f"b{batch}_baseline"] = self.measure(endpoint, f"b{batch}_baseline", "baseline", batch)
+        phase["amdsmi_memory"] = amdsmi_memory(self.host)
+        if trace_dir is None:
+            raise PodRunError(f"the server on port {self.port} runs without --profiler-config, so vLLM has no "
+                              "/start_profile route: restart it with one, or let the profile start its own server")
+        keep = self.dir / "torch"
+        keep.mkdir(exist_ok=True)
+        for batch in BATCHES:
+            name = f"b{batch}_torch"
+            before = set(trace_dir.glob(TRACE_GLOB))
+            status, body = post(base + "/start_profile", 120.0)
+            if status != 200:
+                raise PodRunError(f"POST /start_profile answered {status}: {body[:200]}")
+            record = self.measure(endpoint, name, "torch", batch)
+            t0 = time.time()
+            with Heartbeat("writing the torch trace (POST /stop_profile)"):
+                status, body = post(base + "/stop_profile", PROFILE_CALL_TIMEOUT_S)
+            record["stop_profile_s"] = round(time.time() - t0, 1)
+            if status != 200:
+                raise PodRunError(f"POST /stop_profile answered {status}: {body[:200]}")
+            files = new_files(trace_dir, before)
+            if not files:
+                raise PodRunError(f"{name}: /stop_profile answered 200 but no trace file appeared")
+            # the worker's trace (GPU kernels) is the big one; a front-end trace, if one is written, is small
+            trace = max(files, key=lambda p: p.stat().st_size)
+            if trace.parent.resolve() != keep.resolve():        # attached: the server writes to its own folder
+                trace = Path(shutil.copy2(trace, keep / trace.name))
+            record["trace"] = str(trace.relative_to(self.dir)).replace("\\", "/")
+            record["trace_bytes"] = trace.stat().st_size
+            record["trace_files"] = [p.name for p in files]
+            say(f"{name}: trace {trace.name}, {record['trace_bytes'] / 2**20:.1f} MiB, "
+                f"written in {record['stop_profile_s']:.0f} s")
+            phase["runs"][name] = record
+
     def torch_phase(self, chip: str | None) -> dict[str, Any]:
         phase: dict[str, Any] = {"kind": "torch", "ok": False, "error": None, "server": {}, "runs": {}}
-        trace_dir = self.dir / "torch"
-        trace_dir.mkdir(exist_ok=True)
-        config = {**PROFILER_CONFIG, "torch_profiler_dir": str(trace_dir)}
-        argv = self.serve_argv(chip, self.dir / "serve-torch.log") + ["--profiler-config",
-                                                                      json.dumps(config, separators=(",", ":"))]
-        phase["server"].update({"argv": argv, "profiler_config": config})
         spawned = None
-        base = f"http://127.0.0.1:{self.args.port}"
+        argv: list[str] = []
+        if not self.attach_port:
+            trace_dir: Path | None = self.dir / "torch"
+            trace_dir.mkdir(exist_ok=True)
+            config = {**PROFILER_CONFIG, "torch_profiler_dir": str(trace_dir)}
+            argv = self.serve_argv(chip, self.dir / "serve-torch.log") + ["--profiler-config",
+                                                                          json.dumps(config, separators=(",", ":"))]
+            phase["server"].update({"argv": argv, "profiler_config": config})
         try:
-            spawned, endpoint, ready_s = self.start(argv, {}, "serve-torch.log")
-            phase["server"]["ready_s"] = round(ready_s, 1)
-            phase["server"]["loaded_idle_w"] = self.idle(LOADED_IDLE_S)
-            phase["warmup"] = self.warmup(endpoint, self.run_id + "-t")
-            for batch in BATCHES:
-                phase["runs"][f"b{batch}_baseline"] = self.measure(endpoint, f"b{batch}_baseline", "baseline", batch)
-            phase["amdsmi_memory"] = amdsmi_memory(self.host)
-            for batch in BATCHES:
-                name = f"b{batch}_torch"
-                before = set(trace_dir.glob(TRACE_GLOB))
-                status, body = post(base + "/start_profile", 120.0)
-                if status != 200:
-                    raise PodRunError(f"POST /start_profile answered {status}: {body[:200]}")
-                record = self.measure(endpoint, name, "torch", batch)
-                t0 = time.time()
-                with Heartbeat("writing the torch trace (POST /stop_profile)"):
-                    status, body = post(base + "/stop_profile", PROFILE_CALL_TIMEOUT_S)
-                record["stop_profile_s"] = round(time.time() - t0, 1)
-                if status != 200:
-                    raise PodRunError(f"POST /stop_profile answered {status}: {body[:200]}")
-                files = new_files(trace_dir, before)
-                if not files:
-                    raise PodRunError(f"{name}: /stop_profile answered 200 but no trace file appeared")
-                record["trace"] = str(files[-1].relative_to(self.dir)).replace("\\", "/")
-                record["trace_bytes"] = files[-1].stat().st_size
-                say(f"{name}: trace {files[-1].name}, {record['trace_bytes'] / 2**20:.1f} MiB, "
-                    f"written in {record['stop_profile_s']:.0f} s")
-                phase["runs"][name] = record
+            if self.attach_port:
+                endpoint, trace_dir = self.attach(phase)
+            else:
+                spawned, endpoint, ready_s = self.start(argv, {}, "serve-torch.log")
+                phase["server"]["ready_s"] = round(ready_s, 1)
+            self.torch_runs(phase, endpoint, trace_dir)
             phase["ok"] = True
         except Exception as exc:  # one failed phase is recorded; the other phase still runs
             phase["error"] = f"{type(exc).__name__}: {' '.join(str(exc).split())[:400]}"
             say(f"torch phase failed: {phase['error']}")
         finally:
-            self.server_facts(phase, spawned, "serve-torch.log")
+            if self.attach_port:
+                self.attached_facts(phase)
+            else:
+                self.server_facts(phase, spawned, "serve-torch.log")
             if spawned is not None:
                 with Heartbeat("stopping the server"):
                     phase["server"]["stopped"] = spawned.stop(timeout_s=120.0)
         return phase
+
+    def attached_facts(self, phase: dict[str, Any]) -> None:
+        """The log facts of a server this run did not start: its serve log (args.serve_log) copied in."""
+        source = Path(getattr(self.args, "serve_log", None) or ATTACH_LOG).expanduser()
+        if source.exists():
+            shutil.copy2(source, self.dir / "serve-attached.log")
+        self.server_facts(phase, None, "serve-attached.log")
+        phase["server"]["log_source"] = str(source)
+        pid = phase["server"].get("pid")
+        if pid is not None:
+            env, _ = bench.read_environ(self.host, int(pid))
+            if env is not None:
+                phase["server"]["environ"] = env
 
     def rocprof_phase(self, chip: str | None) -> dict[str, Any]:
         phase: dict[str, Any] = {"kind": "rocprof", "ok": False, "error": None, "server": {}, "runs": {}}
@@ -727,8 +867,10 @@ class PodRun:
             return phase
         out_dir = self.dir / "rocprof"
         out_dir.mkdir(exist_ok=True)
-        argv = [*(getattr(self.args, "rocprof_cmd", None) or [tool]), *ROCPROF_ARGS, "-d", str(out_dir / "%pid%"),
-                "-o", "run", "--",
+        tool_cmd = list(getattr(self.args, "rocprof_cmd", None) or [tool])
+        if self.attach_port:
+            return self.rocprof_attached(phase, tool_cmd, out_dir)
+        argv = [*tool_cmd, *ROCPROF_ARGS, "-d", str(out_dir / "%pid%"), "-o", "run", "--",
                 *self.serve_argv(chip, self.dir / "serve-rocprof.log")]
         phase["server"].update({"argv": argv, "env": dict(ROCPROF_ENV), "output_dir": "rocprof"})
         spawned = None
@@ -746,14 +888,60 @@ class PodRun:
             self.server_facts(phase, spawned, "serve-rocprof.log")
             if spawned is not None:
                 phase["server"]["stop"] = stop_traced(spawned, self.host)
+        return self.rocprof_files(phase, out_dir, "serve-rocprof.log")
+
+    def rocprof_files(self, phase: dict[str, Any], out_dir: Path, log_name: str,
+                      found: Mapping[str, list[Path]] | None = None) -> dict[str, Any]:
+        found = found if found is not None else find_rocprof_csvs(out_dir)
         files = {kind: [str(p.relative_to(self.dir)).replace("\\", "/") for p in paths]
-                 for kind, paths in find_rocprof_csvs(out_dir).items()}
+                 for kind, paths in found.items()}
         phase["files"] = files
         if phase["ok"] and not files["kernel"]:
             phase["ok"] = False
-            phase["error"] = ("rocprofv3 wrote no kernel trace CSV under rocprof/ (the server ran; see "
-                              "serve-rocprof.log for what rocprofv3 printed)")
+            phase["error"] = (f"rocprofv3 wrote no kernel trace CSV under rocprof/ (see {log_name} for what "
+                              "rocprofv3 printed)")
         return phase
+
+    def rocprof_attached(self, phase: dict[str, Any], tool_cmd: list[str], out_dir: Path) -> dict[str, Any]:
+        """rocprofv3 --attach on the running server's engine core for a fixed time while both batches run. Attaching
+        needs ptrace rights over that process, which a pod may not grant: a refusal is the phase's error."""
+        log_name = "rocprof-attach.log"
+        try:
+            table = proc_table(self.host)
+            server = server_pid(table, self.port)
+            if server is None:
+                raise PodRunError(f"no vLLM server process names --port {self.port} on this pod")
+            core, _ = find_engine_core(table, server, rss=lambda p: rss_kib(self.host, p))
+            target = core or server
+            duration = float(getattr(self.args, "attach_duration_s", None) or ATTACH_DURATION_S)
+            argv = rocprof_attach_argv(tool_cmd, target, duration, out_dir)
+            phase["server"].update({"attached_port": self.port, "pid": server, "target": target, "argv": argv,
+                                    "output_dir": "rocprof"})
+            endpoint = bench.DirectEndpoint(f"http://127.0.0.1:{self.port}", timeout_s=REQUEST_TIMEOUT_S)
+            with open(self.dir / log_name, "wb") as log:
+                tracer = subprocess.Popen(argv, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+                time.sleep(ATTACH_SETTLE_S)
+                if tracer.poll() is not None and tracer.returncode != 0:
+                    raise PodRunError(f"rocprofv3 --attach {target} exited with code {tracer.returncode}; see "
+                                      f"{log_name}")
+                try:
+                    for batch in BATCHES:
+                        phase["runs"][f"b{batch}_rocprof"] = self.measure(endpoint, f"b{batch}_rocprof", "rocprof",
+                                                                          batch)
+                finally:
+                    try:
+                        tracer.wait(timeout=duration + 120.0)
+                    except subprocess.TimeoutExpired:
+                        tracer.terminate()
+                        tracer.wait(timeout=30.0)
+            phase["ok"] = True
+            with Heartbeat("waiting for the attached rocprofv3 trace files"):
+                found = wait_csvs(out_dir, timeout_s=300.0)
+            return self.rocprof_files(phase, out_dir, log_name, found)
+        except Exception as exc:
+            phase["error"] = f"{type(exc).__name__}: {' '.join(str(exc).split())[:400]}"
+            say(f"rocprof phase failed: {phase['error']}")
+            return self.rocprof_files(phase, out_dir, log_name)
 
     def run(self) -> dict[str, Any]:
         chip = self.facts()

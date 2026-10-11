@@ -1401,14 +1401,15 @@ python -m lab profile-decode collect lab/state/profile_decode/pod_run.out [--chi
 
 The third line runs from the workspace (pod_exec.py is the workspace's pod tool, not in this repo): run mode uploads
 the script through the Jupyter contents API and types only its `bash` line into a terminal, then reads the output
-back until the script's last line, `### END rc=<code>`. The script is about 190 KB, because it carries the lab files
+back until the script's last line, `### END rc=<code>`. The script is about 200 KB, because it carries the lab files
 it imports (`lab/bench.py` and what that needs, the three profile modules, the prompt set and its two images) as one
 base64 block with its sha256; it has no tab and no exclamation mark, so term mode can type it too, but a paste that
 large can stall a terminal whose shell echoes faster than the terminal server drains it.
 
 - **The gate**, fail closed, before anything starts: rocminfo names gfx1151, the Jupyter user hashes to account D's
-  (the script carries the sha256 of the user name, never the name) and the server port (8100) is free. Pod C, which
-  serves the live teacher, never passes.
+  (the script carries the sha256 of the user name, never the name), the server port (8100) is free and no other
+  vLLM server holds the GPU (the run stops nothing it did not start). Pod C, which serves the live teacher, never
+  passes.
 - **Phase torch.** The server is spawned from `lab/bench.py`'s vLLM launch line (the flags `pod_a_teacher.sh serve`
   uses, `--mm-encoder-attn-backend TRITON_ATTN` on gfx115x) plus `--profiler-config
   '{"profiler":"torch","torch_profiler_dir":...,"torch_profiler_with_memory":true,"ignore_frontend":true,...}'`:
@@ -1423,6 +1424,12 @@ large can stall a terminal whose shell echoes faster than the terminal server dr
   server (SIGSTOP; its own shutdown kills the engine core after 5 s), ends the engine core and waits up to 15 minutes
   for it to finish writing, then resumes and ends the API server. A tool that fails is recorded with its error, and
   the other phase still runs.
+- **Attached instead** (`pod-script --attach-port N [--serve-log FILE]`): nothing is started or stopped. The torch
+  phase uses the running server's own profile routes, its trace folder read from the `--profiler-config` on its
+  command line (a server started without one has no `/start_profile`; the unprofiled runs are kept and the phase
+  says why it stopped there), and copies the traces into the run folder; the rocprof phase runs `rocprofv3 --attach
+  <engine core> --attach-duration-msec 300000` during both batches, which needs ptrace rights the pod may not grant.
+  The gate then wants a server on that port, and skips the check that no other vLLM server holds the GPU.
 - **The result**, `lab/refine/research/kernels/data/decode-profile-gfx1151-<date>.json` and `.md`, written by
   `collect`: time per decode step and its spread (the client's token gaps unprofiled; vLLM's
   `execute_context_0(0)_generation_<B>(<B>)` step ranges in the torch trace; rocprof's kernels inside the client's
@@ -1431,11 +1438,12 @@ large can stall a terminal whose shell echoes faster than the terminal server dr
   sampling (in the torch trace: whatever is launched after the step's forward range, which is `sample_tokens`),
   host-side time (the GPU ran nothing), copies and other GPU work, achieved bandwidth (the safetensors bytes a step
   reads over the step time, and the quantized bytes over the W4A16 kernel's time) against the chip sheet's copy
-  bandwidth (the newest `chipsheet-gfx1151-*.json` there, R33), peak and reserved memory (the torch profiler's
-  allocator samples, the serve log, amd-smi), watts for every run from amd-smi, and the quantized-matmul kernel vLLM
-  chose (the serve log's `Using <Kernel> for <Scheme>`, the class's file and the Triton kernel it launches with its
-  file, read with the pod's own Python). `collect` also writes ledger rows on node pod-b (one per batch, one per tool,
-  one for the run), and `--save-fixtures` keeps a two-step excerpt of each trace under
+  bandwidth (`bandwidth.copy_d2d_peak_gb_s` of the newest `chipsheet-gfx1151-<date>.json` there, R33, read with
+  `lab/placement.py`'s reader; the sample sheet's numbers are never used), peak and reserved memory (the torch
+  profiler's allocator samples, the serve log, amd-smi), watts for every run from amd-smi, and the quantized-matmul
+  kernel vLLM chose (the serve log's `Using <Kernel> for <Scheme>`, the class's file and the Triton kernel it launches
+  with its file, read with the pod's own Python). `collect` also writes ledger rows on node pod-b (one per batch, one
+  per tool, one for the run), and `--save-fixtures` keeps a two-step excerpt of each trace under
   `fixtures/lab/profile_decode/recorded-<date>/`.
 - **Slot.** About 27 minutes with pod D's warm torch.compile cache (two server starts of about 5 minutes each, four
   runs per phase, a trace flush, the parse); ask for 30, with the one 15-minute extension in reserve if the rocprof
